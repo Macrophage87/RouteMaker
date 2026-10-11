@@ -56,9 +56,10 @@ import { ACCESSIBILITY_STORAGE_KEY } from "../stressStyle.js";
 import { breakdownParts } from "./facilityBar.ts";
 // The rendered parts are createElement modules: node's test runner reads .ts, not .tsx.
 import { HighContrastShortcut, Fold, JunctionLegend, PlannerZoomNotice, RideSettings } from "./sidebarParts.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 const src = (name: string) => readFileSync(new URL(name, import.meta.url), "utf8");
-const app = src("../App.tsx");
+const app = appSource();
 const sidebar = src("../Sidebar.tsx");
 const css = src("../styles.css");
 
@@ -84,7 +85,7 @@ test("the Ride line follows the sliders, the ride time, the loop and gravel; and
 
 test("every slider position has words, and Mass Ride's locked slider says what it is", () => {
   for (let stress = 0; stress <= 100; stress += 5) assert.ok(trafficShort(stress).length > 0);
-  for (let hills = -100; hills <= 100; hills += 5) assert.ok(hillsShort(hills).length > 0);
+  for (let hills = -100; hills <= 100; hills += 5) assert.ok(hillsShort(hills, false).length > 0 && hillsShort(hills, true).length > 0);
   // The words change where stressWords and hillsWords change (mutation NIT 1: each edge, both sides).
   const traffic: Array<[number, string]> = [
     [10, "traffic tolerant"], [11, "direct"], [29, "direct"], [30, "balanced traffic"], [50, "balanced traffic"],
@@ -95,7 +96,12 @@ test("every slider position has words, and Mass Ride's locked slider says what i
     [-80, "avoids hills"], [-79, "gentler hills"], [-11, "gentler hills"], [-10, "balanced hills"], [10, "balanced hills"],
     [11, "some climbing"], [79, "some climbing"], [80, "seeks hills"],
   ];
-  for (const [value, words] of hills) assert.equal(hillsShort(value), words, `hills ${value}`);
+  for (const [value, words] of hills) assert.equal(hillsShort(value, true), words, `hills ${value}`);
+  // Right of the middle on every ride type but Mountain Goat: fine with hills (OWNER-DECISIONS 242).
+  const tolerant: Array<[number, string]> = [[10, "balanced hills"], [11, "hills matter less"], [79, "hills matter less"], [80, "fine with hills"]];
+  for (const [value, words] of tolerant) assert.equal(hillsShort(value, false), words, `hills ${value}`);
+  assert.match(rideSummary("ebike", startDials("ebike")), /^E-bike · quiet streets · hills matter less · now$/);
+  assert.match(rideSummary("mountain-goat", startDials("mountain-goat")), / · seeks hills · /);
   assert.match(rideSummary("default", { ...startDials("default"), assist: true }), /^Default, electric assist · /);
   assert.match(rideSummary("mass-ride", startDials("mass-ride")), /^Mass Ride · most direct roadway · avoids hills · now$/);
   // A loop set on a Mass Ride is hidden there (374): the summary does not say it.

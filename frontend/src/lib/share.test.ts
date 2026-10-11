@@ -18,8 +18,9 @@ import {
   shareText,
   type ShareContent,
 } from "./share.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
-const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+const app = appSource();
 const noop = async () => {};
 
 test("Share shows only where the browser has navigator.share and, if it can say, can share a link", () => {

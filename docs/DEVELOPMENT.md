@@ -1397,7 +1397,11 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   so one graph serves every position. LTS 4 and up cost more again ("Graded
   stress", below).
 - `hills`, integer -100-100, detent at 0: below it `use_hills = 1 + hills/100`
-  (0 is `use_hills` 1.0, no grade penalty, the fastest time); above it a climb
+  (0 is `use_hills` 1.0, no grade penalty, the fastest time). Above it, on every
+  ride type but Mountain Goat, "fine with hills" (FOLLOWUP-HILLS-TOLERATE,
+  OWNER-DECISIONS 242; "Fine with hills", below): `hills/100` of the router's own
+  climbing charge comes off each of its `alternates`, and `hills_tolerate` says
+  what was compared and chosen. On Mountain Goat above it a climb
   search among the router's `alternates` (3), choosing the one that climbs most
   within `1 + 0.5 * hills/100` of the direct route's length. Two-point plans
   only, and not past 50 km of straight line (`routing.SEEK_MAX_SPAN_M`: a cold
@@ -1629,6 +1633,53 @@ and the kept route is its own. A per-edge sustained-grade cost - the same
 model priced into every edge from the pipeline's elevation - would need a fork
 of the costing (PLAN's layer 3); the owner chose "Ship this, fork later
 (Recommended)".
+
+**Fine with hills** (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242). The owner:
+"I'm wondering for future releases if it wouldn't make sense for the hill slider,
+outside mountain goat to not nessicarily perfer hills, but mostly tolerate them.
+For instance lighter individuals would probably move the slider to more hilly as
+it's faster than them. People with ebikes would probably just want a more direct
+route as hills wouldn't affect them too much." So the right half of the hills
+slider means "fine with hills" on every ride type but Mountain Goat
+(`presets.Preset.hills_tolerate`), and the E-bike ride type starts there, at 50
+(`presets.EBIKE_HILLS`). The slider's words follow: "Fine with hills" at the right
+end (Mountain Goat keeps "Seek hills"), "Hills matter less" and "Fine with hills"
+for the positions right of the middle.
+
+Valhalla's `use_hills` stops at 1.0, the detent, where a climb still costs the time
+its slower uphill speed takes (`kGradeBasedSpeedFactor`). So the discount is taken
+on the router's alternatives, as the avoid half's weighing is: each route's cost
+loses `w x` its climbing charge, with `w = hills / 100`
+(`presets.tolerate_weight`), and the least is kept (`routing.choose_direct`):
+
+    score = router cost - w x QUIET COST x sum over rising windows (rise x K(grade))
+
+`K` is the router's extra cost per metre climbed at the detent, in metres of quiet
+flat riding, from the table above (12 at 3%, 13 at 5%, 20 at 8%, 31 at 15%, read in a
+straight line between, 0 on the flat; `climbs.ROUTER_CLIMB_FLAT_M`), over the effort
+model's windows of at least 984 ft (300 m) (`effort.windows`), so a sample's noise is not a
+steep pitch. QUIET COST is the calm search's (2.2 times a quiet metre's time at the
+ride's speed). At the top of the slider a climb costs what the same distance on the
+flat does, so the shorter or more direct route wins even where it climbs more;
+since only the router's own charge comes off, a climb never earns a route a credit
+(that stays Mountain Goat's). An alternative must save 5 cost seconds
+(`routing.TOLERATE_EPS_S`). Never a busier route: the alternative is traced and
+kept only where its exposure is no worse than the router's own route's
+(`routing.calmer_or_own`, the avoid half's guard). The calm search below the top of
+the stress slider scores its candidates the same way (`refine.Analysis.score`,
+`Context.hills_tolerate_weight`); at the top the stress order decides and its
+distance level is the actual distance, which counts no climbing already, so "fine
+with hills" plans as the detent does there (`hills_tolerate.limited` is
+`"calm_first"`). The limits are the avoid half's: two-point plans up to 16 mi
+(25 km) of straight line (`routing.AVOID_MAX_SPAN_M`), since E-bike rides start
+here. Planner and costing only; no rebuild.
+
+The answer's `hills_tolerate` (null unless the slider was right of the middle on a
+ride type but Mountain Goat): `candidates`, `chosen` (0 is the router's own),
+`weight`, `discount_s` (what came off the kept route, cost seconds),
+`extra_climb_m` and `extra_distance_m` (the kept route against the router's own,
+negative where shorter), and `limited` (`two_points`, `long_ride`, `timed_out`,
+`calm_first`).
 
 **Calibration of the tiers** (OWNER-DECISIONS 83-143; `routemaker.stress`
 unless named; PLAN.md quotes the owner's words):
@@ -4175,10 +4226,44 @@ or worse.
   320 px with text spacing, and the description (the Directions fold's summary, the
   scroll boxes, Full detail, the copy reply, a group's nested crossings).
 
+### The App.tsx split (UI-CLEANUP step 4)
+
+`App.tsx` holds the planner's state, its effects and the handlers, and renders the page
+shell (the skip links, the map, the road panel, the live regions, Ride mode, the panel
+and its header). What the panel shows is in `app/`, moved out unchanged:
+
+- `app/Planner.tsx`: `PointsSection` (the search, the loop toggle, the points, the
+  nearest finder, the point tools, More tips, the Points notice) and `RideSection` (the
+  Ride line and, behind its Edit, the ride type and every dial).
+- `app/RoutePanel.tsx`: `RouteSection` (planning, the long-ride question, errors, the
+  Avoid notice, `RouteSummary`, water along the route, Start ride's question),
+  `RouteSummary` itself, `RouteActions` (the pinned Download GPX, Copy link, Share and
+  Keep for offline) and the `Status` type.
+- `app/Sheets.tsx`: `LayersSheet`, `GpxSheet` and `SettingsSheet`, each in its `SheetFrame`.
+- `app/hooks.ts`: `useNarrow` (and `NARROW`), `useLongerThan`, `useSettled`.
+
+Each component is a pass-through: it takes its props under the names App gives them, keeps
+no state and calls no hook (`RouteSummary` keeps its own `useStressStyle()`), and App renders
+it with `<PointsSection key="points" {...{ pointsHeadingRef, zoom, ... }} />`, so the elements,
+their order, the focus moves and every announcement are as they were. `useId` stays in App
+(the loop hint's id), because React numbers a client render's ids in render order.
+`appSplit.test.ts` holds that shape.
+
+The source tests that read App's wiring read `testSupport/appSource.mjs`'s `appSource()`:
+App.tsx with each component's JSX put back where App renders it, then the rest of the
+modules (their imports, `RouteSummary`, the hooks) without the props interfaces, which only
+repeat App's names. A new test of what the planner renders reads it the same way.
+
+Checked when it was split: the DOM of the whole page but the map's own internals was the
+same before and after in 60 snapshots (30 states at 390 px and 1,440 px: empty, a route,
+Bikeshare, Mass Ride, Trailmaxxing, routes to choose from, an Avoid junction, each sheet,
+the ride settings, Edit points, every fold open, Start ride's question, the panel hidden and
+shown), and `scripts/a11y/check.mjs` passed the same checks.
+
 ### The sidebar (312)
 
 OWNER-DECISIONS 312's layout, from mockup v3 (PLAN.md, FOLLOWUP-SIDEBAR-REDESIGN, has
-what differs). Code: `App.tsx` places it; `Sidebar.tsx` (MoreTips, QuickFigures,
+what differs). Code: `App.tsx` places it (its parts in `app/`, above); `Sidebar.tsx` (MoreTips, QuickFigures,
 BottomBar, SheetFrame); `lib/sidebarParts.ts` (RideSettings, Fold, JunctionLegend and
 the two parts for open questions, written with createElement so a test renders them);
 `lib/sidebar.ts` (the decisions, pure); `lib/rideSummary.ts`; `lib/quickFigures.ts`.

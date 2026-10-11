@@ -61,6 +61,12 @@ def top_body(**extra) -> dict:
     return {**good_body("trailmaxxing"), "stress": 100, **extra}
 
 
+def goat_top(**extra) -> dict:
+    """Mountain Goat at the top of the stress slider: the one ride type whose Hills
+    slider still seeks climbs (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242)."""
+    return {**good_body("mountain-goat"), "stress": 100, **extra}
+
+
 class TestTheDialsOnTheRequest:
     def test_a_target_distance_and_a_system_weight_are_taken_and_echoed(
         self, client, segments, router
@@ -880,7 +886,9 @@ class TestTheSearchStoppedAtTheCeiling:
 class TestSeekingHillsAtTheTop:
     """OWNER-DECISIONS 298(3), "Keep stress order + target (Recommended)": with the Hills
     slider seeking climbs at the top of the stress slider the stress-order search and the
-    target still apply; only the effort tiebreak inverts (`refine.level3`)."""
+    target still apply; only the effort tiebreak inverts (`refine.level3`). Seeking climbs
+    is Mountain Goat's alone since FOLLOWUP-HILLS-TOLERATE (242); elsewhere the right half
+    is "fine with hills" (`TestFineWithHillsAtTheTop`)."""
 
     def test_the_search_runs_and_the_target_counts(
         self, client, segments, router, monkeypatch
@@ -894,7 +902,7 @@ class TestSeekingHillsAtTheTop:
 
         monkeypatch.setattr(refine, "refine", spy)
         router(standard_router())
-        body = post(client, top_body(hills=50, target_distance_m=10_000)).json()
+        body = post(client, goat_top(hills=50, target_distance_m=10_000)).json()
         assert seen == [0.5], "the search ran, preferring climbs at half the slider"
         search = body["calm_search"]
         assert search["limited"] != "seeking"
@@ -907,19 +915,46 @@ class TestSeekingHillsAtTheTop:
         among them. The calm search alone asks for them, after the route is read, to rank
         them by stress (OWNER-DECISIONS 435)."""
         fake = router(standard_router())
-        post(client, top_body(hills=50))
+        post(client, goat_top(hills=50))
         routes = [p for url, p in fake.calls if url.endswith("/route")]
         assert "alternates" not in routes[0]
         assert [("alternates" in p) for p in routes[1:]].count(True) == 1
 
     def test_below_the_top_it_is_the_climb_search_as_before(self, client, segments, router) -> None:
         router(standard_router())
-        body = post(client, {**good_body("trailmaxxing"), "stress": 60, "hills": 50}).json()
+        body = post(client, {**good_body("mountain-goat"), "stress": 60, "hills": 50}).json()
         assert body["hills_seek"]["limited"] != "calm_first"
         assert (body["calm_search"] or {}).get("limited") in (None, "seeking")
 
     def test_a_long_calm_plan_is_long_calm_while_seeking(self) -> None:
         assert routing.long_calm_for("trailmaxxing", [US, PENN], 100, False)
+
+
+class TestFineWithHillsAtTheTop:
+    """FOLLOWUP-HILLS-TOLERATE (242): at the top of the stress slider "fine with hills" plans
+    as the detent does. The stress order decides and its third level is the actual
+    distance, which counts no climbing already; no climb is preferred and none is sought."""
+
+    def test_the_search_runs_with_no_climb_preference(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        seen = []
+        real = refine.refine
+
+        def spy(trip, ctx):
+            seen.append((ctx.hills_seek_weight, ctx.hills_weight, ctx.hills_tolerate_weight))
+            return real(trip, ctx)
+
+        monkeypatch.setattr(refine, "refine", spy)
+        fake = router(standard_router())
+        body = post(client, top_body(hills=50)).json()
+        assert seen == [(0.0, 0.0, 0.0)], "the detent's ranking"
+        assert body["hills_seek"] is None
+        assert body["hills_tolerate"]["limited"] == "calm_first"
+        assert body["hills_tolerate"]["chosen"] == 0
+        assert body["hills_tolerate"]["discount_s"] == 0
+        routes = [p for url, p in fake.calls if url.endswith("/route")]
+        assert "alternates" not in routes[0]
 
 
 class TestTheSpanEdge:

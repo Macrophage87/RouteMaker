@@ -314,7 +314,7 @@ class TestSeekingClimbs:
         self, client, facility_segments, router
     ):
         fake = router(seeking_router([(2.2, HILLY)]))
-        body = post(client, {**good_body(), "hills": 60}).json()
+        body = post(client, {**good_body("mountain-goat"), "hills": 60}).json()
         request = fake.calls[0][1]
         assert request["alternates"] == routing.SEEK_ALTERNATES
         assert request["costing_options"]["bicycle"]["use_hills"] == 1.0
@@ -326,10 +326,10 @@ class TestSeekingClimbs:
     def test_the_budget_binds(self, client, facility_segments, router):
         # At 60 the budget is 1.3 times the direct route: 2.8 km is past it.
         router(seeking_router([(2.8, STEEPEST), (2.4, HILLY)]))
-        body = post(client, {**good_body(), "hills": 60}).json()
+        body = post(client, {**good_body("mountain-goat"), "hills": 60}).json()
         assert body["hills_seek"]["chosen"] == 2
         router(seeking_router([(2.8, STEEPEST), (2.4, HILLY)]))
-        body = post(client, {**good_body(), "hills": 100}).json()
+        body = post(client, {**good_body("mountain-goat"), "hills": 100}).json()
         assert body["hills_seek"]["chosen"] == 1
 
     def test_the_extra_climb_is_over_the_direct_routes_own(self, client, facility_segments, router):
@@ -344,7 +344,7 @@ class TestSeekingClimbs:
                 }
             )
         )
-        body = post(client, {**good_body(), "hills": 100}).json()
+        body = post(client, {**good_body("mountain-goat"), "hills": 100}).json()
         assert body["hills_seek"]["chosen"] == 1
         assert routing._climb_of(direct) > 0
         assert body["hills_seek"]["extra_climb_m"] == pytest.approx(
@@ -364,20 +364,20 @@ class TestSeekingClimbs:
 
     def test_nothing_climbs_more_keeps_the_direct_route(self, client, facility_segments, router):
         router(seeking_router([(2.1, FLAT)]))
-        body = post(client, {**good_body(), "hills": 100}).json()
+        body = post(client, {**good_body("mountain-goat"), "hills": 100}).json()
         assert body["hills_seek"]["chosen"] == 0
         assert body["hills_seek"]["extra_climb_m"] == 0
 
     def test_at_or_below_the_detent_there_is_no_search(self, client, facility_segments, router):
         router(standard_router())
-        assert post(client, {**good_body(), "hills": 0}).json()["hills_seek"] is None
+        assert post(client, {**good_body("mountain-goat"), "hills": 0}).json()["hills_seek"] is None
 
     def test_a_via_point_keeps_the_direct_route_and_says_why(
         self, client, facility_segments, router
     ):
         fake = router(standard_router())
         points = [list(VERTICES[0]), list(VERTICES[2]), list(VERTICES[-1])]
-        body = post(client, {"points": points, "preset": "default", "hills": 50}).json()
+        body = post(client, {"points": points, "preset": "mountain-goat", "hills": 50}).json()
         assert "alternates" not in fake.calls[0][1]
         assert body["hills_seek"]["limited"] == "two_points"
         assert body["hills_seek"]["chosen"] == 0
@@ -385,7 +385,7 @@ class TestSeekingClimbs:
     def test_a_long_ride_does_not_search(self, facility_segments, router):
         fake = router(standard_router())
         points = [list(VERTICES[0]), list(VERTICES[-1])]
-        body = routing.plan(points, "default", long_ride=True, dials=routing.Dials(hills=50))
+        body = routing.plan(points, "mountain-goat", long_ride=True, dials=routing.Dials(hills=50))
         assert "alternates" not in fake.calls[0][1]
         assert body["hills_seek"]["limited"] == "long_ride"
 
@@ -397,12 +397,12 @@ def test_a_span_past_the_search_limit_does_not_search(facility_segments, router)
     assert (
         routing.haversine(routing.Point(*far[0]), routing.Point(*far[1])) > routing.SEEK_MAX_SPAN_M
     )
-    body = routing.plan(far, "default", dials=routing.Dials(hills=50))
+    body = routing.plan(far, "mountain-goat", dials=routing.Dials(hills=50))
     assert "alternates" not in fake.calls[0][1]
     assert body["hills_seek"]["limited"] == "long_ride"
     near = [[-77.05, 38.9], [-77.05 + 0.5, 38.9]]  # about 43 km
     fake = router(seeking_router([(2.2, HILLY)]))
-    routing.plan(near, "default", dials=routing.Dials(hills=50))
+    routing.plan(near, "mountain-goat", dials=routing.Dials(hills=50))
     assert fake.calls[0][1]["alternates"] == routing.SEEK_ALTERNATES
 
 
@@ -991,9 +991,8 @@ class TestAlternatesInsideTheBudget:
             return plain(url, payload, timeout)
 
         router(transport)
-        assert post(client, {**good_body(), "hills": 60}).json()["hills_seek"]["limited"] == (
-            "timed_out"
-        )
+        body = post(client, {**good_body("mountain-goat"), "hills": 60}).json()
+        assert body["hills_seek"]["limited"] == "timed_out"
 
     def test_the_avoid_half_stops_at_a_shorter_span(self, facility_segments, router):
         mid = [[-77.05, 38.9], [-77.05 + 0.35, 38.9]]  # about 30 km
@@ -1007,7 +1006,7 @@ class TestAlternatesInsideTheBudget:
         assert "alternates" not in fake.calls[0][1]
         assert body["hills_avoid"]["limited"] == "long_ride"
         fake = router(seeking_router([(2.2, HILLY)]))
-        routing.plan(mid, "default", dials=routing.Dials(hills=50))
+        routing.plan(mid, "mountain-goat", dials=routing.Dials(hills=50))
         assert fake.calls[0][1]["alternates"] == routing.SEEK_ALTERNATES
 
 
@@ -1038,6 +1037,145 @@ class TestTheAvoidHalfNeverTradesCalmForBusy:
     def test_a_calmer_alternative_is_taken(self, client, facility_segments, router):
         router(self.router_with(202, 101))
         assert post(client, {**good_body(), "hills": -60}).json()["hills_avoid"]["chosen"] == 1
+
+
+# --- The right half: "fine with hills" (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242) --
+
+# 2 km at 5%: 100 m of climbing, which the router's own cost at the detent charges
+# about 13 flat metres a metre climbed (`climbs.ROUTER_CLIMB_FLAT_M`).
+STEADY_5PCT = ramp_profile([(2000, 0.05)])
+QUIET_HYBRID = refine.QUIET_COST_FACTOR * 3.6 / 18.0
+
+
+def _costed(vertices, length_km, elevations, cost_s):
+    """A trip whose router cost (`summary.cost`) is given, as a real router's carries the
+    climbing charge on top of its time."""
+    trip = _trip(vertices, length_km, elevations)
+    trip["summary"]["cost"] = cost_s
+    return trip
+
+
+def test_choose_direct_takes_the_climbing_charge_off_by_the_slider():
+    """A longer flat route (cost 300) against a shorter one the router charged 600 for,
+    most of it climbing: at the detent the router's own wins; at the top the climbing
+    charge is gone and the shorter route wins; halfway it is not enough."""
+    flat = _costed(VERTICES, 2.4, [10.0] * 80, 300.0)
+    hilly = _costed(VERTICES, 2.0, STEADY_5PCT, 600.0)
+    charge = routing.tolerated_climb_s(hilly, 1.0, QUIET_HYBRID)
+    assert charge == pytest.approx(100.0 * 13.0 * QUIET_HYBRID, rel=0.02)
+    assert routing.choose_direct([flat, hilly], 0.0, QUIET_HYBRID) == 0
+    assert routing.choose_direct([flat, hilly], 0.5, QUIET_HYBRID) == 0
+    assert routing.choose_direct([flat, hilly], 1.0, QUIET_HYBRID) == 1
+
+
+def test_choose_direct_never_credits_a_climb():
+    """Only the router's own climbing charge comes off: of two routes the router priced
+    alike once that charge is gone, the hillier never wins (that is Mountain Goat's climb
+    search), and a tie keeps the first."""
+    flat = _costed(VERTICES, 2.0, [10.0] * 67, 400.0)
+    charge = routing.tolerated_climb_s(_trip(VERTICES, 2.0, STEADY_5PCT), 1.0, QUIET_HYBRID)
+    hilly = _costed(VERTICES, 2.0, STEADY_5PCT, 400.0 + charge)
+    assert routing.choose_direct([flat, hilly], 1.0, QUIET_HYBRID) == 0
+    assert routing.choose_direct([hilly, flat], 1.0, QUIET_HYBRID) == 0
+
+
+@db
+class TestFineWithHills:
+    """The right half of the hills slider on every ride type but Mountain Goat."""
+
+    def router_with(self, own_way=101, alternate_way=101):
+        own = _costed(VERTICES, 2.4, [10.0] * 80, 300.0)
+        alternate = _costed(list(reversed(VERTICES)), 2.0, STEADY_5PCT, 600.0)
+        alternate_shape = alternate["legs"][0]["shape"]
+        calls = []
+
+        def transport(url, payload, timeout):
+            calls.append((url, payload))
+            if url.endswith("/route"):
+                return {"trip": own, "alternates": [{"trip": alternate}]}
+            way = alternate_way if payload["encoded_polyline"] == alternate_shape else own_way
+            return trace_answer(VERTICES, [(way, 0, 4, 2.0)])
+
+        return transport, calls
+
+    def test_the_more_direct_route_wins_at_the_top(self, client, facility_segments, router):
+        transport, calls = self.router_with()
+        router(transport)
+        body = post(client, {**good_body(), "hills": 100}).json()
+        first = calls[0][1]
+        assert first["alternates"] == routing.SEEK_ALTERNATES
+        assert first["costing_options"]["bicycle"]["use_hills"] == 1.0
+        assert body["hills_seek"] is None and body["hills_avoid"] is None
+        tolerate = body["hills_tolerate"]
+        assert tolerate["candidates"] == 2 and tolerate["chosen"] == 1
+        assert tolerate["weight"] == 1.0
+        assert tolerate["discount_s"] > 0
+        assert tolerate["extra_climb_m"] > 0
+        assert tolerate["extra_distance_m"] == pytest.approx(-400.0)
+
+    def test_a_little_tolerance_keeps_the_routers_route(self, client, facility_segments, router):
+        transport, _calls = self.router_with()
+        router(transport)
+        body = post(client, {**good_body(), "hills": 20}).json()
+        assert body["hills_tolerate"]["chosen"] == 0
+        assert body["hills_tolerate"]["weight"] == 0.2
+
+    def test_never_a_busier_route(self, client, facility_segments, router):
+        # The router's own route on way 101 (tier 1), the direct one on 202 (tiers 3 and 2).
+        transport, _calls = self.router_with(101, 202)
+        router(transport)
+        assert post(client, {**good_body(), "hills": 100}).json()["hills_tolerate"]["chosen"] == 0
+
+    def test_mountain_goat_still_seeks(self, client, facility_segments, router):
+        router(seeking_router([(2.2, HILLY)]))
+        body = post(client, {**good_body("mountain-goat"), "hills": 60}).json()
+        assert body["hills_tolerate"] is None
+        assert body["hills_seek"]["chosen"] == 1
+
+    def test_ebike_starts_fine_with_hills(self, client, facility_segments, router):
+        transport, _calls = self.router_with()
+        router(transport)
+        body = post(client, good_body("ebike")).json()
+        assert body["dials"]["hills"] == presets.EBIKE_HILLS > 0
+        assert body["hills_tolerate"]["weight"] == presets.EBIKE_HILLS / 100
+
+    def test_a_via_point_says_why(self, client, facility_segments, router):
+        fake = router(standard_router())
+        points = [list(VERTICES[0]), list(VERTICES[2]), list(VERTICES[-1])]
+        body = post(client, {"points": points, "preset": "default", "hills": 50}).json()
+        assert "alternates" not in fake.calls[0][1]
+        assert body["hills_tolerate"]["limited"] == "two_points"
+        assert body["hills_tolerate"]["chosen"] == 0
+
+    def test_it_stops_at_the_avoid_halfs_span(self, facility_segments, router):
+        mid = [[-77.05, 38.9], [-77.05 + 0.35, 38.9]]  # about 30 km
+        fake = router(standard_router())
+        body = routing.plan(mid, "default", dials=routing.Dials(hills=50))
+        assert "alternates" not in fake.calls[0][1]
+        assert body["hills_tolerate"]["limited"] == "long_ride"
+
+
+def test_the_calm_search_discounts_the_climbing_charge_too():
+    """`refine.Analysis.score` takes the same share of the router's climbing charge off
+    (`Context.hills_tolerate_weight`), so the calm search ranks as the choice did."""
+    read = refine.Analysis(
+        length_m=2000.0,
+        cost_s=600.0,
+        exposure_m=0.0,
+        climb_m=100.0,
+        pieces=[],
+        classes=[],
+        events=None,
+        router_climb_m=1300.0,
+    )
+    ctx = type("Ctx", (), {})()
+    ctx.rate, ctx.weight, ctx.climb_weight, ctx.quiet_cost = 0.0, 1.0, 0.0, 0.44
+    # The uphill stress (FOLLOWUP-GRADE-STRESS, #76) off, where the score reads it.
+    ctx.grade_stress_weight, ctx.exposure = 0.0, presets.EXPOSURE_STANDARD
+    ctx.hills_tolerate_weight = 0.0
+    assert read.score(ctx) == pytest.approx(600.0)
+    ctx.hills_tolerate_weight = 0.5
+    assert read.score(ctx) == pytest.approx(600.0 - 0.5 * 1300.0 * 0.44)
 
 
 @db
