@@ -3229,6 +3229,42 @@ details.zoom-notes {
   flex: 1 1 14em;
 }
 
+/* Find food (lib/foodFinder.ts): the search row as the place search's; the list as the nearest list's. */
+.food .food-search input[type="search"] {
+  box-sizing: border-box;
+  min-height: 44px;
+  font: inherit;
+  font-size: max(1rem, 16px);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.food fieldset.food-scope {
+  border: 0;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.food fieldset.food-scope .toggle,
+.food .food-search button,
+.food .food-more,
+.food-list a.food-web {
+  min-height: 44px;
+}
+
+.food-list a.food-web {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+}
+
+.food .food-more {
+  margin-top: 8px;
+}
+
 /*
  * Ride mode (WEB-NAV-plan.md; RideMode.tsx). The planner is hidden; a cue card sits at the top of the
  * map and the ride's buttons at the bottom, each on the page's own background so its text keeps the
