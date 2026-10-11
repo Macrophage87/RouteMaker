@@ -288,12 +288,19 @@ test("the fine-with-hills note says what was compared and chosen (FOLLOWUP-HILLS
     tolerateNote(tolerate({ chosen: 0 })),
     "None of the 2 alternatives were quicker with climbing counted for less, or they were busier; this is the usual route.",
   );
-  assert.match(tolerateNote(tolerate({ chosen: 0, candidates: 2 })) ?? "", /^None of the 1 alternative was quicker/);
+  assert.match(tolerateNote(tolerate({ chosen: 0, candidates: 2 })) ?? "", /^The one alternative was not quicker/);
+  // The router answered with its own route alone: nothing was compared, so no "None of the 0".
+  assert.equal(tolerateNote(tolerate({ chosen: 0, candidates: 1 })), "The router offered no other route to compare; this is the usual route.");
   assert.equal(
     tolerateNote(tolerate({})),
     "Chose a more direct route, 0.5 mi (0.8 km) shorter, with 98 ft (30 m) more climbing, from 3 routes compared.",
   );
-  assert.match(tolerateNote(tolerate({ extra_distance_m: 300 })) ?? "", /longer, with/);
+  // A longer pick is not called "more direct".
+  assert.equal(
+    tolerateNote(tolerate({ extra_distance_m: 300 })),
+    "Chose a route that is quicker with climbing counted for less, 0.2 mi (0.3 km) longer, with 98 ft (30 m) more climbing, from 3 routes compared.",
+  );
+  assert.match(tolerateNote(tolerate({ extra_climb_m: -12 })) ?? "", /shorter, with no more climbing,/);
 });
 
 test("a point the planner moved into the Zoo's bike racks is said with the route and shown (291(4); spec review S4)", async () => {

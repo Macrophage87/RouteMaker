@@ -326,13 +326,18 @@ export function tolerateNote(tolerate: RouteResponse["hills_tolerate"]): string 
   }
   if (tolerate.chosen === 0) {
     const others = tolerate.candidates - 1;
-    return `None of the ${others} ${others === 1 ? "alternative was" : "alternatives were"} quicker with climbing counted for less, or ${others === 1 ? "it was" : "they were"} busier; this is the usual route.`;
+    if (others < 1) return "The router offered no other route to compare; this is the usual route.";
+    if (others === 1) return "The one alternative was not quicker with climbing counted for less, or it was busier; this is the usual route.";
+    return `None of the ${others} alternatives were quicker with climbing counted for less, or they were busier; this is the usual route.`;
   }
-  const length =
+  const climb =
+    tolerate.extra_climb_m > 0 ? `with ${formatClimb(tolerate.extra_climb_m)} more climbing` : "with no more climbing";
+  // "More direct" only where it is shorter; a longer pick won on time with climbing counted for less.
+  const lead =
     tolerate.extra_distance_m < 0
-      ? `${formatDistance(-tolerate.extra_distance_m)} shorter`
-      : `${formatDistance(tolerate.extra_distance_m)} longer`;
-  return `Chose a more direct route, ${length}, with ${formatClimb(Math.max(0, tolerate.extra_climb_m))} more climbing, from ${tolerate.candidates} routes compared.`;
+      ? `Chose a more direct route, ${formatDistance(-tolerate.extra_distance_m)} shorter`
+      : `Chose a route that is quicker with climbing counted for less, ${formatDistance(tolerate.extra_distance_m)} longer`;
+  return `${lead}, ${climb}, from ${tolerate.candidates} routes compared.`;
 }
 
 /** How long a plan runs before "Still planning" is said, once (the a11y review's SF1). */
