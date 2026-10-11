@@ -6976,7 +6976,10 @@ and a module the tests import. The Vite plugin `swPlugin.mjs` (`appWorker()` in 
 writes `index.html`'s `<meta name="routemaker-build">` and emits `dist/sw.js` (the module with its
 `export` words dropped, then the build id and the list of every `/assets/*` file) and `dist/sw-kill.js`.
 Its rules (`ruleFor`, an allowlist; the table is at the top of the file): the shell network first,
-falling back after `SHELL_TIMEOUT_MS` (3 s) to the kept copy; `/assets/*` precached and cache first;
+falling back after `SHELL_TIMEOUT_MS` (3 s) to the kept copy; `/assets/*` precached and cache first,
+but for `LAZY_ASSET` (the Find food places, `/assets/food-*.json`, about 450 KB compressed), which no
+install downloads: kept in the build's cache on first use, and copied into the next build's cache at
+its install while its hashed name is unchanged (`lazyList` in `swPlugin.mjs`);
 the favicon, icons and licence notices stale-while-revalidate; the base map's glyphs and sprite from
 the kept routes' bucket first. Everything else is not intercepted at all (no `respondWith`):
 `/api/*`, `/auth/*`, `/tiles/*`, the base map archive, the admin, every other navigation and every

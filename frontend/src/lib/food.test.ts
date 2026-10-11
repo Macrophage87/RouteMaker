@@ -276,7 +276,7 @@ test("the planner renders Find food right after the nearest finder, and fetches 
   const nearest = app.indexOf("<NearestFinder");
   const food = app.indexOf("{foodFinder}");
   assert.ok(nearest > 0 && food > nearest, "Find food follows the nearest finder");
-  assert.match(app, /import foodUrl from "\.\/amenity-data\/food\.json\?url";/);
+  assert.match(app, /import foodUrl from "\.\/amenity-data\/food\.json\?url&no-inline";/);
   assert.match(app, /loadFood\(foodUrl\)/);
   // Add as stop is the road panel's own: the coverage check, the cap, an edit like any other.
   assert.match(app, /placeSpot\("via", point\)/);

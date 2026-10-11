@@ -2830,7 +2830,9 @@ host runs it once**, next to the water layer's refresh by hand:
 then records the printed counts, size and digest in
 `frontend/src/amenity-data/README.md` ("Places to eat", "Status") and commits
 the file. It is a hashed asset under `/assets/`, fetched on the first search
-only (about 450 KB compressed expected); no edge, compose or deploy change. The
+only (about 450 KB compressed expected) and left out of the service worker's
+precache, so installing the app does not download it (`LAZY_ASSET` in
+`frontend/src/sw/swCore.mjs`); no edge, compose or deploy change. The
 release's checks add: the hashed `food-*.json` asset gives 200, `immutable`,
 compressed, and a search for "pizza" in Washington lists places.
 
@@ -3045,8 +3047,9 @@ and `manifest-src` falls back to `default-src 'self'`.
 `/sw.js` is written by the build (`frontend/src/sw/swPlugin.mjs` from `swCore.mjs`)
 and carries the build's id; `index.html` carries the same id in `<meta
 name="routemaker-build">`. What it does, and what it never touches, is the table
-in `frontend/src/sw/swCore.mjs`: it precaches the build's `/assets/*` and
-`index.html`, answers a navigation to `/` from the network first (3 s, then the
+in `frontend/src/sw/swCore.mjs`: it precaches the build's `/assets/*` (but
+the Find food places, `/assets/food-*.json`, kept only once a search fetches
+them) and `index.html`, answers a navigation to `/` from the network first (3 s, then the
 kept copy), and passes through everything else, `/api/*`, `/auth/*`, `/tiles/*`,
 the base map archive, the admin path and every non-GET included. It caches no API
 answer and nothing private.

@@ -105,7 +105,10 @@ import {
   type FoodScope,
 } from "./lib/food.ts";
 import { FoodFinder } from "./lib/foodFinder.ts";
-import foodUrl from "./amenity-data/food.json?url";
+// `no-inline`, as climbs.json: the committed file is a few bytes until the build host fills it, and
+// an inlined data: URL is refused by the edge's connect-src 'self'. Its own hashed file under
+// /assets/ also lets the service worker leave it out of the precache (swCore.mjs LAZY_ASSET).
+import foodUrl from "./amenity-data/food.json?url&no-inline";
 import {
   findingSaid,
   requestNearest,
