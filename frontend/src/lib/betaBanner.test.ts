@@ -17,6 +17,7 @@ import {
   isBetaBuild,
 } from "./betaBanner.ts";
 import type { StorageLike } from "./signIn.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 function memory(initial: Record<string, string> = {}): StorageLike & { data: Record<string, string> } {
   const data = { ...initial };
@@ -130,7 +131,7 @@ test("storage that throws or is missing never breaks the banner: it shows, and d
 });
 
 test("App wires it to the build flags and nothing else, so the local site is unchanged", () => {
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   assert.equal(app.match(/<BetaBanner\b/g)?.length, 1);
   assert.match(
     app,
@@ -139,7 +140,7 @@ test("App wires it to the build flags and nothing else, so the local site is unc
 });
 
 test("App renders it as the first child of the planner's body, right after the header (re-check S1)", () => {
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   const banner = app.indexOf("<BetaBanner");
   const aside = app.indexOf('id="route-planner"');
   const header = app.indexOf("</header>", aside);
@@ -153,7 +154,7 @@ test("App renders it as the first child of the planner's body, right after the h
 test("Dismiss sends focus to the planner, as the skip link does (re-check N4)", () => {
   const source = readFileSync(new URL("./betaBanner.ts", import.meta.url), "utf8");
   assert.match(source, /document\.getElementById\("route-planner"\)\?\.focus\(\)/);
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   assert.match(app, /id="route-planner"\s+tabIndex=\{-1\}/);
   assert.match(app, /href="#route-planner"/);
 });
