@@ -535,7 +535,9 @@ to six more routes a leg (`core.trailseek`; docs/DEVELOPMENT.md, "The trail seek
   is a database problem, not a routing one (the log says "the trail seek could
   not read the segment table" at warning level). A run of `no_route` outcomes
   means the router refuses the through points (an entry on a way a bicycle
-  cannot use); the plan is unaffected.
+  cannot use); the plan is unaffected. A `doubles_back` outcome is a candidate that
+  rode out to a through point and back the same way, more than 164 ft (50 m) beyond
+  the route it would replace; it is refused and the plan is unaffected.
 - **The seek on plans with stops** (OWNER-DECISIONS 203; docs/DEVELOPMENT.md, "The
   trail credit and the seek leg by leg"). The trail credit of item 202 is gone: item
   257 dropped it on 2026-10-03, so no ride type has one, a candidate's reading has

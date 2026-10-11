@@ -3056,6 +3056,63 @@ failure read once, the whole-trip guard, the deadlines, the exclusions and the
 retry, the roadway-only graph). `scripts/mutants_trailseek.py` has 125 mutants.
 
 
+### Doubling back and stop matching (v0.4.1, 2026-10-11)
+
+Two faults on one Trailmaxxing plan at 100 with an 80 mi target (DC, Fort Hunt,
+Kingstowne, Fairfax), fixed in patch v0.4.1 (PR #63; PLAN.md, the 2026-10-11 entry).
+
+**Doubling back.** The trail seek asks for the router's route through each corridor's
+entry and exit as `through` locations. Where the router cannot pass them in the order
+asked, it rides out along a way to one of them and back the same way: here 0.5 mi
+(0.8 km) down the trail by Island Creek and straight back. `refine.retrace_m` measures
+it: the metres of a leg on an edge the same leg already rode, either way. Edges are
+matched by their middles (`Analysis.marks`) within 7 ft (2 m), of lengths within 7 ft
+(2 m) or a tenth, the longer; the way out and the way back of an edge have the same
+middle, and a sidepath beside the road or the next short edge along a straight way do
+not match. A leg is the stretch between the plan's own locations (`Analysis.mark_legs`,
+kept by `analyse`; `via_m` where a reading has none), so out to a stop the rider placed
+down a dead end and back is two legs and never counted. `through` points never split a
+leg, so a seek candidate's spur always is.
+
+A seek candidate is refused, outcome `doubles_back`, where it retraces more than
+164 ft (50 m, `RETRACE_SLACK_M`) beyond the leg's own route (the incumbent the seek
+started from, never the best so far, so each candidate taken cannot raise the bar).
+The outcomes are tried in the order `busier`, `more_lts4`, `doubles_back`,
+`too_long`, then `taken` or `not_better`; a refused candidate is not offered among the
+routes to choose from. The wide search holds its candidates the same way against the
+route it started from (it is off, `WIDE_SEARCH_FROM_RATE = None`; the guard keeps its
+guards alike). On the plan above both seek candidates are now refused: the one taken
+before only scored calmer because of its spur, and the route carries 272 ft (83 m) more
+LTS 3 for dropping it, never more LTS 4 or Avoid.
+
+**Stop matching.** The rider's locations (start, stops and end, on every ride type) go to
+the router with a 49 ft (15 m) `radius` (`routing.STOP_RADIUS_M`): Valhalla takes every
+way within that distance as a candidate and the route takes the cheapest, where before
+it had only the nearest. The stop on the Fairfax County Parkway Trail lay 15 ft (4.5 m)
+from a ramp and 19 ft (5.9 m) from the trail; matched to the ramp, the route left the
+trail for 0.6 mi (1.0 km) of the Avoid-rated parkway. The search's own requests reuse
+the plan's locations, so they match alike, and so do the stop-order leg costs and
+its matrix past ten stops (`stoporder`); `core.nearest` asks for fixed places and keeps
+the nearest way. The cut points of a long plan (`refine.long_legs`) and the dedodge
+locations are on the route and get no radius; a bikeshare walk leg (pedestrian, to and
+from the dock) keeps the nearest way. Only ways the ride's costing allows are
+candidates, so a way closed to bicycles is never matched (err closed is unchanged), and
+on the no-trail graph there is no trail to match.
+
+The trade-off, for the owner to confirm: the radius ignores height and the rider's
+intent. On a direct ride (or Mass Ride) a stop put on a sidepath to pull the route onto
+it can be served from the road beside it when that is cheaper, and a stop on a trail
+under a bridge can be served from the deck above, or the other way (the same problem as
+the wider `/locate` radius at Rockville Pike, above). Ride mode's arrival reads the
+distance along the route line, so a stop matched up to 49 ft (15 m) off still arrives.
+
+Tests: `TestRetrace`, `TestTrailSeek::test_a_route_that_rides_out_and_back_to_a_through_point_is_not_taken`
+and `::test_each_candidate_is_held_to_the_legs_own_route`,
+`TestWideSearch::test_a_wide_route_that_rides_out_and_back_is_not_taken` (tests/test_refine.py),
+`test_each_stop_is_matched_to_every_way_near_it` (tests/test_route_api.py) and the
+radius in the stop-order request tests (tests/test_stop_order.py); 19 mutants in
+scripts/mutants_trailseek.py ("doubling back", all killed).
+
 ### The detour warning
 
 `routemaker.detour` (item 164: "just warn people"): the route's length against
