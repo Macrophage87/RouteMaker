@@ -336,7 +336,7 @@ if [ "$beta_bundle" = 1 ] && ! done_already beta; then
 			beta_warn "ship-data.sh failed (its message is above)"
 		elif ! [ -s "$work/beta/MANIFEST.txt" ] || ! [ -s "$work/beta/SHA256SUMS" ]; then
 			beta_warn "ship-data.sh staged no bundle in $work/beta"
-		elif [ "$(sed -n 's/^tiles=//p' "$work/beta/MANIFEST.txt" | tr ' ' '\n' | grep -c "=$built\$")" != 5 ]; then
+		elif [ "$(sed -n 's/^tiles=//p' "$work/beta/MANIFEST.txt" | tr ' ' '\n' | grep -c "=$built\$")" != 6 ]; then
 			beta_warn "its graphs are not all build $built: $(sed -n 's/^tiles=//p' "$work/beta/MANIFEST.txt")"
 		else
 			mark beta
@@ -360,7 +360,7 @@ if ! done_already export; then
 		psql_ "ALTER SCHEMA live RENAME TO staging" >/dev/null
 	fi
 	compose exec -T postgis pg_dump -U "$pguser" -d "$pgdb" -Fc -n staging </dev/null >"$work/out/staging.dump"
-	for variant in standard no-trail ebike weekend offroad; do
+	for variant in standard no-trail ebike weekend offroad mtb; do
 		[ -f "$data_root/tiles/$variant/$build/tiles.tar" ] || die "$variant has no build $build"
 		$SUDO tar -C "$data_root/tiles" --numeric-owner -cf "$work/out/tiles-$variant.tar" "$variant/$build"
 	done

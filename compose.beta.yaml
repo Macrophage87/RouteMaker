@@ -57,9 +57,9 @@
 #   One-shot management commands go through `exec api ...` (inside the api's own cap) or
 #   `run --rm --no-deps migrate ...` (256M), never `run --rm api ...`, which would start a
 #   second container with the api's 1450M cap beside the running one.
-#   `valhalla-offroad` (below) will add 768 MiB when it ships: 7.69 GiB, over the 7.0 GiB
-#   ceiling, so the other caps need a second look at that point (the beta checker,
-#   scripts/check_beta_compose.py, is the gate and will say so).
+#   `valhalla-offroad` and `valhalla-mtb` (below) will add 768 MiB each when they ship:
+#   8.44 GiB, over the 7.0 GiB ceiling, so the other caps need a second look at that point
+#   (the beta checker, scripts/check_beta_compose.py, is the gate and will say so).
 #
 # Concurrency (OWNER-DECISIONS 367.2, "Allow 2 at once"): settings.routing_concurrency is
 # workers - 2 - GEOCODE_CONCURRENCY (2), floored at one, and tile_concurrency is
@@ -375,6 +375,43 @@ services:
       - type: bind
         source: ${DATA_ROOT}/tiles/offroad
         target: /data/tiles/offroad
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ${DATA_ROOT}/elevation
+        target: /data/elevation
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./valhalla
+        target: /conf
+        read_only: true
+        bind: { create_host_path: false }
+      - type: bind
+        source: ./lua
+        target: /conf/lua
+        read_only: true
+        bind: { create_host_path: false }
+    memswap_limit: 768M
+    deploy:
+      resources:
+        limits: { memory: 768M, cpus: "2" }
+
+  # The Mountain Bike router (docs/MTB-TOPO-PLAN.md, slice 6): not started either
+  # (profile `offroad`), for the same budget; the api answers Mountain Bike on the
+  # standard graph and says so. Start it beside valhalla-offroad only after the same
+  # re-check, with
+  #   scripts/beta/beta-compose.sh --profile offroad up -d valhalla-offroad valhalla-mtb
+  valhalla-mtb:
+    <<: *beta-yield
+    profiles: ["offroad"]
+    restart: ${RESTART_POLICY:-unless-stopped}
+    image: ghcr.io/valhalla/valhalla:3.9.1
+    command: ["valhalla_service", "/conf/valhalla-mtb.json", "2"]
+    volumes:
+      - type: bind
+        source: ${DATA_ROOT}/tiles/mtb
+        target: /data/tiles/mtb
         read_only: true
         bind: { create_host_path: false }
       - type: bind

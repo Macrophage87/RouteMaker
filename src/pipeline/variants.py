@@ -69,8 +69,22 @@ class Variant(Enum):
     # or Goat ride stays on it and reports its car-free closures in its
     # breakdown only, as an e-bike ride does.
     OFFROAD = "offroad"
+    # The Mountain Bike ride type's graph (docs/MTB-TOPO-PLAN.md, slice 6; OWNER-DECISIONS 90,
+    # 111, 148, 454: "Mountain Goat and Mountain Bike are separate modes"). The off-road graph
+    # with rated singletrack opened too, where nothing but its rating closes it (the same ways
+    # the mountain-bike layer draws in their level's colour, `pipeline.trail_closures.
+    # drawn_singletrack`): every other access rule (bicycle=no, hiking-only, park rules, err
+    # closed) stays closed. A trail mapped closed when wet (`routemaker.mtbmode.closed_when_wet`)
+    # is closed here too, since the graph cannot know the ground (the owner's defaults of
+    # 2026-10-11: "wet closures not routed on"). The rider's hardest level (1-4) is held at plan
+    # time, not in the graph (`core.mtb`), so one graph serves every level. Only the Mountain
+    # Bike ride type rides it; no weekend twin.
+    MTB = "mtb"
 
 
+# The off-road family: the graphs behind the compose profile `offroad`, off on the small host
+# and the beta, so never in a plain restart.
+OFFROAD_FAMILY = frozenset({Variant.OFFROAD, Variant.MTB})
 # The routers a plain `docker compose up -d` runs, and the restart that makes
 # them load a promoted (or rolled-back) build: `valhalla_service` reads its tiles
 # once at start. The off-road router is behind the compose profile `offroad` and
@@ -79,12 +93,23 @@ class Variant(Enum):
 # on the line (REBUILD-BUNDLE operations review, S1), so it has a line of its
 # own, for where it runs. Every printed restart is built from these.
 OFFROAD_ROUTER = f"valhalla-{Variant.OFFROAD.value}"
-DEFAULT_ROUTERS = tuple(f"valhalla-{v.value}" for v in Variant if v is not Variant.OFFROAD)
+MTB_ROUTER = f"valhalla-{Variant.MTB.value}"
+OFFROAD_ROUTERS = (OFFROAD_ROUTER, MTB_ROUTER)
+DEFAULT_ROUTERS = tuple(f"valhalla-{v.value}" for v in Variant if v not in OFFROAD_FAMILY)
 RESTART_ROUTERS = "docker compose restart " + " ".join(DEFAULT_ROUTERS)
-RESTART_OFFROAD_ROUTER = f"docker compose --profile offroad restart {OFFROAD_ROUTER}"
-RESTART_OFFROAD_WHERE_IT_RUNS = (
-    f"where the off-road router runs (compose profile `offroad`), also {RESTART_OFFROAD_ROUTER}"
-)
+RESTART_OFFROAD_ROUTER = "docker compose --profile offroad restart " + " ".join(OFFROAD_ROUTERS)
+
+
+def restart_offroad_where_it_runs(routers: tuple[str, ...] = OFFROAD_ROUTERS) -> str:
+    """The "where it runs" line for these profile-gated routers (a rollback names only the
+    ones it keeps: a withdrawn one is stopped, and a restart naming it would fail)."""
+    return (
+        "where the off-road and mountain-bike routers run (compose profile `offroad`), also "
+        "docker compose --profile offroad restart " + " ".join(routers)
+    )
+
+
+RESTART_OFFROAD_WHERE_IT_RUNS = restart_offroad_where_it_runs()
 
 
 def is_trail_class(
@@ -934,7 +959,7 @@ def inject(
     """
     is_mass_ride_only = osm_id is not None and osm_id in mass_ride_only_ids
 
-    if variant in (Variant.STANDARD, Variant.WEEKEND, Variant.OFFROAD):
+    if variant in (Variant.STANDARD, Variant.WEEKEND, Variant.OFFROAD, Variant.MTB):
         # The weekend graph's tags are the standard graph's: what differs is
         # the facility class and tier handed to the transform
         # (`run.inject_tags`), not the OSM tags. The off-road graph's one

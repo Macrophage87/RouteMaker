@@ -501,6 +501,7 @@ BRAKE_GRADES = MappingProxyType(
         "kids": 0.03,
         # Riders who choose these want the descent.
         "mountain-goat": None,
+        "mountain-bike": None,
         "fast": None,
     }
 )
@@ -568,6 +569,27 @@ class BikeProfile:
 KIDS = "kids"
 KIDS_PLANNING_SPEED_KMH = 10.0
 KIDS_HILLS = -80
+
+# Mountain Bike (docs/MTB-TOPO-PLAN.md, slice 6; OWNER-DECISIONS 90, 111, 148, 454: "Mountain
+# Goat and Mountain Bike are separate modes"). A ride type that seeks trails, on its own graph
+# (`Variant.MTB`: the off-road graph with rated singletrack open where nothing but its rating
+# closes it). The defaults the owner approved on 2026-10-11 ("Those work for me."), with the
+# rules that are not costing options in `routemaker.mtbmode` and `core.mtb`:
+#
+# - Hardest trail level 2 (blue, IMBA 2), a choice of 1-4 (`mtb_level`); unrated mountain-bike
+#   trails count as level 2. Held on the router's routes (`core.mtb.settle`), not in the graph.
+# - Strong trail seeking: a trail mile counts about half a road mile in the ranking of the
+#   router's routes (`mtbmode.TRAIL_WEIGHT`); in the costing, `use_roads` 0 (stress 80, the
+#   old top) prices roads well over paths, and a Mountain bike type takes every surface.
+# - Connecting roads up to LTS 2, LTS 3 for gaps under 0.5 mi: stress 80 keeps LTS 3 and 4 dear
+#   in the router, the stress-averse exposure never takes more LTS 4 than the router's own
+#   route, and the ranking puts a route with longer LTS 3 runs or any LTS 4 below one without.
+# - Hills at "fine with hills" (MTB_HILLS, halfway into the right half, as E-bike's start;
+#   FOLLOWUP-HILLS-TOLERATE gives that half its meaning on every ride type but Mountain Goat).
+# - Loop from a trailhead on by default (the front end's loop switch starts on).
+# - About 6 mph (10 km/h) on singletrack for the time shown (`mtbmode.duration_s`).
+MOUNTAIN_BIKE = "mountain-bike"
+MTB_HILLS = 50
 
 BIKESHARE_BIKES = MappingProxyType(
     {
@@ -800,6 +822,19 @@ PRESETS: MappingProxyType = MappingProxyType(
                 cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
             ),
             _preset(
+                MOUNTAIN_BIKE,
+                Variant.MTB,
+                stress=STRESS_TODAYS_TOP,
+                hills=MTB_HILLS,
+                exposure=EXPOSURE_STRESS_AVERSE,
+                bicycle_type="Mountain",
+                avoid_bad_surfaces=0.0,
+                use_living_streets=_LIVING_STREETS,
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
+                gate_cost=VALHALLA_GATE_COST_S,
+                gate_penalty=VALHALLA_GATE_PENALTY_S,
+            ),
+            _preset(
                 KIDS,
                 Variant.STANDARD,
                 # Item 240 (B): see "Riding with kids" above.
@@ -864,7 +899,8 @@ def variant_for_ride(name: str, when: str, assist: bool = False, trails_off: boo
     Goat take the off-road graph (`OFFROAD_PRESETS`). A weekend ride on the
     standard graph takes its weekend twin, where roads closed to cars at the
     weekend are off-road paths (`Variant.WEEKEND`); the e-bike and no-trail
-    graphs have no weekend twin, so their weekend rides stay on them.
+    graphs have no weekend twin, so their weekend rides stay on them. Mountain
+    Bike takes its own graph (`Variant.MTB`), at the weekend too.
     """
     preset = PRESETS[name]
     if trails_off:

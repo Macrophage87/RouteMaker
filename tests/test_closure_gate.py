@@ -170,7 +170,8 @@ def test_the_probes_are_left_for_the_post_swap_check(tmp_path: Path) -> None:
     probes = [tiles.ClosureProbe(900, -77.1175, 38.93), tiles.ClosureProbe(17, -77.0, 38.9)]
     write_closure_reports(tmp_path / "reports", probes, {900, 5})
     assert (tmp_path / "reports" / CLOSURE_PROBES_REPORT).read_text() == (
-        "way_id,lon,lat,reason\n900,-77.1175000,38.9300000,\n17,-77.0000000,38.9000000,\n"
+        "way_id,lon,lat,reason,mtb_graph_open\n"
+        "900,-77.1175000,38.9300000,,\n17,-77.0000000,38.9000000,,\n"
     )
     assert (tmp_path / "reports" / SINGLETRACK_REPORT).read_text() == "5\n900\n"
 
@@ -511,8 +512,50 @@ def test_the_offroad_graph_is_not_held_to_the_mtb_class(tmp_path: Path) -> None:
     ]
     write_closure_reports(tmp_path, probes, set())
     text = (tmp_path / "bicycle-closure-probes.csv").read_text().splitlines()
-    assert text[0] == "way_id,lon,lat,reason"
-    assert text[1].endswith(",mtb") and text[2].endswith(",private")
+    assert text[0] == "way_id,lon,lat,reason,mtb_graph_open"
+    # The mountain-bike class is open on the Mountain Bike graph too; private is not.
+    assert text[1].endswith(",mtb,1") and text[2].endswith(",private,")
+
+
+def test_the_post_swap_probe_holds_the_mtb_router_to_undrawn_singletrack(
+    probe_script, monkeypatch, tmp_path, capsys
+) -> None:
+    """The Mountain Bike graph opens the mountain-bike class and the singletrack the layer
+    draws (`trail_closures.mtb_graph_keeps`), and nothing else: the probe file marks those,
+    so the post-swap probe still fails that router on an undrawn singletrack way (bicycle=no,
+    hiking-only) it left open (review of #84)."""
+    probes = [
+        tiles.ClosureProbe(1, -77.0, 38.9, "mtb"),
+        tiles.ClosureProbe(3, -77.0, 38.92, "singletrack"),
+        tiles.ClosureProbe(4, -77.0, 38.93, "singletrack"),
+    ]
+    write_closure_reports(tmp_path, probes, {3, 4}, {3})
+    path = tmp_path / CLOSURE_PROBES_REPORT
+    asked = {}
+
+    by_lat = {round(p.lat, 4): p.way_id for p in probes}
+
+    def post(url, body, headers=None):
+        ids = [by_lat[round(location["lat"], 4)] for location in body["locations"]]
+        asked[url] = len(ids)
+        # The Mountain Bike router leaves the undrawn singletrack (way 4) open.
+        on_mtb = url.startswith(probe_script.ROUTERS["mtb"])
+        return [{"edges": [_edge(w, on_mtb and w == 4)]} for w in ids]
+
+    monkeypatch.setattr(probe_script, "_post", post)
+    assert probe_script.main(["locate", "--probes", str(path)]) == 1
+    assert asked[f"{probe_script.ROUTERS['mtb']}/locate"] == 1, "only way 4 is held there"
+    assert "mtb: 1 probed, 1 found, OPEN: 4" in capsys.readouterr().out
+
+    # A file from before the column: every singletrack probe is left out on that router.
+    path.write_text(
+        "way_id,lon,lat,reason\n1,-77.0,38.9,mtb\n3,-77.0,38.92,singletrack\n"
+        "4,-77.0,38.93,singletrack\n5,-77.0,38.94,private\n"
+    )
+    by_lat[38.94] = 5
+    asked.clear()
+    assert probe_script.main(["locate", "--probes", str(path)]) == 0
+    assert asked[f"{probe_script.ROUTERS['mtb']}/locate"] == 1, "the private way alone"
 
 
 def test_only_the_offroad_readback_leaves_out_the_mtb_probes(monkeypatch, tmp_path: Path) -> None:
@@ -521,6 +564,9 @@ def test_only_the_offroad_readback_leaves_out_the_mtb_probes(monkeypatch, tmp_pa
     probes = [
         tiles.ClosureProbe(1, -77.0, 38.9, "mtb"),
         tiles.ClosureProbe(2, -77.0, 38.91, "private"),
+        # Rated singletrack the map draws (only its rating closes it) and one it does not.
+        tiles.ClosureProbe(3, -77.0, 38.92, "singletrack"),
+        tiles.ClosureProbe(4, -77.0, 38.93, "singletrack"),
     ]
     monkeypatch.setattr(run_module, "closure_probes", lambda context: probes)
     monkeypatch.setattr(run_module, "write_closure_reports", lambda *args: None)
@@ -529,11 +575,17 @@ def test_only_the_offroad_readback_leaves_out_the_mtb_probes(monkeypatch, tmp_pa
     )
     context = SimpleNamespace(
         work_dir=tmp_path,
-        singletracks=set(),
+        singletracks={3, 4},
+        drawn_singletracks={3},
         build_configs={variant: tmp_path / f"{variant.value}.json" for variant in Variant},
     )
     readbacks = run_module._closures_across_variants(context, run=None)
     assert set(readbacks) == set(Variant)
     for variant in Variant:
-        expected = [2] if variant is Variant.OFFROAD else [1, 2]
+        expected = {
+            # The off-road graph opens the mountain-bike class; the Mountain Bike graph that
+            # and the drawn singletrack too (slice 6), and holds the undrawn one closed.
+            Variant.OFFROAD: [2, 3, 4],
+            Variant.MTB: [2, 4],
+        }.get(variant, [1, 2, 3, 4])
         assert readbacks[variant] == expected, variant

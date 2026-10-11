@@ -44,7 +44,13 @@ from pipeline.promotion import (
     rollback,
     rollback_target,
 )
-from pipeline.variants import RESTART_OFFROAD_WHERE_IT_RUNS, RESTART_ROUTERS, Variant
+from pipeline.variants import (
+    OFFROAD_FAMILY,
+    RESTART_OFFROAD_WHERE_IT_RUNS,
+    RESTART_ROUTERS,
+    Variant,
+    restart_offroad_where_it_runs,
+)
 
 RESTART_HINT = (
     "The routers keep serving the build they started against, so finish the "
@@ -58,8 +64,8 @@ def restart_hint(target) -> str:
     no `current` it would stay up and answer every ride "no suitable edges"
     (OPS review, 2026-09-28).
 
-    The off-road router is never in the restart list: it is behind the compose
-    profile `offroad`, and a `restart` naming a service with no container fails
+    The off-road and Mountain Bike routers are never in the restart list: they are behind
+    the compose profile `offroad`, and a `restart` naming a service with no container fails
     and restarts nothing (REBUILD-BUNDLE operations review, S1). Kept, it gets
     the "where it runs" line; withdrawn, it is stopped, and `docker compose
     stop` of a service with no container is a no-op."""
@@ -67,10 +73,13 @@ def restart_hint(target) -> str:
     if not withdrawn:
         return RESTART_HINT
     kept = " ".join(
-        f"valhalla-{v.value}" for v in Variant if v not in withdrawn and v is not Variant.OFFROAD
+        f"valhalla-{v.value}" for v in Variant if v not in withdrawn and v not in OFFROAD_FAMILY
     )
     stopped = " ".join(f"valhalla-{v.value}" for v in withdrawn)
-    tail = "" if Variant.OFFROAD in withdrawn else f"; {RESTART_OFFROAD_WHERE_IT_RUNS}"
+    kept_profiled = tuple(
+        f"valhalla-{v.value}" for v in Variant if v in OFFROAD_FAMILY and v not in withdrawn
+    )
+    tail = f"; {restart_offroad_where_it_runs(kept_profiled)}" if kept_profiled else ""
     return (
         "The routers keep serving the build they started against, so finish the "
         f"rollback on the deploy host: docker compose restart {kept} && docker compose "

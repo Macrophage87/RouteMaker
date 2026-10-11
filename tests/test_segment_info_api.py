@@ -195,6 +195,7 @@ class TestAnswer:
             "kind": None,
             "summary": [],
             "sections": [],
+            "more": None,
             "attribution": ["© OpenStreetMap contributors (ODbL)"],
         }
         assert router.calls == []
@@ -371,12 +372,13 @@ class TestAnswer:
         body = get(client).json()
         assert body["open"] is False and body["osm_way_id"] == 120
         assert summary(body)[-1] == (
-            "Bikes: Mountain-bike trail, not used for routes (Gravel and Mountain Goat may use it)"
+            "Bikes: Mountain-bike trail, not used for routes (Mountain Bike, Gravel and Mountain"
+            " Goat may use it)"
         )
         access = section(body, "access")["Bike access"]
         assert access["value"] == (
-            "Closed: a mountain-bike trail, not used for routes except by the Gravel and"
-            " Mountain Goat ride types (drawn as a thin grey dotted line when the"
+            "Closed: a mountain-bike trail, not used for routes except by the Mountain Bike,"
+            " Gravel and Mountain Goat ride types (drawn as a thin grey dotted line when the"
             " Mountain-bike trails map layer is on)"
         )
 
@@ -387,7 +389,8 @@ class TestAnswer:
         router.answers = {"bicycle": [], "pedestrian": [edge(121, use="path")]}
         body = get(client).json()
         assert summary(body)[-1] == (
-            "Bikes: Mountain-bike trail, not used for routes (Gravel and Mountain Goat may use it)"
+            "Bikes: Mountain-bike trail, not used for routes (Mountain Bike, Gravel and Mountain"
+            " Goat may use it)"
         )
 
     @pytest.mark.parametrize(
@@ -419,14 +422,17 @@ class TestAnswer:
         )
         router.answers = {"bicycle": [], "pedestrian": [edge(124, "Lake Loop", use="path")]}
         body = get(client).json()
-        assert summary(body)[-1] == f"Bikes: Mountain-bike trail, {words}, not used for routes"
+        assert summary(body)[-1] == (
+            f"Bikes: Mountain-bike trail, {words}, not used for routes (Mountain Bike may use it)"
+        )
         difficulty = section(body, "riding")["Mountain-bike difficulty"]
         assert difficulty["value"] == (f"{words[0].upper()}{words[1:]}: {scale}")
         assert "mtb:" not in difficulty["value"], "no raw OSM key names"
         assert difficulty["source"] == segment_info.OSM
         access = section(body, "access")["Bike access"]
         assert access["value"] == (
-            "Closed: mountain-bike singletrack, not used for routes by any ride type"
+            "Closed: mountain-bike singletrack, not used for routes except by the Mountain Bike"
+            " ride type where nothing but its rating closes it"
         )
 
     def test_a_levelled_trail_never_says_the_off_road_graph_uses_it(
@@ -447,7 +453,8 @@ class TestAnswer:
         )
         router.answers = {"bicycle": [], "pedestrian": [edge(125, use="path")]}
         assert summary(get(client).json())[-1] == (
-            "Bikes: Mountain-bike trail, level 2 (blue), not used for routes"
+            "Bikes: Mountain-bike trail, level 2 (blue), not used for routes (Mountain Bike may"
+            " use it)"
         )
 
     def test_a_hidden_way_never_names_a_colour(self, client, segment_schemas, router) -> None:
@@ -487,17 +494,41 @@ class TestAnswer:
         body = get(client).json()
         assert summary(body)[-1] == (
             "Bikes: Mountain-bike trail, level 2 (blue): Rosaryville Trail, not used for routes"
+            " (Mountain Bike may use it)"
         )
         assert body["title"] == "Rosaryville Trail"
+        # One MORE link for the trail's system (slice 6), a real link in the panel.
+        assert body["more"] == {
+            "label": "Rosaryville State Park on MORE: trailheads, trail info and conditions",
+            "url": "https://more-mtb.org/products/rosaryville-state-park",
+            "system": "Rosaryville State Park",
+        }
         assert section(body, "road")["Name"]["value"] == "Rosaryville Trail"
+
+    def test_the_more_link_is_for_mountain_bike_trails_only(self) -> None:
+        """The owner's defaults of 2026-10-11: one MORE link per trail system where MORE has a
+        page, else one general link; none on a road or an ordinary path."""
+        unnamed = {"bike_access_reason": "mtb", "mtb_only": True}
+        assert (
+            segment_info.more_link(unnamed, {})["url"] == "https://more-mtb.org/collections/trails"
+        )
+        named = {**unnamed, "mtb_name": "Loop 3"}
+        assert segment_info.more_link(named, {"name": "Wakefield Park trail"})["system"] == (
+            "Wakefield Park"
+        )
+        assert segment_info.more_link({"is_trail_class": True}, {"name": "Wakefield"}) is None
+        hidden = {"mtb_only": True, "bike_access_reason": "singletrack", "map_class": "hidden"}
+        assert segment_info.more_link(hidden, {}) is None
 
     def test_a_named_unrated_trail(self) -> None:
         row = {"bike_access_reason": "mtb", "mtb_only": True, "mtb_name": "Loop 3"}
         assert segment_info.mtb_summary(row) == (
-            "Mountain-bike trail: Loop 3, not used for routes (Gravel and Mountain Goat may use it)"
+            "Mountain-bike trail: Loop 3, not used for routes (Mountain Bike, Gravel and"
+            " Mountain Goat may use it)"
         )
         assert segment_info.mtb_summary({**row, "mtb_name": "  "}) == (
-            "Mountain-bike trail, not used for routes (Gravel and Mountain Goat may use it)"
+            "Mountain-bike trail, not used for routes (Mountain Bike, Gravel and Mountain Goat"
+            " may use it)"
         )
 
     def test_an_unrated_trail_has_no_difficulty_row(self, client, segment_schemas, router):

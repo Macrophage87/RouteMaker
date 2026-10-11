@@ -60,6 +60,8 @@
 	redir @preset-mass-ride /#preset=mass-ride 302
 	@preset-mountain-goat path /mountain-goat /mountain-goat/
 	redir @preset-mountain-goat /#preset=mountain-goat 302
+	@preset-mountain-bike path /mountain-bike /mountain-bike/
+	redir @preset-mountain-bike /#preset=mountain-bike 302
 	@preset-gravel path /gravel /gravel/
 	redir @preset-gravel /#preset=gravel 302
 	@preset-fast path /fast /fast/

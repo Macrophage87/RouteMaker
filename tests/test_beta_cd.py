@@ -261,10 +261,12 @@ def test_the_predraw_flag_is_off_for_anything_else() -> None:
     assert result["verdict"] == "deploy" and not result["predraw"]
 
 
-def test_the_offroad_router_config_never_restarts_the_beta_routers() -> None:
-    path = "valhalla/valhalla-offroad.json"
+@pytest.mark.parametrize("router", ["offroad", "mtb"])
+def test_the_offroad_router_config_never_restarts_the_beta_routers(router: str) -> None:
+    path = f"valhalla/valhalla-{router}.json"
     runtime = _gate({path: (_vjson(), _vjson(logging__color=True))})
     assert runtime["verdict"] == "deploy" and not runtime["routers_restart"]
+    assert f"the {router} router does not run on the beta" in " ".join(runtime["notes"])
     build = _gate({path: (_vjson(), _vjson(mjolnir__hierarchy=False))})
     assert build["verdict"] == "stop"
 
