@@ -146,6 +146,7 @@ def run_pipeline(
     sidepath=(),
     volume=(),
     roadway=(),
+    pavement=(),
     legality=(),
     crossings=(),
     skip: frozenset[Stage] = frozenset(),
@@ -159,6 +160,7 @@ def run_pipeline(
         sidepath=sidepath,
         volume=volume,
         roadway=roadway,
+        pavement=pavement,
         legality=legality,
         crossings=crossings,
     )
@@ -3587,6 +3589,46 @@ def test_the_input_provenance_reaches_the_segment_table(workspace, states) -> No
     assert stored[100]["blocks"] == ["dc-1"]
     # A way no block reached carries no provenance rather than an empty object.
     assert stored[200] is None
+
+
+def pci_block(block_id: str, pci: float, surveyed: str = "2026-02-27") -> dict:
+    """A row of `pavement.json` along the toy road's way 100 (DC-PCI)."""
+    return {
+        "id": block_id,
+        "coordinates": [[-77.02, 38.90], [-76.98, 38.90]],
+        "pci": pci,
+        "name": "TEST ROAD",
+        "surveyed": surveyed,
+    }
+
+
+def test_a_poor_pci_reaches_the_graph_as_its_band(workspace, states) -> None:
+    """DDOT's PCI under 55 on a street reaches the variant extract as `rm:pci=poor`,
+    which lua/routemaker_remap.lua prices as the compacted class, and the
+    per-way report records it."""
+    from pipeline.extract import read_ways
+    from pipeline.run import DISCREPANCY_REPORT_DIR, PAVEMENT_REPORT_NAME
+
+    source, root = workspace
+    context, _ = run_pipeline(source, root, pavement=[pci_block("p-1", 41.5)], skip=NOT_SWAPPED)
+    assert context.pci_by_way[100].applied == "poor"
+    tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(Variant.STANDARD))}
+    assert tags[100]["rm:pci"] == "poor"
+    assert all("rm:pci" not in t for way_id, t in tags.items() if way_id != 100)
+    report = (context.work_dir / DISCREPANCY_REPORT_DIR / PAVEMENT_REPORT_NAME).read_text()
+    assert "\n100,41.5,poor,pci,2026-02-27,p-1\n" in report
+
+
+def test_without_pci_blocks_the_rebuild_warns_and_tags_nothing(workspace, states, caplog) -> None:
+    from pipeline.extract import read_ways
+
+    source, root = workspace
+    with caplog.at_level(logging.WARNING, logger="pipeline.run"):
+        context, _ = run_pipeline(source, root, skip=NOT_SWAPPED)
+    assert "pavement.json" in caplog.text
+    assert context.pci_by_way == {}
+    tags = [w.tags for w in read_ways(context.variant_pbf(Variant.STANDARD))]
+    assert all("rm:pci" not in t for t in tags)
 
 
 def test_without_street_blocks_the_rebuild_warns_and_classifies_from_osm(

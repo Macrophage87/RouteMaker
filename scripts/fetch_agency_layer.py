@@ -36,6 +36,10 @@ from pathlib import Path
 
 ITEM_BASE = "https://www.arcgis.com/sharing/rest/content/items"
 USER_AGENT = "RouteMaker-data-fetch/1.0 (bike route planner)"
+NO_LICENCE = (
+    "(the item carries no licence text: the licence must be confirmed with the "
+    "publisher before anything derived from this layer ships)"
+)
 RETRIES = 3
 
 
@@ -65,10 +69,27 @@ def strip_html(text: str | None) -> str:
     return re.sub(r"\s+", " ", html.unescape(plain)).strip()
 
 
+def service_item(layer: str) -> dict:
+    """The service's own item info (`<service>/info/iteminfo`), for a layer with
+    no ArcGIS Online item: its title, credit and licence fields, which may be
+    empty. An empty dict where the server does not offer it; the README then
+    says so."""
+    service = layer.rstrip("/").rsplit("/", 1)[0]
+    try:
+        info = _get(f"{service}/info/iteminfo", {"f": "json"})
+    except RuntimeError:
+        return {}
+    return info if isinstance(info, dict) else {}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--slug", required=True)
-    parser.add_argument("--item", required=True, help="the ArcGIS item id")
+    # Optional for a layer published on an agency's own ArcGIS Server with no
+    # ArcGIS Online item (DDOT's Pavement Condition Index on DC GIS, DC-PCI):
+    # the README then records the service's own item info and says plainly that
+    # no licence was stated, for the owner to confirm before the data ships.
+    parser.add_argument("--item", default=None, help="the ArcGIS item id, where there is one")
     parser.add_argument("--layer", required=True, help="the layer URL, ending in its id")
     parser.add_argument("--out-dir", required=True, type=Path)
     parser.add_argument("--credit", required=True)
@@ -86,7 +107,10 @@ def main() -> int:
         return 2
     directory.mkdir(parents=True, exist_ok=True)
 
-    item = _get(f"{args.item_base}/{args.item}", {"f": "json"})
+    if args.item:
+        item = _get(f"{args.item_base}/{args.item}", {"f": "json"})
+    else:
+        item = service_item(args.layer)
     meta = _get(args.layer, {"f": "json"})
     expected = _get(
         f"{args.layer}/query", {"where": args.where, "returnCountOnly": "true", "f": "json"}
@@ -128,7 +152,16 @@ def main() -> int:
 
     licence_html = item.get("licenseInfo") or ""
     modified = datetime.fromtimestamp(item.get("modified", 0) / 1000, UTC)
-    readme = f"""# {item.get("title")}
+    if args.item:
+        item_line = (
+            f"`{args.item}`, <https://www.arcgis.com/home/item.html?id={args.item}> "
+            f"(modified {modified:%Y-%m-%d})"
+        )
+    else:
+        item_line = "none: the layer is on the agency's own server; the service's item info " + (
+            "is recorded below" if item else "was not offered"
+        )
+    readme = f"""# {item.get("title") or args.slug}
 
 | | |
 | --- | --- |
@@ -136,7 +169,7 @@ def main() -> int:
 | sha256 | `{digest}` |
 | Retrieved (UTC) | {retrieved:%Y-%m-%d %H:%M:%S} |
 | Source layer | <{args.layer}> |
-| ArcGIS item | `{args.item}`, <https://www.arcgis.com/home/item.html?id={args.item}> (modified {modified:%Y-%m-%d}) |
+| ArcGIS item | {item_line} |
 | Query | `where={args.where}`, `outFields=*`, `outSR=4326`, `f=geojson`, ordered by `{args.order_by}`, pages of {page} |
 | Features | {written:,} stored; the service reported {expected:,} ({pages} pages) |
 | Credit (item `accessInformation`) | {item.get("accessInformation") or "(none)"} |
@@ -144,7 +177,7 @@ def main() -> int:
 
 Licence, verbatim from the item's `licenseInfo` as plain text:
 
-> {strip_html(licence_html) or "(the item carries no licence text)"}
+> {strip_html(licence_html) or NO_LICENCE}
 
 The raw `licenseInfo` HTML, for the record:
 

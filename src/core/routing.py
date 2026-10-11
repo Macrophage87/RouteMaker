@@ -2891,6 +2891,9 @@ ATTRIBUTION = (
     "© OpenStreetMap contributors (ODbL)",
     "DC Open Data (CC BY 4.0, adapted): https://creativecommons.org/licenses/by/4.0/",
     "VDOT",
+    # DDOT's Pavement Condition Index (DC-PCI): District streets' smoothness reading.
+    # The service states no licence; docs/SOURCES.md records that it is to be confirmed.
+    "DDOT Pavement Condition Index (DC GIS)",
     "Open Baltimore",
     "Montgomery County Planning Department",
     "USGS 3DEP",

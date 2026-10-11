@@ -978,5 +978,13 @@ local parking_only = transform_node({ amenity = "parking" })
 check("a parking node with no barrier keeps its tag",
   parking_only.amenity == "parking", parking_only.amenity)
 
+-- `rm:pci` (DC-PCI) is one more line of `derived_from`; read at upstream's output.
+local _, pci_poor = transform_way({ highway = "residential", surface = "asphalt", ["rm:pci"] = "poor" })
+check("rm:pci=poor reaches the graph as the compacted surface",
+  pci_poor.surface == "compacted", pci_poor.surface)
+check("and the derived tag is stripped", pci_poor["rm:pci"] == nil)
+local _, pci_none = transform_way({ highway = "residential", surface = "asphalt" })
+check("a street with no rm:pci keeps its surface", pci_none.surface == "asphalt", pci_none.surface)
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

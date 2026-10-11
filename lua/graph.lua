@@ -67,6 +67,7 @@ local function derived_from(kv)
   if kv["rm:stress_tier"] then derived.stress_tier = tonumber(kv["rm:stress_tier"]) end
   if kv["rm:stress_half"] then derived.stress_half = kv["rm:stress_half"] == "yes" end
   if kv["rm:reviewer_surface"] then derived.reviewer_surface_penalty = kv["rm:reviewer_surface"] end
+  if kv["rm:pci"] then derived.pci = kv["rm:pci"] end
   if kv["rm:bridge_bicycle"] then derived.bridge_bicycle_legal = kv["rm:bridge_bicycle"] == "yes" end
   if kv["rm:lit"] then derived.lit = kv["rm:lit"] == "yes" end
   if kv["rm:trail_class"] then derived.is_trail_class = kv["rm:trail_class"] == "yes" end

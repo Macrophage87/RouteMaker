@@ -1155,5 +1155,31 @@ do
     M.remap_way({ highway = "secondary" }, { stress_tier = 3, stress_half = true, facility_neutral = true })["maxspeed:practical"] == nil)
 end
 
+-- DDOT's Pavement Condition Index (DC-PCI, `rm:pci`): the band is the street's
+-- smoothness reading, over OSM's.
+do
+  local poor = M.remap_way({ highway = "residential", surface = "asphalt", smoothness = "excellent" },
+    { pci = "poor" })
+  check("a poor PCI street is priced as the compacted class", poor.surface == "compacted")
+  check("and OSM's smoothness no longer speaks for it", poor.smoothness == M.REMOVE)
+  check("a poor street stays ridable on every bicycle type",
+    M.SURFACE_ORDER[poor.surface] <= M.MAX_PENALISED_ROUGHNESS)
+  local fair = M.remap_way({ highway = "tertiary" }, { pci = "fair" })
+  check("a fair PCI street with no surface tag is priced paved but rough",
+    fair.surface == "cobblestone")
+  local good = M.remap_way({ highway = "residential", surface = "asphalt", smoothness = "bad" },
+    { pci = "good" })
+  check("a good PCI street keeps its surface", good.surface == nil)
+  check("and loses OSM's worse smoothness", good.smoothness == M.REMOVE)
+  local gravel = M.remap_way({ highway = "residential", surface = "gravel" }, { pci = "fair" })
+  check("PCI never makes an unpaved surface look better", gravel.surface == nil)
+  local trail = M.remap_way({ highway = "cycleway", surface = "asphalt" },
+    { pci = "poor", is_trail_class = true })
+  check("PCI never reaches a trail", trail.surface == nil and trail.smoothness == nil)
+  local closed = M.remap_way({ highway = "residential", smoothness = "impassable" }, { pci = "good" })
+  check("an impassable way stays closed", closed.smoothness == nil)
+  check("PCI never rewrites highway class", not writes_forbidden(poor))
+end
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

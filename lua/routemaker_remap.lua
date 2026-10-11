@@ -473,6 +473,25 @@ function M.remap_way(tags, derived)
     out.surface = graph_surface
   end
 
+  -- DDOT's Pavement Condition Index on a District street (DC-PCI, `rm:pci`;
+  -- `routemaker.pavement` decides where it applies and the band). The owner,
+  -- 2026-10-11: "DC score in most cases takes priority over OSM data", so the
+  -- band is the way's smoothness reading: OSM's `smoothness` comes off, and a
+  -- fair or poor street reaches the graph as the surface class upstream gives
+  -- the matching smoothness (valhalla/valhalla#4949: intermediate as
+  -- paved_rough, bad as compacted), written as the OSM value the parser
+  -- reads that way (`M.PCI_SURFACE`). Only on a paved street or one with no
+  -- surface tag, so it never makes a rougher surface look better.
+  if derived.pci and not derived.is_trail_class then
+    if tags.smoothness ~= nil and tags.smoothness ~= "impassable" then
+      out.smoothness = M.REMOVE
+    end
+    local want = M.PCI_SURFACE[derived.pci]
+    if want and (tags.surface == nil or M.is_paved(tags)) then
+      out.surface = want
+    end
+  end
+
   if derived.reviewer_surface_penalty then
     out.surface = M.bounded_surface(tags.surface or "paved", derived.reviewer_surface_penalty)
   end
@@ -776,6 +795,14 @@ end
 -- written after this, reads the way's own tag and wins.
 M.GRAPH_SURFACE = { wood = "paving_stones", boardwalk = "paving_stones",
   brick = "paving_stones", bricks = "paving_stones" }
+
+-- The surface a DC street's PCI band reaches the graph as (DC-PCI; see its use
+-- in `remap_way`). `good` writes no surface: the street keeps its own.
+-- `cobblestone` is the parser's paved_rough class and `compacted` its compacted
+-- class (the comment on `M.GRAPH_SURFACE` above has where that was measured);
+-- compacted is also `MAX_PENALISED_ROUGHNESS`, the roughest a penalty may make
+-- a way, so a poor street stays ridable on every bicycle type.
+M.PCI_SURFACE = { fair = "cobblestone", poor = "compacted" }
 
 --- Write REMOVE for each rating key a paved way carries; returns whether any.
 function M.strip_paved_ratings(tags, out)

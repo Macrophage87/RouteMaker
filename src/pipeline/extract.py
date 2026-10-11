@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 import osmium
@@ -63,6 +64,12 @@ class Way:
     # Not settable by the caller and not part of equality: it is a snapshot of
     # `tags` as the way was built, which is the one thing it can honestly be.
     source_tags: dict[str, str] = field(init=False, repr=False, compare=False, default_factory=dict)
+    # When the way was last edited, from the extract's metadata (Geofabrik's
+    # public extracts keep each object's timestamp). One time for the whole way,
+    # not per tag; DC-PCI reads it to let an OSM `smoothness` newer than the
+    # District's pavement survey stand (`routemaker.pavement.resolve`). None
+    # where the file carries no timestamp.
+    edited: datetime | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         self.source_tags = dict(self.tags)
@@ -83,6 +90,18 @@ class Way:
             (index, lon, lat)
             for index, (lon, lat) in zip(self.located, self.coordinates, strict=True)
         ]
+
+
+def _edited(w) -> datetime | None:
+    """The way's last-edit time, or None where the file has none (osmium gives
+    the epoch for a missing timestamp)."""
+    try:
+        stamp = w.timestamp
+    except Exception:  # noqa: BLE001 - metadata is optional in a PBF
+        return None
+    if stamp is None or stamp.timestamp() <= 0:
+        return None
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=UTC)
 
 
 class WayCollector(osmium.SimpleHandler):
@@ -106,7 +125,7 @@ class WayCollector(osmium.SimpleHandler):
             return
         node_ids = [n.ref for n in w.nodes]
         self.wanted_nodes.update(node_ids)
-        self.ways.append(Way(osm_id=w.id, tags=tags, node_ids=node_ids))
+        self.ways.append(Way(osm_id=w.id, tags=tags, node_ids=node_ids, edited=_edited(w)))
 
 
 class NodeLocator(osmium.SimpleHandler):
