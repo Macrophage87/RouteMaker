@@ -134,6 +134,37 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
     `773f230f94c5a5b5ce576b17c09b83a3a4e10d5b8627f1d2c0e972d2b10ce4af`).
     `fixtures/datasets/README.md`, "Federal land".
 
+## DDOT Pavement Condition Index (DC-PCI)
+
+- Credit: `DDOT Pavement Condition Index (DC GIS)`
+- Dataset: **Pavement Condition Index FY-25**, layer 5 of DC GIS's
+  `DDOT/PavementConditionIndex` FeatureServer
+  (<https://rh.dcgis.dc.gov/dcgis/rest/services/DDOT/PavementConditionIndex/FeatureServer/5>;
+  layers 0 to 5 are FY-12 to FY-25). Polylines with `PCI` (0 to 100), `PCICTEGORY`,
+  `ROUTENAME`, `FROMSTREET`/`TOSTREET`, `ROUTEID`, `FROMMEASURE`/`TOMEASURE` and three
+  unlabelled date fields, `DATE1`, `CONST_DATE` and `LSTMJRWRKD`; 1,000 records a
+  page. Read from the service's metadata and two sample records on 2026-10-11 (the
+  sample's `DATE1` values are 2026-02-27 and 2026-03-02). The District streets'
+  smoothness reading, over OSM's `smoothness` (the owner, 2026-10-11: "DC score in
+  most cases takes priority over OSM data"): 70 and over good, 55 to 69 fair (a small
+  penalty), under 55 poor (rough), on streets only; alleys and trails keep OSM's.
+  Fetched at rebuild time with `scripts/fetch_agency_layer.py` (docs/OPERATIONS.md,
+  "DC pavement condition (DC-PCI)"); not yet downloaded, so no size or sha256 yet.
+- Publisher: District Department of Transportation and DC GIS (the service's
+  `accessInformation`: "DDOT and DC GIS").
+- Licence: **not stated; to be confirmed before this ships.** The layer's
+  `copyrightText` and description are empty and the service's item info has an empty
+  `licenseInfo` (read 2026-10-11). Open Data DC's layers are usually CC BY 4.0 (the
+  section above), but this service is not one of its items, so that cannot be assumed.
+  Until the owner confirms the terms with DDOT or Open Data DC, nothing derived from
+  it reaches the router: `routemaker.pavement.LICENCE_CONFIRMED` is False, so the
+  installer refuses `--dc-pci` and the rebuild ignores an installed `pavement.json`.
+  The commit that records the confirmation here (source and date) sets it True.
+- Assumption to confirm: `DATE1` is taken as the survey date; the service does not
+  say which date field is which.
+- Records: the download's README; `fixtures/pavement/overrides.json` for the owner's
+  corrections; the rebuild's `dc-pavement-pci.csv` report.
+
 ## VDOT traffic volume
 
 - Credit: `VDOT`
@@ -216,6 +247,11 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   climb, the effort model and the Hills slider. Retrieved by each rebuild's ELEVATION
   stage, which records the tiles and their dates in its run's log; never fetched on the
   development host (docs/OPERATIONS.md says why).
+- Dataset: 3DEP 1/3 arc-second DEM (about 33 ft (10 m) a pixel), the four one-degree cells over the
+  coverage (n40w078, n40w077, n39w078, n39w077) at
+  <https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/current/> (listed 2026-10-11:
+  370 to 500 MB each, last modified 2026-04-09 to 2026-05-12); the Topo lines map layer's contours,
+  made by `scripts/build_contours.py` on the build host (docs/OPERATIONS.md, "Topo lines").
 - Publisher: U.S. Geological Survey.
 - Licence: U.S. public domain.
 - Records: docs/OPERATIONS.md (the ELEVATION stage).

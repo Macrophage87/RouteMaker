@@ -15,7 +15,8 @@
 #                       (and offroad once it exists). The unpacked tiles/ directory is left
 #                       out: Valhalla serves from tiles.tar (tile_extract), verified.
 #   elevation/          the .hgt files the routers read at runtime for elevation profiles
-#   basemap/            region.pmtiles, fonts, sprites
+#   basemap/            region.pmtiles, fonts, sprites, and contours.pmtiles once
+#                       scripts/build_contours.py has written it (the Topo lines layer)
 #   photon/             the Photon index (photon_data/)
 #   frontend/           the built front end, made with VITE_BETA=1 so it carries the beta banner
 #   db/routemaker.dump  pg_dump --format=custom of the `live` and `public` schemas, minus the
@@ -281,6 +282,12 @@ if want elevation; then
 fi
 if want basemap; then
 	[ -f "$data_root/basemap/region.pmtiles" ] || die "no $data_root/basemap/region.pmtiles"
+	# The whole directory is shipped, so a contour build's leftovers (a --keep-work or failed run of
+	# scripts/build_contours.py: gigabytes of DEM and line files, or a half-written archive) would go too.
+	for leftover in .contours-work .contours.pmtiles.part; do
+		[ ! -e "$data_root/basemap/$leftover" ] ||
+			die "$data_root/basemap/$leftover is left from scripts/build_contours.py; delete it (or finish the build) before shipping (docs/OPERATIONS.md, \"Topo lines\")"
+	done
 	link "$data_root/basemap" "$stage/basemap"
 fi
 if want photon; then

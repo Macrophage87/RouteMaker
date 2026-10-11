@@ -876,6 +876,10 @@ PIPELINE_ONLY_PATHS = {
     "fixtures/speed": "speed corrections are applied by the rebuild",
     "fixtures/corridors": "named corridors are applied by the rebuild's classifier",
     "fixtures/bike_lanes": "curated bike lanes are applied by the rebuild's classifier (433)",
+    "fixtures/pavement/overrides.json": (
+        "the owner's PCI corrections are read by the rebuild (DC-PCI); "
+        "the api never imports routemaker.pavement"
+    ),
 }
 
 PATH_CONSTANT = re.compile(

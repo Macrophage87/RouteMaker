@@ -978,6 +978,14 @@ local parking_only = transform_node({ amenity = "parking" })
 check("a parking node with no barrier keeps its tag",
   parking_only.amenity == "parking", parking_only.amenity)
 
+-- `rm:pci` (DC-PCI) is one more line of `derived_from`; read at upstream's output.
+local _, pci_poor = transform_way({ highway = "residential", surface = "asphalt", ["rm:pci"] = "poor" })
+check("rm:pci=poor reaches the graph as the compacted surface",
+  pci_poor.surface == "compacted", pci_poor.surface)
+check("and the derived tag is stripped", pci_poor["rm:pci"] == nil)
+local _, pci_none = transform_way({ highway = "residential", surface = "asphalt" })
+check("a street with no rm:pci keeps its surface", pci_none.surface == "asphalt", pci_none.surface)
+
 -- FOLLOWUP-SIGNAL-DERIVE, through the entry point: the remap's one permitted
 -- node class write lands, and the mark that asked for it does not reach upstream.
 local signalled = transform_node({ highway = "crossing", crossing = "traffic_signals" })
