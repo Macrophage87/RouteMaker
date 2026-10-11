@@ -21,10 +21,12 @@
 #            when a safety dump is taken (DATA_ROOT/backups is owned by the container uid).
 #              First restore: into the empty database, before the api has ever started.
 #              --update-data: for a NEW DATA bundle once the beta is running. Restores only the
-#                `live` schema and the data of `override` and `junction_override` (the approved
-#                junction ratings), both shipped with their person columns blanked; the beta's
-#                own half-step edit history goes with the overrides it pointed at, and its own
-#                junction suggestions lose their link to a rating it replaces. It empties its own
+#                `live` schema and the data of `override`, `junction_override` (the approved
+#                junction ratings) and `avoid_junction` (the approved Avoid junctions), all shipped
+#                with their person columns blanked; the beta's own half-step edit history goes
+#                with the overrides it pointed at, its own stress suggestions lose their link to
+#                that history, and its own junction suggestions lose their link to a rating or
+#                Avoid junction it replaces (the suggestions themselves are kept). It empties its own
 #                `stress_tile_cache`, which the new live table makes stale), in one
 #                transaction, after a safety dump. Accounts, sessions and everything else the
 #                beta has made of its own are not touched.
@@ -467,33 +469,43 @@ if [ "$update_data" = 1 ]; then
 	grep -qx override <<<"$(blanked_tables)" || { rm -f "$use"; die "the bundle has no override data (db/blanked/override.copy)"; }
 	bc exec -T postgis sh -c 'cat > /tmp/beta.use' <"$use"
 	rm -f "$use"
-	# override and the approved junction ratings come from home blanked (ship-data.sh). override
-	# was emptied by the TRUNCATE below; the beta's junction ratings are replaced as override's
-	# are, its own junction suggestions letting go of them first (a TRUNCATE would refuse their
-	# foreign key).
+	# override, the approved junction ratings and the approved Avoid junctions come from home
+	# blanked (ship-data.sh). override was emptied below; the junction ratings and
+	# Avoid junctions are replaced as override's are, the beta's own junction suggestions letting
+	# go of them first (a DELETE would refuse their foreign keys).
 	extra=$(mktemp)
 	blanked_sql "$extra.part" override
-	if grep -qx junction_override <<<"$(blanked_tables)"; then
-		printf 'UPDATE public.junction_suggestion SET override_id = NULL WHERE override_id IS NOT NULL;\nDELETE FROM public.junction_override;\n' >>"$extra.part"
-		blanked_sql "$extra.more" junction_override
-		cat "$extra.more" >>"$extra.part"
-		rm -f "$extra.more"
-	else
-		note "this bundle carries no junction ratings (db/blanked/junction_override.copy); the beta's are left as they are"
-	fi
+	for t in junction_override avoid_junction; do
+		if grep -qx "$t" <<<"$(blanked_tables)"; then
+			case $t in
+				junction_override) printf 'UPDATE public.junction_suggestion SET override_id = NULL WHERE override_id IS NOT NULL;\n' ;;
+				avoid_junction) printf 'UPDATE public.junction_suggestion SET avoid_id = NULL WHERE avoid_id IS NOT NULL;\n' ;;
+			esac >>"$extra.part"
+			printf 'DELETE FROM public.%s;\n' "$t" >>"$extra.part"
+			blanked_sql "$extra.more" "$t"
+			cat "$extra.more" >>"$extra.part"
+			rm -f "$extra.more"
+		else
+			note "this bundle carries no $t (db/blanked/$t.copy); the beta's are left as they are"
+		fi
+	done
 	mv "$extra.part" "$extra"
 	bc exec -T postgis sh -c 'cat > /tmp/beta-blanked.sql' <"$extra"
 	rm -f "$extra"
 	snapshot update >/dev/null
 	before_oid=$(psql_q "select coalesce(to_regclass('public.app_user')::oid::text, 'none')")
-	note "updating $live_schema, override and the junction ratings in one transaction, and emptying the stale stress tile cache ($accounts beta account(s) are left alone)"
+	note "updating $live_schema, override, the junction ratings and the Avoid junctions in one transaction, and emptying the stale stress tile cache ($accounts beta account(s) are left alone)"
 	# pg_restore writes SQL; psql runs it as ONE transaction that stops at the first error. If
 	# pg_restore itself fails part-way, a deliberately failing statement follows its output so the
 	# transaction rolls back instead of committing half an update. The beta's own
 	# stress_tile_cache is emptied in the same transaction: its rows are keyed on the oid of the
 	# live table this replaces, so none could be served again (the runbook predraws afterwards).
+	# stress_edit is emptied with override (it points at the overrides it replaced); the beta's own
+	# stress suggestions are kept and let go of the edit an approval made first. Both are emptied
+	# with DELETE, not TRUNCATE: a TRUNCATE refuses a table another table's foreign key points at,
+	# even with no row pointing (stress_suggestion.edit_id, migration 0016), and a DELETE does not.
 	# shellcheck disable=SC2016
-	bc exec -T postgis sh -c '{ echo "TRUNCATE public.override, public.stress_edit, public.stress_tile_cache;"; pg_restore --no-owner --no-privileges --clean --if-exists -L /tmp/beta.use -f - || echo "SELECT pg_restore_failed_so_this_rolls_back();"; cat /tmp/beta-blanked.sql || echo "SELECT blanked_sql_missing_so_this_rolls_back();"; } | psql -U "$1" -d "$2" -q -1 -v ON_ERROR_STOP=1 >/dev/null' sh "$pguser" "$pgdatabase" <"$dump" ||
+	bc exec -T postgis sh -c '{ echo "UPDATE public.stress_suggestion SET edit_id = NULL WHERE edit_id IS NOT NULL;"; echo "DELETE FROM public.stress_edit;"; echo "DELETE FROM public.override;"; echo "TRUNCATE public.stress_tile_cache;"; pg_restore --no-owner --no-privileges --clean --if-exists -L /tmp/beta.use -f - || echo "SELECT pg_restore_failed_so_this_rolls_back();"; cat /tmp/beta-blanked.sql || echo "SELECT blanked_sql_missing_so_this_rolls_back();"; } | psql -U "$1" -d "$2" -q -1 -v ON_ERROR_STOP=1 >/dev/null' sh "$pguser" "$pgdatabase" <"$dump" ||
 		{ bc exec -T postgis rm -f /tmp/beta.use /tmp/beta-blanked.sql </dev/null; die "the update failed and was rolled back (above); the database is as it was"; }
 	bc exec -T postgis rm -f /tmp/beta.use /tmp/beta-blanked.sql </dev/null
 	psql_q "analyze" >/dev/null
@@ -540,7 +552,7 @@ fail=0
 while IFS=$'\t' read -r qualified expected; do
 	[ -n "$qualified" ] || continue
 	if [ "$update_data" = 1 ]; then
-		case "$qualified" in "$live_schema".* | public.override | public.junction_override) ;; *) continue ;; esac
+		case "$qualified" in "$live_schema".* | public.override | public.junction_override | public.avoid_junction) ;; *) continue ;; esac
 	fi
 	actual=$(psql_q "select count(*) from \"${qualified%%.*}\".\"${qualified#*.}\"")
 	if [ "$actual" = "$expected" ]; then
