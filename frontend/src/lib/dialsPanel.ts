@@ -34,6 +34,7 @@ import {
   calmRate,
   hillsMax,
   hillsWords,
+  seeksClimbs,
   offersAssist,
   offersTargetDistance,
   startDials,
@@ -225,6 +226,12 @@ export const SEEK_NOTE =
 /** At the top of the traffic slider seeking climbs only breaks ties (OWNER-DECISIONS 298(3)). */
 export const SEEK_CALM_NOTE =
   "At this Traffic setting, looking for climbs only chooses between equally calm routes, preferring the one that climbs more.";
+/** "Fine with hills", the right half on every ride type but Mountain Goat (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242). */
+export const TOLERATE_NOTE =
+  `Climbs count for less: the shorter or more direct of a few routes wins even where it climbs more, but never a busier one. Compared for a start and an end up to ${formatRoughDistance(AVOID_MAX_SPAN_M)} apart.`;
+/** At the top of the traffic slider the stress order decides, and its distance counts no climbing. */
+export const TOLERATE_CALM_NOTE =
+  "At this Traffic setting the calmest route decides, and climbing is not counted against it.";
 export const AVOID_NOTE =
   `Steep grades cost more the steeper they are; long climbs, and on some ride types long steep descents, count most, short kicks little. Weighed among a few alternative routes for a start and an end up to ${formatRoughDistance(AVOID_MAX_SPAN_M)} apart.`;
 
@@ -235,6 +242,7 @@ export const AVOID_NOTE =
 export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials): PanelView {
   const locked = stressMax(preset) === 0;
   const seek = hillsMax(preset) > 0;
+  const climbs = seeksClimbs(preset);
   // The ride type's start for what the bike carries, at the ride time and
   // with the assist the rider chose: going back resets the sliders only.
   const plain = startDials(preset, dials.carrying, dials.when, dials.assist, dials.bike ?? null);
@@ -255,7 +263,8 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
     (offersRideSize(preset) && rideSizeOf(dials) !== RIDE_SIZE_DEFAULT);
   let hillsNote: string | undefined;
   if (!seek) hillsNote = MASS_RIDE_HILLS_NOTE;
-  else if (draft.hills > 0) hillsNote = draft.stress >= STRESS_MAX ? SEEK_CALM_NOTE : SEEK_NOTE;
+  else if (draft.hills > 0 && climbs) hillsNote = draft.stress >= STRESS_MAX ? SEEK_CALM_NOTE : SEEK_NOTE;
+  else if (draft.hills > 0) hillsNote = draft.stress >= STRESS_MAX ? TOLERATE_CALM_NOTE : TOLERATE_NOTE;
   else if (draft.hills < 0) hillsNote = AVOID_NOTE;
   return {
     assistToggle: offersAssist(preset),
@@ -275,8 +284,8 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
     hills: {
       min: HILLS_MIN,
       max: hillsMax(preset),
-      words: hillsWords(draft.hills),
-      ends: seek ? ["Avoid hills", "Fastest", "Seek hills"] : ["Avoid hills", "", "Fastest"],
+      words: hillsWords(draft.hills, climbs),
+      ends: seek ? ["Avoid hills", "Fastest", climbs ? "Seek hills" : "Fine with hills"] : ["Avoid hills", "", "Fastest"],
       disabled: false,
       note: hillsNote,
     },

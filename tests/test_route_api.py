@@ -56,6 +56,8 @@ CONTRACT_KEYS = {
     "dials",
     "hills_seek",
     "hills_avoid",
+    # Additive, FOLLOWUP-HILLS-TOLERATE (OWNER-DECISIONS 242).
+    "hills_tolerate",
     "leg_ends",
     # Additive, FOLLOWUP-ROUTE-COLOURS (OWNER-DECISIONS item 81).
     "stress_spans",
