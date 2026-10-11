@@ -319,18 +319,18 @@ DISK_GATE_FRACTION = 0.8
 REBUILD_MIN_FREE_BYTES = int(os.environ.get("REBUILD_MIN_FREE_BYTES", 20 * 1024**3))
 
 # Threads valhalla_build_tiles builds with (`mjolnir.concurrency` in each
-# variant's build config; the serving configs' own value, 4, is not used for
-# builds). Valhalla 3.5.1 can abort a multi-threaded build with "double free or
-# corruption" (valhalla/valhalla#5005, fixed in 3.6.0); fewer threads is fewer
-# chances of it and less memory, at the cost of a slower build. 1 avoids the race
-# entirely. The pinned image is 3.9.1, which has the fix; the default stays 2
-# until a rebuild on the host has been measured at more (memory is the
-# other reason it is low). See docs/OPERATIONS.md, "Tile build threads".
-# Empty or unset is the default, 2: compose hands the rebuild service an empty value
+# variant's build config). 4, the serving configs' own value and the measured
+# 4.5 h row in docs/OPERATIONS.md, "Tile build threads". It was 2 while the
+# image was Valhalla 3.5.1, which could abort a multi-threaded build with
+# "double free or corruption" (valhalla/valhalla#5005, fixed in 3.6.0); the
+# pinned image is 3.9.1, and the low default and the abort retry are retired
+# (FOLLOWUP-VALHALLA-36-LEFTOVERS, item 4). Fewer threads is less memory: 1 or
+# 2 on a host that runs short.
+# Empty or unset is the default, 4: compose hands the rebuild service an empty value
 # when .env does not set one. Anything else must be a whole number of at least 1,
 # refused here so that the worker fails at start, not hours into a rebuild that
 # then retries the same refusal (0 is not "auto", as a missing key is to Valhalla).
-_tile_concurrency = os.environ.get("REBUILD_TILE_CONCURRENCY", "").strip() or "2"
+_tile_concurrency = os.environ.get("REBUILD_TILE_CONCURRENCY", "").strip() or "4"
 if (
     not (_tile_concurrency.isascii() and _tile_concurrency.isdecimal())
     or int(_tile_concurrency) < 1
