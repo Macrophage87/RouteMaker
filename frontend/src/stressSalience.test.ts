@@ -24,6 +24,7 @@ type PaintLayer = { id: string; paint: Record<string, unknown>; filter?: unknown
 import { FACILITY_CLASSES } from "./lib/facilityBar.ts";
 import { ROUTE_SECTION_WIDTHS } from "./lib/routeColours.ts";
 import { UNRATED, UNRATED_CVD_COLOUR } from "./lib/stressBar.ts";
+import { appSource } from "./testSupport/appSource.mjs";
 
 type Tier = ReturnType<typeof tiersFor>[number];
 
@@ -266,7 +267,7 @@ test("the stress bar and the swatches carry Avoid's own pattern, in the tier's c
     const avoid = tiersFor(palette)[4];
     assert.ok(contrastRatio(avoid.casing, avoid.color) >= 3, `${palette}: the hatch is ${contrastRatio(avoid.casing, avoid.color).toFixed(2)}:1 on the fill`);
   }
-  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   assert.ok((app.match(/--seg-accent/g) ?? []).length >= 2, "both the bar's segments and the list's swatches set the accent");
 });
 
