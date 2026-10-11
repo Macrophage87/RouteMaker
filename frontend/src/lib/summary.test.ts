@@ -13,6 +13,7 @@ import {
 } from "./summary.ts";
 import type { RouteResponse } from "./api.ts";
 import type { LonLat } from "./geo.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 const GEORGETOWN: LonLat = [-77.0629, 38.905];
 const ROSSLYN: LonLat = [-77.0707, 38.8966];
@@ -290,6 +291,6 @@ test("a point the planner moved into the Zoo's bike racks is said with the route
   assert.equal(movedPointsNote({ moved_points: [] } as never), null);
   assert.equal(movedPointsNote({} as never), null);
   const { readFileSync } = await import("node:fs");
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   assert.match(app, /<p className="notice moved-points" role="note">/);
 });

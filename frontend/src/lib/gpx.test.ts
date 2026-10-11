@@ -272,7 +272,7 @@ const REQUIRED_ATTRIBUTES: Record<string, string[]> = {
   link: ["href"],
   wpt: ["lat", "lon"],
 };
-const LEAVES = new Set(["name", "cmt", "desc", "type", "license", "text", "year", "time", "keywords"]);
+const LEAVES = new Set(["ele", "name", "cmt", "desc", "type", "license", "text", "year", "time", "keywords"]);
 
 function checkSchema(node: Node, path = "gpx"): void {
   const type = TYPE_OF[node.name] ?? node.name;
@@ -374,4 +374,18 @@ test("text is escaped, and characters XML cannot carry are dropped", () => {
   const file = parseGpx(xml);
   assert.equal(file.name, 'A <b> & "c" &amp;');
   assert.match(xml, /Route data: x &lt; y\./);
+});
+
+test("track points carry <ele> where the export has an elevation, schema order kept, and none where it has not", () => {
+  const withEle: GpxExport = { ...EXPORT, elevations: [12.34, null, 30] };
+  const xml = writeGpx(withEle);
+  checkSchema(tree(xml));
+  assert.match(xml, /<trkpt lat="38\.909600" lon="-77\.043400"><ele>12\.3<\/ele><\/trkpt>/);
+  assert.match(xml, /<trkpt lat="38\.900000" lon="-77\.030000"\/>/);
+  assert.match(xml, /<ele>30\.0<\/ele>/);
+  // Route points stay without elevation, and the file still reads back to the same line.
+  assert.doesNotMatch(xml.slice(xml.indexOf("<rte>"), xml.indexOf("</rte>")), /<ele>/);
+  assert.equal(parseGpx(xml).tracks[0].segments[0].length, LINE.length);
+  // No elevations, no <ele>.
+  assert.doesNotMatch(writeGpx(EXPORT), /<ele>/);
 });

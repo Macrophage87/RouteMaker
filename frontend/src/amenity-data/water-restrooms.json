@@ -1,4 +1,4 @@
-{"source":"OpenStreetMap contributors, ODbL 1.0","points":[
+{"source":"OpenStreetMap contributors, ODbL 1.0","also":"Throne units: throne-restrooms.json, a hand list with a source for each","points":[
 {"id":"n33155016","x":-77.10607,"y":38.8845,"w":"p"},
 {"id":"n268718145","x":-77.04908,"y":38.74613,"w":"p","b":1},
 {"id":"n269226293","x":-77.10499,"y":38.89113,"w":"p","b":1},
@@ -2261,5 +2261,15 @@
 {"id":"w1550204795","x":-77.39411,"y":39.41126,"t":"u"},
 {"id":"w1558949482","x":-77.55603,"y":39.63159,"t":"b"},
 {"id":"w1561752288","x":-77.66929,"y":39.63039,"t":"f","wc":"yes"},
-{"id":"w1561752289","x":-77.66927,"y":39.63036,"t":"f","wc":"yes"}
+{"id":"w1561752289","x":-77.66927,"y":39.63036,"t":"f","wc":"yes"},
+{"id":"throne-dc-alethia-tanner-park","x":-77.00242,"y":38.91108,"t":"f","n":"Throne, Alethia Tanner Park","fee":"no","wc":"yes","op":"Throne","ap":1},
+{"id":"throne-dc-columbia-heights","x":-77.03269,"y":38.92886,"t":"f","n":"Throne, Columbia Heights Civic Plaza","fee":"no","wc":"yes","op":"Throne","ap":1},
+{"id":"throne-dc-dupont-circle","x":-77.04402,"y":38.90914,"t":"f","n":"Throne, Dupont Circle","fee":"no","wc":"yes","op":"Throne","ap":1},
+{"id":"throne-dc-eastern-market-metro","x":-76.99505,"y":38.88368,"t":"f","n":"Throne, Eastern Market Metro plaza","fee":"no","wc":"yes","op":"Throne","ap":1},
+{"id":"throne-dc-oxon-run-park","x":-76.99841,"y":38.83763,"t":"f","n":"Throne, Oxon Run Park","fee":"no","wc":"yes","op":"Throne","ap":1},
+{"id":"throne-dc-superior-court","x":-77.01935,"y":38.89452,"t":"f","n":"Throne, Indiana Plaza by DC Superior Court","fee":"no","wc":"yes","op":"Throne","ap":1},
+{"id":"throne-md-mount-rainier","x":-76.96002,"y":38.93663,"t":"f","n":"Throne, Perry Street Park and Ride (Mount Rainier City Hall)","fee":"no","wc":"yes","op":"Throne","ap":1},
+{"id":"throne-md-university-hills-duck-pond","x":-76.95594,"y":38.98405,"t":"f","n":"Throne, University Hills Duck Pond Park","fee":"no","wc":"yes","op":"Throne","ap":1},
+{"id":"throne-va-old-town-square","x":-77.30495,"y":38.84676,"t":"f","n":"Throne, Old Town Square","fee":"no","wc":"yes","op":"Throne","ap":1},
+{"id":"throne-va-van-dyck-park","x":-77.2956,"y":38.85316,"t":"f","n":"Throne, Van Dyck Park","fee":"no","wc":"yes","op":"Throne","ap":1}
 ]}
