@@ -90,6 +90,13 @@ BACKUP_TIMEOUT_S = 30 * 60
 # missed ticks rather than one.
 WORKER_HEARTBEAT_CRON = "*/5 * * * *"
 
+# The live work-zone feeds (FOLLOWUP-WORKZONES): about every five minutes, as 346 asks
+# of VDOT's feed ("without overburdening the feed"). Maryland's refreshes every minute;
+# five is enough for zones that last hours or days.
+WORK_ZONES_CRON = "*/5 * * * *"
+# Each feed has three tries of 20 s; two feeds. Well inside the queue's thirty minutes.
+WORK_ZONES_TIMEOUT_S = 5 * 60
+
 # The plan's job rule: retried with exponential backoff, up to five times.
 # Procrastinate counts an attempt when a run finishes or is scheduled for
 # retry, after the retry decision, so the first failure is judged at
@@ -949,6 +956,24 @@ def worker_heartbeat(timestamp: int) -> None:
 
     with record("worker_heartbeat") as run:
         run.detail = f"worker alive, pid {os.getpid()}"
+        run.save(update_fields=["detail"])
+
+
+@app.periodic(cron=WORK_ZONES_CRON)
+@app.task(name="refresh_work_zones", queue="maintenance", queueing_lock="refresh_work_zones")
+def refresh_work_zones(timestamp: int) -> None:
+    """Read the WZDx work-zone feeds and replace the planner's shared copy (core.workzones).
+
+    Not retried, as the heartbeat is not: the next tick is the retry, and a feed that
+    fails keeps its last good zones until they are two hours old, when the planner
+    says it could not check them. Virginia's feed is read only where the environment
+    holds `SMARTERROADS_TOKEN`, and the key is never written to the run row or the log.
+    """
+    from core.runs import record, run_with_deadline
+    from core.workzones import refresh
+
+    with record("refresh_work_zones") as run:
+        run.detail = run_with_deadline(refresh, WORK_ZONES_TIMEOUT_S, "refresh_work_zones")
         run.save(update_fields=["detail"])
 
 

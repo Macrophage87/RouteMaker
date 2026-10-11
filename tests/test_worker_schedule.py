@@ -49,6 +49,7 @@ from config.procrastinate import (
     ROUTER_RESTART_NOTICE,
     SWEEP_TIMEOUT_S,
     WEEKLY_REBUILD_CRON,
+    WORK_ZONES_CRON,
     WORKER_HEARTBEAT_CRON,
     BackupTimedOut,
     RebuildAbandoned,
@@ -80,6 +81,7 @@ def test_each_cron_constant_has_a_task_behind_it() -> None:
         "membership_sweep": MEMBERSHIP_SWEEP_CRON,
         "degraded_guild_sweep": DEGRADED_GUILD_SWEEP_CRON,
         "worker_heartbeat": WORKER_HEARTBEAT_CRON,
+        "refresh_work_zones": WORK_ZONES_CRON,
     }
 
 
@@ -2177,6 +2179,8 @@ def test_every_alert_window_is_pinned() -> None:
         "membership_sweep": 12 * 60 * 60,
         "degraded_guild_sweep": 30 * 60,
         "worker_heartbeat": 10 * 60,
+        # The work-zone feeds, every five minutes: six missed ticks, as the sweep.
+        "refresh_work_zones": 30 * 60,
     }
 
 
@@ -2206,6 +2210,7 @@ def test_each_alert_window_is_wider_than_its_schedule() -> None:
         "membership_sweep": MEMBERSHIP_SWEEP_CRON,
         "degraded_guild_sweep": DEGRADED_GUILD_SWEEP_CRON,
         "worker_heartbeat": WORKER_HEARTBEAT_CRON,
+        "refresh_work_zones": WORK_ZONES_CRON,
     }
     assert set(crons) == set(STALE_AFTER), "every scheduled task is watched, and the reverse"
     base = timezone.now()

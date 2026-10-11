@@ -276,6 +276,16 @@ file was changed. That is the same distinction as `TAG` above and as
 people every time. `docker compose up -d api` is enough — it is the only
 service that reads this.
 
+**`SMARTERROADS_TOKEN`: rotate it at SmarterRoads, then here, then `up -d
+worker`.** The owner's own key for VDOT's work-zone feed (FOLLOWUP-WORKZONES,
+OWNER-DECISIONS 346), issued by the SmarterRoads portal, not generated here, and
+optional: empty, Virginia's work zones are off. Only `worker` holds it; the
+five-minute `refresh_work_zones` task puts it in the feed URL and never in a log
+or a run row, and nothing is stored under it. A rotation costs at most one
+refresh: until `worker` is recreated with the new key, Virginia's last zones are
+used and then, after two hours, the planner says Virginia's work zones could not
+be checked. `up -d`, not `restart`, for the reason given above.
+
 **`BOT_INTERNAL_SECRET`** is shared between `api` and `bot`, and `bot` has no
 image in phase 1, so there is nothing on the other end of it to disagree with
 yet. When there is, both services read it from `.env` and both need recreating

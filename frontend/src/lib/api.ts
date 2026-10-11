@@ -211,8 +211,12 @@ export interface JunctionGroupSummary {
  * sentence to read aloud, US units first.
  */
 export interface DescriptionEntry {
-  /** "avoid": an Avoid-rated junction ahead (OWNER-DECISIONS 307), at a point. */
-  kind: "stretch" | "junction" | "via" | "walk" | "avoid";
+  /**
+   * "avoid": an Avoid-rated junction ahead (OWNER-DECISIONS 307), at a point. "workzone": a live
+   * work zone along the route (FOLLOWUP-WORKZONES), severity "red" for a closure, "orange" for a
+   * penalty; or, at 0 with no severity, the work-zone disclaimer or the feeds not read.
+   */
+  kind: "stretch" | "junction" | "via" | "walk" | "avoid" | "workzone";
   from_m: number;
   to_m: number;
   from_mi: number;
