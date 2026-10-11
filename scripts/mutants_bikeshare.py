@@ -82,8 +82,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "pair: longest walk plus ride wins",
         BS,
-        "if best is None or total < best[0]:",
-        "if best is None or total > best[0]:",
+        "    pairs.sort(key=lambda p: (p[0], p[1]))",
+        "    pairs.sort(key=lambda p: (-p[0], -p[1]))",
         PLAN_T,
     ),
     (
@@ -317,22 +317,22 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "free: never considered",
         BS,
-        "        for distance, found in near[:START_FREE_BIKES]:",
-        "        for distance, found in near[:0]:",
+        "        for _, distance, index in floating:",
+        "        for _, distance, index in floating[:0]:",
         PLAN_T,
     ),
     (
         "free: the farthest bikes are the ones considered",
         BS,
-        "        for distance, found in near[:START_FREE_BIKES]:",
-        "        for distance, found in near[::-1][:START_FREE_BIKES]:",
+        "        for _, distance, index in floating:",
+        "        for _, distance, index in floating[::-1]:",
         PLAN_T,
     ),
     (
         "free: no search radius",
         BS,
-        "            if distance <= SEARCH_RADIUS_M:" + NL + "                free.append(",
-        "            if True:" + NL + "                free.append(",
+        "            if distance > SEARCH_RADIUS_M:" + NL + "                continue",
+        "            if False:" + NL + "                continue",
         PLAN_T,
     ),
     (
@@ -836,9 +836,30 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "nearby: a fourth station is listed",
         BS,
-        "if len(found) == NEARBY_COUNT:",
-        "if len(found) == NEARBY_COUNT + 1:",
+        "    )[:NEARBY_COUNT]",
+        "    )[: NEARBY_COUNT + 1]",
         NEAR_T,
+    ),
+    (
+        "direction: the extra riding is ignored (nearest first again)",
+        BS,
+        "    return max(0.0, _distance(station, other_end) - _distance(point, other_end))",
+        "    return 0.0",
+        ["tests/test_bikeshare_direction.py"],
+    ),
+    (
+        "direction: a station on the way earns a credit (no floor at zero)",
+        BS,
+        "    return max(0.0, _distance(station, other_end) - _distance(point, other_end))",
+        "    return _distance(station, other_end) - _distance(point, other_end)",
+        ["tests/test_bikeshare_direction.py"],
+    ),
+    (
+        "direction: the list's search stops before a better station is reached",
+        BS,
+        "            if distance > costs[NEARBY_COUNT - 1]:",
+        "            if True:",
+        ["tests/test_bikeshare_direction.py"],
     ),
     (
         "nearby: listed by fullness, not distance",

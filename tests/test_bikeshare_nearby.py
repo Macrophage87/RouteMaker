@@ -383,7 +383,32 @@ class TestStationsEndpoint:
                 "bikes",
                 "ebikes",
                 "docks",
+                "extra_m",
+                "on_the_way",
             }
+            # Without `toward` the list is by distance and carries no reason.
+            assert s["extra_m"] is None and s["on_the_way"] is None
+
+    def test_with_toward_the_stations_on_the_way_come_first_and_say_so(
+        self, client, world
+    ) -> None:
+        """The owner, 2026-10-11: stations in the direction of the route first."""
+        dupont = [-77.0436, 38.9096]
+        plain = stations_post(client, {"point": UNION_POINT, "action": "pickup"}).json()
+        data = stations_post(
+            client, {"point": UNION_POINT, "action": "pickup", "toward": dupont}
+        ).json()
+        found = data["stations"]
+        assert len(found) == len(plain["stations"])
+        assert all(isinstance(s["on_the_way"], bool) for s in found)
+        cost = [s["distance_m"] + s["extra_m"] for s in found]
+        assert cost == sorted(cost)
+
+    def test_a_toward_outside_the_map_is_refused(self, client, world) -> None:
+        response = stations_post(
+            client, {"point": UNION_POINT, "action": "pickup", "toward": [0.0, 0.0]}
+        )
+        assert response.status_code == 400
 
     def test_dropoff_answers_with_stations_at_most_one_quarter_full(self, client, world) -> None:
         data = stations_post(client, {"point": UNION_POINT, "action": "dropoff"}).json()

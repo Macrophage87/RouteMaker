@@ -11,12 +11,15 @@ import {
   activePins,
   chosenSaid,
   listPoint,
+  listToward,
   stationDistance,
   stationLabel,
   stationsEmpty,
   stationsFreshness,
   stationsHeading,
   stationsLede,
+  stationsListed,
+  wayWords,
   withStations,
   type NearbyStation,
   type Pins,
@@ -207,4 +210,59 @@ test("the lists are in the Bikeshare panel only and a choice is forgotten with i
 test("the chosen button is told apart by more than colour", () => {
   assert.match(css, /\.station-choice\[aria-pressed="true"\][\s\S]*?border: 3px solid/);
   assert.match(css, /\.station-choice[\s\S]*?min-height: 44px/);
+});
+
+// --- Stations on your way first (the owner, 2026-10-11) ----------------------------------------
+
+test("once both ends are placed a station says why in words: on your way, or the riding it adds", () => {
+  assert.equal(
+    stationLabel(station({ extra_m: 0, on_the_way: true })),
+    "Columbus Circle / Union Station, 82% full, 2 e-bikes, 0.2 mi (320 m), on your way",
+  );
+  assert.equal(
+    stationLabel(station({ extra_m: 158, on_the_way: false })),
+    "Columbus Circle / Union Station, 82% full, 2 e-bikes, 0.2 mi (320 m), adds 520 ft (160 m) of riding",
+  );
+  // Without the other end (an older server too) the label is as before, with no reason.
+  assert.equal(stationLabel(station({ extra_m: null, on_the_way: null })), stationLabel(station()));
+  assert.equal(wayWords(station()), null);
+  // Plain words, never an arrow or a colour word.
+  for (const words of [wayWords({ on_the_way: true, extra_m: 0 }), wayWords({ on_the_way: false, extra_m: 900 })]) {
+    assert.doesNotMatch(words ?? "", /[\u2190-\u21ff\u25b2-\u25bf]|green|red|amber/i);
+  }
+});
+
+test("each list is ranked toward the trip's other end once there is one", () => {
+  assert.equal(listToward("pickup", [A]), null);
+  assert.equal(listToward("dropoff", [A]), null);
+  assert.deepEqual(listToward("pickup", [A, B]), B, "the pick-up list looks toward the destination");
+  assert.deepEqual(listToward("dropoff", [A, B]), A, "the drop-off list looks back to the start");
+});
+
+test("the lede and the status say the order: nearest first, or on your way first", () => {
+  assert.match(stationsLede("pickup", true), /^3 stations at least 3\/4 full/);
+  assert.match(stationsLede("pickup", true), /Stations on your way come first; one behind you counts its extra riding/);
+  assert.match(stationsLede("dropoff", true), /on your way in come first; one past your destination/);
+  assert.match(stationsLede("dropoff", true), /Choose one/);
+  assert.equal(stationsListed(3, true), "3 nearby stations listed, on your way first.");
+  assert.equal(stationsListed(1, false), "1 nearby station listed, nearest first.");
+});
+
+test("the request sends the other end as toward, in the body, only when there is one", async () => {
+  const bodies: unknown[] = [];
+  const answer = { action: "pickup", availability: "live", stations: [], credit: "Capital Bikeshare" };
+  const fetchImpl = async (_url: string, init?: RequestInit) => {
+    bodies.push(JSON.parse(init!.body as string));
+    return new Response(JSON.stringify(answer), { status: 200 });
+  };
+  await requestStations(A, "pickup", { fetchImpl, toward: B });
+  await requestStations(A, "pickup", { fetchImpl, toward: null });
+  assert.deepEqual(bodies, [{ point: A, action: "pickup", toward: B }, { point: A, action: "pickup" }]);
+});
+
+test("the component asks each list toward the other end and refetches when it moves", () => {
+  assert.match(component, /toward=\{listToward\("pickup", points\)\}/);
+  assert.match(component, /toward=\{listToward\("dropoff", points\)\}/);
+  assert.match(component, /\[lon, lat, towardLon, towardLat, action, reload\]/);
+  assert.match(component, /stationsLede\(action, directed\)/);
 });

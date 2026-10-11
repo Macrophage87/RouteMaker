@@ -5,12 +5,31 @@ saved and nothing is tied to a visitor: the plan reads the operator's live feeds
 through `core.gbfs` (one copy for the deployment, about 60 s old at most; no history
 is kept) and the routers, and answers.
 
-Nearest stations (466, 466a): `nearby_stations` lists the three stations nearest a
-point that are at least 3/4 full (to pick a bike up) or at most 1/4 full (to return
-one), from the live feed alone. They are listed by distance and nothing else: the
-rider chooses, and a chosen station is passed to `plan` (`pickup_station`,
-`dropoff_station`) to be used for that end of the ride. A station that has not
-reported for 30 minutes is unavailable everywhere here.
+Nearest stations (466, 466a): `nearby_stations` lists three stations near a point
+that are at least 3/4 full (to pick a bike up) or at most 1/4 full (to return one),
+from the live feed alone. The rider chooses, and a chosen station is passed to `plan`
+(`pickup_station`, `dropoff_station`) to be used for that end of the ride. A station
+that has not reported for 30 minutes is unavailable everywhere here.
+
+Stations on your way first (the owner, 2026-10-11: "we should prioritize the stations
+that would be in the direction of the route"). One rule, used by the station lists,
+the plan's choice of docks and its route options: a station costs **its walk plus
+the extra riding it adds**. The extra riding is how much farther the station is
+from the other end of the trip than the rider's own point is, and never less than
+nothing (`extra_riding_m`):
+
+- picking up near the start, a station behind the rider (farther from the
+  destination than the start is) adds that much riding; one toward the
+  destination adds none;
+- returning near the destination, a station past it (farther from the start than
+  the destination is) adds that much riding; one on the way in adds none.
+
+So a station on your way is ranked by its walk alone, and one behind you as if it
+were its walk plus the extra ride farther away: a dock 100 m behind ranks with one
+200 m ahead. Straight lines throughout, so the rule can be checked with a ruler.
+A station that adds under `ON_THE_WAY_M` (165 ft (50 m)) is said to be "on your
+way"; any other says how much riding it adds. Without the other end (only a start
+placed) the list is by distance alone, as before.
 
 The plan
 --------
@@ -79,6 +98,11 @@ RIDE_DETOUR = 1.3
 WALK_SPEED_KMH = 4.8
 # A walk this short is "at the dock".
 AT_DOCK_M = 25.0
+# A station that adds less riding than this is "on your way": 165 ft (50 m), so a dock
+# a little to one side of a long trip still counts.
+ON_THE_WAY_M = 50.0
+# How many route options a plan offers (start dock and end dock pairs).
+OPTION_COUNT = 3
 
 
 class NoBikeshare(Exception):
@@ -186,6 +210,45 @@ def _by_distance(snapshot: gbfs.Snapshot, around: LonLat) -> list[tuple[float, g
     )
 
 
+def extra_riding_m(station: LonLat, point: LonLat, other_end: LonLat | None) -> float:
+    """The riding a station adds to the trip, in straight-line metres: how much farther it
+    is from `other_end` (the destination, picking up; the start, returning) than `point`
+    (the start, picking up; the destination, returning) is, and never below zero. None
+    for `other_end`: nothing to measure against, so nothing is added."""
+    if other_end is None:
+        return 0.0
+    return max(0.0, _distance(station, other_end) - _distance(point, other_end))
+
+
+def station_cost_m(station: LonLat, point: LonLat, other_end: LonLat | None) -> float:
+    """The one ranking rule: the walk to the station plus the extra riding it adds."""
+    return _distance(point, station) + extra_riding_m(station, point, other_end)
+
+
+def _ranked(
+    stations: list[tuple[float, gbfs.Station]], point: LonLat, other_end: LonLat | None
+) -> list[tuple[float, gbfs.Station]]:
+    """`stations` (distance, station) best first by `station_cost_m`; ties by distance, then
+    name."""
+    return sorted(
+        stations,
+        key=lambda t: (
+            station_cost_m([t[1].lon, t[1].lat], point, other_end),
+            t[0],
+            t[1].name,
+        ),
+    )
+
+
+def on_the_way(extra_m: float) -> bool:
+    return extra_m < ON_THE_WAY_M
+
+
+def way_words(extra_m: float) -> str:
+    """ "on your way", or "adds 0.2 mi (0.3 km) of riding": the reason, in words."""
+    return "on your way" if on_the_way(extra_m) else f"adds {miles(extra_m)} of riding"
+
+
 def _can_start(pick: Pick, bike: str, snapshot: gbfs.Snapshot) -> bool:
     if snapshot.status is None:
         return True  # unknown: the nearest are used and the plan says so
@@ -233,19 +296,33 @@ def _why_not_end(pick: Pick) -> str:
     return "has no free slots right now"
 
 
-def start_candidates(origin: LonLat, bike: str, snapshot: gbfs.Snapshot, notes: list[str]):
-    """The nearest docks (and free e-bikes) that can start a ride, nearest first,
-    with a note for each nearer dock passed over."""
-    picks: list[tuple[float, Pick]] = []
+def start_candidates(
+    origin: LonLat,
+    bike: str,
+    snapshot: gbfs.Snapshot,
+    notes: list[str],
+    dest: LonLat | None = None,
+):
+    """The docks (and free e-bikes) that can start a ride, best first by the walk plus the
+    extra riding each adds toward `dest`, with a note for each nearer dock passed over for
+    having no bike. Also the nearest dock that can start it, (distance, pick) or None, for
+    the note that says why a farther one was chosen."""
+    near = _nearest(snapshot, origin)
     passed: list[tuple[float, Pick]] = []
-    for distance, station in _nearest(snapshot, origin):
+    nearest: tuple[float, Pick] | None = None
+    for distance, station in near:
+        pick = _dock_pick(station, snapshot)
+        if _can_start(pick, bike, snapshot):
+            nearest = (distance, pick)
+            break
+        passed.append((distance, pick))
+    picks: list[tuple[float, Pick]] = []
+    for distance, station in _ranked(near, origin, dest):
         pick = _dock_pick(station, snapshot)
         if _can_start(pick, bike, snapshot):
             picks.append((distance, pick))
             if len(picks) == START_DOCKS:
                 break
-        elif not picks:
-            passed.append((distance, pick))
     for distance, pick in passed[:2]:
         notes.append(
             f"The nearest dock, {pick.name}, {miles(distance)} away, "
@@ -256,30 +333,49 @@ def start_candidates(origin: LonLat, bike: str, snapshot: gbfs.Snapshot, notes: 
         )
     free: list[tuple[float, Pick]] = []
     if bike == presets.BIKE_EBIKE and snapshot.free_bikes:
-        near = sorted(
-            (_distance(origin, [b.lon, b.lat]), b)
-            for b in snapshot.free_bikes
+        floating = sorted(
+            (
+                station_cost_m([b.lon, b.lat], origin, dest),
+                _distance(origin, [b.lon, b.lat]),
+                index,
+            )
+            for index, b in enumerate(snapshot.free_bikes)
             if abs(b.lat - origin[1]) < 0.05 and abs(b.lon - origin[0]) < 0.07
         )
-        for distance, found in near[:START_FREE_BIKES]:
-            if distance <= SEARCH_RADIUS_M:
-                free.append(
-                    (distance, Pick("free_bike", "an e-bike outside a dock", found.lon, found.lat))
-                )
-    return picks, free
+        for _, distance, index in floating:
+            if distance > SEARCH_RADIUS_M:
+                continue
+            found = snapshot.free_bikes[index]
+            free.append(
+                (distance, Pick("free_bike", "an e-bike outside a dock", found.lon, found.lat))
+            )
+            if len(free) == START_FREE_BIKES:
+                break
+    return picks, free, nearest
 
 
-def end_candidates(dest: LonLat, snapshot: gbfs.Snapshot, notes: list[str]):
-    picks: list[tuple[float, Pick]] = []
+def end_candidates(
+    dest: LonLat, snapshot: gbfs.Snapshot, notes: list[str], origin: LonLat | None = None
+):
+    """The docks that can end the ride, best first by the walk plus the extra riding each
+    adds past `dest` (measured from `origin`), the notes for nearer docks passed over, and
+    the nearest dock that can end it (or None)."""
+    near = _nearest(snapshot, dest)
     passed: list[tuple[float, Pick]] = []
-    for distance, station in _nearest(snapshot, dest):
+    nearest: tuple[float, Pick] | None = None
+    for distance, station in near:
+        pick = _dock_pick(station, snapshot)
+        if _can_end(pick, snapshot):
+            nearest = (distance, pick)
+            break
+        passed.append((distance, pick))
+    picks: list[tuple[float, Pick]] = []
+    for distance, station in _ranked(near, dest, origin):
         pick = _dock_pick(station, snapshot)
         if _can_end(pick, snapshot):
             picks.append((distance, pick))
             if len(picks) == END_DOCKS:
                 break
-        elif not picks:
-            passed.append((distance, pick))
     for distance, pick in passed[:2]:
         notes.append(
             f"The dock nearest your destination, {pick.name}, {miles(distance)} away, "
@@ -287,7 +383,7 @@ def end_candidates(dest: LonLat, snapshot: gbfs.Snapshot, notes: list[str]):
             if pick is passed[0][1]
             else f"The next dock, {pick.name}, {miles(distance)} away, {_why_not_end(pick)}."
         )
-    return picks
+    return picks, nearest
 
 
 # --- The rider's own choice of dock (OWNER-DECISIONS 466a) ---------------------------
@@ -348,21 +444,30 @@ class NearbyStation:
     bikes: int
     ebikes: int
     docks: int
+    # The riding the station adds (`extra_riding_m`) and whether that is "on your way";
+    # None for both when the list has no other end to measure against.
+    extra_m: float | None = None
+    on_the_way: bool | None = None
 
 
-def nearby_stations(point: LonLat, action: str, snapshot: gbfs.Snapshot) -> list[NearbyStation]:
-    """The `NEARBY_COUNT` stations nearest `point` that fit the action, nearest first, from the
-    live feed alone (nothing stored, nothing ranked beyond distance: the rider chooses).
+def nearby_stations(
+    point: LonLat, action: str, snapshot: gbfs.Snapshot, toward: LonLat | None = None
+) -> list[NearbyStation]:
+    """The `NEARBY_COUNT` stations near `point` that fit the action, best first, from the live
+    feed alone (nothing stored).
 
     pickup: installed, renting, reporting in the last 30 minutes, and at least 3/4 full.
     dropoff: installed, returning, reporting in the last 30 minutes, and at most 1/4 full.
-    No distance cap: the three that fit, however far (the owner, 2026-10-10). With no
-    availability feed there is nothing to list (the caller says availability is unknown)."""
+    Ranked by the walk plus the extra riding each adds (the module's docstring): `toward` is
+    the other end of the trip, the destination for a pick-up and the start for a drop-off.
+    Without it, by distance alone. No distance cap: the three that fit, however far (the
+    owner, 2026-10-10). With no availability feed there is nothing to list (the caller says
+    availability is unknown)."""
     if action not in ACTIONS:
         raise ValueError(f"not an action: {action}")
     if snapshot.status is None:
         return []
-    found: list[NearbyStation] = []
+    fitting: list[tuple[float, gbfs.Station, gbfs.StationStatus, float]] = []
     for distance, station in _by_distance(snapshot, point):
         status = snapshot.status.get(station.station_id)
         if status is None or snapshot.reporting_stale(status):
@@ -376,6 +481,23 @@ def nearby_stations(point: LonLat, action: str, snapshot: gbfs.Snapshot) -> list
             fits = status.can_return and fullness <= EMPTY_AT_MOST
         if not fits:
             continue
+        fitting.append((distance, station, status, fullness))
+        # By distance, the cost (distance + extra) of the stations still to come is at least
+        # their distance; once three fit and the next is farther than the third-best cost so
+        # far, none can rank higher.
+        if len(fitting) >= NEARBY_COUNT:
+            costs = sorted(station_cost_m([s.lon, s.lat], point, toward) for _, s, _, _ in fitting)
+            if distance > costs[NEARBY_COUNT - 1]:
+                break
+    best = sorted(
+        fitting,
+        key=lambda t: (station_cost_m([t[1].lon, t[1].lat], point, toward), t[0], t[1].name),
+    )[:NEARBY_COUNT]
+    found: list[NearbyStation] = []
+    for distance, station, status, fullness in best:
+        extra = (
+            None if toward is None else extra_riding_m([station.lon, station.lat], point, toward)
+        )
         found.append(
             NearbyStation(
                 station_id=station.station_id,
@@ -387,10 +509,10 @@ def nearby_stations(point: LonLat, action: str, snapshot: gbfs.Snapshot) -> list
                 bikes=status.bikes,
                 ebikes=min(status.ebikes, status.bikes),
                 docks=status.docks,
+                extra_m=None if extra is None else round(extra, 1),
+                on_the_way=None if extra is None else on_the_way(extra),
             )
         )
-        if len(found) == NEARBY_COUNT:
-            break
     return found
 
 
@@ -557,10 +679,12 @@ def plan(
     if ending == ENDING_OUTSIDE and not use_outside:
         notes.append(OUTSIDE_REASON_WORDS[offer["reason"]] + " The plan ends at a dock.")
 
+    nearest_start: tuple[float, Pick] | None = None
+    nearest_end: tuple[float, Pick] | None = None
     if pickup_station:
         docks, free = pinned_start(origin, pickup_station, bike, snapshot)
     else:
-        docks, free = start_candidates(origin, bike, snapshot, notes)
+        docks, free, nearest_start = start_candidates(origin, bike, snapshot, notes, dest)
     kind_word = "e-bike" if bike == presets.BIKE_EBIKE else "classic bike"
     if not docks and not free:
         raise NoBikeshare(
@@ -572,7 +696,7 @@ def plan(
         if dropoff_station:
             ends = pinned_end(dest, dropoff_station, snapshot)
         else:
-            ends = end_candidates(dest, snapshot, notes)
+            ends, nearest_end = end_candidates(dest, snapshot, notes, origin)
         if not ends:
             raise NoBikeshare(
                 f"No dock within {miles(SEARCH_RADIUS_M)} of the destination has a free slot "
@@ -599,50 +723,71 @@ def plan(
                 "There is no way on foot from a dock with a free slot to the destination."
             )
 
-    best = None
+    # Every pair, best first by the one rule: the real walks plus the extra riding each end
+    # adds (straight lines); ties by the estimated time.
+    pairs = []
     for s_pick, s_walk in starts:
+        s_extra = extra_riding_m(s_pick.point, origin, dest)
         for e_pick, e_walk in finishes:
             if s_pick.station_id is not None and s_pick.station_id == e_pick.station_id:
                 continue
             if _distance(s_pick.point, e_pick.point) < 50.0:
                 continue
+            e_extra = 0.0 if e_walk is None else extra_riding_m(e_pick.point, dest, origin)
+            cost = s_walk.distance_m + s_extra + (e_walk.distance_m if e_walk else 0.0) + e_extra
             total = (
                 s_walk.duration_s
                 + _ride_s(s_pick.point, e_pick.point, speed_kmh)
                 + (e_walk.duration_s if e_walk else 0.0)
             )
-            if best is None or total < best[0]:
-                best = (total, s_pick, s_walk, e_pick, e_walk)
-    if best is None:
+            pairs.append((cost, total, s_pick, s_walk, s_extra, e_pick, e_walk, e_extra))
+    if not pairs:
         raise NoBikeshare(
             "The nearest docks to the start and to the destination are the same, so there is "
             "nothing to ride. Walking is the way."
         )
-    _, start, walk_start, end, walk_end = best
+    pairs.sort(key=lambda p: (p[0], p[1]))
+    _, _, start, walk_start, start_extra, end, walk_end, end_extra = pairs[0]
 
     # What was passed over, said once the choice is made.
-    if docks and start.kind == "dock" and start is not docks[0][1]:
-        notes.append(
+    if (
+        nearest_start is not None
+        and start.kind == "dock"
+        and start.station_id != nearest_start[1].station_id
+    ):
+        near_d, near_pick = nearest_start
+        lead = (
             f"The nearest dock with {'an' if bike == presets.BIKE_EBIKE else 'a'} {kind_word}, "
-            f"{docks[0][1].name}, is closer; this plan starts at {start.name} because the walk "
-            "plus the ride is shorter."
+            f"{near_pick.name}, is closer, {miles(near_d)} away"
+        )
+        notes.append(
+            _passed_words(
+                lead, extra_riding_m(near_pick.point, origin, dest), "starts at", start, start_extra
+            )
         )
     if start.kind == "free_bike":
-        nearest_dock = docks[0][0] if docks else None
+        nearest_dock = nearest_start[0] if nearest_start else None
         notes.append(
             "The plan starts at an e-bike parked outside a dock, near you"
             + (
                 f", rather than the nearest dock with one, {miles(nearest_dock)} away: "
-                "the walk plus the ride is shorter."
+                "its walk plus any extra riding is shorter."
                 if nearest_dock is not None
                 else "."
             )
         )
-    if not use_outside and ends and end is not ends[0][1]:
-        notes.append(
-            f"The dock nearest your destination with a free slot, {ends[0][1].name}, is closer; "
-            f"this plan ends at {end.name} because the walk plus the ride is shorter."
+    if not use_outside and nearest_end is not None and end.station_id != nearest_end[1].station_id:
+        near_d, near_pick = nearest_end
+        lead = (
+            f"The dock nearest your destination with a free slot, {near_pick.name}, is closer, "
+            f"{miles(near_d)} away"
         )
+        notes.append(
+            _passed_words(
+                lead, extra_riding_m(near_pick.point, dest, origin), "ends at", end, end_extra
+            )
+        )
+    options = _options(pairs, bike, use_outside, snapshot)
 
     ride = services.ride(start.point, end.point)
 
@@ -768,8 +913,15 @@ def plan(
         "steps": steps,
         "summary": summary,
         "notes": notes,
+        "options": options,
         "credit": gbfs.CREDIT,
     }
+    # The chosen option carries the routed ride's own figures, not the estimate.
+    if options:
+        options[0]["ride_m"] = round(ride_m, 1)
+        options[0]["total_s"] = round(total_s, 1)
+        options[0]["estimated"] = False
+        options[0]["text"] = _option_text(options[0])
     body["attribution"] = [*ride.get("attribution", []), gbfs.CREDIT]
     if body.get("avoid_alternate"):
         # The way round an Avoid-rated junction (335) is shown in place of the ride
@@ -780,6 +932,83 @@ def plan(
         around["attribution"] = [*around.get("attribution", []), gbfs.CREDIT]
         body["avoid_alternate"] = around
     return body
+
+
+def _passed_words(
+    lead: str, near_extra: float, verb: str, chosen: Pick, chosen_extra: float
+) -> str:
+    """The note for a nearer dock passed over: why the chosen one is used instead."""
+    if on_the_way(near_extra):
+        return (
+            f"{lead} in a straight line; this plan {verb} {chosen.name} because its walk is "
+            "shorter."
+        )
+    return (
+        f"{lead}, but {way_words(near_extra)}; this plan {verb} {chosen.name}, "
+        f"{way_words(chosen_extra)}, because its walk plus any extra riding is shorter."
+    )
+
+
+def _option_end(pick: Pick, walk: WalkLeg | None, extra: float, bike: str, snapshot) -> dict:
+    out = _stop_out(pick, bike, snapshot)
+    out["walk_m"] = round(walk.distance_m, 1) if walk else 0.0
+    out["walk_s"] = round(walk.duration_s, 1) if walk else 0.0
+    out["extra_m"] = round(extra, 1)
+    out["on_the_way"] = on_the_way(extra)
+    out["way_text"] = way_words(extra)
+    return out
+
+
+def _option_text(option: dict) -> str:
+    """One option in plain words, US units first, for the button and a screen reader."""
+    pickup, dropoff = option["pickup"], option["dropoff"]
+    if pickup["kind"] == "free_bike":
+        first = f"Pick up an e-bike outside a dock, {miles(pickup['walk_m'])} walk"
+    else:
+        first = f"Pick up at {pickup['name']}, {miles(pickup['walk_m'])} walk"
+    first += f", {pickup['way_text']}."
+    if dropoff["kind"] == "outside_dock":
+        second = "Leave the e-bike at your destination, outside a dock."
+    else:
+        second = (
+            f"Return at {dropoff['name']}, {miles(dropoff['walk_m'])} walk, {dropoff['way_text']}."
+        )
+    return f"{first} {second} About {minutes(option['total_s'])} in all."
+
+
+def _options(pairs: list, bike: str, use_outside: bool, snapshot: gbfs.Snapshot) -> list[dict]:
+    """Up to `OPTION_COUNT` start-and-end pairs, best first by the one rule (the first is the
+    plan's own). An option can be asked for again with its `pickup_station` and
+    `dropoff_station` (and `ending`), so a free-floating e-bike, which has no id to ask for,
+    is offered only when it is the plan's own start."""
+    out: list[dict] = []
+    for index, (_, total, s_pick, s_walk, s_extra, e_pick, e_walk, e_extra) in enumerate(pairs):
+        if index > 0 and s_pick.kind == "free_bike":
+            continue
+        option = {
+            "rank": len(out) + 1,
+            "chosen": index == 0,
+            "pickup": _option_end(s_pick, s_walk, s_extra, bike, snapshot),
+            "dropoff": _option_end(e_pick, e_walk, e_extra, bike, snapshot),
+            "pickup_station": s_pick.station_id,
+            "dropoff_station": None if use_outside else e_pick.station_id,
+            "ending": ENDING_OUTSIDE if use_outside else ENDING_DOCK,
+            "ride_m": round(_distance(s_pick.point, e_pick.point) * RIDE_DETOUR, 1),
+            "total_s": round(total, 1),
+            "estimated": True,
+            "cost_m": round(
+                (s_walk.distance_m if s_walk else 0.0)
+                + s_extra
+                + (e_walk.distance_m if e_walk else 0.0)
+                + e_extra,
+                1,
+            ),
+        }
+        option["text"] = _option_text(option)
+        out.append(option)
+        if len(out) == OPTION_COUNT:
+            break
+    return out
 
 
 def _walk_note(direct: WalkLeg | None, total_s: float) -> str | None:
@@ -823,6 +1052,11 @@ def alternate_block(block: dict, around: dict, direct: WalkLeg | None = None) ->
         step["text"] = before.replace(f"Ride {miles(old_ride_m)}", f"Ride {miles(ride_m)}", 1)
         summary = summary.replace(before, step["text"], 1)
     out["summary"] = summary
+    for option in out.get("options") or []:
+        if option.get("chosen"):
+            option["ride_m"] = round(ride_m, 1)
+            option["total_s"] = round(total_s, 1)
+            option["text"] = _option_text(option)
     return out
 
 

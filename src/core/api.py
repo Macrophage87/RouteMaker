@@ -1343,6 +1343,45 @@ class BikeshareStepOut(Schema):
     text: str
 
 
+class BikeshareOptionEndOut(BikeshareStopOut):
+    """One end of a route option: the stop, its walk, and how much riding it adds."""
+
+    walk_m: float = Field(description="The walk to (or from) it; 0 for an outside-dock ending.")
+    walk_s: float
+    extra_m: float = Field(
+        description=(
+            "The riding it adds, straight-line metres: how much farther it is from the trip's"
+            " other end than the rider's own point is, never below 0."
+        )
+    )
+    on_the_way: bool = Field(description="It adds under 165 ft (50 m) of riding.")
+    way_text: str = Field(
+        description='"on your way", or "adds 0.2 mi (0.3 km) of riding": the reason, in words.'
+    )
+
+
+class BikeshareOptionOut(Schema):
+    """One way to make the trip, a pick-up and a drop-off, ranked by the walks plus the
+    extra riding each end adds (stations on your way first; the owner, 2026-10-11)."""
+
+    rank: int = Field(description="1 is the best, and is the plan this answer routed.")
+    chosen: bool = Field(description="Whether this answer's route, walks and steps are this one.")
+    pickup: BikeshareOptionEndOut
+    dropoff: BikeshareOptionEndOut
+    pickup_station: str | None = Field(
+        description="Send as `pickup_station` on POST /api/route to plan this option."
+    )
+    dropoff_station: str | None = Field(
+        description="Send as `dropoff_station` (null with the `outside_dock` ending)."
+    )
+    ending: EndingName
+    ride_m: float = Field(description="The routed ride when chosen; otherwise an estimate.")
+    total_s: float = Field(description="Walking and riding; an estimate unless chosen.")
+    estimated: bool
+    cost_m: float = Field(description="The ranking figure: both walks plus the extra riding.")
+    text: str = Field(description="The option in plain words, US units first, for reading aloud.")
+
+
 class BikesharePlanOut(Schema):
     """The walks, docks, availability, fee and notes of a bikeshare plan
     (FOLLOWUP-BIKESHARE). The route body around it is the ride leg, dock to dock; the
@@ -1370,6 +1409,14 @@ class BikesharePlanOut(Schema):
     steps: list[BikeshareStepOut]
     summary: str = Field(description="The plan in plain words, US units first, for reading aloud.")
     notes: list[str]
+    options: list[BikeshareOptionOut] = Field(
+        default_factory=list,
+        description=(
+            "Up to three pick-up and drop-off pairs, best first; the first is this plan. Bikeshare"
+            " plans only. Another is planned by sending its `pickup_station`, `dropoff_station`"
+            " and `ending`; that answer lists only the pair asked for, so keep this list."
+        ),
+    )
     credit: str = Field(description="The plain source citation (OWNER-DECISIONS 301).")
 
 
@@ -1925,10 +1972,11 @@ def route(request, body: RouteIn, response: HttpResponse):
 #
 # POST /api/bikeshare/stations lists the three stations nearest a point that are at least 3/4
 # full (to take a bike) or at most 1/4 full (to return one), from the operator's live feed.
-# A POST, with the point in the body and not the address, so a visitor's position is in no
-# URL or log line; it is used for this one answer and kept nowhere. Nothing is ranked beyond
-# distance: the rider chooses, and the plan can be asked to use the chosen station
-# (`pickup_station`, `dropoff_station` on POST /api/route).
+# A POST, with the points in the body and not the address, so a visitor's position is in no
+# URL or log line; it is used for this one answer and kept nowhere. With `toward` (the trip's
+# other end) the stations on the rider's way come first: each is ranked by its walk plus the
+# extra riding it adds (`core.bikeshare`'s docstring). The rider chooses, and the plan can be
+# asked to use the chosen station (`pickup_station`, `dropoff_station` on POST /api/route).
 
 
 class NearbyStationsIn(Schema):
@@ -1941,10 +1989,20 @@ class NearbyStationsIn(Schema):
             " 1/4 full that are taking bikes back."
         )
     )
+    toward: LonLat | None = Field(
+        default=None,
+        description=(
+            "[lon, lat]: the trip's other end, the destination for `pickup` and the start for"
+            " `dropoff`. Stations on the way come first (each ranked by its walk plus the extra"
+            " riding it adds). Absent: by distance alone."
+        ),
+    )
 
-    @field_validator("point")
+    @field_validator("point", "toward")
     @classmethod
-    def inside_coverage(cls, point: list[float]) -> list[float]:
+    def inside_coverage(cls, point: list[float] | None) -> list[float] | None:
+        if point is None:
+            return None
         west, south, east, north = settings.COVERAGE_BBOX
         lon, lat = point
         if not (west <= lon <= east and south <= lat <= north):
@@ -1962,6 +2020,14 @@ class NearbyStationOut(Schema):
     bikes: int = Field(description="Bikes available, e-bikes included.")
     ebikes: int
     docks: int = Field(description="Free docks.")
+    extra_m: float | None = Field(
+        default=None,
+        description="The riding the station adds, straight-line metres; null without `toward`.",
+    )
+    on_the_way: bool | None = Field(
+        default=None,
+        description="It adds under 165 ft (50 m) of riding; null without `toward`.",
+    )
 
 
 class NearbyStationsOut(Schema):
@@ -1970,7 +2036,10 @@ class NearbyStationsOut(Schema):
         description="`unknown`: the operator's availability feed could not be read; none listed."
     )
     stations: list[NearbyStationOut] = Field(
-        description="Up to three, nearest first; fewer or none where fewer fit."
+        description=(
+            "Up to three, best first (nearest first without `toward`); fewer or none where"
+            " fewer fit."
+        )
     )
     credit: str = Field(description="The plain source citation (OWNER-DECISIONS 301).")
 
@@ -1985,7 +2054,7 @@ class NearbyStationsOut(Schema):
         500: ErrorOut,
         503: BusyOut,
     },
-    summary="The three nearest stations to pick up from (3/4 full) or return to (1/4 full)",
+    summary="Three stations to pick up from (3/4 full) or return to (1/4 full), on your way first",
 )
 @decorate_view(
     ratelimit.rate_limited(ratelimit.BIKESHARE_STATIONS),
@@ -2007,7 +2076,7 @@ def bikeshare_stations(request, body: NearbyStationsIn, response: HttpResponse):
         refusal["Retry-After"] = str(DEADLINE_RETRY_S)
         refusal["Cache-Control"] = "no-store"
         return refusal
-    found = bikeshare.nearby_stations(body.point, body.action, snapshot)
+    found = bikeshare.nearby_stations(body.point, body.action, snapshot, body.toward)
     availability = "unknown" if snapshot.status is None else ("stale" if snapshot.stale else "live")
     return Status(
         200,
@@ -2025,6 +2094,8 @@ def bikeshare_stations(request, body: NearbyStationsIn, response: HttpResponse):
                     "bikes": s.bikes,
                     "ebikes": s.ebikes,
                     "docks": s.docks,
+                    "extra_m": s.extra_m,
+                    "on_the_way": s.on_the_way,
                 }
                 for s in found
             ],
