@@ -5163,11 +5163,11 @@ directory. In a second shell, read the newest directory by name and print it wit
 `build-config.json` thread count:
 
 ```sh
-docker compose exec -T rebuild sh -c 'd=$(ls -d /data/tiles/standard/2*/ | sort | tail -1); echo "directory: $d"; grep -h "\"concurrency\"" "${d}build-config.json"' </dev/null   # directory dated today (UTC), then "concurrency": 2
+docker compose exec -T rebuild sh -c 'd=$(ls -d /data/tiles/standard/2*/ | sort | tail -1); echo "directory: $d"; grep -h "\"concurrency\"" "${d}build-config.json"' </dev/null   # directory dated today (UTC), then "concurrency": 4 (or the .env value)
 ```
 
 If the directory it prints is not dated today (UTC), the build has not started its tiles
-yet and that is an older build's value (it may well say 4): wait and run it again, and do
+yet and that is an older build's value (one built before v0.5.0 may say 2): wait and run it again, and do
 not conclude anything from it.
 
 A failure `valhalla_build_tiles exited -6` (or `-11`) under the pinned 3.9.1 is not the
