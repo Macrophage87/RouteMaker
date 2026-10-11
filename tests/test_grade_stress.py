@@ -280,6 +280,10 @@ class TestTrafficWinsComparesRatedMetres:
         ctx = test_refine.context(rate=10.0)
         assert refine._busier(flat, climb.rated_exposure_m, ctx)
         assert not refine._busier(climb, flat.rated_exposure_m, ctx)
+        # Against its own rated exposure the climb is not busier; by its hill-weighted
+        # figure (about 4,060 m) it would be.
+        assert climb.exposure_m > refine._allowance(climb.rated_exposure_m)
+        assert not refine._busier(climb, climb.rated_exposure_m, ctx)
 
 
 class TestTheHillCountsAtEverySliderPosition:
