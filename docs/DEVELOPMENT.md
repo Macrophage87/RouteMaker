@@ -2357,11 +2357,22 @@ sustained climb) and `FACTOR` 0.25. A climb of 0.62 mi (1 km) at 4%, about 130 f
 of the slider, where candidates are ranked by the stress order, the same climbing
 (times `FACTOR`) joins the figure it is ridden on: LTS 4 and Avoid climbing the top
 figure, LTS 3 climbing the second (`Analysis.key`, `Analysis.uphill_levels_m`); the
-figures the LTS 4 hold and the worth rule read are unchanged. So the uphill stress never
-buys extra miles on its own: it decides between a route and one no longer than it, or
-between longer routes whose saving in LTS metres already pays for their miles (435's
-"One rule", untouched). Whether the worth rule should count it too is for the owner,
-with before and after routes. It is in the ranking only
+figures the LTS 4 hold reads are unchanged. The worth rule counts it too: the owner,
+2026-10-11, asked whether uphill stress should count when deciding a longer route is
+worth its extra miles, chose "Count it" ("A longer route can win by avoiding a busy
+climb, so some plans get longer"). So the stress saving 435's "One rule" weighs
+(`refine.stress_saved_m`) takes the uphill stress in its own unit, metres of LTS 3 at
+the rule's 1 / 2 / 3 weights (`refine.uphill_weight_m`): `FACTOR` x the climbing on
+LTS 3, twice that on LTS 4, three times on Avoid, LTS 2 at the ride's share of LTS 3
+where it weighs it, LTS 1 nothing, times the slider's weight; climbing on LTS 4 and
+Avoid counts in the top level (and its tie step is read on `Analysis.key`'s top
+figure, which has it), on LTS 3 and LTS 2 in the second. The rule's ratios and targets
+are unchanged. The 0.62 mi (1 km) climb at 6% above, avoided on LTS 4, saves about
+1.28 mi (2,060 m) of LTS 3 in the rule, as in the score on the standard weights, so it
+buys about 2.2 mi (3.6 km) more riding at 90 on the slider (ratio 1.7) and about 6.4 mi
+(10.3 km) at 100 (ratio 5); on LTS 3 half that; avoided on a quiet street, nothing.
+Before and after routes on the live router are still to be measured. It is in the
+ranking only
 (the calm search and its ranking of the router's alternatives, 435): the router's own
 costs and the graph are not changed, so no rebuild. It moves into the router's costs
 only if the ranking alone is not enough (Stephen's answer 4 of 2026-10-10, v0.5.0

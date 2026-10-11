@@ -208,3 +208,100 @@ class TestTheCalmSearchRanksTheRoutersAlternatives:
 
     def test_without_it_the_routers_first_route_stays(self, monkeypatch):
         assert self.plan(monkeypatch, 0.0) == "o"
+
+
+class TestTheWorthRuleCountsTheUphillStress:
+    """OWNER-DECISIONS 409 and 435: the owner's "Count it" (2026-10-11), asked whether the
+    uphill stress counts when deciding a longer route is worth its extra miles: "A longer
+    route can win by avoiding a busy climb, so some plans get longer." The stress saving
+    the worth rule weighs takes the uphill stress, at the rule's own weights; its ratios
+    and its targets are unchanged."""
+
+    # A climb of 2,000 extra effort-equivalent metres: on LTS 4 it counts
+    # FACTOR x 2 (the LTS 4 weight) x 2,000 = 1,000 m of LTS 3 in the worth rule.
+    CLIMB = 2000.0
+
+    def ctx(self, top: bool, weight: float = 1.0) -> refine.Context:
+        if top:
+            ctx = test_refine.context(rate=10.0, maxcalm=True)
+        else:
+            ctx = test_refine.context(rate=presets.calm_rate_for(90))
+        ctx.grade_stress_weight = weight
+        return ctx
+
+    def pair(self, climbed: dict, added_m: float = 1000.0, lts2_weight: float = 0.0):
+        """The router's route, 4 km (2.5 mi) up a climb ridden on `climbed`'s tiers, and a
+        longer one round it on quiet streets, `added_m` longer and as cheap to the router."""
+        short = dataclasses.replace(
+            test_refine.analysis("s", "1" * 40), uphill_m=climbed, lts2_weight=lts2_weight
+        )
+        long = dataclasses.replace(
+            test_refine.analysis("l", "1" * 40),
+            length_m=short.length_m + added_m,
+            uphill_m={"1": self.CLIMB},
+            lts2_weight=lts2_weight,
+        )
+        return short, long
+
+    def test_the_saving_is_in_the_rules_units(self):
+        short, long = self.pair({"4": self.CLIMB})
+        ctx = self.ctx(top=False)
+        assert refine.stress_saved_m(short, long, ctx) == pytest.approx(
+            grade_stress.FACTOR * refine.WORTH_WEIGHTS.lts4 * self.CLIMB
+        )
+        avoid, _ = self.pair({"5": self.CLIMB})
+        lts3, _ = self.pair({"3": self.CLIMB})
+        assert refine.stress_saved_m(avoid, long, ctx) == pytest.approx(1500.0)
+        assert refine.stress_saved_m(lts3, long, ctx) == pytest.approx(500.0)
+
+    @pytest.mark.parametrize("top", [False, True])
+    def test_a_longer_route_round_a_busy_climb_is_worth_its_miles(self, top):
+        # 1 km more for 1,000 m of LTS 3 saved: within 1.7 to 1 at 90 and 5 to 1 at the top.
+        # Before the owner's "Count it" the saving was nothing and the router's route stayed.
+        short, long = self.pair({"4": self.CLIMB})
+        assert refine.worth_it(short, long, self.ctx(top))
+        assert refine.better(long, short, self.ctx(top))
+
+    @pytest.mark.parametrize("top", [False, True])
+    def test_the_rules_ratio_still_bounds_the_miles(self, top):
+        # 10 km (6.2 mi) more for the same climb is past either ratio.
+        short, long = self.pair({"4": self.CLIMB}, added_m=10_000.0)
+        assert not refine.worth_it(short, long, self.ctx(top))
+        assert not refine.better(long, short, self.ctx(top))
+
+    @pytest.mark.parametrize("top", [False, True])
+    def test_round_a_quiet_climb_gains_nothing(self, top):
+        # LTS 1 has no traffic weight, nor LTS 2 on a ride that does not weigh it.
+        for climbed in ({"1": self.CLIMB}, {"2": self.CLIMB}):
+            short, long = self.pair(climbed)
+            assert refine.stress_saved_m(short, long, self.ctx(top)) == 0.0
+            assert not refine.worth_it(short, long, self.ctx(top))
+            assert not refine.better(long, short, self.ctx(top))
+
+    def test_lts2_climbing_counts_where_the_ride_weighs_it(self):
+        short, long = self.pair({"2": self.CLIMB}, lts2_weight=presets.LTS2_WEIGHT)
+        assert refine.stress_saved_m(short, long, self.ctx(top=False)) == pytest.approx(
+            grade_stress.FACTOR * presets.LTS2_WEIGHT * self.CLIMB
+        )
+
+    def test_without_the_sliders_weight_it_counts_nothing(self):
+        # The traffic tolerant end (`grade_stress_weight_for`), as in the score.
+        short, long = self.pair({"4": self.CLIMB})
+        assert refine.stress_saved_m(short, long, self.ctx(top=True, weight=0.0)) == 0.0
+        assert not refine.worth_it(short, long, self.ctx(top=True, weight=0.0))
+
+    def test_a_long_plan_spends_its_detour_round_a_busy_climb(self):
+        # `choose_options` weighs an upgrade with the same saving (a long plan's legs).
+        short, long = self.pair({"4": self.CLIMB})
+        ctx = self.ctx(top=True)
+        chain = [(None, short), (None, long)]
+        assert refine.choose_options([chain], [short.length_m], None, ctx) == [1]
+
+    def test_a_busy_climb_avoided_is_a_top_level_saving(self):
+        # The climb on LTS 4 is in the top figure of `Analysis.key`, so avoiding it pays on
+        # its own and the LTS 3 the longer route adds does not net against it (SF2, 287(1)).
+        short, long = self.pair({"4": self.CLIMB})
+        long = dataclasses.replace(long, lts3_m=900.0)
+        ctx = self.ctx(top=True)
+        assert refine.stress_saved_m(short, long, ctx) == pytest.approx(1000.0)
+        assert refine.better(long, short, ctx)

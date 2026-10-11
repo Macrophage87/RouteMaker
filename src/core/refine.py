@@ -71,7 +71,8 @@ plus the cost of each very high stress junction, OWNER-DECISIONS 258 and 259), t
 the "second" (metres of LTS 3 plus the cost of each higher stress junction, 260), then
 the hills preference (262), then distance (`MAXCALM_STEPS`, `better`). Extra distance
 has diminishing returns (268, `worth_it`): a longer candidate is taken only where the
-stress it saves pays for the miles it adds (`WORTH_DEFAULT`; past the rider's target
+stress it saves, its uphill stress included (`uphill_weight_m`), pays for the miles it
+adds (`WORTH_DEFAULT`; past the rider's target
 the stricter `WORTH_OVER_TARGET`, and up to the target `WORTH_UP_TO_TARGET`, half the
 default's price, OWNER-DECISIONS 435; below the top the same rule holds at `worth_ratio`,
 which rises with the slider). A candidate past the
@@ -411,7 +412,8 @@ class Analysis:
         """What the uphill stress adds to the top and second figures of `key` (409): the
         climbing on LTS 4 and Avoid, and on LTS 3 (and LTS 2 at the ride's weight for it),
         times `grade_stress.FACTOR` and the slider's weight. The figures themselves, which
-        the LTS 4 hold and the worth rule read, are unchanged."""
+        the LTS 4 hold reads, are unchanged; the worth rule counts the same climbing at its
+        own weights (`uphill_weight_m`)."""
         w = ctx.grade_stress_weight * grade_stress.FACTOR
         up = self.uphill_m
         top = up.get("4", 0.0) + up.get("5", 0.0)
@@ -553,24 +555,31 @@ def stress_weight_m(read: Analysis, ctx: Context) -> float:
     that share of the LTS 3 weight: a quarter (a half on Riding with kids), so a mile
     of LTS 2 saved buys a quarter (a half) of what a mile of LTS 3 does, and each
     Avoid-rated junction's penalty in quiet metres, one for one (308: 30 minutes, as
-    it is in the score)."""
+    it is in the score). And its uphill stress (`uphill_weight_m`, OWNER-DECISIONS 409
+    and 435), so a longer route can buy its miles by avoiding a busy climb."""
+    return _top_weight_m(read, ctx) + _second_weight_m(read, ctx)
+
+
+def uphill_weight_m(read: Analysis, ctx: Context) -> tuple[float, float]:
+    """The uphill stress in the worth rule's units (OWNER-DECISIONS 409; the owner's
+    "Count it", 2026-10-11, on whether it counts when a longer route is worth its extra
+    miles: "A longer route can win by avoiding a busy climb, so some plans get longer"):
+    `grade_stress.FACTOR` times the climbs' extra effort-equivalent metres
+    (`Analysis.uphill_m`) at WORTH_WEIGHTS (LTS 3 once, LTS 4 twice, Avoid three times,
+    LTS 2 at the ride's share of LTS 3, LTS 1 nothing), times the slider's weight for it
+    (`Context.grade_stress_weight`). Returned as the top figure's part (LTS 4 and Avoid
+    climbing) and the second's (LTS 3 and LTS 2), split as `Analysis.uphill_levels_m` is."""
     w = WORTH_WEIGHTS
-    lts4_only = read.lts4_m - read.avoid_m
-    return (
-        w.lts3 * read.lts3_m
-        + w.lts4 * lts4_only
-        + w.avoid * read.avoid_m
-        + (w.avoid - w.lts4) / 2 * read.lts45_m
-        + w.lts4 * read.red_m
-        + w.lts3 * read.orange_m
-        + read.avoid_junction_m
-        + w.lts3 * read.lts2_weight * read.lts2_m
-    )
+    g = ctx.grade_stress_weight * grade_stress.FACTOR
+    up = read.uphill_m
+    top = w.lts4 * up.get("4", 0.0) + w.avoid * up.get("5", 0.0)
+    second = w.lts3 * (up.get("3", 0.0) + read.lts2_weight * up.get("2", 0.0))
+    return g * top, g * second
 
 
-def _top_weight_m(read: Analysis) -> float:
+def _top_weight_m(read: Analysis, ctx: Context) -> float:
     """The top figure's part of `stress_weight_m`: LTS 4, Avoid, red junctions and
-    Avoid-rated junctions."""
+    Avoid-rated junctions, and the climbing on LTS 4 and Avoid (`uphill_weight_m`)."""
     w = WORTH_WEIGHTS
     return (
         w.lts4 * (read.lts4_m - read.avoid_m)
@@ -578,13 +587,15 @@ def _top_weight_m(read: Analysis) -> float:
         + (w.avoid - w.lts4) / 2 * read.lts45_m
         + w.lts4 * read.red_m
         + read.avoid_junction_m
+        + uphill_weight_m(read, ctx)[0]
     )
 
 
-def _second_weight_m(read: Analysis) -> float:
+def _second_weight_m(read: Analysis, ctx: Context) -> float:
     """The second figure's part of `stress_weight_m`: LTS 3 and orange junctions, and
-    LTS 2 at the ride's weight where it has one (`Analysis.second_m`)."""
-    return WORTH_WEIGHTS.lts3 * read.second_m
+    LTS 2 at the ride's weight where it has one (`Analysis.second_m`), and the climbing
+    on LTS 3 and LTS 2 (`uphill_weight_m`)."""
+    return WORTH_WEIGHTS.lts3 * read.second_m + uphill_weight_m(read, ctx)[1]
 
 
 def stress_saved_m(worse: Analysis, calmer_one: Analysis, ctx: Context) -> float:
@@ -595,16 +606,20 @@ def stress_saved_m(worse: Analysis, calmer_one: Analysis, ctx: Context) -> float
     stress saving buys"). Where the top figure improves by more than its tie step, its
     saving pays on its own and a loss at the second level does not subtract from it
     (a gain there still adds), so LTS 4 never loses to extra LTS 3. Otherwise the two
-    levels are netted at the 1/2/3 weights, as within one level they always were.
+    levels are netted at the 1/2/3 weights, as within one level they always were. Each
+    level counts its uphill stress (`uphill_weight_m`, 409 and the owner's "Count it",
+    2026-10-11), and the top level's step is read on the top figure of `Analysis.key`,
+    which has its climbing in it.
 
     It errs the safe way (the release re-check's NT1, kept as it is): `Analysis.top_m`
     counts Avoid metres as LTS 4's, but `_top_weight_m` weighs them 3 to 2, so a route
     that trades LTS 4 for Avoid can rank calmer on `top_m` and still have a negative
     saving here (1000 m of LTS 4 against 900 m all Avoid: -700). Such a route is never
     worth any extra distance, which is right, since Avoid is worse."""
-    top = _top_weight_m(worse) - _top_weight_m(calmer_one)
-    second = _second_weight_m(worse) - _second_weight_m(calmer_one)
-    if worse.top_m - calmer_one.top_m > MAXCALM_STEPS[0]:
+    top = _top_weight_m(worse, ctx) - _top_weight_m(calmer_one, ctx)
+    second = _second_weight_m(worse, ctx) - _second_weight_m(calmer_one, ctx)
+    # The top figure as `Analysis.key` ranks it, the climbing on LTS 4 and Avoid in it (409).
+    if worse.key(ctx)[0] - calmer_one.key(ctx)[0] > MAXCALM_STEPS[0]:
         return top + max(second, 0.0)
     return top + second
 
