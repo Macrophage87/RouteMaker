@@ -46,6 +46,7 @@ import {
 } from "./federalLegend.ts";
 import { PRESETS } from "./presets.ts";
 import { MAP_ATTRIBUTION, MAP_CREDITS } from "./mapStyle.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 const KINDS_IN_DATA: FederalKind[] = ["capitol", "military", "nps", "reservation"];
 
@@ -60,7 +61,7 @@ test("the overlay shows on Mass Ride and on no other ride type", () => {
 });
 
 test("App wires it: the shading follows federalShown(preset, switch) and the section is Mass Ride's alone", () => {
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   assert.match(app, /federalVisible=\{federalShown\(preset, federalOn\)\}/);
   assert.match(app, /<FederalLandFor\s+preset=\{preset\}/);
   assert.doesNotMatch(app, /<FederalLandSection/, "the section is only ever drawn through FederalLandFor");

@@ -240,8 +240,8 @@ test("availability is a HEAD of the archive; a 404 or a network failure is unava
   assert.equal(await topoAvailable((async () => { throw new Error("offline"); }) as unknown as typeof fetch), false);
 });
 
-test("App puts the switch under Trails and terrain; MapView keeps the map in line with it", () => {
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+test("the layers sheet puts the switch under Trails and terrain; MapView keeps the map in line with it", () => {
+  const app = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
   const section = app.slice(app.indexOf('<h3 id="terrain-heading">'), app.indexOf("</section>", app.indexOf('<h3 id="terrain-heading">')));
   assert.match(section, /<TopoLinesSwitch on=\{showTopoLines\} onChange=\{\(on\) => setTopoLines\(on\)\} available=\{topoReady\} \/>/);
   const mapView = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");

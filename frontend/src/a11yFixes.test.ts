@@ -10,11 +10,12 @@ import { LIGHT } from "@protomaps/basemaps";
 import { contrastRatio } from "./stressStyle.js";
 import { ROUTE_BLUE } from "./lib/routeColours.ts";
 import { SEVERITY_COLOURS } from "./lib/intersectionMarkers.ts";
+import { appSource } from "./testSupport/appSource.mjs";
 
 const read = (name: string) => readFileSync(new URL(name, import.meta.url), "utf8");
 const css = read("./styles.css");
 const mapView = read("./MapView.tsx");
-const app = read("./App.tsx");
+const app = appSource();
 const dialsPanel = read("./DialsPanel.tsx");
 const list = read("./IntersectionList.tsx");
 const mapTools = read("./MapTools.tsx");

@@ -45,7 +45,42 @@ check("so the worst a reviewer can make a paved way is compacted",
   capped.surface == "compacted")
 
 check("surface downgrade never improves a surface",
-  M.SURFACE_ORDER[M.bounded_surface("gravel", "paved_smooth")] >= M.SURFACE_ORDER.gravel)
+  M.SURFACE_ORDER[M.valhalla_surface(M.bounded_surface("gravel", "paved_smooth"))]
+    >= M.SURFACE_ORDER.gravel)
+
+-- FOLLOWUP-VALHALLA-36-LEFTOVERS, item 1: the penalty lands as a tag the
+-- parser reads as the class meant (it reads `surface` by substring, so
+-- `paved_rough` itself read as paved_smooth), and the way's own surface is read
+-- the parser's way too.
+for name, tag in pairs(M.SURFACE_TAG) do
+  check("the tag written for " .. name .. " reads as " .. name,
+    M.valhalla_surface(tag) == name, tag)
+end
+check("every class but impassable has a tag", (function()
+  for name in pairs(M.SURFACE_ORDER) do
+    if name ~= "impassable" and M.SURFACE_TAG[name] == nil then return false end
+  end
+  return true
+end)())
+check("the class names alone are not tags the parser reads as meant",
+  M.valhalla_surface("paved_rough") == "paved_smooth" and M.valhalla_surface("path") == nil)
+check("a paved_rough penalty on asphalt lands as cobblestone",
+  M.bounded_surface("asphalt", "paved_rough") == "cobblestone")
+check("a paved penalty on asphalt lands as paving stones",
+  M.bounded_surface("asphalt", "paved") == "paving_stones")
+check("a ground path is dirt, and a penalty does not lift it to compacted",
+  M.bounded_surface("ground", "gravel") == "ground")
+check("a grass path keeps its own surface",
+  M.bounded_surface("grass", "compacted") == "grass")
+check("an untagged way with a penalty that changes nothing gets no surface",
+  M.bounded_surface(nil, "paved_smooth") == nil)
+check("an untagged way with a penalty is capped at compacted",
+  M.bounded_surface(nil, "path") == "compacted")
+check("the parser's order: unpaved is gravel before paved matches",
+  M.valhalla_surface("unpaved") == "gravel" and M.valhalla_surface("Asphalt") == "paved_smooth")
+check("an untagged way's remap writes no surface for a no-op penalty",
+  M.remap_way({ highway = "residential" }, { reviewer_surface_penalty = "paved_smooth" }).surface
+    == nil)
 
 -- Narrow-gap furniture has to reach gate_cost.
 check("cycle_barrier becomes a gate",
@@ -1079,8 +1114,10 @@ check("a rated wooden MTB feature stays closed both ways",
 -- A reviewer surface penalty still wins over the deck's price.
 local penalised_deck = M.remap_way({ highway = "footway", surface = "wood" },
   { is_trail_class = true, reviewer_surface_penalty = "compacted" })
-check("a reviewer penalty on a wooden deck wins", penalised_deck.surface == "compacted",
-  tostring(penalised_deck.surface))
+-- The deck's own `wood` is the parser's compacted already, so the penalty puts
+-- it back over the deck's paving_stones price.
+check("a reviewer penalty on a wooden deck wins",
+  M.valhalla_surface(penalised_deck.surface) == "compacted", tostring(penalised_deck.surface))
 check("a dirt trail keeps its rating",
   M.remap_way({ highway = "path", surface = "dirt", ["mtb:scale"] = "2" },
     { is_trail_class = true })["mtb:scale"] == nil)
@@ -1153,6 +1190,49 @@ do
     M.remap_way({ highway = "cycleway" }, { stress_tier = 3, stress_half = true, is_trail_class = true })["lanes:forward"] == nil)
   check("a half step on a facility-neutral way adds nothing",
     M.remap_way({ highway = "secondary" }, { stress_tier = 3, stress_half = true, facility_neutral = true })["maxspeed:practical"] == nil)
+end
+
+-- FOLLOWUP-SIGNAL-DERIVE: a signalised trail crossing reaches the parser's
+-- signal flag, which it reads from `highway=traffic_signals` alone.
+do
+  local function signal(tags) return M.remap_node(tags).highway == "traffic_signals" end
+  check("a crossing node tagged crossing=traffic_signals becomes a signal",
+    signal({ highway = "crossing", crossing = "traffic_signals" }))
+  check("so does one tagged crossing:signals=yes",
+    signal({ highway = "crossing", crossing = "marked", ["crossing:signals"] = "yes" }))
+  check("crossing:signals=yes with no crossing value is a signal",
+    signal({ highway = "crossing", ["crossing:signals"] = "yes" }))
+  check("and the node keeps its crossing scheme",
+    M.remap_node({ highway = "crossing", ["crossing:signals"] = "yes" }).crossing == "traffic_signals")
+  check("a crossing that already names its scheme is not rewritten",
+    M.remap_node({ highway = "crossing", crossing = "traffic_signals" }).crossing == nil)
+  check("a node the rebuild marked becomes a signal",
+    signal({ ["rm:crossing_signal"] = "yes" }))
+  check("so does a marked crossing node with no control of its own",
+    signal({ highway = "crossing", ["rm:crossing_signal"] = "yes" }))
+  check("an uncontrolled crossing is not a signal",
+    not signal({ highway = "crossing", crossing = "uncontrolled" }))
+  check("a flashing beacon is not a signal",
+    not signal({ highway = "crossing", crossing = "uncontrolled", flashing_lights = "button" }))
+  check("a node that says uncontrolled overrides the way's mark",
+    not signal({ highway = "crossing", crossing = "uncontrolled", ["rm:crossing_signal"] = "yes" }))
+  check("so does an unmarked one",
+    not signal({ crossing = "unmarked", ["rm:crossing_signal"] = "yes" }))
+  check("crossing:signals=no overrides crossing=traffic_signals",
+    not signal({ highway = "crossing", crossing = "traffic_signals", ["crossing:signals"] = "no" }))
+  check("crossing:signals=yes on an uncontrolled crossing is a contradiction, read as none",
+    not signal({ highway = "crossing", crossing = "uncontrolled", ["crossing:signals"] = "yes" }))
+  check("a stop sign stays a stop sign",
+    not signal({ highway = "stop", ["rm:crossing_signal"] = "yes" }))
+  check("a give-way sign stays one",
+    not signal({ highway = "give_way", crossing = "traffic_signals" }))
+  check("a crossing whose bicycle=no upstream reopens keeps its class",
+    not signal({ highway = "crossing", crossing = "traffic_signals", bicycle = "no" }))
+  check("a crossing with no signal tag is untouched",
+    next(M.remap_node({ highway = "crossing", crossing = "marked" })) == nil)
+  check("a bare node with no mark is untouched", next(M.remap_node({ name = "x" })) == nil)
+  check("the one class write a node may make is the signal",
+    M.NODE_WRITES_ALLOWED.highway == "traffic_signals" and M.FORBIDDEN_KEYS.highway)
 end
 
 io.write(string.format("%d checks, %d failures\n", checks, failures))

@@ -34,6 +34,7 @@ import type { Station } from "./railStations.ts";
 import { WATER_CAUTION, type WaterPoint } from "./waterRestrooms.ts";
 import { LOCATE_MESSAGES, LOCATION_OUTSIDE } from "./geolocation.ts";
 import { MAX_POINTS, insideCoverage } from "./geo.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 const HERE: LonLat = [-77.05, 38.9];
 
@@ -385,6 +386,6 @@ test("Ride mode wires the detour: the ride's fix, the ride's settings without th
   assert.match(ride, /const tell = \(note: string\) => \{\s*if \(via\) \{\s*sayDetour\(note\);/);
   assert.match(ride, /if \(gate\.busy\) \{\s*sayDetour\(DETOUR_BUSY\);/);
   assert.match(ride, /whereRef\.current\?\.focus\(\);\s*sayDetour\(`Finding a way to/);
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   assert.match(app, /water=\{ensureWater\}/);
 });

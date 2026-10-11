@@ -160,6 +160,29 @@ slices (2-6) wait for bikeshare.
    (US units first). Source and definition to propose: the sustained-climb reading in
    `routemaker.climbs` run over the road and trail network once at build time, or a curated
    list. Needs the owner's pick.
+   - Decided (the owner, 2026-10-10 and 2026-10-11; reports/v0.5.0/climb-categories.md in the
+     project files): Garmin's scale, score = length (m) x average grade (%), with a Cat 5: Cat 5 over
+     4,000, Cat 4 over 8,000, Cat 3 over 16,000, Cat 2 over 32,000, Cat 1 over 64,000, HC over
+     80,000; "Uncategorized is not a hill". Scored on net gain with short dips and flats as breaks.
+     At least 0.31 mi (500 m) at 1% (rail trails count) and a Cat 5 score. The summit marker shows
+     the category; its shape follows the average grade: circle under 4%, square 4-7.9%, diamond 8%+.
+   - Status: built on `claude/v0-5-0-climbs`; the data waits for the build host
+     (docs/OPERATIONS.md, "The Climbs layer"). `routemaker.climb_categories` finds and categorises
+     climbs (its own break rule: a dip ends a climb past 20% of the gain so far, at least 33 ft
+     (10 m) and at most 165 ft (50 m); a flat, or the way down into a dip, past 25% of the length
+     so far, at least 0.25 mi (400 m) and at most 1 mi (1,600 m), the climb back out of a dip not
+     counted but the whole stretch capped at twice that; gentle ends trimmed); the route
+     cost's 3 m rule in `routemaker.climbs` is unchanged. `pipeline.climb_layer` joins the live
+     table's routable ways into strokes, samples the 3DEP tiles every 98 ft (30 m), reads both
+     ways, drops a climb against a one-way, and writes the file; `manage.py build_climbs` runs it.
+     The file is committed as `frontend/src/climb-data/climbs.json` (empty until then). The front
+     end draws the summit markers from zoom 9 and the dashed lines from zoom 12, a card on a tap,
+     a legend, and "Climbs on your route" in words.
+   - Default picked: climbs come from the build-time reading, not a curated list, and only on
+     ways a ride type can use (not the mountain-bike-only ways, closed for every ride type until
+     slice 6).
+   - Default picked: one colour for every climb (#9d174d), the shape and the number carrying the
+     meaning; where two summits meet, the bigger climb's marker is drawn and both are listed.
 6. **The Mountain Bike mode** (90, 111, 148, 454). A ride type of its own, separate from
    Mountain Goat, that seeks trails rather than closing them: its own graph or variant built on
    the off-road graph, opening singletrack up to a chosen level, with the mountain-bike layer on
@@ -178,5 +201,5 @@ slices (2-6) wait for bikeshare.
 - Slice 4: a contour overlay on the current base map, or a whole topo base map in
   OpenTopoMap's look; approval to fetch 3DEP 1/3 arcsecond for the region; the contour
   interval.
-- Slice 5: what counts as a climb on the layer (length and grade thresholds), or a curated list.
+- Slice 5: answered 2026-10-11 (above).
 - Slice 6: the MTB mode's criteria, and the MORE link's form (one link, or per trail system).

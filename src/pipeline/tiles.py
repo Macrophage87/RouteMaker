@@ -118,8 +118,7 @@ def build_config(
     `concurrency`, when given, replaces `mjolnir.concurrency` - the number of
     threads valhalla_build_tiles builds with. It is a build setting and not a
     serving one (REBUILD_TILE_CONCURRENCY, docs/OPERATIONS.md "Tile build
-    threads"): Valhalla 3.5.1 can abort a multi-threaded build with "double
-    free or corruption", and fewer threads is fewer chances of it.
+    threads"): fewer threads is less memory and a slower build.
     """
     if concurrency is not None and concurrency < 1:
         raise ValueError(f"tile build concurrency must be at least 1, not {concurrency!r}")

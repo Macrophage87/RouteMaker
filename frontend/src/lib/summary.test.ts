@@ -9,10 +9,12 @@ import {
   othersSaid,
   paceText,
   seekNote,
+  tolerateNote,
   stillPlanningSaid,
 } from "./summary.ts";
 import type { RouteResponse } from "./api.ts";
 import type { LonLat } from "./geo.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 const GEORGETOWN: LonLat = [-77.0629, 38.905];
 const ROSSLYN: LonLat = [-77.0707, 38.8966];
@@ -274,6 +276,34 @@ test("the seek note says what the hills search did, and at the top of the traffi
   assert.equal(seekNote(seek({})), "Chose a route with 197 ft (60 m) more climbing for 0.6 mi (0.9 km) more distance, from 4 routes compared.");
 });
 
+test("the fine-with-hills note says what was compared and chosen (FOLLOWUP-HILLS-TOLERATE, 242)", () => {
+  const tolerate = (over: object) =>
+    ({ candidates: 3, chosen: 1, weight: 1, discount_s: 400, extra_climb_m: 30, extra_distance_m: -800, limited: null, ...over }) as never;
+  assert.equal(tolerateNote(null), null);
+  assert.equal(tolerateNote(undefined), null);
+  assert.match(tolerateNote(tolerate({ limited: "calm_first" })) ?? "", /calmest route decides, and climbing is not counted against it/);
+  assert.match(tolerateNote(tolerate({ limited: "two_points" })) ?? "", /just a start and an end; this one has stops/);
+  assert.match(tolerateNote(tolerate({ limited: "long_ride" })) ?? "", /within 16 mi \(25 km\) of each other/);
+  assert.match(tolerateNote(tolerate({ limited: "timed_out" })) ?? "", /took too long/);
+  assert.equal(
+    tolerateNote(tolerate({ chosen: 0 })),
+    "None of the 2 alternatives were quicker with climbing counted for less, or they were busier; this is the usual route.",
+  );
+  assert.match(tolerateNote(tolerate({ chosen: 0, candidates: 2 })) ?? "", /^The one alternative was not quicker/);
+  // The router answered with its own route alone: nothing was compared, so no "None of the 0".
+  assert.equal(tolerateNote(tolerate({ chosen: 0, candidates: 1 })), "The router offered no other route to compare; this is the usual route.");
+  assert.equal(
+    tolerateNote(tolerate({})),
+    "Chose a more direct route, 0.5 mi (0.8 km) shorter, with 98 ft (30 m) more climbing, from 3 routes compared.",
+  );
+  // A longer pick is not called "more direct".
+  assert.equal(
+    tolerateNote(tolerate({ extra_distance_m: 300 })),
+    "Chose a route that is quicker with climbing counted for less, 0.2 mi (0.3 km) longer, with 98 ft (30 m) more climbing, from 3 routes compared.",
+  );
+  assert.match(tolerateNote(tolerate({ extra_climb_m: -12 })) ?? "", /shorter, with no more climbing,/);
+});
+
 test("a point the planner moved into the Zoo's bike racks is said with the route and shown (291(4); spec review S4)", async () => {
   const { movedPointsNote } = await import("./summary.ts");
   const note = "This point is inside the National Zoo, where bicycles are not ridden beyond the bike racks by the Harvard Street entrance. The route goes to the racks.";
@@ -290,6 +320,6 @@ test("a point the planner moved into the Zoo's bike racks is said with the route
   assert.equal(movedPointsNote({ moved_points: [] } as never), null);
   assert.equal(movedPointsNote({} as never), null);
   const { readFileSync } = await import("node:fs");
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   assert.match(app, /<p className="notice moved-points" role="note">/);
 });
