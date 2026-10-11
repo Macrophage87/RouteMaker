@@ -83,6 +83,8 @@ export interface ProfileCrossing {
   oneway?: boolean | null;
   /** A divided road (two one-way carriageways counted as one): two approaches, so 2 corkers. */
   divided?: boolean | null;
+  /** Through lanes on each approach of that road (per direction), if known; absent from an older API (PLAN item 139's per-lane rule, `corkersFor`). */
+  approach_lanes?: number | null;
 }
 
 /** A stretch of the profile, metres along the route (core.api.ProfileRangeOut). */

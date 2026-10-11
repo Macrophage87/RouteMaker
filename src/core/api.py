@@ -1118,6 +1118,15 @@ class ProfileCrossingOut(Schema):
             " approaches to hold (2 corkers) whatever `oneway` says."
         ),
     )
+    approach_lanes: int | None = Field(
+        default=None,
+        description=(
+            "Through lanes on each approach of the crossed or joined road (per direction; a"
+            " divided road's busier carriageway), if known: the chart holds one corker an"
+            " approach lane where no signal holds the cross traffic, and one an approach at a"
+            " signal (PLAN item 139)."
+        ),
+    )
 
 
 class ProfileRangeOut(Schema):

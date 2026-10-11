@@ -6037,8 +6037,8 @@ plot edges (`chartParts.LEFT`, `RIGHT`) and the same distance scale, so a mile i
 place on all three and on each one's own distance axis (miles, km in brackets).
 
 - **Riders per minute**: the riders area in the band colours and patterns, the 60/120/200
-  guides, the narrowest point's caret and figure (147's "with the bottleneck marked"), and
-  the Avoid blocks, as before.
+  guides, the narrowest point's caret and figure (147's "with the bottleneck marked"), the
+  Avoid blocks, as before, and the ride size's requirement (below).
 - **Corker load**: a step area (one series: a blue fill under a step line in the text
   colour), a tick from the marker row down through the plot at each junction needing
   corkers, the junction markers (triangle, diamond, dot) above, their thinned names under
@@ -6079,9 +6079,19 @@ point** (`lib/profileChart.ts`, "The corker load"):
 - **Held at once**: a junction needing corkers (`corkers_needed`: 142 and 400, a crossing of
   or a turn onto an LTS 3 or worse road) is held from when the head reaches it until the
   tail passes it, so the load steps up at each tick and down a group's length later
-  (`exitOf`). Corkers held at once = the junctions in the window × the corkers each needs:
-  **2 for a two-way road, 1 for a one-way** (crossings now carry `oneway`, from the road's
-  OSM tags), **and 2 where it is not known** (no mapping, or an older answer). A divided road (two one-way carriageways counted as one junction, by the refuge merge or by name within 45 m) takes 2: crossings carry `divided`, which leaves `oneway` as the junction costs read it. Near the end
+  (`exitOf`). Corkers held at once = the junctions in the window × the corkers each needs
+  (`corkersFor`, PLAN 139): **one for each approach lane** of the busy road, or **one an
+  approach at a traffic signal**, whatever its lanes, since the red already holds the cross
+  traffic and the corker covers the change to green (the group goes through as one once
+  its head enters on green, 124). The approaches: **2 for a two-way road, 1 for a one-way**
+  (crossings carry `oneway`, from the road's OSM tags), **and 2 where it is not known** (no
+  mapping, or an older answer). A divided road (two one-way carriageways counted as one junction, by the refuge merge or by name within 45 m) has 2: crossings carry `divided`, which leaves `oneway` as the junction costs read it. The lanes: crossings carry
+  `approach_lanes`, the road's through lanes a direction (`Road.lanes`; a divided road's
+  busier carriageway), and **1 where not known**, so an older answer counts as before. So a
+  four-lane two-way road with no signal takes 4, the same road at a signal 2, a three-lane
+  one-way street with no signal 3. The intersections table says each junction's count and
+  how it was counted ("4 needed: 2 approaches; 2 lanes each", `corkerBasisWords`), and the
+  scrub says the count ("Next: 14th St at mile 1.3, 2 corkers needed"). Near the end
   the junctions stay held to the end, so a group longer than the route holds every one at
   its end.
 - **The ride's headline**: "about N corkers" = the most held at once × the rotation factor
@@ -6092,10 +6102,32 @@ point** (`lib/profileChart.ts`, "The corker load"):
   about N ... (may be low: ...)", never a firm figure.
 - The top is the peak rounded up to an even number, at least 4.
 
+**The ride size's requirement on the riders chart** (128: the ride size sets "how long it
+holds intersections and the flow it needs; ... a road whose throughput is too low for the
+size is flagged"; PLAN "Route profile (item 147)": "the requirement for the chosen ride size
+(item 128) drawn as a line"). The group holds a junction for its riders over the flow, so a
+road needs the ride size over the longest hold accepted, `RIDE_HOLD_MINUTES` (5, a proposal):
+`rideNeed` is riders ÷ 5, rounded up, so 100 a minute at the default 500 (about one 11 ft
+lane, 99), 20 at 100 riders, 400 at 2,000. It is drawn across the riders chart as a long
+dash in the text colour over a casing in the panel's colour (one of the two is 3:1 against
+every band), with "100 needed for 500 riders" at its left, told from the dotted band guides
+by its dash and its words; the axis rises to fit it (`ridersTop`). The key says "Dashed line:
+about 100 a minute, what 500 riders need to pass a junction within 5 minutes"; the summary
+says how much of the route with a figure is below it and from where (`needSentence`,
+`belowNeed`: a stretch counts by the mean of its two samples; Avoid, untraced and outside-DC
+stretches have no figure and are not counted); the scrub adds "below the 100 needed for 500
+riders" to the band words where the figure is under it. It moves with the ride size slider
+and is never sent to the API; routing does not use it yet (PLAN "The main control": the
+flagging on the map and the routing penalty by ride size are not built). Forced colours: the
+line follows the system's text colour and its casing the system's background.
+
 Defaults still open for the owner: the rotation factor (2, PLAN's proposal), 2 corkers per
-junction where it is not known whether the road is one-way, and the 500-rider default
-(PLAN's proposal; the range is the owner's, 129). PLAN's one corker per approach lane, and
-one per approach at a signal entered on green, are not built: every two-way junction takes 2.
+junction where it is not known whether the road is one-way, 1 lane an approach where the
+lanes are not known, the signal rule applied at every signalised junction (the group enters
+on green, 119 and 124), the 5-minute hold behind the requirement line, and the 500-rider
+default (PLAN's proposal; the range is the owner's, 129). Complex junctions (a traffic
+circle, a diagonal avenue meeting the grid) are still counted as one road's approaches, not
+by their actual approaches.
 
 Screen readers: each chart is a `role="group"` named by its `h4` heading, with its own
 summary before the picture, a slider (`aria-label` "Riders per minute along the route",
@@ -6105,8 +6137,8 @@ three sliders share one position (and one key hint, which also says so): Tab fro
 the next carries on at the same mile, and moving any of them moves the map's marker and the
 other two charts' markers. Tab between them keeps the position (the blur looks at
 `relatedTarget`), so the map's marker neither flickers off nor pans again. Value texts: riders, the sentence as before ("Mile 1.2: grade 6%,
-about 90 riders per minute (tight, slowed by the climb). Next: 15th Street Northwest at mile
-1.3, corkers needed."); corker load, "Mile 1.2: 2 corkers holding 1 junction at once (500
+about 90 riders per minute (tight, slowed by the climb, below the 100 needed for 500 riders).
+Next: 15th Street Northwest at mile 1.3, 2 corkers needed."); corker load, "Mile 1.2: 2 corkers holding 1 junction at once (500
 riders, group about 1,560 ft (475 m) long). Next: ..." (with "Part of the group's stretch was
 not checked for intersections." where it was not, and "intersections not checked, so the
 corkers needed are not known" with no crossings; where only the flagged junctions were

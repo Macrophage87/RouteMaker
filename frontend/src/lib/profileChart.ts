@@ -242,11 +242,109 @@ export function elevationRange(profile: RouteProfile): { lo: number; hi: number 
   return { lo: lo / FEET_PER_METRE, hi: hi / FEET_PER_METRE };
 }
 
-/** The riders axis, up to the next 50 above the highest figure and at least 250 (the bands reach 200). */
-export function ridersTop(profile: RouteProfile): number {
+/**
+ * The riders axis, up to the next 50 above the highest figure and at least 250 (the bands reach 200);
+ * with the ride size's requirement (`need`), high enough to draw its line with room for its label.
+ */
+export function ridersTop(profile: RouteProfile, need?: RideNeed | null): number {
   const values = (profile.riders_per_min ?? []).filter((v): v is number => v !== null);
   const top = values.length ? Math.max(...values) : 0;
-  return Math.max(250, Math.ceil(top / 50) * 50);
+  const lineTop = need ? Math.ceil((need.perMin + 10) / 50) * 50 : 0;
+  return Math.max(250, Math.ceil(top / 50) * 50, lineTop);
+}
+
+// ---- The ride size's requirement on the riders chart (OWNER-DECISIONS 128, 129; PLAN 147) ---------
+
+/**
+ * The riders a minute a road needs for the anticipated ride size (128: the slider "sets the group
+ * length, and so how long it holds intersections and the flow it needs; ... a road whose throughput
+ * is too low for the size is flagged"; PLAN "Route profile (item 147)": "the requirement for the
+ * chosen ride size (item 128) drawn as a line, so every stretch that falls below it shows at a
+ * glance"). The group holds a junction for its riders over the flow (PLAN "The main control"), so a
+ * road needs the ride size over the longest hold accepted: RIDE_HOLD_MINUTES, a proposal for the owner
+ * to confirm (PLAN "Parameters": "the throughput and holding time at which a road counts as poor for
+ * a given size"). At the default 500 riders that is 100 a minute, about one 11 ft lane (99); at 100
+ * riders 20, at 2,000 riders 400.
+ */
+export const RIDE_HOLD_MINUTES = 5;
+
+export interface RideNeed {
+  /** The anticipated ride size, riders. */
+  riders: number;
+  /** Riders a minute a road needs for it: riders over RIDE_HOLD_MINUTES, rounded up. */
+  perMin: number;
+}
+
+/** The requirement for a ride size; null for no usable size. */
+export function rideNeed(riders: number | null | undefined): RideNeed | null {
+  if (typeof riders !== "number" || !Number.isFinite(riders) || riders <= 0) return null;
+  const size = Math.round(riders);
+  return { riders: size, perMin: Math.ceil(size / RIDE_HOLD_MINUTES) };
+}
+
+/**
+ * How much of the route is below the requirement: metres of it whose figure (the mean of a stretch's
+ * two ends) is under `need.perMin`, metres with a figure at all (not Avoid, not outside DC, not
+ * untraced), and where the first such stretch starts.
+ */
+export function belowNeed(profile: RouteProfile, need: RideNeed): { metres: number; known: number; first: number | null } {
+  const riders = profile.riders_per_min ?? [];
+  let metres = 0;
+  let known = 0;
+  let first: number | null = null;
+  for (let i = 1; i < profile.m.length; i += 1) {
+    const a = riders[i - 1];
+    const b = riders[i];
+    const length = profile.m[i] - profile.m[i - 1];
+    if (a === null || a === undefined || b === null || b === undefined || !(length > 0)) continue;
+    known += length;
+    if ((a + b) / 2 < need.perMin) {
+      metres += length;
+      if (first === null) first = profile.m[i - 1];
+    }
+  }
+  return { metres, known, first };
+}
+
+/** A label's box on the chart: its left and right edges and its baseline. */
+export interface LabelBox {
+  x0: number;
+  x1: number;
+  y: number;
+}
+
+/** A label's box from where it is anchored (`labelWidth` wide). */
+export function labelBox(text: string, x: number, y: number, anchor: "start" | "middle" | "end"): LabelBox {
+  const w = labelWidth(text);
+  const x0 = anchor === "start" ? x : anchor === "end" ? x - w : x - w / 2;
+  return { x0, x1: x0 + w, y };
+}
+
+/**
+ * Where the requirement line's words go (baseline `y`): at the left, the middle or the right, the first
+ * that clears the chart's other labels (`taken`: the guides' figures and the narrowest point's), so the
+ * two never print over each other; at the left where none does.
+ */
+export function needLabelPlace(text: string, y: number, taken: readonly LabelBox[], left: number, right: number): { x: number; anchor: "start" | "middle" | "end" } {
+  const places = [
+    { x: left + 2, anchor: "start" as const },
+    { x: (left + right) / 2, anchor: "middle" as const },
+    { x: right, anchor: "end" as const },
+  ];
+  const clear = (box: LabelBox) => taken.every((t) => Math.abs(t.y - box.y) >= CHART_TYPE + 1 || t.x1 <= box.x0 || t.x0 >= box.x1);
+  return places.find((p) => clear(labelBox(text, p.x, y, p.anchor))) ?? places[0];
+}
+
+/** The riders chart's sentence for the requirement; null where no stretch has a figure. */
+export function needSentence(profile: RouteProfile, need: RideNeed): string | null {
+  const below = belowNeed(profile, need);
+  if (below.known <= 0) return null;
+  const line = `At ${need.riders.toLocaleString("en-US")} riders, a road needs about ${need.perMin} riders per minute for the group to pass a junction within ${RIDE_HOLD_MINUTES} minutes (the dashed line).`;
+  if (below.metres <= 0) return `${line} No part of the route with a figure is below it.`;
+  const share = Math.round((below.metres / below.known) * 100);
+  const all = below.metres >= below.known;
+  const part = all ? "All of the route with a figure is below it" : `${formatDistance(below.metres)} of the route${share > 0 ? `, ${share}% of what has a figure,` : ""} is below it, from mile ${miles(below.first ?? 0)}`;
+  return `${line} ${part}.`;
 }
 
 export function linear(d0: number, d1: number, r0: number, r1: number): (v: number) => number {
@@ -592,8 +690,11 @@ export function crossingName(crossing: ProfileCrossing): string {
   return crossing.street && crossing.street.trim() ? crossing.street : "an unnamed street";
 }
 
+/** "2 corkers needed", "1 corker needed", "no corkers needed" (PLAN 139: `corkersFor`). */
 export function corkerWords(crossing: ProfileCrossing): string {
-  return crossing.corkers_needed ? "corkers needed" : "no corkers needed";
+  if (!crossing.corkers_needed) return "no corkers needed";
+  const n = corkersFor(crossing);
+  return `${n} ${n === 1 ? "corker" : "corkers"} needed`;
 }
 
 export interface Reading {
@@ -621,7 +722,7 @@ export function climbAt(profile: RouteProfile, metres: number): ProfileClimb | n
  * marked Avoid (325), and "riders per minute not known" where the width is not known. Never a figure
  * where there is none: an unknown is never "about 0 ... (bottleneck)".
  */
-export function ridersWords(profile: RouteProfile, riders: number | null, metres: number, gradePct: number | null): string {
+export function ridersWords(profile: RouteProfile, riders: number | null, metres: number, gradePct: number | null, need?: RideNeed | null): string {
   if (inRanges(profile.outside_dc, metres)) return "outside DC, no riders-per-minute figure yet";
   if (inRanges(profile.avoid, metres)) return "marked Avoid, no capacity given";
   if (riders === null || !Number.isFinite(riders)) return "riders per minute not known";
@@ -629,6 +730,8 @@ export function ridersWords(profile: RouteProfile, riders: number | null, metres
   const climb = climbAt(profile, metres);
   if (climb && gradePct !== null && gradePct > 1 && (climb.capacity_drop_pct ?? 0) > 0) reasons.push("slowed by the climb");
   else if (gradePct !== null && gradePct < -4) reasons.push("spaced out for the descent");
+  // The ride size's requirement (128): said only where the figure falls below it.
+  if (need && riders < need.perMin) reasons.push(`below the ${need.perMin} needed for ${need.riders.toLocaleString("en-US")} riders`);
   return `about ${riders} riders per minute (${reasons.join(", ")})`;
 }
 
@@ -674,7 +777,7 @@ export function crossingClause(profile: RouteProfile, metres: number): string {
  * (94 m), grade 6%, LTS 2"; on a Mass Ride "Mile 1.1: grade 6%, about 90 riders per minute (tight,
  * slowed by the climb). Next: 14th St at mile 1.3, corkers needed".
  */
-export function readingAt(route: RouteResponse, profile: RouteProfile, metres: number, kind: ChartKind = chartKind(route)): Reading {
+export function readingAt(route: RouteResponse, profile: RouteProfile, metres: number, kind: ChartKind = chartKind(route), need?: RideNeed | null): Reading {
   const index = nearestIndex(profile.m, metres);
   const m = profile.m[index];
   const elevationM = profile.elevation_m[index] ?? null;
@@ -687,7 +790,7 @@ export function readingAt(route: RouteResponse, profile: RouteProfile, metres: n
   let text: string;
   if (kind === "mass") {
     if (grade) parts.push(grade);
-    parts.push(ridersWords(profile, riders, m, gradePct));
+    parts.push(ridersWords(profile, riders, m, gradePct, need));
     text = `${mileWord(m)}: ${parts.join(", ")}.${crossingClause(profile, m)}`;
   } else {
     if (elevationM !== null) parts.push(`elevation ${elevationWords(elevationM)}`);
@@ -981,7 +1084,7 @@ export function crossingRows(profile: RouteProfile, load?: CorkerLoad | null): C
     mile: `Mile ${miles(c.m)}`,
     street: crossingName(c),
     marker: crossingMarkerWords(c),
-    corkers: c.corkers_needed ? "Corkers needed" : "No corkers needed",
+    corkers: c.corkers_needed ? `${corkersFor(c)} needed: ${corkerBasisWords(c)}` : "No corkers needed",
     ...(load ? { load: corkerCell(corkerAt(load, c.m)) } : {}),
   }));
 }
@@ -1394,9 +1497,13 @@ export function calmRows(profile: RouteProfile, calm: ProfileCalm, totalM: numbe
  *   reaches it until the tail passes it (`[j, exit)`), so the load steps up at each tick and down
  *   a group's length later. Near the start the group is still behind the start, and past the end
  *   the junctions stay held to the end, so a group longer than the route holds them all at its end.
- * - Corkers per junction needing them (`corkers_needed`, 142, 400): 2 for a two-way road and 1 for
- *   a one-way (`oneway`), 2 where it is not known (an older answer, or no mapping), and 2 for a
- *   divided road (`divided`: two one-way carriageways counted as one junction).
+ * - Corkers per junction needing them (`corkers_needed`, 142, 400; PLAN "Corkers needed", `corkersFor`):
+ *   one for each approach lane of the busy road, or one an approach at a traffic signal, which already
+ *   holds the cross traffic (the corker covers the change to green). The approaches: 2 for a two-way
+ *   road, 1 for a one-way (`oneway`), 2 where that is not known (an older answer, or no mapping), and
+ *   2 for a divided road (`divided`: two one-way carriageways counted as one junction). The lanes: the
+ *   road's through lanes a direction (`approach_lanes`), 1 where not known, so an older answer counts
+ *   as before (2, or 1 on a one-way).
  * - The ride's headline: the most held at once times the rotation factor (2, corkers leapfrog to
  *   the junctions ahead), rounded up. Where the list may be incomplete (only the flagged junctions
  *   found) or part of the route was not checked, it is "at least", never a firm figure.
@@ -1405,10 +1512,48 @@ export const ROTATION_FACTOR = 2;
 export const CORKERS_TWO_WAY = 2;
 export const CORKERS_ONE_WAY = 1;
 
-/** The corkers a junction needing them takes: one an approach (PLAN 139). */
-export function corkersFor(crossing: Pick<ProfileCrossing, "oneway" | "divided">): number {
+/** What a junction's corkers are counted from (PLAN 139): its road's one-way and lanes, and its control. */
+export type CorkerBasis = Partial<Pick<ProfileCrossing, "oneway" | "divided" | "control" | "approach_lanes">>;
+
+/** The approaches to hold: 1 on a one-way road, otherwise 2 (two-way, divided, or not known). */
+export function approachesOf(crossing: CorkerBasis): number {
   // A divided road's carriageways are each one-way, but the road has two approaches to hold.
   return crossing.oneway === true && crossing.divided !== true ? CORKERS_ONE_WAY : CORKERS_TWO_WAY;
+}
+
+/** The lanes on each approach the per-lane rule counts: the road's through lanes a direction, 1 where not known. */
+export function approachLanesOf(crossing: CorkerBasis): number | null {
+  const lanes = crossing.approach_lanes;
+  return typeof lanes === "number" && Number.isFinite(lanes) && lanes >= 1 ? Math.round(lanes) : null;
+}
+
+/**
+ * The corkers a junction needing them takes (PLAN 139): one for each approach lane, or one an approach
+ * at a traffic signal, whatever its lanes, since the red already holds the cross traffic and the corker
+ * covers the change to green (the group goes through as one once its head enters on green, 124).
+ */
+export function corkersFor(crossing: CorkerBasis): number {
+  const approaches = approachesOf(crossing);
+  if (crossing.control === "signal") return approaches;
+  return approaches * (approachLanesOf(crossing) ?? 1);
+}
+
+/** How a junction's corkers are counted, for the table: "2 approaches; 2 lanes each", "1 approach, one-way; 1 at the signal". */
+export function corkerBasisWords(crossing: CorkerBasis): string {
+  const one = approachesOf(crossing) === 1;
+  const approaches =
+    crossing.divided === true
+      ? "2 approaches, divided road"
+      : crossing.oneway === true
+        ? "1 approach, one-way"
+        : crossing.oneway === false
+          ? "2 approaches"
+          : "2 approaches, one-way not known";
+  const each = one ? "" : " each";
+  if (crossing.control === "signal") return `${approaches}; 1${each} at the signal`;
+  const lanes = approachLanesOf(crossing);
+  if (lanes === null) return `${approaches}; lanes not known, 1${each}`;
+  return `${approaches}; ${lanes} ${lanes === 1 ? "lane" : "lanes"}${each}`;
 }
 
 /** A group's length, metres: riders over the flow a second, times the cruising pace (PLAN 128). */
@@ -1704,7 +1849,7 @@ export function corkerSentences(profile: RouteProfile, load: CorkerLoad | null):
     sentences.push(`${capitalise(corkerHeadline(load))} corkers for the ride: the most held at once times ${ROTATION_FACTOR}, as corkers leapfrog to the junctions ahead${low}.`);
   }
   sentences.push(
-    `Each junction needing corkers takes ${CORKERS_TWO_WAY}, or ${CORKERS_ONE_WAY} where the road is one-way, and is held from when the group's head reaches it until its tail passes; a tick marks each one.`,
+    `Each junction needing corkers takes one for each approach lane of the busy road, or one an approach at a traffic signal, which already holds the cross traffic (${CORKERS_TWO_WAY} approaches, ${CORKERS_ONE_WAY} where the road is one-way; 1 lane where the lanes are not known); it is held from when the group's head reaches it until its tail passes, and a tick marks each one.`,
   );
   return sentences;
 }
@@ -1722,9 +1867,12 @@ export function elevationReading(profile: RouteProfile, metres: number): string 
 /** The riders chart's sentence for a stretch that could not be traced. */
 export const UNTRACED_WIDTH = "Part of the route could not be traced, so its width is not known.";
 
-/** Each of a Mass Ride's three charts' summaries, said before its picture. */
-export function massSummaries(route: RouteResponse, profile: RouteProfile, load: CorkerLoad | null): Record<MassChartKey, string> {
+/** Each of a Mass Ride's three charts' summaries, said before its picture; with a ride size, the riders summary says its requirement (128). */
+export function massSummaries(route: RouteResponse, profile: RouteProfile, load: CorkerLoad | null, rideSize?: number): Record<MassChartKey, string> {
   const riders = ridersSentences(route, profile);
+  const need = rideNeed(rideSize);
+  const needWords = need && riders.length > 0 ? needSentence(profile, need) : null;
+  if (needWords) riders.push(needWords);
   return {
     // The riders chart's own summary keeps the untraced stretch, said in summaryText with the intersections.
     riders: [...(riders.length > 0 ? riders : ["Riders per minute are not known for this route."]), ...((profile.unchecked ?? []).length > 0 ? [UNTRACED_WIDTH] : [])].join(" "),
@@ -1734,9 +1882,9 @@ export function massSummaries(route: RouteResponse, profile: RouteProfile, load:
 }
 
 /** Each of a Mass Ride's three sliders' value text at a position. */
-export function massReadings(route: RouteResponse, profile: RouteProfile, load: CorkerLoad | null, metres: number): Record<MassChartKey, string> {
+export function massReadings(route: RouteResponse, profile: RouteProfile, load: CorkerLoad | null, metres: number, rideSize?: number): Record<MassChartKey, string> {
   return {
-    riders: readingAt(route, profile, metres, "mass").text,
+    riders: readingAt(route, profile, metres, "mass", rideNeed(rideSize)).text,
     corkers: corkerReading(profile, load, metres),
     elevation: elevationReading(profile, metres),
   };

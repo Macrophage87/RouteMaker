@@ -461,6 +461,10 @@ class Event:
     assumed_speed: bool = field(default=False, compare=False)
     # The ride-time factor that was applied (`time_factor`, 468a, 469c-469e).
     time_factor: float = field(default=1.0, compare=False)
+    # The road's through lanes per direction there, where known (`Road.lanes`): a Mass
+    # Ride's corkers hold one an approach lane where no signal holds the cross traffic
+    # (PLAN item 139's per-lane rule; the chart counts them, `corkersFor`).
+    road_lanes: int | None = field(default=None, compare=False)
 
 
 def movement_of(heading_in: float, heading_out: float) -> Movement:
@@ -830,6 +834,7 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
             road_display=about.display,
             road_ways=about.ways,
             road_oneway=about.oneway,
+            road_lanes=about.lanes,
             assumed_speed=assumed,
             time_factor=factor,
         )
@@ -853,6 +858,7 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
         max_severity=cap,
         road_ways=about.ways,
         road_oneway=about.oneway,
+        road_lanes=about.lanes,
         assumed_speed=assumed,
         time_factor=factor,
     )
@@ -904,6 +910,7 @@ def rated(
         road_display=about.display,
         road_ways=about.ways,
         road_oneway=about.oneway,
+        road_lanes=about.lanes,
         rating=level,
     )
 
@@ -971,8 +978,15 @@ def _one_road(events: list[Event]) -> list[Event]:
         # The credit only lowers the cost, so this never raises the colour; a
         # trail crossing's cap holds through it.
         severity = _at_most(severity_of(cost), worst.max_severity)
+    # The corkers' per-lane rule reads the busier carriageway's lanes (PLAN item 139).
+    lanes = [e.road_lanes for e in crossings if e.road_lanes is not None]
     refuge = replace(
-        worst, cost_ft=cost, severity=severity, flagged=severity is not None, road_divided=True
+        worst,
+        cost_ft=cost,
+        severity=severity,
+        flagged=severity is not None,
+        road_divided=True,
+        road_lanes=max(lanes) if lanes else None,
     )
     return [refuge, *rest]
 
@@ -1316,6 +1330,10 @@ class Major:
     # A divided road (its two one-way carriageways counted as one major): two
     # approaches to hold, so two corkers whatever `oneway` says (re-check, BLOCKING 1).
     divided: bool = False
+    # Through lanes on each approach to hold, where known (`Road.lanes`: per direction;
+    # a divided road's busier carriageway): the chart's per-lane rule (PLAN item 139:
+    # one corker an approach lane where no signal holds the cross traffic).
+    approach_lanes: int | None = None
 
     @property
     def road_names(self) -> frozenset[str]:
@@ -1361,6 +1379,7 @@ def majors_of_events(events: Sequence[Event]) -> list[Major]:
             MAJOR_FLAGGED,
             e.road_oneway,
             e.road_divided,
+            e.road_lanes,
         )
         for e in events
         if e.flagged
@@ -1430,7 +1449,11 @@ def major_crossings(junctions: Sequence[Junction], events: Sequence[Event]) -> l
                 # A divided road's far carriageway: the major it is counted with has two
                 # approaches to hold (corkers), though each carriageway is one-way.
                 if _other_carriageway(majors[hidden], junction, road):
-                    majors[hidden] = replace(majors[hidden], divided=True)
+                    near = majors[hidden]
+                    known = [n for n in (near.approach_lanes, road.lanes) if n is not None]
+                    majors[hidden] = replace(
+                        near, divided=True, approach_lanes=max(known) if known else None
+                    )
                 break
             place = bisect.bisect_right(at, junction.m)
             at.insert(place, junction.m)
@@ -1448,6 +1471,8 @@ def major_crossings(junctions: Sequence[Junction], events: Sequence[Event]) -> l
                     road.tier,
                     kind,
                     road.oneway,
+                    False,
+                    road.lanes,
                 ),
             )
             break
