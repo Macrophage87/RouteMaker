@@ -1864,6 +1864,7 @@ def _intersection_rows(events: list) -> list[dict]:
                 intersections.calm_miles(event.cost_ft) * intersections.KM_PER_MILE, 2
             ),
             "group": event.group,
+            "time_band": event.time_band,
         }
         for event in events
         if event.flagged

@@ -1923,10 +1923,15 @@ ul.station-links {
   color: var(--text-muted);
   white-space: normal;
 }
-.junction-reason {
+.junction-reason,
+.junction-cost {
   grid-column: 2 / -1;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+/* The junction's cost in calm miles (467) under its reason: secondary, not a colour cue. */
+.junction-cost {
+  color: var(--text-muted);
 }
 .notice.detour-warning {
   background: var(--error-bg);

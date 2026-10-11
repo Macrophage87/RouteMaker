@@ -32,6 +32,40 @@ export const ICON_PX = 24;
 /** The most junctions drawn on the map: a long route may have hundreds, and the list still has them all. */
 export const MAX_ON_MAP = 150;
 
+const FEET_PER_MILE = 5280;
+const KM_PER_MILE = 1.609344;
+
+/**
+ * A junction's own cost in calm miles, km in brackets: "0.62 calm mi (1.00 calm km)"
+ * (OWNER-DECISIONS 467: "Scale these numbers to miles, even of a fraction"; 469b(5):
+ * the junction's own cost over 5,280 ft, without the ride type's intersection weight).
+ * The API's figures where it gives them, else the same sum from `cost_ft`.
+ */
+export function junctionCalmText(junction: Pick<JunctionWarning, "cost_ft" | "calm_mi" | "calm_km">): string {
+  const mi = typeof junction.calm_mi === "number" ? junction.calm_mi : junction.cost_ft / FEET_PER_MILE;
+  const km = typeof junction.calm_km === "number" ? junction.calm_km : mi * KM_PER_MILE;
+  return `${mi.toFixed(2)} calm mi (${km.toFixed(2)} calm km)`;
+}
+
+/**
+ * How the ride time moved a junction's cost, in words (468a: "shown in the panel/chart in
+ * words ("rush hour")"). Only what the API says moved it: no band, no words. Never a
+ * factor: night is about half in town and a little less outside it once the map data
+ * says which roads are in town (469d, 469e), and a little less everywhere before then,
+ * so the words say only "less" and that traffic is usually calmer (469d).
+ */
+export const TIME_BAND_WORDS: Record<NonNullable<JunctionWarning["time_band"]>, string> = {
+  weekday_rush: "more at rush hour",
+  weekend: "a little less at the weekend",
+  night: "less at night, when traffic is usually calmer",
+};
+
+/** "Costs 0.62 calm mi (1.00 calm km), more at rush hour": the row's and the card's cost line. */
+export function junctionCostText(junction: Pick<JunctionWarning, "cost_ft" | "calm_mi" | "calm_km" | "time_band">): string {
+  const band = junction.time_band ? TIME_BAND_WORDS[junction.time_band] : undefined;
+  return `Costs ${junctionCalmText(junction)}${band ? `, ${band}` : ""}`;
+}
+
 export interface JunctionItem extends JunctionWarning {
   /** Position in the route's list, which a click on the list names the marker by. */
   index: number;
@@ -41,6 +75,8 @@ export interface JunctionItem extends JunctionWarning {
   label: string;
   /** The severity in words, shown at the start of the list row: "Very high stress". */
   severityText: string;
+  /** "Costs 0.62 calm mi (1.00 calm km), more at rush hour" (467, 468a). */
+  costText: string;
 }
 
 /** The route's junctions, in route order, worded; empty when the API had none to say or is older. */
@@ -53,6 +89,7 @@ export function junctionItems(route: Pick<RouteResponse, "intersections"> | null
     where: `At ${formatDistance(junction.m)}`,
     label: `${SEVERITY_COLOURS[junction.severity].label}: ${junction.reason}`,
     severityText: SEVERITY_COLOURS[junction.severity].short,
+    costText: junctionCostText(junction),
   }));
 }
 
@@ -246,11 +283,12 @@ export function junctionsOnMap(items: readonly JunctionItem[]): JunctionItem[] {
 }
 
 /**
- * A row's name as one string: "Very high stress, At 1.2 mi (2.0 km): ...". Each
+ * A row's name as one string: "Very high stress, At 1.2 mi (2.0 km): ..." and, on
+ * a junction's row, its cost after (". Costs 0.62 calm mi (1.00 calm km)"). Each
  * span of a row is a grid item, so a name computed from the spans puts a space
  * before every comma and colon ("Very high stress , At 1.2 mi (2.0 km) : ..."; a11y
  * re-check of 2b0cf00). The visible words still begin the name (2.5.3).
  */
-export function rowName(severity: string, where: string, reason: string): string {
-  return `${severity}, ${where}: ${reason}`;
+export function rowName(severity: string, where: string, reason: string, cost?: string): string {
+  return `${severity}, ${where}: ${reason}${cost ? `. ${cost}` : ""}`;
 }

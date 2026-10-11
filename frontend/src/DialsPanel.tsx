@@ -347,8 +347,8 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
           On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway,
           are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only
           as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours
-          end at 9 PM. Crossing a busy road counts for more at rush hour, for less on weekends, and for less again
-          at night, most of all in towns and cities.
+          end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night,
+          when traffic is usually calmer. Each junction warning says when the time changed it.
         </p>
       </fieldset>
       {view.target && (

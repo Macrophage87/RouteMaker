@@ -38,13 +38,14 @@ function JunctionButton({ item, onSelect }: { item: JunctionItem; onSelect: (ind
       type="button"
       className={`junction-item junction-${item.severity}`}
       data-junction-index={item.index}
-      aria-label={rowName(item.severityText, item.where, item.reason)}
+      aria-label={rowName(item.severityText, item.where, item.reason, item.costText)}
       onClick={() => onSelect(item.index)}
     >
       <span className="junction-icon" aria-hidden="true" dangerouslySetInnerHTML={{ __html: warningIconSvg(item.severity, 18) }} />
       <span className="junction-severity">{item.severityText}</span>
       <span className="junction-where">{item.where}</span>
       <span className="junction-reason">{item.reason}</span>
+      <span className="junction-cost">{item.costText}</span>
     </button>
   );
 }

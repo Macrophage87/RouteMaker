@@ -219,6 +219,17 @@ class TestIntersectionsInTheAnswer:
         assert junction["calm_mi"] == pytest.approx(junction["cost_ft"] / 5280, abs=0.006)
         assert junction["calm_km"] == pytest.approx(junction["calm_mi"] * 1.609344, abs=0.01)
 
+    def test_the_ride_time_is_named_where_it_moved_the_cost(self, client, arterial, router) -> None:
+        """468a: the hour's effect is said in words ("rush hour"), so each row names the
+        ride time only where it changed that junction's cost."""
+        router(world())
+        (plain,) = post(client, good_body()).json()["intersections"]
+        assert plain["time_band"] is None
+        router(world())
+        (rush,) = post(client, {**good_body(), "when": "weekday_rush"}).json()["intersections"]
+        assert rush["time_band"] == "weekday_rush"
+        assert rush["cost_ft"] > plain["cost_ft"]
+
     def test_the_debug_list_is_off_unless_asked(self, client, arterial, router) -> None:
         router(world())
         assert post(client, good_body()).json().get("junctions_debug") is None

@@ -1469,6 +1469,75 @@ class TestTimeOfDay:
         wild = Road(5, speed_mph=60, lanes=4)
         event = m.assess(junction(movement=Movement.LEFT, outgoing=wild), when="weekday_rush")
         assert event.cost_ft == m.MAX_CROSSING_FT
+        # Already at the cap off-peak, so the hour changed nothing to say.
+        assert event.time_band is None
+
+
+class TestTimeBand:
+    """468a: the hour's effect is "shown in the panel/chart in words ("rush hour")".
+    The event names the ride time only where it moved that junction's cost, so the
+    planner never says a junction counts more or less when it does not."""
+
+    def test_the_band_is_named_where_the_hour_moved_the_cost(self) -> None:
+        j = junction(crossed=(Road(3),), control=Control.STOP)
+        assert m.assess(j, when="weekday_rush").time_band == "weekday_rush"
+        assert m.assess(j, when="weekend").time_band == "weekend"
+        assert m.assess(j, when="night").time_band == "night"
+
+    def test_no_band_off_peak_or_with_no_ride_time(self) -> None:
+        j = junction(crossed=(Road(3),), control=Control.STOP)
+        assert m.assess(j, when="weekday_offpeak").time_band is None
+        assert m.assess(j).time_band is None
+
+    def test_no_band_where_the_box_turn_holds_at_any_hour(self) -> None:
+        big = Road(4, speed_mph=45, lanes=3)
+        j = junction(movement=Movement.LEFT, incoming=big, control=Control.SIGNAL)
+        assert m.assess(j, when="weekday_rush").time_band is None
+
+    def test_night_is_named_in_town_and_outside_it(self) -> None:
+        """Before the rebuild a night junction is x0.85 (no urban flag), after it x0.5
+        in town: either way it is less, and the band says only that."""
+        for urban in (True, False, None):
+            j = junction(crossed=(Road(3, urban=urban),), control=Control.STOP)
+            assert m.assess(j, when="night").time_band == "night"
+
+    def test_a_rated_junction_has_no_band(self) -> None:
+        j = junction(crossed=(Road(3),), control=Control.STOP, rating=4)
+        event = m.assess(j, when="weekday_rush")
+        assert event is not None and event.time_band is None
+
+    def test_a_merge_names_the_hour_where_it_moved_the_merged_cost(self) -> None:
+        """Review of PR #90: a merged event took its worst member's band, so a
+        signalised left held at the box turn (no band) beside a signalised crossing
+        rush hour did raise said nothing about rush hour."""
+        big = Road(4, speed_mph=45, lanes=3, names=frozenset({"a"}))
+        left = junction(movement=Movement.LEFT, incoming=big, control=Control.SIGNAL)
+        side = junction(m=10.0, crossed=(Road(4, names=frozenset({"b"})),), control=Control.SIGNAL)
+        rush = [m.assess(left, when="weekday_rush"), m.assess(side, when="weekday_rush")]
+        assert rush[0].cost_ft == m.BOX_TURN_CAP_FT and rush[0].time_band is None
+        assert rush[1].time_band == "weekday_rush"
+        (merged,) = m.merge_nearby(rush)
+        (unmoved,) = m.merge_nearby([m.assess(left), m.assess(side)])
+        assert merged.cost_ft > unmoved.cost_ft
+        assert merged.time_band == "weekday_rush"
+
+    def test_a_merge_held_at_the_cap_names_no_hour(self) -> None:
+        """The worst member reached the 2 mi cap only at rush hour, but the merge is at
+        the cap at any hour, so the merged event says nothing about rush hour."""
+        moved = junction(
+            crossed=(Road(4, speed_mph=45, lanes=2, names=frozenset({"a"})),), control=Control.STOP
+        )
+        capped = junction(
+            m=10.0,
+            crossed=(Road(4, speed_mph=45, lanes=3, names=frozenset({"b"})),),
+            control=Control.STOP,
+        )
+        events = [m.assess(moved, when="weekday_rush"), m.assess(capped, when="weekday_rush")]
+        assert events[0].cost_ft == m.MAX_CROSSING_FT and events[0].time_band == "weekday_rush"
+        assert events[1].time_band is None
+        (merged,) = m.merge_nearby(events)
+        assert merged.cost_ft == m.MAX_CROSSING_FT
+        assert merged.time_band is None
 
 
 def test_an_assumed_speed_in_town_is_not_read_as_rural() -> None:
