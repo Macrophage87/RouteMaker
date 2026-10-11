@@ -1,6 +1,6 @@
 /** What the GPX section says, and the export's name and description. */
-import type { RouteResponse } from "./api.ts";
-import type { LonLat } from "./geo.ts";
+import type { RouteProfile, RouteResponse } from "./api.ts";
+import { haversineM, type LonLat } from "./geo.ts";
 import { WHENS, carryingWords, hillsWords, stressWords, whenInSentence } from "./dials.ts";
 import type { ExportDials, GpxExport } from "./gpx.ts";
 import type { ImportNote, ImportedPlan } from "./gpxPlan.ts";
@@ -13,7 +13,7 @@ type ExportedRoute = Pick<
   RouteResponse,
   "preset" | "distance_m" | "climb_m" | "descent_m" | "geometry" | "attribution"
 > &
-  Partial<Pick<RouteResponse, "dials" | "description" | "description_overview">>;
+  Partial<Pick<RouteResponse, "dials" | "description" | "description_overview" | "profile">>;
 
 // US units first, metric in brackets (owner decision), in everything the
 // file and this section say: the app's one formatter (format.ts).
@@ -59,6 +59,51 @@ export function rideText(route: Pick<RouteResponse, "preset"> & Partial<Pick<Rou
 }
 
 /**
+ * The elevation at each vertex of `line` from the route's profile, for the
+ * GPX track's <ele>. The profile is sampled by distance along the route as the
+ * router measured it, so each vertex's distance along the line is scaled to
+ * the profile's length and the two samples either side of it are interpolated.
+ * Null where either of those samples has no elevation (a leg the router had
+ * none for), and all null without a profile. The figures are the router's
+ * (the same ones the elevation chart draws), in metres, as GPX requires.
+ */
+export function elevationsAlong(
+  line: readonly LonLat[],
+  profile: Pick<RouteProfile, "m" | "elevation_m"> | null | undefined,
+): (number | null)[] {
+  const none = () => line.map(() => null);
+  if (!profile || profile.m.length < 2 || profile.m.length !== profile.elevation_m.length || line.length === 0) return none();
+  if (!profile.elevation_m.some((e) => e !== null)) return none();
+  const along: number[] = [0];
+  for (let i = 1; i < line.length; i += 1) along.push(along[i - 1] + haversineM(line[i - 1], line[i]));
+  const lineM = along[along.length - 1];
+  const first = profile.m[0];
+  const profileM = profile.m[profile.m.length - 1] - first;
+  const scale = lineM > 0 ? profileM / lineM : 0;
+  const out: (number | null)[] = [];
+  let j = 0;
+  for (const d of along) {
+    const at = first + d * scale;
+    // Advance to the last sample at or before `at` (the walk only moves forward).
+    while (j < profile.m.length - 2 && profile.m[j + 1] <= at) j += 1;
+    const m0 = profile.m[j];
+    const m1 = profile.m[j + 1];
+    const e0 = profile.elevation_m[j];
+    const e1 = profile.elevation_m[j + 1];
+    if (at <= m0 || m1 <= m0) {
+      out.push(e0);
+    } else if (at >= m1) {
+      out.push(e1);
+    } else if (e0 === null || e1 === null) {
+      out.push(null);
+    } else {
+      out.push(e0 + ((e1 - e0) * (at - m0)) / (m1 - m0));
+    }
+  }
+  return out;
+}
+
+/**
  * The export of the route shown, planned through `points`. `loop` is
  * whether that route was planned as a loop the rider chose (App's
  * routedLoop, from loop.loopStops; OWNER-DECISIONS 374), not the live toggle
@@ -89,6 +134,7 @@ export function exportOf(route: ExportedRoute, points: readonly LonLat[], loop =
     planPoints: points,
     ...(loop && route.preset !== "mass-ride" ? { loop: true } : {}),
     geometry: route.geometry.coordinates,
+    ...(route.profile ? { elevations: elevationsAlong(route.geometry.coordinates, route.profile) } : {}),
   };
 }
 
