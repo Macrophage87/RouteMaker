@@ -103,9 +103,9 @@ end
 -- A change whose value is the remap's REMOVE sentinel deletes the tag. Applied
 -- here rather than in the remap because a Lua table cannot hold a nil value, so
 -- "remove this key" cannot be expressed in the table the remap returns.
-local function apply(kv, changes)
+local function apply(kv, changes, allowed)
   for key, value in pairs(changes) do
-    if remap.FORBIDDEN_KEYS[key] then
+    if remap.FORBIDDEN_KEYS[key] and not (allowed and allowed[key] == value) then
       -- `highway` and `maxspeed` set hierarchy level, shortcut building, the
       -- road-class factor, A* pruning and whether Odin emits a maneuver at all.
       -- The write is dropped and the way keeps the class it arrived with.
@@ -159,7 +159,9 @@ function nodes_proc(kv, nokeys)
   if remap.denies_bicycle_at_border(kv, changes) and next(changes) ~= nil then
     remap.record_violation(kv, "the remap would deny bicycle access at a border-control node")
   else
-    apply(kv, changes)
+    -- A node may write `highway=traffic_signals` (remap.derives_signal), the one
+    -- class write the parser reads as a signal flag and nothing else.
+    apply(kv, changes, remap.NODE_WRITES_ALLOWED)
   end
   strip_namespace(kv)
   local filter, out = up_nodes(kv, nokeys)

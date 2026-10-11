@@ -1178,8 +1178,63 @@ function M.remap_node(tags)
     end
   end
 
+  if M.derives_signal(tags) then
+    out.highway = "traffic_signals"
+    -- Kept on the node for anything that reads the crossing's own scheme; the
+    -- parser reads only `highway` (src/mjolnir/pbfgraphparser.cc, the node loop).
+    if tags.highway == "crossing" and tags.crossing == nil then
+      out.crossing = "traffic_signals"
+    end
+  end
+
   return out
 end
+
+-- FOLLOWUP-SIGNAL-DERIVE. Valhalla's parser sets a node's traffic-signal flag
+-- from `highway=traffic_signals` and nothing else (src/mjolnir/pbfgraphparser.cc
+-- at 3.9.1, `n.set_traffic_signal(tag.second == "traffic_signals")`), so a
+-- signalised trail crossing mapped the other two ways OSM maps one read "no
+-- signal mapped" in the junction model (`core.junctions`):
+--   * on the node, `highway=crossing` + `crossing=traffic_signals` (or
+--     `crossing:signals=yes`), read here from the node's own tags;
+--   * on the crossing way alone, which the transform never sees with the road
+--     it crosses, so the rebuild marks the shared node `rm:crossing_signal=yes`
+--     (`pipeline.signals`) and this reads the mark.
+-- The node becomes `highway=traffic_signals` only where it says nothing else
+-- about its control: no other `highway` value (a stop or give-way sign is left
+-- alone) and no `crossing` value that says there is no signal.
+M.SIGNAL_MARK = "rm:crossing_signal"
+-- OSM's wiki: `uncontrolled` and `unmarked` crossings have no traffic signals. A
+-- contradiction is read as no signal, the reading the model had before.
+M.NOT_SIGNALISED = { uncontrolled = true, unmarked = true, no = true, informal = true }
+-- Upstream's `nodes_proc` reopens a `highway=crossing` node to bicycles when its
+-- `bicycle` value maps to 0 ("do not shut off bike access if there is a highway
+-- crossing"), and these are the values that map to 0 in its `bicycle_node`.
+-- Rewriting such a node's class would close the road through it to bicycles, so
+-- it keeps `highway=crossing` and no signal.
+M.CROSSING_REGRANTS_BICYCLE = { no = true, none = true }
+
+function M.signalised_crossing(tags)
+  local crossing = tags.crossing
+  if crossing == "traffic_signals" then
+    return tags["crossing:signals"] ~= "no"
+  end
+  return tags["crossing:signals"] == "yes" and not M.NOT_SIGNALISED[crossing]
+end
+
+function M.derives_signal(tags)
+  local highway = tags.highway
+  if highway ~= nil and highway ~= "crossing" then return false end
+  if M.NOT_SIGNALISED[tags.crossing] or tags["crossing:signals"] == "no" then return false end
+  if highway == "crossing" and M.CROSSING_REGRANTS_BICYCLE[tags.bicycle] then return false end
+  if tags[M.SIGNAL_MARK] == "yes" then return true end
+  return highway == "crossing" and M.signalised_crossing(tags)
+end
+
+-- The one forbidden write a node may make: its class to a signal. `highway` on a
+-- way sets hierarchy, shortcuts and the road-class factor; on a node the parser
+-- reads it only for the signal, stop and give-way flags (and `motorway_junction`).
+M.NODE_WRITES_ALLOWED = { highway = "traffic_signals" }
 
 --- Whether a set of remapped tags is safe to apply.
 -- A border-control node exists to be charged for, not to refuse passage: a

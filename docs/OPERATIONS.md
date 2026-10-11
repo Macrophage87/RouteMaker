@@ -608,11 +608,12 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
   it from a driveway just past a signalized junction would need the rider's
   riding straight through a minor road's T junction on the junction's own
   road, which would bring that driveway's under-warning back.
-- Signalized trail crossings tagged `crossing=traffic_signals` away from any
-  signalized road junction read as unsignalized until the tag transform derives
-  the signal. They are orange at most and say "no signal mapped"
-  (OWNER-DECISIONS 185), so a rider may see an orange marker at a crossing that
-  has a light.
+- Signalized trail crossings away from any signalized road junction read as
+  signalized from the Track B rebuild where OSM maps the signal on the crossing
+  node or the crossing way (FOLLOWUP-SIGNAL-DERIVE; the check is below). One
+  whose signal is mapped on neither still reads as unsignalized: orange at most,
+  "no signal mapped" (OWNER-DECISIONS 185), so a rider may see an orange marker
+  at a crossing that has a light.
 - A stop sign on a cross road's stop line short of the junction is not read as
   the cross traffic's (it may be another junction's), so a junction where only
   the cross traffic stops can be priced as if nobody does: the rider's crossing
@@ -665,6 +666,38 @@ at most about 10 KB to an answer (one figure a profile sample, up to 2,000) plus
 sections and the flagged junctions; live serves route JSON uncompressed (the Caddyfile
 compresses only tiles and the front end), so a long ride with candidates grows by tens of
 KB. `calm.estimate` is true while each stretch is priced by its tier.
+
+### After the Track B rebuild: signalised trail crossings (FOLLOWUP-SIGNAL-DERIVE)
+
+The rebuild marks the nodes where a crossing way tagged as signalised meets a
+road, and the transform turns those, and crossing nodes tagged
+`crossing=traffic_signals` or `crossing:signals=yes`, into signals. Nothing to
+deploy beyond the rebuild itself: no migration, no setting.
+
+1. INJECT_TAGS logs `N signalised trail crossings marked from their crossing
+   ways`. Record N here; zero means the crossing ways were not read and the rest
+   of this check will show no change. (Not counted in advance: the count needs
+   the coverage extract, which the build container could not reach.)
+2. No `ROUTEMAKER-VIOLATION` line in any variant's build log (VALIDATE fails the
+   rebuild on one anyway). A violation naming `highway` means a class write other
+   than the signal reached the guard.
+3. Pick a trail crossing away from a road junction whose crossing node or
+   crossing way OSM tags `crossing=traffic_signals` (or `crossing:signals=yes`),
+   note the node's coordinates, and ask the standard router before and after:
+
+   ```sh
+   docker compose exec api python -c 'import json, sys, urllib.request
+   body = {"locations": [{"lat": float(sys.argv[1]), "lon": float(sys.argv[2]), "radius": 10}],
+           "costing": "bicycle", "verbose": True}
+   r = urllib.request.urlopen("http://valhalla-standard:8002/locate", json.dumps(body).encode())
+   print([n.get("traffic_signal") for n in json.load(r)[0].get("nodes") or []])' LAT LON
+   ```
+
+   It prints `[True]` where it printed `[False]` on the previous graph.
+4. A route across that crossing describes it "at a signal" instead of "no signal
+   mapped", and its marker is no longer the capped orange.
+5. Rollback: the previous graph is the one without the signals; `rollback_rebuild`
+   as for any rebuild. The remap change is in lua/, so a code revert needs a rebuild.
 
 ## The stress tiles
 

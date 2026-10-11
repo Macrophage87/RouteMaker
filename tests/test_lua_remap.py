@@ -839,31 +839,38 @@ def test_the_remap_reads_each_side_as_the_classifier_does() -> None:
 # `routemaker.intersections` reads a junction's signal from the router's tiles
 # (`/locate`'s `traffic_signal`), and the transform decides what a signal is.
 # Upstream's `nodes_proc` reads `highway=traffic_signals` and
-# `traffic_signals:direction`; a mapped crossing way tagged
-# `crossing=traffic_signals` (a signal or a HAWK on a trail crossing) is not one,
-# which is why the model counts a marked crossing with no signal flag at
-# `MARKED_CROSSING_FACTOR` (docs/DEVELOPMENT.md, "Known gaps"). These two tests
-# are the tripwire for that gap: when either side changes, the factor should too.
+# `traffic_signals:direction`, and the parser sets the flag from `highway` alone.
+# A signalised trail crossing mapped on its crossing node (`highway=crossing` +
+# `crossing=traffic_signals`) or on its crossing way alone is not one upstream, so
+# the remap derives it (FOLLOWUP-SIGNAL-DERIVE: `remap.derives_signal`,
+# `pipeline.signals`); a marked crossing still left with no signal flag is counted
+# at `MARKED_CROSSING_FACTOR`. These two tests are the tripwire: if upstream starts
+# reading another signal tag, the derivation may double up or be redundant.
 
 
 def test_upstream_reads_signals_from_traffic_signals_nodes_only() -> None:
     upstream = (REPO / "lua" / "vendor" / "graph_upstream.lua").read_text()
     reads = {m.group(0) for m in re.finditer(r"traffic_signals[:\w]*", upstream)}
     assert reads == {"traffic_signals", "traffic_signals:direction"}, (
-        "upstream now reads another signal tag: a signalized trail crossing may reach the "
-        "router's signal flag, and routemaker.intersections.MARKED_CROSSING_FACTOR is stale"
+        "upstream now reads another signal tag: check remap.derives_signal and "
+        "pipeline.signals against it (FOLLOWUP-SIGNAL-DERIVE)"
     )
     assert not re.search(r"crossing\W+\]?\s*==\s*[\"']traffic_signals", upstream)
 
 
-def test_the_remap_derives_no_signal() -> None:
-    """Nothing here writes `forward_signal` or `backward_signal`, so a node's
-    signal flag is upstream's. Deriving one from `crossing=traffic_signals` is a
-    recorded follow-up that needs a rebuild to verify (OPERATIONS.md, "Intersection
-    costs and the calm search")."""
+def test_the_remap_derives_signals_only_through_the_node_class() -> None:
+    """The one signal the remap writes is `highway=traffic_signals` on a node
+    (`derives_signal`, allowed through graph.lua's guard by
+    `NODE_WRITES_ALLOWED`). It writes no `forward_signal` or `backward_signal`,
+    which would need a direction the crossing tags do not give."""
     source = (REPO / "lua" / "routemaker_remap.lua").read_text()
     assert "forward_signal" not in source and "backward_signal" not in source
-    assert "traffic_signals" not in source
+    assert 'out.highway = "traffic_signals"' in source
+    assert 'M.NODE_WRITES_ALLOWED = { highway = "traffic_signals" }' in source
+    graph = (REPO / "lua" / "graph.lua").read_text()
+    assert "apply(kv, changes, remap.NODE_WRITES_ALLOWED)" in graph
+    # Ways never get the allowance: `highway` there sets hierarchy and shortcuts.
+    assert "apply(kv, remap.remap_way(kv, derived_from(kv)))" in graph
 
 
 # OWNER-DECISIONS 216 ("Enforce on all maps"): the District's one-way record is
