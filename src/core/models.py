@@ -1309,9 +1309,18 @@ class BikeshareFeedCache(models.Model):
     data licence, OWNER-DECISIONS 300, allows a product to use the feeds, not to hold a
     stand-alone dataset). It is excluded from the nightly dump and from the beta's data
     shipment, and refills itself.
+
+    It holds one more row of the same kind: the live work zones (FOLLOWUP-WORKZONES,
+    key `WORKZONES`, written by `core.workzones.refresh` every five minutes), the
+    parsed zones of the Maryland and VDOT WZDx feeds as last read. Same life as the
+    bikeshare row: replaced in place, no history, excluded from the dump, refills
+    itself; shared here rather than in a table of its own to avoid a migration. So
+    the table is "one current copy of a live third-party feed per key", and every
+    reader filters on its own key (`CURRENT` for GBFS, `core.gbfs.DatabaseStore`).
     """
 
     CURRENT = "current"
+    WORKZONES = "workzones"
 
     key = models.CharField(max_length=16, unique=True)
     payload = models.JSONField(null=True)

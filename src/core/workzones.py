@@ -11,7 +11,8 @@ feeds; this module is the part that touches the network and the database.
   `SMARTERROADS_TOKEN` on the worker only (346: "the key stays server-side only");
   without it Virginia is off and nothing is asked of VDOT. The key is never logged:
   every message names the feed, not its URL.
-- **Keeping.** One row of `core.models.BikeshareFeedCache` under the key `KEY`, replaced
+- **Keeping.** One row of `core.models.BikeshareFeedCache` under the key `KEY`
+  (`BikeshareFeedCache.WORKZONES`; the model says why it shares that table), replaced
   at each refresh: the zones as parsed (not the raw feed), when each feed was last
   read, and whether its last read failed. No history is kept; the table is left out of
   the nightly dump and refills itself.
@@ -40,7 +41,7 @@ from routemaker import workzones as rules
 
 logger = logging.getLogger(__name__)
 
-KEY = "workzones"
+KEY = "workzones"  # its row in `bikeshare_feed_cache`: BikeshareFeedCache.WORKZONES
 REFRESH_MINUTES = 5
 TRIES = 3
 RETRY_WAIT_S = 2.0
@@ -100,8 +101,10 @@ def http_get(url: str, timeout: float) -> bytes:
             body = response.read(MAX_BYTES + 1)
     except urllib.error.HTTPError as error:
         raise FeedError(f"HTTP {error.code}") from None
-    except (TimeoutError, urllib.error.URLError, ConnectionError, OSError) as error:
-        # The reason only: a URLError's text can repeat the URL, and with it the key.
+    except Exception as error:  # noqa: BLE001 - every failure is a FeedError
+        # The reason's type only, whatever went wrong (a URLError, an SSL error, an
+        # http.client IncompleteRead or InvalidURL): their text can repeat the URL,
+        # and with it the key. One feed failing never stops the other's refresh.
         raise FeedError(type(error).__name__) from None
     if len(body) > MAX_BYTES:
         raise FeedError("larger than expected")

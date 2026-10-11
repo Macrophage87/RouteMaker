@@ -324,3 +324,63 @@ def test_no_way_round_a_closure_plans_through_it_with_a_red_warning(client, monk
     assert body["work_zones"]["routed_round"] == 0
     red = [e for e in body["description"] if e["kind"] == "workzone" and e["severity"] == "red"]
     assert red and "closed to bicycles" in red[0]["text"]
+
+
+class TestTheRealFetchNeverRepeatsTheKey:
+    """`http_get`, the real fetch: every failure is a FeedError naming only its kind,
+    so the key in the URL never reaches a log or a run row (346: "the key stays
+    server-side only"), and one feed's failure is never the whole refresh's."""
+
+    def test_a_refused_connection(self) -> None:
+        import socket
+
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            port = probe.getsockname()[1]
+        with pytest.raises(workzones.FeedError) as caught:
+            workzones.http_get(f"http://127.0.0.1:{port}/feed?token={KEY}", 2.0)
+        assert KEY not in str(caught.value) and "127.0.0.1" not in str(caught.value)
+
+    def test_a_url_http_client_refuses_names_no_part_of_it(self) -> None:
+        # http.client.InvalidURL repeats the whole URL in its message.
+        with pytest.raises(workzones.FeedError) as caught:
+            workzones.http_get(f"http://127.0.0.1:1/feed?token={KEY} x", 2.0)
+        assert KEY not in str(caught.value) and str(caught.value) == "InvalidURL"
+
+    def test_an_http_error_is_its_status(self) -> None:
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        class Down(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:  # noqa: N802 - the http.server name
+                self.send_response(503)
+                self.end_headers()
+
+            def log_message(self, *args) -> None:
+                pass
+
+        server = HTTPServer(("127.0.0.1", 0), Down)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        try:
+            with pytest.raises(workzones.FeedError) as caught:
+                workzones.http_get(f"http://127.0.0.1:{server.server_port}/?token={KEY}", 5.0)
+        finally:
+            server.shutdown()
+        assert str(caught.value) == "HTTP 503"
+
+
+@db
+def test_the_work_zones_row_and_the_bikeshare_row_share_the_table_apart() -> None:
+    """The zones live in `bikeshare_feed_cache` under their own key (no migration): the
+    GBFS store neither reads nor overwrites them, and they do not touch its row."""
+    from core import gbfs
+
+    assert workzones.KEY == BikeshareFeedCache.WORKZONES != BikeshareFeedCache.CURRENT
+    workzones.refresh(Feeds(md=SAMPLE), no_sleep, lambda: NOW)
+    store = gbfs.DatabaseStore()
+    assert store.load() is None, "the bikeshare store sees no feed of its own yet"
+    store.mark_failed(NOW.timestamp())
+    keys = set(BikeshareFeedCache.objects.values_list("key", flat=True))
+    assert keys == {BikeshareFeedCache.CURRENT, BikeshareFeedCache.WORKZONES}
+    zones = BikeshareFeedCache.objects.get(key=workzones.KEY).payload["feeds"]["md"]["zones"]
+    assert len(zones) == 5
