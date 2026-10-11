@@ -46,6 +46,8 @@ export interface WaterPoint {
   bottle?: boolean;
   /** "Throne" for a Throne smart restroom: the card says how to open the door. */
   operator?: "Throne";
+  /** Placed from the site's street address, not the unit itself: the card says so. */
+  approximate?: boolean;
 }
 
 export type WaterStatus = "loading" | "ready" | "unavailable";
@@ -133,6 +135,7 @@ export function parseWaterRestrooms(value: unknown): WaterPoint[] | null {
     if (seasonal) p.seasonal = seasonal;
     if (raw.b === 1 && p.water === "p") p.bottle = true;
     if (raw.op === "Throne" && p.toilet) p.operator = "Throne";
+    if (raw.ap === 1) p.approximate = true;
     out.push(p);
   }
   return out;
@@ -178,6 +181,7 @@ export function waterKindLabel(p: WaterPoint): string {
 export function waterDetails(p: WaterPoint): string[] {
   const out: string[] = [];
   if (p.operator === "Throne") out.push(THRONE_DETAIL);
+  if (p.approximate) out.push(APPROXIMATE_DETAIL);
   if (p.bottle) out.push("Bottle filler.");
   if (p.fee === "no") out.push("Free.");
   if (p.fee === "yes") out.push("Fee to use.");
@@ -208,6 +212,10 @@ export const WATER_CAUTION = "From OpenStreetMap: check it is working before you
  */
 export const THRONE_DETAIL =
   "Throne smart restroom, free: open the door with the Throne app, by texting THRONE to 202-751-3694 and then the unit number shown by the door, or with a free Throne entry card. 10-minute limit.";
+
+/** For a point placed from the site's street address (the Throne list's units): the pin is the site, not the door. */
+export const APPROXIMATE_DETAIL =
+  "Approximate location: placed from the site's street address, so the unit may be a block or so from the pin.";
 
 /** The caution for a unit from the Throne hand list, which is not in OpenStreetMap. */
 export const THRONE_CAUTION = "From Throne Labs and city sources, not OpenStreetMap: check the Throne app before you count on it.";

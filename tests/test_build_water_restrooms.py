@@ -348,6 +348,9 @@ def test_bundled_file_is_well_formed():
         # A danger area is often open water or public land by a range.
         ({"military": "danger_area"}, None),
         ({"military": "no"}, None),
+        # An old fort or battery that is a park now.
+        ({"military": "bunker", "historic": "fort"}, None),
+        ({"landuse": "military", "historic": "yes"}, "military"),
         ({"amenity": "prison"}, "prison"),
         ({"leisure": "park"}, None),
         ({"amenity": "toilets"}, None),
@@ -497,7 +500,16 @@ def test_a_unit_within_50_ft_of_an_osm_restroom_is_that_restroom():
     points, added, matched = mod.merge_throne([osm], [_unit()])
     assert (added, matched) == (0, 1)
     assert points == [
-        mod.Amenity("n7", -77.0, 38.9 + 14 * M_LAT, None, "u", name="Plaza toilet", op="Throne")
+        mod.Amenity(
+            "n7",
+            -77.0,
+            38.9 + 14 * M_LAT,
+            None,
+            "u",
+            name="Plaza toilet",
+            op="Throne",
+            throne_unit="throne-x",
+        )
     ]
     # Just past 50 ft (15 m): a separate restroom, so both show.
     far = mod.Amenity("n7", -77.0, 38.9 + 16 * M_LAT, None, "u")
@@ -515,7 +527,9 @@ def test_an_osm_restroom_tagged_as_a_throne_matches_from_further():
     assert tagged.op == "Throne"
     points, added, matched = mod.merge_throne([tagged], [_unit()])
     assert (added, matched) == (0, 1) and points[0].osm == "n9"
-    beyond = replace_lat(tagged, 38.9 + 160 * M_LAT)
+    # Up to 1,000 ft (300 m): the list's positions are street addresses.
+    assert mod.merge_throne([replace_lat(tagged, 38.9 + 290 * M_LAT)], [_unit()])[1:] == (0, 1)
+    beyond = replace_lat(tagged, 38.9 + 310 * M_LAT)
     assert mod.merge_throne([beyond], [_unit()])[1:] == (1, 0)
 
 
@@ -610,9 +624,90 @@ def test_throne_only_refreshes_the_units_and_keeps_the_osm_points(tmp_path):
             "fee": "no",
             "wc": "yes",
             "op": "Throne",
+            "ap": 1,
         },
     ]
     with pytest.raises(SystemExit):
         mod.main(["--out", str(out)])
     with pytest.raises(SystemExit):
         mod.main(["--throne-only", "--pbf", "x.pbf", "--out", str(out)])
+
+
+def test_an_osm_restroom_stands_for_one_unit_at_most():
+    tagged = mod.Amenity("n9", -77.0, 38.9 + 50 * M_LAT, None, "u", op="Throne")
+    units = [_unit("throne-a"), _unit("throne-b", lat=38.9 + 100 * M_LAT)]
+    points, added, matched = mod.merge_throne([tagged], units)
+    assert (added, matched) == (1, 1)
+    assert sorted(p.osm for p in points) == ["n9", "throne-b"]
+
+
+def test_an_added_unit_is_approximate_unless_the_list_says_exact():
+    (p,) = mod.merge_throne([], [_unit()])[0]
+    assert p.approx and mod.document([p])["points"][0]["ap"] == 1
+    (p,) = mod.merge_throne([], [_unit(exact=True)])[0]
+    assert not p.approx and "ap" not in mod.document([p])["points"][0]
+    # A unit matched to an OSM restroom takes the OSM point's place, not approximate.
+    osm = mod.Amenity("n7", -77.0, 38.9, None, "u")
+    (hit,) = mod.merge_throne([osm], [_unit()])[0]
+    assert not hit.approx and hit.throne_unit == "throne-x"
+
+
+def test_throne_only_keeps_osm_throne_tags_and_every_field(tmp_path):
+    out = tmp_path / "w.json"
+    native = mod.Amenity(
+        "n3", -76.9, 39.0, None, "f", name="Throne", fee="no", wheelchair="yes", op="Throne"
+    )
+    rich = mod.Amenity(
+        "n4",
+        -77.3,
+        38.6,
+        "p",
+        "b",
+        name="Pavilion",
+        fee="yes",
+        wheelchair="limited",
+        hours="Mo-Su 06:00-22:00",
+        seasonal="summer",
+        bottle=True,
+    )
+    listed = mod.Amenity("n5", -77.0, 38.9, None, "u")
+    units = tmp_path / "throne.json"
+    units.write_text(json.dumps({"units": [_unit()]}))
+    first, _, _ = mod.merge_throne([native, rich, listed], mod.load_throne(units))
+    mod.write_document(mod.document(first), out)
+    doc = json.loads(out.read_text())
+    assert {p["id"]: p.get("tu") for p in doc["points"]} == {
+        "n3": None,
+        "n4": None,
+        "n5": "throne-x",
+    }
+    # The unit leaves the list: the list's mark goes; the OSM-tagged Throne and
+    # every other field stay.
+    units.write_text(json.dumps({"units": []}))
+    assert mod.main(["--throne-only", "--out", str(out), "--throne", str(units)]) == 0
+    assert json.loads(out.read_text())["points"] == [
+        {
+            "id": "n3",
+            "x": -76.9,
+            "y": 39.0,
+            "t": "f",
+            "n": "Throne",
+            "fee": "no",
+            "wc": "yes",
+            "op": "Throne",
+        },
+        {
+            "id": "n4",
+            "x": -77.3,
+            "y": 38.6,
+            "w": "p",
+            "t": "b",
+            "n": "Pavilion",
+            "fee": "yes",
+            "wc": "limited",
+            "h": "Mo-Su 06:00-22:00",
+            "s": "summer",
+            "b": 1,
+        },
+        {"id": "n5", "x": -77.0, "y": 38.9, "t": "u"},
+    ]

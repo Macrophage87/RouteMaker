@@ -1,5 +1,5 @@
 {
-  "about": "Throne smart restrooms (Throne Labs) in the coverage box: a hand list, each unit cited. scripts/build_water_restrooms.py merges the units with status 'open' into water-restrooms.json; 'unverified' and 'opens soon' stay here until someone confirms them. Positions are the US Census Bureau geocoder's point for the street address the source gives (geocoding.geo.census.gov, benchmark Public_AR_Current, read 2026-10-11), so they are the site, not the exact unit: within about 500 ft (150 m). Never copied from Google Maps. See frontend/src/amenity-data/README.md.",
+  "about": "Throne smart restrooms (Throne Labs) in the coverage box: a hand list, each unit cited. scripts/build_water_restrooms.py merges the units with status 'open' into water-restrooms.json; 'unverified' and 'opens soon' stay here until someone confirms them. Positions are the US Census Bureau geocoder's point for the street address the source gives (geocoding.geo.census.gov, benchmark Public_AR_Current, read 2026-10-11), so they are the site, not the exact unit (a block or so off; Mount Rainier's is across the street), and each added unit's card says its location is approximate. A unit placed from OSM or imagery can carry \"exact\": true. Never copied from Google Maps. See frontend/src/amenity-data/README.md.",
   "read": "2026-10-11",
   "units": [
     {

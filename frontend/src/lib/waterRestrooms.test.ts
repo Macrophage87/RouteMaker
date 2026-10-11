@@ -8,6 +8,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import * as spec from "@maplibre/maplibre-gl-style-spec";
 import {
   ALONG_ROUTE_M,
+  APPROXIMATE_DETAIL,
   THRONE_CAUTION,
   THRONE_DETAIL,
   WATER_CAUTION,
@@ -461,7 +462,7 @@ test("a Throne smart restroom: how to open it first, and a list unit says it is 
   const [osm, listed, water] = parseWaterRestrooms({
     points: [
       { id: "n7", x: -77, y: 38.9, t: "u", op: "Throne" },
-      { id: "throne-dc-dupont-circle", x: -77.04, y: 38.91, t: "f", n: "Throne, Dupont Circle", fee: "no", wc: "yes", op: "Throne" },
+      { id: "throne-dc-dupont-circle", x: -77.04, y: 38.91, t: "f", n: "Throne, Dupont Circle", fee: "no", wc: "yes", op: "Throne", ap: 1 },
       // Said of restrooms only, and only the one operator the file knows.
       { id: "n8", x: -77, y: 38.8, w: "p", op: "Throne" },
       { id: "n9", x: -77, y: 38.7, t: "f", op: "Other" },
@@ -473,12 +474,15 @@ test("a Throne smart restroom: how to open it first, and a list unit says it is 
   assert.deepEqual(waterCard(listed), {
     kind: "Flush restroom",
     name: "Throne, Dupont Circle",
-    details: [THRONE_DETAIL, "Free.", "Wheelchair accessible."],
+    details: [THRONE_DETAIL, APPROXIMATE_DETAIL, "Free.", "Wheelchair accessible."],
     caution: THRONE_CAUTION,
   });
   // An OSM restroom marked as a Throne keeps the OSM caution.
   assert.equal(waterCard(osm).caution, WATER_CAUTION);
   assert.equal(waterCard(osm).details[0], THRONE_DETAIL);
+  // An OSM point sits where it was mapped: no approximate note.
+  assert.equal(osm.approximate, undefined);
+  assert.ok(!waterCard(osm).details.includes(APPROXIMATE_DETAIL));
   assert.match(THRONE_DETAIL, /free/i);
   assert.match(THRONE_DETAIL, /202-751-3694/);
 });
@@ -490,6 +494,8 @@ test("the bundled file has the open Throne units, each a flush restroom", () => 
   for (const p of listed) {
     assert.equal(p.operator, "Throne");
     assert.equal(p.toilet, "f");
+    // Placed from a street address: the card says the pin is approximate.
+    assert.equal(p.approximate, true);
     assert.match(p.name ?? "", /^Throne, /);
   }
 });

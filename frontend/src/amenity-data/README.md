@@ -40,7 +40,9 @@ plan):
 
 - Not where the public can walk in. A point inside an area tagged
   `aeroway=aerodrome` or `aeroway=terminal` (airside), `landuse=military` or
-  `military=*` (every value but `no` and `danger_area`), or `amenity=prison` is
+  `military=*` (every value but `no` and `danger_area`, and not on an area also
+  tagged `historic=*`, an old fort or battery that is a park now), or
+  `amenity=prison` is
   left out, water as well as restrooms. Areas are closed ways and multipolygon
   relations; a point in a hole of the area stays. The build prints how many it
   left out, by kind.
@@ -51,13 +53,20 @@ plan):
   name, position, jurisdiction, status (`open`, `opens soon`, `unverified`), how
   it was placed and its sources with the date read. Only `open` units are
   merged into the map's file. A unit within 50 ft (15 m) of an OSM restroom, or
-  within 500 ft (150 m) of one already tagged as a Throne (operator, brand or
-  name), is that restroom: the OSM point stays and is marked `op: "Throne"`.
+  within 1,000 ft (300 m) of one already tagged as a Throne (operator, brand or
+  name), is that restroom: the OSM point stays and is marked `op: "Throne"`
+  (and `tu`, the unit's id, when OSM does not tag it a Throne itself). Each OSM
+  restroom stands for one unit at most. The wide reach is because the list's
+  positions are street addresses: the three OSM nodes below lie 90 to 700 ft
+  (28 to 215 m) from the units they look like.
   Otherwise the unit is added with its `throne-...` id as a flush restroom,
   free and wheelchair accessible, as Throne describes every unit
   (<https://thronelabs.co/how-it-works>, read 2026-10-11). The card and lists
   then say how to open the door (the app, a text to 202-751-3694, or a free
-  entry card; 10 minutes a visit).
+  entry card; 10 minutes a visit). An added unit carries `ap: 1` unless the
+  list marks it `"exact": true` (placed from OSM or imagery), and its card says
+  the location is approximate: placed from the site's street address, so the
+  unit may be a block or so from the pin.
 
 The list found 17 of the 18 units the owner's Throne app shows (sweep of
 2026-10-11):
@@ -84,7 +93,9 @@ The list found 17 of the 18 units the owner's Throne app shows (sweep of
 
 Not found: a second unit near Navy Yard, and two or three more in the
 Hyattsville and University Park area, which the owner's app screenshots show.
-Positions are the site, not the exact unit (within about 500 ft (150 m)). When
+Positions are the site's street address, not the exact unit (Mount Rainier's
+is across the street from its address point), so each added unit's card says
+the location is approximate. When
 someone confirms a unit, set its status to `open` (or move it to the spot seen)
 and run `--throne-only` (below). Throne's app has a live map; a location feed
 from Throne would replace this list.
@@ -104,6 +115,8 @@ The file is one point per line, short keys:
 | `s` | `seasonal`, unless `no` |
 | `b` | 1 for `bottle=yes` on drinking water |
 | `op` | `Throne` for a Throne smart restroom |
+| `tu` | the Throne list unit that marked an OSM restroom not tagged a Throne in OSM (so `--throne-only` can unmark it) |
+| `ap` | 1 for an approximate position (a Throne list unit placed from a street address) |
 
 The file also has `"also"`, naming the Throne list as the second source.
 
@@ -114,14 +127,17 @@ secured-site rule above: it still has restroom nodes beside their buildings,
 historic springs, and any restroom inside an airport, base or prison, until
 the next refresh (below). Its Throne units are current: on 2026-10-11
 `--throne-only` added the 10 open units (none was within 50 ft (15 m) of an
-OSM restroom), giving 2,273 points, 142,769 bytes, sha256
-`e462821aa491dde5687c59fcd34c87a13c1ff0b7788e41e1845ce88b86830472`. Three OSM
+OSM restroom), each marked approximate, giving 2,273 points, 142,839 bytes,
+sha256 `0b646bc46bc441ab8893c2b48a974106915d9b33026edd0265c3ff5163aa4d5f`. Three OSM
 restroom nodes lie near listed units and may be the same Throne mapped in OSM
 (their tags are not in the file): `n11958790038` about 550 ft (169 m) from
 Columbia Heights, `n11958790039` about 700 ft (215 m) from the Superior Court
-unit, and `n12026098603` about 90 ft (28 m) from Eastern Market. The rebuild
-merges them if they carry `operator=Throne` (or brand or name); otherwise check
-them on the map and move the listed unit onto the node.
+unit, and `n12026098603` about 90 ft (28 m) from Eastern Market. All three
+are free, wheelchair accessible and of no mapped type, and the first two have
+consecutive ids, so they are likely the units, at a better spot than the
+address point. The rebuild merges them (within 1,000 ft (300 m)) if they carry
+`operator=Throne` (or brand or name); otherwise check them and move the listed
+unit onto the node with `"exact": true`.
 
 The figures below are the 2026-10-09 build's, before the Throne units.
 

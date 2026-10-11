@@ -68,7 +68,8 @@ Not where the public can walk in (owner request, 2026-10-11: "leave out
 restrooms inside places the public can't easily walk into"): a point inside an
 area tagged aeroway=aerodrome or aeroway=terminal (airside), landuse=military
 or military=* (a base; every value but "no" and "danger_area", as a danger
-area is often open water or public land beside a range), or amenity=prison is
+area is often open water or public land beside a range; and not on an area
+also tagged historic=*, such as an old fort that is a park now), or amenity=prison is
 left out, water as well as restrooms. Areas are read as closed ways and as
 multipolygon relations, holes respected
 (<https://wiki.openstreetmap.org/wiki/Tag:aeroway%3Daerodrome>,
@@ -84,13 +85,19 @@ routes"; "They are in Maryland and Virginia too"): OSM has few of them, so a
 small hand list with a source for each unit,
 frontend/src/amenity-data/throne-restrooms.json, is merged in. Only units with
 status "open" are added ("unverified" and "opens soon" wait in the list). A
-unit within 50 ft (15 m) of an OSM restroom, or within 500 ft (150 m) of an
+unit within 50 ft (15 m) of an OSM restroom, or within 1,000 ft (300 m) of an
 OSM restroom already tagged as a Throne (operator, brand or name), is that
 restroom: the OSM point stays, marked as a Throne. Otherwise the unit is added
 as a flush restroom, free and wheelchair accessible, as Throne describes every
 unit (<https://thronelabs.co/how-it-works>, read 2026-10-11), with the id
 "throne-...". Every Throne point carries op "Throne", which the map turns into
-how to open the door.
+how to open the door. An OSM point marked only by the list also carries
+tu (the unit's id), so --throne-only can tell it from one tagged Throne in OSM.
+An added unit carries ap 1 (approximate) unless the list marks it "exact": the
+positions come from a street address, so the card says the unit may be a
+block or so away (three OSM restrooms that look like listed units lie 90 to
+700 ft (28 to 215 m) from them, hence the wider reach for a tagged one). Each
+OSM restroom stands for at most one unit.
 
 Run from the repository root with the development venv (osmium is in
 requirements-dev.txt):
@@ -161,7 +168,7 @@ SECURED_AEROWAY = frozenset({"aerodrome", "terminal"})
 MILITARY_OPEN = frozenset({"no", "danger_area"})
 # A Throne unit is an OSM restroom this close, or this close to one tagged as a Throne.
 THRONE_SAME_M = 15.0  # 50 ft
-THRONE_TAGGED_M = 150.0  # 500 ft
+THRONE_TAGGED_M = 300.0  # 1,000 ft: the list's positions are street addresses
 THRONE_STATUSES = frozenset({"open", "opens soon", "unverified"})
 THRONE = "Throne"
 M_PER_DEG_LAT = 111_320.0
@@ -181,6 +188,10 @@ class Amenity:
     seasonal: str | None = None
     bottle: bool = False
     op: str | None = None  # "Throne" for a Throne smart restroom
+    # The Throne list unit that marked this OSM point (not tagged Throne in OSM itself).
+    throne_unit: str | None = None
+    # Placed from a street address, not the unit itself: the card says so.
+    approx: bool = False
 
 
 def is_historic_spring(tags: dict[str, str]) -> bool:
@@ -245,7 +256,10 @@ def secured_kind(tags: dict[str, str]) -> str | None:
     if tags.get("aeroway") in SECURED_AEROWAY:
         return "airport"
     military = tags.get("military")
-    if tags.get("landuse") == "military" or (military and military not in MILITARY_OPEN):
+    if tags.get("landuse") == "military" or (
+        # A historic fort, battery or trench (historic=*) is a public park now.
+        military and military not in MILITARY_OPEN and not tags.get("historic")
+    ):
         return "military"
     if tags.get("amenity") == "prison":
         return "prison"
@@ -472,12 +486,14 @@ def merge_throne(amenities: list[Amenity], units: list[dict]) -> tuple[list[Amen
     Units not "open" are skipped. A unit within THRONE_SAME_M of an OSM
     restroom, or within THRONE_TAGGED_M of one already tagged as a Throne, is
     that restroom (the nearest): the OSM point keeps its place and details and
-    is marked op Throne. Otherwise the unit is added. Points from an earlier
+    is marked op Throne; each OSM restroom stands for one unit at most.
+    Otherwise the unit is added. Points from an earlier
     merge (ids "throne-...") are dropped first, so a rerun gives the same file.
     """
     out = [a for a in amenities if not a.osm.startswith("throne-")]
     west, south, east, north = COVERAGE_BBOX
     added = matched = 0
+    claimed: set[int] = set()
     for u in units:
         if u["status"] != "open":
             continue
@@ -486,14 +502,18 @@ def merge_throne(amenities: list[Amenity], units: list[dict]) -> tuple[list[Amen
             continue
         best: tuple[float, int] | None = None
         for i, a in enumerate(out):
-            if a.toilet is None or a.osm.startswith("throne-"):
+            if a.toilet is None or a.osm.startswith("throne-") or i in claimed:
                 continue
             d = _metres(lon, lat, a.lon, a.lat)
             reach = THRONE_TAGGED_M if a.op == THRONE else THRONE_SAME_M
             if d <= reach and (best is None or d < best[0]):
                 best = (d, i)
         if best is not None:
-            out[best[1]] = replace(out[best[1]], op=THRONE)
+            claimed.add(best[1])
+            hit = out[best[1]]
+            if hit.op != THRONE:
+                hit = replace(hit, op=THRONE, throne_unit=u["id"])
+            out[best[1]] = hit
             matched += 1
             continue
         out.append(
@@ -507,6 +527,7 @@ def merge_throne(amenities: list[Amenity], units: list[dict]) -> tuple[list[Amen
                 fee="no",
                 wheelchair="yes",
                 op=THRONE,
+                approx=not u.get("exact", False),
             )
         )
         added += 1
@@ -529,6 +550,8 @@ def from_document(doc: dict) -> list[Amenity]:
             seasonal=p.get("s"),
             bottle=p.get("b") == 1,
             op=p.get("op"),
+            throne_unit=p.get("tu"),
+            approx=p.get("ap") == 1,
         )
         for p in doc["points"]
     ]
@@ -643,6 +666,10 @@ def document(amenities: list[Amenity]) -> dict:
             p["b"] = 1
         if a.op:
             p["op"] = a.op
+        if a.throne_unit:
+            p["tu"] = a.throne_unit
+        if a.approx:
+            p["ap"] = 1
         points.append(p)
     return {"source": SOURCE, "also": SOURCE_THRONE, "points": points}
 
@@ -682,10 +709,10 @@ def main(argv: list[str] | None = None) -> int:
     units = load_throne(args.throne)
     left_out: Counter = Counter()
     if args.throne_only:
-        # The file cannot tell a point's own Throne tags from an earlier match, so
-        # every OSM point is unmarked and matched again (within THRONE_SAME_M).
+        # A point the list marked ("tu") is unmarked and matched again; a point
+        # tagged Throne in OSM itself keeps its mark (and the wider THRONE_TAGGED_M).
         osm_points = [
-            replace(a, op=None)
+            replace(a, op=None, throne_unit=None) if a.throne_unit else a
             for a in from_document(json.loads(args.out.read_text(encoding="utf-8")))
         ]
     else:
