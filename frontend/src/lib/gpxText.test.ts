@@ -143,3 +143,10 @@ test("an opened file is described: its name, its length, then one sentence per n
   assert.equal(unnamed.length, 1);
   assert.doesNotMatch(unnamed[0], /undefined/);
 });
+
+test("parts left out for lying far away are said, with the gap in miles then kilometres", () => {
+  const [, one] = importSentences({ ...PLAN, notes: [{ kind: "far-parts", count: 1 }] });
+  assert.equal(one, "One other part lies more than 0.5 mi (0.8 km) from it and was left out; the plan follows the longest part.");
+  const [, two] = importSentences({ ...PLAN, notes: [{ kind: "far-parts", count: 2 }] });
+  assert.match(two, /^2 other parts lie more than 0\.5 mi \(0\.8 km\) from it and were left out/);
+});

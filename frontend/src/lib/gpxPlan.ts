@@ -30,10 +30,21 @@ import { cumulative, dedupe, fidelity, refineVias, significantIndexes, viaPoints
 export const REFERENCE_MAX_VERTICES = 5000;
 /** Metres the reference line may depart from the file's own line. */
 export const REFERENCE_TOLERANCE_M = 2;
+/**
+ * Largest gap, in metres, between one part of a file's line and the next that
+ * is still joined into one line: half a mile (805 m). A GPS dropout under a
+ * bridge or a paused recording resumes close by; a gap wider than this is a
+ * different ride, or the far side of a stretch outside the coverage box, and
+ * following the straight jump across it as track froze the page (PLAN.md, the
+ * GPX far-apart-parts import fix).
+ */
+export const JOIN_GAP_M = 805;
 
 export type ImportNote =
   | { kind: "outside"; share: number }
   | { kind: "joined"; parts: number }
+  /** Parts lying more than JOIN_GAP_M from the part followed, left out rather than joined to it. */
+  | { kind: "far-parts"; count: number }
   | { kind: "waypoints-unused"; count: number }
   | { kind: "skipped"; count: number }
   | { kind: "dense-route"; count: number }
@@ -93,6 +104,58 @@ export function clipToCoverage(line: readonly LonLat[]): { runs: LonLat[][]; out
   return { runs, outsideShare: total > 0 ? outside / total : allOutside ? 1 : 0 };
 }
 
+/**
+ * The part of a file's line the plan follows. Each segment is clipped to the
+ * coverage box; the pieces that leaves, in the file's order, are joined while
+ * each starts within JOIN_GAP_M of where the one before it ended. Of the
+ * joined runs the longest is followed, and the pieces of the rest are counted
+ * as left out: joining them would draw a straight jump across the gap and
+ * follow it as track. outsideShare is the share of the file's length outside
+ * the box, the gaps between segments not counted.
+ */
+export function followedPart(lines: readonly (readonly LonLat[])[]): {
+  pieces: LonLat[][];
+  leftOut: number;
+  outsideShare: number;
+} {
+  const pieces: LonLat[][] = [];
+  let outside = 0;
+  let total = 0;
+  let anyPoint = false;
+  for (const segment of lines) {
+    if (segment.length) anyPoint = true;
+    const kept = dedupe(segment);
+    const clipped = clipToCoverage(kept);
+    const length = cumulative(kept).at(-1) ?? 0;
+    total += length;
+    outside += clipped.outsideShare * length;
+    // A lone point inside the box is no line to follow or join.
+    pieces.push(...clipped.runs.filter((run) => run.length >= 2));
+  }
+  const chains: LonLat[][][] = [];
+  for (const piece of pieces) {
+    const last = chains.at(-1);
+    const end = last?.at(-1)?.at(-1);
+    if (last && end && haversineM(end, piece[0]) <= JOIN_GAP_M) last.push(piece);
+    else chains.push([piece]);
+  }
+  let best: LonLat[][] = [];
+  let bestM = -1;
+  for (const chain of chains) {
+    const m = cumulative(chain.flat()).at(-1) ?? 0;
+    if (m > bestM) {
+      best = chain;
+      bestM = m;
+    }
+  }
+  const allOutside = anyPoint && pieces.length === 0;
+  return {
+    pieces: best,
+    leftOut: pieces.length - best.length,
+    outsideShare: total > 0 ? outside / total : allOutside ? 1 : 0,
+  };
+}
+
 function referenceOf(line: readonly LonLat[]): LonLat[] {
   if (line.length <= 2) return [...line];
   return significantIndexes(line, REFERENCE_MAX_VERTICES, REFERENCE_TOLERANCE_M).map((i) => line[i]);
@@ -132,37 +195,34 @@ export function planFromGpx(file: GpxFile, maxPoints: number = MAX_POINTS): Impo
   const notes: ImportNote[] = [];
   if (file.skipped > 0) notes.push({ kind: "skipped", count: file.skipped });
 
-  const trackLine: LonLat[] = [];
-  let parts = 0;
+  const segments: LonLat[][] = [];
   for (const track of file.tracks) {
     for (const segment of track.segments) {
-      if (segment.length === 0) continue;
-      parts += 1;
-      trackLine.push(...segment);
+      if (segment.length > 0) segments.push(segment);
     }
   }
+  const trackLine: LonLat[] = segments.flat();
   const route = file.routes.find((r) => r.points.length >= 2);
   const routeLine: LonLat[] = route ? route.points.map((p) => [p.lon, p.lat]) : [];
   const name = file.name ?? file.tracks.find((t) => t.name)?.name ?? route?.name;
 
   // Where the line to draw and follow comes from: the track, or a route too
   // dense to route through point by point.
-  let line = trackLine;
-  if (line.length < 2 && route && route.points.length > maxPoints) {
-    line = routeLine;
-    parts = 1;
+  let lines = segments;
+  if (trackLine.length < 2 && route && route.points.length > maxPoints) {
+    lines = [routeLine];
     notes.push({ kind: "dense-route", count: route.points.length });
   }
-  const clipped = clipToCoverage(dedupe(line));
-  const inside = clipped.runs.flat();
+  const followed = followedPart(lines);
+  const inside = followed.pieces.flat();
   const reference = referenceOf(inside);
   const referenceM = cumulative(inside).at(-1) ?? 0;
 
   const withTail = (plan: Omit<ImportedPlan, "notes" | "name" | "reference" | "referenceM">): ImportedPlan => {
     if (inside.length >= 2) {
-      if (clipped.outsideShare > 0) notes.push({ kind: "outside", share: clipped.outsideShare });
-      const joined = parts + clipped.runs.length - 1;
-      if (joined > 1) notes.push({ kind: "joined", parts: joined });
+      if (followed.outsideShare > 0) notes.push({ kind: "outside", share: followed.outsideShare });
+      if (followed.pieces.length > 1) notes.push({ kind: "joined", parts: followed.pieces.length });
+      if (followed.leftOut > 0) notes.push({ kind: "far-parts", count: followed.leftOut });
     }
     if (plan.source !== "waypoints" && file.waypoints.length) {
       notes.push({ kind: "waypoints-unused", count: file.waypoints.length });
