@@ -23,7 +23,7 @@ BOX = REPO / "scripts" / "cloud" / "box-rebuild.sh"
 IMPORT = REPO / "scripts" / "cloud" / "import-result.sh"
 BUILD = "20261011T093012Z"
 COMMIT = "a" * 40
-VARIANTS = ("standard", "no-trail", "ebike", "weekend", "offroad")
+VARIANTS = ("standard", "no-trail", "ebike", "weekend", "offroad", "mtb")
 
 pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
 
@@ -694,6 +694,9 @@ def test_the_swap_restarts_the_off_road_router_where_it_runs(fake, result) -> No
     assert done.returncode == 0, done.stderr
     assert "compose --profile offroad ps -q valhalla-offroad" in fake.calls()
     assert "compose --profile offroad restart valhalla-offroad" in fake.calls()
+    # The Mountain Bike router, behind the same profile, the same way (slice 6).
+    assert "compose --profile offroad ps -q valhalla-mtb" in fake.calls()
+    assert "compose --profile offroad restart valhalla-mtb" in fake.calls()
 
 
 def test_the_safety_dump_leaves_out_what_the_nightly_backup_leaves_out(fake, result) -> None:
@@ -741,7 +744,7 @@ ln -s "$FAKE_DIR/graph.tar" "$stage/tiles/standard/BUILD/tiles.tar"
 echo dump >"$stage/db/routemaker.dump"
 (cd "$stage" && sha256sum tiles/standard/BUILD/tiles.tar db/routemaker.dump >SHA256SUMS)
 graphs=""
-for v in standard no-trail ebike weekend offroad; do
+for v in standard no-trail ebike weekend offroad mtb; do
   graphs="$graphs $v=${FAKE_SHIPPED:-BUILD}"
 done
 printf 'bundle_format=1\ntiles=%s\n' "${graphs# }" >"$stage/MANIFEST.txt"

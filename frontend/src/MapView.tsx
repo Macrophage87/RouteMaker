@@ -30,7 +30,7 @@ import {
   ROUTE_LINE_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette } from "./stressStyle.js";
+import { stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb } from "./stressStyle.js";
 import { subscribeTopoLines, syncTopoLines, topoLinesOn, type TopoMap } from "./lib/topoLines.ts";
 import {
   addStressOverlay,
@@ -1181,6 +1181,13 @@ export function MapView(props: Props) {
   useEffect(
     () =>
       subscribeHighStressLanes(() => onLaneSwitch(mapRef.current, loaded.current, callbacks.current.when)),
+    [],
+  );
+
+  // The Mountain Bike ride type's level (slice 6): the trails up to it draw as routable, the harder ones
+  // keep the not-for-routes look; the filters are set again in place, as for the lanes switch.
+  useEffect(
+    () => subscribeRoutableMtb(() => onLaneSwitch(mapRef.current, loaded.current, callbacks.current.when)),
     [],
   );
 

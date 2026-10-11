@@ -18,8 +18,9 @@ import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { forgetPlan, planToOpen, tabSession } from "./lib/signIn.ts";
 import { STILL_PLANNING_AFTER_MS, announceRoute, stillPlanningSaid } from "./lib/summary.ts";
 import { focusesPlanButton, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
-import { neutralPaletteSearch } from "./stressStyle.js";
-import { topoAvailable, useTopoLines } from "./lib/topoLines.ts";
+import { neutralPaletteSearch, setMtbTrails, setRoutableMtb } from "./stressStyle.js";
+import { setTopoLines, topoAvailable, useTopoLines } from "./lib/topoLines.ts";
+import { isMtb, mtbLevelOf } from "./lib/mtbMode.ts";
 import { useHighStressLanes, useMtbTrails } from "./useStressStyle.ts";
 import { useStressStyle } from "./useStressStyle.ts";
 import { ANNOUNCE_SETTLE_MS } from "./lib/settle.ts";
@@ -35,7 +36,7 @@ import { RideMode, startRideGesture, type RideView } from "./RideMode.tsx";
 import { readRidePrefs, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf } from "./lib/bikeshare.ts";
-import type { Dials } from "./lib/dials.ts";
+import { trailsAreOff, type Dials } from "./lib/dials.ts";
 import { WeightStore, withWeight, type StoredWeight } from "./lib/weight.ts";
 import { stationEdit, type RailVisibility, type StationRole } from "./lib/railStations.ts";
 import { RAIL_STATIONS, WMATA_SLUGS, stationEntranceForPlace } from "./lib/railData.ts";
@@ -1136,6 +1137,12 @@ export function App() {
   };
   const retry = () =>
     scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm) });
+  // The Mountain Bike ride type's level (slice 6): the map draws the trails up to it as routable.
+  // Every other ride type, and a Mountain Bike ride with trails off, draws them as not for routes.
+  const routableLevel = isMtb(preset) && !trailsAreOff(preset, dials) ? mtbLevelOf(dials) : null;
+  useEffect(() => {
+    setRoutableMtb(routableLevel);
+  }, [routableLevel]);
   // The Adjust panel's sliders and toggles. Turning the loop on or off renames
   // the points (OWNER-DECISIONS 374), which a screen reader would not hear.
   const commitDials = (next: Dials) => {
@@ -1149,6 +1156,12 @@ export function App() {
   const choosePreset = (id: PresetId, next: Dials) => {
     const said = loopChangeSaid({ preset, dials }, { preset: id, dials: next }, points.length);
     if (said) announce(said);
+    // Mountain Bike (slice 6) turns the mountain-bike and contour layers on (the owner's defaults of
+    // 2026-10-11), not remembered as the rider's own choice; its loop is on in `next` (mtbChosen).
+    if (isMtb(id) && !isMtb(preset)) {
+      setMtbTrails(true, { remember: false });
+      setTopoLines(true, { remember: false });
+    }
     setPreset(id);
     setDials(next);
     // A station chosen on Bikeshare is not carried to the next ride type, or back (OWNER-DECISIONS 466a).

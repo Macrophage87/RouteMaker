@@ -93,7 +93,7 @@ def test_the_restart_the_checklist_issues_is_the_one_the_commands_print(acceptan
 
     for hint in (run_rebuild_now.RESTART_HINT, rollback_rebuild.RESTART_HINT):
         assert "docker compose restart " + " ".join(acceptance.DEFAULT_ROUTERS) in hint
-        assert "docker compose --profile offroad restart valhalla-offroad" in hint
+        assert "docker compose --profile offroad restart valhalla-offroad valhalla-mtb" in hint
 
 
 def test_the_default_routers_are_the_ones_a_plain_up_runs(acceptance, SERVICES):

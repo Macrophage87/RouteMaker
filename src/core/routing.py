@@ -83,6 +83,7 @@ from routemaker import (
     flow,
     intersections,
     mdot_aadt,
+    mtbmode,
     ridetime,
     trace_junctions,
     zoo,
@@ -94,7 +95,7 @@ from routemaker.geo import Point, haversine
 from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
-from . import avoid_junctions, mass_hazards, presets
+from . import avoid_junctions, mass_hazards, mtb, presets
 from . import workzones as work_zones
 
 logger = logging.getLogger(__name__)
@@ -838,6 +839,9 @@ class Dials:
     # Off by default: the answer lists EVERY junction with its cost (`junctions_debug`),
     # flagged or not, for re-running a sample with all junctions counted (468).
     debug_junctions: bool = False
+    # Mountain Bike only: the hardest trail level the rider takes, 1-4 (docs/MTB-TOPO-PLAN.md,
+    # slice 6); None: `routemaker.mtbmode.DEFAULT_MAX_LEVEL`, level 2.
+    mtb_level: int | None = None
     # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
     # A ride whose last point is its first is a loop whatever this says.
     loop: bool = False
@@ -930,7 +934,11 @@ _weekend_failed_at: float | None = None
 # on the same timeout and failure memory: a deployment that has not built it
 # yet, or whose router is down, still answers, without the mountain-bike class.
 _offroad_failed_at: float | None = None
-TWIN_VARIANTS = (Variant.WEEKEND.value, Variant.OFFROAD.value)
+# The Mountain Bike router (`Variant.MTB`, docs/MTB-TOPO-PLAN.md, slice 6), a sixth behind the
+# same profile, falls back the same way: the ride is then planned on the standard graph and
+# its answer says so (`mtb.limited` = no_mtb_graph).
+_mtb_failed_at: float | None = None
+TWIN_VARIANTS = (Variant.WEEKEND.value, Variant.OFFROAD.value, Variant.MTB.value)
 
 
 def _weekend_down() -> bool:
@@ -941,7 +949,13 @@ def _offroad_down() -> bool:
     return _offroad_failed_at is not None and clock() - _offroad_failed_at < WEEKEND_FAILURE_TTL_S
 
 
+def _mtb_down() -> bool:
+    return _mtb_failed_at is not None and clock() - _mtb_failed_at < WEEKEND_FAILURE_TTL_S
+
+
 def _twin_down(variant: str) -> bool:
+    if variant == Variant.MTB.value:
+        return _mtb_down()
     return _offroad_down() if variant == Variant.OFFROAD.value else _weekend_down()
 
 
@@ -962,7 +976,13 @@ def _offroad_is_promoted() -> bool:
     return _promoted_row(Variant.OFFROAD.value)
 
 
+def _mtb_is_promoted() -> bool:
+    return _promoted_row(Variant.MTB.value)
+
+
 def _is_promoted(variant: str) -> bool:
+    if variant == Variant.MTB.value:
+        return _mtb_is_promoted()
     if variant == Variant.OFFROAD.value:
         return _offroad_is_promoted()
     return _weekend_is_promoted()
@@ -974,8 +994,10 @@ def _mark_weekend(ok: bool) -> None:
 
 
 def _mark_twin(variant: str, ok: bool) -> None:
-    global _offroad_failed_at
-    if variant == Variant.OFFROAD.value:
+    global _offroad_failed_at, _mtb_failed_at
+    if variant == Variant.MTB.value:
+        _mtb_failed_at = None if ok else clock()
+    elif variant == Variant.OFFROAD.value:
         _offroad_failed_at = None if ok else clock()
     else:
         _mark_weekend(ok)
@@ -2327,6 +2349,10 @@ def plan(
             seek_limited = "long_ride"
         else:
             request["alternates"] = SEEK_ALTERNATES
+    # Mountain Bike ranks the router's own routes by its trail rules (`core.mtb`): two-point
+    # plans ask for them, as the hills search does.
+    if preset_name == mtb.PRESET and len(points) == 2 and not long_ride:
+        request.setdefault("alternates", SEEK_ALTERNATES)
     if variant in TWIN_VARIANTS and (_twin_down(variant) or not _is_promoted(variant)):
         logger.info("the %s graph is not being served; planning on the standard graph", variant)
         variant = Variant.STANDARD.value
@@ -2548,6 +2574,32 @@ def plan(
             "excluded": 0,
             "limited": refine_limited,
         }
+    # Mountain Bike (docs/MTB-TOPO-PLAN.md, slice 6): the rider's hardest trail level held, the
+    # trail-seeking ranking and the connecting-road rule, on the route as it now is and the
+    # router's own alternatives (`core.mtb.settle`). Before the dodge and Avoid passes, so what
+    # they say (`dodges`, `avoid_search`) is said of the route answered; should they change it,
+    # it is read again after them (`mtb.reread`). Only on its own graph: a trails-off ride, or
+    # one the standard graph answered while the mountain-bike router was down, has no trails
+    # to weigh.
+    mtb_info = None
+    mtb_level_held = preset_name == mtb.PRESET and variant == Variant.MTB.value
+    if mtb_level_held:
+        searched_trip = trip
+        trip, mtb_info = mtb.settle(
+            # A loop is weighed alone: the router's alternatives are not loops.
+            [trip] if loop else trips, trip, request, variant, trace_costing, when,
+            deadline, traces,
+            dials.mtb_level, points,
+        )  # fmt: skip
+        if trip is not searched_trip:
+            # The routes to choose from were near-ties of the route it replaced: none are
+            # offered beside a route they were not weighed against (as the Avoid pass).
+            refine_context.candidates = refine_context.candidates[:1]
+    elif preset_name == mtb.PRESET and not trails_off:
+        # Trails off is the rider's own choice, said by the answer's `dials`; this is the
+        # router not being there.
+        mtb_info = {"max_level": mtbmode.clamp_level(dials.mtb_level), "limited": "no_mtb_graph"}
+    mtb_trip = trip
     # No weaving through side streets beside a busier road unless it buys a
     # meaningful length of calm (OWNER-DECISIONS 272, 273): the main road's stretch
     # replaces such a dodge. A loop's way back is kept as it was made, not to share
@@ -2600,6 +2652,16 @@ def plan(
             refined["limited"] = None
         else:
             refined["no_fit"] = bool(refined.get("no_fit"))
+    if mtb_level_held and mtb_info is not None and trip is not mtb_trip:
+        # A dodge taken out, or the way round an Avoid-rated junction, changed the route
+        # `mtb.settle` chose: its figures, the over-level warning's among them, are read again
+        # from the route answered.
+        again = mtb.reread(trip, variant, trace_costing, when, deadline, traces, dials.mtb_level)
+        if again is not None:
+            limited = mtb_info.get("limited")
+            if again["over_level_m"] > 1.0 and limited is None:
+                limited = "no_way_round"
+            mtb_info.update({**again, "limited": limited})
 
     # A long calm plan searched in legs of its own answers in the plan's legs: the
     # grouping of its search legs into the plan's, the answer's and its candidates'
@@ -2932,6 +2994,29 @@ def plan(
         }
 
     body = work_zones.with_work_zones(_answer(trip, refined, dodges_of=dodges), zones_plan)
+
+    def _with_mtb(answered: dict, info: dict | None) -> dict:
+        """A Mountain Bike route's reading on its body, and its time at about 6 mph
+        (10 km/h) on singletrack (`mtbmode.duration_s`), the router's own time kept."""
+        answered["mtb"] = info
+        if info and info.get("singletrack_m"):
+            info["router_duration_s"] = answered["duration_s"]
+            answered["duration_s"] = round(
+                mtbmode.duration_s(
+                    answered["duration_s"], answered["distance_m"], info["singletrack_m"]
+                ),
+                1,
+            )
+        return answered
+
+    def _offered_mtb(offered: dict) -> dict | None:
+        """The reading of a route offered beside the answer (a candidate, the way round an
+        Avoid-rated junction): its own, so a harder trail on it is said when it is shown."""
+        if not mtb_level_held:
+            return None
+        return mtb.reread(offered, variant, trace_costing, when, deadline, traces, dials.mtb_level)
+
+    _with_mtb(body, mtb_info)
     body["avoid_search"] = avoid_info
     body["avoid_alternate"] = None
     if avoid_list:
@@ -2943,6 +3028,7 @@ def plan(
         if deadline.at - clock() >= ALTERNATE_MIN_S:
             try:
                 around = work_zones.with_work_zones(_answer(avoid_trip, None, True), zones_plan)
+                _with_mtb(around, _offered_mtb(avoid_trip))
                 around["extra_distance_m"] = round(around["distance_m"] - body["distance_m"], 1)
                 around["extra_duration_s"] = round(around["duration_s"] - body["duration_s"], 1)
                 body["avoid_alternate"] = around
@@ -2961,6 +3047,7 @@ def plan(
         try:
             refine.analyse(found, refine_context, deadline)
             candidate = work_zones.with_work_zones(_answer(found, None, True), zones_plan)
+            _with_mtb(candidate, _offered_mtb(found))
             if maxcalm and target_m:
                 candidate["over_target_m"] = target_fields(
                     _trip_length_m(found), target_m, ceiling

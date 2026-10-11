@@ -27,6 +27,7 @@ SWAP_DUPLICATE_SERVICES = (
     "valhalla-ebike",
     "valhalla-weekend",
     "valhalla-offroad",
+    "valhalla-mtb",
 )
 
 # PLAN.md, Operations/"Rebuild and swap": "raising the [worker] count

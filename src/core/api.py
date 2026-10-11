@@ -284,6 +284,17 @@ class RouteIn(Schema):
             " answer's `loop` says how much it shares. Not on Mass Ride."
         ),
     )
+    mtb_level: StrictInt | None = Field(
+        default=None,
+        ge=1,
+        le=4,
+        description=(
+            "Mountain Bike only (docs/MTB-TOPO-PLAN.md, slice 6): the hardest trail level the"
+            " rider takes, 1 (green, IMBA 1) to 4 (red, IMBA 4 and up); an unrated"
+            " mountain-bike trail counts as 2. A route on a harder trail is answered only where"
+            " none can be found without one, with `mtb.over_level_m` saying how much. Absent: 2."
+        ),
+    )
     bike: BikeName | None = Field(
         default=None,
         description=(
@@ -343,6 +354,8 @@ class RouteIn(Schema):
                 "Mass Ride does not look for climbs: a field that slows below balance speed on a"
                 " climb walks, so the hills slider stops at the fastest time"
             )
+        if self.mtb_level is not None and self.preset != presets.MOUNTAIN_BIKE:
+            raise ValueError("mtb_level applies to the Mountain Bike ride type only")
         if self.carrying is not None and preset.carrying is None:
             raise ValueError("carrying applies to the Cargo Bike ride type only")
         if self.carrying is not None and self.carrying not in preset.carrying:
@@ -1392,6 +1405,46 @@ class MassHazardSpanOut(Schema):
     road: str
 
 
+class MtbOut(Schema):
+    """A Mountain Bike plan's reading of its route (docs/MTB-TOPO-PLAN.md, slice 6;
+    `core.mtb`)."""
+
+    max_level: int = Field(description="The hardest trail level held, 1 to 4.")
+    limited: Literal["time", "untraced", "no_way_round", "no_mtb_graph"] | None = Field(
+        default=None,
+        description=(
+            "Why the rules could not all be held: `time` (the budget ran out), `untraced`, "
+            "`no_way_round` (no route without a harder trail was found), `no_mtb_graph` (the "
+            "mountain-bike graph is not being served, so the route keeps to the standard graph"
+            " and its trails are not weighed)."
+        ),
+    )
+    candidates: int | None = Field(default=None, description="Routes weighed.")
+    rounds: int | None = Field(default=None, description="Rounds of excluding harder trails.")
+    trail_m: float | None = Field(
+        default=None, description="Metres on trail (mountain-bike trails and unpaved paths)."
+    )
+    singletrack_m: float | None = Field(
+        default=None, description="Metres on mountain-bike trails (singletrack)."
+    )
+    over_level_m: float | None = Field(
+        default=None, description="Metres on trails harder than `max_level`; 0 when held."
+    )
+    long_lts3_m: float | None = Field(
+        default=None, description="Metres of LTS 3 in runs of 0.5 mi (805 m) or more."
+    )
+    lts4_m: float | None = Field(default=None, description="Metres of LTS 4 and Avoid road.")
+    trail_weight: float | None = Field(
+        default=None, description="What a trail metre counted in the ranking (0.5)."
+    )
+    singletrack_speed_kmh: float | None = Field(
+        default=None, description="The singletrack speed the time is shown at (10 km/h)."
+    )
+    router_duration_s: float | None = Field(
+        default=None, description="The router's own time, before the singletrack speed."
+    )
+
+
 class WorkZoneOut(Schema):
     """A live work zone the route runs along (FOLLOWUP-WORKZONES)."""
 
@@ -1432,7 +1485,7 @@ class WorkZonesOut(Schema):
 
 class RouteBody(Schema):
     preset: PresetName
-    variant: Literal["standard", "no-trail", "ebike", "weekend", "offroad"]
+    variant: Literal["standard", "no-trail", "ebike", "weekend", "offroad", "mtb"]
     geometry: LineString
     distance_m: float
     duration_s: float
@@ -1491,6 +1544,9 @@ class RouteBody(Schema):
     # A Mass Ride's rider-marked hazards it passes, in riding order (FOLLOWUP-MASSRIDE-MAP
     # part 3, 325). Additive: null on every other ride type, empty where it passes none.
     mass_hazards: list[MassHazardSpanOut] | None = None
+    # The Mountain Bike ride type's reading of the route (slice 6). Additive: null on every
+    # other ride type.
+    mtb: MtbOut | None = None
     # Live work zones (FOLLOWUP-WORKZONES, 341-349). Additive: null where work zones are
     # not running (no refresh stored yet).
     work_zones: WorkZonesOut | None = None
@@ -2045,6 +2101,7 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
             system_weight_kg=body.system_weight_kg,
             loop=body.loop,
             debug_junctions=body.debug_junctions,
+            mtb_level=body.mtb_level,
         )
         return Status(
             200,
@@ -2515,6 +2572,12 @@ class InfoSummaryOut(Schema):
     value: str
 
 
+class MoreLinkOut(Schema):
+    label: str
+    url: str
+    system: str | None = Field(default=None, description="MORE's name for the trail system.")
+
+
 class SegmentInfoOut(Schema):
     found: bool = Field(description="Whether a road or path is within reach of the spot.")
     title: str = Field(
@@ -2546,6 +2609,14 @@ class SegmentInfoOut(Schema):
         description="The panel's compact lines, one short fact each; sources are in sections.",
     )
     sections: list[InfoSectionOut]
+    more: MoreLinkOut | None = Field(
+        default=None,
+        description=(
+            "A mountain-bike trail's link to MORE (Mid-Atlantic Off-Road Enthusiasts): its"
+            " system's page (trailheads, trail info, the day's conditions), or MORE's trail"
+            " guide where its names place it in no system; null on any other way."
+        ),
+    )
     attribution: list[str]
 
 

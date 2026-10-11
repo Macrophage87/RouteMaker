@@ -132,6 +132,9 @@ PLAIN_PATH = re.compile(r"[A-Za-z0-9._/+@=,~-]+")
 INERT_PREFIXES = ("docs/", "reports/", ".github/", "fixtures/")
 INERT_SUFFIXES = (".md",)
 OFFROAD_CONFIG = "valhalla/valhalla-offroad.json"
+# The routers behind the compose profile `offroad`, never started on the beta: the off-road
+# one and the Mountain Bike one (docs/MTB-TOPO-PLAN.md, slice 6).
+UNSTARTED_CONFIGS = (OFFROAD_CONFIG, "valhalla/valhalla-mtb.json")
 COMPOSE_FILES = ("compose.yaml", "compose.beta.yaml")
 # A FORMAT_VERSION change in either tile module needs no data from home: the tile cache is
 # keyed on the version, so the release deploys and the agent runs the pre-draw (OWNER-DECISIONS
@@ -286,11 +289,13 @@ def gate(
                     f"{path}: a graph-build setting changed ({', '.join(keys[:5])}): "
                     "rebuild the graphs at home"
                 )
-            elif kind == "runtime" and path == OFFROAD_CONFIG:
-                # valhalla-offroad is never started on the beta (compose profile `offroad`).
+            elif kind == "runtime" and path in UNSTARTED_CONFIGS:
+                # valhalla-offroad and valhalla-mtb are never started on the beta (compose
+                # profile `offroad`).
+                router = "offroad" if path == OFFROAD_CONFIG else "mtb"
                 result["notes"].append(
                     f"{path}: runtime settings only ({', '.join(keys[:5])}); "
-                    "the offroad router does not run on the beta, so no restart"
+                    f"the {router} router does not run on the beta, so no restart"
                 )
             elif kind == "runtime":
                 result["routers_restart"] = True

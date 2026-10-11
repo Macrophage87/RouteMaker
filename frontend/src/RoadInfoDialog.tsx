@@ -39,6 +39,7 @@ import {
   streetViewPoint,
   infoHeading,
   infoSaid,
+  moreLink,
   refreshedSaid,
   osmEditUrl,
   shownSections,
@@ -371,6 +372,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, avo
   const links = station ? stationLinks(station, WMATA_SLUGS) : [];
   const where = request ? subtitle(state, request.origin) : "";
   const osmEdit = ready ? osmEditUrl(ready) : null;
+  const more = moreLink(ready);
   const actions = spotActions(plan.count, plan.loop);
   const editableWay = ready && me.can_change_lts && ready.osm_way_id != null ? ready.osm_way_id : null;
   // A rider the settings allow may suggest a level (an instance admin changes it instead).
@@ -501,6 +503,15 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, avo
               </li>
             ))}
           </ul>
+        )}
+        {more && (
+          // A mountain-bike trail's MORE page: trailheads, trail info and the day's conditions (slice 6).
+          <p className="road-info-more">
+            <a href={more.url} target="_blank" rel="noopener noreferrer">
+              {more.label}
+              <span className="visually-hidden"> (opens in a new tab)</span>
+            </a>
+          </p>
         )}
         {station && links.length > 0 && (
           <div className="road-info-stations">
