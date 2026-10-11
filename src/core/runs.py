@@ -49,6 +49,9 @@ STALE_AFTER = {
     "membership_sweep": 12 * 60 * 60,
     "degraded_guild_sweep": 30 * 60,
     "worker_heartbeat": 10 * 60,
+    # The work-zone feeds (FOLLOWUP-WORKZONES), every five minutes: past half an hour
+    # the planner's zones are going stale and the worker is not refreshing them.
+    "refresh_work_zones": 30 * 60,
 }
 
 # How long a run row is kept. The five-minute tasks alone write about 105,000

@@ -5531,6 +5531,58 @@ docs/SOURCES.md, "Capital Bikeshare".
 OWNER-DECISIONS 466a) has its own limit, `ratelimit.BIKESHARE_STATIONS`, 60 a minute per client
 address, and reads the shared copy, never the feeds directly.
 
+## Work zones
+
+Live work zones (FOLLOWUP-WORKZONES, OWNER-DECISIONS 341-349). The worker's
+`refresh_work_zones` task reads the state DOTs' WZDx feeds every five minutes (`core.workzones`)
+and keeps the zones in one row of `bikeshare_feed_cache` under the key `workzones`, replaced in
+place; nothing is kept as history, and the row is excluded from the nightly dump with the rest of
+that table. The planner reads it at most once a minute a process. Nothing needs the rebuild.
+
+- **Maryland** is read as soon as the release is up: no key.
+- **Virginia** needs the owner's SmarterRoads key. Put it in `.env` as `SMARTERROADS_TOKEN=<key>`
+  (never in a commit, never printed), then `docker compose up -d worker` (not `restart`: compose
+  reads `.env` when it creates the container). Only `worker` holds it, and it is never logged or
+  written to a run row. Rotating it: docs/DEPLOYMENT.md, "Secrets".
+- What a plan does: a zone closed to bicycles (every lane closed, the bike lane listed closed) is
+  left out of every router request (`exclude_polygons`, a strip 6 m [20 ft] either side of the
+  zone's line, trimmed 20 m [66 ft] at each end so cross streets stay open). Every other zone in
+  force at the ride time that the route runs along costs its penalty: 60 s shoulder only, 120 s a
+  lane closed, 180 s a flagger or alternating one-way, 600 s every lane closed with bicycles not
+  mentioned (shown in red). The plan asks once for the route round those zones and keeps it where
+  it costs no more than the penalties. Each zone the answer still runs along gets a heads-up in
+  the description, with its source, and the disclaimer.
+- Labels: a feed last read 20 minutes to 2 hours ago is still used and its heads-ups say so; older,
+  or never read well, its zones are dropped and the description says "Work zones could not be
+  checked for this route: ... not available". Before the first refresh is stored nothing is said
+  at all (`work_zones` is null).
+
+**After the release is deployed** (no rebuild needed):
+
+1. After five minutes, the run row:
+
+   ```sh
+   docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+     "SELECT started_at, succeeded, detail FROM scheduled_run WHERE task = 'refresh_work_zones' ORDER BY started_at DESC LIMIT 3;"
+   ```
+
+   Expect `succeeded = t` and a detail like `work zones: md 143 zones` (and `va N zones` once the key
+   is in). `md failed` means the feed did not answer three tries; the worker log says why, never
+   with the URL. `md 0 zones` on a weekday is worth a look: the feed may have changed shape. The
+   parser was written against the WZDx specification without a live download, so check the first
+   real reading here.
+2. Plan a route along a road you know has a lane closure listed in the feed (the Maryland 511 map
+   shows them). The description should carry "Work zone ahead at ... Source: Maryland DOT SHA work
+   zones (WZDx, CC0).", and the answer's `work_zones.status` should be `{"md": "current"}`.
+3. The operations page lists `refresh_work_zones` as stale if no refresh has succeeded for 30
+   minutes.
+
+**Dropping Virginia** needs no code change: empty `SMARTERROADS_TOKEN` and `docker compose up -d
+worker`; the next refresh removes Virginia's zones. There is no switch for Maryland: turning work
+zones off altogether is a code change (remove the `refresh_work_zones` task), then
+`DELETE FROM bikeshare_feed_cache WHERE key = 'workzones';`, after which plans say nothing about
+work zones.
+
 ## Rebuilding on the cloud box
 
 The rebuild can run on an AWS spot machine instead of this host, which ran out of memory
