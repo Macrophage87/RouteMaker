@@ -56,9 +56,10 @@ import { ACCESSIBILITY_STORAGE_KEY } from "../stressStyle.js";
 import { breakdownParts } from "./facilityBar.ts";
 // The rendered parts are createElement modules: node's test runner reads .ts, not .tsx.
 import { HighContrastShortcut, Fold, JunctionLegend, PlannerZoomNotice, RideSettings } from "./sidebarParts.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 const src = (name: string) => readFileSync(new URL(name, import.meta.url), "utf8");
-const app = src("../App.tsx");
+const app = appSource();
 const sidebar = src("../Sidebar.tsx");
 const css = src("../styles.css");
 

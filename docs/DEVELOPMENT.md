@@ -4226,10 +4226,44 @@ or worse.
   320 px with text spacing, and the description (the Directions fold's summary, the
   scroll boxes, Full detail, the copy reply, a group's nested crossings).
 
+### The App.tsx split (UI-CLEANUP step 4)
+
+`App.tsx` holds the planner's state, its effects and the handlers, and renders the page
+shell (the skip links, the map, the road panel, the live regions, Ride mode, the panel
+and its header). What the panel shows is in `app/`, moved out unchanged:
+
+- `app/Planner.tsx`: `PointsSection` (the search, the loop toggle, the points, the
+  nearest finder, the point tools, More tips, the Points notice) and `RideSection` (the
+  Ride line and, behind its Edit, the ride type and every dial).
+- `app/RoutePanel.tsx`: `RouteSection` (planning, the long-ride question, errors, the
+  Avoid notice, `RouteSummary`, water along the route, Start ride's question),
+  `RouteSummary` itself, `RouteActions` (the pinned Download GPX, Copy link, Share and
+  Keep for offline) and the `Status` type.
+- `app/Sheets.tsx`: `LayersSheet`, `GpxSheet` and `SettingsSheet`, each in its `SheetFrame`.
+- `app/hooks.ts`: `useNarrow` (and `NARROW`), `useLongerThan`, `useSettled`.
+
+Each component is a pass-through: it takes its props under the names App gives them, keeps
+no state and calls no hook (`RouteSummary` keeps its own `useStressStyle()`), and App renders
+it with `<PointsSection key="points" {...{ pointsHeadingRef, zoom, ... }} />`, so the elements,
+their order, the focus moves and every announcement are as they were. `useId` stays in App
+(the loop hint's id), because React numbers a client render's ids in render order.
+`appSplit.test.ts` holds that shape.
+
+The source tests that read App's wiring read `testSupport/appSource.mjs`'s `appSource()`:
+App.tsx with each component's JSX put back where App renders it, then the rest of the
+modules (their imports, `RouteSummary`, the hooks) without the props interfaces, which only
+repeat App's names. A new test of what the planner renders reads it the same way.
+
+Checked when it was split: the DOM of the whole page but the map's own internals was the
+same before and after in 60 snapshots (30 states at 390 px and 1,440 px: empty, a route,
+Bikeshare, Mass Ride, Trailmaxxing, routes to choose from, an Avoid junction, each sheet,
+the ride settings, Edit points, every fold open, Start ride's question, the panel hidden and
+shown), and `scripts/a11y/check.mjs` passed the same checks.
+
 ### The sidebar (312)
 
 OWNER-DECISIONS 312's layout, from mockup v3 (PLAN.md, FOLLOWUP-SIDEBAR-REDESIGN, has
-what differs). Code: `App.tsx` places it; `Sidebar.tsx` (MoreTips, QuickFigures,
+what differs). Code: `App.tsx` places it (its parts in `app/`, above); `Sidebar.tsx` (MoreTips, QuickFigures,
 BottomBar, SheetFrame); `lib/sidebarParts.ts` (RideSettings, Fold, JunctionLegend and
 the two parts for open questions, written with createElement so a test renders them);
 `lib/sidebar.ts` (the decisions, pure); `lib/rideSummary.ts`; `lib/quickFigures.ts`.
