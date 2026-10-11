@@ -4462,7 +4462,8 @@ puts it, at most two presses away.
   (without Home) so the next visit opens in the right view at once; signed out it is the
   device's. The POST needs the CSRF cookie the GET sets, a JSON body and a same-site
   request; Home must be in the coverage box and is rounded to 5 places; the row goes with the
-  account and is deleted when the account is marked deleted. `tests/test_my_go.py`.
+  account and is deleted when the account is marked deleted; `my_go` never ships to the beta
+  (`scripts/beta/ship-data.sh` `EXCLUDED_TABLE_DATA`). `tests/test_my_go.py`.
 - **Plan's panel**: the Points heading's row holds Swap (Reverse), Loop, Edit and Info (the
   how-to, the access switch and Install, which were More tips); the Ride line shows its
   summary as chips. The route: the totals and Info on one line, the stress bar, the Avoid
