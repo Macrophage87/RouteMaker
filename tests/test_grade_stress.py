@@ -231,20 +231,117 @@ class TestEveryConsumerReadsTheOneFigure:
         assert saved == pytest.approx(2 * self.weighted(), rel=0.01)
         assert saved == pytest.approx(refine.stress_weight_m(up, None))
 
-    def test_the_lts4_hold(self, up, monkeypatch):
-        flat = analysed(monkeypatch, [(1000.0, "4")], 0.0)
-        assert refine.top_by_leg(up) == pytest.approx([up.lts4_m])
-        ctx = test_refine.context()
-        ctx.exposure = presets.EXPOSURE_STRESS_AVERSE
-        assert refine.more_lts4(up, refine.top_by_leg(flat), ctx)
-        assert not refine.more_lts4(flat, refine.top_by_leg(up), ctx)
-
     def test_a_long_plans_legs(self, up, monkeypatch):
         flat = analysed(monkeypatch, [(1000.0, "4")], 0.0)
         whole = refine.combine([up, flat])
         assert whole.lts4_m == pytest.approx(up.lts4_m + 1000.0)
-        assert sum(refine.top_by_leg(whole)) == pytest.approx(whole.lts4_m)
+        assert whole.exposure_m == pytest.approx(up.exposure_m + flat.exposure_m)
+        assert whole.hill_exposure_m == pytest.approx(up.hill_exposure_m)
         assert whole.hill == up.hill + flat.hill
+
+
+class TestTheLts4HoldComparesRatedMetres:
+    """On the rides with the hold (Kids, Cargo with passengers, Trailmaxxing; 250) it
+    compares the rated LTS 4 metres, not hill-weighted ones, so leaving out a hill can never
+    buy more LTS 4, and a climb never refuses a route with no more LTS 4 than the first."""
+
+    def ctx(self) -> refine.Context:
+        ctx = test_refine.context()
+        ctx.exposure = presets.EXPOSURE_STRESS_AVERSE
+        return ctx
+
+    def test_its_figures_are_the_rated_metres(self, monkeypatch):
+        up = analysed(monkeypatch, [(1000.0, "4")], 0.06, exposure=presets.EXPOSURE_STRESS_AVERSE)
+        assert up.lts4_m > 1500.0
+        assert refine.top_by_leg(up) == pytest.approx([1000.0])
+
+    def test_leaving_out_a_hill_never_buys_more_lts4(self, monkeypatch):
+        first = analysed(monkeypatch, [(1000.0, "4")], 0.06)
+        more_flat = analysed(monkeypatch, [(1200.0, "4")], 0.0)
+        assert more_flat.lts4_m < first.lts4_m, "less by the weighted figure"
+        assert refine.more_lts4(more_flat, refine.top_by_leg(first), self.ctx())
+
+    def test_a_climb_never_refuses_the_same_lts4(self, monkeypatch):
+        first = analysed(monkeypatch, [(1000.0, "4")], 0.0)
+        up = analysed(monkeypatch, [(1000.0, "4")], 0.06)
+        assert not refine.more_lts4(up, refine.top_by_leg(first), self.ctx())
+
+
+class TestTheHillCountsAtEverySliderPosition:
+    """The owner's own case (409, Connecticut Avenue NW, at Default, 70 on the stress
+    slider, where the calm rate is 0): the hill's share of the exposure counts in the score
+    one for one where the rate is under 1, at the rate above it. A flat route scores as it
+    did at every position, and "fine with hills" is exactly the flat."""
+
+    POSITIONS = range(0, 101, 5)
+
+    def ctx(self, stress: int, lts2: float = 0.0) -> refine.Context:
+        ctx = test_refine.context(
+            rate=presets.calm_rate_for(stress), weight=refine.intersection_weight(stress)
+        )
+        if lts2:
+            ctx.exposure = dataclasses.replace(presets.EXPOSURE_STRESS_AVERSE, lts2=lts2)
+        return ctx
+
+    def test_the_climb_changes_the_ranking_at_default(self, monkeypatch):
+        ctx = self.ctx(presets.STRESS_DEFAULT_AT)
+        assert ctx.rate == 0.0
+        up = analysed(monkeypatch, [(1000.0, "4")], 0.06)
+        # The same road on the flat, 2 minutes dearer to the router.
+        flat = dataclasses.replace(
+            analysed(monkeypatch, [(1000.0, "4")], 0.0), cost_s=up.cost_s + 120.0
+        )
+        assert up.score(ctx) - up.cost_s == pytest.approx(ctx.quiet_cost * up.hill_exposure_m)
+        assert up.hill_exposure_m == pytest.approx(2 * 1000.0 * (factor(0.06) - 1), rel=0.02)
+        assert refine.better(flat, up, ctx), "the flat road wins at Default"
+        unhilled = dataclasses.replace(up, exposure_m=flat.exposure_m, flat_exposure_m=None)
+        assert not refine.better(flat, unhilled, ctx), "and would not without the hill"
+
+    def test_above_a_rate_of_one_the_hill_scales_with_it(self, monkeypatch):
+        up = analysed(monkeypatch, [(1000.0, "4")], 0.06)
+        for stress in (90, 95, 100):
+            ctx = self.ctx(stress)
+            assert ctx.rate > 1
+            assert up.score(ctx) - up.cost_s == pytest.approx(
+                ctx.quiet_cost * ctx.rate * up.exposure_m
+            )
+
+    @pytest.mark.parametrize("lts2", [0.0, presets.LTS2_WEIGHT])
+    def test_a_flat_route_scores_as_before_at_every_position(self, monkeypatch, lts2):
+        exposure = (
+            dataclasses.replace(presets.EXPOSURE_STRESS_AVERSE, lts2=lts2)
+            if lts2
+            else presets.EXPOSURE_STANDARD
+        )
+        tiers = [(300.0, "2"), (300.0, "3"), (300.0, "4"), (100.0, "1")]
+        flat = analysed(monkeypatch, tiers, 0.0, exposure=exposure)
+        flat = dataclasses.replace(flat, lts2_weight=lts2)
+        before = dataclasses.replace(flat, flat_exposure_m=None, rated_lts2_m=None, hill=[])
+        for stress in self.POSITIONS:
+            ctx = self.ctx(stress, lts2)
+            assert flat.score(ctx) == pytest.approx(before.score(ctx)), stress
+
+    def test_lts2_climbing_counts_once_at_a_rate_of_zero(self, monkeypatch):
+        # The score's LTS 2 term at a rate of 0 (FOLLOWUP-LTS2-WEIGHT) reads the rated
+        # metres; the hill on LTS 2 comes in once, through the exposure's hill share.
+        exposure = dataclasses.replace(presets.EXPOSURE_STRESS_AVERSE, lts2=presets.LTS2_WEIGHT)
+        up = analysed(monkeypatch, [(1000.0, "2")], 0.06, exposure=exposure)
+        ctx = self.ctx(presets.STRESS_DEFAULT_AT, presets.LTS2_WEIGHT)
+        lts2_term = presets.LTS2_WEIGHT * refine.lts3_added_m(ctx) * 1000.0
+        assert up.hill_exposure_m > 0
+        assert up.score(ctx) - up.cost_s == pytest.approx(
+            ctx.quiet_cost * (up.hill_exposure_m + lts2_term)
+        )
+
+    def test_fine_with_hills_is_the_flat_at_every_position(self, monkeypatch):
+        tiers = [(600.0, "4"), (400.0, "2")]
+        fine = grade_stress.coefficient_for(100)
+        for grade, brake in ((0.08, None), (-0.10, 0.03)):
+            hilly = analysed(monkeypatch, tiers, grade, fine, brake)
+            flat = analysed(monkeypatch, tiers, 0.0, fine, brake)
+            for stress in self.POSITIONS:
+                ctx = self.ctx(stress)
+                assert hilly.score(ctx) == flat.score(ctx), (grade, stress)
 
 
 class TestTheSlidersSetTheirOwnCoefficients:
@@ -267,10 +364,10 @@ class TestTheSlidersSetTheirOwnCoefficients:
     def test_the_stress_slider_moves_the_traffic_part_and_not_the_hill(self, monkeypatch):
         low, high = (
             analysed(monkeypatch, [(1000.0, "4")], 0.06, rate=presets.calm_rate_for(s))
-            for s in (85, 100)
+            for s in (90, 100)
         )
         assert low.hill == high.hill and figures(low) == figures(high)
-        ctx_low = test_refine.context(rate=presets.calm_rate_for(85))
+        ctx_low = test_refine.context(rate=presets.calm_rate_for(90))
         ctx_high = test_refine.context(rate=presets.calm_rate_for(100))
         assert high.score(ctx_high) - high.cost_s == pytest.approx(
             (low.score(ctx_low) - low.cost_s) * ctx_high.rate / ctx_low.rate

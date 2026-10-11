@@ -52,7 +52,7 @@ score also takes `Context.hills_tolerate_weight` of the router's own climbing ch
 off (`Analysis.router_climb_m`), as `routing.choose_direct` does.
 
 Every metre in the stress figures (the exposure above, the LTS 4, LTS 3, LTS 2 and Avoid
-metres the top of the slider, the worth rule and the LTS 4 hold read) is hill-weighted
+metres the top of the slider and the worth rule read) is hill-weighted
 (FOLLOWUP-GRADE-STRESS, OWNER-DECISIONS 409, `routemaker.grade_stress`; the owner,
 2026-10-11: "Why not combine it all into a single stress metric? ... Multiply the two
 together"): one figure, run x traffic weight x hill factor, the hill factor 1 + the hills
@@ -60,6 +60,10 @@ slider's coefficient (`Context.hill_coefficient`) x the window's extra effort on
 3% or more, or on a descent past the ride type's brake grade, and 1 elsewhere. So uphill on
 a busy road counts worse than downhill, the stress slider's rate still scales the traffic
 part and the hills slider the hill part, and "fine with hills" multiplies everything by 1.
+The hill's share of the exposure counts in the score at the calm rate where that is over
+1 and one for one below it, so the hill counts at every slider position, Default's too;
+a flat route scores as before. The LTS 4 hold compares the rated LTS 4 metres
+(`lts4_by_leg`), so leaving out a hill never buys more LTS 4.
 What the rider is shown (the LTS colours, the stress chart, the summary's LTS miles) is
 the rated metres, unweighted.
 
@@ -402,15 +406,35 @@ class Analysis:
     # Each piece's hill factor (`grade_stress.hill_factors`, FOLLOWUP-GRADE-STRESS,
     # OWNER-DECISIONS 409), in the order of `pieces`; empty: all 1.
     hill: list = field(default_factory=list)
+    # `exposure_m` and `lts2_m` at a hill factor of 1 everywhere, the rated metres (set by
+    # `analyse`; None: the same as the weighted figures, a reading made without hills).
+    flat_exposure_m: float | None = None
+    rated_lts2_m: float | None = None
+
+    @property
+    def hill_exposure_m(self) -> float:
+        """What the hill factor adds to `exposure_m` (409): the traffic weight x (hill
+        factor - 1) x metres, at the ride's own exposure weights."""
+        return 0.0 if self.flat_exposure_m is None else self.exposure_m - self.flat_exposure_m
 
     def score(self, ctx: Context) -> float:
         """The router's cost plus the extra price (see the module docstring), and 30
         minutes for each pass through an Avoid-rated junction (308), less the share of
-        the router's climbing charge a "fine with hills" ride takes off (242)."""
+        the router's climbing charge a "fine with hills" ride takes off (242). The hill's
+        share of the exposure (`hill_exposure_m`, 409) counts at the calm rate where it is
+        over 1 and one for one below it, so it counts at every slider position, Default's
+        too (the owner's Connecticut Avenue climb); a flat route scores as it did."""
         penalty = model.penalty_m(self.events) if self.events else 0.0
-        extra = ctx.rate * self.exposure_m + ctx.weight * penalty + ctx.climb_weight * self.climb_m
+        hill = self.hill_exposure_m
+        extra = (
+            ctx.rate * (self.exposure_m - hill)
+            + max(ctx.rate, 1.0) * hill
+            + ctx.weight * penalty
+            + ctx.climb_weight * self.climb_m
+        )
         if ctx.rate == 0 and self.lts2_weight > 0:
-            extra += self.lts2_weight * lts3_added_m(ctx) * self.lts2_m
+            lts2 = self.lts2_m if self.rated_lts2_m is None else self.rated_lts2_m
+            extra += self.lts2_weight * lts3_added_m(ctx) * lts2
         extra -= ctx.hills_tolerate_weight * self.router_climb_m
         return self.cost_s + ctx.quiet_cost * extra + avoid_model.penalty_s(self.avoid_passages)
 
@@ -786,6 +810,8 @@ def analyse(
         ),
         router_climb_m=climbs.router_climb_m(routing.grade_profile(trip)),
         hill=hill,
+        flat_exposure_m=flat_exposure_m(pieces, classes, weights),
+        rated_lts2_m=stress_totals(*rated_metres(pieces, classes))["lts2_m"],
     )
     if with_events:
         ctx.analyses[key] = result
@@ -812,6 +838,18 @@ def hill_of(trip: dict, pieces: list, ctx: Context) -> list[float]:
         routing.grade_profile(trip), mass_kg=ctx.mass_kg, brake_grade=ctx.brake_grade
     )
     return grade_stress.hill_factors(windows, lengths, ctx.hill_coefficient)
+
+
+def rated_metres(pieces, classes) -> tuple[dict, dict]:
+    """The rated metres by tier, and of each half step (`half_metres`), unweighted."""
+    stress, _facility = routing.totals(zip(pieces, classes, strict=True))
+    return stress, half_metres(pieces, classes)
+
+
+def flat_exposure_m(pieces, classes, weights: dict[str, float]) -> float:
+    """`Analysis.exposure_m` at a hill factor of 1: the rated metres at the ride's weights."""
+    stress, halves = rated_metres(pieces, classes)
+    return sum(weights[tier] * stress[tier] for tier in weights) + half_exposure_m(halves, weights)
 
 
 def stress_totals(stress: dict, halves: dict) -> dict[str, float]:
@@ -1015,7 +1053,7 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
         ctx.options.append((trip, best))
     info["top_m_before"] = round(best.top_m, 1)
     if ctx.exposure.hold_lts4:
-        info["lts4_before_m"] = round(best.lts4_m, 1)
+        info["lts4_before_m"] = round(rated_lts4_m(best), 1)
     best, best_trip = _router_alternates(trip, best, first_exposure, stop_at, ctx, info)
     best, best_trip = _search(best_trip, best, first_exposure, stop_at, ctx, info)
     if ctx.wide:
@@ -1028,7 +1066,7 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
     info["lts3_m_after"] = round(best.lts3_m, 1)
     info["top_m_after"] = round(best.top_m, 1)
     if ctx.exposure.hold_lts4:
-        info["lts4_after_m"] = round(best.lts4_m, 1)
+        info["lts4_after_m"] = round(rated_lts4_m(best), 1)
     if ctx.options is not None and ctx.alternates:
         pool = [(best_trip, best)] + [o for o in ctx.options if o[0] is not best_trip]
         ctx.candidate_reference = list(ctx.first_lts4)
@@ -1181,7 +1219,8 @@ Spans = list[tuple[float, float, float]]
 
 def top_by_leg(analysis: Analysis) -> list[float]:
     """Each leg's top figure: LTS 4 and Avoid metres plus the cost of the red
-    junctions in it (`Analysis.top_m`), by traced metres (`leg_bounds`)."""
+    junctions in it (`Analysis.top_m`, but with the rated LTS 4 metres, `lts4_by_leg`),
+    by traced metres (`leg_bounds`)."""
     bounds = leg_bounds(analysis)
     out = lts4_by_leg(analysis)
     for event in analysis.events or ():
@@ -1195,13 +1234,13 @@ def top_by_leg(analysis: Analysis) -> list[float]:
 
 
 def lts4_by_leg(analysis: Analysis) -> list[float]:
-    """Each leg's LTS 4 and Avoid metres, hill-weighted (`Analysis.hill`, 409) as
-    `Analysis.lts4_m` is, the legs split in traced metres (`leg_bounds`)."""
+    """Each leg's LTS 4 and Avoid metres, in traced metres (`leg_bounds`): the rated metres,
+    not hill-weighted (409), so the LTS 4 hold never lets a candidate buy more LTS 4 by
+    leaving out a hill."""
     bounds = leg_bounds(analysis)
     out = [0.0] * len(bounds)
     along = 0.0
-    hill = analysis.hill or [1.0] * len(analysis.pieces)
-    for piece, cls, factor in zip(analysis.pieces, analysis.classes, hill, strict=False):
+    for piece, cls in zip(analysis.pieces, analysis.classes, strict=False):
         tier = cls[0]
         a, b = along, along + piece.metres
         along = b
@@ -1211,8 +1250,14 @@ def lts4_by_leg(analysis: Analysis) -> list[float]:
         if not share:
             continue
         for k, (lo, hi) in enumerate(bounds):
-            out[k] += share * factor * max(0.0, min(b, hi) - max(a, lo))
+            out[k] += share * max(0.0, min(b, hi) - max(a, lo))
     return out
+
+
+def rated_lts4_m(analysis: Analysis) -> float:
+    """The route's rated LTS 4 and Avoid metres, not hill-weighted (`lts4_by_leg`): the LTS 4
+    hold's figure, and the answer's `lts4_before_m` and `lts4_after_m`."""
+    return sum(lts4_by_leg(analysis))
 
 
 def more_lts4(read: Analysis, reference: list[float], ctx: Context) -> bool:
@@ -1221,7 +1266,8 @@ def more_lts4(read: Analysis, reference: list[float], ctx: Context) -> bool:
     the cost of the red junctions, `Analysis.top_m`) than `reference` (the router's
     first route's, a leg's each) for the whole of it, or for any leg where it has
     the reference's legs. So LTS 4 may be traded for a red junction's worth, never
-    for nothing. Never on another ride."""
+    for nothing, and never for leaving out a hill: the LTS 4 metres are the rated ones,
+    not hill-weighted (409, `lts4_by_leg`). Never on another ride."""
     if not ctx.exposure.hold_lts4 or not reference:
         return False
     legs = top_by_leg(read)
@@ -2327,6 +2373,10 @@ def combine(reads: list[Analysis]) -> Analysis:
         avoid_junction_m=unit_m * len(passages),
         router_climb_m=sum(r.router_climb_m for r in reads),
         hill=[f for r in reads for f in (r.hill or [1.0] * len(r.pieces))],
+        flat_exposure_m=sum(
+            r.exposure_m if r.flat_exposure_m is None else r.flat_exposure_m for r in reads
+        ),
+        rated_lts2_m=sum(r.lts2_m if r.rated_lts2_m is None else r.rated_lts2_m for r in reads),
     )
 
 
@@ -2420,7 +2470,7 @@ def _long_candidates(
             pool.append((_joined(trips, trip), combine(reads_now)))
     reference = [
         sum(
-            first_tops[j] if first_tops[j] is not None else reads[j].lts4_m
+            first_tops[j] if first_tops[j] is not None else rated_lts4_m(reads[j])
             for j in range(len(reads))
         )
     ]
@@ -2471,7 +2521,7 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
     info["lts4_m_before"] = round(whole.lts4_m, 1)
     info["lts3_m_before"] = round(whole.lts3_m, 1)
     if ctx.exposure.hold_lts4:
-        info["lts4_before_m"] = round(whole.lts4_m, 1)
+        info["lts4_before_m"] = round(rated_lts4_m(whole), 1)
     legs = long_legs(whole, ctx)
     long = info["long"] = {
         "legs": len(legs),
@@ -2645,7 +2695,11 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
     info["lts4_m_after"] = round(lts4, 1)
     info["lts3_m_after"] = round(lts3, 1)
     if ctx.exposure.hold_lts4:
-        info["lts4_after_m"] = round(lts4, 1)
+        # The hold's figure, in rated metres (409), less the LTS 4 traded as above.
+        rated_traded = sum(
+            max(0.0, rated_lts4_m(f) - rated_lts4_m(r)) for f, r in zip(finals, reads, strict=True)
+        )
+        info["lts4_after_m"] = round(sum(rated_lts4_m(a) for a in finals) - rated_traded, 1)
     # One reading of the whole route, which the answer reuses: the legs' traces
     # are remembered, the junctions read once across the joints. Inside the late
     # deadline, and not kept where the clock cut it short (S3): the answer then

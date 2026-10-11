@@ -596,7 +596,7 @@ def settle(trip: dict, ctx: refine.Context, refined: dict | None, info: dict) ->
             ("exposure_after_m", read.exposure_m),
             ("lts4_m_after", read.lts4_m),
             ("lts3_m_after", read.lts3_m),
-            ("lts4_after_m", read.lts4_m),
+            ("lts4_after_m", refine.rated_lts4_m(read)),
             ("top_m_after", read.top_m),
         ):
             if name in refined:
