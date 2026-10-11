@@ -3914,6 +3914,7 @@ proxy cannot reach the service.
    takes the equals sign because the box starts with a minus sign:
 
    ```sh
+   export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
    python3 scripts/fetch_agency_layer.py \
        --slug mdot-sha-aadt --item 77010abe7558425997b4fcdab02e2b64 \
        --layer https://services.arcgis.com/njFNhDsUCentVYJW/arcgis/rest/services/MDOT_SHA_Annual_Average_Daily_Traffic/FeatureServer/1 \
