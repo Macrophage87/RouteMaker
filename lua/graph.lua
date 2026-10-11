@@ -30,6 +30,23 @@ if _ROUTEMAKER_GRAPH_LOADED then
 end
 _ROUTEMAKER_GRAPH_LOADED = true
 
+-- This project's remap loads first, before upstream installs a single global.
+-- Valhalla runs this file with luaL_dostring and ignores its result
+-- (src/mjolnir/luatagtransform.cc:50 at 3.9.1), then checks only that the
+-- three `*_proc` globals exist. So an error raised *after* upstream's file
+-- had run left upstream's own entry points in place, and a remap that failed
+-- to load (a syntax error, a missing file) built every graph with the stock
+-- transform and one line in the log (FOLLOWUP-VALHALLA-36-LEFTOVERS, item 2;
+-- checked with valhalla_build_tiles 3.9.1, tests/test_tile_build_access.py).
+-- Loaded first, a failure here leaves no entry point at all, and Valhalla
+-- refuses the script ("Lua script does not contain a function" and the name).
+local remap_ok, remap = pcall(require, "routemaker_remap")
+if not remap_ok or type(remap) ~= "table" then
+  error(
+    "RouteMaker: lua/routemaker_remap.lua did not load from " .. ROOT .. ": " .. tostring(remap)
+  )
+end
+
 local ok, err = pcall(require, "graph_upstream")
 if not ok then
   error(
@@ -53,12 +70,13 @@ if type(up_ways) ~= "function" or type(up_nodes) ~= "function" or type(up_rels) 
       .. "contract has changed and this wrapper needs updating with it."
   )
 end
+-- And taken down again until this file defines its own below, so that nothing
+-- failing between here and there can leave upstream's serving as this file's.
+ways_proc, nodes_proc, rels_proc = nil, nil, nil
 
 -- `rel_members_proc` is upstream's fourth entry point and nothing here modifies
 -- relation membership, so it is deliberately left as upstream installed it
 -- rather than wrapped. Overwriting the other three does not disturb it.
-
-local remap = require("routemaker_remap")
 
 -- Derived values arrive as `rm:*` tags, namespaced so they cannot collide with
 -- real OSM keys, and are stripped before the transform returns.

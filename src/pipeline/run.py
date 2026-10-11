@@ -24,7 +24,6 @@ import json
 import logging
 import re
 import shlex
-import signal
 import sqlite3
 import subprocess
 import time
@@ -326,17 +325,12 @@ class CommandFailed(RuntimeError):
         command: Sequence[str],
         returncode: int,
         output: tiles.CommandOutput,
-        retries: int = 0,
     ) -> None:
         self.command = list(command)
         self.returncode = returncode
         self.output = output
-        self.retries = retries
-        # Said in the message, which is what the alert and the job row carry: a
-        # failure after a retry is the one that says to build with fewer threads.
-        after = f" (after {retries} {'retry' if retries == 1 else 'retries'})" if retries else ""
         super().__init__(
-            f"{Path(self.command[0]).name} exited {returncode}{after}: "
+            f"{Path(self.command[0]).name} exited {returncode}: "
             f"{shlex.join(self.command)}\n{output.tail(COMMAND_OUTPUT_TAIL_LINES)}"
         )
 
@@ -2876,9 +2870,7 @@ def build_handlers(
             # Kept per variant: the Lua-fallback and violation checks are asked
             # of each variant's own log, and one joined string would let the
             # first match answer for all three.
-            context.build_logs[variant] = "\n".join(
-                _run_tile_command(run, command).log for command in commands
-            )
+            context.build_logs[variant] = "\n".join(run(command).log for command in commands)
             admin_source = admin_source or admin_db
             timezone_source = timezone_source or timezone_db
             context.graphs_built.append(variant.value)
@@ -3463,74 +3455,6 @@ def _closures_across_variants(context: RebuildContext, run) -> dict:
             functools.partial(tiles.read_closures, run, config_path, held)
         )
     return readbacks
-
-
-# How many times a valhalla_build_tiles that aborted is run again. Valhalla
-# 3.5.1 builds tiles on `mjolnir.concurrency` threads, and each thread frees its
-# own spatialite connections to the admin and timezone databases when it
-# finishes (src/mjolnir/graphbuilder.cc:436,446; src/mjolnir/util.cc:211-219).
-# `spatialite_cleanup_ex()` calls libxml2's non-thread-safe `xmlCleanupParser()`,
-# so two threads finishing together can free the same memory, and glibc aborts
-# the process with "double free or corruption". Upstream serialised the cleanup
-# in valhalla/valhalla#5005, first released in 3.6.0. The race is timing, not
-# data: one rebuild lost its weekend graph on one attempt and its offroad graph
-# on the next, from the same inputs, after the other graphs had built.
-#
-# The pinned image is 3.9.1 now, which carries that fix (`Sqlite3::~Sqlite3`
-# takes a process-wide mutex around the cleanup, src/mjolnir/sqlite3.cc:78-91
-# at 3.6.3, byte-identical at 3.9.1). The retry stays: it costs nothing when no
-# build aborts, and the first rebuilds with the fix are what show the race is
-# gone on this host.
-#
-# So one abort of that one command is run again, from the start (a build from
-# the initialize stage purges the tile level directories it is writing into,
-# src/mjolnir/util.cc:252-271), inside whatever remains of the deadline. Any
-# other failure, and a second abort, fails the stage as before.
-TILE_BUILD_ABORT_RETRIES = 1
-
-# The signals a valhalla_build_tiles can die of that a second run has cleared.
-# SIGABRT is the double free above. SIGSEGV (-11) is the same race seen as a
-# crash instead of an abort: the freed memory is touched before glibc notices
-# (job 8408, 2026-10-09; OWNER-DECISIONS 459). The retry is the same one - once,
-# from the start, in whatever is left of the deadline.
-RETRYABLE_TILE_SIGNALS = (-signal.SIGABRT, -signal.SIGSEGV)
-
-
-def _run_tile_command(
-    run: Callable[[Sequence[str]], tiles.CommandOutput],
-    command: Sequence[str],
-    retries: int = TILE_BUILD_ABORT_RETRIES,
-) -> tiles.CommandOutput:
-    """Run one tile-build command, running an aborted valhalla_build_tiles again.
-
-    Only `valhalla_build_tiles`, and only SIGABRT or SIGSEGV: a crash in the admin
-    build or the extract is not the race above, and an ordinary non-zero exit is a
-    refusal that will say the same thing twice. The deadline is the runner's:
-    `_run_command` raises `RebuildTimedOut` when nothing is left for the retry.
-    """
-    retryable = Path(command[0]).name == "valhalla_build_tiles"
-    attempt = 0
-    while True:
-        try:
-            return run(command)
-        except CommandFailed as failure:
-            if not retryable or failure.returncode not in RETRYABLE_TILE_SIGNALS:
-                raise
-            if attempt >= retries:
-                if not attempt:
-                    raise
-                raise CommandFailed(
-                    failure.command, failure.returncode, failure.output, retries=attempt
-                ) from failure
-            attempt += 1
-            logger.warning(
-                "valhalla_build_tiles %s (%s); running it again, retry %d of %d: %s",
-                "aborted" if failure.returncode == -signal.SIGABRT else "crashed",
-                signal.Signals(-failure.returncode).name,
-                attempt,
-                retries,
-                shlex.join(command),
-            )
 
 
 def _run_command(
