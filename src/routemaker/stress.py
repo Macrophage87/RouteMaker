@@ -109,6 +109,7 @@ from .tags import (
     is_oneway,
     lanes_per_direction,
     maxspeed_is_unitless,
+    open_to_buses,
     parse_maxspeed_mph,
     shoulder_width_m,
 )
@@ -1246,6 +1247,8 @@ def motor_restriction(tags: dict[str, str]) -> tuple[Stress, str] | None:
     the set `routemaker.facility.BICYCLE_ALLOWED` opens), or, with no bicycle
     tag, an `access` or `vehicle` that is not a public value (`vehicle` covers
     bicycles, as `facility.closed_to_motor_traffic` reads it).
+    A road open to buses (`tags.open_to_buses`) is not capped: buses are motor
+    traffic (FOLLOWUP-BUS-ROADS).
     Stress only: whether a bicycle may ride the way is the access rules' alone.
     """
     if tags.get("highway") in MOTOR_ONLY:
@@ -1261,6 +1264,10 @@ def motor_restriction(tags: dict[str, str]) -> tuple[Stress, str] | None:
     ):
         # Closed to bicycles as well (access=private or vehicle=no with no
         # bicycle tag): there is no ride to state a stress for.
+        return None
+    if open_to_buses(tags):
+        # Buses are motor traffic (FOLLOWUP-BUS-ROADS): `motor_vehicle=no` +
+        # `bus=yes` is a bus road, rated as its class and speed make it.
         return None
     for key in MOTOR_RESTRICTION_KEYS:
         value = tags.get(key)

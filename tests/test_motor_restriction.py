@@ -189,3 +189,44 @@ def test_the_tags_are_untouched() -> None:
     tags = dict(BRAGERS_ROAD)
     classify(tags, urban=False, jurisdiction="MD")
     assert tags == BRAGERS_ROAD
+
+
+# --- Buses are motor traffic (FOLLOWUP-BUS-ROADS) ------------------------------
+#
+# Review of wip/pre-rebuild, 2026-10-06: a road closed to motor vehicles but open
+# to buses (Exchange Ave and Fayette St in Baltimore, Neabsco Stream Dr) read as
+# car-free, LTS 1, through this cap and through `pipeline.run.car_free_tier_1`.
+
+
+@pytest.mark.parametrize(
+    "buses",
+    [
+        {"bus": "yes"},
+        {"bus": "designated"},
+        {"psv": "yes"},
+        {"psv": "designated"},
+        {"psv": "designated;yes"},
+    ],
+)
+def test_a_bus_road_is_not_capped(buses) -> None:
+    road = {"highway": "secondary", "motor_vehicle": "no", "lanes": "2", **buses}
+    assert motor_restriction(road) is None
+    result = classify(road, urban=True, jurisdiction="MD")
+    open_road = {"highway": "secondary", "lanes": "2"}
+    assert result.tier is classify(open_road, urban=True, jurisdiction="MD").tier
+    assert result.tier > Stress.LTS1, result.rule
+    assert "motor traffic restricted" not in result.rule
+
+
+@pytest.mark.parametrize(
+    "buses",
+    [{"bus": "no"}, {"psv": "no"}, {"bus": "permit"}, {"psv": "permissive"}, {}],
+)
+def test_a_road_buses_may_not_use_as_a_rule_keeps_its_cap(buses) -> None:
+    road = {"highway": "unclassified", "motor_vehicle": "no", **buses}
+    assert motor_restriction(road) == (Stress.LTS1, "motor_vehicle=no")
+
+
+def test_a_private_road_open_to_buses_is_not_capped_either() -> None:
+    road = {"highway": "unclassified", "motor_vehicle": "private", "psv": "yes"}
+    assert motor_restriction(road) is None
