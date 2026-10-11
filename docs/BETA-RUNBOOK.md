@@ -1086,9 +1086,15 @@ scripts/beta/auto-release.sh install      # deployed tag: the one HEAD is at; re
 "$RM_STATE/cd/bin/auto-release.sh" status
 ```
 
+**Reinstall before v0.5.0.** An agent installed from v0.4.x keeps its own front-end build, which
+mounts only `frontend/`; v0.5.0's front-end tests read `src/` and `scripts/` too, so that agent would
+stop the api, fail the build and roll back on every front-end release. Once the beta runs v0.5.0
+(shipped by hand, or with the agent paused), run `auto-release.sh install` again from that checkout:
+it installs `frontend-build.sh` beside the agent, which builds with the whole tree mounted.
+
 `install` checks the user is in the docker group and not root, that the checkout is clean at an
 annotated release tag with the matching `TAG`, copies the agent (`auto-release.sh`, `cd_logic.py`,
-`receive-data.sh`) into `$RM_STATE/cd/bin` (so a release can never change the agent under a pass, and
+`receive-data.sh`, `frontend-build.sh`) into `$RM_STATE/cd/bin` (so a release can never change the agent under a pass, and
 a rollback to a release older than the agent still has the agent's no-sudo snapshot and restore),
 records the deployed tag and the beta notice's report link (`--report-url URL|none` if
 `beta-build.txt` is missing: give the one `ship-data.sh --report-url` used), writes

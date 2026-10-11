@@ -497,14 +497,18 @@ note "sent. On the server: scripts/beta/receive-data.sh --bundle $remote_dir --e
 
 # The api image is not in the bundle: the runbook sends it separately (BETA-RUNBOOK step 6, built
 # at home from the release sha). Say so when the server does not have the one for this sha yet.
+# (A data-only update from a checkout ahead of the deployed release names an image the server does
+# not need yet; the warning says which sha it looked for.)
 api_tag="$API_IMAGE:${git_sha:0:12}"
+[ "$dry_run" = 0 ] || exit 0
 # shellcheck disable=SC2086
-if have=$($ssh_cmd "$remote_host" "docker image inspect --format ok '$api_tag' 2>/dev/null || echo missing" 2>/dev/null); then
-	if [ "$have" != ok ]; then
+have=$($ssh_cmd "$remote_host" "if docker image inspect --format ok '$api_tag' 2>/dev/null; then :; elif docker info >/dev/null 2>&1; then echo missing; else echo no-docker; fi" 2>/dev/null) || have=""
+case "$have" in
+	ok) ;;
+	missing)
 		note "WARNING: the server has no api image $api_tag; the bundle does not carry it. From a clean checkout of $git_sha:"
 		note "  docker build -f docker/api.Dockerfile -t $api_tag ."
-		note "  docker save $api_tag | gzip | ssh $remote_host 'gunzip | docker load'"
-	fi
-else
-	note "could not ask the server whether it has the api image $api_tag (docker image ls there)"
-fi
+		note "  docker save $api_tag | gzip | ssh ${BETA_SSH_OPTS:+$BETA_SSH_OPTS }$remote_host 'gunzip | docker load'"
+		;;
+	*) note "could not ask docker on the server whether it has the api image $api_tag (docker image ls there)" ;;
+esac

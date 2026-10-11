@@ -1260,6 +1260,7 @@ for a in "$@"; do
   fi
   prev=$a
 done
+exit "${STUB_RC:-0}"
 """
 
 
@@ -1319,6 +1320,49 @@ def test_frontend_build_refuses_node_modules_installed_for_another_platform(
 
 
 @needs_sh
+def test_frontend_build_passes_a_failure_on_and_still_clears_vites_temp_files(
+    tmp_path: Path,
+) -> None:
+    repo, nm, env = _frontend_tree(tmp_path, ("@rolldown/binding-linux-x64-gnu", ".vite-temp"))
+    done = run(
+        "bash",
+        FRONTEND_BUILD,
+        str(repo),
+        str(nm),
+        str(tmp_path / "out"),
+        env={**env, "STUB_RC": "7"},
+    )
+    assert done.returncode == 7, done.stderr
+    assert not (nm / ".vite-temp").exists()
+
+
+@needs_sh
+def test_frontend_build_masks_a_top_level_env_file(tmp_path: Path) -> None:
+    repo, nm, env = _frontend_tree(tmp_path, ("@rolldown/binding-linux-x64-gnu",))
+    (repo / ".env").write_text("PGPASSWORD=not-for-the-front-end\n")
+    done = run("bash", FRONTEND_BUILD, str(repo), str(nm), str(tmp_path / "out"), env=env)
+    assert done.returncode == 0, done.stderr
+    args = (tmp_path / "docker.log").read_text()
+    assert args.index(f"-v {repo}:/repo:ro") < args.index("-v /dev/null:/repo/.env:ro")
+
+
+@needs_sh
+def test_frontend_build_check_alone_lets_the_agent_refuse_before_it_stops_anything(
+    tmp_path: Path,
+) -> None:
+    _, nm, env = _frontend_tree(tmp_path, ("@rolldown/binding-win32-x64-msvc",))
+    done = run("bash", FRONTEND_BUILD, "--check", str(nm), env=env)
+    assert done.returncode == 2 and "@rolldown/binding-win32-x64-msvc" in done.stderr
+    assert not (tmp_path / "docker.log").exists()
+    linux = tmp_path / "linux"
+    (linux / "@rolldown" / "binding-linux-x64-gnu").mkdir(parents=True)
+    assert run("bash", FRONTEND_BUILD, "--check", str(linux), env=env).returncode == 0
+    agent = (REPO / "scripts" / "beta" / "auto-release.sh").read_text()
+    ready = agent[agent.index("frontend_ready() {") : agent.index("build_frontend() {")]
+    assert '"$build_fe" --check' in ready
+
+
+@needs_sh
 def test_frontend_build_and_the_release_agent_pin_the_same_node_image() -> None:
     image = run("bash", FRONTEND_BUILD, "--print-image").stdout.strip()
     assert re.fullmatch(r"docker\.io/library/node@sha256:[0-9a-f]{64}", image), image
@@ -1337,7 +1381,9 @@ def test_ship_data_warns_when_the_server_lacks_the_api_image() -> None:
     check = text.index("docker image inspect --format ok '$api_tag'")
     assert sent < check
     assert 'api_tag="$API_IMAGE:${git_sha:0:12}"' in text
-    assert "docker save $api_tag | gzip | ssh $remote_host 'gunzip | docker load'" in text
+    assert "docker save $api_tag | gzip | ssh ${BETA_SSH_OPTS:+$BETA_SSH_OPTS }$remote_host" in text
+    # docker the server's user cannot reach is not reported as a missing image
+    assert "else echo no-docker; fi" in text
 
 
 @needs_sh

@@ -229,7 +229,7 @@ lock_hash() { gitc show "$1:frontend/package-lock.json" 2>/dev/null | sha256sum 
 # node_modules, put there by the owner from home (the server never downloads npm packages:
 # OWNER-DECISIONS 436). Prints why not, and fails, if it is missing.
 frontend_ready() { # sha
-	local h
+	local h why
 	h=$(lock_hash "$1")
 	if ! dk image inspect "$NODE_IMAGE" >/dev/null 2>&1; then
 		echo "the pinned node image is not on this host ($NODE_IMAGE); the owner loads it once (docker save at home | docker load here), or approves a docker pull of that digest"
@@ -237,6 +237,11 @@ frontend_ready() { # sha
 	fi
 	if [ ! -d "$cd_dir/node_modules/$h/node_modules" ]; then
 		echo "the front end changed and there is no node_modules for its lockfile at $cd_dir/node_modules/$h/node_modules (owner: send it from home)"
+		return 1
+	fi
+	# Refused here, before anything stops, rather than by the build after the api is down.
+	if ! why=$("$build_fe" --check "$cd_dir/node_modules/$h/node_modules" 2>&1); then
+		echo "${why#frontend-build: } (owner: send a Linux one from home)"
 		return 1
 	fi
 	if ! check_report_url "$(report_url)" || [ ! -f "$cd_dir/report-url" ]; then
@@ -256,7 +261,7 @@ build_frontend() { # src-dir sha out-dir
 	# frontend-build.sh holds the mounts and steps, shared with ship-data.sh and CI.
 	# --oom-score-adj 1000: if the host runs short, the kernel kills this build before any other
 	# site's process (and before the beta's own containers, at 500).
-	quiet "$build_fe" --docker-opt --memory=1536m --docker-opt --memory-swap=1536m --docker-opt --cpus=1.5 --docker-opt --oom-score-adj=1000 \
+	quiet env DOCKER="${DOCKER:-docker}" "$build_fe" --docker-opt --memory=1536m --docker-opt --memory-swap=1536m --docker-opt --cpus=1.5 --docker-opt --oom-score-adj=1000 \
 		"$src" "$cd_dir/node_modules/$h/node_modules" "$out" "$url" || return 1
 	[ -f "$out/index.html" ] || { say "the build made no index.html"; return 1; }
 	printf 'VITE_BETA=1\nVITE_BETA_REPORT_URL=%s\ngit=%s\n' "$url" "$sha" >"$out/beta-build.txt"
