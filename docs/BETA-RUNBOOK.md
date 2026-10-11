@@ -1132,6 +1132,9 @@ Optional settings, appended to `vars.sh` like any later decision (never a secret
   docker save docker.io/library/node:rm-pinned-363e1587 | gzip | ssh "$RM_SSH_HOST" 'gunzip | docker load'
   ssh "$RM_SSH_HOST" "docker image inspect $N -f '{{.Id}}'"   # prints an image id: the agent will find it
   ```
+
+  If that prints an error instead of an id (a Docker that does not keep the digest through save and load), the
+  way left is the one the agent's status offers: the owner approves a `docker pull` of that digest on the server.
 - `node_modules` for the release's lockfile, at `$RM_STATE/cd/node_modules/<sha256 of frontend/package-lock.json>/node_modules`
   (status prints the exact path). From home, in a checkout at the release with `npm ci` done:
   `h=$(sha256sum frontend/package-lock.json | cut -c1-64); tar -C frontend -czf - node_modules | ssh "$RM_SSH_HOST" "d=\$HOME/routemaker-beta-state/cd/node_modules/$h; mkdir -p \$d.part && tar -C \$d.part -xzf - && mv -T \$d.part \$d"`.
