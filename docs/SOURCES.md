@@ -146,6 +146,37 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Records: docs/PLAYBOOK.md, "The three reference inputs"; docs/DEVELOPMENT.md,
   "Reference data".
 
+## Maryland traffic counts (MDOT SHA)
+
+- Credit: `State of Maryland (MDOT SHA)`
+- Dataset: **MDOT SHA Annual Average Daily Traffic (AADT)**, ArcGIS item
+  `77010abe7558425997b4fcdab02e2b64`, layer 1 "MDOT SHA Annual Average Daily Traffic
+  (AADT) Segments"
+  (<https://services.arcgis.com/njFNhDsUCentVYJW/arcgis/rest/services/MDOT_SHA_Annual_Average_Daily_Traffic/FeatureServer/1>),
+  also listed on Maryland iMAP. The stress tiers' Maryland counts where no other
+  count reaches a road (FOLLOWUP-MDOT-AADT, OWNER-DECISIONS 429; first case MD 185,
+  Connecticut Ave, from the DC line to MD 410, which the layer counts at 39,141 a day,
+  OBJECTID 161492). The field `AADT` is the latest year, both directions together;
+  the layer's description, read 2026-10-11, says it "is for the year 2024". Download
+  approved by the owner for the v0.5.0 rebuild (2026-10-10); fetched at rebuild time
+  with `scripts/fetch_agency_layer.py` (docs/OPERATIONS.md, "Maryland traffic counts
+  (MDOT SHA)"), which records the size, sha256 and the item's licence text verbatim
+  in the download's README. Not yet downloaded: no size or sha256 to record here
+  until it is.
+- Publisher: Maryland Department of Transportation State Highway Administration
+  (the item's `accessInformation` also names the Traffic Monitoring System team and
+  Maryland iMAP).
+- Licence: Maryland iMAP's terms, which PLAN.md ("Licensing") records verbatim: "The
+  Data can be freely distributed as long as the metadata entry is not modified or
+  deleted. Any data derived from the Data must acknowledge the State of Maryland in
+  the metadata." The item's own `licenseInfo` (read 2026-10-11) is a disclaimer: the
+  data is provided "AS IS" without warranty. So the credit names the State of
+  Maryland, and the conditional arrangement in PLAN.md stands: every segment a
+  Maryland count reached carries `volume_source = 'mdot-sha'`, and no published
+  derivative exists that could carry it (none is built); one that is built must
+  withhold those segments or wait for the waiver PLAN.md asks the owner to request.
+- Records: the download's README; docs/DEVELOPMENT.md, "Reference data".
+
 ## Open Baltimore
 
 - Credit: `Open Baltimore`
