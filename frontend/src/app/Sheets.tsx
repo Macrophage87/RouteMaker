@@ -32,6 +32,8 @@ import { MASS_RIDE_LAYERS_NOTE, SHEET_TITLES, type PanelView } from "../lib/side
 import type { ImportedPlan } from "../lib/gpxPlan.ts";
 import type { WaterAlong, WaterPrefs, WaterStatus } from "../lib/waterRestrooms.ts";
 import { WaterSection } from "../lib/waterLegend.ts";
+import type { ClimbAlong, ClimbsStatus } from "../lib/climbs.ts";
+import { ClimbsLayerControls } from "../lib/climbsLegend.ts";
 import { InstallOffer, KeptRoutes } from "../InstallableApp.tsx";
 import type { KeptRoute } from "../lib/offlineRoutes.ts";
 import { anyKept } from "../lib/offlineRouteStore.ts";
@@ -57,6 +59,11 @@ export interface LayersSheetProps {
   changeWaterPrefs: (next: WaterPrefs) => void;
   waterStatus: WaterStatus;
   waterAlong: WaterAlong[] | null;
+  /** The Climbs layer (lib/climbs.ts): the switch, its data's status and the climbs the route rides. */
+  climbsOn: boolean;
+  changeClimbsOn: (on: boolean) => void;
+  climbsStatus: ClimbsStatus;
+  climbsAlong: ClimbAlong[] | null;
   addWaterStop: (item: WaterAlong) => void;
   rail: RailVisibility;
   setRail: (next: RailVisibility) => void;
@@ -68,7 +75,7 @@ export interface LayersSheetProps {
 
 /** The bottom bar's Map layers sheet (Legend opens it at its legend). */
 export function LayersSheet(props: LayersSheetProps) {
-  const { view, backToPlanner, layersHeadingRef, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, waterAlong, addWaterStop, rail, setRail, showMtbTrails, legendHeadingRef, zoom, facilitiesShown } = props;
+  const { view, backToPlanner, layersHeadingRef, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, waterAlong, addWaterStop, rail, setRail, showMtbTrails, legendHeadingRef, zoom, facilitiesShown, climbsOn, changeClimbsOn, climbsStatus, climbsAlong } = props;
   return (
     <SheetFrame
       id="sheet-layers"
@@ -131,10 +138,11 @@ export function LayersSheet(props: LayersSheetProps) {
       {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
 
       {/* OWNER-DECISIONS 454's optional layers, off until turned on, in every ride type. Topo lines
-          and climbs join the mountain-bike trails here once the tiles carry them (docs/MTB-TOPO-PLAN.md). */}
+          join the mountain-bike trails and climbs here once their data is built (docs/MTB-TOPO-PLAN.md). */}
       <section aria-labelledby="terrain-heading">
         <h3 id="terrain-heading">Trails and terrain</h3>
         <MtbTrailsSwitch on={showMtbTrails} onChange={(on) => setMtbTrails(on)} overlay={stress === "available"} />
+        <ClimbsLayerControls on={climbsOn} onChange={changeClimbsOn} status={climbsStatus} items={climbsAlong} />
       </section>
 
       {/* Mockup v3's line; the Mass Ride layers sheet itself waits on FOLLOWUP-MASSRIDE-MAP (324-334). */}

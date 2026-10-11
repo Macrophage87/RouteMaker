@@ -82,6 +82,10 @@ import { canShareLink, shareContent, shareLink, shareSaidFor } from "./lib/share
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
 import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterTitle, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
 import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
+import { climbsAlongRoute, loadClimbs, readClimbsOn, saveClimbsOn, type Climb, type ClimbsStatus } from "./lib/climbs.ts";
+// `no-inline`: the file is small until the build host fills it, and an inlined data: URL is refused by
+// the edge's connect-src 'self' (Caddyfile), so it stays its own hashed file under /assets/.
+import climbsUrl from "./climb-data/climbs.json?url&no-inline";
 import {
   FOOD_EMPTY_QUERY,
   FOOD_NOT_LOADED,
@@ -243,6 +247,27 @@ export function App() {
   useEffect(() => {
     if (waterOn) void ensureWater();
   }, [waterOn, ensureWater]);
+  // The Climbs layer (lib/climbs.ts; 454): off until turned on, kept on this device; the data is
+  // fetched the first time it is shown. An empty file (before the build host has measured any) is
+  // "empty", not "unavailable".
+  const [climbsOn, setClimbsOnState] = useState<boolean>(() => readClimbsOn());
+  const changeClimbsOn = (on: boolean) => {
+    setClimbsOnState(on);
+    saveClimbsOn(on);
+  };
+  const [climbsStatus, setClimbsStatus] = useState<ClimbsStatus>("loading");
+  const [climbsData, setClimbsData] = useState<Climb[] | null>(null);
+  const climbsLoad = useRef<Promise<Climb[] | null> | null>(null);
+  useEffect(() => {
+    if (!climbsOn || climbsLoad.current) return;
+    setClimbsStatus("loading");
+    climbsLoad.current = loadClimbs(climbsUrl).then((data) => {
+      if (!data) climbsLoad.current = null;
+      setClimbsData(data);
+      setClimbsStatus(data === null ? "unavailable" : data.length === 0 ? "empty" : "ready");
+      return data;
+    });
+  }, [climbsOn]);
   // Whether the grey coverage mask is on the map, and whether the stress tiles
   // carry bike-facility data; each legend line is shown only when it is true.
   const [coverageShown, setCoverageShown] = useState(false);
@@ -1327,6 +1352,11 @@ export function App() {
         : null,
     [waterOn, waterData, waterPrefs, shown],
   );
+  // The Climbs layer in words: the climbs the route rides, in riding order.
+  const climbsAlong = useMemo(
+    () => (climbsOn && climbsData && shown ? climbsAlongRoute(shown.geometry.coordinates, climbsData) : null),
+    [climbsOn, climbsData, shown],
+  );
   // Find food (lib/food.ts; FOOD-SEARCH, owner 2026-10-11): a map search by cuisine or name, in the
   // map's view or the whole area. The places file is fetched on the first search. The results are
   // worked out again when the route changes, so each detour is off the route shown (and the list is
@@ -1571,7 +1601,7 @@ export function App() {
         confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
         narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials, waterOn,
         waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs,
-        rideStartFirstRef, beginRide,
+        rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong,
       }}
     />
   );
@@ -1651,6 +1681,8 @@ export function App() {
         massHazards={massHazards}
         water={waterData}
         waterPrefs={waterPrefs}
+        climbs={climbsData}
+        climbsOn={climbsOn}
         federalVisible={federalShown(preset, federalOn)}
         federalWanted={federalShown(preset, true) /* Mass Ride: the planner's points list needs the data whatever the switch says */}
         onFederalStatus={setFederalStatus}
@@ -1791,6 +1823,7 @@ export function App() {
                 view, backToPlanner, layersHeadingRef, massMap, stress, stressVisible, setStressVisible,
                 showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs,
                 changeWaterPrefs, waterStatus, waterAlong, addWaterStop, rail, setRail, showMtbTrails,
+                climbsOn, changeClimbsOn, climbsStatus, climbsAlong,
                 legendHeadingRef, zoom, facilitiesShown,
               }}
             />

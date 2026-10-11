@@ -4739,6 +4739,75 @@ the router has no name. No name, no label and no name in the words.
 level or name. After the rebuild, check a z14 tile's ETag carries `d` and `n` and the log line has
 counts for each level and the named ways.
 
+## The Climbs layer (454; MTB/topo slice 5; claude/v0-5-0-climbs)
+
+Slice 5 of docs/MTB-TOPO-PLAN.md. The map's Climbs switch (under "Trails and terrain", off until
+turned on, kept per browser as `routemaker.climbs`) draws every categorised climb from
+`frontend/src/climb-data/climbs.json`. That file is written on the build host from the live table
+and the elevation tiles, then committed; **until it is, the file is empty and the switch says "No
+climbs yet"**. Nothing else depends on it: routing, the tiles and the rebuild are unchanged.
+
+**The scale** (the owner, 2026-10-10 and 2026-10-11; `routemaker.climb_categories`): score =
+length (m) x average grade (%), Garmin's scale with a Cat 5: Cat 5 over 4,000, Cat 4 over 8,000,
+Cat 3 over 16,000, Cat 2 over 32,000, Cat 1 over 64,000, HC over 80,000. A climb is at least
+0.31 mi (500 m) at 1% or more on average and at least Cat 5; nothing under Cat 5 is drawn
+("Uncategorized is not a hill"). It is scored on net gain: a dip ends it only past
+`DIP_SHARE` (20%) of the gain so far, never under 33 ft (10 m) nor past 165 ft (50 m); a stretch
+with no new high point ends it only past `BREAK_SHARE` (25%) of its length so far, never under
+0.25 mi (400 m) nor past 1 mi (1,600 m); the climb back up out of a dip is climbing, not break,
+so it is not counted, but the whole stretch without a new high point may not pass twice that
+allowance. Ends rising at under 1% over 1,000 ft (300 m) are
+trimmed. The route cost's own reading (`routemaker.climbs.runs`, the 3 m dip and 150 m flat
+rule) is unchanged.
+
+**Writing the file**, after a rebuild has promoted (it reads the live table and
+`<DATA_ROOT>/elevation`, which the rebuild container has, and needs no network: the 3DEP tiles are
+the ones the rebuild already fetched), from the repository on the host. The `rebuild` container must
+be running an image with this release in it (`manage.py build_climbs` is new). It is a heavy job
+(measured on a synthetic 1.4 million-segment table, more rows than the live table's 1.36 million:
+about 3.2 GB peak and a minute or two; the `rebuild` service's 8 GB limit holds it), so it goes
+through the host's heavy-job lock with at least 3,000 MB free, never beside a rebuild, and in the
+running container with `exec`, not `run` (a `run` starts a second rebuild container and, without
+`--no-deps`, the `migrate` service):
+
+    free -m    # "available" at least 3,000 MB; else stop
+    flock <the host's heavy.lock> docker compose exec -T rebuild ./manage.py build_climbs </dev/null
+
+It prints `climbs: read N segments from live.segment`, then `climbs: M written to
+/data/rebuild/climbs.json (HC 0, 1 0, 2 0, 3 41, 4 244, 5 2,306)` (the owner's 2026-10-10 scan
+of the current coverage, with the old 3 m dip rule, found those counts; the looser break rule
+merges some climbs, so expect somewhat fewer Cat 5s and a few more Cat 3s and 4s). It only reads
+and is safe to re-run. It refuses, writing nothing, when the table has no routable rows or no
+elevation tile could be read under `--elevation-dir` (a wrong directory, or tiles not in skadi's
+`N38/N38W077.hgt` layout), and names on stderr any tile that was missing or the wrong size (the
+climbs there are left out). Options: `--out`, `--elevation-dir`, `--schema` (default the live
+schema). Then:
+
+    cp <DATA_ROOT>/rebuild/climbs.json frontend/src/climb-data/climbs.json
+    git add frontend/src/climb-data/climbs.json   # and update the counts in climb-data/README.md
+
+and deploy the front end as usual. `tests/test_climb_layer.py::test_bundled_file_is_well_formed`
+and `climbs.test.ts` check the committed file.
+
+**What it reads.** Ways with `map_class = 'road'`, less `mtb_only` and `walk_bike`: access is the
+rebuild's, overrides included, so a barred, hidden or err-closed way never carries a climb. The ways
+are joined into strokes across junctions (each way end paired with the one that continues it most
+nearly straight, within 45 degrees), sampled every 98 ft (30 m), and read both ways. A climb that
+rides a one-way segment against its drawn direction is left out; `road_oneway` has no direction, so
+an OSM `oneway=-1` way (rare) can lose a climb it should keep, and contraflow lanes are not read.
+Neither can add a climb a rider may not ride.
+
+**Size.** One entry per climb with its simplified line (5 m), about 0.4 KB each: some 1 MB for the
+current coverage, fetched only when the switch is turned on.
+
+**The front end** (`lib/climbs.ts`, `lib/climbsLegend.ts`, `climbInteraction.ts`): a marker at each
+summit with the category ("5" to "1", "HC") in white, inside a shape set by the average grade
+(circle under 4%, square 4% to 7.9%, diamond 8% and up), all one colour (#9d174d, 3:1 or more on
+every base-map surface; the number 4.5:1 or more on it), from zoom 9; the climb's line, dashed,
+from zoom 12; where markers meet, the bigger climb is drawn. A tap shows a card ("Category 3 climb,
+2.1 miles (3.4 km) at 4.6%", the gain, the trail, "Mostly unpaved"). With a route planned, "Climbs
+on your route" lists in words each climb the route rides uphill, start to summit, in riding order.
+
 ## The rebuild bundle (wip/rebuild-bundle)
 
 One deploy and one rebuild carry NO-BIKE-PATHS and the singletrack fix, the arterial
