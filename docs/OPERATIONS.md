@@ -2934,8 +2934,9 @@ this machine (docs/DEPLOYMENT.md, "Build").
 The Map layers sheet's "Topo lines" switch (OWNER-DECISIONS 454; `frontend/src/lib/topoLines.ts`)
 draws contours from `<DATA_ROOT>/basemap/contours.pmtiles`, served beside the base map at
 `/basemap/contours.pmtiles` with the same same-origin guard and `no-cache` (the Caddyfile and the
-beta's nginx template both list it). Until the file exists the switch's description says "Topo
-lines are not available on this server yet" and nothing else changes. The edge change needs the
+beta's nginx template both list it). Until the file exists, turning the switch on (the
+first time in a visit, when the app asks the server for the archive with a `HEAD`) changes its
+description to "Topo lines are not available on this server yet", and nothing else changes. The edge change needs the
 Caddyfile re-read once (below, "Applying a Caddyfile change").
 
 `scripts/build_contours.py` makes the file from the USGS 3DEP 1/3 arc-second DEM (four one-degree
@@ -2970,7 +2971,9 @@ docker run --rm -u 10001:10001 \
 The work directory is `/out/.contours-work` (`<DATA_ROOT>/basemap/.contours-work`, which the edge
 refuses like any unlisted path). It is deleted at the end, downloads and all, because
 `scripts/beta/ship-data.sh` copies the whole basemap directory to the beta; `--keep-work` keeps it
-(a re-run then downloads nothing), and a kept one must be deleted before shipping data.
+(a re-run then downloads nothing). A kept work directory, or one a failed run left behind (it is
+deleted only on success), must be deleted before shipping data: `ship-data.sh` refuses to ship the
+basemap while `.contours-work` or a half-written `.contours.pmtiles.part` is there.
 
 Disk and time, measured in the cloud container on 2026-10-11 with Ubuntu 24.04's GDAL 3.8.4 on one
 whole cell (n39w078 clipped to the coverage's 38.2 N, 0.8 of a square degree, among the hillier parts,
