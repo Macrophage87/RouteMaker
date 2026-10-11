@@ -3167,15 +3167,16 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   })))()`);
   check("stations: a pick-up list and a drop-off list, each a section named by its own heading", lists.length === 2 && lists[0].heading === "Nearby stations to pick up a bike" && lists[1].heading === "Nearby stations to return a bike" && lists.every((l) => l.labelled === "H3"), JSON.stringify(lists.map((l) => l.heading)));
   check("stations: each list is a real list of three real buttons", lists.every((l) => l.list === "UL" && l.buttons.length === 3 && l.buttons.every((b) => b.tag === "BUTTON" && b.type === "button")), JSON.stringify(lists.map((l) => l.buttons.length)));
-  check("stations: each button is read as name, percentage full, e-bikes and distance, miles first with metres in brackets", lists[0].buttons[0].text === "Columbus Circle / Union Station, 82% full, 1 e-bike, 0.2 mi (320 m)" && lists[0].buttons[2].text === "Massachusetts Ave & 2nd St NE, 76% full, 1 e-bike, 0.9 mi (1.5 km)" && lists[1].buttons[0].text === "20th & O St NW / Dupont South, 10% full, 1 e-bike, 490 ft (150 m)", JSON.stringify([lists[0].buttons[0].text, lists[1].buttons[0].text]));
+  // With both ends placed each also says, in words, whether it is on the rider's way (the owner, 2026-10-11).
+  check("stations: each button is read as name, percentage full, e-bikes, distance (miles first, metres in brackets) and whether it is on your way, in words", lists[0].buttons[0].text === "Columbus Circle / Union Station, 82% full, 1 e-bike, 0.2 mi (320 m), on your way" && lists[0].buttons[2].text === "Massachusetts Ave & 2nd St NE, 76% full, 1 e-bike, 0.9 mi (1.5 km), adds 0.1 mi (200 m) of riding" && lists[1].buttons[0].text === "20th & O St NW / Dupont South, 10% full, 1 e-bike, 490 ft (150 m), on your way", JSON.stringify([lists[0].buttons[0].text, lists[0].buttons[2].text, lists[1].buttons[0].text]));
   const named = await axNode(p, ".station-choice");
-  check("stations: a button's accessible name is that text and its role is button, not pressed", named?.role === "button" && named?.name === "Columbus Circle / Union Station, 82% full, 1 e-bike, 0.2 mi (320 m)", JSON.stringify(named));
+  check("stations: a button's accessible name is that text and its role is button, not pressed", named?.role === "button" && named?.name === "Columbus Circle / Union Station, 82% full, 1 e-bike, 0.2 mi (320 m), on your way", JSON.stringify(named));
   check("stations: nothing is chosen at first, and every button is at least 44 px tall", lists.every((l) => l.buttons.every((b) => b.pressed === "false" && b.h >= 44)), JSON.stringify(lists.map((l) => l.buttons.map((b) => b.h))));
-  check("stations: a polite status line says how many are listed", lists.every((l) => l.status === "3 nearby stations listed, nearest first."), JSON.stringify(lists.map((l) => l.status)));
+  check("stations: a polite status line says how many are listed", lists.every((l) => l.status === "3 nearby stations listed, on your way first."), JSON.stringify(lists.map((l) => l.status)));
   check("stations: the words name no programme, no points and no operator", !/angel|points|lyft|capital/i.test(lists.map((l) => l.text).join(" ")), "");
   // Vite's dev server runs React's strict mode, which mounts every effect twice; the set of questions is what is held.
-  const asked = [...new Set(p.stationRequests.map((r) => `${r.action} ${r.point}`))];
-  check("stations: the lists were asked for the start and the end, by POST, with no point in the address", p.stationRequests.every((r) => r.search === "") && asked.length === 2 && asked.includes("pickup -77.04,38.91") && asked.includes("dropoff -77.01,38.89"), JSON.stringify(asked));
+  const asked = [...new Set(p.stationRequests.map((r) => `${r.action} ${r.point} toward ${r.toward}`))];
+  check("stations: the lists were asked for the start and the end, each toward the other end, by POST, with no point in the address", p.stationRequests.every((r) => r.search === "") && asked.length === 2 && asked.includes("pickup -77.04,38.91 toward -77.01,38.89") && asked.includes("dropoff -77.01,38.89 toward -77.04,38.91"), JSON.stringify(asked));
 
   // Keyboard: Tab reaches the buttons in order, and Enter chooses; the plan is made again with it.
   const before = p.routeRequests;

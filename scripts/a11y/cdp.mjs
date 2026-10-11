@@ -1031,10 +1031,12 @@ export const S_BIKESHARE_EBIKE = (() => {
 
 /**
  * The nearest-stations answers (POST /api/bikeshare/stations, core/api.py NearbyStationsOut):
- * three stations at least 3/4 full to pick up from, three at most 1/4 full to return to.
+ * three stations at least 3/4 full to pick up from, three at most 1/4 full to return to. Asked with
+ * `toward` (both ends placed), each says how much riding it adds (`extra_m`, `on_the_way`).
  */
-const station = (id, name, lon, lat, percent, metres, bikes, docks) => ({
+const station = (id, name, lon, lat, percent, metres, bikes, docks, extra = 0) => ({
   station_id: id, name, lon, lat, percent_full: percent, distance_m: metres, bikes, ebikes: 1, docks,
+  extra_m: extra, on_the_way: extra < 50,
 });
 export const S_STATIONS_PICKUP = {
   action: "pickup",
@@ -1043,7 +1045,7 @@ export const S_STATIONS_PICKUP = {
   stations: [
     station("fx-001", "Columbus Circle / Union Station", -77.0063, 38.8973, 82, 320, 9, 2),
     station("fx-002", "Union Station Plaza", -77.0058, 38.8979, 78, 450, 7, 2),
-    station("fx-003", "Massachusetts Ave & 2nd St NE", -77.0042, 38.8981, 76, 1500, 13, 4),
+    station("fx-003", "Massachusetts Ave & 2nd St NE", -77.0042, 38.8981, 76, 1500, 13, 4, 200),
   ],
 };
 export const S_STATIONS_DROPOFF = {
