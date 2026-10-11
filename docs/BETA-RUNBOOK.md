@@ -350,6 +350,11 @@ scripts/beta/ship-data.sh --live-dir "$RM_LIVE_DIR" --build-frontend  "$RM_SSH_H
 ```
 
 With the image loaded this way, skip step 6's `build` line and run only its `pull` line.
+`ship-data.sh` does not carry the api image; after sending, it warns if the server has no image for
+the checkout's sha and prints the two lines above to send it.
+`frontend/node_modules` must be installed for Linux x64. In WSL with no Linux node, `npm ci` finds
+Windows npm and installs Windows bindings, which `--build-frontend` refuses; install it in the pinned
+node image instead (`scripts/beta/frontend-build.sh --print-image` names it), as the refusal shows.
 `--build-frontend` runs the front-end tests and builds it with the beta notice; `ship-data.sh` stops if
 neither it nor `--dist` is given. To add a "Report a problem" link to the notice (OWNER-DECISIONS 382,
 for example a Discord invite once there is one), the owner adds `--report-url https://...`; without it
@@ -1081,9 +1086,15 @@ scripts/beta/auto-release.sh install      # deployed tag: the one HEAD is at; re
 "$RM_STATE/cd/bin/auto-release.sh" status
 ```
 
+**Reinstall before v0.5.0.** An agent installed from v0.4.x keeps its own front-end build, which
+mounts only `frontend/`; v0.5.0's front-end tests read `src/` and `scripts/` too, so that agent would
+stop the api, fail the build and roll back on every front-end release. Once the beta runs v0.5.0
+(shipped by hand, or with the agent paused), run `auto-release.sh install` again from that checkout:
+it installs `frontend-build.sh` beside the agent, which builds with the whole tree mounted.
+
 `install` checks the user is in the docker group and not root, that the checkout is clean at an
 annotated release tag with the matching `TAG`, copies the agent (`auto-release.sh`, `cd_logic.py`,
-`receive-data.sh`) into `$RM_STATE/cd/bin` (so a release can never change the agent under a pass, and
+`receive-data.sh`, `frontend-build.sh`) into `$RM_STATE/cd/bin` (so a release can never change the agent under a pass, and
 a rollback to a release older than the agent still has the agent's no-sudo snapshot and restore),
 records the deployed tag and the beta notice's report link (`--report-url URL|none` if
 `beta-build.txt` is missing: give the one `ship-data.sh --report-url` used), writes

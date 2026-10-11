@@ -173,6 +173,16 @@ export interface JunctionWarning {
   control: "signal" | "stop" | "cross_stop" | "all_stop" | "none";
   kind: string;
   cost_ft: number;
+  /** The same cost in calm miles, 2 places (OWNER-DECISIONS 467, 469b); absent from an older API. */
+  calm_mi?: number | null;
+  /** The metric of `calm_mi`. */
+  calm_km?: number | null;
+  /**
+   * The ride time that changed this junction's cost (468a, 469c-469e): more at weekday
+   * rush hours, less at the weekend or at night. Null or absent where the hour changed
+   * nothing, so the planner says nothing about it.
+   */
+  time_band?: "weekday_rush" | "weekend" | "night" | null;
   /**
    * Mass Ride only (OWNER-DECISIONS 233, 234): the number, from 1, of the group of
    * signalized crossings this junction is one of (`RouteResponse.intersection_groups`);
