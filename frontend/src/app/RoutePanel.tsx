@@ -37,6 +37,8 @@ import { quickFigures, stressBarKey, stressBarLabel } from "../lib/quickFigures.
 import { junctionItems } from "../lib/intersectionMarkers.ts";
 import type { WaterAlong, WaterStatus } from "../lib/waterRestrooms.ts";
 import { WaterAlongList } from "../lib/waterLegend.ts";
+import type { ClimbAlong, ClimbsStatus } from "../lib/climbs.ts";
+import { ClimbsAlongList } from "../lib/climbsLegend.ts";
 import { KEEP_LABEL } from "../lib/offlineRoutes.ts";
 
 export type Status =
@@ -88,11 +90,15 @@ export interface RouteSectionProps {
   changeRidePrefs: (next: RidePrefs) => void;
   rideStartFirstRef: RefObject<HTMLButtonElement | null>;
   beginRide: (prefs: RidePrefs) => void;
+  /** The Climbs layer (lib/climbs.ts): the switch, its data's status and the climbs the route rides. */
+  climbsOn: boolean;
+  climbsStatus: ClimbsStatus;
+  climbsAlong: ClimbAlong[] | null;
 }
 
 /** The planner's Route section: planning, the long-ride question, errors, the route summary, water along it and Start ride's question. */
 export function RouteSection(props: RouteSectionProps) {
-  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials, waterOn, waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs, rideStartFirstRef, beginRide } = props;
+  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials, waterOn, waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs, rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong } = props;
   return (
     <section key="route" aria-labelledby="route-heading" aria-busy={stale}>
       <h2 id="route-heading" ref={routeHeadingRef} tabIndex={-1}>
@@ -170,6 +176,9 @@ export function RouteSection(props: RouteSectionProps) {
       )}
       {shown && waterOn && waterStatus === "ready" && (
         <WaterAlongList items={waterAlong} onAddStop={addWaterStop} headingId="water-along-planner-heading" level="h3" />
+      )}
+      {shown && climbsOn && climbsStatus === "ready" && (
+        <ClimbsAlongList items={climbsAlong} headingId="climbs-along-planner-heading" level="h3" />
       )}
       {shown && rideAsk && (
         <div className="ride-ask" role="dialog" aria-labelledby="ride-ask-title" aria-describedby="ride-ask-safety"

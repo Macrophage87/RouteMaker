@@ -45,7 +45,42 @@ check("so the worst a reviewer can make a paved way is compacted",
   capped.surface == "compacted")
 
 check("surface downgrade never improves a surface",
-  M.SURFACE_ORDER[M.bounded_surface("gravel", "paved_smooth")] >= M.SURFACE_ORDER.gravel)
+  M.SURFACE_ORDER[M.valhalla_surface(M.bounded_surface("gravel", "paved_smooth"))]
+    >= M.SURFACE_ORDER.gravel)
+
+-- FOLLOWUP-VALHALLA-36-LEFTOVERS, item 1: the penalty lands as a tag the
+-- parser reads as the class meant (it reads `surface` by substring, so
+-- `paved_rough` itself read as paved_smooth), and the way's own surface is read
+-- the parser's way too.
+for name, tag in pairs(M.SURFACE_TAG) do
+  check("the tag written for " .. name .. " reads as " .. name,
+    M.valhalla_surface(tag) == name, tag)
+end
+check("every class but impassable has a tag", (function()
+  for name in pairs(M.SURFACE_ORDER) do
+    if name ~= "impassable" and M.SURFACE_TAG[name] == nil then return false end
+  end
+  return true
+end)())
+check("the class names alone are not tags the parser reads as meant",
+  M.valhalla_surface("paved_rough") == "paved_smooth" and M.valhalla_surface("path") == nil)
+check("a paved_rough penalty on asphalt lands as cobblestone",
+  M.bounded_surface("asphalt", "paved_rough") == "cobblestone")
+check("a paved penalty on asphalt lands as paving stones",
+  M.bounded_surface("asphalt", "paved") == "paving_stones")
+check("a ground path is dirt, and a penalty does not lift it to compacted",
+  M.bounded_surface("ground", "gravel") == "ground")
+check("a grass path keeps its own surface",
+  M.bounded_surface("grass", "compacted") == "grass")
+check("an untagged way with a penalty that changes nothing gets no surface",
+  M.bounded_surface(nil, "paved_smooth") == nil)
+check("an untagged way with a penalty is capped at compacted",
+  M.bounded_surface(nil, "path") == "compacted")
+check("the parser's order: unpaved is gravel before paved matches",
+  M.valhalla_surface("unpaved") == "gravel" and M.valhalla_surface("Asphalt") == "paved_smooth")
+check("an untagged way's remap writes no surface for a no-op penalty",
+  M.remap_way({ highway = "residential" }, { reviewer_surface_penalty = "paved_smooth" }).surface
+    == nil)
 
 -- Narrow-gap furniture has to reach gate_cost.
 check("cycle_barrier becomes a gate",
@@ -1079,8 +1114,10 @@ check("a rated wooden MTB feature stays closed both ways",
 -- A reviewer surface penalty still wins over the deck's price.
 local penalised_deck = M.remap_way({ highway = "footway", surface = "wood" },
   { is_trail_class = true, reviewer_surface_penalty = "compacted" })
-check("a reviewer penalty on a wooden deck wins", penalised_deck.surface == "compacted",
-  tostring(penalised_deck.surface))
+-- The deck's own `wood` is the parser's compacted already, so the penalty puts
+-- it back over the deck's paving_stones price.
+check("a reviewer penalty on a wooden deck wins",
+  M.valhalla_surface(penalised_deck.surface) == "compacted", tostring(penalised_deck.surface))
 check("a dirt trail keeps its rating",
   M.remap_way({ highway = "path", surface = "dirt", ["mtb:scale"] = "2" },
     { is_trail_class = true })["mtb:scale"] == nil)

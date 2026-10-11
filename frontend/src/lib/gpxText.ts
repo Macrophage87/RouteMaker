@@ -1,7 +1,7 @@
 /** What the GPX section says, and the export's name and description. */
 import type { RouteProfile, RouteResponse } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
-import { WHENS, carryingWords, hillsWords, stressWords, whenInSentence } from "./dials.ts";
+import { WHENS, carryingWords, hillsWords, seeksClimbs, stressWords, whenInSentence } from "./dials.ts";
 import type { ExportDials, GpxExport } from "./gpx.ts";
 import { JOIN_GAP_M, type ImportNote, type ImportedPlan } from "./gpxPlan.ts";
 import { presetLabel } from "./presets.ts";
@@ -48,7 +48,7 @@ export function rideText(route: Pick<RouteResponse, "preset"> & Partial<Pick<Rou
   const when = WHENS.find((w) => w.id === d.when)?.label;
   return (
     `${head} Traffic slider ${d.stress} of 100 (${stressWords(d.stress)}); ` +
-    `hills slider ${d.hills} (${hillsWords(d.hills)})` +
+    `hills slider ${d.hills} (${hillsWords(d.hills, seeksClimbs(route.preset))})` +
     (when ? `; ride time ${whenInSentence(when)}` : "") +
     (d.carrying ? `; ${carryingWords(d.carrying)}` : "") +
     (d.assist ? "; electric assist" : "") +

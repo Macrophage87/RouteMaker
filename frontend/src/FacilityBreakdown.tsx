@@ -10,7 +10,7 @@ import type { RouteResponse } from "./lib/api.ts";
 import { routeWarning } from "./lib/dialsPanel.ts";
 import { useHighStressLanes, useStressStyle } from "./useStressStyle.ts";
 import { ROUTE_CASING_WIDTH, routeCasing, routeLegend, routeMarkDash, routeMarkWidth } from "./lib/routeColours.ts";
-import { seekNote } from "./lib/summary.ts";
+import { seekNote, tolerateNote } from "./lib/summary.ts";
 
 /**
  * A row of a figure's list, read as label, figure, hint with a pause between
@@ -30,7 +30,8 @@ export function FacilityBreakdown({ route, part = "all" }: { route: RouteRespons
   useStressStyle(); // the route colours below follow the accessibility switch
   const showHighLanes = useHighStressLanes(); // painted lanes on LTS 4 and Avoid count as no facility unless the switch is on
   const rows = facilityRows(route.facility_m, route.stress_spans, showHighLanes);
-  const seek = seekNote(route.hills_seek);
+  // What the hills slider's right half did: Mountain Goat's climb search, or "fine with hills" (242).
+  const seek = seekNote(route.hills_seek) ?? tolerateNote(route.hills_tolerate);
   const avoid = avoidMetres(route.stress_m);
   const warning = routeWarning(route.preset, route.dials);
   const colours = routeLegend(route.stress_spans);

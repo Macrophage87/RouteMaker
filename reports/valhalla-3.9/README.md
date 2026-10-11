@@ -116,8 +116,8 @@ remap: one way differs, a pedestrian plaza, closed to bicycles under both. All
 - **The double-free fix** behind the tile-build retry is byte-identical
   (`src/mjolnir/sqlite3.cc`).
 - **Memory.** The sort now runs chunks in parallel, capped at the build's
-  concurrency (2 by default) and at 8. Each chunk is 512 MB of memory-mapped
-  file, so at 2 up to two are touched at once. This is page cache, not heap.
+  concurrency (2 by default; 4 from v0.5.0) and at 8. Each chunk is 512 MB of
+  memory-mapped file, so at 2 up to two are touched at once (four at 4). This is page cache, not heap.
 - **Disk.** One new temporary file, `edge_shapes.bin` (8 bytes per way node),
   removed at the end of the build.
 - **The time-zone script** fetches the 2026d data. On a host with `wslpath`, the
@@ -202,6 +202,10 @@ before retrying, bring the new files back with `git checkout HEAD -- lua valhall
    - check its VALIDATE result and the reference routes. Trail routes may
      differ slightly: the free turns above;
    - check whether `retry 1 of 1` appears in the log. With the fix it should not.
+     (From v0.5.0 the retry is gone and the default is 4 threads: an abort
+     fails the attempt with `valhalla_build_tiles exited -6`, and the worker's
+     retry resumes from the last finished graph. docs/OPERATIONS.md, "Tile
+     build threads", says what to do then.)
 
    After it promotes, restart the routers onto the new tiles, then run the
    probes and the check:

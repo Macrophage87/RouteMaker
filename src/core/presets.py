@@ -138,6 +138,14 @@ HIGH_SURFACE_AVOIDANCE = 0.75
 # An e-bike's cruising speed with assist, 15 mph: the US class 1 and 2 limit is
 # 20 mph, and a rider in town cruises well under it.
 EBIKE_PLANNING_SPEED_KMH = 24.0
+# Where the E-bike ride type's hills slider starts: halfway into "fine with hills"
+# (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242: "People with ebikes would probably
+# just want a more direct route as hills wouldn't affect them too much"; "The E-bike
+# ride type would start toward tolerate"). Half the router's climbing charge is taken
+# off; 50 rather than the top, so a long steep grade still counts for something (the
+# battery and the rider's nerve, as Bikeshare's e-bike start says). The
+# implementation's figure, for the owner to confirm.
+EBIKE_HILLS = 50
 HIGH_MANEUVER_PENALTY_S = 30
 HIGH_GATE_COST_S = 120
 
@@ -201,9 +209,20 @@ _LIVING_STREETS = MID
 # the detent and 0.0 at -100. `use_hills` 1.0 adds no grade penalty at all, so
 # an edge costs its time as Valhalla's grade-speed model has it - the owner's
 # "fastest time for most people". Above 0 Valhalla has nothing to offer
-# (`use_hills` stops at indifferent), and the request becomes a climb search
-# among the router's alternatives (`core.routing`) within the distance budget
-# the dial sets (`seek_distance_ratio`).
+# (`use_hills` stops at indifferent), and what the right half means depends on
+# the ride type (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242):
+#
+# - on every ride type but Mountain Goat it is "fine with hills": the climbing
+#   time the router charges is discounted, by the slider's position over 100
+#   (`tolerate_weight`), so the shorter or more direct of the router's routes wins
+#   even where it climbs more (`core.routing.choose_direct`). The owner, 2026-09-27
+#   (242): "it wouldn't make sense for the hill slider, outside mountain goat to not
+#   nessicarily perfer hills, but mostly tolerate them. For instance lighter
+#   individuals would probably move the slider to more hilly as it's faster than
+#   them. People with ebikes would probably just want a more direct route";
+# - on Mountain Goat (`Preset.hills_tolerate` False) it still seeks climbs: a climb
+#   search among the router's alternatives (`core.routing`) within the distance
+#   budget the dial sets (`seek_distance_ratio`).
 STRESS_MIN, STRESS_MAX = 0, 100
 HILLS_MIN, HILLS_MAX = -100, 100
 
@@ -403,6 +422,12 @@ def use_hills_for(hills: int) -> float:
     return round(1.0 + min(hills, 0) / 100, 3)
 
 
+def tolerate_weight(hills: int) -> float:
+    """How much of the router's own climbing charge a "fine with hills" ride takes off:
+    0 at the detent, 1 at the top of the slider (`core.routing.choose_direct`)."""
+    return max(hills, 0) / 100
+
+
 def seek_distance_ratio(hills: int) -> float:
     """How much longer than the direct route a climb search may go: up to half again."""
     return 1.0 + 0.5 * max(hills, 0) / 100
@@ -419,6 +444,10 @@ class Preset:
     # Whether the hills slider may go past its detent. Not on Mass Ride: PLAN,
     # "On Mass Ride the seek half is disabled with the speed-band explanation".
     hills_seek: bool = True
+    # What the slider's right half means (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242):
+    # True, "fine with hills", climbing time discounted and the more direct route
+    # preferred; False (Mountain Goat alone), seek climbs.
+    hills_tolerate: bool = True
     # What the bike carries, where the preset asks (Cargo Bike): each choice
     # and the stress slider's start it gives. The first is the default.
     carrying: MappingProxyType | None = None
@@ -558,6 +587,7 @@ def _preset(
     stress: int,
     hills: int,
     hills_seek: bool = True,
+    hills_tolerate: bool = True,
     carrying: dict[str, int] | None = None,
     stress_max: int = 100,
     assist_speed_kmh: float | None = None,
@@ -581,6 +611,7 @@ def _preset(
         stress=stress,
         hills=hills,
         hills_seek=hills_seek,
+        hills_tolerate=hills_tolerate,
         carrying=MappingProxyType(carrying) if carrying else None,
         stress_max=stress_max,
         assist_speed_kmh=assist_speed_kmh,
@@ -674,6 +705,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 # the via-point search the table's L4 describes.
                 stress=40,
                 hills=HILLS_MAX,
+                # The one ride type whose right half still seeks climbs (242).
+                hills_tolerate=False,
                 bicycle_type="Cross",
                 avoid_bad_surfaces=LOW_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
@@ -736,10 +769,12 @@ PRESETS: MappingProxyType = MappingProxyType(
                 "ebike",
                 Variant.EBIKE,
                 # "Grade matters less, path legality matters more | L1: e-bike
-                # variant. L2: mid use_hills". The variant bars the ways tagged
+                # variant". The variant bars the ways tagged
                 # electric_bicycle=no; nothing here asserts any legality.
+                # Hills: toward "fine with hills" (EBIKE_HILLS, 242), where PLAN's
+                # table had "mid use_hills".
                 stress=DEFAULT_STRESS,
-                hills=-50,
+                hills=EBIKE_HILLS,
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,

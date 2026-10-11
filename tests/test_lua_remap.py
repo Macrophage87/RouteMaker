@@ -15,6 +15,7 @@ Valhalla cannot use.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -1056,9 +1057,10 @@ UPSTREAM_OPEN_CASES = [
     {"smoothness": "impassable"},
     {"smoothness": "impassable", "bicycle": "yes"},
     {"impassable": "yes"},
-    # `sac_scale=hiking` alone is left out: upstream keeps a footway closed
-    # there in 3.5.1 to 3.9.1 alike while the model calls it open, a
-    # difference that predates the upgrade and only ever closes a closed way.
+    # Upstream keeps a footway, pedestrian way or bridleway closed under
+    # `sac_scale=hiking` (FOLLOWUP-VALHALLA-36-LEFTOVERS, item 3).
+    {"sac_scale": "hiking"},
+    {"sac_scale": "mountain_hiking"},
     {"sac_scale": "hiking", "vehicle": "no"},
     {"sac_scale": "mountain_hiking", "vehicle": "yes"},
 ]
@@ -1085,3 +1087,60 @@ def test_the_trail_rules_model_of_upstream_agrees_with_the_real_transform(highwa
     upstream = result.stdout.split("\n")[:-1]
     model = ["open" if trailaccess.upstream_open(case) else "closed" for case in cases]
     assert [(c, m) for c, m, u in zip(cases, model, upstream, strict=True) if m != u] == []
+
+
+# FOLLOWUP-VALHALLA-36-LEFTOVERS, item 2. Valhalla runs graph.lua with
+# luaL_dostring, ignores what it returns (src/mjolnir/luatagtransform.cc:50 at
+# 3.9.1) and only checks that the `*_proc` globals exist. graph.lua used to load
+# upstream's file, which installs them, before the remap; a remap that failed to
+# load then built every graph on the stock transform. Now a failure anywhere in
+# the file leaves no entry point, and the build refuses the script
+# (tests/test_tile_build_access.py builds it with a broken remap).
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [
+        "error('deliberately broken')\n",
+        "local M = {\n",  # a syntax error
+        "return true\n",  # loads, but is not the module
+        None,  # missing
+    ],
+)
+def test_a_remap_that_fails_to_load_leaves_no_entry_point(tmp_path, broken) -> None:
+    lua = tmp_path / "lua"
+    shutil.copytree(REPO / "lua", lua)
+    if broken is None:
+        (lua / "routemaker_remap.lua").unlink()
+    else:
+        (lua / "routemaker_remap.lua").write_text(broken)
+    interpreter = _require(LUAJIT, "LuaJIT")
+    result = subprocess.run(
+        [
+            interpreter,
+            "-e",
+            f"local ok, err = pcall(dofile, {json.dumps(str(lua / 'graph.lua'))})\n"
+            "io.write(tostring(ok), ' ', type(ways_proc), ' ', type(nodes_proc), ' ',\n"
+            "  type(rels_proc), '\\n', tostring(err), '\\n')\n",
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "ROUTEMAKER_LUA_DIR": str(lua)},
+    )
+    assert result.returncode == 0, result.stderr
+    first, reason = result.stdout.splitlines()[:2]
+    assert first == "false nil nil nil", result.stdout
+    assert "routemaker_remap.lua did not load" in reason
+
+
+def test_a_late_failure_takes_upstreams_entry_points_down_too() -> None:
+    """Between capturing upstream's entry points and defining its own, the file
+    holds no `*_proc` global, so nothing failing there can leave upstream's."""
+    source = (REPO / "lua" / "graph.lua").read_text()
+    remap = source.index('pcall(require, "routemaker_remap")')
+    upstream = source.index('pcall(require, "graph_upstream")')
+    cleared = source.index("ways_proc, nodes_proc, rels_proc = nil, nil, nil")
+    defined = source.index("function ways_proc")
+    assert remap < upstream < cleared < defined
