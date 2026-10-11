@@ -101,13 +101,13 @@ import {
   REPORT_NOTE_MAX,
   REPORT_NO_PLACE,
   REPORT_OFF_ROUTE,
-  REPORT_OTHER_HINT,
   REPORT_OUTSIDE_DC,
   REPORT_PRIVACY,
   REPORT_SUMMARY,
   SHORT_CODE_SPOKEN,
   canText,
   keywordOf,
+  onlineHint,
   reportText,
   smsHref,
   type ReportKind,
@@ -228,8 +228,9 @@ const COPY_REPLY_DELAY_MS = 150;
 /**
  * Report to DC 311 (lib/report311.ts; OWNER-DECISIONS 369, 370, 465): what it is, an optional note, and
  * the message built from the rider's place in the route's street names. On a phone a pothole or a
- * streetlight is a Text to 311 link the rider sends; anything else, and everything on a desktop, is the
- * same words to copy into DC 311 online. The place follows the rider; the message is shown as sent.
+ * streetlight is a Text to 311 link the rider sends; anything else (a downed tree, a vehicle in a bike
+ * lane, a blocked road or bikeway, which the words name first), and everything on a desktop, is the
+ * same words to copy into DC 311 online, with a hint naming its request there where one is known. The place follows the rider; the message is shown as sent.
  */
 function Report311({ model, progressM, off, idBase }: { model: RideModel; progressM: number | null; off: boolean; idBase: string }) {
   const [kind, setKind] = useState<ReportKind>("pothole");
@@ -295,7 +296,7 @@ function Report311({ model, progressM, off, idBase }: { model: RideModel; progre
             <p className="hint" role="status">
               {copied}
             </p>
-            {!keyword && <p className="hint">{REPORT_OTHER_HINT}</p>}
+            {!keyword && <p className="hint">{onlineHint(kind)}</p>}
           </>
         )}
         <p className="hint">{REPORT_PRIVACY}</p>

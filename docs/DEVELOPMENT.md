@@ -7022,6 +7022,26 @@ copied as is; the text adds DC's keyword in front (`forText`), which a hint says
 it is the message itself. Whether DC's service reads a keyword and a place in one message is not
 verified until a real text is sent (the owner's).
 
+The kinds (`REPORT_KINDS`; the owner, 2026-10-11: "311 should have the following at least: Pothole /
+Downed tree / Vehicle parked in a bike lane / Roadway/bikeway obstructed"), in this order: Pothole (the
+default), Downed tree, Vehicle parked in a bike lane, Roadway or bikeway obstructed (the owner's words, with "or" for
+the slash, which a screen reader reads aloud), Streetlight out, Something
+else. DC's page (read again 2026-10-11) still names keywords only for POTHOLE, STREETLIGHT and TRASH, so
+the three new kinds go to DC 311 online like Something else, and their words name the problem first
+(`problem`: "Downed tree. Location: ...", "Vehicle parked in a bike lane. Location: ...", "Roadway or
+bikeway obstructed. Location: ...") so DC knows what it is without a note; Something else still relies
+on the note, and its hint says so. The hint beside DC 311 online (`onlineHint`) names the request there
+where one is known: DC GIS's open service requests of the last 30 days
+(https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/SR_30days_Open/MapServer/0, distinct
+`SERVICECODEDESCRIPTION`, read 2026-10-11) include "Tree Inspection", "Tree Removal" and "Parking
+Enforcement", and DPW places its bike lane enforcement officers partly by 311 requests
+(dpw.dc.gov/node/1442566, 2019-11-12, read 2026-10-11). Neither says which request a vehicle in a bike
+lane is (DPW's "Request Parking Enforcement" page, https://dpw.dc.gov/service/request-parking-enforcement,
+read 2026-10-11, lists meters, permits, driveways, bus stops, crosswalks and hydrants, not bike lanes),
+so its hint says only that DC's parking requests include Parking Enforcement. No request for an obstructed roadway or
+bikeway was found there, and 311.dc.gov's own form could not be read (its robots.txt refuses fetches),
+so that hint names none.
+
 The place is `placeOnRoute` (`lib/navigate.ts`), from the route's own data, never a lookup with the
 position (plan section 7, owner question 7): `routeJunctions` lists each change of named street
 between two stretches and each flagged crossing (a junction entry names the street crossed), and the
