@@ -64,26 +64,71 @@ A building=toilets way with no amenity=toilets and no public node inside stays
 out, as before (it says nothing about public use). Areas mapped as relations
 (multipolygons) are not read; restroom buildings are plain ways.
 
+Not where the public can walk in (owner request, 2026-10-11: "leave out
+restrooms inside places the public can't easily walk into"): a point inside an
+area tagged aeroway=aerodrome or aeroway=terminal (airside), landuse=military
+or military=* (a base; every value but "no" and "danger_area", as a danger
+area is often open water or public land beside a range; and not on an area
+also tagged historic=*, such as an old fort that is a park now), or amenity=prison is
+left out, water as well as restrooms. Areas are read as closed ways and as
+multipolygon relations, holes respected
+(<https://wiki.openstreetmap.org/wiki/Tag:aeroway%3Daerodrome>,
+<https://wiki.openstreetmap.org/wiki/Tag:aeroway%3Dterminal>,
+<https://wiki.openstreetmap.org/wiki/Key:military>,
+<https://wiki.openstreetmap.org/wiki/Tag:landuse%3Dmilitary>,
+<https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dprison>). The build prints
+how many it left out, by kind.
+
+Throne smart restrooms (owner request, 2026-10-11: "missing some restrooms
+that were established by Throne Labs, which are often along major biking
+routes"; "They are in Maryland and Virginia too"): OSM has few of them, so a
+small hand list with a source for each unit,
+frontend/src/amenity-data/throne-restrooms.json, is merged in. Only units with
+status "open" are added ("unverified" and "opens soon" wait in the list). A
+unit within 50 ft (15 m) of an OSM restroom, or within 1,000 ft (300 m) of an
+OSM restroom already tagged as a Throne (operator, brand or name), is that
+restroom: the OSM point stays, marked as a Throne. Otherwise the unit is added
+as a flush restroom, free and wheelchair accessible, as Throne describes every
+unit (<https://thronelabs.co/how-it-works>, read 2026-10-11), with the id
+"throne-...". Every Throne point carries op "Throne", which the map turns into
+how to open the door. An OSM point marked only by the list also carries
+tu (the unit's id), so --throne-only can tell it from one tagged Throne in OSM.
+An added unit carries ap 1 (approximate) unless the list marks it "exact": the
+positions come from a street address, so the card says the unit may be a
+block or so away (three OSM restrooms that look like listed units lie 90 to
+700 ft (28 to 215 m) from them, hence the wider reach for a tagged one). Each
+OSM restroom stands for at most one unit.
+
 Run from the repository root with the development venv (osmium is in
 requirements-dev.txt):
 
     .venv311/bin/python scripts/build_water_restrooms.py \
         --pbf <DATA_ROOT>/extracts/source.osm.pbf
 
-It reads the extract only and writes
+It reads the extract and the Throne list and writes
 frontend/src/amenity-data/water-restrooms.json (frontend/src/amenity-data/README.md).
+
+To refresh only the Throne units in the committed file, without an extract
+(after the list changes; the OSM points are kept as they are):
+
+    .venv311/bin/python scripts/build_water_restrooms.py --throne-only
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 OUT = REPO / "frontend" / "src" / "amenity-data" / "water-restrooms.json"
+THRONE_LIST = REPO / "frontend" / "src" / "amenity-data" / "throne-restrooms.json"
+SOURCE = "OpenStreetMap contributors, ODbL 1.0"
+SOURCE_THRONE = "Throne units: throne-restrooms.json, a hand list with a source for each"
 
 # src/config/settings.py COVERAGE_BBOX (west, south, east, north); a test holds
 # the two equal.
@@ -118,6 +163,16 @@ YES_NO = frozenset({"yes", "no"})
 WHEELCHAIR = frozenset({"yes", "limited", "no"})
 MAX_TEXT = 80
 
+# Where the public cannot walk in; see the docstring.
+SECURED_AEROWAY = frozenset({"aerodrome", "terminal"})
+MILITARY_OPEN = frozenset({"no", "danger_area"})
+# A Throne unit is an OSM restroom this close, or this close to one tagged as a Throne.
+THRONE_SAME_M = 15.0  # 50 ft
+THRONE_TAGGED_M = 300.0  # 1,000 ft: the list's positions are street addresses
+THRONE_STATUSES = frozenset({"open", "opens soon", "unverified"})
+THRONE = "Throne"
+M_PER_DEG_LAT = 111_320.0
+
 
 @dataclass(frozen=True)
 class Amenity:
@@ -132,6 +187,11 @@ class Amenity:
     hours: str | None = None
     seasonal: str | None = None
     bottle: bool = False
+    op: str | None = None  # "Throne" for a Throne smart restroom
+    # The Throne list unit that marked this OSM point (not tagged Throne in OSM itself).
+    throne_unit: str | None = None
+    # Placed from a street address, not the unit itself: the card says so.
+    approx: bool = False
 
 
 def is_historic_spring(tags: dict[str, str]) -> bool:
@@ -183,6 +243,29 @@ def is_public(tags: dict[str, str]) -> bool:
     return tags.get("disused") != "yes" and tags.get("abandoned") != "yes"
 
 
+def is_throne(tags: dict[str, str]) -> bool:
+    """An OSM restroom mapped as a Throne unit (operator, brand or name)."""
+    return (
+        any("throne" in tags.get(k, "").lower() for k in ("operator", "brand", "name"))
+        and tags.get("amenity") == "toilets"
+    )
+
+
+def secured_kind(tags: dict[str, str]) -> str | None:
+    """'airport', 'military' or 'prison' for an area the public cannot walk into; else None."""
+    if tags.get("aeroway") in SECURED_AEROWAY:
+        return "airport"
+    military = tags.get("military")
+    if tags.get("landuse") == "military" or (
+        # A historic fort, battery or trench (historic=*) is a public park now.
+        military and military not in MILITARY_OPEN and not tags.get("historic")
+    ):
+        return "military"
+    if tags.get("amenity") == "prison":
+        return "prison"
+    return None
+
+
 def _text(value: str | None) -> str | None:
     if not value:
         return None
@@ -214,6 +297,7 @@ def classify(osm: str, tags: dict[str, str], lon: float, lat: float) -> Amenity 
         hours=_text(tags.get("opening_hours")),
         seasonal=None if seasonal in (None, "no") else _text(seasonal),
         bottle=water == "p" and tags.get("bottle") == "yes",
+        op=THRONE if is_throne(tags) else None,
     )
 
 
@@ -317,12 +401,170 @@ def merge_restrooms(nodes: list[Element], buildings: list[Element]) -> list[Elem
     return out + loose
 
 
-def read_extract(path: Path) -> list[Amenity]:
+# --- Where the public cannot walk in -----------------------------------------
+
+Ring = tuple[tuple[float, float], ...]
+
+
+@dataclass(frozen=True)
+class SecuredArea:
+    """One outer ring of an area the public cannot walk into, with its holes."""
+
+    kind: str  # "airport", "military" or "prison"
+    outer: Ring
+    holes: tuple[Ring, ...] = ()
+
+    def box(self) -> tuple[float, float, float, float]:
+        xs = [x for x, _ in self.outer]
+        ys = [y for _, y in self.outer]
+        return (min(xs), min(ys), max(xs), max(ys))
+
+    def holds(self, lon: float, lat: float) -> bool:
+        return _inside(lon, lat, self.outer) and not any(_inside(lon, lat, h) for h in self.holes)
+
+
+def leave_out_secured(
+    elements: list[Element], areas: list[SecuredArea]
+) -> tuple[list[Element], Counter]:
+    """The elements outside every secured area, and how many were left out, by kind."""
+    boxed = [(a, a.box()) for a in areas if len(a.outer) >= 3]
+    kept: list[Element] = []
+    left_out: Counter = Counter()
+    for e in elements:
+        kind = next(
+            (
+                a.kind
+                for a, (w, s, east, n) in boxed
+                if w <= e.lon <= east and s <= e.lat <= n and a.holds(e.lon, e.lat)
+            ),
+            None,
+        )
+        if kind is None:
+            kept.append(e)
+        else:
+            left_out[kind] += 1
+    return kept, left_out
+
+
+# --- Throne smart restrooms --------------------------------------------------
+
+
+def _metres(a_lon: float, a_lat: float, b_lon: float, b_lat: float) -> float:
+    """Flat distance in metres; plenty at a few hundred metres."""
+    kx = M_PER_DEG_LAT * math.cos(math.radians((a_lat + b_lat) / 2))
+    return math.hypot((a_lon - b_lon) * kx, (a_lat - b_lat) * M_PER_DEG_LAT)
+
+
+def load_throne(path: Path) -> list[dict]:
+    """The hand list's units, checked: unique ids, a name, a place, a status, dated sources."""
+    units = json.loads(path.read_text(encoding="utf-8"))["units"]
+    seen: set[str] = set()
+    for u in units:
+        uid = u.get("id", "")
+        if not uid.startswith("throne-") or uid in seen:
+            raise ValueError(f"Throne unit id must be unique and start throne-: {uid!r}")
+        seen.add(uid)
+        if u.get("status") not in THRONE_STATUSES:
+            raise ValueError(
+                f"{uid}: status {u.get('status')!r} is not one of {sorted(THRONE_STATUSES)}"
+            )
+        if not u.get("name") or not u.get("jurisdiction"):
+            raise ValueError(f"{uid}: needs a name and a jurisdiction")
+        if not all(isinstance(u.get(k), (int, float)) for k in ("lat", "lon")):
+            raise ValueError(f"{uid}: lat and lon must be numbers")
+        sources = u.get("sources") or []
+        if not sources or not all((s.get("url") or s.get("by")) and s.get("read") for s in sources):
+            raise ValueError(
+                f"{uid}: every source needs a url (or who saw it, 'by') and the date read"
+            )
+    return units
+
+
+def merge_throne(amenities: list[Amenity], units: list[dict]) -> tuple[list[Amenity], int, int]:
+    """Mark or add the open Throne units: the points, how many were added and how many matched OSM.
+
+    Units not "open" are skipped. A unit within THRONE_SAME_M of an OSM
+    restroom, or within THRONE_TAGGED_M of one already tagged as a Throne, is
+    that restroom (the nearest): the OSM point keeps its place and details and
+    is marked op Throne; each OSM restroom stands for one unit at most.
+    Otherwise the unit is added. Points from an earlier
+    merge (ids "throne-...") are dropped first, so a rerun gives the same file.
+    """
+    out = [a for a in amenities if not a.osm.startswith("throne-")]
+    west, south, east, north = COVERAGE_BBOX
+    added = matched = 0
+    claimed: set[int] = set()
+    for u in units:
+        if u["status"] != "open":
+            continue
+        lon, lat = float(u["lon"]), float(u["lat"])
+        if not (west <= lon <= east and south <= lat <= north):
+            continue
+        best: tuple[float, int] | None = None
+        for i, a in enumerate(out):
+            if a.toilet is None or a.osm.startswith("throne-") or i in claimed:
+                continue
+            d = _metres(lon, lat, a.lon, a.lat)
+            reach = THRONE_TAGGED_M if a.op == THRONE else THRONE_SAME_M
+            if d <= reach and (best is None or d < best[0]):
+                best = (d, i)
+        if best is not None:
+            claimed.add(best[1])
+            hit = out[best[1]]
+            if hit.op != THRONE:
+                hit = replace(hit, op=THRONE, throne_unit=u["id"])
+            out[best[1]] = hit
+            matched += 1
+            continue
+        out.append(
+            Amenity(
+                osm=u["id"],
+                lon=round(lon, 5),
+                lat=round(lat, 5),
+                water=None,
+                toilet="f",
+                name=_text(u["name"]),
+                fee="no",
+                wheelchair="yes",
+                op=THRONE,
+                approx=not u.get("exact", False),
+            )
+        )
+        added += 1
+    return out, added, matched
+
+
+def from_document(doc: dict) -> list[Amenity]:
+    """The points of a file this script wrote, back as Amenity (for --throne-only)."""
+    return [
+        Amenity(
+            osm=p["id"],
+            lon=p["x"],
+            lat=p["y"],
+            water=p.get("w"),
+            toilet=p.get("t"),
+            name=p.get("n"),
+            fee=p.get("fee"),
+            wheelchair=p.get("wc"),
+            hours=p.get("h"),
+            seasonal=p.get("s"),
+            bottle=p.get("b") == 1,
+            op=p.get("op"),
+            throne_unit=p.get("tu"),
+            approx=p.get("ap") == 1,
+        )
+        for p in doc["points"]
+    ]
+
+
+def read_extract(path: Path) -> tuple[list[Amenity], Counter]:
+    """Public water and restrooms in the extract, and how many secured areas left out, by kind."""
     import osmium
 
     others: list[Element] = []
     toilet_nodes: list[Element] = []
     buildings: list[Element] = []
+    secured: list[SecuredArea] = []
 
     def wanted(tags: dict[str, str]) -> bool:
         return water_of(tags) is not None or toilet_of(tags) is not None
@@ -364,17 +606,41 @@ def read_extract(path: Path) -> list[Amenity]:
             elif wanted(tags):
                 others.append(e)
 
+        def area(self, a):
+            # Closed ways and multipolygon relations alike; osmium assembles both.
+            t = a.tags
+            if not ("aeroway" in t or "landuse" in t or "military" in t or "amenity" in t):
+                return
+            kind = secured_kind(dict(t))
+            if kind is None:
+                return
+            try:
+                for outer in a.outer_rings():
+                    ring = tuple((n.lon, n.lat) for n in outer)
+                    holes = tuple(
+                        tuple((n.lon, n.lat) for n in inner) for inner in a.inner_rings(outer)
+                    )
+                    secured.append(SecuredArea(kind, ring, holes))
+            except osmium.InvalidLocationError:
+                return
+
     Handler().apply_file(str(path), locations=True)
+    elements, left_out = leave_out_secured(
+        others + merge_restrooms(toilet_nodes, buildings), secured
+    )
     found: list[Amenity] = []
-    for e in others + merge_restrooms(toilet_nodes, buildings):
+    for e in elements:
         a = classify(e.osm, e.tags, e.lon, e.lat)
         if a:
             found.append(a)
-    return found
+    return found, left_out
 
 
-def _sort_key(a: Amenity) -> tuple[str, int]:
-    return (a.osm[0], int(a.osm[1:]))
+def _sort_key(a: Amenity) -> tuple[int, str, int, str]:
+    # OSM nodes, then ways, by number; then the Throne list's units by id.
+    if a.osm[:1] in ("n", "w") and a.osm[1:].isdigit():
+        return (0, a.osm[0], int(a.osm[1:]), "")
+    return (1, "", 0, a.osm)
 
 
 def document(amenities: list[Amenity]) -> dict:
@@ -398,40 +664,78 @@ def document(amenities: list[Amenity]) -> dict:
             p["s"] = a.seasonal
         if a.bottle:
             p["b"] = 1
+        if a.op:
+            p["op"] = a.op
+        if a.throne_unit:
+            p["tu"] = a.throne_unit
+        if a.approx:
+            p["ap"] = 1
         points.append(p)
-    return {
-        "source": "OpenStreetMap contributors, ODbL 1.0",
-        "points": points,
-    }
+    return {"source": SOURCE, "also": SOURCE_THRONE, "points": points}
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument(
-        "--pbf", type=Path, required=True, help="<DATA_ROOT>/extracts/source.osm.pbf"
-    )
-    parser.add_argument("--out", type=Path, default=OUT)
-    args = parser.parse_args(argv)
-    amenities = read_extract(args.pbf)
-    doc = document(amenities)
+def write_document(doc: dict, out: Path) -> None:
     # One point per line: small, and a refresh diffs point by point.
     lines = [json.dumps(p, ensure_ascii=False, separators=(",", ":")) for p in doc["points"]]
     text = (
         '{"source":'
         + json.dumps(doc["source"])
+        + ',"also":'
+        + json.dumps(doc["also"])
         + ',"points":[\n'
         + ",\n".join(lines)
         + ("\n" if lines else "")
         + "]}\n"
     )
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(text, encoding="utf-8")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text, encoding="utf-8")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--pbf", type=Path, help="<DATA_ROOT>/extracts/source.osm.pbf")
+    parser.add_argument("--out", type=Path, default=OUT)
+    parser.add_argument("--throne", type=Path, default=THRONE_LIST, help="the Throne hand list")
+    parser.add_argument(
+        "--throne-only",
+        action="store_true",
+        help="no extract: merge the Throne list again into --out, keeping its OSM points",
+    )
+    args = parser.parse_args(argv)
+    if args.throne_only == bool(args.pbf):
+        parser.error(
+            "give --pbf, or --throne-only (and no --pbf) to refresh the Throne units alone"
+        )
+    units = load_throne(args.throne)
+    left_out: Counter = Counter()
+    if args.throne_only:
+        # A point the list marked ("tu") is unmarked and matched again; a point
+        # tagged Throne in OSM itself keeps its mark (and the wider THRONE_TAGGED_M).
+        osm_points = [
+            replace(a, op=None, throne_unit=None) if a.throne_unit else a
+            for a in from_document(json.loads(args.out.read_text(encoding="utf-8")))
+        ]
+    else:
+        osm_points, left_out = read_extract(args.pbf)
+    amenities, added, matched = merge_throne(osm_points, units)
+    write_document(document(amenities), args.out)
     count = lambda field, value: sum(getattr(a, field) == value for a in amenities)  # noqa: E731
     print(
         f"{len(amenities)} points: drinking water {count('water', 'p')}, "
         f"untreated water {count('water', 'n')}; restrooms flush {count('toilet', 'f')}, "
         f"basic {count('toilet', 'b')}, type not mapped {count('toilet', 'u')}"
     )
+    waiting = sum(u["status"] != "open" for u in units)
+    print(
+        f"Throne: {added} added from the list, {matched} matched to OSM restrooms; "
+        f"{waiting} in the list not open or not confirmed, left off the map"
+    )
+    if not args.throne_only:
+        kinds = ", ".join(f"{k} {n}" for k, n in sorted(left_out.items())) or "none"
+        print(
+            f"left out inside airports, military sites and prisons: "
+            f"{sum(left_out.values())} ({kinds})"
+        )
     return 0
 
 

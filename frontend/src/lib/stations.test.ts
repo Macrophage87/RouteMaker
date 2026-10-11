@@ -21,6 +21,7 @@ import {
   type NearbyStation,
   type Pins,
 } from "./stations.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 const A = [-77.0063, 38.8973] as [number, number];
 const B = [-77.0436, 38.9096] as [number, number];
@@ -183,7 +184,7 @@ test("failures are sentences for the rider", async () => {
 // --- The component's wiring, held to the source ------------------------------------------------
 
 const component = readFileSync(new URL("../NearbyStations.tsx", import.meta.url), "utf8");
-const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+const app = appSource();
 const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
 
 test("each station is a real button named as it is read, with aria-pressed for the chosen one", () => {

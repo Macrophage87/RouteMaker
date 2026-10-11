@@ -11,6 +11,7 @@ import { decodePlan, encodePlan } from "./planHash.ts";
 import { readFileSync } from "node:fs";
 import { PALETTES, PALETTE_LINK_NAMES, neutralPaletteSearch, queryPalette, setAccessibility, setHighStressLanes } from "../stressStyle.js";
 import type { LonLat } from "./geo.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 /** Substrings no name or value may hold, case-insensitively. */
 const DENIED = [
@@ -158,6 +159,6 @@ test("an old link's palette value is renamed in the address bar on load, so it i
   // And no written name says anything the denylist forbids.
   for (const name of Object.values(PALETTE_LINK_NAMES)) assert.doesNotMatch(String(name), /cvd|blind|vision|access|a11y/i);
   // The page does it: App rewrites the address with replaceState, keeping the path and the plan.
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   assert.match(app, /const search = neutralPaletteSearch\(window\.location\.search\);\s*if \(search !== null\) window\.history\.replaceState\(null, "", `\$\{window\.location\.pathname\}\$\{search\}\$\{window\.location\.hash\}`\);/);
 });
