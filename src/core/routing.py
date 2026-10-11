@@ -84,7 +84,7 @@ from routemaker.geo import Point, haversine
 from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
-from . import avoid_junctions, presets
+from . import avoid_junctions, mass_hazards, presets
 
 logger = logging.getLogger(__name__)
 
@@ -2212,6 +2212,9 @@ def plan(
     # The approved Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, 307-310, 335), read at
     # request time: empty as shipped.
     avoid_list = avoid_junctions.approved()
+    # A Mass Ride's rider-marked hazards (FOLLOWUP-MASSRIDE-MAP part 3, 325), read once a plan:
+    # empty as shipped, and never read for another ride type (325: "for this mode only").
+    hazard_list = mass_hazards.approved() if preset_name == "mass-ride" else {}
     # The rider's target distance counts at the top of the slider only.
     target_m = float(dials.target_distance_m) if dials.target_distance_m and maxcalm else None
     when = dials.when or default_when()
@@ -2797,6 +2800,12 @@ def plan(
             "moved_points": moved_points,
             "avoid_junctions": avoid_junctions.rows(avoid_found, avoid_scale),
             "avoid_notice": avoid_rules.notice(avoid_found),
+            # A Mass Ride's approved hazards in riding order (325); null on other ride types.
+            "mass_hazards": (
+                mass_hazards.along(leg_runs, pieces, classes, hazard_list)
+                if preset_name == "mass-ride"
+                else None
+            ),
         }
 
     body = _answer(trip, refined, dodges_of=dodges)

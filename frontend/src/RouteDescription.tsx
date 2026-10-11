@@ -24,6 +24,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { RouteResponse } from "./lib/api.ts";
 import "./routeDescription.css";
 import { FEDERAL_UNCHECKED } from "./lib/federalStops.ts";
+import { hazardLines } from "./lib/massHazards.ts";
 import { useHighStressLanes } from "./useStressStyle.ts";
 import { ROUTE_FOLDS, copyText, foldTitle, selectionCopy, stepsCount } from "./lib/sidebar.ts";
 import { Fold } from "./lib/sidebarParts.ts";
@@ -165,6 +166,23 @@ export function RouteDescription({
       </div>
     ) : null;
 
+  // A Mass Ride's rider-marked hazards in riding order (FOLLOWUP-MASSRIDE-MAP part 3, 325), before the steps,
+  // as the federal-land lines are: a heading line and a list, each with its level and reason in words.
+  const hazards = hazardLines(route);
+  const hazardBlock = (hidden: boolean) =>
+    hazards.length > 1 ? (
+      <div className="hazard-route" hidden={hidden}>
+        <p className="hazard-route-heading" id={`${listId}-hazards`}>
+          {hazards[0]}
+        </p>
+        <ol aria-labelledby={`${listId}-hazards`}>
+          {hazards.slice(1).map((line, i) => (
+            <li key={i}>{line}</li>
+          ))}
+        </ol>
+      </div>
+    ) : null;
+
   const actions = (
     <div className="actions description-actions">
       <button type="button" onClick={onCopy}>
@@ -206,6 +224,7 @@ export function RouteDescription({
           </label>
         ) : null}
         {lead && <p className="hint capacity-lead">{lead}</p>}
+        {hazardBlock(false)}
         {federalBlock(false)}
         {hiddenNote && <p className="hint lanes-hidden">{hiddenNote}</p>}
         <ol className="description-list">{items}</ol>
@@ -242,6 +261,7 @@ export function RouteDescription({
           {lead}
         </p>
       )}
+      {hazardBlock(!open)}
       {federalBlock(!open)}
       {hiddenNote && (
         <p className="hint lanes-hidden" hidden={!open}>

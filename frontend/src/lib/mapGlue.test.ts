@@ -33,11 +33,12 @@ import {
   type Coverage,
   type FacilityMap,
   type OverlayMap,
+  EMPTY_HAZARDS,
 } from "./mapGlue.ts";
 import { MASS_SOURCE_ID, STRESS_SOURCE_ID, massSource, stressSource } from "./mapStyle.ts";
 import { HIGH_STRESS_LANE_MIN_TIER, drawnAt, isMtbLayerId, massRideOn, setAccessibility, setHighStressLanes, setMassRide, stressFilters, stressOverlayLayers } from "../stressStyle.js";
 import { ROUTE_BOTTOM_LAYER, railLayers } from "./railLayer.ts";
-import { massLayerIds, massLayers } from "../massStyle.js";
+import { HAZARD_SOURCE_ID, massLayerIds, massLayers } from "../massStyle.js";
 
 // The Mass Ride map's layers (massStyle.js) are on the map always and drawn only in that mode.
 const MASS_IDS = new Set<string>(massLayerIds());
@@ -667,8 +668,13 @@ test("a Mass Ride's map adds the capacity layers visible, from its own tiles, an
     for (const id of ["stress-1", "stress-unknown", "facility-path", "facility-protected", "facility-lane", "stress-unpaved-1"]) {
       assert.equal(added.find((a) => a.layer.id === id)?.layer.layout?.visibility, "none", id);
     }
-    for (const a of added.filter((a) => MASS_IDS.has(a.layer.id))) assert.equal((a.layer as { source?: string }).source, MASS_SOURCE_ID);
+    // The capacity layers from the Mass Ride tiles; the rider-marked hazards' rails from their own GeoJSON (part 3).
+    for (const a of added.filter((a) => MASS_IDS.has(a.layer.id))) {
+      const expected = a.layer.id.startsWith("mass-hazard-") ? HAZARD_SOURCE_ID : MASS_SOURCE_ID;
+      assert.equal((a.layer as { source?: string }).source, expected, a.layer.id);
+    }
     assert.deepEqual(sources.get(MASS_SOURCE_ID), massSource("https://example.test"));
+    assert.deepEqual(sources.get(HAZARD_SOURCE_ID), { type: "geojson", data: EMPTY_HAZARDS });
     const stress = added.find((a) => a.layer.id === "stress-3")!.layer as unknown as { filter: unknown[] };
     assert.deepEqual(stress.filter.at(-1), ["!", ["has", "rpm"]]);
   } finally {

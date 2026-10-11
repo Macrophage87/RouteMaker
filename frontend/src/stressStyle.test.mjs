@@ -276,8 +276,8 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const lastRail = Math.max(...rails.map((r) => ids.indexOf(r)));
   const firstCasing = Math.min(...casings.map((c) => ids.indexOf(c)));
   assert.ok(lastRail < firstCasing, "a facility's rails are drawn over a stress line");
-  // Every stress-map layer reads the source it is given; the Mass Ride layers read their own tiles (core/mass_tiles.py).
-  for (const layer of stressOverlayLayers("s")) assert.equal(layer.source, mass.includes(layer.id) ? "mass" : "s");
+  // Every stress-map layer reads the source it is given; the Mass Ride layers read their own tiles (core/mass_tiles.py), and the hazards' rails their own GeoJSON (part 3).
+  for (const layer of stressOverlayLayers("s")) assert.equal(layer.source, mass.includes(layer.id) ? (layer.id.startsWith("mass-hazard-") ? "mass-hazards" : "mass") : "s");
 });
 
 test("the ring (OWNER-DECISIONS 371) is drawn on paved and unknown-surface roads only, never on an unpaved one", () => {
@@ -427,6 +427,8 @@ test("stressFilters covers every overlay layer, and a style with them validates"
       stress: { type: "vector", tiles: ["https://example.test/{z}/{x}/{y}.pbf"] },
       // The Mass Ride layers' own tiles (core/mass_tiles.py).
       mass: { type: "vector", tiles: ["https://example.test/mass/{z}/{x}/{y}.pbf"] },
+      // The approved rider-marked hazards (massStyle.js hazardLayers): a GeoJSON source of their own.
+      "mass-hazards": { type: "geojson", data: { type: "FeatureCollection", features: [] } },
     },
     layers: stressOverlayLayers("stress", "weekday_rush"),
   };

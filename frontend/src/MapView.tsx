@@ -50,6 +50,7 @@ import {
   routeDashLayers,
   solidRouteFilter,
   setMassMode,
+  setHazardData,
 } from "./lib/mapGlue.ts";
 import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
@@ -175,6 +176,8 @@ interface Props {
   massCapacity?: boolean;
   /** The ride type is Mass Ride: the grey outside the District shows (OWNER-DECISIONS 418), whatever the tiles. */
   massArea?: boolean;
+  /** The approved rider-marked hazards (lib/massHazards.ts), a Mass Ride's only; null draws none (325). */
+  massHazards?: object | null;
   /** Whether the federal-land shading is on (a Mass Ride's, lib/federalLand.ts federalShown). */
   federalVisible: boolean;
   /**
@@ -777,7 +780,10 @@ export function MapView(props: Props) {
     const addStress = () => {
       // The mode before the layers, so they are added drawn for it (stressStyle.js, massRide).
       setMassMode(null, callbacks.current.massCapacity === true, callbacks.current.when, callbacks.current.stressVisible, callbacks.current.massArea === true);
-      return addStressOverlay(map, origin, callbacks.current.stressVisible, callbacks.current.when);
+      const added = addStressOverlay(map, origin, callbacks.current.stressVisible, callbacks.current.when);
+      // The hazards that came before the overlay's source did (a Mass Ride opened from a link).
+      if (added) setHazardData(map, callbacks.current.massHazards ?? null);
+      return added;
     };
 
     // Ask the endpoint; if it does not answer, say so and ask again later, so
@@ -1111,6 +1117,11 @@ export function MapView(props: Props) {
       props.massArea === true,
     );
   }, [props.massCapacity, props.massArea]);
+
+  // The rider-marked hazards' side rails (massStyle.js hazardLayers): a Mass Ride's only (325).
+  useEffect(() => {
+    setHazardData(mapRef.current, props.massHazards ?? null);
+  }, [props.massHazards]);
 
   // The "Show bike lanes on high-stress roads" switch (OWNER-DECISIONS 275):
   // the rails' filters are set again in place, from the same tiles.

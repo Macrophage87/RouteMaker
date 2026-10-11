@@ -97,7 +97,7 @@ function refused(status: number, message: string | null): string {
   return "Nothing was sent. Try again shortly.";
 }
 
-async function call<T>(
+export async function call<T>(
   url: string,
   init: RequestInit,
   csrf: string | null,

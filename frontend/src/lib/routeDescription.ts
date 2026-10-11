@@ -12,6 +12,7 @@ import type { DescriptionCrossing, DescriptionEntry, RouteResponse } from "./api
 import { formatDistance, milesFigure } from "./format.ts";
 import { presetLabel } from "./presets.ts";
 import { capacityDescription, capacitySummary } from "./massCapacity.ts";
+import { hazardLines } from "./massHazards.ts";
 import { HIGH_STRESS_LANE_MIN_TIER, highStressLanesOn } from "../stressStyle.js";
 
 export const DESCRIPTION_HEADING = "Route description";
@@ -163,7 +164,7 @@ export function chevron(open: boolean): string {
  * group's crossings under it: `entryLines`).
  */
 export function descriptionText(
-  route: Pick<RouteResponse, "preset" | "distance_m"> & Described & Partial<Pick<RouteResponse, "stress_spans" | "profile">>,
+  route: Pick<RouteResponse, "preset" | "distance_m"> & Described & Partial<Pick<RouteResponse, "stress_spans" | "profile" | "mass_hazards">>,
   view: DescriptionView = "overview",
   federal: readonly string[] = [],
 ): string {
@@ -173,7 +174,8 @@ export function descriptionText(
   const which = hasOverview(route) ? (shown === "full" ? " Full detail." : " Overview, short stretches merged.") : "";
   const head = `RouteMaker ${presetLabel(route.preset)} route, ${formatDistance(route.distance_m)}.${which}`;
   const lead = capacityLead(route);
-  return [head, ...(lead ? [lead] : []), ...federal, ...entryLines(entries)].join("\n") + "\n";
+  // A Mass Ride's rider-marked hazards in riding order (FOLLOWUP-MASSRIDE-MAP part 3, 325).
+  return [head, ...(lead ? [lead] : []), ...hazardLines(route), ...federal, ...entryLines(entries)].join("\n") + "\n";
 }
 
 /**
@@ -195,7 +197,9 @@ export const GPX_FULL_MAX_CHARS = 4000;
  * for a device to show (GPX_FULL_MAX_CHARS), else the overview (never the
  * rider's screen view: a file is read elsewhere). Empty where there is none.
  */
-export function gpxDescriptionText(route: Described & Partial<Pick<RouteResponse, "stress_spans">>, federal: readonly string[] = []): string {
+export function gpxDescriptionText(route: Described & Partial<Pick<RouteResponse, "stress_spans" | "mass_hazards">>, given: readonly string[] = []): string {
+  // A Mass Ride's rider-marked hazards go with the federal-land lines, in whichever view (325).
+  const federal = [...hazardLines(route), ...given];
   const full = descriptionEntries(route, "full");
   // The federal-land lines (item 239) are said even where the API gave no entries.
   if (full === null) return federal.length > 0 ? ["Route description:", ...federal].join("\n") : "";
