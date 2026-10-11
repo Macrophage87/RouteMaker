@@ -38,15 +38,17 @@ The plan
    e-bike is `num_ebikes_available`) and that are renting. For an E-bike, free-
    floating e-bikes near the start count as starts too (245).
 2. Docks that can end it: returning, with a free slot.
-3. The few nearest of each, by straight line, are walked for real
-   (Valhalla pedestrian costing on the standard graph), and the pair with the
-   shortest walk + ride is chosen. The ride is estimated for that choice by
-   the straight line and a detour factor at the bike's pace; only the winner
-   is routed as a ride (`routing.plan`, so the leg has the stress order, the
-   presets' hills and everything else a ride has).
+3. The few best of each by the direction rule above (walk plus extra riding,
+   straight lines) are walked for real (Valhalla pedestrian costing on the
+   standard graph), and the pair with the least real walks plus extra riding
+   is chosen (ties by the time, the ride estimated by the straight line and a
+   detour factor at the bike's pace); only the winner is routed as a ride
+   (`routing.plan`, so the leg has the stress order, the presets' hills and
+   everything else a ride has). The answer's `options` are the best pairs,
+   up to `OPTION_COUNT`, the first being the plan's own.
 4. Fallback: a nearer dock that has no such bike, or no free slot, is passed
-   over with a note, and the next-nearest is used. With no availability feed
-   the nearest docks are used and the notes say availability is unknown.
+   over with a note. With no availability feed every dock counts and the
+   notes say availability is unknown.
 5. E-bike endings (244): the plan ends at a dock, and also offers ending at the
    destination outside a dock where that is allowed: where the operator
    publishes geofencing zones and the destination is in none that bar ending a
