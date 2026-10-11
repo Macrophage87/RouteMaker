@@ -2148,7 +2148,7 @@ table, within its ranges, for the owner to move:
 | At a traffic signal | `SIGNALISED_CROSSING_FT` | 150 ft (LTS 3), 300 ft (LTS 4, 5) | 100-200 ft, mostly delay (Broach signal 2.1-3.6% a mile) |
 | All-way stop | `ALL_WAY_STOP_FT` | 75 ft | 50-100 ft (Broach stop 0.5-0.9%; Arlington -1) |
 | On the free-flowing side, cross traffic controlled (item 169) | `PRIORITY_SIDE_FT` | 25 ft | 0-50 ft |
-| A trail crossing with no signal flag at it or within 30 m up the roads it crosses: a mapped crossing way, or a path, trail, cycletrack or sidewalk meeting the road at a node of its own | `MARKED_CROSSING_FACTOR`, `MARKED_CROSSING_MAX_SEVERITY` | x0.5, and never drawn red, worded "no signal mapped" as at any junction | item 185; `crossing=traffic_signals` does not reach the router's flag. Round 1 said the Pennsylvania Ave and Virginia Ave cycletracks had no flag on the road's arms; that was wrong: the round-2 review found one within 30 m at 31 of 48 trail crossings, and those now read as signalized |
+| A trail crossing with no signal flag at it or within 30 m up the roads it crosses: a mapped crossing way, or a path, trail, cycletrack or sidewalk meeting the road at a node of its own | `MARKED_CROSSING_FACTOR`, `MARKED_CROSSING_MAX_SEVERITY` | x0.5, and never drawn red, worded "no signal mapped" as at any junction | item 185; from FOLLOWUP-SIGNAL-DERIVE a crossing node or crossing way tagged `crossing=traffic_signals` (or `crossing:signals=yes`) reaches the router's flag, so this is the crossing with no signal mapped on either. Round 1 said the Pennsylvania Ave and Virginia Ave cycletracks had no flag on the road's arms; that was wrong: the round-2 review found one within 30 m at 31 of 48 trail crossings, and those now read as signalized |
 | A divided road's two carriageways, crossed at one junction | `MEDIAN_REFUGE_FACTOR` | counted once, the costlier, x0.75; only two or more crossings, each of a one-way road of its own ways, with a name in common, never a turn or a slip lane with a crossing | items 185 and 196 ("x0.75 (Recommended)"); Mineta and Oregon read a refuge as a level lower (about x0.4 by the base costs), 0.75 keeps an unsignalized divided LTS 4 crossing red |
 | Straight on along the same road (its way, or a name in common) where its tier rises | `Junction.continues` | no "Joining" cost | review r2: S Stonestreet Ave and Nebel St (1,200 ft), West St in Annapolis (3,000 ft) were "Joining" the road the rider was already on |
 | Left onto a busy road (item 166) | `MOVEMENT_FACTOR_ONTO["left"]` | x1.5 of the crossing | Copenhagen 154 ft left against 62 ft right; the review: lefts 2-3 times rights |
@@ -2328,6 +2328,44 @@ costs stay active at every position; the climb weight is the hills slider's avoi
 half (`-hills / 100` x 12 m of riding a metre of climb), so a relaxed ride is not
 a zig-zag over a hill. Turn costs and hill costs are costing options and are
 sent at every position.
+
+**Uphill stress** (FOLLOWUP-GRADE-STRESS, OWNER-DECISIONS 409). The owner, 2026-10-05,
+of Connecticut Ave NW: "It's a bit weird here because of a hill. I'd definitely ride
+down it, but not so much up." And 2026-10-10, asked how: "Maybe make it
+multiplicitive? Hill distance * traffic-relative distance." So the score's extra
+price also counts, with the slider's weight (`refine.grade_stress_weight_for`: 0 at
+the traffic tolerant end, rising to 1 at Default and above):
+
+    uphill stress (m) = FACTOR x sum over rising windows of GRADE_FROM or more of
+                        run x (effort factor(grade) - 1) x traffic weight(tier)
+
+The hill distance is the climb's extra effort-equivalent distance, from the effort
+model (`routemaker.effort`, the standard cycling power model, Martin et al. 1998;
+8% costs 6.5 times the flat), over its windows of at least 984 ft (300 m) of the
+router's elevation profile, in the direction ridden, matched to the traced pieces'
+tiers by metres along the route (`refine.uphill_of`, `grade_stress.uphill_by_tier`).
+The traffic-relative distance is the ride's own exposure weight for that tier (LTS 3
+once, LTS 4 twice, Avoid three times; 8 and 16 on the stress-averse ride types; LTS 2
+only where the ride weighs it: Trailmaxxing, Cargo with passengers, Kids). A descent's
+effort factor is floored at the flat, so downhill is unchanged, and a climb on LTS 1
+(and on LTS 2 where the ride does not weigh it) costs what it did.
+Defaults (`routemaker.grade_stress`, for the owner to confirm with before and after
+routes): `GRADE_FROM` 3% (where `routemaker.climbs` already starts to price a
+sustained climb) and `FACTOR` 0.25. A climb of 0.62 mi (1 km) at 4%, about 130 ft
+(40 m) gained, then counts about 0.43 mi (690 m) of quiet riding on LTS 3 and
+0.86 mi (1,380 m) on LTS 4; at 6%, 0.64 mi (1,030 m) and 1.28 mi (2,060 m). At the top
+of the slider, where candidates are ranked by the stress order, the same climbing
+(times `FACTOR`) joins the figure it is ridden on: LTS 4 and Avoid climbing the top
+figure, LTS 3 climbing the second (`Analysis.key`, `Analysis.uphill_levels_m`); the
+figures the LTS 4 hold and the worth rule read are unchanged. So the uphill stress never
+buys extra miles on its own: it decides between a route and one no longer than it, or
+between longer routes whose saving in LTS metres already pays for their miles (435's
+"One rule", untouched). Whether the worth rule should count it too is for the owner,
+with before and after routes. It is in the ranking only
+(the calm search and its ranking of the router's alternatives, 435): the router's own
+costs and the graph are not changed, so no rebuild. It moves into the router's costs
+only if the ranking alone is not enough (Stephen's answer 4 of 2026-10-10, v0.5.0
+plan). Mass Ride, whose plans the calm search does not run on, is unchanged.
 
 **One rule for the extra miles** (OWNER-DECISIONS 435, the owner's "One rule",
 2026-10-10). Below the top of the slider a longer candidate must also be worth its
@@ -3289,16 +3327,20 @@ The owner, 2026-10-03: "Actually, I like merging the runs, that sounds good." (2
 
 ### Known gaps, and what would close them
 
-- A trail crossing a road at a mapped crossing with `crossing=traffic_signals`
-  (a signal or a HAWK) away from any signalized road junction does not reach
-  the router's signal flag: Valhalla's transform reads `highway=traffic_signals`
-  alone. Such a crossing reads "no signal mapped", is counted at
-  `MARKED_CROSSING_FACTOR` and is never red (item 185). A cycletrack crossing
-  at a node of its own beside a signalized road junction is read as signalized
-  from round 2 (the approach walk reaches the junction's stop lines). Deriving
-  the crossing's own signal in `lua/routemaker_remap.lua` (`forward_signal`
-  and `backward_signal` on the node) is the fix for the rest and needs a
-  rebuild to verify, so it is a recorded follow-up.
+- Valhalla's parser reads a node's signal from `highway=traffic_signals`
+  alone. From the Track B rebuild (FOLLOWUP-SIGNAL-DERIVE) a signalised trail
+  crossing (a signal or a HAWK) away from a signalized road junction reaches
+  the flag where OSM maps it on the crossing node (`highway=crossing` with
+  `crossing=traffic_signals` or `crossing:signals=yes`; `remap.derives_signal`)
+  or on the crossing way alone (`pipeline.signals` marks the node the way
+  shares with the road, `rm:crossing_signal`). What is left: a crossing with
+  the signal mapped on neither, a node that says `crossing=uncontrolled` under
+  a way that says signals (read as no signal), and a node with a `bicycle=no`
+  that upstream reopens only on a `highway=crossing` node. These read "no
+  signal mapped", are counted at `MARKED_CROSSING_FACTOR` and are never red
+  (item 185). A cycletrack crossing at a node of its own beside a signalized
+  road junction is read as signalized from round 2 (the approach walk reaches
+  the junction's stop lines).
 - A signal tagged more than 30 m up an approach, or only on an approach the
   junction's arms do not lead to (the far carriageway's, where the route
   crosses one carriageway alone, as the Virginia Ave cycletrack does at G St

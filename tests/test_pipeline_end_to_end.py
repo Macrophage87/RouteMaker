@@ -1336,9 +1336,9 @@ def test_a_variant_that_fell_back_is_caught_even_when_another_logged_the_script(
 class AbortsOnce(FakeBinaries):
     """A fake whose tile build for one variant dies once with SIGABRT.
 
-    What Valhalla 3.5.1's thread-exit race does (valhalla/valhalla#5005): the
-    weekend graph on one attempt of a real rebuild, the offroad graph on the
-    next, from the same inputs.
+    What Valhalla 3.5.1's thread-exit race did (valhalla/valhalla#5005), fixed
+    in 3.6.0; the pinned 3.9.1 has the fix, so an abort is no longer retried
+    (FOLLOWUP-VALHALLA-36-LEFTOVERS, item 4).
     """
 
     def __init__(self, variant: str, **kwargs) -> None:
@@ -1366,37 +1366,22 @@ class AbortsOnce(FakeBinaries):
         return super().__call__(command)
 
 
-def test_a_graph_whose_tile_build_aborts_once_is_built_again(workspace, states) -> None:
-    """Only the crashed graph's valhalla_build_tiles runs again; the rebuild
-    goes on to validate, and every build used the build thread count."""
+def test_a_graph_whose_tile_build_aborts_fails_the_rebuild_at_once(workspace, states) -> None:
+    """The abort retry is retired (FOLLOWUP-VALHALLA-36-LEFTOVERS, item 4): the
+    crashed graph's valhalla_build_tiles runs once, the stage fails, and the
+    message carries no retry. Every build used the build thread count."""
     source, root = workspace
     binaries = AbortsOnce("offroad")
-    run_pipeline(source, root, binaries=binaries, skip=NOT_SWAPPED, build_id="aborted")
-
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, binaries=binaries, build_id="aborted")
+    assert caught.value.stage is Stage.BUILD_TILES
+    assert "valhalla_build_tiles exited -6: " in str(caught.value.cause)
+    assert "retry" not in str(caught.value.cause)
     builds = [c for c in binaries.calls if Path(c[0]).name == "valhalla_build_tiles"]
-    per_variant = {
-        variant.value: [c for c in builds if f"/{variant.value}/" in c[2]] for variant in Variant
-    }
-    assert len(per_variant["offroad"]) == 2, "the aborted build is run once more"
-    assert all(len(per_variant[v.value]) == 1 for v in Variant if v.value != "offroad")
-    admins = [c for c in binaries.calls if Path(c[0]).name == "valhalla_build_admins"]
-    assert len(admins) == 1, "nothing else is rerun"
+    assert len([c for c in builds if "/offroad/" in c[2]]) == 1, "not run again"
     for command in builds:
         mjolnir = json.loads(Path(command[2]).read_text())["mjolnir"]
         assert mjolnir["concurrency"] == settings.REBUILD_TILE_CONCURRENCY
-
-
-def test_a_graph_whose_tile_build_aborts_twice_fails_the_rebuild(workspace, states) -> None:
-    class AbortsAlways(AbortsOnce):
-        def __call__(self, command):
-            self.aborted = False
-            return super().__call__(command)
-
-    source, root = workspace
-    with pytest.raises(RebuildFailed) as caught:
-        run_pipeline(source, root, binaries=AbortsAlways("weekend"), build_id="twice")
-    assert caught.value.stage is Stage.BUILD_TILES
-    assert "exited -6" in str(caught.value.cause)
 
 
 class PerVariantGrade(FakeBinaries):

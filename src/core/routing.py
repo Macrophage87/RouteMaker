@@ -2451,6 +2451,7 @@ def plan(
         hills_weight=avoid_weight,
         hills_seek_weight=hills_dial / 100 if calm_seek else 0.0,
         hills_tolerate_weight=tolerate_weight if direct_tolerate else 0.0,
+        grade_stress_weight=refine.grade_stress_weight_for(stress_dial),
         mass_kg=presets.system_weight_for(preset_name, dials.carrying, dials.system_weight_kg),
         quiet_cost=refine.quiet_cost_per_m(trace_costing),
         wide=refine.wide_search_for(presets.calm_rate_for(stress_dial)),
