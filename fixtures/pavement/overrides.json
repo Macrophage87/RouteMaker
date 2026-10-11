@@ -1,0 +1,4 @@
+{
+  "about": "Approved RouteMaker corrections to a District street's pavement reading (DC-PCI; routemaker.pavement.load_overrides). Each row wins over DDOT's PCI for its way: reading 'osm' keeps OSM's smoothness, or 'good' / 'fair' / 'poor' sets the band. Each row needs its reason and the owner's decision. Empty as shipped.",
+  "rows": []
+}
