@@ -439,8 +439,49 @@ export interface BikesharePlan {
   /** The plan in plain words, US units first, for reading aloud. */
   summary: string;
   notes: string[];
+  /**
+   * Up to three pick-up and drop-off pairs, quickest first, from docks chosen by the walk plus the
+   * extra riding each adds (stations on the rider's way first; the owner, 2026-10-11). The first is this plan. To
+   * plan another, send its `pickup_station`, `dropoff_station` and `ending`; that answer lists only
+   * the pair asked for, so keep this list. Absent from an older server.
+   */
+  options?: BikeshareOption[];
   /** The plain source citation (OWNER-DECISIONS 301). */
   credit: string;
+}
+
+/** One end of a route option (core.api.BikeshareOptionEndOut). */
+export interface BikeshareOptionEnd extends BikeshareStop {
+  /** The walk to (or from) it; 0 for an outside-dock ending. */
+  walk_m: number;
+  walk_s: number;
+  /** The riding it adds, straight-line metres, never below 0. */
+  extra_m: number;
+  /** It adds under 165 ft (50 m) of riding. */
+  on_the_way: boolean;
+  /** "on your way", or "adds 0.2 mi (0.3 km) of riding": the reason, in words. */
+  way_text: string;
+}
+
+/** One way to make a bikeshare trip (core.api.BikeshareOptionOut). */
+export interface BikeshareOption {
+  /** 1 is the best, and is the plan the answer routed. */
+  rank: number;
+  chosen: boolean;
+  pickup: BikeshareOptionEnd;
+  dropoff: BikeshareOptionEnd;
+  pickup_station: string | null;
+  dropoff_station: string | null;
+  ending: Ending;
+  /** The routed ride when chosen; otherwise an estimate. */
+  ride_m: number;
+  /** Walking and riding; an estimate unless chosen. */
+  total_s: number;
+  estimated: boolean;
+  /** Both walks plus the extra riding (the station lists' rule); breaks ties. */
+  cost_m: number;
+  /** The option in plain words, US units first: a button's name, read aloud as it is shown. */
+  text: string;
 }
 
 /**
@@ -911,14 +952,15 @@ function looksLikeStations(body: unknown): body is NearbyStationsAnswer {
 }
 
 /**
- * The three nearest stations to a point to take a bike from (at least 3/4 full) or return one to
- * (at most 1/4 full). A POST, so the point is in the body and not in an address. Nothing about the
- * rider goes with it but the point, and the answer is kept nowhere.
+ * Three stations near a point to take a bike from (at least 3/4 full) or return one to (at most 1/4
+ * full), on the rider's way first when `toward` (the trip's other end) is given. A POST, so the
+ * points are in the body and not in an address. Nothing about the rider goes with it but the
+ * points, and the answer is kept nowhere.
  */
 export async function requestStations(
   point: LonLat,
   action: StationAction,
-  options: { fetchImpl?: FetchLike; signal?: AbortSignal } = {},
+  options: { fetchImpl?: FetchLike; signal?: AbortSignal; toward?: LonLat | null } = {},
 ): Promise<StationsResult> {
   const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
   let response: Response;
@@ -926,7 +968,8 @@ export async function requestStations(
     response = await fetchImpl("/api/bikeshare/stations", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ point, action }),
+      // `toward`, the trip's other end, puts the stations on the rider's way first.
+      body: JSON.stringify(options.toward ? { point, action, toward: options.toward } : { point, action }),
       signal: options.signal,
     });
   } catch {
