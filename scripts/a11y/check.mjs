@@ -3893,9 +3893,9 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
 }
 // Go's start (the owner, 2026-10-11 19:53 UTC): the current location by default, asked for only when Go opens.
 const COUNT_GEO = "window.__geo = 0; (() => { const g = navigator.geolocation; if (!g) return; const c = g.getCurrentPosition.bind(g); const w = g.watchPosition.bind(g); g.getCurrentPosition = (...a) => { window.__geo += 1; return c(...a); }; g.watchPosition = (...a) => { window.__geo += 1; return w(...a); }; })();";
-async function goWith(permission, { width = 390, height = 844, mobile = true, hash = "", init = "" } = {}) {
+async function goWith(permission, { width = 390, height = 844, mobile = true, hash = "", init = "", route = S_DEFAULT } = {}) {
   const p = await newPage(b, { width, height, mobile });
-  await mock(p, S_DEFAULT, {});
+  await mock(p, typeof route === "function" ? (n) => route(n, p) : route, {});
   await media(p, {});
   await b.send("Browser.setPermission", { permission: { name: "geolocation" }, setting: permission, origin: `http://127.0.0.1:${PORT}`, browserContextId: p.contextId });
   await p.s("Emulation.setGeolocationOverride", { latitude: 38.9055, longitude: -77.0365, accuracy: 15 });
@@ -3988,6 +3988,48 @@ async function goWith(permission, { width = 390, height = 844, mobile = true, ha
   await p.close();
 }
 {
+  // Go's Bikeshare options (#94's bikeshare.options; the owner, 2026-10-11): lettered A, B, C as buttons and on
+  // the map at each pick-up station; a press, a marker or the letter's key re-plans that pair; a re-plan's answer
+  // lists only that pair, so the first answer's list stays.
+  const end = (name, id, at) => ({ kind: "dock", name, lon: at[0], lat: at[1], station_id: id, availability: "known", bikes_available: 6, docks_available: 9, walk_m: 120, walk_s: 90, extra_m: 0, on_the_way: true, way_text: "on your way" });
+  const pairs = [["fx-a", "Dock Alpha", "fx-x", "Dock Xray"], ["fx-b", "Dock Bravo", "fx-x", "Dock Xray"], ["fx-a", "Dock Alpha", "fx-y", "Dock Yankee"]];
+  const all = pairs.map(([pu, pn, dr, dn], i) => ({ rank: i + 1, chosen: i === 0, pickup: end(pn, pu, [-77.039 + i * 0.002, 38.909]), dropoff: end(dn, dr, [-77.011, 38.891 + i * 0.001]),
+    pickup_station: pu, dropoff_station: dr, ending: "dock", ride_m: 3400 + i * 200, total_s: 1157 + i * 60, estimated: i > 0, cost_m: 290 + i * 150,
+    text: `Pick up at ${pn}, return at ${dn}: about ${19 + i} min, 0.${i + 1} mi (0.${i + 2} km) of walking` }));
+  const route = (_n, page) => {
+    const r = JSON.parse(JSON.stringify(S_BIKESHARE));
+    const asked = JSON.parse(page.routeBodies.at(-1) || "{}");
+    const pick = all.find((o) => o.pickup_station === asked.pickup_station && o.dropoff_station === asked.dropoff_station);
+    r.bikeshare.options = pick ? [{ ...pick, chosen: true, estimated: false }] : all;
+    return r;
+  };
+  const p = await goWith("granted", { route, hash: "#p=-77.04000,38.91000;-77.01000,38.89000&preset=bikeshare&v=2&stress=80&hills=-60&bike=classic" });
+  await p.eval("[...document.querySelectorAll('.mode-switch .mode-button')].find((x) => x.textContent === 'Go' && x.getClientRects().length).click(); true");
+  const listed = await p.waitFor("document.querySelectorAll('.go-bike-option').length === 3 && document.querySelectorAll('.lettered-marker').length === 3", 20000);
+  const state = () => p.eval(`({ buttons: [...document.querySelectorAll('.go-bike-option')].map((x) => { const r = x.getBoundingClientRect(); return { pressed: x.getAttribute('aria-pressed'), pin: x.querySelector('.place-letter')?.textContent, h: Math.round(r.height) }; }),
+    markers: [...document.querySelectorAll('.lettered-marker')].map((m) => m.getAttribute('aria-label')), group: document.querySelector('.go-bike-options h3')?.textContent.trim() })`);
+  const first = await state();
+  const ax = await axNode(p, ".go-bike-option");
+  check("go bikeshare options: a Bikeshare route in Go lists its options as buttons lettered A, B, C (44 px), each named by its letter and the option's words, A pressed as the plan shown, and lettered on the map at each pick-up the same",
+    listed && first.group === "Bikeshare options" && first.buttons.map((x) => x.pin).join("") === "ABC" && first.buttons.every((x, i) => x.h >= 44 && x.pressed === String(i === 0)) &&
+      ax?.role === "button" && ax?.name === `A: ${all[0].text}` && first.markers.every((m, i) => m === `${"ABC"[i]}: ${all[i].text}`), JSON.stringify({ first, ax }));
+  const before = p.routeRequests;
+  await p.eval("document.activeElement?.blur(); document.body.focus(); true");
+  await p.key("b", "KeyB", 66);
+  const replanned = await p.waitFor(`document.querySelector('.go-bike-option[aria-pressed=true] .place-letter')?.textContent === 'B'`, 20000);
+  const afterKey = await state();
+  const sentB = JSON.parse(p.routeBodies.at(-1) || "{}");
+  check("go bikeshare options: the B key re-plans option B (its pick-up and drop-off stations sent), and the three options stay listed with B now pressed",
+    replanned && p.routeRequests > before && sentB.pickup_station === "fx-b" && sentB.dropoff_station === "fx-x" && afterKey.buttons.length === 3 && afterKey.markers.length === 3, JSON.stringify({ afterKey, sentB }));
+  await p.eval("document.querySelectorAll('.lettered-marker')[2].click(); true");
+  const byMarker = await p.waitFor(`document.querySelector('.go-bike-option[aria-pressed=true] .place-letter')?.textContent === 'C'`, 20000);
+  const sentC = JSON.parse(p.routeBodies.at(-1) || "{}");
+  await p.eval("document.querySelectorAll('.go-bike-option')[0].click(); true");
+  const byButton = await p.waitFor(`document.querySelector('.go-bike-option[aria-pressed=true] .place-letter')?.textContent === 'A'`, 20000);
+  check("go bikeshare options: marker C and button A each re-plan their option", byMarker && sentC.pickup_station === "fx-a" && sentC.dropoff_station === "fx-y" && byButton, JSON.stringify({ sentC }));
+  await p.close();
+}
+{
   // The route's start and end pins (the owner, 2026-10-11 21:29 UTC): a start icon and a stop icon in place of
   // A and B, told apart by shape; the names stay "Start" and "End"; stops keep their numbers.
   const p = await open({ ride: false, junctions: false });
@@ -4067,7 +4109,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 585;
+const EXPECTED = 588;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

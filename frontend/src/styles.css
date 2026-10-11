@@ -4826,3 +4826,61 @@ details.fold > summary .icon {
 .nearest-list li.lettered-row > span:nth-child(2) {
   flex: 1 1 12em;
 }
+
+/* Go's Bikeshare options (lib/bikeshareOptions.ts): lettered as on the map; the planned one has a thicker
+   border and a "Planned" tag, not colour alone (its state is aria-pressed). */
+.go-bike-options {
+  margin: 4px 0 8px;
+}
+
+.go-bike-options-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.go-bike-option-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.go-bike-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px solid var(--border, #94a3b8);
+  border-radius: 8px;
+  background: var(--surface, transparent);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.go-bike-option[aria-pressed="true"] {
+  border-width: 3px;
+  padding: 4px 6px;
+}
+
+.go-bike-option[aria-pressed="true"]::after {
+  content: "Planned" / "";
+  flex: none;
+  margin-left: auto;
+  padding: 0 6px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.go-bike-option-text {
+  flex: 1 1 10em;
+}

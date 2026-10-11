@@ -142,6 +142,7 @@ import { Fold } from "./Sidebar.tsx";
 import { BACK_LABEL, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib/sidebar.ts";
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
 import { letterKeyIndex, letterPlaces, placeLetter } from "./lib/letteredPlaces.ts";
+import { keepOptions, optionName, optionPins, optionSaid, optionsKey, pickedOption, type KeptOptions } from "./lib/bikeshareOptions.ts";
 import { GO_START_SAID, GO_START_UNAVAILABLE, goRouteStart, goStartLine, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, shouldAskGoStart, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type MyGo } from "./lib/myGo.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
@@ -1656,6 +1657,24 @@ export function App() {
 
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
+  // Go's Bikeshare options (lib/bikeshareOptions.ts): the first answer's list, kept for the trip, since a
+  // re-plan of one option answers with that pair only.
+  const [keptOptions, setKeptOptions] = useState<KeptOptions | null>(null);
+  useEffect(() => {
+    setKeptOptions((kept) => keepOptions(kept, bikeshareOf(route), optionsKey(routedPoints)));
+  }, [route, routedPoints]);
+  const goOptions =
+    mode === "go" && preset === "bikeshare" && shown && keptOptions && keptOptions.key === optionsKey(points) && keptOptions.options.length > 1
+      ? keptOptions.options
+      : null;
+  const pickOption = (index: number) => {
+    const option = goOptions?.[index];
+    // The one already planned: nothing to re-plan.
+    if (!option || index === pickedOption(goOptions, bikeshareOf(shown))) return;
+    setStationPins(optionPins(option, points));
+    setDials((d) => ({ ...d, ending: option.ending }));
+    announce(optionSaid(placeLetter(index), option));
+  };
   // A new answer: the Keep button's line was about the route before it.
   useEffect(() => setKeepSpoken({ text: "", count: 0 }), [answer]);
   // The layer in words: the points along the route shown, in riding order.
@@ -1777,16 +1796,25 @@ export function App() {
   // the nearest water, restrooms or Metro, or the food found, lettered on the map as in the list. A pick (its
   // marker, Ride here in Go, or its letter's key) is the destination in Go, straight to the route options;
   // in Plan, the nearest's Ride here, and food's Show on map.
-  const letteredOf: "nearest" | "food" | null =
-    view === "nearest" && nearestList && nearestList.items.length > 0 ? "nearest" : view === "food" && foodResults && foodResults.length > 0 ? "food" : null;
+  const letteredOf: "nearest" | "food" | "bikeshare" | null =
+    view === "nearest" && nearestList && nearestList.items.length > 0
+      ? "nearest"
+      : view === "food" && foodResults && foodResults.length > 0
+        ? "food"
+        : goOptions && !(panelOpen && view !== "planner")
+          ? "bikeshare"
+          : null;
   const lettered = useMemo(
     () =>
       letteredOf === "nearest" && nearestList
         ? letterPlaces(nearestList.items, (item) => ({ point: item.place.point, title: item.place.title, metres: item.distanceM }))
         : letteredOf === "food" && foodResults
           ? letterPlaces(foodResults, (r) => ({ point: [r.place.lon, r.place.lat] as LonLat, title: r.place.name, metres: r.detour ? null : r.fromCentreM }))
-          : null,
-    [letteredOf, nearestList, foodResults],
+          : letteredOf === "bikeshare" && goOptions
+            ? // Each option at its pick-up station, named as its button is.
+              goOptions.map((o, i) => ({ letter: placeLetter(i), point: [o.pickup.lon, o.pickup.lat] as LonLat, name: optionName(placeLetter(i), o) }))
+            : null,
+    [letteredOf, nearestList, foodResults, goOptions],
   );
   const goToLettered = (point: LonLat, title: string) => {
     namer.remember(point, title);
@@ -1804,6 +1832,8 @@ export function App() {
       if (!r) return;
       if (mode === "go") goToLettered([r.place.lon, r.place.lat], r.place.name);
       else showFood(r);
+    } else if (letteredOf === "bikeshare") {
+      pickOption(index);
     }
   };
   const pickLetteredRef = useRef(pickLettered);
@@ -1988,6 +2018,7 @@ export function App() {
     onRide: () => openView("ride", document.activeElement instanceof HTMLElement ? document.activeElement : null),
     onPlan: () => changeMode("plan"),
     peek: goSheet === "peek",
+    options: goOptions ? { list: goOptions, picked: pickedOption(goOptions, bikeshareOf(shown)), busy: stale, onPick: pickOption } : null,
   };
   const routeSection = (
     <RouteSection key="route"

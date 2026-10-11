@@ -4441,7 +4441,14 @@ puts it, at most two presses away.
   the row's Ride here, or the letter's key (not while typing, on the map or in a dialog) picks
   it: in Go as the destination, straight to the route options; in Plan, the nearest's Ride here
   and food's Show on map. Food's numbered circle layer is gone; its list and markers use the
-  letters. Bikeshare's station lists are not lettered yet.
+  letters. The Choose a station lists (Plan) are not lettered.
+- **Bikeshare options** (`lib/bikeshareOptions.ts`; #94's `bikeshare.options`): a Bikeshare route
+  in Go lists its pick-up and drop-off pairs as buttons lettered A, B, C, each named by the
+  option's own `text`, the one the shown plan rides pressed (aria-pressed and a "Planned" tag),
+  and letters them on the map at each pick-up station. A button, a marker or the letter's key
+  sets that option's stations (the station pins) and ending, which re-plans it. A re-plan's
+  answer lists only the pair asked for, so the first answer's list is kept for the same start
+  and end; the order is the server's.
 - **Start and end pins** (the owner, 2026-10-11 21:29 UTC): a play triangle and a stop square
   (`lib/pointText.ts` `START_GLYPH`, `END_GLYPH`, hidden; the pins' names stay "Start", "End" and
   "Start and finish"), so A, B, C are only the offered places; stops keep their numbers.

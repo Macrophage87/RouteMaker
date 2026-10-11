@@ -5,7 +5,8 @@
 // route in a few lines: the time, the distance, the stress bar, the warning line and Start. App.tsx keeps
 // the state and the effects; the questions, the errors and Start ride's question are as they were.
 import { useId, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
-import type { RouteError, RouteResponse } from "../lib/api.ts";
+import type { BikeshareOption, RouteError, RouteResponse } from "../lib/api.ts";
+import { placeLetter } from "../lib/letteredPlaces.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration } from "../lib/format.ts";
 import { presetLabel, type PresetId } from "../lib/presets.ts";
@@ -83,6 +84,40 @@ export interface GoRouteControls {
   onPlan: () => void;
   /** The sheet is at its smallest (peek): the route's time, Start and the stress bar only. */
   peek: boolean;
+  /**
+   * A Bikeshare route's options, lettered A, B, C (lib/bikeshareOptions.ts), with the one the shown plan
+   * rides (-1: none yet); a press re-plans that pair. Null off Bikeshare, or with one option.
+   */
+  options: { list: BikeshareOption[]; picked: number; busy: boolean; onPick: (index: number) => void } | null;
+}
+
+/** Go's Bikeshare options: one button each, lettered as on the map, named by the option's own words. */
+function GoBikeOptions({ options }: { options: NonNullable<GoRouteControls["options"]> }) {
+  const headingId = useId();
+  return (
+    <div className="go-bike-options" role="group" aria-labelledby={headingId}>
+      <h3 id={headingId} className="go-bike-options-title">
+        <Icon name="bikeshare" size={18} />
+        Bikeshare options
+      </h3>
+      <ul role="list" className="go-bike-option-list">
+        {options.list.map((option, index) => {
+          const letter = placeLetter(index);
+          return (
+            <li key={`${option.pickup_station}>${option.dropoff_station}>${option.ending}`} className="lettered-row">
+              <button type="button" className="go-bike-option" aria-pressed={index === options.picked} onClick={() => options.onPick(index)}>
+                <span className="place-letter" aria-hidden="true">
+                  <span>{letter}</span>
+                </span>
+                <span className="visually-hidden">{`${letter}: `}</span>
+                <span className="go-bike-option-text">{option.text}</span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
 }
 
 export interface RouteSectionProps {
@@ -573,6 +608,7 @@ export function RouteSummary({
     // (peek) the sheet keeps the time, Start and the stress bar, and counts the warnings.
     return (
       <div className={`summary go-summary${go.peek ? " peek" : ""}`}>
+        {!go.peek && go.options && <GoBikeOptions options={go.options} />}
         {!go.peek && bikeshareFold}
         <div className="go-head">
           <h3 className="visually-hidden">Totals</h3>
