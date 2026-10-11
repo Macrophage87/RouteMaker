@@ -49,6 +49,7 @@ import {
   mtbTrailPaint,
 } from "../stressStyle.js";
 import { HIGH_STRESS_LANES_LABEL } from "./highStressLanesSwitch.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 test("zoomed out, with the overlay on, the notice says the road stress is a zoom away", () => {
   const out = stressZoomNotice(STRESS_ZOOMS.ride - 0.01, true);
@@ -120,7 +121,7 @@ test("rendered: the notice as a status, then the hint", () => {
 });
 
 test("App's legend passes the zoom and whether the overlay is on", () => {
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   // App.tsx is not rendered by a test: it only places the legend (the legend itself is rendered below).
   // In the sidebar's Map layers sheet the zoom explanations are behind a disclosure (foldedZoom, OWNER-DECISIONS 312).
   assert.match(app, /<StressLegend facilities=\{facilitiesShown\} zoom=\{zoom\} shown=\{stressVisible\} foldedZoom \/>/);
@@ -463,7 +464,7 @@ test("a modified or non-primary click keeps no plan (the accessibility re-check'
   for (const change of [{ button: 1 }, { button: 2 }, { ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }]) {
     assert.equal(isPlainClick({ ...plain, ...change }), false, JSON.stringify(change));
   }
-  const source = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const source = appSource();
   assert.match(source, /window\.addEventListener\("pageshow", onShow\)/);
   assert.match(source, /if \(e\.persisted\) forgetPlan\(tabSession\(\)\);/);
   assert.doesNotMatch(source, /function session\(\)/, "one session helper, tabSession");

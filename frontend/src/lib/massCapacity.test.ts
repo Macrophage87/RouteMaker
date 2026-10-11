@@ -30,6 +30,7 @@ import { capacityLead, descriptionText } from "./routeDescription.ts";
 import { ROUTE_AVOID_HALO, ROUTE_AVOID_MAGENTA, ROUTE_AVOID_MARK, routeLegend, routeSections, sectionFeatures, spanClass, usesCapacity } from "./routeColours.ts";
 import { MASS_BANDS } from "../massStyle.js";
 import { dashedRouteKeys, routeDashLayers, solidRouteFilter } from "./mapGlue.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 const M = 1609.344;
 
@@ -272,7 +273,7 @@ test("the app-level region says a change of bands only while the legend is off s
   assert.equal(massBandsChangeSaid(null, z12, false), null, "coming to the Mass Ride map, or switching the colours on");
   assert.equal(massBandsChangeSaid(z12, null, false), null);
   // App.tsx wires it so.
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   assert.match(app, /const massBands = massMap && stressVisible \? massBandsSaid\(zoom\) : null;/);
   assert.match(app, /massBandsChangeSaid\(massBandsBefore\.current, massBands, layersShownNow\.current\)/);
   assert.match(app, /layersShownNow\.current = view === "layers" && panelOpen;/);
@@ -340,7 +341,7 @@ test("a Mass Ride's adjacent sections of one band are one section", () => {
 
 test("the app wires the mode: the map's capacity layers, the legend and the panel follow the tiles, the grey outside DC the ride type", async () => {
   const { readFileSync } = await import("node:fs");
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   // Accessibility review S2: the layers switch on the capacity seen, so a table without the column keeps the
   // stress layers its legend describes; the DC mask follows the ride type.
