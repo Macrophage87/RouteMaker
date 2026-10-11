@@ -93,15 +93,16 @@ NEIGHBOURHOOD_STOP_FT = 10.0
 
 # A trail crossing - a mapped crossing way (Valhalla's `pedestrian_crossing`),
 # or a path, trail, cycletrack or sidewalk meeting the road at a node of its own
-# - is a crosswalk, a beacon or a signal, and OSM's `crossing=traffic_signals`
-# and its kin do not reach the router's signal flag (`highway=traffic_signals`
-# alone does, on the road junction's own node or its stop lines a few metres
-# away, which `core.junctions` reads up to 30 m along the crossed road), so a
-# signalized trail crossing away from a signalized road junction reads as
-# having no signal. Counted at this fraction
-# of the stopped-side cost until the transform derives the signal
-# (docs/OPERATIONS.md, "Intersection costs"). A PROPOSAL; it never lowers a
-# junction the router says has a signal, which is already priced as one.
+# - is a crosswalk, a beacon or a signal. The router's signal flag is read on
+# the road junction's own node or its stop lines a few metres away, which
+# `core.junctions` reads up to 30 m along the crossed road; from the Track B
+# rebuild a crossing whose signal OSM maps on its crossing node or crossing way
+# has the flag too (FOLLOWUP-SIGNAL-DERIVE: `remap.derives_signal`,
+# `pipeline.signals`). A trail crossing with no signal flag - a crosswalk, a
+# beacon, or a signal mapped nowhere the transform reads - is counted at this
+# fraction of the stopped-side cost (docs/OPERATIONS.md, "Intersection costs").
+# A PROPOSAL; it never lowers a junction the router says has a signal, which is
+# already priced as one.
 MARKED_CROSSING_FACTOR = 0.5
 # And, whatever its cost, such a crossing is never drawn red: the owner,
 # 2026-10-01 (item 185), "Trail crossings whose signal is not mapped cap at

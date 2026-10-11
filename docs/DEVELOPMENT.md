@@ -2148,7 +2148,7 @@ table, within its ranges, for the owner to move:
 | At a traffic signal | `SIGNALISED_CROSSING_FT` | 150 ft (LTS 3), 300 ft (LTS 4, 5) | 100-200 ft, mostly delay (Broach signal 2.1-3.6% a mile) |
 | All-way stop | `ALL_WAY_STOP_FT` | 75 ft | 50-100 ft (Broach stop 0.5-0.9%; Arlington -1) |
 | On the free-flowing side, cross traffic controlled (item 169) | `PRIORITY_SIDE_FT` | 25 ft | 0-50 ft |
-| A trail crossing with no signal flag at it or within 30 m up the roads it crosses: a mapped crossing way, or a path, trail, cycletrack or sidewalk meeting the road at a node of its own | `MARKED_CROSSING_FACTOR`, `MARKED_CROSSING_MAX_SEVERITY` | x0.5, and never drawn red, worded "no signal mapped" as at any junction | item 185; `crossing=traffic_signals` does not reach the router's flag. Round 1 said the Pennsylvania Ave and Virginia Ave cycletracks had no flag on the road's arms; that was wrong: the round-2 review found one within 30 m at 31 of 48 trail crossings, and those now read as signalized |
+| A trail crossing with no signal flag at it or within 30 m up the roads it crosses: a mapped crossing way, or a path, trail, cycletrack or sidewalk meeting the road at a node of its own | `MARKED_CROSSING_FACTOR`, `MARKED_CROSSING_MAX_SEVERITY` | x0.5, and never drawn red, worded "no signal mapped" as at any junction | item 185; from FOLLOWUP-SIGNAL-DERIVE a crossing node or crossing way tagged `crossing=traffic_signals` (or `crossing:signals=yes`) reaches the router's flag, so this is the crossing with no signal mapped on either. Round 1 said the Pennsylvania Ave and Virginia Ave cycletracks had no flag on the road's arms; that was wrong: the round-2 review found one within 30 m at 31 of 48 trail crossings, and those now read as signalized |
 | A divided road's two carriageways, crossed at one junction | `MEDIAN_REFUGE_FACTOR` | counted once, the costlier, x0.75; only two or more crossings, each of a one-way road of its own ways, with a name in common, never a turn or a slip lane with a crossing | items 185 and 196 ("x0.75 (Recommended)"); Mineta and Oregon read a refuge as a level lower (about x0.4 by the base costs), 0.75 keeps an unsignalized divided LTS 4 crossing red |
 | Straight on along the same road (its way, or a name in common) where its tier rises | `Junction.continues` | no "Joining" cost | review r2: S Stonestreet Ave and Nebel St (1,200 ft), West St in Annapolis (3,000 ft) were "Joining" the road the rider was already on |
 | Left onto a busy road (item 166) | `MOVEMENT_FACTOR_ONTO["left"]` | x1.5 of the crossing | Copenhagen 154 ft left against 62 ft right; the review: lefts 2-3 times rights |
@@ -3327,16 +3327,20 @@ The owner, 2026-10-03: "Actually, I like merging the runs, that sounds good." (2
 
 ### Known gaps, and what would close them
 
-- A trail crossing a road at a mapped crossing with `crossing=traffic_signals`
-  (a signal or a HAWK) away from any signalized road junction does not reach
-  the router's signal flag: Valhalla's transform reads `highway=traffic_signals`
-  alone. Such a crossing reads "no signal mapped", is counted at
-  `MARKED_CROSSING_FACTOR` and is never red (item 185). A cycletrack crossing
-  at a node of its own beside a signalized road junction is read as signalized
-  from round 2 (the approach walk reaches the junction's stop lines). Deriving
-  the crossing's own signal in `lua/routemaker_remap.lua` (`forward_signal`
-  and `backward_signal` on the node) is the fix for the rest and needs a
-  rebuild to verify, so it is a recorded follow-up.
+- Valhalla's parser reads a node's signal from `highway=traffic_signals`
+  alone. From the Track B rebuild (FOLLOWUP-SIGNAL-DERIVE) a signalised trail
+  crossing (a signal or a HAWK) away from a signalized road junction reaches
+  the flag where OSM maps it on the crossing node (`highway=crossing` with
+  `crossing=traffic_signals` or `crossing:signals=yes`; `remap.derives_signal`)
+  or on the crossing way alone (`pipeline.signals` marks the node the way
+  shares with the road, `rm:crossing_signal`). What is left: a crossing with
+  the signal mapped on neither, a node that says `crossing=uncontrolled` under
+  a way that says signals (read as no signal), and a node with a `bicycle=no`
+  that upstream reopens only on a `highway=crossing` node. These read "no
+  signal mapped", are counted at `MARKED_CROSSING_FACTOR` and are never red
+  (item 185). A cycletrack crossing at a node of its own beside a signalized
+  road junction is read as signalized from round 2 (the approach walk reaches
+  the junction's stop lines).
 - A signal tagged more than 30 m up an approach, or only on an approach the
   junction's arms do not lead to (the far carriageway's, where the route
   crosses one carriageway alone, as the Virginia Ave cycletrack does at G St

@@ -70,6 +70,7 @@ from . import (
     restricted_areas,
     retention,
     route_relations,
+    signals,
     source,
     states,
     tiles,
@@ -2567,6 +2568,14 @@ def build_handlers(
         reference = context.require_reference()
         context.work_dir.mkdir(parents=True, exist_ok=True)
         classify_facilities()
+        # FOLLOWUP-SIGNAL-DERIVE: the nodes where a crossing way tagged as
+        # signalised meets a road, marked so the transform makes them signals
+        # (`pipeline.signals`). Every variant: the signal stands on the road
+        # whether or not the variant keeps the trail that crosses it.
+        signal_tags = signals.node_tags(signals.signal_nodes(context.ways))
+        logger.info(
+            "%d signalised trail crossings marked from their crossing ways", len(signal_tags)
+        )
 
         for variant in variants.Variant:
             per_way_tags: dict[int, dict[str, str]] = {}
@@ -2730,6 +2739,7 @@ def build_handlers(
                 [(n.node_id, n.lon, n.lat, n.tags) for n in nodes_for_variant],
                 node_lists,
                 drop_ways=dropped,
+                node_tags=signal_tags,
             )
 
     def graph_outputs(build_dir: Path, config: dict) -> dict[str, Path]:

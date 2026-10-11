@@ -1192,5 +1192,48 @@ do
     M.remap_way({ highway = "secondary" }, { stress_tier = 3, stress_half = true, facility_neutral = true })["maxspeed:practical"] == nil)
 end
 
+-- FOLLOWUP-SIGNAL-DERIVE: a signalised trail crossing reaches the parser's
+-- signal flag, which it reads from `highway=traffic_signals` alone.
+do
+  local function signal(tags) return M.remap_node(tags).highway == "traffic_signals" end
+  check("a crossing node tagged crossing=traffic_signals becomes a signal",
+    signal({ highway = "crossing", crossing = "traffic_signals" }))
+  check("so does one tagged crossing:signals=yes",
+    signal({ highway = "crossing", crossing = "marked", ["crossing:signals"] = "yes" }))
+  check("crossing:signals=yes with no crossing value is a signal",
+    signal({ highway = "crossing", ["crossing:signals"] = "yes" }))
+  check("and the node keeps its crossing scheme",
+    M.remap_node({ highway = "crossing", ["crossing:signals"] = "yes" }).crossing == "traffic_signals")
+  check("a crossing that already names its scheme is not rewritten",
+    M.remap_node({ highway = "crossing", crossing = "traffic_signals" }).crossing == nil)
+  check("a node the rebuild marked becomes a signal",
+    signal({ ["rm:crossing_signal"] = "yes" }))
+  check("so does a marked crossing node with no control of its own",
+    signal({ highway = "crossing", ["rm:crossing_signal"] = "yes" }))
+  check("an uncontrolled crossing is not a signal",
+    not signal({ highway = "crossing", crossing = "uncontrolled" }))
+  check("a flashing beacon is not a signal",
+    not signal({ highway = "crossing", crossing = "uncontrolled", flashing_lights = "button" }))
+  check("a node that says uncontrolled overrides the way's mark",
+    not signal({ highway = "crossing", crossing = "uncontrolled", ["rm:crossing_signal"] = "yes" }))
+  check("so does an unmarked one",
+    not signal({ crossing = "unmarked", ["rm:crossing_signal"] = "yes" }))
+  check("crossing:signals=no overrides crossing=traffic_signals",
+    not signal({ highway = "crossing", crossing = "traffic_signals", ["crossing:signals"] = "no" }))
+  check("crossing:signals=yes on an uncontrolled crossing is a contradiction, read as none",
+    not signal({ highway = "crossing", crossing = "uncontrolled", ["crossing:signals"] = "yes" }))
+  check("a stop sign stays a stop sign",
+    not signal({ highway = "stop", ["rm:crossing_signal"] = "yes" }))
+  check("a give-way sign stays one",
+    not signal({ highway = "give_way", crossing = "traffic_signals" }))
+  check("a crossing whose bicycle=no upstream reopens keeps its class",
+    not signal({ highway = "crossing", crossing = "traffic_signals", bicycle = "no" }))
+  check("a crossing with no signal tag is untouched",
+    next(M.remap_node({ highway = "crossing", crossing = "marked" })) == nil)
+  check("a bare node with no mark is untouched", next(M.remap_node({ name = "x" })) == nil)
+  check("the one class write a node may make is the signal",
+    M.NODE_WRITES_ALLOWED.highway == "traffic_signals" and M.FORBIDDEN_KEYS.highway)
+end
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)
