@@ -141,10 +141,12 @@ You stay responsible for riding safely; the route can be wrong.
   saved. It lasts for this ride only: it is cleared when you press "End ride", when the next
   ride starts, and if you reload or reopen the page (a ride does not carry on after a reload).
   Finding a new way off the route still needs a signal.
-- "Report a problem to DC 311" (Washington, DC only) writes a report for a pothole, a
+- "Report a problem to DC 311" (Washington, DC only) writes a report for a pothole (chosen
+  first), a downed tree, a vehicle parked in a bike lane, a road or bikeway blocked, a
   streetlight out or anything else, with the nearest junction on your route as the place. On a
-  phone, a pothole or a streetlight can be a text to DC 311 (32311) that you send yourself; there
-  is always a link to DC 311 online and a button to copy the report for it. RouteMaker sends
+  phone, a pothole or a streetlight can be a text to DC 311 (32311) that you send yourself; the
+  others go to DC 311 online, with the problem named in the report. There is always a link to
+  DC 311 online and a button to copy the report for it. RouteMaker sends
   nothing and keeps nothing. Check the place before you send it.
 - Your position stays on your phone. It is sent only when a new way is found from where you
   are, or when you ask for the nearest water or restroom (as "Use my location" does when
