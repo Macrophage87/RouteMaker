@@ -140,6 +140,8 @@ def _ctx(weight=1.0, exposure=presets.EXPOSURE_STANDARD):
         exposure=exposure,
         hills_weight=0.0,
         hills_seek_weight=0.0,
+        # "Fine with hills" (FOLLOWUP-HILLS-TOLERATE, #73) off, where the score reads it.
+        hills_tolerate_weight=0.0,
     )
 
 
