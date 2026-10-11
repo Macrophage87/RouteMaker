@@ -194,8 +194,11 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   approved by the owner for the v0.5.0 rebuild (2026-10-10); fetched at rebuild time
   with `scripts/fetch_agency_layer.py` (docs/OPERATIONS.md, "Maryland traffic counts
   (MDOT SHA)"), which records the size, sha256 and the item's licence text verbatim
-  in the download's README. Not yet downloaded: no size or sha256 to record here
-  until it is.
+  in the download's README. Downloaded for the v0.5.0 rebuild on 2026-10-11 at
+  17:57 UTC, clipped to the coverage box: `mdot-sha-aadt.geojson`, 31,486,316 bytes,
+  sha256 `494667299550afca312d20dfe47e4c62bdc45db92321fc231c11ba19182cb8e1`, 8,625
+  features (the service reported 8,625; item modified 2026-08-27), installed as 8,625
+  count lines.
 - Publisher: Maryland Department of Transportation State Highway Administration
   (the item's `accessInformation` also names the Traffic Monitoring System team and
   Maryland iMAP).

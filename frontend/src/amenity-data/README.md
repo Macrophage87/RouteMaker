@@ -125,37 +125,23 @@ The file also has `"also"`, naming the Throne list as the second source.
 
 ## Status
 
-The committed file predates the two 2026-10-10 rules and the 2026-10-11
-secured-site rule above: it still has restroom nodes beside their buildings,
-historic springs, and any restroom inside an airport, base or prison, until
-the next refresh (below). Its Throne units are current: on 2026-10-11
-`--throne-only` added the 10 open units (none was within 50 ft (15 m) of an
-OSM restroom), each marked approximate, giving 2,273 points, 142,839 bytes,
-sha256 `0b646bc46bc441ab8893c2b48a974106915d9b33026edd0265c3ff5163aa4d5f`. Three OSM
-restroom nodes lie near listed units and may be the same Throne mapped in OSM
-(their tags are not in the file): `n11958790038` about 550 ft (169 m) from
-Columbia Heights, `n11958790039` about 700 ft (215 m) from the Superior Court
-unit, and `n12026098603` about 90 ft (28 m) from Eastern Market. All three
-are free, wheelchair accessible and of no mapped type, and the first two have
-consecutive ids, so they are likely the units, at a better spot than the
-address point. The rebuild merges them (within 1,000 ft (300 m)) if they carry
-`operator=Throne` (or brand or name); otherwise check them and move the listed
-unit onto the node with `"exact": true`.
-
-The figures below are the 2026-10-09 build's, before the Throne units.
-
-Generated on the build host on 2026-10-09 from that day's extract
-(`<DATA_ROOT>/extracts/source.osm.pbf`), commit dce6451: 2,263 points, all
-inside the coverage box, 141,213 bytes, sha256
-`496bae39f7d0741cf2261e40d20937f6fd652c6dbea996d56c58d1a21dd281e1`.
+Generated on the build host on 2026-10-11 for the v0.5.0 rebuild, from the
+2026-10-09 extract that rebuild builds from (`<DATA_ROOT>/extracts/source.osm.pbf`),
+with the 2026-10-10 rules and the 2026-10-11 secured-site rule above: 2,152
+points, 134,834 bytes, sha256
+`d4f4d7bf71275dabc9cba3c318deb33b7b1162e004d37e07fedc1eeaeccbc9d0`. 106 left
+out inside airports, military sites and prisons (airport 91, military 15).
+Throne: 6 units added from the list and 4 matched to OSM restrooms (the
+`operator=Throne` merge above); 7 listed units not open or not confirmed are
+left off the map.
 
 | Kind | Points |
 | --- | --- |
-| drinking water | 762 (20 of them at a restroom) |
-| untreated water | 175 |
-| flush restroom | 206 |
-| portable, pit or composting toilet | 286 |
-| restroom, type not mapped | 854 |
+| drinking water | 734 |
+| untreated water | 174 |
+| flush restroom | 173 |
+| portable, pit or composting toilet | 284 |
+| restroom, type not mapped | 807 |
 
 To rebuild, from the repository root on that host:
 
@@ -178,14 +164,7 @@ marked as a Throne by its own tags in a full build is matched again only within
 Rerun the command above on a newer extract. Nothing else changes: the map reads
 the file as it is.
 
-The first refresh after the 2026-10-10 and 2026-10-11 rules: expect fewer
-restrooms (airside, on base and in prisons, as well as the merges below), the
-count the build prints as "left out inside airports, military sites and
-prisons" to check against the map; and fewer restrooms (each node
-merged into its building drops one point, and a merged place takes the
-building's `w` id in place of the node's `n` id) and fewer untreated water
-points (historic springs). Update the figures and digest in "Status", drop the
-note that the file predates the rules, and commit the file. The test
+Update the figures and digest in "Status" and commit the file. The test
 `test_bundled_file_is_well_formed` checks the result; the front end needs no
 change.
 
@@ -213,10 +192,24 @@ One place per line, short keys:
 
 ### Status
 
-The committed file is an empty placeholder (`"points": []`): the cloud
-session that built the search could not read the extract. The app says "No
-food data yet" until it is built. Build it with the v0.5.0 rebuild, on the
-build host, from the repository root:
+Generated on the build host on 2026-10-11 for the v0.5.0 rebuild, from the
+2026-10-09 extract that rebuild builds from (`<DATA_ROOT>/extracts/source.osm.pbf`):
+15,480 places, 12,940 of them with a cuisine; 197 left out inside airports,
+military sites and prisons (airport 133, military 63, prison 1).
+2,262,385 bytes (555,199 with `gzip -9`), sha256
+`e02ac7c38d7dc963048dffb8e07e6880427a1459e165b213c744c500ebcc508f`.
+
+| Kind | Places |
+| --- | --- |
+| restaurant | 8,040 |
+| fast food | 5,061 |
+| cafe | 1,537 |
+| ice cream | 496 |
+| pub | 300 |
+| food court | 34 |
+| beer garden | 12 |
+
+To rebuild, on the build host, from the repository root:
 
     .venv311/bin/python scripts/build_food.py \
         --pbf <DATA_ROOT>/extracts/source.osm.pbf
@@ -224,8 +217,5 @@ build host, from the repository root:
 It prints the places by kind, how many have a cuisine, how many were left out
 inside airports, military sites and prisons, and the file's size (and warns
 over 3,000,000 bytes, as the front end fetches the whole file on the first
-search). A synthetic file of 15,000 places with names, cuisine on 60%, hours
-on 40% and a website on 35% is 1.9 MB, 450 KB with gzip; the real region is
-expected to be of that order. Record the counts, size and sha256 here and
-commit the file. `test_bundled_file_is_well_formed` in
+search). Record the counts, size and sha256 here and commit the file. `test_bundled_file_is_well_formed` in
 `tests/test_build_food.py` checks it.

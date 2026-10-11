@@ -3536,9 +3536,9 @@ python scripts/install_reference_data.py --data-root "$DATA_ROOT" \
     --extract "$DATA_ROOT/extracts/source.osm.pbf" \
     --urban-areas "$DATA_ROOT/reference/inputs/tl_2024_us_uac20.geojson" \
     --volume "$DATA_ROOT/reference/inputs/vdot-aadt-2024.geojson" \
-        --volume-source vdot --volume-year 2024 \
+        --volume-source vdot --volume-year 2024 --aadt-property ADT \
     --volume "$DATA_ROOT/reference/inputs/ddot-aadt-2024.geojson" \
-        --volume-source ddot --volume-year 2024
+        --volume-source ddot --volume-year 2024 --aadt-property AADT
 ```
 
 Two agencies rather than one, because a single one is the case the conflation
@@ -3574,7 +3574,8 @@ the failure this produced.
 - `volume.json` is every agency count line with a bidirectional AADT, in the
   shape `conflation.AgencyFeature` loads. The Virginia layer is VDOT's traffic
   volume export from the Virginia Roads portal (`--volume-source vdot`, AADT
-  property `AADT`); the District's is DDOT's AADT layer (`--volume-source
+  property `ADT`: the export has no `AADT` field, so without `--aadt-property ADT`
+  the installer reads 0 lines from it, with exit 0); the District's is DDOT's AADT layer (`--volume-source
   ddot`) and arrives the same way. Directional counts are summed before they
   reach here, which is why the property name is an argument rather than
   guessed.

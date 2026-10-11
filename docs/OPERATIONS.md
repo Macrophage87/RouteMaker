@@ -2976,8 +2976,9 @@ request, so the next request gets the new archive.
 
 It needs GDAL 3.8 or later with the PMTiles driver, and must write as the basemap directory's owner
 (uid 10001 after `prepare_data_root.sh`), so, like the base map fetch, it runs in a container as
-10001 with only the script and that directory mounted. The image is GDAL's own, pinned by tag (record
-its digest in this section on the first pull: the cloud container that wrote this could not pull it).
+10001 with only the script and that directory mounted. The image is GDAL's own, pinned by tag; its
+digest at the first pull (the build host, 2026-10-11) was
+`ghcr.io/osgeo/gdal@sha256:7125d6f5d6af5331354328fc6a64c9e420b29b31460d1a6aaf9526e559255e07`.
 From the repository root:
 
 ```sh
@@ -3001,7 +3002,9 @@ its highest line 1,800 ft): 500 MB downloaded, 297 MB clipped DEM, 254 MB of con
 layers, a 39 MB archive, 291 s in all on 4 cores (the tiling 183 s of it, at 209 MB peak memory). The coverage is
 about 3 square degrees, mostly flatter, so expect: **about 1.8 GB to download, about 5 GB free on the
 data volume at the peak (downloads, the clipped DEM and two line files), an archive of roughly 100 to
-150 MB, and 20 to 30 minutes on the host**, most of it the tiling, on one core.
+150 MB, and 20 to 30 minutes on the host**, most of it the tiling, on one core. The first run on the
+build host (2026-10-11, `--memory 2g`, for the v0.5.0 rebuild) took 36 minutes, downloads included, and
+wrote a 127,728,145-byte archive.
 GDAL streams the DEM in blocks; give the container 2 GB. Check the result:
 
 ```sh
@@ -3453,10 +3456,19 @@ the first host to run it is the first test of it.
        --data-root /data --extract /data/extracts/source.osm.pbf \
        --urban-areas /data/reference/inputs/tl_2024_us_uac20.geojson \
        --volume /data/reference/inputs/vdot-aadt-2024.geojson \
-           --volume-source vdot --volume-year 2024 \
+           --volume-source vdot --volume-year 2024 --aadt-property ADT \
        --volume /data/reference/inputs/ddot-aadt-2024.geojson \
-           --volume-source ddot --volume-year 2024
+           --volume-source ddot --volume-year 2024 --aadt-property AADT
    ```
+
+   **The Virginia file's count is `ADT`, not `AADT`.** VDOT's export
+   (`vdot-aadt-2024.geojson`) has no `AADT` field, and the installer's default
+   property is `AADT`, so without `--aadt-property ADT` it reads **0 count lines**
+   from it and says so only in its `... 0 count lines from vdot (state)` line, with
+   exit 0; every Virginia road is then graded with no count. `--aadt-property`
+   pairs with the `--volume` files like `--volume-year`: give it once for all, or
+   once per file in order. The installer prints one line a file: VDOT 36,808 count
+   lines, DDOT 8,323 (2026-10-11).
 
    **Every input path is absolute and inside the container.** A bare
    `tl_2024_us_uac20.geojson` resolves against the image's working directory,
@@ -4201,12 +4213,16 @@ proxy cannot reach the service.
 
    ```sh
        --volume /data/reference/inputs/mdot-sha-aadt/mdot-sha-aadt.geojson \
-           --volume-source mdot-sha
+           --volume-source mdot-sha --volume-year 2024 --aadt-property AADT
    ```
 
-   No `--volume-year`: the installer reads the year from the layer's fields (the
-   newest `AADT_<year>` plus one; 2024 on the 2026-10-11 layer) and prints the
-   rows it left out (`LOC_ERROR` set, or no count). A typed `--volume-year` wins.
+   `--volume-year` and `--aadt-property` are given once per file here, because
+   step 6's two files give theirs (the installer refuses two years for three files:
+   "--volume-year given 2 times for 3 --volume files"). Without a year of its own
+   the installer would read Maryland's from the layer's fields (the newest
+   `AADT_<year>` plus one; 2024 on the 2026-10-11 layer), so 2024 is the same
+   answer. The v0.5.0 install (2026-10-11) printed 8,625 count lines from
+   mdot-sha, 53,756 in `volume.json` with VDOT's 36,808 and DDOT's 8,323.
 
 3. **After the rebuild**, read the log and check MD 185:
 
