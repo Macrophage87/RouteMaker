@@ -5447,7 +5447,58 @@ edits made after that time (from v0.4.0, the stress editor), as a rebuild does f
 made while it ran, that check gives way to the re-apply; the scripts pass the backup's
 time.
 
-**What has not been run:** the scripts are tested against stand-ins for `aws`, `docker`
-and `sudo` (tests/test_cloud_scripts.py) and the command against a real PostGIS
+### The beta server from the same run
+
+A run can also feed the beta server directly, with no `ship-data.sh` from here. Start the
+box with `--beta-bundle`: after the rebuild it stages the beta's usual data bundle (tiles
+and database, the parts BETA-RUNBOOK's "New data only" takes) with
+`scripts/beta/ship-data.sh`, from the box's own copy, so it holds exactly what a bundle
+made here would (no accounts, person columns blanked), checks that every graph in it is
+the run's build, and uploads it to the run's `beta/` folder, manifest and checksums last.
+That sends each graph's `tiles.tar` a second time, beside `out/`. A resumed run
+remembers the flag. If the bundle cannot be made, the run says so and goes on: home's
+result never waits on the beta's, and that run then has no bundle for the beta.
+
+On the beta server, from its checkout, with the runbook's variables loaded
+(`. "$HOME/routemaker-beta-state/vars.sh"`), the first command downloads the run's bundle
+to `$RM_INCOMING` and runs `receive-data.sh verify`; it changes nothing that is served,
+and it leaves `$RM_INCOMING` alone when the run has no bundle for the beta. The second
+installs it:
+
+```sh
+scripts/cloud/import-result.sh --beta "$RUN_URL"
+scripts/cloud/import-result.sh --beta --swap "$RUN_URL"
+```
+
+`--swap` refuses unless `$RM_INCOMING` holds this run's download, and, where continuous
+deployment is installed, unless it is paused with no pass running and no deploy left half
+done. Then it runs the runbook's "New data only" steps 2 to 5:
+
+1. `receive-data.sh verify`, then `sudo ... files`: each graph's old build stays as
+   `previous`.
+2. The api and worker stopped, then `sudo ... db --update-data`: its own safety dump, one
+   transaction. It resets `override` and `junction_override` to home's and empties the
+   beta's `stress_edit` history, as every data update does. If it fails, the api and
+   worker are started again on the database as it was.
+3. The api and worker started, and the four routers restarted.
+4. The stress-tile pre-draw started in the background (`$RM_STATE/predraw.log`).
+5. The local smoke test, tried again while the app and routers start.
+
+Then run `scripts/beta/smoke-test.sh --public` yourself once the pre-draw has finished,
+and resume continuous deployment. The box builds home's commit, so a beta on a
+different release needs `--allow-sha-mismatch`, exactly as for a bundle sent from here.
+Rollback is the runbook's: rollback A for the graphs, the `pre-update` dump for the
+database.
+
+Once, for the owner: the beta server needs the AWS CLI and read access to the run folder
+and nothing more (on EC2, an instance role whose only S3 permissions are `s3:ListBucket`
+on the bucket for the `rebuild-checkpoints/` prefix and `s3:GetObject` on
+`rebuild-checkpoints/*`; no access keys), and its egress has to allow the bucket region's
+S3 endpoint. The beta data comes from home's database either way: the box builds from
+home's backup.
+
+**What has not been run:** the scripts are tested against stand-ins for `aws`, `docker`,
+`sudo` and, for the beta, `ship-data.sh`, `receive-data.sh` and `beta-compose.sh`
+(tests/test_cloud_scripts.py), and the command against a real PostGIS
 (tests/test_import_cloud_build.py). The first run on the box is the first real one, so
 keep its log and read the dry run before `--swap`.
