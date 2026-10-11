@@ -35,6 +35,7 @@ map() { case "$1" in s3://*) echo "$FAKE_S3/${1#s3://}" ;; *) echo "$1" ;; esac;
 # A box that has powered off sends nothing more.
 [ -e "$FAKE_DIR/powered_off" ] && exit 1
 case "$2" in
+  ls) [ -e "$(map "$3")" ] ;;
   rm) if [ "$4" = --recursive ]; then rm -rf "$(map "$3")"; else rm -f "$(map "$3")"; fi ;;
   sync)
     src=$(map "$3"); dst=$(map "$4"); shift 4
@@ -42,26 +43,31 @@ case "$2" in
     [ "$1" = --exclude ] && exclude=$2
     [ -d "$src" ] || exit 0
     mkdir -p "$dst"
-    for f in "$src"/*; do
+    (cd "$src" && find . -type f | sed 's|^\./||') | while IFS= read -r rel; do
       # shellcheck disable=SC2254
-      case "$(basename "$f")" in $exclude) continue ;; esac
-      cp "$f" "$dst/"
+      case "$rel" in $exclude) continue ;; esac
+      mkdir -p "$(dirname "$dst/$rel")"; cp "$src/$rel" "$dst/$rel"
     done ;;
   cp)
     src=$(map "$3"); dst=$(map "$4"); shift 4
-    recursive=0 exclude=""
+    recursive=0 excludes=" "
     while [ $# -gt 0 ]; do
-      case "$1" in --recursive) recursive=1 ;; --exclude) exclude=$2; shift ;; esac; shift
+      case "$1" in
+        --recursive) recursive=1 ;;
+        --exclude) excludes="$excludes$2 "; shift ;;
+      esac; shift
     done
     if [ "$recursive" = 1 ]; then
       [ -d "$src" ] || exit 1
       [ -e "$FAKE_DIR/cp_fails" ] && exit 1
       mkdir -p "$dst"
-      for f in "$src"/*; do
-        [ -f "$f" ] || continue
-        [ -n "$exclude" ] && [ "$(basename "$f")" = "$exclude" ] && continue
-        cp "$f" "$dst/"
-        echo "${dst#"$FAKE_S3"/}$(basename "$f")" >>"$FAKE_DIR/s3-order.log"
+      # Like the real one: every file under src, links followed, excludes matched on the
+      # path relative to src.
+      (cd "$src" && find -L . -type f | sed 's|^\./||' | sort) | while IFS= read -r rel; do
+        case "$excludes" in *" $rel "*) continue ;; esac
+        mkdir -p "$(dirname "$dst/$rel")"
+        cp -L "$src/$rel" "$dst/$rel"
+        echo "${dst#"$FAKE_S3"/}$rel" >>"$FAKE_DIR/s3-order.log"
       done
     else
       [ -f "$src" ] || exit 1
@@ -91,6 +97,7 @@ case "$1" in
           [ "$(wc -l <"$FAKE_DIR/job_status")" -gt 1 ] && sed -i 1d "$FAKE_DIR/job_status"
         fi ;;
       *"count(DISTINCT build_id)"*) cat "$FAKE_DIR/builds" 2>/dev/null || echo "1 BUILD" ;;
+      *"max(build_id)"*) echo BUILD ;;
       *"to_regnamespace('live') IS NOT NULL"*) echo t ;;
       *"to_regclass('staging.segment')"*) echo t ;;
       *"to_regnamespace('staging') IS NULL"*)
@@ -720,3 +727,417 @@ def test_each_script_parses_and_shellcheck_is_clean_when_available(script: Path)
             ["shellcheck", "--severity=warning", str(script)], capture_output=True, text=True
         )
         assert done.returncode == 0, done.stdout
+
+
+# --- the beta's bundle ---------------------------------------------------------------
+
+FAKE_SHIP_DATA = r"""#!/usr/bin/env bash
+printf 'ship-data %s\n' "$*" >>"$FAKE_DIR/calls.log"
+stage=""
+while [ $# -gt 0 ]; do [ "$1" = --stage ] && stage=$2; shift; done
+mkdir -p "$stage/tiles/standard/BUILD" "$stage/db"
+echo graph >"$FAKE_DIR/graph.tar"
+ln -s "$FAKE_DIR/graph.tar" "$stage/tiles/standard/BUILD/tiles.tar"
+echo dump >"$stage/db/routemaker.dump"
+(cd "$stage" && sha256sum tiles/standard/BUILD/tiles.tar db/routemaker.dump >SHA256SUMS)
+graphs=""
+for v in standard no-trail ebike weekend offroad; do
+  graphs="$graphs $v=${FAKE_SHIPPED:-BUILD}"
+done
+printf 'bundle_format=1\ntiles=%s\n' "${graphs# }" >"$stage/MANIFEST.txt"
+[ ! -e "$FAKE_DIR/ship_fails" ]
+""".replace("BUILD", BUILD)
+
+
+@pytest.fixture
+def ship_data(fake) -> Path:
+    path = fake.root / "bin" / "ship-data"
+    path.write_text(FAKE_SHIP_DATA)
+    path.chmod(0o755)
+    return path
+
+
+def test_the_box_makes_the_betas_bundle_before_the_export_and_sends_it_last(
+    fake, home, ship_data
+) -> None:
+    assert send(fake, home).returncode == 0
+    fake.in_bucket("beta").mkdir(parents=True)
+    (fake.in_bucket("beta") / "stray-from-an-earlier-run").write_text("old")
+    (fake.dir / "job_status").write_text("succeeded\n")
+    built_tiles(fake.root / "box" / "data")
+
+    done = fake.run(
+        BOX,
+        "--build-dir",
+        str(fake.root / "box" / "build"),
+        "--data-root",
+        str(fake.root / "box" / "data"),
+        "--beta-bundle",
+        fake.url,
+        CLOUD_SHIP_DATA=str(ship_data),
+    )
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    calls = fake.calls()
+    ship = next(line for line in calls.splitlines() if line.startswith("ship-data"))
+    for arg in (
+        f"--live-dir {fake.root / 'box' / 'build'}",
+        "--no-transfer",
+        "--without elevation --without basemap --without photon --without frontend",
+    ):
+        assert arg in ship
+    assert calls.index("ship-data") < calls.index("ALTER SCHEMA live RENAME TO staging")
+    beta = fake.in_bucket("beta")
+    graph = beta / "tiles" / "standard" / BUILD / "tiles.tar"
+    assert graph.is_file() and not graph.is_symlink() and graph.read_text() == "graph\n"
+    order = [
+        line for line in (fake.dir / "s3-order.log").read_text().splitlines() if "/beta/" in line
+    ]
+    names = [line.rsplit("/", 1)[1] for line in order]
+    assert names[-2:] == ["SHA256SUMS", "MANIFEST.txt"]
+    assert names.count("SHA256SUMS") == 1 and names.count("MANIFEST.txt") == 1, "and only last"
+    assert subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=beta).returncode == 0
+    assert calls.index("beta/MANIFEST.txt") < calls.index("sudo poweroff")
+    every = (fake.dir / "s3-order.log").read_text().splitlines()
+    assert every.index(next(x for x in every if x.endswith("out/SHA256SUMS"))) < every.index(
+        order[0]
+    ), "home's result goes up first"
+    assert not (beta / "stray-from-an-earlier-run").exists()
+
+
+def test_a_resumed_run_remembers_the_beta_bundle(fake, home, ship_data) -> None:
+    assert send(fake, home).returncode == 0
+    (fake.dir / "job_status").write_text("failed\n")
+    box(fake, "--no-stop", "--beta-bundle")
+    assert "ship-data" not in fake.calls(), "a failed rebuild makes no bundle"
+    (fake.dir / "job_status").write_text("succeeded\n")
+    built_tiles(fake.root / "box" / "data")
+
+    done = fake.run(
+        BOX,
+        "--build-dir",
+        str(fake.root / "box" / "build"),
+        "--data-root",
+        str(fake.root / "box" / "data"),
+        "--refire",
+        fake.url,
+        CLOUD_SHIP_DATA=str(ship_data),
+    )
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "ship-data" in fake.calls()
+    assert (fake.in_bucket("beta") / "MANIFEST.txt").is_file()
+
+
+def run_box_with_bundle(fake, ship_data, **more: str):
+    return fake.run(
+        BOX,
+        "--build-dir",
+        str(fake.root / "box" / "build"),
+        "--data-root",
+        str(fake.root / "box" / "data"),
+        "--beta-bundle",
+        fake.url,
+        CLOUD_SHIP_DATA=str(ship_data),
+        **more,
+    )
+
+
+@pytest.mark.parametrize("trouble", ["ship_fails", "another_build", "empty_stage"])
+def test_a_beta_bundle_that_fails_never_holds_up_homes_result(
+    fake, home, ship_data, trouble
+) -> None:
+    assert send(fake, home).returncode == 0
+    (fake.dir / "job_status").write_text("succeeded\n")
+    built_tiles(fake.root / "box" / "data")
+    more = {}
+    if trouble == "ship_fails":
+        (fake.dir / "ship_fails").touch()
+    elif trouble == "empty_stage":
+        empty = fake.root / "bin" / "ship-nothing"
+        empty.write_text("#!/usr/bin/env bash\nexit 0\n")
+        empty.chmod(0o755)
+        ship_data = empty
+    else:
+        more["FAKE_SHIPPED"] = "20261004T080000Z"
+
+    done = run_box_with_bundle(fake, ship_data, **more)
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "no bundle for the beta" in done.stdout
+    assert (fake.in_bucket("out") / "SHA256SUMS").is_file(), "home's result went up"
+    assert not fake.in_bucket("beta").exists()
+
+
+FAKE_BETA_TOOL = r"""#!/usr/bin/env bash
+printf 'NAME %s\n' "$*" >>"$FAKE_DIR/calls.log"
+case "NAME $*" in
+  *"receive "*" db "*) exit "$(cat "$FAKE_DIR/receive_db_rc" 2>/dev/null || echo 0)" ;;
+  "smoke "*)
+    left=$(cat "$FAKE_DIR/smoke_fails" 2>/dev/null || echo 0)
+    if [ "$left" -gt 0 ]; then echo $((left - 1)) >"$FAKE_DIR/smoke_fails"; exit 1; fi ;;
+esac
+exit 0
+"""
+
+
+@pytest.fixture
+def beta(fake):
+    """The beta's checkout (its .env and scripts/beta/ stand-ins) and the box's beta/ folder."""
+    live = fake.root / "beta"
+    data = fake.root / "beta-data"
+    data.mkdir()
+    (live / "scripts" / "beta").mkdir(parents=True)
+    (live / ".env").write_text(f"DATA_ROOT={data}\nCOMPOSE_PROJECT_NAME=routemaker-beta\n")
+    tools = {}
+    for name in ("receive", "beta-compose", "smoke"):
+        path = fake.root / "bin" / name
+        path.write_text(FAKE_BETA_TOOL.replace("NAME", name))
+        path.chmod(0o755)
+        tools[name] = path
+    bundle = fake.in_bucket("beta")
+    (bundle / "tiles" / "standard" / BUILD).mkdir(parents=True)
+    (bundle / "tiles" / "standard" / BUILD / "tiles.tar").write_text("graph")
+    (bundle / "db").mkdir()
+    (bundle / "db" / "routemaker.dump").write_text("dump")
+    (bundle / "SHA256SUMS").write_text("sums")
+    (bundle / "MANIFEST.txt").write_text("bundle_format=1\n")
+
+    class Beta:
+        incoming = fake.root / "incoming"
+        state = fake.root / "beta-state"
+
+        def run(self, *args: str):
+            return fake.run(
+                IMPORT,
+                "--beta",
+                "--live-dir",
+                str(live),
+                "--incoming",
+                str(self.incoming),
+                "--state",
+                str(self.state),
+                *args,
+                fake.url,
+                CLOUD_RECEIVE=str(tools["receive"]),
+                CLOUD_BETA_COMPOSE=str(tools["beta-compose"]),
+                CLOUD_SMOKE=str(tools["smoke"]),
+                CLOUD_SMOKE_TRIES="3",
+                CLOUD_SMOKE_WAIT_S="0",
+            )
+
+    Beta.live, Beta.data = live, data
+    return Beta()
+
+
+def test_on_the_beta_it_downloads_and_verifies_and_installs_nothing(fake, beta) -> None:
+    done = beta.run()
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert (beta.incoming / "tiles" / "standard" / BUILD / "tiles.tar").read_text() == "graph"
+    calls = fake.calls()
+    assert f"receive --bundle {beta.incoming} --env-file {beta.live / '.env'} verify" in calls
+    assert " files" not in calls and "db --update-data" not in calls and "beta-compose" not in calls
+
+
+def test_on_the_beta_an_unfinished_bundle_is_refused(fake, beta) -> None:
+    (fake.in_bucket("beta") / "MANIFEST.txt").unlink()
+
+    done = beta.run()
+
+    assert done.returncode == 2 and "no finished bundle" in done.stderr
+    assert "receive" not in fake.calls()
+
+
+def test_on_the_beta_the_swap_is_the_runbooks_new_data_update(fake, beta) -> None:
+    assert beta.run().returncode == 0
+    (fake.dir / "calls.log").unlink()
+
+    done = beta.run("--swap")
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    calls = fake.calls()
+    order = [
+        "receive --bundle",
+        "sudo " + str(fake.root / "bin" / "receive"),
+        "beta-compose stop api worker",
+        "db --update-data",
+        "beta-compose up -d api worker",
+        "beta-compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend",
+        "smoke --local",
+    ]
+    positions = [calls.index(step) for step in order]
+    assert positions == sorted(positions), calls
+    assert " files" in calls and "--replace-db" not in calls
+    assert (beta.state / "predraw.log").exists()
+
+
+def test_on_the_beta_the_swap_waits_for_deployment_to_be_paused(fake, beta) -> None:
+    assert beta.run().returncode == 0
+    (beta.state / "cd" / "bin").mkdir(parents=True)
+    (fake.dir / "calls.log").unlink()
+
+    done = beta.run("--swap")
+
+    assert done.returncode == 2 and "pause --wait" in done.stderr
+    assert "receive" not in fake.calls()
+
+    (beta.state / "cd" / "PAUSED").write_text("cloud data\n")
+    assert beta.run("--swap").returncode == 0
+
+
+def test_on_the_beta_a_failed_database_update_starts_the_app_again(fake, beta) -> None:
+    assert beta.run().returncode == 0
+    (fake.dir / "receive_db_rc").write_text("1")
+
+    done = beta.run("--swap")
+
+    assert done.returncode == 2 and "database is as it was" in done.stderr
+    calls = fake.calls()
+    assert calls.index("db --update-data") < calls.rindex("beta-compose up -d api worker")
+    assert "restart valhalla" not in calls
+
+
+def test_on_the_beta_a_sha_mismatch_is_passed_to_receive_data(fake, beta) -> None:
+    done = beta.run("--allow-sha-mismatch")
+
+    assert done.returncode == 0, done.stderr
+    assert "--allow-sha-mismatch verify" in fake.calls()
+
+
+def test_on_the_beta_incoming_may_not_be_inside_data_root(fake, beta) -> None:
+    beta.incoming = beta.data / "incoming"
+
+    done = beta.run()
+
+    assert done.returncode == 2 and "inside DATA_ROOT" in done.stderr
+    assert not beta.incoming.exists()
+
+
+def test_on_the_beta_a_run_with_no_bundle_leaves_incoming_alone(fake, beta) -> None:
+    shutil.rmtree(fake.in_bucket("beta"))
+    beta.incoming.mkdir()
+    (beta.incoming / "MANIFEST.txt").write_text("the bundle sent from home\n")
+
+    done = beta.run()
+
+    assert done.returncode == 2 and "no finished bundle" in done.stderr
+    assert (beta.incoming / "MANIFEST.txt").read_text() == "the bundle sent from home\n"
+
+
+def test_on_the_beta_the_swap_installs_only_this_runs_bundle(fake, beta) -> None:
+    beta.incoming.mkdir()
+    (beta.incoming / "MANIFEST.txt").write_text("the bundle sent from home\n")
+
+    done = beta.run("--swap")
+
+    assert done.returncode == 2 and "does not hold this run's bundle" in done.stderr
+    assert "receive" not in fake.calls()
+
+
+def test_on_the_beta_the_swap_waits_for_a_running_pass(fake, beta) -> None:
+    import fcntl
+
+    assert beta.run().returncode == 0
+    cd = beta.state / "cd"
+    (cd / "bin").mkdir(parents=True)
+    (cd / "PAUSED").write_text("cloud data\n")
+    (fake.dir / "calls.log").unlink()
+    with (cd / "lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        done = beta.run("--swap")
+
+    assert done.returncode == 2 and "still running" in done.stderr
+    assert "receive" not in fake.calls()
+
+
+def test_on_the_beta_the_smoke_test_is_retried_while_the_app_starts(fake, beta) -> None:
+    assert beta.run().returncode == 0
+    (fake.dir / "smoke_fails").write_text("2")
+
+    done = beta.run("--swap")
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert fake.calls().count("smoke --local") == 3
+
+
+def test_on_the_beta_a_smoke_test_that_keeps_failing_is_reported(fake, beta) -> None:
+    assert beta.run().returncode == 0
+    (fake.dir / "smoke_fails").write_text("9")
+
+    done = beta.run("--swap")
+
+    assert done.returncode == 1
+    assert "still fails" in done.stdout and "--public" in done.stdout
+
+
+def test_a_refired_run_makes_its_beta_bundle_again(fake, home, ship_data) -> None:
+    assert send(fake, home).returncode == 0
+    (fake.dir / "job_status").write_text("succeeded\n")
+    built_tiles(fake.root / "box" / "data")
+    assert run_box_with_bundle(fake, ship_data, CLOUD_POWEROFF="true").returncode == 0
+
+    done = fake.run(
+        BOX,
+        "--build-dir",
+        str(fake.root / "box" / "build"),
+        "--data-root",
+        str(fake.root / "box" / "data"),
+        "--refire",
+        fake.url,
+        CLOUD_SHIP_DATA=str(ship_data),
+    )
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert fake.calls().count("ship-data --live-dir") == 2, "not the earlier build's stage"
+
+
+def test_a_bundle_asked_for_after_the_export_is_not_made(fake, home, ship_data) -> None:
+    assert send(fake, home).returncode == 0
+    (fake.dir / "job_status").write_text("succeeded\n")
+    built_tiles(fake.root / "box" / "data")
+    box(fake, "--no-stop")
+    (fake.root / "home" / "cloud-runs" / "cloud-20261011" / "state" / "upload.done").unlink()
+
+    done = run_box_with_bundle(fake, ship_data)
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "export already renamed" in done.stdout
+    assert "ship-data" not in fake.calls() and not fake.in_bucket("beta").exists()
+
+
+def test_on_the_beta_the_swap_passes_a_sha_mismatch_to_every_step(fake, beta) -> None:
+    assert beta.run("--allow-sha-mismatch").returncode == 0
+    (fake.dir / "calls.log").unlink()
+
+    done = beta.run("--allow-sha-mismatch", "--swap")
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    receive = fake.root / "bin" / "receive"
+    tail = f"--bundle {beta.incoming} --env-file {beta.live / '.env'} --allow-sha-mismatch"
+    calls = fake.calls()
+    assert f"sudo {receive} {tail} files" in calls
+    assert f"sudo {receive} {tail} db --update-data" in calls
+
+
+def test_on_the_beta_the_swap_refuses_a_deploy_left_half_done(fake, beta) -> None:
+    assert beta.run().returncode == 0
+    cd = beta.state / "cd"
+    (cd / "bin").mkdir(parents=True)
+    (cd / "PAUSED").write_text("cloud data\n")
+    (cd / "in-progress").write_text("step 3\n")
+    (fake.dir / "calls.log").unlink()
+
+    done = beta.run("--swap")
+
+    assert done.returncode == 2 and "half done" in done.stderr
+    assert "receive" not in fake.calls()
+
+
+def test_on_the_beta_incoming_may_not_be_inside_the_checkout(fake, beta) -> None:
+    beta.incoming = beta.live / "incoming"
+
+    done = beta.run()
+
+    assert done.returncode == 2 and "inside DATA_ROOT or the checkout" in done.stderr
+    assert not beta.incoming.exists()
