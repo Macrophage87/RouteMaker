@@ -54,6 +54,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
+from routemaker import mdot_aadt  # noqa: E402 - needs the path above
+
 CROSSINGS_FIXTURE = REPO / "fixtures" / "crossings" / "potomac-anacostia.json"
 REQUIRED = ("crossings.json", "urban-areas.json", "volume.json")
 
@@ -308,10 +310,22 @@ def volume_rows(volume: Path, source: str, year: int | None, aadt_property: str)
     """
     tier = source_tier(source)
     agency = canonical_agency(source)
+    features = list(_geometries(volume))
+    # MDOT SHA's layer (FOLLOWUP-MDOT-AADT, OWNER-DECISIONS 429; `routemaker.mdot_aadt`):
+    # a row the agency flags as misplaced (`LOC_ERROR`) is not installed, and the
+    # year `AADT` is for is read from the layer's dated fields where no
+    # `--volume-year` was given, so an operator cannot file 2024's counts as 2023's.
+    maryland = agency == mdot_aadt.AGENCY
+    if maryland and year is None:
+        year = mdot_aadt.current_year({key for _, properties in features for key in properties})
+    skipped = 0
     rows = []
-    for number, (geometry, properties) in enumerate(_geometries(volume)):
+    for number, (geometry, properties) in enumerate(features):
         value = properties.get(aadt_property)
         if value in (None, ""):
+            continue
+        if maryland and not mdot_aadt.usable(properties):
+            skipped += 1
             continue
         lines = (
             [geometry]
@@ -337,6 +351,8 @@ def volume_rows(volume: Path, source: str, year: int | None, aadt_property: str)
                     "year": year,
                 }
             )
+    if skipped:
+        print(f"  {volume}: {skipped} rows not installed (no count above zero, or LOC_ERROR set)")
     return rows
 
 

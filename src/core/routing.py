@@ -76,7 +76,17 @@ from django.utils import timezone
 from pipeline.schema import MASS_WIDTH_COLUMN, STRESS_HALF_COLUMN, validate_schema_name
 from pipeline.variants import Variant
 from routemaker import avoid_junctions as avoid_rules
-from routemaker import calm, climbs, describe, flow, intersections, ridetime, trace_junctions, zoo
+from routemaker import (
+    calm,
+    climbs,
+    describe,
+    flow,
+    intersections,
+    mdot_aadt,
+    ridetime,
+    trace_junctions,
+    zoo,
+)
 from routemaker import detour as detour_rules
 from routemaker import profile as profile_rules
 from routemaker.facility import FACILITIES
@@ -2891,6 +2901,9 @@ ATTRIBUTION = (
     "© OpenStreetMap contributors (ODbL)",
     "DC Open Data (CC BY 4.0, adapted): https://creativecommons.org/licenses/by/4.0/",
     "VDOT",
+    # MDOT SHA's traffic counts (FOLLOWUP-MDOT-AADT): Maryland iMAP's terms ask that
+    # derived data acknowledge the State of Maryland, so the credit names it.
+    mdot_aadt.CREDIT,
     "Open Baltimore",
     "Montgomery County Planning Department",
     "USGS 3DEP",

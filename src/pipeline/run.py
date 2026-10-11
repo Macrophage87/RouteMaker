@@ -44,6 +44,7 @@ from routemaker import (
     facility,
     lane_overrides,
     massflow,
+    mdot_aadt,
     ridetime,
     singletrack,
     speed_corrections,
@@ -1934,6 +1935,18 @@ def build_handlers(
         ]
         result = conflation.conflate(entries, reference.volume_features)
         context.aadt_by_way = dict(result.matched)
+        # MDOT SHA's counts reach both carriageways of a divided Maryland road
+        # (FOLLOWUP-MDOT-AADT, OWNER-DECISIONS 429; `share_with_carriageways`):
+        # MD 185 north of Chevy Chase Circle is the first case. Only theirs.
+        if any(f.agency == mdot_aadt.AGENCY for f in reference.volume_features):
+            shared = conflation.share_with_carriageways(
+                result,
+                divided.carriageways(context.ways),
+                {way.osm_id: way.name for way in context.ways},
+                {mdot_aadt.AGENCY},
+            )
+            context.aadt_by_way.update(shared)
+            logger.info("MDOT SHA counts shared with %d opposite carriageways", len(shared))
         # The agency street blocks next: their count (DC's Roadway Block AADT,
         # 2020) fills where no count layer reached the way and never replaces
         # one - DDOT's own 2024 counts are the newer survey.
