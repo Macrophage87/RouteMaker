@@ -25,6 +25,7 @@ test("the credits are short source names, exactly these, OpenStreetMap first (OW
       "USGS 3DEP",
       "U.S. Census Bureau",
       "Photon",
+      "Capital Bikeshare",
     ],
   );
   for (const credit of DATA) {

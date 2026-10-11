@@ -36,6 +36,7 @@ from datetime import UTC, datetime
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
+from django.db import models
 
 from pipeline import promotion, reconcile, retention, tiles
 from pipeline.variants import RESTART_OFFROAD_WHERE_IT_RUNS, RESTART_ROUTERS, Variant
@@ -82,15 +83,29 @@ def staging_segments(staging: str) -> int | None:
         return cursor.fetchone()[0]
 
 
-def later_overrides(read_at: datetime) -> list[int]:
-    """Approved access overrides whose approval is newer than the box's copy."""
-    from core.models import Override
+def later_overrides(read_at: datetime, *, panel_reapplied: bool = False) -> list[int]:
+    """Approved access overrides whose approval is newer than the box's copy. Where the
+    swap re-applies the road panel's edits, the overrides those edits wrote are left out:
+    only they are re-applied, so any other later approval is still missing from the build."""
+    from core.models import Override, StressEdit
 
-    return list(
+    later = list(
         Override.objects.filter(approved=True, approved_at__gt=read_at)
         .order_by("id")
         .values_list("id", flat=True)
     )
+    if not panel_reapplied or not later:
+        return later
+    # A named stretch's edit keeps every way's row in `override_rows`; `override` is
+    # only the first way's.
+    panel: set[int] = set()
+    for first, pairs in StressEdit.objects.filter(
+        models.Q(override_id__in=later) | models.Q(at__gt=read_at)
+    ).values_list("override_id", "override_rows"):
+        if first is not None:
+            panel.add(first)
+        panel.update(p["override"] for p in pairs or [] if p.get("override") is not None)
+    return [pk for pk in later if pk not in panel]
 
 
 class Command(BaseCommand):
@@ -185,20 +200,18 @@ class Command(BaseCommand):
             f", {staging} has {segments}; {live} becomes {settings.SEGMENT_SCHEMA_RETIRED}"
         )
         reapplies = "overrides_read_at" in inspect.signature(promotion.perform_swap).parameters
-        later: list[int] = []
         if reapplies:
             self.stdout.write(
                 f"road panel edits made after {read_at:%Y-%m-%d %H:%M:%S} UTC are re-applied"
             )
-        else:
-            later = later_overrides(read_at)
-            if later:
-                self.stdout.write(
-                    f"{len(later)} access override(s) approved after "
-                    f"{read_at:%Y-%m-%d %H:%M:%S} UTC are not in this build (ids "
-                    + ", ".join(map(str, later))
-                    + "); they take effect at the next rebuild"
-                )
+        later = later_overrides(read_at, panel_reapplied=reapplies)
+        if later:
+            self.stdout.write(
+                f"{len(later)} access override(s) approved after "
+                f"{read_at:%Y-%m-%d %H:%M:%S} UTC are not in this build (ids "
+                + ", ".join(map(str, later))
+                + "); they take effect at the next rebuild"
+            )
 
         if later and not options["accept_later_overrides"]:
             message = (

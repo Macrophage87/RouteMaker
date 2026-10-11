@@ -21,14 +21,21 @@ a derived tag could not say "a left across a four-lane road" either. The model
 therefore works on the traced route, where the tier of every road at every
 junction, the movement and Valhalla's own control flags are all known.
 
-Every number below is a PROPOSAL for the owner, taken from "Bicycle stress
-literature in depth" (reports/LTS-literature-review-2.md), "Crossing penalties
-by control type and right of way" and "Left turns, multi-lane merges capped by
-box turns, and slip lanes". They are judgement within the cited ranges (Broach et al.'s per-mile
-values, Eugene's 818 ft per left, Copenhagen's 154 ft left against 62 ft
-right, Oregon's LTS tables) and are named so the owner's answers are one-line
-changes. Nothing here is a legal claim; the DC roll-through rule (item 171) is
-the owner's account.
+The numbers are "option C" of reports/INTERSECTION-COSTS-options.md, chosen by
+the owner on 2026-10-09 (OWNER-DECISIONS 467, 468, 468a). They start from
+"Bicycle stress literature in depth" (reports/LTS-literature-review-2.md),
+"Crossing penalties by control type and right of way" and "Left turns,
+multi-lane merges capped by box turns, and slip lanes" (Broach et al.'s
+per-mile values, Eugene's 818 ft per left, Copenhagen's 154 ft left against
+62 ft right, Oregon's LTS tables), taken at the TOP of those ranges for the
+ordinary tiers. The severe tier (an unsignalised junction with an LTS 4 or
+Avoid road: steeper speed and lane factors, a left off the road as dear as a
+stopped crossing, a merge priced by the road, a 2 mi cap) is ABOVE anything
+the literature gives; it is the owner's choice (467: "There's definitely
+intersections that I'd detour 2 miles to avoid, though rare."), not a measured
+value. Costs are said in calm miles (`calm_miles`), US units first. Nothing
+here is a legal claim; the DC roll-through rule (item 171) is the owner's
+account.
 """
 
 from __future__ import annotations
@@ -38,8 +45,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 
+from . import ridetime
+from .geo import Point, haversine
+
 FEET_PER_METRE = 3.28084
 KMH_PER_MPH = 1.609344
+FEET_PER_MILE = 5280.0
+KM_PER_MILE = 1.609344
 
 # --- Which roads count -----------------------------------------------------
 
@@ -52,12 +64,17 @@ BUSY_TIER = 3
 #
 # Feet of equivalent quiet-street riding by the crossed road's tier. Literature
 # review: LTS 3 800-1,600 ft (Eugene 818 ft; Broach 10-20k ADT 6-10% a mile),
-# LTS 4 2,500-3,500 ft (Broach 20k+ ADT, 1,700-3,260 ft). The midpoints.
-STOPPED_CROSSING_FT = {3: 1200.0, 4: 3000.0, 5: 3000.0}
+# LTS 4 2,500-3,500 ft (Broach 20k+ ADT, 1,700-3,260 ft). OWNER-DECISIONS 468
+# (option C, which is B here) takes the TOP of the range: 1,600 ft = 0.30 calm mi
+# for LTS 3; 4,000 ft = 0.76 calm mi for LTS 4 (a little above the top, 3,500 ft).
+# The severe tier below then raises LTS 4 further on fast, wide roads.
+STOPPED_CROSSING_FT = {3: 1600.0, 4: 4000.0, 5: 4000.0}
 
 # "Much lower penalty for traffic signals" (item 165): 100-200 ft for a signal
-# with detection, wider roads on a short phase more. Mostly delay.
-SIGNALISED_CROSSING_FT = {3: 150.0, 4: 300.0, 5: 300.0}
+# with detection, wider roads on a short phase more. Mostly delay. 468: a
+# signalised crossing of a big LTS 4 road is 600 ft = 0.11 calm mi (it was 300 ft);
+# LTS 3 stays 150 ft = 0.03 calm mi.
+SIGNALISED_CROSSING_FT = {3: 150.0, 4: 600.0, 5: 600.0}
 
 # An all-way stop: Broach's stop 0.5-0.9% a mile (26-48 ft) and Arlington's -1
 # give 50-100 ft; the rider is stopped, but so is everyone else.
@@ -123,7 +140,62 @@ VOLUME_FACTOR_BUSIER = 1.2
 # traffic" (item 165). Posted speed at or above this is taken as rural.
 RURAL_SPEED_MPH = 45.0
 RURAL_FACTOR = 1.25
-MAX_CROSSING_FT = 4500.0
+
+# --- The severe tier (OWNER-DECISIONS 468, option C) ------------------------
+#
+# An unsignalised junction with an LTS 4 or Avoid road scales more steeply
+# than the ordinary tiers: 1.2 at 40 mph, 1.4 at 45 and 1.6 above (against 1.1,
+# 1.2 and 1.3), 1.25 for two lanes a direction and 1.6 for three or more
+# (against 1.1 and 1.25), and the rural factor applies to a left off the road
+# as well as to a stop against it. The literature does not go this high; this is
+# the owner's weighting of the worst junctions (467).
+SEVERE_MIN_TIER = 4
+SEVERE_SPEED_FACTORS = ((25.0, 0.8), (30.0, 0.9), (35.0, 1.0), (40.0, 1.2), (45.0, 1.4))
+SEVERE_SPEED_FACTOR_FASTER = 1.6
+SEVERE_LANE_FACTORS = {1: 1.0, 2: 1.25}
+SEVERE_LANE_FACTOR_WIDER = 1.6
+# An unposted road is priced at its jurisdiction's statutory default
+# (OWNER-DECISIONS 469: "use each jurisdiction's statutory default instead"),
+# which the classifier already reads it at (`routemaker.stress`: the District's
+# 20 mph, Maryland's and Virginia's urban and rural figures) and the segment
+# table keeps as `road_default_speed_mph`. For cost only; the words
+# (`describe_road`) only ever say what the map gave. On a table built before that
+# column, an LTS 4 or Avoid road with no speed is read at 468's stopgap, 45 mph,
+# and any other unposted road at none (a factor of 1.0).
+UNKNOWN_SPEED_SEVERE_MPH = 45.0
+
+# The most any one junction costs: 10,560 ft = 2.00 calm mi (468; 467: "I'd
+# detour 2 miles to avoid"). It was 4,500 ft = 0.85 calm mi. Above the literature.
+MAX_CROSSING_FT = 10560.0
+
+# --- Time of day (OWNER-DECISIONS 468a, 469c-469e) -------------------------
+#
+# "Put some more intersection stress during rush hour too and a little less on
+# weekends and off hours" (468a), then "Evenings are probably 1x till about 9.
+# Then reduced to about half to 7" (469c), "at least in the city" (469d), and
+# x0.85 outside it (469e). A busy-road junction's cost is times this by the
+# ride's setting (`routemaker.ridetime`): weekday rush (07-10, 16-19) x1.25,
+# weekday off-peak (to 9 PM) x1.0, weekend daytime (federal holidays included)
+# x0.85, and night (9 PM-7 AM, any day) x0.5 where the crossed road lies in a
+# Census urban area and x0.85 where it does not. A road whose urban flag is not
+# known (a table built before `road_urban`) takes the rural x0.85, the smaller
+# reduction. Typical values, not a promise. Quiet-street stops are not scaled.
+TIME_FACTORS = {
+    ridetime.WEEKDAY_RUSH: 1.25,
+    ridetime.WEEKDAY_OFFPEAK: 1.0,
+    ridetime.WEEKEND: 0.85,
+}
+NIGHT_URBAN_FACTOR = 0.5
+NIGHT_RURAL_FACTOR = 0.85
+
+
+def time_factor(when: str | None, urban: bool | None = None) -> float:
+    """The multiplier on a busy-road junction's cost at a ride time; 1.0 where
+    the setting is unknown. At night it depends on `urban`, the crossed road's."""
+    if when == ridetime.NIGHT:
+        return NIGHT_URBAN_FACTOR if urban else NIGHT_RURAL_FACTOR
+    return TIME_FACTORS.get(when or "", 1.0)
+
 
 # --- Movement (item 166) ----------------------------------------------------
 #
@@ -139,19 +211,29 @@ MOVEMENT_FACTOR_ONTO = {"left": 1.5, "straight": 1.0, "right": 0.1}
 # LTS 3 value, 600 ft, is BELOW the literature review's 800-1,600 ft range for
 # an LTS 3 crossing (it is a left across one oncoming lane from a lane the
 # rider already holds, not a crossing from a stop); an owner question.
-LEFT_ACROSS_ONCOMING_FT = {3: 600.0, 4: 1500.0, 5: 1500.0}
+# 468: LTS 3 800 ft (0.15 calm mi); and "a left off an unsignalised LTS 4 road
+# costs as much as crossing it from a stop", so LTS 4 is the stopped crossing's
+# 4,000 ft (0.76 calm mi) before the severe tier's factors, plus the merge.
+LEFT_ACROSS_ONCOMING_FT = {3: 800.0, 4: 4000.0, 5: 4000.0}
 SIGNALISED_LEFT_FACTOR = 0.4
 RIGHT_FROM_BUSY_FT = 15.0
 
 # "having to cross several lanes to get into the left turn can add stress too,
-# though box turns are an option" (item 167): feet per lane merged across, per
-# direction, capped at about a two-stage box turn (two crossings and one extra
-# signal wait: 200-500 ft at a signalized junction). At a signal the whole left
-# is capped there too, oncoming lanes and merge together (item 186, "Cap at box
-# turn": "At signals a left never costs more than the two-stage box-turn
-# alternative (about 500 ft equivalent)").
-MERGE_FT_PER_LANE = 250.0
-BOX_TURN_CAP_FT = 500.0
+# though box turns are an option" (item 167); "What about having to change lanes
+# to make a left? That's very stressful too" (468). Priced by the road crossed,
+# per lane merged across, per direction: about 0.15 calm mi (792 ft) a lane on
+# an LTS 3 road and about 0.30 calm mi (1,584 ft) a lane on LTS 4 or Avoid,
+# rising with speed from 40 mph (the severe tier's speed factors, never below
+# 1), so a two-lane merge then a left on a fast LTS 4 road reaches the severe
+# range. Not in the literature. At a signal the whole left (oncoming lanes and
+# merge together) is capped at a two-stage box turn, 750 ft = 0.14 calm mi
+# (items 167, 186, 468). Where OSM maps a bike box or two-stage turn box the same
+# cap should apply to an unsignalised left, but the router data does not carry
+# those tags (nothing in lua/ or the pipeline reads an advanced stop line or a
+# bicycle box), so that cap is not applied.
+MERGE_MILES_PER_LANE = {3: 0.15, 4: 0.30, 5: 0.30}
+MERGE_SPEED_FLOOR = 1.0
+BOX_TURN_CAP_FT = 750.0
 # Where the lane count is unknown, a road of this tier is read at this many
 # lanes a direction for the merge.
 ASSUMED_LANES = {3: 1, 4: 2, 5: 2}
@@ -165,7 +247,8 @@ ASSUMED_LANES = {3: 1, 4: 2, 5: 2}
 # when you cross it (Recommended)"); riding straight past it along the road is
 # not. What "crosses" is, from the router's arms at the node, is
 # `core.junctions.crossed_links`.
-SLIP_LANE_FT = 800.0
+# 468: 1,000 ft = 0.19 calm mi (it was 800 ft).
+SLIP_LANE_FT = 1000.0
 SIGNALISED_SLIP_FACTOR = 0.5
 
 # --- Severity (item 172) ----------------------------------------------------
@@ -173,14 +256,64 @@ SIGNALISED_SLIP_FACTOR = 0.5
 # A stopped-side crossing of an LTS 3 road (800-1,600 ft) is orange; of an LTS 4
 # road (2,500-3,500 ft) red; a left onto or across an LTS 3 road is orange, red
 # when the road is fast. A signalized crossing (150-300 ft) is neither.
-ORANGE_MIN_FT = 600.0
-RED_MIN_FT = 2000.0
+# 468: orange from 800 ft = 0.15 calm mi, red from 2,900 ft = 0.55 calm mi (they
+# were 600 and 2,000 ft), so the mix of markers holds with the higher costs. Red
+# is also the search's avoidance trigger (`core.refine.REFINE_MIN_EVENT_FT`).
+# 2026-10-10: red from 3,100 ft = 0.59 calm mi [0.94 km], so an ordinary
+# unsignalised left onto an LTS 3 road (2,400 ft, x1.25 at rush hour = 3,000 ft)
+# stays orange at rush hour. The 468 sample re-run that day: 21 of the 38
+# rush-hour orange-to-red changes were this one case, pushed just over 2,900 ft
+# by the 1.25 factor. The owner chose this on 2026-10-10
+# ("Raise red slightly").
+ORANGE_MIN_FT = 800.0
+RED_MIN_FT = 3100.0
 ORANGE = "orange"
 RED = "red"
 
 # How far from straight on is still "straight", and the angle past which it is
 # a reversal rather than a turn.
 STRAIGHT_MAX_DEG = 35.0
+
+# --- Riders' ratings of a junction (OWNER-DECISIONS 232) ----------------------
+#
+# "In some times the road is fine, but the intersection can be especially
+# dangerous." A rider suggests a danger level for a junction and an instance
+# admin approves it (`core.junction_suggestions`): from then on every route
+# through that junction pays the level's cost and shows its marker, whatever
+# the roads either side make of it, raising or lowering the model's own figure.
+# Levels are the poll's (`core.suggestion_post.JUNCTION_WORDS`): 2 easy, 3 takes
+# patience, 4 hard. Avoid (5) is not a rating here: it is an Avoid-rated
+# junction (`routemaker.avoid_junctions`), with its own penalty and marker.
+# The costs are the model's own figures for the matching colour: an all-way
+# stop's for easy (no marker), a stopped-side LTS 3 crossing's for orange, an
+# LTS 4 crossing's for red. A PROPOSAL, as every number here.
+RATING_COST_FT = {2: ALL_WAY_STOP_FT, 3: STOPPED_CROSSING_FT[3], 4: STOPPED_CROSSING_FT[4]}
+RATING_SEVERITY = {2: None, 3: ORANGE, 4: RED}
+RATING_WORDS = {2: "easy", 3: "takes patience", 4: "hard"}
+# A route passes a rated junction where one of its nodes is this close to the
+# rating's point (metres): the Avoid junctions' own 49 ft (15 m), which takes in
+# a divided road's two carriageway nodes and stays short of the next junction.
+RATING_MATCH_M = 15.0
+
+
+@dataclass(frozen=True)
+class Rating:
+    """An approved rider rating of one junction: its node and its level (2 to 4)."""
+
+    id: int
+    lon: float
+    lat: float
+    level: int
+
+
+def rating_at(lon: float, lat: float, ratings: Sequence[Rating]) -> Rating | None:
+    """The rating nearest (lon, lat) within RATING_MATCH_M, or None."""
+    best, best_m = None, RATING_MATCH_M
+    for rating in ratings:
+        m = haversine(Point(lon, lat), Point(rating.lon, rating.lat))
+        if m <= best_m:
+            best, best_m = rating, m
+    return best
 
 
 class Movement(StrEnum):
@@ -221,10 +354,26 @@ class Road:
     display: tuple[str, ...] = field(default=(), compare=False)
     # The OSM ways of it at the junction (a carriageway's, where it is one).
     ways: frozenset[int] = frozenset()
+    # The speed the classifier assumed where none is posted (the jurisdiction's
+    # statutory default; `cost_speed`), and whether the road lies in a Census
+    # urban area (`time_factor` at night). None on a table built before them.
+    default_speed_mph: float | None = field(default=None, compare=False)
+    urban: bool | None = field(default=None, compare=False)
+    # A half step (OWNER-DECISIONS 441i-441l, 461a): the road is half a level above `tier`.
+    # Its base costs are the midpoints of its two levels' (`_table`); an on/off rule
+    # takes the cautious side, so 2.5 is busy.
+    half: bool = False
+
+    @property
+    def level(self) -> float:
+        """The tier as a number, half step included (0 where unknown)."""
+        if self.tier is None:
+            return 0.0
+        return self.tier + (0.5 if self.half and self.tier < 5 else 0.0)
 
     @property
     def busy(self) -> bool:
-        return self.tier is not None and self.tier >= BUSY_TIER
+        return self.tier is not None and self.level >= BUSY_TIER - 0.5
 
 
 @dataclass(frozen=True)
@@ -258,6 +407,9 @@ class Junction:
     # a way with a name in common. Its tier changing here is not "joining" it
     # (review r2, SHOULD_FIX 1).
     continues: bool = False
+    # An approved rider rating of the junction (`Rating.level`, 2 to 4), which
+    # sets its cost and colour (OWNER-DECISIONS 232); None: the model's own.
+    rating: int | None = None
 
 
 @dataclass(frozen=True)
@@ -293,10 +445,21 @@ class Event:
     # with a name in common (`merge_nearby`).
     road_ways: frozenset[int] = frozenset()
     road_oneway: bool | None = None
+    # A divided road's carriageways crossed as one (`_one_road`): each is one-way, but
+    # the road has two approaches to hold, so a Mass Ride's corkers count it as two-way
+    # (PLAN item 139). `road_oneway` keeps its meaning for the junction costs.
+    road_divided: bool = False
     # A Mass Ride's signalized crossings that run within GROUP_WITHIN_M of one
     # another are one group, numbered from 1 in route order (`number_groups`;
     # items 233 and 234). None: not in a group, and always None off a Mass Ride.
     group: int | None = None
+    # The riders' rating that set this event's cost and colour (2 to 4), or None.
+    rating: int | None = None
+    # The cost read a speed the map did not give (the statutory default, or the
+    # 45 mph stopgap; `cost_speed`): for the debug list; never said to a rider.
+    assumed_speed: bool = field(default=False, compare=False)
+    # The ride-time factor that was applied (`time_factor`, 468a, 469c-469e).
+    time_factor: float = field(default=1.0, compare=False)
 
 
 def movement_of(heading_in: float, heading_out: float) -> Movement:
@@ -315,16 +478,48 @@ def _band(value: float, bands: tuple[tuple[float, float], ...], above: float) ->
     return above
 
 
+def severe(road: Road) -> bool:
+    return (road.tier or 0) >= SEVERE_MIN_TIER
+
+
+def cost_speed(road: Road) -> float | None:
+    """The speed the cost reads: the map's, else the jurisdiction's statutory
+    default (469, `Road.default_speed_mph`), else for an LTS 4 / Avoid road the
+    stopgap 45 mph. For cost only; never said."""
+    if road.speed_mph is not None:
+        return road.speed_mph
+    if road.default_speed_mph is not None:
+        return road.default_speed_mph
+    return UNKNOWN_SPEED_SEVERE_MPH if severe(road) else None
+
+
+def speed_assumed(road: Road) -> bool:
+    """Whether the cost read a speed the map did not give (`cost_speed`)."""
+    return road.speed_mph is None and cost_speed(road) is not None
+
+
 def scale(road: Road, stopped_side: bool) -> float:
     """The crossed road's speed, width, volume and rurality, as a multiplier on
-    the tier's base cost. Unknown inputs are 1.0, not guessed."""
+    the tier's base cost. Unknown inputs are 1.0, not guessed, except an LTS 4 /
+    Avoid road's speed (`cost_speed`). The severe tier (LTS 4, Avoid) scales
+    more steeply and counts rurality on any movement (468)."""
+    hard = severe(road)
     factor = 1.0
-    if road.speed_mph is not None:
-        factor *= _band(road.speed_mph, SPEED_FACTORS, SPEED_FACTOR_FASTER)
-        if stopped_side and road.speed_mph >= RURAL_SPEED_MPH:
+    speed = cost_speed(road)
+    if speed is not None:
+        if hard:
+            factor *= _band(speed, SEVERE_SPEED_FACTORS, SEVERE_SPEED_FACTOR_FASTER)
+        else:
+            factor *= _band(speed, SPEED_FACTORS, SPEED_FACTOR_FASTER)
+        # A speed the law assumes is no sign of a rural road inside a town.
+        rural = road.speed_mph is not None or road.urban is not True
+        if (stopped_side or hard) and speed >= RURAL_SPEED_MPH and rural:
             factor *= RURAL_FACTOR
     if road.lanes is not None:
-        factor *= LANE_FACTORS.get(road.lanes, LANE_FACTOR_WIDER)
+        if hard:
+            factor *= SEVERE_LANE_FACTORS.get(road.lanes, SEVERE_LANE_FACTOR_WIDER)
+        else:
+            factor *= LANE_FACTORS.get(road.lanes, LANE_FACTOR_WIDER)
     if road.aadt is not None:
         factor *= _band(float(road.aadt), VOLUME_FACTORS, VOLUME_FACTOR_BUSIER)
     return factor
@@ -335,43 +530,58 @@ def _tier(road: Road) -> int:
     return min(max(road.tier or BUSY_TIER, BUSY_TIER), 5)
 
 
-def crossing_ft(road: Road, control: Control, rider_tier: int | None) -> float:
+def _table(table: dict[int, float], road: Road) -> float:
+    """A busy road's base value from a table by tier. A half step takes the midpoint of
+    its two levels' values (461a: 2.5 is half of LTS 3's, since LTS 2 costs nothing
+    here; 3.5 between LTS 3's and LTS 4's; 4.5 as LTS 4, which equals Avoid's here)."""
+    if road.half and road.tier is not None and 2 <= road.tier <= 4:
+        low = table.get(road.tier, 0.0) if road.tier >= BUSY_TIER else 0.0
+        return (low + table[min(road.tier + 1, 5)]) / 2
+    return table[_tier(road)]
+
+
+def crossing_ft(road: Road, control: Control, rider_tier: float | None) -> float:
     """Straight across `road` (busy) from the rider's road.
 
     The big cost is the STOPPED side against free-flowing traffic; at a signal
     it is much lower; on the free-flowing road, through a junction where the
     cross traffic stops, it is small (items 165 and 169)."""
-    tier = _tier(road)
     if control is Control.SIGNAL:
-        return SIGNALISED_CROSSING_FT[tier]
+        return _table(SIGNALISED_CROSSING_FT, road)
     if control is Control.ALL_STOP:
         return ALL_WAY_STOP_FT
     # The rider's own road has priority: it is the busier road, or the cross
     # traffic is the one facing the sign.
     if control is Control.CROSS_STOP:
         return PRIORITY_SIDE_FT
-    if control is Control.NONE and rider_tier is not None and rider_tier > (road.tier or 0):
+    if control is Control.NONE and rider_tier is not None and rider_tier > road.level:
         return PRIORITY_SIDE_FT
-    return min(STOPPED_CROSSING_FT[tier] * scale(road, stopped_side=True), MAX_CROSSING_FT)
+    return min(_table(STOPPED_CROSSING_FT, road) * scale(road, stopped_side=True), MAX_CROSSING_FT)
 
 
-def merge_ft(road: Road) -> float:
-    """Lanes the rider must cross to reach the left-turn position, capped at a
-    box turn (item 167). `road.lanes` is lanes per direction."""
+def merge_ft(road: Road, control: Control = Control.NONE) -> float:
+    """Lanes the rider must cross to reach the left-turn position, priced by the
+    road (468): per lane, by tier, rising with speed from 40 mph. At a signal
+    capped at a box turn (item 167). `road.lanes` is lanes per direction."""
     lanes = road.lanes if road.lanes is not None else ASSUMED_LANES.get(_tier(road), 1)
-    return min(MERGE_FT_PER_LANE * max(lanes - 1, 0), BOX_TURN_CAP_FT)
+    speed = cost_speed(road)
+    rise = MERGE_SPEED_FLOOR
+    if speed:
+        rise = max(rise, _band(speed, SEVERE_SPEED_FACTORS, SEVERE_SPEED_FACTOR_FASTER))
+    feet = max(lanes - 1, 0) * MERGE_MILES_PER_LANE[_tier(road)] * FEET_PER_MILE * rise
+    return min(feet, BOX_TURN_CAP_FT) if control is Control.SIGNAL else feet
 
 
 def left_from_ft(road: Road, control: Control) -> float:
     """A left turn off a busy road: across its oncoming lanes (none on a
     one-way) and over its other lanes to the left-turn position. At a signal
     never more than the box turn the rider can make instead (item 186)."""
-    oncoming = 0.0 if road.oneway else LEFT_ACROSS_ONCOMING_FT[_tier(road)]
+    oncoming = 0.0 if road.oneway else _table(LEFT_ACROSS_ONCOMING_FT, road)
     if oncoming:
         oncoming *= scale(road, stopped_side=False)
         if control is Control.SIGNAL:
             oncoming *= SIGNALISED_LEFT_FACTOR
-    total = oncoming + merge_ft(road)
+    total = oncoming + merge_ft(road, control)
     if control is Control.SIGNAL:
         total = min(total, BOX_TURN_CAP_FT)
     return min(total, MAX_CROSSING_FT)
@@ -406,17 +616,17 @@ def cost_of(junction: Junction) -> tuple[float, str, Road | None]:
     turning_from_busy_onto = (
         j.incoming.busy
         and j.movement is not Movement.STRAIGHT
-        and ((j.outgoing.tier or 0) > (j.incoming.tier or 0) or j.control is Control.STOP)
+        and (j.outgoing.level > j.incoming.level or j.control is Control.STOP)
     )
     if j.outgoing.busy and not j.continues and (not j.incoming.busy or turning_from_busy_onto):
         # Entering a busy road from a quieter one, or from the stopped side:
         # the stopped side's crossing cost, by the movement.
         factor = MOVEMENT_FACTOR_ONTO[j.movement.value]
-        base = crossing_ft(j.outgoing, j.control, j.incoming.tier)
+        base = crossing_ft(j.outgoing, j.control, _rider(j.incoming))
         take(min(base * factor, MAX_CROSSING_FT), f"{j.movement.value}_onto", j.outgoing)
     for road in (r for r in j.crossed if r.busy):
         if j.movement is Movement.STRAIGHT:
-            value = crossing_ft(road, j.control, j.incoming.tier)
+            value = crossing_ft(road, j.control, _rider(j.incoming))
             if marked_unsignalised(j):
                 value *= MARKED_CROSSING_FACTOR
             # On a busy road of its own the rider only meets a side street's
@@ -428,18 +638,23 @@ def cost_of(junction: Junction) -> tuple[float, str, Road | None]:
             )
         elif j.movement is Movement.LEFT and not j.incoming.busy and not j.outgoing.busy:
             # A left from a quiet street across one busy road to a quiet one beyond.
-            value = crossing_ft(road, j.control, j.incoming.tier) * MOVEMENT_FACTOR_ONTO["left"]
+            value = crossing_ft(road, j.control, _rider(j.incoming)) * MOVEMENT_FACTOR_ONTO["left"]
             take(min(value, MAX_CROSSING_FT), "left_across", road)
     if j.slip_lane:
         # About the busiest road the channel leaves or joins.
         roads = [r for r in (j.incoming, j.outgoing, *j.crossed, *j.links) if r.busy]
-        busiest = max(roads, key=lambda r: r.tier or 0) if roads else None
+        busiest = max(roads, key=lambda r: r.level) if roads else None
         take(slip_ft(j.control) if busiest else 0.0, "slip_lane", busiest)
     if about is None and not j.incoming.busy and not j.outgoing.busy:
         # Quiet street meets quiet street: a stop sign here is the owner's
         # "rolls through when safe", priced near zero.
         cost = NEIGHBOURHOOD_STOP_FT if j.control in {Control.STOP, Control.ALL_STOP} else 0.0
     return cost, kind, about
+
+
+def _rider(road: Road) -> float | None:
+    """The rider's road's level for the priority test, half step included."""
+    return None if road.tier is None else road.level
 
 
 def marked_unsignalised(junction: Junction) -> bool:
@@ -449,6 +664,17 @@ def marked_unsignalised(junction: Junction) -> bool:
     "Trail crossings whose signal is not mapped cap at orange")."""
     trail = junction.marked_crossing or junction.path_crossing
     return trail and junction.control in {Control.NONE, Control.STOP}
+
+
+def calm_miles(cost_ft: float) -> float:
+    """A cost in calm miles (467): feet of quiet riding over 5,280."""
+    return cost_ft / FEET_PER_MILE
+
+
+def calm_text(cost_ft: float) -> str:
+    """ "0.55 calm mi (0.88 calm km)": US units first, metric in brackets."""
+    miles = calm_miles(cost_ft)
+    return f"{miles:.2f} calm mi ({miles * KM_PER_MILE:.2f} calm km)"
 
 
 def severity_of(cost_ft: float) -> str | None:
@@ -545,16 +771,37 @@ def reason_of(kind: str, road: Road | None, control: Control) -> str:
     return f"{KIND_WORDS.get(kind, 'Junction with')} {_article(noun)} {noun}, {words}"
 
 
-def assess(junction: Junction, group: bool = False) -> Event | None:
+def assess(junction: Junction, group: bool = False, when: str | None = None) -> Event | None:
     """The event at one junction, or None where there is nothing to say.
 
     `group` is the Mass Ride reading (items 133 and 138: "put an orange warning
     icon across any LTS3 intersection and a red one across an LTS4"): the colour
     is the busy road's own tier, orange for LTS 3 and red for LTS 4 or Avoid, and
-    a left across a one-way road gets none. The cost is still the model's."""
+    a left across a one-way road gets none. The cost is still the model's.
+
+    A junction riders have rated (`Junction.rating`) takes the rating's cost and
+    colour on either reading, a neighbourhood junction included (232), except
+    that "easy" never costs more than the model's own figure and adds nothing
+    where the model has nothing to say."""
     cost, kind, about = cost_of(junction)
+    if junction.rating in RATING_COST_FT:
+        # "Easy" is held to the model's figure for this hour (468a); a rating's own cost
+        # is fixed, as a person set it.
+        model = cost
+        if kind != "neighbourhood" and about is not None:
+            model = min(cost * time_factor(when, about.urban), MAX_CROSSING_FT)
+        return rated(junction, kind, about, model, group)
     if kind == "neighbourhood" or about is None:
         return None
+    # 468a, 469c-469e: a busy-road junction costs more at rush hour, less at the
+    # weekend and at night.
+    factor = time_factor(when, about.urban)
+    cost = min(cost * factor, MAX_CROSSING_FT)
+    if kind == "left_from" and junction.control is Control.SIGNAL:
+        # The box turn is the way out at any hour (468: "box-turn cap at
+        # signals"), so rush hour cannot lift a signalised left above it.
+        cost = min(cost, BOX_TURN_CAP_FT)
+    assumed = speed_assumed(about) and junction.control is not Control.SIGNAL
     marked = kind == "crossing" and marked_unsignalised(junction)
     reason = reason_of(kind, about, junction.control)
     if group:
@@ -562,7 +809,8 @@ def assess(junction: Junction, group: bool = False) -> Event | None:
             return None
         if kind not in {"crossing", "left_from", "left_across", "left_onto", "slip_lane"}:
             return None
-        severity = RED if (about.tier or 0) >= 4 else ORANGE
+        # A half step on the cautious side (461a): 2.5 orange, 3.5 red.
+        severity = RED if about.level >= 3.5 else ORANGE
         return Event(
             junction.m,
             junction.lon,
@@ -581,6 +829,8 @@ def assess(junction: Junction, group: bool = False) -> Event | None:
             road_display=about.display,
             road_ways=about.ways,
             road_oneway=about.oneway,
+            assumed_speed=assumed,
+            time_factor=factor,
         )
     cap = MARKED_CROSSING_MAX_SEVERITY if marked else None
     severity = _at_most(severity_of(cost), cap)
@@ -602,7 +852,70 @@ def assess(junction: Junction, group: bool = False) -> Event | None:
         max_severity=cap,
         road_ways=about.ways,
         road_oneway=about.oneway,
+        assumed_speed=assumed,
+        time_factor=factor,
     )
+
+
+def rated(
+    junction: Junction, kind: str, about: Road | None, model_ft: float = 0.0, group: bool = False
+) -> Event | None:
+    """The event at a junction riders have rated: the rating's cost and colour,
+    never capped (a person looked at it), with the model's reason where it has
+    one and the riders' rating after it. "Easy" only ever lowers: it costs the
+    lesser of its figure and the model's (`model_ft`), and where the model has
+    no event there it adds none. On a Mass Ride (`group`) the event carries the
+    group reading's flag, so a rated signalized crossing still joins a group."""
+    level = junction.rating if junction.rating in RATING_COST_FT else 2
+    severity = RATING_SEVERITY[level]
+    said = f"Riders rate this junction {RATING_WORDS[level]}"
+    quiet = kind == "neighbourhood" or about is None
+    cost = RATING_COST_FT[level]
+    if level == min(RATING_COST_FT):
+        if quiet:
+            return None
+        cost = min(cost, model_ft)
+    if quiet:
+        kind = "rated"
+        about = max(
+            (r for r in (junction.incoming, junction.outgoing) if r.tier is not None),
+            key=lambda r: r.level,
+            default=junction.outgoing,
+        )
+        reason = said
+    else:
+        reason = f"{reason_of(kind, about, junction.control)}. {said}"
+    return Event(
+        junction.m,
+        junction.lon,
+        junction.lat,
+        kind,
+        junction.movement,
+        junction.control,
+        cost,
+        severity,
+        reason,
+        about.tier,
+        severity is not None,
+        junction.approach,
+        group,
+        road_names=about.names,
+        road_display=about.display,
+        road_ways=about.ways,
+        road_oneway=about.oneway,
+        rating=level,
+    )
+
+
+def with_ratings(junctions: Sequence[Junction], ratings: Sequence[Rating]) -> list[Junction]:
+    """The junctions with each one's approved rating, where one is within RATING_MATCH_M."""
+    if not ratings:
+        return list(junctions)
+    out = []
+    for junction in junctions:
+        found = rating_at(junction.lon, junction.lat, ratings)
+        out.append(replace(junction, rating=found.level) if found else junction)
+    return out
 
 
 # Events this close along the route are one junction as a rider meets it: a
@@ -620,6 +933,9 @@ def assess(junction: Junction, group: bool = False) -> Event | None:
 # - The merged colour is never more than the worst single event's (item 185: "A
 #   merge must never raise the colour of one road's crossing"); the refuge can
 #   lower it. Only the cost, which a route is chosen by, adds up.
+# - Where riders rated a junction (an approved rating, 232), its rated event
+#   stands for that junction's own nodes within RATING_MATCH_M along the
+#   route; events beyond are other junctions and add as above.
 MERGE_WITHIN_M = 45.0
 MERGED_SHARE = 0.5
 
@@ -640,10 +956,11 @@ def _divided(crossings: list[Event]) -> bool:
 def _one_road(events: list[Event]) -> list[Event]:
     """A road's events at one junction: its crossings as one (a divided road
     crossed once, with the refuge's credit), every other event as it is."""
-    crossings = [e for e in events if e.kind == "crossing"]
+    # A rated junction's event is the riders' figure, never given a refuge credit.
+    crossings = [e for e in events if e.kind == "crossing" and e.rating is None]
     if len(crossings) < 2:
         return events
-    rest = [e for e in events if e.kind != "crossing"]
+    rest = [e for e in events if e not in crossings]
     worst = max(crossings, key=lambda e: e.cost_ft)
     if not _divided(crossings):
         return [worst, *rest]
@@ -653,8 +970,35 @@ def _one_road(events: list[Event]) -> list[Event]:
         # The credit only lowers the cost, so this never raises the colour; a
         # trail crossing's cap holds through it.
         severity = _at_most(severity_of(cost), worst.max_severity)
-    refuge = replace(worst, cost_ft=cost, severity=severity, flagged=severity is not None)
+    refuge = replace(
+        worst, cost_ft=cost, severity=severity, flagged=severity is not None, road_divided=True
+    )
     return [refuge, *rest]
+
+
+def _rated_stand_in(events: list[Event]) -> list[Event]:
+    """A run of nearby events with each rated junction standing for its own
+    nodes (232): an unrated event within RATING_MATCH_M along the route of a
+    rated one is that junction's other node and drops out, and of several rated
+    nodes that close the highest rating counts once. Events farther off are
+    other junctions and merge as usual."""
+    rated_here = [e for e in events if e.rating is not None]
+    if not rated_here:
+        return events
+
+    def near(a: Event, b: Event) -> bool:
+        return abs(a.m - b.m) <= RATING_MATCH_M
+
+    out = []
+    for event in events:
+        if event.rating is None:
+            if not any(near(event, r) for r in rated_here):
+                out.append(event)
+            continue
+        best = max((r for r in rated_here if near(event, r)), key=lambda r: (r.rating or 0, -r.m))
+        if best is event:
+            out.append(event)
+    return out
 
 
 def merge_nearby(events: list[Event]) -> list[Event]:
@@ -665,7 +1009,7 @@ def merge_nearby(events: list[Event]) -> list[Event]:
         if not group:
             return
         roads: list[list[Event]] = []
-        for event in group:
+        for event in _rated_stand_in(group):
             for same in roads:
                 if event.road_names & same[0].road_names:
                     same.append(event)
@@ -902,14 +1246,18 @@ def crossing_groups(events: list[Event]) -> list[CrossingGroup]:
 
 
 def assess_route(
-    junctions: list[Junction], group: bool = False, stops: Sequence[float] = ()
+    junctions: list[Junction],
+    group: bool = False,
+    stops: Sequence[float] = (),
+    when: str | None = None,
 ) -> list[Event]:
     """Every junction's event, in route order (a cost the objective sums; the
     flagged ones are what the planner draws). The nodes of one junction share
     its strongest control first (`share_controls`). On a Mass Ride (`group`)
     the signalized crossings that run together are numbered (`number_groups`),
-    never across a stop (`stops`, where each leg ends)."""
-    events = (assess(junction, group) for junction in share_controls(junctions))
+    never across a stop (`stops`, where each leg ends). `when` is the ride time
+    (`time_factor`, 468a)."""
+    events = (assess(junction, group, when) for junction in share_controls(junctions))
     merged = merge_nearby(sorted((e for e in events if e is not None), key=lambda e: e.m))
     return number_groups(merged, stops) if group else merged
 
@@ -961,6 +1309,12 @@ class Major:
     # them as a crossing does).
     crossed_tier: int | None
     kind: str = MAJOR_FLAGGED
+    # Whether that road is one-way there, where known: one approach to hold, so one
+    # corker rather than two (PLAN item 139).
+    oneway: bool | None = None
+    # A divided road (its two one-way carriageways counted as one major): two
+    # approaches to hold, so two corkers whatever `oneway` says (re-check, BLOCKING 1).
+    divided: bool = False
 
     @property
     def road_names(self) -> frozenset[str]:
@@ -1004,6 +1358,8 @@ def majors_of_events(events: Sequence[Event]) -> list[Major]:
             None,
             e.crossed_tier,
             MAJOR_FLAGGED,
+            e.road_oneway,
+            e.road_divided,
         )
         for e in events
         if e.flagged
@@ -1026,7 +1382,9 @@ def busy_roads_at(junction: Junction) -> list[tuple[Road, str]]:
     return sorted(found, key=lambda pair: -(pair[0].tier or 0))
 
 
-def _counted(majors: Sequence[Major], at: Sequence[float], junction: Junction, road: Road) -> bool:
+def _counted_by(
+    majors: Sequence[Major], at: Sequence[float], junction: Junction, road: Road
+) -> int | None:
     """Whether a junction's busy road is one already counted: the same node, or the
     same street within MERGE_WITHIN_M (its other carriageway, a slip lane), or an
     unnamed road there. An unnamed major (a path crossing, say) does not hide a named
@@ -1035,10 +1393,27 @@ def _counted(majors: Sequence[Major], at: Sequence[float], junction: Junction, r
     re-review C)."""
     lo = bisect.bisect_left(at, junction.m - MERGE_WITHIN_M)
     hi = bisect.bisect_right(at, junction.m + MERGE_WITHIN_M)
-    for major in majors[lo:hi]:
+    for index in range(lo, hi):
+        major = majors[index]
         if major.m == junction.m or major.names & road.names or not road.names:
-            return True
-    return False
+            return index
+    return None
+
+
+def _counted(majors: Sequence[Major], at: Sequence[float], junction: Junction, road: Road) -> bool:
+    """Whether a junction's busy road is one already counted (`_counted_by`)."""
+    return _counted_by(majors, at, junction, road) is not None
+
+
+def _other_carriageway(major: Major, junction: Junction, road: Road) -> bool:
+    """Whether a busy road hidden by a counted major is that road's other carriageway:
+    the same street, one-way both, at another node within MERGE_WITHIN_M."""
+    return (
+        major.m != junction.m
+        and bool(major.names & road.names)
+        and major.oneway is True
+        and road.oneway is True
+    )
 
 
 def major_crossings(junctions: Sequence[Junction], events: Sequence[Event]) -> list[Major]:
@@ -1049,7 +1424,12 @@ def major_crossings(junctions: Sequence[Junction], events: Sequence[Event]) -> l
     at = [major.m for major in majors]
     for junction in sorted(share_controls(list(junctions)), key=lambda j: j.m):
         for road, kind in busy_roads_at(junction):
-            if _counted(majors, at, junction, road):
+            hidden = _counted_by(majors, at, junction, road)
+            if hidden is not None:
+                # A divided road's far carriageway: the major it is counted with has two
+                # approaches to hold (corkers), though each carriageway is one-way.
+                if _other_carriageway(majors[hidden], junction, road):
+                    majors[hidden] = replace(majors[hidden], divided=True)
                 break
             place = bisect.bisect_right(at, junction.m)
             at.insert(place, junction.m)
@@ -1066,6 +1446,7 @@ def major_crossings(junctions: Sequence[Junction], events: Sequence[Event]) -> l
                     _lanes_total(road),
                     road.tier,
                     kind,
+                    road.oneway,
                 ),
             )
             break

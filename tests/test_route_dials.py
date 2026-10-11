@@ -74,7 +74,7 @@ def sent_options(fake: FakeRouter) -> dict:
 
 @db
 class TestTheSlidersReachTheRouter:
-    @pytest.mark.parametrize("name", sorted(presets.PRESETS))
+    @pytest.mark.parametrize("name", sorted(set(presets.PRESETS) - {"bikeshare"}))
     def test_absent_dials_are_the_presets_start(self, name, client, facility_segments, router):
         fake = router(standard_router())
         body = post(client, good_body(name)).json()
@@ -84,7 +84,7 @@ class TestTheSlidersReachTheRouter:
         assert sent_options(fake)["use_roads"] == presets.use_roads_for(presets.stress_start(name))
         assert sent_options(fake)["use_hills"] == presets.use_hills_for(start.hills)
 
-    @pytest.mark.parametrize("name", sorted(set(presets.PRESETS) - {"mass-ride"}))
+    @pytest.mark.parametrize("name", sorted(set(presets.PRESETS) - {"mass-ride", "bikeshare"}))
     @pytest.mark.parametrize(("stress", "use_roads"), [(0, 1.0), (35, 0.55), (70, 0.1), (100, 0.0)])
     def test_stress_is_use_roads_run_backwards(
         self, name, stress, use_roads, client, facility_segments, router
@@ -218,8 +218,10 @@ class TestRideTime:
         [
             # 08:30 in Washington on Tuesday 29 September: morning rush.
             (datetime(2026, 9, 29, 12, 30, tzinfo=UTC), "weekday_rush", "2026-10-06T08:00"),
-            # 22:00 on Friday 2 October there, Saturday already in UTC.
-            (datetime(2026, 10, 3, 2, 0, tzinfo=UTC), "weekday_offpeak", "2026-10-06T12:00"),
+            # 20:00 on Friday 2 October there, Saturday already in UTC: off-peak.
+            (datetime(2026, 10, 3, 0, 0, tzinfo=UTC), "weekday_offpeak", "2026-10-06T12:00"),
+            # 22:00 that Friday: night (OWNER-DECISIONS 469c), told the next Tuesday 22:00.
+            (datetime(2026, 10, 3, 2, 0, tzinfo=UTC), "night", "2026-10-06T22:00"),
             # Saturday noon there.
             (datetime(2026, 10, 3, 16, 0, tzinfo=UTC), "weekend", "2026-10-10T09:00"),
         ],
@@ -420,7 +422,7 @@ def test_the_distance_budget_grows_with_the_slider(hills):
 class TestTheWeekendGraph:
     """The owner's "Build the weekend graph" (2026-09-27)."""
 
-    @pytest.mark.parametrize("name", sorted(presets.PRESETS))
+    @pytest.mark.parametrize("name", sorted(set(presets.PRESETS) - {"bikeshare"}))
     def test_a_weekend_ride_on_the_standard_graph_takes_its_twin(
         self, name, client, facility_segments, router
     ):
@@ -1437,8 +1439,9 @@ class TestTheHillsChoiceUsesThePlansExposure:
     def test_the_plan_passes_its_exposure_to_both(self, monkeypatch):
         seen = []
         monkeypatch.setattr(routing, "calmer_or_own", lambda *a, **k: seen.append(("own", a)) or 0)
-        assert presets.exposure_for("trailmaxxing") is AVERSE
-        assert presets.exposure_for("cargo", presets.CARRYING_PEOPLE) is AVERSE
+        weighed = presets.EXPOSURE_NOT_IN_CONTROL
+        assert presets.exposure_for("trailmaxxing") is weighed
+        assert presets.exposure_for("cargo", presets.CARRYING_PEOPLE) is weighed
         assert presets.exposure_for("default") is presets.EXPOSURE_STANDARD
 
 

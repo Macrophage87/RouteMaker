@@ -55,16 +55,17 @@ def reading(lts4=0.0, lts3=0.0, red=(), orange=(), effort=None, length=10_000.0)
 
 class TestTheFigures:
     def test_red_and_orange_junctions_are_told_apart_by_their_cost(self) -> None:
-        a = reading(red=[3000.0, 2100.0], orange=[1000.0, 1500.0])
-        assert a.red_m == pytest.approx(5100.0 / FT)
+        # Red is from 3,100 ft since 2026-10-10 (2,000 before 468, 2,900 after): 3,300 is red.
+        a = reading(red=[3300.0, 3300.0], orange=[1000.0, 1500.0])
+        assert a.red_m == pytest.approx(6600.0 / FT)
         assert a.orange_m == pytest.approx(2500.0 / FT)
 
     def test_the_top_figure_is_lts4_and_avoid_plus_the_red_cost(self) -> None:
-        a = reading(lts4=200.0, red=[3000.0])
-        assert a.top_m == pytest.approx(200.0 + 3000.0 / FT)
+        a = reading(lts4=200.0, red=[3300.0])
+        assert a.top_m == pytest.approx(200.0 + 3300.0 / FT)
 
     def test_the_second_figure_is_lts3_plus_the_orange_cost(self) -> None:
-        a = reading(lts3=400.0, orange=[1000.0], red=[3000.0])
+        a = reading(lts3=400.0, orange=[1000.0], red=[3300.0])
         assert a.second_m == pytest.approx(400.0 + 1000.0 / FT)
 
     def test_no_events_cost_nothing(self) -> None:
@@ -95,17 +96,17 @@ class TestTheOrder:
 
     def test_one_fewer_red_junction_beats_less_lts3(self) -> None:
         """OWNER-DECISIONS 258: a red junction before LTS 3."""
-        red = reading(lts3=0.0, red=[3000.0])
+        red = reading(lts3=0.0, red=[3300.0])
         none = reading(lts3=5000.0)
         assert refine.better(none, red, self.ctx)
         assert not refine.better(red, none, self.ctx)
 
     def test_a_red_junction_is_worth_its_own_cost_in_lts4(self) -> None:
-        """OWNER-DECISIONS 259: trading 1,000 ft of LTS 4 to avoid a 3,000 ft
+        """OWNER-DECISIONS 259: trading 1,000 ft of LTS 4 to avoid a 3,300 ft
         red junction is accepted; 1,000 ft for a 500 ft one is not (it is
         not a red junction, and costs more)."""
         feet = 1000.0 / FT
-        with_junction = reading(lts4=0.0, red=[3000.0])
+        with_junction = reading(lts4=0.0, red=[3300.0])
         traded = reading(lts4=feet)
         assert refine.better(traded, with_junction, self.ctx)
         # And the other way about: 3,500 ft of LTS 4 is worth more than the junction.
@@ -181,8 +182,8 @@ class TestDiminishingReturns:
         assert refine.WORTH_WEIGHTS == presets.EXPOSURE_STANDARD
         assert (refine.WORTH_WEIGHTS.lts3, refine.WORTH_WEIGHTS.lts4) == (1.0, 2.0)
         assert refine.WORTH_WEIGHTS.avoid == 3.0
-        read = with_(reading(lts3=500.0, lts4=300.0, red=[3000.0], orange=[1000.0]), avoid_m=100.0)
-        want = 500.0 + 2.0 * 200.0 + 3.0 * 100.0 + 2.0 * 3000.0 / FT + 1000.0 / FT
+        read = with_(reading(lts3=500.0, lts4=300.0, red=[3300.0], orange=[1000.0]), avoid_m=100.0)
+        want = 500.0 + 2.0 * 200.0 + 3.0 * 100.0 + 2.0 * 3300.0 / FT + 1000.0 / FT
         for exposure in (AVERSE, presets.EXPOSURE_STANDARD):
             ctx = top_context()
             ctx.exposure = exposure
@@ -215,10 +216,10 @@ class TestDiminishingReturns:
     def test_a_red_junction_counts_at_the_lts4_weight(self) -> None:
         ctx = top_context()
         ctx.exposure = AVERSE
-        red = reading(red=[3000.0], length=10_000.0)
-        # 2 x 3,000 ft is about 1,829 m of LTS 3: 9.1 km of extra riding.
-        ok = reading(length=10_000.0 + 9_000.0)
-        no = reading(length=10_000.0 + 9_200.0)
+        red = reading(red=[3300.0], length=10_000.0)
+        # 2 x 3,300 ft is about 2,012 m of LTS 3: 10.1 km of extra riding.
+        ok = reading(length=10_000.0 + 9_950.0)
+        no = reading(length=10_000.0 + 10_150.0)
         assert refine.better(ok, red, ctx) and not refine.better(no, red, ctx)
 
     def test_an_orange_junction_counts_at_the_lts3_weight(self) -> None:
@@ -547,13 +548,13 @@ class TestTheHoldOnTheTopFigure:
         assert not refine.more_lts4(held_reading(40.0), ctx.first_lts4, ctx)
 
     def test_lts4_traded_for_a_red_junction_is_allowed(self) -> None:
-        ctx = self.held(held_reading(0.0, red=[3000.0]))
+        ctx = self.held(held_reading(0.0, red=[3300.0]))
         assert not refine.more_lts4(held_reading(1000.0 / FT), ctx.first_lts4, ctx)
         assert refine.more_lts4(held_reading(3600.0 / FT), ctx.first_lts4, ctx)
 
     def test_a_red_junction_gained_counts_against_it(self) -> None:
         ctx = self.held(held_reading(100.0))
-        assert refine.more_lts4(held_reading(100.0, red=[2500.0]), ctx.first_lts4, ctx)
+        assert refine.more_lts4(held_reading(100.0, red=[3500.0]), ctx.first_lts4, ctx)
 
     def test_an_orange_junction_does_not_count_in_it(self) -> None:
         ctx = self.held(held_reading(100.0))
@@ -570,7 +571,7 @@ class TestTheHoldOnTheTopFigure:
 
     def test_each_legs_red_junctions_count_in_that_leg(self) -> None:
         a = held_reading(0.0)
-        a.events = [event(150.0, 3000.0), event(850.0, 2400.0), event(300.0, 1000.0)]
+        a.events = [event(150.0, 3300.0), event(850.0, 3200.0), event(300.0, 1000.0)]
         a.pieces = [
             routing.Piece(1, BASE[0], BASE[1], 500.0),
             routing.Piece(1, BASE[0], BASE[1], 500.0),
@@ -578,12 +579,12 @@ class TestTheHoldOnTheTopFigure:
         a.classes = [("1", "none"), ("1", "none")]
         a.via_m = [500.0]
         legs = refine.top_by_leg(a)
-        assert legs[0] == pytest.approx(3000.0 / FT) and legs[1] == pytest.approx(2400.0 / FT)
+        assert legs[0] == pytest.approx(3300.0 / FT) and legs[1] == pytest.approx(3200.0 / FT)
 
     def test_a_junction_at_the_very_end_belongs_to_the_last_leg(self) -> None:
         a = held_reading(0.0)
-        a.events = [event(1000.0, 3000.0)]
-        assert refine.top_by_leg(a) == [pytest.approx(3000.0 / FT)]
+        a.events = [event(1000.0, 3300.0)]
+        assert refine.top_by_leg(a) == [pytest.approx(3300.0 / FT)]
 
 
 # --- The ceiling in the search ------------------------------------------------------

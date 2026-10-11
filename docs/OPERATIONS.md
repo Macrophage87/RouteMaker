@@ -405,6 +405,18 @@ once and remembers the answer, as `core.routing` does for the facility columns,
 so no restart is needed after the swap beyond the one that restarts the routers
 anyway.
 
+**Statutory speeds and the night ride time (OWNER-DECISIONS 469-469e).** No
+restart and no router rebuild. The segment table gains `road_default_speed_mph`
+and `road_urban` with the next rebuild; until then an unposted LTS 4 road is
+priced at 45 mph and every night junction at x0.85. A request without `when`
+between 9 PM and 7 AM is now `night`, which routes on the standard graph on
+every day, so weekend-router load falls and standard-router load rises in those
+hours. The next rebuild adds `night` to `car_free_when` and moves the off-peak
+sample instant from 21:00 to 20:30, so a few ways' off-peak car-free status may
+change: compare the counts with the previous build after the promotion. Until
+that rebuild, a night ride treats timed closures as open to cars. Rolling the
+images back to before this change makes a saved `when: "night"` a 422.
+
 **Cost per plan.** Every plan asks `/locate` once for each 50 junctions where a
 busy-class road meets the route, with a 3 ft (1 m) radius, and again, with a
 100 ft (30 m) radius, for each 50 of those whose control is not already a signal, to
@@ -413,13 +425,15 @@ read the signals and stop signs OSM puts on the stop lines up the approaches
 Measured on the live router, a batch of 50 at 100 ft (30 m) took 0.1-0.3 s and
 2.6 MB, against 0.04-0.15 s and 0.5 MB at 3 ft (1 m). A plan with a red junction
 1,640 ft (500 m) or more from both ends asks the router for one more route (crossing
-avoidance, `core.refine`: only red junctions, from 2,000 ft, are worth a second
-route), one `/trace_attributes` for it and its `/locate`s, and one more route for
-the detour warning when the route is at least twice the straight line, or above
+avoidance, `core.refine`: only red junctions, from 0.59 calm mi [0.94 km; 3,100 ft],
+are worth a second route), one `/trace_attributes` for it and its `/locate`s, and one
+more route for the detour warning when the route is at least twice the straight line, or above
 Default when it is longer than the allowance. Above 80 on the stress slider a
 plan can make about 20 router calls (5 rounds of a route, a trace and `/locate`s,
 and the detour probe), and Trailmaxxing starts at 100 (OWNER-DECISIONS 194), so
-every Trailmaxxing plan is one of these unless the rider moves the slider down.
+every Trailmaxxing plan is one of these unless the rider moves the slider down. So
+does Riding with kids (FOLLOWUP-KIDS-PRESET, OWNER-DECISIONS 240 (B)), though it is
+never planned leg by leg as a long calm plan.
 Since OWNER-DECISIONS 435 such a plan with a start and an end also asks once for the
 router's own alternatives (one `/route` with `alternates` 3; on the live router a warm
 7.5 mi [12 km] route took 1 to 2 s with them against 0.2 s without, the climb
@@ -946,7 +960,8 @@ drew before: the paths and the roads at LTS 3 and above, faint, with the front e
 `FAINT` rules) on one that does not, so a table promoted before this rebuild draws
 today's z12-13 until the data rebuild promotes the column. The ETag names it with
 `k` (`+kcfrmwoesbtl-v8"` with all twelve optional columns, `e` being 403's `roadside` and
-`w` the Mass Ride width, about 37 characters, inside the cache's 64) and `FORMAT_VERSION` is 8
+`w` the Mass Ride width, about 37 characters, inside the cache's 64; since 456 thirteen, with
+`d` for `mtb_level`: "Mountain-bike difficulty levels" below) and `FORMAT_VERSION` is 8
 (the rebuild bundle's format, 7, with the surface-unknown properties below and the Mass Ride
 capacity: the tile cache key changes, so run the pre-draw as the steps
 below say). The ride layer has its own partial index,
@@ -957,7 +972,8 @@ below say). The ride layer has its own partial index,
 and this branch each moved `FORMAT_VERSION` to 6 and each took the letter `r`. In the bundle
 the format is 7, past both, so neither branch's cached tiles are taken for the other's; `r` is
 `is_rough`'s, the Mass Ride width column (`MASS_WIDTH_COLUMN`) is `w`, `k` is `calm_run_m`'s
-and `e` is `roadside`'s, one letter per column (a test holds them distinct).
+and `e` is `roadside`'s, one letter per column (a test holds them distinct); since 456 `d` is
+`mtb_level`'s.
 
 **Decision 390 at z12-13.** "Solid is probably fine" for LTS 3 and 4 below zoom
 14 is moot where no busy road is drawn there. On a live table without
@@ -1477,6 +1493,424 @@ route endpoint's validator enforces - with an hour's `Cache-Control`, limited
 to 60 a minute per address (`core.ratelimit.COVERAGE`). The map greys out
 everything outside it. Should the region become a drawn polygon, the validator
 and this endpoint change together (`core.api.coverage_ring`).
+
+## Change LTS: an instance admin's stress edits (OWNER-DECISIONS 441g, 441h, 460)
+
+An instance admin can change a road's traffic stress in the road panel (right-click, long
+press, or I on the map; the **Change LTS** button, shown only to an instance admin). The
+change applies at once; nothing waits for a rebuild except what is listed below.
+`core/stress_edits.py` does it in one database transaction:
+
+1. checks the editor's `expected` stamp against the road (409 "Someone changed this road" if
+   another admin, or a promotion, changed it since the editor opened);
+2. writes an approved `override` row (`source=panel`, the application user id in
+   `created_by_user_id` and `approved_by_user_id`, never a Discord id; the private reason in
+   `reason`) and **supersedes** the row it replaces: `superseded_by` and `superseded_at` are
+   set and `approved` is left alone, because `load_access_overrides` re-approves an unapproved
+   row that matches a file, so unapproving would let reloading an old file undo the edit;
+3. updates the way's rows in `live.segment` in place, by the rebuild's own rules (a floor the
+   classifier already meets changes nothing);
+4. writes a `stress_edit` row (every touched column before and after: the audit log keeps no
+   copy of a row) and one `audit_log` entry (`stress_edit` or `stress_edit_undo`);
+5. bumps the live table's edit generation (`live_edit_generation`, keyed by the table's oid)
+   and deletes only the cached tiles covering the road at z10-16 (plus a tile's margin), for the
+   stress and the Mass Ride tiles, re-keying the rest to the new tag so the cache stays warm.
+
+The edit generation is in the tile ETag (`W/"stress-<oid>+<letters>-e<generation>-v8"`), so a
+browser's revalidation is never answered 304 for a changed tile. Other riders' browsers keep a
+tile for five minutes (`stress_tiles.MAX_AGE_S`, OWNER-DECISIONS 460.6); the editor's own map
+asks for every tile again under `?rev=<generation>` (the server ignores the parameter).
+
+**What is at once:** the stress tiles, the road panel, the route description and RouteMaker's
+own ranking (all read the live table at route time). **What waits for the next rebuild:**
+Valhalla's edge costs (the Lua transform runs at graph build), the z12-13 ride layer
+(`calm_run_m`) and the zoomed-out trail runs, and the Mass Ride capacity layers. The panel says
+so after a save.
+
+**Undo.** `POST /api/stress-edits/{id}/undo` puts the edit's `before` state back and reinstates
+the superseded row, for any instance admin, for 30 minutes (`stress_edits.UNDO_WINDOW`), and only
+while no later edit has touched the road and the table still holds the edit's `after` state. After
+that, make a new change. The full history is the **Stress edits** page of the admin (read only).
+
+**A rebuild or rollback that overlaps an edit.** The rebuild reads the approved, non-superseded
+override rows near its start and records the time (`RebuildContext.overrides_read_at`). Right
+after the swap, `promotion.perform_swap` calls `stress_edits.after_promotion`, which records that
+time for the new table and replays, in order, every edit made after it (from each edit's `after`
+state; idempotent), then bumps the generation. `promotion.rollback` calls `after_rollback`, which
+replays every edit made after the older table read its overrides (every edit where it recorded
+none). Both log and never raise: a failure leaves the promotion standing, and the approved
+override rows are read by the next rebuild anyway. To do it by hand, or to look first:
+
+```sh
+docker compose exec -T api python manage.py reapply_stress_edits                 # dry: the edits it would replay
+docker compose exec -T api python manage.py reapply_stress_edits --confirm       # since the table read its overrides
+docker compose exec -T api python manage.py reapply_stress_edits --since all --confirm
+```
+
+After a rollback, run `predraw_stress_tiles` as for any promotion.
+
+**Loading override files afterwards.** A row of a file that matches a superseded row is reported
+as `superseded` and left alone; a stress row that disagrees with a live panel row is refused,
+naming the edit. So an old file can be loaded again without undoing anyone's change, and a
+changed decision about a road someone has edited in the panel has to be made in the panel (or
+the admin).
+
+**The migration** (`core/migrations/0011_stress_edits.py`) adds columns to `override` and the
+`stress_edit` and `live_edit_generation` tables, and a partial unique index allowing one
+approved, non-superseded stress row per way. It first stops, naming the ways, if any way already
+has two approved stress rows (the loader refuses that, but a row typed into the admin can make
+it): leave one approved in the admin, then migrate. Run `migrate` before the new api image
+serves tiles: the tile query reads `live_edit_generation`. Because `migrate` runs at every `up`
+and the api waits for it, check first, before pulling the new images; this must print no rows:
+
+```sh
+docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+  "SELECT osm_way_id, count(*) FROM override WHERE kind = 'stress' AND approved GROUP BY 1 HAVING count(*) > 1"
+```
+
+**Security.** All four endpoints (`GET /api/me`, `GET /api/stress-edits/way/{id}`,
+`POST /api/stress-edits`, `POST /api/stress-edits/{id}/undo`) answer `Cache-Control: no-store`,
+refuse a request a foreign page sent (`Sec-Fetch-Site`), and count per client address first
+(120 a minute). The writes also need a JSON body (8 KB at most), a session of an active instance
+admin (401 signed out, 403 otherwise, audited), Django's CSRF check (`X-CSRFToken` from the
+`csrftoken` cookie, which `/api/me` and the editor's starting state set; the Origin against
+`CSRF_TRUSTED_ORIGINS` on HTTPS) and a count per account (60 writes an hour). A refused write
+(403, 409, CSRF) is an `audit_log` entry; a 401 is not (nobody to attribute it to). The private
+reason is never in `live.segment`, the tiles, a route answer or a public panel; the public
+surfaces still say "Owner override" and name nobody. `GET /api/me` answers three yes/no flags
+and nothing else.
+
+**Half steps (phase 2; 441i-441l, 461a).** The slider moves by halves (1, 1.5, ... 5; never
+above 5). A half step is stored as the lower tier plus a flag: the override value's
+`"half": true` and the live table's `stress_half` column (boolean, default false, never true
+at tier 5). A table built before this release has no `stress_half` column: the editor then
+offers whole steps only (its help says half steps arrive with the next data update) and the
+API refuses a half step (400, `half_unavailable`). Either rebuild, or add the column to the live
+table in place (dry run first; it takes a brief lock, 10 s at most, and does nothing when the
+column is there):
+
+```sh
+docker compose exec -T api python manage.py add_stress_half_column             # dry: says what it would do
+docker compose exec -T api python manage.py add_stress_half_column --confirm
+docker compose exec -T api python manage.py predraw_stress_tiles    # then warm the tile cache again
+```
+
+The tile ETag gains the letter `h` once the column is there, so browsers fetch the tiles again.
+
+**Valhalla's costs (phase 3) need a rebuild.** The weekly rebuild writes `rm:stress_half=yes` on a
+half-step way and the graph's Lua transform prices it between its two levels
+(`lua/routemaker_remap.lua` `half_step_marks`; the figures are in docs/stress/stress-number.md
+section 3). Until the next rebuild after this release, the router prices a half step as its lower
+level; the map, the road panel and RouteMaker's own ranking use the half step at once.
+
+**The whole named stretch (phase 5; 441g, 460.3).** Where the road piece is one of several of
+the same name end to end, the editor asks **What to change**: "This road piece: <name>" (the
+default) or "The whole named stretch of <name>". The stretch is looked for only once the admin
+chooses it (`GET /api/stress-edits/way/{id}/stretch`, admin only, as the editor state), since it
+needs the router's names; a status line then says "The whole named stretch of <name>: N pieces,
+X mi (Y km)", or that the piece is the whole stretch (the choice goes back to the piece), and
+Save waits until it is found. The stretch
+(`core.stress_edits.named_stretch`) is the drawn road pieces of that name connected end to end,
+out from the piece opened, and it ends:
+
+- at a junction with a road of another name at 2.5 or above (the higher of its tier and its
+  unsmoothed tier, plus its half step): where an unsignalized crossing would carry the orange
+  "higher stress" warning or worse (`routemaker.intersections`; an unsignalized crossing of a 2.5
+  road costs 600 ft, the orange line). The segment table holds no signals, so every junction is
+  read as unsignalized: the cautious reading of the owner's "any crossing that would carry a high
+  stress intersection warning" (460.3). A stretch can end at a decent signal the full junction
+  model would not warn at; the admin then changes the next stretch too. (Default taken
+  2026-10-10.)
+- at 40 pieces (one change takes at most 40; the editor says when the stretch goes on).
+
+Names are the router's, as the road panel shows them, else the table's (`core.road_names`: the
+table keeps a name only on calm and long-trail ways). The router has 3 seconds in all to name a
+stretch's ends (`road_names.NAMES_BUDGET_S`); past that, or with the router down, the table's
+names stand, so a busy road has no name and so no stretch: the editor says the piece is the whole
+stretch. A stretch change whose names cannot be checked is refused plainly (400,
+`names_unavailable`: "try again in a minute, or change this road piece alone"), and a set that is
+no longer one stretch is 400 `not_a_stretch`.
+
+A stretch change is one adjustment: one approved override row a way (each superseding that way's
+live row), all with the same `adjustment_id` (`edit-<first row id>`), one `stress_edit` row
+listing every way and every pair (`override_rows`), one audit entry and one tile refresh over
+them all. Undo (30 minutes) puts every piece back and reinstates every replaced row; it touches a
+pair's rows only when they are that way's stress rows, and is refused (409, `later_edit`) when any
+piece's row has been replaced since. The API takes the stretch only as the editor offered it:
+`osm_way_ids` must be exactly a named stretch (else 400), with the stretch's own token from the
+stretch endpoint (`stretch.expected`; a change to any piece in between is a 409). A single piece's
+token and request are as before.
+
+## Rider suggestions (OWNER-DECISIONS 441h, 460.4, 460.5; HALF-STEP-EDITOR phase 4)
+
+A signed-in rider the settings allow sees **Suggest a change** in the road panel (in place of
+Change LTS, which stays an instance admin's): a level from 1 to 5 by halves (whole steps only
+until the road data holds half steps; a half step is refused, `half_unavailable`, until then) and
+a required reason (500 characters at most). Nothing changes on the map until an instance admin reviews it. The owner's
+words, 2026-10-10 (UTC):
+
+- 13:57: "So there's one of three options: I know that that road probably should be
+  rescheduled, so I'll make it happen immediately; that request seems absurd, so I delete
+  it; or I don't know enough about the road or the area, so I'll let the community decide."
+- 13:59: "I meant discord itself." (The third action sends the suggestion to Discord; no
+  voting inside RouteMaker.)
+- 14:00: "If it's too much to send directly, then provide something I can copy paste as a
+  post to discord."
+- 14:01: "I like the fallback because I can also poll one of several bike groups I'm a part
+  of." (The copy is the action that is always there; direct posting is optional.)
+- 14:08: "Not everyone is familiar with that scale, so give a plain english request." (The
+  poll's question and options are plain US English, never an LTS number alone.)
+
+**Who may suggest** is the admin's **Suggestion settings** page: nobody (the default, until an
+instance admin opens it), anyone signed in, or members of a configured Discord server (a usable
+membership in a guild in standing). An instance admin is never offered it; they edit directly.
+
+**The review** is in the map's Settings sheet, **Rider suggestions**, for an instance admin only.
+Each waiting suggestion has the owner's three actions:
+
+1. **Approve now**: applied at once as the admin's own edit, by the editor's path
+   (`stress_edits.apply`: the override row, the live rows, the edit history, the tiles). Its
+   private reason is "Rider suggestion N, approved: " and the rider's reason. Undo it from the road
+   panel's editor within 30 minutes, as any edit.
+2. **Delete**, after a confirm step ("Delete this suggestion? It cannot be brought back.", Yes,
+   delete / Keep it).
+3. **Send to Discord**: shows a ready-to-paste poll with a **Copy post** button (it says "Copied")
+   and marks the suggestion as sent. It stays in the list to approve or delete after the community
+   has weighed in. Nothing is posted by RouteMaker itself: the copy works for any server or group,
+   and a direct webhook is not built (optional, the owner's 14:01).
+
+After Approve now or Delete the focus moves to the next suggestion's heading, or to the line "No
+suggestions are waiting."
+
+**Privacy of the spot.** The panel sends the nearest point on the road (the road panel's
+`on_way`), never the spot clicked, and the server keeps only the nearest point on that way
+(`suggestions.snap`, PostGIS `ST_ClosestPoint`), refusing a spot more than 98 ft (30 m) from the
+road (400, field `lat`). The poll prints no coordinates: the place is the road and its cross
+streets in words, and the map link points at the road piece's middle, rounded to 4 decimals
+(a grid of about 36 ft, 11 m). The form's note says the road's location and the reason may be shared in a
+public poll, never the rider's name or the spot clicked.
+
+The poll (`core/suggestion_post.py`) is at most 2,000 characters (Discord's limit; the reason is
+shortened first), uses bold for the question and a quote for the reason and no other markdown,
+mentions nobody, pings no role, names no server or channel, and carries nothing about the rider. It
+asks in plain words, for example "**How comfortable is biking on Oak Street, between Elm Street and
+Ash Avenue?** A rider suggested it's calmer than we rate it.", then "We currently show it as: OK for
+confident riders" and "The rider suggested: Fine for most people, even nervous riders", the reason,
+the place in words (road and cross streets where the map data has them) and a link to the road
+piece's middle on RouteMaker's map (`/#at=lon,lat` to 4 decimals, which opens the map there at
+street level). A rider's reason has mentions, links and markdown made inert: emphasis, code,
+spoilers, brackets and parentheses (masked links) are escaped, and a heading, subtext or quote at
+its start is escaped too. The
+options are lettered reactions, each standing for one level, so the votes can be read back
+(`suggestion_post.tier_for_vote`):
+
+| Reaction | Option | Level |
+|---|---|---|
+| A | Fine for anyone, kids included | LTS 1 |
+| B | Fine for most people, even nervous riders | LTS 2 |
+| C | OK for confident riders | LTS 3 |
+| D | Only for very experienced riders | LTS 4 |
+| E | Avoid it | Avoid |
+| F | Not sure | none |
+
+A half step is said as the two it lies between ('Between "Fine for most people, even nervous
+riders" and "OK for confident riders"'). The same builder has a junction's wording ("Is crossing
+New York Avenue NE at Florida Avenue NE harder or easier than we show?", options Easy / Takes
+patience / Hard / Avoid crossing here / Not sure), which junction suggestions use (below).
+
+**Security.** `POST /api/stress-suggestions` needs a session of an account the setting allows
+(401 / 403, audited), a JSON body, the CSRF token, a same-site request, the address count (120 a
+minute) and 10 suggestions an hour per account; one waiting suggestion per road per rider (held by
+the database too: a partial unique constraint on suggester and road while waiting) and 20 waiting
+in all. The review endpoints (`GET /api/stress-suggestions/open`, `POST
+/api/stress-suggestions/{id}/approve|delete|discord`) need an active instance admin, CSRF and a
+same-site request, and have their own budget of 200 actions an hour (`stress-suggest-review`), so
+clearing a queue does not spend the editor's 60 edits an hour. Every action is an `audit_log` entry. All answer
+`Cache-Control: no-store`. The suggester's account is on the `stress_suggestion` row for the admin
+only; the table is left out of the beta's data shipment (`scripts/beta/ship-data.sh`).
+
+**The migration** is `core/migrations/0016_stress_suggestions.py` (two new tables with the one
+open suggestion per road per rider constraint, and the named stretch's `stress_edit.override_rows`,
+a JSON list defaulting to empty; nothing else changed). It follows the Avoid junctions'
+`0015_avoid_junction` (after the mountain-bike levels' 0013 and 0014), so the chain is linear. `migrate` runs at `up`, as always. "Only raise it" is
+refused (400, `classifier_hidden`) on a way whose earlier override hides the classifier's own
+level (a hidden adjustment records no `stress_computed_tier`); an exact level works there.
+
+## Mass Ride hazards (FOLLOWUP-MASSRIDE-MAP part 3, OWNER-DECISIONS 325-327)
+
+A signed-in rider whom the **Suggestion settings** allow sees **Mark a hazard** in the road panel on a Mass
+Ride. They choose **Caution** or **Warning** and give a reason of up to 500 characters. Both levels stay
+routable. Avoid is still the Change LTS level that removes a stretch, and an Avoid road shows only Avoid.
+Only the road (way id) is kept: the clicked point is snapped as a suggestion's is, refused past 98 ft
+(30 m), and never stored. A way that is Avoid along only part of its length is judged by the piece the
+rider opened. The Avoid piece takes no report and names no hazard, while its routable pieces can.
+
+**Reviewing.** Reports wait in the planner's **Mass Ride hazard reports**, under the suggestions,
+with the same three actions: **Approve now**, **Delete**, and **Send to Discord** (a poll to copy into the server; it names the
+road, the level and the reason, never the rider). To take an approved hazard off the map, use the Django
+admin's **Mass hazards** page, select it, and run **Take the selected approved hazards off the Mass Ride
+map**. The row is kept with status `removed`. Every action is an `audit_log` entry (`mass_hazard_*`).
+
+An approved hazard is on the map now, as the approval's message says. The server's layer changes at
+once, and the reviewing admin's map reads it again past the browser's cache. Another browser that read
+the layer in the last minute keeps its copy for that minute at most. A road has one approved hazard at a
+time: a newer approval replaces the older one. A partial unique constraint
+(`mass_hazard_one_approved_per_road`) also enforces this, so if two admins approve on one road at the
+same moment, the second gets a 409 and its report stays waiting.
+
+**The layer is the API's, not the tiles'.** `GET /api/mass-hazards` returns the approved hazards as
+GeoJSON (public, `max-age=60`, an ETag and 304, its own address budget of 60 a minute,
+`mass-hazards`). The stress and Mass Ride tiles, their ETags and the tile cache are unchanged, so an
+approval needs no tile eviction or rebuild. A hazard on a way that later becomes Avoid drops out of the
+layer and the route answer by itself. If the table cannot be read, the layer is empty and routing goes on.
+
+**Security.** `POST /api/mass-hazards` has the suggestions' checks: a session of an account the setting
+allows (401 / 403, audited), CSRF, same-site, and the shared 10 writes an hour per account (with
+suggestions). A rider may have one open report per road (a partial unique constraint) and 20 open in all.
+The review endpoints (`GET /api/mass-hazards/open`, `POST /api/mass-hazards/{id}/approve|delete|discord`)
+need an active instance admin and share the suggestions' 200 review actions an hour. The reporter's
+account is on the `mass_hazard` row for the admin only, and the table is left out of the beta's data
+shipment (`scripts/beta/ship-data.sh`).
+
+**The migration** is `core/migrations/0017_mass_hazard.py`, which adds one new table and changes
+nothing else. It follows `0016_stress_suggestions`; the junction suggestions' migration,
+`0018_junction_suggestions`, follows it.
+
+### Junction suggestions (FOLLOWUP-STRESS-SUGGEST, OWNER-DECISIONS 232)
+
+The owner, 2026-10-03: "add a mechanism for intersections as well. In some times the road is fine,
+but the intersection can be especially dangerous." The same setting (**Who may suggest**), the same
+review list and the same three actions as the roads'; only the place is a junction.
+
+**Suggesting.** A rider the settings allow gets **Suggest a junction change** in the road panel
+whenever the panel's spot is within 82 ft (25 m) of a junction (a road vertex another way shares),
+and on a junction marker's card (it opens the panel with the form open). The form has two radio
+groups, each optional: a level in the poll's plain words (Easy / Takes patience / Hard / Avoid
+crossing here) and "More / Less dangerous than shown", plus the required reason (500 characters). A
+comparison alone means one level from what the map shows; a level and a comparison that disagree, the
+level already shown, "more" on Avoid or "less" on easy are refused (400, naming the field). What the
+map shows is, in order: an approved junction override's level, Avoid where an approved Avoid junction
+is there, else the rider's route's marker (orange 3, red 4; none, or no route: 2, "not marked"). A
+route that showed Avoid where none is approved any more is refused (`stale`: plan again).
+
+**Privacy.** Only the junction's node is stored (`junction_suggestion.lon/lat/node`, the shared
+vertex to 6 decimals), never the spot clicked; a spot with no junction within 82 ft (25 m) is
+refused (`no_junction`), and so is a bend in one road (two ways there and no second name).
+The poll's place is the junction's two busiest roads in words ("Where: Oak Street at Elm Street")
+and a map link to the node rounded to 4 decimals; nothing about the rider.
+
+**Approve now** makes a **junction override** (`junction_override`, level 2 easy, 3 takes patience,
+4 hard), which the planner reads at request time (`core.junction_suggestions.approved_ratings`): from
+the next plan every route passing within 49 ft (15 m) of the node takes the level's cost and marker
+(`routemaker.intersections.RATING_COST_FT`: 75 ft and no marker, 1,600 ft and orange, 4,000 ft and
+red), raising or lowering the model's own figure, a junction of two quiet streets included, for
+every movement through it. "Easy" only lowers: it never costs more than the model's own figure, and
+adds nothing where the model has nothing there. The rated junction stands for its own other nodes
+within 49 ft (15 m) along the route; a junction farther on keeps its own marker and cost. Avoid makes an approved Avoid
+junction instead (`source` "community", `suggestion_ref` "junction suggestion N", the rider-facing
+reason "Riders rate it too dangerous to cross"; the rider's own words go to `evidence`, never shown).
+An approval replaces what rated the junction before: earlier overrides there are withdrawn, and a
+level below Avoid withdraws an approved Avoid junction there (the review list warns and asks
+first); the audit entry names each. **Core >
+Junction overrides** in the admin lists them; an instance admin may withdraw one there (audited); they
+are made only by approving a suggestion. No rebuild and no restart.
+
+**Security and limits.** `GET /api/junction-suggestions/at` (the road panel's look-up, asked only
+for a rider who may suggest) and `POST /api/junction-suggestions` have the roads' guards; the hourly
+count (10) and the 20 waiting are shared with road suggestions, one waiting suggestion per junction
+per rider (a partial unique constraint on suggester and node). The review endpoints (`GET
+/api/junction-suggestions/open`, `POST /api/junction-suggestions/{id}/approve|delete|discord`) share
+the roads' 200-an-hour review budget. Every action is an `audit_log` entry (`junction_suggest`,
+`junction_suggest_approve`, `_delete`, `_discord`). `junction_suggestion` is left out of the beta's
+data shipment; `junction_override`, `avoid_junction` and `override` ship with their person columns
+(who made and approved each) blanked and without the riders' words (the evidence of a junction
+override or Avoid junction, and the private reason of an override an approved road suggestion made), and `db --update-data` replaces the beta's junction overrides
+with home's, as it does `override` (docs/BETA-RUNBOOK.md).
+
+**The migration** is `core/migrations/0018_junction_suggestions.py` (two new tables,
+`junction_suggestion` and `junction_override`; nothing else changed), after
+`0017_mass_hazard`, so the chain stays linear with one leaf. `migrate` runs at `up`, as always.
+
+## Avoid-rated junctions: adding one (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
+
+An Avoid rating is for a junction that is "just way too problematic", and only from the
+owner's or the community's input (307): the junction model never assigns one. The list ships
+empty. A rating takes effect at the next plan, with no rebuild and no restart: the planner reads
+the approved rows at request time (`core.avoid_junctions.approved`).
+
+**Adding one** (instance admin only):
+
+1. In the admin, open **Core > Avoid junctions** and choose **Add**.
+2. Fill in:
+   - **Name**: the junction as riders know it, e.g. "Main St and 1st Ave". Riders see it.
+   - **Location**: click the junction's centre on the map, where the roads' centre lines meet.
+     The planner counts a route as passing it within 49 ft (15 m) of that point
+     (`MATCH_RADIUS_M`), so a point off to one side of a wide junction can miss a route that
+     turns through it, and one placed on the next junction's corner can catch the wrong one.
+     **Never place it above or below another way**: within 49 ft (15 m) of a bridge, an
+     overpass, an underpass or a tunnel, the router's exclusion takes out the other level's
+     edges too and the match counts a route on the other level as passing. Move the point
+     along the junction's own roads until no other level is within 49 ft (15 m), or leave that
+     junction unrated. The form cannot warn of this: the segment table has no bridge or tunnel
+     flag for roads.
+   - **Reason**: a few plain words, e.g. "no gap in fast traffic". Riders see it, in the
+     notice, the list, the description and the marker's spoken name.
+   - **Evidence**: what the rating rests on (rider reports, a visit, crash records). Not shown
+     to riders.
+   - **Source**: "Owner or instance admin", or "Community suggestion, reviewed" with the
+     suggestion's id or link in **Suggestion ref**.
+3. **Save**. The row is inert until approved.
+4. Back on the list, tick it, choose **Approve the selected Avoid junctions** and **Go**.
+   Approval is audited (`approve` on `avoidjunction` in the audit log) and is never a checkbox
+   on the form.
+
+**Withdrawing one**: tick it and run **Withdraw the selected Avoid junctions**. The row stays
+(with its count) and stops routing at the next plan; who approved it is cleared (the audit log
+keeps both the approval and the withdrawal, with their actors). Deleting it is audited too.
+
+**Editing an approved row changes routing at once**: a new point, name or reason is read by the
+next plan, with no second approval. The edit is audited (`change` on `avoidjunction`, with the
+fields changed). To move a rating with review, withdraw it, edit it, and approve it again.
+
+**What changes for riders.** A plan whose route passes an approved Avoid junction is charged 30
+minutes (1,800 cost seconds) for each pass, the same as entering an Avoid road (308): the calm
+search scores it and excludes the junction in its first rounds, and every plan then asks the
+router once more for the way round (`exclude_locations` at the junction, a 49 ft (15 m) radius).
+
+- Where the search did not run a round, and the way round is cheaper than the route plus 30
+  minutes, it becomes the route.
+- On Mass Ride and Group Ride it becomes the route where it adds no LTS 4 and is at most 1 mi
+  (1.6 km) or 25% of the route longer, whichever is more (307; this limit is a default the owner
+  has yet to confirm).
+- A loop keeps its route; the way round is offered.
+- When the way round becomes the route, the "routes to choose from" are not offered.
+
+Otherwise the route keeps the junction, the panel leads with "This route goes through an
+Avoid-rated junction: <name>, <reason>. Riding through it is a really bad idea. Please
+reconsider your route." (announced first), and the way round is offered beside it, however much
+longer (335). A route chosen from "routes to choose from" shows its own notice, or none where it
+avoids the junction. The marker is the skull and crossbones on a dark disc, larger than the
+other junction markers, reachable by Tab; its spoken name is "Avoid-rated junction", the reason
+and the same plea (309). Clicking it, pressing Enter on it, or opening the road panel within 82
+ft (25 m) of it shows "Avoid this intersection. <name> is rated as dangerous for bikes: <reason>.
+Riding through it is a really bad idea. Please reconsider your route." at the top of the panel.
+The owner, 2026-10-10 15:08 UTC: "Yes, also when clicking on the intersection. Make it larger than a normal icon. Basically something to say: this is a really bad idea, please reconsider." It has no row in the map's legend: the owner, 2026-10-10
+15:03 UTC, "For avoid markers in intersection. No need to put it in legend. You'll only see this if you really try to force things."
+
+**Keeping both rare (335).** The list page leads with the counts: how many junctions are
+approved, how many await approval, and how many times plans passed through an approved one in
+all; each row shows its own **Plans through** and when it was last planned through. A plan is
+counted when its answer (after the way round was tried) still passes the junction. Only the count
+and the date are kept, never the route, the request or the rider.
+
+**Load.** With the list empty (as shipped) a plan makes one small query and no extra router
+call. A plan through an Avoid junction makes 1 + legs router calls inside the plan's budget: one
+`/route` for the way round, then a `/trace_attributes` for each of its legs where it is answered
+(swapped in or offered), and on Mass Ride and Group Ride a trace for each leg of the route where
+not already remembered. With under 4 s left the way round is not asked, and the answer says so
+(`avoid_search.alternate` "time").
+
+**Migration.** The table is `avoid_junction`, created by `core/migrations/0015_avoid_junction.py`.
 
 ## Backups
 
@@ -2070,6 +2504,12 @@ new one needs, beyond resuming across jobs:
 - **A durable volume sized** for one checkpointed build plus scratch (the resume gate's
   formula above).
 
+The mechanism for bullets 1, 3 and 4 (validation by content, a run key, and a durable store
+with a local-directory implementation and publish and restore that hash every file) is
+`pipeline.checkpoint_store`; it is not wired into the rebuild yet, so nothing above changes.
+The staging schema (bullet 2) is slice 2 of docs/CLOUD-REBUILD-PLAN.md, which has the rest and
+the questions for the owner.
+
 ## The source extract
 
 The rebuild's first stage produces the map it builds from, rather than expecting
@@ -2222,6 +2662,10 @@ OpenStreetMap data and needs nothing beyond the ODbL credit. Its file,
 `frontend/src/amenity-data/water-restrooms.json`, is a committed snapshot built
 by `scripts/build_water_restrooms.py` from the extract; the weekly rebuild does
 not refresh it (the refresh by hand is in `frontend/src/amenity-data/README.md`).
+Since 2026-10-10 the script merges a restroom node into the restroom building
+around it and leaves out historic springs (rules and merge order in that
+README); the committed file predates both until the next refresh by hand,
+which is the only step a release carrying the change needs.
 It is a hashed asset under `/assets/` (about 35 KB compressed), served like the
 federal-land file and fetched when the layer is on, which it is by default; no
 edge, compose or deploy change. A release that first carries it adds to its
@@ -2323,7 +2767,7 @@ to prevent.
 
 ### What the edge enforces
 
-Preset links: `/<ride-type-id>` (for example `/trailmaxxing`, any case, with or without a trailing slash) is a 302 to `/#preset=<id>`, for exactly the nine ids in `frontend/src/lib/presets.ts`; adding or renaming a ride type means editing the Caddyfile's `@preset-*` list too, and `tests/test_preset_links.py` fails until it matches.
+Preset links: `/<ride-type-id>` (for example `/trailmaxxing`, any case, with or without a trailing slash) is a 302 to `/#preset=<id>`, for exactly the ids in `frontend/src/lib/presets.ts` (eleven since Riding with kids, `/kids`); adding or renaming a ride type means editing the Caddyfile's `@preset-*` list too, and `tests/test_preset_links.py` fails until it matches.
 
 `/basemap/*` answers only `region.pmtiles`, `fonts/*` and `sprites/*` (anything
 else under it is a 404, the stamps and the work directory included), and only to
@@ -2381,6 +2825,124 @@ directory bind keeps the directory's inode, so a file git replaces inside it is
 seen at once. The routers still read their config only at start; see "After a
 rebuild: restart the routers". `tests/test_deploy_docs.py` fails if a second
 single-file bind appears without this procedure covering it.
+
+## The installable app at the edge (WEB-NAV P1-P4)
+
+The installable app (docs/DEVELOPMENT.md, "The installable app") adds four kinds of
+file to the front end's directory: `sw.js` (its service worker), `sw-kill.js` (the
+worker's kill switch, below), `manifest.webmanifest` and `icons/*.png`. The repository
+carries the edge changes they need; **the owner ships them by hand**, as every
+`Caddyfile` and `deploy/` change (PLAN.md: the agent stops at `deploy/`):
+
+1. **The front end first.** `/sw.js` and the rest are only asked for by the new
+   `index.html`, so publishing the new build (docs/DEPLOYMENT.md, "The public front
+   end", whose publish step now copies them) before the edge change is harmless:
+   until the edge lists them, those paths are the API's 404, the worker does not
+   register and the browser offers no install. Nothing breaks either way round.
+2. **Caddy** (the home stack and any Caddy deployment): the `Caddyfile` change adds
+   `/sw.js /manifest.webmanifest /icons/*` to `@frontend`, `Cache-Control: no-cache`
+   on the worker and the manifest, `Content-Type: application/manifest+json` on the
+   manifest, and a day's cache on the icons that exist. Apply it with "Applying a
+   Caddyfile change" above (validate in a throwaway container, then recreate caddy
+   alone). Then check:
+
+   ```sh
+   curl -sI https://<site>/sw.js | grep -iE '^(HTTP|content-type|cache-control)'
+   # 200, text/javascript, no-cache
+   curl -sI https://<site>/manifest.webmanifest | grep -iE '^(HTTP|content-type|cache-control)'
+   # 200, application/manifest+json, no-cache
+   curl -sI https://<site>/icons/icon-192.png | grep -iE '^(HTTP|cache-control)'
+   # 200, public, max-age=86400
+   curl -sI https://<site>/sw-kill.js | head -1
+   # 404 (the API's): the kill switch is never served under its own name
+   ```
+
+   `tests/test_frontend_edge.py` runs the same checks against the pinned Caddy image
+   where Docker is available.
+3. **The beta's nginx**: the template gains `location = /sw.js`, `location =
+   /manifest.webmanifest` (with its own type: an older nginx's `mime.types` has no
+   `webmanifest` line) and `location ^~ /icons/`, all behind the basic-auth password
+   like the rest of the app. Re-render and install it as BETA-RUNBOOK.md, "Shipping
+   an update later", step 9 says (`nginx -t` before the reload), then run the same
+   `curl` lines with the tester's user name (`curl -u <name> ...`). The beta's own
+   front-end install (`receive-data.sh files`, the CD agent) copies every file of the
+   build, so it needs no change.
+4. **Then, on a phone** (plan section 10, "basic auth on beta may block the manifest
+   or worker fetch; test on the beta early"): open the beta in Chrome on Android and
+   Safari on an iPhone, sign in through the password box, and check that Settings
+   offers "Install RouteMaker" (Android) or the Share line (iPhone), that the installed
+   app opens (it may ask for the password once more: an installed app keeps its own
+   sign-ins), and that, in airplane mode, the installed app still opens and a route
+   kept with "Keep for offline" opens from Settings with its map.
+
+The Content-Security-Policy needs no change: `worker-src 'self'` allows the worker,
+and `manifest-src` falls back to `default-src 'self'`.
+
+## The app's service worker: updates, rollback and the kill switch
+
+`/sw.js` is written by the build (`frontend/src/sw/swPlugin.mjs` from `swCore.mjs`)
+and carries the build's id; `index.html` carries the same id in `<meta
+name="routemaker-build">`. What it does, and what it never touches, is the table
+in `frontend/src/sw/swCore.mjs`: it precaches the build's `/assets/*` and
+`index.html`, answers a navigation to `/` from the network first (3 s, then the
+kept copy), and passes through everything else, `/api/*`, `/auth/*`, `/tiles/*`,
+the base map archive, the admin path and every non-GET included. It caches no API
+answer and nothing private.
+
+**A deploy.** Browsers check `/sw.js` on every load (it is `no-cache` at the edge, and
+the page registers it with `updateViaCache: 'none'`). A new worker installs only if
+the edge's `index.html` already carries its build id, so the publish order cannot
+leave a worker holding a mismatched shell: copied before `index.html` is renamed, the
+first browsers refuse it and take it on their next load. Installed, it waits; open
+pages say "A new version of RouteMaker is ready" with a Reload button (never during a
+ride) and switch only on that press. The new worker deletes the older builds' caches
+when it takes over. Online, a page load always gets the edge's current `index.html`
+anyway, so nobody is held on an old version by the worker while they have a signal.
+
+**A rollback** ("Deploying a planner and front-end release:
+rollback points and verification", and BETA-RUNBOOK.md's undo lines): put the old
+`sw.js` back with the old `index.html`. The beta's tooling saves and restores every
+top-level file of the front end, `sw.js` included. On the home stack, copy it back from
+the old build's `dist/` (or rebuild the old tag). If only `index.html` goes back, the new
+worker refuses to install against it and browsers that already have the new worker
+still load the old app from the network; restoring both keeps the two in step.
+
+**A rollback to a build from before the installable app** (the first release with `sw.js`
+or older) has no `sw.js` to put back, and every restore leaves the new one on disk:
+the beta's undo lines and `scripts/beta/auto-release.sh`'s own restore copy back only
+the files that were saved, and a build with no worker saved none. The new worker then
+stays registered against an older page. In that case, right after the restore, **copy
+`sw-kill.js` over `sw.js`** with the kill switch's command below (the new build's
+`sw-kill.js` is still in the directory): browsers drop the worker and its caches on
+their next load and run the old app with none. Leave it until the next release that
+has a worker replaces it.
+
+**The kill switch**, for a worker that misbehaves in a way a normal deploy cannot fix
+(plan section 10: "service-worker bugs outlive a deploy"). Every build writes
+`sw-kill.js` beside `sw.js` (from `frontend/src/sw/swKill.mjs`); it is never served
+under its own name. To use it, copy it over `sw.js` in the front end's directory, as
+the directory's owner:
+
+```sh
+docker run --rm -u 10001:10001 -v <DATA_ROOT>/frontend:/out \
+  docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 \
+  sh -c 'cp /out/sw-kill.js /out/.sw.js.new && mv /out/.sw.js.new /out/sw.js'
+```
+
+(on the beta: `sudo` with the same `cp` and `mv` in `$RM_DATA/frontend`). Each browser
+picks it up on its next load of the page, or within a day by the browser's own rule. It
+takes over at once, deletes every cache the worker made (`routemaker-app-*`) and nothing
+else (the routes riders kept for offline and a ride's corridor are theirs and stay),
+unregisters itself and reloads the pages it controlled, which then run with no worker.
+While it is in place, a page that registers `/sw.js` again gets the kill switch again,
+which finds no page to reload and unregisters: there is no loop. The next normal deploy
+publishes a real `sw.js` and the worker comes back. Nothing else is needed: no edge
+change, no restart.
+
+**It reloads pages mid-ride.** A rider with Ride mode open has the page reloaded under
+them when the kill switch arrives: the ride ends, its cues and the corridor it kept are
+gone, and they must press Start ride again. Use it for a worker that is actually
+broken, not as a routine step, and prefer a quiet hour.
 
 ## Pausing the weekly rebuild
 
@@ -3535,8 +4097,12 @@ docker compose exec -T api python manage.py predraw_stress_tiles
 
 **Recreate `api` and `worker` after a rollback** to a table with fewer columns.
 Each process remembers, for its life, that the live segment table has the
-facility, adjustment and road-trait columns (`routing._has_facility_columns`,
-`_has_adjustment_columns`, `junctions.has_trait_columns` cache a True). Rolled
+facility, adjustment, road-trait and junction-cost columns
+(`routing._has_facility_columns`, `_has_adjustment_columns`,
+`junctions.has_trait_columns`, `has_unsmoothed_tier` and `has_cost_columns`
+cache a True). Rolled back past the junction-cost columns
+(`road_default_speed_mph`, `road_urban`), routes still answer but lose every
+intersection: the logs say "the intersection events could not be read". Rolled
 back to a build from before those columns (20260927 and earlier), every route
 query still names `seg.car_free_when` and `facility`, nothing catches the
 database error, and every route answers 500 until the processes start again.
@@ -4023,7 +4589,9 @@ answer's `moved_points` says so.
 
 **Display.** A trail-class way routing does not open to bicycles is
 `map_class='barred'` and not drawn; the mountain-bike class stays `road` with the
-tile property `mtb` (and `rough`), facility `none`. The front end draws an `mtb`
+tile property `mtb` (and `rough`), facility `none`, and since 456 so does rated singletrack that
+nothing but its rating closes, with its level (`mtb_level`; "Mountain-bike difficulty levels"
+below). The front end draws an `mtb`
 trail in no routable layer but in its own not-for-routes look: a thin
 mid-grey line of fine dots from zoom 14, under the routable lines (OWNER-DECISIONS 452a,
 superseding 452's hiding and 290(b)'s faint drawing; `stressStyle.js` `mtb-trail`,
@@ -4048,6 +4616,103 @@ read, which needs the owner's approval as a fetch.
 **The gate.** VALIDATE_TILES reads back up to 8 ways of each new reason from every
 graph; the off-road graph is not held to `mtb`. `scripts/probe_bicycle_closures.py`
 does the same after the swap and now reads the off-road router too.
+
+## Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)
+
+Slice 2 of docs/MTB-TOPO-PLAN.md (OWNER-DECISIONS 456, 456a-c). **Needs a data rebuild**:
+nothing changes on the map until the rebuild promotes a table with the new column; until then
+the Mountain-bike trails layer draws every mountain-bike trail as the grey dots, as before.
+
+**The column.** `segment.mtb_level` (smallint, 1 to 4, null otherwise; a CHECK holds the range),
+written by the rebuild **on rated singletrack only** (`pipeline.trail_closures.mtb_level`: the way
+closed as `singletrack`, which every graph closes), from `routemaker.singletrack.mtb_level`: the
+higher of `mtb:scale` and `mtb:scale:imba`, S1-S3 to 1-3 and S4-S6 (IMBA 4) to 4. So a level
+always means "not used for routes" by any ride type: a mountain-bike-class way whose rating the
+singletrack rule does not read (`S2`, `0-2`: it reads a value's leading number) gets no level and
+stays the grey dots the off-road graph rides. Values such as `2+`, `1-` and `S2` read as their
+number; a range or list (`1-2`, `1;2`) as its higher end; a number past the scale's top (7 on
+`mtb:scale`, 5 on IMBA) reads as the top, level 4. **A rating of 0 is no level**: 0 is the easiest grade on both scales, and a way
+rated 0 on its scale or scales, and not 1 or more on the other, is a gravel trail, not an MTB level
+(456b), so its `mtb_level` is null, like an unrated way's. The model's migration (core 0013,
+after 0012, the bikeshare cache) is state-only, as 0010 was: the table is unmanaged and created
+whole by the rebuild.
+
+**Rated singletrack is drawn on the layer.** Before this, rated singletrack (rated 1 or more,
+unpaved, trail class; `routemaker.singletrack`) was `map_class='hidden'` and never in a tile, so
+the levels would have had almost nothing to draw. It is now `road` with `mtb` (so only the
+mountain-bike layer draws it; every routable layer and the Mass Ride map leave it out, as they do
+the mountain-bike class), facility `none`, **only where nothing but its rating closes it**
+(`pipeline.trail_closures.drawn_singletrack`): a way the tag rules would close without the rating
+(`bicycle=no` read as barred, private, a park path, a footpath for walkers, err closed and the
+rest) or a walk-your-bike way stays hidden. Routing is unchanged: singletrack stays closed on every
+graph (`rm:no_bicycle=singletrack`).
+
+**Tiles and ETag.** The stress tiles carry `mtb_level` (1-4, left out when null) where the live
+table has the column (`core.stress_tiles.OPTIONAL_PROPERTIES`). Its ETag letter is `d` (for
+difficulty; `m` and `l` were taken): with every optional column the tag reads
+`+kcfrmwdoesbtl-v8"`, fourteen letters, 39 characters, inside the cache's 64 (46 with the longest
+edit generation). `FORMAT_VERSION` stays 8: the property arrives only with a new table (a new oid)
+and the letter names it, so no cached tile is taken for a table it was not drawn from. The
+pre-draw after the swap draws the new tiles as after any rebuild.
+
+**The rebuild log** has a line "mountain-bike levels (ways, mi, mi drawn): {1: (...), ...}" after
+the segments are written (`pipeline.trail_routes.mtb_level_counts`): the counts per level that
+slice 3 (Gravel's "roughest I'll ride" setting) is to be shown to the owner with.
+
+**The front end** (`stressStyle.js`, `MTB_LEVELS`, `mtbTrailLayers`): with the layer on, each
+level is drawn in its colour with a pattern of its own (in line widths), from zoom 14, under every
+routable line; an unrated mountain-bike trail keeps the grey dots (`mtb-trail`, the plan's default).
+Every level shares one not-for-routes mark no stress tier has (452a, "clearly unlike any routable
+trail or road"; `MTB_LEVEL`): short dark (#1c1917) cross-ticks under the line, 2 px past it a side,
+a tick 1.5 px long every 10.5 px, where every tier sits on a solid casing; gaps of 1.5 line widths
+or more, where no tier's passes 1; and a 2 px line (2.5 px with the accessibility switch), thinner
+than any tier. The review screenshot, z15, the four levels beside LTS 2, LTS 4 and Avoid, is
+reports/v0.4.0/mtb-levels-vs-stress.png in the project files (and `-strong` with the switch on).
+
+| Level | Rated | Colour | Pattern | Lowest ratio to the base map |
+| --- | --- | --- | --- | --- |
+| 1 | S1 or IMBA 1 | green #28702c | long dashes [6, 2] | 3.57:1 (scrub) |
+| 2 | S2 or IMBA 2 | blue #1565c0 | short dashes [3, 2] | 3.36:1 (scrub) |
+| 3 | S3 or IMBA 3 | black #1c1917 | dash-dot [4, 1.5, 1, 1.5] | 10.24:1 (scrub) |
+| 4 | S4 or above, or IMBA 4 or above | red #c62828 | dash-dot-dot [4, 1.5, 1, 1.5, 1, 1.5] | 3.29:1 (scrub) |
+
+Each colour is at least 3.25:1 from every surface of the light base map (mtbLevels.test.ts; the
+line's gaps show the map, with no casing behind them). The green was the starting #2e7d32, 3.0009:1 on
+scrub; the review of slice 2 darkened it to #28702c (park 3.60:1, wood 3.75:1, light roads 5.11:1
+and up). The ticks are 10.24:1 or more. The legend has a row a level while the layer is on
+("Level 2 (blue)", "Mountain-bike trail rated S2 or IMBA 2: blue short dashes crossed by dark ticks.
+Not used for routes."), in the Mass Ride legend too, and the road panel names the level: the Bikes
+line reads "Mountain-bike trail, level 2 (blue), not used for routes" (a levelled trail never adds
+"(Gravel and Mountain Goat may use it)", which only the unrated mountain-bike class, open on the
+off-road graph, says), and the Riding section has a "Mountain-bike difficulty" row ("Level 2 (blue):
+S2 or IMBA 2"), on a way the layer draws only. The switch's description is now "From zoom 14: levels 1 to 4 by colour and
+pattern, unrated as grey dots. Not used for routes; Gravel and Mountain Goat may use unrated ones."
+
+**Trail names** (the owner, 2026-10-10 (15:16 UTC): "Also, for mountain bikes, try to make sure trail names are added in if they are available."). The rebuild writes `segment.mtb_name` (text, null otherwise; core
+migration 0014, state-only, after 0013) on the mountain-bike-only ways from
+`routemaker.singletrack.mtb_name`: the OSM `name`, else `mtb:name`, else `ref`, trimmed (a bare `ref` such as "12" comes last, as it could be misread as a level). It is a
+column of its own, not `trail_name`, which chains the long trails' named runs and which a
+mountain-bike way must never join (378). The stress tiles carry it as `name` (left out when null)
+where the live table has the column, with ETag letter `n`: with every optional column the tag now
+reads `+kcfrmwdnoesbtl-v8"`, fourteen letters, 39 characters (47 with the longest edit
+generation), inside the cache's 64 (with the half step's `h` too, `+kcfrmwdnoeshbtl-v8"`: fifteen
+letters, 40 characters, 48 with the longest edit generation); `FORMAT_VERSION` stays 8 for the same reason as `d`. The
+level log line ends "; N of M mountain-bike ways named" (`pipeline.trail_routes.mtb_name_counts`).
+The front end labels each named mountain-bike trail along its line (`mtb-trail-label`, a symbol
+layer in `MTB_LAYER_IDS`, so it follows the layer's switch), from zoom 15, in Noto Sans Medium 12 px
+on a 1.5 px white halo, over the routable lines and under the Mass Ride layers; MapLibre's
+collision, `text-padding` 8 and `symbol-spacing` 300 thin the labels, and `text-max-angle` is 45
+so a name still fits along curvy singletrack at z15-16. The text is in the line's own
+colour, each 4.5:1 or more against the halo (green 6.10:1, blue 5.75:1, black 17.49:1, red 5.62:1,
+the unrated grey 6.05:1, 7.85:1 with the accessibility switch); the base map's path-label grey (#91888b, about 3.5:1) would
+not be. The road panel says the name: the Bikes line reads "Mountain-bike trail, level 2 (blue):
+Rosaryville Trail, not used for routes", and the panel's title and Name row fall back to it where
+the router has no name. No name, no label and no name in the words.
+
+**Deploy order.** The front end and api may ship before the rebuild: on today's table there is no
+`mtb_level` or `mtb_name`, so the layer draws the grey dots, labels nothing, and the panel names no
+level or name. After the rebuild, check a z14 tile's ETag carries `d` and `n` and the log line has
+counts for each level and the named ways.
 
 ## The rebuild bundle (wip/rebuild-bundle)
 
@@ -4594,6 +5259,30 @@ route chart width estimate).
   Montgomery Planning files. The 2026-10-03 clipped extract is kept as
   `source-2026-10-03.osm.pbf` (step I), and its merged file only if step C's optional copy
   was made. The old api ignores an `offroad` row in `valhalla_upstream`.
+
+## Bikeshare feeds
+
+The api container makes outbound HTTPS requests to the bikeshare operator's official GBFS feeds
+(`gbfs.capitalbikeshare.com`, `gbfs.lyft.com`; `core.gbfs`) while anyone is planning a Bikeshare
+route or asking for the nearest stations: **one reading about every 60 s for the whole deployment**,
+not one per api worker. The workers share the latest reading through one row of the
+`bikeshare_feed_cache` table (`core.models.BikeshareFeedCache`), replaced in place at each refresh;
+the worker that finds it out of date and wins a PostgreSQL advisory lock reads the feeds, and the
+others use its row (or wait up to 6 s for it). Nothing is kept as history: no earlier reading, no
+counts over time, no row per station or reading; the table is excluded from the nightly dump and
+from the beta's data shipment, and refills itself. The requests carry nothing of the visitor. If
+the feeds do not answer, the last reading is served for two more minutes; after that Bikeshare
+plans answer 503 with `code: bikeshare_unavailable` when the station list is missing, and plan with
+"availability unknown" notes when only the availability feed is. A station that has not reported
+for 30 minutes counts as unavailable. The operator may end the data licence at will
+(OWNER-DECISIONS 300); removing the ride type is removing `bikeshare` from
+`core.presets.PRESETS`, the Caddyfile redirect and the front end's list, and the cache table can
+then be dropped. The full source reference (data, operator, licence, retrieval) is in
+docs/SOURCES.md, "Capital Bikeshare".
+
+`POST /api/bikeshare/stations` (the nearest stations to pick up from or return to,
+OWNER-DECISIONS 466a) has its own limit, `ratelimit.BIKESHARE_STATIONS`, 60 a minute per client
+address, and reads the shared copy, never the feeds directly.
 
 ## Rebuilding on the cloud box
 

@@ -610,6 +610,35 @@ function M.remap_way(tags, derived)
     out["lanes:backward"] = M.GRADED_LANES
   end
 
+  -- Half steps (OWNER-DECISIONS 441i-441l, 461a; `rm:stress_half`, phase 3 of
+  -- the half-step editor). A half step's cost is the midpoint of its two levels'
+  -- (461a), which Valhalla's bicycle costing cannot be told directly, so each is
+  -- carried by the same marks as the levels around it, at an intermediate value
+  -- (`M.half_step_marks`; the figures, modelled from sif/bicyclecost.cc 3.5.1,
+  -- are in docs/stress/stress-number.md section 3):
+  --
+  -- - 3.5 (tier 3 plus a half): the LTS 3 penalty above, and a practical speed
+  --   and lane count between the road's own and LTS 4's top marks. Its added
+  --   cost comes to 0.89-1.14 of the midpoint between LTS 3 and LTS 4 on the
+  --   modelled roads at every slider position.
+  -- - 2.5 (tier 2 plus a half): no `use_sidepath` (that is LTS 3's whole
+  --   penalty), only a lane count. That lands at about a quarter of the way from
+  --   LTS 2 to LTS 3 (0.4-0.5 of the midpoint) and never above LTS 3 at any slider
+  --   position: the closest the graph comes without a costing fork, and on the
+  --   side that keeps every level's order. RouteMaker's own ranking adds the
+  --   exact midpoint (core.refine).
+  -- - 1.5 adds nothing: LTS 1 and 2 cost the same in the graph.
+  -- - 4.5 is priced as LTS 4 (the graded marks above), and never as Avoid
+  --   (441k): no alley mark, so no entry charge (the default taken 2026-10-10,
+  --   owner to confirm).
+  --
+  -- Only under the same conditions as the marks it borrows: a road open to a
+  -- bicycle, not a trail-class way, and not a facility-neutral one.
+  local half = M.half_step_marks(tags, derived, out)
+  for key, value in pairs(half) do
+    out[key] = value
+  end
+
   -- "Legal but avoid" (stress tier 5; the owner, 2026-09-27: "Maybe make a
   -- 5th category for legal but to be avoided"), charged only there (the
   -- owner's "Only tier-5 roads (Recommended)": "Rework it so only 'legal but
@@ -1216,6 +1245,57 @@ M.STRESS_PENALTY_TIER = 3
 M.GRADED_TIER = 4
 M.GRADED_SPEED = "140"
 M.GRADED_LANES = "15"
+
+-- Half steps' marks (see `remap_way`): 3.5's practical speed (kph) and lanes
+-- each way, between a road's own and LTS 4's `GRADED_*`, and 2.5's lanes.
+M.HALF_GRADED_SPEED = "90"
+M.HALF_GRADED_LANES = "11"
+M.HALF_LOW_LANES = "10"
+
+--- A speed tag as whole km/h ("50", "35 mph", "35mph"), or nil when it is not a
+-- number (none, walk, signals, a range).
+-- @param value string|nil
+-- @return number|nil
+function M.speed_kph(value)
+  if type(value) ~= "string" then return nil end
+  local number, unit = value:match("^%s*(%d+%.?%d*)%s*(%a*)%s*$")
+  number = tonumber(number)
+  if number == nil then return nil end
+  if unit == "mph" then return math.floor(number * 1.609344 + 0.5) end
+  if unit == "" or unit == "kmh" or unit == "kph" then return math.floor(number + 0.5) end
+  return nil
+end
+
+--- The marks a half step adds (`rm:stress_half`): 3.5 the LTS 3 penalty plus
+-- an intermediate speed and lane count; 2.5 an intermediate lane count; 1.5 and
+-- 4.5 nothing (4.5 is LTS 4's own marks, already written). Never on a
+-- trail-class or facility-neutral way, and never where the way is not open to a
+-- bicycle: the 3.5 marks need the penalty to be there, and 2.5's need what the
+-- penalty would need (`M.may_penalise`), so neither opens a way.
+-- @param tags table: the way's OSM tags
+-- @param derived table: the rm:* values
+-- @param out table: what `remap_way` has written so far
+-- @return table: the keys to write
+function M.half_step_marks(tags, derived, out)
+  local marks = {}
+  if not derived.stress_half or derived.stress_tier == nil then return marks end
+  if derived.is_trail_class or derived.facility_neutral then return marks end
+  local bicycle = out.bicycle or tags.bicycle
+  if derived.stress_tier == M.STRESS_PENALTY_TIER and bicycle == M.STRESS_PENALTY_BICYCLE then
+    -- Never below the road's own speed: a 3.5 road posted over 90 km/h (56 mph)
+    -- keeps its own, so the mark only ever raises the price.
+    local own = M.speed_kph(tags["maxspeed:practical"]) or M.speed_kph(tags.maxspeed)
+    local floor = tonumber(M.HALF_GRADED_SPEED)
+    marks["maxspeed:practical"] = tostring(math.max(own or 0, floor))
+    marks["lanes:forward"] = M.HALF_GRADED_LANES
+    marks["lanes:backward"] = M.HALF_GRADED_LANES
+  elseif derived.stress_tier == M.STRESS_PENALTY_TIER - 1 and bicycle ~= "no"
+    and M.may_penalise(tags, bicycle) then
+    marks["lanes:forward"] = M.HALF_LOW_LANES
+    marks["lanes:backward"] = M.HALF_LOW_LANES
+  end
+  return marks
+end
 
 -- "Legal but avoid", and the write that carries it (see `remap_way`).
 M.AVOID_TIER = 5

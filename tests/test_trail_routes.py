@@ -737,6 +737,9 @@ def test_the_gap_and_the_turns_are_named_constants() -> None:
         ({"stress_tier": 5}, False),
         ({"stress_tier": 1, "is_trail_class": True}, False),
         ({"stress_tier": 2, "is_trail_class": True}, False),
+        # Half steps (461a): 1.5 is calm; 2.5 takes the cautious side and is not.
+        ({"stress_tier": 1, "stress_half": True}, True),
+        ({"stress_tier": 2, "stress_half": True}, False),
     ],
 )
 def test_which_ways_can_be_in_the_ride_layer(kwargs, candidate) -> None:
@@ -890,6 +893,19 @@ class TestCalmRoads:
         got = calm_runs(staging)
         assert got[1] == pytest.approx(1000, abs=5), "the longer side of the crossing"
         assert got[9] is None, "the busy road is not a candidate"
+
+    def test_a_2_5_road_crossing_breaks_the_run_and_a_1_5_does_not(self, segment_schemas):
+        # Half steps (461a): an on/off rule takes the cautious side, so a 2.5 road is busy here.
+        _live, staging = segment_schemas
+        road(staging, 1, "Oak Street", (0, 0), (500, 0), (1000, 0), (1500, 0))
+        road(staging, 8, "Ash Lane", (1000, -200), (1000, 0), (1000, 200), tier=1, calm=None)
+        road(staging, 9, "Elm Lane", (500, -200), (500, 0), (500, 200), tier=2, calm=None)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {staging}.segment SET stress_half = true WHERE osm_way_id IN (8, 9)"
+            )
+        trail_routes.derive_calm_runs(staging)
+        assert calm_runs(staging)[1] == pytest.approx(1000, abs=5)
 
     def test_joining_a_busy_road_ends_the_run_whatever_the_name(self, segment_schemas):
         _live, staging = segment_schemas
@@ -1214,3 +1230,55 @@ class TestRoadside:
             0.6,
             20.0,
         )
+
+
+# --- the mountain-bike counts the rebuild logs (OWNER-DECISIONS 456; the owner, 2026-10-10) ---
+
+
+def mtb_piece(schema, way, ordinal, *, mtb_only, name=None, level=None, map_class="road"):
+    """A 1000 m path piece of way `way`, with the mountain-bike columns."""
+    west = -77.0 + ordinal * 1000 * DEG_PER_METRE
+    east = west + 1000 * DEG_PER_METRE
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"INSERT INTO {schema}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+            "stress_rule, is_trail_class, facility, map_class, mtb_only, mtb_name, mtb_level) "
+            "VALUES (%s, %s, ST_MakeLine(ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 1, 'Y', "
+            "true, 'none', %s, %s, %s, %s)",
+            [way, ordinal, west, LAT, east, LAT, map_class, mtb_only, name, level],
+        )
+
+
+@db
+class TestMountainBikeCounts:
+    def test_named_ways_are_counted_once_each_among_the_mountain_bike_ways(
+        self, segment_schemas
+    ) -> None:
+        _live, staging = segment_schemas
+        mtb_piece(staging, 1, 0, mtb_only=True, name="Rocky Loop")
+        mtb_piece(staging, 1, 1, mtb_only=True, name="Rocky Loop")  # one way, two pieces
+        mtb_piece(staging, 2, 2, mtb_only=True)  # unnamed
+        mtb_piece(staging, 3, 3, mtb_only=True, name="Loop 3", level=2)
+        # A named way that is not a mountain-bike way is not counted at all.
+        mtb_piece(staging, 4, 4, mtb_only=False, name="Alpha Trail")
+        assert trail_routes.mtb_name_counts(staging) == (2, 3)
+
+    def test_no_mountain_bike_ways_is_none_of_none(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        mtb_piece(staging, 4, 0, mtb_only=False)
+        assert trail_routes.mtb_name_counts(staging) == (0, 0)
+
+    def test_the_level_counts_split_the_miles_drawn_from_the_hidden(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        mtb_piece(staging, 1, 0, mtb_only=True, level=3)
+        mtb_piece(staging, 2, 1, mtb_only=True, level=3, map_class="hidden")
+        got = trail_routes.mtb_level_counts(staging)
+        assert set(got) == {3}
+        ways, miles, drawn = got[3]
+        assert ways == 2
+        assert miles == pytest.approx(2000 / 1609.344, rel=0.01)
+        assert drawn == pytest.approx(1000 / 1609.344, rel=0.01)
+
+    def test_a_schema_name_is_validated(self) -> None:
+        with pytest.raises(ValueError):
+            trail_routes.mtb_name_counts("live; DROP SCHEMA public")

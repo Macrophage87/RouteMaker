@@ -49,6 +49,10 @@ export interface SegmentInfo {
   /** The compact lines; absent from an older API, when the details open instead. */
   summary?: SummaryRow[];
   tier: number | null;
+  /** The exact step, half steps included (1.5 ... 4.5); absent from an older API. `tier` is its whole level. */
+  step?: number | null;
+  /** Whether the road data can hold a half step yet; absent from an older API (whole steps only). */
+  half_steps?: boolean | null;
   open: boolean | null;
   osm_way_id: number | null;
   distance_m: number | null;
@@ -64,6 +68,11 @@ export type InfoOrigin = "spot" | "centre";
 export interface InfoRequest {
   point: LonLat;
   origin: InfoOrigin;
+  /**
+   * Asked for by a junction card's Suggest a change (OWNER-DECISIONS 232; lib/junctionSuggest.ts): the
+   * panel opens the junction's suggestion form straight away, where a rider may suggest.
+   */
+  junction?: boolean;
 }
 
 /**
@@ -95,6 +104,11 @@ export type InfoState =
 /** The panel's words. */
 export const INFO_TITLE_LOADING = "Looking up the road here";
 export const NO_ROAD = "No road here";
+/** The panel's title for a way with no name (core/segment_info.py UNNAMED_ROAD_TITLE and
+ * UNNAMED_PATH_TITLE, the route description's words capitalised; a Python test ties them). */
+export const UNNAMED_ROAD_TITLE = "Unnamed road";
+export const UNNAMED_PATH_TITLE = "Unnamed path";
+export const UNNAMED_TITLES: readonly string[] = [UNNAMED_ROAD_TITLE, UNNAMED_PATH_TITLE];
 /** How far the API looks for a way (core.segment_info.SNAP_RADIUS_M). */
 export const SNAP_RADIUS_M = 30;
 export const NO_ROAD_HINT = `No road or path within about ${formatRadius(SNAP_RADIUS_M)} of this spot.`;
@@ -213,9 +227,19 @@ export function infoError(status: number): string {
 }
 
 /** Ask the API about a spot. */
-export async function fetchSegmentInfo(origin: string, point: LonLat, signal?: AbortSignal): Promise<InfoState> {
+export async function fetchSegmentInfo(
+  origin: string,
+  point: LonLat,
+  signal?: AbortSignal,
+  fresh = false,
+): Promise<InfoState> {
   try {
-    const response = await fetch(segmentInfoUrl(origin, point), { signal, headers: { Accept: "application/json" } });
+    // `fresh` after an edit: the answer is cached for five minutes, and the rider has just changed it.
+    const response = await fetch(segmentInfoUrl(origin, point), {
+      signal,
+      headers: { Accept: "application/json" },
+      ...(fresh ? { cache: "reload" as const } : {}),
+    });
     if (!response.ok) return { kind: "error", message: infoError(response.status) };
     const info = (await response.json()) as SegmentInfo;
     if (!info || typeof info.found !== "boolean" || !Array.isArray(info.sections)) {
@@ -300,6 +324,24 @@ export function infoSaid(state: InfoState): string {
   const stress = stressPhrase(info);
   const closed = info.open === false ? " Bikes not allowed here." : "";
   return `${info.title}${stress ? `: ${stress}` : ""}.${closed}`;
+}
+
+/**
+ * The status sentence said again when the spot's federal area changes after the road's answer
+ * (a Mass Ride whose federal data comes late; item 239), or null when there is nothing to say
+ * again: no request, an answer still loading, or an answer that belongs to an earlier request
+ * (`stateFor`, the request `state` was fetched for), whose road must not be said with the new
+ * spot's area.
+ */
+export function refreshedSaid(
+  request: InfoRequest | null,
+  stateFor: InfoRequest | null,
+  state: InfoState,
+  federalSaid: string,
+  hazardSaid = "",
+): string | null {
+  if (!request || stateFor !== request || state.kind === "loading") return null;
+  return [infoSaid(state), hazardSaid, federalSaid].filter(Boolean).join(" ");
 }
 
 /** Whether a key press asks for the road at the centre: I, unmodified, on the map itself. */

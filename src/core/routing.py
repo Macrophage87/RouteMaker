@@ -73,8 +73,9 @@ from django.conf import settings
 from django.db import connection
 from django.utils import timezone
 
-from pipeline.schema import MASS_WIDTH_COLUMN, validate_schema_name
+from pipeline.schema import MASS_WIDTH_COLUMN, STRESS_HALF_COLUMN, validate_schema_name
 from pipeline.variants import Variant
+from routemaker import avoid_junctions as avoid_rules
 from routemaker import calm, climbs, describe, flow, intersections, ridetime, trace_junctions, zoo
 from routemaker import detour as detour_rules
 from routemaker import profile as profile_rules
@@ -83,7 +84,7 @@ from routemaker.geo import Point, haversine
 from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
-from . import presets
+from . import avoid_junctions, mass_hazards, presets
 
 logger = logging.getLogger(__name__)
 
@@ -290,6 +291,10 @@ class Piece:
     use: str = field(default="", compare=False)
     heading_in: float | None = field(default=None, compare=False)
     heading_out: float | None = field(default=None, compare=False)
+    # The edge's costing attributes (`calm.road_of_edge`), which the rolling stress score
+    # prices each road by (docs/stress/stress-number.md section 4); None from a trace that
+    # has none.
+    road: calm.Road | None = field(default=None, compare=False)
 
 
 def _heading(value) -> float | None:
@@ -318,6 +323,7 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
             "use": str(edge.get("use") or ""),
             "heading_in": _heading(edge.get("begin_heading")),
             "heading_out": _heading(edge.get("end_heading")),
+            "road": calm.road_of_edge(edge, miles=trace.get("units") == "miles"),
         }
         stretches = []
         for a, b in zip(shape[begin:end], shape[begin + 1 : end + 1], strict=True):
@@ -340,7 +346,7 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
 # segment nearest the piece on its way. The breakdown sums them; the route's
 # coloured sections (`stress_spans`) keep their order.
 _STRESS_JOIN = """
-SELECT {tier}, {facility}, seg.is_unpaved, seg.road_lanes, seg.road_oneway{capacity_out}
+SELECT {tier}, {facility}, seg.is_unpaved, seg.road_lanes, seg.road_oneway{capacity_out}{half_out}
 FROM unnest(%s::bigint[], %s::float8[], %s::float8[])
      WITH ORDINALITY AS p(way_id, lon, lat, ordinality)
 LEFT JOIN LATERAL (
@@ -372,6 +378,27 @@ def _has_capacity_column(schema: str) -> bool:
         )
         _capacity_column_seen = cursor.fetchone()[0] == 1
     return _capacity_column_seen
+
+
+# Whether the live segment table has the half-step column (`pipeline.schema.
+# STRESS_HALF_COLUMN`): written by the first rebuild after half steps shipped, or added in
+# place by `manage.py add_stress_half_column`. Without it every piece is a whole step.
+# Remembered once seen, as above.
+_half_column_seen = False
+
+
+def _has_half_column(schema: str) -> bool:
+    global _half_column_seen
+    if _half_column_seen:
+        return True
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
+            "AND table_name = 'segment' AND column_name = %s",
+            [schema, STRESS_HALF_COLUMN],
+        )
+        _half_column_seen = cursor.fetchone()[0] == 1
+    return _half_column_seen
 
 
 # A road closed to motor traffic only at set times is a path for a ride inside
@@ -437,6 +464,11 @@ class PieceClass(tuple):
     # capacity map always agree (`_flow_stretches`).
     width_m: float | None
     rpm: int | None
+    # A half step (OWNER-DECISIONS 441i-441l, 461a): the piece is half a level above its
+    # stress key ("3" and half is 3.5). The key stays the whole level, so the breakdown and
+    # every reader that compares keys read the lower level; the ranking reads the half as
+    # the midpoint (`core.refine`, docs/stress/stress-number.md section 3).
+    half: bool
 
     def __new__(
         cls,
@@ -446,6 +478,7 @@ class PieceClass(tuple):
         lanes: int | None = None,
         oneway: bool | None = None,
         width_m: float | None = None,
+        half: bool = False,
     ):
         pair = super().__new__(cls, (tier, facility))
         pair.unpaved = unpaved
@@ -453,10 +486,11 @@ class PieceClass(tuple):
         pair.oneway = oneway
         pair.width_m = width_m
         pair.rpm = round(flow.level_riders_per_min(width_m)) if width_m is not None else None
+        pair.half = bool(half) and tier in ("1", "2", "3", "4")
         return pair
 
     def __getnewargs__(self):
-        return (self[0], self[1], self.unpaved, self.lanes, self.oneway, self.width_m)
+        return (self[0], self[1], self.unpaved, self.lanes, self.oneway, self.width_m, self.half)
 
 
 def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list[tuple[str, str]]:
@@ -473,29 +507,42 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
     with_facility = _has_facility_columns(schema)
     with_capacity = _has_capacity_column(schema)
+    with_half = _has_half_column(schema)
     query = _STRESS_JOIN.format(
         schema=schema,
         tier=_TIER_AT if with_facility else "seg.stress_tier",
         facility=_FACILITY_AT if with_facility else "NULL",
         columns=("s.facility, s.car_free_when" if with_facility else "NULL AS facility")
-        + (f", s.{MASS_WIDTH_COLUMN}" if with_capacity else ""),
+        + (f", s.{MASS_WIDTH_COLUMN}" if with_capacity else "")
+        + (f", s.{STRESS_HALF_COLUMN}" if with_half else ""),
         traits=(
             "s.road_lanes, s.road_oneway"
             if _has_trait_columns(schema)
             else "NULL::smallint AS road_lanes, NULL::boolean AS road_oneway"
         ),
         capacity_out=f", seg.{MASS_WIDTH_COLUMN}" if with_capacity else "",
+        # A road closed to cars in this ride time is a path at tier 1, never a half step.
+        half_out=(
+            ""
+            if not with_half
+            else ", CASE WHEN %s = ANY(seg.car_free_when) THEN false "
+            f"ELSE seg.{STRESS_HALF_COLUMN} END"
+            if with_facility
+            else f", seg.{STRESS_HALF_COLUMN}"
+        ),
     )
     arrays = [[p.way_id for p in pieces], [p.lon for p in pieces], [p.lat for p in pieces]]
+    whens = ([when, when] + ([when] if with_half else [])) if with_facility else []
     classes = []
     with connection.cursor() as cursor:
-        cursor.execute(query, ([when, when] if with_facility else []) + arrays)
+        cursor.execute(query, whens + arrays)
         for row in cursor.fetchall():
             tier, kind = row[0], row[1]
             unpaved = row[2] if len(row) > 2 and isinstance(row[2], bool) else None
             lanes = row[3] if len(row) > 3 and isinstance(row[3], int) else None
             oneway = row[4] if len(row) > 4 and isinstance(row[4], bool) else None
             width = row[5] if with_capacity and len(row) > 5 and row[5] is not None else None
+            half = bool(row[-1]) if with_half and row[-1] is True else False
             if roadway_only and kind in ROADWAY_ONLY_AS_NONE:
                 kind = "none"
             classes.append(
@@ -506,6 +553,7 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
                     lanes,
                     oneway,
                     None if width is None else float(width),
+                    half,
                 )
             )
     return classes
@@ -544,8 +592,8 @@ MIN_SPAN_M = 10.0
 def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
     """The route's coloured sections, in route order.
 
-    `stretches` is (metres, stress key, facility key[, unpaved[, rpm[, outside DC]]]) in the order
-    ridden; the answer is [{from_m, to_m, tier, facility, unpaved}] in whole metres
+    `stretches` is (metres, stress key, facility key[, unpaved[, rpm[, outside DC[, half]]]]) in
+    the order ridden; the answer is [{from_m, to_m, tier, facility, unpaved}] in whole metres
     along the route, adjacent equal sections merged and those under MIN_SPAN_M
     folded into the one before (or, first on the route, the one after). `tier` is
     1-5 or null (unknown); `facility` is the class or null; `unpaved` True or False
@@ -567,6 +615,10 @@ def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
     spans: list[list] = []  # [length, tier, facility, unpaved, band, lowest rpm]
     for stretch in stretches:
         metres, tier, kind = stretch[:3]
+        # A half step is a section of its own (OWNER-DECISIONS 461a): its key carries the
+        # half ("3h"), and the section says `half: true`.
+        if len(stretch) > 6 and stretch[6] and tier in ("1", "2", "3", "4"):
+            tier = f"{tier}h"
         unpaved = stretch[3] if len(stretch) > 3 else None
         outside = capacity and len(stretch) > 5 and bool(stretch[5])
         rpm = stretch[4] if capacity and len(stretch) > 4 and not outside else None
@@ -600,6 +652,8 @@ def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
         if out and out[-1]["to_m"] == round(at):
             out[-1]["to_m"] = round(at)
             continue
+        half = tier.endswith("h")
+        tier = tier.removesuffix("h")
         entry = {
             "from_m": round(start),
             "to_m": round(at),
@@ -607,6 +661,8 @@ def stress_spans(stretches: list[tuple], capacity: bool = False) -> list[dict]:
             "facility": kind if kind != "unknown" else None,
             "unpaved": unpaved,
         }
+        if half:
+            entry["half"] = True
         if capacity:
             entry["rpm"] = None if tier == "5" else rpm
             if _band == "outside":
@@ -729,8 +785,9 @@ def trace_leg(variant: str, costing: dict, shape: str, deadline: Deadline) -> di
                     # The route description's street names (routemaker.describe).
                     "edge.names",
                     "shape",
-                    # What the intersection model reads (core.junctions).
-                    *trace_junctions.TRACE_ATTRIBUTES,
+                    # What the intersection model reads (core.junctions), and what the
+                    # rolling stress score prices each road by (routemaker.calm).
+                    *dict.fromkeys(trace_junctions.TRACE_ATTRIBUTES + calm.TRACE_ATTRIBUTES),
                 ],
                 "action": "include",
             },
@@ -767,6 +824,9 @@ class Dials:
     # and load, for the effort the Hills slider's avoid half weighs at the top of the
     # stress slider; None: `presets.system_weight_for`.
     system_weight_kg: int | None = None
+    # Off by default: the answer lists EVERY junction with its cost (`junctions_debug`),
+    # flagged or not, for re-running a sample with all junctions counted (468).
+    debug_junctions: bool = False
     # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
     # A ride whose last point is its first is a loop whatever this says.
     loop: bool = False
@@ -1359,6 +1419,30 @@ def _flow_stretches(
     return out
 
 
+def _calm_pieces(leg_runs: list, pieces: list[Piece], classes: list) -> list[calm.Costed]:
+    """The traced pieces as the rolling stress score prices them (`calm.Costed`), in the order
+    ridden and cut as the stress sections are (`stress_spans`): each piece's length, tier,
+    facility and edge attributes, so each road counts at its own routing cost. A leg that
+    could not be traced is one unrated stretch."""
+    out: list[calm.Costed] = []
+    for run in leg_runs:
+        if isinstance(run, tuple):
+            for i in range(run[0], run[1]):
+                tier, kind = classes[i][0], classes[i][1]
+                out.append(
+                    (
+                        pieces[i].metres,
+                        int(tier) if tier in STRESS_KEYS and tier != "unknown" else None,
+                        kind if kind != "unknown" else None,
+                        pieces[i].road,
+                        getattr(classes[i], "half", False) is True,
+                    )
+                )
+        else:
+            out.append((run, None, None, None))
+    return out
+
+
 def _round_or_none(value: float | None, places: int = 1) -> float | None:
     return None if value is None else round(value, places)
 
@@ -1480,6 +1564,8 @@ def _crossing_out(major) -> dict:
         "crossed_tier": major.crossed_tier,
         "kind": getattr(major, "kind", intersections.MAJOR_FLAGGED),
         "corkers_needed": major.corkers_needed,
+        "oneway": getattr(major, "oneway", None),
+        "divided": getattr(major, "divided", False),
     }
 
 
@@ -1491,6 +1577,7 @@ def route_profile(
     majors_complete: bool = True,
     calm_pricing: calm.Pricing | Callable[[], calm.Pricing] | None = None,
     events: list | None = None,
+    calm_pieces: list[calm.Costed] | None = None,
 ) -> dict | None:
     """The route's elevation profile for the chart (OWNER-DECISIONS 322, 323), from the
     router's per-leg samples (`ELEVATION_INTERVAL_M`): where each sample is along the
@@ -1516,8 +1603,11 @@ def route_profile(
     (`routemaker.calm`, OWNER-DECISIONS 460.12, 461d, 461e): calm miles per mile over the
     mile around each sample, from the sections (`spans`) and the junction `events` (None:
     not read, so not counted, and the answer says so); the highest window's sample is kept
-    when a long route is thinned. `calm_pricing` may be a function that makes it. A
-    failure there costs only the score, sent as `calm: null`.
+    when a long route is thinned. `calm_pricing` may be a function that makes it. Each road
+    is priced by its own routing cost from `calm_pieces`, the traced pieces with their
+    edges' attributes (`calm.Costed`); without them each section takes its tier's figure,
+    an estimate, and the answer says so. A failure there costs only the score, sent as
+    `calm: null`.
 
     The climbs (`climbs.runs`) are found once, and every figure is worked out on every
     sample; a long route's arrays are then thinned to about `profile.MAX_SAMPLES`
@@ -1576,7 +1666,7 @@ def route_profile(
         if calm_pricing is not None:
             try:
                 pricing = calm_pricing() if callable(calm_pricing) else calm_pricing
-                peak = calm.peak_index(spans, events, pricing, sample_m)
+                peak = calm.peak_index(spans, events, pricing, sample_m, pieces=calm_pieces)
                 if peak is not None and peak not in keep:
                     keep = sorted([*keep, peak])
             except Exception:  # noqa: BLE001 - the chart is drawn without the score
@@ -1591,6 +1681,7 @@ def route_profile(
             ],
             "climbs": rows,
             "riders_per_min": None,
+            "level_riders_per_min": None,
             "flow": None,
             "crossings": None,
             "avoid": None,
@@ -1601,11 +1692,17 @@ def route_profile(
         }
         if pricing is not None:
             try:
-                body["calm"] = calm.score(spans, events, pricing, [sample_m[i] for i in keep])
+                body["calm"] = calm.score(
+                    spans, events, pricing, [sample_m[i] for i in keep], pieces=calm_pieces
+                )
             except Exception:  # noqa: BLE001 - the chart is drawn without the score
                 logger.warning("the rolling stress score could not be built", exc_info=True)
         if riders is not None:
             body["riders_per_min"] = [_int_or_none(riders[i]) for i in keep]
+            # The group's length at a ride size is read from these (PLAN items 128, 139).
+            body["level_riders_per_min"] = [
+                _int_or_none(level[i]) if level is not None else None for i in keep
+            ]
             known = [(round(r), m) for m, r in zip(sample_m, riders, strict=True) if r is not None]
             narrow = min(known, default=None)
             typical = sorted(
@@ -1615,6 +1712,10 @@ def route_profile(
                 "narrowest_riders_per_min": narrow[0] if narrow else None,
                 "narrowest_m": round(narrow[1]) if narrow else None,
                 "typical_riders_per_min": typical[len(typical) // 2] if typical else None,
+                "cruise_pace_ms": round(flow.CRUISE_PACE_MS, 4),
+                "default_level_riders_per_min": round(
+                    flow.level_riders_per_min(flow.GROUP_DEFAULT_WIDTH_M), 2
+                ),
             }
             end_m = sample_m[-1]
             body["avoid"] = _stretch_ranges(flow_stretches, STRETCH_AVOID, end_m)
@@ -1686,10 +1787,43 @@ def _intersection_rows(events: list) -> list[dict]:
             "control": event.control.value,
             "kind": event.kind,
             "cost_ft": round(event.cost_ft),
+            "calm_mi": round(intersections.calm_miles(event.cost_ft), 2),
+            "calm_km": round(
+                intersections.calm_miles(event.cost_ft) * intersections.KM_PER_MILE, 2
+            ),
             "group": event.group,
         }
         for event in events
         if event.flagged
+    ]
+
+
+def _junction_debug_rows(events: list) -> list[dict]:
+    """EVERY junction event of a route, flagged or not, with its cost (OWNER-DECISIONS
+    468: "an API debug field listing every junction"). Off unless the request sets
+    `debug_junctions`. Only route-derived facts: no account, no request detail."""
+    return [
+        {
+            "m": round(event.m),
+            "lon": round(event.lon, 6),
+            "lat": round(event.lat, 6),
+            "kind": event.kind,
+            "movement": event.movement.value,
+            "control": event.control.value,
+            "crossed_tier": event.crossed_tier,
+            "cost_ft": round(event.cost_ft),
+            "calm_mi": round(intersections.calm_miles(event.cost_ft), 3),
+            "calm_km": round(
+                intersections.calm_miles(event.cost_ft) * intersections.KM_PER_MILE, 3
+            ),
+            "text": intersections.calm_text(event.cost_ft),
+            "severity": event.severity,
+            "flagged": event.flagged,
+            "time_factor": event.time_factor,
+            "assumed_speed": event.assumed_speed,
+            "reason": event.reason,
+        }
+        for event in events
     ]
 
 
@@ -2075,6 +2209,16 @@ def plan(
         budget_s, per_call_s = PLAN_BUDGET_S, ROUTER_TIMEOUT_S
     deadline = Deadline(started + budget_s - ANSWER_RESERVE_S, per_call_s)
     exposure = presets.exposure_for(preset_name, dials.carrying)
+    # The approved Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, 307-310, 335), read at
+    # request time: empty as shipped.
+    avoid_list = avoid_junctions.approved()
+    # A Mass Ride's rider-marked hazards (FOLLOWUP-MASSRIDE-MAP part 3, 325), read once a plan:
+    # empty as shipped, and never read for another ride type (325: "for this mode only").
+    hazard_list = mass_hazards.approved() if preset_name == "mass-ride" else {}
+    # The approved rider ratings of junctions (OWNER-DECISIONS 232), read the same way.
+    from .junction_suggestions import approved_ratings
+
+    junction_ratings = approved_ratings()
     # The rider's target distance counts at the top of the slider only.
     target_m = float(dials.target_distance_m) if dials.target_distance_m and maxcalm else None
     when = dials.when or default_when()
@@ -2261,6 +2405,8 @@ def plan(
         rank_alternates=presets.calm_rate_for(stress_dial) > 0,
         router_trips=plan_alternates(request, trips, timed_out, fit is not None or bool(past)),
         options=[] if maxcalm and preset_name != "mass-ride" and not long_calm else None,
+        avoid=avoid_list,
+        junction_ratings=junction_ratings,
     )
     if past:
         # The router's own route is past the target: the calmer route past it where
@@ -2312,6 +2458,32 @@ def plan(
     if not loop:
         trip, dodges = dedodge.apply(trip, refine_context)
         dedodge.settle(trip, refine_context, refined, dodges)
+    # An Avoid-rated junction still on the answer (307-310, 335): the way round, taken
+    # where it is worth 30 minutes a pass and the search did not already weigh it (on
+    # Mass Ride and Group Ride, where it adds no LTS 4 and not too much distance; never
+    # on a loop), else offered (`core.avoid_junctions`). `searched` is what the search
+    # did: at least one round, not cut short.
+    avoid_info, avoid_trip = None, None
+    if avoid_list:
+        searched = (
+            refined is not None and (refined.get("rounds") or 0) > 0 and not refined.get("limited")
+        )
+        trip, avoid_info, avoid_trip = avoid_junctions.settle(
+            trip,
+            refine_context.request,
+            variant,
+            preset_name,
+            deadline,
+            avoid_list,
+            searched,
+            ctx=refine_context,
+            loop=bool(loop),
+        )
+        if avoid_info is not None and avoid_info["decision"] == "avoided":
+            dodges = None
+            # The routes to choose from were near-ties of the route it replaced: none
+            # are offered beside a route they were not weighed against.
+            refine_context.candidates = refine_context.candidates[:1]
     if refined is not None and maxcalm:
         refined.update(target_fields(_trip_length_m(trip), target_m, ceiling))
         if fitted_at is not None:
@@ -2441,6 +2613,7 @@ def plan(
                         getattr(classes[i], "unpaved", None),
                         getattr(classes[i], "rpm", None),
                         preset_name == "mass-ride" and _outside_dc(pieces[i]),
+                        getattr(classes[i], "half", False),
                     )
                     for i in range(run[0], run[1])
                 )
@@ -2486,12 +2659,21 @@ def plan(
                 junction_weight=refine.intersection_weight(stress_dial),
             ),
             events,
+            None if mass_ride else _calm_pieces(leg_runs, pieces, classes),
         )
         profile_s = clock() - profiled_from
         described = describe_route(
             leg_runs, pieces, classes, events, trip.get("summary") or {}, walks
         )
         described_full, described_overview = described if described else (None, None)
+        # The Avoid-rated junctions it passes (307, 335), at their distance along the
+        # route as the router measures it; each also an entry of the description.
+        avoid_found = avoid_rules.passages(coordinates, avoid_list) if avoid_list else []
+        line_m = avoid_rules.line_length_m(coordinates)
+        length_m = float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0
+        avoid_scale = length_m / line_m if line_m > 0 and length_m > 0 else 1.0
+        described_full = avoid_rules.with_entries(described_full, avoid_found, avoid_scale)
+        described_overview = avoid_rules.with_entries(described_overview, avoid_found, avoid_scale)
         joined_at = clock()
         if joined_at - started > budget_s:
             logger.warning(
@@ -2604,6 +2786,11 @@ def plan(
             "leg_ends": leg_ends,
             "intersections": None if events is None else _intersection_rows(events),
             "intersection_groups": None if events is None else _intersection_groups(events),
+            "junctions_debug": (
+                _junction_debug_rows(events)
+                if dials.debug_junctions and events is not None
+                else None
+            ),
             "calm_search": refined,
             "dodges": dodges_of,
             "effort_m": effort_m,
@@ -2616,9 +2803,35 @@ def plan(
             "description": described_full,
             "description_overview": described_overview,
             "moved_points": moved_points,
+            "avoid_junctions": avoid_junctions.rows(avoid_found, avoid_scale),
+            "avoid_notice": avoid_rules.notice(avoid_found),
+            # A Mass Ride's approved hazards in riding order (325); null on other ride types.
+            "mass_hazards": (
+                mass_hazards.along(leg_runs, pieces, classes, hazard_list)
+                if preset_name == "mass-ride"
+                else None
+            ),
         }
 
     body = _answer(trip, refined, dodges_of=dodges)
+    body["avoid_search"] = avoid_info
+    body["avoid_alternate"] = None
+    if avoid_list:
+        avoid_junctions.record(avoid_junctions.passages_of(trip, avoid_list))
+    if avoid_trip is not None:
+        # The best route round the junction, however much longer (335), answered as a
+        # whole route of its own so the client draws and describes it as it does this one:
+        # a trace for each of its legs.
+        if deadline.at - clock() >= ALTERNATE_MIN_S:
+            try:
+                around = _answer(avoid_trip, None, True)
+                around["extra_distance_m"] = round(around["distance_m"] - body["distance_m"], 1)
+                around["extra_duration_s"] = round(around["duration_s"] - body["duration_s"], 1)
+                body["avoid_alternate"] = around
+            except (DeadlineExceeded, RouterUnavailable, NoRoute):
+                avoid_info["alternate"] = "time"
+        else:
+            avoid_info["alternate"] = "time"
     candidates = []
     for found, _reading in refine_context.candidates[1:]:
         # Each is read in full (its traces are remembered, its junctions read once

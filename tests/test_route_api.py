@@ -67,6 +67,10 @@ CONTRACT_KEYS = {
     "intersections",
     # Additive, OWNER-DECISIONS items 233 and 234: a Mass Ride's groups of signalized crossings.
     "intersection_groups",
+    "junctions_debug",
+    # Additive, FOLLOWUP-MASSRIDE-MAP part 3 (OWNER-DECISIONS 325-327): approved rider-marked
+    # hazards along a Mass Ride; null on other ride types.
+    "mass_hazards",
     "calm_search",
     "detour",
     # Additive, ROUTE-DESCRIPTION (OWNER-DECISIONS item 220): the route in words.
@@ -82,6 +86,14 @@ CONTRACT_KEYS = {
     "loop",
     # Additive, FOLLOWUP-DEDODGE (OWNER-DECISIONS 272): side-street dodges found and removed.
     "dodges",
+    # Additive, FOLLOWUP-BIKESHARE (OWNER-DECISIONS 243-245): null except on a Bikeshare plan.
+    "bikeshare",
+    # Additive, FOLLOWUP-ISECT-AVOID (OWNER-DECISIONS 307-310, 335): the Avoid-rated
+    # junctions passed, the notice, what the plan did and the way round.
+    "avoid_junctions",
+    "avoid_notice",
+    "avoid_search",
+    "avoid_alternate",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "5", "unknown"}
 
@@ -328,26 +340,26 @@ class TestAnswer:
         self, client, segments, router
     ) -> None:
         """OWNER-DECISIONS 460.12, 461d: calm miles per mile at each sample, priced at the
-        ride's own slider position (here Default: the bands are the half-step midpoints
-        2.67 and 9.34), and a Mass Ride has none (it keeps its riders chart)."""
+        ride's own slider position (here Default: the bands, read from representative roads, are
+        2.01 and 11.26), and a Mass Ride has none (it keeps its riders chart)."""
         router(standard_router())
         profile = post(client, good_body()).json()["profile"]
         score = profile["calm"]
         assert len(score["ratio"]) == len(profile["m"])
         assert all(r is not None and r > 0 for r in score["ratio"])
         assert score["window_m"] == round(calm.WINDOW_M)
-        assert score["bands"] == pytest.approx([2.67, 9.34], abs=0.02)
+        assert score["bands"] == pytest.approx([2.01, 11.26], abs=0.02)
         assert score["junctions_counted"] is True and score["estimate"] is True
         assert score["rated_m"] > 0 and score["total_calm_m"] >= score["rated_m"] * 0.5
         mass = post(client, good_body("mass-ride")).json()["profile"]
         assert mass["calm"] is None
 
     def test_the_rolling_score_follows_the_slider(self, client, segments, router) -> None:
-        """At the top of the slider the worth rule's exchange prices each tier (6, 11, 16),
-        so the bands are 3.5 and 8.5."""
+        """At the top of the slider the worth rule's exchange prices each tier (6, 11, 16)
+        and the busiest calm road its own cost, so the bands are 3.6 and 8.5."""
         router(standard_router())
         profile = post(client, {**good_body(), "stress": 100}).json()["profile"]
-        assert profile["calm"]["bands"] == [3.5, 8.5]
+        assert profile["calm"]["bands"] == [3.6, 8.5]
         # Test strength review, survivor 1: priced at the dial, not the preset's start.
         group = calm.Pricing(use_roads=presets.use_roads_for(40))
         at40 = post(client, {**good_body(), "stress": 40}).json()["profile"]["calm"]
@@ -706,7 +718,7 @@ class TestPlanAlternates:
 
 @db
 class TestWhatIsSentToTheRouter:
-    @pytest.mark.parametrize("name", sorted(presets.PRESETS))
+    @pytest.mark.parametrize("name", sorted(set(presets.PRESETS) - {"bikeshare"}))
     def test_every_call_goes_to_the_presets_variant(self, name, client, segments, router) -> None:
         """PLAN, Stats source: the trace goes to the same variant and costing
         as the route that produced the shape."""
@@ -715,7 +727,13 @@ class TestWhatIsSentToTheRouter:
         base = settings.VALHALLA_UPSTREAMS[presets.variant_for_ride(name, routing.default_when())]
         preset = presets.PRESETS[name]
         middle = presets.costing(name, presets.stress_start(name), 0)
-        if preset.hills < 0:
+        if preset.hills < 0 and presets.maxcalm_for(preset.stress):
+            # Riding with kids (FOLLOWUP-KIDS-PRESET): the avoid half's trip at the hills
+            # middle, and then the top of the slider's asks, as Trailmaxxing's below.
+            assert fake.endpoints()[:2] == ["route", "route"]
+            assert fake.calls[1][1]["costing_options"] == middle
+            assert set(fake.endpoints()[2:]) == {"trace_attributes", "route"}
+        elif preset.hills < 0:
             # The avoid half asks for the same trip at the hills middle and
             # traces both, so a busier route gives way to the calmer one (the
             # owner, 2026-09-28: "Traffic wins").
@@ -1320,7 +1338,7 @@ class TestTheTraceRequest:
         post(client, good_body())
         assert {loc["type"] for loc in fake.calls[0][1]["locations"]} == {"break"}
 
-    @pytest.mark.parametrize("name", sorted(presets.PRESETS))
+    @pytest.mark.parametrize("name", sorted(set(presets.PRESETS) - {"bikeshare"}))
     def test_the_answer_names_the_variant_that_routed_it(
         self, name, client, segments, router
     ) -> None:

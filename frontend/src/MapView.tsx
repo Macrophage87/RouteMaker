@@ -9,6 +9,7 @@ import { Protocol } from "pmtiles";
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
 import { COVERAGE_BBOX, type LonLat } from "./lib/geo.ts";
+import { AT_ZOOM } from "./lib/planHash.ts";
 import { accuracyRing } from "./lib/geolocation.ts";
 import {
   BASEMAP_SOURCE_ID,
@@ -16,7 +17,10 @@ import {
   OPENING_ZOOM,
   STRESS_SOURCE_ID,
   buildStyle,
+  stressTileTemplate,
 } from "./lib/mapStyle.ts";
+import { fontStacks } from "./lib/corridor.ts";
+import { basemapArchive, setCorridorStyle, sweepCorridor } from "./lib/corridorStore.ts";
 import type { RouteResponse } from "./lib/api.ts";
 import {
   ROUTE_BLUE,
@@ -46,6 +50,7 @@ import {
   routeDashLayers,
   solidRouteFilter,
   setMassMode,
+  setHazardData,
 } from "./lib/mapGlue.ts";
 import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
@@ -64,6 +69,19 @@ import { attachWaterInteraction } from "./waterInteraction.ts";
 import type { When } from "./lib/dials.ts";
 import { pointLabel } from "./lib/pointText.ts";
 import { LongPress, isInfoKey, repeatsInfoAsk, type InfoRequest } from "./lib/roadInfo.ts";
+import { fetchMe } from "./lib/stressEditor.ts";
+import { JUNCTION_SUGGEST_TEXT } from "./lib/junctionSuggest.ts";
+import {
+  BIKESHARE_CREDIT,
+  WALK_CASING,
+  WALK_CASING_WIDTH,
+  WALK_COLOUR,
+  WALK_DASH,
+  WALK_LINE_WIDTH,
+  bikeshareOf,
+  dockMarkers,
+  walkFeatures,
+} from "./lib/bikeshare.ts";
 import {
   CARD_CLOSE_LABEL,
   cardName,
@@ -85,6 +103,8 @@ import {
   type JunctionGroup,
   type JunctionItem,
 } from "./lib/intersectionMarkers.ts";
+import { avoidItems, avoidMarkerName } from "./lib/avoidJunctions.ts";
+import { avoidMarkerSvg } from "./lib/avoidIcon.ts";
 
 export type StressAvailability = "checking" | "available" | "unavailable";
 
@@ -107,6 +127,8 @@ export interface Frame {
 
 interface Props {
   points: LonLat[];
+  /** A spot to open at, at street level (`#at=lon,lat`, lib/planHash.ts atFromHash); else the usual view. */
+  openAt?: LonLat | null;
   /** "Make it a loop" is on: the first point is the start and finish, the rest are stops (OWNER-DECISIONS 374). */
   loopVias?: boolean;
   route: RouteResponse | null;
@@ -156,8 +178,15 @@ interface Props {
   massCapacity?: boolean;
   /** The ride type is Mass Ride: the grey outside the District shows (OWNER-DECISIONS 418), whatever the tiles. */
   massArea?: boolean;
+  /** The approved rider-marked hazards (lib/massHazards.ts), a Mass Ride's only; null draws none (325). */
+  massHazards?: object | null;
   /** Whether the federal-land shading is on (a Mass Ride's, lib/federalLand.ts federalShown). */
   federalVisible: boolean;
+  /**
+   * A Mass Ride's points on federal land (lib/federalStops.ts stopWarningShort, item 239): each
+   * point's warning, or null; the marker gets a badge and says it in its name and title.
+   */
+  pointWarnings?: ReadonlyArray<string | null>;
   /** Whether to load the federal-land data even with the shading off: a Mass Ride's planner lists the points on it. */
   federalWanted?: boolean;
   onFederalStatus: (status: FederalStatus) => void;
@@ -190,8 +219,12 @@ function registerPmtiles(): void {
   if (protocolRegistered) return;
   maplibregl.setWorkerUrl(maplibreWorkerUrl);
   const protocol = new Protocol();
+  // The archive's source keeps a ride's corridor for dead spots (lib/corridor.ts, CorridorSource).
+  protocol.add(basemapArchive);
   maplibregl.addProtocol("pmtiles", protocol.tile);
   protocolRegistered = true;
+  // No ride survives a reload, so whatever an earlier page kept is cleared (WEB-NAV-plan.md section 6).
+  sweepCorridor();
 }
 
 const DC_CENTRE: LonLat = [-77.03, 38.9];
@@ -201,6 +234,10 @@ const ROUTE_STRESS_SOURCE = ROUTE_STRESS_SOURCE_ID;
 /** The handle and the dashed preview of a drag of the line. */
 const EDIT_SOURCE = "route-edit";
 const ACCURACY_SOURCE = "location-accuracy";
+// Bikeshare's walk legs (lib/bikeshare.ts): dotted, with the operator's source citation as the
+// source's attribution, so the attribution control shows it exactly while a bikeshare plan's
+// layer is visible and never otherwise (OWNER-DECISIONS 301).
+const WALK_SOURCE = "bikeshare-walk";
 /** How far from the line's centre a mouse, or a finger, still grabs it. */
 const MOUSE_HIT_PX = 8;
 const TOUCH_HIT_PX = 18;
@@ -329,6 +366,23 @@ export function MapView(props: Props) {
       if (back === null) return;
       (back === "marker" ? markerFor(item.index) : rowFor(item.index))?.focus();
     });
+    // A rider the settings allow may suggest a danger level for the junction (OWNER-DECISIONS 232): a
+    // button at the card's foot opens the road panel on the junction with its suggestion form open
+    // (SuggestJunction.tsx). The card closes first, giving the focus back to what opened it, which the
+    // panel then gives it back to when it closes.
+    void fetchMe(window.location.origin).then((me) => {
+      if (!me.can_suggest || junctionCard.current !== card) return;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "secondary junction-card-suggest";
+      button.textContent = JUNCTION_SUGGEST_TEXT;
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        card.remove();
+        callbacks.current.onRoadInfo?.({ point: [item.lon, item.lat], origin: "spot", junction: true });
+      });
+      card.getElement().querySelector(".junction-card")?.append(button);
+    });
   };
   /** The marker now drawn for the junction at `index` (its group's, if it is in one). */
   const markerFor = (index: number): HTMLElement | null => {
@@ -356,12 +410,15 @@ export function MapView(props: Props) {
     registerPmtiles();
     const origin = window.location.origin;
     const basemapLayers = protomapsLayers(BASEMAP_SOURCE_ID, namedFlavor("light"), { lang: "en" });
+    const style = buildStyle(origin, basemapLayers);
+    // What Ride mode's corridor prefetch asks for besides the tiles: the style's glyphs and sprite.
+    setCorridorStyle(style.glyphs, style.sprite, fontStacks(style.layers), () => stressTileTemplate(origin));
     const [west, south, east, north] = COVERAGE_BBOX;
     const map = new maplibregl.Map({
       container: container.current,
-      style: buildStyle(origin, basemapLayers) as maplibregl.StyleSpecification,
-      center: DC_CENTRE,
-      zoom: OPENING_ZOOM,
+      style: style as maplibregl.StyleSpecification,
+      center: props.openAt ?? DC_CENTRE,
+      zoom: props.openAt ? AT_ZOOM : OPENING_ZOOM,
       minZoom: 7,
       maxZoom: MAP_MAX_ZOOM,
       maxBounds: [
@@ -742,7 +799,10 @@ export function MapView(props: Props) {
     const addStress = () => {
       // The mode before the layers, so they are added drawn for it (stressStyle.js, massRide).
       setMassMode(null, callbacks.current.massCapacity === true, callbacks.current.when, callbacks.current.stressVisible, callbacks.current.massArea === true);
-      return addStressOverlay(map, origin, callbacks.current.stressVisible, callbacks.current.when);
+      const added = addStressOverlay(map, origin, callbacks.current.stressVisible, callbacks.current.when);
+      // The hazards that came before the overlay's source did (a Mass Ride opened from a link).
+      if (added) setHazardData(map, callbacks.current.massHazards ?? null);
+      return added;
     };
 
     // Ask the endpoint; if it does not answer, say so and ask again later, so
@@ -833,6 +893,22 @@ export function MapView(props: Props) {
         source: ACCURACY_SOURCE,
         paint: { "line-color": "#1d4ed8", "line-width": 1.5, "line-opacity": 0.6 },
       }, "route-casing");
+      map.addSource(WALK_SOURCE, { type: "geojson", data: walkFeatures(null), attribution: BIKESHARE_CREDIT });
+      map.addLayer({
+        id: "bikeshare-walk-casing",
+        type: "line",
+        source: WALK_SOURCE,
+        layout: { "line-join": "round", "line-cap": "round", visibility: "none" },
+        paint: { "line-color": WALK_CASING, "line-width": WALK_CASING_WIDTH, "line-opacity": 0.95 },
+      });
+      map.addLayer({
+        id: "bikeshare-walk",
+        type: "line",
+        source: WALK_SOURCE,
+        layout: { "line-join": "round", "line-cap": "round", visibility: "none" },
+        paint: { "line-color": WALK_COLOUR, "line-width": WALK_LINE_WIDTH, "line-dasharray": WALK_DASH },
+      });
+      syncBikeshare(map, callbacks.current.route);
       map.addSource(EDIT_SOURCE, { type: "geojson", data: editData(null, []) });
       map.addLayer({
         id: "route-edit-preview",
@@ -941,11 +1017,15 @@ export function MapView(props: Props) {
       const { text, name, kind } = pointLabel(index, props.points.length, props.loopVias === true);
       const via = kind === "via";
       const element = document.createElement("div");
-      element.className = `pin pin-${kind}`;
+      const warning = props.pointWarnings?.[index] ?? null;
+      element.className = `pin pin-${kind}${warning ? " pin-federal" : ""}`;
       element.textContent = text;
       element.setAttribute("role", "img");
-      element.setAttribute("aria-label", via ? `${name}. Drag to move; click for Remove.` : `${name}. Drag to move.`);
-      element.title = via ? `${name} - drag to move, click for Remove, double-click to remove` : `${name} - drag to move`;
+      // The warning ends with its own full stop.
+      const named = warning ? `${name}. ${warning}` : name;
+      const said = warning ? named : `${name}.`;
+      element.setAttribute("aria-label", via ? `${said} Drag to move; click for Remove.` : `${said} Drag to move.`);
+      element.title = via ? `${named} - drag to move, click for Remove, double-click to remove` : `${named} - drag to move`;
       const marker = new maplibregl.Marker({ element, draggable: true, anchor: "center" })
         .setLngLat(point)
         .addTo(map);
@@ -1003,7 +1083,7 @@ export function MapView(props: Props) {
       }
       return marker;
     });
-  }, markerDeps(props.points, props.markerReset, props.loopVias));
+  }, markerDeps(props.points, props.markerReset, props.loopVias, props.pointWarnings));
 
   // The route line.
   useEffect(() => {
@@ -1011,6 +1091,26 @@ export function MapView(props: Props) {
     if (!map || !loaded.current) return;
     syncRoute(map, callbacks.current, fitted);
   }, [props.route, props.stale]);
+
+  // A bikeshare plan's walk legs and the docks it uses. The markers are not buttons, since they
+  // do nothing when pressed: each is an image with its whole text equivalent as its name, and
+  // the route panel lists the same steps.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current) return;
+    syncBikeshare(map, props.route);
+    const drawn = dockMarkers(bikeshareOf(props.route)).map((dock) => {
+      const element = document.createElement("div");
+      element.className = `dock-marker dock-${dock.role}`;
+      element.setAttribute("role", "img");
+      element.setAttribute("aria-label", dock.label);
+      element.innerHTML = `${dockWheelSvg()}<span class="dock-badge" aria-hidden="true">${dock.badge}</span>`;
+      // A click on a marker is not a click on the map: it must not add a via point.
+      element.addEventListener("click", (event) => event.stopPropagation());
+      return new maplibregl.Marker({ element, anchor: "center" }).setLngLat([dock.lon, dock.lat]).addTo(map);
+    });
+    return () => drawn.forEach((marker) => marker.remove());
+  }, [props.route]);
 
   // The accessibility switch (or the system's request for more contrast):
   // the overlay's layers and the route's sections are painted again in place.
@@ -1036,6 +1136,11 @@ export function MapView(props: Props) {
       props.massArea === true,
     );
   }, [props.massCapacity, props.massArea]);
+
+  // The rider-marked hazards' side rails (massStyle.js hazardLayers): a Mass Ride's only (325).
+  useEffect(() => {
+    setHazardData(mapRef.current, props.massHazards ?? null);
+  }, [props.massHazards]);
 
   // The "Show bike lanes on high-stress roads" switch (OWNER-DECISIONS 275):
   // the rails' filters are set again in place, from the same tiles.
@@ -1119,6 +1224,38 @@ export function MapView(props: Props) {
     return () => {
       map.off("zoomend", draw);
     };
+  }, [props.route, props.stale]);
+
+  // The Avoid-rated junctions the route passes (OWNER-DECISIONS 307-310): the skull and
+  // crossbones on a ringed disc, drawn above the warning markers and larger than them. An
+  // image whose name is the rating, the reason and the plea (309; the owner, 2026-10-10:
+  // "this is a really bad idea, please reconsider"), never the glyph's; the list and the
+  // description say the same in text. A button, as the junction markers are, so Tab reaches
+  // it: a click, a tap, Enter or Space opens the road panel on the junction, which leads
+  // with its warning ("Yes, also when clicking on the intersection"), and the focus comes
+  // back to it when the panel closes. The I key or "Road info at map center" does the same.
+  const avoidMarkers = useRef<Marker[]>([]);
+  useEffect(() => {
+    const map = mapRef.current;
+    avoidMarkers.current.forEach((marker) => marker.remove());
+    avoidMarkers.current = [];
+    if (!map || !props.route || props.stale) return;
+    avoidMarkers.current = avoidItems(props.route).map((item) => {
+      const element = document.createElement("button");
+      element.type = "button";
+      element.className = "avoid-marker";
+      // The name alone, as the junction markers (a title as well is read twice).
+      element.setAttribute("aria-label", avoidMarkerName(item));
+      element.setAttribute("aria-haspopup", "dialog");
+      element.innerHTML = avoidMarkerSvg();
+      element.addEventListener("click", (event) => {
+        // A click on a marker is not a click on the map: it must not add a via point.
+        event.stopPropagation();
+        callbacks.current.onRoadInfo?.({ point: [item.lon, item.lat], origin: "spot" });
+      });
+      element.addEventListener("dblclick", (event) => event.stopPropagation());
+      return new maplibregl.Marker({ element, anchor: "center" }).setLngLat([item.lon, item.lat]).addTo(map);
+    });
   }, [props.route, props.stale]);
 
   // A click on the summary's list: take the map there and say why.
@@ -1325,6 +1462,29 @@ function showJunctionCard(map: MapLibreMap, item: JunctionItem, takeFocus: boole
   close?.setAttribute("aria-label", CARD_CLOSE_LABEL);
   if (takeFocus) close?.focus();
   return card;
+}
+
+/** A wheel: a plain circle with spokes, no operator's mark. */
+function dockWheelSvg(): string {
+  return (
+    '<svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true" focusable="false">' +
+    '<circle cx="13" cy="13" r="11" fill="#ffffff" stroke="#1f1f1f" stroke-width="2.5"/>' +
+    '<circle cx="13" cy="13" r="2" fill="#1f1f1f"/>' +
+    '<path d="M13 4v18M4 13h18M6.6 6.6l12.8 12.8M19.4 6.6L6.6 19.4" stroke="#1f1f1f" stroke-width="1.2" fill="none"/>' +
+    "</svg>"
+  );
+}
+
+/** The walk legs on the map, and the layers' visibility, which is what shows the source citation. */
+function syncBikeshare(map: MapLibreMap, route: RouteResponse | null): void {
+  const source = map.getSource(WALK_SOURCE) as GeoJSONSource | undefined;
+  if (!source) return;
+  const plan = bikeshareOf(route);
+  source.setData(walkFeatures(plan));
+  const visibility = plan ? "visible" : "none";
+  for (const id of ["bikeshare-walk-casing", "bikeshare-walk"]) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visibility);
+  }
 }
 
 /** Station icons are drawn for the screen's pixel density, whole numbers only. */

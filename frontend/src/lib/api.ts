@@ -10,7 +10,8 @@ import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 import type { StressMetres } from "./stressBar.ts";
 import type { FacilityMetres } from "./facilityBar.ts";
-import { dialFields, type Carrying, type Dials, type When } from "./dials.ts";
+import type { NearbyStationsAnswer, StationAction } from "./stations.ts";
+import { dialFields, type Bike, type Carrying, type Dials, type Ending, type When } from "./dials.ts";
 
 /**
  * One coloured section of the route, in whole metres along its traced length
@@ -77,6 +78,10 @@ export interface ProfileCrossing {
   kind?: "flagged" | "crossing" | "joining";
   /** The crossed road is LTS 3 or worse (OWNER-DECISIONS 142). */
   corkers_needed: boolean;
+  /** The crossed or joined road is one-way there (1 corker), two-way (false: 2), or not known (null, absent: 2). */
+  oneway?: boolean | null;
+  /** A divided road (two one-way carriageways counted as one): two approaches, so 2 corkers. */
+  divided?: boolean | null;
 }
 
 /** A stretch of the profile, metres along the route (core.api.ProfileRangeOut). */
@@ -104,10 +109,16 @@ export interface RouteProfile {
   climbs: ProfileClimb[];
   /** Mass Ride only: riders a minute, grade-adjusted; null where the width is not known or the stretch is marked Avoid. */
   riders_per_min?: (number | null)[] | null;
+  /** Mass Ride only: the level riders a minute at each sample, from the width alone (the group's length is read from it, PLAN 128, 139); absent from an older API. */
+  level_riders_per_min?: (number | null)[] | null;
   flow?: {
     narrowest_riders_per_min: number | null;
     narrowest_m: number | null;
     typical_riders_per_min: number | null;
+    /** The group's cruising pace, m/s (routemaker.flow.CRUISE_PACE_MS, 7 mph); absent from an older API. */
+    cruise_pace_ms?: number | null;
+    /** The level figure of the road a group's length is read on where no width is known on the route (two 11 ft lanes). */
+    default_level_riders_per_min?: number | null;
   } | null;
   /** Mass Ride only: the major junctions; null where they were not checked (never "none"), [] where there are none. */
   crossings?: ProfileCrossing[] | null;
@@ -200,7 +211,8 @@ export interface JunctionGroupSummary {
  * sentence to read aloud, US units first.
  */
 export interface DescriptionEntry {
-  kind: "stretch" | "junction" | "via" | "walk";
+  /** "avoid": an Avoid-rated junction ahead (OWNER-DECISIONS 307), at a point. */
+  kind: "stretch" | "junction" | "via" | "walk" | "avoid";
   from_m: number;
   to_m: number;
   from_mi: number;
@@ -214,7 +226,7 @@ export interface DescriptionEntry {
     control: "signal" | "stop" | "cross_stop" | "all_stop" | "none" | null;
     severity: "orange" | "red" | null;
   } | null;
-  severity?: "orange" | "red" | null;
+  severity?: "orange" | "red" | "avoid" | null;
   via?: number | null;
   /**
    * On a stretch: its surface where the route's segments say it is unpaved
@@ -341,7 +353,128 @@ export interface Dodges {
   items: Dodge[];
 }
 
+/** A dock, a free-floating e-bike or the destination, as a bikeshare plan uses it (core.api.BikeshareStopOut). */
+export interface BikeshareStop {
+  kind: "dock" | "free_bike" | "outside_dock";
+  name: string;
+  lon: number;
+  lat: number;
+  station_id?: string | null;
+  availability: "known" | "unknown";
+  /** Bikes of the chosen type at the dock; null: unknown, or not a dock. */
+  bikes_available: number | null;
+  classic_available?: number | null;
+  ebikes_available?: number | null;
+  /** Free slots; null: unknown, or not a dock. */
+  docks_available: number | null;
+}
+
+/** A walk leg (core.api.BikeshareWalkOut). */
+export interface BikeshareWalk {
+  geometry: { type: "LineString"; coordinates: LonLat[] };
+  distance_m: number;
+  duration_s: number;
+  to: string;
+}
+
+/** The operator's own price information (core.api.BikeshareFeeOut): information, not a quote. */
+export interface BikeshareFee {
+  name: string;
+  price: string;
+  currency: string;
+  description: string;
+}
+
+/** One way to end an e-bike ride (core.api.BikeshareEndingOut, OWNER-DECISIONS 244). */
+export interface BikeshareEnding {
+  kind: Ending;
+  offered: boolean;
+  chosen: boolean;
+  reason: "no_zone_data" | "zones_unreadable" | "no_parking_zone" | "classic_bikes_end_at_docks" | null;
+  reason_text: string | null;
+  fee: BikeshareFee | null;
+  fee_text: string | null;
+  walk_m: number | null;
+  text: string;
+}
+
+/**
+ * The walks, docks, availability, fee and notes of a bikeshare plan (core.api.BikesharePlanOut,
+ * FOLLOWUP-BIKESHARE). The route body around it is the ride leg between the docks.
+ */
+export interface BikesharePlan {
+  bike: Bike;
+  ending: Ending;
+  start: BikeshareStop;
+  end: BikeshareStop;
+  walk_start: BikeshareWalk | null;
+  walk_end: BikeshareWalk | null;
+  ride_m: number;
+  ride_s: number;
+  walk_m: number;
+  walk_s: number;
+  total_s: number;
+  availability: "live" | "stale" | "unknown";
+  endings: BikeshareEnding[];
+  pricing: BikeshareFee[];
+  pricing_note: string | null;
+  steps: { kind: "walk" | "ride"; text: string }[];
+  /** The plan in plain words, US units first, for reading aloud. */
+  summary: string;
+  notes: string[];
+  /** The plain source citation (OWNER-DECISIONS 301). */
+  credit: string;
+}
+
+/**
+ * An Avoid-rated junction the route passes (core.api.AvoidJunctionOut;
+ * FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310): rated by a person, never by the model.
+ */
+export interface AvoidJunctionPass {
+  id: number;
+  name: string;
+  reason: string;
+  lon: number;
+  lat: number;
+  /** Metres along the route. */
+  m: number;
+  /** The accessible name (309): "Avoid-rated junction: <name>, <reason>". */
+  label: string;
+}
+
+/** What the plan did about Avoid-rated junctions (core.api.AvoidSearchOut, 308, 335). */
+export interface AvoidSearch {
+  passed: number;
+  penalty_s: number;
+  decision: "kept" | "avoided";
+  alternate: "found" | "no_route" | "time" | null;
+  avoided: number;
+}
+
+/** A rider-marked hazard on a Mass Ride's route (core.api.MassHazardSpanOut; 325, 326), in route metres. */
+export interface MassHazardSpan {
+  from_m: number;
+  to_m: number;
+  level: "caution" | "warning";
+  level_name: string;
+  words: string;
+  reason: string;
+  road: string;
+}
+
 export interface RouteResponse {
+  /** A Mass Ride's rider-marked hazards it passes, in riding order (325); null or absent on other ride types. */
+  mass_hazards?: MassHazardSpan[] | null;
+  /** The Avoid-rated junctions it passes, in route order (307); empty or absent where none. */
+  avoid_junctions?: AvoidJunctionPass[];
+  /** "This route goes through an Avoid-rated junction: <name>, <reason>." (335); null where none. */
+  avoid_notice?: string | null;
+  /** On the answer: what the plan did about them; null where the route passed none. */
+  avoid_search?: AvoidSearch | null;
+  /** On the answer: the best route round them, however much longer (335); null otherwise. */
+  avoid_alternate?: (RouteResponse & { extra_distance_m: number; extra_duration_s: number }) | null;
+  /** Bikeshare only: the walks, docks, availability, fee and notes around this ride leg; null elsewhere. */
+  bikeshare?: BikesharePlan | null;
   /** Present on a loop (OWNER-DECISIONS 266). */
   loop?: LoopInfo | null;
   /** Side-street dodges found and what was done; null on a loop and on each candidate, absent from an older API. */
@@ -464,6 +597,7 @@ export type ErrorKind =
   | "rate-limited"
   | "router-down"
   | "timed-out"
+  | "bikeshare-unavailable"
   | "server"
   | "network";
 
@@ -486,6 +620,9 @@ export interface RouteError {
 
 /** The API's code on a long ride's 503 when its time budget ran out. */
 export const LONG_RIDE_TIMED_OUT = "long_ride_timed_out";
+/** The API's codes on a bikeshare plan's 503 (the operator's station list unavailable) and 422 (no dock to use). */
+export const BIKESHARE_UNAVAILABLE = "bikeshare_unavailable";
+export const NO_BIKESHARE = "no_bikeshare";
 
 export type RouteResult = { ok: true; route: RouteResponse } | { ok: false; error: RouteError };
 
@@ -587,6 +724,14 @@ export function describeError(status: number, body: unknown, retryAfter: string 
       ...(spanKm === undefined ? {} : { spanKm }),
     };
   }
+  if (status === 422 && code === NO_BIKESHARE) {
+    return {
+      ...base,
+      kind: "no-route",
+      title: "No bikeshare plan",
+      message: said ? asSentence(said) : "No dock can be used for this plan. Try the other bike type.",
+    };
+  }
   if (status === 404 || status === 422) {
     return {
       ...base,
@@ -609,6 +754,14 @@ export function describeError(status: number, body: unknown, retryAfter: string 
       kind: "router-down",
       title: "Router unavailable",
       message: "The routing engine is not answering right now. Try again shortly.",
+    };
+  }
+  if (status === 503 && code === BIKESHARE_UNAVAILABLE) {
+    return {
+      ...base,
+      kind: "bikeshare-unavailable",
+      title: "Bikeshare data unavailable",
+      message: `Station data is not available right now, so no dock can be chosen. ${wait(retryAfterS, "Try again shortly.")}`,
     };
   }
   if (status === 503 && code === LONG_RIDE_TIMED_OUT) {
@@ -672,9 +825,10 @@ export async function requestRoute(
         preset,
         // A Mass Ride keeps Make it a loop for the next ride type but has no
         // loop (OWNER-DECISIONS 374), so the flag is not sent; the API's
-        // routing.loop_wanted ignores it there too.
+        // routing.loop_wanted ignores it there too. Bikeshare has no loop either, and
+        // its API refuses one, so a loop kept from another ride type is not sent.
         ...(options.dials
-          ? dialFields(preset === "mass-ride" ? { ...options.dials, loop: false } : options.dials)
+          ? dialFields(preset === "mass-ride" || preset === "bikeshare" ? { ...options.dials, loop: false } : options.dials)
           : {}),
         ...(options.confirmLong ? { confirm_long: true } : {}),
       }),
@@ -708,4 +862,53 @@ export async function requestRoute(
     return { ok: false, error: { ...error, title: "Planner busy", message: said } };
   }
   return { ok: false, error };
+}
+
+/** The nearest-stations list's answer, or a sentence for the rider (OWNER-DECISIONS 466a). */
+export type StationsResult = { ok: true; answer: NearbyStationsAnswer } | { ok: false; message: string };
+
+function looksLikeStations(body: unknown): body is NearbyStationsAnswer {
+  if (typeof body !== "object" || body === null) return false;
+  const r = body as Record<string, unknown>;
+  return (
+    (r.action === "pickup" || r.action === "dropoff") &&
+    (r.availability === "live" || r.availability === "stale" || r.availability === "unknown") &&
+    Array.isArray(r.stations)
+  );
+}
+
+/**
+ * The three nearest stations to a point to take a bike from (at least 3/4 full) or return one to
+ * (at most 1/4 full). A POST, so the point is in the body and not in an address. Nothing about the
+ * rider goes with it but the point, and the answer is kept nowhere.
+ */
+export async function requestStations(
+  point: LonLat,
+  action: StationAction,
+  options: { fetchImpl?: FetchLike; signal?: AbortSignal } = {},
+): Promise<StationsResult> {
+  const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
+  let response: Response;
+  try {
+    response = await fetchImpl("/api/bikeshare/stations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ point, action }),
+      signal: options.signal,
+    });
+  } catch {
+    return { ok: false, message: "The station list did not load. Check your connection and try again." };
+  }
+  let body: unknown = null;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+  if (response.ok && looksLikeStations(body)) return { ok: true, answer: body };
+  if (response.status === 429) return { ok: false, message: "Too many requests just now. Try again in a minute." };
+  if (response.status === 503) {
+    return { ok: false, message: "Station availability is not available right now. Try again shortly." };
+  }
+  return { ok: false, message: "The station list is not available right now." };
 }

@@ -8,7 +8,9 @@ RouteMaker took from it, and where RouteMaker **deliberately differs**, and why.
 are US first, with metric in brackets; a cost in calm miles has kilometers in brackets
 (decision 467). Where a figure is a judgment, or comes from a small sample, this page
 says so. What is not built is marked **planned**, and what the owner has not yet
-confirmed is marked **proposed**. Related pages: [intersections.md](intersections.md),
+confirmed is marked **proposed**. The junction model (option C, decisions 467 and 468),
+its statutory default speeds (469 and 469a) and its time of day (468a, 469c to 469e)
+are built. Related pages: [intersections.md](intersections.md),
 [classification.md](classification.md), [routing-costs.md](routing-costs.md) and
 [stress-number.md](stress-number.md). Riders see a short version of this page, with the
 main sources listed, under "Why our ratings differ from the studies" and "Sources" at
@@ -114,9 +116,14 @@ across, or left across, a road carrying 20,000 or more vehicles a day was worth 
 a mile, about 0.32 to 0.62 mi [0.51 to 1.00 km] of extra riding each time. Bike lanes
 made up for traffic but added little on their own, and paths made a route feel 16-26%
 shorter. Half of the trips were less than 10% longer than the shortest route.
-- **Taken:** the size of the crossing costs (our 0.57 calm mi [0.91 km] for an LTS 4
-  crossing sits inside the 0.32 to 0.62 mi range), the signal and stop costs, and the idea
-  that a stretch of path counts for less than the same length of quiet street.
+- **Taken:** the order of size of the crossing costs, the signal and stop costs, and the
+  idea that a stretch of path counts for less than the same length of quiet street.
+- **Differs:** our stopped crossing of an LTS 4 road is 0.76 calm mi [1.22 km; 4,000 ft]
+  before the road's speed, width and traffic count are applied. That is above Broach's
+  0.32 to 0.62 mi range. Under option C (decision 468) the owner chose costs at the top
+  of the published ranges, with the LTS 4 crossing a little above the top, and a severe
+  tier for the worst junctions, following the owner's direction that the worst junctions
+  be worth about a 2 mi [3.2 km] detour (decision 467).
 - **Differs:** Broach's figures describe the average choices of the Portland riders
   studied. **RouteMaker is stress-averse by default** (owner decision 14: most people
   should be sent on trails rather than faster LTS 3 and LTS 4 roads, and traffic-free
@@ -133,8 +140,9 @@ Transportation Research Part C (working paper
 choice model for Eugene, Oregon. Each intersection was worth about 716 ft [218 m] of
 riding, and an unsignalized left across a busy road about 818 ft [249 m]. Lefts and
 rights were otherwise much alike.
-- **Taken:** our range for crossing an LTS 3 road from a stop, about 0.15 to 0.30 calm mi
-  [0.24 to 0.48 km], starts at Eugene's 818 ft.
+- **Taken:** the published range for crossing an LTS 3 road from a stop, about 0.15 to
+  0.30 calm mi [0.24 to 0.48 km], starts at Eugene's 818 ft. Under option C (decision
+  468) our base cost is the top of that range, 0.30 calm mi [0.49 km; 1,600 ft].
 - **Differs:** we charge more for a left than a right (onto a busy road, a left is the
   crossing cost times 1.5 and a right times 0.1), following Copenhagen rather than
   treating them alike.
@@ -163,12 +171,12 @@ about crossing fewer intersections than about having separate paths.
 Transportation Research Part F. A small study that measured riders' stress with sensors.
 Stress at peak hours was reported at about 1.75 times off-peak, in a sample said to be
 five riders (we have not confirmed the sample size from the full text).
-- **Taken:** the direction of the **planned** time-of-day factor (decision 468a).
-- **Differs:** the size. The owner set the bands (decisions 469c-469e, **planned**, not
-  built): x1.25 in the weekday rush windows (7-10 AM and 4-7 PM), x1.0 at other weekday
-  hours to about 9 PM, x0.85 in weekend daytime, and at night x0.5 in urban areas and
-  x0.85 outside them. The rush-hour factor is much milder than 1.75 because the sample is
-  so small, and the factors would apply only to junctions with a busy road. The night
+- **Taken:** the direction of the time-of-day factor (decision 468a).
+- **Differs:** the size. The owner set the bands (decisions 469c-469e), and they are
+  built: x1.25 in the weekday rush windows (7-10 AM and 4-7 PM), x1.0 at other weekday
+  hours to 9 PM, x0.85 in weekend daytime, and at night (9 PM to 7 AM, every day) x0.5 in
+  urban areas and x0.85 outside them. The rush-hour factor is much milder than 1.75 because the sample is
+  so small, and the factors apply only to junctions with a busy road. The night
   bands are the owner's own judgment, not from this study.
 
 ## Other design guides and studies
@@ -218,12 +226,15 @@ five riders (we have not confirmed the sample size from the full text).
   junction model works on the traced route ([intersections.md](intersections.md),
   section 1).
 
-### Statutory default speed limits (decisions 469 and 469a) **planned**
+### Statutory default speed limits (decisions 469 and 469a)
 
-Decision 469 replaces the junction model's assumed 45 mph [72 km/h] for a road with no
-mapped speed with each jurisdiction's statutory default, for the junction cost and
-wherever the classifier needs a speed ([intersections.md](intersections.md), section 9).
-It is not built. The sources, as the owner gave them (not yet re-read for this page):
+Decision 469 replaced the junction model's assumed 45 mph [72 km/h] for a road with no
+mapped speed with each jurisdiction's statutory default. The junction cost reads it
+(`stress.statutory_default_mph`; [intersections.md](intersections.md), section 3). A
+business or residence district is read as inside a Census urban area, and a divided road
+as a carriageway of a divided road. Where the state is not known, the classifier's own
+assumed speed is used. The default is used for the cost only and is never said to a
+rider. The sources, as the owner gave them:
 
 - **District of Columbia**: a 20 mph [32 km/h] default where no other limit is posted,
   since 2020-06-01. DDOT,
@@ -233,14 +244,21 @@ It is not built. The sources, as the owner gave them (not yet re-read for this p
   on a divided residential road; 50 mph [80 km/h] undivided and 55 mph [89 km/h] divided
   elsewhere; 70 mph [113 km/h] on interstates and expressways. Maryland DOT State Highway
   Administration, [speed limits](https://roads.maryland.gov/mdotsha/pages/Index.aspx?PageId=295).
+  RouteMaker reads 30 mph [48 km/h] (35 mph [56 km/h] divided) inside an urban area and 50
+  mph [80 km/h] (55 mph [89 km/h] divided) outside one.
 - **Virginia** (469a): unless posted otherwise, 55 mph [89 km/h] on most highways, 25 mph
   [40 km/h] in business and residence districts, and at most 35 mph [56 km/h] on unpaved
   roads; Code of Virginia 46.2-870 to 46.2-878 and 46.2-1300. VDOT,
   [speed limits](https://www.vdot.virginia.gov/about/our-system/highways/speed-limits/).
 
-**Open point:** 469 asks for these sources to be cited here and on the rider page
-(`/about/stress.html`). They are listed here; the rider page's credit is still to come,
-with the 469 build.
+The rider page (`/about/stress.html`) credits these three sources under "Sources".
+
+**Open point:** decision 469 also asks that the classifier read these defaults wherever
+it needs a speed. It does in the District (20 mph [32 km/h]). In Maryland's and
+Virginia's urban areas it still reads the MDOT imputation by road class (25 to 35 mph
+[40 to 56 km/h]), which is not the statute, and outside them one table for both states.
+Moving it would change tiers on many roads, so it is left for the owner to confirm
+([classification.md](classification.md); [intersections.md](intersections.md), section 9).
 
 ## Where the evidence has gaps
 
@@ -248,7 +266,8 @@ We found no test, on whole routes, of rating a route by its worst stretch agains
 it by its average. Comfort studies give no measured effect for trucks, for driveways per
 mile, or for one-way against two-way streets at the same volume, and there are no
 figures for leisure loops. The rural crossing factor at 45 mph [72 km/h] is a judgment
-within the published ranges. So is the planned severe junction tier, and its cap of
-about 2 mi [3.2 km] follows the owner's direction in decision 467, not a published value.
+within the published ranges. The severe junction tier goes beyond the published ranges,
+and its cap of 2 calm mi [3.22 km] follows the owner's direction in decision 467, not a
+published value.
 The project's reviews read these figures from the sources. Some came from search
 summaries, and the reviews say which.

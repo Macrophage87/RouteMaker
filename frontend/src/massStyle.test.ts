@@ -4,12 +4,18 @@ import assert from "node:assert/strict";
 import * as spec from "@maplibre/maplibre-gl-style-spec";
 import {
   HAZARDS_BUILT,
+  HAZARD_OFFSET_PX,
+  HAZARD_SOURCE_ID,
   MASS_AVOID,
   MASS_BANDS,
+  MASS_HAZARDS,
   MASS_LAYER_IDS,
+  MASS_STRONG_CASING_EXTRA_PX,
   MASS_WIDE_RUN_MI,
   bandIndex,
   dashInWidths,
+  hazardLayerIds,
+  hazardLayerIdsFor,
   hazardLayers,
   massFilters,
   massHides,
@@ -17,7 +23,7 @@ import {
   massBandsAt,
   massLayers,
 } from "./massStyle.js";
-import { setMassRide, stressFilters, stressOverlayLayers } from "./stressStyle.js";
+import { isMtbLayerId, setMassRide, stressFilters, stressOverlayLayers } from "./stressStyle.js";
 import { VISIONS, deltaE2000, simulate } from "./testSupport/colourVision.ts";
 import { contrastRatio } from "./stressStyle.js";
 import { paintAt } from "./testSupport/paintAt.ts";
@@ -206,7 +212,7 @@ test("in the Mass Ride mode every stress and facility layer excludes the feature
     setMassRide(true);
     const filters = stressFilters("weekday_offpeak");
     for (const [id, filter] of Object.entries(filters)) {
-      if (id === "mtb-trail") continue; // its own layer (454): mtbTrailsLayer.test.ts
+      if (isMtbLayerId(id)) continue; // its own layer (454): mtbTrailsLayer.test.ts
       const layer = { id, filter } as Layer;
       assert.equal(draws(layer, { rpm: 100, tier: 3, facility: "lane" }), false, `${id} drew a feature with a capacity`);
     }
@@ -214,7 +220,7 @@ test("in the Mass Ride mode every stress and facility layer excludes the feature
     const plain = stressFilters("weekday_offpeak", undefined, false);
     for (const [id, filter] of Object.entries(plain)) {
       // The mountain-bike trails' line is a layer of its own in every ride type (454): its filter is unchanged.
-      const expected = id === "mtb-trail" ? filter : ["all", filter, massHides];
+      const expected = isMtbLayerId(id) ? filter : ["all", filter, massHides];
       assert.deepEqual((filters as Record<string, unknown>)[id], expected, id);
     }
   } finally {
@@ -239,6 +245,8 @@ test("out of the Mass Ride mode, and on a table without the column, the stress l
       stress: { type: "vector", tiles: ["https://example.test/{z}/{x}/{y}.pbf"] },
       // The Mass Ride layers' own tiles (core/mass_tiles.py).
       mass: { type: "vector", tiles: ["https://example.test/mass/{z}/{x}/{y}.pbf"] },
+      // The approved rider-marked hazards (part 3): a GeoJSON source of their own.
+      [HAZARD_SOURCE_ID]: { type: "geojson", data: { type: "FeatureCollection", features: [] } },
     },
     layers: stressOverlayLayers("stress", "weekday_rush"),
   };
@@ -246,10 +254,64 @@ test("out of the Mass Ride mode, and on a table without the column, the stress l
   assert.deepEqual(Object.keys(massFilters()).sort(), massLayerIds().sort());
 });
 
-test("hazards are not built: the seam draws nothing, and no layer or source is asked for them (part 3)", () => {
-  assert.equal(HAZARDS_BUILT, false);
-  assert.deepEqual(hazardLayers(), []);
-  assert.ok(!layers.some((l) => /hazard|caution|warning/.test(l.id)));
+// ---- Rider-marked hazards (part 3; OWNER-DECISIONS 325-327) ----
+
+test("hazards are built: a white-cased near-black rail each side of the road per level, from their own source, over the bands and under the Avoid label", () => {
+  assert.equal(HAZARDS_BUILT, true);
+  const rails = hazardLayers() as Layer[];
+  assert.equal(rails.length, MASS_HAZARDS.length * 4);
+  assert.ok(rails.every((l) => (l as Layer & { source: string }).source === HAZARD_SOURCE_ID && l.type === "line"));
+  const order = layers.map((l) => l.id);
+  const first = order.indexOf(hazardLayerIds()[0]);
+  assert.ok(first > order.indexOf(MASS_LAYER_IDS.avoid), "over the capacity lines and Avoid");
+  assert.equal(order.at(-1), MASS_LAYER_IDS.avoidLabel, "under the Avoid label");
+  // Every casing under every rail.
+  const ids = hazardLayerIds();
+  assert.ok(ids.slice(0, 4).every((id) => id.includes("casing")) && ids.slice(4).every((id) => !id.includes("casing")));
+  for (const hazard of MASS_HAZARDS) {
+    const ids = hazardLayerIdsFor(hazard.level);
+    const left = rails.find((l) => l.id === ids.left)!;
+    const right = rails.find((l) => l.id === ids.right)!;
+    // Beside the road, one rail each side: offsets of opposite sign, the same size.
+    const at16 = (layer: Layer) => paintAt(layer, "line-offset", {}, 16) as number;
+    assert.equal(at16(left), -HAZARD_OFFSET_PX);
+    assert.equal(at16(right), HAZARD_OFFSET_PX);
+    // Each level is drawn only for its own features.
+    assert.equal(draws(left, { level: hazard.level }), true);
+    assert.equal(draws(left, { level: hazard.level === "caution" ? "warning" : "caution" }), false);
+    assert.deepEqual(left.paint["line-dasharray"], hazard.dash);
+  }
+});
+
+test("the hazard rails clear the widest capacity line and its halo at every zoom, so they sit beside the road", () => {
+  const widest = Math.max(...MASS_BANDS.map((b) => b.width)) + MASS_STRONG_CASING_EXTRA_PX;
+  const band = massLayers("stress", "stress", true).find((l: Layer) => l.id === MASS_LAYER_IDS.casing[3]) as Layer;
+  for (const zoom of [12, 14, 16]) {
+    const halo = (paintAt(band, "line-width", {}, zoom) as number) / 2;
+    for (const hazard of MASS_HAZARDS) {
+      const casing = (hazardLayers() as Layer[]).find((l) => l.id === hazardLayerIdsFor(hazard.level).casingRight)!;
+      const inner = (paintAt(casing, "line-offset", {}, zoom) as number) - (paintAt(casing, "line-width", {}, zoom) as number) / 2;
+      assert.ok(inner >= halo, `z${zoom} ${hazard.level}: casing's inner edge ${inner} px against the halo's ${halo} px (widest ${widest})`);
+    }
+  }
+});
+
+test("the hazard rails are 3:1 from their white casing, the base map and every band, and the two levels differ in width and dash, not colour", () => {
+  const [caution, warning] = MASS_HAZARDS;
+  for (const hazard of MASS_HAZARDS) {
+    assert.ok(contrastRatio(hazard.color, hazard.casing) >= 3, `${hazard.level} on its casing`);
+    // The base map's land (Protomaps light) and its roads' white.
+    for (const ground of ["#e2dfda", "#ffffff", "#f6f6f4"]) assert.ok(contrastRatio(hazard.color, ground) >= 3, `${hazard.level} on ${ground}`);
+    // The white casing is 3:1 from every band's colour and the near-black halos, so the rail's edge shows beside any of them.
+    for (const band of MASS_BANDS) {
+      assert.ok(Math.max(contrastRatio(hazard.casing, band.color), contrastRatio(hazard.color, band.color)) >= 3, `${hazard.level} beside ${band.short}`);
+    }
+  }
+  assert.equal(caution.color, warning.color, "one near-black (327): the level is the pattern and the words");
+  assert.notDeepEqual(caution.dash, warning.dash);
+  assert.ok(warning.rail > caution.rail);
+  assert.equal(caution.pattern, "dotted");
+  assert.equal(warning.pattern, "dash-dot");
 });
 
 // The accessibility review's N1: on a Mass Ride's route line a stretch with no capacity figure is the unrated

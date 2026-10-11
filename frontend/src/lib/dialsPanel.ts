@@ -18,6 +18,12 @@ import {
 import type { PresetId } from "./presets.ts";
 import {
   HILLS_MIN,
+  RIDE_SIZE_DEFAULT,
+  RIDE_SIZE_MAX,
+  RIDE_SIZE_MIN,
+  RIDE_SIZE_STEP,
+  offersRideSize,
+  rideSizeOf,
   DEFAULT_CEILING_RATIO,
   TARGET_CEILING_RATIO,
   TARGET_MAX_M,
@@ -43,6 +49,8 @@ import {
 export interface SliderView {
   min: number;
   max: number;
+  /** The slider's step; absent is 5. */
+  step?: number;
   words: string;
   ends: [string, string, string];
   disabled: boolean;
@@ -61,6 +69,8 @@ export interface PanelView {
   /** The traffic-tolerant warning under the traffic slider, or null. */
   warning: string | null;
   hills: SliderView;
+  /** Mass Ride's "Anticipated ride size" (PLAN items 128, 129, 139), or null on any other ride type. */
+  rideSize: SliderView | null;
   /** The "Target distance" number input, or null where the traffic slider is not at the top. */
   target: TargetView | null;
   /**
@@ -205,7 +215,7 @@ export function calmNote(stress: number, _preset?: PresetId): string | undefined
 export const CALM_HOW =
   "First it avoids heavy-traffic roads (LTS 4) and very high stress junctions. Then it avoids busy roads (LTS 3) and " +
   "higher stress junctions. Then it follows the Hills slider. Then it takes the shorter way. A quiet street counts the " +
-  `same as a trail. It goes no further than ${TARGET_CEILING_RATIO} times your target distance, or ${DEFAULT_CEILING_RATIO} ` +
+  `same as a trail, except on Trailmaxxing, Cargo with passengers and Riding with kids, where low-stress streets (LTS 2) count a little extra. It goes no further than ${TARGET_CEILING_RATIO} times your target distance, or ${DEFAULT_CEILING_RATIO} ` +
   "times the usual route when no target is set.";
 
 export const MASS_RIDE_HILLS_NOTE =
@@ -227,7 +237,7 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
   const seek = hillsMax(preset) > 0;
   // The ride type's start for what the bike carries, at the ride time and
   // with the assist the rider chose: going back resets the sliders only.
-  const plain = startDials(preset, dials.carrying, dials.when, dials.assist);
+  const plain = startDials(preset, dials.carrying, dials.when, dials.assist, dials.bike ?? null);
   // A Mass Ride hides Make it a loop and keeps it for the next ride type
   // (OWNER-DECISIONS 374): there it is no moved setting, and Reset keeps it.
   const hiddenLoop = preset === "mass-ride" && dials.loop === true;
@@ -241,7 +251,8 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
     dials.stress !== start.stress ||
     dials.hills !== start.hills ||
     dials.targetDistanceM !== undefined ||
-    (dials.loop === true && !hiddenLoop);
+    (dials.loop === true && !hiddenLoop) ||
+    (offersRideSize(preset) && rideSizeOf(dials) !== RIDE_SIZE_DEFAULT);
   let hillsNote: string | undefined;
   if (!seek) hillsNote = MASS_RIDE_HILLS_NOTE;
   else if (draft.hills > 0) hillsNote = draft.stress >= STRESS_MAX ? SEEK_CALM_NOTE : SEEK_NOTE;
@@ -269,6 +280,7 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
       disabled: false,
       note: hillsNote,
     },
+    rideSize: offersRideSize(preset) ? rideSizeView(rideSizeOf(draft)) : null,
     target: offersTargetDistance(preset, dials.stress) ? targetView(dials) : null,
     weight: offersTargetDistance(preset, dials.stress),
     trailsOff: {
@@ -280,6 +292,28 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
       howAbout: TRAILS_OFF_HOW_ABOUT,
     },
     reset: moved ? start : null,
+  };
+}
+
+/** The ride size slider's name: its unit is in it, so it is said with the number (riders). */
+export const RIDE_SIZE_LABEL = "Anticipated ride size (riders)";
+export const RIDE_SIZE_NOTE =
+  "How many riders you expect. It sets the group's length, which the corker load counts over. It does not change the route.";
+
+/** "500 riders", as the slider's value text and the words beside its name. */
+export function rideSizeWords(riders: number): string {
+  return `${riders.toLocaleString("en-US")} riders`;
+}
+
+export function rideSizeView(riders: number): SliderView {
+  return {
+    min: RIDE_SIZE_MIN,
+    max: RIDE_SIZE_MAX,
+    step: RIDE_SIZE_STEP,
+    words: rideSizeWords(riders),
+    ends: [RIDE_SIZE_MIN.toLocaleString("en-US"), "", RIDE_SIZE_MAX.toLocaleString("en-US")],
+    disabled: false,
+    note: RIDE_SIZE_NOTE,
   };
 }
 

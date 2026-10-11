@@ -27,6 +27,7 @@ from django import forms
 from django.contrib import admin, messages
 from django.contrib.gis.admin import GISModelAdmin
 from django.core.exceptions import ImproperlyConfigured, PermissionDenied
+from django.db.models import Count, Q, Sum
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from django.http import Http404
@@ -37,17 +38,24 @@ from django.views.decorators.csrf import csrf_protect
 from .audit import record as record_audit
 from .models import (
     AuditLogEntry,
+    AvoidJunction,
     BorderCrossing,
     CachedMembership,
     ConfiguredGuild,
     DriftReport,
     InstanceAdminListing,
+    JunctionOverride,
+    JunctionSuggestion,
     Jurisdiction,
     LastInstanceAdmin,
+    MassHazard,
     Override,
     PendingInstanceAdminRemoval,
     RoleMapping,
     Session,
+    StressEdit,
+    StressSuggestion,
+    SuggestionSettings,
     User,
     ValhallaUpstream,
     cancel_instance_admin_removal,
@@ -470,13 +478,417 @@ class OverrideAdmin(InstanceAdminOnly):
     source may never be the sole basis for a row.
     """
 
-    list_display = ("kind", "osm_way_id", "approved", "approved_at")
-    list_filter = ("kind", "approved")
+    list_display = ("kind", "osm_way_id", "approved", "approved_at", "source", "superseded_by")
+    list_filter = ("kind", "approved", "source")
     search_fields = ("osm_way_id", "reason")
     # The approval flag itself is read-only: approval crosses guilds, so it is
     # an audited action rather than a checkbox on a change form. Locking only the
     # timestamp, as an earlier version did, was backwards.
-    readonly_fields = ("approved", "approved_at")
+    #
+    # And so is everything the road panel's editor writes (`core.stress_edits`): who made
+    # and approved the row, and which later row replaced it. A row replaced by a panel
+    # edit stays approved and is marked superseded, because unapproving it would let the
+    # loader re-approve it from an old file.
+    readonly_fields = (
+        "approved",
+        "approved_at",
+        "source",
+        "created_by_user_id",
+        "approved_by_user_id",
+        "superseded_by",
+        "superseded_at",
+        "fingerprint",
+    )
+    # The accounts are shown by the application's user id (`created_by_user_id`), never as
+    # the Discord id a `User` prints as.
+    exclude = ("created_by", "approved_by")
+
+    def save_model(self, request, obj, form, change) -> None:
+        if not change:
+            obj.source = Override.Source.ADMIN
+            obj.created_by = request.user
+            obj.created_by_user_id = request.user.pk
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(AvoidJunction, site=site)
+class AvoidJunctionAdmin(InstanceAdminOnly, GISModelAdmin):
+    """Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335).
+
+    Instance admin only: an approved row changes routing for every guild at the next
+    plan (`core.avoid_junctions`), with no rebuild. The point is placed by clicking on
+    the map, as a jurisdiction's polygon is drawn. A new row is inert until approved,
+    and approval is an audited action, never a checkbox on the form (as `Override`).
+
+    The list page leads with the counts 335 asks for: how many are rated Avoid, and how
+    often plans passed through them, "to keep both rare".
+    """
+
+    gis_widget = SelfHostedOpenLayersWidget
+    change_list_template = "admin/core/avoidjunction/change_list.html"
+
+    list_display = (
+        "name",
+        "reason",
+        "approved",
+        "source",
+        "plans_through",
+        "last_planned_through_at",
+    )
+    list_filter = ("approved", "source")
+    search_fields = ("name", "reason", "suggestion_ref")
+    fields = (
+        "name",
+        "location",
+        "reason",
+        "evidence",
+        "source",
+        "suggestion_ref",
+        "approved",
+        "approved_at",
+        "approved_by_user_id",
+        "created_at",
+        "created_by_user_id",
+        "plans_through",
+        "last_planned_through_at",
+    )
+    readonly_fields = (
+        "approved",
+        "approved_at",
+        "approved_by_user_id",
+        "created_at",
+        "created_by_user_id",
+        "plans_through",
+        "last_planned_through_at",
+    )
+    actions = ("approve_selected", "withdraw_selected")
+
+    def save_model(self, request, obj, form, change) -> None:
+        if not change:
+            obj.created_by = request.user
+            obj.created_by_user_id = request.user.pk
+        super().save_model(request, obj, form, change)
+
+    @admin.action(description="Approve the selected Avoid junctions (routing changes at once)")
+    def approve_selected(self, request, queryset) -> None:
+        if not self._is_instance_admin(request):
+            raise PermissionDenied
+        now = timezone.now()
+        count = 0
+        for row in queryset.filter(approved=False):
+            row.approved = True
+            row.approved_at = now
+            row.approved_by = request.user
+            row.approved_by_user_id = request.user.pk
+            row.save(
+                update_fields=["approved", "approved_at", "approved_by", "approved_by_user_id"]
+            )
+            audit(request, "approve", "avoidjunction", row.pk, AuditLogEntry.Outcome.ALLOWED)
+            count += 1
+        self.message_user(
+            request, f"Approved {count} Avoid junction(s): the next plan avoids them."
+        )
+
+    @admin.action(description="Withdraw the selected Avoid junctions (back to unapproved)")
+    def withdraw_selected(self, request, queryset) -> None:
+        if not self._is_instance_admin(request):
+            raise PermissionDenied
+        count = 0
+        for row in queryset.filter(approved=True):
+            row.approved = False
+            row.approved_at = None
+            # Who approved it goes too: the audit log keeps both actions and their actors.
+            row.approved_by = None
+            row.approved_by_user_id = None
+            row.save(
+                update_fields=["approved", "approved_at", "approved_by", "approved_by_user_id"]
+            )
+            audit(request, "withdraw", "avoidjunction", row.pk, AuditLogEntry.Outcome.ALLOWED)
+            count += 1
+        self.message_user(request, f"Withdrew {count} Avoid junction(s).")
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if not self._is_instance_admin(request):
+            actions.pop("approve_selected", None)
+            actions.pop("withdraw_selected", None)
+        return actions
+
+    def changelist_view(self, request, extra_context=None):
+        counts = AvoidJunction.objects.aggregate(
+            n_approved=Count("id", filter=Q(approved=True)),
+            n_waiting=Count("id", filter=Q(approved=False)),
+            n_plans=Sum("plans_through", filter=Q(approved=True)),
+        )
+        extra = {
+            "avoid_approved": counts["n_approved"] or 0,
+            "avoid_waiting": counts["n_waiting"] or 0,
+            "avoid_plans_through": counts["n_plans"] or 0,
+        }
+        return super().changelist_view(request, {**(extra_context or {}), **extra})
+
+
+@admin.register(StressEdit, site=site)
+class StressEditAdmin(AuditedAdmin):
+    """The road panel's edit history: every change and undo, with what each way held
+    before and after, who made it (the application's user id, never a Discord id) and when.
+
+    Read-only to everyone, an instance admin included, for the reason the audit log is: a
+    history that can be edited from the surface it records is not one. The private reason
+    is on the override row it created, not here.
+    """
+
+    list_display = ("at", "actor_label", "action", "osm_way_ids", "override", "generation")
+    list_filter = ("action",)
+    ordering = ("-at",)
+    exclude = ("actor",)
+    readonly_fields = (
+        "at",
+        "actor_user_id",
+        "action",
+        "override",
+        "replaced",
+        "undoes",
+        "osm_way_ids",
+        "before",
+        "after",
+        "applied_to",
+        "reapplied_to",
+        "generation",
+    )
+
+    @admin.display(description="by", ordering="actor_user_id")
+    def actor_label(self, obj) -> str:
+        if obj.actor_id is not None:
+            return f"user {obj.actor_user_id}"
+        if obj.actor_user_id is not None:
+            return f"deleted user {obj.actor_user_id}"
+        return "no actor"
+
+    def has_view_permission(self, request, obj=None) -> bool:
+        return bool(getattr(request.user, "is_instance_admin", False))
+
+    def has_module_permission(self, request) -> bool:
+        return self.has_view_permission(request)
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+
+@admin.register(SuggestionSettings, site=site)
+class SuggestionSettingsAdmin(AuditedAdmin):
+    """Who may suggest a change to a road's traffic stress (460.4): nobody (the default),
+    anyone signed in, or members of a configured Discord server. One row; an instance
+    admin's only."""
+
+    list_display = ("who", "updated_at")
+    fields = ("who",)
+
+    def _admin(self, request) -> bool:
+        return bool(getattr(request.user, "is_instance_admin", False))
+
+    def has_view_permission(self, request, obj=None) -> bool:
+        return self._admin(request)
+
+    def has_module_permission(self, request) -> bool:
+        return self._admin(request)
+
+    def has_add_permission(self, request) -> bool:
+        return self._admin(request) and not SuggestionSettings.objects.exists()
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return self._admin(request)
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+    def save_model(self, request, obj, form, change) -> None:
+        obj.pk = 1
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(StressSuggestion, site=site)
+class StressSuggestionAdmin(AuditedAdmin):
+    """Riders' suggestions and what became of each. Read-only: the review's three actions
+    (approve now, delete, send to Discord) are in the map's review panel, which applies an
+    approval through the editor's own path (core.suggestions)."""
+
+    list_display = ("created_at", "osm_way_id", "road_name", "tier", "half", "status")
+    list_filter = ("status",)
+    ordering = ("-created_at",)
+    exclude = ("suggester", "decided_by")
+    readonly_fields = (
+        "created_at",
+        "suggester_user_id",
+        "kind",
+        "osm_way_id",
+        "lat",
+        "lon",
+        "road_name",
+        "current_tier",
+        "current_half",
+        "tier",
+        "half",
+        "reason",
+        "status",
+        "sent_at",
+        "decided_at",
+        "edit",
+    )
+
+    def has_view_permission(self, request, obj=None) -> bool:
+        return bool(getattr(request.user, "is_instance_admin", False))
+
+    def has_module_permission(self, request) -> bool:
+        return self.has_view_permission(request)
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+
+@admin.register(MassHazard, site=site)
+class MassHazardAdmin(AuditedAdmin):
+    """Riders' Mass Ride hazard reports (FOLLOWUP-MASSRIDE-MAP part 3; 325-327) and what became
+    of each. Read-only: the review's three actions are in the map's review panel
+    (core.mass_hazards). The one action here takes an approved hazard off the Mass Ride map."""
+
+    list_display = ("created_at", "osm_way_id", "road_name", "level", "status")
+    list_filter = ("status", "level")
+    ordering = ("-created_at",)
+    exclude = ("reporter", "decided_by")
+    readonly_fields = (
+        "created_at",
+        "reporter_user_id",
+        "osm_way_id",
+        "road_name",
+        "level",
+        "reason",
+        "status",
+        "sent_at",
+        "decided_at",
+    )
+    actions = ("remove_selected",)
+
+    def _admin(self, request) -> bool:
+        return bool(getattr(request.user, "is_instance_admin", False))
+
+    @admin.action(description="Take the selected approved hazards off the Mass Ride map")
+    def remove_selected(self, request, queryset) -> None:
+        from . import mass_hazards
+
+        if not self._admin(request):
+            raise PermissionDenied
+        count = 0
+        for pk in queryset.filter(status=MassHazard.Status.APPROVED).values_list("pk", flat=True):
+            mass_hazards.remove(request.user, pk)
+            count += 1
+        self.message_user(request, f"Took {count} hazard(s) off the Mass Ride map.")
+
+    def get_actions(self, request):
+        return super().get_actions(request) if self._admin(request) else {}
+
+    def has_view_permission(self, request, obj=None) -> bool:
+        return self._admin(request)
+
+    def has_module_permission(self, request) -> bool:
+        return self._admin(request)
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+
+@admin.register(JunctionSuggestion, site=site)
+class JunctionSuggestionAdmin(StressSuggestionAdmin):
+    """Riders' junction suggestions (OWNER-DECISIONS 232) and what became of each. Read-only,
+    as the roads': the three actions are in the map's review panel (core.junction_suggestions).
+    The place is the junction's node, never the rider's spot."""
+
+    list_display = ("created_at", "node", "roads", "current_level", "target_level", "status")
+    readonly_fields = (
+        "created_at",
+        "suggester_user_id",
+        "lon",
+        "lat",
+        "node",
+        "roads",
+        "current_level",
+        "level",
+        "direction",
+        "target_level",
+        "reason",
+        "status",
+        "sent_at",
+        "decided_at",
+        "override",
+        "avoid",
+    )
+
+
+@admin.register(JunctionOverride, site=site)
+class JunctionOverrideAdmin(InstanceAdminOnly):
+    """Junction overrides (OWNER-DECISIONS 232): approved rider ratings the intersection model
+    applies at the next plan. Made only by approving a junction suggestion in the map's review
+    panel; here an instance admin can only look and withdraw one (an audited action)."""
+
+    list_display = ("name", "level", "active", "created_at", "withdrawn_at")
+    list_filter = ("active", "level")
+    search_fields = ("name",)
+    ordering = ("-created_at",)
+    exclude = ("created_by",)
+    readonly_fields = (
+        "name",
+        "location",
+        "level",
+        "evidence",
+        "active",
+        "created_at",
+        "created_by_user_id",
+        "withdrawn_at",
+    )
+    actions = ("withdraw_selected",)
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+    @admin.action(description="Withdraw the selected junction overrides (routing changes at once)")
+    def withdraw_selected(self, request, queryset) -> None:
+        if not self._is_instance_admin(request):
+            raise PermissionDenied
+        count = 0
+        for row in queryset.filter(active=True):
+            row.active = False
+            row.withdrawn_at = timezone.now()
+            row.save(update_fields=["active", "withdrawn_at"])
+            audit(request, "withdraw", "junctionoverride", row.pk, AuditLogEntry.Outcome.ALLOWED)
+            count += 1
+        self.message_user(request, f"Withdrew {count} junction override(s).")
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if not self._is_instance_admin(request):
+            actions.pop("withdraw_selected", None)
+        return actions
 
 
 def _discord_id_help(what: str, steps: str) -> str:

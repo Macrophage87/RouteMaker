@@ -48,7 +48,6 @@ from routemaker import (
     singletrack,
     speed_corrections,
     surfaces,
-    trailaccess,
     zoo,
 )
 from routemaker.geo import Point
@@ -692,6 +691,10 @@ class RebuildContext:
     cbd_sidewalks: set[int] = field(default_factory=set)
     # Mountain-bike singletrack, which every ride type avoids (routemaker.singletrack).
     singletracks: set[int] = field(default_factory=set)
+    # The singletracks only the rating closes, which the map draws on the mountain-bike
+    # trail layer in their level's colour (pipeline.trail_closures.drawn_singletrack;
+    # OWNER-DECISIONS 456); the rest stay hidden.
+    drawn_singletracks: set[int] = field(default_factory=set)
     # Every `rm:no_bicycle` reason of the NO-BIKE-PATHS rules (routemaker.trailaccess,
     # routemaker.zoo, pipeline.trail_closures), cbd_sidewalk and singletrack
     # included, by way; the short dismount connectors routing keeps and the route
@@ -750,6 +753,9 @@ class RebuildContext:
     elevation_tiles: list[Path] = field(default_factory=list)
     build_configs: dict[variants.Variant, Path] = field(default_factory=dict)
     swap_outcome: promotion.SwapOutcome | None = None
+    # When the override stage read the approved rows. A road-panel edit (core.stress_edits)
+    # made after this is not in the table this rebuild builds, so the promotion re-applies it.
+    overrides_read_at: datetime | None = None
     drift_report: object | None = None
 
     def __post_init__(self) -> None:
@@ -1522,6 +1528,7 @@ def car_free_tier_1(way, stress_by_way: dict) -> bool:
         lanes=current.lanes,
         oneway=current.oneway,
         graph_oneway=current.graph_oneway,
+        default_speed_mph=current.default_speed_mph,
     )
     return True
 
@@ -1709,6 +1716,8 @@ def build_handlers(
         ]
         context.singletracks = {int(way_id) for way_id in manifest.get("singletracks", [])}
         context.override_summary = manifest.get("override_summary")
+        read_at = manifest.get("overrides_read_at")
+        context.overrides_read_at = datetime.fromisoformat(read_at) if read_at else None
         context.resumed = True
         context.revalidate_staging = validation_changed
         context.resume_note = (
@@ -2266,6 +2275,7 @@ def build_handlers(
         and no stage ever read: a row could be written, reviewed and approved,
         and the graph was built exactly as if it were not there.
         """
+        context.overrides_read_at = datetime.now(UTC)
         rows = load_overrides()
         unhandled = sorted({row.kind for row in rows} - overrides.HANDLED_KINDS)
         if unhandled:
@@ -2493,6 +2503,7 @@ def build_handlers(
         context.mtb_only = nobike.mtb_only()
         context.cbd_sidewalks = {w for w, r in nobike.reasons.items() if r == cbd.NO_BICYCLE}
         context.singletracks = {w for w, r in nobike.reasons.items() if r == singletrack.NO_BICYCLE}
+        context.drawn_singletracks = nobike.drawn_singletrack
         car_free_for_good = 0
         for way in context.ways:
             # The tags the classifier read where an agency's street layer
@@ -2505,8 +2516,9 @@ def build_handlers(
             closed = facility.car_free_when(way.tags)
             if closed:
                 context.car_free_by_way[way.osm_id] = closed
-            if nobike.reasons.get(way.osm_id) == trailaccess.MTB:
-                # No path rail on a trail only a mountain bike rides.
+            if nobike.reasons.get(way.osm_id) in trail_closures.MTB_ONLY:
+                # No path rail on a trail only a mountain bike rides (the mountain-bike
+                # class, and the rated singletrack the layer now draws, 456).
                 context.facility_by_way[way.osm_id] = facility.Facility.NONE.value
             if car_free_tier_1(way, context.stress_by_way):
                 car_free_for_good += 1
@@ -2679,6 +2691,10 @@ def build_handlers(
                     derived["bridge_bicycle"] = legal
                 if stress is not None:
                     derived["stress_tier"] = int(stress.tier)
+                    # A half step (`rm:stress_half`, 461a): lua/routemaker_remap.lua
+                    # `half_step_marks` prices it between its two levels.
+                    if writers._half(stress):
+                        derived["stress_half"] = True
                 derived.update(
                     facility_derived(
                         variant, way.osm_id, context.facility_by_way, context.car_free_by_way
@@ -2902,16 +2918,25 @@ def build_handlers(
         A sidewalk the CBD rule bars to bicycles (OWNER-DECISIONS 104) is a way
         a bicycle may not use, left to the base map like any other (89); a
         singletrack every ride type avoids (90, 91, 111) is not drawn as a
-        trail the router will never send anyone down. The paved trails the
-        singletrack rule exempts stay trails on both.
+        trail the router will never send anyone down: it is drawn only on the
+        mountain-bike trail layer, in its level's colour (454, 456; the tile's
+        `mtb` keeps it out of every routable layer), where nothing but its rating
+        closes it (`drawn_singletracks`), and is hidden otherwise. The paved trails
+        the singletrack rule exempts stay trails on both.
         """
         if osm_id in context.cbd_sidewalks:
             return facility.MapClass.BARRED
-        if osm_id in context.short_paths_hidden or osm_id in context.singletracks:
+        if osm_id in context.short_paths_hidden:
+            return facility.MapClass.HIDDEN
+        if osm_id in context.singletracks and osm_id not in context.drawn_singletracks:
             return facility.MapClass.HIDDEN
         base = facility.map_class(tags)
         reason = context.no_bicycle.get(osm_id)
-        if reason is not None and reason != trailaccess.MTB and base is facility.MapClass.ROAD:
+        if (
+            reason is not None
+            and reason not in trail_closures.MTB_ONLY
+            and base is facility.MapClass.ROAD
+        ):
             # A trail the NO-BIKE-PATHS rules close (the Zoo's, a hiking path, a
             # private golf-cart path) is not drawn as a bike facility; the base
             # map shows it as it is (OWNER-DECISIONS 278, 290(b)). The
@@ -2978,6 +3003,7 @@ def build_handlers(
                 is_trail_class=trail,
                 stress_tier=int(stress.tier),
                 map_class=way_map_class,
+                stress_half=writers._half(stress),
             )
             # Why a bicycle may not use it, or why an override reopened it, for the map's
             # road panel (OWNER-DECISIONS 441a); the router says whether it may.
@@ -3003,8 +3029,22 @@ def build_handlers(
                         map_class=way_map_class,
                         separate_bikeway=facility.has_separate_bikeway(way.tags),
                         mtb_only=way.osm_id in context.mtb_only,
+                        # The difficulty level the mountain-bike layer draws it in (456),
+                        # on rated singletrack alone: a level means closed on every graph.
+                        mtb_level=trail_closures.mtb_level(
+                            context.no_bicycle.get(way.osm_id), way.tags
+                        ),
+                        # And its name, for the layer's label and the road panel (the
+                        # owner, 2026-10-10).
+                        mtb_name=singletrack.mtb_name(way.tags)
+                        if way.osm_id in context.mtb_only
+                        else None,
                         walk_bike=way.osm_id in context.walk_bike,
                         road_speed_mph=_smallint(getattr(stress, "speed_mph", None)),
+                        road_default_speed_mph=_smallint(
+                            getattr(stress, "default_speed_mph", None)
+                        ),
+                        road_urban=way.osm_id in reference.urban_way_ids,
                         road_lanes=_smallint(getattr(stress, "lanes", None)),
                         mass_usable_width_m=massflow.usable_width_rounded(
                             way.tags,
@@ -3039,6 +3079,17 @@ def build_handlers(
         trail_routes.derive_trail_runs(context.staging_schema)
         trail_routes.derive_calm_runs(context.staging_schema)
         trail_routes.derive_roadside(context.staging_schema)
+        levels = trail_routes.mtb_level_counts(context.staging_schema)
+        named, mountain_bike_ways = trail_routes.mtb_name_counts(context.staging_schema)
+        logger.info(
+            "mountain-bike levels (ways, mi, mi drawn): %s; %d of %d mountain-bike ways named",
+            {
+                level: (ways, round(mi, 1), round(drawn, 1))
+                for level, (ways, mi, drawn) in levels.items()
+            },
+            named,
+            mountain_bike_ways,
+        )
 
     def staging_checks() -> None:
         """The VALIDATE_SEGMENTS checks that read the staging schema alone, which is
@@ -3166,6 +3217,12 @@ def build_handlers(
                 ],
                 "singletracks": sorted(context.singletracks),
                 "override_summary": summary,
+                # When OVERRIDES read the override table, not when this was written: the
+                # swap re-applies the road panel's edits made after it, and a resumed
+                # attempt skips OVERRIDES, so without it the resume would replay none.
+                "overrides_read_at": (
+                    context.overrides_read_at.isoformat() if context.overrides_read_at else None
+                ),
                 # Every hash this attempt has read so far (both extracts, the code,
                 # the reference data, the variant extracts), out of its budget.
                 "hash_seconds": round(context.hasher.seconds, 1),
@@ -3230,7 +3287,10 @@ def build_handlers(
         checkpoint.discard_classification(context.work_dir)
         try:
             context.swap_outcome = promotion.perform_swap(
-                context.tiles_dir, context.build_id, context.upstreams
+                context.tiles_dir,
+                context.build_id,
+                context.upstreams,
+                overrides_read_at=context.overrides_read_at,
             )
         except promotion.SwapUndoIncomplete:
             raise

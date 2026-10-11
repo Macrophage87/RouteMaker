@@ -18,13 +18,39 @@ import {
   mtbTrailPaint,
   mtbTrailsOn,
   MTB_TRAIL_LAYER_ID,
+  MTB_LEVELS,
+  isMtbLayerId,
+  mtbLevelCasingLayerId,
+  mtbLevelLayerId,
+  mtbLevelPaint,
+  MTB_LABEL_LAYER_ID,
+  mtbLabelColor,
   unpavedLayers,
+  halfStepLayers,
   UNPAVED_DASH,
   accessibilityOn,
   massRideOn,
   setMassRide,
 } from "../stressStyle.js";
-import { massLayerIds, massLayers } from "../massStyle.js";
+import { HAZARD_SOURCE_ID, massLayerIds, massLayers } from "../massStyle.js";
+
+/** The hazards' source before any are given (or on a page that is not a Mass Ride's). */
+export const EMPTY_HAZARDS = { type: "FeatureCollection", features: [] } as const;
+
+/** The parts of a MapLibre map the hazards' data uses. */
+export interface HazardMap {
+  getSource(id: string): unknown;
+}
+
+/**
+ * Give the map the approved hazards (lib/massHazards.ts fetchHazards), or none: a Mass Ride's only
+ * (325: "for this mode only"), so any other ride type sets an empty collection. Before the overlay
+ * has its source there is nothing to set; it is added empty and set when the data next changes.
+ */
+export function setHazardData(map: HazardMap | null, data: object | null): void {
+  const source = map?.getSource(HAZARD_SOURCE_ID) as { setData?: (d: object) => void } | undefined;
+  source?.setData?.(data ?? EMPTY_HAZARDS);
+}
 import type { When } from "./dials.ts";
 import { MASS_SOURCE_ID, STRESS_SOURCE_ID, massSource, stressSource } from "./mapStyle.ts";
 import { setDcMaskVisibility } from "./dcBoundary.ts";
@@ -34,7 +60,7 @@ import { ROUTE_AVOID_MARK_DASH, routeClasses, routePaint, routeSections, section
 /** The parts of a MapLibre map these use. */
 export interface OverlayMap {
   getSource(id: string): unknown;
-  addSource(id: string, source: ReturnType<typeof stressSource>): void;
+  addSource(id: string, source: ReturnType<typeof stressSource> | { type: "geojson"; data: object }): void;
   getStyle(): { layers: ReadonlyArray<{ id: string; type: string }> };
   addLayer(layer: object, beforeId?: string): void;
   getLayer(id: string): unknown;
@@ -53,8 +79,9 @@ export interface OverlayMap {
  * every ride type, Mass Ride too ("Three map layers for everyone (every mode, signed out too)").
  */
 export function overlayLayerShown(id: string, visible: boolean, mass: boolean = massRideOn(), mtb: boolean = mtbTrailsOn()): boolean {
-  // The mountain-bike trails are a map layer of their own (OWNER-DECISIONS 454): their switch alone, in every mode.
-  if (id === MTB_TRAIL_LAYER_ID) return mtb;
+  // The mountain-bike trails are a map layer of their own (OWNER-DECISIONS 454): their switch alone, in every mode,
+  // for the unrated trails' dots and each level's casing and line alike (456).
+  if (isMtbLayerId(id)) return mtb;
   return visible && (MASS_IDS.has(id) ? mass : !mass);
 }
 
@@ -85,6 +112,8 @@ export function addStressOverlay(map: OverlayMap, origin: string, visible: boole
   map.addSource(STRESS_SOURCE_ID, stressSource(origin));
   // The Mass Ride map's own tiles (core/mass_tiles.py), read only by its layers.
   if (!map.getSource(MASS_SOURCE_ID)) map.addSource(MASS_SOURCE_ID, massSource(origin));
+  // The approved Mass Ride hazards (massStyle.js hazardLayers): empty until MapView is given them.
+  if (!map.getSource(HAZARD_SOURCE_ID)) map.addSource(HAZARD_SOURCE_ID, { type: "geojson", data: EMPTY_HAZARDS });
   const firstSymbol = map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
   for (const layer of stressOverlayLayers(STRESS_SOURCE_ID, when) as Array<{ id: string; layout?: object }>) {
     // The Mass Ride layers (massStyle.js) are on only in that mode, and the stress map's only out of it.
@@ -158,7 +187,7 @@ export function setStressPalette(
   when: When = DEFAULT_WHEN,
   tiers: ReturnType<typeof currentTiers> = currentTiers(),
 ): void {
-  const layers = [...ringLayers(STRESS_SOURCE_ID, when, tiers), ...stressCasingLayers(STRESS_SOURCE_ID, when, tiers), ...gapLayers(STRESS_SOURCE_ID, when, tiers), ...unknownSurfaceLayers(STRESS_SOURCE_ID, when, tiers), ...stressLayers(STRESS_SOURCE_ID, when, tiers), ...unpavedLayers(STRESS_SOURCE_ID, when, tiers)];
+  const layers = [...ringLayers(STRESS_SOURCE_ID, when, tiers), ...stressCasingLayers(STRESS_SOURCE_ID, when, tiers), ...gapLayers(STRESS_SOURCE_ID, when, tiers), ...unknownSurfaceLayers(STRESS_SOURCE_ID, when, tiers), ...stressLayers(STRESS_SOURCE_ID, when, tiers), ...unpavedLayers(STRESS_SOURCE_ID, when, tiers), ...halfStepLayers(STRESS_SOURCE_ID, when, tiers)];
   // The Mass Ride layers' casings are a pixel wider with the accessibility switch (massStyle.js).
   const mass = massLayers(STRESS_SOURCE_ID, STRESS_TILE_LAYER, accessibilityOn()).filter((l: { type: string }) => l.type === "line");
   for (const layer of [...layers, ...mass] as Array<{ id: string; paint: Record<string, unknown> }>) {
@@ -169,6 +198,8 @@ export function setStressPalette(
     if ("line-gap-width" in layer.paint) map.setPaintProperty(layer.id, "line-gap-width", layer.paint["line-gap-width"]);
     // The surface-unknown edge's dashes are in its own width, which the switch changes (stressStyle.js, unknownSurfaceLayers).
     if (layer.id === "stress-unknown-casing") map.setPaintProperty(layer.id, "line-dasharray", layer.paint["line-dasharray"]);
+    // A half step's outline is the dash's pattern in its own width, which the switch changes.
+    if (layer.id.startsWith("stress-half-outline-")) map.setPaintProperty(layer.id, "line-dasharray", layer.paint["line-dasharray"]);
   }
   for (const facility of FACILITIES) {
     const id = `facility-${facility.facility}`;
@@ -179,6 +210,16 @@ export function setStressPalette(
     const paint = mtbTrailPaint();
     map.setPaintProperty(MTB_TRAIL_LAYER_ID, "line-color", paint["line-color"]);
     map.setPaintProperty(MTB_TRAIL_LAYER_ID, "line-width", paint["line-width"]);
+  }
+  // Each level's line and cross-ticks (456): wider with the accessibility switch; the colours and the ticks' dash (in widths) stay.
+  for (const { level } of MTB_LEVELS) {
+    const paint = mtbLevelPaint(level);
+    if (map.getLayer(mtbLevelLayerId(level))) map.setPaintProperty(mtbLevelLayerId(level), "line-width", paint.line["line-width"]);
+    if (map.getLayer(mtbLevelCasingLayerId(level))) map.setPaintProperty(mtbLevelCasingLayerId(level), "line-width", paint.casing["line-width"]);
+  }
+  // The trail names (2026-10-10): an unrated trail's grey follows the dots' with the accessibility switch.
+  if (map.getLayer(MTB_LABEL_LAYER_ID)) {
+    map.setPaintProperty(MTB_LABEL_LAYER_ID, "text-color", mtbLabelColor());
   }
 }
 
@@ -294,10 +335,18 @@ export function setStressVisibility(map: OverlayMap, visible: boolean): void {
  * The markers effect's dependencies: the points, the counter App bumps to
  * put a dragged marker back without changing the points (a drag outside the
  * area), and the loop toggle, which renames them (OWNER-DECISIONS 374).
- * Without the counter a put-back marker stays where it was dropped.
+ * Without the counter a put-back marker stays where it was dropped. `federal`
+ * is a Mass Ride's per-point federal-land warnings (lib/federalStops.ts, item
+ * 239), which change a marker's name and badge; passed as an array, it is
+ * compared by its words, so a new array saying the same keeps the markers.
  */
-export function markerDeps<P>(points: readonly P[], markerReset: number, loop?: boolean): readonly unknown[] {
-  return [points, markerReset, loop === true];
+export function markerDeps<P>(
+  points: readonly P[],
+  markerReset: number,
+  loop?: boolean,
+  federal?: ReadonlyArray<string | null>,
+): readonly unknown[] {
+  return [points, markerReset, loop === true, (federal ?? []).map((w) => w ?? "").join("\n")];
 }
 
 /** What is under the pointer, as MapView finds it. */

@@ -329,3 +329,42 @@ def test_an_override_approved_after_the_copy_refuses_the_swap(deployment) -> Non
 
     run(NEW, "--overrides-read-at", READ_AT, "--accept-later-overrides", "--confirm")
     assert serving(deployment) == {NEW}
+
+
+def test_where_panel_edits_are_re_applied_a_later_admin_override_still_refuses(
+    deployment, monkeypatch
+) -> None:
+    """Re-applying the road panel's edits covers only the rows those edits wrote (a named
+    stretch's every way included); an access override approved in the admin after the
+    box's copy is still missing from the build, so it still refuses."""
+    from datetime import datetime
+
+    from core.models import StressEdit
+    from pipeline import promotion
+
+    def perform_swap(tiles_dir, build_id, upstreams, overrides_read_at=None):
+        return promotion.SwapOutcome(build_id=build_id)
+
+    monkeypatch.setattr(promotion, "perform_swap", perform_swap)
+    monkeypatch.setattr(
+        "core.management.commands.import_cloud_build.reconcile.drift_report", lambda *a: None
+    )
+    first = approve_override("2026-10-05T12:00:00+00:00")
+    second = approve_override("2026-10-05T12:00:00+00:00")
+    StressEdit.objects.create(
+        at=datetime.fromisoformat("2026-10-05T12:00:00+00:00"),
+        action=StressEdit.Action.SET,
+        override_id=first,
+        override_rows=[{"way": 42, "override": first}, {"way": 43, "override": second}],
+        osm_way_ids=[42, 43],
+    )
+
+    out = run(NEW, "--overrides-read-at", READ_AT)
+    assert "re-applied" in out and "access override(s)" not in out
+
+    admin = approve_override("2026-10-05T13:00:00+00:00")
+    out = run(NEW, "--overrides-read-at", READ_AT)
+    assert "1 access override(s) approved after" in out and f"ids {admin})" in out
+    with pytest.raises(CommandError):
+        run(NEW, "--overrides-read-at", READ_AT, "--confirm")
+    assert serving(deployment) == {OLD}

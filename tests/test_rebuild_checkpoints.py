@@ -598,6 +598,43 @@ def test_an_override_edited_or_withdrawn_invalidates_it_though_the_count_does_no
     assert not attempt(env, skip=ONLY_FETCH, build_id="20261003T000000Z").context.resumed
 
 
+def test_an_undo_that_only_moves_superseded_by_invalidates_it(env, reset_calls) -> None:
+    """The road panel's undo brings an older row back by moving `superseded_by` alone: the
+    same approved rows, the same values."""
+    older = make_override(987654321, {"bicycle": "no"})
+    newer = make_override(987654321, {"bicycle": "dismount"})
+    older.superseded_by = newer
+    older.save()
+    invalidated(env, reset_calls)
+    older.superseded_by, newer.superseded_by = None, older
+    older.save()
+    newer.save()
+    assert not attempt(env, skip=ONLY_FETCH, build_id="20261002T000000Z").context.resumed
+
+
+def test_a_resume_keeps_when_the_first_attempt_read_the_overrides(env) -> None:
+    """A resumed attempt skips OVERRIDES, so the swap's replay of the road panel's edits
+    needs the first attempt's read time from the manifest, not None (which replays none)."""
+    first = first_attempt_fails_at(env, "offroad")
+    read_at = first.context.overrides_read_at
+    assert read_at is not None
+    assert checkpoint.read_classification(env.work)["overrides_read_at"] == read_at.isoformat()
+    second = attempt(env, build_id=None)
+    assert second.context.resumed
+    assert second.context.overrides_read_at == read_at
+
+
+def test_a_resumed_swap_hands_the_read_time_to_the_replay(env, monkeypatch) -> None:
+    from core import stress_edits
+
+    seen: list = []
+    monkeypatch.setattr(stress_edits, "after_promotion", lambda read_at: seen.append(read_at) or 0)
+    first = first_attempt_fails_at(env, "weekend")
+    second = attempt(env, skip=frozenset(), build_id=None)
+    assert second.error is None and second.report.succeeded
+    assert seen == [first.context.overrides_read_at] and seen[0] is not None
+
+
 def test_an_unchanged_world_resumes(env, reset_calls) -> None:
     """The control for the whole group: the same checks, nothing changed."""
     invalidated(env, reset_calls)

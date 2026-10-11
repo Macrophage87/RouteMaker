@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { RoadInfoDialog } from "./RoadInfoDialog.tsx";
+import { SuggestionReview } from "./SuggestionReview.tsx";
 import { MapTools } from "./MapTools.tsx";
 import { ACCESS_HELP, ACCESS_LABEL, accessModeToggle, readAccessMode, writeAccessMode } from "./lib/accessMode.ts";
 import { infoHelp, placeAtSpot, requestAfterClose, type InfoRequest } from "./lib/roadInfo.ts";
@@ -12,7 +13,7 @@ import { requestRoute, type RouteError, type RouteResponse, type RouteResult } f
 import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration, formatSeconds } from "./lib/format.ts";
 import { presetLabel, type PresetId } from "./lib/presets.ts";
-import { decodePlan, encodePlan } from "./lib/planHash.ts";
+import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
 import { stressSegments } from "./lib/stressBar.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
@@ -30,7 +31,7 @@ import { AccessibilitySwitch } from "./lib/accessibilitySwitch.ts";
 import { CandidatePicker } from "./lib/candidatePicker.ts";
 import { BetaBanner, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { DialsPanel } from "./DialsPanel.tsx";
-import { announceHow, candidateRoute, candidateRows } from "./lib/candidates.ts";
+import { announceHow, candidateRows } from "./lib/candidates.ts";
 import { canReverse, loopNote, loopStops, loopView, reversedPoints, withLoop } from "./lib/loop.ts";
 import {
   BEST_ORDER_LABEL,
@@ -54,20 +55,28 @@ import {
 } from "./lib/pointText.ts";
 import { FacilityBreakdown } from "./FacilityBreakdown.tsx";
 import { IntersectionList } from "./IntersectionList.tsx";
+import { AvoidNotice } from "./AvoidNotice.tsx";
+import { avoidItems, avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
+import { shownNear } from "./lib/junctionSuggest.ts";
 import { ElevationChart } from "./ElevationChart.tsx";
-import { chartKind, foldName, usableProfile } from "./lib/profileChart.ts";
+import { chartKind, corkerFigure, foldName, usableProfile } from "./lib/profileChart.ts";
 import { RouteDescription } from "./RouteDescription.tsx";
 import { RIDE_SAFETY, RideMode, RideSettingsFields, startRideGesture, type RideView } from "./RideMode.tsx";
 import { readRidePrefs, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
 import { RIDE_MAX_M, RIDE_TOO_LONG } from "./lib/navigate.ts";
+import { BikeshareSummary } from "./BikeshareSummary.tsx";
+import { NearbyStations } from "./NearbyStations.tsx";
+import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
+import { bikeshareOf, routeCredits } from "./lib/bikeshare.ts";
 import { RideTypePicker } from "./RideTypePicker.tsx";
-import type { Dials } from "./lib/dials.ts";
+import { rideSizeOf, type Dials, type Ending } from "./lib/dials.ts";
 import { WeightStore, withWeight, type StoredWeight } from "./lib/weight.ts";
 import { stationEdit, type RailVisibility, type StationRole } from "./lib/railStations.ts";
 import { RailStationsSection } from "./RailStations.tsx";
 import { RAIL_STATIONS, WMATA_SLUGS } from "./lib/railData.ts";
 import { federalPoints, federalShown, type FederalData } from "./lib/federalLand.ts";
-import { FederalLandFor, FederalPointsList, type FederalStatus } from "./lib/federalLegend.ts";
+import { FEDERAL_POINTS_NONE, FederalLandFor, type FederalStatus } from "./lib/federalLegend.ts";
+import { federalAreaAt, federalRouteLines, pointAreas, stopWarningShort } from "./lib/federalStops.ts";
 import { addCoverageMask, fetchCoverage, watchForCapacity, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
 import {
   CAPACITY_FOLD_TITLE,
@@ -84,6 +93,8 @@ import { PointsList } from "./lib/pointsList.ts";
 import { movePoint, planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
 import { mapWhen } from "./lib/rideTime.ts";
 import { registerStressProtocol } from "./lib/stressProtocol.ts";
+import { corridorStress } from "./lib/corridorStore.ts";
+import { refreshStressTiles } from "./lib/mapStyle.ts";
 import * as maplibregl from "maplibre-gl";
 import { PlaceSearch } from "./PlaceSearch.tsx";
 import {
@@ -136,6 +147,7 @@ import {
   type ViewCause,
 } from "./lib/sidebar.ts";
 import { rideSummary, rideSummarySpoken } from "./lib/rideSummary.ts";
+import { SHARE_LABEL, SHARE_NAME, canShareLink, shareContent, shareLink, shareSaidFor } from "./lib/share.ts";
 import { quickFigures, stressBarKey, stressBarLabel } from "./lib/quickFigures.ts";
 import { junctionItems } from "./lib/intersectionMarkers.ts";
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
@@ -154,10 +166,18 @@ import {
   type NearestKind,
 } from "./lib/nearest.ts";
 import { NearestFinder } from "./lib/nearestFinder.ts";
+import { AppStatusBar, InstallOffer, KeptRoutes, useAppStatus } from "./InstallableApp.tsx";
+import { isStandalone } from "./lib/installOffer.ts";
+import { keepLastRide, keepRoute, keptAnswerFor, sweepKept } from "./lib/offlineKeep.ts";
+import { KEEPING_SAID, KEEP_LABEL, keepOffered, keepSaid, keptPlanKey, offlineRouteNotice, routeTitle, type KeptRoute } from "./lib/offlineRoutes.ts";
+import { anyKept, askPersist } from "./lib/offlineRouteStore.ts";
 import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
+import { fetchHazards, type HazardCollection } from "./lib/massHazards.ts";
+import { HAZARD_REVIEW } from "./lib/reviewSources.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
-registerStressProtocol(maplibregl);
+// With Ride mode's kept tiles behind the network, for dead spots (lib/corridorStore.ts).
+registerStressProtocol(maplibregl, undefined, corridorStress);
 
 /**
  * One entry of the undo history: the points as they were, and, for an edit
@@ -182,6 +202,8 @@ type Status =
   | { kind: "confirm"; error: RouteError };
 
 const initialPlan = decodePlan(planToOpen(tabSession(), window.location.hash));
+// A spot link (`#at=lon,lat`, a rider suggestion's Discord post): the map opens there.
+const OPEN_AT = atFromHash(window.location.hash);
 
 const NARROW = "(max-width: 720px)";
 
@@ -214,7 +236,18 @@ export function App() {
   if (weightStore.current === null) weightStore.current = new WeightStore();
   const [weight, setWeight] = useState<StoredWeight | null>(() => weightStore.current?.load() ?? null);
   const [weightRemembered, setWeightRemembered] = useState(() => weightStore.current?.remembered() ?? false);
-  const planDials = useMemo(() => withWeight(dials, weight), [dials, weight]);
+  // The stations the rider chose from the nearest-stations lists (OWNER-DECISIONS 466a), each
+  // forgotten when its point moves; added to the request only, never to the link.
+  const [stationPins, setStationPins] = useState<Pins>({});
+  const stationChoice = useMemo(() => activePins(preset, points, stationPins), [preset, points, stationPins]);
+  // Mass Ride's ride size (PLAN items 128, 139) only redraws the corker load: it is never sent, so moving it
+  // must not plan again. The dials the request is made from leave it out, keyed on what is left.
+  const { rideSize, ...routeDials } = dials;
+  const routeKey = JSON.stringify(routeDials);
+  const planDials = useMemo(
+    () => withStations(withWeight(routeDials, weight), stationChoice),
+    [routeKey, weight, stationChoice],
+  );
   // "Make it a loop" chosen (OWNER-DECISIONS 374): the first point is the start and finish, every later one a stop.
   const loopVias = loopStops(preset, dials.loop);
   // What the planner answered, and which of its routes to choose from is shown
@@ -223,15 +256,19 @@ export function App() {
   const [choice, setChoice] = useState(0);
   // Whether the rider chose the route shown (it is then said as chosen, not as planned: the a11y review's N4).
   const [chosen, setChosen] = useState(false);
+  // The way round an Avoid-rated junction shown in place of the planned route (OWNER-DECISIONS 335).
+  const [aroundAvoid, setAroundAvoid] = useState(false);
   useEffect(() => {
     setChoice(0);
     setChosen(false);
+    setAroundAvoid(false);
   }, [answer]);
   const choose = useCallback((index: number) => {
     setChoice(index);
     setChosen(true);
+    setAroundAvoid(false);
   }, []);
-  const route = candidateRoute(answer, choice);
+  const route = shownRoute(answer, choice, aroundAvoid);
   const [routedPoints, setRoutedPoints] = useState<LonLat[]>([]);
   // Whether that route was planned as a loop the rider chose, recorded with its
   // points: during a replan the toggle may already say otherwise, and the GPX
@@ -286,6 +323,22 @@ export function App() {
   // map, legend and panel are then about riders per minute, and otherwise as they were (OWNER-DECISIONS 325, 387).
   const [capacityTiles, setCapacityTiles] = useState(false);
   const massMap = isMassRide(preset) && capacityTiles;
+  // The approved rider-marked hazards (FOLLOWUP-MASSRIDE-MAP part 3; lib/massHazards.ts): asked for when
+  // the Mass Ride map shows, and again after an admin approves one; never shown on another ride type (325).
+  const [hazards, setHazards] = useState<HazardCollection | null>(null);
+  const [hazardsAsked, setHazardsAsked] = useState(0);
+  useEffect(() => {
+    if (!massMap) return;
+    let live = true;
+    // After an approval (hazardsAsked > 0) past the browser's cache, so the admin sees the rail now.
+    void fetchHazards(window.location.origin, fetch, hazardsAsked > 0).then((found) => {
+      if (live) setHazards(found);
+    });
+    return () => {
+      live = false;
+    };
+  }, [massMap, hazardsAsked]);
+  const massHazards = massMap ? hazards : null;
   const [zoom, setZoom] = useState<number | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   // Which view the panel body shows: the planner, or one of the bottom bar's sheets (Map layers,
@@ -317,6 +370,8 @@ export function App() {
   const [linkSaid, setLinkSaid] = useState("");
   const [linkSpoken, setLinkSpoken] = useState("");
   const linkPresses = useRef(0);
+  // Share (owner, 2026-10-10; lib/share.ts): on the page only where the browser has a share sheet.
+  const [canShare] = useState(() => canShareLink(navigator, window.location.href));
   // The span, in km, the rider has said yes to planning (longRide.ts).
   const [confirmedKm, setConfirmedKm] = useState<number | null>(null);
   const [crosshair, setCrosshair] = useState({ button: false, canvas: false });
@@ -413,9 +468,24 @@ export function App() {
   // One scheduler for the page: one request in flight, the latest plan only,
   // Retry-After waited out (routeScheduler.ts).
   const scheduler = useRef<RouteScheduler<Plan> | null>(null);
+  // A route kept for offline (WEB-NAV-plan.md section 8, P3) answers when the planner cannot be reached
+  // and the plan is one the rider kept; the planner's notice says so, and the next real answer clears it.
+  const keptShown = useRef<KeptRoute<RouteResponse> | null>(null);
+  const keptNotice = useRef<string | null>(null);
+  // The plan the route on screen answers, as a kept route's key (keptPlanKey): set with the route, so a
+  // keep during a re-plan in flight files the route shown under its own plan, never the next one's.
+  const routedKey = useRef<string | null>(null);
   if (scheduler.current === null) {
     scheduler.current = new RouteScheduler<Plan>({
-      send: (plan) => requestRoute(plan.points, plan.preset, { confirmLong: plan.confirmLong, dials: plan.dials }),
+      send: async (plan) => {
+        const result = await requestRoute(plan.points, plan.preset, { confirmLong: plan.confirmLong, dials: plan.dials });
+        keptShown.current = null;
+        if (result.ok || result.error.kind !== "network") return result;
+        const kept = await keptAnswerFor<RouteResponse>(keptPlanKey(plan.points, plan.preset, plan.dials)).catch(() => undefined);
+        if (!kept) return result;
+        keptShown.current = kept;
+        return { ok: true, route: kept.answer };
+      },
       onState: (state: SchedulerState) => {
         if (state.kind === "in-flight" || state.kind === "pending") setStatus({ kind: "loading" });
         else if (state.kind === "waiting") setStatus({ kind: "waiting", seconds: state.seconds });
@@ -425,7 +495,13 @@ export function App() {
           setRoute(result.route);
           setRoutedPoints(plan.points);
           setRoutedLoop(loopStops(plan.preset, plan.dials.loop));
+          routedKey.current = keptPlanKey(plan.points, plan.preset, plan.dials);
           setStatus({ kind: "ok" });
+          const kept = keptShown.current;
+          const was = keptNotice.current;
+          keptNotice.current = kept ? offlineRouteNotice(kept) : null;
+          if (kept) setNotice(keptNotice.current);
+          else if (was) setNotice((n) => (n === was ? null : n));
         } else if (result.error.kind === "confirm-long") {
           setRoute(null);
           setStatus({ kind: "confirm", error: result.error });
@@ -564,6 +640,22 @@ export function App() {
   pointsRef.current = points;
 
   const announce = useCallback((text: string) => setSaid((s) => ({ text, count: s.count + 1 })), []);
+  // The installable app (WEB-NAV-plan.md section 8): a new version ready, and offline, said through the
+  // same region; shown at the top of the planner (InstallableApp.tsx).
+  const appStatus = useAppStatus(riding, announce);
+  // Bumped when a route is kept, so Settings' list reads the store again.
+  const [keptVersion, setKeptVersion] = useState(0);
+  const [keeping, setKeeping] = useState(false);
+  const [keepSpoken, setKeepSpoken] = useState({ text: "", count: 0 });
+  const keepAbort = useRef<AbortController | null>(null);
+  // Keep for offline: the installed app's (465a) and, by the owner's choice of 2026-10-10, a tab's too (keepOffered is the one switch).
+  const keepShown = keepOffered(isStandalone());
+  // Once a while after load (not at it: the store's first open takes about a second), what a keep or a
+  // removal cut short left unnamed is deleted (offlineKeep.ts sweepKept).
+  useEffect(() => {
+    const timer = window.setTimeout(() => void sweepKept(), 20_000);
+    return () => window.clearTimeout(timer);
+  }, []);
   // Turn accessibility mode on or off, say so, and keep it (lib/accessMode.ts accessModeToggle). From the page's
   // first button, turning it on puts the focus on Map tools (focusTools); turning it off leaves the focus on the
   // switch pressed, which is always on the page.
@@ -844,7 +936,7 @@ export function App() {
   // a new "Search from", or a start that moved under a "start" search put it away.
   // Not the loop: Ride here turns it off in its own edit, and the list stays for a second pick. A search
   // under way when one changes is thrown away when it answers (the epoch).
-  const nearestKey = JSON.stringify([preset, { ...dials, loop: false }, nearestFrom]);
+  const nearestKey = JSON.stringify([preset, { ...routeDials, loop: false }, nearestFrom]);
   const nearestEpoch = useRef(0);
   useEffect(() => {
     nearestEpoch.current += 1;
@@ -1089,6 +1181,15 @@ export function App() {
     if (said) announce(said);
     setPreset(id);
     setDials(next);
+    // A station chosen on Bikeshare is not carried to the next ride type, or back (OWNER-DECISIONS 466a).
+    setStationPins({});
+  };
+  const chooseStation = (action: StationAction, station: NearbyStation | null, point: LonLat) => {
+    setStationPins((pins) => ({
+      ...pins,
+      [action]: station ? { id: station.station_id, name: station.name, at: point } : undefined,
+    }));
+    announce(chosenSaid(action, station));
   };
   const confirmLong = () => {
     const asked = status.kind === "confirm" && status.error.spanKm !== undefined ? status.error.spanKm : spanKm(points);
@@ -1151,6 +1252,34 @@ export function App() {
       if (press === linkPresses.current) setLinkSpoken(linkSpokenFor(done, note));
     }, 150);
   };
+  // "Share": the same link as Copy link, to the phone's share sheet. The location line describes the button,
+  // so it is read before the sheet opens. Nothing is said when the sheet opened or the rider closed it;
+  // a failure is said, offering Copy link. It shares the said lines with Copy link, so the last press speaks.
+  // A press while the sheet is open is skipped. shareLink is called before any await, so the press's user
+  // activation still holds. The distance is the route shown, so it is left out while a re-plan is pending
+  // (the link carries the current points).
+  const sharing = useRef(false);
+  const shareRoute = async () => {
+    if (!shown || sharing.current) return;
+    sharing.current = true;
+    const press = ++linkPresses.current;
+    setLinkSaid("");
+    setLinkSpoken("");
+    const distanceM = !stale && routedPoints === points ? shown.distance_m : null;
+    const content = shareContent(linkToCopy(window.location, points, preset, dials), distanceM, presetLabel(preset));
+    const outcome = shareLink(navigator, content);
+    let said: string;
+    try {
+      said = shareSaidFor(await outcome);
+    } finally {
+      sharing.current = false;
+    }
+    if (!said) return;
+    window.setTimeout(() => {
+      if (press === linkPresses.current) setLinkSaid(said);
+      if (press === linkPresses.current) setLinkSpoken(said);
+    }, 150);
+  };
 
   // Start ride (plan Q1, Q3): the first ride asks how to say the cues; later rides start at once. The
   // voice is unlocked inside this press (iOS speaks only after a gesture).
@@ -1158,11 +1287,53 @@ export function App() {
     if (!shown) return;
     startRideGesture(prefs);
     setRideStart({ route: shown, points: routedPoints, loop: routedLoop, dials: planDials });
+    // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
+    // the map the ride kept. A browser tab keeps nothing unless the rider presses Keep for offline.
+    // A Keep for offline still fetching stops: the ride keeps its own corridor, and two walks would share the page's queue.
+    keepAbort.current?.abort();
+    if (isStandalone() && routedKey.current) {
+      void keepLastRide({ plan: routedKey.current, title: keptTitle(), distanceM: shown.distance_m, answer: shown })
+        .then(() => setKeptVersion((v) => v + 1))
+        .catch(() => undefined);
+    }
     setRideAsk(false);
     setFollow(true);
     setBigText(false);
     setRideView(null);
     setRiding(true);
+  };
+  // Keep for offline (P3): the plan, its answer and the map along it; the press asks the browser to
+  // keep the site's storage (navigator.storage.persist), and what it did is said politely.
+  const keptTitle = () => {
+    const first = routedPoints[0];
+    const last = routedPoints[routedPoints.length - 1];
+    return routeTitle(first && namer.name(first)?.name, last && namer.name(last)?.name, routedLoop);
+  };
+  const keepForOffline = async () => {
+    const plan = routedKey.current;
+    if (!shown || keeping || !plan) return;
+    setKeeping(true);
+    const controller = new AbortController();
+    keepAbort.current = controller;
+    setKeepSpoken((s) => ({ text: KEEPING_SAID, count: s.count + 1 }));
+    void askPersist();
+    const title = keptTitle();
+    const { outcome, removed } = await keepRoute({ plan, title, distanceM: shown.distance_m, answer: shown, line: shown.geometry.coordinates }, controller.signal).catch(() => ({ outcome: "failed" as const, removed: false }));
+    if (keepAbort.current === controller) keepAbort.current = null;
+    setKeeping(false);
+    setKeptVersion((v) => v + 1);
+    // Stopped by Remove of this route in Settings: Remove has said what happened; the keep says nothing.
+    if (removed) setKeepSpoken({ text: "", count: 0 });
+    else setKeepSpoken((s) => ({ text: keepSaid(outcome, title), count: s.count + 1 }));
+  };
+  // Settings' Open: the kept plan, into the planner (with no signal, the scheduler answers from the kept route).
+  const openKept = (kept: KeptRoute) => {
+    showPlanner(true);
+    // The kept key leaves Mass Ride's ride size out (keptPlanKey); the size set now stays.
+    const plan = decodePlan(kept.plan);
+    const hash = dials.rideSize && plan.preset === preset ? encodePlan(plan.points, plan.preset, { ...plan.dials, rideSize: dials.rideSize }) : kept.plan;
+    if (window.location.hash !== hash) window.location.hash = hash;
+    announce(`Opening ${kept.title}.`);
   };
   const startRide = () => {
     const opener = document.activeElement;
@@ -1215,6 +1386,8 @@ export function App() {
 
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
+  // A new answer: the Keep button's line was about the route before it.
+  useEffect(() => setKeepSpoken({ text: "", count: 0 }), [answer]);
   // The layer in words: the points along the route shown, in riding order.
   const waterAlong = useMemo(
     () =>
@@ -1222,6 +1395,13 @@ export function App() {
         ? waterAlongRoute(shown.geometry.coordinates, waterData.filter((p) => waterVisible(p, waterPrefs)))
         : null,
     [waterOn, waterData, waterPrefs, shown],
+  );
+  // A Mass Ride's federal-land lines for the description and the GPX file (item 239; lib/federalStops.ts):
+  // the stops on federal land and the parkway stretches, from the route as planned, or one line saying
+  // federal land could not be checked while the data is loading or unavailable.
+  const federalRoute = useMemo(
+    () => (shown ? federalRouteLines(shown, routedPoints, federalData) : []),
+    [shown, routedPoints, federalData],
   );
   // Named in the plan as the list says it, as a place picked from search is.
   const addWaterStop = (item: WaterAlong) => {
@@ -1235,6 +1415,8 @@ export function App() {
     const routeShown = shown !== null;
     const vertexCount = shown?.geometry.coordinates.length ?? 0;
     if (!shown || !canDragLine({ routeShown, stale, routedIsCurrent: routedPoints === points, vertexCount })) return null;
+    // A bikeshare ride runs dock to dock, not between the points: its line is not theirs to drag.
+    if (bikeshareOf(shown)) return null;
     const path = shown.geometry.coordinates;
     // A loop's legs close on the start (OWNER-DECISIONS 374), so the API's
     // leg ends fit them.
@@ -1314,15 +1496,13 @@ export function App() {
     });
     wasCompact.current = compactPoints;
   }, [compactPoints]);
-  const federalPlanner = federalShown(preset, true) && (
-    // Mass Ride's points on federal land, in words, in the planner as well as the Map layers
-    // sheet: the text the map's permit shading stands for (the correctness review's S3).
-    <FederalPointsList
-      found={federalData ? federalPoints(points, federalData) : null}
-      count={points.length}
-      nameOf={(index) => pointName(index, points.length) /* Mass Ride: no loop */}
-      headingId="federal-points-planner-heading"
-    />
+  // Mass Ride's points on federal land (item 239; lib/federalStops.ts): each one's warning, on its row in
+  // the points list and on its marker. The planner says so when none is (the correctness review's S3);
+  // the Map layers sheet keeps its own list.
+  const federalAreas = useMemo(() => pointAreas(points, federalData, federalShown(preset, true)), [points, federalData, preset]);
+  const pointWarnings = federalAreas.map((area) => (area ? stopWarningShort(area) : null));
+  const federalPlanner = federalShown(preset, true) && federalData && points.length > 0 && federalAreas.every((area) => area === null) && (
+    <p className="hint federal-points">{FEDERAL_POINTS_NONE}</p>
   );
   const loop = loopView(preset, dials.loop, points);
   const loopHintId = useId();
@@ -1382,12 +1562,20 @@ export function App() {
         <PointsList
           rows={pointRows(points, namer, loopVias)}
           onRemove={removeAt}
+          warnings={pointWarnings}
           removeRef={(index, button) => {
             removeRefs.current[index] = button;
           }}
         />
       )}
       {points.length === 1 && <p className="hint">{loneStartHint(preset, loopVias, accessMode)}</p>}
+      {preset === "bikeshare" && (
+        <p className="hint">
+          Bikeshare plans take a start and an end only: the docks and the walks are chosen for you, unless you choose a station below. Remove any stops
+          to plan one.
+        </p>
+      )}
+      {preset === "bikeshare" && <NearbyStations points={points} pins={stationChoice} onChoose={chooseStation} />}
       {routeShownForPoints && points.length >= 2 && (
         <button
           type="button"
@@ -1476,6 +1664,7 @@ export function App() {
         <button type="button" className="link access-toggle" aria-pressed={accessMode} onClick={() => toggleAccessMode(false)}>
           {ACCESS_LABEL}
         </button>
+        <InstallOffer idBase="tips-install" compact onSay={announce} />
       </MoreTips>
       </div>
       {/* Always rendered, empty when there is no notice: a live region that is created already holding
@@ -1532,17 +1721,20 @@ export function App() {
           <p>
             <strong>{status.error.title}.</strong> {status.error.message}
           </p>
-          {["router-down", "timed-out", "server", "network", "rate-limited"].includes(status.error.kind) && (
+          {["router-down", "timed-out", "bikeshare-unavailable", "server", "network", "rate-limited"].includes(status.error.kind) && (
             <button type="button" onClick={retry}>
               Try again
             </button>
           )}
         </div>
       )}
+      {/* First in the panel and announced first (335): the route goes through an Avoid-rated junction. */}
+      {shown && answer && <AvoidNotice answer={answer} choice={choice} around={aroundAvoid} onAround={setAroundAvoid} />}
       {shown && (
         <RouteSummary
           route={shown}
           points={routedPoints}
+          federal={federalRoute}
           narrow={narrow}
           onSelectJunction={(index) => setJunctionFocus((f) => ({ index, nonce: (f?.nonce ?? 0) + 1 }))}
           onScrub={setScrubPoint}
@@ -1553,6 +1745,8 @@ export function App() {
           }
           pickerCount={candidateRows(answer)?.length ?? 0}
           ride={{ onStart: startRide, startRef: startRideRef }}
+          rideSize={rideSizeOf({ rideSize })}
+          onEnding={(ending) => setDials((d) => ({ ...d, ending }))}
         />
       )}
       {shown && waterOn && waterStatus === "ready" && (
@@ -1655,6 +1849,8 @@ export function App() {
       <MapView
         points={riding ? NO_POINTS : points}
         loopVias={loopVias}
+        openAt={OPEN_AT}
+        pointWarnings={riding ? undefined : pointWarnings}
         route={riding && rideView ? rideView.route : shown}
         stale={riding ? false : stale}
         stressVisible={stressVisible && stress === "available"}
@@ -1690,6 +1886,7 @@ export function App() {
         rail={rail}
         massCapacity={massMap}
         massArea={isMassRide(preset)}
+        massHazards={massHazards}
         water={waterData}
         waterPrefs={waterPrefs}
         federalVisible={federalShown(preset, federalOn)}
@@ -1714,9 +1911,18 @@ export function App() {
       <RoadInfoDialog
         request={roadInfo}
         massRide={massMap}
+        hazards={massHazards}
         station={roadInfo ? stationNearSpot(RAIL_STATIONS, rail, roadInfo.point, WMATA_SLUGS)?.station ?? null : null}
+        avoid={roadInfo ? avoidNearSpot(route, roadInfo.point) : null}
+        junctionShown={roadInfo ? shownNear(route, roadInfo.point) : null}
+        federal={roadInfo && federalShown(preset, true) ? federalAreaAt(roadInfo.point, federalData) : null}
         onClose={closeRoadInfo}
         fallbackFocus={mapFocus}
+        onStressChanged={(generation) => {
+          // An instance admin changed a road (OWNER-DECISIONS 441h): the map asks for its tiles again.
+          const map = mapRef.current;
+          if (map) refreshStressTiles(map, window.location.origin, generation);
+        }}
         plan={{ count: points.length, loop: loopVias }}
         onPlace={placeSpot}
       />
@@ -1767,6 +1973,7 @@ export function App() {
           onView={setRideView}
           onEnd={endRide}
           water={ensureWater}
+          keepLastRide={isStandalone()}
         />
       )}
       {/* Hidden, not removed, during a ride: the planner keeps its state, and Sign in is out of reach (plan section 7). */}
@@ -1809,6 +2016,7 @@ export function App() {
             enabled={isBetaBuild(import.meta.env.VITE_BETA)}
             reportUrl={betaReportUrl(import.meta.env.VITE_BETA_REPORT_URL)}
           />
+          <AppStatusBar status={appStatus} />
           <div ref={panelBodyRef} className="panel-scroll">
             <div className="planner-view" hidden={view !== "planner"}>
               {order.map((id) => sections[id])}
@@ -1930,6 +2138,7 @@ export function App() {
                 route={shown}
                 routedPoints={routedPoints}
                 loop={routedLoop}
+                federal={federalRoute}
                 points={points}
                 planStatus={status.kind}
                 imported={imported}
@@ -1963,6 +2172,9 @@ export function App() {
                 <h3 id="settings-ride-heading">Ride mode</h3>
                 <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" />
               </section>
+              {/* The installable app (WEB-NAV-plan.md section 8, P3 and P4): the routes kept on this device, and the install offer. */}
+              {(keepShown || anyKept()) && <KeptRoutes version={keptVersion} onOpen={openKept} onSay={announce} />}
+              <InstallOffer idBase="settings-install" onSay={announce} />
               <section aria-labelledby="settings-signin-heading">
                 <h3 id="settings-signin-heading">Signing in</h3>
                 <p className="hint">
@@ -1974,21 +2186,46 @@ export function App() {
                   ; your current plan is kept across the sign-in.
                 </p>
               </section>
+              {/* An instance admin's review of rider suggestions (OWNER-DECISIONS 460.5); nothing for anyone else. */}
+              <SuggestionReview
+                onStressChanged={(generation) => {
+                  const map = mapRef.current;
+                  if (map) refreshStressTiles(map, window.location.origin, generation);
+                }}
+              />
+              {/* The same review for riders' Mass Ride hazard reports (FOLLOWUP-MASSRIDE-MAP part 3). */}
+              <SuggestionReview source={HAZARD_REVIEW} onApproved={() => setHazardsAsked((n) => n + 1)} />
             </SheetFrame>
           </div>
 
           {/* Pinned under the scrolling part while a route is shown: its file and its link. */}
           {view === "planner" && shown && (
             <div className="route-actions">
-              <button type="button" onClick={() => downloadGpx(shown, routedPoints, routedLoop)}>
+              <button type="button" onClick={() => downloadGpx(shown, routedPoints, routedLoop, federalRoute)}>
                 Download GPX
               </button>
               <button type="button" className="secondary" onClick={copyLink} aria-describedby={linkNote ? "link-note" : undefined}>
                 {COPY_LINK}
               </button>
+              {canShare && (
+                <button type="button" className="secondary" onClick={shareRoute} aria-label={SHARE_NAME} aria-describedby={linkNote ? "link-note" : undefined}>
+                  {SHARE_LABEL}
+                </button>
+              )}
               <span role="status" className="visually-hidden">
                 {linkSpoken}
               </span>
+              {keepShown && (
+                <>
+                  <button type="button" className="secondary keep-offline" onClick={() => void keepForOffline()} aria-disabled={keeping} aria-describedby="keep-offline-said">
+                    {KEEP_LABEL}
+                  </button>
+                  <p id="keep-offline-said" className="hint keep-said" role="status">
+                    {keepSpoken.text}
+                    {keepSpoken.count % 2 === 1 ? " " : ""}
+                  </p>
+                </>
+              )}
               {linkSaid && (
                 <span className="hint link-said" aria-hidden="true">
                   {linkSaid}
@@ -2036,15 +2273,20 @@ function useSettled(text: string, waitMs: number): string {
 function RouteSummary({
   route,
   points,
+  federal,
   narrow,
   onSelectJunction,
   onScrub,
   picker,
   pickerCount,
   ride,
+  rideSize,
+  onEnding,
 }: {
   route: RouteResponse;
   points: LonLat[];
+  /** A Mass Ride's federal-land lines for the description (lib/federalStops.ts federalLines, item 239). */
+  federal: readonly string[];
   narrow: boolean;
   /** Ride mode's Start ride (WEB-NAV-plan.md Q1): offered under the figures and with the directions. */
   ride: { onStart: () => void; startRef: RefObject<HTMLButtonElement | null> };
@@ -2054,6 +2296,9 @@ function RouteSummary({
   /** The routes to choose from (CandidatePicker), or null with one route. */
   picker: ReactNode;
   pickerCount: number;
+  /** Mass Ride's anticipated ride size, riders (PLAN items 128, 139): the corker load's group length. */
+  rideSize: number;
+  onEnding: (ending: Ending) => void;
 }) {
   useStressStyle();
   // A Mass Ride's panel is about riders per minute, in place of the LTS breakdown (OWNER-DECISIONS 325).
@@ -2069,12 +2314,16 @@ function RouteSummary({
   const moved = movedPointsNote(route, points.length);
   const pace = paceText(route);
   // The sidebar's route view (OWNER-DECISIONS 312): the totals, the stress bar and four quick
-  // figures in view; Elevation and stress (322; Elevation and riders per minute on a Mass Ride),
+  // figures in view; Elevation and stress (322; Riders per minute, corker load and elevation on a Mass Ride),
   // Stress and facilities, Directions, Junctions to watch and Routes to choose from as folds.
   const profile = usableProfile(route);
-  const junctions = route.intersections == null ? null : junctionItems(route).length;
-  // Start ride is offered with the directions too (plan Q1).
-  const rideable = route.distance_m <= RIDE_MAX_M;
+  // The Avoid-rated junctions count with the rest, and keep the fold where the others could not be read.
+  const avoidCount = avoidItems(route).length;
+  const junctions = route.intersections == null ? (avoidCount > 0 ? avoidCount : null) : junctionItems(route).length + avoidCount;
+  const bikeshare = bikeshareOf(route);
+  // Start ride is offered with the directions too (plan Q1). Not on a Bikeshare plan: the route
+  // is only the ride between the docks, so the walk to the first dock would read as off route.
+  const rideable = !bikeshare && route.distance_m <= RIDE_MAX_M;
   const rideAction = rideable ? (
     <button type="button" className="secondary" onClick={ride.onStart}>
       Start ride
@@ -2082,6 +2331,7 @@ function RouteSummary({
   ) : null;
   return (
     <div className="summary">
+      {bikeshare && <BikeshareSummary plan={bikeshare} onEnding={onEnding} />}
       {moved && (
         <p className="notice moved-points" role="note">
           {moved}
@@ -2127,8 +2377,9 @@ function RouteSummary({
           <dd>{formatClimb(route.descent_m)}</dd>
         </div>
       </dl>
+      {bikeshare && <p className="hint">These figures are for the ride between the docks. The walks are above.</p>}
       {pace && <p className="hint pace">Moving time at {pace}, without stops.</p>}
-      <CapacityStats route={route} />
+      <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />
       {segments.length > 0 && (
         <figure className="stress stress-main" aria-labelledby="stress-figure-caption">
           <figcaption id="stress-figure-caption">Traffic stress along the route</figcaption>
@@ -2159,7 +2410,7 @@ function RouteSummary({
           </button>
           <p className="hint">Turn-by-turn directions on this phone, said as you chose. Keep the screen on and this page in front.</p>
         </div>
-      ) : (
+      ) : bikeshare ? null : (
         <p className="hint start-ride-long">{RIDE_TOO_LONG}</p>
       )}
       <FacilityBreakdown route={route} part="notices" />
@@ -2170,7 +2421,7 @@ function RouteSummary({
           // Offered collapsed on a small screen (OWNER-DECISIONS 322); open beside the map.
           open={chartFoldOpen(narrow)}
         >
-          <ElevationChart route={route} profile={profile} onScrub={onScrub} />
+          <ElevationChart route={route} profile={profile} onScrub={onScrub} rideSize={rideSize} />
         </Fold>
       )}
       {capacity && (
@@ -2201,7 +2452,7 @@ function RouteSummary({
         <FacilityBreakdown route={route} part="figures" />
       </Fold>
       )}
-      <RouteDescription route={route} fold rideAction={rideAction} />
+      <RouteDescription route={route} fold rideAction={rideAction} federal={federal} />
       {junctions !== null && (
         <Fold title={foldTitle(ROUTE_FOLDS.junctions.title, junctions)} heading={ROUTE_FOLDS.junctions.title} open={ROUTE_FOLDS.junctions.open}>
           <IntersectionList route={route} onSelect={onSelectJunction} />
@@ -2219,7 +2470,7 @@ function RouteSummary({
           ? "To reshape the route, press and hold the line, then drag it."
           : "To reshape the route, drag the line."}
       </p>
-      <p className="route-credit">Route data: {route.attribution.join("; ")}.</p>
+      <p className="route-credit">Route data: {routeCredits(route).join("; ")}.</p>
     </div>
   );
 }

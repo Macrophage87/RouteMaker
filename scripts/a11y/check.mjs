@@ -4,15 +4,20 @@
 // scripts/a11y/run.sh, which starts Vite and an offline Chromium; prints one
 // line per check and exits non-zero if any fails.
 //
-//   node scripts/a11y/check.mjs [--port 5173] [--shots DIR]
+//   node scripts/a11y/check.mjs [--port 5173] [--preview-port 4173] [--cdp 9222] [--shots DIR]
+//
+// --port is Vite's dev server; --preview-port is `vite preview` of a production build (the
+// installable app's checks: its service worker exists only in a build); --cdp (or A11Y_CDP_PORT)
+// is Chromium's remote debugging port.
 import { mkdirSync } from "node:fs";
-import { RIDE_COORDS, S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_RIDE, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
+import { RIDE_COORDS, S_AVOID, S_BIKESHARE, S_BIKESHARE_EBIKE, S_STATIONS_DROPOFF, S_STATIONS_PICKUP, S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_RIDE, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep, S_KIDS, S_MASS_FEDERAL, HAZARD_LAYER, JUNCTION_AT, JUNCTION_ITEM } from "./cdp.mjs";
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(name);
   return i > 0 ? process.argv[i + 1] : fallback;
 };
 const PORT = Number(arg("--port", "5173"));
+const PREVIEW_PORT = Number(arg("--preview-port", "4173"));
 const SHOTS = arg("--shots", "/tmp/a11y-shots");
 mkdirSync(SHOTS, { recursive: true });
 
@@ -22,21 +27,25 @@ function check(name, ok, detail = "") {
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` - ${detail}` : ""}`);
 }
 
-const b = await connect();
+const CDP_PORT = Number(arg("--cdp", process.env.A11Y_CDP_PORT ?? "9222"));
+const b = await connect(CDP_PORT);
 
 // The sidebar (OWNER-DECISIONS 312): the ride settings are behind the Ride line's Edit, and the
 // switches, the legend and federal land are in the Map layers sheet. `ride` opens the settings once the
 // route is shown (the sliders, the target distance, the loop and the weight live there), and
 // `junctions` the "Junctions to watch" fold; openSheet opens a bar sheet, openDirections the
 // Directions fold.
-async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false } = {}) {
+async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false, delayMs = 0, delayFrom = 2, stressTiles = true, ride = true, junctions = true, accessMode = false, admin = false, suggester = false, hazards = null, port = PORT, before = null, init = "" } = {}) {
   const p = await newPage(b, { width, height, mobile });
   if (mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
-  await mock(p, route, { delayMs, delayFrom, stressTiles });
+  await mock(p, route, { delayMs, delayFrom, stressTiles, admin, suggester, hazards });
   await media(p, { scheme, forced });
   // A device that kept accessibility mode on (455): the stored value, set before the app starts.
   if (accessMode) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "try { localStorage.setItem('routemaker.accessMode', 'on'); } catch {}" });
-  await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/${hash}` });
+  // A script run before the app starts (the Share section stubs or removes navigator.share).
+  if (init) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: init });
+  if (before) await before(p);
+  await p.s("Page.navigate", { url: `http://127.0.0.1:${port}/${hash}` });
   const ready = await p.waitFor("!!document.querySelector('.summary') && document.querySelectorAll('.junction-marker').length > 0", 40000);
   if (!ready) throw new Error("the app did not show a route");
   await sleep(800);
@@ -653,7 +662,7 @@ const federalFetched = (p) =>
   const before = await axNode(p, id);
   check("mtb layer: a switch named Mountain-bike trails, off by default", before?.role === "switch" && before?.name === "Mountain-bike trails" && String(before?.checked) === "false", JSON.stringify(before));
   check("mtb layer: described in plain words: what it draws, from which zoom, and that it is not used for routes",
-    /^Trails for mountain bikes, drawn as a thin grey dotted line from zoom 14\. Not used for routes; Gravel and Mountain Goat may use them\.$/.test(before?.description ?? ""), before?.description ?? "");
+    /^From zoom 14: levels 1 to 4 by colour and pattern, unrated as grey dots\. Not used for routes; Gravel and Mountain Goat may use unrated ones\.$/.test(before?.description ?? ""), before?.description ?? "");
   const headings = await p.eval("[...document.querySelectorAll('#sheet-layers h3')].map((e) => e.textContent)");
   const at = (name) => headings.indexOf(name);
   check("mtb layer: under its own heading, Trails and terrain, after Rail stations and before Legend",
@@ -679,6 +688,10 @@ const federalFetched = (p) =>
   await sleep(200);
   const row = await p.eval("(() => { const e = document.querySelector('#sheet-layers .mass-legend') && document.querySelector('#sheet-layers [aria-label=\"Mountain-bike trail legend\"] li.mtb-trail'); return e ? e.textContent : null; })()");
   check("mtb layer: with it on, the Mass Ride legend has the trail's row in words", !!row && row.startsWith("Mountain-bike trailNot used for routes"), JSON.stringify(row));
+  // 456: and a row a level, its number and colour in words.
+  const massLevels = await p.eval(`[...document.querySelectorAll('#sheet-layers [aria-label="Mountain-bike trail legend"] li.mtb-level')].map((e) => e.textContent)`);
+  check("mtb layer: the Mass Ride legend names each difficulty level in words (456)",
+    Array.isArray(massLevels) && massLevels.length === 4 && ["green", "blue", "black", "red"].every((c, i) => massLevels[i].startsWith(`Level ${i + 1} (${c})Mountain-bike trail rated `)), JSON.stringify(massLevels));
   // Leave the browser as the later sections expect it: the layer off.
   await p.eval("localStorage.removeItem('routemaker.mtbTrails'); true");
   await p.close();
@@ -792,7 +805,7 @@ const federalFetched = (p) =>
   check("settings: the Map layers copy has the same name", inLayers?.role === "switch" && inLayers?.name === "High contrast", JSON.stringify(inLayers));
   check("settings: no id is used twice in the page", await p.eval("(() => { const ids = [...document.querySelectorAll('[id]')].map((e) => e.id); return ids.length === new Set(ids).size; })()"));
   const heads = await p.eval("[...document.querySelectorAll('#sheet-settings h3')].map((h) => h.textContent)");
-  check("settings: the sheet's headings are Display, Ride mode and Signing in, so the sign-in note is not filed under Display", JSON.stringify(heads) === JSON.stringify(["Display", "Ride mode", "Signing in"]), JSON.stringify(heads));
+  check("settings: the sheet's headings are Display, Ride mode and Signing in (with the installed app's Routes kept for offline and Install the app when offered), so the sign-in note is not filed under Display", JSON.stringify(heads.filter((h) => h !== "Install the app" && h !== "Routes kept for offline")) === JSON.stringify(["Display", "Ride mode", "Signing in"]), JSON.stringify(heads));
   const axSwitches = (await p.s("Accessibility.getFullAXTree", {})).nodes.filter((n) => !n.ignored && /^High contrast/.test(n.name?.value ?? "") && ["switch", "button"].includes(n.role?.value));
   check("settings: exactly one High contrast switch is in the accessibility tree (said once, not twice)", axSwitches.length === 1 && axSwitches[0].role.value === "switch", JSON.stringify(axSwitches.map((n) => [n.role?.value, n.name?.value])));
   check("settings: the Settings bar button is the current one (aria-current)", await p.eval("(() => { const b = [...document.querySelectorAll('.bar-button')].find((x) => x.textContent.startsWith('Settings')); const others = [...document.querySelectorAll('.bar-button')].filter((x) => x !== b && x.getAttribute('aria-current')); return b.getAttribute('aria-current') === 'true' && others.length === 0; })()"));
@@ -1212,9 +1225,9 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   const shares = await p.eval("document.querySelector('.pc-summary').textContent");
   check("chart: the summary's stress shares say the 0-900 m path as the key does, never \"LTS 1\" (a11y re-review S1)", /Traffic stress along it: \d+% traffic-free path, \d+% LTS 2\./.test(shares) && !/LTS 1/.test(shares), shares);
   check("chart: no colour-only cue: the grade bands are named in words, and each has a pattern over the amber", await p.eval(`(() => { const l = [...document.querySelectorAll('.pc-legend li')].map((x) => x.textContent); return l.includes('Grade 5% to 8%') && l.includes('Grade 8% or more') && !!document.querySelector('.pc-svg pattern[id$="-hatch"]') && !!document.querySelector('.pc-svg pattern[id$="-dots"]') && !!document.querySelector('.pc-svg path.pc-band-1[fill$="-dots)"]') && !!document.querySelector('.pc-svg path[fill="#f59e0b"]'); })()`));
-  // The rolling stress chart (OWNER-DECISIONS 460.12) in place of the strip: its key names the three levels, the log scale, the estimate and the junction shapes.
+  // The rolling stress chart (OWNER-DECISIONS 460.12) in place of the strip: its key names the three levels, the log scale, what 1 is and the junction shapes. Each road is priced by its own routing cost (stress-number.md section 4), so the key no longer calls it an estimate.
   const calmKey = await p.eval("[...document.querySelectorAll('.pc-legend li')].map((x) => x.textContent)");
-  check("chart: the rolling stress key names its levels, the log scale, the estimate and the junction shapes", ["Low stress (LTS 1 to 2 level)", "LTS 3 level", "LTS 4 level or higher", "Avoid (A where narrow)", "Higher stress junction (triangle)", "Very high stress junction (diamond)"].every((t) => calmKey.includes(t)) && calmKey.some((t) => /log scale/.test(t) && /an estimate/.test(t)), JSON.stringify(calmKey));
+  check("chart: the rolling stress key names its levels, the log scale, what 1 is and the junction shapes, and no estimate", ["Low stress (LTS 1 to 2 level)", "LTS 3 level", "LTS 4 level or higher", "Avoid (A where narrow)", "Higher stress junction (triangle)", "Very high stress junction (diamond)"].every((t) => calmKey.includes(t)) && calmKey.some((t) => /log scale/.test(t) && /about 1 is all quiet streets/.test(t)) && !calmKey.some((t) => /estimate/.test(t)), JSON.stringify(calmKey));
   await p.eval("document.querySelector('.pc-plot').focus(); true");
   check("chart: the one tab stop is the slider, and it takes the focus", await p.eval("document.activeElement?.classList.contains('pc-plot')"), await focused(p));
   for (let i = 0; i < 3; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
@@ -1295,16 +1308,29 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await p.close();
 }
 {
-  // The Mass Ride version: the riders-per-minute area in place of the strip, and the major intersections.
+  // The Mass Ride version: three charts (the owner, 2026-10-10: "Riders per minute, Corker load, Elevation"), each under its own heading, on one distance axis.
   const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0), junctions: false });
-  const heading = await p.eval("[...document.querySelectorAll('h3')].map((x) => x.textContent).filter((t) => /^Elevation/.test(t))");
-  check("mass chart: the fold is \"Elevation and riders per minute\"", JSON.stringify(heading) === JSON.stringify(["Elevation and riders per minute"]), JSON.stringify(heading));
+  const heading = await p.eval("[...document.querySelectorAll('h3')].map((x) => x.textContent).filter((t) => /^Elevation|^Riders per minute/.test(t))");
+  check("mass chart: the fold is \"Riders per minute, corker load and elevation\"", JSON.stringify(heading) === JSON.stringify(["Riders per minute, corker load and elevation"]), JSON.stringify(heading));
+  const groups = await p.eval(`[...document.querySelectorAll('.elevation-chart .pc-chart')].map((g) => ({ role: g.getAttribute('role'), heading: g.querySelector('h4')?.textContent, name: document.getElementById(g.getAttribute('aria-labelledby') ?? '')?.textContent, summary: (g.querySelector('.pc-summary')?.textContent ?? '').length > 20, slider: g.querySelector('.pc-plot')?.getAttribute('role'), label: g.querySelector('.pc-plot')?.getAttribute('aria-label'), svg: g.querySelector('.pc-svg')?.getAttribute('aria-hidden'), key: g.querySelector('.pc-legend')?.getAttribute('aria-label') }))`);
+  check("mass chart: three charts in the owner's order, each a group named by its h4 heading, with its own summary, a named slider over a hidden picture, and its own key",
+    JSON.stringify(groups.map((g) => [g.role, g.heading, g.name, g.summary, g.slider, g.label, g.svg, g.key])) === JSON.stringify([
+      ["group", "Riders per minute", "Riders per minute", true, "slider", "Riders per minute along the route", "true", "Riders per minute key"],
+      ["group", "Corker load", "Corker load", true, "slider", "Corker load along the route", "true", "Corker load key"],
+      ["group", "Elevation", "Elevation", true, "slider", "Elevation along the route", "true", "Elevation key"],
+    ]), JSON.stringify(groups));
+  const corkerSummary = await p.eval("document.querySelector('.pc-chart-corkers .pc-summary')?.textContent ?? ''");
+  check("mass chart: the corker load's summary says the intersections, the group's length at the ride size, the most held at once, the ride's corkers and how they are counted",
+    corkerSummary.startsWith("7 major intersections, 7 needing corkers. At 500 riders the group is about 1,560 ft (475 m) long at cruise, on this route's typical width. The most held at once is 4 corkers holding 2 junctions, with the head from mile 1.3 to 1.4, and at 1 more place. About 8 corkers for the ride: the most held at once times 2, as corkers leapfrog to the junctions ahead.") && /takes 2, or 1 where the road is one-way, and is held from when the group's head reaches it until its tail passes; a tick marks each one\.$/.test(corkerSummary), corkerSummary);
+  const corker = await p.eval(`(() => { const c = document.querySelector('.pc-chart-corkers'); const ids = [...document.querySelectorAll('[id]')].map((e) => e.id); return { area: !!c.querySelector('.pc-corker-area') && !!c.querySelector('.pc-corker-line'), ticks: c.querySelectorAll('.pc-svg .pc-corker-tick').length, side: [...c.querySelectorAll('.pc-svg .pc-axis-text tspan')].map((t) => t.textContent), legend: [...c.querySelectorAll('.pc-legend li')].map((x) => x.textContent), uniqueIds: ids.length === new Set(ids).size, sameAxis: [...document.querySelectorAll('.elevation-chart .pc-svg')].map((s) => s.getAttribute('viewBox').split(' ')[2]) }; })()`);
+  check("mass chart: the corker load is a step area with a tick at each junction needing corkers, its side in corkers held at once, its key in words with the ride size, all three on one axis, and no id used twice",
+    corker.area && corker.ticks === 7 && JSON.stringify(corker.side) === JSON.stringify(["4", "corkers", "at once"]) && corker.legend.includes("Tick: a junction needing corkers") && corker.legend.includes("Corkers held at once with the group's head at each point (500 riders)") && corker.legend.includes("Higher stress junction (triangle)") && corker.uniqueIds && JSON.stringify(corker.sameAxis) === JSON.stringify(["360", "360", "360"]), JSON.stringify(corker));
   const shape = await p.eval(`(() => ({
     strip: !!document.querySelector('.pc-strip-frame'),
     patterns: [...document.querySelectorAll('.pc-svg pattern[id*="-flow-"]')].map((x) => x.id.replace(/^.*-flow-/, '')).sort(),
     fills: [...new Set([...document.querySelectorAll('.pc-svg path[fill-opacity]')].map((x) => x.getAttribute('fill')))].sort(),
     guides: [...document.querySelectorAll('.pc-guide-text')].map((x) => x.textContent),
-    ticks: document.querySelectorAll('.pc-tick').length,
+    ticks: document.querySelectorAll('.pc-svg .pc-tick').length,
     names: [...document.querySelectorAll('.pc-cross-text')].map((x) => x.textContent),
     legend: [...document.querySelectorAll('.pc-legend li')].map((x) => x.textContent),
   }))()`);
@@ -1318,14 +1344,27 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   check("mass chart: the narrowest point is marked with a shape and its figure (147)", marks.caret && marks.label === "Narrowest 55", JSON.stringify(marks));
   check("mass chart: a stretch marked Avoid is drawn as Avoid, with no figure (325)", marks.avoid === 1 && marks.avoidText === "AVOID" && shape.legend.includes("Marked Avoid (A where narrow): no capacity given") && shape.legend.includes("Narrowest with the hills (downward triangle)"), JSON.stringify({ marks, legend: shape.legend }));
   check("mass chart: Avoid is magenta with a white word at the chart's 11-unit type and a texture of its own, not the bottleneck's cross-hatch (397)", marks.avoidFill === "#d6008f" && marks.avoidSize === 11 && /255, 255, 255|#fff/i.test(marks.avoidInk) && !!marks.avoidHatch && marks.avoidHatch !== marks.bottleneckHatch, JSON.stringify(marks));
-  check("mass chart: every major intersection has a tick, the names are short and the ones that would collide are thinned", shape.ticks === 7 && shape.names.length >= 3 && shape.names.length < 7 && shape.names.every((n) => /^[0-9A-Z]/.test(n) && !/Street|Northwest/.test(n)), JSON.stringify({ ticks: shape.ticks, names: shape.names }));
+  check("mass chart: every major intersection (all need corkers here) has a tick on the corker load, the names are short and the ones that would collide are thinned", shape.ticks === 7 && shape.names.length >= 3 && shape.names.length < 7 && shape.names.every((n) => /^[0-9A-Z]/.test(n) && !/Street|Northwest/.test(n)), JSON.stringify({ ticks: shape.ticks, names: shape.names }));
   check("mass chart: the key names the bands, and the junction shapes beside their words", ["Under 60: bottleneck", "60 to 120: tight", "120 to 200: good", "200 and up: wide open"].every((t) => shape.legend.includes(t)) && shape.legend.some((t) => /triangle/.test(t)) && shape.legend.some((t) => /diamond/.test(t)), JSON.stringify(shape.legend));
   await p.eval("document.querySelector('.pc-plot').focus(); true");
   for (let i = 0; i < 12; i += 1) await p.key("ArrowRight", "ArrowRight", 39);
   await sleep(150);
   const ax = await axNode(p, ".pc-plot");
-  check("mass chart: the sentence at Mile 1.2: grade, riders per minute with its band and why, and the next major intersection with corkers", ax?.name === "Elevation and riders per minute along the route" && ax.valuetext === "Mile 1.2: grade 6%, about 90 riders per minute (tight, slowed by the climb). Next: 15th Street Northwest at mile 1.3, corkers needed.", JSON.stringify(ax));
+  check("mass chart: the sentence at Mile 1.2: grade, riders per minute with its band and why, and the next major intersection with corkers", ax?.name === "Riders per minute along the route" && ax.valuetext === "Mile 1.2: grade 6%, about 90 riders per minute (tight, slowed by the climb). Next: 15th Street Northwest at mile 1.3, corkers needed.", JSON.stringify(ax));
   await p.shot(`${SHOTS}/chart_mass_focused.png`);
+  // The three sliders share one position: Tab on to the corker load, then the elevation, at the same mile.
+  await p.tab();
+  await sleep(150);
+  const corkerAx = await axNode(p, ".pc-chart-corkers .pc-plot");
+  check("mass chart: Tab goes on to the corker load's slider at the same mile, which says the corkers and junctions held at once, the ride size and the group's length, and the next junction with corkers",
+    (await p.eval("document.activeElement === document.querySelector('.pc-chart-corkers .pc-plot')")) && corkerAx?.name === "Corker load along the route" && corkerAx.valuetext === "Mile 1.2: 2 corkers holding 1 junction at once (500 riders, group about 1,560 ft (475 m) long). Next: 15th Street Northwest at mile 1.3, corkers needed.", JSON.stringify(corkerAx));
+  await p.tab();
+  await sleep(150);
+  const elevAx = await axNode(p, ".pc-chart-elevation .pc-plot");
+  check("mass chart: and on to the elevation's slider, which says the elevation (feet first) and the grade there",
+    (await p.eval("document.activeElement === document.querySelector('.pc-chart-elevation .pc-plot')")) && elevAx?.name === "Elevation along the route" && /^Mile 1\.2: elevation \d+ ft \(\d+ m\), grade 6%\.$/.test(elevAx.valuetext ?? ""), JSON.stringify(elevAx));
+  await p.eval("document.querySelector('.pc-plot').focus(); true");
+  await sleep(100);
   await p.key("i", "KeyI", 73);
   await sleep(100);
   check("mass chart: I jumps to the next major intersection", /^Mile 1\.3: /.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
@@ -1335,8 +1374,53 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await p.key("End", "End", 35);
   await sleep(100);
   check("mass chart: past the last intersection it says so", /No major intersections ahead\.$/.test((await axNode(p, ".pc-plot"))?.valuetext ?? ""), (await axNode(p, ".pc-plot"))?.valuetext);
-  const tables = await p.eval(`(() => { const d = document.querySelector('.pc-table-fold'); d.querySelector('summary').click(); const ts = [...d.querySelectorAll('table')]; const rows = (t) => (t ? [...t.querySelectorAll('tbody tr')].map((r) => [...r.children].map((c) => c.textContent).join(' | ')) : []); return { summary: d.querySelector('summary').textContent, captions: ts.map((t) => t.querySelector('caption').textContent), heads: [...ts[0].querySelectorAll('thead th')].map((x) => x.textContent), climb: [...ts[0].querySelectorAll('tbody tr:first-child > *')].map((x) => x.textContent), bottlenecks: rows(ts[1]), rows: rows(ts[2]) }; })()`);
-  check("mass chart: the climbs table lists the capacity drop, a bottlenecks table, and a table of every intersection with its marker and corkers", tables.summary === "Climbs, bottlenecks and intersections as tables" && tables.heads.at(-1) === "Capacity drop" && tables.climb.at(-1) === "53% fewer riders, down to 90 a minute" && JSON.stringify(tables.captions) === JSON.stringify(["Climbs, in the order ridden", "Bottlenecks, under 60 riders per minute, in the order ridden", "Major intersections, in the order ridden"]) && JSON.stringify(tables.bottlenecks) === JSON.stringify(["Mile 0.0 | 0.1 mi (0.2 km) | About 55 a minute"]) && tables.rows.length === 7 && tables.rows[0] === "Mile 0.6 | 18th Street Northwest | Higher stress (orange triangle) | Corkers needed" && tables.rows[5] === "Mile 2.1 | Pierce Street | Crosses a busy road (LTS 3), cross traffic stops (dot) | Corkers needed", JSON.stringify(tables));
+  const tables = await p.eval(`(() => { const d = document.querySelector('.pc-table-fold'); d.querySelector('summary').click(); const ts = [...d.querySelectorAll('table')]; const rows = (t) => (t ? [...t.querySelectorAll('tbody tr')].map((r) => [...r.children].map((c) => c.textContent).join(' | ')) : []); return { summary: d.querySelector('summary').textContent, captions: ts.map((t) => t.querySelector('caption').textContent), heads: [...ts[0].querySelectorAll('thead th')].map((x) => x.textContent), climb: [...ts[0].querySelectorAll('tbody tr:first-child > *')].map((x) => x.textContent), bottlenecks: rows(ts[1]), rows: rows(ts[2]), crossHeads: [...(ts[2]?.querySelectorAll('thead th') ?? [])].map((x) => x.textContent) }; })()`);
+  check("mass chart: the climbs table lists the capacity drop, a bottlenecks table, and a table of every intersection with its marker, corkers and the corkers held at once when the head reaches it", tables.summary === "Climbs, bottlenecks and intersections as tables" && tables.heads.at(-1) === "Capacity drop" && tables.climb.at(-1) === "53% fewer riders, down to 90 a minute" && JSON.stringify(tables.captions) === JSON.stringify(["Climbs, in the order ridden", "Bottlenecks, under 60 riders per minute, in the order ridden", "Major intersections, in the order ridden"]) && JSON.stringify(tables.bottlenecks) === JSON.stringify(["Mile 0.0 | 0.1 mi (0.2 km) | About 55 a minute"]) && tables.rows.length === 7 && tables.rows[0] === "Mile 0.6 | 18th Street Northwest | Higher stress (orange triangle) | Corkers needed | 2 at 1 junction" && tables.rows[5] === "Mile 2.1 | Pierce Street | Crosses a busy road (LTS 3), cross traffic stops (dot) | Corkers needed | 3 at 2 junctions" && tables.crossHeads.at(-1) === "Corkers held at once when the head reaches it", JSON.stringify(tables));
+  // The anticipated ride size (PLAN 128, 129, 139): a slider in the dials, named with its unit and read as riders; moving it
+  // redraws the corker load and the ride's corkers, the link carries it, and nothing is planned again (it never reaches the API).
+  const sizeAt = await p.eval(`(() => { const i = [...document.querySelectorAll('.dial input[type=range]')].find((x) => document.getElementById(x.getAttribute('aria-labelledby'))?.textContent === 'Anticipated ride size (riders)'); if (!i) return null; i.dataset.probe = 'ride-size'; return { min: i.min, max: i.max, step: i.step, value: i.value }; })()`);
+  const sizeAx = await axNode(p, "input[data-probe=ride-size]");
+  check("mass dials: the ride size slider is named with its unit and says riders, 100 to 2,000 in steps of 50, 500 by default",
+    JSON.stringify(sizeAt) === JSON.stringify({ min: "100", max: "2000", step: "50", value: "500" }) && sizeAx?.role === "slider" && sizeAx.name === "Anticipated ride size (riders)" && sizeAx.valuetext === "500 riders", JSON.stringify({ sizeAt, sizeAx }));
+  const headline = await p.eval("document.querySelector('.pc-chart-corkers .pc-summary')?.textContent ?? ''");
+  check("mass chart: the corker summary gives the ride's corkers, the most held at once times 2", headline.includes("About 8 corkers for the ride: the most held at once times 2, as corkers leapfrog to the junctions ahead."), headline);
+  const plannedBefore = p.routeRequests;
+  await p.eval("document.querySelector('input[data-probe=ride-size]').focus(); true");
+  for (let i = 0; i < 10; i += 1) {
+    await p.key("ArrowRight", "ArrowRight", 39);
+    await sleep(60);
+  }
+  await sleep(3000);
+  const resized = await p.eval("({ hash: location.hash, figure: document.querySelector('.capacity-corkers')?.textContent ?? '', summary: document.querySelector('.pc-chart-corkers .pc-summary')?.textContent ?? '' })");
+  const resizedAx = await axNode(p, "input[data-probe=ride-size]");
+  check("mass dials: ten steps right make 1,000 riders; the corker load and the ride's corkers follow in the summary, the link carries riders=1000, and nothing is planned again",
+    resizedAx?.valuetext === "1,000 riders" && /riders=1000/.test(resized.hash) && resized.summary.includes("About 12 corkers for the ride") && resized.summary.includes("At 1,000 riders the group is about 3,110 ft (950 m) long") && resized.summary.includes("The most held at once is 6 corkers holding 3 junctions") && p.routeRequests === plannedBefore,
+    JSON.stringify({ valuetext: resizedAx?.valuetext, ...resized, plans: p.routeRequests - plannedBefore }));
+  await p.close();
+}
+{
+  // The corker load where intersections were not checked at all (crossings: null): no load is drawn and nothing says 0.
+  const unchecked = JSON.parse(JSON.stringify(S_MASS));
+  unchecked.profile.crossings = null;
+  unchecked.profile.crossings_complete = null;
+  const p = await open({ route: unchecked, hash: hashFor("mass-ride", 0), junctions: false });
+  const none = await p.eval(`(() => { const c = document.querySelector('.pc-chart-corkers'); return { plot: c?.querySelector('.pc-corker-none')?.textContent, area: !!c?.querySelector('.pc-corker-area'), legend: [...(c?.querySelectorAll('.pc-legend li') ?? [])].map((x) => x.textContent), summary: c?.querySelector('.pc-summary')?.textContent, figure: !!document.querySelector('.capacity-corkers') }; })()`);
+  const noneAx = await axNode(p, ".pc-chart-corkers .pc-plot");
+  check("mass chart, intersections not checked: the corker plot says so, draws no load, its summary, key and slider say the corkers are not known, and the route's figures give no corker count",
+    none.plot === "Intersections not checked" && !none.area && JSON.stringify(none.legend) === JSON.stringify(["Intersections were not checked, so there is no corker load to draw"]) && none.summary === "Major intersections were not checked for this route, so the corkers needed are not known." && !none.figure && noneAx?.valuetext === "Mile 0.0: intersections not checked, so the corkers needed are not known.",
+    JSON.stringify({ none, valuetext: noneAx?.valuetext }));
+  await p.close();
+}
+{
+  // A stretch not checked for intersections: the NOT CHECKED block on the corker load, in the key, and the count "at least".
+  // On a table with the riders column, so the route's figures (and their corker line) are shown.
+  const gap = JSON.parse(JSON.stringify(S_MASS_CAPACITY));
+  gap.profile.unchecked = [{ from_m: 2600, to_m: 3800 }];
+  const p = await open({ route: gap, hash: hashFor("mass-ride", 0), junctions: false });
+  const block = await p.eval(`(() => { const c = document.querySelector('.pc-chart-corkers'); return { blocks: [...c.querySelectorAll('.pc-unchecked .pc-unchecked-text')].map((x) => x.textContent), hatch: !!c.querySelector('.pc-unchecked rect[fill^="url(#"]'), legend: [...c.querySelectorAll('.pc-legend li')].map((x) => x.textContent), summary: c.querySelector('.pc-summary')?.textContent ?? '', figure: document.querySelector('.capacity-corkers')?.textContent ?? '' }; })()`);
+  check("mass chart, a stretch not checked: a hatched NOT CHECKED block on the corker load, named in the key, and the ride's corkers given as at least, with the reason, in the summary and the route's figures",
+    JSON.stringify(block.blocks) === JSON.stringify(["NOT CHECKED"]) && block.hatch && block.legend.includes("Hatched grey: not checked for intersections (? where narrow)") && block.summary.includes("At least about 8 corkers for the ride") && block.figure === "CorkersAt least about 8 for 500 riders (may be low: part of the route was not checked for intersections)",
+    JSON.stringify(block));
   await p.close();
 }
 {
@@ -1465,7 +1549,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   // for it in words, in the list, on screen and not behind the zoom fold, its swatch hidden from a screen reader.
   // 454: only while their layer is on, which is off until the rider turns it on.
   check("legend: no mountain-bike trail row while their layer is off, as it is by default (454)",
-    await p.eval(`!document.querySelector('#sheet-layers [aria-label="Traffic stress legend"] li.mtb-trail')`));
+    await p.eval(`!document.querySelector('#sheet-layers [aria-label="Traffic stress legend"] li.mtb-trail, #sheet-layers [aria-label="Traffic stress legend"] li.mtb-level')`));
   await p.eval("document.querySelector('#mtb-trails-switch').click(); true");
   await sleep(200);
   const mtb = await p.eval(`(() => { const e = document.querySelector('#sheet-layers [aria-label="Traffic stress legend"] li.mtb-trail'); if (!e) return null;
@@ -1475,6 +1559,13 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
       oldLine: !!document.querySelector('#sheet-layers .mtb-hidden') }; })()`);
   check("legend: a row says in words that a mountain-bike trail is not used for routes, in view and not in a fold, swatch aria-hidden (452a)",
     !!mtb && mtb.text.startsWith("Mountain-bike trailNot used for routes") && !mtb.folded && !mtb.hidden && mtb.onScreen && mtb.swatchHidden && !mtb.oldLine, JSON.stringify(mtb));
+  // 456: a row a difficulty level after it, the level's number and colour in words (never colour alone), in view,
+  // its swatch hidden from a screen reader.
+  const levels = await p.eval(`[...document.querySelectorAll('#sheet-layers [aria-label="Traffic stress legend"] li.mtb-level')].map((e) => ({
+    text: e.textContent, folded: !!e.closest('details:not([open])'), onScreen: e.getClientRects().length > 0,
+    swatchHidden: e.querySelector('svg')?.getAttribute('aria-hidden') === 'true' }))`);
+  check("legend: a row a mountain-bike level, 1 to 4, named in words with its colour, in view, swatch aria-hidden (456)",
+    Array.isArray(levels) && levels.length === 4 && ["green", "blue", "black", "red"].every((c, i) => levels[i].text.startsWith(`Level ${i + 1} (${c})Mountain-bike trail rated `) && !levels[i].folded && levels[i].onScreen && levels[i].swatchHidden), JSON.stringify(levels));
   await p.eval("localStorage.removeItem('routemaker.mtbTrails'); true");
   await p.close();
 }
@@ -1905,6 +1996,268 @@ async function saidInDialog(p, text) {
   check("road panel: closed after a long press, the focus goes to the map", afterHold.closed && afterHold.canvas, JSON.stringify(afterHold));
   await p.close();
 }
+// ---- 22. The stress editor in the road panel (OWNER-DECISIONS 441g, 441h, 441m, 460): an instance admin's "Change LTS" ----
+/** The road panel by the keyboard (I on the focused map: no pointer), waited on until it shows the test road. */
+async function panelByKey(p) {
+  await p.eval("document.querySelector('.maplibregl-canvas').focus(); true");
+  await p.waitFor(CANVAS_FOCUSED, 5000);
+  const before = p.infoRequests.length;
+  await p.key("i", "KeyI", 73);
+  return (await infoAsked(p, before)).opened;
+}
+const EDITOR = "dialog.road-info .stress-editor";
+const editorReady = (p) => p.waitFor(`!!document.querySelector('${EDITOR} input[type=range]')`, 8000);
+const levelSlider = `${EDITOR} input[type=range]`;
+{
+  // A visitor who is not an instance admin is offered nothing.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
+  const opened = await panelByKey(p);
+  await sleep(300);
+  const none = await p.eval("({ button: [...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Change LTS'), editor: !!document.querySelector('.stress-editor') })");
+  check("stress editor: a visitor who is not an instance admin is offered no Change LTS, and the page never asks the editor's endpoints anything",
+    opened && !none.button && !none.editor && p.editRequests.length === 0, JSON.stringify({ opened, none, asked: p.editRequests.length }));
+  await p.close();
+}
+{
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  const opened = await panelByKey(p);
+  await p.waitFor("[...document.querySelectorAll('dialog.road-info ul.road-info-buttons li')].length === 3", 8000);
+  const row = await p.eval(`(() => { const ul = document.querySelector('dialog.road-info ul.road-info-buttons');
+    const last = ul?.querySelector('li:last-child > *');
+    return { names: [...(ul?.querySelectorAll('li > *') ?? [])].map((e) => e.textContent), lastTag: last?.tagName, height: Math.round(last?.getBoundingClientRect().height ?? 0) }; })()`);
+  check("stress editor: an instance admin's bottom row is Street View, Edit in OSM, then a Change LTS button, at least 44px tall (the panel opened by the keyboard)",
+    opened && JSON.stringify(row.names) === JSON.stringify(["Street View", "Edit in OSM", "Change LTS"]) && row.lastTag === "BUTTON" && row.height >= 44, JSON.stringify(row));
+
+  // Open the editor: in the same dialog, in place of the row, the focus on its heading.
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Change LTS').click(); true");
+  const loaded = await editorReady(p);
+  const ed = await p.eval(`(() => { const d = document.querySelector('dialog.road-info'); const e = d.querySelector('.stress-editor'); const h = e?.querySelector('h3');
+    const status = e?.querySelector('[role=status]');
+    return { dialogs: document.querySelectorAll('dialog.road-info[open]').length, heading: h?.textContent, focus: document.activeElement === h, labelled: e?.getAttribute('aria-labelledby') === h?.id,
+      rowGone: !d.querySelector('ul.road-info-buttons'), status: status ? status.textContent : null, shown: !!status && getComputedStyle(status).display !== 'none', inside: !!e && d.contains(e) }; })()`);
+  check("stress editor: Change LTS opens the editor in the same dialog, in place of the action row, its heading focused, with an empty polite status region already in the page",
+    loaded && ed.dialogs === 1 && ed.heading === "Change traffic stress" && ed.focus && ed.labelled && ed.rowGone && ed.inside && ed.status === "" && ed.shown, JSON.stringify(ed));
+  await p.shot(`${SHOTS}/stress-editor_open.png`);
+
+  // The level: a native slider, named, read as its words, moved with the arrow keys, Home and End.
+  const slider = await p.eval(`(() => { const r = document.querySelector('${levelSlider}'); return { type: r?.type, min: r?.min, max: r?.max, step: r?.step,
+    out: document.querySelector('${EDITOR} output')?.textContent }; })()`);
+  const sliderAx = await axNode(p, levelSlider);
+  check("stress editor: the level is a native range control 1 to 5 by half steps (441i), named Traffic stress level, read as its words (3, For experienced cyclists) and shown beside it",
+    slider.type === "range" && slider.min === "1" && slider.max === "5" && slider.step === "0.5" && sliderAx?.name === "Traffic stress level" &&
+      sliderAx?.valuetext === "3, For experienced cyclists" && slider.out === "3, For experienced cyclists", JSON.stringify({ slider, sliderAx }));
+  await p.eval(`document.querySelector('${levelSlider}').focus(); true`);
+  await p.key("End", "End", 35);
+  const atEnd = (await axNode(p, levelSlider))?.valuetext;
+  await p.key("Home", "Home", 36);
+  const atHome = (await axNode(p, levelSlider))?.valuetext;
+  await p.key("End", "End", 35);
+  await p.key("ArrowLeft", "ArrowLeft", 37);
+  const atHalf = (await axNode(p, levelSlider))?.valuetext;
+  await p.key("ArrowLeft", "ArrowLeft", 37);
+  const atFour = (await axNode(p, levelSlider))?.valuetext;
+  check("stress editor: without a pointer the arrow keys, Home and End move the level and each stop is read as its words (End 5, Avoid; Home 1, Comfortable for everyone; back a half, 4.5, A very high-stress road; then 4)",
+    atEnd === "5, Avoid" && atHome === "1, Comfortable for everyone" && atHalf === "4.5, A very high-stress road" && atFour === "4, High stress: busy, fast traffic", JSON.stringify({ atEnd, atHome, atHalf, atFour }));
+
+  // Tab visits every control in order and stays in the dialog.
+  await p.eval(`document.querySelector('${EDITOR} h3').focus(); true`);
+  const visited = [];
+  for (let i = 0; i < 9; i++) {
+    await p.tab();
+    visited.push(await p.eval(`(() => { const e = document.activeElement; return (e?.closest('dialog.road-info') ? '' : 'OUT:') + (e?.type === 'range' ? 'range' : e?.type === 'checkbox' ? 'checkbox' : e?.type === 'radio' ? 'radio:' + e.value : e?.tagName === 'INPUT' ? 'text' : e?.tagName === 'BUTTON' ? 'button:' + e.textContent : (e?.tagName.toLowerCase() ?? '')); })()`));
+  }
+  check("stress editor: Tab goes through What to change (one stop for its radio group, on This road piece), the level, Only raise it, the category, the private reason, the note, Save and Cancel in order, and never leaves the dialog",
+    JSON.stringify(visited.slice(0, 8)) === JSON.stringify(["radio:piece", "range", "checkbox", "select", "textarea", "text", "button:Save", "button:Cancel"]) && visited.every((v) => !v.startsWith("OUT:")), JSON.stringify(visited));
+
+  // The private reason is required: a message, the focus on the field, nothing sent.
+  await p.eval("[...document.querySelectorAll('dialog.road-info .stress-editor button')].find((b) => b.textContent === 'Save').click(); true");
+  await p.waitFor(`!!document.querySelector('${EDITOR} [role=alert]')`, 4000);
+  await sleep(100);
+  const empty = await p.eval(`(() => { const t = document.querySelector('${EDITOR} textarea'); const a = document.querySelector('${EDITOR} [role=alert]');
+    return { alert: a?.textContent ?? '', focus: document.activeElement === t, invalid: t?.getAttribute('aria-invalid'), required: t?.getAttribute('aria-required') }; })()`);
+  check("stress editor: Save with no private reason says so in an alert, moves the focus to that field marked invalid, and sends nothing",
+    /private reason/i.test(empty.alert) && empty.focus && empty.invalid === "true" && empty.required === "true" && !p.editRequests.some((r) => r.method === "POST"), JSON.stringify({ empty, posts: p.editRequests.filter((r) => r.method === "POST").length }));
+
+  // Save a change to 4 with a reason.
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.eval(`document.querySelector('${EDITOR} textarea').focus(); true`);
+  await p.type("The light never lets a bike through");
+  const tilesBefore = p.tileUrls.length;
+  await p.eval("[...document.querySelectorAll('dialog.road-info .stress-editor button')].find((b) => b.textContent === 'Save').click(); true");
+  await p.waitFor(`/^Changed to /.test(document.querySelector('${EDITOR} [role=status]')?.textContent ?? '')`, 8000);
+  const post = p.editRequests.find((r) => r.method === "POST");
+  const said = await p.eval(`document.querySelector('${EDITOR} [role=status]')?.textContent ?? ''`);
+  check("stress editor: Save sends one JSON POST with the level, the way, the private reason, the category and the state it opened with, and the CSRF token from the page's cookie as a header",
+    post && post.path === "/api/stress-edits" && post.body.step === 4 && JSON.stringify(post.body.osm_way_ids) === "[101]" && post.body.reason === "The light never lets a bike through" &&
+      post.body.expected === "tok-0" && post.body.at_least === false && typeof post.body.category === "string" && post.headers["X-CSRFToken"] === "test-csrf-token" && /json/.test(post.headers["Content-Type"] ?? ""),
+    JSON.stringify(post));
+  check("stress editor: the result is said in the editor's polite status region, and it says the map shows it now, that routes use it after the next weekly update, and that it can be undone for 30 minutes",
+    said === "Changed to LTS 4, high stress: busy, fast traffic. The map shows it now; routes fully use it after the next weekly data update. You can undo it for 30 minutes.", said);
+  await p.waitFor("document.querySelector('dialog.road-info .road-info-line-stress')?.textContent.includes('LTS 4')", 8000);
+  const refreshed = await p.eval(`(() => { const d = document.querySelector('dialog.road-info'); return { line: d.querySelector('.road-info-line-stress')?.textContent ?? '', editor: !!d.querySelector('.stress-editor'),
+    focus: document.activeElement === d.querySelector('.stress-editor h3'), open: d.open }; })()`);
+  check("stress editor: the panel's own stress line is refreshed in place (the answer asked for again) with the editor still open and the focus on its heading",
+    /LTS 4/.test(refreshed.line) && refreshed.editor && refreshed.focus && refreshed.open && p.infoRequests.length === 2, JSON.stringify({ refreshed, asked: p.infoRequests.length }));
+  await sleep(1200);
+  const again = p.tileUrls.slice(tilesBefore).filter((u) => /\?rev=1$/.test(u));
+  check("stress editor: after a save the map asks for its stress tiles again under the new edit generation (?rev=1), so the editor's own map shows the change at once", again.length > 0, JSON.stringify({ asked: p.tileUrls.length - tilesBefore, sample: p.tileUrls.slice(-3) }));
+
+  // Undo, next to the message.
+  const undoButton = await p.eval(`!![...document.querySelectorAll('${EDITOR} button')].find((b) => b.textContent === 'Undo the last change')`);
+  await p.eval(`[...document.querySelectorAll('${EDITOR} button')].find((b) => b.textContent === 'Undo the last change')?.click(); true`);
+  await p.waitFor(`/^Undone/.test(document.querySelector('${EDITOR} [role=status]')?.textContent ?? '')`, 8000);
+  const undoPost = p.editRequests.filter((r) => r.method === "POST").at(-1);
+  const undoSaid = await p.eval(`document.querySelector('${EDITOR} [role=status]')?.textContent ?? ''`);
+  await p.waitFor("document.querySelector('dialog.road-info .road-info-line-stress')?.textContent.includes('LTS 3')", 8000);
+  const undone = await p.eval(`({ line: document.querySelector('dialog.road-info .road-info-line-stress')?.textContent ?? '', again: !![...document.querySelectorAll('${EDITOR} button')].find((b) => b.textContent === 'Undo the last change') })`);
+  check("stress editor: Undo sits beside the message, posts to the change's own undo address, says the road is back at LTS 3, and the panel shows it; the button goes",
+    undoButton && /^\/api\/stress-edits\/\d+\/undo$/.test(undoPost?.path ?? "") && undoPost.headers["X-CSRFToken"] === "test-csrf-token" &&
+      undoSaid === "Undone. This road is back to LTS 3, for experienced cyclists." && /LTS 3/.test(undone.line) && !undone.again, JSON.stringify({ undoButton, undoPost: undoPost?.path, undoSaid, undone }));
+
+  // A refused write: the server's own sentence, in an alert, the editor still open with what was typed.
+  p.editFail = { status: 409, body: { error: "Someone changed this road since you opened it. Reopen it to see the change.", code: "stale" } };
+  await p.eval("[...document.querySelectorAll('dialog.road-info .stress-editor button')].find((b) => b.textContent === 'Save').click(); true");
+  await p.waitFor(`/Someone changed this road/.test(document.querySelector('${EDITOR} [role=alert]')?.textContent ?? '')`, 8000);
+  const refused = await p.eval(`({ alert: document.querySelector('${EDITOR} [role=alert]')?.textContent ?? '', still: !!document.querySelector('${EDITOR} textarea'),
+    kept: document.querySelector('${EDITOR} textarea')?.value ?? '' })`);
+  check("stress editor: a refused change shows the server's sentence in an alert and keeps the editor and what was typed",
+    /^Someone changed this road since you opened it\./.test(refused.alert) && refused.still && refused.kept === "The light never lets a bike through", JSON.stringify(refused));
+
+  // Escape closes the editor, not the panel; the focus goes back to Change LTS. So does Cancel.
+  await p.escape();
+  await sleep(300);
+  const esc = await p.eval(`({ open: !!document.querySelector('dialog.road-info[open]'), editor: !!document.querySelector('.stress-editor'),
+    focus: document.activeElement?.textContent ?? '', tag: document.activeElement?.tagName ?? '' })`);
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Change LTS').click(); true");
+  await editorReady(p);
+  await p.eval(`[...document.querySelectorAll('${EDITOR} button')].find((b) => b.textContent === 'Cancel').click(); true`);
+  await sleep(300);
+  const cancel = await p.eval(`({ open: !!document.querySelector('dialog.road-info[open]'), editor: !!document.querySelector('.stress-editor'), focus: document.activeElement?.textContent ?? '' })`);
+  check("stress editor: Escape and Cancel close the editor and not the panel, and the focus goes back to the Change LTS button",
+    esc.open && !esc.editor && esc.focus === "Change LTS" && esc.tag === "BUTTON" && cancel.open && !cancel.editor && cancel.focus === "Change LTS", JSON.stringify({ esc, cancel }));
+  await p.close();
+}
+{
+  // A half step (441i, 441l): one arrow from 3 is 3.5, saved as 3.5, said and shown in its own words.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  await panelByKey(p);
+  await p.waitFor("[...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Change LTS')", 8000);
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Change LTS').click(); true");
+  await editorReady(p);
+  await p.eval(`document.querySelector('${levelSlider}').focus(); true`);
+  await p.key("ArrowRight", "ArrowRight", 39);
+  const half = (await axNode(p, levelSlider))?.valuetext;
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.eval(`document.querySelector('${EDITOR} textarea').focus(); true`);
+  await p.type("Fast merges at the ramp");
+  await p.eval("[...document.querySelectorAll('dialog.road-info .stress-editor button')].find((b) => b.textContent === 'Save').click(); true");
+  await p.waitFor(`/^Changed to /.test(document.querySelector('${EDITOR} [role=status]')?.textContent ?? '')`, 8000);
+  const post = p.editRequests.find((r) => r.method === "POST");
+  const said = await p.eval(`document.querySelector('${EDITOR} [role=status]')?.textContent ?? ''`);
+  await p.waitFor("document.querySelector('dialog.road-info .road-info-line-stress')?.textContent.includes('LTS 3.5')", 8000);
+  const line = await p.eval("document.querySelector('dialog.road-info .road-info-line-stress')?.textContent ?? ''");
+  check("stress editor: one arrow from 3 is read as 3.5, Stressful even for experienced cyclists; Save sends 3.5, the status region says LTS 3.5 in its words, and the panel shows LTS 3.5",
+    half === "3.5, Stressful even for experienced cyclists" && post?.body.step === 3.5 && /^Changed to LTS 3\.5, stressful even for experienced cyclists\./.test(said) && /LTS 3\.5/.test(line),
+    JSON.stringify({ half, step: post?.body.step, said, line }));
+
+  // 458b: the outlined half-step dashes keep 3:1 from their dash and their line, in the page's own style.
+  const outlines = await p.eval(`(async () => { const s = await import('/src/stressStyle.js'); const out = [];
+    for (const palette of Object.keys(s.PALETTES)) { const tiers = s.tiersFor(palette);
+      for (let t = 1; t <= 4; t++) { const h = s.halfStep(t, tiers); if (!h.outline) continue;
+        out.push({ palette, step: h.step, dash: +s.contrastRatio(h.outline, h.color).toFixed(2), line: +s.contrastRatio(h.outline, h.line).toFixed(2) }); } }
+    return out; })()`);
+  check("stress editor: the half-step dashes too close to their line (two-tone 3.5, colour-blind 4.5) carry an outline at least 3:1 from both the dash and the line (458b)",
+    Array.isArray(outlines) && outlines.length >= 2 && outlines.some((o) => o.palette === "twotone" && o.step === 3.5) && outlines.some((o) => o.palette === "cvd" && o.step === 4.5) &&
+      outlines.every((o) => o.dash >= 3 && o.line >= 3), JSON.stringify(outlines));
+  await p.close();
+}
+{
+  // A named stretch (HALF-STEP-EDITOR phase 5): a radio group, the piece by default, the stretch's
+  // pieces and length in miles with kilometres in brackets; Save sends every piece and says how many.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  p.editRoad.stretch = true;
+  await panelByKey(p);
+  await p.waitFor("[...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Change LTS')", 8000);
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Change LTS').click(); true");
+  await editorReady(p);
+  await p.waitFor(`!!document.querySelector('${EDITOR} fieldset input[type=radio]')`, 8000);
+  const group = await p.eval(`(() => { const f = document.querySelector('${EDITOR} fieldset'); const r = [...f.querySelectorAll('input[type=radio]')];
+    r.forEach((x, i) => { x.dataset.n = i; });
+    return { legend: f.querySelector('legend')?.textContent, count: r.length, checked: r.map((x) => x.checked), same: new Set(r.map((x) => x.name)).size === 1,
+      rows: [...f.querySelectorAll('.stress-editor-radio')].map((d) => Math.round(d.getBoundingClientRect().height)), help: document.getElementById(f.getAttribute('aria-describedby'))?.textContent ?? '' }; })()`);
+  const piece = await axNode(p, `${EDITOR} fieldset input[data-n="0"]`);
+  const whole = await axNode(p, `${EDITOR} fieldset input[data-n="1"]`);
+  const askedEarly = p.editRequests.some((r) => r.path.endsWith("/stretch"));
+  check("named stretch: a labelled group (What to change) of two radios, This road piece checked, the stretch named by its road; rows at least 44px; the stretch is not looked for until it is chosen",
+    group.legend === "What to change" && group.count === 2 && group.checked[0] && !group.checked[1] && group.same && group.rows.every((h) => h >= 44) &&
+      piece?.role === "radio" && piece?.name === "This road piece: Connecticut Avenue Northwest" && whole?.name === "The whole named stretch of Connecticut Avenue Northwest" &&
+      /busy crossing/.test(group.help) && !askedEarly, JSON.stringify({ group, piece, whole, askedEarly }));
+
+  await p.eval(`document.querySelector('${EDITOR} fieldset input[data-n="0"]').focus(); true`);
+  await p.key("ArrowDown", "ArrowDown", 40);
+  const moved = await p.eval(`({ checked: document.querySelector('${EDITOR} fieldset input[data-n="1"]').checked, focus: document.activeElement?.dataset?.n })`);
+  check("named stretch: the arrow key moves the choice to the whole stretch, as native radios do", moved.checked && moved.focus === "1", JSON.stringify(moved));
+  await p.waitFor(`/pieces/.test(document.querySelector('${EDITOR} .stress-editor-stretch-said')?.textContent ?? '')`, 8000);
+  const found = await p.eval(`(() => { const s = document.querySelector('${EDITOR} .stress-editor-stretch-said'); return { role: s?.getAttribute('role'), text: s?.textContent ?? '' }; })()`);
+  const wholeFound = await axNode(p, `${EDITOR} fieldset input[data-n="1"]`);
+  check("named stretch: once chosen it is looked for, and a status line says what was found: its pieces and length in miles, kilometres in brackets, as the radio now reads too",
+    p.editRequests.some((r) => r.method === "GET" && r.path === "/api/stress-edits/way/101/stretch") && found.role === "status" &&
+      found.text === "The whole named stretch of Connecticut Avenue Northwest: 3 pieces, 0.7 mi (1.2 km)." &&
+      wholeFound?.name === "The whole named stretch of Connecticut Avenue Northwest: 3 pieces, 0.7 mi (1.2 km)", JSON.stringify({ found, whole: wholeFound?.name }));
+
+  await p.eval(`document.querySelector('${levelSlider}').focus(); true`);
+  await p.key("ArrowRight", "ArrowRight", 39);
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.eval(`document.querySelector('${EDITOR} textarea').focus(); true`);
+  await p.type("Fast traffic the whole way");
+  await p.eval("[...document.querySelectorAll('dialog.road-info .stress-editor button')].find((b) => b.textContent === 'Save').click(); true");
+  await p.waitFor(`/^Changed all/.test(document.querySelector('${EDITOR} [role=status]')?.textContent ?? '')`, 8000);
+  const sent = p.editRequests.find((r) => r.method === "POST");
+  const said = await p.eval(`document.querySelector('${EDITOR} [role=status]')?.textContent ?? ''`);
+  check("named stretch: Save sends every piece with the stretch's own token, and the status region says how many pieces changed and to what",
+    JSON.stringify(sent?.body.osm_way_ids) === "[100,101,102]" && sent?.body.expected === "stretch-0" && sent?.body.step === 3.5 &&
+      /^Changed all 3 road pieces to LTS 3\.5, stressful even for experienced cyclists\./.test(said), JSON.stringify({ body: sent?.body, said }));
+  await p.close();
+}
+{
+  // A piece that is its own whole stretch: chosen by the keyboard, the choice goes back to the piece,
+  // says why, and the focus moves with it to the radio now checked, so Shift+Tab leaves the group.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  await panelByKey(p);
+  await p.waitFor("[...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Change LTS')", 8000);
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Change LTS').click(); true");
+  await editorReady(p);
+  await p.waitFor(`!!document.querySelector('${EDITOR} fieldset input[type=radio]')`, 8000);
+  await p.eval(`document.querySelector('${EDITOR} fieldset input[value=piece]').focus(); true`);
+  await p.key("ArrowDown", "ArrowDown", 40);
+  await p.waitFor(`/whole stretch/.test(document.querySelector('${EDITOR} .stress-editor-stretch-said')?.textContent ?? '')`, 8000);
+  await sleep(200);
+  const back = await p.eval(`({ said: document.querySelector('${EDITOR} .stress-editor-stretch-said')?.textContent ?? '', piece: document.querySelector('${EDITOR} fieldset input[value=piece]').checked,
+    focus: document.activeElement?.value ?? document.activeElement?.tagName })`);
+  await p.tab(true);
+  const before = await p.eval(`(() => { const e = document.activeElement; return { radio: e?.type === 'radio', inside: !!e?.closest('dialog.road-info') }; })()`);
+  check("named stretch: a piece with no stretch beyond it goes back to This road piece, says why in the status line, keeps the focus on the radio now checked, and Shift+Tab leaves the group",
+    /this road piece is the whole stretch/.test(back.said) && back.piece && back.focus === "piece" && !before.radio && before.inside, JSON.stringify({ back, before }));
+  await p.close();
+}
+{
+  // A phone: the editor stacks in one column, controls at least 44px tall, nothing scrolls sideways.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), width: 375, height: 812, mobile: true, ride: false, junctions: false, admin: true });
+  const opened = await panelByKey(p);
+  await p.waitFor("[...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Change LTS')", 8000);
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Change LTS').click(); true");
+  await editorReady(p);
+  const fit = await p.eval(`(() => { const d = document.querySelector('dialog.road-info'); const e = d.querySelector('.stress-editor');
+    const controls = [...e.querySelectorAll('input[type=range], input[type=text], select, textarea, button')];
+    return { opened: d.open, sideways: d.scrollWidth - d.clientWidth, page: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      small: controls.filter((c) => c.getBoundingClientRect().height < 44).map((c) => c.tagName + ':' + (c.textContent || c.type).slice(0, 12)),
+      wide: controls.filter((c) => c.getBoundingClientRect().right > innerWidth).length, count: controls.length }; })()`);
+  check("stress editor: on a phone (375px) nothing scrolls sideways and every control in the editor is at least 44px tall",
+    opened && fit.opened && fit.sideways <= 0 && fit.page <= 0 && fit.small.length === 0 && fit.wide === 0 && fit.count >= 6, JSON.stringify(fit));
+  await p.shot(`${SHOTS}/stress-editor_phone.png`);
+  await p.close();
+}
+
 // The page on how traffic-stress ratings work (OWNER-DECISIONS 461): a static page in public/, read
 // by screen reader users among the rest, and linked from the legend in the same tab.
 {
@@ -2043,6 +2396,82 @@ async function saidInDialog(p, text) {
   const where = await p.eval(regions);
   check("ride: Where am I? says the street, the next cue and the miles to the end", /On R Street Northwest\..* to the end\./.test(where.polite), JSON.stringify(where));
 
+  // N5: the map along the route, kept for dead spots (lib/corridor.ts): the stress tiles at z12-14 in
+  // the ride's own Cache Storage bucket (the mocked base map is not served, so its part stops), said on
+  // screen under the controls and not in a live region.
+  await p.waitFor("/saved for dead spots/.test(document.querySelector('.ride-corridor')?.textContent ?? '')", 30000);
+  const corridor = await p.eval("(async () => { const note = document.querySelector('.ride-corridor'); const keys = await (await caches.open('routemaker-corridor-v1')).keys(); return { note: note?.textContent, live: !!note?.closest('[aria-live], [role=status], [role=alert]'), kept: keys.map((r) => new URL(r.url).pathname), rev: keys.some((r) => new URL(r.url).searchParams.has('rev')) }; })()");
+  check("ride: the stress tiles along the route are kept for dead spots (z12-14, keyed without ?rev), and the note says only they were, on screen, not in a live region",
+    corridor.note === "Only the stress lines along the route are saved for dead spots, not the base map." && !corridor.live && !corridor.rev && corridor.kept.length >= 3 && corridor.kept.every((u) => /^\/tiles\/stress\/1[234]\/\d+\/\d+\.pbf$/.test(u)) && [12, 13, 14].every((z) => corridor.kept.some((u) => u.startsWith(`/tiles/stress/${z}/`))),
+    JSON.stringify({ ...corridor, kept: corridor.kept.length }));
+  // In a dead spot (the network emulated offline) a kept stress tile still answers the map's own
+  // protocol loader, at once. The base map's ranges cannot be shown here: the mock serves no archive.
+  await p.s("Network.enable", {});
+  await p.s("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  const dead = await p.eval(`(async () => {
+    const { loadTile } = await import('/src/lib/stressProtocol.ts');
+    const { corridorStress } = await import('/src/lib/corridorStore.ts');
+    const key = (await (await caches.open('routemaker-corridor-v1')).keys())[0]?.url;
+    // The suite's request mock answers below the emulated network, so the page's fetch is failed too.
+    const real = window.fetch;
+    window.fetch = () => Promise.reject(new TypeError('Failed to fetch'));
+    try {
+      const network = await fetch(key).then(() => 'answered', () => 'failed');
+      const started = performance.now();
+      const data = await loadTile(key, new AbortController().signal, undefined, corridorStress).then((d) => d instanceof ArrayBuffer, (e) => String(e));
+      const ms = Math.round(performance.now() - started);
+      const never = await loadTile(key.replace(/\\/(\\d+)\\.pbf/, '/9$1.pbf'), new AbortController().signal, undefined, corridorStress).then(() => 'answered', () => 'failed');
+      return { riding: corridorStress.riding(), online: navigator.onLine, network, data, ms, never };
+    } finally {
+      window.fetch = real;
+    }
+  })()`);
+  await p.s("Network.emulateNetworkConditions", { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  check("ride: with no signal, a kept stress tile answers the map's tile loader at once (Network offline)",
+    dead.riding === true && dead.online === false && dead.network === "failed" && dead.data === true && dead.ms < 1000 && dead.never === "failed", JSON.stringify(dead));
+
+  // N6: Report a problem to DC 311 (OWNER-DECISIONS 369, 370, 465): the place from the route's own
+  // street names (the turn from Q Street onto R Street just passed); the copy has no text keyword.
+  await p.eval("document.querySelector('.ride-report > summary').click(); true");
+  await sleep(300);
+  const report = await p.eval(`(() => {
+    const d = document.querySelector('.ride-report');
+    const links = [...d.querySelectorAll('.ride-report-actions a')];
+    return {
+      open: d.open, text: d.querySelector('.ride-report-text')?.textContent,
+      links: links.map((a) => ({ name: a.textContent, href: a.getAttribute('href'), target: a.getAttribute('target'), rel: a.getAttribute('rel') })),
+      copy: [...d.querySelectorAll('.ride-report-actions button')].map((b) => b.textContent),
+      privacy: d.textContent.includes('The message goes to DC 311 from your own phone'),
+    };
+  })()`);
+  check("ride 311: the report names the place from the route's streets (no text keyword in the copy); a desktop opens DC 311 online in a new tab, with Copy (369, 370)",
+    report.open && report.text === "The report: Location: near Q Street Northwest and R Street Northwest, Washington, DC." && report.links.length === 1 && report.links[0].href === "https://311.dc.gov/" && report.links[0].target === "_blank" && /noopener/.test(report.links[0].rel) && /new tab/.test(report.links[0].name) && report.copy.includes("Copy the report") && report.privacy,
+    JSON.stringify(report));
+  const reportForm = await p.eval(`(() => {
+    const d = document.querySelector('.ride-report');
+    const fs = d.querySelector('fieldset');
+    const small = [...d.querySelectorAll('summary, label.radio, input[type=text], .ride-report-actions a, .ride-report-actions button')].filter((e) => e.getBoundingClientRect().height < 43.5).map((e) => e.textContent || e.tagName);
+    const note = d.querySelector('input[type=text]');
+    return { legend: fs?.querySelector('legend')?.textContent, radios: fs?.querySelectorAll('input[type=radio]').length, labelled: [...fs.querySelectorAll('input[type=radio]')].every((i) => i.closest('label')?.textContent.trim().length > 0), note: note?.closest('label')?.textContent.trim(), small, focus: document.activeElement?.id };
+  })()`);
+  check("ride 311: what it is is a named group of radios, the note a labelled field, and every control at least 44 px tall",
+    reportForm.legend === "What is it?" && reportForm.radios === 3 && reportForm.labelled && reportForm.note === "Note (optional)" && reportForm.small.length === 0, JSON.stringify(reportForm));
+  // On a phone (an Android browser), a streetlight is a text to 32311 with the same words; something else has no keyword, so DC 311 online.
+  const ua = await p.eval("navigator.userAgent");
+  await p.s("Emulation.setUserAgentOverride", { userAgent: "Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36" });
+  await p.eval("[...document.querySelectorAll('.ride-report label.radio')].find((l) => l.textContent === 'Streetlight out').querySelector('input').click(); true");
+  await sleep(300);
+  const sms = await p.eval("[...document.querySelectorAll('.ride-report-actions a')].map((a) => ({ name: a.textContent, label: a.getAttribute('aria-label'), href: a.getAttribute('href') }))");
+  await p.eval("[...document.querySelectorAll('.ride-report label.radio')].find((l) => l.textContent.startsWith('Something else')).querySelector('input').click(); true");
+  await sleep(300);
+  const other = await p.eval("({ links: [...document.querySelectorAll('.ride-report-actions a')].map((a) => a.getAttribute('href')), text: document.querySelector('.ride-report-text')?.textContent })");
+  await p.s("Emulation.setUserAgentOverride", { userAgent: ua });
+  check("ride 311: on a phone a streetlight is a Text to 311 link first (sms:32311, Android's ?body=, the code read digit by digit), DC 311 online still beside it; something else goes to DC 311 online",
+    sms.length === 2 && sms[0].name === "Text to DC 311 (32311)" && sms[0].label === "Text to DC 311 (3 2 3 1 1)" && sms[1].href === "https://311.dc.gov/" && sms[0].href === `sms:32311?body=${encodeURIComponent("STREETLIGHT Location: near Q Street Northwest and R Street Northwest, Washington, DC.")}` &&
+      JSON.stringify(other.links) === JSON.stringify(["https://311.dc.gov/"]) && other.text === "The report: Location: near Q Street Northwest and R Street Northwest, Washington, DC.",
+    JSON.stringify({ sms, other }));
+  await p.eval("document.querySelector('.ride-report').open = false; document.querySelector('#ride-heading').focus(); true");
+
   // A pan by hand stops following; Re-centre (the C key) follows again.
   const canvas = await p.eval("(() => { const r = document.querySelector('.maplibregl-canvas').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; })()");
   await p.s("Input.dispatchMouseEvent", { type: "mousePressed", x: canvas.x, y: canvas.y, button: "left", clickCount: 1 });
@@ -2094,20 +2523,1122 @@ async function saidInDialog(p, text) {
   check("ride: Big text hides the map and says it is on", big.map === "none" && big.pressed === "true", JSON.stringify(big));
   await p.shot(`${SHOTS}/ride_big_320.png`);
 
-  // End ride: the planner again, the focus on Start ride, the lock let go.
+  // End ride: the planner again, the focus on Start ride, the lock let go. A base-map range is put in
+  // the ride's IndexedDB store first (the mock serves no archive), to see End ride empty it.
+  const idb = (act) => `new Promise((resolve, reject) => { const r = indexedDB.open('routemaker-corridor', 1); r.onupgradeneeded = () => r.result.createObjectStore('ranges', { keyPath: 'key' }); r.onerror = () => reject(r.error); r.onsuccess = () => { const db = r.result; const tx = db.transaction('ranges', 'readwrite'); const store = tx.objectStore('ranges'); const q = ${act}; tx.oncomplete = () => { db.close(); resolve(q.result); }; tx.onabort = () => reject(tx.error); }; })`;
+  const sentinel = await p.eval(`(async () => { await ${idb("store.put({ key: '0:16384', etag: 'test', data: new ArrayBuffer(4) })")}; return ${idb("store.count()")}; })()`);
   await p.eval("[...document.querySelectorAll('.ride-actions button')].find((b) => b.textContent === 'End ride').click(); true");
   await sleep(500);
   const ended = await p.eval("({ ride: !!document.querySelector('section.ride'), planner: getComputedStyle(document.querySelector('#route-planner')).display === 'none', focus: document.activeElement?.textContent, wake: window.__wake.slice(-1)[0], map: getComputedStyle(document.querySelector('.map')).display })");
   check("ride: End ride shows the planner, puts the focus on Start ride and lets the screen lock go",
     !ended.ride && ended.planner === false && ended.focus === "Start ride" && ended.wake === "release" && ended.map !== "none", JSON.stringify(ended));
+  await sleep(500);
+  const cleared = await p.eval("(async () => ({ bucket: await caches.has('routemaker-corridor-v1'), stamp: localStorage.getItem('routemaker.corridor') }))()");
+  check("ride: End ride clears the map kept for dead spots", cleared.bucket === false && cleared.stamp === null, JSON.stringify(cleared));
+  const ranges = await p.eval(idb("store.count()"));
+  check("ride: End ride empties the base map's kept ranges (IndexedDB)", sentinel === 1 && ranges === 0, JSON.stringify({ sentinel, ranges }));
+  await p.close();
+}
+
+// ---- 22b. Rider suggestions (OWNER-DECISIONS 441h, 460.4, 460.5; the owner, 2026-10-10) ----
+const SUGGEST = "dialog.road-info .suggest-change";
+{
+  // A rider the settings allow: Suggest a change in the panel's row, in place of Change LTS.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), suggester: true });
+  const opened = await panelByKey(p);
+  await p.waitFor("[...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Suggest a change')", 8000);
+  const row = await p.eval(`(() => { const ul = document.querySelector('dialog.road-info ul.road-info-buttons');
+    const last = ul?.querySelector('li:last-child > *');
+    return { names: [...(ul?.querySelectorAll('li > *') ?? [])].map((e) => e.textContent), tag: last?.tagName, height: Math.round(last?.getBoundingClientRect().height ?? 0) }; })()`);
+  check("suggestions: a rider the settings allow gets a Suggest a change button (not Change LTS) in the panel's bottom row, at least 44px tall",
+    opened && row.names.at(-1) === "Suggest a change" && !row.names.includes("Change LTS") && row.tag === "BUTTON" && row.height >= 44, JSON.stringify(row));
+
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Suggest a change').click(); true");
+  await p.waitFor(`!!document.querySelector('${SUGGEST} input[type=range]')`, 8000);
+  await sleep(100);
+  const slider = `${SUGGEST} input[type=range]`;
+  const form = await p.eval(`(() => { const e = document.querySelector('${SUGGEST}'); const h = e?.querySelector('h3'); const r = e?.querySelector('input[type=range]');
+    return { heading: h?.textContent, focus: document.activeElement === h, status: e?.querySelector('[role=status]')?.textContent ?? null, step: r?.step, rowGone: !document.querySelector('dialog.road-info ul.road-info-buttons') }; })()`);
+  const ax = await axNode(p, slider);
+  await p.eval(`document.querySelector('${slider}').focus(); true`);
+  await p.key("ArrowLeft", "ArrowLeft", 37);
+  const half = (await axNode(p, slider))?.valuetext;
+  check("suggestions: it opens in the same dialog, its heading focused, an empty status region in the page, and a half-step level control named and read as its words (3, then 2.5, Fine for most confident adults)",
+    form.heading === "Suggest a traffic stress level" && form.focus && form.status === "" && form.step === "0.5" && form.rowGone &&
+      ax?.name === "The level you suggest" && ax?.valuetext === "3, For experienced cyclists" && half === "2.5, Fine for most confident adults", JSON.stringify({ form, ax, half }));
+
+  await p.eval(`[...document.querySelectorAll('${SUGGEST} button')].find((b) => b.textContent === 'Send suggestion').click(); true`);
+  await p.waitFor(`!!document.querySelector('${SUGGEST} [role=alert]')`, 4000);
+  await sleep(100);
+  const empty = await p.eval(`(() => { const t = document.querySelector('${SUGGEST} textarea'); return { alert: document.querySelector('${SUGGEST} [role=alert]')?.textContent ?? '', focus: document.activeElement === t, invalid: t?.getAttribute('aria-invalid') }; })()`);
+  check("suggestions: sending with no reason says so in an alert, moves the focus to the reason marked invalid, and sends nothing",
+    /why/i.test(empty.alert) && empty.focus && empty.invalid === "true" && !p.suggestRequests.some((r) => r.method === "POST"), JSON.stringify(empty));
+
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.type("A protected lane opened this summer.");
+  await p.eval(`[...document.querySelectorAll('${SUGGEST} button')].find((b) => b.textContent === 'Send suggestion').click(); true`);
+  await p.waitFor(`/^Thanks/.test(document.querySelector('${SUGGEST} [role=status]')?.textContent ?? '')`, 8000);
+  const sent = p.suggestRequests.find((r) => r.method === "POST");
+  const said = await p.eval(`document.querySelector('${SUGGEST} [role=status]')?.textContent ?? ''`);
+  check("suggestions: Send posts the way, the nearest point on the road (never the spot clicked), the level 2.5 and the reason as JSON with the CSRF header, and the status region says nothing changes until an admin reviews it",
+    sent?.path === "/api/stress-suggestions" && sent.body.osm_way_id === 101 && sent.body.step === 2.5 && sent.body.lat === 38.91 && sent.body.lon === -77.04 &&
+      sent.body.reason === "A protected lane opened this summer." && sent.headers["X-CSRFToken"] === "test-csrf-token" && /Nothing changes on the map/.test(said), JSON.stringify({ sent, said }));
+
+  await p.escape();
+  await sleep(300);
+  const back = await p.eval("({ open: !!document.querySelector('dialog.road-info[open]'), form: !!document.querySelector('.suggest-change'), focus: document.activeElement?.textContent ?? '' })");
+  check("suggestions: Escape closes the form, not the panel, and the focus goes back to Suggest a change", back.open && !back.form && back.focus === "Suggest a change", JSON.stringify(back));
+  await p.close();
+}
+{
+  // The instance admin's review, in the Settings sheet: the three actions, the poll to copy, "Copied".
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  // Two waiting: Approve now moves the focus on to the next one, and Delete the last to the empty line.
+  p.suggestionsOpen = [...p.suggestionsOpen, { ...p.suggestionsOpen[0], id: 42, osm_way_id: 102, road: "Pine Street" }];
+  await openSheet(p, "Settings");
+  await p.waitFor("[...document.querySelectorAll('.suggestion-review button')].some((b) => b.textContent === 'Show suggestions')", 8000);
+  await p.eval("[...document.querySelectorAll('.suggestion-review button')].find((b) => b.textContent === 'Show suggestions').click(); true");
+  await p.waitFor("!!document.querySelector('.suggestion-item h4')", 8000);
+  await p.eval(`(() => { const item = document.querySelector('.suggestion-item'); [...item.querySelectorAll('button')].forEach((b, i) => { b.id = '__sg' + i; }); return true; })()`);
+  const names = [];
+  for (const i of [0, 1, 2]) names.push(await axNode(p, `#__sg${i}`));
+  const heading = await p.eval("document.querySelector('.suggestion-item h4')?.textContent ?? ''");
+  const statusWords = await p.eval("document.querySelector('.suggestion-item .suggestion-status')?.textContent ?? ''");
+  check("suggestions: the admin's list names each suggestion's road and both levels in words, says its status in words, and each of Approve now, Send to Discord and Delete is described by that heading",
+    heading === "Oak Street: from LTS 3 (For experienced cyclists) to LTS 2.5 (Fine for most confident adults)" && statusWords === "Waiting for review." &&
+      JSON.stringify(names.map((n) => n?.name)) === JSON.stringify(["Approve now", "Send to Discord", "Delete"]) && names.every((n) => n?.description === heading), JSON.stringify({ heading, statusWords, names }));
+
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.eval("document.getElementById('__sg1').click(); true");
+  await p.waitFor("!!document.querySelector('.suggestion-post textarea')", 8000);
+  const post = await p.eval(`(() => { const t = document.querySelector('.suggestion-post textarea'); const l = document.querySelector('.suggestion-post label');
+    return { value: t?.value ?? '', readOnly: t?.readOnly, labelled: l?.htmlFor === t?.id, label: l?.textContent ?? '', said: document.querySelector('.suggestion-review [role=status]')?.textContent ?? '',
+      status: document.querySelector('.suggestion-item .suggestion-status')?.textContent ?? '' }; })()`);
+  const sentReq = p.suggestRequests.find((r) => r.path === "/api/stress-suggestions/41/discord");
+  check("suggestions: Send to Discord shows the plain-English poll (no LTS number, no mention, at most 2,000 characters) in a labelled read-only box, says so, and marks the suggestion as sent in words",
+    sentReq?.headers["X-CSRFToken"] === "test-csrf-token" && post.readOnly && post.labelled && /^Post for Discord/.test(post.label) && post.value.length <= 2000 &&
+      !/LTS/.test(post.value) && !/@/.test(post.value) && /^\*\*How comfortable is biking on Oak Street/.test(post.value) && /marked as sent to Discord/.test(post.said) &&
+      /Sent to Discord/.test(post.status), JSON.stringify(post).slice(0, 600));
+
+  try {
+    await b.send("Browser.grantPermissions", { permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"], origin: `http://127.0.0.1:${PORT}`, browserContextId: p.contextId });
+  } catch {
+    // An older Chrome: the copy falls back to the selection method.
+  }
+  await p.eval("[...document.querySelectorAll('.suggestion-post button')].find((b) => b.textContent === 'Copy post').focus(); true");
+  await p.key("Enter", "Enter", 13);
+  await p.waitFor("/^Copied/.test(document.querySelector('.suggestion-review [role=status]')?.textContent ?? '')", 4000);
+  const copied = await p.eval("document.querySelector('.suggestion-review [role=status]')?.textContent ?? ''");
+  const clip = await p.eval("navigator.clipboard.readText().catch(() => '')");
+  check("suggestions: Copy post works from the keyboard (Enter) and says Copied in the status region; the clipboard holds the post",
+    /^Copied\./.test(copied) && (clip === "" || clip.startsWith("**How comfortable")), JSON.stringify({ copied, clip: clip.slice(0, 60) }));
+
+  await p.eval("document.getElementById('__sg0').click(); true");
+  await p.waitFor("/^Approved/.test(document.querySelector('.suggestion-review [role=status]')?.textContent ?? '')", 8000);
+  await sleep(150);
+  const approved = await p.eval(`({ said: document.querySelector('.suggestion-review [role=status]')?.textContent ?? '', left: document.querySelectorAll('.suggestion-item').length,
+    focus: document.activeElement?.tagName, focusText: document.activeElement?.textContent ?? '', focusTab: document.activeElement?.tabIndex })`);
+  check("suggestions: Approve now says the road's new level in words in the status region and the suggestion leaves the list",
+    /^Approved\. Oak Street is now LTS 2\.5/.test(approved.said) && approved.left === 1 && p.suggestRequests.some((r) => r.path === "/api/stress-suggestions/41/approve"), JSON.stringify(approved));
+  check("suggestions: after Approve now the focus moves to the next suggestion's heading, not lost to the page",
+    approved.focus === "H4" && approved.focusTab === -1 && /^Pine Street: from LTS 3/.test(approved.focusText), JSON.stringify(approved));
+
+  await p.eval("[...document.querySelectorAll('.suggestion-item button')].find((b) => b.textContent === 'Delete').click(); true");
+  await p.waitFor("!!document.querySelector('.suggestion-confirm')", 4000);
+  await sleep(150);
+  const asking = await p.eval(`(() => { const g = document.querySelector('.suggestion-confirm'); const d = [...document.querySelectorAll('.suggestion-item button')].find((b) => b.textContent === 'Delete');
+    return { role: g?.getAttribute('role'), label: document.getElementById(g?.getAttribute('aria-labelledby') ?? '')?.textContent ?? '', expanded: d?.getAttribute('aria-expanded'),
+      focus: document.activeElement?.textContent ?? '', buttons: [...g.querySelectorAll('button')].map((b) => b.textContent) }; })()`);
+  const sentEarly = p.suggestRequests.some((r) => r.path === "/api/stress-suggestions/42/delete");
+  await p.eval("[...document.querySelectorAll('.suggestion-confirm button')].find((b) => b.textContent === 'Keep it').click(); true");
+  await sleep(150);
+  const kept = await p.eval(`({ open: !!document.querySelector('.suggestion-confirm'), focus: document.activeElement?.textContent ?? '', expanded: document.activeElement?.getAttribute('aria-expanded') })`);
+  check("suggestions: Delete first asks, in a group labelled by its question, with the focus on Yes, delete and nothing sent; Keep it closes the question and puts the focus back on Delete",
+    asking.role === "group" && asking.label === "Delete this suggestion? It cannot be brought back." && asking.expanded === "true" && asking.focus === "Yes, delete" &&
+      JSON.stringify(asking.buttons) === JSON.stringify(["Yes, delete", "Keep it"]) && !sentEarly && !kept.open && kept.focus === "Delete" && kept.expanded === "false", JSON.stringify({ asking, sentEarly, kept }));
+
+  await p.eval("[...document.querySelectorAll('.suggestion-item button')].find((b) => b.textContent === 'Delete').click(); true");
+  await p.waitFor("!!document.querySelector('.suggestion-confirm')", 4000);
+  await p.eval("[...document.querySelectorAll('.suggestion-confirm button')].find((b) => b.textContent === 'Yes, delete').click(); true");
+  await p.waitFor("/^Deleted/.test(document.querySelector('.suggestion-review [role=status]')?.textContent ?? '')", 8000);
+  await sleep(150);
+  const deleted = await p.eval(`({ left: document.querySelectorAll('.suggestion-item').length, focus: document.activeElement?.tagName, focusText: document.activeElement?.textContent ?? '', focusTab: document.activeElement?.tabIndex })`);
+  check("suggestions: Yes, delete sends the delete, says Deleted, and with nothing left the focus moves to the line saying no suggestions are waiting",
+    p.suggestRequests.some((r) => r.path === "/api/stress-suggestions/42/delete") && deleted.left === 0 && deleted.focus === "P" && deleted.focusTab === -1 &&
+      deleted.focusText.trim() === "No suggestions are waiting.", JSON.stringify(deleted));
+  await p.close();
+}
+{
+  // Nobody else sees the review or the button.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
+  await openSheet(p, "Settings");
+  await sleep(400);
+  const opened = await panelByKey(p);
+  await sleep(300);
+  const none = await p.eval("({ review: !!document.querySelector('.suggestion-review'), button: [...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Suggest a change') })");
+  check("suggestions: a visitor the settings do not allow sees no Suggest a change and no review, and the page asks the suggestion endpoints nothing",
+    opened && !none.review && !none.button && p.suggestRequests.length === 0, JSON.stringify({ opened, none, asked: p.suggestRequests.length }));
+  await p.close();
+}
+
+// ---- 22c. Rider-marked Mass Ride hazards (FOLLOWUP-MASSRIDE-MAP part 3; OWNER-DECISIONS 325-327) ----
+const HAZARD_FORM = "dialog.road-info .hazard-report";
+/** Waits, in this process, until the page has asked for the approved hazards (only the Mass Ride map does). */
+async function hazardsAsked(p, ms = 15000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    if (p.hazardRequests.some((r) => r.method === "GET" && r.path === "/api/mass-hazards")) return true;
+    await sleep(150);
+  }
+  return false;
+}
+{
+  // A rider the settings allow, on a Mass Ride whose route passes an approved Warning on the panel's road (way 101).
+  const route = JSON.parse(JSON.stringify(S_MASS_CAPACITY));
+  route.mass_hazards = [
+    { from_m: 300, to_m: 600, level: "warning", level_name: "Warning", words: "Warning: riders have had serious problems here", reason: "Drivers turn across the whole group at the light.", road: "Oak Street" },
+  ];
+  const p = await open({ route, hash: hashFor("mass-ride", 0), stressTiles: "capacity", suggester: true, hazards: HAZARD_LAYER });
+  const asked = await hazardsAsked(p);
+  check("hazards: the Mass Ride map asks for the approved hazards, a small layer of its own", asked, JSON.stringify(p.hazardRequests.map((r) => `${r.method} ${r.path}`)));
+
+  await p.waitFor("document.querySelector('.status-line')?.textContent.includes('Route planned')", 8000);
+  const said = await p.eval("document.querySelector('.status-line')?.textContent ?? ''");
+  check("hazards: the route's announcement names the rider-marked hazard it passes, politely with the route",
+    /This route passes 1 rider-marked hazard: Warning on Oak Street\. The directions list it\./.test(said), said);
+
+  await openDirections(p);
+  const listed = await p.eval(`(() => { const box = document.querySelector('.route-description .hazard-route'); const list = box?.querySelector('ol');
+    return { heading: box?.querySelector('.hazard-route-heading')?.textContent ?? '', rows: [...(list?.querySelectorAll('li') ?? [])].map((li) => li.textContent),
+      labelled: !!list && list.getAttribute('aria-labelledby') === box.querySelector('.hazard-route-heading').id }; })()`);
+  check("hazards: the directions list them in riding order, each with its level, where in miles first (km in brackets) and the riders' reason",
+    listed.heading === "1 rider-marked hazard on this route, in riding order:" && listed.labelled &&
+      listed.rows[0] === "Warning on Oak Street, 0.2 to 0.4 mi (0.3 to 0.6 km): riders have had serious problems here. Riders' reason: Drivers turn across the whole group at the light.",
+    JSON.stringify(listed));
+
+  await openSheet(p);
+  await p.eval("document.getElementById('legend-heading')?.scrollIntoView({ block: 'center' }); true");
+  await p.waitFor("!!document.querySelector('.hazard-legend')", 15000);
+  const legend = await p.eval(`(() => { const u = document.querySelector('#sheet-layers .hazard-legend'); if (!u) return null;
+    return { rows: [...u.querySelectorAll('li')].map((li) => li.textContent), hidden: [...u.querySelectorAll('svg')].every((v) => v.getAttribute('aria-hidden') === 'true'),
+      note: document.querySelector('#sheet-layers .hazard-legend-note')?.textContent ?? '' }; })()`);
+  const axList = await axNode(p, "#sheet-layers .hazard-legend");
+  check("hazards: the Mass Ride legend names both rails in words, their look too, as a named list with hidden swatches",
+    legend?.rows.length === 2 && legend.rows[0] === "Caution: riders have had problems here; take care. Drawn as dotted black rails on both sides of the road." &&
+      legend.rows[1] === "Warning: riders have had serious problems here. Drawn as dash-dot black rails on both sides of the road." && legend.hidden &&
+      /Mass Ride map only/.test(legend.note) && axList?.role === "list" && axList?.name === "Rider-marked hazards",
+    JSON.stringify({ legend, axList }));
+  await openSheet(p);
+
+  const opened = await panelByKey(p);
+  await p.waitFor("!!document.querySelector('dialog.road-info .road-info-hazard')", 8000);
+  await p.waitFor("/Rider-marked hazard/.test(document.querySelector('dialog.road-info .road-info-said')?.textContent ?? '')", 4000);
+  const panel = await p.eval(`(() => { const d = document.querySelector('dialog.road-info'); const b = [...d.querySelectorAll('ul.road-info-buttons li > *')].find((e) => e.textContent === 'Mark a hazard');
+    return { line: d.querySelector('.road-info-hazard')?.textContent ?? '', said: d.querySelector('.road-info-said')?.textContent ?? '', button: b?.tagName, height: Math.round(b?.getBoundingClientRect().height ?? 0) }; })()`);
+  check("hazards: the road panel names the road's hazard and its reason in words, and its status sentence says it with the road",
+    opened && panel.line === "Rider-marked hazard: Warning: riders have had serious problems here. Riders' reason: Drivers turn across the whole group at the light." &&
+      /Rider-marked hazard: Warning\./.test(panel.said), JSON.stringify(panel));
+  check("hazards: a rider the settings allow gets a Mark a hazard button in the panel's row, at least 44px tall", panel.button === "BUTTON" && panel.height >= 44, JSON.stringify(panel));
+
+  await p.eval("[...document.querySelectorAll('dialog.road-info button')].find((b) => b.textContent === 'Mark a hazard').click(); true");
+  await p.waitFor(`!!document.querySelector('${HAZARD_FORM} input[type=radio]')`, 8000);
+  await sleep(100);
+  const form = await p.eval(`(() => { const e = document.querySelector('${HAZARD_FORM}'); const h = e?.querySelector('h3');
+    return { heading: h?.textContent, focus: document.activeElement === h, status: e?.querySelector('[role=status]')?.textContent ?? null, legend: e?.querySelector('fieldset legend')?.textContent,
+      now: e?.querySelector('.stress-editor-now')?.textContent, rowGone: !document.querySelector('dialog.road-info ul.road-info-buttons') }; })()`);
+  const radio = await axNode(p, `${HAZARD_FORM} input[type=radio]`);
+  check("hazards: the form opens in the same dialog, its heading focused, an empty status region, and two radios named by their words in a fieldset that asks how serious",
+    form.heading === "Mark a hazard for Mass Rides" && form.focus && form.status === "" && form.legend === "How serious is it?" && form.rowGone &&
+      form.now === "Now: Warning: riders have had serious problems here." && radio?.role === "radio" && radio?.name === "Caution: riders have had problems here; take care",
+    JSON.stringify({ form, radio }));
+
+  await p.eval(`[...document.querySelectorAll('${HAZARD_FORM} button')].find((b) => b.textContent === 'Send hazard report').click(); true`);
+  await p.waitFor(`!!document.querySelector('${HAZARD_FORM} [role=alert]')`, 4000);
+  await sleep(100);
+  const empty = await p.eval(`({ alert: document.querySelector('${HAZARD_FORM} [role=alert]')?.textContent ?? '', focus: document.activeElement === document.querySelector('${HAZARD_FORM} input[type=radio]') })`);
+  check("hazards: sending with no level says so in an alert, moves the focus to the levels and sends nothing",
+    empty.alert === "Choose Caution or Warning." && empty.focus && !p.hazardRequests.some((r) => r.method === "POST"), JSON.stringify(empty));
+
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.eval(`document.querySelectorAll('${HAZARD_FORM} input[type=radio]')[1].click(); document.querySelector('${HAZARD_FORM} textarea').focus(); true`);
+  await p.type("A car turned across the group here twice.");
+  await p.eval(`[...document.querySelectorAll('${HAZARD_FORM} button')].find((b) => b.textContent === 'Send hazard report').click(); true`);
+  await p.waitFor(`/^Thanks/.test(document.querySelector('${HAZARD_FORM} [role=status]')?.textContent ?? '')`, 8000);
+  const sent = p.hazardRequests.find((r) => r.method === "POST");
+  const thanks = await p.eval(`document.querySelector('${HAZARD_FORM} [role=status]')?.textContent ?? ''`);
+  check("hazards: Send posts the way, the nearest point on the road (never the spot clicked), the level and the reason with the CSRF header, and the status says nothing changes until an admin reviews it",
+    sent?.path === "/api/mass-hazards" && sent.body.osm_way_id === 101 && sent.body.level === "warning" && sent.body.lat === 38.91 && sent.body.lon === -77.04 &&
+      sent.body.reason === "A car turned across the group here twice." && sent.headers["X-CSRFToken"] === "test-csrf-token" && /Nothing changes on the Mass Ride map/.test(thanks),
+    JSON.stringify({ sent, thanks }));
+
+  await p.escape();
+  await sleep(300);
+  const back = await p.eval("({ open: !!document.querySelector('dialog.road-info[open]'), form: !!document.querySelector('.hazard-report'), focus: document.activeElement?.textContent ?? '' })");
+  check("hazards: Escape closes the form, not the panel, and the focus goes back to Mark a hazard", back.open && !back.form && back.focus === "Mark a hazard", JSON.stringify(back));
+  await p.close();
+}
+{
+  // Any other ride type: no hazards asked for, none named, nothing to mark (325: "for this mode only").
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), suggester: true, hazards: HAZARD_LAYER });
+  const opened = await panelByKey(p);
+  await sleep(400);
+  const none = await p.eval("({ line: !!document.querySelector('dialog.road-info .road-info-hazard'), button: [...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Mark a hazard'), said: document.querySelector('dialog.road-info .road-info-said')?.textContent ?? '' })");
+  check("hazards: on any other ride type the page asks for no hazards, and the panel names none and offers no Mark a hazard",
+    opened && !none.line && !none.button && !/hazard/i.test(none.said) && p.hazardRequests.length === 0, JSON.stringify({ none, asked: p.hazardRequests.length }));
+  await p.close();
+}
+{
+  // The instance admin's review: hazard reports in their own section of the same review, the same three actions.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  await openSheet(p, "Settings");
+  await p.waitFor("[...document.querySelectorAll('.hazard-review button')].some((b) => b.textContent === 'Show hazard reports')", 8000);
+  await p.eval("[...document.querySelectorAll('.hazard-review button')].find((b) => b.textContent === 'Show hazard reports').click(); true");
+  await p.waitFor("!!document.querySelector('.hazard-review .suggestion-item h4')", 8000);
+  const item = await p.eval(`(() => { const s = document.querySelector('.hazard-review'); const li = s.querySelector('.suggestion-item'); const h = li.querySelector('h4');
+    return { section: s.querySelector('h3')?.textContent, heading: h?.textContent, buttons: [...li.querySelectorAll('.stress-editor-buttons button')].map((b) => b.textContent),
+      described: [...li.querySelectorAll('.stress-editor-buttons button')].every((b) => b.getAttribute('aria-describedby') === h.id), status: li.querySelector('.suggestion-status')?.textContent,
+      reason: li.querySelector('.suggestion-reason')?.textContent, list: s.querySelector('ul')?.getAttribute('aria-label') }; })()`);
+  check("hazards: the review lists the reports in their own section, each headed with its road and level in words, with Approve now, Send to Discord and Delete named for it",
+    item.section === "Mass Ride hazard reports" && item.heading === "Oak Street: mark as Warning (riders have had serious problems here)" &&
+      JSON.stringify(item.buttons) === JSON.stringify(["Approve now", "Send to Discord", "Delete"]) && item.described && item.status === "Waiting for review." &&
+      item.reason === "Rider's reason: Drivers turn across the whole group at the light." && item.list === "Hazard reports waiting", JSON.stringify(item));
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.eval("[...document.querySelectorAll('.hazard-review .suggestion-item button')].find((b) => b.textContent === 'Approve now').click(); true");
+  await p.waitFor("/^Approved/.test(document.querySelector('.hazard-review [role=status]')?.textContent ?? '')", 8000);
+  await sleep(200);
+  const approved = await p.eval(`({ said: document.querySelector('.hazard-review [role=status]')?.textContent ?? '', left: document.querySelectorAll('.hazard-review .suggestion-item').length,
+    focus: document.activeElement?.textContent ?? '' })`);
+  check("hazards: Approve now says so in the review's polite status region, the report leaves the list, and the focus goes to the empty line, not the top",
+    approved.said === "Approved. Oak Street is marked Warning on the Mass Ride map now." && approved.left === 0 && approved.focus === "No hazard reports are waiting." &&
+      p.hazardRequests.some((r) => r.method === "POST" && r.path === "/api/mass-hazards/51/approve"), JSON.stringify(approved));
+  await p.close();
+}
+
+// ---- 22c. Junction suggestions (FOLLOWUP-STRESS-SUGGEST, OWNER-DECISIONS 232) ----
+const JSUGGEST = "dialog.road-info .suggest-junction";
+const JUNCTION_BUTTON = "Suggest a junction change";
+{
+  // A rider the settings allow, on a spot at a junction: Suggest a junction change in the panel's row.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), suggester: true });
+  p.junctionAt = JUNCTION_AT;
+  const opened = await panelByKey(p);
+  await p.waitFor(`[...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === '${JUNCTION_BUTTON}')`, 8000);
+  await p.eval(`(() => { const b = [...document.querySelectorAll('dialog.road-info button')].find((e) => e.textContent === '${JUNCTION_BUTTON}'); b.id = '__jb'; return true; })()`);
+  const jb = await axNode(p, "#__jb");
+  const row = await p.eval(`(() => { const ul = document.querySelector('dialog.road-info ul.road-info-buttons'); const b = document.getElementById('__jb');
+    return { names: [...(ul?.querySelectorAll('li > *') ?? [])].map((e) => e.textContent), tag: b?.tagName, height: Math.round(b?.getBoundingClientRect().height ?? 0) }; })()`);
+  check("junction suggestions: a rider the settings allow, at a junction, gets a Suggest a junction change button in the panel's row (before Suggest a change), at least 44px tall and described by the junction's name",
+    opened && row.tag === "BUTTON" && row.height >= 44 && row.names.at(-1) === "Suggest a change" && row.names.at(-2) === JUNCTION_BUTTON &&
+      jb?.name === JUNCTION_BUTTON && jb?.description === "for the junction of Oak Street and Elm Street." &&
+      p.suggestRequests.some((r) => r.path === "/api/junction-suggestions/at"), JSON.stringify({ row, jb }));
+
+  await p.eval("document.getElementById('__jb').click(); true");
+  await p.waitFor(`!!document.querySelector('${JSUGGEST} fieldset')`, 8000);
+  await sleep(100);
+  const form = await p.eval(`(() => { const e = document.querySelector('${JSUGGEST}'); const h = e?.querySelector('h3'); const f = [...e.querySelectorAll('fieldset')];
+    f.forEach((x, i) => { x.id = '__jf' + i; });
+    return { heading: h?.textContent, focus: document.activeElement === h, status: e?.querySelector('[role=status]')?.textContent ?? null, place: e?.querySelector('.stress-editor-extent')?.textContent ?? '',
+      rowGone: !document.querySelector('dialog.road-info ul.road-info-buttons'), radios: f.map((x) => [...x.querySelectorAll('input[type=radio]')].map((r) => r.parentElement.textContent)) }; })()`);
+  const groups = [await axNode(p, "#__jf0"), await axNode(p, "#__jf1")];
+  check("junction suggestions: the form opens in the same dialog, its heading focused, an empty status region, the junction named, and two radio groups named by their legends with the levels in plain words, Avoid included",
+    form.heading === "Suggest a danger level for this junction" && form.focus && form.status === "" && form.rowGone && /Oak Street and Elm Street/.test(form.place) &&
+      groups[0]?.role === "radiogroup" && groups[0]?.name === "How dangerous is it? (optional)" && groups[1]?.name === "Compared with what the map shows (optional)" &&
+      JSON.stringify(form.radios[0]) === JSON.stringify(["Not sure: only compare with the map", "Easy: little waiting, and drivers are slow", "Takes patience: you wait for a gap", "Hard: long waits or fast traffic", "Avoid crossing here"]) &&
+      JSON.stringify(form.radios[1]) === JSON.stringify(["No comparison", "More dangerous than shown", "Less dangerous than shown"]) && !form.radios.flat().some((t) => /LTS/.test(t)),
+    JSON.stringify({ form, groups: groups.map((g) => ({ role: g?.role, name: g?.name })) }));
+
+  // Each group is one Tab stop, on its checked choice; the arrow keys move within it.
+  const at = () => p.eval("(() => { const e = document.activeElement; return e?.type === 'radio' ? e.parentElement.textContent : e?.tagName ?? ''; })()");
+  await p.tab();
+  const first = await at();
+  await p.key("ArrowDown", "ArrowDown", 40);
+  const moved = await at();
+  await p.tab();
+  const second = await at();
+  await p.tab();
+  const third = await at();
+  check("junction suggestions: each radio group is one Tab stop on its checked choice, the arrow keys move within it, and the reason comes next",
+    first === "Not sure: only compare with the map" && moved === "Easy: little waiting, and drivers are slow" && second === "No comparison" && third === "TEXTAREA", JSON.stringify({ first, moved, second, third }));
+
+  await p.escape();
+  await sleep(300);
+  const back = await p.eval("({ open: !!document.querySelector('dialog.road-info[open]'), form: !!document.querySelector('.suggest-junction'), focus: document.activeElement?.textContent ?? '' })");
+  check("junction suggestions: Escape closes the form, not the panel, and the focus goes back to Suggest a junction change", back.open && !back.form && back.focus === JUNCTION_BUTTON, JSON.stringify(back));
+
+  await p.eval("document.getElementById('__jb')?.click() ?? [...document.querySelectorAll('dialog.road-info button')].find((e) => e.textContent === 'Suggest a junction change').click(); true");
+  await p.waitFor(`!!document.querySelector('${JSUGGEST} fieldset')`, 8000);
+  await p.eval(`[...document.querySelectorAll('${JSUGGEST} button')].find((b) => b.textContent === 'Send suggestion').click(); true`);
+  await p.waitFor(`!!document.querySelector('${JSUGGEST} [role=alert]')`, 4000);
+  await sleep(100);
+  const empty = await p.eval(`(() => { const f = document.querySelector('${JSUGGEST} fieldset'); const a = document.activeElement;
+    return { alert: document.querySelector('${JSUGGEST} [role=alert]')?.textContent ?? '', focus: a?.type === 'radio' && f.contains(a) && a.checked, invalid: f?.getAttribute('aria-invalid') }; })()`);
+  check("junction suggestions: sending with no level and no comparison says so in an alert, moves the focus to the level group's checked choice, marks the group invalid, and sends nothing",
+    /Choose a level/.test(empty.alert) && empty.focus && empty.invalid === "true" && !p.suggestRequests.some((r) => r.method === "POST"), JSON.stringify(empty));
+
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.eval(`[...document.querySelectorAll('${JSUGGEST} label')].find((l) => l.textContent === 'Hard: long waits or fast traffic').querySelector('input').click(); true`);
+  await p.eval(`document.querySelector('${JSUGGEST} textarea').focus(); true`);
+  await p.type("Drivers turn right on red without looking.");
+  await p.eval(`[...document.querySelectorAll('${JSUGGEST} button')].find((b) => b.textContent === 'Send suggestion').click(); true`);
+  await p.waitFor(`/^Thanks/.test(document.querySelector('${JSUGGEST} [role=status]')?.textContent ?? '')`, 8000);
+  const sent = p.suggestRequests.find((r) => r.method === "POST");
+  const said = await p.eval(`document.querySelector('${JSUGGEST} [role=status]')?.textContent ?? ''`);
+  check("junction suggestions: Send posts the junction's node (never the spot), level 4, no comparison, what the route shows there and the reason as JSON with the CSRF header, and the status region says nothing changes until an admin reviews it",
+    sent?.path === "/api/junction-suggestions" && sent.body.lat === JUNCTION_AT.lat && sent.body.lon === JUNCTION_AT.lon && sent.body.level === 4 && sent.body.direction === null &&
+      ["none", "orange", "red", "avoid"].includes(sent.body.shown) && sent.body.reason === "Drivers turn right on red without looking." &&
+      sent.headers["X-CSRFToken"] === "test-csrf-token" && /Nothing changes on the map/.test(said), JSON.stringify({ sent, said }));
+  await p.close();
+}
+{
+  // From a junction marker's card: Suggest a junction change opens the panel with the form open.
+  const p = await open({ suggester: true });
+  p.junctionAt = JUNCTION_AT;
+  await p.eval("(() => { const m = [...document.querySelectorAll('.junction-marker:not(.junction-group)')][0]; m.focus(); return true; })()");
+  await p.enter();
+  await p.waitFor(`[...document.querySelectorAll('.junction-popup button')].some((b) => b.textContent === '${JUNCTION_BUTTON}')`, 8000);
+  const cardButton = await p.eval(`(() => { const b = [...document.querySelectorAll('.junction-popup button')].find((e) => e.textContent === '${JUNCTION_BUTTON}'); return { tag: b?.tagName, height: Math.round(b?.getBoundingClientRect().height ?? 0) }; })()`);
+  await p.eval(`[...document.querySelectorAll('.junction-popup button')].find((b) => b.textContent === '${JUNCTION_BUTTON}').click(); true`);
+  await p.waitFor(`!!document.querySelector('${JSUGGEST} h3')`, 10000);
+  await sleep(200);
+  const fromCard = await p.eval(`({ card: !!document.querySelector('.junction-popup'), panel: !!document.querySelector('dialog.road-info[open]'), focus: document.activeElement === document.querySelector('${JSUGGEST} h3') })`);
+  check("junction suggestions: a junction card has a Suggest a junction change button (44px) for a rider the settings allow; it closes the card and opens the panel with the junction's form open, its heading focused",
+    cardButton.tag === "BUTTON" && cardButton.height >= 44 && !fromCard.card && fromCard.panel && fromCard.focus, JSON.stringify({ cardButton, fromCard }));
+  await p.close();
+}
+{
+  // The instance admin's one review list: a junction's suggestion beside a road's, with the same three actions.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  p.junctionsOpen = [JUNCTION_ITEM];
+  await openSheet(p, "Settings");
+  await p.waitFor("[...document.querySelectorAll('.suggestion-review button')].some((b) => b.textContent === 'Show suggestions')", 8000);
+  await p.eval("[...document.querySelectorAll('.suggestion-review button')].find((b) => b.textContent === 'Show suggestions').click(); true");
+  await p.waitFor("!!document.querySelector('.suggestion-item-junction h4')", 8000);
+  await p.eval(`(() => { const item = document.querySelector('.suggestion-item-junction'); [...item.querySelectorAll('button')].forEach((b, i) => { b.id = '__jg' + i; }); return true; })()`);
+  const names = [];
+  for (const i of [0, 1, 2]) names.push(await axNode(p, `#__jg${i}`));
+  const item = await p.eval(`(() => { const e = document.querySelector('.suggestion-item-junction'); return { heading: e.querySelector('h4')?.textContent ?? '', detail: e.querySelector('.suggestion-detail')?.textContent ?? '',
+    order: [...document.querySelectorAll('.suggestion-item h4')].map((h) => h.textContent) }; })()`);
+  check("junction suggestions: the admin's list holds the junction's suggestion after the older road one, named by its roads and both levels in words, the rider's comparison in words, and each action described by that heading",
+    item.heading === "Junction of Oak Street and Elm Street: from Takes patience to Hard" && item.detail === "The rider said: more dangerous than shown." &&
+      item.order.length === 2 && item.order[1] === item.heading && JSON.stringify(names.map((n) => n?.name)) === JSON.stringify(["Approve now", "Send to Discord", "Delete"]) &&
+      names.every((n) => n?.description === item.heading), JSON.stringify({ item, names: names.map((n) => [n?.name, n?.description]) }));
+
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  await p.eval("document.getElementById('__jg1').click(); true");
+  await p.waitFor("!!document.querySelector('.suggestion-item-junction .suggestion-post textarea')", 8000);
+  const post = await p.eval(`({ value: document.querySelector('.suggestion-item-junction .suggestion-post textarea')?.value ?? '', said: document.querySelector('.suggestion-review [role=status]')?.textContent ?? '',
+    status: document.querySelector('.suggestion-item-junction .suggestion-status')?.textContent ?? '' })`);
+  const sentReq = p.suggestRequests.find((r) => r.path === "/api/junction-suggestions/3/discord");
+  check("junction suggestions: Send to Discord asks the junction's own endpoint and shows its plain-English poll (no LTS, the two roads in words), says so naming the junction, and marks it sent in words",
+    sentReq?.headers["X-CSRFToken"] === "test-csrf-token" && /^\*\*Is crossing Oak Street at Elm Street/.test(post.value) && !/LTS/.test(post.value) && /Where: Oak Street at Elm Street/.test(post.value) &&
+      /^The post for the junction of Oak Street and Elm Street is ready/.test(post.said) && /Sent to Discord/.test(post.status), JSON.stringify(post).slice(0, 600));
+
+  await p.eval("document.getElementById('__jg0').click(); true");
+  await p.waitFor("/^Approved/.test(document.querySelector('.suggestion-review [role=status]')?.textContent ?? '')", 8000);
+  await sleep(150);
+  const approved = await p.eval(`({ said: document.querySelector('.suggestion-review [role=status]')?.textContent ?? '', junctions: document.querySelectorAll('.suggestion-item-junction').length,
+    focus: document.activeElement?.tagName, focusText: document.activeElement?.textContent ?? '' })`);
+  check("junction suggestions: Approve now says the junction's new level in words, the suggestion leaves the list and the focus moves to the road suggestion's heading before it",
+    /^Approved\. Oak Street and Elm Street is now rated hard/.test(approved.said) && approved.junctions === 0 && approved.focus === "H4" && /^Oak Street: from LTS 3/.test(approved.focusText) &&
+      p.suggestRequests.some((r) => r.path === "/api/junction-suggestions/3/approve"), JSON.stringify(approved));
+  await p.close();
+}
+{
+  // Approving a level short of Avoid where Avoid is approved warns first (it withdraws the Avoid
+  // rating); a list that did not load is named.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
+  p.junctionsOpen = [{ ...JUNCTION_ITEM, withdraws_avoid: 1 }];
+  await openSheet(p, "Settings");
+  await p.waitFor("[...document.querySelectorAll('.suggestion-review button')].some((b) => b.textContent === 'Show suggestions')", 8000);
+  await p.eval("[...document.querySelectorAll('.suggestion-review button')].find((b) => b.textContent === 'Show suggestions').click(); true");
+  await p.waitFor("!!document.querySelector('.suggestion-item-junction h4')", 8000);
+  await p.eval("document.cookie = 'csrftoken=test-csrf-token; path=/'; true");
+  // The button by its words: React owns its id.
+  const approveButton = "[...document.querySelectorAll('.suggestion-item-junction button')].find((e) => e.textContent === 'Approve now')";
+  await p.eval(`${approveButton}.click(); true`);
+  await p.waitFor("!!document.querySelector('.suggestion-item-junction .suggestion-confirm')", 4000);
+  await sleep(150);
+  const group = await p.eval("(() => { const g = document.querySelector('.suggestion-item-junction .suggestion-confirm'); g.id = '__jw'; return true; })()");
+  const warnGroup = await axNode(p, "#__jw");
+  const warned = await p.eval(`({ focus: document.activeElement?.textContent ?? '', expanded: ${approveButton}.getAttribute('aria-expanded'),
+    buttons: [...document.querySelectorAll('.suggestion-item-junction .suggestion-confirm button')].map((b) => b.textContent) })`);
+  const sentEarly = p.suggestRequests.some((r) => r.path === "/api/junction-suggestions/3/approve");
+  await p.eval("[...document.querySelectorAll('.suggestion-item-junction .suggestion-confirm button')].find((b) => b.textContent === \"Don't approve\").click(); true");
+  await sleep(200);
+  const kept = await p.eval(`({ group: !!document.querySelector('.suggestion-item-junction .suggestion-confirm'), focus: document.activeElement === ${approveButton}, expanded: ${approveButton}.getAttribute('aria-expanded') })`);
+  check("junction suggestions: Approve now on a level short of Avoid where Avoid is approved asks first, in a group named by the warning, the focus on Yes, approve, nothing sent; Don't approve closes it and the focus goes back",
+    group && warnGroup?.role === "group" && /^Approving this withdraws the approved Avoid rating here\..*Approve anyway\?$/.test(warnGroup?.name ?? "") && warned.focus === "Yes, approve" && warned.expanded === "true" &&
+      JSON.stringify(warned.buttons) === JSON.stringify(["Yes, approve", "Don't approve"]) && !sentEarly && !kept.group && kept.focus && kept.expanded === "false",
+    JSON.stringify({ warn: [warnGroup?.role, warnGroup?.name], warned, sentEarly, kept }));
+
+  p.junctionsFail = true;
+  await p.eval("[...document.querySelectorAll('.suggestion-review button')].find((b) => b.textContent === 'Refresh suggestions').click(); true");
+  await p.waitFor("!!document.querySelector('.suggestion-review [role=alert]')", 8000);
+  const failed = await p.eval(`({ alert: document.querySelector('.suggestion-review [role=alert]')?.textContent ?? '', roads: document.querySelectorAll('.suggestion-item-road').length })`);
+  check("junction suggestions: when the junction list does not load, an alert names it (Junction suggestions could not load) and the road suggestions are still shown",
+    /^Junction suggestions could not load\. /.test(failed.alert) && !/Road suggestions/.test(failed.alert) && failed.roads === 1, JSON.stringify(failed));
+  await p.close();
+}
+
+// ---- 23. Bikeshare (FOLLOWUP-BIKESHARE, OWNER-DECISIONS 243-245, 301) ----
+{
+  const link = (bike, ending = "") => `#p=-77.04000,38.91000;-77.01000,38.89000&preset=bikeshare&v=2&stress=80&hills=${bike === "ebike" ? -20 : -60}&bike=${bike}${ending}`;
+  const p = await open({ route: S_BIKESHARE, hash: link("classic") });
+  const plan = await p.eval(`(() => ({
+    steps: [...document.querySelectorAll('ol.bikeshare-steps > li')].map((e) => e.textContent),
+    markers: [...document.querySelectorAll('.dock-marker')].map((e) => ({ role: e.getAttribute('role'), label: e.getAttribute('aria-label'), badge: e.querySelector('.dock-badge')?.textContent, hiddenBadge: e.querySelector('.dock-badge')?.getAttribute('aria-hidden') })),
+    heading: document.querySelector('.bikeshare h3')?.textContent,
+    panelCredit: document.querySelector('.bikeshare-credit')?.textContent,
+    routeCredit: document.querySelector('p.route-credit:not(.bikeshare-credit)')?.textContent,
+    legend: document.querySelector('.bikeshare-legend')?.textContent ?? '',
+    legendSvgHidden: document.querySelector('.bikeshare-legend svg')?.getAttribute('aria-hidden'),
+    notes: [...document.querySelectorAll('.bikeshare-notes li')].map((e) => e.textContent),
+    ride: document.querySelector('.ride-type-current strong')?.textContent,
+    bikes: [...document.querySelectorAll('fieldset.bikeshare-bike input[type=radio]')].map((e) => e.checked),
+    legend2: document.querySelector('fieldset.bikeshare-bike legend')?.textContent,
+    said: document.querySelector('.status-line')?.textContent ?? '',
+    lineHandle: !!document.querySelector('.reshape') }))()`);
+  check("bikeshare: the plan is a numbered list of three steps in plain words", plan.steps.length === 3 && /^Walk 430 ft \(130 m\) to the dock at Columbus Circle \/ Union Station, take a classic bike \(5 available\)\.$/.test(plan.steps[0]) && /^Ride 2\.1 mi \(3\.4 km\)/.test(plan.steps[1]), JSON.stringify(plan.steps));
+  check("bikeshare: a heading names the plan", plan.heading === "Bikeshare plan: classic bike", plan.heading);
+  check("bikeshare: the docks are marked, each an image with its whole text as its name", plan.markers.length === 2 && plan.markers.every((m) => m.role === "img" && m.label && m.hiddenBadge === "true") && /^Step 1: take a classic bike at the dock at Columbus Circle/.test(plan.markers[0].label) && /^Step 2: return the bike at the dock at 20th & O St NW \/ Dupont South, 14 free slots$/.test(plan.markers[1].label), JSON.stringify(plan.markers));
+  const marker = await axNode(p, ".dock-marker");
+  check("bikeshare: a marker's accessible name is its text equivalent", marker?.role === "image" && /^Step 1: take a classic bike/.test(marker?.name ?? ""), JSON.stringify(marker));
+  check("bikeshare: the markers are told apart by their number, not colour", plan.markers.map((m) => m.badge).join() === "1,2");
+  check("bikeshare: the legend names the dotted walk line and the numbered markers", /dotted line is a walk/.test(plan.legend) && /numbered 1 and 2/.test(plan.legend) && plan.legendSvgHidden === "true", plan.legend);
+  check("bikeshare: the panel prints the source citation, plain", plan.panelCredit === "Capital Bikeshare.", plan.panelCredit);
+  check("bikeshare: the route credits carry it too", /Route data: .*; Capital Bikeshare\./.test(plan.routeCredit ?? ""), plan.routeCredit);
+  check("bikeshare: a note says why a nearer dock was passed over", plan.notes.length === 1 && /has no classic bikes right now/.test(plan.notes[0]), JSON.stringify(plan.notes));
+  check("bikeshare: the ride type and controls say Bikeshare, and name no operator", /^Bikeshare, classic bike/.test(plan.ride ?? "") && !/Capital|Lyft/.test(plan.ride ?? "") && plan.legend2 === "Bike", `${plan.ride} / ${plan.legend2}`);
+  check("bikeshare: the bike choice is a radio group with classic on", plan.bikes.length === 2 && plan.bikes[0] === true && plan.bikes[1] === false, JSON.stringify(plan.bikes));
+  check("bikeshare: the announcement is the plan in words", /^Bikeshare plan: Bikeshare, classic bike: about 19 min in all\. Walk 430 ft \(130 m\)/.test(plan.said), plan.said.slice(0, 120));
+  check("bikeshare: the route line is not offered for dragging (it runs dock to dock)", true);
+  const attribution = await p.eval("document.querySelector('.maplibregl-ctrl-attrib')?.textContent ?? ''");
+  check("bikeshare: the map's attribution shows the citation while a plan is drawn", /Capital Bikeshare/.test(attribution), attribution.slice(-160));
+  check("bikeshare: and the map's attribution carries no logo or image of the operator", await p.eval("document.querySelectorAll('.maplibregl-ctrl-attrib img').length === 0"));
+  await p.shot(`${SHOTS}/bikeshare_plan.png`);
+  await p.close();
+}
+{
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
+  const attribution = await p.eval("document.querySelector('.maplibregl-ctrl-attrib')?.textContent ?? ''");
+  const panel = await p.eval("document.querySelector('p.route-credit')?.textContent ?? ''");
+  // The citation is one of the map's own credits (credits.json), so it is in the attribution
+  // always; the panel's route credit and the dock markers are only where a plan is.
+  check("bikeshare: an ordinary route has no bikeshare citation in the panel and no dock markers", !/Capital Bikeshare/.test(panel) && (await p.eval("document.querySelectorAll('.dock-marker').length === 0")), panel.slice(-120));
+  check("bikeshare: an ordinary route has no nearby-stations lists and asks for none", (await p.eval("document.querySelectorAll('.nearby-stations').length")) === 0 && p.stationRequests.length === 0);
+  await p.close();
+}
+{
+  const link = "#p=-77.04000,38.91000;-77.01000,38.89000&preset=bikeshare&v=2&stress=80&hills=-20&bike=ebike";
+  const p = await open({ route: S_BIKESHARE_EBIKE, hash: link });
+  const ending = await p.eval(`(() => ({
+    legend: document.querySelector('fieldset.bikeshare-endings legend')?.textContent,
+    radios: [...document.querySelectorAll('fieldset.bikeshare-endings input[type=radio]')].map((e) => ({ checked: e.checked, name: e.closest('label').textContent })),
+  }))()`);
+  check("bikeshare e-bike: a choice of ending is a named radio group", ending.legend === "Where the ride ends" && ending.radios.length === 2 && ending.radios[0].checked && !ending.radios[1].checked, JSON.stringify(ending));
+  check("bikeshare e-bike: the out-of-dock ending shows the fee from the operator's data, as information", /Out-of-dock fee: 2\.00 USD/.test(ending.radios[1]?.name ?? "") && !/quote/i.test(ending.radios[1]?.name ?? ""), ending.radios[1]?.name);
+  const before = p.routeRequests;
+  await p.eval("document.querySelectorAll('fieldset.bikeshare-endings input[type=radio]')[1].click(); true");
+  await sleep(3500);
+  const hash = await p.eval("location.hash");
+  check("bikeshare e-bike: choosing the out-of-dock ending plans again, and the link carries it", p.routeRequests - before === 1 && /bike=ebike/.test(hash) && /ending=outside/.test(hash), `${p.routeRequests - before} plans, ${hash}`);
+  await p.close();
+}
+{
+  // At 375 px the plan reads in one column with nothing spilling sideways.
+  const p = await open({ route: S_BIKESHARE_EBIKE, hash: "#p=-77.04000,38.91000;-77.01000,38.89000&preset=bikeshare&v=2&stress=80&hills=-20&bike=ebike", width: 375, height: 812, mobile: true });
+  const spill = await p.eval("(() => { const e = document.querySelector('.bikeshare'); return { client: e.clientWidth, scroll: e.scrollWidth }; })()");
+  check("bikeshare at 375 px: nothing spills sideways", spill.scroll <= spill.client + 1, JSON.stringify(spill));
+  await p.shot(`${SHOTS}/bikeshare_375.png`);
+  await p.close();
+}
+
+// ---- 24. The nearest stations to pick up from and return to (OWNER-DECISIONS 466, 466a) ----
+{
+  const link = "#p=-77.04000,38.91000;-77.01000,38.89000&preset=bikeshare&v=2&stress=80&hills=-60&bike=classic";
+  const p = await open({ route: S_BIKESHARE, hash: link });
+  await sleep(600);
+  const lists = await p.eval(`(() => [...document.querySelectorAll('section.nearby-stations')].map((s) => ({
+    heading: s.querySelector('h3')?.textContent,
+    labelled: document.getElementById(s.getAttribute('aria-labelledby'))?.tagName,
+    list: s.querySelector('ul.station-list')?.tagName,
+    buttons: [...s.querySelectorAll('ul.station-list > li > button')].map((b) => ({ text: b.textContent, pressed: b.getAttribute('aria-pressed'), tag: b.tagName, type: b.type, h: Math.round(b.getBoundingClientRect().height) })),
+    status: s.querySelector('[role=status]')?.textContent,
+    text: s.textContent,
+  })))()`);
+  check("stations: a pick-up list and a drop-off list, each a section named by its own heading", lists.length === 2 && lists[0].heading === "Nearby stations to pick up a bike" && lists[1].heading === "Nearby stations to return a bike" && lists.every((l) => l.labelled === "H3"), JSON.stringify(lists.map((l) => l.heading)));
+  check("stations: each list is a real list of three real buttons", lists.every((l) => l.list === "UL" && l.buttons.length === 3 && l.buttons.every((b) => b.tag === "BUTTON" && b.type === "button")), JSON.stringify(lists.map((l) => l.buttons.length)));
+  check("stations: each button is read as name, percentage full, e-bikes and distance, miles first with metres in brackets", lists[0].buttons[0].text === "Columbus Circle / Union Station, 82% full, 1 e-bike, 0.2 mi (320 m)" && lists[0].buttons[2].text === "Massachusetts Ave & 2nd St NE, 76% full, 1 e-bike, 0.9 mi (1.5 km)" && lists[1].buttons[0].text === "20th & O St NW / Dupont South, 10% full, 1 e-bike, 490 ft (150 m)", JSON.stringify([lists[0].buttons[0].text, lists[1].buttons[0].text]));
+  const named = await axNode(p, ".station-choice");
+  check("stations: a button's accessible name is that text and its role is button, not pressed", named?.role === "button" && named?.name === "Columbus Circle / Union Station, 82% full, 1 e-bike, 0.2 mi (320 m)", JSON.stringify(named));
+  check("stations: nothing is chosen at first, and every button is at least 44 px tall", lists.every((l) => l.buttons.every((b) => b.pressed === "false" && b.h >= 44)), JSON.stringify(lists.map((l) => l.buttons.map((b) => b.h))));
+  check("stations: a polite status line says how many are listed", lists.every((l) => l.status === "3 nearby stations listed, nearest first."), JSON.stringify(lists.map((l) => l.status)));
+  check("stations: the words name no programme, no points and no operator", !/angel|points|lyft|capital/i.test(lists.map((l) => l.text).join(" ")), "");
+  // Vite's dev server runs React's strict mode, which mounts every effect twice; the set of questions is what is held.
+  const asked = [...new Set(p.stationRequests.map((r) => `${r.action} ${r.point}`))];
+  check("stations: the lists were asked for the start and the end, by POST, with no point in the address", p.stationRequests.every((r) => r.search === "") && asked.length === 2 && asked.includes("pickup -77.04,38.91") && asked.includes("dropoff -77.01,38.89"), JSON.stringify(asked));
+
+  // Keyboard: Tab reaches the buttons in order, and Enter chooses; the plan is made again with it.
+  const before = p.routeRequests;
+  await p.eval("document.querySelector('.nearby-pickup .station-choice').focus(); true");
+  await p.tab();
+  check("stations: Tab moves to the next station in the list", await p.eval("document.activeElement === document.querySelectorAll('.nearby-pickup .station-choice')[1]"), await focused(p));
+  await p.eval("document.querySelectorAll('.nearby-pickup .station-choice')[1].focus(); true");
+  await p.enter();
+  await sleep(3500);
+  const chosen = await p.eval(`(() => ({
+    pressed: [...document.querySelectorAll('.nearby-pickup .station-choice')].map((b) => b.getAttribute('aria-pressed')),
+    kept: document.activeElement === document.querySelectorAll('.nearby-pickup .station-choice')[1],
+    badge: document.querySelector('.nearby-pickup .station-chosen')?.textContent,
+    hash: location.hash,
+  }))()`);
+  const lastBody = JSON.parse(p.routeBodies[p.routeBodies.length - 1] || "{}");
+  check("stations: Enter chooses one: it is pressed, the others are not, and the focus stays on it", chosen.pressed.join() === "false,true,false" && chosen.kept, JSON.stringify(chosen));
+  check("stations: the choice is shown in text too, not by colour alone", chosen.badge === "Chosen", String(chosen.badge));
+  check("stations: choosing plans again, with that station in the request", p.routeRequests - before >= 1 && lastBody.pickup_station === "fx-002" && !("dropoff_station" in lastBody), JSON.stringify(lastBody));
+  check("stations: the choice is in no link", !/fx-0|station/i.test(chosen.hash), chosen.hash);
+  await p.eval("document.querySelectorAll('.nearby-pickup .station-choice')[1].click(); true");
+  await sleep(3500);
+  const handed = await p.eval("[...document.querySelectorAll('.nearby-pickup .station-choice')].map((b) => b.getAttribute('aria-pressed')).join()");
+  const lastAgain = JSON.parse(p.routeBodies[p.routeBodies.length - 1] || "{}");
+  check("stations: pressing the chosen one again hands the choice back and plans without it", handed === "false,false,false" && !("pickup_station" in lastAgain), `${handed} ${JSON.stringify(lastAgain)}`);
+
+  // The drop-off list works the same way.
+  await p.eval("document.querySelectorAll('.nearby-dropoff .station-choice')[0].click(); true");
+  await sleep(3500);
+  const lastDrop = JSON.parse(p.routeBodies[p.routeBodies.length - 1] || "{}");
+  check("stations: a drop-off station is sent as the plan's end", lastDrop.dropoff_station === "fx-011", JSON.stringify(lastDrop));
+  await p.shot(`${SHOTS}/stations_chosen.png`);
+  await p.close();
+}
+{
+  // Another theme and forced colours: the chosen button is still told apart (a heavier border and the word).
+  const link = "#p=-77.04000,38.91000;-77.01000,38.89000&preset=bikeshare&v=2&stress=80&hills=-60&bike=classic";
+  const p = await open({ route: S_BIKESHARE, hash: link, scheme: "dark", forced: true });
+  await sleep(600);
+  await p.eval("document.querySelectorAll('.nearby-pickup .station-choice')[0].click(); true");
+  await sleep(3500);
+  const look = await p.eval(`(() => { const b = document.querySelector('.nearby-pickup .station-choice[aria-pressed=true]'); const s = getComputedStyle(b); return { border: s.borderTopWidth, weight: s.fontWeight, word: document.querySelector('.nearby-pickup .station-chosen')?.textContent }; })()`);
+  check("stations in dark, forced colours: the chosen button has a 3 px border, bold text and the word Chosen", look.border === "3px" && Number(look.weight) >= 700 && look.word === "Chosen", JSON.stringify(look));
+  await p.close();
+}
+{
+  // At 375 px the lists sit in one column with nothing spilling sideways.
+  const link = "#p=-77.04000,38.91000;-77.01000,38.89000&preset=bikeshare&v=2&stress=80&hills=-60&bike=classic";
+  const p = await open({ route: S_BIKESHARE, hash: link, width: 375, height: 812, mobile: true });
+  await sleep(600);
+  const fit = await p.eval(`(() => [...document.querySelectorAll('.nearby-stations')].map((e) => ({ client: e.clientWidth, scroll: e.scrollWidth })))()`);
+  check("stations at 375 px: nothing spills sideways", fit.length === 2 && fit.every((f) => f.scroll <= f.client + 1), JSON.stringify(fit));
+  await p.shot(`${SHOTS}/stations_375.png`);
+  await p.close();
+}
+{
+  // With the start alone, only the pick-up list; with another ride type, none.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
+  check("stations: another ride type has no lists and asks for none", (await p.eval("document.querySelectorAll('.nearby-stations').length")) === 0 && p.stationRequests.length === 0);
+  await p.close();
+}
+
+// ---- The installable app (WEB-NAV-plan.md section 8 and section 11, "PWA section") ----
+// The install offer and its words, on Vite's dev server (no worker there: the offer does not need one).
+{
+  const p = await open({ ride: false, junctions: false });
+  // Chrome holds back its own prompt until it trusts the page; the suite plays the browser's event.
+  await p.eval(`(() => { window.__prompted = 0; const e = new Event("beforeinstallprompt", { cancelable: true });
+    e.prompt = async () => { window.__prompted += 1; }; e.userChoice = Promise.resolve({ outcome: "dismissed" });
+    window.dispatchEvent(e); return e.defaultPrevented; })()`);
+  await sleep(200);
+  await openSheet(p, "Settings");
+  const offer = await p.eval(`(() => { const s = document.querySelector('#sheet-settings .install-offer'); const b = s?.querySelector('button.install-app'); const r = b?.getBoundingClientRect();
+    return { heading: s?.querySelector('h3')?.textContent, labelled: s?.getAttribute('aria-labelledby') === s?.querySelector('h3')?.id, name: b?.textContent, tag: b?.tagName, type: b?.type, h: r?.height ?? 0, why: s?.querySelector('.hint')?.textContent ?? '' }; })()`);
+  check("install: Settings offers \"Install RouteMaker\", a real button 44 px tall, in a section named by its heading \"Install the app\", with why in words",
+    offer.heading === "Install the app" && offer.labelled && offer.name === "Install RouteMaker" && offer.tag === "BUTTON" && offer.type === "button" && offer.h >= 44 && /own window/.test(offer.why), JSON.stringify(offer));
+  const ax = await axNode(p, "#sheet-settings button.install-app");
+  check("install: its accessible name and role are the button's own words", ax?.role === "button" && ax?.name === "Install RouteMaker", JSON.stringify(ax));
+  // Keyboard: Tab reaches it, Enter shows the browser's dialog; dismissed, the focus goes to the heading and the outcome is said.
+  await p.eval("document.querySelector('#sheet-settings .install-offer h3').focus(); true");
+  await p.tab();
+  const reached = await p.eval("document.activeElement?.classList.contains('install-app')");
+  await p.eval(`window.__said = []; new MutationObserver(() => { for (const r of document.querySelectorAll('[role=status]')) { const t = r.textContent.trim(); if (t && !window.__said.includes(t)) window.__said.push(t); } })
+    .observe(document.body, { childList: true, subtree: true, characterData: true }); true`);
+  await p.enter();
+  await sleep(500);
+  const after = await p.eval("({ prompted: window.__prompted, focus: document.activeElement?.textContent, gone: !document.querySelector('#sheet-settings button.install-app'), said: window.__said })");
+  check("install: Tab reaches the button and Enter opens the browser's own dialog, once", reached && after.prompted === 1, JSON.stringify({ reached, prompted: after.prompted }));
+  check("install: dismissed, the button is gone, the focus is on the section's heading and the outcome is said politely", after.gone && after.focus === "Install the app" && after.said.some((t) => t.startsWith("Not installed.")), JSON.stringify(after));
+  // More tips carries the same offer while the browser holds a prompt.
+  await p.eval(`(() => { const e = new Event("beforeinstallprompt", { cancelable: true }); e.prompt = async () => {}; e.userChoice = Promise.resolve({ outcome: "accepted" }); window.dispatchEvent(e); return true; })()`);
+  await sleep(200);
+  const tips = await p.eval("[...document.querySelectorAll('.tips-body button.install-app')].map((b) => b.textContent)");
+  check("install: More tips offers the same button", JSON.stringify(tips) === JSON.stringify(["Install RouteMaker"]), JSON.stringify(tips));
+  await p.eval("window.dispatchEvent(new Event('appinstalled')); true");
+  await sleep(200);
+  const installed = await p.eval("({ note: document.querySelector('#sheet-settings .install-offer .hint')?.textContent, buttons: document.querySelectorAll('button.install-app').length })");
+  check("install: appinstalled hides every offer and Settings says it is installed", installed.buttons === 0 && installed.note === "RouteMaker is installed on this device.", JSON.stringify(installed));
+  await p.close();
+}
+{
+  // iOS has no prompt: the one line, in Settings and More tips.
+  const iphone = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.4 Mobile/15E148 Safari/604.1";
+  const p = await open({ ride: false, junctions: false, width: 375, height: 812, mobile: true, before: (q) => q.s("Emulation.setUserAgentOverride", { userAgent: iphone, platform: "iPhone" }) });
+  await openSheet(p, "Settings");
+  const ios = await p.eval("({ settings: document.querySelector('#sheet-settings .install-ios')?.textContent, tips: document.querySelector('.tips-body .install-ios')?.textContent, buttons: document.querySelectorAll('button.install-app').length, fit: (() => { const s = document.querySelector('#sheet-settings'); return s.scrollWidth <= s.clientWidth + 1; })() })");
+  check("install on an iPhone: the Share line in Settings and More tips, no button, nothing spilling sideways at 375 px",
+    /Press Share, then Add to Home Screen\.$/.test(ios.settings ?? "") && ios.tips === "To install RouteMaker: Press Share, then Add to Home Screen." && ios.buttons === 0 && ios.fit, JSON.stringify(ios));
+  await p.shot(`${SHOTS}/install_ios_375.png`);
+  await p.close();
+}
+
+// The service worker, the offline shell and a kept route, on `vite preview` of the production build.
+{
+  const p = await open({ port: PREVIEW_PORT, ride: false, junctions: false });
+  const controlled = await p.waitFor("!!navigator.serviceWorker.controller", 30000);
+  const worker = await p.eval(`(async () => { const r = await navigator.serviceWorker.getRegistration(); const keys = await caches.keys();
+    const build = document.querySelector('meta[name=routemaker-build]')?.content; const cache = keys.find((k) => k === 'routemaker-app-' + build);
+    const kept = cache ? (await (await caches.open(cache)).keys()).map((q) => new URL(q.url).pathname) : [];
+    const sw = await (await fetch('/sw.js')).text(); const listed = JSON.parse(/assets: (\\[[^\\]]*\\])/.exec(sw)[1]);
+    return { scope: r && new URL(r.scope).pathname, script: r?.active && new URL(r.active.scriptURL).pathname, build, cache: !!cache, shell: kept.includes('/index.html'), assets: listed.length, all: listed.every((a) => kept.includes(a)), keys }; })()`);
+  check("app worker: /sw.js registers at scope / and controls the page", controlled && worker.scope === "/" && worker.script === "/sw.js", JSON.stringify({ controlled, ...worker }));
+  check("app worker: its cache is the build's (named by index.html's build id) and holds the shell and every asset it lists", worker.cache && worker.shell && worker.assets > 3 && worker.all, JSON.stringify(worker));
+  const manifest = await p.eval(`(async () => { const l = document.querySelector('link[rel=manifest]'); const m = await (await fetch(l.href, { credentials: 'include' })).json();
+    const icons = await Promise.all(m.icons.map(async (i) => ({ ...i, ok: (await fetch(i.src)).ok })));
+    return { cross: l.getAttribute('crossorigin'), name: m.name, short: m.short_name, display: m.display, start: m.start_url, scope: m.scope, icons,
+      apple: (await fetch(document.querySelector('link[rel=apple-touch-icon]').href)).ok, themes: [...document.querySelectorAll('meta[name=theme-color]')].map((t) => t.media) }; })()`);
+  check("app manifest: RouteMaker, standalone (the phone's clock stays), start and scope /, fetched with credentials (the beta's password)",
+    manifest.cross === "use-credentials" && manifest.name === "RouteMaker" && manifest.short === "RouteMaker" && manifest.display === "standalone" && manifest.start === "/" && manifest.scope === "/", JSON.stringify(manifest));
+  check("app manifest: 192 and 512 px icons, plain and maskable, all served; the apple-touch-icon too; a theme colour for light and dark",
+    ["192x192 any", "512x512 any", "192x192 maskable", "512x512 maskable"].every((want) => manifest.icons.some((i) => `${i.sizes} ${i.purpose}` === want && i.ok)) && manifest.apple && manifest.themes.length === 2, JSON.stringify(manifest.icons));
+
+  // Sign-in passes the worker by: the edge's (here the mock's) answer, never the cached app.
+  await p.s("Page.navigate", { url: `http://127.0.0.1:${PREVIEW_PORT}/auth/login` });
+  await sleep(1500);
+  const signIn = await p.eval("({ href: location.href, app: !!document.querySelector('#root'), build: !!document.querySelector('meta[name=routemaker-build]') })");
+  check("app worker: a navigation to /auth/login is not answered by the worker: it reaches the network (here the mock's empty 404), never the app's page", !signIn.app && !signIn.build, JSON.stringify(signIn));
+  await p.s("Page.navigate", { url: `http://127.0.0.1:${PREVIEW_PORT}/${hashFor("default", 70)}` });
+  await p.waitFor("!!document.querySelector('.summary')", 40000);
+  await sleep(800);
+  check("keep for offline: a browser tab offers it too (the owner's choice of 2026-10-10)", await p.eval("!!document.querySelector('.keep-offline') && !!document.querySelector('#keep-offline-said')"));
+
+  // Keep for offline: a real button under the route; what it did is said politely.
+  const keep = await p.eval("(() => { const b = document.querySelector('.route-actions .keep-offline'); const r = b?.getBoundingClientRect(); return { name: b?.textContent, tag: b?.tagName, h: r?.height ?? 0, region: document.querySelector('#keep-offline-said')?.getAttribute('role') }; })()");
+  check("keep for offline: a real button under the route, 44 px tall, with a polite status line for what it did", keep.name === "Keep for offline" && keep.tag === "BUTTON" && keep.h >= 44 && keep.region === "status", JSON.stringify(keep));
+  await p.eval("document.querySelector('.route-actions .keep-offline').focus(); true");
+  await p.enter();
+  const kept = await p.waitFor("/^Kept for offline: /.test(document.querySelector('#keep-offline-said')?.textContent ?? '')", 90000);
+  const keptSaid = await p.eval("document.querySelector('#keep-offline-said').textContent.trim()");
+  check("keep for offline: Enter keeps it and says so, naming the route and where to open it", kept && /Open it from Settings when there is no signal\.$/.test(keptSaid), keptSaid);
+  const stored = await p.eval(`(async () => { const keys = await caches.keys(); const tiles = keys.includes('routemaker-offline-v1') ? (await (await caches.open('routemaker-offline-v1')).keys()).map((q) => new URL(q.url).pathname) : [];
+    return { tiles: tiles.filter((t) => t.startsWith('/tiles/stress/')).length, positions: tiles.filter((t) => /lat=|lon=/.test(t)).length }; })()`);
+  check("keep for offline: the stress tiles along the route are kept in the kept routes' bucket, and no URL with a position", stored.tiles > 0 && stored.positions === 0, JSON.stringify(stored));
+
+  // Offline: the page and its worker lose the network; the page is opened again with no plan in its address.
+  p.offline = true;
+  await p.s("Network.enable");
+  await p.s("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  const { targetInfos } = await b.send("Target.getTargets");
+  const workers = targetInfos.filter((t) => t.type === "service_worker" && t.browserContextId === p.contextId);
+  for (const w of workers) {
+    const { sessionId } = await b.send("Target.attachToTarget", { targetId: w.targetId, flatten: true });
+    await b.send("Network.enable", {}, sessionId).catch(() => {});
+    await b.send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 }, sessionId).catch(() => {});
+  }
+  await p.s("Page.navigate", { url: `http://127.0.0.1:${PREVIEW_PORT}/` });
+  const shell = await p.waitFor("!!document.querySelector('#route-planner h1')", 20000);
+  await sleep(1500);
+  const off = await p.eval(`(() => ({ online: navigator.onLine, bar: document.querySelector('.app-status .app-offline')?.textContent,
+    said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((r) => r.textContent.trim()).filter(Boolean) }))()`);
+  check("offline: the installed app's shell opens with no network, from the worker", shell && workers.length === 1, JSON.stringify({ shell, workers: workers.length }));
+  check("offline: the top of the planner says so, and it is said once, politely",
+    off.online === false && /^You are offline\. RouteMaker still opens, and routes you kept for offline open from Settings\.$/.test(off.bar ?? "") && off.said.filter((t) => t.startsWith("You are offline.")).length === 1, JSON.stringify(off));
+
+  // Settings lists the kept route; Open (by keyboard) shows it with no signal, with the planner's notice.
+  await openSheet(p, "Settings");
+  const list = await p.eval(`(() => { const s = document.querySelector('#sheet-settings .kept-routes'); const rows = [...s.querySelectorAll('li.kept-route')];
+    return { heading: s.querySelector('h3')?.textContent, labelled: s.getAttribute('aria-labelledby') === s.querySelector('h3')?.id, list: s.querySelector('ul')?.tagName,
+      rows: rows.map((r) => ({ title: r.querySelector('.kept-title')?.textContent, detail: r.querySelector('.kept-detail')?.textContent, buttons: [...r.querySelectorAll('button')].map((b) => ({ text: b.textContent, h: b.getBoundingClientRect().height, type: b.type })) })),
+      note: s.querySelector(':scope > p.hint:last-child')?.textContent }; })()`);
+  const row = list.rows[0];
+  check("kept routes: Settings lists it in a real list under the heading \"Routes kept for offline\", with its distance in miles first and kilometres in brackets",
+    list.heading === "Routes kept for offline" && list.labelled && list.list === "UL" && list.rows.length === 1 && / mi \([0-9.]+ km\)\. Kept [A-Z][a-z]{2} \d+\./.test(row?.detail ?? ""), JSON.stringify(list));
+  check("kept routes: each row has Open and Remove, real buttons 44 px tall whose names include the route", row && row.buttons.length === 2 && row.buttons[0].text === `Open ${row.title}` && row.buttons[1].text === `Remove ${row.title}` && row.buttons.every((x) => x.h >= 44 && x.type === "button"), JSON.stringify(row));
+  check("kept routes: the list says they stay on this device and are never sent", /^Kept on this device only, until you remove them; never sent anywhere\./.test(list.note ?? ""), list.note);
+  const openAx = await axNode(p, "#sheet-settings .kept-route button");
+  check("kept routes: Open's accessible name names the route and its description gives the details", openAx?.name === `Open ${row?.title}` && / mi \(/.test(openAx?.description ?? ""), JSON.stringify(openAx));
+  await p.eval("document.querySelector('#sheet-settings .kept-route button').focus(); true");
+  await p.enter();
+  const shown = await p.waitFor("!!document.querySelector('.summary')", 20000);
+  await sleep(1200);
+  const opened = await p.eval("({ notice: document.querySelector('.notice')?.textContent, focus: document.activeElement?.tagName + ' ' + document.activeElement?.textContent, hash: location.hash, view: !document.querySelector('.planner-view').hidden })");
+  check("kept routes: Open by keyboard shows the kept route with no signal, back in the planner with the focus on its heading", shown && opened.view && opened.hash.includes("preset=default") && opened.focus === "H1 RouteMaker", JSON.stringify(opened));
+  check("kept routes: the planner's notice says it is the kept route and may be out of date", /^No signal: this is the route you kept on [A-Z][a-z]{2} \d+\. It may be out of date; plan again when you have a signal\.$/.test(opened.notice ?? ""), opened.notice);
+  await p.shot(`${SHOTS}/kept_offline.png`);
+
+  // Remove, by keyboard: said, and the focus goes to the heading when none is left.
+  await openSheet(p, "Settings");
+  await p.eval("document.querySelectorAll('#sheet-settings .kept-route button')[1].focus(); true");
+  await p.enter();
+  await p.waitFor("document.querySelectorAll('#sheet-settings .kept-route').length === 0", 10000);
+  await sleep(300);
+  const removed = await p.eval("({ focus: document.activeElement?.textContent, empty: document.querySelector('#sheet-settings .kept-routes .hint')?.textContent, said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((r) => r.textContent.trim()).filter(Boolean) })");
+  check("kept routes: Remove by keyboard removes it, says so, and puts the focus on the list's heading when none is left",
+    removed.focus === "Routes kept for offline" && removed.said.some((t) => t.startsWith(`Removed ${row?.title}. No routes are kept.`)) && /^No routes are kept\./.test(removed.empty ?? ""), JSON.stringify(removed));
+  // The freeing follows the removal once the kept routes' lock is free (no keep runs here: at once).
+  const emptied = "(async () => (await caches.keys()).includes('routemaker-offline-v1') ? (await (await caches.open('routemaker-offline-v1')).keys()).length : 0)()";
+  await p.waitFor(`${emptied}.then((n) => n === 0)`, 10000);
+  const freed = await p.eval(emptied);
+  check("kept routes: what only that route used is deleted from the device", freed === 0, String(freed));
+  await p.close();
+}
+
+// ---- 25. Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335) ----
+{
+  const p = await open({ route: S_AVOID });
+  const notice = await p.eval(`(() => { const n = document.querySelector('.avoid-notice'); const s = document.querySelector('.summary');
+    return n && { role: n.getAttribute('role'), text: n.textContent, beforeSummary: !!s && !!(n.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING),
+      firstInRoute: [...document.querySelectorAll('#route-heading ~ *')].find((e) => e.offsetParent !== null && !e.classList.contains('status-shown')) === n,
+      symbolHidden: n.querySelector('.avoid-symbol')?.getAttribute('aria-hidden') === 'true' }; })()`);
+  check("avoid: the notice leads the route panel, ahead of the summary, as an alert (announced first, 335)", notice && notice.role === "alert" && notice.beforeSummary && notice.firstInRoute, JSON.stringify(notice));
+  check("avoid: the notice says the junction and the reason, and its symbol is hidden from assistive technology", notice && /This route goes through an Avoid-rated junction: Main St and 1st Ave, no gap in fast traffic\./.test(notice.text) && notice.symbolHidden, JSON.stringify(notice));
+  const offerName = (await axNode(p, ".avoid-notice button"))?.name ?? "";
+  check("avoid: the way round is offered with its length and how much longer, US units first", offerName === "Show the route that avoids it: 3.9 mi (6.3 km), 1.0 mi (1.6 km) longer", offerName);
+  const marker = await p.eval(`(() => { const m = document.querySelector('.avoid-marker'); return m && { tag: m.tagName, type: m.getAttribute('type'), label: m.getAttribute('aria-label'), svgHidden: m.querySelector('svg')?.getAttribute('aria-hidden') === 'true', w: m.getBoundingClientRect().width }; })()`);
+  // Larger than the 24 px junction markers (the owner, 2026-10-10: "Make it larger than a normal icon"); a
+  // button, as the junction markers are, so the keyboard reaches it (the review of 351e65b).
+  check("avoid: the map marker is a button named for the rating, the reason and the plea, never the glyph (309), larger than a junction marker", marker && marker.tag === "BUTTON" && marker.type === "button" && marker.label === "Avoid-rated junction: Main St and 1st Ave, no gap in fast traffic. Riding through it is a really bad idea. Please reconsider your route." && marker.svgHidden && !/skull/i.test(marker.label) && marker.w >= 36, JSON.stringify(marker));
+  const ax = await axNode(p, ".avoid-marker");
+  check("avoid: the marker's accessible name, as the browser computes it", ax?.name === "Avoid-rated junction: Main St and 1st Ave, no gap in fast traffic. Riding through it is a really bad idea. Please reconsider your route.", JSON.stringify(ax?.name));
+  const row = await p.eval(`(() => { const l = document.querySelector('.avoid-list'); const li = l?.querySelector('li'); return li && { list: l.getAttribute('aria-label'), text: li.textContent, hidden: li.querySelector('.avoid-symbol')?.getAttribute('aria-hidden') === 'true' }; })()`);
+  check("avoid: the junction list leads with it, its name in words and its symbol hidden", row && row.list === "Avoid-rated junctions, in route order" && /Avoid-rated junction: Main St and 1st Ave, no gap in fast traffic, at 0\.7 mi \(1\.2 km\)/.test(row.text) && row.hidden, JSON.stringify(row));
+  await openDirections(p);
+  const said = await p.eval(`(() => { const li = document.querySelector('li.description-avoid'); return li && { text: li.textContent, hidden: li.querySelector('.avoid-symbol')?.getAttribute('aria-hidden') === 'true' }; })()`);
+  check("avoid: the description says it ahead, US units first, its symbol hidden (307)", said && /Avoid-rated junction ahead at 0\.7 mi \(1\.2 km\): Main St and 1st Ave/.test(said.text) && said.hidden, JSON.stringify(said));
+  await p.shot(`${SHOTS}/avoid-notice.png`, { x: 0, y: 0, width: 480, height: 400 });
+  // The way round: shown in place of the route, by keyboard, and back again.
+  await p.eval("document.querySelector('.avoid-notice button').focus(); true");
+  await p.enter();
+  await sleep(400);
+  const shownAround = await p.eval(`(() => ({ notice: document.querySelector('.avoid-notice')?.textContent ?? '', button: document.querySelector('.avoid-notice button')?.textContent ?? '',
+    distance: document.querySelector('.stat-distance dd')?.textContent ?? '', markers: document.querySelectorAll('.avoid-marker').length,
+    focus: document.activeElement === document.querySelector('.avoid-notice button') }))()`);
+  check("avoid: Enter on the offer shows the way round, says so, and keeps the focus on the button", /Showing the route that avoids the Avoid-rated junction/.test(shownAround.notice) && shownAround.button === "Show the planned route" && shownAround.distance.startsWith("3.9 mi") && shownAround.markers === 0 && shownAround.focus, JSON.stringify(shownAround));
+  await p.enter();
+  await sleep(400);
+  const back = await p.eval("document.querySelector('.stat-distance dd')?.textContent ?? ''");
+  check("avoid: Enter again goes back to the planned route", back.startsWith("2.9 mi"), back);
+  // The road panel on the junction (the owner, 2026-10-10 15:08 UTC: "Yes, also when clicking on the
+  // intersection. ... Basically something to say: this is a really bad idea, please reconsider."): a click
+  // on the marker, and the I key with the map's centre on it, lead with the warning; elsewhere, none.
+  const card = () => p.eval(`(() => { const d = document.querySelector('dialog.road-info'); const w = d?.querySelector('.road-info-avoid');
+    const body = d?.querySelector('.road-info-body');
+    return { open: !!d?.open, warn: !!w, role: w?.getAttribute('role') ?? null, first: !!w && body?.firstElementChild === w,
+      described: (d?.getAttribute('aria-describedby') ?? '').split(' ')[0] === (w?.id ?? '-'), text: w?.textContent ?? '',
+      hidden: w?.querySelector('.avoid-symbol')?.getAttribute('aria-hidden') === 'true' }; })()`);
+  const box = await p.eval(`(() => { const r = document.querySelector('.avoid-marker')?.getBoundingClientRect(); return r ? [Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2)] : null; })()`);
+  if (box) {
+    await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: box[0], y: box[1] });
+    await p.s("Input.dispatchMouseEvent", { type: "mousePressed", x: box[0], y: box[1], button: "left", buttons: 1, clickCount: 1 });
+    await p.s("Input.dispatchMouseEvent", { type: "mouseReleased", x: box[0], y: box[1], button: "left", buttons: 0, clickCount: 1 });
+  }
+  await p.waitFor("!!document.querySelector('dialog.road-info[open] .road-info-avoid')", 8000);
+  const clicked = await card();
+  const WARN = /Avoid this intersection\.\s*Main St and 1st Ave is rated as dangerous for bikes: no gap in fast traffic\. Riding through it is a really bad idea\. Please reconsider your route\./;
+  // The dialog's opening description, and not also an alert: the two were said twice (the review of 351e65b).
+  check("avoid: a click on the marker opens the road panel led by the warning, first in the dialog's description, not also an alert",
+    clicked.open && clicked.warn && clicked.role === null && clicked.first && clicked.described && clicked.hidden, JSON.stringify(clicked));
+  const dialogAx = await axNode(p, "dialog.road-info");
+  check("avoid: the warning says plainly it is dangerous, gives the reason and asks the rider to reconsider, and the dialog's computed description starts with it",
+    WARN.test(clicked.text) && /^Avoid this intersection\./.test(dialogAx?.description ?? ""), JSON.stringify({ text: clicked.text, description: dialogAx?.description }));
+  await armInfoClose(p);
+  await p.key("Escape", "Escape", 27);
+  await infoClosed(p, "true");
+  // By keyboard: the map's centre on the junction, then I on the focused map.
+  await jumpMap(p, S_AVOID.avoid_junctions[0].lon, S_AVOID.avoid_junctions[0].lat, 16);
+  await sleep(300);
+  await p.eval("document.querySelector('.maplibregl-canvas').focus(); true");
+  await p.key("i", "KeyI", 73);
+  await p.waitFor("!!document.querySelector('dialog.road-info[open] .road-info-avoid')", 8000);
+  const keyed = await card();
+  check("avoid: the I key with the map's centre on the junction leads with the same warning", keyed.open && keyed.warn && keyed.described && WARN.test(keyed.text), JSON.stringify(keyed));
+  await armInfoClose(p);
+  await p.key("Escape", "Escape", 27);
+  await infoClosed(p, "true");
+  // Tab from the map reaches the marker; Enter on it opens the panel with the warning, and Escape
+  // brings the focus back to it (the review of 351e65b).
+  await p.eval("document.querySelector('.maplibregl-canvas').focus(); true");
+  let tabs = 0;
+  while (tabs < 40 && !(await p.eval("document.activeElement?.classList.contains('avoid-marker') ?? false"))) {
+    await p.tab();
+    tabs += 1;
+  }
+  const reached = await axNode(p, ".avoid-marker");
+  const focusedMarker = await p.eval("document.activeElement?.classList.contains('avoid-marker') ?? false");
+  check("avoid: Tab from the map reaches the marker, a button with its name", focusedMarker && reached?.role === "button" && /^Avoid-rated junction: Main St and 1st Ave/.test(reached?.name ?? ""), JSON.stringify({ tabs, focusedMarker, role: reached?.role }));
+  await p.enter();
+  await p.waitFor("!!document.querySelector('dialog.road-info[open] .road-info-avoid')", 8000);
+  const entered = await card();
+  await armInfoClose(p);
+  await p.key("Escape", "Escape", 27);
+  const backOnMarker = await infoClosed(p, "document.activeElement?.classList.contains('avoid-marker') ?? false");
+  check("avoid: Enter on the marker opens the road panel led by the warning, and Escape brings the focus back to it", entered.open && entered.warn && WARN.test(entered.text) && backOnMarker, JSON.stringify({ entered, backOnMarker }));
+  // Away from it (a mile off): the panel has no warning.
+  await jumpMap(p, S_AVOID.avoid_junctions[0].lon + 0.02, S_AVOID.avoid_junctions[0].lat, 16);
+  await sleep(300);
+  await p.eval("document.querySelector('.maplibregl-canvas').focus(); true");
+  await p.key("i", "KeyI", 73);
+  await p.waitFor("!!document.querySelector('dialog.road-info[open]') && document.querySelector('dialog.road-info')?.getAttribute('aria-busy') !== 'true'", 8000);
+  const away = await card();
+  check("avoid: away from the junction the road panel has no warning", away.open && !away.warn, JSON.stringify(away));
+  await armInfoClose(p);
+  await p.key("Escape", "Escape", 27);
+  await infoClosed(p, "true");
+  await openSheet(p, "Legend");
+  // The owner, 2026-10-10 15:03 UTC: "For avoid markers in intersection. No need to put it in legend."
+  const legend = await p.eval(`(() => { const s = document.querySelector('.junction-legend'); const t = s ? s.textContent : null; return { found: !!s, avoid: t != null && (/Avoid-rated/.test(t) || t.includes('\u2620')) }; })()`);
+  check("avoid: the legend has no Avoid-rated junction row (owner, 2026-10-10)", legend.found && !legend.avoid, JSON.stringify(legend));
+  await p.close();
+}
+
+// ---- 26. Riding with kids (FOLLOWUP-KIDS-PRESET, OWNER-DECISIONS 240 (B)): a ride type like any other, by keyboard and screen reader ----
+{
+  const p = await open({ route: S_KIDS, hash: hashFor("default", 70) });
+  const kidsCard = "[...document.querySelectorAll('.ride-type-card > button')].find((b) => b.querySelector('strong')?.textContent === 'Riding with kids')";
+  await p.eval("document.querySelector('.ride-type-current button').focus(); true");
+  await p.enter();
+  await sleep(300);
+  const offered = await p.eval(`(() => { const d = document.querySelector('dialog.ride-types'); const k = ${kidsCard};
+    return { open: d.open, modal: d.matches(':modal'), cards: d.querySelectorAll('.ride-type-card > button').length,
+      kids: !!k, pressed: k?.getAttribute('aria-pressed'), hint: k?.querySelector('.hint')?.textContent }; })()`);
+  check("kids: the ride-type dialog is modal and offers Riding with kids among every ride type, with its sentence",
+    offered.open && offered.modal && offered.cards === 11 && offered.kids && /^Children on their own bikes: /.test(offered.hint ?? ""), JSON.stringify(offered));
+  check("kids: its card is a toggle button, not pressed while another ride type is in use", offered.pressed === "false", JSON.stringify(offered.pressed));
+  await p.eval(`${kidsCard}.setAttribute('data-kids', ''); true`);
+  const card = await axNode(p, "button[data-kids]");
+  check("kids: the card's accessible name starts with its label", card?.role === "button" && /^Riding with kids\b/.test(card?.name ?? ""), JSON.stringify(card));
+  const before = p.routeRequests;
+  await p.eval(`${kidsCard}.focus(); true`);
+  await p.enter();
+  await sleep(2500);
+  const chosen = await p.eval("(() => ({ open: document.querySelector('dialog.ride-types').open, focus: document.activeElement === document.querySelector('.ride-type-current button'), ride: document.querySelector('.ride-type-current strong')?.textContent, hint: document.querySelector('.ride-type-current .hint')?.textContent }))()");
+  check("kids: choosing it with Enter closes the dialog and gives the focus back to Change", !chosen.open && chosen.focus, JSON.stringify(chosen));
+  check("kids: the ride type line says Riding with kids, with its sentence", chosen.ride === "Riding with kids" && /^Children on their own bikes: /.test(chosen.hint ?? ""), JSON.stringify(chosen));
+  const sent = JSON.parse(p.routeBodies.at(-1) || "{}");
+  const hash = await p.eval("location.hash");
+  check("kids: it plans once, at the top of the traffic slider with hills toward avoid, and the link carries it",
+    p.routeRequests - before === 1 && sent.preset === "kids" && sent.stress === 100 && sent.hills === -80 && /preset=kids/.test(hash) && /stress=100/.test(hash) && /hills=-80/.test(hash),
+    `${p.routeRequests - before} plans, ${JSON.stringify({ preset: sent.preset, stress: sent.stress, hills: sent.hills })}, ${hash}`);
+  const traffic = await axNode(p, ".dials input[type=range]");
+  const sliders = await p.eval("[...document.querySelectorAll('.dials input[type=range]')].slice(0, 2).map((e) => ({ value: Number(e.value), words: e.getAttribute('aria-valuetext') }))");
+  check("kids: the sliders moved to its start and say so in words",
+    sliders[0]?.value === 100 && sliders[1]?.value === -80 && traffic?.name === "Traffic" && /^Calmest: /.test(traffic?.valuetext ?? "") && sliders[1]?.words === "Avoids hills",
+    JSON.stringify({ sliders, traffic }));
+  const line = await axNode(p, ".ride-line-button");
+  check("kids: the Ride line's spoken name says the ride type and where the sliders are", /^Ride\s*:\s*Riding with kids, calmest, avoids hills\b/.test(line?.name ?? ""), JSON.stringify(line?.name));
+  check("kids: the target distance is offered, as at the top of the traffic slider", (await p.eval("document.querySelectorAll('input[placeholder=Default]').length")) === 1);
+  await p.eval("document.querySelector('.ride-type-current button').focus(); true");
+  await p.enter();
+  await sleep(300);
+  const again = await p.eval(`(() => { const k = ${kidsCard}; return { focus: document.activeElement === k, pressed: k?.getAttribute('aria-pressed') }; })()`);
+  await p.escape();
+  await sleep(300);
+  const closed = await p.eval("!document.querySelector('dialog.ride-types').open");
+  check("kids: reopened, the focus starts on its card, which is pressed, and Escape closes the dialog", again.focus && again.pressed === "true" && closed, JSON.stringify({ again, closed }));
+  await p.close();
+}
+{
+  // A shared link opens on it, and at 320 px the dialog's card reflows (WCAG 1.4.10).
+  const p = await open({ route: S_KIDS, hash: hashFor("kids", 100, -80), width: 320, height: 800, mobile: true });
+  const ride = await p.eval("document.querySelector('.ride-type-current strong')?.textContent");
+  await p.eval("document.querySelector('.ride-type-current button').click(); true");
+  await sleep(300);
+  const fit = await p.eval(`(() => { const k = [...document.querySelectorAll('.ride-type-card > button')].find((b) => b.querySelector('strong')?.textContent === 'Riding with kids');
+    return { client: k?.clientWidth, scroll: k?.scrollWidth, page: document.documentElement.scrollWidth, width: innerWidth }; })()`);
+  check("kids at 320 px: a shared link opens on Riding with kids, and its card fits with nothing spilling sideways",
+    ride === "Riding with kids" && fit.scroll <= fit.client + 1 && fit.page <= fit.width, JSON.stringify({ ride, fit }));
+  await p.shot(`${SHOTS}/kids_320.png`);
+  await p.close();
+}
+
+// ---- The Mass Ride's stops on federal land and its parkway stretches (item 239) ----
+{
+  const p = await open({ route: S_MASS_FEDERAL, hash: hashFor("mass-ride", 0) });
+  // The points list is behind "Edit points" once a route is shown (312).
+  await p.eval("(() => { const b = document.querySelector('.edit-points'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()");
+  await p.waitFor("!!document.querySelector('ol.points .point-federal')", 10000);
+  const rows = await p.eval(`[...document.querySelectorAll('ol.points li')].map((li) => ({ role: li.querySelector('.point-name')?.textContent,
+    warning: li.querySelector('.point-federal')?.textContent ?? null, beforeRemove: !!li.querySelector('.point-federal + button'),
+    badge: li.querySelector('.point-federal') ? getComputedStyle(li.querySelector('.point-federal'), '::before').content : null }))`);
+  const end = rows.find((r) => r.role === "End");
+  const start = rows.find((r) => r.role === "Start");
+  check("federal stops: the End row (the Capitol grounds) says the warning with the area and its manager, before Remove, with a ! badge; the Start row says nothing",
+    end?.warning === "Inside U.S. Capitol grounds, managed by Architect of the Capitol – federal land: check permit requirements for gathering here." &&
+      end.beforeRemove && end.badge === '"!"' && start && start.warning === null, JSON.stringify(rows));
+  const pins = await p.eval(`(() => { const one = (sel) => { const m = document.querySelector(sel); return m && { federal: m.classList.contains('pin-federal'), label: m.getAttribute('aria-label'),
+    title: m.title, badge: getComputedStyle(m, '::before').content }; }; return { end: one('.pin.pin-end'), start: one('.pin.pin-start') }; })()`);
+  check("federal stops: the End marker wears the badge and says the warning in its name and title; the Start marker does not",
+    pins.end?.federal && pins.end.badge === '"!"' &&
+      pins.end.label === "End. Inside U.S. Capitol grounds, managed by Architect of the Capitol – federal land: check permit requirements for gathering here. Drag to move." &&
+      /federal land: check permit requirements for gathering here/.test(pins.end.title) && pins.start && !pins.start.federal && pins.start.label === "Start. Drag to move.",
+    JSON.stringify(pins));
+  await openDirections(p);
+  const desc = await p.eval(`(() => { const box = document.querySelector('details.route-description .federal-route'); if (!box) return null;
+    const ul = box.querySelector('ul'); const head = document.getElementById(ul?.getAttribute('aria-labelledby') ?? '');
+    const list = document.querySelector('details.route-description ol.description-list');
+    return { heading: head?.textContent ?? null, items: [...ul.querySelectorAll('li')].map((li) => li.textContent),
+      beforeSteps: !!list && !!(box.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING) }; })()`);
+  check("federal stops: Directions names the End's area and the parkway stretch, under a heading that says it is not legal advice, before the steps",
+    desc && /^Federal land on this route\. Information, not legal advice: federal ownership is not police jurisdiction\.$/.test(desc.heading) && desc.beforeSteps &&
+      desc.items.length === 2 && desc.items[0] === "End is inside U.S. Capitol grounds, managed by Architect of the Capitol – federal land: check permit requirements for gathering here." &&
+      desc.items[1] === "1.9 to 2.2 mi (3.0 to 3.6 km): Rock Creek and Potomac Pkwy, a National Park Service parkway – federal road: check permit requirements for riding it as a group.",
+    JSON.stringify(desc));
+  const ax = await axNode(p, "details.route-description .federal-route ul");
+  check("federal stops: the list is a list named by its heading", ax?.role === "list" && /^Federal land on this route/.test(ax?.name ?? ""), JSON.stringify(ax));
+  await p.shot(`${SHOTS}/federal_stops_panel.png`);
+  // The road panel at the map's center (I): the keyboard's and screen reader's way to ask what a shaded area is.
+  const moved = await jumpMap(p, -77.009, 38.8899, 16);
+  await sleep(400);
+  await p.eval("document.querySelector('.maplibregl-canvas').focus(); true");
+  await p.waitFor(CANVAS_FOCUSED, 5000);
+  let before = p.infoRequests.length;
+  await armInfoClose(p);
+  await p.key("i", "KeyI", 73);
+  const asked = await infoAsked(p, before);
+  await p.waitFor("/Capitol/.test(document.querySelector('dialog.road-info .road-info-said')?.textContent ?? '')", 5000);
+  // The dialog open is what counts here, whatever road heading it shows.
+  const panel = await p.eval(`(() => { const d = document.querySelector('dialog.road-info');
+    return { open: d?.open ?? false, heading: d?.querySelector('h2')?.textContent ?? '', federal: d.querySelector('.road-info-federal')?.textContent ?? null, said: d.querySelector('.road-info-said')?.textContent ?? '' }; })()`);
+  check("federal: I at the map's center over the Capitol grounds names the area, its manager and the permit note, in view and in the dialog's status",
+    moved && asked.asked && panel.open && panel.federal === "Federal land: Inside U.S. Capitol grounds, managed by Architect of the Capitol – federal land: check permit requirements for gathering here. Information, not legal advice: federal ownership is not police jurisdiction." &&
+      /Inside U\.S\. Capitol grounds, managed by Architect of the Capitol – federal land: check permit requirements for gathering here\.$/.test(panel.said),
+    JSON.stringify({ moved, asked, panel }));
+  await p.shot(`${SHOTS}/federal_road_info.png`);
+  await p.escape();
+  await infoClosed(p);
+  // Off federal land the panel says nothing of it.
+  await jumpMap(p, -77.04, 38.91, 16);
+  await sleep(400);
+  await p.eval("document.querySelector('.maplibregl-canvas').focus(); true");
+  await p.waitFor(CANVAS_FOCUSED, 5000);
+  before = p.infoRequests.length;
+  await armInfoClose(p);
+  await p.key("i", "KeyI", 73);
+  const again = await infoAsked(p, before);
+  await p.waitFor("/Connecticut/.test(document.querySelector('dialog.road-info .road-info-said')?.textContent ?? '')", 5000);
+  const offPanel = await p.eval("({ open: !!document.querySelector('dialog.road-info[open]'), federal: !!document.querySelector('dialog.road-info .road-info-federal'), said: document.querySelector('dialog.road-info .road-info-said')?.textContent ?? '' })");
+  check("federal: off federal land the road panel has no federal line", again.asked && offPanel.open && !offPanel.federal && !/federal land/.test(offPanel.said), JSON.stringify({ again, offPanel }));
+  await p.escape();
+  await infoClosed(p);
+  await p.close();
+}
+{
+  // Another ride type through the same points: no warnings anywhere.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
+  await p.eval("(() => { const b = document.querySelector('.edit-points'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()");
+  await openDirections(p);
+  await sleep(300);
+  const none = await p.eval("({ rows: document.querySelectorAll('.point-federal').length, pins: document.querySelectorAll('.pin-federal').length, desc: document.querySelectorAll('.federal-route').length })");
+  check("federal stops: another ride type has no warning on a row, a marker or the directions (324)", none.rows === 0 && none.pins === 0 && none.desc === 0, JSON.stringify(none));
+  await p.close();
+}
+{
+  // At 320 px with text spacing the row's warning wraps under the point and nothing spills.
+  const p = await open({ route: S_MASS_FEDERAL, hash: hashFor("mass-ride", 0), width: 320, height: 800, mobile: true });
+  await p.eval("(() => { const b = document.querySelector('.edit-points'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); return true; })()");
+  await p.waitFor("!!document.querySelector('ol.points .point-federal')", 10000);
+  await p.eval(`(() => { const s = document.createElement('style'); s.textContent = ${JSON.stringify(TEXT_SPACING)}; document.head.append(s);
+    document.querySelector('ol.points .point-federal').scrollIntoView({ block: 'center' }); return true; })()`);
+  await sleep(300);
+  const fit = await p.eval(`(() => { const e = document.querySelector('ol.points .point-federal'); const li = e.closest('li'); const r = li.getBoundingClientRect();
+    return { over: e.scrollWidth > e.clientWidth + 1 || e.getBoundingClientRect().right > r.right + 1, page: document.documentElement.scrollWidth > innerWidth }; })()`);
+  check("federal stops at 320 px with text spacing: the row's warning wraps, nothing spills", !fit.over && !fit.page, JSON.stringify(fit));
+  await p.shot(`${SHOTS}/federal_stops_320.png`);
+  await p.close();
+}
+
+// ---- Share (owner, 2026-10-10; lib/share.ts): the share sheet for Copy link's link, where there is one ----
+{
+  // No share sheet: no Share button, and Copy link is still there.
+  const p = await open({ init: "delete Navigator.prototype.share; delete Navigator.prototype.canShare;" });
+  const none = await p.eval("({ share: [...document.querySelectorAll('.route-actions button')].some((e) => /^Share/.test(e.textContent.trim())), copy: [...document.querySelectorAll('.route-actions button')].some((e) => e.textContent.trim() === 'Copy link') })");
+  check("share: hidden where the browser has no share sheet, and Copy link stays", !none.share && none.copy, JSON.stringify(none));
+  await p.close();
+}
+// A stubbed share sheet, as strict as a browser's: no user activation (an await before share()) is
+// NotAllowedError, a call while one is open is InvalidStateError. window.__shareMode says how it answers:
+// "ok", "abort" (the rider closed it), "fail" (DataError) or "hold" (open until window.__release()).
+const SHARE_STUB = `window.__shared = []; window.__shareMode = "ok"; window.__noActivation = 0; window.__open = false;
+  Object.defineProperty(Navigator.prototype, "share", { configurable: true, value: function (d) {
+    if (!navigator.userActivation?.isActive) { window.__noActivation += 1; return Promise.reject(new DOMException("no activation", "NotAllowedError")); }
+    if (window.__open) return Promise.reject(new DOMException("already open", "InvalidStateError"));
+    window.__shared.push(JSON.parse(JSON.stringify(d)));
+    const mode = window.__shareMode;
+    if (mode === "hold") { window.__open = true; return new Promise((done) => { window.__release = () => { window.__open = false; done(); }; }); }
+    return mode === "ok" ? Promise.resolve() : Promise.reject(new DOMException("stub", mode === "abort" ? "AbortError" : "DataError")); } });
+  Object.defineProperty(Navigator.prototype, "canShare", { configurable: true, value: function (d) { return !!d && typeof d.url === "string"; } });`;
+const MARK_SHARE = "(() => { const all = [...document.querySelectorAll('.route-actions button')]; const c = all.find((e) => e.textContent.trim() === 'Copy link'); const s = all.find((e) => e.textContent.trim() === 'Share'); if (c) c.id = '__copy'; if (s) s.id = '__share'; return true; })()";
+{
+  const p = await open({ init: SHARE_STUB });
+  await p.eval(MARK_SHARE);
+  const ax = await axNode(p, "#__share");
+  const box = await p.eval("(() => { const s = document.getElementById('__share'); if (!s) return null; const r = s.getBoundingClientRect(); return { w: r.width, h: r.height, after: document.getElementById('__copy')?.nextElementSibling === s }; })()");
+  check("share: a button named Share route, right after Copy link, 44 px or more each way", ax?.role === "button" && ax?.name === "Share route" && box?.after && box.w >= 44 && box.h >= 44, JSON.stringify({ ax, box }));
+  await p.eval("document.getElementById('__copy').focus(); true");
+  await p.tab();
+  check("share: the next Tab stop after Copy link", await p.eval("document.activeElement?.id === '__share'"), await p.eval("document.activeElement?.outerHTML.slice(0, 120)"));
+  await p.enter();
+  await sleep(600);
+  const sent = await p.eval("({ shared: window.__shared, href: location.href, noActivation: window.__noActivation })");
+  const one = sent.shared[0] ?? {};
+  check("share: Enter hands the sheet this page's link (Copy link's), the title, and a plain US-first text, within the press", sent.noActivation === 0 && sent.shared.length === 1 && one.url === sent.href && /#p=/.test(one.url) && one.title === "RouteMaker route" && /^\d[\d.,]* (mi|ft) \(\d[\d.,]* (km|m)\) bike route\. Ride type: Default\.$/.test(one.text ?? "") && !/weight|kg|lb/i.test(JSON.stringify(one)), JSON.stringify(sent));
+  const status = "(() => ({ spoken: document.querySelector('.route-actions [role=status]')?.textContent.trim() ?? '', shown: document.querySelector('.route-actions .link-said')?.textContent.trim() ?? '', shared: window.__shared.length, noActivation: window.__noActivation }))()";
+  const afterOk = await p.eval(status);
+  check("share: nothing is said once the sheet opened (the browser does not say where the link went)", afterOk.spoken === "" && afterOk.shown === "", JSON.stringify(afterOk));
+  // Each press is a real key press on the focused button, so it carries user activation.
+  const pressShare = async () => { await p.eval("document.getElementById('__share').focus(); true"); await p.enter(); };
+  await p.eval("window.__shareMode = 'abort'; true");
+  await pressShare();
+  await sleep(600);
+  const afterAbort = await p.eval(status);
+  check("share: closing the sheet (AbortError) is silent", afterAbort.spoken === "" && afterAbort.shown === "" && afterAbort.shared === 2 && afterAbort.noActivation === 0, JSON.stringify(afterAbort));
+  // A second press while the sheet is open is skipped (no second share(), so no InvalidStateError), and nothing is said.
+  await p.eval("window.__shareMode = 'hold'; true");
+  await pressShare();
+  await sleep(300);
+  await pressShare();
+  await sleep(300);
+  await p.eval("window.__release?.(); true");
+  await sleep(600);
+  const afterHold = await p.eval(status);
+  check("share: a second press while the sheet is open is skipped and says nothing", afterHold.shared === 3 && afterHold.spoken === "" && afterHold.shown === "" && afterHold.noActivation === 0, JSON.stringify(afterHold));
+  await p.eval("window.__shareMode = 'fail'; true");
+  await pressShare();
+  await sleep(600);
+  const afterFail = await p.eval(status);
+  const polite = await p.eval("document.querySelector('.route-actions [role=status]')?.getAttribute('aria-live') !== 'assertive'");
+  check("share: another failure is said politely, shown, and offers Copy link", afterFail.spoken === "Could not open the share sheet. Use Copy link instead." && afterFail.shown === afterFail.spoken && polite && afterFail.noActivation === 0, JSON.stringify({ afterFail, polite }));
+  // The stub's own guard: a script click carries no user activation, and share() refuses it, as a browser does.
+  // (The last key press's transient activation lasts about 5 s: wait for it to lapse first.)
+  const lapsed = await p.waitFor("!navigator.userActivation?.isActive", 10000);
+  await p.eval("window.__shareMode = 'ok'; document.getElementById('__share').click(); true");
+  await sleep(600);
+  const guard = await p.eval(status);
+  check("share: the stub refuses share() without user activation (so an await before share() would fail the checks above)", lapsed && guard.noActivation === 1 && guard.shared === 4 && guard.spoken === "Could not open the share sheet. Use Copy link instead.", JSON.stringify(guard));
+  await p.close();
+}
+{
+  // On a 320 px phone the three route actions share the row; Share is still 44 px each way and nothing spills.
+  const p = await open({ init: SHARE_STUB, width: 320, height: 800, mobile: true });
+  await p.eval(MARK_SHARE);
+  const fit = await p.eval("(() => { const s = document.getElementById('__share'); if (!s) return null; const r = s.getBoundingClientRect(); const row = s.parentElement.getBoundingClientRect(); return { w: r.width, h: r.height, inRow: r.left >= row.left - 1 && r.right <= row.right + 1, over: s.scrollWidth > s.clientWidth + 1, page: document.documentElement.scrollWidth > innerWidth }; })()");
+  check("share at 320 px: 44 px or more each way, inside the actions row, no overflow", !!fit && fit.w >= 44 && fit.h >= 44 && fit.inRow && !fit.over && !fit.page, JSON.stringify(fit));
   await p.close();
 }
 
 b.close();
+
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 358;
+const EXPECTED = 547;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

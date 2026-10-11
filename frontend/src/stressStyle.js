@@ -49,17 +49,20 @@ import { MASS_SOURCE_ID, massHides, massLayers } from "./massStyle.js";
 // is cut to 0.4 of the width (1.7 px, a sixth of the line) over a softer brown
 // casing: 0.60, no harsher than LTS 4. stressSalience.test.ts holds harshness
 // non-decreasing from LTS 3 to LTS 4 to Avoid in every palette, plain and strong.
+// The labels are the owner's step words (OWNER-DECISIONS 441l, 441j: "5 is just avoid"), the
+// ones the road panel and its editor use (core/segment_info.py TIER_WORDS); 460.8-11 switched
+// the legend to them from its own.
 const TIER_SHAPES = [
   // A solid line is `null`, never [1]: a one-entry dash array is an odd list,
   // which SVG (the legend) repeats into [1, 1] - a dashed swatch for a line
   // the map draws solid (OWNER-DECISIONS 279). Every dash here has an even length.
-  { tier: 1, label: "Comfortable for most people", short: "LTS 1", dash: null, width: 2.5 },
-  { tier: 2, label: "Comfortable for most adults", short: "LTS 2", dash: [4, 1], width: 3.25 },
-  { tier: 3, label: "For confident riders", short: "LTS 3", dash: [2, 0.4], width: 4.25 },
-  { tier: 4, label: "Heavy or fast traffic", short: "LTS 4", dash: [8, 1], width: 5 },
+  { tier: 1, label: "Comfortable for everyone", short: "LTS 1", dash: null, width: 2.5 },
+  { tier: 2, label: "Fine for adults", short: "LTS 2", dash: [4, 1], width: 3.25 },
+  { tier: 3, label: "For experienced cyclists", short: "LTS 3", dash: [2, 0.4], width: 4.25 },
+  { tier: 4, label: "High stress: busy, fast traffic", short: "LTS 4", dash: [8, 1], width: 5 },
   // Not a Furth tier: legal for a bicycle and best avoided (the owner's fifth
   // category, 2026-09-27): the widest line and a dash-dot nothing else uses.
-  { tier: 5, label: "Legal, but best avoided", short: "Avoid", dash: [5, 1, 0.5, 1], width: 6.5 },
+  { tier: 5, label: "Avoid", short: "Avoid", dash: [5, 1, 0.5, 1], width: 6.5 },
 ];
 
 /**
@@ -147,6 +150,18 @@ export const PALETTES = {
     // pair apart in casing, and Avoid's line 3:1 from it).
     5: { color: "#08081e", casing: "#f0e442" },
   },
+};
+
+/**
+ * The outline on a half step's dash where the dash is too close to its line (458b), by palette and the
+ * half step's lower level: the default palette's 3.5 (LTS 4's orange dash on LTS 3's yellow, about
+ * 1.5:1) gets a near-black outline, and the colour-blind palette's 4.5 (Avoid's blue-black dash on LTS
+ * 4's dark red, about 1.6:1) a white one. Each is at least 3:1 from both the dash and the line
+ * (halfSteps.test.ts; HALF_OUTLINE_MIN_CONTRAST). See `halfStepLayers`.
+ */
+export const HALF_OUTLINES = {
+  twotone: { 3: "#1c1917" },
+  cvd: { 4: "#ffffff" },
 };
 
 /** The palette the map uses unless the address or the accessibility switch asks for another. */
@@ -284,6 +299,8 @@ export function tiersFor(palette, strong = false) {
       unpavedColor: unpaved.color,
       unpavedCasing,
       unpavedGap: unpaved.gap ?? unpavedCasing,
+      // The outline on the half step above this level's dash, where it needs one (458b).
+      halfOutline: HALF_OUTLINES[palette]?.[shape.tier] ?? null,
       ...(strong
         ? { width: shape.width + STRONG_WIDTH_EXTRA, casingExtra: STRONG_CASING_EXTRA_PX, strong: true }
         : { casingExtra: CASING_EXTRA_PX, strong: false }),
@@ -652,7 +669,7 @@ export const STRESS_TILE_LAYER = "stress";
  * ride times the road draws exactly as an off-road path, tier 1, and in any
  * other with its own stress, and a zoomed-out tile's road is not drawn then.
  * A road closed for good is a path in the tiles already. `when` is the ride
- * time the map follows: "weekend", "weekday_rush" or "weekday_offpeak".
+ * time the map follows: "weekend", "weekday_rush", "weekday_offpeak" or "night".
  */
 const carFreeNow = (when) => [
   "in",
@@ -898,45 +915,163 @@ export function mtbTrailPaint(strong = accessibilityOn()) {
   };
 }
 
-/** The not-for-routes layer's id. */
+/** The not-for-routes layer's id: since 456 the unrated mountain-bike trails' grey dots. */
 export const MTB_TRAIL_LAYER_ID = "mtb-trail";
 
-/** The not-for-routes layer (452a): the mountain-bike trails, drawn under every routable layer. */
-export function mtbTrailLayers(sourceId = "stress", when = DEFAULT_WHEN, strong = accessibilityOn()) {
+/**
+ * THE MOUNTAIN-BIKE LEVELS (OWNER-DECISIONS 456, 456a-c; docs/MTB-TOPO-PLAN.md, slice 2). The tiles
+ * carry a rated mountain-bike trail's difficulty as `mtb_level`, 1 to 4 (core/stress_tiles.py, from
+ * `segment.mtb_level`: the higher of `mtb:scale` and `mtb:scale:imba`, S1-S3 to 1-3, S4-S6 to 4; a
+ * rating of 0 is a gravel trail and no level, 456b). The mountain-bike layer draws each level in its
+ * colour (the owner's starting values: green, blue, black, red), with a pattern of its own (`dash`, in
+ * line widths: longer and plainer for the easier levels, more broken for the harder), so the colour is
+ * never the only cue; the legend and the road panel name the level in words (`name`,
+ * core/segment_info.py MTB_LEVEL_COLOURS, held equal by a test). 452a asks the not-for-routes look to be
+ * "clearly unlike any routable trail or road", so every level shares one mark no stress tier has
+ * (MTB_LEVEL, below): dark cross-ticks in place of a casing, where every tier sits on a solid one, and
+ * gaps of 1.5 line widths or more, where no tier's gap passes 1; and every level is 2 px, thinner than
+ * any tier. No pattern is the unrated trails' dots, the unpaved mark, the surface-unknown dashes, a
+ * rail's or a tier's (mtbLevels.test.ts). Each colour is 3:1 or more from every surface of the light
+ * base map (mtbLevels.test.ts, as MTB_TRAIL's); the green is #28702c, darker than the starting #2e7d32,
+ * which was 3.0009:1 on the base map's scrub (review of slice 2).
+ * An unrated mountain-bike trail keeps the grey dots (`mtb-trail`, MTB_TRAIL; the plan's default).
+ */
+export const MTB_LEVELS = [
+  { level: 1, name: "green", color: "#28702c", dash: [6, 2], pattern: "long dashes", scale: "S1 or IMBA 1" },
+  { level: 2, name: "blue", color: "#1565c0", dash: [3, 2], pattern: "short dashes", scale: "S2 or IMBA 2" },
+  { level: 3, name: "black", color: "#1c1917", dash: [4, 1.5, 1, 1.5], pattern: "dash-dot", scale: "S3 or IMBA 3" },
+  { level: 4, name: "red", color: "#c62828", dash: [4, 1.5, 1, 1.5, 1, 1.5], pattern: "dash-dot-dot", scale: "S4 or above, or IMBA 4 or above" },
+];
+
+/**
+ * The levels' look, shared by all four: the line's width, plain and with the accessibility switch on
+ * (`strong`), in pixels - wider than the grey dots so the colour reads, still thinner than LTS 1's
+ * routable line at either strength (2 px against 2.5, 2.5 against 3) - and the not-for-routes mark
+ * (452a): short dark cross-ticks drawn under the line (the "casing" layer), `tickPx` past it a side,
+ * in `tickDash` (in that layer's own widths: a tick 1.5 px long every 10.5 px plain). Every stress
+ * tier sits on a solid casing, so a ticked edge is a look no routable line has; the line's gaps show
+ * the base map, not a casing.
+ */
+export const MTB_LEVEL = { width: 2, strongWidth: 2.5, tick: "#1c1917", tickPx: 2, strongTickPx: 2.5, tickDash: [0.25, 1.5] };
+
+/** The least gap, in line widths, any level's pattern has (452a: longer than any tier's). */
+export const MTB_LEVEL_MIN_GAP = 1.5;
+
+/** A level's layer ids: its line and its casing. */
+export const mtbLevelLayerId = (level) => `mtb-level-${level}`;
+export const mtbLevelCasingLayerId = (level) => `mtb-level-casing-${level}`;
+
+/** The mountain-bike trail layer's lines (454, 456): the unrated dots and each level's casing and line, bottom first. */
+export const MTB_LINE_LAYER_IDS = [MTB_TRAIL_LAYER_ID, ...MTB_LEVELS.map((l) => mtbLevelCasingLayerId(l.level)), ...MTB_LEVELS.map((l) => mtbLevelLayerId(l.level))];
+
+/**
+ * THE MOUNTAIN-BIKE TRAIL NAMES. The owner, 2026-10-10: "Also, for mountain bikes, try to make sure trail names
+ * are added in if they are available." The tiles carry an `mtb` trail's name as `name` (core/stress_tiles.py, from
+ * `segment.mtb_name`: the OSM `name`, else `mtb:name`, else `ref`; left out where none is mapped). The label layer
+ * draws it along the line, from MTB_LABEL_MIN_ZOOM, over every routable line, on this map layer only (it follows
+ * the layer's switch with the lines). MapLibre's collision drops a label that would overlap another, and
+ * `text-padding` and `symbol-spacing` thin them further; `text-max-angle` is 45 (not the 30 the Mass Ride labels
+ * use), so a name still fits along curvy singletrack at z15-16. The text is the line's own colour - its level's, or the
+ * unrated dots' grey - on a white halo: each is 4.5:1 or more against the halo (green 6.10:1, blue 5.75:1, black
+ * 17.49:1, red 5.62:1, grey 6.05:1; mtbLevels.test.ts), where the base map's path-label grey is not (3.5:1). The
+ * name is text a screen reader cannot reach on the canvas; the road panel says it in words (core/segment_info.py).
+ */
+export const MTB_LABEL_LAYER_ID = "mtb-trail-label";
+export const MTB_LABEL_MIN_ZOOM = 15;
+export const MTB_LABEL = { font: "Noto Sans Medium", size: 12, halo: "#ffffff", haloWidth: 1.5, padding: 8, spacing: 300, maxAngle: 45 };
+
+/** Every layer of the mountain-bike trail map layer (454): its lines, then its names. */
+export const MTB_LAYER_IDS = [...MTB_LINE_LAYER_IDS, MTB_LABEL_LAYER_ID];
+
+/** Whether a layer id is one of the mountain-bike trail layer's (MTB_LAYER_IDS). */
+export function isMtbLayerId(id) {
+  return MTB_LAYER_IDS.includes(id);
+}
+
+/** A level's line and its cross-ticks (the `casing` layer), plain or with the accessibility switch on. */
+export function mtbLevelPaint(level, strong = accessibilityOn()) {
+  const shape = MTB_LEVELS.find((l) => l.level === level);
+  const width = strong ? MTB_LEVEL.strongWidth : MTB_LEVEL.width;
+  const tickWidth = width + 2 * (strong ? MTB_LEVEL.strongTickPx : MTB_LEVEL.tickPx);
+  return {
+    line: { "line-color": shape.color, "line-width": width, "line-dasharray": shape.dash },
+    casing: { "line-color": MTB_LEVEL.tick, "line-width": tickWidth, "line-dasharray": MTB_LEVEL.tickDash },
+  };
+}
+
+/** The names' text colour: the level's colour, or the unrated dots' grey (darker with the accessibility switch). */
+export function mtbLabelColor(strong = accessibilityOn()) {
+  return ["match", ["get", "mtb_level"], ...MTB_LEVELS.flatMap((l) => [l.level, l.color]), strong ? MTB_TRAIL.strongColor : MTB_TRAIL.color];
+}
+
+/** The names' layer (2026-10-10): along each named mountain-bike trail, from zoom 15, thinned by collision. */
+export function mtbLabelLayers(sourceId = "stress", when = DEFAULT_WHEN, strong = accessibilityOn()) {
   return [
     {
-      id: MTB_TRAIL_LAYER_ID,
-      type: "line",
+      id: MTB_LABEL_LAYER_ID,
+      type: "symbol",
       source: sourceId,
       "source-layer": STRESS_TILE_LAYER,
-      minzoom: MTB_MIN_ZOOM,
-      filter: stressFilters(when)["mtb-trail"],
-      paint: mtbTrailPaint(strong),
+      minzoom: MTB_LABEL_MIN_ZOOM,
+      filter: stressFilters(when)[MTB_LABEL_LAYER_ID],
+      layout: {
+        "symbol-placement": "line",
+        "symbol-spacing": MTB_LABEL.spacing,
+        "text-field": ["get", "name"],
+        "text-font": [MTB_LABEL.font],
+        "text-size": MTB_LABEL.size,
+        "text-max-angle": MTB_LABEL.maxAngle,
+        "text-padding": MTB_LABEL.padding,
+      },
+      paint: { "text-color": mtbLabelColor(strong), "text-halo-color": MTB_LABEL.halo, "text-halo-width": MTB_LABEL.haloWidth },
     },
   ];
 }
 
 /**
+ * The mountain-bike trail layer (452a, 454, 456): the unrated trails' grey dots, then every level's cross-ticks,
+ * then every level's line, all under every routable layer.
+ */
+export function mtbTrailLayers(sourceId = "stress", when = DEFAULT_WHEN, strong = accessibilityOn()) {
+  const filters = stressFilters(when);
+  const base = { type: "line", source: sourceId, "source-layer": STRESS_TILE_LAYER, minzoom: MTB_MIN_ZOOM };
+  return [
+    { id: MTB_TRAIL_LAYER_ID, ...base, filter: filters[MTB_TRAIL_LAYER_ID], paint: mtbTrailPaint(strong) },
+    ...MTB_LEVELS.map(({ level }) => ({ id: mtbLevelCasingLayerId(level), ...base, filter: filters[mtbLevelCasingLayerId(level)], paint: mtbLevelPaint(level, strong).casing })),
+    ...MTB_LEVELS.map(({ level }) => ({ id: mtbLevelLayerId(level), ...base, filter: filters[mtbLevelLayerId(level)], paint: mtbLevelPaint(level, strong).line })),
+  ];
+}
+
+/**
  * Each overlay layer's filter in the ride time `when`, by layer id. Each routable layer
- * excludes the mountain-bike trails, which the not-for-routes layer (`mtb-trail`) draws,
+ * excludes the mountain-bike trails, which the not-for-routes layers (MTB_LAYER_IDS) draw,
  * unless `routableMtb` (MTB_TRAILS_ROUTABLE, above), when the routable layers draw them and
- * `mtb-trail` draws nothing. In the Mass Ride map (`mass`) each also excludes the features
- * that carry a capacity (massStyle.js, massHides), but `mtb-trail`, which is a layer of its own (454).
+ * those draw nothing. In the Mass Ride map (`mass`) each also excludes the features
+ * that carry a capacity (massStyle.js, massHides), but the mountain-bike layers, a map layer of their own (454).
  */
 export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLanesOn(), mass = massRide, routableMtb = MTB_TRAILS_ROUTABLE) {
   const filters = stressFiltersOf(when, showHighLanes, routableMtb);
   if (!mass) return filters;
-  // The mountain-bike trails' line keeps its own filter: their layer shows in every ride type (454), and nearly
+  // The mountain-bike trails' layers keep their own filters: their layer shows in every ride type (454), and nearly
   // every trail row carries a capacity (`rpm`, a path's default width), so `massHides` would draw none of them.
-  return Object.fromEntries(Object.entries(filters).map(([id, filter]) => [id, id === MTB_TRAIL_LAYER_ID ? filter : ["all", filter, massHides]]));
+  return Object.fromEntries(Object.entries(filters).map(([id, filter]) => [id, isMtbLayerId(id) ? filter : ["all", filter, massHides]]));
 }
 
 function stressFiltersOf(when, showHighLanes, routableMtb) {
   const filters = {};
   // Every routable filter is ["all", drawnAt(when), <the mountain-bike cut, unless routableMtb>, ...its own clauses].
   const hidden = routableMtb ? [] : [mtbHides];
-  // The not-for-routes line: the mountain-bike trails, or nothing once they are routable.
-  filters["mtb-trail"] = ["all", drawnAt(when), isMtbTrail, ...(routableMtb ? [["boolean", false]] : [])];
+  // The not-for-routes lines: the mountain-bike trails, or nothing once they are routable. The grey dots
+  // draw the unrated ones (no `mtb_level`), and each level's casing and line the trails of that level (456).
+  const off = routableMtb ? [["boolean", false]] : [];
+  filters[MTB_TRAIL_LAYER_ID] = ["all", drawnAt(when), isMtbTrail, ["!", ["has", "mtb_level"]], ...off];
+  for (const { level } of MTB_LEVELS) {
+    const filter = ["all", drawnAt(when), isMtbTrail, ["==", ["get", "mtb_level"], level], ...off];
+    filters[mtbLevelCasingLayerId(level)] = filter;
+    filters[mtbLevelLayerId(level)] = filter;
+  }
+  // The names (2026-10-10): every mountain-bike trail with one, rated or not.
+  filters[MTB_LABEL_LAYER_ID] = ["all", drawnAt(when), isMtbTrail, ["has", "name"], ...off];
   for (const tier of TIER_SHAPES) {
     const filter = ["all", drawnAt(when), ...hidden, ["==", tierAt(when), tier.tier]];
     // LTS 1's line and edge leave the surface-unknown trails to their own layers.
@@ -947,6 +1082,13 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
     if (tier.dash && hasGapLayer(tier.tier)) filters[`stress-gap-${tier.tier}`] = filter;
     if (hasRingLayer(tier.tier)) filters[`stress-ring-${tier.tier}`] = [...filter, ["!=", ["get", "unpaved"], true]];
     filters[`stress-unpaved-${tier.tier}`] = [...filter, ["==", ["get", "unpaved"], true]];
+    if (tier.tier < 5) {
+      // A half step's dash (441r-441v, 458): the feature's own tier is this one (not a road closed to cars
+      // now, which draws as a path at 1) and it carries the half.
+      const half = [...filter, ["==", ["get", "tier"], tier.tier], isHalfStep];
+      filters[`stress-half-outline-${tier.tier}`] = half;
+      filters[`stress-half-${tier.tier}`] = half;
+    }
   }
   for (const facility of FACILITIES) {
     const filter = ["all", drawnAt(when), ...hidden, ["==", facilityAt(when), facility.facility]];
@@ -1153,6 +1295,101 @@ export function ringLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = cur
         "line-opacity": byZoom(1, 0, tier.tier >= BUSY_MIN_TIER),
       },
     }));
+}
+
+/**
+ * HALF STEPS (OWNER-DECISIONS 441i-441v, 458, 458a, 458b, 460.1). The tiles carry a half step as its
+ * lower `tier` plus `half: true` (core/stress_tiles.py), so below HALF_STEP_MIN_ZOOM a half step draws
+ * exactly as its lower level (460.1: "The level below makes more sense"; 1.5 looks like LTS 1). From
+ * HALF_STEP_MIN_ZOOM it keeps the lower level's whole look - base colour, casing, width and its own
+ * pattern (441v) - and over it goes a dash in the NEXT level's base colour (441u: "Basically the dash
+ * would be the next one up's base color"), Option A of the mock-up (458), sparse blocks:
+ *
+ * - 1.5, 2.5, 3.5: HALF_STEP_DASH [1.5, 4.5] at the lower level's full line width, in the base colour of
+ *   LTS 2, 3 or 4 (1.5's is LTS 2's green #57a06c on the default palette and blue on the colour-blind
+ *   one, 458a);
+ * - 4.5: Avoid's dash-dot [5, 1, 0.5, 1] at LTS 4's width in Avoid's base colour (441s). It is never
+ *   drawn as Avoid (441k).
+ *
+ * Two dashes are too close to their line (458b, "yes add them"): the default palette's 3.5 (LTS 4's
+ * orange on LTS 3's yellow, about 1.5:1) and the colour-blind palette's 4.5 (Avoid's blue-black on LTS
+ * 4's dark red, about 1.6:1). Each gets a thin outline on the dash only (HALF_OUTLINES):
+ * a pixel each side, drawn under the dash with the same pattern scaled to its own width, in a colour at
+ * least 3:1 from both the dash and the line (HALF_OUTLINE_MIN_CONTRAST; halfSteps.test.ts and the
+ * browser a11y suite hold it). Every other half step's outline layer is drawn transparent, so a palette
+ * flip needs no new layer. Colour is not the only cue: the dash's shape is one no whole level uses, and
+ * the road panel says the exact step in words (441k).
+ *
+ * Not drawn where the line itself is faint or hidden (a busy road beside a separate bikeway, an alley):
+ * the dash follows the line's own `byZoom` opacity, at nothing where the line is faint.
+ */
+export const HALF_STEP_MIN_ZOOM = 15;
+export const HALF_STEP_DASH = [1.5, 4.5];
+/** 4.5's dash: Avoid's own dash-dot (441s), never Avoid's look (441k). */
+export const HALF_STEP_TOP_DASH = [5, 1, 0.5, 1];
+export const HALF_OUTLINE_PX = 1;
+export const HALF_OUTLINE_MIN_CONTRAST = 3;
+const isHalfStep = ["==", ["get", "half"], true];
+
+/** The half step above `tier` (1-4): its dash colour, pattern and width, and its outline (or null). */
+export function halfStep(tier, tiers = currentTiers()) {
+  const lower = tiers.find((t) => t.tier === tier);
+  const upper = tiers.find((t) => t.tier === tier + 1);
+  if (!lower || !upper || tier >= 5) return null;
+  const dash = tier === 4 ? HALF_STEP_TOP_DASH : HALF_STEP_DASH;
+  return {
+    tier,
+    step: tier + 0.5,
+    color: upper.color,
+    line: lower.color,
+    width: lower.width,
+    dash,
+    outline: lower.halfOutline ?? null,
+  };
+}
+
+/** A dash pattern in a wider line's units, so its blocks fall where the narrower line's do. */
+export function scaledDash(dash, width, wider) {
+  return dash.map((part) => Math.round(((part * width) / wider) * 1000) / 1000);
+}
+
+export function halfStepLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
+  const filters = stressFilters(when);
+  const layers = [];
+  for (const tier of tiers.filter((t) => t.tier < 5)) {
+    const half = halfStep(tier.tier, tiers);
+    const busy = tier.tier >= BUSY_MIN_TIER;
+    const outlineWidth = half.width + 2 * HALF_OUTLINE_PX;
+    layers.push({
+      id: `stress-half-outline-${tier.tier}`,
+      type: "line",
+      source: sourceId,
+      "source-layer": STRESS_TILE_LAYER,
+      minzoom: HALF_STEP_MIN_ZOOM,
+      filter: filters[`stress-half-outline-${tier.tier}`],
+      paint: {
+        "line-color": half.outline ?? "rgba(0, 0, 0, 0)",
+        "line-width": outlineWidth,
+        "line-opacity": byZoom(1, 0, busy),
+        "line-dasharray": scaledDash(half.dash, half.width, outlineWidth),
+      },
+    });
+    layers.push({
+      id: `stress-half-${tier.tier}`,
+      type: "line",
+      source: sourceId,
+      "source-layer": STRESS_TILE_LAYER,
+      minzoom: HALF_STEP_MIN_ZOOM,
+      filter: filters[`stress-half-${tier.tier}`],
+      paint: {
+        "line-color": half.color,
+        "line-width": half.width,
+        "line-opacity": byZoom(1, 0, busy),
+        "line-dasharray": half.dash,
+      },
+    });
+  }
+  return layers;
 }
 
 /** How much wider a casing is than its tier's line: a pixel on each side. */
@@ -1420,6 +1657,10 @@ export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, ti
     ...unknownSurfaceLayers(sourceId, when, tiers),
     ...stressLayers(sourceId, when, tiers),
     ...unpavedLayers(sourceId, when, tiers),
+    // Half steps' dashes from street level (441r-441v, 458), over their lower level's line.
+    ...halfStepLayers(sourceId, when, tiers),
+    // The mountain-bike trails' names (2026-10-10), over every routable line, so a route does not hide them.
+    ...mtbLabelLayers(sourceId, when),
     // The Mass Ride map's own layers, over these, from its own tiles (core/mass_tiles.py): drawn
     // only in that mode, where every layer above is hidden (lib/mapGlue.ts; OWNER-DECISIONS 417a).
     ...massLayers(MASS_SOURCE_ID, STRESS_TILE_LAYER, accessibilityOn()),

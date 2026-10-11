@@ -9,8 +9,10 @@ import {
   gapLayers,
   ringLayers,
   mtbTrailLayers,
+  mtbLabelLayers,
   stressOverlayLayers,
   unpavedLayers,
+  halfStepLayers,
   unknownSurfaceLayers,
   UNKNOWN_SURFACE_DASH,
   UNPAVED_DASH,
@@ -233,6 +235,7 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const casings = stressCasingLayers("s").map((l) => l.id);
   const rails = facilityLayers("s").map((l) => l.id);
   const marks = unpavedLayers("s").map((l) => l.id);
+  const halves = halfStepLayers("s").map((l) => l.id);
   const gaps = gapLayers("s").map((l) => l.id);
   const unknown = unknownSurfaceLayers("s").map((l) => l.id);
   assert.deepEqual(unknown, ["stress-unknown-casing", "stress-unknown"], "the surface-unknown trail's edge, then its line (OWNER-DECISIONS 376)");
@@ -241,8 +244,20 @@ test("the overlay is added casings first: every casing under every tier", () => 
   assert.deepEqual(rings, ["stress-ring-3", "stress-ring-4"], "two-tone LTS 3 and 4's ring (OWNER-DECISIONS 371)");
   const mass = massLayers("s").map((l) => l.id);
   const mtb = mtbTrailLayers("s").map((l) => l.id);
-  assert.deepEqual(mtb, ["mtb-trail"], "the mountain-bike trails' not-for-routes line (OWNER-DECISIONS 452a)");
-  assert.deepEqual([...ids].sort(), [...mtb, ...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks, ...mass].sort(), "each layer once");
+  assert.deepEqual(
+    mtb,
+    ["mtb-trail", "mtb-level-casing-1", "mtb-level-casing-2", "mtb-level-casing-3", "mtb-level-casing-4", "mtb-level-1", "mtb-level-2", "mtb-level-3", "mtb-level-4"],
+    "the unrated mountain-bike trails' not-for-routes dots (OWNER-DECISIONS 452a), then each level's casing, then its line (456)",
+  );
+  // The whole mountain-bike layer under every routable line, and its names (2026-10-10) over them, under the Mass Ride's.
+  assert.deepEqual(ids.slice(0, mtb.length), mtb);
+  const names = mtbLabelLayers("s").map((l) => l.id);
+  assert.deepEqual(names, ["mtb-trail-label"]);
+  assert.deepEqual(ids.slice(-mass.length - 1, -mass.length), names);
+  assert.deepEqual([...ids].sort(), [...mtb, ...rings, ...rails, ...tiers, ...casings, ...gaps, ...unknown, ...marks, ...halves, ...names, ...mass].sort(), "each layer once");
+  // A half step's outline under its dash, both over every tier line (458).
+  for (let tier = 1; tier <= 4; tier++) assert.ok(ids.indexOf(`stress-half-outline-${tier}`) < ids.indexOf(`stress-half-${tier}`));
+  assert.ok(Math.min(...halves.map((h) => ids.indexOf(h))) > Math.max(...tiers.map((t) => ids.indexOf(t))), "the half-step dashes are drawn over every tier line");
   // The not-for-routes line under everything, so every routable line draws over it.
   assert.equal(ids[0], "mtb-trail");
   assert.ok(ids.indexOf("stress-unknown-casing") < ids.indexOf("stress-unknown"), "the edge under its line");
@@ -261,8 +276,8 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const lastRail = Math.max(...rails.map((r) => ids.indexOf(r)));
   const firstCasing = Math.min(...casings.map((c) => ids.indexOf(c)));
   assert.ok(lastRail < firstCasing, "a facility's rails are drawn over a stress line");
-  // Every stress-map layer reads the source it is given; the Mass Ride layers read their own tiles (core/mass_tiles.py).
-  for (const layer of stressOverlayLayers("s")) assert.equal(layer.source, mass.includes(layer.id) ? "mass" : "s");
+  // Every stress-map layer reads the source it is given; the Mass Ride layers read their own tiles (core/mass_tiles.py), and the hazards' rails their own GeoJSON (part 3).
+  for (const layer of stressOverlayLayers("s")) assert.equal(layer.source, mass.includes(layer.id) ? (layer.id.startsWith("mass-hazard-") ? "mass-hazards" : "mass") : "s");
 });
 
 test("the ring (OWNER-DECISIONS 371) is drawn on paved and unknown-surface roads only, never on an unpaved one", () => {
@@ -412,6 +427,8 @@ test("stressFilters covers every overlay layer, and a style with them validates"
       stress: { type: "vector", tiles: ["https://example.test/{z}/{x}/{y}.pbf"] },
       // The Mass Ride layers' own tiles (core/mass_tiles.py).
       mass: { type: "vector", tiles: ["https://example.test/mass/{z}/{x}/{y}.pbf"] },
+      // The approved rider-marked hazards (massStyle.js hazardLayers): a GeoJSON source of their own.
+      "mass-hazards": { type: "geojson", data: { type: "FeatureCollection", features: [] } },
     },
     layers: stressOverlayLayers("stress", "weekday_rush"),
   };

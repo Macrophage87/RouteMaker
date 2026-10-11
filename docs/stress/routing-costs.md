@@ -81,20 +81,22 @@ columns.
 `10 x (e^(3t) - 1) / (e^3 - 1)` with `t = (s - 80)/20`. A rider may move the slider on
 every preset except Mass Ride, which is locked at 0 (`stress_max=0`, `presets.py:543`).
 
-## 3. Each preset's values (`presets.py:479-636`)
+## 3. Each preset's values (`presets.py:588-778`)
 
-| Preset | Graph | Slider start | `use_roads` | Calm rate | Junction weight | Exposure weights (LTS 3/4/Avoid) | LTS 4 hold | Bike type, planning speed | Calm search runs |
+| Preset | Graph | Slider start | `use_roads` | Calm rate | Junction weight | Exposure weights (LTS 3/4/Avoid; LTS 2 where set) | LTS 4 hold | Bike type, planning speed | Calm search runs |
 |---|---|---|---|---|---|---|---|---|---|
 | Default | standard | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 11.2 mph [18 km/h] | yes, one crossing round |
-| Trailmaxxing | standard | 100 | 0.0 | 10 (strict order) | 1.0 | 1 / 8 / 16 | yes | Cross, 12.4 mph [20 km/h] | yes, leg by leg (`long_calm`) |
+| Trailmaxxing | standard | 100 | 0.0 | 10 (strict order) | 1.0 | 1 / 8 / 16, LTS 2 0.25 | yes | Cross, 12.4 mph [20 km/h] | yes, leg by leg (`long_calm`) |
 | Group Ride | standard | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | yes, one crossing round |
 | Mass Ride | no-trail | 0, locked | 1.0 | 0 | (0.25; not used) | 1 / 2 / 3 | no | Hybrid, 6 mph [9.7 km/h] | **no** (`routing._refine_limit`, `routing.py:1208-1209`) |
 | Mountain Goat | off-road | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | no while the climb seek runs (hills start at 100), else one crossing round |
 | Gravel | off-road | 40 | 0.486 | 0 | 0.679 | 1 / 2 / 3 | no | Cross, 12.4 mph [20 km/h] | yes, one crossing round |
 | Fast | standard | 10 | 0.871 | 0 | 0.357 | 1 / 2 / 3 | no | Hybrid, 11.2 mph [18 km/h] | yes, one crossing round |
 | Cargo Bike, carrying cargo | standard (e-bike with assist) | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 8.7 mph [14 km/h] (11.2 mph [18 km/h] with assist) | yes, one crossing round |
-| Cargo Bike, with passengers | standard (e-bike with assist) | 80 | 0.0 | 0 | 1.0 | 1 / 8 / 16 | yes | Hybrid, 8.7 mph [14 km/h] (11.2 mph [18 km/h] with assist) | yes, one crossing round |
+| Cargo Bike, with passengers | standard (e-bike with assist) | 80 | 0.0 | 0 | 1.0 | 1 / 8 / 16, LTS 2 0.25 | yes | Hybrid, 8.7 mph [14 km/h] (11.2 mph [18 km/h] with assist) | yes, one crossing round |
 | E-bike | e-bike | 70 | 0.10 | 0 | 1.0 | 1 / 2 / 3 | no | Hybrid, 14.9 mph [24 km/h] | yes, one crossing round |
+| Bikeshare | standard (e-bike graph for the e-bike) | 80 | 0.0 | 0 | 1.0 | 1 / 8 / 16 | yes | Hybrid, 8.1 mph [13 km/h] (12.4 mph [20 km/h] on the e-bike) | yes, one crossing round |
+| Riding with kids | standard | 100 | 0.0 | 10 (strict order) | 1.0 | 1 / 8 / 16, LTS 2 0.5 | yes | Hybrid, 6.2 mph [10 km/h] | yes, except past 18.6 mi [30 km] of straight line |
 
 Every preset sends `alley_penalty` 1,800 s (`presets.py:462`). "Calm search runs" means
 `refine.refine` is called: at a calm rate of 0 it makes one crossing-only round
@@ -103,7 +105,16 @@ rounds (`REFINE_MAX_ROUNDS`, `:88`). The search does not run for Mass Ride, fewe
 2 points, a long ride, a climb seek, a span over 18.6 mi [30 km] (except
 Trailmaxxing), or too little time (`routing.py:1193-1220`). The exposure weights
 come from `Exposure` (`presets.py:339-355`), chosen per carrying choice on Cargo Bike
-(`:358-365`, `:607-608`).
+(`:386-394`, `:719`).
+
+LTS 2 (OWNER-DECISIONS 240): Trailmaxxing and Cargo with passengers weigh a meter of LTS 2
+as a quarter of a meter of LTS 3 (`LTS2_WEIGHT`), and Riding with kids as half
+(`KIDS_LTS2_WEIGHT`). Every other preset, Bikeshare included, weighs LTS 2 at 0. The
+weight enters exposure and the strict order's second key, and at a calm rate of 0
+(80 and below, where Cargo with passengers starts) a separate score term: LTS 2 meters x
+the weight x LTS 3's added router cost at the request's `use_roads` in quiet meters
+(`refine.lts3_added_m`, about 4 at 80). It never reaches a router request:
+LTS 2 is never an exclusion target and never starts a trail seek (`refine.seek_weights`).
 
 ## 4. RouteMaker's ranking
 
@@ -117,7 +128,9 @@ come from `Exposure` (`presets.py:339-355`), chosen per carrying choice on Cargo
   `refine.py:141-144`, `quiet_cost_per_m` `:179-186`). That is 0.44 cost-seconds a meter
   at 11.2 mph [18 km/h].
 - `exposure_m` = the meters of each tier times its exposure weight (`refine.py:657-661`).
-  LTS 1-2 and unknown count 0.
+  LTS 1 and unknown count 0, and LTS 2 counts 0 except on the rides that weigh it
+  (section 3). On those, at a rate of 0, the score adds `lts2_weight x lts3_added_m x
+  lts2_m` inside the brackets instead (`refine.lts3_added_m`).
 - `junction_m` = the summed junction costs in meters (`intersections.penalty_m`).
 - A candidate replaces the best only if it beats it by more than 10 cost-seconds
   (`IMPROVEMENT_EPS_S`, `refine.py:140`, `:570`). Where the calm search runs with a calm
@@ -208,16 +221,19 @@ at x0.75 (`:107`, `merge_nearby` `:660-`). Several events within 148 ft [45 m] a
 after the costliest at half its cost (`:608-624`). The cost of each junction is the
 worst of its movements (`cost_of`, `:384-442`).
 
-**Severity** (`severity_of`, `:454-459`): orange (higher stress) from 600 ft, red (very
-high stress) from 2,000 ft (`ORANGE_MIN_FT`, `RED_MIN_FT`, `:176-177`). **Mass Ride**
-reads it differently (`assess(group=True)`, `:560-584`): orange for any flagged
-crossing or left of an LTS 3 road, red for LTS 4 or Avoid, no marker for a left across
-a one-way, and the cost unchanged.
+**Severity** (`severity_of`, `:604-609`): orange (higher stress) from 0.15 calm mi [0.24
+km; 800 ft], red (very high stress) from 0.59 calm mi [0.94 km; 3,100 ft] (`ORANGE_MIN_FT`,
+`RED_MIN_FT`, `:267-268`; red was 2,900 ft until 2026-10-10, see
+[intersections.md](intersections.md) section 7). **Mass Ride** reads it differently
+(`assess(group=True)`, `:560-584`): orange for any flagged crossing or left of an LTS 3
+road, red for LTS 4 or Avoid, no marker for a left across a one-way, and the cost
+unchanged.
 
 How the cost is used: in the score at the intersection weight (section 4), as targets
-for exclusion from 2,000 ft (`REFINE_MIN_EVENT_FT`, `refine.py:111`), and at the top of
-the slider as part of the top (red) and second (orange) figures. Junctions under
-600 ft count in the score and not at the top of the slider.
+for exclusion from 0.59 calm mi [0.94 km; 3,100 ft] (`REFINE_MIN_EVENT_FT`,
+`refine.py:111`), and at the top of the slider as part of the top (red) and second
+(orange) figures. Junctions under 0.15 calm mi [0.24 km; 800 ft] count in the score and
+not at the top of the slider.
 
 ## 6. Avoid, in one place
 

@@ -178,13 +178,15 @@ test("only Cargo Bike carries a load", () => {
   for (const preset of PRESETS) assert.equal(carries(preset.id), preset.id === "cargo", preset.id);
 });
 
-test("the three ride times, and nothing else, are ride times", () => {
-  // FE32: dropping weekday_offpeak from WHENS left every test green.
+test("the four ride times, and nothing else, are ride times", () => {
+  // FE32: dropping weekday_offpeak from WHENS left every test green. Night is
+  // OWNER-DECISIONS 469c.
   assert.deepEqual(
     WHENS.map((w) => w.id),
-    ["weekend", "weekday_rush", "weekday_offpeak"],
+    ["weekend", "weekday_rush", "weekday_offpeak", "night"],
   );
-  for (const when of ["weekend", "weekday_rush", "weekday_offpeak"]) assert.ok(isWhen(when), when);
+  for (const when of ["weekend", "weekday_rush", "weekday_offpeak", "night"]) assert.ok(isWhen(when), when);
+  assert.equal(decodePlan("#preset=default&when=night").dials.when, "night");
   assert.equal(isWhen("now"), false);
   assert.equal(decodePlan("#preset=default&when=weekday_offpeak").dials.when, "weekday_offpeak");
 });
@@ -233,6 +235,6 @@ test("every ride type starts where it planned before the rescale, Trailmaxxing a
   // Cargo-carrying-people stays at 80".
   assert.deepEqual(
     Object.fromEntries(PRESETS.map((p) => [p.id, STARTS[p.id].stress])),
-    { default: 70, trailmaxxing: 100, "group-ride": 40, "mass-ride": 0, "mountain-goat": 40, gravel: 40, fast: 10, cargo: 70, ebike: 70 },
+    { default: 70, trailmaxxing: 100, "group-ride": 40, "mass-ride": 0, "mountain-goat": 40, gravel: 40, fast: 10, cargo: 70, ebike: 70, bikeshare: 80, kids: 100 },
   );
 });

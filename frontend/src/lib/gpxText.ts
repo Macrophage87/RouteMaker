@@ -1,7 +1,7 @@
 /** What the GPX section says, and the export's name and description. */
 import type { RouteResponse } from "./api.ts";
 import type { LonLat } from "./geo.ts";
-import { WHENS, carryingWords, hillsWords, stressWords } from "./dials.ts";
+import { WHENS, carryingWords, hillsWords, stressWords, whenInSentence } from "./dials.ts";
 import type { ExportDials, GpxExport } from "./gpx.ts";
 import type { ImportNote, ImportedPlan } from "./gpxPlan.ts";
 import { presetLabel } from "./presets.ts";
@@ -49,7 +49,7 @@ export function rideText(route: Pick<RouteResponse, "preset"> & Partial<Pick<Rou
   return (
     `${head} Traffic slider ${d.stress} of 100 (${stressWords(d.stress)}); ` +
     `hills slider ${d.hills} (${hillsWords(d.hills)})` +
-    (when ? `; ride time ${when.toLowerCase()}` : "") +
+    (when ? `; ride time ${whenInSentence(when)}` : "") +
     (d.carrying ? `; ${carryingWords(d.carrying)}` : "") +
     (d.assist ? "; electric assist" : "") +
     // "Keep to roads, not trails" (OWNER-DECISIONS 463); Mass Ride always keeps to roads, so it is not said there.
@@ -64,9 +64,10 @@ export function rideText(route: Pick<RouteResponse, "preset"> & Partial<Pick<Rou
  * routedLoop, from loop.loopStops; OWNER-DECISIONS 374), not the live toggle
  * and not the API's echoed `dials.loop`, which is also true for a ride that
  * ends on its start with the toggle off; such a ride keeps Start and End.
- * Mass Ride has no loop.
+ * Mass Ride has no loop. `federal` is a Mass Ride's federal-land lines
+ * (lib/federalStops.ts federalLines, item 239), carried in the description.
  */
-export function exportOf(route: ExportedRoute, points: readonly LonLat[], loop = false): GpxExport {
+export function exportOf(route: ExportedRoute, points: readonly LonLat[], loop = false, federal: readonly string[] = []): GpxExport {
   const dials: ExportDials | undefined = route.dials
     ? {
         stress: route.dials.stress,
@@ -84,7 +85,7 @@ export function exportOf(route: ExportedRoute, points: readonly LonLat[], loop =
     preset: route.preset,
     ...(dials ? { dials } : {}),
     rideText: rideText(route),
-    ...(gpxDescriptionText(route) ? { routeText: gpxDescriptionText(route) } : {}),
+    ...(gpxDescriptionText(route, federal) ? { routeText: gpxDescriptionText(route, federal) } : {}),
     planPoints: points,
     ...(loop && route.preset !== "mass-ride" ? { loop: true } : {}),
     geometry: route.geometry.coordinates,

@@ -10,6 +10,7 @@ import { MASS_AVOID, MASS_BANDS } from "../massStyle.js";
 import type { RouteResponse } from "./api.ts";
 import { DC_BOUNDARY_CREDIT, MASS_DC_ONLY } from "./dcBoundary.ts";
 import { formatDistance } from "./format.ts";
+import { HazardLegend } from "./massHazards.ts";
 import { ROUTE_CASING_WIDTH, routeCasing, routeClasses, routeMarkDash, routeMarkWidth, type RouteClass, type RouteClassKey } from "./routeColours.ts";
 import {
   AVOID_LEGEND_TEXT,
@@ -108,7 +109,8 @@ export function MassZoomNotes({ zoom, shown }: { zoom: number | null; shown: boo
 
 /**
  * The legend the Mass Ride map has in place of the stress legend: the four bands, lowest
- * first, then Avoid. Federal land, stops and groups keep their own sections (324).
+ * first, then Avoid, then the rider-marked hazards' two rails (FOLLOWUP-MASSRIDE-MAP part 3,
+ * lib/massHazards.ts). Federal land, stops and groups keep their own sections (324).
  */
 export function MassLegend(): ReactElement {
   return h(
@@ -121,6 +123,7 @@ export function MassLegend(): ReactElement {
       ...MASS_BANDS.map((band: Band, i: number) => row(band.key, h(BandSwatch, { band }), bandLegendText(i))),
       row("avoid", h(AvoidSwatch), AVOID_LEGEND_TEXT),
     ),
+    h(HazardLegend),
     h("p", { className: "hint capacity-source" }, CAPACITY_SOURCE),
     // DC only for now (OWNER-DECISIONS 418), in words, with the boundary's source.
     h("p", { className: "hint mass-dc-only" }, MASS_DC_ONLY),
@@ -164,9 +167,18 @@ export function CapacityFigures({ route }: { route: Pick<RouteResponse, "stress_
  * bottleneck, and the typical capacity, each on the flat and with the hills (OWNER-DECISIONS 424),
  * said once where the two agree. A definition list like the totals above it.
  */
-export function CapacityStats({ route }: { route: Pick<RouteResponse, "stress_spans"> & Partial<Pick<RouteResponse, "profile">> }): ReactElement | null {
+export function CapacityStats({
+  route,
+  corkers = null,
+}: {
+  route: Pick<RouteResponse, "stress_spans"> & Partial<Pick<RouteResponse, "profile">>;
+  /** The ride's corkers (lib/profileChart.ts `corkerFigure`), listed after the capacity. */
+  corkers?: { label: string; text: string } | null;
+}): ReactElement | null {
   const summary = capacitySummary(route.stress_spans);
+  // No riders figure (a table without the column): the panel keeps its older look, with no figures.
   if (!summary || summary.minRpm === null) return null;
+  const corkerTerm = corkers ? h("div", { key: "corkers", className: "capacity-corkers" }, h("dt", null, corkers.label), h("dd", null, corkers.text)) : null;
   const pair = capacityPair(summary, route.profile?.flow);
   const term = (line: CapacityLine, className: string) =>
     h("div", { key: line.key, className }, h("dt", null, capitalise(line.label)), h("dd", null, line.text));
@@ -179,6 +191,7 @@ export function CapacityStats({ route }: { route: Pick<RouteResponse, "stress_sp
       { className: "stats capacity-stats" },
       ...narrowestLines(pair).map((line) => term(line, `capacity-narrowest ${line.key}`)),
       ...typicalLines(pair).map((line) => term(line, `capacity-typical ${line.key}`)),
+      corkerTerm,
     ),
     summary.outsideM > 0 ? h("p", { className: "hint capacity-outside-dc" }, OUTSIDE_DC_FIGURES) : null,
   );

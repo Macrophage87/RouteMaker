@@ -1,8 +1,10 @@
-"""The three ride times a plan can be for, and what OSM's conditions say at each.
+"""The ride times a plan can be for, and what OSM's conditions say at each.
 
 The owner's words, 2026-09-27: "We can maybe just use three settings: Weekend,
-Weekday Rush, Weekday Off-hours?" So a plan is for one of `WHENS`, and nothing
-finer. Two things read it:
+Weekday Rush, Weekday Off-hours?" A fourth, night, came with the junction
+model's time of day (OWNER-DECISIONS 469c: "Evenings are probably 1x till about
+9. Then reduced to about half to 7"). So a plan is for one of `WHENS`, and
+nothing finer. Three things read it:
 
 - the router's `date_time` (`REPRESENTATIVE_TIME`), which is what Valhalla
   evaluates the conditional restrictions it does read against - `access:
@@ -14,11 +16,15 @@ finer. Two things read it:
   (`car_free_when`). Valhalla does not read `motor_vehicle:conditional`, and a
   closure to cars is a comfort fact for a bicycle, not an access one, so no
   `date_time` could express it; it is evaluated here, at the rebuild, against
-  each setting's instants.
+  each setting's instants;
+- the junction model's ride-time factor (`routemaker.intersections.time_factor`).
 
-Rush hours are Monday to Friday, 07:00-10:00 and 16:00-19:00 in the region's
-time. A US federal holiday counts as the weekend, since the closures here that
-name holidays (`PH`) name them alongside Saturday and Sunday.
+Night is 21:00 to 07:00 on any day, weekend nights included; it routes on the
+standard graph, as a weekday does, and a road counts as car-free at night only
+if its closure covers every night instant. Rush hours are Monday to Friday,
+07:00-10:00 and 16:00-19:00 in the region's time. A US federal holiday counts as
+the weekend, since the closures here that name holidays (`PH`) name them
+alongside Saturday and Sunday.
 """
 
 from __future__ import annotations
@@ -32,10 +38,14 @@ ZONE = ZoneInfo("America/New_York")
 WEEKEND = "weekend"
 WEEKDAY_RUSH = "weekday_rush"
 WEEKDAY_OFFPEAK = "weekday_offpeak"
-WHENS = (WEEKEND, WEEKDAY_RUSH, WEEKDAY_OFFPEAK)
+NIGHT = "night"
+WHENS = (WEEKEND, WEEKDAY_RUSH, WEEKDAY_OFFPEAK, NIGHT)
 
 # (start, end) in minutes of the day, end exclusive.
 RUSH_WINDOWS = ((7 * 60, 10 * 60), (16 * 60, 19 * 60))
+# Night: from 21:00 to 07:00, every day (469c).
+NIGHT_START = 21 * 60
+NIGHT_END = 7 * 60
 
 _DAYS = ("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")
 
@@ -46,13 +56,19 @@ _DAYS = ("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")
 INSTANTS = {
     WEEKEND: ((5, 9 * 60), (5, 15 * 60), (6, 11 * 60)),
     WEEKDAY_RUSH: ((1, 8 * 60), (1, 17 * 60 + 30)),
-    WEEKDAY_OFFPEAK: ((1, 12 * 60), (1, 21 * 60)),
+    WEEKDAY_OFFPEAK: ((1, 12 * 60), (1, 20 * 60 + 30)),
+    NIGHT: ((1, 22 * 60), (2, 3 * 60), (5, 22 * 60), (6, 3 * 60)),
 }
 
 # What the router is told for each setting: the next such day at the first of
 # its instants. Saturday 09:00 is PLAN's own default planning time
 # ("the next Saturday at 9:00 local time").
-REPRESENTATIVE_TIME = {WEEKEND: (5, 9, 0), WEEKDAY_RUSH: (1, 8, 0), WEEKDAY_OFFPEAK: (1, 12, 0)}
+REPRESENTATIVE_TIME = {
+    WEEKEND: (5, 9, 0),
+    WEEKDAY_RUSH: (1, 8, 0),
+    WEEKDAY_OFFPEAK: (1, 12, 0),
+    NIGHT: (1, 22, 0),
+}
 
 
 def _nth_weekday(year: int, month: int, weekday: int, n: int) -> date:
@@ -90,9 +106,11 @@ def federal_holidays(year: int) -> set[date]:
 def when_at(moment: datetime) -> str:
     """The setting a moment falls in, read in the region's time."""
     local = moment.astimezone(ZONE)
+    minute = local.hour * 60 + local.minute
+    if minute >= NIGHT_START or minute < NIGHT_END:
+        return NIGHT
     if local.weekday() >= 5 or local.date() in federal_holidays(local.year):
         return WEEKEND
-    minute = local.hour * 60 + local.minute
     if any(start <= minute < end for start, end in RUSH_WINDOWS):
         return WEEKDAY_RUSH
     return WEEKDAY_OFFPEAK

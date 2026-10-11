@@ -7,7 +7,8 @@ import { inflateSync } from "node:zlib";
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export async function connect(port = 9222) {
+// The debugging port: 9222 (run.sh's container), or A11Y_CDP_PORT to run beside another browser.
+export async function connect(port = Number(process.env.A11Y_CDP_PORT || 9222)) {
   let version;
   for (let i = 0; i < 100 && !version; i++) {
     try {
@@ -133,17 +134,50 @@ export async function media(page, { scheme = "light", forced = false } = {}) {
  * the release, SF1; lifted from its probe's mockDelayed), and `stressTiles: false` answers the
  * stress tiles with an error (the stress map unavailable).
  */
-export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTiles = true } = {}) {
+export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTiles = true, admin = false, suggester = false, hazards = null } = {}) {
   page.routeRequests = 0;
+  // The bodies of the route requests, and the nearest-stations requests (OWNER-DECISIONS 466a).
+  page.routeBodies = [];
+  page.stationRequests = [];
   page.infoRequests = [];
+  // The road panel's stress editor (OWNER-DECISIONS 441g, 441h; core/stress_edits.py): `admin` makes this
+  // visitor an instance admin; `editRoad` is the one road's state, `editRequests` what the page sent
+  // (method, path, headers, body), `tileUrls` the stress tiles asked for, and `editFail` an answer to give
+  // the next write instead ({ status, body }).
+  // `stretch` true makes the road one piece of a three-piece named stretch (phase 5).
+  page.editRoad = { tier: 3, was: 3, edit: null, generation: 0, edits: 0, stretch: false };
+  // Rider suggestions (core/suggestions.py): `suggester` makes this visitor a rider the settings allow;
+  // `suggestRequests` is what the page sent; an admin's review list holds `suggestionsOpen`.
+  page.suggestRequests = [];
+  page.suggestionsOpen = [SUGGESTION_ITEM];
+  // Mass Ride hazards (core/mass_hazards.py): the approved layer, what the page sent, the admin's list.
+  page.hazardLayer = hazards ?? { type: "FeatureCollection", features: [] };
+  page.hazardRequests = [];
+  page.hazardsOpen = [HAZARD_ITEM];
+  // Junction suggestions (core/junction_suggestions.py; OWNER-DECISIONS 232): `junctionAt` is the junction
+  // the API finds at any spot (null: none there), `junctionsOpen` the admin's waiting list. Their requests
+  // go in `suggestRequests` too, so "asks the suggestion endpoints nothing" covers both.
+  page.junctionAt = null;
+  page.junctionsOpen = [];
+  // true: the junction list answers an error, as a server that cannot read it would.
+  page.junctionsFail = false;
+  page.editRequests = [];
+  page.editFail = null;
+  page.tileUrls = [];
   // Tile requests by set: the stress tiles (the first is MapView's probe) and the Mass Ride's own.
   page.tileRequests = { stress: 0, mass: 0 };
   await page.s("Fetch.enable", {
     patterns: [{ urlPattern: "*/api/*" }, { urlPattern: "*/tiles/*" }, { urlPattern: "*/basemap/*" }, { urlPattern: "*/auth/*" }],
   });
+  // `page.offline`: every mocked request fails as with no signal (the installable app's offline checks).
+  page.offline = false;
   page.listeners.add(async (msg) => {
     if (msg.method !== "Fetch.requestPaused") return;
     const { requestId, request } = msg.params;
+    if (page.offline) {
+      await page.s("Fetch.failRequest", { requestId, errorReason: "InternetDisconnected" }).catch(() => {});
+      return;
+    }
     const url = new URL(request.url);
     let status = 404;
     let body = "";
@@ -157,6 +191,7 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       if (stressTiles === "capacity") body = capacityTile();
     } else if (url.pathname.startsWith("/tiles/stress/")) {
       page.tileRequests.stress += 1;
+      page.tileUrls.push(request.url);
       status = stressTiles ? 200 : 503;
       type = "application/x-protobuf";
       // "capacity": a tile of roads that carry the Mass Ride capacity (`rpm`), as a rebuilt table's do.
@@ -171,12 +206,143 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       status = 200;
       body = JSON.stringify(typeof route === "function" ? route(n) : route);
       type = "application/json";
+    } else if (url.pathname === "/api/bikeshare/stations" && request.method === "POST") {
+      // The nearest stations to pick up from or return to (core/bikeshare.py nearby_stations).
+      const asked = JSON.parse(request.postData ?? "{}");
+      page.stationRequests.push({ search: url.search, ...asked });
+      status = 200;
+      body = JSON.stringify(asked.action === "dropoff" ? S_STATIONS_DROPOFF : S_STATIONS_PICKUP);
+      type = "application/json";
     } else if (url.pathname === "/api/segment-info") {
       // The map's road panel (OWNER-DECISIONS 441a; core/segment_info.py): one fixed road.
       page.infoRequests.push(url.search);
       status = 200;
-      body = JSON.stringify(S_SEGMENT_INFO);
+      body = JSON.stringify(segmentInfoAt(page.editRoad.tier));
       type = "application/json";
+    } else if (url.pathname === "/api/me") {
+      status = 200;
+      body = JSON.stringify({ signed_in: admin || suggester, can_change_lts: admin, can_suggest: suggester && !admin });
+      type = "application/json";
+    } else if (url.pathname.startsWith("/api/mass-hazards")) {
+      // Rider-marked Mass Ride hazards (core/mass_hazards.py; FOLLOWUP-MASSRIDE-MAP part 3): the approved
+      // layer (`hazards`, empty unless a check gives one), a rider's report, and the admin's review.
+      const record = { method: request.method, path: url.pathname, headers: request.headers, body: request.postData ? JSON.parse(request.postData) : null };
+      page.hazardRequests.push(record);
+      type = "application/json";
+      const action = /^\/api\/mass-hazards\/(\d+)\/(approve|delete|discord)$/.exec(url.pathname);
+      if (url.pathname === "/api/mass-hazards" && request.method === "GET") {
+        status = 200;
+        type = "application/geo+json";
+        body = JSON.stringify(page.hazardLayer);
+      } else if (url.pathname === "/api/mass-hazards" && request.method === "POST" && suggester) {
+        status = 200;
+        body = JSON.stringify({ id: 1, message: "Thanks. Your hazard report was sent to the map's admins. Nothing changes on the Mass Ride map until one of them reviews it." });
+      } else if (url.pathname === "/api/mass-hazards/open" && admin) {
+        status = 200;
+        body = JSON.stringify({ hazards: page.hazardsOpen });
+      } else if (action && admin) {
+        status = 200;
+        const id = Number(action[1]);
+        if (action[2] === "discord") {
+          body = JSON.stringify({ id, status: "sent_to_discord", post: "**Should the Mass Ride map warn big group rides about Oak Street?**", characters: 66, options: [] });
+        } else {
+          page.hazardsOpen = page.hazardsOpen.filter((x) => x.id !== id);
+          body = JSON.stringify({ id, status: action[2] === "approve" ? "approved" : "deleted", message: action[2] === "approve" ? "Approved. Oak Street is marked Warning on the Mass Ride map now." : "Deleted." });
+        }
+      } else {
+        status = admin || suggester ? 403 : 401;
+        body = JSON.stringify({ error: "Not allowed." });
+      }
+    } else if (url.pathname.startsWith("/api/stress-suggestions")) {
+      const record = { method: request.method, path: url.pathname, headers: request.headers, body: request.postData ? JSON.parse(request.postData) : null };
+      page.suggestRequests.push(record);
+      type = "application/json";
+      const action = /^\/api\/stress-suggestions\/(\d+)\/(approve|delete|discord)$/.exec(url.pathname);
+      if (url.pathname === "/api/stress-suggestions" && request.method === "POST" && suggester) {
+        status = 200;
+        body = JSON.stringify({ id: 1, message: "Thanks. Your suggestion was sent to the map's admins. Nothing changes on the map until one of them reviews it." });
+      } else if (url.pathname === "/api/stress-suggestions/open" && admin) {
+        status = 200;
+        body = JSON.stringify({ suggestions: page.suggestionsOpen });
+      } else if (action && admin) {
+        status = 200;
+        const id = Number(action[1]);
+        if (action[2] === "discord") {
+          page.suggestionsOpen = page.suggestionsOpen.map((x) => (x.id === id ? { ...x, status: "sent_to_discord" } : x));
+          body = JSON.stringify({ id, status: "sent_to_discord", post: DISCORD_POST, characters: DISCORD_POST.length, options: [] });
+        } else {
+          page.suggestionsOpen = page.suggestionsOpen.filter((x) => x.id !== id);
+          body = JSON.stringify({ id, status: action[2] === "approve" ? "approved" : "deleted", message: action[2] === "approve" ? "Approved. Oak Street is now LTS 2.5, fine for most confident adults. The map shows it now." : "Deleted.", generation: 1 });
+        }
+      } else {
+        status = admin || suggester ? 403 : 401;
+        body = JSON.stringify({ error: "Not allowed." });
+      }
+    } else if (url.pathname.startsWith("/api/junction-suggestions")) {
+      const record = { method: request.method, path: url.pathname, search: url.search, headers: request.headers, body: request.postData ? JSON.parse(request.postData) : null };
+      page.suggestRequests.push(record);
+      type = "application/json";
+      const action = /^\/api\/junction-suggestions\/(\d+)\/(approve|delete|discord)$/.exec(url.pathname);
+      if (url.pathname === "/api/junction-suggestions/at" && suggester) {
+        status = page.junctionAt ? 200 : 400;
+        body = JSON.stringify(page.junctionAt ?? { error: "There is no junction within 82 ft (25 m) of that spot.", field: "lat", code: "no_junction" });
+      } else if (url.pathname === "/api/junction-suggestions" && request.method === "POST" && suggester) {
+        status = 200;
+        body = JSON.stringify({ id: 1, message: `Thanks. Your suggestion for ${page.junctionAt?.name ?? "the junction"} was sent to the map's admins. Nothing changes on the map until one of them reviews it.` });
+      } else if (url.pathname === "/api/junction-suggestions/open" && admin) {
+        status = page.junctionsFail ? 503 : 200;
+        body = JSON.stringify(page.junctionsFail ? { error: "The map's server is busy. Try again in a minute." } : { suggestions: page.junctionsOpen });
+      } else if (action && admin) {
+        status = 200;
+        const id = Number(action[1]);
+        if (action[2] === "discord") {
+          page.junctionsOpen = page.junctionsOpen.map((x) => (x.id === id ? { ...x, status: "sent_to_discord" } : x));
+          body = JSON.stringify({ id, status: "sent_to_discord", post: JUNCTION_POST, characters: JUNCTION_POST.length, options: [] });
+        } else {
+          page.junctionsOpen = page.junctionsOpen.filter((x) => x.id !== id);
+          body = JSON.stringify({ id, status: action[2] === "approve" ? "approved" : "deleted", message: action[2] === "approve" ? "Approved. Oak Street and Elm Street is now rated hard: long waits or fast traffic. Routes planned from now on use it." : "Deleted." });
+        }
+      } else {
+        status = admin || suggester ? 403 : 401;
+        body = JSON.stringify({ error: "Not allowed." });
+      }
+    } else if (admin && url.pathname.startsWith("/api/stress-edits")) {
+      const road = page.editRoad;
+      const record = { method: request.method, path: url.pathname, headers: request.headers, body: request.postData ? JSON.parse(request.postData) : null };
+      page.editRequests.push(record);
+      type = "application/json";
+      const undo = /^\/api\/stress-edits\/(\d+)\/undo$/.exec(url.pathname);
+      if (request.method === "GET" && url.pathname.endsWith("/stretch")) {
+        // Asked for only once the whole stretch is chosen (it needs the router's names).
+        status = 200;
+        body = JSON.stringify({ stretch: stretchState(road) });
+      } else if (request.method === "GET") {
+        status = 200;
+        body = JSON.stringify(editorState(road));
+      } else if (page.editFail) {
+        status = page.editFail.status;
+        body = JSON.stringify(page.editFail.body);
+        page.editFail = null;
+      } else if (undo && Number(undo[1]) === road.edit) {
+        road.tier = road.was;
+        road.edit = null;
+        road.generation += 1;
+        status = 200;
+        body = JSON.stringify({ edit_id: road.edits + 1, ways: [{ osm_way_id: 101, step: road.tier, changed: true }], generation: road.generation, undo_until: new Date().toISOString() });
+        road.edits += 1;
+      } else if (!undo && record.body && (record.body.expected === `tok-${road.generation}` || (road.stretch && record.body.expected === `stretch-${road.generation}`))) {
+        road.was = road.tier;
+        road.tier = record.body.step;
+        road.edits += 1;
+        road.edit = road.edits;
+        road.generation += 1;
+        status = 200;
+        const ways = record.body.osm_way_ids.map((id) => ({ osm_way_id: id, step: road.tier, changed: road.tier !== road.was }));
+        body = JSON.stringify({ edit_id: road.edit, ways, generation: road.generation, undo_until: new Date(Date.now() + 30 * 60000).toISOString() });
+      } else {
+        status = 409;
+        body = JSON.stringify({ error: "Someone changed this road since you opened it. Reopen it to see the change.", code: "stale" });
+      }
     } else if (url.pathname.startsWith("/api/")) {
       body = JSON.stringify({ detail: "not found" });
       type = "application/json";
@@ -337,7 +503,9 @@ for (let i = 0; i <= 40; i++) coords.push([-77.04 + i * 0.00075, 38.91 - i * 0.0
  * The route chart's profile (core.api.ProfileOut; OWNER-DECISIONS 322, 323, 328, 333) for a route of `distance`
  * metres: a gentle rise, a climb from 1,800 m to 2,100 m (6%, with a 9% pitch in its last 90 m), a plateau, then a 4% descent. With `mass`, the riders
  * a minute (a pinch at the start, 90 on the climb, none on a stretch marked Avoid from 3,540 m to 4,140 m, 190 elsewhere) and seven major
- * intersections (OWNER-DECISIONS 396: each crosses or joins a road of LTS 3 or higher, or is flagged).
+ * intersections (OWNER-DECISIONS 396: each crosses or joins a road of LTS 3 or higher, or is flagged; 13th Street
+ * one-way, so it takes one corker). The level figure is a 22 ft (6.7 m) road's everywhere but the Avoid stretch, so a
+ * 500-rider group is about 1,560 ft (474 m) long (PLAN's worked example).
  */
 const profileFor = (distance, mass = false) => {
   const n = Math.floor(distance / 30) + 1;
@@ -346,7 +514,7 @@ const profileFor = (distance, mass = false) => {
   const grade = (d) => (d < 1800 ? 0.2 : d <= 2010 ? 6 : d <= 2100 ? 9 : d < 3200 ? 0 : d <= 3500 ? -4 : 0);
   const avoid = (d) => d >= 3540 && d <= 4140;
   const riders = (d) => (avoid(d) ? null : d < 200 ? 55 : d >= 1800 && d <= 2100 ? 90 : 190);
-  const crossing = (at, street, severity, control, tier, corkers, kind = "flagged") => ({ m: at, street, severity, control, lanes: 2, crossed_tier: tier, kind, corkers_needed: corkers });
+  const crossing = (at, street, severity, control, tier, corkers, kind = "flagged", oneway = null) => ({ m: at, street, severity, control, lanes: 2, crossed_tier: tier, kind, corkers_needed: corkers, oneway });
   return {
     interval_m: 30,
     m,
@@ -354,7 +522,8 @@ const profileFor = (distance, mass = false) => {
     grade_pct: m.map(grade),
     climbs: [{ from_m: 1800, to_m: 2100, gain_m: 20.7, avg_grade_pct: 6.9, max_grade_pct: 9, tier: 2, ...(mass ? { capacity_drop_pct: 53, min_riders_per_min: 90 } : {}) }],
     riders_per_min: mass ? m.map(riders) : null,
-    flow: mass ? { narrowest_riders_per_min: 55, narrowest_m: 0, typical_riders_per_min: 190 } : null,
+    level_riders_per_min: mass ? m.map((d) => (avoid(d) ? null : 198)) : null,
+    flow: mass ? { narrowest_riders_per_min: 55, narrowest_m: 0, typical_riders_per_min: 190, cruise_pace_ms: 3.1293, default_level_riders_per_min: 197.98 } : null,
     avoid: mass ? [{ from_m: 3540, to_m: 4140 }] : null,
     unchecked: mass ? [] : null,
     crossings: mass
@@ -363,7 +532,7 @@ const profileFor = (distance, mass = false) => {
           crossing(1700, "17th Street Northwest", "orange", "signal", 3, true),
           crossing(2100, "15th Street Northwest", "red", "signal", 4, true),
           crossing(2500, "14th Street Northwest", "orange", "signal", 3, true),
-          crossing(2900, "13th Street Northwest", "orange", "signal", 3, true),
+          crossing(2900, "13th Street Northwest", "orange", "signal", 3, true, "flagged", true),
           crossing(3300, "Pierce Street", null, "cross_stop", 3, true, "crossing"),
           crossing(4000, "9th Street Northwest", "red", "none", 4, true),
         ]
@@ -390,7 +559,7 @@ const profileFor = (distance, mass = false) => {
           rated_m: distance,
           junctions_counted: true,
           bands: [2.67, 9.34],
-          estimate: true,
+          estimate: false,
         },
   };
 };
@@ -496,6 +665,42 @@ export const S_DEFAULT = (() => {
   r.calm_search = { rate: 0, rounds: 0, excluded: 0, limited: null };
   return r;
 })();
+/** Riding with kids (FOLLOWUP-KIDS-PRESET, OWNER-DECISIONS 240 (B)): the top of the traffic slider, hills toward avoid. */
+export const S_KIDS = (() => {
+  const r = copy();
+  r.preset = "kids";
+  r.dials = { stress: 100, hills: -80, when: "weekday", carrying: null };
+  r.calm_search = { rate: 10, rounds: 2, excluded: 3, limited: null };
+  return r;
+})();
+/**
+ * The default ride through an Avoid-rated junction (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS
+ * 307-310, 335): the notice, the marker, the list row, the description's entry, and the
+ * way round offered as an alternate, 1.0 mi longer.
+ */
+export const S_AVOID = (() => {
+  const r = JSON.parse(JSON.stringify(S_DEFAULT));
+  const [lon, lat] = coords[10];
+  const label = "Avoid-rated junction: Main St and 1st Ave, no gap in fast traffic";
+  r.avoid_junctions = [{ id: 7, name: "Main St and 1st Ave", reason: "no gap in fast traffic", lon, lat, m: 1200, label }];
+  r.avoid_notice = "This route goes through an Avoid-rated junction: Main St and 1st Ave, no gap in fast traffic. Riding through it is a really bad idea. Please reconsider your route.";
+  r.avoid_search = { passed: 1, penalty_s: 1800, decision: "kept", alternate: "found", avoided: 0 };
+  r.description = [
+    entry("stretch", 0, 1200, "0.0 to 0.7 mi (0.0 to 1.2 km): Capital Crescent Trail, traffic-free path.", { tier: 1, facility: "path" }),
+    entry("avoid", 1200, 1200, "Avoid-rated junction ahead at 0.7 mi (1.2 km): Main St and 1st Ave, no gap in fast traffic. Riding through it is a really bad idea. Please reconsider your route.", { severity: "avoid", street: "Main St and 1st Ave" }),
+    entry("stretch", 1200, 4660, "0.7 to 2.9 mi (1.2 to 4.7 km): Leland Street, quiet street.", { tier: 2 }),
+  ];
+  r.description_overview = r.description;
+  const around = JSON.parse(JSON.stringify(S_DEFAULT));
+  around.distance_m = 6270;
+  around.duration_s = 2470;
+  around.avoid_junctions = [];
+  around.avoid_notice = null;
+  around.extra_distance_m = 1610;
+  around.extra_duration_s = 634;
+  r.avoid_alternate = around;
+  return r;
+})();
 /**
  * A Mass Ride with a group of signalized crossings (OWNER-DECISIONS 233, 234): a lone
  * unsignalized left, four signalized crossings within a quarter mile of one another (one red),
@@ -554,6 +759,20 @@ export const S_MASS = (() => {
   return r;
 })();
 /**
+ * The Mass Ride with a stretch on the Rock Creek and Potomac Parkway (item 239 (d)), by its OpenStreetMap
+ * name. Its end (hashFor's -77.01, 38.89) is in the U.S. Capitol grounds, a stop on federal land (239 (b)).
+ */
+export const S_MASS_FEDERAL = (() => {
+  const r = JSON.parse(JSON.stringify(S_MASS));
+  const parkway = entry("stretch", 3000, 3600, "1.9 to 2.2 mi (3.0 to 3.6 km): Rock Creek and Potomac Parkway Northwest, busy road (LTS 3).", {
+    tier: 3,
+    street: "Rock Creek and Potomac Parkway Northwest",
+  });
+  r.description = [...r.description.slice(0, -1), parkway, ...r.description.slice(-1)];
+  r.description_overview = [...r.description_overview.slice(0, -1), parkway, ...r.description_overview.slice(-1)];
+  return r;
+})();
+/**
  * A Mass Ride on a rebuilt table (OWNER-DECISIONS 325-327, 387): its sections carry riders per
  * minute, one in each band, and a stretch marked Avoid.
  */
@@ -609,6 +828,216 @@ export const RIDE_COORDS = coords;
 export const hashFor = (preset, stress, hills = 0) =>
   `#p=-77.04000,38.91000;-77.01000,38.89000&preset=${preset}&v=2&stress=${stress}&hills=${hills}`;
 
+/** The step words, half steps too (core/segment_info.py STEP_WORDS; OWNER-DECISIONS 441i, 441l). */
+export const STEP_WORDS = {
+  1: "Comfortable for everyone", 1.5: "Probably comfortable for older children", 2: "Fine for adults", 2.5: "Fine for most confident adults",
+  3: "For experienced cyclists", 3.5: "Stressful even for experienced cyclists", 4: "High stress: busy, fast traffic", 4.5: "A very high-stress road", 5: "Avoid",
+};
+const STEPS = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
+
+/** One rider suggestion waiting for review (core/suggestions.py summary). */
+export const SUGGESTION_ITEM = {
+  id: 41, osm_way_id: 101, road: "Oak Street", lat: 38.9, lon: -77.03, current_step: 3, current_words: STEP_WORDS[3],
+  step: 2.5, words: STEP_WORDS[2.5], reason: "A protected lane opened this summer.", status: "pending",
+  created_at: "2026-10-10T14:00:00+00:00", sent_at: null,
+};
+/** A rider's Mass Ride hazard report waiting for review (core/mass_hazards.py summary). */
+export const HAZARD_ITEM = {
+  id: 51, osm_way_id: 101, road: "Oak Street", lat: 38.9, lon: -77.03, level: "warning", level_name: "Warning",
+  words: "Warning: riders have had serious problems here", reason: "Drivers turn across the whole group at the light.",
+  status: "pending", created_at: "2026-10-10T15:00:00+00:00", sent_at: null,
+};
+/** The approved hazards' layer with one Warning on the panel's road, way 101 (GET /api/mass-hazards). */
+export const HAZARD_LAYER = {
+  type: "FeatureCollection",
+  features: [
+    {
+      type: "Feature", id: 101,
+      geometry: { type: "LineString", coordinates: [[-77.0405, 38.91], [-77.0395, 38.91]] },
+      properties: { way: 101, level: "warning", level_name: "Warning", words: "Warning: riders have had serious problems here", reason: "Drivers turn across the whole group at the light.", road: "Oak Street" },
+    },
+  ],
+};
+/** The plain-English poll the Discord action answers (core/suggestion_post.py). */
+export const DISCORD_POST = [
+  "**How comfortable is biking on Oak Street, between Elm Street and Ash Avenue?**",
+  "A rider suggested it's calmer than we rate it.",
+  "",
+  "We currently show it as: OK for confident riders",
+  'The rider suggested: Between "Fine for most people, even nervous riders" and "OK for confident riders"',
+  "> A protected lane opened this summer.",
+  "",
+  "Where: Oak Street between Elm Street and Ash Avenue",
+  "Map: <http://127.0.0.1/#at=-77.0300,38.9000>",
+  "",
+  "Please weigh in by reacting with one letter:",
+  "\u{1F1E6} Fine for anyone, kids included",
+  "\u{1F1E7} Fine for most people, even nervous riders",
+  "\u{1F1E8} OK for confident riders",
+  "\u{1F1E9} Only for very experienced riders",
+  "\u{1F1EA} Avoid it",
+  "\u{1F1EB} Not sure",
+  "",
+  "Votes help set how the road is shown on the bike map.",
+].join("\n");
+
+/** The junction the API finds at a spot (core/junction_suggestions.py locate): its node, never the spot. */
+export const JUNCTION_AT = { lon: -77.0312, lat: 38.9087, name: "Oak Street and Elm Street", roads: ["Oak Street", "Elm Street"] };
+/** One junction suggestion waiting for review (core/junction_suggestions.py summary). */
+export const JUNCTION_ITEM = {
+  id: 3, junction: "Oak Street and Elm Street", lat: 38.9087, lon: -77.0312, current_level: 3, current_words: "Takes patience: you wait for a gap",
+  level: 4, words: "Hard: long waits or fast traffic", direction: "more", reason: "Drivers turn right on red without looking.", status: "pending",
+  created_at: "2026-10-10T15:00:00+00:00", sent_at: null,
+};
+/** The junction's plain-English poll (core/suggestion_post.py, kind "junction"). */
+export const JUNCTION_POST = [
+  "**Is crossing Oak Street at Elm Street harder or easier than we show?**",
+  "A rider suggested it's harder than we show.",
+  "",
+  "We currently show it as: Takes patience: you wait for a gap",
+  "The rider suggested: Hard: long waits or fast traffic",
+  "> Drivers turn right on red without looking.",
+  "",
+  "Where: Oak Street at Elm Street",
+  "Map: <http://127.0.0.1/#at=-77.0312,38.9087>",
+  "",
+  "Please weigh in by reacting with one letter:",
+  "\u{1F1E6} Easy: little waiting, and drivers are slow",
+  "\u{1F1E7} Takes patience: you wait for a gap",
+  "\u{1F1E8} Hard: long waits or fast traffic",
+  "\u{1F1E9} Avoid crossing here",
+  "\u{1F1EA} Not sure",
+  "",
+  "Votes help set how the junction is shown on the bike map.",
+].join("\n");
+
+/** The stress editor's starting state (GET /api/stress-edits/way/{id}), for the one road. */
+export function editorState(road) {
+  return {
+    osm_way_id: 101,
+    classifier_step: 3,
+    can_raise_only: true,
+    current: {
+      step: road.tier, words: STEP_WORDS[road.tier], source: road.edit ? "panel" : "classifier", at_least: false,
+      category: null, public_note: null, display: null, private_reason: null,
+      when: road.edit ? new Date().toISOString() : null, by: road.edit ? "you" : null,
+    },
+    expected: `tok-${road.generation}`,
+    steps: STEPS.map((value) => ({ value, words: STEP_WORDS[value] })),
+    half_steps: true,
+    categories: [
+      { id: "speed", label: "speed" }, { id: "road_conditions", label: "road conditions" }, { id: "driver_behaviour", label: "driver behaviour" },
+      { id: "intersection", label: "an intersection" }, { id: "sightlines", label: "sightlines" },
+      { id: "better_among_alternatives", label: "better than the alternatives nearby" }, { id: "other", label: "other" },
+    ],
+    reason_max: 500,
+    note_max: 200,
+    recent_edit: road.edit ? { id: road.edit, action: "set", at: new Date().toISOString(), can_undo: true } : null,
+    pieces: 1,
+  };
+}
+
+/** The named stretch the road is in (GET /api/stress-edits/way/{id}/stretch), or null. */
+export function stretchState(road) {
+  return road.stretch
+    ? { name: "Connecticut Avenue Northwest", osm_way_ids: [100, 101, 102], pieces: 3, length_m: 1207, capped: false, expected: `stretch-${road.generation}` }
+    : null;
+}
+
+/** The road panel's answer at a level: the fixed road with its stress rows changed. */
+export function segmentInfoAt(tier) {
+  if (tier === 3) return S_SEGMENT_INFO;
+  const info = JSON.parse(JSON.stringify(S_SEGMENT_INFO));
+  info.tier = Math.floor(tier);
+  info.step = tier;
+  info.summary.find((r) => r.id === "stress").value = tier === 5 ? "Avoid" : `LTS ${tier} \u00b7 ${STEP_WORDS[tier]}`;
+  info.sections.find((x) => x.id === "stress").rows[0] = { label: "Level", value: tier === 5 ? "Avoid" : `LTS ${tier}: ${STEP_WORDS[tier]}`, source: "Owner override" };
+  return info;
+}
+/**
+ * A Bikeshare plan (FOLLOWUP-BIKESHARE): the route body is the ride between the docks, and
+ * `bikeshare` has the walks, docks, availability, endings and notes. The words are the API's
+ * (core.bikeshare); the source citation is core.gbfs.CREDIT.
+ */
+const BIKESHARE_CREDIT = "Capital Bikeshare";
+const dockStop = (kind, name, at, bikes, docks) => ({
+  kind, name, lon: at[0], lat: at[1], station_id: `fx-${name.length}`, availability: "known", bikes_available: bikes, docks_available: docks,
+});
+export const S_BIKESHARE = (() => {
+  const r = copy();
+  r.preset = "bikeshare";
+  r.distance_m = 3400;
+  r.duration_s = 940;
+  r.dials = { stress: 80, hills: -60, when: "weekday", carrying: null, assist: false };
+  r.calm_search = { rate: 0, rounds: 0, excluded: 0, limited: null };
+  r.attribution = [...BASE.attribution, BIKESHARE_CREDIT];
+  const start = coords[0];
+  const end = coords[40];
+  r.bikeshare = {
+    bike: "classic",
+    ending: "dock",
+    start: dockStop("dock", "Columbus Circle / Union Station", start, 5, 40),
+    end: dockStop("dock", "20th & O St NW / Dupont South", end, 0, 14),
+    walk_start: { geometry: { type: "LineString", coordinates: [[start[0] - 0.001, start[1] + 0.0005], start] }, distance_m: 130, duration_s: 97, to: "Columbus Circle / Union Station" },
+    walk_end: { geometry: { type: "LineString", coordinates: [end, [end[0] + 0.001, end[1] - 0.0005]] }, distance_m: 160, duration_s: 120, to: "your destination" },
+    ride_m: 3400, ride_s: 940, walk_m: 290, walk_s: 217, total_s: 1157,
+    availability: "live",
+    endings: [{ kind: "dock", offered: true, chosen: true, reason: null, reason_text: null, fee: null, fee_text: null, walk_m: 160, text: "End at the dock at 20th & O St NW / Dupont South, then walk 520 ft (160 m) to your destination." }],
+    pricing: [],
+    pricing_note: null,
+    steps: [
+      { kind: "walk", text: "Walk 430 ft (130 m) to the dock at Columbus Circle / Union Station, take a classic bike (5 available)." },
+      { kind: "ride", text: "Ride 2.1 mi (3.4 km) to the dock at 20th & O St NW / Dupont South (14 free slots)." },
+      { kind: "walk", text: "Return the bike, then walk 520 ft (160 m) to your destination." },
+    ],
+    summary: "Bikeshare, classic bike: about 19 min in all. Walk 430 ft (130 m) to the dock at Columbus Circle / Union Station, take a classic bike (5 available). Ride 2.1 mi (3.4 km) to the dock at 20th & O St NW / Dupont South (14 free slots). Return the bike, then walk 520 ft (160 m) to your destination.",
+    notes: ["The nearest dock, Union Station Plaza, 0.1 mi (0.2 km) away, has no classic bikes right now; the plan uses a farther one."],
+    credit: BIKESHARE_CREDIT,
+  };
+  return r;
+})();
+/** The same on an e-bike, with the out-of-dock ending on offer beside the dock (zones read, a fee in the data). */
+export const S_BIKESHARE_EBIKE = (() => {
+  const r = JSON.parse(JSON.stringify(S_BIKESHARE));
+  r.dials = { ...r.dials, hills: -20, assist: true };
+  r.bikeshare.bike = "ebike";
+  r.bikeshare.endings.push({
+    kind: "outside_dock", offered: true, chosen: false, reason: null, reason_text: null,
+    fee: { name: "Out-of-dock fee", price: "2.00", currency: "USD", description: "Leaving an e-bike outside a dock costs 2.00 USD." },
+    fee_text: "The operator's data lists Out-of-dock fee: 2.00 USD. Leaving an e-bike outside a dock costs 2.00 USD.",
+    walk_m: null, text: "End at your destination, outside a dock. The operator's data lists Out-of-dock fee: 2.00 USD.",
+  });
+  return r;
+})();
+
+/**
+ * The nearest-stations answers (POST /api/bikeshare/stations, core/api.py NearbyStationsOut):
+ * three stations at least 3/4 full to pick up from, three at most 1/4 full to return to.
+ */
+const station = (id, name, lon, lat, percent, metres, bikes, docks) => ({
+  station_id: id, name, lon, lat, percent_full: percent, distance_m: metres, bikes, ebikes: 1, docks,
+});
+export const S_STATIONS_PICKUP = {
+  action: "pickup",
+  availability: "live",
+  credit: "Capital Bikeshare",
+  stations: [
+    station("fx-001", "Columbus Circle / Union Station", -77.0063, 38.8973, 82, 320, 9, 2),
+    station("fx-002", "Union Station Plaza", -77.0058, 38.8979, 78, 450, 7, 2),
+    station("fx-003", "Massachusetts Ave & 2nd St NE", -77.0042, 38.8981, 76, 1500, 13, 4),
+  ],
+};
+export const S_STATIONS_DROPOFF = {
+  action: "dropoff",
+  availability: "live",
+  credit: "Capital Bikeshare",
+  stations: [
+    station("fx-011", "20th & O St NW / Dupont South", -77.0436, 38.9096, 10, 150, 1, 9),
+    station("fx-012", "Dupont Circle", -77.0431, 38.9101, 25, 400, 3, 9),
+    station("fx-013", "Connecticut Ave & R St NW", -77.0442, 38.9111, 0, 1100, 0, 11),
+  ],
+};
+
 /** The road panel's answer (GET /api/segment-info), as core/segment_info.py writes it. */
 export const S_SEGMENT_INFO = {
   found: true,
@@ -619,6 +1048,8 @@ export const S_SEGMENT_INFO = {
   distance_m: 2.4,
   // The nearest point on the way: the Street View link opens here (OWNER-DECISIONS 441o).
   on_way: [-77.04, 38.91],
+  // The road data holds half steps, so a rider may suggest one.
+  half_steps: true,
   kind: "Main road",
   summary: [
     { id: "stress", label: "Traffic stress", value: "LTS 3 · For experienced cyclists" },

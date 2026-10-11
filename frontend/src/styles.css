@@ -554,7 +554,8 @@ details.how summary {
 /* The Mass Ride map's riders-per-minute legend and the route's list of them
    (lib/massLegend.ts; OWNER-DECISIONS 325-327). A swatch is the band's own line:
    its width, dash and halo, as the map draws it. */
-.mass-legend li {
+.mass-legend li,
+.hazard-legend li {
   grid-template-columns: 60px 1fr;
 }
 
@@ -948,6 +949,37 @@ button.secondary {
   font-size: 0.78rem;
 }
 
+/* A Mass Ride point on federal land (lib/federalStops.ts, item 239): its warning on a line of its own
+   under the point, with a badge like the marker's so it is not told by colour. In the DOM it comes
+   before Remove, so a screen reader reads it with the point. */
+.points li.point-on-federal {
+  flex-wrap: wrap;
+}
+
+.point-federal {
+  order: 1;
+  flex: 1 0 100%;
+  font-size: 0.85rem;
+  padding-left: 60px;
+  position: relative;
+}
+
+.point-federal::before {
+  content: "!";
+  position: absolute;
+  left: 40px;
+  top: 0.1em;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: #92400e;
+  color: #ffffff;
+  border: 1px solid #ffffff;
+  box-sizing: border-box;
+  font: 700 10px/12px system-ui, sans-serif;
+  text-align: center;
+}
+
 /* Markers. */
 .pin {
   width: 28px;
@@ -979,6 +1011,24 @@ button.secondary {
   width: 18px;
   height: 18px;
   font-size: 10px;
+}
+
+/* A Mass Ride point on federal land (item 239): a square "!" badge at the marker's corner, a shape
+   and not only a colour; its name and title say the warning in words. */
+.pin-federal::before {
+  content: "!";
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  background: #92400e;
+  color: #ffffff;
+  border: 1px solid #ffffff;
+  font: 700 10px/13px system-ui, sans-serif;
+  text-align: center;
+  pointer-events: none;
 }
 
 /* A finger is wider than the marker: the pressable area is not. */
@@ -1347,6 +1397,217 @@ dialog.road-info::backdrop {
   text-decoration: underline;
 }
 
+/* Change LTS (OWNER-DECISIONS 441m) is a button, drawn as the links beside it. */
+.road-info-body button.road-info-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  box-sizing: border-box;
+  padding: 6px 14px;
+  border: 1px solid var(--swatch-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.road-info-body button.road-info-button:hover {
+  text-decoration: underline;
+}
+
+/* The stress editor (StressEditor.tsx), in the road panel in place of the action row: one
+   column, controls at least 44px tall, nothing that scrolls sideways at 375px. */
+.stress-editor h3 {
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+}
+
+.stress-editor-now,
+.stress-editor-extent {
+  margin: 4px 0;
+}
+
+.stress-editor-said {
+  margin: 4px 0;
+  min-height: 0;
+  font-weight: 600;
+}
+
+.stress-editor-said:empty {
+  /* Stays in the page while empty, like the SF3 regions above: hidden, it would not be read. */
+  margin: 0;
+}
+
+.stress-editor-error {
+  margin: 6px 0;
+  padding: 6px 8px;
+  border: 2px solid var(--text);
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.stress-editor-field {
+  margin: 12px 0 0;
+}
+
+.stress-editor-field > label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.stress-editor-field select,
+.stress-editor-field input[type="text"],
+.stress-editor-field textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+  padding: 6px 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--swatch-border);
+  border-radius: 6px;
+}
+
+.stress-editor-field textarea {
+  resize: vertical;
+}
+
+.stress-editor-slider {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+
+.stress-editor-slider input[type="range"] {
+  width: 100%;
+  min-height: 44px;
+  accent-color: var(--accent);
+}
+
+.stress-editor-output {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* The extent choice (a named stretch, HALF-STEP-EDITOR phase 5): native radios, 44px rows. */
+.stress-editor-extent-choice {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 12px 8px;
+  margin: 0 0 12px;
+  min-width: 0;
+}
+
+.stress-editor-extent-choice > legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+
+/* A junction's suggestion (OWNER-DECISIONS 232): two native radio groups, 44px rows, each a fieldset. */
+.suggest-junction-group {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 12px 8px;
+  min-width: 0;
+}
+
+.suggest-junction-group > legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+
+.suggest-junction-group[aria-invalid="true"] {
+  border: 2px solid var(--text);
+}
+
+.suggest-junction-choice {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  column-gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  overflow-wrap: anywhere;
+}
+
+.suggest-junction-choice input[type="radio"] {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.junction-card-suggest {
+  margin-top: 8px;
+  min-height: 44px;
+}
+
+.stress-editor-radio {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  column-gap: 8px;
+  align-items: center;
+}
+
+.stress-editor-radio input[type="radio"] {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.stress-editor-radio > label {
+  margin: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  overflow-wrap: anywhere;
+}
+
+.stress-editor-check {
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  column-gap: 8px;
+  align-items: center;
+}
+
+.stress-editor-check input[type="checkbox"] {
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.stress-editor-check > label {
+  margin: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.stress-editor-check > .hint {
+  grid-column: 2;
+  margin-top: 0;
+}
+
+.stress-editor-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.stress-editor-buttons button {
+  min-height: 44px;
+  padding: 6px 14px;
+}
+
+.stress-editor-ticks {
+  margin: 0;
+}
+
 .road-info-notes {
   margin: 6px 0 0;
   font-size: 0.8125rem;
@@ -1363,6 +1624,75 @@ dialog.road-info::backdrop {
 
 .road-info-station-name {
   margin: 0;
+}
+
+/* A Mass Ride spot on federal land (item 239): the area, its manager and the permit note. */
+.road-info-federal {
+  margin: 6px 0;
+}
+
+.road-info-federal-note {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* The route description's federal-land lines (item 239). */
+.federal-route ul {
+  margin: 4px 0 8px;
+  padding-left: 1.2em;
+}
+
+.federal-route-heading {
+  margin: 6px 0 0;
+  font-weight: 600;
+}
+
+/* A Mass Ride's rider-marked hazards (FOLLOWUP-MASSRIDE-MAP part 3): the road panel's line, the
+   directions' list, the report form's levels and the legend's taller swatch. Words carry the level;
+   the left border is a non-colour cue too (solid for Warning, dotted for Caution). */
+.road-info-hazard {
+  margin: 6px 0;
+  padding-left: 8px;
+  border-left: 4px dotted var(--text);
+}
+
+.road-info-hazard-warning {
+  border-left-style: solid;
+}
+
+.hazard-route ol {
+  margin: 4px 0 8px;
+  padding-left: 1.4em;
+}
+
+.hazard-route-heading {
+  margin: 6px 0 0;
+  font-weight: 600;
+}
+
+.hazard-levels {
+  border: 0;
+  margin: 8px 0;
+  padding: 0;
+}
+
+.hazard-levels legend {
+  font-weight: 600;
+  padding: 0;
+}
+
+.hazard-level {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  min-height: 44px;
+  padding: 6px 0;
+}
+
+.hazard-level input {
+  margin-top: 3px;
+  min-width: 20px;
+  min-height: 20px;
 }
 
 .road-info-links {
@@ -1644,7 +1974,8 @@ ul.station-links {
   /* A double ring in the system's own pair: Highlight alone was about 1.1:1
      on the light map in a dark theme. The marker keeps its colours
      (forced-color-adjust: none), so its box-shadow is kept too. */
-  .junction-marker:focus-visible {
+  .junction-marker:focus-visible,
+  .avoid-marker:focus-visible {
     outline: 3px solid CanvasText;
     outline-offset: 2px;
     box-shadow: 0 0 0 2px Canvas;
@@ -1689,7 +2020,7 @@ ul.station-links {
 /* The routes to choose from (OWNER-DECISIONS 265): a radio group, one row each, the
    figures in words (no colour carries the difference). */
 fieldset.candidates {
-  border: 1px solid var(--border, currentColor);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 8px 12px;
   margin: 12px 0;
@@ -2289,6 +2620,8 @@ details.zoom-notes {
   --pc-guide-0: #d7191c; /* 5.2:1 on --bg */
   --pc-guide-1: #b45309; /* 5.0:1 on --bg */
   --pc-guide-2: #1a9850; /* 3.7:1 on --bg */
+  /* The corker load's fill (a Mass Ride's second chart): a blue apart from the riders bands. */
+  --pc-corker: #4f6bd8;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -2301,6 +2634,7 @@ details.zoom-notes {
     --pc-guide-0: #d7191c; /* 3.2:1 on --bg */
     --pc-guide-1: #f28e2b; /* 6.9:1 on --bg */
     --pc-guide-2: #1a9850; /* 4.5:1 on --bg */
+    --pc-corker: #7b93f0;
   }
 }
 
@@ -2477,6 +2811,74 @@ details.zoom-notes {
   stroke-width: 1.2;
 }
 
+/* A Mass Ride's three charts (the owner, 2026-10-10; MassRideCharts.tsx): each a group under its own
+   heading, on one distance axis. */
+.pc-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pc-chart + .pc-chart {
+  border-top: 1px solid var(--swatch-border);
+  padding-top: 8px;
+}
+
+.pc-chart-heading {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* The corker load: one series, so a single fill with the step line in the text colour over it; the
+   ticks mark each junction needing corkers (a shape and a place, not a colour). */
+.pc-corker-area {
+  fill: var(--pc-corker);
+  fill-opacity: 0.55;
+}
+
+.pc-corker-line {
+  stroke: var(--pc-line);
+  stroke-width: 1.4;
+  stroke-linejoin: round;
+}
+
+.pc-corker-tick {
+  stroke: var(--text);
+  stroke-width: 1;
+}
+
+.pc-corker-half {
+  stroke: var(--swatch-border);
+  stroke-width: 0.8;
+  stroke-dasharray: 2 3;
+}
+
+/* Not checked for intersections: grey with a hatch, its own frame and word, never an empty load. */
+.pc-unchecked-fill {
+  fill: var(--pc-area);
+}
+
+.pc-unchecked-hatch {
+  stroke: var(--text-muted);
+}
+
+.pc-unchecked-frame {
+  stroke: var(--text);
+  stroke-width: 1;
+  stroke-dasharray: 3 2;
+}
+
+.pc-unchecked-text {
+  font-size: 11px;
+  font-weight: 700;
+  fill: var(--text);
+  paint-order: stroke;
+  stroke: var(--bg);
+  stroke-width: 3px;
+}
+
 .pc-marker line {
   stroke: var(--accent);
   stroke-width: 1.5;
@@ -2643,8 +3045,16 @@ details.zoom-notes {
   .pc-calm-guide,
   .pc-axis,
   .pc-tick,
+  .pc-corker-line,
+  .pc-corker-half,
+  .pc-unchecked-frame,
   .pc-strip-frame {
     stroke: CanvasText;
+  }
+
+  .pc-unchecked-text {
+    fill: CanvasText;
+    stroke: Canvas;
   }
 
   .pc-narrowest path,
@@ -2940,8 +3350,54 @@ details.zoom-notes {
   margin: 6px 0;
 }
 
-.ride-mode-settings > summary {
+.ride-mode-settings > summary,
+.ride-report > summary {
   min-height: 44px;
+}
+
+/* Report to DC 311 (lib/report311.ts): the note field and the actions at 44px, the link drawn as a button. */
+.ride-report-note {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+}
+
+.ride-report-note input {
+  min-height: 44px;
+  font: inherit;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.ride-report-text {
+  overflow-wrap: anywhere;
+}
+
+.ride-report-label {
+  font-weight: 700;
+}
+
+.ride-report-actions button,
+.ride-report-actions .action-link {
+  min-height: 44px;
+  padding: 8px 14px;
+  box-sizing: border-box;
+}
+
+.ride-report-actions .action-link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--accent-text);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  text-decoration: underline;
+}
+
+.ride-report-actions .action-link.secondary {
+  background: transparent;
+  color: var(--accent);
 }
 
 .ride-toggle {
@@ -3027,4 +3483,335 @@ details.zoom-notes {
 /* The planner is hidden during a ride: the attribute wins over the panel's own display. */
 .panel[hidden] {
   display: none;
+}
+
+/* Bikeshare (FOLLOWUP-BIKESHARE): the dock markers on the map, the plan in the route
+   panel, and the bike choice. Text and shape carry the meaning; no operator mark or
+   brand colour is used (OWNER-DECISIONS 300, 301). */
+.dock-marker {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  line-height: 0;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+}
+.dock-marker .dock-badge {
+  position: absolute;
+  right: -9px;
+  top: -8px;
+  min-width: 16px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: #1f1f1f;
+  color: #ffffff;
+  border: 1px solid #ffffff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: center;
+}
+/* The second dock's badge is square-cornered, so the two differ in shape as well as number. */
+.dock-marker.dock-return .dock-badge {
+  border-radius: 3px;
+}
+.bikeshare {
+  margin: 0 0 12px;
+}
+.bikeshare h3 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+}
+.bikeshare h4 {
+  margin: 10px 0 4px;
+  font-size: 0.9rem;
+}
+.bikeshare-steps {
+  margin: 0 0 8px;
+  padding-left: 1.4em;
+}
+.bikeshare-steps li {
+  margin: 0 0 4px;
+}
+.bikeshare-legend svg {
+  vertical-align: middle;
+}
+.bikeshare-notes {
+  margin: 0 0 8px;
+  padding-left: 1.2em;
+  font-size: 0.88rem;
+}
+.bikeshare-endings,
+.bikeshare-bike {
+  margin: 8px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.bikeshare-endings .toggle,
+.bikeshare-bike .toggle {
+  align-items: flex-start;
+}
+.bikeshare-endings .hint,
+.bikeshare-bike .hint {
+  display: block;
+}
+
+/* The nearest stations to take a bike from or return one to (OWNER-DECISIONS 466a). The chosen one
+   is told apart by a text badge and a heavier border, never by colour alone. */
+.nearby-stations {
+  margin: 0 0 12px;
+}
+.nearby-stations h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+.station-status {
+  margin: 4px 0;
+  font-size: 0.9rem;
+}
+.station-list {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.station-list li {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+.station-choice {
+  flex: 1 1 auto;
+  min-height: 44px;
+  text-align: left;
+  background: var(--bg-soft);
+  color: var(--text);
+  border: 1px solid var(--border);
+  white-space: normal;
+}
+.station-choice.chosen,
+.station-choice[aria-pressed="true"] {
+  border: 3px solid var(--text);
+  font-weight: 700;
+}
+.station-chosen {
+  align-self: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.station-refresh {
+  min-height: 44px;
+}
+
+/* An instance admin's review of rider suggestions (SuggestionReview.tsx; OWNER-DECISIONS 460.5). */
+.suggestion-review > button,
+.suggestion-post > button {
+  min-height: 44px;
+  padding: 6px 14px;
+}
+
+.suggestion-review-said:empty {
+  display: none;
+}
+
+.suggestion-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.suggestion-item {
+  border-top: 1px solid var(--swatch-border);
+  padding: 10px 0;
+}
+
+.suggestion-item h4 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+  overflow-wrap: anywhere;
+}
+
+.suggestion-item p {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+.suggestion-item a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.suggestion-post {
+  margin-top: 10px;
+}
+
+.suggestion-post label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.suggestion-post textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--swatch-border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin-bottom: 8px;
+}
+
+/* --- The installable app (WEB-NAV-plan.md section 8; InstallableApp.tsx): the status bar at the top of
+   the planner (offline, a new version ready), the routes kept for offline in Settings, Keep for offline
+   under a route, and the install offer. Words carry every state (no colour alone); every button is 44 px
+   high (the panel's rule above); the bar is a notice, never over the map. --- */
+.app-status {
+  margin: 8px 14px 4px;
+  display: grid;
+  gap: 6px;
+}
+.app-offline,
+.app-update {
+  margin: 0;
+  padding: 6px 10px;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  background: var(--notice-bg);
+  color: var(--notice-text);
+  font-size: 0.9rem;
+}
+.app-update {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.app-update p {
+  margin: 0;
+  flex: 1 1 12rem;
+}
+.app-update button {
+  min-height: 44px;
+  min-width: 44px;
+}
+.route-actions .keep-offline {
+  flex: 1 1 100%;
+}
+/* Always drawn, empty at first: a live region added already holding its text is often not spoken. */
+.route-actions .keep-said {
+  flex: 1 1 100%;
+  margin: 0;
+}
+.kept-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.kept-route {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--bg-soft);
+}
+.kept-title {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.kept-detail {
+  margin: 2px 0 6px;
+}
+.kept-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.kept-actions button {
+  flex: 1 1 6rem;
+  min-height: 44px;
+}
+.install-offer .install-app {
+  min-height: 44px;
+}
+@media (forced-colors: active) {
+  .app-offline,
+  .app-update,
+  .kept-route {
+    border-color: CanvasText;
+  }
+}
+
+/* Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335): the skull on a
+   dark disc ringed in white, above the warning markers; the notice at the top of the route
+   panel; the symbol beside the list rows and the description's entries, hidden from
+   assistive technology (the text names the rating, 309). */
+.avoid-marker {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  /* AVOID_ICON_PX: larger than the 24 px junction markers (the owner, 2026-10-10). */
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  line-height: 0;
+  z-index: 4;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+}
+.avoid-notice {
+  border: 2px solid var(--text);
+  border-left-width: 6px;
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 0 0 12px;
+  background: var(--bg);
+  color: var(--text);
+}
+.avoid-notice p {
+  margin: 0 0 6px;
+}
+.avoid-notice .avoid-symbol {
+  font-size: 1.25em;
+  margin-right: 4px;
+}
+.avoid-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 8px;
+}
+.junction-avoid {
+  padding: 4px 0;
+}
+
+/* The road panel on an Avoid-rated junction (the owner, 2026-10-10): a strong warning first. */
+.road-info-avoid {
+  margin: 0 0 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 3px solid var(--text);
+  border-left-width: 8px;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+.road-info-avoid p {
+  margin: 0;
+}
+.road-info-avoid-heading {
+  font-size: 1.15rem;
+}
+.road-info-avoid .avoid-symbol {
+  font-size: 1.3em;
+}
+.road-info-avoid-text {
+  margin-top: 0.25rem !important;
 }

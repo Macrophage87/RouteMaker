@@ -35,6 +35,10 @@ from .schema import (
     CALM_PATH_GAP_M,
     CALM_ROAD_MAX_TIER,
     CALM_RUN_COLUMN,
+    METRES_PER_MILE,
+    MTB_LEVEL_COLUMN,
+    MTB_NAME_COLUMN,
+    MTB_ONLY_COLUMN,
     PAVED_ROUTE_MIN,
     ROADSIDE_COLUMN,
     ROADSIDE_FRACTION,
@@ -164,6 +168,7 @@ def is_calm_candidate(
     is_trail_class: bool,
     stress_tier: int,
     map_class: str,
+    stress_half: bool = False,
 ) -> bool:
     """Whether the way can be in the z12-13 ride layer (OWNER-DECISIONS 391, 402a),
     and so is written with a `calm_run_m` of 0 for `derive_calm_runs` to set: a path
@@ -171,10 +176,17 @@ def is_calm_candidate(
     LTS 2 that is not a trail, of any class ("LTS2 counts"); never a mountain-bike
     trail (a way in a route=mtb relation, one tagged as such, or one the no-bike-paths
     rules call mountain-bike only), and nothing that is not a drawn road (a hidden,
-    barred or alley way)."""
+    barred or alley way).
+
+    A half step above the top calm level (2.5) is not a member: an on/off rule takes the
+    cautious side of a half step (OWNER-DECISIONS 461a; docs/stress/stress-number.md
+    section 3). 1.5 is."""
     if mountain_bike or mtb_only or map_class != "road":
         return False
-    return zoomed_out_trail or (stress_tier <= CALM_ROAD_MAX_TIER and not is_trail_class)
+    calm = stress_tier < CALM_ROAD_MAX_TIER or (
+        stress_tier == CALM_ROAD_MAX_TIER and not stress_half
+    )
+    return zoomed_out_trail or (calm and not is_trail_class)
 
 
 class Routes(NamedTuple):
@@ -551,6 +563,46 @@ def derive_roadside(schema: str) -> int:
         cursor.execute(f"SELECT count(*) FROM {schema}.segment WHERE {ROADSIDE_COLUMN}")
         (beside,) = cursor.fetchone()
     return beside
+
+
+def mtb_level_counts(schema: str) -> dict[int, tuple[int, float, float]]:
+    """{level: (ways, miles, miles drawn)} of the staging schema's mountain-bike levels
+    (`mtb_level`, OWNER-DECISIONS 456): the counts slice 3 of docs/MTB-TOPO-PLAN.md
+    (Gravel's "roughest I'll ride" setting) is to be shown with. "Drawn" is the part the
+    map can draw (`map_class` road); the rest is hidden or barred for access."""
+    from django.db import connection
+
+    validate_schema_name(schema)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""SELECT {MTB_LEVEL_COLUMN}, count(DISTINCT osm_way_id),
+                       coalesce(sum(ST_Length(geometry::geography)), 0),
+                       coalesce(sum(ST_Length(geometry::geography))
+                                FILTER (WHERE map_class = 'road'), 0)
+                FROM {schema}.segment WHERE {MTB_LEVEL_COLUMN} IS NOT NULL
+                GROUP BY {MTB_LEVEL_COLUMN} ORDER BY {MTB_LEVEL_COLUMN}"""
+        )
+        rows = cursor.fetchall()
+    return {
+        int(level): (int(ways), float(m) / METRES_PER_MILE, float(drawn) / METRES_PER_MILE)
+        for level, ways, m, drawn in rows
+    }
+
+
+def mtb_name_counts(schema: str) -> tuple[int, int]:
+    """(named, all) mountain-bike-only ways in the staging schema: how many the layer can
+    label (`mtb_name`; the owner, 2026-10-10)."""
+    from django.db import connection
+
+    validate_schema_name(schema)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""SELECT count(DISTINCT osm_way_id) FILTER (WHERE {MTB_NAME_COLUMN} IS NOT NULL),
+                       count(DISTINCT osm_way_id)
+                FROM {schema}.segment WHERE {MTB_ONLY_COLUMN}"""
+        )
+        named, total = cursor.fetchone()
+    return int(named), int(total)
 
 
 class LongTrailSummary(NamedTuple):

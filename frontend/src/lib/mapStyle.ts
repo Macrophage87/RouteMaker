@@ -11,6 +11,7 @@ import { BASEMAP } from "../stressStyle.js";
 import { MASS_SOURCE_ID } from "../massStyle.js";
 import CREDITS_DATA from "./credits.json" with { type: "json" };
 import { protocolUrl } from "./stressProtocol.ts";
+import { refreshTiles, revSuffix } from "./tileRev.ts";
 
 export const BASEMAP_SOURCE_ID = "protomaps";
 export const STRESS_SOURCE_ID = "stress";
@@ -92,6 +93,32 @@ export function buildStyle(origin: string, basemapLayers: readonly unknown[]): B
 }
 
 /**
+ * The tile URL templates. After an instance admin's change in the road panel they carry `?rev=<edit
+ * generation>` (lib/tileRev.ts), which makes the URL new so the browser and MapLibre ask again; the
+ * server ignores it.
+ */
+export function stressTileTemplate(origin: string): string {
+  return protocolUrl(`${origin}/tiles/stress/{z}/{x}/{y}.pbf${revSuffix()}`);
+}
+
+export function massTileTemplate(origin: string): string {
+  return protocolUrl(`${origin}/tiles/mass/{z}/{x}/{y}.pbf${revSuffix()}`);
+}
+
+/** Ask for the stress and Mass Ride tiles again under the new edit generation; returns the sources told. */
+export function refreshStressTiles(map: { getSource(id: string): unknown }, origin: string, generation: number): number {
+  return refreshTiles(
+    map,
+    [
+      { id: STRESS_SOURCE_ID, template: stressTileTemplate },
+      { id: MASS_SOURCE_ID, template: massTileTemplate },
+    ],
+    origin,
+    generation,
+  );
+}
+
+/**
  * The stress overlay's source. The tiles are fetched through the stress
  * protocol (stressProtocol.ts), which asks again for a tile the API asks to be
  * fetched again; the URL it carries is absolute, the contract's path.
@@ -99,7 +126,7 @@ export function buildStyle(origin: string, basemapLayers: readonly unknown[]): B
 export function stressSource(origin: string) {
   return {
     type: "vector" as const,
-    tiles: [protocolUrl(`${origin}/tiles/stress/{z}/{x}/{y}.pbf`)],
+    tiles: [stressTileTemplate(origin)],
     minzoom: STRESS_ZOOMS.min,
     maxzoom: STRESS_ZOOMS.max,
   };
@@ -113,7 +140,7 @@ export function stressSource(origin: string) {
 export function massSource(origin: string) {
   return {
     type: "vector" as const,
-    tiles: [protocolUrl(`${origin}/tiles/mass/{z}/{x}/{y}.pbf`)],
+    tiles: [massTileTemplate(origin)],
     minzoom: STRESS_ZOOMS.min,
     maxzoom: STRESS_ZOOMS.max,
   };

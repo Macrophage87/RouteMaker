@@ -182,6 +182,20 @@ test("the request sends where the rider is, then the places, with the dials but 
   assert.equal(sent[0].body.loop, undefined);
 });
 
+test("on Bikeshare the search rides like the default type: no dock walk, no bike fields, any number of places", async () => {
+  const sent: Array<Record<string, unknown>> = [];
+  const fetchImpl = async (_url: string, init: RequestInit) => {
+    sent.push(JSON.parse(String(init.body)));
+    return new Response(JSON.stringify({ by: "riding", places: CANDIDATES.map(() => ({ distance_m: 1, time_s: 1 })) }), { status: 200 });
+  };
+  const dials = { ...startDials("bikeshare"), bike: "ebike" as const, ending: "outside_dock" as const, pickupStation: "s1", dropoffStation: "s2" };
+  const result = await requestNearest(HERE, CANDIDATES, "bikeshare", dials, fetchImpl);
+  assert.ok(result.ok);
+  assert.equal(sent[0].preset, "default");
+  for (const field of ["bike", "ending", "pickup_station", "dropoff_station", "loop"]) assert.equal(sent[0][field], undefined, field);
+  assert.equal((sent[0].points as unknown[]).length, 1 + CANDIDATES.length);
+});
+
 test("a refusal, a lost connection or an answer of the wrong shape is a sentence to say", async () => {
   const busy = await requestNearest(HERE, CANDIDATES, "default", startDials("default"), async () =>
     new Response(JSON.stringify({ error: "busy" }), { status: 503, headers: { "Retry-After": "5" } }),

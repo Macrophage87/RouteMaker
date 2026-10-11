@@ -7,11 +7,17 @@ off: it loads its script from a third-party CDN, which the planned
 Content-Security-Policy of `default-src 'self'` would refuse, and the schema is
 all a client needs.
 
-No endpoint here needs a sign-in. The owner's decision of 2026-09-26 is that
-the map and route planning work signed out, and that a signed-out plan is not
-saved; so POST /api/route reads the routers and the segment table and writes
+No endpoint the map and the planner use needs a sign-in. The owner's decision of
+2026-09-26 is that the map and route planning work signed out, and that a signed-out
+plan is not saved; so POST /api/route reads the routers and the segment table and writes
 nothing but its rate-limit count. What stands in for the sign-in is the per-IP
 limit (`core.ratelimit.ROUTING`), applied before the body is read.
+
+The one exception is the road panel's stress editor (OWNER-DECISIONS 441g, 441h;
+`core.stress_edits`): GET /api/me, GET /api/stress-edits/way/{id}, POST /api/stress-edits
+and POST /api/stress-edits/{id}/undo. They are for an instance admin and are the first
+authenticated writes here, so they carry a session, standing, a CSRF token, the same-site
+check and per-account counts (see the section at the end of this module).
 
 Every error POST /api/route answers is `{"error": "..."}` with the status the
 shared contract names (another method on the path is Django's own 405, and
@@ -24,6 +30,12 @@ the router does not answer, 503 with Retry-After when the deployment's routing
 slots are all busy or the request's time budget ran out (a long ride's with
 `"code": "long_ride_timed_out"`, not to be resent unasked), and 500 for anything
 else - never a traceback, whatever DEBUG says.
+
+A Bikeshare plan (`preset: "bikeshare"`, `core.bikeshare`) adds two answers of its own, each with
+a `code`: 422 `no_bikeshare` where no dock can start or end the ride (no bike of the type, no free
+slot, nothing in reach, no way on foot), and 503 `bikeshare_unavailable` with Retry-After where the
+operator's station list could not be had. A missing availability feed is not an error: the plan
+is made and says availability is unknown.
 
 The checks run in this order, outermost first: the content type and declared
 body size, then the per-minute count, then the in-flight slots, then Ninja's
@@ -44,12 +56,30 @@ from django.http import HttpResponse, JsonResponse
 from ninja import Field, NinjaAPI, Query, Schema, Status
 from ninja.decorators import decorate_view
 from ninja.errors import HttpError, ValidationError
-from pydantic import ConfigDict, StrictBool, StrictInt, field_validator, model_validator
+from pydantic import (
+    ConfigDict,
+    StrictBool,
+    StrictFloat,
+    StrictInt,
+    field_validator,
+    model_validator,
+)
 
 from routemaker import effort, ridetime
 from routemaker.geo import Point, haversine
 
-from . import geocode, nearest, presets, ratelimit, routing, segment_info, stoporder
+from . import (
+    audit,
+    bikeshare,
+    gbfs,
+    geocode,
+    nearest,
+    presets,
+    ratelimit,
+    routing,
+    segment_info,
+    stoporder,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +152,10 @@ LONG_RIDE_TIMED_OUT = "long_ride_timed_out"
 api = NinjaAPI(
     title="RouteMaker",
     version="1",
-    description="Public route planning for the RouteMaker region. No sign-in.",
+    description=(
+        "Public route planning for the RouteMaker region. No sign-in, except the road panel's"
+        " stress editor (/api/me and /api/stress-edits), which is for instance admins."
+    ),
     docs_url=None,
     urls_namespace="api",
 )
@@ -137,6 +170,10 @@ LonLat = Annotated[list[Coordinate], Field(min_length=2, max_length=2)]
 PresetName = Literal[tuple(presets.PRESETS)]  # type: ignore[valid-type]
 WhenName = Literal[ridetime.WHENS]  # type: ignore[valid-type]
 CarryingName = Literal[presets.CARRYING_CARGO, presets.CARRYING_PEOPLE]
+BikeName = Literal[presets.BIKE_CLASSIC, presets.BIKE_EBIKE]
+EndingName = Literal[bikeshare.ENDING_DOCK, bikeshare.ENDING_OUTSIDE]
+# The operator's station id: short text from its own feed, never trusted beyond its length.
+StationId = Annotated[str, Field(min_length=1, max_length=64)]
 
 
 class RouteIn(Schema):
@@ -183,8 +220,9 @@ class RouteIn(Schema):
     when: WhenName | None = Field(
         default=None,
         description=(
-            "When the ride is: weekend, weekday_rush (Mon-Fri 07-10 and 16-19) or weekday_offpeak."
-            " Absent: the setting of the moment the plan is made, in the region's time."
+            "When the ride is: weekend, weekday_rush (Mon-Fri 07-10 and 16-19), weekday_offpeak"
+            " or night (21-07 any day). Absent: the setting of the moment the plan is made, in"
+            " the region's time."
         ),
     )
     carrying: CarryingName | None = Field(
@@ -226,6 +264,14 @@ class RouteIn(Schema):
             " system pays more for a climb. Absent: 90, or 120 for Cargo with passengers."
         ),
     )
+    debug_junctions: StrictBool = Field(
+        default=False,
+        description=(
+            "Debug (OWNER-DECISIONS 468): add `junctions_debug` to the answer, listing every"
+            " junction event of the route with its cost in calm miles, flagged or not. Off by"
+            " default; it holds only facts about the route."
+        ),
+    )
     loop: StrictBool = Field(
         default=False,
         description=(
@@ -233,6 +279,39 @@ class RouteIn(Schema):
             " start by a different way. A ride whose last point is its first is a loop whether"
             " or not this is set. The way back prefers roads the way out did not use, and the"
             " answer's `loop` says how much it shares. Not on Mass Ride."
+        ),
+    )
+    bike: BikeName | None = Field(
+        default=None,
+        description=(
+            "Bikeshare only (OWNER-DECISIONS 243): `classic` (a few gears, heavier and slower,"
+            " hill-averse) or `ebike` (hills barely count, assisted pace). Absent: classic."
+        ),
+    )
+    ending: EndingName | None = Field(
+        default=None,
+        description=(
+            "Bikeshare e-bike only (OWNER-DECISIONS 244): `dock` ends at the nearest dock with a"
+            " free slot, `outside_dock` at the destination itself, outside a dock, where the"
+            " operator's zone data allows it (otherwise the plan ends at a dock and says why)."
+            " Absent: dock."
+        ),
+    )
+    pickup_station: StationId | None = Field(
+        default=None,
+        description=(
+            "Bikeshare only (OWNER-DECISIONS 466a): the id of the station the rider chose to take"
+            " a bike from, from POST /api/bikeshare/stations. The plan starts there; if it can no"
+            " longer start a ride (no bike of the type, not renting, not reporting) the answer is"
+            " 422 `no_bikeshare` saying why. Absent: the nearest docks are tried."
+        ),
+    )
+    dropoff_station: StationId | None = Field(
+        default=None,
+        description=(
+            "Bikeshare only (OWNER-DECISIONS 466a): the id of the station the rider chose to"
+            " return the bike to. The plan ends there, with the same refusal as `pickup_station`."
+            " Not with the `outside_dock` ending. Absent: the nearest docks are tried."
         ),
     )
     target_distance_m: StrictInt | None = Field(
@@ -273,8 +352,30 @@ class RouteIn(Schema):
                 "Mass Ride keeps to the most direct roadway: a field that takes the road is not"
                 " steered onto side streets, so the traffic slider stays at its lowest"
             )
-        if self.assist and preset.assist_speed_kmh is None:
+        if self.assist and (preset.assist_speed_kmh is None or self.preset == presets.BIKESHARE):
             raise ValueError("assist applies to the Cargo Bike ride type only")
+        if self.preset == presets.BIKESHARE:
+            if len(self.points) != 2:
+                raise ValueError(
+                    "Bikeshare plans take a start and an end: the walk, the ride between docks"
+                    " and the walk are planned from those two points"
+                )
+            if self.loop:
+                raise ValueError("Bikeshare does not plan loops")
+            if self.ending == bikeshare.ENDING_OUTSIDE and (self.bike or "classic") != "ebike":
+                raise ValueError("only an e-bike can end outside a dock")
+            if self.dropoff_station and self.ending == bikeshare.ENDING_OUTSIDE:
+                raise ValueError("a chosen drop-off station means ending at a dock")
+        elif (
+            self.bike is not None
+            or self.ending is not None
+            or self.pickup_station is not None
+            or self.dropoff_station is not None
+        ):
+            raise ValueError(
+                "bike, ending, pickup_station and dropoff_station apply to the Bikeshare ride"
+                " type only"
+            )
         return self
 
     @field_validator("system_weight_kg")
@@ -324,11 +425,12 @@ class ConfirmLongOut(Schema):
 
 class BusyOut(Schema):
     error: str
-    code: Literal["long_ride_timed_out"] | None = Field(
+    code: Literal["long_ride_timed_out", "bikeshare_unavailable"] | None = Field(
         default=None,
         description=(
-            "Present only when a long ride ran out of its time budget: show it, and do not"
-            " resend it without the rider asking."
+            "`long_ride_timed_out`: a long ride ran out of its time budget: show it, and do not"
+            " resend it without the rider asking. `bikeshare_unavailable`: the operator's station"
+            " list could not be had."
         ),
     )
 
@@ -504,6 +606,11 @@ class IntersectionOut(Schema):
     control: Literal["signal", "stop", "cross_stop", "all_stop", "none"]
     kind: str
     cost_ft: int = Field(description="The model's cost, in feet of equivalent quiet riding.")
+    calm_mi: float | None = Field(
+        default=None,
+        description="The same cost in calm miles, 2 places (467); `calm_km` is the metric.",
+    )
+    calm_km: float | None = None
     group: int | None = Field(
         default=None,
         description=(
@@ -512,6 +619,32 @@ class IntersectionOut(Schema):
             "junction stays in the list and on the map."
         ),
     )
+
+
+class JunctionDebugOut(Schema):
+    """One junction event of the route, for the debug list (`debug_junctions`)."""
+
+    m: int
+    lon: float
+    lat: float
+    kind: str
+    movement: Literal["left", "straight", "right"]
+    control: Literal["signal", "stop", "cross_stop", "all_stop", "none"]
+    crossed_tier: int | None
+    cost_ft: int
+    calm_mi: float
+    calm_km: float
+    text: str = Field(description='"0.55 calm mi (0.88 calm km)".')
+    severity: Literal["orange", "red"] | None
+    flagged: bool
+    time_factor: float = Field(description="The ride-time factor applied (468a, 469c-469e).")
+    assumed_speed: bool = Field(
+        description=(
+            "The cost read a speed the map does not give: the jurisdiction's statutory"
+            " default (469), or 45 mph for an LTS 4 or Avoid road on an older table."
+        )
+    )
+    reason: str
 
 
 class IntersectionGroupOut(Schema):
@@ -712,8 +845,8 @@ class CalmSearchOut(Schema):
     lts4_before_m: float | None = Field(
         default=None,
         description=(
-            "Trailmaxxing and Cargo with passengers only (OWNER-DECISIONS 250): metres of"
-            " LTS 4 and Avoid on the router's own route, which the search never exceeds."
+            "Rides with the LTS 4 hold only (OWNER-DECISIONS 250): metres of LTS 4 and"
+            " Avoid on the router's own route, which the search never exceeds."
         ),
     )
     lts4_after_m: float | None = Field(
@@ -794,13 +927,14 @@ class DescriptionEntryOut(Schema):
     a `junction` is a flagged junction that is not a turn, at a point, and a
     `via` is where a via point is reached (`Stop 1`, as the points list calls it);
     a `walk` is a short stretch to walk the bicycle over (a kept
-    `bicycle=dismount` connector; OWNER-DECISIONS 291(5)).
+    `bicycle=dismount` connector; OWNER-DECISIONS 291(5)); an `avoid` is an
+    Avoid-rated junction ahead (307), at a point, its `severity` "avoid".
     Distances are along the route, scaled to `distance_m`. `text` is one plain
     sentence, US units first with the metric once, for reading aloud; the other
     fields are the same facts for a client that words them itself. Additive:
     older clients ignore it, and it is null where it could not be built."""
 
-    kind: Literal["stretch", "junction", "via", "walk"]
+    kind: Literal["stretch", "junction", "via", "walk", "avoid"]
     from_m: int
     to_m: int
     from_mi: float
@@ -816,7 +950,7 @@ class DescriptionEntryOut(Schema):
     turn: DescriptionTurnOut | None = Field(
         description="How the stretch is entered, where it begins at a change of street."
     )
-    severity: Literal["orange", "red"] | None = None
+    severity: Literal["orange", "red", "avoid"] | None = None
     via: int | None = Field(default=None, description="On a `via`: its number, from 1.")
     group: DescriptionGroupOut | None = Field(
         default=None,
@@ -877,6 +1011,20 @@ class ProfileFlowOut(Schema):
     narrowest_riders_per_min: int | None
     narrowest_m: int | None = Field(description="Metres along the route to the narrowest sample.")
     typical_riders_per_min: int | None = Field(description="The median over the route.")
+    cruise_pace_ms: float | None = Field(
+        default=None,
+        description=(
+            "The group's cruising pace, m/s (`routemaker.flow.CRUISE_PACE_MS`, 7 mph): with"
+            " `level_riders_per_min`, the group's length at a ride size (PLAN items 128, 139)."
+        ),
+    )
+    default_level_riders_per_min: float | None = Field(
+        default=None,
+        description=(
+            "The level figure of the road a group's length is read on where no width is"
+            " known anywhere on the route (`flow.GROUP_DEFAULT_WIDTH_M`, two 11 ft lanes)."
+        ),
+    )
 
 
 class ProfileCrossingOut(Schema):
@@ -908,6 +1056,20 @@ class ProfileCrossingOut(Schema):
             "Corkers hold it (OWNER-DECISIONS 142, 400): the crossed or joined road is LTS 3"
             " or worse; a left or right turn onto such a road needs them as a crossing does."
         )
+    )
+    oneway: bool | None = Field(
+        default=None,
+        description=(
+            "The crossed or joined road is one-way there (one approach to hold: 1 corker,"
+            " PLAN item 139), two-way (false: 2), or not known (null)."
+        ),
+    )
+    divided: bool | None = Field(
+        default=None,
+        description=(
+            "A divided road: its two one-way carriageways counted as one junction, so two"
+            " approaches to hold (2 corkers) whatever `oneway` says."
+        ),
     )
 
 
@@ -947,9 +1109,10 @@ class ProfileCalmOut(Schema):
     """The rolling stress score (OWNER-DECISIONS 460.12, 461, 461a-e, 469b; `routemaker.calm`):
     calm miles per actual mile over the window centred on each sample (cut at the route's
     ends), each junction's cost at the ride's intersection weight counted once in every
-    window that holds them (at the top of the slider, the worth rule's exchange). 1.0 is
-    all quiet-street riding; a path or a protected lane counts below it. Every ride type
-    but Mass Ride."""
+    window that holds them (at the top of the slider, the worth rule's exchange). Each road
+    counts at its own routing cost over the local quiet street's (`calm.quiet_factor`), so
+    about 1.0 is all quiet-street riding; a path or a protected lane counts below it. Every
+    ride type but Mass Ride."""
 
     window_m: int = Field(description="The window's length, metres (461e: about a mile).")
     ratio: list[float | None] = Field(
@@ -964,14 +1127,18 @@ class ProfileCalmOut(Schema):
     )
     bands: list[float] = Field(
         description=(
-            "Where the words change: the 2.5 and 3.5 half-step midpoints at this ride's"
-            " slider position (LTS 1-2 below the first, LTS 3 to the second, LTS 4 above)."
+            "Where the words change, read from representative roads at their own cost at"
+            " this ride's slider position (`calm.bands`; LTS 1-2 below the first, LTS 3 to"
+            " the second, LTS 4 above)."
         )
     )
     estimate: bool = Field(
         description=(
-            "True while each tier's cost is the middle of its modelled range, not the"
-            " road's own speed and lanes."
+            "False where every road is priced by its own routing cost (its own speed, lanes"
+            " and cycle lane, as the router costs it); true where some stretch took its"
+            " tier's figure instead (the middle of the tier's modelled range), as a trace"
+            " with no edge attributes does, or where the live tier and the graph disagree"
+            " about grading (a stress edit since the last rebuild)."
         )
     )
 
@@ -1001,6 +1168,14 @@ class ProfileOut(Schema):
             "Mass Ride only: the grade-adjusted riders a minute at each sample"
             " (`routemaker.flow`, OWNER-DECISIONS 328); null where the width is unknown or"
             " the stretch is marked Avoid (325: no carrying capacity)."
+        ),
+    )
+    level_riders_per_min: list[int | None] | None = Field(
+        default=None,
+        description=(
+            "Mass Ride only: the level riders a minute at each sample, from the width alone"
+            " (`flow.level_riders_per_min`), so the front end can read the group's length at"
+            " each point; null where the width is unknown or the stretch is marked Avoid."
         ),
     )
     flow: ProfileFlowOut | None = None
@@ -1039,6 +1214,150 @@ class ProfileOut(Schema):
     )
 
 
+class BikeshareStopOut(Schema):
+    """A dock, a free-floating e-bike or the destination, as the plan uses it."""
+
+    kind: Literal["dock", "free_bike", "outside_dock"]
+    name: str
+    lon: float
+    lat: float
+    station_id: str | None = Field(default=None, description="The operator's id for a dock.")
+    availability: Literal["known", "unknown"]
+    bikes_available: int | None = Field(
+        description="Bikes of the chosen type at the dock; null: unknown or not a dock."
+    )
+    classic_available: int | None = None
+    ebikes_available: int | None = None
+    docks_available: int | None = Field(description="Free slots; null: unknown or not a dock.")
+
+
+class BikeshareWalkOut(Schema):
+    """A walk leg (Valhalla pedestrian costing)."""
+
+    geometry: LineString
+    distance_m: float
+    duration_s: float
+    to: str = Field(description="Where it goes: a dock's name, or `your destination`.")
+
+
+class BikeshareFeeOut(Schema):
+    name: str
+    price: str = Field(description="As the operator publishes it, a decimal string.")
+    currency: str
+    description: str = Field(description="The operator's own words for the plan.")
+
+
+class BikeshareEndingOut(Schema):
+    """One way to end the ride (OWNER-DECISIONS 244). An E-bike has two: the dock, and the
+    destination outside a dock where the operator's zone data allows it."""
+
+    kind: Literal["dock", "outside_dock"]
+    offered: bool
+    chosen: bool = Field(description="Whether this plan ends this way.")
+    reason: str | None = Field(
+        description=(
+            "Why an ending is not offered: `no_zone_data`, `zones_unreadable`,"
+            " `no_parking_zone` or `classic_bikes_end_at_docks`."
+        )
+    )
+    reason_text: str | None
+    fee: BikeshareFeeOut | None = Field(
+        description=(
+            "The out-of-dock fee, read from the operator's pricing plans, never assumed; null"
+            " where no plan names one. Information, not a quote."
+        )
+    )
+    fee_text: str | None
+    walk_m: float | None = Field(description="The walk from the dock to the destination.")
+    text: str
+
+
+class BikeshareStepOut(Schema):
+    kind: Literal["walk", "ride"]
+    text: str
+
+
+class BikesharePlanOut(Schema):
+    """The walks, docks, availability, fee and notes of a bikeshare plan
+    (FOLLOWUP-BIKESHARE). The route body around it is the ride leg, dock to dock; the
+    walks are here."""
+
+    bike: BikeName
+    ending: EndingName
+    start: BikeshareStopOut
+    end: BikeshareStopOut
+    walk_start: BikeshareWalkOut | None
+    walk_end: BikeshareWalkOut | None
+    ride_m: float
+    ride_s: float
+    walk_m: float
+    walk_s: float
+    total_s: float = Field(description="Walking and riding, without stops.")
+    availability: Literal["live", "stale", "unknown"] = Field(
+        description="`unknown`: the operator's availability feed could not be read."
+    )
+    endings: list[BikeshareEndingOut]
+    pricing: list[BikeshareFeeOut] = Field(
+        description="E-bike: the operator's price plans, as information."
+    )
+    pricing_note: str | None
+    steps: list[BikeshareStepOut]
+    summary: str = Field(description="The plan in plain words, US units first, for reading aloud.")
+    notes: list[str]
+    credit: str = Field(description="The plain source citation (OWNER-DECISIONS 301).")
+
+
+class AvoidJunctionOut(Schema):
+    """An Avoid-rated junction the route passes (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS
+    307-310, 335): rated by a person, never by the model, and rare."""
+
+    id: int
+    name: str
+    reason: str
+    lon: float
+    lat: float
+    m: int = Field(description="Metres along the route, scaled to `distance_m`.")
+    label: str = Field(
+        description=(
+            'The accessible name of its marker and list row (309): "Avoid-rated junction:'
+            ' <name>, <reason>". The skull and crossbones the client draws beside it is'
+            " hidden from assistive technology."
+        )
+    )
+
+
+class AvoidSearchOut(Schema):
+    """What the plan did about Avoid-rated junctions on its route (308, 335). Null where
+    the route passes none."""
+
+    passed: int = Field(description="Passes through Avoid-rated junctions the answer still makes.")
+    penalty_s: int = Field(description="Their routing penalty, 1,800 cost seconds a pass (308).")
+    decision: Literal["kept", "avoided"] = Field(
+        description=(
+            '"avoided": the way round replaced the route (it cost less than the route plus'
+            ' the penalty, or the ride is Mass Ride or Group Ride, 307); "kept": the route'
+            " still passes one, and `avoid_alternate` is the way round where one was found."
+        )
+    )
+    alternate: Literal["found", "no_route", "time"] | None = Field(
+        description="Whether the way round was found; null once it replaced the route."
+    )
+    avoided: int = Field(description="Passes the way round took out.")
+
+
+class MassHazardSpanOut(Schema):
+    """A rider-marked hazard on a Mass Ride's route (FOLLOWUP-MASSRIDE-MAP part 3; 325, 326),
+    in whole metres along the traced route as `stress_spans` are measured."""
+
+    from_m: int
+    to_m: int
+    level: Literal["caution", "warning"]
+    level_name: str = Field(description='"Caution" or "Warning".')
+    words: str = Field(description="The level in plain words.")
+    reason: str = Field(description="The reporter's reason, as approved (never their name).")
+    road: str
+
+
 class RouteBody(Schema):
     preset: PresetName
     variant: Literal["standard", "no-trail", "ebike", "weekend", "offroad"]
@@ -1068,6 +1387,8 @@ class RouteBody(Schema):
     # A Mass Ride's groups of signalized crossings (OWNER-DECISIONS 233, 234): additive,
     # empty or null elsewhere.
     intersection_groups: list[IntersectionGroupOut] | None = None
+    # Every junction event with its cost, only when the request asks (`debug_junctions`).
+    junctions_debug: list[JunctionDebugOut] | None = None
     calm_search: CalmSearchOut | None
     detour: DetourOut | None
     # Side-street dodges found and what was done with them (OWNER-DECISIONS 272): null
@@ -1083,6 +1404,20 @@ class RouteBody(Schema):
     # without a second request and the merged sentences are worded in one place.
     description_overview: list[DescriptionEntryOut] | None = None
     moved_points: list[MovedPointOut] = Field(default_factory=list)
+    # The Avoid-rated junctions it passes, in route order (FOLLOWUP-ISECT-AVOID, 307-310),
+    # and the notice the panel shows first and announces (335). Additive: empty and null
+    # where it passes none, which is nearly always (the list ships empty).
+    avoid_junctions: list[AvoidJunctionOut] = Field(default_factory=list)
+    avoid_notice: str | None = Field(
+        default=None,
+        description=(
+            '"This route goes through an Avoid-rated junction: <name>, <reason>." (335);'
+            " null where it passes none."
+        ),
+    )
+    # A Mass Ride's rider-marked hazards it passes, in riding order (FOLLOWUP-MASSRIDE-MAP
+    # part 3, 325). Additive: null on every other ride type, empty where it passes none.
+    mass_hazards: list[MassHazardSpanOut] | None = None
     loop: LoopOut | None = Field(
         default=None, description="Present on a loop: how much of the way back is the way out."
     )
@@ -1184,7 +1519,37 @@ class CandidateOut(RouteBody):
     )
 
 
+class AvoidAlternateOut(RouteBody):
+    """The best route round the Avoid-rated junctions the answer passes, however much
+    longer (335): a whole route body of its own."""
+
+    extra_distance_m: float = Field(description="How much longer than the answer, metres.")
+    extra_duration_s: float = Field(description="How much longer than the answer, seconds.")
+    bikeshare: BikesharePlanOut | None = Field(
+        default=None,
+        description=(
+            "Bikeshare only: the answer's walks and docks around this way round, its ride and"
+            " totals its own, so it is shown in place of the ride leg with the operator's credit."
+        ),
+    )
+
+
 class RouteOut(RouteBody):
+    avoid_search: AvoidSearchOut | None = None
+    avoid_alternate: AvoidAlternateOut | None = Field(
+        default=None,
+        description=(
+            "Where the answer still passes an Avoid-rated junction (335): the best route that"
+            " avoids it, to offer as an alternate; null otherwise."
+        ),
+    )
+    bikeshare: BikesharePlanOut | None = Field(
+        default=None,
+        description=(
+            "Bikeshare only (OWNER-DECISIONS 243-245): the walks, docks, availability, fee and"
+            " notes around this body, which is the ride leg between the docks."
+        ),
+    )
     rank: int | None = Field(
         default=None, description="1 where `candidates` has others: the answer's own place."
     )
@@ -1230,6 +1595,18 @@ def invalid_input(request, exc: ValidationError):
             continue
         where = ".".join(str(part) for part in error.get("loc", ()) if part != "body")
         problems.append(f"{where}: {msg}" if where else msg)
+    if request.path.startswith(STRESS_EDIT_PATHS):
+        # The editor names the field a problem is about, so the form can focus it.
+        first = next(
+            (
+                str(part)
+                for error in exc.errors[:1]
+                for part in reversed(error.get("loc", ()))
+                if isinstance(part, str) and part != "body"
+            ),
+            None,
+        )
+        return _stress_error(400, "; ".join(p for p in problems if p) or "invalid request", first)
     return _error(400, "; ".join(p for p in problems if p) or "invalid request")
 
 
@@ -1251,11 +1628,21 @@ def unexpected(request, exc: Exception):
     logger.exception("unhandled error in %s %s", request.method, request.path)
     if request.path.startswith(GEOCODE_PATHS):
         return _error(500, "Something went wrong looking up the place.")
+    if request.path.startswith(STRESS_EDIT_PATHS):
+        return _stress_error(500, "Something went wrong; nothing was changed.")
     return _error(500, "Something went wrong planning this route.")
 
 
 # The place-search endpoints, whose unexpected failure is not a route's.
 GEOCODE_PATHS = ("/api/geocode", "/api/reverse")
+# The road panel's stress editor, whose answers are private and name the form field.
+STRESS_EDIT_PATHS = (
+    "/api/stress-edits",
+    "/api/stress-suggestions",
+    "/api/junction-suggestions",
+    "/api/mass-hazards",
+    "/api/me",
+)
 
 
 def errors_as_json(view):
@@ -1383,6 +1770,118 @@ def route(request, body: RouteIn, response: HttpResponse):
         ratelimit.release(held)
 
 
+# --- The nearest stations to pick up from or return to (OWNER-DECISIONS 466, 466a) ---------
+#
+# POST /api/bikeshare/stations lists the three stations nearest a point that are at least 3/4
+# full (to take a bike) or at most 1/4 full (to return one), from the operator's live feed.
+# A POST, with the point in the body and not the address, so a visitor's position is in no
+# URL or log line; it is used for this one answer and kept nowhere. Nothing is ranked beyond
+# distance: the rider chooses, and the plan can be asked to use the chosen station
+# (`pickup_station`, `dropoff_station` on POST /api/route).
+
+
+class NearbyStationsIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    point: LonLat = Field(description="[lon, lat]: where the rider will take or return a bike.")
+    action: Literal["pickup", "dropoff"] = Field(
+        description=(
+            "`pickup`: stations at least 3/4 full that are renting. `dropoff`: stations at most"
+            " 1/4 full that are taking bikes back."
+        )
+    )
+
+    @field_validator("point")
+    @classmethod
+    def inside_coverage(cls, point: list[float]) -> list[float]:
+        west, south, east, north = settings.COVERAGE_BBOX
+        lon, lat = point
+        if not (west <= lon <= east and south <= lat <= north):
+            raise ValueError("the point is outside the area this map covers")
+        return point
+
+
+class NearbyStationOut(Schema):
+    station_id: str
+    name: str
+    lon: float
+    lat: float
+    percent_full: int = Field(description="Bikes as a percentage of bikes and free docks.")
+    distance_m: float = Field(description="Straight line from the point.")
+    bikes: int = Field(description="Bikes available, e-bikes included.")
+    ebikes: int
+    docks: int = Field(description="Free docks.")
+
+
+class NearbyStationsOut(Schema):
+    action: Literal["pickup", "dropoff"]
+    availability: Literal["live", "stale", "unknown"] = Field(
+        description="`unknown`: the operator's availability feed could not be read; none listed."
+    )
+    stations: list[NearbyStationOut] = Field(
+        description="Up to three, nearest first; fewer or none where fewer fit."
+    )
+    credit: str = Field(description="The plain source citation (OWNER-DECISIONS 301).")
+
+
+@api.post(
+    "/bikeshare/stations",
+    response={
+        200: NearbyStationsOut,
+        400: ErrorOut,
+        422: ErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+        503: BusyOut,
+    },
+    summary="The three nearest stations to pick up from (3/4 full) or return to (1/4 full)",
+)
+@decorate_view(
+    ratelimit.rate_limited(ratelimit.BIKESHARE_STATIONS),
+    json_body_only,
+    errors_as_json,
+)
+def bikeshare_stations(request, body: NearbyStationsIn, response: HttpResponse):
+    response["Cache-Control"] = "no-store"
+    try:
+        snapshot = gbfs.client.snapshot()
+    except gbfs.Unavailable:
+        refusal = JsonResponse(
+            {
+                "error": "Bikeshare station data is not available right now. Try again shortly.",
+                "code": "bikeshare_unavailable",
+            },
+            status=503,
+        )
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+        refusal["Cache-Control"] = "no-store"
+        return refusal
+    found = bikeshare.nearby_stations(body.point, body.action, snapshot)
+    availability = "unknown" if snapshot.status is None else ("stale" if snapshot.stale else "live")
+    return Status(
+        200,
+        {
+            "action": body.action,
+            "availability": availability,
+            "stations": [
+                {
+                    "station_id": s.station_id,
+                    "name": s.name,
+                    "lon": s.lon,
+                    "lat": s.lat,
+                    "percent_full": s.percent_full,
+                    "distance_m": s.distance_m,
+                    "bikes": s.bikes,
+                    "ebikes": s.ebikes,
+                    "docks": s.docks,
+                }
+                for s in found
+            ],
+            "credit": gbfs.CREDIT,
+        },
+    )
+
+
 def _stress_of(body: RouteIn) -> int:
     """The traffic slider's position a request plans at."""
     if body.stress is not None:
@@ -1390,8 +1889,73 @@ def _stress_of(body: RouteIn) -> int:
     return presets.stress_start(body.preset, body.carrying)
 
 
+def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
+    """A Bikeshare plan (`core.bikeshare`): the operator's feeds, the walks and the ride."""
+    if started is None:
+        started = routing.clock()
+    bike = body.bike or presets.BIKE_CLASSIC
+    profile = presets.BIKESHARE_BIKES[bike]
+    dials = routing.Dials(
+        stress=body.stress,
+        hills=profile.hills if body.hills is None else body.hills,
+        when=body.when,
+        assist=profile.assist,
+        avoid_gravel=body.avoid_gravel,
+        # "Keep to roads, not trails" is one switch on every ride type (463b).
+        trails_off=body.trails_off,
+        target_distance_m=body.target_distance_m,
+        system_weight_kg=body.system_weight_kg or profile.system_weight_kg,
+    )
+    deadline = routing.Deadline(
+        started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S, routing.ROUTER_TIMEOUT_S
+    )
+    snapshot = gbfs.client.snapshot()
+    services = bikeshare.RoutingServices(
+        deadline,
+        lambda points: routing.plan(
+            points, presets.BIKESHARE, long_ride=False, started=started, dials=dials
+        ),
+    )
+    return bikeshare.plan(
+        body.points[0],
+        body.points[1],
+        bike,
+        body.ending or bikeshare.ENDING_DOCK,
+        snapshot,
+        services,
+        profile.speed_kmh,
+        pickup_station=body.pickup_station,
+        dropoff_station=body.dropoff_station,
+    )
+
+
 def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_calm: bool = False):
     started = getattr(request, "routing_started", None)
+    if body.preset == presets.BIKESHARE:
+        try:
+            return Status(200, _bikeshare_body(body, started))
+        except bikeshare.NoBikeshare as refusal:
+            return JsonResponse({"error": str(refusal), "code": "no_bikeshare"}, status=422)
+        except gbfs.Unavailable:
+            refusal = JsonResponse(
+                {
+                    "error": (
+                        "Bikeshare station data is not available right now, so no dock can be "
+                        "chosen. Try again shortly."
+                    ),
+                    "code": "bikeshare_unavailable",
+                },
+                status=503,
+            )
+            refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+            return refusal
+        except (
+            routing.TooLong,
+            routing.NoRoute,
+            routing.RouterUnavailable,
+            routing.DeadlineExceeded,
+        ) as error:
+            return _router_refusal(error, body)
     try:
         dials = routing.Dials(
             stress=body.stress,
@@ -1404,6 +1968,7 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
             target_distance_m=body.target_distance_m,
             system_weight_kg=body.system_weight_kg,
             loop=body.loop,
+            debug_junctions=body.debug_junctions,
         )
         return Status(
             200,
@@ -1411,44 +1976,54 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
                 body.points, body.preset, long_ride=long_ride, started=started, dials=dials
             ),
         )
-    except routing.TooLong:
+    except (
+        routing.TooLong,
+        routing.NoRoute,
+        routing.RouterUnavailable,
+        routing.DeadlineExceeded,
+    ) as error:
+        return _router_refusal(error, body, long_ride or long_calm)
+
+
+def _router_refusal(error: Exception, body: RouteIn, long_plan: bool = False):
+    """The answer for a router error, the same for every ride type."""
+    if isinstance(error, routing.TooLong):
         return Status(400, {"error": ROUTER_TOO_LONG})
-    except routing.NoRoute as no_route:
+    if isinstance(error, routing.NoRoute):
         message = "No route joins these points on this preset."
-        if no_route.no_path and presets.PRESETS[body.preset].variant == "no-trail":
+        if error.no_path and presets.PRESETS[body.preset].variant == "no-trail":
             # PLAN, Routing model: a no-route result on the no-trail variant
             # reports the disconnection rather than failing blankly.
             message += (
                 " A Mass Ride routes only on roadways, and removing trails can leave"
                 " no roadway-legal connection between two points."
             )
-        elif no_route.no_path and body.trails_off:
+        elif error.no_path and body.trails_off:
             # The same for a ride with "Keep to roads, not trails" on, in its words.
             message += (
                 ' With "Keep to roads, not trails" on, this ride uses only roadways, and'
                 " there may be no roadway-legal connection between two points."
             )
         return Status(422, {"error": message})
-    except routing.RouterUnavailable:
+    if isinstance(error, routing.RouterUnavailable):
         return Status(502, {"error": "The router is not answering; try again shortly."})
-    except routing.DeadlineExceeded:
-        # A JsonResponse rather than Status, so an ordinary 503 stays exactly
-        # {"error"} instead of carrying "code": null.
-        if long_ride or long_calm:
-            refusal = JsonResponse(
-                {
-                    "error": (
-                        "Planning this long ride ran out of time. Try again in"
-                        f" {DEADLINE_RETRY_S} seconds, or split it into shorter parts."
-                    ),
-                    "code": LONG_RIDE_TIMED_OUT,
-                },
-                status=503,
-            )
-        else:
-            refusal = _error(503, "Planning this route took too long; try again shortly.")
-        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
-        return refusal
+    # A JsonResponse rather than Status, so an ordinary 503 stays exactly
+    # {"error"} instead of carrying "code": null.
+    if long_plan:
+        refusal = JsonResponse(
+            {
+                "error": (
+                    "Planning this long ride ran out of time. Try again in"
+                    f" {DEADLINE_RETRY_S} seconds, or split it into shorter parts."
+                ),
+                "code": LONG_RIDE_TIMED_OUT,
+            },
+            status=503,
+        )
+    else:
+        refusal = _error(503, "Planning this route took too long; try again shortly.")
+    refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+    return refusal
 
 
 class StopOrderOut(Schema):
@@ -1870,6 +2445,16 @@ class SegmentInfoOut(Schema):
         description="The way's name, 'Unnamed road' or 'Unnamed path', or 'No road here'."
     )
     tier: int | None = Field(default=None, description="Traffic stress, 1-4, or 5 for Avoid.")
+    step: float | None = Field(
+        default=None,
+        description=(
+            "The exact step, half steps included (1, 1.5, ... 4.5, 5); `tier` is its whole level."
+        ),
+    )
+    half_steps: bool | None = Field(
+        default=None,
+        description="Whether the road data can hold a half step yet; null with no road.",
+    )
     open: bool | None = Field(
         default=None, description="Whether a bicycle may use it; null when not known."
     )
@@ -1914,3 +2499,1067 @@ def road_info(request, params: Query[SegmentInfoIn], response: HttpResponse):
     found = segment_info.segment_info(params.lat, params.lon)
     response["Cache-Control"] = f"private, max-age={SEGMENT_INFO_MAX_AGE_S}"
     return Status(200, {**found, "attribution": list(SEGMENT_INFO_ATTRIBUTION)})
+
+
+# --- Who is asking, and the road panel's stress editor -----------------------------
+#
+# GET /api/me and the three /api/stress-edits endpoints (OWNER-DECISIONS 441g, 441h, 441m, 460;
+# core.stress_edits). The first authenticated writes in this API, so every one of these has
+# all of: a session of an account in standing (401 without), instance-admin standing (403,
+# and a refused write is audited), a CSRF token on writes (Django's own check, which Ninja
+# does not apply to a view it has marked exempt), the same-site check, a JSON body of bounded
+# size, and a count - per client address first, then per account. Nothing here carries a
+# name or an id of a person: /api/me answers three yes/no flags, a path carries an OSM way id
+# or an edit id, and a body is JSON, never a query string.
+
+ME_MAX_AGE = "no-store"
+
+
+class MeOut(Schema):
+    signed_in: bool
+    can_change_lts: bool = Field(
+        description="An active instance admin: the road panel offers Change LTS."
+    )
+    can_suggest: bool = Field(
+        description="The road panel offers Suggest a change (core.suggestions.may_suggest)."
+    )
+
+
+def _private(response: HttpResponse) -> HttpResponse:
+    response["Cache-Control"] = ME_MAX_AGE
+    response["Vary"] = "Cookie"
+    return response
+
+
+def _stress_error(status: int, message: str, field: str | None = None, code: str | None = None):
+    body: dict = {"error": message}
+    if field:
+        body["field"] = field
+    if code:
+        body["code"] = code
+    return _private(JsonResponse(body, status=status))
+
+
+class StressEditErrorOut(Schema):
+    error: str
+    field: str | None = Field(default=None, description="The form field the error is about.")
+    code: str | None = None
+
+
+def same_site_editor(view):
+    """`same_site_only`, with a sentence that fits the editor."""
+
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        site = request.META.get("HTTP_SEC_FETCH_SITE", "").strip().lower()
+        if site and site not in ("same-origin", "none"):
+            return _stress_error(403, "This answers this site's own pages only.")
+        return view(request, *args, **kwargs)
+
+    return wrapped
+
+
+def _refused(request, user, detail: str) -> None:
+    """Audit a refused write. Written here, outside any transaction the refusal unwound."""
+    from .models import AuditLogEntry
+
+    audit.record(
+        user,
+        "stress_edit",
+        "override",
+        "",
+        AuditLogEntry.Outcome.REFUSED,
+        detail=f"{request.method} {request.path.split('?')[0]}: {detail}"[:2000],
+    )
+
+
+def instance_admin_only(*, audited: bool):
+    """A session of an active instance admin, or 401 (no session) or 403.
+
+    `audited`: a write refused to a signed-in account is written to the audit log (the
+    plan: every refused write is). A read refused is not, as the admin's page views are not.
+    """
+
+    def decorator(view):
+        @wraps(view)
+        def wrapped(request, *args, **kwargs):
+            if not signed_in(request):
+                return _stress_error(401, "Sign in to change traffic stress.", code="signed_out")
+            user = request.user
+            if not getattr(user, "is_instance_admin", False):
+                if audited:
+                    _refused(request, user, "not an instance admin")
+                return _stress_error(
+                    403, "Only an instance admin can change traffic stress.", code="not_admin"
+                )
+            return view(request, *args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
+def _no_view():  # pragma: no cover - the callback Django's CSRF check is asked about
+    return None
+
+
+def csrf_protected(view):
+    """Refuse a write that does not carry the CSRF token (Django's own check).
+
+    Ninja marks every view it serves `csrf_exempt` and only checks the token itself for
+    its own cookie authenticators, so `CsrfViewMiddleware` lets these through unchecked.
+    The check is therefore made here, with the middleware's own `process_view`: the
+    `X-CSRFToken` header against the `csrftoken` cookie, and the Origin or Referer against
+    the host or `CSRF_TRUSTED_ORIGINS` on HTTPS.
+    """
+    from django.middleware.csrf import CsrfViewMiddleware
+
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        refusal = CsrfViewMiddleware(lambda r: None).process_view(request, _no_view, (), {})
+        if refusal is not None:
+            _refused(request, request.user, "missing or wrong CSRF token")
+            return _stress_error(
+                403,
+                "This page's security token is missing or out of date. Reload the page and "
+                "try again.",
+                code="csrf",
+            )
+        return view(request, *args, **kwargs)
+
+    return wrapped
+
+
+@api.get(
+    "/me",
+    response={200: MeOut, 403: ErrorOut, 429: ErrorOut, 500: ErrorOut},
+    summary="Three yes/no flags: signed in, may change traffic stress, may suggest",
+)
+@decorate_view(
+    ratelimit.rate_limited(ratelimit.ME),
+    same_site_only,
+    errors_as_json,
+)
+def me(request, response: HttpResponse):
+    """No name and no id, so nothing here can leak into a link or a log."""
+    from django.middleware.csrf import get_token
+
+    from . import suggestions
+
+    signed = signed_in(request)
+    can_change = bool(signed and getattr(request.user, "is_instance_admin", False))
+    can_suggest = bool(signed and suggestions.may_suggest(request.user))
+    if can_change or can_suggest:
+        # Sets the `csrftoken` cookie the editor sends back as `X-CSRFToken`.
+        get_token(request)
+    _private(response)
+    return Status(
+        200, {"signed_in": signed, "can_change_lts": can_change, "can_suggest": can_suggest}
+    )
+
+
+class StepOut(Schema):
+    value: float = Field(description="1 to 5 by halves (1.5 is a half step; 5 is Avoid).")
+    words: str
+
+
+class CategoryOut(Schema):
+    id: str
+    label: str
+
+
+class CurrentOut(Schema):
+    step: float = Field(description="The road's level now, half steps included.")
+    words: str
+    source: Literal["classifier", "file", "admin", "panel"]
+    at_least: bool
+    category: str | None = None
+    public_note: str | None = None
+    display: str | None = None
+    private_reason: str | None = Field(
+        default=None, description="For the admin only; never shown to a rider."
+    )
+    when: str | None = None
+    by: Literal["you", "another admin"] | None = None
+
+
+class RecentEditOut(Schema):
+    id: int
+    action: str
+    at: str
+    can_undo: bool
+
+
+class StretchOut(Schema):
+    name: str
+    osm_way_ids: list[int] = Field(description="Send these as osm_way_ids to change them all.")
+    pieces: int
+    length_m: float
+    capped: bool = Field(description="True where the stretch goes on past the most one edit takes.")
+    expected: str = Field(description="The stretch's own token, sent back with a stretch edit.")
+
+
+class StretchStateOut(Schema):
+    stretch: StretchOut | None = Field(
+        default=None,
+        description="The named stretch the road piece is in, or null where it is the only piece.",
+    )
+
+
+class EditorStateOut(Schema):
+    osm_way_id: int
+    classifier_step: int | None = Field(
+        default=None, description="Null when an earlier override hides it."
+    )
+    can_raise_only: bool
+    current: CurrentOut
+    expected: str = Field(description="Send back unchanged with the edit; a mismatch is a 409.")
+    steps: list[StepOut]
+    categories: list[CategoryOut]
+    reason_max: int
+    note_max: int
+    recent_edit: RecentEditOut | None = None
+    pieces: int
+    half_steps: bool = Field(
+        default=True,
+        description="False until the live table can hold a half step (the next data update).",
+    )
+
+
+@api.get(
+    "/stress-edits/way/{osm_way_id}",
+    response={
+        200: EditorStateOut,
+        401: StressEditErrorOut,
+        403: StressEditErrorOut,
+        404: StressEditErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+    },
+    summary="The stress editor's starting state for one way (instance admin)",
+)
+@decorate_view(
+    instance_admin_only(audited=False),
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def stress_edit_state(request, osm_way_id: int, response: HttpResponse):
+    from django.middleware.csrf import get_token
+
+    from . import stress_edits
+
+    get_token(request)
+    try:
+        state = stress_edits.editor_state(request.user, osm_way_id)
+    except stress_edits.EditRefused as refused:
+        return _stress_error(refused.status, refused.message, refused.field, refused.code)
+    _private(response)
+    return Status(200, state)
+
+
+@api.get(
+    "/stress-edits/way/{osm_way_id}/stretch",
+    response={
+        200: StretchStateOut,
+        401: StressEditErrorOut,
+        403: StressEditErrorOut,
+        404: StressEditErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+    },
+    summary="The named stretch a road piece is in, for the editor's extent choice (instance admin)",
+)
+@decorate_view(
+    instance_admin_only(audited=False),
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def stress_edit_stretch(request, osm_way_id: int, response: HttpResponse):
+    from . import stress_edits
+
+    try:
+        stretch = stress_edits.stretch_state(osm_way_id)
+    except stress_edits.EditRefused as refused:
+        return _stress_error(refused.status, refused.message, refused.field, refused.code)
+    _private(response)
+    return Status(200, {"stretch": stretch})
+
+
+class StressEditIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    osm_way_ids: list[StrictInt] = Field(
+        min_length=1,
+        max_length=40,
+        description="One road piece, or a named stretch's pieces (the editor state's stretch).",
+    )
+    step: StrictFloat = Field(
+        description="The level, 1 to 5 by halves (1.5, 2.5, 3.5, 4.5 are half steps; 5 is Avoid)."
+    )
+    at_least: StrictBool = Field(
+        default=False, description="Only raise it: keep the current level where it is higher."
+    )
+    category: str = Field(max_length=40, description="Why, in a category the panel can show.")
+    reason: str = Field(
+        max_length=2000, description="Private. Required, at most 500 characters; never shown."
+    )
+    public_note: str | None = Field(
+        default=None, max_length=1000, description="Optional note riders may read."
+    )
+    display: Literal["route_only", "map"] = "route_only"
+    expected: str = Field(max_length=64)
+
+
+class EditedWayOut(Schema):
+    osm_way_id: int
+    step: float
+    changed: bool = Field(
+        description="False where the road already had this level (or met the floor)."
+    )
+
+
+class StressEditOut(Schema):
+    edit_id: int
+    ways: list[EditedWayOut]
+    generation: int = Field(description="Added to the stress tile URLs as ?rev= by the editor.")
+    undo_until: str = Field(description="When the Undo stops being offered, ISO 8601.")
+
+
+STRESS_EDIT_RESPONSES = {
+    200: StressEditOut,
+    400: StressEditErrorOut,
+    401: StressEditErrorOut,
+    403: StressEditErrorOut,
+    404: StressEditErrorOut,
+    409: StressEditErrorOut,
+    429: ErrorOut,
+    500: ErrorOut,
+}
+
+
+def _edit_out(result) -> dict:
+    from . import stress_edits
+
+    return {
+        "edit_id": result.edit.pk,
+        "ways": result.ways,
+        "generation": result.generation,
+        "undo_until": (result.edit.at + stress_edits.UNDO_WINDOW).isoformat(),
+    }
+
+
+def _edit_refusal(request, refused) -> JsonResponse:
+    if refused.status == 409:
+        _refused(request, request.user, f"{refused.code}: {refused.message}")
+    return _stress_error(refused.status, refused.message, refused.field, refused.code)
+
+
+# Ninja wraps these innermost first, so the order written is the reverse of the order they
+# run in: the error guard, the address count, the same-site check, the JSON body, the
+# account (401, 403), the CSRF token, then the account's own count.
+STRESS_WRITE = (
+    ratelimit.user_rate_limited(ratelimit.STRESS_EDIT_WRITES),
+    csrf_protected,
+    instance_admin_only(audited=True),
+    json_body_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+
+
+@api.post(
+    "/stress-edits",
+    response=STRESS_EDIT_RESPONSES,
+    summary="Change a road's traffic stress at once (instance admin)",
+)
+@decorate_view(*STRESS_WRITE)
+def stress_edit_create(request, body: StressEditIn, response: HttpResponse):
+    from . import stress_edits
+
+    try:
+        tier, half = stress_edits.split_step(body.step)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    spec = stress_edits.Spec(
+        tier=tier,
+        half=half,
+        at_least=body.at_least,
+        category=body.category,
+        reason=body.reason,
+        public_note=body.public_note.strip() if body.public_note else None,
+        display=body.display,
+    )
+    try:
+        result = stress_edits.apply(request.user, body.osm_way_ids, spec, body.expected)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(200, _edit_out(result))
+
+
+class UndoIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+
+@api.post(
+    "/stress-edits/{edit_id}/undo",
+    response=STRESS_EDIT_RESPONSES,
+    summary="Undo a change within 30 minutes (instance admin)",
+)
+@decorate_view(*STRESS_WRITE)
+def stress_edit_undo(request, edit_id: int, body: UndoIn, response: HttpResponse):
+    from . import stress_edits
+
+    try:
+        result = stress_edits.undo(request.user, edit_id)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(200, _edit_out(result))
+
+
+# ---- Rider suggestions (441h, 460.4, 460.5; core.suggestions) ----
+
+
+def suggester_only(view):
+    """A session of an account the suggestion setting allows, or 401 / 403 (audited)."""
+    from . import suggestions
+
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        if not signed_in(request):
+            return _stress_error(401, "Sign in to suggest a change.", code="signed_out")
+        if not suggestions.may_suggest(request.user):
+            _refused(request, request.user, "may not suggest")
+            return _stress_error(
+                403, "Suggestions are not open to your account.", code="not_allowed"
+            )
+        return view(request, *args, **kwargs)
+
+    return wrapped
+
+
+class SuggestionIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    osm_way_id: StrictInt
+    lat: StrictFloat = Field(ge=-90, le=90, description="The spot the rider asked about.")
+    lon: StrictFloat = Field(ge=-180, le=180)
+    step: StrictFloat = Field(description="The suggested level, 1 to 5 by halves.")
+    reason: str = Field(max_length=2000, description="Required, at most 500 characters.")
+
+
+class SuggestionCreatedOut(Schema):
+    id: int
+    message: str
+
+
+class SuggestionOut(Schema):
+    id: int
+    osm_way_id: int
+    road: str
+    lat: float
+    lon: float
+    current_step: float
+    current_words: str
+    step: float
+    words: str
+    reason: str
+    status: Literal["pending", "sent_to_discord"]
+    created_at: str
+    sent_at: str | None = None
+
+
+class SuggestionListOut(Schema):
+    suggestions: list[SuggestionOut]
+
+
+class SuggestionDoneOut(Schema):
+    id: int
+    status: str
+    message: str
+    generation: int | None = None
+
+
+class PollOptionOut(Schema):
+    letter: str
+    label: str
+    tier: int | None = Field(description="The level a vote for it means; null for Not sure.")
+
+
+class DiscordPostOut(Schema):
+    id: int
+    status: str
+    post: str = Field(description="Ready to paste: at most 2,000 characters, no mentions.")
+    characters: int
+    options: list[PollOptionOut]
+
+
+SUGGESTION_RESPONSES = {
+    400: StressEditErrorOut,
+    401: StressEditErrorOut,
+    403: StressEditErrorOut,
+    404: StressEditErrorOut,
+    409: StressEditErrorOut,
+    429: ErrorOut,
+    500: ErrorOut,
+}
+
+# The review's three actions: the editor's guards with a count of their own (a larger one), so a
+# long review does not use up the admin's editing budget.
+REVIEW_WRITE = (
+    ratelimit.user_rate_limited(ratelimit.SUGGEST_REVIEW_WRITES),
+    *STRESS_WRITE[1:],
+)
+
+SUGGEST_WRITE = (
+    ratelimit.user_rate_limited(ratelimit.SUGGEST_WRITES),
+    csrf_protected,
+    suggester_only,
+    json_body_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+
+
+@api.post(
+    "/stress-suggestions",
+    response={200: SuggestionCreatedOut, **SUGGESTION_RESPONSES},
+    summary="Suggest a road's traffic stress level (a rider the settings allow)",
+)
+@decorate_view(*SUGGEST_WRITE)
+def stress_suggestion_create(request, body: SuggestionIn, response: HttpResponse):
+    from . import stress_edits, suggestions
+
+    try:
+        suggestion = suggestions.create(
+            request.user, body.osm_way_id, body.lat, body.lon, body.step, body.reason
+        )
+    except stress_edits.EditRefused as refused:
+        return _stress_error(refused.status, refused.message, refused.field, refused.code)
+    _private(response)
+    return Status(
+        200,
+        {
+            "id": suggestion.pk,
+            "message": "Thanks. Your suggestion was sent to the map's admins. "
+            "Nothing changes on the map until one of them reviews it.",
+        },
+    )
+
+
+@api.get(
+    "/stress-suggestions/open",
+    response={200: SuggestionListOut, **SUGGESTION_RESPONSES},
+    summary="The suggestions waiting for review (instance admin)",
+)
+@decorate_view(
+    instance_admin_only(audited=False),
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def stress_suggestion_list(request, response: HttpResponse):
+    from django.middleware.csrf import get_token
+
+    from . import suggestions
+
+    get_token(request)
+    _private(response)
+    return Status(
+        200, {"suggestions": [suggestions.summary(s) for s in suggestions.open_suggestions()]}
+    )
+
+
+@api.post(
+    "/stress-suggestions/{suggestion_id}/approve",
+    response={200: SuggestionDoneOut, **SUGGESTION_RESPONSES},
+    summary="Approve a suggestion now: applied at once as your edit (instance admin)",
+)
+@decorate_view(*REVIEW_WRITE)
+def stress_suggestion_approve(request, suggestion_id: int, body: UndoIn, response: HttpResponse):
+    from . import segment_info, stress_edits, suggestions
+
+    try:
+        suggestion, result = suggestions.approve(request.user, suggestion_id)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    words = segment_info.words_for(suggestion.tier, suggestion.half)
+    level = "Avoid" if suggestion.tier == 5 else f"LTS {segment_info.step_label(suggestion.step)}"
+    return Status(
+        200,
+        {
+            "id": suggestion.pk,
+            "status": suggestion.status,
+            "message": f"Approved. {suggestion.road_name or 'The road'} is now {level}"
+            + (f", {words[0].lower()}{words[1:]}." if suggestion.tier != 5 else ".")
+            + " The map shows it now.",
+            "generation": result.generation,
+        },
+    )
+
+
+@api.post(
+    "/stress-suggestions/{suggestion_id}/delete",
+    response={200: SuggestionDoneOut, **SUGGESTION_RESPONSES},
+    summary="Delete a suggestion (instance admin)",
+)
+@decorate_view(*REVIEW_WRITE)
+def stress_suggestion_delete(request, suggestion_id: int, body: UndoIn, response: HttpResponse):
+    from . import stress_edits, suggestions
+
+    try:
+        suggestion = suggestions.delete(request.user, suggestion_id)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(200, {"id": suggestion.pk, "status": suggestion.status, "message": "Deleted."})
+
+
+@api.post(
+    "/stress-suggestions/{suggestion_id}/discord",
+    response={200: DiscordPostOut, **SUGGESTION_RESPONSES},
+    summary="Send a suggestion to Discord: the poll to paste, and the suggestion marked sent",
+)
+@decorate_view(*REVIEW_WRITE)
+def stress_suggestion_discord(request, suggestion_id: int, body: UndoIn, response: HttpResponse):
+    from . import stress_edits, suggestions
+
+    try:
+        suggestion, post = suggestions.send_to_discord(
+            request.user, suggestion_id, request.build_absolute_uri("/")
+        )
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(
+        200,
+        {
+            "id": suggestion.pk,
+            "status": suggestion.status,
+            "post": post.text,
+            "characters": len(post.text),
+            "options": [
+                {"letter": o.letter, "label": o.label, "tier": o.tier} for o in post.options
+            ],
+        },
+    )
+
+
+# ---- Mass Ride hazards (FOLLOWUP-MASSRIDE-MAP part 3, OWNER-DECISIONS 325-327; core.mass_hazards)
+#
+# A rider the suggestion setting allows marks a road piece Caution or Warning, with a reason; an
+# instance admin reviews it with the suggestions' three actions. The approved ones are a small
+# public GeoJSON layer the Mass Ride map draws as side rails. The writes have every guard the
+# suggestions have, and the same hourly count (ratelimit.SUGGEST_WRITES).
+
+# How long a browser may keep the approved layer before asking again (a 304 when unchanged).
+MASS_HAZARDS_MAX_AGE_S = 60
+
+
+class MassHazardIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    osm_way_id: StrictInt
+    lat: StrictFloat = Field(
+        ge=-90, le=90, description="A spot on the road: checked, then dropped (never kept)."
+    )
+    lon: StrictFloat = Field(ge=-180, le=180)
+    level: str = Field(max_length=16, description='"caution" or "warning".')
+    reason: str = Field(max_length=2000, description="Required, at most 500 characters.")
+
+
+class MassHazardOut(Schema):
+    id: int
+    osm_way_id: int
+    road: str
+    lat: float | None = Field(description="The road piece's middle (4 decimals), for the map.")
+    lon: float | None
+    level: Literal["caution", "warning"]
+    level_name: str
+    words: str
+    reason: str
+    status: Literal["pending", "sent_to_discord"]
+    created_at: str
+    sent_at: str | None = None
+
+
+class MassHazardListOut(Schema):
+    hazards: list[MassHazardOut]
+
+
+class HazardPollOptionOut(Schema):
+    letter: str
+    label: str
+    level: str | None = Field(description='"caution", "warning", "none" (no mark); null: not sure.')
+
+
+class HazardDiscordPostOut(Schema):
+    id: int
+    status: str
+    post: str = Field(description="Ready to paste: at most 2,000 characters, no mentions.")
+    characters: int
+    options: list[HazardPollOptionOut]
+
+
+@api.get(
+    "/mass-hazards",
+    response={200: dict, 304: None, 403: ErrorOut, 429: ErrorOut, 500: ErrorOut},
+    summary="The approved Mass Ride hazards, as GeoJSON (the Mass Ride map's side rails)",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.MASS_HAZARDS), same_site_only, errors_as_json)
+def mass_hazard_layer(request, response: HttpResponse):
+    """Public and cacheable: the level, its words, the reason and the road's name of each
+    approved hazard, and the road piece's line. Nothing about who reported it."""
+    from . import mass_hazards
+
+    body, etag = mass_hazards.approved_layer()
+    from .stress_tiles import _matches
+
+    if _matches(request, etag):
+        answer = HttpResponse(status=304)
+    else:
+        answer = JsonResponse(body, content_type="application/geo+json")
+    answer["ETag"] = etag
+    answer["Cache-Control"] = f"public, max-age={MASS_HAZARDS_MAX_AGE_S}"
+    return answer
+
+
+@api.post(
+    "/mass-hazards",
+    response={200: SuggestionCreatedOut, **SUGGESTION_RESPONSES},
+    summary="Mark a road piece Caution or Warning for Mass Rides (a rider the settings allow)",
+)
+@decorate_view(*SUGGEST_WRITE)
+def mass_hazard_create(request, body: MassHazardIn, response: HttpResponse):
+    from . import mass_hazards, stress_edits
+
+    try:
+        hazard = mass_hazards.create(
+            request.user, body.osm_way_id, body.lat, body.lon, body.level, body.reason
+        )
+    except stress_edits.EditRefused as refused:
+        return _stress_error(refused.status, refused.message, refused.field, refused.code)
+    _private(response)
+    return Status(
+        200,
+        {
+            "id": hazard.pk,
+            "message": "Thanks. Your hazard report was sent to the map's admins. Nothing "
+            "changes on the Mass Ride map until one of them reviews it.",
+        },
+    )
+
+
+@api.get(
+    "/mass-hazards/open",
+    response={200: MassHazardListOut, **SUGGESTION_RESPONSES},
+    summary="The hazard reports waiting for review (instance admin)",
+)
+@decorate_view(
+    instance_admin_only(audited=False),
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def mass_hazard_list(request, response: HttpResponse):
+    from django.middleware.csrf import get_token
+
+    from . import mass_hazards
+
+    get_token(request)
+    _private(response)
+    return Status(200, {"hazards": [mass_hazards.summary(h) for h in mass_hazards.open_reports()]})
+
+
+@api.post(
+    "/mass-hazards/{hazard_id}/approve",
+    response={200: SuggestionDoneOut, **SUGGESTION_RESPONSES},
+    summary="Approve a hazard report now: on the Mass Ride map at once (instance admin)",
+)
+@decorate_view(*REVIEW_WRITE)
+def mass_hazard_approve(request, hazard_id: int, body: UndoIn, response: HttpResponse):
+    from . import mass_hazards, stress_edits
+
+    try:
+        hazard = mass_hazards.approve(request.user, hazard_id)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    road = hazard.road_name or "The road"
+    return Status(
+        200,
+        {
+            "id": hazard.pk,
+            "status": hazard.status,
+            "message": f"Approved. {road} is marked {hazard.get_level_display()} on the Mass "
+            "Ride map now.",
+        },
+    )
+
+
+@api.post(
+    "/mass-hazards/{hazard_id}/delete",
+    response={200: SuggestionDoneOut, **SUGGESTION_RESPONSES},
+    summary="Delete a hazard report (instance admin)",
+)
+@decorate_view(*REVIEW_WRITE)
+def mass_hazard_delete(request, hazard_id: int, body: UndoIn, response: HttpResponse):
+    from . import mass_hazards, stress_edits
+
+    try:
+        hazard = mass_hazards.delete(request.user, hazard_id)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(200, {"id": hazard.pk, "status": hazard.status, "message": "Deleted."})
+
+
+@api.post(
+    "/mass-hazards/{hazard_id}/discord",
+    response={200: HazardDiscordPostOut, **SUGGESTION_RESPONSES},
+    summary="Send a hazard report to Discord: the poll to paste, and the report marked sent",
+)
+@decorate_view(*REVIEW_WRITE)
+def mass_hazard_discord(request, hazard_id: int, body: UndoIn, response: HttpResponse):
+    from . import mass_hazards, stress_edits
+
+    try:
+        hazard, post = mass_hazards.send_to_discord(
+            request.user, hazard_id, request.build_absolute_uri("/")
+        )
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(
+        200,
+        {
+            "id": hazard.pk,
+            "status": hazard.status,
+            "post": post.text,
+            "characters": len(post.text),
+            "options": [
+                {"letter": o.letter, "label": o.label, "level": o.level} for o in post.options
+            ],
+        },
+    )
+
+
+# ---- Rider suggestions for junctions (OWNER-DECISIONS 232; core.junction_suggestions) ----
+
+
+class JunctionAtOut(Schema):
+    lon: float = Field(description="The junction's node, never the spot asked about.")
+    lat: float
+    name: str = Field(description='"Oak Street and Elm Street", or "An unnamed junction".')
+    roads: list[str]
+
+
+class JunctionSuggestionIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    lat: StrictFloat = Field(ge=-90, le=90, description="A spot at the junction; not stored.")
+    lon: StrictFloat = Field(ge=-180, le=180)
+    level: StrictInt | None = Field(
+        default=None, description="2 easy, 3 takes patience, 4 hard, 5 Avoid; or null."
+    )
+    direction: Literal["more", "less"] | None = Field(
+        default=None, description="More or less dangerous than shown; or null."
+    )
+    shown: Literal["none", "orange", "red", "avoid"] | None = Field(
+        default=None, description="The marker the rider's route showed there, if any."
+    )
+    reason: str = Field(max_length=2000, description="Required, at most 500 characters.")
+
+
+class JunctionSuggestionOut(Schema):
+    id: int
+    junction: str
+    lat: float
+    lon: float
+    current_level: int
+    current_words: str
+    level: int
+    words: str
+    direction: Literal["more", "less"] | None = None
+    reason: str
+    status: Literal["pending", "sent_to_discord"]
+    created_at: str
+    sent_at: str | None = None
+    # Approved Avoid junctions Approve now would withdraw there; the review warns first.
+    withdraws_avoid: int = 0
+
+
+class JunctionSuggestionListOut(Schema):
+    suggestions: list[JunctionSuggestionOut]
+
+
+@api.get(
+    "/junction-suggestions/at",
+    response={200: JunctionAtOut, **SUGGESTION_RESPONSES},
+    summary="The junction nearest a spot, for a rider the settings allow to suggest",
+)
+@decorate_view(
+    suggester_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def junction_at(request, lat: float, lon: float, response: HttpResponse):
+    from django.middleware.csrf import get_token
+
+    from . import junction_suggestions, stress_edits
+
+    if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        return _stress_error(400, "That spot is not on the map.", "lat")
+    try:
+        node = junction_suggestions.locate(lat, lon)
+    except stress_edits.EditRefused as refused:
+        return _stress_error(refused.status, refused.message, refused.field, refused.code)
+    get_token(request)
+    _private(response)
+    return Status(
+        200, {"lon": node.lon, "lat": node.lat, "name": node.name, "roads": list(node.roads)}
+    )
+
+
+@api.post(
+    "/junction-suggestions",
+    response={200: SuggestionCreatedOut, **SUGGESTION_RESPONSES},
+    summary="Suggest a junction's danger level (a rider the settings allow)",
+)
+@decorate_view(*SUGGEST_WRITE)
+def junction_suggestion_create(request, body: JunctionSuggestionIn, response: HttpResponse):
+    from . import junction_suggestions, stress_edits
+
+    try:
+        suggestion = junction_suggestions.create(
+            request.user,
+            body.lat,
+            body.lon,
+            body.level,
+            body.direction or "",
+            body.shown,
+            body.reason,
+        )
+    except stress_edits.EditRefused as refused:
+        return _stress_error(refused.status, refused.message, refused.field, refused.code)
+    _private(response)
+    return Status(
+        200,
+        {
+            "id": suggestion.pk,
+            "message": f"Thanks. Your suggestion for {suggestion.name} was sent to the map's "
+            "admins. Nothing changes on the map until one of them reviews it.",
+        },
+    )
+
+
+@api.get(
+    "/junction-suggestions/open",
+    response={200: JunctionSuggestionListOut, **SUGGESTION_RESPONSES},
+    summary="The junction suggestions waiting for review (instance admin)",
+)
+@decorate_view(
+    instance_admin_only(audited=False),
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def junction_suggestion_list(request, response: HttpResponse):
+    from django.middleware.csrf import get_token
+
+    from . import junction_suggestions
+
+    get_token(request)
+    _private(response)
+    return Status(
+        200,
+        {
+            "suggestions": [
+                junction_suggestions.summary(s) for s in junction_suggestions.open_suggestions()
+            ]
+        },
+    )
+
+
+@api.post(
+    "/junction-suggestions/{suggestion_id}/approve",
+    response={200: SuggestionDoneOut, **SUGGESTION_RESPONSES},
+    summary="Approve a junction suggestion now: the next plan uses it (instance admin)",
+)
+@decorate_view(*REVIEW_WRITE)
+def junction_suggestion_approve(request, suggestion_id: int, body: UndoIn, response: HttpResponse):
+    from . import junction_suggestions, stress_edits
+
+    try:
+        suggestion = junction_suggestions.approve(request.user, suggestion_id)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    if suggestion.target_level == junction_suggestions.AVOID:
+        rated = "now rated Avoid"
+    else:
+        words = junction_suggestions.LEVEL_WORDS[suggestion.target_level]
+        rated = f"now rated {words[0].lower()}{words[1:]}"
+    return Status(
+        200,
+        {
+            "id": suggestion.pk,
+            "status": suggestion.status,
+            "message": f"Approved. {suggestion.name} is {rated}. "
+            "Routes planned from now on use it.",
+        },
+    )
+
+
+@api.post(
+    "/junction-suggestions/{suggestion_id}/delete",
+    response={200: SuggestionDoneOut, **SUGGESTION_RESPONSES},
+    summary="Delete a junction suggestion (instance admin)",
+)
+@decorate_view(*REVIEW_WRITE)
+def junction_suggestion_delete(request, suggestion_id: int, body: UndoIn, response: HttpResponse):
+    from . import junction_suggestions, stress_edits
+
+    try:
+        suggestion = junction_suggestions.delete(request.user, suggestion_id)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(200, {"id": suggestion.pk, "status": suggestion.status, "message": "Deleted."})
+
+
+@api.post(
+    "/junction-suggestions/{suggestion_id}/discord",
+    response={200: DiscordPostOut, **SUGGESTION_RESPONSES},
+    summary="Send a junction suggestion to Discord: the poll to paste, and it is marked sent",
+)
+@decorate_view(*REVIEW_WRITE)
+def junction_suggestion_discord(request, suggestion_id: int, body: UndoIn, response: HttpResponse):
+    from . import junction_suggestions, stress_edits
+
+    try:
+        suggestion, post = junction_suggestions.send_to_discord(
+            request.user, suggestion_id, request.build_absolute_uri("/")
+        )
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(
+        200,
+        {
+            "id": suggestion.pk,
+            "status": suggestion.status,
+            "post": post.text,
+            "characters": len(post.text),
+            "options": [
+                {"letter": o.letter, "label": o.label, "tier": o.tier} for o in post.options
+            ],
+        },
+    )

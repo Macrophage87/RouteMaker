@@ -59,18 +59,27 @@ from dataclasses import dataclass, field, replace
 from django.conf import settings
 from django.db import connection
 
-from pipeline.schema import ROAD_TRAIT_COLUMNS, UNSMOOTHED_TIER_COLUMN, validate_schema_name
+from pipeline.schema import (
+    ROAD_COST_COLUMNS,
+    ROAD_TRAIT_COLUMNS,
+    STRESS_HALF_COLUMN,
+    UNSMOOTHED_TIER_COLUMN,
+    validate_schema_name,
+)
 from routemaker.geo import Point, haversine
 from routemaker.intersections import (
     Control,
     Event,
     Junction,
     Movement,
+    Rating,
     Road,
     RouteEvents,
     assess_route,
     major_crossings,
     majors_of_events,
+    rating_at,
+    with_ratings,
 )
 from routemaker.trace_junctions import (
     APPROACH_M,
@@ -114,11 +123,13 @@ TRAIL_USES = (
 AT_START, AT_END = 0.001, 0.999
 
 _ROADS_BY_WAY = """
-SELECT j.idx, j.way, seg.tier, seg.aadt, seg.speed, seg.lanes, seg.oneway
+SELECT j.idx, j.way, seg.tier, seg.aadt, seg.speed, seg.lanes, seg.oneway,
+       seg.default_speed, seg.urban, seg.half
 FROM unnest(%s::int[], %s::bigint[], %s::float8[], %s::float8[]) AS j(idx, way, lon, lat)
 CROSS JOIN LATERAL (
     SELECT {tier} AS tier, s.volume_aadt AS aadt, {speed} AS speed,
-           {lanes} AS lanes, {oneway} AS oneway
+           {lanes} AS lanes, {oneway} AS oneway,
+           {default_speed} AS default_speed, {urban} AS urban, {half} AS half
     FROM {schema}.segment AS s
     WHERE s.osm_way_id = j.way
     ORDER BY s.geometry <-> ST_SetSRID(ST_MakePoint(j.lon, j.lat), 4326)
@@ -127,6 +138,26 @@ CROSS JOIN LATERAL (
 """
 
 _has_trait_columns_seen = False
+_has_cost_columns_seen = False
+_has_half_column_seen = False
+
+
+def has_half_column(schema: str) -> bool:
+    """Whether the live segment table has the half-step column (`STRESS_HALF_COLUMN`).
+    Remembered once seen."""
+    global _has_half_column_seen
+    if _has_half_column_seen:
+        return True
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
+            "AND table_name = 'segment' AND column_name = %s",
+            [schema, STRESS_HALF_COLUMN],
+        )
+        _has_half_column_seen = cursor.fetchone()[0] == 1
+    return _has_half_column_seen
+
+
 _has_unsmoothed_tier_seen = False
 
 
@@ -146,6 +177,24 @@ def has_trait_columns(schema: str) -> bool:
         )
         _has_trait_columns_seen = cursor.fetchone()[0] == len(ROAD_TRAIT_COLUMNS)
     return _has_trait_columns_seen
+
+
+def has_cost_columns(schema: str) -> bool:
+    """Whether the live segment table has `road_default_speed_mph` and
+    `road_urban` yet (the first rebuild after OWNER-DECISIONS 469). Until then
+    the junction model falls back as `routemaker.intersections` says.
+    Remembered once seen."""
+    global _has_cost_columns_seen
+    if _has_cost_columns_seen:
+        return True
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
+            "AND table_name = 'segment' AND column_name = ANY(%s)",
+            [schema, list(ROAD_COST_COLUMNS)],
+        )
+        _has_cost_columns_seen = cursor.fetchone()[0] == len(ROAD_COST_COLUMNS)
+    return _has_cost_columns_seen
 
 
 def has_unsmoothed_tier(schema: str) -> bool:
@@ -169,6 +218,13 @@ def wanted(raw: RawJunction) -> bool:
     the route changes road (a crossing way, a turn), and a road of a class that
     can be busy is among them."""
     return raw.possibly_busy and (raw.has_cross_roads or raw.in_way != raw.out_way or raw.slip_lane)
+
+
+def _rated(raw: RawJunction, ratings: Sequence[Rating]) -> bool:
+    """A junction (another road meets the route, or it changes road) riders rated."""
+    if not ratings or not (raw.has_cross_roads or raw.in_way != raw.out_way):
+        return False
+    return rating_at(raw.lon, raw.lat, ratings) is not None
 
 
 # --- The node, from /locate -----------------------------------------------------
@@ -762,6 +818,7 @@ def roads_by_way(
         return {}
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
     traits = has_trait_columns(schema)
+    costs = has_cost_columns(schema)
     # The crossed road's tier before same-street AADT smoothing lowered its
     # link, where it did: the count bunched at the intersection is charged
     # here, and only here (OWNER-DECISIONS 303: "we don't want to double
@@ -771,6 +828,13 @@ def roads_by_way(
         if has_unsmoothed_tier(schema)
         else "s.stress_tier"
     )
+    # A half step (461a): its costs are the midpoints (`intersections._table`). Not where
+    # smoothing raised the junction's tier above the link's, nor on a road closed to cars.
+    half = "false"
+    if has_half_column(schema):
+        half = f"(s.{STRESS_HALF_COLUMN} AND {link_tier} = s.stress_tier)"
+        if with_facility:
+            half = f"({half} AND NOT (%s = ANY(s.car_free_when)))"
     query = _ROADS_BY_WAY.format(
         schema=schema,
         tier=(
@@ -778,22 +842,39 @@ def roads_by_way(
             if with_facility
             else link_tier
         ),
+        half=half,
         speed="s.road_speed_mph" if traits else "NULL::smallint",
         lanes="s.road_lanes" if traits else "NULL::smallint",
         oneway="s.road_oneway" if traits else "NULL::boolean",
+        default_speed="s.road_default_speed_mph" if costs else "NULL::smallint",
+        urban="s.road_urban" if costs else "NULL::boolean",
     )
     arrays = [list(column) for column in zip(*wanted_ways, strict=True)]
-    params = [*arrays, *([when] if with_facility else [])]
+    params = [*arrays, *([when] if with_facility else []), *([when] if "%s" in half else [])]
     found: dict[tuple[int, int], Road] = {}
     with connection.cursor() as cursor:
         cursor.execute(query, params)
-        for idx, way_id, tier, aadt, speed, lanes, oneway in cursor.fetchall():
+        for (
+            idx,
+            way_id,
+            tier,
+            aadt,
+            speed,
+            lanes,
+            oneway,
+            default,
+            urban,
+            half_step,
+        ) in cursor.fetchall():
             found[(idx, way_id)] = Road(
                 tier=int(tier) if tier is not None else None,
                 speed_mph=float(speed) if speed is not None else None,
                 lanes=int(lanes) if lanes is not None else None,
                 oneway=oneway,
                 aadt=int(aadt) if aadt is not None else None,
+                default_speed_mph=float(default) if default is not None else None,
+                urban=urban,
+                half=half_step is True,
             )
     return found
 
@@ -888,13 +969,18 @@ def events_of(
     locate: Callable[[dict], list[dict]],
     group: bool = False,
     cut_short: tuple[type[BaseException], ...] = (),
+    ratings: Sequence[Rating] = (),
 ) -> list[Event]:
     """The route's junction events, in route order: the router says what meets
     at each junction and who has the right of way, the segment table how busy
     each road is, and `routemaker.intersections` what it costs. `group` is the
     Mass Ride reading (colour by the crossed road's tier). `cut_short`: see
-    `nodes_at`."""
-    raws = [raw for raw in raws if wanted(raw)]
+    `nodes_at`. `ratings`: the approved rider ratings of junctions
+    (`core.junction_suggestions.approved_ratings`, OWNER-DECISIONS 232), which
+    set a junction's cost and colour; a rated junction is read even where no road
+    there can be busy ("the road is fine, but the intersection can be especially
+    dangerous")."""
+    raws = [raw for raw in raws if wanted(raw) or _rated(raw, ratings)]
     nodes = nodes_at(raws, locate, cut_short)
     asked: dict[tuple[int, int], tuple[int, int, float, float]] = {}
     for position, raw in enumerate(raws):
@@ -906,8 +992,8 @@ def events_of(
             if way:
                 asked[(position, way)] = (position, way, raw.lon, raw.lat)
     roads = roads_by_way(list(asked.values()), when, with_facility)
-    built = build_junctions(raws, nodes, roads)
-    events = assess_route(built, group)
+    built = with_ratings(build_junctions(raws, nodes, roads), ratings)
+    events = assess_route(built, group, when=when)
     if not group:
         return events
     return with_majors(built, events)
