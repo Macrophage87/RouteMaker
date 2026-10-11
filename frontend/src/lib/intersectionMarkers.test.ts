@@ -312,7 +312,45 @@ test("a row's name is one string with no stray spaces, the visible words first",
     "Very high stress, Group: 1.1 to 1.8 mi (1.7 to 2.9 km): 4 crossings with traffic signals");
   const list = readFileSync(new URL("../IntersectionList.tsx", import.meta.url), "utf8");
   // Every row, member and group is named by it; no hidden separators left to space.
-  assert.match(list, /aria-label=\{rowName\(item\.severityText, item\.where, item\.reason\)\}/);
+  assert.match(list, /aria-label=\{rowName\(item\.severityText, item\.where, item\.reason, item\.costText\)\}/);
   assert.match(list, /aria-label=\{rowName\(group\.severityText, "Group", group\.text\)\}/);
   assert.doesNotMatch(list, /visually-hidden/);
+});
+
+// --- Each junction's cost in calm miles (467, 469b) and the ride time in words (468a) ---
+
+test("each junction says its own cost in calm miles, km in brackets", async () => {
+  const { junctionCalmText } = await import("./intersectionMarkers.ts");
+  // The API's own figures where it gives them.
+  assert.equal(junctionCalmText({ cost_ft: 3900, calm_mi: 0.74, calm_km: 1.19 }), "0.74 calm mi (1.19 calm km)");
+  // An older API without them: the same sum from the feet (469b: cost / 5,280).
+  assert.equal(junctionCalmText({ cost_ft: 3100 }), "0.59 calm mi (0.94 calm km)");
+  assert.equal(junctionCalmText({ cost_ft: 10560, calm_mi: null, calm_km: null }), "2.00 calm mi (3.22 calm km)");
+});
+
+test("the ride time is said only where the API says it moved the cost", async () => {
+  const { junctionCostText } = await import("./intersectionMarkers.ts");
+  const base = { cost_ft: 3900, calm_mi: 0.74, calm_km: 1.19 };
+  assert.equal(junctionCostText(base), "Costs 0.74 calm mi (1.19 calm km)");
+  assert.equal(junctionCostText({ ...base, time_band: null }), "Costs 0.74 calm mi (1.19 calm km)");
+  assert.equal(junctionCostText({ ...base, time_band: "weekday_rush" }), "Costs 0.74 calm mi (1.19 calm km), more at rush hour");
+  assert.equal(junctionCostText({ ...base, time_band: "weekend" }), "Costs 0.74 calm mi (1.19 calm km), a little less at the weekend");
+  // Night: x0.85 before the rebuild, x0.5 in town after it (469d, 469e), so no factor and no "half".
+  const night = junctionCostText({ ...base, time_band: "night" });
+  assert.equal(night, "Costs 0.74 calm mi (1.19 calm km), less at night, when traffic is usually calmer");
+  assert.doesNotMatch(night, /half|town|city|x0|\d\.\d+x/);
+});
+
+test("the list row and its name carry the cost after the reason", async () => {
+  const { rowName } = await import("./intersectionMarkers.ts");
+  const [item] = junctionItems({ intersections: [{ ...left, calm_mi: 0.45, calm_km: 0.73, time_band: "weekday_rush" }] });
+  assert.equal(item.costText, "Costs 0.45 calm mi (0.73 calm km), more at rush hour");
+  const name = rowName(item.severityText, item.where, item.reason, item.costText);
+  assert.equal(name, `Very high stress, At 3.2 mi (5.2 km): ${left.reason}. Costs 0.45 calm mi (0.73 calm km), more at rush hour`);
+  assert.doesNotMatch(name, / [,:.]/);
+  const list = readFileSync(new URL("../IntersectionList.tsx", import.meta.url), "utf8");
+  assert.match(list, /<span className="junction-cost">\{item\.costText\}<\/span>/);
+  // The marker's card says it too.
+  const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  assert.match(map, /cost\.textContent = `\$\{item\.costText\}\.`/);
 });

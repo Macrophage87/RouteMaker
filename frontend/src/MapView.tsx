@@ -1503,10 +1503,13 @@ function showJunctionCard(map: MapLibreMap, item: JunctionItem, takeFocus: boole
   title.textContent = item.label.split(":")[0];
   const reason = document.createElement("p");
   reason.textContent = item.reason;
+  const cost = document.createElement("p");
+  cost.className = "junction-card-cost";
+  cost.textContent = `${item.costText}.`;
   const where = document.createElement("p");
   where.className = "hint";
   where.textContent = `${item.where}. Drag the route away to plan around it.`;
-  body.append(title, reason, where);
+  body.append(title, reason, cost, where);
   const card = new maplibregl.Popup({
     closeButton: true,
     closeOnClick: true,

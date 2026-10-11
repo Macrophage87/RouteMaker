@@ -2239,7 +2239,12 @@ so it is left for the owner to confirm and is not in this change; only junction 
 
 `debug_junctions: true` on a route request adds `junctions_debug`, every junction event with
 its cost, calm miles, severity, ride-time factor and whether the speed was assumed. The
-answer's `intersections` rows carry `calm_mi` and `calm_km`.
+answer's `intersections` rows carry `calm_mi` and `calm_km`, which the junction list and the
+marker's card show ("Costs 0.74 calm mi (1.19 calm km)"), and `time_band`, the ride time where
+it moved that junction's cost, which they add in words ("more at rush hour", "a little less at
+the weekend", "less at night, when traffic is usually calmer"; 468a). The words give no factor,
+so they hold before and after the rebuild that brings `road_urban` (docs/stress/intersections.md,
+section 7).
 
 **Which slip lanes are crossed** (item 195, `core.junctions.crossed_links`). The
 owner: "Flag only when you cross it (Recommended)"; "no marker when the rider

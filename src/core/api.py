@@ -655,6 +655,15 @@ class IntersectionOut(Schema):
         description="The same cost in calm miles, 2 places (467); `calm_km` is the metric.",
     )
     calm_km: float | None = None
+    time_band: Literal["weekday_rush", "weekend", "night"] | None = Field(
+        default=None,
+        description=(
+            "The ride time that changed this junction's cost (468a, 469c-469e): more at"
+            " weekday rush hours, less at the weekend or at night; null where the hour"
+            " changed nothing (off-peak, a cap that holds at any hour, a rated junction)."
+            " The planner says it in words."
+        ),
+    )
     group: int | None = Field(
         default=None,
         description=(
