@@ -877,7 +877,8 @@ class CalmSearchOut(Schema):
         default=None,
         description=(
             "Rides with the LTS 4 hold only (OWNER-DECISIONS 250): metres of LTS 4 and"
-            " Avoid on the router's own route, which the search never exceeds."
+            " Avoid on the router's own route, which the search never exceeds; hill-weighted"
+            " (OWNER-DECISIONS 409, `refine.hill_of`), not the rated metres the summary shows."
         ),
     )
     lts4_after_m: float | None = Field(

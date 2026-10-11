@@ -2377,6 +2377,19 @@ same pieces unweighted (`routing.totals`): the hill only changes which route is 
 The calm search's diagnostics (`calm_search`'s `exposure_*`, `lts4_m_*` and `lts3_m_*`)
 are the weighted figures.
 
+Two consequences of the multiplication, for the owner to see with before and after routes:
+- At 80 on the stress slider and below (Default starts at 70) the calm rate is 0, so the
+  score's traffic part is 0 and the hill, multiplied by it, no longer moves the score
+  there; #76's separate term (`grade_stress_weight_for`) did count it from 0 up, fully
+  from 70. The hill still counts at those positions where a figure is read without the
+  rate: the Traffic-wins guard (`_busier`, against the first route's weighted exposure),
+  the LTS 4 hold, and, on the ride types that weigh LTS 2 (Trailmaxxing, Cargo with
+  passengers, Kids), the score's LTS 2 term at a rate of 0 (`lts3_added_m`).
+- The LTS 4 hold (250) compares hill-weighted LTS 4: a candidate may carry more rated LTS 4
+  than the router's first route if it leaves out enough of a busy climb (or, where the ride
+  type has a brake grade, a steep busy descent), and is refused for less rated LTS 4 that
+  is ridden up a hill. The summary shows the rated metres.
+
 The worked example: 0.62 mi (1 km) of LTS 4 up 6% at the detent has a factor of about
 2.03, so it counts as 1.26 mi (2,030 m) of LTS 4. In the worth rule (435's "One rule",
 the owner's "Count it" of 2026-10-11: "A longer route can win by avoiding a busy climb,
