@@ -15,7 +15,17 @@ import re
 from pathlib import Path
 
 import pytest
+from django.contrib.gis.geos import Point
 from django.db import connection, transaction
+
+from core.models import (
+    AvoidJunction,
+    JunctionOverride,
+    JunctionSuggestion,
+    Override,
+    StressEdit,
+    StressSuggestion,
+)
 
 REPO = Path(__file__).resolve().parents[1]
 SCRIPT = (REPO / "scripts" / "beta" / "receive-data.sh").read_text()
@@ -83,12 +93,45 @@ def test_every_key_into_an_emptied_table_is_let_go_of_first() -> None:
         assert not refused, f"{truncate} would be refused by: {refused}"
 
 
+def beta_rows() -> tuple[StressSuggestion, JunctionSuggestion]:
+    """The beta's own rows pointing at everything the update empties, as an approval leaves them."""
+    old = Override.objects.create(
+        kind="stress", osm_way_id=1, value={"tier": 3}, reason="r", evidence="e"
+    )
+    new = Override.objects.create(
+        kind="stress", osm_way_id=1, value={"tier": 2}, reason="r", evidence="e"
+    )
+    Override.objects.filter(pk=old.pk).update(superseded_by=new)
+    edit = StressEdit.objects.create(action="set", override=new, replaced=old)
+    StressEdit.objects.create(action="undo", undoes=edit)
+    road = StressSuggestion.objects.create(
+        osm_way_id=1, lat=38.9, lon=-77.0, current_tier=3, tier=2, reason="r", edit=edit,
+        status="approved",
+    )  # fmt: skip
+    at = Point(-77.0, 38.9, srid=4326)
+    junction = JunctionSuggestion.objects.create(
+        lon=-77.0, lat=38.9, node="n1", current_level=2, target_level=5, reason="r",
+        status="approved", override=JunctionOverride.objects.create(name="x", location=at, level=4),
+        avoid=AvoidJunction.objects.create(name="x", location=at, reason="r", approved=True),
+    )  # fmt: skip
+    return road, junction
+
+
 @db
 def test_the_update_statements_run_on_the_head_schema() -> None:
+    road, junction = beta_rows()
     # The script's own statements, then the replace loop's DELETEs, in one transaction as the
-    # update runs them (the loop's suggestions let go of their rows before these run).
+    # update runs them (the loop's suggestions let go of their rows before these run). Django's
+    # keys are checked at commit, so a key left pointing fails as the block ends.
     with transaction.atomic(), connection.cursor() as cursor:
         for statement in statements():
             cursor.execute(statement)
         for table in replaced():
             cursor.execute(f"DELETE FROM public.{table};")
+    assert not Override.objects.exists() and not StressEdit.objects.exists()
+    assert not JunctionOverride.objects.exists() and not AvoidJunction.objects.exists()
+    # the beta's own suggestions stay, letting go only of what their approval made
+    road.refresh_from_db()
+    junction.refresh_from_db()
+    assert road.status == "approved" and road.edit_id is None
+    assert junction.override_id is None and junction.avoid_id is None

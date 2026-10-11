@@ -22,7 +22,7 @@
 #              First restore: into the empty database, before the api has ever started.
 #              --update-data: for a NEW DATA bundle once the beta is running. Restores only the
 #                `live` schema and the data of `override`, `junction_override` (the approved
-#                junction ratings) and `avoid_junction` (the approved Avoid junctions), all shipped
+#                junction ratings) and `avoid_junction` (home's Avoid junctions), all shipped
 #                with their person columns blanked; the beta's own half-step edit history goes
 #                with the overrides it pointed at, its own stress suggestions lose their link to
 #                that history, and its own junction suggestions lose their link to a rating or
@@ -460,19 +460,19 @@ if [ "$update_data" = 1 ]; then
 	use=$(mktemp)
 	# Every entry of the live schema (pre-data, data, post-data) and the schema itself. Nothing
 	# else: no account, session, guild or audit table is named, so none is dropped or written.
-	# The public tables that come from home, override and junction_override, are not in the dump:
-	# they come blanked (db/blanked, below). (stress_tile_cache is not in the bundle: ship-data.sh
-	# says why.)
+	# The public tables that come from home, override, junction_override and avoid_junction, are
+	# not in the dump: they come blanked (db/blanked, below). (stress_tile_cache is not in the
+	# bundle: ship-data.sh says why.)
 	grep -E "^[0-9]+; [0-9]+ [0-9]+ ([A-Z][A-Z ]* $live_schema |SCHEMA - $live_schema )" "$toc" >"$use" || true
 	rm -f "$toc"
 	grep -q "TABLE DATA $live_schema " "$use" || { rm -f "$use"; die "the dump has no $live_schema data to update from"; }
 	grep -qx override <<<"$(blanked_tables)" || { rm -f "$use"; die "the bundle has no override data (db/blanked/override.copy)"; }
 	bc exec -T postgis sh -c 'cat > /tmp/beta.use' <"$use"
 	rm -f "$use"
-	# override, the approved junction ratings and the approved Avoid junctions come from home
+	# override, the approved junction ratings and the Avoid junctions come from home
 	# blanked (ship-data.sh). override was emptied below; the junction ratings and
 	# Avoid junctions are replaced as override's are, the beta's own junction suggestions letting
-	# go of them first (a DELETE would refuse their foreign keys).
+	# go of them first (their foreign keys would refuse the commit).
 	extra=$(mktemp)
 	blanked_sql "$extra.part" override
 	for t in junction_override avoid_junction; do
@@ -542,7 +542,7 @@ else
 		bc exec -T postgis sh -c 'cat > /tmp/beta-blanked.sql' <"$extra"
 		rm -f "$extra"
 		bc exec -T postgis psql -U "$pguser" -d "$pgdatabase" -q -1 -v ON_ERROR_STOP=1 -f /tmp/beta-blanked.sql </dev/null >/dev/null ||
-			{ bc exec -T postgis rm -f /tmp/beta-blanked.sql </dev/null; die "loading the blanked tables (override and the junction ratings) failed and was rolled back (above), so the database has the rest of the bundle without them; restore again with: db --replace-db"; }
+			{ bc exec -T postgis rm -f /tmp/beta-blanked.sql </dev/null; die "loading the blanked tables (override, the junction ratings and the Avoid junctions) failed and was rolled back (above), so the database has the rest of the bundle without them; restore again with: db --replace-db"; }
 		bc exec -T postgis rm -f /tmp/beta-blanked.sql </dev/null
 	fi
 fi

@@ -2032,7 +2032,7 @@ def test_receive_data_loads_the_blanked_tables_and_updates_the_junction_ratings(
     assert "COPY public.%s (%s) FROM stdin WITH (FORMAT text, HEADER true);" in text
     assert "setval(pg_get_serial_sequence(" in text
     # the update path replaces the junction ratings in its one transaction, after letting the
-    # beta's own suggestions go of them (a DELETE would refuse the foreign key)
+    # beta's own suggestions go of them (the foreign key would refuse the commit)
     assert "DELETE FROM public.junction_override;" in text
     assert "UPDATE public.junction_suggestion SET override_id = NULL" in text
     assert "UPDATE public.junction_suggestion SET avoid_id = NULL" in text
@@ -2062,7 +2062,7 @@ def test_the_update_path_names_only_live_and_override_and_empties_the_stale_tile
     line = next(x for x in text.splitlines() if "SCHEMA - $live_schema )" in x)
     for table in shipped_exclusions():
         assert table not in line, table
-    assert "public" not in line  # override and junction_override come blanked, not from the dump
+    assert "public" not in line  # the public tables come blanked, not from the dump
     assert 'blanked_sql "$extra.part" override' in text
     # the beta's stress suggestions let go of stress_edit first, and stress_edit and override are
     # emptied with DELETE: a TRUNCATE refuses a table another table's foreign key points at, even
