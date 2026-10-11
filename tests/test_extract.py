@@ -266,3 +266,49 @@ def test_the_source_snapshot_is_not_part_of_a_ways_equality() -> None:
         "the source snapshot is being compared; it is a record of where the way came "
         "from and two ways with the same tags are the same way"
     )
+
+
+def test_node_tags_are_merged_onto_source_nodes_and_nothing_else_moves(tmp_path) -> None:
+    """`node_tags` (FOLLOWUP-SIGNAL-DERIVE's `rm:crossing_signal`) adds a derived
+    tag to a source node by id, keeping its own tags, id and location, and leaves
+    every other node exactly as it was."""
+    source = tmp_path / "source.osm.pbf"
+    destination = tmp_path / "written.osm.pbf"
+    writer = osmium.SimpleWriter(str(source))
+    try:
+        writer.add_node(
+            osmium.osm.mutable.Node(
+                id=1, location=(-77.0, 38.9), tags={"highway": "crossing"}, version=3
+            )
+        )
+        writer.add_node(osmium.osm.mutable.Node(id=2, location=(-77.01, 38.9), tags={}, version=1))
+        writer.add_way(
+            osmium.osm.mutable.Way(id=100, nodes=[1, 2], tags={"highway": "primary"}, version=1)
+        )
+    finally:
+        writer.close()
+
+    write_extract(
+        source,
+        destination,
+        way_tags={},
+        new_nodes=[],
+        way_node_ids={},
+        node_tags={1: {"rm:crossing_signal": "yes"}},
+    )
+
+    seen: dict[int, tuple] = {}
+
+    class Nodes(osmium.SimpleHandler):
+        def node(self, n) -> None:  # noqa: N802
+            seen[n.id] = (
+                {tag.k: tag.v for tag in n.tags},
+                round(n.location.lon, 6),
+                round(n.location.lat, 6),
+            )
+
+    Nodes().apply_file(str(destination))
+    assert seen == {
+        1: ({"highway": "crossing", "rm:crossing_signal": "yes"}, -77.0, 38.9),
+        2: ({}, -77.01, 38.9),
+    }

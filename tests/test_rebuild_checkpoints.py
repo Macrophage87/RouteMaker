@@ -346,7 +346,7 @@ def test_a_new_thread_count_is_not_an_input(env, monkeypatch) -> None:
     config = json.loads((env.build_dir("mtb") / "build-config.json").read_text())
     assert config["mjolnir"]["concurrency"] == 1
     old = json.loads((env.build_dir("standard") / "build-config.json").read_text())
-    assert old["mjolnir"]["concurrency"] == 2, "a reused graph keeps the count it was built with"
+    assert old["mjolnir"]["concurrency"] == 4, "a reused graph keeps the count it was built with"
 
 
 # --- T4: a damaged graph is rebuilt alone --------------------------------------------

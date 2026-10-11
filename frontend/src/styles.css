@@ -3207,6 +3207,53 @@ details.zoom-notes {
   color: var(--text-muted);
 }
 
+/* The Climbs layer (lib/climbsLegend.ts, climbInteraction.ts): the swatch is the map's own marker
+   shape with its number; the list and the popup as the water layer's. */
+.climbs-legend li {
+  grid-template-columns: 24px 1fr;
+  align-items: center;
+}
+
+.climb-swatch {
+  display: block;
+  flex: none;
+}
+
+.climbs-along ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.climbs-along li {
+  display: flex;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+
+.climbs-along li > span {
+  flex: 1 1 14em;
+}
+
+.climb-popup {
+  max-width: 240px;
+}
+
+.climb-popup p {
+  margin: 4px 0 0;
+}
+
+.climb-popup .climb-title {
+  display: block;
+  padding-right: 16px;
+}
+
+.climb-popup .climb-caution {
+  color: var(--text-muted);
+}
+
 /* Find the nearest water, restroom or Metro (lib/nearestFinder.ts): the list as the water list's. */
 .nearest fieldset.nearest-from {
   border: 0;

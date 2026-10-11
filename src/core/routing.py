@@ -1021,6 +1021,13 @@ def grade_profile(trip: dict) -> list[tuple[float, float | None]]:
     return profile
 
 
+def _quiet_cost(costing: dict) -> float:
+    """`refine.quiet_cost_per_m`: the router's cost of a quiet metre at this costing."""
+    from . import refine
+
+    return refine.quiet_cost_per_m(costing)
+
+
 def _router_cost(trip: dict) -> float:
     """Valhalla's own cost of a trip: its time with every cost-only penalty
     the request priced in (the stress penalty, the tier-5 entry charge, the
@@ -1189,6 +1196,37 @@ def no_busier_than_middle(
     if _hold_refuses(calmer, own, exposure):
         return trip, False
     return middle, True
+
+
+def tolerated_climb_s(trip: dict, weight: float, quiet_cost: float) -> float:
+    """The share `weight` of what the router's cost charged for a trip's climbing, in
+    the router's cost seconds (`climbs.router_climb_m` metres of quiet riding, at
+    `quiet_cost` seconds a metre): what "fine with hills" takes off its cost."""
+    return weight * quiet_cost * climbs.router_climb_m(grade_profile(trip))
+
+
+def choose_direct(trips: list[dict], weight: float, quiet_cost: float) -> int:
+    """The index of the trip whose router cost, less `weight` of its climbing charge
+    (`tolerated_climb_s`), is least: the right half of the hills slider on every ride
+    type but Mountain Goat, "fine with hills" (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS
+    242). `weight` is the slider's position over 100 (`presets.tolerate_weight`): at the
+    top a climb costs what the same distance on the flat would, so the shorter or more
+    direct route wins even where it climbs more. Only the router's own climbing charge
+    is taken off, never more, so climbing never earns a route a credit (that is Mountain
+    Goat's climb search, `choose_climb`), and the stress, turn and gate prices stay. The
+    first trip, the router's own best, is kept on a tie.
+    """
+    best, best_score = 0, None
+    for index, trip in enumerate(trips):
+        score = _router_cost(trip) - tolerated_climb_s(trip, weight, quiet_cost)
+        if best_score is None or score < best_score - TOLERATE_EPS_S:
+            best, best_score = index, score
+    return best
+
+
+# What an alternative must save, in the router's cost seconds, for "fine with hills" to
+# take it over the router's own route: a few seconds is the elevation samples' noise.
+TOLERATE_EPS_S = 5.0
 
 
 def choose_climb(trips: list[dict], ratio: float) -> int:
@@ -2214,7 +2252,11 @@ def plan(
         presets.stress_start(preset_name, dials.carrying) if dials.stress is None else dials.stress
     )
     hills_dial = preset.hills if dials.hills is None else dials.hills
-    seeking = hills_dial > 0 and preset.hills_seek
+    # The slider's right half (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242): it seeks
+    # climbs on Mountain Goat only; everywhere else it is "fine with hills".
+    right_half = hills_dial > 0 and preset.hills_seek
+    seeking = right_half and not preset.hills_tolerate
+    tolerating = right_half and preset.hills_tolerate
     maxcalm = presets.maxcalm_for(stress_dial)
     # Seeking hills at the top of the stress slider keeps the stress order and the
     # target; only the effort tiebreak (`refine.level3`) inverts, to prefer climbing
@@ -2222,6 +2264,13 @@ def plan(
     # top the slider is the climb search among the router's alternatives, as before.
     calm_seek = seeking and maxcalm
     climb_seek = seeking and not maxcalm
+    # "Fine with hills" below the top of the stress slider weighs the router's own
+    # alternatives with their climbing charge discounted (`choose_direct`). At the top
+    # the stress order decides and its third level is the actual distance, which counts
+    # no climbing already: the detent's plan, said as "calm_first".
+    calm_tolerate = tolerating and maxcalm
+    direct_tolerate = tolerating and not maxcalm
+    tolerate_weight = presets.tolerate_weight(hills_dial) if tolerating else 0.0
     # A loop is planned through its start again (OWNER-DECISIONS 266).
     loop = loop_wanted(points, dials.loop, preset_name)
     points = loop_points(points, loop)
@@ -2279,9 +2328,11 @@ def plan(
     # Below it the slider also weighs sustained climbs and brake-riding
     # descents (routemaker.climbs; the owner, 2026-09-28) among the same
     # alternatives, by `-hills/100`.
+    # "Fine with hills" asks for them as the avoid half does, inside its shorter span:
+    # it is where the E-bike ride type starts (242).
     avoiding = hills_dial < 0
-    seek_limited = "calm_first" if calm_seek else None
-    if climb_seek or avoiding:
+    seek_limited = "calm_first" if calm_seek or calm_tolerate else None
+    if climb_seek or avoiding or direct_tolerate:
         span_limit = SEEK_MAX_SPAN_M if climb_seek else AVOID_MAX_SPAN_M
         if len(points) != 2:
             seek_limited = "two_points"
@@ -2333,7 +2384,7 @@ def plan(
                 refusal.code,
             )
             variant = Variant.STANDARD.value
-        if timed_out and not calm_seek:
+        if timed_out and not (calm_seek or calm_tolerate):
             seek_limited = "timed_out"
     except RouterRefused as refusal:
         if refusal.code in REQUEST_LIMIT_CODES:
@@ -2357,6 +2408,18 @@ def plan(
     traces: dict = {}
     if climb_seek:
         chosen = choose_climb(trips, presets.seek_distance_ratio(hills_dial))
+    elif direct_tolerate:
+        # Never a busier route for it: the same guard as the avoid half's.
+        chosen = calmer_or_own(
+            trips,
+            choose_direct(trips, tolerate_weight, _quiet_cost(costing)),
+            variant,
+            costing,
+            when,
+            deadline,
+            traces,
+            exposure,
+        )
     elif avoiding:
         chosen = calmer_or_own(
             trips,
@@ -2422,6 +2485,8 @@ def plan(
         climb_weight=avoid_weight * refine.CLIMB_EQUIVALENT_M,
         hills_weight=avoid_weight,
         hills_seek_weight=hills_dial / 100 if calm_seek else 0.0,
+        hills_tolerate_weight=tolerate_weight if direct_tolerate else 0.0,
+        grade_stress_weight=refine.grade_stress_weight_for(stress_dial),
         mass_kg=presets.system_weight_for(preset_name, dials.carrying, dials.system_weight_kg),
         quiet_cost=refine.quiet_cost_per_m(trace_costing),
         wide=refine.wide_search_for(presets.calm_rate_for(stress_dial)),
@@ -2768,6 +2833,23 @@ def plan(
                 ),
                 "limited": seek_limited,
             }
+        hills_tolerate = None
+        if tolerating and not alternate:
+            direct = trips[0].get("summary") or {}
+            # Nothing is discounted at the top of the stress slider (`calm_first`).
+            discount = tolerate_weight if direct_tolerate else 0.0
+            hills_tolerate = {
+                "candidates": len(trips) if direct_tolerate else 1,
+                "chosen": chosen if direct_tolerate else 0,
+                "weight": round(tolerate_weight, 2),
+                "discount_s": round(tolerated_climb_s(trip, discount, _quiet_cost(costing)), 1),
+                "extra_climb_m": round(climb - _climb_of(trips[0]), 1),
+                "extra_distance_m": round(
+                    (float(summary.get("length", 0.0)) - float(direct.get("length", 0.0))) * 1000.0,
+                    1,
+                ),
+                "limited": seek_limited,
+            }
         hills_avoid = None
         if avoiding and not alternate:
             direct = trips[0].get("summary") or {}
@@ -2835,6 +2917,7 @@ def plan(
             },
             "hills_seek": hills_seek,
             "hills_avoid": hills_avoid,
+            "hills_tolerate": hills_tolerate,
             "attribution": list(ATTRIBUTION),
             "leg_ends": leg_ends,
             "intersections": None if events is None else _intersection_rows(events),

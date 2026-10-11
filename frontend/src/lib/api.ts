@@ -546,6 +546,20 @@ export interface RouteResponse {
     extra_distance_m: number;
     limited: "two_points" | "long_ride" | "timed_out" | "calm_first" | null;
   } | null;
+  /**
+   * Present when the hills slider was past its middle on a ride type where that means "fine with
+   * hills" (every one but Mountain Goat; FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242): the router's
+   * routes compared with their climbing charge discounted by `weight`. Additive: older APIs leave it out.
+   */
+  hills_tolerate?: {
+    candidates: number;
+    chosen: number;
+    weight: number;
+    discount_s: number;
+    extra_climb_m: number;
+    extra_distance_m: number;
+    limited: "two_points" | "long_ride" | "timed_out" | "calm_first" | null;
+  } | null;
   /** Present when the hills slider was below its middle: sustained climbs and
    * brake-riding descents weighed among the router's alternatives. */
   hills_avoid?: {

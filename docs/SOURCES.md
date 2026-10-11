@@ -34,7 +34,10 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Retrieved: weekly; the extract's date is the rebuild's (`check_operations`).
 - Records: `frontend/src/rail-data/README.md` (the MARC and elevator fixtures);
   `frontend/src/amenity-data/README.md` (public drinking water and restrooms, the Water and
-  restrooms layer, by `scripts/build_water_restrooms.py`).
+  restrooms layer, by `scripts/build_water_restrooms.py`). The layer's Throne smart
+  restrooms are not OSM: a hand list, `frontend/src/amenity-data/throne-restrooms.json`, each
+  unit with its city, county, parks or news source URL and the date read (2026-10-11), placed
+  with the US Census Bureau geocoder (<https://geocoding.geo.census.gov/>, public domain).
 - Also: **the District of Columbia's boundary** on the Mass Ride map (OWNER-DECISIONS 418,
   418a: the grey outside DC, the capacity tiles' clip, the route's "outside DC" notice). It is the
   extract's `boundary=administrative`, `admin_level=4`, `ISO3166-2=US-DC` relation, joined into rings

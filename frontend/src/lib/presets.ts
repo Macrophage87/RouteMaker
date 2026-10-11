@@ -81,7 +81,7 @@ export const PRESETS: readonly PresetOption[] = [
   {
     id: "ebike",
     label: "E-bike",
-    description: "Leaves out ways mapped as closed to e-bikes, minds hills less, times at assisted pace.",
+    description: "Leaves out ways mapped as closed to e-bikes, starts fine with hills (the more direct route wins), times at assisted pace.",
   },
   {
     id: "bikeshare",

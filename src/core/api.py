@@ -211,10 +211,13 @@ class RouteIn(Schema):
         ge=presets.HILLS_MIN,
         le=presets.HILLS_MAX,
         description=(
-            "The hills slider: -100 avoids climbing, 0 is the fastest time, above 0 looks for"
-            " climbs among the router's alternatives (two-point plans up to 31 mi (50 km) of"
-            " straight line). Absent: the"
-            " preset's own start. Mass Ride does not seek climbs."
+            "The hills slider: -100 avoids climbing, 0 is the fastest time. Above 0 on every"
+            ' ride type but Mountain Goat it is "fine with hills": that share of the'
+            " router's own climbing charge is taken off, so the more direct of the router's"
+            " routes wins even where it climbs more (two-point plans up to 16 mi (25 km) of"
+            " straight line; `hills_tolerate` in the answer). On Mountain Goat above 0 looks"
+            " for climbs among the router's alternatives (two-point plans up to 31 mi (50 km)"
+            " of straight line). Absent: the preset's own start. Mass Ride stops at 0."
         ),
     )
     when: WhenName | None = Field(
@@ -531,7 +534,8 @@ class DialsOut(Schema):
 
 
 class HillsSeekOut(Schema):
-    """Present when the hills slider was past its detent."""
+    """Present when the hills slider was past its detent on Mountain Goat, the one ride
+    type where that seeks climbs (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242)."""
 
     candidates: int = Field(description="Routes compared, the direct one included.")
     chosen: int = Field(description="Which was kept; 0 is the direct route.")
@@ -592,6 +596,33 @@ class HillsAvoidOut(Schema):
         description=(
             "The route is the hills slider's middle one, because the hill-avoiding route "
             "was busier (the owner: traffic wins)."
+        )
+    )
+
+
+class HillsTolerateOut(Schema):
+    """Present when the hills slider was past its detent on a ride type where that means
+    "fine with hills" (every one but Mountain Goat; FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS
+    242): the router's routes compared with their climbing charge discounted."""
+
+    candidates: int = Field(description="Routes compared, the router's own included.")
+    chosen: int = Field(description="Which was kept; 0 is the router's own route.")
+    weight: float = Field(
+        description="The share of the router's climbing charge taken off: hills/100."
+    )
+    discount_s: float = Field(
+        description=(
+            "What was taken off the kept route's cost, in the router's cost seconds; 0 at"
+            " the top of the stress slider (`calm_first`)."
+        )
+    )
+    extra_climb_m: float = Field(description="The kept route's climb over the router's own.")
+    extra_distance_m: float
+    limited: Literal["two_points", "long_ride", "timed_out", "calm_first"] | None = Field(
+        description=(
+            "Why no alternatives were compared, if none were. `calm_first`: at the top of"
+            " the stress slider, where the stress order decides and its distance level"
+            " already counts no climbing."
         )
     )
 
@@ -1430,6 +1461,7 @@ class RouteBody(Schema):
     dials: DialsOut
     hills_seek: HillsSeekOut | None
     hills_avoid: HillsAvoidOut | None
+    hills_tolerate: HillsTolerateOut | None = None
     attribution: list[str]
     # Index in geometry.coordinates of each leg's last vertex, one per leg
     # (points - 1); a leg starts where the one before it ends.

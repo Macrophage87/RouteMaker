@@ -604,7 +604,12 @@ def _of_road(arm: Arm, entry: dict) -> bool:
 
 
 def _car(edge: dict) -> bool:
-    return bool(((edge.get("edge") or {}).get("access") or {}).get("car"))
+    """Whether motor traffic drives the edge: cars, or buses alone. A road closed
+    to cars but open to buses (`motor_vehicle=no` + `bus=yes`: Exchange Ave and
+    Fayette St in Baltimore, Neabsco Stream Dr) is still a road a rider crosses
+    (FOLLOWUP-BUS-ROADS; `routemaker.tags.open_to_buses`)."""
+    access = (edge.get("edge") or {}).get("access") or {}
+    return bool(access.get("car") or access.get("bus"))
 
 
 def _angle(a: float, b: float) -> float:

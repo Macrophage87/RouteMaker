@@ -185,3 +185,33 @@ class TestTheBoundaries:
         assert descent_cost_s(Run(0, 1000, -80), brake_grade=0.03) == pytest.approx(
             climb_cost_s(Run(0, 1000, 80))
         )
+
+
+# --- The router's own climbing charge ("fine with hills", OWNER-DECISIONS 242) ---------
+
+
+def _ramp(length_m: float, grade: float, step: float = 30.0) -> list[tuple[float, float]]:
+    return [(i * step, 100.0 + grade * i * step) for i in range(int(length_m // step) + 1)]
+
+
+def test_the_router_climb_factor_follows_the_measured_table():
+    assert climbs.router_climb_factor(0.0) == 0.0
+    assert climbs.router_climb_factor(-0.08) == 0.0
+    assert climbs.router_climb_factor(0.03) == pytest.approx(12.0)
+    assert climbs.router_climb_factor(0.04) == pytest.approx(12.5)
+    assert climbs.router_climb_factor(0.08) == pytest.approx(20.0)
+    assert climbs.router_climb_factor(0.30) == pytest.approx(31.0), "held past the last"
+    grades = [g / 1000 for g in range(0, 200, 5)]
+    factors = [climbs.router_climb_factor(g) for g in grades]
+    assert factors == sorted(factors)
+
+
+def test_the_router_climb_charge_is_the_rise_times_the_factor():
+    # 1.2 km at 5%: 60 m climbed at 13 flat metres a metre.
+    assert climbs.router_climb_m(_ramp(1200, 0.05)) == pytest.approx(60.0 * 13.0, rel=0.01)
+
+
+def test_flat_and_downhill_are_not_charged():
+    assert climbs.router_climb_m(_ramp(1200, 0.0)) == 0.0
+    assert climbs.router_climb_m(_ramp(1200, -0.06)) == 0.0
+    assert climbs.router_climb_m([]) == 0.0
