@@ -112,7 +112,7 @@ VOLUME_SOURCES = {
     "ddot": "DDOT 2024 Traffic Volume, DC Open Data (CC BY 4.0, adapted)",
     "dc-roadway-block": "DC Roadway Block (DDOT / DC GIS), DC Open Data (CC BY 4.0, adapted)",
     "vdot": "VDOT",
-    "mdot-sha": "MDOT SHA",
+    "mdot-sha": "State of Maryland (MDOT SHA)",
 }
 
 # Where a classifier input came from (`segment.attr_sources`).

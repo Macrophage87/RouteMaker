@@ -972,13 +972,16 @@ class DescriptionEntryOut(Schema):
     `via` is where a via point is reached (`Stop 1`, as the points list calls it);
     a `walk` is a short stretch to walk the bicycle over (a kept
     `bicycle=dismount` connector; OWNER-DECISIONS 291(5)); an `avoid` is an
-    Avoid-rated junction ahead (307), at a point, its `severity` "avoid".
+    Avoid-rated junction ahead (307), at a point, its `severity` "avoid"; a
+    `workzone` is a live work zone the route runs along (FOLLOWUP-WORKZONES, 341-349),
+    its `severity` "red" for a closure and "orange" for a zone with a penalty, or, at
+    0 with no severity, the work-zone disclaimer or the feeds that could not be read.
     Distances are along the route, scaled to `distance_m`. `text` is one plain
     sentence, US units first with the metric once, for reading aloud; the other
     fields are the same facts for a client that words them itself. Additive:
     older clients ignore it, and it is null where it could not be built."""
 
-    kind: Literal["stretch", "junction", "via", "walk", "avoid"]
+    kind: Literal["stretch", "junction", "via", "walk", "avoid", "workzone"]
     from_m: int
     to_m: int
     from_mi: float
@@ -1442,6 +1445,44 @@ class MtbOut(Schema):
     )
 
 
+class WorkZoneOut(Schema):
+    """A live work zone the route runs along (FOLLOWUP-WORKZONES)."""
+
+    id: str
+    kind: Literal["closed", "unknown", "penalty"] = Field(
+        description=(
+            '"closed": closed to bicycles (left out where it could be); "unknown": every lane'
+            ' closed and bicycles not mentioned (342(3): penalised, with a warning); "penalty":'
+            " rideable, with a heads-up (342(4))."
+        )
+    )
+    penalty_s: float
+    road: str | None
+    description: str | None
+    reason: str
+    from_m: int
+    to_m: int
+    start: str | None
+    end: str | None
+    source: Literal["md", "va"]
+    warning: bool = Field(description="True for a closure the rider may meet: shown in red.")
+    text: str = Field(description="The heads-up as the description words it.")
+
+
+class WorkZonesOut(Schema):
+    """The route's work zones and how far they can be trusted (FOLLOWUP-WORKZONES)."""
+
+    on_route: list[WorkZoneOut]
+    routed_round: int = Field(
+        description="Zones the plan left out: closures, and zones with a penalty it went round."
+    )
+    status: dict[str, Literal["current", "stale", "unavailable"]]
+    stale: list[str]
+    unchecked: str | None
+    sources: list[str]
+    disclaimer: str
+
+
 class RouteBody(Schema):
     preset: PresetName
     variant: Literal["standard", "no-trail", "ebike", "weekend", "offroad", "mtb"]
@@ -1506,6 +1547,9 @@ class RouteBody(Schema):
     # The Mountain Bike ride type's reading of the route (slice 6). Additive: null on every
     # other ride type.
     mtb: MtbOut | None = None
+    # Live work zones (FOLLOWUP-WORKZONES, 341-349). Additive: null where work zones are
+    # not running (no refresh stored yet).
+    work_zones: WorkZonesOut | None = None
     loop: LoopOut | None = Field(
         default=None, description="Present on a loop: how much of the way back is the way out."
     )

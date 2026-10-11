@@ -3139,6 +3139,90 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   await p.close();
 }
 
+// ---- 24b. Find food (FOOD-SEARCH, owner 2026-10-11; lib/food.ts, lib/foodFinder.ts) ----
+{
+  // The committed file is empty until the v0.5.0 rebuild: the search says so.
+  const p = await open({ ride: false, junctions: false });
+  const openFood = "(() => { const d = document.querySelector('details.food'); if (d && !d.open) d.querySelector('summary').click(); return !!d; })()";
+  await p.eval(openFood);
+  await sleep(200);
+  await p.eval("document.getElementById('food-query').focus(); true");
+  await p.type("crab");
+  await p.enter();
+  const said = await p.waitFor("/^No food data yet/.test(document.querySelector('.food-status')?.textContent ?? '')", 8000);
+  check("food: with no places in the file yet, the status line says No food data yet", said, await p.eval("document.querySelector('.food-status')?.textContent ?? ''"));
+  await p.close();
+}
+{
+  // Twelve crab places along the default route's area, served in place of the file.
+  const FOOD_STUB = `(() => {
+    const points = Array.from({ length: 12 }, (_, i) => ({ id: "n" + (i + 1), x: -77.03 + i * 0.002, y: 38.905 + (i % 3) * 0.001, k: "r", n: "Crab place " + (i + 1), c: "seafood;crab", h: "Mo-Su 11:00-22:00", web: "https://example.org/" + (i + 1) }));
+    const real = window.fetch.bind(window);
+    window.fetch = (input, init) => /food[^/]*\.json/.test(String(input?.url ?? input)) ? Promise.resolve(new Response(JSON.stringify({ source: "test", points }), { headers: { "Content-Type": "application/json" } })) : real(input, init);
+  })();`;
+  const p = await open({ ride: false, junctions: false, init: FOOD_STUB });
+  const openFood = "(() => { const d = document.querySelector('details.food'); if (d && !d.open) d.querySelector('summary').click(); return !!d; })()";
+  await p.eval(openFood);
+  await sleep(200);
+  const form = await axNode(p, "form.food-search");
+  const input = await axNode(p, "#food-query");
+  check("food: the search is a search landmark named Find food, its box named Food or name", form?.role === "search" && form?.name === "Find food" && input?.name === "Food or name", JSON.stringify({ form, input }));
+  await p.eval("document.querySelector('.food-scope input[value=area]').click(); document.getElementById('food-query').focus(); true");
+  await p.type("crab");
+  await p.enter();
+  await p.waitFor("document.querySelectorAll('.food-list li').length > 0 && /^12 places/.test(document.querySelector('.food-status')?.textContent ?? '')", 8000);
+  const listed = await p.eval(`(() => ({
+    status: document.querySelector('.food-status')?.textContent ?? '',
+    items: document.querySelectorAll('.food-list ol[role=list] > li').length,
+    first: document.querySelector('.food-list li')?.textContent ?? '',
+  }))()`);
+  check("food: Enter searches; a polite status says how many match, where, the order and how many are shown", listed.status === "12 places match “crab” in the whole area, least detour first. Showing the first 10." && listed.items === 10, JSON.stringify(listed));
+  check("food: each result says its detour off the route, miles first with metric in brackets, and where to turn off", /^1\. Crab place \d+ Restaurant: seafood, crab\. (Detour about \+[\d.]+ mi \([\d.]+ km\) and \d+ min there and back, turning off at|On your route at) [\d.,]+ (mi|ft) \([\d.,]+ (km|m)\)/.test(listed.first), listed.first);
+  const sizes = await p.eval(`(() => [...document.querySelectorAll('.food button, .food-list a.food-web, .food-scope label')].map((e) => Math.round(e.getBoundingClientRect().height)))()`);
+  check("food: every button, link and choice in the panel is at least 44 px tall", sizes.length >= 32 && sizes.every((h) => h >= 44), JSON.stringify(sizes));
+  // Show more: the focus goes to the first new result, and the count is said.
+  await p.eval("document.querySelector('.food-more').focus(); true");
+  await p.enter();
+  await sleep(600);
+  const more = await p.eval(`(() => ({
+    items: document.querySelectorAll('.food-list li').length,
+    focus: document.activeElement === document.querySelectorAll('.food-list li')[10]?.querySelector('button'),
+    status: document.querySelector('.food-status')?.textContent ?? '',
+    moreGone: !document.querySelector('.food-more'),
+  }))()`);
+  check("food: Show more lists the rest, moves the focus to the first new result and says the count", more.items === 12 && more.focus && more.status === "Showing 12 of 12." && more.moreGone, JSON.stringify(more));
+  // Tab from a result's Show on map reaches its Add as stop, then its website link.
+  await p.eval("document.querySelector('.food-list li button').focus(); true");
+  await p.tab();
+  const second = await p.eval("document.activeElement?.getAttribute('aria-label') ?? ''");
+  await p.tab();
+  const third = await p.eval("document.activeElement?.getAttribute('aria-label') ?? ''");
+  check("food: Tab goes Show on map, Add as stop, Website for each result", /^Add as stop: Crab place \d+$/.test(second) && /^Website: Crab place \d+ \(opens in a new tab\)$/.test(third), JSON.stringify([second, third]));
+  // Add as stop: the plan gets one more point (the link carries it).
+  const pointsIn = () => p.eval("((location.hash.match(/p=([^&]*)/) ?? [])[1] ?? '').split(';').filter(Boolean).length");
+  const before = await pointsIn();
+  await p.eval("document.querySelectorAll('.food-list li button')[1].click(); true");
+  await sleep(1500);
+  const after = await pointsIn();
+  check("food: Add as stop puts the place into the plan", after === before + 1, JSON.stringify({ before, after }));
+  await p.close();
+}
+{
+  const FOOD_STUB = `(() => {
+    const points = Array.from({ length: 4 }, (_, i) => ({ id: "n" + (i + 1), x: -77.03 + i * 0.002, y: 38.905, k: "c", n: "A cafe with a rather long name number " + (i + 1), c: "coffee_shop", web: "https://example.org/" + (i + 1) }));
+    const real = window.fetch.bind(window);
+    window.fetch = (input, init) => /food[^/]*\.json/.test(String(input?.url ?? input)) ? Promise.resolve(new Response(JSON.stringify({ source: "test", points }), { headers: { "Content-Type": "application/json" } })) : real(input, init);
+  })();`;
+  const p = await open({ ride: false, junctions: false, init: FOOD_STUB, width: 320, height: 800, mobile: true });
+  await p.eval("(() => { const d = document.querySelector('details.food'); if (d && !d.open) d.querySelector('summary').click(); document.querySelector('.food-scope input[value=area]').click(); document.getElementById('food-query').focus(); return true; })()");
+  await p.type("coffee");
+  await p.enter();
+  await p.waitFor("document.querySelectorAll('.food-list li').length === 4", 8000);
+  const fit = await p.eval("(() => ({ page: document.documentElement.scrollWidth > innerWidth, items: document.querySelectorAll('.food-list li').length }))()");
+  check("food at 320 px: the results fit with no sideways scroll", fit.items === 4 && !fit.page, JSON.stringify(fit));
+  await p.close();
+}
+
 // ---- The installable app (WEB-NAV-plan.md section 8 and section 11, "PWA section") ----
 // The install offer and its words, on Vite's dev server (no worker there: the offer does not need one).
 {
@@ -3638,7 +3722,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 547;
+const EXPECTED = 556;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

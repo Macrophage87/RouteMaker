@@ -319,6 +319,10 @@ services:
       # directory inside the image - and wrote every dump to container storage
       # that the next restart discards.
       DATA_ROOT: /data
+      # The owner's SmarterRoads key for VDOT's work-zone feed (FOLLOWUP-WORKZONES,
+      # 346: "the key stays server-side only"). This service alone reads the feeds;
+      # empty, Virginia's work zones are off and nothing is asked of VDOT.
+      SMARTERROADS_TOKEN: ${SMARTERROADS_TOKEN:-}
     volumes:
       - ${DATA_ROOT}/backups:/data/backups
       # Read-only, and for one caller: `check_operations`. Its fourth check is

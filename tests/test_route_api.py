@@ -96,6 +96,8 @@ CONTRACT_KEYS = {
     # junctions passed, the notice, what the plan did and the way round.
     "avoid_junctions",
     "avoid_notice",
+    # Additive, FOLLOWUP-WORKZONES: null where work zones are not running.
+    "work_zones",
     "avoid_search",
     "avoid_alternate",
 }

@@ -188,6 +188,8 @@ function cueKindOf(entry: DescriptionEntry, before: DescriptionEntry | null): Cu
   if (entry.kind === "walk") return "walk";
   // An Avoid-rated junction ahead (OWNER-DECISIONS 307): a hazard, said at every level but Quiet.
   if (entry.kind === "avoid") return "hazard";
+  // A work zone on the route (FOLLOWUP-WORKZONES): a hazard; the disclaimer line says nothing on the move.
+  if (entry.kind === "workzone") return entry.severity ? "hazard" : null;
   if (entry.kind === "junction") return entry.severity || entry.group ? "hazard" : null;
   const movement = entry.turn?.movement ?? null;
   if (movement === "left" || movement === "right") return "turn";
