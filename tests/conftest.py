@@ -120,13 +120,17 @@ def _weekend_router_state(monkeypatch):
         return
     _REAL_WEEKEND_CHECK.setdefault("check", routing._weekend_is_promoted)
     _REAL_WEEKEND_CHECK.setdefault("offroad", routing._offroad_is_promoted)
+    _REAL_WEEKEND_CHECK.setdefault("mtb", routing._mtb_is_promoted)
     monkeypatch.setattr(routing, "_weekend_is_promoted", lambda: True)
     monkeypatch.setattr(routing, "_offroad_is_promoted", lambda: True)
+    monkeypatch.setattr(routing, "_mtb_is_promoted", lambda: True)
     routing._weekend_failed_at = None
     routing._offroad_failed_at = None
+    routing._mtb_failed_at = None
     yield
     routing._weekend_failed_at = None
     routing._offroad_failed_at = None
+    routing._mtb_failed_at = None
 
 
 _REAL_WEEKEND_CHECK: dict = {}
@@ -179,3 +183,4 @@ def weekend_rows_read(monkeypatch):
 
     monkeypatch.setattr(routing, "_weekend_is_promoted", _REAL_WEEKEND_CHECK["check"])
     monkeypatch.setattr(routing, "_offroad_is_promoted", _REAL_WEEKEND_CHECK["offroad"])
+    monkeypatch.setattr(routing, "_mtb_is_promoted", _REAL_WEEKEND_CHECK["mtb"])

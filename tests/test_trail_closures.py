@@ -169,3 +169,37 @@ def test_a_level_is_written_on_rated_singletrack_alone_so_it_always_means_closed
         assert tc.mtb_level(result.reason(osm_id), tags) == level, osm_id
     # Every way with a level is singletrack, closed on every graph (not OFFROAD_KEEPS).
     assert all(result.reason(i) not in tc.OFFROAD_KEEPS for i in (42, 43, 44, 45))
+
+
+# --- the Mountain Bike graph (docs/MTB-TOPO-PLAN.md, slice 6) ---
+
+
+def test_the_mtb_graph_keeps_the_mtb_class_and_drawn_singletrack_only():
+    drawn = {7}
+    assert tc.mtb_graph_keeps("mtb", 1, drawn)
+    assert tc.mtb_graph_keeps("singletrack", 7, drawn)
+    # Singletrack that another rule would close (bicycle=no, hiking-only, private, err
+    # closed) is not drawn, and stays closed: unclear access is closed.
+    assert not tc.mtb_graph_keeps("singletrack", 8, drawn)
+    for reason in ("private", "sac_scale", "foot_designated", "hiking_route", "zoo",
+                   "military_no_bicycle", "dismount", None):  # fmt: skip
+        assert not tc.mtb_graph_keeps(reason, 7, drawn), reason
+
+
+def test_graph_reason_per_variant():
+    from pipeline.variants import Variant
+
+    drawn, wet = {7}, {9, 7}
+    for variant in Variant:
+        got = tc.graph_reason(variant, "private", 1, drawn, wet)
+        assert got == "private", variant
+    assert tc.graph_reason(Variant.STANDARD, "mtb", 1, drawn, wet) == "mtb"
+    assert tc.graph_reason(Variant.OFFROAD, "mtb", 1, drawn, wet) is None
+    assert tc.graph_reason(Variant.OFFROAD, "singletrack", 7, drawn, wet) == "singletrack"
+    assert tc.graph_reason(Variant.MTB, "mtb", 1, drawn, wet) is None
+    assert tc.graph_reason(Variant.MTB, "singletrack", 8, drawn, wet) == "singletrack"
+    # Drawn singletrack mapped closed when wet: closed on the Mountain Bike graph alone.
+    assert tc.graph_reason(Variant.MTB, "singletrack", 7, drawn, wet) == tc.WET
+    assert tc.graph_reason(Variant.MTB, None, 9, drawn, wet) == tc.WET
+    assert tc.graph_reason(Variant.OFFROAD, None, 9, drawn, wet) is None
+    assert tc.graph_reason(Variant.STANDARD, None, 9, drawn, wet) is None

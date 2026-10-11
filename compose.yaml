@@ -215,6 +215,7 @@ services:
       VALHALLA_EBIKE_URL: ${VALHALLA_EBIKE_URL:-http://valhalla-ebike:8002}
       VALHALLA_WEEKEND_URL: ${VALHALLA_WEEKEND_URL:-http://valhalla-weekend:8002}
       VALHALLA_OFFROAD_URL: ${VALHALLA_OFFROAD_URL:-http://valhalla-offroad:8002}
+      VALHALLA_MTB_URL: ${VALHALLA_MTB_URL:-http://valhalla-mtb:8002}
       # The geocoder place search and place names are proxied to
       # (core.geocode); on this network only, like the routers.
       PHOTON_URL: ${PHOTON_URL:-http://photon:2322}
@@ -657,12 +658,14 @@ services:
 
   # The standard graph with the mountain-bike class open
   # (pipeline.variants.Variant.OFFROAD; OWNER-DECISIONS 291(2)): the router
-  # Gravel and Mountain Goat ride. Two workers, as its siblings, but 1536M, not
-  # their 2G: it serves two presets of ten, and a sibling idles at 40 to 500 MB
-  # resident. 2G would take the swap-time peak to 33.0G, over the 32G check
-  # (scripts/check_compose_limits.py); 1536M keeps it at 32.0G, exactly at the
-  # limit, so any further raise anywhere fails the check. 1.1 GB of tiles
-  # on disk.
+  # Gravel and Mountain Goat ride. One worker in 768M, as each beta router runs
+  # in (compose.beta.yaml), not its siblings' two in 2G: it serves two presets of
+  # eleven, and a sibling idles at 40 to 500 MB resident. It was two workers in
+  # 1536M until the Mountain Bike router (valhalla-mtb, below) came beside it
+  # (docs/MTB-TOPO-PLAN.md, slice 6): the two share the 1.5G this one had, which
+  # keeps the swap-time peak at 32.0G, exactly at the 32G check
+  # (scripts/check_compose_limits.py), so any further raise anywhere fails the
+  # check. 1.1 GB of tiles on disk.
   #
   # Behind the profile `offroad`, so a plain `docker compose up -d` never starts
   # it: on a small host (the 10 GB WSL box) a fifth router does not fit beside the
@@ -687,7 +690,7 @@ services:
     # would start one worker per core of the whole machine inside a two-core
     # limit. It is not a configuration key; the loki_workers, thor_workers and
     # odin_workers keys the configs used to carry are read by nothing.
-    command: ["valhalla_service", "/conf/valhalla-offroad.json", "2"]
+    command: ["valhalla_service", "/conf/valhalla-offroad.json", "1"]
     # The served build, at the path the config names. `current` is a symlink
     # the rebuild replaces at promotion; the container loads whatever it
     # points at when it starts, and is restarted after a swap to load the
@@ -703,7 +706,31 @@ services:
       - ./lua:/conf/lua:ro
     deploy:
       resources:
-        limits: { memory: 1536M, cpus: "2" }
+        limits: { memory: 768M, cpus: "1" }
+
+  # The Mountain Bike graph (pipeline.variants.Variant.MTB; docs/MTB-TOPO-PLAN.md,
+  # slice 6): the standard graph with every mountain-bike trail a bicycle may use
+  # open, of every level (the rider's level is held at plan time, core.mtb), and
+  # trails mapped closed when wet closed. Behind the same profile as
+  # valhalla-offroad and for the same reason; while it is not running the
+  # planner answers Mountain Bike on the standard graph and says so
+  # (`mtb.limited` = no_mtb_graph). One worker in 768M, as valhalla-offroad.
+  # Start both where there is room:
+  #   docker compose --profile offroad up -d valhalla-offroad valhalla-mtb
+  valhalla-mtb:
+    <<: [*restart, *logging]
+    profiles: ["offroad"]
+    image: ghcr.io/valhalla/valhalla:3.9.1
+    # As valhalla-offroad: the config path and the worker count on argv.
+    command: ["valhalla_service", "/conf/valhalla-mtb.json", "1"]
+    volumes:
+      - ${DATA_ROOT}/tiles/mtb:/data/tiles/mtb:ro
+      - ${DATA_ROOT}/elevation:/data/elevation:ro
+      - ./valhalla:/conf:ro
+      - ./lua:/conf/lua:ro
+    deploy:
+      resources:
+        limits: { memory: 768M, cpus: "1" }
 
   # The only component that holds the bot token, and the source of authorization
   # truth. Exposes its membership interface on the internal network behind a
@@ -810,6 +837,7 @@ services:
       VALHALLA_EBIKE_URL: ${VALHALLA_EBIKE_URL:-http://valhalla-ebike:8002}
       VALHALLA_WEEKEND_URL: ${VALHALLA_WEEKEND_URL:-http://valhalla-weekend:8002}
       VALHALLA_OFFROAD_URL: ${VALHALLA_OFFROAD_URL:-http://valhalla-offroad:8002}
+      VALHALLA_MTB_URL: ${VALHALLA_MTB_URL:-http://valhalla-mtb:8002}
     # The five directories this service writes, each bound on its own, rather
     # than `${DATA_ROOT}:/data` - which is the same volume and also carries
     # `caddy/` (the ACME account key and the deployment's TLS private key),

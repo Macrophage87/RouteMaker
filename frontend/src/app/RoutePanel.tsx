@@ -13,6 +13,7 @@ import { useStressStyle } from "../useStressStyle.ts";
 import { CandidatePicker } from "../lib/candidatePicker.ts";
 import { candidateRows } from "../lib/candidates.ts";
 import { loopNote } from "../lib/loop.ts";
+import { mtbNotes } from "../lib/mtbMode.ts";
 import { FacilityBreakdown } from "../FacilityBreakdown.tsx";
 import { IntersectionList } from "../IntersectionList.tsx";
 import { AvoidNotice } from "../AvoidNotice.tsx";
@@ -324,6 +325,8 @@ export function RouteSummary({
   const detour = detourView(route, points);
   const calmNote = calmSearchNote(route);
   const loopSaid = loopNote(route);
+  // Mountain Bike (slice 6): what the trail rules could not hold, said first, then how much is trail.
+  const mtb = mtbNotes(route.mtb);
   // A Mass Ride that leaves the District (OWNER-DECISIONS 418a): shown here, and said in the route's
   // live region with the rest of the route's sentence (lib/summary.ts announceRoute).
   const outsideDc = outsideDcNote(route);
@@ -372,6 +375,16 @@ export function RouteSummary({
       {loopSaid && (
         <p className="hint loop-note" role="note">
           {loopSaid}
+        </p>
+      )}
+      {mtb.warnings.map((text) => (
+        <p key={text} className="notice mtb-warning" role="note">
+          {text}
+        </p>
+      ))}
+      {mtb.notes.length > 0 && (
+        <p className="hint mtb-note" role="note">
+          {mtb.notes.join(" ")}
         </p>
       )}
       {/* Headings for a screen reader's list, out of sight: the route's figures, then each fold (the a11y review's S5). */}

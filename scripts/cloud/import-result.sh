@@ -17,7 +17,7 @@
 #      graphs under DATA_ROOT/tiles
 #   3. takes a safety dump of the database into --stage, leaving out the same tables the
 #      nightly backup does (--no-safety-dump skips it)
-#   4. unpacks the five graphs' build directories under DATA_ROOT/tiles, beside the ones
+#   4. unpacks the six graphs' build directories under DATA_ROOT/tiles, beside the ones
 #      being served, and restores the box's segment table as the staging schema
 #   5. runs `manage.py import_cloud_build <build> --overrides-read-at <backup time>`, dry:
 #      every check the swap makes, and what it would change
@@ -219,9 +219,11 @@ if [ "$swap" = 1 ]; then
 	import_cmd --confirm ${extra[@]+"${extra[@]}"}
 	note "restarting the routers so they serve the new graphs"
 	compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-	if [ -n "$(compose --profile offroad ps -q valhalla-offroad 2>/dev/null)" ]; then
-		compose --profile offroad restart valhalla-offroad
-	fi
+	for router in valhalla-offroad valhalla-mtb; do
+		if [ -n "$(compose --profile offroad ps -q "$router" 2>/dev/null)" ]; then
+			compose --profile offroad restart "$router"
+		fi
+	done
 	note "drawing the stress tiles again"
 	compose exec -T api python manage.py predraw_stress_tiles </dev/null
 	note "done. Now the post-swap closure probes (OPERATIONS.md, \"Bicycle closures in the tiles\", step 3)."
@@ -266,7 +268,7 @@ if [ "$installed" = 0 ]; then
 	[ "$(psql_ "SELECT to_regnamespace('staging') IS NULL")" = t ] ||
 		die "a staging schema already exists here (left by a rebuild that did not swap, or an install that stopped). If you are sure nothing needs it: docker compose exec -T postgis psql -U $pguser -d $pgdb -c 'DROP SCHEMA staging CASCADE', then run this again"
 	need=0
-	for variant in standard no-trail ebike weekend offroad; do
+	for variant in standard no-trail ebike weekend offroad mtb; do
 		[ -f "$stage/tiles-$variant.tar" ] || die "the result has no tiles-$variant.tar"
 		for link in current previous; do
 			[ "$($SUDO readlink "$data_root/tiles/$variant/$link" 2>/dev/null)" != "$build" ] ||
@@ -299,7 +301,7 @@ fi
 # --- 4. install --------------------------------------------------------------------------
 if [ "$installed" = 0 ]; then
 	note "unpacking the graphs under $data_root/tiles"
-	for variant in standard no-trail ebike weekend offroad; do
+	for variant in standard no-trail ebike weekend offroad mtb; do
 		# Neither link names it (checked above), so a directory here is an unpack that stopped.
 		$SUDO rm -rf "${data_root:?}/tiles/$variant/$build"
 		$SUDO tar -C "$data_root/tiles" --numeric-owner -xf "$stage/tiles-$variant.tar"

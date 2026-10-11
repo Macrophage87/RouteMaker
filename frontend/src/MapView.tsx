@@ -30,7 +30,8 @@ import {
   ROUTE_LINE_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette } from "./stressStyle.js";
+import { stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb } from "./stressStyle.js";
+import { subscribeTopoLines, syncTopoLines, topoLinesOn, type TopoMap } from "./lib/topoLines.ts";
 import {
   addStressOverlay,
   focusBackTarget,
@@ -1183,6 +1184,13 @@ export function MapView(props: Props) {
     [],
   );
 
+  // The Mountain Bike ride type's level (slice 6): the trails up to it draw as routable, the harder ones
+  // keep the not-for-routes look; the filters are set again in place, as for the lanes switch.
+  useEffect(
+    () => subscribeRoutableMtb(() => onLaneSwitch(mapRef.current, loaded.current, callbacks.current.when)),
+    [],
+  );
+
   // The "Mountain-bike trails" layer (OWNER-DECISIONS 454): shown or hidden in place, from the same tiles.
   useEffect(
     () =>
@@ -1192,6 +1200,23 @@ export function MapView(props: Props) {
       }),
     [],
   );
+
+  // The "Topo lines" layer (OWNER-DECISIONS 454; lib/topoLines.ts): added the first time it is shown,
+  // then shown or hidden in place. Its own listener on "load" runs after the one above that sets `loaded`.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const sync = () => {
+      if (loaded.current) syncTopoLines(map as unknown as TopoMap, topoLinesOn());
+    };
+    map.on("load", sync);
+    sync();
+    const stop = subscribeTopoLines(sync);
+    return () => {
+      stop();
+      map.off("load", sync);
+    };
+  }, []);
 
   // The route's stressful junctions: orange and red warning markers on the line,
   // a click on one showing why (OWNER-DECISIONS 172). They go while the route

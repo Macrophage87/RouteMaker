@@ -28,7 +28,7 @@ import sqlite3
 import subprocess
 import time
 from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -44,6 +44,8 @@ from routemaker import (
     lane_overrides,
     massflow,
     mdot_aadt,
+    mtbmode,
+    pavement,
     ridetime,
     singletrack,
     speed_corrections,
@@ -102,6 +104,8 @@ REMATCH_REPORT_NAME = "override-rematch"
 # corridors did (ARTERIAL review r0, SF4).
 SMOOTHING_REPORT_NAME = "aadt-smoothing.csv"
 CORRIDOR_REPORT_NAME = "named-corridors.md"
+# DDOT's PCI per District street it reached, and whether it was applied (DC-PCI).
+PAVEMENT_REPORT_NAME = "dc-pavement-pci.csv"
 # Every way inside a military area, closed or left open, for the owner (owner report
 # 2026-10-05; `restricted_areas.military_report_csv`).
 MILITARY_REPORT_NAME = "military-closures.csv"
@@ -407,6 +411,10 @@ class ReferenceData:
     # logs a warning so the absence is seen. Only `install_reference_data.py
     # --roadway-block/--baltimore-centerline` writes it.
     road_blocks: tuple[conflation.RoadFeature, ...] = ()
+    # DDOT's Pavement Condition Index blocks (DC-PCI, `routemaker.pavement`), from
+    # `pavement.json`. Optional like `roadway.json`: without it every street keeps
+    # OSM's smoothness reading, as before, and the load logs that it is absent.
+    pavement_blocks: tuple[pavement.Block, ...] = ()
 
     @classmethod
     def load(
@@ -516,7 +524,28 @@ class ReferenceData:
             unmatched_crossings=tuple(unmatched),
             bridge_bicycle_legal=legality,
             road_blocks=road_blocks,
+            pavement_blocks=cls.load_pavement(directory / "pavement.json"),
         )
+
+    @staticmethod
+    def load_pavement(path: Path) -> tuple[pavement.Block, ...]:
+        """DDOT's PCI blocks, or none (with a warning) where not installed."""
+        if not path.exists():
+            logger.warning(
+                "%s is absent, so DDOT's Pavement Condition Index is not read: District "
+                "streets keep OSM's smoothness. Install it with "
+                "scripts/install_reference_data.py --dc-pci",
+                path,
+            )
+            return ()
+        if not pavement.LICENCE_CONFIRMED:
+            logger.warning(
+                "%s is installed but not read: %s. District streets keep OSM's smoothness.",
+                path,
+                pavement.LICENCE_PENDING,
+            )
+            return ()
+        return tuple(pavement.Block.from_json(row) for row in json.loads(path.read_text()))
 
     @staticmethod
     def load_road_blocks(path: Path) -> tuple[conflation.RoadFeature, ...]:
@@ -647,6 +676,9 @@ class RebuildContext:
     # that is overlaid: a statement about the rider's stress. Only ways a block
     # reached are here.
     road_facts_by_way: dict[int, agency_roads.WayFacts] = field(default_factory=dict)
+    # DDOT's PCI reading per District street it reached (`conflate_pavement`,
+    # DC-PCI); `inject_tags` hands the applied band to the graph as `rm:pci`.
+    pci_by_way: dict[int, pavement.Reading] = field(default_factory=dict)
     class_tags_by_way: dict[int, dict[str, str]] = field(default_factory=dict)
     # The one thing of the overlay the graph takes too: the direction of
     # traffic the District's record decided (OWNER-DECISIONS 216, "Enforce on
@@ -691,6 +723,9 @@ class RebuildContext:
     # trail layer in their level's colour (pipeline.trail_closures.drawn_singletrack;
     # OWNER-DECISIONS 456); the rest stay hidden.
     drawn_singletracks: set[int] = field(default_factory=set)
+    # Ways mapped closed when wet, which the Mountain Bike graph closes
+    # (`routemaker.mtbmode.closed_when_wet`; docs/MTB-TOPO-PLAN.md, slice 6).
+    wet_closed: set[int] = field(default_factory=set)
     # Every `rm:no_bicycle` reason of the NO-BIKE-PATHS rules (routemaker.trailaccess,
     # routemaker.zoo, pipeline.trail_closures), cbd_sidewalk and singletrack
     # included, by way; the short dismount connectors routing keeps and the route
@@ -791,6 +826,7 @@ class RebuildContext:
             "aadt_by_way",
             "aadt_raw_by_way",
             "road_facts_by_way",
+            "pci_by_way",
             "class_tags_by_way",
             "routing_tags_by_way",
             "road_attr_sources",
@@ -1179,12 +1215,23 @@ def closure_probes(context: RebuildContext) -> list[tiles.ClosureProbe]:
     return probes
 
 
-def write_closure_reports(out_dir: Path, probes, singletracks) -> None:
-    """What the post-swap probe reads (scripts/probe_bicycle_closures.py)."""
+def write_closure_reports(
+    out_dir: Path, probes, singletracks, drawn_singletracks: Collection[int] = frozenset()
+) -> None:
+    """What the post-swap probe reads (scripts/probe_bicycle_closures.py).
+
+    `mtb_graph_open` is 1 on a probe the Mountain Bike graph opens on purpose
+    (`trail_closures.mtb_graph_keeps`: the mountain-bike class and the singletrack the
+    layer draws), so the post-swap probe still holds that graph to the undrawn singletrack
+    (bicycle=no, hiking-only, private and the rest), as the rebuild's own readback does."""
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    def mtb_open(p) -> str:
+        return "1" if trail_closures.mtb_graph_keeps(p.reason, p.way_id, drawn_singletracks) else ""
+
     (out_dir / CLOSURE_PROBES_REPORT).write_text(
-        "way_id,lon,lat,reason\n"
-        + "".join(f"{p.way_id},{p.lon:.7f},{p.lat:.7f},{p.reason}\n" for p in probes)
+        "way_id,lon,lat,reason,mtb_graph_open\n"
+        + "".join(f"{p.way_id},{p.lon:.7f},{p.lat:.7f},{p.reason},{mtb_open(p)}\n" for p in probes)
     )
     (out_dir / SINGLETRACK_REPORT).write_text("".join(f"{w}\n" for w in sorted(singletracks)))
 
@@ -1916,6 +1963,80 @@ def build_handlers(
             len(by_way),
         )
 
+    def conflate_pavement(entries) -> None:
+        """DDOT's Pavement Condition Index onto the District's streets (DC-PCI).
+
+        The blocks are matched as street blocks are (`conflation.conflate_blocks`:
+        a block is shared by both carriageways, a service way needs an agreeing
+        name, a differently named block is vetoed), and `routemaker.pavement.resolve`
+        decides each way's reading: the PCI band, or OSM's where an approved
+        correction or a newer OSM smoothness edit says so, and never on an alley or
+        a trail. The per-way result is written to the reports folder."""
+        reference = context.require_reference()
+        context.pci_by_way = {}
+        if not reference.pavement_blocks:
+            return
+        blocks = reference.pavement_blocks
+        features = [
+            conflation.RoadFeature(
+                feature_id=block.feature_id,
+                coordinates=block.coordinates,
+                facts=agency_roads.RoadFacts(agency=pavement.AGENCY, name=block.name),
+            )
+            for block in blocks
+        ]
+        result = conflation.conflate_blocks(
+            entries,
+            features,
+            {way.osm_id: way.name for way in context.ways},
+            name_required={
+                way.osm_id
+                for way in context.ways
+                if way.tags.get("highway") in agency_roads.NAME_REQUIRED_HIGHWAYS
+            },
+            name_free={
+                way.osm_id
+                for way in context.ways
+                if way.tags.get("highway") in agency_roads.NAME_FREE_HIGHWAYS
+            },
+        )
+        by_id = {block.feature_id: block for block in blocks}
+        corrections = pavement.load_overrides()
+        for way_id, shares in result.matched.items():
+            way = context.ways_by_id[way_id]
+            found = pavement.resolve(
+                way_id,
+                way.tags,
+                [(by_id[share.feature_id], share.share) for share in shares],
+                edited=way.edited,
+                override=corrections.get(way_id),
+            )
+            if found is not None:
+                context.pci_by_way[way_id] = found
+        unused = sorted(set(corrections) - set(context.pci_by_way))
+        if unused:
+            logger.warning(
+                "pavement corrections not applied (fixtures/pavement/overrides.json): the "
+                "layer reached none of ways %s",
+                unused,
+            )
+        why = Counter(item.why for item in context.pci_by_way.values())
+        applied = Counter(item.applied for item in context.pci_by_way.values() if item.applied)
+        logger.info(
+            "DC pavement (PCI): %d of %d blocks matched ways, %d ways reached; applied %s; "
+            "kept OSM's reading: %s",
+            len(blocks) - len(result.unmatched_features),
+            len(blocks),
+            len(context.pci_by_way),
+            ", ".join(f"{name} {applied[name]}" for name in pavement.BANDS),
+            ", ".join(f"{name} {count}" for name, count in sorted(why.items()) if name != "pci"),
+        )
+        write_reports(
+            context.work_dir,
+            {PAVEMENT_REPORT_NAME: pavement.report_csv(context.pci_by_way.values())},
+            "DC pavement",
+        )
+
     def conflate_volume() -> None:
         reference = context.require_reference()
         # The third element is the trail-class flag, and it is what keeps a
@@ -1946,6 +2067,9 @@ def build_handlers(
         # 2020) fills where no count layer reached the way and never replaces
         # one - DDOT's own 2024 counts are the newer survey.
         conflate_road_blocks(entries)
+        # DDOT's pavement survey on the same entries (DC-PCI): a report and a
+        # graph tag, nothing the classifier reads.
+        conflate_pavement(entries)
         # Recorded rather than discarded: two agencies disagreeing about one
         # road, and a count that matched nothing, are both things a reviewer
         # needs to see.
@@ -2512,6 +2636,10 @@ def build_handlers(
         context.cbd_sidewalks = {w for w, r in nobike.reasons.items() if r == cbd.NO_BICYCLE}
         context.singletracks = {w for w, r in nobike.reasons.items() if r == singletrack.NO_BICYCLE}
         context.drawn_singletracks = nobike.drawn_singletrack
+        # Closed on the Mountain Bike graph alone (`routemaker.mtbmode.closed_when_wet`).
+        context.wet_closed = {
+            way.osm_id for way in context.ways if mtbmode.closed_when_wet(way.tags)
+        }
         car_free_for_good = 0
         for way in context.ways:
             # The tags the classifier read where an agency's street layer
@@ -2716,16 +2844,27 @@ def build_handlers(
                         variant, way.osm_id, context.facility_by_way, context.car_free_by_way
                     )
                 )
+                # DDOT's pavement band for the street (DC-PCI; lua/routemaker_remap.lua).
+                pci = context.pci_by_way.get(way.osm_id)
+                if pci is not None and pci.applied:
+                    derived["pci"] = pci.applied
                 if way.osm_id in context.cemetery_ways:
                     # No cut-through: reached only from or to a point inside.
                     derived["cemetery"] = True
                 lit = lit_value(way.tags)
                 if lit is not None:
                     derived["lit"] = lit
-                reason = context.no_bicycle.get(way.osm_id)
-                if reason is not None and not (
-                    variant is variants.Variant.OFFROAD and reason in trail_closures.OFFROAD_KEEPS
-                ):
+                # The off-road graph keeps the mountain-bike class open; the Mountain Bike
+                # graph that and drawn singletrack, and closes a trail mapped closed when
+                # wet (slice 6; `trail_closures.graph_reason`).
+                reason = trail_closures.graph_reason(
+                    variant,
+                    context.no_bicycle.get(way.osm_id),
+                    way.osm_id,
+                    context.drawn_singletracks,
+                    context.wet_closed,
+                )
+                if reason is not None:
                     derived["no_bicycle"] = reason
                 if way.osm_id in context.destination_only:
                     derived["destination_only"] = zoo.DESTINATION_ONLY
@@ -3458,7 +3597,10 @@ def _closures_across_variants(context: RebuildContext, run) -> dict:
     probes = held if held is not None else closure_probes(context)
     try:
         write_closure_reports(
-            context.work_dir / DISCREPANCY_REPORT_DIR, probes, context.singletracks
+            context.work_dir / DISCREPANCY_REPORT_DIR,
+            probes,
+            context.singletracks,
+            getattr(context, "drawn_singletracks", None) or set(),
         )
     except OSError:
         logger.warning("bicycle-closure probe list not written", exc_info=True)
@@ -3472,6 +3614,12 @@ def _closures_across_variants(context: RebuildContext, run) -> dict:
             for probe in probes
             if not (
                 variant is variants.Variant.OFFROAD and probe.reason in trail_closures.OFFROAD_KEEPS
+            )
+            and not (
+                variant is variants.Variant.MTB
+                and trail_closures.mtb_graph_keeps(
+                    probe.reason, probe.way_id, context.drawn_singletracks
+                )
             )
         ]
         readbacks[variant] = _read_back(

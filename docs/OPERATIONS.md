@@ -2933,7 +2933,7 @@ to prevent.
 
 Preset links: `/<ride-type-id>` (for example `/trailmaxxing`, any case, with or without a trailing slash) is a 302 to `/#preset=<id>`, for exactly the ids in `frontend/src/lib/presets.ts` (eleven since Riding with kids, `/kids`); adding or renaming a ride type means editing the Caddyfile's `@preset-*` list too, and `tests/test_preset_links.py` fails until it matches.
 
-`/basemap/*` answers only `region.pmtiles`, `fonts/*` and `sprites/*` (anything
+`/basemap/*` answers only `region.pmtiles`, `contours.pmtiles`, `fonts/*` and `sprites/*` (anything
 else under it is a 404, the stamps and the work directory included), and only to
 requests whose `Origin` is this site or, with no `Origin`, whose `Referer` is a
 page on it; anything else is a 403, sent `no-store` so a browser does not keep
@@ -2948,6 +2948,74 @@ TLS-terminating proxy Caddy sees `http` and refuses every `https` page.
 Caddy with a third-party module. Until then nothing bounds how fast one address
 can read the archive, and that is a gate on opening the site to anything beyond
 this machine (docs/DEPLOYMENT.md, "Build").
+
+### Topo lines (contours; docs/MTB-TOPO-PLAN.md, slice 4)
+
+The Map layers sheet's "Topo lines" switch (OWNER-DECISIONS 454; `frontend/src/lib/topoLines.ts`)
+draws contours from `<DATA_ROOT>/basemap/contours.pmtiles`, served beside the base map at
+`/basemap/contours.pmtiles` with the same same-origin guard and `no-cache` (the Caddyfile and the
+beta's nginx template both list it). Until the file exists, turning the switch on (the
+first time in a visit, when the app asks the server for the archive with a `HEAD`) changes its
+description to "Topo lines are not available on this server yet", and nothing else changes. The edge change needs the
+Caddyfile re-read once (below, "Applying a Caddyfile change").
+
+`scripts/build_contours.py` makes the file from the USGS 3DEP 1/3 arc-second DEM (four one-degree
+cells over `COVERAGE_BBOX`: n40w078, n40w077, n39w078, n39w077; 1.82 GB in all, 370 to 500 MB each,
+as the bucket listed them on 2026-10-11): it downloads them (kept in its work directory, so a second
+run downloads nothing; each checked against the bucket's Content-Length, since 3DEP publishes no
+checksum), clips the mosaic to the coverage, traces every 20 ft contour (`gdal_contour`), splits them
+into three layers by the coarsest spacing each belongs to (100, 40 and 20 ft, tiled from zoom 10, 13
+and 14), and writes the archive (GDAL's PMTiles driver, zoom 10 to 14) through a `.part` name, so the
+edge never serves half a file. `--print-plan` lists the cells, URLs and levels without touching the
+network.
+
+When: once, as part of the release's last step before the beta, with the rebuild (the owner: "Rebuild
+should be the last step before it's on the beta"), and again only if USGS republishes the cells. It
+needs no database and no router, and it does not touch the running stack: the edge reads the file per
+request, so the next request gets the new archive.
+
+It needs GDAL 3.8 or later with the PMTiles driver, and must write as the basemap directory's owner
+(uid 10001 after `prepare_data_root.sh`), so, like the base map fetch, it runs in a container as
+10001 with only the script and that directory mounted. The image is GDAL's own, pinned by tag (record
+its digest in this section on the first pull: the cloud container that wrote this could not pull it).
+From the repository root:
+
+```sh
+docker run --rm -u 10001:10001 \
+  -v <DATA_ROOT>/basemap:/out \
+  -v "$PWD/scripts/build_contours.py:/build_contours.py:ro" \
+  ghcr.io/osgeo/gdal:ubuntu-small-3.9.3 \
+  python3 /build_contours.py --out /out
+```
+
+The work directory is `/out/.contours-work` (`<DATA_ROOT>/basemap/.contours-work`, which the edge
+refuses like any unlisted path). It is deleted at the end, downloads and all, because
+`scripts/beta/ship-data.sh` copies the whole basemap directory to the beta; `--keep-work` keeps it
+(a re-run then downloads nothing). A kept work directory, or one a failed run left behind (it is
+deleted only on success), must be deleted before shipping data: `ship-data.sh` refuses to ship the
+basemap while `.contours-work` or a half-written `.contours.pmtiles.part` is there.
+
+Disk and time, measured in the cloud container on 2026-10-11 with Ubuntu 24.04's GDAL 3.8.4 on one
+whole cell (n39w078 clipped to the coverage's 38.2 N, 0.8 of a square degree, among the hillier parts,
+its highest line 1,800 ft): 500 MB downloaded, 297 MB clipped DEM, 254 MB of contour lines, 254 MB of split
+layers, a 39 MB archive, 291 s in all on 4 cores (the tiling 183 s of it, at 209 MB peak memory). The coverage is
+about 3 square degrees, mostly flatter, so expect: **about 1.8 GB to download, about 5 GB free on the
+data volume at the peak (downloads, the clipped DEM and two line files), an archive of roughly 100 to
+150 MB, and 20 to 30 minutes on the host**, most of it the tiling, on one core.
+GDAL streams the DEM in blocks; give the container 2 GB. Check the result:
+
+```sh
+docker run --rm -v <DATA_ROOT>/basemap:/out:ro ghcr.io/osgeo/gdal:ubuntu-small-3.9.3 \
+  ogrinfo -so /out/contours.pmtiles        # name=RouteMaker contours, minzoom=10, maxzoom=14
+```
+
+then turn the switch on in the app at zoom 12, 13 and 15: 100 ft lines with 500 ft index lines, then
+40 ft with 200 ft, then 20 ft with 100 ft, each index line heavier and labelled "500 ft (152 m)".
+
+Source and licence: docs/SOURCES.md, "USGS 3D Elevation Program" (U.S. public domain; the map's
+credits already name "USGS 3DEP"). The look is this app's own, written for it; the source's credit
+names OpenTopoMap as the look's inspiration (docs/MTB-TOPO-PLAN.md, slice 4), and nothing of
+OpenTopoMap's style code, which names no licence, is copied.
 
 ## Applying a Caddyfile change
 
@@ -3492,7 +3560,7 @@ the first host to run it is the first test of it.
 
    ```sh
    docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-   docker compose --profile offroad restart valhalla-offroad   # only where the off-road router runs
+   docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # only where the off-road routers run
    ```
 
 After that the weekly schedule carries it: Tuesdays 08:00 UTC, with the alert
@@ -3851,7 +3919,8 @@ docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py locate
 ```
 
 The gate's probes against the four **serving** routers, one pedestrian locate
-each. Expect `ok` on every line. Every router but no-trail finds most of the
+each, and against `valhalla-offroad` and `valhalla-mtb` where they run (each says "not
+running, skipped" where it does not). Expect `ok` on every line. Every router but no-trail finds most of the
 probes; no-trail drops trails, singletrack with them, so it finds only the OSM
 closures that are not trails (7 tracks in the 2026-10-03 extract: "7 found,
 ok"). `OPEN:` lists ways a bicycle may use; `FOUND NONE` on a router that keeps
@@ -3962,7 +4031,7 @@ are restarted:
 
 ```sh
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-docker compose --profile offroad restart valhalla-offroad   # only where the off-road router runs
+docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # only where the off-road routers run
 ```
 
 Nothing in the rebuild does this, and there is no check that notices it has not
@@ -4165,6 +4234,73 @@ proxy cannot reach the service.
    The before/after tier count for Maryland goes in the release notes: every
    tier a Maryland count moved is a road that was graded without one.
 
+## DC pavement condition (DC-PCI)
+
+DDOT's Pavement Condition Index is the smoothness reading of District streets from
+v0.5.0 (owner, 2026-10-11: "DC score in most cases takes priority over OSM data").
+The download runs on the home PC at rebuild time: the cloud proxy cannot reach
+dcgis.dc.gov. **The service states no licence**: confirm the terms with DDOT or Open
+Data DC before the release ships (docs/SOURCES.md). Until the owner has, the code
+holds it back: `routemaker.pavement.LICENCE_CONFIRMED` is False, so step 2 refuses
+`--dc-pci` (exit 2, `--dc-pci refused: ... states no licence`) and a rebuild that
+finds a `pavement.json` logs `... is installed but not read` and leaves every street
+on OSM's reading. The commit that records the confirmation in docs/SOURCES.md sets it
+True; only then run steps 1 to 3.
+
+1. **Fetch FY-25 once**, from the checkout on the host. There is no ArcGIS Online
+   item, so no `--item`; the README the script writes records the service's own item
+   info and says the licence is to be confirmed. It pages at 1,000 a request
+   (the layer's limit) and retries each request three times:
+
+   ```sh
+   export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
+   python3 scripts/fetch_agency_layer.py --slug dc-pavement-pci-fy25 \
+       --layer https://rh.dcgis.dc.gov/dcgis/rest/services/DDOT/PavementConditionIndex/FeatureServer/5 \
+       --out-dir ~/rmdata/datasets --credit "DDOT Pavement Condition Index (DC GIS)"
+   sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25"
+   sudo install -o 10001 -g 10001 -m 644 ~/rmdata/datasets/dc-pavement-pci-fy25/* \
+       "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25/"
+   ```
+
+   Exit 3 means the pages did not add up to the count the service reported: delete
+   the folder and run it again. Put the size and sha256 from its README into
+   docs/SOURCES.md. Before installing, open the file and check one record's `DATE1`
+   against the fiscal year: the rebuild takes `DATE1` as the survey date (an
+   assumption, docs/SOURCES.md).
+
+2. **Install it** (with the other reference inputs, or on its own; it writes only
+   `reference/pavement.json`):
+
+   ```sh
+   docker compose exec -T rebuild python3 scripts/install_reference_data.py \
+       --data-root /data \
+       --dc-pci /data/reference/inputs/dc-pavement-pci-fy25/dc-pavement-pci-fy25.geojson
+   ```
+
+   It prints `wrote .../pavement.json: N pavement blocks (FY2025)`. A later year's
+   layer takes `--dc-pci-fiscal-year`, which only names the year blocks with no
+   `DATE1` are dated to.
+
+3. **After the rebuild**, read the log line and the report:
+
+   | Line | What to look for |
+   |---|---|
+   | `DC pavement (PCI): N of M blocks matched ways, N ways reached; applied good N, fair N, poor N; kept OSM's reading: ...` | most blocks matched; `not_street` counts the alleys and paths near a block, `osm_newer` the streets whose OSM smoothness is newer than the survey, `override` the owner's corrections |
+   | `.../pavement.json is absent, so DDOT's Pavement Condition Index is not read` | should not appear once step 2 has run |
+   | `pavement corrections not applied (fixtures/pavement/overrides.json)` | should not appear; a correction names a way the layer did not reach |
+
+   `${DATA_ROOT}/rebuild/reports/dc-pavement-pci.csv` has one line a way the layer
+   reached: its PCI, the band the graph was given (empty where OSM's reading stood),
+   why, the survey date and the blocks. Spot-check two streets you know, one rough
+   and one smooth. A street that is wrong gets a row in
+   `fixtures/pavement/overrides.json` (`reading`: `osm`, `good`, `fair` or `poor`,
+   with the reason and the owner's decision), committed, and the next rebuild
+   applies it.
+
+   **Rolling it back** without a code change: remove `reference/pavement.json` and
+   rebuild; every street then keeps OSM's reading, and the log says the file is
+   absent.
+
 ## Deployment actions
 
 - Add a `check_operations` cron entry, or point an existing monitor at it.
@@ -4363,7 +4499,7 @@ changes nothing — and `--confirm` is what performs it.
 docker compose exec -T rebuild ./manage.py rollback_rebuild            # what would happen
 docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm  # do it
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-docker compose --profile offroad restart valhalla-offroad   # only where the off-road router runs
+docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # only where the off-road routers run
 docker compose up -d --no-deps --no-build --force-recreate api worker
 docker compose exec -T api python manage.py predraw_stress_tiles
 ```
@@ -4550,7 +4686,7 @@ tiles):
    disagree means that variant is not back yet.
 5. **Restart the routers** if any of them restarted while the links were
    wrong — it will have loaded the build that failed to swap:
-   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the off-road router runs, `docker compose --profile offroad restart valhalla-offroad`
+   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the off-road router runs, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb`
    (see "After a rebuild: restart the routers"). Harmless if none did.
 6. **Leave `staging` alone.** It is the failed build's output and the next
    rebuild's first stage drops it. Then rebuild — `run_rebuild_now`, or wait
@@ -4827,15 +4963,15 @@ foot_designated, trail_visibility, hiking_route, natural_surface, park_path, mtb
 dismount), `routemaker.zoo` and the existing `singletrack` and `cbd_sidewalk`.
 The rebuild log line "facility classes: ..." carries the count per reason.
 
-**Five graphs.** The mountain-bike class (`mtb`) is closed on the standard,
+**Six graphs.** The mountain-bike class (`mtb`) is closed on the standard,
 weekend, e-bike and no-trail graphs and open on a fifth, `valhalla-offroad`
 (`Variant.OFFROAD`), which Gravel and Mountain Goat ride (OWNER-DECISIONS
-291(2)). It has no weekend twin and falls back to the standard graph, as the
+291(2)), and on the Mountain Bike graph (below). The off-road graph has no weekend twin and falls back to the standard graph, as the
 weekend one does, when it is not promoted or not answering. Start it after the
 first rebuild that builds it: `docker compose --profile offroad up -d --no-deps
 --no-build valhalla-offroad`; a rollback that withdraws it stops it like the weekend one.
-Limits: two workers inside 1536M (not 2G), so the swap-time peak is 32.0G of the
-32G the compose check allows.
+Limits: one worker inside 768M (not 2G), sharing with the Mountain Bike router (below) the
+1536M it had alone, so the swap-time peak is 32.0G of the 32G the compose check allows.
 
 **The off-road router is behind the compose profile `offroad`.** A plain
 `docker compose up -d` (and the force-recreate lists above, which name services
@@ -4851,8 +4987,53 @@ command above after the swap, and `restart` it after later rebuilds as the other
 A `restart` that names `valhalla-offroad` where it has no container fails ("no such
 service", with or without `--profile offroad`) and restarts none of the other
 routers on the same line, so the four-router restart never names it. Restart it on
-its own line, `docker compose --profile offroad restart valhalla-offroad`, and only
+its own line, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb`, and only
 where it runs.
+
+**The Mountain Bike graph** (docs/MTB-TOPO-PLAN.md, slice 6). A sixth graph, `tiles/mtb`
+(`Variant.MTB`, `valhalla/valhalla-mtb.json`), which only the Mountain Bike ride type rides:
+the off-road graph with rated singletrack opened where nothing but its rating closes it
+(`pipeline.trail_closures.mtb_graph_keeps`), and every way mapped closed when wet
+(`routemaker.mtbmode.closed_when_wet`) closed with `rm:no_bicycle=wet`. Every rebuild builds and
+promotes it with the other five; nothing else is to run. Its router, `valhalla-mtb`, is behind
+the same compose profile as `valhalla-offroad` and is started and restarted with it:
+
+    docker compose --profile offroad up -d --no-deps --no-build valhalla-offroad valhalla-mtb
+    docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # after a later swap
+
+Start both or neither: the printed restart names both, and a `restart` naming a service with no
+container restarts none of the others on the line. One worker in 768M each (the 1536M
+`valhalla-offroad` had alone), so the 32G compose check still holds at 32.0G; a host with room
+can give each two workers in 1536M once the check's host size is raised. While the router is not
+running, or before the first rebuild that builds `tiles/mtb`, Mountain Bike plans on the standard
+graph and the route says so (`mtb.limited` = `no_mtb_graph`). Disk: the rebuild's gate counts a
+sixth extract (seven times the source, `pipeline.tiles.check_disk_gate`), and the graph is about
+1.1 GB on disk like the others. The post-swap closure probe
+(`scripts/probe_bicycle_closures.py`) reads it too, leaving out only the probes it opens on
+purpose: the mountain-bike class and the singletrack the layer draws, which the probe file
+marks (`mtb_graph_open` = 1). It still holds that router to the undrawn singletrack (bicycle=no,
+hiking-only, private and the rest), as the rebuild's own readback does. A probe file written
+before that column leaves out every singletrack probe on it. The cloud box's result carries `tiles-mtb.tar` beside the other five
+(`scripts/cloud/box-rebuild.sh`, `import-result.sh`), and the beta's bundle sends `tiles/mtb`
+with the rest; the beta does not start the router (compose.beta.yaml, its memory ceiling).
+
+*Memory and time on the build host (the 16 GB WSL PC).* The sixth graph does not raise the
+rebuild's memory peak. Every per-graph stage runs one graph at a time, in the same `rebuild`
+container under its 8G limit: the extract written per graph (`inject_tags`, one graph's tag map
+held at a time), `valhalla_build_tiles` (one graph at a time, `REBUILD_TILE_CONCURRENCY` threads
+inside it), and the grade and closure read-backs (one one-shot `valhalla_service` at a time;
+`tests/test_worker_schedule.py` counts six builds and eight reads). The extra set it
+keeps is the wet-closed way ids, a few thousand integers. So the last rebuild's peak still holds,
+and so does what it needed: photon stopped and the heavy host apps closed (pre-flight, step B).
+What the sixth graph adds is time and disk: one more tile build, about 20-25 minutes quiet and
+more under load (the weekend graph's figure, above), inside the 8 h `REBUILD_TIMEOUT_S`; one more
+extract the size of the source; and about 1.1 GB per kept build directory (`current` and
+`previous`, so about 2.2 GB). At run time nothing changes on that host. `valhalla-mtb`, like
+`valhalla-offroad`, is behind the `offroad` profile and is not started there, and Mountain Bike
+plans on the standard graph and says so. Start the pair only on a host with about 1.5 GB to
+spare beyond the four routers. Each router's resident set has been 74-500 MB when read (the
+standard router about 450 MB over its 1.1 GB of tiles), so one worker fits in 768M; the compose
+check's 700 MB a worker leaves it little headroom past that.
 
 **The Zoo.** `fixtures/zoo/` holds the polygon and the spur: the Harvard Street
 NW entrance to the bike racks (OSM node 9827008403), seven whole ways, written
@@ -4887,8 +5068,11 @@ in `pipeline.trail_closures.PARK_RULES` after that park's compendium has been
 read, which needs the owner's approval as a fetch.
 
 **The gate.** VALIDATE_TILES reads back up to 8 ways of each new reason from every
-graph; the off-road graph is not held to `mtb`. `scripts/probe_bicycle_closures.py`
-does the same after the swap and now reads the off-road router too.
+graph; the off-road graph is not held to `mtb`, and the Mountain Bike graph not to `mtb`
+or to the singletrack the layer draws (`trail_closures.mtb_graph_keeps`).
+`scripts/probe_bicycle_closures.py` does the same after the swap and reads the off-road and
+Mountain Bike routers too, where they run ("offroad: not running, skipped" and "mtb: not
+running, skipped" where they do not).
 
 ## Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)
 

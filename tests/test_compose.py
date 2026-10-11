@@ -118,6 +118,7 @@ def test_one_valhalla_process_per_tile_variant() -> None:
     variants = sorted(n for n in SERVICES if n.startswith("valhalla-"))
     assert variants == [
         "valhalla-ebike",
+        "valhalla-mtb",
         "valhalla-no-trail",
         "valhalla-offroad",
         "valhalla-standard",

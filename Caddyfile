@@ -60,6 +60,8 @@
 	redir @preset-mass-ride /#preset=mass-ride 302
 	@preset-mountain-goat path /mountain-goat /mountain-goat/
 	redir @preset-mountain-goat /#preset=mountain-goat 302
+	@preset-mountain-bike path /mountain-bike /mountain-bike/
+	redir @preset-mountain-bike /#preset=mountain-bike 302
 	@preset-gravel path /gravel /gravel/
 	redir @preset-gravel /#preset=gravel 302
 	@preset-fast path /fast /fast/
@@ -116,15 +118,17 @@
 	handle_path /basemap/* {
 		@foreign not expression `{header.Origin} == {scheme} + "://" + {hostport} || ({header.Origin} == "" && {header.Referer}.startsWith({scheme} + "://" + {hostport} + "/"))`
 		respond @foreign 403
-		# The contract's three paths and nothing else - not the fetch
+		# The contract's paths and nothing else (the base map, the topo lines'
+		# contours from scripts/build_contours.py, glyphs, sprites) - not the fetch
 		# script's stamps, nor its work directory mid-refresh.
-		@unlisted not path /region.pmtiles /fonts/* /sprites/*
+		@unlisted not path /region.pmtiles /contours.pmtiles /fonts/* /sprites/*
 		respond @unlisted 404
 		# `private`: the answer depends on Origin and Referer, which a shared
 		# cache would not key on. The archive revalidates every time (a 304 is
 		# cheap), because a refresh replaces it under the same name; the
 		# glyphs and sprites only change with a pinned commit.
 		header /region.pmtiles Cache-Control "private, no-cache"
+		header /contours.pmtiles Cache-Control "private, no-cache"
 		header /fonts/* Cache-Control "private, max-age=86400"
 		header /sprites/* Cache-Control "private, max-age=86400"
 		# `header` runs before `respond`, so without this a refused glyph

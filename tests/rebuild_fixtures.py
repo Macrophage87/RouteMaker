@@ -322,7 +322,15 @@ def build_named_bridge_extract(
 
 
 def write_reference_data(
-    root: Path, *, urban=(), sidepath=(), volume=(), legality=(), crossings=(), roadway=()
+    root: Path,
+    *,
+    urban=(),
+    sidepath=(),
+    volume=(),
+    legality=(),
+    crossings=(),
+    roadway=(),
+    pavement=(),
 ) -> Path:
     """The reference inputs the rebuild refuses to run without.
 
@@ -359,6 +367,9 @@ def write_reference_data(
     # classifies from OSM and the defaults, and warns.
     if roadway:
         (directory / "roadway.json").write_text(json.dumps(list(roadway)))
+    # DDOT's PCI blocks (DC-PCI), optional too.
+    if pavement:
+        (directory / "pavement.json").write_text(json.dumps(list(pavement)))
     return directory
 
 
