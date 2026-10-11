@@ -1,20 +1,18 @@
-"""valhalla_build_tiles' thread count, and the one retry of an aborted build.
+"""valhalla_build_tiles' thread count, and the retired abort retry.
 
-Valhalla 3.5.1 can abort a multi-threaded tile build with "double free or
-corruption" (valhalla/valhalla#5005, fixed in 3.6.0): each build thread frees its
-spatialite connections on exit through a libxml2 call that is not thread-safe.
-It is a race, so the rebuild builds with fewer threads and runs an aborted
-`valhalla_build_tiles` once more before failing. The pinned 3.9.1 has the fix;
-both guards stay until rebuilds with it on the host have shown it. See docs/OPERATIONS.md, "Tile
-build threads".
+Valhalla 3.5.1 could abort a multi-threaded tile build with "double free or
+corruption" (valhalla/valhalla#5005, fixed in 3.6.0), so the rebuild built with
+2 threads and ran an aborted `valhalla_build_tiles` once more. The pinned image is
+3.9.1, and both guards are retired (FOLLOWUP-VALHALLA-36-LEFTOVERS, item 4): the
+default is 4 threads and an abort fails the stage at once, like any other
+failure, and the attempt resumes from its checkpoints. See docs/OPERATIONS.md,
+"Tile build threads".
 """
 
 from __future__ import annotations
 
-import functools
 import importlib.util
 import json
-import logging
 import shutil
 import signal
 from pathlib import Path
@@ -23,8 +21,7 @@ import pytest
 
 from pipeline import run as run_module
 from pipeline import tiles
-from pipeline.rebuild import RebuildTimedOut
-from pipeline.run import CommandFailed, _run_command, _run_tile_command
+from pipeline.run import CommandFailed, _run_command
 from pipeline.variants import Variant
 
 REPO = Path(__file__).resolve().parents[1]
@@ -33,185 +30,39 @@ BUILD_TILES = ["valhalla_build_tiles", "-c", "/data/tiles/weekend/b/build-config
 EXTRACT = ["valhalla_build_extract", "-c", "/data/tiles/weekend/b/build-config.json", "-v"]
 
 
-def aborted(command) -> CommandFailed:
-    return CommandFailed(
-        command,
-        -signal.SIGABRT,
-        tiles.CommandOutput(
-            "Building 182 tiles with 4 threads...\n", "double free or corruption (fasttop)\n"
-        ),
+# --- The retired retry ---------------------------------------------------------------
+
+
+def test_the_abort_retry_is_retired() -> None:
+    """An abort is no longer the known race, so nothing runs a crashed build again:
+    the tile stage calls the runner once per command (FOLLOWUP-VALHALLA-36-LEFTOVERS,
+    item 4). A refused Lua script also dies of SIGABRT (std::terminate), and a
+    retry only ran it twice."""
+    assert not hasattr(run_module, "_run_tile_command")
+    assert not hasattr(run_module, "TILE_BUILD_ABORT_RETRIES")
+    assert not hasattr(run_module, "RETRYABLE_TILE_SIGNALS")
+    source = Path(run_module.__file__).read_text()
+    assert "run(command).log for command in commands" in source
+
+
+def test_an_abort_says_so_once(monkeypatch) -> None:
+    def fake_subprocess_run(command, **kwargs):
+        import subprocess
+
+        raise subprocess.CalledProcessError(-signal.SIGABRT, command, "", "double free\n")
+
+    calls = []
+    monkeypatch.setattr(
+        run_module.subprocess,
+        "run",
+        lambda command, **kwargs: calls.append(command) or fake_subprocess_run(command),
     )
-
-
-class Scripted:
-    """A runner that fails the first `failures` calls with the given error."""
-
-    def __init__(self, failures: int, error=aborted) -> None:
-        self.failures = failures
-        self.error = error
-        self.calls: list[list[str]] = []
-
-    def __call__(self, command):
-        self.calls.append(list(command))
-        if len(self.calls) <= self.failures:
-            raise self.error(command)
-        return tiles.CommandOutput("tiles built\n", "")
-
-
-# --- The retry ---------------------------------------------------------------------
-
-
-def test_an_aborted_tile_build_is_run_once_more_and_its_log_is_the_second_runs(caplog) -> None:
-    run = Scripted(failures=1)
-    with caplog.at_level(logging.WARNING, logger="pipeline.run"):
-        output = _run_tile_command(run, BUILD_TILES)
-    assert run.calls == [BUILD_TILES, BUILD_TILES]
-    assert output.log == "tiles built\n"
-    assert "retry 1 of 1" in caplog.text
-    assert "weekend" in caplog.text, "the warning names the graph being rebuilt"
-
-
-def test_a_second_abort_fails_as_before() -> None:
-    run = Scripted(failures=2)
     with pytest.raises(CommandFailed) as caught:
-        _run_tile_command(run, BUILD_TILES)
+        _run_command(BUILD_TILES)
+    assert len(calls) == 1
     assert caught.value.returncode == -signal.SIGABRT
-    assert len(run.calls) == 2, "one retry, not a loop"
-    # The alert and the job row carry the message: it says the retry ran too, which is
-    # what tells an operator to build with one thread.
-    assert "valhalla_build_tiles exited -6 (after 1 retry): " in str(caught.value)
-    assert caught.value.retries == 1
-
-
-def test_a_failure_with_no_retry_says_nothing_of_one() -> None:
-    def refused(command):
-        return CommandFailed(command, 1, tiles.CommandOutput("", "bad input\n"))
-
-    with pytest.raises(CommandFailed) as caught:
-        _run_tile_command(Scripted(failures=1, error=refused), BUILD_TILES)
-    assert "exited 1: " in str(caught.value)
+    assert "valhalla_build_tiles exited -6: " in str(caught.value)
     assert "retry" not in str(caught.value)
-
-
-def test_an_ordinary_failure_is_not_retried() -> None:
-    """A non-zero exit is a refusal (a bad Lua script, a missing file) that
-    would say the same thing again; only the abort is the race."""
-
-    def refused(command):
-        return CommandFailed(command, 1, tiles.CommandOutput("", "bad input\n"))
-
-    run = Scripted(failures=1, error=refused)
-    with pytest.raises(CommandFailed):
-        _run_tile_command(run, BUILD_TILES)
-    assert len(run.calls) == 1
-
-
-def segfaulted(command) -> CommandFailed:
-    return CommandFailed(
-        command,
-        -signal.SIGSEGV,
-        tiles.CommandOutput("Building 182 tiles with 1 threads...\n", ""),
-    )
-
-
-def test_a_segfaulted_tile_build_is_run_once_more_too(caplog) -> None:
-    """Job 8408 lost a graph to SIGSEGV, the same race seen as a crash instead of an
-    abort (OWNER-DECISIONS 459): one retry, for that command only, and the log names
-    the signal so an operator can tell which it was."""
-    run = Scripted(failures=1, error=segfaulted)
-    with caplog.at_level(logging.WARNING, logger="pipeline.run"):
-        output = _run_tile_command(run, BUILD_TILES)
-    assert run.calls == [BUILD_TILES, BUILD_TILES]
-    assert output.log == "tiles built\n"
-    assert "SIGSEGV" in caplog.text and "retry 1 of 1" in caplog.text
-
-
-def test_a_second_segfault_fails_with_the_retry_in_the_message() -> None:
-    run = Scripted(failures=2, error=segfaulted)
-    with pytest.raises(CommandFailed) as caught:
-        _run_tile_command(run, BUILD_TILES)
-    assert len(run.calls) == 2, "one retry, not a loop"
-    assert caught.value.returncode == -signal.SIGSEGV
-    assert "valhalla_build_tiles exited -11 (after 1 retry): " in str(caught.value)
-
-
-def test_a_segfault_in_the_extract_is_not_retried() -> None:
-    run = Scripted(failures=1, error=segfaulted)
-    with pytest.raises(CommandFailed):
-        _run_tile_command(run, EXTRACT)
-    assert len(run.calls) == 1
-
-
-@pytest.mark.parametrize("returncode", [-signal.SIGKILL, -signal.SIGBUS, 139, 134])
-def test_other_signals_are_not_retried(returncode) -> None:
-    """SIGKILL is the OOM killer, which a rerun meets again; SIGBUS is a bad mapping.
-    134 and 139 are what a shell reports for SIGABRT and SIGSEGV, and nothing here
-    runs valhalla_build_tiles through a shell, so they are not read as signals."""
-
-    def killed(command):
-        return CommandFailed(command, returncode, tiles.CommandOutput("", ""))
-
-    run = Scripted(failures=1, error=killed)
-    with pytest.raises(CommandFailed):
-        _run_tile_command(run, BUILD_TILES)
-    assert len(run.calls) == 1
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        EXTRACT,
-        ["valhalla_build_admins", "-c", "c.json", "merged.osm.pbf"],
-        ["sh", "-c", "valhalla_build_tiles -c c.json w.pbf"],
-    ],
-)
-def test_only_valhalla_build_tiles_itself_is_retried(command) -> None:
-    run = Scripted(failures=1)
-    with pytest.raises(CommandFailed):
-        _run_tile_command(run, command)
-    assert len(run.calls) == 1
-
-
-def test_the_retry_gets_only_what_is_left_of_the_deadline(monkeypatch) -> None:
-    """The retry goes through the same runner, so a rebuild whose budget ran
-    out during the crashed build is abandoned rather than given a fresh one."""
-    now = [0.0]
-
-    def fake_subprocess_run(command, **kwargs):
-        import subprocess
-
-        now[0] = 100.0  # the crashed build used up the rest of the budget
-        raise subprocess.CalledProcessError(-signal.SIGABRT, command, "", "double free\n")
-
-    monkeypatch.setattr(run_module.subprocess, "run", fake_subprocess_run)
-
-    def run(command):
-        return _run_command(command, deadline=50.0, clock=lambda: now[0])
-
-    with pytest.raises(RebuildTimedOut):
-        _run_tile_command(run, BUILD_TILES)
-
-
-def test_the_retry_keeps_the_deadline_of_the_production_runner(monkeypatch) -> None:
-    """The runner `build_handlers` builds: `functools.partial(_run_command,
-    deadline=context.deadline)`. A retry that took the bare function, or gave itself
-    a budget of its own, would run the build again past the deadline."""
-    now = [0.0]
-    timeouts: list[float | None] = []
-
-    def fake_subprocess_run(command, **kwargs):
-        import subprocess
-
-        timeouts.append(kwargs.get("timeout"))
-        now[0] = 100.0  # the crashed build ran past the deadline at 50
-        raise subprocess.CalledProcessError(-signal.SIGABRT, command, "", "double free\n")
-
-    monkeypatch.setattr(run_module.subprocess, "run", fake_subprocess_run)
-    run = functools.partial(_run_command, deadline=50.0, clock=lambda: now[0])
-
-    with pytest.raises(RebuildTimedOut):
-        _run_tile_command(run, BUILD_TILES)
-    assert timeouts == [50.0], "the first build had the budget; the retry was never started"
 
 
 def test_the_runner_reports_an_abort_as_minus_six(tmp_path) -> None:
@@ -286,10 +137,10 @@ def test_the_setting_is_a_whole_number_of_threads() -> None:
     assert settings.REBUILD_TILE_CONCURRENCY >= 1
 
 
-@pytest.mark.parametrize(("value", "threads"), [(None, 2), ("", 2), ("  ", 2), ("3", 3), ("1", 1)])
-def test_the_setting_defaults_to_two_threads(monkeypatch, value, threads) -> None:
+@pytest.mark.parametrize(("value", "threads"), [(None, 4), ("", 4), ("  ", 4), ("3", 3), ("1", 1)])
+def test_the_setting_defaults_to_four_threads(monkeypatch, value, threads) -> None:
     """Unset, and empty (what compose hands the rebuild service when .env sets
-    nothing), are the documented default: exactly 2."""
+    nothing), are the documented default: exactly 4."""
     if value is None:
         monkeypatch.delenv("REBUILD_TILE_CONCURRENCY", raising=False)
     else:

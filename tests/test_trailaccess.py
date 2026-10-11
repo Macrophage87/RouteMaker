@@ -113,8 +113,14 @@ def test_a_way_upstream_already_closes_is_not_marked():
     assert ta.verdict({"highway": "footway", "access": "private"}) is None
     assert ta.verdict({"highway": "path", "bicycle": "no", "surface": "dirt"}) is None
     assert ta.verdict({"highway": "path", "access": "no", "surface": "dirt"}) is None
-    assert ta.verdict({"highway": "path", "sac_scale": "mountain_hiking"}) is None
-    assert ta.verdict({"highway": "footway", "sac_scale": "hiking"}) == "sac_scale"
+    # Upstream reads no `sac_scale` for a bicycle (FOLLOWUP-VALHALLA-36-LEFTOVERS,
+    # item 3; a 3.9.1 tile build, tests/test_tile_build_access.py): a rated
+    # footway is closed by its class already, and a rated path is open, so it
+    # takes the reason. The model had the two the other way round.
+    assert ta.verdict({"highway": "footway", "sac_scale": "hiking"}) is None
+    assert ta.verdict({"highway": "path", "sac_scale": "mountain_hiking"}) == "sac_scale"
+    assert ta.verdict({"highway": "path", "sac_scale": "hiking"}) == "sac_scale"
+    assert ta.verdict({"highway": "path", "sac_scale": "hiking", "surface": "asphalt"}) is None
 
 
 def test_upstream_model_reads_the_tables():

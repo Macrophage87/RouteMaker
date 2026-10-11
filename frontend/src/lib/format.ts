@@ -196,6 +196,17 @@ export function formatClimb(metres: number): string {
   return `${Math.round(metres * FEET_PER_METRE)} ft (${Math.round(metres)} m)`;
 }
 
+/**
+ * A length with the unit spelled out, miles to a tenth first, kilometres in brackets: "2.1 miles (3.4 km)",
+ * "1.0 mile (1.6 km)". For a figure said as a name (the Climbs layer's "Category 3 climb, 2.1 miles (3.4 km)
+ * at 4.6%", the owner's wording), where formatDistance would say "mi" and switch to feet when short.
+ */
+export function formatMilesSpelled(metres: number): string {
+  if (!usable(metres)) return DASH;
+  const miles = (metres / METRES_PER_MILE).toFixed(1);
+  return `${miles} ${miles === "1.0" ? "mile" : "miles"} (${(metres / 1000).toFixed(1)} km)`;
+}
+
 /** A speed from km/h: "12 mph (19 km/h)". */
 export function formatSpeed(kmh: number): string {
   if (!usable(kmh)) return DASH;
