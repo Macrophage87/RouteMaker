@@ -40,6 +40,7 @@ import {
   type LocateResult,
   type PermissionLike,
 } from "./geolocation.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 const ok = (latitude: number, longitude: number, accuracy: number): GeoApi => ({
   getCurrentPosition: (success) => success({ coords: { latitude, longitude, accuracy } }),
@@ -592,7 +593,7 @@ test("privacy: nothing in the feature's code stores, logs or sends the position"
   const lib = code(read("./geolocation.ts"));
   assert.doesNotMatch(lib, LEAKS);
   assert.doesNotMatch(lib, /watchPosition/);
-  const app = code(read("../App.tsx"));
+  const app = code(appSource());
   const start = app.indexOf("const useMyLocation");
   const end = app.indexOf("}, [gate, geoEnv", start);
   assert.ok(start > 0 && end > start, "the useMyLocation body is found");
@@ -611,7 +612,7 @@ test("privacy: nothing in the feature's code stores, logs or sends the position"
 });
 
 test("privacy: the location state reaches only the note, the hint and the circle", () => {
-  const app = code(read("../App.tsx"));
+  const app = code(appSource());
   // The identifiers, not the word in a sentence ("shows here when").
   // An alias counts too: "= here", "here;", "(here)" (the mutation re-review's A28).
   const lines = app
@@ -649,7 +650,7 @@ const body = (text: string, from: string, to: string) => {
 };
 
 test("App: the look-up's answer is placed with the ride read after the wait and the list's choice", () => {
-  const app = code(read("../App.tsx"));
+  const app = code(appSource());
   const useMy = body(app, "const useMyLocation", "}, [gate, geoEnv");
   const waited = useMy.indexOf("await locate(geoEnv)");
   const ride = useMy.indexOf("const ride = rideRef.current;");
@@ -671,7 +672,7 @@ test("App: the look-up's answer is placed with the ride read after the wait and 
 });
 
 test("App: a drag reads the old point before the commit, and moves by movePoint (R1, A15b)", () => {
-  const app = code(read("../App.tsx"));
+  const app = code(appSource());
   const move = body(app, "const move = useCallback(", "}, [commit]);");
   assert.match(move, /^const move = useCallback\(\(index: number, point: LonLat\) => \{\s*cancelLocateNotice\(\);/, "a drag cancels a pending notice (N6)");
   const before = move.indexOf("const before = pointsRef.current[index];");

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { stressSegments } from "./stressBar.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 const sample = { "1": 1800, "2": 0, "3": 2630, "4": 1040, unknown: 10 };
 
@@ -103,7 +104,7 @@ test("Avoid in the route panel's bar is the route's magenta in every palette, wi
   assert.match(body, /repeating-linear-gradient\(45deg, var\(--seg-accent/);
   assert.match(body, /repeating-linear-gradient\(-45deg, var\(--seg-accent/);
   // And App gives the bar's segments their accent.
-  assert.match(readFileSync(new URL("../App.tsx", import.meta.url), "utf8"), /stress-seg-\$\{s\.key\}[\s\S]{0,200}"--seg-accent" as string\]: s\.casing/);
+  assert.match(appSource(), /stress-seg-\$\{s\.key\}[\s\S]{0,200}"--seg-accent" as string\]: s\.casing/);
 });
 
 test("a route with no Avoid lists Avoid at 0% in the palette's own colour, never the magenta (397 \"only if a route uses it\"; r4 spec S-SF1)", async () => {

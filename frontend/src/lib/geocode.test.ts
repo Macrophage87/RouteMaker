@@ -822,3 +822,20 @@ test("re-arming replaces the retry timer rather than adding one", async () => {
   await timers.advance(NAME_DEBOUNCE_MS);
   assert.equal(timers.count(), 1, "and still one after the plan is re-sent");
 });
+
+test("a picked station goes to its bike entrance and keeps the station's name", () => {
+  const remembered: Array<[LonLat, string, string]> = [];
+  const remember = (p: LonLat, name: string, label: string) => {
+    remembered.push([p, name, label]);
+  };
+  const entrancePoint: LonLat = [PLACE.lon + 0.001, PLACE.lat];
+  const entrance = (found: Place) => (found.osm_value === "station" ? entrancePoint : null);
+  const station = { ...PLACE, osm_key: "railway", osm_value: "station" };
+  assert.deepEqual(placeFromSearch(station, remember, entrance), entrancePoint);
+  assert.deepEqual(remembered, [[entrancePoint, station.name, station.label]]);
+  // Any other place stays where it was found.
+  assert.deepEqual(placeFromSearch(PLACE, remember, entrance), [PLACE.lon, PLACE.lat]);
+  // An entrance outside the map is not used; the station's own point is.
+  const outside: LonLat = [COVERAGE_BBOX[2] + 0.5, PLACE.lat];
+  assert.deepEqual(placeFromSearch(station, remember, () => outside), [PLACE.lon, PLACE.lat]);
+});
