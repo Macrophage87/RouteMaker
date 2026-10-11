@@ -442,6 +442,8 @@ test("a point at a station is named for the station, not its entrance's street",
   assert.equal(stationPlaceName({ name: "Federal Triangle", metro: ["blue"] }), "Federal Triangle Metro station");
   assert.equal(stationPlaceName({ name: "Odenton", metro: [] }), "Odenton MARC station");
   assert.equal(stationPlaceName({ name: "Washington Union Station", metro: [] }), "Washington Union Station");
+  assert.equal(stationPlaceName({ name: "Union Station", metro: ["red"] }), "Union Station");
+  assert.equal(stationPlaceName({ name: "Baltimore Penn Station", metro: [] }), "Baltimore Penn Station");
   const metroCenter = stations.find((s) => s.name === "Metro Center")!;
   assert.equal(stationPlaceName(metroCenter), "Metro Center Metro station");
   // The way in is said in words, not left to the map.

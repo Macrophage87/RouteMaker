@@ -344,12 +344,12 @@ export function entranceNote(kind: BikeEntrance["kind"]): string {
  * The name a plan point placed at a station carries, rather than the street
  * its bike entrance is on (PLAN.md, the stationBikeEntrance naming): "Federal
  * Triangle Metro station", as the nearest-stations list says it; a MARC-only
- * station "Odenton MARC station", or its own name where that already ends in
- * "Station".
+ * station "Odenton MARC station"; a station whose own name already ends in
+ * "Station" just that ("Union Station", not "Union Station Metro station").
  */
 export function stationPlaceName(station: Pick<Station, "name" | "metro">): string {
-  if (station.metro.length > 0) return `${station.name} Metro station`;
-  return /\bstation$/i.test(station.name) ? station.name : `${station.name} MARC station`;
+  if (/\bstation$/i.test(station.name)) return station.name;
+  return station.metro.length > 0 ? `${station.name} Metro station` : `${station.name} MARC station`;
 }
 
 /** The point's longer label: which way in it is, in words, so it is not only shown on the map. */
