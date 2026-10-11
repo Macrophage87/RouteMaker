@@ -1243,8 +1243,147 @@ def test_ship_data_bakes_the_report_url_into_a_tested_build_only() -> None:
     )
     assert ok.returncode == 2 and "cannot read /nonexistent/.env" in ok.stderr  # got past the URL
     text = (REPO / SHIP).read_text()
-    assert '-e VITE_BETA_REPORT_URL="$report_url"' in text
-    assert "sh -c 'npm test && npx tsc --noEmit && npx vite build --outDir /out" in text
+    assert '"$here/frontend-build.sh" "$repo" "$nm" "$stage/frontend" "$report_url"' in text
+    build = (REPO / "scripts" / "beta" / "frontend-build.sh").read_text()
+    assert '-e VITE_BETA_REPORT_URL="$report_url"' in build
+    assert "npm test && npx tsc --noEmit && npx vite build --outDir /out" in build
+
+
+FRONTEND_BUILD = "scripts/beta/frontend-build.sh"
+STUB_BUILD_DOCKER = """#!/bin/sh
+# a stand-in for docker run: records its arguments and writes an index.html to the /out mount
+echo "$*" > "$STUB_LOG"
+prev=""
+for a in "$@"; do
+  if [ "$prev" = "-v" ]; then
+    case "$a" in *:/out) mkdir -p "${a%:/out}"; echo x > "${a%:/out}/index.html" ;; esac
+  fi
+  prev=$a
+done
+exit "${STUB_RC:-0}"
+"""
+
+
+def _frontend_tree(tmp_path: Path, bindings: tuple[str, ...]) -> tuple[Path, Path, dict]:
+    repo = tmp_path / "repo"
+    (repo / "frontend").mkdir(parents=True)
+    nm = tmp_path / "node_modules"
+    for binding in bindings:
+        (nm / binding).mkdir(parents=True)
+    docker = tmp_path / "docker"
+    docker.write_text(STUB_BUILD_DOCKER)
+    docker.chmod(0o755)
+    env = {"DOCKER": str(docker), "STUB_LOG": str(tmp_path / "docker.log")}
+    return repo, nm, env
+
+
+@needs_sh
+def test_frontend_build_mounts_the_whole_tree_read_only_for_every_beta_path(
+    tmp_path: Path,
+) -> None:
+    """One script for ship-data.sh, the release agent and CI. Front-end tests read files beside
+    frontend/ (src/routemaker/avoid_junctions.py, scripts/build_contours.py), so the whole tree
+    is mounted read-only: the v0.4.0 ship stopped on a build that mounted only frontend/."""
+    repo, nm, env = _frontend_tree(tmp_path, ("@rolldown/binding-linux-x64-gnu",))
+    out = tmp_path / "out"
+    done = run("bash", FRONTEND_BUILD, str(repo), str(nm), str(out), env=env)
+    assert done.returncode == 0, done.stderr
+    args = (tmp_path / "docker.log").read_text()
+    assert f"-v {repo}:/repo:ro -v {nm}:/repo/frontend/node_modules" in args
+    assert "-w /repo/frontend" in args
+    assert "--pull never --network none" in args and "-e VITE_BETA=1" in args
+    assert (out / "index.html").exists()
+    for caller in ("ship-data.sh", "auto-release.sh"):
+        text = (REPO / "scripts" / "beta" / caller).read_text()
+        assert "frontend-build.sh" in text, caller
+        assert ":/app:ro" not in text, f"{caller} runs its own front-end build"
+
+
+@needs_sh
+@pytest.mark.parametrize(
+    "bindings",
+    [
+        ("@rolldown/binding-win32-x64-msvc", "@rolldown/pluginutils"),
+        ("@esbuild/darwin-arm64",),
+    ],
+)
+def test_frontend_build_refuses_node_modules_installed_for_another_platform(
+    tmp_path: Path, bindings: tuple[str, ...]
+) -> None:
+    """In WSL with no Linux node, `npm ci` is Windows npm: it installs only the win32 bindings,
+    and the tests then die mid-ship on a missing linux-x64 one. Refused before docker runs."""
+    repo, nm, env = _frontend_tree(tmp_path, bindings)
+    done = run("bash", FRONTEND_BUILD, str(repo), str(nm), str(tmp_path / "out"), env=env)
+    assert done.returncode == 2 and "another platform" in done.stderr, done.stderr
+    assert "npm ci" in done.stderr
+    assert not (tmp_path / "docker.log").exists()
+
+
+@needs_sh
+def test_frontend_build_passes_a_failure_on_and_still_clears_vites_temp_files(
+    tmp_path: Path,
+) -> None:
+    repo, nm, env = _frontend_tree(tmp_path, ("@rolldown/binding-linux-x64-gnu", ".vite-temp"))
+    done = run(
+        "bash",
+        FRONTEND_BUILD,
+        str(repo),
+        str(nm),
+        str(tmp_path / "out"),
+        env={**env, "STUB_RC": "7"},
+    )
+    assert done.returncode == 7, done.stderr
+    assert not (nm / ".vite-temp").exists()
+
+
+@needs_sh
+def test_frontend_build_masks_a_top_level_env_file(tmp_path: Path) -> None:
+    repo, nm, env = _frontend_tree(tmp_path, ("@rolldown/binding-linux-x64-gnu",))
+    (repo / ".env").write_text("PGPASSWORD=not-for-the-front-end\n")
+    done = run("bash", FRONTEND_BUILD, str(repo), str(nm), str(tmp_path / "out"), env=env)
+    assert done.returncode == 0, done.stderr
+    args = (tmp_path / "docker.log").read_text()
+    assert args.index(f"-v {repo}:/repo:ro") < args.index("-v /dev/null:/repo/.env:ro")
+
+
+@needs_sh
+def test_frontend_build_check_alone_lets_the_agent_refuse_before_it_stops_anything(
+    tmp_path: Path,
+) -> None:
+    _, nm, env = _frontend_tree(tmp_path, ("@rolldown/binding-win32-x64-msvc",))
+    done = run("bash", FRONTEND_BUILD, "--check", str(nm), env=env)
+    assert done.returncode == 2 and "@rolldown/binding-win32-x64-msvc" in done.stderr
+    assert not (tmp_path / "docker.log").exists()
+    linux = tmp_path / "linux"
+    (linux / "@rolldown" / "binding-linux-x64-gnu").mkdir(parents=True)
+    assert run("bash", FRONTEND_BUILD, "--check", str(linux), env=env).returncode == 0
+    agent = (REPO / "scripts" / "beta" / "auto-release.sh").read_text()
+    ready = agent[agent.index("frontend_ready() {") : agent.index("build_frontend() {")]
+    assert '"$build_fe" --check' in ready
+
+
+@needs_sh
+def test_frontend_build_and_the_release_agent_pin_the_same_node_image() -> None:
+    image = run("bash", FRONTEND_BUILD, "--print-image").stdout.strip()
+    assert re.fullmatch(r"docker\.io/library/node@sha256:[0-9a-f]{64}", image), image
+    agent = (REPO / "scripts" / "beta" / "auto-release.sh").read_text()
+    assert f'NODE_IMAGE="{image}"' in agent
+    installed = re.search(r"^\s*install -m 700 \"\$here/frontend-build.sh\"", agent, re.M)
+    assert installed, "auto-release.sh install does not install frontend-build.sh beside itself"
+
+
+def test_ship_data_warns_when_the_server_lacks_the_api_image() -> None:
+    """The api image is not in the bundle (the runbook sends it separately), which is easy to
+    miss: after sending, ship-data asks the server for the image of this sha and says how to
+    send it when it is missing."""
+    text = (REPO / SHIP).read_text()
+    sent = text.index('note "sent. On the server')
+    check = text.index("docker image inspect --format ok '$api_tag'")
+    assert sent < check
+    assert 'api_tag="$API_IMAGE:${git_sha:0:12}"' in text
+    assert "docker save $api_tag | gzip | ssh ${BETA_SSH_OPTS:+$BETA_SSH_OPTS }$remote_host" in text
+    # docker the server's user cannot reach is not reported as a missing image
+    assert "else echo no-docker; fi" in text
 
 
 @needs_sh
