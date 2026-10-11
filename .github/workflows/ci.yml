@@ -69,6 +69,13 @@ jobs:
       - name: Front end
         working-directory: frontend
         run: npm ci && npm run typecheck && npm test && npm run build
+      # The same tests and build again, the way every beta path runs them: the shared script,
+      # in the pinned node image, no network, the source mounted read-only. A test that reads
+      # outside frontend/ without a mount for it fails here, not in the middle of a ship.
+      - name: Front end, as the beta builds it
+        run: |
+          docker pull --quiet "$(scripts/beta/frontend-build.sh --print-image)"
+          scripts/beta/frontend-build.sh "$PWD" "$PWD/frontend/node_modules" "$RUNNER_TEMP/beta-dist"
       - run: ruff check src tests
       - run: ruff format --check src tests
       # The reference-route assertions are the quality bar's ground truth, not a

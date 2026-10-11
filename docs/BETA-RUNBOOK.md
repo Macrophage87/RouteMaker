@@ -350,6 +350,11 @@ scripts/beta/ship-data.sh --live-dir "$RM_LIVE_DIR" --build-frontend  "$RM_SSH_H
 ```
 
 With the image loaded this way, skip step 6's `build` line and run only its `pull` line.
+`ship-data.sh` does not carry the api image; after sending, it warns if the server has no image for
+the checkout's sha and prints the two lines above to send it.
+`frontend/node_modules` must be installed for Linux x64. In WSL with no Linux node, `npm ci` finds
+Windows npm and installs Windows bindings, which `--build-frontend` refuses; install it in the pinned
+node image instead (`scripts/beta/frontend-build.sh --print-image` names it), as the refusal shows.
 `--build-frontend` runs the front-end tests and builds it with the beta notice; `ship-data.sh` stops if
 neither it nor `--dist` is given. To add a "Report a problem" link to the notice (OWNER-DECISIONS 382,
 for example a Discord invite once there is one), the owner adds `--report-url https://...`; without it

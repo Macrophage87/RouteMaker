@@ -28,7 +28,9 @@
 #   SHA256SUMS          one line per file; MANIFEST.txt the bundle's facts
 #
 # What is never in it: .env or any secret (the script checks), the other test databases,
-# the `live_old` schema, the tiger geocoder schema, sessions.
+# the `live_old` schema, the tiger geocoder schema, sessions. Nor the api image: the runbook sends
+# that separately (step 6), and after sending the script warns if the server does not have the
+# image for this checkout's sha.
 #
 # READ-ONLY on the live stack: it reads files under DATA_ROOT and runs pg_dump, psql SELECTs
 # and pg_restore --list through `docker compose exec`. It writes only into --stage (default
@@ -52,7 +54,9 @@
 #                        it the notice names no channel and shows no link.
 #   --dist DIR           use an already-built front end instead (must contain index.html)
 #                        Unless --without frontend, one of --build-frontend or --dist is required.
-#   --node-modules DIR   node_modules for --build-frontend [<repo>/frontend/node_modules]
+#   --node-modules DIR   node_modules for --build-frontend [<repo>/frontend/node_modules], installed
+#                        for Linux x64 (in WSL with no Linux node, `npm ci` is Windows npm: install
+#                        it in the pinned image instead; frontend-build.sh refuses a Windows one)
 #   --without PART       leave a part out: tiles, elevation, basemap, photon, frontend, db
 #                        (repeatable; for an update that changes only some of them)
 #   --with-tile-dirs     also send each build's unpacked tiles/ directory (about 0.5 GB each)
@@ -66,7 +70,8 @@ set -euo pipefail
 die() { echo "ship-data: $*" >&2; exit 2; }
 note() { echo "ship-data: $*" >&2; }
 
-NODE_IMAGE="docker.io/library/node@sha256:363e1587494626837fa7f9a23bdb453d13b0ff3c67c705c2805cfc69c2d2fad7"
+# The pinned node image is frontend-build.sh's (--print-image); the api image is sent separately.
+API_IMAGE="ghcr.io/macrophage87/routemaker-api"
 # Data the app does not need on a fresh server, or must not carry: sessions and the
 # rate-limit table (client address digests) and the membership cache are the app's own nightly
 # backup exclusions (config.procrastinate.BACKUP_EXCLUDED_TABLES), plus the job queue, Django's
@@ -302,15 +307,10 @@ if want frontend; then
 		nm=${node_modules:-$repo/frontend/node_modules}
 		[ -d "$nm" ] || die "no node_modules at $nm (--node-modules); the build runs offline"
 		note "testing and building the front end with VITE_BETA=1 in the pinned node image (no network); report link: ${report_url:-none}"
-		# node_modules is mounted writable because vite writes a temp config beside it; it is
-		# removed afterwards. The source is read-only and the output goes straight to the stage.
 		# npm test runs first, on exactly the tree being shipped (the banner's and the planner's
-		# accessibility checks live in the front-end suite); a failure ships nothing.
-		docker run --rm --pull never --network none -u "$(id -u):$(id -g)" -e HOME=/tmp -e VITE_BETA=1 \
-			-e VITE_BETA_REPORT_URL="$report_url" \
-			-v "$repo/frontend:/app:ro" -v "$nm:/app/node_modules" -v "$stage/frontend:/out" -w /app \
-			"$NODE_IMAGE" sh -c 'npm test && npx tsc --noEmit && npx vite build --outDir /out --emptyOutDir' >&2
-		rm -rf "$nm/.vite-temp"
+		# accessibility checks live in the front-end suite); a failure ships nothing. The mounts
+		# and the steps are frontend-build.sh's, the same script the release agent and CI run.
+		"$here/frontend-build.sh" "$repo" "$nm" "$stage/frontend" "$report_url" >&2
 		printf 'VITE_BETA=1\nVITE_BETA_REPORT_URL=%s\ngit=%s\n' "$report_url" "$(git -C "$repo" rev-parse HEAD)" >"$stage/frontend/beta-build.txt"
 	else
 		[ -f "$dist/index.html" ] || die "no front end at $dist: use --build-frontend, or --dist DIR with index.html"
@@ -494,3 +494,17 @@ run_rsync "${common[@]}" --exclude=SHA256SUMS --exclude=MANIFEST.txt --exclude='
 run_rsync "${common[@]}" "$stage/SHA256SUMS" "$stage/MANIFEST.txt" "$remote_host:$remote_dir/"
 
 note "sent. On the server: scripts/beta/receive-data.sh --bundle $remote_dir --env-file .env verify"
+
+# The api image is not in the bundle: the runbook sends it separately (BETA-RUNBOOK step 6, built
+# at home from the release sha). Say so when the server does not have the one for this sha yet.
+api_tag="$API_IMAGE:${git_sha:0:12}"
+# shellcheck disable=SC2086
+if have=$($ssh_cmd "$remote_host" "docker image inspect --format ok '$api_tag' 2>/dev/null || echo missing" 2>/dev/null); then
+	if [ "$have" != ok ]; then
+		note "WARNING: the server has no api image $api_tag; the bundle does not carry it. From a clean checkout of $git_sha:"
+		note "  docker build -f docker/api.Dockerfile -t $api_tag ."
+		note "  docker save $api_tag | gzip | ssh $remote_host 'gunzip | docker load'"
+	fi
+else
+	note "could not ask the server whether it has the api image $api_tag (docker image ls there)"
+fi

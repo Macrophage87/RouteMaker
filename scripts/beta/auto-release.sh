@@ -115,6 +115,7 @@ load_vars() {
 	# The agent's own files: the installed copy, so a release cannot change the agent under a pass.
 	logic="$cd_dir/bin/cd_logic.py"
 	receive="$cd_dir/bin/receive-data.sh"
+	build_fe="$cd_dir/bin/frontend-build.sh"
 }
 
 dk() { "${DOCKER:-docker}" "$@"; }
@@ -251,15 +252,12 @@ build_frontend() { # src-dir sha out-dir
 	[ -d "$cd_dir/node_modules/$h/node_modules" ] || { say "no node_modules for lockfile $h"; return 1; }
 	url=$(report_url)
 	rm -rf "$out"; mkdir -p "$out"; chmod 755 "$out"
-	# The mount point for node_modules inside the read-only source (docker cannot make it there).
-	mkdir -p "$src/frontend/node_modules"
 	say "testing and building the front end (pinned node image, no network, VITE_BETA=1, report link: ${url:-none})"
+	# frontend-build.sh holds the mounts and steps, shared with ship-data.sh and CI.
 	# --oom-score-adj 1000: if the host runs short, the kernel kills this build before any other
 	# site's process (and before the beta's own containers, at 500).
-	quiet dk run --rm --pull never --network none --memory 1536m --memory-swap 1536m --cpus 1.5 --oom-score-adj 1000 -u "$(id -u):$(id -g)" -e HOME=/tmp \
-		-e VITE_BETA=1 -e VITE_BETA_REPORT_URL="$url" \
-		-v "$src/frontend:/app:ro" -v "$cd_dir/node_modules/$h/node_modules:/app/node_modules" -v "$out:/out" -w /app \
-		"$NODE_IMAGE" sh -c 'umask 022 && npm test && npx tsc --noEmit && npx vite build --outDir /out --emptyOutDir' </dev/null || return 1
+	quiet "$build_fe" --docker-opt --memory=1536m --docker-opt --memory-swap=1536m --docker-opt --cpus=1.5 --docker-opt --oom-score-adj=1000 \
+		"$src" "$cd_dir/node_modules/$h/node_modules" "$out" "$url" || return 1
 	[ -f "$out/index.html" ] || { say "the build made no index.html"; return 1; }
 	printf 'VITE_BETA=1\nVITE_BETA_REPORT_URL=%s\ngit=%s\n' "$url" "$sha" >"$out/beta-build.txt"
 	chmod -R u=rwX,go=rX "$out"
@@ -625,7 +623,7 @@ pass() {
 	why=$(window_problem) && { finish error "$why (in $vars)"; return 1; }
 	cur=$(deployed_tag); cur_sha=$(deployed_sha)
 	[ -n "$cur" ] && [ -n "$cur_sha" ] || { finish error "no deployed tag recorded: run auto-release.sh install"; return 1; }
-	[ -f "$logic" ] && [ -x "$receive" ] || { finish error "the agent is not installed in $cd_dir/bin: run auto-release.sh install"; return 1; }
+	[ -f "$logic" ] && [ -x "$receive" ] && [ -x "$build_fe" ] || { finish error "the agent is not installed in $cd_dir/bin: run auto-release.sh install"; return 1; }
 
 	# A deploy a stopped pass left half done comes first: the checkout may be anywhere in it.
 	if [ -f "$progress" ]; then
@@ -964,6 +962,7 @@ cmd_install() {
 	install -m 700 "$self" "$cd_dir/bin/auto-release.sh"
 	install -m 600 "$here/cd_logic.py" "$cd_dir/bin/cd_logic.py"
 	install -m 700 "$here/receive-data.sh" "$cd_dir/bin/receive-data.sh"
+	install -m 700 "$here/frontend-build.sh" "$cd_dir/bin/frontend-build.sh"
 	printf '%s\n' "$(gitc rev-parse HEAD)" >"$cd_dir/bin/FROM"
 	[ -f "$cd_dir/deployed-tag" ] || record_deployed "$tag" "$sha"
 	if [ "$url" = __unset__ ]; then
