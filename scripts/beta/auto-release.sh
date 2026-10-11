@@ -254,11 +254,13 @@ build_frontend() { # src-dir sha out-dir
 	# The mount point for node_modules inside the read-only source (docker cannot make it there).
 	mkdir -p "$src/frontend/node_modules"
 	say "testing and building the front end (pinned node image, no network, VITE_BETA=1, report link: ${url:-none})"
+	# src/ is mounted read-only at /src: one front-end test reads the API's own wording from
+	# src/routemaker/avoid_junctions.py (../../../src from the test; docs/DEVELOPMENT.md).
 	# --oom-score-adj 1000: if the host runs short, the kernel kills this build before any other
 	# site's process (and before the beta's own containers, at 500).
 	quiet dk run --rm --pull never --network none --memory 1536m --memory-swap 1536m --cpus 1.5 --oom-score-adj 1000 -u "$(id -u):$(id -g)" -e HOME=/tmp \
 		-e VITE_BETA=1 -e VITE_BETA_REPORT_URL="$url" \
-		-v "$src/frontend:/app:ro" -v "$cd_dir/node_modules/$h/node_modules:/app/node_modules" -v "$out:/out" -w /app \
+		-v "$src/frontend:/app:ro" -v "$src/src:/src:ro" -v "$cd_dir/node_modules/$h/node_modules:/app/node_modules" -v "$out:/out" -w /app \
 		"$NODE_IMAGE" sh -c 'umask 022 && npm test && npx tsc --noEmit && npx vite build --outDir /out --emptyOutDir' </dev/null || return 1
 	[ -f "$out/index.html" ] || { say "the build made no index.html"; return 1; }
 	printf 'VITE_BETA=1\nVITE_BETA_REPORT_URL=%s\ngit=%s\n' "$url" "$sha" >"$out/beta-build.txt"

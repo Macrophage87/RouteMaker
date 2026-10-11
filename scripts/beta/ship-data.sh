@@ -298,10 +298,12 @@ if want frontend; then
 		# node_modules is mounted writable because vite writes a temp config beside it; it is
 		# removed afterwards. The source is read-only and the output goes straight to the stage.
 		# npm test runs first, on exactly the tree being shipped (the banner's and the planner's
-		# accessibility checks live in the front-end suite); a failure ships nothing.
+		# accessibility checks live in the front-end suite); a failure ships nothing. src/ is
+		# mounted read-only at /src because one test reads the API's own wording from
+		# src/routemaker/avoid_junctions.py (../../../src from the test; docs/DEVELOPMENT.md).
 		docker run --rm --pull never --network none -u "$(id -u):$(id -g)" -e HOME=/tmp -e VITE_BETA=1 \
 			-e VITE_BETA_REPORT_URL="$report_url" \
-			-v "$repo/frontend:/app:ro" -v "$nm:/app/node_modules" -v "$stage/frontend:/out" -w /app \
+			-v "$repo/frontend:/app:ro" -v "$repo/src:/src:ro" -v "$nm:/app/node_modules" -v "$stage/frontend:/out" -w /app \
 			"$NODE_IMAGE" sh -c 'npm test && npx tsc --noEmit && npx vite build --outDir /out --emptyOutDir' >&2
 		rm -rf "$nm/.vite-temp"
 		printf 'VITE_BETA=1\nVITE_BETA_REPORT_URL=%s\ngit=%s\n' "$report_url" "$(git -C "$repo" rev-parse HEAD)" >"$stage/frontend/beta-build.txt"
