@@ -19,8 +19,9 @@ So a climb's extra effort is multiplied by the road's traffic weight:
 - the "traffic-relative distance" is the ride's own exposure weight for the tier the
   climb is ridden on (`core.presets.Exposure`: LTS 3 once, LTS 4 twice and Avoid three
   times, eight and sixteen on the stress-averse ride types; LTS 2 only where the ride
-  weighs it). A quiet street (LTS 1 and 2) weighs nothing, so a climb there costs what
-  it does today, and the same climb on a busy road costs more the busier the road.
+  weighs it: Trailmaxxing, Cargo with passengers and Kids). LTS 1 weighs nothing, and
+  LTS 2 nothing on every other ride type, so a climb there costs what it does today,
+  and the same climb on a busy road costs more the busier the road.
 
 Pure: no database, no router. The calm search's ranking reads it (`core.refine`); the
 router's costs and the graph do not (no rebuild).

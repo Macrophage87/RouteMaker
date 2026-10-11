@@ -2295,8 +2295,9 @@ router's elevation profile, in the direction ridden, matched to the traced piece
 tiers by metres along the route (`refine.uphill_of`, `grade_stress.uphill_by_tier`).
 The traffic-relative distance is the ride's own exposure weight for that tier (LTS 3
 once, LTS 4 twice, Avoid three times; 8 and 16 on the stress-averse ride types; LTS 2
-only where the ride weighs it). A descent's effort factor is floored at the flat, so
-downhill is unchanged, and a climb on a quiet street (LTS 1 and 2) costs what it did.
+only where the ride weighs it: Trailmaxxing, Cargo with passengers, Kids). A descent's
+effort factor is floored at the flat, so downhill is unchanged, and a climb on LTS 1
+(and on LTS 2 where the ride does not weigh it) costs what it did.
 Defaults (`routemaker.grade_stress`, for the owner to confirm with before and after
 routes): `GRADE_FROM` 3% (where `routemaker.climbs` already starts to price a
 sustained climb) and `FACTOR` 0.25. A climb of 0.62 mi (1 km) at 4%, about 130 ft
@@ -2305,7 +2306,11 @@ sustained climb) and `FACTOR` 0.25. A climb of 0.62 mi (1 km) at 4%, about 130 f
 of the slider, where candidates are ranked by the stress order, the same climbing
 (times `FACTOR`) joins the figure it is ridden on: LTS 4 and Avoid climbing the top
 figure, LTS 3 climbing the second (`Analysis.key`, `Analysis.uphill_levels_m`); the
-figures the LTS 4 hold and the worth rule read are unchanged. It is in the ranking only
+figures the LTS 4 hold and the worth rule read are unchanged. So the uphill stress never
+buys extra miles on its own: it decides between a route and one no longer than it, or
+between longer routes whose saving in LTS metres already pays for their miles (435's
+"One rule", untouched). Whether the worth rule should count it too is for the owner,
+with before and after routes. It is in the ranking only
 (the calm search and its ranking of the router's alternatives, 435): the router's own
 costs and the graph are not changed, so no rebuild. It moves into the router's costs
 only if the ranking alone is not enough (Stephen's answer 4 of 2026-10-10, v0.5.0
