@@ -12,6 +12,7 @@ export type PresetId =
   | "group-ride"
   | "mass-ride"
   | "mountain-goat"
+  | "mountain-bike"
   | "gravel"
   | "fast"
   | "cargo"
@@ -53,6 +54,13 @@ export const PRESETS: readonly PresetOption[] = [
     id: "mountain-goat",
     label: "Mountain Goat",
     description: "Looks for climbs: picks the hilliest of a few alternative routes, up to half again as long.",
+  },
+  {
+    // docs/MTB-TOPO-PLAN.md, slice 6: a ride type of its own, separate from Mountain Goat (OWNER-DECISIONS 148).
+    id: "mountain-bike",
+    label: "Mountain Bike",
+    description:
+      "Seeks mountain-bike trails up to the level you choose, joined by calm roads, as a loop from your start unless you turn the loop off. Never uses trails closed to bikes or mapped closed when wet. Times singletrack at a mountain bike's pace.",
   },
   {
     id: "gravel",

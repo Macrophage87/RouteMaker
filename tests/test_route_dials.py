@@ -357,7 +357,7 @@ class TestSeekingClimbs:
         from pathlib import Path
 
         configs = sorted((Path(settings.BASE_DIR) / "valhalla").glob("valhalla-*.json"))
-        assert len(configs) == 5
+        assert len(configs) == 6
         for path in configs:
             limits = json.loads(path.read_text())["service_limits"]
             assert routing.SEEK_ALTERNATES == limits["max_alternates"], path.name
@@ -1977,3 +1977,156 @@ class TestTheOffroadGraph:
         body = post(client, {**good_body("mountain-goat"), "when": "weekday_offpeak"}).json()
         assert body["variant"] == "standard"
         assert all("offroad" not in url for url, _ in fake.calls)
+
+
+@db
+class TestMountainBike:
+    """docs/MTB-TOPO-PLAN.md, slice 6: the Mountain Bike ride type rides its own graph, holds
+    the rider's hardest trail level on the router's routes, and says what it could not hold."""
+
+    def test_it_rides_its_own_graph_and_reads_the_route(self, client, facility_segments, router):
+        fake = router(standard_router())
+        body = post(client, {**good_body("mountain-bike"), "when": "weekend"}).json()
+        assert body["variant"] == "mtb"
+        base = settings.VALHALLA_UPSTREAMS["mtb"]
+        assert all(url.startswith(base + "/") for url, _ in fake.calls)
+        # Two points: the router's own alternatives are asked for, to rank by the trail rules.
+        assert fake.calls[0][1].get("alternates") == routing.SEEK_ALTERNATES
+        mtb = body["mtb"]
+        assert mtb["max_level"] == 2 and mtb["limited"] is None
+        assert mtb["over_level_m"] == 0
+        assert mtb["trail_weight"] == 0.5 and mtb["singletrack_speed_kmh"] == 10.0
+
+    def test_a_harder_trail_with_no_way_round_is_answered_and_said(
+        self, client, facility_segments, router
+    ):
+        """The owner's rule is a preference held as hard as the router allows: a route that
+        cannot avoid a harder trail is answered with how much of it, not refused."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {facility_segments}.segment SET mtb_only = true, mtb_level = 3, "
+                "is_trail_class = true, is_unpaved = true WHERE osm_way_id = 101"
+            )
+        router(standard_router())
+        body = post(client, good_body("mountain-bike")).json()
+        mtb = body["mtb"]
+        assert mtb["over_level_m"] > 0
+        assert mtb["singletrack_m"] == mtb["over_level_m"] == mtb["trail_m"]
+        # At level 3 the same trail is within the choice.
+        held = post(client, {**good_body("mountain-bike"), "mtb_level": 3}).json()["mtb"]
+        assert held["max_level"] == 3 and held["over_level_m"] == 0
+        # The time counts the singletrack at about 6 mph (10 km/h), never faster than the router.
+        assert held["router_duration_s"] is not None
+        assert body["duration_s"] >= held["router_duration_s"]
+
+    def test_the_way_round_an_avoid_junction_says_its_own_harder_trail(
+        self, client, facility_segments, router, monkeypatch
+    ):
+        """A route offered beside the answer (here the way round an Avoid-rated junction;
+        the search's candidates alike) carries its own reading, so a harder trail on it is
+        said when the rider shows it (review of #84)."""
+        import copy
+
+        from test_avoid_junctions import add_row
+
+        from core import avoid_junctions
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {facility_segments}.segment SET mtb_only = true, mtb_level = 3, "
+                "is_trail_class = true, is_unpaved = true WHERE osm_way_id = 101"
+            )
+        add_row()
+
+        def offered(trip, *args, **kwargs):
+            info = {"passed": 1, "penalty_s": 0, "decision": "kept", "alternate": None}
+            return trip, {**info, "avoided": 0}, copy.deepcopy(trip)
+
+        monkeypatch.setattr(avoid_junctions, "settle", offered)
+        router(standard_router())
+        body = post(client, good_body("mountain-bike")).json()
+        around = body["avoid_alternate"]["mtb"]
+        assert around["max_level"] == 2 and around["over_level_m"] > 0
+        assert around["router_duration_s"] is not None
+        assert body["avoid_alternate"]["duration_s"] >= around["router_duration_s"]
+
+    def test_a_later_pass_that_changes_the_route_has_it_read_again(
+        self, client, facility_segments, router, monkeypatch
+    ):
+        """The Avoid pass runs after the level is held; where it takes a different route, the
+        answer's reading (and its warning) is of the route answered, not the one replaced."""
+        import copy
+
+        from test_avoid_junctions import add_row
+
+        from core import avoid_junctions
+
+        add_row()
+
+        def avoided(trip, *args, **kwargs):
+            # The way round rides a level-3 trail the settled route did not.
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"UPDATE {facility_segments}.segment SET mtb_only = true, mtb_level = 3, "
+                    "is_trail_class = true, is_unpaved = true WHERE osm_way_id = 101"
+                )
+            info = {"passed": 1, "penalty_s": 0, "decision": "avoided", "alternate": None}
+            return copy.deepcopy(trip), {**info, "avoided": 1}, None
+
+        monkeypatch.setattr(avoid_junctions, "settle", avoided)
+        router(standard_router())
+        mtb = post(client, good_body("mountain-bike")).json()["mtb"]
+        assert mtb["over_level_m"] > 0
+        assert mtb["limited"] == "no_way_round"
+
+    @pytest.mark.parametrize("level", [0, 5, "2", 2.5])
+    def test_a_level_out_of_range_is_refused(self, client, facility_segments, router, level):
+        router(standard_router())
+        assert post(client, {**good_body("mountain-bike"), "mtb_level": level}).status_code == 400
+
+    def test_a_level_on_another_ride_type_is_refused(self, client, facility_segments, router):
+        router(standard_router())
+        response = post(client, {**good_body("mountain-goat"), "mtb_level": 2})
+        assert response.status_code == 400
+
+    def test_other_ride_types_say_nothing_of_it(self, client, facility_segments, router):
+        router(standard_router())
+        assert post(client, good_body("mountain-goat")).json().get("mtb") is None
+
+    def test_a_router_that_does_not_answer_falls_back_and_says_so(
+        self, client, facility_segments, router
+    ):
+        standard = standard_router()
+
+        def transport(url, payload, timeout):
+            if url.startswith(settings.VALHALLA_UPSTREAMS["mtb"]):
+                raise routing.RouterUnavailable("connection refused")
+            return standard(url, payload, timeout)
+
+        router(transport)
+        response = post(client, {**good_body("mountain-bike"), "mtb_level": 3})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["variant"] == "standard"
+        assert body["mtb"]["max_level"] == 3
+        assert body["mtb"]["limited"] == "no_mtb_graph"
+        assert routing._mtb_down()
+
+    def test_a_graph_not_yet_promoted_plans_on_standard(
+        self, client, facility_segments, router, monkeypatch
+    ):
+        monkeypatch.setattr(routing, "_mtb_is_promoted", lambda: False)
+        fake = router(standard_router())
+        body = post(client, good_body("mountain-bike")).json()
+        assert body["variant"] == "standard"
+        assert body["mtb"]["limited"] == "no_mtb_graph"
+        base = settings.VALHALLA_UPSTREAMS["mtb"]
+        assert all(not url.startswith(base) for url, _ in fake.calls)
+
+    def test_trails_off_is_the_riders_choice_not_a_missing_graph(
+        self, client, facility_segments, router
+    ):
+        router(standard_router())
+        body = post(client, {**good_body("mountain-bike"), "trails_off": True}).json()
+        assert body["variant"] == "no-trail"
+        assert body.get("mtb") is None

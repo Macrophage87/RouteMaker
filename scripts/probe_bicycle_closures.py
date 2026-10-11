@@ -50,10 +50,21 @@ ROUTERS = {
     "ebike": os.environ.get("VALHALLA_EBIKE_URL", "http://valhalla-ebike:8002"),
     "weekend": os.environ.get("VALHALLA_WEEKEND_URL", "http://valhalla-weekend:8002"),
     "offroad": os.environ.get("VALHALLA_OFFROAD_URL", "http://valhalla-offroad:8002"),
+    "mtb": os.environ.get("VALHALLA_MTB_URL", "http://valhalla-mtb:8002"),
 }
 OFFROAD = "offroad"
+MTB = "mtb"
+# Behind the compose profile `offroad`: skipped where they are not running.
+PROFILED = (OFFROAD, MTB)
 # The off-road graph reopens the mountain-bike class on purpose.
 OFFROAD_KEEPS = ("mtb",)
+# The Mountain Bike graph (docs/MTB-TOPO-PLAN.md, slice 6) also reopens rated singletrack
+# that nothing but its rating closes (pipeline.trail_closures.mtb_graph_keeps). The probe
+# file marks those probes (`mtb_graph_open` = 1), so that router is still held to the
+# undrawn singletrack. A file from a rebuild before that column leaves out every singletrack
+# probe on it instead (MTB_KEEPS); the rebuild's own readback held the undrawn ones closed.
+MTB_KEEPS = ("mtb", "singletrack")
+KEEPS = {OFFROAD: OFFROAD_KEEPS, MTB: MTB_KEEPS}
 MAX_PROBES = 200
 TIMEOUT_S = 60
 MILE_M = 1609.344
@@ -68,34 +79,52 @@ def _post(url: str, body: dict, headers: dict[str, str] | None = None) -> object
 
 
 def read_probes(path: Path) -> list[tiles.ClosureProbe]:
+    return read_probe_file(path)[0]
+
+
+def read_probe_file(path: Path) -> tuple[list[tiles.ClosureProbe], set[int] | None]:
+    """The probes, and the way ids the Mountain Bike graph opens on purpose (None where the
+    file predates the `mtb_graph_open` column)."""
     with path.open(newline="") as handle:
-        probes = [
-            tiles.ClosureProbe(
-                int(row["way_id"]), float(row["lon"]), float(row["lat"]), row.get("reason") or ""
-            )
-            for row in csv.DictReader(handle)
-        ]
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+        marked = "mtb_graph_open" in (reader.fieldnames or ())
+    probes = [
+        tiles.ClosureProbe(
+            int(row["way_id"]), float(row["lon"]), float(row["lat"]), row.get("reason") or ""
+        )
+        for row in rows
+    ]
     if len(probes) > MAX_PROBES:
         raise SystemExit(f"{len(probes)} probes in {path}; at most {MAX_PROBES}")
-    return probes
+    mtb_open = {int(row["way_id"]) for row in rows if row.get("mtb_graph_open") == "1"}
+    return probes, (mtb_open if marked else None)
+
+
+def held_on(name: str, probes: list, mtb_open: set[int] | None) -> list:
+    """The probes a router must find closed: all but what its graph opens on purpose."""
+    if name == MTB and mtb_open is not None:
+        return [p for p in probes if p.way_id not in mtb_open]
+    return [p for p in probes if p.reason not in KEEPS.get(name, ())]
 
 
 def locate(args: argparse.Namespace) -> int:
-    probes = read_probes(args.probes)
+    probes, mtb_open = read_probe_file(args.probes)
     if not probes:
         print(f"no probes in {args.probes}: the last rebuild had no closure to check")
         return 0
     failed = False
     for name, url in ROUTERS.items():
-        held = [p for p in probes if not (name == OFFROAD and p.reason in OFFROAD_KEEPS)]
+        held = held_on(name, probes, mtb_open)
         try:
             answer = _post(f"{url}/locate", tiles.closure_locate_request(held))
         except urllib.error.URLError as error:
-            # The off-road router is behind the compose profile `offroad` and off on
-            # the small host and the beta: no container, so no name or no listener.
+            # The off-road and Mountain Bike routers are behind the compose profile
+            # `offroad`, off on the small host and the beta: no container, so no name or
+            # no listener.
             # That alone is skipped (REBUILD-BUNDLE operations review, S6); an HTTP
             # error from a running router, or any other router unreachable, still fails.
-            if name != OFFROAD or isinstance(error, urllib.error.HTTPError):
+            if name not in PROFILED or isinstance(error, urllib.error.HTTPError):
                 raise
             print(f"{name}: not running, skipped ({error.reason})")
             continue

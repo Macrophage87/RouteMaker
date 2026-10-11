@@ -879,6 +879,44 @@ export function subscribeMassRide(listener) {
  */
 export const MTB_TRAILS_ROUTABLE = false;
 
+/**
+ * The Mountain Bike ride type (docs/MTB-TOPO-PLAN.md, slice 6) is that mode. Its graph opens every
+ * mountain-bike trail a bicycle may use, and the rider chooses the hardest level (1 to 4) the plan
+ * may use, so `routableMtb` may also be that level: the trails at or below it (an unrated one
+ * counted as level 2, `mtbWithin`) draw in the routable layers, as any other trail, and the harder
+ * ones keep the not-for-routes look of their level. Set by App from the ride type and the level;
+ * null on every other ride type. MapView sets the filters again in place when it changes.
+ */
+let routableMtb = null;
+const routableMtbListeners = new Set();
+
+/** The level the routable layers draw mountain-bike trails up to, or null (not the Mountain Bike ride type). */
+export function routableMtbLevel() {
+  return routableMtb;
+}
+
+export function setRoutableMtb(level) {
+  const next = Number.isInteger(level) && level >= 1 && level <= 4 ? level : null;
+  if (routableMtb === next) return;
+  routableMtb = next;
+  routableMtbListeners.forEach((listener) => listener());
+}
+
+export function subscribeRoutableMtb(listener) {
+  routableMtbListeners.add(listener);
+  return () => {
+    routableMtbListeners.delete(listener);
+  };
+}
+
+/** An unrated mountain-bike trail counts as this level (`routemaker.mtbmode.UNRATED_LEVEL`). */
+export const MTB_UNRATED_LEVEL = 2;
+
+/** A mountain-bike trail at or below `level`: its `mtb_level`, an unrated one as MTB_UNRATED_LEVEL. */
+export function mtbWithin(level) {
+  return ["<=", ["coalesce", ["get", "mtb_level"], MTB_UNRATED_LEVEL], level];
+}
+
 /** The filter that takes the mountain-bike trails (the tiles' `mtb`) out of a routable layer. */
 export const mtbHides = ["!=", ["get", "mtb"], true];
 
@@ -1049,8 +1087,8 @@ export function mtbTrailLayers(sourceId = "stress", when = DEFAULT_WHEN, strong 
  * those draw nothing. In the Mass Ride map (`mass`) each also excludes the features
  * that carry a capacity (massStyle.js, massHides), but the mountain-bike layers, a map layer of their own (454).
  */
-export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLanesOn(), mass = massRide, routableMtb = MTB_TRAILS_ROUTABLE) {
-  const filters = stressFiltersOf(when, showHighLanes, routableMtb);
+export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLanesOn(), mass = massRide, routable = routableMtb ?? MTB_TRAILS_ROUTABLE) {
+  const filters = stressFiltersOf(when, showHighLanes, routable);
   if (!mass) return filters;
   // The mountain-bike trails' layers keep their own filters: their layer shows in every ride type (454), and nearly
   // every trail row carries a capacity (`rpm`, a path's default width), so `massHides` would draw none of them.
@@ -1060,10 +1098,13 @@ export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLan
 function stressFiltersOf(when, showHighLanes, routableMtb) {
   const filters = {};
   // Every routable filter is ["all", drawnAt(when), <the mountain-bike cut, unless routableMtb>, ...its own clauses].
-  const hidden = routableMtb ? [] : [mtbHides];
-  // The not-for-routes lines: the mountain-bike trails, or nothing once they are routable. The grey dots
-  // draw the unrated ones (no `mtb_level`), and each level's casing and line the trails of that level (456).
-  const off = routableMtb ? [["boolean", false]] : [];
+  // A level (the Mountain Bike ride type, slice 6): the trails up to it are routable, the harder ones are not.
+  const upTo = typeof routableMtb === "number" ? routableMtb : null;
+  const hidden = upTo !== null ? [["any", mtbHides, mtbWithin(upTo)]] : routableMtb ? [] : [mtbHides];
+  // The not-for-routes lines: the mountain-bike trails, or nothing once they are routable (or, at a level,
+  // only the trails above it). The grey dots draw the unrated ones (no `mtb_level`), and each level's casing
+  // and line the trails of that level (456).
+  const off = upTo !== null ? [["!", mtbWithin(upTo)]] : routableMtb ? [["boolean", false]] : [];
   filters[MTB_TRAIL_LAYER_ID] = ["all", drawnAt(when), isMtbTrail, ["!", ["has", "mtb_level"]], ...off];
   for (const { level } of MTB_LEVELS) {
     const filter = ["all", drawnAt(when), isMtbTrail, ["==", ["get", "mtb_level"], level], ...off];
@@ -1071,7 +1112,8 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
     filters[mtbLevelLayerId(level)] = filter;
   }
   // The names (2026-10-10): every mountain-bike trail with one, rated or not.
-  filters[MTB_LABEL_LAYER_ID] = ["all", drawnAt(when), isMtbTrail, ["has", "name"], ...off];
+  // At a level (slice 6) every trail keeps its name, routable or not.
+  filters[MTB_LABEL_LAYER_ID] = ["all", drawnAt(when), isMtbTrail, ["has", "name"], ...(upTo !== null ? [] : off)];
   for (const tier of TIER_SHAPES) {
     const filter = ["all", drawnAt(when), ...hidden, ["==", tierAt(when), tier.tier]];
     // LTS 1's line and edge leave the surface-unknown trails to their own layers.

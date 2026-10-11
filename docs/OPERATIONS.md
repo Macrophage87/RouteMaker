@@ -3560,7 +3560,7 @@ the first host to run it is the first test of it.
 
    ```sh
    docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-   docker compose --profile offroad restart valhalla-offroad   # only where the off-road router runs
+   docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # only where the off-road routers run
    ```
 
 After that the weekly schedule carries it: Tuesdays 08:00 UTC, with the alert
@@ -3919,7 +3919,8 @@ docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py locate
 ```
 
 The gate's probes against the four **serving** routers, one pedestrian locate
-each. Expect `ok` on every line. Every router but no-trail finds most of the
+each, and against `valhalla-offroad` and `valhalla-mtb` where they run (each says "not
+running, skipped" where it does not). Expect `ok` on every line. Every router but no-trail finds most of the
 probes; no-trail drops trails, singletrack with them, so it finds only the OSM
 closures that are not trails (7 tracks in the 2026-10-03 extract: "7 found,
 ok"). `OPEN:` lists ways a bicycle may use; `FOUND NONE` on a router that keeps
@@ -4030,7 +4031,7 @@ are restarted:
 
 ```sh
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-docker compose --profile offroad restart valhalla-offroad   # only where the off-road router runs
+docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # only where the off-road routers run
 ```
 
 Nothing in the rebuild does this, and there is no check that notices it has not
@@ -4498,7 +4499,7 @@ changes nothing — and `--confirm` is what performs it.
 docker compose exec -T rebuild ./manage.py rollback_rebuild            # what would happen
 docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm  # do it
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-docker compose --profile offroad restart valhalla-offroad   # only where the off-road router runs
+docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # only where the off-road routers run
 docker compose up -d --no-deps --no-build --force-recreate api worker
 docker compose exec -T api python manage.py predraw_stress_tiles
 ```
@@ -4685,7 +4686,7 @@ tiles):
    disagree means that variant is not back yet.
 5. **Restart the routers** if any of them restarted while the links were
    wrong — it will have loaded the build that failed to swap:
-   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the off-road router runs, `docker compose --profile offroad restart valhalla-offroad`
+   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the off-road router runs, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb`
    (see "After a rebuild: restart the routers"). Harmless if none did.
 6. **Leave `staging` alone.** It is the failed build's output and the next
    rebuild's first stage drops it. Then rebuild — `run_rebuild_now`, or wait
@@ -4962,15 +4963,15 @@ foot_designated, trail_visibility, hiking_route, natural_surface, park_path, mtb
 dismount), `routemaker.zoo` and the existing `singletrack` and `cbd_sidewalk`.
 The rebuild log line "facility classes: ..." carries the count per reason.
 
-**Five graphs.** The mountain-bike class (`mtb`) is closed on the standard,
+**Six graphs.** The mountain-bike class (`mtb`) is closed on the standard,
 weekend, e-bike and no-trail graphs and open on a fifth, `valhalla-offroad`
 (`Variant.OFFROAD`), which Gravel and Mountain Goat ride (OWNER-DECISIONS
-291(2)). It has no weekend twin and falls back to the standard graph, as the
+291(2)), and on the Mountain Bike graph (below). The off-road graph has no weekend twin and falls back to the standard graph, as the
 weekend one does, when it is not promoted or not answering. Start it after the
 first rebuild that builds it: `docker compose --profile offroad up -d --no-deps
 --no-build valhalla-offroad`; a rollback that withdraws it stops it like the weekend one.
-Limits: two workers inside 1536M (not 2G), so the swap-time peak is 32.0G of the
-32G the compose check allows.
+Limits: one worker inside 768M (not 2G), sharing with the Mountain Bike router (below) the
+1536M it had alone, so the swap-time peak is 32.0G of the 32G the compose check allows.
 
 **The off-road router is behind the compose profile `offroad`.** A plain
 `docker compose up -d` (and the force-recreate lists above, which name services
@@ -4986,8 +4987,53 @@ command above after the swap, and `restart` it after later rebuilds as the other
 A `restart` that names `valhalla-offroad` where it has no container fails ("no such
 service", with or without `--profile offroad`) and restarts none of the other
 routers on the same line, so the four-router restart never names it. Restart it on
-its own line, `docker compose --profile offroad restart valhalla-offroad`, and only
+its own line, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb`, and only
 where it runs.
+
+**The Mountain Bike graph** (docs/MTB-TOPO-PLAN.md, slice 6). A sixth graph, `tiles/mtb`
+(`Variant.MTB`, `valhalla/valhalla-mtb.json`), which only the Mountain Bike ride type rides:
+the off-road graph with rated singletrack opened where nothing but its rating closes it
+(`pipeline.trail_closures.mtb_graph_keeps`), and every way mapped closed when wet
+(`routemaker.mtbmode.closed_when_wet`) closed with `rm:no_bicycle=wet`. Every rebuild builds and
+promotes it with the other five; nothing else is to run. Its router, `valhalla-mtb`, is behind
+the same compose profile as `valhalla-offroad` and is started and restarted with it:
+
+    docker compose --profile offroad up -d --no-deps --no-build valhalla-offroad valhalla-mtb
+    docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # after a later swap
+
+Start both or neither: the printed restart names both, and a `restart` naming a service with no
+container restarts none of the others on the line. One worker in 768M each (the 1536M
+`valhalla-offroad` had alone), so the 32G compose check still holds at 32.0G; a host with room
+can give each two workers in 1536M once the check's host size is raised. While the router is not
+running, or before the first rebuild that builds `tiles/mtb`, Mountain Bike plans on the standard
+graph and the route says so (`mtb.limited` = `no_mtb_graph`). Disk: the rebuild's gate counts a
+sixth extract (seven times the source, `pipeline.tiles.check_disk_gate`), and the graph is about
+1.1 GB on disk like the others. The post-swap closure probe
+(`scripts/probe_bicycle_closures.py`) reads it too, leaving out only the probes it opens on
+purpose: the mountain-bike class and the singletrack the layer draws, which the probe file
+marks (`mtb_graph_open` = 1). It still holds that router to the undrawn singletrack (bicycle=no,
+hiking-only, private and the rest), as the rebuild's own readback does. A probe file written
+before that column leaves out every singletrack probe on it. The cloud box's result carries `tiles-mtb.tar` beside the other five
+(`scripts/cloud/box-rebuild.sh`, `import-result.sh`), and the beta's bundle sends `tiles/mtb`
+with the rest; the beta does not start the router (compose.beta.yaml, its memory ceiling).
+
+*Memory and time on the build host (the 16 GB WSL PC).* The sixth graph does not raise the
+rebuild's memory peak. Every per-graph stage runs one graph at a time, in the same `rebuild`
+container under its 8G limit: the extract written per graph (`inject_tags`, one graph's tag map
+held at a time), `valhalla_build_tiles` (one graph at a time, `REBUILD_TILE_CONCURRENCY` threads
+inside it), and the grade and closure read-backs (one one-shot `valhalla_service` at a time;
+`tests/test_worker_schedule.py` counts six builds and eight reads). The extra set it
+keeps is the wet-closed way ids, a few thousand integers. So the last rebuild's peak still holds,
+and so does what it needed: photon stopped and the heavy host apps closed (pre-flight, step B).
+What the sixth graph adds is time and disk: one more tile build, about 20-25 minutes quiet and
+more under load (the weekend graph's figure, above), inside the 8 h `REBUILD_TIMEOUT_S`; one more
+extract the size of the source; and about 1.1 GB per kept build directory (`current` and
+`previous`, so about 2.2 GB). At run time nothing changes on that host. `valhalla-mtb`, like
+`valhalla-offroad`, is behind the `offroad` profile and is not started there, and Mountain Bike
+plans on the standard graph and says so. Start the pair only on a host with about 1.5 GB to
+spare beyond the four routers. Each router's resident set has been 74-500 MB when read (the
+standard router about 450 MB over its 1.1 GB of tiles), so one worker fits in 768M; the compose
+check's 700 MB a worker leaves it little headroom past that.
 
 **The Zoo.** `fixtures/zoo/` holds the polygon and the spur: the Harvard Street
 NW entrance to the bike racks (OSM node 9827008403), seven whole ways, written
@@ -5022,8 +5068,11 @@ in `pipeline.trail_closures.PARK_RULES` after that park's compendium has been
 read, which needs the owner's approval as a fetch.
 
 **The gate.** VALIDATE_TILES reads back up to 8 ways of each new reason from every
-graph; the off-road graph is not held to `mtb`. `scripts/probe_bicycle_closures.py`
-does the same after the swap and now reads the off-road router too.
+graph; the off-road graph is not held to `mtb`, and the Mountain Bike graph not to `mtb`
+or to the singletrack the layer draws (`trail_closures.mtb_graph_keeps`).
+`scripts/probe_bicycle_closures.py` does the same after the swap and reads the off-road and
+Mountain Bike routers too, where they run ("offroad: not running, skipped" and "mtb: not
+running, skipped" where they do not).
 
 ## Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)
 

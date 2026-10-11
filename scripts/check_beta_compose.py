@@ -60,8 +60,8 @@ import check_compose_limits as production  # noqa: E402
 
 REPO = Path(__file__).resolve().parent.parent
 
-# The services the beta runs. `valhalla-offroad` is the placeholder behind the
-# `offroad` profile and is allowed, not required.
+# The services the beta runs. `valhalla-offroad` and `valhalla-mtb` are the placeholders
+# behind the `offroad` profile and are allowed, not required.
 EXPECTED_SERVICES = {
     "postgis",
     "api",
@@ -73,7 +73,7 @@ EXPECTED_SERVICES = {
     "valhalla-ebike",
     "valhalla-weekend",
 }
-OPTIONAL_SERVICES = {"valhalla-offroad"}
+OPTIONAL_SERVICES = {"valhalla-offroad", "valhalla-mtb"}
 FORBIDDEN_SERVICES = {"caddy", "rebuild", "renderer", "bot"}
 
 # Exits before the api starts (api depends on it completing), so it is not

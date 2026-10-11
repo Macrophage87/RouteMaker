@@ -953,11 +953,14 @@ def test_every_documented_restart_is_of_the_routers_that_load_tiles_at_start() -
             f"and run by default, which are the only ones a plain restart is for, are "
             f"{sorted(default)}; a profile-gated router ({sorted(gated)}) gets its own line"
         )
+    # Every router the profile line names (the off-road and Mountain Bike routers share one).
     profile_restarts = {
-        tokens[-1]
+        token
         for body in ALL_DOCUMENTS.values()
         for tokens in snippet_commands(body) + inline_commands(body)
         if tokens[:3] == ["docker", "compose", "--profile"] and "restart" in tokens
+        for token in tokens[tokens.index("restart") + 1 :]
+        if not token.startswith("-")
     }
     assert gated <= profile_restarts, (
         f"no guide restarts {sorted(gated - profile_restarts)} on its own profile line"

@@ -62,6 +62,8 @@ export function encodePlan(points: readonly LonLat[], preset: PresetId, dials?: 
     if (dials.bike === "ebike" && dials.ending === "outside_dock") params.set("ending", "outside");
     // Mass Ride's "Anticipated ride size" (PLAN items 128, 139), riders; absent is the default (500).
     if (dials.rideSize) params.set("riders", String(dials.rideSize));
+    // Mountain Bike's hardest trail level (slice 6); absent is level 2.
+    if (dials.mtbLevel) params.set("level", String(dials.mtbLevel));
   }
   return `#${params.toString().replaceAll("%2C", ",").replaceAll("%3B", ";")}`;
 }
@@ -121,6 +123,7 @@ export function decodePlan(hash: string): Plan {
     ...(isBike(params.get("bike")) ? { bike: params.get("bike") as "classic" | "ebike" } : {}),
     ...(params.get("ending") === "outside" ? { ending: "outside_dock" as const } : {}),
     rideSize: numberOrUndefined(params.get("riders")),
+    mtbLevel: numberOrUndefined(params.get("level")),
   });
   return { points, preset, dials };
 }

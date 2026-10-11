@@ -48,7 +48,7 @@
 #      the compose gate runs, migrations run (only after the snapshot), the front end is installed
 #      (index.html last), the api and worker start, photon and the four routers are recreated if a
 #      compose file changed, the four routers restart if a valhalla/*.json they read changed (never
-#      for valhalla-offroad.json: that router does not run on the beta), /healthz is waited for,
+#      for valhalla-offroad.json or valhalla-mtb.json: those routers do not run on the beta), /healthz is waited for,
 #      `migrate --check` and collectstatic run in the api, and the local smoke tests run. The
 #      release is then recorded as deployed. Last,
 #      if a tile FORMAT_VERSION changed, the pre-draw runs and is waited for (OWNER-DECISIONS 436);

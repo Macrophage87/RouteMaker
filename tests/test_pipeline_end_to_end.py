@@ -661,7 +661,8 @@ def test_rated_singletrack_open_but_for_its_rating_is_drawn_on_the_mtb_layer_wit
     """OWNER-DECISIONS 456 (docs/MTB-TOPO-PLAN.md, slice 2), through the rebuild: singletrack
     with a bicycle tag, which nothing but its rating closes, is drawn (map class road) as a
     mountain-bike-only way with its level and no path rail, so only the mountain-bike layer
-    draws it; every graph still closes it."""
+    draws it; every graph but Mountain Bike's still closes it (that graph keeps it open and
+    the plan-time level gate in core.mtb holds a rider to their hardest level)."""
     from pipeline.extract import read_ways
 
     tags = {
@@ -676,7 +677,8 @@ def test_rated_singletrack_open_but_for_its_rating_is_drawn_on_the_mtb_layer_wit
     for variant in Variant:
         found = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
         if SINGLETRACK_ID in found:
-            assert found[SINGLETRACK_ID].get("rm:no_bicycle") == "singletrack", variant.value
+            want = None if variant is Variant.MTB else "singletrack"
+            assert found[SINGLETRACK_ID].get("rm:no_bicycle") == want, variant.value
     with connection.cursor() as cursor:
         cursor.execute(
             f"SELECT DISTINCT map_class, mtb_only, mtb_level, facility, trail_route, mtb_name "
