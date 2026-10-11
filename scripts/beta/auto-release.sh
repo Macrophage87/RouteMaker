@@ -232,7 +232,7 @@ frontend_ready() { # sha
 	local h why
 	h=$(lock_hash "$1")
 	if ! dk image inspect "$NODE_IMAGE" >/dev/null 2>&1; then
-		echo "the pinned node image is not on this host ($NODE_IMAGE); the owner loads it once (docker save at home | docker load here), or approves a docker pull of that digest"
+		echo "the pinned node image is not on this host ($NODE_IMAGE); the owner loads it once, saved under a tag (docker save at home | docker load here; BETA-RUNBOOK.md, \"Front-end releases need two things on the server\"), or approves a docker pull of that digest"
 		return 1
 	fi
 	if [ ! -d "$cd_dir/node_modules/$h/node_modules" ]; then
