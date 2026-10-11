@@ -3099,6 +3099,9 @@ ATTRIBUTION = (
     # MDOT SHA's traffic counts (FOLLOWUP-MDOT-AADT): Maryland iMAP's terms ask that
     # derived data acknowledge the State of Maryland, so the credit names it.
     mdot_aadt.CREDIT,
+    # DDOT's Pavement Condition Index (DC-PCI): District streets' smoothness reading.
+    # The service states no licence; docs/SOURCES.md records that it is to be confirmed.
+    "DDOT Pavement Condition Index (DC GIS)",
     "Open Baltimore",
     "Montgomery County Planning Department",
     "USGS 3DEP",

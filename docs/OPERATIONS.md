@@ -4234,6 +4234,73 @@ proxy cannot reach the service.
    The before/after tier count for Maryland goes in the release notes: every
    tier a Maryland count moved is a road that was graded without one.
 
+## DC pavement condition (DC-PCI)
+
+DDOT's Pavement Condition Index is the smoothness reading of District streets from
+v0.5.0 (owner, 2026-10-11: "DC score in most cases takes priority over OSM data").
+The download runs on the home PC at rebuild time: the cloud proxy cannot reach
+dcgis.dc.gov. **The service states no licence**: confirm the terms with DDOT or Open
+Data DC before the release ships (docs/SOURCES.md). Until the owner has, the code
+holds it back: `routemaker.pavement.LICENCE_CONFIRMED` is False, so step 2 refuses
+`--dc-pci` (exit 2, `--dc-pci refused: ... states no licence`) and a rebuild that
+finds a `pavement.json` logs `... is installed but not read` and leaves every street
+on OSM's reading. The commit that records the confirmation in docs/SOURCES.md sets it
+True; only then run steps 1 to 3.
+
+1. **Fetch FY-25 once**, from the checkout on the host. There is no ArcGIS Online
+   item, so no `--item`; the README the script writes records the service's own item
+   info and says the licence is to be confirmed. It pages at 1,000 a request
+   (the layer's limit) and retries each request three times:
+
+   ```sh
+   export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
+   python3 scripts/fetch_agency_layer.py --slug dc-pavement-pci-fy25 \
+       --layer https://rh.dcgis.dc.gov/dcgis/rest/services/DDOT/PavementConditionIndex/FeatureServer/5 \
+       --out-dir ~/rmdata/datasets --credit "DDOT Pavement Condition Index (DC GIS)"
+   sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25"
+   sudo install -o 10001 -g 10001 -m 644 ~/rmdata/datasets/dc-pavement-pci-fy25/* \
+       "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25/"
+   ```
+
+   Exit 3 means the pages did not add up to the count the service reported: delete
+   the folder and run it again. Put the size and sha256 from its README into
+   docs/SOURCES.md. Before installing, open the file and check one record's `DATE1`
+   against the fiscal year: the rebuild takes `DATE1` as the survey date (an
+   assumption, docs/SOURCES.md).
+
+2. **Install it** (with the other reference inputs, or on its own; it writes only
+   `reference/pavement.json`):
+
+   ```sh
+   docker compose exec -T rebuild python3 scripts/install_reference_data.py \
+       --data-root /data \
+       --dc-pci /data/reference/inputs/dc-pavement-pci-fy25/dc-pavement-pci-fy25.geojson
+   ```
+
+   It prints `wrote .../pavement.json: N pavement blocks (FY2025)`. A later year's
+   layer takes `--dc-pci-fiscal-year`, which only names the year blocks with no
+   `DATE1` are dated to.
+
+3. **After the rebuild**, read the log line and the report:
+
+   | Line | What to look for |
+   |---|---|
+   | `DC pavement (PCI): N of M blocks matched ways, N ways reached; applied good N, fair N, poor N; kept OSM's reading: ...` | most blocks matched; `not_street` counts the alleys and paths near a block, `osm_newer` the streets whose OSM smoothness is newer than the survey, `override` the owner's corrections |
+   | `.../pavement.json is absent, so DDOT's Pavement Condition Index is not read` | should not appear once step 2 has run |
+   | `pavement corrections not applied (fixtures/pavement/overrides.json)` | should not appear; a correction names a way the layer did not reach |
+
+   `${DATA_ROOT}/rebuild/reports/dc-pavement-pci.csv` has one line a way the layer
+   reached: its PCI, the band the graph was given (empty where OSM's reading stood),
+   why, the survey date and the blocks. Spot-check two streets you know, one rough
+   and one smooth. A street that is wrong gets a row in
+   `fixtures/pavement/overrides.json` (`reading`: `osm`, `good`, `fair` or `poor`,
+   with the reason and the owner's decision), committed, and the next rebuild
+   applies it.
+
+   **Rolling it back** without a code change: remove `reference/pavement.json` and
+   rebuild; every street then keeps OSM's reading, and the log says the file is
+   absent.
+
 ## Deployment actions
 
 - Add a `check_operations` cron entry, or point an existing monitor at it.
