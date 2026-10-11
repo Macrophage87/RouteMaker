@@ -417,6 +417,70 @@ change: compare the counts with the previous build after the promotion. Until
 that rebuild, a night ride treats timed closures as open to cars. Rolling the
 images back to before this change makes a saved `when: "night"` a 422.
 
+**After the Track B rebuild: the junction speed and town columns (#38).** The
+first rebuild to promote with `road_default_speed_mph` and `road_urban` is the
+one that turns 469 on for junctions; the code and the columns are already in
+(`pipeline.schema.ROAD_COST_COLUMNS`, no migration: the segment table is rebuilt
+each time). After the swap:
+
+1. The columns exist and are filled. An unposted road has a default and a posted
+   one has none; `road_urban` is never null:
+
+   ```sh
+   docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+     "SELECT count(*) FILTER (WHERE road_default_speed_mph IS NOT NULL) AS unposted_with_default,
+             count(*) FILTER (WHERE road_speed_mph IS NOT NULL AND road_default_speed_mph IS NOT NULL) AS posted_and_default,
+             count(*) FILTER (WHERE road_urban) AS urban,
+             count(*) FILTER (WHERE road_urban IS NULL) AS urban_unknown,
+             count(*) AS segments
+        FROM live.segment WHERE NOT is_trail_class"
+   ```
+
+   Expect `posted_and_default` and `urban_unknown` to be 0 and `unposted_with_default` to be most
+   road segments (OSM leaves most residential streets unposted). The defaults
+   should be the statutory figures and nothing else:
+
+   ```sh
+   docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+     "SELECT road_default_speed_mph, road_urban, count(*) FROM live.segment
+       WHERE road_default_speed_mph IS NOT NULL GROUP BY 1, 2 ORDER BY 1, 2"
+   ```
+
+   The figures are `routemaker.stress.statutory_default_mph`'s: the District
+   20 mph (32 km/h), 15 mph (24 km/h) in an alley; Maryland 30 or 35 mph (48 or
+   56 km/h, undivided or divided) in an urban area and 50 or 55 mph (80 or
+   89 km/h) outside; Virginia 25 mph (40 km/h) in an urban area and 55 mph
+   (89 km/h) outside, 35 mph (56 km/h) unpaved. Any other value is a road the
+   zone lookup placed in none of the three, read at its class default; a
+   handful at the coverage edge is expected, many is a zone fault to look into.
+2. The junction model sees them: `core.junctions.has_cost_columns('live')` is
+   true from a `manage.py shell` in the api container. It reads the schema once
+   and remembers a yes, so no restart is needed beyond the one that restarts the
+   routers.
+3. A night ride in town halves its junction costs. Plan the same urban route with
+   `when` `weekday_offpeak` and `night`: the night answer's red and orange
+   junctions are the same or fewer, and none is added. The same route in a rural
+   area changes by x0.85 only. Night also opens the ways whose timed closure
+   covers it (`car_free_when`), so if the night route takes a different line,
+   compare the junctions on the stretch the two routes share.
+4. `car_free_when` gains `night` (469c): compare the counts with the previous
+   build, as the paragraph above says:
+
+   ```sh
+   docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+     "SELECT 'live' AS build, count(*) FILTER (WHERE 'night' = ANY(car_free_when)) AS night,
+             count(*) FILTER (WHERE cardinality(car_free_when) > 0) AS any_time
+        FROM live.segment
+      UNION ALL
+      SELECT 'live_old', count(*) FILTER (WHERE 'night' = ANY(car_free_when)),
+             count(*) FILTER (WHERE cardinality(car_free_when) > 0)
+        FROM live_old.segment"
+   ```
+
+   A `live_old` built before 469 has no `night` rows; `live`'s `any_time` should
+   be within a few ways of `live_old`'s (the off-peak sample moved from 21:00 to
+   20:30).
+
 **Cost per plan.** Every plan asks `/locate` once for each 50 junctions where a
 busy-class road meets the route, with a 3 ft (1 m) radius, and again, with a
 100 ft (30 m) radius, for each 50 of those whose control is not already a signal, to
@@ -608,11 +672,12 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
   it from a driveway just past a signalized junction would need the rider's
   riding straight through a minor road's T junction on the junction's own
   road, which would bring that driveway's under-warning back.
-- Signalized trail crossings tagged `crossing=traffic_signals` away from any
-  signalized road junction read as unsignalized until the tag transform derives
-  the signal. They are orange at most and say "no signal mapped"
-  (OWNER-DECISIONS 185), so a rider may see an orange marker at a crossing that
-  has a light.
+- Signalized trail crossings away from any signalized road junction read as
+  signalized from the Track B rebuild where OSM maps the signal on the crossing
+  node or the crossing way (FOLLOWUP-SIGNAL-DERIVE; the check is below). One
+  whose signal is mapped on neither still reads as unsignalized: orange at most,
+  "no signal mapped" (OWNER-DECISIONS 185), so a rider may see an orange marker
+  at a crossing that has a light.
 - A stop sign on a cross road's stop line short of the junction is not read as
   the cross traffic's (it may be another junction's), so a junction where only
   the cross traffic stops can be priced as if nobody does: the rider's crossing
@@ -622,7 +687,10 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
   of a signalized junction can be priced as signalized, and its red or orange
   not drawn, where the signal is on a stop line of the road it joins with no
   other named road at that node, or where the other junction's road has no
-  name in OSM. For a rider arriving on a road, a driveway, a parking aisle or
+  name in OSM. From the Track B rebuild a signalized trail crossing (a HAWK or
+  a mid-block crossing signal, FOLLOWUP-SIGNAL-DERIVE) carries the router's
+  signal flag on the road, so a side street within 100 ft (30 m) of one can
+  take it the same way. For a rider arriving on a road, a driveway, a parking aisle or
   a drive-through, a signal at a node up an arm that a road of another name
   joins, or one facing away from the junction, is not taken (review r3; gate
   1 for driveways and parking aisles, which took it until then); nor is a
@@ -665,6 +733,38 @@ at most about 10 KB to an answer (one figure a profile sample, up to 2,000) plus
 sections and the flagged junctions; live serves route JSON uncompressed (the Caddyfile
 compresses only tiles and the front end), so a long ride with candidates grows by tens of
 KB. `calm.estimate` is true while each stretch is priced by its tier.
+
+### After the Track B rebuild: signalised trail crossings (FOLLOWUP-SIGNAL-DERIVE)
+
+The rebuild marks the nodes where a crossing way tagged as signalised meets a
+road, and the transform turns those, and crossing nodes tagged
+`crossing=traffic_signals` or `crossing:signals=yes`, into signals. Nothing to
+deploy beyond the rebuild itself: no migration, no setting.
+
+1. INJECT_TAGS logs `N signalised trail crossings marked from their crossing
+   ways`. Record N here; zero means the crossing ways were not read and the rest
+   of this check will show no change. (Not counted in advance: the count needs
+   the coverage extract, which the build container could not reach.)
+2. No `ROUTEMAKER-VIOLATION` line in any variant's build log (VALIDATE fails the
+   rebuild on one anyway). A violation naming `highway` means a class write other
+   than the signal reached the guard.
+3. Pick a trail crossing away from a road junction whose crossing node or
+   crossing way OSM tags `crossing=traffic_signals` (or `crossing:signals=yes`),
+   note the node's coordinates, and ask the standard router before and after:
+
+   ```sh
+   docker compose exec api python -c 'import json, sys, urllib.request
+   body = {"locations": [{"lat": float(sys.argv[1]), "lon": float(sys.argv[2]), "radius": 10}],
+           "costing": "bicycle", "verbose": True}
+   r = urllib.request.urlopen("http://valhalla-standard:8002/locate", json.dumps(body).encode())
+   print([n.get("traffic_signal") for n in json.load(r)[0].get("nodes") or []])' LAT LON
+   ```
+
+   It prints `[True]` where it printed `[False]` on the previous graph.
+4. A route across that crossing describes it "at a signal" instead of "no signal
+   mapped", and its marker is no longer the capped orange.
+5. Rollback: the previous graph is the one without the signals; `rollback_rebuild`
+   as for any rebuild. The remap change is in lua/, so a code revert needs a rebuild.
 
 ## The stress tiles
 
@@ -2133,51 +2233,48 @@ Each graph is built by one `valhalla_build_tiles` run, and the five run one
 after another (standard, no-trail, ebike, weekend, offroad). How many threads a
 run uses is `mjolnir.concurrency` in that variant's
 `<DATA_ROOT>/tiles/<variant>/<build id>/build-config.json`, and the rebuild
-writes it from **`REBUILD_TILE_CONCURRENCY`** (in `.env`; unset means **2**).
-The serving configs' own `"concurrency": 4` is not what a build uses.
+writes it from **`REBUILD_TILE_CONCURRENCY`** (in `.env`; unset means **4**,
+the serving configs' own `"concurrency": 4`).
 
-Why it is a setting: Valhalla 3.5.1 can abort a multi-threaded tile build with
+Why it was low, and why it is not now: Valhalla 3.5.1 could abort a
+multi-threaded tile build with
 
 ```
 double free or corruption (fasttop)
 ```
 
-on stderr and `valhalla_build_tiles exited -6` (SIGABRT) in the rebuild's log,
-usually a few seconds after `Building <n> tiles with <threads> threads...`. Each
-build thread frees its spatialite connections to the admin and timezone
-databases when it finishes, that cleanup calls a libxml2 function that is not
-thread-safe, and two threads finishing together can free the same memory.
+on stderr and `valhalla_build_tiles exited -6` (SIGABRT) in the rebuild's log. Each
+build thread freed its spatialite connections to the admin and timezone
+databases when it finished, that cleanup called a libxml2 function that is not
+thread-safe, and two threads finishing together could free the same memory.
 Upstream fixed it in 3.6.0 ([valhalla/valhalla#5005](https://github.com/valhalla/valhalla/pull/5005),
-reported as [#4904](https://github.com/valhalla/valhalla/issues/4904)). It is a
-race, not bad data: the same inputs build on the next try, and which graph it
-hits is luck.
-
-**The pinned image is 3.9.1 now (2026-10-10), which has that fix**: from 3.6.0
+reported as [#4904](https://github.com/valhalla/valhalla/issues/4904)): from 3.6.0
 Valhalla takes a process-wide lock around the cleanup (`Sqlite3::~Sqlite3`,
-src/mjolnir/sqlite3.cc:78-91 at 3.6.3, unchanged at 3.9.1). Both guards below
-stay until rebuilds on this host with the fix have shown no abort; the default stays 2 for memory as
-much as for the race. Once a few rebuilds are clean, 4 (the measured 4.5 h row
-below) is the setting to try. A `retry 1 of 1` line under 3.9.1 is no longer
-the known race: keep the log and report it.
+src/mjolnir/sqlite3.cc:78-91 at 3.6.3, unchanged at 3.9.1). So while the image was
+3.5.1 the default was 2 threads, and an aborted or crashed (SIGSEGV) build was run
+once more. The pinned image is 3.9.1, and both are retired
+(FOLLOWUP-VALHALLA-36-LEFTOVERS, item 4; the v0.5.0 Track B change): the default
+is 4, and an abort fails the tile stage at once, as any other failure does, saying
+`valhalla_build_tiles exited -6: <command>` (`-11` for SIGSEGV). Before retiring
+them, the 3.9.1 binaries from the `pyvalhalla` wheel built a small Baltimore
+extract (Valhalla's own `test/data/baltimore.osm.pbf`) with an admin database on 4
+threads 150 times in a row with no abort (2026-10-11, the cloud container). That
+is a much smaller build than the region's, so it is a sanity check rather than proof.
 
-Two things keep it from failing a rebuild:
+**An abort under 3.9.1 is something new.** Keep the rebuild's log (the run row
+holds the command's last lines), and note it in the report. The attempt fails
+and the worker retries the job (a failed command is not a terminal cause); with
+`REBUILD_CHECKPOINTS` on, the retry resumes after the last graph that finished
+("Rebuild checkpoints"), and without it the retry starts again from the top. If it aborts again, set
+`REBUILD_TILE_CONCURRENCY=1` (below) and let the next attempt resume. One more
+SIGABRT is not a race at all: a tag-transform script Valhalla refuses ("Lua
+script does not contain a function ...", from `std::terminate`) dies of SIGABRT
+too, every time; lua/graph.lua refuses itself that way when
+`routemaker_remap.lua` does not load (FOLLOWUP-VALHALLA-36-LEFTOVERS, item 2).
+The command's output in the run row says which.
 
-- **Fewer threads.** 2 rather than 4 means fewer threads finishing at once,
-  and less memory. **1 cannot hit it at all**, and is the setting to use if
-  aborts keep happening; it makes the tile stage slower (the figures below).
-- **One retry of the crashed graph.** A `valhalla_build_tiles` that dies with
-  SIGABRT (`-6`) **or SIGSEGV (`-11`)** is run once more, for that graph only, logged
-  as `valhalla_build_tiles aborted (SIGABRT); running it again, retry 1 of 1: <command>`
-  or `valhalla_build_tiles crashed (SIGSEGV); running it again, retry 1 of 1: <command>`.
-  SIGSEGV is the same race seen as a crash (it killed a graph of job 8408 on
-  2026-10-09, OWNER-DECISIONS 459); SIGKILL (the out-of-memory killer) and everything
-  else are not retried.
-  That line means the retry is running and nothing needs doing now. The rerun
-  starts from scratch in the same build directory (Valhalla purges the tile
-  level directories first) and gets whatever is left of the budget. Any other
-  failure, or a second abort, fails the rebuild as before; a second abort is
-  reported as `valhalla_build_tiles exited -6 (after 1 retry): <command>` (`-11` for a
-  second SIGSEGV).
+**Fewer threads is less memory.** A host that runs short at 4 (the out-of-memory
+killer: `exited -9`) builds at 2 or 1, slower:
 
 What it costs, measured on attempt 3 of job 8023 (2026-10-08, 4 threads, no
 abort): preprocessing up to the first build config took 2 h 37 min, the tile
@@ -2186,15 +2283,14 @@ also builds the admin and timezone databases), and VALIDATE (now VALIDATE_TILES)
 
 | Threads | Whole rebuild |
 |---|---|
-| 4 | about 4.5 h |
-| 2 (the default) | about 6 h; about 6.8 h if one graph is retried |
+| 4 (the default) | about 4.5 h |
+| 2 | about 6 h |
 | 1 | about 6.6 to 8.3 h |
 
 At 1 thread the top of that range is past the eight-hour budget ("The
 rebuild's own budget", above). An attempt that times out *after* writing a checkpoint is
-retried and resumes from it; one that wrote none is abandoned. So set 1 only after an abort
-that the retry did not cure (the `(after 1 retry)` failure), or after the retry line has
-shown up in more than one rebuild, and watch the next one against the budget.
+retried and resumes from it; one that wrote none is abandoned. So watch a rebuild at 1
+against the budget.
 
 The setting is read when the settings load: a value that is not a whole number
 of at least 1 (`0`, `-1`, `2.5`, `x`) keeps the rebuild service from starting:
@@ -2217,6 +2313,47 @@ The value a build actually used is in its `build-config.json` under
 <threads> threads...` line is not in `docker compose logs rebuild` on a build
 that succeeds: the rebuild captures the output and logs it only when a command
 fails.)
+
+### After the Track B rebuild: the Valhalla 3.6 leftovers
+
+FOLLOWUP-VALHALLA-36-LEFTOVERS items 1-4 (the v0.5.0 Track B change). What to look at
+once the first rebuild with them has been promoted:
+
+1. **Threads and the retry (item 4).** Each graph's `build-config.json` says
+   `"concurrency": 4` unless `.env` sets another value, and the run took about
+   4.5 h ("Tile build threads", above). No `exited -6` or `-11` in the run row. If
+   the host ran short of memory (`exited -9`, or the box swapping hard), set
+   `REBUILD_TILE_CONCURRENCY=2`.
+
+   ```sh
+   cat "$(sed -n 's/^DATA_ROOT=//p' .env)"/tiles/standard/current/build-config.json \
+     | python3 -c 'import json,sys; print(json.load(sys.stdin)["mjolnir"]["concurrency"])'   # 4
+   ```
+
+2. **The remap loaded (item 2).** A finished rebuild is the check: a remap that
+   fails to load now fails BUILD_TILES on the first graph ("Lua script does not
+   contain a function ..."). Before, it built on the stock transform.
+3. **Hiking ratings (item 3).** The `sac_scale` count in the rebuild log's
+   "facility classes: ..." line moves. Footways, pedestrian ways and bridleways
+   with a rating drop out, since their class already closed them. Unpaved paths
+   rated beyond `hiking` (`mountain_hiking` and up) come in: Valhalla reads no
+   `sac_scale` for a bicycle, so they were routable before and are closed now.
+   Compare it with the previous rebuild's line, and see how many closed paths
+   were open in the build before:
+
+   ```sh
+   docker compose exec -T postgis psql -U routemaker -d routemaker -c "
+     SELECT count(DISTINCT n.osm_way_id) AS newly_closed_trails
+       FROM live.segment n JOIN live_old.segment o USING (osm_way_id, ordinal)
+      WHERE n.map_class = 'barred' AND o.map_class <> 'barred' AND n.is_trail_class"
+   ```
+
+   Expect tens to a few hundred ways. That count also includes trails closed
+   for other reasons since the last extract. Open a few on openstreetmap.org: the
+   ones this change closed carry `sac_scale` and no `bicycle` tag.
+4. **Surface penalties (item 1).** Nothing to see: no rebuild input writes
+   `rm:reviewer_surface` today. The tile test (tests/test_tile_build_access.py,
+   "a reviewer ... penalty") covers it against the real parser.
 
 ## Rebuild checkpoints
 
@@ -5005,7 +5142,7 @@ grep -q '^WEEKLY_REBUILD_PAUSED=1' .env && echo paused               # paused: c
 docker compose up -d --no-deps --no-build --force-recreate api worker rebuild </dev/null
 docker compose exec -T api python -c "from core import stress_tiles, mass_tiles; print(stress_tiles.FORMAT_VERSION, mass_tiles.FORMAT_VERSION)" </dev/null   # 8 2 (7 2 before the judged bridges' surface)
 docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.WEEKLY_REBUILD_PAUSED)" </dev/null                       # True
-docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.REBUILD_TILE_CONCURRENCY)" </dev/null                    # 2 (or the .env value; "Tile build threads")
+docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.REBUILD_TILE_CONCURRENCY)" </dev/null                    # 4 (or the .env value; "Tile build threads")
 docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.SOURCE_EXTRACT_FORCE_REFRESH)" </dev/null               # False: the fresh extract (443) comes from step I's move, not this flag
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost/healthz    # 200
 Q "select id,status from procrastinate_jobs where task_name='weekly_rebuild' and status in ('todo','doing')"   # empty (a waiting tick ran as paused)
@@ -5202,20 +5339,18 @@ directory. In a second shell, read the newest directory by name and print it wit
 `build-config.json` thread count:
 
 ```sh
-docker compose exec -T rebuild sh -c 'd=$(ls -d /data/tiles/standard/2*/ | sort | tail -1); echo "directory: $d"; grep -h "\"concurrency\"" "${d}build-config.json"' </dev/null   # directory dated today (UTC), then "concurrency": 2
+docker compose exec -T rebuild sh -c 'd=$(ls -d /data/tiles/standard/2*/ | sort | tail -1); echo "directory: $d"; grep -h "\"concurrency\"" "${d}build-config.json"' </dev/null   # directory dated today (UTC), then "concurrency": 4 (or the .env value)
 ```
 
 If the directory it prints is not dated today (UTC), the build has not started its tiles
-yet and that is an older build's value (it may well say 4): wait and run it again, and do
+yet and that is an older build's value (one built before v0.5.0 may say 2): wait and run it again, and do
 not conclude anything from it.
 
-A log line `valhalla_build_tiles aborted (SIGABRT)` or `crashed (SIGSEGV); running it again,
-retry 1 of 1` means a tile build failed and the retry is building it again: nothing needs doing during
-the run. Under 3.5.1 that was the known race; the pinned 3.9.1 fixes it, so an abort now is something new. Keep the
-rebuild's log and note the line in the report. "Tile build threads" says when to move to
-`REBUILD_TILE_CONCURRENCY=1` (only after the `(after 1 retry)` failure, or once the retry
-line has shown up in more than one rebuild). A failure `valhalla_build_tiles exited -6 (after 1 retry)` means
-the retry aborted too: set 1 before the next rebuild.
+A failure `valhalla_build_tiles exited -6` (or `-11`) under the pinned 3.9.1 is not the
+old 3.5.1 race: keep the rebuild's log and note it in the report. The attempt resumes
+from its checkpoints on the worker's retry; "Tile build threads" says when to set
+`REBUILD_TILE_CONCURRENCY=1` (a second abort) and how to tell a refused Lua script,
+which aborts every time, from a crash.
 
 **J. After the swap.** The run row's notice prints the same restart as here.
 

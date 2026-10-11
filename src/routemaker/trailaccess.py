@@ -10,8 +10,9 @@ here (singletrack, cbd_sidewalk and zoo live in their own modules):
 
 - `private`: `access` private/permit/customers/restricted, or `bicycle`
   private/permit/residents, with no bicycle tag that says yes.
-- `sac_scale`: a hiking-difficulty rating, no bicycle tag (Valhalla reads
-  `sac_scale=hiking` as a grant; this takes it back). Paved exempt.
+- `sac_scale`: a hiking-difficulty rating on a way open to bicycles, no
+  bicycle tag (Valhalla does not read the rating for a bicycle, so a rated
+  path is open unless this closes it). Paved exempt.
 - `informal`: `informal=yes`, no bicycle tag.
 - `foot_designated`: a `path` designated for foot, no bicycle tag. Paved exempt.
 - `trail_visibility`: intermediate or worse, no bicycle tag. Paved exempt.
@@ -224,9 +225,9 @@ def upstream_open(tags: dict[str, str]) -> bool:
     and `access` leave it open (the remap's `vehicle_reopens_for_bicycle`
     closes the rest), and `no`, `agricultural`, `forestry` or `discouraged`
     close it; then access; then impassability (`smoothness=impassable` closes
-    from 3.6.0, valhalla/valhalla#5023); then sac_scale (hiking grants, any
-    other value closes); then the class default (path open; footway,
-    pedestrian, bridleway closed)."""
+    from 3.6.0, valhalla/valhalla#5023); then the class default (path open;
+    footway, pedestrian, bridleway closed), whatever `sac_scale` says, which
+    upstream does not read for a bicycle."""
     highway = tags.get("highway")
     if highway not in CANDIDATE_HIGHWAY:
         return False
@@ -249,9 +250,14 @@ def upstream_open(tags: dict[str, str]) -> bool:
         return False
     if tags.get("impassable") == "yes" or tags.get("smoothness") == "impassable":
         return False
-    sac_scale = tags.get("sac_scale")
-    if sac_scale is not None:
-        return sac_scale == "hiking"
+    # `sac_scale` is not read for a bicycle at all (FOLLOWUP-VALHALLA-36-LEFTOVERS,
+    # item 3): upstream's transform reads it only in its ferry-and-rail branch
+    # (lua/vendor/graph_upstream.lua), the parser keeps it for the pedestrian
+    # costing alone, and a 3.9.1 tile build shows a footway with
+    # `sac_scale=hiking` closed and a path with `mountain_hiking` open
+    # (tests/test_tile_build_access.py). This model used to call the first open
+    # and the second closed, so the trail rules skipped the path, which stayed
+    # routable; it now takes the `sac_scale` reason like any other rated path.
     return highway == "path"
 
 

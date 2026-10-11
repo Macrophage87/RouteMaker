@@ -93,27 +93,35 @@ def effort_factor(grade: float, mass_kg: float = MASS_KG) -> float:
     return max(force_n(grade, mass_kg) / flat_force_n(mass_kg), 1.0)
 
 
-def _windows(profile: Sequence[tuple[float, float | None]]) -> list[tuple[float, float]]:
-    """The profile as (length, rise) windows of at least WINDOW_M, each from one run
-    of samples; a sample with no elevation ends the run (the gap between legs)."""
-    out: list[tuple[float, float]] = []
+def windows_along(
+    profile: Sequence[tuple[float, float | None]],
+) -> list[tuple[float, float, float]]:
+    """The profile as (start, end, rise) windows of at least WINDOW_M, in metres along
+    it, each from one run of samples; a sample with no elevation ends the run (the gap
+    between legs)."""
+    out: list[tuple[float, float, float]] = []
     start: tuple[float, float] | None = None
     last: tuple[float, float] | None = None
     for along, height in profile:
         if height is None:
             if start is not None and last is not None and last[0] > start[0]:
-                out.append((last[0] - start[0], last[1] - start[1]))
+                out.append((start[0], last[0], last[1] - start[1]))
             start = last = None
             continue
         if start is None:
             start = (along, height)
         last = (along, height)
         if along - start[0] >= WINDOW_M:
-            out.append((along - start[0], height - start[1]))
+            out.append((start[0], along, height - start[1]))
             start = (along, height)
     if start is not None and last is not None and last[0] > start[0]:
-        out.append((last[0] - start[0], last[1] - start[1]))
+        out.append((start[0], last[0], last[1] - start[1]))
     return out
+
+
+def _windows(profile: Sequence[tuple[float, float | None]]) -> list[tuple[float, float]]:
+    """The profile as (length, rise) windows of at least WINDOW_M (`windows_along`)."""
+    return [(end - begin, rise) for begin, end, rise in windows_along(profile)]
 
 
 def windows(profile: Sequence[tuple[float, float | None]]) -> list[tuple[float, float]]:
