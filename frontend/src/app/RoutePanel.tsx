@@ -511,7 +511,7 @@ export function RouteSummary({
   const start = rideable ? (
     <button type="button" className="start-button" ref={ride.startRef} onClick={ride.onStart} aria-describedby="start-ride-hint">
       <Icon name="play" />
-      Start ride
+      Start<span className={goMode ? undefined : "visually-hidden"}> ride</span>
     </button>
   ) : null;
   const startHint = rideable ? (

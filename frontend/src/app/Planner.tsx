@@ -132,7 +132,6 @@ export function PointsSection(props: PointsSectionProps) {
                   commitDials(withLoop(dials, event.target.checked));
                 }}
               />
-              <Icon name="loop" />
               <span className="visually-hidden">{loop.label}</span>
               <span aria-hidden="true">Loop</span>
             </label>

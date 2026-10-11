@@ -170,6 +170,8 @@ const initialPlan = decodePlan(planToOpen(tabSession(), window.location.hash));
 // Go or Plan (lib/appMode.ts; the owner's choices 1 and 2 of 2026-10-11): the tab's own view, else Plan for a
 // link with a plan in it, else My Go's Open in (the account's copy or this device's), else by screen size.
 const START_MY_GO = readStartMyGo();
+/** A Go sheet's way back: to the map and the Go sheet, not a planner it does not show. */
+const GO_CLOSE_LABEL = "Close";
 const PLAN_LINK = hasPlanLink(window.location.hash) || initialPlan.points.length > 0;
 const OPENING = openingMode({ tab: readTabMode(), planLink: PLAN_LINK, openIn: START_MY_GO.myGo.openIn, wide: !window.matchMedia(NARROW).matches });
 // Go with nothing linked starts on My Go's ride type (the rider's saved settings, used as they are).
@@ -1427,7 +1429,8 @@ export function App() {
   };
   const backLabel = (of: PanelView): string => {
     const step = opened.current[opened.current.length - 1];
-    if (!step || viewNow.current !== of || step.from === "planner") return BACK_LABEL;
+    // Go's Menu, Layers and chips' sheets close back to the map and its sheet (the mockup's "Menu Close").
+    if (!step || viewNow.current !== of || step.from === "planner") return mode === "go" ? GO_CLOSE_LABEL : BACK_LABEL;
     return `Back to ${step.from === "settings" && mode === "go" ? "Menu" : SHEET_TITLES[step.from as Exclude<PanelView, "planner">]}`;
   };
   const sheetNav: SheetNav = { view, back: backToPlanner, backLabel };
@@ -1914,7 +1917,7 @@ export function App() {
   };
 
   return (
-    <div className={`app${riding ? " riding" : ""}${riding && bigText ? " riding-big" : ""}`}>
+    <div className={`app${riding ? " riding" : ""}${riding && bigText ? " riding-big" : ""}${goMode && !riding ? " go-mode" : ""}`}>
       {/* Past the map, its markers and its controls (up to 150 junction
           markers come before the planner), to the planner (lib/skipLink.ts). */}
       {/* The page's first stop and first in a screen reader's order, hidden until focused: accessibility mode's

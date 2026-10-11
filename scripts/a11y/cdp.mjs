@@ -219,6 +219,18 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       status = 200;
       body = JSON.stringify(segmentInfoAt(page.editRoad.tier));
       type = "application/json";
+    } else if (url.pathname === "/api/me/go") {
+      // My Go (UI-CLEANUP; core/api.py my_go_read, my_go_save): the account's, signed in only.
+      (page.myGoRequests ??= []).push({ method: request.method, headers: request.headers, body: request.postData ? JSON.parse(request.postData) : null });
+      type = "application/json";
+      if (!(admin || suggester)) {
+        status = 401;
+        body = JSON.stringify({ error: "Sign in to keep My Go with your account.", code: "signed_out" });
+      } else {
+        if (request.method === "POST") page.myGo = JSON.parse(request.postData ?? "{}");
+        status = 200;
+        body = JSON.stringify(page.myGo ?? { open_in: "", ride: "", home: null });
+      }
     } else if (url.pathname === "/api/me") {
       status = 200;
       body = JSON.stringify({ signed_in: admin || suggester, can_change_lts: admin, can_suggest: suggester && !admin });
