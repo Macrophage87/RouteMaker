@@ -40,12 +40,19 @@ The plan
 2. Docks that can end it: returning, with a free slot.
 3. The few best of each by the direction rule above (walk plus extra riding,
    straight lines) are walked for real (Valhalla pedestrian costing on the
-   standard graph), and the pair with the least real walks plus extra riding
-   is chosen (ties by the time, the ride estimated by the straight line and a
-   detour factor at the bike's pace); only the winner is routed as a ride
-   (`routing.plan`, so the leg has the stress order, the presets' hills and
-   everything else a ride has). The answer's `options` are the best pairs,
-   up to `OPTION_COUNT`, the first being the plan's own.
+   standard graph), and the quickest pair is chosen: the real walks plus the
+   ride estimated by the straight line and a detour factor at the bike's pace
+   (ties by the walks plus extra riding). The direction rule picks which docks
+   are walked; the time picks among them, because it also counts how much a
+   dock ahead shortens the ride, which the rule (never below zero) does not:
+   picking the pair by the rule alone made about a quarter of simulated
+   trips slower (the worst by over 3 minutes) for almost no gain in docks on
+   the way (review of PR #94, 2026-10-11). A dock behind still lengthens
+   the ride, so the time counts it against. Only the winner is routed as a
+   ride (`routing.plan`, so the leg has the stress order, the presets' hills
+   and everything else a ride has).
+   The answer's `options` are the quickest pairs, up to `OPTION_COUNT`, the
+   first being the plan's own.
 4. Fallback: a nearer dock that has no such bike, or no free slot, is passed
    over with a note. With no availability feed every dock counts and the
    notes say availability is unknown.
@@ -725,8 +732,9 @@ def plan(
                 "There is no way on foot from a dock with a free slot to the destination."
             )
 
-    # Every pair, best first by the one rule: the real walks plus the extra riding each end
-    # adds (straight lines); ties by the estimated time.
+    # Every pair, quickest first: the real walks plus the estimated ride. Ties by the walks
+    # plus the extra riding each end adds (straight lines). The docks walked were already
+    # chosen by that rule; the time also credits a dock ahead for the riding it saves.
     pairs = []
     for s_pick, s_walk in starts:
         s_extra = extra_riding_m(s_pick.point, origin, dest)
@@ -748,7 +756,7 @@ def plan(
             "The nearest docks to the start and to the destination are the same, so there is "
             "nothing to ride. Walking is the way."
         )
-    pairs.sort(key=lambda p: (p[0], p[1]))
+    pairs.sort(key=lambda p: (p[1], p[0]))
     _, _, start, walk_start, start_extra, end, walk_end, end_extra = pairs[0]
 
     # What was passed over, said once the choice is made.
@@ -773,7 +781,7 @@ def plan(
             "The plan starts at an e-bike parked outside a dock, near you"
             + (
                 f", rather than the nearest dock with one, {miles(nearest_dock)} away: "
-                "its walk plus any extra riding is shorter."
+                "the walk plus the ride is quicker."
                 if nearest_dock is not None
                 else "."
             )
@@ -942,12 +950,12 @@ def _passed_words(
     """The note for a nearer dock passed over: why the chosen one is used instead."""
     if on_the_way(near_extra):
         return (
-            f"{lead} in a straight line; this plan {verb} {chosen.name} because its walk is "
-            "shorter."
+            f"{lead} in a straight line; this plan {verb} {chosen.name} because the walk plus "
+            "the ride is quicker."
         )
     return (
         f"{lead}, but {way_words(near_extra)}; this plan {verb} {chosen.name}, "
-        f"{way_words(chosen_extra)}, because its walk plus any extra riding is shorter."
+        f"{way_words(chosen_extra)}, because the walk plus the ride is quicker."
     )
 
 
@@ -979,10 +987,10 @@ def _option_text(option: dict) -> str:
 
 
 def _options(pairs: list, bike: str, use_outside: bool, snapshot: gbfs.Snapshot) -> list[dict]:
-    """Up to `OPTION_COUNT` start-and-end pairs, best first by the one rule (the first is the
-    plan's own). An option can be asked for again with its `pickup_station` and
-    `dropoff_station` (and `ending`), so a free-floating e-bike, which has no id to ask for,
-    is offered only when it is the plan's own start."""
+    """Up to `OPTION_COUNT` start-and-end pairs, quickest first (the first is the plan's own).
+    An option can be asked for again with its `pickup_station` and `dropoff_station` (and
+    `ending`), so a free-floating e-bike, which has no id to ask for, is offered only when it
+    is the plan's own start."""
     out: list[dict] = []
     for index, (_, total, s_pick, s_walk, s_extra, e_pick, e_walk, e_extra) in enumerate(pairs):
         if index > 0 and s_pick.kind == "free_bike":

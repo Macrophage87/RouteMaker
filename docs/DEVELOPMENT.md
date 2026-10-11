@@ -6664,8 +6664,10 @@ availability, fee information and notes under `bikeshare` (`core.api.BikesharePl
 - `core/bikeshare.py`: the plan. Candidates are the 3 best docks that can start (a bike of the type,
   renting) and end (a free slot, returning) a ride, and for an e-bike the 2 best free-floating
   e-bikes, "best" by the direction rule below (within 1.9 mi (3 km)); each is walked for real, the
-  pair with the least real walks plus extra riding is chosen (ties by the estimated time), and only
-  that pair is routed as a ride. Walking is Valhalla pedestrian costing on the standard graph at 3 mph.
+  quickest pair is chosen (real walks plus the estimated ride; ties by the walks plus extra riding),
+  and only that pair is routed as a ride. The time, not the rule, picks the pair because it also
+  credits a dock ahead for the riding it saves; by the rule alone about a quarter of trips came out
+  slower (1 in 10 by 17 s or more, the worst by over 3 min) for almost no more docks on the way (a simulation in the review of PR #94). Walking is Valhalla pedestrian costing on the standard graph at 3 mph.
   The answer's `bikeshare.options` lists up to 3 pairs, best first, the first being the plan itself
   (below).
 - The ride leg is `routing.plan` on the `bikeshare` preset: stress 80 with the stress-averse
@@ -6752,13 +6754,13 @@ and the e-bike counts.
 
 Route options, for the Go screen ("pull out your phone, then select a destination ... offer the
 options for routing to it with stations"; Bikeshare only, the owner: "only if youre in bikeshare
-mode"): a Bikeshare `POST /api/route` answer carries `bikeshare.options`, up to 3 pairs best first
-by the same rule (`core.api.BikeshareOptionOut`): `rank`, `chosen` (the first, which is the plan the
+mode"): a Bikeshare `POST /api/route` answer carries `bikeshare.options`, up to 3 pairs, quickest
+first, from the docks the rule chose (`core.api.BikeshareOptionOut`): `rank`, `chosen` (the first, which is the plan the
 answer routed), `pickup` and `dropoff` (each a `BikeshareStopOut` plus `walk_m`, `walk_s`,
 `extra_m`, `on_the_way` and `way_text`), `pickup_station`, `dropoff_station` and `ending` (send
 them on `POST /api/route` to plan that option), `ride_m` and `total_s` (the routed figures for the
-chosen one, estimates by straight line and the detour factor otherwise, `estimated`), `cost_m` (the
-ranking figure) and `text`, the option in plain words for a button: "Pick up at Ahead, 0.1 mi (0.2
+chosen one, estimates by straight line and the detour factor otherwise, `estimated`), `cost_m` (both walks
+plus the extra riding, the tie-break) and `text`, the option in plain words for a button: "Pick up at Ahead, 0.1 mi (0.2
 km) walk, on your way. Return at Before, 0.1 mi (0.2 km) walk, on your way. About 27 min in all."
 No extra routing is done for them: they reuse the walks the plan already asked for. An answer
 planned with a chosen station lists only the pair asked for, so a screen keeps the first answer's

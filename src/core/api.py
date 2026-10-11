@@ -1361,8 +1361,9 @@ class BikeshareOptionEndOut(BikeshareStopOut):
 
 
 class BikeshareOptionOut(Schema):
-    """One way to make the trip, a pick-up and a drop-off, ranked by the walks plus the
-    extra riding each end adds (stations on your way first; the owner, 2026-10-11)."""
+    """One way to make the trip, a pick-up and a drop-off, quickest first, from docks chosen
+    by the walk plus the extra riding each adds (stations on your way first; the owner,
+    2026-10-11)."""
 
     rank: int = Field(description="1 is the best, and is the plan this answer routed.")
     chosen: bool = Field(description="Whether this answer's route, walks and steps are this one.")
@@ -1378,7 +1379,9 @@ class BikeshareOptionOut(Schema):
     ride_m: float = Field(description="The routed ride when chosen; otherwise an estimate.")
     total_s: float = Field(description="Walking and riding; an estimate unless chosen.")
     estimated: bool
-    cost_m: float = Field(description="The ranking figure: both walks plus the extra riding.")
+    cost_m: float = Field(
+        description="Both walks plus the extra riding (the station lists' rule); breaks ties."
+    )
     text: str = Field(description="The option in plain words, US units first, for reading aloud.")
 
 
@@ -1412,9 +1415,10 @@ class BikesharePlanOut(Schema):
     options: list[BikeshareOptionOut] = Field(
         default_factory=list,
         description=(
-            "Up to three pick-up and drop-off pairs, best first; the first is this plan. Bikeshare"
-            " plans only. Another is planned by sending its `pickup_station`, `dropoff_station`"
-            " and `ending`; that answer lists only the pair asked for, so keep this list."
+            "Up to three pick-up and drop-off pairs, quickest first; the first is this plan."
+            " Bikeshare plans only. Another is planned by sending its `pickup_station`,"
+            " `dropoff_station` and `ending`; that answer lists only the pair asked for, so keep"
+            " this list."
         ),
     )
     credit: str = Field(description="The plain source citation (OWNER-DECISIONS 301).")

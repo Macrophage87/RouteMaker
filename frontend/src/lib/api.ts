@@ -440,8 +440,8 @@ export interface BikesharePlan {
   summary: string;
   notes: string[];
   /**
-   * Up to three pick-up and drop-off pairs, best first by the walks plus the extra riding each end
-   * adds (stations on the rider's way first; the owner, 2026-10-11). The first is this plan. To
+   * Up to three pick-up and drop-off pairs, quickest first, from docks chosen by the walk plus the
+   * extra riding each adds (stations on the rider's way first; the owner, 2026-10-11). The first is this plan. To
    * plan another, send its `pickup_station`, `dropoff_station` and `ending`; that answer lists only
    * the pair asked for, so keep this list. Absent from an older server.
    */
@@ -478,7 +478,7 @@ export interface BikeshareOption {
   /** Walking and riding; an estimate unless chosen. */
   total_s: number;
   estimated: boolean;
-  /** The ranking figure: both walks plus the extra riding. */
+  /** Both walks plus the extra riding (the station lists' rule); breaks ties. */
   cost_m: number;
   /** The option in plain words, US units first: a button's name, read aloud as it is shown. */
   text: string;

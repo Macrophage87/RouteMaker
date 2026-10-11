@@ -152,6 +152,27 @@ def test_the_plan_ends_at_a_dock_on_the_way_in_rather_than_nearer_ones_past_it()
     assert any("P1" in n and "Before" in n for n in plan["notes"])
 
 
+def test_the_plan_picks_the_quicker_pair_crediting_a_dock_ahead_for_the_riding_it_saves() -> None:
+    """Behind 150 m costs 180 m walked + 150 m extra = 330 m; Ahead 300 m costs 360 m walked, so
+    the rule alone would start Behind. But Ahead also takes 300 m off the ride, which the rule
+    (never below zero) does not count: 270 s walk + 1,332 s ride against 135 s + 1,494 s, so the
+    plan starts Ahead, on the way (review of PR #94: picking the pair by the rule alone made
+    about a quarter of simulated trips slower)."""
+    snap = street(
+        ("Behind", -150, 5, 0, 5),
+        ("Ahead", 300, 5, 0, 5),
+        ("Goal dock", 4000, 0, 0, 9),
+    )
+    plan = run(START, GOAL, snap=snap)[0]["bikeshare"]
+    assert plan["start"]["name"] == "Ahead"
+    first, second = plan["options"][:2]
+    assert first["pickup"]["name"] == "Ahead" and first["pickup"]["on_the_way"] is True
+    assert second["pickup"]["name"] == "Behind"
+    assert first["cost_m"] > second["cost_m"], "the rule alone would have ranked Behind first"
+    assert first["total_s"] < second["total_s"]
+    assert any("Behind" in n and "quicker" in n for n in plan["notes"])
+
+
 def test_only_the_few_best_docks_are_walked() -> None:
     snap = street(
         *((f"B{i}", -100 - 10 * i, 5, 0, 5) for i in range(6)), ("Goal dock", 4000, 0, 0, 9)
@@ -188,8 +209,8 @@ def test_a_plan_offers_three_options_best_first_and_the_first_is_the_plan() -> N
     )
     assert first["estimated"] is False and first["total_s"] == plan["total_s"]
     assert all(o["estimated"] for o in options[1:])
-    costs = [o["cost_m"] for o in options]
-    assert costs == sorted(costs)
+    times = [o["total_s"] for o in options[1:]]
+    assert times == sorted(times), "the other options come quickest first"
 
 
 def test_an_option_can_be_asked_for_again_by_its_station_ids() -> None:

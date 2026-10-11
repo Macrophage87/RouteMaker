@@ -389,9 +389,7 @@ class TestStationsEndpoint:
             # Without `toward` the list is by distance and carries no reason.
             assert s["extra_m"] is None and s["on_the_way"] is None
 
-    def test_with_toward_the_stations_on_the_way_come_first_and_say_so(
-        self, client, world
-    ) -> None:
+    def test_with_toward_the_stations_on_the_way_come_first_and_say_so(self, client, world) -> None:
         """The owner, 2026-10-11: stations in the direction of the route first."""
         dupont = [-77.0436, 38.9096]
         plain = stations_post(client, {"point": UNION_POINT, "action": "pickup"}).json()

@@ -82,9 +82,16 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "pair: longest walk plus ride wins",
         BS,
-        "    pairs.sort(key=lambda p: (p[0], p[1]))",
-        "    pairs.sort(key=lambda p: (-p[0], -p[1]))",
+        "    pairs.sort(key=lambda p: (p[1], p[0]))",
+        "    pairs.sort(key=lambda p: (-p[1], -p[0]))",
         PLAN_T,
+    ),
+    (
+        "pair: chosen by the walks plus extra riding, not the time",
+        BS,
+        "    pairs.sort(key=lambda p: (p[1], p[0]))",
+        "    pairs.sort(key=lambda p: (p[0], p[1]))",
+        ["tests/test_bikeshare_direction.py"],
     ),
     (
         "pair: the ride is not weighed",
