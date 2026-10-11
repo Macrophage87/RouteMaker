@@ -2,7 +2,7 @@
 #
 # Rider suggestions for junctions (FOLLOWUP-STRESS-SUGGEST, OWNER-DECISIONS 232) and the
 # junction overrides an approval makes (docs/OPERATIONS.md, "Rider suggestions"). Follows
-# 0016_stress_suggestions, so the chain stays linear.
+# 0017_mass_hazard, so the chain stays linear.
 
 import django.contrib.gis.db.models.fields
 import django.db.models.deletion
@@ -14,7 +14,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("core", "0016_stress_suggestions"),
+        ("core", "0017_mass_hazard"),
     ]
 
     operations = [

@@ -338,9 +338,10 @@ export function refreshedSaid(
   stateFor: InfoRequest | null,
   state: InfoState,
   federalSaid: string,
+  hazardSaid = "",
 ): string | null {
   if (!request || stateFor !== request || state.kind === "loading") return null;
-  return [infoSaid(state), federalSaid].filter(Boolean).join(" ");
+  return [infoSaid(state), hazardSaid, federalSaid].filter(Boolean).join(" ");
 }
 
 /** Whether a key press asks for the road at the centre: I, unmodified, on the map itself. */

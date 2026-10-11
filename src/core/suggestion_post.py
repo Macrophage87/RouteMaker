@@ -61,8 +61,11 @@ class PollOption:
     letter: str
     emoji: str
     label: str
-    # The whole tier a vote for it means; None for "Not sure".
+    # The whole tier a vote for it means; None for "Not sure" (and on a hazard's poll).
     tier: int | None
+    # A hazard poll's (`build_hazard`): the level a vote for it means, "none" for no mark,
+    # None for "Not sure"; None on a level poll.
+    level: str | None = None
 
 
 @dataclass(frozen=True)
@@ -260,3 +263,99 @@ def build(
 
 def _has(between) -> bool:
     return bool(between and all(between) and between[0] != between[1])
+
+
+# A Mass Ride hazard's poll (FOLLOWUP-MASSRIDE-MAP part 3; OWNER-DECISIONS 325, 326): the two
+# levels in plain words, strongest first, then no mark. Written for the poll, like ROAD_WORDS:
+# "Not everyone is familiar with that scale" holds for Caution and Warning too.
+HAZARD_WORDS = {
+    "warning": "Warning: a big group has had real trouble here",
+    "caution": "Caution: a big group should take care here",
+}
+HAZARD_NONE = "No mark needed"
+
+
+def hazard_options() -> tuple[PollOption, ...]:
+    levels = [*HAZARD_WORDS.items(), ("none", HAZARD_NONE)]
+    out = [
+        PollOption(c, _EMOJI[c], label, None, level)
+        for c, (level, label) in zip(_LETTERS, levels, strict=False)
+    ]
+    c = _LETTERS[len(out)]
+    out.append(PollOption(c, _EMOJI[c], NOT_SURE, None, None))
+    return tuple(out)
+
+
+def level_for_vote(options: tuple[PollOption, ...], letter: str) -> str | None:
+    """The hazard level a reaction stands for ("none": no mark; None: not sure, or no such
+    letter)."""
+    for option in options:
+        if option.letter == letter.strip().upper():
+            return option.level
+    return None
+
+
+def build_hazard(
+    *,
+    road: str | None,
+    level: str,
+    reason: str,
+    map_url: str,
+    between: tuple[str, str] | None = None,
+) -> Post:
+    """The poll for a rider's Mass Ride hazard report, at most POST_MAX characters.
+
+    The same rules as `build`: no name, account or id of the rider, no spot they clicked (the
+    road and its cross streets in words, the link at the road piece's middle), mentions and
+    markdown in the reason made inert, plain words for the levels.
+    """
+    if level not in HAZARD_WORDS:
+        raise ValueError(f"unknown hazard level {level!r}")
+    road = _shorten(road, NAME_MAX) if road else road
+    if between:
+        between = (_shorten(between[0] or "", NAME_MAX), _shorten(between[1] or "", NAME_MAX))
+    name = road or "an unnamed road"
+    stretch = f"{name}, between {between[0]} and {between[1]}" if _has(between) else name
+    question = f"Should the Mass Ride map warn big group rides about {stretch}?"
+    asked = HAZARD_WORDS[level].split(":")[0]
+    options = hazard_options()
+
+    def compose(quote: str) -> str:
+        lines = [
+            f"**{inert(question)}**",
+            f'A rider asked us to mark it "{asked}" for mass rides.',
+            "",
+            f"The rider suggested: {HAZARD_WORDS[level]}",
+        ]
+        if quote:
+            lines.append(f"> {quote}")
+        lines += [
+            "",
+            f"Where: {inert(where_words(road, between))}",
+            f"Map: <{map_url}>",
+            "",
+            "Please weigh in by reacting with one letter:",
+            *(f"{o.emoji} {o.label}" for o in options),
+            "",
+            "Votes help decide what the Mass Ride map shows. Either way, rides can still use "
+            "the road.",
+        ]
+        return "\n".join(lines)
+
+    return Post(text=_fit(compose, reason), options=options)
+
+
+def _fit(compose, reason: str) -> str:
+    """The post with the reason quoted, shortened (as the rider wrote it, then made inert, so
+    a cut never splits an escape) until the post fits POST_MAX."""
+    raw = " ".join((reason or "").split())
+    limit = REASON_QUOTE_MAX
+    text = compose(inert(_shorten(raw, limit)) if raw else "")
+    while len(text) > POST_MAX and limit > 20:
+        limit = max(20, limit - (len(text) - POST_MAX) - 1)
+        text = compose(inert(_shorten(raw, limit)))
+    if len(text) > POST_MAX:
+        text = compose("")
+    if len(text) > POST_MAX:
+        text = _shorten(text, POST_MAX)
+    return text

@@ -1249,6 +1249,59 @@ order), and nothing asks for hazards.
   `src/lib/massCapacity.test.ts` and `src/lib/profileChart.test.ts`, and for the parts outside DC (427) the "427"
   test in `src/lib/massCapacity.test.ts`, `tests/test_profile_flow.py` and `tests/test_mass_capacity.py`; in the browser, section 20 of scripts/a11y/check.mjs.
 
+### Mass Ride hazards (FOLLOWUP-MASSRIDE-MAP part 3, items 325-327)
+
+"Some stretches can be marked as a caution or warning where we've had problems. They go along side like
+a trail or pbl. If we've marked it avoid, It should be just marked avoid with no carrying capacity. These
+hazards will be marked by riders and will be for this mode only." (325)
+
+* **Reporting** (`core/mass_hazards.py` `create`, `POST /api/mass-hazards`). A signed-in rider whom
+  `SuggestionSettings` allows (`Me.can_suggest`) sees **Mark a hazard** in the road panel, on a Mass Ride
+  only, and not on an Avoid road. The form (`HazardReport.tsx`) asks "How serious is it?" with two radios,
+  **Caution** and **Warning** (326: "Severity only", both routable), and a required reason of at most
+  500 characters. The level and the reason are in words, and the result is said in a polite status region.
+  The server reads the road's name from the live table (`suggestions._road`), snaps the clicked point
+  with `suggestions.snap` (refused past 98 ft (30 m)), refuses it (`avoid`) when the way's segment nearest
+  the point is tier 5 (`_piece_tier`: a way can be Avoid along only part of it, so not its first row),
+  throws the point away, and refuses the same level already approved (`same`). Only `osm_way_id` is stored: no lat/lon
+  column exists. The checks match the suggestions': one open report per rider per road (a partial unique
+  constraint `mass_hazard_one_open_per_road`), 20 open in all, the shared 10 writes an hour
+  (`SUGGEST_WRITES`), CSRF and same-site. Instance admins review rather than report.
+* **Review** (`SuggestionReview.tsx`, now generic over a `ReviewSource`, `lib/reviewSources.ts`;
+  `HAZARD_REVIEW`). The same three actions: **Approve now** (an earlier approved hazard on that way
+  becomes `removed`; the partial unique constraint `mass_hazard_one_approved_per_road` keeps one approved
+  per way, so of two approvals at the same moment the second is a 409 and its report stays waiting), **Delete**, and **Send to Discord**, which gives a copy-paste poll built by
+  `suggestion_post.build_hazard` ("Should the Mass Ride map warn big group rides about ...?",
+  options Warning / Caution / No mark needed / Not sure). The Django admin's `MassHazardAdmin`
+  is read-only, with one action, **Take the selected approved hazards off the Mass Ride map**. Every action is an
+  `audit_log` entry (`mass_hazard_report|approve|delete|discord|remove`).
+* **The layer: API, not tiles.** The approved hazards are few, so they come from
+  `GET /api/mass-hazards`, a GeoJSON FeatureCollection with one feature per way (geometry from the
+  live table, Avoid-rated pieces left out; properties `way`, `level`, `level_name`, `words`, `reason`,
+  `road`). It is public, with `Cache-Control: public, max-age=60` and an ETag (304; `If-None-Match` is
+  compared weakly, `W/` and `*` too, by the tiles' `stress_tiles._matches`). The tiles, their ETags and the
+  tile cache do not change. `App.tsx` fetches it only on a Mass Ride, and again after an approval with
+  `cache: "no-cache"`, so the admin sees the rail now. It does not poll.
+  `MapView` hands it to `setHazardData`, which fills the `mass-hazards` GeoJSON source that
+  `addStressOverlay` adds.
+* **The rails** (`massStyle.js` `MASS_HAZARDS`, `hazardLayers`; 327). Near-black (#111111) rails on a
+  white casing, drawn on both sides of the road with `line-offset` (±9.5 px at z16, clear of the
+  widest band line) from zoom 12. Caution is dotted (2.5 px) and Warning dash-dot (3.5 px), so the
+  pattern and weight differ as well as the words. The rail is at least 3:1 against its casing and the
+  land, and the rail or its casing at least 3:1 beside every band colour (`massStyle.test.ts`). The layers are in
+  `massLayerIds`/`massFilters`, so they show in Mass Ride mode only.
+* **In words.** The legend has a "Rider-marked hazards" list (`HazardLegend` in `MassLegend`: swatch,
+  meaning and the look, "Drawn as dotted black rails on both sides of the road."). The road panel has a
+  `.road-info-hazard` line ("Warning: riders have had serious problems here. Riders' reason: ..."), and its
+  status sentence adds "Rider-marked hazard: Warning.". The route answer's `mass_hazards` (`along`, in
+  riding order, null on other ride types, Avoid pieces left out) feeds the directions' list ("1 rider-marked
+  hazard on this route, in riding order:", then "Warning on Oak Street, 0.6 to 0.8 mi (1.0 to 1.3 km): ..."),
+  copied text and GPX, and the route's polite announcement (`hazardsSaid`).
+* **Tests.** `tests/test_mass_hazards.py` (model, API, privacy, limits, review, layer, along, poll text,
+  route answer); `src/lib/massHazards.test.ts`, `src/massStyle.test.ts` (layers, offset clearance,
+  contrast), `src/lib/mapGlue.test.ts`, `src/lib/massCapacity.test.ts`; in the browser, section 22c of
+  scripts/a11y/check.mjs (13 checks).
+
 ## What migrations do and do not create
 
 `Segment` is `managed = False` on purpose, so `migrate` does not create it. The
@@ -6515,7 +6568,7 @@ suggestions' twin for a node (operations: docs/OPERATIONS.md, "Junction suggesti
 
 ### Storage
 
-Migration `0017_junction_suggestions` (after `0016_stress_suggestions`, one leaf) adds two tables:
+Migration `0018_junction_suggestions` (after `0017_mass_hazard`, one leaf) adds two tables:
 
 - `core.models.JunctionSuggestion` (`junction_suggestion`): the junction's node (`lon`, `lat`, and
   `node`, the pair to 6 decimals as text, which the partial unique constraint "one waiting per rider
@@ -6568,7 +6621,9 @@ road panel's Tab trap); `RoadInfoDialog.tsx` (asks `GET /api/junction-suggestion
 rider who may suggest, and shows the button before Suggest a change; `InfoRequest.junction` opens
 the form at once); `MapView.tsx` (the junction card's button, added once `fetchMe` says the rider may
 suggest); `SuggestionReview.tsx` (roads' and junctions' suggestions in one list, oldest first, by
-`ReviewEntry`, each kind at its own endpoints).
+`ReviewEntry`, each kind at its own endpoints: `STRESS_REVIEW` in `lib/reviewSources.ts`, the review's first
+source, beside the Mass Ride hazard reports' `HAZARD_REVIEW`; a source may answer part of its list with a
+sentence naming what did not load, and an item may carry a `warning` that Approve now confirms first).
 
 ### Tests
 

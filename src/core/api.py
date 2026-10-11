@@ -1305,6 +1305,19 @@ class AvoidSearchOut(Schema):
     avoided: int = Field(description="Passes the way round took out.")
 
 
+class MassHazardSpanOut(Schema):
+    """A rider-marked hazard on a Mass Ride's route (FOLLOWUP-MASSRIDE-MAP part 3; 325, 326),
+    in whole metres along the traced route as `stress_spans` are measured."""
+
+    from_m: int
+    to_m: int
+    level: Literal["caution", "warning"]
+    level_name: str = Field(description='"Caution" or "Warning".')
+    words: str = Field(description="The level in plain words.")
+    reason: str = Field(description="The reporter's reason, as approved (never their name).")
+    road: str
+
+
 class RouteBody(Schema):
     preset: PresetName
     variant: Literal["standard", "no-trail", "ebike", "weekend", "offroad"]
@@ -1360,6 +1373,9 @@ class RouteBody(Schema):
             " null where it passes none."
         ),
     )
+    # A Mass Ride's rider-marked hazards it passes, in riding order (FOLLOWUP-MASSRIDE-MAP
+    # part 3, 325). Additive: null on every other ride type, empty where it passes none.
+    mass_hazards: list[MassHazardSpanOut] | None = None
     loop: LoopOut | None = Field(
         default=None, description="Present on a loop: how much of the way back is the way out."
     )
@@ -1582,6 +1598,7 @@ STRESS_EDIT_PATHS = (
     "/api/stress-edits",
     "/api/stress-suggestions",
     "/api/junction-suggestions",
+    "/api/mass-hazards",
     "/api/me",
 )
 
@@ -3086,6 +3103,205 @@ def stress_suggestion_discord(request, suggestion_id: int, body: UndoIn, respons
             "characters": len(post.text),
             "options": [
                 {"letter": o.letter, "label": o.label, "tier": o.tier} for o in post.options
+            ],
+        },
+    )
+
+
+# ---- Mass Ride hazards (FOLLOWUP-MASSRIDE-MAP part 3, OWNER-DECISIONS 325-327; core.mass_hazards)
+#
+# A rider the suggestion setting allows marks a road piece Caution or Warning, with a reason; an
+# instance admin reviews it with the suggestions' three actions. The approved ones are a small
+# public GeoJSON layer the Mass Ride map draws as side rails. The writes have every guard the
+# suggestions have, and the same hourly count (ratelimit.SUGGEST_WRITES).
+
+# How long a browser may keep the approved layer before asking again (a 304 when unchanged).
+MASS_HAZARDS_MAX_AGE_S = 60
+
+
+class MassHazardIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    osm_way_id: StrictInt
+    lat: StrictFloat = Field(
+        ge=-90, le=90, description="A spot on the road: checked, then dropped (never kept)."
+    )
+    lon: StrictFloat = Field(ge=-180, le=180)
+    level: str = Field(max_length=16, description='"caution" or "warning".')
+    reason: str = Field(max_length=2000, description="Required, at most 500 characters.")
+
+
+class MassHazardOut(Schema):
+    id: int
+    osm_way_id: int
+    road: str
+    lat: float | None = Field(description="The road piece's middle (4 decimals), for the map.")
+    lon: float | None
+    level: Literal["caution", "warning"]
+    level_name: str
+    words: str
+    reason: str
+    status: Literal["pending", "sent_to_discord"]
+    created_at: str
+    sent_at: str | None = None
+
+
+class MassHazardListOut(Schema):
+    hazards: list[MassHazardOut]
+
+
+class HazardPollOptionOut(Schema):
+    letter: str
+    label: str
+    level: str | None = Field(description='"caution", "warning", "none" (no mark); null: not sure.')
+
+
+class HazardDiscordPostOut(Schema):
+    id: int
+    status: str
+    post: str = Field(description="Ready to paste: at most 2,000 characters, no mentions.")
+    characters: int
+    options: list[HazardPollOptionOut]
+
+
+@api.get(
+    "/mass-hazards",
+    response={200: dict, 304: None, 403: ErrorOut, 429: ErrorOut, 500: ErrorOut},
+    summary="The approved Mass Ride hazards, as GeoJSON (the Mass Ride map's side rails)",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.MASS_HAZARDS), same_site_only, errors_as_json)
+def mass_hazard_layer(request, response: HttpResponse):
+    """Public and cacheable: the level, its words, the reason and the road's name of each
+    approved hazard, and the road piece's line. Nothing about who reported it."""
+    from . import mass_hazards
+
+    body, etag = mass_hazards.approved_layer()
+    from .stress_tiles import _matches
+
+    if _matches(request, etag):
+        answer = HttpResponse(status=304)
+    else:
+        answer = JsonResponse(body, content_type="application/geo+json")
+    answer["ETag"] = etag
+    answer["Cache-Control"] = f"public, max-age={MASS_HAZARDS_MAX_AGE_S}"
+    return answer
+
+
+@api.post(
+    "/mass-hazards",
+    response={200: SuggestionCreatedOut, **SUGGESTION_RESPONSES},
+    summary="Mark a road piece Caution or Warning for Mass Rides (a rider the settings allow)",
+)
+@decorate_view(*SUGGEST_WRITE)
+def mass_hazard_create(request, body: MassHazardIn, response: HttpResponse):
+    from . import mass_hazards, stress_edits
+
+    try:
+        hazard = mass_hazards.create(
+            request.user, body.osm_way_id, body.lat, body.lon, body.level, body.reason
+        )
+    except stress_edits.EditRefused as refused:
+        return _stress_error(refused.status, refused.message, refused.field, refused.code)
+    _private(response)
+    return Status(
+        200,
+        {
+            "id": hazard.pk,
+            "message": "Thanks. Your hazard report was sent to the map's admins. Nothing "
+            "changes on the Mass Ride map until one of them reviews it.",
+        },
+    )
+
+
+@api.get(
+    "/mass-hazards/open",
+    response={200: MassHazardListOut, **SUGGESTION_RESPONSES},
+    summary="The hazard reports waiting for review (instance admin)",
+)
+@decorate_view(
+    instance_admin_only(audited=False),
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def mass_hazard_list(request, response: HttpResponse):
+    from django.middleware.csrf import get_token
+
+    from . import mass_hazards
+
+    get_token(request)
+    _private(response)
+    return Status(200, {"hazards": [mass_hazards.summary(h) for h in mass_hazards.open_reports()]})
+
+
+@api.post(
+    "/mass-hazards/{hazard_id}/approve",
+    response={200: SuggestionDoneOut, **SUGGESTION_RESPONSES},
+    summary="Approve a hazard report now: on the Mass Ride map at once (instance admin)",
+)
+@decorate_view(*REVIEW_WRITE)
+def mass_hazard_approve(request, hazard_id: int, body: UndoIn, response: HttpResponse):
+    from . import mass_hazards, stress_edits
+
+    try:
+        hazard = mass_hazards.approve(request.user, hazard_id)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    road = hazard.road_name or "The road"
+    return Status(
+        200,
+        {
+            "id": hazard.pk,
+            "status": hazard.status,
+            "message": f"Approved. {road} is marked {hazard.get_level_display()} on the Mass "
+            "Ride map now.",
+        },
+    )
+
+
+@api.post(
+    "/mass-hazards/{hazard_id}/delete",
+    response={200: SuggestionDoneOut, **SUGGESTION_RESPONSES},
+    summary="Delete a hazard report (instance admin)",
+)
+@decorate_view(*REVIEW_WRITE)
+def mass_hazard_delete(request, hazard_id: int, body: UndoIn, response: HttpResponse):
+    from . import mass_hazards, stress_edits
+
+    try:
+        hazard = mass_hazards.delete(request.user, hazard_id)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(200, {"id": hazard.pk, "status": hazard.status, "message": "Deleted."})
+
+
+@api.post(
+    "/mass-hazards/{hazard_id}/discord",
+    response={200: HazardDiscordPostOut, **SUGGESTION_RESPONSES},
+    summary="Send a hazard report to Discord: the poll to paste, and the report marked sent",
+)
+@decorate_view(*REVIEW_WRITE)
+def mass_hazard_discord(request, hazard_id: int, body: UndoIn, response: HttpResponse):
+    from . import mass_hazards, stress_edits
+
+    try:
+        hazard, post = mass_hazards.send_to_discord(
+            request.user, hazard_id, request.build_absolute_uri("/")
+        )
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(
+        200,
+        {
+            "id": hazard.pk,
+            "status": hazard.status,
+            "post": post.text,
+            "characters": len(post.text),
+            "options": [
+                {"letter": o.letter, "label": o.label, "level": o.level} for o in post.options
             ],
         },
     )

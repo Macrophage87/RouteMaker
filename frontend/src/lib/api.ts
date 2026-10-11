@@ -451,7 +451,20 @@ export interface AvoidSearch {
   avoided: number;
 }
 
+/** A rider-marked hazard on a Mass Ride's route (core.api.MassHazardSpanOut; 325, 326), in route metres. */
+export interface MassHazardSpan {
+  from_m: number;
+  to_m: number;
+  level: "caution" | "warning";
+  level_name: string;
+  words: string;
+  reason: string;
+  road: string;
+}
+
 export interface RouteResponse {
+  /** A Mass Ride's rider-marked hazards it passes, in riding order (325); null or absent on other ride types. */
+  mass_hazards?: MassHazardSpan[] | null;
   /** The Avoid-rated junctions it passes, in route order (307); empty or absent where none. */
   avoid_junctions?: AvoidJunctionPass[];
   /** "This route goes through an Avoid-rated junction: <name>, <reason>." (335); null where none. */

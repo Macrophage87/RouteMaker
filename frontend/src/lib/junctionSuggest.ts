@@ -291,9 +291,3 @@ export function reviewEntries(roads: SuggestionItem[], junctions: JunctionSugges
   const all = [...roads.map(roadEntry), ...junctions.map(junctionEntry)];
   return all.sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
 }
-
-/** What the status region says after an action on an entry. */
-export function entrySaid(action: ReviewAction, entry: Pick<ReviewEntry, "place">, message: string): string {
-  if (action === "discord") return `The post for ${entry.place} is ready to copy below. The suggestion is marked as sent to Discord.`;
-  return message;
-}

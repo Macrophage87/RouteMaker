@@ -134,7 +134,7 @@ export async function media(page, { scheme = "light", forced = false } = {}) {
  * the release, SF1; lifted from its probe's mockDelayed), and `stressTiles: false` answers the
  * stress tiles with an error (the stress map unavailable).
  */
-export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTiles = true, admin = false, suggester = false } = {}) {
+export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTiles = true, admin = false, suggester = false, hazards = null } = {}) {
   page.routeRequests = 0;
   // The bodies of the route requests, and the nearest-stations requests (OWNER-DECISIONS 466a).
   page.routeBodies = [];
@@ -150,6 +150,10 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
   // `suggestRequests` is what the page sent; an admin's review list holds `suggestionsOpen`.
   page.suggestRequests = [];
   page.suggestionsOpen = [SUGGESTION_ITEM];
+  // Mass Ride hazards (core/mass_hazards.py): the approved layer, what the page sent, the admin's list.
+  page.hazardLayer = hazards ?? { type: "FeatureCollection", features: [] };
+  page.hazardRequests = [];
+  page.hazardsOpen = [HAZARD_ITEM];
   // Junction suggestions (core/junction_suggestions.py; OWNER-DECISIONS 232): `junctionAt` is the junction
   // the API finds at any spot (null: none there), `junctionsOpen` the admin's waiting list. Their requests
   // go in `suggestRequests` too, so "asks the suggestion endpoints nothing" covers both.
@@ -219,6 +223,36 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       status = 200;
       body = JSON.stringify({ signed_in: admin || suggester, can_change_lts: admin, can_suggest: suggester && !admin });
       type = "application/json";
+    } else if (url.pathname.startsWith("/api/mass-hazards")) {
+      // Rider-marked Mass Ride hazards (core/mass_hazards.py; FOLLOWUP-MASSRIDE-MAP part 3): the approved
+      // layer (`hazards`, empty unless a check gives one), a rider's report, and the admin's review.
+      const record = { method: request.method, path: url.pathname, headers: request.headers, body: request.postData ? JSON.parse(request.postData) : null };
+      page.hazardRequests.push(record);
+      type = "application/json";
+      const action = /^\/api\/mass-hazards\/(\d+)\/(approve|delete|discord)$/.exec(url.pathname);
+      if (url.pathname === "/api/mass-hazards" && request.method === "GET") {
+        status = 200;
+        type = "application/geo+json";
+        body = JSON.stringify(page.hazardLayer);
+      } else if (url.pathname === "/api/mass-hazards" && request.method === "POST" && suggester) {
+        status = 200;
+        body = JSON.stringify({ id: 1, message: "Thanks. Your hazard report was sent to the map's admins. Nothing changes on the Mass Ride map until one of them reviews it." });
+      } else if (url.pathname === "/api/mass-hazards/open" && admin) {
+        status = 200;
+        body = JSON.stringify({ hazards: page.hazardsOpen });
+      } else if (action && admin) {
+        status = 200;
+        const id = Number(action[1]);
+        if (action[2] === "discord") {
+          body = JSON.stringify({ id, status: "sent_to_discord", post: "**Should the Mass Ride map warn big group rides about Oak Street?**", characters: 66, options: [] });
+        } else {
+          page.hazardsOpen = page.hazardsOpen.filter((x) => x.id !== id);
+          body = JSON.stringify({ id, status: action[2] === "approve" ? "approved" : "deleted", message: action[2] === "approve" ? "Approved. Oak Street is marked Warning on the Mass Ride map now." : "Deleted." });
+        }
+      } else {
+        status = admin || suggester ? 403 : 401;
+        body = JSON.stringify({ error: "Not allowed." });
+      }
     } else if (url.pathname.startsWith("/api/stress-suggestions")) {
       const record = { method: request.method, path: url.pathname, headers: request.headers, body: request.postData ? JSON.parse(request.postData) : null };
       page.suggestRequests.push(record);
@@ -806,6 +840,23 @@ export const SUGGESTION_ITEM = {
   id: 41, osm_way_id: 101, road: "Oak Street", lat: 38.9, lon: -77.03, current_step: 3, current_words: STEP_WORDS[3],
   step: 2.5, words: STEP_WORDS[2.5], reason: "A protected lane opened this summer.", status: "pending",
   created_at: "2026-10-10T14:00:00+00:00", sent_at: null,
+};
+/** A rider's Mass Ride hazard report waiting for review (core/mass_hazards.py summary). */
+export const HAZARD_ITEM = {
+  id: 51, osm_way_id: 101, road: "Oak Street", lat: 38.9, lon: -77.03, level: "warning", level_name: "Warning",
+  words: "Warning: riders have had serious problems here", reason: "Drivers turn across the whole group at the light.",
+  status: "pending", created_at: "2026-10-10T15:00:00+00:00", sent_at: null,
+};
+/** The approved hazards' layer with one Warning on the panel's road, way 101 (GET /api/mass-hazards). */
+export const HAZARD_LAYER = {
+  type: "FeatureCollection",
+  features: [
+    {
+      type: "Feature", id: 101,
+      geometry: { type: "LineString", coordinates: [[-77.0405, 38.91], [-77.0395, 38.91]] },
+      properties: { way: 101, level: "warning", level_name: "Warning", words: "Warning: riders have had serious problems here", reason: "Drivers turn across the whole group at the light.", road: "Oak Street" },
+    },
+  ],
 };
 /** The plain-English poll the Discord action answers (core/suggestion_post.py). */
 export const DISCORD_POST = [

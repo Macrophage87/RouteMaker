@@ -99,6 +99,8 @@ NODE_IMAGE="docker.io/library/node@sha256:363e1587494626837fa7f9a23bdb453d13b0ff
 #   stress_suggestion                 suggester_id and decided_by_id -> app_user, plus the plain
 #                                     suggester_user_id: riders' suggestions belong to the home
 #                                     install's review (core.suggestions)
+#   mass_hazard                       reporter_id and decided_by_id -> app_user, plus the plain
+#                                     reporter_user_id: riders' hazard reports, the same (core.mass_hazards)
 #   junction_suggestion               the same for junctions (suggester_id, decided_by_id,
 #                                     suggester_user_id; core.junction_suggestions)
 #   stress_edit                       actor_id -> app_user, plus the plain actor_user_id: home's
@@ -112,7 +114,7 @@ EXCLUDED_TABLE_DATA=(
 	procrastinate_events procrastinate_jobs procrastinate_periodic_defers procrastinate_workers
 	django_admin_log scheduled_run stress_tile_cache bikeshare_feed_cache
 	app_user audit_log bootstrap_claim pending_instance_admin_removal ban_tombstone
-	configured_guild role_mapping stress_suggestion junction_suggestion stress_edit
+	configured_guild role_mapping stress_suggestion mass_hazard junction_suggestion stress_edit
 )
 # Tables the beta needs from home that also name a person: shipped with those columns blanked
 # (NULL), never whole. Each is left out of the dump and written instead as db/blanked/<table>.copy

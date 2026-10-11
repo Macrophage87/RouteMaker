@@ -64,10 +64,17 @@ import { SuggestJunction } from "./SuggestJunction.tsx";
 import { JUNCTION_SUGGEST_TEXT, findJunction, junctionNote, type JunctionAt, type Shown } from "./lib/junctionSuggest.ts";
 import { AVOID_CARD_HEADING, AVOID_SYMBOL, avoidCardText, type AvoidItem } from "./lib/avoidJunctions.ts";
 import { FEDERAL_ADVICE, stopWarningShort, type FederalArea } from "./lib/federalStops.ts";
+import { HazardReport } from "./HazardReport.tsx";
+import { HAZARD_REPORT_TEXT, hazardOnPiece, hazardPanelText, hazardSaid, type HazardCollection } from "./lib/massHazards.ts";
 
 interface Props {
   /** The spot asked about, or null while the panel is closed. */
   request: InfoRequest | null;
+  /**
+   * A Mass Ride's approved rider-marked hazards (lib/massHazards.ts; FOLLOWUP-MASSRIDE-MAP part 3): the
+   * panel names the one on its road and offers Mark a hazard. Null or absent on every other ride type (325).
+   */
+  hazards?: HazardCollection | null;
   /** The Mass Ride map is showing: its capacity section shows too. */
   massRide: boolean;
   /** A station near the spot whose pages the panel offers, or null. */
@@ -121,7 +128,7 @@ function neighbour(items: HTMLElement[], from: HTMLElement, backwards: boolean):
   return after.length ? after[0] : items[0];
 }
 
-export function RoadInfoDialog({ request, massRide, station, avoid = null, junctionShown = null, federal = null, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
+export function RoadInfoDialog({ request, hazards = null, massRide, station, avoid = null, junctionShown = null, federal = null, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
@@ -154,6 +161,13 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, junct
   const [suggestingJunction, setSuggestingJunction] = useState(false);
   const junctionButton = useRef<HTMLButtonElement>(null);
   const returnToJunction = useRef(false);
+  // A Mass Ride's "Mark a hazard" form (HazardReport.tsx), open in place of the row.
+  const [reporting, setReporting] = useState(false);
+  const hazardButton = useRef<HTMLButtonElement>(null);
+  const returnToHazard = useRef(false);
+  // The hazards as they are when the answer comes, read inside its callback.
+  const hazardsRef = useRef(massRide ? hazards : null);
+  hazardsRef.current = massRide ? hazards : null;
   // Bumped after a change or an undo: the answer is fetched again, fresh, without closing the editor.
   const [reload, setReload] = useState(0);
   const changeButton = useRef<HTMLButtonElement>(null);
@@ -181,6 +195,7 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, junct
     setSaid("");
     setEditing(false);
     setSuggesting(false);
+    setReporting(false);
     setJunction(null);
     setSuggestingJunction(false);
     setReload(0);
@@ -200,8 +215,10 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, junct
       (next) => {
         stateFor.current = request;
         setState(next);
-        // The spot's federal area, after the road, in the same status sentence (item 239).
-        setSaid([infoSaid(next), federalSaidRef.current].filter(Boolean).join(" "));
+        // The spot's federal area, after the road, in the same status sentence (item 239), and a Mass
+        // Ride's rider-marked hazard on the road (325), so it is heard with the road.
+        const hazard = hazardSaid(hazardOnPiece(hazardsRef.current, next.kind === "ready" && next.info.found ? next.info : null));
+        setSaid([infoSaid(next), hazard, federalSaidRef.current].filter(Boolean).join(" "));
       },
       () => undefined,
     );
@@ -247,13 +264,23 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, junct
       suggestButton.current?.focus();
     }
   }, [suggesting]);
-  // The federal data can come after the road's answer (a Mass Ride's first look): the status sentence
-  // is said again with the area, so a screen reader hears it without reading on.
+
+  // Back from the hazard form: Mark a hazard takes the focus.
   useEffect(() => {
-    const again = refreshedSaid(request, stateFor.current, state, federalSaid);
+    if (!reporting && returnToHazard.current) {
+      returnToHazard.current = false;
+      hazardButton.current?.focus();
+    }
+  }, [reporting]);
+  // The federal data and a Mass Ride's hazards can come after the road's answer (a Mass Ride's first
+  // look): the status sentence is said again with them, so a screen reader hears it without reading on.
+  const readyNow = state.kind === "ready" && state.info.found ? state.info : null;
+  const hazardSaidNow = hazardSaid(hazardOnPiece(massRide ? hazards : null, readyNow));
+  useEffect(() => {
+    const again = refreshedSaid(request, stateFor.current, state, federalSaid, hazardSaidNow);
     if (again !== null) setSaid(again);
-    // Only a change of the area's words: the answer's own arrival sets `said` above.
-  }, [federalSaid]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Only a change of the area's or the hazard's words: the answer's own arrival sets `said` above.
+  }, [federalSaid, hazardSaidNow]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // However it closes - Escape, the Close button, the backdrop - the focus goes back.
   useEffect(() => {
@@ -294,12 +321,18 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, junct
     setSuggestingJunction(false);
   };
 
+  const closeHazard = () => {
+    returnToHazard.current = true;
+    setReporting(false);
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLDialogElement>) => {
     if (closesDialog(event.key)) {
       event.preventDefault();
       // Escape cancels the editor, not the whole panel.
       if (editing) closeEditor();
       else if (suggesting) closeSuggest();
+      else if (reporting) closeHazard();
       else if (suggestingJunction) closeJunction();
       else close();
       return;
@@ -344,9 +377,15 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, junct
   const suggestWay =
     ready && me.can_suggest && editableWay === null && ready.osm_way_id != null && ready.tier != null ? ready.osm_way_id : null;
   const suggestingNow = suggesting && suggestWay !== null;
+  // A Mass Ride's rider-marked hazard on this road (325), and whether this rider may mark one: a road
+  // not marked Avoid (there the map shows only Avoid), by a rider the settings allow.
+  const hazard = massRide ? hazardOnPiece(hazards, ready) : null;
+  const hazardWay =
+    massRide && ready && me.can_suggest && ready.osm_way_id != null && ready.tier != null && ready.tier !== 5 ? ready.osm_way_id : null;
+  const reportingNow = reporting && hazardWay !== null;
   // A junction at the spot, for a rider who may suggest (an instance admin never suggests).
   const suggestJunction = me.can_suggest ? junction : null;
-  const suggestingJunctionNow = suggestingJunction && suggestJunction !== null && !suggestingNow;
+  const suggestingJunctionNow = suggestingJunction && suggestJunction !== null && !suggestingNow && !reportingNow;
 
   return (
     <dialog
@@ -435,6 +474,12 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, junct
           <p className="road-info-federal">
             <span className="road-info-label">Federal land:</span> {federalSaid}{" "}
             <span className="road-info-federal-note">{FEDERAL_ADVICE}</span>
+          </p>
+        )}
+        {hazard && (
+          // A Mass Ride's rider-marked hazard (325, 326): its level and reason in words, never the rail alone.
+          <p className={`road-info-hazard road-info-hazard-${hazard.level}`}>
+            <span className="road-info-label">Rider-marked hazard:</span> {hazardPanelText(hazard)}
           </p>
         )}
         {summary.length > 0 && (
@@ -550,12 +595,24 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, junct
             />
           </div>
         )}
+        {request && reportingNow && ready && hazardWay !== null && (
+          <div className="road-info-actions">
+            <HazardReport
+              origin={window.location.origin}
+              wayId={hazardWay}
+              title={ready.title}
+              point={streetViewPoint(ready, request.point)}
+              current={hazard}
+              onClose={closeHazard}
+            />
+          </div>
+        )}
         {request && suggestingJunctionNow && suggestJunction !== null && (
           <div className="road-info-actions">
             <SuggestJunction origin={window.location.origin} junction={suggestJunction} shown={junctionShown} onClose={closeJunction} />
           </div>
         )}
-        {request && !(editing && editableWay !== null) && !suggestingNow && !suggestingJunctionNow && (
+        {request && !(editing && editableWay !== null) && !suggestingNow && !reportingNow && !suggestingJunctionNow && (
           <div className="road-info-actions">
             <ul className="road-info-buttons" aria-label="Actions">
               <li>
@@ -606,6 +663,13 @@ export function RoadInfoDialog({ request, massRide, station, avoid = null, junct
                 <li>
                   <button type="button" className="road-info-button" ref={suggestButton} onClick={() => setSuggesting(true)}>
                     {SUGGEST_TEXT}
+                  </button>
+                </li>
+              )}
+              {hazardWay !== null && (
+                <li>
+                  <button type="button" className="road-info-button" ref={hazardButton} onClick={() => setReporting(true)}>
+                    {HAZARD_REPORT_TEXT}
                   </button>
                 </li>
               )}

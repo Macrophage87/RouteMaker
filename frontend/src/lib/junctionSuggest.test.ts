@@ -6,7 +6,6 @@ import {
   JUNCTION_PRIVACY,
   SHOWN_LEVELS,
   avoidWarning,
-  entrySaid,
   fetchJunctionSuggestions,
   findJunction,
   junctionEntry,
@@ -141,8 +140,8 @@ test("a junction's heading names its roads and both levels in words; roads and j
   );
   assert.equal(entries[1].detail, "The rider said: more dangerous than shown.");
   assert.equal(entries[0].detail, "");
-  assert.match(entrySaid("discord", entries[1], ""), /^The post for the junction of Oak Street and Elm Street is ready to copy/);
-  assert.equal(entrySaid("delete", entries[0], "Deleted."), "Deleted.");
+  assert.equal(entries[1].place, "the junction of Oak Street and Elm Street");
+  assert.equal(entries[0].place, ROAD.road);
 });
 
 test("the button's note names the junction; the privacy note says only its location may be shared", () => {
