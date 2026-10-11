@@ -3587,13 +3587,15 @@ def pci_block(block_id: str, pci: float, surveyed: str = "2026-02-27") -> dict:
     }
 
 
-def test_a_poor_pci_reaches_the_graph_as_its_band(workspace, states) -> None:
+def test_a_poor_pci_reaches_the_graph_as_its_band(workspace, states, monkeypatch) -> None:
     """DDOT's PCI under 55 on a street reaches the variant extract as `rm:pci=poor`,
     which lua/routemaker_remap.lua prices as the compacted class, and the
-    per-way report records it."""
+    per-way report records it (once the owner has confirmed the licence)."""
     from pipeline.extract import read_ways
     from pipeline.run import DISCREPANCY_REPORT_DIR, PAVEMENT_REPORT_NAME
+    from routemaker import pavement
 
+    monkeypatch.setattr(pavement, "LICENCE_CONFIRMED", True)
     source, root = workspace
     context, _ = run_pipeline(source, root, pavement=[pci_block("p-1", 41.5)], skip=NOT_SWAPPED)
     assert context.pci_by_way[100].applied == "poor"
@@ -3611,6 +3613,24 @@ def test_without_pci_blocks_the_rebuild_warns_and_tags_nothing(workspace, states
     with caplog.at_level(logging.WARNING, logger="pipeline.run"):
         context, _ = run_pipeline(source, root, skip=NOT_SWAPPED)
     assert "pavement.json" in caplog.text
+    assert context.pci_by_way == {}
+    tags = [w.tags for w in read_ways(context.variant_pbf(Variant.STANDARD))]
+    assert all("rm:pci" not in t for t in tags)
+
+
+def test_an_installed_pci_file_is_not_read_until_the_licence_is_confirmed(
+    workspace, states, caplog
+) -> None:
+    """The service states no licence (DC-PCI): while `pavement.LICENCE_CONFIRMED`
+    is False an installed `pavement.json` changes nothing in the graph."""
+    from pipeline.extract import read_ways
+    from routemaker import pavement
+
+    assert pavement.LICENCE_CONFIRMED is False, "flip it only with the owner's confirmation"
+    source, root = workspace
+    with caplog.at_level(logging.WARNING, logger="pipeline.run"):
+        context, _ = run_pipeline(source, root, pavement=[pci_block("p-1", 41.5)], skip=NOT_SWAPPED)
+    assert "installed but not read" in caplog.text
     assert context.pci_by_way == {}
     tags = [w.tags for w in read_ways(context.variant_pbf(Variant.STANDARD))]
     assert all("rm:pci" not in t for t in tags)

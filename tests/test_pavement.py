@@ -7,6 +7,7 @@ downloads anything: the layer arrives at rebuild time on the home PC.
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -123,6 +124,12 @@ class TestWhoWins:
         # No timestamp in the file: the District's score stands.
         assert pavement.resolve(1, tagged, [(block(41.5), 1.0)], edited=None).applied == "poor"
 
+    def test_an_osm_edit_on_the_survey_day_is_not_newer(self) -> None:
+        same_day = datetime(2026, 2, 27, 18, 0, tzinfo=UTC)
+        tagged = {**STREET, "smoothness": "good"}
+        reading = pavement.resolve(1, tagged, [(block(41.5), 1.0)], edited=same_day)
+        assert (reading.applied, reading.why) == ("poor", "pci")
+
     def test_an_approved_correction_wins_over_both(self) -> None:
         keep = pavement.Override(1, pavement.KEEP_OSM, "owner rode it 2026-10")
         set_good = pavement.Override(1, "good", "repaved 2026-09 (owner)")
@@ -201,12 +208,29 @@ def test_the_report_has_a_line_a_way() -> None:
     assert lines[2] == "2,80.0,good,pci,2026-02-27,b"
 
 
-def test_the_installer_writes_what_the_rebuild_loads(tmp_path) -> None:
+def test_the_installer_refuses_the_layer_until_the_licence_is_confirmed(tmp_path) -> None:
+    """The service states no licence: nothing is written, not even the crossings."""
     done = subprocess.run(
         [sys.executable, str(INSTALL), "--data-root", str(tmp_path), "--dc-pci", str(SAMPLE)],
         capture_output=True,
         text=True,
     )
-    assert "wrote" in done.stdout and "6 pavement blocks (FY2025)" in done.stdout, done.stderr
+    assert done.returncode == 2
+    assert "--dc-pci refused" in done.stderr and "no licence" in done.stderr
+    assert not (tmp_path / "reference").exists()
+
+
+def load_installer():
+    spec = importlib.util.spec_from_file_location("install_reference_data_pci", INSTALL)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_installer_writes_what_the_rebuild_loads(tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.setattr(pavement, "LICENCE_CONFIRMED", True)
+    load_installer().main(["--data-root", str(tmp_path), "--dc-pci", str(SAMPLE)])
+    out = capsys.readouterr().out
+    assert "wrote" in out and "6 pavement blocks (FY2025)" in out
     rows = json.loads((tmp_path / "reference" / "pavement.json").read_text())
     assert [pavement.Block.from_json(row) for row in rows] == blocks()

@@ -479,6 +479,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--dc-pci-fiscal-year", type=int, default=None)
     args = parser.parse_args(argv)
+    if args.dc_pci:
+        # Refused before anything is written while the licence is unconfirmed (DC-PCI).
+        from routemaker import pavement
+
+        if not pavement.LICENCE_CONFIRMED:
+            parser.error(f"--dc-pci refused: {pavement.LICENCE_PENDING}")
 
     # The internal-comparison layers (Arlington's Bike Comfort Index,
     # Alexandria's Transport Streets; OWNER-DECISIONS 155) are never a rebuild

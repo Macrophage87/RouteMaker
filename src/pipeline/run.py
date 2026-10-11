@@ -536,6 +536,13 @@ class ReferenceData:
                 path,
             )
             return ()
+        if not pavement.LICENCE_CONFIRMED:
+            logger.warning(
+                "%s is installed but not read: %s. District streets keep OSM's smoothness.",
+                path,
+                pavement.LICENCE_PENDING,
+            )
+            return ()
         return tuple(pavement.Block.from_json(row) for row in json.loads(path.read_text()))
 
     @staticmethod

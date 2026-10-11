@@ -154,8 +154,10 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   `copyrightText` and description are empty and the service's item info has an empty
   `licenseInfo` (read 2026-10-11). Open Data DC's layers are usually CC BY 4.0 (the
   section above), but this service is not one of its items, so that cannot be assumed.
-  Until the owner confirms the terms with DDOT or Open Data DC, the reading is used
-  as the owner's standing rule asks and credited here and in the route answer.
+  Until the owner confirms the terms with DDOT or Open Data DC, nothing derived from
+  it reaches the router: `routemaker.pavement.LICENCE_CONFIRMED` is False, so the
+  installer refuses `--dc-pci` and the rebuild ignores an installed `pavement.json`.
+  The commit that records the confirmation here (source and date) sets it True.
 - Assumption to confirm: `DATE1` is taken as the survey date; the service does not
   say which date field is which.
 - Records: the download's README; `fixtures/pavement/overrides.json` for the owner's
