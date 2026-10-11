@@ -222,17 +222,41 @@ def settle(
         if mtbmode.better(found[0], best[0]):
             best_trip, best = again, found
     reading = best[0]
-    info.update(
-        {
-            "trail_m": round(reading.trail_m, 1),
-            "singletrack_m": round(reading.singletrack_m, 1),
-            "over_level_m": round(reading.over_level_m, 1),
-            "long_lts3_m": round(reading.long_lts3_m, 1),
-            "lts4_m": round(reading.lts4_m, 1),
-            "trail_weight": mtbmode.TRAIL_WEIGHT,
-            "singletrack_speed_kmh": mtbmode.SINGLETRACK_SPEED_KMH,
-        }
-    )
+    info.update(figures(reading))
     if reading.over_level_m <= 1.0 and info["limited"] == "no_way_round":
         info["limited"] = None
     return best_trip, info
+
+
+def figures(reading: mtbmode.Reading) -> dict:
+    """What the answer's `mtb` says of one route's reading."""
+    return {
+        "trail_m": round(reading.trail_m, 1),
+        "singletrack_m": round(reading.singletrack_m, 1),
+        "over_level_m": round(reading.over_level_m, 1),
+        "long_lts3_m": round(reading.long_lts3_m, 1),
+        "lts4_m": round(reading.lts4_m, 1),
+        "trail_weight": mtbmode.TRAIL_WEIGHT,
+        "singletrack_speed_kmh": mtbmode.SINGLETRACK_SPEED_KMH,
+    }
+
+
+def reread(
+    trip: dict, variant: str, costing: dict, when: str, deadline, traces, max_level: int | None
+) -> dict | None:
+    """One route's own reading, for a route answered beside or after `settle`'s: the way
+    round an Avoid-rated junction, a candidate the rider may pick, or the answer once the
+    later passes have changed it. Every route a Mountain Bike plan offers says in words how
+    much of it is above the rider's level, so a harder trail is never shown without its
+    warning. None where a leg cannot be traced or the budget is gone (its traces are
+    usually remembered from the passes that made it)."""
+    from . import routing
+
+    level = mtbmode.clamp_level(max_level)
+    try:
+        found = reading_of(trip, variant, costing, when, deadline, traces, level)
+    except (routing.DeadlineExceeded, routing.RouterUnavailable):
+        return None
+    if found is None:
+        return None
+    return {"max_level": level, "limited": None, **figures(found[0])}

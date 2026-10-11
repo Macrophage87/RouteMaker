@@ -2021,6 +2021,66 @@ class TestMountainBike:
         assert held["router_duration_s"] is not None
         assert body["duration_s"] >= held["router_duration_s"]
 
+    def test_the_way_round_an_avoid_junction_says_its_own_harder_trail(
+        self, client, facility_segments, router, monkeypatch
+    ):
+        """A route offered beside the answer (here the way round an Avoid-rated junction;
+        the search's candidates alike) carries its own reading, so a harder trail on it is
+        said when the rider shows it (review of #84)."""
+        import copy
+
+        from test_avoid_junctions import add_row
+
+        from core import avoid_junctions
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {facility_segments}.segment SET mtb_only = true, mtb_level = 3, "
+                "is_trail_class = true, is_unpaved = true WHERE osm_way_id = 101"
+            )
+        add_row()
+
+        def offered(trip, *args, **kwargs):
+            info = {"passed": 1, "penalty_s": 0, "decision": "kept", "alternate": None}
+            return trip, {**info, "avoided": 0}, copy.deepcopy(trip)
+
+        monkeypatch.setattr(avoid_junctions, "settle", offered)
+        router(standard_router())
+        body = post(client, good_body("mountain-bike")).json()
+        around = body["avoid_alternate"]["mtb"]
+        assert around["max_level"] == 2 and around["over_level_m"] > 0
+        assert around["router_duration_s"] is not None
+        assert body["avoid_alternate"]["duration_s"] >= around["router_duration_s"]
+
+    def test_a_later_pass_that_changes_the_route_has_it_read_again(
+        self, client, facility_segments, router, monkeypatch
+    ):
+        """The Avoid pass runs after the level is held; where it takes a different route, the
+        answer's reading (and its warning) is of the route answered, not the one replaced."""
+        import copy
+
+        from test_avoid_junctions import add_row
+
+        from core import avoid_junctions
+
+        add_row()
+
+        def avoided(trip, *args, **kwargs):
+            # The way round rides a level-3 trail the settled route did not.
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    f"UPDATE {facility_segments}.segment SET mtb_only = true, mtb_level = 3, "
+                    "is_trail_class = true, is_unpaved = true WHERE osm_way_id = 101"
+                )
+            info = {"passed": 1, "penalty_s": 0, "decision": "avoided", "alternate": None}
+            return copy.deepcopy(trip), {**info, "avoided": 1}, None
+
+        monkeypatch.setattr(avoid_junctions, "settle", avoided)
+        router(standard_router())
+        mtb = post(client, good_body("mountain-bike")).json()["mtb"]
+        assert mtb["over_level_m"] > 0
+        assert mtb["limited"] == "no_way_round"
+
     @pytest.mark.parametrize("level", [0, 5, "2", 2.5])
     def test_a_level_out_of_range_is_refused(self, client, facility_segments, router, level):
         router(standard_router())

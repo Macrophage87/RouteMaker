@@ -60,8 +60,9 @@ PROFILED = (OFFROAD, MTB)
 OFFROAD_KEEPS = ("mtb",)
 # The Mountain Bike graph (docs/MTB-TOPO-PLAN.md, slice 6) also reopens rated singletrack
 # that nothing but its rating closes (pipeline.trail_closures.mtb_graph_keeps). The probe
-# file does not say which singletrack is drawn, so every singletrack probe is left out here;
-# the rebuild's own readback (pipeline.run) holds the undrawn ones closed.
+# file marks those probes (`mtb_graph_open` = 1), so that router is still held to the
+# undrawn singletrack. A file from a rebuild before that column leaves out every singletrack
+# probe on it instead (MTB_KEEPS); the rebuild's own readback held the undrawn ones closed.
 MTB_KEEPS = ("mtb", "singletrack")
 KEEPS = {OFFROAD: OFFROAD_KEEPS, MTB: MTB_KEEPS}
 MAX_PROBES = 200
@@ -78,26 +79,43 @@ def _post(url: str, body: dict, headers: dict[str, str] | None = None) -> object
 
 
 def read_probes(path: Path) -> list[tiles.ClosureProbe]:
+    return read_probe_file(path)[0]
+
+
+def read_probe_file(path: Path) -> tuple[list[tiles.ClosureProbe], set[int] | None]:
+    """The probes, and the way ids the Mountain Bike graph opens on purpose (None where the
+    file predates the `mtb_graph_open` column)."""
     with path.open(newline="") as handle:
-        probes = [
-            tiles.ClosureProbe(
-                int(row["way_id"]), float(row["lon"]), float(row["lat"]), row.get("reason") or ""
-            )
-            for row in csv.DictReader(handle)
-        ]
+        reader = csv.DictReader(handle)
+        rows = list(reader)
+        marked = "mtb_graph_open" in (reader.fieldnames or ())
+    probes = [
+        tiles.ClosureProbe(
+            int(row["way_id"]), float(row["lon"]), float(row["lat"]), row.get("reason") or ""
+        )
+        for row in rows
+    ]
     if len(probes) > MAX_PROBES:
         raise SystemExit(f"{len(probes)} probes in {path}; at most {MAX_PROBES}")
-    return probes
+    mtb_open = {int(row["way_id"]) for row in rows if row.get("mtb_graph_open") == "1"}
+    return probes, (mtb_open if marked else None)
+
+
+def held_on(name: str, probes: list, mtb_open: set[int] | None) -> list:
+    """The probes a router must find closed: all but what its graph opens on purpose."""
+    if name == MTB and mtb_open is not None:
+        return [p for p in probes if p.way_id not in mtb_open]
+    return [p for p in probes if p.reason not in KEEPS.get(name, ())]
 
 
 def locate(args: argparse.Namespace) -> int:
-    probes = read_probes(args.probes)
+    probes, mtb_open = read_probe_file(args.probes)
     if not probes:
         print(f"no probes in {args.probes}: the last rebuild had no closure to check")
         return 0
     failed = False
     for name, url in ROUTERS.items():
-        held = [p for p in probes if p.reason not in KEEPS.get(name, ())]
+        held = held_on(name, probes, mtb_open)
         try:
             answer = _post(f"{url}/locate", tiles.closure_locate_request(held))
         except urllib.error.URLError as error:

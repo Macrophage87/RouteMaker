@@ -28,7 +28,7 @@ import sqlite3
 import subprocess
 import time
 from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -1183,12 +1183,23 @@ def closure_probes(context: RebuildContext) -> list[tiles.ClosureProbe]:
     return probes
 
 
-def write_closure_reports(out_dir: Path, probes, singletracks) -> None:
-    """What the post-swap probe reads (scripts/probe_bicycle_closures.py)."""
+def write_closure_reports(
+    out_dir: Path, probes, singletracks, drawn_singletracks: Collection[int] = frozenset()
+) -> None:
+    """What the post-swap probe reads (scripts/probe_bicycle_closures.py).
+
+    `mtb_graph_open` is 1 on a probe the Mountain Bike graph opens on purpose
+    (`trail_closures.mtb_graph_keeps`: the mountain-bike class and the singletrack the
+    layer draws), so the post-swap probe still holds that graph to the undrawn singletrack
+    (bicycle=no, hiking-only, private and the rest), as the rebuild's own readback does."""
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    def mtb_open(p) -> str:
+        return "1" if trail_closures.mtb_graph_keeps(p.reason, p.way_id, drawn_singletracks) else ""
+
     (out_dir / CLOSURE_PROBES_REPORT).write_text(
-        "way_id,lon,lat,reason\n"
-        + "".join(f"{p.way_id},{p.lon:.7f},{p.lat:.7f},{p.reason}\n" for p in probes)
+        "way_id,lon,lat,reason,mtb_graph_open\n"
+        + "".join(f"{p.way_id},{p.lon:.7f},{p.lat:.7f},{p.reason},{mtb_open(p)}\n" for p in probes)
     )
     (out_dir / SINGLETRACK_REPORT).write_text("".join(f"{w}\n" for w in sorted(singletracks)))
 
@@ -3473,7 +3484,10 @@ def _closures_across_variants(context: RebuildContext, run) -> dict:
     probes = held if held is not None else closure_probes(context)
     try:
         write_closure_reports(
-            context.work_dir / DISCREPANCY_REPORT_DIR, probes, context.singletracks
+            context.work_dir / DISCREPANCY_REPORT_DIR,
+            probes,
+            context.singletracks,
+            getattr(context, "drawn_singletracks", None) or set(),
         )
     except OSError:
         logger.warning("bicycle-closure probe list not written", exc_info=True)
