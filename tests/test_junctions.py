@@ -40,6 +40,7 @@ def edge(
     heading,
     *,
     car=True,
+    bus=None,
     use="road",
     link=False,
     names=(),
@@ -62,7 +63,7 @@ def edge(
         "edge": {
             "end_node": {"value": end_node},
             "classification": {"use": use, "link": link},
-            "access": {"car": car},
+            "access": {"car": car, **({} if bus is None else {"bus": bus})},
             "traffic_signal": signal,
             "stop_sign": stop,
             "yield_sign": yld,
@@ -265,6 +266,39 @@ class TestTheNode:
             raw(),
         )
         assert not next(a for a in closed.arms if a.way_id == 41).is_road
+
+    def test_a_bus_road_is_a_road_crossed(self) -> None:
+        # FOLLOWUP-BUS-ROADS: closed to cars, open to buses (Exchange Ave and
+        # Fayette St in Baltimore, Neabsco Stream Dr); buses are motor traffic.
+        found = junctions.node_from_locate(
+            answer(
+                [
+                    edge(1, 10, N, 1.0, 90.0),
+                    edge(2, 10, 901, 0.0, 90.0),
+                    edge(9, 42, 902, 0.0, 0.0, car=False, bus=True),
+                    edge(8, 42, N, 1.0, 180.0, car=False, bus=True),
+                ],
+                [node(N)],
+            ),
+            raw(),
+        )
+        bus_road = next(a for a in found.arms if a.way_id == 42)
+        assert bus_road.into and bus_road.out_of and bus_road.is_road
+        # Bus access alone in one direction drives that direction only.
+        one_way = junctions.node_from_locate(
+            answer(
+                [
+                    edge(1, 10, N, 1.0, 90.0),
+                    edge(2, 10, 901, 0.0, 90.0),
+                    edge(9, 43, 902, 0.0, 0.0, car=False, bus=False),
+                    edge(8, 43, N, 1.0, 180.0, car=False, bus=True),
+                ],
+                [node(N)],
+            ),
+            raw(),
+        )
+        arm = next(a for a in one_way.arms if a.way_id == 43)
+        assert arm.into and not arm.out_of
 
     def test_the_way_out_by_its_way_and_heading_when_its_edge_is_missing(self) -> None:
         found = junctions.node_from_locate(

@@ -173,6 +173,29 @@ def narrow_access_lists(tags: Mapping[str, str]) -> dict[str, str]:
     return narrowed
 
 
+# Buses are motor traffic (FOLLOWUP-BUS-ROADS, review of wip/pre-rebuild,
+# 2026-10-06). A road closed to motor vehicles but open to buses
+# (`motor_vehicle=no` + `bus=yes` or `psv=designated`: Exchange Ave and Fayette
+# St in Baltimore, Neabsco Stream Dr) still carries them, so it is neither
+# car-free (`facility.closed_to_motor_traffic`, `facility.car_free_when`) nor
+# capped by the motor-restriction rule (`stress.motor_restriction`, 444): it is
+# rated as the road its class and speed make it. Only `yes` and `designated`,
+# the values that put buses on the road as a matter of course; `bus=no`,
+# `psv=permit` and the like leave the way as its other tags read it.
+BUS_KEYS = ("bus", "psv")
+BUS_OPEN_VALUES = frozenset({"yes", "designated"})
+
+
+def open_to_buses(tags: Mapping[str, str]) -> bool:
+    """Whether a way's own tags put buses on it (`bus` or `psv` `yes` or
+    `designated`); a list (`designated;yes`) only where every part is one."""
+    for key in BUS_KEYS:
+        value = most_restrictive(tags.get(key))
+        if value is not None and all(part.strip() in BUS_OPEN_VALUES for part in value.split(";")):
+            return True
+    return False
+
+
 # `oneway` values that make a way one-way. Exactly these: `oneway=no` is a
 # mapper stating the street is two-way, and `reversible` and `alternating` are
 # streets whose direction changes, where both sides are in use over a day.

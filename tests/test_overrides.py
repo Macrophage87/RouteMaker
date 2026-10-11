@@ -1130,3 +1130,20 @@ def test_the_veirs_mill_north_sidewalks_are_closed_and_the_designation_retired()
     apply_access([way], [Override("access", 468762518, {"bicycle": "no"})])
     assert facility(way.tags) is not Facility.PROTECTED
     assert way.tags["bicycle"] == "no"
+
+
+def test_a_bus_road_is_not_made_car_free_tier_1() -> None:
+    """FOLLOWUP-BUS-ROADS: `motor_vehicle=no` + `bus=yes` (Exchange Ave and Fayette
+    St in Baltimore, Neabsco Stream Dr) carries buses, so the car-free rule leaves
+    the classifier's tier alone; the same road without buses is still its case."""
+    from pipeline.run import car_free_tier_1
+
+    for buses in ({"bus": "yes"}, {"psv": "designated"}):
+        way = Way(1, highway="tertiary", motor_vehicle="no", **buses)
+        stress = {1: StressResult(Stress.LTS3, "mixed traffic, 30 mph")}
+        assert car_free_tier_1(way, stress) is False, buses
+        assert stress[1].tier is Stress.LTS3
+    way = Way(1, highway="tertiary", motor_vehicle="no", bus="no")
+    stress = {1: StressResult(Stress.LTS3, "mixed traffic, 30 mph")}
+    assert car_free_tier_1(way, stress) is True
+    assert stress[1].tier is Stress.LTS1

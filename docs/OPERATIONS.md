@@ -4036,6 +4036,42 @@ word. A folder with no file is a warning.
   `--confirm`, as in `fixtures/overrides/README.md`), delete row 424993005 in the
   admin, and the next rebuild applies the three new rows.
 
+### After the Track B rebuild: bus roads (FOLLOWUP-BUS-ROADS)
+
+A road closed to motor vehicles but open to buses (`motor_vehicle=no` with `bus`
+or `psv` `yes`/`designated`; `routemaker.tags.open_to_buses`) is no longer
+car-free: the first rebuild with this change rates it by its class and speed
+instead of "closed to motor traffic: an off-road path" or the 444 cap's "motor
+traffic restricted (...), LTS 1 at most", and gives it facility `none` (or its lane
+class) instead of `path`. Nothing to restart for it beyond the usual router restart.
+The junction side (`core.junctions` reads a bus-only edge as driven) arrives with
+the release and needs no rebuild.
+
+After the promotion, while `live_old` is still the build before it, list the
+ways that moved: the count the follow-up asked for, and the review's three roads
+(Exchange Ave and Fayette St in Baltimore, Neabsco Stream Dr) should be among them.
+
+```sh
+docker compose exec -T postgis psql -U routemaker -d routemaker -c "
+  SELECT n.osm_way_id, o.stress_tier AS was_tier, n.stress_tier AS now_tier,
+         o.facility AS was_facility, n.facility AS now_facility, n.stress_rule
+    FROM (SELECT DISTINCT ON (osm_way_id) * FROM live_old.segment
+           WHERE stress_rule LIKE 'closed to motor traffic%'
+              OR stress_rule LIKE 'motor traffic restricted%'
+           ORDER BY osm_way_id, ordinal) o
+    JOIN (SELECT DISTINCT ON (osm_way_id) * FROM live.segment
+           ORDER BY osm_way_id, ordinal) n USING (osm_way_id)
+   WHERE n.stress_rule NOT LIKE 'closed to motor traffic%'
+     AND n.stress_rule NOT LIKE 'motor traffic restricted%'
+   ORDER BY n.stress_tier DESC, n.osm_way_id"
+```
+
+Expect a short list (tens of ways, not hundreds), every row a road OSM tags open
+to buses; open two or three on openstreetmap.org to confirm. A row that is not a
+bus road moved for another reason (an OSM edit since the last extract): check its
+history there. The ways also drop out of the car-free path
+count on the map (fewer `facility = 'path'` roads, outside the trail classes).
+
 ## Maryland traffic counts (MDOT SHA)
 
 FOLLOWUP-MDOT-AADT (OWNER-DECISIONS 429; download approved for the v0.5.0 rebuild,
