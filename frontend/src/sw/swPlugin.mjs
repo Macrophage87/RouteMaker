@@ -14,6 +14,7 @@
  */
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { LAZY_ASSET } from "./swCore.mjs";
 
 const here = new URL(".", import.meta.url);
 
@@ -31,11 +32,11 @@ function read(name) {
 }
 
 /** dist/sw.js for a build. */
-export function workerSource(buildId, assets) {
+export function workerSource(buildId, assets, lazy = []) {
   return [
     `// RouteMaker's service worker, build ${buildId}. Written by frontend/src/sw/swPlugin.mjs from swCore.mjs: edit that.`,
     plainScript(read("swCore.mjs")),
-    `installWorker(self, { buildId: ${JSON.stringify(buildId)}, assets: ${JSON.stringify(assets)} });`,
+    `installWorker(self, { buildId: ${JSON.stringify(buildId)}, assets: ${JSON.stringify(assets)}, lazy: ${JSON.stringify(lazy)} });`,
     "",
   ].join("\n");
 }
@@ -60,9 +61,19 @@ export function buildIdFor(fileNames, html) {
   return hash.digest("hex").slice(0, 16);
 }
 
-/** The precache list: every file the build wrote under assets/, as the page asks for it. */
-export function precacheList(fileNames) {
+/** Every file the build wrote under assets/, as the page asks for it. */
+function assetPaths(fileNames) {
   return [...fileNames].filter((name) => name.startsWith("assets/")).sort().map((name) => `/${name}`);
+}
+
+/** The precache list: the build's assets but the lazy ones (swCore.mjs LAZY_ASSET), which wait for first use. */
+export function precacheList(fileNames) {
+  return assetPaths(fileNames).filter((path) => !LAZY_ASSET.test(path));
+}
+
+/** The build's lazy assets: kept on first use, and carried over from the last build when unchanged. */
+export function lazyList(fileNames) {
+  return assetPaths(fileNames).filter((path) => LAZY_ASSET.test(path));
 }
 
 export function appWorker() {
@@ -83,7 +94,7 @@ export function appWorker() {
       const id = /<meta name="routemaker-build" content="([0-9a-f]{16})"/.exec(html)?.[1];
       if (!id) this.error("index.html has no routemaker-build id: the service worker cannot be written");
       const names = Object.keys(bundle);
-      this.emitFile({ type: "asset", fileName: "sw.js", source: workerSource(id, precacheList(names)) });
+      this.emitFile({ type: "asset", fileName: "sw.js", source: workerSource(id, precacheList(names), lazyList(names)) });
       this.emitFile({ type: "asset", fileName: "sw-kill.js", source: killSource() });
     },
   };

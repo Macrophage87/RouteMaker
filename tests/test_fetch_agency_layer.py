@@ -45,6 +45,7 @@ class Service(BaseHTTPRequestHandler):
     """Five features, served two to a page, on a layer at /layer."""
 
     queries: list[dict] = []
+    counts: list[dict] = []
     fail_count = False
 
     def log_message(self, *args) -> None:  # silence
@@ -70,10 +71,17 @@ class Service(BaseHTTPRequestHandler):
                     "modified": 1_790_000_000_000,
                 }
             )
+        if url.path == "/info/iteminfo":
+            # A service's own item info, as DC GIS's PCI service gives it: a title,
+            # a credit and an empty licence (read 2026-10-11).
+            return self.reply(
+                {"title": "PavementConditionIndex", "licenseInfo": "", "accessInformation": "DDOT"}
+            )
         if url.path == "/layer":
             return self.reply({"maxRecordCount": 2})
         if url.path == "/layer/query":
             if query.get("returnCountOnly"):
+                Service.counts.append({k: v for k, v in query.items() if k == "geometry"})
                 return self.reply({"count": len(FEATURES) + (1 if self.fail_count else 0)})
             Service.queries.append(query)
             start = int(query["resultOffset"])
@@ -88,6 +96,7 @@ class Service(BaseHTTPRequestHandler):
 @pytest.fixture
 def service():
     Service.queries = []
+    Service.counts = []
     Service.fail_count = False
     server = HTTPServer(("127.0.0.1", 0), Service)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -190,3 +199,48 @@ def test_an_item_with_no_licence_text_says_so() -> None:
         fetch_agency_layer.strip_html("<span style='x'>You can &quot;copy&quot;   it</span>")
         == 'You can "copy" it'
     )
+
+
+def test_a_layer_with_no_item_records_the_services_info_and_no_licence(service, tmp_path) -> None:
+    """DDOT's Pavement Condition Index (DC-PCI) is on DC GIS's own server with no
+    ArcGIS Online item and no licence text. It is fetched all the same, and the
+    README says plainly that the licence must be confirmed before it ships."""
+    done = subprocess.run(
+        [
+            sys.executable, str(SCRIPT), "--slug", "test-layer", "--layer", f"{service}/layer",
+            "--out-dir", str(tmp_path), "--credit", "DDOT / DC GIS",
+        ],
+        capture_output=True,
+        text=True,
+    )  # fmt: skip
+    assert done.returncode == 0, done.stderr
+    stored = json.loads((tmp_path / "test-layer" / "test-layer.geojson").read_text())
+    assert stored["features"] == FEATURES
+    readme = (tmp_path / "test-layer" / "README.md").read_text()
+    assert readme.startswith("# PavementConditionIndex")
+    assert "none: the layer is on the agency's own server" in readme
+    assert "the licence must be confirmed with the publisher" in readme
+    assert "| Credit (item `accessInformation`) | DDOT |" in readme
+
+
+def test_a_box_keeps_the_count_and_every_page_to_the_region(service, tmp_path) -> None:
+    """A statewide layer (MDOT SHA's AADT, FOLLOWUP-MDOT-AADT) is fetched for the
+    coverage box only: the count and every page carry the same envelope, so the
+    pages still add up to the count, and the README says the file is clipped."""
+    done = fetch(service, tmp_path, "--bbox=-78.0,38.2,-76.02,39.72")
+    assert done.returncode == 0, done.stderr
+    assert Service.counts == [{"geometry": "-78.0,38.2,-76.02,39.72"}]
+    assert {q["geometry"] for q in Service.queries} == {"-78.0,38.2,-76.02,39.72"}
+    assert {q["geometryType"] for q in Service.queries} == {"esriGeometryEnvelope"}
+    assert {q["inSR"] for q in Service.queries} == {"4326"}
+    assert {q["spatialRel"] for q in Service.queries} == {"esriSpatialRelIntersects"}
+    readme = (tmp_path / "test-layer" / "README.md").read_text()
+    assert "features touching the box (-78.0, 38.2, -76.02, 39.72)" in readme
+
+
+@pytest.mark.parametrize("box", ["-76,38,-78,39", "1,2,3", "a,b,c,d", "-78,39,-76,38"])
+def test_a_box_that_is_not_one_is_refused(service, tmp_path, box) -> None:
+    done = fetch(service, tmp_path, f"--bbox={box}")
+    assert done.returncode == 2
+    assert "--bbox" in done.stderr
+    assert not Service.queries

@@ -612,6 +612,56 @@ def conflate(
     return ConflationResult(matched=matched, rejected=rejected, unmatched_features=unmatched)
 
 
+def share_with_carriageways(
+    result: ConflationResult,
+    carriageway_ids: Collection[int],
+    names: Mapping[int, str | None],
+    agencies: Collection[str],
+) -> dict[int, Match]:
+    """The opposite carriageway's share of a count, for the named agencies only.
+
+    `conflate` lets one stretch of a count line be claimed once, so of a divided
+    road's two one-way carriageways only one takes the count and the other is
+    rejected (`_claim`). The count is the road's, both directions together, and
+    the classifier reads it as that (`routemaker.stress`, VOLUME_QUIET and
+    VOLUME_BUSY are bidirectional thresholds), so the carriageway left without
+    one is graded as an uncounted road. FOLLOWUP-MDOT-AADT's first case is
+    exactly that shape: MD 185 north of Chevy Chase Circle is two one-way
+    carriageways (PLAN.md, the 2026-10-05 check), and with one of them counted
+    the other would stay LTS 3 "for want of a count" (OWNER-DECISIONS 429).
+
+    So a way rejected for a count line keeps it when the way is one carriageway
+    of a divided road (`carriageway_ids`, from `routemaker.divided.carriageways`),
+    it has no count of its own, and the way that took that stretch is a
+    carriageway of the same street (`names`, compared without the quadrant).
+    Each carriageway then carries the road's count, which is a statement about
+    the road, not a doubled volume: nothing sums counts across ways.
+
+    Limited to `agencies` because widening it to the counts already installed
+    (DDOT, VDOT) would move tiers on divided roads the owner has already seen
+    rated; that is a separate change for the owner to ask for. Returns the
+    added matches by way id; `result` is not changed.
+    """
+    wanted = frozenset(agencies)
+    pairs = frozenset(carriageway_ids)
+    holders: dict[str, list[int]] = {}
+    for way_id, match in result.matched.items():
+        holders.setdefault(match.feature_id, []).append(way_id)
+    added: dict[int, Match] = {}
+    for way_id, match in result.rejected:
+        if match.agency not in wanted or way_id in result.matched or way_id in added:
+            continue
+        if way_id not in pairs or not names.get(way_id):
+            continue
+        street = divided.street_name(names[way_id] or "")
+        if any(
+            other in pairs and divided.street_name(names.get(other) or "") == street
+            for other in holders.get(match.feature_id, ())
+        ):
+            added[way_id] = match
+    return added
+
+
 # -- block layers: a road's facts, not a count ------------------------------------
 #
 # `conflate` attaches one number to one way and lets a count be claimed once,

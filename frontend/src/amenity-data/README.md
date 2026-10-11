@@ -1,14 +1,17 @@
-# Public water and restrooms on the map
+# Public water and restrooms on the map, and places to eat
 
-One fixture the front end loads the first time the Water and restrooms layer is
-shown (`src/lib/waterRestrooms.ts`, imported with `?url`, so it is its own
-hashed file under `/assets/` and the edge and Content-Security-Policy are
-unchanged, as `federal-data/` is). The directory is not called `data/` because
+Two fixtures the front end loads when first needed: water and restrooms the
+first time the Water and restrooms layer is shown, and places to eat on the
+first "Find food" search (see "Places to eat" at the end). Each is imported
+with `?url` (`src/lib/waterRestrooms.ts`, `src/App.tsx` for `food.json`), so
+it is its own hashed file under `/assets/` and the edge and
+Content-Security-Policy are unchanged, as `federal-data/` is. The directory is not called `data/` because
 the repository's `.gitignore` ignores every directory of that name.
 
 | File | What | Source | Licence | Credit on the map |
 | --- | --- | --- | --- | --- |
 | `water-restrooms.json` | public water (drinking fountains and taps; untreated springs, wells and taps) and public restrooms (flush, portable or pit, type not mapped) in the coverage box | OpenStreetMap, via the project's own extract, by `scripts/build_water_restrooms.py`; plus the open units of `throne-restrooms.json` | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)" |
+| `food.json` | places to eat (restaurants, fast food, cafes, ice cream, pubs, beer gardens, food courts) in the coverage box, for the planner's Find food search | OpenStreetMap, via the project's own extract, by `scripts/build_food.py` | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)" |
 | `throne-restrooms.json` | Throne smart restrooms (Throne Labs) in DC, Maryland and Virginia: a hand list, read by the build, not by the front end | city, county, parks and news pages, each unit with its URL and the date read; positions from the US Census Bureau geocoder (public domain) for the address each source gives | facts with sources; no third-party database copied (never Google Maps) | none needed; a list unit's card says "From Throne Labs and city sources" |
 
 What counts as drinking or untreated water, how a restroom's type is read
@@ -185,3 +188,44 @@ points (historic springs). Update the figures and digest in "Status", drop the
 note that the file predates the rules, and commit the file. The test
 `test_bundled_file_is_well_formed` checks the result; the front end needs no
 change.
+
+## Places to eat
+
+`food.json` is the Find food search's data (`src/lib/food.ts`; FOOD-SEARCH in
+the v0.5.0 plan, owner 2026-10-11: "search for a midride crab restaurant or
+pizza place"; "Mostly let's do a map search for it. People are willing to
+detour for good food."). What counts (the OSM tags, public access, the
+secured-site rule shared with the water layer, duplicates merged by name
+within 200 ft (60 m)) is in the docstring of `scripts/build_food.py`. No
+ratings: there is no open source for them, and Google's data is never copied.
+
+One place per line, short keys:
+
+| Key | Meaning |
+| --- | --- |
+| `id` | OSM element, `n` node, `w` way or `r` relation, then its id |
+| `x`, `y` | longitude, latitude (5 decimals; a way or relation at its outer ring's mean) |
+| `k` | kind: `r` restaurant, `f` fast food, `c` cafe, `i` ice cream, `p` pub, `b` beer garden, `fc` food court |
+| `n` | `name` (or `brand` where there is no name) |
+| `c` | `cuisine`, normalised: lower case, `_` for spaces, `;` between values, no repeats, at most 6 |
+| `h` | `opening_hours`, as mapped |
+| `web` | `website` (or `contact:website`), only an `http(s)://` address |
+
+### Status
+
+The committed file is an empty placeholder (`"points": []`): the cloud
+session that built the search could not read the extract. The app says "No
+food data yet" until it is built. Build it with the v0.5.0 rebuild, on the
+build host, from the repository root:
+
+    .venv311/bin/python scripts/build_food.py \
+        --pbf <DATA_ROOT>/extracts/source.osm.pbf
+
+It prints the places by kind, how many have a cuisine, how many were left out
+inside airports, military sites and prisons, and the file's size (and warns
+over 3,000,000 bytes, as the front end fetches the whole file on the first
+search). A synthetic file of 15,000 places with names, cuisine on 60%, hours
+on 40% and a website on 35% is 1.9 MB, 450 KB with gzip; the real region is
+expected to be of that order. Record the counts, size and sha256 here and
+commit the file. `test_bundled_file_is_well_formed` in
+`tests/test_build_food.py` checks it.

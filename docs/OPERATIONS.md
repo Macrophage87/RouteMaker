@@ -2816,6 +2816,26 @@ edge, compose or deploy change. A release that first carries it adds to its
 checks: the hashed `water-restrooms-*.json` asset gives 200, `immutable`,
 compressed, and is named by the published front end's script.
 
+The planner's Find food search (`frontend/src/lib/food.ts`; FOOD-SEARCH,
+v0.5.0) is OpenStreetMap data too and needs nothing beyond the ODbL credit.
+Its file, `frontend/src/amenity-data/food.json`, is a committed snapshot built
+by `scripts/build_food.py` from the extract; like the water file, the weekly
+rebuild does not refresh it. The file committed with the feature is empty
+(the search says "No food data yet"), so **the v0.5.0 rebuild on the build
+host runs it once**, next to the water layer's refresh by hand:
+
+    .venv311/bin/python scripts/build_food.py \
+        --pbf <DATA_ROOT>/extracts/source.osm.pbf
+
+then records the printed counts, size and digest in
+`frontend/src/amenity-data/README.md` ("Places to eat", "Status") and commits
+the file. It is a hashed asset under `/assets/`, fetched on the first search
+only (about 450 KB compressed expected) and left out of the service worker's
+precache, so installing the app does not download it (`LAZY_ASSET` in
+`frontend/src/sw/swCore.mjs`); no edge, compose or deploy change. The
+release's checks add: the hashed `food-*.json` asset gives 200, `immutable`,
+compressed, and a search for "pizza" in Washington lists places.
+
 Three more credits ride with the agency layers (`docs/DEVELOPMENT.md`,
 "Agency street layers"; sources and licences in `fixtures/datasets/README.md`),
 in `routing.ATTRIBUTION` and `VOLUME_CREDITS`:
@@ -2913,7 +2933,7 @@ to prevent.
 
 Preset links: `/<ride-type-id>` (for example `/trailmaxxing`, any case, with or without a trailing slash) is a 302 to `/#preset=<id>`, for exactly the ids in `frontend/src/lib/presets.ts` (eleven since Riding with kids, `/kids`); adding or renaming a ride type means editing the Caddyfile's `@preset-*` list too, and `tests/test_preset_links.py` fails until it matches.
 
-`/basemap/*` answers only `region.pmtiles`, `fonts/*` and `sprites/*` (anything
+`/basemap/*` answers only `region.pmtiles`, `contours.pmtiles`, `fonts/*` and `sprites/*` (anything
 else under it is a 404, the stamps and the work directory included), and only to
 requests whose `Origin` is this site or, with no `Origin`, whose `Referer` is a
 page on it; anything else is a 403, sent `no-store` so a browser does not keep
@@ -2928,6 +2948,74 @@ TLS-terminating proxy Caddy sees `http` and refuses every `https` page.
 Caddy with a third-party module. Until then nothing bounds how fast one address
 can read the archive, and that is a gate on opening the site to anything beyond
 this machine (docs/DEPLOYMENT.md, "Build").
+
+### Topo lines (contours; docs/MTB-TOPO-PLAN.md, slice 4)
+
+The Map layers sheet's "Topo lines" switch (OWNER-DECISIONS 454; `frontend/src/lib/topoLines.ts`)
+draws contours from `<DATA_ROOT>/basemap/contours.pmtiles`, served beside the base map at
+`/basemap/contours.pmtiles` with the same same-origin guard and `no-cache` (the Caddyfile and the
+beta's nginx template both list it). Until the file exists, turning the switch on (the
+first time in a visit, when the app asks the server for the archive with a `HEAD`) changes its
+description to "Topo lines are not available on this server yet", and nothing else changes. The edge change needs the
+Caddyfile re-read once (below, "Applying a Caddyfile change").
+
+`scripts/build_contours.py` makes the file from the USGS 3DEP 1/3 arc-second DEM (four one-degree
+cells over `COVERAGE_BBOX`: n40w078, n40w077, n39w078, n39w077; 1.82 GB in all, 370 to 500 MB each,
+as the bucket listed them on 2026-10-11): it downloads them (kept in its work directory, so a second
+run downloads nothing; each checked against the bucket's Content-Length, since 3DEP publishes no
+checksum), clips the mosaic to the coverage, traces every 20 ft contour (`gdal_contour`), splits them
+into three layers by the coarsest spacing each belongs to (100, 40 and 20 ft, tiled from zoom 10, 13
+and 14), and writes the archive (GDAL's PMTiles driver, zoom 10 to 14) through a `.part` name, so the
+edge never serves half a file. `--print-plan` lists the cells, URLs and levels without touching the
+network.
+
+When: once, as part of the release's last step before the beta, with the rebuild (the owner: "Rebuild
+should be the last step before it's on the beta"), and again only if USGS republishes the cells. It
+needs no database and no router, and it does not touch the running stack: the edge reads the file per
+request, so the next request gets the new archive.
+
+It needs GDAL 3.8 or later with the PMTiles driver, and must write as the basemap directory's owner
+(uid 10001 after `prepare_data_root.sh`), so, like the base map fetch, it runs in a container as
+10001 with only the script and that directory mounted. The image is GDAL's own, pinned by tag (record
+its digest in this section on the first pull: the cloud container that wrote this could not pull it).
+From the repository root:
+
+```sh
+docker run --rm -u 10001:10001 \
+  -v <DATA_ROOT>/basemap:/out \
+  -v "$PWD/scripts/build_contours.py:/build_contours.py:ro" \
+  ghcr.io/osgeo/gdal:ubuntu-small-3.9.3 \
+  python3 /build_contours.py --out /out
+```
+
+The work directory is `/out/.contours-work` (`<DATA_ROOT>/basemap/.contours-work`, which the edge
+refuses like any unlisted path). It is deleted at the end, downloads and all, because
+`scripts/beta/ship-data.sh` copies the whole basemap directory to the beta; `--keep-work` keeps it
+(a re-run then downloads nothing). A kept work directory, or one a failed run left behind (it is
+deleted only on success), must be deleted before shipping data: `ship-data.sh` refuses to ship the
+basemap while `.contours-work` or a half-written `.contours.pmtiles.part` is there.
+
+Disk and time, measured in the cloud container on 2026-10-11 with Ubuntu 24.04's GDAL 3.8.4 on one
+whole cell (n39w078 clipped to the coverage's 38.2 N, 0.8 of a square degree, among the hillier parts,
+its highest line 1,800 ft): 500 MB downloaded, 297 MB clipped DEM, 254 MB of contour lines, 254 MB of split
+layers, a 39 MB archive, 291 s in all on 4 cores (the tiling 183 s of it, at 209 MB peak memory). The coverage is
+about 3 square degrees, mostly flatter, so expect: **about 1.8 GB to download, about 5 GB free on the
+data volume at the peak (downloads, the clipped DEM and two line files), an archive of roughly 100 to
+150 MB, and 20 to 30 minutes on the host**, most of it the tiling, on one core.
+GDAL streams the DEM in blocks; give the container 2 GB. Check the result:
+
+```sh
+docker run --rm -v <DATA_ROOT>/basemap:/out:ro ghcr.io/osgeo/gdal:ubuntu-small-3.9.3 \
+  ogrinfo -so /out/contours.pmtiles        # name=RouteMaker contours, minzoom=10, maxzoom=14
+```
+
+then turn the switch on in the app at zoom 12, 13 and 15: 100 ft lines with 500 ft index lines, then
+40 ft with 200 ft, then 20 ft with 100 ft, each index line heavier and labelled "500 ft (152 m)".
+
+Source and licence: docs/SOURCES.md, "USGS 3D Elevation Program" (U.S. public domain; the map's
+credits already name "USGS 3DEP"). The look is this app's own, written for it; the source's credit
+names OpenTopoMap as the look's inspiration (docs/MTB-TOPO-PLAN.md, slice 4), and nothing of
+OpenTopoMap's style code, which names no licence, is copied.
 
 ## Applying a Caddyfile change
 
@@ -3027,8 +3115,9 @@ and `manifest-src` falls back to `default-src 'self'`.
 `/sw.js` is written by the build (`frontend/src/sw/swPlugin.mjs` from `swCore.mjs`)
 and carries the build's id; `index.html` carries the same id in `<meta
 name="routemaker-build">`. What it does, and what it never touches, is the table
-in `frontend/src/sw/swCore.mjs`: it precaches the build's `/assets/*` and
-`index.html`, answers a navigation to `/` from the network first (3 s, then the
+in `frontend/src/sw/swCore.mjs`: it precaches the build's `/assets/*` (but
+the Find food places, `/assets/food-*.json`, kept only once a search fetches
+them) and `index.html`, answers a navigation to `/` from the network first (3 s, then the
 kept copy), and passes through everything else, `/api/*`, `/auth/*`, `/tiles/*`,
 the base map archive, the admin path and every non-GET included. It caches no API
 answer and nothing private.
@@ -3380,17 +3469,17 @@ the first host to run it is the first test of it.
    publishers on a road they both cover, and with one file in the input the
    locality-over-state precedence rule has nothing to choose between. VDOT's is
    the traffic-volume export from the Virginia Roads portal; the District's is
-   DDOT's AADT layer from the District's open-data portal. **Maryland's arrives
-   the same way, and phase 1 does not install it.** The pipeline records which
-   agency published every count that reached a way — the segment table's
+   DDOT's AADT layer from the District's open-data portal. **Maryland's is the
+   third pair, from v0.5.0** (FOLLOWUP-MDOT-AADT, OWNER-DECISIONS 429; the owner
+   approved the download for the v0.5.0 rebuild): "Maryland traffic counts (MDOT
+   SHA)" below has the fetch and the extra `--volume` lines. The pipeline records
+   which agency published every count that reached a way — the segment table's
    `volume_source`, `volume_aadt` and `volume_year` columns — so a Maryland
-   layer's influence on the published map is identifiable. It is not yet
-   *excludable*: nothing in the export can withhold the segments a
-   conditionally licensed source touched, so installing Maryland today means
-   publishing a derivative that is influenced by it. Add the third pair once
-   the waiver mechanism PLAN.md:31-34 describes exists; handoff.md section 7
-   carries the row. docs/DEVELOPMENT.md, "Reference data", has what each one is
-   and how the counts have to be normalised before they get here.
+   count's influence is identifiable, and no published derivative exists for it
+   to reach; one that is built must withhold `volume_source = 'mdot-sha'` until
+   the waiver PLAN.md:31-34 describes is in hand (docs/SOURCES.md, "Maryland
+   traffic counts (MDOT SHA)"). docs/DEVELOPMENT.md, "Reference data", has what
+   each one is and how the counts have to be normalised before they get here.
 
    **Optional, the agency street layers.** Add `--roadway-block
    /data/reference/inputs/dc-roadway-block/dc-roadway-block.geojson
@@ -4071,6 +4160,145 @@ to buses; open two or three on openstreetmap.org to confirm. A row that is not a
 bus road moved for another reason (an OSM edit since the last extract): check its
 history there. The ways also drop out of the car-free path
 count on the map (fewer `facility = 'path'` roads, outside the trail classes).
+
+## Maryland traffic counts (MDOT SHA)
+
+FOLLOWUP-MDOT-AADT (OWNER-DECISIONS 429; download approved for the v0.5.0 rebuild,
+2026-10-10). MDOT SHA's AADT segments fill the Maryland roads no other count
+reaches, the first being MD 185 (Connecticut Ave) from Chevy Chase Circle to MD
+410, LTS 3 until now only for want of a count. Run on the home PC: the cloud
+proxy cannot reach the service.
+
+1. **Fetch it once**, clipped to the coverage box, from the checkout on the host
+   into the operator's scratch folder (as for the other agency layers,
+   fixtures/datasets/README.md), then copy it into the inputs folder the rebuild
+   container binds. Standard library only, so no virtualenv is needed. `--bbox=`
+   takes the equals sign because the box starts with a minus sign:
+
+   ```sh
+   export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
+   python3 scripts/fetch_agency_layer.py \
+       --slug mdot-sha-aadt --item 77010abe7558425997b4fcdab02e2b64 \
+       --layer https://services.arcgis.com/njFNhDsUCentVYJW/arcgis/rest/services/MDOT_SHA_Annual_Average_Daily_Traffic/FeatureServer/1 \
+       --bbox=-78.0,38.2,-76.02,39.72 \
+       --out-dir ~/rmdata/datasets --credit "State of Maryland (MDOT SHA)"
+   sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs/mdot-sha-aadt"
+   sudo install -o 10001 -g 10001 -m 644 ~/rmdata/datasets/mdot-sha-aadt/* \
+       "$DATA_ROOT/reference/inputs/mdot-sha-aadt/"
+   ```
+
+   It pages at the layer's 2,000 a page, retries each request three times, and
+   writes `mdot-sha-aadt.geojson` and a README with the size, sha256, retrieval
+   time and the item's licence text. Exit 3 means the pages did not add up to the
+   count the service reported: delete the folder and run it again. Copy the size
+   and sha256 into docs/SOURCES.md, "Maryland traffic counts (MDOT SHA)", and
+   fixtures/datasets/README.md in the release's notes commit.
+
+2. **Install it with the other two counts**, by adding a third pair to step 6's
+   command of "First rebuild on a fresh host" (the installer rewrites
+   `volume.json` from every `--volume` it is given, so all three go in one run):
+
+   ```sh
+       --volume /data/reference/inputs/mdot-sha-aadt/mdot-sha-aadt.geojson \
+           --volume-source mdot-sha
+   ```
+
+   No `--volume-year`: the installer reads the year from the layer's fields (the
+   newest `AADT_<year>` plus one; 2024 on the 2026-10-11 layer) and prints the
+   rows it left out (`LOC_ERROR` set, or no count). A typed `--volume-year` wins.
+
+3. **After the rebuild**, read the log and check MD 185:
+
+   | Line | What to look for |
+   |---|---|
+   | `.../mdot-sha-aadt.geojson: N count lines from mdot-sha (state)` (installer) | some thousands for the box |
+   | `MDOT SHA counts shared with N opposite carriageways` | in the hundreds: each divided Maryland road's second carriageway, which conflation alone leaves uncounted (`conflation.share_with_carriageways`; Maryland's counts only) |
+   | `volume conflation: N matched, ...` | N up by the Maryland roads against the last rebuild |
+
+   ```sh
+   docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+     "SELECT osm_way_id, stress_tier, volume_source, volume_aadt, volume_year
+        FROM live.segment
+       WHERE geometry && ST_MakeEnvelope(-77.0800, 38.9675, -77.0740, 38.9880, 4326)
+         AND road_speed_mph IS NOT NULL
+       ORDER BY ST_YMin(geometry);"
+   ```
+
+   The box is MD 185 from the DC line to MD 410, and the cross streets in it come
+   back too: the Connecticut Avenue rows are the ones at 30 mph. Both carriageways
+   should be there, `mdot-sha`, with 39,141 (2024) or that year's figure, and
+   `stress_tier` 4, as the same road is in the District at 30 mph. A row at 3
+   there means the count did not reach it: check the line above, then
+   `named-corridors.md` and `override-rematch.md` for a row holding the way.
+   The before/after tier count for Maryland goes in the release notes: every
+   tier a Maryland count moved is a road that was graded without one.
+
+## DC pavement condition (DC-PCI)
+
+DDOT's Pavement Condition Index is the smoothness reading of District streets from
+v0.5.0 (owner, 2026-10-11: "DC score in most cases takes priority over OSM data").
+The download runs on the home PC at rebuild time: the cloud proxy cannot reach
+dcgis.dc.gov. **The service states no licence**: confirm the terms with DDOT or Open
+Data DC before the release ships (docs/SOURCES.md). Until the owner has, the code
+holds it back: `routemaker.pavement.LICENCE_CONFIRMED` is False, so step 2 refuses
+`--dc-pci` (exit 2, `--dc-pci refused: ... states no licence`) and a rebuild that
+finds a `pavement.json` logs `... is installed but not read` and leaves every street
+on OSM's reading. The commit that records the confirmation in docs/SOURCES.md sets it
+True; only then run steps 1 to 3.
+
+1. **Fetch FY-25 once**, from the checkout on the host. There is no ArcGIS Online
+   item, so no `--item`; the README the script writes records the service's own item
+   info and says the licence is to be confirmed. It pages at 1,000 a request
+   (the layer's limit) and retries each request three times:
+
+   ```sh
+   export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
+   python3 scripts/fetch_agency_layer.py --slug dc-pavement-pci-fy25 \
+       --layer https://rh.dcgis.dc.gov/dcgis/rest/services/DDOT/PavementConditionIndex/FeatureServer/5 \
+       --out-dir ~/rmdata/datasets --credit "DDOT Pavement Condition Index (DC GIS)"
+   sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25"
+   sudo install -o 10001 -g 10001 -m 644 ~/rmdata/datasets/dc-pavement-pci-fy25/* \
+       "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25/"
+   ```
+
+   Exit 3 means the pages did not add up to the count the service reported: delete
+   the folder and run it again. Put the size and sha256 from its README into
+   docs/SOURCES.md. Before installing, open the file and check one record's `DATE1`
+   against the fiscal year: the rebuild takes `DATE1` as the survey date (an
+   assumption, docs/SOURCES.md).
+
+2. **Install it** (with the other reference inputs, or on its own; it writes only
+   `reference/pavement.json`):
+
+   ```sh
+   docker compose exec -T rebuild python3 scripts/install_reference_data.py \
+       --data-root /data \
+       --dc-pci /data/reference/inputs/dc-pavement-pci-fy25/dc-pavement-pci-fy25.geojson
+   ```
+
+   It prints `wrote .../pavement.json: N pavement blocks (FY2025)`. A later year's
+   layer takes `--dc-pci-fiscal-year`, which only names the year blocks with no
+   `DATE1` are dated to.
+
+3. **After the rebuild**, read the log line and the report:
+
+   | Line | What to look for |
+   |---|---|
+   | `DC pavement (PCI): N of M blocks matched ways, N ways reached; applied good N, fair N, poor N; kept OSM's reading: ...` | most blocks matched; `not_street` counts the alleys and paths near a block, `osm_newer` the streets whose OSM smoothness is newer than the survey, `override` the owner's corrections |
+   | `.../pavement.json is absent, so DDOT's Pavement Condition Index is not read` | should not appear once step 2 has run |
+   | `pavement corrections not applied (fixtures/pavement/overrides.json)` | should not appear; a correction names a way the layer did not reach |
+
+   `${DATA_ROOT}/rebuild/reports/dc-pavement-pci.csv` has one line a way the layer
+   reached: its PCI, the band the graph was given (empty where OSM's reading stood),
+   why, the survey date and the blocks. Spot-check two streets you know, one rough
+   and one smooth. A street that is wrong gets a row in
+   `fixtures/pavement/overrides.json` (`reading`: `osm`, `good`, `fair` or `poor`,
+   with the reason and the owner's decision), committed, and the next rebuild
+   applies it.
+
+   **Rolling it back** without a code change: remove `reference/pavement.json` and
+   rebuild; every street then keeps OSM's reading, and the log says the file is
+   absent.
 
 ## Deployment actions
 
@@ -5530,6 +5758,58 @@ docs/SOURCES.md, "Capital Bikeshare".
 `POST /api/bikeshare/stations` (the nearest stations to pick up from or return to,
 OWNER-DECISIONS 466a) has its own limit, `ratelimit.BIKESHARE_STATIONS`, 60 a minute per client
 address, and reads the shared copy, never the feeds directly.
+
+## Work zones
+
+Live work zones (FOLLOWUP-WORKZONES, OWNER-DECISIONS 341-349). The worker's
+`refresh_work_zones` task reads the state DOTs' WZDx feeds every five minutes (`core.workzones`)
+and keeps the zones in one row of `bikeshare_feed_cache` under the key `workzones`, replaced in
+place; nothing is kept as history, and the row is excluded from the nightly dump with the rest of
+that table. The planner reads it at most once a minute a process. Nothing needs the rebuild.
+
+- **Maryland** is read as soon as the release is up: no key.
+- **Virginia** needs the owner's SmarterRoads key. Put it in `.env` as `SMARTERROADS_TOKEN=<key>`
+  (never in a commit, never printed), then `docker compose up -d worker` (not `restart`: compose
+  reads `.env` when it creates the container). Only `worker` holds it, and it is never logged or
+  written to a run row. Rotating it: docs/DEPLOYMENT.md, "Secrets".
+- What a plan does: a zone closed to bicycles (every lane closed, the bike lane listed closed) is
+  left out of every router request (`exclude_polygons`, a strip 6 m [20 ft] either side of the
+  zone's line, trimmed 20 m [66 ft] at each end so cross streets stay open). Every other zone in
+  force at the ride time that the route runs along costs its penalty: 60 s shoulder only, 120 s a
+  lane closed, 180 s a flagger or alternating one-way, 600 s every lane closed with bicycles not
+  mentioned (shown in red). The plan asks once for the route round those zones and keeps it where
+  it costs no more than the penalties. Each zone the answer still runs along gets a heads-up in
+  the description, with its source, and the disclaimer.
+- Labels: a feed last read 20 minutes to 2 hours ago is still used and its heads-ups say so; older,
+  or never read well, its zones are dropped and the description says "Work zones could not be
+  checked for this route: ... not available". Before the first refresh is stored nothing is said
+  at all (`work_zones` is null).
+
+**After the release is deployed** (no rebuild needed):
+
+1. After five minutes, the run row:
+
+   ```sh
+   docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+     "SELECT started_at, succeeded, detail FROM scheduled_run WHERE task = 'refresh_work_zones' ORDER BY started_at DESC LIMIT 3;"
+   ```
+
+   Expect `succeeded = t` and a detail like `work zones: md 143 zones` (and `va N zones` once the key
+   is in). `md failed` means the feed did not answer three tries; the worker log says why, never
+   with the URL. `md 0 zones` on a weekday is worth a look: the feed may have changed shape. The
+   parser was written against the WZDx specification without a live download, so check the first
+   real reading here.
+2. Plan a route along a road you know has a lane closure listed in the feed (the Maryland 511 map
+   shows them). The description should carry "Work zone ahead at ... Source: Maryland DOT SHA work
+   zones (WZDx, CC0).", and the answer's `work_zones.status` should be `{"md": "current"}`.
+3. The operations page lists `refresh_work_zones` as stale if no refresh has succeeded for 30
+   minutes.
+
+**Dropping Virginia** needs no code change: empty `SMARTERROADS_TOKEN` and `docker compose up -d
+worker`; the next refresh removes Virginia's zones. There is no switch for Maryland: turning work
+zones off altogether is a code change (remove the `refresh_work_zones` task), then
+`DELETE FROM bikeshare_feed_cache WHERE key = 'workzones';`, after which plans say nothing about
+work zones.
 
 ## Rebuilding on the cloud box
 

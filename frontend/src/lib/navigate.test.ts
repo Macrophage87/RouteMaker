@@ -135,6 +135,29 @@ test("rideModel: a cue for the turn, the flagged crossing and the end; none for 
   assert.ok(Math.abs(model.lengthM - 2000) < 2);
 });
 
+test("rideModel: a work zone on the route is a hazard cue; the disclaimer line is not a cue", () => {
+  const route = lRoute();
+  const zone = (from: number, text: string, severity: DescriptionEntry["severity"]): DescriptionEntry => ({
+    ...stretch(from, from, text),
+    kind: "workzone",
+    tier: null,
+    severity,
+  });
+  route.description = [
+    zone(0, "Work zones are the transportation agencies' own data.", null),
+    ...(route.description ?? []).slice(0, 1),
+    zone(600, "Work zone ahead at 0.4 mi (0.6 km) on A Street: a lane closed.", "orange"),
+    ...(route.description ?? []).slice(1),
+  ];
+  const model = rideModel(route);
+  assert.deepEqual(
+    model.cues.map((c) => c.kind),
+    ["hazard", "turn", "hazard", "end"],
+  );
+  assert.ok(Math.abs(model.cues[0].atM - 600) < 2, `${model.cues[0].atM}`);
+  assert.ok(says("stoker", model.cues[0]), "Stoker hears an orange work zone");
+});
+
 test("measureMap: stops anchor on their vertices however the two measures drift", () => {
   // The route's measure says the stop is at 1,200 m; its vertex is at 1,000 m along the line.
   const along = new Float64Array([0, 500, 1000, 1500, 2000]);

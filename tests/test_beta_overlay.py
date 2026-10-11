@@ -879,6 +879,7 @@ def test_the_template_serves_what_the_caddyfile_serves() -> None:
     ):
         assert expected in paths, expected
     assert "= /basemap/region.pmtiles" in paths
+    assert "= /basemap/contours.pmtiles" in paths
     assert "^~ /basemap/fonts/" in paths and "^~ /basemap/sprites/" in paths
     # the preset redirects are the Caddyfile's, all of them
     caddy_presets = set(re.findall(r"@preset-([a-z-]+) path ", CADDYFILE))
@@ -959,7 +960,7 @@ def test_the_basemap_is_same_origin_only_with_the_caddyfiles_three_paths() -> No
     full = stage("full")
     assert 'map "$http_origin|$http_referer" $rmbeta_basemap_foreign' in full
     caddy_allowed = re.search(r"@unlisted not path ([^\n]+)", CADDYFILE).group(1).split()
-    assert caddy_allowed == ["/region.pmtiles", "/fonts/*", "/sprites/*"]
+    assert caddy_allowed == ["/region.pmtiles", "/contours.pmtiles", "/fonts/*", "/sprites/*"]
     for path, body in locations(full):
         if path.startswith(("= /basemap", "^~ /basemap")):
             assert "if ($rmbeta_basemap_foreign)" in body and "return 403;" in body, path
@@ -1281,6 +1282,43 @@ def test_ship_data_will_not_stage_inside_the_live_data_root(tmp_path: Path) -> N
         "frontend",
     )
     assert done.returncode == 2 and "inside" in done.stderr, done.stderr
+
+
+@needs_sh
+def test_ship_data_refuses_a_contour_builds_leftovers_in_the_basemap(tmp_path: Path) -> None:
+    """The basemap directory is shipped whole, so scripts/build_contours.py's work directory
+    (kept, or left by a failed run) or its half-written archive must not ride along."""
+    live = tmp_path / "live"
+    data = tmp_path / "data"
+    live.mkdir()
+    (data / "basemap").mkdir(parents=True)
+    (data / "basemap" / "region.pmtiles").write_bytes(b"PMTiles")
+    (live / "compose.yaml").write_text("services: {}\n")
+    (live / ".env").write_text(f"DATA_ROOT={data}\n")
+    args = [
+        "bash",
+        SHIP,
+        "--live-dir",
+        str(live),
+        "--stage",
+        str(tmp_path / "stage"),
+        "--no-transfer",
+    ]
+    args += [
+        arg
+        for part in ("db", "frontend", "tiles", "elevation", "photon")
+        for arg in ("--without", part)
+    ]
+    for leftover in (".contours-work", ".contours.pmtiles.part"):
+        path = data / "basemap" / leftover
+        path.mkdir() if leftover.endswith("work") else path.write_bytes(b"x")
+        done = run(*args)
+        assert done.returncode == 2 and f"basemap/{leftover} is left from" in done.stderr, (
+            done.stderr
+        )
+        path.rmdir() if path.is_dir() else path.unlink()
+    done = run(*args)
+    assert "left from scripts/build_contours.py" not in done.stderr, done.stderr
 
 
 def _bundle(tmp_path: Path, sha: str | None = None) -> Path:

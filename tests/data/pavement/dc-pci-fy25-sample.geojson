@@ -1,0 +1,18 @@
+{
+  "type": "FeatureCollection",
+  "about": "Hand-made in the shape of DDOT's PCI FY-25 layer (DC GIS DDOT/PavementConditionIndex/FeatureServer/5), as `scripts/fetch_agency_layer.py` stores it. Features 72922 and 72923 carry the values the layer returned for those records on 2026-10-11, with their lines shortened to two points; 90001-90004 are invented to cover the fair and poor bands, a missing survey date, a missing PCI and a MultiLineString. Not real data beyond the two records.",
+  "features": [
+    {"type": "Feature", "id": 72922, "geometry": {"type": "LineString", "coordinates": [[-77.054751, 38.903744, 0], [-77.053900, 38.903744, 0]]},
+     "properties": {"OBJECTID": 72922, "ROUTEID": "11053492", "FROMMEASURE": 3540.4592, "TOMEASURE": 3625.3665, "ROUTENAME": "L ST NW", "FROMSTREET": "PENNSYLVANIA AVE NW", "TOSTREET": "26TH ST NW", "SURFACE": "AC", "LANES": 2, "DATE1": 1772168400000, "PCI": 81.1, "PCICTEGORY": "Good"}},
+    {"type": "Feature", "id": 72923, "geometry": {"type": "LineString", "coordinates": [[-77.069847, 38.949693, 0], [-77.071820, 38.949680, 0]]},
+     "properties": {"OBJECTID": 72923, "ROUTEID": "11017482", "FROMMEASURE": 1486.6093, "TOMEASURE": 1683.8809, "ROUTENAME": "BRANDYWINE ST NW", "FROMSTREET": "36TH ST NW", "TOSTREET": "RENO RD NW", "SURFACE": "AC", "LANES": 2, "DATE1": 1772427600000, "PCI": 93.5, "PCICTEGORY": "Excellent"}},
+    {"type": "Feature", "id": 90001, "geometry": {"type": "LineString", "coordinates": [[-77.0300, 38.9100], [-77.0280, 38.9100]]},
+     "properties": {"OBJECTID": 90001, "ROUTEID": "1", "ROUTENAME": "EXAMPLE ST NW", "FROMSTREET": "A ST NW", "TOSTREET": "B ST NW", "DATE1": 1772168400000, "PCI": 62.0, "PCICTEGORY": "Fair"}},
+    {"type": "Feature", "id": 90002, "geometry": {"type": "LineString", "coordinates": [[-77.0280, 38.9100], [-77.0260, 38.9100]]},
+     "properties": {"OBJECTID": 90002, "ROUTEID": "1", "ROUTENAME": "EXAMPLE ST NW", "FROMSTREET": "B ST NW", "TOSTREET": "C ST NW", "DATE1": null, "PCI": 41.5, "PCICTEGORY": "Poor"}},
+    {"type": "Feature", "id": 90003, "geometry": {"type": "LineString", "coordinates": [[-77.0400, 38.9200], [-77.0380, 38.9200]]},
+     "properties": {"OBJECTID": 90003, "ROUTENAME": "NO SCORE ST NW", "PCI": null}},
+    {"type": "Feature", "id": 90004, "geometry": {"type": "MultiLineString", "coordinates": [[[-77.0500, 38.9300], [-77.0490, 38.9300]], [[-77.0490, 38.9300], [-77.0480, 38.9300]]]},
+     "properties": {"OBJECTID": 90004, "ROUTENAME": "SPLIT ST NW", "DATE1": 1772168400000, "PCI": 70.0, "PCICTEGORY": "Satisfactory"}}
+  ]
+}

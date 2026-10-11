@@ -36,6 +36,13 @@ Each is the layer exactly as `scripts/fetch_agency_layer.py` stored it; the
 posted speed, lanes by direction, one-way, bike facility, parking and count are
 parsed by `routemaker.agency_roads`.
 
+DDOT's Pavement Condition Index goes to `pavement.json`, optional (DC-PCI):
+
+    --dc-pci dc-pavement-pci-fy25.geojson   DDOT / DC GIS, FY-25 layer
+
+parsed by `routemaker.pavement`; `--dc-pci-fiscal-year` names the layer's year
+(default 2025) for the blocks whose survey date is empty.
+
 Run with only --data-root it installs the crossings and reports which of the
 other two are still missing, exiting non-zero while any is. See
 docs/DEVELOPMENT.md, "Reference data", for where each input comes from.
@@ -53,6 +60,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
+
+from routemaker import mdot_aadt  # noqa: E402 - needs the path above
 
 CROSSINGS_FIXTURE = REPO / "fixtures" / "crossings" / "potomac-anacostia.json"
 REQUIRED = ("crossings.json", "urban-areas.json", "volume.json")
@@ -308,10 +317,22 @@ def volume_rows(volume: Path, source: str, year: int | None, aadt_property: str)
     """
     tier = source_tier(source)
     agency = canonical_agency(source)
+    features = list(_geometries(volume))
+    # MDOT SHA's layer (FOLLOWUP-MDOT-AADT, OWNER-DECISIONS 429; `routemaker.mdot_aadt`):
+    # a row the agency flags as misplaced (`LOC_ERROR`) is not installed, and the
+    # year `AADT` is for is read from the layer's dated fields where no
+    # `--volume-year` was given, so an operator cannot file 2024's counts as 2023's.
+    maryland = agency == mdot_aadt.AGENCY
+    if maryland and year is None:
+        year = mdot_aadt.current_year({key for _, properties in features for key in properties})
+    skipped = 0
     rows = []
-    for number, (geometry, properties) in enumerate(_geometries(volume)):
+    for number, (geometry, properties) in enumerate(features):
         value = properties.get(aadt_property)
         if value in (None, ""):
+            continue
+        if maryland and not mdot_aadt.usable(properties):
+            skipped += 1
             continue
         lines = (
             [geometry]
@@ -337,6 +358,8 @@ def volume_rows(volume: Path, source: str, year: int | None, aadt_property: str)
                     "year": year,
                 }
             )
+    if skipped:
+        print(f"  {volume}: {skipped} rows not installed (no count above zero, or LOC_ERROR set)")
     return rows
 
 
@@ -467,7 +490,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--baltimore-centerline", type=Path, help="Baltimore street centerline, GeoJSON as fetched"
     )
+    parser.add_argument(
+        "--dc-pci", type=Path, help="DDOT Pavement Condition Index layer, GeoJSON as fetched"
+    )
+    parser.add_argument("--dc-pci-fiscal-year", type=int, default=None)
     args = parser.parse_args(argv)
+    if args.dc_pci:
+        # Refused before anything is written while the licence is unconfirmed (DC-PCI).
+        from routemaker import pavement
+
+        if not pavement.LICENCE_CONFIRMED:
+            parser.error(f"--dc-pci refused: {pavement.LICENCE_PENDING}")
 
     # The internal-comparison layers (Arlington's Bike Comfort Index,
     # Alexandria's Transport Streets; OWNER-DECISIONS 155) are never a rebuild
@@ -475,7 +508,13 @@ def main(argv: list[str] | None = None) -> int:
     # fixture was installed first, so a refused run still changed the data root).
     from routemaker.agency_roads import InternalOnlySource, refuse_internal_only
 
-    inputs = (args.extract, args.urban_areas, args.roadway_block, args.baltimore_centerline)
+    inputs = (
+        args.extract,
+        args.urban_areas,
+        args.roadway_block,
+        args.baltimore_centerline,
+        args.dc_pci,
+    )
     for path in (*inputs, *args.volume):
         if path is None:
             continue
@@ -540,6 +579,17 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("two street blocks share an id")
         (reference / "roadway.json").write_text(json.dumps(blocks, separators=(",", ":")))
         print(f"wrote {reference / 'roadway.json'}: {len(blocks)} street blocks")
+
+    if args.dc_pci:
+        from routemaker import pavement
+
+        year = args.dc_pci_fiscal_year or pavement.FISCAL_YEAR
+        blocks = pavement.parse_layer(json.loads(args.dc_pci.read_text()), year)
+        if len({block.feature_id for block in blocks}) != len(blocks):
+            parser.error("two pavement blocks share an id")
+        rows = [block.to_json() for block in blocks]
+        (reference / "pavement.json").write_text(json.dumps(rows, separators=(",", ":")))
+        print(f"wrote {reference / 'pavement.json'}: {len(rows)} pavement blocks (FY{year})")
 
     missing = [name for name in REQUIRED if not (reference / name).exists()]
     for name in missing:

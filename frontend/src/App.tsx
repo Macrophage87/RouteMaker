@@ -9,7 +9,7 @@ import { stationNearSpot } from "./lib/stationLinks.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
 import { requestRoute, type RouteResponse, type RouteResult } from "./lib/api.ts";
-import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
+import { COVERAGE_BBOX, MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatSeconds } from "./lib/format.ts";
 import { presetLabel, type PresetId } from "./lib/presets.ts";
 import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
@@ -19,6 +19,7 @@ import { forgetPlan, planToOpen, tabSession } from "./lib/signIn.ts";
 import { STILL_PLANNING_AFTER_MS, announceRoute, stillPlanningSaid } from "./lib/summary.ts";
 import { focusesPlanButton, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { neutralPaletteSearch } from "./stressStyle.js";
+import { topoAvailable, useTopoLines } from "./lib/topoLines.ts";
 import { useHighStressLanes, useMtbTrails } from "./useStressStyle.ts";
 import { useStressStyle } from "./useStressStyle.ts";
 import { ANNOUNCE_SETTLE_MS } from "./lib/settle.ts";
@@ -86,6 +87,29 @@ import { climbsAlongRoute, loadClimbs, readClimbsOn, saveClimbsOn, type Climb, t
 // `no-inline`: the file is small until the build host fills it, and an inlined data: URL is refused by
 // the edge's connect-src 'self' (Caddyfile), so it stays its own hashed file under /assets/.
 import climbsUrl from "./climb-data/climbs.json?url&no-inline";
+import {
+  FOOD_EMPTY_QUERY,
+  FOOD_NOT_LOADED,
+  FOOD_PAGE,
+  NO_FOOD_DATA,
+  foodFoundSaid,
+  loadFood,
+  foodMoreSaid,
+  foodTerms,
+  routeForDetour,
+  searchFood,
+  setFoodMarkers,
+  type Bounds,
+  type FoodMap,
+  type FoodPlace,
+  type FoodResult,
+  type FoodScope,
+} from "./lib/food.ts";
+import { FoodFinder } from "./lib/foodFinder.ts";
+// `no-inline`, as climbs.json: the committed file is a few bytes until the build host fills it, and
+// an inlined data: URL is refused by the edge's connect-src 'self'. Its own hashed file under
+// /assets/ also lets the service worker leave it out of the precache (swCore.mjs LAZY_ASSET).
+import foodUrl from "./amenity-data/food.json?url&no-inline";
 import {
   findingSaid,
   requestNearest,
@@ -193,6 +217,16 @@ export function App() {
   useStressStyle();
   const showHighLanes = useHighStressLanes();
   const showMtbTrails = useMtbTrails();
+  // Topo lines (lib/topoLines.ts; 454): the switch's state is shared with the map; whether the server
+  // has the archive is asked once, the first time the layer is on.
+  const showTopoLines = useTopoLines();
+  const [topoReady, setTopoReady] = useState(true);
+  const topoAsked = useRef(false);
+  useEffect(() => {
+    if (!showTopoLines || topoAsked.current) return;
+    topoAsked.current = true;
+    void topoAvailable().then(setTopoReady);
+  }, [showTopoLines]);
   const [rail, setRail] = useState<RailVisibility>({ metro: true, marc: true });
   // The Mass Ride map's federal-land shading (lib/federalLand.ts): the rider's
   // own switch, on by default, and whether its data has arrived.
@@ -1337,6 +1371,121 @@ export function App() {
     () => (climbsOn && climbsData && shown ? climbsAlongRoute(shown.geometry.coordinates, climbsData) : null),
     [climbsOn, climbsData, shown],
   );
+  // Find food (lib/food.ts; FOOD-SEARCH, owner 2026-10-11): a map search by cuisine or name, in the
+  // map's view or the whole area. The places file is fetched on the first search. The results are
+  // worked out again when the route changes, so each detour is off the route shown (and the list is
+  // sorted by it); without a route, by distance from the map's center where the search was made.
+  const [foodQuery, setFoodQuery] = useState("");
+  const [foodScope, setFoodScope] = useState<FoodScope>("view");
+  const [foodAsked, setFoodAsked] = useState<{ query: string; scope: FoodScope; bounds: Bounds | null; centre: LonLat } | null>(null);
+  const [foodPlaces, setFoodPlaces] = useState<FoodPlace[] | null>(null);
+  const [foodCount, setFoodCount] = useState(FOOD_PAGE);
+  const [foodBusy, setFoodBusy] = useState(false);
+  const [foodStatus, setFoodStatus] = useState("");
+  const foodLoad = useRef<Promise<FoodPlace[] | null> | null>(null);
+  const foodTimer = useRef<number | undefined>(undefined);
+  // Cleared and set again a moment later, so the same words twice are said twice (as sayNearest).
+  const sayFood = (text: string) => {
+    window.clearTimeout(foodTimer.current);
+    setFoodStatus("");
+    foodTimer.current = window.setTimeout(() => setFoodStatus(text), 150);
+    if (!plannerShownNow.current) announce(text);
+  };
+  const foodRoute = useMemo(() => routeForDetour(shown), [shown]);
+  const foodAll = useMemo(
+    () => (foodAsked && foodPlaces ? searchFood(foodPlaces, { ...foodAsked, route: foodRoute }) : null),
+    [foodAsked, foodPlaces, foodRoute],
+  );
+  const foodResults = useMemo(() => foodAll?.slice(0, foodCount) ?? null, [foodAll, foodCount]);
+  useEffect(() => {
+    if (foodAll && foodAsked) sayFood(foodFoundSaid(foodAsked.query, foodAsked.scope, foodAll.length, Math.min(foodCount, foodAll.length), foodRoute !== null));
+    // Said for a new search or a new route, not for Show more (which says its own words).
+  }, [foodAll]);
+  // The results on the map, numbered as the list; none before a search.
+  const foodResultsRef = useRef(foodResults);
+  foodResultsRef.current = foodResults;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const draw = () => setFoodMarkers(map as unknown as FoodMap, foodResultsRef.current ?? []);
+    // isStyleLoaded is false while any tiles load, so try, and if the style itself is not ready
+    // (adding a source throws), draw once the map is idle.
+    try {
+      draw();
+    } catch {
+      map.once("idle", draw);
+    }
+  }, [foodResults]);
+  const searchFoodNow = async () => {
+    if (foodBusy) return;
+    const query = foodQuery;
+    if (!foodTerms(query)) {
+      setFoodAsked(null);
+      sayFood(FOOD_EMPTY_QUERY);
+      return;
+    }
+    if (!foodLoad.current) {
+      foodLoad.current = loadFood(foodUrl).then((data) => {
+        if (!data) foodLoad.current = null;
+        return data;
+      });
+    }
+    setFoodBusy(true);
+    const places = await foodLoad.current;
+    setFoodBusy(false);
+    if (!places) {
+      sayFood(FOOD_NOT_LOADED);
+      return;
+    }
+    if (places.length === 0) {
+      sayFood(NO_FOOD_DATA);
+      return;
+    }
+    const map = mapRef.current;
+    const b = map?.getBounds();
+    const c = map?.getCenter();
+    setFoodPlaces(places);
+    setFoodCount(FOOD_PAGE);
+    setFoodAsked({
+      query,
+      scope: foodScope,
+      bounds: b ? [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()] : null,
+      centre: c ? [c.lng, c.lat] : [(COVERAGE_BBOX[0] + COVERAGE_BBOX[2]) / 2, (COVERAGE_BBOX[1] + COVERAGE_BBOX[3]) / 2],
+    });
+  };
+  const showFood = (result: FoodResult) => {
+    const map = mapRef.current;
+    const n = (foodResults?.indexOf(result) ?? -1) + 1;
+    map?.flyTo({ center: [result.place.lon, result.place.lat], zoom: Math.max(map.getZoom(), 15) });
+    announce(`Showing ${result.place.name} on the map${n > 0 ? `, marker ${n}` : ""}.`);
+  };
+  const addFoodStop = (result: FoodResult) => {
+    const point: LonLat = [result.place.lon, result.place.lat];
+    namer.remember(point, result.place.name);
+    placeSpot("via", point);
+  };
+  const foodFinder = (
+    <FoodFinder
+      query={foodQuery}
+      onQuery={setFoodQuery}
+      scope={foodScope}
+      onScope={setFoodScope}
+      onSearch={() => void searchFoodNow()}
+      busy={foodBusy}
+      status={foodStatus}
+      results={foodResults}
+      total={foodAll?.length ?? 0}
+      onMore={() => {
+        if (!foodAll) return;
+        const next = Math.min(foodCount + FOOD_PAGE, foodAll.length);
+        setFoodCount(next);
+        sayFood(foodMoreSaid(next, foodAll.length));
+      }}
+      canAddStop={points.length >= 2}
+      onShow={showFood}
+      onAddStop={addFoodStop}
+    />
+  );
   // A Mass Ride's federal-land lines for the description and the GPX file (item 239; lib/federalStops.ts):
   // the stops on federal land and the parkway stretches, from the route as planned, or one line saying
   // federal land could not be checked while the data is loading or unavailable.
@@ -1452,7 +1601,7 @@ export function App() {
         pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate,
         searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials,
         dials, accessMode, namer, removeAt, pointWarnings, removeRefs, preset, stationChoice, chooseStation,
-        routeShownForPoints, editPointsRef, setEditPoints, federalPlanner, nearestFrom, nearestFromOptions,
+        routeShownForPoints, editPointsRef, setEditPoints, federalPlanner, foodFinder, nearestFrom, nearestFromOptions,
         setNearestFrom, findNearest, nearestBusy, nearestStatus, nearestList, rideToNearest, addNearestStop,
         pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, narrow,
         undo, can, redo, clearAll, coverageShown, toggleAccessMode, announce, notice,
@@ -1688,7 +1837,7 @@ export function App() {
                 view, backToPlanner, layersHeadingRef, massMap, stress, stressVisible, setStressVisible,
                 showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs,
                 changeWaterPrefs, waterStatus, waterAlong, addWaterStop, rail, setRail, showMtbTrails,
-                climbsOn, changeClimbsOn, climbsStatus, climbsAlong,
+                showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsStatus, climbsAlong,
                 legendHeadingRef, zoom, facilitiesShown,
               }}
             />
