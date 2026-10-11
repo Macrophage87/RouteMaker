@@ -417,6 +417,68 @@ change: compare the counts with the previous build after the promotion. Until
 that rebuild, a night ride treats timed closures as open to cars. Rolling the
 images back to before this change makes a saved `when: "night"` a 422.
 
+**After the Track B rebuild: the junction speed and town columns (#38).** The
+first rebuild to promote with `road_default_speed_mph` and `road_urban` is the
+one that turns 469 on for junctions; the code and the columns are already in
+(`pipeline.schema.ROAD_COST_COLUMNS`, no migration: the segment table is rebuilt
+each time). After the swap:
+
+1. The columns exist and are filled. An unposted road has a default and a posted
+   one has none; `road_urban` is never null:
+
+   ```sh
+   docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+     "SELECT count(*) FILTER (WHERE road_default_speed_mph IS NOT NULL) AS unposted_with_default,
+             count(*) FILTER (WHERE road_speed_mph IS NOT NULL AND road_default_speed_mph IS NOT NULL) AS posted_and_default,
+             count(*) FILTER (WHERE road_urban) AS urban,
+             count(*) FILTER (WHERE road_urban IS NULL) AS urban_unknown,
+             count(*) AS segments
+        FROM live.segment WHERE NOT is_trail_class"
+   ```
+
+   Expect `posted_and_default` and `urban_unknown` to be 0 and `unposted_with_default` to be most
+   road segments (OSM leaves most residential streets unposted). The defaults
+   should be the statutory figures and nothing else:
+
+   ```sh
+   docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+     "SELECT road_default_speed_mph, road_urban, count(*) FROM live.segment
+       WHERE road_default_speed_mph IS NOT NULL GROUP BY 1, 2 ORDER BY 1, 2"
+   ```
+
+   The figures are `routemaker.stress.statutory_default_mph`'s: the District
+   20 mph (32 km/h), 15 mph (24 km/h) in an alley; Maryland 30 or 35 mph (48 or
+   56 km/h, undivided or divided) in an urban area and 50 or 55 mph (80 or
+   89 km/h) outside; Virginia 25 mph (40 km/h) in an urban area and 55 mph
+   (89 km/h) outside, 35 mph (56 km/h) unpaved. Any other value is a road the
+   zone lookup placed in none of the three, read at its class default; a
+   handful at the coverage edge is expected, many is a zone fault to look into.
+2. The junction model sees them: `core.junctions.has_cost_columns('live')` is
+   true from a `manage.py shell` in the api container. It reads the schema once
+   and remembers a yes, so no restart is needed beyond the one that restarts the
+   routers.
+3. A night ride in town halves its junction costs. Plan the same urban route with
+   `when` `weekday_offpeak` and `night`: the night answer's red and orange
+   junctions are the same or fewer, and none is added. The same route in a rural
+   area changes by x0.85 only.
+4. `car_free_when` gains `night` (469c): compare the counts with the previous
+   build, as the paragraph above says:
+
+   ```sh
+   docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+     "SELECT 'live' AS build, count(*) FILTER (WHERE 'night' = ANY(car_free_when)) AS night,
+             count(*) FILTER (WHERE cardinality(car_free_when) > 0) AS any_time
+        FROM live.segment
+      UNION ALL
+      SELECT 'live_old', count(*) FILTER (WHERE 'night' = ANY(car_free_when)),
+             count(*) FILTER (WHERE cardinality(car_free_when) > 0)
+        FROM live_old.segment"
+   ```
+
+   A `live_old` built before 469 has no `night` rows; `live`'s `any_time` should
+   be within a few ways of `live_old`'s (the off-peak sample moved from 21:00 to
+   20:30).
+
 **Cost per plan.** Every plan asks `/locate` once for each 50 junctions where a
 busy-class road meets the route, with a 3 ft (1 m) radius, and again, with a
 100 ft (30 m) radius, for each 50 of those whose control is not already a signal, to
