@@ -68,6 +68,8 @@ export interface PointsSectionProps {
   setEditPoints: Dispatch<SetStateAction<boolean>>;
   /** Mass Ride's "no point is on federal land" line, or nothing. */
   federalPlanner: ReactNode;
+  /** The Find food panel (lib/foodFinder.ts), beside the nearest finder. */
+  foodFinder: ReactNode;
   nearestFrom: NearestFrom;
   nearestFromOptions: NearestFrom[];
   setNearestFrom: (from: NearestFrom) => void;
@@ -98,7 +100,7 @@ export interface PointsSectionProps {
 
 /** The planner's Points section: the search, the loop toggle, the points, the nearest finder and the point tools. */
 export function PointsSection(props: PointsSectionProps) {
-  const { pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials, dials, accessMode, namer, removeAt, pointWarnings, removeRefs, preset, stationChoice, chooseStation, routeShownForPoints, editPointsRef, setEditPoints, federalPlanner, nearestFrom, nearestFromOptions, setNearestFrom, findNearest, nearestBusy, nearestStatus, nearestList, rideToNearest, addNearestStop, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, narrow, undo, can, redo, clearAll, coverageShown, toggleAccessMode, announce, notice } = props;
+  const { pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials, dials, accessMode, namer, removeAt, pointWarnings, removeRefs, preset, stationChoice, chooseStation, routeShownForPoints, editPointsRef, setEditPoints, federalPlanner, foodFinder, nearestFrom, nearestFromOptions, setNearestFrom, findNearest, nearestBusy, nearestStatus, nearestList, rideToNearest, addNearestStop, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, narrow, undo, can, redo, clearAll, coverageShown, toggleAccessMode, announce, notice } = props;
   return (
     <section key="points" aria-labelledby="points-heading">
       <h2 id="points-heading" ref={pointsHeadingRef} tabIndex={-1}>
@@ -196,6 +198,7 @@ export function PointsSection(props: PointsSectionProps) {
         onRide={rideToNearest}
         onAddStop={addNearestStop}
       />
+      {foodFinder}
       <div id="points-edit" ref={pointsEditRef} hidden={compactPoints}>
       {/* The two map-center actions (add a point, the road panel) are in Map tools, by the map's
           zoom buttons (OWNER-DECISIONS 450; MapTools.tsx). */}
