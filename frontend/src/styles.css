@@ -1177,6 +1177,41 @@ dialog.ride-types::backdrop {
   margin: 0;
 }
 
+/* RIDE-TYPE-ORGANISE: the search over the ride types (Plan's dialog and Go's Ride sheet), and the group headings. */
+.ride-type-search {
+  margin: 12px 0 4px;
+}
+
+.ride-type-search label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.ride-type-search input[type="search"] {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  /* 16px and up, or a phone zooms the page in when the box takes the focus. */
+  font: inherit;
+  font-size: max(1rem, 16px);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.ride-type-none {
+  margin: 8px 0 0;
+}
+
+.ride-type-group h3,
+.ride-group h3 {
+  margin: 16px 0 0;
+  font-size: 1rem;
+}
+
 .ride-type-cards {
   list-style: none;
   margin: 12px 0 0;

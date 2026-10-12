@@ -173,7 +173,8 @@ test("Go's ride types: the rider's own (My Go, Default until set), then Own Bike
   // App: the chips from My Go's ride, the first described as the rider's own; More opens the Ride sheet with every type.
   assert.match(appFile, /<RideChips ids=\{goRideChips\(myGo\.ride\)\} preset=\{preset\} onPick=\{pickRide\} more=\{\(opener\) => openView\("ride", opener\)\} label="Ride type" ownHint=\{OWN_RIDE_HINT\} \/>/);
   assert.match(src("../app/Sheets.tsx"), /aria-describedby=\{ownHint && index === 0 \? "ride-own-hint" : undefined\}/);
-  assert.match(appFile, /<RideChips ids=\{PRESETS\.map\(\(p\) => p\.id\)\} preset=\{preset\} onPick=\{pickRide\} label="Every ride type" \/>/);
+  // More ride types: every type, searchable, in its group (RIDE-TYPE-ORGANISE; lib/rideTypeGroups.test.ts).
+  assert.match(appFile, /<RideGroupChips preset=\{preset\} onPick=\{pickRide\} \/>/);
   // A pick goes through the ride type dialog's own choice, with Mountain Bike's loop (mtbChosen).
   assert.match(appFile, /choosePreset\(id, mtbChosen\(preset, id, chooseRideType\(id, carries\(id\) \? "cargo" : null, dials\)\)\);/);
   // Toggle buttons with their state, not colour alone.
