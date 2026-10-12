@@ -323,15 +323,15 @@ def test_a_named_trail_beside_a_parkway_that_says_separate_stays_a_path():
                   "foot": "designated"}  # fmt: skip
     trail = (1355215830, trail_tags, _line(-77.055, 38.9071))
     assert separate_pairs([parkway, trail]) == (set(), {435101942})
-    assert facility(trail_tags, beside_separate_road=False) is P
 
 
-def test_an_unnamed_piece_of_a_long_route_takes_the_routes_name():
-    parkway = (1, {"highway": "secondary", "name": "Rock Creek and Potomac Parkway",
-                   "cycleway:left": "separate"}, _line(-77.055, 38.907))  # fmt: skip
-    piece = (2, {"highway": "cycleway"}, _line(-77.055, 38.9071))
-    assert beside_separate_roads([parkway, piece]) == {2}
-    assert beside_separate_roads([parkway, piece], {2: "Rock Creek Trail"}) == set()
+def test_an_unnamed_cycle_track_on_a_long_route_stays_protected():
+    """Only the way's own name counts: an unnamed median lane on Pennsylvania Avenue NW
+    is on the East Coast Greenway and USBR 50, and is still the avenue's protected lane."""
+    avenue = (1, {"highway": "primary", "name": "Pennsylvania Avenue Northwest",
+                  "cycleway:both": "separate"}, _line(-77.03, 38.894))  # fmt: skip
+    median = (2, {"highway": "cycleway"}, _line(-77.03, 38.8941))
+    assert beside_separate_roads([avenue, median]) == {2}
 
 
 @pytest.mark.parametrize(
@@ -362,6 +362,16 @@ def test_a_cycle_track_named_for_its_street_stays_protected(track_name, protecte
         ("L Street Cycletrack", ["L Street NW"], False),
         ("Pennsylvania Avenue Bike Lanes", ["Pennsylvania Avenue Northwest"], False),
         ("Rock Creek Trail", [None], True),
+        ("Penn Ave Cycletrack", ["Pennsylvania Avenue Northwest"], False),
+        ("Eye Street Cycle Track", ["I Street Northwest"], False),
+        ("Cycle Track", ["I Street Northwest"], False),
+        ("Sidewalk", [None], False),
+        ("Trail", ["Some Parkway"], False),
+        ("Shared Use Path", ["Some Parkway"], False),
+        ("Bike Lane", ["Some Road"], False),
+        ("Clara Barton Sidepath", ["MacArthur Boulevard"], False),
+        ("Avenue N Trail", ["Avenue M"], True),  # a single letter is not stripped
+        ("Avenue N", ["Avenue N"], False),
         (None, ["Rock Creek and Potomac Parkway"], False),
         ("", [], False),
     ],

@@ -573,19 +573,34 @@ def _point_segment_m(p, a, b) -> float:
 # and Potomac Parkway, which says `cycleway:left=separate` (OSM ways 435101942 and
 # 1160956481), for most of its length between P Street and M Street NW, so the
 # geometry alone made it the parkway's protected lane. A trail-class way keeps its
-# path class when it is named (by its own `name`, or by the long route relation it is
-# in, `pipeline.trail_routes`) and that name is not the road's: the road's facility is
+# path class when its own `name` is its own and not the road's: the road's facility is
 # named for the road where it is named at all ("15th Street Northwest", "15th Street
-# Cycletrack"), a trail is named for itself. The road still counts as having its
-# facility alongside (the arterial floor, OWNER-DECISIONS 141): the trail is that.
-# A road's name is compared without a trailing quadrant or compass word and with
-# street types spelled out, so a lane named "15th St Cycle Track" is still 15th
-# Street Northwest's.
+# Cycletrack"), a trail is named for itself. Only the way's own name counts, never its
+# route relation's: an unnamed DC cycle track on the East Coast Greenway or USBR 50
+# (Pennsylvania Avenue's median lanes) is still the road's protected lane. A generic
+# name ("Cycle Track", "Sidewalk", "Penn Ave Cycletrack") is never a trail's own. The
+# road still counts as having its facility alongside (the arterial floor,
+# OWNER-DECISIONS 141): the trail is that. A road's name is compared without a
+# trailing quadrant or compass word and with street types spelled out, so a lane
+# named "15th St NW" is still 15th Street Northwest's. Single letters are not
+# stripped, so "Avenue N" stays itself.
 _NAME_SUFFIXES = frozenset(
     {
         "northwest", "northeast", "southwest", "southeast", "nw", "ne", "sw", "se",
-        "north", "south", "east", "west", "n", "s", "e", "w",
+        "north", "south", "east", "west",
     }
+)  # fmt: skip
+
+# Names that say what a facility is, not which one it is: never a trail's own.
+GENERIC_FACILITY_NAMES = frozenset(
+    {
+        "sidewalk", "cycle track", "cycletrack", "bike path", "bike lane", "bike lanes",
+        "shared use path", "shared-use path", "sidepath", "side path", "trail",
+    }
+)  # fmt: skip
+# And the endings that name a road's facility after the road ("Eye Street Cycle Track").
+GENERIC_FACILITY_ENDINGS = (
+    "sidepath", "side path", "cycle track", "cycletrack", "bike lane", "bike lanes",
 )  # fmt: skip
 
 
@@ -606,12 +621,20 @@ def _name_key(name: str | None) -> str:
     return " ".join(words)
 
 
+def generic_facility_name(name: str | None) -> bool:
+    """A name that only says what kind of facility a way is (`GENERIC_FACILITY_NAMES`,
+    `GENERIC_FACILITY_ENDINGS`)."""
+    plain = " ".join((name or "").lower().replace(".", " ").split())
+    return plain in GENERIC_FACILITY_NAMES or plain.endswith(GENERIC_FACILITY_ENDINGS)
+
+
 def named_for_itself(trail_name: str | None, road_names: Iterable[str | None]) -> bool:
     """Whether a trail's name is its own rather than the road's beside it: it has a
-    name, and it does not begin with the name of any of those roads (each without
-    a trailing quadrant). A road with no name never claims a named trail."""
+    name, the name is not a generic one (`generic_facility_name`), and it does not
+    begin with the name of any of those roads (each without a trailing quadrant). A
+    road with no name never claims a named trail."""
     trail = _name_key(trail_name)
-    if not trail:
+    if not trail or generic_facility_name(trail_name):
         return False
     for road_name in road_names:
         road = _name_key(road_name)
@@ -622,22 +645,19 @@ def named_for_itself(trail_name: str | None, road_names: Iterable[str | None]) -
 
 def beside_separate_roads(
     ways: Iterable[tuple[int, dict[str, str], Sequence[tuple[float, float]]]],
-    route_names: dict[int, str] | None = None,
 ) -> set[int]:
     """The trail-class ways lying along a road that declares `cycleway*=separate`.
 
     `ways` is (osm id, tags, [(lon, lat), ...]). A trail-class way is beside
     such a road when at least `BESIDE_FRACTION` of its vertices are within
     `BESIDE_M` of one. Only the ways that would otherwise be a `path` are asked,
-    and a trail named for itself (`named_for_itself`; its name, else its long
-    route's from `route_names`) is never one.
+    and a trail whose own name is its own (`named_for_itself`) is never one.
     """
-    return separate_pairs(ways, route_names)[0]
+    return separate_pairs(ways)[0]
 
 
 def separate_pairs(
     ways: Iterable[tuple[int, dict[str, str], Sequence[tuple[float, float]]]],
-    route_names: dict[int, str] | None = None,
 ) -> tuple[set[int], set[int]]:
     """(the trails `beside_separate_roads` finds, the roads they lie beside).
 
@@ -669,7 +689,6 @@ def separate_pairs(
         for road_id, tags, _coords in ways
         if tags.get("highway") not in TRAIL_CLASS_HIGHWAY and declares_separate(tags)
     }
-    route_names = route_names or {}
     found: set[int] = set()
     roads: set[int] = set()
     for osm_id, tags, coords in ways:
@@ -688,8 +707,7 @@ def separate_pairs(
                 beside |= hits
         if near >= BESIDE_FRACTION * len(points):
             roads |= beside
-            name = tags.get("name", "").strip() or route_names.get(osm_id)
-            if not named_for_itself(name, (road_names.get(road) for road in beside)):
+            if not named_for_itself(tags.get("name"), (road_names.get(road) for road in beside)):
                 found.add(osm_id)
     return found, roads
 
