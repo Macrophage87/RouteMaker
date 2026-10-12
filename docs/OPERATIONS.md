@@ -5215,7 +5215,7 @@ v0.6.0 the api reads it too: Mountain Goat's hill seek (FOLLOWUP-HILL-SEEK, `cor
 through the climbs in it, so `docker/api.Dockerfile` copies it into the api image and a new file
 reaches the planner with the next api image, not by itself. An api without it (or with a file it
 cannot read) plans as v0.5.0 did, choosing among the router's own alternatives only, and the answer's
-`hills_seek.climb_seek.limited` says `no_climbs`; the log says so once per file change.
+`hills_seek.climb_seek.limited` says `no_climbs`; the log says so once (a warning naming the path).
 
 **The scale** (the owner, 2026-10-10 and 2026-10-11; `routemaker.climb_categories`): score =
 length (m) x average grade (%), Garmin's scale with a Cat 5: Cat 5 over 4,000, Cat 4 over 8,000,

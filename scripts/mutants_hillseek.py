@@ -165,6 +165,13 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         SEEK,
     ),
     (
+        "propose: the pair's partner asked for again",
+        HS,
+        "asked = [climb for proposal in out for climb in proposal]",
+        "asked = [first]",
+        SEEK,
+    ),
+    (
         "propose: one more than the limit",
         HS,
         "return out[:limit]",
@@ -261,8 +268,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "words: the summit not scaled",
         HS,
-        "to the summit at {_point_words(item.summit_m * scale)}",
-        "to the summit at {_point_words(item.summit_m)}",
+        "to the summit at {point_words(item.summit_m * scale)}",
+        "to the summit at {point_words(item.summit_m)}",
         SEEK,
     ),
     (
@@ -343,6 +350,13 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "_trip_length_m(trips[0]) * ratio,",
         "_trip_length_m(trips[0]) * 1.5,",
         SEEK,
+    ),
+    (
+        "plan: a round trip seeks",
+        RT,
+        "round_trip = loop or haversine(Point(*points[0]), Point(*points[-1])) <= LOOP_SAME_M",
+        "round_trip = loop",
+        PLAN,
     ),
     (
         "plan: the seek's routes not compared",

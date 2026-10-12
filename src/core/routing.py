@@ -2506,8 +2506,14 @@ def plan(
     # The hill seek (FOLLOWUP-HILL-SEEK, 205): routes through the climbs near the line
     # join the router's own, where the climb search runs at all; without the climbs
     # file it asks nothing and the search is the router's alternatives alone, as before.
+    # Not on a round trip (it ends within LOOP_SAME_M of its start): the corridor round
+    # a line of no length is a circle, and a route there through a climb is an
+    # out-and-back up it and down again, not a ride through it. A loop has its stops
+    # (`loop_points`), so it is already a two-point limit; this is the start and end
+    # put on one place.
+    round_trip = loop or haversine(Point(*points[0]), Point(*points[-1])) <= LOOP_SAME_M
     sought = None
-    if climb_seek and seek_limited is None:
+    if climb_seek and seek_limited is None and not round_trip:
         sought = hill_seek(
             trips,
             points,

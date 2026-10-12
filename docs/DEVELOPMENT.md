@@ -1712,13 +1712,16 @@ Mountain Goat right of the detent chooses the route that climbs most within
 rarely go out of their way for a hill, so the hill seek (`core.hillseek`, called by
 `routing.hill_seek`) adds routes through the categorised climbs near the line to them.
 It runs where the climb search does (below the top of the stress slider, two points,
-up to `SEEK_MAX_SPAN_M`, the alternatives' ask not timed out) and needs no rebuild:
+up to `SEEK_MAX_SPAN_M`, the alternatives' ask not timed out), but not on a round trip
+(the end within `LOOP_SAME_M`, 165 ft (50 m), of the start, or a loop: the corridor
+would be a circle and a route through a climb an out-and-back), and needs no rebuild:
 
 - **The climbs** are the Climbs layer's file, `frontend/src/climb-data/climbs.json`
   (Cat 5 to HC, `pipeline.climb_layer`), read once per change of the file
   (`hillseek.load`). The api image copies it. Without it (or with a file it cannot
   read) nothing is asked, the plan is as before, and `climb_seek.limited` is
-  `no_climbs`.
+  `no_climbs`; the log says so once for each path (a missing file) or each change of
+  the file (one it cannot read).
 - **The corridor** scales with the budget. A climb is kept when
   `CIRCUITY x (start to foot + summit to end) + climb length <= ratio x the router's
   own length`, with `CIRCUITY` 1.2: an ellipse round the straight line, which widens
@@ -1728,7 +1731,8 @@ up to `SEEK_MAX_SPAN_M`, the alternatives' ask not timed out) and needs no rebui
 - **The proposals**, at most `MAX_CANDIDATES` (3) router calls, as the trail seek's:
   the best climb with the best other one that fits the budget beside it (both, in the
   shorter order; two climbs whose feet or summits are under 1,000 ft (300 m) apart are
-  two sides of one hill and are not paired), the best alone, then the next best alone.
+  two sides of one hill and are not paired), the best alone, then the next best alone
+  that the calls before have not covered (the pair's partner is not asked for again).
 - **Uphill.** A climb is asked for as `through` locations along its line from 82 ft
   (25 m) above its foot to 82 ft (25 m) below its summit, at most about 0.9 mi
   (1.5 km) apart, three to six of them (`via_points`): the router must pass them in
@@ -1750,7 +1754,11 @@ up to `SEEK_MAX_SPAN_M`, the alternatives' ask not timed out) and needs no rebui
   `climb` entry of the description ("At 3.2 mi (5.1 km): Category 4 climb, 0.8 miles
   (1.3 km) at 6.2%, 262 ft (80 m) gained, to the summit at 4.0 mi (6.4 km).", at the
   climb's foot; not a ride-mode cue), and a sentence of the route summary's hills note
-  ("It rides 1 climb: ..."). `hills_seek.climb_seek` is `near` (climbs in the
+  ("It rides 1 climb: ...", with "Looking for routes through nearby climbs took too
+  long; only some were compared." when its time ran out and "The Climbs layer is not
+  available on this server, ..." without the file). Gains of 1,000 ft or more are
+  written with a thousands separator on both sides ("2,930 ft (893 m)"; the front end's
+  `formatClimb`, which the contour labels follow). `hills_seek.climb_seek` is `near` (climbs in the
   corridor), `asked` (router calls), `found` (routes added) and `limited`, or null
   where the seek did not run.
 

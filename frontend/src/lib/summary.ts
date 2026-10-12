@@ -306,7 +306,7 @@ export function seekNote(seek: RouteResponse["hills_seek"]): string | null {
     seek.chosen === 0
       ? `None of the ${seek.candidates - 1} alternatives climbed more within the distance allowed; this is the fastest route.`
       : `Chose a route with ${formatClimb(seek.extra_climb_m)} more climbing for ${formatDistance(seek.extra_distance_m)} more distance, from ${seek.candidates} routes compared.`;
-  return [said, climbsRiddenNote(seek.climbs ?? []), noClimbsNote(seek)].filter(Boolean).join(" ");
+  return [said, climbsRiddenNote(seek.climbs ?? []), climbSeekNote(seek)].filter(Boolean).join(" ");
 }
 
 /**
@@ -319,11 +319,19 @@ export function climbsRiddenNote(climbs: readonly HillClimb[]): string {
   return `It rides ${count}: ${climbs.map((c) => c.text).join("; ")}.`;
 }
 
-/** Where the server had no climbs file, the hill seek did not look past the router's own routes. */
-function noClimbsNote(seek: NonNullable<RouteResponse["hills_seek"]>): string {
-  return seek.climb_seek?.limited === "no_climbs"
-    ? "The climbs map is not available on this server, so only the router's own routes were compared."
-    : "";
+/**
+ * What limited the hill seek, if anything: the server had no Climbs layer file, so it did not look past the
+ * router's own routes; or its time ran out, so only some routes through nearby climbs were compared.
+ */
+function climbSeekNote(seek: NonNullable<RouteResponse["hills_seek"]>): string {
+  switch (seek.climb_seek?.limited) {
+    case "no_climbs":
+      return "The Climbs layer is not available on this server, so only the router's own routes were compared.";
+    case "time":
+      return "Looking for routes through nearby climbs took too long; only some were compared.";
+    default:
+      return "";
+  }
 }
 
 /**

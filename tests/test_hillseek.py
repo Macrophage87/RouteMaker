@@ -134,6 +134,23 @@ class TestTheFile:
     def test_a_missing_file_is_none(self, tmp_path) -> None:
         assert hs.load(tmp_path / "nothing.json") is None
 
+    def test_a_missing_file_is_logged_once(self, tmp_path, caplog) -> None:
+        path = tmp_path / "nothing.json"
+        with caplog.at_level("WARNING", logger="core.hillseek"):
+            hs.load(path)
+            hs.load(path)
+        said = [r for r in caplog.records if "no climbs file" in r.getMessage()]
+        assert len(said) == 1
+        assert str(path) in said[0].getMessage()
+        # Back, then gone again: said again.
+        path.write_text(json.dumps(doc(raw())))
+        assert hs.load(path) is not None
+        path.unlink()
+        caplog.clear()
+        with caplog.at_level("WARNING", logger="core.hillseek"):
+            assert hs.load(path) is None
+        assert any("no climbs file" in r.getMessage() for r in caplog.records)
+
     def test_a_file_that_is_not_json_is_none(self, tmp_path) -> None:
         path = tmp_path / "climbs.json"
         path.write_text("{not json")
@@ -223,8 +240,17 @@ class TestProposals:
         b = climb("b", category="4", at_m=1000.0)
         c = climb("c", category="5", at_m=7000.0, length_m=600.0)
         proposals = hs.propose([a, b, c], START, END, 2 * SPAN)
-        # The pair is ridden in the shorter order: b (west) first.
-        assert [[x.id for x in p] for p in proposals] == [["b", "a"], ["a"], ["b"]]
+        # The pair is ridden in the shorter order: b (west) first. The pair's route
+        # covers b, so the third call is the next climb, not b alone.
+        assert [[x.id for x in p] for p in proposals] == [["b", "a"], ["a"], ["c"]]
+
+    def test_the_pairs_partner_is_not_asked_for_again(self) -> None:
+        a = climb("a", category="3", at_m=5000.0)
+        b = climb("b", category="4", at_m=1000.0)
+        assert [[x.id for x in p] for p in hs.propose([a, b], START, END, 2 * SPAN)] == [
+            ["b", "a"],
+            ["a"],
+        ]
 
     def test_the_limit_holds(self) -> None:
         climbs = [climb(str(k), at_m=500.0 + 1500.0 * k, length_m=600.0) for k in range(5)]
@@ -469,26 +495,29 @@ class TestSeek:
     def test_each_proposal_is_asked_for_through_its_climbs(self) -> None:
         a = climb("a", category="3", at_m=5000.0)
         b = climb("b", category="4", at_m=1000.0)
-        ask = Asker(trip("pair"), trip("a"), trip("b"))
-        out = self.run([a, b], ask)
-        assert ask.asked == [hs.vias_of((b, a)), hs.via_points(a), hs.via_points(b)]
-        assert [t["name"] for t in out.trips] == ["pair", "a", "b"]
-        assert [[c.id for c in p] for p in out.asked_for] == [["b", "a"], ["a"], ["b"]]
-        assert out.info() == {"near": 2, "asked": 3, "found": 3, "limited": None}
+        c = climb("c", category="5", at_m=7000.0, length_m=600.0)
+        ask = Asker(trip("pair"), trip("a"), trip("c"))
+        out = self.run([a, b, c], ask)
+        assert ask.asked == [hs.vias_of((b, a)), hs.via_points(a), hs.via_points(c)]
+        assert [t["name"] for t in out.trips] == ["pair", "a", "c"]
+        assert [[x.id for x in p] for p in out.asked_for] == [["b", "a"], ["a"], ["c"]]
+        assert out.info() == {"near": 3, "asked": 3, "found": 3, "limited": None}
 
     def test_no_route_is_skipped(self) -> None:
         a = climb("a", category="3", at_m=5000.0)
         b = climb("b", category="4", at_m=1000.0)
-        out = self.run([a, b], Asker(None, {"legs": []}, trip("b")))
-        assert [t["name"] for t in out.trips] == ["b"]
-        assert [[c.id for c in p] for p in out.asked_for] == [["b"]]
+        c = climb("c", category="5", at_m=7000.0, length_m=600.0)
+        out = self.run([a, b, c], Asker(None, {"legs": []}, trip("c")))
+        assert [t["name"] for t in out.trips] == ["c"]
+        assert [[x.id for x in p] for p in out.asked_for] == [["c"]]
         assert out.asked == 3
 
     def test_out_of_time_ends_it(self) -> None:
         a = climb("a", category="3", at_m=5000.0)
         b = climb("b", category="4", at_m=1000.0)
-        ask = Asker(trip("pair"), hs.OutOfTime("no"), trip("b"))
-        out = self.run([a, b], ask)
+        c = climb("c", category="5", at_m=7000.0, length_m=600.0)
+        ask = Asker(trip("pair"), hs.OutOfTime("no"), trip("c"))
+        out = self.run([a, b, c], ask)
         assert len(ask.asked) == 2
         assert [t["name"] for t in out.trips] == ["pair"]
         assert out.limited == "time"

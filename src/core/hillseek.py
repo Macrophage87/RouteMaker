@@ -53,6 +53,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from routemaker import climb_categories
+from routemaker.describe import point_words
 from routemaker.geo import Point, haversine
 
 from .trailseek import Plane, RouteLine
@@ -152,6 +153,8 @@ class Climb:
 # --- The file ----------------------------------------------------------------------
 
 _cache: dict[str, tuple[tuple[int, int], tuple[Climb, ...] | None]] = {}
+# The paths found missing, so that a host without the file logs it once, not every plan.
+_missing: set[str] = set()
 
 
 def parse(doc: object) -> tuple[Climb, ...] | None:
@@ -191,13 +194,18 @@ def load(path: Path | str | None = None) -> tuple[Climb, ...] | None:
     try:
         stat = path.stat()
     except OSError:
+        if str(path) not in _missing:
+            _missing.add(str(path))
+            logger.warning("there is no climbs file at %s; the hill seek is off", path)
         return None
+    # Back again: should it go missing later, that is said again.
+    _missing.discard(str(path))
     key = (stat.st_mtime_ns, stat.st_size)
     cached = _cache.get(str(path))
     if cached is not None and cached[0] == key:
         return cached[1]
     try:
-        climbs = parse(json.loads(path.read_text()))
+        climbs = parse(json.loads(path.read_bytes()))
     except (OSError, ValueError):
         climbs = None
     if climbs is None:
@@ -281,7 +289,8 @@ def propose(
             out.append(pair)
             break
     out.append((first,))
-    asked = [first]
+    # The pair's partner is covered by the pair's route: not asked for again alone.
+    asked = [climb for proposal in out for climb in proposal]
     for climb in near[1:]:
         if len(out) >= limit:
             break
@@ -444,16 +453,13 @@ def _feet(metres: float) -> str:
     return f"{round(metres * FEET_PER_METRE):,} ft ({round(metres):,} m)"
 
 
-def _point_words(metres: float) -> str:
-    return f"{metres / METRES_PER_MILE:.1f} mi ({metres / 1000:.1f} km)"
-
-
 def climb_words(climb: Climb) -> str:
     """ "Category 4 climb, 0.8 miles (1.3 km) at 5.0%, 262 ft (80 m) gained": the
     Climbs layer's name for it (`climb_categories.describe`, the map's accessible
-    name) and the height gained, as the front end's `formatClimb` says it. The
-    category and grade are the file's: its whole metres would not always score the
-    same category again."""
+    name) and the height gained, feet and metres each with a thousands separator
+    ("2,930 ft (893 m)"), as the front end's `formatClimb` says it. The category and
+    grade are the file's: its whole metres would not always score the same category
+    again."""
     name = (
         "Hors catégorie (HC) climb"
         if climb.category == "HC"
@@ -473,8 +479,8 @@ def sentence(item: Ridden, scale: float = 1.0) -> str:
     where the file says so, the trail it is on and that it is mostly unpaved."""
     climb = item.climb
     text = (
-        f"At {_point_words(item.start_m * scale)}: {climb_words(climb)}, "
-        f"to the summit at {_point_words(item.summit_m * scale)}."
+        f"At {point_words(item.start_m * scale)}: {climb_words(climb)}, "
+        f"to the summit at {point_words(item.summit_m * scale)}."
     )
     if climb.name:
         text += f" On the {climb.name}."

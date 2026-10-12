@@ -292,7 +292,11 @@ test("the seek note names the climbs ridden and says when the server had no clim
   assert.equal(seekNote(seek({ climbs: [] })), seekNote(seek({})));
   assert.equal(
     seekNote(seek({ chosen: 0, climbs: [], climb_seek: { near: 0, asked: 0, found: 0, limited: "no_climbs" } })),
-    "None of the 3 alternatives climbed more within the distance allowed; this is the fastest route. The climbs map is not available on this server, so only the router's own routes were compared.",
+    "None of the 3 alternatives climbed more within the distance allowed; this is the fastest route. The Climbs layer is not available on this server, so only the router's own routes were compared.",
+  );
+  assert.equal(
+    seekNote(seek({ climbs: [climb(cat4)], climb_seek: { near: 5, asked: 1, found: 1, limited: "time" } })),
+    `Chose a route with 197 ft (60 m) more climbing for 0.6 mi (0.9 km) more distance, from 4 routes compared. It rides 1 climb: ${cat4}. Looking for routes through nearby climbs took too long; only some were compared.`,
   );
 });
 

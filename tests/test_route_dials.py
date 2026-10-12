@@ -551,6 +551,15 @@ class TestHillSeek:
         assert body["hills_seek"]["climb_seek"] is None
         assert body["hills_seek"]["climbs"] == []
 
+    def test_a_round_trip_does_not_seek(self, client, facility_segments, router, climbs_file):
+        """Start and end on one place: the corridor is a circle and a route through a
+        climb an out-and-back, so the seek is not run."""
+        fake = router(self.seeking())
+        points = [list(VERTICES[2]), [VERTICES[2][0] + 0.0001, VERTICES[2][1]]]
+        body = post(client, {"points": points, "preset": "mountain-goat", "hills": 100}).json()
+        assert fake.through_calls() == []
+        assert body["hills_seek"]["climb_seek"] is None
+
     def test_fine_with_hills_does_not_seek(self, client, facility_segments, router, climbs_file):
         fake = router(self.seeking())
         body = post(client, {**good_body("default"), "hills": 100}).json()
