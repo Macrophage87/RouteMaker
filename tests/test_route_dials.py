@@ -76,7 +76,8 @@ def sent_options(fake: FakeRouter) -> dict:
 @db
 class TestTheSlidersReachTheRouter:
     @pytest.mark.parametrize(
-        "name", sorted(set(presets.PRESETS) - {"bikeshare", *presets.TRANSIT_PRESETS})
+        "name",
+        sorted(set(presets.PRESETS) - {*presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS}),
     )
     def test_absent_dials_are_the_presets_start(self, name, client, facility_segments, router):
         fake = router(standard_router())
@@ -88,7 +89,11 @@ class TestTheSlidersReachTheRouter:
         assert sent_options(fake)["use_hills"] == presets.use_hills_for(start.hills)
 
     @pytest.mark.parametrize(
-        "name", sorted(set(presets.PRESETS) - {"mass-ride", "bikeshare", *presets.TRANSIT_PRESETS})
+        "name",
+        sorted(
+            set(presets.PRESETS)
+            - {"mass-ride", *presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS}
+        ),
     )
     @pytest.mark.parametrize(("stress", "use_roads"), [(0, 1.0), (35, 0.55), (70, 0.1), (100, 0.0)])
     def test_stress_is_use_roads_run_backwards(
@@ -576,7 +581,8 @@ class TestTheWeekendGraph:
     """The owner's "Build the weekend graph" (2026-09-27)."""
 
     @pytest.mark.parametrize(
-        "name", sorted(set(presets.PRESETS) - {"bikeshare", *presets.TRANSIT_PRESETS})
+        "name",
+        sorted(set(presets.PRESETS) - {*presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS}),
     )
     def test_a_weekend_ride_on_the_standard_graph_takes_its_twin(
         self, name, client, facility_segments, router
