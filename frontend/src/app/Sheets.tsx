@@ -4,13 +4,14 @@
 // in to the suggest tools, and Review is an admin's; Settings is Display, Ride mode, This device and Account
 // with My Go; and the map's Water and Food chips open the nearest finder and Find food. In Go, Settings is
 // the Menu, with Plan, Suggest, GPX and Review above it. App.tsx keeps the state and the effects.
-import type { Dispatch, ReactNode, RefObject, SetStateAction } from "react";
+import { useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { StressAvailability } from "../MapView.tsx";
 import { SuggestionReview } from "../SuggestionReview.tsx";
 import type { RouteResponse } from "../lib/api.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { PRESETS, presetLabel, type PresetId } from "../lib/presets.ts";
+import { filterRideGroups, rideTypeCount, RideTypeSearch } from "../lib/rideTypeGroups.ts";
 import { isPlainClick, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
 import { pointName } from "../lib/summary.ts";
 import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, setMtbTrails } from "../stressStyle.js";
@@ -586,6 +587,26 @@ const RIDE_ICON: Partial<Record<PresetId, IconName>> = {
   "bike-transit": "train",
   "bikeshare-transit": "train",
 };
+
+/**
+ * Go's More ride types: every ride type, searchable, under its group's heading
+ * (RIDE-TYPE-ORGANISE, lib/rideTypeGroups.ts). The search comes first in the Tab order.
+ */
+export function RideGroupChips({ preset, onPick }: { preset: PresetId; onPick: (id: PresetId) => void }) {
+  const [query, setQuery] = useState("");
+  const groups = filterRideGroups(query);
+  return (
+    <div className="ride-groups">
+      <RideTypeSearch id="ride-sheet-search" query={query} onQuery={setQuery} count={rideTypeCount(groups)} />
+      {groups.map((group) => (
+        <section key={group.id} className="ride-group" aria-labelledby={`ride-sheet-${group.id}`}>
+          <h3 id={`ride-sheet-${group.id}`}>{group.label}</h3>
+          <RideChips ids={group.ids} preset={preset} onPick={onPick} label={group.label} />
+        </section>
+      ))}
+    </div>
+  );
+}
 
 /** The ride type chips (Go's quick three and More, or every type in the Ride sheet), each a toggle button. */
 export function RideChips({

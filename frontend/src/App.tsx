@@ -135,7 +135,7 @@ import { fetchHazards, type HazardCollection } from "./lib/massHazards.ts";
 import { NARROW, useLongerThan, useNarrow, useSettled } from "./app/hooks.ts";
 import { PointsSection, RideSection } from "./app/Planner.tsx";
 import { RouteSection, type Status } from "./app/RoutePanel.tsx";
-import { FoodSheet, GpxSheet, LayersSheet, LegendSheet, NearestSheet, ReviewSheet, RideChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
+import { FoodSheet, GpxSheet, LayersSheet, LegendSheet, NearestSheet, ReviewSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
 import { GoSheet, GoTopBar, ModeSwitch, PlanMapChips } from "./app/Go.tsx";
 import { NearestFinder } from "./lib/nearestFinder.ts";
 import { NearbyStations } from "./NearbyStations.tsx";
@@ -148,7 +148,6 @@ import { GO_START_SAID, GO_START_UNAVAILABLE, goDestinationLocating, goDestinati
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type MyGo } from "./lib/myGo.ts";
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
-import { PRESETS } from "./lib/presets.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
 // With Ride mode's kept tiles behind the network, for dead spots (lib/corridorStore.ts).
@@ -2458,7 +2457,7 @@ export function App() {
               {foodFinder}
             </FoodSheet>
             <RideSheet nav={sheetNav}>
-              <RideChips ids={PRESETS.map((p) => p.id)} preset={preset} onPick={pickRide} label="Every ride type" />
+              <RideGroupChips preset={preset} onPick={pickRide} />
               {/* Go's Ride sheet holds the Ride line and its dials; in Plan they are in the panel (one copy in the page). */}
               {goMode && sections.presets}
             </RideSheet>
