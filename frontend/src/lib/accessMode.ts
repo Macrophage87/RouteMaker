@@ -85,16 +85,17 @@ export function writeAccessMode(on: boolean, store: KeyValueStore | null = brows
  * The keyboard's way to add a point or open the road panel, said for the state:
  * on, it names Map tools; off, it first says how to turn the mode on.
  */
-export function mapToolsWays(on: boolean): { addPoint: string; roadAndAdd: string } {
+export function mapToolsWays(on: boolean, go = false): { addPoint: string; roadAndAdd: string } {
+  // Go names the button for what it does there (roadInfo.ts SET_END_AT_CENTRE_LABEL; lib/appMode.ts goTapSetsEnd).
+  const add = go ? "Set destination at map center" : "Add point at map center";
   return on
     ? {
-        addPoint: 'use "Add point at map center" in Map tools',
-        roadAndAdd: "open Map tools (by the map's zoom buttons) for Road info at map center and Add point at map center",
+        addPoint: `use "${add}" in Map tools`,
+        roadAndAdd: `open Map tools (by the map's zoom buttons) for Road info at map center and ${add}`,
       }
     : {
         // Shown only in Points' Info, whose own line (ACCESS_HELP) says where the switch is (the spec review's SF4).
-        addPoint: 'turn on accessibility mode, then use "Add point at map center" in Map tools',
-        roadAndAdd:
-          "turn on accessibility mode and open Map tools (by the map's zoom buttons) for Road info at map center and Add point at map center",
+        addPoint: `turn on accessibility mode, then use "${add}" in Map tools`,
+        roadAndAdd: `turn on accessibility mode and open Map tools (by the map's zoom buttons) for Road info at map center and ${add}`,
       };
 }

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GO_START_SAID, GO_START_UNAVAILABLE, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goTapRoutedSaid, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goTapRoutedSaid, goPlaceName, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
@@ -343,7 +343,12 @@ test("go tap: a press on the map in Go is the destination, routed as a picked on
   // App: the press (and Map tools' button, which places through it) goes to goTo as a pressed destination, after the
   // area check and before the points limit (Go replaces the destination, it never adds a point); no tap is a start.
   const place = appFile.slice(appFile.indexOf("const place = useCallback("), appFile.indexOf("// \"Use my location\": one look-up"));
-  assert.match(place, /if \(goTapSetsEnd\(modeRef\.current\)\) \{\s*void goToRef\.current\(point, namer\.name\(point\)\?\.name \?\? coordinatesText\(point\), true\);\s*return;\s*\}/);
+  assert.match(place, /if \(goTapSetsEnd\(modeRef\.current\)\) \{\s*void goToRef\.current\(point, goPlaceName\(namer\.name\(point\)\?\.name, point\), true\);\s*return;\s*\}/);
+  // The same name on the sheet's "To …": the place name once looked up, else the coordinates that were said (review of #116).
+  assert.equal(goPlaceName(undefined, [-77.0365, 38.9055]), "38.9055, -77.0365");
+  assert.equal(goPlaceName("Dupont Circle", [-77.0434, 38.9096]), "Dupont Circle");
+  assert.match(appFile, /destination=\{shown && points\.length >= 2 \? goPlaceName\(namer\.name\(points\[points\.length - 1\]\)\?\.name, points\[points\.length - 1\]\) : null\}/);
+  assert.doesNotMatch(appFile, /\?\? "Destination"/);
   assert.ok(place.indexOf("goTapSetsEnd") > place.indexOf("if (!insideCoverage(point))"), "a press outside the area is refused first");
   assert.ok(place.indexOf("goTapSetsEnd") < place.indexOf("MAX_POINTS"), "Go's press is never refused for the points limit");
   assert.doesNotMatch(place, /goPending/, "a press is never the start of a waiting destination now");

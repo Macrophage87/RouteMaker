@@ -492,6 +492,28 @@ export function pressGrab<L>(under: Under<unknown, L>, popupOpen: boolean): L | 
   return pointerTarget(stateOf(under, popupOpen)).grab ? under.line : null;
 }
 
+/**
+ * A map layer whose features open a card on a press (water and restrooms, climbs, federal land, and any card
+ * added later): its card is open, and whether a press at a screen point is on one of its shown features. Each
+ * card's own click handler opens and closes it; this is only what the main click needs to know of them.
+ */
+export interface FeatureCards {
+  open(): boolean;
+  hits(point: { x: number; y: number }): boolean;
+}
+
+/**
+ * Whether a press is a feature card's rather than the map's: on a shown feature of one of `cards` ("card": it
+ * opens that card), else while one of them is open ("close": the press only closes it), else null (the map's).
+ * Read in Go before the main click, where a press on the map sets the destination (lib/appMode.ts goTapSetsEnd):
+ * a press for a card, or to dismiss one, must not also replace the destination. Cards not yet on the map are null.
+ */
+export function featureCardPress(cards: ReadonlyArray<FeatureCards | null>, point: { x: number; y: number }): "card" | "close" | null {
+  const shown = cards.filter((card): card is FeatureCards => card !== null);
+  if (shown.some((card) => card.hits(point))) return "card";
+  return shown.some((card) => card.open()) ? "close" : null;
+}
+
 export interface ClickEffects<S, L> {
   closePopups(): void;
   openCard(station: S): void;

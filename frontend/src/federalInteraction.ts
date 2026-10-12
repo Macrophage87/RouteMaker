@@ -53,13 +53,19 @@ export function attachFederalInteraction(map: MapLibreMap, options: FederalInter
     popup?.remove();
     popup = null;
   };
+  /** The shown area a press at `point` (screen pixels) is in, with its name; undefined if none. */
+  const at = (point: { x: number; y: number }): { kind: FederalKind; name: string; agency?: string } | undefined => {
+    if (!options.visible() || !map.getLayer(FEDERAL_TINT_LAYER)) return undefined;
+    const feature = map.queryRenderedFeatures([point.x, point.y], { layers: [FEDERAL_TINT_LAYER] })[0];
+    const props = feature?.properties as { kind?: FederalKind; name?: string; agency?: string } | undefined;
+    return props?.kind && props.name ? { kind: props.kind, name: props.name, agency: props.agency } : undefined;
+  };
   const onClick = (event: maplibregl.MapMouseEvent) => {
     close();
-    if (!options.visible() || options.otherPopupOpen() || !map.getLayer(FEDERAL_TINT_LAYER)) return;
+    if (options.otherPopupOpen()) return;
     if (event.originalEvent.target !== map.getCanvas()) return;
-    const feature = map.queryRenderedFeatures(event.point, { layers: [FEDERAL_TINT_LAYER] })[0];
-    const props = feature?.properties as { kind?: FederalKind; name?: string; agency?: string } | undefined;
-    if (!props?.kind || !props.name) return;
+    const props = at(event.point);
+    if (!props) return;
     const content = federalCardElement({ kind: props.kind, name: props.name, agency: props.agency });
     content.addEventListener("keydown", (key) => {
       if (key.key === "Escape") close();
@@ -77,6 +83,8 @@ export function attachFederalInteraction(map: MapLibreMap, options: FederalInter
   return {
     close,
     open: () => popup !== null,
+    /** Whether a press at `point` is in a shown area (its card's, not the map's: lib/mapGlue.ts featureCardPress). */
+    hits: (point: { x: number; y: number }) => at(point) !== undefined,
     detach() {
       close();
       map.off("click", onClick);

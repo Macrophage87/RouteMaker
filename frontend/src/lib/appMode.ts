@@ -14,6 +14,9 @@
  * Pure, so the order is tested without a browser; App reads and writes the two stores.
  */
 
+import { coordinatesText } from "./geocode.ts";
+import type { LonLat } from "./geo.ts";
+
 export type AppMode = "go" | "plan";
 
 /** My Go's "Open in": a view, or "" for by screen size. */
@@ -133,14 +136,14 @@ export const GO_START_UNAVAILABLE = "Current location not available; type a star
 
 /**
  * Whether Go asks for the location now: only in Go (never in Plan), once per page, and only while the plan
- * has no point, so a start from the link (or one typed or tapped first) wins.
+ * has no point, so a start from the link (or one typed first) wins.
  */
 export function shouldAskGoStart(state: { mode: AppMode; asked: boolean; pointCount: number }): boolean {
   return state.mode === "go" && !state.asked && state.pointCount === 0;
 }
 
 /**
- * Go's start line: the plan's own first point when there is one (from the link, typed or tapped: it replaces
+ * Go's start line: the plan's own first point when there is one (from the link or typed: it replaces
  * the location), else the location, else what is happening.
  */
 export function goStartLine(start: GoStart, firstPointName: string | null): string {
@@ -191,6 +194,14 @@ export function goDestinationNeedsStart(name: string): string {
  */
 export function goTapSetsEnd(mode: AppMode): boolean {
   return mode === "go";
+}
+
+/**
+ * Go's name for a destination, the same in what is said and on the sheet's "To …": its place name once known (a
+ * pressed spot's is looked up after it is placed, and the sheet takes it when it comes), else its coordinates.
+ */
+export function goPlaceName(name: string | undefined, point: LonLat): string {
+  return name ?? coordinatesText(point);
 }
 
 /** Said when a press on the map sets Go's destination: an essential, said at Brief and at Full. */

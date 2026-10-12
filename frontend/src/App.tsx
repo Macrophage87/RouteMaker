@@ -69,7 +69,7 @@ import {
   type LocateResult,
 } from "./lib/geolocation.ts";
 import { usePlaceNames } from "./usePlaceNames.ts";
-import { coordinatesText, pickIntoPlan, placeFromSearch, type Place, type PlaceChoice } from "./lib/geocode.ts";
+import { pickIntoPlan, placeFromSearch, type Place, type PlaceChoice } from "./lib/geocode.ts";
 import { BottomBar } from "./Sidebar.tsx";
 import {
   copyText,
@@ -144,7 +144,7 @@ import { BACK_LABEL, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
 import { letterKeyIndex, letterPlaces, placeLetter } from "./lib/letteredPlaces.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
-import { GO_START_SAID, GO_START_UNAVAILABLE, goDestinationLocating, goDestinationNeedsStart, goPickAction, goStartLine, goTapRoutedSaid, goTapSetsEnd, goDestinationSet, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, shouldAskGoStart, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, goTapRoutedSaid, goTapSetsEnd, goDestinationSet, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, shouldAskGoStart, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type MyGo } from "./lib/myGo.ts";
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
@@ -921,7 +921,7 @@ export function App() {
     }
     // In Go, the spot pressed is the destination, in place of any before it, routed as a picked one is.
     if (goTapSetsEnd(modeRef.current)) {
-      void goToRef.current(point, namer.name(point)?.name ?? coordinatesText(point), true);
+      void goToRef.current(point, goPlaceName(namer.name(point)?.name, point), true);
       return;
     }
     if (pointsRef.current.length >= MAX_POINTS) {
@@ -1203,8 +1203,8 @@ export function App() {
     return result;
   };
   // Go's start, when Go opens with an empty plan: the location becomes the start (not yet a point, so the
-  // link holds no position until a destination is picked). A start from the link, or one typed or tapped
-  // first, wins. Denied, unavailable or timed out: the start stays empty and that is said politely.
+  // link holds no position until a destination is picked). A start from the link, or one typed first (or
+  // placed in Plan), wins; a press on the map in Go is the destination, never the start. Denied, unavailable or timed out: the start stays empty and that is said politely.
   useEffect(() => {
     if (!shouldAskGoStart({ mode, asked: goStartAsked.current, pointCount: pointsRef.current.length })) return;
     goStartAsked.current = true;
@@ -1272,7 +1272,7 @@ export function App() {
       setNotice(OUTSIDE_NOTICE);
       return;
     }
-    // The start Go already has: the plan's first point (typed, tapped or from the link), else the location
+    // The start Go already has: the plan's first point (typed, from the link or placed in Plan), else the location
     // found when Go opened. While the location is still being found, the destination waits for it.
     const action = goPickAction(pointsRef.current, goStartRef.current);
     if (action.kind === "route") {
@@ -2203,7 +2203,7 @@ export function App() {
           onLayers={(button) => openView("layers", button)}
           onLocate={() => void goLocate()}
           locating={locating}
-          destination={shown && points.length >= 2 ? (namer.name(points[points.length - 1])?.name ?? "Destination") : null}
+          destination={shown && points.length >= 2 ? goPlaceName(namer.name(points[points.length - 1])?.name, points[points.length - 1]) : null}
           onClear={clearAll}
         />
       )}
@@ -2222,7 +2222,7 @@ export function App() {
         onMovePoint={riding ? ignore : move}
         lineEdit={riding ? null : lineEdit}
         onLineDrop={riding ? ignore : insertOnLine}
-        lineTapSetsEnd={goTapSetsEnd(mode)}
+        pressSetsEnd={goTapSetsEnd(mode)}
         onRemovePoint={riding ? ignore : removeFromMap}
         markerReset={markerReset}
         accuracy={riding ? rideCircle : hereCircle}

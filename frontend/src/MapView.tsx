@@ -40,6 +40,7 @@ import {
   markerDeps,
   popupsOpen,
   pressGrab,
+  featureCardPress,
   runClick,
   ROUTE_STRESS_SOURCE_ID,
   runHover,
@@ -168,8 +169,12 @@ interface Props {
   lineEdit: LineEdit | null;
   /** The line was dragged (or clicked) to `point` from leg `leg` of the route through `points`. */
   onLineDrop: (leg: number, point: LonLat, points: LonLat[]) => void;
-  /** Go: a click on the line is onMapClick's (the destination), not a via; a drag of it is still onLineDrop's. */
-  lineTapSetsEnd?: boolean;
+  /**
+   * Go: a press sets the destination (lib/appMode.ts goTapSetsEnd). A click on the line is onMapClick's, not a
+   * via (a drag of it is still onLineDrop's), and a press on a feature card's layer, or one that only closes such
+   * a card, is the card's alone (lib/mapGlue.ts featureCardPress). Plan: off.
+   */
+  pressSetsEnd?: boolean;
   /** Remove the point at `index` (a via's Remove on the map). */
   onRemovePoint: (index: number) => void;
   /** Changes when the markers must be put back on the points as they are. */
@@ -841,7 +846,10 @@ export function MapView(props: Props) {
         ? { station: stationAt(event.point), line: lineAt(event.point, touch ? TOUCH_HIT_PX : MOUSE_HIT_PX) }
         : { station: null, line: null };
       const point: LonLat = [event.lngLat.lng, event.lngLat.lat];
-      runClick(under, { popupOpen: anyPopupOpen(), afterDrag: performance.now() < clickSuppressedUntil, lineTapIsPoint: callbacks.current.lineTapSetsEnd === true }, {
+      const goPress = callbacks.current.pressSetsEnd === true;
+      // Go: read before the cards' own click handlers (attached after this one) open or close them.
+      const forCard = goPress && featureCardPress([water, climbCard, federal], event.point) !== null;
+      runClick(under, { popupOpen: anyPopupOpen() || forCard, afterDrag: performance.now() < clickSuppressedUntil, lineTapIsPoint: goPress }, {
         closePopups: () => {
           closePopup(false);
           rail?.closeCard();
