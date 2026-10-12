@@ -69,7 +69,7 @@ import {
   type LocateResult,
 } from "./lib/geolocation.ts";
 import { usePlaceNames } from "./usePlaceNames.ts";
-import { pickIntoPlan, placeFromSearch, type Place, type PlaceChoice } from "./lib/geocode.ts";
+import { pickIntoPlan, placeFromSearch, searchBiasPoint, type Place, type PlaceChoice } from "./lib/geocode.ts";
 import { BottomBar } from "./Sidebar.tsx";
 import {
   copyText,
@@ -1342,11 +1342,10 @@ export function App() {
     choosePreset(id, mtbChosen(preset, id, chooseRideType(id, carries(id) ? "cargo" : null, dials)));
     announceExtra(`${presetLabel(id)}.`);
   };
+  // Search prefers places near the rider: the location the app already has (`here`, rounded to about 1 km), else the map's centre.
   const searchBias = (): LonLat | undefined => {
     const centre = mapRef.current?.getCenter();
-    if (!centre) return undefined;
-    const point: LonLat = [centre.lng, centre.lat];
-    return insideCoverage(point) ? point : undefined;
+    return searchBiasPoint(here?.point, centre ? [centre.lng, centre.lat] : undefined);
   };
 
   const removeAt = (index: number) => {

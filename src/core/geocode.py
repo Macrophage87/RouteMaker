@@ -52,6 +52,19 @@ DEFAULT_RESULTS = 6
 PHOTON_MAX_RESULTS = 10
 OVERFETCH = 4
 
+# How strongly a search prefers places near its bias point (Photon 1.3.0, the
+# version rtuszik/photon-docker:2.4.0 ships; docs/api-v1.md, "Location Bias").
+# Photon scores a result as text + 30*scale*importance + 30*(1-scale)*nearness,
+# nearness being 1 within 0.1*2.2^(18-zoom) km and halving every
+# max(8, that*(zoom-3)) km beyond (SearchRequestBase.java). Its defaults, zoom
+# 12 and scale 0.4, are full nearness to 11 km and half at 113 km: barely any
+# preference across a coverage box about 170 km wide.
+# Zoom 14: full nearness to 2.3 km, half at about 28 km, so across town still
+# beats Baltimore while an exact far match ("BWI Airport" from DC) stays listed.
+BIAS_ZOOM = 14
+# 0.2: nearness can outweigh prominence (Photon's importance, 0-1) by 4 to 1.
+BIAS_SCALE = 0.2
+
 # Two results with the same name and the same kind of OSM tag (its key) this
 # close together are one place to a rider: a street split into ways tagged
 # tertiary and unclassified ("Union Station Drive Northeast" twice), a
@@ -244,6 +257,8 @@ def search(
     if lat is not None and lon is not None:
         params["lat"] = lat
         params["lon"] = lon
+        params["zoom"] = BIAS_ZOOM
+        params["location_bias_scale"] = BIAS_SCALE
     return results(_get("/api", params), reverse=False)[:limit]
 
 
