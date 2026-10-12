@@ -1075,9 +1075,12 @@ build, pinned by digest:
 
 ```sh
 # 1. Install, test and build, as you, into frontend/dist (not committed).
-#    src/ is mounted read-only at /src because one test checks the API's own
-#    wording in src/routemaker/avoid_junctions.py (../../../src from the test).
-docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -v "$PWD/src:/src:ro" -w /app \
+#    src/ and scripts/ are mounted read-only at /src and /scripts because tests
+#    read files beside frontend/ (../../../src and ../../../scripts from a test):
+#    the API's wording in src/routemaker/avoid_junctions.py, and the topo layers
+#    in scripts/build_contours.py. scripts/beta/frontend-build.sh mounts the
+#    whole tree read-only for the same reason.
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -v "$PWD/src:/src:ro" -v "$PWD/scripts:/scripts:ro" -w /app \
   docker.io/library/node@sha256:363e1587494626837fa7f9a23bdb453d13b0ff3c67c705c2805cfc69c2d2fad7 \
   sh -c 'npm ci && npm test && npm run build'
 
