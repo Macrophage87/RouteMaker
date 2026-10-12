@@ -601,7 +601,7 @@ def test_a_weekday_vre_trip_plans_with_the_bike_and_says_the_rule_once(vre_sched
     out = transit.block(plan, vre_schedule)
     assert out["credits"] == ["VRE GTFS (scheduled times)"]
     assert any(
-        step["text"].startswith("Board the VRE Manassas Line at 6:10 am from Alexandria")
+        step["text"].startswith("Board the VRE Manassas Line at 6:10 am scheduled from Alexandria")
         for step in out["steps"]
     )
     rule = "VRE: board last; bungee it to a car's south-end bench."
