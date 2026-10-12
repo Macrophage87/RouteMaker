@@ -14,11 +14,11 @@ import {
   WALK_DASH,
   WALK_LINE_WIDTH,
   availabilityLine,
-  bikeLabel,
   endingChoices,
   endingLabel,
   hasEndingChoice,
   linkParts,
+  planHeading,
   totals,
 } from "./lib/bikeshare.ts";
 
@@ -53,7 +53,7 @@ export function BikeshareSummary({
   const dash = WALK_DASH.map((d) => d * WALK_LINE_WIDTH).join(" ");
   return (
     <section className="bikeshare" aria-labelledby={`${id}-heading`}>
-      <h3 id={`${id}-heading`}>Bikeshare plan: {bikeLabel(plan.bike).toLowerCase()}</h3>
+      <h3 id={`${id}-heading`}>{planHeading(plan)}</h3>
       <ol className="bikeshare-steps">
         {plan.steps.map((step, index) => (
           <li key={index} className={`bikeshare-step bikeshare-${step.kind}`}>

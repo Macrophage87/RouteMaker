@@ -29,7 +29,12 @@ host by scripts/build_transit_schedule.py into one file the API reads
 (`settings.TRANSIT_SCHEDULE_PATH`). The agencies' terms do not let this project republish the
 data, so the file is built on the host and never committed (docs/SOURCES.md). A planned closure
 is in it only where the agency published it in the static timetable; every transit answer says
-to check for track work.
+to check for track work. Until WMATA's rail GTFS is built (it needs a WMATA key), Metro runs on
+its committed typical timetable from wmata.com (`with_typical_metro`), with or without the file:
+waits are half the published interval, never a counted-down departure, and its credit names it
+"typical service". Metrobus waits for its GTFS. Every transit time a rider sees says
+"scheduled" (`SCHEDULED`), timetable or typical alike: "8:12 am scheduled", "every 8 min,
+scheduled".
 
 The time of day
 ---------------
@@ -155,6 +160,7 @@ MAX_WAIT_MIN = 60
 SYSTEMS_PATH = Path(__file__).resolve().parent / "transitdata" / "systems.json"
 BLACKOUTS_PATH = Path(__file__).resolve().parent / "transitdata" / "metro-bike-blackouts.json"
 METRO_SYSTEM = "wmata-rail"
+TYPICAL_PATH = Path(__file__).resolve().parent / "transitdata" / "metro-typical.json"
 
 
 def blackout_words(day: date) -> str:
@@ -166,6 +172,11 @@ HOLIDAY_WORDS = (
     "Today is a federal holiday: each system's holiday timetable is used, as it publishes it."
 )
 SCHEDULED_WORDS = "Scheduled service: check for track work and service alerts before you go."
+# Every transit time a rider sees says where it is from, in one word (the owner, 2026-10-12:
+# "Make it clear whether it's a schedule or live."): "8:12 am scheduled", "every 8 min,
+# scheduled". GTFS timetables and Metro's typical timetable are both "scheduled"; live times
+# (v0.7) will say "live". Each transit step and the departure carry it as `source`.
+SCHEDULED = "scheduled"
 NO_TRANSIT_WORDS = (
     "No Metro, train or bus is scheduled between these places at this time: riding the whole"
     " way is the plan."
@@ -209,6 +220,7 @@ class System:
     vehicle: str  # the bike rule: all, trip, offpeak or none
     rule: str  # the bike rule in words
     source: str
+    typical: bool = False  # Metro's typical timetable (`with_typical_metro`), not a GTFS
 
     def vehicle_words(self, routes) -> str:
         return self.words.format(route=" or ".join(routes))
@@ -270,6 +282,7 @@ class Hop:
     depart: float | None = None
     after: float | None = None
     later: tuple[float, ...] = ()  # every later departure seen, for a rider who misses one
+    every: float | None = None  # a frequent service: minutes between departures
 
     @property
     def total_s(self) -> float:
@@ -406,23 +419,185 @@ def parse(doc: dict) -> Schedule:
 _loaded: tuple[Path, float, Schedule] | None = None
 
 
-def load(path: Path) -> Schedule:
-    """The schedule at `path`, read again when the file changes."""
+def load(path: Path, day: date | None = None) -> Schedule:
+    """The schedule at `path`, read again when the file changes, with Metro on its typical
+    timetable where the file has no WMATA rail GTFS (`with_typical_metro`). With no file
+    installed, Metro's typical timetable alone, from the day before `day` (default today)."""
     global _loaded
     try:
         mtime = path.stat().st_mtime
-    except OSError as error:
-        raise Unavailable("no transit schedule is installed") from error
+    except OSError:
+        return typical_only(day or datetime.now(ZONE).date())
     if _loaded is not None and _loaded[0] == path and _loaded[1] == mtime:
         _warn_if_stale(_loaded[2])
         return _loaded[2]
     try:
-        schedule = parse(json.loads(path.read_text()))
+        schedule = with_typical_metro(parse(json.loads(path.read_text())))
     except (OSError, ValueError, KeyError, TypeError, IndexError) as error:
         raise Unavailable(f"the transit schedule could not be read: {error}") from error
     _loaded = (path, mtime, schedule)
     _warn_if_stale(schedule)
     return schedule
+
+
+# --- Metro's typical timetable -------------------------------------------------------------
+#
+# The owner, 2026-10-12: "Just use defaults. The wmata website has a typical timetable for
+# rail." and "Rail is so frequent that it's not a major issue. It's bus where the API helps."
+# Until WMATA's rail GTFS is built into the schedule (it needs a WMATA key), Metro runs on
+# transitdata/metro-typical.json: each day type's opening hours, each line's minutes between
+# trains per time band (wmata.com's line pages), and run times between stations (an estimate:
+# the file's `about` and docs/SOURCES.md). Its trains are laid out evenly at those intervals and
+# a wait is half the interval (`_hop`): no departure is named or counted down. Metrobus stays
+# out until its own GTFS is built, and nothing is said about it.
+
+# The window of a schedule of Metro's typical timetable alone, in days from the day before.
+TYPICAL_DAYS = 400
+TYPICAL_DAY_TYPES = ("monday-thursday", "friday", "saturday", "sunday")
+_WEEKDAY_TYPES = ("monday-thursday",) * 4 + ("friday", "saturday", "sunday")
+
+
+@lru_cache(maxsize=2)
+def _typical_doc(path: Path = TYPICAL_PATH) -> dict:
+    return json.loads(path.read_text())
+
+
+def _metro_config() -> dict:
+    systems = json.loads(SYSTEMS_PATH.read_text())["systems"]
+    return next(s for s in systems if s["id"] == METRO_SYSTEM)
+
+
+def typical_day_type(day: date, doc: dict | None = None) -> str:
+    """The typical timetable's day type of a service day; a federal holiday runs the file's
+    `holiday` day type."""
+    doc = doc or _typical_doc()
+    if day in federal_holidays(day.year):
+        return doc["holiday"]
+    return _WEEKDAY_TYPES[day.weekday()]
+
+
+def _clock_min(value: str, hours: tuple[int, int]) -> int:
+    """A clock time ("05:00") in service-day minutes ("26:00" is 2 am the next morning); "open"
+    and "close" are the day's hours."""
+    if value == "open":
+        return hours[0]
+    if value == "close":
+        return hours[1]
+    hour, minute = value.split(":")
+    return int(hour) * 60 + int(minute)
+
+
+def typical_departures(doc: dict, line: str, day_type: str) -> list[int]:
+    """A line's trains from its terminals on a day type, in service-day minutes: from opening
+    to closing, evenly at each band's interval ("every 4-5 min" is every 4.5)."""
+    opens, closes = (_clock_min(v, (0, 0)) for v in doc["hours"][day_type])
+    hours = (opens, closes)
+    every = doc["lines"][line]["every"]
+    bands = every["weekday"] if day_type in TYPICAL_DAY_TYPES[:2] else every[day_type]
+    out: list[int] = []
+    at = float(opens)
+    for start, end, gap in bands:
+        step = sum(gap) / len(gap) if isinstance(gap, list) else float(gap)
+        at = max(at, float(_clock_min(start, hours)))
+        while at < min(_clock_min(end, hours), closes):
+            out.append(round(at))
+            at += step
+    return out
+
+
+@lru_cache(maxsize=8)
+def typical_only(day: date) -> Schedule:
+    """Metro's typical timetable alone (no schedule installed), from the day before `day`."""
+    return with_typical_metro(Schedule([], [], [], [], day - timedelta(days=1), TYPICAL_DAYS))
+
+
+def with_typical_metro(schedule: Schedule, path: Path = TYPICAL_PATH) -> Schedule:
+    """`schedule` with Metro on its typical timetable over the schedule's own window, unless it
+    already has WMATA's rail GTFS, which then replaces the typical timetable with no setting."""
+    if any(s.id == METRO_SYSTEM for s in schedule.systems):
+        return schedule
+    doc = _typical_doc(path)
+    config = _metro_config()
+    system = System(
+        len(schedule.systems),
+        METRO_SYSTEM,
+        config["name"],
+        config["mode"] if config["mode"] in TRANSIT_MODES else RAIL,
+        config["words"],
+        doc["credit"],
+        bool(config.get("idle_notes")),
+        config["bike"]["vehicle"],
+        config["bike"].get("rule", ""),
+        config["bike"].get("source", ""),
+        typical=True,
+    )
+    stops = list(schedule.stops)
+    index: dict[str, int] = {}
+    for row in doc["stations"]:
+        index[row["name"]] = len(stops)
+        stops.append(
+            Stop(
+                len(stops),
+                row["name"],
+                tuple(row["point"]),
+                tuple(row["bike_entrance"]),
+                bool(row["bike"]),
+                tuple(tuple(e) for e in row["entrances"]),
+                system.index,
+                True,
+            )
+        )
+    # One service per day type, running on its days of the window.
+    services = list(schedule.services)
+    service_of: dict[str, int] = {}
+    for day_type in TYPICAL_DAY_TYPES:
+        service_of[day_type] = len(services)
+        services.append(
+            "".join(
+                "1"
+                if typical_day_type(schedule.start + timedelta(days=n), doc) == day_type
+                else "0"
+                for n in range(schedule.days)
+            )
+        )
+    branches: dict[str, list[dict]] = {}
+    for service in doc["services"]:
+        branches.setdefault(service["line"], []).append(service)
+    patterns = list(schedule.patterns)
+    for line, found in branches.items():
+        trains = {t: typical_departures(doc, line, t) for t in TYPICAL_DAY_TYPES}
+        for branch, service in enumerate(found):
+            runs = [0]
+            for run in service["run_s"]:
+                runs.append(runs[-1] + int(run))
+            # A line with two services alternates its trains between them (Silver, Yellow).
+            trips = {
+                service_of[t]: tuple(m * 2 + 1 for m in deps[branch :: len(found)])
+                for t, deps in trains.items()
+            }
+            for order, cumulative in (
+                (service["stations"], runs),
+                (service["stations"][::-1], [runs[-1] - r for r in runs[::-1]]),
+            ):
+                patterns.append(
+                    Pattern(
+                        len(patterns),
+                        system.index,
+                        f"{line} Line",
+                        tuple(index[name] for name in order),
+                        tuple(tuple(cumulative) for _band in BANDS),
+                        trips,
+                    )
+                )
+    return Schedule(
+        [*schedule.systems, system],
+        stops,
+        patterns,
+        services,
+        schedule.start,
+        schedule.days,
+        {**schedule.source, METRO_SYSTEM: {"file": path.name, "typical": True}},
+    )
 
 
 # Fewer days of timetable than this left: a warning in the log, and an alert from
@@ -621,6 +796,7 @@ class Leg:
     later: tuple[float, ...] = ()  # the departures after `depart` that were seen, in order
     board_at: str | None = None  # a transit leg's first stop, by name
     service_day: date | None = None  # a transit leg's service day, for its clock times
+    every: float | None = None  # a frequent service: minutes between departures
 
     @property
     def total_s(self) -> float:
@@ -639,7 +815,7 @@ class Leg:
         noun = "bus" if self.mode == BUS else "train"
         if self.after is None:
             return f"no later {noun} within the hour"
-        return f"next {noun} after that: {clock(self.after, self.service_day)}"
+        return f"next {noun} after that: {clock(self.after, self.service_day)} {SCHEDULED}"
 
     def words(self, last: bool = False) -> str:
         """The step as one sentence."""
@@ -665,13 +841,17 @@ class Leg:
         else:
             board = f"{'Change to' if self.change else 'Board'} {self.vehicle}"
         if self.depart is None:
-            return f"{board} (about {minutes(self.wait_s)} min wait); ride {m} min{at}."
+            wait = f"about {minutes(self.wait_s)} min wait"
+            if self.every is None:
+                return f"{board} ({wait}, {SCHEDULED}); ride {m} min{at}."
+            every = f"every {max(1, round(self.every))} min, {SCHEDULED}"
+            return f"{board} ({every}; {wait}); ride {m} min{at}."
         # An infrequent service (the owner, 2026-10-12): the departure, when the rider gets
         # there and the time to spare, and the one after it.
         spare = round(self.wait_s / 60)
         place = f" from {self.board_at}" if self.board_at else ""
         return (
-            f"{board} at {clock(self.depart, self.service_day)}{place}: you arrive"
+            f"{board} at {clock(self.depart, self.service_day)} {SCHEDULED}{place}: you arrive"
             f" {clock(self.arrive, self.service_day)},"
             f" {spare} min spare; {self._after_words()}. Ride {m} min{at}."
         )
@@ -759,7 +939,10 @@ class _Day:
                     continue
                 ride = float(max(0, runs[later] - runs[pos]))
                 groups.setdefault(to, []).append((deps, ride, pattern, pos, later))
-        out = {to: _hop(minute, entries) for to, entries in groups.items()}
+        out = {
+            to: _hop(minute, entries, schedule.systems[schedule.stops[to].system].typical)
+            for to, entries in groups.items()
+        }
         self._cache[key] = out
         return out
 
@@ -787,17 +970,34 @@ def headway(times) -> float:
     return sum(gaps) / len(gaps)
 
 
-def _hop(minute: float, entries) -> Hop:
-    """The ride to one stop from the patterns that go there: the earliest arrival taken."""
+def typical_wait_min(minute: float, times) -> tuple[float, float | None]:
+    """The wait on Metro's typical timetable, and the minutes between its trains: half the
+    interval (the mean gap of the next few), or, before the first train or for the last, the
+    time until it (the interval None for the last)."""
+    distinct: list[float] = []
+    for t in sorted(times):
+        if not distinct or t - distinct[-1] >= 0.5:
+            distinct.append(t)
+    seen = distinct[:DEPARTURES_SEEN]
+    every = (seen[-1] - seen[0]) / (len(seen) - 1) if len(seen) > 1 else math.inf
+    until = seen[0] - minute
+    wait = until if len(seen) == 1 or until > every else every / 2.0
+    return wait, None if math.isinf(every) else every
+
+
+def _hop(minute: float, entries, typical: bool = False) -> Hop:
+    """The ride to one stop from the patterns that go there: the earliest arrival taken. On
+    Metro's typical timetable the wait is always `typical_wait_min`, never a departure."""
     times = sorted(t for deps, *_rest in entries for t in deps)
     first = min(entries, key=lambda e: (e[0][0] + e[1] / 60.0, e[2].index))
     deps, ride, pattern, pos, later = first
     path = pattern.stops[pos : later + 1]
     every = headway(times)
-    if every <= FREQUENT_MIN:
+    if typical or every <= FREQUENT_MIN:
         routes = tuple(sorted({e[2].route for e in entries}))
         ride = min(e[1] for e in entries)
-        return Hop(every * 30.0, ride, routes, path, pattern.system, pattern.index, True)
+        wait, gap = typical_wait_min(minute, times) if typical else (every / 2.0, every)
+        return Hop(wait * 60.0, ride, routes, path, pattern.system, pattern.index, True, every=gap)
     later_times = []
     for t in times:
         if t >= (later_times[-1] if later_times else deps[0]) + 0.5:
@@ -837,6 +1037,7 @@ def _transit_leg(
         later=hop.later,
         board_at=schedule.place(schedule.stops[hop.path[0]]),
         service_day=service_day,
+        every=hop.every,
     )
 
 
@@ -1502,7 +1703,8 @@ def _retimed(minute: float, legs: list[Leg]) -> tuple[list[Leg] | None, list[str
                 catchable = [t for t in leg.later if t >= arrive - 1e-6]
                 if not catchable or catchable[0] - arrive > MAX_WAIT_MIN:
                     notes.append(
-                        f"You would miss the {clock(missed, leg.service_day)} ({leg.vehicle})"
+                        f"You would miss the {clock(missed, leg.service_day)} {SCHEDULED}"
+                        f" ({leg.vehicle})"
                         " and no later one"
                         " leaves within the hour: that trip is left out."
                     )
@@ -1510,8 +1712,9 @@ def _retimed(minute: float, legs: list[Leg]) -> tuple[list[Leg] | None, list[str
                 rest = tuple(t for t in leg.later if t > catchable[0])
                 leg = replace(leg, depart=catchable[0], after=rest[0] if rest else None, later=rest)
                 notes.append(
-                    f"You would miss the {clock(missed, leg.service_day)} ({leg.vehicle}):"
-                    f" planned on the {clock(leg.depart, leg.service_day)} instead."
+                    f"You would miss the {clock(missed, leg.service_day)} {SCHEDULED}"
+                    f" ({leg.vehicle}): planned on the {clock(leg.depart, leg.service_day)}"
+                    f" {SCHEDULED} instead."
                 )
             leg = replace(leg, wait_s=max(0.0, (leg.depart - arrive) * 60.0))
         out.append(leg)
@@ -1553,8 +1756,9 @@ def departure(plan: Plan) -> dict | None:
             "close": leg.wait_s < CLOSE_S,
             "planned_at": _local(plan.when, plan.when.minute),
             "point": _pt(leg.coordinates[0]) if leg.coordinates else None,
+            "source": SCHEDULED,
             "label": (
-                f"{leg.system} {clock(leg.depart, plan.when.service_day)}"
+                f"{leg.system} {clock(leg.depart, plan.when.service_day)} {SCHEDULED}"
                 f" · {round(leg.wait_s / 60)} min spare"
             ),
         }
@@ -1617,6 +1821,9 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
                 "lines": list(leg.lines),
                 "system": leg.system or None,
                 "departs": None if leg.depart is None else clock(leg.depart, leg.service_day),
+                "every_min": None if leg.every is None else max(1, round(leg.every)),
+                # Where a transit step's times are from: "scheduled" (live, from v0.7).
+                "source": SCHEDULED if leg.transit else None,
                 "with_bike": leg.bike,
                 # The route's own line is this step's: the map draws the rest from here.
                 "route_line": index == option.ride,

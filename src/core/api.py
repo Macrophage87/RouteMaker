@@ -413,7 +413,9 @@ class RouteIn(Schema):
                 "Mass Ride keeps to the most direct roadway: a field that takes the road is not"
                 " steered onto side streets, so the traffic slider stays at its lowest"
             )
-        if self.assist and (preset.assist_speed_kmh is None or self.preset == presets.BIKESHARE):
+        if self.assist and (
+            preset.assist_speed_kmh is None or self.preset in presets.BIKESHARE_PRESETS
+        ):
             raise ValueError("assist applies to the Cargo Bike ride type only")
         if self.preset in presets.TRANSIT_PRESETS:
             if len(self.points) != 2:
@@ -425,7 +427,7 @@ class RouteIn(Schema):
                 raise ValueError("Transit ride types do not plan loops")
         elif self.transit_option is not None or self.depart_at is not None:
             raise ValueError("transit_option and depart_at apply to the transit ride types only")
-        if self.preset == presets.BIKESHARE:
+        if self.preset in presets.BIKESHARE_PRESETS:
             if len(self.points) != 2:
                 raise ValueError(
                     "Bikeshare plans take a start and an end: the walk, the ride between docks"
@@ -437,6 +439,8 @@ class RouteIn(Schema):
                 raise ValueError("only an e-bike can end outside a dock")
             if self.dropoff_station and self.ending == bikeshare.ENDING_OUTSIDE:
                 raise ValueError("a chosen drop-off station means ending at a dock")
+            if self.preset == presets.REBALANCE and self.ending == bikeshare.ENDING_OUTSIDE:
+                raise ValueError("Rebalance Ride ends at a station that needs bikes, a dock")
         elif (
             self.bike is not None
             or self.ending is not None
@@ -444,8 +448,8 @@ class RouteIn(Schema):
             or self.dropoff_station is not None
         ):
             raise ValueError(
-                "bike, ending, pickup_station and dropoff_station apply to the Bikeshare ride"
-                " type only"
+                "bike, ending, pickup_station and dropoff_station apply to Bikeshare and"
+                " Rebalance Ride only"
             )
         return self
 
@@ -1499,6 +1503,13 @@ class BikesharePlanOut(Schema):
     walks are here."""
 
     bike: BikeName
+    rebalance: bool = Field(
+        default=False,
+        description=(
+            "Rebalance Ride: picked up at a crowded station (at least 3/4 full) and returned to"
+            " one that needs bikes (at most 1/4 full)."
+        ),
+    )
     ending: EndingName
     start: BikeshareStopOut
     end: BikeshareStopOut
@@ -2368,7 +2379,8 @@ def _stress_of(body: RouteIn) -> int:
 
 
 def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
-    """A Bikeshare plan (`core.bikeshare`): the operator's feeds, the walks and the ride."""
+    """A Bikeshare or Rebalance Ride plan (`core.bikeshare`): the operator's feeds, the walks
+    and the ride."""
     if started is None:
         started = routing.clock()
     bike = body.bike or presets.BIKE_CLASSIC
@@ -2391,7 +2403,7 @@ def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
     services = bikeshare.RoutingServices(
         deadline,
         lambda points: routing.plan(
-            points, presets.BIKESHARE, long_ride=False, started=started, dials=dials
+            points, body.preset, long_ride=False, started=started, dials=dials
         ),
     )
     return bikeshare.plan(
@@ -2404,6 +2416,7 @@ def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
         profile.speed_kmh,
         pickup_station=body.pickup_station,
         dropoff_station=body.dropoff_station,
+        rebalance=body.preset == presets.REBALANCE,
     )
 
 
@@ -2463,15 +2476,15 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     """A transit ride type (`core.transit`): the options, the chosen one's first ride routed."""
     if started is None:
         started = routing.clock()
-    schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH)
+    when = body.depart_at or timezone.now()
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=ridetime.ZONE)
+    schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, when.astimezone(ridetime.ZONE).date())
     # The candidates' calls stop `TRANSIT_CANDIDATES_S` in, leaving the answer's own line
     # (routing.plan, below) the rest of the request's budget: a slow router estimates candidates,
     # it never times out the plan.
     services = transit.RoutingServices(started + TRANSIT_CANDIDATES_S, body.preset)
     start, end = body.points
-    when = body.depart_at or timezone.now()
-    if when.tzinfo is None:
-        when = when.replace(tzinfo=ridetime.ZONE)
     if body.preset == presets.BIKESHARE_TRANSIT:
         found = transit.plan_bikeshare(schedule, start, end, when, services, gbfs.client.snapshot())
     else:
@@ -2595,7 +2608,9 @@ def transit_closures(request, params: Query[ClosuresIn], response: HttpResponse)
     if when.tzinfo is None:
         when = when.replace(tzinfo=ridetime.ZONE)
     try:
-        schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH)
+        schedule = transit.load(
+            settings.TRANSIT_SCHEDULE_PATH, when.astimezone(ridetime.ZONE).date()
+        )
     except transit.Unavailable:
         return _transit_refusal(
             "Transit times are not available on this server right now.", "transit_unavailable", 503
@@ -2645,7 +2660,7 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
             routing.DeadlineExceeded,
         ) as error:
             return _router_refusal(error, body)
-    if body.preset == presets.BIKESHARE:
+    if body.preset in presets.BIKESHARE_PRESETS:
         try:
             return Status(200, _bikeshare_body(body, started))
         except bikeshare.NoBikeshare as refusal:

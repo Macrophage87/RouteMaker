@@ -12,7 +12,7 @@ import { requestRoute, type ClosedStation, type RouteResponse, type RouteResult 
 import { closedReason, matchClosures, requestClosures, serviceDayOf } from "./lib/railClosures.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatSeconds } from "./lib/format.ts";
-import { presetLabel, type PresetId } from "./lib/presets.ts";
+import { presetLabel, usesBikeshare, type PresetId } from "./lib/presets.ts";
 import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
@@ -222,7 +222,7 @@ export function App() {
   // The transit option the rider chose from the list (lib/transit.ts), for this trip only: a new
   // start or end, or another ride type, starts from the quickest again. Request only, never the link.
   const [transitPick, setTransitPick] = useState<TransitPick | null>(null);
-  const trip = optionsKey(points);
+  const trip = optionsKey(points, preset);
   const planDials = useMemo(
     () => withTransitOption(withStations(withWeight(routeDials, weight), stationChoice), preset, transitPick, trip),
     [routeKey, weight, stationChoice, preset, transitPick, trip],
@@ -552,8 +552,8 @@ export function App() {
       },
       onResult: (plan: Plan, result: RouteResult) => {
         if (result.ok) {
-          if (plan.preset === "bikeshare" && keepsFirst(bikeshareOf(result.route)))
-            firstAnswer.current = { key: sentPlanKey(plan.points, plan.preset, plan.dials), trip: optionsKey(plan.points), route: result.route };
+          if (usesBikeshare(plan.preset) && keepsFirst(bikeshareOf(result.route)))
+            firstAnswer.current = { key: sentPlanKey(plan.points, plan.preset, plan.dials), trip: optionsKey(plan.points, plan.preset), route: result.route };
           setRoute(result.route);
           setRoutedPoints(plan.points);
           setRoutedLoop(loopStops(plan.preset, plan.dials.loop));
@@ -1753,10 +1753,10 @@ export function App() {
   // re-plan of one option answers with that pair only.
   const [keptOptions, setKeptOptions] = useState<KeptOptions | null>(null);
   useEffect(() => {
-    setKeptOptions((kept) => keepOptions(kept, bikeshareOf(route), optionsKey(routedPoints)));
+    setKeptOptions((kept) => keepOptions(kept, bikeshareOf(route), optionsKey(routedPoints, route?.preset ?? "")));
   }, [route, routedPoints]);
   const goOptions =
-    mode === "go" && preset === "bikeshare" && shown && keptOptions && keptOptions.key === optionsKey(points) && keptOptions.options.length > 1
+    mode === "go" && usesBikeshare(preset) && shown && keptOptions && keptOptions.key === optionsKey(points, preset) && keptOptions.options.length > 1
       ? keptOptions.options
       : null;
   const pickOption = (index: number) => {
@@ -1767,7 +1767,7 @@ export function App() {
       // A free e-bike: the first answer, shown again as it was (asking again could plan another bike or a
       // dock). Only for the plan it answered; else it is not re-planned, and that is said.
       const first = firstAnswer.current;
-      if (!first || first.trip !== optionsKey(points) || first.key !== sentPlanKey(points, preset, withStations(planDials, FIRST_ANSWER_PINS))) {
+      if (!first || first.trip !== optionsKey(points, preset) || first.key !== sentPlanKey(points, preset, withStations(planDials, FIRST_ANSWER_PINS))) {
         // Shown and said (Go's notice), so the option is plainly not re-planned.
         setNotice(stationlessUnavailable(placeLetter(index)));
         return;
@@ -2119,7 +2119,7 @@ export function App() {
   };
   // A bikeshare ride's station choice (the Points section's, before): under Route, closed, as the mockup has it.
   const stations =
-    preset === "bikeshare" && points.length > 0 ? (
+    usesBikeshare(preset) && points.length > 0 ? (
       <Fold title="Choose a station" icon="bikeshare" className="stations-fold">
         <NearbyStations points={points} pins={stationChoice} onChoose={chooseStation} />
       </Fold>
@@ -2457,7 +2457,7 @@ export function App() {
               {foodFinder}
             </FoodSheet>
             <RideSheet nav={sheetNav}>
-              <RideGroupChips preset={preset} onPick={pickRide} />
+              <RideGroupChips preset={preset} onPick={pickRide} open={view === "ride"} />
               {/* Go's Ride sheet holds the Ride line and its dials; in Plan they are in the panel (one copy in the page). */}
               {goMode && sections.presets}
             </RideSheet>

@@ -31,7 +31,8 @@ test("the groups are the owner's: Transportation, Adventure (Fast with it), Grou
   );
   const [transport, adventure, group] = RIDE_GROUPS;
   assert.deepEqual([...transport.ids], ["default", "bike-transit", "bikeshare-transit", "bikeshare", "cargo", "ebike", "kids"]);
-  assert.deepEqual([...adventure.ids], ["fast", "trailmaxxing", "mountain-goat", "mountain-bike", "gravel"]);
+  // Rebalance Ride (REBALANCE-RIDE): Stephen named it an adventure mode.
+  assert.deepEqual([...adventure.ids], ["fast", "trailmaxxing", "mountain-goat", "mountain-bike", "gravel", "rebalance"]);
   assert.deepEqual([...group.ids], ["group-ride", "mass-ride"]);
 });
 
@@ -100,7 +101,14 @@ test("Go's More ride types and Plan's dialog: the search first, then each group 
   const sheets = src("../app/Sheets.tsx");
   const go = sheets.slice(sheets.indexOf("export function RideGroupChips("), sheets.indexOf("export function RideChips("));
   assert.match(go, /<RideTypeSearch id="ride-sheet-search"/);
-  assert.match(go, /<section key=\{group\.id\} className="ride-group" aria-labelledby=\{`ride-sheet-\$\{group\.id\}`\}>\s*<h3 id=\{`ride-sheet-\$\{group\.id\}`\}>\{group\.label\}<\/h3>/);
+  // Go: the list under its own h3, the groups as h4 under it, so the Ride line's "Ride type" h3 after
+  // it in the sheet is not read as a fourth group; each group named once, by its heading.
+  assert.match(go, /<section className="ride-groups" aria-labelledby="ride-sheet-types">\s*<h3 id="ride-sheet-types" className="visually-hidden">\s*Every ride type\s*<\/h3>/);
+  assert.match(go, /<section key=\{group\.id\} className="ride-group" aria-labelledby=\{`ride-sheet-\$\{group\.id\}`\}>\s*<h4 id=\{`ride-sheet-\$\{group\.id\}`\}>\{group\.label\}<\/h4>\s*<RideChips ids=\{group\.ids\} preset=\{preset\} onPick=\{onPick\} \/>/);
+  assert.match(sheets, /role=\{label \? "group" : undefined\} aria-label=\{label\}/);
+  // Go: the search is cleared whenever the sheet is left (as Plan's dialog on closing).
+  assert.match(go, /useEffect\(\(\) => \{\s*if \(!open\) setQuery\(""\);\s*\}, \[open\]\);/);
+  assert.match(src("../App.tsx"), /<RideGroupChips preset=\{preset\} onPick=\{pickRide\} open=\{view === "ride"\} \/>/);
   assert.ok(go.indexOf("<RideTypeSearch") < go.indexOf("groups.map"), "the search comes before the groups");
   const plan = src("../RideTypePicker.tsx");
   assert.match(plan, /<RideTypeSearch id="ride-types-search"/);
@@ -111,7 +119,10 @@ test("Go's More ride types and Plan's dialog: the search first, then each group 
   assert.match(plan, /const onClose = \(\) => \{\s*setQuery\(""\);\s*openerRef\.current\?\.focus\(\);/);
   assert.doesNotMatch(plan, /setQuery\(""\);\s*dialogRef\.current\?\.showModal\(\);/);
   // The two ids differ, so both can be in the page (Go's sheet holds the Ride line, whose dialog has its own).
-  assert.notEqual("ride-sheet-search", "ride-types-search");
+  const goId = go.match(/<RideTypeSearch id="([^"]+)"/)?.[1];
+  const planId = plan.match(/<RideTypeSearch id="([^"]+)"/)?.[1];
+  assert.ok(goId && planId);
+  assert.notEqual(goId, planId);
 });
 
 test("Go's three main buttons are as the transit lane left them", () => {

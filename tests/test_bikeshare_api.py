@@ -99,6 +99,7 @@ class TestBikeshareAnswer:
         plan = data["bikeshare"]
         assert set(plan) == {
             "bike",
+            "rebalance",
             "ending",
             "start",
             "end",
@@ -171,9 +172,14 @@ class TestBikeshareAnswer:
             )
             assert payload["directions_type"] == "none"
 
-    def test_a_classic_is_hill_averse_heavy_and_slow(self, client, world) -> None:
+    # Rebalance Ride's ride leg is Bikeshare's (the review of PR #110): each guard runs for both.
+    @pytest.mark.parametrize("preset", sorted(presets.BIKESHARE_PRESETS))
+    def test_a_classic_is_hill_averse_heavy_and_slow(self, client, world, preset) -> None:
         routers, _ = world
-        data = post(client, body("classic")).json()
+        response = post(client, body("classic", preset=preset))
+        assert response.status_code == 200, response.content
+        data = response.json()
+        assert data["preset"] == preset
         url, ride = routers.rides()[0]
         options = ride["costing_options"]["bicycle"]
         assert url.startswith(routing.settings.VALHALLA_UPSTREAMS["standard"])
@@ -182,11 +188,15 @@ class TestBikeshareAnswer:
         assert data["dials"]["hills"] == -60 and data["dials"]["assist"] is False
         assert data["dials"]["stress"] == presets.BIKESHARE_STRESS == 80  # calm by default
 
+    @pytest.mark.parametrize("preset", sorted(presets.BIKESHARE_PRESETS))
     def test_an_ebike_barely_minds_hills_and_rides_assisted_on_the_ebike_graph(
-        self, client, world
+        self, client, world, preset
     ) -> None:
         routers, _ = world
-        data = post(client, body("ebike")).json()
+        response = post(client, body("ebike", preset=preset))
+        assert response.status_code == 200, response.content
+        data = response.json()
+        assert data["preset"] == preset
         url, ride = routers.rides()[0]
         options = ride["costing_options"]["bicycle"]
         assert url.startswith(routing.settings.VALHALLA_UPSTREAMS["ebike"])
@@ -197,11 +207,13 @@ class TestBikeshareAnswer:
 
     @pytest.mark.parametrize(("stress", "use_roads"), [(0, 1.0), (35, 0.55), (70, 0.1), (100, 0.0)])
     @pytest.mark.parametrize("bike", ["classic", "ebike"])
+    @pytest.mark.parametrize("preset", sorted(presets.BIKESHARE_PRESETS))
     def test_the_traffic_slider_moves_the_ride_leg(
-        self, client, world, bike, stress, use_roads
+        self, client, world, preset, bike, stress, use_roads
     ) -> None:
         routers, _ = world
-        assert post(client, body(bike, stress=stress)).status_code == 200
+        response = post(client, body(bike, preset=preset, stress=stress))
+        assert response.status_code == 200, response.content
         assert routers.rides()[0][1]["costing_options"]["bicycle"]["use_roads"] == use_roads
 
     def test_the_bike_defaults_to_classic(self, client, world) -> None:
@@ -331,7 +343,7 @@ class TestBikeshareValidation:
         for extra in ({"bike": "classic"}, {"ending": "dock"}):
             response = post(client, {"points": [UNION, DUPONT], "preset": preset, **extra})
             assert response.status_code == 400
-            assert "Bikeshare ride type only" in response.json()["error"]
+            assert "apply to Bikeshare and Rebalance Ride only" in response.json()["error"]
 
     def test_the_schema_describes_the_bikeshare_answer(self, client) -> None:
         schema = client.get("/api/openapi.json").json()

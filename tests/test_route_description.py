@@ -111,7 +111,8 @@ class TestInTheAnswer:
         assert entries[1]["text"].split(": ")[1].startswith("Left onto Second Street")
 
     @pytest.mark.parametrize(
-        "preset", sorted(set(presets.PRESETS) - {"bikeshare", *presets.TRANSIT_PRESETS})
+        "preset",
+        sorted(set(presets.PRESETS) - {*presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS}),
     )
     def test_every_preset_is_described(self, client, router, preset):
         router(named_world())

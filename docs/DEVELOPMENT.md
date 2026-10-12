@@ -6924,6 +6924,23 @@ docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-
   gap included) the plan takes the next departure, names it and the one after, and returns it as
   `transit.departure`. A routed first ride that misses it moves to the next catchable departure
   (and names the one after that); with none within the hour the option is dropped.
+- **Metro's typical timetable.** Until WMATA's rail GTFS is built (it needs a WMATA key), Metro
+  runs on `src/core/transitdata/metro-typical.json` (`transit.with_typical_metro`), added when the
+  schedule is loaded, or alone when no schedule is installed. It holds the opening hours per day
+  type, each line's minutes between trains per time band (wmata.com's line pages), each line's
+  stations in order with estimated run times, and the map's 98 stations (held equal to
+  `metro_stations()` by a test). Trains are laid out evenly, and a wait is always half the
+  interval (or the time to the first or last train), so no Metro departure is named or counted
+  down. Its credit reads "WMATA, wmata.com (typical service)"; there is no separate note. A built
+  schedule with WMATA's rail GTFS replaces it with no setting. Metrobus stays out until its GTFS is
+  built.
+- **"Scheduled" on every transit time** (the owner, 2026-10-12: "Make it clear whether it's a
+  schedule or live."). One word after each time the rider sees, GTFS or typical alike, in the
+  step text, the departure, the next departure, the countdown, the map label and the screen
+  reader's milestones: "Board the MARC Penn Line at 7:42 am scheduled", "every 8 min,
+  scheduled". Each transit step and `transit.departure` carry `source: "scheduled"`, and the
+  page takes the word from it (`sourceWord`, `lib/departure.ts`), so live times (v0.7) can say
+  "live" without new UI.
 - **Times.** A service-day minute is real elapsed time from GTFS's zero (noon less 12 hours), so
   daylight-saving days are right. From 1 to 5 am both service days are searched (owl trips past
   27:00 included). Stops without times (not timepoints) are interpolated by the build.
@@ -7084,6 +7101,33 @@ planned with a chosen station lists only the pair asked for, so a screen keeps t
 list; a free-floating e-bike is offered only as the plan's own start (it has no id to ask for
 again). Tests: `tests/test_bikeshare_direction.py` (each ranking case fails on nearest-first),
 `tests/test_bikeshare_api.py`, `tests/test_bikeshare_nearby.py`, `frontend/src/lib/stations.test.ts`.
+
+### Rebalance Ride (REBALANCE-RIDE; Stephen, 2026-10-12)
+
+An Adventure ride type, id `rebalance` (short path `/rebalance`), label "Rebalance Ride": move a
+share bike from a crowded station to one that needs bikes. The operator's reward points have no
+public feed (they are only in its app), so fill stands in for them, from the station status the
+Bikeshare plan already reads: bikes / (bikes + free docks), e-bikes counted. No points are shown
+and there are no new settings; the ride type is not given the operator's programme name, which
+appears only in its description.
+
+- `POST /api/route` with `preset: "rebalance"` is a Bikeshare plan (`core.bikeshare.plan` with
+  `rebalance=True`; two points, `bike` as Bikeshare's, `pickup_station` / `dropoff_station` as
+  Bikeshare's) whose docks are the station lists' own: the 3 best crowded stations near the start
+  (at least 3/4 full, renting, with a bike of the chosen type) and the 3 best near the destination
+  that need bikes (at most 1/4 full, returning), each ranked by the direction rule above, with no
+  distance cap (`rebalance_starts`, `rebalance_ends`). The quickest pair is chosen as on Bikeshare.
+- Always a dock at each end: no free-floating e-bike, no ending outside a dock (`ending:
+  "outside_dock"` is refused). With no availability feed, or no crowded station, or none that
+  needs bikes, the answer is 422 `no_bikeshare` saying which.
+- The steps say "which is crowded" and "which needs bikes"; the summary starts "Rebalance Ride";
+  `bikeshare.rebalance` is true.
+- The ride leg is Bikeshare's (`core.presets` `REBALANCE`): stress 80 with the stress-averse
+  exposure, classic hills -60 at 13 km/h (8 mph), e-bike hills -20 at 20 km/h (12 mph) on the
+  e-bike graph, descents costed past 4%.
+- Front end: `lib/presets.ts` (`usesBikeshare`), the station lists and route options as on
+  Bikeshare, in the Adventure group.
+- Tests: `tests/test_rebalance.py`, `frontend/src/lib/rebalance.test.ts`.
 
 ## Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
 

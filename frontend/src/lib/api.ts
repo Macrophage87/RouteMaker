@@ -452,6 +452,10 @@ export interface TransitStep {
   system?: string | null;
   /** An infrequent service (over 15 min apart): the departure taken, "7:42 am". */
   departs?: string | null;
+  /** A frequent service: minutes between departures. */
+  every_min?: number | null;
+  /** Where a transit step's times are from: "scheduled" now; "live" from v0.7. Null off transit. */
+  source?: TimeSource | null;
   with_bike: boolean;
   /** This step is the route's own line (drawn as the route); its coordinates are empty. */
   route_line: boolean;
@@ -474,6 +478,9 @@ export interface TransitOption {
  * The chosen trip's first infrequent departure (the owner, 2026-10-12: "make it clear when the next
  * departure would be and if cutting it close, put a timer"). Times are ISO 8601 with their offset.
  */
+/** Where a transit time is from, said after it: "8:12 am scheduled" (the owner, 2026-10-12: "Make it clear whether it's a schedule or live."). */
+export type TimeSource = "scheduled" | "live";
+
 export interface TransitDeparture {
   /** Its index in `steps`. */
   step: number;
@@ -494,8 +501,10 @@ export interface TransitDeparture {
   /** The moment the plan is for. */
   planned_at: string;
   point: LonLat | null;
-  /** The map's label: "MARC 7:42 am · 6 min spare". */
+  /** The map's label: "MARC 7:42 am scheduled · 6 min spare". */
   label: string;
+  /** Where its times are from (absent from older answers: scheduled). */
+  source?: TimeSource;
 }
 
 /** A rail station with no service at all on a day (GET /api/transit/closures). */
@@ -566,6 +575,11 @@ export interface BikesharePlan {
   options?: BikeshareOption[];
   /** The plain source citation (OWNER-DECISIONS 301). */
   credit: string;
+  /**
+   * A Rebalance Ride (`preset: "rebalance"`): from a crowded station (at least 3/4 full) to one that needs bikes
+   * (at most 1/4 full). False on plain Bikeshare; absent from an older server.
+   */
+  rebalance?: boolean;
 }
 
 /** One end of a route option (core.api.BikeshareOptionEndOut). */

@@ -204,7 +204,7 @@ test("the lists are in the Bikeshare panel only and a choice is forgotten with i
   // UI-CLEANUP: under Route, in a closed "Choose a station" fold (the approved mockup's control table).
   assert.match(
     app,
-    /preset === "bikeshare" && points\.length > 0 \? \(\s*<Fold title="Choose a station" icon="bikeshare" className="stations-fold">\s*<NearbyStations points=\{points\} pins=\{stationChoice\} onChoose=\{chooseStation\} \/>/,
+    /usesBikeshare\(preset\) && points\.length > 0 \? \(\s*<Fold title="Choose a station" icon="bikeshare" className="stations-fold">\s*<NearbyStations points=\{points\} pins=\{stationChoice\} onChoose=\{chooseStation\} \/>/,
   );
   assert.equal((app.match(/<NearbyStations /g) ?? []).length, 1, "in one place");
   assert.match(app, /activePins\(preset, points, stationPins\)/);

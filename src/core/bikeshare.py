@@ -64,6 +64,16 @@ The plan
    assumed; where no plan names one the answer says so. Fees are the
    operator's information, not a quote.
 
+Rebalance Ride (REBALANCE-RIDE; Stephen, 2026-10-12)
+----------------------------------------------------
+The same plan with `rebalance=True`: the docks are the station lists' own (`nearby_stations`),
+so the start is a crowded station (at least 3/4 full, e-bikes counted) near the start that
+has a bike of the chosen type, and the end a station that needs bikes (at most 1/4 full) near
+the destination; the top `NEARBY_COUNT` of each by the direction rule, with no distance cap.
+There is no public feed of the operator's reward points, so fill (bikes / capacity) from the
+station status this module already reads stands in for them, and no points are shown. No
+free-floating e-bike (it is not at a crowded station) and no ending outside a dock.
+
 Pace and walking: a rider on foot is planned at `WALK_SPEED_KMH`, 3 mph, an
 unhurried pace with a bike to collect, rather than Valhalla's 5.1 km/h.
 
@@ -75,6 +85,7 @@ same words.
 from __future__ import annotations
 
 import copy
+import math
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -459,6 +470,100 @@ class NearbyStation:
     on_the_way: bool | None = None
 
 
+def _fitting(
+    point: LonLat,
+    action: str,
+    snapshot: gbfs.Snapshot,
+    toward: LonLat | None,
+    also=None,
+) -> list[tuple[float, gbfs.Station, gbfs.StationStatus, float]]:
+    """The `NEARBY_COUNT` stations near `point` that fit the action (`nearby_stations`), best
+    first, as (distance, station, status, fullness); `also(status)`, where given, must hold
+    too (Rebalance Ride: a bike of the chosen type). No distance cap."""
+    assert snapshot.status is not None
+    fitting: list[tuple[float, gbfs.Station, gbfs.StationStatus, float]] = []
+    for distance, station in _by_distance(snapshot, point):
+        status = snapshot.status.get(station.station_id)
+        if status is None or snapshot.reporting_stale(status):
+            continue
+        fullness = status.fullness
+        if fullness is None:
+            continue
+        if action == PICKUP:
+            fits = status.can_rent and fullness >= FULL_AT_LEAST
+        else:
+            fits = status.can_return and fullness <= EMPTY_AT_MOST
+        if not fits or (also is not None and not also(status)):
+            continue
+        fitting.append((distance, station, status, fullness))
+        # By distance, the cost (distance + extra) of the stations still to come is at least
+        # their distance; once three fit and the next is farther than the third-best cost so
+        # far, none can rank higher.
+        if len(fitting) >= NEARBY_COUNT:
+            costs = sorted(station_cost_m([s.lon, s.lat], point, toward) for _, s, _, _ in fitting)
+            if distance > costs[NEARBY_COUNT - 1]:
+                break
+    return sorted(
+        fitting,
+        key=lambda t: (station_cost_m([t[1].lon, t[1].lat], point, toward), t[0], t[1].name),
+    )[:NEARBY_COUNT]
+
+
+def rebalance_starts(
+    origin: LonLat, dest: LonLat, bike: str, snapshot: gbfs.Snapshot
+) -> list[tuple[float, Pick]]:
+    """Rebalance Ride's docks to start from: crowded stations near the start (the pick-up
+    list's), each with a bike of the chosen type, best first toward `dest`."""
+    if snapshot.status is None:
+        return []
+    found = _fitting(origin, PICKUP, snapshot, dest, also=lambda st: st.bikes_of(bike) > 0)
+    return [(distance, _dock_pick(station, snapshot)) for distance, station, _, _ in found]
+
+
+def rebalance_ends(
+    dest: LonLat, origin: LonLat, snapshot: gbfs.Snapshot
+) -> list[tuple[float, Pick]]:
+    """Rebalance Ride's docks to end at: stations that need bikes near the destination (the
+    drop-off list's), best first on the way in from `origin`."""
+    if snapshot.status is None:
+        return []
+    found = _fitting(dest, DROPOFF, snapshot, origin)
+    return [(distance, _dock_pick(station, snapshot)) for distance, station, _, _ in found]
+
+
+def _fill_words(pick: Pick, rounding) -> str:
+    fullness = None if pick.status is None else pick.status.fullness
+    if fullness is None:
+        return "its fill can't be read"
+    return f"{rounding(fullness * 100)}% full"
+
+
+def rebalance_pinned_start(picks: list[tuple[float, Pick]]) -> None:
+    """A dock the rider chose to start a Rebalance Ride from must be crowded (at least 3/4
+    full), as the pick-up list's are, or the rider is told why not."""
+    for _, pick in picks:
+        fullness = None if pick.status is None else pick.status.fullness
+        if fullness is None or fullness < FULL_AT_LEAST:
+            # Rounded down, so a station just short of 3/4 never reads "75% full".
+            raise NoBikeshare(
+                f"{pick.name} isn't crowded right now ({_fill_words(pick, math.floor)}), so it "
+                "can't start a Rebalance Ride. Choose another, or let the plan choose."
+            )
+
+
+def rebalance_pinned_end(picks: list[tuple[float, Pick]]) -> None:
+    """A dock the rider chose to end a Rebalance Ride at must need bikes (at most 1/4 full),
+    as the drop-off list's do, or the rider is told why not."""
+    for _, pick in picks:
+        fullness = None if pick.status is None else pick.status.fullness
+        if fullness is None or fullness > EMPTY_AT_MOST:
+            # Rounded up, so a station just over 1/4 never reads "25% full".
+            raise NoBikeshare(
+                f"{pick.name} doesn't need bikes right now ({_fill_words(pick, math.ceil)}), so "
+                "it can't end a Rebalance Ride. Choose another, or let the plan choose."
+            )
+
+
 def nearby_stations(
     point: LonLat, action: str, snapshot: gbfs.Snapshot, toward: LonLat | None = None
 ) -> list[NearbyStation]:
@@ -476,32 +581,7 @@ def nearby_stations(
         raise ValueError(f"not an action: {action}")
     if snapshot.status is None:
         return []
-    fitting: list[tuple[float, gbfs.Station, gbfs.StationStatus, float]] = []
-    for distance, station in _by_distance(snapshot, point):
-        status = snapshot.status.get(station.station_id)
-        if status is None or snapshot.reporting_stale(status):
-            continue
-        fullness = status.fullness
-        if fullness is None:
-            continue
-        if action == PICKUP:
-            fits = status.can_rent and fullness >= FULL_AT_LEAST
-        else:
-            fits = status.can_return and fullness <= EMPTY_AT_MOST
-        if not fits:
-            continue
-        fitting.append((distance, station, status, fullness))
-        # By distance, the cost (distance + extra) of the stations still to come is at least
-        # their distance; once three fit and the next is farther than the third-best cost so
-        # far, none can rank higher.
-        if len(fitting) >= NEARBY_COUNT:
-            costs = sorted(station_cost_m([s.lon, s.lat], point, toward) for _, s, _, _ in fitting)
-            if distance > costs[NEARBY_COUNT - 1]:
-                break
-    best = sorted(
-        fitting,
-        key=lambda t: (station_cost_m([t[1].lon, t[1].lat], point, toward), t[0], t[1].name),
-    )[:NEARBY_COUNT]
+    best = _fitting(point, action, snapshot, toward)
     found: list[NearbyStation] = []
     for distance, station, status, fullness in best:
         extra = (
@@ -633,7 +713,9 @@ def _walk_out(leg: WalkLeg | None, to_name: str) -> dict | None:
     }
 
 
-def _start_step(pick: Pick, bike: str, walk: WalkLeg, snapshot: gbfs.Snapshot) -> str:
+def _start_step(
+    pick: Pick, bike: str, walk: WalkLeg, snapshot: gbfs.Snapshot, rebalance: bool = False
+) -> str:
     if pick.kind == "free_bike":
         return (
             f"Walk {miles(walk.distance_m)} to an e-bike parked outside a dock, "
@@ -651,17 +733,19 @@ def _start_step(pick: Pick, bike: str, walk: WalkLeg, snapshot: gbfs.Snapshot) -
         if walk.distance_m < AT_DOCK_M
         else f"Walk {miles(walk.distance_m)} to the dock at {pick.name}"
     )
-    return f"{lead}, take {article} {kind} ({count})."
+    crowded = ", which is crowded" if rebalance else ""
+    return f"{lead}{crowded}, take {article} {kind} ({count})."
 
 
-def _end_step(pick: Pick, ride_m: float, bike: str) -> str:
+def _end_step(pick: Pick, ride_m: float, bike: str, rebalance: bool = False) -> str:
     if pick.kind == "outside_dock":
         return (
             f"Ride {miles(ride_m)} to your destination and leave the e-bike there, outside a dock."
         )
     st = pick.status
     slots = "availability unknown" if st is None else _plural(st.docks, "free slot", "free slots")
-    return f"Ride {miles(ride_m)} to the dock at {pick.name} ({slots})."
+    needs = ", which needs bikes" if rebalance else ""
+    return f"Ride {miles(ride_m)} to the dock at {pick.name}{needs} ({slots})."
 
 
 def plan(
@@ -674,16 +758,26 @@ def plan(
     speed_kmh: float,
     pickup_station: str | None = None,
     dropoff_station: str | None = None,
+    rebalance: bool = False,
 ) -> dict:
     """The route API's body for a bikeshare plan: the ride leg's own body, with the
     walks, docks, availability, fee and notes under `bikeshare`. A chosen `pickup_station`
     or `dropoff_station` (a station id) is used for that end in place of the nearest docks.
+    `rebalance`: Rebalance Ride, from a crowded station to one that needs bikes (the module's
+    docstring); always a dock at each end.
 
     Raises NoBikeshare where there is no dock to start or end at, no way on foot, or
     nothing to ride; routing's own errors pass through from the ride.
     """
     notes: list[str] = []
+    if rebalance and snapshot.status is None:
+        raise NoBikeshare(
+            "Station availability can't be read right now, so there is no telling which "
+            "stations are crowded. Try Bikeshare, or try again shortly."
+        )
     offer = outside_offer(bike, snapshot, dest)
+    if rebalance:
+        ending = ENDING_DOCK
     use_outside = ending == ENDING_OUTSIDE and offer["offered"]
     if ending == ENDING_OUTSIDE and not use_outside:
         notes.append(OUTSIDE_REASON_WORDS[offer["reason"]] + " The plan ends at a dock.")
@@ -692,9 +786,18 @@ def plan(
     nearest_end: tuple[float, Pick] | None = None
     if pickup_station:
         docks, free = pinned_start(origin, pickup_station, bike, snapshot)
+        if rebalance:
+            rebalance_pinned_start(docks)
+    elif rebalance:
+        docks, free = rebalance_starts(origin, dest, bike, snapshot), []
     else:
         docks, free, nearest_start = start_candidates(origin, bike, snapshot, notes, dest)
     kind_word = "e-bike" if bike == presets.BIKE_EBIKE else "classic bike"
+    if rebalance and not docks:
+        raise NoBikeshare(
+            f"No station has {kind_word}s to spare right now (none is at least 3/4 full). "
+            "Try the other bike type, or plain Bikeshare."
+        )
     if not docks and not free:
         raise NoBikeshare(
             f"No dock within {miles(SEARCH_RADIUS_M)} of the start has a {kind_word} "
@@ -704,6 +807,15 @@ def plan(
     if not use_outside:
         if dropoff_station:
             ends = pinned_end(dest, dropoff_station, snapshot)
+            if rebalance:
+                rebalance_pinned_end(ends)
+        elif rebalance:
+            ends = rebalance_ends(dest, origin, snapshot)
+            if not ends:
+                raise NoBikeshare(
+                    "No station needs bikes right now (none is at most 1/4 full). Try plain "
+                    "Bikeshare."
+                )
         else:
             ends, nearest_end = end_candidates(dest, snapshot, notes, origin)
         if not ends:
@@ -729,7 +841,9 @@ def plan(
                 finishes.append((pick, leg))
         if not finishes:
             raise NoBikeshare(
-                "There is no way on foot from a dock with a free slot to the destination."
+                "There is no way on foot from a station that needs bikes to the destination."
+                if rebalance
+                else "There is no way on foot from a dock with a free slot to the destination."
             )
 
     # Every pair, quickest first: the real walks plus the estimated ride. Ties by the walks
@@ -751,6 +865,11 @@ def plan(
                 + (e_walk.duration_s if e_walk else 0.0)
             )
             pairs.append((cost, total, s_pick, s_walk, s_extra, e_pick, e_walk, e_extra))
+    if not pairs and rebalance:
+        raise NoBikeshare(
+            "The crowded stations and the ones that need bikes are within a few steps of each "
+            "other, so there is no Rebalance Ride to make. Try plain Bikeshare."
+        )
     if not pairs:
         raise NoBikeshare(
             "The nearest docks to the start and to the destination are the same, so there is "
@@ -838,8 +957,8 @@ def plan(
     if walk_note:
         notes.append(walk_note)
 
-    steps = [{"kind": "walk", "text": _start_step(start, bike, walk_start, snapshot)}]
-    steps.append({"kind": "ride", "text": _end_step(end, ride_m, bike)})
+    steps = [{"kind": "walk", "text": _start_step(start, bike, walk_start, snapshot, rebalance)}]
+    steps.append({"kind": "ride", "text": _end_step(end, ride_m, bike, rebalance)})
     if walk_end is not None:
         steps.append(
             {
@@ -850,7 +969,8 @@ def plan(
             }
         )
     total_s = walk_s + ride_s
-    summary = f"Bikeshare, {kind_word}: about {minutes(total_s)} in all. " + " ".join(
+    title = "Rebalance Ride" if rebalance else "Bikeshare"
+    summary = f"{title}, {kind_word}: about {minutes(total_s)} in all. " + " ".join(
         step["text"] for step in steps
     )
 
@@ -872,7 +992,8 @@ def plan(
             ),
         }
     ]
-    if bike == presets.BIKE_EBIKE:
+    # Rebalance Ride ends where a bike is needed, a dock: no outside ending is offered.
+    if bike == presets.BIKE_EBIKE and not rebalance:
         endings.append(
             {
                 "kind": ENDING_OUTSIDE,
@@ -906,6 +1027,7 @@ def plan(
     body = dict(ride)
     body["bikeshare"] = {
         "bike": bike,
+        "rebalance": rebalance,
         "ending": ENDING_OUTSIDE if use_outside else ENDING_DOCK,
         "start": _stop_out(start, bike, snapshot),
         "end": _stop_out(end, bike, snapshot),

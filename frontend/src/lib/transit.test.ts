@@ -47,13 +47,15 @@ const PLAN: TransitPlan = {
     { mode: "enter", text: "About 4 min into the station by the elevator.", seconds: 240, wait_s: 0, to: null, lines: [], with_bike: true, route_line: false, coordinates: [] },
     {
       mode: "metro",
-      text: "Board the Orange Line (about 5 min wait); ride 10 min to Federal Triangle.",
+      text: "Board the Orange Line (every 10 min, scheduled; about 5 min wait); ride 10 min to Federal Triangle.",
       seconds: 600,
       wait_s: 300,
       to: "Federal Triangle",
       lines: ["Orange Line"],
       system: "Metro",
       departs: null,
+      every_min: 10,
+      source: "scheduled",
       with_bike: true,
       route_line: false,
       coordinates: [

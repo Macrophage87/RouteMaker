@@ -727,7 +727,8 @@ class TestPlanAlternates:
 @db
 class TestWhatIsSentToTheRouter:
     @pytest.mark.parametrize(
-        "name", sorted(set(presets.PRESETS) - {"bikeshare", *presets.TRANSIT_PRESETS})
+        "name",
+        sorted(set(presets.PRESETS) - {*presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS}),
     )
     def test_every_call_goes_to_the_presets_variant(self, name, client, segments, router) -> None:
         """PLAN, Stats source: the trace goes to the same variant and costing
@@ -1358,7 +1359,8 @@ class TestTheTraceRequest:
         assert {loc["type"] for loc in fake.calls[0][1]["locations"]} == {"break"}
 
     @pytest.mark.parametrize(
-        "name", sorted(set(presets.PRESETS) - {"bikeshare", *presets.TRANSIT_PRESETS})
+        "name",
+        sorted(set(presets.PRESETS) - {*presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS}),
     )
     def test_the_answer_names_the_variant_that_routed_it(
         self, name, client, segments, router

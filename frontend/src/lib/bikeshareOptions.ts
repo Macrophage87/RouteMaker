@@ -12,27 +12,34 @@ import type { BikeshareOption, BikesharePlan } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import type { Pins } from "./stations.ts";
 
-/** The options kept for one trip: its start and end (`key`). */
+/** The options kept for one trip: its start, end and ride type (`key`). */
 export interface KeptOptions {
   key: string;
   options: BikeshareOption[];
 }
 
-/** The trip a list belongs to: the plan's start and end. */
-export function optionsKey(points: readonly LonLat[]): string {
+/**
+ * The trip a list belongs to: the plan's start and end, and its ride type, so Bikeshare's list is never shown
+ * on a Rebalance Ride, nor Rebalance's on Bikeshare (review of PR #110).
+ */
+export function optionsKey(points: readonly LonLat[], preset: string): string {
   if (points.length < 2) return "";
   const a = points[0];
   const b = points[points.length - 1];
-  return `${a[0]},${a[1]}>${b[0]},${b[1]}`;
+  return `${preset}:${a[0]},${a[1]}>${b[0]},${b[1]}`;
 }
 
 /**
  * The list to show after an answer: a full list (two or more) is the answer's own, fresh; an answer of one
- * pair (a re-plan of one option, or another ride type's none) keeps the list kept for the same trip.
+ * pair (a re-plan of one option) keeps the list kept for the same trip, and another ride type's answer (no
+ * bikeshare plan) leaves the list as it was. The key holds the ride type, so Bikeshare's list is never kept
+ * for a Rebalance Ride's answer, nor the other way round; Go shows a list only for the trip and ride type
+ * on screen.
  */
 export function keepOptions(kept: KeptOptions | null, plan: BikesharePlan | null, key: string): KeptOptions | null {
   const fresh = plan?.options ?? [];
   if (!key) return null;
+  if (!plan) return kept;
   if (fresh.length > 1) return { key, options: fresh };
   if (kept && kept.key === key) return kept;
   return fresh.length > 0 ? { key, options: fresh } : null;

@@ -1056,7 +1056,7 @@ export const S_TRANSIT = (() => {
     steps: [
       step("ride", "Ride 4 min to Eastern Market.", 240, { to: "Eastern Market", route_line: true }),
       step("enter", "About 4 min into the station by the elevator.", 240, { with_bike: true }),
-      step("metro", "Board the Orange Line (about 5 min wait); ride 10 min to Federal Triangle.", 600, {
+      step("metro", "Board the Orange Line (every 10 min, scheduled; about 5 min wait); ride 10 min to Federal Triangle.", 600, {
         wait_s: 300,
         to: "Federal Triangle",
         lines: ["Orange Line"],
@@ -1106,7 +1106,7 @@ export function transitMarc(nowMs = Date.now()) {
     system: "MARC",
     lines: ["Penn Line"],
     departs: clock(departs),
-    text: `Board the MARC Penn Line at ${clock(departs)} from Union Station: you arrive ${clock(departs - spare * 1000)}, 3 min spare. Ride 10 min to Federal Triangle.`,
+    text: `Board the MARC Penn Line at ${clock(departs)} scheduled from Union Station: you arrive ${clock(departs - spare * 1000)}, 3 min spare. Ride 10 min to Federal Triangle.`,
   };
   r.transit.credits = ["WMATA GTFS (scheduled times)", "MDOT MTA GTFS (scheduled times)"];
   r.transit.departure = {
@@ -1123,7 +1123,8 @@ export function transitMarc(nowMs = Date.now()) {
     close: true,
     planned_at: iso(nowMs),
     point: metro.coordinates[0],
-    label: `MARC ${clock(departs)} · 3 min spare`,
+    label: `MARC ${clock(departs)} scheduled · 3 min spare`,
+    source: "scheduled",
   };
   return r;
 }

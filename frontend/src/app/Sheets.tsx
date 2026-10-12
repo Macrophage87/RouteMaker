@@ -4,7 +4,7 @@
 // in to the suggest tools, and Review is an admin's; Settings is Display, Ride mode, This device and Account
 // with My Go; and the map's Water and Food chips open the nearest finder and Find food. In Go, Settings is
 // the Menu, with Plan, Suggest, GPX and Review above it. App.tsx keeps the state and the effects.
-import { useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
+import { useEffect, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { StressAvailability } from "../MapView.tsx";
 import { SuggestionReview } from "../SuggestionReview.tsx";
@@ -586,25 +586,38 @@ const RIDE_ICON: Partial<Record<PresetId, IconName>> = {
   trailmaxxing: "trail",
   "bike-transit": "train",
   "bikeshare-transit": "train",
+  rebalance: "bikeshare",
 };
 
 /**
  * Go's More ride types: every ride type, searchable, under its group's heading
  * (RIDE-TYPE-ORGANISE, lib/rideTypeGroups.ts). The search comes first in the Tab order.
+ *
+ * The outline: the sheet's h2, then this list under its own h3 (read, not shown: the sheet
+ * already says what it is), its groups as h4 under it, so the Ride line's "Ride type" h3 that
+ * follows in Go's sheet is a sibling and not a fourth group. Each group is named once, by its
+ * heading (the chips' own group is left unnamed). The search is cleared whenever the sheet is
+ * left, as Plan's dialog clears it on closing, so the next visit shows every ride type.
  */
-export function RideGroupChips({ preset, onPick }: { preset: PresetId; onPick: (id: PresetId) => void }) {
+export function RideGroupChips({ preset, onPick, open }: { preset: PresetId; onPick: (id: PresetId) => void; open: boolean }) {
   const [query, setQuery] = useState("");
+  useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
   const groups = filterRideGroups(query);
   return (
-    <div className="ride-groups">
+    <section className="ride-groups" aria-labelledby="ride-sheet-types">
+      <h3 id="ride-sheet-types" className="visually-hidden">
+        Every ride type
+      </h3>
       <RideTypeSearch id="ride-sheet-search" query={query} onQuery={setQuery} count={rideTypeCount(groups)} />
       {groups.map((group) => (
         <section key={group.id} className="ride-group" aria-labelledby={`ride-sheet-${group.id}`}>
-          <h3 id={`ride-sheet-${group.id}`}>{group.label}</h3>
-          <RideChips ids={group.ids} preset={preset} onPick={onPick} label={group.label} />
+          <h4 id={`ride-sheet-${group.id}`}>{group.label}</h4>
+          <RideChips ids={group.ids} preset={preset} onPick={onPick} />
         </section>
       ))}
-    </div>
+    </section>
   );
 }
 
@@ -621,12 +634,13 @@ export function RideChips({
   preset: PresetId;
   onPick: (id: PresetId) => void;
   more?: (opener: HTMLElement) => void;
-  label: string;
+  /** The chips' group name; left out where a heading already names them (Go's More ride types). */
+  label?: string;
   /** Go: the first chip is the rider's own ride type (My Go), described as such. */
   ownHint?: string;
 }) {
   return (
-    <div className="chip-row ride-chips" role="group" aria-label={label}>
+    <div className="chip-row ride-chips" role={label ? "group" : undefined} aria-label={label}>
       {ids.map((id, index) => (
         <button
           key={id}
