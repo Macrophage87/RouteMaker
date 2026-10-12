@@ -841,9 +841,13 @@ capacity, `setRouteSections` draws it as a corridor (`massRoutePaint`): a
 16 px white band (`route-mass-band`) inside a 22 px casing in the route's
 blue (the dark slate in the colour-blind-friendly palette), about 3 px of
 each round Wide open's 10.5 px halo, and dims the capacity roads' lines and
-casings to 0.45 (`MASS_NETWORK_DIMMED`). Avoid roads and hazard rails keep
-full strength. `lib/massRouteCorridor.test.ts` holds the widths, the casing
-3:1 from the band, and the wiring.
+casings to 0.45 (`MASS_NETWORK_DIMMED`). Any other route fades the stress
+map's lines to 0.8 (`ROUTE_OVERLAY_FADE`; Stephen: "mute most of the colors
+when there's a route, for default too"). The fade multiplies each layer's own
+opacity (`fadedOpacity` scales a zoom step's outputs, so the zoom fades stay),
+and Avoid, the hazard rails and the trail names keep full strength
+(`keptUnderRoute`). `lib/massRouteCorridor.test.ts` holds the widths, the
+casing 3:1 from the band, the fade and the wiring.
 
 **Tests.** `stressSalience.test.ts` covers: the rising ink and width, LTS 4's
 duty, chroma and contrast rising from LTS 3 to Avoid, the harshness rule, no

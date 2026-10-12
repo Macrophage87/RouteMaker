@@ -447,25 +447,38 @@ export function routePaint(
  * (ROUTE_MASS_CASING_WIDTH), about three pixels of white and three of blue each side of the widest
  * halo (Wide open's, 10.5 px), and the capacity roads behind it are dimmed to
  * MASS_NETWORK_DIMMED. The hazard rails and the Avoid roads are warnings and keep their full
- * strength. The route's own colours, halos and dashes are unchanged, so its legend still reads.
+ * strength (as Avoid does under any route, `overlayFade`). The route's own colours, halos and dashes are unchanged, so its legend still reads.
  */
 export const ROUTE_MASS_BAND = "#ffffff";
 export const ROUTE_MASS_BAND_WIDTH = 16;
 export const ROUTE_MASS_CASING_WIDTH = 22;
 /** The capacity roads' opacity while a Mass Ride's route is on the map: there to read, not to compete. */
 export const MASS_NETWORK_DIMMED = 0.45;
+/**
+ * The stress map's opacity under any other route (Stephen, 2026-10-12: "Maybe mute most of the
+ * colors when there's a route, for default too. Like an alpha of 0.8"): a lighter fade than a
+ * Mass Ride's, whose route has its own outline over roads of its own colours.
+ */
+export const ROUTE_OVERLAY_FADE = 0.8;
 
 /**
- * The corridor's paint: the casing's width, the white band's opacity and the capacity roads'
- * opacity, for a route drawn by capacity (`capacity`) or not. A stale route's band dims with it.
+ * The corridor's paint: the casing's width and the white band's opacity, for a route drawn by
+ * capacity (`capacity`) or not. A stale route's band dims with it.
  */
-export function massRoutePaint(
-  capacity: boolean,
-  stale: boolean,
-): { casingWidth: number; bandOpacity: number; networkOpacity: number } {
+export function massRoutePaint(capacity: boolean, stale: boolean): { casingWidth: number; bandOpacity: number } {
   return {
     casingWidth: capacity ? ROUTE_MASS_CASING_WIDTH : ROUTE_CASING_WIDTH,
     bandOpacity: capacity ? (stale ? 0.45 : 1) : 0,
-    networkOpacity: capacity ? MASS_NETWORK_DIMMED : 1,
   };
+}
+
+/**
+ * How much the map's road colours are faded under the route: MASS_NETWORK_DIMMED under a Mass
+ * Ride's capacity route, ROUTE_OVERLAY_FADE under any other route, none (1) with no route.
+ * Applied as a factor on each layer's own opacity (mapGlue.ts, setOverlayFade), so the overlay's
+ * zoom fades are kept.
+ */
+export function overlayFade(hasRoute: boolean, capacity: boolean): number {
+  if (!hasRoute) return 1;
+  return capacity ? MASS_NETWORK_DIMMED : ROUTE_OVERLAY_FADE;
 }

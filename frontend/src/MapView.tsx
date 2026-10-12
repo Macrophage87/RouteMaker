@@ -30,9 +30,7 @@ import {
   ROUTE_LINE_WIDTH,
   ROUTE_MASS_BAND,
   ROUTE_MASS_BAND_WIDTH,
-  massRoutePaint,
   sectionFeatures,
-  usesCapacity,
 } from "./lib/routeColours.ts";
 import { stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb } from "./stressStyle.js";
 import { subscribeTopoLines, syncTopoLines, topoLinesOn, type TopoMap } from "./lib/topoLines.ts";
@@ -55,7 +53,8 @@ import {
   routeDashLayers,
   solidRouteFilter,
   setMassMode,
-  setMassNetworkOpacity,
+  setOverlayFade,
+  routeOverlayFade,
   setHazardData,
   ROUTE_MASS_BAND_LAYER_ID,
 } from "./lib/mapGlue.ts";
@@ -838,8 +837,8 @@ export function MapView(props: Props) {
       const added = addStressOverlay(map, origin, callbacks.current.stressVisible, callbacks.current.when);
       // The hazards that came before the overlay's source did (a Mass Ride opened from a link).
       if (added) setHazardData(map, callbacks.current.massHazards ?? null);
-      // A route already up dims the capacity roads it is drawn over (an overlay that came after the route).
-      if (added) setMassNetworkOpacity(map, massRoutePaint(usesCapacity(callbacks.current.route?.stress_spans), false).networkOpacity);
+      // A route already up fades the road colours it is drawn over (an overlay that came after the route).
+      if (added) setOverlayFade(map, routeOverlayFade(callbacks.current.route));
       return added;
     };
 
