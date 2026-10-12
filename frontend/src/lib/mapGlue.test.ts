@@ -1,6 +1,7 @@
 // What MapView does to the map, run against a stand-in map that records calls.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   BASEMAP_PATH_LABEL_LAYER,
   MASS_PATH_LABEL_FILTER,
@@ -14,7 +15,9 @@ import {
   fetchCoverage,
   focusBackTarget,
   hoverChanged,
+  featureCardPress,
   mapClickAction,
+  type FeatureCards,
   markerDeps,
   onLaneSwitch,
   pointerTarget,
@@ -254,9 +257,9 @@ test("a press on a station grabs the line only where the line runs, and never wi
   assert.equal(pressGrab({ station: null, line: null }, false), null);
 });
 
-function clickLog(under: { station: typeof STATION | null; line: typeof LINE | null }, popupOpen: boolean, afterDrag = false) {
+function clickLog(under: { station: typeof STATION | null; line: typeof LINE | null }, popupOpen: boolean, afterDrag = false, lineTapIsPoint = false) {
   const calls: string[] = [];
-  const action = runClick(under, { popupOpen, afterDrag }, {
+  const action = runClick(under, { popupOpen, afterDrag, lineTapIsPoint }, {
     closePopups: () => calls.push("close"),
     openCard: (s) => calls.push(`card:${s.id}`),
     lineDrop: () => calls.push("line"),
@@ -286,6 +289,56 @@ test("a click on the line is a via, elsewhere a point, and the click after a dra
   assert.deepEqual(clickLog({ station: null, line: null }, false).calls, ["point"]);
   for (const station of [null, STATION]) {
     for (const line of [null, LINE]) assert.deepEqual(clickLog({ station, line }, false, true).calls, []);
+  }
+});
+
+test("Go (lineTapIsPoint): a click on the line is the map's, a point, like anywhere else; stations, popups and the click after a drag are as before (the owner, 2026-10-12)", () => {
+  assert.equal(mapClickAction({ popupOpen: false, afterDrag: false, onStation: false, onLine: true, lineTapIsPoint: true }), "point");
+  assert.deepEqual(clickLog({ station: null, line: LINE }, false, false, true).calls, ["point"]);
+  assert.deepEqual(clickLog({ station: null, line: null }, false, false, true).calls, ["point"]);
+  assert.deepEqual(clickLog({ station: STATION, line: LINE }, false, false, true).calls, ["close", "card:st"]);
+  assert.deepEqual(clickLog({ station: null, line: LINE }, true, false, true).calls, ["close"]);
+  for (const line of [null, LINE]) assert.deepEqual(clickLog({ station: null, line }, false, true, true).calls, []);
+  // The drag is unchanged: a press near the line still picks it up.
+  assert.equal(pressGrab({ station: null, line: LINE }, false), LINE);
+  // MapView reads the flag at the click; App sets it in Go only.
+  const mapView = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  assert.match(mapView, /const goPress = callbacks\.current\.pressSetsEnd === true;/);
+  assert.match(mapView, /runClick\(under, \{ popupOpen: anyPopupOpen\(\) \|\| forCard, afterDrag: performance\.now\(\) < clickSuppressedUntil, lineTapIsPoint: goPress \}/);
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /onLineDrop=\{riding \? ignore : insertOnLine\}\s*pressSetsEnd=\{goTapSetsEnd\(mode\)\}/);
+});
+
+/** A feature card stand-in: open or not, and the screen points its shown features are at. */
+function card(open: boolean, at: Array<[number, number]> = []): FeatureCards {
+  return { open: () => open, hits: (p) => at.some(([x, y]) => x === p.x && y === p.y) };
+}
+
+test("featureCardPress: a press on a card's feature is the card's, one that only closes a card is too, else the map's (review of #116)", () => {
+  const water = card(false, [[10, 10]]);
+  const climbs = card(false, [[20, 20]]);
+  const federal = card(false);
+  assert.equal(featureCardPress([water, climbs, federal], { x: 10, y: 10 }), "card");
+  assert.equal(featureCardPress([water, climbs, federal], { x: 20, y: 20 }), "card", "any layer: a card added later counts the same");
+  assert.equal(featureCardPress([water, climbs, federal], { x: 5, y: 5 }), null, "open map: the map's");
+  assert.equal(featureCardPress([water, card(true), federal], { x: 5, y: 5 }), "close", "a press that only closes a card");
+  assert.equal(featureCardPress([card(true, [[10, 10]])], { x: 10, y: 10 }), "card");
+  assert.equal(featureCardPress([null, null, null], { x: 10, y: 10 }), null, "cards not yet on the map");
+  assert.equal(featureCardPress([], { x: 10, y: 10 }), null);
+});
+
+test("Go: a press for a feature card goes to runClick as a popup press, so it adds nothing (it may close the via's Remove or a station card); a station still opens its card", () => {
+  // MapView passes popupOpen: anyPopupOpen() || forCard; with forCard the click never reaches addPoint or lineDrop.
+  for (const line of [null, LINE]) assert.deepEqual(clickLog({ station: null, line }, true, false, true).calls, ["close"]);
+  assert.deepEqual(clickLog({ station: STATION, line: null }, true, false, true).calls, ["close", "card:st"]);
+  const mapView = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  // One shared check, over every feature card layer, read before runClick and only in Go.
+  assert.match(mapView, /const forCard = goPress && featureCardPress\(\[water, climbCard, federal\], event\.point\) !== null;\s*(\/\/[^\n]*\n\s*)?runClick\(/);
+  // Each card module says whether a press is on one of its shown features, by the same lookup its click opens with.
+  for (const file of ["../waterInteraction.ts", "../climbInteraction.ts", "../federalInteraction.ts"]) {
+    const source = readFileSync(new URL(file, import.meta.url), "utf8");
+    assert.match(source, /hits: \(point: \{ x: number; y: number \}\) => at\(point\) !== undefined,/, file);
+    assert.match(source, /const [a-z]+ = at\(event\.point\);/, file);
   }
 });
 
