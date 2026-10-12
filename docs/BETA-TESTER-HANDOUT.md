@@ -76,9 +76,11 @@ needed; reload the page to get the box back.
   planner.
 - The planner is an area (a landmark) called "Route planner"; screen readers may announce it
   as "Route planner, complementary". Its heading is "RouteMaker".
-- Just under that heading is a region called "Beta notice", with a "Dismiss" button. It says
-  that routes may still use some paths where bikes are not allowed until the next map update.
-  Dismiss hides it until your next visit and puts you back at the planner.
+- In the map's bottom-left corner is a small button, "Beta notice" (it shows the word "Beta"),
+  after the map's own controls. It says whether it is collapsed or expanded. Press it to open a
+  region, also called "Beta notice", right after it: it says that routes may still use some
+  paths where bikes are not allowed until the next map update. Press the button again, or
+  Escape, to close it; the focus stays on the button. It is not shown in Ride mode.
 - The "High contrast" switch is in two places: the "Map layers" page (a button in the bar at
   the bottom of the planner) and the "Settings" page (the last button in the same bar). It makes the lines bolder
   and the borders and text stronger, and changes the stress colors to ones that do not rely
@@ -105,7 +107,8 @@ Tell the person who gave you access. It helps to include:
 - what you expected, and what happened instead;
 - the browser and device, and the screen reader if you use one.
 
-If the beta notice shows a "Report a problem" link, you can use that instead.
+If the beta notice (the "Beta" button in the map's corner) shows a "Report a problem" link,
+you can use that instead.
 
 8. Updates
 ----------
