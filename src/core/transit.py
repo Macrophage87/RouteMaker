@@ -1536,6 +1536,153 @@ def closed_stations(schedule: Schedule, moment: Moment) -> list[Closed]:
     return out
 
 
+# --- A station's times, for its card on the map (the owner, 2026-10-12) ---------------------
+#
+# Stephen, 2026-10-12: "In the metro and marc icons on the map, put either the headways for
+# metro or in the case of MARC when the next train would be in each direction". A station's card
+# says, for each rail stop at the station (`STATION_NEAR_M`, the nearest of each system): a
+# frequent system's line (Metro, Light RailLink, Metro SubwayLink: `FREQUENT_MODES`) with the
+# minutes between its trains now, and a commuter line (MARC, VRE) with its next train each way,
+# its destination and time. A direction with nothing more today says so. Scheduled, as every
+# transit time is (`SCHEDULED`); Metro on its typical timetable where no WMATA GTFS is installed.
+
+STATION_NEAR_M = 400.0  # a stop this close to the map's station is at it (railClosures' MATCH_M)
+FREQUENT_MODES = (METRO, LIGHT_RAIL, SUBWAY)
+EVERY_SEEN_MIN = 60  # a frequent line's interval is read from its trains in the next hour
+EVERY = "every"
+NEXT = "next"
+NONE = "none"
+
+
+@dataclass(frozen=True)
+class LineTime:
+    """One line's times at a station: `EVERY` (minutes between trains), `NEXT` (the next train
+    one way: its destination and service-day minute), or `NONE` (none more today that way;
+    `today` False when none ran at all, and `toward` None for both ways)."""
+
+    stop: Stop
+    system: System
+    route: str
+    kind: str
+    every_min: int | None = None
+    toward: str | None = None
+    depart: float | None = None
+    today: bool = True
+
+
+def _departures_at(active, pattern: Pattern, pos: int, minute: float) -> list[float]:
+    """Every departure of `pattern` from its stop `pos` on the service day (`active`: the
+    services running), in service-day minutes (run times of the band at `minute`)."""
+    offset = pattern.runs_at(minute)[pos] / 60.0
+    out: list[float] = []
+    for service, deps in pattern.trips.items():
+        if service in active:
+            out.extend((encoded >> 1) + offset for encoded in deps)
+    return out
+
+
+def _direction(schedule: Schedule, pattern: Pattern, reference: Pattern) -> int:
+    """0 where `pattern` heads the way its route's longest pattern does, else 1: by which of that
+    pattern's ends its own last stop is nearer (a short-turn heads toward the far end)."""
+    last = schedule.stops[pattern.stops[-1]].point
+    to_end = _distance(last, schedule.stops[reference.stops[-1]].point)
+    to_start = _distance(last, schedule.stops[reference.stops[0]].point)
+    return 0 if to_end <= to_start else 1
+
+
+def _longest(patterns) -> Pattern:
+    return max(patterns, key=lambda p: (len(p.stops), -p.index))
+
+
+def _every_min(times: list[float]) -> int | None:
+    """The minutes between the next trains within `EVERY_SEEN_MIN` (at least two), else None."""
+    distinct: list[float] = []
+    for t in sorted(times):
+        if not distinct or t - distinct[-1] >= 0.5:
+            distinct.append(t)
+    seen = [t for t in distinct if t - distinct[0] <= EVERY_SEEN_MIN][:DEPARTURES_SEEN]
+    if len(seen) < 2:
+        return None
+    return max(1, round((seen[-1] - seen[0]) / (len(seen) - 1)))
+
+
+def station_times(schedule: Schedule, point, when: datetime) -> list[LineTime]:
+    """The lines at the rail stops within `STATION_NEAR_M` of `point` (the nearest of each
+    system), at `when`: in the schedule's system order, then its route order. Bus stops are left
+    out, and beyond the installed window nothing is said."""
+    moment = moment_of(when)
+    if not schedule.covers(moment.service_day):
+        return []
+    active = schedule.active(moment.service_day)
+    nearest: dict[int, Stop] = {}
+    for _distance_m, stop in schedule.near(point, STATION_NEAR_M):
+        if stop.rail and stop.system not in nearest:
+            nearest[stop.system] = stop
+    out: list[LineTime] = []
+    for system_index in sorted(nearest):
+        stop = nearest[system_index]
+        system = schedule.systems[system_index]
+        # route -> direction -> [(pattern, pos)], in the order the routes first appear
+        routes: dict[str, dict[int, list[tuple[Pattern, int]]]] = {}
+        references: dict[str, Pattern] = {}
+        for p_index, pos in sorted(schedule.at_stop.get(stop.index, ())):
+            pattern = schedule.patterns[p_index]
+            if pos == len(pattern.stops) - 1:
+                continue  # it ends here: nothing leaves on it
+            if pattern.route not in references:
+                references[pattern.route] = _longest(
+                    p
+                    for p in schedule.patterns
+                    if p.system == system_index and p.route == pattern.route
+                )
+            reference = references[pattern.route]
+            direction = _direction(schedule, pattern, reference)
+            routes.setdefault(pattern.route, {}).setdefault(direction, []).append((pattern, pos))
+        for route, ways in routes.items():
+            out.extend(_line_times(schedule, active, moment, stop, system, route, ways))
+    return out
+
+
+def _line_times(schedule, active, moment, stop, system, route, ways) -> list[LineTime]:
+    """One route's `LineTime`s at a stop, from its patterns there by direction."""
+    found = {}  # direction -> (every departure today, the next ones with their pattern)
+    for direction, entries in sorted(ways.items()):
+        today: list[float] = []
+        upcoming: list[tuple[float, Pattern]] = []
+        for pattern, pos in entries:
+            for at in _departures_at(active, pattern, pos, moment.minute):
+                today.append(at)
+                if at >= moment.minute:
+                    upcoming.append((at, pattern))
+        upcoming.sort(key=lambda t: (t[0], t[1].index))
+        found[direction] = (today, upcoming)
+    if not any(today for today, _upcoming in found.values()):
+        return [LineTime(stop, system, route, NONE, today=False)]
+    if system.mode in FREQUENT_MODES:
+        # Running now: trains at an interval, the next within it (before the first train of
+        # the morning, the first trains each way are said instead).
+        every = [
+            e
+            for _today, upcoming in found.values()
+            if (e := _every_min([t for t, _p in upcoming])) is not None
+            and upcoming[0][0] - moment.minute <= e + 1
+        ]
+        if every:
+            return [LineTime(stop, system, route, EVERY, every_min=min(every))]
+    out = []
+    for direction, (today, upcoming) in found.items():
+        if upcoming:
+            at, pattern = upcoming[0]
+            toward = schedule.stops[pattern.stops[-1]].name
+            out.append(LineTime(stop, system, route, NEXT, toward=toward, depart=at))
+        else:
+            # The destination of the way's longest pattern: where its trains went today.
+            pattern = _longest(p for p, _pos in ways[direction])
+            toward = schedule.stops[pattern.stops[-1]].name
+            out.append(LineTime(stop, system, route, NONE, toward=toward, today=bool(today)))
+    return out
+
+
 def _window_note(schedule: Schedule, moment: Moment) -> list[str]:
     if schedule.covers(moment.service_day):
         return []

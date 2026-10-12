@@ -6967,10 +6967,21 @@ docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-
   - On the map, a closed station is struck through, grey and named "(closed)".
   - Its card and the nearest-Metro list say "closed: reason".
   - Routing never uses a closed station, because it has no departures that day.
+- **Station times.** `GET /api/transit/station-times?lon=&lat=` (`core.transit.station_times`)
+  gives the lines at the rail stops by a map station (the nearest stop of each system within
+  400 m), cached for a minute. `lib/stationTimes.ts` words them, with `lib/transitMarks.ts`'s marks.
+  - A frequent line (Metro, Light RailLink, SubwayLink): "🔴 Red Line: every 8 min, scheduled";
+    before the first train, the first train each way.
+  - A commuter line (MARC, VRE): the next train each way, "🚆Penn to Baltimore Penn Station 5:42
+    pm, to Union Station 6:10 pm, scheduled"; "no more trains today", or "no trains today".
+  - Shown in the station's card (fetched when it opens; in the hover card once known) and under
+    the road panel's nearby station, the keyboard's way to it. The emoji text is aria-hidden; a
+    visually hidden twin says it in words ("Red Line every 8 minutes, scheduled"). A closed
+    station keeps its "closed" words and shows no times; a 503 shows none.
 - **Tests.** `tests/test_transit.py` runs on a synthetic fixture
   (`tests/data/transit/make_fixture.py`: WMATA rail and bus, MARC Penn and Camden lines, Light
   RailLink) with a straight-line router. Front-end tests: `lib/transit.test.ts`,
-  `lib/departure.test.ts` and `lib/railClosures.test.ts`. a11y checks: the "transit (Go)" checks in
+  `lib/departure.test.ts`, `lib/railClosures.test.ts` and `lib/stationTimes.test.ts`. a11y checks: the "transit (Go)" checks in
   `scripts/a11y/check.mjs`.
 
 ## Bikeshare (FOLLOWUP-BIKESHARE, OWNER-DECISIONS 243-245, 299-301, 466, 466a)
