@@ -605,7 +605,7 @@ docs/OPERATIONS.md, "Transit schedule". Systems, rules and sources are listed in
     board and leave last, after everyone else; check with the conductor. Applied as every trip
     takes a bike (`vehicle` all).
   - Every VRE station takes a bike (the owner's rule for commuter rail, as MARC above).
-  - The routes' GTFS short names may be codes, so a step names a line by its long name
+  - The feed's route short names are numbers (2, 4), so a step names a line by its long name
     ("the VRE Manassas Line"; systems.json `route_name` long).
 
 ### Checked, for the next PR (not used yet)

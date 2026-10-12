@@ -14,7 +14,7 @@ tests/data/transit holds small feeds written by its make_fixture.py, one per sys
 - Light RailLink: every 15 min on weekdays, 20 at weekends; one stop not step-free (likewise).
 - VRE (built only into `vre_schedule`, so the other tests' closures stay as they are): the
   Fredericksburg and Manassas Lines through Alexandria to Union Station, weekdays only, every
-  40 min each toward Washington in the morning and away in the evening; short names are codes.
+  40 min each toward Washington in the morning and away in the evening; short names are numbers.
 The places are real; the times are invented. A fake router rides straight lines, so every figure
 is arithmetic.
 """

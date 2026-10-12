@@ -1978,9 +1978,9 @@ unaffected.
 (`--date`, default today). A plan for a later date answers with riding the whole way only, plus the
 note "The timetables installed run ... to ...". Refresh as well when an agency publishes a new
 timetable, for example a MARC or VRE schedule change or a Metro shutdown. Planned closures reach
-the plans only through the published GTFS. With fewer than 7 days left, the api logs "the transit schedule
-runs out ..." once a day and `manage.py check_operations` alerts ("transit: the schedule runs out
-on ..."; exit 1). An unreadable file alerts too; no file installed does not.
+the plans only through the published GTFS. With fewer than 7 days left, the api logs "the transit
+schedule runs out ..." once a day and `manage.py check_operations` alerts ("transit: the schedule
+runs out on ..."; exit 1). An unreadable file alerts too; no file installed does not.
 
 **The beta** gets the schedule in its data bundle (`ship-data.sh`'s `transit` part;
 docs/BETA-RUNBOOK.md). Ship it again after each refresh.

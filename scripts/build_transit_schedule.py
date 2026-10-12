@@ -215,7 +215,7 @@ def service_calendar(feed, start: date, days: int = DAYS) -> dict[str, str]:
 
 def route_names(feed, metro: bool, long_first: bool = False) -> dict[str, str]:
     """Each route's name as a step says it. `long_first` (systems.json `route_name` long): the
-    GTFS long name before the short one, for a system whose short names are codes (VRE)."""
+    GTFS long name before the short one, for a system whose short names are numbers (VRE)."""
     out = {}
     for row in _rows(feed, "routes.txt"):
         short = (row.get("route_short_name") or "").strip()

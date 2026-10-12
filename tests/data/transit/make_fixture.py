@@ -302,7 +302,8 @@ feed.finish()
 
 # --- VRE ----------------------------------------------------------------------------------------
 # Weekdays only (no weekend or Thanksgiving trains), toward Washington in the morning and away in
-# the evening. The routes' short names are codes, so a step says the long name (route_name long).
+# the evening. The routes' short names are numbers, as in VRE's feed, so a step says the long name
+# (route_name long).
 vre = out / "vre"
 write(vre, "calendar.txt", CALENDAR_HEADER, [WK])
 write(
@@ -328,7 +329,7 @@ write(
     vre,
     "routes.txt",
     ["route_id", "route_short_name", "route_long_name", "route_type"],
-    [["FBG", "FBG", "Fredericksburg Line", 2], ["MSS", "MSS", "Manassas Line", 2]],
+    [["FBG", "2", "Fredericksburg Line", 2], ["MSS", "4", "Manassas Line", 2]],
 )
 feed = Feed(vre)
 INNER = [("V_ALX", 0), ("V_CRY", 480), ("V_LEN", 900), ("V_UST_P", 1260)]
