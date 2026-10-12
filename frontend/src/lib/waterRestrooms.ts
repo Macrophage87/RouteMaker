@@ -89,19 +89,6 @@ export function readWaterPrefs(store: Store | null = defaultStore()): WaterPrefs
   }
 }
 
-/**
- * The rider's kept switches, or null when they never changed one (or it is not readable): Go and Plan then
- * open with their own default (lib/goLayers.ts).
- */
-export function readWaterChoice(store: Store | null = defaultStore()): WaterPrefs | null {
-  try {
-    if (!store?.getItem(WATER_PREFS_KEY)) return null;
-  } catch {
-    return null;
-  }
-  return readWaterPrefs(store);
-}
-
 /** Keep the switches on this device; whether they were kept. */
 export function saveWaterPrefs(prefs: WaterPrefs, store: Store | null = defaultStore()): boolean {
   try {
