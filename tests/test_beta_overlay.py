@@ -2019,6 +2019,8 @@ def test_the_dump_strips_every_identity_table_owner_decision_367() -> None:
         "django_session",
         "django_admin_log",
         "cached_membership",
+        # a rider's own My Go holds their Home (core.models.MyGo)
+        "my_go",
     }
     assert identities <= excluded, identities - excluded
     # what the beta needs from home stays: the overrides

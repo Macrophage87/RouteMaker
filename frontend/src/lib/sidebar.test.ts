@@ -39,6 +39,8 @@ import {
   rideActionLabel,
   searchLede,
   sheetEscape,
+  openOnto,
+  backFrom,
   stepsCount,
   type BarItem,
   type PanelView,
@@ -134,7 +136,12 @@ test("the Ride line is a heading holding a button with aria-expanded, whose word
     html,
     /^<section class="ride-settings" aria-label="Ride"><h2 id="ride-settings-heading" class="ride-line"><button type="button" class="ride-line-button" aria-expanded="false" aria-controls="[^"]+">/,
   );
-  assert.match(html, /<span class="ride-line-summary" aria-hidden="true">Default · now<\/span><span class="visually-hidden">: Default, now\.<\/span>/);
+  // UI-CLEANUP: the summary shown as chips (the mockup's "Default Quiet Balanced Now"), the ride type's with
+  // its icon; heard as one sentence with commas.
+  assert.match(
+    html,
+    /<span class="ride-line-summary" aria-hidden="true"><span class="ride-chip"><svg[^>]*aria-hidden="true"[^>]*>[\s\S]*?<\/svg>Default<\/span><span class="ride-chip">now<\/span><\/span><span class="visually-hidden">: Default, now\.<\/span>/,
+  );
   // Shown Edit or Done, heard Edit whatever the state: aria-expanded says it (no "Done, expanded": N8).
   assert.match(html, /<span class="ride-line-action" aria-hidden="true">Edit<\/span><span class="visually-hidden"> Edit<\/span>/);
   assert.equal(rideActionLabel(false), "Edit");
@@ -169,18 +176,21 @@ test("App puts the ride type and every dial behind the Ride line, in the mockup'
     assert.ok(i > 0, text);
     return i;
   };
+  // UI-CLEANUP (the mockup's "Points Swap Loop Edit Info"): the loop box in the Points heading's row, then the
+  // search, then the points and their tools.
   assert.deepEqual(
-    ["<PlaceSearch", "{loop && (", "{searchLede(loopVias, accessMode)}", 'className="actions point-tools"'].map(inPoints),
-    ["<PlaceSearch", "{loop && (", "{searchLede(loopVias, accessMode)}", 'className="actions point-tools"'].map(inPoints).sort((a, b) => a - b),
-    "the search, then the loop box, then the points and their tools",
+    ["{loop && (", "<PlaceSearch", "{searchLede(loopVias, accessMode)}", 'className="actions point-tools"'].map(inPoints),
+    ["{loop && (", "<PlaceSearch", "{searchLede(loopVias, accessMode)}", 'className="actions point-tools"'].map(inPoints).sort((a, b) => a - b),
+    "the loop box, then the search, then the points and their tools",
   );
   // The map-center actions are in Map tools by the zoom buttons, not the planner (OWNER-DECISIONS 450).
   assert.doesNotMatch(points, /Add point at map center|Road info at map center/);
-  assert.ok(inPoints("{loop && (") > points.indexOf("</div>", inPoints('id="points-search"')), "outside the part that hides while the points compact");
+  assert.ok(inPoints("{loop && (") < inPoints('id="points-search"'), "outside the part that hides while the points compact");
   assert.match(points, /aria-describedby=\{loopHintId\}/);
   assert.match(app, /const loopHintId = useId\(\);/, "a generated id, not a fixed one");
   // The hint is plain visible text: a paragraph with the id the box points at, and no live region or hidden class on it.
-  assert.match(points, /<p className="hint" id=\{loopHintId\}>\s*\{loop\.hint\}\s*<\/p>/);
+  // Shown while the box is checked (what a loop needs next); its description either way.
+  assert.match(points, /<p className="hint loop-hint" id=\{loopHintId\} hidden=\{!loop\.checked\}>\s*\{loop\.hint\}\s*<\/p>/);
   assert.match(points, /commitDials\(withLoop\(dials, event\.target\.checked\)\)/, "its change goes through the announcing commit");
   assert.match(app, /const loop = loopView\(preset, dials\.loop, points\);/);
   // The weight row is the existing one: status only, Change opening the private dialog (weightDialog.ts).
@@ -189,31 +199,34 @@ test("App puts the ride type and every dial behind the Ride line, in the mockup'
 
 // ---- points first ------------------------------------------------------------
 
-test("the points come first, the how-to is behind More tips, and Reverse, Undo and Clear share a row", () => {
+test("the points come first, the how-to is behind Points' Info, Swap beside the heading, and Undo and Clear share a row", () => {
   assert.equal(MORE_TIPS, "More tips");
   assert.equal(FEWER_TIPS, "Fewer tips");
   // The keyboard's way in stays in view (the a11y review's S6).
   assert.equal(searchLede(false, true), "Search, click the map, or use Add point at map center in Map tools: start, then end. Later clicks add stops.");
   assert.equal(searchLede(true, true), "Search, click the map, or use Add point at map center in Map tools: start, then stops. The ride comes back to the start.");
   // The start-up how-to only before any point; with points, how to change them (the correctness review's N5).
+  // UI-CLEANUP: behind the Info button in the Points heading's row (the mockup's "Points Swap Loop Edit Info").
   assert.match(
     app,
-    /<MoreTips>[\s\S]{0,200}\{points\.length > 0 \? <p className="hint">\{editingTips\(accessMode\)\}<\/p> : <p className="hint">\{emptyPlanHint\(preset, loopVias, accessMode\)\}<\/p>\}/,
+    /className="tips-body more-tips" hidden=\{!tips\}>[\s\S]{0,400}\{points\.length > 0 \? <p className="hint">\{editingTips\(accessMode\)\}<\/p> : <p className="hint">\{emptyPlanHint\(preset, loopVias, accessMode\)\}<\/p>\}/,
   );
-  assert.match(sidebar, /aria-expanded=\{open\} aria-controls=\{id\}/);
-  // The compact row; every existing button is still there. Add point at map center is in Map tools (450).
-  const labels = ["Reverse", "Undo", "Redo", "Clear"].map((t) => app.indexOf(t, app.indexOf('className="actions point-tools"')));
+  assert.match(app, /className="secondary icon-button tips-toggle" aria-expanded=\{tips\} aria-controls=\{tipsId\} onClick=\{\(\) => setTips\(!tips\)\}/);
+  // The compact row; every existing button is still there (Reverse is Swap, in the heading's row). Add point
+  // at map center is in Map tools (450).
+  assert.ok(app.indexOf("swap-points") > 0 && app.indexOf("swap-points") < app.indexOf('className="actions point-tools"'));
+  const labels = ["Undo", "Redo", "Clear"].map((t) => app.indexOf(t, app.indexOf('className="actions point-tools"')));
   assert.ok(labels.every((i) => i > 0));
   assert.deepEqual(labels, [...labels].sort((a, b) => a - b));
   assert.doesNotMatch(app, /className="actions point-add"|ref=\{addRef\}/);
   assert.match(app, /accessMode && !riding \? \(\s*<MapTools\s+toggleRef=\{toolsToggleRef\}\s+onAddPoint=\{addAtCentre\}/);
   assert.equal(
     searchLede(false),
-    "Search or click the map: start, then end. Later clicks add stops. For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in More tips).",
+    "Search or click the map: start, then end. Later clicks add stops. For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).",
   );
   assert.equal(
     searchLede(true),
-    "Search or click the map: start, then stops. The ride comes back to the start. For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in More tips).",
+    "Search or click the map: start, then stops. The ride comes back to the start. For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).",
   );
   // I works only on the focused map: no button claims it (the a11y review's S2); the map's canvas still does.
   assert.doesNotMatch(app, /aria-keyshortcuts="I"/);
@@ -222,7 +235,7 @@ test("the points come first, the how-to is behind More tips, and Reverse, Undo a
   assert.match(tools, /aria-expanded=\{open\}\s+aria-controls=\{panelId\}/);
   assert.match(tools, /hidden=\{!open\}/);
   assert.match(src("../MapView.tsx"), /canvas\.setAttribute\("aria-keyshortcuts", "I"\)/);
-  assert.match(app, /aria-describedby=\{reverseHint \? "reverse-hint" : undefined\}/);
+  assert.match(app, /aria-describedby=\{reverseHint \? "reverse-hint" : "swap-hint"\}/);
   assert.match(app, /<p className="hint" id="reverse-hint">/);
 });
 
@@ -286,7 +299,7 @@ test("the points compacting never leaves the focus in a hidden part: it goes to 
     app,
     /useLayoutEffect\(\(\) => \{\s*rescueCompactFocus\(\{\s*wasCompact: wasCompact\.current,\s*compact: compactPoints,\s*before: focusBeforeRender\.current,\s*hidden: \[pointsSearchRef\.current, pointsEditRef\.current\],\s*editPoints: editPointsRef\.current,\s*\}\);\s*wasCompact\.current = compactPoints;\s*\}, \[compactPoints\]\);/,
   );
-  assert.match(app, /ref=\{editPointsRef\}\s+className="secondary edit-points"/);
+  assert.match(app, /ref=\{editPointsRef\}\s+className="secondary icon-button edit-points"/);
   // After the sheet-order effect, which may first put the focus back on the (now hidden) element.
   assert.ok(app.indexOf("rescueCompactFocus({") > app.indexOf("}, [routeFirst]);"));
 });
@@ -296,7 +309,8 @@ test("the points notice is said through the app's region while the planner is hi
   assert.equal(noticeSaidElsewhere("That point is outside the area this map covers.", true), false, "the planner's own status says it");
   assert.equal(noticeSaidElsewhere(null, false), false);
   assert.equal(noticeSaidElsewhere("", false), false);
-  assert.match(app, /plannerShownNow\.current = view === "planner" && panelOpen;/);
+  // Go shows the notice in its sheet without a live region of its own: the app's region says it there.
+  assert.match(app, /plannerShownNow\.current = view === "planner" && panelOpen && mode === "plan";/);
   assert.match(app, /if \(noticeSaidElsewhere\(notice, plannerShownNow\.current\)\) announce\(notice as string\);\s*\}, \[notice, announce\]\);/);
 });
 
@@ -389,7 +403,7 @@ test("the stress bar is one image with each share in its name, and a line of tex
   assert.match(app, /<p className="stress-key" aria-hidden="true">/);
 });
 
-test("the route's folds: Elevation and stress, Stress and facilities, Directions, Junctions to watch, Routes to choose from", () => {
+test("the route's folds: Elevation and climbs, Stress and facilities, Directions, Junctions to watch, Other routes, Water and restrooms", () => {
   assert.equal(foldTitle("Junctions to watch", 4), "Junctions to watch (4)");
   assert.equal(foldTitle("Stress and facilities", null), "Stress and facilities");
   assert.equal(stepsCount(1), "1 step");
@@ -403,53 +417,65 @@ test("the route's folds: Elevation and stress, Stress and facilities, Directions
     app,
     /const junctions = route\.intersections == null \? \(avoidCount > 0 \? avoidCount : null\) : junctionItems\(route\)\.length \+ avoidCount;/,
   );
-  assert.match(app, /\{junctions !== null && \(\s*<Fold title=\{foldTitle\(ROUTE_FOLDS\.junctions\.title, junctions\)\}/);
+  // UI-CLEANUP (the mockup's one-line folds): the count on the right of the line, read in brackets (Fold's count).
+  assert.match(app, /\{junctions !== null && \(\s*<Fold title=\{ROUTE_FOLDS\.junctions\.title\} count=\{junctions\}/);
   const at = (text: string) => {
     const i = app.indexOf(text, app.indexOf("function RouteSummary"));
     assert.ok(i > 0, text);
     return i;
   };
   const order = [
-    "title={foldName(chartKind(route))}",
-    "<Fold title={ROUTE_FOLDS.facilities.title}",
+    "title={elevationTitle}",
+    "title={ROUTE_FOLDS.facilities.title}",
     "<RouteDescription route={route} fold rideAction={rideAction} federal={federal} />",
-    "foldTitle(ROUTE_FOLDS.junctions.title, junctions)",
-    "foldTitle(ROUTE_FOLDS.choices.title, pickerCount)",
+    "<Fold title={ROUTE_FOLDS.junctions.title} count={junctions}",
+    "<Fold title={ROUTE_FOLDS.choices.title} count={pickerCount}",
+    "title={ROUTE_FOLDS.water.title}",
   ].map(at);
   assert.deepEqual(order, [...order].sort((a, b) => a - b));
   // The route chart (322, 323) sits first, in the elevation slot, and is collapsed on a small screen.
-  assert.equal(ROUTE_FOLDS.elevation.title, "Elevation and stress");
-  // Open beside the map and collapsed on a small screen: a pure decision (the mutation review's 13),
-  // which the fold takes as it is.
-  assert.equal(chartFoldOpen(false), true);
+  // UI-CLEANUP (the owner's choice 7): "Elevation and climbs", closed on a computer too; a Mass Ride's keeps its name.
+  assert.equal(ROUTE_FOLDS.elevation.title, "Elevation and climbs");
+  assert.match(app, /const elevationTitle = profile && chartKind\(route\) === "mass" \? foldName\("mass"\) : ROUTE_FOLDS\.elevation\.title;/);
+  assert.equal(chartFoldOpen(false), false);
   assert.equal(chartFoldOpen(true), false);
   assert.ok(app.includes("open={chartFoldOpen(narrow)}"));
-  assert.match(app, /\{profile && \(\s*<Fold/);
+  // The climbs list is in it too, so the fold shows for a route with climbs and no usable profile.
+  assert.match(app, /\{\(profile \|\| climbs\) && \(\s*<Fold/);
   // Each fold is reached from a heading list: a hidden h3 before it (the a11y review's S5).
-  for (const key of ["facilities", "junctions", "choices"] as const) {
-    assert.ok(app.includes(`heading={ROUTE_FOLDS.${key}.title} open={ROUTE_FOLDS.${key}.open}`), key);
+  for (const key of ["facilities", "junctions", "choices", "water"] as const) {
+    assert.match(app, new RegExp(`heading=\\{ROUTE_FOLDS\\.${key}\\.title\\}\\s+open=\\{ROUTE_FOLDS\\.${key}\\.open\\}`), key);
   }
   assert.match(app, /<h3 className="visually-hidden">Totals<\/h3>\s*<dl className="stats totals">/);
-  // The notices stay in view; only the figures are folded.
+  // The notices are one line (a count, listed behind it: the owner's choice 5); the figures are folded,
+  // the four quick figures first (choice 4).
   assert.match(app, /<FacilityBreakdown route=\{route\} part="notices" \/>/);
-  assert.match(app, /<FacilityBreakdown route=\{route\} part="figures" \/>/);
+  assert.match(app, /<QuickFigures figures=\{quickFigures\(route\)\} \/>[\s\S]{0,1600}<FacilityBreakdown route=\{route\} part="figures" \/>/);
 });
 
 test("a Fold: closed unless open, 'Routes to choose from' open by default, and its hidden h3 first", () => {
+  // UI-CLEANUP: every fold starts closed (the approved mockup: one line each, no scrolling).
   assert.deepEqual(Object.fromEntries(Object.entries(ROUTE_FOLDS).map(([k, v]) => [k, v.open])), {
-    elevation: true,
+    elevation: false,
     facilities: false,
     directions: false,
     junctions: false,
-    choices: true,
+    choices: false,
+    water: false,
   });
-  const closed = renderToStaticMarkup(createElement(Fold, { title: "Junctions to watch (4)", heading: "Junctions to watch", children: "x" }));
+  const closed = renderToStaticMarkup(createElement(Fold, { title: "Junctions to watch", count: 4, heading: "Junctions to watch", children: "x" }));
   assert.equal(
     closed,
-    '<h3 class="visually-hidden">Junctions to watch</h3><details class="fold"><summary>Junctions to watch (4)</summary><div class="fold-body">x</div></details>',
+    '<h3 class="visually-hidden">Junctions to watch</h3><details class="fold"><summary><span class="fold-title" aria-hidden="true">Junctions to watch</span><span class="fold-count" aria-hidden="true">4</span><span class="visually-hidden">Junctions to watch (4)</span></summary><div class="fold-body">x</div></details>',
   );
-  const open = renderToStaticMarkup(createElement(Fold, { title: "Routes to choose from (3)", open: ROUTE_FOLDS.choices.open, children: "x" }));
+  // A count of 0 is still said; no count, no brackets.
+  assert.match(renderToStaticMarkup(createElement(Fold, { title: "x", count: 0, children: "x" })), /<span class="visually-hidden">x \(0\)<\/span>/);
+  assert.match(renderToStaticMarkup(createElement(Fold, { title: "x", children: "x" })), /<summary><span class="fold-title">x<\/span><\/summary>/);
+  assert.doesNotMatch(renderToStaticMarkup(createElement(Fold, { title: "x", count: null, children: "x" })), /fold-count/);
+  const open = renderToStaticMarkup(createElement(Fold, { title: "Bikeshare plan", open: true, children: "x" }));
   assert.match(open, /^<details class="fold" open="">/);
+  // An icon is drawn before the title, hidden from the reader.
+  assert.match(renderToStaticMarkup(createElement(Fold, { title: "x", icon: "list", children: "x" })), /<summary><svg [^>]*aria-hidden="true"/);
 });
 
 test("FacilityBreakdown's parts: the notices only in 'notices', the figures only in 'figures', both in 'all' (mutation SF3)", () => {
@@ -472,7 +498,8 @@ test("FacilityBreakdown's parts: the notices only in 'notices', the figures only
 test("Directions as a fold: an h3 first, a closed details named with its steps, no fold for no steps (mutation SF3)", () => {
   const html = renderToStaticMarkup(
     createElement(Fold, {
-      title: foldTitle(ROUTE_FOLDS.directions.title, stepsCount(2)),
+      title: ROUTE_FOLDS.directions.title,
+      count: stepsCount(2),
       heading: ROUTE_FOLDS.directions.title,
       headingId: "route-description-heading",
       open: false,
@@ -482,12 +509,12 @@ test("Directions as a fold: an h3 first, a closed details named with its steps, 
   );
   assert.equal(
     html,
-    '<h3 id="route-description-heading" class="visually-hidden">Directions</h3><details class="fold route-description"><summary>Directions (2 steps)</summary><div class="fold-body"><ol class="description-list"></ol></div></details>',
+    '<h3 id="route-description-heading" class="visually-hidden">Directions</h3><details class="fold route-description"><summary><span class="fold-title" aria-hidden="true">Directions</span><span class="fold-count" aria-hidden="true">2 steps</span><span class="visually-hidden">Directions (2 steps)</span></summary><div class="fold-body"><ol class="description-list"></ol></div></details>',
   );
   const component = src("../RouteDescription.tsx");
   const fold = component.slice(component.indexOf("if (fold) {"), component.indexOf('<section className="route-description"'));
   assert.match(fold, /if \(entries\.length === 0\) return null;/, "no \"Directions (0 steps)\"");
-  assert.match(fold, /<Fold\s+title=\{foldTitle\(ROUTE_FOLDS\.directions\.title, stepsCount\(entries\.length\)\)\}\s+heading=\{ROUTE_FOLDS\.directions\.title\}\s+headingId="route-description-heading"\s+open=\{open\}/);
+  assert.match(fold, /<Fold\s+title=\{ROUTE_FOLDS\.directions\.title\}\s+count=\{stepsCount\(entries\.length\)\}\s+icon="list"\s+heading=\{ROUTE_FOLDS\.directions\.title\}\s+headingId="route-description-heading"\s+open=\{open\}/);
   // The rider's open or closed is remembered (writeOpen), once per change.
   assert.match(fold, /onToggle=\{\(now\) => \{\s*if \(now !== open\) \{\s*setOpen\(now\);\s*writeOpen\(now\);/);
   assert.match(fold, /<ol className="description-list">\{items\}<\/ol>/);
@@ -506,12 +533,13 @@ test("the Points notice is a live region that is always there, empty when there 
   }
 });
 
-test("GPX and Copy link are pinned under the scrolling part, outside it", () => {
+test("Start, GPX, Link and More are one row under the route's figures (UI-CLEANUP, the owner's choice 8)", () => {
   assert.equal(COPY_LINK, "Copy link");
-  const scrollEnd = app.indexOf("</div>\n\n          {/* Pinned under");
-  const pinned = app.indexOf('<div className="route-actions">');
-  assert.ok(scrollEnd > 0 && pinned > scrollEnd, "outside .panel-scroll");
-  assert.match(app, /onClick=\{\(\) => downloadGpx\(shown, routedPoints, routedLoop, federalRoute\)\}>\s*Download GPX/);
+  // In the route summary, after the stress figure and the alerts; no longer pinned under the panel.
+  assert.doesNotMatch(app, /\{\/\* Pinned under/);
+  const summary = app.slice(app.indexOf("export function RouteSummary"));
+  assert.ok(summary.indexOf("<StressFigure") < summary.indexOf("<RouteActions {...actions} start={start} />"));
+  assert.match(app, /<div className="route-actions-row">\s*\{start\}\s*<button type="button" className="secondary icon-button gpx-download" onClick=\{\(\) => downloadGpx\(shown, routedPoints, routedLoop, federalRoute\)\} aria-label="Download GPX">/);
   assert.match(app, /<span role="status" className="visually-hidden">\s*\{linkSpoken\}/);
   // The spoken confirmation carries the location note (OWNER-DECISIONS 395), and the button is described by it.
   assert.equal(linkSpokenFor(true, ""), COPY_LINK_DONE);
@@ -521,10 +549,11 @@ test("GPX and Copy link are pinned under the scrolling part, outside it", () => 
   );
   assert.equal(linkSpokenFor(false, "This link includes your location as the start."), COPY_LINK_FAILED);
   assert.match(app, /if \(press === linkPresses\.current\) setLinkSpoken\(linkSpokenFor\(done, note\)\);/);
-  assert.match(app, /onClick=\{copyLink\} aria-describedby=\{linkNote \? "link-note" : undefined\}/);
+  // "Link" shown, "Copy link" heard: the visible word is in the name (label in name).
+  assert.match(app, /onClick=\{copyLink\} aria-label=\{COPY_LINK\} aria-describedby=\{linkNote \? "link-note" : undefined\}>\s*<Icon name="link" \/>\s*<span aria-hidden="true">Link<\/span>/);
   assert.match(app, /<p id="link-note" className="hint link-note">/);
-  // Unpinned while a sheet is open (the mutation re-check's NIT D): only the planner view shows the actions.
-  assert.match(app, /\{view === "planner" && shown && \(\s*<div className="route-actions">/);
+  // More holds Share and Keep for offline, a disclosure.
+  assert.match(app, /className="secondary icon-button route-more" aria-expanded=\{more\} aria-controls=\{moreId\}/);
   // The link is this page and encodePlan's fragment, which never carries the weight (313).
   assert.match(app, /copyText\(linkToCopy\(window\.location, points, preset, dials\), navigator\.clipboard, selectionCopy\)/);
   assert.equal(linkSaidFor(true), COPY_LINK_DONE);
@@ -578,13 +607,12 @@ test("copyText uses the clipboard, falls back to the selection method, and says 
 
 // ---- the bottom bar and its sheets ------------------------------------------------
 
-test("the bottom bar is Plan, Map layers, Legend, GPX and Settings: real buttons, each with words", () => {
-  assert.deepEqual(BAR_ITEMS.map((i) => i.label), ["Plan", "Map layers", "Legend", "GPX", "Settings"]);
-  assert.deepEqual(BAR_ITEMS.map((i) => i.opens), ["planner", "layers", "layers", "gpx", "settings"]);
+test("the bottom bar is Plan, Layers, Suggest, GPX and Settings: real buttons, each with words (the owner's choice 6)", () => {
+  assert.deepEqual(BAR_ITEMS.map((i) => i.label), ["Plan", "Layers", "Suggest", "GPX", "Settings"]);
+  assert.deepEqual(BAR_ITEMS.map((i) => i.opens), ["planner", "layers", "suggest", "gpx", "settings"]);
   assert.equal(BAR_ITEMS[0].id, "plan", "Plan is first (OWNER-DECISIONS 392, 393)");
-  assert.equal(BAR_ITEMS.filter((i) => i.toLegend).length, 1, "only Legend opens at the legend");
   assert.ok(BAR_ITEMS.every((i) => i.description.length > 0));
-  assert.equal(BAR_ITEMS[4].description, "Opens the settings: display options and signing in.");
+  assert.equal(BAR_ITEMS[4].description, "Opens the settings: display, Ride mode, this device and your account.");
   assert.equal(BAR_NAME, "Panel pages", "a landmark name that says what the bar is (the a11y review's N3)");
   assert.match(sidebar, /<nav aria-label=\{BAR_NAME\} className="bottom-bar">/);
   assert.match(sidebar, /<Fragment key=\{item\.id\}>\s*<button\s+id=\{`bar-\$\{item\.id\}`\}\s+type="button"/);
@@ -593,59 +621,64 @@ test("the bottom bar is Plan, Map layers, Legend, GPX and Settings: real buttons
   assert.match(sidebar, /aria-describedby=\{`bar-\$\{item\.id\}-hint`\}/);
   assert.equal(BAR_ITEMS[0].description, "Shows the planner: the points, the ride settings and the route.");
   assert.match(sidebar, /<span>\{item\.label\}<\/span>/);
-  assert.match(sidebar, /<svg[^>]*aria-hidden="true">\s*\{ICONS\[item\.id\]\}/);
+  // The icon is the shared line icon, hidden from the reader (Icon.tsx: aria-hidden on the svg).
+  assert.match(sidebar, /<Icon name=\{ICONS\[item\.id\]\} \/>\s*<span>\{item\.label\}<\/span>/);
+  assert.match(src("../Icon.tsx"), /aria-hidden="true"/);
   assert.doesNotMatch(sidebar, /<a /, "no link where a button is meant");
+  // Shown in Plan only: Go has its Menu (the mockup's control table).
+  assert.match(app, /\{!goMode && <BottomBar view=\{view\} onOpen=\{openSheet\} buttonRef=/);
 });
 
 test("a sheet: Back is a labelled button, its heading takes the focus, Escape goes back", () => {
-  assert.deepEqual(Object.values(SHEET_TITLES), ["Map layers", "GPX file", "Settings"]);
+  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Legend", "Suggest a change", "Review", "GPX file", "Settings", "Nearest water, restroom or Metro", "Find food", "Ride"]);
   // In visible words, not only an arrow, so the name and the label are one (OWNER-DECISIONS 393).
   assert.equal(BACK_LABEL, "Back to planner");
   assert.doesNotMatch(sidebar, /aria-label="Back to the planner"/);
-  assert.match(sidebar, /<button type="button" className="sheet-back" onClick=\{onBack\}>[\s\S]*?<\/svg>\s*\{BACK_LABEL\}\s*<\/button>/, "Back goes back (NIT A)");
+  // A sheet opened from another sheet goes back to it, and says so (Back to Layers, Back to Menu).
+  assert.match(sidebar, /<button type="button" className="sheet-back" onClick=\{onBack\}>[\s\S]*?<\/svg>\s*\{backLabel\}\s*<\/button>/, "Back goes back (NIT A)");
+  assert.match(sidebar, /backLabel = BACK_LABEL,/);
+  assert.match(app, /return `Back to \$\{step\.from === "settings" && mode === "go" \? "Menu" : SHEET_TITLES\[step\.from as Exclude<PanelView, "planner">\]\}`;/);
   assert.match(sidebar, /<h2 id=\{`\$\{id\}-title`\} ref=\{headingRef\} tabIndex=\{-1\}>/);
   assert.match(
     sidebar,
     /sheetEscape\(\{ key: event\.key, defaultPrevented: event\.defaultPrevented, target: event\.target as HTMLElement, preventDefault: \(\) => event\.preventDefault\(\) \}, onBack\)/,
   );
-  // The legend's heading and the error can take the focus (focus() on an element without tabIndex does nothing).
-  assert.match(app, /<h3 id="legend-heading" ref=\{legendHeadingRef\} tabIndex=\{-1\}>/);
+  // The error can take the focus (focus() on an element without tabIndex does nothing).
   assert.match(app, /<div ref=\{errorRef\} tabIndex=\{-1\} className=\{`error error-\$\{status\.error\.kind\}`\} role="alert">/);
 });
 
 test("where the focus goes on every change of view (mutation SF1)", () => {
-  const views: PanelView[] = ["planner", "layers", "gpx", "settings"];
+  const views: PanelView[] = ["planner", "layers", "legend", "suggest", "review", "gpx", "settings", "nearest", "food", "ride"];
   const causes: ViewCause[] = ["bar", "back", "error", "confirm", "planButton", "panelToggle"];
-  const ids: BarItem["id"][] = ["layers", "legend", "gpx", "settings"];
   for (const was of views)
     for (const view of views)
-      for (const legendTarget of [false, true])
-        for (const openedBy of ids)
-          for (const cause of causes) {
-            const got = focusOnViewChange({ was, view, legendTarget, openedBy, cause });
-            const at = `${was}->${view} legend=${legendTarget} by=${openedBy} ${cause}`;
-            if (was === view) assert.equal(got, null, at);
-            else if (view !== "planner") assert.deepEqual(got, { kind: "heading", view, legend: view === "layers" && legendTarget }, at);
-            else if (cause === "error") assert.deepEqual(got, { kind: "error" }, at);
-            else if (cause === "confirm") assert.deepEqual(got, { kind: "plan" }, at);
-            else if (cause === "planButton") assert.deepEqual(got, { kind: "planner" }, at);
-            else if (cause === "panelToggle") assert.equal(got, null, at);
-            else assert.deepEqual(got, { kind: "bar", id: openedBy }, at);
-          }
-  // The cases a rider meets, spelled out.
-  const go = (was: PanelView, view: PanelView, legendTarget: boolean, openedBy: BarItem["id"], cause: ViewCause) =>
-    focusOnViewChange({ was, view, legendTarget, openedBy, cause });
-  assert.deepEqual(go("planner", "layers", true, "legend", "bar"), { kind: "heading", view: "layers", legend: true });
-  assert.deepEqual(go("planner", "layers", false, "layers", "bar"), { kind: "heading", view: "layers", legend: false });
-  assert.deepEqual(go("planner", "gpx", true, "gpx", "bar"), { kind: "heading", view: "gpx", legend: false }, "only the layers sheet has a legend");
-  assert.deepEqual(go("gpx", "planner", false, "gpx", "back"), { kind: "bar", id: "gpx" });
-  assert.deepEqual(go("layers", "planner", true, "legend", "back"), { kind: "bar", id: "legend" });
-  assert.deepEqual(go("gpx", "planner", false, "gpx", "error"), { kind: "error" });
-  assert.deepEqual(go("layers", "planner", false, "layers", "confirm"), { kind: "plan" });
-  // The Plan button (OWNER-DECISIONS 392): the planner's heading, from any sheet; nothing from the pure decision when it is already showing (App handles that case).
-  for (const sheet of ["layers", "gpx", "settings"] as const) assert.deepEqual(go(sheet, "planner", false, sheet, "planButton"), { kind: "planner" });
-  assert.equal(go("planner", "planner", false, "layers", "planButton"), null);
-  assert.match(app, /if \(item\.opens === "planner"\) \{\s*showPlanner\(\);\s*return;/);
+      for (const cause of causes) {
+        const got = focusOnViewChange({ was, view, cause });
+        const at = `${was}->${view} ${cause}`;
+        if (was === view) assert.equal(got, null, at);
+        else if (cause === "back") assert.deepEqual(got, { kind: "opener" }, at);
+        else if (view !== "planner") assert.deepEqual(got, { kind: "heading", view }, at);
+        else if (cause === "error") assert.deepEqual(got, { kind: "error" }, at);
+        else if (cause === "confirm") assert.deepEqual(got, { kind: "plan" }, at);
+        else if (cause === "planButton") assert.deepEqual(got, { kind: "planner" }, at);
+        else if (cause === "panelToggle") assert.equal(got, null, at);
+        else assert.deepEqual(got, { kind: "opener" }, at);
+      }
+  // The way back through nested sheets: Layers then Legend, Back to Layers, Back to the planner.
+  const button = { name: "bar-layers" };
+  const legendButton = { name: "legend-button" };
+  let stack = openOnto([], "planner", button, false);
+  assert.deepEqual(stack, [{ from: "planner", opener: button }]);
+  stack = openOnto(stack, "layers", legendButton, true);
+  let step = backFrom(stack);
+  assert.deepEqual([step.view, step.opener], ["layers", legendButton]);
+  step = backFrom(step.stack);
+  assert.deepEqual([step.view, step.opener], ["planner", button]);
+  assert.deepEqual(backFrom(step.stack), { view: "planner", opener: null, stack: [] });
+  // A new sheet from the planner, or a sheet not nested, starts the way back again.
+  assert.deepEqual(openOnto(stack, "layers", button, false), [{ from: "planner", opener: button }]);
+  assert.deepEqual(openOnto(stack, "planner", button, true), [{ from: "planner", opener: button }]);
+  assert.match(app, /const openView = \(next: PanelView, opener: HTMLElement \| null, nested = false\) => \{\s*if \(next === "planner"\) \{\s*showPlanner\(\);\s*return;/);
   // From a sheet the view changes and the focus decision does it; on the planner already, the heading is focused and the panel scrolled to the top.
   assert.match(app, /const showPlanner = \(focusHeading = true\) => \{\s*viewCause\.current = focusHeading \? "planButton" : "panelToggle";[\s\S]*?if \(viewNow\.current === "planner"\) \{\s*if \(focusHeading\) \{\s*plannerHeadingRef\.current\?\.focus\(\);\s*panelBodyRef\.current\?\.scrollTo\?\.\(\{ top: 0 \}\);\s*\}\s*\} else setView\("planner"\);/);
   // The phone header's toggle: "Show planner" always shows the planner, even if a sheet was open when it was hidden,
@@ -653,12 +686,14 @@ test("where the focus goes on every change of view (mutation SF1)", () => {
   assert.match(app, /\{panelOpen \? "Hide planner" : "Show planner"\}/);
   assert.match(app, /if \(panelOpen\) setPanelOpen\(false\);\s*else \{\s*setPanelOpen\(true\);[\s\S]*?showPlanner\(false\);/);
   assert.match(app, /target\.kind === "planner"\) \{[^}]*plannerHeadingRef\.current\?\.focus\(\);/);
-  assert.match(app, /<h1 ref=\{plannerHeadingRef\} tabIndex=\{-1\}>\s*\{PLANNER_TITLE\}\s*<\/h1>/);
-  assert.equal(PLANNER_TITLE, "RouteMaker");  // App records why: a bar button, Back, or the status that brought the planner back.
-  assert.match(app, /openedBy\.current = item\.id;\s*viewCause\.current = "bar";/);
-  assert.match(app, /viewCause\.current = "back";\s*setView\("planner"\);/);
+  // In Go the heading is out of sight but still the planner's focus target and heading.
+  assert.match(app, /<h1 ref=\{plannerHeadingRef\} tabIndex=\{-1\} className=\{goMode \? "visually-hidden" : undefined\}>\s*\{PLANNER_TITLE\}\s*<\/h1>/);
+  assert.equal(PLANNER_TITLE, "RouteMaker");
+  // App records why: an opener, Back, or the status that brought the planner back.
+  assert.match(app, /opened\.current = openOnto\(opened\.current, viewNow\.current, opener, nested\);\s*viewCause\.current = "bar";/);
+  assert.match(app, /backTo\.current = step\.opener;\s*viewCause\.current = "back";\s*setView\(step\.view\);/);
   assert.match(app, /viewCause\.current = status\.kind === "confirm" \? "confirm" : "error";\s*setView\("planner"\);/);
-  assert.match(app, /focusOnViewChange\(\{ was, view, legendTarget, openedBy: openedBy\.current, cause: viewCause\.current \}\)/);
+  assert.match(app, /focusOnViewChange\(\{ was, view, cause: viewCause\.current \}\)/);
   assert.match(app, /prevView\.current = view;/);
   // The long-ride question takes the focus when it comes, not again on the way back from a sheet (N8).
   assert.match(app, /if \(focusPlan && viewNow\.current === "planner"\) planButtonRef\.current\?\.focus\(\);\s*\}, \[focusPlan\]\);/);
@@ -699,24 +734,31 @@ test("a sheet's Escape: back, except in a dialog, on the place search, or when a
   assert.deepEqual(run(event("Escape", { role: "combobox" })), stays, "the place search's list");
 });
 
-test("the Map layers sheet holds the switches in 312's order, then the full legend with its junctions", () => {
-  const sheet = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-gpx"'));
-  // Traffic stress, high-stress lanes, high contrast, federal land, rail stations (OWNER-DECISIONS 312).
+test("the Layers sheet holds the switches in the mockup's order; the legend is its own sheet, behind Legend (the owner's choice 6)", () => {
+  const sheet = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-legend"'));
+  // Traffic stress, high-stress lanes, federal land, water, rail stations, then trails and terrain.
   const parts = [
     "Show traffic stress on the map",
     "<HighStressLanesSwitch",
-    "<AccessibilitySwitch",
     "<FederalLandFor",
+    "<WaterSection",
     "<RailStationsSection",
-    "<StressLegend",
-    "<JunctionLegend />",
+    "<MtbTrailsSwitch",
+    "<ClimbsLayerControls",
+    "<TopoLinesSwitch",
   ];
   const at = parts.map((part) => sheet.indexOf(part));
   assert.ok(at.every((i) => i > 0), JSON.stringify(at));
   assert.deepEqual(at, [...at].sort((a, b) => a - b));
+  // Toggles only: no legend in it, and the Legend button in its header opens the Legend sheet, one step in.
+  assert.doesNotMatch(sheet, /<StressLegend|<JunctionLegend/);
+  assert.match(sheet, /className="link icon-button legend-button" onClick=\{\(event\) => openLegend\(event\.currentTarget\)\}/);
+  assert.match(src("../App.tsx"), /openLegend: \(opener: HTMLElement\) => openView\("legend", opener, true\)/);
+  const legend = app.slice(app.indexOf('id="sheet-legend"'), app.indexOf('id="sheet-gpx"'));
+  assert.ok(legend.indexOf("<StressLegend") > 0 && legend.indexOf("<StressLegend") < legend.indexOf("<JunctionLegend />"));
+  assert.match(legend, /<StressLegend facilities=\{facilitiesShown\} zoom=\{zoom\} shown=\{stressVisible\} foldedZoom \/>/);
   assert.match(sheet, /\{!federalShown\(preset, true\) && <p className="hint mass-ride-layers">\{MASS_RIDE_LAYERS_NOTE\}<\/p>\}/);
   assert.equal(MASS_RIDE_LAYERS_NOTE, "Mass Ride has its own layers, such as federal land.");
-  assert.match(sheet, /<StressLegend facilities=\{facilitiesShown\} zoom=\{zoom\} shown=\{stressVisible\} foldedZoom \/>/);
   assert.match(app, /id="sheet-gpx"[\s\S]*<GpxPanel/);
   assert.match(app, /federalVisible=\{federalShown\(preset, federalOn\)\}/, "federal land stays Mass Ride's (324)");
 });
@@ -848,11 +890,13 @@ test("the skip link and its target stay: #route-planner is the aside, and every 
   assert.ok(region > 0 && region < app.indexOf("<aside"), "before the panel, outside it");
   assert.match(app.slice(region, app.indexOf("<aside")), /\{status\.kind === "ok" && routeSaid && <p>\{routeSaid\}<\/p>\}/);
   assert.match(app, /<div className="status-shown" aria-hidden="true">/);
+  // Go's bar is before the map and the panel, as it is at the top of the screen (reading order = visual order).
+  assert.ok(app.indexOf("<GoTopBar") < app.indexOf("<MapView") && app.indexOf("<MapView") < app.indexOf("<aside"));
   // "No route yet." is read where it stands, and is not in the live region (recheck N-new-2).
   assert.doesNotMatch(app.slice(region, app.indexOf("<aside")), /No route yet/);
   const shownCopy = app.slice(app.indexOf('<div className="status-shown"'));
   assert.doesNotMatch(shownCopy.slice(0, shownCopy.indexOf("</div>")), /No route yet/);
-  assert.match(app, /\{status\.kind === "idle" && points\.length < 2 && <p className="hint">No route yet\.<\/p>\}/);
+  assert.match(app, /\{status\.kind === "idle" && points\.length < 2 && !goMode && <p className="hint">No route yet\.<\/p>\}/);
   assert.equal((app.match(/aria-live="polite" className="status-line/g) ?? []).length, 1);
   assert.match(app, /\{said\.text\}/);
   assert.match(app, /announce\(addedSaid\(next\.indexOf\(point\), next\.length, loopVias\)\)/);
@@ -868,57 +912,58 @@ test("on a desktop the points come first, then the Ride line, then the route; on
 // ---- OWNER-DECISIONS 384: App's dispatch, the bar's current button, the Settings sheet ----------------
 
 test("App dispatches the focus decision to the right element (the mutation re-check's NIT A)", () => {
-  const effect = app.slice(app.indexOf("const target = focusOnViewChange("), app.indexOf("}, [view, legendTarget]);"));
-  assert.match(effect, /if \(target\.kind === "bar"\) barButtons\.current\[target\.id\]\?\.focus\(\);/);
+  const effect = app.slice(app.indexOf("const target = focusOnViewChange("), app.indexOf("}, [view]);", app.indexOf("const target = focusOnViewChange(")));
+  // Back: what opened the sheet, if it is still on screen; else the planner's heading.
+  assert.match(effect, /if \(target\.kind === "opener"\) \{\s*const opener = backTo\.current;\s*if \(opener\?\.isConnected && opener\.offsetParent !== null\) opener\.focus\(\);\s*else plannerHeadingRef\.current\?\.focus\(\);/);
   assert.match(effect, /else if \(target\.kind === "error"\) errorRef\.current\?\.focus\(\);/);
   assert.match(effect, /else if \(target\.kind === "plan"\) planButtonRef\.current\?\.focus\(\);/);
-  assert.match(effect, /const heading = target\.legend \? legendHeadingRef : \{ layers: layersHeadingRef, gpx: gpxHeadingRef, settings: settingsHeadingRef \}\[target\.view\];/);
-  // Legend opens Map layers at its legend; the others do not.
-  assert.match(app, /setLegendTarget\(item\.toLegend === true\);/);
-  assert.match(app, /<BottomBar view=\{view\} legend=\{legendTarget\} onOpen=\{openSheet\}/);
+  // A sheet: its heading, by the id SheetFrame gives it.
+  assert.match(effect, /const heading = document\.getElementById\(`sheet-\$\{target\.view\}-title`\);\s*heading\?\.focus\(\);/);
+  assert.match(sidebar, /<section id=\{id\} className="sheet" aria-labelledby=\{`\$\{id\}-title`\}/);
+  assert.match(app, /const openSheet = \(item: BarItem, button: HTMLButtonElement\) => openView\(item\.opens, button\);/);
+  assert.match(app, /<BottomBar view=\{view\} onOpen=\{openSheet\}/);
 });
 
-test("the bar's current button: the sheet showing, and of Map layers and Legend only the one that opened it", () => {
-  const views: PanelView[] = ["planner", "layers", "gpx", "settings"];
-  for (const view of views)
-    for (const legend of [false, true])
-      for (const item of BAR_ITEMS) {
-        const want = view === item.opens && (item.id === "legend" ? legend : item.id === "layers" ? !legend : true);
-        assert.equal(barCurrent(item, view, legend), want, `${view} legend=${legend} ${item.id}`);
-      }
-  // Plan (OWNER-DECISIONS 392) is the current one while the planner shows, and only then.
-  const plan = BAR_ITEMS[0];
-  for (const legend of [false, true]) {
-    assert.equal(barCurrent(plan, "planner", legend), true);
-    for (const view of ["layers", "gpx", "settings"] as const) assert.equal(barCurrent(plan, view, legend), false);
-    for (const item of BAR_ITEMS.slice(1)) assert.equal(barCurrent(item, "planner", legend), false, `${item.id} is not current on the planner`);
-  }
-  assert.match(sidebar, /const current = barCurrent\(item, view, legend\);/);
+test("the bar's current button: the sheet showing, or one opened from it (Layers' Legend, Suggest's Review)", () => {
+  const views: PanelView[] = ["planner", "layers", "legend", "suggest", "review", "gpx", "settings", "nearest", "food", "ride"];
+  const of: Record<string, PanelView[]> = {
+    plan: ["planner"],
+    layers: ["layers", "legend"],
+    suggest: ["suggest", "review"],
+    gpx: ["gpx"],
+    settings: ["settings"],
+  };
+  for (const view of views) for (const item of BAR_ITEMS) assert.equal(barCurrent(item, view), of[item.id].includes(view), `${view} ${item.id}`);
+  // The map chips' sheets and the Ride sheet are no bar button's.
+  for (const view of ["nearest", "food", "ride"] as const) assert.ok(BAR_ITEMS.every((item) => !barCurrent(item, view)), view);
+  assert.match(sidebar, /const current = barCurrent\(item, view\);/);
   assert.match(sidebar, /aria-current=\{current \? "true" : undefined\}/);
 });
 
-test("the Settings sheet (384): a Display group with the High contrast switch, then the sign-in note; one state, unique ids", () => {
-  const sheet = app.slice(app.indexOf('id="sheet-settings"'), app.indexOf("{/* Pinned under"));
-  assert.match(sheet, /title=\{SHEET_TITLES\.settings\}\s+open=\{view === "settings"\}\s+onBack=\{backToPlanner\}\s+headingRef=\{settingsHeadingRef\}/);
-  assert.match(sheet, /<section aria-labelledby="settings-display-heading">\s*<h3 id="settings-display-heading">Display<\/h3>/);
+test("the Settings sheet (384): Display, Ride mode, This device and Account, as the mockup groups them; one state, unique ids", () => {
+  const sheet = app.slice(app.indexOf('id="sheet-settings"'), app.indexOf("export interface SuggestSheetProps"));
+  assert.match(sheet, /title=\{go \? MENU_TITLE : SHEET_TITLES\.settings\}\s+open=\{nav\.view === "settings"\}\s+onBack=\{nav\.back\}\s+backLabel=\{nav\.backLabel\("settings"\)\}\s+headingRef=\{settingsHeadingRef\}/);
+  const order = ["settings-display-heading", "settings-ride-heading", "settings-device-heading", "settings-signin-heading"].map((id) => sheet.indexOf(`<h3 id="${id}">`));
+  assert.ok(order.every((i) => i > 0), JSON.stringify(order));
+  assert.deepEqual(order, [...order].sort((a, b) => a - b));
+  assert.match(sheet, /<section aria-labelledby="settings-display-heading" className="settings-group">\s*<h3 id="settings-display-heading">Display<\/h3>/);
   // The sign-in note has its own heading, so heading navigation does not file it under Display.
-  assert.match(sheet, /<section aria-labelledby="settings-signin-heading">\s*<h3 id="settings-signin-heading">Signing in<\/h3>\s*<p className="hint">/);
-  assert.ok(sheet.indexOf("settings-display-heading") < sheet.indexOf("settings-signin-heading"));
+  assert.match(sheet, /<h3 id="settings-signin-heading">Account<\/h3>/);
   assert.match(sheet, /<AccessibilitySwitch\s+idBase="settings-contrast"\s+on=\{accessibilityOn\(\)\}\s+source=\{accessibilitySource\(\)\}\s+paletteFromAddress=\{paletteSetByAddress\(\)\}\s+onChange=\{\(on\) => setAccessibility\(on\)\}/);
   assert.ok(sheet.indexOf("Display") < sheet.indexOf("sign in with Discord"), "the sign-in note is still there, after the display group");
   assert.match(sheet, /onClick=\{\(e\) => isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)\}/);
   assert.doesNotMatch(app, /sheet-about|aboutHeadingRef|"about"/);
-  // Both copies read the one module state, so a flip in either shows in both; their ids differ.
-  const layers = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-gpx"'));
-  assert.match(layers, /<AccessibilitySwitch\s+on=\{accessibilityOn\(\)\}/);
-  const a = renderToStaticMarkup(createElement(AccessibilitySwitch, { on: true, source: "chosen", paletteFromAddress: false, onChange: () => {} }));
+  // Go's Menu: Plan, Suggest, GPX and an admin's Review above the settings, each a button.
+  assert.match(sheet, /\{go && \(\s*<nav className="menu-pages" aria-label="Pages">/);
+  // High contrast is only in Settings now (the mockup's Layers has toggles for the map only).
+  const layers = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-legend"'));
+  assert.doesNotMatch(layers, /<AccessibilitySwitch/);
+  assert.equal((app.match(/<AccessibilitySwitch/g) ?? []).length, 1);
   const b = renderToStaticMarkup(createElement(AccessibilitySwitch, { idBase: "settings-contrast", on: true, source: "chosen", paletteFromAddress: false, onChange: () => {} }));
   const ids = (html: string) => [...html.matchAll(/ id="([^"]+)"/g)].map((m) => m[1]);
-  assert.deepEqual(ids(a), ["a11y-switch", "a11y-label", "a11y-hint"]);
   assert.deepEqual(ids(b), ["settings-contrast-switch", "settings-contrast-label", "settings-contrast-hint"]);
   assert.ok(b.includes('aria-labelledby="settings-contrast-label"') && b.includes('aria-describedby="settings-contrast-hint"'));
   assert.ok(b.includes(">High contrast</span>"));
-  assert.equal(new Set([...ids(a), ...ids(b)]).size, 6, "no id twice in the page");
 });
 
 test("High contrast (384): the words say what it does and name no disability; the identifiers and the link are as they were", () => {

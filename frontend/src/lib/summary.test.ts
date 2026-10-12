@@ -321,5 +321,6 @@ test("a point the planner moved into the Zoo's bike racks is said with the route
   assert.equal(movedPointsNote({} as never), null);
   const { readFileSync } = await import("node:fs");
   const app = appSource();
-  assert.match(app, /<p className="notice moved-points" role="note">/);
+  // UI-CLEANUP (the owner's choice 5): one line with an icon, its full words in Info.
+  assert.match(app, /if \(moved\) lines\.push\(\{ key: "moved", className: "notice moved-points", icon: "pin", text: moved \}\);/);
 });

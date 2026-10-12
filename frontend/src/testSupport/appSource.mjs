@@ -27,7 +27,7 @@ let cached = null;
 export function appSource() {
   if (cached !== null) return cached;
   let app = read("../App.tsx");
-  const modules = ["../app/Planner.tsx", "../app/RoutePanel.tsx", "../app/Sheets.tsx"].map(read);
+  const modules = ["../app/Planner.tsx", "../app/RoutePanel.tsx", "../app/Sheets.tsx", "../app/Go.tsx"].map(read);
   const rest = [...modules];
   for (const [index, source] of modules.entries()) {
     for (const match of source.matchAll(/^export function (\w+)\(props: \w+Props\)/gm)) {

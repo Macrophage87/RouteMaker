@@ -311,6 +311,10 @@ class User(AbstractBaseUser):
                 if update_fields is not None:
                     kwargs["update_fields"] = {*update_fields, "session_epoch"}
 
+            # A deleted account keeps no My Go (its Home is a place the rider lives).
+            if previous is not None and self.is_deleted and not previous.is_deleted:
+                MyGo.objects.filter(user_id=self.pk).delete()
+
         return super().save(*args, **kwargs)
 
     @property
@@ -1711,3 +1715,45 @@ class JunctionOverride(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name}: {self.get_level_display()}"
+
+
+class MyGo(models.Model):
+    """A signed-in rider's own Go settings (UI-CLEANUP, the owner's choice 2 of 2026-10-11):
+    which view the app opens in, the ride type Go uses, and the Home the Go sheet's Home chip
+    rides to.
+
+    One row per account, made the first time the rider saves any of it, and nothing else: no
+    name, no history, no route. Signed out, the same choices stay in the browser
+    (frontend/src/lib/myGo.ts). Home is one point and its label, as the rider picked it; it is
+    never put in a link, a log or a suggestion, and it goes with the account (deleted with the
+    row when the account is, and cleared by the account's deletion flag: `User.save`).
+    """
+
+    class OpenIn(models.TextChoices):
+        AUTO = "", "By screen size: a phone opens in Go, a wider screen in Plan"
+        GO = "go", "Go"
+        PLAN = "plan", "Plan"
+
+    user = models.OneToOneField(
+        "User", on_delete=models.CASCADE, primary_key=True, related_name="my_go"
+    )
+    open_in = models.CharField(max_length=8, choices=OpenIn.choices, blank=True, default="")
+    # A ride type id (frontend/src/lib/presets.ts, core.presets.PRESETS); empty is Default.
+    ride = models.CharField(max_length=32, blank=True, default="")
+    home_lat = models.FloatField(null=True, blank=True)
+    home_lon = models.FloatField(null=True, blank=True)
+    home_label = models.CharField(max_length=120, blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "my_go"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(home_lat__isnull=True, home_lon__isnull=True)
+                | models.Q(home_lat__isnull=False, home_lon__isnull=False),
+                name="my_go_home_both_or_neither",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"My Go for account {self.user_id}"

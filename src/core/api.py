@@ -2899,6 +2899,145 @@ def me(request, response: HttpResponse):
     )
 
 
+# GET and POST /api/me/go: a signed-in rider's own My Go (UI-CLEANUP, the owner's choice 2 of
+# 2026-10-11; core.models.MyGo): the view the app opens in, the ride type Go uses and the Home the
+# Go sheet's Home chip rides to. The rider's own settings and nobody else's, so no standing is
+# needed beyond being signed in; a write carries the CSRF token (set by the GET) and is counted
+# per address and per account. Signed out it is 401: the front end keeps the same choices in the
+# browser instead.
+
+
+class HomeIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    lon: StrictFloat
+    lat: StrictFloat
+    label: str = Field(default="", max_length=120)
+
+    @model_validator(mode="after")
+    def inside_coverage(self):
+        west, south, east, north = settings.COVERAGE_BBOX
+        if not (west <= self.lon <= east and south <= self.lat <= north):
+            raise ValueError("Home is outside the area this map covers")
+        return self
+
+
+class MyGoIn(Schema):
+    """The whole of My Go: what is left out is cleared (an empty `open_in` is by screen size,
+    an empty `ride` is Default, a null `home` is none)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    open_in: Literal["", "go", "plan"] = ""
+    ride: str = Field(default="", max_length=32)
+    home: HomeIn | None = None
+
+    @field_validator("ride")
+    @classmethod
+    def known_ride(cls, ride: str) -> str:
+        if ride and ride not in presets.PRESETS:
+            raise ValueError("not a ride type this planner offers")
+        return ride
+
+
+class HomeOut(Schema):
+    lon: float
+    lat: float
+    label: str
+
+
+class MyGoOut(Schema):
+    open_in: Literal["", "go", "plan"] = Field(
+        description="Empty: by screen size (a phone opens in Go, a wider screen in Plan)."
+    )
+    ride: str = Field(description="A ride type id; empty is Default.")
+    home: HomeOut | None
+
+
+def signed_in_only(view):
+    """A session of an account in standing, or 401: My Go is the rider's own."""
+
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        if not signed_in(request):
+            return _stress_error(401, "Sign in to keep My Go with your account.", code="signed_out")
+        return view(request, *args, **kwargs)
+
+    return wrapped
+
+
+def _my_go_out(row) -> dict:
+    home = None
+    if row is not None and row.home_lat is not None and row.home_lon is not None:
+        home = {"lon": row.home_lon, "lat": row.home_lat, "label": row.home_label}
+    return {
+        "open_in": row.open_in if row is not None else "",
+        "ride": row.ride if row is not None else "",
+        "home": home,
+    }
+
+
+@api.get(
+    "/me/go",
+    response={200: MyGoOut, 401: StressEditErrorOut, 403: StressEditErrorOut, 429: ErrorOut},
+    summary="The signed-in rider's My Go: the view to open in, Go's ride type, and Home",
+)
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def my_go_read(request, response: HttpResponse):
+    from django.middleware.csrf import get_token
+
+    from .models import MyGo
+
+    # Sets the `csrftoken` cookie the save sends back as `X-CSRFToken`.
+    get_token(request)
+    _private(response)
+    return Status(200, _my_go_out(MyGo.objects.filter(user=request.user).first()))
+
+
+@api.post(
+    "/me/go",
+    response={
+        200: MyGoOut,
+        400: StressEditErrorOut,
+        401: StressEditErrorOut,
+        403: StressEditErrorOut,
+        429: ErrorOut,
+    },
+    summary="Save the signed-in rider's My Go (the whole of it)",
+)
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.MY_GO_WRITES),
+    csrf_protected,
+    signed_in_only,
+    json_body_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def my_go_save(request, body: MyGoIn, response: HttpResponse):
+    from .models import MyGo
+
+    home = body.home
+    row, _ = MyGo.objects.update_or_create(
+        user=request.user,
+        defaults={
+            "open_in": body.open_in,
+            "ride": body.ride,
+            # About a metre: all a Home chip needs, and no finer than the rider picked it.
+            "home_lat": round(home.lat, 5) if home else None,
+            "home_lon": round(home.lon, 5) if home else None,
+            "home_label": home.label.strip() if home else "",
+        },
+    )
+    _private(response)
+    return Status(200, _my_go_out(row))
+
+
 class StepOut(Schema):
     value: float = Field(description="1 to 5 by halves (1.5 is a half step; 5 is Avoid).")
     words: str
