@@ -9,6 +9,10 @@ router's own routes (`routemaker.mtbmode`):
   router gave uses one, the harder trails are excluded (`exclude_locations`, as the calm
   search steers the router) and the router asked again, a few rounds;
 - trail seeking: among the router's routes, the shortest with a trail mile at half a road mile;
+- the rider's preferred level (the second pass, 1-4, default 2, never above the hardest): a
+  trail mile a level away from it, easier or harder, counts a little more (`mtbmode.LEVEL_STEP`),
+  so among the router's routes the one nearest the preferred level wins; no graph change, no
+  rebuild;
 - connecting roads: a route with LTS 3 runs of 0.5 mi or more, or any LTS 4 or Avoid, below one
   without (beyond a little slack);
 - the time shown at about 6 mph (10 km/h) on singletrack.
@@ -119,7 +123,14 @@ def _pieces(trip: dict, variant: str, costing: dict, deadline, traces) -> list |
 
 
 def reading_of(
-    trip: dict, variant: str, costing: dict, when: str, deadline, traces, max_level: int
+    trip: dict,
+    variant: str,
+    costing: dict,
+    when: str,
+    deadline,
+    traces,
+    max_level: int,
+    preferred_level: int | None = None,
 ) -> tuple[mtbmode.Reading, list, list[mtbmode.Stretch]] | None:
     """A route's reading, its pieces and its stretches; None where a leg cannot be traced."""
     from . import routing
@@ -129,7 +140,7 @@ def reading_of(
         return None
     classes = routing.classify(pieces, when)
     stretches = stretches_of(pieces, classes, way_traits([p.way_id for p in pieces]))
-    return mtbmode.read(stretches, max_level), pieces, stretches
+    return mtbmode.read(stretches, max_level, preferred_level), pieces, stretches
 
 
 def exclusion_points(
@@ -167,18 +178,35 @@ def settle(
     traces: dict,
     max_level: int | None,
     points: list,
+    preferred_level: int | None = None,
 ) -> tuple[dict, dict]:
     """The route a Mountain Bike plan answers, and what the answer says of it (`mtb`)."""
     from . import routing
 
     level = mtbmode.clamp_level(max_level)
-    info: dict = {"max_level": level, "candidates": 0, "rounds": 0, "limited": None}
+    preferred = mtbmode.preferred_level(preferred_level, level)
+    info: dict = {
+        "max_level": level,
+        "preferred_level": preferred,
+        "candidates": 0,
+        "rounds": 0,
+        "limited": None,
+    }
     candidates = [trip] + [t for t in trips[1:] if t is not trip and t.get("legs")]
     readings: list = []
     kept: list[dict] = []
     try:
         for candidate in candidates:
-            found = reading_of(candidate, variant, costing, when, deadline, traces, level)
+            found = reading_of(
+                candidate,
+                variant,
+                costing,
+                when,
+                deadline,
+                traces,
+                level,
+                preferred_level=preferred,
+            )
             if found is not None:
                 readings.append(found)
                 kept.append(candidate)
@@ -209,7 +237,9 @@ def settle(
                 deadline,
             )
             again = answer.get("trip") or {}
-            found = reading_of(again, variant, costing, when, deadline, traces, level)
+            found = reading_of(
+                again, variant, costing, when, deadline, traces, level, preferred_level=preferred
+            )
         except routing.RouterRefused:
             info["limited"] = "no_way_round"
             break
@@ -236,13 +266,23 @@ def figures(reading: mtbmode.Reading) -> dict:
         "over_level_m": round(reading.over_level_m, 1),
         "long_lts3_m": round(reading.long_lts3_m, 1),
         "lts4_m": round(reading.lts4_m, 1),
+        "easier_m": round(reading.easier_m, 1),
+        "harder_m": round(reading.harder_m, 1),
         "trail_weight": mtbmode.TRAIL_WEIGHT,
+        "level_step": mtbmode.LEVEL_STEP,
         "singletrack_speed_kmh": mtbmode.SINGLETRACK_SPEED_KMH,
     }
 
 
 def reread(
-    trip: dict, variant: str, costing: dict, when: str, deadline, traces, max_level: int | None
+    trip: dict,
+    variant: str,
+    costing: dict,
+    when: str,
+    deadline,
+    traces,
+    max_level: int | None,
+    preferred_level: int | None = None,
 ) -> dict | None:
     """One route's own reading, for a route answered beside or after `settle`'s: the way
     round an Avoid-rated junction, a candidate the rider may pick, or the answer once the
@@ -253,10 +293,18 @@ def reread(
     from . import routing
 
     level = mtbmode.clamp_level(max_level)
+    preferred = mtbmode.preferred_level(preferred_level, level)
     try:
-        found = reading_of(trip, variant, costing, when, deadline, traces, level)
+        found = reading_of(
+            trip, variant, costing, when, deadline, traces, level, preferred_level=preferred
+        )
     except (routing.DeadlineExceeded, routing.RouterUnavailable):
         return None
     if found is None:
         return None
-    return {"max_level": level, "limited": None, **figures(found[0])}
+    return {
+        "max_level": level,
+        "preferred_level": preferred,
+        "limited": None,
+        **figures(found[0]),
+    }

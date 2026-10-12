@@ -850,6 +850,9 @@ class Dials:
     # Mountain Bike only: the hardest trail level the rider takes, 1-4 (docs/MTB-TOPO-PLAN.md,
     # slice 6); None: `routemaker.mtbmode.DEFAULT_MAX_LEVEL`, level 2.
     mtb_level: int | None = None
+    # Mountain Bike only, the second pass: the trail level the rider prefers, 1-4, never above
+    # `mtb_level` (`mtbmode.preferred_level`); None: level 2, or `mtb_level` where that is lower.
+    mtb_preferred: int | None = None
     # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
     # A ride whose last point is its first is a loop whatever this says.
     loop: bool = False
@@ -2605,7 +2608,7 @@ def plan(
             # A loop is weighed alone: the router's alternatives are not loops.
             [trip] if loop else trips, trip, request, variant, trace_costing, when,
             deadline, traces,
-            dials.mtb_level, points,
+            dials.mtb_level, points, preferred_level=dials.mtb_preferred,
         )  # fmt: skip
         if trip is not searched_trip:
             # The routes to choose from were near-ties of the route it replaced: none are
@@ -2614,7 +2617,11 @@ def plan(
     elif preset_name == mtb.PRESET and not trails_off:
         # Trails off is the rider's own choice, said by the answer's `dials`; this is the
         # router not being there.
-        mtb_info = {"max_level": mtbmode.clamp_level(dials.mtb_level), "limited": "no_mtb_graph"}
+        mtb_info = {
+            "max_level": mtbmode.clamp_level(dials.mtb_level),
+            "preferred_level": mtbmode.preferred_level(dials.mtb_preferred, dials.mtb_level),
+            "limited": "no_mtb_graph",
+        }
     mtb_trip = trip
     # No weaving through side streets beside a busier road unless it buys a
     # meaningful length of calm (OWNER-DECISIONS 272, 273): the main road's stretch
@@ -2672,7 +2679,10 @@ def plan(
         # A dodge taken out, or the way round an Avoid-rated junction, changed the route
         # `mtb.settle` chose: its figures, the over-level warning's among them, are read again
         # from the route answered.
-        again = mtb.reread(trip, variant, trace_costing, when, deadline, traces, dials.mtb_level)
+        again = mtb.reread(
+            trip, variant, trace_costing, when, deadline, traces, dials.mtb_level,
+            dials.mtb_preferred,
+        )  # fmt: skip
         if again is not None:
             limited = mtb_info.get("limited")
             if again["over_level_m"] > 1.0 and limited is None:
@@ -3030,7 +3040,10 @@ def plan(
         Avoid-rated junction): its own, so a harder trail on it is said when it is shown."""
         if not mtb_level_held:
             return None
-        return mtb.reread(offered, variant, trace_costing, when, deadline, traces, dials.mtb_level)
+        return mtb.reread(
+            offered, variant, trace_costing, when, deadline, traces, dials.mtb_level,
+            dials.mtb_preferred,
+        )  # fmt: skip
 
     _with_mtb(body, mtb_info)
     body["avoid_search"] = avoid_info

@@ -295,6 +295,18 @@ class RouteIn(Schema):
             " none can be found without one, with `mtb.over_level_m` saying how much. Absent: 2."
         ),
     )
+    mtb_preferred: StrictInt | None = Field(
+        default=None,
+        ge=1,
+        le=4,
+        description=(
+            "Mountain Bike only (docs/MTB-TOPO-PLAN.md, second pass): the trail level the rider"
+            " prefers, 1 to 4. Among the router's routes, trails at it cost least and trails"
+            " easier or harder (up to `mtb_level`) a little more the further they are from it."
+            " Never above `mtb_level`: a higher one is held to it (`mtb.preferred_level` says"
+            " what was used). Absent: 2, or `mtb_level` where that is lower."
+        ),
+    )
     bike: BikeName | None = Field(
         default=None,
         description=(
@@ -356,6 +368,8 @@ class RouteIn(Schema):
             )
         if self.mtb_level is not None and self.preset != presets.MOUNTAIN_BIKE:
             raise ValueError("mtb_level applies to the Mountain Bike ride type only")
+        if self.mtb_preferred is not None and self.preset != presets.MOUNTAIN_BIKE:
+            raise ValueError("mtb_preferred applies to the Mountain Bike ride type only")
         if self.carrying is not None and preset.carrying is None:
             raise ValueError("carrying applies to the Cargo Bike ride type only")
         if self.carrying is not None and self.carrying not in preset.carrying:
@@ -1482,6 +1496,10 @@ class MtbOut(Schema):
     `core.mtb`)."""
 
     max_level: int = Field(description="The hardest trail level held, 1 to 4.")
+    preferred_level: int | None = Field(
+        default=None,
+        description="The preferred trail level used, 1 to 4, never above `max_level`.",
+    )
     limited: Literal["time", "untraced", "no_way_round", "no_mtb_graph"] | None = Field(
         default=None,
         description=(
@@ -1506,6 +1524,20 @@ class MtbOut(Schema):
         default=None, description="Metres of LTS 3 in runs of 0.5 mi (805 m) or more."
     )
     lts4_m: float | None = Field(default=None, description="Metres of LTS 4 and Avoid road.")
+    easier_m: float | None = Field(
+        default=None, description="Metres on trails easier than `preferred_level`."
+    )
+    harder_m: float | None = Field(
+        default=None,
+        description="Metres on trails harder than `preferred_level`, up to `max_level`.",
+    )
+    level_step: float | None = Field(
+        default=None,
+        description=(
+            "What each level away from `preferred_level` added to a trail metre in the ranking,"
+            " as a share of a road metre (0.15)."
+        ),
+    )
     trail_weight: float | None = Field(
         default=None, description="What a trail metre counted in the ranking (0.5)."
     )
@@ -2198,6 +2230,7 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
             loop=body.loop,
             debug_junctions=body.debug_junctions,
             mtb_level=body.mtb_level,
+            mtb_preferred=body.mtb_preferred,
         )
         return Status(
             200,
