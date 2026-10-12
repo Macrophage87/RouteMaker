@@ -538,6 +538,7 @@ map credits:
 - Credit: WMATA GTFS (scheduled times). Shown with a plan that uses Metro or Metrobus.
 - Credit: MDOT MTA GTFS (scheduled times). Shown with a plan that uses MARC, Light RailLink or
   Metro SubwayLink.
+- Credit: VRE GTFS (scheduled times). Shown with a plan that uses VRE.
 
 The feeds, and the compact file built from them (`transit-schedule.json`), stay on the host. They
 are never committed (see the terms below). The tests use a small fixture invented for the purpose
@@ -567,7 +568,7 @@ docs/OPERATIONS.md, "Transit schedule". Systems, rules and sources are listed in
     line; the owner, 2026-10-12: "We need to streamline over bloat."): Metro "Use the elevators and
     a car's end doors."; Metrobus "Use the front bike rack."; MARC "Ride in the car marked for
     bikes."; Light RailLink and Metro SubwayLink "Use the elevators; ride in the priority seating
-    area."
+    area."; VRE "Board last; bungee it to a car's south-end bench."
 - **MDOT MTA: MARC, Light RailLink and Metro SubwayLink.** Feeds:
   `https://feeds.mta.maryland.gov/gtfs/marc`, `.../light-rail` and `.../metro`. No key is needed.
   - Terms: the developer page (<https://www.mta.maryland.gov/developer-resources>) states no
@@ -588,6 +589,24 @@ docs/OPERATIONS.md, "Transit schedule". Systems, rules and sources are listed in
       "I believe all stations have ways to board with either ramps or elevators. Most people can
       carry bikes up and down stairs in a pinch." GTFS `wheelchair_boarding` is not read. Each
       system's own rule above (which trains or cars, how many bikes) still applies.
+- **VRE (Virginia Railway Express): the Fredericksburg and Manassas Lines.** Added 2026-10-12 (the
+  owner: "The VRE timetable can be added"). Feed:
+  `https://gtfs.vre.org/containercdngtfsupload/google_transit.zip`, as VRE's mobile developer page
+  gives it (<https://vre.org/assets/1/6/VRE_Mobile_Developer_2024.pdf>, read 2026-10-12). No key is
+  needed.
+  - Terms (the same page): the site and its feeds and databases are VRE's property, "for your
+    personal, non-commercial use", and "You may not reproduce, redistribute, or frame VRE website
+    content without express written permission in advance from VRE." Queries to its data feeds are
+    allowed. No attribution is required; the plan credit above is given all the same. The feed and
+    the schedule built from it stay on the host and are never committed (owner question 1).
+  - Bike rules: <https://www.vre.org/about/onboard-policies/> (Baggage/Bicycles, read 2026-10-12).
+    "Full-size and collapsible bicycles are allowed on all trains." Tether the bike with a bungee
+    cord to the bench seats at a car's south end (the north-end bench is priority seating); bikes
+    board and leave last, after everyone else; check with the conductor. Applied as every trip
+    takes a bike (`vehicle` all).
+  - Every VRE station takes a bike (the owner's rule for commuter rail, as MARC above).
+  - The routes' GTFS short names may be codes, so a step names a line by its long name
+    ("the VRE Manassas Line"; systems.json `route_name` long).
 
 ### Checked, for the next PR (not used yet)
 
@@ -600,9 +619,6 @@ needs no bike access.
 - **MTA Commuter Bus** (`https://feeds.mta.maryland.gov/gtfs/commuter-bus`). The bike page does not
   cover commuter buses, so bike access is unclear and counts as closed. Bikeshare + Transit could
   still walk to them.
-- **VRE** (`https://gtfs.vre.org/containercdngtfsupload/google_transit.zip`). Bike rules:
-  <https://www.vre.org/about/onboard-policies/>, full-size bikes on all trains. The feed's terms
-  are personal and non-commercial, and redistribution needs permission (owner question 1).
 - **Fairfax Connector**
   (`https://www.fairfaxcounty.gov/connector/sites/connector/files/assets/connector_gtfs.zip`).
   The terms require the line "Visit fairfaxconnector.com for more information" and use that helps
