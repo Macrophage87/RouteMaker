@@ -49,11 +49,13 @@ UNRATED_LEVEL = 2
 DEFAULT_PREFERRED_LEVEL = 2
 # A discount, never a surcharge (review of #104): a mountain-bike trail metre counts
 # TRAIL_WEIGHT - LEVEL_STEP x max(0, LEVEL_REACH - levels away from the preferred one) of a road
-# metre: 0.3 at the preferred level, 0.4 one level off, 0.5 (as an unpaved path, and as every
+# metre: 0.4 at the preferred level, 0.45 one level off, 0.5 (as an unpaved path, and as every
 # trail did before the preference) two or more off. So the preferred level is cheapest, an
 # off-level trail never costs more than a gravel path or than it did before, and the weight
 # stays above 0 (a trail is never free).
-LEVEL_STEP = 0.1
+# Kept small (re-review of #104): the owner's default is a trail mile at about half a road
+# mile (2026-10-11), and the preference moves that only a little, for every link old or new.
+LEVEL_STEP = 0.05
 LEVEL_REACH = 2
 
 # A metre of trail counts this much of a metre of road in the ranking (the owner's "a trail

@@ -196,11 +196,11 @@ def test_no_preference_reads_as_the_first_pass() -> None:
 
 
 def test_the_weights_a_discount_never_a_surcharge() -> None:
-    """0.3 at the preferred level, 0.4 one level off, 0.5 (a gravel path's, and the first
+    """0.4 at the preferred level, 0.45 one level off, 0.5 (a gravel path's, and the first
     pass's) two or more off; always above 0, never above TRAIL_WEIGHT."""
-    assert (mtbmode.LEVEL_STEP, mtbmode.LEVEL_REACH) == (0.1, 2)
+    assert (mtbmode.LEVEL_STEP, mtbmode.LEVEL_REACH) == (0.05, 2)
     weights = {d: mtbmode.trail_weight(1 + d, 1) for d in range(4)}
-    assert weights == pytest.approx({0: 0.3, 1: 0.4, 2: 0.5, 3: 0.5})
+    assert weights == pytest.approx({0: 0.4, 1: 0.45, 2: 0.5, 3: 0.5})
     for preferred in mtbmode.LEVELS:
         for level in mtbmode.LEVELS:
             w = mtbmode.trail_weight(level, preferred)
@@ -214,8 +214,8 @@ def test_trails_nearer_the_preferred_level_cost_less() -> None:
     one_off = mtbmode.read([single(1000, level=2)], 4, 3)
     two_off = mtbmode.read([single(1000, level=1)], 4, 3)
     harder = mtbmode.read([single(1000, level=4)], 4, 3)
-    assert at.weighted_m == pytest.approx(300)
-    assert one_off.weighted_m == pytest.approx(400)
+    assert at.weighted_m == pytest.approx(400)
+    assert one_off.weighted_m == pytest.approx(450)
     assert two_off.weighted_m == pytest.approx(500)
     assert harder.weighted_m == pytest.approx(one_off.weighted_m)
     assert (one_off.easier_m, one_off.harder_m) == (1000, 0)
@@ -226,30 +226,31 @@ def test_trails_nearer_the_preferred_level_cost_less() -> None:
 def test_at_preferred_3_a_level_2_trail_beats_equal_gravel() -> None:
     trail = mtbmode.read([single(1000, level=2)], 4, 3)
     path = mtbmode.read([gravel(1000)], 4, 3)
-    assert trail.weighted_m == pytest.approx(400) and path.weighted_m == pytest.approx(500)
+    assert trail.weighted_m == pytest.approx(450) and path.weighted_m == pytest.approx(500)
     assert mtbmode.better(trail, path)
 
 
 def test_at_preferred_2_a_level_1_trail_beats_or_ties_gravel() -> None:
-    """An old link at the default (max 2, preferred 2): a level-1 trail counts 0.4, under the
+    """An old link at the default (max 2, preferred 2): a level-1 trail counts 0.45, under the
     0.5 it counted before, never over."""
     trail = mtbmode.read([single(1000, level=1)], 2, 2)
     path = mtbmode.read([gravel(1000)], 2, 2)
     assert trail.weighted_m <= path.weighted_m
-    assert trail.weighted_m == pytest.approx(400)
+    assert trail.weighted_m == pytest.approx(450)
     # Two levels off ties gravel exactly.
     far = mtbmode.read([single(1000, level=1)], 4, 3)
     assert far.weighted_m == pytest.approx(mtbmode.read([gravel(1000)], 4, 3).weighted_m)
 
 
 def test_shorter_off_level_against_longer_at_preferred() -> None:
-    """At preferred 3: 1,000 m of level 2 weighs 400; 1,300 m of level 3 weighs 390 and wins;
-    1,400 m of level 3 weighs 420 and loses."""
+    """At preferred 3: 1,000 m of level 2 weighs 450; 1,100 m of level 3 weighs 440 and wins;
+    1,150 m of level 3 weighs 460 and loses."""
     short_off = mtbmode.read([single(1000, level=2)], 4, 3)
-    long_at = mtbmode.read([single(1300, level=3)], 4, 3)
-    longer_at = mtbmode.read([single(1400, level=3)], 4, 3)
-    assert long_at.weighted_m == pytest.approx(390)
-    assert longer_at.weighted_m == pytest.approx(420)
+    long_at = mtbmode.read([single(1100, level=3)], 4, 3)
+    longer_at = mtbmode.read([single(1150, level=3)], 4, 3)
+    assert short_off.weighted_m == pytest.approx(450)
+    assert long_at.weighted_m == pytest.approx(440)
+    assert longer_at.weighted_m == pytest.approx(460)
     assert mtbmode.better(long_at, short_off)
     assert mtbmode.better(short_off, longer_at)
 

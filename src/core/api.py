@@ -1534,7 +1534,7 @@ class MtbOut(Schema):
     level_step: float | None = Field(
         default=None,
         description=(
-            "The preference's discount step, as a share of a road metre (0.1): a trail metre"
+            "The preference's discount step, as a share of a road metre (0.05): a trail metre"
             " counts `trail_weight` less `level_step` x max(0, `level_reach` - levels away from"
             " `preferred_level`)."
         ),

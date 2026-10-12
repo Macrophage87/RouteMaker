@@ -240,11 +240,12 @@ rebuild: like the hardest level, the preference is held at plan time on the rout
 - **Preferred** is new (`mtb_preferred`, the `prefer` link parameter, 1-4, default 2). In the
   ranking's weighted length the preference is a discount, never a surcharge (review of #104): a
   mountain-bike trail metre up to the max counts TRAIL_WEIGHT - LEVEL_STEP x max(0, LEVEL_REACH -
-  levels away) of a road metre, with TRAIL_WEIGHT 0.5, LEVEL_STEP 0.1 and LEVEL_REACH 2: 0.3 at the
-  preferred level, 0.4 one level easier or harder, 0.5 two or more away. So the preferred level is
-  cheapest, an off-level trail never weighs more than a gravel path (0.5) or than it did in slice 6,
-  and no trail is free. At preferred 3, 1,300 m of level 3 (390) beats 1,000 m of level 2 (400);
-  1,400 m (420) does not. An unrated mountain-bike trail counts as level 2, as for the max.
+  levels away) of a road metre, with TRAIL_WEIGHT 0.5, LEVEL_STEP 0.05 and LEVEL_REACH 2: 0.4 at
+  the preferred level, 0.45 one level easier or harder, 0.5 two or more away (the step kept small,
+  re-review of #104, so the owner's "a trail mile counts about half a road mile" moves little). So
+  the preferred level is cheapest, an off-level trail never weighs more than a gravel path (0.5) or
+  than it did in slice 6, and no trail is free. At preferred 3, 1,100 m of level 3 (440) beats 1,000 m of level 2 (450);
+  1,150 m (460) does not. An unrated mountain-bike trail counts as level 2, as for the max.
 - **Preferred is never above max.** The API holds a higher one to the max and says what it used
   (`mtb.preferred_level`); the panel disables the levels above the hardest, and lowering the hardest
   below the preferred lowers the preferred with it, said in a polite status line ("Preferred trail
@@ -252,7 +253,7 @@ rebuild: like the hardest level, the preference is held at plan time on the rout
 - **Old links and requests** with only the level read it as the max, the preferred min(2, max) (a
   level of 1 prefers 1; 2-4 prefer 2). They keep the same max and the same over-max handling, but
   are not ranked exactly as before: their trails at or a level from that preferred level now weigh
-  0.3 or 0.4 in place of 0.5, so among the router's routes they may now pick one with more
+  0.4 or 0.45 in place of 0.5, so among the router's routes they may now pick one with more
   mountain-bike trail (over gravel paths or roads) than slice 6 did.
 - **The route in words:** the answer's `mtb` adds `preferred_level`, `easier_m` and `harder_m`
   (metres on trails easier, and harder up to the max, than preferred), and the route panel says

@@ -2103,7 +2103,7 @@ class TestMountainBike:
     ):
         """The second pass: two routes of equal length, one on a level-2 trail (way 101), one
         on a level-3 trail (way 202). Preferring 2 takes the first, preferring 3 the second
-        (0.3 against 0.4 of a road metre each way), with the hardest at 3 for both."""
+        (0.4 against 0.45 of a road metre each way), with the hardest at 3 for both."""
         with connection.cursor() as cursor:
             for way, level in ((101, 2), (202, 3)):
                 cursor.execute(
