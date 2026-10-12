@@ -533,6 +533,40 @@ class DialsOut(Schema):
     loop: bool = Field(default=False, description="Whether the route was planned as a loop.")
 
 
+class HillClimbOut(Schema):
+    """A categorised climb the route rides uphill (FOLLOWUP-HILL-SEEK, OWNER-DECISIONS
+    205), from the Climbs layer's file (`core.hillseek`)."""
+
+    id: str = Field(description="The climb's id in the Climbs layer's file.")
+    category: Literal["5", "4", "3", "2", "1", "HC"]
+    length_m: int
+    gain_m: int = Field(description="Net height gained, metres.")
+    grade_pct: float = Field(description="Average grade, percent to a tenth.")
+    from_m: int = Field(description="Where the route reaches its foot, metres along.")
+    to_m: int = Field(description="Where the route reaches its summit, metres along.")
+    unpaved: bool
+    name: str | None = Field(description="The long trail carrying most of it, if any.")
+    text: str = Field(
+        description='In words, US units first: "Category 4 climb, 0.8 miles (1.3 km) at'
+        ' 5.0%, 262 ft (80 m) gained".'
+    )
+    sought: bool = Field(description="Whether the hill seek asked the router for it.")
+
+
+class HillClimbSeekOut(Schema):
+    """What the hill seek did (`core.hillseek`, FOLLOWUP-HILL-SEEK, OWNER-DECISIONS 205)."""
+
+    near: int = Field(description="Climbs inside the distance budget's corridor.")
+    asked: int = Field(description="Router calls made for routes through them.")
+    found: int = Field(description="Routes found, added to those compared.")
+    limited: Literal["no_climbs", "time"] | None = Field(
+        description=(
+            "`no_climbs`: this host has no Climbs layer file, so only the router's own"
+            " alternatives were compared; `time`: the seek's time ran out."
+        )
+    )
+
+
 class HillsSeekOut(Schema):
     """Present when the hills slider was past its detent on Mountain Goat, the one ride
     type where that seeks climbs (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242)."""
@@ -547,6 +581,17 @@ class HillsSeekOut(Schema):
             " the stress slider, where seeking hills keeps the stress order and the target"
             " and only prefers climbing between equally calm routes (OWNER-DECISIONS 298(3))."
         )
+    )
+    climbs: list[HillClimbOut] = Field(
+        default_factory=list,
+        description="The categorised climbs the kept route rides uphill, in order (205).",
+    )
+    climb_seek: HillClimbSeekOut | None = Field(
+        default=None,
+        description=(
+            "The hill seek: routes through the climbs near the line, compared with the"
+            " router's own (205); null where it did not run."
+        ),
     )
 
 
@@ -987,13 +1032,15 @@ class DescriptionEntryOut(Schema):
     Avoid-rated junction ahead (307), at a point, its `severity` "avoid"; a
     `workzone` is a live work zone the route runs along (FOLLOWUP-WORKZONES, 341-349),
     its `severity` "red" for a closure and "orange" for a zone with a penalty, or, at
-    0 with no severity, the work-zone disclaimer or the feeds that could not be read.
+    0 with no severity, the work-zone disclaimer or the feeds that could not be read;
+    a `climb` is a categorised climb the route rides uphill where the hill seek ran
+    (FOLLOWUP-HILL-SEEK, 205), from its foot to its summit.
     Distances are along the route, scaled to `distance_m`. `text` is one plain
     sentence, US units first with the metric once, for reading aloud; the other
     fields are the same facts for a client that words them itself. Additive:
     older clients ignore it, and it is null where it could not be built."""
 
-    kind: Literal["stretch", "junction", "via", "walk", "avoid", "workzone"]
+    kind: Literal["stretch", "junction", "via", "walk", "avoid", "workzone", "climb"]
     from_m: int
     to_m: int
     from_mi: float

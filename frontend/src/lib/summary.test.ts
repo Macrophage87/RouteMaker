@@ -4,6 +4,7 @@ import {
   STILL_PLANNING_AFTER_MS,
   announceRoute,
   calmSearchNote,
+  climbsRiddenNote,
   detourNotice,
   detourView,
   othersSaid,
@@ -12,7 +13,7 @@ import {
   tolerateNote,
   stillPlanningSaid,
 } from "./summary.ts";
-import type { RouteResponse } from "./api.ts";
+import type { HillClimb, RouteResponse } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import { appSource } from "../testSupport/appSource.mjs";
 
@@ -274,6 +275,25 @@ test("the seek note says what the hills search did, and at the top of the traffi
   assert.match(seekNote(seek({ limited: "timed_out" })) ?? "", /took too long/);
   assert.equal(seekNote(seek({ chosen: 0 })), "None of the 3 alternatives climbed more within the distance allowed; this is the fastest route.");
   assert.equal(seekNote(seek({})), "Chose a route with 197 ft (60 m) more climbing for 0.6 mi (0.9 km) more distance, from 4 routes compared.");
+});
+
+test("the seek note names the climbs ridden and says when the server had no climbs map (FOLLOWUP-HILL-SEEK, 205)", () => {
+  const seek = (over: object) => ({ candidates: 4, chosen: 2, extra_climb_m: 60, extra_distance_m: 900, limited: null, ...over }) as never;
+  const climb = (text: string) => ({ text }) as HillClimb;
+  const cat4 = "Category 4 climb, 0.8 miles (1.3 km) at 6.2%, 262 ft (80 m) gained";
+  const cat5 = "Category 5 climb, 0.5 miles (0.8 km) at 5.4%, 141 ft (43 m) gained";
+  assert.equal(
+    seekNote(seek({ climbs: [climb(cat4)], climb_seek: { near: 3, asked: 2, found: 2, limited: null } })),
+    `Chose a route with 197 ft (60 m) more climbing for 0.6 mi (0.9 km) more distance, from 4 routes compared. It rides 1 climb: ${cat4}.`,
+  );
+  assert.equal(climbsRiddenNote([climb(cat4), climb(cat5)]), `It rides 2 climbs: ${cat4}; ${cat5}.`);
+  assert.equal(climbsRiddenNote([]), "");
+  // An older answer, or a route with no categorised climb, says what it said before.
+  assert.equal(seekNote(seek({ climbs: [] })), seekNote(seek({})));
+  assert.equal(
+    seekNote(seek({ chosen: 0, climbs: [], climb_seek: { near: 0, asked: 0, found: 0, limited: "no_climbs" } })),
+    "None of the 3 alternatives climbed more within the distance allowed; this is the fastest route. The climbs map is not available on this server, so only the router's own routes were compared.",
+  );
 });
 
 test("the fine-with-hills note says what was compared and chosen (FOLLOWUP-HILLS-TOLERATE, 242)", () => {

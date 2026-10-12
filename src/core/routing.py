@@ -1256,6 +1256,64 @@ def choose_climb(trips: list[dict], ratio: float) -> int:
     return best
 
 
+def _trip_line(trip: dict) -> list[tuple[float, float]]:
+    """A trip's line, its legs joined."""
+    line: list[tuple[float, float]] = []
+    for leg in trip.get("legs") or []:
+        shape = decode_polyline6(leg.get("shape", ""))
+        line.extend(shape[1:] if line else shape)
+    return line
+
+
+def hill_seek(
+    trips: list[dict],
+    points: list,
+    request: dict,
+    variant: str,
+    deadline: Deadline,
+    ratio: float,
+    avoid_gravel: bool = False,
+):
+    """The hill seek (`core.hillseek`, FOLLOWUP-HILL-SEEK, OWNER-DECISIONS 205): routes
+    through the categorised climbs near the line, within `ratio` of the router's own
+    route, for the climb search to choose among with the router's own. Each is one
+    /route with the climb's points as `through` locations, inside the seek's own
+    budget and short of the answer's traces; a route the router has none for is
+    skipped, and a router out of time ends the seek."""
+    from . import hillseek
+
+    stop_at = min(clock() + hillseek.SEEK_BUDGET_S, deadline.at - hillseek.TRACE_RESERVE_S)
+    plain = {key: value for key, value in request.items() if key != "alternates"}
+    locations = plain.get("locations") or []
+
+    def ask(vias: list) -> dict | None:
+        trial = dict(plain)
+        trial["locations"] = [
+            locations[0],
+            *({"lon": lon, "lat": lat, "type": "through"} for lon, lat in vias),
+            locations[-1],
+        ]
+        call = Deadline(stop_at, min(deadline.per_call_s, ALTERNATES_TIMEOUT_S))
+        try:
+            answer = _call(variant, "route", trial, call)
+        except RouterRefused:
+            return None
+        except (DeadlineExceeded, RouterUnavailable) as error:
+            raise hillseek.OutOfTime(str(error)) from error
+        return answer.get("trip") or None
+
+    return hillseek.seek(
+        hillseek.load(),
+        (float(points[0][0]), float(points[0][1])),
+        (float(points[-1][0]), float(points[-1][1])),
+        _trip_length_m(trips[0]) * ratio,
+        [_trip_line(trip) for trip in trips],
+        ask,
+        lambda: stop_at - clock(),
+        avoid_gravel=avoid_gravel,
+    )
+
+
 def _route(variant: str, request: dict, deadline: Deadline) -> tuple[dict, bool]:
     """One /route, and whether a request for alternatives was abandoned.
 
@@ -2445,6 +2503,21 @@ def plan(
     avoid_weight = -hills_dial / 100 if avoiding else 0.0
     # This plan's traces, so a route the guards traced is not traced again.
     traces: dict = {}
+    # The hill seek (FOLLOWUP-HILL-SEEK, 205): routes through the climbs near the line
+    # join the router's own, where the climb search runs at all; without the climbs
+    # file it asks nothing and the search is the router's alternatives alone, as before.
+    sought = None
+    if climb_seek and seek_limited is None:
+        sought = hill_seek(
+            trips,
+            points,
+            request,
+            variant,
+            deadline,
+            presets.seek_distance_ratio(hills_dial),
+            avoid_gravel,
+        )
+        trips = trips + sought.trips
     if climb_seek:
         chosen = choose_climb(trips, presets.seek_distance_ratio(hills_dial))
     elif direct_tolerate:
@@ -2852,6 +2925,24 @@ def plan(
         avoid_scale = length_m / line_m if line_m > 0 and length_m > 0 else 1.0
         described_full = avoid_rules.with_entries(described_full, avoid_found, avoid_scale)
         described_overview = avoid_rules.with_entries(described_overview, avoid_found, avoid_scale)
+        # The climbs the route rides uphill, where the hill seek ran (205): each named in
+        # `hills_seek.climbs` and as an entry of the description.
+        climbs_ridden = []
+        if sought is not None and not alternate and len(coordinates) >= 2:
+            from . import hillseek
+
+            pool = hillseek.candidates_for_naming(
+                hillseek.load() or (), coordinates[0], coordinates[-1], line_m
+            )
+            climbs_ridden = hillseek.ridden(coordinates, pool)
+            asked_ids = {c.id for proposal in sought.asked_for for c in proposal}
+            climb_entries = [hillseek.entry(item, avoid_scale) for item in climbs_ridden]
+            described_full = hillseek.with_entries(described_full, climb_entries)
+            described_overview = hillseek.with_entries(described_overview, climb_entries)
+            climbs_ridden = [
+                {**hillseek.row(item, avoid_scale), "sought": item.climb.id in asked_ids}
+                for item in climbs_ridden
+            ]
         joined_at = clock()
         if joined_at - started > budget_s:
             logger.warning(
@@ -2880,6 +2971,8 @@ def plan(
                 "extra_climb_m": 0.0,
                 "extra_distance_m": 0.0,
                 "limited": seek_limited,
+                "climbs": [],
+                "climb_seek": None,
             }
         elif seeking and not alternate:
             direct = trips[0].get("summary") or {}
@@ -2892,6 +2985,10 @@ def plan(
                     1,
                 ),
                 "limited": seek_limited,
+                # The climbs ridden (205), and what the hill seek did; null where it
+                # did not run (the search was limited, or at the top of the stress slider).
+                "climbs": climbs_ridden,
+                "climb_seek": None if sought is None else sought.info(),
             }
         hills_tolerate = None
         if tolerating and not alternate:

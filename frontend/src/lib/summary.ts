@@ -1,6 +1,6 @@
 /** Sentences the route panel says about a route. */
 import { bikeshareSaid } from "./bikeshare.ts";
-import type { RouteResponse } from "./api.ts";
+import type { HillClimb, RouteResponse } from "./api.ts";
 import { STRESS_TODAYS_TOP, TARGET_CEILING_RATIO } from "./dials.ts";
 import { detour, pathLengthM, type LonLat } from "./geo.ts";
 import { LOOP_START_NAME, loopNote } from "./loop.ts";
@@ -302,10 +302,28 @@ export function seekNote(seek: RouteResponse["hills_seek"]): string | null {
     case "timed_out":
       return "Looking for climbs took too long this time; this is the fastest route.";
   }
-  if (seek.chosen === 0) {
-    return `None of the ${seek.candidates - 1} alternatives climbed more within the distance allowed; this is the fastest route.`;
-  }
-  return `Chose a route with ${formatClimb(seek.extra_climb_m)} more climbing for ${formatDistance(seek.extra_distance_m)} more distance, from ${seek.candidates} routes compared.`;
+  const said =
+    seek.chosen === 0
+      ? `None of the ${seek.candidates - 1} alternatives climbed more within the distance allowed; this is the fastest route.`
+      : `Chose a route with ${formatClimb(seek.extra_climb_m)} more climbing for ${formatDistance(seek.extra_distance_m)} more distance, from ${seek.candidates} routes compared.`;
+  return [said, climbsRiddenNote(seek.climbs ?? []), noClimbsNote(seek)].filter(Boolean).join(" ");
+}
+
+/**
+ * The categorised climbs the route rides, named (FOLLOWUP-HILL-SEEK, OWNER-DECISIONS 205): "It rides 1
+ * climb: Category 4 climb, 0.8 miles (1.3 km) at 5.0%, 262 ft (80 m) gained." Empty for none.
+ */
+export function climbsRiddenNote(climbs: readonly HillClimb[]): string {
+  if (climbs.length === 0) return "";
+  const count = `${climbs.length} ${climbs.length === 1 ? "climb" : "climbs"}`;
+  return `It rides ${count}: ${climbs.map((c) => c.text).join("; ")}.`;
+}
+
+/** Where the server had no climbs file, the hill seek did not look past the router's own routes. */
+function noClimbsNote(seek: NonNullable<RouteResponse["hills_seek"]>): string {
+  return seek.climb_seek?.limited === "no_climbs"
+    ? "The climbs map is not available on this server, so only the router's own routes were compared."
+    : "";
 }
 
 /**

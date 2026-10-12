@@ -1424,7 +1424,9 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   climbing charge comes off each of its `alternates`, and `hills_tolerate` says
   what was compared and chosen. On Mountain Goat above it a climb
   search among the router's `alternates` (3), choosing the one that climbs most
-  within `1 + 0.5 * hills/100` of the direct route's length. Two-point plans
+  within `1 + 0.5 * hills/100` of the direct route's length, with routes through
+  the categorised climbs near the line added to them (the hill seek, "Seeking
+  hills" below). Two-point plans
   only, and not past 50 km of straight line (`routing.SEEK_MAX_SPAN_M`: a cold
   65 km search with alternates took 51 s on the live router); `hills_seek.limited`
   says when it was not done.
@@ -1701,6 +1703,62 @@ ride type but Mountain Goat): `candidates`, `chosen` (0 is the router's own),
 `extra_climb_m` and `extra_distance_m` (the kept route against the router's own,
 negative where shorter), and `limited` (`two_points`, `long_ride`, `timed_out`,
 `calm_first`).
+
+**Seeking hills** (FOLLOWUP-HILL-SEEK, OWNER-DECISIONS 205: "a candidate generator
+that finds climbs near the line and routes through them, like the trail seek").
+Mountain Goat right of the detent chooses the route that climbs most within
+`presets.seek_distance_ratio` (1.05 at 10, 1.5 at 100) of the router's own route
+(`routing.choose_climb`). The router's three alternatives are its near-ties on time and
+rarely go out of their way for a hill, so the hill seek (`core.hillseek`, called by
+`routing.hill_seek`) adds routes through the categorised climbs near the line to them.
+It runs where the climb search does (below the top of the stress slider, two points,
+up to `SEEK_MAX_SPAN_M`, the alternatives' ask not timed out) and needs no rebuild:
+
+- **The climbs** are the Climbs layer's file, `frontend/src/climb-data/climbs.json`
+  (Cat 5 to HC, `pipeline.climb_layer`), read once per change of the file
+  (`hillseek.load`). The api image copies it. Without it (or with a file it cannot
+  read) nothing is asked, the plan is as before, and `climb_seek.limited` is
+  `no_climbs`.
+- **The corridor** scales with the budget. A climb is kept when
+  `CIRCUITY x (start to foot + summit to end) + climb length <= ratio x the router's
+  own length`, with `CIRCUITY` 1.2: an ellipse round the straight line, which widens
+  as the dial goes right. Left out: climbs the router's own routes already ride uphill
+  (they add nothing), and mostly unpaved ones under Avoid gravel. Ranked by category
+  (HC first), then height gained, then the shorter estimate.
+- **The proposals**, at most `MAX_CANDIDATES` (3) router calls, as the trail seek's:
+  the best climb with the best other one that fits the budget beside it (both, in the
+  shorter order; two climbs whose feet or summits are under 1,000 ft (300 m) apart are
+  two sides of one hill and are not paired), the best alone, then the next best alone.
+- **Uphill.** A climb is asked for as `through` locations along its line from 82 ft
+  (25 m) above its foot to 82 ft (25 m) below its summit, at most about 0.9 mi
+  (1.5 km) apart, three to six of them (`via_points`): the router must pass them in
+  order, so it rides the climb up. The request is the plan's own without
+  `alternates` (the work zones closed to bicycles stay left out).
+- **Time.** The seek has `SEEK_BUDGET_S` (8 s) from when it starts and stops 8 s
+  short of the plan's budget (`TRACE_RESERVE_S`, the answer's traces); a call is not
+  started with under 2 s left. A route the router has none for is skipped; a router
+  that times out ends the seek (`climb_seek.limited` `time`).
+- **The choice** is the climb search's, unchanged: the routes found join the router's
+  own and `choose_climb` keeps the one that climbs most within the budget (the
+  router's own on a tie).
+- **Naming.** The kept route's climbs are those it rides uphill by the front end's
+  rule (`climbsAlongRoute`; `hillseek.ridden`): every point of the climb's line within
+  165 ft (50 m) of the route, each further along than the last, and the stretch from
+  foot to summit 0.8 to 1.3 times the climb. Each is a row of `hills_seek.climbs`
+  (`id`, `category`, `length_m`, `gain_m`, `grade_pct`, `from_m`, `to_m` along the
+  route, `unpaved`, `name`, `text`, and `sought`, whether the seek asked for it), a
+  `climb` entry of the description ("At 3.2 mi (5.1 km): Category 4 climb, 0.8 miles
+  (1.3 km) at 6.2%, 262 ft (80 m) gained, to the summit at 4.0 mi (6.4 km).", at the
+  climb's foot; not a ride-mode cue), and a sentence of the route summary's hills note
+  ("It rides 1 climb: ..."). `hills_seek.climb_seek` is `near` (climbs in the
+  corridor), `asked` (router calls), `found` (routes added) and `limited`, or null
+  where the seek did not run.
+
+Tests: `tests/test_hillseek.py` (pure: the file, the corridor, the proposals, the
+points, the ridden rule, the words, the seek with a stand-in router, and
+`routing.hill_seek` against a stand-in transport) and `TestHillSeek` in
+`tests/test_route_dials.py` (the plan, through the API). `scripts/mutants_hillseek.py`
+is their mutation pass, as `mutants_trailseek.py` is the trail seek's.
 
 **Calibration of the tiers** (OWNER-DECISIONS 83-143; `routemaker.stress`
 unless named; PLAN.md quotes the owner's words):
