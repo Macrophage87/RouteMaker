@@ -269,10 +269,12 @@ test("the 311 button shows only on the route inside DC; its menu has the six pro
   assert.equal(ride311Shown({ off: false, progressM: null, insideDc: () => true }), false, "no place yet");
   assert.ok(RIDE_311_NAME.includes(RIDE_311_TEXT), "the visible words are in its name");
   const picked: string[] = [];
-  const html = renderToStaticMarkup(createElement(Ride311Menu, { id: "m", open: true, place: "R St NW and 17th St NW", onPick: (k) => picked.push(k), onClose: () => {} }));
+  const html = renderToStaticMarkup(createElement(Ride311Menu, { id: "m", open: true, place: { words: "on R St NW near 17th St NW", point: [-77.0389, 38.9126] }, onPick: (k) => picked.push(k), onClose: () => {} }));
   assert.match(html, /^<div id="m" class="ride-311-menu" role="group" aria-labelledby="m-heading">/);
   assert.match(html, /<h3 id="m-heading" tabindex="-1">Report to DC 311<\/h3><button type="button" class="secondary ride-311-close">Close<\/button>/);
-  assert.match(html, /Near R St NW and 17th St NW\. Check it before you send\./);
+  assert.match(html, /On R St NW near 17th St NW, GPS 38\.91260, -77\.03890\. Check it before you send\./);
+  assert.equal(menuPlaceLine({ words: null, point: [-77.0389, 38.9126] }), "GPS 38.91260, -77.03890. Check it before you send.", "no words: the coordinates alone");
+  assert.doesNotMatch(menuPlaceLine({ words: "on an unnamed path", point: [-77.0389, 38.9126] }), /Near|miles/);
   const labels = [...html.matchAll(/class="ride-311-kind">(?:<svg[\s\S]*?<\/svg>)?([^<]+)<\/button>/g)].map((m) => m[1]);
   assert.deepEqual(labels, ["Pothole", "Downed tree", "Vehicle parked in a bike lane", "Roadway or bikeway obstructed", "Streetlight out", "Something else"]);
   assert.deepEqual(labels, REPORT_KINDS.map((k) => k.label));

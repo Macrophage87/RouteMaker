@@ -7475,7 +7475,7 @@ DC 311 link first, `smsHref` (iOS reads `sms:32311&body=`, Android `sms:32311?bo
 named "Text to DC 311 (3 2 3 1 1)" so a screen reader reads the code digit by digit. "Open DC 311
 online (new tab)" (https://311.dc.gov/) and Copy the report are always there too, since a tablet or a
 phone may not send texts; for Something else, and on a desktop (370), they are the way. `reportText`
-is "Location: <place>, Washington, DC." then the rider's note (at most 120 characters), shown and
+is "Location: <place>, Washington, DC. GPS <lat>, <lon>." then the rider's note (at most 120 characters), shown and
 copied as is; the text adds DC's keyword in front (`forText`), which a hint says. US units only, since
 it is the message itself. Whether DC's service reads a keyword and a place in one message is not
 verified until a real text is sent (the owner's).
@@ -7500,17 +7500,21 @@ so its hint says only that DC's parking requests include Parking Enforcement. No
 bikeway was found there, and 311.dc.gov's own form could not be read (its robots.txt refuses fetches),
 so that hint names none.
 
-The place is `placeOnRoute` (`lib/navigate.ts`), from the route's own data, never a lookup with the
-position (plan section 7, owner question 7): `routeJunctions` lists each change of named street
-between two stretches and each flagged crossing (a junction entry names the street crossed), and the
-nearest to the rider's progress, behind or ahead, is the place ("near Q Street Northwest and R Street
-Northwest"), which may be the last junction passed, as the owner accepted. On a named trail (a path
-stretch with a name) with no junction within `TRAIL_MARKER_M` (a quarter mile), 465's trail marker:
-the trail, the distance along the line from its last junction behind (else its next ahead) and the
-compass direction from there ("on the Capital Crescent Trail, about 1.2 miles northwest of
-Massachusetts Avenue Northwest"). Where am I? says the same on such a trail. OSM's posted mile markers
-(`highway=milestone`) and the trail's own start are not in the route's data, so this is a distance
-from a junction rather than a mile number (PLAN.md, FOLLOWUP-WEB-NAV, for the owner to confirm).
+The place is `reportPlace` (`lib/report311.ts`), from the route's own data, never a lookup with the
+position (plan section 7, owner question 7). Since v0.6.0 (the owner, 2026-10-12: "Put the GPS
+coordinates in the 311. Sometimes it says, about 1.2 miles south of unnamed path." and "Description if
+you can. Like put the road and the coordinates"): the way the rider is on at that point (`stretchAt`,
+the route's own street name, "on R Street Northwest", "on Capital Crescent Trail"; a way with no name is
+said plainly, "on an unnamed path" or "on an unnamed road"), then a cross street only when a named
+junction of the route (`routeJunctions`: each change of named street and each flagged crossing) is
+within `PLACE_NEAR_M` (500 ft, about 0.1 mi; "on R Street Northwest near Q Street Northwest"), and
+always the GPS position, latitude first in decimal degrees to 5 places (about 1 m), the point on the
+line the words describe (`pointAt`): "Location: on R Street Northwest near Q Street Northwest,
+Washington, DC. GPS 38.91234, -77.03890." A distance from a far junction ("about 1.2 miles south of
+...", the old trail marker) is never said: it named unnamed ways and helped no one find the spot. The
+coordinates are never trimmed; the only cap is the note's 120 characters. The 311 menu's place line
+(`menuPlaceLine` in `lib/ride311.ts`) shows the same words and coordinates. Where am I? keeps its trail
+marker (`placeOnRoute`, `TRAIL_MARKER_M` in `lib/navigate.ts`).
 
 **Checks (N7).** `corridor.test.ts`, `report311.test.ts`, the trail cases in `navigate.test.ts` and
 `loadTile` in `stressProtocol.test.ts`; the browser suite's Ride mode section checks that the stress
