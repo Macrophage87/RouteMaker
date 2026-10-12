@@ -1081,6 +1081,7 @@ button.secondary {
    beta build's "Beta" chip too (lib/betaBanner.ts), which sits just right of the panel. */
 @media (min-width: 721px) {
   .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib {
+    box-sizing: border-box;
     max-width: calc(100vw - 510px);
   }
 }
@@ -2214,7 +2215,7 @@ dialog.weight-dialog h2 {
   }
 
   .app:has(.panel.closed) .beta-chip {
-    bottom: 66px;
+    bottom: 76px;
   }
 
   .app.go-mode:has(.panel.go-peek) .beta-chip {
