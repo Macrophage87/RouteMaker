@@ -22,7 +22,7 @@
  * ones sent are a re-plan's start point and, when the rider asks for the nearest water or restroom, the
  * search's own (POST /api/nearest), each in a POST body, as planning with "Use my location" sends it.
  */
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type RefObject } from "react";
 import { requestRoute, type RouteResponse } from "./lib/api.ts";
 import type { Dials } from "./lib/dials.ts";
 import { insideCoverage, type LonLat } from "./lib/geo.ts";
@@ -108,10 +108,13 @@ import {
   canText,
   keywordOf,
   onlineHint,
+  placeWords,
   reportText,
   smsHref,
   type ReportKind,
 } from "./lib/report311.ts";
+import { RIDE_311_NAME, RIDE_311_TEXT, Ride311Menu, ride311Shown } from "./lib/ride311.ts";
+import { Icon } from "./Icon.tsx";
 
 /** One voice for the page: the Start ride press unlocks it (iOS speaks only after a gesture has). */
 export const rideVoice = new Voice(browserSpeech());
@@ -232,8 +235,29 @@ const COPY_REPLY_DELAY_MS = 150;
  * lane, a blocked road or bikeway, which the words name first), and everything on a desktop, is the
  * same words to copy into DC 311 online, with a hint naming its request there where one is known. The place follows the rider; the message is shown as sent.
  */
-function Report311({ model, progressM, off, idBase }: { model: RideModel; progressM: number | null; off: boolean; idBase: string }) {
-  const [kind, setKind] = useState<ReportKind>("pothole");
+function Report311({
+  model,
+  progressM,
+  off,
+  idBase,
+  kind,
+  onKind,
+  open,
+  onOpen,
+  summaryRef,
+}: {
+  model: RideModel;
+  progressM: number | null;
+  off: boolean;
+  idBase: string;
+  /** The problem chosen: here, or from the 311 button's menu (UI-CLEANUP), which opens this fold. */
+  kind: ReportKind;
+  onKind: (kind: ReportKind) => void;
+  open: boolean;
+  onOpen: (open: boolean) => void;
+  summaryRef: RefObject<HTMLElement | null>;
+}) {
+  const setKind = onKind;
   const [note, setNote] = useState("");
   const [copied, setCopied] = useState("");
   const place = progressM === null ? null : placeOnRoute(model, progressM);
@@ -250,8 +274,8 @@ function Report311({ model, progressM, off, idBase }: { model: RideModel; progre
     window.setTimeout(() => setCopied(done ? "Report copied." : "Could not copy; select the report's text instead."), COPY_REPLY_DELAY_MS);
   };
   return (
-    <details className="fold ride-report">
-      <summary>{REPORT_SUMMARY}</summary>
+    <details className="fold ride-report" open={open} onToggle={(event) => onOpen(event.currentTarget.open)}>
+      <summary ref={summaryRef}>{REPORT_SUMMARY}</summary>
       <div className="fold-body">
         <fieldset className="ride-choice">
           <legend>What is it?</legend>
@@ -387,6 +411,38 @@ export function RideMode({
   // Each re-plan's ticket: "Keep the planned route" or a newer re-plan voids an older one's answer.
   const replanTicket = useRef(0);
   const settingsId = useId();
+  // The 311 button's menu (lib/ride311.ts; the owner's choice 9) and the report it continues into.
+  const [reportKind, setReportKind] = useState<ReportKind>("pothole");
+  const [reportOpen, setReportOpen] = useState(false);
+  const [menu311, setMenu311] = useState(false);
+  const menu311Id = useId();
+  const menu311Heading = useRef<HTMLHeadingElement>(null);
+  const button311 = useRef<HTMLButtonElement>(null);
+  const reportSummary = useRef<HTMLElement>(null);
+  const focusReport = useRef(false);
+  useEffect(() => {
+    if (menu311) menu311Heading.current?.focus();
+  }, [menu311]);
+  useEffect(() => {
+    if (!reportOpen || !focusReport.current) return;
+    focusReport.current = false;
+    reportSummary.current?.focus();
+    reportSummary.current?.scrollIntoView?.({ block: "start" });
+  }, [reportOpen]);
+  const close311 = () => {
+    setMenu311(false);
+    button311.current?.focus();
+  };
+  const pick311 = (kind: ReportKind) => {
+    setReportKind(kind);
+    setMenu311(false);
+    focusReport.current = true;
+    if (reportOpen) {
+      focusReport.current = false;
+      reportSummary.current?.focus();
+      reportSummary.current?.scrollIntoView?.({ block: "start" });
+    } else setReportOpen(true);
+  };
   const gate = useRef(new ReplanGate()).current;
   const wake = useRef(new ScreenWake(browserWake())).current;
   const env = useRef(geoEnv ?? browserRideEnv()).current;
@@ -784,6 +840,8 @@ export function RideMode({
   const togo = progress === null ? null : toGo(model, progress);
   const back = ride.off ? wayBack(model, ride) : null;
   const shape = arrowFor(cue);
+  const show311 = ride311Shown({ off: ride.off, progressM: progress, insideDc: (m) => inDc(pointAt(model, m)) });
+  const place311 = show311 && progress !== null ? placeWords(placeOnRoute(model, progress)) : null;
 
   return (
     <section ref={sectionRef} className={`ride ${big ? "ride-big" : ""}`} aria-labelledby="ride-heading">
@@ -841,6 +899,30 @@ export function RideMode({
         )}
       </div>
 
+      {/* The 311 button (lib/ride311.ts): inside DC only, on the right edge at thumb height; its menu over the map. */}
+      {show311 && (
+        <div className="ride-311" onKeyDown={(event) => {
+          if (event.key === "Escape" && menu311) {
+            event.preventDefault();
+            close311();
+          }
+        }}>
+          <button
+            type="button"
+            ref={button311}
+            className="ride-311-button"
+            aria-label={RIDE_311_NAME}
+            aria-expanded={menu311}
+            aria-controls={menu311Id}
+            onClick={() => setMenu311(!menu311)}
+          >
+            <Icon name="flag" size={18} />
+            <span aria-hidden="true">{RIDE_311_TEXT}</span>
+          </button>
+          <Ride311Menu id={menu311Id} open={menu311} place={place311} headingRef={menu311Heading} onPick={pick311} onClose={close311} />
+        </div>
+      )}
+
       <div className="ride-controls">
         {(gps && ride.fix) || paused || wakeNote || replanNote || corridorText ? (
           <div className="ride-notes">
@@ -874,15 +956,19 @@ export function RideMode({
         )}
         <div className="actions ride-actions">
           <button type="button" ref={whereRef} onClick={askWhere} aria-keyshortcuts="W">
+            <Icon name="pin" size={20} />
             Where am I?
           </button>
           <button type="button" className="secondary" onClick={() => onFollow(true)} aria-keyshortcuts="C" hidden={big}>
+            <Icon name="locate" size={20} />
             Re-centre
           </button>
-          <button type="button" className="secondary" onClick={() => onBig(!big)} aria-pressed={big}>
+          <button type="button" className="secondary big-text" onClick={() => onBig(!big)} aria-pressed={big}>
+            <Icon name="textsize" size={20} />
             Big text
           </button>
           <button type="button" className="danger" onClick={end}>
+            <Icon name="stop" size={20} />
             End ride
           </button>
         </div>
@@ -926,7 +1012,17 @@ export function RideMode({
             </div>
           </details>
         )}
-        <Report311 model={model} progressM={ride.off ? null : progress} off={ride.off} idBase={settingsId} />
+        <Report311
+          model={model}
+          progressM={ride.off ? null : progress}
+          off={ride.off}
+          idBase={settingsId}
+          kind={reportKind}
+          onKind={setReportKind}
+          open={reportOpen}
+          onOpen={setReportOpen}
+          summaryRef={reportSummary}
+        />
         <details className="fold ride-mode-settings">
           <summary>Ride settings</summary>
           <div className="fold-body">

@@ -1,0 +1,366 @@
+// UI-CLEANUP (the approved mockup of 2026-10-11): Go and Plan, My Go, the warning line, Ride mode's 311 button
+// and where App and the components place them. The pure parts are tested here; App and the .tsx components are
+// read as source (testSupport/appSource.mjs), as the other panels' wiring is; the browser suite drives the DOM.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { GO_START_SAID, GO_START_UNAVAILABLE, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import {
+  ACCOUNT_COPY_KEY,
+  DEVICE_KEY,
+  GO_RIDES,
+  HOME_NOT_SET,
+  HOME_SIGN_IN,
+  NO_MY_GO,
+  fetchMyGo,
+  goRideChips,
+  myGoBody,
+  myGoSummary,
+  parseMyGo,
+  readStartMyGo,
+  saveAccountCopy,
+  saveDeviceMyGo,
+  saveMyGo,
+} from "./myGo.ts";
+import { facilityNoticeCount, warningsLabel } from "./routeNotices.ts";
+import { RIDE_311_NAME, RIDE_311_TEXT, Ride311Menu, menuPlaceLine, ride311Shown } from "./ride311.ts";
+import { REPORT_KINDS } from "./report311.ts";
+import { avoidLine, avoidOfferShort } from "./avoidJunctions.ts";
+import { ICON_PATHS } from "./iconPaths.ts";
+import { startDials } from "./dials.ts";
+import { appSource } from "../testSupport/appSource.mjs";
+
+const src = (name: string) => readFileSync(new URL(name, import.meta.url), "utf8");
+const app = appSource();
+const appFile = src("../App.tsx");
+const go = src("../app/Go.tsx");
+const ride = src("../RideMode.tsx");
+
+/** A Storage stand-in: a Map, or one that refuses every call. */
+function store(initial: Record<string, string> = {}, refuse = false) {
+  const map = new Map(Object.entries(initial));
+  const no = () => {
+    throw new Error("refused");
+  };
+  return {
+    map,
+    getItem: refuse ? no : (k: string) => map.get(k) ?? null,
+    setItem: refuse ? no : (k: string, v: string) => void map.set(k, v),
+    removeItem: refuse ? no : (k: string) => void map.delete(k),
+  };
+}
+
+// ---- which view the app opens in (the owner's choice 1) ------------------------------------------
+
+test("a phone opens in Go and a wide screen in Plan; a shared link opens in Plan; My Go's choice wins over the screen; the tab's own view wins over all", () => {
+  const base = { tab: null, planLink: false, openIn: "" as const };
+  assert.deepEqual(openingMode({ ...base, wide: false }), { mode: "go", by: "screen" });
+  assert.deepEqual(openingMode({ ...base, wide: true }), { mode: "plan", by: "screen" });
+  assert.deepEqual(openingMode({ ...base, planLink: true, wide: false }), { mode: "plan", by: "link" });
+  assert.deepEqual(openingMode({ ...base, planLink: true, openIn: "go", wide: false }), { mode: "plan", by: "link" }, "a shared link always opens in Plan");
+  assert.deepEqual(openingMode({ ...base, openIn: "go", wide: true }), { mode: "go", by: "my-go" });
+  assert.deepEqual(openingMode({ ...base, openIn: "plan", wide: false }), { mode: "plan", by: "my-go" });
+  assert.deepEqual(openingMode({ tab: "go", planLink: true, openIn: "plan", wide: true }), { mode: "go", by: "tab" }, "a reload keeps the tab's view");
+  // The account's My Go, read after the page opened, moves only a guess, and never after a switch.
+  assert.equal(laterMyGoApplies("screen", false), true);
+  assert.equal(laterMyGoApplies("my-go", false), true);
+  assert.equal(laterMyGoApplies("link", false), false);
+  assert.equal(laterMyGoApplies("tab", false), false);
+  assert.equal(laterMyGoApplies("screen", true), false);
+  assert.deepEqual(MODE_LABEL, { go: "Go", plan: "Plan" });
+  assert.deepEqual(OPEN_IN_LABEL, { "": "By screen size", go: "Go", plan: "Plan" });
+  assert.match(modeSaid("go"), /^Go/);
+  assert.match(modeSaid("plan"), /^Plan/);
+});
+
+test("a plan link is one with points, a ride type, a loop or a GPX: a map position alone is not", () => {
+  assert.equal(hasPlanLink(""), false);
+  assert.equal(hasPlanLink("#"), false);
+  assert.equal(hasPlanLink("#at=-77.03,38.9"), false);
+  assert.equal(hasPlanLink("#p=-77.03,38.9;-77.01,38.89&preset=default"), true);
+  assert.equal(hasPlanLink("#preset=kids"), true);
+  assert.equal(hasPlanLink("#loop=1"), true);
+  assert.equal(hasPlanLink("#at=1,2&p=x"), true);
+  assert.equal(hasPlanLink("#pp=1"), false, "the key, not a prefix of it");
+});
+
+test("the tab's view is kept in the tab's own store, and a refused store keeps nothing and breaks nothing", () => {
+  const s = store();
+  assert.equal(readTabMode(s), null);
+  writeTabMode("go", s);
+  assert.equal(s.map.get(TAB_MODE_KEY), "go");
+  assert.equal(readTabMode(s), "go");
+  assert.equal(readTabMode(store({ [TAB_MODE_KEY]: "nonsense" })), null);
+  const refused = store({}, true);
+  assert.doesNotThrow(() => writeTabMode("plan", refused));
+  assert.equal(readTabMode(refused), null);
+  assert.equal(readTabMode(null), null);
+});
+
+// ---- My Go (the owner's choice 2) -------------------------------------------------------------
+
+test("My Go reads what makes sense and drops the rest: an unknown view or ride, a Home without numbers", () => {
+  assert.deepEqual(parseMyGo(null), NO_MY_GO);
+  assert.deepEqual(parseMyGo("x"), NO_MY_GO);
+  assert.deepEqual(parseMyGo({ open_in: "go", ride: "cargo", home: { lon: -77.0, lat: 38.9, label: "Home" } }), {
+    openIn: "go",
+    ride: "cargo",
+    home: { point: [-77.0, 38.9], label: "Home" },
+  });
+  assert.deepEqual(parseMyGo({ open_in: "sideways", ride: "unicycle", home: { lon: "x", lat: 1 } }), NO_MY_GO);
+  assert.deepEqual(parseMyGo({ open_in: "plan", ride: "", home: { lon: Infinity, lat: 1 } }), { openIn: "plan", ride: null, home: null });
+  // The body: Default is "", a Home's label is cut to the server's 120 characters.
+  assert.deepEqual(myGoBody({ openIn: "", ride: "default", home: null }), { open_in: "", ride: "", home: null });
+  assert.deepEqual(myGoBody({ openIn: "go", ride: "kids", home: { point: [-77, 38.9], label: "x".repeat(200) } }).home, { lon: -77, lat: 38.9, label: "x".repeat(120) });
+  assert.equal(myGoSummary(NO_MY_GO), "By screen size · Default");
+  assert.equal(myGoSummary({ openIn: "go", ride: "cargo", home: null }), "Go · Cargo Bike");
+});
+
+test("signed out My Go stays on this device without a Home; the account's copy opens the next visit at once and goes with a sign-out", () => {
+  const s = store();
+  assert.deepEqual(readStartMyGo(s), { myGo: NO_MY_GO, account: false });
+  saveDeviceMyGo({ openIn: "go", ride: "cargo", home: { point: [-77, 38.9], label: "Mine" } }, s);
+  assert.equal(JSON.parse(s.map.get(DEVICE_KEY) as string).home, null, "Home needs sign-in: never kept on the device");
+  assert.deepEqual(readStartMyGo(s), { myGo: { openIn: "go", ride: "cargo", home: null }, account: false });
+  saveAccountCopy({ openIn: "plan", ride: null, home: { point: [-77, 38.9], label: "Mine" } }, s);
+  assert.equal(JSON.parse(s.map.get(ACCOUNT_COPY_KEY) as string).home, null);
+  assert.deepEqual(readStartMyGo(s), { myGo: { openIn: "plan", ride: null, home: null }, account: true }, "the account's copy first");
+  saveAccountCopy(null, s);
+  assert.equal(s.map.has(ACCOUNT_COPY_KEY), false);
+  // A refused or broken store: the defaults, and no error.
+  assert.deepEqual(readStartMyGo(store({}, true)), { myGo: NO_MY_GO, account: false });
+  assert.deepEqual(readStartMyGo(store({ [DEVICE_KEY]: "{broken" })), { myGo: NO_MY_GO, account: false });
+  assert.doesNotThrow(() => saveDeviceMyGo(NO_MY_GO, store({}, true)));
+});
+
+test("My Go is read and saved at /api/me/go, same origin, with the CSRF token; a refusal or a network error is null", async () => {
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  const answer = (status: number, body: unknown) => (async (url: string, init: RequestInit) => {
+    calls.push({ url, init });
+    return new Response(JSON.stringify(body), { status });
+  }) as unknown as typeof fetch;
+  assert.deepEqual(await fetchMyGo("https://x.test", answer(200, { open_in: "go", ride: "", home: null })), { openIn: "go", ride: null, home: null });
+  assert.equal(calls[0].url, "https://x.test/api/me/go");
+  assert.equal(calls[0].init.credentials, "same-origin");
+  assert.equal(await fetchMyGo("https://x.test", answer(401, { code: "signed_out" })), null);
+  assert.equal(await fetchMyGo("https://x.test", (async () => { throw new Error("offline"); }) as unknown as typeof fetch), null);
+  calls.length = 0;
+  const saved = await saveMyGo("https://x.test", { openIn: "plan", ride: "kids", home: null }, answer(200, { open_in: "plan", ride: "kids", home: null }), "a=1; csrftoken=tok%3D1");
+  assert.deepEqual(saved, { openIn: "plan", ride: "kids", home: null });
+  assert.equal(calls[0].init.method, "POST");
+  assert.equal((calls[0].init.headers as Record<string, string>)["X-CSRFToken"], "tok=1");
+  assert.deepEqual(JSON.parse(calls[0].init.body as string), { open_in: "plan", ride: "kids", home: null });
+  assert.equal(await saveMyGo("https://x.test", NO_MY_GO, answer(403, {}), ""), null);
+});
+
+// ---- Go's chips (the owner's choices 3 and 10) ------------------------------------------------
+
+test("Go's ride types: Default, Cargo and Bikeshare, and a My Go ride that is none of them takes Bikeshare's place", () => {
+  assert.deepEqual([...GO_RIDES], ["default", "cargo", "bikeshare"]);
+  assert.deepEqual(goRideChips(null), ["default", "cargo", "bikeshare"]);
+  assert.deepEqual(goRideChips("cargo"), ["default", "cargo", "bikeshare"]);
+  assert.deepEqual(goRideChips("kids"), ["default", "cargo", "kids"]);
+  assert.deepEqual(goRideChips("mountain-bike"), ["default", "cargo", "mountain-bike"]);
+  // App: the chips from My Go's ride, More opens the Ride sheet with every type (Plan keeps the full list).
+  assert.match(appFile, /<RideChips ids=\{goRideChips\(myGo\.ride\)\} preset=\{preset\} onPick=\{pickRide\} more=\{\(opener\) => openView\("ride", opener\)\} label="Ride type" \/>/);
+  assert.match(appFile, /<RideChips ids=\{PRESETS\.map\(\(p\) => p\.id\)\} preset=\{preset\} onPick=\{pickRide\} label="Every ride type" \/>/);
+  // A pick goes through the ride type dialog's own choice, with Mountain Bike's loop (mtbChosen).
+  assert.match(appFile, /choosePreset\(id, mtbChosen\(preset, id, chooseRideType\(id, carries\(id\) \? "cargo" : null, dials\)\)\);/);
+  // Toggle buttons with their state, not colour alone.
+  assert.match(src("../app/Sheets.tsx"), /className="chip ride-type-chip" aria-pressed=\{preset === id\}/);
+});
+
+test("Go's places are Home, Food, Water and Restroom (no Work); Home needs sign-in and says so", () => {
+  const chips = [...go.matchAll(/<Icon name="(\w+)" size=\{18\} \/>\s*(\w+)\s*<\/button>/g)].map((m) => m[2]);
+  assert.deepEqual(chips.slice(0, 4), ["Home", "Food", "Water", "Restroom"]);
+  assert.doesNotMatch(go, /Work/);
+  assert.ok(!("work" in ICON_PATHS), "the mockup's Work icon is gone with the chip");
+  assert.match(go, /aria-describedby=\{places\.homeReady \? undefined : homeHint\}/);
+  assert.match(go, /\{places\.signedIn \? HOME_NOT_SET : HOME_SIGN_IN\}/);
+  assert.equal(HOME_SIGN_IN, "Sign in with Discord to keep a Home.");
+  assert.match(HOME_NOT_SET, /My Go/);
+  assert.match(appFile, /homeReady: me\.signed_in && myGo\.home !== null,/);
+  // Without a Home, the chip opens My Go in Settings (one press, then the Home search).
+  assert.match(appFile, /if \(meRef\.current\.signed_in && home\) \{[\s\S]*?void goTo\(home\.point, home\.label \|\| "Home"\);[\s\S]*?openView\("settings", chip\);/);
+  // Water and Restroom search from the rider's location, in their own sheet.
+  assert.match(appFile, /onWater: \(chip\) => \{\s*openView\("nearest", chip\);\s*findNearestHere\("water"\);/);
+  assert.match(appFile, /onRestroom: \(chip\) => \{\s*openView\("nearest", chip\);\s*findNearestHere\("restroom"\);/);
+});
+
+test("Go's Where to? is the destination from the rider's location, in one edit, with the loop off; without a location it keeps the destination and asks for a start", () => {
+  const routeGo = appFile.slice(appFile.indexOf("const routeGo = ("), appFile.indexOf("const routeGoRef"));
+  assert.match(routeGo, /commit\(\[start, dest\], ride\.dials\.loop \? \{ \.\.\.ride, dials: \{ \.\.\.ride\.dials, loop: false \} \} : undefined\);/);
+  const goTo = appFile.slice(appFile.indexOf("const goTo = async"), appFile.indexOf("const goToPlace"));
+  assert.match(goTo, /const action = goPickAction\(pointsRef\.current, goStartRef\.current\);/);
+  // Never the destination alone (it would become the start), and never dropped while the location is found.
+  assert.doesNotMatch(goTo, /commit\(\[dest\]/);
+  assert.match(goTo, /goPending\.current = \{ dest, name \};\s*if \(action\.kind === "wait"\) \{\s*setNotice\(goDestinationLocating\(name\)\);/);
+  assert.match(goTo, /setGoStart\(\{ kind: "none" \}\);\s*setNotice\(goDestinationNeedsStart\(name\)\);/);
+  assert.match(goTo, /if \(!insideCoverage\(dest\)\) \{\s*setNotice\(OUTSIDE_NOTICE\);\s*return;/);
+  // The opening look-up routes a destination picked while it ran; a start typed in routes one picked before it.
+  assert.match(appFile, /if \(pending\) \{\s*goPending\.current = null;\s*routeGoRef\.current\(result\.fix\.point, true, pending\.dest, pending\.name\);/);
+  const startPick = appFile.slice(appFile.indexOf("const goStartPick = "), appFile.indexOf("const routeGo = ("));
+  assert.match(startPick, /if \(pending\) \{\s*goPending\.current = null;\s*routeGo\(point, false, pending\.dest, pending\.name\);/);
+});
+
+test("the Go/Plan switch: two toggle buttons in a named group, in Go's bar and Plan's header; a press is remembered as My Go's Open in", () => {
+  assert.match(go, /role="group" aria-label=\{MODE_SWITCH_NAME\} aria-describedby=\{hintId\}/);
+  assert.match(go, /className="mode-button" aria-pressed=\{mode === m\} onClick=\{\(\) => onChange\(m\)\}/);
+  assert.match(appFile, /\{!goMode && <ModeSwitch mode=\{mode\} onChange=\{changeMode\} className="panel-mode" \/>\}/);
+  assert.match(appFile, /<GoTopBar\s+mode=\{mode\}\s+onMode=\{changeMode\}/);
+  const change = appFile.slice(appFile.indexOf("const changeMode = "), appFile.indexOf("// \"Copy link\""));
+  assert.match(change, /writeTabMode\(next\);/);
+  assert.match(change, /announceExtra\(modeSaid\(next\)\);/, "extra narration: said at Full, not at Brief");
+  assert.match(change, /saveMyGoNow\(\{ \.\.\.myGoRef\.current, openIn: next \}, false\);/);
+  // A save waits for the account's My Go to be read, so a Home is never overwritten by an early save.
+  assert.match(appFile, /if \(meRef\.current\.signed_in\) \{\s*if \(!accountMyGoRead\.current\) return;/);
+});
+
+// ---- the route summary (the owner's choices 4, 5 and 8) --------------------------------------
+
+test("the warning line counts the facility notices on the same three conditions FacilityBreakdown shows them", () => {
+  const quiet = { preset: "default", dials: startDials("default"), stress_m: { 1: 1000 }, hills_seek: null, hills_tolerate: null } as never;
+  assert.equal(facilityNoticeCount(quiet), 0);
+  const avoid = { preset: "default", dials: startDials("default"), stress_m: { 1: 1000, 5: 200 }, hills_seek: null, hills_tolerate: null } as never;
+  assert.equal(facilityNoticeCount(avoid), 1);
+  assert.equal(warningsLabel(1, true), "1 more warning");
+  assert.equal(warningsLabel(2, true), "2 more warnings");
+  assert.equal(warningsLabel(1, false), "1 warning");
+  assert.equal(warningsLabel(3, false), "3 warnings");
+});
+
+test("the Avoid notice is one line: the first junction and how many more, with Avoid it's extra distance", () => {
+  assert.equal(avoidLine({ avoid_junctions: [{ name: "Main St and 1st Ave" }] } as never), "Avoid junction: Main St and 1st Ave");
+  assert.equal(avoidLine({ avoid_junctions: [{ name: "A" }, { name: "B" }, { name: "C" }] } as never), "Avoid junction: A and 2 more");
+  assert.equal(avoidOfferShort({ avoid_alternate: { extra_distance_m: 1609 } } as never), "+1.0 mi (1.6 km)");
+  assert.equal(avoidOfferShort({ avoid_alternate: { extra_distance_m: 50 } } as never), null);
+  assert.equal(avoidOfferShort(null), null);
+  // The whole sentence is still read: the short line is hidden from the reader, the sentence is not.
+  const notice = src("../AvoidNotice.tsx");
+  assert.match(notice, /role="alert"/);
+  assert.match(notice, /<span className="visually-hidden">\{sentence\}<\/span>/);
+});
+
+test("a route's notes are one line each with an icon; their full words are in Info (the owner's choice 5)", () => {
+  assert.match(app, /<li key=\{note\.key\} className=\{`note-line \$\{note\.className\}`\}>\s*<Icon name=\{note\.icon\} size=\{16\} \/>\s*<span className="note-text">\{note\.text\}<\/span>/);
+  assert.match(app, /\{notes\.map\(\(note\) => \(\s*<p key=\{note\.key\} className="hint note-full">/);
+  // The four quick figures are in Stress and facilities (choice 4); Share and Keep for offline behind More (choice 8).
+  assert.match(app, /\{\/\* The four quick figures, first in the fold \(the owner's choice 4\)\. \*\/\}\s*<QuickFigures/);
+  assert.match(app, /<div id=\{moreId\} className="route-more-body" hidden=\{!more\}>[\s\S]*?share-route[\s\S]*?keep-offline/);
+});
+
+// ---- Ride mode's 311 button (the owner's choice 9) and Big text's icon (choice 11) ----------------------
+
+test("the 311 button shows only on the route inside DC; its menu has the six problems in the owner's words and order", () => {
+  assert.equal(ride311Shown({ off: false, progressM: 100, insideDc: () => true }), true);
+  assert.equal(ride311Shown({ off: false, progressM: 100, insideDc: () => false }), false, "hidden outside DC");
+  assert.equal(ride311Shown({ off: true, progressM: 100, insideDc: () => true }), false, "off the route there is no place to report");
+  assert.equal(ride311Shown({ off: false, progressM: null, insideDc: () => true }), false, "no place yet");
+  assert.ok(RIDE_311_NAME.includes(RIDE_311_TEXT), "the visible words are in its name");
+  const picked: string[] = [];
+  const html = renderToStaticMarkup(createElement(Ride311Menu, { id: "m", open: true, place: "R St NW and 17th St NW", onPick: (k) => picked.push(k), onClose: () => {} }));
+  assert.match(html, /^<div id="m" class="ride-311-menu" role="group" aria-labelledby="m-heading">/);
+  assert.match(html, /<h3 id="m-heading" tabindex="-1">Report to DC 311<\/h3><button type="button" class="secondary ride-311-close">Close<\/button>/);
+  assert.match(html, /Near R St NW and 17th St NW\. Check it before you send\./);
+  const labels = [...html.matchAll(/class="ride-311-kind">(?:<svg[\s\S]*?<\/svg>)?([^<]+)<\/button>/g)].map((m) => m[1]);
+  assert.deepEqual(labels, ["Pothole", "Downed tree", "Vehicle parked in a bike lane", "Roadway or bikeway obstructed", "Streetlight out", "Something else"]);
+  assert.deepEqual(labels, REPORT_KINDS.map((k) => k.label));
+  assert.match(renderToStaticMarkup(createElement(Ride311Menu, { id: "m", open: false, place: null, onPick: () => {}, onClose: () => {} })), /hidden=""/);
+  assert.match(menuPlaceLine(null), /Check it before you send/);
+  // RideMode: the button only when shown, a disclosure; a pick opens the report with that problem chosen.
+  assert.match(ride, /\{show311 && \(/);
+  assert.match(ride, /aria-label=\{RIDE_311_NAME\}\s+aria-expanded=\{menu311\}\s+aria-controls=\{menu311Id\}/);
+  assert.match(ride, /const pick311 = \(kind: ReportKind\) => \{\s*setReportKind\(kind\);\s*setMenu311\(false\);/);
+  assert.match(ride, /<details className="fold ride-report" open=\{open\} onToggle=\{\(event\) => onOpen\(event\.currentTarget\.open\)\}>/);
+  assert.match(ride, /if \(event\.key === "Escape" && menu311\) \{\s*event\.preventDefault\(\);\s*close311\(\);/);
+  // About 60 px round, on the right edge.
+  const css = src("../styles.css");
+  assert.match(css, /\.ride-311-button \{\s*width: 60px;\s*height: 60px;/);
+  assert.match(css, /\.ride-311 \{\s*position: absolute;\s*right: 12px;/);
+});
+
+test("Big text has a text-size icon (not the info icon); Ride mode's buttons keep their words", () => {
+  assert.match(ride, /className="secondary big-text" onClick=\{\(\) => onBig\(!big\)\} aria-pressed=\{big\}>\s*<Icon name="textsize" size=\{20\} \/>\s*Big text/);
+  assert.ok(ICON_PATHS.textsize && ICON_PATHS.textsize !== ICON_PATHS.info);
+});
+
+// ---- Go's start: the rider's current location by default (the owner, 2026-10-11 19:53 UTC) ----
+
+test("go start: the location is asked for only in Go, once, and only while the plan has no point (a link's start wins)", () => {
+  assert.equal(shouldAskGoStart({ mode: "go", asked: false, pointCount: 0 }), true);
+  assert.equal(shouldAskGoStart({ mode: "plan", asked: false, pointCount: 0 }), false, "never in Plan");
+  assert.equal(shouldAskGoStart({ mode: "go", asked: true, pointCount: 0 }), false, "once per page");
+  assert.equal(shouldAskGoStart({ mode: "go", asked: false, pointCount: 1 }), false, "a start from the link wins");
+});
+
+test("go start: the line says the location, a typed or tapped start in its place, or that there is none", () => {
+  const here = { kind: "here", point: [-77.03, 38.9] } as const;
+  assert.equal(goStartLine(here, null), "Start: your current location");
+  assert.equal(GO_START_SAID, "Start: your current location.");
+  assert.equal(goStartLine(here, "Union Station"), "Start: Union Station", "a typed or tapped start replaces it");
+  assert.equal(goStartLine({ kind: "locating" }, null), "Start: finding your location…");
+  assert.equal(goStartLine({ kind: "none" }, null), "Start: none yet; type a start");
+  assert.equal(GO_START_UNAVAILABLE, "Current location not available; type a start.");
+});
+
+test("go start: a destination routes from the plan's first point, else from the location found, else asks", () => {
+  const here = { kind: "here", point: [-77.03, 38.9] } as const;
+  assert.deepEqual(goRouteStart([], here), { point: [-77.03, 38.9], located: true });
+  assert.deepEqual(goRouteStart([[-77.0, 38.89]], here), { point: [-77.0, 38.89], located: false }, "typed, tapped or from the link");
+  assert.equal(goRouteStart([], { kind: "none" }), null);
+  assert.equal(goRouteStart([], { kind: "locating" }), null);
+});
+
+test("go pick: route from the start Go has, wait while the location is found, else look it up (review of PR #95)", () => {
+  const here = { kind: "here", point: [-77.03, 38.9] } as const;
+  assert.deepEqual(goPickAction([], here), { kind: "route", point: [-77.03, 38.9], located: true });
+  assert.deepEqual(goPickAction([[-77.0, 38.89]], { kind: "none" }), { kind: "route", point: [-77.0, 38.89], located: false });
+  assert.deepEqual(goPickAction([], { kind: "locating" }), { kind: "wait" }, "a pick while the location is found is kept, not dropped");
+  assert.deepEqual(goPickAction([], { kind: "none" }), { kind: "locate" });
+  assert.deepEqual(goPickAction([], { kind: "idle" }), { kind: "locate" });
+  assert.equal(goDestinationNeedsStart("Union Station"), "To Union Station. Current location not available; type a start.");
+  assert.match(goDestinationLocating("Union Station"), /^To Union Station: finding your location/);
+});
+
+test("go start: App asks once when Go opens, says the start politely, and says when it is not available", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /if \(!shouldAskGoStart\(\{ mode, asked: goStartAsked\.current, pointCount: pointsRef\.current\.length \}\)\) return;/);
+  assert.match(app, /if \(pointsRef\.current\.length > 0\) return;[\s\S]{0,300}?\} else announce\(GO_START_SAID\);/);
+  assert.match(app, /if \(pointsRef\.current\.length === 0\) setNotice\(pending \? goDestinationNeedsStart\(pending\.name\) : GO_START_UNAVAILABLE\);/);
+  // Go offers the routes to choose from at once; Plan keeps its fold.
+  const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
+  assert.match(panel, /const \[routesOpen, setRoutesOpen\] = useState\(mode === "go"\);/);
+});
+
+// ---- Announcements, Brief or Full (the owner, 2026-10-11 20:23 UTC) ----
+import { ANNOUNCE_KEY, announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice } from "./announceLevel.ts";
+
+test("announcements: unset, Go is brief and Plan is full; a choice holds in both, and is kept on this device", () => {
+  assert.equal(announceLevel("", "go"), "brief");
+  assert.equal(announceLevel("", "plan"), "full");
+  assert.equal(announceLevel("full", "go"), "full");
+  assert.equal(announceLevel("brief", "plan"), "brief");
+  assert.equal(saysExtra("brief"), false);
+  assert.equal(saysExtra("full"), true);
+  const kept = new Map<string, string>();
+  const store = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v) };
+  assert.equal(readAnnounceChoice(store), "");
+  writeAnnounceChoice("full", store);
+  assert.equal(kept.get(ANNOUNCE_KEY), "full");
+  assert.equal(readAnnounceChoice(store), "full");
+  kept.set(ANNOUNCE_KEY, "loud");
+  assert.equal(readAnnounceChoice(store), "", "anything else is unset");
+});
+
+test("announcements: the essentials are always said; only the narration is extra", () => {
+  const app = appSource();
+  for (const extra of ["announceExtra(FINDING_LOCATION);", "announceExtra(modeSaid(next));", "announceExtra(`${presetLabel(id)}.`);", 'announceExtra("The map is at your location.");'])
+    assert.ok(app.includes(extra), extra);
+  // The start Go found, and when it could not, are essentials.
+  assert.match(app, /announce\(GO_START_SAID\)/);
+  assert.match(app, /setNotice\(pending \? goDestinationNeedsStart\(pending\.name\) : GO_START_UNAVAILABLE\)/);
+  // Go starts the ride at once; Plan asks the first time.
+  assert.match(app, /if \(!ridePrefs\.chosen && mode !== "go"\) \{/);
+});

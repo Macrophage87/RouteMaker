@@ -4369,7 +4369,9 @@ and its header). What the panel shows is in `app/`, moved out unchanged:
   Avoid notice, `RouteSummary`, water along the route, Start ride's question),
   `RouteSummary` itself, `RouteActions` (the pinned Download GPX, Copy link, Share and
   Keep for offline) and the `Status` type.
-- `app/Sheets.tsx`: `LayersSheet`, `GpxSheet` and `SettingsSheet`, each in its `SheetFrame`.
+- `app/Sheets.tsx`: `LayersSheet`, `GpxSheet` and `SettingsSheet`, each in its `SheetFrame`
+  (since the UI-CLEANUP build also the Legend, Suggest, Review, Nearest, Find food and Ride
+  sheets; and `app/Go.tsx`, below).
 - `app/hooks.ts`: `useNarrow` (and `NARROW`), `useLongerThan`, `useSettled`.
 
 Each component is a pass-through: it takes its props under the names App gives them, keeps
@@ -4389,6 +4391,111 @@ same before and after in 60 snapshots (30 states at 390 px and 1,440 px: empty, 
 Bikeshare, Mass Ride, Trailmaxxing, routes to choose from, an Avoid junction, each sheet,
 the ride settings, Edit points, every fold open, Start ride's question, the panel hidden and
 shown), and `scripts/a11y/check.mjs` passed the same checks.
+
+### Go and Plan (UI-CLEANUP, the approved mockup of 2026-10-11)
+
+The layout Stephen approved on 2026-10-11 (reports/v0.5.0/ui-mockup.html and its 72-row
+control table; PLAN.md, UI-CLEANUP). Nothing was removed: every control is where the table
+puts it, at most two presses away.
+
+- **Two views of one planner** (`lib/appMode.ts`): Go, a phone's few steps (one Where to?
+  box, four place chips, the commute ride types, then the route's time, stress bar, one
+  alert and Start), and Plan, the full panel. Same state, same link. Which one opens:
+  the tab's own (sessionStorage, so a reload stays), else Plan for a link with a plan in
+  it, else My Go's Open in, else a phone (`NARROW`) opens in Go and a wider screen in Plan.
+  The switch (`app/Go.tsx` `ModeSwitch`: two `aria-pressed` buttons in a named group) is in
+  Go's bar over the map and Plan's header; a press is remembered as My Go's Open in.
+- **Go** (`app/Go.tsx`): `GoTopBar` (Menu, the switch, Layers, Locate, and the destination
+  with a clear button) is before the map in the page, as it is at the top of the screen.
+  `GoSheet` (inside the panel, `peek`/`half`/`full` by its handle) holds `PlaceSearch
+  variant="go"` (the place is the destination, the start the rider's location, in one edit
+  with the loop off: App `goTo`), the Home, Food, Water and Restroom chips (Home needs sign-in
+  and a Home; without one it opens My Go and says why), `RideChips` (Default, Cargo, Bikeshare
+  and More; a My Go ride that is none of them takes Bikeshare's place: `lib/myGo.ts`
+  `goRideChips`) and the Route section's Go variant. The Menu is the Settings sheet with
+  Plan, Suggest, GPX and an admin's Review on top; a Go sheet's Back reads "Close".
+- **Go's start** (the owner, 2026-10-11: "in go, make the current location the starting
+  location by default"; `lib/appMode.ts` `shouldAskGoStart`, `goStartLine`, `goRouteStart`):
+  when Go opens with an empty plan, App asks for the location once (through Use my location's
+  gate; never in Plan, never with a start from the link). Found, it is the start, shown on Go's
+  start line and said politely ("Start: your current location.") but not yet a point, so the
+  link holds no position until a destination is picked; denied, unavailable or timed out, the
+  start stays empty, the start box opens and "Current location not available; type a start." is
+  shown and said politely. A start typed in (Change start, `PlaceSearch variant="start"`) or
+  tapped on the map is the plan's first point and replaces the location. A destination picked
+  before there is a start is never dropped nor made the start (`goPickAction`): while the
+  location is still being found it waits ("To …: finding your location for the start…") and is
+  routed when the location comes; with no location, it is kept ("To …. Current location not
+  available; type a start.") and the start typed in the start box plans the route to it. Picking a
+  destination with a start plans at once; Go then shows the routes to choose from open, and the ride types under the
+  route, so Bikeshare is one press, and only a Bikeshare route names its pick-up and drop-off
+  stations (the route's Bikeshare plan).
+- **Few presses** (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go"): from
+  opening Go, a typed destination is two taps to riding: the place picked, then Start ride. Go
+  starts the ride with Settings > Ride mode's cues and asks nothing first (Plan still asks the
+  first time). **Announcements** (`lib/announceLevel.ts`, Settings > Display): Brief or Full,
+  kept on this device; unset, Go is Brief and Plan is Full. The route found, guidance, the start
+  Go found, errors and notices are always said; Brief leaves out the narration (`announceExtra`:
+  finding your location, planning a route to, the view or ride type changed, the map moved).
+- **Lettered places** (the owner, 2026-10-11 21:04 UTC; `lib/letteredPlaces.ts`): the nearest
+  water, restrooms or Metro stations and the food found are lettered A, B, C... in their list (a
+  pin, aria-hidden, with the letter heard first) and on the map (MapView `lettered`: 44 px
+  buttons, a pin with the letter, named "B: Drinking water, Garfield Park, 0.3 mi (0.5 km)"),
+  while that list's sheet is open; the map fits them in, above a phone's sheet. A marker's tap,
+  the row's Ride here, or the letter's key (not while typing, on the map or in a dialog) picks
+  it: in Go as the destination, straight to the route options; in Plan, the nearest's Ride here
+  and food's Show on map. Food's numbered circle layer is gone; its list and markers use the
+  letters. The Choose a station lists (Plan) are not lettered.
+- **Bikeshare options** (`lib/bikeshareOptions.ts`; #94's `bikeshare.options`): a Bikeshare route
+  in Go lists its pick-up and drop-off pairs as buttons lettered A, B, C, each named by the
+  option's own `text`, the one the shown plan rides pressed (aria-pressed and a "Planned" tag),
+  and letters them on the map at each pick-up station. A button, a marker or the letter's key
+  sets that option's stations (the station pins) and ending, which re-plans it. A re-plan's
+  answer lists only the pair asked for, so the first answer's list is kept for the same start
+  and end; the order is the server's.
+- **Start and end pins** (the owner, 2026-10-11 21:29 UTC): a play triangle and a stop square
+  (`lib/pointText.ts` `START_GLYPH`, `END_GLYPH`, hidden; the pins' names stay "Start", "End" and
+  "Start and finish"), so A, B, C are only the offered places; stops keep their numbers.
+- **My Go** (`lib/myGo.ts`; `core.models.MyGo`, migration 0019; GET/POST `/api/me/go`):
+  Open in, Go's ride type and, signed in, Home. Signed in it is the account's (saved only
+  after it has been read, so an early save never clears a Home), with a copy on the device
+  (without Home) so the next visit opens in the right view at once; signed out it is the
+  device's. The POST needs the CSRF cookie the GET sets, a JSON body and a same-site
+  request; Home must be in the coverage box and is rounded to 5 places; the row goes with the
+  account and is deleted when the account is marked deleted; `my_go` never ships to the beta
+  (`scripts/beta/ship-data.sh` `EXCLUDED_TABLE_DATA`). `tests/test_my_go.py`.
+- **Plan's panel**: the Points heading's row holds Swap (Reverse), Loop, Edit and Info (the
+  how-to, the access switch and Install, which were More tips); the Ride line shows its
+  summary as chips. The route: the totals and Info on one line, the stress bar, the Avoid
+  notice as one line (`AvoidNotice`: the short line shown, the whole sentence read, Avoid it
+  with its extra distance, Details) with the other warnings counted behind it
+  (`lib/routeNotices.ts`), each note one line with an icon (full words in Info), then Start,
+  GPX, Link and More (Share, Keep for offline) in one row, then one-line closed folds with
+  their counts on the right (`Fold`'s `count` and `icon`): Elevation and climbs (with the
+  climbs list), Stress and facilities (the four quick figures first), Directions, Junctions to
+  watch, Other routes, Water and restrooms. Bikeshare's station lists are a "Choose a station"
+  fold under Route.
+- **Sheets** (`app/Sheets.tsx`, `lib/sidebar.ts` `PanelView`): the bar is Plan, Layers,
+  Suggest, GPX and Settings. Layers holds the switches only, with a Legend button that opens
+  the Legend sheet one step in; Suggest says how to suggest from the road panel and opens it
+  at the map's center, with DC 311 and an admin's Review; Settings is Display (High contrast,
+  Accessibility mode, Open in when signed out), Ride mode, This device and Account (My Go).
+  Plan's map has Food and Water chips (`PlanMapChips`), which open the Find food and Nearest
+  sheets. `openOnto`/`backFrom` keep the way back through nested sheets; Back returns the
+  focus to what opened the sheet, and a sheet's heading takes it on the way in.
+- **Road panel**: two or more ways to suggest (a road's level, a junction, a Mass Ride
+  hazard) are one "Suggest a change…" disclosure; one is its own button, as before.
+- **Ride mode**: the 311 button (`lib/ride311.ts`), 60 px round on the right edge at thumb
+  height, only while the rider's place on the route is inside DC; it opens a menu with the
+  place line and the six problems as large buttons, and a pick opens "Report a problem to DC
+  311" with that problem chosen (the note, the text or DC 311 online and Copy as before). Big
+  text has a text-size icon; Where am I?, Re-centre and End ride have icons too.
+- **Icons**: `lib/iconPaths.ts` (the mockup's own line icons, minus Work, plus cargo,
+  text size, tree and bikeshare) drawn by `Icon.tsx` (or `lineIcon` in createElement
+  modules), always `aria-hidden` beside words.
+
+`lib/goPlan.test.ts` holds the pure parts and the wiring; `scripts/a11y/check.mjs` drives Go,
+the switch, the sheets, My Go and the 311 menu in a browser.
 
 ### The sidebar (312)
 

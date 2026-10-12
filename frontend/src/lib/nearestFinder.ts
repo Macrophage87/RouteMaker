@@ -22,9 +22,11 @@ import {
   type NearestKind,
 } from "./nearest.ts";
 import { WATER_CAUTION } from "./waterRestrooms.ts";
+import { placeLetter } from "./letteredPlaces.ts";
 
 export const NEAREST_SUMMARY = "Find the nearest water, restroom or Metro";
 export const NEAREST_HELP =
+  "Each place has a letter, on the map too: a tap on its marker, or its letter's key, is the same as Ride here. " +
   "Ride here plans a route from where you searched to that place, in place of the plan you have; Undo puts your plan back. " +
   "Add as stop puts water or a restroom into the plan you have. Metro stations are Metrorail's; routes use the station's elevator where one is listed.";
 
@@ -46,15 +48,16 @@ export interface FinderProps {
   canAddStop: boolean;
   onRide: (item: Nearby) => void;
   onAddStop: (item: Nearby) => void;
+  /** A fold of its own (the default), or the body alone, in the map's Water sheet (UI-CLEANUP), whose heading names it. */
+  folded?: boolean;
 }
 
 export function NearestFinder(props: FinderProps): ReactElement {
-  const { from, fromOptions, onFrom, onFind, busy, status, list, canAddStop, onRide, onAddStop } = props;
+  const { from, fromOptions, onFrom, onFind, busy, status, list, canAddStop, onRide, onAddStop, folded = true } = props;
   const addStops = list !== null && canAddStop && stopsOnTheWay(list.kind);
-  return h(
-    "details",
-    { className: "fold nearest" },
-    h("summary", null, NEAREST_SUMMARY),
+  const wrap = (body: ReactElement) =>
+    folded ? h("details", { className: "fold nearest" }, h("summary", null, NEAREST_SUMMARY), body) : h("div", { className: "nearest nearest-sheet" }, body);
+  return wrap(
     h(
       "div",
       { className: "fold-body" },
@@ -105,11 +108,13 @@ export function NearestFinder(props: FinderProps): ReactElement {
           "ol",
           // role="list": WebKit drops a list's role once its bullets are styled away.
           { role: "list", "aria-labelledby": "nearest-list-heading" },
-          ...list.items.map((item) =>
+          ...list.items.map((item, index) =>
             h(
               "li",
-              { key: item.place.id },
-              h("span", null, nearbyText(item)),
+              { key: item.place.id, className: "lettered-row" },
+              // The letter is the map marker's (lib/letteredPlaces.ts): seen in its pin, heard before the place.
+              h("span", { className: "place-letter", "aria-hidden": "true" }, h("span", null, placeLetter(index))),
+              h("span", null, h("span", { className: "visually-hidden" }, `${placeLetter(index)}: `), nearbyText(item)),
               h(
                 "span",
                 { className: "actions" },

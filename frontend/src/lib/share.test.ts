@@ -91,12 +91,14 @@ test("App shows Share beside Copy link only where it is supported, named Share r
   assert.equal(SHARE_NAME, "Share route");
   assert.ok(SHARE_NAME.startsWith(SHARE_LABEL), "the accessible name holds the visible word");
   assert.match(app, /const \[canShare\] = useState\(\(\) => canShareLink\(navigator, window\.location\.href\)\);/);
-  const copy = app.indexOf("{COPY_LINK}");
+  // UI-CLEANUP (the owner's choice 8): Share is behind More, beside Start, GPX and Link; first in it.
+  const copy = app.indexOf("aria-label={COPY_LINK}");
   const share = app.indexOf("{canShare && (");
-  assert.ok(copy > 0 && share > copy && share - copy < 200, "right after Copy link");
+  assert.ok(copy > 0 && share > copy && share - copy < 700, "in More, after Link");
+  assert.match(app, /const hasMore = canShare \|\| keepShown;/);
   assert.match(
     app,
-    /\{canShare && \(\s*<button type="button" className="secondary" onClick=\{shareRoute\} aria-label=\{SHARE_NAME\} aria-describedby=\{linkNote \? "link-note" : undefined\}>\s*\{SHARE_LABEL\}/,
+    /<div id=\{moreId\} className="route-more-body" hidden=\{!more\}>\s*\{canShare && \(\s*<button type="button" className="secondary share-route" onClick=\{shareRoute\} aria-label=\{SHARE_NAME\} aria-describedby=\{linkNote \? "link-note" : undefined\}>\s*\{SHARE_LABEL\}/,
   );
   // A failure is said in the polite status Copy link uses, and shown; success and cancel say nothing.
   assert.match(app, /said = shareSaidFor\(await outcome\);/);

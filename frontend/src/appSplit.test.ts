@@ -10,8 +10,8 @@ const read = (name: string) => readFileSync(new URL(name, import.meta.url), "utf
 const app = read("./App.tsx");
 const RENDERED = {
   "./app/Planner.tsx": ["PointsSection", "RideSection"],
-  "./app/RoutePanel.tsx": ["RouteSection", "RouteActions"],
-  "./app/Sheets.tsx": ["LayersSheet", "GpxSheet", "SettingsSheet"],
+  "./app/RoutePanel.tsx": ["RouteSection"],
+  "./app/Sheets.tsx": ["LayersSheet", "LegendSheet", "GpxSheet", "SettingsSheet"],
 };
 
 test("App renders each split component once, passing its own names through", () => {
@@ -34,19 +34,20 @@ test("the planner as one text has every component's JSX back in place and no pas
   const whole = appSource();
   assert.doesNotMatch(whole, /\{\.\.\.\{/);
   for (const marker of [
-    '<section key="points" aria-labelledby="points-heading">',
-    '<section key="route" aria-labelledby="route-heading" aria-busy={stale}>',
+    '<section key="points" aria-labelledby="points-heading" className="points-section">',
+    '<section key="route" aria-labelledby="route-heading" aria-busy={stale} className={goMode ? "route-section go-route" : "route-section"}>',
     '<RideSettings key="presets"',
     'id="sheet-layers"',
+    'id="sheet-legend"',
     'id="sheet-gpx"',
     'id="sheet-settings"',
     '<div className="route-actions">',
   ]) {
     assert.equal(whole.split(marker).length - 1, 1, marker);
   }
-  // In the order App renders them: the planner's sections, the sheets, then the pinned actions.
+  // In the order App renders them: the planner's sections, the sheets, then the bar (UI-CLEANUP: Start, GPX,
+  // Link and More are in the route summary now, not pinned under the panel).
   const at = (marker: string) => whole.indexOf(marker);
-  assert.ok(at('id="sheet-layers"') < at('id="sheet-gpx"') && at('id="sheet-gpx"') < at('id="sheet-settings"'));
-  assert.ok(at('id="sheet-settings"') < at('<div className="route-actions">'));
-  assert.ok(at('<div className="route-actions">') < at("<BottomBar"));
+  assert.ok(at('id="sheet-layers"') < at('id="sheet-legend"') && at('id="sheet-legend"') < at('id="sheet-gpx"') && at('id="sheet-gpx"') < at('id="sheet-settings"'));
+  assert.ok(at('id="sheet-settings"') < at("<BottomBar"));
 });

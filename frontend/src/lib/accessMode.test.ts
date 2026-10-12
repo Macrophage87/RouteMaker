@@ -67,7 +67,7 @@ test("a press: only the first button turning it on moves the focus to Map tools 
 
 test("the owner's sentence (455a(4)), with where the switch is outside More tips, and once in More tips' own line", () => {
   assert.equal(ACCESS_SENTENCE, "For keyboard or screen reader use, turn on accessibility mode.");
-  assert.equal(ACCESS_SENTENCE_WHERE, "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in More tips).");
+  assert.equal(ACCESS_SENTENCE_WHERE, "For keyboard or screen reader use, turn on accessibility mode (the first button on the page, or in Settings).");
   assert.equal(
     ACCESS_HELP,
     "For keyboard or screen reader use, turn on accessibility mode. It adds Map tools by the map's zoom buttons and is kept on this device. It is also the first button on the page.",
