@@ -1,0 +1,10 @@
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station
+V_FBG,Fredericksburg,38.298400,-77.456700,0,
+V_WDB,Woodbridge,38.658700,-77.248300,0,
+V_MSS,Manassas,38.750500,-77.471800,0,
+V_BKC,Burke Centre,38.797600,-77.299000,0,
+V_ALX,Alexandria,38.806400,-77.061800,0,
+V_CRY,Crystal City,38.857300,-77.050500,0,
+V_LEN,L'Enfant,38.884600,-77.021800,0,
+V_UST,Union Station VRE,38.897100,-77.006300,1,
+V_UST_P,Union Station VRE Platform,38.897100,-77.006300,0,V_UST

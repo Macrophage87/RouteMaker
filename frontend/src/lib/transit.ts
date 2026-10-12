@@ -1,6 +1,6 @@
 /**
- * The transit ride types on the page (TRANSIT-ASSIST; Stephen, 2026-10-12): Own Bike + Transit and
- * Bikeshare + Transit. The API answers each with its best combination (core.transit): the route's
+ * The transit ride types on the page (TRANSIT-ASSIST; Stephen, 2026-10-12): Own Bike + 🚆🚌 and
+ * Bikeshare + 🚶🚆🚌. The API answers each with its best combination (core.transit): the route's
  * line is the first ride leg, and the route's `transit` object is the whole trip, step by step, with
  * a scheduled total and the time of riding the whole way. These are the words, the map's lines and
  * markers and the credit, as plain functions so they can be tested without a browser.

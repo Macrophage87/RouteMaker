@@ -28,7 +28,7 @@ import {
 const SRC = new URL("../", import.meta.url);
 const src = (path: string) => readFileSync(new URL(path, SRC), "utf8");
 
-// The shape POST /api/route answers for Own Bike + Transit (core.transit.block), trimmed.
+// The shape POST /api/route answers for Own Bike + 🚆🚌 (core.transit.block), trimmed.
 const PLAN: TransitPlan = {
   mode: "bike-transit",
   key: "ride>wmata-rail:eastern-market>federal-triangle>ride",
@@ -172,7 +172,7 @@ test("a closed station is said in words, not by colour alone", () => {
   assert.equal(closedName({ name: "Camden Station", reason: "no MARC weekend service" }), "Camden Station, closed: no MARC weekend service");
 });
 
-test("the credits carry the schedule's source, and the operator's on Bikeshare + Transit", () => {
+test("the credits carry the schedule's source, and the operator's on Bikeshare + 🚶🚆🚌", () => {
   assert.deepEqual(routeCredits(ROUTE), ["© OpenStreetMap contributors", "WMATA GTFS (scheduled times)"]);
   const share = { ...ROUTE, transit: { ...PLAN, mode: "bikeshare-transit" } } as RouteResponse;
   assert.deepEqual(routeCredits(share), ["© OpenStreetMap contributors", "Capital Bikeshare", "WMATA GTFS (scheduled times)"]);

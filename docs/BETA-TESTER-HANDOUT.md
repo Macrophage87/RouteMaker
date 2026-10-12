@@ -200,7 +200,7 @@ descriptions. Plan's "Change" ride type list has the same search and groups. Typ
   Yellow, ⚪ Silver), a bus its route ("🚌C53"), MARC and VRE their line ("🚆Penn",
   "🚆Fredericksburg"), Light RailLink 🚈 and Metro SubwayLink 🚇. A screen reader hears words
   instead: "walk 4 minutes, bikeshare 12 minutes, Red Line 18 minutes".
-- Own Bike + 🚆🚌 takes your bike the whole way, on Metro, MARC, Light RailLink, Metro
+- Own Bike + 🚆🚌 takes your bike the whole way, on Metro, MARC, VRE, Light RailLink, Metro
   SubwayLink or a bus's front rack. It never asks you to leave the bike somewhere.
 - Bikeshare + 🚶🚆🚌 docks the bike before you board. At each end it walks or uses a bikeshare
   bike, whichever is quicker. The docks are named. It also offers "Walk the whole way" when

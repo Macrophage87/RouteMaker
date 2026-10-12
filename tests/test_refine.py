@@ -2780,7 +2780,7 @@ class TestStressAverseWeights:
             ("trailmaxxing", None),
             ("cargo", presets.CARRYING_PEOPLE),
             ("bikeshare", None),
-            # Bikeshare + Transit rides a bikeshare bike, calm as Bikeshare is.
+            # Bikeshare + 🚶🚆🚌 rides a bikeshare bike, calm as Bikeshare is.
             ("bikeshare-transit", None),
             # Rebalance Ride rides a share bike, calm as Bikeshare is.
             ("rebalance", None),

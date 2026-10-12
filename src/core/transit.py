@@ -8,7 +8,7 @@ enabled; there is no separate setting), and later that day (15:00) each answers 
 ranked list: riding directly there always, and the quickest transit trips, quickest first, the
 map following the one chosen. The region runs from DC to Baltimore, so the trips use every
 system in transitdata/systems.json (WMATA Metro and Metrobus, MARC, Light RailLink, Metro
-SubwayLink), chained: at most `MAX_LEGS` transit legs with a transfer between them.
+SubwayLink, VRE), chained: at most `MAX_LEGS` transit legs with a transfer between them.
 
 The owner renamed them on 2026-10-12 (20:35): "Own Bike + Transit" is "Own Bike + 🚆🚌" (said
 "Own bike plus train or bus") and "Bikeshare + Transit" is "Bikeshare + 🚶🚆🚌" (said "Bikeshare
@@ -82,6 +82,7 @@ neither DC's nor OpenStreetMap's elevator are not used with a bike: unclear bike
 closed), Metrobus on the front rack, and every MARC, Light RailLink and Metro SubwayLink train
 (the owner, 2026-10-12: "you can use it unless it's too crowded to do so. No API knows how many
 people can fit." There is no crowding model and no crowding note: "It's common courtesy.").
+VRE takes full-size bikes on every train (read 2026-10-12; the owner added VRE that day).
 Every station of the other rail systems takes a bike (the owner, 2026-10-12: every station has a
 ramp or an elevator, and stairs will do in a pinch).
 On the dates in `BLACKOUTS_PATH` (July 4 every year, and dates the owner adds by hand) bikes
