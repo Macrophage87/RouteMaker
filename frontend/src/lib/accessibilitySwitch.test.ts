@@ -671,9 +671,9 @@ test("repaint wiring: the route's sections are cut again in the palette in use, 
       // is the route's magenta with the dash-dot mark, 397, so it has no dash layer of its own).
       "route-dash-m0 line-opacity",
       "route-dash-m1 line-opacity",
-      // A Mass Ride's corridor (routeColours.ts, massRoutePaint): set back to the plain casing for this route.
+      // The route's corridor (routeColours.ts, routeCorridorPaint): the wider casing and the white band.
       "route-casing line-width",
-      "route-mass-band line-opacity",
+      "route-band line-opacity",
     ],
   );
   assert.equal(paint[1][2], 1, "the sections are shown, fully");

@@ -28,8 +28,8 @@ import {
   ROUTE_CASING_PLAIN,
   ROUTE_CASING_WIDTH,
   ROUTE_LINE_WIDTH,
-  ROUTE_MASS_BAND,
-  ROUTE_MASS_BAND_WIDTH,
+  ROUTE_BAND,
+  ROUTE_BAND_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
 import { stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb } from "./stressStyle.js";
@@ -56,7 +56,7 @@ import {
   setOverlayFade,
   routeOverlayFade,
   setHazardData,
-  ROUTE_MASS_BAND_LAYER_ID,
+  ROUTE_BAND_LAYER_ID,
 } from "./lib/mapGlue.ts";
 import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
@@ -867,14 +867,14 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": ROUTE_CASING_PLAIN, "line-width": ROUTE_CASING_WIDTH, "line-opacity": 0.9 },
       });
-      // A Mass Ride's route: a white band inside a wider casing, so the route reads over the
-      // capacity roads it is coloured like (routeColours.ts, massRoutePaint). Shown by setRouteSections.
+      // The route's corridor: a white band inside a wider casing, so a route drawn in the map's own
+      // colours reads over the roads (routeColours.ts, routeCorridorPaint). Shown by setRouteSections.
       map.addLayer({
-        id: ROUTE_MASS_BAND_LAYER_ID,
+        id: ROUTE_BAND_LAYER_ID,
         type: "line",
         source: ROUTE_SOURCE,
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": ROUTE_MASS_BAND, "line-width": ROUTE_MASS_BAND_WIDTH, "line-opacity": 0 },
+        paint: { "line-color": ROUTE_BAND, "line-width": ROUTE_BAND_WIDTH, "line-opacity": 0 },
       });
       // The route in its traffic stress, between the casing and the line: one
       // feature per section, each in its class's colour. The line itself
