@@ -3697,6 +3697,14 @@ details.zoom-notes {
 .mtb-level .hint {
   display: block;
 }
+/* The preferred level's levels above the hardest: unavailable, said by the disabled state and the hint. */
+.mtb-preferred .toggle:has(input:disabled) {
+  opacity: 0.6;
+}
+/* Kept in the page while empty (a live region must be there before it speaks), with no space taken. */
+.mtb-preferred .mtb-preferred-said:empty {
+  margin: 0;
+}
 
 /* The nearest stations to take a bike from or return one to (OWNER-DECISIONS 466a). The chosen one
    is told apart by a text badge and a heavier border, never by colour alone. */
