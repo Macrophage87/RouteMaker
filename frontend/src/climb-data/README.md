@@ -2,7 +2,9 @@
 
 One file the front end loads the first time the Climbs layer is turned on (`src/lib/climbs.ts`,
 imported with `?url&no-inline`, so it is its own hashed file under `/assets/` and the edge and
-Content-Security-Policy are unchanged, as `amenity-data/` is). The directory is not called `data/`
+Content-Security-Policy are unchanged, as `amenity-data/` is). The service worker leaves it out of
+its precache (`LAZY_ASSET` in `src/sw/swCore.mjs`), as it does the food file, so installing the app
+does not download it. The directory is not called `data/`
 because the repository's `.gitignore` ignores every directory of that name.
 
 | File | What | Source | Licence | Credit on the map |

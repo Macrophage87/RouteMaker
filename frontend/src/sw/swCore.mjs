@@ -11,7 +11,7 @@
  * |-------------------------------------------|-------------------------------------------------------|
  * | navigation to / or /index.html            | network first, SHELL_TIMEOUT_MS, else the kept shell  |
  * | any other navigation                      | not intercepted (sign-in, the admin, /static, presets)|
- * | /assets/food-*.json (LAZY_ASSET)          | cache first; else fetched and kept on first use       |
+ * | /assets/{food,climbs}-*.json (LAZY_ASSET)  | cache first; else fetched and kept on first use       |
  * | /assets/*                                 | precached at install; cache first                     |
  * | /favicon.svg, /icons/*, /licenses.txt     | stale-while-revalidate                                |
  * | /basemap/fonts/*, /basemap/sprites/*      | the kept routes' bucket first, else the network       |
@@ -47,11 +47,12 @@ export const SKIP_WAITING = "SKIP_WAITING";
 
 /**
  * Assets left out of the precache, so an install does not download them: the Find food places
- * (about 450 KB compressed; lib/food.ts), which most rides never open. Fetched the first time the
+ * (about 450 KB compressed; lib/food.ts), which most rides never open, and the Climbs layer's file
+ * (about 400 KB compressed; lib/climbs.ts), loaded only when the layer, off by default, is turned on. Fetched the first time the
  * page asks, kept then in the build's cache (so a search works offline after one use), and carried
  * into the next build's cache at its install while the file is unchanged.
  */
-export const LAZY_ASSET = /^\/assets\/food-[^/]*\.json$/;
+export const LAZY_ASSET = /^\/assets\/(?:food|climbs)-[^/]*\.json$/;
 
 /** The build's own cache: its assets and its shell. */
 export function buildCache(buildId) {

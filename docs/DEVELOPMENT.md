@@ -7335,7 +7335,8 @@ writes `index.html`'s `<meta name="routemaker-build">` and emits `dist/sw.js` (t
 `export` words dropped, then the build id and the list of every `/assets/*` file) and `dist/sw-kill.js`.
 Its rules (`ruleFor`, an allowlist; the table is at the top of the file): the shell network first,
 falling back after `SHELL_TIMEOUT_MS` (3 s) to the kept copy; `/assets/*` precached and cache first,
-but for `LAZY_ASSET` (the Find food places, `/assets/food-*.json`, about 450 KB compressed), which no
+but for `LAZY_ASSET` (the Find food places, `/assets/food-*.json`, about 450 KB compressed, and the
+Climbs layer's `/assets/climbs-*.json`, about 400 KB compressed, off until turned on), which no
 install downloads: kept in the build's cache on first use, and copied into the next build's cache at
 its install while its hashed name is unchanged (`lazyList` in `swPlugin.mjs`);
 the favicon, icons and licence notices stale-while-revalidate; the base map's glyphs and sprite from
