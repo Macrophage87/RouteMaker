@@ -1,51 +1,16 @@
 // The private-beta notice (lib/betaBanner.ts): off unless the build says VITE_BETA=1,
-// a labelled region in the planner rather than a dialog, dismissible for the session,
-// never trapping focus, naming no channel, with a report link only when one is configured.
+// a "Beta" chip in the map's bottom-left corner that shows and hides a labelled region
+// (not a dialog), never trapping focus, naming no channel, with a report link only when
+// one is configured.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import {
-  BETA_BANNER_TEXT,
-  BETA_DISMISS_KEY,
-  BETA_REPORT_LINK_TEXT,
-  BetaBanner,
-  betaDismissed,
-  betaReportUrl,
-  dismissBeta,
-  isBetaBuild,
-} from "./betaBanner.ts";
-import type { StorageLike } from "./signIn.ts";
+import { BETA_BANNER_TEXT, BETA_REPORT_LINK_TEXT, BetaChip, betaReportUrl, isBetaBuild } from "./betaBanner.ts";
 import { appSource } from "../testSupport/appSource.mjs";
 
-function memory(initial: Record<string, string> = {}): StorageLike & { data: Record<string, string> } {
-  const data = { ...initial };
-  return {
-    data,
-    getItem: (k) => (k in data ? data[k] : null),
-    setItem: (k, v) => {
-      data[k] = v;
-    },
-    removeItem: (k) => {
-      delete data[k];
-    },
-  };
-}
-
-const throwing: StorageLike = {
-  getItem: () => {
-    throw new Error("blocked");
-  },
-  setItem: () => {
-    throw new Error("blocked");
-  },
-  removeItem: () => {
-    throw new Error("blocked");
-  },
-};
-
-const render = (props: Parameters<typeof BetaBanner>[0]) => renderToStaticMarkup(createElement(BetaBanner, props));
+const render = (props: Parameters<typeof BetaChip>[0]) => renderToStaticMarkup(createElement(BetaChip, props));
 
 test("the flag is on for exactly '1' or 'true' and off for everything else, including unset", () => {
   assert.equal(isBetaBuild("1"), true);
@@ -53,15 +18,36 @@ test("the flag is on for exactly '1' or 'true' and off for everything else, incl
   for (const off of [undefined, "", "0", "false", "yes", 1, true, null]) assert.equal(isBetaBuild(off), false, String(off));
 });
 
-test("disabled, the banner renders nothing at all", () => {
-  assert.equal(render({ enabled: false, storage: memory() }), "");
+test("disabled, it renders nothing at all", () => {
+  assert.equal(render({ enabled: false }), "");
+  assert.equal(render({ enabled: false, initiallyOpen: true, reportUrl: "https://discord.gg/abc123" }), "");
 });
 
-test("enabled, it is a region labelled 'Beta notice', not a live region or a dialog", () => {
-  const html = render({ enabled: true, storage: memory() });
-  assert.match(html, /^<section class="beta-banner" aria-label="Beta notice"/);
+test("enabled, it is one 'Beta' chip: a disclosure button named 'Beta notice', closed at first", () => {
+  const html = render({ enabled: true });
+  assert.match(html, /^<div class="beta-chip" data-testid="beta-chip">/);
+  const button = html.match(/<button[^>]*>[^<]*<\/button>/)?.[0] ?? "";
+  assert.match(button, /^<button type="button" class="beta-chip-button" aria-label="Beta notice" aria-expanded="false" aria-controls="([^"]+)">Beta<\/button>$/);
+  assert.equal(html.match(/<button/g)?.length, 1, "no Dismiss: nothing but the chip");
+  assert.doesNotMatch(html, /Dismiss/);
+  // The note is in the page, hidden, and the chip names it.
+  const controls = button.match(/aria-controls="([^"]+)"/)?.[1];
+  assert.match(html, new RegExp(`<section id="${controls}" class="beta-chip-note" aria-label="Beta notice" hidden="">`));
+});
+
+test("open, the note is a region labelled 'Beta notice' with the text, not a live region or a dialog", () => {
+  const html = render({ enabled: true, initiallyOpen: true });
+  assert.match(html, /aria-expanded="true"/);
+  assert.match(html, /<section id="[^"]+" class="beta-chip-note" aria-label="Beta notice">/);
   assert.doesNotMatch(html, /role=|aria-live|aria-modal|tabindex/i);
   assert.ok(html.includes(BETA_BANNER_TEXT.replace("'", "&#x27;")), html);
+});
+
+test("Escape or the chip again closes it, and the focus goes back to the chip", () => {
+  const source = readFileSync(new URL("./betaBanner.ts", import.meta.url), "utf8");
+  assert.match(source, /onClick: \(\) => setOpen\(!open\)/);
+  assert.match(source, /event\.key !== "Escape" \|\| !open[\s\S]*setOpen\(false\);\s*chip\.current\?\.focus\(\);/);
+  assert.doesNotMatch(source, /sessionStorage|localStorage|getElementById/, "no dismissal to remember");
 });
 
 test("the text names no channel: it says to tell the person who gave you access (OWNER-DECISIONS 382)", () => {
@@ -70,12 +56,6 @@ test("the text names no channel: it says to tell the person who gave you access 
     "Beta: routes may still use some paths where bikes aren't allowed until the next map update. If anything looks wrong, tell the person who gave you access.",
   );
   assert.doesNotMatch(BETA_BANNER_TEXT, /discord|e-?mail|@|https?:/i);
-});
-
-test("its dismiss control is a named button of its own, with the visible word in its name", () => {
-  const html = render({ enabled: true, storage: memory() });
-  assert.match(html, /<button type="button" aria-label="Dismiss beta notice">Dismiss<\/button>/);
-  assert.equal(html.match(/<button/g)?.length, 1);
 });
 
 test("the report link is an https address only; anything else gives no link", () => {
@@ -100,9 +80,9 @@ test("the report link is an https address only; anything else gives no link", ()
 });
 
 test("with no report link there is no link at all; with one, it opens in a new tab and says so", () => {
-  assert.doesNotMatch(render({ enabled: true, storage: memory() }), /<a /);
-  assert.doesNotMatch(render({ enabled: true, reportUrl: null, storage: memory() }), /<a /);
-  const html = render({ enabled: true, reportUrl: "https://discord.gg/abc123", storage: memory() });
+  assert.doesNotMatch(render({ enabled: true }), /<a /);
+  assert.doesNotMatch(render({ enabled: true, reportUrl: null }), /<a /);
+  const html = render({ enabled: true, initiallyOpen: true, reportUrl: "https://discord.gg/abc123" });
   assert.match(
     html,
     /<a href="https:\/\/discord\.gg\/abc123" target="_blank" rel="noopener noreferrer">Report a problem<span class="visually-hidden"> \(opens in a new tab\)<\/span><\/a>/,
@@ -111,63 +91,44 @@ test("with no report link there is no link at all; with one, it opens in a new t
   assert.equal(html.match(/<a /g)?.length, 1);
 });
 
-test("a dismissal in this tab hides it, and an untouched tab still shows it", () => {
-  const store = memory();
-  assert.equal(betaDismissed(store), false);
-  dismissBeta(store);
-  assert.equal(store.data[BETA_DISMISS_KEY], "1");
-  assert.equal(betaDismissed(store), true);
-  assert.equal(render({ enabled: true, storage: store }), "");
-  assert.notEqual(render({ enabled: true, storage: memory() }), "");
-});
-
-test("storage that throws or is missing never breaks the banner: it shows, and dismissing does not throw", () => {
-  assert.equal(betaDismissed(throwing), false);
-  assert.equal(betaDismissed(null), false);
-  assert.doesNotThrow(() => dismissBeta(throwing));
-  assert.doesNotThrow(() => dismissBeta(null));
-  assert.notEqual(render({ enabled: true, storage: throwing }), "");
-  assert.notEqual(render({ enabled: true, storage: null }), "");
-});
-
 test("App wires it to the build flags and nothing else, so the local site is unchanged", () => {
   const app = appSource();
-  assert.equal(app.match(/<BetaBanner\b/g)?.length, 1);
+  assert.equal(app.match(/<BetaChip\b/g)?.length, 1);
+  assert.doesNotMatch(app, /BetaBanner/);
   assert.match(
     app,
-    /<BetaBanner\s+enabled=\{isBetaBuild\(import\.meta\.env\.VITE_BETA\)\}\s+reportUrl=\{betaReportUrl\(import\.meta\.env\.VITE_BETA_REPORT_URL\)\}\s+\/>/,
+    /\{!riding && \(\s*<BetaChip\s+enabled=\{isBetaBuild\(import\.meta\.env\.VITE_BETA\)\}\s+reportUrl=\{betaReportUrl\(import\.meta\.env\.VITE_BETA_REPORT_URL\)\}\s+\/>\s*\)\}/,
   );
 });
 
-test("App renders it as the first child of the planner's body, right after the header (re-check S1)", () => {
+test("App puts it on the map, after the map's own controls and before the planner, not in the planner", () => {
   const app = appSource();
-  const banner = app.indexOf("<BetaBanner");
-  const aside = app.indexOf('id="route-planner"');
-  const header = app.indexOf("</header>", aside);
-  const body = app.indexOf('<div id="panel-body"', aside);
-  assert.ok(aside > 0 && header > aside && body > header, "the planner's layout moved");
-  const bodyOpen = app.indexOf(">", body) + 1;
-  assert.match(app.slice(bodyOpen, banner), /^\s*$/, "the banner must be the body's first child");
-  assert.ok(app.indexOf("<a className=\"skip-link\"") < aside, "the skip link still comes first");
+  const chip = app.indexOf("<BetaChip");
+  assert.ok(app.indexOf("<MapView") < chip && app.indexOf('className="map-history"') < chip, "after the map and its controls");
+  assert.ok(chip < app.indexOf("<aside"), "before the planner");
+  assert.ok(app.indexOf("<a className=\"skip-link\"") < chip, "the skip link still comes first");
 });
 
-test("Dismiss sends focus to the planner, as the skip link does (re-check N4)", () => {
-  const source = readFileSync(new URL("./betaBanner.ts", import.meta.url), "utf8");
-  assert.match(source, /document\.getElementById\("route-planner"\)\?\.focus\(\)/);
-  const app = appSource();
-  assert.match(app, /id="route-planner"\s+tabIndex=\{-1\}/);
-  assert.match(app, /href="#route-planner"/);
-});
-
-test("the notice flows inside the panel: no overlay, no z-index, a rem font size and a 44px button", () => {
+test("the chip sits in the map's free bottom-left corner: 44 px, a rem font size, clear of the panel and the credits", () => {
   const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
-  const rules = [...css.matchAll(/\.beta-banner[^{]*\{([^}]*)\}/g)].map((m) => m[1]).join("\n");
-  assert.ok(rules, "no .beta-banner rules");
-  assert.doesNotMatch(rules, /position:\s*(absolute|fixed)|z-index/);
-  assert.doesNotMatch(css.match(/\.beta-banner \{([^}]*)\}/)?.[1] ?? "", /flex:\s*none/);
+  assert.doesNotMatch(css, /\.beta-banner/, "the old banner's rules are gone");
+  const chip = css.match(/\.beta-chip \{([^}]*)\}/)?.[1] ?? "";
+  assert.match(chip, /position: absolute;\s*left: 424px;\s*bottom: 10px;/);
+  assert.match(chip, /font-size: 0\.875rem/);
+  const rules = [...css.matchAll(/\.beta-chip[^{]*\{([^}]*)\}/g)].map((m) => m[1]).join("\n");
   assert.doesNotMatch(rules, /font-size:\s*[0-9.]+px/);
-  assert.match(css, /\.beta-banner \{[^}]*font-size: 0\.875rem/);
-  const button = css.match(/\.beta-banner button \{([^}]*)\}/)?.[1] ?? "";
+  const button = css.match(/\.beta-chip-button \{([^}]*)\}/)?.[1] ?? "";
   assert.match(button, /min-height: 44px/);
   assert.match(button, /min-width: 44px/);
+  assert.match(button, /background: var\(--bg\);\s*color: var\(--text\);/, "theme colours, so light, dark and High contrast all pass");
+  // The credits stop short of it on a computer; on a phone it rides above the sheet as they do.
+  assert.match(css, /\.maplibregl-ctrl-bottom-right \.maplibregl-ctrl-attrib \{\s*max-width: calc\(100vw - 510px\);/);
+  for (const [sheet, bottom] of [
+    [/\.app:has\(\.panel\.open\) \.beta-chip/, "calc(48% + 10px)"],
+    [/\.app:has\(\.panel\.closed\) \.beta-chip/, "66px"],
+    [/\.app\.go-mode:has\(\.panel\.go-peek\) \.beta-chip/, "calc(34% + 10px)"],
+    [/\.app\.go-mode:has\(\.panel\.go-half\) \.beta-chip/, "calc(56% + 10px)"],
+  ] as const) {
+    assert.match(css, new RegExp(`${sheet.source} \\{\\s*bottom: ${bottom.replace(/[()+%]/g, "\\$&")};`));
+  }
 });
