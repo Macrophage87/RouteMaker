@@ -511,7 +511,7 @@ test("the route's casing and the unrated grey follow the palette: the colour-bli
   assert.equal(unrated("cvd").color, UNRATED_CVD_COLOUR);
   assert.match(
     readFileSync(fileURLToPath(new URL("../FacilityBreakdown.tsx", import.meta.url)), "utf8"),
-    /const casing = routeCasing\(\);[\s\S]*stroke=\{casing\} strokeWidth=\{ROUTE_CASING_WIDTH\}/,
+    /const casing = routeCasing\(\);[\s\S]*stroke=\{casing\} strokeWidth=\{ROUTE_SWATCH_CASING_WIDTH\}/,
     "the route colour legend draws the same casing",
   );
 });
@@ -671,6 +671,9 @@ test("repaint wiring: the route's sections are cut again in the palette in use, 
       // is the route's magenta with the dash-dot mark, 397, so it has no dash layer of its own).
       "route-dash-m0 line-opacity",
       "route-dash-m1 line-opacity",
+      // The route's corridor (routeColours.ts, routeCorridorPaint): the wider casing and the white band.
+      "route-casing line-width",
+      "route-band line-opacity",
     ],
   );
   assert.equal(paint[1][2], 1, "the sections are shown, fully");
