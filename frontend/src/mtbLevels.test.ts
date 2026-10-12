@@ -1,8 +1,10 @@
 // OWNER-DECISIONS 456, 456a-c (docs/MTB-TOPO-PLAN.md, slice 2): the mountain-bike trail layer draws each
 // difficulty level (the tiles' `mtb_level`, 1-4) in its colour - green, blue, black, red - with a pattern of
-// its own and shared dark cross-ticks, so the colour is never the only cue and no level looks like a routable
-// line (452a); an unrated trail keeps the grey dots; each colour is 3:1 or more from every surface of the base
-// map (as MTB_TRAIL is); and no level is drawn by a routable layer.
+// its own on a shared white edge (since v0.6.0, the owner's report of 2026-10-12: "Mountain bike trails seem
+// plotted but don't show up very well"; before, dark cross-ticks under a 2 px line), so the colour is never the
+// only cue and no level looks like a routable line (452a); an unrated trail is grey; each colour is 3:1 or more
+// from every surface of the base map (as MTB_TRAIL is) and 4.5:1 on its edge; and no level is drawn by a
+// routable layer.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as spec from "@maplibre/maplibre-gl-style-spec";
@@ -14,6 +16,7 @@ import {
   MTB_LABEL_MIN_ZOOM,
   MTB_LAYER_IDS,
   MTB_LINE_LAYER_IDS,
+  MTB_HALO,
   MTB_LEVEL,
   MTB_LEVEL_MIN_GAP,
   MTB_LEVELS,
@@ -63,7 +66,7 @@ test("four levels, the owner's colours and names, in order", () => {
   );
 });
 
-test("each level's colour is at least 3:1 from every surface of the base map, with margin, and its ticks too", () => {
+test("each level's colour is at least 3:1 from every surface of the base map, with margin, and 4.5:1 on its white edge", () => {
   const found = baseSurfaces();
   assert.ok(Object.keys(found).length >= 20 && "park_b" in found && "water" in found && "wood_b" in found, JSON.stringify(found));
   for (const shape of MTB_LEVELS as Shape[]) {
@@ -72,14 +75,14 @@ test("each level's colour is at least 3:1 from every surface of the base map, wi
       .filter(([, ratio]) => ratio < 3)
       .map(([name, ratio]) => `${name} ${ratio.toFixed(2)}:1`);
     assert.deepEqual(failures, [], `level ${shape.level} ${shape.color}`);
-    // The line's gaps show the base map (no solid casing behind them), so no colour sits at the bar's edge.
+    // Where the edge is narrow (a sharp bend at z14) the line meets the base map, so no colour sits at the bar's edge.
     const lowest = Math.min(...Object.values(found).map((hex) => contrastRatio(shape.color, hex)));
     assert.ok(lowest >= 3.25, `level ${shape.level}: lowest ${lowest.toFixed(2)}:1`);
     // The light roads a trail crosses too.
     for (const road of ["minor_a", "minor_b", "minor_service"]) if (road in found) assert.ok(contrastRatio(shape.color, found[road]) >= 3, `level ${shape.level} on ${road}`);
   }
-  const ticks = Math.min(...Object.values(found).map((hex) => contrastRatio(MTB_LEVEL.tick, hex)));
-  assert.ok(ticks >= 3, `the ticks: ${ticks.toFixed(2)}:1`);
+  // The gaps and either side show the white edge.
+  for (const shape of MTB_LEVELS as Shape[]) assert.ok(contrastRatio(shape.color, MTB_HALO.color) >= 4.5, `level ${shape.level} on white`);
 });
 
 test("each level has a pattern of its own: dashed, unlike every other, and none of the map's other line patterns", () => {
@@ -96,7 +99,7 @@ test("each level has a pattern of its own: dashed, unlike every other, and none 
   }
 });
 
-test("the layer: the unrated dots, then each level's ticks, then its line, under every routable layer, from zoom 14", () => {
+test("the layer: every white edge, then the unrated dashes and each level's line, under every routable layer, from zoom 14", () => {
   for (const strong of [false, true]) {
     try {
       setAccessibility(strong, { remember: false });
@@ -107,7 +110,8 @@ test("the layer: the unrated dots, then each level's ticks, then its line, under
       for (const shape of MTB_LEVELS as Shape[]) {
         const casing = layers.find((l) => l.id === mtbLevelCasingLayerId(shape.level))!;
         const line = layers.find((l) => l.id === mtbLevelLayerId(shape.level))!;
-        assert.ok(layers.indexOf(casing) < layers.indexOf(line), "the ticks under its line");
+        assert.ok(layers.indexOf(casing) < layers.indexOf(line), "the edge under its line");
+        assert.ok(layers.indexOf(casing) < layers.findIndex((l) => l.id === MTB_TRAIL_LAYER_ID), "every edge under every line");
         assert.equal(casing.minzoom, MTB_MIN_ZOOM);
         assert.equal(line.minzoom, MTB_MIN_ZOOM);
         const paint = mtbLevelPaint(shape.level, strong);
@@ -115,13 +119,15 @@ test("the layer: the unrated dots, then each level's ticks, then its line, under
         assert.deepEqual(casing.paint, paint.casing);
         assert.equal(line.paint["line-color"], shape.color);
         assert.deepEqual(line.paint["line-dasharray"], shape.dash);
-        assert.equal(casing.paint["line-color"], MTB_LEVEL.tick);
-        assert.deepEqual(casing.paint["line-dasharray"], MTB_LEVEL.tickDash, "the shared cross-ticks");
+        assert.equal(casing.paint["line-color"], MTB_HALO.color);
+        assert.ok(!("line-dasharray" in casing.paint), "the shared solid white edge");
         const width = line.paint["line-width"] as number;
         assert.equal(width, strong ? MTB_LEVEL.strongWidth : MTB_LEVEL.width);
-        assert.ok((casing.paint["line-width"] as number) >= width + 4, "the ticks show 2 px or more either side");
-        // Wider than the grey dots, so the colour reads.
-        assert.ok(width > (strong ? MTB_TRAIL.strongWidth : MTB_TRAIL.width) - 0.01);
+        assert.equal(casing.paint["line-width"], width + 2 * (strong ? MTB_HALO.strongPx : MTB_HALO.px));
+        assert.ok(MTB_HALO.px >= 1.5 && MTB_HALO.strongPx > MTB_HALO.px, "1.5 px or more each side, wider with the switch");
+        // Wide enough that the colour reads (the owner's report of 2026-10-12: 2 px did not), and as wide as the grey line.
+        assert.ok(width >= 3, `${width} px`);
+        assert.equal(width, strong ? MTB_TRAIL.strongWidth : MTB_TRAIL.width);
       }
     } finally {
       setAccessibility(false, { remember: false });
@@ -138,11 +144,11 @@ test("each level's layers draw only that level's mountain-bike trails; the dots 
       for (const shape of MTB_LEVELS as Shape[]) {
         for (const id of [mtbLevelLayerId(shape.level), mtbLevelCasingLayerId(shape.level)]) {
           for (const level of [1, 2, 3, 4]) assert.equal(draws(filters[id], id, { ...trail, mtb_level: level }), level === shape.level, `${id} and level ${level}`);
-          assert.equal(draws(filters[id], id, trail), false, `${id}: an unrated trail is the dots'`);
+          assert.equal(draws(filters[id], id, trail), false, `${id}: an unrated trail is the grey line's`);
           assert.equal(draws(filters[id], id, { ...trail, mtb: false, mtb_level: shape.level }), false, `${id}: only the mountain-bike class`);
         }
       }
-      assert.equal(draws(filters[MTB_TRAIL_LAYER_ID], MTB_TRAIL_LAYER_ID, trail), true, "an unrated trail keeps the grey dots");
+      assert.equal(draws(filters[MTB_TRAIL_LAYER_ID], MTB_TRAIL_LAYER_ID, trail), true, "an unrated trail is grey");
       for (const level of [1, 2, 3, 4]) assert.equal(draws(filters[MTB_TRAIL_LAYER_ID], MTB_TRAIL_LAYER_ID, { ...trail, mtb_level: level }), false, `the dots leave level ${level} to its layer`);
       for (const [id, filter] of Object.entries(filters)) {
         if (isMtbLayerId(id)) continue;
@@ -167,34 +173,30 @@ test("a level follows the ride time like the dots, and a future MTB mode (`routa
 /** The gaps of a dash list (its odd entries), in widths; none for a solid line. */
 const gaps = (dash: readonly number[] | null) => (dash ? dash.filter((_, i) => i % 2 === 1) : []);
 
-test("every level differs from every stress tier on its dash, its edge and its width, plain and strong", () => {
+test("every level differs from every stress tier on its dash and its edge, plain and strong", () => {
   for (const strong of [false, true]) {
     try {
       setAccessibility(strong, { remember: false });
       const layers = stressOverlayLayers("stress") as Layer[];
       for (const shape of MTB_LEVELS as Shape[]) {
         const paint = mtbLevelPaint(shape.level, strong);
-        const levelWidth = paint.line["line-width"] as number;
-        // One mark every level shares: the same ticks and width, whatever the level.
+        // One mark every level shares: the same white edge and width, whatever the level.
         assert.deepEqual(paint.casing, mtbLevelPaint(1, strong).casing);
         assert.ok(Math.min(...gaps(shape.dash)) >= MTB_LEVEL_MIN_GAP, `level ${shape.level}'s gaps`);
-        const [tickOn, tickOff] = MTB_LEVEL.tickDash;
-        assert.ok(tickOn / (tickOn + tickOff) <= 0.2, "ticks, not a broken edge: mostly gap");
         for (const tier of currentTiers() as { tier: number; dash: number[] | null; width: number }[]) {
           const where = `level ${shape.level} against tier ${tier.tier}${strong ? " (strong)" : ""}`;
           // Dash: a tier is solid, or its gaps are 1 width or less; every level's are 1.5 or more.
           assert.ok(Math.max(0, ...gaps(tier.dash)) < MTB_LEVEL_MIN_GAP, where);
           assert.notDeepEqual(shape.dash, tier.dash, where);
-          // Edge: every tier's casing is a solid line; a level's is the dashed ticks.
+          // Edge: a tier's casing is a solid line under a line with no gap past 1 width; a level's line breaks every
+          // 1.5 widths or more onto its white edge (v0.6.0; until then dark ticks under a line thinner than every
+          // tier, which the owner could hardly see).
           const casing = layers.find((l) => l.id === `stress-casing-${tier.tier}`)!;
           assert.ok(casing, `stress-casing-${tier.tier}`);
           assert.ok(!("line-dasharray" in casing.paint), `${where}: the tier's casing is solid`);
-          assert.ok("line-dasharray" in paint.casing, `${where}: the level's edge is ticked`);
-          // Width: thinner than every tier's line.
-          assert.ok(levelWidth < tier.width, `${where}: ${levelWidth} px against ${tier.width}`);
         }
-        // The one dashed edge a routable line has (surface unknown, LTS 1) follows the line's dashes, not ticks.
-        assert.notDeepEqual(MTB_LEVEL.tickDash, UNKNOWN_SURFACE_DASH);
+        assert.equal(paint.casing["line-color"], MTB_HALO.color);
+        assert.ok(!("line-dasharray" in paint.casing), "the level's edge is solid white");
       }
     } finally {
       setAccessibility(false, { remember: false });

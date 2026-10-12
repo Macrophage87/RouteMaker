@@ -20,7 +20,7 @@ export const MTB_TRAILS_LABEL = "Mountain-bike trails";
  * rated singletrack is closed on every graph, so only the unrated (mountain-bike-class) trails are the ones
  * Gravel and Mountain Goat may use.
  */
-export const MTB_TRAILS_HINT = `From zoom ${MTB_MIN_ZOOM}: levels 1 to 4 by colour and pattern, unrated as grey dots. Not used for routes; Gravel and Mountain Goat may use unrated ones.`;
+export const MTB_TRAILS_HINT = `From zoom ${MTB_MIN_ZOOM}: levels 1 to 4 by colour and pattern, unrated as grey dashes. Not used for routes; Gravel and Mountain Goat may use unrated ones.`;
 
 /** The description while the stress map, which carries the trails, is unavailable. */
 export const MTB_TRAILS_NO_MAP_HINT = "Mountain-bike trails need data from the stress map, which is unavailable for now.";

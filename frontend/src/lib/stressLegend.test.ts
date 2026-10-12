@@ -43,10 +43,11 @@ import {
   tiersFor,
   unpavedWidth,
   MTB_TRAIL,
-  MTB_LEVEL,
+  MTB_HALO,
   MTB_LEVELS,
   mtbLevelPaint,
   mtbTrailPaint,
+  mtbTrailHaloPaint,
 } from "../stressStyle.js";
 import { HIGH_STRESS_LANES_LABEL } from "./highStressLanesSwitch.ts";
 import { appSource } from "../testSupport/appSource.mjs";
@@ -313,7 +314,7 @@ test("the legend passes the zoom and whether the overlay is on to the zoom notes
 test("the legend has a row for the mountain-bike trails' not-for-routes line, in words, in the list, at every zoom, while their layer is on (OWNER-DECISIONS 452a, 454)", () => {
   assert.deepEqual(MTB_LEGEND, {
     short: "Mountain-bike trail",
-    label: "Not used for routes (Gravel and Mountain Goat may use it): a thin grey dotted line for an unrated trail; rated ones show by level below.",
+    label: "Not used for routes (Gravel and Mountain Goat may use it): grey dashes on a white edge for an unrated trail; rated ones show by level below.",
   });
   for (const strong of [false, true]) {
     withSwitches(strong, false, () => {
@@ -358,16 +359,19 @@ test("the legend has a row for the mountain-bike trails' not-for-routes line, in
   assert.doesNotMatch(stressZoomNotice(12, true)!, /not used|not shown/i);
 });
 
-test("the mountain-bike trail's swatch is the map's dots, on the base map's earth colour, wider and darker with the accessibility switch", () => {
+test("the mountain-bike trail's swatch is the map's white edge and grey dashes, on the base map's earth colour, wider and darker with the accessibility switch", () => {
   for (const strong of [false, true]) {
     const html = renderToStaticMarkup(createElement(MtbTrailSwatch, { strong }));
     const paint = mtbTrailPaint(strong);
     assert.ok(html.includes(`fill="${MTB_TRAIL.legendGround}"`), html);
-    const line = /<line ([^>]*?)\/?>/.exec(html)![1];
+    const lines = [...html.matchAll(/<line ([^>]*?)\/?>/g)].map((m) => m[1]);
+    assert.equal(lines.length, 2, "the edge and the line: no rails");
+    const [edge, line] = lines;
+    assert.ok(edge.includes(`stroke="${MTB_HALO.color}"`) && edge.includes(`stroke-width="${mtbTrailHaloPaint(strong)["line-width"]}"`), edge);
+    assert.ok(!edge.includes("stroke-dasharray"), "a solid edge, as the map draws it");
     assert.ok(line.includes(`stroke="${paint["line-color"]}"`), line);
     assert.ok(line.includes(`stroke-width="${paint["line-width"]}"`), line);
     assert.ok(line.includes(`stroke-dasharray="${dashPx(MTB_TRAIL.dash, paint["line-width"])}"`), line);
-    assert.ok(!html.includes("<line") || html.match(/<line/g)!.length === 1, "one line: no casing or rails");
   }
 });
 
@@ -378,8 +382,8 @@ test("a mountain-bike level's swatch is the map's casing and coloured pattern on
       const paint = mtbLevelPaint(shape.level, strong);
       assert.ok(html.includes(`fill="${MTB_TRAIL.legendGround}"`), html);
       const [casing, line] = [...html.matchAll(/<line ([^>]*?)\/?>/g)].map((m) => m[1]);
-      assert.ok(casing.includes(`stroke="${MTB_LEVEL.tick}"`) && casing.includes(`stroke-width="${paint.casing["line-width"]}"`), casing);
-      assert.ok(casing.includes(`stroke-dasharray="${dashPx(MTB_LEVEL.tickDash, paint.casing["line-width"])}"`), "the cross-ticks, as the map draws them");
+      assert.ok(casing.includes(`stroke="${MTB_HALO.color}"`) && casing.includes(`stroke-width="${paint.casing["line-width"]}"`), casing);
+      assert.ok(!casing.includes("stroke-dasharray"), "the solid white edge, as the map draws it");
       assert.ok(line.includes(`stroke="${shape.color}"`), line);
       assert.ok(line.includes(`stroke-width="${paint.line["line-width"]}"`), line);
       assert.ok(line.includes(`stroke-dasharray="${dashPx(shape.dash, paint.line["line-width"])}"`), line);

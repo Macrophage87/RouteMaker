@@ -178,8 +178,9 @@ test("the not-for-routes line and each level's casing and line are the layers th
     mtbTrailLayers().map((l: { id: string }) => l.id),
     MTB_LAYER_IDS.slice(0, -1),
   );
-  assert.equal(MTB_LAYER_IDS[0], MTB_TRAIL_LAYER_ID);
-  assert.equal(MTB_LAYER_IDS.length, 10, "the dots, four casings and four lines (456), and the names (2026-10-10)");
+  assert.equal(MTB_LAYER_IDS[0], "mtb-trail-casing", "the unrated trails' white edge (v0.6.0) at the bottom");
+  assert.ok(MTB_LAYER_IDS.includes(MTB_TRAIL_LAYER_ID));
+  assert.equal(MTB_LAYER_IDS.length, 11, "the unrated trails' edge and dashes, four edges and four lines (456), and the names (2026-10-10)");
   assert.equal(MTB_LAYER_IDS.at(-1), "mtb-trail-label");
 });
 
@@ -256,7 +257,7 @@ test("the switch is a named button with role switch, its state, and a short plai
   assert.match(off, /<span class="switch-state" aria-hidden="true">Off<\/span>/);
   assert.match(off, new RegExp(`<p class="hint" id="mtb-trails-hint">${MTB_TRAILS_HINT}</p>`));
   assert.match(MTB_TRAILS_HINT, new RegExp(`from zoom ${MTB_MIN_ZOOM}`, "i"));
-  assert.match(MTB_TRAILS_HINT, /levels 1 to 4 by colour and pattern, unrated as grey dots/);
+  assert.match(MTB_TRAILS_HINT, /levels 1 to 4 by colour and pattern, unrated as grey dashes/);
   assert.match(MTB_TRAILS_HINT, /Not used for routes; Gravel and Mountain Goat may use unrated ones\.$/);
   for (const hint of [MTB_TRAILS_HINT, MTB_TRAILS_NO_MAP_HINT]) assert.ok(hint.length < 150, `${hint.length} characters`);
   const on = renderToStaticMarkup(createElement(MtbTrailsSwitch, { on: true, onChange: () => {} }));

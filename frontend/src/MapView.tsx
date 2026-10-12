@@ -1349,12 +1349,15 @@ export function MapView(props: Props) {
     [],
   );
 
-  // The "Mountain-bike trails" layer (OWNER-DECISIONS 454): shown or hidden in place, from the same tiles.
+  // The "Mountain-bike trails" layer (OWNER-DECISIONS 454): shown or hidden in place, from the same tiles. In the
+  // Mountain Bike ride type it also moves the trails up to the rider's level between the routable layers and its
+  // own (stressStyle.js stressFilters), so the filters are set again too.
   useEffect(
     () =>
       subscribeMtbTrails(() => {
         const map = mapRef.current;
         if (map && loaded.current) setStressVisibility(map, callbacks.current.stressVisible);
+        onLaneSwitch(map, loaded.current, callbacks.current.when);
       }),
     [],
   );

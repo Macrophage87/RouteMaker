@@ -1,7 +1,7 @@
 // OWNER-DECISIONS 452a (refining 452): "I want people to know where the trails are, but make them clear
 // that it's not routing." No routable stress-map layer draws a feature the tiles mark `mtb`
 // (core/stress_tiles.py), for any ride type, ride time or switch; the not-for-routes layer
-// (`mtb-trail`) draws them, and only them, in a look no routable line has; a rough trail (`rough`,
+// (`mtb-trail`, on its white edge `mtb-trail-casing` since v0.6.0) draws them, and only them, in a look no routable line has; a rough trail (`rough`,
 // a surface, not the class) still draws as before; and MTB_TRAILS_ROUTABLE / `routableMtb` is the
 // one switch that moves them back into the routable layers.
 import { test } from "node:test";
@@ -14,7 +14,10 @@ import { STRESS_ZOOMS } from "./lib/mapStyle.ts";
 import {
   FACILITIES,
   MTB_MIN_ZOOM,
+  MTB_HALO,
+  MTB_LEVELS,
   MTB_TRAIL,
+  MTB_TRAIL_CASING_LAYER_ID,
   MTB_TRAILS_ROUTABLE,
   PALETTES,
   UNKNOWN_SURFACE_DASH,
@@ -26,6 +29,7 @@ import {
   MTB_LAYER_IDS,
   mtbHides,
   mtbTrailLayers,
+  mtbTrailHaloPaint,
   mtbTrailPaint,
   setAccessibility,
   setHighStressLanes,
@@ -43,6 +47,8 @@ function drawsWith(filter: unknown, id: string, properties: Record<string, unkno
 
 const WHENS = ["weekday_offpeak", "weekday_rush", "weekend"];
 const MTB_ID = "mtb-trail";
+/** The unrated trails' two layers: the white edge and the grey dashes (v0.6.0). */
+const UNRATED_IDS = [MTB_TRAIL_CASING_LAYER_ID, MTB_ID];
 
 /** The features a layer could draw: every tier, surface, facility and car-free time. */
 function samples(): Array<Record<string, unknown>> {
@@ -71,11 +77,11 @@ test("no routable layer (stress, unpaved, surface-unknown, ring, gap, facility) 
       for (const when of WHENS) {
         const filters = stressFilters(when, lanes, mass);
         const ids = Object.keys(filters);
-        assert.ok(ids.includes("stress-1") && ids.includes("facility-path") && ids.includes("stress-unpaved-1") && ids.includes("stress-unknown") && ids.includes(MTB_ID));
+        assert.ok(ids.includes("stress-1") && ids.includes("facility-path") && ids.includes("stress-unpaved-1") && ids.includes("stress-unknown") && UNRATED_IDS.every((id) => ids.includes(id)));
         let drawnPlain = 0;
         for (const [id, filter] of Object.entries(filters)) {
           for (const feature of samples()) {
-            if (id === MTB_ID) {
+            if (UNRATED_IDS.includes(id)) {
               assert.equal(drawsWith(filter, id, feature), false, `${id} drew a trail that is not a mountain-bike one`);
               assert.equal(drawsWith(filter, id, { ...feature, mtb: false }), false, id);
               assert.equal(drawsWith(filter, id, { ...feature, rough: true }), false, `${id}: rough is not the class`);
@@ -126,36 +132,42 @@ test("a future MTB mode (`routableMtb`) draws them as any other trail, and the n
   assert.equal(drawsWith(routable[MTB_ID], MTB_ID, trail), false);
 });
 
-test("the not-for-routes line: thin, mid-grey, fine dots, no casing or rails, from zoom 14, under every routable layer", () => {
+test("the unrated line (v0.6.0, the owner's report of 2026-10-12): 3 px grey dashes on a solid white edge, no rails, from zoom 14, under every routable layer", () => {
   assert.equal(MTB_MIN_ZOOM, STRESS_ZOOMS.quiet, "where the tiles carry them, as before");
   for (const strong of [false, true]) {
     try {
       setAccessibility(strong, { remember: false });
       const layers = stressOverlayLayers("stress") as Layer[];
-      assert.equal(layers[0].id, MTB_ID, "the bottom layer: every routable line draws over it");
-      // The unrated trails' dots are one layer, with no casing, ring or rail of its own; the rest of the
-      // mountain-bike layer is the levels' casings and lines (456; mtbLevels.test.ts).
+      assert.equal(layers[0].id, MTB_TRAIL_CASING_LAYER_ID, "the bottom layer: every routable line draws over it");
+      // The unrated trails' edge and dashes, with no ring or rail of their own; the rest of the mountain-bike
+      // layer is the levels' edges and lines (456; mtbLevels.test.ts).
       assert.deepEqual(layers.filter((l) => l.id.startsWith("mtb")).map((l) => l.id), MTB_LAYER_IDS);
-      const [layer] = mtbTrailLayers("stress") as Layer[];
-      assert.equal(layer.id, MTB_ID);
-      assert.equal(layer.minzoom, MTB_MIN_ZOOM);
+      const mine = mtbTrailLayers("stress") as Layer[];
+      const edge = mine.find((l) => l.id === MTB_TRAIL_CASING_LAYER_ID)!;
+      const layer = mine.find((l) => l.id === MTB_ID)!;
+      assert.ok(mine.indexOf(edge) < mine.indexOf(layer), "the edge under the line");
+      for (const l of [edge, layer]) assert.equal(l.minzoom, MTB_MIN_ZOOM);
+      assert.deepEqual(edge.filter, layer.filter, "the edge goes with the line");
       assert.deepEqual(layer.paint, mtbTrailPaint(strong));
+      assert.deepEqual(edge.paint, mtbTrailHaloPaint(strong));
       assert.deepEqual(layer.paint["line-dasharray"], MTB_TRAIL.dash);
-      assert.ok(!("line-gap-width" in layer.paint));
+      assert.ok(!("line-gap-width" in layer.paint) && !("line-dasharray" in edge.paint), "a solid edge");
       const width = layer.paint["line-width"] as number;
       assert.equal(width, strong ? MTB_TRAIL.strongWidth : MTB_TRAIL.width);
       assert.equal(layer.paint["line-color"], strong ? MTB_TRAIL.strongColor : MTB_TRAIL.color);
-      // Thinner than any routable line (LTS 1's 2.5 px and up).
-      assert.ok(width <= 2);
+      assert.equal(edge.paint["line-color"], MTB_HALO.color);
+      // Wide enough to see (the fine 1.5 px dots were not), and a white edge at least 1.5 px each side.
+      assert.ok(width >= 3, `${width} px`);
+      assert.ok((edge.paint["line-width"] as number) >= width + 3);
     } finally {
       setAccessibility(false, { remember: false });
     }
   }
-  // The dots are their own pattern: not the unpaved mark's, the surface-unknown dashes or any rail's.
-  for (const other of [UNPAVED_DASH, UNKNOWN_SURFACE_DASH, ...FACILITIES.map((f) => f.dash).filter(Boolean)]) {
+  // The dashes are their own pattern: not the unpaved mark's, the surface-unknown dashes, any rail's or any level's.
+  for (const other of [UNPAVED_DASH, UNKNOWN_SURFACE_DASH, ...FACILITIES.map((f) => f.dash).filter(Boolean), ...MTB_LEVELS.map((l) => l.dash)]) {
     assert.notDeepEqual(MTB_TRAIL.dash, other);
   }
-  assert.ok(MTB_TRAIL.dash[1] >= 2 * MTB_TRAIL.dash[0], "gaps at least twice the dots: separate dots, not a dashed line");
+  assert.ok(MTB_TRAIL.dash[1] >= 1.5, "gaps of 1.5 widths or more, longer than any stress tier's, show the white edge");
 });
 
 const surfaces = baseSurfaces;
@@ -170,6 +182,7 @@ test("the grey is at least 3:1 from every surface of the base map, plain and (st
       .filter(([, ratio]) => ratio < 3)
       .map(([name, ratio]) => `${name} ${ratio.toFixed(2)}:1`);
     assert.deepEqual(failures, [], colour);
+    assert.ok(contrastRatio(colour, MTB_HALO.color) >= 4.5, `${colour} on its white edge`);
   }
   for (const name of Object.keys(found)) {
     assert.ok(contrastRatio(MTB_TRAIL.strongColor, found[name]) >= contrastRatio(MTB_TRAIL.color, found[name]), name);
@@ -199,7 +212,7 @@ test("every overlay layer the map adds but the not-for-routes one leaves them ou
             for (const layer of layers) {
               // Without a capacity (`rpm`), so the Mass Ride map's massHides does not take it out.
               const feature = { tier: 1, facility: "path", trail: true, unpaved: true, mtb: true };
-              const expected = layer.id === MTB_ID;
+              const expected = UNRATED_IDS.includes(layer.id);
               assert.equal(drawsWith(layer.filter ?? true, layer.id, feature), expected, `${layer.id} and a mountain-bike trail`);
               const road = { ...feature, tier: 3, facility: "none", trail: false, unpaved: false };
               assert.equal(drawsWith(layer.filter ?? true, layer.id, road), expected, `${layer.id} (as a road)`);

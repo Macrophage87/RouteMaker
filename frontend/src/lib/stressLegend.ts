@@ -19,7 +19,7 @@ import {
   LEGEND_SWATCH_PX,
   MTB_TRAILS_ROUTABLE,
   MTB_TRAIL,
-  MTB_LEVEL,
+  MTB_HALO,
   MTB_LEVELS,
   SOLID_MIN_ZOOM,
   UNKNOWN_SURFACE_DASH,
@@ -27,6 +27,7 @@ import {
   accessibilityOn,
   currentTiers,
   mtbTrailPaint,
+  mtbTrailHaloPaint,
   mtbLevelPaint,
   legendWidths,
   unpavedWidth,
@@ -66,13 +67,13 @@ export const RIDE_RUN_MI = { path: 0.25, road: 2 };
 /**
  * OWNER-DECISIONS 452a: the mountain-bike trails draw in a look of their own that says they are not
  * used for routes (stressStyle.js, MTB_TRAIL), and the legend says so in words in a row of its own,
- * so a rider who cannot see the map knows what the dotted grey line is. The row's name and words;
+ * so a rider who cannot see the map knows what the grey dashed line on a white edge is. The row's name and words;
  * null once they are routable (a future mountain-bike mode, MTB_TRAILS_ROUTABLE). Gravel and
  * Mountain Goat route on them (the off-road graph), and the words say so rather than over-claim.
  */
 export const MTB_LEGEND: { short: string; label: string } | null = MTB_TRAILS_ROUTABLE
   ? null
-  : { short: "Mountain-bike trail", label: "Not used for routes (Gravel and Mountain Goat may use it): a thin grey dotted line for an unrated trail; rated ones show by level below." };
+  : { short: "Mountain-bike trail", label: "Not used for routes (Gravel and Mountain Goat may use it): grey dashes on a white edge for an unrated trail; rated ones show by level below." };
 
 type MtbLevel = (typeof MTB_LEVELS)[number];
 
@@ -84,7 +85,7 @@ type MtbLevel = (typeof MTB_LEVELS)[number];
 export function mtbLevelLegend(shape: MtbLevel): { short: string; label: string } {
   return {
     short: `Level ${shape.level} (${shape.name})`,
-    label: `Mountain-bike trail rated ${shape.scale}: ${shape.name} ${shape.pattern} crossed by dark ticks. Not used for routes.`,
+    label: `Mountain-bike trail rated ${shape.scale}: ${shape.name} ${shape.pattern} on a white edge. Not used for routes.`,
   };
 }
 
@@ -302,8 +303,8 @@ export function UnknownSurfaceSwatch({ tier, widths }: { tier: Tier; widths: { l
 }
 
 /**
- * The mountain-bike trail's swatch (452a): its fine grey dots at the map's width, on a strip of the base
- * map's earth colour, as the map draws them, so the dots read in a dark panel too.
+ * The mountain-bike trail's swatch (452a): its white edge and grey dashes at the map's widths, on a strip of the
+ * base map's earth colour, as the map draws them, so they read in a dark panel too.
  */
 export function MtbTrailSwatch({ strong }: { strong: boolean }): ReactElement {
   const paint = mtbTrailPaint(strong);
@@ -312,13 +313,14 @@ export function MtbTrailSwatch({ strong }: { strong: boolean }): ReactElement {
     "svg",
     { width: SVG_WIDTH, height: 12, "aria-hidden": "true", className: "mtb-trail-swatch" },
     h("rect", { x: X1, y: 1, width: LEGEND_SWATCH_PX, height: 10, rx: 2, fill: MTB_TRAIL.legendGround }),
+    line(6, MTB_HALO.color, mtbTrailHaloPaint(strong)["line-width"]),
     line(6, paint["line-color"], width, dashPx(MTB_TRAIL.dash, width)),
   );
 }
 
 /**
- * A mountain-bike level's swatch (456): its dark cross-ticks and its coloured pattern at the map's widths, on a
- * strip of the base map's earth colour, as the map draws them.
+ * A mountain-bike level's swatch (456): its white edge and its coloured pattern at the map's widths, on a strip of
+ * the base map's earth colour, as the map draws them.
  */
 export function MtbLevelSwatch({ shape, strong }: { shape: MtbLevel; strong: boolean }): ReactElement {
   const paint = mtbLevelPaint(shape.level, strong);
@@ -327,7 +329,7 @@ export function MtbLevelSwatch({ shape, strong }: { shape: MtbLevel; strong: boo
     "svg",
     { width: SVG_WIDTH, height: 12, "aria-hidden": "true", className: `mtb-level-swatch mtb-level-swatch-${shape.level}` },
     h("rect", { x: X1, y: 1, width: LEGEND_SWATCH_PX, height: 10, rx: 2, fill: MTB_TRAIL.legendGround }),
-    line(6, MTB_LEVEL.tick, paint.casing["line-width"], dashPx(MTB_LEVEL.tickDash, paint.casing["line-width"])),
+    line(6, paint.casing["line-color"], paint.casing["line-width"]),
     line(6, shape.color, width, dashPx(shape.dash, width)),
   );
 }

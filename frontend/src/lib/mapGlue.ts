@@ -18,6 +18,8 @@ import {
   mtbTrailPaint,
   mtbTrailsOn,
   MTB_TRAIL_LAYER_ID,
+  MTB_TRAIL_CASING_LAYER_ID,
+  mtbTrailHaloPaint,
   MTB_LEVELS,
   isMtbLayerId,
   mtbLevelCasingLayerId,
@@ -205,13 +207,14 @@ export function setStressPalette(
     const id = `facility-${facility.facility}`;
     if (map.getLayer(id)) map.setPaintProperty(id, "line-width", facilityWidthAt(facility, when));
   }
-  // The mountain-bike trails' not-for-routes line (452a): wider and darker with the accessibility switch.
+  // The unrated mountain-bike trails' line (452a): wider and darker with the accessibility switch, and its white edge wider.
   if (map.getLayer(MTB_TRAIL_LAYER_ID)) {
     const paint = mtbTrailPaint();
     map.setPaintProperty(MTB_TRAIL_LAYER_ID, "line-color", paint["line-color"]);
     map.setPaintProperty(MTB_TRAIL_LAYER_ID, "line-width", paint["line-width"]);
   }
-  // Each level's line and cross-ticks (456): wider with the accessibility switch; the colours and the ticks' dash (in widths) stay.
+  if (map.getLayer(MTB_TRAIL_CASING_LAYER_ID)) map.setPaintProperty(MTB_TRAIL_CASING_LAYER_ID, "line-width", mtbTrailHaloPaint()["line-width"]);
+  // Each level's line and white edge (456): wider with the accessibility switch; the colours and the dashes (in widths) stay.
   for (const { level } of MTB_LEVELS) {
     const paint = mtbLevelPaint(level);
     if (map.getLayer(mtbLevelLayerId(level))) map.setPaintProperty(mtbLevelLayerId(level), "line-width", paint.line["line-width"]);

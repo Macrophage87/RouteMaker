@@ -5250,6 +5250,14 @@ off-road graph, says), and the Riding section has a "Mountain-bike difficulty" r
 S2 or IMBA 2"), on a way the layer draws only. The switch's description is now "From zoom 14: levels 1 to 4 by colour and
 pattern, unrated as grey dots. Not used for routes; Gravel and Mountain Goat may use unrated ones."
 
+**Since v0.6.0** (the owner, 2026-10-12: "Mountain bike trails seem plotted but don't show up very
+well"; front end only, no rebuild) the ticks and the dots are gone: every level is a 3 px line (4 px
+with the accessibility switch) on a solid white edge 1.5 px a side (2 px with the switch, `MTB_HALO`),
+level 1 and 2's gaps 1.5 widths ([6, 1.5], [3, 1.5]); an unrated trail is grey dashes [1.5, 1.5] on
+the same edge. In the Mountain Bike ride type, with the layer on, every trail draws in its level's
+look, the ones the ride may use too (they drew as any other trail before). Words: "on a white edge",
+"unrated as grey dashes". Still from zoom 14, where the tiles carry them.
+
 **Trail names** (the owner, 2026-10-10 (15:16 UTC): "Also, for mountain bikes, try to make sure trail names are added in if they are available."). The rebuild writes `segment.mtb_name` (text, null otherwise; core
 migration 0014, state-only, after 0013) on the mountain-bike-only ways from
 `routemaker.singletrack.mtb_name`: the OSM `name`, else `mtb:name`, else `ref`, trimmed (a bare `ref` such as "12" comes last, as it could be misread as a level). It is a

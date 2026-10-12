@@ -21,7 +21,7 @@ import {
 import { dialFields, fitDials, startDials } from "./dials.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
 import { PRESETS } from "./presets.ts";
-import { mtbLevelLayerId, routableMtbLevel, setRoutableMtb, stressFilters } from "../stressStyle.js";
+import { mtbLevelLayerId, routableMtbLevel, setMtbTrails, setRoutableMtb, stressFilters } from "../stressStyle.js";
 
 function draws(filter: unknown, id: string, properties: Record<string, unknown>): boolean {
   const compiled = spec.featureFilter(filter as never, `layers[${id}].filter`).filter;
@@ -105,6 +105,37 @@ test("the routable layer filters on mtb_level: trails up to the choice routable,
     assert.equal(draws(filters["stress-unpaved-1"], "stress-unpaved-1", { tier: 1, facility: "none", trail: true, unpaved: true }), true);
     // Every trail keeps its name.
     assert.equal(draws(filters["mtb-trail-label"], "mtb-trail-label", { ...trail(4), name: "Rocky Loop" }), true);
+  }
+});
+
+test("with the Mountain-bike trails layer on (the ride type turns it on), every trail draws in its level's look and in no routable layer (v0.6.0)", () => {
+  // The owner, 2026-10-12: "Mountain bike trails seem plotted but don't show up very well": drawn as any other
+  // trail, the ones the ride may use lost their level's colour.
+  const trail = (level?: number) => ({ tier: 1, facility: "none", trail: true, unpaved: true, mtb: true, name: "Loop", ...(level ? { mtb_level: level } : {}) });
+  for (const chosen of [1, 2, 3, 4]) {
+    const filters = stressFilters("weekday_offpeak", false, false, chosen, true) as Record<string, unknown>;
+    for (const level of [undefined, 1, 2, 3, 4]) {
+      for (const [id, filter] of Object.entries(filters)) {
+        const own = level ? [mtbLevelLayerId(level), `mtb-level-casing-${level}`] : ["mtb-trail", "mtb-trail-casing"];
+        const expected = own.includes(id) || id === "mtb-trail-label";
+        assert.equal(draws(filter, id, trail(level)), expected, `choice ${chosen}, trail ${level ?? "unrated"}, ${id}`);
+      }
+    }
+    // An ordinary trail is untouched.
+    assert.equal(draws(filters["stress-unpaved-1"], "stress-unpaved-1", { tier: 1, facility: "none", trail: true, unpaved: true }), true);
+  }
+  // The switch is the default the map reads, and MapView sets the filters again when it flips.
+  const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  assert.match(view, /subscribeMtbTrails\(\(\) => \{[\s\S]*?onLaneSwitch\(map, loaded\.current, callbacks\.current\.when\)/);
+  try {
+    setRoutableMtb(2);
+    setMtbTrails(true, { remember: false });
+    const filters = stressFilters("weekday_offpeak", false, false) as Record<string, unknown>;
+    assert.equal(draws(filters["stress-unpaved-1"], "stress-unpaved-1", trail(1)), false);
+    assert.equal(draws(filters[mtbLevelLayerId(1)], mtbLevelLayerId(1), trail(1)), true);
+  } finally {
+    setMtbTrails(false, { remember: false });
+    setRoutableMtb(null);
   }
 });
 
