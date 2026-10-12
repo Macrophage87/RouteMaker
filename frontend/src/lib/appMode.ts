@@ -182,10 +182,27 @@ export function goDestinationNeedsStart(name: string): string {
 }
 
 /**
- * Whether a map tap (or the keyboard's Add at centre) in Go is the start for a destination that waits for one
- * (the location denied, unavailable or still being found): the route to that destination is planned at once,
- * as a start typed in the start box does (follow-up review of PR #95). Else the tap adds a point as before.
+ * What a map press does in Go (the owner, 2026-10-12: "When on Go mode, make it so the location you press is the
+ * end"): a press on the open map (or the keyboard's Set destination at map center) is the destination, in place of
+ * any destination before it, and is routed as a destination picked in the search is (goPickAction): from the start
+ * Go has, else it waits for one. A press on a station, a place's letter or a water stop still opens its card. In
+ * Plan a press adds a point as before. This replaces the tap that was the start of a waiting destination (PR #95's
+ * follow-up review): with no location, the start is typed in the start box.
  */
-export function goTapStartsPending(state: { mode: AppMode; pointCount: number; pending: boolean }): boolean {
-  return state.mode === "go" && state.pending && state.pointCount === 0;
+export function goTapSetsEnd(mode: AppMode): boolean {
+  return mode === "go";
+}
+
+/** Said when a press on the map sets Go's destination: an essential, said at Brief and at Full. */
+export function goDestinationSet(name: string): string {
+  return `Destination set: ${name}.`;
+}
+
+/**
+ * What is said when a pressed destination is routed at once: at Full the extra "Planning a route" narration
+ * follows it in the same sentence (one announcement, so neither is lost); at Brief only the destination.
+ */
+export function goTapRoutedSaid(name: string, located: boolean, full: boolean): string {
+  const set = goDestinationSet(name);
+  return full ? `${set} Planning a route from ${located ? "your location" : "your start"}.` : set;
 }

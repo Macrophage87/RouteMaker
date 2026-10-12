@@ -3969,23 +3969,38 @@ async function goPick(p, box, text) {
       routed && after.dest === "To Union Station" && after.points === 2, JSON.stringify({ waiting, after }));
   await p.close();
 }
-{
-  // Follow-up review of PR #95: with the location denied and a destination waiting, a tap on the map is the start,
-  // as a typed start is: the route to that destination is planned at once, the destination kept.
-  const p = await goWith("denied", { init: GEO_TWO });
-  await goPick(p, ".go-sheet .go-search", "Union");
-  await sleep(1200);
-  const waiting = await p.eval("document.querySelector('.go-notice')?.textContent ?? ''");
-  // A spot on the map itself, above Go's sheet and clear of the controls.
+// A spot on the map itself, above Go's sheet and clear of the controls, pressed with the mouse.
+async function goPressMap(p) {
   const at = await p.eval(`(() => { const r = document.querySelector('.maplibregl-canvas').getBoundingClientRect(); for (let y = r.top + 160; y < r.top + r.height / 2; y += 20) { const x = r.left + r.width / 2; if (document.elementFromPoint(x, y)?.classList.contains('maplibregl-canvas')) return [x, y]; } return null; })()`);
   if (at) {
     await p.s("Input.dispatchMouseEvent", { type: "mousePressed", x: at[0], y: at[1], button: "left", clickCount: 1 });
     await p.s("Input.dispatchMouseEvent", { type: "mouseReleased", x: at[0], y: at[1], button: "left", clickCount: 1 });
   }
+  return at;
+}
+{
+  // The owner, 2026-10-12: "When on Go mode, make it so the location you press is the end." A press on the map is the
+  // destination, routed from the location at once, and said ("Destination set: …"; Brief, Go's default, says no more).
+  const p = await goWith("granted");
+  const at = await goPressMap(p);
   const routed = await p.waitFor("!!document.querySelector('.go-summary .start-button')", 20000);
-  const after = await p.eval("({ dest: document.querySelector('.go-destination-name')?.textContent ?? '', points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean), notice: document.querySelector('.go-notice')?.textContent ?? '' })");
-  check("go start: with the location denied and a destination waiting, a tap on the map is the start and plans the route to that destination at once (the destination kept, two points)",
-    waiting.startsWith("To Union Station.") && !!at && routed && after.dest === "To Union Station" && after.points.length === 2 && after.points[1] === "-77.00630,38.89730" && after.notice === "", JSON.stringify({ waiting, at, after }));
+  const after = await p.eval("({ points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean), said: window.__said.slice(-4), assertive: document.querySelectorAll('[role=alert]:not(:empty)').length })");
+  check("go press: a press on the map in Go is the destination, routed from the current location at once (two points) and said politely (\"Destination set: …\")",
+    !!at && routed && after.points.length === 2 && after.points[0] === "-77.03650,38.90550" && after.said.some((t) => /Destination set: /.test(t)) && !after.said.some((t) => /Planning a route/.test(t)) && after.assertive === 0, JSON.stringify({ at, after }));
+  await p.close();
+}
+{
+  // With the location denied and a destination waiting, a press on the map is the new destination (never the start):
+  // it waits for a start, as a picked one does, and the start box asks for one.
+  const p = await goWith("denied", { init: GEO_TWO });
+  await goPick(p, ".go-sheet .go-search", "Union");
+  await sleep(1200);
+  const waiting = await p.eval("document.querySelector('.go-notice')?.textContent ?? ''");
+  const at = await goPressMap(p);
+  await sleep(1200);
+  const after = await p.eval("({ notice: document.querySelector('.go-notice')?.textContent ?? '', hash: location.hash, box: !document.querySelector('.go-start-search').hidden, said: window.__said.slice(-4) })");
+  check("go press: with the location denied, a press on the map replaces the waiting destination and is not the start (\"To <spot>. Current location not available; type a start.\", no points yet)",
+    waiting.startsWith("To Union Station.") && !!at && /^To 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(after.notice) && !/p=/.test(after.hash) && after.box && after.said.some((t) => /^Destination set: 38\.\d{4}, -77\.\d{4}\.$/.test(t)), JSON.stringify({ waiting, at, after }));
   await p.close();
 }
 {

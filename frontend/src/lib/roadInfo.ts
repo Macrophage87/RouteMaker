@@ -145,6 +145,8 @@ export const INFO_BUTTON_LABEL = "Road info at map center";
 /** The map's small disclosure by its zoom buttons (OWNER-DECISIONS 450) and the two map-center actions it holds. */
 export const MAP_TOOLS_LABEL = "Map tools";
 export const ADD_AT_CENTRE_LABEL = "Add point at map center";
+/** The same button in Go, where the spot is the destination (lib/appMode.ts goTapSetsEnd). */
+export const SET_END_AT_CENTRE_LABEL = "Set destination at map center";
 export const INFO_KEY = "i";
 /**
  * The help for the road panel. The keyboard's way in names Map tools, which is on the page only in

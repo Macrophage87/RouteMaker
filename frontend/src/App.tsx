@@ -69,7 +69,7 @@ import {
   type LocateResult,
 } from "./lib/geolocation.ts";
 import { usePlaceNames } from "./usePlaceNames.ts";
-import { pickIntoPlan, placeFromSearch, type Place, type PlaceChoice } from "./lib/geocode.ts";
+import { coordinatesText, pickIntoPlan, placeFromSearch, type Place, type PlaceChoice } from "./lib/geocode.ts";
 import { BottomBar } from "./Sidebar.tsx";
 import {
   copyText,
@@ -144,7 +144,7 @@ import { BACK_LABEL, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
 import { letterKeyIndex, letterPlaces, placeLetter } from "./lib/letteredPlaces.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
-import { GO_START_SAID, GO_START_UNAVAILABLE, goDestinationLocating, goDestinationNeedsStart, goPickAction, goStartLine, goTapStartsPending, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, shouldAskGoStart, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, goDestinationLocating, goDestinationNeedsStart, goPickAction, goStartLine, goTapRoutedSaid, goTapSetsEnd, goDestinationSet, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, shouldAskGoStart, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type MyGo } from "./lib/myGo.ts";
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
@@ -195,7 +195,7 @@ export function App() {
   // Go or Plan (lib/appMode.ts), and why it opened so (a later account My Go may still move it).
   const [mode, setModeState] = useState<AppMode>(OPENING.mode);
   const modeSwitched = useRef(false);
-  // The view now, for callbacks kept across renders (a map tap: lib/appMode.ts goTapStartsPending).
+  // The view now, for callbacks kept across renders (a map tap: lib/appMode.ts goTapSetsEnd).
   const modeRef = useRef(mode);
   modeRef.current = mode;
   // The rider's own My Go (lib/myGo.ts): the account's when signed in, this device's when not.
@@ -919,22 +919,20 @@ export function App() {
       setNotice(OUTSIDE_NOTICE);
       return;
     }
+    // In Go, the spot pressed is the destination, in place of any before it, routed as a picked one is.
+    if (goTapSetsEnd(modeRef.current)) {
+      void goToRef.current(point, namer.name(point)?.name ?? coordinatesText(point), true);
+      return;
+    }
     if (pointsRef.current.length >= MAX_POINTS) {
       setNotice(maxPointsNotice());
       return;
     }
     setNotice(null);
-    // In Go, a destination waiting for a start: the tap is that start, and the route is planned at once.
-    const pending = goPending.current;
-    if (pending && goTapStartsPending({ mode: modeRef.current, pointCount: pointsRef.current.length, pending: true })) {
-      goPending.current = null;
-      routeGoRef.current(point, false, pending.dest, pending.name);
-      return;
-    }
     const next = addPoint(pointsRef.current, point, loopVias);
     commit(next);
     announce(addedSaid(next.indexOf(point), next.length, loopVias));
-  }, [commit, announce, loopVias]);
+  }, [commit, announce, loopVias]); // namer is the page's one, kept for the page (usePlaceNames)
 
   // "Use my location": one look-up per press (lib/geolocation.ts), then placeFix decides: from the button,
   // the map click's path; from the "Your location" choice, the search's Start / Destination / Stop choice.
@@ -1253,19 +1251,21 @@ export function App() {
     announce(`Start: ${found.name}.`);
   };
   // A Go route from `start` to `dest`, in one edit, with a loop the rider had on turned off (to a place and no further).
-  const routeGo = (start: LonLat, located: boolean, dest: LonLat, name: string) => {
+  // `pressed`: the destination is a spot pressed on the map, said as "Destination set" (an essential).
+  const routeGo = (start: LonLat, located: boolean, dest: LonLat, name: string, pressed = false) => {
     const ride = rideRef.current;
     setNotice(null);
     commit([start, dest], ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
     if (located) setFromHere((prior) => [...prior, start]);
-    announceExtra(`Planning a route to ${name} from ${located ? "your location" : "your start"}.`);
+    if (pressed) announce(goTapRoutedSaid(name, located, saysExtra(announceLevelNow.current)));
+    else announceExtra(`Planning a route to ${name} from ${located ? "your location" : "your start"}.`);
     if (goSheetNow.current === "peek") setGoSheet("half");
     mapRef.current?.flyTo({ center: dest, zoom: Math.max(mapRef.current.getZoom(), 13) });
   };
   // The opening look-up answers after later renders: it routes through the current one.
   const routeGoRef = useRef(routeGo);
   routeGoRef.current = routeGo;
-  const goTo = async (dest: LonLat, name: string) => {
+  const goTo = async (dest: LonLat, name: string, pressed = false) => {
     cancelLocateNotice();
     setNotice(null);
     if (!insideCoverage(dest)) {
@@ -1277,10 +1277,12 @@ export function App() {
     const action = goPickAction(pointsRef.current, goStartRef.current);
     if (action.kind === "route") {
       goPending.current = null;
-      routeGo(action.point, action.located, dest, name);
+      routeGo(action.point, action.located, dest, name, pressed);
       return;
     }
     goPending.current = { dest, name };
+    // A pressed destination with no start yet: said set, and kept for the start as a picked one is.
+    if (pressed) announce(goDestinationSet(name));
     if (action.kind === "wait") {
       setNotice(goDestinationLocating(name));
       return;
@@ -1304,6 +1306,9 @@ export function App() {
     goPending.current = null;
     if (pending && pointsRef.current.length === 0) routeGo(result.fix.point, true, pending.dest, pending.name);
   };
+  // A map press (place, a callback kept across renders) goes through the current goTo.
+  const goToRef = useRef(goTo);
+  goToRef.current = goTo;
   const goToPlace = (found: Place) => {
     const point = placeFromSearch(found, (p, name, label) => namer.remember(p, name, label), stationEntranceForPlace);
     if (point === null) {
@@ -2261,7 +2266,8 @@ export function App() {
           <MapTools
             toggleRef={toolsToggleRef}
             onAddPoint={addAtCentre}
-            addDisabled={points.length >= MAX_POINTS}
+            addDisabled={!goTapSetsEnd(mode) && points.length >= MAX_POINTS}
+            setsEnd={goTapSetsEnd(mode)}
             onRoadInfo={roadInfoAtCentre}
             onCrosshair={toolsCrosshair}
             onShown={toolsShown}
