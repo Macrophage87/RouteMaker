@@ -9,7 +9,7 @@
  * A createElement module, so a test renders it (node's runner reads .ts, not .tsx).
  */
 import { createElement as h, type ReactElement, type Ref } from "react";
-import { REPORT_KINDS, type ReportKind } from "./report311.ts";
+import { REPORT_KINDS, gpsWords, type ReportKind, type ReportPlace } from "./report311.ts";
 import { ICON_PATHS, type IconName } from "./iconPaths.ts";
 
 /** The button's visible words and the name it is heard by (the visible "311" is in it). */
@@ -21,9 +21,14 @@ export function ride311Shown(state: { off: boolean; progressM: number | null; in
   return !state.off && state.progressM !== null && state.insideDc(state.progressM);
 }
 
-/** The line under the menu's heading: where the report will say, to check before sending. */
-export function menuPlaceLine(placeWords: string | null): string {
-  return placeWords ? `Near ${placeWords}. Check it before you send.` : "The report names your place on the route. Check it before you send.";
+/**
+ * The line under the menu's heading: where the report will say (the way ridden, a near cross street,
+ * the GPS position; lib/report311.ts `reportPlace`), to check before sending.
+ */
+export function menuPlaceLine(place: ReportPlace | null): string {
+  if (!place) return "The report names your place on the route. Check it before you send.";
+  const words = place.words ? `${place.words[0].toUpperCase()}${place.words.slice(1)}, ` : "";
+  return `${words}${gpsWords(place.point)}. Check it before you send.`;
 }
 
 const KIND_ICON: Record<ReportKind, IconName> = {
@@ -66,7 +71,7 @@ export function Ride311Menu({
 }: {
   id: string;
   open: boolean;
-  place: string | null;
+  place: ReportPlace | null;
   headingRef?: Ref<HTMLHeadingElement>;
   onPick: (kind: ReportKind) => void;
   onClose: () => void;
