@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { fidelity } from "./trackMatch.ts";
 import { COVERAGE_BBOX, MAX_POINTS, haversineM, insideCoverage, type LonLat } from "./geo.ts";
 import { GPX_NS_11, PLAN_TYPE_PREFIX, parseGpx, writeGpx, type GpxFile } from "./gpx.ts";
 import {
@@ -9,10 +10,15 @@ import {
   REFERENCE_MAX_VERTICES,
   REFINE_ADD,
   REFINE_ROUNDS,
+  SPUR_MIN_M,
   clipToCoverage,
+  fitScore,
   followedPart,
+  nextFitStep,
   nextRefinement,
   planFromGpx,
+  spurPoint,
+  startFit,
   type ImportNote,
 } from "./gpxPlan.ts";
 
@@ -331,4 +337,82 @@ test("fitting adds points where the route missed the track, up to 25 and three r
   // A route that follows 97% or more is left alone, even with a short miss to fill.
   const nearly = WIGGLE.map((p, i): LonLat => (i >= 600 && i < 615 ? [p[0], p[1] + 80 / 111_195] : p));
   assert.equal(nextRefinement(plan.reference, plan.points, nearly, 0), null);
+});
+
+/**
+ * The Mass Ride import fix: a straight 4 km track east with a point halfway,
+ * which the route can reach only by leaving the track at 1.5 km, looping 800 m
+ * north round the block and coming back to the point from the far side, then
+ * riding on east. The file's way there is one the ride type does not ride.
+ */
+const EAST: LonLat[] = line(at(0, 0), at(4000, 0), 401);
+const EAST_STOPS: LonLat[] = [EAST[0], EAST[200], EAST[400]];
+function path(...corners: Array<[number, number]>): LonLat[] {
+  const out: LonLat[] = [];
+  corners.forEach(([e, n], i) => {
+    if (i === 0) return;
+    const [e0, n0] = corners[i - 1];
+    const steps = Math.max(1, Math.round(Math.hypot(e - e0, n - n0) / 10));
+    out.push(...line(at(e0, n0), at(e, n), steps + 1).slice(i === 1 ? 0 : 1));
+  });
+  return out;
+}
+const LOOPED = path([0, 0], [1500, 0], [1500, 800], [2500, 800], [2500, 0], [2000, 0]);
+const LOOPED_ROUTE = [...LOOPED, ...path([2000, 0], [4000, 0]).slice(1)];
+const LOOPED_ENDS = [LOOPED.length - 1, LOOPED_ROUTE.length - 1];
+
+test("a point the route loops round to reach is the one to take out; a block's detour is not", () => {
+  assert.equal(spurPoint(EAST, EAST_STOPS, LOOPED_ROUTE, LOOPED_ENDS), 1);
+  // Without leg ends, or with the wrong number of them, nothing is offered.
+  assert.equal(spurPoint(EAST, EAST_STOPS, LOOPED_ROUTE, undefined), null);
+  assert.equal(spurPoint(EAST, EAST_STOPS, LOOPED_ROUTE, [LOOPED_ROUTE.length - 1]), null);
+  // A point already tried is not offered again.
+  assert.equal(spurPoint(EAST, EAST_STOPS, LOOPED_ROUTE, LOOPED_ENDS, [EAST_STOPS[1]]), null);
+  // Round one block (100 m north, so 200 m extra, under SPUR_MIN_M) is a one-way's detour, left alone.
+  const block = path([0, 0], [1900, 0], [1900, 100], [2000, 100], [2000, 0]);
+  const blockRoute = [...block, ...path([2000, 0], [4000, 0]).slice(1)];
+  assert.ok(200 < SPUR_MIN_M);
+  assert.equal(spurPoint(EAST, EAST_STOPS, blockRoute, [block.length - 1, blockRoute.length - 1]), null);
+});
+
+test("covering more of the file with a loop does not raise the fit score", () => {
+  const straight = fitScore(fidelity(EAST, EAST));
+  assert.ok(Math.abs(straight - 1) < 1e-9);
+  assert.ok(fitScore(fidelity(EAST, LOOPED_ROUTE)) < 0.8);
+  assert.equal(fitScore({ trackCovered: 0, routeOnTrack: 0, lengthRatio: 0 }), 0);
+});
+
+test("fitting takes out a point the route looped round for, and keeps it out when that helps", () => {
+  const fit = { ...startFit(EAST_STOPS), rounds: REFINE_ROUNDS };
+  const step = nextFitStep(EAST, fit, LOOPED_ROUTE, LOOPED_ENDS);
+  assert.ok(step);
+  assert.equal(step.phase, "prune");
+  assert.deepEqual(step.points, [EAST_STOPS[0], EAST_STOPS[2]]);
+  // Without that point the route follows the file: kept, and nothing more to try.
+  assert.equal(nextFitStep(EAST, step, EAST, [EAST.length - 1]), null);
+});
+
+test("a step that leaves the fit no better is undone, and the point it took out stays", () => {
+  const fit = { ...startFit(EAST_STOPS), rounds: REFINE_ROUNDS };
+  const step = nextFitStep(EAST, fit, LOOPED_ROUTE, LOOPED_ENDS)!;
+  // Without the point the route went even farther off the file: back to the three points.
+  const worse = path([0, 0], [0, 1500], [4000, 1500], [4000, 0]);
+  const back = nextFitStep(EAST, step, worse, [worse.length - 1]);
+  assert.ok(back);
+  assert.deepEqual(back.points, EAST_STOPS);
+  // Their route comes again; the point was tried, so fitting ends with them.
+  assert.equal(nextFitStep(EAST, back, LOOPED_ROUTE, LOOPED_ENDS), null);
+});
+
+test("a round of added points that makes the fit worse is undone", () => {
+  const plan = planFromGpx(file({ tracks: [{ segments: [WIGGLE] }] }));
+  const straight = line(WIGGLE[0], WIGGLE.at(-1)!, 500);
+  const round = nextFitStep(plan.reference, startFit(plan.points), straight, undefined);
+  assert.ok(round && round.rounds === 1 && round.points.length > plan.points.length);
+  // The route through the added points wandered off the track altogether.
+  const astray = line(at(0, 5000), at(12_000, 5000), 500);
+  const back = nextFitStep(plan.reference, round, astray, undefined);
+  assert.ok(back);
+  assert.deepEqual(back.points, plan.points);
+  assert.equal(back.phase, "prune");
 });

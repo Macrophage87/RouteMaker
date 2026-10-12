@@ -203,6 +203,43 @@ export function distancesToLine(probes: readonly LonLat[], line: readonly LonLat
   return out;
 }
 
+/**
+ * Each via's place along the line, as an index into it: the start is the
+ * first point, the end the last, and each one between is the nearest point at
+ * or after the previous via's, so an out-and-back's two passes are told apart.
+ */
+export function placesAlong(line: readonly LonLat[], vias: readonly LonLat[]): number[] {
+  const plane = planeFor(line);
+  const px = line.map((p) => plane.x(p));
+  const py = line.map((p) => plane.y(p));
+  const places: number[] = [];
+  let from = 0;
+  vias.forEach((v, k) => {
+    if (k === 0) {
+      places.push(0);
+      return;
+    }
+    if (k === vias.length - 1) {
+      places.push(line.length - 1);
+      return;
+    }
+    const vx = plane.x(v);
+    const vy = plane.y(v);
+    let best = from;
+    let bestD = Number.POSITIVE_INFINITY;
+    for (let i = from; i < line.length; i += 1) {
+      const d = (px[i] - vx) ** 2 + (py[i] - vy) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    places.push(best);
+    from = best;
+  });
+  return places;
+}
+
 /** Off-route stretches shorter than this many 10 m probes are left alone. */
 const MIN_RUN_PROBES = 3;
 
@@ -236,36 +273,7 @@ export function refineVias(
   }
   if (!runs.length) return [...vias];
   runs.sort((a, b) => b[1] - b[0] - (a[1] - a[0]) || a[0] - b[0]);
-  // Each via's place along the track: the nearest probe at or after the
-  // previous via's, so an out-and-back's two passes are told apart.
-  const plane = planeFor(probes);
-  const px = probes.map((p) => plane.x(p));
-  const py = probes.map((p) => plane.y(p));
-  const places: number[] = [];
-  let from = 0;
-  vias.forEach((v, k) => {
-    if (k === 0) {
-      places.push(0);
-      return;
-    }
-    if (k === vias.length - 1) {
-      places.push(probes.length - 1);
-      return;
-    }
-    const vx = plane.x(v);
-    const vy = plane.y(v);
-    let best = from;
-    let bestD = Number.POSITIVE_INFINITY;
-    for (let i = from; i < probes.length; i += 1) {
-      const d = (px[i] - vx) ** 2 + (py[i] - vy) ** 2;
-      if (d < bestD) {
-        bestD = d;
-        best = i;
-      }
-    }
-    places.push(best);
-    from = best;
-  });
+  const places = placesAlong(probes, vias);
   const tagged = vias.map((p, k) => ({ p, at: places[k], order: k }));
   for (const [a, b] of runs.slice(0, add)) {
     const middle = (a + b) >> 1;
