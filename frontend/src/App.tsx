@@ -2457,7 +2457,7 @@ export function App() {
               {foodFinder}
             </FoodSheet>
             <RideSheet nav={sheetNav}>
-              <RideGroupChips preset={preset} onPick={pickRide} />
+              <RideGroupChips preset={preset} onPick={pickRide} open={view === "ride"} />
               {/* Go's Ride sheet holds the Ride line and its dials; in Plan they are in the panel (one copy in the page). */}
               {goMode && sections.presets}
             </RideSheet>
