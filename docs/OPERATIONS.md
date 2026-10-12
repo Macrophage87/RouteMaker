@@ -4232,8 +4232,8 @@ proxy cannot reach the service.
    ```
 
    `--volume-year` and `--aadt-property` are given once per file here, because
-   step 6's two files give theirs (the installer refuses two years for three files:
-   "--volume-year given 2 times for 3 --volume files"). Without a year of its own
+   step 6's two files give theirs (given two years for three `--volume` files, the
+   installer refuses to start and says so). Without a year of its own
    the installer would read Maryland's from the layer's fields (the newest
    `AADT_<year>` plus one; 2024 on the 2026-10-11 layer), so 2024 is the same
    answer. The v0.5.0 install (2026-10-11) printed 8,625 count lines from
