@@ -299,9 +299,9 @@ export function nextRefinement(
 }
 
 /**
- * Most points fitting takes out again (the GPX Mass Ride import fix): a point
- * the router can reach only by looping round to it, or by riding out to it
- * and back, is one on a stretch the ride type cannot ride the file's way - a
+ * Most removals fitting tries (the GPX Mass Ride import fix): a point the
+ * router can reach only by looping round to it, or by riding out to it and
+ * back, is one on a stretch the ride type cannot ride the file's way - a
  * trail on Mass Ride's no-trail graph, a one-way against its traffic.
  */
 export const PRUNE_MAX = 5;
@@ -309,7 +309,7 @@ export const PRUNE_MAX = 5;
 export const SPUR_MIN_M = 400;
 /** ...and the legs round it at least this many times the file's own length between its neighbours. */
 export const SPUR_RATIO = 1.5;
-/** A change to the points is kept only when it raises the fit score by more than this. */
+/** Taking points out is kept only when it raises the fit score by more than this. */
 export const MIN_GAIN = 0.005;
 
 /**
@@ -323,37 +323,69 @@ export function fitScore(f: Fidelity): number {
 }
 
 /**
- * The point between the start and the end whose two legs ride farthest past
- * the file's own length between its neighbours, as an index into `points`,
- * or null when none rides SPUR_MIN_M and SPUR_RATIO past it. `legEnds` is
- * the route's index of each leg's last vertex; without one per leg, null.
- * Points in `skip` are not offered again.
+ * How far past the file the route rides round each point, in metres, index
+ * for index (0 at the start and the end): its two legs' length less the
+ * file's own length between its neighbours. Only a point whose legs ride at
+ * least SPUR_MIN_M and SPUR_RATIO past the file has a value above 0. `legEnds`
+ * is the route's index of each leg's last vertex; a loop's return leg, after
+ * the last point, is not read. Null without a leg end for each point.
  */
-export function spurPoint(
+export function spurExcess(
   reference: readonly LonLat[],
   points: readonly LonLat[],
   route: readonly LonLat[],
   legEnds: readonly number[] | undefined,
-  skip: readonly LonLat[] = [],
-): number | null {
-  if (!legEnds || points.length < 3 || reference.length < 2 || legEnds.length !== points.length - 1) return null;
-  if (legEnds.some((e, i) => e < (i ? legEnds[i - 1] : 0) || e >= route.length)) return null;
+): number[] | null {
+  if (!legEnds || points.length < 3 || reference.length < 2 || legEnds.length < points.length - 1) return null;
+  const ends = legEnds.slice(0, points.length - 1);
+  if (ends.some((e, i) => e < (i ? ends[i - 1] : 0) || e >= route.length)) return null;
   const onRoute = cumulative(route);
   const onFile = cumulative(reference);
   const places = placesAlong(reference, points);
-  let worst: number | null = null;
-  let worstExcess = SPUR_MIN_M;
-  for (let k = 1; k < points.length - 1; k += 1) {
-    if (skip.some((p) => p[0] === points[k][0] && p[1] === points[k][1])) continue;
-    const ridden = onRoute[legEnds[k]] - (k >= 2 ? onRoute[legEnds[k - 2]] : 0);
+  return points.map((_, k) => {
+    if (k === 0 || k === points.length - 1) return 0;
+    const ridden = onRoute[ends[k]] - (k >= 2 ? onRoute[ends[k - 2]] : 0);
     const filed = onFile[places[k + 1]] - onFile[places[k - 1]];
     const excess = ridden - filed;
-    if (excess > worstExcess && ridden > SPUR_RATIO * filed) {
-      worst = k;
-      worstExcess = excess;
+    return excess >= SPUR_MIN_M && ridden >= SPUR_RATIO * filed ? excess : 0;
+  });
+}
+
+const pointKey = (p: LonLat) => `${p[0]},${p[1]}`;
+
+/**
+ * The points to try taking out next, as indexes into `points`, or null when
+ * there are none. The worst point is taken out together with the points next
+ * to it that the route also loops round for (a stretch the ride type cannot
+ * ride often carries two or three, and taking one out leaves the loop for
+ * the next); once that has been tried, the worst point on its own.
+ */
+export function spurRemoval(
+  reference: readonly LonLat[],
+  points: readonly LonLat[],
+  route: readonly LonLat[],
+  legEnds: readonly number[] | undefined,
+  tried: readonly string[] = [],
+): number[] | null {
+  const excess = spurExcess(reference, points, route, legEnds);
+  if (!excess) return null;
+  const order = excess
+    .map((e, k) => [e, k] as const)
+    .filter(([e]) => e > 0)
+    .sort((a, b) => b[0] - a[0])
+    .map(([, k]) => k);
+  for (const k of order) {
+    let a = k;
+    let b = k;
+    while (excess[a - 1] > 0) a -= 1;
+    while (excess[b + 1] > 0) b += 1;
+    const run = Array.from({ length: b - a + 1 }, (_, i) => a + i);
+    for (const option of run.length > 1 ? [run, [k]] : [[k]]) {
+      const key = option.map((i) => pointKey(points[i])).join(";");
+      if (!tried.includes(key)) return option;
     }
   }
-  return worst;
+  return null;
 }
 
 /** Fitting an opened track: the points last sent, and how it is going. */
@@ -365,12 +397,20 @@ export interface Fit {
   phase: "refine" | "prune";
   /** The best-fitting points routed so far, and their score. */
   best: { points: LonLat[]; score: number } | null;
-  /** Points taken out to try, and kept when that did not help. */
-  tried: LonLat[];
+  /** The removals tried, each its points' keys, kept or not. */
+  tried: string[];
+  /** Points taken out and kept out, and how many the step now being routed takes out. */
+  removed: number;
+  removing: number;
 }
 
 export function startFit(points: readonly LonLat[]): Fit {
-  return { points: [...points], rounds: 0, phase: "refine", best: null, tried: [] };
+  return { points: [...points], rounds: 0, phase: "refine", best: null, tried: [], removed: 0, removing: 0 };
+}
+
+/** How many points fitting took out, once nextFitStep has answered null for `fit` (its points are then the best). */
+export function prunedCount(fit: Fit): number {
+  return fit.removed + fit.removing;
 }
 
 function samePoints(a: readonly LonLat[], b: readonly LonLat[]): boolean {
@@ -380,12 +420,12 @@ function samePoints(a: readonly LonLat[], b: readonly LonLat[]): boolean {
 /**
  * The next step of fitting, once the route for `fit.points` has arrived, or
  * null when fitting is done and those points stay. Rounds of adding points
- * (nextRefinement) come first; then the points the route had to loop round
- * or ride out and back for are taken out one at a time (spurPoint). Every
- * change is kept only when it raises the fit score (fitScore); one that does
- * not goes back to the best points, so a round can never leave the route
- * worse than it found it. The best points are routed again before the next
- * step, since the route for them is needed to find the next spur.
+ * (nextRefinement) come first, each kept unless it lowers the fit score
+ * (fitScore); then points the route had to loop round or ride out and back
+ * for are taken out (spurRemoval), each removal kept only when it raises the
+ * score by more than MIN_GAIN. A step that is not kept goes back to the best
+ * points, which are routed again, since their route is needed for the next
+ * step; so fitting never leaves the route worse than its best.
  */
 export function nextFitStep(
   reference: readonly LonLat[],
@@ -395,25 +435,27 @@ export function nextFitStep(
   maxPoints: number = MAX_POINTS,
 ): Fit | null {
   const score = fitScore(fidelity(reference, route));
-  const isBest = !fit.best || samePoints(fit.points, fit.best.points);
-  if (!isBest && fit.best && score <= fit.best.score + MIN_GAIN) {
-    // That change did not help: back to the best points, and on to taking points out.
-    return { ...fit, points: fit.best.points, phase: "prune" };
+  const again = fit.best !== null && samePoints(fit.points, fit.best.points);
+  if (fit.best && !again) {
+    const kept = fit.phase === "refine" ? score >= fit.best.score : score > fit.best.score + MIN_GAIN;
+    if (!kept) return { ...fit, points: fit.best.points, phase: "prune", removing: 0 };
   }
-  const best = isBest && fit.best ? fit.best : { points: fit.points, score };
+  const best = again && fit.best ? fit.best : { points: fit.points, score };
+  const removed = fit.removed + fit.removing;
   if (fit.phase === "refine") {
     const next = nextRefinement(reference, fit.points, route, fit.rounds, maxPoints);
-    if (next) return { ...fit, points: next, rounds: fit.rounds + 1, best };
+    if (next) return { ...fit, points: next, rounds: fit.rounds + 1, best, removed, removing: 0 };
   }
-  const pruned = fit.tried.length;
-  const spur = pruned < PRUNE_MAX ? spurPoint(reference, fit.points, route, legEnds, fit.tried) : null;
-  if (spur === null) return null;
-  const point = fit.points[spur];
+  const removal = fit.tried.length < PRUNE_MAX ? spurRemoval(reference, fit.points, route, legEnds, fit.tried) : null;
+  if (!removal) return null;
+  const key = removal.map((i) => pointKey(fit.points[i])).join(";");
   return {
     ...fit,
-    points: fit.points.filter((_, i) => i !== spur),
+    points: fit.points.filter((_, i) => !removal.includes(i)),
     phase: "prune",
     best,
-    tried: [...fit.tried, point],
+    tried: [...fit.tried, key],
+    removed,
+    removing: removal.length,
   };
 }

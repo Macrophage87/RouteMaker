@@ -10,6 +10,7 @@ import {
   REFERENCE_MAX_VERTICES,
   REFINE_ADD,
   REFINE_ROUNDS,
+  PRUNE_MAX,
   SPUR_MIN_M,
   clipToCoverage,
   fitScore,
@@ -17,7 +18,8 @@ import {
   nextFitStep,
   nextRefinement,
   planFromGpx,
-  spurPoint,
+  prunedCount,
+  spurRemoval,
   startFit,
   type ImportNote,
 } from "./gpxPlan.ts";
@@ -362,23 +364,52 @@ const LOOPED_ROUTE = [...LOOPED, ...path([2000, 0], [4000, 0]).slice(1)];
 const LOOPED_ENDS = [LOOPED.length - 1, LOOPED_ROUTE.length - 1];
 
 test("a point the route loops round to reach is the one to take out; a block's detour is not", () => {
-  assert.equal(spurPoint(EAST, EAST_STOPS, LOOPED_ROUTE, LOOPED_ENDS), 1);
-  // Without leg ends, or with the wrong number of them, nothing is offered.
-  assert.equal(spurPoint(EAST, EAST_STOPS, LOOPED_ROUTE, undefined), null);
-  assert.equal(spurPoint(EAST, EAST_STOPS, LOOPED_ROUTE, [LOOPED_ROUTE.length - 1]), null);
-  // A point already tried is not offered again.
-  assert.equal(spurPoint(EAST, EAST_STOPS, LOOPED_ROUTE, LOOPED_ENDS, [EAST_STOPS[1]]), null);
+  assert.deepEqual(spurRemoval(EAST, EAST_STOPS, LOOPED_ROUTE, LOOPED_ENDS), [1]);
+  // Without leg ends, or with too few of them, nothing is offered.
+  assert.equal(spurRemoval(EAST, EAST_STOPS, LOOPED_ROUTE, undefined), null);
+  assert.equal(spurRemoval(EAST, EAST_STOPS, LOOPED_ROUTE, [LOOPED_ROUTE.length - 1]), null);
+  // A loop's return leg after the last point is not read.
+  const back = [...LOOPED_ROUTE, ...path([4000, 0], [0, 0]).slice(1)];
+  assert.deepEqual(spurRemoval(EAST, EAST_STOPS, back, [...LOOPED_ENDS, back.length - 1]), [1]);
+  // A removal already tried is not offered again.
+  assert.equal(spurRemoval(EAST, EAST_STOPS, LOOPED_ROUTE, LOOPED_ENDS, [`${EAST_STOPS[1][0]},${EAST_STOPS[1][1]}`]), null);
   // Round one block (100 m north, so 200 m extra, under SPUR_MIN_M) is a one-way's detour, left alone.
   const block = path([0, 0], [1900, 0], [1900, 100], [2000, 100], [2000, 0]);
   const blockRoute = [...block, ...path([2000, 0], [4000, 0]).slice(1)];
   assert.ok(200 < SPUR_MIN_M);
-  assert.equal(spurPoint(EAST, EAST_STOPS, blockRoute, [block.length - 1, blockRoute.length - 1]), null);
+  assert.equal(spurRemoval(EAST, EAST_STOPS, blockRoute, [block.length - 1, blockRoute.length - 1]), null);
 });
 
-test("covering more of the file with a loop does not raise the fit score", () => {
-  const straight = fitScore(fidelity(EAST, EAST));
-  assert.ok(Math.abs(straight - 1) < 1e-9);
-  assert.ok(fitScore(fidelity(EAST, LOOPED_ROUTE)) < 0.8);
+/** Two points on the stretch the ride type cannot ride, at 2.0 and 2.2 km, each looped round for. */
+const TWO_STOPS: LonLat[] = [EAST[0], EAST[200], EAST[220], EAST[400]];
+const TWO_LEGS = [
+  LOOPED,
+  path([2000, 0], [2000, -600], [2700, -600], [2700, 0], [2200, 0]),
+  path([2200, 0], [4000, 0]),
+];
+const TWO_ROUTE = TWO_LEGS.reduce<LonLat[]>((all, leg) => (all.length ? [...all, ...leg.slice(1)] : [...leg]), []);
+const TWO_ENDS = TWO_LEGS.reduce<number[]>((ends, leg) => [...ends, (ends.at(-1) ?? 0) + leg.length - 1], []);
+
+test("points next to each other on one looped stretch are taken out together first, then one at a time", () => {
+  assert.deepEqual(spurRemoval(EAST, TWO_STOPS, TWO_ROUTE, TWO_ENDS), [1, 2]);
+  const fit = { ...startFit(TWO_STOPS), rounds: REFINE_ROUNDS };
+  const both = nextFitStep(EAST, fit, TWO_ROUTE, TWO_ENDS)!;
+  assert.deepEqual(both.points, [EAST[0], EAST[400]]);
+  // That went worse: back to the four points, and the worst on its own is tried next.
+  const worse = path([0, 0], [0, 1500], [4000, 1500], [4000, 0]);
+  const back = nextFitStep(EAST, both, worse, [worse.length - 1])!;
+  assert.deepEqual(back.points, TWO_STOPS);
+  const single = nextFitStep(EAST, back, TWO_ROUTE, TWO_ENDS)!;
+  assert.equal(single.points.length, 3);
+  assert.equal(single.removing, 1);
+});
+
+test("the fit score counts the route's own detours, not only the file it covers", () => {
+  assert.ok(Math.abs(fitScore(fidelity(EAST, EAST)) - 1) < 1e-9);
+  // The loop covers 89% of the file, yet 38% of it is off the file, and the score says so.
+  const looped = fidelity(EAST, LOOPED_ROUTE);
+  assert.ok(looped.trackCovered > 0.85 && looped.routeOnTrack < 0.65);
+  assert.ok(fitScore(looped) < 0.75);
   assert.equal(fitScore({ trackCovered: 0, routeOnTrack: 0, lengthRatio: 0 }), 0);
 });
 
@@ -390,9 +421,10 @@ test("fitting takes out a point the route looped round for, and keeps it out whe
   assert.deepEqual(step.points, [EAST_STOPS[0], EAST_STOPS[2]]);
   // Without that point the route follows the file: kept, and nothing more to try.
   assert.equal(nextFitStep(EAST, step, EAST, [EAST.length - 1]), null);
+  assert.equal(prunedCount(step), 1);
 });
 
-test("a step that leaves the fit no better is undone, and the point it took out stays", () => {
+test("a removal that leaves the fit no better is undone, and the point stays", () => {
   const fit = { ...startFit(EAST_STOPS), rounds: REFINE_ROUNDS };
   const step = nextFitStep(EAST, fit, LOOPED_ROUTE, LOOPED_ENDS)!;
   // Without the point the route went even farther off the file: back to the three points.
@@ -400,19 +432,28 @@ test("a step that leaves the fit no better is undone, and the point it took out 
   const back = nextFitStep(EAST, step, worse, [worse.length - 1]);
   assert.ok(back);
   assert.deepEqual(back.points, EAST_STOPS);
-  // Their route comes again; the point was tried, so fitting ends with them.
+  // Their route comes again; the point was tried, so fitting ends with them, none taken out.
   assert.equal(nextFitStep(EAST, back, LOOPED_ROUTE, LOOPED_ENDS), null);
+  assert.equal(prunedCount(back), 0);
 });
 
-test("a round of added points that makes the fit worse is undone", () => {
+test("no more than PRUNE_MAX removals are tried", () => {
+  const fit = { ...startFit(EAST_STOPS), rounds: REFINE_ROUNDS, tried: Array.from({ length: PRUNE_MAX }, (_, i) => `x${i}`) };
+  assert.equal(nextFitStep(EAST, fit, LOOPED_ROUTE, LOOPED_ENDS), null);
+});
+
+test("a round of added points is kept unless it lowers the score, and undone when it does", () => {
   const plan = planFromGpx(file({ tracks: [{ segments: [WIGGLE] }] }));
   const straight = line(WIGGLE[0], WIGGLE.at(-1)!, 500);
   const round = nextFitStep(plan.reference, startFit(plan.points), straight, undefined);
   assert.ok(round && round.rounds === 1 && round.points.length > plan.points.length);
-  // The route through the added points wandered off the track altogether.
+  // A round that leaves the score where it was is kept, and the next round follows it.
+  const kept = nextFitStep(plan.reference, round, straight, undefined);
+  assert.ok(kept && kept.rounds === 2 && kept.points.length > round.points.length);
+  // The route through the added points wandered off the track altogether: undone.
   const astray = line(at(0, 5000), at(12_000, 5000), 500);
-  const back = nextFitStep(plan.reference, round, astray, undefined);
+  const back = nextFitStep(plan.reference, kept, astray, undefined);
   assert.ok(back);
-  assert.deepEqual(back.points, plan.points);
+  assert.deepEqual(back.points, round.points);
   assert.equal(back.phase, "prune");
 });

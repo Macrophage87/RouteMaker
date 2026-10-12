@@ -3,7 +3,7 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import type { RouteResponse } from "./lib/api.ts";
 import type { LonLat } from "./lib/geo.ts";
 import { writeGpx } from "./lib/gpx.ts";
-import { REFINE_ROUNDS, nextFitStep, startFit, type Fit, type ImportedPlan } from "./lib/gpxPlan.ts";
+import { REFINE_ROUNDS, nextFitStep, prunedCount, startFit, type Fit, type ImportedPlan } from "./lib/gpxPlan.ts";
 import { gpxWorker, importGpx } from "./lib/gpxImport.ts";
 import { exportFileName, exportOf, fidelityNotice, importSentences, presetNotice, prunedNotice } from "./lib/gpxText.ts";
 import { showReference } from "./lib/referenceLayer.ts";
@@ -74,8 +74,9 @@ export function GpxPanel(props: Props) {
   const [reading, setReading] = useState<Reading>({ kind: "idle" });
   const [showTrack, setShowTrack] = useState(true);
   const [fit, setFit] = useState<Fit | null>(null);
-  // Points fitting took out again because the route looped round for them; said once fitting ends.
-  const [pruned, setPruned] = useState(0);
+  // Points fitting took out because the route looped round for them, said once fitting ends
+  // and for as long as the plan is the points it ended with.
+  const [pruned, setPruned] = useState<{ count: number; points: LonLat[] } | null>(null);
 
   // An opened track is fitted in steps (gpxPlan.ts, nextFitStep): when the
   // route for the fitted points arrives, points go where it missed the track,
@@ -93,7 +94,7 @@ export function GpxPanel(props: Props) {
     if (!route || !samePoints(routedPoints, fit.points)) return;
     const next = nextFitStep(imported.reference, fit, route.geometry.coordinates, route.leg_ends);
     if (!next) {
-      setPruned(fit.tried.filter((p) => !fit.points.some((q) => q[0] === p[0] && q[1] === p[1])).length);
+      setPruned({ count: prunedCount(fit), points: fit.points });
       setFit(null);
       return;
     }
@@ -120,7 +121,7 @@ export function GpxPanel(props: Props) {
       setReading({ kind: "idle" });
       setShowTrack(true);
       setFit(outcome.plan.source === "track" ? startFit(outcome.plan.points) : null);
-      setPruned(0);
+      setPruned(null);
       onImport(outcome.plan);
       frame(outcome.plan);
     } else {
@@ -198,13 +199,15 @@ export function GpxPanel(props: Props) {
             {fit && ["loading", "waiting", "ok"].includes(planStatus) && (
               <p className="loading gpx-fitting">
                 {fit.phase === "prune"
-                  ? "Taking out points the route looped round to reach…"
+                  ? "Checking for points the route loops round to reach…"
                   : fit.rounds === 0
                     ? "Routing the plan along the file's track…"
                     : `Adding points where the route left the track (round ${fit.rounds} of up to ${REFINE_ROUNDS})…`}
               </p>
             )}
-            {match && pruned > 0 && <p className="hint gpx-pruned">{prunedNotice(pruned)}</p>}
+            {match && pruned && pruned.count > 0 && samePoints(points, pruned.points) && (
+              <p className="hint gpx-pruned">{prunedNotice(pruned.count)}</p>
+            )}
             {match && <p className={match.warn ? "notice gpx-deviation" : "hint gpx-fidelity"}>{match.text}</p>}
           </div>
         )}
