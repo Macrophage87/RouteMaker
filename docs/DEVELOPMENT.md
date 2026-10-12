@@ -834,6 +834,17 @@ LTS 4 5.5, Avoid 6, unrated 5). Each has a halo a pixel wider each side
 its coral casing, the one exception to "dark under light, white under dark"
 (the test asserts it is that palette's own casing and at least 3:1).
 
+**A Mass Ride's route.** Its sections take the capacity bands' own colours,
+widths and dashes, the same as the roads under them, so the 11 px casing left
+it reading as one more road (Stephen, 2026-10-12). When the sections are by
+capacity, `setRouteSections` draws it as a corridor (`massRoutePaint`): a
+16 px white band (`route-mass-band`) inside a 22 px casing in the route's
+blue (the dark slate in the colour-blind-friendly palette), about 3 px of
+each round Wide open's 10.5 px halo, and dims the capacity roads' lines and
+casings to 0.45 (`MASS_NETWORK_DIMMED`). Avoid roads and hazard rails keep
+full strength. `lib/massRouteCorridor.test.ts` holds the widths, the casing
+3:1 from the band, and the wiring.
+
 **Tests.** `stressSalience.test.ts` covers: the rising ink and width, LTS 4's
 duty, chroma and contrast rising from LTS 3 to Avoid, the harshness rule, no
 black under LTS 3, LTS 2 against LTS 3 by dash length, period and width, the

@@ -28,7 +28,11 @@ import {
   ROUTE_CASING_PLAIN,
   ROUTE_CASING_WIDTH,
   ROUTE_LINE_WIDTH,
+  ROUTE_MASS_BAND,
+  ROUTE_MASS_BAND_WIDTH,
+  massRoutePaint,
   sectionFeatures,
+  usesCapacity,
 } from "./lib/routeColours.ts";
 import { stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb } from "./stressStyle.js";
 import { subscribeTopoLines, syncTopoLines, topoLinesOn, type TopoMap } from "./lib/topoLines.ts";
@@ -51,7 +55,9 @@ import {
   routeDashLayers,
   solidRouteFilter,
   setMassMode,
+  setMassNetworkOpacity,
   setHazardData,
+  ROUTE_MASS_BAND_LAYER_ID,
 } from "./lib/mapGlue.ts";
 import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
@@ -832,6 +838,8 @@ export function MapView(props: Props) {
       const added = addStressOverlay(map, origin, callbacks.current.stressVisible, callbacks.current.when);
       // The hazards that came before the overlay's source did (a Mass Ride opened from a link).
       if (added) setHazardData(map, callbacks.current.massHazards ?? null);
+      // A route already up dims the capacity roads it is drawn over (an overlay that came after the route).
+      if (added) setMassNetworkOpacity(map, massRoutePaint(usesCapacity(callbacks.current.route?.stress_spans), false).networkOpacity);
       return added;
     };
 
@@ -859,6 +867,15 @@ export function MapView(props: Props) {
         source: ROUTE_SOURCE,
         layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": ROUTE_CASING_PLAIN, "line-width": ROUTE_CASING_WIDTH, "line-opacity": 0.9 },
+      });
+      // A Mass Ride's route: a white band inside a wider casing, so the route reads over the
+      // capacity roads it is coloured like (routeColours.ts, massRoutePaint). Shown by setRouteSections.
+      map.addLayer({
+        id: ROUTE_MASS_BAND_LAYER_ID,
+        type: "line",
+        source: ROUTE_SOURCE,
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": ROUTE_MASS_BAND, "line-width": ROUTE_MASS_BAND_WIDTH, "line-opacity": 0 },
       });
       // The route in its traffic stress, between the casing and the line: one
       // feature per section, each in its class's colour. The line itself

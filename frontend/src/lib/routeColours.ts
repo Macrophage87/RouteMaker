@@ -436,3 +436,36 @@ export function routePaint(
     casingColor: hasSections ? sectionCasing : ROUTE_CASING_PLAIN,
   };
 }
+
+/**
+ * A Mass Ride's route over the capacity map (Stephen, 2026-10-12: "The colors on mass ride are so
+ * bright that I can't see the actual route."). The route's sections are drawn in the capacity
+ * bands' own colours, widths and dashes, the same as the roads under them, and the 11 px casing
+ * left the route at most a quarter-pixel of blue each side of a Wide open section: the route read
+ * as one more road. So when the sections are by capacity the route is drawn as a corridor: a white
+ * band under the sections (ROUTE_MASS_BAND_WIDTH) inside a wider casing in the route's own colour
+ * (ROUTE_MASS_CASING_WIDTH), about three pixels of white and three of blue each side of the widest
+ * halo (Wide open's, 10.5 px), and the capacity roads behind it are dimmed to
+ * MASS_NETWORK_DIMMED. The hazard rails and the Avoid roads are warnings and keep their full
+ * strength. The route's own colours, halos and dashes are unchanged, so its legend still reads.
+ */
+export const ROUTE_MASS_BAND = "#ffffff";
+export const ROUTE_MASS_BAND_WIDTH = 16;
+export const ROUTE_MASS_CASING_WIDTH = 22;
+/** The capacity roads' opacity while a Mass Ride's route is on the map: there to read, not to compete. */
+export const MASS_NETWORK_DIMMED = 0.45;
+
+/**
+ * The corridor's paint: the casing's width, the white band's opacity and the capacity roads'
+ * opacity, for a route drawn by capacity (`capacity`) or not. A stale route's band dims with it.
+ */
+export function massRoutePaint(
+  capacity: boolean,
+  stale: boolean,
+): { casingWidth: number; bandOpacity: number; networkOpacity: number } {
+  return {
+    casingWidth: capacity ? ROUTE_MASS_CASING_WIDTH : ROUTE_CASING_WIDTH,
+    bandOpacity: capacity ? (stale ? 0.45 : 1) : 0,
+    networkOpacity: capacity ? MASS_NETWORK_DIMMED : 1,
+  };
+}

@@ -32,7 +32,7 @@ import {
   massRideOn,
   setMassRide,
 } from "../stressStyle.js";
-import { HAZARD_SOURCE_ID, massLayerIds, massLayers } from "../massStyle.js";
+import { HAZARD_SOURCE_ID, MASS_LAYER_IDS, massLayerIds, massLayers } from "../massStyle.js";
 
 /** The hazards' source before any are given (or on a page that is not a Mass Ride's). */
 export const EMPTY_HAZARDS = { type: "FeatureCollection", features: [] } as const;
@@ -55,7 +55,7 @@ import type { When } from "./dials.ts";
 import { MASS_SOURCE_ID, STRESS_SOURCE_ID, massSource, stressSource } from "./mapStyle.ts";
 import { setDcMaskVisibility } from "./dcBoundary.ts";
 import type { RouteResponse } from "./api.ts";
-import { ROUTE_AVOID_MARK_DASH, routeClasses, routePaint, routeSections, sectionFeatures, type RouteClassKey } from "./routeColours.ts";
+import { ROUTE_AVOID_MARK_DASH, massRoutePaint, routeClasses, routePaint, routeSections, sectionFeatures, usesCapacity, type RouteClassKey } from "./routeColours.ts";
 
 /** The parts of a MapLibre map these use. */
 export interface OverlayMap {
@@ -226,6 +226,7 @@ export function setStressPalette(
 /** The parts of a MapLibre map the route's coloured sections use. */
 export interface RouteSectionsMap {
   getSource(id: string): unknown;
+  getLayer?(id: string): unknown;
   setPaintProperty(id: string, name: string, value: unknown): void;
 }
 
@@ -321,6 +322,25 @@ export function setRouteSections(
   map.setPaintProperty(ROUTE_UNPAVED_LAYER_ID, "line-opacity", paint.sectionOpacity);
   map.setPaintProperty(ROUTE_AVOID_LAYER_ID, "line-opacity", paint.sectionOpacity);
   for (const layer of routeDashLayers()) map.setPaintProperty(layer.id, "line-opacity", paint.sectionOpacity);
+  // A Mass Ride's route is a corridor over dimmed capacity roads, not one more road among them (routeColours.ts, massRoutePaint).
+  const mass = massRoutePaint(sections !== null && usesCapacity(route?.stress_spans), stale);
+  map.setPaintProperty("route-casing", "line-width", mass.casingWidth);
+  map.setPaintProperty(ROUTE_MASS_BAND_LAYER_ID, "line-opacity", mass.bandOpacity);
+  setMassNetworkOpacity(map, mass.networkOpacity);
+}
+
+/** The white band under a Mass Ride's route sections, inside its casing (routeColours.ts, ROUTE_MASS_BAND). */
+export const ROUTE_MASS_BAND_LAYER_ID = "route-mass-band";
+
+/**
+ * The capacity roads' bands, line and casing, at `opacity`: dimmed while a Mass Ride's route is
+ * up, full otherwise. A layer the map does not have yet (the overlay not added) is skipped; the
+ * overlay sets it again when it is added. Avoid and the hazard rails are not touched.
+ */
+export function setMassNetworkOpacity(map: Pick<RouteSectionsMap, "getLayer" | "setPaintProperty">, opacity: number): void {
+  for (const id of [...MASS_LAYER_IDS.casing, ...MASS_LAYER_IDS.line]) {
+    if (map.getLayer?.(id)) map.setPaintProperty(id, "line-opacity", opacity);
+  }
 }
 
 /** Show or hide every overlay layer that is on the map. */
