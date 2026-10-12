@@ -511,7 +511,7 @@ test("the route's casing and the unrated grey follow the palette: the colour-bli
   assert.equal(unrated("cvd").color, UNRATED_CVD_COLOUR);
   assert.match(
     readFileSync(fileURLToPath(new URL("../FacilityBreakdown.tsx", import.meta.url)), "utf8"),
-    /const casing = routeCasing\(\);[\s\S]*stroke=\{casing\} strokeWidth=\{ROUTE_CASING_WIDTH\}/,
+    /const casing = routeCasing\(\);[\s\S]*stroke=\{casing\} strokeWidth=\{ROUTE_SWATCH_CASING_WIDTH\}/,
     "the route colour legend draws the same casing",
   );
 });

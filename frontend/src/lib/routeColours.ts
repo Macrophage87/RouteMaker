@@ -453,6 +453,14 @@ export function routePaint(
 export const ROUTE_BAND = "#ffffff";
 export const ROUTE_BAND_WIDTH = 16;
 export const ROUTE_CORRIDOR_CASING_WIDTH = 22;
+/**
+ * The route legend's swatch, the corridor in miniature (FacilityBreakdown, massLegend's
+ * RouteClassSwatch): an 18 px tall swatch with a 17 px casing round a 13 px white band, so the
+ * section sits on white inside blue as on the map, with a pixel or more of each round the widest halo.
+ */
+export const ROUTE_SWATCH_HEIGHT = 18;
+export const ROUTE_SWATCH_CASING_WIDTH = 17;
+export const ROUTE_SWATCH_BAND_WIDTH = 13;
 /** The capacity roads' opacity while a Mass Ride's route is on the map: there to read, not to compete. */
 export const MASS_NETWORK_DIMMED = 0.45;
 /**

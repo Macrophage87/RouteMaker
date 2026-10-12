@@ -21,6 +21,9 @@ import {
   routeCorridorPaint,
   overlayFade,
   routeClasses,
+  ROUTE_SWATCH_BAND_WIDTH,
+  ROUTE_SWATCH_CASING_WIDTH,
+  ROUTE_SWATCH_HEIGHT,
 } from "./routeColours.ts";
 import {
   ROUTE_BAND_LAYER_ID,
@@ -188,4 +191,15 @@ test("MapView adds the band between the casing and the sections, hidden until se
   assert.ok(at('id: "route-casing"') < at("id: ROUTE_BAND_LAYER_ID") && at("id: ROUTE_BAND_LAYER_ID") < at('id: "route-ring"'));
   assert.match(mapView.slice(at("id: ROUTE_BAND_LAYER_ID"), at('id: "route-ring"')), /"line-opacity": 0/);
   assert.match(mapView, /setOverlayFade\(map, routeOverlayFade\(callbacks\.current\.route\)\)/);
+});
+
+test("the legend swatch is the corridor in miniature: white band round the widest halo, casing round the band", () => {
+  const widest = Math.max(...routeClasses().map((c) => Math.max(c.haloWidth, c.ringWidth ?? 0)));
+  assert.ok((ROUTE_SWATCH_BAND_WIDTH - widest) / 2 >= 1, `${widest}`);
+  assert.ok((ROUTE_SWATCH_CASING_WIDTH - ROUTE_SWATCH_BAND_WIDTH) / 2 >= 2);
+  assert.ok(ROUTE_SWATCH_CASING_WIDTH <= ROUTE_SWATCH_HEIGHT);
+  for (const file of ["../FacilityBreakdown.tsx", "./massLegend.ts"]) {
+    const source = readFileSync(new URL(file, import.meta.url), "utf8");
+    assert.match(source, /ROUTE_SWATCH_CASING_WIDTH[\s\S]*ROUTE_BAND, ROUTE_SWATCH_BAND_WIDTH|ROUTE_SWATCH_CASING_WIDTH\}[\s\S]*stroke=\{ROUTE_BAND\} strokeWidth=\{ROUTE_SWATCH_BAND_WIDTH\}/, file);
+  }
 });
