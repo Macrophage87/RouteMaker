@@ -20,7 +20,8 @@ export type PresetId =
   | "bikeshare"
   | "kids"
   | "bike-transit"
-  | "bikeshare-transit";
+  | "bikeshare-transit"
+  | "rebalance";
 
 export interface PresetOption {
   id: PresetId;
@@ -111,6 +112,13 @@ export const PRESETS: readonly PresetOption[] = [
     description:
       "Bikeshare directly there, or transit with either end a walk or a bikeshare bike, whichever is quicker (a bike is docked before you board). Metro, MARC, Light RailLink, Metro SubwayLink and buses; scheduled times, not live; docks from live availability where it can be read.",
   },
+  {
+    // REBALANCE-RIDE (Stephen, 2026-10-12): an Adventure ride type; the description is his.
+    id: "rebalance",
+    label: "Rebalance Ride",
+    description:
+      "Move a bikeshare bike from a crowded station to one that needs bikes. Rides like this can earn bikeshare reward points (Bike Angels in the Capital Bikeshare app); your points show there, not here.",
+  },
 ];
 
 /** The transit ride types (lib/transit.ts): a start and an end, no loop, the trip in steps. */
@@ -120,9 +128,16 @@ export function isTransit(id: PresetId): boolean {
   return TRANSIT_PRESETS.includes(id);
 }
 
-/** Ride types planned from a start and an end only (no loop, no stops): Bikeshare and the transit types. */
+/** The ride types planned as a bikeshare trip (core.bikeshare): Bikeshare and Rebalance Ride. */
+export const BIKESHARE_PRESETS: readonly PresetId[] = ["bikeshare", "rebalance"];
+
+export function usesBikeshare(id: PresetId): boolean {
+  return BIKESHARE_PRESETS.includes(id);
+}
+
+/** Ride types planned from a start and an end only (no loop, no stops): the bikeshare and transit types. */
 export function twoPointsOnly(id: PresetId): boolean {
-  return id === "bikeshare" || isTransit(id);
+  return usesBikeshare(id) || isTransit(id);
 }
 
 export const DEFAULT_PRESET: PresetId = "default";

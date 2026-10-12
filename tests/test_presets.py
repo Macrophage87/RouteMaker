@@ -39,6 +39,8 @@ CONTRACT_PRESETS = {
     # TRANSIT-ASSIST (Stephen, 2026-10-12): the two transit ride types.
     "bike-transit",
     "bikeshare-transit",
+    # REBALANCE-RIDE (Stephen, 2026-10-12): Rebalance Ride.
+    "rebalance",
 }
 
 # The factor dials Valhalla reads on a 0..1 scale; outside it the service
@@ -408,6 +410,8 @@ def test_every_ride_types_brake_grade_is_the_owners_approved_table() -> None:
         # (core.presets, "The transit ride types"): Default's and Bikeshare's.
         "bike-transit": 0.06,
         "bikeshare-transit": 0.04,
+        # Rebalance Ride rides a share bike, as Bikeshare (core.presets, "Rebalance Ride").
+        "rebalance": 0.04,
         "mountain-goat": None,
         # Mountain Bike (slice 6): a rider who chose it wants the descent, as Mountain Goat.
         "mountain-bike": None,

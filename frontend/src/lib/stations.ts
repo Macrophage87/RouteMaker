@@ -13,7 +13,7 @@
 import type { Dials } from "./dials.ts";
 import { formatStationDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
-import type { PresetId } from "./presets.ts";
+import { usesBikeshare, type PresetId } from "./presets.ts";
 
 export type StationAction = "pickup" | "dropoff";
 
@@ -141,7 +141,7 @@ function samePoint(a: LonLat, b: LonLat | undefined): boolean {
 
 /** The pins that still hold: the start and end unmoved, on Bikeshare. */
 export function activePins(preset: PresetId, points: readonly LonLat[], pins: Pins): Pins {
-  if (preset !== "bikeshare") return {};
+  if (!usesBikeshare(preset)) return {};
   const active: Pins = {};
   if (pins.pickup && samePoint(pins.pickup.at, points[0])) active.pickup = pins.pickup;
   if (pins.dropoff && points.length >= 2 && samePoint(pins.dropoff.at, points[points.length - 1])) {

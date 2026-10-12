@@ -566,6 +566,11 @@ export interface BikesharePlan {
   options?: BikeshareOption[];
   /** The plain source citation (OWNER-DECISIONS 301). */
   credit: string;
+  /**
+   * A Rebalance Ride (`preset: "rebalance"`): from a crowded station (at least 3/4 full) to one that needs bikes
+   * (at most 1/4 full). False on plain Bikeshare; absent from an older server.
+   */
+  rebalance?: boolean;
 }
 
 /** One end of a route option (core.api.BikeshareOptionEndOut). */

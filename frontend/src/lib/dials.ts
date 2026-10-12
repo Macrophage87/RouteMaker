@@ -9,7 +9,7 @@
  * route's `dials` says what the API actually planned with.
  * tests/test_presets.py reads STARTS and holds it equal to the API's table.
  */
-import type { PresetId } from "./presets.ts";
+import { usesBikeshare, type PresetId } from "./presets.ts";
 import { DEFAULT_MTB_LEVEL, defaultMtbPreferred, fitMtbLevel, mtbLevelOf, mtbPreferredOf } from "./mtbMode.ts";
 
 export type When = "weekend" | "weekday_rush" | "weekday_offpeak" | "night";
@@ -194,6 +194,8 @@ export const STARTS: Record<PresetId, Start> = {
   // The transit ride types' bike legs start as Default's own bike and Bikeshare's classic (core.presets).
   "bike-transit": { stress: 70, hills: 0, seek: true },
   "bikeshare-transit": { stress: 80, hills: -60, seek: true },
+  // REBALANCE-RIDE: Bikeshare's own start (core.presets REBALANCE), with its bike choice.
+  rebalance: { stress: 80, hills: -60, seek: true, assist: true },
 };
 
 /** A ride time's label inside a sentence: only its first letter lowered, so "PM"
@@ -251,7 +253,7 @@ export function trailsAreOff(preset: PresetId, dials: Pick<Dials, "trailsOff">):
 
 export function offersAssist(preset: PresetId): boolean {
   // Bikeshare's assist is its bike choice, not Cargo Bike's toggle.
-  return STARTS[preset].assist === true && preset !== "bikeshare";
+  return STARTS[preset].assist === true && !usesBikeshare(preset);
 }
 
 /**
@@ -262,7 +264,7 @@ export function offersAssist(preset: PresetId): boolean {
 export const BIKESHARE_HILLS: Record<Bike, number> = { classic: -60, ebike: -20 };
 
 export function offersBike(preset: PresetId): boolean {
-  return preset === "bikeshare";
+  return usesBikeshare(preset);
 }
 
 export function isBike(value: unknown): value is Bike {
@@ -366,8 +368,8 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     carrying: start.carrying,
     assist: start.assist,
     ...(start.bike ? { bike: start.bike } : {}),
-    // Only an e-bike can end outside a dock.
-    ...(start.bike === "ebike" && dials.ending === "outside_dock" ? { ending: "outside_dock" as const } : {}),
+    // Only an e-bike can end outside a dock, and never on Rebalance Ride (it ends where a bike is needed).
+    ...(start.bike === "ebike" && dials.ending === "outside_dock" && preset !== "rebalance" ? { ending: "outside_dock" as const } : {}),
     ...(dials.avoidGravel === true ? { avoidGravel: true } : {}),
     ...(dials.trailsOff === true ? { trailsOff: true } : {}),
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),

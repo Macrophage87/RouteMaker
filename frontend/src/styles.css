@@ -1207,7 +1207,7 @@ dialog.ride-types::backdrop {
 }
 
 .ride-type-group h3,
-.ride-group h3 {
+.ride-group h4 {
   margin: 16px 0 0;
   font-size: 1rem;
 }
