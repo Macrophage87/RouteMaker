@@ -12,15 +12,19 @@
 #             the account or the instance: they come from the options or the environment.
 #
 # Steps:
-#   1. refuses a run that already has a result (RUN_URL/out/SHA256SUMS), then
-#      send-inputs.sh (skipped with --no-send, to carry on a run whose inputs are sent)
+#   1. checks, before anything is sent: the box can be described (so the sign-in, the
+#      instance id and the region are right) and is stopped (or --use-running), and the
+#      run has no result yet (RUN_URL/out/SHA256SUMS); then send-inputs.sh (skipped with
+#      --no-send, to carry on a run whose inputs are sent)
 #   2. reads the commit from RUN_URL/in/MANIFEST.txt
 #   3. `aws ec2 start-instances` on the box, if it is stopped, and waits until it is
 #      running and its SSM agent is online
 #   4. `aws ssm send-command` (AWS-RunShellScript): on the box, as root, installs the AWS
-#      CLI if it is missing (snap), then as ubuntu clones the repository to ~/RouteMaker if
-#      it is missing, checks out the run's commit there and runs box-rebuild.sh from it,
-#      its output appended to ~/cloud-rebuild.log on the box
+#      CLI if it is missing (snap) and schedules a power-off for when the command's time
+#      is up (a dead-man switch, should this end die), then as ubuntu clones the
+#      repository to ~/RouteMaker if it is missing, checks out the run's commit there and
+#      runs box-rebuild.sh from it, its output appended to ~/cloud-rebuild.log on the box;
+#      it does nothing when the run already has a result
 #   5. waits for RUN_URL/out/SHA256SUMS (box-rebuild.sh uploads it last), watching the
 #      command (get-command-invocation) and the box: a failed command, or a box that stops
 #      with no result (a failed rebuild powers itself off; so does a spot reclaim), ends
@@ -28,8 +32,9 @@
 #   6. stops the box, then import-result.sh: install and its dry run; with --swap, the
 #      swap after it
 # However it ends, a box this script started and that is still running is stopped (never
-# terminated): its disk keeps the run's state, and the same command with --no-send carries
-# on where it stopped (add --refire after a failed rebuild).
+# terminated): its disk keeps the run's state, and `launch.sh --no-send RUN_URL` carries
+# on where it stopped (add --refire after a failed rebuild); every failure prints that
+# command with this run's URL.
 #
 # Options:
 #   --instance-id ID     the box [$CLOUD_INSTANCE_ID]
@@ -49,7 +54,8 @@
 #   --beta               passed to box-rebuild.sh as --beta-bundle (the beta server's bundle;
 #                        install it there with import-result.sh --beta)
 #   --swap               after the install and its dry run, swap (import-result.sh --swap)
-#   --use-running        use a box that is already running (and leave it running)
+#   --use-running        use a box that is already running; the launcher does not stop
+#                        it, but box-rebuild.sh still powers it off at the end
 #   --timeout-hours N    give up waiting for the result after N hours [30]
 #   --dry-run            print the commands and the box's script, run nothing
 #   -h, --help
@@ -148,10 +154,21 @@ aws_s3() {
 	if [ "$dry_run" = 1 ]; then show aws "${common[@]}" --region "$bucket_region" s3 "$@"; return 0; fi
 	"$AWS" "${common[@]}" --region "$bucket_region" s3 "$@"
 }
-# The other scripts call `aws` without a region; theirs is the bucket's.
+# The other scripts call `aws` without a region; theirs is the bucket's. Both names, so
+# an AWS_REGION already in the environment does not win over it.
 script() {
-	if [ "$dry_run" = 1 ]; then show AWS_DEFAULT_REGION="$bucket_region" "$@"; return 0; fi
-	AWS_DEFAULT_REGION=$bucket_region "$@"
+	if [ "$dry_run" = 1 ]; then
+		show AWS_REGION="$bucket_region" AWS_DEFAULT_REGION="$bucket_region" "$@"
+		return 0
+	fi
+	AWS_REGION=$bucket_region AWS_DEFAULT_REGION=$bucket_region "$@"
+}
+# The command that carries this run on, for every message that ends a run part way.
+resume() {
+	local more=""
+	[ "$beta" = 0 ] || more+=" --beta"
+	[ -z "$profile" ] || more+=" --profile $profile"
+	echo "scripts/cloud/launch.sh --no-send$more${1:+ $1} $url"
 }
 box_state() { aws_box ec2 describe-instances --instance-ids "$instance" \
 	--query 'Reservations[0].Instances[0].State.Name' --output text; }
@@ -169,7 +186,12 @@ ubuntu_script() {
 	printf ')\n'
 	cat <<'EOF'
 set -euo pipefail
-export PATH="$PATH:/snap/bin" AWS_DEFAULT_REGION="$bucket_region"
+export PATH="$PATH:/snap/bin" AWS_REGION="$bucket_region" AWS_DEFAULT_REGION="$bucket_region"
+# SSM may run a command again after the box restarts; a run that has its result is done.
+if aws s3 ls "$run_url/out/SHA256SUMS" >/dev/null 2>&1; then
+	echo "launch: $run_url already has its result; nothing to do"
+	exit 0
+fi
 cd "$HOME"
 if [ ! -d RouteMaker/.git ]; then
 	echo "launch: cloning $repo_url into ~/RouteMaker (one-time setup)"
@@ -187,10 +209,14 @@ exit "$rc"
 EOF
 }
 root_script() {
-	printf 'ubuntu_b64=%q\n' "$(ubuntu_script "$1" | base64 | tr -d '\n')"
+	printf 'ubuntu_b64=%q deadman_min=%q\n' "$(ubuntu_script "$1" | base64 | tr -d '\n')" "$((exec_timeout / 60))"
 	cat <<'EOF'
 set -euo pipefail
 export PATH="$PATH:/snap/bin"
+# The dead-man switch: should the launcher at home die, the box still powers off (a stop,
+# with the launch template's shutdown behaviour) when the command's time is up.
+shutdown -P "+$deadman_min" "RouteMaker launch: the command's time is up" ||
+	echo "launch: WARNING: could not schedule the power-off"
 if ! command -v aws >/dev/null 2>&1; then
 	echo "launch: installing the AWS CLI (one-time setup)"
 	snap install aws-cli --classic
@@ -210,12 +236,15 @@ stop_box() {
 	local s
 	s=$(box_state 2>/dev/null) || s=unknown
 	case "$s" in
-		pending | running)
-			note "stopping the box $instance (stop, never terminate; its disk keeps the run)"
-			aws_box ec2 stop-instances --instance-ids "$instance" --output text >/dev/null ||
-				note "WARNING: could not stop $instance; stop it in the console (EC2, Instances, Stop)" ;;
-		stopping | stopped) note "the box $instance is $s" ;;
-		*) note "WARNING: cannot tell whether $instance is running ($s); check the console and stop it" ;;
+		stopping | stopped) note "the box $instance is $s" || true ;;
+		*)
+			# Running, or unknown (signed out?): try the stop first, talk after, so a closed
+			# terminal cannot get in its way.
+			if aws_box ec2 stop-instances --instance-ids "$instance" --output text >/dev/null 2>&1; then
+				note "stopped the box $instance (a stop, never a terminate; its disk keeps the run)" || true
+			else
+				note "WARNING: could not stop $instance ($s); stop it in the console (EC2, Instances, Stop)" || true
+			fi ;;
 	esac
 }
 # shellcheck disable=SC2329 # invoked by the traps below
@@ -235,11 +264,46 @@ if [ "$dry_run" = 1 ]; then
 fi
 note "run $run at $url; the box $instance in $box_region, the bucket in $bucket_region"
 
-# --- 1. inputs ---------------------------------------------------------------------------
-if [ "$dry_run" = 0 ] && aws_s3 ls "$url/out/SHA256SUMS" >/dev/null 2>&1; then
-	die "$url already has a result. Install it with scripts/cloud/import-result.sh $url, or name a new run (--run)"
+# --- 1. checks, then the inputs ---------------------------------------------------------
+wait_for() { # what, seconds, test command...
+	local what=$1 limit=$2 waited=0
+	shift 2
+	until "$@"; do
+		[ "$waited" -lt "$limit" ] || fail "$what after $((limit / 60)) minutes; giving up. Then: $(resume)"
+		sleep "$START_POLL_S"
+		waited=$((waited + START_POLL_S))
+	done
+}
+is_stopped() { [ "$(box_state 2>/dev/null)" = stopped ]; }
+is_running() { [ "$(box_state 2>/dev/null)" = running ]; }
+ssm_online() {
+	[ "$(aws_box ssm describe-instance-information \
+		--filters "Key=InstanceIds,Values=$instance" \
+		--query 'InstanceInformationList[0].PingStatus' --output text 2>/dev/null)" = Online ]
+}
+# Before send-inputs.sh asks for sudo and uploads gigabytes: a wrong id, region or
+# sign-in, or a box another run is using, fails here.
+if [ "$dry_run" = 1 ]; then
+	box_state
+	aws_s3 ls "$url/out/SHA256SUMS"
+else
+	state=$(box_state) ||
+		die "cannot describe $instance in $box_region: signed in (aws login --remote${profile:+ --profile $profile})? the right --instance-id and --box-region? the permissions in OPERATIONS.md?"
+	case "$state" in
+		stopped | stopping) ;;
+		pending | running)
+			[ "$use_running" = 1 ] ||
+				die "the box $instance is already $state: another run may be using it. Stop it, or pass --use-running (the launcher then does not stop it; box-rebuild.sh still powers it off at the end)" ;;
+		*) die "the box $instance is $state; it cannot be started" ;;
+	esac
+	rc=0
+	aws_s3 ls "$url/out/SHA256SUMS" >/dev/null 2>&1 || rc=$?
+	case "$rc" in
+		0) die "$url already has a result. Install it with scripts/cloud/import-result.sh $url, or name a new run (--run)" ;;
+		1) ;; # nothing there
+		*) die "cannot read $url (aws exited $rc): signed in? the right --bucket-region? the permissions in OPERATIONS.md?" ;;
+	esac
 fi
-[ "$dry_run" = 0 ] || aws_s3 ls "$url/out/SHA256SUMS"
 if [ "$send" = 1 ]; then
 	note "sending the inputs (send-inputs.sh)"
 	sargs=("${passed[@]}")
@@ -255,36 +319,20 @@ if [ "$dry_run" = 1 ]; then
 	commit="<the commit in MANIFEST.txt>"
 else
 	manifest=$(aws_s3 cp "$url/in/MANIFEST.txt" - 2>/dev/null) ||
-		die "$url/in/ has no MANIFEST.txt: send the inputs (drop --no-send)"
+		die "$url/in/ has no MANIFEST.txt: the inputs were not sent. Send them: scripts/cloud/launch.sh${profile:+ --profile $profile} $url"
 	commit=$(sed -n 's/^commit=//p' <<<"$manifest" | tail -n1)
 	[[ "$commit" =~ ^[0-9a-f]{40}$ ]] || die "$url/in/MANIFEST.txt names no commit"
 	note "the box builds commit $commit"
 fi
 
 # --- 3. the box --------------------------------------------------------------------------
-wait_for() { # what, seconds, test command...
-	local what=$1 limit=$2 waited=0
-	shift 2
-	until "$@"; do
-		[ "$waited" -lt "$limit" ] || fail "$what after $((limit / 60)) minutes; giving up"
-		sleep "$START_POLL_S"
-		waited=$((waited + START_POLL_S))
-	done
-}
-is_stopped() { [ "$(box_state 2>/dev/null)" = stopped ]; }
-is_running() { [ "$(box_state 2>/dev/null)" = running ]; }
-ssm_online() {
-	[ "$(aws_box ssm describe-instance-information \
-		--filters "Key=InstanceIds,Values=$instance" \
-		--query 'InstanceInformationList[0].PingStatus' --output text 2>/dev/null)" = Online ]
-}
 if [ "$dry_run" = 1 ]; then
-	box_state
 	aws_box ec2 start-instances --instance-ids "$instance"
 	aws_box ssm describe-instance-information --filters "Key=InstanceIds,Values=$instance" \
 		--query 'InstanceInformationList[0].PingStatus' --output text
 else
-	state=$(box_state) || die "cannot describe $instance in $box_region: signed in (aws login --remote)? the right --box-region?"
+	# Again: sending took a while.
+	state=$(box_state) || die "cannot describe $instance any more (signed out?). Then: $(resume)"
 	if [ "$state" = stopping ]; then
 		note "the box is stopping; waiting for it to stop before starting it"
 		wait_for "the box did not stop" "$START_WAIT_S" is_stopped
@@ -293,15 +341,17 @@ else
 	case "$state" in
 		stopped)
 			note "starting the box $instance"
-			trap '' INT
+			# No signal between the start and `started=1`, or the trap would not stop it.
+			trap '' INT TERM HUP
 			aws_box ec2 start-instances --instance-ids "$instance" --output text >/dev/null ||
-				fail "AWS did not start $instance (no spot room just now is the usual reason; try again later)"
+				fail "AWS did not start $instance (no spot room just now is the usual reason). Try again later: $(resume)"
 			started=1
-			trap 'exit 130' INT ;;
+			trap 'exit 130' INT
+			trap 'exit 143' TERM HUP ;;
 		pending | running)
 			[ "$use_running" = 1 ] ||
-				die "the box $instance is already $state: another run may be using it. Stop it, or pass --use-running (it is then left running)"
-			note "--use-running: using the box as it is, and leaving it running" ;;
+				die "the box $instance was started while the inputs were sent: another run may be using it. Then: $(resume)"
+			note "--use-running: using the box as it is; the launcher does not stop it (box-rebuild.sh powers it off at the end)" ;;
 		*) die "the box $instance is $state; it cannot be started" ;;
 	esac
 	note "waiting for the box to run and for its SSM agent"
@@ -312,13 +362,13 @@ fi
 
 # --- 4. the rebuild ----------------------------------------------------------------------
 b64=$(root_script "$commit" | base64 | tr -d '\n')
-params="{\"commands\":[\"echo $b64 | base64 -d | bash\"],\"executionTimeout\":[\"$exec_timeout\"]}"
+params="{\"commands\":[\"echo $b64 | base64 -d >/tmp/rm-root.sh && bash /tmp/rm-root.sh\"],\"executionTimeout\":[\"$exec_timeout\"]}"
 if [ "$dry_run" = 1 ]; then
 	aws_box ssm send-command --instance-ids "$instance" --document-name AWS-RunShellScript \
 		--comment "RouteMaker rebuild $run" --parameters "<the script below, base64>" \
 		--query Command.CommandId --output text
 	echo "  The box runs, as root:"
-	root_script "$commit" | sed '/^ubuntu_b64=/d; s/^/    | /'
+	root_script "$commit" | sed 's/^ubuntu_b64=[^ ]* /ubuntu_b64=<the script below> /; s/^/    | /'
 	echo "  and as ubuntu:"
 	ubuntu_script "$commit" | sed 's/^/    | /'
 	aws_box ssm get-command-invocation --command-id "<command-id>" --instance-id "$instance" \
@@ -370,21 +420,27 @@ while :; do
 			aws_s3 ls "$url/out/SHA256SUMS" >/dev/null 2>&1 && break
 			echo "launch: the rebuild command ended $status on the box. Its output:" >&2
 			box_output >&2
-			fail "no result. Read ~/cloud-rebuild.log on the box (Session Manager); then this command again with --no-send (and --refire after a failed rebuild)" ;;
+			fail "no result. Read ~/cloud-rebuild.log on the box (Session Manager), then carry the run on: $(resume) (with --refire after a failed rebuild: $(resume --refire))" ;;
 		Success)
 			aws_s3 ls "$url/out/SHA256SUMS" >/dev/null 2>&1 && break
 			box_output >&2
-			fail "box-rebuild.sh finished but $url/out/ has no SHA256SUMS" ;;
+			fail "box-rebuild.sh finished but $url/out/ has no SHA256SUMS. Read ~/cloud-rebuild.log on the box, then: $(resume)" ;;
 	esac
 	case "$state" in
 		stopping | stopped | shutting-down | terminated)
 			aws_s3 ls "$url/out/SHA256SUMS" >/dev/null 2>&1 && break
 			box_output >&2
-			fail "the box $state with no result: a failed rebuild (it powers itself off; its log is under ~/cloud-runs/$run/ on the box) or a spot reclaim. Then this command again with --no-send (add --refire after a failed rebuild)" ;;
+			# A spot reclaim stops the box too, and a persistent request starts it again when
+			# AWS has room, to sit idle. Our own stop, even on a stopped box, is meant to make
+			# it a stop of ours, which is not restarted (OPERATIONS.md, "The launcher").
+			aws_box ec2 stop-instances --instance-ids "$instance" --output text >/dev/null 2>&1 ||
+				note "WARNING: could not stop $instance again; check in the console that it stays stopped"
+			stopped=1
+			fail "the box $state with no result: a failed rebuild (it powers itself off; its log is under ~/cloud-runs/$run/ on the box) or a spot reclaim. Carry the run on: $(resume) (after a failed rebuild: $(resume --refire))" ;;
 	esac
 	now=$(date +%s)
 	[ "$now" -lt "$deadline" ] ||
-		fail "no result after $((TIMEOUT_S / 3600)) hours (command ${status:-unknown}); stopping the box. Its state is kept: --no-send carries the run on"
+		fail "no result after $((TIMEOUT_S / 3600)) hours (command ${status:-unknown}); stopping the box. Its state is kept; carry the run on: $(resume)"
 	if [ $((now - last_report)) -ge 600 ]; then
 		el=$((now - began))
 		note "still rebuilding: $((el / 3600))h$(printf %02d $((el % 3600 / 60)))m, command ${status:-unknown}, box ${state:-unknown}"

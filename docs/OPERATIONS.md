@@ -5934,7 +5934,10 @@ fallback yet; this host stays the fallback, and its weekly rebuild is unchanged.
   **Stop** (AWS refuses Stop with the default one-time request). Shutdown behaviour
   **Stop**, so `box-rebuild.sh`'s power-off stops it. Any region: the launcher takes
   the box's (`us-east-1` by default) and the bucket's (`us-west-2` by default) apart, and
-  the box reaches the bucket across regions.
+  the box reaches the bucket across regions. That costs money: S3 traffic between two
+  regions is billed per GB, both ways (the inputs down to the box, the graphs and the
+  staging dump back up), on top of the internet transfer to and from home. A box in the
+  bucket's region does not pay it.
 - **The role:** `AmazonSSMManagedInstanceCore` plus an inline policy that reaches one
   folder of the bucket and nothing else:
 
@@ -6101,18 +6104,26 @@ scripts/cloud/launch.sh --dry-run          # the commands it would run, and the 
 
 What it does, with a plain line for each step:
 
-1. Refuses a run whose folder already has a result (`out/SHA256SUMS`): install that one
-   with `import-result.sh`, or name a new run. Then `send-inputs.sh` (it asks for sudo
-   here, at the start).
+1. Checks before anything is sent, so a wrong instance id or region, a missing
+   permission, an expired sign-in or a box in use fails before the sudo prompt and the
+   upload: the box can be described and is stopped (a box still stopping is waited for
+   later), and the run's folder has no result yet (`out/SHA256SUMS`; install that one with
+   `import-result.sh`, or name a new run). Then `send-inputs.sh` (it asks for sudo here,
+   at the start).
 2. Reads the commit from the run's `in/MANIFEST.txt`.
 3. `aws ec2 start-instances` on the box if it is stopped, and waits (15 minutes at most)
    until it is running and its SSM agent is online. A box that is already running is
-   refused, since another run may be on it; `--use-running` uses it and leaves it running.
-4. `aws ssm send-command` with `AWS-RunShellScript`: as root, the AWS CLI from snap if it
-   is missing; then as `ubuntu`, `~/RouteMaker` cloned if it is missing, the run's commit
-   checked out there (the rule in "A run", step 2) and `box-rebuild.sh` run from it, its
-   output appended to `~/cloud-rebuild.log` on the box. `--beta` passes `--beta-bundle`,
-   `--refire` passes `--refire`.
+   refused, since another run may be on it; `--use-running` uses it, and the launcher
+   then does not stop it (`box-rebuild.sh` still powers it off at the end).
+4. `aws ssm send-command` with `AWS-RunShellScript`: as root, a power-off scheduled for
+   when the command's time is up (`shutdown -P`, the timeout plus an hour: a dead-man
+   switch, so a box whose launcher died during the setup cannot run on for ever), and the
+   AWS CLI from snap if it is missing; then as `ubuntu`, nothing at all if the run already
+   has its result (SSM may run a command again after the box restarts), else
+   `~/RouteMaker` cloned if it is missing, the run's commit checked out there (the rule in
+   "A run", step 2) and `box-rebuild.sh` run from it, its output appended to
+   `~/cloud-rebuild.log` on the box. `--beta` passes `--beta-bundle`, `--refire` passes
+   `--refire`.
 5. Waits for `out/SHA256SUMS`, checking every minute, for 30 hours at most
    (`--timeout-hours`), with a line every ten minutes. Each check also reads the command's
    status (`get-command-invocation`) and the box's state. A command that failed (the
@@ -6125,9 +6136,23 @@ What it does, with a plain line for each step:
 
 However it ends (a failure, the time limit, Ctrl-C), a box the launcher started and
 that is still running is **stopped**, never terminated: its disk keeps the run's state,
-and the same command with `--no-send` carries the run on from where it stopped (add
-`--refire` after a failed rebuild, as for `box-rebuild.sh`). A box it did not start is
-left as it was. `--no-send` also skips sending for a run whose inputs are already in S3.
+and `scripts/cloud/launch.sh --no-send <RUN_URL>` carries the run on from where it
+stopped (add `--refire` after a failed rebuild, as for `box-rebuild.sh`). Every message
+that ends a run part way prints that command with the run's URL: copy it, since the
+default run name is the day's, and the same command without the URL after midnight
+(UTC) would start a new run. A box it did not start is not stopped by the launcher.
+`--no-send` also skips sending for a run whose inputs are already in S3.
+
+**A spot reclaim, and a box that starts again by itself.** With a persistent spot request
+and interruption behaviour Stop, AWS stops the box when it needs the capacity back and
+**starts it again by itself** when it has room. Nothing runs on it then (the launcher's
+command is not repeated, and if SSM did repeat it, it would find the result or carry the
+run on and power off), so a box restarted that way sits idle and billed until someone
+stops it. When the box stops with no result, the launcher calls `stop-instances` on it
+once more, though it is already stopped, so that the stop is a user's stop, which AWS
+does not restart. **That this prevents the restart is not verified**: after the first
+reclaim, look in the console (EC2, Instances) an hour or so later and stop the box if it
+is running; the budget alarm is the backstop.
 
 **The sign-in can run out during a run.** The wait is hours, longer than an `aws login`
 session may last. If a check fails while it waits, the launcher says so and keeps
@@ -6136,12 +6161,17 @@ not need this host: it powers itself off at the end either way.
 
 **The IAM user's permissions** (the least the launcher and the two home scripts need;
 `<account>`, `<instance-id>` and `<bucket>` are yours, and `us-east-1` the box's region).
+The first statement is `aws login` itself (the same two actions as AWS's managed policy
+`SignInLocalDevelopmentAccess`, which can be attached instead).
 `DescribeInstances`, `DescribeInstanceInformation` and `GetCommandInvocation` cannot be
-limited to one instance, so they name `*`; they only read. If the box's disk is encrypted
-with your own KMS key, starting it also needs `kms:CreateGrant` on that key.
+limited to one instance, so they name `*`; they only read. `AbortMultipartUpload` lets
+an upload of a large tar that stopped part way be cleaned up. If the box's disk is
+encrypted with your own KMS key, starting it also needs `kms:CreateGrant` on that key.
 
 ```json
 {"Version": "2012-10-17", "Statement": [
+  {"Effect": "Allow", "Action": ["signin:AuthorizeOAuth2Access", "signin:CreateOAuth2Token"],
+   "Resource": "*"},
   {"Effect": "Allow", "Action": ["ec2:StartInstances", "ec2:StopInstances"],
    "Resource": "arn:aws:ec2:us-east-1:<account>:instance/<instance-id>"},
   {"Effect": "Allow", "Action": "ec2:DescribeInstances", "Resource": "*"},
@@ -6152,7 +6182,8 @@ with your own KMS key, starting it also needs `kms:CreateGrant` on that key.
                                  "ssm:DescribeInstanceInformation"], "Resource": "*"},
   {"Effect": "Allow", "Action": "s3:ListBucket", "Resource": "arn:aws:s3:::<bucket>",
    "Condition": {"StringLike": {"s3:prefix": ["rebuild-checkpoints/*"]}}},
-  {"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+  {"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject",
+                                 "s3:AbortMultipartUpload"],
    "Resource": "arn:aws:s3:::<bucket>/rebuild-checkpoints/*"}]}
 ```
 

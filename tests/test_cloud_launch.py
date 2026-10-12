@@ -38,18 +38,27 @@ while [ $# -gt 0 ]; do
   case "$1" in --profile | --region) shift 2 ;; *) args+=("$1"); shift ;; esac
 done
 set -- "${args[@]}"
-# The first line of a file, the last line kept for every later read.
+# Like the real one, a --query the API's answer has no such path for is an error here.
+query="" prev=""
+for a in "$@"; do [ "$prev" = --query ] && query=$a; prev=$a; done
+case "$query" in
+  "" | "Reservations[0].Instances[0].State.Name" | "InstanceInformationList[0].PingStatus" | \
+    "Command.CommandId" | "Status" | "[StandardOutputContent,StandardErrorContent]") ;;
+  *) echo "fake aws: unknown --query $query" >&2; exit 252 ;;
+esac
+# The first line of a file, the last line kept for every later read. FAIL: signed out.
 next() {
   [ -s "$1" ] || return 1
-  head -n1 "$1"
+  line=$(head -n1 "$1")
   [ "$(wc -l <"$1")" -gt 1 ] && sed -i 1d "$1"
-  return 0
+  [ "$line" != FAIL ] || exit 255
+  echo "$line"
 }
 [ -e "$FAKE_DIR/signed_out" ] && exit 255
 case "$1 $2" in
   "ec2 describe-instances") next "$FAKE_DIR/states" ;;
   "ec2 start-instances") [ ! -e "$FAKE_DIR/start_fails" ] || exit 254; echo started ;;
-  "ec2 stop-instances") echo stopping ;;
+  "ec2 stop-instances") [ ! -e "$FAKE_DIR/stop_fails" ] || exit 255; echo stopping ;;
   "ssm describe-instance-information") next "$FAKE_DIR/ping" || echo Online ;;
   "ssm send-command")
     while [ $# -gt 0 ]; do
@@ -59,12 +68,11 @@ case "$1 $2" in
   "ssm get-command-invocation")
     case "$*" in
       *"--query Status"*)
-        s=$(next "$FAKE_DIR/invocation") || s=InProgress
-        [ "$s" != FAIL ] || exit 255  # signed out
-        echo "$s" ;;
+        next "$FAKE_DIR/invocation" || echo InProgress ;;
       *) printf 'box-rebuild: rebuild job 7 ended failed\tsome stderr\n' ;;
     esac ;;
   "s3 ls")
+    [ ! -e "$FAKE_DIR/s3_denied" ] || exit 255
     n=$(cat "$FAKE_DIR/result_after" 2>/dev/null || echo 99)
     echo $((n - 1)) >"$FAKE_DIR/result_after"
     [ "$n" -le 0 ] ;;
@@ -74,7 +82,9 @@ esac
 """
 
 FAKE_SCRIPT = r"""#!/usr/bin/env bash
-printf '%s region=%s %s\n' "$(basename "$0")" "${AWS_DEFAULT_REGION:-}" "$*" >>"$FAKE_DIR/calls.log"
+region=${AWS_DEFAULT_REGION:-}
+[ "${AWS_REGION:-}" = "$region" ] || region="AWS_REGION=${AWS_REGION:-} differs"
+printf '%s region=%s %s\n' "$(basename "$0")" "$region" "$*" >>"$FAKE_DIR/calls.log"
 [ ! -e "$FAKE_DIR/$(basename "$0").fails" ]
 """
 
@@ -94,7 +104,8 @@ def fake(tmp_path):
     state = tmp_path / "fake"
     state.mkdir()
     (state / "manifest").write_text(f"run=cloud-20261012\ncommit={COMMIT}\n")
-    (state / "states").write_text("stopped\npending\nrunning\n")
+    # The check before sending, the check before starting, then starting
+    (state / "states").write_text("stopped\nstopped\npending\nrunning\n")
     (state / "result_after").write_text("3")  # the check before the run, then two polls
     env = {
         **os.environ,
@@ -144,9 +155,12 @@ def fake(tmp_path):
         def box_scripts(self) -> tuple[str, str]:
             params = json.loads((state / "params").read_text())
             (command,) = params["commands"]
-            b64 = re.fullmatch(r"echo ([A-Za-z0-9+/=]+) \| base64 -d \| bash", command).group(1)
+            b64 = re.fullmatch(
+                r"echo ([A-Za-z0-9+/=]+) \| base64 -d >/tmp/rm-root.sh && bash /tmp/rm-root.sh",
+                command,
+            ).group(1)
             root = base64.b64decode(b64).decode()
-            inner = re.search(r"^ubuntu_b64=([A-Za-z0-9+/=]+)$", root, re.M).group(1)
+            inner = re.search(r"^ubuntu_b64=([A-Za-z0-9+/=]+) ", root, re.M).group(1)
             return root, base64.b64decode(inner).decode()
 
     return Fake()
@@ -162,6 +176,7 @@ def test_a_run_sends_starts_rebuilds_waits_stops_and_installs_without_swapping(f
     assert done.returncode == 0, done.stdout + done.stderr
     calls = fake.calls()
     order = [
+        "ec2 describe-instances",
         "s3 ls " + URL + "/out/SHA256SUMS",
         "send-inputs.sh region=us-west-2 " + URL,
         "s3 cp " + URL + "/in/MANIFEST.txt -",
@@ -208,7 +223,13 @@ def test_the_box_script_runs_with_its_one_time_setup(fake) -> None:
     box_bin.mkdir()
     log = fake.dir / "box.log"
     stubs = {
-        "snap": 'echo "snap $*" >>"$LOG"',
+        # The install puts an `aws` beside it, whose `s3 ls` finds a result when $RESULT is set.
+        "snap": (
+            'echo "snap $*" >>"$LOG"\n'
+            'printf \'#!/usr/bin/env bash\\necho "aws $*" >>"$LOG"\\n[ -n "$RESULT" ]\\n\' '
+            '>"$(dirname "$0")/aws"; chmod +x "$(dirname "$0")/aws"'
+        ),
+        "shutdown": 'echo "shutdown $*" >>"$LOG"',
         # sudo -iu ubuntu CMD...: the command, as "ubuntu", in its home
         "sudo": 'echo "sudo $*" >>"$LOG"; shift 2; cd "$HOME"; exec "$@"',
         "git": (
@@ -225,26 +246,42 @@ def test_the_box_script_runs_with_its_one_time_setup(fake) -> None:
     tools = fake.root / "tools"
     tools.mkdir()
     (fake.root / "ubuntu").mkdir()
-    for tool in ("bash", "base64", "mktemp", "chmod", "tail", "cat", "mkdir", "printf"):
+    for tool in ("bash", "base64", "mktemp", "chmod", "tail", "cat", "mkdir", "printf", "dirname"):
         found = shutil.which(tool)
         if found:
             (tools / tool).symlink_to(found)
-    done = subprocess.run(
-        ["bash"],
-        input=root,
-        env={"PATH": f"{box_bin}:{tools}", "HOME": str(fake.root / "ubuntu"), "LOG": str(log)},
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
+    box_env = {"PATH": f"{box_bin}:{tools}", "HOME": str(fake.root / "ubuntu"), "LOG": str(log)}
+
+    def on_the_box(**more: str):
+        return subprocess.run(
+            ["bash"],
+            input=root,
+            env={**box_env, **more},
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    done = on_the_box(RESULT="")
     assert done.returncode == 0, done.stdout + done.stderr
     steps = log.read_text().splitlines()
-    assert steps[0] == "snap install aws-cli --classic"
-    assert steps[1].startswith("sudo -iu ubuntu bash /tmp/routemaker-launch.")
+    assert steps[0] == f"shutdown -P +{31 * 60} RouteMaker launch: the command's time is up"
+    assert steps[1] == "snap install aws-cli --classic"
+    assert steps[2].startswith("sudo -iu ubuntu bash /tmp/routemaker-launch.")
+    assert steps[3] == f"aws s3 ls {URL}/out/SHA256SUMS"
     assert any(s.startswith("git clone --quiet https://github.com/") for s in steps)
     assert f"git checkout --quiet --detach {COMMIT}" in steps
     assert steps[-1] == f"box-rebuild {URL}"
     assert "box-rebuild.sh exited 0" in done.stdout and "rebuilt" in done.stdout
+
+    # SSM running the command again after a restart: the result is there, so nothing runs.
+    log.write_text("")
+    again = on_the_box(RESULT="1")
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert "already has its result" in again.stdout
+    steps = log.read_text().splitlines()
+    assert "snap install aws-cli --classic" not in steps, "installed the first time"
+    assert not [s for s in steps if s.startswith(("git ", "box-rebuild"))]
 
 
 def test_swap_installs_then_swaps(fake) -> None:
@@ -287,15 +324,18 @@ def test_a_failed_command_says_so_shows_the_box_and_stops_it(fake) -> None:
     assert not fake.called("import-result.sh")
 
 
-def test_a_box_that_stops_with_no_result_ends_the_wait_and_is_not_stopped_again(fake) -> None:
-    (fake.dir / "states").write_text("stopped\nrunning\nrunning\nstopped\n")
+def test_a_box_that_stops_with_no_result_ends_the_wait_and_is_stopped_once_more(fake) -> None:
+    """A spot reclaim stops the box too; a stop of ours keeps the request from restarting it."""
+    (fake.dir / "states").write_text("stopped\nstopped\nrunning\nrunning\nstopped\n")
     (fake.dir / "result_after").write_text("99")
 
     done = fake.run(URL)
 
     assert done.returncode == 1
     assert "stopped with no result" in done.stderr
-    assert not fake.called("stop-instances")
+    assert f"scripts/cloud/launch.sh --no-send {URL}" in done.stderr
+    assert f"scripts/cloud/launch.sh --no-send --refire {URL}" in done.stderr
+    assert len(fake.called("stop-instances")) == 1
     assert not fake.called("import-result.sh")
 
 
@@ -326,6 +366,7 @@ def test_a_running_box_is_refused_and_left_alone(fake) -> None:
     done = fake.run(URL)
 
     assert done.returncode == 2 and "--use-running" in done.stderr
+    assert not fake.called("send-inputs.sh"), "refused before the sudo prompt and the upload"
     assert not fake.called("send-command") and not fake.called("stop-instances")
 
 
@@ -394,7 +435,84 @@ def test_a_failed_import_is_reported_after_the_box_is_stopped(fake) -> None:
     assert len(fake.called("import-result.sh")) == 1, "no swap after a failed install"
 
 
-def test_an_interrupted_wait_stops_the_box(fake) -> None:
+def test_the_resume_hint_names_the_run_even_with_the_default_name(fake) -> None:
+    (fake.dir / "invocation").write_text("Failed\n")
+    (fake.dir / "result_after").write_text("99")
+
+    done = fake.run("--bucket", "my-bucket", "--profile", "home", "--beta")
+
+    assert done.returncode == 1
+    url = re.search(r"run (cloud-\d{8}) at (s3://\S+);", done.stdout).group(2)
+    assert url.startswith("s3://my-bucket/rebuild-checkpoints/transfer/cloud-")
+    assert f"scripts/cloud/launch.sh --no-send --beta --profile home {url}" in done.stderr
+    assert f"--refire {url}" in done.stderr
+
+
+def test_success_with_no_result_is_a_failure_with_the_resume_hint(fake) -> None:
+    (fake.dir / "invocation").write_text("InProgress\nSuccess\n")
+    (fake.dir / "result_after").write_text("99")
+
+    done = fake.run(URL)
+
+    assert done.returncode == 1 and "has no SHA256SUMS" in done.stderr
+    assert f"--no-send {URL}" in done.stderr
+    assert len(fake.called("stop-instances")) == 1
+    assert not fake.called("import-result.sh")
+
+
+def test_a_box_still_stopping_at_launch_is_waited_for_then_started(fake) -> None:
+    (fake.dir / "states").write_text("stopping\nstopping\nstopping\nstopped\npending\nrunning\n")
+
+    done = fake.run(URL)
+
+    assert done.returncode == 0, done.stderr
+    assert "waiting for it to stop" in done.stdout
+    calls = fake.calls()
+    assert position(calls, "send-inputs.sh") < position(calls, "start-instances")
+    assert len(fake.called("start-instances")) == 1
+
+
+def test_a_box_that_cannot_be_described_fails_before_anything_is_sent(fake) -> None:
+    (fake.dir / "states").write_text("FAIL\n")
+
+    done = fake.run(URL)
+
+    assert done.returncode == 2 and "cannot describe" in done.stderr
+    assert "aws login --remote" in done.stderr
+    assert not fake.called("send-inputs.sh") and not fake.called("start-instances")
+
+
+def test_a_bucket_that_cannot_be_read_fails_before_anything_is_sent(fake) -> None:
+    (fake.dir / "s3_denied").touch()
+
+    done = fake.run(URL)
+
+    assert done.returncode == 2 and "cannot read" in done.stderr
+    assert not fake.called("send-inputs.sh") and not fake.called("start-instances")
+
+
+def test_the_child_scripts_get_both_region_variables(fake) -> None:
+    done = fake.run(URL, AWS_REGION="eu-west-3")
+
+    assert done.returncode == 0, done.stderr
+    assert fake.called("send-inputs.sh region=us-west-2 ")
+    assert fake.called("import-result.sh region=us-west-2 ")
+
+
+def test_a_stop_when_signed_out_still_tries_and_says_so(fake) -> None:
+    (fake.dir / "states").write_text("stopped\nstopped\nrunning\nFAIL\n")
+    (fake.dir / "result_after").write_text("99")
+    (fake.dir / "stop_fails").touch()
+
+    done = fake.run(URL, CLOUD_LAUNCH_TIMEOUT_S="0")
+
+    assert done.returncode == 1 and "no result after" in done.stderr
+    assert len(fake.called("stop-instances")) == 1, "tried even with the state unknown"
+    assert "could not stop" in done.stdout and "console" in done.stdout
+
+
+@pytest.mark.parametrize("sig", [signal.SIGINT, signal.SIGTERM], ids=["INT", "TERM"])
+def test_an_interrupted_wait_stops_the_box(fake, sig) -> None:
     (fake.dir / "result_after").write_text("9999")
     proc = subprocess.Popen(
         ["bash", str(LAUNCH), URL],
@@ -408,7 +526,7 @@ def test_an_interrupted_wait_stops_the_box(fake) -> None:
             if fake.called("get-command-invocation"):
                 break
             time.sleep(0.1)
-        proc.send_signal(signal.SIGTERM)
+        proc.send_signal(sig)
         proc.wait(timeout=30)
     finally:
         if proc.poll() is None:
