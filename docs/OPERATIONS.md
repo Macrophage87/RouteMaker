@@ -2835,9 +2835,10 @@ The planner's Find food search (`frontend/src/lib/food.ts`; FOOD-SEARCH,
 v0.5.0) is OpenStreetMap data too and needs nothing beyond the ODbL credit.
 Its file, `frontend/src/amenity-data/food.json`, is a committed snapshot built
 by `scripts/build_food.py` from the extract; like the water file, the weekly
-rebuild does not refresh it. The file committed with the feature is empty
-(the search says "No food data yet"), so **the v0.5.0 rebuild on the build
-host runs it once**, next to the water layer's refresh by hand:
+rebuild does not refresh it. The file committed with the feature was empty
+(the search said "No food data yet"); the v0.5.0 rebuild on the build host
+ran it once on 2026-10-11 (15,480 places, committed in #92), next to the
+water layer's refresh by hand, and a later refresh runs the same:
 
     .venv311/bin/python scripts/build_food.py \
         --pbf <DATA_ROOT>/extracts/source.osm.pbf
@@ -2845,7 +2846,7 @@ host runs it once**, next to the water layer's refresh by hand:
 then records the printed counts, size and digest in
 `frontend/src/amenity-data/README.md` ("Places to eat", "Status") and commits
 the file. It is a hashed asset under `/assets/`, fetched on the first search
-only (about 450 KB compressed expected) and left out of the service worker's
+only (2.3 MB, 555 KB with `gzip -9`, for the committed file) and left out of the service worker's
 precache, so installing the app does not download it (`LAZY_ASSET` in
 `frontend/src/sw/swCore.mjs`); no edge, compose or deploy change. The
 release's checks add: the hashed `food-*.json` asset gives 200, `immutable`,
@@ -5207,8 +5208,9 @@ counts for each level and the named ways.
 Slice 5 of docs/MTB-TOPO-PLAN.md. The map's Climbs switch (under "Trails and terrain", off until
 turned on, kept per browser as `routemaker.climbs`) draws every categorised climb from
 `frontend/src/climb-data/climbs.json`. That file is written on the build host from the live table
-and the elevation tiles, then committed; **until it is, the file is empty and the switch says "No
-climbs yet"**. Nothing else depends on it: routing, the tiles and the rebuild are unchanged.
+and the elevation tiles, then committed. It is committed: 3,750 climbs, written on 2026-10-12 from
+staging build 20261011T215845Z (counts in `frontend/src/climb-data/README.md`); an empty file
+would make the switch say "No climbs yet". Nothing else depends on it: routing, the tiles and the rebuild are unchanged.
 
 **The scale** (the owner, 2026-10-10 and 2026-10-11; `routemaker.climb_categories`): score =
 length (m) x average grade (%), Garmin's scale with a Cat 5: Cat 5 over 4,000, Cat 4 over 8,000,
@@ -5237,9 +5239,8 @@ running container with `exec`, not `run` (a `run` starts a second rebuild contai
     flock <the host's heavy.lock> docker compose exec -T rebuild ./manage.py build_climbs </dev/null
 
 It prints `climbs: read N segments from live.segment`, then `climbs: M written to
-/data/rebuild/climbs.json (HC 0, 1 0, 2 0, 3 41, 4 244, 5 2,306)` (the owner's 2026-10-10 scan
-of the current coverage, with the old 3 m dip rule, found those counts; the looser break rule
-merges some climbs, so expect somewhat fewer Cat 5s and a few more Cat 3s and 4s). It only reads
+/data/rebuild/climbs.json (HC 0, 1 0, 2 2, 3 54, 4 367, 5 3,327)` (the committed file's counts,
+from staging build 20261011T215845Z on 2026-10-12: 484,351 segments read, 3,750 climbs, 85 s). It only reads
 and is safe to re-run. It refuses, writing nothing, when the table has no routable rows or no
 elevation tile could be read under `--elevation-dir` (a wrong directory, or tiles not in skadi's
 `N38/N38W077.hgt` layout), and names on stderr any tile that was missing or the wrong size (the

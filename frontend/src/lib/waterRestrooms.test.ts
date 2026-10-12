@@ -501,7 +501,7 @@ test("the bundled file has the open Throne units, each a flush restroom", () => 
 });
 
 test("the route's Water and restrooms fold lists the water along the route with the map layer off too (review of #96)", () => {
-  // The fold is route data, not map clutter: Go opening with the layer off must not hide it.
+  // The fold is route data, not map clutter: a rider turning the layer off must not hide it.
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
   assert.match(app, /useEffect\(\(\) => \{\s*if \(routeShown\) void ensureWater\(\);\s*\}, \[routeShown, ensureWater\]\);/, "the file loads once a route is shown");

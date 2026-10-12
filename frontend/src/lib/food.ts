@@ -31,7 +31,7 @@
  * Plain data in, plain data out, so node --test runs all of it; the panel is lib/foodFinder.ts
  * and the map's markers are at the end of this file.
  */
-import { formatDistance, formatDuration, formatExtra } from "./format.ts";
+import { formatDistance, formatDuration, formatExtra, milesFigure } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 
 export type FoodKind = "r" | "f" | "c" | "i" | "p" | "b" | "fc";
@@ -329,12 +329,16 @@ export function foodKindText(place: FoodPlace): string {
   return cuisine ? `${KIND_LABEL[place.kind]}: ${cuisine}` : KIND_LABEL[place.kind];
 }
 
-/** How far, in words: the detour with a route, else the distance from the center. */
+/**
+ * How far, in words: the detour with a route, else the distance from the center. A detour
+ * that rounds to 0.0 mi (under about 260 ft there and back) reads "On your route", not
+ * "Detour about +0.0 mi (0.0 km)".
+ */
 export function foodHowFar(result: FoodResult): string {
   const d = result.detour;
   if (!d) return `${formatDistance(result.fromCentreM)} from the map's center in a straight line.`;
   const at = formatDistance(d.alongM);
-  if (d.extraM === 0) return `On your route at ${at}.`;
+  if (d.extraM === 0 || milesFigure(d.extraM) === "0.0") return `On your route at ${at}.`;
   return `Detour about ${formatExtra(d.extraM)} and ${formatDuration(d.extraS)} there and back, turning off at ${at} on your route.`;
 }
 

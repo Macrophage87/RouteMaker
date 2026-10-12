@@ -3241,8 +3241,26 @@ const JUNCTION_BUTTON = "Suggest a junction change";
 
 // ---- 24b. Find food (FOOD-SEARCH, owner 2026-10-11; lib/food.ts, lib/foodFinder.ts) ----
 {
-  // The committed file is empty until the v0.5.0 rebuild: the search says so.
+  // The committed file (15,480 places since #92) answers a search across the whole area.
   const p = await open({ ride: false, junctions: false });
+  const openFood = "(() => { if (document.getElementById('sheet-food')?.hidden !== false) [...document.querySelectorAll('.map-chip')].find((c) => c.textContent.trim() === 'Food')?.click(); const d = document.querySelector('.food-sheet'); return !!d; })()";
+  await p.eval(openFood);
+  await sleep(200);
+  await p.eval("document.querySelector('.food-scope input[value=area]').click(); document.getElementById('food-query').focus(); true");
+  await p.type("crab");
+  await p.enter();
+  await p.waitFor("document.querySelectorAll('.food-list li').length > 0 && /^[\\d,]+ places? match/.test(document.querySelector('.food-status')?.textContent ?? '')", 15000);
+  const real = await p.eval("(() => ({ status: document.querySelector('.food-status')?.textContent ?? '', items: document.querySelectorAll('.food-list li').length }))()");
+  check("food: the committed file answers a search: crab in the whole area lists places and says how many match", real.items > 0 && /^[\d,]+ places? match “crab” in the whole area/.test(real.status), JSON.stringify(real));
+  await p.close();
+}
+{
+  // An empty file (a fresh checkout before a data build) still says so, served in place of the real one.
+  const EMPTY_FOOD = `(() => {
+    const real = window.fetch.bind(window);
+    window.fetch = (input, init) => /food[^/]*\.json/.test(String(input?.url ?? input)) ? Promise.resolve(new Response(JSON.stringify({ source: "test", points: [] }), { headers: { "Content-Type": "application/json" } })) : real(input, init);
+  })();`;
+  const p = await open({ ride: false, junctions: false, init: EMPTY_FOOD });
   const openFood = "(() => { if (document.getElementById('sheet-food')?.hidden !== false) [...document.querySelectorAll('.map-chip')].find((c) => c.textContent.trim() === 'Food')?.click(); const d = document.querySelector('.food-sheet'); return !!d; })()";
   await p.eval(openFood);
   await sleep(200);
@@ -3250,7 +3268,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   await p.type("crab");
   await p.enter();
   const said = await p.waitFor("/^No food data yet/.test(document.querySelector('.food-status')?.textContent ?? '')", 8000);
-  check("food: with no places in the file yet, the status line says No food data yet", said, await p.eval("document.querySelector('.food-status')?.textContent ?? ''"));
+  check("food: with an empty places file, the status line says No food data yet", said, await p.eval("document.querySelector('.food-status')?.textContent ?? ''"));
   await p.close();
 }
 {
@@ -4199,7 +4217,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 592;
+const EXPECTED = 593;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
