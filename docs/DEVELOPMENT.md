@@ -834,6 +834,27 @@ LTS 4 5.5, Avoid 6, unrated 5). Each has a halo a pixel wider each side
 its coral casing, the one exception to "dark under light, white under dark"
 (the test asserts it is that palette's own casing and at least 3:1).
 
+**The route's corridor.** The sections take the map's own colours (a Mass
+Ride's the capacity bands' colours, widths and dashes, the same as the roads
+under them), so the 11 px casing left the route reading as one more road
+(Stephen, 2026-10-12). A route in sections is drawn as a corridor
+(`routeCorridorPaint`): a 16 px white band (`route-band`) inside a 22 px
+casing in the route's blue (the dark slate in the colour-blind-friendly
+palette), about 3 px of each round the widest halo. Every class's edge on the
+white is 3:1 (its ring, its halo, or the section itself where a light halo
+merges into the band). A one-colour route keeps its 11 px white casing.
+
+Under a route the overlay's lines fade (`overlayFade`): to 0.45 under a Mass
+Ride's capacity route (`MASS_NETWORK_DIMMED`), to 0.8 under any other
+(`ROUTE_OVERLAY_FADE`; Stephen: "mute most of the colors when there's a
+route, for default too"). The fade multiplies each layer's own opacity
+(`fadedOpacity` scales a zoom step's outputs, so the zoom fades stay); Avoid
+roads fade too (the route will not ride them); the hazard rails and the trail
+names keep full strength (`keptUnderRoute`).
+With the High contrast switch on there is no fade, since the overlay's 3:1
+edges are measured at its own opacities. `lib/routeCorridor.test.ts` holds
+the widths, the contrasts, the fade and the wiring.
+
 **Tests.** `stressSalience.test.ts` covers: the rising ink and width, LTS 4's
 duty, chroma and contrast rising from LTS 3 to Avoid, the harshness rule, no
 black under LTS 3, LTS 2 against LTS 3 by dash length, period and width, the
@@ -1397,7 +1418,11 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   so one graph serves every position. LTS 4 and up cost more again ("Graded
   stress", below).
 - `hills`, integer -100-100, detent at 0: below it `use_hills = 1 + hills/100`
-  (0 is `use_hills` 1.0, no grade penalty, the fastest time); above it a climb
+  (0 is `use_hills` 1.0, no grade penalty, the fastest time). Above it, on every
+  ride type but Mountain Goat, "fine with hills" (FOLLOWUP-HILLS-TOLERATE,
+  OWNER-DECISIONS 242; "Fine with hills", below): `hills/100` of the router's own
+  climbing charge comes off each of its `alternates`, and `hills_tolerate` says
+  what was compared and chosen. On Mountain Goat above it a climb
   search among the router's `alternates` (3), choosing the one that climbs most
   within `1 + 0.5 * hills/100` of the direct route's length. Two-point plans
   only, and not past 50 km of straight line (`routing.SEEK_MAX_SPAN_M`: a cold
@@ -1629,6 +1654,53 @@ and the kept route is its own. A per-edge sustained-grade cost - the same
 model priced into every edge from the pipeline's elevation - would need a fork
 of the costing (PLAN's layer 3); the owner chose "Ship this, fork later
 (Recommended)".
+
+**Fine with hills** (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242). The owner:
+"I'm wondering for future releases if it wouldn't make sense for the hill slider,
+outside mountain goat to not nessicarily perfer hills, but mostly tolerate them.
+For instance lighter individuals would probably move the slider to more hilly as
+it's faster than them. People with ebikes would probably just want a more direct
+route as hills wouldn't affect them too much." So the right half of the hills
+slider means "fine with hills" on every ride type but Mountain Goat
+(`presets.Preset.hills_tolerate`), and the E-bike ride type starts there, at 50
+(`presets.EBIKE_HILLS`). The slider's words follow: "Fine with hills" at the right
+end (Mountain Goat keeps "Seek hills"), "Hills matter less" and "Fine with hills"
+for the positions right of the middle.
+
+Valhalla's `use_hills` stops at 1.0, the detent, where a climb still costs the time
+its slower uphill speed takes (`kGradeBasedSpeedFactor`). So the discount is taken
+on the router's alternatives, as the avoid half's weighing is: each route's cost
+loses `w x` its climbing charge, with `w = hills / 100`
+(`presets.tolerate_weight`), and the least is kept (`routing.choose_direct`):
+
+    score = router cost - w x QUIET COST x sum over rising windows (rise x K(grade))
+
+`K` is the router's extra cost per metre climbed at the detent, in metres of quiet
+flat riding, from the table above (12 at 3%, 13 at 5%, 20 at 8%, 31 at 15%, read in a
+straight line between, 0 on the flat; `climbs.ROUTER_CLIMB_FLAT_M`), over the effort
+model's windows of at least 984 ft (300 m) (`effort.windows`), so a sample's noise is not a
+steep pitch. QUIET COST is the calm search's (2.2 times a quiet metre's time at the
+ride's speed). At the top of the slider a climb costs what the same distance on the
+flat does, so the shorter or more direct route wins even where it climbs more;
+since only the router's own charge comes off, a climb never earns a route a credit
+(that stays Mountain Goat's). An alternative must save 5 cost seconds
+(`routing.TOLERATE_EPS_S`). Never a busier route: the alternative is traced and
+kept only where its exposure is no worse than the router's own route's
+(`routing.calmer_or_own`, the avoid half's guard). The calm search below the top of
+the stress slider scores its candidates the same way (`refine.Analysis.score`,
+`Context.hills_tolerate_weight`); at the top the stress order decides and its
+distance level is the actual distance, which counts no climbing already, so "fine
+with hills" plans as the detent does there (`hills_tolerate.limited` is
+`"calm_first"`). The limits are the avoid half's: two-point plans up to 16 mi
+(25 km) of straight line (`routing.AVOID_MAX_SPAN_M`), since E-bike rides start
+here. Planner and costing only; no rebuild.
+
+The answer's `hills_tolerate` (null unless the slider was right of the middle on a
+ride type but Mountain Goat): `candidates`, `chosen` (0 is the router's own),
+`weight`, `discount_s` (what came off the kept route, cost seconds),
+`extra_climb_m` and `extra_distance_m` (the kept route against the router's own,
+negative where shorter), and `limited` (`two_points`, `long_ride`, `timed_out`,
+`calm_first`).
 
 **Calibration of the tiers** (OWNER-DECISIONS 83-143; `routemaker.stress`
 unless named; PLAN.md quotes the owner's words):
@@ -2097,7 +2169,7 @@ table, within its ranges, for the owner to move:
 | At a traffic signal | `SIGNALISED_CROSSING_FT` | 150 ft (LTS 3), 300 ft (LTS 4, 5) | 100-200 ft, mostly delay (Broach signal 2.1-3.6% a mile) |
 | All-way stop | `ALL_WAY_STOP_FT` | 75 ft | 50-100 ft (Broach stop 0.5-0.9%; Arlington -1) |
 | On the free-flowing side, cross traffic controlled (item 169) | `PRIORITY_SIDE_FT` | 25 ft | 0-50 ft |
-| A trail crossing with no signal flag at it or within 30 m up the roads it crosses: a mapped crossing way, or a path, trail, cycletrack or sidewalk meeting the road at a node of its own | `MARKED_CROSSING_FACTOR`, `MARKED_CROSSING_MAX_SEVERITY` | x0.5, and never drawn red, worded "no signal mapped" as at any junction | item 185; `crossing=traffic_signals` does not reach the router's flag. Round 1 said the Pennsylvania Ave and Virginia Ave cycletracks had no flag on the road's arms; that was wrong: the round-2 review found one within 30 m at 31 of 48 trail crossings, and those now read as signalized |
+| A trail crossing with no signal flag at it or within 30 m up the roads it crosses: a mapped crossing way, or a path, trail, cycletrack or sidewalk meeting the road at a node of its own | `MARKED_CROSSING_FACTOR`, `MARKED_CROSSING_MAX_SEVERITY` | x0.5, and never drawn red, worded "no signal mapped" as at any junction | item 185; from FOLLOWUP-SIGNAL-DERIVE a crossing node or crossing way tagged `crossing=traffic_signals` (or `crossing:signals=yes`) reaches the router's flag, so this is the crossing with no signal mapped on either. Round 1 said the Pennsylvania Ave and Virginia Ave cycletracks had no flag on the road's arms; that was wrong: the round-2 review found one within 30 m at 31 of 48 trail crossings, and those now read as signalized |
 | A divided road's two carriageways, crossed at one junction | `MEDIAN_REFUGE_FACTOR` | counted once, the costlier, x0.75; only two or more crossings, each of a one-way road of its own ways, with a name in common, never a turn or a slip lane with a crossing | items 185 and 196 ("x0.75 (Recommended)"); Mineta and Oregon read a refuge as a level lower (about x0.4 by the base costs), 0.75 keeps an unsignalized divided LTS 4 crossing red |
 | Straight on along the same road (its way, or a name in common) where its tier rises | `Junction.continues` | no "Joining" cost | review r2: S Stonestreet Ave and Nebel St (1,200 ft), West St in Annapolis (3,000 ft) were "Joining" the road the rider was already on |
 | Left onto a busy road (item 166) | `MOVEMENT_FACTOR_ONTO["left"]` | x1.5 of the crossing | Copenhagen 154 ft left against 62 ft right; the review: lefts 2-3 times rights |
@@ -2188,7 +2260,12 @@ so it is left for the owner to confirm and is not in this change; only junction 
 
 `debug_junctions: true` on a route request adds `junctions_debug`, every junction event with
 its cost, calm miles, severity, ride-time factor and whether the speed was assumed. The
-answer's `intersections` rows carry `calm_mi` and `calm_km`.
+answer's `intersections` rows carry `calm_mi` and `calm_km`, which the junction list and the
+marker's card show ("Costs 0.74 calm mi (1.19 calm km)"), and `time_band`, the ride time where
+it moved that junction's cost, which they add in words ("more at rush hour", "a little less at
+the weekend", "less at night, when traffic is usually calmer"; 468a). The words give no factor,
+so they hold before and after the rebuild that brings `road_urban` (docs/stress/intersections.md,
+section 7).
 
 **Which slip lanes are crossed** (item 195, `core.junctions.crossed_links`). The
 owner: "Flag only when you cross it (Recommended)"; "no marker when the rider
@@ -2277,6 +2354,115 @@ costs stay active at every position; the climb weight is the hills slider's avoi
 half (`-hills / 100` x 12 m of riding a metre of climb), so a relaxed ride is not
 a zig-zag over a hill. Turn costs and hill costs are costing options and are
 sent at every position.
+
+**Uphill stress: one stress figure** (FOLLOWUP-GRADE-STRESS, OWNER-DECISIONS 409). The
+owner, 2026-10-05, of Connecticut Ave NW: "It's a bit weird here because of a hill. I'd
+definitely ride down it, but not so much up." 2026-10-10, asked how: "Maybe make it
+multiplicitive? Hill distance * traffic-relative distance." And 2026-10-11: "Why not
+combine it all into a single stress metric? Basically you calculate the uphill portion
+and then the traffic stress portion. Multiply the two together." "The sliders control
+the various coefficients for each component." "So a fine with hills will basically be
+multiplying everything by 1." "We wanted some stress for extreme downhills." So every
+stretch of a route counts, in the calm search's stress figures, one figure:
+
+    stress-weighted metres = run x traffic weight(tier) x hill factor
+    hill factor            = 1 + hills coefficient x extra
+
+- The traffic weight is the ride's own exposure weight for the tier (LTS 3 once, LTS 4
+  twice, Avoid three times; 8 and 16 on the stress-averse ride types; LTS 2 only where
+  the ride weighs it), and the stress slider sets how much it counts (the calm rate in
+  the score, the stress order and the worth ratio at the top), as before.
+- `extra` is the window's extra effort over the flat, in effort-equivalent metres a
+  metre (`routemaker.effort`, the standard cycling power model, Martin et al. 1998; 8%
+  costs 6.5 times the flat), over the effort model's windows of at least 984 ft (300 m)
+  of the router's elevation profile, in the direction ridden: on a climb of `GRADE_FROM`
+  (3%) or more, `effort_factor(grade) - 1`; on a descent steeper than the ride type's
+  brake grade (`presets.BRAKE_GRADES`, OWNER-DECISIONS 56: 3% on Cargo and Kids, 4% on
+  Mass Ride and Bikeshare, 5% on Group ride, 6% on the rest, none on Mountain Goat and
+  Fast), what a climb as steep as the excess would be, `effort_factor(grade - brake
+  grade) - 1` (the shape of `climbs.descent_cost_s`, which weighs a descent's excess past
+  the brake grade as a climb's past 3%); 0 elsewhere, so the factor is 1 on the flat, on
+  gentle climbs and on gentle descents.
+- The hills coefficient is the hills slider's (`grade_stress.coefficient_for`):
+  `FACTOR` (0.25) at the detent, rising in proportion to the avoid half's weight to 0.5
+  at full avoid, and falling with the right half to 0 at its end ("fine with hills", and
+  Mountain Goat's seeking end), where every factor is exactly 1. At each ride type's
+  starting position: 0.25 on Default, Trailmaxxing, Gravel and Fast; 0.375 on Group ride;
+  0.4 on Cargo and Bikeshare; 0.45 on Kids; 0.49 on Mass Ride; 0.125 on E-bike; 0 on
+  Mountain Goat.
+
+Each traced piece gets its factor from the windows that overlap it, shared by metres
+(`grade_stress.hill_factors`, `refine.hill_of`), and `refine.analyse` sums each piece's
+metres times its factor into every stress figure: `exposure_m` (the score), `lts4_m`,
+`lts3_m`, `lts2_m`, `avoid_m` and `lts45_m` (the stress order's top and second figures,
+the worth rule's saving, `stress_weight_m`), and each leg's LTS 4 (`lts4_by_leg`, the
+LTS 4 hold). A long plan's legs are combined from those (`refine.combine`). No consumer
+adds the hill on its own. What the rider is shown, the map's LTS colours, the stress
+chart, the route summary's LTS miles and the descriptions, is the rated metres, from the
+same pieces unweighted (`routing.totals`): the hill only changes which route is chosen.
+The calm search's diagnostics (`calm_search`'s `exposure_*`, `lts4_m_*` and `lts3_m_*`)
+are the weighted figures.
+
+Two refinements (review of #87, the coordinator's recommended option while the owner
+decides; reverted if the owner picks "Only above 80"):
+- The hill counts at every slider position. At 80 and below (Default starts at 70) the
+  calm rate is 0, so a plain product would drop the hill there and the owner's own case,
+  the Connecticut Ave NW climb at Default, would no longer change the default ranking. So
+  in the score the hill's share of the exposure (`Analysis.hill_exposure_m`: traffic
+  weight x (hill factor - 1) x metres, at the ride's own exposure weights) counts at the
+  calm rate where that is over 1 and one for one in quiet metres below it (`max(rate,
+  1)`), as #76's term did from Default up; the flat part keeps its rate exactly
+  (`flat_exposure_m`). A flat route scores as before at every position, and "fine with
+  hills" is still exactly 1. At Default the 0.62 mi (1 km) climb at 6% on LTS 4 adds
+  about 2,060 quiet metres to the score, about 15 minutes of the router's cost at a
+  quiet cost of 0.44 s a metre. On a ride that weighs LTS 2, the score's LTS 2 term at a
+  rate of 0 (`lts3_added_m`) reads the rated LTS 2 metres, so a climb on LTS 2 comes in
+  once, through the hill's share.
+- The LTS 4 hold (250, on Trailmaxxing, Cargo with passengers and Kids) compares the
+  rated LTS 4 metres (`refine.lts4_by_leg`), not hill-weighted ones: leaving out a hill
+  never buys more LTS 4, and a climb never refuses a route with no more LTS 4 than the
+  router's first. The answer's `lts4_before_m` and `lts4_after_m`, the hold's figures,
+  are the rated metres too (`refine.rated_lts4_m`).
+- The Traffic-wins guard (OWNER-DECISIONS 61: hill avoidance never makes a route busier;
+  `_busier` and the seek's guards) compares the rated exposure (`Analysis.rated_exposure_m`),
+  not the hill-weighted one: a route that leaves out a busy 0.62 mi (1 km) climb by riding
+  1.24 mi (2 km) of flat LTS 4 is still busier and refused. The group rides' check that a way
+  round a junction adds no LTS 4 (`avoid_junctions.group_takes`) reads the rated LTS 4
+  metres too (`refine.rated_lts4_m`), as the hold does.
+- From 81 to 87 on the stress slider the calm rate is above 0 but under 1, so the hill's
+  share counts at 1 while the flat part counts at the rate: there the hill weighs more,
+  relative to the flat traffic, than a plain product would.
+
+The worked example: 0.62 mi (1 km) of LTS 4 up 6% at the detent has a factor of about
+2.03, so it counts as 1.26 mi (2,030 m) of LTS 4. In the worth rule (435's "One rule",
+the owner's "Count it" of 2026-10-11: "A longer route can win by avoiding a busy climb,
+so some plans get longer"), at its 1 / 2 / 3 weights:
+- what the climb adds over the same road on the flat: about 1.28 mi (2,060 m) of LTS 3,
+  which on its own buys about 2.2 mi (3.6 km) of extra riding at 90 on the slider (ratio
+  1.7) and 6.4 mi (10.3 km) at 100 (ratio 5);
+- the total for avoiding the climb on a quiet street: about 2.52 mi (4,060 m) of LTS 3,
+  the road's own 2,000 m and the climb's 2,060 m, which buys about 4.3 mi (6.9 km) at 90
+  and 12.6 mi (20.3 km) at 100.
+On LTS 3 the climb adds half that; on a quiet street nothing. At 4%, the climb adds
+0.43 mi (690 m) of LTS 3 on LTS 3 and 0.86 mi (1,380 m) on LTS 4. A descent of 0.62 mi
+(1 km) at 8% on LTS 4 on Cargo (brake grade 3%, coefficient 0.4 at its start) has a
+factor of about 2.37: 1.47 mi (2,370 m) of LTS 4 where the flat road counts 1,000 m. The
+rule's ratios and targets are unchanged.
+
+The steep-descent term and the hills slider's brake cost are separate steps.
+`climbs.grade_cost_s` (a time cost on sustained climbs past 3% and descents past the brake
+grade, OWNER-DECISIONS 56) still picks among the router's alternatives on the avoid half
+of the hills slider (`routing.choose_gentlest`), before the calm search, and is unchanged:
+a steep descent on an LTS 1 path has no traffic weight to multiply, so only that step
+prices it. The calm search's score reads the hill-weighted figure and not
+`grade_cost_s`; its own climb term (`CLIMB WEIGHT x climb`, the avoid half) is
+unchanged. So neither consumer counts a descent twice.
+
+Defaults for the owner to confirm with before and after routes: `GRADE_FROM` 3%, `FACTOR`
+0.25, the coefficient's mapping, and the descent term. It is in the calm search only (and
+its ranking of the router's alternatives, 435): the router's own costs and the graph are
+not changed, so no rebuild. Mass Ride, whose plans the calm search does not run on, is
+unchanged. Before and after routes on the live router are still to be measured.
 
 **One rule for the extra miles** (OWNER-DECISIONS 435, the owner's "One rule",
 2026-10-10). Below the top of the slider a longer candidate must also be worth its
@@ -3296,16 +3482,20 @@ The owner, 2026-10-03: "Actually, I like merging the runs, that sounds good." (2
 
 ### Known gaps, and what would close them
 
-- A trail crossing a road at a mapped crossing with `crossing=traffic_signals`
-  (a signal or a HAWK) away from any signalized road junction does not reach
-  the router's signal flag: Valhalla's transform reads `highway=traffic_signals`
-  alone. Such a crossing reads "no signal mapped", is counted at
-  `MARKED_CROSSING_FACTOR` and is never red (item 185). A cycletrack crossing
-  at a node of its own beside a signalized road junction is read as signalized
-  from round 2 (the approach walk reaches the junction's stop lines). Deriving
-  the crossing's own signal in `lua/routemaker_remap.lua` (`forward_signal`
-  and `backward_signal` on the node) is the fix for the rest and needs a
-  rebuild to verify, so it is a recorded follow-up.
+- Valhalla's parser reads a node's signal from `highway=traffic_signals`
+  alone. From the Track B rebuild (FOLLOWUP-SIGNAL-DERIVE) a signalised trail
+  crossing (a signal or a HAWK) away from a signalized road junction reaches
+  the flag where OSM maps it on the crossing node (`highway=crossing` with
+  `crossing=traffic_signals` or `crossing:signals=yes`; `remap.derives_signal`)
+  or on the crossing way alone (`pipeline.signals` marks the node the way
+  shares with the road, `rm:crossing_signal`). What is left: a crossing with
+  the signal mapped on neither, a node that says `crossing=uncontrolled` under
+  a way that says signals (read as no signal), and a node with a `bicycle=no`
+  that upstream reopens only on a `highway=crossing` node. These read "no
+  signal mapped", are counted at `MARKED_CROSSING_FACTOR` and are never red
+  (item 185). A cycletrack crossing at a node of its own beside a signalized
+  road junction is read as signalized from round 2 (the approach walk reaches
+  the junction's stop lines).
 - A signal tagged more than 30 m up an approach, or only on an approach the
   junction's arms do not lead to (the far carriageway's, where the route
   crosses one carriageway alone, as the Virginia Ave cycletrack does at G St
@@ -3425,9 +3615,9 @@ python scripts/install_reference_data.py --data-root "$DATA_ROOT" \
     --extract "$DATA_ROOT/extracts/source.osm.pbf" \
     --urban-areas "$DATA_ROOT/reference/inputs/tl_2024_us_uac20.geojson" \
     --volume "$DATA_ROOT/reference/inputs/vdot-aadt-2024.geojson" \
-        --volume-source vdot --volume-year 2024 \
+        --volume-source vdot --volume-year 2024 --aadt-property ADT \
     --volume "$DATA_ROOT/reference/inputs/ddot-aadt-2024.geojson" \
-        --volume-source ddot --volume-year 2024
+        --volume-source ddot --volume-year 2024 --aadt-property AADT
 ```
 
 Two agencies rather than one, because a single one is the case the conflation
@@ -3463,17 +3653,30 @@ the failure this produced.
 - `volume.json` is every agency count line with a bidirectional AADT, in the
   shape `conflation.AgencyFeature` loads. The Virginia layer is VDOT's traffic
   volume export from the Virginia Roads portal (`--volume-source vdot`, AADT
-  property `AADT`); the District's is DDOT's AADT layer (`--volume-source
+  property `ADT`: the export has no `AADT` field, so without `--aadt-property ADT`
+  the installer reads 0 lines from it, with exit 0); the District's is DDOT's AADT layer (`--volume-source
   ddot`) and arrives the same way. Directional counts are summed before they
   reach here, which is why the property name is an argument rather than
   guessed.
 
-  **Phase 1 installs VDOT and DDOT, and deliberately not Maryland.** MDOT SHA's
-  layer is conditionally licensed, and while the pipeline can say which agency
-  touched a way it cannot yet withhold those ways from the published
-  derivative — identifiable, not excludable — so installing it today would mean
-  publishing something that source influenced. PLAN.md:31-34's waiver mechanism
-  is what closes that; handoff.md section 7 carries the row.
+  **Phase 1 installed VDOT and DDOT; v0.5.0 adds Maryland** (FOLLOWUP-MDOT-AADT,
+  OWNER-DECISIONS 429, download approved for that rebuild). MDOT SHA's layer is
+  conditionally licensed, and the pipeline can say which agency touched a way
+  but cannot yet withhold those ways from a published derivative — identifiable,
+  not excludable. No published derivative is built, so nothing carries the
+  condition onward today; one that is built must withhold `volume_source =
+  'mdot-sha'` until PLAN.md:31-34's waiver is in hand (handoff.md section 7
+  carries the row). The Maryland file is MDOT SHA's AADT Segments
+  (`--volume-source mdot-sha`, AADT property `AADT`, the default), and two things
+  are Maryland's alone. The installer reads the year from the layer's fields
+  (`routemaker.mdot_aadt.current_year`: the newest `AADT_<year>` plus one) where
+  no `--volume-year` is typed, and leaves out rows whose `LOC_ERROR` says the
+  line is misplaced. And the rebuild gives a divided road's second carriageway
+  the count conflation gave the first (`conflation.share_with_carriageways`):
+  exclusivity along a count line otherwise leaves one carriageway uncounted, and
+  MD 185 north of Chevy Chase Circle, the case 429 is about, is two
+  carriageways. VDOT's and DDOT's counts are not shared that way, so no tier the
+  owner has already seen moves.
 
   One `--volume-source` flag sets two things, through `SOURCE_TIERS`. `source`
   is the **precedence tier** — `locality`, `state`, `osm` — and it is the only
@@ -3832,7 +4035,7 @@ replacing the symlink, keeps `previous` for rollback, and repoints the
 `valhalla_service` does not reload tiles, so after a promotion the serving
 containers are restarted to load the new extract (`docker compose restart
 valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the
-off-road router runs, `docker compose --profile offroad restart valhalla-offroad`:
+off-road router runs, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb`:
 a `restart` naming a service with no container fails and restarts none of the rest); starting them against the
 new build before stopping the old ones is the blue/green arrangement the plan
 describes and phase 1 does not implement. `pipeline.promotion.rollback` undoes
@@ -4233,10 +4436,159 @@ or worse.
   320 px with text spacing, and the description (the Directions fold's summary, the
   scroll boxes, Full detail, the copy reply, a group's nested crossings).
 
+### The App.tsx split (UI-CLEANUP step 4)
+
+`App.tsx` holds the planner's state, its effects and the handlers, and renders the page
+shell (the skip links, the map, the road panel, the live regions, Ride mode, the panel
+and its header). What the panel shows is in `app/`, moved out unchanged:
+
+- `app/Planner.tsx`: `PointsSection` (the search, the loop toggle, the points, the
+  nearest finder, the point tools, More tips, the Points notice) and `RideSection` (the
+  Ride line and, behind its Edit, the ride type and every dial).
+- `app/RoutePanel.tsx`: `RouteSection` (planning, the long-ride question, errors, the
+  Avoid notice, `RouteSummary`, water along the route, Start ride's question),
+  `RouteSummary` itself, `RouteActions` (the pinned Download GPX, Copy link, Share and
+  Keep for offline) and the `Status` type.
+- `app/Sheets.tsx`: `LayersSheet`, `GpxSheet` and `SettingsSheet`, each in its `SheetFrame`
+  (since the UI-CLEANUP build also the Legend, Suggest, Review, Nearest, Find food and Ride
+  sheets; and `app/Go.tsx`, below).
+- `app/hooks.ts`: `useNarrow` (and `NARROW`), `useLongerThan`, `useSettled`.
+
+Each component is a pass-through: it takes its props under the names App gives them, keeps
+no state and calls no hook (`RouteSummary` keeps its own `useStressStyle()`), and App renders
+it with `<PointsSection key="points" {...{ pointsHeadingRef, zoom, ... }} />`, so the elements,
+their order, the focus moves and every announcement are as they were. `useId` stays in App
+(the loop hint's id), because React numbers a client render's ids in render order.
+`appSplit.test.ts` holds that shape.
+
+The source tests that read App's wiring read `testSupport/appSource.mjs`'s `appSource()`:
+App.tsx with each component's JSX put back where App renders it, then the rest of the
+modules (their imports, `RouteSummary`, the hooks) without the props interfaces, which only
+repeat App's names. A new test of what the planner renders reads it the same way.
+
+Checked when it was split: the DOM of the whole page but the map's own internals was the
+same before and after in 60 snapshots (30 states at 390 px and 1,440 px: empty, a route,
+Bikeshare, Mass Ride, Trailmaxxing, routes to choose from, an Avoid junction, each sheet,
+the ride settings, Edit points, every fold open, Start ride's question, the panel hidden and
+shown), and `scripts/a11y/check.mjs` passed the same checks.
+
+### Go and Plan (UI-CLEANUP, the approved mockup of 2026-10-11)
+
+The layout Stephen approved on 2026-10-11 (reports/v0.5.0/ui-mockup.html and its 72-row
+control table; PLAN.md, UI-CLEANUP). Nothing was removed: every control is where the table
+puts it, at most two presses away.
+
+- **Two views of one planner** (`lib/appMode.ts`): Go, a phone's few steps (one Where to?
+  box, four place chips, the commute ride types, then the route's time, stress bar, one
+  alert and Start), and Plan, the full panel. Same state, same link. Which one opens:
+  the tab's own (sessionStorage, so a reload stays), else Plan for a link with a plan in
+  it, else My Go's Open in, else a phone (`NARROW`) opens in Go and a wider screen in Plan.
+  The switch (`app/Go.tsx` `ModeSwitch`: two `aria-pressed` buttons in a named group) is in
+  Go's bar over the map and Plan's header; a press is remembered as My Go's Open in.
+- **Go** (`app/Go.tsx`): `GoTopBar` (Menu, the switch, Layers, Locate, and the destination
+  with a clear button) is before the map in the page, as it is at the top of the screen.
+  `GoSheet` (inside the panel, `peek`/`half`/`full` by its handle) holds `PlaceSearch
+  variant="go"` (the place is the destination, the start the rider's location, in one edit
+  with the loop off: App `goTo`), the Home, Food, Water and Restroom chips (Home needs sign-in
+  and a Home; without one it opens My Go and says why), `RideChips` (Default, Cargo, Bikeshare
+  and More; a My Go ride that is none of them takes Bikeshare's place: `lib/myGo.ts`
+  `goRideChips`) and the Route section's Go variant. The Menu is the Settings sheet with
+  Plan, Suggest, GPX and an admin's Review on top; a Go sheet's Back reads "Close".
+- **Go's start** (the owner, 2026-10-11: "in go, make the current location the starting
+  location by default"; `lib/appMode.ts` `shouldAskGoStart`, `goStartLine`, `goRouteStart`):
+  when Go opens with an empty plan, App asks for the location once (through Use my location's
+  gate; never in Plan, never with a start from the link). Found, it is the start, shown on Go's
+  start line and said politely ("Start: your current location.") but not yet a point, so the
+  link holds no position until a destination is picked; denied, unavailable or timed out, the
+  start stays empty, the start box opens and "Current location not available; type a start." is
+  shown and said politely. A start typed in (Change start, `PlaceSearch variant="start"`) or
+  tapped on the map is the plan's first point and replaces the location. A destination picked
+  before there is a start is never dropped nor made the start (`goPickAction`): while the
+  location is still being found it waits ("To …: finding your location for the start…") and is
+  routed when the location comes; with no location, it is kept ("To …. Current location not
+  available; type a start.") and a start typed in the start box, or tapped on the map (or Add at
+  centre), plans the route to it at once (`goTapStartsPending`, follow-up review of #95). Picking a
+  destination with a start plans at once; Go then shows the routes to choose from open, and the ride types under the
+  route, so Bikeshare is one press, and only a Bikeshare route names its pick-up and drop-off
+  stations (the route's Bikeshare plan).
+- **Few presses** (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go"): from
+  opening Go, a typed destination is three taps to riding: Where to?, the place picked, then
+  Start ride (the review of #95 counted them); with the Home chip it is two: Home, then Start ride. Go
+  starts the ride with Settings > Ride mode's cues and asks nothing first (Plan still asks the
+  first time). **Announcements** (`lib/announceLevel.ts`, Settings > Display): Brief or Full,
+  kept on this device; unset, Go is Brief and Plan is Full. The route found, guidance, the start
+  Go found, errors and notices are always said; Brief leaves out the narration (`announceExtra`:
+  finding your location, planning a route to, the view or ride type changed, the map moved).
+- **Lettered places** (the owner, 2026-10-11 21:04 UTC; `lib/letteredPlaces.ts`): the nearest
+  water, restrooms or Metro stations and the food found are lettered A, B, C... in their list (a
+  pin, aria-hidden, with the letter heard first) and on the map (MapView `lettered`: 44 px
+  buttons, a pin with the letter, named "B: Drinking water, Garfield Park, 0.3 mi (0.5 km)"),
+  while that list's sheet is open; the map fits them in, above a phone's sheet. A marker's tap,
+  the row's Ride here, or the letter's key (not while typing, on the map or in a dialog) picks
+  it: in Go as the destination, straight to the route options; in Plan, the nearest's Ride here
+  and food's Show on map. Food's numbered circle layer is gone; its list and markers use the
+  letters. The Choose a station lists (Plan) are not lettered.
+- **Bikeshare options** (`lib/bikeshareOptions.ts`; #94's `bikeshare.options`): a Bikeshare route
+  in Go lists its pick-up and drop-off pairs as buttons lettered A, B, C, each named by the
+  option's own `text`, the one the shown plan rides pressed (aria-pressed and a "Planned" tag),
+  and letters them on the map at each pick-up station. A button, a marker or the letter's key
+  sets that option's stations (the station pins) and ending, which re-plans it. A re-plan's
+  answer lists only the pair asked for, so the first answer's list is kept for the same start
+  and end; the order is the server's. A free-floating e-bike's option has no pick-up station id
+  (the server offers one only as the plan's own start, the first answer's), so its pins would let
+  the server plan the best option again: picked after another option, it is shown again from the
+  first answer, kept with the list (`replaysFirst`, `replayFor`: the scheduler answers that one
+  request from it, matching the plan sent with its stations, `sentPlanKey`), with "Option A:
+  picking up at an e-bike outside a dock, as first planned." If the ride's settings changed since,
+  it is not re-planned, and Go's notice says so (`stationlessUnavailable`).
+- **Start and end pins** (the owner, 2026-10-11 21:29 UTC): a play triangle and a stop square
+  (`lib/pointText.ts` `START_GLYPH`, `END_GLYPH`, hidden; the pins' names stay "Start", "End" and
+  "Start and finish"), so A, B, C are only the offered places; stops keep their numbers.
+- **My Go** (`lib/myGo.ts`; `core.models.MyGo`, migration 0019; GET/POST `/api/me/go`):
+  Open in, Go's ride type and, signed in, Home. Signed in it is the account's (saved only
+  after it has been read, so an early save never clears a Home), with a copy on the device
+  (without Home) so the next visit opens in the right view at once; signed out it is the
+  device's. The POST needs the CSRF cookie the GET sets, a JSON body and a same-site
+  request; Home must be in the coverage box and is rounded to 5 places; the row goes with the
+  account and is deleted when the account is marked deleted; `my_go` never ships to the beta
+  (`scripts/beta/ship-data.sh` `EXCLUDED_TABLE_DATA`). `tests/test_my_go.py`.
+- **Plan's panel**: the Points heading's row holds Swap (Reverse), Loop, Edit and Info (the
+  how-to, the access switch and Install, which were More tips); the Ride line shows its
+  summary as chips. The route: the totals and Info on one line, the stress bar, the Avoid
+  notice as one line (`AvoidNotice`: the short line shown, the whole sentence read, Avoid it
+  with its extra distance, Details) with the other warnings counted behind it
+  (`lib/routeNotices.ts`), each note one line with an icon (full words in Info), then Start,
+  GPX, Link and More (Share, Keep for offline) in one row, then one-line closed folds with
+  their counts on the right (`Fold`'s `count` and `icon`): Elevation and climbs (with the
+  climbs list), Stress and facilities (the four quick figures first), Directions, Junctions to
+  watch, Other routes, Water and restrooms. Bikeshare's station lists are a "Choose a station"
+  fold under Route.
+- **Sheets** (`app/Sheets.tsx`, `lib/sidebar.ts` `PanelView`): the bar is Plan, Layers,
+  Suggest, GPX and Settings. Layers holds the switches only, with a Legend button that opens
+  the Legend sheet one step in; Suggest says how to suggest from the road panel and opens it
+  at the map's center, with DC 311 and an admin's Review; Settings is Display (High contrast,
+  Accessibility mode, Open in when signed out), Ride mode, This device and Account (My Go).
+  Plan's map has Food and Water chips (`PlanMapChips`), which open the Find food and Nearest
+  sheets. `openOnto`/`backFrom` keep the way back through nested sheets; Back returns the
+  focus to what opened the sheet, and a sheet's heading takes it on the way in.
+- **Road panel**: two or more ways to suggest (a road's level, a junction, a Mass Ride
+  hazard) are one "Suggest a change…" disclosure; one is its own button, as before.
+- **Ride mode**: the 311 button (`lib/ride311.ts`), 60 px round on the right edge at thumb
+  height, only while the rider's place on the route is inside DC; it opens a menu with the
+  place line and the six problems as large buttons, and a pick opens "Report a problem to DC
+  311" with that problem chosen (the note, the text or DC 311 online and Copy as before). Big
+  text has a text-size icon; Where am I?, Re-centre and End ride have icons too.
+- **Icons**: `lib/iconPaths.ts` (the mockup's own line icons, minus Work, plus cargo,
+  text size, tree and bikeshare) drawn by `Icon.tsx` (or `lineIcon` in createElement
+  modules), always `aria-hidden` beside words.
+
+`lib/goPlan.test.ts` holds the pure parts and the wiring; `scripts/a11y/check.mjs` drives Go,
+the switch, the sheets, My Go and the 311 menu in a browser.
+
 ### The sidebar (312)
 
 OWNER-DECISIONS 312's layout, from mockup v3 (PLAN.md, FOLLOWUP-SIDEBAR-REDESIGN, has
-what differs). Code: `App.tsx` places it; `Sidebar.tsx` (MoreTips, QuickFigures,
+what differs). Code: `App.tsx` places it (its parts in `app/`, above); `Sidebar.tsx` (MoreTips, QuickFigures,
 BottomBar, SheetFrame); `lib/sidebarParts.ts` (RideSettings, Fold, JunctionLegend and
 the two parts for open questions, written with createElement so a test renders them);
 `lib/sidebar.ts` (the decisions, pure); `lib/rideSummary.ts`; `lib/quickFigures.ts`.
@@ -5956,8 +6308,8 @@ plot edges (`chartParts.LEFT`, `RIGHT`) and the same distance scale, so a mile i
 place on all three and on each one's own distance axis (miles, km in brackets).
 
 - **Riders per minute**: the riders area in the band colours and patterns, the 60/120/200
-  guides, the narrowest point's caret and figure (147's "with the bottleneck marked"), and
-  the Avoid blocks, as before.
+  guides, the narrowest point's caret and figure (147's "with the bottleneck marked"), the
+  Avoid blocks, as before, and the ride size's requirement (below).
 - **Corker load**: a step area (one series: a blue fill under a step line in the text
   colour), a tick from the marker row down through the plot at each junction needing
   corkers, the junction markers (triangle, diamond, dot) above, their thinned names under
@@ -5998,9 +6350,19 @@ point** (`lib/profileChart.ts`, "The corker load"):
 - **Held at once**: a junction needing corkers (`corkers_needed`: 142 and 400, a crossing of
   or a turn onto an LTS 3 or worse road) is held from when the head reaches it until the
   tail passes it, so the load steps up at each tick and down a group's length later
-  (`exitOf`). Corkers held at once = the junctions in the window × the corkers each needs:
-  **2 for a two-way road, 1 for a one-way** (crossings now carry `oneway`, from the road's
-  OSM tags), **and 2 where it is not known** (no mapping, or an older answer). A divided road (two one-way carriageways counted as one junction, by the refuge merge or by name within 45 m) takes 2: crossings carry `divided`, which leaves `oneway` as the junction costs read it. Near the end
+  (`exitOf`). Corkers held at once = the junctions in the window × the corkers each needs
+  (`corkersFor`, PLAN 139): **one for each approach lane** of the busy road, or **one an
+  approach at a traffic signal**, whatever its lanes, since the red already holds the cross
+  traffic and the corker covers the change to green (the group goes through as one once
+  its head enters on green, 124). The approaches: **2 for a two-way road, 1 for a one-way**
+  (crossings carry `oneway`, from the road's OSM tags), **and 2 where it is not known** (no
+  mapping, or an older answer). A divided road (two one-way carriageways counted as one junction, by the refuge merge or by name within 45 m) has 2: crossings carry `divided`, which leaves `oneway` as the junction costs read it. The lanes: crossings carry
+  `approach_lanes`, the road's through lanes a direction (`Road.lanes`; a divided road's
+  busier carriageway), and **1 where not known**, so an older answer counts as before. So a
+  four-lane two-way road with no signal takes 4, the same road at a signal 2, a three-lane
+  one-way street with no signal 3. The intersections table says each junction's count and
+  how it was counted ("4 needed: 2 approaches; 2 lanes each", `corkerBasisWords`), and the
+  scrub says the count ("Next: 14th St at mile 1.3, 2 corkers needed"). Near the end
   the junctions stay held to the end, so a group longer than the route holds every one at
   its end.
 - **The ride's headline**: "about N corkers" = the most held at once × the rotation factor
@@ -6011,10 +6373,32 @@ point** (`lib/profileChart.ts`, "The corker load"):
   about N ... (may be low: ...)", never a firm figure.
 - The top is the peak rounded up to an even number, at least 4.
 
+**The ride size's requirement on the riders chart** (128: the ride size sets "how long it
+holds intersections and the flow it needs; ... a road whose throughput is too low for the
+size is flagged"; PLAN "Route profile (item 147)": "the requirement for the chosen ride size
+(item 128) drawn as a line"). The group holds a junction for its riders over the flow, so a
+road needs the ride size over the longest hold accepted, `RIDE_HOLD_MINUTES` (5, a proposal):
+`rideNeed` is riders ÷ 5, rounded up, so 100 a minute at the default 500 (about one 11 ft
+lane, 99), 20 at 100 riders, 400 at 2,000. It is drawn across the riders chart as a long
+dash in the text colour over a casing in the panel's colour (one of the two is 3:1 against
+every band), with "100 needed for 500 riders" at its left, told from the dotted band guides
+by its dash and its words; the axis rises to fit it (`ridersTop`). The key says "Dashed line
+(proposed): about 100 a minute, what 500 riders need to pass a junction within 5 minutes"; the summary
+says the hold is a proposal, not yet confirmed, and how much of the route with a figure is below it and from where (`needSentence`,
+`belowNeed`: a stretch counts by the mean of its two samples; Avoid, untraced and outside-DC
+stretches have no figure and are not counted); the scrub adds "below the proposed 100 needed for
+500 riders" to the band words where the figure is under it. It moves with the ride size slider
+and is never sent to the API; routing does not use it yet (PLAN "The main control": the
+flagging on the map and the routing penalty by ride size are not built). Forced colours: the
+line follows the system's text colour and its casing the system's background.
+
 Defaults still open for the owner: the rotation factor (2, PLAN's proposal), 2 corkers per
-junction where it is not known whether the road is one-way, and the 500-rider default
-(PLAN's proposal; the range is the owner's, 129). PLAN's one corker per approach lane, and
-one per approach at a signal entered on green, are not built: every two-way junction takes 2.
+junction where it is not known whether the road is one-way, 1 lane an approach where the
+lanes are not known, the signal rule applied at every signalised junction (the group enters
+on green, 119 and 124), the 5-minute hold behind the requirement line, and the 500-rider
+default (PLAN's proposal; the range is the owner's, 129). Complex junctions (a traffic
+circle, a diagonal avenue meeting the grid) are still counted as one road's approaches, not
+by their actual approaches.
 
 Screen readers: each chart is a `role="group"` named by its `h4` heading, with its own
 summary before the picture, a slider (`aria-label` "Riders per minute along the route",
@@ -6024,8 +6408,8 @@ three sliders share one position (and one key hint, which also says so): Tab fro
 the next carries on at the same mile, and moving any of them moves the map's marker and the
 other two charts' markers. Tab between them keeps the position (the blur looks at
 `relatedTarget`), so the map's marker neither flickers off nor pans again. Value texts: riders, the sentence as before ("Mile 1.2: grade 6%,
-about 90 riders per minute (tight, slowed by the climb). Next: 15th Street Northwest at mile
-1.3, corkers needed."); corker load, "Mile 1.2: 2 corkers holding 1 junction at once (500
+about 90 riders per minute (tight, slowed by the climb, below the proposed 100 needed for 500 riders).
+Next: 15th Street Northwest at mile 1.3, 2 corkers needed."); corker load, "Mile 1.2: 2 corkers holding 1 junction at once (500
 riders, group about 1,560 ft (475 m) long). Next: ..." (with "Part of the group's stretch was
 not checked for intersections." where it was not, and "intersections not checked, so the
 corkers needed are not known" with no crossings; where only the flagged junctions were
@@ -6472,11 +6856,15 @@ availability, fee information and notes under `bikeshare` (`core.api.BikesharePl
   (`Snapshot.as_of`) is unavailable everywhere (`Snapshot.reporting_stale`; a station with no
   `last_reported` is stale once the reading time is known). Tests pass a `wall` clock and a fake store
   and never touch the network.
-- `core/bikeshare.py`: the plan. Candidates are the 3 nearest docks that can start (a bike of the type,
-  renting) and end (a free slot, returning) a ride, and for an e-bike the 2 nearest free-floating
-  e-bikes; each is walked for real, the pair with the least walk plus ride (the ride estimated by the
-  straight line at the bike's pace) is chosen, and only that pair is routed as a ride. Walking is
-  Valhalla pedestrian costing on the standard graph at 3 mph.
+- `core/bikeshare.py`: the plan. Candidates are the 3 best docks that can start (a bike of the type,
+  renting) and end (a free slot, returning) a ride, and for an e-bike the 2 best free-floating
+  e-bikes, "best" by the direction rule below (within 1.9 mi (3 km)); each is walked for real, the
+  quickest pair is chosen (real walks plus the estimated ride; ties by the walks plus extra riding),
+  and only that pair is routed as a ride. The time, not the rule, picks the pair because it also
+  credits a dock ahead for the riding it saves; by the rule alone about a quarter of trips came out
+  slower (1 in 10 by 17 s or more, the worst by over 3 min) for almost no more docks on the way (a simulation in the review of PR #94). Walking is Valhalla pedestrian costing on the standard graph at 3 mph.
+  The answer's `bikeshare.options` lists up to 3 pairs, best first, the first being the plan itself
+  (below).
 - The ride leg is `routing.plan` on the `bikeshare` preset: stress 80 with the stress-averse
   exposure weights (casual riders, calm by default), classic hills -60 at 13 km/h (8 mph), e-bike
   hills -20 at 20 km/h (12 mph) on the e-bike graph. The sliders still apply.
@@ -6512,12 +6900,14 @@ the last 30 minutes); when choosing where to dock, the 3 nearest to the end that
 (<= 0.25, installed, returning, reporting in the last 30 minutes). Live feed only: no history, no
 reports, no fitted formula (the crowdsourced points reports of 464-464b are parked pending the licence
 question). The lists are labelled generically ("Nearby stations to pick up a bike") and name no
-programme; nothing is ranked beyond distance, and the rider chooses.
+programme, and the rider chooses. Once both ends are placed, stations on the rider's way come first
+(below); with only a start, the pick-up list is by distance.
 
-- `POST /api/bikeshare/stations` `{point: [lon, lat], action: "pickup" | "dropoff"}` answers
-  `{action, availability, stations: [{station_id, name, lon, lat, percent_full, distance_m, bikes,
-  ebikes, docks}], credit}` (`core.bikeshare.nearby_stations`, straight-line distance within 1.9 mi
-  [3 km], nearest first, up to 3). A POST so the point is in the body and in no URL; `Cache-Control:
+- `POST /api/bikeshare/stations` `{point: [lon, lat], action: "pickup" | "dropoff", toward?: [lon,
+  lat]}` answers `{action, availability, stations: [{station_id, name, lon, lat, percent_full,
+  distance_m, bikes, ebikes, docks, extra_m, on_the_way}], credit}` (`core.bikeshare.nearby_stations`,
+  no distance cap (the owner, 2026-10-10), up to 3, best first by the direction rule toward
+  `toward`; nearest first, with `extra_m` and `on_the_way` null, without it). A POST so the point is in the body and in no URL; `Cache-Control:
   no-store`; its own limit (`ratelimit.BIKESHARE_STATIONS`); 503 `bikeshare_unavailable` when there is
   no station list; with no availability feed `availability` is `unknown` and the list is empty.
 - A chosen station goes to `POST /api/route` as `pickup_station` / `dropoff_station` (the station's
@@ -6534,6 +6924,44 @@ programme; nothing is ranked beyond distance, and the rider chooses.
   `lib/stations.ts` `withStations`, and in no link (the counts change by the minute).
 - Tests: `tests/test_bikeshare_nearby.py`, `frontend/src/lib/stations.test.ts`, and the a11y check's
   section 24 (Tab order, the button names, `aria-pressed`, the status line, the 375 px layout).
+
+### Stations on your way first, and the route options (the owner, 2026-10-11)
+
+"For rideshare, we should prioritize the stations that would be in the direction of the route." One
+rule ranks the station lists, the plan's candidate docks, its choice of pair and its route options:
+**a station costs its walk plus the extra riding it adds.** The extra riding is how much farther the
+station is from the trip's other end than the rider's own point is, never below zero
+(`core.bikeshare.extra_riding_m`, straight lines):
+
+- picking up near the start, the other end is the destination: a dock toward it adds nothing, a dock
+  behind the rider adds its distance back;
+- returning near the destination, the other end is the start: a dock on the way in adds nothing, a
+  dock past the destination adds how far past it is.
+
+So a dock 100 m (330 ft) behind ranks with one 200 m (660 ft) ahead, and nearer still wins among
+docks on the way. It was chosen over a bearing penalty because it has no tuning angle and can be
+checked with a ruler. A station adding under 50 m (165 ft) is "on your way"
+(`ON_THE_WAY_M`, so a dock a little to one side of a long trip still counts); any other says
+"adds 0.1 mi (160 m) of riding". The words are in the button's own text, so a screen reader hears
+the reason; nothing is said by colour or an arrow. Unchanged: 3 stations shown, no distance cap,
+the 3/4 and 1/4 fullness rules, stations with no bikes or docks or silent for 30 minutes left out,
+and the e-bike counts.
+
+Route options, for the Go screen ("pull out your phone, then select a destination ... offer the
+options for routing to it with stations"; Bikeshare only, the owner: "only if youre in bikeshare
+mode"): a Bikeshare `POST /api/route` answer carries `bikeshare.options`, up to 3 pairs, quickest
+first, from the docks the rule chose (`core.api.BikeshareOptionOut`): `rank`, `chosen` (the first, which is the plan the
+answer routed), `pickup` and `dropoff` (each a `BikeshareStopOut` plus `walk_m`, `walk_s`,
+`extra_m`, `on_the_way` and `way_text`), `pickup_station`, `dropoff_station` and `ending` (send
+them on `POST /api/route` to plan that option), `ride_m` and `total_s` (the routed figures for the
+chosen one, estimates by straight line and the detour factor otherwise, `estimated`), `cost_m` (both walks
+plus the extra riding, the tie-break) and `text`, the option in plain words for a button: "Pick up at Ahead, 0.1 mi (0.2
+km) walk, on your way. Return at Before, 0.1 mi (0.2 km) walk, on your way. About 27 min in all."
+No extra routing is done for them: they reuse the walks the plan already asked for. An answer
+planned with a chosen station lists only the pair asked for, so a screen keeps the first answer's
+list; a free-floating e-bike is offered only as the plan's own start (it has no id to ask for
+again). Tests: `tests/test_bikeshare_direction.py` (each ranking case fails on nearest-first),
+`tests/test_bikeshare_api.py`, `tests/test_bikeshare_nearby.py`, `frontend/src/lib/stations.test.ts`.
 
 ## Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
 
@@ -6870,6 +7298,26 @@ copied as is; the text adds DC's keyword in front (`forText`), which a hint says
 it is the message itself. Whether DC's service reads a keyword and a place in one message is not
 verified until a real text is sent (the owner's).
 
+The kinds (`REPORT_KINDS`; the owner, 2026-10-11: "311 should have the following at least: Pothole /
+Downed tree / Vehicle parked in a bike lane / Roadway/bikeway obstructed"), in this order: Pothole (the
+default), Downed tree, Vehicle parked in a bike lane, Roadway or bikeway obstructed (the owner's words, with "or" for
+the slash, which a screen reader reads aloud), Streetlight out, Something
+else. DC's page (read again 2026-10-11) still names keywords only for POTHOLE, STREETLIGHT and TRASH, so
+the three new kinds go to DC 311 online like Something else, and their words name the problem first
+(`problem`: "Downed tree. Location: ...", "Vehicle parked in a bike lane. Location: ...", "Roadway or
+bikeway obstructed. Location: ...") so DC knows what it is without a note; Something else still relies
+on the note, and its hint says so. The hint beside DC 311 online (`onlineHint`) names the request there
+where one is known: DC GIS's open service requests of the last 30 days
+(https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_APPS/SR_30days_Open/MapServer/0, distinct
+`SERVICECODEDESCRIPTION`, read 2026-10-11) include "Tree Inspection", "Tree Removal" and "Parking
+Enforcement", and DPW places its bike lane enforcement officers partly by 311 requests
+(dpw.dc.gov/node/1442566, 2019-11-12, read 2026-10-11). Neither says which request a vehicle in a bike
+lane is (DPW's "Request Parking Enforcement" page, https://dpw.dc.gov/service/request-parking-enforcement,
+read 2026-10-11, lists meters, permits, driveways, bus stops, crosswalks and hydrants, not bike lanes),
+so its hint says only that DC's parking requests include Parking Enforcement. No request for an obstructed roadway or
+bikeway was found there, and 311.dc.gov's own form could not be read (its robots.txt refuses fetches),
+so that hint names none.
+
 The place is `placeOnRoute` (`lib/navigate.ts`), from the route's own data, never a lookup with the
 position (plan section 7, owner question 7): `routeJunctions` lists each change of named street
 between two stretches and each flagged crossing (a junction entry names the street crossed), and the
@@ -6907,7 +7355,11 @@ and a module the tests import. The Vite plugin `swPlugin.mjs` (`appWorker()` in 
 writes `index.html`'s `<meta name="routemaker-build">` and emits `dist/sw.js` (the module with its
 `export` words dropped, then the build id and the list of every `/assets/*` file) and `dist/sw-kill.js`.
 Its rules (`ruleFor`, an allowlist; the table is at the top of the file): the shell network first,
-falling back after `SHELL_TIMEOUT_MS` (3 s) to the kept copy; `/assets/*` precached and cache first;
+falling back after `SHELL_TIMEOUT_MS` (3 s) to the kept copy; `/assets/*` precached and cache first,
+but for `LAZY_ASSET` (the Find food places, `/assets/food-*.json`, about 555 KB compressed, and the
+Climbs layer's `/assets/climbs-*.json`, about 400 KB compressed, off until turned on), which no
+install downloads: kept in the build's cache on first use, and copied into the next build's cache at
+its install while its hashed name is unchanged (`lazyList` in `swPlugin.mjs`);
 the favicon, icons and licence notices stale-while-revalidate; the base map's glyphs and sprite from
 the kept routes' bucket first. Everything else is not intercepted at all (no `respondWith`):
 `/api/*`, `/auth/*`, `/tiles/*`, the base map archive, the admin, every other navigation and every

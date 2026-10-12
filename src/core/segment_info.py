@@ -29,7 +29,7 @@ from django.conf import settings
 from django.db import connection
 
 from pipeline.schema import validate_schema_name
-from routemaker import flow
+from routemaker import flow, more_links
 from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
 
 # How far from the spot a way may be and still be the one the rider meant: a
@@ -112,7 +112,7 @@ VOLUME_SOURCES = {
     "ddot": "DDOT 2024 Traffic Volume, DC Open Data (CC BY 4.0, adapted)",
     "dc-roadway-block": "DC Roadway Block (DDOT / DC GIS), DC Open Data (CC BY 4.0, adapted)",
     "vdot": "VDOT",
-    "mdot-sha": "MDOT SHA",
+    "mdot-sha": "State of Maryland (MDOT SHA)",
 }
 
 # Where a classifier input came from (`segment.attr_sources`).
@@ -196,12 +196,13 @@ ACCESS_WORDS = {
     "zoo": (False, "Closed: a National Zoo path closed to bicycles"),
     "singletrack": (
         False,
-        "Closed: mountain-bike singletrack, not used for routes by any ride type",
+        "Closed: mountain-bike singletrack, not used for routes except by the Mountain Bike"
+        " ride type where nothing but its rating closes it",
     ),
     "mtb": (
         False,
-        "Closed: a mountain-bike trail, not used for routes except by the Gravel and"
-        " Mountain Goat ride types (drawn as a thin grey dotted line when the"
+        "Closed: a mountain-bike trail, not used for routes except by the Mountain Bike,"
+        " Gravel and Mountain Goat ride types (drawn as a thin grey dotted line when the"
         " Mountain-bike trails map layer is on)",
     ),
     "dismount": (False, "Closed: a long walk-your-bike stretch"),
@@ -817,13 +818,15 @@ def mtb_level_words(level: object) -> str | None:
 
 def mtb_summary(row: dict) -> str:
     """A mountain-bike trail's Bikes line (OWNER-DECISIONS 452a, 456): what the map's line
-    means, 'Mountain-bike trail, level 2 (blue), not used for routes', and, honestly, that
-    Gravel and Mountain Goat (the off-road graph) do route on it, unless it is rated
-    singletrack, which every graph closes."""
+    means, 'Mountain-bike trail, level 2 (blue), not used for routes', and, honestly, which
+    ride types do route on it: the Mountain Bike ride type rides every trail the layer draws
+    (docs/MTB-TOPO-PLAN.md, slice 6; up to the rider's chosen level), and Gravel and Mountain
+    Goat (the off-road graph) the unrated mountain-bike class, not rated singletrack."""
     level = mtb_level_words(row.get("mtb_level"))
     head = f"Mountain-bike trail, {level}" if level else "Mountain-bike trail"
     # A level is written on rated singletrack alone (`pipeline.trail_closures.mtb_level`),
-    # which every graph closes, so a levelled trail never says the off-road graph uses it.
+    # which only the Mountain Bike graph opens, so a levelled trail never says the off-road
+    # graph uses it.
     closed_everywhere = bool(level) or row.get("bike_access_reason") == "singletrack"
     # Its name where one is mapped (the owner, 2026-10-10: "try to make sure trail names are
     # added in if they are available"): "Mountain-bike trail, level 2 (blue): Rosaryville
@@ -831,8 +834,17 @@ def mtb_summary(row: dict) -> str:
     name = (row.get("mtb_name") or "").strip()
     head = f"{head}: {name}," if name else f"{head},"
     if closed_everywhere:
-        return f"{head} not used for routes"
-    return f"{head} not used for routes (Gravel and Mountain Goat may use it)"
+        return f"{head} not used for routes (Mountain Bike may use it)"
+    return f"{head} not used for routes (Mountain Bike, Gravel and Mountain Goat may use it)"
+
+
+def more_link(row: dict, router: dict) -> dict | None:
+    """MORE's page for a mountain-bike trail's system, or MORE's trail guide where its names
+    place it in none (`routemaker.more_links`; the owner's defaults of 2026-10-11): its
+    trailheads, trail info and the day's conditions. None on any other way."""
+    if not is_mtb_trail(row):
+        return None
+    return more_links.link_for(row.get("mtb_name"), row.get("trail_name"), router.get("name"))
 
 
 # The parts of the classifier's rule the Lanes line already says.
@@ -977,6 +989,7 @@ def describe(row: dict, router: dict) -> dict:
         "kind": kind,
         "summary": summary_rows(row, router, open_),
         "sections": sections,
+        "more": more_link(row, router),
     }
 
 

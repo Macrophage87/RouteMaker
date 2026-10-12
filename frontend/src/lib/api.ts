@@ -5,6 +5,7 @@
  * types generated from the API's OpenAPI schema; until that step exists they
  * are written out here, against the contract rather than against a guess.
  */
+import type { MtbReading } from "./mtbMode.ts";
 import { formatRoughDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
@@ -82,6 +83,8 @@ export interface ProfileCrossing {
   oneway?: boolean | null;
   /** A divided road (two one-way carriageways counted as one): two approaches, so 2 corkers. */
   divided?: boolean | null;
+  /** Through lanes on each approach of that road (per direction), if known; absent from an older API (PLAN item 139's per-lane rule, `corkersFor`). */
+  approach_lanes?: number | null;
 }
 
 /** A stretch of the profile, metres along the route (core.api.ProfileRangeOut). */
@@ -172,6 +175,16 @@ export interface JunctionWarning {
   control: "signal" | "stop" | "cross_stop" | "all_stop" | "none";
   kind: string;
   cost_ft: number;
+  /** The same cost in calm miles, 2 places (OWNER-DECISIONS 467, 469b); absent from an older API. */
+  calm_mi?: number | null;
+  /** The metric of `calm_mi`. */
+  calm_km?: number | null;
+  /**
+   * The ride time that changed this junction's cost (468a, 469c-469e): more at weekday
+   * rush hours, less at the weekend or at night. Null or absent where the hour changed
+   * nothing, so the planner says nothing about it.
+   */
+  time_band?: "weekday_rush" | "weekend" | "night" | null;
   /**
    * Mass Ride only (OWNER-DECISIONS 233, 234): the number, from 1, of the group of
    * signalized crossings this junction is one of (`RouteResponse.intersection_groups`);
@@ -211,8 +224,12 @@ export interface JunctionGroupSummary {
  * sentence to read aloud, US units first.
  */
 export interface DescriptionEntry {
-  /** "avoid": an Avoid-rated junction ahead (OWNER-DECISIONS 307), at a point. */
-  kind: "stretch" | "junction" | "via" | "walk" | "avoid";
+  /**
+   * "avoid": an Avoid-rated junction ahead (OWNER-DECISIONS 307), at a point. "workzone": a live
+   * work zone along the route (FOLLOWUP-WORKZONES), severity "red" for a closure, "orange" for a
+   * penalty; or, at 0 with no severity, the work-zone disclaimer or the feeds not read.
+   */
+  kind: "stretch" | "junction" | "via" | "walk" | "avoid" | "workzone";
   from_m: number;
   to_m: number;
   from_mi: number;
@@ -422,8 +439,49 @@ export interface BikesharePlan {
   /** The plan in plain words, US units first, for reading aloud. */
   summary: string;
   notes: string[];
+  /**
+   * Up to three pick-up and drop-off pairs, quickest first, from docks chosen by the walk plus the
+   * extra riding each adds (stations on the rider's way first; the owner, 2026-10-11). The first is this plan. To
+   * plan another, send its `pickup_station`, `dropoff_station` and `ending`; that answer lists only
+   * the pair asked for, so keep this list. Absent from an older server.
+   */
+  options?: BikeshareOption[];
   /** The plain source citation (OWNER-DECISIONS 301). */
   credit: string;
+}
+
+/** One end of a route option (core.api.BikeshareOptionEndOut). */
+export interface BikeshareOptionEnd extends BikeshareStop {
+  /** The walk to (or from) it; 0 for an outside-dock ending. */
+  walk_m: number;
+  walk_s: number;
+  /** The riding it adds, straight-line metres, never below 0. */
+  extra_m: number;
+  /** It adds under 165 ft (50 m) of riding. */
+  on_the_way: boolean;
+  /** "on your way", or "adds 0.2 mi (0.3 km) of riding": the reason, in words. */
+  way_text: string;
+}
+
+/** One way to make a bikeshare trip (core.api.BikeshareOptionOut). */
+export interface BikeshareOption {
+  /** 1 is the best, and is the plan the answer routed. */
+  rank: number;
+  chosen: boolean;
+  pickup: BikeshareOptionEnd;
+  dropoff: BikeshareOptionEnd;
+  pickup_station: string | null;
+  dropoff_station: string | null;
+  ending: Ending;
+  /** The routed ride when chosen; otherwise an estimate. */
+  ride_m: number;
+  /** Walking and riding; an estimate unless chosen. */
+  total_s: number;
+  estimated: boolean;
+  /** Both walks plus the extra riding (the station lists' rule); breaks ties. */
+  cost_m: number;
+  /** The option in plain words, US units first: a button's name, read aloud as it is shown. */
+  text: string;
 }
 
 /**
@@ -477,6 +535,8 @@ export interface RouteResponse {
   bikeshare?: BikesharePlan | null;
   /** Present on a loop (OWNER-DECISIONS 266). */
   loop?: LoopInfo | null;
+  /** Mountain Bike only (docs/MTB-TOPO-PLAN.md, slice 6): the route's trail reading; null or absent elsewhere. */
+  mtb?: MtbReading | null;
   /** Side-street dodges found and what was done; null on a loop and on each candidate, absent from an older API. */
   dodges?: Dodges | null;
   /** The route's effort-equivalent distance in metres, where it was read (the top of the traffic slider). */
@@ -491,7 +551,7 @@ export interface RouteResponse {
   /** On a candidate: how far past the rider's target distance it is (OWNER-DECISIONS 271). */
   over_target_m?: number | null;
   preset: PresetId;
-  variant: "standard" | "no-trail" | "ebike" | "weekend" | "offroad";
+  variant: "standard" | "no-trail" | "ebike" | "weekend" | "offroad" | "mtb";
   /** Trip points the planner moved: one inside the National Zoo goes to its bike racks. */
   moved_points?: { index: number; asked: LonLat; routed: LonLat; reason: "zoo_racks"; note: string }[];
   geometry: { type: "LineString"; coordinates: LonLat[] };
@@ -539,6 +599,20 @@ export interface RouteResponse {
   hills_seek?: {
     candidates: number;
     chosen: number;
+    extra_climb_m: number;
+    extra_distance_m: number;
+    limited: "two_points" | "long_ride" | "timed_out" | "calm_first" | null;
+  } | null;
+  /**
+   * Present when the hills slider was past its middle on a ride type where that means "fine with
+   * hills" (every one but Mountain Goat; FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242): the router's
+   * routes compared with their climbing charge discounted by `weight`. Additive: older APIs leave it out.
+   */
+  hills_tolerate?: {
+    candidates: number;
+    chosen: number;
+    weight: number;
+    discount_s: number;
     extra_climb_m: number;
     extra_distance_m: number;
     limited: "two_points" | "long_ride" | "timed_out" | "calm_first" | null;
@@ -878,14 +952,15 @@ function looksLikeStations(body: unknown): body is NearbyStationsAnswer {
 }
 
 /**
- * The three nearest stations to a point to take a bike from (at least 3/4 full) or return one to
- * (at most 1/4 full). A POST, so the point is in the body and not in an address. Nothing about the
- * rider goes with it but the point, and the answer is kept nowhere.
+ * Three stations near a point to take a bike from (at least 3/4 full) or return one to (at most 1/4
+ * full), on the rider's way first when `toward` (the trip's other end) is given. A POST, so the
+ * points are in the body and not in an address. Nothing about the rider goes with it but the
+ * points, and the answer is kept nowhere.
  */
 export async function requestStations(
   point: LonLat,
   action: StationAction,
-  options: { fetchImpl?: FetchLike; signal?: AbortSignal } = {},
+  options: { fetchImpl?: FetchLike; signal?: AbortSignal; toward?: LonLat | null } = {},
 ): Promise<StationsResult> {
   const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
   let response: Response;
@@ -893,7 +968,8 @@ export async function requestStations(
     response = await fetchImpl("/api/bikeshare/stations", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ point, action }),
+      // `toward`, the trip's other end, puts the stations on the rider's way first.
+      body: JSON.stringify(options.toward ? { point, action, toward: options.toward } : { point, action }),
       signal: options.signal,
     });
   } catch {

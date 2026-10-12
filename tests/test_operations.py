@@ -253,7 +253,13 @@ def test_an_instance_admin_sees_the_stale_tasks_and_the_failed_jobs(client) -> N
     deployment_up_since(timedelta(days=90), now)
     # Everything but the backup has succeeded recently, so the page has exactly
     # one stale task to name rather than the whole list.
-    for task in ("weekly_rebuild", "membership_sweep", "degraded_guild_sweep", "worker_heartbeat"):
+    for task in (
+        "weekly_rebuild",
+        "membership_sweep",
+        "degraded_guild_sweep",
+        "worker_heartbeat",
+        "refresh_work_zones",
+    ):
         ScheduledRun.objects.create(
             task=task, started_at=now - timedelta(minutes=1), finished_at=now, succeeded=True
         )

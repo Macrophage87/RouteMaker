@@ -6,6 +6,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PointsList } from "./pointsList.ts";
 import type { PointRow } from "./geocode.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 const ROWS: PointRow[] = [
   { role: "Start", place: { name: "Lincoln Memorial", label: "Lincoln Memorial, Washington" }, coords: "38.8893, -77.0502" },
@@ -34,7 +35,7 @@ test("each Remove button says which point it removes", () => {
 });
 
 test("App shows the list from pointRows, with its removal and focus wiring", () => {
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   assert.match(app, /<PointsList\s+rows=\{pointRows\(points, namer, loopVias\)\}\s+onRemove=\{removeAt\}/);
   assert.match(app, /removeRefs\.current\[index\] = button;/);
 });

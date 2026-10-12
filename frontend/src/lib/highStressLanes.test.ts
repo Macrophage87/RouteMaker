@@ -31,6 +31,7 @@ import {
   HighStressLanesSwitch,
 } from "./highStressLanesSwitch.ts";
 import type { DescriptionEntry } from "./api.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 /** Whether a layer's filter draws a feature with these properties. */
 function draws(layerId: string, properties: Record<string, unknown>, showHigh: boolean, when?: string): boolean {
@@ -346,12 +347,13 @@ test("with no stress map the switch is still there, and its description says wha
 });
 
 test("the panel places the switch just before the High contrast switch, outside the overlay's block, telling it whether the map is there", () => {
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   // App.tsx is not rendered by a test: where it places the switch is read here. The sidebar's Map
-  // layers sheet has OWNER-DECISIONS 312's order: traffic stress, high-stress lanes, high contrast.
+  // layers sheet has OWNER-DECISIONS 312's order: traffic stress, then high-stress lanes; High contrast is in
+  // Settings, Display (UI-CLEANUP, the approved mockup's Layers and Menu).
   assert.match(
     app,
-    /\{stress === "unavailable" && \([\s\S]*?\)\}\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<HighStressLanesSwitch on=\{showHighLanes\} onChange=\{\(on\) => setHighStressLanes\(on\)\} overlay=\{stress === "available"\} massMap=\{massMap\} \/>\s*<AccessibilitySwitch/,
+    /\{stress === "unavailable" && <p[^\n]*<\/p>\}\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<HighStressLanesSwitch on=\{showHighLanes\} onChange=\{\(on\) => setHighStressLanes\(on\)\} overlay=\{stress === "available"\} massMap=\{massMap\} \/>\s*<\/section>/,
   );
   assert.equal((app.match(/<HighStressLanesSwitch /g) ?? []).length, 1, "drawn in one place only");
   assert.ok(FACILITIES.length === 3);
@@ -393,6 +395,6 @@ test("on the Mass Ride map the switch says the map draws no lanes, not that prot
   const html = renderToStaticMarkup(createElement(HighStressLanesSwitch, { on: false, onChange: () => {}, overlay: true, massMap: true }));
   assert.ok(html.includes(HIGH_STRESS_LANES_MASS_HINT.replace("'", "&#x27;")), html);
   assert.doesNotMatch(html, /always show/);
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const app = appSource();
   assert.match(app, /<HighStressLanesSwitch [^\n]*massMap=\{massMap\}/);
 });

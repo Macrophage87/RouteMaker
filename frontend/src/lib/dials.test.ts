@@ -20,6 +20,7 @@ import {
   fitDials,
   hillsMax,
   hillsWords,
+  seeksClimbs,
   startDials,
   stressWords,
   WHENS,
@@ -102,9 +103,9 @@ test("the request carries the dials, and the ride time only when chosen", () => 
 test("the words name both ends and the middle of each slider", () => {
   const ends = [stressWords(STRESS_MIN), stressWords(50), stressWords(STRESS_MAX)];
   assert.equal(new Set(ends).size, 3);
-  const hills = [hillsWords(HILLS_MIN), hillsWords(0), hillsWords(HILLS_MAX)];
+  const hills = [hillsWords(HILLS_MIN, false), hillsWords(0, false), hillsWords(HILLS_MAX, false)];
   assert.equal(new Set(hills).size, 3);
-  assert.match(hillsWords(0), /fastest/i);
+  assert.match(hillsWords(0, false), /fastest/i);
 });
 
 test("Mass Ride's traffic slider is locked at the most direct roadway", () => {
@@ -163,14 +164,22 @@ test("each word's range starts where the next one ends", () => {
   assert.equal(stressWords(STRESS_MAX - 1), "Calmest: detours many times the straight line to avoid busy roads");
   // The top is the least stressful route, aiming at the target distance (OWNER-DECISIONS 256, 271).
   assert.equal(stressWords(STRESS_MAX), "Calmest: the least stressful route, aiming at your target distance");
-  assert.equal(hillsWords(-80), "Avoids hills");
-  assert.equal(hillsWords(-79), "Gentler grades");
-  assert.equal(hillsWords(-11), "Gentler grades");
-  assert.equal(hillsWords(-10), "Fastest time");
-  assert.equal(hillsWords(10), "Fastest time");
-  assert.equal(hillsWords(11), "Some extra climbing");
-  assert.equal(hillsWords(79), "Some extra climbing");
-  assert.equal(hillsWords(80), "Seeks hills");
+  for (const climbs of [true, false]) {
+    assert.equal(hillsWords(-80, climbs), "Avoids hills");
+    assert.equal(hillsWords(-79, climbs), "Gentler grades");
+    assert.equal(hillsWords(-11, climbs), "Gentler grades");
+    assert.equal(hillsWords(-10, climbs), "Fastest time");
+    assert.equal(hillsWords(10, climbs), "Fastest time");
+  }
+  // Mountain Goat seeks climbs; every other ride type is fine with hills (OWNER-DECISIONS 242).
+  assert.equal(hillsWords(11, true), "Some extra climbing");
+  assert.equal(hillsWords(79, true), "Some extra climbing");
+  assert.equal(hillsWords(80, true), "Seeks hills");
+  assert.equal(hillsWords(11, false), "Hills matter less");
+  assert.equal(hillsWords(79, false), "Hills matter less");
+  assert.equal(hillsWords(80, false), "Fine with hills");
+  assert.ok(seeksClimbs("mountain-goat"));
+  assert.ok(!seeksClimbs("default") && !seeksClimbs("ebike") && !seeksClimbs("trailmaxxing"));
 });
 
 test("only Cargo Bike carries a load", () => {
@@ -235,6 +244,6 @@ test("every ride type starts where it planned before the rescale, Trailmaxxing a
   // Cargo-carrying-people stays at 80".
   assert.deepEqual(
     Object.fromEntries(PRESETS.map((p) => [p.id, STARTS[p.id].stress])),
-    { default: 70, trailmaxxing: 100, "group-ride": 40, "mass-ride": 0, "mountain-goat": 40, gravel: 40, fast: 10, cargo: 70, ebike: 70, bikeshare: 80, kids: 100 },
+    { default: 70, trailmaxxing: 100, "group-ride": 40, "mass-ride": 0, "mountain-goat": 40, "mountain-bike": 80, gravel: 40, fast: 10, cargo: 70, ebike: 70, bikeshare: 80, kids: 100 },
   );
 });

@@ -25,6 +25,7 @@ import { PRESETS } from "./presets.ts";
 import { BIKESHARE_HILLS, dialFields, fitDials, offersAssist, offersBike, startDials } from "./dials.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
 import { loopView } from "./loop.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 const SRC = new URL("../", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, SRC), "utf8");
@@ -130,7 +131,7 @@ test("an ordinary route shows no bikeshare credit", () => {
 test("the plan's own panel prints the plan's credit, and the app's route credit line uses routeCredits", () => {
   const panel = read("BikeshareSummary.tsx");
   assert.match(panel, /\{plan\.credit\}/);
-  const app = read("App.tsx");
+  const app = appSource();
   assert.match(app, /routeCredits\(route\)/);
   assert.doesNotMatch(app, /route\.attribution\.join/);
 });
@@ -371,5 +372,5 @@ test("Bikeshare offers no loop: it plans a walk, a ride between docks and a walk
 });
 
 test("the points panel says Bikeshare takes a start and an end only", () => {
-  assert.match(read("App.tsx"), /Bikeshare plans take a start and an end only/);
+  assert.match(appSource(), /Bikeshare plans take a start and an end only/);
 });

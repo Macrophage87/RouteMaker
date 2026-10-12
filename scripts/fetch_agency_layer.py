@@ -36,6 +36,10 @@ from pathlib import Path
 
 ITEM_BASE = "https://www.arcgis.com/sharing/rest/content/items"
 USER_AGENT = "RouteMaker-data-fetch/1.0 (bike route planner)"
+NO_LICENCE = (
+    "(the item carries no licence text: the licence must be confirmed with the "
+    "publisher before anything derived from this layer ships)"
+)
 RETRIES = 3
 
 
@@ -65,16 +69,60 @@ def strip_html(text: str | None) -> str:
     return re.sub(r"\s+", " ", html.unescape(plain)).strip()
 
 
+def service_item(layer: str) -> dict:
+    """The service's own item info (`<service>/info/iteminfo`), for a layer with
+    no ArcGIS Online item: its title, credit and licence fields, which may be
+    empty. An empty dict where the server does not offer it; the README then
+    says so."""
+    service = layer.rstrip("/").rsplit("/", 1)[0]
+    try:
+        info = _get(f"{service}/info/iteminfo", {"f": "json"})
+    except RuntimeError:
+        return {}
+    return info if isinstance(info, dict) else {}
+
+
+def parse_bbox(text: str) -> tuple[float, float, float, float]:
+    """`west,south,east,north` in degrees, refused unless it is a real box."""
+    try:
+        west, south, east, north = (float(part) for part in text.split(","))
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"--bbox wants west,south,east,north: {text!r}") from None
+    if not (-180 <= west < east <= 180 and -90 <= south < north <= 90):
+        raise argparse.ArgumentTypeError(f"--bbox is not a box: {text!r}")
+    return west, south, east, north
+
+
+def spatial_filter(bbox: tuple[float, float, float, float] | None) -> dict[str, str]:
+    """The query parameters that keep only features touching `bbox`, or none."""
+    if bbox is None:
+        return {}
+    return {
+        "geometry": ",".join(repr(value) for value in bbox),
+        "geometryType": "esriGeometryEnvelope",
+        "inSR": "4326",
+        "spatialRel": "esriSpatialRelIntersects",
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--slug", required=True)
-    parser.add_argument("--item", required=True, help="the ArcGIS item id")
+    # Optional for a layer published on an agency's own ArcGIS Server with no
+    # ArcGIS Online item (DDOT's Pavement Condition Index on DC GIS, DC-PCI):
+    # the README then records the service's own item info and says plainly that
+    # no licence was stated, for the owner to confirm before the data ships.
+    parser.add_argument("--item", default=None, help="the ArcGIS item id, where there is one")
     parser.add_argument("--layer", required=True, help="the layer URL, ending in its id")
     parser.add_argument("--out-dir", required=True, type=Path)
     parser.add_argument("--credit", required=True)
     parser.add_argument("--order-by", default="OBJECTID")
     parser.add_argument("--where", default="1=1")
     parser.add_argument("--note", default="")
+    # Only the features that touch this box (west,south,east,north in WGS 84):
+    # a statewide layer clipped to the coverage area (`settings.COVERAGE_BBOX`),
+    # so the stored file is the region's and not, say, the Eastern Shore's.
+    parser.add_argument("--bbox", type=parse_bbox, default=None)
     # Where an item's metadata is read from; a test points it at a local server.
     parser.add_argument("--item-base", default=ITEM_BASE, help=argparse.SUPPRESS)
     args = parser.parse_args()
@@ -86,10 +134,15 @@ def main() -> int:
         return 2
     directory.mkdir(parents=True, exist_ok=True)
 
-    item = _get(f"{args.item_base}/{args.item}", {"f": "json"})
+    if args.item:
+        item = _get(f"{args.item_base}/{args.item}", {"f": "json"})
+    else:
+        item = service_item(args.layer)
     meta = _get(args.layer, {"f": "json"})
+    clip = spatial_filter(args.bbox)
     expected = _get(
-        f"{args.layer}/query", {"where": args.where, "returnCountOnly": "true", "f": "json"}
+        f"{args.layer}/query",
+        {"where": args.where, "returnCountOnly": "true", "f": "json", **clip},
     )["count"]
     page = int(meta.get("maxRecordCount") or 1000)
     retrieved = datetime.now(UTC)
@@ -111,6 +164,7 @@ def main() -> int:
                     "resultOffset": str(offset),
                     "resultRecordCount": str(page),
                     "f": "geojson",
+                    **clip,
                 },
             )
             features = body.get("features", [])
@@ -128,7 +182,16 @@ def main() -> int:
 
     licence_html = item.get("licenseInfo") or ""
     modified = datetime.fromtimestamp(item.get("modified", 0) / 1000, UTC)
-    readme = f"""# {item.get("title")}
+    if args.item:
+        item_line = (
+            f"`{args.item}`, <https://www.arcgis.com/home/item.html?id={args.item}> "
+            f"(modified {modified:%Y-%m-%d})"
+        )
+    else:
+        item_line = "none: the layer is on the agency's own server; the service's item info " + (
+            "is recorded below" if item else "was not offered"
+        )
+    readme = f"""# {item.get("title") or args.slug}
 
 | | |
 | --- | --- |
@@ -136,15 +199,15 @@ def main() -> int:
 | sha256 | `{digest}` |
 | Retrieved (UTC) | {retrieved:%Y-%m-%d %H:%M:%S} |
 | Source layer | <{args.layer}> |
-| ArcGIS item | `{args.item}`, <https://www.arcgis.com/home/item.html?id={args.item}> (modified {modified:%Y-%m-%d}) |
-| Query | `where={args.where}`, `outFields=*`, `outSR=4326`, `f=geojson`, ordered by `{args.order_by}`, pages of {page} |
+| ArcGIS item | {item_line} |
+| Query | `where={args.where}`, `outFields=*`, `outSR=4326`, `f=geojson`, ordered by `{args.order_by}`, pages of {page}{f", features touching the box {args.bbox} (W, S, E, N)" if args.bbox else ""} |
 | Features | {written:,} stored; the service reported {expected:,} ({pages} pages) |
 | Credit (item `accessInformation`) | {item.get("accessInformation") or "(none)"} |
 | Required credit line | {args.credit} |
 
 Licence, verbatim from the item's `licenseInfo` as plain text:
 
-> {strip_html(licence_html) or "(the item carries no licence text)"}
+> {strip_html(licence_html) or NO_LICENCE}
 
 The raw `licenseInfo` HTML, for the record:
 

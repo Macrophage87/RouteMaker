@@ -34,6 +34,8 @@ CONTRACT_PRESETS = {
     "bikeshare",
     # FOLLOWUP-KIDS-PRESET (OWNER-DECISIONS 240 (B)).
     "kids",
+    # docs/MTB-TOPO-PLAN.md, slice 6 (OWNER-DECISIONS 90, 111, 148, 454).
+    "mountain-bike",
 }
 
 # The factor dials Valhalla reads on a 0..1 scale; outside it the service
@@ -173,6 +175,7 @@ def _front_end_starts() -> dict[str, dict]:
             if found:
                 row[key] = int(found.group(1))
         row["seek"] = "seek: true" in body
+        row["climbs"] = "climbs: true" in body
         row["assist"] = "assist: true" in body
         carrying = re.search(r"carrying: \{ cargo: (\d+), people: (\d+) \}", body)
         if carrying:
@@ -193,6 +196,7 @@ def test_the_front_ends_starts_are_the_apis() -> None:
         assert row["stress"] == presets.stress_start(name), name
         assert row["hills"] == preset.hills, name
         assert row["seek"] == preset.hills_seek, name
+        assert row["climbs"] == (not preset.hills_tolerate), name
         assert row.get("stressMax", presets.STRESS_MAX) == preset.stress_max, name
         assert row["assist"] == (preset.assist_speed_kmh is not None), name
         if preset.carrying is None:
@@ -295,10 +299,23 @@ def test_gravel_has_no_surface_avoidance() -> None:
 
 
 def test_ebike_routes_on_the_ebike_variant() -> None:
-    """ "L1: e-bike variant. L2: mid use_hills"."""
+    """ "L1: e-bike variant"; its hills slider starts toward "fine with hills" (242), where
+    `use_hills` stays at the detent's 1.0."""
     assert presets.PRESETS["ebike"].variant == Variant.EBIKE.value
-    assert options("ebike")["use_hills"] == 0.5
+    assert presets.PRESETS["ebike"].hills == presets.EBIKE_HILLS > 0
+    assert options("ebike")["use_hills"] == 1.0
     assert options("ebike")["cycling_speed"] > 18.0
+
+
+def test_only_mountain_goat_seeks_climbs() -> None:
+    """FOLLOWUP-HILLS-TOLERATE (242): the right half is "fine with hills" on every ride
+    type but Mountain Goat."""
+    assert {n for n, p in presets.PRESETS.items() if not p.hills_tolerate} == {"mountain-goat"}
+
+
+@pytest.mark.parametrize(("hills", "weight"), [(-50, 0.0), (0, 0.0), (50, 0.5), (100, 1.0)])
+def test_the_tolerate_weight_is_the_right_half_over_100(hills: int, weight: float) -> None:
+    assert presets.tolerate_weight(hills) == weight
 
 
 @pytest.mark.parametrize("name", ["trailmaxxing", "mountain-goat", "gravel"])
@@ -385,6 +402,8 @@ def test_every_ride_types_brake_grade_is_the_owners_approved_table() -> None:
         # kids"), the cargo bike's 3%.
         "kids": 0.03,
         "mountain-goat": None,
+        # Mountain Bike (slice 6): a rider who chose it wants the descent, as Mountain Goat.
+        "mountain-bike": None,
         "fast": None,
     }
     assert dict(presets.BRAKE_GRADES) == approved
@@ -559,3 +578,37 @@ class TestRidingWithKids:
         assert options("kids")["use_living_streets"] == 1.0
         assert options("kids")["bicycle_type"] == "Hybrid"
         assert not presets.PRESETS["kids"].long_calm
+
+
+class TestMountainBike:
+    """docs/MTB-TOPO-PLAN.md, slice 6: "Mountain Goat and Mountain Bike are separate modes"
+    (OWNER-DECISIONS 148), with the defaults the owner approved on 2026-10-11."""
+
+    def test_a_ride_type_of_its_own_on_its_own_graph(self) -> None:
+        mtb = presets.PRESETS[presets.MOUNTAIN_BIKE]
+        assert mtb.variant == Variant.MTB.value
+        assert mtb.variant != presets.PRESETS["mountain-goat"].variant
+        for when in ("weekend", "weekday_rush", "weekday_offpeak", "night"):
+            assert presets.variant_for_ride(presets.MOUNTAIN_BIKE, when) == Variant.MTB.value
+        # Trails off is trails off, on this ride type too.
+        assert presets.variant_for_ride(presets.MOUNTAIN_BIKE, "weekend", trails_off=True) == (
+            Variant.NO_TRAIL.value
+        )
+        assert presets.MOUNTAIN_BIKE not in presets.OFFROAD_PRESETS
+
+    def test_it_seeks_trails_and_takes_every_surface(self) -> None:
+        mtb = presets.PRESETS[presets.MOUNTAIN_BIKE]
+        options = mtb.costing_options
+        assert options["bicycle_type"] == "Mountain"
+        assert options["avoid_bad_surfaces"] == 0.0
+        # Stress 80 (the old top): roads priced well over paths, LTS 3 and 4 kept dear.
+        assert mtb.stress == presets.STRESS_TODAYS_TOP
+        assert options["use_roads"] <= presets.PRESETS["default"].costing_options["use_roads"]
+        assert mtb.exposure == presets.EXPOSURE_STRESS_AVERSE
+
+    def test_fine_with_hills(self) -> None:
+        mtb = presets.PRESETS[presets.MOUNTAIN_BIKE]
+        assert mtb.hills == presets.MTB_HILLS == 50
+        assert mtb.hills_seek
+        # A rider who chose it wants the descent, as Mountain Goat's.
+        assert mtb.brake_grade is None

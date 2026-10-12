@@ -30,6 +30,23 @@ if _ROUTEMAKER_GRAPH_LOADED then
 end
 _ROUTEMAKER_GRAPH_LOADED = true
 
+-- This project's remap loads first, before upstream installs a single global.
+-- Valhalla runs this file with luaL_dostring and ignores its result
+-- (src/mjolnir/luatagtransform.cc:50 at 3.9.1), then checks only that the
+-- three `*_proc` globals exist. So an error raised *after* upstream's file
+-- had run left upstream's own entry points in place, and a remap that failed
+-- to load (a syntax error, a missing file) built every graph with the stock
+-- transform and one line in the log (FOLLOWUP-VALHALLA-36-LEFTOVERS, item 2;
+-- checked with valhalla_build_tiles 3.9.1, tests/test_tile_build_access.py).
+-- Loaded first, a failure here leaves no entry point at all, and Valhalla
+-- refuses the script ("Lua script does not contain a function" and the name).
+local remap_ok, remap = pcall(require, "routemaker_remap")
+if not remap_ok or type(remap) ~= "table" then
+  error(
+    "RouteMaker: lua/routemaker_remap.lua did not load from " .. ROOT .. ": " .. tostring(remap)
+  )
+end
+
 local ok, err = pcall(require, "graph_upstream")
 if not ok then
   error(
@@ -53,12 +70,13 @@ if type(up_ways) ~= "function" or type(up_nodes) ~= "function" or type(up_rels) 
       .. "contract has changed and this wrapper needs updating with it."
   )
 end
+-- And taken down again until this file defines its own below, so that nothing
+-- failing between here and there can leave upstream's serving as this file's.
+ways_proc, nodes_proc, rels_proc = nil, nil, nil
 
 -- `rel_members_proc` is upstream's fourth entry point and nothing here modifies
 -- relation membership, so it is deliberately left as upstream installed it
 -- rather than wrapped. Overwriting the other three does not disturb it.
-
-local remap = require("routemaker_remap")
 
 -- Derived values arrive as `rm:*` tags, namespaced so they cannot collide with
 -- real OSM keys, and are stripped before the transform returns.
@@ -67,6 +85,7 @@ local function derived_from(kv)
   if kv["rm:stress_tier"] then derived.stress_tier = tonumber(kv["rm:stress_tier"]) end
   if kv["rm:stress_half"] then derived.stress_half = kv["rm:stress_half"] == "yes" end
   if kv["rm:reviewer_surface"] then derived.reviewer_surface_penalty = kv["rm:reviewer_surface"] end
+  if kv["rm:pci"] then derived.pci = kv["rm:pci"] end
   if kv["rm:bridge_bicycle"] then derived.bridge_bicycle_legal = kv["rm:bridge_bicycle"] == "yes" end
   if kv["rm:lit"] then derived.lit = kv["rm:lit"] == "yes" end
   if kv["rm:trail_class"] then derived.is_trail_class = kv["rm:trail_class"] == "yes" end
@@ -103,9 +122,9 @@ end
 -- A change whose value is the remap's REMOVE sentinel deletes the tag. Applied
 -- here rather than in the remap because a Lua table cannot hold a nil value, so
 -- "remove this key" cannot be expressed in the table the remap returns.
-local function apply(kv, changes)
+local function apply(kv, changes, allowed)
   for key, value in pairs(changes) do
-    if remap.FORBIDDEN_KEYS[key] then
+    if remap.FORBIDDEN_KEYS[key] and not (allowed and allowed[key] == value) then
       -- `highway` and `maxspeed` set hierarchy level, shortcut building, the
       -- road-class factor, A* pruning and whether Odin emits a maneuver at all.
       -- The write is dropped and the way keeps the class it arrived with.
@@ -159,7 +178,9 @@ function nodes_proc(kv, nokeys)
   if remap.denies_bicycle_at_border(kv, changes) and next(changes) ~= nil then
     remap.record_violation(kv, "the remap would deny bicycle access at a border-control node")
   else
-    apply(kv, changes)
+    -- A node may write `highway=traffic_signals` (remap.derives_signal), the one
+    -- class write the parser reads as a signal flag and nothing else.
+    apply(kv, changes, remap.NODE_WRITES_ALLOWED)
   end
   strip_namespace(kv)
   local filter, out = up_nodes(kv, nokeys)

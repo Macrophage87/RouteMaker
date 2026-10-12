@@ -22,7 +22,7 @@ import {
   workerCaches,
 } from "./swCore.mjs";
 import { installKillSwitch, kill } from "./swKill.mjs";
-import { buildIdFor, killSource, plainScript, precacheList, workerSource } from "./swPlugin.mjs";
+import { buildIdFor, killSource, lazyList, plainScript, precacheList, workerSource } from "./swPlugin.mjs";
 
 const ORIGIN = "https://routes.example.org";
 const nav = (path) => ({ method: "GET", url: `${ORIGIN}${path}`, mode: "navigate" });
@@ -402,4 +402,56 @@ test("the build id changes with any written file or index.html, and not with the
 
 test("the precache list is the build's assets only: not index.html, the worker, the licence notices or the public files", () => {
   assert.deepEqual(precacheList(["index.html", "sw.js", "licenses.txt", "assets/b.js", "assets/a.css", "favicon.svg", "icons/icon-192.png"]), ["/assets/a.css", "/assets/b.js"]);
+});
+
+test("the Find food places and the climbs are left out of the precache and listed as lazy: an install does not download them", () => {
+  const names = ["index.html", "assets/index-1.js", "assets/food-Ab12.json", "assets/climbs-Cd34.json", "assets/water-restrooms-9.json"];
+  assert.deepEqual(precacheList(names), ["/assets/index-1.js", "/assets/water-restrooms-9.json"]);
+  assert.deepEqual(lazyList(names), ["/assets/climbs-Cd34.json", "/assets/food-Ab12.json"]);
+  assert.equal(ruleFor(get("/assets/food-Ab12.json"), ORIGIN), "lazy");
+  assert.equal(ruleFor(get("/assets/climbs-Cd34.json"), ORIGIN), "lazy");
+  assert.equal(ruleFor(get("/assets/foodish.js"), ORIGIN), "precache");
+  assert.equal(ruleFor(get("/assets/climbs-Cd34.js"), ORIGIN), "precache");
+});
+
+test("install does not fetch a lazy asset", async () => {
+  const scope = fakeScope({ network: site("b1") });
+  installWorker(scope, { buildId: "b1", assets: ASSETS, lazy: ["/assets/food-1.json"] });
+  const { settled } = await scope.dispatch("install");
+  assert.equal(settled[0].status, "fulfilled");
+  assert.ok(!scope.log.some(([what, url]) => what === "fetch" && url.endsWith("/assets/food-1.json")));
+  assert.equal(scope.stores.get(buildCache("b1")).has(`${ORIGIN}/assets/food-1.json`), false);
+});
+
+test("a lazy asset: fetched on first use and kept, then answered from the cache (offline too)", async () => {
+  let down = false;
+  const up = site("b1");
+  const scope = fakeScope({ network: (url, request) => (down ? Promise.reject(new TypeError("Failed to fetch")) : up(url, request)) });
+  installWorker(scope, { buildId: "b1", assets: [], lazy: ["/assets/food-1.json"] });
+  const first = await scope.dispatch("fetch", { request: get("/assets/food-1.json") });
+  assert.equal((await first.responded).label, "network");
+  await Promise.all(first.settled);
+  assert.ok(scope.stores.get(buildCache("b1")).has(`${ORIGIN}/assets/food-1.json`));
+  down = true;
+  const again = await scope.dispatch("fetch", { request: get("/assets/food-1.json") });
+  assert.equal((await again.responded).label, "network");
+});
+
+test("a lazy asset is not kept when the edge refuses it", async () => {
+  const scope = fakeScope({ network: async () => new FakeResponse("no", 404, "missing") });
+  const answer = await respond(scope, "lazy", get("/assets/food-1.json"), "b1");
+  assert.equal(answer.status, 404);
+  assert.equal(scope.stores.get(buildCache("b1")).has(`${ORIGIN}/assets/food-1.json`), false);
+});
+
+test("an update carries a lazy asset the rider already has, when the new build's file is the same; a changed file waits", async () => {
+  const scope = fakeScope({ network: site("b2") });
+  scope.stores.set(buildCache("b1"), new Map([[`${ORIGIN}/assets/food-1.json`, new FakeResponse("f", 200, "kept-food")]]));
+  await precache(scope, "b2", ASSETS, ["/assets/food-1.json"]);
+  assert.equal(scope.stores.get(buildCache("b2")).get(`${ORIGIN}/assets/food-1.json`)?.label, "kept-food");
+  const changed = fakeScope({ network: site("b3") });
+  changed.stores.set(buildCache("b1"), new Map([[`${ORIGIN}/assets/food-1.json`, new FakeResponse("f", 200, "kept-food")]]));
+  await precache(changed, "b3", ASSETS, ["/assets/food-2.json"]);
+  assert.equal(changed.stores.get(buildCache("b3")).has(`${ORIGIN}/assets/food-1.json`), false);
+  assert.equal(changed.stores.get(buildCache("b3")).has(`${ORIGIN}/assets/food-2.json`), false);
 });

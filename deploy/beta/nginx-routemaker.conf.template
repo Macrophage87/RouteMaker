@@ -288,7 +288,7 @@ server {
     }
 
     # --- preset links (Caddyfile @preset-*) ----------------------------------------
-    location ~ ^/(default|trailmaxxing|group-ride|mass-ride|mountain-goat|gravel|fast|cargo|ebike|bikeshare|kids)/?$ {
+    location ~ ^/(default|trailmaxxing|group-ride|mass-ride|mountain-goat|mountain-bike|gravel|fast|cargo|ebike|bikeshare|kids)/?$ {
         return 302 "/#preset=$1";
     }
 
@@ -300,7 +300,7 @@ server {
     }
 
     # --- the base map (Caddyfile handle_path /basemap/*) -----------------------------
-    # Same-origin only, and only the three paths the app asks for; any other path is a
+    # Same-origin only, and only the paths the app asks for; any other path is a
     # 404 for this site's own pages and a 403 for anyone else. pmtiles is read with
     # Range requests, which nginx answers natively.
     location = /basemap/region.pmtiles {
@@ -310,6 +310,20 @@ server {
             return 403;
         }
         alias @DATA_ROOT@/basemap/region.pmtiles;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+        add_header Strict-Transport-Security "max-age=86400" always;
+        add_header Cache-Control "private, no-cache" always;
+    }
+
+    # The topo lines' contours (scripts/build_contours.py; frontend/src/lib/topoLines.ts), as the
+    # Caddyfile serves them: same-origin, revalidated, a 404 until the build host writes the file.
+    location = /basemap/contours.pmtiles {
+        if ($rmbeta_basemap_foreign) {
+            add_header Cache-Control "no-store" always;
+            add_header X-Robots-Tag "noindex, nofollow" always;
+            return 403;
+        }
+        alias @DATA_ROOT@/basemap/contours.pmtiles;
         add_header X-Robots-Tag "noindex, nofollow" always;
         add_header Strict-Transport-Security "max-age=86400" always;
         add_header Cache-Control "private, no-cache" always;

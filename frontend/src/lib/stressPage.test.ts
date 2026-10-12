@@ -201,7 +201,12 @@ test("what is not built is marked planned", () => {
   assert.match(page, /<h3>Half steps<\/h3>/);
   assert.doesNotMatch(page, /<h3>Crossing costs<\/h3>/);
   const junctions = page.match(/<h2 id="junctions">[\s\S]*?<\/section>/)?.[0].replace(/\s+/g, " ") ?? "";
-  assert.match(junctions, /count for more at weekday rush hours \(7 to 10 AM and 4 to 7 PM\), a little less on weekend days, and less again at night \(9 PM to 7 AM, every day\)/);
+  assert.match(junctions, /count for more at weekday rush hours \(7 to 10 AM and 4 to 7 PM\), a little less on weekend days, and less at night \(9 PM to 7 AM, every day\)/);
+  // Night is x0.85 everywhere until the rebuild brings the urban flag, then x0.5 in town
+  // (469d, 469e): the page claims neither "less again" than the weekend nor "most in towns".
+  assert.doesNotMatch(junctions, /less again|most of all in towns/);
+  // Each junction's own cost in calm miles (467), and the ride time in words (468a).
+  assert.match(junctions, /own cost in calm miles, for example "Costs 0\.74 calm mi \(1\.19 calm km\), more at rush hour"/);
   assert.doesNotMatch(junctions, /[Pp]lanned|will cost/);
   assert.doesNotMatch(text, /proposed but not yet confirmed|proposed rush-hour/);
   assert.doesNotMatch(text, /Its details are still to be confirmed|single setting/);

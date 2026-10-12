@@ -146,6 +146,7 @@ def run_pipeline(
     sidepath=(),
     volume=(),
     roadway=(),
+    pavement=(),
     legality=(),
     crossings=(),
     skip: frozenset[Stage] = frozenset(),
@@ -159,6 +160,7 @@ def run_pipeline(
         sidepath=sidepath,
         volume=volume,
         roadway=roadway,
+        pavement=pavement,
         legality=legality,
         crossings=crossings,
     )
@@ -659,7 +661,8 @@ def test_rated_singletrack_open_but_for_its_rating_is_drawn_on_the_mtb_layer_wit
     """OWNER-DECISIONS 456 (docs/MTB-TOPO-PLAN.md, slice 2), through the rebuild: singletrack
     with a bicycle tag, which nothing but its rating closes, is drawn (map class road) as a
     mountain-bike-only way with its level and no path rail, so only the mountain-bike layer
-    draws it; every graph still closes it."""
+    draws it; every graph but Mountain Bike's still closes it (that graph keeps it open and
+    the plan-time level gate in core.mtb holds a rider to their hardest level)."""
     from pipeline.extract import read_ways
 
     tags = {
@@ -674,7 +677,8 @@ def test_rated_singletrack_open_but_for_its_rating_is_drawn_on_the_mtb_layer_wit
     for variant in Variant:
         found = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
         if SINGLETRACK_ID in found:
-            assert found[SINGLETRACK_ID].get("rm:no_bicycle") == "singletrack", variant.value
+            want = None if variant is Variant.MTB else "singletrack"
+            assert found[SINGLETRACK_ID].get("rm:no_bicycle") == want, variant.value
     with connection.cursor() as cursor:
         cursor.execute(
             f"SELECT DISTINCT map_class, mtb_only, mtb_level, facility, trail_route, mtb_name "
@@ -1336,9 +1340,9 @@ def test_a_variant_that_fell_back_is_caught_even_when_another_logged_the_script(
 class AbortsOnce(FakeBinaries):
     """A fake whose tile build for one variant dies once with SIGABRT.
 
-    What Valhalla 3.5.1's thread-exit race does (valhalla/valhalla#5005): the
-    weekend graph on one attempt of a real rebuild, the offroad graph on the
-    next, from the same inputs.
+    What Valhalla 3.5.1's thread-exit race did (valhalla/valhalla#5005), fixed
+    in 3.6.0; the pinned 3.9.1 has the fix, so an abort is no longer retried
+    (FOLLOWUP-VALHALLA-36-LEFTOVERS, item 4).
     """
 
     def __init__(self, variant: str, **kwargs) -> None:
@@ -1366,37 +1370,22 @@ class AbortsOnce(FakeBinaries):
         return super().__call__(command)
 
 
-def test_a_graph_whose_tile_build_aborts_once_is_built_again(workspace, states) -> None:
-    """Only the crashed graph's valhalla_build_tiles runs again; the rebuild
-    goes on to validate, and every build used the build thread count."""
+def test_a_graph_whose_tile_build_aborts_fails_the_rebuild_at_once(workspace, states) -> None:
+    """The abort retry is retired (FOLLOWUP-VALHALLA-36-LEFTOVERS, item 4): the
+    crashed graph's valhalla_build_tiles runs once, the stage fails, and the
+    message carries no retry. Every build used the build thread count."""
     source, root = workspace
     binaries = AbortsOnce("offroad")
-    run_pipeline(source, root, binaries=binaries, skip=NOT_SWAPPED, build_id="aborted")
-
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, binaries=binaries, build_id="aborted")
+    assert caught.value.stage is Stage.BUILD_TILES
+    assert "valhalla_build_tiles exited -6: " in str(caught.value.cause)
+    assert "retry" not in str(caught.value.cause)
     builds = [c for c in binaries.calls if Path(c[0]).name == "valhalla_build_tiles"]
-    per_variant = {
-        variant.value: [c for c in builds if f"/{variant.value}/" in c[2]] for variant in Variant
-    }
-    assert len(per_variant["offroad"]) == 2, "the aborted build is run once more"
-    assert all(len(per_variant[v.value]) == 1 for v in Variant if v.value != "offroad")
-    admins = [c for c in binaries.calls if Path(c[0]).name == "valhalla_build_admins"]
-    assert len(admins) == 1, "nothing else is rerun"
+    assert len([c for c in builds if "/offroad/" in c[2]]) == 1, "not run again"
     for command in builds:
         mjolnir = json.loads(Path(command[2]).read_text())["mjolnir"]
         assert mjolnir["concurrency"] == settings.REBUILD_TILE_CONCURRENCY
-
-
-def test_a_graph_whose_tile_build_aborts_twice_fails_the_rebuild(workspace, states) -> None:
-    class AbortsAlways(AbortsOnce):
-        def __call__(self, command):
-            self.aborted = False
-            return super().__call__(command)
-
-    source, root = workspace
-    with pytest.raises(RebuildFailed) as caught:
-        run_pipeline(source, root, binaries=AbortsAlways("weekend"), build_id="twice")
-    assert caught.value.stage is Stage.BUILD_TILES
-    assert "exited -6" in str(caught.value.cause)
 
 
 class PerVariantGrade(FakeBinaries):
@@ -3587,6 +3576,66 @@ def test_the_input_provenance_reaches_the_segment_table(workspace, states) -> No
     assert stored[100]["blocks"] == ["dc-1"]
     # A way no block reached carries no provenance rather than an empty object.
     assert stored[200] is None
+
+
+def pci_block(block_id: str, pci: float, surveyed: str = "2026-02-27") -> dict:
+    """A row of `pavement.json` along the toy road's way 100 (DC-PCI)."""
+    return {
+        "id": block_id,
+        "coordinates": [[-77.02, 38.90], [-76.98, 38.90]],
+        "pci": pci,
+        "name": "TEST ROAD",
+        "surveyed": surveyed,
+    }
+
+
+def test_a_poor_pci_reaches_the_graph_as_its_band(workspace, states, monkeypatch) -> None:
+    """DDOT's PCI under 55 on a street reaches the variant extract as `rm:pci=poor`,
+    which lua/routemaker_remap.lua prices as the compacted class, and the
+    per-way report records it (once the owner has confirmed the licence)."""
+    from pipeline.extract import read_ways
+    from pipeline.run import DISCREPANCY_REPORT_DIR, PAVEMENT_REPORT_NAME
+    from routemaker import pavement
+
+    monkeypatch.setattr(pavement, "LICENCE_CONFIRMED", True)
+    source, root = workspace
+    context, _ = run_pipeline(source, root, pavement=[pci_block("p-1", 41.5)], skip=NOT_SWAPPED)
+    assert context.pci_by_way[100].applied == "poor"
+    tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(Variant.STANDARD))}
+    assert tags[100]["rm:pci"] == "poor"
+    assert all("rm:pci" not in t for way_id, t in tags.items() if way_id != 100)
+    report = (context.work_dir / DISCREPANCY_REPORT_DIR / PAVEMENT_REPORT_NAME).read_text()
+    assert "\n100,41.5,poor,pci,2026-02-27,p-1\n" in report
+
+
+def test_without_pci_blocks_the_rebuild_warns_and_tags_nothing(workspace, states, caplog) -> None:
+    from pipeline.extract import read_ways
+
+    source, root = workspace
+    with caplog.at_level(logging.WARNING, logger="pipeline.run"):
+        context, _ = run_pipeline(source, root, skip=NOT_SWAPPED)
+    assert "pavement.json" in caplog.text
+    assert context.pci_by_way == {}
+    tags = [w.tags for w in read_ways(context.variant_pbf(Variant.STANDARD))]
+    assert all("rm:pci" not in t for t in tags)
+
+
+def test_an_installed_pci_file_is_not_read_until_the_licence_is_confirmed(
+    workspace, states, caplog
+) -> None:
+    """The service states no licence (DC-PCI): while `pavement.LICENCE_CONFIRMED`
+    is False an installed `pavement.json` changes nothing in the graph."""
+    from pipeline.extract import read_ways
+    from routemaker import pavement
+
+    assert pavement.LICENCE_CONFIRMED is False, "flip it only with the owner's confirmation"
+    source, root = workspace
+    with caplog.at_level(logging.WARNING, logger="pipeline.run"):
+        context, _ = run_pipeline(source, root, pavement=[pci_block("p-1", 41.5)], skip=NOT_SWAPPED)
+    assert "installed but not read" in caplog.text
+    assert context.pci_by_way == {}
+    tags = [w.tags for w in read_ways(context.variant_pbf(Variant.STANDARD))]
+    assert all("rm:pci" not in t for t in tags)
 
 
 def test_without_street_blocks_the_rebuild_warns_and_classifies_from_osm(

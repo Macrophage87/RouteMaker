@@ -39,6 +39,7 @@ import {
   streetViewPoint,
   infoHeading,
   infoSaid,
+  moreLink,
   refreshedSaid,
   osmEditUrl,
   shownSections,
@@ -60,6 +61,9 @@ import { CHANGE_LTS_TEXT, NO_ME, fetchMe, type Me } from "./lib/stressEditor.ts"
 import { StressEditor } from "./StressEditor.tsx";
 import { SuggestChange } from "./SuggestChange.tsx";
 import { SUGGEST_TEXT } from "./lib/suggestions.ts";
+
+/** The one button that holds the ways to suggest, when there are two or more (UI-CLEANUP). */
+export const SUGGEST_MENU_TEXT = "Suggest a change…";
 import { SuggestJunction } from "./SuggestJunction.tsx";
 import { JUNCTION_SUGGEST_TEXT, findJunction, junctionNote, type JunctionAt, type Shown } from "./lib/junctionSuggest.ts";
 import { AVOID_CARD_HEADING, AVOID_SYMBOL, avoidCardText, type AvoidItem } from "./lib/avoidJunctions.ts";
@@ -159,6 +163,10 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, avo
   // node from the API, asked only for such a rider, and whether its form is open in place of the row.
   const [junction, setJunction] = useState<JunctionAt | null>(null);
   const [suggestingJunction, setSuggestingJunction] = useState(false);
+  // UI-CLEANUP (the mockup's control table): two or more ways to suggest are one "Suggest a change…" button
+  // that shows them; open, it stays open while a form opened from it is shown, so Back finds its button.
+  const [suggestMenu, setSuggestMenu] = useState(false);
+  const suggestMenuId = useId();
   const junctionButton = useRef<HTMLButtonElement>(null);
   const returnToJunction = useRef(false);
   // A Mass Ride's "Mark a hazard" form (HazardReport.tsx), open in place of the row.
@@ -198,6 +206,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, avo
     setReporting(false);
     setJunction(null);
     setSuggestingJunction(false);
+    setSuggestMenu(false);
     setReload(0);
     const controller = new AbortController();
     void fetchMe(window.location.origin).then((who) => {
@@ -371,6 +380,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, avo
   const links = station ? stationLinks(station, WMATA_SLUGS) : [];
   const where = request ? subtitle(state, request.origin) : "";
   const osmEdit = ready ? osmEditUrl(ready) : null;
+  const more = moreLink(ready);
   const actions = spotActions(plan.count, plan.loop);
   const editableWay = ready && me.can_change_lts && ready.osm_way_id != null ? ready.osm_way_id : null;
   // A rider the settings allow may suggest a level (an instance admin changes it instead).
@@ -386,6 +396,38 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, avo
   // A junction at the spot, for a rider who may suggest (an instance admin never suggests).
   const suggestJunction = me.can_suggest ? junction : null;
   const suggestingJunctionNow = suggestingJunction && suggestJunction !== null && !suggestingNow && !reportingNow;
+  const suggestCount = [suggestJunction, suggestWay, hazardWay].filter((way) => way !== null).length;
+  const suggestItems = (
+    <>
+              {suggestJunction !== null && (
+                <li>
+                  <button
+                    type="button"
+                    className="road-info-button"
+                    ref={junctionButton}
+                    aria-describedby={id("junction-note")}
+                    onClick={() => setSuggestingJunction(true)}
+                  >
+                    {JUNCTION_SUGGEST_TEXT}
+                  </button>
+                </li>
+              )}
+              {suggestWay !== null && (
+                <li>
+                  <button type="button" className="road-info-button" ref={suggestButton} onClick={() => setSuggesting(true)}>
+                    {SUGGEST_TEXT}
+                  </button>
+                </li>
+              )}
+              {hazardWay !== null && (
+                <li>
+                  <button type="button" className="road-info-button" ref={hazardButton} onClick={() => setReporting(true)}>
+                    {HAZARD_REPORT_TEXT}
+                  </button>
+                </li>
+              )}
+    </>
+  );
 
   return (
     <dialog
@@ -501,6 +543,15 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, avo
               </li>
             ))}
           </ul>
+        )}
+        {more && (
+          // A mountain-bike trail's MORE page: trailheads, trail info and the day's conditions (slice 6).
+          <p className="road-info-more">
+            <a href={more.url} target="_blank" rel="noopener noreferrer">
+              {more.label}
+              <span className="visually-hidden"> (opens in a new tab)</span>
+            </a>
+          </p>
         )}
         {station && links.length > 0 && (
           <div className="road-info-stations">
@@ -646,34 +697,26 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, avo
                   </button>
                 </li>
               )}
-              {suggestJunction !== null && (
+              {suggestCount >= 2 && (
                 <li>
                   <button
                     type="button"
-                    className="road-info-button"
-                    ref={junctionButton}
-                    aria-describedby={id("junction-note")}
-                    onClick={() => setSuggestingJunction(true)}
+                    className="road-info-button suggest-menu"
+                    aria-expanded={suggestMenu}
+                    aria-controls={suggestMenuId}
+                    onClick={() => setSuggestMenu(!suggestMenu)}
                   >
-                    {JUNCTION_SUGGEST_TEXT}
+                    {SUGGEST_MENU_TEXT}
                   </button>
                 </li>
               )}
-              {suggestWay !== null && (
-                <li>
-                  <button type="button" className="road-info-button" ref={suggestButton} onClick={() => setSuggesting(true)}>
-                    {SUGGEST_TEXT}
-                  </button>
-                </li>
-              )}
-              {hazardWay !== null && (
-                <li>
-                  <button type="button" className="road-info-button" ref={hazardButton} onClick={() => setReporting(true)}>
-                    {HAZARD_REPORT_TEXT}
-                  </button>
-                </li>
-              )}
+              {suggestCount < 2 && suggestItems}
             </ul>
+            {suggestCount >= 2 && (
+              <ul id={suggestMenuId} className="road-info-buttons road-info-suggest" aria-label="Suggest a change" hidden={!suggestMenu}>
+                {suggestItems}
+              </ul>
+            )}
             <p className="hint road-info-notes">
               <span aria-hidden="true">{STREET_VIEW_TEXT}: </span>
               <span id={id("sv-note")}>{STREET_VIEW_NOTE}</span>

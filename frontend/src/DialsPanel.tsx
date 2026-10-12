@@ -18,6 +18,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { PresetId } from "./lib/presets.ts";
 import { BIKESHARE_HILLS, RIDE_SIZE_DEFAULT, WHENS, fitRideSize, offersBike, rideSizeOf, type Bike, type Dials, type When } from "./lib/dials.ts";
 import { BIKES } from "./lib/bikeshare.ts";
+import { MTB_LEVEL_LEGEND, MTB_LEVEL_OPTIONS, isMtb, mtbLevelOf, withMtbLevel } from "./lib/mtbMode.ts";
 import { RIDE_SIZE_LABEL, panelView, parseTarget, type SliderView } from "./lib/dialsPanel.ts";
 import { defaultSplit, type StoredWeight } from "./lib/weight.ts";
 import { WeightSetting } from "./lib/weightDialog.ts";
@@ -249,6 +250,29 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
           <p className="hint">Choosing a bike moves the hills slider to where it starts for that bike.</p>
         </fieldset>
       )}
+      {isMtb(preset) && (
+        // Mountain Bike's hardest trail level (slice 6): four real radio buttons, each named by its level
+        // number, colour name and words, never by colour alone.
+        <fieldset className="mtb-level">
+          <legend>{MTB_LEVEL_LEGEND}</legend>
+          {MTB_LEVEL_OPTIONS.map((option) => (
+            <label key={option.level} className="toggle">
+              <input
+                type="radio"
+                name="mtb-level"
+                value={option.level}
+                checked={mtbLevelOf(dials) === option.level}
+                onChange={() => onCommit(withMtbLevel(dials, option.level))}
+              />
+              <span>
+                {option.label}
+                <span className="hint">{option.hint}</span>
+              </span>
+            </label>
+          ))}
+          <p className="hint">The route uses no trail harder than this where any other way exists, and says so where it must.</p>
+        </fieldset>
+      )}
       {view.assistToggle && (
         <label className="toggle">
           <input
@@ -323,8 +347,8 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
           On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway,
           are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only
           as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours
-          end at 9 PM. Crossing a busy road counts for more at rush hour, for less on weekends, and for less again
-          at night, most of all in towns and cities.
+          end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night,
+          when traffic is usually calmer. Each junction warning says when the time changed it.
         </p>
       </fieldset>
       {view.target && (

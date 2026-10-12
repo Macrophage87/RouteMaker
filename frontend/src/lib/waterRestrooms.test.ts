@@ -8,6 +8,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import * as spec from "@maplibre/maplibre-gl-style-spec";
 import {
   ALONG_ROUTE_M,
+  APPROXIMATE_DETAIL,
+  THRONE_CAUTION,
+  THRONE_DETAIL,
+  WATER_CAUTION,
   ALONG_ROUTE_TEXT,
   WATER_ICONS,
   WATER_LAYER,
@@ -452,4 +456,57 @@ test("the card says the kind, the name, the details and the caution", () => {
     caution: "From OpenStreetMap: check it is working before you count on it.",
   });
   assert.equal(waterCard({ id: "n2", lon: 0, lat: 0, toilet: "b" }).name, null);
+});
+
+test("a Throne smart restroom: how to open it first, and a list unit says it is not from OSM", () => {
+  const [osm, listed, water] = parseWaterRestrooms({
+    points: [
+      { id: "n7", x: -77, y: 38.9, t: "u", op: "Throne" },
+      { id: "throne-dc-dupont-circle", x: -77.04, y: 38.91, t: "f", n: "Throne, Dupont Circle", fee: "no", wc: "yes", op: "Throne", ap: 1 },
+      // Said of restrooms only, and only the one operator the file knows.
+      { id: "n8", x: -77, y: 38.8, w: "p", op: "Throne" },
+      { id: "n9", x: -77, y: 38.7, t: "f", op: "Other" },
+    ],
+  })!;
+  assert.equal(osm.operator, "Throne");
+  assert.equal(water.operator, undefined);
+  assert.equal(parseWaterRestrooms({ points: [{ id: "n9", x: -77, y: 38.7, t: "f", op: "Other" }] })![0].operator, undefined);
+  assert.deepEqual(waterCard(listed), {
+    kind: "Flush restroom",
+    name: "Throne, Dupont Circle",
+    details: [THRONE_DETAIL, APPROXIMATE_DETAIL, "Free.", "Wheelchair accessible."],
+    caution: THRONE_CAUTION,
+  });
+  // An OSM restroom marked as a Throne keeps the OSM caution.
+  assert.equal(waterCard(osm).caution, WATER_CAUTION);
+  assert.equal(waterCard(osm).details[0], THRONE_DETAIL);
+  // An OSM point sits where it was mapped: no approximate note.
+  assert.equal(osm.approximate, undefined);
+  assert.ok(!waterCard(osm).details.includes(APPROXIMATE_DETAIL));
+  assert.match(THRONE_DETAIL, /free/i);
+  assert.match(THRONE_DETAIL, /202-751-3694/);
+});
+
+test("the bundled file has the open Throne units, each a flush restroom", () => {
+  const points = parseWaterRestrooms(JSON.parse(readFileSync(new URL("../amenity-data/water-restrooms.json", import.meta.url), "utf8")))!;
+  const listed = points.filter((p) => p.id.startsWith("throne-"));
+  assert.ok(listed.length >= 1);
+  for (const p of listed) {
+    assert.equal(p.operator, "Throne");
+    assert.equal(p.toilet, "f");
+    // Placed from a street address: the card says the pin is approximate.
+    assert.equal(p.approximate, true);
+    assert.match(p.name ?? "", /^Throne, /);
+  }
+});
+
+test("the route's Water and restrooms fold lists the water along the route with the map layer off too (review of #96)", () => {
+  // The fold is route data, not map clutter: a rider turning the layer off must not hide it.
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
+  assert.match(app, /useEffect\(\(\) => \{\s*if \(routeShown\) void ensureWater\(\);\s*\}, \[routeShown, ensureWater\]\);/, "the file loads once a route is shown");
+  assert.match(app, /const waterAlong = useMemo\(\s*\(\) =>\s*waterData && shown\s*\?/, "the list does not wait for the layer");
+  assert.doesNotMatch(app, /waterOn && waterData && shown/);
+  assert.match(panel, /water=\{waterStatus === "ready" \? \{ items: waterAlong, onAddStop: addWaterStop \} : null\}/);
+  assert.doesNotMatch(panel, /waterOn && waterStatus/);
 });

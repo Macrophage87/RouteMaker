@@ -10,6 +10,7 @@
  * tests/test_presets.py reads STARTS and holds it equal to the API's table.
  */
 import type { PresetId } from "./presets.ts";
+import { DEFAULT_MTB_LEVEL, fitMtbLevel } from "./mtbMode.ts";
 
 export type When = "weekend" | "weekday_rush" | "weekday_offpeak" | "night";
 export type Carrying = "cargo" | "people";
@@ -58,6 +59,11 @@ export interface Dials {
   systemWeightKg?: number;
   /** "Make it a loop" (OWNER-DECISIONS 266); a ride ending where it starts is one without it. */
   loop?: boolean;
+  /**
+   * Mountain Bike only (docs/MTB-TOPO-PLAN.md, slice 6): the hardest trail level, 1 (green) to 4 (red).
+   * Absent is the default, level 2 (lib/mtbMode.ts DEFAULT_MTB_LEVEL).
+   */
+  mtbLevel?: number;
   /** Bikeshare only: the bike. Absent is classic. */
   bike?: Bike;
   /**
@@ -116,6 +122,11 @@ interface Start {
   hills: number;
   /** Mass Ride's hills slider stops at the fastest time (PLAN: the seek half is disabled). */
   seek: boolean;
+  /**
+   * Mountain Goat alone: the slider's right half seeks climbs. On every other ride type it means
+   * "fine with hills" (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242; `core.presets.Preset.hills_tolerate`).
+   */
+  climbs?: boolean;
   carrying?: Record<Carrying, number>;
   /** Mass Ride's traffic slider is locked at the most direct roadway (owner, 2026-09-27). */
   stressMax?: number;
@@ -156,11 +167,14 @@ export const STARTS: Record<PresetId, Start> = {
   trailmaxxing: { stress: 100, hills: 0, seek: true },
   "group-ride": { stress: 40, hills: -50, seek: true },
   "mass-ride": { stress: 0, hills: -95, seek: false, stressMax: 0 },
-  "mountain-goat": { stress: 40, hills: 100, seek: true },
+  "mountain-goat": { stress: 40, hills: 100, seek: true, climbs: true },
+  // Slice 6: the old top of the traffic slider, hills at "fine with hills" (core.presets MTB_HILLS).
+  "mountain-bike": { stress: 80, hills: 50, seek: true },
   gravel: { stress: 40, hills: 0, seek: true },
   fast: { stress: 10, hills: 0, seek: true },
   cargo: { stress: 70, hills: -60, seek: true, carrying: { cargo: 70, people: 80 }, assist: true },
-  ebike: { stress: 70, hills: -50, seek: true },
+  // Toward "fine with hills" (242): `core.presets.EBIKE_HILLS`.
+  ebike: { stress: 70, hills: 50, seek: true },
   // The classic bike's start; the e-bike's hills start is BIKESHARE_BIKES.ebike.hills.
   bikeshare: { stress: 80, hills: -60, seek: true, assist: true },
   // FOLLOWUP-KIDS-PRESET: the top of the traffic slider, hills well toward avoid.
@@ -195,6 +209,11 @@ export const CARRYINGS: readonly { id: Carrying; label: string; hint: string }[]
 /** What the load is called in a sentence: "carrying cargo", "cargo with passengers" (the label, lower case). */
 export function carryingWords(id: string): string {
   return CARRYINGS.find((c) => c.id === id)?.label.toLowerCase() ?? id;
+}
+
+/** Whether the hills slider's right half seeks climbs (Mountain Goat) rather than "fine with hills" (242). */
+export function seeksClimbs(preset: PresetId): boolean {
+  return STARTS[preset].climbs === true;
 }
 
 export function hillsMax(preset: PresetId): number {
@@ -338,6 +357,10 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     ...(dials.trailsOff === true ? { trailsOff: true } : {}),
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),
     ...(dials.loop === true ? { loop: true } : {}),
+    // The level, on Mountain Bike only, and only when it is not the default (the link stays short).
+    ...(preset === "mountain-bike" && fitMtbLevel(dials.mtbLevel) !== undefined && fitMtbLevel(dials.mtbLevel) !== DEFAULT_MTB_LEVEL
+      ? { mtbLevel: fitMtbLevel(dials.mtbLevel) }
+      : {}),
     ...(offersRideSize(preset) && fitRideSize(dials.rideSize) !== undefined && fitRideSize(dials.rideSize) !== RIDE_SIZE_DEFAULT
       ? { rideSize: fitRideSize(dials.rideSize) }
       : {}),
@@ -358,6 +381,9 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   // The API takes whole kilograms (core.api, StrictInt).
   if (weight !== undefined) fields.system_weight_kg = Math.round(weight);
   if (dials.loop) fields.loop = true;
+  // Mountain Bike's level (fitDials keeps it on that ride type alone); absent is level 2.
+  const level = fitMtbLevel(dials.mtbLevel);
+  if (level !== undefined) fields.mtb_level = level;
   if (dials.bike) fields.bike = dials.bike;
   if (dials.bike === "ebike" && dials.ending === "outside_dock") fields.ending = "outside_dock";
   if (dials.bike && dials.pickupStation) fields.pickup_station = dials.pickupStation;
@@ -397,10 +423,16 @@ export function stressWords(stress: number): string {
   return "Calmest: the least stressful route, aiming at your target distance";
 }
 
-export function hillsWords(hills: number): string {
+/**
+ * The words for a hills position. Right of the middle they depend on the ride type
+ * (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242): Mountain Goat seeks climbs (`climbs`),
+ * every other ride type is "fine with hills".
+ */
+export function hillsWords(hills: number, climbs: boolean): string {
   if (hills <= -80) return "Avoids hills";
   if (hills < -10) return "Gentler grades";
   if (hills <= 10) return "Fastest time";
+  if (!climbs) return hills < 80 ? "Hills matter less" : "Fine with hills";
   if (hills < 80) return "Some extra climbing";
   return "Seeks hills";
 }

@@ -350,6 +350,11 @@ scripts/beta/ship-data.sh --live-dir "$RM_LIVE_DIR" --build-frontend  "$RM_SSH_H
 ```
 
 With the image loaded this way, skip step 6's `build` line and run only its `pull` line.
+`ship-data.sh` does not carry the api image; after sending, it warns if the server has no image for
+the checkout's sha and prints the two lines above to send it.
+`frontend/node_modules` must be installed for Linux x64. In WSL with no Linux node, `npm ci` finds
+Windows npm and installs Windows bindings, which `--build-frontend` refuses; install it in the pinned
+node image instead (`scripts/beta/frontend-build.sh --print-image` names it), as the refusal shows.
 `--build-frontend` runs the front-end tests and builds it with the beta notice; `ship-data.sh` stops if
 neither it nor `--dist` is given. To add a "Report a problem" link to the notice (OWNER-DECISIONS 382,
 for example a Discord invite once there is one), the owner adds `--report-url https://...`; without it
@@ -1083,9 +1088,15 @@ scripts/beta/auto-release.sh install      # deployed tag: the one HEAD is at; re
 "$RM_STATE/cd/bin/auto-release.sh" status
 ```
 
+**Reinstall before v0.5.0.** An agent installed from v0.4.x keeps its own front-end build, which
+mounts only `frontend/`; v0.5.0's front-end tests read `src/` and `scripts/` too, so that agent would
+stop the api, fail the build and roll back on every front-end release. Once the beta runs v0.5.0
+(shipped by hand, or with the agent paused), run `auto-release.sh install` again from that checkout:
+it installs `frontend-build.sh` beside the agent, which builds with the whole tree mounted.
+
 `install` checks the user is in the docker group and not root, that the checkout is clean at an
 annotated release tag with the matching `TAG`, copies the agent (`auto-release.sh`, `cd_logic.py`,
-`receive-data.sh`) into `$RM_STATE/cd/bin` (so a release can never change the agent under a pass, and
+`receive-data.sh`, `frontend-build.sh`) into `$RM_STATE/cd/bin` (so a release can never change the agent under a pass, and
 a rollback to a release older than the agent still has the agent's no-sudo snapshot and restore),
 records the deployed tag and the beta notice's report link (`--report-url URL|none` if
 `beta-build.txt` is missing: give the one `ship-data.sh --report-url` used), writes
@@ -1114,8 +1125,19 @@ Optional settings, appended to `vars.sh` like any later decision (never a secret
 (OWNER-DECISIONS 436). While either is missing, a release that changes `frontend/` waits (status says which):
 
 - the pinned node image, `docker.io/library/node@sha256:363e1587494626837fa7f9a23bdb453d13b0ff3c67c705c2805cfc69c2d2fad7`
-  (the one `ship-data.sh --build-frontend` uses at home). Once, from home:
-  `docker save <that image> | gzip | ssh "$RM_SSH_HOST" 'gunzip | docker load'`.
+  (the one `ship-data.sh --build-frontend` uses at home). Once, from home, under a tag: `docker save` of the
+  bare digest loads on the server with no name, and the agent's lookup by digest then does not find it.
+
+  ```sh
+  # at home, with RM_SSH_HOST set to your alias for the server
+  N=docker.io/library/node@sha256:363e1587494626837fa7f9a23bdb453d13b0ff3c67c705c2805cfc69c2d2fad7
+  docker tag "$N" docker.io/library/node:rm-pinned-363e1587
+  docker save docker.io/library/node:rm-pinned-363e1587 | gzip | ssh "$RM_SSH_HOST" 'gunzip | docker load'
+  ssh "$RM_SSH_HOST" "docker image inspect $N -f '{{.Id}}'"   # prints an image id: the agent will find it
+  ```
+
+  If that prints an error instead of an id (a Docker that does not keep the digest through save and load), the
+  way left is the one the agent's status offers: the owner approves a `docker pull` of that digest on the server.
 - `node_modules` for the release's lockfile, at `$RM_STATE/cd/node_modules/<sha256 of frontend/package-lock.json>/node_modules`
   (status prints the exact path). From home, in a checkout at the release with `npm ci` done:
   `h=$(sha256sum frontend/package-lock.json | cut -c1-64); tar -C frontend -czf - node_modules | ssh "$RM_SSH_HOST" "d=\$HOME/routemaker-beta-state/cd/node_modules/$h; mkdir -p \$d.part && tar -C \$d.part -xzf - && mv -T \$d.part \$d"`.

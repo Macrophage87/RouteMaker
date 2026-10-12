@@ -57,6 +57,7 @@ import {
   followAccessibility,
   setRootClass,
 } from "./accessibilitySwitch.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 const TIERS = [1, 2, 3, 4, 5] as const;
 const colours = (name: "blended" | "twotone" | "cvd") => TIERS.map((n) => PALETTES[name][n].color);
@@ -510,7 +511,7 @@ test("the route's casing and the unrated grey follow the palette: the colour-bli
   assert.equal(unrated("cvd").color, UNRATED_CVD_COLOUR);
   assert.match(
     readFileSync(fileURLToPath(new URL("../FacilityBreakdown.tsx", import.meta.url)), "utf8"),
-    /const casing = routeCasing\(\);[\s\S]*stroke=\{casing\} strokeWidth=\{ROUTE_CASING_WIDTH\}/,
+    /const casing = routeCasing\(\);[\s\S]*stroke=\{casing\} strokeWidth=\{ROUTE_SWATCH_CASING_WIDTH\}/,
     "the route colour legend draws the same casing",
   );
 });
@@ -670,6 +671,9 @@ test("repaint wiring: the route's sections are cut again in the palette in use, 
       // is the route's magenta with the dash-dot mark, 397, so it has no dash layer of its own).
       "route-dash-m0 line-opacity",
       "route-dash-m1 line-opacity",
+      // The route's corridor (routeColours.ts, routeCorridorPaint): the wider casing and the white band.
+      "route-casing line-width",
+      "route-band line-opacity",
     ],
   );
   assert.equal(paint[1][2], 1, "the sections are shown, fully");
@@ -703,8 +707,8 @@ test("the map and the panel are wired to the switch: MapView repaints on it, the
   assert.match(mapView, /setRouteSections\(map, callbacks\.current\.route, callbacks\.current\.stale\)/);
   // The subscription is the effect's return value, so it is stopped with the component.
   assert.match(mapView, /useEffect\(\s*\(\) =>\s*subscribePalette\(/);
-  for (const name of ["App.tsx", "FacilityBreakdown.tsx"]) assert.match(src(name), /useStressStyle\(\)/, name);
-  const app = src("App.tsx");
+  for (const name of ["App.tsx", "app/RoutePanel.tsx", "FacilityBreakdown.tsx"]) assert.match(src(name), /useStressStyle\(\)/, name);
+  const app = appSource();
   assert.match(app, /<AccessibilitySwitch/);
   assert.match(app, /setAccessibility\(on\)/);
   assert.match(src("main.tsx"), /followAccessibility\(document\.documentElement\)/);

@@ -1704,6 +1704,17 @@ dialog.road-info::backdrop {
   gap: 4px 16px;
 }
 
+/* A mountain-bike trail's MORE link (slice 6): a real link, its tap target at least 44 px tall. */
+.road-info-more {
+  margin: 8px 0 0;
+}
+
+.road-info-more a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
 .road-info-details {
   margin-top: 10px;
   border-top: 1px solid var(--border);
@@ -1912,10 +1923,15 @@ ul.station-links {
   color: var(--text-muted);
   white-space: normal;
 }
-.junction-reason {
+.junction-reason,
+.junction-cost {
   grid-column: 2 / -1;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+/* The junction's cost in calm miles (467) under its reason: secondary, not a colour cue. */
+.junction-cost {
+  color: var(--text-muted);
 }
 .notice.detour-warning {
   background: var(--error-bg);
@@ -2667,6 +2683,7 @@ details.zoom-notes {
 /* 11 viewBox units, as the mock-up (the a11y review's N5): about 10 px at 375 px wide. */
 .pc-axis-text,
 .pc-guide-text,
+.pc-need-text,
 .pc-cross-text,
 .pc-narrowest-text {
   font-size: 11px;
@@ -2678,12 +2695,14 @@ details.zoom-notes {
    a11y review's S1); the band colour is on the line and the swatch beside the figure. */
 .pc-cross-text,
 .pc-guide-text,
+.pc-need-text,
 .pc-narrowest-text {
   fill: var(--text);
 }
 
 /* Labels that sit over the filled area: a halo in the panel's colour keeps them readable. */
 .pc-guide-text,
+.pc-need-text,
 .pc-narrowest-text {
   paint-order: stroke;
   stroke: var(--bg);
@@ -2706,6 +2725,20 @@ details.zoom-notes {
 
 .pc-guide-2 {
   stroke: var(--pc-guide-2);
+}
+
+/* The ride size's requirement (OWNER-DECISIONS 128, PLAN 147): a long dash in the text colour, cased in
+   the panel's colour so one of the two is 3:1 against every band it crosses; told from the dotted
+   band guides by its dash and its words, not by colour. */
+.pc-need-casing {
+  stroke: var(--bg);
+  stroke-width: 3.6;
+}
+
+.pc-need-line {
+  stroke: var(--text);
+  stroke-width: 1.6;
+  stroke-dasharray: 7 3;
 }
 
 .pc-guide-swatch {
@@ -3026,8 +3059,13 @@ details.zoom-notes {
   .pc-axis-text,
   .pc-cross-text,
   .pc-guide-text,
+  .pc-need-text,
   .pc-narrowest-text {
     fill: CanvasText;
+    stroke: Canvas;
+  }
+
+  .pc-need-casing {
     stroke: Canvas;
   }
 
@@ -3047,6 +3085,7 @@ details.zoom-notes {
   .pc-tick,
   .pc-corker-line,
   .pc-corker-half,
+  .pc-need-line,
   .pc-unchecked-frame,
   .pc-strip-frame {
     stroke: CanvasText;
@@ -3196,6 +3235,53 @@ details.zoom-notes {
   color: var(--text-muted);
 }
 
+/* The Climbs layer (lib/climbsLegend.ts, climbInteraction.ts): the swatch is the map's own marker
+   shape with its number; the list and the popup as the water layer's. */
+.climbs-legend li {
+  grid-template-columns: 24px 1fr;
+  align-items: center;
+}
+
+.climb-swatch {
+  display: block;
+  flex: none;
+}
+
+.climbs-along ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.climbs-along li {
+  display: flex;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+
+.climbs-along li > span {
+  flex: 1 1 14em;
+}
+
+.climb-popup {
+  max-width: 240px;
+}
+
+.climb-popup p {
+  margin: 4px 0 0;
+}
+
+.climb-popup .climb-title {
+  display: block;
+  padding-right: 16px;
+}
+
+.climb-popup .climb-caution {
+  color: var(--text-muted);
+}
+
 /* Find the nearest water, restroom or Metro (lib/nearestFinder.ts): the list as the water list's. */
 .nearest fieldset.nearest-from {
   border: 0;
@@ -3227,6 +3313,42 @@ details.zoom-notes {
 
 .nearest-list li > span:first-child {
   flex: 1 1 14em;
+}
+
+/* Find food (lib/foodFinder.ts): the search row as the place search's; the list as the nearest list's. */
+.food .food-search input[type="search"] {
+  box-sizing: border-box;
+  min-height: 44px;
+  font: inherit;
+  font-size: max(1rem, 16px);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.food fieldset.food-scope {
+  border: 0;
+  margin: 8px 0 0;
+  padding: 0;
+}
+
+.food fieldset.food-scope .toggle,
+.food .food-search button,
+.food .food-more,
+.food-list a.food-web {
+  min-height: 44px;
+}
+
+.food-list a.food-web {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px;
+}
+
+.food .food-more {
+  margin-top: 8px;
 }
 
 /*
@@ -3556,6 +3678,26 @@ details.zoom-notes {
   display: block;
 }
 
+/* Mountain Bike's hardest trail level (slice 6): one 44 px row per level, its words under its name. */
+.mtb-level {
+  margin: 8px 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.mtb-level .toggle {
+  align-items: flex-start;
+  min-height: 44px;
+}
+.mtb-level .toggle input {
+  min-width: 24px;
+  min-height: 24px;
+  margin-top: 2px;
+}
+.mtb-level .hint {
+  display: block;
+}
+
 /* The nearest stations to take a bike from or return one to (OWNER-DECISIONS 466a). The chosen one
    is told apart by a text badge and a heavier border, never by colour alone. */
 .nearby-stations {
@@ -3814,4 +3956,931 @@ details.zoom-notes {
 }
 .road-info-avoid-text {
   margin-top: 0.25rem !important;
+}
+
+/* --- UI-CLEANUP (the approved mockup of 2026-10-11): Go and Plan, line icons, chips, one-line folds,
+   the route's one row of actions, the Legend sheet and Ride mode's 311 button. Every target is 44 px at
+   least; state is never colour alone (a pressed chip is also bold, a fold has its chevron). --- */
+
+.icon {
+  flex: none;
+  vertical-align: middle;
+}
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.panel .icon-button.secondary,
+.panel .icon-button.link {
+  color: var(--text);
+}
+
+/* Go or Plan: two toggle buttons in one pill. */
+.mode-switch {
+  display: inline-flex;
+  flex: none;
+  border: 1px solid var(--swatch-border);
+  border-radius: 999px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.mode-switch .mode-button {
+  min-height: 44px;
+  min-width: 56px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text);
+}
+
+.mode-switch .mode-button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 700;
+}
+
+.mode-switch .mode-button:focus-visible {
+  outline-offset: -4px;
+}
+
+.panel-header {
+  align-items: center;
+}
+
+.panel-header .panel-mode {
+  margin-left: auto;
+}
+
+/* Go's bar over the map. */
+.go-top {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.go-top > * {
+  pointer-events: auto;
+}
+
+.go-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.go-top-end {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.go-top .icon-button {
+  padding: 0 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--swatch-border);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+}
+
+.go-destination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 0 0 0 14px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--swatch-border);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+}
+
+.go-destination-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+
+.go-destination .go-clear {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--text);
+  border: 0;
+  border-radius: 999px;
+}
+
+/* The map's zoom buttons and Undo / Redo sit under Go's bar. */
+.app.go-mode .maplibregl-ctrl-top-right {
+  margin-top: 56px;
+}
+
+.app.go-mode:has(.go-destination) .maplibregl-ctrl-top-right {
+  margin-top: 106px;
+}
+
+.app.go-mode .map-history {
+  top: 64px;
+}
+
+.app.go-mode:has(.go-destination) .map-history {
+  top: 114px;
+}
+
+/* On a narrow phone Menu, Layers and Locate are their icons; the words stay their names. */
+@media (max-width: 480px) {
+  .go-top .icon-button-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .go-top .icon-button {
+    padding: 0;
+    width: 48px;
+    height: 48px;
+  }
+}
+
+/* Go's sheet */
+.go-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.panel .go-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  margin: -4px 0 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+}
+
+.go-handle-bar {
+  display: block;
+  width: 44px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--swatch-border);
+}
+
+.go-search .place-search-row {
+  position: relative;
+}
+
+.go-search .search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.go-search input[type="search"] {
+  width: 100%;
+  min-height: 48px;
+  padding-left: 40px;
+  font-size: 1.05rem;
+  border-radius: 999px;
+}
+
+.go-search .go-from {
+  margin-top: 4px;
+}
+
+.go-notice {
+  margin: 6px 0;
+}
+
+@media (max-width: 720px) {
+  .panel.go-panel.go-peek {
+    max-height: 34%;
+  }
+
+  .panel.go-panel.go-half {
+    max-height: 56%;
+  }
+
+  .panel.go-panel.go-full {
+    max-height: calc(100% - 64px);
+  }
+
+  .app.go-mode:has(.panel.go-peek) .maplibregl-ctrl-bottom-right {
+    bottom: 34%;
+  }
+
+  .app.go-mode:has(.panel.go-half) .maplibregl-ctrl-bottom-right {
+    bottom: 56%;
+  }
+
+}
+
+/* Go keeps the panel's h1 (the planner's focus target and the page's heading) out of sight, so its header
+   takes no room; on a wider screen the card sits under Go's bar. */
+.panel.go-panel .panel-header {
+  padding: 0;
+  border: 0;
+}
+
+@media (min-width: 721px) {
+  .app.go-mode .panel {
+    top: 64px;
+    max-height: calc(100% - 76px);
+  }
+
+  .app.go-mode:has(.go-destination) .panel {
+    top: 114px;
+    max-height: calc(100% - 126px);
+  }
+}
+
+/* Chips: Go's places and ride types, the food searches, the map's Food and Water. */
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.chip,
+.panel .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  background: var(--bg-soft);
+  color: var(--text);
+  border: 1px solid var(--swatch-border);
+  border-radius: 999px;
+}
+
+.chip[aria-pressed="true"],
+.panel .chip[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+.go-home-hint {
+  margin-top: -2px;
+}
+
+.map-chips {
+  position: absolute;
+  top: 12px;
+  left: 424px;
+  z-index: 2;
+  display: flex;
+  gap: 8px;
+}
+
+.map-chips .map-chip {
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+
+@media (max-width: 720px) {
+  .map-chips {
+    left: 10px;
+    top: 10px;
+  }
+
+  .app:has(.map-history) .map-chips {
+    top: 62px;
+  }
+}
+
+/* The Points heading's row: Points, then Swap, Loop, Edit and Info. */
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+}
+
+.section-head h2 {
+  margin: 8px 0;
+}
+
+.section-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.section-tools .icon-button {
+  padding: 0 10px;
+}
+
+.panel .icon-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--swatch-border);
+  border-radius: 6px;
+}
+
+.tips-body {
+  margin: 4px 0 8px;
+  padding: 8px 10px;
+  background: var(--bg-soft);
+  border-radius: 8px;
+}
+
+/* One-line folds: icon, title, the count on the right, the chevron first. */
+details.fold > summary .fold-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+details.fold > summary .fold-count {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+details.fold > summary .icon {
+  color: var(--text-muted);
+}
+
+/* The route's top: totals and Info, the stress bar, one line per alert or note, then Start, GPX, Link, More. */
+.totals-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.totals-row .stats.totals {
+  flex: 1 1 auto;
+  margin: 4px 0;
+}
+
+.route-info {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  background: var(--bg-soft);
+  border-radius: 8px;
+}
+
+.note-lines {
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+}
+
+.note-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  margin: 2px 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.note-line .note-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alert-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+
+.alert-line .alert-text {
+  flex: 1 1 12rem;
+  margin: 0;
+}
+
+.alert-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.alert-full,
+.alert-more-body {
+  flex-basis: 100%;
+}
+
+.route-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.route-actions-row > button {
+  flex: 0 0 auto;
+}
+
+.route-actions-row > .start-button {
+  flex: 1 1 8rem;
+}
+
+.start-button,
+.panel .start-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 18px;
+  font-weight: 700;
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+.route-more-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.route-more-body[hidden] {
+  display: none;
+}
+
+/* Go's route: the time first and large, Start full width, then the chips. */
+.go-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.go-head .stats.totals .total-time dd {
+  font-size: 1.5rem;
+}
+
+.go-start .start-button {
+  width: 100%;
+  min-height: 52px;
+  font-size: 1.1rem;
+}
+
+.go-summary.peek .go-head .start-button {
+  min-height: 44px;
+}
+
+/* The Legend button at the end of the Layers sheet's header; the Menu's pages; the Settings groups. */
+.sheet-header .legend-button {
+  margin-left: auto;
+}
+
+.layer-group {
+  margin-bottom: 8px;
+}
+
+.menu-pages {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
+  gap: 8px;
+  margin: 10px 0 4px;
+}
+
+.panel .menu-page {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.settings-group {
+  margin-bottom: 12px;
+}
+
+.food-chips,
+.ride-chips {
+  margin-top: 4px;
+}
+
+/* Ride mode: icons on its buttons, and the 311 button on the right edge at thumb height, inside DC only. */
+.ride-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.ride-311 {
+  position: absolute;
+  right: 12px;
+  top: 44%;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: calc(100% - 24px);
+}
+
+.ride-311-button {
+  width: 60px;
+  height: 60px;
+  padding: 0;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  border-radius: 50%;
+  border: 2px solid var(--bg);
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 700;
+  font-size: 1.05rem;
+  box-shadow: var(--shadow);
+}
+
+.ride-311-menu {
+  width: min(22rem, calc(100vw - 24px));
+  max-height: calc(56vh - 80px);
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.ride-311-menu[hidden] {
+  display: none;
+}
+
+.ride-311-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ride-311-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.ride-311-close {
+  min-height: 44px;
+}
+
+.ride-311-kinds {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 8px;
+}
+
+.ride-311-kind {
+  width: 100%;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  background: var(--bg-soft);
+  color: var(--text);
+  border: 1px solid var(--swatch-border);
+  font-size: 1rem;
+}
+
+/* The road panel's "Suggest a change…": the ways to suggest, shown under it. */
+.road-info-suggest[hidden] {
+  display: none;
+}
+
+/* UI-CLEANUP, fit: the mockup's one-line rows at 390 px and in the 400 px panel. */
+.go-top {
+  z-index: 10;
+}
+
+.go-destination {
+  width: max-content;
+}
+
+.go-destination-name {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.chip,
+.panel .chip {
+  padding: 0 11px;
+  font-size: 0.95rem;
+}
+
+.chip-row {
+  gap: 6px;
+}
+
+.panel .section-tools button,
+.panel .section-tools .icon-toggle {
+  min-height: 44px;
+  height: auto;
+  padding: 0 9px;
+  gap: 5px;
+}
+
+.panel .section-tools .tips-toggle {
+  text-decoration: none;
+}
+
+.ride-line-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ride-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 9px;
+  border: 1px solid var(--swatch-border);
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
+/* The totals on one line: time, distance, climb and descent (the mockup's "31 min 2.9 mi · ↑ 39 ft · ↓ 66 ft"). */
+.totals-row .stats.totals .stat-distance {
+  flex: 0 1 auto;
+  flex-direction: row;
+}
+
+.totals-row .stats.totals dd {
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+.totals-row .stats.totals .total-time dd {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.go-head .stats.totals .total-time dd {
+  font-size: 1.6rem;
+}
+
+.route-actions-row {
+  gap: 6px;
+}
+
+.route-actions-row > button {
+  padding: 0 11px;
+}
+
+.route-actions-row > .start-button {
+  flex: 1 1 auto;
+}
+
+.avoid-notice.alert-line {
+  margin: 4px 0 6px;
+  padding: 6px 8px;
+}
+
+.alert-line .alert-text {
+  font-weight: 700;
+}
+
+.go-head .stats.totals .stat-distance dd {
+  font-size: 1.05rem;
+}
+
+.panel .go-places .place-chip {
+  padding: 0 9px;
+  gap: 4px;
+}
+
+/* UI-CLEANUP: Go has no Hide planner toggle (its sheet has a handle); `hidden` must beat the phone rule's display. */
+.panel-toggle[hidden] {
+  display: none;
+}
+
+/* Go's sheets: a focused heading scrolls into view with its Close button above it, not cut off. */
+.go-panel .sheet h2 {
+  scroll-margin-top: 64px;
+}
+
+/* Go's start line (the owner, 2026-10-11): the start and Change start on one row. */
+.go-start-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.go-start-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-weight: 600;
+}
+
+.go-change-start {
+  min-height: 44px;
+}
+
+.go-start-search {
+  margin-bottom: 8px;
+}
+
+.go-start-search[hidden] {
+  display: none;
+}
+
+.go-start-search input {
+  min-height: 44px;
+}
+
+/* Lettered places (the owner, 2026-10-11 21:04 UTC; lib/letteredPlaces.ts): a 44 px button holding a pin with
+   its letter; the list's rows carry the same letter in the same pin. Letter and shape, not colour alone. */
+.lettered-marker {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  width: 44px;
+  height: 48px;
+  padding: 0 0 4px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.lettered-pin,
+.place-letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 2px solid #ffffff;
+  border-radius: 50% 50% 50% 0;
+  background: #1e3a8a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  transform: rotate(-45deg);
+}
+
+.lettered-letter,
+.place-letter > * {
+  transform: rotate(45deg);
+}
+
+.lettered-letter {
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.place-letter {
+  width: 28px;
+  height: 28px;
+  margin: 2px 8px 0 2px;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.lettered-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.lettered-marker:focus-visible {
+  outline: 3px solid var(--focus, #1d4ed8);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+@media (forced-colors: active) {
+  .lettered-pin,
+  .place-letter {
+    border-color: CanvasText;
+    background: Canvas;
+    forced-color-adjust: none;
+    color: CanvasText;
+  }
+
+  .lettered-letter {
+    color: CanvasText;
+  }
+}
+
+/* The lettered row: the pin first (fixed), then the words take the room the first span had. */
+.nearest-list li.lettered-row > .place-letter {
+  flex: none;
+}
+
+.nearest-list li.lettered-row > span:nth-child(2) {
+  flex: 1 1 12em;
+}
+
+/* Go's Bikeshare options (lib/bikeshareOptions.ts): lettered as on the map; the planned one has a thicker
+   border and a "Planned" tag, not colour alone (its state is aria-pressed). */
+.go-bike-options {
+  margin: 4px 0 8px;
+}
+
+.go-bike-options-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.go-bike-option-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.go-bike-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px solid var(--border, #94a3b8);
+  border-radius: 8px;
+  background: var(--surface, transparent);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.go-bike-option[aria-pressed="true"] {
+  border-width: 3px;
+  padding: 4px 6px;
+}
+
+.go-bike-option[aria-pressed="true"]::after {
+  content: "Planned" / "";
+  flex: none;
+  margin-left: auto;
+  padding: 0 6px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.go-bike-option-text {
+  flex: 1 1 10em;
 }

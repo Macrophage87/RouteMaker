@@ -159,6 +159,8 @@ def test_only_the_three_contract_paths_are_served() -> None:
     assert definition.startswith("not path "), definition
     assert set(definition.removeprefix("not path ").split()) == {
         "/region.pmtiles",
+        # The topo lines' contours (scripts/build_contours.py; docs/OPERATIONS.md, "Topo lines").
+        "/contours.pmtiles",
         "/fonts/*",
         "/sprites/*",
     }, definition

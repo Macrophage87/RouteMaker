@@ -4,6 +4,7 @@ import type { RouteResponse } from "./api.ts";
 import { STRESS_TODAYS_TOP, TARGET_CEILING_RATIO } from "./dials.ts";
 import { detour, pathLengthM, type LonLat } from "./geo.ts";
 import { LOOP_START_NAME, loopNote } from "./loop.ts";
+import { mtbSaid } from "./mtbMode.ts";
 import { outsideDcNote } from "./dcBoundary.ts";
 import { hazardsSaid } from "./massHazards.ts";
 import {
@@ -13,6 +14,7 @@ import {
   formatExtra,
   formatRoughDistance,
   formatSpeed,
+  AVOID_MAX_SPAN_M,
   SEEK_MAX_SPAN_M,
 } from "./format.ts";
 
@@ -260,7 +262,7 @@ export function announceRoute(route: RouteResponse, points: readonly LonLat[] = 
     `${formatDuration(route.duration_s)} moving time, climb ${formatClimb(route.climb_m)}.`;
   const others = !how.chosen && how.others ? othersSaid(how.others) : null;
   // A Mass Ride's rider-marked hazards (FOLLOWUP-MASSRIDE-MAP part 3, 325: "announced"), after the junctions.
-  return [figures, movedPointsNote(route, points.length), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), targetSaid(route), loopNote(route), others]
+  return [figures, movedPointsNote(route, points.length), outsideDcNote(route), detourSaid(route, points), redJunctionsSaid(route), hazardsSaid(route), targetSaid(route), loopNote(route), mtbSaid(route.mtb), others]
     .filter(Boolean)
     .join(" ");
 }
@@ -304,6 +306,39 @@ export function seekNote(seek: RouteResponse["hills_seek"]): string | null {
     return `None of the ${seek.candidates - 1} alternatives climbed more within the distance allowed; this is the fastest route.`;
   }
   return `Chose a route with ${formatClimb(seek.extra_climb_m)} more climbing for ${formatDistance(seek.extra_distance_m)} more distance, from ${seek.candidates} routes compared.`;
+}
+
+/**
+ * What the route summary says of "fine with hills" (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242),
+ * or null where the slider was not there. "calm_first": at the top of the traffic slider the
+ * stress order decides and climbing is not counted against a route.
+ */
+export function tolerateNote(tolerate: RouteResponse["hills_tolerate"]): string | null {
+  if (!tolerate) return null;
+  switch (tolerate.limited) {
+    case "calm_first":
+      return "At this Traffic setting the calmest route decides, and climbing is not counted against it.";
+    case "two_points":
+      return "Fine with hills compares routes with just a start and an end; this one has stops, so it is the usual route.";
+    case "long_ride":
+      return `Fine with hills compares routes only when the start and end are within ${formatRoughDistance(AVOID_MAX_SPAN_M)} of each other; this is the usual route.`;
+    case "timed_out":
+      return "Comparing routes for fine with hills took too long this time; this is the usual route.";
+  }
+  if (tolerate.chosen === 0) {
+    const others = tolerate.candidates - 1;
+    if (others < 1) return "The router offered no other route to compare; this is the usual route.";
+    if (others === 1) return "The one alternative was not quicker with climbing counted for less, or it was busier; this is the usual route.";
+    return `None of the ${others} alternatives were quicker with climbing counted for less, or they were busier; this is the usual route.`;
+  }
+  const climb =
+    tolerate.extra_climb_m > 0 ? `with ${formatClimb(tolerate.extra_climb_m)} more climbing` : "with no more climbing";
+  // "More direct" only where it is shorter; a longer pick won on time with climbing counted for less.
+  const lead =
+    tolerate.extra_distance_m < 0
+      ? `Chose a more direct route, ${formatDistance(-tolerate.extra_distance_m)} shorter`
+      : `Chose a route that is quicker with climbing counted for less, ${formatDistance(tolerate.extra_distance_m)} longer`;
+  return `${lead}, ${climb}, from ${tolerate.candidates} routes compared.`;
 }
 
 /** How long a plan runs before "Still planning" is said, once (the a11y review's SF1). */

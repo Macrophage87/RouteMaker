@@ -15,7 +15,8 @@
 #                       (and offroad once it exists). The unpacked tiles/ directory is left
 #                       out: Valhalla serves from tiles.tar (tile_extract), verified.
 #   elevation/          the .hgt files the routers read at runtime for elevation profiles
-#   basemap/            region.pmtiles, fonts, sprites
+#   basemap/            region.pmtiles, fonts, sprites, and contours.pmtiles once
+#                       scripts/build_contours.py has written it (the Topo lines layer)
 #   photon/             the Photon index (photon_data/)
 #   frontend/           the built front end, made with VITE_BETA=1 so it carries the beta banner
 #   db/routemaker.dump  pg_dump --format=custom of the `live` and `public` schemas, minus the
@@ -27,7 +28,9 @@
 #   SHA256SUMS          one line per file; MANIFEST.txt the bundle's facts
 #
 # What is never in it: .env or any secret (the script checks), the other test databases,
-# the `live_old` schema, the tiger geocoder schema, sessions.
+# the `live_old` schema, the tiger geocoder schema, sessions. Nor the api image: the runbook sends
+# that separately (step 6), and after sending the script warns if the server does not have the
+# image for this checkout's sha.
 #
 # READ-ONLY on the live stack: it reads files under DATA_ROOT and runs pg_dump, psql SELECTs
 # and pg_restore --list through `docker compose exec`. It writes only into --stage (default
@@ -51,7 +54,9 @@
 #                        it the notice names no channel and shows no link.
 #   --dist DIR           use an already-built front end instead (must contain index.html)
 #                        Unless --without frontend, one of --build-frontend or --dist is required.
-#   --node-modules DIR   node_modules for --build-frontend [<repo>/frontend/node_modules]
+#   --node-modules DIR   node_modules for --build-frontend [<repo>/frontend/node_modules], installed
+#                        for Linux x64 (in WSL with no Linux node, `npm ci` is Windows npm: install
+#                        it in the pinned image instead; frontend-build.sh refuses a Windows one)
 #   --without PART       leave a part out: tiles, elevation, basemap, photon, frontend, db
 #                        (repeatable; for an update that changes only some of them)
 #   --with-tile-dirs     also send each build's unpacked tiles/ directory (about 0.5 GB each)
@@ -65,7 +70,8 @@ set -euo pipefail
 die() { echo "ship-data: $*" >&2; exit 2; }
 note() { echo "ship-data: $*" >&2; }
 
-NODE_IMAGE="docker.io/library/node@sha256:363e1587494626837fa7f9a23bdb453d13b0ff3c67c705c2805cfc69c2d2fad7"
+# The pinned node image is frontend-build.sh's (--print-image); the api image is sent separately.
+API_IMAGE="ghcr.io/macrophage87/routemaker-api"
 # Data the app does not need on a fresh server, or must not carry: sessions and the
 # rate-limit table (client address digests) and the membership cache are the app's own nightly
 # backup exclusions (config.procrastinate.BACKUP_EXCLUDED_TABLES), plus the job queue, Django's
@@ -107,6 +113,8 @@ NODE_IMAGE="docker.io/library/node@sha256:363e1587494626837fa7f9a23bdb453d13b0ff
 #                                     half-step editor history. What it changed is already in the
 #                                     shipped live table and override rows; it also points at
 #                                     override rows, which the beta's update replaces.
+#   my_go                             user_id -> app_user: a rider's own My Go, with their Home
+#                                     (a place they live; core.models.MyGo). Never leaves home.
 # tests/test_beta_overlay.py asserts this list, and that every table pointing at one of these is
 # excluded too or blanked (below); ship-data.sh refuses a dump that carries data for any name in it.
 EXCLUDED_TABLE_DATA=(
@@ -115,6 +123,7 @@ EXCLUDED_TABLE_DATA=(
 	django_admin_log scheduled_run stress_tile_cache bikeshare_feed_cache
 	app_user audit_log bootstrap_claim pending_instance_admin_removal ban_tombstone
 	configured_guild role_mapping stress_suggestion mass_hazard junction_suggestion stress_edit
+	my_go
 )
 # Tables the beta needs from home that also name a person or carry a rider's words: shipped with
 # those columns blanked, never whole. Each is left out of the dump and written instead as
@@ -281,6 +290,12 @@ if want elevation; then
 fi
 if want basemap; then
 	[ -f "$data_root/basemap/region.pmtiles" ] || die "no $data_root/basemap/region.pmtiles"
+	# The whole directory is shipped, so a contour build's leftovers (a --keep-work or failed run of
+	# scripts/build_contours.py: gigabytes of DEM and line files, or a half-written archive) would go too.
+	for leftover in .contours-work .contours.pmtiles.part; do
+		[ ! -e "$data_root/basemap/$leftover" ] ||
+			die "$data_root/basemap/$leftover is left from scripts/build_contours.py; delete it (or finish the build) before shipping (docs/OPERATIONS.md, \"Topo lines\")"
+	done
 	link "$data_root/basemap" "$stage/basemap"
 fi
 if want photon; then
@@ -295,17 +310,10 @@ if want frontend; then
 		nm=${node_modules:-$repo/frontend/node_modules}
 		[ -d "$nm" ] || die "no node_modules at $nm (--node-modules); the build runs offline"
 		note "testing and building the front end with VITE_BETA=1 in the pinned node image (no network); report link: ${report_url:-none}"
-		# node_modules is mounted writable because vite writes a temp config beside it; it is
-		# removed afterwards. The source is read-only and the output goes straight to the stage.
 		# npm test runs first, on exactly the tree being shipped (the banner's and the planner's
-		# accessibility checks live in the front-end suite); a failure ships nothing. src/ is
-		# mounted read-only at /src because one test reads the API's own wording from
-		# src/routemaker/avoid_junctions.py (../../../src from the test; docs/DEVELOPMENT.md).
-		docker run --rm --pull never --network none -u "$(id -u):$(id -g)" -e HOME=/tmp -e VITE_BETA=1 \
-			-e VITE_BETA_REPORT_URL="$report_url" \
-			-v "$repo/frontend:/app:ro" -v "$repo/src:/src:ro" -v "$nm:/app/node_modules" -v "$stage/frontend:/out" -w /app \
-			"$NODE_IMAGE" sh -c 'npm test && npx tsc --noEmit && npx vite build --outDir /out --emptyOutDir' >&2
-		rm -rf "$nm/.vite-temp"
+		# accessibility checks live in the front-end suite); a failure ships nothing. The mounts
+		# and the steps are frontend-build.sh's, the same script the release agent and CI run.
+		"$here/frontend-build.sh" "$repo" "$nm" "$stage/frontend" "$report_url" >&2
 		printf 'VITE_BETA=1\nVITE_BETA_REPORT_URL=%s\ngit=%s\n' "$report_url" "$(git -C "$repo" rev-parse HEAD)" >"$stage/frontend/beta-build.txt"
 	else
 		[ -f "$dist/index.html" ] || die "no front end at $dist: use --build-frontend, or --dist DIR with index.html"
@@ -489,3 +497,21 @@ run_rsync "${common[@]}" --exclude=SHA256SUMS --exclude=MANIFEST.txt --exclude='
 run_rsync "${common[@]}" "$stage/SHA256SUMS" "$stage/MANIFEST.txt" "$remote_host:$remote_dir/"
 
 note "sent. On the server: scripts/beta/receive-data.sh --bundle $remote_dir --env-file .env verify"
+
+# The api image is not in the bundle: the runbook sends it separately (BETA-RUNBOOK step 6, built
+# at home from the release sha). Say so when the server does not have the one for this sha yet.
+# (A data-only update from a checkout ahead of the deployed release names an image the server does
+# not need yet; the warning says which sha it looked for.)
+api_tag="$API_IMAGE:${git_sha:0:12}"
+[ "$dry_run" = 0 ] || exit 0
+# shellcheck disable=SC2086
+have=$($ssh_cmd "$remote_host" "if docker image inspect --format ok '$api_tag' 2>/dev/null; then :; elif docker info >/dev/null 2>&1; then echo missing; else echo no-docker; fi" 2>/dev/null) || have=""
+case "$have" in
+	ok) ;;
+	missing)
+		note "WARNING: the server has no api image $api_tag; the bundle does not carry it. From a clean checkout of $git_sha:"
+		note "  docker build -f docker/api.Dockerfile -t $api_tag ."
+		note "  docker save $api_tag | gzip | ssh ${BETA_SSH_OPTS:+$BETA_SSH_OPTS }$remote_host 'gunzip | docker load'"
+		;;
+	*) note "could not ask docker on the server whether it has the api image $api_tag (docker image ls there)" ;;
+esac

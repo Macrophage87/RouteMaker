@@ -222,7 +222,7 @@ def test_a_withdrawn_variant_is_stopped_not_restarted() -> None:
     assert "docker compose stop valhalla-weekend" in hint
     assert "restart valhalla-weekend" not in hint and "ebike valhalla-weekend" not in hint
     # The off-road router kept: its own line, for where it runs, never in the plain restart.
-    assert "docker compose --profile offroad restart valhalla-offroad" in hint
+    assert "docker compose --profile offroad restart valhalla-offroad valhalla-mtb" in hint
 
 
 def test_the_off_road_router_is_never_in_a_plain_restart() -> None:
@@ -237,13 +237,22 @@ def test_the_off_road_router_is_never_in_a_plain_restart() -> None:
         "docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend"
     )
     assert RESTART_ROUTERS in RESTART_HINT
-    for target in (every, {**every, Variant.WEEKEND: None}, {**every, Variant.OFFROAD: None}):
+    for target in (
+        every,
+        {**every, Variant.WEEKEND: None},
+        {**every, Variant.OFFROAD: None},
+        {**every, Variant.MTB: None},
+    ):
         hint = restart_hint(target)
         plain = hint.split("docker compose restart ", 1)[1].split("&&")[0].split(";")[0]
-        assert "valhalla-offroad" not in plain, hint
+        assert "valhalla-offroad" not in plain and "valhalla-mtb" not in plain, hint
     withdrawn = restart_hint({**every, Variant.OFFROAD: None})
     assert "docker compose stop valhalla-offroad" in withdrawn
-    assert "--profile offroad restart" not in withdrawn
+    # The Mountain Bike router kept: restarted where it runs, the withdrawn one not named.
+    assert withdrawn.endswith("docker compose --profile offroad restart valhalla-mtb"), withdrawn
+    both = restart_hint({**every, Variant.OFFROAD: None, Variant.MTB: None})
+    assert "docker compose stop valhalla-offroad valhalla-mtb" in both
+    assert "--profile offroad restart" not in both
 
 
 @pytest.mark.django_db(transaction=True)

@@ -26,6 +26,7 @@ import type { DescriptionEntry, RouteResponse } from "./api.ts";
 import { planPointName, writeGpx } from "./gpx.ts";
 import { exportOf } from "./gpxText.ts";
 import { pointName } from "./summary.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 // OWNER-DECISIONS 220: the route in words for blind stokers: a heading, an
 // ordered list of single sentences, copy and download, nothing announced.
@@ -133,7 +134,7 @@ test("the open state is remembered, closed by default and where storage fails", 
 // The component is placed by App and keeps to the accessible pattern. Read as
 // source, as the other panels' structure is (no DOM here).
 const component = readFileSync(new URL("../RouteDescription.tsx", import.meta.url), "utf8");
-const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+const app = appSource();
 
 test("the section is a labelled heading, a disclosure button and an ordered list", () => {
   assert.match(component, /<h3 id="route-description-heading">/);
@@ -166,15 +167,15 @@ test("stops are Stop N in the points list, the announcements, the map and the GP
   assert.equal(pointName(3, 4), "End");
   assert.equal(planPointName(1, 3), "Stop 1");
   assert.equal(planPointName(2, 4), "Stop 2");
-  const files = ["../App.tsx", "../MapView.tsx", "./summary.ts", "./gpx.ts", "./gpxText.ts", "./pointsList.ts", "./pointText.ts", "../FacilityBreakdown.tsx", "../railInteraction.ts"];
+  const files = ["../App.tsx", "../app/Planner.tsx", "../app/RoutePanel.tsx", "../app/Sheets.tsx", "../MapView.tsx", "./summary.ts", "./gpx.ts", "./gpxText.ts", "./pointsList.ts", "./pointText.ts", "../FacilityBreakdown.tsx", "../railInteraction.ts"];
   for (const file of files) {
     // What a rider can read: not the comments.
     const source = readFileSync(new URL(file, import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
     assert.doesNotMatch(source, /`Via |"Via |Via point|via point|Add as via/, file);
   }
   const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
-  assert.match(map, /import \{ pointLabel \} from "\.\/lib\/pointText\.ts";/);
-  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(map, /import \{ END_GLYPH, START_GLYPH, pointLabel \} from "\.\/lib\/pointText\.ts";/);
+  const app = appSource();
   assert.match(app, /announce\(insertedSaid\(leg, next\.length, loopVias\)\)/);
 });
 

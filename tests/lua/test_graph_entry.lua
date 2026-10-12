@@ -978,5 +978,37 @@ local parking_only = transform_node({ amenity = "parking" })
 check("a parking node with no barrier keeps its tag",
   parking_only.amenity == "parking", parking_only.amenity)
 
+-- `rm:pci` (DC-PCI) is one more line of `derived_from`; read at upstream's output.
+local _, pci_poor = transform_way({ highway = "residential", surface = "asphalt", ["rm:pci"] = "poor" })
+check("rm:pci=poor reaches the graph as the compacted surface",
+  pci_poor.surface == "compacted", pci_poor.surface)
+check("and the derived tag is stripped", pci_poor["rm:pci"] == nil)
+local _, pci_none = transform_way({ highway = "residential", surface = "asphalt" })
+check("a street with no rm:pci keeps its surface", pci_none.surface == "asphalt", pci_none.surface)
+
+-- FOLLOWUP-SIGNAL-DERIVE, through the entry point: the remap's one permitted
+-- node class write lands, and the mark that asked for it does not reach upstream.
+local signalled = transform_node({ highway = "crossing", crossing = "traffic_signals" })
+check("a signalised crossing node reaches upstream as a signal",
+  signalled.highway == "traffic_signals", signalled.highway)
+check("and the write is not refused as a forbidden one",
+  signalled[remap.VIOLATION_TAG] == nil, signalled[remap.VIOLATION_TAG])
+check("and bicycle access through it is unchanged", bike_allowed(signalled))
+local marked = transform_node({ ["rm:crossing_signal"] = "yes" })
+check("a node the rebuild marked reaches upstream as a signal",
+  marked.highway == "traffic_signals" and marked["rm:crossing_signal"] == nil, marked.highway)
+local refused = transform_node({ highway = "crossing", crossing = "traffic_signals", bicycle = "no" })
+check("a crossing upstream reopens to bicycles keeps its class and its reopening",
+  refused.highway == "crossing" and bike_allowed(refused), refused.highway)
+logged = {}
+io.stderr = { write = function(_, line) logged[#logged + 1] = line end }
+real_remap_node = remap.remap_node
+remap.remap_node = function() return { highway = "primary" } end
+local wrong_class = transform_node({ name = "Junction" })
+remap.remap_node = real_remap_node
+io.stderr = real_stderr
+check("any other class write on a node is still refused",
+  wrong_class.highway == nil and wrong_class[remap.VIOLATION_TAG] ~= nil and #logged == 1)
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

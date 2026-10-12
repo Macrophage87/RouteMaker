@@ -116,11 +116,30 @@ class TestBikeshareAnswer:
             "steps",
             "summary",
             "notes",
+            "options",
             "credit",
         }
         assert plan["start"]["name"] == "Columbus Circle / Union Station"
         assert plan["walk_start"]["geometry"]["type"] == "LineString"
         assert plan["steps"][0]["text"].endswith("take a classic bike (12 available).")
+
+    def test_a_plan_offers_its_route_options_ready_to_show(self, client, world) -> None:
+        """The Go screen's options (the owner, 2026-10-11): pick-up and drop-off pairs, best
+        first, the first being the plan itself, each with its words and the ids to ask again."""
+        plan = post(client, body()).json()["bikeshare"]
+        options = plan["options"]
+        assert 1 <= len(options) <= 3
+        first = options[0]
+        assert first["chosen"] and first["rank"] == 1 and not first["estimated"]
+        assert first["pickup_station"] == plan["start"]["station_id"]
+        assert first["dropoff_station"] == plan["end"]["station_id"]
+        assert first["total_s"] == plan["total_s"]
+        for option in options:
+            assert option["text"].startswith("Pick up ")
+            assert option["pickup"]["way_text"] in option["text"]
+            assert "ebikes_available" in option["pickup"]
+        costs = [o["cost_m"] for o in options]
+        assert costs == sorted(costs)
 
     def test_an_ordinary_route_has_a_null_bikeshare(self, client, world) -> None:
         response = post(client, {"points": [UNION, DUPONT], "preset": "default"})
@@ -317,6 +336,7 @@ class TestBikeshareValidation:
     def test_the_schema_describes_the_bikeshare_answer(self, client) -> None:
         schema = client.get("/api/openapi.json").json()
         assert "BikesharePlanOut" in schema["components"]["schemas"]
+        assert "BikeshareOptionOut" in schema["components"]["schemas"]
         route_in = schema["components"]["schemas"]["RouteIn"]["properties"]
         assert "bike" in route_in and "ending" in route_in
         assert "bikeshare" in schema["components"]["schemas"]["RouteOut"]["properties"]

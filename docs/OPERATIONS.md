@@ -417,6 +417,70 @@ change: compare the counts with the previous build after the promotion. Until
 that rebuild, a night ride treats timed closures as open to cars. Rolling the
 images back to before this change makes a saved `when: "night"` a 422.
 
+**After the Track B rebuild: the junction speed and town columns (#38).** The
+first rebuild to promote with `road_default_speed_mph` and `road_urban` is the
+one that turns 469 on for junctions; the code and the columns are already in
+(`pipeline.schema.ROAD_COST_COLUMNS`, no migration: the segment table is rebuilt
+each time). After the swap:
+
+1. The columns exist and are filled. An unposted road has a default and a posted
+   one has none; `road_urban` is never null:
+
+   ```sh
+   docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+     "SELECT count(*) FILTER (WHERE road_default_speed_mph IS NOT NULL) AS unposted_with_default,
+             count(*) FILTER (WHERE road_speed_mph IS NOT NULL AND road_default_speed_mph IS NOT NULL) AS posted_and_default,
+             count(*) FILTER (WHERE road_urban) AS urban,
+             count(*) FILTER (WHERE road_urban IS NULL) AS urban_unknown,
+             count(*) AS segments
+        FROM live.segment WHERE NOT is_trail_class"
+   ```
+
+   Expect `posted_and_default` and `urban_unknown` to be 0 and `unposted_with_default` to be most
+   road segments (OSM leaves most residential streets unposted). The defaults
+   should be the statutory figures and nothing else:
+
+   ```sh
+   docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+     "SELECT road_default_speed_mph, road_urban, count(*) FROM live.segment
+       WHERE road_default_speed_mph IS NOT NULL GROUP BY 1, 2 ORDER BY 1, 2"
+   ```
+
+   The figures are `routemaker.stress.statutory_default_mph`'s: the District
+   20 mph (32 km/h), 15 mph (24 km/h) in an alley; Maryland 30 or 35 mph (48 or
+   56 km/h, undivided or divided) in an urban area and 50 or 55 mph (80 or
+   89 km/h) outside; Virginia 25 mph (40 km/h) in an urban area and 55 mph
+   (89 km/h) outside, 35 mph (56 km/h) unpaved. Any other value is a road the
+   zone lookup placed in none of the three, read at its class default; a
+   handful at the coverage edge is expected, many is a zone fault to look into.
+2. The junction model sees them: `core.junctions.has_cost_columns('live')` is
+   true from a `manage.py shell` in the api container. It reads the schema once
+   and remembers a yes, so no restart is needed beyond the one that restarts the
+   routers.
+3. A night ride in town halves its junction costs. Plan the same urban route with
+   `when` `weekday_offpeak` and `night`: the night answer's red and orange
+   junctions are the same or fewer, and none is added. The same route in a rural
+   area changes by x0.85 only. Night also opens the ways whose timed closure
+   covers it (`car_free_when`), so if the night route takes a different line,
+   compare the junctions on the stretch the two routes share.
+4. `car_free_when` gains `night` (469c): compare the counts with the previous
+   build, as the paragraph above says:
+
+   ```sh
+   docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+     "SELECT 'live' AS build, count(*) FILTER (WHERE 'night' = ANY(car_free_when)) AS night,
+             count(*) FILTER (WHERE cardinality(car_free_when) > 0) AS any_time
+        FROM live.segment
+      UNION ALL
+      SELECT 'live_old', count(*) FILTER (WHERE 'night' = ANY(car_free_when)),
+             count(*) FILTER (WHERE cardinality(car_free_when) > 0)
+        FROM live_old.segment"
+   ```
+
+   A `live_old` built before 469 has no `night` rows; `live`'s `any_time` should
+   be within a few ways of `live_old`'s (the off-peak sample moved from 21:00 to
+   20:30).
+
 **Cost per plan.** Every plan asks `/locate` once for each 50 junctions where a
 busy-class road meets the route, with a 3 ft (1 m) radius, and again, with a
 100 ft (30 m) radius, for each 50 of those whose control is not already a signal, to
@@ -610,11 +674,12 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
   it from a driveway just past a signalized junction would need the rider's
   riding straight through a minor road's T junction on the junction's own
   road, which would bring that driveway's under-warning back.
-- Signalized trail crossings tagged `crossing=traffic_signals` away from any
-  signalized road junction read as unsignalized until the tag transform derives
-  the signal. They are orange at most and say "no signal mapped"
-  (OWNER-DECISIONS 185), so a rider may see an orange marker at a crossing that
-  has a light.
+- Signalized trail crossings away from any signalized road junction read as
+  signalized from the Track B rebuild where OSM maps the signal on the crossing
+  node or the crossing way (FOLLOWUP-SIGNAL-DERIVE; the check is below). One
+  whose signal is mapped on neither still reads as unsignalized: orange at most,
+  "no signal mapped" (OWNER-DECISIONS 185), so a rider may see an orange marker
+  at a crossing that has a light.
 - A stop sign on a cross road's stop line short of the junction is not read as
   the cross traffic's (it may be another junction's), so a junction where only
   the cross traffic stops can be priced as if nobody does: the rider's crossing
@@ -624,7 +689,10 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
   of a signalized junction can be priced as signalized, and its red or orange
   not drawn, where the signal is on a stop line of the road it joins with no
   other named road at that node, or where the other junction's road has no
-  name in OSM. For a rider arriving on a road, a driveway, a parking aisle or
+  name in OSM. From the Track B rebuild a signalized trail crossing (a HAWK or
+  a mid-block crossing signal, FOLLOWUP-SIGNAL-DERIVE) carries the router's
+  signal flag on the road, so a side street within 100 ft (30 m) of one can
+  take it the same way. For a rider arriving on a road, a driveway, a parking aisle or
   a drive-through, a signal at a node up an arm that a road of another name
   joins, or one facing away from the junction, is not taken (review r3; gate
   1 for driveways and parking aisles, which took it until then); nor is a
@@ -667,6 +735,38 @@ at most about 10 KB to an answer (one figure a profile sample, up to 2,000) plus
 sections and the flagged junctions; live serves route JSON uncompressed (the Caddyfile
 compresses only tiles and the front end), so a long ride with candidates grows by tens of
 KB. `calm.estimate` is true while each stretch is priced by its tier.
+
+### After the Track B rebuild: signalised trail crossings (FOLLOWUP-SIGNAL-DERIVE)
+
+The rebuild marks the nodes where a crossing way tagged as signalised meets a
+road, and the transform turns those, and crossing nodes tagged
+`crossing=traffic_signals` or `crossing:signals=yes`, into signals. Nothing to
+deploy beyond the rebuild itself: no migration, no setting.
+
+1. INJECT_TAGS logs `N signalised trail crossings marked from their crossing
+   ways`. Record N here; zero means the crossing ways were not read and the rest
+   of this check will show no change. (Not counted in advance: the count needs
+   the coverage extract, which the build container could not reach.)
+2. No `ROUTEMAKER-VIOLATION` line in any variant's build log (VALIDATE fails the
+   rebuild on one anyway). A violation naming `highway` means a class write other
+   than the signal reached the guard.
+3. Pick a trail crossing away from a road junction whose crossing node or
+   crossing way OSM tags `crossing=traffic_signals` (or `crossing:signals=yes`),
+   note the node's coordinates, and ask the standard router before and after:
+
+   ```sh
+   docker compose exec api python -c 'import json, sys, urllib.request
+   body = {"locations": [{"lat": float(sys.argv[1]), "lon": float(sys.argv[2]), "radius": 10}],
+           "costing": "bicycle", "verbose": True}
+   r = urllib.request.urlopen("http://valhalla-standard:8002/locate", json.dumps(body).encode())
+   print([n.get("traffic_signal") for n in json.load(r)[0].get("nodes") or []])' LAT LON
+   ```
+
+   It prints `[True]` where it printed `[False]` on the previous graph.
+4. A route across that crossing describes it "at a signal" instead of "no signal
+   mapped", and its marker is no longer the capped orange.
+5. Rollback: the previous graph is the one without the signals; `rollback_rebuild`
+   as for any rebuild. The remap change is in lua/, so a code revert needs a rebuild.
 
 ## The stress tiles
 
@@ -1833,6 +1933,20 @@ with home's, as it does `override` (docs/BETA-RUNBOOK.md).
 `junction_suggestion` and `junction_override`; nothing else changed), after
 `0017_mass_hazard`, so the chain stays linear with one leaf. `migrate` runs at `up`, as always.
 
+## My Go (UI-CLEANUP, v0.5.0)
+
+A signed-in rider's own Go settings (`core.models.MyGo`, table `my_go`; GET and POST
+`/api/me/go`): the view the app opens in, Go's ride type and their Home (one point, rounded to 5
+decimal places, and its label). One row per account, made at the first save. Each rider reads and
+writes only their own row, from their session. The row is deleted when the account is marked
+deleted or removed. **Privacy.** A Home is where a rider lives: it is never put in a link, a log
+or a suggestion, and `my_go` is left out of the beta's data shipment (`scripts/beta/ship-data.sh`
+`EXCLUDED_TABLE_DATA`), as the other tables that point at an account are.
+
+**The migration** is `core/migrations/0019_my_go.py` (one new table; nothing else changed), after
+`0018_junction_suggestions`, so the chain stays linear with one leaf. It reverses cleanly
+(`migrate core 0018` drops the table). `migrate` runs at `up`, as always.
+
 ## Avoid-rated junctions: adding one (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
 
 An Avoid rating is for a junction that is "just way too problematic", and only from the
@@ -2135,51 +2249,48 @@ Each graph is built by one `valhalla_build_tiles` run, and the five run one
 after another (standard, no-trail, ebike, weekend, offroad). How many threads a
 run uses is `mjolnir.concurrency` in that variant's
 `<DATA_ROOT>/tiles/<variant>/<build id>/build-config.json`, and the rebuild
-writes it from **`REBUILD_TILE_CONCURRENCY`** (in `.env`; unset means **2**).
-The serving configs' own `"concurrency": 4` is not what a build uses.
+writes it from **`REBUILD_TILE_CONCURRENCY`** (in `.env`; unset means **4**,
+the serving configs' own `"concurrency": 4`).
 
-Why it is a setting: Valhalla 3.5.1 can abort a multi-threaded tile build with
+Why it was low, and why it is not now: Valhalla 3.5.1 could abort a
+multi-threaded tile build with
 
 ```
 double free or corruption (fasttop)
 ```
 
-on stderr and `valhalla_build_tiles exited -6` (SIGABRT) in the rebuild's log,
-usually a few seconds after `Building <n> tiles with <threads> threads...`. Each
-build thread frees its spatialite connections to the admin and timezone
-databases when it finishes, that cleanup calls a libxml2 function that is not
-thread-safe, and two threads finishing together can free the same memory.
+on stderr and `valhalla_build_tiles exited -6` (SIGABRT) in the rebuild's log. Each
+build thread freed its spatialite connections to the admin and timezone
+databases when it finished, that cleanup called a libxml2 function that is not
+thread-safe, and two threads finishing together could free the same memory.
 Upstream fixed it in 3.6.0 ([valhalla/valhalla#5005](https://github.com/valhalla/valhalla/pull/5005),
-reported as [#4904](https://github.com/valhalla/valhalla/issues/4904)). It is a
-race, not bad data: the same inputs build on the next try, and which graph it
-hits is luck.
-
-**The pinned image is 3.9.1 now (2026-10-10), which has that fix**: from 3.6.0
+reported as [#4904](https://github.com/valhalla/valhalla/issues/4904)): from 3.6.0
 Valhalla takes a process-wide lock around the cleanup (`Sqlite3::~Sqlite3`,
-src/mjolnir/sqlite3.cc:78-91 at 3.6.3, unchanged at 3.9.1). Both guards below
-stay until rebuilds on this host with the fix have shown no abort; the default stays 2 for memory as
-much as for the race. Once a few rebuilds are clean, 4 (the measured 4.5 h row
-below) is the setting to try. A `retry 1 of 1` line under 3.9.1 is no longer
-the known race: keep the log and report it.
+src/mjolnir/sqlite3.cc:78-91 at 3.6.3, unchanged at 3.9.1). So while the image was
+3.5.1 the default was 2 threads, and an aborted or crashed (SIGSEGV) build was run
+once more. The pinned image is 3.9.1, and both are retired
+(FOLLOWUP-VALHALLA-36-LEFTOVERS, item 4; the v0.5.0 Track B change): the default
+is 4, and an abort fails the tile stage at once, as any other failure does, saying
+`valhalla_build_tiles exited -6: <command>` (`-11` for SIGSEGV). Before retiring
+them, the 3.9.1 binaries from the `pyvalhalla` wheel built a small Baltimore
+extract (Valhalla's own `test/data/baltimore.osm.pbf`) with an admin database on 4
+threads 150 times in a row with no abort (2026-10-11, the cloud container). That
+is a much smaller build than the region's, so it is a sanity check rather than proof.
 
-Two things keep it from failing a rebuild:
+**An abort under 3.9.1 is something new.** Keep the rebuild's log (the run row
+holds the command's last lines), and note it in the report. The attempt fails
+and the worker retries the job (a failed command is not a terminal cause); with
+`REBUILD_CHECKPOINTS` on, the retry resumes after the last graph that finished
+("Rebuild checkpoints"), and without it the retry starts again from the top. If it aborts again, set
+`REBUILD_TILE_CONCURRENCY=1` (below) and let the next attempt resume. One more
+SIGABRT is not a race at all: a tag-transform script Valhalla refuses ("Lua
+script does not contain a function ...", from `std::terminate`) dies of SIGABRT
+too, every time; lua/graph.lua refuses itself that way when
+`routemaker_remap.lua` does not load (FOLLOWUP-VALHALLA-36-LEFTOVERS, item 2).
+The command's output in the run row says which.
 
-- **Fewer threads.** 2 rather than 4 means fewer threads finishing at once,
-  and less memory. **1 cannot hit it at all**, and is the setting to use if
-  aborts keep happening; it makes the tile stage slower (the figures below).
-- **One retry of the crashed graph.** A `valhalla_build_tiles` that dies with
-  SIGABRT (`-6`) **or SIGSEGV (`-11`)** is run once more, for that graph only, logged
-  as `valhalla_build_tiles aborted (SIGABRT); running it again, retry 1 of 1: <command>`
-  or `valhalla_build_tiles crashed (SIGSEGV); running it again, retry 1 of 1: <command>`.
-  SIGSEGV is the same race seen as a crash (it killed a graph of job 8408 on
-  2026-10-09, OWNER-DECISIONS 459); SIGKILL (the out-of-memory killer) and everything
-  else are not retried.
-  That line means the retry is running and nothing needs doing now. The rerun
-  starts from scratch in the same build directory (Valhalla purges the tile
-  level directories first) and gets whatever is left of the budget. Any other
-  failure, or a second abort, fails the rebuild as before; a second abort is
-  reported as `valhalla_build_tiles exited -6 (after 1 retry): <command>` (`-11` for a
-  second SIGSEGV).
+**Fewer threads is less memory.** A host that runs short at 4 (the out-of-memory
+killer: `exited -9`) builds at 2 or 1, slower:
 
 What it costs, measured on attempt 3 of job 8023 (2026-10-08, 4 threads, no
 abort): preprocessing up to the first build config took 2 h 37 min, the tile
@@ -2188,15 +2299,14 @@ also builds the admin and timezone databases), and VALIDATE (now VALIDATE_TILES)
 
 | Threads | Whole rebuild |
 |---|---|
-| 4 | about 4.5 h |
-| 2 (the default) | about 6 h; about 6.8 h if one graph is retried |
+| 4 (the default) | about 4.5 h |
+| 2 | about 6 h |
 | 1 | about 6.6 to 8.3 h |
 
 At 1 thread the top of that range is past the eight-hour budget ("The
 rebuild's own budget", above). An attempt that times out *after* writing a checkpoint is
-retried and resumes from it; one that wrote none is abandoned. So set 1 only after an abort
-that the retry did not cure (the `(after 1 retry)` failure), or after the retry line has
-shown up in more than one rebuild, and watch the next one against the budget.
+retried and resumes from it; one that wrote none is abandoned. So watch a rebuild at 1
+against the budget.
 
 The setting is read when the settings load: a value that is not a whole number
 of at least 1 (`0`, `-1`, `2.5`, `x`) keeps the rebuild service from starting:
@@ -2219,6 +2329,47 @@ The value a build actually used is in its `build-config.json` under
 <threads> threads...` line is not in `docker compose logs rebuild` on a build
 that succeeds: the rebuild captures the output and logs it only when a command
 fails.)
+
+### After the Track B rebuild: the Valhalla 3.6 leftovers
+
+FOLLOWUP-VALHALLA-36-LEFTOVERS items 1-4 (the v0.5.0 Track B change). What to look at
+once the first rebuild with them has been promoted:
+
+1. **Threads and the retry (item 4).** Each graph's `build-config.json` says
+   `"concurrency": 4` unless `.env` sets another value, and the run took about
+   4.5 h ("Tile build threads", above). No `exited -6` or `-11` in the run row. If
+   the host ran short of memory (`exited -9`, or the box swapping hard), set
+   `REBUILD_TILE_CONCURRENCY=2`.
+
+   ```sh
+   cat "$(sed -n 's/^DATA_ROOT=//p' .env)"/tiles/standard/current/build-config.json \
+     | python3 -c 'import json,sys; print(json.load(sys.stdin)["mjolnir"]["concurrency"])'   # 4
+   ```
+
+2. **The remap loaded (item 2).** A finished rebuild is the check: a remap that
+   fails to load now fails BUILD_TILES on the first graph ("Lua script does not
+   contain a function ..."). Before, it built on the stock transform.
+3. **Hiking ratings (item 3).** The `sac_scale` count in the rebuild log's
+   "facility classes: ..." line moves. Footways, pedestrian ways and bridleways
+   with a rating drop out, since their class already closed them. Unpaved paths
+   rated beyond `hiking` (`mountain_hiking` and up) come in: Valhalla reads no
+   `sac_scale` for a bicycle, so they were routable before and are closed now.
+   Compare it with the previous rebuild's line, and see how many closed paths
+   were open in the build before:
+
+   ```sh
+   docker compose exec -T postgis psql -U routemaker -d routemaker -c "
+     SELECT count(DISTINCT n.osm_way_id) AS newly_closed_trails
+       FROM live.segment n JOIN live_old.segment o USING (osm_way_id, ordinal)
+      WHERE n.map_class = 'barred' AND o.map_class <> 'barred' AND n.is_trail_class"
+   ```
+
+   Expect tens to a few hundred ways. That count also includes trails closed
+   for other reasons since the last extract. Open a few on openstreetmap.org: the
+   ones this change closed carry `sac_scale` and no `bicycle` tag.
+4. **Surface penalties (item 1).** Nothing to see: no rebuild input writes
+   `rm:reviewer_surface` today. The tile test (tests/test_tile_build_access.py,
+   "a reviewer ... penalty") covers it against the real parser.
 
 ## Rebuild checkpoints
 
@@ -2667,11 +2818,39 @@ not refresh it (the refresh by hand is in `frontend/src/amenity-data/README.md`)
 Since 2026-10-10 the script merges a restroom node into the restroom building
 around it and leaves out historic springs (rules and merge order in that
 README); the committed file was refreshed with both on 2026-10-11, for v0.4.0.
+Since 2026-10-11 (v0.5.0, RESTROOMS-FIX) it also leaves out points inside
+airports, military sites and prisons, and merges the open Throne smart
+restrooms from the cited hand list `frontend/src/amenity-data/throne-restrooms.json`.
+The committed file already has the Throne units (`--throne-only` needs no
+extract); the secured-site filter waits for the next refresh by hand on the
+build host, whose printed "left out inside airports, military sites and
+prisons" count goes in that README's Status.
 It is a hashed asset under `/assets/` (about 35 KB compressed), served like the
 federal-land file and fetched when the layer is on, which it is by default; no
 edge, compose or deploy change. A release that first carries it adds to its
 checks: the hashed `water-restrooms-*.json` asset gives 200, `immutable`,
 compressed, and is named by the published front end's script.
+
+The planner's Find food search (`frontend/src/lib/food.ts`; FOOD-SEARCH,
+v0.5.0) is OpenStreetMap data too and needs nothing beyond the ODbL credit.
+Its file, `frontend/src/amenity-data/food.json`, is a committed snapshot built
+by `scripts/build_food.py` from the extract; like the water file, the weekly
+rebuild does not refresh it. The file committed with the feature was empty
+(the search said "No food data yet"); the v0.5.0 rebuild on the build host
+ran it once on 2026-10-11 (15,480 places, committed in #92), next to the
+water layer's refresh by hand, and a later refresh runs the same:
+
+    .venv311/bin/python scripts/build_food.py \
+        --pbf <DATA_ROOT>/extracts/source.osm.pbf
+
+then records the printed counts, size and digest in
+`frontend/src/amenity-data/README.md` ("Places to eat", "Status") and commits
+the file. It is a hashed asset under `/assets/`, fetched on the first search
+only (2.3 MB, 555 KB with `gzip -9`, for the committed file) and left out of the service worker's
+precache, so installing the app does not download it (`LAZY_ASSET` in
+`frontend/src/sw/swCore.mjs`); no edge, compose or deploy change. The
+release's checks add: the hashed `food-*.json` asset gives 200, `immutable`,
+compressed, and a search for "pizza" in Washington lists places.
 
 Three more credits ride with the agency layers (`docs/DEVELOPMENT.md`,
 "Agency street layers"; sources and licences in `fixtures/datasets/README.md`),
@@ -2770,7 +2949,7 @@ to prevent.
 
 Preset links: `/<ride-type-id>` (for example `/trailmaxxing`, any case, with or without a trailing slash) is a 302 to `/#preset=<id>`, for exactly the ids in `frontend/src/lib/presets.ts` (eleven since Riding with kids, `/kids`); adding or renaming a ride type means editing the Caddyfile's `@preset-*` list too, and `tests/test_preset_links.py` fails until it matches.
 
-`/basemap/*` answers only `region.pmtiles`, `fonts/*` and `sprites/*` (anything
+`/basemap/*` answers only `region.pmtiles`, `contours.pmtiles`, `fonts/*` and `sprites/*` (anything
 else under it is a 404, the stamps and the work directory included), and only to
 requests whose `Origin` is this site or, with no `Origin`, whose `Referer` is a
 page on it; anything else is a 403, sent `no-store` so a browser does not keep
@@ -2785,6 +2964,77 @@ TLS-terminating proxy Caddy sees `http` and refuses every `https` page.
 Caddy with a third-party module. Until then nothing bounds how fast one address
 can read the archive, and that is a gate on opening the site to anything beyond
 this machine (docs/DEPLOYMENT.md, "Build").
+
+### Topo lines (contours; docs/MTB-TOPO-PLAN.md, slice 4)
+
+The Map layers sheet's "Topo lines" switch (OWNER-DECISIONS 454; `frontend/src/lib/topoLines.ts`)
+draws contours from `<DATA_ROOT>/basemap/contours.pmtiles`, served beside the base map at
+`/basemap/contours.pmtiles` with the same same-origin guard and `no-cache` (the Caddyfile and the
+beta's nginx template both list it). Until the file exists, turning the switch on (the
+first time in a visit, when the app asks the server for the archive with a `HEAD`) changes its
+description to "Topo lines are not available on this server yet", and nothing else changes. The edge change needs the
+Caddyfile re-read once (below, "Applying a Caddyfile change").
+
+`scripts/build_contours.py` makes the file from the USGS 3DEP 1/3 arc-second DEM (four one-degree
+cells over `COVERAGE_BBOX`: n40w078, n40w077, n39w078, n39w077; 1.82 GB in all, 370 to 500 MB each,
+as the bucket listed them on 2026-10-11): it downloads them (kept in its work directory, so a second
+run downloads nothing; each checked against the bucket's Content-Length, since 3DEP publishes no
+checksum), clips the mosaic to the coverage, traces every 20 ft contour (`gdal_contour`), splits them
+into three layers by the coarsest spacing each belongs to (100, 40 and 20 ft, tiled from zoom 10, 13
+and 14), and writes the archive (GDAL's PMTiles driver, zoom 10 to 14) through a `.part` name, so the
+edge never serves half a file. `--print-plan` lists the cells, URLs and levels without touching the
+network.
+
+When: once, as part of the release's last step before the beta, with the rebuild (the owner: "Rebuild
+should be the last step before it's on the beta"), and again only if USGS republishes the cells. It
+needs no database and no router, and it does not touch the running stack: the edge reads the file per
+request, so the next request gets the new archive.
+
+It needs GDAL 3.8 or later with the PMTiles driver, and must write as the basemap directory's owner
+(uid 10001 after `prepare_data_root.sh`), so, like the base map fetch, it runs in a container as
+10001 with only the script and that directory mounted. The image is GDAL's own, pinned by tag; its
+digest at the first pull (the build host, 2026-10-11) was
+`ghcr.io/osgeo/gdal@sha256:7125d6f5d6af5331354328fc6a64c9e420b29b31460d1a6aaf9526e559255e07`.
+From the repository root:
+
+```sh
+docker run --rm -u 10001:10001 \
+  -v <DATA_ROOT>/basemap:/out \
+  -v "$PWD/scripts/build_contours.py:/build_contours.py:ro" \
+  ghcr.io/osgeo/gdal:ubuntu-small-3.9.3 \
+  python3 /build_contours.py --out /out
+```
+
+The work directory is `/out/.contours-work` (`<DATA_ROOT>/basemap/.contours-work`, which the edge
+refuses like any unlisted path). It is deleted at the end, downloads and all, because
+`scripts/beta/ship-data.sh` copies the whole basemap directory to the beta; `--keep-work` keeps it
+(a re-run then downloads nothing). A kept work directory, or one a failed run left behind (it is
+deleted only on success), must be deleted before shipping data: `ship-data.sh` refuses to ship the
+basemap while `.contours-work` or a half-written `.contours.pmtiles.part` is there.
+
+Disk and time, measured in the cloud container on 2026-10-11 with Ubuntu 24.04's GDAL 3.8.4 on one
+whole cell (n39w078 clipped to the coverage's 38.2 N, 0.8 of a square degree, among the hillier parts,
+its highest line 1,800 ft): 500 MB downloaded, 297 MB clipped DEM, 254 MB of contour lines, 254 MB of split
+layers, a 39 MB archive, 291 s in all on 4 cores (the tiling 183 s of it, at 209 MB peak memory). The coverage is
+about 3 square degrees, mostly flatter, so expect: **about 1.8 GB to download, about 5 GB free on the
+data volume at the peak (downloads, the clipped DEM and two line files), an archive of roughly 100 to
+150 MB, and 20 to 30 minutes on the host**, most of it the tiling, on one core. The first run on the
+build host (2026-10-11, `--memory 2g`, for the v0.5.0 rebuild) took 36 minutes, downloads included, and
+wrote a 127,728,145-byte archive.
+GDAL streams the DEM in blocks; give the container 2 GB. Check the result:
+
+```sh
+docker run --rm -v <DATA_ROOT>/basemap:/out:ro ghcr.io/osgeo/gdal:ubuntu-small-3.9.3 \
+  ogrinfo -so /out/contours.pmtiles        # name=RouteMaker contours, minzoom=10, maxzoom=14
+```
+
+then turn the switch on in the app at zoom 12, 13 and 15: 100 ft lines with 500 ft index lines, then
+40 ft with 200 ft, then 20 ft with 100 ft, each index line heavier and labelled "500 ft (152 m)".
+
+Source and licence: docs/SOURCES.md, "USGS 3D Elevation Program" (U.S. public domain; the map's
+credits already name "USGS 3DEP"). The look is this app's own, written for it; the source's credit
+names OpenTopoMap as the look's inspiration (docs/MTB-TOPO-PLAN.md, slice 4), and nothing of
+OpenTopoMap's style code, which names no licence, is copied.
 
 ## Applying a Caddyfile change
 
@@ -2884,8 +3134,9 @@ and `manifest-src` falls back to `default-src 'self'`.
 `/sw.js` is written by the build (`frontend/src/sw/swPlugin.mjs` from `swCore.mjs`)
 and carries the build's id; `index.html` carries the same id in `<meta
 name="routemaker-build">`. What it does, and what it never touches, is the table
-in `frontend/src/sw/swCore.mjs`: it precaches the build's `/assets/*` and
-`index.html`, answers a navigation to `/` from the network first (3 s, then the
+in `frontend/src/sw/swCore.mjs`: it precaches the build's `/assets/*` (but
+the Find food places, `/assets/food-*.json`, kept only once a search fetches
+them) and `index.html`, answers a navigation to `/` from the network first (3 s, then the
 kept copy), and passes through everything else, `/api/*`, `/auth/*`, `/tiles/*`,
 the base map archive, the admin path and every non-GET included. It caches no API
 answer and nothing private.
@@ -3221,10 +3472,19 @@ the first host to run it is the first test of it.
        --data-root /data --extract /data/extracts/source.osm.pbf \
        --urban-areas /data/reference/inputs/tl_2024_us_uac20.geojson \
        --volume /data/reference/inputs/vdot-aadt-2024.geojson \
-           --volume-source vdot --volume-year 2024 \
+           --volume-source vdot --volume-year 2024 --aadt-property ADT \
        --volume /data/reference/inputs/ddot-aadt-2024.geojson \
-           --volume-source ddot --volume-year 2024
+           --volume-source ddot --volume-year 2024 --aadt-property AADT
    ```
+
+   **The Virginia file's count is `ADT`, not `AADT`.** VDOT's export
+   (`vdot-aadt-2024.geojson`) has no `AADT` field, and the installer's default
+   property is `AADT`, so without `--aadt-property ADT` it reads **0 count lines**
+   from it and says so only in its `... 0 count lines from vdot (state)` line, with
+   exit 0; every Virginia road is then graded with no count. `--aadt-property`
+   pairs with the `--volume` files like `--volume-year`: give it once for all, or
+   once per file in order. The installer prints one line a file: VDOT 36,808 count
+   lines, DDOT 8,323 (2026-10-11).
 
    **Every input path is absolute and inside the container.** A bare
    `tl_2024_us_uac20.geojson` resolves against the image's working directory,
@@ -3237,17 +3497,17 @@ the first host to run it is the first test of it.
    publishers on a road they both cover, and with one file in the input the
    locality-over-state precedence rule has nothing to choose between. VDOT's is
    the traffic-volume export from the Virginia Roads portal; the District's is
-   DDOT's AADT layer from the District's open-data portal. **Maryland's arrives
-   the same way, and phase 1 does not install it.** The pipeline records which
-   agency published every count that reached a way — the segment table's
+   DDOT's AADT layer from the District's open-data portal. **Maryland's is the
+   third pair, from v0.5.0** (FOLLOWUP-MDOT-AADT, OWNER-DECISIONS 429; the owner
+   approved the download for the v0.5.0 rebuild): "Maryland traffic counts (MDOT
+   SHA)" below has the fetch and the extra `--volume` lines. The pipeline records
+   which agency published every count that reached a way — the segment table's
    `volume_source`, `volume_aadt` and `volume_year` columns — so a Maryland
-   layer's influence on the published map is identifiable. It is not yet
-   *excludable*: nothing in the export can withhold the segments a
-   conditionally licensed source touched, so installing Maryland today means
-   publishing a derivative that is influenced by it. Add the third pair once
-   the waiver mechanism PLAN.md:31-34 describes exists; handoff.md section 7
-   carries the row. docs/DEVELOPMENT.md, "Reference data", has what each one is
-   and how the counts have to be normalised before they get here.
+   count's influence is identifiable, and no published derivative exists for it
+   to reach; one that is built must withhold `volume_source = 'mdot-sha'` until
+   the waiver PLAN.md:31-34 describes is in hand (docs/SOURCES.md, "Maryland
+   traffic counts (MDOT SHA)"). docs/DEVELOPMENT.md, "Reference data", has what
+   each one is and how the counts have to be normalised before they get here.
 
    **Optional, the agency street layers.** Add `--roadway-block
    /data/reference/inputs/dc-roadway-block/dc-roadway-block.geojson
@@ -3328,7 +3588,7 @@ the first host to run it is the first test of it.
 
    ```sh
    docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-   docker compose --profile offroad restart valhalla-offroad   # only where the off-road router runs
+   docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # only where the off-road routers run
    ```
 
 After that the weekly schedule carries it: Tuesdays 08:00 UTC, with the alert
@@ -3687,7 +3947,8 @@ docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py locate
 ```
 
 The gate's probes against the four **serving** routers, one pedestrian locate
-each. Expect `ok` on every line. Every router but no-trail finds most of the
+each, and against `valhalla-offroad` and `valhalla-mtb` where they run (each says "not
+running, skipped" where it does not). Expect `ok` on every line. Every router but no-trail finds most of the
 probes; no-trail drops trails, singletrack with them, so it finds only the OSM
 closures that are not trails (7 tracks in the 2026-10-03 extract: "7 found,
 ok"). `OPEN:` lists ways a bicycle may use; `FOUND NONE` on a router that keeps
@@ -3798,7 +4059,7 @@ are restarted:
 
 ```sh
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-docker compose --profile offroad restart valhalla-offroad   # only where the off-road router runs
+docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # only where the off-road routers run
 ```
 
 Nothing in the rebuild does this, and there is no check that notices it has not
@@ -3892,6 +4153,185 @@ word. A folder with no file is a warning.
   approval. After it: load the file (`load_access_overrides`, dry first, then
   `--confirm`, as in `fixtures/overrides/README.md`), delete row 424993005 in the
   admin, and the next rebuild applies the three new rows.
+
+### After the Track B rebuild: bus roads (FOLLOWUP-BUS-ROADS)
+
+A road closed to motor vehicles but open to buses (`motor_vehicle=no` with `bus`
+or `psv` `yes`/`designated`; `routemaker.tags.open_to_buses`) is no longer
+car-free: the first rebuild with this change rates it by its class and speed
+instead of "closed to motor traffic: an off-road path" or the 444 cap's "motor
+traffic restricted (...), LTS 1 at most", and gives it facility `none` (or its lane
+class) instead of `path`. Nothing to restart for it beyond the usual router restart.
+The junction side (`core.junctions` reads a bus-only edge as driven) arrives with
+the release and needs no rebuild.
+
+After the promotion, while `live_old` is still the build before it, list the
+ways that moved: the count the follow-up asked for, and the review's three roads
+(Exchange Ave and Fayette St in Baltimore, Neabsco Stream Dr) should be among them.
+
+```sh
+docker compose exec -T postgis psql -U routemaker -d routemaker -c "
+  SELECT n.osm_way_id, o.stress_tier AS was_tier, n.stress_tier AS now_tier,
+         o.facility AS was_facility, n.facility AS now_facility, n.stress_rule
+    FROM (SELECT DISTINCT ON (osm_way_id) * FROM live_old.segment
+           WHERE stress_rule LIKE 'closed to motor traffic%'
+              OR stress_rule LIKE 'motor traffic restricted%'
+           ORDER BY osm_way_id, ordinal) o
+    JOIN (SELECT DISTINCT ON (osm_way_id) * FROM live.segment
+           ORDER BY osm_way_id, ordinal) n USING (osm_way_id)
+   WHERE n.stress_rule NOT LIKE 'closed to motor traffic%'
+     AND n.stress_rule NOT LIKE 'motor traffic restricted%'
+   ORDER BY n.stress_tier DESC, n.osm_way_id"
+```
+
+Expect a short list (tens of ways, not hundreds), every row a road OSM tags open
+to buses; open two or three on openstreetmap.org to confirm. A row that is not a
+bus road moved for another reason (an OSM edit since the last extract): check its
+history there. The ways also drop out of the car-free path
+count on the map (fewer `facility = 'path'` roads, outside the trail classes).
+
+## Maryland traffic counts (MDOT SHA)
+
+FOLLOWUP-MDOT-AADT (OWNER-DECISIONS 429; download approved for the v0.5.0 rebuild,
+2026-10-10). MDOT SHA's AADT segments fill the Maryland roads no other count
+reaches, the first being MD 185 (Connecticut Ave) from Chevy Chase Circle to MD
+410, LTS 3 until now only for want of a count. Run on the home PC: the cloud
+proxy cannot reach the service.
+
+1. **Fetch it once**, clipped to the coverage box, from the checkout on the host
+   into the operator's scratch folder (as for the other agency layers,
+   fixtures/datasets/README.md), then copy it into the inputs folder the rebuild
+   container binds. Standard library only, so no virtualenv is needed. `--bbox=`
+   takes the equals sign because the box starts with a minus sign:
+
+   ```sh
+   export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
+   python3 scripts/fetch_agency_layer.py \
+       --slug mdot-sha-aadt --item 77010abe7558425997b4fcdab02e2b64 \
+       --layer https://services.arcgis.com/njFNhDsUCentVYJW/arcgis/rest/services/MDOT_SHA_Annual_Average_Daily_Traffic/FeatureServer/1 \
+       --bbox=-78.0,38.2,-76.02,39.72 \
+       --out-dir ~/rmdata/datasets --credit "State of Maryland (MDOT SHA)"
+   sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs/mdot-sha-aadt"
+   sudo install -o 10001 -g 10001 -m 644 ~/rmdata/datasets/mdot-sha-aadt/* \
+       "$DATA_ROOT/reference/inputs/mdot-sha-aadt/"
+   ```
+
+   It pages at the layer's 2,000 a page, retries each request three times, and
+   writes `mdot-sha-aadt.geojson` and a README with the size, sha256, retrieval
+   time and the item's licence text. Exit 3 means the pages did not add up to the
+   count the service reported: delete the folder and run it again. Copy the size
+   and sha256 into docs/SOURCES.md, "Maryland traffic counts (MDOT SHA)", and
+   fixtures/datasets/README.md in the release's notes commit.
+
+2. **Install it with the other two counts**, by adding a third pair to step 6's
+   command of "First rebuild on a fresh host" (the installer rewrites
+   `volume.json` from every `--volume` it is given, so all three go in one run):
+
+   ```sh
+       --volume /data/reference/inputs/mdot-sha-aadt/mdot-sha-aadt.geojson \
+           --volume-source mdot-sha --volume-year 2024 --aadt-property AADT
+   ```
+
+   `--volume-year` and `--aadt-property` are given once per file here, because
+   step 6's two files give theirs (given two years for three `--volume` files, the
+   installer refuses to start and says so). Without a year of its own
+   the installer would read Maryland's from the layer's fields (the newest
+   `AADT_<year>` plus one; 2024 on the 2026-10-11 layer), so 2024 is the same
+   answer. The v0.5.0 install (2026-10-11) printed 8,625 count lines from
+   mdot-sha, 53,756 in `volume.json` with VDOT's 36,808 and DDOT's 8,323.
+
+3. **After the rebuild**, read the log and check MD 185:
+
+   | Line | What to look for |
+   |---|---|
+   | `.../mdot-sha-aadt.geojson: N count lines from mdot-sha (state)` (installer) | some thousands for the box |
+   | `MDOT SHA counts shared with N opposite carriageways` | in the hundreds: each divided Maryland road's second carriageway, which conflation alone leaves uncounted (`conflation.share_with_carriageways`; Maryland's counts only) |
+   | `volume conflation: N matched, ...` | N up by the Maryland roads against the last rebuild |
+
+   ```sh
+   docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+     "SELECT osm_way_id, stress_tier, volume_source, volume_aadt, volume_year
+        FROM live.segment
+       WHERE geometry && ST_MakeEnvelope(-77.0800, 38.9675, -77.0740, 38.9880, 4326)
+         AND road_speed_mph IS NOT NULL
+       ORDER BY ST_YMin(geometry);"
+   ```
+
+   The box is MD 185 from the DC line to MD 410, and the cross streets in it come
+   back too: the Connecticut Avenue rows are the ones at 30 mph. Both carriageways
+   should be there, `mdot-sha`, with 39,141 (2024) or that year's figure, and
+   `stress_tier` 4, as the same road is in the District at 30 mph. A row at 3
+   there means the count did not reach it: check the line above, then
+   `named-corridors.md` and `override-rematch.md` for a row holding the way.
+   The before/after tier count for Maryland goes in the release notes: every
+   tier a Maryland count moved is a road that was graded without one.
+
+## DC pavement condition (DC-PCI)
+
+DDOT's Pavement Condition Index is the smoothness reading of District streets from
+v0.5.0 (owner, 2026-10-11: "DC score in most cases takes priority over OSM data").
+The download runs on the home PC at rebuild time: the cloud proxy cannot reach
+dcgis.dc.gov. **The service states no licence**: confirm the terms with DDOT or Open
+Data DC before the release ships (docs/SOURCES.md). Until the owner has, the code
+holds it back: `routemaker.pavement.LICENCE_CONFIRMED` is False, so step 2 refuses
+`--dc-pci` (exit 2, `--dc-pci refused: ... states no licence`) and a rebuild that
+finds a `pavement.json` logs `... is installed but not read` and leaves every street
+on OSM's reading. The commit that records the confirmation in docs/SOURCES.md sets it
+True; only then run steps 1 to 3.
+
+1. **Fetch FY-25 once**, from the checkout on the host. There is no ArcGIS Online
+   item, so no `--item`; the README the script writes records the service's own item
+   info and says the licence is to be confirmed. It pages at 1,000 a request
+   (the layer's limit) and retries each request three times:
+
+   ```sh
+   export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
+   python3 scripts/fetch_agency_layer.py --slug dc-pavement-pci-fy25 \
+       --layer https://rh.dcgis.dc.gov/dcgis/rest/services/DDOT/PavementConditionIndex/FeatureServer/5 \
+       --out-dir ~/rmdata/datasets --credit "DDOT Pavement Condition Index (DC GIS)"
+   sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25"
+   sudo install -o 10001 -g 10001 -m 644 ~/rmdata/datasets/dc-pavement-pci-fy25/* \
+       "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25/"
+   ```
+
+   Exit 3 means the pages did not add up to the count the service reported: delete
+   the folder and run it again. Put the size and sha256 from its README into
+   docs/SOURCES.md. Before installing, open the file and check one record's `DATE1`
+   against the fiscal year: the rebuild takes `DATE1` as the survey date (an
+   assumption, docs/SOURCES.md).
+
+2. **Install it** (with the other reference inputs, or on its own; it writes only
+   `reference/pavement.json`):
+
+   ```sh
+   docker compose exec -T rebuild python3 scripts/install_reference_data.py \
+       --data-root /data \
+       --dc-pci /data/reference/inputs/dc-pavement-pci-fy25/dc-pavement-pci-fy25.geojson
+   ```
+
+   It prints `wrote .../pavement.json: N pavement blocks (FY2025)`. A later year's
+   layer takes `--dc-pci-fiscal-year`, which only names the year blocks with no
+   `DATE1` are dated to.
+
+3. **After the rebuild**, read the log line and the report:
+
+   | Line | What to look for |
+   |---|---|
+   | `DC pavement (PCI): N of M blocks matched ways, N ways reached; applied good N, fair N, poor N; kept OSM's reading: ...` | most blocks matched; `not_street` counts the alleys and paths near a block, `osm_newer` the streets whose OSM smoothness is newer than the survey, `override` the owner's corrections |
+   | `.../pavement.json is absent, so DDOT's Pavement Condition Index is not read` | should not appear once step 2 has run |
+   | `pavement corrections not applied (fixtures/pavement/overrides.json)` | should not appear; a correction names a way the layer did not reach |
+
+   `${DATA_ROOT}/rebuild/reports/dc-pavement-pci.csv` has one line a way the layer
+   reached: its PCI, the band the graph was given (empty where OSM's reading stood),
+   why, the survey date and the blocks. Spot-check two streets you know, one rough
+   and one smooth. A street that is wrong gets a row in
+   `fixtures/pavement/overrides.json` (`reading`: `osm`, `good`, `fair` or `poor`,
+   with the reason and the owner's decision), committed, and the next rebuild
+   applies it.
+
+   **Rolling it back** without a code change: remove `reference/pavement.json` and
+   rebuild; every street then keeps OSM's reading, and the log says the file is
+   absent.
 
 ## Deployment actions
 
@@ -4091,7 +4531,7 @@ changes nothing — and `--confirm` is what performs it.
 docker compose exec -T rebuild ./manage.py rollback_rebuild            # what would happen
 docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm  # do it
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
-docker compose --profile offroad restart valhalla-offroad   # only where the off-road router runs
+docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # only where the off-road routers run
 docker compose up -d --no-deps --no-build --force-recreate api worker
 docker compose exec -T api python manage.py predraw_stress_tiles
 ```
@@ -4278,7 +4718,7 @@ tiles):
    disagree means that variant is not back yet.
 5. **Restart the routers** if any of them restarted while the links were
    wrong — it will have loaded the build that failed to swap:
-   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the off-road router runs, `docker compose --profile offroad restart valhalla-offroad`
+   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`, and, where the off-road router runs, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb`
    (see "After a rebuild: restart the routers"). Harmless if none did.
 6. **Leave `staging` alone.** It is the failed build's output and the next
    rebuild's first stage drops it. Then rebuild — `run_rebuild_now`, or wait
@@ -4555,15 +4995,15 @@ foot_designated, trail_visibility, hiking_route, natural_surface, park_path, mtb
 dismount), `routemaker.zoo` and the existing `singletrack` and `cbd_sidewalk`.
 The rebuild log line "facility classes: ..." carries the count per reason.
 
-**Five graphs.** The mountain-bike class (`mtb`) is closed on the standard,
+**Six graphs.** The mountain-bike class (`mtb`) is closed on the standard,
 weekend, e-bike and no-trail graphs and open on a fifth, `valhalla-offroad`
 (`Variant.OFFROAD`), which Gravel and Mountain Goat ride (OWNER-DECISIONS
-291(2)). It has no weekend twin and falls back to the standard graph, as the
+291(2)), and on the Mountain Bike graph (below). The off-road graph has no weekend twin and falls back to the standard graph, as the
 weekend one does, when it is not promoted or not answering. Start it after the
 first rebuild that builds it: `docker compose --profile offroad up -d --no-deps
 --no-build valhalla-offroad`; a rollback that withdraws it stops it like the weekend one.
-Limits: two workers inside 1536M (not 2G), so the swap-time peak is 32.0G of the
-32G the compose check allows.
+Limits: one worker inside 768M (not 2G), sharing with the Mountain Bike router (below) the
+1536M it had alone, so the swap-time peak is 32.0G of the 32G the compose check allows.
 
 **The off-road router is behind the compose profile `offroad`.** A plain
 `docker compose up -d` (and the force-recreate lists above, which name services
@@ -4579,8 +5019,53 @@ command above after the swap, and `restart` it after later rebuilds as the other
 A `restart` that names `valhalla-offroad` where it has no container fails ("no such
 service", with or without `--profile offroad`) and restarts none of the other
 routers on the same line, so the four-router restart never names it. Restart it on
-its own line, `docker compose --profile offroad restart valhalla-offroad`, and only
+its own line, `docker compose --profile offroad restart valhalla-offroad valhalla-mtb`, and only
 where it runs.
+
+**The Mountain Bike graph** (docs/MTB-TOPO-PLAN.md, slice 6). A sixth graph, `tiles/mtb`
+(`Variant.MTB`, `valhalla/valhalla-mtb.json`), which only the Mountain Bike ride type rides:
+the off-road graph with rated singletrack opened where nothing but its rating closes it
+(`pipeline.trail_closures.mtb_graph_keeps`), and every way mapped closed when wet
+(`routemaker.mtbmode.closed_when_wet`) closed with `rm:no_bicycle=wet`. Every rebuild builds and
+promotes it with the other five; nothing else is to run. Its router, `valhalla-mtb`, is behind
+the same compose profile as `valhalla-offroad` and is started and restarted with it:
+
+    docker compose --profile offroad up -d --no-deps --no-build valhalla-offroad valhalla-mtb
+    docker compose --profile offroad restart valhalla-offroad valhalla-mtb   # after a later swap
+
+Start both or neither: the printed restart names both, and a `restart` naming a service with no
+container restarts none of the others on the line. One worker in 768M each (the 1536M
+`valhalla-offroad` had alone), so the 32G compose check still holds at 32.0G; a host with room
+can give each two workers in 1536M once the check's host size is raised. While the router is not
+running, or before the first rebuild that builds `tiles/mtb`, Mountain Bike plans on the standard
+graph and the route says so (`mtb.limited` = `no_mtb_graph`). Disk: the rebuild's gate counts a
+sixth extract (seven times the source, `pipeline.tiles.check_disk_gate`), and the graph is about
+1.1 GB on disk like the others. The post-swap closure probe
+(`scripts/probe_bicycle_closures.py`) reads it too, leaving out only the probes it opens on
+purpose: the mountain-bike class and the singletrack the layer draws, which the probe file
+marks (`mtb_graph_open` = 1). It still holds that router to the undrawn singletrack (bicycle=no,
+hiking-only, private and the rest), as the rebuild's own readback does. A probe file written
+before that column leaves out every singletrack probe on it. The cloud box's result carries `tiles-mtb.tar` beside the other five
+(`scripts/cloud/box-rebuild.sh`, `import-result.sh`), and the beta's bundle sends `tiles/mtb`
+with the rest; the beta does not start the router (compose.beta.yaml, its memory ceiling).
+
+*Memory and time on the build host (the 16 GB WSL PC).* The sixth graph does not raise the
+rebuild's memory peak. Every per-graph stage runs one graph at a time, in the same `rebuild`
+container under its 8G limit: the extract written per graph (`inject_tags`, one graph's tag map
+held at a time), `valhalla_build_tiles` (one graph at a time, `REBUILD_TILE_CONCURRENCY` threads
+inside it), and the grade and closure read-backs (one one-shot `valhalla_service` at a time;
+`tests/test_worker_schedule.py` counts six builds and eight reads). The extra set it
+keeps is the wet-closed way ids, a few thousand integers. So the last rebuild's peak still holds,
+and so does what it needed: photon stopped and the heavy host apps closed (pre-flight, step B).
+What the sixth graph adds is time and disk: one more tile build, about 20-25 minutes quiet and
+more under load (the weekend graph's figure, above), inside the 8 h `REBUILD_TIMEOUT_S`; one more
+extract the size of the source; and about 1.1 GB per kept build directory (`current` and
+`previous`, so about 2.2 GB). At run time nothing changes on that host. `valhalla-mtb`, like
+`valhalla-offroad`, is behind the `offroad` profile and is not started there, and Mountain Bike
+plans on the standard graph and says so. Start the pair only on a host with about 1.5 GB to
+spare beyond the four routers. Each router's resident set has been 74-500 MB when read (the
+standard router about 450 MB over its 1.1 GB of tiles), so one worker fits in 768M; the compose
+check's 700 MB a worker leaves it little headroom past that.
 
 **The Zoo.** `fixtures/zoo/` holds the polygon and the spur: the Harvard Street
 NW entrance to the bike racks (OSM node 9827008403), seven whole ways, written
@@ -4615,8 +5100,11 @@ in `pipeline.trail_closures.PARK_RULES` after that park's compendium has been
 read, which needs the owner's approval as a fetch.
 
 **The gate.** VALIDATE_TILES reads back up to 8 ways of each new reason from every
-graph; the off-road graph is not held to `mtb`. `scripts/probe_bicycle_closures.py`
-does the same after the swap and now reads the off-road router too.
+graph; the off-road graph is not held to `mtb`, and the Mountain Bike graph not to `mtb`
+or to the singletrack the layer draws (`trail_closures.mtb_graph_keeps`).
+`scripts/probe_bicycle_closures.py` does the same after the swap and reads the off-road and
+Mountain Bike routers too, where they run ("offroad: not running, skipped" and "mtb: not
+running, skipped" where they do not).
 
 ## Mountain-bike difficulty levels (456; claude/v0-4-0-mtb-levels)
 
@@ -4714,6 +5202,75 @@ the router has no name. No name, no label and no name in the words.
 `mtb_level` or `mtb_name`, so the layer draws the grey dots, labels nothing, and the panel names no
 level or name. After the rebuild, check a z14 tile's ETag carries `d` and `n` and the log line has
 counts for each level and the named ways.
+
+## The Climbs layer (454; MTB/topo slice 5; claude/v0-5-0-climbs)
+
+Slice 5 of docs/MTB-TOPO-PLAN.md. The map's Climbs switch (under "Trails and terrain", off until
+turned on, kept per browser as `routemaker.climbs`) draws every categorised climb from
+`frontend/src/climb-data/climbs.json`. That file is written on the build host from the live table
+and the elevation tiles, then committed. It is committed: 3,750 climbs, written on 2026-10-12 from
+staging build 20261011T215845Z (counts in `frontend/src/climb-data/README.md`); an empty file
+would make the switch say "No climbs yet". Nothing else depends on it: routing, the tiles and the rebuild are unchanged.
+
+**The scale** (the owner, 2026-10-10 and 2026-10-11; `routemaker.climb_categories`): score =
+length (m) x average grade (%), Garmin's scale with a Cat 5: Cat 5 over 4,000, Cat 4 over 8,000,
+Cat 3 over 16,000, Cat 2 over 32,000, Cat 1 over 64,000, HC over 80,000. A climb is at least
+0.31 mi (500 m) at 1% or more on average and at least Cat 5; nothing under Cat 5 is drawn
+("Uncategorized is not a hill"). It is scored on net gain: a dip ends it only past
+`DIP_SHARE` (20%) of the gain so far, never under 33 ft (10 m) nor past 165 ft (50 m); a stretch
+with no new high point ends it only past `BREAK_SHARE` (25%) of its length so far, never under
+0.25 mi (400 m) nor past 1 mi (1,600 m); the climb back up out of a dip is climbing, not break,
+so it is not counted, but the whole stretch without a new high point may not pass twice that
+allowance. Ends rising at under 1% over 1,000 ft (300 m) are
+trimmed. The route cost's own reading (`routemaker.climbs.runs`, the 3 m dip and 150 m flat
+rule) is unchanged.
+
+**Writing the file**, after a rebuild has promoted (it reads the live table and
+`<DATA_ROOT>/elevation`, which the rebuild container has, and needs no network: the 3DEP tiles are
+the ones the rebuild already fetched), from the repository on the host. The `rebuild` container must
+be running an image with this release in it (`manage.py build_climbs` is new). It is a heavy job
+(measured on a synthetic 1.4 million-segment table, more rows than the live table's 1.36 million:
+about 3.2 GB peak and a minute or two; the `rebuild` service's 8 GB limit holds it), so it goes
+through the host's heavy-job lock with at least 3,000 MB free, never beside a rebuild, and in the
+running container with `exec`, not `run` (a `run` starts a second rebuild container and, without
+`--no-deps`, the `migrate` service):
+
+    free -m    # "available" at least 3,000 MB; else stop
+    flock <the host's heavy.lock> docker compose exec -T rebuild ./manage.py build_climbs </dev/null
+
+It prints `climbs: read N segments from live.segment`, then `climbs: M written to
+/data/rebuild/climbs.json (HC 0, 1 0, 2 2, 3 54, 4 367, 5 3,327)` (the committed file's counts,
+from staging build 20261011T215845Z on 2026-10-12: 484,351 segments read, 3,750 climbs, 85 s). It only reads
+and is safe to re-run. It refuses, writing nothing, when the table has no routable rows or no
+elevation tile could be read under `--elevation-dir` (a wrong directory, or tiles not in skadi's
+`N38/N38W077.hgt` layout), and names on stderr any tile that was missing or the wrong size (the
+climbs there are left out). Options: `--out`, `--elevation-dir`, `--schema` (default the live
+schema). Then:
+
+    cp <DATA_ROOT>/rebuild/climbs.json frontend/src/climb-data/climbs.json
+    git add frontend/src/climb-data/climbs.json   # and update the counts in climb-data/README.md
+
+and deploy the front end as usual. `tests/test_climb_layer.py::test_bundled_file_is_well_formed`
+and `climbs.test.ts` check the committed file.
+
+**What it reads.** Ways with `map_class = 'road'`, less `mtb_only` and `walk_bike`: access is the
+rebuild's, overrides included, so a barred, hidden or err-closed way never carries a climb. The ways
+are joined into strokes across junctions (each way end paired with the one that continues it most
+nearly straight, within 45 degrees), sampled every 98 ft (30 m), and read both ways. A climb that
+rides a one-way segment against its drawn direction is left out; `road_oneway` has no direction, so
+an OSM `oneway=-1` way (rare) can lose a climb it should keep, and contraflow lanes are not read.
+Neither can add a climb a rider may not ride.
+
+**Size.** One entry per climb with its simplified line (5 m), about 0.4 KB each: some 1 MB for the
+current coverage, fetched only when the switch is turned on.
+
+**The front end** (`lib/climbs.ts`, `lib/climbsLegend.ts`, `climbInteraction.ts`): a marker at each
+summit with the category ("5" to "1", "HC") in white, inside a shape set by the average grade
+(circle under 4%, square 4% to 7.9%, diamond 8% and up), all one colour (#9d174d, 3:1 or more on
+every base-map surface; the number 4.5:1 or more on it), from zoom 9; the climb's line, dashed,
+from zoom 12; where markers meet, the bigger climb is drawn. A tap shows a card ("Category 3 climb,
+2.1 miles (3.4 km) at 4.6%", the gain, the trail, "Mostly unpaved"). With a route planned, "Climbs
+on your route" lists in words each climb the route rides uphill, start to summit, in riding order.
 
 ## The rebuild bundle (wip/rebuild-bundle)
 
@@ -4930,7 +5487,7 @@ grep -q '^WEEKLY_REBUILD_PAUSED=1' .env && echo paused               # paused: c
 docker compose up -d --no-deps --no-build --force-recreate api worker rebuild </dev/null
 docker compose exec -T api python -c "from core import stress_tiles, mass_tiles; print(stress_tiles.FORMAT_VERSION, mass_tiles.FORMAT_VERSION)" </dev/null   # 8 2 (7 2 before the judged bridges' surface)
 docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.WEEKLY_REBUILD_PAUSED)" </dev/null                       # True
-docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.REBUILD_TILE_CONCURRENCY)" </dev/null                    # 2 (or the .env value; "Tile build threads")
+docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.REBUILD_TILE_CONCURRENCY)" </dev/null                    # 4 (or the .env value; "Tile build threads")
 docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.SOURCE_EXTRACT_FORCE_REFRESH)" </dev/null               # False: the fresh extract (443) comes from step I's move, not this flag
 curl -s -o /dev/null -w '%{http_code}\n' http://localhost/healthz    # 200
 Q "select id,status from procrastinate_jobs where task_name='weekly_rebuild' and status in ('todo','doing')"   # empty (a waiting tick ran as paused)
@@ -5127,20 +5684,18 @@ directory. In a second shell, read the newest directory by name and print it wit
 `build-config.json` thread count:
 
 ```sh
-docker compose exec -T rebuild sh -c 'd=$(ls -d /data/tiles/standard/2*/ | sort | tail -1); echo "directory: $d"; grep -h "\"concurrency\"" "${d}build-config.json"' </dev/null   # directory dated today (UTC), then "concurrency": 2
+docker compose exec -T rebuild sh -c 'd=$(ls -d /data/tiles/standard/2*/ | sort | tail -1); echo "directory: $d"; grep -h "\"concurrency\"" "${d}build-config.json"' </dev/null   # directory dated today (UTC), then "concurrency": 4 (or the .env value)
 ```
 
 If the directory it prints is not dated today (UTC), the build has not started its tiles
-yet and that is an older build's value (it may well say 4): wait and run it again, and do
+yet and that is an older build's value (one built before v0.5.0 may say 2): wait and run it again, and do
 not conclude anything from it.
 
-A log line `valhalla_build_tiles aborted (SIGABRT)` or `crashed (SIGSEGV); running it again,
-retry 1 of 1` means a tile build failed and the retry is building it again: nothing needs doing during
-the run. Under 3.5.1 that was the known race; the pinned 3.9.1 fixes it, so an abort now is something new. Keep the
-rebuild's log and note the line in the report. "Tile build threads" says when to move to
-`REBUILD_TILE_CONCURRENCY=1` (only after the `(after 1 retry)` failure, or once the retry
-line has shown up in more than one rebuild). A failure `valhalla_build_tiles exited -6 (after 1 retry)` means
-the retry aborted too: set 1 before the next rebuild.
+A failure `valhalla_build_tiles exited -6` (or `-11`) under the pinned 3.9.1 is not the
+old 3.5.1 race: keep the rebuild's log and note it in the report. The attempt resumes
+from its checkpoints on the worker's retry; "Tile build threads" says when to set
+`REBUILD_TILE_CONCURRENCY=1` (a second abort) and how to tell a refused Lua script,
+which aborts every time, from a crash.
 
 **J. After the swap.** The run row's notice prints the same restart as here.
 
@@ -5285,6 +5840,58 @@ docs/SOURCES.md, "Capital Bikeshare".
 OWNER-DECISIONS 466a) has its own limit, `ratelimit.BIKESHARE_STATIONS`, 60 a minute per client
 address, and reads the shared copy, never the feeds directly.
 
+## Work zones
+
+Live work zones (FOLLOWUP-WORKZONES, OWNER-DECISIONS 341-349). The worker's
+`refresh_work_zones` task reads the state DOTs' WZDx feeds every five minutes (`core.workzones`)
+and keeps the zones in one row of `bikeshare_feed_cache` under the key `workzones`, replaced in
+place; nothing is kept as history, and the row is excluded from the nightly dump with the rest of
+that table. The planner reads it at most once a minute a process. Nothing needs the rebuild.
+
+- **Maryland** is read as soon as the release is up: no key.
+- **Virginia** needs the owner's SmarterRoads key. Put it in `.env` as `SMARTERROADS_TOKEN=<key>`
+  (never in a commit, never printed), then `docker compose up -d worker` (not `restart`: compose
+  reads `.env` when it creates the container). Only `worker` holds it, and it is never logged or
+  written to a run row. Rotating it: docs/DEPLOYMENT.md, "Secrets".
+- What a plan does: a zone closed to bicycles (every lane closed, the bike lane listed closed) is
+  left out of every router request (`exclude_polygons`, a strip 6 m [20 ft] either side of the
+  zone's line, trimmed 20 m [66 ft] at each end so cross streets stay open). Every other zone in
+  force at the ride time that the route runs along costs its penalty: 60 s shoulder only, 120 s a
+  lane closed, 180 s a flagger or alternating one-way, 600 s every lane closed with bicycles not
+  mentioned (shown in red). The plan asks once for the route round those zones and keeps it where
+  it costs no more than the penalties. Each zone the answer still runs along gets a heads-up in
+  the description, with its source, and the disclaimer.
+- Labels: a feed last read 20 minutes to 2 hours ago is still used and its heads-ups say so; older,
+  or never read well, its zones are dropped and the description says "Work zones could not be
+  checked for this route: ... not available". Before the first refresh is stored nothing is said
+  at all (`work_zones` is null).
+
+**After the release is deployed** (no rebuild needed):
+
+1. After five minutes, the run row:
+
+   ```sh
+   docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+     "SELECT started_at, succeeded, detail FROM scheduled_run WHERE task = 'refresh_work_zones' ORDER BY started_at DESC LIMIT 3;"
+   ```
+
+   Expect `succeeded = t` and a detail like `work zones: md 143 zones` (and `va N zones` once the key
+   is in). `md failed` means the feed did not answer three tries; the worker log says why, never
+   with the URL. `md 0 zones` on a weekday is worth a look: the feed may have changed shape. The
+   parser was written against the WZDx specification without a live download, so check the first
+   real reading here.
+2. Plan a route along a road you know has a lane closure listed in the feed (the Maryland 511 map
+   shows them). The description should carry "Work zone ahead at ... Source: Maryland DOT SHA work
+   zones (WZDx, CC0).", and the answer's `work_zones.status` should be `{"md": "current"}`.
+3. The operations page lists `refresh_work_zones` as stale if no refresh has succeeded for 30
+   minutes.
+
+**Dropping Virginia** needs no code change: empty `SMARTERROADS_TOKEN` and `docker compose up -d
+worker`; the next refresh removes Virginia's zones. There is no switch for Maryland: turning work
+zones off altogether is a code change (remove the `refresh_work_zones` task), then
+`DELETE FROM bikeshare_feed_cache WHERE key = 'workzones';`, after which plans say nothing about
+work zones.
+
 ## Rebuilding on the cloud box
 
 The rebuild can run on an AWS spot machine instead of this host, which ran out of memory
@@ -5367,10 +5974,20 @@ the defaults, so build those here.
 
    ```sh
    sudo -iu ubuntu
-   cd ~/RouteMaker && git pull --quiet
+   cd ~/RouteMaker && git fetch --quiet origin && git checkout --quiet --detach <the commit send-inputs printed>
    nohup scripts/cloud/box-rebuild.sh "s3://<bucket>/rebuild-checkpoints/transfer/cloud-20261011" >>~/cloud-rebuild.log 2>&1 &
    tail -f ~/cloud-rebuild.log
    ```
+
+   **Run the script from the commit being built, not `main`.** The build itself always
+   runs the manifest's commit (in `~/rm-build`), but the export step is this script's own,
+   and it tars the graphs its own list names. On 2026-10-11 the first real run
+   (cloud-v050-20261011) ran `main`'s copy, which lists five graphs, against a v0.5.0
+   build of six: `tiles-mtb.tar` was left out and the v0.5.0 import refuses that result.
+   The repair, with no rebuild: start the box, `cd ~/rm-build`, delete `export.done` and
+   `upload.done` from `~/cloud-runs/<run>/state/`, and run the same command from there.
+   Only the export and upload run again. The first time on a new box, install the AWS
+   CLI and clone the repository first (the one-time setup above).
 
    Closing the window does not stop it. It fetches and checks the inputs, checks out
    the manifest's commit in a separate clone (`~/rm-build`), writes that clone's own

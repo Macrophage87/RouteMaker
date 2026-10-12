@@ -830,3 +830,48 @@ def test_the_map_s_vehicle_tables_are_the_trail_models() -> None:
 
     grants = {k for k, v in trailaccess.UPSTREAM_VEHICLE_ACCESS.items() if v}
     assert facility_rules.VEHICLE_GRANTS == grants
+
+
+# --- Buses are motor traffic (FOLLOWUP-BUS-ROADS) ------------------------------
+
+# Shaped as the review of wip/pre-rebuild (2026-10-06) describes Exchange Ave
+# and Fayette St in Baltimore and Neabsco Stream Dr: closed to motor vehicles,
+# open to buses. Not copied from the extract.
+BUS_ROAD = {"highway": "tertiary", "motor_vehicle": "no", "bus": "yes"}
+
+
+@pytest.mark.parametrize(
+    "buses", [{"bus": "yes"}, {"bus": "designated"}, {"psv": "yes"}, {"psv": "designated"}]
+)
+def test_a_road_open_to_buses_is_not_car_free(buses):
+    road = {"highway": "tertiary", "motor_vehicle": "no", **buses}
+    assert not closed_to_motor_traffic(road)
+    assert facility(road) is N
+    # The bicycle tag that reopens a road closed to every vehicle does not make
+    # a bus road car-free either.
+    shut = {"highway": "service", "access": "no", "bicycle": "yes", **buses}
+    assert not closed_to_motor_traffic(shut)
+    assert facility(shut) is N
+
+
+def test_the_control_without_buses_is_still_a_path():
+    for buses in ({}, {"bus": "no"}, {"psv": "no"}, {"psv": "permit"}):
+        road = {"highway": "tertiary", "motor_vehicle": "no", **buses}
+        assert closed_to_motor_traffic(road), buses
+        assert facility(road) is P
+
+
+def test_a_bus_road_keeps_its_lane_class():
+    assert facility({**BUS_ROAD, "cycleway:both": "lane"}) is L
+
+
+def test_a_timed_closure_buses_still_run_through_is_never_car_free():
+    tags = {
+        "highway": "tertiary",
+        "bicycle": "designated",
+        "motor_vehicle:conditional": "no @ (Mo-Su 00:00-24:00)",
+        "bus": "designated",
+    }
+    assert car_free_when(tags) == frozenset()
+    del tags["bus"]
+    assert car_free_when(tags) == {"weekend", "weekday_rush", "weekday_offpeak", "night"}

@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { pickIntoPlan, type Place } from "./geocode.ts";
 import type { LonLat } from "./geo.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 const LINCOLN: Place = { name: "Lincoln Memorial", label: "Lincoln Memorial, Washington", lon: -77.0502, lat: 38.8893, kind: "other" };
 const UNION: Place = { name: "Union Station", label: "Union Station, NoMa", lon: -77.0074, lat: 38.8978, kind: "house" };
@@ -57,13 +58,13 @@ const source = (file: string) => readFileSync(new URL(file, import.meta.url), "u
 const count = (text: string, pattern: RegExp) => [...text.matchAll(pattern)].length;
 
 test("App: the names follow the rider's toggle, not a ride that happens to end on its start", () => {
-  const app = source("../App.tsx");
+  const app = appSource();
   assert.match(app, /const loopVias = loopStops\(preset, dials\.loop\);/);
   assert.doesNotMatch(app, /isRoundTrip/);
 });
 
 test("App: every way of adding, setting or removing a point is handed the toggle", () => {
-  const app = source("../App.tsx");
+  const app = appSource();
   assert.match(app, /addPoint\(pointsRef\.current, point, loopVias\)/);
   assert.match(app, /announce\(addedSaid\(next\.indexOf\(point\), next\.length, loopVias\)\)/);
   assert.match(app, /stationEdit\(pointsRef\.current, point, role, loopVias\)/);
@@ -77,7 +78,7 @@ test("App: every way of adding, setting or removing a point is handed the toggle
 });
 
 test("App: the line's legs, Reverse, the hints and the toggle's announcement use the toggle", () => {
-  const app = source("../App.tsx");
+  const app = appSource();
   assert.match(app, /const legs = legPoints\(routedPoints, loopVias\);/);
   assert.match(app, /ends: legEnds\(path, legs, shown\.leg_ends\), points: routedPoints, legPoints: legs/);
   assert.match(app, /\}, \[shown, stale, routedPoints, points, loopVias\]\);/);
@@ -88,7 +89,7 @@ test("App: the line's legs, Reverse, the hints and the toggle's announcement use
 });
 
 test("App: the toggle, the ride type and undo or redo say when they rename the points", () => {
-  const app = source("../App.tsx");
+  const app = appSource();
   assert.match(app, /onCommit=\{commitDials\}/);
   assert.match(app, /onChoose=\{choosePreset\}/);
   assert.match(
@@ -108,7 +109,7 @@ test("App: the toggle, the ride type and undo or redo say when they rename the p
 });
 
 test("App: Reverse in a loop of a start and one stop is aria-disabled with its reason, and a press says it", () => {
-  const app = source("../App.tsx");
+  const app = appSource();
   assert.match(app, /const reverseHint = reverseUnavailableHint\(points, loopVias\);/);
   assert.match(
     app,
@@ -116,20 +117,21 @@ test("App: Reverse in a loop of a start and one stop is aria-disabled with its r
   );
   assert.match(
     app,
-    /onClick=\{reverse\}\s+disabled=\{points\.length < 2\}\s+aria-disabled=\{reverseHint \? true : undefined\}\s+aria-describedby=\{reverseHint \? "reverse-hint" : undefined\}/,
+    // UI-CLEANUP: Swap beside the Points heading, shown with two points or more.
+    /\{points\.length >= 2 && \(\s*<button[\s\S]{0,120}?className="secondary icon-button swap-points"\s+onClick=\{reverse\}\s+aria-disabled=\{reverseHint \? true : undefined\}\s+aria-describedby=\{reverseHint \? "reverse-hint" : "swap-hint"\}/,
   );
   assert.match(app, /\{reverseHint && <p className="hint" id="reverse-hint">\{reverseHint\}<\/p>\}/);
 });
 
 test("App hands the toggle to the search, the map, the points list and the GPX", () => {
-  const app = source("../App.tsx");
+  const app = appSource();
   assert.match(app, /<PlaceSearch\s+pointCount=\{points\.length\}\s+loop=\{loopVias\}/);
   assert.match(app, /<MapView\s+points=\{riding \? NO_POINTS : points\}\s+loopVias=\{loopVias\}/);
   assert.match(app, /rows=\{pointRows\(points, namer, loopVias\)\}/);
 });
 
 test("App: the GPX names the route shown as it was planned, not as the toggle is now", () => {
-  const app = source("../App.tsx");
+  const app = appSource();
   // Recorded with the route's points when it arrives, from the plan that was sent.
   assert.match(
     app,

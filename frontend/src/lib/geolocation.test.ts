@@ -40,6 +40,7 @@ import {
   type LocateResult,
   type PermissionLike,
 } from "./geolocation.ts";
+import { appSource } from "../testSupport/appSource.mjs";
 
 const ok = (latitude: number, longitude: number, accuracy: number): GeoApi => ({
   getCurrentPosition: (success) => success({ coords: { latitude, longitude, accuracy } }),
@@ -592,7 +593,7 @@ test("privacy: nothing in the feature's code stores, logs or sends the position"
   const lib = code(read("./geolocation.ts"));
   assert.doesNotMatch(lib, LEAKS);
   assert.doesNotMatch(lib, /watchPosition/);
-  const app = code(read("../App.tsx"));
+  const app = code(appSource());
   const start = app.indexOf("const useMyLocation");
   const end = app.indexOf("}, [gate, geoEnv", start);
   assert.ok(start > 0 && end > start, "the useMyLocation body is found");
@@ -603,7 +604,12 @@ test("privacy: nothing in the feature's code stores, logs or sends the position"
   assert.doesNotMatch(app, /watchPosition/);
   // Two look-up paths, both through the one gate: Use my location, and the nearest-place search from
   // the rider's location (lib/nearest.ts), whose position goes only in its own request, as a route's points do.
-  assert.equal((app.match(/locate\(/g) ?? []).length, 2, "two look-up paths");
+  // A third, Go's (UI-CLEANUP: Where to?, Home and Locate), through the same gate, whose fix goes to the plan
+  // as Use my location's does, and to the map's camera.
+  assert.equal((app.match(/locate\(/g) ?? []).length, 3, "three look-up paths");
+  const go = body(app, "const locateForGo", "const goTo");
+  assert.match(go, /const press = gate\.begin\(\);[\s\S]*await locate\(geoEnv\);\s*if \(!gate\.finish\(press\)\) return null;/);
+  assert.doesNotMatch(body(app, "const locateForGo", "const goToPlace"), LEAKS);
   const nearest = body(app, "const findNearest", "const rideToNearest");
   assert.match(nearest, /const press = gate\.begin\(\);[\s\S]*await locate\(geoEnv\);\s*gate\.finish\(press\);/);
   assert.doesNotMatch(nearest, LEAKS);
@@ -611,7 +617,7 @@ test("privacy: nothing in the feature's code stores, logs or sends the position"
 });
 
 test("privacy: the location state reaches only the note, the hint and the circle", () => {
-  const app = code(read("../App.tsx"));
+  const app = code(appSource());
   // The identifiers, not the word in a sentence ("shows here when").
   // An alias counts too: "= here", "here;", "(here)" (the mutation re-review's A28).
   const lines = app
@@ -629,7 +635,7 @@ test("privacy: the location state reaches only the note, the hint and the circle
   for (const line of lines) assert.ok(allowed.some((rule) => rule.test(line)), `unexpected use: ${line.trim()}`);
   // The note's own uses: shown, described, said on Copy link, and (as a yes/no) the sign-in exception.
   const noteUse =
-    /const linkNote =|const note = linkNote;|linkNote \? "link-note"|\{linkNote && \(|\{linkNote\}|isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)/;
+    /const linkNote =|const note = linkNote;|linkNote \? "link-note"|\{linkNote && \(|\{linkNote\}|isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)|^\s*routedLoop, copyLink, linkNote, canShare,|const \{ shown, routedPoints, routedLoop, federalRoute, copyLink, linkNote, canShare,/;
   for (const line of app.split("\n").filter((l) => /\blinkNote\b/.test(l))) assert.match(line, noteUse, line.trim());
   // The circle round the located point goes to the map's accuracy prop and nowhere else.
   const circleUse = /const hereCircle =|accuracy=\{riding \? rideCircle : hereCircle\}/;
@@ -649,7 +655,7 @@ const body = (text: string, from: string, to: string) => {
 };
 
 test("App: the look-up's answer is placed with the ride read after the wait and the list's choice", () => {
-  const app = code(read("../App.tsx"));
+  const app = code(appSource());
   const useMy = body(app, "const useMyLocation", "}, [gate, geoEnv");
   const waited = useMy.indexOf("await locate(geoEnv)");
   const ride = useMy.indexOf("const ride = rideRef.current;");
@@ -671,7 +677,7 @@ test("App: the look-up's answer is placed with the ride read after the wait and 
 });
 
 test("App: a drag reads the old point before the commit, and moves by movePoint (R1, A15b)", () => {
-  const app = code(read("../App.tsx"));
+  const app = code(appSource());
   const move = body(app, "const move = useCallback(", "}, [commit]);");
   assert.match(move, /^const move = useCallback\(\(index: number, point: LonLat\) => \{\s*cancelLocateNotice\(\);/, "a drag cancels a pending notice (N6)");
   const before = move.indexOf("const before = pointsRef.current[index];");

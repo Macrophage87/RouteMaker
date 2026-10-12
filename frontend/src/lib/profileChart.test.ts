@@ -161,9 +161,9 @@ test("a descent says downhill, a flat stretch level, a missing tier says it is n
 test("a Mass Ride's scrub says the grade, the riders per minute with its band, and the next major intersection with corkers", () => {
   const { route, profile } = build("mass-ride", true);
   const r = readingAt(route, profile, 1200);
-  assert.equal(r.text, "Mile 0.7: grade 6%, about 90 riders per minute (tight, slowed by the climb). Next: an unnamed street at mile 1.3, corkers needed.");
+  assert.equal(r.text, "Mile 0.7: grade 6%, about 90 riders per minute (tight, slowed by the climb). Next: an unnamed street at mile 1.3, 2 corkers needed.");
   const early = readingAt(route, profile, 600);
-  assert.equal(early.text, "Mile 0.4: level, about 190 riders per minute (good). Next: 7th St at mile 0.5, corkers needed.");
+  assert.equal(early.text, "Mile 0.4: level, about 190 riders per minute (good). Next: 7th St at mile 0.5, 2 corkers needed.");
   const last = readingAt(route, profile, 4000);
   assert.match(last.text, /No major intersections ahead\.$/);
 });
@@ -180,7 +180,7 @@ test("the spec's own sentence is reproduced for a Mass Ride at mile 1.1", () => 
     crossings: [{ m: 2090, street: "14th St", severity: "orange", control: "signal", lanes: 4, crossed_tier: 3, corkers_needed: true }],
   };
   const route = { preset: "mass-ride", distance_m: 3000, stress_spans: [] } as unknown as RouteResponse;
-  assert.equal(readingAt(route, profile, 1770).text, "Mile 1.1: grade 6%, about 90 riders per minute (tight). Next: 14th St at mile 1.3, corkers needed.");
+  assert.equal(readingAt(route, profile, 1770).text, "Mile 1.1: grade 6%, about 90 riders per minute (tight). Next: 14th St at mile 1.3, 2 corkers needed.");
 });
 
 test("bands: 5-8% and 8% or more, either way", () => {
@@ -342,10 +342,10 @@ test("424: the chart summary gives the narrowest on the flat and with the hills,
 test("the intersections table says each marker's shape and whether corkers are needed", () => {
   const { profile } = build("mass-ride", true);
   const rows = crossingRows(profile);
-  assert.deepEqual(rows[0], { mile: "Mile 0.5", street: "7th St", marker: "Higher stress (orange triangle)", corkers: "Corkers needed" });
-  assert.deepEqual(rows[1], { mile: "Mile 1.3", street: "an unnamed street", marker: "Crosses a busy road (LTS 3), cross traffic stops (dot)", corkers: "Corkers needed" });
+  assert.deepEqual(rows[0], { mile: "Mile 0.5", street: "7th St", marker: "Higher stress (orange triangle)", corkers: "2 needed: 2 approaches, one-way not known; 1 each at the signal" });
+  assert.deepEqual(rows[1], { mile: "Mile 1.3", street: "an unnamed street", marker: "Crosses a busy road (LTS 3), cross traffic stops (dot)", corkers: "2 needed: 2 approaches, one-way not known; lanes not known, 1 each" });
   const crossing = (profile.crossings as ProfileCrossing[])[0];
-  assert.equal(corkerWords(crossing), "corkers needed");
+  assert.equal(corkerWords(crossing), "2 corkers needed");
   assert.equal(corkerWords({ ...crossing, corkers_needed: false }), "no corkers needed");
   assert.equal(nextCrossing(profile.crossings, 800), profile.crossings![1]);
   assert.equal(nextCrossing(profile.crossings, 790), profile.crossings![0]);
@@ -485,7 +485,7 @@ test("intersections not checked say so; none at all says nothing; a gap ahead is
   assert.match(readingAt(route, { ...profile, crossings: [] }, 600).text, /^Mile 0\.4: level, about 190 riders per minute \(good\)\.$/);
   assert.equal(crossingClause({ ...profile, crossings: [], unchecked: [{ from_m: 3000, to_m: 4000 }] }, 600), " Part of the way ahead was not checked for intersections.");
   assert.equal(crossingClause({ ...profile, unchecked: [{ from_m: 3000, to_m: 4000 }] }, 2500), " Part of the way ahead was not checked for intersections.");
-  assert.match(crossingClause({ ...profile, unchecked: [{ from_m: 1000, to_m: 1100 }] }, 900), /^ Next: an unnamed street at mile 1\.3, corkers needed\. Part of the way to it was not checked for intersections\.$/);
+  assert.match(crossingClause({ ...profile, unchecked: [{ from_m: 1000, to_m: 1100 }] }, 900), /^ Next: an unnamed street at mile 1\.3, 2 corkers needed\. Part of the way to it was not checked for intersections\.$/);
   assert.equal(crossingClause(profile, 4000), " No major intersections ahead.");
   const summary = summaryText(route, { ...profile, crossings: null });
   assert.match(summary, /Major intersections were not checked for this route\./);
@@ -599,7 +599,7 @@ test("corkers: a flagged junction on a quiet road needs none, and the summary an
   crossings[0] = { ...crossings[0], crossed_tier: 2, corkers_needed: false };
   const one: RouteProfile = { ...profile, crossings };
   assert.match(summaryText(route, one), /2 major intersections, 1 needing corkers\./);
-  assert.deepEqual(crossingRows(one).map((r) => r.corkers), ["No corkers needed", "Corkers needed"]);
+  assert.deepEqual(crossingRows(one).map((r) => r.corkers), ["No corkers needed", "2 needed: 2 approaches, one-way not known; lanes not known, 1 each"]);
   const none: RouteProfile = { ...profile, crossings: crossings.map((c) => ({ ...c, corkers_needed: false })) };
   assert.match(summaryText(route, none), /2 major intersections, none needing corkers\./);
   assert.doesNotMatch(summaryText(route, none), /0 needing/);
@@ -608,9 +608,9 @@ test("corkers: a flagged junction on a quiet road needs none, and the summary an
 test("the gap note names only an untraced stretch ahead of the rider and before the next intersection", () => {
   // Mutation re-review SHOULD-FIX 4 (C01-C03).
   const { profile } = build("mass-ride", true);
-  assert.equal(crossingClause({ ...profile, unchecked: [{ from_m: 3000, to_m: 4000 }] }, 600), " Next: 7th St at mile 0.5, corkers needed.", "past the next intersection");
+  assert.equal(crossingClause({ ...profile, unchecked: [{ from_m: 3000, to_m: 4000 }] }, 600), " Next: 7th St at mile 0.5, 2 corkers needed.", "past the next intersection");
   assert.equal(crossingClause({ ...profile, crossings: [], unchecked: [{ from_m: 0, to_m: 300 }] }, 2500), "", "already ridden");
-  assert.equal(crossingClause({ ...profile, unchecked: [{ from_m: 0, to_m: 300 }] }, 1000), " Next: an unnamed street at mile 1.3, corkers needed.", "behind the rider");
+  assert.equal(crossingClause({ ...profile, unchecked: [{ from_m: 0, to_m: 300 }] }, 1000), " Next: an unnamed street at mile 1.3, 2 corkers needed.", "behind the rider");
 });
 
 test("a figure of exactly 60 is tight, not a bottleneck", () => {
@@ -690,7 +690,7 @@ test("a list of only the flagged intersections is said to be possibly incomplete
   const partial: RouteProfile = { ...profile, crossings_complete: false };
   // In the key's words, and the caveat said once (summary, caption), not on every arrow press (r3 a11y N2).
   assert.equal(crossingClause(partial, 4000), " No higher or very high stress junctions ahead.");
-  assert.equal(crossingClause(partial, 0), " Next higher or very high stress junction: 7th St at mile 0.5, corkers needed.");
+  assert.equal(crossingClause(partial, 0), " Next higher or very high stress junction: 7th St at mile 0.5, 2 corkers needed.");
   for (const at of [0, 4000]) assert.doesNotMatch(crossingClause(partial, at), /flagged|may be|there may/);
   assert.match(summaryText(route, partial), /Only the higher or very high stress junctions were found, so the list may be incomplete: 2 found, 2 needing corkers\./);
   assert.doesNotMatch(summaryText(route, partial), /No major intersections|flagged/);

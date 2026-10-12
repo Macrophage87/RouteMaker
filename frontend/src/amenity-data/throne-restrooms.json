@@ -1,0 +1,226 @@
+{
+  "about": "Throne smart restrooms (Throne Labs) in the coverage box: a hand list, each unit cited. scripts/build_water_restrooms.py merges the units with status 'open' into water-restrooms.json; 'unverified' and 'opens soon' stay here until someone confirms them. Positions are the US Census Bureau geocoder's point for the street address the source gives (geocoding.geo.census.gov, benchmark Public_AR_Current, read 2026-10-11), so they are the site, not the exact unit (a block or so off; Mount Rainier's is across the street), and each added unit's card says its location is approximate. A unit placed from OSM or imagery can carry \"exact\": true. Never copied from Google Maps. See frontend/src/amenity-data/README.md.",
+  "read": "2026-10-11",
+  "units": [
+    {
+      "id": "throne-dc-dupont-circle",
+      "name": "Throne, Dupont Circle",
+      "lat": 38.90914,
+      "lon": -77.04402,
+      "jurisdiction": "DC",
+      "status": "open",
+      "placement": "Census geocoder point for 1 Dupont Cir NW, on the circle; the sources name the circle, not the spot on it.",
+      "sources": [
+        {"url": "https://dcpublicrestrooms.org/public-restroom-initiatives/new-dc-public-restroom-initiatives/", "read": "2026-10-11", "says": "Dupont Circle NW, one of six DC Thrones installed April to June 2024; all six closed 2025-07-30."},
+        {"url": "https://www.axios.com/local/washington-dc/2025/08/05/throne-toilets-reopen-dc-free-public-bathrooms", "read": "2026-10-11", "says": "Six DC Thrones back in operation (2025-08-05), near Dupont Circle and the National Mall; FY2026 budget funds up to 10."}
+      ]
+    },
+    {
+      "id": "throne-dc-columbia-heights",
+      "name": "Throne, Columbia Heights Civic Plaza",
+      "lat": 38.92886,
+      "lon": -77.03269,
+      "jurisdiction": "DC",
+      "status": "open",
+      "placement": "Census geocoder point for 3100 14th St NW, beside the plaza at 14th St and Park Rd NW.",
+      "sources": [
+        {"url": "https://dcpublicrestrooms.org/public-restroom-initiatives/new-dc-public-restroom-initiatives/", "read": "2026-10-11", "says": "Columbia Heights Plaza NW, inaugurated 2024-06-06."},
+        {"url": "https://51st.news/in-crappy-move-congress-limits-where-d-c-residents-can-go-to-the-bathroom/", "read": "2026-10-11", "says": "Columbia Heights Plaza among the six; funding found to keep them running (2025-07-10)."}
+      ]
+    },
+    {
+      "id": "throne-dc-superior-court",
+      "name": "Throne, Indiana Plaza by DC Superior Court",
+      "lat": 38.89452,
+      "lon": -77.01935,
+      "jurisdiction": "DC",
+      "status": "open",
+      "placement": "Census geocoder point for 500 Indiana Ave NW, DC Superior Court.",
+      "sources": [
+        {"url": "https://51st.news/all-hail-dcs-robot-toilets/", "read": "2026-10-11", "says": "Outside D.C. Superior Court, the busiest of the six (18,832 uses by 2025-05-22)."},
+        {"url": "https://dcpublicrestrooms.org/public-restroom-initiatives/new-dc-public-restroom-initiatives/", "read": "2026-10-11", "says": "Indiana Plaza, downtown NW."}
+      ]
+    },
+    {
+      "id": "throne-dc-alethia-tanner-park",
+      "name": "Throne, Alethia Tanner Park",
+      "lat": 38.91108,
+      "lon": -77.00242,
+      "jurisdiction": "DC",
+      "status": "open",
+      "placement": "Census geocoder point for 1500 Harry Thomas Way NE, beside the park (227 Harry Thomas Way NE, per NoMa BID); the geocoder has no match for the park's own address.",
+      "sources": [
+        {"url": "https://dcpublicrestrooms.org/public-restroom-initiatives/new-dc-public-restroom-initiatives/", "read": "2026-10-11", "says": "Alethia Tanner Park NE, one of the six."},
+        {"url": "https://nomabid.org/noma-parks-public-spaces/alethia-tanner-park/", "read": "2026-10-11", "says": "Park address 227 Harry Thomas Way NE."}
+      ]
+    },
+    {
+      "id": "throne-dc-oxon-run-park",
+      "name": "Throne, Oxon Run Park",
+      "lat": 38.83763,
+      "lon": -76.99841,
+      "jurisdiction": "DC",
+      "status": "open",
+      "placement": "Census geocoder point for 600 Mississippi Ave SE, by the park's playground and pool at Mississippi Ave and 6th St SE (DPR). The park is long; the unit's spot in it is not given.",
+      "sources": [
+        {"url": "https://dcpublicrestrooms.org/public-restroom-initiatives/new-dc-public-restroom-initiatives/", "read": "2026-10-11", "says": "Oxon Run Park SE, one of the six."},
+        {"url": "https://dpr.dc.gov/page/play-dc-oxon-run-playground-renovation", "read": "2026-10-11", "says": "Oxon Run playground at Mississippi Ave and 6th St SE."}
+      ]
+    },
+    {
+      "id": "throne-dc-eastern-market-metro",
+      "name": "Throne, Eastern Market Metro plaza",
+      "lat": 38.88368,
+      "lon": -76.99505,
+      "jurisdiction": "DC",
+      "status": "open",
+      "placement": "Census geocoder point for 401 8th St SE, at the Eastern Market Metro plaza (Pennsylvania Ave SE between 7th and 8th St).",
+      "sources": [
+        {"url": "https://dcpublicrestrooms.org/public-restroom-initiatives/new-dc-public-restroom-initiatives/", "read": "2026-10-11", "says": "Eastern Market Metro Plaza SE, installed by August 2024."},
+        {"url": "https://51st.news/all-hail-dcs-robot-toilets/", "read": "2026-10-11", "says": "Eastern Market Metro, 10,320 uses by 2025-05-22."}
+      ]
+    },
+    {
+      "id": "throne-dc-ellington-plaza",
+      "name": "Throne, Ellington Plaza (7th and T St NW)",
+      "lat": 38.91551,
+      "lon": -77.02094,
+      "jurisdiction": "DC",
+      "status": "unverified",
+      "placement": "Census geocoder point for 620 T St NW, on Ellington Plaza.",
+      "sources": [
+        {"url": "https://www.fox5dc.com/news/dcs-throne-public-restrooms-set-reopen-after-funding-freeze", "read": "2026-10-11", "says": "Planned in the FY2026 budget (2025-08-05); no source found that it was installed."},
+        {"url": "https://dcpublicrestrooms.org/public-restroom-initiatives/new-dc-public-restroom-initiatives/", "read": "2026-10-11", "says": "Proposed: Ellington Plaza, near 7th and T Streets NW."}
+      ]
+    },
+    {
+      "id": "throne-dc-watkins-rec",
+      "name": "Throne, Watkins Recreation Center",
+      "lat": 38.88331,
+      "lon": -76.99017,
+      "jurisdiction": "DC",
+      "status": "unverified",
+      "placement": "Census geocoder point for 420 12th St SE, Watkins Recreation Center.",
+      "sources": [
+        {"url": "https://www.fox5dc.com/news/dcs-throne-public-restrooms-set-reopen-after-funding-freeze", "read": "2026-10-11", "says": "Planned in the FY2026 budget (2025-08-05); no source found that it was installed."}
+      ]
+    },
+    {
+      "id": "throne-dc-starburst-plaza",
+      "name": "Throne, Starburst Plaza",
+      "lat": 38.90022,
+      "lon": -76.98317,
+      "jurisdiction": "DC",
+      "status": "unverified",
+      "placement": "Census geocoder point for 1500 Benning Rd NE, at Starburst Plaza (Bladensburg Rd, Benning Rd, H St and Maryland Ave NE).",
+      "sources": [
+        {"url": "https://dcpublicrestrooms.org/public-restroom-initiatives/new-dc-public-restroom-initiatives/", "read": "2026-10-11", "says": "Proposed: Starburst Plaza at Bladensburg and Benning; no source found that it was installed."}
+      ]
+    },
+    {
+      "id": "throne-dc-marvin-gaye-park",
+      "name": "Throne, Marvin Gaye Park",
+      "lat": 38.89721,
+      "lon": -76.92601,
+      "jurisdiction": "DC",
+      "status": "unverified",
+      "placement": "Census geocoder point for 5200 Foote St NE, the Riverside Center in the park. The park is long; where a unit would go is not given.",
+      "sources": [
+        {"url": "https://51st.news/in-crappy-move-congress-limits-where-d-c-residents-can-go-to-the-bathroom/", "read": "2026-10-11", "says": "Planned for FY2026 (2025-07-10); no source found that it was installed."}
+      ]
+    },
+    {
+      "id": "throne-dc-yards-park",
+      "name": "Throne, Yards Park",
+      "lat": 38.87373,
+      "lon": -77.00123,
+      "jurisdiction": "DC",
+      "status": "unverified",
+      "placement": "Census geocoder point for 355 Water St SE, Yards Park.",
+      "sources": [
+        {"url": "https://thronelabs.co/citiesandparks", "read": "2026-10-11", "says": "Throne case study with the Capitol Riverfront BID at Yards Park."},
+        {"url": "https://washingtonian.com/2024/03/15/more-high-tech-public-bathrooms-are-coming-to-dc-this-spring/", "read": "2026-10-11", "says": "One in operation at Yards Park (2024-03-15); no current source found."}
+      ]
+    },
+    {
+      "id": "throne-md-mount-rainier",
+      "name": "Throne, Perry Street Park and Ride (Mount Rainier City Hall)",
+      "lat": 38.93663,
+      "lon": -76.96002,
+      "jurisdiction": "MD, Prince George's County, City of Mount Rainier",
+      "status": "open",
+      "placement": "Census geocoder point for 1 Municipal Pl, Mount Rainier City Hall; the unit is across the street in the Perry Street Park and Ride lot.",
+      "sources": [
+        {"url": "https://mountrainiermd.org/CivicAlerts.asp?AID=268", "read": "2026-10-11", "says": "Throne placed 2022-08-05 across from City Hall at the Perry Street Park and Ride lot."},
+        {"url": "https://streetcarsuburbs.news/the-science-of-the-city-two-bets-on-public-bathrooms/", "read": "2026-10-11", "says": "Outside City Hall near 34th St and Rhode Island Ave, closes at 11 pm (2022-09-15)."},
+        {"by": "the owner: Throne app screenshots, 2026-10-11", "read": "2026-10-11", "says": "One unit at the DC line by Mount Rainier."}
+      ]
+    },
+    {
+      "id": "throne-md-university-hills-duck-pond",
+      "name": "Throne, University Hills Duck Pond Park",
+      "lat": 38.98405,
+      "lon": -76.95594,
+      "jurisdiction": "MD, Prince George's County, City of Hyattsville",
+      "status": "open",
+      "placement": "Census geocoder point for 3400 Stanford St, Hyattsville, the park's address on the City of Hyattsville parks page (west end of Wells Pkwy).",
+      "sources": [
+        {"url": "https://www.hyattsville.org/845/City-Parks", "read": "2026-10-11", "says": "University Hills Duck Pond Park: 3400 Stanford Street, at the west end of Wells Parkway/Boulevard."},
+        {"by": "the owner: Throne app and Google Maps screenshots, 2026-10-11 (a pointer only; nothing copied)", "read": "2026-10-11", "says": "A Throne at University Hills Park, off University Blvd and Wells Blvd."}
+      ]
+    },
+    {
+      "id": "throne-md-38th-avenue-park",
+      "name": "Throne, 38th Avenue Neighborhood Park",
+      "lat": 38.95031,
+      "lon": -76.95602,
+      "jurisdiction": "MD, Prince George's County, City of Hyattsville",
+      "status": "opens soon",
+      "placement": "Census geocoder point for 4900 38th Ave, Hyattsville, the park's address (PG Parks). The owner's note said 38th St; the street by Gaines Alley is 38th Ave.",
+      "sources": [
+        {"url": "https://www.hyattsville.org/845/City-Parks", "read": "2026-10-11", "says": "38th Avenue Neighborhood Park: 38th Avenue just after Gaines Alley."},
+        {"url": "https://arts.pgparks.com/parks_trails/38th-avenue-park", "read": "2026-10-11", "says": "38th Avenue Park, 4900 38th Avenue, Hyattsville."},
+        {"by": "the owner: Google Maps screenshot, 2026-10-11 (a pointer only; nothing copied)", "read": "2026-10-11", "says": "A Throne on 38th by Gaines Alley marked opens soon."}
+      ]
+    },
+    {
+      "id": "throne-va-old-town-square",
+      "name": "Throne, Old Town Square",
+      "lat": 38.84676,
+      "lon": -77.30495,
+      "jurisdiction": "VA, City of Fairfax",
+      "status": "open",
+      "placement": "Census geocoder point for 10415 North St, Fairfax, the square's address (City of Fairfax), at University Dr.",
+      "sources": [
+        {"url": "https://www.ffxnow.com/2023/11/16/costs-piling-up-for-fairfax-citys-high-tech-portable-restroom-pilot/", "read": "2026-10-11", "says": "Old Town Square unit active (2023-11-16)."},
+        {"url": "https://www.fairfaxva.gov/Fun-Facilities/Parks/Parks-Directory/Old-Town-Square", "read": "2026-10-11", "says": "10415 North Street; amenities include a restroom."},
+        {"by": "the owner: Throne app screenshots, 2026-10-11", "read": "2026-10-11", "says": "Three units in Fairfax City near University Dr and Blenheim Blvd."}
+      ]
+    },
+    {
+      "id": "throne-va-van-dyck-park",
+      "name": "Throne, Van Dyck Park",
+      "lat": 38.85316,
+      "lon": -77.2956,
+      "jurisdiction": "VA, City of Fairfax",
+      "status": "open",
+      "placement": "Census geocoder point for 3730 Old Lee Hwy, the park's frontage; the geocoder has no match for the city's 3720 Blenheim Blvd. The unit is in the parking lot off Blenheim Blvd (Patch, 2023).",
+      "sources": [
+        {"url": "https://www.fairfaxva.gov/Fun-Facilities/Parks/Parks-Directory/Van-Dyck-Park", "read": "2026-10-11", "says": "3720 Blenheim Boulevard; amenities include Throne Restroom(s)."},
+        {"url": "https://patch.com/virginia/fairfaxcity/fairfax-city-finds-temporary-solution-fix-lack-public-bathrooms", "read": "2026-10-11", "says": "Van Dyck Park, 3700 Blenheim Blvd parking lot (2023-08-04)."}
+      ]
+    },
+    {
+      "id": "throne-va-fairfax-blvd",
+      "name": "Throne, Fairfax Blvd (former Hy-Way Motel lot)",
+      "lat": 38.86449,
+      "lon": -77.27749,
+      "jurisdiction": "VA, City of Fairfax",
+      "status": "unverified",
+      "placement": "Census geocoder point for 9640 Fairfax Blvd.",
+      "sources": [
+        {"url": "https://www.ffxnow.com/2023/11/16/costs-piling-up-for-fairfax-citys-high-tech-portable-restroom-pilot/", "read": "2026-10-11", "says": "9640 Fairfax Blvd unit active but slowest; officials may reposition it (2023-11-16). The owner's 2026 app view puts all three near University Dr and Blenheim Blvd, so this one may have moved."}
+      ]
+    }
+  ]
+}

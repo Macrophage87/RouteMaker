@@ -129,6 +129,8 @@ tiles/weekend
 tiles/weekend/current
 tiles/offroad
 tiles/offroad/current
+tiles/mtb
+tiles/mtb/current
 extracts
 reference
 rebuild

@@ -1,14 +1,18 @@
-# Public water and restrooms on the map
+# Public water and restrooms on the map, and places to eat
 
-One fixture the front end loads the first time the Water and restrooms layer is
-shown (`src/lib/waterRestrooms.ts`, imported with `?url`, so it is its own
-hashed file under `/assets/` and the edge and Content-Security-Policy are
-unchanged, as `federal-data/` is). The directory is not called `data/` because
+Two fixtures the front end loads when first needed: water and restrooms the
+first time the Water and restrooms layer is shown, and places to eat on the
+first "Find food" search (see "Places to eat" at the end). Each is imported
+with `?url` (`src/lib/waterRestrooms.ts`, `src/App.tsx` for `food.json`), so
+it is its own hashed file under `/assets/` and the edge and
+Content-Security-Policy are unchanged, as `federal-data/` is. The directory is not called `data/` because
 the repository's `.gitignore` ignores every directory of that name.
 
 | File | What | Source | Licence | Credit on the map |
 | --- | --- | --- | --- | --- |
-| `water-restrooms.json` | public water (drinking fountains and taps; untreated springs, wells and taps) and public restrooms (flush, portable or pit, type not mapped) in the coverage box | OpenStreetMap, via the project's own extract, by `scripts/build_water_restrooms.py` | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)" |
+| `water-restrooms.json` | public water (drinking fountains and taps; untreated springs, wells and taps) and public restrooms (flush, portable or pit, type not mapped) in the coverage box | OpenStreetMap, via the project's own extract, by `scripts/build_water_restrooms.py`; plus the open units of `throne-restrooms.json` | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)" |
+| `food.json` | places to eat (restaurants, fast food, cafes, ice cream, pubs, beer gardens, food courts) in the coverage box, for the planner's Find food search | OpenStreetMap, via the project's own extract, by `scripts/build_food.py` | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)" |
+| `throne-restrooms.json` | Throne smart restrooms (Throne Labs) in DC, Maryland and Virginia: a hand list, read by the build, not by the front end | city, county, parks and news pages, each unit with its URL and the date read; positions from the US Census Bureau geocoder (public domain) for the address each source gives | facts with sources; no third-party database copied (never Google Maps) | none needed; a list unit's card says "From Throne Labs and city sources" |
 
 What counts as drinking or untreated water, how a restroom's type is read
 from `toilets:disposal`, and what is left out (customers-only, private,
@@ -34,11 +38,76 @@ work; not yet in an OWNER-DECISIONS file):
   it is also `drinking_water=yes` (or `amenity=drinking_water` or
   `amenity=water_point`), which says it is still usable.
 
+Two more from the owner's requests of 2026-10-11 (RESTROOMS-FIX in the v0.5.0
+plan):
+
+- Not where the public can walk in. A point inside an area tagged
+  `aeroway=aerodrome` or `aeroway=terminal` (airside), `landuse=military` or
+  `military=*` (every value but `no` and `danger_area`, and not on an area also
+  tagged `historic=*`, an old fort or battery that is a park now), or
+  `amenity=prison` is
+  left out, water as well as restrooms. Areas are closed ways and multipolygon
+  relations; a point in a hole of the area stays. The build prints how many it
+  left out, by kind.
+- Throne smart restrooms. The owner: "missing some restrooms that were
+  established by Throne Labs, which are often along major biking routes";
+  "They are in Maryland and Virginia too". OSM has few of them and no DC open
+  dataset lists them, so `throne-restrooms.json` holds each unit found with a
+  name, position, jurisdiction, status (`open`, `opens soon`, `unverified`), how
+  it was placed and its sources with the date read. Only `open` units are
+  merged into the map's file. A unit within 50 ft (15 m) of an OSM restroom, or
+  within 1,000 ft (300 m) of one already tagged as a Throne (operator, brand or
+  name), is that restroom: the OSM point stays and is marked `op: "Throne"`
+  (and `tu`, the unit's id, when OSM does not tag it a Throne itself). Each OSM
+  restroom stands for one unit at most. The wide reach is because the list's
+  positions are street addresses: the three OSM nodes below lie 90 to 700 ft
+  (28 to 215 m) from the units they look like.
+  Otherwise the unit is added with its `throne-...` id as a flush restroom,
+  free and wheelchair accessible, as Throne describes every unit
+  (<https://thronelabs.co/how-it-works>, read 2026-10-11). The card and lists
+  then say how to open the door (the app, a text to 202-751-3694, or a free
+  entry card; 10 minutes a visit). An added unit carries `ap: 1` unless the
+  list marks it `"exact": true` (placed from OSM or imagery), and its card says
+  the location is approximate: placed from the site's street address, so the
+  unit may be a block or so from the pin.
+
+The list found 17 of the 18 units the owner's Throne app shows (sweep of
+2026-10-11):
+
+| Unit | Jurisdiction | Status |
+| --- | --- | --- |
+| Dupont Circle | DC | open |
+| Columbia Heights Civic Plaza | DC | open |
+| Indiana Plaza by DC Superior Court | DC | open |
+| Alethia Tanner Park | DC | open |
+| Oxon Run Park | DC | open |
+| Eastern Market Metro plaza | DC | open |
+| Ellington Plaza (7th and T St NW) | DC | unverified (FY2026 plan) |
+| Watkins Recreation Center | DC | unverified (FY2026 plan) |
+| Starburst Plaza | DC | unverified (FY2026 plan) |
+| Marvin Gaye Park | DC | unverified (FY2026 plan) |
+| Yards Park | DC | unverified (2024 source) |
+| Perry Street Park and Ride, Mount Rainier | MD | open |
+| University Hills Duck Pond Park, Hyattsville | MD | open |
+| 38th Avenue Neighborhood Park, Hyattsville | MD | opens soon |
+| Old Town Square, Fairfax | VA | open |
+| Van Dyck Park, Fairfax | VA | open |
+| Fairfax Blvd (former Hy-Way Motel lot) | VA | unverified (2023 source; may have moved) |
+
+Not found: a second unit near Navy Yard, and two or three more in the
+Hyattsville and University Park area, which the owner's app screenshots show.
+Positions are the site's street address, not the exact unit (Mount Rainier's
+is across the street from its address point), so each added unit's card says
+the location is approximate. When
+someone confirms a unit, set its status to `open` (or move it to the spot seen)
+and run `--throne-only` (below). Throne's app has a live map; a location feed
+from Throne would replace this list.
+
 The file is one point per line, short keys:
 
 | Key | Meaning |
 | --- | --- |
-| `id` | OSM element, `n` node or `w` way, then its id |
+| `id` | OSM element, `n` node or `w` way, then its id; or `throne-...`, a unit from `throne-restrooms.json` |
 | `x`, `y` | longitude, latitude (5 decimals, about 3 ft (1 m); a way's mean node) |
 | `w` | water: `p` drinking water, `n` untreated (filter or treat first); left out for none |
 | `t` | restroom: `f` flush, `b` portable, pit, composting or other basic toilet, `u` type not mapped; left out for none |
@@ -48,22 +117,31 @@ The file is one point per line, short keys:
 | `h` | `opening_hours`, as mapped |
 | `s` | `seasonal`, unless `no` |
 | `b` | 1 for `bottle=yes` on drinking water |
+| `op` | `Throne` for a Throne smart restroom |
+| `tu` | the Throne list unit that marked an OSM restroom not tagged a Throne in OSM (so `--throne-only` can unmark it) |
+| `ap` | 1 for an approximate position (a Throne list unit placed from a street address) |
+
+The file also has `"also"`, naming the Throne list as the second source.
 
 ## Status
 
-Generated on the build host on 2026-10-11 from the 2026-10-09 extract
-(`<DATA_ROOT>/extracts/source.osm.pbf`, the one the v0.4.0 rebuild used),
-commit 57c090a, with both 2026-10-10 rules: 2,250 points, all inside the
-coverage box, 140,381 bytes, sha256
-`72b3ad11884b94096535b9299da2e89e4466638414ce41135cb94f26c480446b`.
+Generated on the build host on 2026-10-11 for the v0.5.0 rebuild, from the
+2026-10-09 extract that rebuild builds from (`<DATA_ROOT>/extracts/source.osm.pbf`),
+with the 2026-10-10 rules and the 2026-10-11 secured-site rule above: 2,152
+points, 134,834 bytes, sha256
+`d4f4d7bf71275dabc9cba3c318deb33b7b1162e004d37e07fedc1eeaeccbc9d0`. 106 left
+out inside airports, military sites and prisons (airport 91, military 15).
+Throne: 6 units added from the list and 4 matched to OSM restrooms (the
+`operator=Throne` merge above); 7 listed units not open or not confirmed are
+left off the map.
 
 | Kind | Points |
 | --- | --- |
-| drinking water | 762 (20 of them at a restroom) |
+| drinking water | 734 (20 of them at a restroom, so the rows add to 2,172) |
 | untreated water | 174 |
-| flush restroom | 202 |
-| portable, pit or composting toilet | 285 |
-| restroom, type not mapped | 847 |
+| flush restroom | 173 |
+| portable, pit or composting toilet | 284 |
+| restroom, type not mapped | 807 |
 
 To rebuild, from the repository root on that host:
 
@@ -71,6 +149,15 @@ To rebuild, from the repository root on that host:
         --pbf <DATA_ROOT>/extracts/source.osm.pbf
 
 then update the figures above and commit the file.
+
+To merge the Throne list again without an extract (after a unit's status or
+position changes), anywhere with the repository:
+
+    .venv311/bin/python scripts/build_water_restrooms.py --throne-only
+
+It keeps the file's OSM points and replaces its Throne units. An OSM point
+marked as a Throne by its own tags in a full build is matched again only within
+50 ft (15 m) here, as the file does not keep those tags.
 
 ## Refresh
 
@@ -80,3 +167,55 @@ the file as it is.
 Update the figures and digest in "Status" and commit the file. The test
 `test_bundled_file_is_well_formed` checks the result; the front end needs no
 change.
+
+## Places to eat
+
+`food.json` is the Find food search's data (`src/lib/food.ts`; FOOD-SEARCH in
+the v0.5.0 plan, owner 2026-10-11: "search for a midride crab restaurant or
+pizza place"; "Mostly let's do a map search for it. People are willing to
+detour for good food."). What counts (the OSM tags, public access, the
+secured-site rule shared with the water layer, duplicates merged by name
+within 200 ft (60 m)) is in the docstring of `scripts/build_food.py`. No
+ratings: there is no open source for them, and Google's data is never copied.
+
+One place per line, short keys:
+
+| Key | Meaning |
+| --- | --- |
+| `id` | OSM element, `n` node, `w` way or `r` relation, then its id |
+| `x`, `y` | longitude, latitude (5 decimals; a way or relation at its outer ring's mean) |
+| `k` | kind: `r` restaurant, `f` fast food, `c` cafe, `i` ice cream, `p` pub, `b` beer garden, `fc` food court |
+| `n` | `name` (or `brand` where there is no name) |
+| `c` | `cuisine`, normalised: lower case, `_` for spaces, `;` between values, no repeats, at most 6 |
+| `h` | `opening_hours`, as mapped |
+| `web` | `website` (or `contact:website`), only an `http(s)://` address |
+
+### Status
+
+Generated on the build host on 2026-10-11 for the v0.5.0 rebuild, from the
+2026-10-09 extract that rebuild builds from (`<DATA_ROOT>/extracts/source.osm.pbf`):
+15,480 places, 12,940 of them with a cuisine; 197 left out inside airports,
+military sites and prisons (airport 133, military 63, prison 1).
+2,262,385 bytes (555,199 with `gzip -9`), sha256
+`e02ac7c38d7dc963048dffb8e07e6880427a1459e165b213c744c500ebcc508f`.
+
+| Kind | Places |
+| --- | --- |
+| restaurant | 8,040 |
+| fast food | 5,061 |
+| cafe | 1,537 |
+| ice cream | 496 |
+| pub | 300 |
+| food court | 34 |
+| beer garden | 12 |
+
+To rebuild, on the build host, from the repository root:
+
+    .venv311/bin/python scripts/build_food.py \
+        --pbf <DATA_ROOT>/extracts/source.osm.pbf
+
+It prints the places by kind, how many have a cuisine, how many were left out
+inside airports, military sites and prisons, and the file's size (and warns
+over 3,000,000 bytes, as the front end fetches the whole file on the first
+search). Record the counts, size and sha256 here and commit the file. `test_bundled_file_is_well_formed` in
+`tests/test_build_food.py` checks it.

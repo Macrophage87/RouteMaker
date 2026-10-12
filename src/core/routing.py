@@ -76,7 +76,19 @@ from django.utils import timezone
 from pipeline.schema import MASS_WIDTH_COLUMN, STRESS_HALF_COLUMN, validate_schema_name
 from pipeline.variants import Variant
 from routemaker import avoid_junctions as avoid_rules
-from routemaker import calm, climbs, describe, flow, intersections, ridetime, trace_junctions, zoo
+from routemaker import (
+    calm,
+    climbs,
+    describe,
+    flow,
+    grade_stress,
+    intersections,
+    mdot_aadt,
+    mtbmode,
+    ridetime,
+    trace_junctions,
+    zoo,
+)
 from routemaker import detour as detour_rules
 from routemaker import profile as profile_rules
 from routemaker.facility import FACILITIES
@@ -84,7 +96,8 @@ from routemaker.geo import Point, haversine
 from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
-from . import avoid_junctions, mass_hazards, presets
+from . import avoid_junctions, mass_hazards, mtb, presets
+from . import workzones as work_zones
 
 logger = logging.getLogger(__name__)
 
@@ -834,6 +847,9 @@ class Dials:
     # Off by default: the answer lists EVERY junction with its cost (`junctions_debug`),
     # flagged or not, for re-running a sample with all junctions counted (468).
     debug_junctions: bool = False
+    # Mountain Bike only: the hardest trail level the rider takes, 1-4 (docs/MTB-TOPO-PLAN.md,
+    # slice 6); None: `routemaker.mtbmode.DEFAULT_MAX_LEVEL`, level 2.
+    mtb_level: int | None = None
     # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
     # A ride whose last point is its first is a loop whatever this says.
     loop: bool = False
@@ -926,7 +942,11 @@ _weekend_failed_at: float | None = None
 # on the same timeout and failure memory: a deployment that has not built it
 # yet, or whose router is down, still answers, without the mountain-bike class.
 _offroad_failed_at: float | None = None
-TWIN_VARIANTS = (Variant.WEEKEND.value, Variant.OFFROAD.value)
+# The Mountain Bike router (`Variant.MTB`, docs/MTB-TOPO-PLAN.md, slice 6), a sixth behind the
+# same profile, falls back the same way: the ride is then planned on the standard graph and
+# its answer says so (`mtb.limited` = no_mtb_graph).
+_mtb_failed_at: float | None = None
+TWIN_VARIANTS = (Variant.WEEKEND.value, Variant.OFFROAD.value, Variant.MTB.value)
 
 
 def _weekend_down() -> bool:
@@ -937,7 +957,13 @@ def _offroad_down() -> bool:
     return _offroad_failed_at is not None and clock() - _offroad_failed_at < WEEKEND_FAILURE_TTL_S
 
 
+def _mtb_down() -> bool:
+    return _mtb_failed_at is not None and clock() - _mtb_failed_at < WEEKEND_FAILURE_TTL_S
+
+
 def _twin_down(variant: str) -> bool:
+    if variant == Variant.MTB.value:
+        return _mtb_down()
     return _offroad_down() if variant == Variant.OFFROAD.value else _weekend_down()
 
 
@@ -958,7 +984,13 @@ def _offroad_is_promoted() -> bool:
     return _promoted_row(Variant.OFFROAD.value)
 
 
+def _mtb_is_promoted() -> bool:
+    return _promoted_row(Variant.MTB.value)
+
+
 def _is_promoted(variant: str) -> bool:
+    if variant == Variant.MTB.value:
+        return _mtb_is_promoted()
     if variant == Variant.OFFROAD.value:
         return _offroad_is_promoted()
     return _weekend_is_promoted()
@@ -970,8 +1002,10 @@ def _mark_weekend(ok: bool) -> None:
 
 
 def _mark_twin(variant: str, ok: bool) -> None:
-    global _offroad_failed_at
-    if variant == Variant.OFFROAD.value:
+    global _offroad_failed_at, _mtb_failed_at
+    if variant == Variant.MTB.value:
+        _mtb_failed_at = None if ok else clock()
+    elif variant == Variant.OFFROAD.value:
         _offroad_failed_at = None if ok else clock()
     else:
         _mark_weekend(ok)
@@ -995,6 +1029,13 @@ def grade_profile(trip: dict) -> list[tuple[float, float | None]]:
         # A leg's samples do not join the next leg's: a gap between them.
         profile.append((offset, None))
     return profile
+
+
+def _quiet_cost(costing: dict) -> float:
+    """`refine.quiet_cost_per_m`: the router's cost of a quiet metre at this costing."""
+    from . import refine
+
+    return refine.quiet_cost_per_m(costing)
 
 
 def _router_cost(trip: dict) -> float:
@@ -1165,6 +1206,37 @@ def no_busier_than_middle(
     if _hold_refuses(calmer, own, exposure):
         return trip, False
     return middle, True
+
+
+def tolerated_climb_s(trip: dict, weight: float, quiet_cost: float) -> float:
+    """The share `weight` of what the router's cost charged for a trip's climbing, in
+    the router's cost seconds (`climbs.router_climb_m` metres of quiet riding, at
+    `quiet_cost` seconds a metre): what "fine with hills" takes off its cost."""
+    return weight * quiet_cost * climbs.router_climb_m(grade_profile(trip))
+
+
+def choose_direct(trips: list[dict], weight: float, quiet_cost: float) -> int:
+    """The index of the trip whose router cost, less `weight` of its climbing charge
+    (`tolerated_climb_s`), is least: the right half of the hills slider on every ride
+    type but Mountain Goat, "fine with hills" (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS
+    242). `weight` is the slider's position over 100 (`presets.tolerate_weight`): at the
+    top a climb costs what the same distance on the flat would, so the shorter or more
+    direct route wins even where it climbs more. Only the router's own climbing charge
+    is taken off, never more, so climbing never earns a route a credit (that is Mountain
+    Goat's climb search, `choose_climb`), and the stress, turn and gate prices stay. The
+    first trip, the router's own best, is kept on a tie.
+    """
+    best, best_score = 0, None
+    for index, trip in enumerate(trips):
+        score = _router_cost(trip) - tolerated_climb_s(trip, weight, quiet_cost)
+        if best_score is None or score < best_score - TOLERATE_EPS_S:
+            best, best_score = index, score
+    return best
+
+
+# What an alternative must save, in the router's cost seconds, for "fine with hills" to
+# take it over the router's own route: a few seconds is the elevation samples' noise.
+TOLERATE_EPS_S = 5.0
 
 
 def choose_climb(trips: list[dict], ratio: float) -> int:
@@ -1573,6 +1645,7 @@ def _crossing_out(major) -> dict:
         "corkers_needed": major.corkers_needed,
         "oneway": getattr(major, "oneway", None),
         "divided": getattr(major, "divided", False),
+        "approach_lanes": getattr(major, "approach_lanes", None),
     }
 
 
@@ -1799,6 +1872,7 @@ def _intersection_rows(events: list) -> list[dict]:
                 intersections.calm_miles(event.cost_ft) * intersections.KM_PER_MILE, 2
             ),
             "group": event.group,
+            "time_band": event.time_band,
         }
         for event in events
         if event.flagged
@@ -2190,7 +2264,11 @@ def plan(
         presets.stress_start(preset_name, dials.carrying) if dials.stress is None else dials.stress
     )
     hills_dial = preset.hills if dials.hills is None else dials.hills
-    seeking = hills_dial > 0 and preset.hills_seek
+    # The slider's right half (FOLLOWUP-HILLS-TOLERATE, OWNER-DECISIONS 242): it seeks
+    # climbs on Mountain Goat only; everywhere else it is "fine with hills".
+    right_half = hills_dial > 0 and preset.hills_seek
+    seeking = right_half and not preset.hills_tolerate
+    tolerating = right_half and preset.hills_tolerate
     maxcalm = presets.maxcalm_for(stress_dial)
     # Seeking hills at the top of the stress slider keeps the stress order and the
     # target; only the effort tiebreak (`refine.level3`) inverts, to prefer climbing
@@ -2198,6 +2276,13 @@ def plan(
     # top the slider is the climb search among the router's alternatives, as before.
     calm_seek = seeking and maxcalm
     climb_seek = seeking and not maxcalm
+    # "Fine with hills" below the top of the stress slider weighs the router's own
+    # alternatives with their climbing charge discounted (`choose_direct`). At the top
+    # the stress order decides and its third level is the actual distance, which counts
+    # no climbing already: the detent's plan, said as "calm_first".
+    calm_tolerate = tolerating and maxcalm
+    direct_tolerate = tolerating and not maxcalm
+    tolerate_weight = presets.tolerate_weight(hills_dial) if tolerating else 0.0
     # A loop is planned through its start again (OWNER-DECISIONS 266).
     loop = loop_wanted(points, dials.loop, preset_name)
     points = loop_points(points, loop)
@@ -2251,6 +2336,13 @@ def plan(
         "directions_type": "none",
         "units": "kilometers",
     }
+    # Live work zones (FOLLOWUP-WORKZONES, 341-349), in force at the ride time: a closure
+    # to bicycles is left out of every request this plan makes (the derived requests
+    # copy this one), and the zones a rider may pass are weighed once the router has
+    # answered (`work_zones.settle_penalties`). None where no refresh has ever run.
+    zones_plan = work_zones.plan_zones(points, when)
+    if zones_plan is not None and zones_plan.exclude:
+        request["exclude_polygons"] = list(zones_plan.exclude)
     # Past the detent the hills slider is a climb search among the router's
     # alternatives. Valhalla computes alternatives only between two locations,
     # and not inside a long ride's budget, so anything else keeps the route
@@ -2258,9 +2350,11 @@ def plan(
     # Below it the slider also weighs sustained climbs and brake-riding
     # descents (routemaker.climbs; the owner, 2026-09-28) among the same
     # alternatives, by `-hills/100`.
+    # "Fine with hills" asks for them as the avoid half does, inside its shorter span:
+    # it is where the E-bike ride type starts (242).
     avoiding = hills_dial < 0
-    seek_limited = "calm_first" if calm_seek else None
-    if climb_seek or avoiding:
+    seek_limited = "calm_first" if calm_seek or calm_tolerate else None
+    if climb_seek or avoiding or direct_tolerate:
         span_limit = SEEK_MAX_SPAN_M if climb_seek else AVOID_MAX_SPAN_M
         if len(points) != 2:
             seek_limited = "two_points"
@@ -2268,6 +2362,10 @@ def plan(
             seek_limited = "long_ride"
         else:
             request["alternates"] = SEEK_ALTERNATES
+    # Mountain Bike ranks the router's own routes by its trail rules (`core.mtb`): two-point
+    # plans ask for them, as the hills search does.
+    if preset_name == mtb.PRESET and len(points) == 2 and not long_ride:
+        request.setdefault("alternates", SEEK_ALTERNATES)
     if variant in TWIN_VARIANTS and (_twin_down(variant) or not _is_promoted(variant)):
         logger.info("the %s graph is not being served; planning on the standard graph", variant)
         variant = Variant.STANDARD.value
@@ -2308,7 +2406,7 @@ def plan(
                 refusal.code,
             )
             variant = Variant.STANDARD.value
-        if timed_out and not calm_seek:
+        if timed_out and not (calm_seek or calm_tolerate):
             seek_limited = "timed_out"
     except RouterRefused as refusal:
         if refusal.code in REQUEST_LIMIT_CODES:
@@ -2321,8 +2419,25 @@ def plan(
                 refusal.code,
                 refusal,
             )
-        raise NoRoute(str(refusal), no_path=refusal.code in NO_PATH_CODES) from refusal
+        if not (zones_plan is not None and zones_plan.exclude and refusal.code in NO_PATH_CODES):
+            raise NoRoute(str(refusal), no_path=refusal.code in NO_PATH_CODES) from refusal
+        # No way round the work zones closed to bicycles: plan through them, each one
+        # warned of in red, rather than answer no route (the rider can walk through or
+        # choose; `work_zones.drop_exclusions`).
+        work_zones.drop_exclusions(request, zones_plan)
+        try:
+            answer, timed_out = _route(variant, request, deadline)
+        except RouterRefused as again:
+            raise NoRoute(str(again), no_path=again.code in NO_PATH_CODES) from again
 
+    if zones_plan is not None:
+        answer = work_zones.settle_penalties(
+            answer,
+            request,
+            zones_plan,
+            lambda trial: _route(variant, trial, deadline)[0],
+            lambda: deadline.at - clock(),
+        )
     routed_at = clock()
     trips = [answer.get("trip") or {}] + [
         (alternate or {}).get("trip") or {} for alternate in answer.get("alternates") or []
@@ -2332,6 +2447,18 @@ def plan(
     traces: dict = {}
     if climb_seek:
         chosen = choose_climb(trips, presets.seek_distance_ratio(hills_dial))
+    elif direct_tolerate:
+        # Never a busier route for it: the same guard as the avoid half's.
+        chosen = calmer_or_own(
+            trips,
+            choose_direct(trips, tolerate_weight, _quiet_cost(costing)),
+            variant,
+            costing,
+            when,
+            deadline,
+            traces,
+            exposure,
+        )
     elif avoiding:
         chosen = calmer_or_own(
             trips,
@@ -2397,6 +2524,11 @@ def plan(
         climb_weight=avoid_weight * refine.CLIMB_EQUIVALENT_M,
         hills_weight=avoid_weight,
         hills_seek_weight=hills_dial / 100 if calm_seek else 0.0,
+        hills_tolerate_weight=tolerate_weight if direct_tolerate else 0.0,
+        # The hill factor's coefficient is the hills slider's (409; the owner: "The sliders
+        # control the various coefficients for each component"), 0 at "fine with hills".
+        hill_coefficient=grade_stress.coefficient_for(hills_dial),
+        brake_grade=preset.brake_grade,
         mass_kg=presets.system_weight_for(preset_name, dials.carrying, dials.system_weight_kg),
         quiet_cost=refine.quiet_cost_per_m(trace_costing),
         wide=refine.wide_search_for(presets.calm_rate_for(stress_dial)),
@@ -2458,6 +2590,32 @@ def plan(
             "excluded": 0,
             "limited": refine_limited,
         }
+    # Mountain Bike (docs/MTB-TOPO-PLAN.md, slice 6): the rider's hardest trail level held, the
+    # trail-seeking ranking and the connecting-road rule, on the route as it now is and the
+    # router's own alternatives (`core.mtb.settle`). Before the dodge and Avoid passes, so what
+    # they say (`dodges`, `avoid_search`) is said of the route answered; should they change it,
+    # it is read again after them (`mtb.reread`). Only on its own graph: a trails-off ride, or
+    # one the standard graph answered while the mountain-bike router was down, has no trails
+    # to weigh.
+    mtb_info = None
+    mtb_level_held = preset_name == mtb.PRESET and variant == Variant.MTB.value
+    if mtb_level_held:
+        searched_trip = trip
+        trip, mtb_info = mtb.settle(
+            # A loop is weighed alone: the router's alternatives are not loops.
+            [trip] if loop else trips, trip, request, variant, trace_costing, when,
+            deadline, traces,
+            dials.mtb_level, points,
+        )  # fmt: skip
+        if trip is not searched_trip:
+            # The routes to choose from were near-ties of the route it replaced: none are
+            # offered beside a route they were not weighed against (as the Avoid pass).
+            refine_context.candidates = refine_context.candidates[:1]
+    elif preset_name == mtb.PRESET and not trails_off:
+        # Trails off is the rider's own choice, said by the answer's `dials`; this is the
+        # router not being there.
+        mtb_info = {"max_level": mtbmode.clamp_level(dials.mtb_level), "limited": "no_mtb_graph"}
+    mtb_trip = trip
     # No weaving through side streets beside a busier road unless it buys a
     # meaningful length of calm (OWNER-DECISIONS 272, 273): the main road's stretch
     # replaces such a dodge. A loop's way back is kept as it was made, not to share
@@ -2510,6 +2668,16 @@ def plan(
             refined["limited"] = None
         else:
             refined["no_fit"] = bool(refined.get("no_fit"))
+    if mtb_level_held and mtb_info is not None and trip is not mtb_trip:
+        # A dodge taken out, or the way round an Avoid-rated junction, changed the route
+        # `mtb.settle` chose: its figures, the over-level warning's among them, are read again
+        # from the route answered.
+        again = mtb.reread(trip, variant, trace_costing, when, deadline, traces, dials.mtb_level)
+        if again is not None:
+            limited = mtb_info.get("limited")
+            if again["over_level_m"] > 1.0 and limited is None:
+                limited = "no_way_round"
+            mtb_info.update({**again, "limited": limited})
 
     # A long calm plan searched in legs of its own answers in the plan's legs: the
     # grouping of its search legs into the plan's, the answer's and its candidates'
@@ -2725,6 +2893,23 @@ def plan(
                 ),
                 "limited": seek_limited,
             }
+        hills_tolerate = None
+        if tolerating and not alternate:
+            direct = trips[0].get("summary") or {}
+            # Nothing is discounted at the top of the stress slider (`calm_first`).
+            discount = tolerate_weight if direct_tolerate else 0.0
+            hills_tolerate = {
+                "candidates": len(trips) if direct_tolerate else 1,
+                "chosen": chosen if direct_tolerate else 0,
+                "weight": round(tolerate_weight, 2),
+                "discount_s": round(tolerated_climb_s(trip, discount, _quiet_cost(costing)), 1),
+                "extra_climb_m": round(climb - _climb_of(trips[0]), 1),
+                "extra_distance_m": round(
+                    (float(summary.get("length", 0.0)) - float(direct.get("length", 0.0))) * 1000.0,
+                    1,
+                ),
+                "limited": seek_limited,
+            }
         hills_avoid = None
         if avoiding and not alternate:
             direct = trips[0].get("summary") or {}
@@ -2792,6 +2977,7 @@ def plan(
             },
             "hills_seek": hills_seek,
             "hills_avoid": hills_avoid,
+            "hills_tolerate": hills_tolerate,
             "attribution": list(ATTRIBUTION),
             "leg_ends": leg_ends,
             "intersections": None if events is None else _intersection_rows(events),
@@ -2823,7 +3009,30 @@ def plan(
             ),
         }
 
-    body = _answer(trip, refined, dodges_of=dodges)
+    body = work_zones.with_work_zones(_answer(trip, refined, dodges_of=dodges), zones_plan)
+
+    def _with_mtb(answered: dict, info: dict | None) -> dict:
+        """A Mountain Bike route's reading on its body, and its time at about 6 mph
+        (10 km/h) on singletrack (`mtbmode.duration_s`), the router's own time kept."""
+        answered["mtb"] = info
+        if info and info.get("singletrack_m"):
+            info["router_duration_s"] = answered["duration_s"]
+            answered["duration_s"] = round(
+                mtbmode.duration_s(
+                    answered["duration_s"], answered["distance_m"], info["singletrack_m"]
+                ),
+                1,
+            )
+        return answered
+
+    def _offered_mtb(offered: dict) -> dict | None:
+        """The reading of a route offered beside the answer (a candidate, the way round an
+        Avoid-rated junction): its own, so a harder trail on it is said when it is shown."""
+        if not mtb_level_held:
+            return None
+        return mtb.reread(offered, variant, trace_costing, when, deadline, traces, dials.mtb_level)
+
+    _with_mtb(body, mtb_info)
     body["avoid_search"] = avoid_info
     body["avoid_alternate"] = None
     if avoid_list:
@@ -2834,7 +3043,8 @@ def plan(
         # a trace for each of its legs.
         if deadline.at - clock() >= ALTERNATE_MIN_S:
             try:
-                around = _answer(avoid_trip, None, True)
+                around = work_zones.with_work_zones(_answer(avoid_trip, None, True), zones_plan)
+                _with_mtb(around, _offered_mtb(avoid_trip))
                 around["extra_distance_m"] = round(around["distance_m"] - body["distance_m"], 1)
                 around["extra_duration_s"] = round(around["duration_s"] - body["duration_s"], 1)
                 body["avoid_alternate"] = around
@@ -2852,7 +3062,8 @@ def plan(
         # dodge pass is the answer's alone, one bounded pass a plan.
         try:
             refine.analyse(found, refine_context, deadline)
-            candidate = _answer(found, None, True)
+            candidate = work_zones.with_work_zones(_answer(found, None, True), zones_plan)
+            _with_mtb(candidate, _offered_mtb(found))
             if maxcalm and target_m:
                 candidate["over_target_m"] = target_fields(
                     _trip_length_m(found), target_m, ceiling
@@ -2901,6 +3112,12 @@ ATTRIBUTION = (
     "© OpenStreetMap contributors (ODbL)",
     "DC Open Data (CC BY 4.0, adapted): https://creativecommons.org/licenses/by/4.0/",
     "VDOT",
+    # MDOT SHA's traffic counts (FOLLOWUP-MDOT-AADT): Maryland iMAP's terms ask that
+    # derived data acknowledge the State of Maryland, so the credit names it.
+    mdot_aadt.CREDIT,
+    # DDOT's Pavement Condition Index (DC-PCI): District streets' smoothness reading.
+    # The service states no licence; docs/SOURCES.md records that it is to be confirmed.
+    "DDOT Pavement Condition Index (DC GIS)",
     "Open Baltimore",
     "Montgomery County Planning Department",
     "USGS 3DEP",

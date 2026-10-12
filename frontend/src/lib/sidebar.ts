@@ -11,52 +11,68 @@ import type { Dials } from "./dials.ts";
 import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 
-/** The views the panel body shows: the planner, or one of the bottom bar's sheets. */
-export type PanelView = "planner" | "layers" | "gpx" | "settings";
+/**
+ * The views the panel body shows: the planner (Plan's sections, or Go's sheet), or one of the sheets
+ * the bottom bar, the map's chips, Go's Menu and the Layers sheet's Legend button open (UI-CLEANUP,
+ * the approved mockup of 2026-10-11).
+ */
+export type PanelView = "planner" | "layers" | "legend" | "suggest" | "review" | "gpx" | "settings" | "nearest" | "food" | "ride";
 
 /** The planner's own heading, where the focus goes when the Plan button returns to it (OWNER-DECISIONS 392). */
 export const PLANNER_TITLE = "RouteMaker";
 
-/** The sheets, and where each one's heading is (the focus goes to it on open). */
+/** The sheets' headings (the focus goes to it on open). Go shows Settings as its Menu. */
 export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
-  layers: "Map layers",
+  layers: "Layers",
+  legend: "Legend",
+  suggest: "Suggest a change",
+  review: "Review",
   gpx: "GPX file",
   settings: "Settings",
+  nearest: "Nearest water, restroom or Metro",
+  food: "Find food",
+  ride: "Ride",
 };
+
+/** Go's Menu (the mockup's Menu sheet): Settings, with Plan, Suggest, GPX and Review above them. */
+export const MENU_TITLE = "Menu";
 
 export interface BarItem {
   /** The button's own id, for the focus on the way back. */
-  id: "plan" | "layers" | "legend" | "gpx" | "settings";
+  id: "plan" | "layers" | "suggest" | "gpx" | "settings";
   /** Its text, always shown beside the icon. */
   label: string;
   /** The view it opens: a sheet, or the planner (Plan). */
   opens: PanelView;
-  /** Whether the sheet opens scrolled to the legend. */
-  toLegend?: boolean;
   /** What a screen reader hears besides the label. */
   description: string;
 }
 
 /**
- * Plan, Map layers, Legend, GPX and Settings (OWNER-DECISIONS 392, 393: Plan is first, the way back to
- * the planner from any sheet; 384: Settings was "About" until then). The Settings sheet holds the sign-in note and a Display group with the
- * High contrast switch; nothing else is there, so no fake settings.
+ * Plan, Layers, Suggest, GPX and Settings (OWNER-DECISIONS 392, 393: Plan is first, the way back to the
+ * planner from any sheet). UI-CLEANUP (the owner's choice 6 of 2026-10-11): the legend moved behind a
+ * Legend button at the top of Layers, and Suggest took its slot: the one way in to the suggest tools.
  */
 export const BAR_ITEMS: readonly BarItem[] = [
   { id: "plan", label: "Plan", opens: "planner", description: "Shows the planner: the points, the ride settings and the route." },
-  { id: "layers", label: "Map layers", opens: "layers", description: "Opens the map layers and their switches." },
-  { id: "legend", label: "Legend", opens: "layers", toLegend: true, description: "Opens the map legend, in the map layers." },
+  { id: "layers", label: "Layers", opens: "layers", description: "Opens the map layers and their switches; the legend is behind its Legend button." },
+  { id: "suggest", label: "Suggest", opens: "suggest", description: "Opens the ways to suggest a change to the map, or report a problem to DC 311." },
   { id: "gpx", label: "GPX", opens: "gpx", description: "Opens the GPX file tools: open a file, or download the route." },
-  { id: "settings", label: "Settings", opens: "settings", description: "Opens the settings: display options and signing in." },
+  { id: "settings", label: "Settings", opens: "settings", description: "Opens the settings: display, Ride mode, this device and your account." },
 ];
 
-/**
- * Whether a bar button is the current one: its sheet is the view showing, and of the two buttons
- * that open Map layers only the one that did (Legend, or Map layers). Pure, so a test runs it over
- * every view and button (the mutation re-check's NIT A).
- */
-export function barCurrent(item: Pick<BarItem, "id" | "opens">, view: PanelView, legend: boolean): boolean {
-  return view === item.opens && (item.id !== "layers" || !legend) && (item.id !== "legend" || legend);
+/** The sheets a bar button counts as its own: Layers holds the legend, Suggest the review. */
+const BAR_SHEETS: Record<BarItem["id"], readonly PanelView[]> = {
+  plan: ["planner"],
+  layers: ["layers", "legend"],
+  suggest: ["suggest", "review"],
+  gpx: ["gpx"],
+  settings: ["settings"],
+};
+
+/** Whether a bar button is the current one: the view showing is its sheet, or a sheet inside it. Pure, so a test runs it over every view and button. */
+export function barCurrent(item: Pick<BarItem, "id">, view: PanelView): boolean {
+  return BAR_SHEETS[item.id].includes(view);
 }
 
 /** The sheets' Back button, in words, not only an arrow (OWNER-DECISIONS 393). */
@@ -185,21 +201,26 @@ export function stepsCount(n: number): string {
 
 /**
  * The route summary's folds: each one's heading (an h3, for a screen reader's
- * heading list: the a11y review's S5) and whether it starts open. "Routes to
- * choose from" is open, because it changes which route is shown; the others
- * are closed (Directions remembers its own state).
+ * heading list: the a11y review's S5) and whether it starts open. Since UI-CLEANUP
+ * (the approved mockup of 2026-10-11) every fold is one closed line with its count
+ * on the right, so the route's top fits without scrolling (Directions remembers
+ * its own state).
  */
 export const ROUTE_FOLDS = {
   // The route chart (OWNER-DECISIONS 322, 323), in the elevation slot; App closes it on a small screen. Its title
   // on a Mass Ride is "Riders per minute, corker load and elevation" (profileChart.ts foldName), three charts.
-  elevation: { title: "Elevation and stress", open: true },
+  // UI-CLEANUP (the owner's choice 7 of 2026-10-11): renamed "Elevation and climbs", with the climbs on the
+  // route listed in it, and closed by default on a computer too.
+  elevation: { title: "Elevation and climbs", open: false },
   facilities: { title: "Stress and facilities", open: false },
   directions: { title: "Directions", open: false },
   junctions: { title: "Junctions to watch", open: false },
-  choices: { title: "Routes to choose from", open: true },
+  // The mockup's "Other routes", closed like the rest (the route shown is the first; a choice is one press in).
+  choices: { title: "Other routes", open: false },
+  water: { title: "Water and restrooms", open: false },
 } as const;
 
-/** Whether the route chart's fold starts open: open beside the map, offered collapsed on a small screen (OWNER-DECISIONS 322). */
+/** Whether the route chart's fold starts open: closed everywhere since UI-CLEANUP (the owner's choice 7; it was open beside the map, OWNER-DECISIONS 322). */
 export function chartFoldOpen(narrow: boolean): boolean {
   return ROUTE_FOLDS.elevation.open && !narrow;
 }
@@ -207,45 +228,61 @@ export function chartFoldOpen(narrow: boolean): boolean {
 // ---- Where the focus goes ---------------------------------------------------------
 
 /**
- * Why the panel changed view: a bar button, Back (or Escape), the Plan button (planButton, which
- * focuses the heading), the phone header's "Show planner" (panelToggle, which leaves the focus on the
- * toggle), or a question or error that needs the planner.
+ * Why the panel changed view: a bar button or another opener (a map chip, Go's Menu, the Legend
+ * button), Back (or Escape), the Plan button (planButton, which focuses the heading), the phone
+ * header's "Show planner" (panelToggle, which leaves the focus on the toggle), or a question or error
+ * that needs the planner.
  */
 export type ViewCause = "bar" | "back" | "error" | "confirm" | "planButton" | "panelToggle";
 
 /** What takes the focus after the panel changes view. */
 export type FocusTarget =
-  | { kind: "heading"; view: Exclude<PanelView, "planner">; legend: boolean }
-  | { kind: "bar"; id: BarItem["id"] }
+  | { kind: "heading"; view: Exclude<PanelView, "planner"> }
+  | { kind: "opener" }
   | { kind: "error" }
   | { kind: "plan" }
   | { kind: "planner" }
   | null;
 
 /**
- * Where the focus goes when the panel body changes view (App.tsx). A sheet takes
- * it to its heading (the legend's, when Legend opened it). Back takes it to the
- * bar button that opened the sheet; the Plan button takes it to the planner's heading
- * (OWNER-DECISIONS 392). An error that brought the planner back takes
- * it to the error, and the long-ride question to its "Plan it" button. No change
- * of view moves nothing.
+ * Where the focus goes when the panel body changes view (App.tsx). A sheet opened takes it to its
+ * heading. Back takes it to what opened the sheet (a bar button, a map chip, the Legend button), the
+ * sheet it was opened from showing again; the Plan button takes it to the planner's heading
+ * (OWNER-DECISIONS 392). An error that brought the planner back takes it to the error, and the
+ * long-ride question to its "Plan it" button. No change of view moves nothing.
  */
-export function focusOnViewChange(change: {
-  was: PanelView;
-  view: PanelView;
-  legendTarget: boolean;
-  openedBy: BarItem["id"];
-  cause: ViewCause;
-}): FocusTarget {
-  const { was, view, legendTarget, openedBy, cause } = change;
+export function focusOnViewChange(change: { was: PanelView; view: PanelView; cause: ViewCause }): FocusTarget {
+  const { was, view, cause } = change;
   if (was === view) return null;
-  if (view !== "planner") return { kind: "heading", view, legend: view === "layers" && legendTarget };
+  if (cause === "back") return { kind: "opener" };
+  if (view !== "planner") return { kind: "heading", view };
   if (cause === "error") return { kind: "error" };
   if (cause === "confirm") return { kind: "plan" };
   if (cause === "planButton") return { kind: "planner" };
   // The phone header's "Show planner" leaves the focus on the toggle that was pressed.
   if (cause === "panelToggle") return null;
-  return { kind: "bar", id: openedBy };
+  return { kind: "opener" };
+}
+
+/** One step of the way back: the view that was showing and what opened the next one. */
+export interface Opened<E> {
+  from: PanelView;
+  opener: E | null;
+}
+
+/**
+ * The way back through the sheets (Layers, then its Legend; Suggest, then Review): opening from the
+ * planner starts it again, opening from a sheet adds a step, and Back takes one off. Pure, so the order
+ * is tested.
+ */
+export function openOnto<E>(stack: readonly Opened<E>[], from: PanelView, opener: E | null, nested: boolean): Opened<E>[] {
+  return nested && from !== "planner" ? [...stack, { from, opener }] : [{ from: "planner", opener }];
+}
+
+export function backFrom<E>(stack: readonly Opened<E>[]): { view: PanelView; opener: E | null; stack: Opened<E>[] } {
+  const last = stack[stack.length - 1];
+  if (!last) return { view: "planner", opener: null, stack: [] };
+  return { view: last.from, opener: last.opener, stack: stack.slice(0, -1) };
 }
 
 /** The parts of a key event the sheet's Escape handler reads. */

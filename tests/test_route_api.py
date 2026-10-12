@@ -56,6 +56,8 @@ CONTRACT_KEYS = {
     "dials",
     "hills_seek",
     "hills_avoid",
+    # Additive, FOLLOWUP-HILLS-TOLERATE (OWNER-DECISIONS 242).
+    "hills_tolerate",
     "leg_ends",
     # Additive, FOLLOWUP-ROUTE-COLOURS (OWNER-DECISIONS item 81).
     "stress_spans",
@@ -84,6 +86,8 @@ CONTRACT_KEYS = {
     "candidates",
     # Additive, OWNER-DECISIONS 266: a loop's way back against its way out.
     "loop",
+    # Additive, docs/MTB-TOPO-PLAN.md slice 6: null except on a Mountain Bike plan.
+    "mtb",
     # Additive, FOLLOWUP-DEDODGE (OWNER-DECISIONS 272): side-street dodges found and removed.
     "dodges",
     # Additive, FOLLOWUP-BIKESHARE (OWNER-DECISIONS 243-245): null except on a Bikeshare plan.
@@ -92,6 +96,8 @@ CONTRACT_KEYS = {
     # junctions passed, the notice, what the plan did and the way round.
     "avoid_junctions",
     "avoid_notice",
+    # Additive, FOLLOWUP-WORKZONES: null where work zones are not running.
+    "work_zones",
     "avoid_search",
     "avoid_alternate",
 }

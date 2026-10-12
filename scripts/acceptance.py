@@ -46,15 +46,17 @@ ROUTERS = (
     "valhalla-ebike",
     "valhalla-weekend",
     "valhalla-offroad",
+    "valhalla-mtb",
 )
-# The routers a plain `up -d` runs and every restart names. The off-road router is
-# behind the compose profile `offroad`, off on the small host, and a `restart`
+# The routers a plain `up -d` runs and every restart names. The off-road and Mountain
+# Bike routers are behind the compose profile `offroad`, off on the small host, and a `restart`
 # naming a service with no container fails and restarts nothing (REBUILD-BUNDLE
 # operations review, S1), so it is restarted only where it runs.
-DEFAULT_ROUTERS = tuple(r for r in ROUTERS if r != "valhalla-offroad")
+DEFAULT_ROUTERS = tuple(r for r in ROUTERS if r not in ("valhalla-offroad", "valhalla-mtb"))
 VARIANTS = ("standard", "no-trail", "ebike", "weekend")
-# Every upstream the api repoints, the off-road router (compose profile `offroad`) included.
-ROUTER_URL = {v: f"http://valhalla-{v}:8002" for v in (*VARIANTS, "offroad")}
+# Every upstream the api repoints, the off-road and Mountain Bike routers (compose profile
+# `offroad`) included.
+ROUTER_URL = {v: f"http://valhalla-{v}:8002" for v in (*VARIANTS, "offroad", "mtb")}
 DJANGO_SERVICES = ("api", "worker", "rebuild")
 HEALTHZ = "/healthz"
 LOGIN = "/auth/login"
@@ -541,9 +543,9 @@ MANUAL_A4 = """
        --data-root /data --extract /data/extracts/source.osm.pbf \
        --urban-areas /data/reference/inputs/tl_2024_us_uac20.geojson \
        --volume /data/reference/inputs/vdot-aadt-2024.geojson \
-           --volume-source vdot --volume-year 2024 \
+           --volume-source vdot --volume-year 2024 --aadt-property ADT \
        --volume /data/reference/inputs/ddot-aadt-2024.geojson \
-           --volume-source ddot --volume-year 2024
+           --volume-source ddot --volume-year 2024 --aadt-property AADT
 This script then re-checks the installer and fires the rebuild again.
 -------------------------------------------------------------------------------"""
 

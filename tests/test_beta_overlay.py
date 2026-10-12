@@ -220,7 +220,7 @@ def test_photons_heap_direct_buffers_and_native_rest_fit_its_cap() -> None:
 
 
 def test_every_overridden_service_exists_in_the_base() -> None:
-    placeholder = {"valhalla-offroad"}
+    placeholder = {"valhalla-offroad", "valhalla-mtb"}
     assert set(OVERLAY["services"]) - placeholder <= set(BASE["services"])
 
 
@@ -422,7 +422,7 @@ def test_the_checker_refuses_renderer_and_bot() -> None:
     for name in ("renderer", "bot"):
         found = problems_for(lambda s, n=name: s.update({n: copy.deepcopy(s["worker"])}))
         assert f"{name}: must not be part of the beta stack" in " ".join(found), found
-    assert beta.OPTIONAL_SERVICES == {"valhalla-offroad"}
+    assert beta.OPTIONAL_SERVICES == {"valhalla-offroad", "valhalla-mtb"}
 
 
 # --- the memory rules at their boundaries (final review, mutation NIT 1: M6-M18) ---
@@ -505,6 +505,7 @@ def test_every_bind_the_beta_runs_refuses_to_create_a_missing_source(offroad: bo
     expected.update({f"valhalla-{g}": 4 for g in ("standard", "no-trail", "ebike", "weekend")})
     if offroad:
         expected["valhalla-offroad"] = 4
+        expected["valhalla-mtb"] = 4
     assert counts == expected
     assert not any(
         "would be created empty" in p for p in beta.check({"services": services}, None, semantics)
@@ -879,6 +880,7 @@ def test_the_template_serves_what_the_caddyfile_serves() -> None:
     ):
         assert expected in paths, expected
     assert "= /basemap/region.pmtiles" in paths
+    assert "= /basemap/contours.pmtiles" in paths
     assert "^~ /basemap/fonts/" in paths and "^~ /basemap/sprites/" in paths
     # the preset redirects are the Caddyfile's, all of them
     caddy_presets = set(re.findall(r"@preset-([a-z-]+) path ", CADDYFILE))
@@ -959,7 +961,7 @@ def test_the_basemap_is_same_origin_only_with_the_caddyfiles_three_paths() -> No
     full = stage("full")
     assert 'map "$http_origin|$http_referer" $rmbeta_basemap_foreign' in full
     caddy_allowed = re.search(r"@unlisted not path ([^\n]+)", CADDYFILE).group(1).split()
-    assert caddy_allowed == ["/region.pmtiles", "/fonts/*", "/sprites/*"]
+    assert caddy_allowed == ["/region.pmtiles", "/contours.pmtiles", "/fonts/*", "/sprites/*"]
     for path, body in locations(full):
         if path.startswith(("= /basemap", "^~ /basemap")):
             assert "if ($rmbeta_basemap_foreign)" in body and "return 403;" in body, path
@@ -1241,8 +1243,147 @@ def test_ship_data_bakes_the_report_url_into_a_tested_build_only() -> None:
     )
     assert ok.returncode == 2 and "cannot read /nonexistent/.env" in ok.stderr  # got past the URL
     text = (REPO / SHIP).read_text()
-    assert '-e VITE_BETA_REPORT_URL="$report_url"' in text
-    assert "sh -c 'npm test && npx tsc --noEmit && npx vite build --outDir /out" in text
+    assert '"$here/frontend-build.sh" "$repo" "$nm" "$stage/frontend" "$report_url"' in text
+    build = (REPO / "scripts" / "beta" / "frontend-build.sh").read_text()
+    assert '-e VITE_BETA_REPORT_URL="$report_url"' in build
+    assert "npm test && npx tsc --noEmit && npx vite build --outDir /out" in build
+
+
+FRONTEND_BUILD = "scripts/beta/frontend-build.sh"
+STUB_BUILD_DOCKER = """#!/bin/sh
+# a stand-in for docker run: records its arguments and writes an index.html to the /out mount
+echo "$*" > "$STUB_LOG"
+prev=""
+for a in "$@"; do
+  if [ "$prev" = "-v" ]; then
+    case "$a" in *:/out) mkdir -p "${a%:/out}"; echo x > "${a%:/out}/index.html" ;; esac
+  fi
+  prev=$a
+done
+exit "${STUB_RC:-0}"
+"""
+
+
+def _frontend_tree(tmp_path: Path, bindings: tuple[str, ...]) -> tuple[Path, Path, dict]:
+    repo = tmp_path / "repo"
+    (repo / "frontend").mkdir(parents=True)
+    nm = tmp_path / "node_modules"
+    for binding in bindings:
+        (nm / binding).mkdir(parents=True)
+    docker = tmp_path / "docker"
+    docker.write_text(STUB_BUILD_DOCKER)
+    docker.chmod(0o755)
+    env = {"DOCKER": str(docker), "STUB_LOG": str(tmp_path / "docker.log")}
+    return repo, nm, env
+
+
+@needs_sh
+def test_frontend_build_mounts_the_whole_tree_read_only_for_every_beta_path(
+    tmp_path: Path,
+) -> None:
+    """One script for ship-data.sh, the release agent and CI. Front-end tests read files beside
+    frontend/ (src/routemaker/avoid_junctions.py, scripts/build_contours.py), so the whole tree
+    is mounted read-only: the v0.4.0 ship stopped on a build that mounted only frontend/."""
+    repo, nm, env = _frontend_tree(tmp_path, ("@rolldown/binding-linux-x64-gnu",))
+    out = tmp_path / "out"
+    done = run("bash", FRONTEND_BUILD, str(repo), str(nm), str(out), env=env)
+    assert done.returncode == 0, done.stderr
+    args = (tmp_path / "docker.log").read_text()
+    assert f"-v {repo}:/repo:ro -v {nm}:/repo/frontend/node_modules" in args
+    assert "-w /repo/frontend" in args
+    assert "--pull never --network none" in args and "-e VITE_BETA=1" in args
+    assert (out / "index.html").exists()
+    for caller in ("ship-data.sh", "auto-release.sh"):
+        text = (REPO / "scripts" / "beta" / caller).read_text()
+        assert "frontend-build.sh" in text, caller
+        assert ":/app:ro" not in text, f"{caller} runs its own front-end build"
+
+
+@needs_sh
+@pytest.mark.parametrize(
+    "bindings",
+    [
+        ("@rolldown/binding-win32-x64-msvc", "@rolldown/pluginutils"),
+        ("@esbuild/darwin-arm64",),
+    ],
+)
+def test_frontend_build_refuses_node_modules_installed_for_another_platform(
+    tmp_path: Path, bindings: tuple[str, ...]
+) -> None:
+    """In WSL with no Linux node, `npm ci` is Windows npm: it installs only the win32 bindings,
+    and the tests then die mid-ship on a missing linux-x64 one. Refused before docker runs."""
+    repo, nm, env = _frontend_tree(tmp_path, bindings)
+    done = run("bash", FRONTEND_BUILD, str(repo), str(nm), str(tmp_path / "out"), env=env)
+    assert done.returncode == 2 and "another platform" in done.stderr, done.stderr
+    assert "npm ci" in done.stderr
+    assert not (tmp_path / "docker.log").exists()
+
+
+@needs_sh
+def test_frontend_build_passes_a_failure_on_and_still_clears_vites_temp_files(
+    tmp_path: Path,
+) -> None:
+    repo, nm, env = _frontend_tree(tmp_path, ("@rolldown/binding-linux-x64-gnu", ".vite-temp"))
+    done = run(
+        "bash",
+        FRONTEND_BUILD,
+        str(repo),
+        str(nm),
+        str(tmp_path / "out"),
+        env={**env, "STUB_RC": "7"},
+    )
+    assert done.returncode == 7, done.stderr
+    assert not (nm / ".vite-temp").exists()
+
+
+@needs_sh
+def test_frontend_build_masks_a_top_level_env_file(tmp_path: Path) -> None:
+    repo, nm, env = _frontend_tree(tmp_path, ("@rolldown/binding-linux-x64-gnu",))
+    (repo / ".env").write_text("PGPASSWORD=not-for-the-front-end\n")
+    done = run("bash", FRONTEND_BUILD, str(repo), str(nm), str(tmp_path / "out"), env=env)
+    assert done.returncode == 0, done.stderr
+    args = (tmp_path / "docker.log").read_text()
+    assert args.index(f"-v {repo}:/repo:ro") < args.index("-v /dev/null:/repo/.env:ro")
+
+
+@needs_sh
+def test_frontend_build_check_alone_lets_the_agent_refuse_before_it_stops_anything(
+    tmp_path: Path,
+) -> None:
+    _, nm, env = _frontend_tree(tmp_path, ("@rolldown/binding-win32-x64-msvc",))
+    done = run("bash", FRONTEND_BUILD, "--check", str(nm), env=env)
+    assert done.returncode == 2 and "@rolldown/binding-win32-x64-msvc" in done.stderr
+    assert not (tmp_path / "docker.log").exists()
+    linux = tmp_path / "linux"
+    (linux / "@rolldown" / "binding-linux-x64-gnu").mkdir(parents=True)
+    assert run("bash", FRONTEND_BUILD, "--check", str(linux), env=env).returncode == 0
+    agent = (REPO / "scripts" / "beta" / "auto-release.sh").read_text()
+    ready = agent[agent.index("frontend_ready() {") : agent.index("build_frontend() {")]
+    assert '"$build_fe" --check' in ready
+
+
+@needs_sh
+def test_frontend_build_and_the_release_agent_pin_the_same_node_image() -> None:
+    image = run("bash", FRONTEND_BUILD, "--print-image").stdout.strip()
+    assert re.fullmatch(r"docker\.io/library/node@sha256:[0-9a-f]{64}", image), image
+    agent = (REPO / "scripts" / "beta" / "auto-release.sh").read_text()
+    assert f'NODE_IMAGE="{image}"' in agent
+    installed = re.search(r"^\s*install -m 700 \"\$here/frontend-build.sh\"", agent, re.M)
+    assert installed, "auto-release.sh install does not install frontend-build.sh beside itself"
+
+
+def test_ship_data_warns_when_the_server_lacks_the_api_image() -> None:
+    """The api image is not in the bundle (the runbook sends it separately), which is easy to
+    miss: after sending, ship-data asks the server for the image of this sha and says how to
+    send it when it is missing."""
+    text = (REPO / SHIP).read_text()
+    sent = text.index('note "sent. On the server')
+    check = text.index("docker image inspect --format ok '$api_tag'")
+    assert sent < check
+    assert 'api_tag="$API_IMAGE:${git_sha:0:12}"' in text
+    assert "docker save $api_tag | gzip | ssh ${BETA_SSH_OPTS:+$BETA_SSH_OPTS }$remote_host" in text
+    # docker the server's user cannot reach is not reported as a missing image
+    assert "else echo no-docker; fi" in text
 
 
 @needs_sh
@@ -1281,6 +1422,43 @@ def test_ship_data_will_not_stage_inside_the_live_data_root(tmp_path: Path) -> N
         "frontend",
     )
     assert done.returncode == 2 and "inside" in done.stderr, done.stderr
+
+
+@needs_sh
+def test_ship_data_refuses_a_contour_builds_leftovers_in_the_basemap(tmp_path: Path) -> None:
+    """The basemap directory is shipped whole, so scripts/build_contours.py's work directory
+    (kept, or left by a failed run) or its half-written archive must not ride along."""
+    live = tmp_path / "live"
+    data = tmp_path / "data"
+    live.mkdir()
+    (data / "basemap").mkdir(parents=True)
+    (data / "basemap" / "region.pmtiles").write_bytes(b"PMTiles")
+    (live / "compose.yaml").write_text("services: {}\n")
+    (live / ".env").write_text(f"DATA_ROOT={data}\n")
+    args = [
+        "bash",
+        SHIP,
+        "--live-dir",
+        str(live),
+        "--stage",
+        str(tmp_path / "stage"),
+        "--no-transfer",
+    ]
+    args += [
+        arg
+        for part in ("db", "frontend", "tiles", "elevation", "photon")
+        for arg in ("--without", part)
+    ]
+    for leftover in (".contours-work", ".contours.pmtiles.part"):
+        path = data / "basemap" / leftover
+        path.mkdir() if leftover.endswith("work") else path.write_bytes(b"x")
+        done = run(*args)
+        assert done.returncode == 2 and f"basemap/{leftover} is left from" in done.stderr, (
+            done.stderr
+        )
+        path.rmdir() if path.is_dir() else path.unlink()
+    done = run(*args)
+    assert "left from scripts/build_contours.py" not in done.stderr, done.stderr
 
 
 def _bundle(tmp_path: Path, sha: str | None = None) -> Path:
@@ -1841,6 +2019,8 @@ def test_the_dump_strips_every_identity_table_owner_decision_367() -> None:
         "django_session",
         "django_admin_log",
         "cached_membership",
+        # a rider's own My Go holds their Home (core.models.MyGo)
+        "my_go",
     }
     assert identities <= excluded, identities - excluded
     # what the beta needs from home stays: the overrides

@@ -49,6 +49,7 @@ from config.procrastinate import (
     ROUTER_RESTART_NOTICE,
     SWEEP_TIMEOUT_S,
     WEEKLY_REBUILD_CRON,
+    WORK_ZONES_CRON,
     WORKER_HEARTBEAT_CRON,
     BackupTimedOut,
     RebuildAbandoned,
@@ -80,6 +81,7 @@ def test_each_cron_constant_has_a_task_behind_it() -> None:
         "membership_sweep": MEMBERSHIP_SWEEP_CRON,
         "degraded_guild_sweep": DEGRADED_GUILD_SWEEP_CRON,
         "worker_heartbeat": WORKER_HEARTBEAT_CRON,
+        "refresh_work_zones": WORK_ZONES_CRON,
     }
 
 
@@ -225,13 +227,13 @@ def test_the_rebuild_task_runs_the_real_handler_set(
         assert cursor.fetchone()[0] == 5
         cursor.execute(f"SELECT count(*) FROM {settings.SEGMENT_SCHEMA_LIVE}.border_crossing")
         assert cursor.fetchone()[0] == 1
-    assert ValhallaUpstream.objects.count() == 5
+    assert ValhallaUpstream.objects.count() == 6
     assert DriftReport.objects.count() == 1
     build_id = ValhallaUpstream.objects.get(variant="standard").build_id
     assert os.readlink(root / "tiles" / "standard" / "current") == build_id
-    assert len(binaries.commands("valhalla_build_tiles")) == 5
-    assert len(binaries.commands("valhalla_service")) == 7, (
-        "five grade reads, the derived tag read and the weekend sentinel read"
+    assert len(binaries.commands("valhalla_build_tiles")) == 6
+    assert len(binaries.commands("valhalla_service")) == 8, (
+        "six grade reads, the derived tag read and the weekend sentinel read"
     )
     assert (root / "elevation" / "N38" / "N38W078.hgt").is_file()
 
@@ -2177,6 +2179,8 @@ def test_every_alert_window_is_pinned() -> None:
         "membership_sweep": 12 * 60 * 60,
         "degraded_guild_sweep": 30 * 60,
         "worker_heartbeat": 10 * 60,
+        # The work-zone feeds, every five minutes: six missed ticks, as the sweep.
+        "refresh_work_zones": 30 * 60,
     }
 
 
@@ -2206,6 +2210,7 @@ def test_each_alert_window_is_wider_than_its_schedule() -> None:
         "membership_sweep": MEMBERSHIP_SWEEP_CRON,
         "degraded_guild_sweep": DEGRADED_GUILD_SWEEP_CRON,
         "worker_heartbeat": WORKER_HEARTBEAT_CRON,
+        "refresh_work_zones": WORK_ZONES_CRON,
     }
     assert set(crons) == set(STALE_AFTER), "every scheduled task is watched, and the reverse"
     base = timezone.now()
@@ -2478,11 +2483,14 @@ def test_a_retry_of_the_same_job_resumes_and_a_new_job_does_not(
     binaries.calls.clear()
     all_binaries_work(monkeypatch, binaries)
     task(job_context(77), timestamp=0)
-    assert tile_builds(binaries) == ["offroad"], "only the graph that failed"
+    assert tile_builds(binaries) == [
+        "offroad",
+        "mtb",
+    ], "only the graph that failed and the one it stopped before"
     detail = last_rebuild_detail()
     assert f"build {build}" in detail
     assert "Checkpoints: resumed job 77" in detail
-    assert "graphs reused: standard, no-trail, ebike, weekend; built: offroad" in detail
+    assert "graphs reused: standard, no-trail, ebike, weekend; built: offroad, mtb" in detail
 
     fail_tile_build_of(monkeypatch, binaries, "offroad")
     with pytest.raises(RebuildFailed):
@@ -2490,7 +2498,7 @@ def test_a_retry_of_the_same_job_resumes_and_a_new_job_does_not(
     binaries.calls.clear()
     all_binaries_work(monkeypatch, binaries)
     task(job_context(79), timestamp=0)
-    assert tile_builds(binaries) == ["standard", "no-trail", "ebike", "weekend", "offroad"]
+    assert tile_builds(binaries) == ["standard", "no-trail", "ebike", "weekend", "offroad", "mtb"]
     assert "resumed" not in last_rebuild_detail()
 
 

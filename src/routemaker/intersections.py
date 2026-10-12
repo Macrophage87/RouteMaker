@@ -93,15 +93,16 @@ NEIGHBOURHOOD_STOP_FT = 10.0
 
 # A trail crossing - a mapped crossing way (Valhalla's `pedestrian_crossing`),
 # or a path, trail, cycletrack or sidewalk meeting the road at a node of its own
-# - is a crosswalk, a beacon or a signal, and OSM's `crossing=traffic_signals`
-# and its kin do not reach the router's signal flag (`highway=traffic_signals`
-# alone does, on the road junction's own node or its stop lines a few metres
-# away, which `core.junctions` reads up to 30 m along the crossed road), so a
-# signalized trail crossing away from a signalized road junction reads as
-# having no signal. Counted at this fraction
-# of the stopped-side cost until the transform derives the signal
-# (docs/OPERATIONS.md, "Intersection costs"). A PROPOSAL; it never lowers a
-# junction the router says has a signal, which is already priced as one.
+# - is a crosswalk, a beacon or a signal. The router's signal flag is read on
+# the road junction's own node or its stop lines a few metres away, which
+# `core.junctions` reads up to 30 m along the crossed road; from the Track B
+# rebuild a crossing whose signal OSM maps on its crossing node or crossing way
+# has the flag too (FOLLOWUP-SIGNAL-DERIVE: `remap.derives_signal`,
+# `pipeline.signals`). A trail crossing with no signal flag - a crosswalk, a
+# beacon, or a signal mapped nowhere the transform reads - is counted at this
+# fraction of the stopped-side cost (docs/OPERATIONS.md, "Intersection costs").
+# A PROPOSAL; it never lowers a junction the router says has a signal, which is
+# already priced as one.
 MARKED_CROSSING_FACTOR = 0.5
 # And, whatever its cost, such a crossing is never drawn red: the owner,
 # 2026-10-01 (item 185), "Trail crossings whose signal is not mapped cap at
@@ -460,6 +461,23 @@ class Event:
     assumed_speed: bool = field(default=False, compare=False)
     # The ride-time factor that was applied (`time_factor`, 468a, 469c-469e).
     time_factor: float = field(default=1.0, compare=False)
+    # The road's through lanes per direction there, where known (`Road.lanes`): a Mass
+    # Ride's corkers hold one an approach lane where no signal holds the cross traffic
+    # (PLAN item 139's per-lane rule; the chart counts them, `corkersFor`).
+    road_lanes: int | None = field(default=None, compare=False)
+    # The ride's setting (`routemaker.ridetime`: "weekday_rush", "weekend" or
+    # "night") where it changed this event's cost, so the planner can say so in
+    # words (468a: "rush hour"); None where the cost is the hour-free one: off-peak,
+    # no setting, a cap that held either way, a quiet-street stop or a rated junction.
+    time_band: str | None = field(default=None, compare=False)
+    # The cost this event would have with no ride time (same caps), or None where it
+    # is `cost_ft`: carried through a refuge credit and a merge, so a merged event
+    # names the ride time only where the hour moved the merged cost too.
+    untimed_ft: float | None = field(default=None, compare=False)
+
+
+def _untimed(event: Event) -> float:
+    return event.cost_ft if event.untimed_ft is None else event.untimed_ft
 
 
 def movement_of(heading_in: float, heading_out: float) -> Movement:
@@ -796,11 +814,15 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
     # 468a, 469c-469e: a busy-road junction costs more at rush hour, less at the
     # weekend and at night.
     factor = time_factor(when, about.urban)
+    untimed = min(cost, MAX_CROSSING_FT)
     cost = min(cost * factor, MAX_CROSSING_FT)
     if kind == "left_from" and junction.control is Control.SIGNAL:
         # The box turn is the way out at any hour (468: "box-turn cap at
         # signals"), so rush hour cannot lift a signalised left above it.
         cost = min(cost, BOX_TURN_CAP_FT)
+        untimed = min(untimed, BOX_TURN_CAP_FT)
+    # Said only where the hour moved the cost by a foot or more.
+    band = when if abs(cost - untimed) >= 1.0 else None
     assumed = speed_assumed(about) and junction.control is not Control.SIGNAL
     marked = kind == "crossing" and marked_unsignalised(junction)
     reason = reason_of(kind, about, junction.control)
@@ -829,8 +851,11 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
             road_display=about.display,
             road_ways=about.ways,
             road_oneway=about.oneway,
+            road_lanes=about.lanes,
             assumed_speed=assumed,
             time_factor=factor,
+            time_band=band,
+            untimed_ft=untimed,
         )
     cap = MARKED_CROSSING_MAX_SEVERITY if marked else None
     severity = _at_most(severity_of(cost), cap)
@@ -852,8 +877,11 @@ def assess(junction: Junction, group: bool = False, when: str | None = None) -> 
         max_severity=cap,
         road_ways=about.ways,
         road_oneway=about.oneway,
+        road_lanes=about.lanes,
         assumed_speed=assumed,
         time_factor=factor,
+        time_band=band,
+        untimed_ft=untimed,
     )
 
 
@@ -903,6 +931,7 @@ def rated(
         road_display=about.display,
         road_ways=about.ways,
         road_oneway=about.oneway,
+        road_lanes=about.lanes,
         rating=level,
     )
 
@@ -970,8 +999,16 @@ def _one_road(events: list[Event]) -> list[Event]:
         # The credit only lowers the cost, so this never raises the colour; a
         # trail crossing's cap holds through it.
         severity = _at_most(severity_of(cost), worst.max_severity)
+    # The corkers' per-lane rule reads the busier carriageway's lanes (PLAN item 139).
+    lanes = [e.road_lanes for e in crossings if e.road_lanes is not None]
     refuge = replace(
-        worst, cost_ft=cost, severity=severity, flagged=severity is not None, road_divided=True
+        worst,
+        cost_ft=cost,
+        severity=severity,
+        flagged=severity is not None,
+        road_divided=True,
+        road_lanes=max(lanes) if lanes else None,
+        untimed_ft=_untimed(worst) * MEDIAN_REFUGE_FACTOR,
     )
     return [refuge, *rest]
 
@@ -1020,9 +1057,21 @@ def merge_nearby(events: list[Event]) -> list[Event]:
         worst = max(ones, key=lambda e: e.cost_ft)
         extra = sum(e.cost_ft for e in ones if e is not worst) * MERGED_SHARE
         cost = min(worst.cost_ft + extra, MAX_CROSSING_FT)
+        # The same sum with no ride time: the hour is named only where it moved the
+        # merged cost (a capped or rated worst event can sit beside timed ones).
+        untimed_extra = sum(_untimed(e) for e in ones if e is not worst) * MERGED_SHARE
+        untimed = min(_untimed(worst) + untimed_extra, MAX_CROSSING_FT)
+        band = next((e.time_band for e in ones if e.time_band), None)
         severity = _worst(e.severity for e in ones)
         merged.append(
-            replace(worst, cost_ft=cost, severity=severity, flagged=any(e.flagged for e in ones))
+            replace(
+                worst,
+                cost_ft=cost,
+                severity=severity,
+                flagged=any(e.flagged for e in ones),
+                time_band=band if abs(cost - untimed) >= 1.0 else None,
+                untimed_ft=untimed,
+            )
         )
         group.clear()
 
@@ -1315,6 +1364,10 @@ class Major:
     # A divided road (its two one-way carriageways counted as one major): two
     # approaches to hold, so two corkers whatever `oneway` says (re-check, BLOCKING 1).
     divided: bool = False
+    # Through lanes on each approach to hold, where known (`Road.lanes`: per direction;
+    # a divided road's busier carriageway): the chart's per-lane rule (PLAN item 139:
+    # one corker an approach lane where no signal holds the cross traffic).
+    approach_lanes: int | None = None
 
     @property
     def road_names(self) -> frozenset[str]:
@@ -1360,6 +1413,7 @@ def majors_of_events(events: Sequence[Event]) -> list[Major]:
             MAJOR_FLAGGED,
             e.road_oneway,
             e.road_divided,
+            e.road_lanes,
         )
         for e in events
         if e.flagged
@@ -1429,7 +1483,11 @@ def major_crossings(junctions: Sequence[Junction], events: Sequence[Event]) -> l
                 # A divided road's far carriageway: the major it is counted with has two
                 # approaches to hold (corkers), though each carriageway is one-way.
                 if _other_carriageway(majors[hidden], junction, road):
-                    majors[hidden] = replace(majors[hidden], divided=True)
+                    near = majors[hidden]
+                    known = [n for n in (near.approach_lanes, road.lanes) if n is not None]
+                    majors[hidden] = replace(
+                        near, divided=True, approach_lanes=max(known) if known else None
+                    )
                 break
             place = bisect.bisect_right(at, junction.m)
             at.insert(place, junction.m)
@@ -1447,6 +1505,8 @@ def major_crossings(junctions: Sequence[Junction], events: Sequence[Event]) -> l
                     road.tier,
                     kind,
                     road.oneway,
+                    False,
+                    road.lanes,
                 ),
             )
             break

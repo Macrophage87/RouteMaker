@@ -55,7 +55,7 @@ import type { When } from "./dials.ts";
 import { MASS_SOURCE_ID, STRESS_SOURCE_ID, massSource, stressSource } from "./mapStyle.ts";
 import { setDcMaskVisibility } from "./dcBoundary.ts";
 import type { RouteResponse } from "./api.ts";
-import { ROUTE_AVOID_MARK_DASH, routeClasses, routePaint, routeSections, sectionFeatures, type RouteClassKey } from "./routeColours.ts";
+import { ROUTE_AVOID_MARK_DASH, routeCorridorPaint, overlayFade, routeClasses, routePaint, routeSections, sectionFeatures, usesCapacity, type RouteClassKey } from "./routeColours.ts";
 
 /** The parts of a MapLibre map these use. */
 export interface OverlayMap {
@@ -226,6 +226,7 @@ export function setStressPalette(
 /** The parts of a MapLibre map the route's coloured sections use. */
 export interface RouteSectionsMap {
   getSource(id: string): unknown;
+  getLayer?(id: string): unknown;
   setPaintProperty(id: string, name: string, value: unknown): void;
 }
 
@@ -321,6 +322,70 @@ export function setRouteSections(
   map.setPaintProperty(ROUTE_UNPAVED_LAYER_ID, "line-opacity", paint.sectionOpacity);
   map.setPaintProperty(ROUTE_AVOID_LAYER_ID, "line-opacity", paint.sectionOpacity);
   for (const layer of routeDashLayers()) map.setPaintProperty(layer.id, "line-opacity", paint.sectionOpacity);
+  // A route in sections is a corridor (routeColours.ts, routeCorridorPaint); under any route the map's colours fade (overlayFade).
+  const corridor = routeCorridorPaint(sections !== null, stale);
+  map.setPaintProperty("route-casing", "line-width", corridor.casingWidth);
+  map.setPaintProperty(ROUTE_BAND_LAYER_ID, "line-opacity", corridor.bandOpacity);
+  setOverlayFade(map, routeOverlayFade(route));
+}
+
+/**
+ * The map's fade under `route` (routeColours.ts, overlayFade): a Mass Ride's only when its sections
+ * are drawn by capacity, the same test the corridor uses, so the two never disagree. None with the
+ * High contrast switch on; the switch calls setRouteSections again, so a flip takes effect at once.
+ */
+export function routeOverlayFade(route: Pick<RouteResponse, "geometry" | "stress_spans"> | null | undefined): number {
+  // The High contrast switch keeps the map at full strength: the overlay's 3:1 edges (stressContrast.test.ts)
+  // are measured at its own opacities, and a faded edge falls under them (review of PR #100).
+  if (!route || accessibilityOn()) return overlayFade(false, false);
+  const sections = routeSections(route.geometry.coordinates as [number, number][], route.stress_spans);
+  return overlayFade(true, sections !== null && usesCapacity(route.stress_spans));
+}
+
+/** The white band under the route's sections, inside its casing (routeColours.ts, ROUTE_BAND). */
+export const ROUTE_BAND_LAYER_ID = "route-band";
+
+/**
+ * Whether a layer of the overlay stays at full strength under a route: a Mass Ride's hazard rails
+ * are warnings on roads the route may ride, and the trail names are words, not colours. Avoid
+ * roads fade with the rest (Stephen, 2026-10-12: "The avoid roads don't need to be that prominent
+ * as we're not going to ride them."); the route's own Avoid sections keep their magenta.
+ */
+export function keptUnderRoute(id: string): boolean {
+  return id.startsWith("mass-hazard") || id === MTB_LABEL_LAYER_ID;
+}
+
+/**
+ * A layer's own opacity times `fade`. A zoom step or interpolation keeps its stops, each output
+ * scaled (MapLibre allows ["zoom"] only at the top of an expression); anything else is wrapped.
+ */
+export function fadedOpacity(base: unknown, fade: number): unknown {
+  if (fade === 1) return base ?? 1;
+  if (base === undefined) return fade;
+  if (typeof base === "number") return base * fade;
+  const expr = base as unknown[];
+  const scale = (v: unknown) => (typeof v === "number" ? v * fade : ["*", fade, v]);
+  if (Array.isArray(expr) && expr[0] === "step") {
+    // ["step", input, out0, stop1, out1, ...]: outputs at 2, 4, 6, ...
+    return expr.map((v, i) => (i >= 2 && i % 2 === 0 ? scale(v) : v));
+  }
+  if (Array.isArray(expr) && (expr[0] === "interpolate" || expr[0] === "interpolate-hcl" || expr[0] === "interpolate-lab")) {
+    // ["interpolate", type, input, stop1, out1, ...]: outputs at 4, 6, ...
+    return expr.map((v, i) => (i >= 4 && i % 2 === 0 ? scale(v) : v));
+  }
+  return scale(base);
+}
+
+/**
+ * Fade the overlay's road colours by `fade` under a route, or put them back (1): every line layer
+ * but those `keptUnderRoute`, each from its own opacity. A layer the map does not have yet is
+ * skipped; the overlay sets it again when it is added (MapView, addStress).
+ */
+export function setOverlayFade(map: Pick<RouteSectionsMap, "getLayer" | "setPaintProperty">, fade: number): void {
+  for (const layer of stressOverlayLayers(STRESS_SOURCE_ID) as Array<{ id: string; type: string; paint?: Record<string, unknown> }>) {
+    if (layer.type !== "line" || keptUnderRoute(layer.id) || !map.getLayer?.(layer.id)) continue;
+    map.setPaintProperty(layer.id, "line-opacity", fadedOpacity(layer.paint?.["line-opacity"], fade));
+  }
 }
 
 /** Show or hide every overlay layer that is on the map. */

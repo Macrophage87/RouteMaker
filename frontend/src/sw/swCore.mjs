@@ -11,6 +11,7 @@
  * |-------------------------------------------|-------------------------------------------------------|
  * | navigation to / or /index.html            | network first, SHELL_TIMEOUT_MS, else the kept shell  |
  * | any other navigation                      | not intercepted (sign-in, the admin, /static, presets)|
+ * | /assets/{food,climbs}-*.json (LAZY_ASSET)  | cache first; else fetched and kept on first use       |
  * | /assets/*                                 | precached at install; cache first                     |
  * | /favicon.svg, /icons/*, /licenses.txt     | stale-while-revalidate                                |
  * | /basemap/fonts/*, /basemap/sprites/*      | the kept routes' bucket first, else the network       |
@@ -44,13 +45,22 @@ export const BUILD_META = "routemaker-build";
 /** The one message the page sends: the rider pressed Reload. */
 export const SKIP_WAITING = "SKIP_WAITING";
 
+/**
+ * Assets left out of the precache, so an install does not download them: the Find food places
+ * (about 555 KB compressed; lib/food.ts), which most rides never open, and the Climbs layer's file
+ * (about 400 KB compressed; lib/climbs.ts), loaded only when the layer, off by default, is turned on. Fetched the first time the
+ * page asks, kept then in the build's cache (so a search works offline after one use), and carried
+ * into the next build's cache at its install while the file is unchanged.
+ */
+export const LAZY_ASSET = /^\/assets\/(?:food|climbs)-[^/]*\.json$/;
+
 /** The build's own cache: its assets and its shell. */
 export function buildCache(buildId) {
   return `${APP_CACHE_PREFIX}${buildId}`;
 }
 
 /**
- * What the worker does with a request: "shell", "precache", "static", "kept", or "pass" (no
+ * What the worker does with a request: "shell", "precache", "lazy", "static", "kept", or "pass" (no
  * respondWith at all, so the browser handles it exactly as with no worker).
  * `request` needs `method`, `url` and `mode`; `origin` is the worker's own.
  */
@@ -65,6 +75,7 @@ export function ruleFor(request, origin) {
   if (url.origin !== origin) return "pass";
   const path = url.pathname;
   if (request.mode === "navigate") return path === "/" || path === "/index.html" ? "shell" : "pass";
+  if (LAZY_ASSET.test(path)) return "lazy";
   if (path.startsWith("/assets/")) return "precache";
   if (path === "/favicon.svg" || path === "/licenses.txt" || path.startsWith("/icons/")) return "static";
   if (path.startsWith("/basemap/fonts/") || path.startsWith("/basemap/sprites/")) return "kept";
@@ -87,14 +98,30 @@ export function workerCaches(names) {
   return names.filter((name) => name.startsWith(APP_CACHE_PREFIX));
 }
 
-/** Precache: the shell (only if it is this build's) and every asset of the build. */
-export async function precache(scope, buildId, assets) {
+/**
+ * Precache: the shell (only if it is this build's) and every asset of the build; and each of the
+ * build's lazy assets that an older build's cache already holds (same hashed name, same file), so a
+ * rider who has used it keeps it across an update without downloading it again.
+ */
+export async function precache(scope, buildId, assets, lazy = []) {
   const shell = await scope.fetch(SHELL_KEY, { cache: "no-store" });
   if (!shell.ok) throw new Error(`index.html answered ${shell.status}`);
   const found = buildOf(await shell.clone().text());
   if (found !== buildId) throw new Error(`index.html is build ${found}, this worker is ${buildId}: not yet published`);
   const cache = await scope.caches.open(buildCache(buildId));
   await cache.addAll(assets);
+  if (lazy.length) {
+    const older = (await scope.caches.keys()).filter((name) => name.startsWith(APP_CACHE_PREFIX) && name !== buildCache(buildId) && name !== STATIC_CACHE);
+    for (const path of lazy) {
+      for (const name of older) {
+        const kept = await (await scope.caches.open(name)).match(path, ANY_VARY);
+        if (kept) {
+          await cache.put(path, kept);
+          break;
+        }
+      }
+    }
+  }
   await cache.put(SHELL_KEY, shell);
 }
 
@@ -132,6 +159,16 @@ async function fromCache(scope, name, request) {
   return (await cache.match(request, ANY_VARY)) ?? scope.fetch(request);
 }
 
+/** A lazy asset: the build's kept copy, else the network's, kept for next time (hashed, so never stale). */
+async function lazyAsset(scope, buildId, request, waitUntil) {
+  const cache = await scope.caches.open(buildCache(buildId));
+  const kept = await cache.match(request, ANY_VARY);
+  if (kept) return kept;
+  const response = await scope.fetch(request);
+  if (response.ok) waitUntil(cache.put(request, response.clone()).catch(() => undefined));
+  return response;
+}
+
 /** The kept routes' glyphs and sprite; with no route kept the bucket is not there, and opening it would create it. */
 async function fromKept(scope, request) {
   if (!(await scope.caches.has(OFFLINE_BUCKET))) return scope.fetch(request);
@@ -155,14 +192,15 @@ function staleWhileRevalidate(scope, request, waitUntil) {
 export function respond(scope, rule, request, buildId, waitUntil = () => undefined, timeoutMs = SHELL_TIMEOUT_MS) {
   if (rule === "shell") return shell(scope, request, buildId, timeoutMs);
   if (rule === "precache") return fromCache(scope, buildCache(buildId), request);
+  if (rule === "lazy") return lazyAsset(scope, buildId, request, waitUntil);
   if (rule === "static") return staleWhileRevalidate(scope, request, waitUntil);
   if (rule === "kept") return fromKept(scope, request);
   return scope.fetch(request);
 }
 
 /** The worker's listeners, on `scope` (the worker's `self`, or a stand-in in the tests). */
-export function installWorker(scope, { buildId, assets }) {
-  scope.addEventListener("install", (event) => event.waitUntil(precache(scope, buildId, assets)));
+export function installWorker(scope, { buildId, assets, lazy = [] }) {
+  scope.addEventListener("install", (event) => event.waitUntil(precache(scope, buildId, assets, lazy)));
   scope.addEventListener("activate", (event) => event.waitUntil(activate(scope, buildId)));
   scope.addEventListener("message", (event) => {
     if (event.data && event.data.type === SKIP_WAITING) scope.skipWaiting();

@@ -28,9 +28,12 @@ import {
   ROUTE_CASING_PLAIN,
   ROUTE_CASING_WIDTH,
   ROUTE_LINE_WIDTH,
+  ROUTE_BAND,
+  ROUTE_BAND_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette } from "./stressStyle.js";
+import { stressOverlayLayers, subscribeHighStressLanes, subscribeMtbTrails, subscribePalette, subscribeRoutableMtb } from "./stressStyle.js";
+import { subscribeTopoLines, syncTopoLines, topoLinesOn, type TopoMap } from "./lib/topoLines.ts";
 import {
   addStressOverlay,
   focusBackTarget,
@@ -50,7 +53,10 @@ import {
   routeDashLayers,
   solidRouteFilter,
   setMassMode,
+  setOverlayFade,
+  routeOverlayFade,
   setHazardData,
+  ROUTE_BAND_LAYER_ID,
 } from "./lib/mapGlue.ts";
 import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
@@ -66,8 +72,10 @@ import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
 import { addWaterRestrooms, setWaterPrefs, WATER_SOURCE_ID, type WaterMap, type WaterPoint, type WaterPrefs } from "./lib/waterRestrooms.ts";
 import { attachWaterInteraction } from "./waterInteraction.ts";
+import { addClimbs, CLIMBS_SOURCE_ID, setClimbsOn, type Climb, type ClimbsMap } from "./lib/climbs.ts";
+import { attachClimbInteraction } from "./climbInteraction.ts";
 import type { When } from "./lib/dials.ts";
-import { pointLabel } from "./lib/pointText.ts";
+import { END_GLYPH, START_GLYPH, pointLabel } from "./lib/pointText.ts";
 import { LongPress, isInfoKey, repeatsInfoAsk, type InfoRequest } from "./lib/roadInfo.ts";
 import { fetchMe } from "./lib/stressEditor.ts";
 import { JUNCTION_SUGGEST_TEXT } from "./lib/junctionSuggest.ts";
@@ -104,6 +112,7 @@ import {
   type JunctionItem,
 } from "./lib/intersectionMarkers.ts";
 import { avoidItems, avoidMarkerName } from "./lib/avoidJunctions.ts";
+import type { LetteredPlace } from "./lib/letteredPlaces.ts";
 import { avoidMarkerSvg } from "./lib/avoidIcon.ts";
 
 export type StressAvailability = "checking" | "available" | "unavailable";
@@ -196,8 +205,12 @@ interface Props {
   water?: readonly WaterPoint[] | null;
   /** The rider's switches for their layer (lib/waterRestrooms.ts WaterPrefs): on, basic toilets, untreated water. */
   waterPrefs?: WaterPrefs;
+  /** The Climbs layer's climbs (lib/climbs.ts), once App has loaded them; null before. */
+  climbs?: readonly Climb[] | null;
+  /** The Climbs switch (454: off until turned on). */
+  climbsOn?: boolean;
   /** A station's Start here / End here / Add as stop, with its bike entrance. */
-  onStationPoint: (role: StationRole, point: LonLat) => void;
+  onStationPoint: (role: StationRole, point: LonLat, place: { name: string; label: string }) => void;
   /**
    * The road panel for a spot (OWNER-DECISIONS 441a; lib/roadInfo.ts): a right-click, a
    * long press on a phone, or I with the map focused (the map's centre).
@@ -209,6 +222,10 @@ interface Props {
    * Tab order, inside the map's region.
    */
   tools?: ReactNode;
+  /** The lettered places (lib/letteredPlaces.ts): the nearest or the food listed, each a button marker. */
+  lettered?: readonly LetteredPlace[] | null;
+  /** A lettered marker pressed: its index in the list. */
+  onLettered?: (index: number) => void;
 }
 
 // One protocol for the page. MapLibre 4+ runs a custom protocol's handler on
@@ -398,6 +415,8 @@ export function MapView(props: Props) {
   const federalSync = useRef<(() => void) | null>(null);
   /** Set once the map has loaded: puts the water and restrooms layer in line with the props. */
   const waterSync = useRef<(() => void) | null>(null);
+  /** Set once the map has loaded: puts the Climbs layer in line with the props. */
+  const climbsSync = useRef<(() => void) | null>(null);
   // The first route shown (a shared link, usually) is framed; after that the
   // map moves only when a route leaves the visible part of the map.
   const fitted = useRef(false);
@@ -490,6 +509,22 @@ export function MapView(props: Props) {
       waterById = new Map(data.map((p) => [p.id, p]));
       // Over the stress overlay and the stations, directly under the route (railLayer.ts's order).
       addWaterRestrooms(map as unknown as WaterMap, data, prefs, iconPixelRatio(), ROUTE_BOTTOM_LAYER);
+    };
+    let climbCard: ReturnType<typeof attachClimbInteraction> | null = null;
+    let climbById = new Map<string, Climb>();
+    /** Add the Climbs layer when its data has come, then show or hide it with the switch. */
+    const syncClimbs = () => {
+      const on = callbacks.current.climbsOn === true;
+      if (map.getSource(CLIMBS_SOURCE_ID)) {
+        setClimbsOn(map as unknown as ClimbsMap, on);
+        climbCard?.close();
+        return;
+      }
+      const data = callbacks.current.climbs;
+      if (!data || data.length === 0) return;
+      climbById = new Map(data.map((c) => [c.id, c]));
+      // Under the route, with the water and the stations (railLayer.ts's order).
+      addClimbs(map as unknown as ClimbsMap, data, on, iconPixelRatio(), ROUTE_BOTTOM_LAYER);
     };
     const anyPopupOpen = () => popupsOpen(popup.current, rail);
     /** Bring the federal-land layers in line with props.federalVisible, loading the data the first time. */
@@ -802,6 +837,8 @@ export function MapView(props: Props) {
       const added = addStressOverlay(map, origin, callbacks.current.stressVisible, callbacks.current.when);
       // The hazards that came before the overlay's source did (a Mass Ride opened from a link).
       if (added) setHazardData(map, callbacks.current.massHazards ?? null);
+      // A route already up fades the road colours it is drawn over (an overlay that came after the route).
+      if (added) setOverlayFade(map, routeOverlayFade(callbacks.current.route));
       return added;
     };
 
@@ -829,6 +866,15 @@ export function MapView(props: Props) {
         source: ROUTE_SOURCE,
         layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": ROUTE_CASING_PLAIN, "line-width": ROUTE_CASING_WIDTH, "line-opacity": 0.9 },
+      });
+      // The route's corridor: a white band inside a wider casing, so a route drawn in the map's own
+      // colours reads over the roads (routeColours.ts, routeCorridorPaint). Shown by setRouteSections.
+      map.addLayer({
+        id: ROUTE_BAND_LAYER_ID,
+        type: "line",
+        source: ROUTE_SOURCE,
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": ROUTE_BAND, "line-width": ROUTE_BAND_WIDTH, "line-opacity": 0 },
       });
       // The route in its traffic stress, between the casing and the line: one
       // feature per section, each in its class's colour. The line itself
@@ -941,7 +987,7 @@ export function MapView(props: Props) {
         visibility: () => callbacks.current.rail,
         pointCount: () => callbacks.current.points.length,
         loop: () => callbacks.current.loopVias === true,
-        onStationPoint: (role, point) => callbacks.current.onStationPoint(role, point),
+        onStationPoint: (role, point, place) => callbacks.current.onStationPoint(role, point, place),
       });
       // The federal-land shading, for a Mass Ride (lib/federalLand.ts): fetched
       // the first time it is shown, under the stress overlay and the route.
@@ -953,9 +999,16 @@ export function MapView(props: Props) {
       });
       waterSync.current = () => syncWater();
       syncWater();
+      climbCard = attachClimbInteraction(map, {
+        visible: () => callbacks.current.climbsOn === true,
+        otherPopupOpen: () => anyPopupOpen() || water?.open() === true,
+        climb: (id) => climbById.get(id),
+      });
+      climbsSync.current = () => syncClimbs();
+      syncClimbs();
       federal = attachFederalInteraction(map, {
         visible: () => callbacks.current.federalVisible,
-        otherPopupOpen: () => anyPopupOpen() || water?.open() === true,
+        otherPopupOpen: () => anyPopupOpen() || water?.open() === true || climbCard?.open() === true,
       });
       federalSync.current = () => syncFederal();
       syncFederal();
@@ -979,6 +1032,8 @@ export function MapView(props: Props) {
       federalSync.current = null;
       water?.detach();
       waterSync.current = null;
+      climbCard?.detach();
+      climbsSync.current = null;
       stressCheck.cancel();
       if (hoverFrame) cancelAnimationFrame(hoverFrame);
       gesture.cancel();
@@ -1019,7 +1074,10 @@ export function MapView(props: Props) {
       const element = document.createElement("div");
       const warning = props.pointWarnings?.[index] ?? null;
       element.className = `pin pin-${kind}${warning ? " pin-federal" : ""}`;
-      element.textContent = text;
+      // The start and the end show a glyph (a play triangle, a stop square), a stop its number.
+      if (kind === "start") element.innerHTML = START_GLYPH;
+      else if (kind === "end") element.innerHTML = END_GLYPH;
+      else element.textContent = text;
       element.setAttribute("role", "img");
       // The warning ends with its own full stop.
       const named = warning ? `${name}. ${warning}` : name;
@@ -1150,6 +1208,13 @@ export function MapView(props: Props) {
     [],
   );
 
+  // The Mountain Bike ride type's level (slice 6): the trails up to it draw as routable, the harder ones
+  // keep the not-for-routes look; the filters are set again in place, as for the lanes switch.
+  useEffect(
+    () => subscribeRoutableMtb(() => onLaneSwitch(mapRef.current, loaded.current, callbacks.current.when)),
+    [],
+  );
+
   // The "Mountain-bike trails" layer (OWNER-DECISIONS 454): shown or hidden in place, from the same tiles.
   useEffect(
     () =>
@@ -1159,6 +1224,23 @@ export function MapView(props: Props) {
       }),
     [],
   );
+
+  // The "Topo lines" layer (OWNER-DECISIONS 454; lib/topoLines.ts): added the first time it is shown,
+  // then shown or hidden in place. Its own listener on "load" runs after the one above that sets `loaded`.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const sync = () => {
+      if (loaded.current) syncTopoLines(map as unknown as TopoMap, topoLinesOn());
+    };
+    map.on("load", sync);
+    sync();
+    const stop = subscribeTopoLines(sync);
+    return () => {
+      stop();
+      map.off("load", sync);
+    };
+  }, []);
 
   // The route's stressful junctions: orange and red warning markers on the line,
   // a click on one showing why (OWNER-DECISIONS 172). They go while the route
@@ -1257,6 +1339,51 @@ export function MapView(props: Props) {
       return new maplibregl.Marker({ element, anchor: "center" }).setLngLat([item.lon, item.lat]).addTo(map);
     });
   }, [props.route, props.stale]);
+
+  // The lettered places (the owner, 2026-10-11 21:04 UTC): each a real button in a pin, its letter on it and its
+  // name the letter, the place and how far; a press picks it as the list's row would.
+  const letteredMarkers = useRef<Marker[]>([]);
+  useEffect(() => {
+    const map = mapRef.current;
+    letteredMarkers.current.forEach((marker) => marker.remove());
+    letteredMarkers.current = [];
+    if (!map || !props.lettered) return;
+    letteredMarkers.current = props.lettered.map((place, index) => {
+      const element = document.createElement("button");
+      element.type = "button";
+      element.className = "lettered-marker";
+      element.setAttribute("aria-label", place.name);
+      const pin = document.createElement("span");
+      pin.className = "lettered-pin";
+      pin.setAttribute("aria-hidden", "true");
+      const letter = document.createElement("span");
+      letter.className = "lettered-letter";
+      letter.textContent = place.letter;
+      pin.append(letter);
+      element.append(pin);
+      element.addEventListener("click", (event) => {
+        // A click on a marker is not a click on the map: it must not add a point.
+        event.stopPropagation();
+        callbacks.current.onLettered?.(index);
+      });
+      element.addEventListener("dblclick", (event) => event.stopPropagation());
+      return new maplibregl.Marker({ element, anchor: "bottom" }).setLngLat(place.point).addTo(map);
+    });
+    // Bring them into view, above a phone's sheet (which covers about the lower half of the map).
+    if (props.lettered.length > 0) {
+      const lons = props.lettered.map((place) => place.point[0]);
+      const lats = props.lettered.map((place) => place.point[1]);
+      const height = map.getContainer().clientHeight;
+      const narrow = map.getContainer().clientWidth < 721;
+      map.fitBounds(
+        [
+          [Math.min(...lons), Math.min(...lats)],
+          [Math.max(...lons), Math.max(...lats)],
+        ],
+        { padding: { top: 80, left: 50, right: 50, bottom: narrow ? Math.round(height * 0.55) : 60 }, maxZoom: 16, duration: 400 },
+      );
+    }
+  }, [props.lettered]);
 
   // A click on the summary's list: take the map there and say why.
   useEffect(() => {
@@ -1405,6 +1532,11 @@ export function MapView(props: Props) {
     waterSync.current?.();
   }, [props.water, props.waterPrefs]);
 
+  // The Climbs layer: its data when it comes, and the switch.
+  useEffect(() => {
+    climbsSync.current?.();
+  }, [props.climbs, props.climbsOn]);
+
   return (
     <>
       <div ref={container} className="map" role="region" aria-label="Map" />
@@ -1440,10 +1572,13 @@ function showJunctionCard(map: MapLibreMap, item: JunctionItem, takeFocus: boole
   title.textContent = item.label.split(":")[0];
   const reason = document.createElement("p");
   reason.textContent = item.reason;
+  const cost = document.createElement("p");
+  cost.className = "junction-card-cost";
+  cost.textContent = `${item.costText}.`;
   const where = document.createElement("p");
   where.className = "hint";
   where.textContent = `${item.where}. Drag the route away to plan around it.`;
-  body.append(title, reason, where);
+  body.append(title, reason, cost, where);
   const card = new maplibregl.Popup({
     closeButton: true,
     closeOnClick: true,
