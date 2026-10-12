@@ -2,11 +2,12 @@
 """Download the region's static GTFS feeds on the host, once per data refresh.
 
 TRANSIT-ASSIST. One zip per system in src/core/transitdata/systems.json: WMATA Metro and
-Metrobus, MARC, Light RailLink and Metro SubwayLink (docs/SOURCES.md has each one's terms).
+Metrobus, MARC, Light RailLink, Metro SubwayLink and VRE (docs/SOURCES.md has each one's terms).
 WMATA's feeds need a developer key (WMATA Transit Data Terms of Use,
 <https://developer.wmata.com/license>; register at <https://developer.wmata.com/signup/>): it is
 read from the environment variable the system names (`WMATA_API_KEY`) and sent only as WMATA's
-`api_key` request header; it is never printed, logged or written. MDOT MTA's feeds need none.
+`api_key` request header; it is never printed, logged or written. MDOT MTA's and VRE's feeds need
+none.
 
     export WMATA_API_KEY=...   # in the shell, from the operator's own records
     python3 scripts/fetch_transit_gtfs.py --out-dir ~/rmdata/transit

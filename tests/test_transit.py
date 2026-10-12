@@ -12,6 +12,9 @@ tests/data/transit holds small feeds written by its make_fixture.py, one per sys
   Camden Line (weekdays only, three trains each way in the peak direction); College Park's
   step-free access unknown (it takes a bike all the same);
 - Light RailLink: every 15 min on weekdays, 20 at weekends; one stop not step-free (likewise).
+- VRE (built only into `vre_schedule`, so the other tests' closures stay as they are): the
+  Fredericksburg and Manassas Lines through Alexandria to Union Station, weekdays only, every
+  40 min each toward Washington in the morning and away in the evening; short names are numbers.
 The places are real; the times are invented. A fake router rides straight lines, so every figure
 is arithmetic.
 """
@@ -566,6 +569,57 @@ def test_the_light_rail_takes_a_bike_at_rush_hour_and_outside_it(schedule) -> No
     assert any(
         [leg.system for leg in transit_legs(o)] == ["MARC", "Light RailLink"] for o in plan.options
     )
+
+
+# --- VRE --------------------------------------------------------------------------------------
+
+# Old Town Alexandria, by VRE's Alexandria station; the Metro of the fixture does not reach it.
+OLD_TOWN = [-77.0590, 38.8060]
+
+
+@pytest.fixture(scope="module")
+def vre_schedule():
+    doc, _report = build.build({**FEEDS, "vre": DATA / "vre"}, date(2026, 9, 28))
+    return transit.parse(doc)
+
+
+def test_vre_is_built_with_every_train_and_station_taking_a_bike(vre_schedule) -> None:
+    vre = next(s for s in vre_schedule.systems if s.id == "vre")
+    assert (vre.name, vre.mode, vre.vehicle) == ("VRE", "rail", "all")
+    assert vre.source == "https://www.vre.org/about/onboard-policies/"
+    stations = [s for s in vre_schedule.stops if vre_schedule.systems[s.system] is vre]
+    assert "Union Station VRE" in {s.name for s in stations} and all(s.bike for s in stations)
+    # Named by the long name, not the code (systems.json `route_name` long).
+    routes = {p.route for p in vre_schedule.patterns if vre_schedule.systems[p.system] is vre}
+    assert routes == {"Fredericksburg Line", "Manassas Line"}
+
+
+def test_a_weekday_vre_trip_plans_with_the_bike_and_says_the_rule_once(vre_schedule) -> None:
+    plan = plan_bike(vre_schedule, OLD_TOWN, NOMA, at(2026, 9, 30, 6, 0))
+    best = plan.options[0]
+    assert [(leg.system, leg.lines) for leg in transit_legs(best)] == [("VRE", ("Manassas Line",))]
+    out = transit.block(plan, vre_schedule)
+    assert out["credits"] == ["VRE GTFS (scheduled times)"]
+    assert any(
+        step["text"].startswith("Board the VRE Manassas Line at 6:10 am scheduled from Alexandria")
+        for step in out["steps"]
+    )
+    rule = "VRE: board last; bungee it to a car's south-end bench."
+    assert out["notes"].count(rule) == 1
+    # Two VRE legs (a change of line) still say the rule once.
+    twice = next(o for o in plan.options if [x.system for x in transit_legs(o)] == ["VRE", "VRE"])
+    assert transit.block(transit.choose(plan, twice.key), vre_schedule)["notes"].count(rule) == 1
+
+
+def test_vre_runs_weekdays_only_and_says_so_at_weekends(vre_schedule) -> None:
+    saturday = plan_bike(vre_schedule, OLD_TOWN, NOMA, at(2026, 10, 3, 10, 0))
+    assert "VRE Fredericksburg Line: no weekend service." in saturday.notes
+    assert "VRE Manassas Line: no weekend service." in saturday.notes
+    assert not any(leg.system == "VRE" for o in saturday.options for leg in o.legs)
+    closed = transit.closed_stations(vre_schedule, transit.moment_of(at(2026, 10, 3, 12, 0)))
+    vre = [c for c in closed if c.system.id == "vre"]
+    assert "Alexandria" in {c.stop.name for c in vre}
+    assert {c.reason for c in vre} == {"no VRE weekend service"}
 
 
 def test_a_line_that_does_not_run_at_weekends_drops_out_and_is_said_plainly(schedule) -> None:

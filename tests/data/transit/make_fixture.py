@@ -299,3 +299,50 @@ for i, (stop, t) in enumerate(
 ):
     feed.times.append(["LR_OWL", t, t, stop, i + 1])
 feed.finish()
+
+# --- VRE ----------------------------------------------------------------------------------------
+# Weekdays only (no weekend or Thanksgiving trains), toward Washington in the morning and away in
+# the evening. The routes' short names are numbers, as in VRE's feed, so a step says the long name
+# (route_name long).
+vre = out / "vre"
+write(vre, "calendar.txt", CALENDAR_HEADER, [WK])
+write(
+    vre, "calendar_dates.txt", ["service_id", "date", "exception_type"], [["WK", THANKSGIVING, 2]]
+)
+write(
+    vre,
+    "stops.txt",
+    ["stop_id", "stop_name", "stop_lat", "stop_lon", "location_type", "parent_station"],
+    [
+        ["V_FBG", "Fredericksburg", "38.298400", "-77.456700", 0, ""],
+        ["V_WDB", "Woodbridge", "38.658700", "-77.248300", 0, ""],
+        ["V_MSS", "Manassas", "38.750500", "-77.471800", 0, ""],
+        ["V_BKC", "Burke Centre", "38.797600", "-77.299000", 0, ""],
+        ["V_ALX", "Alexandria", "38.806400", "-77.061800", 0, ""],
+        ["V_CRY", "Crystal City", "38.857300", "-77.050500", 0, ""],
+        ["V_LEN", "L'Enfant", "38.884600", "-77.021800", 0, ""],
+        ["V_UST", "Union Station VRE", "38.897100", "-77.006300", 1, ""],
+        ["V_UST_P", "Union Station VRE Platform", "38.897100", "-77.006300", 0, "V_UST"],
+    ],
+)
+write(
+    vre,
+    "routes.txt",
+    ["route_id", "route_short_name", "route_long_name", "route_type"],
+    [["FBG", "2", "Fredericksburg Line", 2], ["MSS", "4", "Manassas Line", 2]],
+)
+feed = Feed(vre)
+INNER = [("V_ALX", 0), ("V_CRY", 480), ("V_LEN", 900), ("V_UST_P", 1260)]
+# Each line every 40 min, the Manassas Line 20 min after the Fredericksburg Line: the Alexandria
+# trains toward Washington leave at 5:50, 6:10, 6:30 ... 8:10 am.
+for route, outer, shift in (
+    ("FBG", ["V_FBG", "V_WDB"], 0),
+    ("MSS", ["V_MSS", "V_BKC"], 1200),
+):
+    north = [(outer[0], 0), (outer[1], 1800)] + [(s, 3000 + o) for s, o in INNER]
+    south = [(s, north[-1][1] - o) for s, o in reversed(north)]
+    for n, t in enumerate((H(5), H(5, 40), H(6, 20), H(7))):
+        feed.trip(route, "WK", f"{route}_N_{n}", 0, north, t + shift)
+    for n, t in enumerate((H(15, 30), H(16, 10), H(16, 50), H(17, 30))):
+        feed.trip(route, "WK", f"{route}_S_{n}", 1, south, t + shift)
+feed.finish()

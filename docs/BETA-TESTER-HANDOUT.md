@@ -193,7 +193,7 @@ descriptions. Plan's "Change" ride type list has the same search and groups.
 
 - Both transit types list a few trips, quickest first. "Ride the whole way" is always one of
   them. Press a trip to put it on the map and in the steps.
-- Own Bike + Transit takes your bike the whole way, on Metro, MARC, Light RailLink, Metro
+- Own Bike + Transit takes your bike the whole way, on Metro, MARC, VRE, Light RailLink, Metro
   SubwayLink or a bus's front rack. It never asks you to leave the bike somewhere.
 - Bikeshare + Transit docks the bike before you board. At each end it walks or uses a bikeshare
   bike, whichever is quicker. The docks are named.

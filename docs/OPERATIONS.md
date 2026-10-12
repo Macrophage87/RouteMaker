@@ -1975,7 +1975,8 @@ metro-typical.json from each line's page (`https://www.wmata.com/ridertools/line
 
 - The fetch writes one zip per system in `src/core/transitdata/systems.json`, plus a README with
   each zip's URL, size, sha256 and time. The key is read from the environment variable only and is
-  never printed. `--only marc` fetches one system.
+  never printed. `--only marc` fetches one system. The systems: WMATA Metro and Metrobus (key),
+  MARC, Light RailLink, Metro SubwayLink and VRE (`--only vre`; no key).
 - The build prints a report: stops and patterns per system, any Metro platform it could not match
   to the map's stations, and any system whose zip is missing (left out, not fatal).
 - The zips and the built file are the agencies' data. Keep them on the host and never commit them
@@ -1985,10 +1986,10 @@ metro-typical.json from each line's page (`https://www.wmata.com/ridertools/line
 **Refresh at least every 45 days.** The file holds 45 days of service from the build date
 (`--date`, default today). A plan for a later date answers with riding the whole way only, plus the
 note "The timetables installed run ... to ...". Refresh as well when an agency publishes a new
-timetable, for example a MARC schedule change or a Metro shutdown. Planned closures reach the plans
-only through the published GTFS. With fewer than 7 days left, the api logs "the transit schedule
-runs out ..." once a day and `manage.py check_operations` alerts ("transit: the schedule runs out
-on ..."; exit 1). An unreadable file alerts too; no file installed does not.
+timetable, for example a MARC or VRE schedule change or a Metro shutdown. Planned closures reach
+the plans only through the published GTFS. With fewer than 7 days left, the api logs "the transit
+schedule runs out ..." once a day and `manage.py check_operations` alerts ("transit: the schedule
+runs out on ..."; exit 1). An unreadable file alerts too; no file installed does not.
 
 **The beta** gets the schedule in its data bundle (`ship-data.sh`'s `transit` part;
 docs/BETA-RUNBOOK.md). Ship it again after each refresh.
