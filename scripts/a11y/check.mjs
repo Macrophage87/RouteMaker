@@ -3993,12 +3993,14 @@ async function goPick(p, box, text) {
 }
 {
   // The main flow (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go"): open Go, type a
-  // destination, then the taps are counted: the place picked (1) and Start ride (2), with no question between.
+  // destination, then the taps are counted: Where to? (1), the place picked (2) and Start ride (3), with no question
+  // between (the review of #95 counted 3; it is 2 with the Home chip).
   const GEO_STUB = `(() => { const real = window.fetch.bind(window); window.fetch = (input, init) => /\\/api\\/geocode/.test(String(input?.url ?? input)) ? Promise.resolve(new Response(JSON.stringify({ results: [{ name: "Union Station", label: "Union Station, Washington, DC", lon: -77.0063, lat: 38.8973, kind: "station" }], attribution: [] }), { headers: { "Content-Type": "application/json" } })) : real(input, init); })();`;
   const p = await goWith("granted", { init: GEO_STUB });
   await p.waitFor("/your current location/.test(document.querySelector('.go-start-line')?.textContent ?? '')", 20000);
   let taps = 0;
   await p.eval("document.querySelector('.go-sheet .go-search input').focus(); true");
+  taps += 1;
   await p.type("Union");
   await p.waitFor("!!document.querySelector('.go-sheet .go-search [role=option]')", 15000);
   await p.eval("(() => { const o = document.querySelector('.go-sheet .go-search [role=option]'); o.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); o.click(); return true; })()");
@@ -4009,8 +4011,8 @@ async function goPick(p, box, text) {
   taps += 1;
   await sleep(800);
   const riding = await p.eval("({ ride: !!document.querySelector('section.ride'), ask: !!document.querySelector('.ride-ask:not([hidden])') })");
-  check("go flow: from opening Go, a typed destination takes 2 taps to ride (the place, then Start ride), with no question or sheet between, and the route options shown at once",
-    routed && riding.ride && !riding.ask && taps === 2 && options.rides.includes("Bikeshare"), JSON.stringify({ taps, options, riding }));
+  check("go flow: from opening Go, a typed destination takes 3 taps to ride (Where to?, the place, then Start ride), with no question or sheet between, and the route options shown at once",
+    routed && riding.ride && !riding.ask && taps === 3 && options.rides.includes("Bikeshare"), JSON.stringify({ taps, options, riding }));
   await p.close();
 }
 {
