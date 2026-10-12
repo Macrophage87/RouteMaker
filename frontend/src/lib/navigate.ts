@@ -190,6 +190,8 @@ function cueKindOf(entry: DescriptionEntry, before: DescriptionEntry | null): Cu
   if (entry.kind === "avoid") return "hazard";
   // A work zone on the route (FOLLOWUP-WORKZONES): a hazard; the disclaimer line says nothing on the move.
   if (entry.kind === "workzone") return entry.severity ? "hazard" : null;
+  // A categorised climb (FOLLOWUP-HILL-SEEK) is in the list to read, not a cue on the move.
+  if (entry.kind === "climb") return null;
   if (entry.kind === "junction") return entry.severity || entry.group ? "hazard" : null;
   const movement = entry.turn?.movement ?? null;
   if (movement === "left" || movement === "right") return "turn";

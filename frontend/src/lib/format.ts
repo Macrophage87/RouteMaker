@@ -190,10 +190,10 @@ export function formatDuration(seconds: number): string {
   return `${hours} h ${String(minutes % 60).padStart(2, "0")} min`;
 }
 
-/** A climb, a descent or an elevation: "266 ft (81 m)". */
+/** A climb, a descent or an elevation: "266 ft (81 m)", "2,930 ft (893 m)" (thousands separated, as the repo writes them). */
 export function formatClimb(metres: number): string {
   if (!usable(metres)) return DASH;
-  return `${Math.round(metres * FEET_PER_METRE)} ft (${Math.round(metres)} m)`;
+  return `${Math.round(metres * FEET_PER_METRE).toLocaleString("en-US")} ft (${Math.round(metres).toLocaleString("en-US")} m)`;
 }
 
 /**

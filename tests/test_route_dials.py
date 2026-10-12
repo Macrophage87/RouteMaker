@@ -8,6 +8,7 @@ real, because the breakdown is a PostGIS join.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
 import pytest
@@ -420,6 +421,154 @@ def test_the_distance_budget_grows_with_the_slider(hills):
     assert presets.seek_distance_ratio(hills) > presets.seek_distance_ratio(hills - 1)
     assert presets.seek_distance_ratio(100) == pytest.approx(1.5)
     assert presets.seek_distance_ratio(0) == 1.0
+
+
+# The hill seek's climb (FOLLOWUP-HILL-SEEK, 205): up from VERTICES[3] west to
+# VERTICES[1], so the direct route along VERTICES rides it down, not up.
+UPHILL_WEST = [VERTICES[3], VERTICES[2], VERTICES[1]]
+# The route through it: east to its foot, up it west, and on east to the end.
+THROUGH_THE_CLIMB = [VERTICES[0], VERTICES[3], VERTICES[2], VERTICES[1], VERTICES[4]]
+
+
+class HillSeekRouter(FakeRouter):
+    """The seeking router, answering a request through `through` points with
+    `through`: the route up the climb."""
+
+    def __init__(self, answers: dict, through: dict) -> None:
+        super().__init__(answers)
+        self.through = through
+
+    def __call__(self, url: str, payload: dict, timeout: float) -> dict:
+        locations = payload.get("locations") or []
+        if url.endswith("/route") and any(p.get("type") == "through" for p in locations):
+            self.calls.append((url, payload))
+            return self.through
+        return super().__call__(url, payload, timeout)
+
+    def through_calls(self) -> list[dict]:
+        return [
+            payload
+            for url, payload in self.calls
+            if any(p.get("type") == "through" for p in payload.get("locations") or [])
+        ]
+
+
+@db
+class TestHillSeek:
+    """The plan with the hill seek (`core.hillseek`, FOLLOWUP-HILL-SEEK, 205): a route
+    through a climb near the line joins the router's own and the climb search picks
+    among them; the climbs ridden are named. The climbs file is one made here."""
+
+    @pytest.fixture
+    def climbs_file(self, tmp_path, monkeypatch):
+        from core import hillseek
+
+        length = sum(
+            routing.haversine(routing.Point(*a), routing.Point(*b))
+            for a, b in zip(UPHILL_WEST, UPHILL_WEST[1:], strict=False)
+        )
+        path = tmp_path / "climbs.json"
+        row = {
+            "id": "uphillwest",
+            "c": "4",
+            "l": round(length),
+            "r": 90,
+            "g": round(9000 / length, 1),
+            "x": UPHILL_WEST[-1][0],
+            "y": UPHILL_WEST[-1][1],
+            "line": [list(p) for p in UPHILL_WEST],
+        }
+        path.write_text(json.dumps({"version": 1, "climbs": [row]}))
+        monkeypatch.setattr(hillseek, "CLIMBS_FILE", path)
+        return path
+
+    def seeking(self) -> HillSeekRouter:
+        # A direct route long enough that the climb is inside the budget at 100 (1.5x).
+        return HillSeekRouter(
+            {
+                "route": {"trip": _trip(VERTICES, 4.0, FLAT)},
+                "trace_attributes": trace_answer(VERTICES, [(101, 0, 4, 2.0)]),
+            },
+            {"trip": _trip(THROUGH_THE_CLIMB, 5.5, HILLY)},
+        )
+
+    def test_the_route_through_the_climb_is_chosen_and_named(
+        self, client, facility_segments, router, climbs_file
+    ):
+        fake = router(self.seeking())
+        body = post(client, {**good_body("mountain-goat"), "hills": 100}).json()
+        (asked,) = fake.through_calls()
+        assert "alternates" not in asked
+        assert asked["locations"][0]["type"] == "break"
+        assert asked["locations"][-1]["type"] == "break"
+        middle = asked["locations"][1:-1]
+        assert len(middle) >= 3 and {p["type"] for p in middle} == {"through"}
+        # Uphill: from near the climb's foot (east) to near its summit (west).
+        assert [p["lon"] for p in middle] == sorted((p["lon"] for p in middle), reverse=True)
+        seek = body["hills_seek"]
+        assert seek["candidates"] == 2
+        assert seek["chosen"] == 1
+        assert seek["climb_seek"] == {"near": 1, "asked": 1, "found": 1, "limited": None}
+        (named,) = seek["climbs"]
+        assert named["id"] == "uphillwest"
+        assert named["category"] == "4"
+        assert named["sought"] is True
+        assert named["text"].startswith("Category 4 climb, 0.5 miles (0.9 km) at ")
+        assert named["text"].endswith("295 ft (90 m) gained")
+        assert body["distance_m"] == pytest.approx(5500.0)
+        climbs_said = [e for e in body["description"] if e["kind"] == "climb"]
+        assert len(climbs_said) == 1
+        assert climbs_said[0]["text"].startswith("At ")
+        assert named["text"] in climbs_said[0]["text"]
+        assert climbs_said[0]["from_m"] < climbs_said[0]["to_m"]
+
+    def test_past_the_budget_it_is_not_asked_for(
+        self, client, facility_segments, router, climbs_file
+    ):
+        fake = router(self.seeking())
+        body = post(client, {**good_body("mountain-goat"), "hills": 10}).json()
+        assert fake.through_calls() == []
+        assert body["hills_seek"]["climb_seek"]["near"] == 0
+        assert body["hills_seek"]["chosen"] == 0
+        assert body["hills_seek"]["climbs"] == []
+
+    def test_without_the_climbs_file_it_is_the_routers_own(
+        self, client, facility_segments, router, tmp_path, monkeypatch
+    ):
+        from core import hillseek
+
+        monkeypatch.setattr(hillseek, "CLIMBS_FILE", tmp_path / "missing.json")
+        fake = router(self.seeking())
+        body = post(client, {**good_body("mountain-goat"), "hills": 100}).json()
+        assert fake.through_calls() == []
+        seek = body["hills_seek"]
+        assert seek["climb_seek"]["limited"] == "no_climbs"
+        assert seek["candidates"] == 1
+        assert seek["chosen"] == 0
+        assert not any(e["kind"] == "climb" for e in body["description"])
+
+    def test_a_via_point_does_not_seek(self, client, facility_segments, router, climbs_file):
+        fake = router(self.seeking())
+        points = [list(VERTICES[0]), list(VERTICES[2]), list(VERTICES[-1])]
+        body = post(client, {"points": points, "preset": "mountain-goat", "hills": 100}).json()
+        assert fake.through_calls() == []
+        assert body["hills_seek"]["climb_seek"] is None
+        assert body["hills_seek"]["climbs"] == []
+
+    def test_a_round_trip_does_not_seek(self, client, facility_segments, router, climbs_file):
+        """Start and end on one place: the corridor is a circle and a route through a
+        climb an out-and-back, so the seek is not run."""
+        fake = router(self.seeking())
+        points = [list(VERTICES[2]), [VERTICES[2][0] + 0.0001, VERTICES[2][1]]]
+        body = post(client, {"points": points, "preset": "mountain-goat", "hills": 100}).json()
+        assert fake.through_calls() == []
+        assert body["hills_seek"]["climb_seek"] is None
+
+    def test_fine_with_hills_does_not_seek(self, client, facility_segments, router, climbs_file):
+        fake = router(self.seeking())
+        body = post(client, {**good_body("default"), "hills": 100}).json()
+        assert fake.through_calls() == []
+        assert body["hills_seek"] is None
 
 
 @db
