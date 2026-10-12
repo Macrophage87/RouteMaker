@@ -1994,6 +1994,7 @@ class TestMountainBike:
         assert fake.calls[0][1].get("alternates") == routing.SEEK_ALTERNATES
         mtb = body["mtb"]
         assert mtb["max_level"] == 2 and mtb["limited"] is None
+        assert mtb["preferred_level"] == 2
         assert mtb["over_level_m"] == 0
         assert mtb["trail_weight"] == 0.5 and mtb["singletrack_speed_kmh"] == 10.0
 
@@ -2015,6 +2016,12 @@ class TestMountainBike:
         # At level 3 the same trail is within the choice.
         held = post(client, {**good_body("mountain-bike"), "mtb_level": 3}).json()["mtb"]
         assert held["max_level"] == 3 and held["over_level_m"] == 0
+        # Within the hardest level but above the preferred one (2): priced, and said.
+        assert held["preferred_level"] == 2 and held["harder_m"] == held["singletrack_m"]
+        at = post(
+            client, {**good_body("mountain-bike"), "mtb_level": 3, "mtb_preferred": 3}
+        ).json()["mtb"]
+        assert at["preferred_level"] == 3 and at["harder_m"] == 0 and at["easier_m"] == 0
         # The time counts the singletrack at about 6 mph (10 km/h), never faster than the router.
         assert held["router_duration_s"] is not None
         assert body["duration_s"] >= held["router_duration_s"]
@@ -2088,6 +2095,71 @@ class TestMountainBike:
         router(standard_router())
         response = post(client, {**good_body("mountain-goat"), "mtb_level": 2})
         assert response.status_code == 400
+        response = post(client, {**good_body("mountain-goat"), "mtb_preferred": 2})
+        assert response.status_code == 400
+
+    def test_the_preferred_level_flips_the_choice_between_two_routes(
+        self, client, facility_segments, router
+    ):
+        """The second pass: two routes of equal length, one on a level-2 trail (way 101), one
+        on a level-3 trail (way 202). Preferring 2 takes the first, preferring 3 the second
+        (0.4 against 0.45 of a road metre each way), with the hardest at 3 for both."""
+        with connection.cursor() as cursor:
+            for way, level in ((101, 2), (202, 3)):
+                cursor.execute(
+                    f"UPDATE {facility_segments}.segment SET mtb_only = true, mtb_level = %s, "
+                    "is_trail_class = true, is_unpaved = true WHERE osm_way_id = %s",
+                    [level, way],
+                )
+        other = [(lon, lat + 0.002) for lon, lat in VERTICES]
+        first, second = (route_answer([(v, 2.0, FLAT)])["trip"] for v in (VERTICES, other))
+        traces = {
+            first["legs"][0]["shape"]: trace_answer(VERTICES, [(101, 0, 4, 2.0)]),
+            second["legs"][0]["shape"]: trace_answer(other, [(202, 0, 4, 2.0)]),
+        }
+
+        def transport(url, payload, timeout):
+            if url.endswith("/route"):
+                return {"trip": first, "alternates": [{"trip": second}]}
+            return traces[payload["encoded_polyline"]]
+
+        router(transport)
+        body = {**good_body("mountain-bike"), "mtb_level": 3}
+        two = post(client, {**body, "mtb_preferred": 2}).json()
+        three = post(client, {**body, "mtb_preferred": 3}).json()
+        assert two["mtb"]["candidates"] == three["mtb"]["candidates"] == 2
+        # Each answer rides its preferred level's trail: nothing easier or harder than it.
+        assert two["mtb"]["preferred_level"] == 2 and three["mtb"]["preferred_level"] == 3
+        for answer in (two, three):
+            assert answer["mtb"]["easier_m"] == answer["mtb"]["harder_m"] == 0
+            assert answer["mtb"]["singletrack_m"] > 0
+        assert two["geometry"] != three["geometry"]
+
+    @pytest.mark.parametrize("level", [0, 5, "2", 2.5])
+    def test_a_preferred_level_out_of_range_is_refused(
+        self, client, facility_segments, router, level
+    ):
+        router(standard_router())
+        body = {**good_body("mountain-bike"), "mtb_preferred": level}
+        assert post(client, body).status_code == 400
+
+    def test_a_preferred_level_above_the_hardest_is_held_to_it(
+        self, client, facility_segments, router
+    ):
+        """Preferred never exceeds the hardest: clamped, and the answer says what was used."""
+        router(standard_router())
+        body = {**good_body("mountain-bike"), "mtb_level": 2, "mtb_preferred": 4}
+        mtb = post(client, body).json()["mtb"]
+        assert mtb["max_level"] == 2 and mtb["preferred_level"] == 2
+
+    def test_an_old_request_with_only_the_level_prefers_min_2(
+        self, client, facility_segments, router
+    ):
+        router(standard_router())
+        low = post(client, {**good_body("mountain-bike"), "mtb_level": 1}).json()["mtb"]
+        assert low["preferred_level"] == 1
+        high = post(client, {**good_body("mountain-bike"), "mtb_level": 4}).json()["mtb"]
+        assert high["preferred_level"] == 2
 
     def test_other_ride_types_say_nothing_of_it(self, client, facility_segments, router):
         router(standard_router())
@@ -2109,6 +2181,7 @@ class TestMountainBike:
         body = response.json()
         assert body["variant"] == "standard"
         assert body["mtb"]["max_level"] == 3
+        assert body["mtb"]["preferred_level"] == 2
         assert body["mtb"]["limited"] == "no_mtb_graph"
         assert routing._mtb_down()
 

@@ -10,7 +10,7 @@
  * tests/test_presets.py reads STARTS and holds it equal to the API's table.
  */
 import type { PresetId } from "./presets.ts";
-import { DEFAULT_MTB_LEVEL, fitMtbLevel } from "./mtbMode.ts";
+import { DEFAULT_MTB_LEVEL, defaultMtbPreferred, fitMtbLevel, mtbLevelOf, mtbPreferredOf } from "./mtbMode.ts";
 
 export type When = "weekend" | "weekday_rush" | "weekday_offpeak" | "night";
 export type Carrying = "cargo" | "people";
@@ -64,6 +64,12 @@ export interface Dials {
    * Absent is the default, level 2 (lib/mtbMode.ts DEFAULT_MTB_LEVEL).
    */
   mtbLevel?: number;
+  /**
+   * Mountain Bike only (docs/MTB-TOPO-PLAN.md, second pass): the preferred trail level, 1 to 4, never
+   * above `mtbLevel`. Absent is the default: 2, or `mtbLevel` where that is lower (lib/mtbMode.ts
+   * mtbPreferredOf), so an older link with only the hardest level plans as it did.
+   */
+  mtbPreferred?: number;
   /** Bikeshare only: the bike. Absent is classic. */
   bike?: Bike;
   /**
@@ -361,6 +367,10 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     ...(preset === "mountain-bike" && fitMtbLevel(dials.mtbLevel) !== undefined && fitMtbLevel(dials.mtbLevel) !== DEFAULT_MTB_LEVEL
       ? { mtbLevel: fitMtbLevel(dials.mtbLevel) }
       : {}),
+    // The preferred level likewise, held to the hardest; left out where it is the default (min(2, hardest)).
+    ...(preset === "mountain-bike" && fitMtbLevel(dials.mtbPreferred) !== undefined && mtbPreferredOf(dials) !== defaultMtbPreferred(mtbLevelOf(dials))
+      ? { mtbPreferred: mtbPreferredOf(dials) }
+      : {}),
     ...(offersRideSize(preset) && fitRideSize(dials.rideSize) !== undefined && fitRideSize(dials.rideSize) !== RIDE_SIZE_DEFAULT
       ? { rideSize: fitRideSize(dials.rideSize) }
       : {}),
@@ -384,6 +394,9 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   // Mountain Bike's level (fitDials keeps it on that ride type alone); absent is level 2.
   const level = fitMtbLevel(dials.mtbLevel);
   if (level !== undefined) fields.mtb_level = level;
+  // The preferred level (fitDials holds it to the hardest); absent is min(2, the hardest), as the API's.
+  const preferred = fitMtbLevel(dials.mtbPreferred);
+  if (preferred !== undefined) fields.mtb_preferred = Math.min(preferred, level ?? DEFAULT_MTB_LEVEL);
   if (dials.bike) fields.bike = dials.bike;
   if (dials.bike === "ebike" && dials.ending === "outside_dock") fields.ending = "outside_dock";
   if (dials.bike && dials.pickupStation) fields.pickup_station = dials.pickupStation;

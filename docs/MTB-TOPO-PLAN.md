@@ -226,6 +226,49 @@ slices (2-6) wait for bikeshare.
    - Default picked: the profile-gated routers share the 1536M the off-road router had alone, one
      worker each in 768M, so the 32G swap-time check holds at 32.0G.
 
+## Second pass: preferred and max difficulty
+
+The owner, 2026-10-11: "two options for difficulty: preferred difficulty and max difficulty.
+Basically it would try to find routes near that intended difficulty and avoid routes past max
+difficulty." Built on `claude/v0-6-0-mtb-difficulty` (from release/v0.6.0). No graph change and no
+rebuild: like the hardest level, the preference is held at plan time on the router's routes
+(`core.mtb.settle`, rules in `routemaker.mtbmode`).
+
+- **Max** is slice 6's hardest level, unchanged (`mtb_level`, the `level` link parameter, default
+  2): a trail past it is avoided exactly as before (excluded and asked again, else answered with
+  `over_level_m` and its warning).
+- **Preferred** is new (`mtb_preferred`, the `prefer` link parameter, 1-4, default 2). In the
+  ranking's weighted length the preference is a discount, never a surcharge (review of #104): a
+  mountain-bike trail metre up to the max counts TRAIL_WEIGHT - LEVEL_STEP x max(0, LEVEL_REACH -
+  levels away) of a road metre, with TRAIL_WEIGHT 0.5, LEVEL_STEP 0.05 and LEVEL_REACH 2: 0.4 at
+  the preferred level, 0.45 one level easier or harder, 0.5 two or more away (the step kept small,
+  re-review of #104, so the owner's "a trail mile counts about half a road mile" moves little). So
+  the preferred level is cheapest, an off-level trail never weighs more than a gravel path (0.5) or
+  than it did in slice 6, and no trail is free. At preferred 3, 1,100 m of level 3 (440) beats 1,000 m of level 2 (450);
+  1,150 m (460) does not. An unrated mountain-bike trail counts as level 2, as for the max.
+- **Preferred is never above max.** The API holds a higher one to the max and says what it used
+  (`mtb.preferred_level`); the panel disables the levels above the hardest, and lowering the hardest
+  below the preferred lowers the preferred with it, said in a polite status line ("Preferred trail
+  level lowered to level 1 (green): it can't be harder than the hardest level.").
+- **Old links and requests** with only the level read it as the max, the preferred min(2, max) (a
+  level of 1 prefers 1; 2-4 prefer 2). They keep the same max and the same over-max handling, but
+  are not ranked exactly as before: their trails at or a level from that preferred level now weigh
+  0.4 or 0.45 in place of 0.5, so among the router's routes they may now pick one with more
+  mountain-bike trail (over gravel paths or roads) than slice 6 did.
+- **The route in words:** the answer's `mtb` adds `preferred_level`, `easier_m` and `harder_m`
+  (metres on trails easier, and harder up to the max, than preferred), and the route panel says
+  "1.0 mi (1.6 km) of trail is easier than your preferred level 2 (blue)." and "... harder than your
+  preferred level 2 (blue), up to level 3 (black).", or that its trails are at the preferred level.
+- Default picked: an ordinary unpaved path (no MTB level, 456b) and a road get no discount: a
+  gravel path keeps 0.5 and a road 1.0, so a mountain-bike trail within a level of the preferred one
+  beats an equal length of gravel, and one two or more levels away ties it.
+- Default picked: the two pickers are radio groups in the Ride settings, "Hardest trail level"
+  first (where it was) and "Preferred trail level" under it, so the limit is chosen before what
+  fits within it.
+- Limit: the preference chooses among the routes the router offers (its alternatives and the
+  exclusion rounds' routes), as trail seeking does; it does not make the router look for trails of
+  a level it would not otherwise offer.
+
 ## Questions for the owner, when their slice starts
 
 - Slice 2: the four colours' exact values, if the starting values above do not suit, and
