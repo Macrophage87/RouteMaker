@@ -2464,8 +2464,10 @@ const levelSlider = `${EDITOR} input[type=range]`;
   check("ride: with no signal, a kept stress tile answers the map's tile loader at once (Network offline)",
     dead.riding === true && dead.online === false && dead.network === "failed" && dead.data === true && dead.ms < 1000 && dead.never === "failed", JSON.stringify(dead));
 
-  // N6: Report a problem to DC 311 (OWNER-DECISIONS 369, 370, 465): the place from the route's own
-  // street names (the turn from Q Street onto R Street just passed); the copy has no text keyword.
+  // N6: Report a problem to DC 311 (OWNER-DECISIONS 369, 370, 465; the owner, 2026-10-12): the road ridden
+  // in the route's own street names (R Street, the turn from Q Street just passed; Q Street named only
+  // within 500 ft), then the GPS position, latitude first to 5 decimals; the copy has no text keyword.
+  const AT_311 = /^Location: on R Street Northwest( near Q Street Northwest)?, Washington, DC\. GPS 38\.\d{5}, -7[67]\.\d{5}\.$/;
   await p.eval("document.querySelector('.ride-report > summary').click(); true");
   await sleep(300);
   const report = await p.eval(`(() => {
@@ -2479,7 +2481,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
     };
   })()`);
   check("ride 311: the report names the place from the route's streets (no text keyword in the copy); a desktop opens DC 311 online in a new tab, with Copy (369, 370)",
-    report.open && report.text === "The report: Location: near Q Street Northwest and R Street Northwest, Washington, DC." && report.links.length === 1 && report.links[0].href === "https://311.dc.gov/" && report.links[0].target === "_blank" && /noopener/.test(report.links[0].rel) && /new tab/.test(report.links[0].name) && report.copy.includes("Copy the report") && report.privacy,
+    report.open && AT_311.test((report.text ?? "").replace(/^The report: /, "")) && report.links.length === 1 && report.links[0].href === "https://311.dc.gov/" && report.links[0].target === "_blank" && /noopener/.test(report.links[0].rel) && /new tab/.test(report.links[0].name) && report.copy.includes("Copy the report") && report.privacy,
     JSON.stringify(report));
   const reportForm = await p.eval(`(() => {
     const d = document.querySelector('.ride-report');
@@ -2507,14 +2509,15 @@ const levelSlider = `${EDITOR} input[type=range]`;
     await sleep(300);
     newKinds[label] = await p.eval("({ links: [...document.querySelectorAll('.ride-report-actions a')].map((a) => a.getAttribute('href')), text: document.querySelector('.ride-report-text')?.textContent, hint: [...document.querySelectorAll('.ride-report .hint')].map((h) => h.textContent).find((t) => t.startsWith(\"DC's text service\")) })");
   }
-  const at = "Location: near Q Street Northwest and R Street Northwest, Washington, DC.";
+  // The rider has not moved since the first check: the same place and coordinates throughout.
+  const at = (report.text ?? "").replace(/^The report: /, "");
   const online = (k) => JSON.stringify(k?.links) === JSON.stringify(["https://311.dc.gov/"]);
   const tree = newKinds["Downed tree"], lane = newKinds["Vehicle parked in a bike lane"], blocked = newKinds["Roadway or bikeway obstructed"];
   await p.eval("[...document.querySelectorAll('.ride-report label.radio')].find((l) => l.textContent === 'Pothole').querySelector('input').click(); true");
   await p.s("Emulation.setUserAgentOverride", { userAgent: ua });
   check("ride 311: on a phone a streetlight is a Text to 311 link first (sms:32311, Android's ?body=, the code read digit by digit), DC 311 online still beside it; something else, a downed tree, a vehicle in a bike lane or an obstructed roadway or bikeway (each named first, DC's request in the hint only where sourced) goes to DC 311 online",
-    sms.length === 2 && sms[0].name === "Text to DC 311 (32311)" && sms[0].label === "Text to DC 311 (3 2 3 1 1)" && sms[1].href === "https://311.dc.gov/" && sms[0].href === `sms:32311?body=${encodeURIComponent("STREETLIGHT Location: near Q Street Northwest and R Street Northwest, Washington, DC.")}` &&
-      JSON.stringify(other.links) === JSON.stringify(["https://311.dc.gov/"]) && other.text === "The report: Location: near Q Street Northwest and R Street Northwest, Washington, DC." &&
+    sms.length === 2 && sms[0].name === "Text to DC 311 (32311)" && sms[0].label === "Text to DC 311 (3 2 3 1 1)" && sms[1].href === "https://311.dc.gov/" && AT_311.test(at) && sms[0].href === `sms:32311?body=${encodeURIComponent(`STREETLIGHT ${at}`)}` &&
+      JSON.stringify(other.links) === JSON.stringify(["https://311.dc.gov/"]) && other.text === `The report: ${at}` &&
       online(tree) && tree.text === `The report: Downed tree. ${at}` && /Tree Inspection and Tree Removal/.test(tree.hint ?? "") &&
       online(lane) && lane.text === `The report: Vehicle parked in a bike lane. ${at}` && /Parking Enforcement/.test(lane.hint ?? "") &&
       online(blocked) && blocked.text === `The report: Roadway or bikeway obstructed. ${at}` && !!blocked.hint && !/Enforcement|Inspection|Removal|Repair/.test(blocked.hint),
@@ -2538,7 +2541,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
       kinds: kinds.map((k) => k.textContent), small: kinds.filter((k) => k.getBoundingClientRect().height < 44).length, place: m.querySelector('.ride-311-place')?.textContent }; })()`);
   check("ride 311 button: one press opens the menu, its heading focused, the six problems in the owner's order as buttons 44 px or taller, and the place to check",
     menu311.shown && menu311.expanded === "true" && menu311.focus && menu311.heading === "Report to DC 311" && menu311.small === 0 &&
-      JSON.stringify(menu311.kinds) === JSON.stringify(["Pothole", "Downed tree", "Vehicle parked in a bike lane", "Roadway or bikeway obstructed", "Streetlight out", "Something else"]) && /Check it before you send\.$/.test(menu311.place ?? ""),
+      JSON.stringify(menu311.kinds) === JSON.stringify(["Pothole", "Downed tree", "Vehicle parked in a bike lane", "Roadway or bikeway obstructed", "Streetlight out", "Something else"]) && /^On R Street Northwest( near Q Street Northwest)?, GPS 38\.\d{5}, -7[67]\.\d{5}\. Check it before you send\.$/.test(menu311.place ?? ""),
     JSON.stringify(menu311));
   await p.escape();
   await sleep(200);

@@ -27,7 +27,7 @@ import { useHighStressLanes, useMtbTrails } from "./useStressStyle.ts";
 import { useStressStyle } from "./useStressStyle.ts";
 import { ANNOUNCE_SETTLE_MS } from "./lib/settle.ts";
 import { skipToPlanner, SKIP_LINK_TEXT, SKIP_TO_RIDE_TEXT } from "./lib/skipLink.ts";
-import { BetaBanner, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
+import { BetaChip, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { announceHow } from "./lib/candidates.ts";
 import { canReverse, loopStops, loopView, reversedPoints } from "./lib/loop.ts";
 import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
@@ -2313,6 +2313,13 @@ export function App() {
           )}
         </div>
       )}
+      {/* The beta notice: a chip in the map's free bottom-left corner, only in a VITE_BETA=1 build. */}
+      {!riding && (
+        <BetaChip
+          enabled={isBetaBuild(import.meta.env.VITE_BETA)}
+          reportUrl={betaReportUrl(import.meta.env.VITE_BETA_REPORT_URL)}
+        />
+      )}
       <p className="visually-hidden" role="status" aria-live="polite">
         {said.text}
         {said.count % 2 === 1 ? " " : ""}
@@ -2380,10 +2387,6 @@ export function App() {
           </button>
         </header>
         <div id="panel-body" className="panel-body" hidden={!panelOpen}>
-          <BetaBanner
-            enabled={isBetaBuild(import.meta.env.VITE_BETA)}
-            reportUrl={betaReportUrl(import.meta.env.VITE_BETA_REPORT_URL)}
-          />
           <AppStatusBar status={appStatus} />
           <div ref={panelBodyRef} className="panel-scroll">
             <div className="planner-view" hidden={view !== "planner"}>
