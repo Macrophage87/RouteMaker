@@ -3,7 +3,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { BikeshareOption, BikesharePlan } from "./api.ts";
-import { keepOptions, optionName, optionPins, optionsKey, pickedOption } from "./bikeshareOptions.ts";
+import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable } from "./bikeshareOptions.ts";
+import { withStations } from "./stations.ts";
+import { readFileSync } from "node:fs";
 import type { LonLat } from "./geo.ts";
 
 const A: LonLat = [-77.0063, 38.8973];
@@ -48,4 +50,53 @@ test("an option's pins hold its stations to the trip's ends; a stationless end i
   assert.deepEqual(optionPins(three[1], [A, B]), { pickup: { id: "p2", name: "Dock p2", at: A }, dropoff: { id: "d1", name: "Dock d1", at: B } });
   assert.deepEqual(optionPins(option(1, null, "d1"), [A, B]), { dropoff: { id: "d1", name: "Dock d1", at: B } });
   assert.equal(optionName("B", three[1]), "B: Pick up at Dock p2, return at Dock d1");
+});
+
+// Follow-up review of PR #95: a free-floating e-bike's option has no pick-up station id, so its pins would let the
+// server plan the best option again; it is shown again from the first answer, which planned it (#94's choice 6).
+function freeBike(): BikeshareOption {
+  const o = option(1, null, "d1");
+  return { ...o, pickup: { ...o.pickup, kind: "free_bike" as never, name: "an e-bike outside a dock", station_id: null }, text: "Pick up an e-bike outside a dock" };
+}
+
+test("a free e-bike's option replays the first answer; a dock's option is re-planned with its stations", () => {
+  assert.equal(replaysFirst(freeBike()), true);
+  assert.equal(replaysFirst(three[1]), false);
+  assert.equal(replaysFirst(option(1, "p1", null)), false, "an outside-dock ending still has its pick-up station");
+  assert.deepEqual(FIRST_ANSWER_PINS, {});
+  assert.equal(keepsFirst(plan([freeBike(), three[1]])), true, "a full list is the answer to keep");
+  assert.equal(keepsFirst(plan([three[1]])), false, "a re-plan of one pair is not");
+  assert.equal(keepsFirst(null), false);
+});
+
+test("the first answer is replayed only when the free e-bike asked for it and the request is exactly its plan", () => {
+  const dials = { bike: "ebike", stress: 80, ending: "dock" };
+  const firstKey = sentPlanKey([A, B], "bikeshare", withStations(dials as never, {}));
+  const first = { key: firstKey, trip: optionsKey([A, B]), route: "first route" };
+  // The key holds the stations (the link's key does not), so B's pinned plan never matches.
+  const pinned = sentPlanKey([A, B], "bikeshare", withStations(dials as never, optionPins(three[1], [A, B])));
+  assert.notEqual(pinned, firstKey);
+  // Key order does not matter; the stations stripped give the first plan's key back.
+  assert.equal(sentPlanKey([A, B], "bikeshare", { ending: "dock", stress: 80, bike: "ebike" }), firstKey);
+  assert.equal(sentPlanKey([A, B], "bikeshare", withStations(JSON.parse(pinned)[2], FIRST_ANSWER_PINS)), firstKey);
+  assert.equal(replayFor(first, firstKey, firstKey), "first route");
+  assert.equal(replayFor(first, null, firstKey), null, "not asked: sent (another change reaching the same plan asks the planner)");
+  assert.equal(replayFor(first, firstKey, pinned), null, "another plan: sent");
+  assert.equal(replayFor(null, firstKey, firstKey), null);
+  const changed = sentPlanKey([A, B], "bikeshare", { ...dials, stress: 40 });
+  assert.equal(replayFor(first, changed, changed), null, "settings changed since: never replayed");
+  assert.equal(optionReplaySaid("A", freeBike()), "Option A: picking up at an e-bike outside a dock, as first planned.");
+  assert.match(stationlessUnavailable("A"), /^Option A, an e-bike outside a dock, came from the first plan.*cannot be planned again\.$/);
+});
+
+test("App replays the first answer for a free e-bike's option and keeps a pinned option re-planned", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const send = app.slice(app.indexOf("send: async (plan) => {"), app.indexOf("const result = await requestRoute("));
+  assert.match(send, /const replay = replayFor\(firstAnswer\.current, replayAsked\.current, sentPlanKey\(plan\.points, plan\.preset, plan\.dials\)\);\s*replayAsked\.current = null;\s*if \(replay\) \{\s*keptShown\.current = null;\s*return \{ ok: true, route: replay \};/);
+  assert.match(app, /if \(plan\.preset === "bikeshare" && keepsFirst\(bikeshareOf\(result\.route\)\)\)\s*firstAnswer\.current = \{ key: sentPlanKey\(plan\.points, plan\.preset, plan\.dials\)/);
+  const pick = app.slice(app.indexOf("const pickOption = "), app.indexOf("// A new answer: the Keep button"));
+  assert.match(pick, /if \(replaysFirst\(option\)\) \{[\s\S]*?announce\(stationlessUnavailable\(placeLetter\(index\)\)\);\s*return;[\s\S]*?replayAsked\.current = first\.key;\s*setStationPins\(FIRST_ANSWER_PINS\);[\s\S]*?return;\s*\}\s*setStationPins\(optionPins\(option, points\)\);/);
+  // The free e-bike's branch never sets the pins that would let the server choose again.
+  const free = pick.slice(pick.indexOf("if (replaysFirst(option))"), pick.indexOf("setStationPins(optionPins("));
+  assert.doesNotMatch(free, /optionPins\(/);
 });

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GO_START_SAID, GO_START_UNAVAILABLE, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapStartsPending, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
@@ -322,6 +322,20 @@ test("go pick: route from the start Go has, wait while the location is found, el
   assert.deepEqual(goPickAction([], { kind: "idle" }), { kind: "locate" });
   assert.equal(goDestinationNeedsStart("Union Station"), "To Union Station. Current location not available; type a start.");
   assert.match(goDestinationLocating("Union Station"), /^To Union Station: finding your location/);
+});
+
+test("go tap: a map tap in Go while a destination waits is its start, and plans at once, as a typed start does (follow-up review of PR #95)", () => {
+  assert.equal(goTapStartsPending({ mode: "go", pointCount: 0, pending: true }), true);
+  assert.equal(goTapStartsPending({ mode: "go", pointCount: 0, pending: false }), false, "no destination waiting: the tap adds a point");
+  assert.equal(goTapStartsPending({ mode: "go", pointCount: 1, pending: true }), false, "the plan has a start already");
+  assert.equal(goTapStartsPending({ mode: "plan", pointCount: 0, pending: true }), false, "Plan's taps add points as before");
+  // App: the tap (and Add at centre, which places through it) routes the waiting destination from the tapped point,
+  // with the same one-edit route as the start box, and clears the wait.
+  const place = appFile.slice(appFile.indexOf("const place = useCallback("), appFile.indexOf("// \"Use my location\": one look-up"));
+  assert.match(place, /const pending = goPending\.current;\s*if \(pending && goTapStartsPending\(\{ mode: modeRef\.current, pointCount: pointsRef\.current\.length, pending: true \}\)\) \{\s*goPending\.current = null;\s*routeGoRef\.current\(point, false, pending\.dest, pending\.name\);\s*return;\s*\}/);
+  assert.ok(place.indexOf("goTapStartsPending") > place.indexOf("if (!insideCoverage(point))"), "a tap outside the area is refused first");
+  assert.match(appFile, /const modeRef = useRef\(mode\);\s*modeRef\.current = mode;/);
+  assert.match(appFile, /const addAtCentre = \(\) => \{[\s\S]*?place\(\[lng, lat\]\);/);
 });
 
 test("go start: App asks once when Go opens, says the start politely, and says when it is not available", () => {
