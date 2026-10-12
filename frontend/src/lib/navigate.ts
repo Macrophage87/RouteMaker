@@ -715,7 +715,7 @@ export type RoutePlace =
  * nearest junction of it, with the direction from there ("Capital Crescent Trail, about 1.2 miles
  * northwest of Massachusetts Avenue"). The trail's posted mile markers are not in the route's data
  * (PLAN.md, FOLLOWUP-WEB-NAV), so the distance is from a junction a reader can find on any map: one
- * whose other street has a real name. With none, just the trail. An unnamed way is never a trail and
+ * on the trail itself whose other street has a real name. With none, just the trail. An unnamed way is never a trail and
  * never the street measured from (the owner, 2026-10-12: "about 1.2 miles south of unnamed path").
  */
 export function placeOnRoute(model: RideModel, progressM: number): RoutePlace {
@@ -723,12 +723,12 @@ export function placeOnRoute(model: RideModel, progressM: number): RoutePlace {
   const stretch = stretchAt(model, progressM);
   const nearest = nearestOf(junctions, progressM);
   if (isTrail(stretch) && (!nearest || Math.abs(nearest.atM - progressM) > TRAIL_MARKER_M)) {
-    // The trail's own junctions first (where the route met it, the roads it crosses), the last behind
-    // before the next ahead; else any.
-    const marks = junctions.filter((j) => !isUnnamed(otherStreet(j, stretch.street)));
-    const onTrail = marks.filter((j) => j.streets.includes(stretch.street));
+    // Only the trail's own junctions with a named street (where the route met it, the roads it
+    // crosses), the last behind before the next ahead. Never a junction off the trail: a distance from
+    // there helps no one find the rider.
+    const onTrail = junctions.filter((j) => j.streets.includes(stretch.street) && !isUnnamed(otherStreet(j, stretch.street)));
     const behind = onTrail.filter((j) => j.atM <= progressM).at(-1);
-    const from = behind ?? onTrail.find((j) => j.atM > progressM) ?? nearestOf(marks, progressM);
+    const from = behind ?? onTrail.find((j) => j.atM > progressM);
     if (!from) return { kind: "street", street: stretch.street };
     const here = pointAt(model, progressM);
     const there = pointAt(model, from.atM);
@@ -744,9 +744,15 @@ function nearestOf(junctions: RouteJunction[], progressM: number): RouteJunction
   return nearest;
 }
 
-/** The other street of a trail's junction: "Massachusetts Avenue Northwest". */
+/**
+ * The other street of a trail's junction: "Massachusetts Avenue Northwest". For a junction the trail is
+ * not part of, the named one of its two streets (the first when both are).
+ */
 export function otherStreet(junction: RouteJunction, trail: string): string {
-  return junction.streets[0] === trail ? junction.streets[1] : junction.streets[0];
+  const [a, b] = junction.streets;
+  if (a === trail) return b;
+  if (b === trail) return a;
+  return isUnnamed(a) ? b : a;
 }
 
 /**
@@ -767,10 +773,13 @@ export function whereAmI(model: RideModel, state: RideState, metric = false): st
       : "Off the planned route.";
   }
   const place = placeOnRoute(model, state.progressM);
+  const stretch = stretchAt(model, state.progressM);
+  // A named trail is "the" trail, with the marker or without: "On the Capital Crescent Trail."
+  const way = isTrail(stretch) ? `the ${stretch.street}` : (wayRidden(stretch) ?? "the route");
   const sentences = [
     place?.kind === "trail"
-      ? `On the ${place.trail}, about ${dist(place.metres)} ${place.direction} of ${otherStreet(place.junction, place.trail)}.`
-      : `On ${wayRidden(stretchAt(model, state.progressM)) ?? "the route"}.`,
+      ? `On ${way}, about ${dist(place.metres)} ${place.direction} of ${otherStreet(place.junction, place.trail)}.`
+      : `On ${way}.`,
   ];
   const progress = state.progressM;
   const cue = model.cues.find((c) => c.atM > progress + 1 && (c.kind === "turn" || c.kind === "hazard" || c.kind === "walk"));

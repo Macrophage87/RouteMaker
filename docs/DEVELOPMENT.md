@@ -7498,7 +7498,9 @@ Washington, DC. GPS 38.91234, -77.03890." A distance from a far junction ("about
 ...", the old trail marker) is never said: it named unnamed ways and helped no one find the spot. The
 coordinates are never trimmed; the only cap is the note's 120 characters. The 311 menu's place line
 (`menuPlaceLine` in `lib/ride311.ts`) shows the same words and coordinates. Where am I? keeps its trail
-marker (`placeOnRoute`, `TRAIL_MARKER_M` in `lib/navigate.ts`).
+marker (`placeOnRoute`, `TRAIL_MARKER_M` in `lib/navigate.ts`), measured only from a junction on the
+trail itself with a named street; an unnamed way (`isUnnamed`, `wayRidden`) is said plainly ("On an
+unnamed path.") and is never used as a trail or a reference point.
 
 **Checks (N7).** `corridor.test.ts`, `report311.test.ts`, the trail cases in `navigate.test.ts` and
 `loadTile` in `stressProtocol.test.ts`; the browser suite's Ride mode section checks that the stress

@@ -33,6 +33,7 @@ import {
   step,
   toGo,
   wayBack,
+  wayRidden,
   whereAmI,
   withoutMetric,
   type RideEvent,
@@ -810,7 +811,7 @@ test("whereAmI: an unnamed path is never a trail name nor a street to measure fr
   for (const j of routeJunctions(model)) assert.ok(j.streets.includes("Capital Crescent Trail"), JSON.stringify(j));
   // Mid-trail: the only junctions are with unnamed paths, so no marker, just the trail.
   assert.deepEqual(placeOnRoute(model, 1600), { kind: "street", street: "Capital Crescent Trail" });
-  assert.match(whereAmI(model, { ...startState(), progressM: 1600 }), /^On Capital Crescent Trail\. /);
+  assert.match(whereAmI(model, { ...startState(), progressM: 1600 }), /^On the Capital Crescent Trail\. /);
   // Far along the unnamed path: said plainly, no distance, no "the unnamed path".
   for (const progressM of [100, 5000]) {
     const said = whereAmI(model, { ...startState(), progressM });
@@ -828,4 +829,54 @@ test("whereAmI: the named trail marker still measures from a named street", () =
   assert.match(whereAmI(model, { ...startState(), progressM: 1300 }), /^On the Capital Crescent Trail, about 0\.6 miles north of A Street\. /);
   // Past the trail onto the unnamed path, far from A Street: plainly the path.
   assert.match(whereAmI(model, { ...startState(), progressM: 5000 }), /^On an unnamed path\. /);
+});
+
+test("whereAmI: the trail marker never measures from a junction off the trail", () => {
+  // East 300 m on A Street, 700 m of unnamed path, then the Capital Crescent Trail for 3,000 m: the trail's
+  // one junction is with the unnamed path, so there is nothing on it to measure from.
+  const description: DescriptionEntry[] = [
+    stretch(0, 300, "0.0 to 0.2 mi (0.0 to 0.3 km): A Street, low stress (LTS 1).", { street: "A Street" }),
+    stretch(300, 1000, "0.2 to 0.6 mi (0.3 to 1.0 km): unnamed path, low stress (LTS 1), path.", { street: "unnamed path", facility: "path" }),
+    stretch(1000, 4000, "0.6 to 2.5 mi (1.0 to 4.0 km): Capital Crescent Trail, low stress (LTS 1), path.", {
+      street: "Capital Crescent Trail",
+      facility: "path",
+    }),
+  ];
+  const model = rideModel({
+    ...lRoute(),
+    geometry: { type: "LineString", coordinates: [at(0, 0), at(300, 0), at(300, 700), at(300, 3700)] },
+    distance_m: 4000,
+    leg_ends: [3],
+    description,
+  } as RouteResponse);
+  assert.deepEqual(placeOnRoute(model, 2500), { kind: "street", street: "Capital Crescent Trail" });
+  const said = whereAmI(model, { ...startState(), progressM: 2500 });
+  assert.match(said, /^On the Capital Crescent Trail\. /);
+  assert.doesNotMatch(said, /A Street|about/);
+});
+
+test("otherStreet: the trail's other street; off the trail, the named one whatever the order", () => {
+  assert.equal(otherStreet({ atM: 0, streets: ["Capital Crescent Trail", "River Road"] }, "Capital Crescent Trail"), "River Road");
+  assert.equal(otherStreet({ atM: 0, streets: ["River Road", "Capital Crescent Trail"] }, "Capital Crescent Trail"), "River Road");
+  assert.equal(otherStreet({ atM: 0, streets: ["unnamed path", "A Street"] }, "Capital Crescent Trail"), "A Street");
+  assert.equal(otherStreet({ atM: 0, streets: ["A Street", "unnamed path"] }, "Capital Crescent Trail"), "A Street");
+});
+
+test("wayRidden: a name as given, an unnamed way plainly, and nothing for an untraced one", () => {
+  const way = (street: string | null, facility: string | null = null) => wayRidden({ fromM: 0, toM: 100, street, facility } as RideModel["stretches"][number]);
+  assert.equal(way("R Street Northwest"), "R Street Northwest");
+  assert.equal(way(null, "protected"), "an unnamed path");
+  assert.equal(way(null, "path"), "an unnamed path");
+  assert.equal(way(null), "an unnamed road");
+  assert.equal(way("unnamed road", "protected"), "an unnamed road");
+  assert.equal(way("unnamed path"), "an unnamed path");
+  assert.equal(way("this part of the route"), null);
+  assert.equal(wayRidden(null), null);
+});
+
+test("whereAmI on \"this part of the route\": On the route.", () => {
+  const route = unnamedPathRoute();
+  route.description![2] = stretch(3000, 6000, "1.9 to 3.7 mi (3.0 to 6.0 km): this part of the route, low stress (LTS 1).", { street: "this part of the route" });
+  const model = rideModel(route);
+  assert.match(whereAmI(model, { ...startState(), progressM: 5000 }), /^On the route\. /);
 });
