@@ -1068,7 +1068,7 @@ export const S_TRANSIT = (() => {
       step("exit", "About 4 min out of the station by the elevator.", 240, { with_bike: true }),
       step("ride", "Ride 1 min to your destination.", 60, { coordinates: [[-77.0281, 38.8932], [-77.03, 38.896]] }),
     ],
-    notes: ["Bikes are allowed on Metro at all hours: use the elevators, board by a car's end doors, at most four bikes a car. Metro may restrict bikes during special events or crowding."],
+    notes: ["Metro: use the elevators and a car's end doors."],
     day_type: "weekday",
     band: "morning rush",
     holiday: false,

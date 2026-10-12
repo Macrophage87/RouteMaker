@@ -1,5 +1,5 @@
 {
-  "about": "The transit systems the transit ride types use (core.transit), each from its own static GTFS, fetched and compacted on the host (scripts/fetch_transit_gtfs.py, scripts/build_transit_schedule.py; docs/OPERATIONS.md). The feeds and the file built from them are never committed (docs/SOURCES.md). `bike.vehicle`: all = every trip takes a bike; trip = only trips with GTFS bikes_allowed 1; offpeak = every trip outside weekday rush (06:00-09:30, 15:00-19:00); none = no bike (unclear bike access is closed). `bike.station`: elevator = the map's Metro elevators (WMATA); step_free = GTFS wheelchair_boarding 1 on the stop or its station, unknown is closed; any = a bus stop at the curb. `words` names a vehicle in a step: {route} is the route's name. `idle_notes`: say plainly when a route near the trip has no service at that time.",
+  "about": "The transit systems the transit ride types use (core.transit), each from its own static GTFS, fetched and compacted on the host (scripts/fetch_transit_gtfs.py, scripts/build_transit_schedule.py; docs/OPERATIONS.md). The feeds and the file built from them are never committed (docs/SOURCES.md). `bike.vehicle`: all = every trip takes a bike; trip = only trips with GTFS bikes_allowed 1; offpeak = every trip outside weekday rush (06:00-09:30, 15:00-19:00); none = no bike (unclear bike access is closed). `bike.station`: elevator = the map's Metro elevators (WMATA); station = every station of the system (the owner, 2026-10-12: \"I believe all stations have ways to board with either ramps or elevators. Most people can carry bikes up and down stairs in a pinch.\"); any = a bus stop at the curb. `words` names a vehicle in a step: {route} is the route's name. `idle_notes`: say plainly when a route near the trip has no service at that time.",
   "systems": [
     {
       "id": "wmata-rail",
@@ -18,7 +18,7 @@
       "bike": {
         "vehicle": "all",
         "station": "elevator",
-        "rule": "Bikes are allowed on Metro at all hours: use the elevators, board by a car's end doors, at most four bikes a car. Metro may restrict bikes during special events or crowding.",
+        "rule": "Use the elevators and a car's end doors.",
         "source": "https://www.wmata.com/ride/guides/bikes/bikes-on-rail.html"
       },
       "credit": "WMATA GTFS (scheduled times)"
@@ -39,7 +39,7 @@
       "bike": {
         "vehicle": "all",
         "station": "any",
-        "rule": "Each Metrobus has a front rack for two bikes.",
+        "rule": "Use the front bike rack.",
         "source": "https://www.wmata.com/ride/guides/bikes/bikes-on-bus.html"
       },
       "credit": "WMATA GTFS (scheduled times)"
@@ -54,8 +54,8 @@
       "feed": {"file": "marc-gtfs.zip", "url": "https://feeds.mta.maryland.gov/gtfs/marc"},
       "bike": {
         "vehicle": "all",
-        "station": "step_free",
-        "rule": "Full-size bikes are allowed on every MARC train, in a car marked with the green Bicycle Entrance decal or light, one bike each; bring two bungee cords. With no free bike rack, wait for the next train.",
+        "station": "station",
+        "rule": "Ride in the car marked for bikes.",
         "source": "https://www.mta.maryland.gov/MARCbikes"
       },
       "credit": "MDOT MTA GTFS (scheduled times)"
@@ -69,9 +69,9 @@
       "idle_notes": true,
       "feed": {"file": "mta-light-rail-gtfs.zip", "url": "https://feeds.mta.maryland.gov/gtfs/light-rail"},
       "bike": {
-        "vehicle": "offpeak",
-        "station": "step_free",
-        "rule": "Bikes ride Light RailLink outside rush hour and special events, at most two a vehicle, in the priority seating area; use the elevators, never the escalators.",
+        "vehicle": "all",
+        "station": "station",
+        "rule": "Use the elevators; ride in the priority seating area.",
         "source": "https://www.mta.maryland.gov/bike"
       },
       "credit": "MDOT MTA GTFS (scheduled times)"
@@ -85,9 +85,9 @@
       "idle_notes": true,
       "feed": {"file": "mta-metro-gtfs.zip", "url": "https://feeds.mta.maryland.gov/gtfs/metro"},
       "bike": {
-        "vehicle": "offpeak",
-        "station": "step_free",
-        "rule": "Bikes ride Metro SubwayLink outside rush hour and special events, at most two a car, in the priority seating area; use the elevators, never the escalators.",
+        "vehicle": "all",
+        "station": "station",
+        "rule": "Use the elevators; ride in the priority seating area.",
         "source": "https://www.mta.maryland.gov/bike"
       },
       "credit": "MDOT MTA GTFS (scheduled times)"

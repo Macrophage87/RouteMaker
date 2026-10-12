@@ -23,8 +23,9 @@ What is kept, and nothing else (core.transit's docstring has the method):
 - **stops:** WMATA's Metro stations are the map's 98 (each platform matched to the nearest within
   `MATCH_M`), each with its bike entrance as the map picks it (DC's elevator, else
   OpenStreetMap's, else an entrance; `bike` says whether it is an elevator). Other rail systems'
-  stations are their GTFS stations (a platform's parent), `bike` where GTFS says step-free
-  (`wheelchair_boarding` 1 on the platform or its station; unknown is no). Bus stops are kept as
+  stations are their GTFS stations (a platform's parent), `bike` true at every one (the owner,
+  2026-10-12: every station has a ramp or an elevator, and stairs will do in a pinch; GTFS
+  `wheelchair_boarding` is not read). Bus stops are kept as
   they are, `bike` true (the rack is at the curb).
 - **patterns:** per stop order of each route, the median run time from its first stop to each
   later one per band of the service day (core.transit.BANDS), and every trip's departure from the
@@ -355,13 +356,6 @@ def _point(row) -> tuple[float, float]:
     return (float(row["stop_lon"]), float(row["stop_lat"]))
 
 
-def _step_free(row: dict, parent: dict | None) -> bool:
-    own = (row.get("wheelchair_boarding") or "").strip()
-    if own == "0" or own == "":
-        own = ((parent or {}).get("wheelchair_boarding") or "").strip()
-    return own == "1"
-
-
 class _Stops:
     """The output's stop list, shared by every system."""
 
@@ -421,13 +415,15 @@ def station_stop_key(feed, stops: _Stops, system: int):
                     "name": (place.get("stop_name") or "").strip(),
                     "point": point,
                     "bike_entrance": point,
-                    "bike": _step_free(row, parent),
+                    # Every station takes a bike (the owner, 2026-10-12: "I believe all
+                    # stations have ways to board with either ramps or elevators. Most people
+                    # can carry bikes up and down stairs in a pinch."); the system's own rule
+                    # still says which trips do.
+                    "bike": True,
                     "entrances": entrances.get(station_id) or [point],
                     "system": system,
                 }
             )
-        elif _step_free(row, parent):
-            stops.rows[keys[station_id]]["bike"] = True
         keys[stop_id] = keys[station_id]
     return keys.get
 

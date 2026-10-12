@@ -55,6 +55,7 @@ A malformed JSON body is counted, because only a script can send one.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from datetime import datetime
 from functools import wraps
@@ -1967,7 +1968,12 @@ class TransitOut(Schema):
     day_type: Literal["weekday", "saturday", "sunday"]
     band: str | None
     holiday: bool
-    bike_blackout: bool = Field(description="A date Metro may restrict bikes (flagged only).")
+    bike_blackout: bool = Field(
+        description=(
+            "Own Bike + Transit on a Metro blackout date: no option takes the bike on Metro, and"
+            " the notes say so."
+        )
+    )
     scheduled: bool
     credits: list[str] = Field(description="The schedules' sources, for the systems used.")
     departure: TransitDepartureOut | None = Field(
@@ -2401,8 +2407,56 @@ def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
     )
 
 
-# Of a transit plan's budget, the seconds kept for routing the chosen option's line.
-TRANSIT_ANSWER_RESERVE_S = 20
+# A transit plan's candidate legs are routed only this long after the request arrived; the rest
+# of the request's budget is the answer's own line (routing.plan).
+TRANSIT_CANDIDATES_S = 12
+
+# Said when the router did not draw the answer's line in time.
+UNROUTED_NOTE = (
+    "The router did not answer in time, so the ride's line is drawn straight and its time is"
+    " estimated."
+)
+
+
+def _unrouted_line(points: list[list[float]], preset_name: str, dials, seconds: float) -> dict:
+    """The answer's line when the router did not draw it: straight from end to end, its time
+    the plan's own estimate, its streets unknown. Everything else in the body is empty."""
+    straight_m = sum(
+        haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
+    )
+    metres = round(straight_m * transit.DETOUR, 1)
+    preset = presets.PRESETS[preset_name]
+    stress = presets.stress_start(preset_name, None) if dials.stress is None else dials.stress
+    return {
+        "preset": preset.name,
+        "variant": preset.variant,
+        "geometry": {
+            "type": "LineString",
+            "coordinates": [[round(lon, 6), round(lat, 6)] for lon, lat in points],
+        },
+        "distance_m": metres,
+        "duration_s": round(seconds, 1),
+        "climb_m": 0.0,
+        "descent_m": 0.0,
+        "stress_m": {"1": 0.0, "2": 0.0, "3": 0.0, "4": 0.0, "5": 0.0, "unknown": metres},
+        "facility_m": {"path": 0.0, "protected": 0.0, "lane": 0.0, "none": 0.0, "unknown": metres},
+        "stress_adjustments": [],
+        "stress_spans": [],
+        "dials": {
+            "stress": stress,
+            "hills": preset.hills if dials.hills is None else dials.hills,
+            "when": dials.when or routing.default_when(),
+            "carrying": None,
+            "assist": False,
+        },
+        "hills_seek": None,
+        "hills_avoid": None,
+        "attribution": [],
+        "leg_ends": [len(points) - 1],
+        "intersections": None,
+        "calm_search": None,
+        "detour": None,
+    }
 
 
 def _transit_body(body: RouteIn, started: float | None) -> dict:
@@ -2410,12 +2464,10 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     if started is None:
         started = routing.clock()
     schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH)
-    # The candidates' calls stop early enough to leave the answer's own line (routing.plan, below)
-    # most of the request's budget: a slow router estimates candidates, it never times out the plan.
-    services = transit.RoutingServices(
-        started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S - TRANSIT_ANSWER_RESERVE_S,
-        body.preset,
-    )
+    # The candidates' calls stop `TRANSIT_CANDIDATES_S` in, leaving the answer's own line
+    # (routing.plan, below) the rest of the request's budget: a slow router estimates candidates,
+    # it never times out the plan.
+    services = transit.RoutingServices(started + TRANSIT_CANDIDATES_S, body.preset)
     start, end = body.points
     when = body.depart_at or timezone.now()
     if when.tzinfo is None:
@@ -2429,6 +2481,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             presets.VALHALLA_DEFAULT_SPEED_KMH[options.get("bicycle_type", "Hybrid")],
         )
         found = transit.plan_bike(schedule, start, end, when, services, speed)
+    searched = routing.clock()
     found = transit.choose(found, body.transit_option)
     leg = found.legs[found.ride]
     # The line is the chosen option's first ride (or walk). Riding directly there, or an option
@@ -2451,9 +2504,24 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         trails_off=body.trails_off,
         system_weight_kg=body.system_weight_kg,
     )
-    answer = routing.plan(
-        [ride_from, ride_to], body.preset, long_ride=False, started=started, dials=dials
-    )
+
+    def line(points: list[list[float]]) -> dict | None:
+        """The answer's line routed, or None when the router did not answer in time."""
+        try:
+            return routing.plan(points, body.preset, long_ride=False, started=started, dials=dials)
+        except (routing.RouterUnavailable, routing.DeadlineExceeded) as error:
+            logger.warning("transit plan: the answer's line was not routed: %s", error)
+            return None
+
+    def unrouted(points: list[list[float]], plan: transit.Plan) -> tuple[dict, transit.Plan]:
+        # As a short leg is: drawn straight, the plan keeping its own (estimated) times.
+        drawn = _unrouted_line(points, body.preset, dials, plan.legs[plan.ride].seconds)
+        return drawn, dataclasses.replace(plan, notes=[*plan.notes, UNROUTED_NOTE])
+
+    answer = line([ride_from, ride_to])
+    if answer is None:
+        answer, found = unrouted([ride_from, ride_to], found)
+        retime = False
     if retime:
         timed = transit.with_ride(found, float(answer["duration_s"]))
         if timed.option.key != found.option.key:
@@ -2466,11 +2534,19 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
                 points = [list(leg.coordinates[0]), list(leg.coordinates[-1])]
             else:
                 points = [list(start), list(end)]
-            answer = routing.plan(
-                points, body.preset, long_ride=False, started=started, dials=dials
-            )
+            answer = line(points)
+            if answer is None:
+                answer, timed = unrouted(points, timed)
         found = timed
     answer["transit"] = transit.block(found, schedule)
+    logger.info(
+        "transit plan %s: search %.1f s (candidates %.1f s, %d calls), line %.1f s",
+        body.preset,
+        searched - started - services.spent_s,
+        services.spent_s,
+        services.calls,
+        routing.clock() - searched,
+    )
     return answer
 
 

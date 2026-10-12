@@ -61,15 +61,19 @@ option's first ride is then routed as the answer's line, and its time replaces t
 
 Bikes on transit
 ----------------
-Each system's rule is in systems.json with its source, read 2026-10-12, and is said with every
-plan that takes a bike on it: WMATA Metro at all hours by the elevators (the stations with
+Each system's rule is in systems.json with its source, read 2026-10-12: one short line a rider
+needs, said once in the notes of a plan that takes a bike on it ("Metro: use the elevators and a
+car's end doors."). Bikes ride WMATA Metro at all hours by the elevators (the stations with
 neither DC's nor OpenStreetMap's elevator are not used with a bike: unclear bike access is
-closed); a Metrobus front rack for two; every MARC train in a bike car; Light RailLink and Metro
-SubwayLink outside weekday rush hours. Stations of the other rail systems take a bike only where
-the feed says they are step-free. On the dates in `BLACKOUTS_PATH` (July 4 every year, and dates
-the owner adds by hand) bikes are not allowed on Metro (the owner: allowed "at all times except"
-those days): Own Bike + Transit uses no Metro that day and says so plainly; Bikeshare + Transit
-still rides Metro on foot.
+closed), Metrobus on the front rack, and every MARC, Light RailLink and Metro SubwayLink train
+(the owner, 2026-10-12: "you can use it unless it's too crowded to do so. No API knows how many
+people can fit." There is no crowding model and no crowding note: "It's common courtesy.").
+Every station of the other rail systems takes a bike (the owner, 2026-10-12: every station has a
+ramp or an elevator, and stairs will do in a pinch).
+On the dates in `BLACKOUTS_PATH` (July 4 every year, and dates the owner adds by hand) bikes
+are not allowed on Metro (the owner: allowed "at all times except" those days): Own Bike +
+Transit uses no Metro that day and says so plainly; Bikeshare + Transit still rides Metro on
+foot.
 
 Every sentence is US units first with metric in brackets (OWNER-DECISIONS 85), worded so the
 page and a screen reader read the same words.
@@ -223,7 +227,7 @@ class Stop:
     name: str
     point: tuple[float, float]
     bike_entrance: tuple[float, float]
-    bike: bool  # a bike can board here: WMATA's elevator, a step-free station, a bus stop
+    bike: bool  # a bike can board here: WMATA's elevator, any MARC or MTA station, a bus stop
     entrances: tuple[tuple[float, float], ...]
     system: int
     rail: bool  # a station (entered and left), not a bus stop
@@ -557,9 +561,15 @@ def moments_of(when: datetime) -> list[Moment]:
     return [first, _moment(when, other)]
 
 
-def clock(minute: float) -> str:
-    """A service-day minute as a clock: "7:42 am"."""
-    total = int(round(minute)) % 1440
+def clock(minute: float, service_day: date | None = None) -> str:
+    """A service-day minute as a clock: "7:42 am". With its service day, the wall-clock time
+    (as `_local`), so a daylight-saving night says the time the station clock shows; without
+    one, the minute read as a plain day (tests and day-free notes)."""
+    if service_day is not None:
+        at = (day_zero(service_day) + timedelta(minutes=round(minute))).astimezone(ZONE)
+        total = at.hour * 60 + at.minute
+    else:
+        total = int(round(minute)) % 1440
     hour, mins = divmod(total, 60)
     suffix = "am" if hour < 12 else "pm"
     return f"{(hour % 12) or 12}:{mins:02d} {suffix}"
@@ -609,6 +619,7 @@ class Leg:
     after: float | None = None  # and the one after it
     later: tuple[float, ...] = ()  # the departures after `depart` that were seen, in order
     board_at: str | None = None  # a transit leg's first stop, by name
+    service_day: date | None = None  # a transit leg's service day, for its clock times
 
     @property
     def total_s(self) -> float:
@@ -627,7 +638,7 @@ class Leg:
         noun = "bus" if self.mode == BUS else "train"
         if self.after is None:
             return f"no later {noun} within the hour"
-        return f"next {noun} after that: {clock(self.after)}"
+        return f"next {noun} after that: {clock(self.after, self.service_day)}"
 
     def words(self, last: bool = False) -> str:
         """The step as one sentence."""
@@ -659,7 +670,8 @@ class Leg:
         spare = round(self.wait_s / 60)
         place = f" from {self.board_at}" if self.board_at else ""
         return (
-            f"{board} at {clock(self.depart)}{place}: you arrive {clock(self.arrive)},"
+            f"{board} at {clock(self.depart, self.service_day)}{place}: you arrive"
+            f" {clock(self.arrive, self.service_day)},"
             f" {spare} min spare; {self._after_words()}. Ride {m} min{at}."
         )
 
@@ -803,7 +815,9 @@ def _hop(minute: float, entries) -> Hop:
     )
 
 
-def _transit_leg(schedule: Schedule, hop: Hop, change: bool, bike: bool) -> Leg:
+def _transit_leg(
+    schedule: Schedule, hop: Hop, change: bool, bike: bool, service_day: date | None = None
+) -> Leg:
     system = schedule.systems[hop.system]
     to = schedule.stops[hop.path[-1]]
     return Leg(
@@ -821,6 +835,7 @@ def _transit_leg(schedule: Schedule, hop: Hop, change: bool, bike: bool) -> Leg:
         after=hop.after,
         later=hop.later,
         board_at=schedule.place(schedule.stops[hop.path[0]]),
+        service_day=service_day,
     )
 
 
@@ -864,6 +879,7 @@ class RoutingServices:
         self._max_calls = MAX_ROUTER_CALLS if max_calls is None else max_calls
         self._per_call_s = per_call_s
         self.calls = 0
+        self.spent_s = 0.0  # time in router calls, for the API's log of its phases
 
     def ride(self, a: LonLat, b: LonLat) -> Ride | None:
         from . import routing
@@ -890,6 +906,8 @@ class RoutingServices:
             answer = routing._call("standard", "route", payload, deadline)
         except (routing.RouterRefused, routing.RouterUnavailable, routing.DeadlineExceeded):
             return None
+        finally:
+            self.spent_s += routing.clock() - now
         legs = (answer.get("trip") or {}).get("legs") or []
         if not legs:
             return None
@@ -1142,7 +1160,7 @@ def _search(day: _Day, starts: list[_End], ends: dict[int, _End], speed: float) 
     for start in starts:
         at = day.moment.minute + start.seconds / 60.0
         for stop, hop in day.reach(start.stop, at).items():
-            first = _transit_leg(schedule, hop, False, day.bike)
+            first = _transit_leg(schedule, hop, False, day.bike, day.moment.service_day)
             legs = start.legs + [first]
             arrive = at + hop.total_s / 60.0
             key = f"{start.key}>p{hop.pattern}"
@@ -1160,7 +1178,7 @@ def _search(day: _Day, starts: list[_End], ends: dict[int, _End], speed: float) 
                     if second.system == hop.system and set(second.routes) <= set(hop.routes):
                         continue  # the same line on: no change
                     change = next_stop.index == stop
-                    leg = _transit_leg(schedule, second, change, day.bike)
+                    leg = _transit_leg(schedule, second, change, day.bike, day.moment.service_day)
                     found.append(
                         Option(
                             f"{key}-s{next_stop.index}>p{second.pattern}>{ends[to].key}",
@@ -1483,15 +1501,16 @@ def _retimed(minute: float, legs: list[Leg]) -> tuple[list[Leg] | None, list[str
                 catchable = [t for t in leg.later if t >= arrive - 1e-6]
                 if not catchable or catchable[0] - arrive > MAX_WAIT_MIN:
                     notes.append(
-                        f"You would miss the {clock(missed)} ({leg.vehicle}) and no later one"
+                        f"You would miss the {clock(missed, leg.service_day)} ({leg.vehicle})"
+                        " and no later one"
                         " leaves within the hour: that trip is left out."
                     )
                     return None, notes
                 rest = tuple(t for t in leg.later if t > catchable[0])
                 leg = replace(leg, depart=catchable[0], after=rest[0] if rest else None, later=rest)
                 notes.append(
-                    f"You would miss the {clock(missed)} ({leg.vehicle}): planned on the"
-                    f" {clock(leg.depart)} instead."
+                    f"You would miss the {clock(missed, leg.service_day)} ({leg.vehicle}):"
+                    f" planned on the {clock(leg.depart, leg.service_day)} instead."
                 )
             leg = replace(leg, wait_s=max(0.0, (leg.depart - arrive) * 60.0))
         out.append(leg)
@@ -1524,16 +1543,19 @@ def departure(plan: Plan) -> dict | None:
             "system": leg.system,
             "vehicle": leg.vehicle,
             "board_at": leg.board_at,
-            "departs": clock(leg.depart),
+            "departs": clock(leg.depart, plan.when.service_day),
             "departs_at": _local(plan.when, leg.depart),
             "arrive_at": _local(plan.when, reach),
-            "next": None if leg.after is None else clock(leg.after),
+            "next": None if leg.after is None else clock(leg.after, plan.when.service_day),
             "next_at": None if leg.after is None else _local(plan.when, leg.after),
             "spare_s": round(leg.wait_s),
             "close": leg.wait_s < CLOSE_S,
             "planned_at": _local(plan.when, plan.when.minute),
             "point": _pt(leg.coordinates[0]) if leg.coordinates else None,
-            "label": f"{leg.system} {clock(leg.depart)} · {round(leg.wait_s / 60)} min spare",
+            "label": (
+                f"{leg.system} {clock(leg.depart, plan.when.service_day)}"
+                f" · {round(leg.wait_s / 60)} min spare"
+            ),
         }
     return None
 
@@ -1565,8 +1587,11 @@ def _notes(plan: Plan, rules: dict[str, str]) -> list[str]:
     if plan.asked is not None:
         notes.insert(0, "The trip chosen is no longer scheduled: the quickest is shown.")
     for leg in legs:
-        if leg.transit and leg.bike and rules.get(leg.system) and rules[leg.system] not in notes:
-            notes.append(rules[leg.system])
+        rule = rules.get(leg.system)
+        if leg.transit and leg.bike and rule:
+            said = f"{leg.system}: {rule[0].lower()}{rule[1:]}"
+            if said not in notes:
+                notes.append(said)
     if any(leg.transit for leg in legs):
         notes.append(SCHEDULED_WORDS)
     return notes
@@ -1590,7 +1615,7 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
                 "to": leg.to,
                 "lines": list(leg.lines),
                 "system": leg.system or None,
-                "departs": None if leg.depart is None else clock(leg.depart),
+                "departs": None if leg.depart is None else clock(leg.depart, leg.service_day),
                 "with_bike": leg.bike,
                 # The route's own line is this step's: the map draws the rest from here.
                 "route_line": index == option.ride,

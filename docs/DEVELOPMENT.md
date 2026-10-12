@@ -6928,8 +6928,14 @@ docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-
   daylight-saving days are right. From 1 to 5 am both service days are searched (owl trips past
   27:00 included). Stops without times (not timepoints) are interpolated by the build.
 - **Router budget.** The direct ride is routed first. Candidate legs are capped at 5 s a call and
-  `MAX_ROUTER_CALLS`, inside a search budget that leaves 20 s for the answer's own line; a refusal,
-  a timeout or a router that is down estimates the leg from the straight line, never fails the plan.
+  `MAX_ROUTER_CALLS`, and stop 12 s into the request (`api.TRANSIT_CANDIDATES_S`); a refusal, a
+  timeout or a router that is down estimates the leg from the straight line, never fails the plan.
+  The answer's own line has the rest of the budget. If the router does not draw it in time (a
+  timeout or the router down), the leg is drawn straight with the plan's estimated time and a note
+  says so, as a short leg is. The api logs each plan's seconds in the search, the candidates' router
+  calls and the line, at info level.
+- **Clock times.** A departure's clock ("1:30 am") is the wall time of its service day's minute,
+  so a daylight-saving night says the time the station clock shows.
 - **Blackout dates.** Own Bike + Transit takes no bike on Metro on them ("Bikes aren't allowed on
   Metro today (July 4)."); Bikeshare + Transit still rides Metro on foot.
 - **Departure in the app.**

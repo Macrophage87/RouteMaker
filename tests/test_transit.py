@@ -10,8 +10,8 @@ tests/data/transit holds small feeds written by its make_fixture.py, one per sys
 - MARC: the Penn Line (Washington to Baltimore, frequent toward Washington in the morning and
   away in the evening, every two hours at weekends, its weekend timetable on Thanksgiving) and the
   Camden Line (weekdays only, three trains each way in the peak direction); College Park's
-  step-free access unknown;
-- Light RailLink: every 15 min on weekdays, 20 at weekends; one stop not step-free.
+  step-free access unknown (it takes a bike all the same);
+- Light RailLink: every 15 min on weekdays, 20 at weekends; one stop not step-free (likewise).
 The places are real; the times are invented. A fake router rides straight lines, so every figure
 is arithmetic.
 """
@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import logging
 import math
 import sys
 from datetime import date, datetime
@@ -29,7 +30,7 @@ from pathlib import Path
 import pytest
 from test_route_api import CONTRACT_KEYS, router, segments, standard_router
 
-from core import gbfs, presets, transit
+from core import api, gbfs, presets, transit
 from routemaker.ridetime import ZONE
 
 # The API tests take these two of test_route_api's fixtures by name.
@@ -86,6 +87,7 @@ class Straight:
 
     def __init__(self) -> None:
         self.calls = 0
+        self.spent_s = 0.0
 
     def ride(self, a, b):
         self.calls += 1
@@ -121,7 +123,7 @@ def test_the_build_restates_the_bands_core_transit_reads() -> None:
 
 def test_every_system_is_kept_with_its_bike_rule_and_what_did_not_fit(schedule) -> None:
     assert [s.id for s in schedule.systems] == ["wmata-rail", "wmata-bus", "marc", "mta-light-rail"]
-    assert [s.vehicle for s in schedule.systems] == ["all", "all", "all", "offpeak"]
+    assert [s.vehicle for s in schedule.systems] == ["all", "all", "all", "all"]
     report = built(date(2026, 9, 28))[1]
     assert any("PF_XX_1" in line for line in report)
     assert any(line.startswith("mta-metro: no feed given") for line in report)
@@ -131,12 +133,13 @@ def test_stations_and_whether_a_bike_may_board_there(schedule) -> None:
     eastern = stop_named(schedule, "Eastern Market")
     # The map's bike entrance: DC's elevator (rule 1), not the station point.
     assert eastern.bike and eastern.rail and eastern.bike_entrance != eastern.point
-    # MARC's Union Station: the platform says nothing (0), the station says step-free.
+    # Every MARC and MTA station takes a bike, whatever GTFS says of step-free access (the
+    # owner, 2026-10-12: ramps or elevators everywhere, and stairs in a pinch): Union Station's
+    # platform says nothing, College Park's access is unknown, University Center's is not
+    # step-free. A bus stop takes a bike at the curb.
     assert stop_named(schedule, "Union Station MARC").bike
-    # College Park's access is unknown, and University Center's platform not known step-free:
-    # closed to a bike. A bus stop takes a bike at the curb.
-    assert not stop_named(schedule, "College Park").bike
-    assert not stop_named(schedule, "University Center/Baltimore St").bike
+    assert stop_named(schedule, "College Park").bike
+    assert stop_named(schedule, "University Center/Baltimore St").bike
     lincoln = stop_named(schedule, "Lincoln Park")
     assert lincoln.bike and not lincoln.rail
     # Only the stops a pattern uses are kept.
@@ -318,6 +321,21 @@ def test_times_are_real_across_the_end_of_daylight_saving_on_2026_11_01() -> Non
     assert transit.moment_of(at(2027, 3, 14, 9, 0)).minute == 9 * 60
 
 
+def test_the_clock_says_the_wall_time_on_daylight_saving_nights() -> None:
+    # 2026-11-01: GTFS zero is 1:00 am EDT. Its 00:30 is the first 1:30 am, its 08:00 is 8 am.
+    fall = date(2026, 11, 1)
+    assert transit.clock(30, fall) == "1:30 am" and transit.clock(8 * 60, fall) == "8:00 am"
+    # Saturday's owl at 26:30 leaves at the second 1:30 am (EST), not "2:30 am".
+    assert transit.clock(26 * 60 + 30, date(2026, 10, 31)) == "1:30 am"
+    # 2027-03-14: GTFS zero is 11:00 pm EST the night before; its 08:00 is 8 am EDT.
+    spring = date(2027, 3, 14)
+    assert transit.clock(30, spring) == "11:30 pm" and transit.clock(8 * 60, spring) == "8:00 am"
+    # Saturday 2027-03-13's 26:30 is 3:30 am EDT (2:30 am does not exist that night).
+    assert transit.clock(26 * 60 + 30, date(2027, 3, 13)) == "3:30 am"
+    # Without a service day, the minute read as a plain day (as before).
+    assert transit.clock(26 * 60 + 30) == "2:30 am"
+
+
 def test_around_3_am_both_service_days_are_searched_owl_trips_past_27_00_included() -> None:
     schedule = schedule_from(date(2026, 9, 28))
     when = at(2026, 10, 1, 3, 20)  # Thursday 3:20 am
@@ -336,6 +354,7 @@ def test_around_3_am_both_service_days_are_searched_owl_trips_past_27_00_include
     assert owl.moment.service_day == date(2026, 9, 30)
     out = transit.block(transit.choose(plan, owl.key), schedule)
     assert out["departure"]["departs_at"] == "2026-10-01T03:32:00-04:00"
+    assert out["departure"]["departs"] == "3:32 am" and leg.service_day == date(2026, 9, 30)
 
 
 def test_stops_that_are_not_timepoints_are_interpolated_not_dropped() -> None:
@@ -520,16 +539,21 @@ def test_dc_to_baltimore_takes_marc_with_the_bike(schedule) -> None:
     assert [(leg.system, leg.lines) for leg in transit_legs(best)] == [("MARC", ("Penn Line",))]
     out = transit.block(plan, schedule)
     assert out["credits"] == ["MDOT MTA GTFS (scheduled times)"]
-    assert any(
-        n.startswith("Full-size bikes are allowed on every MARC train") for n in out["notes"]
-    )
+    assert any(n == "MARC: ride in the car marked for bikes." for n in out["notes"])
     assert transit.SCHEDULED_WORDS in out["notes"]
-    # Light RailLink is beside the destination but takes no bike in the weekday rush.
-    assert "Light RailLink: no bikes on board at this time." in out["notes"]
-    assert not any(leg.system == "Light RailLink" for o in plan.options for leg in o.legs)
+    # Each rule is said once, however many legs ride that system.
+    assert len(out["notes"]) == len(set(out["notes"]))
+    # Light RailLink takes a bike in the weekday rush too (the owner, 2026-10-12: "you can use
+    # it unless it's too crowded to do so").
+    assert "Light RailLink: no bikes on board at this time." not in out["notes"]
 
 
-def test_the_light_rail_takes_a_bike_outside_rush_hour(schedule) -> None:
+def test_the_light_rail_takes_a_bike_at_rush_hour_and_outside_it(schedule) -> None:
+    light_rail = next(
+        p for p in schedule.patterns if schedule.systems[p.system].name == "Light RailLink"
+    )
+    rush = transit._Day(schedule, transit.moment_of(at(2026, 9, 30, 7, 30)), True)
+    assert rush.moment.rush(7 * 60 + 30) and rush.boards(light_rail, 7 * 60 + 30, 1)
     plan = plan_bike(schedule, NOMA, BALTIMORE, at(2026, 10, 3, 10, 0))
     assert any(
         [leg.system for leg in transit_legs(o)] == ["MARC", "Light RailLink"] for o in plan.options
@@ -747,6 +771,32 @@ class TestApi:
         assert chosen["steps"][0]["seconds"] == round(again.json()["duration_s"])
         # Midday (the pinned clock): Orange every 12 minutes, so a 6-minute wait.
         assert chosen["steps"][2]["wait_s"] == 360 and chosen["band"] == "midday"
+
+    def test_a_router_too_slow_for_the_answers_line_draws_it_straight_and_says_so(
+        self, client, segments, router, installed, monkeypatch, caplog
+    ) -> None:
+        from core import routing
+
+        router(standard_router())
+
+        def late(*_args, **_kwargs):
+            raise routing.DeadlineExceeded("the router did not answer in time")
+
+        monkeypatch.setattr(routing, "plan", late)
+        with caplog.at_level(logging.INFO, logger="core.api"):
+            response = post_transit(client, [CAPITOL_HILL, DOWNTOWN])
+        assert response.status_code == 200, response.content
+        body = response.json()
+        trip = body["transit"]
+        # Not refused: the line is the leg drawn straight, its time the plan's own estimate.
+        assert len(body["geometry"]["coordinates"]) == 2 and body["intersections"] is None
+        assert api.UNROUTED_NOTE in trip["notes"]
+        assert trip["steps"][0]["seconds"] == round(body["duration_s"])
+        metro = next(o for o in trip["options"] if not o["direct"])
+        again = post_transit(client, [CAPITOL_HILL, DOWNTOWN], transit_option=metro["key"])
+        assert again.status_code == 200 and api.UNROUTED_NOTE in again.json()["transit"]["notes"]
+        # Each phase's time is logged.
+        assert any("search" in r.getMessage() and "line" in r.getMessage() for r in caplog.records)
 
     def test_depart_at_plans_another_day(self, client, segments, router, installed) -> None:
         router(standard_router())

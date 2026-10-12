@@ -78,7 +78,7 @@ const PLAN: TransitPlan = {
       ],
     },
   ],
-  notes: ["Bikes are allowed on Metro at all hours: use the elevators, board by a car's end doors, at most four bikes a car."],
+  notes: ["Metro: use the elevators and a car's end doors."],
   day_type: "weekday",
   band: "morning rush",
   holiday: false,

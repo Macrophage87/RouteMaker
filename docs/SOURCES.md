@@ -563,6 +563,11 @@ docs/OPERATIONS.md, "Transit schedule". Systems, rules and sources are listed in
     on Metro today (July 4)." Bikeshare + Transit, on foot, still rides Metro.
   - Bike rules, Metrobus: <https://www.wmata.com/ride/guides/bikes/bikes-on-bus.html>. Each bus has
     a front rack for two bikes.
+  - What a plan says, once per system it takes a bike on (systems.json `bike.rule`, one short
+    line; the owner, 2026-10-12: "We need to streamline over bloat."): Metro "Use the elevators and
+    a car's end doors."; Metrobus "Use the front bike rack."; MARC "Ride in the car marked for
+    bikes."; Light RailLink and Metro SubwayLink "Use the elevators; ride in the priority seating
+    area."
 - **MDOT MTA: MARC, Light RailLink and Metro SubwayLink.** Feeds:
   `https://feeds.mta.maryland.gov/gtfs/marc`, `.../light-rail` and `.../metro`. No key is needed.
   - Terms: the developer page (<https://www.mta.maryland.gov/developer-resources>) states no
@@ -573,11 +578,16 @@ docs/OPERATIONS.md, "Transit schedule". Systems, rules and sources are listed in
     light, one bike each, and bring two bungee cords. If the racks are full, wait for the next
     train.
   - Bike rules, Light RailLink and Metro SubwayLink: <https://www.mta.maryland.gov/bike>. Bikes are
-    allowed except on crowded rush-hour trains and during special events, at most two a vehicle, in
-    the priority seating area. Use the elevators, never the escalators.
-    - The rule is applied as "no bikes on weekday rush-hour trips" (06:00–09:30 and 15:00–19:00).
-    - A station takes a bike only when its GTFS `wheelchair_boarding` is 1 (step-free), on the
-      platform or its parent station. Unknown counts as closed.
+    allowed at most two a vehicle, in the priority seating area. Use the elevators, never the
+    escalators. On a train crowded at rush hour, riders wait for the next one: that is advice, not a
+    ban.
+    - Applied as every trip takes a bike. The owner, 2026-10-12: "In general the rule is that you
+      can use it unless it's too crowded to do so. No API knows how many people can fit." There is
+      no crowding model and no crowding note ("It's common courtesy.").
+    - Every MARC, Light RailLink and Metro SubwayLink station takes a bike. The owner, 2026-10-12:
+      "I believe all stations have ways to board with either ramps or elevators. Most people can
+      carry bikes up and down stairs in a pinch." GTFS `wheelchair_boarding` is not read. Each
+      system's own rule above (which trains or cars, how many bikes) still applies.
 
 ### Checked, for the next PR (not used yet)
 
