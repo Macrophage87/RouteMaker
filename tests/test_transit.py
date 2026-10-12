@@ -93,6 +93,13 @@ class Straight:
         self.calls += 1
         return transit.Ride(transit._distance(a, b) / (18 / 3.6), (tuple(a), tuple(b)))
 
+    def walk(self, a, b):
+        """On foot: the straight line at 3 mph (the planner's pace), its length given."""
+        self.calls += 1
+        metres = transit._distance(a, b)
+        speed = transit.WALK_SPEED_KMH / 3.6
+        return transit.Ride(metres / speed, (tuple(a), tuple(b)), metres)
+
 
 # Near Eastern Market (east, a short ride), and near Federal Triangle (west).
 CAPITOL_HILL = [-76.9930, 38.8830]
@@ -735,6 +742,65 @@ def test_bikeshare_with_nothing_in_reach_is_said_plainly(schedule) -> None:
         )
 
 
+# A few blocks from Capitol Hill, under 1 mi (1.6 km) in a straight line.
+NEAR_CAPITOL_HILL = [-76.9990, 38.8850]
+
+
+def test_a_short_trip_offers_walking_the_whole_way_among_the_options(schedule) -> None:
+    # The owner, 2026-10-12 20:32: walking where it is reasonable; riding directly there stays.
+    plan = transit.plan_bikeshare(
+        schedule, CAPITOL_HILL, NEAR_CAPITOL_HILL, at(2026, 9, 30, 12, 0), Straight(), SHARE
+    )
+    walk = next(o for o in plan.options if o.walk)
+    assert walk.key == transit.WALK_ONLY and [leg.mode for leg in walk.legs] == ["walk"]
+    assert plan.direct is not None and not walk.direct
+    # Quickest first, among the others; walked by the router (not estimated).
+    totals = [transit.minutes(o.total_s) for o in plan.options]
+    assert totals == sorted(totals) and not walk.legs[0].estimated
+    assert transit.label(walk, presets.BIKESHARE_TRANSIT) == "Walk the whole way"
+    out = transit.block(transit.choose(plan, transit.WALK_ONLY), schedule)
+    assert out["summary"].endswith("door to door, walking.") and out["key"] == transit.WALK_ONLY
+    assert not out["scheduled"] and out["comparison"] is None and out["departure"] is None
+    assert transit.SCHEDULED_WORDS not in out["notes"]
+    row = next(o for o in out["options"] if o["walk"])
+    assert row["legs"] == [{"mode": "walk", "system": None, "lines": [], "minutes": row["minutes"]}]
+
+
+def test_walking_the_whole_way_is_offered_when_quickest_or_short_and_not_otherwise(
+    schedule,
+) -> None:
+    far = transit.plan_bikeshare(
+        schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), Straight(), SHARE
+    )
+    assert not any(o.walk for o in far.options)  # 2 mi (3 km): bikeshare and Metro are quicker
+    quick = transit.Option("x", (transit.Leg(transit.RIDE, 600.0),))
+    slow = transit.Option("y", (transit.Leg(transit.RIDE, 6000.0),))
+    assert transit.walk_offered(CAPITOL_HILL, NEAR_CAPITOL_HILL, 9999.0, [quick])  # short
+    assert transit.walk_offered(CAPITOL_HILL, DOWNTOWN, 3000.0, [slow])  # quickest
+    assert not transit.walk_offered(CAPITOL_HILL, DOWNTOWN, 3000.0, [quick])
+    # Nothing else to beat: a long walk alone is not offered (the plan says why instead).
+    assert not transit.walk_offered(CAPITOL_HILL, DOWNTOWN, 3000.0, [])
+
+
+def test_each_option_lists_its_legs_compactly_for_its_row(schedule) -> None:
+    plan = transit.plan_bikeshare(
+        schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), Straight(), SHARE
+    )
+    metro = next(o for o in plan.options if o.scheduled)
+    legs = transit.option_legs(metro)
+    # Walk (and into the station), Metro with its wait, out and walk: three legs, in order.
+    assert [leg["mode"] for leg in legs] == ["walk", "metro", "walk"]
+    assert legs[1]["system"] == "Metro" and legs[1]["lines"] == ["Orange Line"]
+    assert abs(sum(leg["minutes"] for leg in legs) - transit.minutes(metro.total_s)) <= 2
+    # Bikeshare directly there: the walk to the dock, the ride, the walk on.
+    direct = transit.option_legs(plan.direct)
+    assert [leg["mode"] for leg in direct] == ["walk", "bikeshare", "walk"]
+    # Own bike: rides, the station's way in and out counted with them.
+    own = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 12, 0))
+    ridden = next(o for o in own.options if o.scheduled)
+    assert [leg["mode"] for leg in transit.option_legs(ridden)] == ["ride", "metro", "ride"]
+
+
 # --- Metro's typical timetable (no WMATA rail GTFS) ---------------------------------------------
 
 TYPICAL = transit._typical_doc()
@@ -789,6 +855,34 @@ def test_the_typical_wait_is_half_the_interval_or_the_time_to_the_first_or_last_
     assert transit.typical_wait_min(480, [483, 489, 495, 501]) == (3, 6)
     assert transit.typical_wait_min(270, [300, 306, 312]) == (30, 6)  # before opening
     assert transit.typical_wait_min(1430, [1435]) == (5, None)  # the last train
+    assert transit.typical_first(270, [300, 306, 312]) == 300
+    assert transit.typical_first(480, [483, 489, 495, 501]) is None
+    assert transit.typical_first(1430, [1435]) is None
+
+
+def test_before_metro_opens_the_step_names_the_first_train() -> None:
+    # #111's review: at 4:50 am not "every 6 min, scheduled; about 30 min wait".
+    typical = without_metro_gtfs()
+    plan = plan_bike(typical, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 4, 50))
+    metro = next(o for o in plan.options if o.scheduled)
+    leg = transit_legs(metro)[0]
+    words = leg.words()
+    assert "(first train 5:" in words and " am scheduled; about " in words
+    assert "every" not in words and leg.depart is None
+    # Once Metro runs, the interval again.
+    later = plan_bike(typical, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 12, 0))
+    assert "every " in transit_legs(next(o for o in later.options if o.scheduled))[0].words()
+
+
+def test_a_holiday_on_typical_metro_says_its_sunday_timetable() -> None:
+    # #111's review: typical Metro has no holiday timetable; a holiday runs its Sunday one.
+    typical = without_metro_gtfs(date(2026, 11, 20))
+    plan = plan_bike(typical, CAPITOL_HILL, DOWNTOWN, at(2026, 11, 26, 12, 0))
+    metro = next(o for o in plan.options if o.scheduled)
+    assert {leg.system for leg in transit_legs(metro)} == {"Metro"}
+    notes = transit.block(transit.choose(plan, metro.key), typical)["notes"]
+    assert "Today is a federal holiday: Metro is planned on its Sunday timetable." in notes
+    assert transit.HOLIDAY_WORDS not in notes
 
 
 def test_with_no_wmata_gtfs_metro_runs_its_typical_timetable_and_the_gtfs_replaces_it(
@@ -845,6 +939,28 @@ def test_with_no_schedule_installed_metro_alone_runs_on_its_typical_timetable(tm
     feeds = {k: v for k, v in FEEDS.items() if not k.startswith("wmata-")}
     path.write_text(json.dumps(build.build(feeds, date(2026, 9, 28))[0]))
     assert [s.id for s in transit.load(path).systems] == ["marc", "mta-light-rail", "wmata-rail"]
+    assert [s.id for s in transit.load(path, date(2026, 10, 12)).systems] == [
+        "marc",
+        "mta-light-rail",
+        "wmata-rail",
+    ]
+
+
+def test_an_expired_schedule_keeps_metro_on_its_typical_timetable(tmp_path) -> None:
+    # #111's review: the typical timetable needs no refresh, so Metro stays when the file runs out.
+    path = tmp_path / "transit-schedule.json"
+    path.write_text(built(date(2026, 9, 28))[0])
+    after_end = date(2026, 11, 20)  # the file ends 2026-11-11
+    schedule = transit.load(path, after_end)
+    assert [s.id for s in schedule.systems] == ["wmata-rail"] and schedule.covers(after_end)
+    plan = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 11, 20, 12, 0))
+    assert any(leg.system == "Metro" for o in plan.options for leg in transit_legs(o))
+    assert "the other timetables installed end November 11, 2026." in plan.notes[-1]
+    # The operator is still told to rebuild it.
+    assert "ran out on 2026-11-11" in transit.schedule_alert(path, after_end)
+    # Within its window, the file itself.
+    assert transit.load(path, date(2026, 10, 1)).systems[0].id == "wmata-rail"
+    assert len(transit.load(path, date(2026, 10, 1)).systems) > 1
 
 
 # --- POST /api/route and GET /api/transit/closures ----------------------------------------------
@@ -950,6 +1066,34 @@ class TestApi:
         assert chosen["departure"] is None and "typical service" in chosen["credits"][0]
         closures = client.get("/api/transit/closures", {"at": "2026-10-04T12:00:00"})
         assert closures.status_code == 200 and closures.json()["stations"] == []
+
+    def test_walking_the_whole_way_is_the_walk_itself_on_the_map(
+        self, client, segments, router, installed, monkeypatch
+    ) -> None:
+        fake = router(standard_router())
+        monkeypatch.setattr(gbfs.client, "snapshot", lambda: SHARE)
+        response = post_transit(
+            client, [CAPITOL_HILL, NEAR_CAPITOL_HILL], presets.BIKESHARE_TRANSIT
+        )
+        assert response.status_code == 200, response.content
+        options = response.json()["transit"]["options"]
+        walk = next(o for o in options if o["walk"])
+        assert all("legs" in o for o in options) and walk["legs"][0]["mode"] == "walk"
+        calls = len(fake.calls)
+        again = post_transit(
+            client,
+            [CAPITOL_HILL, NEAR_CAPITOL_HILL],
+            presets.BIKESHARE_TRANSIT,
+            transit_option=walk["key"],
+        )
+        assert again.status_code == 200, again.content
+        body = again.json()
+        assert body["transit"]["key"] == transit.WALK_ONLY
+        assert body["transit"]["summary"].endswith("walking.")
+        # The line is the walk (the pedestrian router's), timed at walking pace; no bike route.
+        assert body["geometry"]["coordinates"] == [CAPITOL_HILL, NEAR_CAPITOL_HILL]
+        assert body["duration_s"] == pytest.approx(body["transit"]["total_s"], abs=1)
+        assert len(fake.calls) == calls
 
     def test_a_transit_trip_is_two_points_no_loop_and_options_only_on_transit(
         self, client, router, installed

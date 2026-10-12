@@ -1,4 +1,4 @@
-"""The two transit ride types: Own Bike + Transit and Bikeshare + Transit.
+"""The two transit ride types: Own Bike + 🚆🚌 and Bikeshare + 🚶🚆🚌.
 
 TRANSIT-ASSIST. Stephen, 2026-10-11: "relative options for a transit assisted commute.
 Basically we'd have a selection that would also bring up how long it would roughly take by
@@ -10,13 +10,22 @@ map following the one chosen. The region runs from DC to Baltimore, so the trips
 system in transitdata/systems.json (WMATA Metro and Metrobus, MARC, Light RailLink, Metro
 SubwayLink), chained: at most `MAX_LEGS` transit legs with a transfer between them.
 
-- **Own Bike + Transit** (`presets.BIKE_TRANSIT`): the bike goes the whole way, on board or on a
+The owner renamed them on 2026-10-12 (20:35): "Own Bike + Transit" is "Own Bike + 🚆🚌" (said
+"Own bike plus train or bus") and "Bikeshare + Transit" is "Bikeshare + 🚶🚆🚌" (said "Bikeshare
+plus walk, train or bus"); the ids and links are unchanged.
+
+- **Own Bike + 🚆🚌** (`presets.BIKE_TRANSIT`): the bike goes the whole way, on board or on a
   bus's front rack, where each system's rules allow it; never left at a station, and no leg on
   foot (a transfer between two systems' stops is ridden).
-- **Bikeshare + Transit** (`presets.BIKESHARE_TRANSIT`): each end on foot or by Capital
+- **Bikeshare + 🚶🚆🚌** (`presets.BIKESHARE_TRANSIT`): each end on foot or by Capital
   Bikeshare, whichever is quicker (a bikeshare bike is docked before boarding, and the walk from
   that dock to the entrance counts; at the far end, a new bike from a dock near the exit to a
-  dock near the destination). Walk, Metro, walk is a fair answer. The docks are named.
+  dock near the destination). Walk, Metro, walk is a fair answer. The docks are named. Walking
+  the whole way is offered too, among the options, where it is the quickest or the trip is under
+  `WALK_ONLY_M` (the owner, 2026-10-12 20:32), walked by Valhalla's pedestrian costing.
+
+Each option lists its legs compactly (`option_legs`), which the page shows as marks
+("🚶 4 min · 🚲 12 min · 🔴 18 min") and says in words (frontend/src/lib/transitMarks.ts).
 
 The answer is a route like any other ride type's (`routing.plan`): its line is the chosen
 option's **first ride leg** (the whole ride, riding directly there), with the stress colours
@@ -58,7 +67,7 @@ none within the hour the trip is left out. A departure more than `MAX_WAIT_MIN` 
 Choosing stops
 --------------
 Straight lines first, the router only where it pays: the nearest `STATION_CANDIDATES` stations
-at each end are routed for Own Bike + Transit (at most `MAX_ROUTER_CALLS` calls, the direct ride
+at each end are routed for Own Bike + 🚆🚌 (at most `MAX_ROUTER_CALLS` calls, the direct ride
 first, each capped at `CANDIDATE_CALL_S` and all inside the search's budget; a leg the router does
 not answer in time is estimated, never fatal); the nearest stations of every other rail system
 and the nearest bus stops are estimated from the straight line times `DETOUR`. The chosen
@@ -77,7 +86,7 @@ Every station of the other rail systems takes a bike (the owner, 2026-10-12: eve
 ramp or an elevator, and stairs will do in a pinch).
 On the dates in `BLACKOUTS_PATH` (July 4 every year, and dates the owner adds by hand) bikes
 are not allowed on Metro (the owner: allowed "at all times except" those days): Own Bike +
-Transit uses no Metro that day and says so plainly; Bikeshare + Transit still rides Metro on
+🚆🚌 uses no Metro that day and says so plainly; Bikeshare + 🚶🚆🚌 still rides Metro on
 foot.
 
 Every sentence is US units first with metric in brackets (OWNER-DECISIONS 85), worded so the
@@ -139,12 +148,17 @@ BUS_STOPS_NEAR = 8  # the nearest bus stops tried, each end
 PER_SYSTEM = 2  # the nearest stations of each rail system tried, each end
 
 STATION_CANDIDATES = 3
-# Router calls for Own Bike + Transit: three stations each end and the direct ride.
+# Router calls for Own Bike + 🚆🚌: three stations each end and the direct ride.
 MAX_ROUTER_CALLS = 2 * STATION_CANDIDATES + 1
 # The options each answer lists (the owner, 2026-10-12 15:00): riding directly there always,
 # and the quickest transit trips, one of each kind, up to this many.
 TRANSIT_OPTIONS = 3
 DIRECT = "direct"
+# Bikeshare + 🚶🚆🚌 also offers walking the whole way (the owner, 2026-10-12 20:32: "bikeshare
+# plus transit could also include walking if that's a reasonable option"): where walking is the
+# quickest option, or the trip is under this, in a straight line (1 mi).
+WALK_ONLY = "walk"
+WALK_ONLY_M = 1609.0
 # At most this many transit legs, with a transfer between (the owner, 2026-10-12).
 MAX_LEGS = 2
 
@@ -170,6 +184,9 @@ def blackout_words(day: date) -> str:
 HOLIDAY_WORDS = (
     "Today is a federal holiday: each system's holiday timetable is used, as it publishes it."
 )
+# Metro on its typical timetable has no holiday timetable: a holiday runs the typical file's
+# `holiday` day type (Sunday), and the note says that instead (`holiday_words`).
+TYPICAL_HOLIDAY_WORDS = "Today is a federal holiday: Metro is planned on its {day} timetable."
 SCHEDULED_WORDS = "Scheduled service: check for track work and service alerts before you go."
 # Every transit time a rider sees says where it is from, in one word (the owner, 2026-10-12:
 # "Make it clear whether it's a schedule or live."): "8:12 am scheduled", "every 8 min,
@@ -282,6 +299,7 @@ class Hop:
     after: float | None = None
     later: tuple[float, ...] = ()  # every later departure seen, for a rider who misses one
     every: float | None = None  # a frequent service: minutes between departures
+    first: float | None = None  # typical Metro before its first train: that train (minutes)
 
     @property
     def total_s(self) -> float:
@@ -307,6 +325,9 @@ class Schedule:
     start: date
     days: int
     source: dict = field(default_factory=dict)
+    # Said with every plan from it: Metro's typical timetable standing in for an installed file
+    # that does not reach the date (`load`).
+    note: str = ""
 
     def __post_init__(self) -> None:
         self.at_stop: dict[int, list[tuple[int, int]]] = {}
@@ -421,12 +442,40 @@ _loaded: tuple[Path, float, Schedule] | None = None
 def load(path: Path, day: date | None = None) -> Schedule:
     """The schedule at `path`, read again when the file changes, with Metro on its typical
     timetable where the file has no WMATA rail GTFS (`with_typical_metro`). With no file
-    installed, Metro's typical timetable alone, from the day before `day` (default today)."""
+    installed, or one whose window does not reach `day` (default today: it has run out, say),
+    Metro's typical timetable alone, from the day before `day`: it needs no refresh, so Metro
+    stays while the other systems wait for the file to be rebuilt (`schedule_alert` says so)."""
+    day = day or datetime.now(ZONE).date()
+    try:
+        path.stat()
+    except OSError:
+        return typical_only(day)
+    schedule = _read(path)
+    if not schedule.covers(day):
+        return _typical_beyond(day, schedule.last_day)
+    return schedule
+
+
+@lru_cache(maxsize=8)
+def _typical_beyond(day: date, last_day: date) -> Schedule:
+    """Metro's typical timetable alone for a day the installed file does not reach, saying so."""
+    return replace(
+        typical_only(day),
+        note=(
+            "Only Metro is planned: the other timetables installed end"
+            f" {last_day:%B} {last_day.day}, {last_day.year}."
+        ),
+    )
+
+
+def _read(path: Path) -> Schedule:
+    """The installed file itself (with typical Metro where it has no WMATA rail GTFS), read
+    again when it changes; `Unavailable` when it cannot be read."""
     global _loaded
     try:
         mtime = path.stat().st_mtime
-    except OSError:
-        return typical_only(day or datetime.now(ZONE).date())
+    except OSError as error:
+        raise Unavailable(f"the transit schedule could not be read: {error}") from error
     if _loaded is not None and _loaded[0] == path and _loaded[1] == mtime:
         _warn_if_stale(_loaded[2])
         return _loaded[2]
@@ -635,7 +684,7 @@ def schedule_alert(path: Path, today: date | None = None) -> str | None:
     if not path.exists():
         return None
     try:
-        schedule = load(path)
+        schedule = _read(path)
     except Unavailable as error:
         return f"transit: {error} ({path})"
     left = days_left(schedule, today)
@@ -644,7 +693,8 @@ def schedule_alert(path: Path, today: date | None = None) -> str | None:
     if left <= 0:
         return (
             f"transit: the schedule ran out on {schedule.last_day.isoformat()}; transit plans"
-            " offer riding only until it is rebuilt (docs/OPERATIONS.md, 'Transit schedule')"
+            " use Metro's typical timetable only until it is rebuilt (docs/OPERATIONS.md,"
+            " 'Transit schedule')"
         )
     return (
         f"transit: the schedule runs out on {schedule.last_day.isoformat()}, {left} day(s) left;"
@@ -796,6 +846,7 @@ class Leg:
     board_at: str | None = None  # a transit leg's first stop, by name
     service_day: date | None = None  # a transit leg's service day, for its clock times
     every: float | None = None  # a frequent service: minutes between departures
+    first: float | None = None  # typical Metro before its first train: that train
 
     @property
     def total_s(self) -> float:
@@ -841,6 +892,10 @@ class Leg:
             board = f"{'Change to' if self.change else 'Board'} {self.vehicle}"
         if self.depart is None:
             wait = f"about {minutes(self.wait_s)} min wait"
+            if self.first is not None:
+                # Before opening (#111's review): the first train, not the interval after it.
+                first = f"first train {clock(self.first, self.service_day)} {SCHEDULED}"
+                return f"{board} ({first}; {wait}); ride {m} min{at}."
             if self.every is None:
                 return f"{board} ({wait}, {SCHEDULED}); ride {m} min{at}."
             every = f"every {max(1, round(self.every))} min, {SCHEDULED}"
@@ -952,15 +1007,20 @@ DEPARTURES_SEEN = 4
 FREQUENT_SEEN = 3
 
 
-def headway(times) -> float:
-    """The mean gap between the next departures when every gap is at most `FREQUENT_MIN` over
-    at least `FREQUENT_SEEN` of them (two patterns leaving the same minute count once); else
-    infinity: the service is not frequent, and the actual next departure is waited for."""
+def _distinct(times) -> list[float]:
+    """The departures in order, two within half a minute counted once."""
     distinct: list[float] = []
     for t in sorted(times):
         if not distinct or t - distinct[-1] >= 0.5:
             distinct.append(t)
-    seen = distinct[:DEPARTURES_SEEN]
+    return distinct
+
+
+def headway(times) -> float:
+    """The mean gap between the next departures when every gap is at most `FREQUENT_MIN` over
+    at least `FREQUENT_SEEN` of them (two patterns leaving the same minute count once); else
+    infinity: the service is not frequent, and the actual next departure is waited for."""
+    seen = _distinct(times)[:DEPARTURES_SEEN]
     if len(seen) < FREQUENT_SEEN:
         return math.inf
     gaps = [b - a for a, b in zip(seen, seen[1:], strict=False)]
@@ -973,15 +1033,21 @@ def typical_wait_min(minute: float, times) -> tuple[float, float | None]:
     """The wait on Metro's typical timetable, and the minutes between its trains: half the
     interval (the mean gap of the next few), or, before the first train or for the last, the
     time until it (the interval None for the last)."""
-    distinct: list[float] = []
-    for t in sorted(times):
-        if not distinct or t - distinct[-1] >= 0.5:
-            distinct.append(t)
-    seen = distinct[:DEPARTURES_SEEN]
+    seen = _distinct(times)[:DEPARTURES_SEEN]
     every = (seen[-1] - seen[0]) / (len(seen) - 1) if len(seen) > 1 else math.inf
     until = seen[0] - minute
     wait = until if len(seen) == 1 or until > every else every / 2.0
     return wait, None if math.isinf(every) else every
+
+
+def typical_first(minute: float, times) -> float | None:
+    """Before the first train (the wait to it longer than the interval after it): that train's
+    minute, which the step names in place of the interval; else None."""
+    seen = _distinct(times)[:DEPARTURES_SEEN]
+    if len(seen) < 2:
+        return None
+    every = (seen[-1] - seen[0]) / (len(seen) - 1)
+    return seen[0] if seen[0] - minute > every else None
 
 
 def _hop(minute: float, entries, typical: bool = False) -> Hop:
@@ -996,7 +1062,18 @@ def _hop(minute: float, entries, typical: bool = False) -> Hop:
         routes = tuple(sorted({e[2].route for e in entries}))
         ride = min(e[1] for e in entries)
         wait, gap = typical_wait_min(minute, times) if typical else (every / 2.0, every)
-        return Hop(wait * 60.0, ride, routes, path, pattern.system, pattern.index, True, every=gap)
+        first = typical_first(minute, times) if typical else None
+        return Hop(
+            wait * 60.0,
+            ride,
+            routes,
+            path,
+            pattern.system,
+            pattern.index,
+            True,
+            every=gap,
+            first=first,
+        )
     later_times = []
     for t in times:
         if t >= (later_times[-1] if later_times else deps[0]) + 0.5:
@@ -1037,6 +1114,7 @@ def _transit_leg(
         board_at=schedule.place(schedule.stops[hop.path[0]]),
         service_day=service_day,
         every=hop.every,
+        first=hop.first,
     )
 
 
@@ -1047,11 +1125,15 @@ def _transit_leg(
 class Ride:
     seconds: float
     coordinates: tuple[tuple[float, float], ...]
+    metres: float | None = None  # the routed length, where the router gave it
 
 
 class Services(Protocol):
     def ride(self, a: LonLat, b: LonLat) -> Ride | None:
         """A bike route between two points (time and line), or None where there is none."""
+
+    def walk(self, a: LonLat, b: LonLat) -> Ride | None:
+        """A walk between two points (time and line), or None where there is none."""
 
 
 # One router call for a candidate leg may take at most this long; the search as a whole stops
@@ -1083,6 +1165,15 @@ class RoutingServices:
         self.spent_s = 0.0  # time in router calls, for the API's log of its phases
 
     def ride(self, a: LonLat, b: LonLat) -> Ride | None:
+        return self._route(a, b, "bicycle", presets.costing(self._preset))
+
+    def walk(self, a: LonLat, b: LonLat) -> Ride | None:
+        """On foot, as the bikeshare planner walks (Valhalla's pedestrian costing at 3 mph)."""
+        return self._route(
+            a, b, "pedestrian", {"pedestrian": {"walking_speed": bikeshare.WALK_SPEED_KMH}}
+        )
+
+    def _route(self, a: LonLat, b: LonLat, costing: str, options: dict) -> Ride | None:
         from . import routing
 
         if _distance(a, b) < 5.0:
@@ -1098,8 +1189,8 @@ class RoutingServices:
         deadline = routing.Deadline(now + cap, cap)
         payload = {
             "locations": [{"lon": p[0], "lat": p[1], "type": "break"} for p in (a, b)],
-            "costing": "bicycle",
-            "costing_options": presets.costing(self._preset),
+            "costing": costing,
+            "costing_options": options,
             "directions_type": "none",
             "units": "kilometers",
         }
@@ -1113,7 +1204,13 @@ class RoutingServices:
         if not legs:
             return None
         shape = tuple(tuple(p) for p in routing.decode_polyline6(legs[0].get("shape", "")))
-        return Ride(float((legs[0].get("summary") or {}).get("time", 0.0)), shape)
+        summary = legs[0].get("summary") or {}
+        length = summary.get("length")
+        return Ride(
+            float(summary.get("time", 0.0)),
+            shape,
+            None if length is None else float(length) * 1000.0,
+        )
 
 
 # --- Ends: how a trip reaches a stop, or leaves one -----------------------------------------
@@ -1278,11 +1375,13 @@ def _share_from(schedule: Schedule, stop: Stop, end, snapshot: gbfs.Snapshot) ->
 @dataclass(frozen=True)
 class Option:
     """One way to make the trip. `key` names it to the API (`transit_option`); `direct` is
-    riding the whole way (the plain bike route, or bikeshare dock to dock)."""
+    riding the whole way (the plain bike route, or bikeshare dock to dock); `walk` is walking
+    the whole way."""
 
     key: str
     legs: tuple[Leg, ...]
     direct: bool = False
+    walk: bool = False  # walking the whole way (Bikeshare + 🚶🚆🚌)
     # Found on the other service day (around 1 to 5 am): that day's moment; else the plan's.
     moment: Moment | None = None
 
@@ -1307,6 +1406,11 @@ class Option:
     def signature(self) -> tuple:
         """What sets an option apart for the rider: its kind and its routes, in order."""
         return (self.direct, tuple((leg.system, leg.lines) for leg in self.legs if leg.transit))
+
+    @property
+    def scheduled(self) -> bool:
+        """Any leg on transit: its times are scheduled."""
+        return any(leg.transit for leg in self.legs)
 
 
 # A leg shorter than this end to end is not routed as the answer's line (the router answers
@@ -1389,17 +1493,19 @@ def _search(day: _Day, starts: list[_End], ends: dict[int, _End], speed: float) 
     return found
 
 
-def _ranked(direct: Option | None, transit: list[Option]) -> list[Option]:
-    """The direct ride always, then the quickest of each kind of transit trip (one per
-    signature), up to `TRANSIT_OPTIONS`; all of them by total time, quickest first."""
+def _ranked(
+    direct: Option | None, transit: list[Option], walk: Option | None = None
+) -> list[Option]:
+    """The direct ride always (and walking the whole way, where it is offered), then the
+    quickest of each kind of transit trip (one per signature), up to `TRANSIT_OPTIONS`; all of
+    them by total time, quickest first."""
     best: dict[tuple, Option] = {}
     for option in transit:
         held = best.get(option.signature)
         if held is None or (option.total_s, option.key) < (held.total_s, held.key):
             best[option.signature] = option
     kept = sorted(best.values(), key=lambda o: (o.total_s, o.key))[:TRANSIT_OPTIONS]
-    if direct is not None:
-        kept.append(direct)
+    kept += [o for o in (direct, walk) if o is not None]
     # A tie to the minute (the same train) goes to the simpler trip: fewer transit legs.
     return sorted(
         kept,
@@ -1560,7 +1666,7 @@ def _search_days(day: _Day, moments: list[Moment], starts, ends, speed: float) -
 
 
 def plan_bike(schedule, start, end, when: datetime, services: Services, speed_kmh: float) -> Plan:
-    """Own Bike + Transit: the bike goes the whole way. Riding directly there, and up to two
+    """Own Bike + 🚆🚌: the bike goes the whole way. Riding directly there, and up to two
     transit legs (Metro, a train, a bus's rack) with rides between. Never a leg on foot."""
     moments = moments_of(when)
     moment = moments[0]
@@ -1603,6 +1709,8 @@ def plan_bike(schedule, start, end, when: datetime, services: Services, speed_km
                 f" {where}: riding the whole way is the plan."
             )
         notes += _idle(day, near_start + more_start + near_end + more_end)
+    if schedule.note:
+        notes.append(schedule.note)
     return Plan(presets.BIKE_TRANSIT, _ranked(direct, found), moment, notes, _credits(schedule))
 
 
@@ -1620,10 +1728,27 @@ def _share_direct(start, end, services: Services, snapshot) -> Option | None:
     return Option(DIRECT, tuple(legs), direct=True)
 
 
+def _walk_whole(start, end, services: Services) -> Option:
+    """Walking the whole way: Valhalla's pedestrian costing, else the straight line's estimate."""
+    walked = services.walk(start, end)
+    if walked is None:
+        walked = Ride(walk_s(start, end), (tuple(start), tuple(end)))
+    leg = Leg(WALK, walked.seconds, walked.coordinates, estimated=walked.metres is None)
+    return Option(WALK_ONLY, (leg,), walk=True)
+
+
+def walk_offered(start, end, walk_total_s: float, others: list[Option]) -> bool:
+    """Walking the whole way is offered where the trip is under `WALK_ONLY_M` (a straight line),
+    or where it is quicker than every other option there is."""
+    if _distance(start, end) <= WALK_ONLY_M:
+        return True
+    return bool(others) and walk_total_s < min(o.total_s for o in others)
+
+
 def plan_bikeshare(schedule, start, end, when: datetime, services: Services, snapshot) -> Plan:
-    """Bikeshare + Transit: bikeshare the whole way, or each end on foot or by bikeshare,
+    """Bikeshare + 🚶🚆🚌: bikeshare the whole way, or each end on foot or by bikeshare,
     whichever is quicker (a bikeshare bike is docked before boarding), with up to two transit
-    legs between."""
+    legs between; and walking the whole way where that is reasonable (`walk_offered`)."""
     moments = moments_of(when)
     moment = moments[0]
     day = _Day(schedule, moment, bike=False)
@@ -1652,13 +1777,21 @@ def plan_bikeshare(schedule, start, end, when: datetime, services: Services, sna
         if not found:
             notes.append(NO_TRANSIT_WORDS)
         notes += _idle(day, near_start + more_start + near_end + more_end)
-    if direct is None and not found:
+    if schedule.note:
+        notes.append(schedule.note)
+    # Walking the whole way: decided on the straight line's estimate (no router call where it
+    # is plainly out), then walked by the router for its time and line.
+    others = [o for o in (direct, *found) if o is not None]
+    walk = None
+    if walk_offered(start, end, walk_s(start, end), others):
+        walk = _walk_whole(start, end, services)
+    if direct is None and not found and walk is None:
         raise NoTransit(
             "No dock with a classic bike near the start has a free dock near the destination,"
             " and no transit is in reach on foot or by bikeshare at both ends."
         )
     return Plan(
-        presets.BIKESHARE_TRANSIT, _ranked(direct, found), moment, notes, _credits(schedule)
+        presets.BIKESHARE_TRANSIT, _ranked(direct, found, walk), moment, notes, _credits(schedule)
     )
 
 
@@ -1768,6 +1901,8 @@ def label(option: Option, mode: str) -> str:
     """The option in a few words: how it starts, its transit legs, how it ends."""
     if option.direct:
         return "Ride the whole way" if mode == presets.BIKE_TRANSIT else "Bikeshare the whole way"
+    if option.walk:
+        return "Walk the whole way"
     ends = {RIDE: "ride", TAKE: "bikeshare", SHARE: "bikeshare", WALK: "walk"}
     parts = [ends.get(option.legs[0].mode, "walk")]
     for leg in option.legs:
@@ -1783,6 +1918,60 @@ def label(option: Option, mode: str) -> str:
     parts.append(ends.get(option.legs[-1].mode, "walk"))
     words = ", ".join(parts)
     return words[0].upper() + words[1:]
+
+
+# The compact legs' kinds (`option_legs`): a walk, your own bike, a bikeshare bike, or transit.
+_LEG_KIND = {WALK: WALK, TAKE: WALK, RIDE: RIDE, SHARE: SHARE}
+
+
+def option_legs(option: Option) -> list[dict]:
+    """The option's legs, compactly, for its row ("🚶 4 min · 🚲 12 min · 🔴 18 min"; the
+    page draws the marks, frontend/src/lib/transitMarks.ts): one entry per walk, ride or
+    transit leg in order, with its minutes. Walking into and out of a station counts with the
+    walk or ride beside it, two walks or rides in a row are one, and a transit leg's minutes
+    include its wait, so the legs add up to about the option's total."""
+    out: list[dict] = []
+    carry = 0.0  # a station's way out, held for the walk or ride after it
+    for leg in option.legs:
+        if leg.mode in (ENTER, EXIT):
+            if leg.mode == ENTER and out and out[-1]["mode"] in _LEG_KIND.values():
+                out[-1]["seconds"] += leg.seconds
+            else:
+                carry += leg.seconds
+            continue
+        if leg.transit:
+            entry = {
+                "mode": leg.mode,
+                "system": leg.system or None,
+                "lines": list(leg.lines),
+                "seconds": leg.total_s,
+            }
+        else:
+            kind = _LEG_KIND[leg.mode]
+            entry = {"mode": kind, "system": None, "lines": [], "seconds": leg.seconds + carry}
+            carry = 0.0
+        if out and not leg.transit and out[-1]["mode"] == entry["mode"]:
+            out[-1]["seconds"] += entry["seconds"]
+            continue
+        out.append(entry)
+    if carry and out:
+        out[-1]["seconds"] += carry
+    for entry in out:
+        entry["minutes"] = minutes(entry.pop("seconds"))
+    return out
+
+
+def holiday_words(option: Option, schedule: Schedule | None) -> str:
+    """The holiday note, true to the systems the option uses: Metro on its typical timetable
+    runs its Sunday one (the typical file's `holiday` day type), the others their own."""
+    typical = {s.name for s in schedule.systems if s.typical} if schedule is not None else set()
+    used = {leg.system for leg in option.legs if leg.transit}
+    if not used & typical:
+        return HOLIDAY_WORDS
+    day = TYPICAL_HOLIDAY_WORDS.format(day=_typical_doc()["holiday"].capitalize())
+    if used <= typical:
+        return day
+    return f"{day[:-1]}; the others, their holiday timetables."
 
 
 def _notes(plan: Plan, rules: dict[str, str]) -> list[str]:
@@ -1835,6 +2024,8 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
     if option.direct:
         how = "by bikeshare" if share else "riding the whole way"
         summary = f"About {total_min} min door to door, {how}."
+    elif option.walk:
+        summary = f"About {total_min} min door to door, walking."
     else:
         summary = f"About {total_min} min door to door, scheduled."
     used = list(dict.fromkeys(leg.system for leg in option.legs if leg.transit))
@@ -1856,7 +2047,9 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
                 "total_s": round(o.total_s),
                 "minutes": minutes(o.total_s),
                 "direct": o.direct,
+                "walk": o.walk,
                 "chosen": index == plan.chosen,
+                "legs": option_legs(o),
             }
             for index, o in enumerate(plan.options)
         ],
@@ -1865,18 +2058,18 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
         "day_type": plan.when.day_type,
         "band": None,
         "holiday": plan.when.holiday,
-        # Own Bike + Transit on a blackout date: no option takes a bike on Metro, and it is said.
+        # Own Bike + 🚆🚌 on a blackout date: no option takes a bike on Metro, and it is said.
         "bike_blackout": plan.mode == presets.BIKE_TRANSIT and bike_blackout(plan.moment.date),
-        "scheduled": not option.direct,
+        "scheduled": option.scheduled,
         "credits": [plan.credits[name] for name in used if plan.credits.get(name)],
         "departure": departure(plan),
     }
     band = band_index(plan.when.minute)
     if band is not None:
         out["band"] = BANDS[band][2]
-    if plan.when.holiday and not option.direct:
-        out["notes"].append(HOLIDAY_WORDS)
-    transit = [o for o in plan.options if not o.direct]
+    if plan.when.holiday and option.scheduled:
+        out["notes"].append(holiday_words(option, schedule))
+    transit = [o for o in plan.options if o.scheduled]
     if option.direct and transit:
         best = min(o.total_s for o in transit)
         best_min = minutes(best)
@@ -1891,7 +2084,7 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
                 f"{whole} the whole way: about {total_min} min. Transit could save about"
                 f" {max(1, total_min - best_min)} min."
             )
-    elif not option.direct and plan.bike_only_s is not None:
+    elif option.scheduled and plan.bike_only_s is not None:
         bike_min = minutes(plan.bike_only_s)
         if plan.bike_only_s <= total:
             out["riding_quicker"] = True
