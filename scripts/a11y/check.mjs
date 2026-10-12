@@ -4016,6 +4016,29 @@ async function goPick(p, box, text) {
   await p.close();
 }
 {
+  // Go's map layers (follow-up review of PR #95; owner decision pending, the recommended default): Go opens with
+  // water and restrooms and the Metro and MARC stations off, Plan with them on; the Water chip still letters its
+  // places while its sheet is open.
+  const LAYERS = "({ water: document.querySelector('#sheet-layers .water-section input[type=checkbox]')?.checked, rail: [...document.querySelectorAll('#sheet-layers section[aria-labelledby=rail-heading] input[type=checkbox]')].map((x) => x.checked) })";
+  const go = await goWith("granted");
+  const goLayers = await go.eval(LAYERS);
+  const wide = await goWith("granted", { width: 1280, height: 900, mobile: false });
+  const planLayers = await wide.eval(LAYERS);
+  check("go layers: Go opens with water and restrooms and Metro and MARC off; Plan opens with them on, as before",
+    goLayers.water === false && JSON.stringify(goLayers.rail) === "[false,false]" && planLayers.water === true && JSON.stringify(planLayers.rail) === "[true,true]", JSON.stringify({ goLayers, planLayers }));
+  await wide.close();
+  await go.eval("[...document.querySelectorAll('.go-places .place-chip')].find((c) => c.textContent.trim() === 'Water').click(); true");
+  const lettered = await go.waitFor("document.querySelectorAll('.lettered-marker').length > 0", 20000);
+  const chip = await go.eval("({ markers: document.querySelectorAll('.lettered-marker').length, water: document.querySelector('#sheet-layers .water-section input[type=checkbox]')?.checked, sheet: !document.getElementById('sheet-nearest').hidden })");
+  await go.close();
+  // A rider's own Layers choice, kept on this device, wins in Go.
+  const kept = await goWith("granted", { init: "try { localStorage.setItem('routemaker.waterLayer', JSON.stringify({ on: true, basic: true, untreated: true })); localStorage.setItem('routemaker.railLayer', JSON.stringify({ metro: true, marc: false })); } catch {}" });
+  const keptLayers = await kept.eval(LAYERS);
+  await kept.close();
+  check("go layers: the Water chip still letters the nearest water on the map while its sheet is open, with the layer off; a rider's kept Layers choice (water on, Metro on, MARC off) wins in Go",
+    lettered && chip.markers > 0 && chip.water === false && chip.sheet && keptLayers.water === true && JSON.stringify(keptLayers.rail) === "[true,false]", JSON.stringify({ chip, keptLayers }));
+}
+{
   // Lettered places (the owner, 2026-10-11 21:04 UTC): the nearest listed are lettered in the list and on the
   // map; a marker's tap or the letter's key picks one as Go's destination, straight to the route options.
   const p = await goWith("granted");
@@ -4199,7 +4222,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 592;
+const EXPECTED = 594;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

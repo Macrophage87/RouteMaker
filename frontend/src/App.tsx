@@ -86,8 +86,9 @@ import {
 } from "./lib/sidebar.ts";
 import { canShareLink, shareContent, shareLink, shareSaidFor } from "./lib/share.ts";
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
-import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterTitle, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
+import { loadWaterRestrooms, readWaterChoice, saveWaterPrefs, waterAlongRoute, waterTitle, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
 import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
+import { railFor, readRailChoice, saveRailChoice, waterPrefsFor } from "./lib/goLayers.ts";
 import { climbsAlongRoute, loadClimbs, readClimbsOn, saveClimbsOn, type Climb, type ClimbsStatus } from "./lib/climbs.ts";
 // `no-inline`: the file is small until the build host fills it, and an inlined data: URL is refused by
 // the edge's connect-src 'self' (Caddyfile), so it stays its own hashed file under /assets/.
@@ -265,17 +266,26 @@ export function App() {
     topoAsked.current = true;
     void topoAvailable().then(setTopoReady);
   }, [showTopoLines]);
-  const [rail, setRail] = useState<RailVisibility>({ metro: true, marc: true });
+  // Metro and MARC stations, and below the water and restrooms: on in Plan and off in Go until the rider
+  // chooses; their choice is kept on this device and wins in both views (lib/goLayers.ts).
+  const [railChoice, setRailChoice] = useState<RailVisibility | null>(() => readRailChoice());
+  const rail = useMemo(() => railFor(railChoice, mode), [railChoice, mode]);
+  const setRail = (next: RailVisibility) => {
+    setRailChoice(next);
+    saveRailChoice(next);
+  };
   // The Mass Ride map's federal-land shading (lib/federalLand.ts): the rider's
   // own switch, on by default, and whether its data has arrived.
   const [federalOn, setFederalOn] = useState(true);
   const [federalStatus, setFederalStatus] = useState<FederalStatus>("loading");
   const [federalData, setFederalData] = useState<FederalData | null>(null);
-  // Public water and restrooms (lib/waterRestrooms.ts): on by default for every ride type, its
-  // switches kept on this device; the data is fetched the first time it is shown.
-  const [waterPrefs, setWaterPrefsState] = useState<WaterPrefs>(() => readWaterPrefs());
+  // Public water and restrooms (lib/waterRestrooms.ts): on by default for every ride type in Plan and off in
+  // Go (lib/goLayers.ts), its switches kept on this device once changed; the data is fetched the first time it
+  // is shown.
+  const [waterChoice, setWaterChoice] = useState<WaterPrefs | null>(() => readWaterChoice());
+  const waterPrefs = useMemo(() => waterPrefsFor(waterChoice, mode), [waterChoice, mode]);
   const changeWaterPrefs = (next: WaterPrefs) => {
-    setWaterPrefsState(next);
+    setWaterChoice(next);
     saveWaterPrefs(next);
   };
   const [waterStatus, setWaterStatus] = useState<WaterStatus>("loading");
