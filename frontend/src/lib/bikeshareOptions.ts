@@ -104,7 +104,9 @@ function stable(value: unknown): unknown {
  * the first answer. Unlike the link's key it holds the stations, so a pinned re-plan never matches it.
  */
 export function sentPlanKey(points: readonly LonLat[], preset: string, dials: object): string {
-  return JSON.stringify(stable([points, preset, dials]));
+  // A dock ending is the default, sent or not (an option's press sets it), so it is the same plan either way.
+  const { ending, ...rest } = dials as { ending?: unknown };
+  return JSON.stringify(stable([points, preset, ending === undefined || ending === "dock" ? rest : { ...rest, ending }]));
 }
 
 /** The answer that listed a trip's options, kept to replay a free-floating e-bike's option. */

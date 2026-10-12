@@ -79,6 +79,9 @@ test("the first answer is replayed only when the free e-bike asked for it and th
   // Key order does not matter; the stations stripped give the first plan's key back.
   assert.equal(sentPlanKey([A, B], "bikeshare", { ending: "dock", stress: 80, bike: "ebike" }), firstKey);
   assert.equal(sentPlanKey([A, B], "bikeshare", withStations(JSON.parse(pinned)[2], FIRST_ANSWER_PINS)), firstKey);
+  // A dock ending set by an option's press (the default either way) is the same plan; outside a dock is not.
+  assert.equal(sentPlanKey([A, B], "bikeshare", { bike: "ebike", stress: 80 }), firstKey);
+  assert.notEqual(sentPlanKey([A, B], "bikeshare", { ...dials, ending: "outside_dock" }), firstKey);
   assert.equal(replayFor(first, firstKey, firstKey), "first route");
   assert.equal(replayFor(first, null, firstKey), null, "not asked: sent (another change reaching the same plan asks the planner)");
   assert.equal(replayFor(first, firstKey, pinned), null, "another plan: sent");
@@ -95,7 +98,7 @@ test("App replays the first answer for a free e-bike's option and keeps a pinned
   assert.match(send, /const replay = replayFor\(firstAnswer\.current, replayAsked\.current, sentPlanKey\(plan\.points, plan\.preset, plan\.dials\)\);\s*replayAsked\.current = null;\s*if \(replay\) \{\s*keptShown\.current = null;\s*return \{ ok: true, route: replay \};/);
   assert.match(app, /if \(plan\.preset === "bikeshare" && keepsFirst\(bikeshareOf\(result\.route\)\)\)\s*firstAnswer\.current = \{ key: sentPlanKey\(plan\.points, plan\.preset, plan\.dials\)/);
   const pick = app.slice(app.indexOf("const pickOption = "), app.indexOf("// A new answer: the Keep button"));
-  assert.match(pick, /if \(replaysFirst\(option\)\) \{[\s\S]*?announce\(stationlessUnavailable\(placeLetter\(index\)\)\);\s*return;[\s\S]*?replayAsked\.current = first\.key;\s*setStationPins\(FIRST_ANSWER_PINS\);[\s\S]*?return;\s*\}\s*setStationPins\(optionPins\(option, points\)\);/);
+  assert.match(pick, /if \(replaysFirst\(option\)\) \{[\s\S]*?setNotice\(stationlessUnavailable\(placeLetter\(index\)\)\);\s*return;[\s\S]*?replayAsked\.current = first\.key;\s*setStationPins\(FIRST_ANSWER_PINS\);[\s\S]*?return;\s*\}\s*setStationPins\(optionPins\(option, points\)\);/);
   // The free e-bike's branch never sets the pins that would let the server choose again.
   const free = pick.slice(pick.indexOf("if (replaysFirst(option))"), pick.indexOf("setStationPins(optionPins("));
   assert.doesNotMatch(free, /optionPins\(/);

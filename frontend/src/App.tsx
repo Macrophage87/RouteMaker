@@ -1733,7 +1733,8 @@ export function App() {
       // dock). Only for the plan it answered; else it is not re-planned, and that is said.
       const first = firstAnswer.current;
       if (!first || first.trip !== optionsKey(points) || first.key !== sentPlanKey(points, preset, withStations(planDials, FIRST_ANSWER_PINS))) {
-        announce(stationlessUnavailable(placeLetter(index)));
+        // Shown and said (Go's notice), so the option is plainly not re-planned.
+        setNotice(stationlessUnavailable(placeLetter(index)));
         return;
       }
       replayAsked.current = first.key;
