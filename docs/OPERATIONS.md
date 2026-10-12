@@ -5914,20 +5914,30 @@ scripts/cloud/send-inputs.sh  --> in/   backup, reference, elevation, extracts -
 scripts/cloud/import-result.sh <-- out/  5 graphs, staging schema dump        <-- (powers off)
 ```
 
-This is the by-hand version of the cloud rebuild (no launcher, no S3 checkpoints, no
-on-demand fallback); this host stays the fallback, and its weekly rebuild is unchanged.
+`scripts/cloud/launch.sh` runs the three from here with one command ("The launcher",
+below); "A run" is the same thing by hand. There are no S3 checkpoints and no on-demand
+fallback yet; this host stays the fallback, and its weekly rebuild is unchanged.
 
 ### One-time setup (the owner, in the AWS console)
 
 - **No access keys anywhere.** The box gets an instance role; this host signs in with
-  IAM Identity Center (`aws configure sso`, then `aws sso login --profile <name>` before
-  each run).
+  `aws login --remote` (add `--profile <name>` to keep it apart from other accounts)
+  before each run: it prints a link to open in any browser, where you sign in to the
+  console as usual, and paste back the code it shows. This is what worked on 2026-10-11:
+  the account has no IAM Identity Center, so `aws configure sso` and `aws sso login` do
+  not apply, and `--remote` because WSL has no browser of its own. Sign in as an IAM user
+  with the launcher's permissions ("The launcher", below), not as the root user.
 - **The box:** a launch template with a memory-heavy type of at least 32 GiB and 8 vCPUs
   (m7i.2xlarge), Ubuntu with Docker and `docker-compose-v2` from user data, a 150 GiB gp3
   root volume, a security group with **no inbound rules** (the shell is Session Manager),
   IMDSv2 required, and spot with request type **Persistent** and interruption behaviour
   **Stop** (AWS refuses Stop with the default one-time request). Shutdown behaviour
-  **Stop**, so `box-rebuild.sh`'s power-off stops it. In the bucket's region.
+  **Stop**, so `box-rebuild.sh`'s power-off stops it. Any region: the launcher takes
+  the box's (`us-east-1` by default) and the bucket's (`us-west-2` by default) apart, and
+  the box reaches the bucket across regions. That costs money: S3 traffic between two
+  regions is billed per GB, both ways (the inputs down to the box, the graphs and the
+  staging dump back up), on top of the internet transfer to and from home. A box in the
+  bucket's region does not pay it.
 - **The role:** `AmazonSSMManagedInstanceCore` plus an inline policy that reaches one
   folder of the bucket and nothing else:
 
@@ -5943,7 +5953,8 @@ on-demand fallback); this host stays the fallback, and its weekly rebuild is unc
 - **The bucket:** a lifecycle rule scoped to the prefix `rebuild-checkpoints/` (never the
   whole bucket) expiring objects after 14 days, and a monthly budget alarm.
 - **On the box, once:** `sudo snap install aws-cli --classic`, then
-  `git clone https://github.com/Macrophage87/RouteMaker.git ~/RouteMaker`.
+  `git clone https://github.com/Macrophage87/RouteMaker.git ~/RouteMaker`. The launcher
+  does both itself when they are missing.
 
 ### A run
 
@@ -6065,6 +6076,131 @@ edits made after that time (from v0.4.0, the stress editor), as a rebuild does f
 made while it ran, that check gives way to the re-apply; the scripts pass the backup's
 time.
 
+### The launcher
+
+One command here does the whole run, with no console clicks: `scripts/cloud/launch.sh`.
+It drives the three scripts above and adds nothing to them, so "A run" is still what
+happens, and the rules before a run (the freeze, the pushed commit) are the same.
+
+Once, put the box and the bucket where the launcher finds them, e.g. in `~/.bashrc` (they
+are this deployment's, so never in the repository):
+
+```sh
+export CLOUD_INSTANCE_ID=i-...        # the box
+export CLOUD_BUCKET=<bucket>
+export CLOUD_PROFILE=<name>           # if you sign in with --profile
+# CLOUD_BOX_REGION [us-east-1], CLOUD_BUCKET_REGION [us-west-2],
+# CLOUD_PREFIX [rebuild-checkpoints/transfer] only if yours differ
+```
+
+Then, each time:
+
+```sh
+aws login --remote --profile <name>
+scripts/cloud/launch.sh                    # the run is cloud-<today, UTC>
+scripts/cloud/launch.sh --run cloud-20261018 --beta   # a name of your own; the beta's bundle too
+scripts/cloud/launch.sh --dry-run          # the commands it would run, and the box's script
+```
+
+What it does, with a plain line for each step:
+
+1. Checks before anything is sent, so a wrong instance id or region, a missing
+   permission, an expired sign-in or a box in use fails before the sudo prompt and the
+   upload: the box can be described and is stopped (a box still stopping is waited for
+   later), and the run's folder has no result yet (`out/SHA256SUMS`; install that one with
+   `import-result.sh`, or name a new run). Then `send-inputs.sh` (it asks for sudo here,
+   at the start).
+2. Reads the commit from the run's `in/MANIFEST.txt`.
+3. `aws ec2 start-instances` on the box if it is stopped, and waits (15 minutes at most)
+   until it is running and its SSM agent is online. A box that is already running is
+   refused, since another run may be on it; `--use-running` uses it, and the launcher
+   then does not stop it (`box-rebuild.sh` still powers it off at the end).
+4. `aws ssm send-command` with `AWS-RunShellScript`: as root, a power-off scheduled for
+   when the command's time is up (`shutdown -P`, the timeout plus an hour: a dead-man
+   switch, so a box whose launcher died during the setup cannot run on for ever), and the
+   AWS CLI from snap if it is missing, and the run marker
+   (`/var/lib/routemaker-launch/current`: the launch's time and run URL); then as
+   `ubuntu`, nothing at all if the run already has its result or the marker names another
+   run (SSM may run a command again after the box restarts, and an old run's command must
+   neither redo that run nor let `box-rebuild.sh` power off the box under a newer one; an
+   older command also leaves the marker of a newer launch alone), else
+   `~/RouteMaker` cloned if it is missing, the run's commit checked out there (the rule in
+   "A run", step 2) and `box-rebuild.sh` run from it, its output appended to
+   `~/cloud-rebuild.log` on the box. `--beta` passes `--beta-bundle`, `--refire` passes
+   `--refire`.
+5. Waits for `out/SHA256SUMS`, checking every minute, for 30 hours at most
+   (`--timeout-hours`), with a line every ten minutes. Each check also reads the command's
+   status (`get-command-invocation`) and the box's state. A command that failed (the
+   script stopped before the rebuild was fired) ends the wait with the end of the box's
+   output; so does a box that stopped with no result (a failed rebuild powers itself off,
+   and so does a spot reclaim).
+6. Stops the box, then `import-result.sh`: the install and its dry run, nothing served
+   changes. It may ask for sudo again here. Read the dry run, then swap as in "A run",
+   step 4. `--swap` does the swap straight after the dry run instead.
+
+However it ends (a failure, the time limit, Ctrl-C), a box the launcher started and
+that is still running is **stopped**, never terminated: its disk keeps the run's state,
+and `scripts/cloud/launch.sh --no-send <RUN_URL>` carries the run on from where it
+stopped (add `--refire` after a failed rebuild, as for `box-rebuild.sh`). Every message
+that ends a run part way prints that command with the run's URL: copy it, since the
+default run name is the day's, and the same command without the URL after midnight
+(UTC) would start a new run. A box it did not start is not stopped by the launcher.
+`--no-send` also skips sending for a run whose inputs are already in S3.
+
+**A spot reclaim, and a box that starts again by itself.** With a persistent spot request
+and interruption behaviour Stop, AWS stops the box when it needs the capacity back and
+**starts it again by itself** when it has room. Nothing runs on it then (the launcher's
+command is not repeated, and if SSM did repeat it, it would find the result or carry the
+run on and power off), so a box restarted that way sits idle and billed until someone
+stops it. When a box the launcher started stops with no result, the launcher calls
+`stop-instances` on it once more, though it is already stopped, so that the stop is a
+user's stop, which AWS does not restart (a box it was given with `--use-running` is left
+to you). **That this prevents the restart is not verified**: after the first
+reclaim, look in the console (EC2, Instances) an hour or so later and stop the box if it
+is running; the budget alarm is the backstop.
+
+**The sign-in can run out during a run.** The wait is hours, longer than an `aws login`
+session may last. If a check fails while it waits, the launcher says so and keeps
+waiting; run `aws login --remote` again in another window and it carries on. The box does
+not need this host: it powers itself off at the end either way.
+
+**The IAM user's permissions** (the least the launcher and the two home scripts need;
+`<account>`, `<instance-id>` and `<bucket>` are yours, and `us-east-1` the box's region).
+The first statement is `aws login` itself (the same two actions as AWS's managed policy
+`SignInLocalDevelopmentAccess`, which can be attached instead).
+`DescribeInstances`, `DescribeInstanceInformation` and `GetCommandInvocation` cannot be
+limited to one instance, so they name `*`; they only read. `AbortMultipartUpload` lets
+an upload of a large tar that stopped part way be cleaned up. If the box's disk is
+encrypted with your own KMS key, starting it also needs `kms:CreateGrant` on that key.
+
+```json
+{"Version": "2012-10-17", "Statement": [
+  {"Effect": "Allow", "Action": ["signin:AuthorizeOAuth2Access", "signin:CreateOAuth2Token"],
+   "Resource": "*"},
+  {"Effect": "Allow", "Action": ["ec2:StartInstances", "ec2:StopInstances"],
+   "Resource": "arn:aws:ec2:us-east-1:<account>:instance/<instance-id>"},
+  {"Effect": "Allow", "Action": "ec2:DescribeInstances", "Resource": "*"},
+  {"Effect": "Allow", "Action": "ssm:SendCommand",
+   "Resource": ["arn:aws:ec2:us-east-1:<account>:instance/<instance-id>",
+                "arn:aws:ssm:us-east-1::document/AWS-RunShellScript"]},
+  {"Effect": "Allow", "Action": ["ssm:GetCommandInvocation",
+                                 "ssm:DescribeInstanceInformation"], "Resource": "*"},
+  {"Effect": "Allow", "Action": "s3:ListBucket", "Resource": "arn:aws:s3:::<bucket>",
+   "Condition": {"StringLike": {"s3:prefix": ["rebuild-checkpoints/*"]}}},
+  {"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject",
+                                 "s3:AbortMultipartUpload"],
+   "Resource": "arn:aws:s3:::<bucket>/rebuild-checkpoints/*"}]}
+```
+
+`ssm:SendCommand` on `AWS-RunShellScript` is a root shell on the box, and on nothing
+else: the box holds nothing of this deployment's but the inputs it was sent.
+
+**Not built: a hands-off weekly run.** Running the launcher from cron needs a sign-in
+that lasts and renews without a person: IAM Identity Center, or a narrow role that a
+scheduler (an EventBridge schedule, say) assumes. Not `aws login`, which needs you at a
+browser, and not access keys, which this deployment does not keep anywhere. Until then
+the launcher is run by hand, and the weekly rebuild here goes on as before.
+
 ### The beta server from the same run
 
 A run can also feed the beta server directly, with no `ship-data.sh` from here. Start the
@@ -6117,6 +6253,8 @@ home's backup.
 
 **What has not been run:** the scripts are tested against stand-ins for `aws`, `docker`,
 `sudo` and, for the beta, `ship-data.sh`, `receive-data.sh` and `beta-compose.sh`
-(tests/test_cloud_scripts.py), and the command against a real PostGIS
+(tests/test_cloud_scripts.py), the launcher against a stand-in `aws` and stand-ins for
+the other scripts (tests/test_cloud_launch.py; its first real run is the first time it
+meets EC2 and SSM), and the command against a real PostGIS
 (tests/test_import_cloud_build.py). The first run on the box is the first real one, so
 keep its log and read the dry run before `--swap`.
