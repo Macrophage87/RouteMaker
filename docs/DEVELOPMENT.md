@@ -4464,16 +4464,6 @@ puts it, at most two presses away.
 - **Start and end pins** (the owner, 2026-10-11 21:29 UTC): a play triangle and a stop square
   (`lib/pointText.ts` `START_GLYPH`, `END_GLYPH`, hidden; the pins' names stay "Start", "End" and
   "Start and finish"), so A, B, C are only the offered places; stops keep their numbers.
-- **Go's map layers** (follow-up review of #95; the owner's decision is pending, and this is the
-  recommended default; `lib/goLayers.ts`): Go opens with the water and restroom layer and the
-  Metro and MARC stations off, so the phone's map shows the route; Plan opens with them on, as
-  before. The rider's own Layers choice wins in both views and is kept on this device
-  (`routemaker.waterLayer`, and now `routemaker.railLayer` for Metro and MARC, which were not kept
-  before). Unchosen, a switch to the other view shows that view's default. The Water and Restroom
-  chips still letter their places on the map while their sheet is open (those markers are not the
-  layer), and the route's Water and restrooms fold still lists the water and restrooms along the
-  route (it is route data, not the layer). One commit, so it reverts cleanly if the owner keeps the
-  layers on.
 - **My Go** (`lib/myGo.ts`; `core.models.MyGo`, migration 0019; GET/POST `/api/me/go`):
   Open in, Go's ride type and, signed in, Home. Signed in it is the account's (saved only
   after it has been read, so an early save never clears a Home), with a copy on the device
