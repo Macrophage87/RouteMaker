@@ -94,7 +94,11 @@ In order; each its own branch and review. Slices 1 and 2 wait on questions 1 to 
 6. **The launcher.** Whatever starts the instance with the run key and the image, restarts a
    reclaimed run on a new instance, and stops the instance at the end. Mostly infrastructure
    (below); the repository holds its script or template, with no account ids, hostnames or
-   bucket names in it.
+   bucket names in it. A first version is built for the one box the by-hand flow uses:
+   `scripts/cloud/launch.sh` (OPERATIONS.md, "The launcher") starts that box, runs
+   `box-rebuild.sh` on it through SSM, waits for the result, stops it and installs the
+   result at home. It does not restart a reclaimed run on a new instance or fall back to
+   on-demand; it says so and stops, and the same command with `--no-send` resumes.
 
 ## What the owner provisions
 

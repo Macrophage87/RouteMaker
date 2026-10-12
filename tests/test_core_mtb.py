@@ -29,14 +29,14 @@ def piece(lon, lat, metres=100.0):
 def readings(monkeypatch):
     """Each trip carries its own stretches and pieces; reading_of reads them."""
 
-    def reading_of(trip, variant, costing, when, deadline, traces, max_level):
+    def reading_of(trip, variant, costing, when, deadline, traces, max_level, preferred_level=None):
         if trip.get("untraced"):
             return None
         stretches = trip["stretches"]
         pieces = trip.get("pieces") or [
             piece(-77.0 + i * 0.01, 38.9) for i in range(len(stretches))
         ]
-        return mtbmode.read(stretches, max_level), pieces, stretches
+        return mtbmode.read(stretches, max_level, preferred_level), pieces, stretches
 
     monkeypatch.setattr(mtb, "reading_of", reading_of)
 
@@ -48,9 +48,19 @@ def trip(name, stretches, **extra):
 FAR_POINTS = [(-80.0, 30.0), (-80.1, 30.0)]
 
 
-def settle(trips, max_level=2, points=FAR_POINTS):
+def settle(trips, max_level=2, points=FAR_POINTS, preferred=None):
     return mtb.settle(
-        trips, trips[0], {"locations": []}, "mtb", {}, "weekend", None, {}, max_level, points
+        trips,
+        trips[0],
+        {"locations": []},
+        "mtb",
+        {},
+        "weekend",
+        None,
+        {},
+        max_level,
+        points,
+        preferred_level=preferred,
     )
 
 
@@ -128,3 +138,38 @@ def test_an_untraced_route_is_said(readings) -> None:
 def test_the_level_is_clamped_and_defaults_to_2(readings) -> None:
     assert settle([trip("a", [road(10)])], max_level=None)[1]["max_level"] == 2
     assert settle([trip("a", [road(10)])], max_level=9)[1]["max_level"] == 4
+
+
+# --- the second pass: the preferred level ranks the router's routes ---------------------------
+
+
+def test_the_route_nearest_the_preferred_level_wins(readings) -> None:
+    greens = trip("greens", [single(2000, level=1)])
+    blacks = trip("blacks", [single(2000, level=3)])
+    chosen, info = settle([greens, blacks], max_level=4, preferred=3)
+    assert chosen["name"] == "blacks"
+    assert info["preferred_level"] == 3 and info["max_level"] == 4
+    assert info["easier_m"] == 0.0 and info["harder_m"] == 0.0
+    chosen, info = settle([greens, blacks], max_level=4, preferred=1)
+    assert chosen["name"] == "greens"
+
+
+def test_easier_and_harder_than_preferred_are_said(readings) -> None:
+    mixed = trip("mixed", [single(700, level=1), single(500, level=2), single(300, level=3)])
+    _chosen, info = settle([mixed], max_level=3, preferred=2)
+    assert info["easier_m"] == 700.0 and info["harder_m"] == 300.0
+    assert info["over_level_m"] == 0.0 and info["level_step"] == mtbmode.LEVEL_STEP
+
+
+def test_the_preferred_level_is_held_to_the_hardest(readings) -> None:
+    _chosen, info = settle([trip("a", [road(10)])], max_level=2, preferred=4)
+    assert info["preferred_level"] == 2
+    # An old request with only the level: preferred min(2, it).
+    assert settle([trip("a", [road(10)])], max_level=1)[1]["preferred_level"] == 1
+    assert settle([trip("a", [road(10)])], max_level=4)[1]["preferred_level"] == 2
+
+
+def test_reread_carries_the_preference(readings) -> None:
+    mixed = trip("mixed", [single(400, level=1), single(600, level=3)])
+    info = mtb.reread(mixed, "mtb", {}, "weekend", None, {}, 3, 3)
+    assert info["preferred_level"] == 3 and info["easier_m"] == 400.0 and info["harder_m"] == 0.0

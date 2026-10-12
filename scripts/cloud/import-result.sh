@@ -51,7 +51,7 @@
 #                           ~/routemaker-beta-state]
 #   --live-dir DIR          the live stack's checkout: compose.yaml and .env [this repository]
 #   --stage DIR             where the result is downloaded [~/cloud-runs/<run>/out]
-#   --profile NAME          the AWS CLI profile (`aws sso login --profile NAME` first)
+#   --profile NAME          the AWS CLI profile (`aws login --remote --profile NAME` first)
 #   --swap                  the second stage above, after an install and its dry run
 #   --no-safety-dump        skip step 3 (rollback_rebuild still works without it)
 #   --remove-tars           delete the downloaded graph tars once they are unpacked
