@@ -1,0 +1,5 @@
+stop_id,stop_name,stop_lat,stop_lon
+1001,Lincoln Park,38.889700,-76.989500
+1002,Stanton Park,38.893500,-76.999300
+1003,Union Station Bus Bay,38.897200,-77.007000
+1004,Far Away Loop,38.950000,-76.900000

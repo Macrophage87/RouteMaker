@@ -29,6 +29,9 @@ import { RIDE_SAFETY, RideSettingsFields } from "../RideMode.tsx";
 import type { RidePrefs } from "../lib/rideOutput.ts";
 import { RIDE_MAX_M, RIDE_TOO_LONG } from "../lib/navigate.ts";
 import { BikeshareSummary } from "../BikeshareSummary.tsx";
+import { TransitSummary } from "../TransitSummary.tsx";
+import { DepartureTimer } from "../DepartureTimer.tsx";
+import { transitOf, transitTime } from "../lib/transit.ts";
 import { bikeshareOf, routeCredits } from "../lib/bikeshare.ts";
 import { rideSizeOf, type Dials, type Ending } from "../lib/dials.ts";
 import { CAPACITY_FOLD_TITLE, capacitySummary } from "../lib/massCapacity.ts";
@@ -171,11 +174,20 @@ export interface RouteSectionProps {
   /** Bikeshare's "Choose a station" fold (NearbyStations), or nothing. */
   stations: ReactNode;
   go: GoRouteControls;
+  /** The transit ride types' options and departure (TransitSummary). */
+  transitControls: TransitControls;
+}
+
+/** A transit plan's controls: plan another option, and the departure's milestones and a miss. */
+export interface TransitControls {
+  onPick: (key: string) => void;
+  announce: (text: string) => void;
+  onMissed: () => void;
 }
 
 /** The planner's Route section: planning, the long-ride question, errors, the route summary and Start ride's question. */
 export function RouteSection(props: RouteSectionProps) {
-  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs, rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go } = props;
+  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs, rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls } = props;
   const goMode = mode === "go";
   return (
     <section key="route" aria-labelledby="route-heading" aria-busy={stale} className={goMode ? "route-section go-route" : "route-section"}>
@@ -259,6 +271,7 @@ export function RouteSection(props: RouteSectionProps) {
           mode={mode}
           preset={preset}
           go={go}
+          transitControls={{ ...transitControls, busy: stale }}
         />
       )}
       {shown && rideAsk && (
@@ -484,6 +497,7 @@ export function RouteSummary({
   mode,
   preset,
   go,
+  transitControls,
 }: {
   route: RouteResponse;
   answer: RouteResponse | null;
@@ -505,6 +519,7 @@ export function RouteSummary({
   /** Mass Ride's anticipated ride size, riders (PLAN items 128, 139): the corker load's group length. */
   rideSize: number;
   onEnding: (ending: Ending) => void;
+  transitControls?: TransitControls & { busy: boolean };
   /** Water and restrooms along the route, once loaded (listed with the map layer off too); else null. */
   water: { items: WaterAlong[] | null; onAddStop: (item: WaterAlong) => void } | null;
   /** The climbs the route rides, while the Climbs layer is on and loaded; else null. */
@@ -531,10 +546,17 @@ export function RouteSummary({
   const avoidCount = avoidItems(route).length;
   const junctions = route.intersections == null ? (avoidCount > 0 ? avoidCount : null) : junctionItems(route).length + avoidCount;
   const bikeshare = bikeshareOf(route);
+  // A transit ride type (lib/transit.ts): the line is the first ride; the trip, its total and its steps are `transit`.
+  const transit = transitOf(route);
+  const timeName = transit ? (transit.direct ? "Door-to-door time" : "Door-to-door time, scheduled") : "Moving time";
+  const timeText = transit ? transitTime(transit) : formatDuration(route.duration_s);
   const calm = calmPercent(route.stress_m);
   // Start ride is offered with the directions too (plan Q1). Not on a Bikeshare plan: the route
   // is only the ride between the docks, so the walk to the first dock would read as off route.
-  const rideable = !bikeshare && route.distance_m <= RIDE_MAX_M;
+  // Nor on a transit plan, whose line is only its first ride, unless the plan is riding your own bike
+  // the whole way (its line is then the whole trip).
+  const wholeRide = !transit || (transit.direct && transit.mode === "bike-transit");
+  const rideable = !bikeshare && wholeRide && route.distance_m <= RIDE_MAX_M;
   const rideAction = rideable ? (
     <button type="button" className="secondary" onClick={ride.onStart}>
       Start ride
@@ -554,7 +576,7 @@ export function RouteSummary({
     <p id="start-ride-hint" className="hint start-ride-hint">
       Turn-by-turn directions on this phone, said as you chose. Keep the screen on and this page in front.
     </p>
-  ) : bikeshare ? null : (
+  ) : bikeshare || transit ? null : (
     <p className="hint start-ride-long">{RIDE_TOO_LONG}</p>
   );
   const alerts = <RouteAlerts route={route} answer={answer} choice={choice} around={around} onAround={onAround} />;
@@ -563,6 +585,9 @@ export function RouteSummary({
   const infoBody = (
     <div id={infoId} className="route-info" hidden={!info}>
       {bikeshare && <p className="hint">These figures are for the ride between the docks. The walks are above.</p>}
+      {transit && !transit.direct && (
+        <p className="hint">The distance, climb and stress are for the first ride, the line on the map. The whole trip is in its steps.</p>
+      )}
       {pace && <p className="hint pace">Moving time at {pace}, without stops.</p>}
       {notes.map((note) => (
         <p key={note.key} className="hint note-full">
@@ -601,6 +626,20 @@ export function RouteSummary({
     </Fold>
   ) : null;
 
+  const transitFold = transit ? (
+    // The trip, as a fold kept open: the step list is the plan (the owner, 2026-10-12: "a clear step list").
+    <Fold title={`${presetLabel(preset)} trip`} open className="transit-fold" icon="train">
+      <TransitSummary
+        plan={transit}
+        label={`${presetLabel(preset)}: ${transit.summary.replace(/\.$/, "")}`}
+        onPick={transitControls?.onPick}
+        busy={transitControls?.busy}
+        announce={transitControls?.announce}
+        onMissed={transitControls?.onMissed}
+      />
+    </Fold>
+  ) : null;
+
   if (goMode) {
     // Go (the approved mockup's route sheets): the time big, the distance and climb in a line, Info, the
     // stress bar, the warning line, Start, then the ride, the routes and Plan in detail. At its smallest
@@ -613,11 +652,11 @@ export function RouteSummary({
           <h3 className="visually-hidden">Totals</h3>
           <dl className="stats totals go-totals">
             <div className="total-time">
-              <dt className="visually-hidden">Moving time</dt>
-              <dd>{formatDuration(route.duration_s)}</dd>
+              <dt className="visually-hidden">{timeName}</dt>
+              <dd>{timeText}</dd>
             </div>
             <div className="stat-distance">
-              <dt className="visually-hidden">Distance</dt>
+              <dt className="visually-hidden">{transit ? "First ride's distance" : "Distance"}</dt>
               <dd>{formatDistance(route.distance_m)}</dd>
             </div>
             {go.peek && alertCount > 0 ? (
@@ -641,6 +680,17 @@ export function RouteSummary({
           {go.peek ? start : infoButton}
         </div>
         {!go.peek && infoBody}
+        {!go.peek && transitFold}
+        {/* At peek the trip's panel is folded away, but an infrequent departure's countdown keeps
+            running (and its milestones and a miss are still said): one compact line. */}
+        {go.peek && transit?.departure && (
+          <DepartureTimer
+            compact
+            departure={transit.departure}
+            announce={transitControls?.announce}
+            onMissed={transitControls?.onMissed}
+          />
+        )}
         {segments.length > 0 && <StressFigure segments={segments} />}
         {!go.peek && <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />}
         {!go.peek && alerts}
@@ -692,11 +742,11 @@ export function RouteSummary({
         <h3 className="visually-hidden">Totals</h3>
         <dl className="stats totals">
           <div className="total-time">
-            <dt className="visually-hidden">Moving time</dt>
-            <dd>{formatDuration(route.duration_s)}</dd>
+            <dt className="visually-hidden">{timeName}</dt>
+            <dd>{timeText}</dd>
           </div>
           <div className="stat-distance">
-            <dt className="visually-hidden">Distance</dt>
+            <dt className="visually-hidden">{transit ? "First ride's distance" : "Distance"}</dt>
             <dd>{formatDistance(route.distance_m)}</dd>
           </div>
           <div className="total-climb">
@@ -717,6 +767,7 @@ export function RouteSummary({
         {infoButton}
       </div>
       {infoBody}
+      {transitFold}
       <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />
       {segments.length > 0 && <StressFigure segments={segments} />}
       {alerts}

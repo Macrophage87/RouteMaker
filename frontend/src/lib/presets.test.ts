@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PRESETS, DEFAULT_PRESET, isPreset, parsePreset } from "./presets.ts";
+import { PRESETS, DEFAULT_PRESET, TRANSIT_PRESETS, isPreset, isTransit, parsePreset, presetLabel, twoPointsOnly } from "./presets.ts";
 
 test("the picker offers every ride type in PLAN's table", () => {
   assert.deepEqual(
@@ -18,8 +18,23 @@ test("the picker offers every ride type in PLAN's table", () => {
       "ebike",
       "bikeshare",
       "kids",
+      "bike-transit",
+      "bikeshare-transit",
     ],
   );
+});
+
+test("the transit ride types are named as the owner named them, scheduled and not live, two points only", () => {
+  // TRANSIT-ASSIST (Stephen, 2026-10-12): "Own Bike + Transit" and "Bikeshare + Transit", with "+".
+  assert.equal(presetLabel("bike-transit"), "Own Bike + Transit");
+  assert.equal(presetLabel("bikeshare-transit"), "Bikeshare + Transit");
+  for (const id of TRANSIT_PRESETS) {
+    const description = PRESETS.find((p) => p.id === id)!.description;
+    assert.match(description, /[Ss]cheduled times, not live/);
+    assert.ok(isTransit(id) && twoPointsOnly(id));
+  }
+  assert.ok(twoPointsOnly("bikeshare") && !isTransit("bikeshare"));
+  assert.ok(!twoPointsOnly("default"));
 });
 
 test("Riding with kids is a ride type of its own, said in plain words (OWNER-DECISIONS 240 (B))", () => {

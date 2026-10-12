@@ -36,6 +36,9 @@ CONTRACT_PRESETS = {
     "kids",
     # docs/MTB-TOPO-PLAN.md, slice 6 (OWNER-DECISIONS 90, 111, 148, 454).
     "mountain-bike",
+    # TRANSIT-ASSIST (Stephen, 2026-10-12): the two transit ride types.
+    "bike-transit",
+    "bikeshare-transit",
 }
 
 # The factor dials Valhalla reads on a 0..1 scale; outside it the service
@@ -401,6 +404,10 @@ def test_every_ride_types_brake_grade_is_the_owners_approved_table() -> None:
         # Riding with kids': the implementation's proposal too (core.presets, "Riding with
         # kids"), the cargo bike's 3%.
         "kids": 0.03,
+        # The transit ride types' bike legs brake as the ride types they are built on
+        # (core.presets, "The transit ride types"): Default's and Bikeshare's.
+        "bike-transit": 0.06,
+        "bikeshare-transit": 0.04,
         "mountain-goat": None,
         # Mountain Bike (slice 6): a rider who chose it wants the descent, as Mountain Goat.
         "mountain-bike": None,

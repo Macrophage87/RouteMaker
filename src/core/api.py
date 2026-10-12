@@ -37,6 +37,14 @@ slot, nothing in reach, no way on foot), and 503 `bikeshare_unavailable` with Re
 operator's station list could not be had. A missing availability feed is not an error: the plan
 is made and says availability is unknown.
 
+The two transit ride types (`bike-transit`, `bikeshare-transit`; `core.transit`) answer with a
+ranked list of options (`transit.options`: riding the whole way always, and the quickest transit
+trips), one of them planned: the body is its first ride leg and `transit` the rest of the trip,
+scheduled. `transit_option` plans another by its key. They add 422 `no_transit` where no option
+at all can be made (the sentence says why), and 503
+`transit_unavailable` with Retry-After where the deployment has no transit schedule installed
+(or, Bikeshare + Transit, no bikeshare station list).
+
 The checks run in this order, outermost first: the content type and declared
 body size, then the per-minute count, then the in-flight slots, then Ninja's
 parse and validation. The content type comes before the count on purpose: a
@@ -47,12 +55,15 @@ A malformed JSON body is counted, because only a script can send one.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
+from datetime import datetime
 from functools import wraps
 from typing import Annotated, Literal
 
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
+from django.utils import timezone
 from ninja import Field, NinjaAPI, Query, Schema, Status
 from ninja.decorators import decorate_view
 from ninja.errors import HttpError, ValidationError
@@ -79,6 +90,7 @@ from . import (
     routing,
     segment_info,
     stoporder,
+    transit,
 )
 
 logger = logging.getLogger(__name__)
@@ -340,6 +352,25 @@ class RouteIn(Schema):
             " Not with the `outside_dock` ending. Absent: the nearest docks are tried."
         ),
     )
+    depart_at: datetime | None = Field(
+        default=None,
+        description=(
+            "Transit ride types only: when the trip starts, ISO 8601 (with an offset, or local"
+            " time in Washington). Absent: now. Each system's own calendar for that day is used,"
+            " holidays and published closures included."
+        ),
+    )
+    transit_option: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=80,
+        pattern=r"^[a-z0-9>-]+$",
+        description=(
+            "Transit ride types only: the `key` of one of the answer's `transit.options`, to plan"
+            " that option (its route line, steps and total). Absent, or no longer an option: the"
+            " quickest."
+        ),
+    )
     target_distance_m: StrictInt | None = Field(
         default=None,
         ge=presets.TARGET_DISTANCE_MIN_M,
@@ -384,6 +415,16 @@ class RouteIn(Schema):
             )
         if self.assist and (preset.assist_speed_kmh is None or self.preset == presets.BIKESHARE):
             raise ValueError("assist applies to the Cargo Bike ride type only")
+        if self.preset in presets.TRANSIT_PRESETS:
+            if len(self.points) != 2:
+                raise ValueError(
+                    "Transit ride types take a start and an end: the bike legs, Metro and bus"
+                    " are planned from those two points"
+                )
+            if self.loop:
+                raise ValueError("Transit ride types do not plan loops")
+        elif self.transit_option is not None or self.depart_at is not None:
+            raise ValueError("transit_option and depart_at apply to the transit ride types only")
         if self.preset == presets.BIKESHARE:
             if len(self.points) != 2:
                 raise ValueError(
@@ -453,14 +494,18 @@ class ConfirmLongOut(Schema):
     span_km: int
 
 
+BusyCode = Literal["long_ride_timed_out", "bikeshare_unavailable", "transit_unavailable"]
+
+
 class BusyOut(Schema):
     error: str
-    code: Literal["long_ride_timed_out", "bikeshare_unavailable"] | None = Field(
+    code: BusyCode | None = Field(
         default=None,
         description=(
             "`long_ride_timed_out`: a long ride ran out of its time budget: show it, and do not"
             " resend it without the rider asking. `bikeshare_unavailable`: the operator's station"
-            " list could not be had."
+            " list could not be had. `transit_unavailable`: a transit ride type's schedule (or"
+            " its bikeshare station list) is not available."
         ),
     )
 
@@ -1821,6 +1866,121 @@ class AvoidAlternateOut(RouteBody):
     )
 
 
+class TransitStepOut(Schema):
+    mode: Literal[
+        "ride",
+        "take",
+        "bikeshare",
+        "walk",
+        "enter",
+        "exit",
+        "metro",
+        "rail",
+        "light-rail",
+        "subway",
+        "bus",
+    ] = Field(
+        description=(
+            "`ride` your own bike; `take` walk to a bikeshare dock and take a bike; `bikeshare`"
+            " ride it and dock it; `walk`; `enter` and `exit` a station; and a transit leg by"
+            " its system's mode: `metro` (WMATA), `rail` (MARC), `light-rail`, `subway`, `bus`."
+        )
+    )
+    system: str | None = Field(
+        default=None, description='A transit leg\'s system, by name: "Metro", "MARC".'
+    )
+    departs: str | None = Field(
+        default=None,
+        description='An infrequent service (over 15 min apart): the departure taken, "7:42 am".',
+    )
+    text: str = Field(description="The step in one sentence, US units first, for reading aloud.")
+    seconds: int = Field(description="The step's time, without the wait.")
+    wait_s: int = Field(
+        description="The wait before it: for a service every 15 min or less, half the headway"
+        " (a rider who does not time the trip); for a less frequent one, the time to spare"
+        " between reaching the stop and the scheduled departure taken (`departs`)."
+    )
+    to: str | None = Field(description="Where the step ends, by name; null: no name.")
+    lines: list[str] = Field(description="Metro lines or bus routes that run it.")
+    with_bike: bool = Field(description="Your own bike goes too (the elevator, the rack).")
+    route_line: bool = Field(
+        description="This step is the answer's route line (its geometry is the body's)."
+    )
+    coordinates: list[list[float]] = Field(
+        description=(
+            "[lon, lat] for the map: Metro and bus through their stops, walks straight, the far"
+            " end's ride as routed; empty for the route line's own step."
+        )
+    )
+
+
+class TransitOptionOut(Schema):
+    key: str = Field(description="Send as `transit_option` on POST /api/route to plan it.")
+    label: str = Field(
+        description='The option in a few words: "Ride, Metro to X (Orange Line), ride".'
+    )
+    total_s: int
+    minutes: int
+    direct: bool = Field(description="Riding the whole way (on bikeshare: dock to dock).")
+    chosen: bool = Field(description="The option this answer plans.")
+
+
+class TransitDepartureOut(Schema):
+    """The chosen trip's first infrequent departure (the owner, 2026-10-12: "make it clear when
+    the next departure would be and if cutting it close, put a timer")."""
+
+    step: int = Field(description="Its index in `steps`.")
+    system: str
+    vehicle: str = Field(description='"the MARC Penn Line"')
+    board_at: str | None = Field(description="The stop boarded, by name.")
+    departs: str = Field(description='"7:42 am"')
+    departs_at: str = Field(description="ISO 8601, local time with its offset.")
+    arrive_at: str = Field(description="When the rider reaches the stop, as planned.")
+    next: str | None = Field(description="The departure after it, or null within the hour.")
+    next_at: str | None
+    spare_s: int = Field(description="Time to spare at the stop, as planned.")
+    close: bool = Field(description="Under 5 minutes to spare: Go shows a countdown.")
+    planned_at: str = Field(description="The moment the plan is for.")
+    point: list[float] | None = Field(description="[lon, lat] of the stop, for the map's label.")
+    label: str = Field(description='The map\'s label: "MARC 7:42 am · 6 min spare".')
+
+
+class TransitOut(Schema):
+    """A transit ride type's trip (`core.transit`): scheduled, not live."""
+
+    mode: Literal["bike-transit", "bikeshare-transit"]
+    key: str = Field(description="The chosen option's key.")
+    direct: bool = Field(description="The chosen option is riding the whole way.")
+    total_s: int
+    minutes: int
+    summary: str = Field(description='"About N min door to door, scheduled."')
+    bike_only_s: int | None = Field(description="Riding the whole way, for comparison.")
+    comparison: str | None
+    riding_quicker: bool = Field(description="Riding the whole way is at least as quick.")
+    options: list[TransitOptionOut] = Field(
+        description=(
+            "The options, quickest first (the owner, 2026-10-12): riding the whole way always,"
+            " and the quickest transit trip of each kind."
+        )
+    )
+    steps: list[TransitStepOut]
+    notes: list[str]
+    day_type: Literal["weekday", "saturday", "sunday"]
+    band: str | None
+    holiday: bool
+    bike_blackout: bool = Field(
+        description=(
+            "Own Bike + Transit on a Metro blackout date: no option takes the bike on Metro, and"
+            " the notes say so."
+        )
+    )
+    scheduled: bool
+    credits: list[str] = Field(description="The schedules' sources, for the systems used.")
+    departure: TransitDepartureOut | None = Field(
+        default=None, description="The first infrequent departure, or null where there is none."
+    )
+
+
 class RouteOut(RouteBody):
     avoid_search: AvoidSearchOut | None = None
     avoid_alternate: AvoidAlternateOut | None = Field(
@@ -1835,6 +1995,13 @@ class RouteOut(RouteBody):
         description=(
             "Bikeshare only (OWNER-DECISIONS 243-245): the walks, docks, availability, fee and"
             " notes around this body, which is the ride leg between the docks."
+        ),
+    )
+    transit: TransitOut | None = Field(
+        default=None,
+        description=(
+            "Transit ride types only: the whole trip, step by step, around this body, which is"
+            " its first ride leg."
         ),
     )
     rank: int | None = Field(
@@ -2240,8 +2407,244 @@ def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
     )
 
 
+# A transit plan's candidate legs are routed only this long after the request arrived; the rest
+# of the request's budget is the answer's own line (routing.plan).
+TRANSIT_CANDIDATES_S = 12
+
+# Said when the router did not draw the answer's line in time.
+UNROUTED_NOTE = (
+    "The router did not answer in time, so the ride's line is drawn straight and its time is"
+    " estimated."
+)
+
+
+def _unrouted_line(points: list[list[float]], preset_name: str, dials, seconds: float) -> dict:
+    """The answer's line when the router did not draw it: straight from end to end, its time
+    the plan's own estimate, its streets unknown. Everything else in the body is empty."""
+    straight_m = sum(
+        haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
+    )
+    metres = round(straight_m * transit.DETOUR, 1)
+    preset = presets.PRESETS[preset_name]
+    stress = presets.stress_start(preset_name, None) if dials.stress is None else dials.stress
+    return {
+        "preset": preset.name,
+        "variant": preset.variant,
+        "geometry": {
+            "type": "LineString",
+            "coordinates": [[round(lon, 6), round(lat, 6)] for lon, lat in points],
+        },
+        "distance_m": metres,
+        "duration_s": round(seconds, 1),
+        "climb_m": 0.0,
+        "descent_m": 0.0,
+        "stress_m": {"1": 0.0, "2": 0.0, "3": 0.0, "4": 0.0, "5": 0.0, "unknown": metres},
+        "facility_m": {"path": 0.0, "protected": 0.0, "lane": 0.0, "none": 0.0, "unknown": metres},
+        "stress_adjustments": [],
+        "stress_spans": [],
+        "dials": {
+            "stress": stress,
+            "hills": preset.hills if dials.hills is None else dials.hills,
+            "when": dials.when or routing.default_when(),
+            "carrying": None,
+            "assist": False,
+        },
+        "hills_seek": None,
+        "hills_avoid": None,
+        "attribution": [],
+        "leg_ends": [len(points) - 1],
+        "intersections": None,
+        "calm_search": None,
+        "detour": None,
+    }
+
+
+def _transit_body(body: RouteIn, started: float | None) -> dict:
+    """A transit ride type (`core.transit`): the options, the chosen one's first ride routed."""
+    if started is None:
+        started = routing.clock()
+    schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH)
+    # The candidates' calls stop `TRANSIT_CANDIDATES_S` in, leaving the answer's own line
+    # (routing.plan, below) the rest of the request's budget: a slow router estimates candidates,
+    # it never times out the plan.
+    services = transit.RoutingServices(started + TRANSIT_CANDIDATES_S, body.preset)
+    start, end = body.points
+    when = body.depart_at or timezone.now()
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=ridetime.ZONE)
+    if body.preset == presets.BIKESHARE_TRANSIT:
+        found = transit.plan_bikeshare(schedule, start, end, when, services, gbfs.client.snapshot())
+    else:
+        options = presets.costing(body.preset)["bicycle"]
+        speed = options.get(
+            "cycling_speed",
+            presets.VALHALLA_DEFAULT_SPEED_KMH[options.get("bicycle_type", "Hybrid")],
+        )
+        found = transit.plan_bike(schedule, start, end, when, services, speed)
+    searched = routing.clock()
+    found = transit.choose(found, body.transit_option)
+    leg = found.legs[found.ride]
+    # The line is the chosen option's first ride (or walk). Riding directly there, or an option
+    # whose every ride and walk is a few yards (nothing the router could route), is drawn start to
+    # end instead, and the plan keeps its own times.
+    whole = (found.option.direct and body.preset == presets.BIKE_TRANSIT) or (
+        transit.line_m(leg) < transit.MIN_LINE_M
+    )
+    retime = not whole or found.option.direct
+    if whole:
+        ride_from, ride_to = list(start), list(end)
+    else:
+        ride_from = list(leg.coordinates[0])
+        ride_to = list(leg.coordinates[-1])
+    dials = routing.Dials(
+        stress=body.stress,
+        hills=body.hills,
+        when=body.when,
+        avoid_gravel=body.avoid_gravel,
+        trails_off=body.trails_off,
+        system_weight_kg=body.system_weight_kg,
+    )
+
+    def line(points: list[list[float]]) -> dict | None:
+        """The answer's line routed, or None when the router did not answer in time."""
+        try:
+            return routing.plan(points, body.preset, long_ride=False, started=started, dials=dials)
+        except (routing.RouterUnavailable, routing.DeadlineExceeded) as error:
+            logger.warning("transit plan: the answer's line was not routed: %s", error)
+            return None
+
+    def unrouted(points: list[list[float]], plan: transit.Plan) -> tuple[dict, transit.Plan]:
+        # As a short leg is: drawn straight, the plan keeping its own (estimated) times.
+        drawn = _unrouted_line(points, body.preset, dials, plan.legs[plan.ride].seconds)
+        return drawn, dataclasses.replace(plan, notes=[*plan.notes, UNROUTED_NOTE])
+
+    answer = line([ride_from, ride_to])
+    if answer is None:
+        answer, found = unrouted([ride_from, ride_to], found)
+        retime = False
+    if retime:
+        timed = transit.with_ride(found, float(answer["duration_s"]))
+        if timed.option.key != found.option.key:
+            # The chosen trip's departure cannot be caught after all and it was left out: the
+            # quickest left is planned, its own line routed (or drawn start to end).
+            leg = timed.legs[timed.ride]
+            if timed.option.direct and body.preset == presets.BIKE_TRANSIT:
+                points = [list(start), list(end)]
+            elif transit.line_m(leg) >= transit.MIN_LINE_M:
+                points = [list(leg.coordinates[0]), list(leg.coordinates[-1])]
+            else:
+                points = [list(start), list(end)]
+            answer = line(points)
+            if answer is None:
+                answer, timed = unrouted(points, timed)
+        found = timed
+    answer["transit"] = transit.block(found, schedule)
+    logger.info(
+        "transit plan %s: search %.1f s (candidates %.1f s, %d calls), line %.1f s",
+        body.preset,
+        searched - started - services.spent_s,
+        services.spent_s,
+        services.calls,
+        routing.clock() - searched,
+    )
+    return answer
+
+
+def _transit_refusal(message: str, code: str, status: int):
+    refusal = JsonResponse({"error": message, "code": code}, status=status)
+    if status == 503:
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+    return refusal
+
+
+# --- Stations closed for the day (the owner, 2026-10-12) ----------------------------------
+#
+# GET /api/transit/closures lists the rail stations with no service at all on a service day (a
+# weekend or holiday a line does not run, or a closure published in the timetable), for the
+# map to strike through and grey. A station outside its hours on a day it runs is not listed.
+
+
+class ClosuresIn(Schema):
+    at: datetime | None = Field(
+        default=None,
+        description="When, ISO 8601 (local time in Washington without an offset). Absent: now.",
+    )
+
+
+class ClosedStationOut(Schema):
+    name: str
+    system: str = Field(description='The system, by name: "Metro", "MARC".')
+    lon: float
+    lat: float
+    reason: str = Field(description='"no MARC weekend service"')
+
+
+class ClosuresOut(Schema):
+    service_day: str = Field(description="The GTFS service day (before 3 am, the day before).")
+    stations: list[ClosedStationOut]
+
+
+@api.get(
+    "/transit/closures",
+    response={200: ClosuresOut, 400: ErrorOut, 429: ErrorOut, 500: ErrorOut, 503: BusyOut},
+    summary="The rail stations with no service at all on a day, to grey on the map",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.COVERAGE), errors_as_json)
+def transit_closures(request, params: Query[ClosuresIn], response: HttpResponse):
+    when = params.at or timezone.now()
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=ridetime.ZONE)
+    try:
+        schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH)
+    except transit.Unavailable:
+        return _transit_refusal(
+            "Transit times are not available on this server right now.", "transit_unavailable", 503
+        )
+    moment = transit.moment_of(when)
+    response["Cache-Control"] = "public, max-age=300"
+    return {
+        "service_day": moment.service_day.isoformat(),
+        "stations": [
+            {
+                "name": c.stop.name,
+                "system": c.system.name,
+                "lon": c.stop.point[0],
+                "lat": c.stop.point[1],
+                "reason": c.reason,
+            }
+            for c in transit.closed_stations(schedule, moment)
+        ],
+    }
+
+
 def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_calm: bool = False):
     started = getattr(request, "routing_started", None)
+    if body.preset in presets.TRANSIT_PRESETS:
+        try:
+            return Status(200, _transit_body(body, started))
+        except transit.NoTransit as refusal:
+            return _transit_refusal(str(refusal), "no_transit", 422)
+        except transit.Unavailable as error:
+            logger.warning("transit plan refused: %s", error)
+            return _transit_refusal(
+                "Transit times are not available on this server right now.",
+                "transit_unavailable",
+                503,
+            )
+        except gbfs.Unavailable:
+            return _transit_refusal(
+                "Bikeshare station data is not available right now, so no dock can be chosen."
+                " Try again shortly.",
+                "transit_unavailable",
+                503,
+            )
+        except (
+            routing.TooLong,
+            routing.NoRoute,
+            routing.RouterUnavailable,
+            routing.DeadlineExceeded,
+        ) as error:
+            return _router_refusal(error, body)
     if body.preset == presets.BIKESHARE:
         try:
             return Status(200, _bikeshare_body(body, started))

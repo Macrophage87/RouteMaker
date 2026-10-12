@@ -18,7 +18,9 @@ export type PresetId =
   | "cargo"
   | "ebike"
   | "bikeshare"
-  | "kids";
+  | "kids"
+  | "bike-transit"
+  | "bikeshare-transit";
 
 export interface PresetOption {
   id: PresetId;
@@ -96,7 +98,32 @@ export const PRESETS: readonly PresetOption[] = [
     description:
       "Children on their own bikes: paths and the quietest streets strongly preferred, other quiet streets only when they save a real detour, busy streets avoided hard. Gentler hills, and times at a child's pace.",
   },
+  {
+    // TRANSIT-ASSIST (Stephen, 2026-10-12): transit is two commuting ride types, chosen like any other.
+    id: "bike-transit",
+    label: "Own Bike + Transit",
+    description:
+      "Your own bike the whole way, with Metro, MARC, Light RailLink, Metro SubwayLink or a bus's bike rack: riding directly there, then the quickest trips by scheduled times, not live. Uses stations a bike can get into (Metro's elevators), and never leaves the bike.",
+  },
+  {
+    id: "bikeshare-transit",
+    label: "Bikeshare + Transit",
+    description:
+      "Bikeshare directly there, or transit with either end a walk or a bikeshare bike, whichever is quicker (a bike is docked before you board). Metro, MARC, Light RailLink, Metro SubwayLink and buses; scheduled times, not live; docks from live availability where it can be read.",
+  },
 ];
+
+/** The transit ride types (lib/transit.ts): a start and an end, no loop, the trip in steps. */
+export const TRANSIT_PRESETS: readonly PresetId[] = ["bike-transit", "bikeshare-transit"];
+
+export function isTransit(id: PresetId): boolean {
+  return TRANSIT_PRESETS.includes(id);
+}
+
+/** Ride types planned from a start and an end only (no loop, no stops): Bikeshare and the transit types. */
+export function twoPointsOnly(id: PresetId): boolean {
+  return id === "bikeshare" || isTransit(id);
+}
 
 export const DEFAULT_PRESET: PresetId = "default";
 

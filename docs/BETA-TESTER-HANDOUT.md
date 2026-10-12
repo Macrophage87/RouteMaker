@@ -182,3 +182,40 @@ RouteMaker can be installed like an app: it then opens from your home screen in 
 - When a new version is ready, a line at the top of the planner says "A new version of
   RouteMaker is ready." with a "Reload" button. It never interrupts a ride: it waits until you
   press "End ride". With no signal, a line there says you are offline.
+
+11. Bike and transit together
+-----------------------------
+
+In Go, the three main buttons are "Default" (your own ride type), "Own Bike + Transit" and
+"Bikeshare + Transit". Cargo and plain Bikeshare are under "More".
+
+- Both transit types list a few trips, quickest first. "Ride the whole way" is always one of
+  them. Press a trip to put it on the map and in the steps.
+- Own Bike + Transit takes your bike the whole way, on Metro, MARC, Light RailLink, Metro
+  SubwayLink or a bus's front rack. It never asks you to leave the bike somewhere.
+- Bikeshare + Transit docks the bike before you board. At each end it walks or uses a bikeshare
+  bike, whichever is quicker. The docks are named.
+- The steps show each ride, walk and train or bus in order, with the total door to door. They say
+  how riding the whole way compares.
+- On the map, a dashed line is the ride on transit, marked with its system's name. A dotted line
+  is a walk.
+- All times are "about" and scheduled, from the agencies' published timetables, not live.
+  Weekends and holidays use their own timetables. A line with no service that day says so, for
+  example "MARC Camden Line: no weekend service".
+- Where trains or buses come every 15 minutes or less, the plan counts half that as the wait.
+  Otherwise, as on MARC, it names the departure: "MARC Penn Line 7:42 am from Union Station. You
+  arrive 7:36 am (6 min spare). Next after that: 8:15 am." The same appears as a label on the map
+  at the station.
+- With under 5 minutes to spare, a countdown shows in the steps and on the map label. A screen
+  reader hears it at 10, 5 and 2 minutes, not every second. If you would miss the departure, it
+  says so and plans the next one.
+- A station with no service all day is greyed and struck through on the map, named "(closed)".
+  Its card says why, for example "Camden Station, closed: no MARC weekend service" (the Camden
+  Line runs on weekdays only). Routes never use a closed station.
+- Bikes are allowed on Metro at all hours except a few special-event days, such as July 4. On
+  those days Own Bike + Transit uses no Metro and says so: "Bikes aren't allowed on Metro today
+  (July 4)." Bikeshare + Transit still uses Metro, because you walk on.
+- If the beta has no timetables installed, the transit ride types say transit times are not
+  available, and every other ride type works as usual.
+- Always check the agency for track work and service alerts before you go. RouteMaker does not
+  see them.

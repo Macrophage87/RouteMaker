@@ -142,6 +142,11 @@ BACKUP_DIR = DATA_ROOT / "backups"
 # container DATA_ROOT is /data, so these are the paths the generated Valhalla
 # configs name, and the same path resolves to the same file in both containers.
 TILES_DIR = DATA_ROOT / "tiles"
+# The transit ride types' schedule (core.transit): the region's GTFS (WMATA, MARC, MTA), compacted
+# on the host by scripts/build_transit_schedule.py (docs/OPERATIONS.md, "Transit schedule").
+# Never committed: the agencies' terms. Absent, the transit ride types answer 503. Under the tiles
+# folder, which the API already mounts read-only, so no new mount (and no missing bind source).
+TRANSIT_SCHEDULE_PATH = TILES_DIR / "transit" / "transit-schedule.json"
 ELEVATION_DIR = DATA_ROOT / "elevation"
 # The checked-in serving configs the rebuild derives its build configs from.
 # Read from inside the image (BASE_DIR), while the transform those configs name

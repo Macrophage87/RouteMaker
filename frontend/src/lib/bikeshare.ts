@@ -65,9 +65,14 @@ export function showsBikeshare(route: Pick<RouteResponse, "bikeshare"> | null | 
 }
 
 /** The route panel's credits: the route's own, and the bikeshare source citation wherever bikeshare data is shown. */
-export function routeCredits(route: Pick<RouteResponse, "attribution" | "bikeshare">): string[] {
+export function routeCredits(route: Pick<RouteResponse, "attribution" | "bikeshare" | "transit">): string[] {
   const credits = [...route.attribution];
   if (bikeshareOf(route) && !credits.includes(BIKESHARE_CREDIT)) credits.push(BIKESHARE_CREDIT);
+  // A transit ride type's schedule sources (each system's, from systems.json), and the operator's wherever its docks are used.
+  if (route.transit) {
+    if (route.transit.mode === "bikeshare-transit" && !credits.includes(BIKESHARE_CREDIT)) credits.push(BIKESHARE_CREDIT);
+    for (const credit of route.transit.credits) if (!credits.includes(credit)) credits.push(credit);
+  }
   return credits;
 }
 

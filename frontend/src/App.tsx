@@ -8,7 +8,8 @@ import { placeAtSpot, requestAfterClose, type InfoRequest } from "./lib/roadInfo
 import { stationNearSpot } from "./lib/stationLinks.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
-import { requestRoute, type RouteResponse, type RouteResult } from "./lib/api.ts";
+import { requestRoute, type ClosedStation, type RouteResponse, type RouteResult } from "./lib/api.ts";
+import { closedReason, matchClosures, requestClosures, serviceDayOf } from "./lib/railClosures.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatSeconds } from "./lib/format.ts";
 import { presetLabel, type PresetId } from "./lib/presets.ts";
@@ -39,7 +40,7 @@ import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, ty
 import { bikeshareOf } from "./lib/bikeshare.ts";
 import { carries, startDials, trailsAreOff, type Dials } from "./lib/dials.ts";
 import { WeightStore, withWeight, type StoredWeight } from "./lib/weight.ts";
-import { stationEdit, type RailVisibility, type StationRole } from "./lib/railStations.ts";
+import { stationEdit, type RailVisibility, type Station, type StationRole } from "./lib/railStations.ts";
 import { RAIL_STATIONS, WMATA_SLUGS, stationEntranceForPlace } from "./lib/railData.ts";
 import { federalShown, type FederalData } from "./lib/federalLand.ts";
 import { FEDERAL_POINTS_NONE, type FederalStatus } from "./lib/federalLegend.ts";
@@ -144,7 +145,8 @@ import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type
 import { letterKeyIndex, letterPlaces, placeLetter } from "./lib/letteredPlaces.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
 import { GO_START_SAID, GO_START_UNAVAILABLE, goDestinationLocating, goDestinationNeedsStart, goPickAction, goStartLine, goTapStartsPending, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, shouldAskGoStart, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
-import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type MyGo } from "./lib/myGo.ts";
+import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type MyGo } from "./lib/myGo.ts";
+import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { PRESETS } from "./lib/presets.ts";
 
@@ -218,9 +220,13 @@ export function App() {
   // must not plan again. The dials the request is made from leave it out, keyed on what is left.
   const { rideSize, ...routeDials } = dials;
   const routeKey = JSON.stringify(routeDials);
+  // The transit option the rider chose from the list (lib/transit.ts), for this trip only: a new
+  // start or end, or another ride type, starts from the quickest again. Request only, never the link.
+  const [transitPick, setTransitPick] = useState<TransitPick | null>(null);
+  const trip = optionsKey(points);
   const planDials = useMemo(
-    () => withStations(withWeight(routeDials, weight), stationChoice),
-    [routeKey, weight, stationChoice],
+    () => withTransitOption(withStations(withWeight(routeDials, weight), stationChoice), preset, transitPick, trip),
+    [routeKey, weight, stationChoice, preset, transitPick, trip],
   );
   // "Make it a loop" chosen (OWNER-DECISIONS 374): the first point is the start and finish, every later one a stop.
   const loopVias = loopStops(preset, dials.loop);
@@ -266,6 +272,35 @@ export function App() {
     void topoAvailable().then(setTopoReady);
   }, [showTopoLines]);
   const [rail, setRail] = useState<RailVisibility>({ metro: true, marc: true });
+  // The rail stations with no service all day (railClosures.ts): struck through and greyed on the
+  // map, and "closed" in their cards and lists. Asked again when the service day turns over.
+  const [closedToday, setClosedToday] = useState<ClosedStation[]>([]);
+  useEffect(() => {
+    let day = "";
+    const controller = new AbortController();
+    let asking = false;
+    const check = () => {
+      const today = serviceDayOf(Date.now());
+      if (today === day || asking) return;
+      asking = true;
+      void requestClosures({ signal: controller.signal }).then((stations) => {
+        asking = false;
+        if (controller.signal.aborted) return;
+        // Only an answer settles the day: a failure is asked again at the next check.
+        if (stations === null) return;
+        day = today;
+        setClosedToday(stations);
+      });
+    };
+    check();
+    const timer = window.setInterval(check, 10 * 60 * 1000);
+    return () => {
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, []);
+  const railClosures = useMemo(() => matchClosures(RAIL_STATIONS, closedToday), [closedToday]);
+  const railClosedReason = useCallback((station: Station) => closedReason(station, rail, railClosures), [rail, railClosures]);
   // The Mass Ride map's federal-land shading (lib/federalLand.ts): the rider's
   // own switch, on by default, and whether its data has arrived.
   const [federalOn, setFederalOn] = useState(true);
@@ -1107,6 +1142,7 @@ export function App() {
         inside: insideCoverage,
         water: ensureWater,
         stations: RAIL_STATIONS,
+        closedReason: (station) => closedReason(station, { metro: true, marc: false }, railClosures),
         request: (from, places) => requestNearest(from, places, ride.preset, ride.dials),
       });
       if (outcome.fix) setHere(outcome.fix);
@@ -1970,8 +2006,9 @@ export function App() {
     const routeShown = shown !== null;
     const vertexCount = shown?.geometry.coordinates.length ?? 0;
     if (!shown || !canDragLine({ routeShown, stale, routedIsCurrent: routedPoints === points, vertexCount })) return null;
-    // A bikeshare ride runs dock to dock, not between the points: its line is not theirs to drag.
-    if (bikeshareOf(shown)) return null;
+    // A bikeshare ride runs dock to dock, not between the points, and a transit ride's line is its
+    // first ride only: neither line is theirs to drag.
+    if (bikeshareOf(shown) || shown.transit) return null;
     const path = shown.geometry.coordinates;
     // A loop's legs close on the start (OWNER-DECISIONS 374), so the API's
     // leg ends fit them.
@@ -2097,10 +2134,21 @@ export function App() {
     peek: goSheet === "peek",
     options: goOptions ? { list: goOptions, picked: pickedOption(goOptions, bikeshareOf(shown)), busy: stale, onPick: pickOption } : null,
   };
+  // A transit plan's options (lib/transit.ts): a press plans that one, for this trip; a departure the
+  // rider would miss plans again, which takes the next one (lib/departure.ts).
+  const transitControls = {
+    onPick: (key: string) => {
+      const option = transitOf(shown)?.options.find((o) => o.key === key);
+      setTransitPick({ trip, key });
+      if (option) announce(optionChosenSaid(option));
+    },
+    announce,
+    onMissed: retry,
+  };
   const routeSection = (
     <RouteSection key="route"
       {...{
-        mode, actions, stations, go,
+        mode, actions, stations, go, transitControls,
         stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef,
         confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
         narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials,
@@ -2195,6 +2243,7 @@ export function App() {
         }}
         onCanvasFocus={(focused) => setCrosshair((c) => ({ ...c, canvas: focused }))}
         rail={rail}
+        railClosedReason={railClosedReason}
         massCapacity={massMap}
         massArea={isMassRide(preset)}
         massHazards={massHazards}
@@ -2354,7 +2403,7 @@ export function App() {
                       findNearestHere("restroom");
                     },
                   }}
-                  rides={<RideChips ids={goRideChips(myGo.ride)} preset={preset} onPick={pickRide} more={(opener) => openView("ride", opener)} label="Ride type" />}
+                  rides={<RideChips ids={goRideChips(myGo.ride)} preset={preset} onPick={pickRide} more={(opener) => openView("ride", opener)} label="Ride type" ownHint={OWN_RIDE_HINT} />}
                   notice={notice}
                   route={points.length > 1 || status.kind !== "idle" ? routeSection : null}
                   startLine={goStartLine(goStart, points.length > 0 ? (namer.name(points[0])?.name ?? "the point on the map") : null)}

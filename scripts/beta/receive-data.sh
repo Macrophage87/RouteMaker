@@ -8,7 +8,7 @@
 #
 # COMMANDs, run in this order by docs/BETA-RUNBOOK.md:
 #   verify   sha256 of every file against SHA256SUMS. Changes nothing.
-#   files    verify, then install tiles, elevation, basemap, photon and the front end under
+#   files    verify, then install tiles, elevation, basemap, photon, the transit schedule and the front end under
 #            DATA_ROOT, switch each graph's `current` link to the new build, and verify the
 #            installed files again. Only files SHA256SUMS lists are installed, and only the
 #            tile builds MANIFEST.txt's tiles= line names: anything an earlier bundle left in
@@ -268,6 +268,13 @@ if [ "$command_name" = files ]; then
 
 	if has_part elevation; then install_listed elevation/ 1; note "elevation installed"; fi
 	if has_part basemap; then install_listed basemap/ 1; note "basemap installed"; fi
+
+	if has_part transit; then
+		# The transit ride types' schedule, beside the tile builds; the api reads it again when it
+		# changes, so nothing restarts.
+		install_listed tiles/transit/ 1
+		note "transit schedule installed"
+	fi
 
 	if has_part photon; then
 		install_listed photon/ 1

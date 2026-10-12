@@ -6900,6 +6900,62 @@ and the end, and `detourPoints` puts the place second, so the new route cues it 
 through the re-plan gate (`gate.online()` first, since the rider asked), and a re-plan already under
 way is said and left alone.
 
+## Transit assist (TRANSIT-ASSIST, v0.6.0)
+
+There are two ride types, `bike-transit` (Own Bike + Transit) and `bikeshare-transit` (Bikeshare +
+Transit). Both are planned by `core.transit` from a compact schedule built from each system's static
+GTFS (`scripts/build_transit_schedule.py`, schema 2). The systems, their bike rules and the sources
+are listed in `src/core/transitdata/systems.json`. Sources and terms: docs/SOURCES.md. Running it:
+docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-assist.md.
+
+- **Options.** Riding the whole way is always one option. Up to three transit trips are added,
+  quickest total first, one per distinct sequence of boardings. A trip has one or two transit legs,
+  with a same-stop change or a walk or ride of up to 400 m (1,300 ft) between them.
+  - Own Bike + Transit never walks and never leaves the bike.
+  - Bikeshare + Transit docks before boarding. Each end is a walk or a bikeshare ride, whichever is
+    quicker.
+  - The rider's choice goes back as `transit_option`. A stale key falls back to the quickest, with
+    a note.
+- **Calendars.** Each service's days come from `calendar.txt` and `calendar_dates.txt` for 45 days
+  from the build date, so holidays, weekend-only service and published shutdowns are exact. The
+  service day turns over at 3 am.
+- **Waits.** From the next three or four departures (two leaving the same minute count once): if
+  every gap is 15 min or less, the wait is half the mean gap. Otherwise (a near pair before a long
+  gap included) the plan takes the next departure, names it and the one after, and returns it as
+  `transit.departure`. A routed first ride that misses it moves to the next catchable departure
+  (and names the one after that); with none within the hour the option is dropped.
+- **Times.** A service-day minute is real elapsed time from GTFS's zero (noon less 12 hours), so
+  daylight-saving days are right. From 1 to 5 am both service days are searched (owl trips past
+  27:00 included). Stops without times (not timepoints) are interpolated by the build.
+- **Router budget.** The direct ride is routed first. Candidate legs are capped at 5 s a call and
+  `MAX_ROUTER_CALLS`, and stop 12 s into the request (`api.TRANSIT_CANDIDATES_S`); a refusal, a
+  timeout or a router that is down estimates the leg from the straight line, never fails the plan.
+  The answer's own line has the rest of the budget. If the router does not draw it in time (a
+  timeout or the router down), the leg is drawn straight with the plan's estimated time and a note
+  says so, as a short leg is. The api logs each plan's seconds in the search, the candidates' router
+  calls and the line, at info level.
+- **Clock times.** A departure's clock ("1:30 am") is the wall time of its service day's minute,
+  so a daylight-saving night says the time the station clock shows.
+- **Blackout dates.** Own Bike + Transit takes no bike on Metro on them ("Bikes aren't allowed on
+  Metro today (July 4)."); Bikeshare + Transit still rides Metro on foot.
+- **Departure in the app.**
+  - The panel shows the departure in words (`lib/departure.ts`). Under 5 min to spare it adds a
+    mm:ss countdown and the spare time (`DepartureTimer.tsx`).
+  - The map shows a label at the boarding stop. It sits above the stop, or below when the start or
+    end marker is near, and turns into the countdown when time is short.
+  - Neither is a live region. The milestones (10, 5 and 2 min) and a miss go through the page's
+    status line. A miss plans again; `core.transit.with_ride` moves to the next departure.
+- **Closed stations.** `GET /api/transit/closures` lists the rail stations with no service all day,
+  and `lib/railClosures.ts` matches them to the map's stations.
+  - On the map, a closed station is struck through, grey and named "(closed)".
+  - Its card and the nearest-Metro list say "closed: reason".
+  - Routing never uses a closed station, because it has no departures that day.
+- **Tests.** `tests/test_transit.py` runs on a synthetic fixture
+  (`tests/data/transit/make_fixture.py`: WMATA rail and bus, MARC Penn and Camden lines, Light
+  RailLink) with a straight-line router. Front-end tests: `lib/transit.test.ts`,
+  `lib/departure.test.ts` and `lib/railClosures.test.ts`. a11y checks: the "transit (Go)" checks in
+  `scripts/a11y/check.mjs`.
+
 ## Bikeshare (FOLLOWUP-BIKESHARE, OWNER-DECISIONS 243-245, 299-301, 466, 466a)
 
 `POST /api/route` with `preset: "bikeshare"`, `bike` (`classic`, the default, or `ebike`) and

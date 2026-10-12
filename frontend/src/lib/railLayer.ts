@@ -10,6 +10,7 @@
  */
 import {
   allIconLines,
+  closedIconId,
   iconId,
   iconShape,
   lineStyle,
@@ -18,7 +19,7 @@ import {
   type RailVisibility,
   type Station,
 } from "./railStations.ts";
-import { elevatorIcon, stationIcon, type Raster } from "./stationIcons.ts";
+import { closedStationIcon, elevatorIcon, stationIcon, type Raster } from "./stationIcons.ts";
 
 export const RAIL_SOURCE_ID = "rail";
 export const RAIL_LAYERS = {
@@ -81,7 +82,8 @@ export function railLayers(sourceId = RAIL_SOURCE_ID) {
         "text-optional": true,
       },
       paint: {
-        "text-color": "#1f2937",
+        // A closed station's name is grey as well as "(closed)" (railClosures.ts); #4b5563 is 7.6:1 on its white halo.
+        "text-color": ["case", ["==", ["get", "closed"], true], "#4b5563", "#1f2937"],
         "text-halo-color": "#ffffff",
         "text-halo-width": 1.5,
       },
@@ -123,6 +125,7 @@ export function railImages(stations: readonly Station[], pennColour: string, pix
     ),
   }));
   images.push({ id: ELEVATOR_ICON, raster: elevatorIcon(pixelRatio) });
+  for (const shape of ["circle", "square"] as const) images.push({ id: closedIconId(shape), raster: closedStationIcon(shape, pixelRatio) });
   return images;
 }
 
@@ -137,6 +140,7 @@ export function addRailStations(
   visibility: RailVisibility,
   pennColour: string,
   pixelRatio: number,
+  isClosed?: (station: Station) => boolean,
 ): boolean {
   if (map.getSource(RAIL_SOURCE_ID)) return false;
   for (const { id, raster } of railImages(stations, pennColour, pixelRatio)) {
@@ -144,16 +148,21 @@ export function addRailStations(
     const { width, height, data } = raster;
     map.addImage(id, { width, height, data }, { pixelRatio: raster.pixelRatio });
   }
-  map.addSource(RAIL_SOURCE_ID, { type: "geojson", data: railFeatures(stations, visibility) });
+  map.addSource(RAIL_SOURCE_ID, { type: "geojson", data: railFeatures(stations, visibility, isClosed) });
   const before = map.getLayer(ROUTE_BOTTOM_LAYER) ? ROUTE_BOTTOM_LAYER : undefined;
   for (const layer of railLayers()) map.addLayer(layer, before);
   return true;
 }
 
-/** Show the stations the toggles ask for. */
-export function setRailVisibility(map: RailMap, stations: readonly Station[], visibility: RailVisibility): void {
+/** Show the stations the toggles ask for, the day's closed ones struck through. */
+export function setRailVisibility(
+  map: RailMap,
+  stations: readonly Station[],
+  visibility: RailVisibility,
+  isClosed?: (station: Station) => boolean,
+): void {
   const source = map.getSource(RAIL_SOURCE_ID) as { setData?: (data: unknown) => void } | undefined;
-  source?.setData?.(railFeatures(stations, visibility));
+  source?.setData?.(railFeatures(stations, visibility, isClosed));
 }
 
 /** The rail feature under a click, if any: a station, or one of its elevators. */

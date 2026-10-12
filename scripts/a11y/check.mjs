@@ -10,7 +10,7 @@
 // installable app's checks: its service worker exists only in a build); --cdp (or A11Y_CDP_PORT)
 // is Chromium's remote debugging port.
 import { mkdirSync } from "node:fs";
-import { RIDE_COORDS, S_AVOID, S_BIKESHARE, S_BIKESHARE_EBIKE, S_STATIONS_DROPOFF, S_STATIONS_PICKUP, S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_RIDE, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep, S_KIDS, S_MASS_FEDERAL, HAZARD_LAYER, JUNCTION_AT, JUNCTION_ITEM } from "./cdp.mjs";
+import { RIDE_COORDS, S_AVOID, S_BIKESHARE, S_BIKESHARE_EBIKE, S_STATIONS_DROPOFF, S_STATIONS_PICKUP, S_CHOICES, S_DEFAULT, S_MASS, S_MASS_CAPACITY, S_MASS_OUTSIDE_DC, S_OVER, S_RIDE, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep, S_KIDS, S_MASS_FEDERAL, S_TRANSIT, HAZARD_LAYER, JUNCTION_AT, JUNCTION_ITEM, transitMarc } from "./cdp.mjs";
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(name);
@@ -3866,8 +3866,11 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
       scroll: document.documentElement.scrollWidth > innerWidth }; })()`);
   check("go: a phone with no link opens in Go: Menu, the Go/Plan switch (Go pressed), Layers and Locate over the map, and no bottom bar",
     go.mode === "Go" && go.top && !go.bar && JSON.stringify(go.topButtons) === JSON.stringify(["Menu", "Go", "Plan", "Layers", "Locate"]), JSON.stringify(go));
-  check("go: the sheet has Where to?, the place chips Home, Food, Water and Restroom (no Work), and the ride types Default, Cargo Bike, Bikeshare and More",
-    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Food", "Water", "Restroom"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Cargo Bike", "Bikeshare", "More"]), JSON.stringify(go));
+  // The owner, 2026-10-12: the rider's own ride type first (My Go; Default until set), then the two transit types.
+  check("go: the sheet has Where to?, the place chips Home, Food, Water and Restroom (no Work), and the ride types Default, Own Bike + Transit, Bikeshare + Transit and More ride types",
+    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Food", "Water", "Restroom"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Own Bike + Transit", "Bikeshare + Transit", "More ride types"]), JSON.stringify(go));
+  const own = await axNode(p, ".go-sheet .ride-chips .ride-type-chip");
+  check("go: the first ride type is described as the rider's own, set in Settings", own?.name === "Default" && /^Your ride type\. Change it in Settings, under My Go\.$/.test(own?.description ?? ""), JSON.stringify(own));
   check("go: every control in the top bar and the sheet is 44 px or more each way, and nothing scrolls sideways at 390 px", go.small.length === 0 && !go.scroll, JSON.stringify(go.small));
   const sw = await axNode(p, "nav.go-top .mode-switch");
   const pressed = { ...(await axNode(p, "nav.go-top .mode-button")), pressed: await p.eval("document.querySelector('nav.go-top .mode-button').getAttribute('aria-pressed')") };
@@ -4030,7 +4033,103 @@ async function goPick(p, box, text) {
   await sleep(800);
   const riding = await p.eval("({ ride: !!document.querySelector('section.ride'), ask: !!document.querySelector('.ride-ask:not([hidden])') })");
   check("go flow: from opening Go, a typed destination takes 3 taps to ride (Where to?, the place, then Start ride), with no question or sheet between, and the route options shown at once",
-    routed && riding.ride && !riding.ask && taps === 3 && options.rides.includes("Bikeshare"), JSON.stringify({ taps, options, riding }));
+    routed && riding.ride && !riding.ask && taps === 3 && options.rides.includes("Own Bike + Transit"), JSON.stringify({ taps, options, riding }));
+  await p.close();
+}
+
+// ---- TRANSIT-ASSIST: a transit ride type from Go, in one tap after the destination ----
+{
+  const p = await newPage(b, { width: 390, height: 844, mobile: true });
+  await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+  await mock(p, (n) => (n === 1 ? S_DEFAULT : S_TRANSIT));
+  await media(p, {});
+  await b.send("Browser.setPermission", { permission: { name: "geolocation" }, setting: "denied", origin: `http://127.0.0.1:${PORT}`, browserContextId: p.contextId });
+  await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/` });
+  await p.waitFor("!!document.querySelector('.mode-switch')", 40000);
+  await sleep(900);
+  let taps = 0;
+  await p.eval("document.querySelector('.go-sheet .go-search input').focus(); true");
+  taps += 1;
+  await p.type("Union");
+  await p.waitFor("!!document.querySelector('.go-sheet .go-search [role=option]')", 15000);
+  await p.eval("(() => { const o = document.querySelector('.go-sheet .go-search [role=option]'); o.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); o.click(); return true; })()");
+  taps += 1;
+  await p.waitFor("!!document.querySelector('.go-route-rides .ride-chips button')", 20000);
+  await p.eval("[...document.querySelectorAll('.go-route-rides .ride-chips button')].find((x) => x.textContent.trim() === 'Own Bike + Transit').click(); true");
+  taps += 1;
+  const planned = await p.waitFor("!!document.querySelector('ol.transit-steps li')", 20000);
+  const trip = await p.eval(`(() => ({
+    steps: [...document.querySelectorAll('ol.transit-steps > li')].map((e) => e.textContent.trim()),
+    total: document.querySelector('.go-totals .total-time dd')?.textContent,
+    totalName: document.querySelector('.go-totals .total-time dt')?.textContent,
+    heading: document.querySelector('.transit h3')?.textContent,
+    compare: document.querySelector('.transit-compare')?.textContent,
+    markers: [...document.querySelectorAll('.transit-marker')].map((e) => ({ role: e.getAttribute('role'), label: e.getAttribute('aria-label'), badge: e.textContent, hidden: e.firstElementChild?.getAttribute('aria-hidden') })),
+    start: !!document.querySelector('.go-summary .start-button'),
+    pressed: [...document.querySelectorAll('.go-route-rides .ride-chips button')].filter((x) => x.getAttribute('aria-pressed') === 'true').map((x) => x.textContent.trim()),
+    said: document.querySelector('.status-line')?.textContent ?? '',
+    scroll: document.documentElement.scrollWidth > innerWidth }))()`);
+  const list = await axNode(p, "ol.transit-steps");
+  check("transit (Go): destination, then one tap on Own Bike + Transit, plans the trip (3 taps), the chip pressed",
+    planned && taps === 3 && JSON.stringify(trip.pressed) === JSON.stringify(["Own Bike + Transit"]), JSON.stringify({ taps, trip }));
+  check("transit (Go): the steps are a list named Steps, in order, read in riding order: ride, into the station, board, out, ride",
+    list?.role === "list" && list?.name === "Steps, in order" && trip.steps.length === 5 && /^Ride 4 min to Eastern Market\.$/.test(trip.steps[0]) && /^Board the Orange Line \(about 5 min wait\); ride 10 min to Federal Triangle\.$/.test(trip.steps[2]) && /to your destination\.$/.test(trip.steps[4]),
+    JSON.stringify({ list, steps: trip.steps }));
+  check("transit (Go): the time shown is the door-to-door total, 'about' and named scheduled for a screen reader, with riding the whole way beside it",
+    trip.total === "about 28 min" && trip.totalName === "Door-to-door time, scheduled" && /^Own Bike \+ Transit: About 28 min door to door, scheduled$/.test(trip.heading ?? "") && /^Riding the whole way: about 32 min\./.test(trip.compare ?? ""),
+    JSON.stringify(trip));
+  check("transit (Go): the Metro line has a text marker, an image named in words (not colour alone)",
+    trip.markers.length === 1 && trip.markers[0].role === "img" && trip.markers[0].label === "Metro, Orange Line, to Federal Triangle" && trip.markers[0].badge === "Metro" && trip.markers[0].hidden === "true",
+    JSON.stringify(trip.markers));
+  // The owner, 2026-10-12: riding the whole way is always an option; the options are a named list of toggle buttons.
+  const options = await p.eval(`(() => ({
+    buttons: [...document.querySelectorAll('ol.transit-options button')].map((x) => ({ text: x.textContent.trim(), pressed: x.getAttribute('aria-pressed') })),
+    track: /Scheduled service; check for track work\./.test(document.querySelector('.transit-scheduled')?.textContent ?? '') }))()`);
+  const optionList = await axNode(p, "ol.transit-options");
+  check("transit (Go): the trips are a list named Trips, quickest first, lettered, the chosen one pressed, riding the whole way among them, and the track-work caution shown",
+    optionList?.role === "list" && optionList?.name === "Trips, quickest first" && options.buttons.length === 2 && options.buttons[0].text === "A. Ride, Metro to Federal Triangle (Orange Line), ride: about 28 min" && options.buttons[0].pressed === "true" && options.buttons[1].text === "B. Ride the whole way: about 32 min" && options.buttons[1].pressed === "false" && options.track,
+    JSON.stringify({ optionList, options }));
+  check("transit (Go): the day's closed stations are asked for, to strike through on the map", p.closureRequests >= 1, String(p.closureRequests));
+  check("transit (Go): the announcement is brief (the total and the comparison), no Start ride on the trip, nothing scrolls sideways",
+    /^Own Bike \+ Transit planned: About 28 min door to door, scheduled\. Riding the whole way/.test(trip.said) && !/Board the/.test(trip.said) && !trip.start && !trip.scroll,
+    JSON.stringify({ said: trip.said, start: trip.start, scroll: trip.scroll }));
+  await p.shot(`${SHOTS}/transit_go.png`);
+  await p.close();
+}
+// ---- TRANSIT-ASSIST: an infrequent departure, cutting it close (the owner, 2026-10-12) ----
+{
+  const p = await newPage(b, { width: 390, height: 844, mobile: true });
+  await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+  await mock(p, (n) => (n === 1 ? S_DEFAULT : transitMarc()));
+  await media(p, {});
+  await b.send("Browser.setPermission", { permission: { name: "geolocation" }, setting: "denied", origin: `http://127.0.0.1:${PORT}`, browserContextId: p.contextId });
+  await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/` });
+  await p.waitFor("!!document.querySelector('.mode-switch')", 40000);
+  await sleep(900);
+  await p.eval("document.querySelector('.go-sheet .go-search input').focus(); true");
+  await p.type("Union");
+  await p.waitFor("!!document.querySelector('.go-sheet .go-search [role=option]')", 15000);
+  await p.eval("(() => { const o = document.querySelector('.go-sheet .go-search [role=option]'); o.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); o.click(); return true; })()");
+  await p.waitFor("!!document.querySelector('.go-route-rides .ride-chips button')", 20000);
+  await p.eval("[...document.querySelectorAll('.go-route-rides .ride-chips button')].find((x) => x.textContent.trim() === 'Own Bike + Transit').click(); true");
+  const shown = await p.waitFor("!!document.querySelector('.departure-timer') && !!document.querySelector('.departure-label span')?.textContent", 20000);
+  const first = await p.eval(`(() => ({
+    text: document.querySelector('.departure-text')?.textContent ?? '',
+    timer: document.querySelector('.departure-timer')?.textContent ?? '',
+    live: [...document.querySelectorAll('.departure, .departure *, .departure-label, .departure-label *')].some((e) => e.hasAttribute('aria-live') || ['status', 'timer', 'alert', 'log'].includes(e.getAttribute('role'))),
+    label: document.querySelector('.departure-label span')?.textContent ?? '',
+    labelHidden: document.querySelector('.departure-label')?.getAttribute('aria-hidden'),
+    credit: document.querySelector('.transit .route-credit')?.textContent ?? '' }))()`);
+  await sleep(2100);
+  const later = await p.eval("document.querySelector('.departure-label span')?.textContent ?? ''");
+  check("transit (Go): an infrequent departure is said plainly: the MARC, when, from where, when you arrive and the spare, and the one after",
+    shown && /^MARC Penn Line \d{1,2}:\d{2} [ap]m from Union Station\. You arrive \d{1,2}:\d{2} [ap]m \(3 min spare\)\. Next after that: \d{1,2}:\d{2} [ap]m\.$/.test(first.text),
+    JSON.stringify(first));
+  check("transit (Go): cutting it close shows a mm:ss countdown and the spare, in the panel and on the map's label at the boarding stop, neither a live region",
+    /Cutting it close\. Departs in \d{2}:\d{2}; time to spare \d{2}:\d{2}\./.test(first.timer) && /^MARC \d{1,2}:\d{2} [ap]m · in \d{2}:\d{2} · \d{2}:\d{2} spare$/.test(first.label) && first.labelHidden === "true" && !first.live && later !== first.label,
+    JSON.stringify({ first, later }));
+  check("transit (Go): both systems' timetables are credited", /WMATA GTFS \(scheduled times\); MDOT MTA GTFS \(scheduled times\)/.test(first.credit), first.credit);
+  await p.shot(`${SHOTS}/transit_departure.png`);
   await p.close();
 }
 {

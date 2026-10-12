@@ -3639,6 +3639,46 @@ details.zoom-notes {
 .bikeshare {
   margin: 0 0 12px;
 }
+
+/* The transit ride types (TRANSIT-ASSIST): the text marker on each Metro and bus line, and the
+   trip in the route panel. The marker's word, not its colour, says what the dashed line is. */
+.transit-marker span {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #3b0764;
+  border: 2px solid #5b21b6;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.3;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+}
+.transit {
+  margin: 0 0 12px;
+}
+.transit h3 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+}
+.transit-total {
+  margin: 0 0 4px;
+}
+.transit-steps {
+  margin: 8px 0;
+  padding-left: 1.6em;
+}
+.transit-steps li {
+  margin: 0 0 6px;
+}
+.transit-steps li > svg {
+  margin-right: 6px;
+  vertical-align: -2px;
+}
+.transit-notes {
+  margin: 6px 0;
+  padding-left: 1.2em;
+}
 .bikeshare h3 {
   margin: 0 0 6px;
   font-size: 1rem;
@@ -4891,4 +4931,110 @@ details.fold > summary .icon {
 
 .go-bike-option-text {
   flex: 1 1 10em;
+}
+
+/* TRANSIT-ASSIST options and an infrequent departure (lib/departure.ts). The options are a list of
+   pressable rows, the chosen one marked by weight and a border as well as by aria-pressed. */
+.transit-options {
+  list-style: none;
+  margin: 6px 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.transit-option {
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 10px;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.transit-option.chosen {
+  font-weight: 700;
+  border: 2px solid var(--accent);
+}
+.transit-option[aria-disabled="true"] {
+  cursor: progress;
+}
+.departure {
+  margin: 6px 0;
+}
+.departure-text {
+  margin: 0 0 4px;
+}
+/* Go's sheet at peek: the departure in one line, the countdown when cutting it close. */
+.departure-compact {
+  margin: 4px 0 0;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.departure-timer {
+  margin: 0 0 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--notice-bg);
+  color: var(--notice-text);
+}
+/* Digits that do not shift as they change. */
+.departure-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+/* The departure's label on the map, at the boarding stop. The map is the light flavour in both
+   themes, so the label is the same in both: near-black on white, 17:1; when cutting it close, the
+   notice colours (8.1:1) with a thicker border, so the change is not colour alone (the text becomes
+   the countdown). Not a live region and aria-hidden: the panel says the same. No animation. */
+.departure-label {
+  pointer-events: none;
+}
+.departure-label span {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #111827;
+  border: 2px solid #111827;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+}
+.departure-label.close span {
+  background: #fff6db;
+  color: #5c4200;
+  border: 3px solid #5c4200;
+}
+.departure-label.missed span {
+  background: #fdecec;
+  color: #8a1111;
+  border: 3px dashed #8a1111;
+}
+.a11y .departure-label span {
+  font-size: 0.9rem;
+}
+
+/* A rail station closed all day: its card says "closed: ..." in words, in a muted colour as well. */
+.station-popup.station-closed .station-name {
+  color: var(--text-muted);
+}
+
+@media (forced-colors: active) {
+  .departure-label span,
+  .departure-label.close span,
+  .departure-label.missed span {
+    background: Canvas;
+    color: CanvasText;
+    border-color: CanvasText;
+  }
+  .transit-option.chosen {
+    border-color: Highlight;
+  }
 }

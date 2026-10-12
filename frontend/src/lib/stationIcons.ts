@@ -107,6 +107,44 @@ export function stationIcon(
   });
 }
 
+/** A closed station's fill, ring and strike: grey, so the lines' colours do not read as running. */
+export const CLOSED_FILL = "#d1d5db";
+export const CLOSED_RING = "#6b7280";
+export const CLOSED_STRIKE = "#1f2937";
+
+/**
+ * A closed station: its usual shape in grey with a near-black stroke from corner to corner (top right
+ * to bottom left) cased in white, so it reads as struck through on the light and dark base maps alike
+ * and without colour.
+ */
+export function closedStationIcon(shape: "circle" | "square", pixelRatio = 2, cssSize = STATION_ICON_PX): Raster {
+  const fill = hexToRgb(CLOSED_FILL);
+  const ring = hexToRgb(CLOSED_RING);
+  const strike = hexToRgb(CLOSED_STRIKE);
+  const white = hexToRgb(SEPARATOR);
+  const size = Math.round(cssSize * pixelRatio);
+  const centre = size / 2;
+  const radius = shape === "circle" ? size / 2 : size * 0.43;
+  const ringWidth = 1.5 * pixelRatio;
+  const half = 1.25 * pixelRatio;
+  const casing = half + 1 * pixelRatio;
+  return rasterise(size, pixelRatio, (x, y) => {
+    const dx = x - centre;
+    const dy = y - centre;
+    const distance = shape === "circle" ? Math.hypot(dx, dy) : Math.max(Math.abs(dx), Math.abs(dy));
+    // The stroke runs past the shape a little, to the icon's edge.
+    const across = Math.abs(dx + dy) / Math.SQRT2;
+    const along = Math.abs(dx - dy) / Math.SQRT2;
+    if (along <= size / 2 - 0.5) {
+      if (across <= half) return strike;
+      if (across <= casing && distance <= radius) return white;
+    }
+    if (distance > radius) return null;
+    if (distance > radius - ringWidth) return ring;
+    return fill;
+  });
+}
+
 function insideTriangle(x: number, y: number, a: number[], b: number[], c: number[]): boolean {
   const side = (p: number[], q: number[]) => (q[0] - p[0]) * (y - p[1]) - (q[1] - p[1]) * (x - p[0]);
   const s1 = side(a, b);

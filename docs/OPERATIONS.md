@@ -1947,6 +1947,51 @@ or a suggestion, and `my_go` is left out of the beta's data shipment (`scripts/b
 `0018_junction_suggestions`, so the chain stays linear with one leaf. It reverses cleanly
 (`migrate core 0018` drops the table). `migrate` runs at `up`, as always.
 
+## Transit schedule (TRANSIT-ASSIST, v0.6.0)
+
+The Own Bike + Transit and Bikeshare + Transit ride types read one file:
+`$DATA_ROOT/tiles/transit/transit-schedule.json` (`settings.TRANSIT_SCHEDULE_PATH`). It sits under
+the tiles folder, which the web container already mounts read-only, so there is no new mount, and
+a weekly rebuild leaves it alone (it replaces only its own variant folders). Without the file, a transit plan answers 503
+`transit_unavailable` ("Transit times are not available on this server right now."), and the map
+greys no stations (`GET /api/transit/closures` answers 503 too). Every other ride type is
+unaffected.
+
+**Build it on the home PC.** The agencies' servers cannot be reached from the cloud.
+
+    export WMATA_API_KEY=...   # in the shell, from your own records; never in a committed file
+    python3 scripts/fetch_transit_gtfs.py --out-dir ~/rmdata/transit
+    .venv/bin/python scripts/build_transit_schedule.py --feeds ~/rmdata/transit \
+        --out "$DATA_ROOT/tiles/transit/transit-schedule.json"
+
+- The fetch writes one zip per system in `src/core/transitdata/systems.json`, plus a README with
+  each zip's URL, size, sha256 and time. The key is read from the environment variable only and is
+  never printed. `--only marc` fetches one system.
+- The build prints a report: stops and patterns per system, any Metro platform it could not match
+  to the map's stations, and any system whose zip is missing (left out, not fatal).
+- The zips and the built file are the agencies' data. Keep them on the host and never commit them
+  (docs/SOURCES.md, "Transit timetables").
+- The web process reads the file again when it changes, so no restart is needed.
+
+**Refresh at least every 45 days.** The file holds 45 days of service from the build date
+(`--date`, default today). A plan for a later date answers with riding the whole way only, plus the
+note "The timetables installed run ... to ...". Refresh as well when an agency publishes a new
+timetable, for example a MARC schedule change or a Metro shutdown. Planned closures reach the plans
+only through the published GTFS. With fewer than 7 days left, the api logs "the transit schedule
+runs out ..." once a day and `manage.py check_operations` alerts ("transit: the schedule runs out
+on ..."; exit 1). An unreadable file alerts too; no file installed does not.
+
+**The beta** gets the schedule in its data bundle (`ship-data.sh`'s `transit` part;
+docs/BETA-RUNBOOK.md). Ship it again after each refresh.
+
+**Bike blackout dates** (Metro, special events): July 4 is built in. Add other dates by hand to
+`src/core/transitdata/metro-bike-blackouts.json` as WMATA announces them. On such a date Own Bike +
+Transit uses no Metro and says "Bikes aren't allowed on Metro today (July 4)."; Bikeshare + Transit
+still rides Metro on foot.
+
+**What is not checked:** live arrivals and GTFS-Realtime service alerts. Every plan says
+"Scheduled service; check for track work."
+
 ## Avoid-rated junctions: adding one (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
 
 An Avoid rating is for a junction that is "just way too problematic", and only from the
