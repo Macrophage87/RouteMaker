@@ -854,31 +854,23 @@ test("the folds show open or closed, the plain buttons have a 3:1 edge, and focu
   assert.match(css, /@media \(forced-colors: active\) \{\s*\.panel \.bar-button,\s*\.panel \.ride-line-button \{\s*border: 1px solid ButtonText;/);
 });
 
-test("short or zoomed screens: the whole panel scrolls as one, so nothing pinned crowds out the planner or the banner", () => {
+test("short or zoomed screens: the whole panel scrolls as one, so nothing pinned crowds out the planner", () => {
   const start = css.indexOf("@media (max-height: 32.5em), (max-width: 22.5em) {");
   assert.ok(start > 0, "the rule is there");
   const rule = css.slice(start, css.indexOf("\n}\n", start));
   assert.match(rule, /\.panel \{\s*overflow-y: auto;/);
   assert.match(rule, /\.panel-body,\s*\.panel-scroll \{\s*flex: none;\s*min-height: auto;\s*overflow: visible;/);
-  // The banner stays the first thing, and nothing moves it or hides it (mutation NIT 2).
-  // Not moved, not hidden: display, visibility and opacity too (the mutation re-check's NIT C).
-  // Whitespace-tolerant, and any opacity under 1 counts.
-  for (const rule of css.matchAll(/\.beta-banner[^{]*\{([^}]*)\}/g)) {
-    const body = rule[1];
-    assert.doesNotMatch(body, /(^|[\s;])order\s*:|display\s*:\s*none|visibility\s*:\s*(hidden|collapse)/, rule[0]);
-    for (const o of body.matchAll(/opacity\s*:\s*([\d.]+)/g)) assert.ok(parseFloat(o[1]) >= 1, `opacity ${o[1]} in ${rule[0]}`);
-  }
   assert.doesNotMatch(css, /\.panel-scroll[^{]*\{[^}]*\border:/);
   assert.doesNotMatch(css, /\.panel-footer/, "the old footer's rules are gone with it");
   // The scroll to the top reaches whichever scrolls.
   assert.match(app, /panelBodyRef\.current\?\.scrollTo\(\{ top: 0 \}\);\s*panelRef\.current\?\.scrollTo\?\.\(\{ top: 0 \}\);/);
 });
 
-test("the beta banner is still the first child of the panel's body, before the scrolling part", () => {
+test("the beta notice is not in the planner any more: it is a chip on the map (lib/betaBanner.ts)", () => {
   const body = app.indexOf('<div id="panel-body"');
-  const open = app.indexOf(">", body) + 1;
-  assert.match(app.slice(open, app.indexOf("<BetaBanner")), /^\s*$/);
-  assert.ok(app.indexOf("<BetaBanner") < app.indexOf('className="panel-scroll"'));
+  assert.ok(body > 0);
+  assert.equal(app.slice(body, app.indexOf('className="panel-scroll"', body)).includes("Beta"), false);
+  assert.doesNotMatch(css, /\.beta-banner/);
 });
 
 test("the skip link and its target stay: #route-planner is the aside, and every live region is still in the page", () => {
