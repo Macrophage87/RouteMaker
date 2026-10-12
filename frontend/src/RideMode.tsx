@@ -37,7 +37,6 @@ import {
   ReplanGate,
   VERBOSITY_LABELS,
   nextAction,
-  placeOnRoute,
   pointAt,
   replanPoints,
   rideModel,
@@ -108,7 +107,7 @@ import {
   canText,
   keywordOf,
   onlineHint,
-  placeWords,
+  reportPlace,
   reportText,
   smsHref,
   type ReportKind,
@@ -230,7 +229,7 @@ const COPY_REPLY_DELAY_MS = 150;
 
 /**
  * Report to DC 311 (lib/report311.ts; OWNER-DECISIONS 369, 370, 465): what it is, an optional note, and
- * the message built from the rider's place in the route's street names. On a phone a pothole or a
+ * the message built from the rider's place: the road ridden in the route's street names, a cross street within 500 ft, and the GPS position. On a phone a pothole or a
  * streetlight is a Text to 311 link the rider sends; anything else (a downed tree, a vehicle in a bike
  * lane, a blocked road or bikeway, which the words name first), and everything on a desktop, is the
  * same words to copy into DC 311 online, with a hint naming its request there where one is known. The place follows the rider; the message is shown as sent.
@@ -260,7 +259,7 @@ function Report311({
   const setKind = onKind;
   const [note, setNote] = useState("");
   const [copied, setCopied] = useState("");
-  const place = progressM === null ? null : placeOnRoute(model, progressM);
+  const place = progressM === null ? null : reportPlace(model, progressM);
   const outside = progressM !== null && !inDc(pointAt(model, progressM));
   // The words for DC 311 online (shown and copied), and the text message, which starts with DC's keyword.
   const text = outside ? null : reportText(kind, place, note);
@@ -841,7 +840,7 @@ export function RideMode({
   const back = ride.off ? wayBack(model, ride) : null;
   const shape = arrowFor(cue);
   const show311 = ride311Shown({ off: ride.off, progressM: progress, insideDc: (m) => inDc(pointAt(model, m)) });
-  const place311 = show311 && progress !== null ? placeWords(placeOnRoute(model, progress)) : null;
+  const place311 = show311 && progress !== null ? reportPlace(model, progress) : null;
 
   return (
     <section ref={sectionRef} className={`ride ${big ? "ride-big" : ""}`} aria-labelledby="ride-heading">
