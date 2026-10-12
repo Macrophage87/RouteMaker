@@ -3,9 +3,9 @@ import type { Map as MapLibreMap } from "maplibre-gl";
 import type { RouteResponse } from "./lib/api.ts";
 import type { LonLat } from "./lib/geo.ts";
 import { writeGpx } from "./lib/gpx.ts";
-import { REFINE_ROUNDS, nextRefinement, type ImportedPlan } from "./lib/gpxPlan.ts";
+import { REFINE_ROUNDS, nextFitStep, prunedCount, startFit, type Fit, type ImportedPlan } from "./lib/gpxPlan.ts";
 import { gpxWorker, importGpx } from "./lib/gpxImport.ts";
-import { exportFileName, exportOf, fidelityNotice, importSentences, presetNotice } from "./lib/gpxText.ts";
+import { exportFileName, exportOf, fidelityNotice, importSentences, presetNotice, prunedNotice } from "./lib/gpxText.ts";
 import { showReference } from "./lib/referenceLayer.ts";
 import { fidelity } from "./lib/trackMatch.ts";
 
@@ -28,12 +28,6 @@ interface Props {
   getMap: () => MapLibreMap | null;
   /** A Mass Ride's federal-land lines, for the file's description (lib/federalStops.ts, item 239). */
   federal?: readonly string[];
-}
-
-/** Fitting an imported track: the points last set for it, and the rounds so far. */
-interface Fit {
-  points: LonLat[];
-  rounds: number;
 }
 
 function samePoints(a: readonly LonLat[], b: readonly LonLat[]): boolean {
@@ -80,12 +74,16 @@ export function GpxPanel(props: Props) {
   const [reading, setReading] = useState<Reading>({ kind: "idle" });
   const [showTrack, setShowTrack] = useState(true);
   const [fit, setFit] = useState<Fit | null>(null);
+  // Points fitting took out because the route looped round for them, said once fitting ends
+  // and for as long as the plan is the points it ended with.
+  const [pruned, setPruned] = useState<{ count: number; points: LonLat[] } | null>(null);
 
-  // An opened track is fitted in rounds (gpxPlan.ts, nextRefinement): when
-  // the route for the fitted points arrives, points go where it missed the
-  // track, and the planner routes again. It stops when the route follows
-  // the track, the rounds or the points run out, or the rider changes the
-  // plan themselves - their change is never overwritten.
+  // An opened track is fitted in steps (gpxPlan.ts, nextFitStep): when the
+  // route for the fitted points arrives, points go where it missed the track,
+  // then points it had to loop round for are taken out, and the planner
+  // routes again each time; a step that leaves the fit no better is undone.
+  // It stops when nothing is left to try, or the rider changes the plan
+  // themselves - their change is never overwritten.
   useEffect(() => {
     if (!fit) return;
     // A refusal ends it too: the rider has the error to act on, not a loop.
@@ -94,13 +92,14 @@ export function GpxPanel(props: Props) {
       return;
     }
     if (!route || !samePoints(routedPoints, fit.points)) return;
-    const next = nextRefinement(imported.reference, fit.points, route.geometry.coordinates, fit.rounds);
+    const next = nextFitStep(imported.reference, fit, route.geometry.coordinates, route.leg_ends);
     if (!next) {
+      setPruned({ count: prunedCount(fit), points: fit.points });
       setFit(null);
       return;
     }
-    setFit({ points: next, rounds: fit.rounds + 1 });
-    onRefine(next);
+    setFit(next);
+    onRefine(next.points);
   }, [fit, imported, points, planStatus, route, routedPoints, onRefine]);
 
   // The file's own line, faint, under the route.
@@ -121,7 +120,8 @@ export function GpxPanel(props: Props) {
     if (outcome.ok) {
       setReading({ kind: "idle" });
       setShowTrack(true);
-      setFit(outcome.plan.source === "track" ? { points: outcome.plan.points, rounds: 0 } : null);
+      setFit(outcome.plan.source === "track" ? startFit(outcome.plan.points) : null);
+      setPruned(null);
       onImport(outcome.plan);
       frame(outcome.plan);
     } else {
@@ -198,10 +198,15 @@ export function GpxPanel(props: Props) {
             ))}
             {fit && ["loading", "waiting", "ok"].includes(planStatus) && (
               <p className="loading gpx-fitting">
-                {fit.rounds === 0
-                  ? "Routing the plan along the file's track…"
-                  : `Adding points where the route left the track (round ${fit.rounds} of up to ${REFINE_ROUNDS})…`}
+                {fit.phase === "prune"
+                  ? "Checking for points the route loops round to reach…"
+                  : fit.rounds === 0
+                    ? "Routing the plan along the file's track…"
+                    : `Adding points where the route left the track (round ${fit.rounds} of up to ${REFINE_ROUNDS})…`}
               </p>
+            )}
+            {match && pruned && pruned.count > 0 && samePoints(points, pruned.points) && (
+              <p className="hint gpx-pruned">{prunedNotice(pruned.count)}</p>
             )}
             {match && <p className={match.warn ? "notice gpx-deviation" : "hint gpx-fidelity"}>{match.text}</p>}
           </div>

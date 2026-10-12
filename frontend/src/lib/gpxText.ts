@@ -229,3 +229,17 @@ export function fidelityNotice(f: Fidelity): FidelityNotice {
       "or try another ride type, since each one weighs streets and trails differently.",
   };
 }
+
+/**
+ * What fitting took out (gpxPlan.ts, nextFitStep): points the route could
+ * reach only by looping round or riding out and back, where the file goes a
+ * way the ride type does not ride (a trail on Mass Ride, a one-way against
+ * its traffic).
+ */
+export function prunedNotice(count: number): string {
+  const points = count === 1 ? "1 point" : `${count} points`;
+  return (
+    `Took out ${points} the route could reach only by looping round or riding out and back: ` +
+    "the file goes a way this ride type does not ride there, so the route goes its own way."
+  );
+}

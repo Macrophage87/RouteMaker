@@ -10,6 +10,7 @@ import {
   exportOf,
   fidelityNotice,
   importSentences,
+  prunedNotice,
   presetNotice,
   rideText,
 } from "./gpxText.ts";
@@ -181,4 +182,10 @@ test("the export carries the profile's elevations for the track, and none for a 
   assert.deepEqual(exportOf({ ...ROUTE, profile }, line).elevations, [10, 14]);
   assert.equal(exportOf(ROUTE, line).elevations, undefined);
   assert.equal(exportOf({ ...ROUTE, profile: null }, line).elevations, undefined);
+});
+
+test("the points fitting took out are counted and the reason given", () => {
+  assert.match(prunedNotice(1), /^Took out 1 point the route/);
+  assert.match(prunedNotice(3), /^Took out 3 points the route/);
+  assert.match(prunedNotice(2), /does not ride there/);
 });
