@@ -1,7 +1,7 @@
 // Moved out of App.tsx unchanged (UI-CLEANUP step 4, docs/DEVELOPMENT.md "The App.tsx split"): the same
 // elements, in the same order, with App's state and handlers passed in under the names App gives them,
 // so the DOM, the focus and every announcement are as they were. App.tsx keeps the state and the effects.
-import type { Dispatch, ReactNode, RefObject, SetStateAction } from "react";
+import { type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 import type { StressAvailability } from "../MapView.tsx";
 import { ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
 import { infoHelp } from "../lib/roadInfo.ts";
@@ -13,8 +13,6 @@ import { DialsPanel } from "../DialsPanel.tsx";
 import { withLoop, type LoopView } from "../lib/loop.ts";
 import { BEST_ORDER_LABEL } from "../lib/stopOrder.ts";
 import { editingTips, emptyPlanHint, loneStartHint } from "../lib/pointText.ts";
-import { NearbyStations } from "../NearbyStations.tsx";
-import type { NearbyStation, Pins, StationAction } from "../lib/stations.ts";
 import { RideTypePicker } from "../RideTypePicker.tsx";
 import type { Dials } from "../lib/dials.ts";
 import type { StoredWeight, WeightStore } from "../lib/weight.ts";
@@ -25,11 +23,10 @@ import { PlaceSearch } from "../PlaceSearch.tsx";
 import { approximateHint, type Fix, type locateSupport } from "../lib/geolocation.ts";
 import type { usePlaceNames } from "../usePlaceNames.ts";
 import { pointRows, type Place, type PlaceChoice } from "../lib/geocode.ts";
-import { HighContrastShortcut, MoreTips, PlannerZoomNotice, RideSettings } from "../Sidebar.tsx";
+import { HighContrastShortcut, PlannerZoomNotice, RideSettings } from "../Sidebar.tsx";
+import { Icon } from "../Icon.tsx";
 import { PLANNER_EXTRAS, searchLede } from "../lib/sidebar.ts";
 import { rideSummary, rideSummarySpoken } from "../lib/rideSummary.ts";
-import type { Found, Nearby, NearestFrom, NearestKind } from "../lib/nearest.ts";
-import { NearestFinder } from "../lib/nearestFinder.ts";
 import { InstallOffer } from "../InstallableApp.tsx";
 
 type PlaceNames = ReturnType<typeof usePlaceNames>;
@@ -61,24 +58,11 @@ export interface PointsSectionProps {
   pointWarnings: (string | null)[];
   removeRefs: RefObject<Array<HTMLButtonElement | null>>;
   preset: PresetId;
-  stationChoice: Pins;
-  chooseStation: (action: StationAction, station: NearbyStation | null, point: LonLat) => void;
   routeShownForPoints: boolean;
   editPointsRef: RefObject<HTMLButtonElement | null>;
   setEditPoints: Dispatch<SetStateAction<boolean>>;
   /** Mass Ride's "no point is on federal land" line, or nothing. */
   federalPlanner: ReactNode;
-  /** The Find food panel (lib/foodFinder.ts), beside the nearest finder. */
-  foodFinder: ReactNode;
-  nearestFrom: NearestFrom;
-  nearestFromOptions: NearestFrom[];
-  setNearestFrom: (from: NearestFrom) => void;
-  findNearest: (kind: NearestKind) => Promise<void>;
-  nearestBusy: boolean;
-  nearestStatus: string;
-  nearestList: Found | null;
-  rideToNearest: (item: Nearby) => void;
-  addNearestStop: (item: Nearby) => void;
   pointsEditRef: RefObject<HTMLDivElement | null>;
   reverseButton: RefObject<HTMLButtonElement | null>;
   reverse: () => void;
@@ -96,16 +80,112 @@ export interface PointsSectionProps {
   toggleAccessMode: (focusTools: boolean) => void;
   announce: (text: string) => void;
   notice: string | null;
+  /** Points' Info (the how-to, behind one button): open or not, and its body's id; App's state. */
+  tips: boolean;
+  setTips: Dispatch<SetStateAction<boolean>>;
+  tipsId: string;
 }
 
-/** The planner's Points section: the search, the loop toggle, the points, the nearest finder and the point tools. */
+/**
+ * The planner's Points section (UI-CLEANUP, the approved mockup's Plan): its heading with Swap, Loop, Edit
+ * and Info beside it, the search, the points, and the point tools while editing. The nearest finder and
+ * Find food moved to the map's Water and Food chips (their own sheets), and Bikeshare's stations to the
+ * route's "Choose a station" fold.
+ */
 export function PointsSection(props: PointsSectionProps) {
-  const { pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials, dials, accessMode, namer, removeAt, pointWarnings, removeRefs, preset, stationChoice, chooseStation, routeShownForPoints, editPointsRef, setEditPoints, federalPlanner, foodFinder, nearestFrom, nearestFromOptions, setNearestFrom, findNearest, nearestBusy, nearestStatus, nearestList, rideToNearest, addNearestStop, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, narrow, undo, can, redo, clearAll, coverageShown, toggleAccessMode, announce, notice } = props;
+  const { pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials, dials, accessMode, namer, removeAt, pointWarnings, removeRefs, preset, routeShownForPoints, editPointsRef, setEditPoints, federalPlanner, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, narrow, undo, can, redo, clearAll, coverageShown, toggleAccessMode, announce, notice, tips, setTips, tipsId } = props;
   return (
-    <section key="points" aria-labelledby="points-heading">
-      <h2 id="points-heading" ref={pointsHeadingRef} tabIndex={-1}>
-        Points
-      </h2>
+    <section key="points" aria-labelledby="points-heading" className="points-section">
+      <div className="section-head">
+        <h2 id="points-heading" ref={pointsHeadingRef} tabIndex={-1}>
+          Points
+        </h2>
+        <div className="section-tools">
+          {/* Swap (Reverse), beside Points (the mockup). aria-disabled, not disabled, in a loop of a start and
+              one stop: it stays in the Tab order with its reason as its description, and a press says the reason. */}
+          {points.length >= 2 && (
+            <button
+              type="button"
+              ref={reverseButton}
+              className="secondary icon-button swap-points"
+              onClick={reverse}
+              aria-disabled={reverseHint ? true : undefined}
+              aria-describedby={reverseHint ? "reverse-hint" : "swap-hint"}
+            >
+              <Icon name="swap" />
+              <span>Swap</span>
+            </button>
+          )}
+          {/* Make it a loop (OWNER-DECISIONS 388, 389): by the search, not behind the Ride line's Edit; there
+              with no point placed too, and not on Mass Ride. A box styled as the mockup's Loop button. */}
+          {loop && (
+            <label className="toggle loop-toggle icon-toggle">
+              {/* aria-disabled, not disabled, when the ride is a loop already: it stays in the Tab order
+                  with its reason as its description (the a11y review's N6), and a press changes nothing. */}
+              <input
+                type="checkbox"
+                checked={loop.checked}
+                aria-disabled={loop.implied || undefined}
+                aria-describedby={loopHintId}
+                onChange={(event) => {
+                  if (loop.implied) return;
+                  commitDials(withLoop(dials, event.target.checked));
+                }}
+              />
+              <span className="visually-hidden">{loop.label}</span>
+              <span aria-hidden="true">Loop</span>
+            </label>
+          )}
+          {routeShownForPoints && points.length >= 2 && (
+            <button
+              type="button"
+              ref={editPointsRef}
+              className="secondary icon-button edit-points"
+              aria-expanded={!compactPoints}
+              aria-controls="points-search points-edit"
+              onClick={() => setEditPoints((on) => !on)}
+            >
+              <Icon name={compactPoints ? "edit" : "check"} />
+              {compactPoints ? (
+                <span>
+                  Edit<span className="visually-hidden"> points</span>
+                </span>
+              ) : (
+                <span>
+                  Done<span className="visually-hidden"> editing points</span>
+                </span>
+              )}
+            </button>
+          )}
+          {/* The how-to, behind Info (it was "More tips" under the tools). */}
+          <button type="button" className="secondary icon-button tips-toggle" aria-expanded={tips} aria-controls={tipsId} onClick={() => setTips(!tips)}>
+            <Icon name="info" />
+            <span>Info</span>
+          </button>
+        </div>
+      </div>
+      {reverseHint && <p className="hint" id="reverse-hint">{reverseHint}</p>}
+      <span id="swap-hint" hidden>
+        Reverses the points: the end becomes the start.
+      </span>
+      <div id={tipsId} className="tips-body more-tips" hidden={!tips}>
+        <p className="hint">Bike routes for the DC region and Baltimore. No sign-in needed.</p>
+        {/* The start-up how-to before any point; with points, how to change them (the correctness review's N5). */}
+        {points.length > 0 ? <p className="hint">{editingTips(accessMode)}</p> : <p className="hint">{emptyPlanHint(preset, loopVias, accessMode)}</p>}
+        {coverageShown && <p className="hint">Gray areas are outside what RouteMaker covers.</p>}
+        <p className="hint">{infoHelp(accessMode)}</p>
+        <p className="hint">{ACCESS_HELP}</p>
+        <button type="button" className="link access-toggle" aria-pressed={accessMode} onClick={() => toggleAccessMode(false)}>
+          {ACCESS_LABEL}
+        </button>
+        <InstallOffer idBase="tips-install" compact onSay={announce} />
+      </div>
+      {loop && (
+        // Shown while the box is checked (what a loop needs next); read as its description either way.
+        <p className="hint loop-hint" id={loopHintId} hidden={!loop.checked}>
+          {loop.hint}
+        </p>
+      )}
       {PLANNER_EXTRAS.zoomNotice && <PlannerZoomNotice zoom={zoom} shown={stressVisible && stress === "available"} />}
       {PLANNER_EXTRAS.highContrastShortcut && (
         <HighContrastShortcut on={accessibilityOn()} paletteFromAddress={paletteSetByAddress()} onChange={(on) => setAccessibility(on)} />
@@ -127,30 +207,6 @@ export function PointsSection(props: PointsSectionProps) {
           }}
         />
       </div>
-      {/* Make it a loop (OWNER-DECISIONS 388, 389): by the search, not behind the Ride line's Edit; there
-          with no point placed too, and not on Mass Ride. Outside the hidden parts, so it stays when the points compact. */}
-      {loop && (
-        <div className="dial loop-toggle">
-          <label className="toggle">
-            {/* aria-disabled, not disabled, when the ride is a loop already: it stays in the Tab order
-                with its reason as its description (the a11y review's N6), and a press changes nothing. */}
-            <input
-              type="checkbox"
-              checked={loop.checked}
-              aria-disabled={loop.implied || undefined}
-              aria-describedby={loopHintId}
-              onChange={(event) => {
-                if (loop.implied) return;
-                commitDials(withLoop(dials, event.target.checked));
-              }}
-            />
-            {loop.label}
-          </label>
-          <p className="hint" id={loopHintId}>
-            {loop.hint}
-          </p>
-        </div>
-      )}
       {points.length === 0 ? (
         <p className="hint">{searchLede(loopVias, accessMode)}</p>
       ) : (
@@ -166,102 +222,52 @@ export function PointsSection(props: PointsSectionProps) {
       {points.length === 1 && <p className="hint">{loneStartHint(preset, loopVias, accessMode)}</p>}
       {preset === "bikeshare" && (
         <p className="hint">
-          Bikeshare plans take a start and an end only: the docks and the walks are chosen for you, unless you choose a station below. Remove any stops
-          to plan one.
+          Bikeshare plans take a start and an end only: the docks and the walks are chosen for you, unless you choose a station under Route. Remove
+          any stops to plan one.
         </p>
-      )}
-      {preset === "bikeshare" && <NearbyStations points={points} pins={stationChoice} onChoose={chooseStation} />}
-      {routeShownForPoints && points.length >= 2 && (
-        <button
-          type="button"
-          ref={editPointsRef}
-          className="secondary edit-points"
-          aria-expanded={!compactPoints}
-          aria-controls="points-search points-edit"
-          onClick={() => setEditPoints((on) => !on)}
-        >
-          {compactPoints ? "Edit points" : "Done editing points"}
-        </button>
       )}
       {/* Mass Ride planning covers DC only for now (OWNER-DECISIONS 418), in words beside the gray map. */}
       {isMassRide(preset) && <p className="hint mass-dc-only">{MASS_DC_ONLY}</p>}
       {federalPlanner}
-      <NearestFinder
-        from={nearestFrom}
-        fromOptions={nearestFromOptions}
-        onFrom={setNearestFrom}
-        onFind={(kind) => void findNearest(kind)}
-        busy={nearestBusy}
-        status={nearestStatus}
-        list={nearestList}
-        canAddStop={points.length >= 2}
-        onRide={rideToNearest}
-        onAddStop={addNearestStop}
-      />
-      {foodFinder}
       <div id="points-edit" ref={pointsEditRef} hidden={compactPoints}>
-      {/* The two map-center actions (add a point, the road panel) are in Map tools, by the map's
-          zoom buttons (OWNER-DECISIONS 450; MapTools.tsx). */}
-      {/* The compact row: Reverse, Best order, Undo, Redo and Clear. */}
-      <div className="actions point-tools">
-        {/* aria-disabled, not disabled, in a loop of a start and one stop: it stays in
-            the Tab order with its reason as its description, as the loop toggle does
-            (DialsPanel), and a press says the reason. */}
-        <button
-          type="button"
-          ref={reverseButton}
-          onClick={reverse}
-          disabled={points.length < 2}
-          aria-disabled={reverseHint ? true : undefined}
-          aria-describedby={reverseHint ? "reverse-hint" : undefined}
-        >
-          Reverse
-        </button>
-        {/* Best order (OWNER-DECISIONS 449), with two or more stops to order; aria-disabled
-            while the order is found (the focus stays on it, a press says it is still working),
-            with the same label, so the row does not reflow under a finger. */}
-        {orderShown && (
-          <button
-            type="button"
-            onClick={() => void bestOrder()}
-            onFocus={() => (orderFocused.current = true)}
-            onBlur={(event) => {
-              // Only a move to another element clears the mark: a blur from the button's own removal
-              // has none, so the effect above moves the focus (and only if it is on nothing).
-              if (event.relatedTarget) orderFocused.current = false;
-            }}
-            aria-disabled={ordering ? true : undefined}
-          >
-            {BEST_ORDER_LABEL}
-          </button>
+        {/* The two map-center actions (add a point, the road panel) are in Map tools, by the map's
+            zoom buttons (OWNER-DECISIONS 450; MapTools.tsx). */}
+        {/* The compact row: Best order, Undo, Redo and Clear (Swap is beside Points). */}
+        {(orderShown || !narrow || can.redo || points.length > 0) && (
+          <div className="actions point-tools">
+            {/* Best order (OWNER-DECISIONS 449), with two or more stops to order; aria-disabled
+                while the order is found (the focus stays on it, a press says it is still working),
+                with the same label, so the row does not reflow under a finger. */}
+            {orderShown && (
+              <button
+                type="button"
+                onClick={() => void bestOrder()}
+                onFocus={() => (orderFocused.current = true)}
+                onBlur={(event) => {
+                  // Only a move to another element clears the mark: a blur from the button's own removal
+                  // has none, so the effect above moves the focus (and only if it is on nothing).
+                  if (event.relatedTarget) orderFocused.current = false;
+                }}
+                aria-disabled={ordering ? true : undefined}
+              >
+                {BEST_ORDER_LABEL}
+              </button>
+            )}
+            {!narrow && (
+              <button type="button" onClick={undo} disabled={!can.undo} aria-keyshortcuts="Control+Z Meta+Z">
+                Undo
+              </button>
+            )}
+            {!narrow && can.redo && (
+              <button type="button" onClick={redo} aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y">
+                Redo
+              </button>
+            )}
+            <button type="button" onClick={clearAll} disabled={points.length === 0}>
+              Clear
+            </button>
+          </div>
         )}
-        {!narrow && (
-          <button type="button" onClick={undo} disabled={!can.undo} aria-keyshortcuts="Control+Z Meta+Z">
-            Undo
-          </button>
-        )}
-        {!narrow && can.redo && (
-          <button type="button" onClick={redo} aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y">
-            Redo
-          </button>
-        )}
-        <button type="button" onClick={clearAll} disabled={points.length === 0}>
-          Clear
-        </button>
-      </div>
-      {reverseHint && <p className="hint" id="reverse-hint">{reverseHint}</p>}
-      {/* The how-to, collapsed (the mockup's "More tips"). */}
-      <MoreTips>
-        {/* The start-up how-to before any point; with points, how to change them (the correctness review's N5). */}
-        {points.length > 0 ? <p className="hint">{editingTips(accessMode)}</p> : <p className="hint">{emptyPlanHint(preset, loopVias, accessMode)}</p>}
-        {coverageShown && <p className="hint">Gray areas are outside what RouteMaker covers.</p>}
-        <p className="hint">{infoHelp(accessMode)}</p>
-        <p className="hint">{ACCESS_HELP}</p>
-        <button type="button" className="link access-toggle" aria-pressed={accessMode} onClick={() => toggleAccessMode(false)}>
-          {ACCESS_LABEL}
-        </button>
-        <InstallOffer idBase="tips-install" compact onSay={announce} />
-      </MoreTips>
       </div>
       {/* Always rendered, empty when there is no notice: a live region that is created already holding
           its text is often not spoken (VoiceOver with Safari, NVDA with Firefox). */}

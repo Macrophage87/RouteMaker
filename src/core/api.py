@@ -1128,6 +1128,15 @@ class ProfileCrossingOut(Schema):
             " approaches to hold (2 corkers) whatever `oneway` says."
         ),
     )
+    approach_lanes: int | None = Field(
+        default=None,
+        description=(
+            "Through lanes on each approach of the crossed or joined road (per direction; a"
+            " divided road's busier carriageway), if known: the chart holds one corker an"
+            " approach lane where no signal holds the cross traffic, and one an approach at a"
+            " signal (PLAN item 139)."
+        ),
+    )
 
 
 class ProfileRangeOut(Schema):
@@ -1334,6 +1343,48 @@ class BikeshareStepOut(Schema):
     text: str
 
 
+class BikeshareOptionEndOut(BikeshareStopOut):
+    """One end of a route option: the stop, its walk, and how much riding it adds."""
+
+    walk_m: float = Field(description="The walk to (or from) it; 0 for an outside-dock ending.")
+    walk_s: float
+    extra_m: float = Field(
+        description=(
+            "The riding it adds, straight-line metres: how much farther it is from the trip's"
+            " other end than the rider's own point is, never below 0."
+        )
+    )
+    on_the_way: bool = Field(description="It adds under 165 ft (50 m) of riding.")
+    way_text: str = Field(
+        description='"on your way", or "adds 0.2 mi (0.3 km) of riding": the reason, in words.'
+    )
+
+
+class BikeshareOptionOut(Schema):
+    """One way to make the trip, a pick-up and a drop-off, quickest first, from docks chosen
+    by the walk plus the extra riding each adds (stations on your way first; the owner,
+    2026-10-11)."""
+
+    rank: int = Field(description="1 is the best, and is the plan this answer routed.")
+    chosen: bool = Field(description="Whether this answer's route, walks and steps are this one.")
+    pickup: BikeshareOptionEndOut
+    dropoff: BikeshareOptionEndOut
+    pickup_station: str | None = Field(
+        description="Send as `pickup_station` on POST /api/route to plan this option."
+    )
+    dropoff_station: str | None = Field(
+        description="Send as `dropoff_station` (null with the `outside_dock` ending)."
+    )
+    ending: EndingName
+    ride_m: float = Field(description="The routed ride when chosen; otherwise an estimate.")
+    total_s: float = Field(description="Walking and riding; an estimate unless chosen.")
+    estimated: bool
+    cost_m: float = Field(
+        description="Both walks plus the extra riding (the station lists' rule); breaks ties."
+    )
+    text: str = Field(description="The option in plain words, US units first, for reading aloud.")
+
+
 class BikesharePlanOut(Schema):
     """The walks, docks, availability, fee and notes of a bikeshare plan
     (FOLLOWUP-BIKESHARE). The route body around it is the ride leg, dock to dock; the
@@ -1361,6 +1412,15 @@ class BikesharePlanOut(Schema):
     steps: list[BikeshareStepOut]
     summary: str = Field(description="The plan in plain words, US units first, for reading aloud.")
     notes: list[str]
+    options: list[BikeshareOptionOut] = Field(
+        default_factory=list,
+        description=(
+            "Up to three pick-up and drop-off pairs, quickest first; the first is this plan."
+            " Bikeshare plans only. Another is planned by sending its `pickup_station`,"
+            " `dropoff_station` and `ending`; that answer lists only the pair asked for, so keep"
+            " this list."
+        ),
+    )
     credit: str = Field(description="The plain source citation (OWNER-DECISIONS 301).")
 
 
@@ -1916,10 +1976,11 @@ def route(request, body: RouteIn, response: HttpResponse):
 #
 # POST /api/bikeshare/stations lists the three stations nearest a point that are at least 3/4
 # full (to take a bike) or at most 1/4 full (to return one), from the operator's live feed.
-# A POST, with the point in the body and not the address, so a visitor's position is in no
-# URL or log line; it is used for this one answer and kept nowhere. Nothing is ranked beyond
-# distance: the rider chooses, and the plan can be asked to use the chosen station
-# (`pickup_station`, `dropoff_station` on POST /api/route).
+# A POST, with the points in the body and not the address, so a visitor's position is in no
+# URL or log line; it is used for this one answer and kept nowhere. With `toward` (the trip's
+# other end) the stations on the rider's way come first: each is ranked by its walk plus the
+# extra riding it adds (`core.bikeshare`'s docstring). The rider chooses, and the plan can be
+# asked to use the chosen station (`pickup_station`, `dropoff_station` on POST /api/route).
 
 
 class NearbyStationsIn(Schema):
@@ -1932,10 +1993,20 @@ class NearbyStationsIn(Schema):
             " 1/4 full that are taking bikes back."
         )
     )
+    toward: LonLat | None = Field(
+        default=None,
+        description=(
+            "[lon, lat]: the trip's other end, the destination for `pickup` and the start for"
+            " `dropoff`. Stations on the way come first (each ranked by its walk plus the extra"
+            " riding it adds). Absent: by distance alone."
+        ),
+    )
 
-    @field_validator("point")
+    @field_validator("point", "toward")
     @classmethod
-    def inside_coverage(cls, point: list[float]) -> list[float]:
+    def inside_coverage(cls, point: list[float] | None) -> list[float] | None:
+        if point is None:
+            return None
         west, south, east, north = settings.COVERAGE_BBOX
         lon, lat = point
         if not (west <= lon <= east and south <= lat <= north):
@@ -1953,6 +2024,14 @@ class NearbyStationOut(Schema):
     bikes: int = Field(description="Bikes available, e-bikes included.")
     ebikes: int
     docks: int = Field(description="Free docks.")
+    extra_m: float | None = Field(
+        default=None,
+        description="The riding the station adds, straight-line metres; null without `toward`.",
+    )
+    on_the_way: bool | None = Field(
+        default=None,
+        description="It adds under 165 ft (50 m) of riding; null without `toward`.",
+    )
 
 
 class NearbyStationsOut(Schema):
@@ -1961,7 +2040,10 @@ class NearbyStationsOut(Schema):
         description="`unknown`: the operator's availability feed could not be read; none listed."
     )
     stations: list[NearbyStationOut] = Field(
-        description="Up to three, nearest first; fewer or none where fewer fit."
+        description=(
+            "Up to three, best first (nearest first without `toward`); fewer or none where"
+            " fewer fit."
+        )
     )
     credit: str = Field(description="The plain source citation (OWNER-DECISIONS 301).")
 
@@ -1976,7 +2058,7 @@ class NearbyStationsOut(Schema):
         500: ErrorOut,
         503: BusyOut,
     },
-    summary="The three nearest stations to pick up from (3/4 full) or return to (1/4 full)",
+    summary="Three stations to pick up from (3/4 full) or return to (1/4 full), on your way first",
 )
 @decorate_view(
     ratelimit.rate_limited(ratelimit.BIKESHARE_STATIONS),
@@ -1998,7 +2080,7 @@ def bikeshare_stations(request, body: NearbyStationsIn, response: HttpResponse):
         refusal["Retry-After"] = str(DEADLINE_RETRY_S)
         refusal["Cache-Control"] = "no-store"
         return refusal
-    found = bikeshare.nearby_stations(body.point, body.action, snapshot)
+    found = bikeshare.nearby_stations(body.point, body.action, snapshot, body.toward)
     availability = "unknown" if snapshot.status is None else ("stale" if snapshot.stale else "live")
     return Status(
         200,
@@ -2016,6 +2098,8 @@ def bikeshare_stations(request, body: NearbyStationsIn, response: HttpResponse):
                     "bikes": s.bikes,
                     "ebikes": s.ebikes,
                     "docks": s.docks,
+                    "extra_m": s.extra_m,
+                    "on_the_way": s.on_the_way,
                 }
                 for s in found
             ],
@@ -2813,6 +2897,145 @@ def me(request, response: HttpResponse):
     return Status(
         200, {"signed_in": signed, "can_change_lts": can_change, "can_suggest": can_suggest}
     )
+
+
+# GET and POST /api/me/go: a signed-in rider's own My Go (UI-CLEANUP, the owner's choice 2 of
+# 2026-10-11; core.models.MyGo): the view the app opens in, the ride type Go uses and the Home the
+# Go sheet's Home chip rides to. The rider's own settings and nobody else's, so no standing is
+# needed beyond being signed in; a write carries the CSRF token (set by the GET) and is counted
+# per address and per account. Signed out it is 401: the front end keeps the same choices in the
+# browser instead.
+
+
+class HomeIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    lon: StrictFloat
+    lat: StrictFloat
+    label: str = Field(default="", max_length=120)
+
+    @model_validator(mode="after")
+    def inside_coverage(self):
+        west, south, east, north = settings.COVERAGE_BBOX
+        if not (west <= self.lon <= east and south <= self.lat <= north):
+            raise ValueError("Home is outside the area this map covers")
+        return self
+
+
+class MyGoIn(Schema):
+    """The whole of My Go: what is left out is cleared (an empty `open_in` is by screen size,
+    an empty `ride` is Default, a null `home` is none)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    open_in: Literal["", "go", "plan"] = ""
+    ride: str = Field(default="", max_length=32)
+    home: HomeIn | None = None
+
+    @field_validator("ride")
+    @classmethod
+    def known_ride(cls, ride: str) -> str:
+        if ride and ride not in presets.PRESETS:
+            raise ValueError("not a ride type this planner offers")
+        return ride
+
+
+class HomeOut(Schema):
+    lon: float
+    lat: float
+    label: str
+
+
+class MyGoOut(Schema):
+    open_in: Literal["", "go", "plan"] = Field(
+        description="Empty: by screen size (a phone opens in Go, a wider screen in Plan)."
+    )
+    ride: str = Field(description="A ride type id; empty is Default.")
+    home: HomeOut | None
+
+
+def signed_in_only(view):
+    """A session of an account in standing, or 401: My Go is the rider's own."""
+
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        if not signed_in(request):
+            return _stress_error(401, "Sign in to keep My Go with your account.", code="signed_out")
+        return view(request, *args, **kwargs)
+
+    return wrapped
+
+
+def _my_go_out(row) -> dict:
+    home = None
+    if row is not None and row.home_lat is not None and row.home_lon is not None:
+        home = {"lon": row.home_lon, "lat": row.home_lat, "label": row.home_label}
+    return {
+        "open_in": row.open_in if row is not None else "",
+        "ride": row.ride if row is not None else "",
+        "home": home,
+    }
+
+
+@api.get(
+    "/me/go",
+    response={200: MyGoOut, 401: StressEditErrorOut, 403: StressEditErrorOut, 429: ErrorOut},
+    summary="The signed-in rider's My Go: the view to open in, Go's ride type, and Home",
+)
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def my_go_read(request, response: HttpResponse):
+    from django.middleware.csrf import get_token
+
+    from .models import MyGo
+
+    # Sets the `csrftoken` cookie the save sends back as `X-CSRFToken`.
+    get_token(request)
+    _private(response)
+    return Status(200, _my_go_out(MyGo.objects.filter(user=request.user).first()))
+
+
+@api.post(
+    "/me/go",
+    response={
+        200: MyGoOut,
+        400: StressEditErrorOut,
+        401: StressEditErrorOut,
+        403: StressEditErrorOut,
+        429: ErrorOut,
+    },
+    summary="Save the signed-in rider's My Go (the whole of it)",
+)
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.MY_GO_WRITES),
+    csrf_protected,
+    signed_in_only,
+    json_body_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def my_go_save(request, body: MyGoIn, response: HttpResponse):
+    from .models import MyGo
+
+    home = body.home
+    row, _ = MyGo.objects.update_or_create(
+        user=request.user,
+        defaults={
+            "open_in": body.open_in,
+            "ride": body.ride,
+            # About a metre: all a Home chip needs, and no finer than the rider picked it.
+            "home_lat": round(home.lat, 5) if home else None,
+            "home_lon": round(home.lon, 5) if home else None,
+            "home_label": home.label.strip() if home else "",
+        },
+    )
+    _private(response)
+    return Status(200, _my_go_out(row))
 
 
 class StepOut(Schema):

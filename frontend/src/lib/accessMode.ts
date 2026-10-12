@@ -3,7 +3,8 @@
  * unless a rider turned it on, remembered on this device. On, "Map tools" (MapTools.tsx) is
  * by the map's zoom buttons, with Add point at map center and Road info at map center, for
  * riders on a keyboard or a screen reader. A switch (a button with aria-pressed), the page's
- * first stop and hidden until it has the focus, turns it on or off; the same switch is in "More tips". The keyboard's
+ * first stop and hidden until it has the focus, turns it on or off; the same switch is in Settings, Display and
+ * under the Points heading's Info (UI-CLEANUP; it was "More tips"). The keyboard's
  * shortcuts (I, the arrows, + and -) work in either state.
  *
  * The hint texts that name Map tools take the state (mapToolsWays) so they stay right when
@@ -23,11 +24,11 @@ export const ACCESS_OFF_SAID = "Accessibility mode off. Map tools is hidden.";
 /** The owner's sentence for turning the mode on (OWNER-DECISIONS 455a(4)). */
 export const ACCESS_SENTENCE = "For keyboard or screen reader use, turn on accessibility mode.";
 /**
- * The same, with where the switch is, for the hints shown outside "More tips" (the search lede and
+ * The same, with where the switch is, for the hints shown outside Points' Info (the search lede and
  * the lone-start hint), whose reader may be far below the page's first button.
  */
-export const ACCESS_SENTENCE_WHERE = ACCESS_SENTENCE.replace(/\.$/, " (the first button on the page, or in More tips).");
-/** The "More tips" line beside the toggle: the one place in More tips that says where the switch is. */
+export const ACCESS_SENTENCE_WHERE = ACCESS_SENTENCE.replace(/\.$/, " (the first button on the page, or in Settings).");
+/** The line beside the toggle in Points' Info and Settings: says where else the switch is. */
 export const ACCESS_HELP = `${ACCESS_SENTENCE} It adds Map tools by the map's zoom buttons and is kept on this device. It is also the first button on the page.`;
 
 /** What a screen reader hears after a press, with the state it went to. */
@@ -38,7 +39,7 @@ export function accessModeSaid(on: boolean): string {
 /**
  * One press of either switch, from the state `on`: the state it goes to, what is said, and whether the
  * focus then moves to Map tools. Only the page's first button moves it, and only when turning the mode
- * on (455a(2)); the More tips toggle and turning it off leave the focus where it is.
+ * on (455a(2)); the Info and Settings toggles and turning it off leave the focus where it is.
  */
 export function accessModeToggle(on: boolean, fromFirstStop: boolean): { next: boolean; said: string; focusTools: boolean } {
   const next = !on;
@@ -91,7 +92,7 @@ export function mapToolsWays(on: boolean): { addPoint: string; roadAndAdd: strin
         roadAndAdd: "open Map tools (by the map's zoom buttons) for Road info at map center and Add point at map center",
       }
     : {
-        // Shown only in More tips, whose own line (ACCESS_HELP) says where the switch is (the spec review's SF4).
+        // Shown only in Points' Info, whose own line (ACCESS_HELP) says where the switch is (the spec review's SF4).
         addPoint: 'turn on accessibility mode, then use "Add point at map center" in Map tools',
         roadAndAdd:
           "turn on accessibility mode and open Map tools (by the map's zoom buttons) for Road info at map center and Add point at map center",

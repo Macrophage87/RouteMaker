@@ -543,9 +543,9 @@ MANUAL_A4 = """
        --data-root /data --extract /data/extracts/source.osm.pbf \
        --urban-areas /data/reference/inputs/tl_2024_us_uac20.geojson \
        --volume /data/reference/inputs/vdot-aadt-2024.geojson \
-           --volume-source vdot --volume-year 2024 \
+           --volume-source vdot --volume-year 2024 --aadt-property ADT \
        --volume /data/reference/inputs/ddot-aadt-2024.geojson \
-           --volume-source ddot --volume-year 2024
+           --volume-source ddot --volume-year 2024 --aadt-property AADT
 This script then re-checks the installer and fires the rebuild again.
 -------------------------------------------------------------------------------"""
 

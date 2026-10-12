@@ -4370,7 +4370,9 @@ and its header). What the panel shows is in `app/`, moved out unchanged:
   Avoid notice, `RouteSummary`, water along the route, Start ride's question),
   `RouteSummary` itself, `RouteActions` (the pinned Download GPX, Copy link, Share and
   Keep for offline) and the `Status` type.
-- `app/Sheets.tsx`: `LayersSheet`, `GpxSheet` and `SettingsSheet`, each in its `SheetFrame`.
+- `app/Sheets.tsx`: `LayersSheet`, `GpxSheet` and `SettingsSheet`, each in its `SheetFrame`
+  (since the UI-CLEANUP build also the Legend, Suggest, Review, Nearest, Find food and Ride
+  sheets; and `app/Go.tsx`, below).
 - `app/hooks.ts`: `useNarrow` (and `NARROW`), `useLongerThan`, `useSettled`.
 
 Each component is a pass-through: it takes its props under the names App gives them, keeps
@@ -4390,6 +4392,129 @@ same before and after in 60 snapshots (30 states at 390 px and 1,440 px: empty, 
 Bikeshare, Mass Ride, Trailmaxxing, routes to choose from, an Avoid junction, each sheet,
 the ride settings, Edit points, every fold open, Start ride's question, the panel hidden and
 shown), and `scripts/a11y/check.mjs` passed the same checks.
+
+### Go and Plan (UI-CLEANUP, the approved mockup of 2026-10-11)
+
+The layout Stephen approved on 2026-10-11 (reports/v0.5.0/ui-mockup.html and its 72-row
+control table; PLAN.md, UI-CLEANUP). Nothing was removed: every control is where the table
+puts it, at most two presses away.
+
+- **Two views of one planner** (`lib/appMode.ts`): Go, a phone's few steps (one Where to?
+  box, four place chips, the commute ride types, then the route's time, stress bar, one
+  alert and Start), and Plan, the full panel. Same state, same link. Which one opens:
+  the tab's own (sessionStorage, so a reload stays), else Plan for a link with a plan in
+  it, else My Go's Open in, else a phone (`NARROW`) opens in Go and a wider screen in Plan.
+  The switch (`app/Go.tsx` `ModeSwitch`: two `aria-pressed` buttons in a named group) is in
+  Go's bar over the map and Plan's header; a press is remembered as My Go's Open in.
+- **Go** (`app/Go.tsx`): `GoTopBar` (Menu, the switch, Layers, Locate, and the destination
+  with a clear button) is before the map in the page, as it is at the top of the screen.
+  `GoSheet` (inside the panel, `peek`/`half`/`full` by its handle) holds `PlaceSearch
+  variant="go"` (the place is the destination, the start the rider's location, in one edit
+  with the loop off: App `goTo`), the Home, Food, Water and Restroom chips (Home needs sign-in
+  and a Home; without one it opens My Go and says why), `RideChips` (Default, Cargo, Bikeshare
+  and More; a My Go ride that is none of them takes Bikeshare's place: `lib/myGo.ts`
+  `goRideChips`) and the Route section's Go variant. The Menu is the Settings sheet with
+  Plan, Suggest, GPX and an admin's Review on top; a Go sheet's Back reads "Close".
+- **Go's start** (the owner, 2026-10-11: "in go, make the current location the starting
+  location by default"; `lib/appMode.ts` `shouldAskGoStart`, `goStartLine`, `goRouteStart`):
+  when Go opens with an empty plan, App asks for the location once (through Use my location's
+  gate; never in Plan, never with a start from the link). Found, it is the start, shown on Go's
+  start line and said politely ("Start: your current location.") but not yet a point, so the
+  link holds no position until a destination is picked; denied, unavailable or timed out, the
+  start stays empty, the start box opens and "Current location not available; type a start." is
+  shown and said politely. A start typed in (Change start, `PlaceSearch variant="start"`) or
+  tapped on the map is the plan's first point and replaces the location. A destination picked
+  before there is a start is never dropped nor made the start (`goPickAction`): while the
+  location is still being found it waits ("To …: finding your location for the start…") and is
+  routed when the location comes; with no location, it is kept ("To …. Current location not
+  available; type a start.") and a start typed in the start box, or tapped on the map (or Add at
+  centre), plans the route to it at once (`goTapStartsPending`, follow-up review of #95). Picking a
+  destination with a start plans at once; Go then shows the routes to choose from open, and the ride types under the
+  route, so Bikeshare is one press, and only a Bikeshare route names its pick-up and drop-off
+  stations (the route's Bikeshare plan).
+- **Few presses** (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go"): from
+  opening Go, a typed destination is three taps to riding: Where to?, the place picked, then
+  Start ride (the review of #95 counted them); with the Home chip it is two: Home, then Start ride. Go
+  starts the ride with Settings > Ride mode's cues and asks nothing first (Plan still asks the
+  first time). **Announcements** (`lib/announceLevel.ts`, Settings > Display): Brief or Full,
+  kept on this device; unset, Go is Brief and Plan is Full. The route found, guidance, the start
+  Go found, errors and notices are always said; Brief leaves out the narration (`announceExtra`:
+  finding your location, planning a route to, the view or ride type changed, the map moved).
+- **Lettered places** (the owner, 2026-10-11 21:04 UTC; `lib/letteredPlaces.ts`): the nearest
+  water, restrooms or Metro stations and the food found are lettered A, B, C... in their list (a
+  pin, aria-hidden, with the letter heard first) and on the map (MapView `lettered`: 44 px
+  buttons, a pin with the letter, named "B: Drinking water, Garfield Park, 0.3 mi (0.5 km)"),
+  while that list's sheet is open; the map fits them in, above a phone's sheet. A marker's tap,
+  the row's Ride here, or the letter's key (not while typing, on the map or in a dialog) picks
+  it: in Go as the destination, straight to the route options; in Plan, the nearest's Ride here
+  and food's Show on map. Food's numbered circle layer is gone; its list and markers use the
+  letters. The Choose a station lists (Plan) are not lettered.
+- **Bikeshare options** (`lib/bikeshareOptions.ts`; #94's `bikeshare.options`): a Bikeshare route
+  in Go lists its pick-up and drop-off pairs as buttons lettered A, B, C, each named by the
+  option's own `text`, the one the shown plan rides pressed (aria-pressed and a "Planned" tag),
+  and letters them on the map at each pick-up station. A button, a marker or the letter's key
+  sets that option's stations (the station pins) and ending, which re-plans it. A re-plan's
+  answer lists only the pair asked for, so the first answer's list is kept for the same start
+  and end; the order is the server's. A free-floating e-bike's option has no pick-up station id
+  (the server offers one only as the plan's own start, the first answer's), so its pins would let
+  the server plan the best option again: picked after another option, it is shown again from the
+  first answer, kept with the list (`replaysFirst`, `replayFor`: the scheduler answers that one
+  request from it, matching the plan sent with its stations, `sentPlanKey`), with "Option A:
+  picking up at an e-bike outside a dock, as first planned." If the ride's settings changed since,
+  it is not re-planned, and Go's notice says so (`stationlessUnavailable`).
+- **Start and end pins** (the owner, 2026-10-11 21:29 UTC): a play triangle and a stop square
+  (`lib/pointText.ts` `START_GLYPH`, `END_GLYPH`, hidden; the pins' names stay "Start", "End" and
+  "Start and finish"), so A, B, C are only the offered places; stops keep their numbers.
+- **Go's map layers** (follow-up review of #95; the owner's decision is pending, and this is the
+  recommended default; `lib/goLayers.ts`): Go opens with the water and restroom layer and the
+  Metro and MARC stations off, so the phone's map shows the route; Plan opens with them on, as
+  before. The rider's own Layers choice wins in both views and is kept on this device
+  (`routemaker.waterLayer`, and now `routemaker.railLayer` for Metro and MARC, which were not kept
+  before). Unchosen, a switch to the other view shows that view's default. The Water and Restroom
+  chips still letter their places on the map while their sheet is open (those markers are not the
+  layer), and the route's Water and restrooms fold still lists the water and restrooms along the
+  route (it is route data, not the layer). One commit, so it reverts cleanly if the owner keeps the
+  layers on.
+- **My Go** (`lib/myGo.ts`; `core.models.MyGo`, migration 0019; GET/POST `/api/me/go`):
+  Open in, Go's ride type and, signed in, Home. Signed in it is the account's (saved only
+  after it has been read, so an early save never clears a Home), with a copy on the device
+  (without Home) so the next visit opens in the right view at once; signed out it is the
+  device's. The POST needs the CSRF cookie the GET sets, a JSON body and a same-site
+  request; Home must be in the coverage box and is rounded to 5 places; the row goes with the
+  account and is deleted when the account is marked deleted; `my_go` never ships to the beta
+  (`scripts/beta/ship-data.sh` `EXCLUDED_TABLE_DATA`). `tests/test_my_go.py`.
+- **Plan's panel**: the Points heading's row holds Swap (Reverse), Loop, Edit and Info (the
+  how-to, the access switch and Install, which were More tips); the Ride line shows its
+  summary as chips. The route: the totals and Info on one line, the stress bar, the Avoid
+  notice as one line (`AvoidNotice`: the short line shown, the whole sentence read, Avoid it
+  with its extra distance, Details) with the other warnings counted behind it
+  (`lib/routeNotices.ts`), each note one line with an icon (full words in Info), then Start,
+  GPX, Link and More (Share, Keep for offline) in one row, then one-line closed folds with
+  their counts on the right (`Fold`'s `count` and `icon`): Elevation and climbs (with the
+  climbs list), Stress and facilities (the four quick figures first), Directions, Junctions to
+  watch, Other routes, Water and restrooms. Bikeshare's station lists are a "Choose a station"
+  fold under Route.
+- **Sheets** (`app/Sheets.tsx`, `lib/sidebar.ts` `PanelView`): the bar is Plan, Layers,
+  Suggest, GPX and Settings. Layers holds the switches only, with a Legend button that opens
+  the Legend sheet one step in; Suggest says how to suggest from the road panel and opens it
+  at the map's center, with DC 311 and an admin's Review; Settings is Display (High contrast,
+  Accessibility mode, Open in when signed out), Ride mode, This device and Account (My Go).
+  Plan's map has Food and Water chips (`PlanMapChips`), which open the Find food and Nearest
+  sheets. `openOnto`/`backFrom` keep the way back through nested sheets; Back returns the
+  focus to what opened the sheet, and a sheet's heading takes it on the way in.
+- **Road panel**: two or more ways to suggest (a road's level, a junction, a Mass Ride
+  hazard) are one "Suggest a change…" disclosure; one is its own button, as before.
+- **Ride mode**: the 311 button (`lib/ride311.ts`), 60 px round on the right edge at thumb
+  height, only while the rider's place on the route is inside DC; it opens a menu with the
+  place line and the six problems as large buttons, and a pick opens "Report a problem to DC
+  311" with that problem chosen (the note, the text or DC 311 online and Copy as before). Big
+  text has a text-size icon; Where am I?, Re-centre and End ride have icons too.
+- **Icons**: `lib/iconPaths.ts` (the mockup's own line icons, minus Work, plus cargo,
+  text size, tree and bikeshare) drawn by `Icon.tsx` (or `lineIcon` in createElement
+  modules), always `aria-hidden` beside words.
+
+`lib/goPlan.test.ts` holds the pure parts and the wiring; `scripts/a11y/check.mjs` drives Go,
+the switch, the sheets, My Go and the 311 menu in a browser.
 
 ### The sidebar (312)
 
@@ -6114,8 +6239,8 @@ plot edges (`chartParts.LEFT`, `RIGHT`) and the same distance scale, so a mile i
 place on all three and on each one's own distance axis (miles, km in brackets).
 
 - **Riders per minute**: the riders area in the band colours and patterns, the 60/120/200
-  guides, the narrowest point's caret and figure (147's "with the bottleneck marked"), and
-  the Avoid blocks, as before.
+  guides, the narrowest point's caret and figure (147's "with the bottleneck marked"), the
+  Avoid blocks, as before, and the ride size's requirement (below).
 - **Corker load**: a step area (one series: a blue fill under a step line in the text
   colour), a tick from the marker row down through the plot at each junction needing
   corkers, the junction markers (triangle, diamond, dot) above, their thinned names under
@@ -6156,9 +6281,19 @@ point** (`lib/profileChart.ts`, "The corker load"):
 - **Held at once**: a junction needing corkers (`corkers_needed`: 142 and 400, a crossing of
   or a turn onto an LTS 3 or worse road) is held from when the head reaches it until the
   tail passes it, so the load steps up at each tick and down a group's length later
-  (`exitOf`). Corkers held at once = the junctions in the window × the corkers each needs:
-  **2 for a two-way road, 1 for a one-way** (crossings now carry `oneway`, from the road's
-  OSM tags), **and 2 where it is not known** (no mapping, or an older answer). A divided road (two one-way carriageways counted as one junction, by the refuge merge or by name within 45 m) takes 2: crossings carry `divided`, which leaves `oneway` as the junction costs read it. Near the end
+  (`exitOf`). Corkers held at once = the junctions in the window × the corkers each needs
+  (`corkersFor`, PLAN 139): **one for each approach lane** of the busy road, or **one an
+  approach at a traffic signal**, whatever its lanes, since the red already holds the cross
+  traffic and the corker covers the change to green (the group goes through as one once
+  its head enters on green, 124). The approaches: **2 for a two-way road, 1 for a one-way**
+  (crossings carry `oneway`, from the road's OSM tags), **and 2 where it is not known** (no
+  mapping, or an older answer). A divided road (two one-way carriageways counted as one junction, by the refuge merge or by name within 45 m) has 2: crossings carry `divided`, which leaves `oneway` as the junction costs read it. The lanes: crossings carry
+  `approach_lanes`, the road's through lanes a direction (`Road.lanes`; a divided road's
+  busier carriageway), and **1 where not known**, so an older answer counts as before. So a
+  four-lane two-way road with no signal takes 4, the same road at a signal 2, a three-lane
+  one-way street with no signal 3. The intersections table says each junction's count and
+  how it was counted ("4 needed: 2 approaches; 2 lanes each", `corkerBasisWords`), and the
+  scrub says the count ("Next: 14th St at mile 1.3, 2 corkers needed"). Near the end
   the junctions stay held to the end, so a group longer than the route holds every one at
   its end.
 - **The ride's headline**: "about N corkers" = the most held at once × the rotation factor
@@ -6169,10 +6304,32 @@ point** (`lib/profileChart.ts`, "The corker load"):
   about N ... (may be low: ...)", never a firm figure.
 - The top is the peak rounded up to an even number, at least 4.
 
+**The ride size's requirement on the riders chart** (128: the ride size sets "how long it
+holds intersections and the flow it needs; ... a road whose throughput is too low for the
+size is flagged"; PLAN "Route profile (item 147)": "the requirement for the chosen ride size
+(item 128) drawn as a line"). The group holds a junction for its riders over the flow, so a
+road needs the ride size over the longest hold accepted, `RIDE_HOLD_MINUTES` (5, a proposal):
+`rideNeed` is riders ÷ 5, rounded up, so 100 a minute at the default 500 (about one 11 ft
+lane, 99), 20 at 100 riders, 400 at 2,000. It is drawn across the riders chart as a long
+dash in the text colour over a casing in the panel's colour (one of the two is 3:1 against
+every band), with "100 needed for 500 riders" at its left, told from the dotted band guides
+by its dash and its words; the axis rises to fit it (`ridersTop`). The key says "Dashed line
+(proposed): about 100 a minute, what 500 riders need to pass a junction within 5 minutes"; the summary
+says the hold is a proposal, not yet confirmed, and how much of the route with a figure is below it and from where (`needSentence`,
+`belowNeed`: a stretch counts by the mean of its two samples; Avoid, untraced and outside-DC
+stretches have no figure and are not counted); the scrub adds "below the proposed 100 needed for
+500 riders" to the band words where the figure is under it. It moves with the ride size slider
+and is never sent to the API; routing does not use it yet (PLAN "The main control": the
+flagging on the map and the routing penalty by ride size are not built). Forced colours: the
+line follows the system's text colour and its casing the system's background.
+
 Defaults still open for the owner: the rotation factor (2, PLAN's proposal), 2 corkers per
-junction where it is not known whether the road is one-way, and the 500-rider default
-(PLAN's proposal; the range is the owner's, 129). PLAN's one corker per approach lane, and
-one per approach at a signal entered on green, are not built: every two-way junction takes 2.
+junction where it is not known whether the road is one-way, 1 lane an approach where the
+lanes are not known, the signal rule applied at every signalised junction (the group enters
+on green, 119 and 124), the 5-minute hold behind the requirement line, and the 500-rider
+default (PLAN's proposal; the range is the owner's, 129). Complex junctions (a traffic
+circle, a diagonal avenue meeting the grid) are still counted as one road's approaches, not
+by their actual approaches.
 
 Screen readers: each chart is a `role="group"` named by its `h4` heading, with its own
 summary before the picture, a slider (`aria-label` "Riders per minute along the route",
@@ -6182,8 +6339,8 @@ three sliders share one position (and one key hint, which also says so): Tab fro
 the next carries on at the same mile, and moving any of them moves the map's marker and the
 other two charts' markers. Tab between them keeps the position (the blur looks at
 `relatedTarget`), so the map's marker neither flickers off nor pans again. Value texts: riders, the sentence as before ("Mile 1.2: grade 6%,
-about 90 riders per minute (tight, slowed by the climb). Next: 15th Street Northwest at mile
-1.3, corkers needed."); corker load, "Mile 1.2: 2 corkers holding 1 junction at once (500
+about 90 riders per minute (tight, slowed by the climb, below the proposed 100 needed for 500 riders).
+Next: 15th Street Northwest at mile 1.3, 2 corkers needed."); corker load, "Mile 1.2: 2 corkers holding 1 junction at once (500
 riders, group about 1,560 ft (475 m) long). Next: ..." (with "Part of the group's stretch was
 not checked for intersections." where it was not, and "intersections not checked, so the
 corkers needed are not known" with no crossings; where only the flagged junctions were
@@ -6630,11 +6787,15 @@ availability, fee information and notes under `bikeshare` (`core.api.BikesharePl
   (`Snapshot.as_of`) is unavailable everywhere (`Snapshot.reporting_stale`; a station with no
   `last_reported` is stale once the reading time is known). Tests pass a `wall` clock and a fake store
   and never touch the network.
-- `core/bikeshare.py`: the plan. Candidates are the 3 nearest docks that can start (a bike of the type,
-  renting) and end (a free slot, returning) a ride, and for an e-bike the 2 nearest free-floating
-  e-bikes; each is walked for real, the pair with the least walk plus ride (the ride estimated by the
-  straight line at the bike's pace) is chosen, and only that pair is routed as a ride. Walking is
-  Valhalla pedestrian costing on the standard graph at 3 mph.
+- `core/bikeshare.py`: the plan. Candidates are the 3 best docks that can start (a bike of the type,
+  renting) and end (a free slot, returning) a ride, and for an e-bike the 2 best free-floating
+  e-bikes, "best" by the direction rule below (within 1.9 mi (3 km)); each is walked for real, the
+  quickest pair is chosen (real walks plus the estimated ride; ties by the walks plus extra riding),
+  and only that pair is routed as a ride. The time, not the rule, picks the pair because it also
+  credits a dock ahead for the riding it saves; by the rule alone about a quarter of trips came out
+  slower (1 in 10 by 17 s or more, the worst by over 3 min) for almost no more docks on the way (a simulation in the review of PR #94). Walking is Valhalla pedestrian costing on the standard graph at 3 mph.
+  The answer's `bikeshare.options` lists up to 3 pairs, best first, the first being the plan itself
+  (below).
 - The ride leg is `routing.plan` on the `bikeshare` preset: stress 80 with the stress-averse
   exposure weights (casual riders, calm by default), classic hills -60 at 13 km/h (8 mph), e-bike
   hills -20 at 20 km/h (12 mph) on the e-bike graph. The sliders still apply.
@@ -6670,12 +6831,14 @@ the last 30 minutes); when choosing where to dock, the 3 nearest to the end that
 (<= 0.25, installed, returning, reporting in the last 30 minutes). Live feed only: no history, no
 reports, no fitted formula (the crowdsourced points reports of 464-464b are parked pending the licence
 question). The lists are labelled generically ("Nearby stations to pick up a bike") and name no
-programme; nothing is ranked beyond distance, and the rider chooses.
+programme, and the rider chooses. Once both ends are placed, stations on the rider's way come first
+(below); with only a start, the pick-up list is by distance.
 
-- `POST /api/bikeshare/stations` `{point: [lon, lat], action: "pickup" | "dropoff"}` answers
-  `{action, availability, stations: [{station_id, name, lon, lat, percent_full, distance_m, bikes,
-  ebikes, docks}], credit}` (`core.bikeshare.nearby_stations`, straight-line distance within 1.9 mi
-  [3 km], nearest first, up to 3). A POST so the point is in the body and in no URL; `Cache-Control:
+- `POST /api/bikeshare/stations` `{point: [lon, lat], action: "pickup" | "dropoff", toward?: [lon,
+  lat]}` answers `{action, availability, stations: [{station_id, name, lon, lat, percent_full,
+  distance_m, bikes, ebikes, docks, extra_m, on_the_way}], credit}` (`core.bikeshare.nearby_stations`,
+  no distance cap (the owner, 2026-10-10), up to 3, best first by the direction rule toward
+  `toward`; nearest first, with `extra_m` and `on_the_way` null, without it). A POST so the point is in the body and in no URL; `Cache-Control:
   no-store`; its own limit (`ratelimit.BIKESHARE_STATIONS`); 503 `bikeshare_unavailable` when there is
   no station list; with no availability feed `availability` is `unknown` and the list is empty.
 - A chosen station goes to `POST /api/route` as `pickup_station` / `dropoff_station` (the station's
@@ -6692,6 +6855,44 @@ programme; nothing is ranked beyond distance, and the rider chooses.
   `lib/stations.ts` `withStations`, and in no link (the counts change by the minute).
 - Tests: `tests/test_bikeshare_nearby.py`, `frontend/src/lib/stations.test.ts`, and the a11y check's
   section 24 (Tab order, the button names, `aria-pressed`, the status line, the 375 px layout).
+
+### Stations on your way first, and the route options (the owner, 2026-10-11)
+
+"For rideshare, we should prioritize the stations that would be in the direction of the route." One
+rule ranks the station lists, the plan's candidate docks, its choice of pair and its route options:
+**a station costs its walk plus the extra riding it adds.** The extra riding is how much farther the
+station is from the trip's other end than the rider's own point is, never below zero
+(`core.bikeshare.extra_riding_m`, straight lines):
+
+- picking up near the start, the other end is the destination: a dock toward it adds nothing, a dock
+  behind the rider adds its distance back;
+- returning near the destination, the other end is the start: a dock on the way in adds nothing, a
+  dock past the destination adds how far past it is.
+
+So a dock 100 m (330 ft) behind ranks with one 200 m (660 ft) ahead, and nearer still wins among
+docks on the way. It was chosen over a bearing penalty because it has no tuning angle and can be
+checked with a ruler. A station adding under 50 m (165 ft) is "on your way"
+(`ON_THE_WAY_M`, so a dock a little to one side of a long trip still counts); any other says
+"adds 0.1 mi (160 m) of riding". The words are in the button's own text, so a screen reader hears
+the reason; nothing is said by colour or an arrow. Unchanged: 3 stations shown, no distance cap,
+the 3/4 and 1/4 fullness rules, stations with no bikes or docks or silent for 30 minutes left out,
+and the e-bike counts.
+
+Route options, for the Go screen ("pull out your phone, then select a destination ... offer the
+options for routing to it with stations"; Bikeshare only, the owner: "only if youre in bikeshare
+mode"): a Bikeshare `POST /api/route` answer carries `bikeshare.options`, up to 3 pairs, quickest
+first, from the docks the rule chose (`core.api.BikeshareOptionOut`): `rank`, `chosen` (the first, which is the plan the
+answer routed), `pickup` and `dropoff` (each a `BikeshareStopOut` plus `walk_m`, `walk_s`,
+`extra_m`, `on_the_way` and `way_text`), `pickup_station`, `dropoff_station` and `ending` (send
+them on `POST /api/route` to plan that option), `ride_m` and `total_s` (the routed figures for the
+chosen one, estimates by straight line and the detour factor otherwise, `estimated`), `cost_m` (both walks
+plus the extra riding, the tie-break) and `text`, the option in plain words for a button: "Pick up at Ahead, 0.1 mi (0.2
+km) walk, on your way. Return at Before, 0.1 mi (0.2 km) walk, on your way. About 27 min in all."
+No extra routing is done for them: they reuse the walks the plan already asked for. An answer
+planned with a chosen station lists only the pair asked for, so a screen keeps the first answer's
+list; a free-floating e-bike is offered only as the plan's own start (it has no id to ask for
+again). Tests: `tests/test_bikeshare_direction.py` (each ranking case fails on nearest-first),
+`tests/test_bikeshare_api.py`, `tests/test_bikeshare_nearby.py`, `frontend/src/lib/stations.test.ts`.
 
 ## Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
 

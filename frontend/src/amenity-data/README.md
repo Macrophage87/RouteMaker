@@ -137,7 +137,7 @@ left off the map.
 
 | Kind | Points |
 | --- | --- |
-| drinking water | 734 |
+| drinking water | 734 (20 of them at a restroom, so the rows add to 2,172) |
 | untreated water | 174 |
 | flush restroom | 173 |
 | portable, pit or composting toilet | 284 |

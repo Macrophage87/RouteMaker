@@ -70,7 +70,7 @@ import { attachWaterInteraction } from "./waterInteraction.ts";
 import { addClimbs, CLIMBS_SOURCE_ID, setClimbsOn, type Climb, type ClimbsMap } from "./lib/climbs.ts";
 import { attachClimbInteraction } from "./climbInteraction.ts";
 import type { When } from "./lib/dials.ts";
-import { pointLabel } from "./lib/pointText.ts";
+import { END_GLYPH, START_GLYPH, pointLabel } from "./lib/pointText.ts";
 import { LongPress, isInfoKey, repeatsInfoAsk, type InfoRequest } from "./lib/roadInfo.ts";
 import { fetchMe } from "./lib/stressEditor.ts";
 import { JUNCTION_SUGGEST_TEXT } from "./lib/junctionSuggest.ts";
@@ -107,6 +107,7 @@ import {
   type JunctionItem,
 } from "./lib/intersectionMarkers.ts";
 import { avoidItems, avoidMarkerName } from "./lib/avoidJunctions.ts";
+import type { LetteredPlace } from "./lib/letteredPlaces.ts";
 import { avoidMarkerSvg } from "./lib/avoidIcon.ts";
 
 export type StressAvailability = "checking" | "available" | "unavailable";
@@ -216,6 +217,10 @@ interface Props {
    * Tab order, inside the map's region.
    */
   tools?: ReactNode;
+  /** The lettered places (lib/letteredPlaces.ts): the nearest or the food listed, each a button marker. */
+  lettered?: readonly LetteredPlace[] | null;
+  /** A lettered marker pressed: its index in the list. */
+  onLettered?: (index: number) => void;
 }
 
 // One protocol for the page. MapLibre 4+ runs a custom protocol's handler on
@@ -1053,7 +1058,10 @@ export function MapView(props: Props) {
       const element = document.createElement("div");
       const warning = props.pointWarnings?.[index] ?? null;
       element.className = `pin pin-${kind}${warning ? " pin-federal" : ""}`;
-      element.textContent = text;
+      // The start and the end show a glyph (a play triangle, a stop square), a stop its number.
+      if (kind === "start") element.innerHTML = START_GLYPH;
+      else if (kind === "end") element.innerHTML = END_GLYPH;
+      else element.textContent = text;
       element.setAttribute("role", "img");
       // The warning ends with its own full stop.
       const named = warning ? `${name}. ${warning}` : name;
@@ -1315,6 +1323,51 @@ export function MapView(props: Props) {
       return new maplibregl.Marker({ element, anchor: "center" }).setLngLat([item.lon, item.lat]).addTo(map);
     });
   }, [props.route, props.stale]);
+
+  // The lettered places (the owner, 2026-10-11 21:04 UTC): each a real button in a pin, its letter on it and its
+  // name the letter, the place and how far; a press picks it as the list's row would.
+  const letteredMarkers = useRef<Marker[]>([]);
+  useEffect(() => {
+    const map = mapRef.current;
+    letteredMarkers.current.forEach((marker) => marker.remove());
+    letteredMarkers.current = [];
+    if (!map || !props.lettered) return;
+    letteredMarkers.current = props.lettered.map((place, index) => {
+      const element = document.createElement("button");
+      element.type = "button";
+      element.className = "lettered-marker";
+      element.setAttribute("aria-label", place.name);
+      const pin = document.createElement("span");
+      pin.className = "lettered-pin";
+      pin.setAttribute("aria-hidden", "true");
+      const letter = document.createElement("span");
+      letter.className = "lettered-letter";
+      letter.textContent = place.letter;
+      pin.append(letter);
+      element.append(pin);
+      element.addEventListener("click", (event) => {
+        // A click on a marker is not a click on the map: it must not add a point.
+        event.stopPropagation();
+        callbacks.current.onLettered?.(index);
+      });
+      element.addEventListener("dblclick", (event) => event.stopPropagation());
+      return new maplibregl.Marker({ element, anchor: "bottom" }).setLngLat(place.point).addTo(map);
+    });
+    // Bring them into view, above a phone's sheet (which covers about the lower half of the map).
+    if (props.lettered.length > 0) {
+      const lons = props.lettered.map((place) => place.point[0]);
+      const lats = props.lettered.map((place) => place.point[1]);
+      const height = map.getContainer().clientHeight;
+      const narrow = map.getContainer().clientWidth < 721;
+      map.fitBounds(
+        [
+          [Math.min(...lons), Math.min(...lats)],
+          [Math.max(...lons), Math.max(...lats)],
+        ],
+        { padding: { top: 80, left: 50, right: 50, bottom: narrow ? Math.round(height * 0.55) : 60 }, maxZoom: 16, duration: 400 },
+      );
+    }
+  }, [props.lettered]);
 
   // A click on the summary's list: take the map there and say why.
   useEffect(() => {

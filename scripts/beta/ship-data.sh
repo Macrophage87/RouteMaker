@@ -113,6 +113,8 @@ API_IMAGE="ghcr.io/macrophage87/routemaker-api"
 #                                     half-step editor history. What it changed is already in the
 #                                     shipped live table and override rows; it also points at
 #                                     override rows, which the beta's update replaces.
+#   my_go                             user_id -> app_user: a rider's own My Go, with their Home
+#                                     (a place they live; core.models.MyGo). Never leaves home.
 # tests/test_beta_overlay.py asserts this list, and that every table pointing at one of these is
 # excluded too or blanked (below); ship-data.sh refuses a dump that carries data for any name in it.
 EXCLUDED_TABLE_DATA=(
@@ -121,6 +123,7 @@ EXCLUDED_TABLE_DATA=(
 	django_admin_log scheduled_run stress_tile_cache bikeshare_feed_cache
 	app_user audit_log bootstrap_claim pending_instance_admin_removal ban_tombstone
 	configured_guild role_mapping stress_suggestion mass_hazard junction_suggestion stress_edit
+	my_go
 )
 # Tables the beta needs from home that also name a person or carry a rider's words: shipped with
 # those columns blanked, never whole. Each is left out of the dump and written instead as

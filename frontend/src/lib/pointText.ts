@@ -12,7 +12,7 @@ import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 import { pointName } from "./summary.ts";
 
-/** A marker's label: its visible text, its spoken name, and its kind (the pin's style). */
+/** A marker's label: its visible text (a stop's number; none for the start and end), its spoken name, and its kind (the pin's style and glyph). */
 export interface PointLabel {
   text: string;
   name: string;
@@ -20,15 +20,23 @@ export interface PointLabel {
 }
 
 /**
- * A marker's label: A for the start, B for the end, a number for a stop. In a
- * loop there is no B: A is the "Start and finish" and the rest are stops.
+ * A marker's label: the start and the end carry a glyph, not a letter (the owner, 2026-10-11 21:29 UTC:
+ * "instead of A on the map now use the start and stop icons", so A, B, C belong to the offered places,
+ * lib/letteredPlaces.ts): a play triangle for the start, a square for the end (START_GLYPH, END_GLYPH;
+ * shape, not colour alone). A stop keeps its number. In a loop there is no end: the start is the "Start
+ * and finish" and the rest are stops.
  */
 export function pointLabel(index: number, count: number, loop: boolean): PointLabel {
   const name = pointName(index, count, loop);
-  if (index === 0) return { text: "A", name, kind: "start" };
-  if (!loop && index === count - 1 && count > 1) return { text: "B", name, kind: "end" };
+  if (index === 0) return { text: "", name, kind: "start" };
+  if (!loop && index === count - 1 && count > 1) return { text: "", name, kind: "end" };
   return { text: String(index), name, kind: "via" };
 }
+
+/** The start's glyph on its pin: a play triangle (lib/iconPaths.ts "play"), hidden from a screen reader. */
+export const START_GLYPH = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false"><path d="M7 4.5 19.5 12 7 19.5z" fill="currentColor"/></svg>';
+/** The end's glyph: a stop square. */
+export const END_GLYPH = '<svg viewBox="0 0 24 24" width="12" height="12" aria-hidden="true" focusable="false"><rect x="5" y="5" width="14" height="14" rx="1.5" fill="currentColor"/></svg>';
 
 /** A click or a search put a point in: "Stop 2 added." */
 export function addedSaid(index: number, count: number, loop: boolean): string {

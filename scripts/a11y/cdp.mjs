@@ -196,6 +196,13 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       type = "application/x-protobuf";
       // "capacity": a tile of roads that carry the Mass Ride capacity (`rpm`), as a rebuilt table's do.
       if (stressTiles === "capacity") body = capacityTile();
+    } else if (url.pathname === "/api/nearest" && request.method === "POST") {
+      // The nearest finder (lib/nearest.ts requestNearest): straight-line distances, 400 m apart, nearest first.
+      const asked = JSON.parse(request.postData ?? "{}");
+      const count = Math.max(0, (asked.points?.length ?? 1) - 1);
+      status = 200;
+      type = "application/json";
+      body = JSON.stringify({ by: "straight_line", places: Array.from({ length: count }, (_, i) => ({ distance_m: 400 * (i + 1), time_s: null })) });
     } else if (url.pathname === "/api/route" && request.method === "POST") {
       page.routeRequests += 1;
       // The bodies, for Ride mode's re-plan check (its first point is the rider's position).
@@ -219,6 +226,18 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       status = 200;
       body = JSON.stringify(segmentInfoAt(page.editRoad.tier));
       type = "application/json";
+    } else if (url.pathname === "/api/me/go") {
+      // My Go (UI-CLEANUP; core/api.py my_go_read, my_go_save): the account's, signed in only.
+      (page.myGoRequests ??= []).push({ method: request.method, headers: request.headers, body: request.postData ? JSON.parse(request.postData) : null });
+      type = "application/json";
+      if (!(admin || suggester)) {
+        status = 401;
+        body = JSON.stringify({ error: "Sign in to keep My Go with your account.", code: "signed_out" });
+      } else {
+        if (request.method === "POST") page.myGo = JSON.parse(request.postData ?? "{}");
+        status = 200;
+        body = JSON.stringify(page.myGo ?? { open_in: "", ride: "", home: null });
+      }
     } else if (url.pathname === "/api/me") {
       status = 200;
       body = JSON.stringify({ signed_in: admin || suggester, can_change_lts: admin, can_suggest: suggester && !admin });
@@ -1012,10 +1031,12 @@ export const S_BIKESHARE_EBIKE = (() => {
 
 /**
  * The nearest-stations answers (POST /api/bikeshare/stations, core/api.py NearbyStationsOut):
- * three stations at least 3/4 full to pick up from, three at most 1/4 full to return to.
+ * three stations at least 3/4 full to pick up from, three at most 1/4 full to return to. Asked with
+ * `toward` (both ends placed), each says how much riding it adds (`extra_m`, `on_the_way`).
  */
-const station = (id, name, lon, lat, percent, metres, bikes, docks) => ({
+const station = (id, name, lon, lat, percent, metres, bikes, docks, extra = 0) => ({
   station_id: id, name, lon, lat, percent_full: percent, distance_m: metres, bikes, ebikes: 1, docks,
+  extra_m: extra, on_the_way: extra < 50,
 });
 export const S_STATIONS_PICKUP = {
   action: "pickup",
@@ -1024,7 +1045,7 @@ export const S_STATIONS_PICKUP = {
   stations: [
     station("fx-001", "Columbus Circle / Union Station", -77.0063, 38.8973, 82, 320, 9, 2),
     station("fx-002", "Union Station Plaza", -77.0058, 38.8979, 78, 450, 7, 2),
-    station("fx-003", "Massachusetts Ave & 2nd St NE", -77.0042, 38.8981, 76, 1500, 13, 4),
+    station("fx-003", "Massachusetts Ave & 2nd St NE", -77.0042, 38.8981, 76, 1500, 13, 4, 200),
   ],
 };
 export const S_STATIONS_DROPOFF = {

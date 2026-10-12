@@ -1931,6 +1931,20 @@ with home's, as it does `override` (docs/BETA-RUNBOOK.md).
 `junction_suggestion` and `junction_override`; nothing else changed), after
 `0017_mass_hazard`, so the chain stays linear with one leaf. `migrate` runs at `up`, as always.
 
+## My Go (UI-CLEANUP, v0.5.0)
+
+A signed-in rider's own Go settings (`core.models.MyGo`, table `my_go`; GET and POST
+`/api/me/go`): the view the app opens in, Go's ride type and their Home (one point, rounded to 5
+decimal places, and its label). One row per account, made at the first save. Each rider reads and
+writes only their own row, from their session. The row is deleted when the account is marked
+deleted or removed. **Privacy.** A Home is where a rider lives: it is never put in a link, a log
+or a suggestion, and `my_go` is left out of the beta's data shipment (`scripts/beta/ship-data.sh`
+`EXCLUDED_TABLE_DATA`), as the other tables that point at an account are.
+
+**The migration** is `core/migrations/0019_my_go.py` (one new table; nothing else changed), after
+`0018_junction_suggestions`, so the chain stays linear with one leaf. It reverses cleanly
+(`migrate core 0018` drops the table). `migrate` runs at `up`, as always.
+
 ## Avoid-rated junctions: adding one (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
 
 An Avoid rating is for a junction that is "just way too problematic", and only from the

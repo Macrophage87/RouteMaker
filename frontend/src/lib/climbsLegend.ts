@@ -179,15 +179,17 @@ interface SectionProps {
  * inserted with its text is often not read), the legend, the list and the help. Sits inside the
  * "Trails and terrain" section, so it has no heading of its own above the list's.
  */
-export function ClimbsLayerControls({ on, onChange, status, items }: SectionProps): ReactElement {
+export function ClimbsLayerControls({ on, onChange, status, items, along = true, legend = true }: SectionProps & { along?: boolean; legend?: boolean }): ReactElement {
+  // UI-CLEANUP: Layers keeps the switch only; the climbs on the route are in the Elevation and climbs fold
+  // and the legend behind Layers' Legend button (along and legend false there).
   const ready = on && status === "ready";
   return h(
     "div",
     { className: "climbs-controls" },
     h(ClimbsSwitch, { on, onChange }),
     h("p", { className: "hint climbs-status", role: "status" }, climbsStatusText(on, status)),
-    ready && h(ClimbsLegend, null),
-    ready && h(ClimbsAlongList, { items, headingId: "climbs-along-layers-heading" }),
+    ready && legend && h(ClimbsLegend, null),
+    ready && along && h(ClimbsAlongList, { items, headingId: "climbs-along-layers-heading" }),
     on && h("p", { className: "hint" }, CLIMBS_HELP),
   );
 }

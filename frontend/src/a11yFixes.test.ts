@@ -250,10 +250,10 @@ test("App: the accessibility mode switch is the first thing in the page, before 
   assert.match(declared(".access-link:focus-visible"), /transform:\s*none/);
 });
 
-test("App: Map tools is rendered only in accessibility mode; the toggle is in More tips too (455)", () => {
+test("App: Map tools is rendered only in accessibility mode; the toggle is in Points' Info too (455; UI-CLEANUP)", () => {
   assert.match(app, /tools=\{\s*accessMode && !riding \? \(\s*<MapTools/);
   assert.match(app, /\) : null\s*\}\s*\/>/);
-  const tips = app.slice(app.indexOf("<MoreTips>"), app.indexOf("</MoreTips>"));
+  const tips = app.slice(app.indexOf('className="tips-body more-tips"'), app.indexOf("<InstallOffer idBase=\"tips-install\""));
   assert.match(tips, /infoHelp\(accessMode\)/);
   assert.match(tips, /onClick=\{\(\) => toggleAccessMode\(false\)\}/);
   assert.match(tips, /aria-pressed=\{accessMode\}[\s\S]{0,80}?>\s*\{ACCESS_LABEL\}/);
