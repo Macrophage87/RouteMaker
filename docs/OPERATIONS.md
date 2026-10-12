@@ -2342,7 +2342,8 @@ once the first rebuild with them has been promoted:
    `REBUILD_TILE_CONCURRENCY=2`.
 
    ```sh
-   cat "$(sed -n 's/^DATA_ROOT=//p' .env)"/tiles/standard/current/build-config.json \
+   D=$(docker compose config --format json 2>/dev/null </dev/null | python3 -c 'import json,sys; print(next(v["source"] for v in json.load(sys.stdin)["services"]["api"]["volumes"] if v["target"]=="/data/static")[:-len("/static")])')   # the data root ("Deploying a planner ...", below)
+   cat "$D"/tiles/standard/current/build-config.json \
      | python3 -c 'import json,sys; print(json.load(sys.stdin)["mjolnir"]["concurrency"])'   # 4
    ```
 
@@ -4858,8 +4859,26 @@ and removed on another. That is not a fault and not a rollback trigger.
 
 A release that changes the planner and the front end, with no migration and no graph, is deployed
 from t9, the worktree that serves the stack, one heredoc per call, with `</dev/null` on every docker
-command. Below, `$REPO` is that worktree's path (set it first), and each snippet exports
-`DATA_ROOT` with the value in its `.env`.
+command. Below, `$REPO` is that worktree's path (set it first), and each snippet sets `D`, a plain
+shell variable (never exported), to the deployment's data root.
+
+**Never read `.env`, in any form** (`cat`, `grep`, `sed`, `source`, an editor's view): it holds the
+deployment's secrets, and the owner's rule is that only compose reads it. The data root is taken from
+compose's own resolved config, the source of the api's `/data/static` bind mount
+(`${DATA_ROOT}/static` in compose.yaml), and only that one path is printed:
+
+```sh
+D=$(docker compose config --format json 2>/dev/null </dev/null | python3 -c 'import json,sys; print(next(v["source"] for v in json.load(sys.stdin)["services"]["api"]["volumes"] if v["target"]=="/data/static")[:-len("/static")])')
+echo "$D"     # the data root; check it against the one the owner records for this host, outside the repo
+```
+
+Or set `D` by hand to that recorded path. Nothing in the repo names it. An empty `D` means compose
+could not read its config: stop. Never run `docker compose config` bare, or with `--environment`:
+it prints the resolved secrets. The filter above keeps only the one path. A setting such as
+`WEEKLY_REBUILD_PAUSED` is never checked in `.env` or in compose's config: the owner sets it,
+nobody reads it back, and it is checked in the container's own environment once the container
+exists ("The rebuild bundle", `CV`), one variable at a time, never the whole environment.
+
 The order is: pre-flight, **rollback points**, fast-forward, the api image, recreate api and worker,
 the front end last, then **verify**. Keep out of 07:00-07:30 UTC (the nightly backup) and away from
 the Tuesday 08:00Z rebuild. Every step is still confirmed with the owner (OWNER-DECISIONS 293).
@@ -4869,7 +4888,7 @@ the Tuesday 08:00Z rebuild. Every step is still confirmed with the owner (OWNER-
 index backup may be two releases back. `L` is the short commit t9 is on:
 
 ```sh
-cd "$REPO"; D=$(sed -n 's/^DATA_ROOT=//p' .env); L=$(git rev-parse --short HEAD)   # D: never exported
+cd "$REPO"; D=$(docker compose config --format json 2>/dev/null </dev/null | python3 -c 'import json,sys; print(next(v["source"] for v in json.load(sys.stdin)["services"]["api"]["volumes"] if v["target"]=="/data/static")[:-len("/static")])'); L=$(git rev-parse --short HEAD)   # D: never exported
 docker tag ghcr.io/macrophage87/routemaker-api:dev ghcr.io/macrophage87/routemaker-api:pre-rel-$L </dev/null
 docker image inspect --format '{{.Id}}' ghcr.io/macrophage87/routemaker-api:pre-rel-$L </dev/null   # the live image's id
 cp $D/frontend/index.html ~/rmdata/frontend-index-$L.html
@@ -4947,7 +4966,7 @@ changes (302), and `calm_search` carries `no_fit` and the `limited` code `"ceili
 ("Long calm plans ..., Rollback", above); the old front end works against the new API.
 
 ```sh
-cd "$REPO"; D=$(sed -n 's/^DATA_ROOT=//p' .env); L=<the short commit saved in step 0.1>
+cd "$REPO"; D=$(docker compose config --format json 2>/dev/null </dev/null | python3 -c 'import json,sys; print(next(v["source"] for v in json.load(sys.stdin)["services"]["api"]["volumes"] if v["target"]=="/data/static")[:-len("/static")])'); L=<the short commit saved in step 0.1>
 docker run --rm --network none -u 10001:10001 -v ~/rmdata:/bk:ro -v $D/frontend:/out \
   docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 \
   sh -c "cp /bk/frontend-index-$L.html /out/.index.html.new && mv /out/.index.html.new /out/index.html" </dev/null
@@ -5356,14 +5375,17 @@ edits of 2026-10-06 are in it, and its date is checked before the rebuild builds
 clipped extract aside) and checks what came.
 
 ```sh
-D=$(sed -n 's/^DATA_ROOT=//p' .env)            # the deployment's data root, read from .env
+D=$(docker compose config --format json 2>/dev/null </dev/null | python3 -c 'import json,sys; print(next(v["source"] for v in json.load(sys.stdin)["services"]["api"]["volumes"] if v["target"]=="/data/static")[:-len("/static")])')   # the data root, from compose's config, never from .env ("Deploying a planner ...", above)
+CV() { docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$(docker compose ps -aq rebuild </dev/null)" </dev/null | sed -n "s/^$1=//p"; }   # one setting from the rebuild container's env, never .env
 Q() { docker compose exec -T postgis psql -U routemaker -d routemaker -AtX -c "$1" </dev/null; }
 ```
 
 Never `export DATA_ROOT`: compose takes the shell's value over `.env`, so a wrong one
-recreates the services on an empty tree. `D` is a plain shell variable, and `Q` a shell
-function: define both again in each new shell, and `ACTOR` (step H) too; an empty `$ACTOR`
-fails `--actor` safely, but it stops the step.
+recreates the services on an empty tree. Never read `.env` either (`grep`, `sed`, `cat`,
+`source`): `CV` prints the one setting asked for from the `rebuild` container's environment
+(running, or created and not yet started; it prints nothing if there is no container). `D` is a
+plain shell variable, and `Q` and `CV` shell functions: define all three again in each new
+shell, and `ACTOR` (step H) too; an empty `$ACTOR` fails `--actor` safely, but it stops the step.
 
 **A. Before the day.** The commit deployed is the reviewed bundle SHA with main as an
 ancestor (the main ruleset fast-forwards only), with the front-end tests and CI green on
@@ -5413,11 +5435,11 @@ the job waits `todo`. Recreating `rebuild` (step G) would then start a full rebu
 once, before the overrides of step H and the tile-build check of step F; and a tick queued
 behind a hand-fired run promotes a **second** build straight after, whose swap drops
 `live_old`, the pre-bundle rollback target. So pause it first ("Pausing the weekly
-rebuild", above):
+rebuild", above): the owner sets `WEEKLY_REBUILD_PAUSED=1` in `.env`. Nobody reads `.env`
+back to check it (`rebuild` is stopped, so there is no container to ask yet); step G checks it
+in the recreated container before that container starts.
 
 ```sh
-grep -q '^WEEKLY_REBUILD_PAUSED=' .env || echo 'WEEKLY_REBUILD_PAUSED=1' >> .env
-grep '^WEEKLY_REBUILD_PAUSED=' .env                                # WEEKLY_REBUILD_PAUSED=1
 Q "select id,status,args from procrastinate_jobs where task_name='weekly_rebuild' and status='todo'"
 ```
 
@@ -5457,11 +5479,8 @@ last OSM edit of 2026-10-06. Its time is on the owner's changeset list; if that 
 local time, EDT is UTC less 4 h, so a 16:00 EDT edit is 20:00 UTC. If any timestamp is
 older, STOP and ask the owner: the run waits for the next day's file. Note the three
 timestamps; step I checks the download against them. Then check that nothing forces a
-refresh:
-
-```sh
-grep '^SOURCE_EXTRACT_FORCE_REFRESH=' .env                        # SOURCE_EXTRACT_FORCE_REFRESH=  (empty), or no line
-```
+refresh: the owner confirms `SOURCE_EXTRACT_FORCE_REFRESH` is unset or empty in `.env`;
+nobody reads it back. Step G checks it in the recreated `rebuild` container before it starts.
 
 Nothing has changed yet, and nothing is downloaded until I.
 
@@ -5488,8 +5507,11 @@ scripts/check_tile_build_access.sh                               # exit 0 requir
 ```sh
 docker compose run --rm --no-deps migrate </dev/null                 # applies core 0010 (state only, no SQL)
 Q "select count(*) from django_migrations"                           # one more than in B
-grep -q '^WEEKLY_REBUILD_PAUSED=1' .env && echo paused               # paused: check again just before the recreate
-docker compose up -d --no-deps --no-build --force-recreate api worker rebuild </dev/null
+docker compose up -d --no-deps --no-build --force-recreate api worker </dev/null
+docker compose up --no-start --no-deps --no-build --force-recreate rebuild </dev/null   # created, not started
+CV WEEKLY_REBUILD_PAUSED                                             # 1 (anything else: stop here, ask the owner)
+CV SOURCE_EXTRACT_FORCE_REFRESH                                      # an empty line
+docker compose start rebuild </dev/null
 docker compose exec -T api python -c "from core import stress_tiles, mass_tiles; print(stress_tiles.FORMAT_VERSION, mass_tiles.FORMAT_VERSION)" </dev/null   # 8 2 (7 2 before the judged bridges' surface)
 docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.WEEKLY_REBUILD_PAUSED)" </dev/null                       # True
 docker compose exec -T rebuild ./manage.py shell -c "from django.conf import settings; print(settings.REBUILD_TILE_CONCURRENCY)" </dev/null                    # 4 (or the .env value; "Tile build threads")
@@ -5791,7 +5813,7 @@ route chart width estimate).
   since C's shell is gone):
 
   ```sh
-  D=$(sed -n 's/^DATA_ROOT=//p' .env); L=$(cat ~/rmdata/pre-bundle-commit.txt)
+  D=$(docker compose config --format json 2>/dev/null </dev/null | python3 -c 'import json,sys; print(next(v["source"] for v in json.load(sys.stdin)["services"]["api"]["volumes"] if v["target"]=="/data/static")[:-len("/static")])'); L=$(cat ~/rmdata/pre-bundle-commit.txt)
   docker run --rm --network none -u 10001:10001 -v ~/rmdata:/bk:ro -v $D/frontend:/out     docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662     sh -c "cp /bk/frontend-index-pre-bundle.html /out/.index.html.new && mv /out/.index.html.new /out/index.html" </dev/null
   ```
 
