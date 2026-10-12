@@ -1,5 +1,5 @@
 {
-  "about": "The transit systems the transit ride types use (core.transit), each from its own static GTFS, fetched and compacted on the host (scripts/fetch_transit_gtfs.py, scripts/build_transit_schedule.py; docs/OPERATIONS.md). The feeds and the file built from them are never committed (docs/SOURCES.md). `bike.vehicle`: all = every trip takes a bike; trip = only trips with GTFS bikes_allowed 1; offpeak = every trip outside weekday rush (06:00-09:30, 15:00-19:00); none = no bike (unclear bike access is closed). `bike.station`: elevator = the map's Metro elevators (WMATA); station = every station of the system (the owner, 2026-10-12: \"I believe all stations have ways to board with either ramps or elevators. Most people can carry bikes up and down stairs in a pinch.\"); any = a bus stop at the curb. `words` names a vehicle in a step: {route} is the route's name. `idle_notes`: say plainly when a route near the trip has no service at that time.",
+  "about": "The transit systems the transit ride types use (core.transit), each from its own static GTFS, fetched and compacted on the host (scripts/fetch_transit_gtfs.py, scripts/build_transit_schedule.py; docs/OPERATIONS.md). The feeds and the file built from them are never committed (docs/SOURCES.md). `bike.vehicle`: all = every trip takes a bike; trip = only trips with GTFS bikes_allowed 1; offpeak = every trip outside weekday rush (06:00-09:30, 15:00-19:00); none = no bike (unclear bike access is closed). `bike.station`: elevator = the map's Metro elevators (WMATA); station = every station of the system (the owner, 2026-10-12: \"I believe all stations have ways to board with either ramps or elevators. Most people can carry bikes up and down stairs in a pinch.\"); any = a bus stop at the curb. `words` names a vehicle in a step: {route} is the route's name. `route_name`: long = a route is named by GTFS route_long_name first (\"Fredericksburg Line\", not VRE's short name \"2\"). `idle_notes`: say plainly when a route near the trip has no service at that time.",
   "systems": [
     {
       "id": "wmata-rail",
@@ -91,6 +91,23 @@
         "source": "https://www.mta.maryland.gov/bike"
       },
       "credit": "MDOT MTA GTFS (scheduled times)"
+    },
+    {
+      "id": "vre",
+      "name": "VRE",
+      "operator": "Virginia Railway Express",
+      "mode": "rail",
+      "words": "the VRE {route}",
+      "route_name": "long",
+      "idle_notes": true,
+      "feed": {"file": "vre-gtfs.zip", "url": "https://gtfs.vre.org/containercdngtfsupload/google_transit.zip"},
+      "bike": {
+        "vehicle": "all",
+        "station": "station",
+        "rule": "Board last; bungee it to a car's south-end bench.",
+        "source": "https://www.vre.org/about/onboard-policies/"
+      },
+      "credit": "VRE GTFS (scheduled times)"
     }
   ]
 }

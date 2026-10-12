@@ -4,8 +4,8 @@
 TRANSIT-ASSIST. The API reads one JSON file, `<DATA_ROOT>/tiles/transit/transit-schedule.json`. This
 writes it from the GTFS zips `scripts/fetch_transit_gtfs.py` downloads on the host, one per system
 in src/core/transitdata/systems.json (WMATA Metro and Metrobus, MARC, Light RailLink, Metro
-SubwayLink), and from the Metro stations, entrances and elevators the repository already carries
-(frontend/src/rail-data/):
+SubwayLink, VRE), and from the Metro stations, entrances and elevators the repository already
+carries (frontend/src/rail-data/):
 
     python3 scripts/build_transit_schedule.py --feeds ~/rmdata/transit \\
         --out "$DATA_ROOT/tiles/transit/transit-schedule.json"
@@ -213,7 +213,9 @@ def service_calendar(feed, start: date, days: int = DAYS) -> dict[str, str]:
     return {sid: "".join(b) for sid, b in sorted(bits.items()) if "1" in b}
 
 
-def route_names(feed, metro: bool) -> dict[str, str]:
+def route_names(feed, metro: bool, long_first: bool = False) -> dict[str, str]:
+    """Each route's name as a step says it. `long_first` (systems.json `route_name` long): the
+    GTFS long name before the short one, for a system whose short names are numbers (VRE)."""
     out = {}
     for row in _rows(feed, "routes.txt"):
         short = (row.get("route_short_name") or "").strip()
@@ -224,6 +226,8 @@ def route_names(feed, metro: bool) -> dict[str, str]:
             out[row["route_id"]] = (
                 f"{colour} Line" if colour else (long or short or row["route_id"])
             )
+        elif long_first:
+            out[row["route_id"]] = long or short or row["route_id"]
         else:
             out[row["route_id"]] = short or long or row["route_id"]
     return out
@@ -495,7 +499,11 @@ def build(
             found = patterns(
                 feed,
                 calendar,
-                route_names(feed, metro=config.get("stations") == "wmata-map"),
+                route_names(
+                    feed,
+                    metro=config.get("stations") == "wmata-map",
+                    long_first=config.get("route_name") == "long",
+                ),
                 key,
                 config["bike"]["vehicle"],
             )
