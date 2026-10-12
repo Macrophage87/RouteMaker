@@ -3594,9 +3594,9 @@ python scripts/install_reference_data.py --data-root "$DATA_ROOT" \
     --extract "$DATA_ROOT/extracts/source.osm.pbf" \
     --urban-areas "$DATA_ROOT/reference/inputs/tl_2024_us_uac20.geojson" \
     --volume "$DATA_ROOT/reference/inputs/vdot-aadt-2024.geojson" \
-        --volume-source vdot --volume-year 2024 \
+        --volume-source vdot --volume-year 2024 --aadt-property ADT \
     --volume "$DATA_ROOT/reference/inputs/ddot-aadt-2024.geojson" \
-        --volume-source ddot --volume-year 2024
+        --volume-source ddot --volume-year 2024 --aadt-property AADT
 ```
 
 Two agencies rather than one, because a single one is the case the conflation
@@ -3632,7 +3632,8 @@ the failure this produced.
 - `volume.json` is every agency count line with a bidirectional AADT, in the
   shape `conflation.AgencyFeature` loads. The Virginia layer is VDOT's traffic
   volume export from the Virginia Roads portal (`--volume-source vdot`, AADT
-  property `AADT`); the District's is DDOT's AADT layer (`--volume-source
+  property `ADT`: the export has no `AADT` field, so without `--aadt-property ADT`
+  the installer reads 0 lines from it, with exit 0); the District's is DDOT's AADT layer (`--volume-source
   ddot`) and arrives the same way. Directional counts are summed before they
   reach here, which is why the property name is an argument rather than
   guessed.
@@ -7334,7 +7335,8 @@ writes `index.html`'s `<meta name="routemaker-build">` and emits `dist/sw.js` (t
 `export` words dropped, then the build id and the list of every `/assets/*` file) and `dist/sw-kill.js`.
 Its rules (`ruleFor`, an allowlist; the table is at the top of the file): the shell network first,
 falling back after `SHELL_TIMEOUT_MS` (3 s) to the kept copy; `/assets/*` precached and cache first,
-but for `LAZY_ASSET` (the Find food places, `/assets/food-*.json`, about 450 KB compressed), which no
+but for `LAZY_ASSET` (the Find food places, `/assets/food-*.json`, about 450 KB compressed, and the
+Climbs layer's `/assets/climbs-*.json`, about 400 KB compressed, off until turned on), which no
 install downloads: kept in the build's cache on first use, and copied into the next build's cache at
 its install while its hashed name is unchanged (`lazyList` in `swPlugin.mjs`);
 the favicon, icons and licence notices stale-while-revalidate; the base map's glyphs and sprite from

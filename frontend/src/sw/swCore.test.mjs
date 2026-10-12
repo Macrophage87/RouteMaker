@@ -404,12 +404,14 @@ test("the precache list is the build's assets only: not index.html, the worker, 
   assert.deepEqual(precacheList(["index.html", "sw.js", "licenses.txt", "assets/b.js", "assets/a.css", "favicon.svg", "icons/icon-192.png"]), ["/assets/a.css", "/assets/b.js"]);
 });
 
-test("the Find food places are left out of the precache and listed as lazy: an install does not download them", () => {
-  const names = ["index.html", "assets/index-1.js", "assets/food-Ab12.json", "assets/water-restrooms-9.json"];
+test("the Find food places and the climbs are left out of the precache and listed as lazy: an install does not download them", () => {
+  const names = ["index.html", "assets/index-1.js", "assets/food-Ab12.json", "assets/climbs-Cd34.json", "assets/water-restrooms-9.json"];
   assert.deepEqual(precacheList(names), ["/assets/index-1.js", "/assets/water-restrooms-9.json"]);
-  assert.deepEqual(lazyList(names), ["/assets/food-Ab12.json"]);
+  assert.deepEqual(lazyList(names), ["/assets/climbs-Cd34.json", "/assets/food-Ab12.json"]);
   assert.equal(ruleFor(get("/assets/food-Ab12.json"), ORIGIN), "lazy");
+  assert.equal(ruleFor(get("/assets/climbs-Cd34.json"), ORIGIN), "lazy");
   assert.equal(ruleFor(get("/assets/foodish.js"), ORIGIN), "precache");
+  assert.equal(ruleFor(get("/assets/climbs-Cd34.js"), ORIGIN), "precache");
 });
 
 test("install does not fetch a lazy asset", async () => {
