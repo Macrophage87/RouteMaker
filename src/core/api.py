@@ -2463,15 +2463,15 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     """A transit ride type (`core.transit`): the options, the chosen one's first ride routed."""
     if started is None:
         started = routing.clock()
-    schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH)
+    when = body.depart_at or timezone.now()
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=ridetime.ZONE)
+    schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, when.astimezone(ridetime.ZONE).date())
     # The candidates' calls stop `TRANSIT_CANDIDATES_S` in, leaving the answer's own line
     # (routing.plan, below) the rest of the request's budget: a slow router estimates candidates,
     # it never times out the plan.
     services = transit.RoutingServices(started + TRANSIT_CANDIDATES_S, body.preset)
     start, end = body.points
-    when = body.depart_at or timezone.now()
-    if when.tzinfo is None:
-        when = when.replace(tzinfo=ridetime.ZONE)
     if body.preset == presets.BIKESHARE_TRANSIT:
         found = transit.plan_bikeshare(schedule, start, end, when, services, gbfs.client.snapshot())
     else:
@@ -2595,7 +2595,9 @@ def transit_closures(request, params: Query[ClosuresIn], response: HttpResponse)
     if when.tzinfo is None:
         when = when.replace(tzinfo=ridetime.ZONE)
     try:
-        schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH)
+        schedule = transit.load(
+            settings.TRANSIT_SCHEDULE_PATH, when.astimezone(ridetime.ZONE).date()
+        )
     except transit.Unavailable:
         return _transit_refusal(
             "Transit times are not available on this server right now.", "transit_unavailable", 503

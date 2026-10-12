@@ -472,7 +472,11 @@ def build(
     for config in load_systems(systems_path):
         path = feeds.get(config["id"])
         if path is None:
-            report.append(f"{config['id']}: no feed given, left out")
+            typical = " (the API runs Metro on its typical timetable)"
+            report.append(
+                f"{config['id']}: no feed given, left out"
+                + (typical if config.get("stations") == "wmata-map" else "")
+            )
             continue
         system = len(systems)
         with open_feed(path) as feed:
