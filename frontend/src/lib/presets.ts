@@ -103,13 +103,13 @@ export const PRESETS: readonly PresetOption[] = [
     id: "bike-transit",
     label: "Own Bike + Transit",
     description:
-      "Your own bike the whole way, with Metro, MARC, Light RailLink, Metro SubwayLink or a bus's bike rack: riding directly there, then the quickest trips by scheduled times, not live. Uses stations a bike can get into (Metro's elevators), and never leaves the bike.",
+      "Your own bike the whole way, with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus's bike rack: riding directly there, then the quickest trips by scheduled times, not live. Uses stations a bike can get into (Metro's elevators), and never leaves the bike.",
   },
   {
     id: "bikeshare-transit",
     label: "Bikeshare + Transit",
     description:
-      "Bikeshare directly there, or transit with either end a walk or a bikeshare bike, whichever is quicker (a bike is docked before you board). Metro, MARC, Light RailLink, Metro SubwayLink and buses; scheduled times, not live; docks from live availability where it can be read.",
+      "Bikeshare directly there, or transit with either end a walk or a bikeshare bike, whichever is quicker (a bike is docked before you board). Metro, MARC, VRE, Light RailLink, Metro SubwayLink and buses; scheduled times, not live; docks from live availability where it can be read.",
   },
 ];
 
