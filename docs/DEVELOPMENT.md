@@ -4682,12 +4682,13 @@ Tests: `lib/sidebar.test.ts`.
   section, and is also said through `said` while the planner is hidden
   (`noticeSaidElsewhere`), never both at once. A Mass Ride loads the federal-land data
   whatever the shading switch says (`federalWanted`), for the planner's points list.
-- **Scrolling.** `.panel-body` is a column: the beta banner (its first child), the
+- **Scrolling.** `.panel-body` is a column: the status bar, the
   scrolling `.panel-scroll`, then the pinned route actions and bottom bar. On a short
   or zoomed screen (`@media (max-height: 32.5em), (max-width: 22.5em)`, 520 px and
   360 px at 16 px text) the whole `.panel` scrolls as one instead, so at 400% zoom of
-  1280x800 (320x200) the 96 px phone sheet scrolls all of its content, banner and
-  Dismiss included, where the pinned parts left the planner 0 px.
+  1280x800 (320x200) the 96 px phone sheet scrolls all of its content, where the
+  pinned parts left the planner 0 px. (The beta notice is not in the panel: it is the
+  "Beta" chip in the map's bottom-left corner, lib/betaBanner.ts.)
 - **Copy link** copies `linkToCopy`: this page and `encodePlan(points, preset, dials)`,
   the fragment App writes to the address bar, which never holds the weight (313). Its
   "Link copied." is polite, said again on a second press, and cleared when the plan
