@@ -306,6 +306,72 @@ def test_the_road_a_separate_facility_lies_beside_is_named_too():
     assert separate_pairs([]) == (set(), set())
 
 
+def test_a_named_trail_beside_a_parkway_that_says_separate_stays_a_path():
+    """The owner, 2026-10-12: Rock Creek Trail (OSM way 1355215830, highway=cycleway)
+    hugs Rock Creek and Potomac Parkway (cycleway:left=separate) between P and M
+    Streets NW and was drawn as the parkway's protected lane. A trail named for
+    itself is a path; the parkway still has its facility alongside."""
+    from routemaker.facility import separate_pairs
+
+    parkway = (
+        435101942,
+        {"highway": "secondary", "name": "Rock Creek and Potomac Parkway Northwest",
+         "cycleway:left": "separate"},
+        _line(-77.055, 38.907),
+    )  # fmt: skip
+    trail_tags = {"highway": "cycleway", "name": "Rock Creek Trail", "bicycle": "designated",
+                  "foot": "designated"}  # fmt: skip
+    trail = (1355215830, trail_tags, _line(-77.055, 38.9071))
+    assert separate_pairs([parkway, trail]) == (set(), {435101942})
+    assert facility(trail_tags, beside_separate_road=False) is P
+
+
+def test_an_unnamed_piece_of_a_long_route_takes_the_routes_name():
+    parkway = (1, {"highway": "secondary", "name": "Rock Creek and Potomac Parkway",
+                   "cycleway:left": "separate"}, _line(-77.055, 38.907))  # fmt: skip
+    piece = (2, {"highway": "cycleway"}, _line(-77.055, 38.9071))
+    assert beside_separate_roads([parkway, piece]) == {2}
+    assert beside_separate_roads([parkway, piece], {2: "Rock Creek Trail"}) == set()
+
+
+@pytest.mark.parametrize(
+    ("track_name", "protected"),
+    [
+        (None, True),  # most of DC's cycle tracks carry no name
+        ("15th Street Northwest", True),
+        ("15th Street Cycle Track", True),
+        ("15th St NW", True),
+        ("15th St. Cycletrack", True),
+        ("Metropolitan Branch Trail", False),
+    ],
+)
+def test_a_cycle_track_named_for_its_street_stays_protected(track_name, protected):
+    street = (1, {"highway": "secondary", "name": "15th Street Northwest",
+                  "cycleway:left": "separate"}, _line(-77.0345, 38.905))  # fmt: skip
+    tags = {"highway": "cycleway"} | ({"name": track_name} if track_name else {})
+    track = (2, tags, _line(-77.0345, 38.9051))
+    assert beside_separate_roads([street, track]) == ({2} if protected else set())
+
+
+@pytest.mark.parametrize(
+    ("trail", "roads", "own"),
+    [
+        ("Rock Creek Trail", ["Rock Creek and Potomac Parkway"], True),
+        ("Mount Vernon Trail", ["George Washington Memorial Parkway"], True),
+        ("L Street Northwest", ["L Street Northwest"], False),
+        ("L Street Cycletrack", ["L Street NW"], False),
+        ("Pennsylvania Avenue Bike Lanes", ["Pennsylvania Avenue Northwest"], False),
+        ("Rock Creek Trail", [None], True),
+        (None, ["Rock Creek and Potomac Parkway"], False),
+        ("", [], False),
+    ],
+)
+def test_named_for_itself(trail, roads, own):
+    from routemaker.facility import named_for_itself
+
+    assert named_for_itself(trail, roads) is own
+
+
 def test_beside_is_within_twenty_metres():
     """F17: 15 m is the lane; 30 m is the far side of a boulevard."""
     road = (1, {"highway": "primary", "cycleway:right": "separate"}, _line(-77.03, 38.90))

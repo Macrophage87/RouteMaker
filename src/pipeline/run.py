@@ -2536,7 +2536,8 @@ def build_handlers(
         if context.facility_by_way or not context.ways:
             return
         beside = facility.beside_separate_roads(
-            (way.osm_id, way.tags, way.coordinates) for way in context.ways
+            ((way.osm_id, way.tags, way.coordinates) for way in context.ways),
+            context.route_names,
         )
         context.short_paths_hidden = facility.short_paths_to_hide(
             (way.osm_id, way.tags, way.node_ids, way.coordinates) for way in context.ways
