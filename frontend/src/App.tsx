@@ -2222,6 +2222,7 @@ export function App() {
         onMovePoint={riding ? ignore : move}
         lineEdit={riding ? null : lineEdit}
         onLineDrop={riding ? ignore : insertOnLine}
+        lineTapSetsEnd={goTapSetsEnd(mode)}
         onRemovePoint={riding ? ignore : removeFromMap}
         markerReset={markerReset}
         accuracy={riding ? rideCircle : hereCircle}

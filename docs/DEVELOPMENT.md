@@ -4573,7 +4573,7 @@ puts it, at most two presses away.
   location is still being found it waits ("To …: finding your location for the start…") and is
   routed when the location comes; with no location, it is kept ("To …. Current location not
   available; type a start.") and a start typed in the start box plans the route to it at once. A
-  press on the open map in Go (or Map tools' "Set destination at map center") is the destination, routed as a
+  press on the map in Go, the route line included (a drag of the line still adds a stop; `lineTapIsPoint`), or Map tools' "Set destination at map center", is the destination, routed as a
   picked one is and said "Destination set: …" (`goTapSetsEnd`, the owner 2026-10-12; it replaces #95's tap-as-start). Picking a
   destination with a start plans at once; Go then shows the routes to choose from open, and the ride types under the
   route, so Bikeshare is one press, and only a Bikeshare route names its pick-up and drop-off

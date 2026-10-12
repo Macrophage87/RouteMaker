@@ -72,7 +72,7 @@ needed; reload the page to get the box back.
 - The first thing on the page is a button, "Accessibility mode", a switch that starts off.
   Turn it on to get Map tools by the map's zoom buttons, with "Add point at map center" and
   "Road info at map center". It stays on for this device. The same switch is in "More tips".
-- In Go, a press on the open map (or "Set destination at map center" in Map tools) makes that spot your destination and says "Destination set: …".
+- In Go, a press on the map, the route line included (or "Set destination at map center" in Map tools) makes that spot your destination and says "Destination set: …".
 - The next thing is a link, "Skip to the route planner". It takes you past the map to the
   planner.
 - The planner is an area (a landmark) called "Route planner"; screen readers may announce it

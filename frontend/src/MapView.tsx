@@ -168,6 +168,8 @@ interface Props {
   lineEdit: LineEdit | null;
   /** The line was dragged (or clicked) to `point` from leg `leg` of the route through `points`. */
   onLineDrop: (leg: number, point: LonLat, points: LonLat[]) => void;
+  /** Go: a click on the line is onMapClick's (the destination), not a via; a drag of it is still onLineDrop's. */
+  lineTapSetsEnd?: boolean;
   /** Remove the point at `index` (a via's Remove on the map). */
   onRemovePoint: (index: number) => void;
   /** Changes when the markers must be put back on the points as they are. */
@@ -839,7 +841,7 @@ export function MapView(props: Props) {
         ? { station: stationAt(event.point), line: lineAt(event.point, touch ? TOUCH_HIT_PX : MOUSE_HIT_PX) }
         : { station: null, line: null };
       const point: LonLat = [event.lngLat.lng, event.lngLat.lat];
-      runClick(under, { popupOpen: anyPopupOpen(), afterDrag: performance.now() < clickSuppressedUntil }, {
+      runClick(under, { popupOpen: anyPopupOpen(), afterDrag: performance.now() < clickSuppressedUntil, lineTapIsPoint: callbacks.current.lineTapSetsEnd === true }, {
         closePopups: () => {
           closePopup(false);
           rail?.closeCard();

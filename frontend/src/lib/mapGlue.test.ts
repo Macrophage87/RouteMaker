@@ -1,6 +1,7 @@
 // What MapView does to the map, run against a stand-in map that records calls.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   BASEMAP_PATH_LABEL_LAYER,
   MASS_PATH_LABEL_FILTER,
@@ -254,9 +255,9 @@ test("a press on a station grabs the line only where the line runs, and never wi
   assert.equal(pressGrab({ station: null, line: null }, false), null);
 });
 
-function clickLog(under: { station: typeof STATION | null; line: typeof LINE | null }, popupOpen: boolean, afterDrag = false) {
+function clickLog(under: { station: typeof STATION | null; line: typeof LINE | null }, popupOpen: boolean, afterDrag = false, lineTapIsPoint = false) {
   const calls: string[] = [];
-  const action = runClick(under, { popupOpen, afterDrag }, {
+  const action = runClick(under, { popupOpen, afterDrag, lineTapIsPoint }, {
     closePopups: () => calls.push("close"),
     openCard: (s) => calls.push(`card:${s.id}`),
     lineDrop: () => calls.push("line"),
@@ -287,6 +288,22 @@ test("a click on the line is a via, elsewhere a point, and the click after a dra
   for (const station of [null, STATION]) {
     for (const line of [null, LINE]) assert.deepEqual(clickLog({ station, line }, false, true).calls, []);
   }
+});
+
+test("Go (lineTapIsPoint): a click on the line is the map's, a point, like anywhere else; stations, popups and the click after a drag are as before (the owner, 2026-10-12)", () => {
+  assert.equal(mapClickAction({ popupOpen: false, afterDrag: false, onStation: false, onLine: true, lineTapIsPoint: true }), "point");
+  assert.deepEqual(clickLog({ station: null, line: LINE }, false, false, true).calls, ["point"]);
+  assert.deepEqual(clickLog({ station: null, line: null }, false, false, true).calls, ["point"]);
+  assert.deepEqual(clickLog({ station: STATION, line: LINE }, false, false, true).calls, ["close", "card:st"]);
+  assert.deepEqual(clickLog({ station: null, line: LINE }, true, false, true).calls, ["close"]);
+  for (const line of [null, LINE]) assert.deepEqual(clickLog({ station: null, line }, false, true, true).calls, []);
+  // The drag is unchanged: a press near the line still picks it up.
+  assert.equal(pressGrab({ station: null, line: LINE }, false), LINE);
+  // MapView reads the flag at the click; App sets it in Go only.
+  const mapView = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  assert.match(mapView, /runClick\(under, \{ popupOpen: anyPopupOpen\(\), afterDrag: performance\.now\(\) < clickSuppressedUntil, lineTapIsPoint: callbacks\.current\.lineTapSetsEnd === true \}/);
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /onLineDrop=\{riding \? ignore : insertOnLine\}\s*lineTapSetsEnd=\{goTapSetsEnd\(mode\)\}/);
 });
 
 function hoverLog(

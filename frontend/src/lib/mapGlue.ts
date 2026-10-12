@@ -436,12 +436,15 @@ export type MapClickAction = "close-popup" | "ignore" | "station" | "line" | "po
  * route runs over it - owner, 2026-09-28: "Tap = station, drag = line" (a
  * press there that becomes a drag is the line's; pointerTarget). Then a click
  * on the line puts a via in that leg, and anywhere else it is a new point.
+ * With `lineTapIsPoint` (Go, where a press is the destination: the owner, 2026-10-12, "the location you press
+ * is the end"; stops belong in Plan), a click on the line is the map's like anywhere else; a drag of the line
+ * is unchanged (pointerTarget).
  */
-export function mapClickAction(state: PointerState & { afterDrag: boolean }): MapClickAction {
+export function mapClickAction(state: PointerState & { afterDrag: boolean; lineTapIsPoint?: boolean }): MapClickAction {
   if (state.popupOpen) return state.onStation ? "station" : "close-popup";
   if (state.afterDrag) return "ignore";
   if (state.onStation) return "station";
-  return state.onLine ? "line" : "point";
+  return state.onLine && !state.lineTapIsPoint ? "line" : "point";
 }
 
 export interface PointerAnswer {
@@ -499,10 +502,10 @@ export interface ClickEffects<S, L> {
 /** Carry out a click at `under` (mapClickAction); returns what it was. */
 export function runClick<S, L>(
   under: Under<S, L>,
-  now: { popupOpen: boolean; afterDrag: boolean },
+  now: { popupOpen: boolean; afterDrag: boolean; lineTapIsPoint?: boolean },
   effects: ClickEffects<S, L>,
 ): MapClickAction {
-  const action = mapClickAction({ ...stateOf(under, now.popupOpen), afterDrag: now.afterDrag });
+  const action = mapClickAction({ ...stateOf(under, now.popupOpen), afterDrag: now.afterDrag, lineTapIsPoint: now.lineTapIsPoint });
   if (action === "close-popup" || action === "station") effects.closePopups();
   if (action === "station" && under.station !== null) effects.openCard(under.station);
   else if (action === "line" && under.line !== null) effects.lineDrop(under.line);
