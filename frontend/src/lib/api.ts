@@ -8,7 +8,7 @@
 import type { MtbReading } from "./mtbMode.ts";
 import { formatRoughDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
-import type { PresetId } from "./presets.ts";
+import { twoPointsOnly, type PresetId } from "./presets.ts";
 import type { StressMetres } from "./stressBar.ts";
 import type { FacilityMetres } from "./facilityBar.ts";
 import type { NearbyStationsAnswer, StationAction } from "./stations.ts";
@@ -419,6 +419,105 @@ export interface BikeshareEnding {
  * The walks, docks, availability, fee and notes of a bikeshare plan (core.api.BikesharePlanOut,
  * FOLLOWUP-BIKESHARE). The route body around it is the ride leg between the docks.
  */
+/** One step of a transit plan (core.transit, POST /api/route's `transit.steps`). */
+export interface TransitStep {
+  /** A transit leg's mode is its system's: `metro` (WMATA), `rail` (MARC), `light-rail`, `subway`, `bus`. */
+  mode: "ride" | "take" | "bikeshare" | "walk" | "enter" | "exit" | "metro" | "rail" | "light-rail" | "subway" | "bus";
+  /** The step in one sentence, US units first, as it is read aloud. */
+  text: string;
+  seconds: number;
+  wait_s: number;
+  to: string | null;
+  lines: string[];
+  /** A transit leg's system, by name: "Metro", "MARC". */
+  system?: string | null;
+  /** An infrequent service (over 15 min apart): the departure taken, "7:42 am". */
+  departs?: string | null;
+  with_bike: boolean;
+  /** This step is the route's own line (drawn as the route); its coordinates are empty. */
+  route_line: boolean;
+  coordinates: LonLat[];
+}
+
+/** One way to make the trip (the owner, 2026-10-12): riding the whole way, or a transit trip. */
+export interface TransitOption {
+  /** Sent back as `transit_option` to plan this one. */
+  key: string;
+  /** "Ride, Metro to Federal Triangle (Orange Line), ride". */
+  label: string;
+  total_s: number;
+  minutes: number;
+  direct: boolean;
+  chosen: boolean;
+}
+
+/**
+ * The chosen trip's first infrequent departure (the owner, 2026-10-12: "make it clear when the next
+ * departure would be and if cutting it close, put a timer"). Times are ISO 8601 with their offset.
+ */
+export interface TransitDeparture {
+  /** Its index in `steps`. */
+  step: number;
+  system: string;
+  /** "the MARC Penn Line". */
+  vehicle: string;
+  board_at: string | null;
+  /** "7:42 am". */
+  departs: string;
+  departs_at: string;
+  arrive_at: string;
+  next: string | null;
+  next_at: string | null;
+  /** Time to spare at the stop, as planned. */
+  spare_s: number;
+  /** Under 5 minutes to spare: a countdown is shown. */
+  close: boolean;
+  /** The moment the plan is for. */
+  planned_at: string;
+  point: LonLat | null;
+  /** The map's label: "MARC 7:42 am · 6 min spare". */
+  label: string;
+}
+
+/** A rail station with no service at all on a day (GET /api/transit/closures). */
+export interface ClosedStation {
+  name: string;
+  system: string;
+  lon: number;
+  lat: number;
+  /** "no MARC weekend service". */
+  reason: string;
+}
+
+/** A transit ride type's trip: scheduled times, not live. */
+export interface TransitPlan {
+  mode: "bike-transit" | "bikeshare-transit";
+  /** The chosen option's key, and whether it is riding the whole way. */
+  key: string;
+  direct: boolean;
+  /** Quickest first; riding the whole way is always one. */
+  options: TransitOption[];
+  total_s: number;
+  minutes: number;
+  /** "About N min door to door, scheduled." */
+  summary: string;
+  bike_only_s: number | null;
+  /** Riding the whole way, in words; null when it could not be timed. */
+  comparison: string | null;
+  riding_quicker: boolean;
+  steps: TransitStep[];
+  notes: string[];
+  day_type: "weekday" | "saturday" | "sunday";
+  band: string | null;
+  holiday: boolean;
+  bike_blackout: boolean;
+  scheduled: boolean;
+  /** The schedules' sources, for the systems the chosen trip uses. */
+  credits: string[];
+  /** The first infrequent departure, or null (absent from older answers). */
+  departure?: TransitDeparture | null;
+}
+
 export interface BikesharePlan {
   bike: Bike;
   ending: Ending;
@@ -533,6 +632,8 @@ export interface RouteResponse {
   avoid_alternate?: (RouteResponse & { extra_distance_m: number; extra_duration_s: number }) | null;
   /** Bikeshare only: the walks, docks, availability, fee and notes around this ride leg; null elsewhere. */
   bikeshare?: BikesharePlan | null;
+  /** The transit ride types only (core.transit): the whole trip in steps around this body, its first ride leg. */
+  transit?: TransitPlan | null;
   /** Present on a loop (OWNER-DECISIONS 266). */
   loop?: LoopInfo | null;
   /** Mountain Bike only (docs/MTB-TOPO-PLAN.md, slice 6): the route's trail reading; null or absent elsewhere. */
@@ -697,6 +798,8 @@ export const LONG_RIDE_TIMED_OUT = "long_ride_timed_out";
 /** The API's codes on a bikeshare plan's 503 (the operator's station list unavailable) and 422 (no dock to use). */
 export const BIKESHARE_UNAVAILABLE = "bikeshare_unavailable";
 export const NO_BIKESHARE = "no_bikeshare";
+export const NO_TRANSIT = "no_transit";
+export const TRANSIT_UNAVAILABLE = "transit_unavailable";
 
 export type RouteResult = { ok: true; route: RouteResponse } | { ok: false; error: RouteError };
 
@@ -806,6 +909,14 @@ export function describeError(status: number, body: unknown, retryAfter: string 
       message: said ? asSentence(said) : "No dock can be used for this plan. Try the other bike type.",
     };
   }
+  if (status === 422 && code === NO_TRANSIT) {
+    return {
+      ...base,
+      kind: "no-route",
+      title: "No transit plan",
+      message: said ? asSentence(said) : "No Metro or bus combination can be planned here. Try riding the whole way.",
+    };
+  }
   if (status === 404 || status === 422) {
     return {
       ...base,
@@ -836,6 +947,15 @@ export function describeError(status: number, body: unknown, retryAfter: string 
       kind: "bikeshare-unavailable",
       title: "Bikeshare data unavailable",
       message: `Station data is not available right now, so no dock can be chosen. ${wait(retryAfterS, "Try again shortly.")}`,
+    };
+  }
+  if (status === 503 && code === TRANSIT_UNAVAILABLE) {
+    return {
+      ...base,
+      kind: "timed-out",
+      title: "Transit times unavailable",
+      message: said ? asSentence(said) : `Transit times are not available right now. ${wait(retryAfterS, "Try again shortly.")}`,
+      noAutoResend: true,
     };
   }
   if (status === 503 && code === LONG_RIDE_TIMED_OUT) {
@@ -902,7 +1022,7 @@ export async function requestRoute(
         // routing.loop_wanted ignores it there too. Bikeshare has no loop either, and
         // its API refuses one, so a loop kept from another ride type is not sent.
         ...(options.dials
-          ? dialFields(preset === "mass-ride" || preset === "bikeshare" ? { ...options.dials, loop: false } : options.dials)
+          ? dialFields(preset === "mass-ride" || twoPointsOnly(preset) ? { ...options.dials, loop: false } : options.dials)
           : {}),
         ...(options.confirmLong ? { confirm_long: true } : {}),
       }),

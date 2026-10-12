@@ -86,6 +86,12 @@ export interface Dials {
   pickupStation?: string;
   dropoffStation?: string;
   /**
+   * The transit ride types only (TRANSIT-ASSIST): the option the rider chose from the answer's
+   * list, by its key (`transit.options[].key`). Session only, like the stations: added to a
+   * request (lib/transit.ts withTransitOption), in no link, since a timetable moves on.
+   */
+  transitOption?: string;
+  /**
    * "Anticipated ride size" (PLAN items 128, 129, 139), Mass Ride only: the riders expected,
    * 100 to 2,000. It sets the group's length, which the corker load is counted over (the
    * owner, 2026-10-10: "Corkers were intended to also have a rollback based on the length of
@@ -185,6 +191,9 @@ export const STARTS: Record<PresetId, Start> = {
   bikeshare: { stress: 80, hills: -60, seek: true, assist: true },
   // FOLLOWUP-KIDS-PRESET: the top of the traffic slider, hills well toward avoid.
   kids: { stress: 100, hills: -80, seek: true },
+  // The transit ride types' bike legs start as Default's own bike and Bikeshare's classic (core.presets).
+  "bike-transit": { stress: 70, hills: 0, seek: true },
+  "bikeshare-transit": { stress: 80, hills: -60, seek: true },
 };
 
 /** A ride time's label inside a sentence: only its first letter lowered, so "PM"
@@ -403,6 +412,7 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   if (dials.bike && dials.dropoffStation && dials.ending !== "outside_dock") {
     fields.dropoff_station = dials.dropoffStation;
   }
+  if (dials.transitOption) fields.transit_option = dials.transitOption;
   return fields;
 }
 

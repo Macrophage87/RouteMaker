@@ -583,14 +583,38 @@ const RIDE_ICON: Partial<Record<PresetId, IconName>> = {
   "group-ride": "user",
   "mass-ride": "federal",
   trailmaxxing: "trail",
+  "bike-transit": "train",
+  "bikeshare-transit": "train",
 };
 
 /** The ride type chips (Go's quick three and More, or every type in the Ride sheet), each a toggle button. */
-export function RideChips({ ids, preset, onPick, more, label }: { ids: readonly PresetId[]; preset: PresetId; onPick: (id: PresetId) => void; more?: (opener: HTMLElement) => void; label: string }) {
+export function RideChips({
+  ids,
+  preset,
+  onPick,
+  more,
+  label,
+  ownHint,
+}: {
+  ids: readonly PresetId[];
+  preset: PresetId;
+  onPick: (id: PresetId) => void;
+  more?: (opener: HTMLElement) => void;
+  label: string;
+  /** Go: the first chip is the rider's own ride type (My Go), described as such. */
+  ownHint?: string;
+}) {
   return (
     <div className="chip-row ride-chips" role="group" aria-label={label}>
-      {ids.map((id) => (
-        <button key={id} type="button" className="chip ride-type-chip" aria-pressed={preset === id} onClick={() => onPick(id)}>
+      {ids.map((id, index) => (
+        <button
+          key={id}
+          type="button"
+          className="chip ride-type-chip"
+          aria-pressed={preset === id}
+          onClick={() => onPick(id)}
+          aria-describedby={ownHint && index === 0 ? "ride-own-hint" : undefined}
+        >
           <Icon name={RIDE_ICON[id] ?? "bike"} size={18} />
           {presetLabel(id)}
         </button>
@@ -604,6 +628,11 @@ export function RideChips({ ids, preset, onPick, more, label }: { ids: readonly 
       {more && (
         <span id="ride-more-hint" hidden>
           Every ride type and setting.
+        </span>
+      )}
+      {ownHint && (
+        <span id="ride-own-hint" hidden>
+          {ownHint}
         </span>
       )}
     </div>

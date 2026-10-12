@@ -1,0 +1,9 @@
+{
+  "about": "Dates Metro may restrict bikes on trains (WMATA, Bikes on Metro Rail: 'Metro reserves the right to restrict bicycle access during special events or high passenger volume'; the owner, 2026-10-12: inaugurations, the 4th of July, Cherry Blossom peak bloom). The transit options flag bike-on-Metro on these dates and still show it (core.transit.bike_blackout). Add a date by hand as {\"date\": \"YYYY-MM-DD\", \"why\": \"...\"}; recurring dates are MM-DD.",
+  "recurring": [
+    { "date": "07-04", "why": "Independence Day fireworks" }
+  ],
+  "dates": [
+    { "date": "2029-01-20", "why": "Presidential inauguration" }
+  ]
+}

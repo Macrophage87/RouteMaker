@@ -26,7 +26,7 @@ import { dialFields, type Dials } from "./dials.ts";
 import { formatDistance, formatDuration } from "./format.ts";
 import { MAX_POINTS, haversineM, type LonLat } from "./geo.ts";
 import { LOCATE_MESSAGES, LOCATION_OUTSIDE, type Fix, type LocateResult } from "./geolocation.ts";
-import type { PresetId } from "./presets.ts";
+import { twoPointsOnly, type PresetId } from "./presets.ts";
 import { bikeEntrance, entranceNote, linesLabel, type Station } from "./railStations.ts";
 import { waterDetails, waterTitle, type WaterPoint } from "./waterRestrooms.ts";
 
@@ -79,7 +79,7 @@ export function waterPlaces(points: readonly WaterPoint[], kind: "water" | "rest
 }
 
 /** The Metro's stations, each at its bike entrance; MARC-only stations are left out. */
-export function metroPlaces(stations: readonly Station[]): NearestPlace[] {
+export function metroPlaces(stations: readonly Station[], closedReason: (station: Station) => string | null = () => null): NearestPlace[] {
   return stations
     .filter((station) => station.metro.length > 0)
     .map((station) => {
@@ -88,7 +88,8 @@ export function metroPlaces(stations: readonly Station[]): NearestPlace[] {
         id: station.id,
         kind: "metro" as const,
         point: entrance.point,
-        title: `${station.name} Metro station`,
+        // A station closed for the day says so: "X Metro station, closed: no Metro service today".
+        title: closedReason(station) ? `${station.name} Metro station, closed: ${closedReason(station)}` : `${station.name} Metro station`,
         details: [`${linesLabel(station.metro)}.`, entranceNote(entrance.kind)],
       };
     });
@@ -143,9 +144,9 @@ export async function requestNearest(
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({
         points: [from, ...places.map((place) => place.point)],
-        // A Bikeshare plan takes exactly two points and its own bike fields; the way to the
+        // A Bikeshare or transit plan takes exactly two points (and Bikeshare its own bike fields); the way to the
         // nearest place is ridden like the default ride type (no dock walk, no bike choice).
-        ...(preset === "bikeshare"
+        ...(twoPointsOnly(preset)
           ? {
               preset: "default",
               ...dialFields({
@@ -301,6 +302,8 @@ export interface SearchDeps {
   /** The water layer's points, loaded if they are not yet; null if they cannot be. */
   water: () => Promise<WaterPoint[] | null>;
   stations: readonly Station[];
+  /** Why a station is closed today, or null (railClosures.ts): a closed one says so in the list. */
+  closedReason?: (station: Station) => string | null;
   request: (from: LonLat, places: readonly NearestPlace[]) => Promise<NearestResult>;
 }
 
@@ -340,7 +343,7 @@ export async function searchNearest(deps: SearchDeps): Promise<SearchOutcome> {
   }
   let places: NearestPlace[];
   if (kind === "metro") {
-    places = metroPlaces(deps.stations);
+    places = metroPlaces(deps.stations, deps.closedReason);
   } else {
     const data = await deps.water();
     if (!data) return withFix({ said: WATER_NOT_LOADED });

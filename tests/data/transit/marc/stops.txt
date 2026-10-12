@@ -1,0 +1,8 @@
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station,wheelchair_boarding
+UNION,Union Station MARC,38.897100,-77.006300,1,,1
+UNION_P,Union Station MARC Platform,38.897100,-77.006300,0,UNION,0
+NCARR,New Carrollton,38.947800,-76.871800,0,,1
+BWI,BWI Marshall Rail,39.192300,-76.694200,0,,1
+PENN,Baltimore Penn Station,39.307500,-76.615700,0,,1
+CAMDEN,Camden Station,39.285300,-76.618700,0,,1
+CPARK,College Park,38.978700,-76.928300,0,,

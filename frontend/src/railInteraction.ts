@@ -37,6 +37,8 @@ export interface RailInteractionOptions {
   pointCount(): number;
   /** "Make it a loop" is on: a station can be a start or a stop, not an end (OWNER-DECISIONS 374). */
   loop?(): boolean;
+  /** Why the station is closed today with the toggles as they are, or null (railClosures.ts). */
+  closedReason?(station: Station): string | null;
   /** `place` is the name the point carries: the station's, not its entrance's street (stationPlaceName). */
   onStationPoint(role: StationRole, point: LonLat, place: { name: string; label: string }): void;
 }
@@ -54,8 +56,11 @@ function summary(station: Station, options: RailInteractionOptions, elevatorTapp
   root.className = "station-popup";
   const name = document.createElement("strong");
   name.className = "station-name";
-  name.textContent = station.name;
+  // "Union Station, closed: no MARC weekend service", in words (railClosures.ts).
+  const closed = options.closedReason?.(station) ?? null;
+  name.textContent = closed ? `${station.name}, closed: ${closed}` : station.name;
   root.append(name);
+  if (closed) root.classList.add("station-closed");
   const lines = visibleLines(station, options.visibility());
   const row = document.createElement("div");
   row.className = "station-lines";

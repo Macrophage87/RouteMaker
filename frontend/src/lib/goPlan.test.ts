@@ -10,6 +10,7 @@ import { GO_START_SAID, GO_START_UNAVAILABLE, MODE_LABEL, goDestinationLocating,
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
+  GO_FIXED,
   GO_RIDES,
   HOME_NOT_SET,
   HOME_SIGN_IN,
@@ -157,19 +158,26 @@ test("My Go is read and saved at /api/me/go, same origin, with the CSRF token; a
 
 // ---- Go's chips (the owner's choices 3 and 10) ------------------------------------------------
 
-test("Go's ride types: Default, Cargo and Bikeshare, and a My Go ride that is none of them takes Bikeshare's place", () => {
-  assert.deepEqual([...GO_RIDES], ["default", "cargo", "bikeshare"]);
-  assert.deepEqual(goRideChips(null), ["default", "cargo", "bikeshare"]);
-  assert.deepEqual(goRideChips("cargo"), ["default", "cargo", "bikeshare"]);
-  assert.deepEqual(goRideChips("kids"), ["default", "cargo", "kids"]);
-  assert.deepEqual(goRideChips("mountain-bike"), ["default", "cargo", "mountain-bike"]);
-  // App: the chips from My Go's ride, More opens the Ride sheet with every type (Plan keeps the full list).
-  assert.match(appFile, /<RideChips ids=\{goRideChips\(myGo\.ride\)\} preset=\{preset\} onPick=\{pickRide\} more=\{\(opener\) => openView\("ride", opener\)\} label="Ride type" \/>/);
+test("Go's ride types: the rider's own (My Go, Default until set), then Own Bike + Transit and Bikeshare + Transit", () => {
+  // The owner, 2026-10-12: "Default (user sets)", then the two transit types; Cargo and Bikeshare are under More.
+  assert.deepEqual([...GO_FIXED], ["bike-transit", "bikeshare-transit"]);
+  assert.deepEqual([...GO_RIDES], ["default", "bike-transit", "bikeshare-transit"]);
+  assert.deepEqual(goRideChips(null), ["default", "bike-transit", "bikeshare-transit"]);
+  assert.deepEqual(goRideChips("cargo"), ["cargo", "bike-transit", "bikeshare-transit"]);
+  assert.deepEqual(goRideChips("kids"), ["kids", "bike-transit", "bikeshare-transit"]);
+  // A stored My Go ride from before (Bikeshare was a Go chip) still works: it is the rider's own.
+  assert.deepEqual(goRideChips("bikeshare"), ["bikeshare", "bike-transit", "bikeshare-transit"]);
+  // The rider's own is a transit type: no chip twice, and Default fills the third place.
+  assert.deepEqual(goRideChips("bike-transit"), ["bike-transit", "bikeshare-transit", "default"]);
+  assert.deepEqual(goRideChips("bikeshare-transit"), ["bikeshare-transit", "bike-transit", "default"]);
+  // App: the chips from My Go's ride, the first described as the rider's own; More opens the Ride sheet with every type.
+  assert.match(appFile, /<RideChips ids=\{goRideChips\(myGo\.ride\)\} preset=\{preset\} onPick=\{pickRide\} more=\{\(opener\) => openView\("ride", opener\)\} label="Ride type" ownHint=\{OWN_RIDE_HINT\} \/>/);
+  assert.match(src("../app/Sheets.tsx"), /aria-describedby=\{ownHint && index === 0 \? "ride-own-hint" : undefined\}/);
   assert.match(appFile, /<RideChips ids=\{PRESETS\.map\(\(p\) => p\.id\)\} preset=\{preset\} onPick=\{pickRide\} label="Every ride type" \/>/);
   // A pick goes through the ride type dialog's own choice, with Mountain Bike's loop (mtbChosen).
   assert.match(appFile, /choosePreset\(id, mtbChosen\(preset, id, chooseRideType\(id, carries\(id\) \? "cargo" : null, dials\)\)\);/);
   // Toggle buttons with their state, not colour alone.
-  assert.match(src("../app/Sheets.tsx"), /className="chip ride-type-chip" aria-pressed=\{preset === id\}/);
+  assert.match(src("../app/Sheets.tsx"), /className="chip ride-type-chip"\s+aria-pressed=\{preset === id\}/);
 });
 
 test("Go's places are Home, Food, Water and Restroom (no Work); Home needs sign-in and says so", () => {

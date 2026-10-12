@@ -1,5 +1,6 @@
 /** Sentences the route panel says about a route. */
 import { bikeshareSaid } from "./bikeshare.ts";
+import { transitSaid } from "./transit.ts";
 import type { RouteResponse } from "./api.ts";
 import { STRESS_TODAYS_TOP, TARGET_CEILING_RATIO } from "./dials.ts";
 import { detour, pathLengthM, type LonLat } from "./geo.ts";
@@ -253,6 +254,9 @@ export interface AnnounceHow {
  */
 export function announceRoute(route: RouteResponse, points: readonly LonLat[] = [], how: AnnounceHow = {}): string {
   const head = how.chosen ? `Route ${how.chosen.rank} of ${how.chosen.of} chosen: ` : "Route planned: ";
+  // A transit trip: its scheduled total and the comparison, in brief; the steps are in the panel's list.
+  const transit = transitSaid(route);
+  if (transit) return transit;
   const bikeshare = bikeshareSaid(route);
   if (bikeshare) {
     return [bikeshare, detourSaid(route, points), redJunctionsSaid(route)].filter(Boolean).join(" ");

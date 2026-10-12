@@ -36,15 +36,25 @@ export const DEVICE_KEY = "routemaker.my-go";
 export const ACCOUNT_COPY_KEY = "routemaker.my-go.account";
 
 /**
- * Go's quick ride types (the owner's choice 10): commute-focused, with More for the rest. A My Go ride
- * that is not one of the three takes Bikeshare's place, so the rider's own is always one press away.
+ * Go's quick ride types (the owner, 2026-10-12, replacing choice 10's Default, Cargo and Bikeshare):
+ * first the rider's own ride type, "Default (user sets)", which is My Go's ride (Default until the
+ * rider sets one in Settings), then the two transit ride types. Cargo Bike, Bikeshare and the rest
+ * are under More. `GO_FIXED` is the list to edit to change which types follow the rider's own.
  */
-export const GO_RIDES: readonly PresetId[] = ["default", "cargo", "bikeshare"];
+export const GO_FIXED: readonly PresetId[] = ["bike-transit", "bikeshare-transit"];
 
+/** The default chips, before a My Go ride is set. */
+export const GO_RIDES: readonly PresetId[] = ["default", ...GO_FIXED];
+
+/** The rider's own ride type first, then the fixed ones; where the rider's own is one of them, Default fills its place. */
 export function goRideChips(myRide: PresetId | null): PresetId[] {
-  if (!myRide || GO_RIDES.includes(myRide)) return [...GO_RIDES];
-  return [GO_RIDES[0], GO_RIDES[1], myRide];
+  const own = myRide ?? "default";
+  const rest = GO_FIXED.filter((id) => id !== own);
+  return rest.length === GO_FIXED.length ? [own, ...rest] : [own, ...rest, "default"];
 }
+
+/** The first chip's description: it is the rider's own, set in Settings. */
+export const OWN_RIDE_HINT = "Your ride type. Change it in Settings, under My Go.";
 
 /** My Go in a few words, the Settings row's value: "Go · Default", "By screen size · Cargo Bike". */
 export function myGoSummary(myGo: MyGo): string {
