@@ -3867,8 +3867,8 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   check("go: a phone with no link opens in Go: Menu, the Go/Plan switch (Go pressed), Layers and Locate over the map, and no bottom bar",
     go.mode === "Go" && go.top && !go.bar && JSON.stringify(go.topButtons) === JSON.stringify(["Menu", "Go", "Plan", "Layers", "Locate"]), JSON.stringify(go));
   // The owner, 2026-10-12: the rider's own ride type first (My Go; Default until set), then the two transit types.
-  check("go: the sheet has Where to?, the place chips Home, Food, Water and Restroom (no Work), and the ride types Default, Own Bike + Transit, Bikeshare + Transit and More",
-    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Food", "Water", "Restroom"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Own Bike + Transit", "Bikeshare + Transit", "More"]), JSON.stringify(go));
+  check("go: the sheet has Where to?, the place chips Home, Food, Water and Restroom (no Work), and the ride types Default, Own Bike + Transit, Bikeshare + Transit and More ride types",
+    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Food", "Water", "Restroom"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Own Bike + Transit", "Bikeshare + Transit", "More ride types"]), JSON.stringify(go));
   const own = await axNode(p, ".go-sheet .ride-chips .ride-type-chip");
   check("go: the first ride type is described as the rider's own, set in Settings", own?.name === "Default" && /^Your ride type\. Change it in Settings, under My Go\.$/.test(own?.description ?? ""), JSON.stringify(own));
   check("go: every control in the top bar and the sheet is 44 px or more each way, and nothing scrolls sideways at 390 px", go.small.length === 0 && !go.scroll, JSON.stringify(go.small));

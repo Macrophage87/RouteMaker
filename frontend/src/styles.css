@@ -4967,6 +4967,12 @@ details.fold > summary .icon {
 .departure-text {
   margin: 0 0 4px;
 }
+/* Go's sheet at peek: the departure in one line, the countdown when cutting it close. */
+.departure-compact {
+  margin: 4px 0 0;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
 .departure-timer {
   margin: 0 0 4px;
   padding: 4px 8px;

@@ -69,7 +69,7 @@ export function TransitSummary({
       </p>
       {plan.departure && <DepartureTimer departure={plan.departure} announce={announce} onMissed={onMissed} />}
       {plan.comparison && <p className={plan.riding_quicker ? "transit-compare notice" : "transit-compare hint"}>{plan.comparison}</p>}
-      {plan.bike_blackout && <p className="transit-blackout notice">Bikes may not be allowed on Metro today (a special-event date).</p>}
+      {plan.bike_blackout && <p className="transit-blackout notice">Bikes aren't allowed on Metro today (a special-event date): no trip here takes your bike on Metro.</p>}
       <ol className="transit-steps" aria-label={STEPS_LABEL}>
         {plan.steps.map((step, index) => (
           <li key={index} className={`transit-step transit-${step.mode}`}>

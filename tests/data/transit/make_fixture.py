@@ -290,4 +290,12 @@ LINE = ["LR_CY", "LR_CC", "LR_UC", "LR_LM", "LR_PS"]
 every(feed, "LR", "WK", "LR", LINE, 120, H(6), H(23), 900)
 every(feed, "LR", "SA", "LR", LINE, 120, H(7), H(23), 1200)
 every(feed, "LR", "SU", "LR", LINE, 120, H(8), H(21), 1200)
+# An owl trip on the weekday service, at 27:30 (3:30 am the next morning), northbound, its two
+# middle stops not timepoints (blank times, interpolated by the build).
+feed.trips.append(["LR", "WK", "LR_OWL", 0])
+for i, (stop, t) in enumerate(
+    [("LR_CY", hms(H(27, 30))), ("LR_CC", ""), ("LR_UC", ""), ("LR_LM", hms(H(27, 36)))]
+    + [("LR_PS", hms(H(27, 40)))]
+):
+    feed.times.append(["LR_OWL", t, t, stop, i + 1])
 feed.finish()

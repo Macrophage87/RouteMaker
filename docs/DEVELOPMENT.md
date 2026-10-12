@@ -6919,9 +6919,19 @@ docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-
 - **Calendars.** Each service's days come from `calendar.txt` and `calendar_dates.txt` for 45 days
   from the build date, so holidays, weekend-only service and published shutdowns are exact. The
   service day turns over at 3 am.
-- **Waits.** If a service runs every 15 min or less, the wait is half the headway. Otherwise the
-  plan takes the next departure, names it (and the one after), and returns it as
-  `transit.departure`.
+- **Waits.** From the next three or four departures (two leaving the same minute count once): if
+  every gap is 15 min or less, the wait is half the mean gap. Otherwise (a near pair before a long
+  gap included) the plan takes the next departure, names it and the one after, and returns it as
+  `transit.departure`. A routed first ride that misses it moves to the next catchable departure
+  (and names the one after that); with none within the hour the option is dropped.
+- **Times.** A service-day minute is real elapsed time from GTFS's zero (noon less 12 hours), so
+  daylight-saving days are right. From 1 to 5 am both service days are searched (owl trips past
+  27:00 included). Stops without times (not timepoints) are interpolated by the build.
+- **Router budget.** The direct ride is routed first. Candidate legs are capped at 5 s a call and
+  `MAX_ROUTER_CALLS`, inside a search budget that leaves 20 s for the answer's own line; a refusal,
+  a timeout or a router that is down estimates the leg from the straight line, never fails the plan.
+- **Blackout dates.** Own Bike + Transit takes no bike on Metro on them ("Bikes aren't allowed on
+  Metro today (July 4)."); Bikeshare + Transit still rides Metro on foot.
 - **Departure in the app.**
   - The panel shows the departure in words (`lib/departure.ts`). Under 5 min to spare it adds a
     mm:ss countdown and the spare time (`DepartureTimer.tsx`).

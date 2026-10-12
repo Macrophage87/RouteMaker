@@ -37,22 +37,27 @@ A plan is for a moment (now, unless the request says when). The file keeps each 
 calendar day by day (`Schedule.active`), as the feed publishes it with its holidays and service
 changes, so a weekend or a holiday a commuter line does not run, or a peak-only route out of its
 peak direction, is simply not there. Before 3:00 am a moment belongs to the day before, as GTFS
-writes it (25:30 is 1:30 am).
+writes it (25:30 is 1:30 am); from 1 to 5 am both service days are searched, so the day before's
+owl trips (even past 27:00) and the new day's first are both found. A service-day minute is real
+elapsed time from GTFS's zero (noon less 12 hours), so times are right across daylight saving.
 
 A pattern (one stop order of one route) has the median run time from its first stop to each
 later one per band of the service day (`BANDS`), and every trip's departure from its first stop.
-At a stop, the next two departures of every pattern going on to the stop wanted are merged:
-where they come at most `FREQUENT_MIN` apart, the wait is half that headway (a rider who does
-not time the trip); further apart, the wait is the time to the actual next departure, and the
-step says when the one after it leaves. A departure more than `MAX_WAIT_MIN` off is not offered.
+At a stop, the next departures of every pattern going on to the stop wanted are merged (same
+minute counted once). Where at least three come and every gap is at most `FREQUENT_MIN`, the wait
+is half the mean gap (a rider who does not time the trip); otherwise (a near pair before a long
+gap included) the wait is the time to the actual next departure, and the step says when the one
+after it leaves. A rider who would miss it is planned on the next one that can be caught; with
+none within the hour the trip is left out. A departure more than `MAX_WAIT_MIN` off is not offered.
 
 Choosing stops
 --------------
 Straight lines first, the router only where it pays: the nearest `STATION_CANDIDATES` stations
-at each end are routed for Own Bike + Transit (at most `MAX_ROUTER_CALLS` calls with the direct
-ride); the nearest stations of every other rail system and the nearest bus stops are estimated
-from the straight line times `DETOUR`. The chosen option's first ride is then routed as the
-answer's line, and its time replaces the estimate.
+at each end are routed for Own Bike + Transit (at most `MAX_ROUTER_CALLS` calls, the direct ride
+first, each capped at `CANDIDATE_CALL_S` and all inside the search's budget; a leg the router does
+not answer in time is estimated, never fatal); the nearest stations of every other rail system
+and the nearest bus stops are estimated from the straight line times `DETOUR`. The chosen
+option's first ride is then routed as the answer's line, and its time replaces the estimate.
 
 Bikes on transit
 ----------------
@@ -62,7 +67,9 @@ neither DC's nor OpenStreetMap's elevator are not used with a bike: unclear bike
 closed); a Metrobus front rack for two; every MARC train in a bike car; Light RailLink and Metro
 SubwayLink outside weekday rush hours. Stations of the other rail systems take a bike only where
 the feed says they are step-free. On the dates in `BLACKOUTS_PATH` (July 4 every year, and dates
-the owner adds by hand) the plan says bikes may not be allowed on Metro, and is still offered.
+the owner adds by hand) bikes are not allowed on Metro (the owner: allowed "at all times except"
+those days): Own Bike + Transit uses no Metro that day and says so plainly; Bikeshare + Transit
+still rides Metro on foot.
 
 Every sentence is US units first with metric in brackets (OWNER-DECISIONS 85), worded so the
 page and a screen reader read the same words.
@@ -75,7 +82,7 @@ import logging
 import math
 from bisect import bisect_left
 from dataclasses import dataclass, field, replace
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 from typing import Protocol
@@ -99,7 +106,7 @@ BANDS = (
     (570, 900, "midday"),
     (900, 1140, "evening rush"),
     (1140, 1320, "evening"),
-    (1320, 1620, "late night"),
+    (1320, 1800, "late night"),  # to 30:00: owl trips past 27:00 included
 )
 DAY_START_MIN = 180
 # Weekday rush hour, the `offpeak` bike rule's: the morning and evening rush bands.
@@ -143,7 +150,13 @@ MAX_WAIT_MIN = 60
 SYSTEMS_PATH = Path(__file__).resolve().parent / "transitdata" / "systems.json"
 BLACKOUTS_PATH = Path(__file__).resolve().parent / "transitdata" / "metro-bike-blackouts.json"
 METRO_SYSTEM = "wmata-rail"
-BLACKOUT_WORDS = "Bikes may not be allowed on Metro today (a special-event date)."
+
+
+def blackout_words(day: date) -> str:
+    """The plain note on a blackout date: "Bikes aren't allowed on Metro today (July 4)."."""
+    return f"Bikes aren't allowed on Metro today ({day:%B} {day.day})."
+
+
 HOLIDAY_WORDS = (
     "Today is a federal holiday: each system's holiday timetable is used, as it publishes it."
 )
@@ -251,6 +264,7 @@ class Hop:
     frequent: bool
     depart: float | None = None
     after: float | None = None
+    later: tuple[float, ...] = ()  # every later departure seen, for a rider who misses one
 
     @property
     def total_s(self) -> float:
@@ -395,13 +409,68 @@ def load(path: Path) -> Schedule:
     except OSError as error:
         raise Unavailable("no transit schedule is installed") from error
     if _loaded is not None and _loaded[0] == path and _loaded[1] == mtime:
+        _warn_if_stale(_loaded[2])
         return _loaded[2]
     try:
         schedule = parse(json.loads(path.read_text()))
     except (OSError, ValueError, KeyError, TypeError, IndexError) as error:
         raise Unavailable(f"the transit schedule could not be read: {error}") from error
     _loaded = (path, mtime, schedule)
+    _warn_if_stale(schedule)
     return schedule
+
+
+# Fewer days of timetable than this left: a warning in the log, and an alert from
+# `manage.py check_operations` (docs/OPERATIONS.md, "Transit schedule": refresh within 45 days).
+STALE_DAYS = 7
+_warned_on: date | None = None
+
+
+def days_left(schedule: Schedule, today: date | None = None) -> int:
+    """Days of timetable left from `today` (Washington), today included; 0 or less is past."""
+    today = today or datetime.now(ZONE).date()
+    return (schedule.last_day - today).days + 1
+
+
+def _warn_if_stale(schedule: Schedule) -> None:
+    """Once a day, a log line when the installed timetables are about to run out."""
+    global _warned_on
+    today = datetime.now(ZONE).date()
+    if _warned_on == today:
+        return
+    left = days_left(schedule, today)
+    if left < STALE_DAYS:
+        _warned_on = today
+        logger.warning(
+            "the transit schedule runs out %s (%d day(s) left): rebuild it"
+            " (docs/OPERATIONS.md, 'Transit schedule')",
+            schedule.last_day.isoformat(),
+            max(left, 0),
+        )
+
+
+def schedule_alert(path: Path, today: date | None = None) -> str | None:
+    """`check_operations`' line for an installed schedule with fewer than `STALE_DAYS` days
+    left, or one that cannot be read; None when it is fresh or none is installed (the transit
+    ride types are optional, and say so themselves)."""
+    if not path.exists():
+        return None
+    try:
+        schedule = load(path)
+    except Unavailable as error:
+        return f"transit: {error} ({path})"
+    left = days_left(schedule, today)
+    if left >= STALE_DAYS:
+        return None
+    if left <= 0:
+        return (
+            f"transit: the schedule ran out on {schedule.last_day.isoformat()}; transit plans"
+            " offer riding only until it is rebuilt (docs/OPERATIONS.md, 'Transit schedule')"
+        )
+    return (
+        f"transit: the schedule runs out on {schedule.last_day.isoformat()}, {left} day(s) left;"
+        " rebuild it (docs/OPERATIONS.md, 'Transit schedule')"
+    )
 
 
 # --- Bike blackout dates ---------------------------------------------------------------
@@ -420,7 +489,8 @@ def _blackouts(path: Path) -> tuple[frozenset[str], frozenset[str]]:
 
 
 def bike_blackout(day: date, path: Path = BLACKOUTS_PATH) -> bool:
-    """Whether `day` is on the list of dates Metro may restrict bikes (said, never hidden)."""
+    """Whether `day` is on the list of dates bikes are not allowed on Metro (the owner: bikes
+    are allowed "at all times except" these): Metro takes no bike that day."""
     recurring, dates = _blackouts(path)
     return day.strftime("%m-%d") in recurring or day.isoformat() in dates
 
@@ -449,15 +519,42 @@ class Moment:
         return not self.weekend and not self.holiday and band_index(minute) in RUSH_BANDS
 
 
+def day_zero(day: date) -> datetime:
+    """GTFS's 00:00:00 of a service day: noon local time less 12 hours (the GTFS reference), in
+    UTC, so a time is real elapsed time across a daylight-saving change (2026-11-01 has 25 hours
+    and its 08:00 is still 8 am)."""
+    noon = datetime(day.year, day.month, day.day, 12, tzinfo=ZONE)
+    return noon.astimezone(UTC) - timedelta(hours=12)
+
+
+def _moment(when: datetime, service_day: date) -> Moment:
+    minute = (when.astimezone(UTC) - day_zero(service_day)).total_seconds() / 60.0
+    holiday = service_day in federal_holidays(service_day.year)
+    return Moment(service_day, minute, when.astimezone(ZONE).date(), holiday)
+
+
 def moment_of(when: datetime) -> Moment:
+    """The service day a time belongs to (before 3:00 am, the day before) and its minute."""
     local = when.astimezone(ZONE)
     service_day = local.date()
-    minute = local.hour * 60 + local.minute + local.second / 60.0
-    if minute < DAY_START_MIN:
+    if local.hour * 60 + local.minute < DAY_START_MIN:
         service_day -= timedelta(days=1)
-        minute += 1440
-    holiday = service_day in federal_holidays(service_day.year)
-    return Moment(service_day, minute, local.date(), holiday)
+    return _moment(when, service_day)
+
+
+# Between these local minutes a trip may be on either service day: the day before's owl trips
+# (GTFS times past 24:00, even past 27:00) and the new day's first trips. Both are searched.
+BOTH_DAYS = (60, 300)
+
+
+def moments_of(when: datetime) -> list[Moment]:
+    """The moment on its service day, then, around 1 to 5 am, on the other one too."""
+    first = moment_of(when)
+    local = when.astimezone(ZONE)
+    if not BOTH_DAYS[0] <= local.hour * 60 + local.minute < BOTH_DAYS[1]:
+        return [first]
+    other = local.date() if first.service_day != local.date() else local.date() - timedelta(days=1)
+    return [first, _moment(when, other)]
 
 
 def clock(minute: float) -> str:
@@ -510,6 +607,7 @@ class Leg:
     vehicle: str = ""  # a transit leg's vehicle in words: "the MARC Penn Line", "bus B10"
     depart: float | None = None  # an infrequent service: the departure taken
     after: float | None = None  # and the one after it
+    later: tuple[float, ...] = ()  # the departures after `depart` that were seen, in order
     board_at: str | None = None  # a transit leg's first stop, by name
 
     @property
@@ -587,17 +685,23 @@ class _Day:
         self.bike = bike
         self.active = schedule.active(moment.service_day)
         self._cache: dict[tuple, dict[int, Hop]] = {}
+        # A blackout date: no bike on Metro at all (a rider on foot still rides it).
+        self.blackout = bike and bike_blackout(moment.date)
 
     def boards(self, pattern: Pattern, minute: float, encoded: int) -> bool:
         if not self.bike:
             return True
-        rule = self.schedule.systems[pattern.system].vehicle
+        system = self.schedule.systems[pattern.system]
+        if self.blackout and system.id == METRO_SYSTEM:
+            return False
+        rule = system.vehicle
         if rule == "none" or not encoded & 1:
             return False
         return not (rule == "offpeak" and self.moment.rush(minute))
 
     def departures(self, pattern: Pattern, pos: int, minute: float) -> list[float]:
-        """The next two departures of `pattern` from its stop `pos` at or after `minute`."""
+        """The next `DEPARTURES_SEEN` departures of `pattern` from its stop `pos` at or after
+        `minute` (enough to tell a frequent service from a near pair)."""
         found: list[float] = []
         offset = pattern.runs_at(minute)[pos] / 60.0
         low = math.ceil(minute - offset - 1e-9) * 2
@@ -607,15 +711,15 @@ class _Day:
             taken = 0
             for encoded in deps[bisect_left(deps, low) :]:
                 at = (encoded >> 1) + offset
-                if at - minute > MAX_WAIT_MIN * 2:  # far enough for the one after it
+                if at - minute > MAX_WAIT_MIN * 3:  # far enough for a missed one's next two
                     break
                 if at < minute or not self.boards(pattern, at, encoded):
                     continue
                 found.append(at)
                 taken += 1
-                if taken == 2:
+                if taken == DEPARTURES_SEEN:
                     break
-        return sorted(found)[:2]
+        return sorted(found)[:DEPARTURES_SEEN]
 
     def reach(self, stop: int, minute: float, patterns=None, targets=None) -> dict[int, Hop]:
         """Every stop one ride from `stop` leaving at or after `minute`, with its wait and ride
@@ -647,18 +751,44 @@ class _Day:
         return out
 
 
+# How many departures decide whether a service is frequent: every gap between them must be at
+# most `FREQUENT_MIN`, so a near pair before a long gap is not taken for a frequent service.
+DEPARTURES_SEEN = 4
+FREQUENT_SEEN = 3
+
+
+def headway(times) -> float:
+    """The mean gap between the next departures when every gap is at most `FREQUENT_MIN` over
+    at least `FREQUENT_SEEN` of them (two patterns leaving the same minute count once); else
+    infinity: the service is not frequent, and the actual next departure is waited for."""
+    distinct: list[float] = []
+    for t in sorted(times):
+        if not distinct or t - distinct[-1] >= 0.5:
+            distinct.append(t)
+    seen = distinct[:DEPARTURES_SEEN]
+    if len(seen) < FREQUENT_SEEN:
+        return math.inf
+    gaps = [b - a for a, b in zip(seen, seen[1:], strict=False)]
+    if max(gaps) > FREQUENT_MIN:
+        return math.inf
+    return sum(gaps) / len(gaps)
+
+
 def _hop(minute: float, entries) -> Hop:
     """The ride to one stop from the patterns that go there: the earliest arrival taken."""
     times = sorted(t for deps, *_rest in entries for t in deps)
     first = min(entries, key=lambda e: (e[0][0] + e[1] / 60.0, e[2].index))
     deps, ride, pattern, pos, later = first
     path = pattern.stops[pos : later + 1]
-    headway = times[1] - times[0] if len(times) > 1 else math.inf
-    if headway <= FREQUENT_MIN:
+    every = headway(times)
+    if every <= FREQUENT_MIN:
         routes = tuple(sorted({e[2].route for e in entries}))
         ride = min(e[1] for e in entries)
-        return Hop(headway * 30.0, ride, routes, path, pattern.system, pattern.index, True)
-    later_times = [t for t in times if t > deps[0]]
+        return Hop(every * 30.0, ride, routes, path, pattern.system, pattern.index, True)
+    later_times = []
+    for t in times:
+        if t >= (later_times[-1] if later_times else deps[0]) + 0.5:
+            later_times.append(t)
     return Hop(
         (deps[0] - minute) * 60.0,
         ride,
@@ -669,6 +799,7 @@ def _hop(minute: float, entries) -> Hop:
         False,
         deps[0],
         later_times[0] if later_times else None,
+        tuple(later_times),
     )
 
 
@@ -688,6 +819,7 @@ def _transit_leg(schedule: Schedule, hop: Hop, change: bool, bike: bool) -> Leg:
         vehicle=system.vehicle_words(hop.routes),
         depart=hop.depart,
         after=hop.after,
+        later=hop.later,
         board_at=schedule.place(schedule.stops[hop.path[0]]),
     )
 
@@ -706,19 +838,47 @@ class Services(Protocol):
         """A bike route between two points (time and line), or None where there is none."""
 
 
+# One router call for a candidate leg may take at most this long; the search as a whole stops
+# routing at `until` (the API keeps the rest of the request's budget for the answer's own line).
+CANDIDATE_CALL_S = 5.0
+
+
 class RoutingServices:
     """Valhalla's bicycle costing on the standard graph, with the ride type's own options:
-    one cheap call per leg, no trace (the answer's own line is `routing.plan`'s)."""
+    one cheap call per leg, no trace (the answer's own line is `routing.plan`'s).
 
-    def __init__(self, deadline, preset_name: str) -> None:
-        self._deadline = deadline
+    Never fatal: a refusal, a router that does not answer, a call past its cap or past the
+    search's budget, or a call beyond `max_calls`, is None, and the leg is estimated from the
+    straight line instead. The direct ride is asked first (plan_bike), so it has the budget."""
+
+    def __init__(
+        self,
+        until: float,
+        preset_name: str,
+        *,
+        max_calls: int | None = None,
+        per_call_s: float = CANDIDATE_CALL_S,
+    ) -> None:
+        self._until = until
         self._preset = preset_name
+        self._max_calls = MAX_ROUTER_CALLS if max_calls is None else max_calls
+        self._per_call_s = per_call_s
+        self.calls = 0
 
     def ride(self, a: LonLat, b: LonLat) -> Ride | None:
         from . import routing
 
         if _distance(a, b) < 5.0:
             return Ride(0.0, (tuple(a), tuple(b)))
+        if self.calls >= self._max_calls:
+            return None
+        now = routing.clock()
+        left = self._until - now
+        if left <= 0:
+            return None
+        self.calls += 1
+        cap = min(left, self._per_call_s)
+        deadline = routing.Deadline(now + cap, cap)
         payload = {
             "locations": [{"lon": p[0], "lat": p[1], "type": "break"} for p in (a, b)],
             "costing": "bicycle",
@@ -727,8 +887,8 @@ class RoutingServices:
             "units": "kilometers",
         }
         try:
-            answer = routing._call("standard", "route", payload, self._deadline)
-        except routing.RouterRefused:
+            answer = routing._call("standard", "route", payload, deadline)
+        except (routing.RouterRefused, routing.RouterUnavailable, routing.DeadlineExceeded):
             return None
         legs = (answer.get("trip") or {}).get("legs") or []
         if not legs:
@@ -904,6 +1064,8 @@ class Option:
     key: str
     legs: tuple[Leg, ...]
     direct: bool = False
+    # Found on the other service day (around 1 to 5 am): that day's moment; else the plan's.
+    moment: Moment | None = None
 
     @property
     def total_s(self) -> float:
@@ -911,17 +1073,33 @@ class Option:
 
     @property
     def ride(self) -> int:
-        """The leg the answer's route line is: the first ride, else the first walk."""
+        """The leg the answer's route line is: the first ride, else the first walk, of at least
+        `MIN_LINE_M` (a walk of a few yards from a dock to a stop has no route to draw)."""
         for modes in ((RIDE, SHARE), (WALK, TAKE)):
             for index, leg in enumerate(self.legs):
-                if leg.mode in modes:
+                if leg.mode in modes and line_m(leg) >= MIN_LINE_M:
                     return index
+        for index, leg in enumerate(self.legs):
+            if leg.mode in (RIDE, SHARE, WALK, TAKE):
+                return index
         return 0
 
     @property
     def signature(self) -> tuple:
         """What sets an option apart for the rider: its kind and its routes, in order."""
         return (self.direct, tuple((leg.system, leg.lines) for leg in self.legs if leg.transit))
+
+
+# A leg shorter than this end to end is not routed as the answer's line (the router answers
+# NoRoute for two points a few yards apart).
+MIN_LINE_M = 20.0
+
+
+def line_m(leg: Leg) -> float:
+    """A leg's ends, how far apart in a straight line (0 for a leg with no line)."""
+    if len(leg.coordinates) < 2:
+        return 0.0
+    return _distance(leg.coordinates[0], leg.coordinates[-1])
 
 
 def _transfer(day: _Day, a: Stop, b: Stop, speed: float) -> tuple[list[Leg], float]:
@@ -1046,6 +1224,8 @@ def _idle(day: _Day, stops) -> list[str]:
             continue
         if not _runs(_Day(schedule, moment, bike=False), found):
             notes.append(f"{name}: no service at this time.")
+        elif day.blackout and system.id == METRO_SYSTEM:
+            continue  # said once, by the blackout note
         elif day.bike and not _runs(day, found):
             notes.append(f"{name}: no bikes on board at this time.")
     return notes
@@ -1067,6 +1247,12 @@ class Plan:
     @property
     def option(self) -> Option:
         return self.options[self.chosen]
+
+    @property
+    def when(self) -> Moment:
+        """The chosen option's moment: its own service day's, for a trip found on the other
+        one (around 1 to 5 am), else the plan's."""
+        return self.option.moment or self.moment
 
     @property
     def legs(self) -> list[Leg]:
@@ -1144,13 +1330,35 @@ def _credits(schedule: Schedule) -> dict[str, str]:
     return {s.name: s.credit for s in schedule.systems}
 
 
+def _search_days(day: _Day, moments: list[Moment], starts, ends, speed: float) -> list[Option]:
+    """`_search` on the plan's service day and, around 1 to 5 am, the other one too (each
+    option found there carries that day's moment)."""
+    found = _search(day, starts, ends, speed)
+    for other in moments[1:]:
+        alt = _Day(day.schedule, other, day.bike)
+        found += [replace(o, moment=other) for o in _search(alt, starts, ends, speed)]
+    return found
+
+
 def plan_bike(schedule, start, end, when: datetime, services: Services, speed_kmh: float) -> Plan:
     """Own Bike + Transit: the bike goes the whole way. Riding directly there, and up to two
     transit legs (Metro, a train, a bus's rack) with rides between. Never a leg on foot."""
-    moment = moment_of(when)
+    moments = moments_of(when)
+    moment = moments[0]
     day = _Day(schedule, moment, bike=True)
     found: list[Option] = []
     notes = _window_note(schedule, moment)
+    if day.blackout:
+        notes.append(blackout_words(moment.date))
+    # Riding directly there first: it is always offered, so it has the router before the
+    # candidates; with no answer it is estimated from the straight line.
+    whole = services.ride(start, end)
+    estimated = whole is None
+    if whole is None:
+        whole = Ride(ride_s(start, end, speed_kmh), (tuple(start), tuple(end)))
+    direct = Option(
+        DIRECT, (Leg(RIDE, whole.seconds, whole.coordinates, estimated=estimated),), direct=True
+    )
     near_start, more_start = _candidates(schedule, start, True, BIKE_TO_STATION_M, RIDE_TO_STOP_M)
     near_end, more_end = _candidates(schedule, end, True, BIKE_TO_STATION_M, RIDE_TO_STOP_M)
     if not notes:
@@ -1166,7 +1374,7 @@ def plan_bike(schedule, start, end, when: datetime, services: Services, speed_km
         }
         for s in more_end:
             ends[s.index] = _ride_from(schedule, end, s, None, speed_kmh)
-        found = _search(day, starts, ends, speed_kmh)
+        found = _search_days(day, moments, starts, ends, speed_kmh)
         if not found:
             where = "the start" if not near_start else "the destination"
             notes.append(
@@ -1176,12 +1384,6 @@ def plan_bike(schedule, start, end, when: datetime, services: Services, speed_km
                 f" {where}: riding the whole way is the plan."
             )
         notes += _idle(day, near_start + more_start + near_end + more_end)
-    whole = services.ride(start, end)
-    direct = None
-    if whole is not None:
-        direct = Option(DIRECT, (Leg(RIDE, whole.seconds, whole.coordinates),), direct=True)
-    if direct is None and not found:
-        raise NoTransit("No bike route and no transit joins these places at this time.")
     return Plan(presets.BIKE_TRANSIT, _ranked(direct, found), moment, notes, _credits(schedule))
 
 
@@ -1203,12 +1405,15 @@ def plan_bikeshare(schedule, start, end, when: datetime, services: Services, sna
     """Bikeshare + Transit: bikeshare the whole way, or each end on foot or by bikeshare,
     whichever is quicker (a bikeshare bike is docked before boarding), with up to two transit
     legs between."""
-    moment = moment_of(when)
+    moments = moments_of(when)
+    moment = moments[0]
     day = _Day(schedule, moment, bike=False)
     found: list[Option] = []
     notes = _window_note(schedule, moment)
     if snapshot.status is None:
         notes.append("Bike and dock availability is unknown right now: the nearest docks are used.")
+    # Bikeshare directly there first, so its ride has the router before anything else.
+    direct = _share_direct(start, end, services, snapshot)
     near_start, more_start = _candidates(schedule, start, False, BIKE_TO_STATION_M, WALK_TO_STOP_M)
     near_end, more_end = _candidates(schedule, end, False, BIKE_TO_STATION_M, WALK_TO_STOP_M)
     if not _window_note(schedule, moment):
@@ -1224,11 +1429,10 @@ def plan_bikeshare(schedule, start, end, when: datetime, services: Services, sna
             quick = _quicker(_walk_from(schedule, s, end), _share_from(schedule, s, end, snapshot))
             if quick is not None:
                 ends[s.index] = quick
-        found = _search(day, starts, ends, BIKESHARE_SPEED_KMH)
+        found = _search_days(day, moments, starts, ends, BIKESHARE_SPEED_KMH)
         if not found:
             notes.append(NO_TRANSIT_WORDS)
         notes += _idle(day, near_start + more_start + near_end + more_end)
-    direct = _share_direct(start, end, services, snapshot)
     if direct is None and not found:
         raise NoTransit(
             "No dock with a classic bike near the start has a free dock near the destination,"
@@ -1251,15 +1455,23 @@ def with_ride(plan: Plan, seconds: float) -> Plan:
     if leg.mode not in (RIDE, SHARE):
         return plan
     legs[option.ride] = replace(leg, seconds=seconds, estimated=False)
-    legs, notes = _retimed(plan.moment.minute, legs)
+    legs, notes = _retimed(plan.when.minute, legs)
     options = list(plan.options)
+    if legs is None:
+        # No departure this trip could catch within the hour: the option goes, and is never
+        # totalled as caught. The quickest that is left is planned instead.
+        del options[plan.chosen]
+        if not options:
+            raise NoTransit(" ".join(notes))
+        return replace(plan, options=options, chosen=0, notes=plan.notes + notes)
     options[plan.chosen] = replace(option, legs=tuple(legs))
     return replace(plan, options=options, notes=plan.notes + notes)
 
 
-def _retimed(minute: float, legs: list[Leg]) -> tuple[list[Leg], list[str]]:
+def _retimed(minute: float, legs: list[Leg]) -> tuple[list[Leg] | None, list[str]]:
     """The infrequent departures' waits again from when the rider now reaches each stop; one
-    the rider would miss is said plainly and the next taken (the owner, 2026-10-12)."""
+    the rider would miss is said plainly and the next catchable one taken, with the one after
+    it (the owner, 2026-10-12). None when no departure seen can be caught."""
     notes = []
     at = minute
     out = []
@@ -1268,14 +1480,19 @@ def _retimed(minute: float, legs: list[Leg]) -> tuple[list[Leg], list[str]]:
             arrive = at
             if leg.depart < arrive - 1e-6:
                 missed = leg.depart
-                if leg.after is not None and leg.after >= arrive:
-                    leg = replace(leg, depart=leg.after, after=None)
+                catchable = [t for t in leg.later if t >= arrive - 1e-6]
+                if not catchable or catchable[0] - arrive > MAX_WAIT_MIN:
                     notes.append(
-                        f"You would miss the {clock(missed)} ({leg.vehicle}): planned on the"
-                        f" {clock(leg.depart)} instead."
+                        f"You would miss the {clock(missed)} ({leg.vehicle}) and no later one"
+                        " leaves within the hour: that trip is left out."
                     )
-                else:
-                    notes.append(f"You would miss the {clock(missed)} ({leg.vehicle}).")
+                    return None, notes
+                rest = tuple(t for t in leg.later if t > catchable[0])
+                leg = replace(leg, depart=catchable[0], after=rest[0] if rest else None, later=rest)
+                notes.append(
+                    f"You would miss the {clock(missed)} ({leg.vehicle}): planned on the"
+                    f" {clock(leg.depart)} instead."
+                )
             leg = replace(leg, wait_s=max(0.0, (leg.depart - arrive) * 60.0))
         out.append(leg)
         at += leg.total_s / 60.0
@@ -1288,11 +1505,10 @@ CLOSE_S = 300.0
 
 
 def _local(moment: Moment, minute: float) -> str:
-    """A service-day minute as a local ISO time, for the page's clock."""
-    start = datetime(
-        moment.service_day.year, moment.service_day.month, moment.service_day.day, tzinfo=ZONE
-    )
-    return (start + timedelta(minutes=minute)).isoformat(timespec="seconds")
+    """A service-day minute as a local ISO time, for the page's clock (real elapsed time from
+    the service day's GTFS zero, so right across a daylight-saving change)."""
+    at = day_zero(moment.service_day) + timedelta(minutes=minute)
+    return at.astimezone(ZONE).isoformat(timespec="seconds")
 
 
 def departure(plan: Plan) -> dict | None:
@@ -1302,20 +1518,20 @@ def departure(plan: Plan) -> dict | None:
     for index, leg in enumerate(legs):
         if not leg.transit or leg.depart is None:
             continue
-        reach = plan.moment.minute + _total(legs[:index]) / 60.0
+        reach = plan.when.minute + _total(legs[:index]) / 60.0
         return {
             "step": index,
             "system": leg.system,
             "vehicle": leg.vehicle,
             "board_at": leg.board_at,
             "departs": clock(leg.depart),
-            "departs_at": _local(plan.moment, leg.depart),
-            "arrive_at": _local(plan.moment, reach),
+            "departs_at": _local(plan.when, leg.depart),
+            "arrive_at": _local(plan.when, reach),
             "next": None if leg.after is None else clock(leg.after),
-            "next_at": None if leg.after is None else _local(plan.moment, leg.after),
+            "next_at": None if leg.after is None else _local(plan.when, leg.after),
             "spare_s": round(leg.wait_s),
             "close": leg.wait_s < CLOSE_S,
-            "planned_at": _local(plan.moment, plan.moment.minute),
+            "planned_at": _local(plan.when, plan.when.minute),
             "point": _pt(leg.coordinates[0]) if leg.coordinates else None,
             "label": f"{leg.system} {clock(leg.depart)} · {round(leg.wait_s / 60)} min spare",
         }
@@ -1362,11 +1578,6 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
     option = plan.option
     total = option.total_s
     rules = {s.name: s.rule for s in schedule.systems} if schedule is not None else {}
-    metro_names = (
-        {s.name for s in schedule.systems if s.id == METRO_SYSTEM}
-        if schedule is not None
-        else {"Metro"}
-    )
     steps = []
     last_index = len(option.legs) - 1
     for index, leg in enumerate(option.legs):
@@ -1395,11 +1606,7 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
     else:
         summary = f"About {total_min} min door to door, scheduled."
     used = list(dict.fromkeys(leg.system for leg in option.legs if leg.transit))
-    on_metro = any(leg.transit and leg.bike and leg.system in metro_names for leg in option.legs)
-    blackout = bike_blackout(plan.moment.date)
     notes = _notes(plan, rules)
-    if on_metro and blackout:
-        notes.insert(0, BLACKOUT_WORDS)
     out = {
         "mode": plan.mode,
         "key": option.key,
@@ -1423,19 +1630,19 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
         ],
         "steps": steps,
         "notes": notes,
-        "day_type": plan.moment.day_type,
+        "day_type": plan.when.day_type,
         "band": None,
-        "holiday": plan.moment.holiday,
-        # Flagged where the chosen trip takes a bike on Metro on a listed date (never hidden).
-        "bike_blackout": on_metro and blackout,
+        "holiday": plan.when.holiday,
+        # Own Bike + Transit on a blackout date: no option takes a bike on Metro, and it is said.
+        "bike_blackout": plan.mode == presets.BIKE_TRANSIT and bike_blackout(plan.moment.date),
         "scheduled": not option.direct,
         "credits": [plan.credits[name] for name in used if plan.credits.get(name)],
         "departure": departure(plan),
     }
-    band = band_index(plan.moment.minute)
+    band = band_index(plan.when.minute)
     if band is not None:
         out["band"] = BANDS[band][2]
-    if plan.moment.holiday and not option.direct:
+    if plan.when.holiday and not option.direct:
         out["notes"].append(HOLIDAY_WORDS)
     transit = [o for o in plan.options if not o.direct]
     if option.direct and transit:

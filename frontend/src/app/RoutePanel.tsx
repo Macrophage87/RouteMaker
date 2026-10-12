@@ -30,6 +30,7 @@ import type { RidePrefs } from "../lib/rideOutput.ts";
 import { RIDE_MAX_M, RIDE_TOO_LONG } from "../lib/navigate.ts";
 import { BikeshareSummary } from "../BikeshareSummary.tsx";
 import { TransitSummary } from "../TransitSummary.tsx";
+import { DepartureTimer } from "../DepartureTimer.tsx";
 import { transitOf, transitTime } from "../lib/transit.ts";
 import { bikeshareOf, routeCredits } from "../lib/bikeshare.ts";
 import { rideSizeOf, type Dials, type Ending } from "../lib/dials.ts";
@@ -680,6 +681,16 @@ export function RouteSummary({
         </div>
         {!go.peek && infoBody}
         {!go.peek && transitFold}
+        {/* At peek the trip's panel is folded away, but an infrequent departure's countdown keeps
+            running (and its milestones and a miss are still said): one compact line. */}
+        {go.peek && transit?.departure && (
+          <DepartureTimer
+            compact
+            departure={transit.departure}
+            announce={transitControls?.announce}
+            onMissed={transitControls?.onMissed}
+          />
+        )}
         {segments.length > 0 && <StressFigure segments={segments} />}
         {!go.peek && <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />}
         {!go.peek && alerts}

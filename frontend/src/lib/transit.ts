@@ -51,7 +51,7 @@ export function withTransitOption(dials: Dials, preset: PresetId, pick: TransitP
   return isTransit(preset) && pick && pick.trip === trip ? { ...rest, transitOption: pick.key } : rest;
 }
 
-/** A station closed for the day, in words: "Union Station, closed: no MARC weekend service". */
+/** A station closed for the day, in words: "Camden Station, closed: no MARC weekend service". */
 export function closedName(station: Pick<ClosedStation, "name" | "reason">): string {
   return `${station.name}, closed: ${station.reason}`;
 }
@@ -62,7 +62,7 @@ export function transitSaid(route: Pick<RouteResponse, "transit">): string | nul
   if (!plan) return null;
   const parts = [`${presetLabel(plan.mode)} planned: ${plan.summary}`];
   if (plan.comparison) parts.push(plan.comparison);
-  if (plan.bike_blackout) parts.push("Bikes may not be allowed on Metro today.");
+  if (plan.bike_blackout) parts.push("Bikes aren't allowed on Metro today.");
   return parts.join(" ");
 }
 
@@ -116,6 +116,11 @@ export function transitFeatures(plan: TransitPlan | null): TransitFeatureCollect
     features.push({ type: "Feature", properties: { draw }, geometry: { type: "LineString", coordinates: step.coordinates } });
   }
   return { type: "FeatureCollection", features };
+}
+
+/** The map's attribution while a transit trip shows: the timetables it uses, from the plan's own credits. */
+export function transitAttribution(plan: Pick<TransitPlan, "credits"> | null): string {
+  return plan ? plan.credits.join("; ") : "";
 }
 
 export interface TransitMarker {

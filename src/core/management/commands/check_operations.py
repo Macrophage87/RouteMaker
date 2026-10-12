@@ -29,6 +29,7 @@ import sys
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
+from core import transit
 from core.management.commands.unwedge_job import STALLED_WORKER_TIMEOUT_S
 from core.runs import (
     DISK_SHORT,
@@ -77,6 +78,8 @@ class Command(BaseCommand):
         # that refusal arrived - so the first an operator heard of it was a
         # rebuild that did not run, a week after it could have been fixed.
         headroom = disk_headroom()
+        # The transit ride types' timetables, when installed: under a week left is an alert.
+        transit_alert = transit.schedule_alert(settings.TRANSIT_SCHEDULE_PATH)
 
         for entry in stale:
             last = entry["last_success_at"] or "never"
@@ -134,6 +137,8 @@ class Command(BaseCommand):
                 f"{headroom['fraction']:.0%} disk gate. Grow the volume before the next "
                 "rebuild refuses to start."
             )
+        if transit_alert is not None:
+            self.stdout.write(transit_alert)
         if len(jobs) < failed_total:
             self.stdout.write(
                 f"(listing the {len(jobs)} newest of {failed_total} failed jobs; "
@@ -145,6 +150,7 @@ class Command(BaseCommand):
             and not failed_total
             and not headroom["alert"]
             and bad_budget is None
+            and transit_alert is None
         ):
             # The free-space clause names the path and the figure rather than
             # asserting room in the abstract. "room for a rebuild" was printed
@@ -169,6 +175,7 @@ class Command(BaseCommand):
             else "1 volume(s) not measured"
         )
         invalid = ", 1 setting(s) invalid" if bad_budget is not None else ""
+        invalid += ", 1 transit schedule to rebuild" if transit_alert is not None else ""
         self.stdout.write(
             f"{len(stale)} stale task(s), {len(wedged)} wedged job(s), "
             f"{failed_total} failed job(s), {volumes}{invalid}"

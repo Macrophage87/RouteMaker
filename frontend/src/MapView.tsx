@@ -99,6 +99,7 @@ import {
   TRANSIT_DASH,
   TRANSIT_LINE_WIDTH,
   transitFeatures,
+  transitAttribution,
   transitMarkers,
   transitOf,
 } from "./lib/transit.ts";
@@ -975,7 +976,8 @@ export function MapView(props: Props) {
         paint: { "line-color": WALK_COLOUR, "line-width": WALK_LINE_WIDTH, "line-dasharray": WALK_DASH },
       });
       syncBikeshare(map, callbacks.current.route);
-      map.addSource(TRANSIT_SOURCE, { type: "geojson", data: transitFeatures(null), attribution: "WMATA GTFS (scheduled times)" });
+      // The attribution is the plan's own credits (WMATA's, MDOT MTA's, or both), set by syncTransit.
+      map.addSource(TRANSIT_SOURCE, { type: "geojson", data: transitFeatures(null), attribution: "" });
       map.addLayer({
         id: "transit-casing",
         type: "line",
@@ -1759,6 +1761,9 @@ function syncTransit(map: MapLibreMap, route: RouteResponse | null): void {
   const source = map.getSource(TRANSIT_SOURCE) as GeoJSONSource | undefined;
   if (!source) return;
   const plan = transitOf(route);
+  // The systems this trip uses, cited while its lines show (OWNER-DECISIONS 301); the control
+  // reads a source's attribution when the style changes, which the visibility below does.
+  (source as unknown as { attribution?: string }).attribution = transitAttribution(plan);
   source.setData(transitFeatures(plan));
   const visibility = plan ? "visible" : "none";
   for (const id of TRANSIT_LAYERS) {

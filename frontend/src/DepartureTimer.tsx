@@ -7,17 +7,20 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { TransitDeparture } from "./lib/api.ts";
-import { countdown, departureText, milestone, milestoneSaid, missedSaid, mmss } from "./lib/departure.ts";
+import { countdown, departureText, mapLabel, milestone, milestoneSaid, missedSaid, mmss } from "./lib/departure.ts";
 
 export function DepartureTimer({
   departure,
   announce,
   onMissed,
+  compact = false,
   now = () => Date.now(),
 }: {
   departure: TransitDeparture;
   announce?: (text: string) => void;
   onMissed?: () => void;
+  /** Go's sheet at its smallest: one line, the map label's words, the same milestones and miss. */
+  compact?: boolean;
   now?: () => number;
 }) {
   const [at, setAt] = useState(now);
@@ -45,6 +48,13 @@ export function DepartureTimer({
     const mark = milestone(before, state.toDepartS);
     if (mark !== null) announce?.(milestoneSaid(departure, mark));
   }, [at]);
+  if (compact) {
+    return (
+      <p className={state.close || state.missed ? "departure-compact notice" : "departure-compact"}>
+        <span className="departure-count">{mapLabel(departure, at)}</span>
+      </p>
+    );
+  }
   return (
     <div className="departure">
       <p className="departure-text">

@@ -1977,11 +1977,17 @@ unaffected.
 (`--date`, default today). A plan for a later date answers with riding the whole way only, plus the
 note "The timetables installed run ... to ...". Refresh as well when an agency publishes a new
 timetable, for example a MARC schedule change or a Metro shutdown. Planned closures reach the plans
-only through the published GTFS.
+only through the published GTFS. With fewer than 7 days left, the api logs "the transit schedule
+runs out ..." once a day and `manage.py check_operations` alerts ("transit: the schedule runs out
+on ..."; exit 1). An unreadable file alerts too; no file installed does not.
+
+**The beta** gets the schedule in its data bundle (`ship-data.sh`'s `transit` part;
+docs/BETA-RUNBOOK.md). Ship it again after each refresh.
 
 **Bike blackout dates** (Metro, special events): July 4 is built in. Add other dates by hand to
-`src/core/transitdata/metro-bike-blackouts.json` as WMATA announces them. A plan on such a date is
-still shown, with the flag "Bikes may not be allowed on Metro today".
+`src/core/transitdata/metro-bike-blackouts.json` as WMATA announces them. On such a date Own Bike +
+Transit uses no Metro and says "Bikes aren't allowed on Metro today (July 4)."; Bikeshare + Transit
+still rides Metro on foot.
 
 **What is not checked:** live arrivals and GTFS-Realtime service alerts. Every plan says
 "Scheduled service; check for track work."

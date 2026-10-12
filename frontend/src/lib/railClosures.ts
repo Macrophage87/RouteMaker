@@ -9,7 +9,7 @@
  * station with Metro lines, a MARC one to the nearest Penn Line station, each within MATCH_M. A station
  * that two systems serve (Union Station, New Carrollton) is closed only when every system it shows is.
  * Colour is never the only cue: the icon is struck through and the name reads "(closed)", and the
- * station's card and lists say "Union Station, closed: no MARC weekend service".
+ * station's card and lists say "Camden Station, closed: no MARC weekend service".
  */
 import type { ClosedStation } from "./api.ts";
 import { haversineM } from "./geo.ts";
@@ -116,15 +116,18 @@ function looksLikeClosures(body: unknown): body is { service_day: string; statio
   );
 }
 
-/** Today's closed stations; an empty list when the server has no timetables or does not answer (nothing greyed). */
-export async function requestClosures(options: { fetchImpl?: FetchLike; signal?: AbortSignal } = {}): Promise<ClosedStation[]> {
+/**
+ * Today's closed stations, or null when the server has no timetables or does not answer: nothing
+ * is greyed, and the caller asks again later (a failure is not "no station closed today").
+ */
+export async function requestClosures(options: { fetchImpl?: FetchLike; signal?: AbortSignal } = {}): Promise<ClosedStation[] | null> {
   const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
   try {
     const response = await fetchImpl("/api/transit/closures", { headers: { Accept: "application/json" }, signal: options.signal });
-    if (!response.ok) return [];
+    if (!response.ok) return null;
     const body: unknown = await response.json();
-    return looksLikeClosures(body) ? body.stations : [];
+    return looksLikeClosures(body) ? body.stations : null;
   } catch {
-    return [];
+    return null;
   }
 }

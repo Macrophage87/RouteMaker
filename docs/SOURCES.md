@@ -557,8 +557,10 @@ docs/OPERATIONS.md, "Transit schedule". Systems, rules and sources are listed in
   - Bike rules, Metrorail: <https://www.wmata.com/ride/guides/bikes/bikes-on-rail.html>. Bikes are
     allowed at all hours. Use the elevators (never escalators), board at a car's end doors, at most
     four bikes a car. Metro may restrict bikes during special events or crowding.
-  - Blackout dates: July 4 every year, plus dates added by hand in `src/core/transitdata/metro-bike-blackouts.json`. On those
-    dates the plan is still shown, with a flag.
+  - Blackout dates: July 4 every year, plus dates added by hand in
+    `src/core/transitdata/metro-bike-blackouts.json`. The owner: bikes are allowed "at all times
+    except" those days, so on them Own Bike + Transit uses no Metro and says "Bikes aren't allowed
+    on Metro today (July 4)." Bikeshare + Transit, on foot, still rides Metro.
   - Bike rules, Metrobus: <https://www.wmata.com/ride/guides/bikes/bikes-on-bus.html>. Each bus has
     a front rack for two bikes.
 - **MDOT MTA: MARC, Light RailLink and Metro SubwayLink.** Feeds:

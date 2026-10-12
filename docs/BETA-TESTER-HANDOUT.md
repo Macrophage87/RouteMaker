@@ -210,9 +210,12 @@ In Go, the three main buttons are "Default" (your own ride type), "Own Bike + Tr
   reader hears it at 10, 5 and 2 minutes, not every second. If you would miss the departure, it
   says so and plans the next one.
 - A station with no service all day is greyed and struck through on the map, named "(closed)".
-  Its card says why, for example "Union Station, closed: no MARC weekend service". Routes never
-  use a closed station.
-- Bikes are allowed on Metro at all hours. On some special-event days (for example July 4) the
-  plan is still shown, with a flag that bikes may not be allowed.
+  Its card says why, for example "Camden Station, closed: no MARC weekend service" (the Camden
+  Line runs on weekdays only). Routes never use a closed station.
+- Bikes are allowed on Metro at all hours except a few special-event days, such as July 4. On
+  those days Own Bike + Transit uses no Metro and says so: "Bikes aren't allowed on Metro today
+  (July 4)." Bikeshare + Transit still uses Metro, because you walk on.
+- If the beta has no timetables installed, the transit ride types say transit times are not
+  available, and every other ride type works as usual.
 - Always check the agency for track work and service alerts before you go. RouteMaker does not
   see them.

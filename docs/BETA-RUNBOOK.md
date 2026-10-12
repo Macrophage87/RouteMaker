@@ -362,6 +362,13 @@ the notice says only to tell the person who gave you access. The link is built i
 repeat the same `--report-url` on every later ship that carries the front end (data updates and
 releases included), or the next `files` installs a notice without it.
 
+The bundle carries the transit ride types' schedule when it has been built at home
+(`$DATA_ROOT/tiles/transit/transit-schedule.json`, docs/OPERATIONS.md, "Transit schedule"). Without it
+`ship-data.sh` warns and leaves the `transit` part out, and the beta's transit plans say they are not
+available. Build it before shipping, and ship it again (`--without` every other part) when it is
+refreshed, at least every 45 days. Sending the agencies' timetables to our own server is not
+redistribution; the file is never committed (docs/SOURCES.md).
+
 It sends about 4 GB (see "What the bundle holds" below) and is resumable: if the connection drops the
 owner reruns the same command. `SHA256SUMS` arrives last, so a half-sent bundle has none.
 
@@ -375,8 +382,9 @@ sudo scripts/beta/receive-data.sh --bundle "$RM_INCOMING" --env-file .env files 
 ```
 
 `files` copies the four routing graphs under `tiles/<graph>/<build>/` and points `current` at the new
-build (the old one is recorded as `previous` and kept), then elevation, base map, the Photon index and
-the front end. It installs only the files `SHA256SUMS` lists and only the builds `MANIFEST.txt`
+build (the old one is recorded as `previous` and kept), then elevation, base map, the Photon index, the
+transit schedule (`tiles/transit/transit-schedule.json`, read by the transit ride types; docs/OPERATIONS.md,
+"Transit schedule") and the front end. It installs only the files `SHA256SUMS` lists and only the builds `MANIFEST.txt`
 names, so anything an earlier bundle left in `$RM_INCOMING` is skipped (and reported). If photon is
 running and the bundle carries its index, `files` stops photon first and starts it again after.
 It verifies every installed file's sha256 again. It refuses if `/data` lacks room.
@@ -1260,4 +1268,5 @@ removes the agent, its logs and its snapshots (owner's say-so: they hold databas
 - **What the bundle holds** (sizes measured 2026-10-04): the four routing graphs' `tiles.tar` and sqlite files 2.2 GB
   (standard 611 MB, no-trail 450 MB, ebike 611 MB, weekend 611 MB), the Photon index 742 MB, elevation 310 MB, the base map
   298 MB, the database dump 207 MB (that figure still held the stress-tile cache, which is no longer shipped, so it is
-  smaller now), the front end 3 MB: about 3.74 GiB in 1259 files, checksummed one by one.
+  smaller now), the front end 3 MB: about 3.74 GiB in 1259 files, checksummed one by one. The transit schedule, once
+  built, is one JSON file.

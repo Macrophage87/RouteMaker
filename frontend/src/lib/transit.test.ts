@@ -15,6 +15,7 @@ import {
   drawOf,
   optionChosenSaid,
   optionText,
+  transitAttribution,
   transitFeatures,
   transitMarkers,
   transitOf,
@@ -98,7 +99,7 @@ test("the total is said 'about' and 'scheduled', with riding the whole way besid
   // The announcement is brief: the steps are in the panel's list, not read out on arrival.
   assert.ok(!said.includes("Board the Orange Line"));
   assert.equal(announceRoute(ROUTE), said);
-  assert.match(transitSaid({ transit: { ...PLAN, bike_blackout: true } })!, /Bikes may not be allowed on Metro today\./);
+  assert.match(transitSaid({ transit: { ...PLAN, bike_blackout: true } })!, /Bikes aren't allowed on Metro today\./);
 });
 
 test("the map draws every step past the route's own line, transit dashed apart from walks and rides", () => {
@@ -157,8 +158,15 @@ test("a chosen option goes with the request on a transit ride type, for the same
   assert.equal(withTransitOption(dials, "bike-transit", null, "a|b").transitOption, undefined);
 });
 
+test("the map's attribution is the plan's own timetables, not WMATA's alone", () => {
+  assert.equal(transitAttribution(PLAN), "WMATA GTFS (scheduled times)");
+  assert.equal(transitAttribution({ credits: ["MDOT MTA GTFS (scheduled times)"] }), "MDOT MTA GTFS (scheduled times)");
+  assert.equal(transitAttribution(null), "");
+  assert.doesNotMatch(src("MapView.tsx"), /attribution: "WMATA GTFS/);
+});
+
 test("a closed station is said in words, not by colour alone", () => {
-  assert.equal(closedName({ name: "Union Station", reason: "no MARC weekend service" }), "Union Station, closed: no MARC weekend service");
+  assert.equal(closedName({ name: "Camden Station", reason: "no MARC weekend service" }), "Camden Station, closed: no MARC weekend service");
 });
 
 test("the credits carry the schedule's source, and the operator's on Bikeshare + Transit", () => {

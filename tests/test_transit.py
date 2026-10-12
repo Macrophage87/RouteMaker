@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import math
 import sys
 from datetime import date, datetime
 from functools import lru_cache
@@ -203,6 +204,32 @@ def test_a_frequent_service_waits_half_its_headway(schedule) -> None:
     assert sunday.reach(eastern.index, 12 * 60) == {}
 
 
+def test_frequent_means_every_gap_short_over_three_or_four_departures() -> None:
+    # Every 6 min: frequent, the mean gap.
+    assert transit.headway([480, 486, 492, 498]) == 6
+    # A near pair, then a long gap: not frequent (the wait is the actual next departure).
+    assert transit.headway([480, 484, 540, 600]) == math.inf
+    # Two patterns leaving the same minute count once: 480, 490, 500 is every 10 min.
+    assert transit.headway([480, 480, 490, 490.2, 500]) == 10
+    # Two departures only (the end of service): not enough to call it frequent.
+    assert transit.headway([480, 485]) == math.inf
+    # Uneven but all short: the mean gap.
+    assert transit.headway([480, 484, 496, 500]) == pytest.approx(20 / 3)
+
+
+def test_a_near_pair_before_a_long_gap_waits_for_the_actual_departure() -> None:
+    class P:
+        def __init__(self, index, route):
+            self.index, self.route, self.system = index, route, 0
+            self.stops = (1, 2)
+
+    near = [([484.0, 488.0, 540.0], 600.0, P(0, "A"), 0, 1)]
+    hop = transit._hop(480.0, near)
+    assert not hop.frequent and hop.wait_s == 4 * 60 and hop.depart == 484 and hop.after == 488
+    every = [([484.0, 490.0, 496.0, 502.0], 600.0, P(0, "A"), 0, 1)]
+    assert transit._hop(480.0, every).frequent and transit._hop(480.0, every).wait_s == 180
+
+
 def test_an_infrequent_service_waits_for_its_next_departure_and_names_the_one_after(
     schedule,
 ) -> None:
@@ -250,6 +277,18 @@ def test_a_slower_routed_ride_that_misses_the_train_takes_the_next(schedule) -> 
         n.startswith("You would miss the 7:00 am (the MARC Penn Line)") for n in out["notes"]
     )
     assert out["total_s"] > transit.block(plan, schedule)["total_s"]
+    # The one after the new departure is recomputed, not dropped: the 9:00.
+    assert out["departure"]["next"] == "9:00 am"
+
+
+def test_a_trip_whose_every_departure_is_missed_is_left_out_not_totalled(schedule) -> None:
+    plan = plan_bike(schedule, NOMA, BALTIMORE, at(2026, 9, 30, 6, 20))
+    chosen = plan.option.key
+    # Four hours late on the first ride: no departure seen can be caught.
+    late = transit.with_ride(plan, plan.legs[0].seconds + 4 * 3600)
+    assert chosen not in {o.key for o in late.options}
+    assert late.option.key != chosen
+    assert any("no later one leaves within the hour" in n for n in late.notes)
 
 
 def test_the_service_day_runs_to_3_am_and_a_holiday_is_flagged() -> None:
@@ -260,6 +299,95 @@ def test_the_service_day_runs_to_3_am_and_a_holiday_is_flagged() -> None:
     assert thanksgiving.holiday and not thanksgiving.rush(8 * 60)
     assert transit.moment_of(at(2026, 9, 30, 8, 0)).rush(8 * 60)
     assert transit.clock(25 * 60 + 30) == "1:30 am" and transit.clock(19 * 60 + 42) == "7:42 pm"
+
+
+def test_times_are_real_across_the_end_of_daylight_saving_on_2026_11_01() -> None:
+    # 2026-11-01 has 25 hours (2 am EDT becomes 1 am EST). GTFS times count from noon less 12 h,
+    # so its 08:00 is 8 am EST, and the page's clock carries the right offset.
+    morning = transit.moment_of(at(2026, 11, 1, 8, 0))
+    assert (morning.service_day, morning.minute) == (date(2026, 11, 1), 8 * 60)
+    assert transit._local(morning, 8 * 60 + 42) == "2026-11-01T08:42:00-05:00"
+    # 1:30 am the first time (EDT) is still Saturday's service day, 25:30.
+    first = transit.moment_of(datetime(2026, 11, 1, 1, 30, tzinfo=ZONE, fold=0))
+    assert (first.service_day, first.minute) == (date(2026, 10, 31), 25 * 60 + 30)
+    # The second 1:30 am (EST) is an hour later in real time: 26:30 of Saturday's service day.
+    second = transit.moment_of(datetime(2026, 11, 1, 1, 30, tzinfo=ZONE, fold=1))
+    assert second.minute == 26 * 60 + 30
+    assert transit._local(second, second.minute) == "2026-11-01T01:30:00-05:00"
+    # The spring change too: 2027-03-14 at 9 am EDT is GTFS 09:00.
+    assert transit.moment_of(at(2027, 3, 14, 9, 0)).minute == 9 * 60
+
+
+def test_around_3_am_both_service_days_are_searched_owl_trips_past_27_00_included() -> None:
+    schedule = schedule_from(date(2026, 9, 28))
+    when = at(2026, 10, 1, 3, 20)  # Thursday 3:20 am
+    moments = transit.moments_of(when)
+    assert [m.service_day for m in moments] == [date(2026, 10, 1), date(2026, 9, 30)]
+    assert [m.minute for m in moments] == [200, 27 * 60 + 20]
+    assert len(transit.moments_of(at(2026, 10, 1, 9, 0))) == 1
+    # Wednesday's owl Light RailLink leaves Camden Yards at 27:30, 3:30 am Thursday.
+    plan = transit.plan_bikeshare(
+        schedule, [-76.6206, 39.2849], [-76.6159, 39.3071], when, Straight(), NO_DOCKS
+    )
+    owl = next(o for o in plan.options for leg in o.legs if leg.system == "Light RailLink")
+    leg = next(leg for leg in owl.legs if leg.transit)
+    # Boarded at Convention Center, a stop that is not a timepoint: 27:32, interpolated.
+    assert leg.board_at == "Convention Center" and leg.depart == 27 * 60 + 32
+    assert owl.moment.service_day == date(2026, 9, 30)
+    out = transit.block(transit.choose(plan, owl.key), schedule)
+    assert out["departure"]["departs_at"] == "2026-10-01T03:32:00-04:00"
+
+
+def test_stops_that_are_not_timepoints_are_interpolated_not_dropped() -> None:
+    rows = [(1, "A", 100, None), (2, "B", None, None), (3, "C", None, None), (4, "D", 400, None)]
+    assert build.interpolated(rows) == [(1, "A", 100), (2, "B", 200), (3, "C", 300), (4, "D", 400)]
+    by_distance = [(1, "A", 0, 0.0), (2, "B", None, 900.0), (3, "C", 100, 1000.0)]
+    assert build.interpolated(by_distance)[1] == (2, "B", 90)
+    # Untimed at either end: nothing to interpolate from, dropped.
+    assert build.interpolated([(1, "A", None, None), (2, "B", 50, None)]) == [(2, "B", 50)]
+    # The owl trip's blank middle stops keep it on the Light RailLink's one stop order.
+    doc = doc_from()
+    names = [s["name"] for s in doc["stops"]]
+    light = [p for p in doc["patterns"] if names[p["stops"][0]] == "Camden Yards"]
+    assert len(light) == 1 and len(light[0]["stops"]) == 5
+
+
+def test_a_schedule_about_to_run_out_is_logged_and_alerted(tmp_path, caplog) -> None:
+    path = tmp_path / "transit-schedule.json"
+    path.write_text(built(date(2026, 9, 28))[0])
+    schedule = transit.load(path)
+    assert schedule.last_day == date(2026, 11, 11)
+    assert transit.days_left(schedule, date(2026, 11, 8)) == 4
+    assert transit.schedule_alert(path, date(2026, 10, 1)) is None
+    assert "4 day(s) left" in transit.schedule_alert(path, date(2026, 11, 8))
+    assert "ran out on 2026-11-11" in transit.schedule_alert(path, date(2026, 11, 20))
+    assert transit.schedule_alert(tmp_path / "none.json") is None
+    (tmp_path / "bad.json").write_text("{")
+    assert transit.schedule_alert(tmp_path / "bad.json").startswith("transit: ")
+    # The log line, once a day, when the file is read.
+    transit._warned_on = None
+    with caplog.at_level("WARNING", logger=transit.logger.name):
+        transit._warn_if_stale(schedule)  # today (2026-10-12 or later): under a week? only if so
+    expected = transit.days_left(schedule) < transit.STALE_DAYS
+    assert ("the transit schedule runs out" in caplog.text) is expected
+
+
+def test_a_walk_of_a_few_yards_is_not_the_answers_line() -> None:
+    a, b = (-77.0, 38.9), (-77.00005, 38.9)  # about 4 m apart
+    far = (-77.01, 38.9)
+    legs = (
+        transit.Leg(transit.WALK, 3.0, (a, b)),
+        transit.Leg(transit.ENTER, 120.0),
+        transit.Leg("metro", 600.0, (b, far)),
+        transit.Leg(transit.EXIT, 120.0),
+        transit.Leg(transit.WALK, 400.0, (far, (-77.02, 38.9))),
+    )
+    assert transit.line_m(legs[0]) < transit.MIN_LINE_M
+    # The first walk is a few yards: the line is the last walk, which the router can route.
+    assert transit.Option("k", legs).ride == 4
+    # Every ride and walk a few yards: the first walk, which the API draws start to end instead.
+    tiny = (legs[0], legs[1], legs[2], legs[3], transit.Leg(transit.WALK, 3.0, (far, far)))
+    assert transit.Option("k", tiny).ride == 0
 
 
 def test_the_blackout_list_has_july_4_every_year_and_dates_by_hand(tmp_path) -> None:
@@ -297,6 +425,68 @@ def test_own_bike_lists_the_direct_ride_and_the_quickest_transit_trips(schedule)
     assert words[1] == "About 4 min into the station by the elevator."
     assert words[2] == "Board the Orange Line (about 5 min wait); ride 10 min to Federal Triangle."
     assert words[4].endswith("min to your destination.")
+
+
+def _valhalla(seconds: float, a, b) -> dict:
+    from test_route_api import encode_polyline6
+
+    return {
+        "trip": {
+            "legs": [
+                {"shape": encode_polyline6([tuple(a), tuple(b)]), "summary": {"time": seconds}}
+            ]
+        }
+    }
+
+
+def test_a_router_that_fails_after_the_first_call_still_gives_the_direct_ride(
+    schedule, monkeypatch
+) -> None:
+    from core import routing
+
+    calls = []
+
+    def flaky(variant, endpoint, payload, deadline):
+        calls.append(deadline)
+        if len(calls) == 1:
+            locs = payload["locations"]
+            a, b = [locs[0]["lon"], locs[0]["lat"]], [locs[1]["lon"], locs[1]["lat"]]
+            return _valhalla(777.0, a, b)
+        raise (routing.RouterUnavailable if len(calls) % 2 else routing.DeadlineExceeded)("down")
+
+    monkeypatch.setattr(routing, "_call", flaky)
+    services = transit.RoutingServices(routing.clock() + 30, presets.BIKE_TRANSIT)
+    plan = transit.plan_bike(
+        schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), services, 18.0
+    )
+    # The direct ride was asked first, and has the router's own time.
+    assert plan.direct is not None and plan.direct.total_s == 777.0
+    # Every later call failed: the candidates were estimated, and transit is still offered.
+    assert any(not o.direct for o in plan.options)
+    assert 1 < len(calls) <= transit.MAX_ROUTER_CALLS
+    # Each call was capped.
+    assert all(d.per_call_s <= transit.CANDIDATE_CALL_S for d in calls)
+
+
+def test_the_router_calls_stop_at_the_cap_and_the_budget(schedule, monkeypatch) -> None:
+    from core import routing
+
+    calls = []
+
+    def slow(variant, endpoint, payload, deadline):
+        calls.append(deadline)
+        raise routing.RouterUnavailable("down")
+
+    monkeypatch.setattr(routing, "_call", slow)
+    capped = transit.RoutingServices(routing.clock() + 30, presets.BIKE_TRANSIT, max_calls=2)
+    plan = transit.plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), capped, 18.0)
+    assert len(calls) == 2 and capped.calls == 2
+    # With no answer at all, the direct ride is estimated from the straight line, still offered.
+    assert plan.direct is not None and plan.direct.legs[0].estimated
+    calls.clear()
+    spent = transit.RoutingServices(routing.clock() - 1, presets.BIKE_TRANSIT)
+    transit.plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), spent, 18.0)
+    assert calls == []
 
 
 def test_own_bike_never_walks(schedule) -> None:
@@ -389,14 +579,26 @@ def test_a_station_closed_for_the_day_is_one_with_no_service_at_all_that_day(sch
     assert "Eastern Market" in {c.stop.name for c in sunday}
 
 
-def test_bikes_are_flagged_on_a_blackout_date_and_still_offered() -> None:
+def test_no_bike_on_metro_on_a_blackout_date_said_plainly_and_metro_on_foot_still_fine() -> None:
     schedule = schedule_from(date(2026, 7, 1))
     plan = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 7, 4, 10, 0))
-    metro = next(o for o in plan.options if not o.direct)
-    out = transit.block(transit.choose(plan, metro.key), schedule)
-    assert out["notes"][0] == transit.BLACKOUT_WORDS and out["bike_blackout"] is True
-    # The direct ride takes no bike on Metro: nothing to flag.
-    assert transit.block(transit.choose(plan, "direct"), schedule)["bike_blackout"] is False
+    # Bikes are allowed on Metro "at all times except" these days: no option takes Metro.
+    assert not any(leg.system == "Metro" for o in plan.options for leg in o.legs if leg.transit)
+    assert plan.notes[0] == "Bikes aren't allowed on Metro today (July 4)."
+    out = transit.block(transit.choose(plan, "direct"), schedule)
+    assert (
+        out["notes"][0] == "Bikes aren't allowed on Metro today (July 4)." and out["bike_blackout"]
+    )
+    # The day before, Metro takes the bike as usual.
+    usual = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 7, 3, 10, 0))
+    assert any(leg.system == "Metro" for o in usual.options for leg in o.legs if leg.transit)
+    assert not transit.block(usual, schedule)["bike_blackout"]
+    # Bikeshare + Transit walks onto Metro: the blackout does not touch it.
+    share = transit.plan_bikeshare(
+        schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 7, 4, 10, 0), Straight(), NO_DOCKS
+    )
+    assert any(leg.system == "Metro" for o in share.options for leg in o.legs if leg.transit)
+    assert not transit.block(share, schedule)["bike_blackout"]
 
 
 def test_beyond_the_installed_timetables_only_the_direct_ride_is_offered(schedule) -> None:

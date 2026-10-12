@@ -105,6 +105,8 @@ test("the countdown is not a live region, and the map's label is hidden from scr
   assert.match(timer, /if \(before === null \|\| !state\.close\) return;/, "milestones only when cutting it close");
   const map = src("MapView.tsx");
   assert.match(map, /element\.className = "departure-label";\n\s*element\.setAttribute\("aria-hidden", "true"\);/);
+  // At Go's peek the panel folds away, but a compact countdown stays mounted (milestones, a miss).
+  assert.match(src("app/RoutePanel.tsx"), /\{go\.peek && transit\?\.departure && \(\s*<DepartureTimer\s*compact/);
   // Frequent services carry no departure, so no timer: the panel shows one only when the API gives it.
   assert.match(src("TransitSummary.tsx"), /\{plan\.departure && <DepartureTimer/);
 });

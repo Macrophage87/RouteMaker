@@ -110,16 +110,18 @@ test("the service day turns over at 3 am in Washington", () => {
   assert.equal(serviceDayOf(Date.parse("2026-12-31T23:30:00-05:00")), "2026-12-31");
 });
 
-test("the closures are asked for once; a server without timetables greys nothing", async () => {
+test("the closures are asked for; a server without timetables, or no answer, greys nothing and is asked again", async () => {
   const body = { service_day: "2026-10-17", stations: [closed("Odenton", "MARC", ODENTON.point, "no MARC weekend service")] };
   const ok = async () => new Response(JSON.stringify(body), { status: 200 });
   assert.equal((await requestClosures({ fetchImpl: ok })).length, 1);
   const down = async () => new Response(JSON.stringify({ error: "x", code: "transit_unavailable" }), { status: 503 });
-  assert.deepEqual(await requestClosures({ fetchImpl: down }), []);
+  assert.equal(await requestClosures({ fetchImpl: down }), null);
   const broken = async () => new Response(JSON.stringify({ stations: [{ name: 1 }] }), { status: 200 });
-  assert.deepEqual(await requestClosures({ fetchImpl: broken }), []);
+  assert.equal(await requestClosures({ fetchImpl: broken }), null);
   const offline = async () => {
     throw new Error("offline");
   };
-  assert.deepEqual(await requestClosures({ fetchImpl: offline }), []);
+  assert.equal(await requestClosures({ fetchImpl: offline }), null);
+  // App sets the day it has asked for only on an answer, so a failure is retried at the next check.
+  assert.match(src("App.tsx"), /if \(stations === null\) return;\s*day = today;/);
 });

@@ -56,7 +56,7 @@ function summary(station: Station, options: RailInteractionOptions, elevatorTapp
   root.className = "station-popup";
   const name = document.createElement("strong");
   name.className = "station-name";
-  // "Union Station, closed: no MARC weekend service", in words (railClosures.ts).
+  // "Camden Station, closed: no MARC weekend service", in words (railClosures.ts).
   const closed = options.closedReason?.(station) ?? null;
   name.textContent = closed ? `${station.name}, closed: ${closed}` : station.name;
   root.append(name);

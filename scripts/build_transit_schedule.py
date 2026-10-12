@@ -64,7 +64,7 @@ BANDS = (
     (570, 900, "midday"),
     (900, 1140, "evening rush"),
     (1140, 1320, "evening"),
-    (1320, 1620, "late night"),
+    (1320, 1800, "late night"),  # to 30:00: owl trips past 27:00 included
 )
 # The calendar window kept, in days from --date: a fortnight's refresh with room to spare.
 DAYS = 45
@@ -241,6 +241,29 @@ def _bike_of(rule: str, row: dict) -> int:
     return 0 if rule == "none" else 1
 
 
+def interpolated(rows: list[tuple]) -> list[tuple[int, str, int]]:
+    """A trip's stop times with the stops that are not timepoints (blank times, which GTFS
+    allows between two timed stops) given times between their timed neighbours: by
+    shape_dist_traveled where the feed has it, else evenly by stop. Untimed stops before the first
+    timed one or after the last are dropped (nothing to interpolate from)."""
+    timed = [i for i, r in enumerate(rows) if r[2] is not None]
+    out = []
+    for i, (seq, stop_id, seconds, distance) in enumerate(rows):
+        if seconds is None:
+            before = max((t for t in timed if t < i), default=None)
+            after = min((t for t in timed if t > i), default=None)
+            if before is None or after is None:
+                continue
+            a, b = rows[before], rows[after]
+            if distance is not None and a[3] is not None and b[3] is not None and b[3] > a[3]:
+                share = (distance - a[3]) / (b[3] - a[3])
+            else:
+                share = (i - before) / (after - before)
+            seconds = round(a[2] + (b[2] - a[2]) * min(1.0, max(0.0, share)))
+        out.append((seq, stop_id, seconds))
+    return out
+
+
 def patterns(feed, services: dict[str, str], names, stop_key, bike_rule: str) -> list[dict]:
     """Per (route, stop order): median runs per band, and each trip's first departure (minutes
     of the service day, times two, plus 1 where it takes a bike) by service id.
@@ -257,10 +280,18 @@ def patterns(feed, services: dict[str, str], names, stop_key, bike_rule: str) ->
         trip = row["trip_id"]
         if trip not in trips:
             continue
-        seconds = _seconds(row.get("departure_time")) or _seconds(row.get("arrival_time"))
+        seconds = _seconds(row.get("departure_time"))
         if seconds is None:
-            continue
-        times.setdefault(trip, []).append((int(row["stop_sequence"]), row["stop_id"], seconds))
+            seconds = _seconds(row.get("arrival_time"))
+        distance = (row.get("shape_dist_traveled") or "").strip()
+        times.setdefault(trip, []).append(
+            (
+                int(row["stop_sequence"]),
+                row["stop_id"],
+                seconds,
+                float(distance) if distance else None,
+            )
+        )
     repeat: dict[str, list[tuple[int, int, int]]] = {}
     for row in _rows(feed, "frequencies.txt"):
         repeat.setdefault(row["trip_id"], []).append(
@@ -268,8 +299,9 @@ def patterns(feed, services: dict[str, str], names, stop_key, bike_rule: str) ->
         )
     # (name, stops) -> {"runs": band -> [runs], "trips": service -> [encoded departures]}
     found: dict[tuple, dict] = {}
-    for trip, rows in times.items():
-        rows.sort()
+    for trip, raw in times.items():
+        raw.sort(key=lambda r: r[0])
+        rows = interpolated(raw)
         route, service, bike = trips[trip]
         stops, deps = [], []
         for _seq, stop_id, seconds in rows:

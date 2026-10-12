@@ -278,12 +278,18 @@ export function App() {
   useEffect(() => {
     let day = "";
     const controller = new AbortController();
+    let asking = false;
     const check = () => {
       const today = serviceDayOf(Date.now());
-      if (today === day) return;
-      day = today;
+      if (today === day || asking) return;
+      asking = true;
       void requestClosures({ signal: controller.signal }).then((stations) => {
-        if (!controller.signal.aborted) setClosedToday(stations);
+        asking = false;
+        if (controller.signal.aborted) return;
+        // Only an answer settles the day: a failure is asked again at the next check.
+        if (stations === null) return;
+        day = today;
+        setClosedToday(stations);
       });
     };
     check();

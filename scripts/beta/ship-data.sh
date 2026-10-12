@@ -18,6 +18,11 @@
 #   basemap/            region.pmtiles, fonts, sprites, and contours.pmtiles once
 #                       scripts/build_contours.py has written it (the Topo lines layer)
 #   photon/             the Photon index (photon_data/)
+#   tiles/transit/transit-schedule.json
+#                       the transit ride types' schedule (scripts/build_transit_schedule.py), when
+#                       it has been built; without it the beta's transit plans answer "not
+#                       available". Sending the agencies' timetables to our own server is not
+#                       redistribution (docs/SOURCES.md); the file is never committed.
 #   frontend/           the built front end, made with VITE_BETA=1 so it carries the beta banner
 #   db/routemaker.dump  pg_dump --format=custom of the `live` and `public` schemas, minus the
 #                       data of sessions, rate-limit rows, membership cache, job queues and
@@ -57,7 +62,7 @@
 #   --node-modules DIR   node_modules for --build-frontend [<repo>/frontend/node_modules], installed
 #                        for Linux x64 (in WSL with no Linux node, `npm ci` is Windows npm: install
 #                        it in the pinned image instead; frontend-build.sh refuses a Windows one)
-#   --without PART       leave a part out: tiles, elevation, basemap, photon, frontend, db
+#   --without PART       leave a part out: tiles, elevation, basemap, photon, transit, frontend, db
 #                        (repeatable; for an update that changes only some of them)
 #   --with-tile-dirs     also send each build's unpacked tiles/ directory (about 0.5 GB each)
 #   --no-transfer        build and verify the stage, send nothing
@@ -175,7 +180,7 @@ while [ $# -gt 0 ]; do
 		--node-modules) [ $# -ge 2 ] || die "$1 needs a value"; node_modules=$2; shift 2 ;;
 		--without)
 			[ $# -ge 2 ] || die "$1 needs a value"
-			case "$2" in tiles | elevation | basemap | photon | frontend | db) without[$2]=1 ;; *) die "--without: unknown part '$2'" ;; esac
+			case "$2" in tiles | elevation | basemap | photon | transit | frontend | db) without[$2]=1 ;; *) die "--without: unknown part '$2'" ;; esac
 			shift 2
 			;;
 		--with-tile-dirs) with_tile_dirs=1; shift ;;
@@ -254,7 +259,7 @@ fi
 
 # --- start from a clean stage ------------------------------------------------------------------
 # Only what this script put there: it owns these names and nothing else in the stage.
-for part in tiles elevation basemap photon frontend db; do rm -rf "${stage:?}/$part"; done
+for part in tiles elevation basemap photon transit frontend db; do rm -rf "${stage:?}/$part"; done
 rm -f "$stage/SHA256SUMS" "$stage/MANIFEST.txt"
 
 link() { mkdir -p "$(dirname "$2")"; ln -s "$1" "$2"; }
@@ -301,6 +306,20 @@ fi
 if want photon; then
 	[ -d "$data_root/photon/photon_data" ] || die "no Photon index at $data_root/photon/photon_data"
 	link "$data_root/photon" "$stage/photon"
+fi
+
+# --- transit schedule --------------------------------------------------------------------------------
+# Beside the tile builds, where the api reads it (settings.TRANSIT_SCHEDULE_PATH); staged at the
+# same path so the bundle still mirrors DATA_ROOT. Not built at home: said, and left out.
+if want transit; then
+	schedule="$data_root/tiles/transit/transit-schedule.json"
+	if [ -f "$schedule" ]; then
+		link "$schedule" "$stage/tiles/transit/transit-schedule.json"
+		note "transit: the schedule, $(stat -L -c %s "$schedule") bytes"
+	else
+		note "WARNING: no transit schedule at $schedule, so the beta's transit ride types will say they are not available; build it first (docs/OPERATIONS.md, \"Transit schedule\"), or pass --without transit"
+		without[transit]=1
+	fi
 fi
 
 # --- front end -----------------------------------------------------------------------------------------
@@ -449,7 +468,7 @@ git_dirty=$(git -C "$repo" status --porcelain 2>/dev/null | wc -l)
 	echo "database_server=$db_version"
 	echo "excluded_table_data=${EXCLUDED_TABLE_DATA[*]}"
 	echo "blanked_table_data=${BLANKED_TABLE_DATA[*]}"
-	echo "parts=$(for p in tiles elevation basemap photon frontend db; do want "$p" && printf '%s ' "$p"; done)"
+	echo "parts=$(for p in tiles elevation basemap photon transit frontend db; do want "$p" && printf '%s ' "$p"; done)"
 	echo "files=$files"
 	echo "bytes=$bytes"
 } >"$stage/MANIFEST.txt"

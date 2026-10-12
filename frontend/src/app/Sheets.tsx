@@ -622,7 +622,7 @@ export function RideChips({
       {more && (
         <button type="button" className="chip ride-more" onClick={(event) => more(event.currentTarget)} aria-describedby="ride-more-hint">
           <Icon name="more" size={18} />
-          More
+          More ride types
         </button>
       )}
       {more && (

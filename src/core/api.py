@@ -1894,7 +1894,11 @@ class TransitStepOut(Schema):
     )
     text: str = Field(description="The step in one sentence, US units first, for reading aloud.")
     seconds: int = Field(description="The step's time, without the wait.")
-    wait_s: int = Field(description="The scheduled average wait before it (half the headway).")
+    wait_s: int = Field(
+        description="The wait before it: for a service every 15 min or less, half the headway"
+        " (a rider who does not time the trip); for a less frequent one, the time to spare"
+        " between reaching the stop and the scheduled departure taken (`departs`)."
+    )
     to: str | None = Field(description="Where the step ends, by name; null: no name.")
     lines: list[str] = Field(description="Metro lines or bus routes that run it.")
     with_bike: bool = Field(description="Your own bike goes too (the elevator, the rack).")
@@ -2397,15 +2401,21 @@ def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
     )
 
 
+# Of a transit plan's budget, the seconds kept for routing the chosen option's line.
+TRANSIT_ANSWER_RESERVE_S = 20
+
+
 def _transit_body(body: RouteIn, started: float | None) -> dict:
     """A transit ride type (`core.transit`): the options, the chosen one's first ride routed."""
     if started is None:
         started = routing.clock()
     schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH)
-    deadline = routing.Deadline(
-        started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S, routing.ROUTER_TIMEOUT_S
+    # The candidates' calls stop early enough to leave the answer's own line (routing.plan, below)
+    # most of the request's budget: a slow router estimates candidates, it never times out the plan.
+    services = transit.RoutingServices(
+        started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S - TRANSIT_ANSWER_RESERVE_S,
+        body.preset,
     )
-    services = transit.RoutingServices(deadline, body.preset)
     start, end = body.points
     when = body.depart_at or timezone.now()
     if when.tzinfo is None:
@@ -2420,11 +2430,17 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         )
         found = transit.plan_bike(schedule, start, end, when, services, speed)
     found = transit.choose(found, body.transit_option)
-    if found.option.direct and body.preset == presets.BIKE_TRANSIT:
-        # Riding directly there: the plain bike route, start to end.
+    leg = found.legs[found.ride]
+    # The line is the chosen option's first ride (or walk). Riding directly there, or an option
+    # whose every ride and walk is a few yards (nothing the router could route), is drawn start to
+    # end instead, and the plan keeps its own times.
+    whole = (found.option.direct and body.preset == presets.BIKE_TRANSIT) or (
+        transit.line_m(leg) < transit.MIN_LINE_M
+    )
+    retime = not whole or found.option.direct
+    if whole:
         ride_from, ride_to = list(start), list(end)
     else:
-        leg = found.legs[found.ride]
         ride_from = list(leg.coordinates[0])
         ride_to = list(leg.coordinates[-1])
     dials = routing.Dials(
@@ -2438,9 +2454,23 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     answer = routing.plan(
         [ride_from, ride_to], body.preset, long_ride=False, started=started, dials=dials
     )
-    answer["transit"] = transit.block(
-        transit.with_ride(found, float(answer["duration_s"])), schedule
-    )
+    if retime:
+        timed = transit.with_ride(found, float(answer["duration_s"]))
+        if timed.option.key != found.option.key:
+            # The chosen trip's departure cannot be caught after all and it was left out: the
+            # quickest left is planned, its own line routed (or drawn start to end).
+            leg = timed.legs[timed.ride]
+            if timed.option.direct and body.preset == presets.BIKE_TRANSIT:
+                points = [list(start), list(end)]
+            elif transit.line_m(leg) >= transit.MIN_LINE_M:
+                points = [list(leg.coordinates[0]), list(leg.coordinates[-1])]
+            else:
+                points = [list(start), list(end)]
+            answer = routing.plan(
+                points, body.preset, long_ride=False, started=started, dials=dials
+            )
+        found = timed
+    answer["transit"] = transit.block(found, schedule)
     return answer
 
 
