@@ -2212,10 +2212,13 @@ def test_receive_data_loads_the_blanked_tables_and_updates_the_junction_ratings(
     assert "COPY public.%s (%s) FROM stdin WITH (FORMAT text, HEADER true);" in text
     assert "setval(pg_get_serial_sequence(" in text
     # the update path replaces the junction ratings in its one transaction, after letting the
-    # beta's own suggestions go of them (a TRUNCATE would refuse the foreign key)
-    assert "DELETE FROM public.junction_override;" in text
+    # beta's own suggestions go of them (the foreign key would refuse the commit)
+    assert "printf 'DELETE FROM public.%s;\\n' \"$t\"" in text
     assert "UPDATE public.junction_suggestion SET override_id = NULL" in text
-    # a missing file aborts the transaction instead of committing the TRUNCATE with nothing loaded
+    assert "UPDATE public.junction_suggestion SET avoid_id = NULL" in text
+    assert "for t in junction_override avoid_junction; do" in text
+    # a missing file aborts the transaction instead of committing emptied tables with nothing
+    # loaded
     assert (
         'cat /tmp/beta-blanked.sql || echo "SELECT blanked_sql_missing_so_this_rolls_back();"; }'
         " | psql" in text
@@ -2223,6 +2226,7 @@ def test_receive_data_loads_the_blanked_tables_and_updates_the_junction_ratings(
     assert "restore again with: db --replace-db" in text
     counted = next(x for x in text.splitlines() if 'case "$qualified" in "$live_schema".*' in x)
     assert "public.junction_override" in counted
+    assert "public.avoid_junction" in counted
     # and the whole-database path loads every blanked table in one transaction
     assert "-q -1 -v ON_ERROR_STOP=1 -f /tmp/beta-blanked.sql" in text
 
@@ -2238,9 +2242,16 @@ def test_the_update_path_names_only_live_and_override_and_empties_the_stale_tile
     line = next(x for x in text.splitlines() if "SCHEMA - $live_schema )" in x)
     for table in shipped_exclusions():
         assert table not in line, table
-    assert "public" not in line  # override and junction_override come blanked, not from the dump
+    assert "public" not in line  # the public tables come blanked, not from the dump
     assert 'blanked_sql "$extra.part" override' in text
-    assert 'echo "TRUNCATE public.override, public.stress_edit, public.stress_tile_cache;"' in text
+    # the beta's stress suggestions let go of stress_edit first, and stress_edit and override are
+    # emptied with DELETE: a TRUNCATE refuses a table another table's foreign key points at, even
+    # with no row pointing (tests/test_beta_update_sql.py runs these on the head schema)
+    assert (
+        'echo "UPDATE public.stress_suggestion SET edit_id = NULL WHERE edit_id IS NOT NULL;";'
+        ' echo "DELETE FROM public.stress_edit;"; echo "DELETE FROM public.override;";'
+        ' echo "TRUNCATE public.stress_tile_cache;";' in text
+    )
     counted = next(x for x in text.splitlines() if 'case "$qualified" in "$live_schema".*' in x)
     assert "stress_tile_cache" not in counted
     assert "-q -1 -v ON_ERROR_STOP=1" in text  # one transaction

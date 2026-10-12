@@ -733,8 +733,9 @@ class SeekOut(Schema):
     replaced and the detour they added as the seek estimated them, the route's
     length and exposure, and `outcome`: `taken`, `not_better`, `busier`,
     `more_lts4` (more LTS 4 and Avoid metres than the router's first route, on
-    Trailmaxxing and Cargo with passengers: OWNER-DECISIONS 250), `unread` or
-    `no_route`."""
+    Trailmaxxing and Cargo with passengers: OWNER-DECISIONS 250), `doubles_back`
+    (it rides out along a way and back again, more than 164 ft (50 m) beyond what the
+    route it would replace does), `too_long`, `unread` or `no_route`."""
 
     corridors: int
     asked: int
@@ -752,7 +753,8 @@ class SeekOut(Schema):
         description=(
             "On a plan with stops whose legs were spliced: `taken`, `busier` (past the"
             " whole trip's Traffic-wins allowance), `more_lts4` (more LTS 4 than the"
-            " router's first route, OWNER-DECISIONS 250) or `unread`; null where nothing was"
+            " router's first route, OWNER-DECISIONS 250), `too_long`, `not_worth`, `overlap`"
+            " or `unread`; null where nothing was"
             " spliced. Shown even where `limited` names an earlier stop, such as `time`."
         ),
     )

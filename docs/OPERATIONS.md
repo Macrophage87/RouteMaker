@@ -599,7 +599,9 @@ to six more routes a leg (`core.trailseek`; docs/DEVELOPMENT.md, "The trail seek
   is a database problem, not a routing one (the log says "the trail seek could
   not read the segment table" at warning level). A run of `no_route` outcomes
   means the router refuses the through points (an entry on a way a bicycle
-  cannot use); the plan is unaffected.
+  cannot use); the plan is unaffected. A `doubles_back` outcome is a candidate that
+  rode out to a through point and back the same way, more than 164 ft (50 m) beyond
+  the route it would replace; it is refused and the plan is unaffected.
 - **The seek on plans with stops** (OWNER-DECISIONS 203; docs/DEVELOPMENT.md, "The
   trail credit and the seek leg by leg"). The trail credit of item 202 is gone: item
   257 dropped it on 2026-10-03, so no ride type has one, a candidate's reading has
@@ -2815,13 +2817,12 @@ by `scripts/build_water_restrooms.py` from the extract; the weekly rebuild does
 not refresh it (the refresh by hand is in `frontend/src/amenity-data/README.md`).
 Since 2026-10-10 the script merges a restroom node into the restroom building
 around it and leaves out historic springs (rules and merge order in that
-README); the committed file predates both until the next refresh by hand,
-which is the only step a release carrying the change needs.
+README); the committed file was refreshed with both on 2026-10-11, for v0.4.0.
 Since 2026-10-11 (v0.5.0, RESTROOMS-FIX) it also leaves out points inside
 airports, military sites and prisons, and merges the open Throne smart
 restrooms from the cited hand list `frontend/src/amenity-data/throne-restrooms.json`.
 The committed file already has the Throne units (`--throne-only` needs no
-extract); the secured-site filter waits for the same refresh by hand on the
+extract); the secured-site filter waits for the next refresh by hand on the
 build host, whose printed "left out inside airports, military sites and
 prisons" count goes in that README's Status.
 It is a hashed asset under `/assets/` (about 35 KB compressed), served like the
