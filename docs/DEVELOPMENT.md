@@ -7085,6 +7085,33 @@ list; a free-floating e-bike is offered only as the plan's own start (it has no 
 again). Tests: `tests/test_bikeshare_direction.py` (each ranking case fails on nearest-first),
 `tests/test_bikeshare_api.py`, `tests/test_bikeshare_nearby.py`, `frontend/src/lib/stations.test.ts`.
 
+### Rebalance Ride (REBALANCE-RIDE; Stephen, 2026-10-12)
+
+An Adventure ride type, id `rebalance` (short path `/rebalance`), label "Rebalance Ride": move a
+share bike from a crowded station to one that needs bikes. The operator's reward points have no
+public feed (they are only in its app), so fill stands in for them, from the station status the
+Bikeshare plan already reads: bikes / (bikes + free docks), e-bikes counted. No points are shown
+and there are no new settings; the ride type is not given the operator's programme name, which
+appears only in its description.
+
+- `POST /api/route` with `preset: "rebalance"` is a Bikeshare plan (`core.bikeshare.plan` with
+  `rebalance=True`; two points, `bike` as Bikeshare's, `pickup_station` / `dropoff_station` as
+  Bikeshare's) whose docks are the station lists' own: the 3 best crowded stations near the start
+  (at least 3/4 full, renting, with a bike of the chosen type) and the 3 best near the destination
+  that need bikes (at most 1/4 full, returning), each ranked by the direction rule above, with no
+  distance cap (`rebalance_starts`, `rebalance_ends`). The quickest pair is chosen as on Bikeshare.
+- Always a dock at each end: no free-floating e-bike, no ending outside a dock (`ending:
+  "outside_dock"` is refused). With no availability feed, or no crowded station, or none that
+  needs bikes, the answer is 422 `no_bikeshare` saying which.
+- The steps say "which is crowded" and "which needs bikes"; the summary starts "Rebalance Ride";
+  `bikeshare.rebalance` is true.
+- The ride leg is Bikeshare's (`core.presets` `REBALANCE`): stress 80 with the stress-averse
+  exposure, classic hills -60 at 13 km/h (8 mph), e-bike hills -20 at 20 km/h (12 mph) on the
+  e-bike graph, descents costed past 4%.
+- Front end: `lib/presets.ts` (`usesBikeshare`), the station lists and route options as on
+  Bikeshare, in the Adventure group.
+- Tests: `tests/test_rebalance.py`, `frontend/src/lib/rebalance.test.ts`.
+
 ## Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
 
 An "Avoid" rating above red for a junction, given only by a person (the owner, an instance

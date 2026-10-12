@@ -2782,6 +2782,8 @@ class TestStressAverseWeights:
             ("bikeshare", None),
             # Bikeshare + Transit rides a bikeshare bike, calm as Bikeshare is.
             ("bikeshare-transit", None),
+            # Rebalance Ride rides a share bike, calm as Bikeshare is.
+            ("rebalance", None),
             ("kids", None),
             # Mountain Bike (slice 6): connecting roads up to LTS 2, LTS 4 only with no other way.
             ("mountain-bike", None),
@@ -2793,7 +2795,14 @@ class TestStressAverseWeights:
     def test_every_other_ride_keeps_1_2_3_and_no_hold(self) -> None:
         for name in presets.PRESETS:
             # Bikeshare is calm by default too (OWNER-DECISIONS 304(3): casual riders).
-            if name in ("trailmaxxing", "bikeshare", "bikeshare-transit", "kids", "mountain-bike"):
+            if name in (
+                "trailmaxxing",
+                "bikeshare",
+                "bikeshare-transit",
+                "rebalance",
+                "kids",
+                "mountain-bike",
+            ):
                 continue
             exposure = presets.exposure_for(name, presets.CARRYING_CARGO)
             assert exposure.weights == {"2": 0.0, "3": 1.0, "4": 2.0, "5": 3.0}, name

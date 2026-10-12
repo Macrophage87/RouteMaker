@@ -12,7 +12,7 @@ import { requestRoute, type ClosedStation, type RouteResponse, type RouteResult 
 import { closedReason, matchClosures, requestClosures, serviceDayOf } from "./lib/railClosures.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatSeconds } from "./lib/format.ts";
-import { presetLabel, type PresetId } from "./lib/presets.ts";
+import { presetLabel, usesBikeshare, type PresetId } from "./lib/presets.ts";
 import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
@@ -552,7 +552,7 @@ export function App() {
       },
       onResult: (plan: Plan, result: RouteResult) => {
         if (result.ok) {
-          if (plan.preset === "bikeshare" && keepsFirst(bikeshareOf(result.route)))
+          if (usesBikeshare(plan.preset) && keepsFirst(bikeshareOf(result.route)))
             firstAnswer.current = { key: sentPlanKey(plan.points, plan.preset, plan.dials), trip: optionsKey(plan.points), route: result.route };
           setRoute(result.route);
           setRoutedPoints(plan.points);
@@ -1756,7 +1756,7 @@ export function App() {
     setKeptOptions((kept) => keepOptions(kept, bikeshareOf(route), optionsKey(routedPoints)));
   }, [route, routedPoints]);
   const goOptions =
-    mode === "go" && preset === "bikeshare" && shown && keptOptions && keptOptions.key === optionsKey(points) && keptOptions.options.length > 1
+    mode === "go" && usesBikeshare(preset) && shown && keptOptions && keptOptions.key === optionsKey(points) && keptOptions.options.length > 1
       ? keptOptions.options
       : null;
   const pickOption = (index: number) => {
@@ -2119,7 +2119,7 @@ export function App() {
   };
   // A bikeshare ride's station choice (the Points section's, before): under Route, closed, as the mockup has it.
   const stations =
-    preset === "bikeshare" && points.length > 0 ? (
+    usesBikeshare(preset) && points.length > 0 ? (
       <Fold title="Choose a station" icon="bikeshare" className="stations-fold">
         <NearbyStations points={points} pins={stationChoice} onChoose={chooseStation} />
       </Fold>

@@ -586,6 +586,7 @@ const RIDE_ICON: Partial<Record<PresetId, IconName>> = {
   trailmaxxing: "trail",
   "bike-transit": "train",
   "bikeshare-transit": "train",
+  rebalance: "bikeshare",
 };
 
 /**

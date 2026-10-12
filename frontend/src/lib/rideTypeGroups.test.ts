@@ -31,7 +31,8 @@ test("the groups are the owner's: Transportation, Adventure (Fast with it), Grou
   );
   const [transport, adventure, group] = RIDE_GROUPS;
   assert.deepEqual([...transport.ids], ["default", "bike-transit", "bikeshare-transit", "bikeshare", "cargo", "ebike", "kids"]);
-  assert.deepEqual([...adventure.ids], ["fast", "trailmaxxing", "mountain-goat", "mountain-bike", "gravel"]);
+  // Rebalance Ride (REBALANCE-RIDE): Stephen named it an adventure mode.
+  assert.deepEqual([...adventure.ids], ["fast", "trailmaxxing", "mountain-goat", "mountain-bike", "gravel", "rebalance"]);
   assert.deepEqual([...group.ids], ["group-ride", "mass-ride"]);
 });
 

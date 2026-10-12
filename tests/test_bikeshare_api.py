@@ -99,6 +99,7 @@ class TestBikeshareAnswer:
         plan = data["bikeshare"]
         assert set(plan) == {
             "bike",
+            "rebalance",
             "ending",
             "start",
             "end",
@@ -331,7 +332,7 @@ class TestBikeshareValidation:
         for extra in ({"bike": "classic"}, {"ending": "dock"}):
             response = post(client, {"points": [UNION, DUPONT], "preset": preset, **extra})
             assert response.status_code == 400
-            assert "Bikeshare ride type only" in response.json()["error"]
+            assert "apply to Bikeshare and Rebalance Ride only" in response.json()["error"]
 
     def test_the_schema_describes_the_bikeshare_answer(self, client) -> None:
         schema = client.get("/api/openapi.json").json()

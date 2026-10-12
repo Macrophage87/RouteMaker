@@ -7,7 +7,7 @@ import { ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
 import { infoHelp } from "../lib/roadInfo.ts";
 import type { RouteResponse } from "../lib/api.ts";
 import { MAX_POINTS, type LonLat } from "../lib/geo.ts";
-import type { PresetId } from "../lib/presets.ts";
+import { usesBikeshare, type PresetId } from "../lib/presets.ts";
 import { accessibilityOn, paletteSetByAddress, setAccessibility } from "../stressStyle.js";
 import { DialsPanel } from "../DialsPanel.tsx";
 import { withLoop, type LoopView } from "../lib/loop.ts";
@@ -220,7 +220,7 @@ export function PointsSection(props: PointsSectionProps) {
         />
       )}
       {points.length === 1 && <p className="hint">{loneStartHint(preset, loopVias, accessMode)}</p>}
-      {preset === "bikeshare" && (
+      {usesBikeshare(preset) && (
         <p className="hint">
           Bikeshare plans take a start and an end only: the docks and the walks are chosen for you, unless you choose a station under Route. Remove
           any stops to plan one.

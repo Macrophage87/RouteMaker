@@ -96,7 +96,7 @@ test("App replays the first answer for a free e-bike's option and keeps a pinned
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   const send = app.slice(app.indexOf("send: async (plan) => {"), app.indexOf("const result = await requestRoute("));
   assert.match(send, /const replay = replayFor\(firstAnswer\.current, replayAsked\.current, sentPlanKey\(plan\.points, plan\.preset, plan\.dials\)\);\s*replayAsked\.current = null;\s*if \(replay\) \{\s*keptShown\.current = null;\s*return \{ ok: true, route: replay \};/);
-  assert.match(app, /if \(plan\.preset === "bikeshare" && keepsFirst\(bikeshareOf\(result\.route\)\)\)\s*firstAnswer\.current = \{ key: sentPlanKey\(plan\.points, plan\.preset, plan\.dials\)/);
+  assert.match(app, /if \(usesBikeshare\(plan\.preset\) && keepsFirst\(bikeshareOf\(result\.route\)\)\)\s*firstAnswer\.current = \{ key: sentPlanKey\(plan\.points, plan\.preset, plan\.dials\)/);
   const pick = app.slice(app.indexOf("const pickOption = "), app.indexOf("// A new answer: the Keep button"));
   assert.match(pick, /if \(replaysFirst\(option\)\) \{[\s\S]*?setNotice\(stationlessUnavailable\(placeLetter\(index\)\)\);\s*return;[\s\S]*?replayAsked\.current = first\.key;\s*setStationPins\(FIRST_ANSWER_PINS\);[\s\S]*?return;\s*\}\s*setStationPins\(optionPins\(option, points\)\);/);
   // The free e-bike's branch never sets the pins that would let the server choose again.
