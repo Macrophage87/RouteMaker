@@ -104,6 +104,13 @@ logger = logging.getLogger(__name__)
 # Metres between elevation samples. 3DEP at 1 arc-second is about 30 m on the
 # ground here, so a finer interval samples the same cell twice.
 ELEVATION_INTERVAL_M = 30
+# The rider's stops are matched to every way within this many metres of where they
+# were put, and the router takes the one the route costs least from (Valhalla's
+# location `radius`), rather than only the nearest. A stop put on the Fairfax County
+# Parkway Trail lies 4.5 m from a ramp and 5.9 m from the trail; matched to the ramp
+# alone, the route left the trail for 0.6 mi of the Avoid-rated parkway to reach it
+# (Stephen, 2026-10-11).
+STOP_RADIUS_M = 15
 
 # The whole request's budget, from its arrival to its answer. gunicorn's
 # --timeout is 60 s (GUNICORN_TIMEOUT in docker/api-entrypoint.sh), and this is
@@ -2318,7 +2325,10 @@ def plan(
         preset_name, stress_dial, hills_dial, assist=assist, avoid_gravel=avoid_gravel
     )
     request = {
-        "locations": [{"lon": lon, "lat": lat, "type": "break"} for lon, lat in points],
+        "locations": [
+            {"lon": lon, "lat": lat, "type": "break", "radius": STOP_RADIUS_M}
+            for lon, lat in points
+        ],
         "costing": "bicycle",
         "costing_options": costing,
         "elevation_interval": ELEVATION_INTERVAL_M,

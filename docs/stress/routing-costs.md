@@ -163,6 +163,12 @@ at most 3 (`crossing_targets`, `:740-752`). Mass Ride is skipped (`ctx.group`).
   and Avoid meters plus red junction cost) is more than 1 m over the router's first
   route, for the whole trip or for any leg (`more_lts4`, `refine.py:959-1012`;
   `routing._hold_refuses`, `routing.py:1000-1006`).
+- **No doubling back** (trail seek and wide search, every ride): refuse a candidate that
+  rides back over an edge it already rode in the same leg by more than 164 ft [50 m]
+  beyond the route it would replace (`retrace_m`, `doubles_back`, `RETRACE_SLACK_M`).
+- **Stop matching**: the rider's locations go to the router with a 49 ft [15 m]
+  `radius` (`routing.STOP_RADIUS_M`), so a stop is reached by the cheapest way within
+  that distance, not only the nearest.
 
 ### The top of the slider (100): strict order and worth rule
 

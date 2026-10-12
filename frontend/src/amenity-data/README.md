@@ -125,13 +125,21 @@ The file also has `"also"`, naming the Throne list as the second source.
 
 ## Status
 
-The committed file predates the two 2026-10-10 rules and the 2026-10-11
-secured-site rule above: it still has restroom nodes beside their buildings,
-historic springs, and any restroom inside an airport, base or prison, until
-the next refresh (below). Its Throne units are current: on 2026-10-11
-`--throne-only` added the 10 open units (none was within 50 ft (15 m) of an
-OSM restroom), each marked approximate, giving 2,273 points, 142,839 bytes,
-sha256 `0b646bc46bc441ab8893c2b48a974106915d9b33026edd0265c3ff5163aa4d5f`. Three OSM
+The OSM points were generated on the build host on 2026-10-11 from the
+2026-10-09 extract (`<DATA_ROOT>/extracts/source.osm.pbf`, the one the v0.4.0
+rebuild used), commit 57c090a, with both 2026-10-10 rules: 2,250 points, all
+inside the coverage box, 140,381 bytes, sha256
+`72b3ad11884b94096535b9299da2e89e4466638414ce41135cb94f26c480446b` (v0.4.0).
+That file predates the 2026-10-11 secured-site rule above, so it may still
+have a restroom inside an airport, base or prison until the next refresh
+(below).
+
+Its Throne units are current: `--throne-only` on that file adds the 10 open
+units (none within 50 ft (15 m) of an OSM restroom), each marked approximate,
+giving 2,260 points, 142,007 bytes, sha256
+`1e708270be553ee9e5ac33a7bb010c927b474d62f031bb42ea0e1c2d7b5d37a9` (rerun on
+2026-10-12 when main's v0.4.1 was merged into release/v0.5.0; the output
+matched the committed file byte for byte). Three OSM
 restroom nodes lie near listed units and may be the same Throne mapped in OSM
 (their tags are not in the file): `n11958790038` about 550 ft (169 m) from
 Columbia Heights, `n11958790039` about 700 ft (215 m) from the Superior Court
@@ -142,20 +150,13 @@ address point. The rebuild merges them (within 1,000 ft (300 m)) if they carry
 `operator=Throne` (or brand or name); otherwise check them and move the listed
 unit onto the node with `"exact": true`.
 
-The figures below are the 2026-10-09 build's, before the Throne units.
-
-Generated on the build host on 2026-10-09 from that day's extract
-(`<DATA_ROOT>/extracts/source.osm.pbf`), commit dce6451: 2,263 points, all
-inside the coverage box, 141,213 bytes, sha256
-`496bae39f7d0741cf2261e40d20937f6fd652c6dbea996d56c58d1a21dd281e1`.
-
 | Kind | Points |
 | --- | --- |
 | drinking water | 762 (20 of them at a restroom) |
-| untreated water | 175 |
-| flush restroom | 206 |
-| portable, pit or composting toilet | 286 |
-| restroom, type not mapped | 854 |
+| untreated water | 174 |
+| flush restroom | 212 (10 of them Throne units) |
+| portable, pit or composting toilet | 285 |
+| restroom, type not mapped | 847 |
 
 To rebuild, from the repository root on that host:
 
@@ -178,14 +179,11 @@ marked as a Throne by its own tags in a full build is matched again only within
 Rerun the command above on a newer extract. Nothing else changes: the map reads
 the file as it is.
 
-The first refresh after the 2026-10-10 and 2026-10-11 rules: expect fewer
-restrooms (airside, on base and in prisons, as well as the merges below), the
-count the build prints as "left out inside airports, military sites and
-prisons" to check against the map; and fewer restrooms (each node
-merged into its building drops one point, and a merged place takes the
-building's `w` id in place of the node's `n` id) and fewer untreated water
-points (historic springs). Update the figures and digest in "Status", drop the
-note that the file predates the rules, and commit the file. The test
+The first refresh after the 2026-10-11 rule: expect fewer restrooms
+(airside, on base and in prisons), the count the build prints as "left out
+inside airports, military sites and prisons" to check against the map. Update
+the figures and digest in "Status", drop the note that the file predates the
+rule, and commit the file. The test
 `test_bundled_file_is_well_formed` checks the result; the front end needs no
 change.
 
