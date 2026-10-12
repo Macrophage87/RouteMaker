@@ -36,5 +36,10 @@ and the rebuild's elevation tiles: 484,351 segments read, **3,750 climbs**, 85 s
 1,325,586 bytes (402,989 with `gzip -9`), sha256
 `2921963b0f42d61fef6907228ca7e516a92f782c4c950e9503d411134bf7331a`. The build named 19 elevation
 cells it had no ground for (N36-N37 and the cells east of 76 W or west of 78 W); all are outside
-the coverage box, so no climb inside it is left out. Writing it again is in docs/OPERATIONS.md,
+the coverage box, so no climb inside it is left out.
+
+One climb in the file is taken off by hand and is neither drawn nor sought: `bd93dd04dc`, a Cat 4
+down into the Travilah quarry (owner report 2026-10-12; `src/routemaker/climb_exclusions.py`, with
+the same ids in `src/lib/climbExclusions.ts`). So the map shows 3,749 climbs (Cat 4: 366). The
+next `build_climbs` leaves it out of the file itself, with any way whose bike access is closed. Writing it again is in docs/OPERATIONS.md,
 "The Climbs layer".

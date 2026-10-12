@@ -112,6 +112,9 @@ MILITARY_REPORT_NAME = "military-closures.csv"
 # And every way inside a secured federal compound (owner report 2026-10-06;
 # `restricted_areas.secured_closures`), the same columns, `facility` for `installation`.
 SECURED_REPORT_NAME = "secured-closures.csv"
+# And every way inside a quarry, a landfill or an industrial area (owner report
+# 2026-10-12; `restricted_areas.works_closures`), the same columns, `site` for `installation`.
+WORKS_REPORT_NAME = "works-closures.csv"
 
 
 def write_reports(work_dir: Path, files: dict[str, str], what: str) -> None:
@@ -764,6 +767,9 @@ class RebuildContext:
     secured_through: list[tuple[list[int], list[int]]] = field(default_factory=list)
     # The curated compounds (`restricted_areas.SECURED_AREAS`) the extract has no area for.
     secured_missing: list[str] = field(default_factory=list)
+    # The ways inside a quarry, a landfill or an industrial area, closed or left open
+    # (`restricted_areas.works_closures`; owner report 2026-10-12; works-closures.csv).
+    works_ways: list[restricted_areas.MilitaryWay] = field(default_factory=list)
     border_nodes_by_way: dict[int, list[borders.BorderNode]] = field(default_factory=dict)
     override_report: overrides.OverrideReport | None = None
     # The fixture ways an approved access override wrote a `bicycle`,
@@ -840,6 +846,7 @@ class RebuildContext:
             "border_nodes_by_way",
             "military_ways",
             "secured_ways",
+            "works_ways",
         ):
             setattr(self, name, type(getattr(self, name))())
         self.reference = None
@@ -2567,6 +2574,16 @@ def build_handlers(
             skip={m.way_id for m in context.military_ways},
         )
         secured_closed = {m.way_id for m in context.secured_ways if m.closed}
+        # And a working site's: a quarry, a landfill or an industrial area (owner report
+        # 2026-10-12: the Travilah quarry's haul roads, `highway=track` and nothing else,
+        # carried a Cat 4 climb), but for the ways the two rules above judged.
+        context.works_ways = restricted_areas.works_closures(
+            placed,
+            areas.get(restricted_areas.WORKS, []),
+            reopened=context.bicycle_override_ways,
+            skip={m.way_id for m in (*context.military_ways, *context.secured_ways)},
+        )
+        works_closed = {m.way_id for m in context.works_ways if m.closed}
         context.secured_missing = restricted_areas.secured_missing(areas[restricted_areas.SECURED])
         if context.secured_missing:
             logger.warning(
@@ -2576,13 +2593,19 @@ def build_handlers(
             )
         context.short_paths_hidden |= {
             m.way_id
-            for m in (*context.military_ways, *context.secured_ways)
+            for m in (*context.military_ways, *context.secured_ways, *context.works_ways)
             if m.closed and m.highway not in restricted_areas.TRAIL_CLASS_HIGHWAY
         }
         logger.info("%s", restricted_areas.military_summary(context.military_ways))
         logger.info(
             "%s",
             restricted_areas.military_summary(context.secured_ways, "secured federal compounds"),
+        )
+        logger.info(
+            "%s",
+            restricted_areas.military_summary(
+                context.works_ways, "quarries, landfills and industrial areas"
+            ),
         )
         missing_pentagon = restricted_areas.pentagon_open_missing(context.military_ways)
         if missing_pentagon:
@@ -2615,6 +2638,7 @@ def build_handlers(
                 SECURED_REPORT_NAME: restricted_areas.military_report_csv(
                     context.secured_ways, "facility"
                 ),
+                WORKS_REPORT_NAME: restricted_areas.military_report_csv(context.works_ways, "site"),
             },
             "military-closure",
         )
@@ -2628,6 +2652,7 @@ def build_handlers(
             military=military_closed,
             secured=secured_closed,
             reopened=context.bicycle_override_ways,
+            works=works_closed,
         )
         context.no_bicycle = nobike.reasons
         context.walk_bike = nobike.walk_bike

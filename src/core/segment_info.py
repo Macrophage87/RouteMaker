@@ -186,6 +186,11 @@ ACCESS_WORDS = {
         "Closed: inside a secure government site"
         " (closed unless there is evidence bikes are allowed)",
     ),
+    "works": (
+        False,
+        "Closed: inside a quarry, landfill or industrial site"
+        " (closed unless there is evidence bikes are allowed)",
+    ),
     "bicycle_no": (False, "Closed: no bicycles (a no-bike sign or rule, as mapped)"),
     "bicycle_use_sidepath": (False, "Closed: bicycles must use the side path"),
     "motorway": (False, "Closed: a freeway"),
@@ -722,7 +727,7 @@ def access_rows(row: dict, bicycle: bool | None) -> tuple[bool | None, list[dict
         source = (
             OWNER
             if reason.startswith("override")
-            else (CLASSIFIER if reason in ("military", "secured", "err_closed") else OSM)
+            else (CLASSIFIER if reason in ("military", "secured", "works", "err_closed") else OSM)
         )
         return False, [_row("Bike access", known[1], source)]
     why = "Closed to bicycles" + (
@@ -775,6 +780,7 @@ ACCESS_SHORT = {
     "override_closed": "owner override",
     "military": "military area",
     "secured": "secure government site",
+    "works": "quarry or industrial site",
     "bicycle_no": "no-bike rule",
     "bicycle_use_sidepath": "use the side path",
     "motorway": "freeway",
