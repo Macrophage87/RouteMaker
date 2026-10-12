@@ -848,8 +848,9 @@ Under a route the overlay's lines fade (`overlayFade`): to 0.45 under a Mass
 Ride's capacity route (`MASS_NETWORK_DIMMED`), to 0.8 under any other
 (`ROUTE_OVERLAY_FADE`; Stephen: "mute most of the colors when there's a
 route, for default too"). The fade multiplies each layer's own opacity
-(`fadedOpacity` scales a zoom step's outputs, so the zoom fades stay); Avoid,
-the hazard rails and the trail names keep full strength (`keptUnderRoute`).
+(`fadedOpacity` scales a zoom step's outputs, so the zoom fades stay); Avoid
+roads fade too (the route will not ride them); the hazard rails and the trail
+names keep full strength (`keptUnderRoute`).
 With the High contrast switch on there is no fade, since the overlay's 3:1
 edges are measured at its own opacities. `lib/routeCorridor.test.ts` holds
 the widths, the contrasts, the fade and the wiring.

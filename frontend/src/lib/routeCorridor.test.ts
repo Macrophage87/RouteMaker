@@ -121,9 +121,9 @@ test("every faded stress layer's opacity keeps ['zoom'] only at the top of its e
   }
 });
 
-test("Avoid, the hazard rails and the trail names are kept at full strength under a route", () => {
-  for (const id of ["stress-5", "stress-casing-5", "stress-unpaved-5", MASS_LAYER_IDS.avoid, MASS_LAYER_IDS.avoidCasing, "mass-hazard-caution-left"]) assert.ok(keptUnderRoute(id), id);
-  for (const id of ["stress-1", "stress-casing-4", "facility-protected", ...NETWORK]) assert.ok(!keptUnderRoute(id), id);
+test("the hazard rails and the trail names are kept at full strength under a route; Avoid roads fade with the rest", () => {
+  for (const id of ["mass-hazard-caution-left", "mass-hazard-warning-casing-right"]) assert.ok(keptUnderRoute(id), id);
+  for (const id of ["stress-1", "stress-casing-4", "facility-protected", "stress-5", "stress-casing-5", "stress-unpaved-5", MASS_LAYER_IDS.avoid, MASS_LAYER_IDS.avoidCasing, ...NETWORK]) assert.ok(!keptUnderRoute(id), id);
 });
 
 test("setRouteSections: a Mass Ride route widens the casing, shows the band, dims the capacity roads; clearing it puts them back", () => {
@@ -132,7 +132,7 @@ test("setRouteSections: a Mass Ride route widens the casing, shows the band, dim
   assert.equal(paint["route-casing.line-width"], ROUTE_CORRIDOR_CASING_WIDTH);
   assert.equal(paint[`${ROUTE_BAND_LAYER_ID}.line-opacity`], 1);
   for (const id of NETWORK) assert.equal(paint[`${id}.line-opacity`], MASS_NETWORK_DIMMED, id);
-  assert.equal(paint[`${MASS_LAYER_IDS.avoid}.line-opacity`], undefined, "Avoid is not touched");
+  assert.equal(paint[`${MASS_LAYER_IDS.avoid}.line-opacity`], MASS_NETWORK_DIMMED, "Avoid roads fade too: the route will not ride them");
   setRouteSections(map as never, MASS_ROUTE as never, true);
   for (const id of NETWORK) assert.equal(paint[`${id}.line-opacity`], MASS_NETWORK_DIMMED, `a stale route keeps the roads dimmed: ${id}`);
   setRouteSections(map as never, null, false);
@@ -149,7 +149,8 @@ test("setRouteSections: a default route gets the corridor too and fades the stre
   const stress2 = LAYERS.find((l) => l.id === "stress-2")!;
   assert.deepEqual(paint["stress-2.line-opacity"], fadedOpacity(stress2.paint?.["line-opacity"], ROUTE_OVERLAY_FADE));
   assert.equal(paint["facility-protected.line-opacity"], ROUTE_OVERLAY_FADE);
-  assert.equal(paint["stress-5.line-opacity"], undefined, "Avoid is not touched");
+  const stress5 = LAYERS.find((l) => l.id === "stress-5")!;
+  assert.deepEqual(paint["stress-5.line-opacity"], fadedOpacity(stress5.paint?.["line-opacity"], ROUTE_OVERLAY_FADE), "Avoid roads fade too");
   setRouteSections(map as never, null, false);
   assert.deepEqual(paint["stress-2.line-opacity"], stress2.paint?.["line-opacity"]);
   assert.equal(paint["facility-protected.line-opacity"], 1);

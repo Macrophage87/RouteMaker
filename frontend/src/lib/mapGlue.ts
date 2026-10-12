@@ -346,12 +346,13 @@ export function routeOverlayFade(route: Pick<RouteResponse, "geometry" | "stress
 export const ROUTE_BAND_LAYER_ID = "route-band";
 
 /**
- * Whether a layer of the overlay stays at full strength under a route: Avoid (the stress map's
- * tier 5 and the capacity map's own) and a Mass Ride's hazard rails are warnings, and the trail
- * names are words, not colours.
+ * Whether a layer of the overlay stays at full strength under a route: a Mass Ride's hazard rails
+ * are warnings on roads the route may ride, and the trail names are words, not colours. Avoid
+ * roads fade with the rest (Stephen, 2026-10-12: "The avoid roads don't need to be that prominent
+ * as we're not going to ride them."); the route's own Avoid sections keep their magenta.
  */
 export function keptUnderRoute(id: string): boolean {
-  return /^stress-(casing-|unpaved-)?5$/.test(id) || id.startsWith("mass-avoid") || id.startsWith("mass-hazard") || id === MTB_LABEL_LAYER_ID;
+  return id.startsWith("mass-hazard") || id === MTB_LABEL_LAYER_ID;
 }
 
 /**
