@@ -1748,13 +1748,19 @@ export function App() {
   };
   // A new answer: the Keep button's line was about the route before it.
   useEffect(() => setKeepSpoken({ text: "", count: 0 }), [answer]);
-  // The layer in words: the points along the route shown, in riding order.
+  // The water and restrooms along the route shown, in riding order: the route's "Water and restrooms" fold.
+  // It is route data, not map clutter, so it is listed with the map layer off too (review of PR #96); the
+  // layer's two filters still apply. The file is loaded once a route is shown.
+  const routeShown = shown !== null;
+  useEffect(() => {
+    if (routeShown) void ensureWater();
+  }, [routeShown, ensureWater]);
   const waterAlong = useMemo(
     () =>
-      waterOn && waterData && shown
+      waterData && shown
         ? waterAlongRoute(shown.geometry.coordinates, waterData.filter((p) => waterVisible(p, waterPrefs)))
         : null,
-    [waterOn, waterData, waterPrefs, shown],
+    [waterData, waterPrefs, shown],
   );
   // The Climbs layer in words: the climbs the route rides, in riding order.
   const climbsAlong = useMemo(
@@ -2097,7 +2103,7 @@ export function App() {
         mode, actions, stations, go,
         stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef,
         confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
-        narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials, waterOn,
+        narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials,
         waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs,
         rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong,
       }}
