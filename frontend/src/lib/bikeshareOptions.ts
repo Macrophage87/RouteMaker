@@ -71,3 +71,79 @@ export function optionName(letter: string, option: BikeshareOption): string {
 export function optionSaid(letter: string, option: BikeshareOption): string {
   return `Option ${letter}: picking up at ${option.pickup.name}. Planning it.`;
 }
+
+// ---- A free-floating e-bike (follow-up review of PR #95) ----
+
+/**
+ * Whether an option is replayed from the first answer instead of re-planned: a free-floating e-bike has no
+ * pick-up station id to ask for again, so its pins would leave the pick-up to the server, which may plan the
+ * best option again (another e-bike, or a dock). The server offers such an option only as the plan's own
+ * start, the first answer's (`core.bikeshare._options`, #94), so that answer is the option's plan.
+ */
+export function replaysFirst(option: BikeshareOption): boolean {
+  return option.pickup_station === null;
+}
+
+/** The pins that replay the first answer: none, as the first answer was asked for. */
+export const FIRST_ANSWER_PINS: Pins = {};
+
+function stable(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stable);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value as Record<string, unknown>)
+        .sort()
+        .map((k) => [k, stable((value as Record<string, unknown>)[k])]),
+    );
+  }
+  return value;
+}
+
+/**
+ * A plan as sent (its points, ride type and dials, the chosen stations with them), for matching a request to
+ * the first answer. Unlike the link's key it holds the stations, so a pinned re-plan never matches it.
+ */
+export function sentPlanKey(points: readonly LonLat[], preset: string, dials: object): string {
+  // A dock ending is the default, sent or not (an option's press sets it), so it is the same plan either way.
+  const { ending, ...rest } = dials as { ending?: unknown };
+  return JSON.stringify(stable([points, preset, ending === undefined || ending === "dock" ? rest : { ...rest, ending }]));
+}
+
+/** The answer that listed a trip's options, kept to replay a free-floating e-bike's option. */
+export interface FirstAnswer<R> {
+  /** sentPlanKey of the plan it answered. */
+  key: string;
+  /** optionsKey of its trip. */
+  trip: string;
+  route: R;
+}
+
+/**
+ * Whether an answer is kept as the first answer: a Bikeshare answer listing two or more options is the
+ * answer the list is kept from (keepOptions' "fresh" rule), so it is the one to replay.
+ */
+export function keepsFirst(plan: BikesharePlan | null): boolean {
+  return (plan?.options?.length ?? 0) > 1;
+}
+
+/**
+ * The route to answer a request with, without asking the planner: the first answer, only when a free e-bike's
+ * option asked for it (`asked`, its key) and the request is exactly the plan it answered. Else null (sent).
+ */
+export function replayFor<R>(first: FirstAnswer<R> | null, asked: string | null, requestKey: string): R | null {
+  if (!first || asked === null || asked !== first.key || requestKey !== first.key) return null;
+  return first.route;
+}
+
+/** What is said when a free e-bike's option is shown again from the first answer (nothing is re-planned). */
+export function optionReplaySaid(letter: string, option: BikeshareOption): string {
+  return `Option ${letter}: picking up at ${option.pickup.name}, as first planned.`;
+}
+
+/**
+ * Said when a free e-bike's option cannot be shown again (the ride's settings changed since the first answer):
+ * it is not re-planned, since asking again could plan another bike or a dock.
+ */
+export function stationlessUnavailable(letter: string): string {
+  return `Option ${letter}, an e-bike outside a dock, came from the first plan, and the ride's settings have changed since, so it cannot be planned again.`;
+}

@@ -150,7 +150,6 @@ export interface RouteSectionProps {
   startRideRef: RefObject<HTMLButtonElement | null>;
   rideSize: number | undefined;
   setDials: Dispatch<SetStateAction<Dials>>;
-  waterOn: boolean;
   waterStatus: WaterStatus;
   waterAlong: WaterAlong[] | null;
   addWaterStop: (item: WaterAlong) => void;
@@ -176,7 +175,7 @@ export interface RouteSectionProps {
 
 /** The planner's Route section: planning, the long-ride question, errors, the route summary and Start ride's question. */
 export function RouteSection(props: RouteSectionProps) {
-  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials, waterOn, waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs, rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go } = props;
+  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs, rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go } = props;
   const goMode = mode === "go";
   return (
     <section key="route" aria-labelledby="route-heading" aria-busy={stale} className={goMode ? "route-section go-route" : "route-section"}>
@@ -254,7 +253,7 @@ export function RouteSection(props: RouteSectionProps) {
           ride={{ onStart: startRide, startRef: startRideRef }}
           rideSize={rideSizeOf({ rideSize })}
           onEnding={(ending) => setDials((d) => ({ ...d, ending }))}
-          water={waterOn && waterStatus === "ready" ? { items: waterAlong, onAddStop: addWaterStop } : null}
+          water={waterStatus === "ready" ? { items: waterAlong, onAddStop: addWaterStop } : null}
           climbs={climbsOn && climbsStatus === "ready" ? climbsAlong : null}
           actions={{ ...actions, shown, routedPoints, federalRoute }}
           mode={mode}
@@ -506,7 +505,7 @@ export function RouteSummary({
   /** Mass Ride's anticipated ride size, riders (PLAN items 128, 139): the corker load's group length. */
   rideSize: number;
   onEnding: (ending: Ending) => void;
-  /** Water and restrooms along the route, while that layer is on and loaded; else null. */
+  /** Water and restrooms along the route, once loaded (listed with the map layer off too); else null. */
   water: { items: WaterAlong[] | null; onAddStop: (item: WaterAlong) => void } | null;
   /** The climbs the route rides, while the Climbs layer is on and loaded; else null. */
   climbs: ClimbAlong[] | null;
