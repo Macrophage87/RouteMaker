@@ -244,10 +244,6 @@ button.access-link {
   padding: 4px 14px 10px;
 }
 
-.panel-body > .beta-banner {
-  margin: 8px 14px 4px;
-}
-
 .panel-body[hidden] {
   display: none;
 }
@@ -1093,10 +1089,12 @@ button.secondary {
   white-space: nowrap;
 }
 
-/* Beside the panel, not under it: a credit hidden behind the panel is not shown. */
+/* Beside the panel, not under it: a credit hidden behind the panel is not shown. Clear of the
+   beta build's "Beta" chip too (lib/betaBanner.ts), which sits just right of the panel. */
 @media (min-width: 721px) {
   .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib {
-    max-width: calc(100vw - 450px);
+    box-sizing: border-box;
+    max-width: calc(100vw - 510px);
   }
 }
 
@@ -2172,35 +2170,78 @@ dialog.weight-dialog h2 {
   margin: 2px 0 0;
 }
 
-/* The private-beta notice (lib/betaBanner.ts): only in a build made with
-   VITE_BETA=1. The first child of the panel's body, under its header, over the
-   scrolling part: it never overlays the map or the sheet (final review,
-   accessibility S2), and its text follows the rider's font size. On a short or
-   zoomed screen the whole panel scrolls as one (the "short screens" rule at the
-   end of the sidebar block), so the banner scrolls with the planner and its
-   Dismiss is never clipped (re-check S1; the sidebar review's S1 and B2). */
-.beta-banner {
+/* The private-beta notice (lib/betaBanner.ts): only in a build made with VITE_BETA=1.
+   A "Beta" chip in the map's bottom-left corner, the one corner nothing else uses: the zoom
+   buttons and Map tools are top right, the credits and scales bottom right, Undo / Redo, the
+   Food and Water chips and Go's bar top left, and Ride mode's 311 button on the right edge
+   (the chip is not shown while riding). On a computer it sits just right of the planner; on
+   a phone it rides above the sheet, as the bottom-right controls do. Its note opens upwards
+   over the map. Its text follows the rider's font size; the chip is 44 px at least. */
+.beta-chip {
+  position: absolute;
+  left: 424px;
+  bottom: 10px;
+  z-index: 2;
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 8px 0 4px;
-  padding: 6px 6px 6px 10px;
-  background: var(--bg);
-  color: var(--text);
-  border: 2px solid var(--border);
-  border-radius: 8px;
+  flex-direction: column-reverse;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: calc(100% - 436px);
   font-size: 0.875rem;
 }
 
-.beta-banner p {
-  margin: 0;
-  flex: 1;
-}
-
-.beta-banner button {
+.beta-chip-button {
   min-height: 44px;
   min-width: 44px;
-  flex: none;
+  padding: 0 14px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--swatch-border);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.beta-chip-note {
+  width: min(20rem, 100%);
+  padding: 8px 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+
+.beta-chip-note[hidden] {
+  display: none;
+}
+
+.beta-chip-note p {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .beta-chip {
+    left: 10px;
+    max-width: calc(100% - 20px);
+  }
+
+  .app:has(.panel.open) .beta-chip {
+    bottom: calc(48% + 10px);
+  }
+
+  .app:has(.panel.closed) .beta-chip {
+    bottom: 76px;
+  }
+
+  .app.go-mode:has(.panel.go-peek) .beta-chip {
+    bottom: calc(34% + 10px);
+  }
+
+  .app.go-mode:has(.panel.go-half) .beta-chip {
+    bottom: calc(56% + 10px);
+  }
 }
 
 /* --- The sidebar redesign (OWNER-DECISIONS 312, mockup v3): Points first, the Ride line, folds, the
