@@ -1952,10 +1952,18 @@ or a suggestion, and `my_go` is left out of the beta's data shipment (`scripts/b
 The Own Bike + Transit and Bikeshare + Transit ride types read one file:
 `$DATA_ROOT/tiles/transit/transit-schedule.json` (`settings.TRANSIT_SCHEDULE_PATH`). It sits under
 the tiles folder, which the web container already mounts read-only, so there is no new mount, and
-a weekly rebuild leaves it alone (it replaces only its own variant folders). Without the file, a transit plan answers 503
-`transit_unavailable` ("Transit times are not available on this server right now."), and the map
-greys no stations (`GET /api/transit/closures` answers 503 too). Every other ride type is
-unaffected.
+a weekly rebuild leaves it alone (it replaces only its own variant folders). Without the file,
+transit plans use Metro alone, on its committed typical timetable
+(`src/core/transitdata/metro-typical.json`, from wmata.com; docs/SOURCES.md). A file that cannot
+be read answers 503 `transit_unavailable` ("Transit times are not available on this server right
+now."), and `GET /api/transit/closures` answers 503 too. Every other ride type is unaffected.
+
+**No WMATA key yet.** Build without it: the fetch skips WMATA, and the build reports
+"wmata-rail: no feed given, left out (the API runs Metro on its typical timetable)". MARC and
+the MTA systems come from their GTFS, Metro from the typical timetable, and Metrobus is left out.
+Once a build includes WMATA's rail GTFS, it replaces the typical timetable with no other step.
+When WMATA changes its published hours or train frequency, edit `hours` and `lines` in
+metro-typical.json from each line's page (`https://www.wmata.com/ridertools/line/<colour>/info`).
 
 **Build it on the home PC.** The agencies' servers cannot be reached from the cloud.
 

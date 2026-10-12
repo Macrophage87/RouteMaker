@@ -35,14 +35,15 @@ const DEPARTURE: TransitDeparture = {
   close: false,
   planned_at: "2026-10-13T07:00:00-04:00",
   point: [-77.0063, 38.8973],
-  label: "MARC 7:42 am · 6 min spare",
+  label: "MARC 7:42 am scheduled · 6 min spare",
+  source: "scheduled",
 };
 const at = (clock: string) => Date.parse(`2026-10-13T${clock}-04:00`);
 
 test("the departure is said plainly: which, when, from where, when you arrive, and the one after", () => {
   assert.equal(
     departureText(DEPARTURE),
-    "MARC Penn Line 7:42 am from Union Station. You arrive 7:36 am (6 min spare). Next after that: 8:15 am.",
+    "MARC Penn Line 7:42 am scheduled from Union Station. You arrive 7:36 am (6 min spare). Next after that: 8:15 am scheduled.",
   );
   assert.match(departureText({ ...DEPARTURE, next: null, next_at: null }), /No later one within the hour\.$/);
   assert.equal(clockOf("2026-10-13T13:05:00-04:00"), "1:05 pm");
@@ -74,9 +75,9 @@ test("the timer reads mm:ss, never below zero", () => {
 });
 
 test("the map's label is the plan's words, and the countdown when cutting it close", () => {
-  assert.equal(mapLabel(DEPARTURE, at("07:00:00")), "MARC 7:42 am · 6 min spare");
-  assert.equal(mapLabel(DEPARTURE, at("07:01:30")), "MARC 7:42 am · in 40:30 · 04:30 spare");
-  assert.equal(mapLabel(DEPARTURE, at("07:07:00")), "MARC 7:42 am · missed");
+  assert.equal(mapLabel(DEPARTURE, at("07:00:00")), "MARC 7:42 am scheduled · 6 min spare");
+  assert.equal(mapLabel(DEPARTURE, at("07:01:30")), "MARC 7:42 am scheduled · in 40:30 · 04:30 spare");
+  assert.equal(mapLabel(DEPARTURE, at("07:07:00")), "MARC 7:42 am scheduled · missed");
 });
 
 test("the label sits above the stop, or below when the start or end marker is near and above it", () => {
@@ -95,8 +96,10 @@ test("milestones are said once each at 10, 5 and 2 minutes, and a miss says what
   assert.equal(milestone(305, 299), 300);
   assert.equal(milestone(121, 119), 120);
   assert.equal(milestone(119, 100), null);
-  assert.equal(milestoneSaid(DEPARTURE, 300), "MARC 7:42 am leaves in 5 minutes.");
-  assert.equal(missedSaid(DEPARTURE), "You may miss the 7:42 am MARC. Planning the next departure.");
+  assert.equal(milestoneSaid(DEPARTURE, 300), "MARC 7:42 am scheduled leaves in 5 minutes.");
+  assert.equal(missedSaid(DEPARTURE), "You may miss the MARC 7:42 am scheduled. Planning the next departure.");
+  // Live times (v0.7) will say so with the same words.
+  assert.equal(milestoneSaid({ ...DEPARTURE, source: "live" }, 300), "MARC 7:42 am live leaves in 5 minutes.");
 });
 
 test("the countdown is not a live region, and the map's label is hidden from screen readers", () => {

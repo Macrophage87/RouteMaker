@@ -1,0 +1,168 @@
+{
+  "about": "Metro's typical timetable (core.transit.typical_metro): what Metrorail plans use while no WMATA rail GTFS is built into the installed schedule; a schedule with WMATA's own GTFS replaces it. The owner, 2026-10-12: \"Just use defaults. The wmata website has a typical timetable for rail.\" `hours`: open and close per day type, service-day clock (26:00 is 2 am the next morning); `holiday`: the day type a federal holiday runs (an assumption: WMATA publishes each holiday's hours separately). `lines`: minutes between trains per time band, as each line's wmata.com info page gives them (read 2026-10-12; [a, b] is \"every a-b min\"; open and close are the day's hours). `services`: each line's stops in order; a line with two services alternates its trains between them (Silver: half to New Carrollton; Yellow: half to Greenbelt; frontend/src/rail-data/metro-line-corrections.json cites WMATA for both). `run_s`: seconds from each station to the next, an estimate (wmata.com gives no run times): the straight line between the two stations at 33 mph (53 km/h), Metro's average speed including stops, at least 90 s, to the nearest 10 s (docs/SOURCES.md). `stations`: the map's 98 Metro stations with each one's bike entrance, as scripts/build_transit_schedule.py metro_stations() reads them from frontend/src/rail-data/ (tests/test_transit.py holds the two equal).",
+  "read": "2026-10-12",
+  "credit": "WMATA, wmata.com (typical service)",
+  "hours": {"monday-thursday": ["05:00", "24:00"], "friday": ["05:00", "26:00"], "saturday": ["06:00", "26:00"], "sunday": ["06:00", "24:00"]},
+  "holiday": "sunday",
+  "lines": {
+    "Red": {
+      "info": "https://www.wmata.com/ridertools/line/red/info",
+      "every": {
+        "weekday": [["open", "07:00", 6], ["07:00", "09:00", [4, 5]], ["09:00", "16:00", 6], ["16:00", "18:00", [4, 5]], ["18:00", "21:30", 6], ["21:30", "close", 10]],
+        "saturday": [["open", "21:30", 6], ["21:30", "close", 10]],
+        "sunday": [["open", "21:30", 6], ["21:30", "close", 10]]
+      }
+    },
+    "Orange": {
+      "info": "https://www.wmata.com/ridertools/line/orange/info",
+      "every": {
+        "weekday": [["open", "07:00", 12], ["07:00", "09:00", [9, 10]], ["09:00", "16:00", 12], ["16:00", "18:00", [9, 10]], ["18:00", "21:30", 12], ["21:30", "close", 15]],
+        "saturday": [["open", "21:30", 12], ["21:30", "close", 15]],
+        "sunday": [["open", "21:30", 12], ["21:30", "close", 10]]
+      }
+    },
+    "Blue": {
+      "info": "https://www.wmata.com/ridertools/line/blue/info",
+      "every": {
+        "weekday": [["open", "07:00", 12], ["07:00", "09:00", [9, 10]], ["09:00", "16:00", 12], ["16:00", "18:00", [9, 10]], ["18:00", "21:30", 12], ["21:30", "close", 15]],
+        "saturday": [["open", "21:30", 12], ["21:30", "close", 15]],
+        "sunday": [["open", "21:30", 12], ["21:30", "close", 15]]
+      }
+    },
+    "Silver": {
+      "info": "https://www.wmata.com/ridertools/line/silver/info",
+      "every": {
+        "weekday": [["open", "07:00", 12], ["07:00", "09:00", [9, 10]], ["09:00", "16:00", 12], ["16:00", "18:00", [9, 10]], ["18:00", "21:30", 12], ["21:30", "close", 15]],
+        "saturday": [["open", "21:30", 12], ["21:30", "close", 15]],
+        "sunday": [["open", "21:30", 12], ["21:30", "close", 15]]
+      }
+    },
+    "Green": {
+      "info": "https://www.wmata.com/ridertools/line/green/info",
+      "every": {
+        "weekday": [["open", "07:00", 6], ["07:00", "09:00", 6], ["09:00", "16:00", 6], ["16:00", "18:00", 6], ["18:00", "21:30", 6], ["21:30", "close", [7, 8]]],
+        "saturday": [["open", "21:30", 8], ["21:30", "close", 8]],
+        "sunday": [["open", "21:30", 8], ["21:30", "close", 8]]
+      }
+    },
+    "Yellow": {
+      "info": "https://www.wmata.com/ridertools/line/yellow/info",
+      "every": {
+        "weekday": [["open", "07:00", 6], ["07:00", "09:00", 6], ["09:00", "16:00", 6], ["16:00", "18:00", 6], ["18:00", "21:30", 6], ["21:30", "close", [7, 8]]],
+        "saturday": [["open", "21:30", 8], ["21:30", "close", 8]],
+        "sunday": [["open", "21:30", 8], ["21:30", "close", 8]]
+      }
+    }
+  },
+  "run_time": {"mph": 33, "floor_s": 90, "round_s": 10},
+  "services": [
+    {"line": "Red", "to": "Glenmont", "stations": ["Shady Grove", "Rockville", "Twinbrook", "North Bethesda", "Grosvenor-Strathmore", "Medical Center", "Bethesda", "Friendship Heights", "Tenleytown-AU", "Van Ness-UDC", "Cleveland Park", "Woodley Park-Zoo/Adams Morgan", "Dupont Circle", "Farragut North", "Metro Center", "Gallery Pl-Chinatown", "Judiciary Square", "Union Station", "NoMa-Gallaudet U", "Rhode Island Ave-Brentwood", "Brookland-CUA", "Fort Totten", "Takoma", "Silver Spring", "Forest Glen", "Wheaton", "Glenmont"], "run_s": [290, 220, 120, 150, 220, 120, 200, 90, 110, 90, 90, 130, 90, 90, 90, 90, 90, 90, 110, 90, 150, 210, 150, 170, 180, 180]},
+    {"line": "Orange", "to": "New Carrollton", "stations": ["Vienna/Fairfax-GMU", "Dunn Loring-Merrifield", "West Falls Church", "East Falls Church", "Ballston-MU", "Virginia Square-GMU", "Clarendon", "Court House", "Rosslyn", "Foggy Bottom-GWU", "Farragut West", "McPherson Sq", "Metro Center", "Federal Triangle", "Smithsonian", "L'Enfant Plaza", "Federal Center SW", "Capitol South", "Eastern Market", "Potomac Ave", "Stadium-Armory", "Minnesota Ave", "Deanwood", "Cheverly", "Landover", "New Carrollton"], "run_s": [270, 260, 220, 260, 90, 90, 90, 100, 130, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 200, 100, 130, 200, 160]},
+    {"line": "Silver", "to": "Downtown Largo", "stations": ["Ashburn", "Loudoun Gateway", "Washington Dulles International Airport", "Innovation Center", "Herndon", "Reston Town Center", "Wiehle-Reston East", "Spring Hill", "Greensboro", "Tysons", "McLean", "East Falls Church", "Ballston-MU", "Virginia Square-GMU", "Clarendon", "Court House", "Rosslyn", "Foggy Bottom-GWU", "Farragut West", "McPherson Sq", "Metro Center", "Federal Triangle", "Smithsonian", "L'Enfant Plaza", "Federal Center SW", "Capitol South", "Eastern Market", "Potomac Ave", "Stadium-Armory", "Benning Road", "Capitol Heights", "Addison Road-Seat Pleasant", "Morgan Boulevard", "Downtown Largo"], "run_s": [210, 280, 200, 190, 150, 120, 590, 90, 90, 90, 430, 260, 90, 90, 90, 100, 130, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 230, 160, 110, 160, 150]},
+    {"line": "Silver", "to": "New Carrollton", "stations": ["Ashburn", "Loudoun Gateway", "Washington Dulles International Airport", "Innovation Center", "Herndon", "Reston Town Center", "Wiehle-Reston East", "Spring Hill", "Greensboro", "Tysons", "McLean", "East Falls Church", "Ballston-MU", "Virginia Square-GMU", "Clarendon", "Court House", "Rosslyn", "Foggy Bottom-GWU", "Farragut West", "McPherson Sq", "Metro Center", "Federal Triangle", "Smithsonian", "L'Enfant Plaza", "Federal Center SW", "Capitol South", "Eastern Market", "Potomac Ave", "Stadium-Armory", "Minnesota Ave", "Deanwood", "Cheverly", "Landover", "New Carrollton"], "run_s": [210, 280, 200, 190, 150, 120, 590, 90, 90, 90, 430, 260, 90, 90, 90, 100, 130, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 200, 100, 130, 200, 160]},
+    {"line": "Blue", "to": "Downtown Largo", "stations": ["Franconia-Springfield", "Van Dorn Street", "King St-Old Town", "Braddock Road", "Potomac Yard", "Ronald Reagan Washington National Airport", "Crystal City", "Pentagon City", "Pentagon", "Arlington Cemetery", "Rosslyn", "Foggy Bottom-GWU", "Farragut West", "McPherson Sq", "Metro Center", "Federal Triangle", "Smithsonian", "L'Enfant Plaza", "Federal Center SW", "Capitol South", "Eastern Market", "Potomac Ave", "Stadium-Armory", "Benning Road", "Capitol Heights", "Addison Road-Seat Pleasant", "Morgan Boulevard", "Downtown Largo"], "run_s": [340, 400, 90, 160, 150, 90, 90, 90, 130, 100, 130, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 230, 160, 110, 160, 150]},
+    {"line": "Green", "to": "Greenbelt", "stations": ["Branch Ave", "Suitland", "Naylor Road", "Southern Avenue", "Congress Heights", "Anacostia", "Navy Yard-Ballpark", "Waterfront", "L'Enfant Plaza", "Archives-Navy Memorial-Penn Quarter", "Gallery Pl-Chinatown", "Mt Vernon Sq 7th St-Convention Center", "Shaw-Howard U", "U Street/African-Amer Civil War Memorial/Cardozo", "Columbia Heights", "Georgia Ave-Petworth", "Fort Totten", "West Hyattsville", "Hyattsville Crossing", "College Park-U of Md", "Greenbelt"], "run_s": [180, 150, 130, 90, 140, 120, 90, 90, 90, 90, 90, 90, 90, 90, 90, 170, 190, 110, 190, 260]},
+    {"line": "Yellow", "to": "Mt Vernon Sq 7th St-Convention Center", "stations": ["Huntington", "Eisenhower Ave", "King St-Old Town", "Braddock Road", "Potomac Yard", "Ronald Reagan Washington National Airport", "Crystal City", "Pentagon City", "Pentagon", "L'Enfant Plaza", "Archives-Navy Memorial-Penn Quarter", "Gallery Pl-Chinatown", "Mt Vernon Sq 7th St-Convention Center"], "run_s": [90, 90, 90, 160, 150, 90, 90, 90, 220, 90, 90, 90]},
+    {"line": "Yellow", "to": "Greenbelt", "stations": ["Huntington", "Eisenhower Ave", "King St-Old Town", "Braddock Road", "Potomac Yard", "Ronald Reagan Washington National Airport", "Crystal City", "Pentagon City", "Pentagon", "L'Enfant Plaza", "Archives-Navy Memorial-Penn Quarter", "Gallery Pl-Chinatown", "Mt Vernon Sq 7th St-Convention Center", "Shaw-Howard U", "U Street/African-Amer Civil War Memorial/Cardozo", "Columbia Heights", "Georgia Ave-Petworth", "Fort Totten", "West Hyattsville", "Hyattsville Crossing", "College Park-U of Md", "Greenbelt"], "run_s": [90, 90, 90, 160, 150, 90, 90, 90, 220, 90, 90, 90, 90, 90, 90, 90, 170, 190, 110, 190, 260]}
+  ],
+  "stations": [
+    {"name": "Addison Road-Seat Pleasant", "point": [-76.89411, 38.886756], "bike_entrance": [-76.895802, 38.886708], "bike": false, "entrances": [[-76.895802, 38.886708]]},
+    {"name": "Anacostia", "point": [-76.995373, 38.862971], "bike_entrance": [-76.99507, 38.862298], "bike": false, "entrances": [[-76.99507, 38.862298], [-76.995466, 38.862169], [-76.996023, 38.864436]]},
+    {"name": "Archives-Navy Memorial-Penn Quarter", "point": [-77.021917, 38.893673], "bike_entrance": [-77.022077, 38.893875], "bike": true, "entrances": [[-77.022077, 38.893875], [-77.021545, 38.893376]]},
+    {"name": "Arlington Cemetery", "point": [-77.062812, 38.884695], "bike_entrance": [-77.06308, 38.884824], "bike": true, "entrances": [[-77.063344, 38.884726], [-77.06308, 38.884824], [-77.06375, 38.884555], [-77.063549, 38.884224]]},
+    {"name": "Ashburn", "point": [-77.491539, 39.005291], "bike_entrance": [-77.491763, 39.004422], "bike": true, "entrances": [[-77.491763, 39.004422], [-77.490096, 39.004867], [-77.489925, 39.004953], [-77.491928, 39.00455]]},
+    {"name": "Ballston-MU", "point": [-77.113171, 38.882191], "bike_entrance": [-77.11214, 38.882353], "bike": true, "entrances": [[-77.112102, 38.882062], [-77.112124, 38.882399], [-77.11214, 38.882353], [-77.111363, 38.881876]]},
+    {"name": "Benning Road", "point": [-76.938367, 38.890983], "bike_entrance": [-76.937548, 38.890558], "bike": true, "entrances": [[-76.937548, 38.890558], [-76.937449, 38.890405]]},
+    {"name": "Bethesda", "point": [-77.094132, 38.984401], "bike_entrance": [-77.094202, 38.983608], "bike": true, "entrances": [[-77.094202, 38.983608], [-77.094602, 38.984708]]},
+    {"name": "Braddock Road", "point": [-77.05367, 38.814151], "bike_entrance": [-77.053802, 38.813708], "bike": false, "entrances": [[-77.053802, 38.813708]]},
+    {"name": "Branch Ave", "point": [-76.911466, 38.826454], "bike_entrance": [-76.912602, 38.827008], "bike": false, "entrances": [[-76.912602, 38.827008]]},
+    {"name": "Brookland-CUA", "point": [-76.994537, 38.933219], "bike_entrance": [-76.994444, 38.933754], "bike": true, "entrances": [[-76.994444, 38.933754], [-76.994346, 38.933511], [-76.995045, 38.933834]]},
+    {"name": "Capitol Heights", "point": [-76.91181, 38.889474], "bike_entrance": [-76.912902, 38.889408], "bike": true, "entrances": [[-76.912902, 38.889408], [-76.913302, 38.889208]]},
+    {"name": "Capitol South", "point": [-77.005142, 38.88507], "bike_entrance": [-77.006156, 38.885199], "bike": true, "entrances": [[-77.006156, 38.885199], [-77.006065, 38.885673]]},
+    {"name": "Cheverly", "point": [-76.91663, 38.91664], "bike_entrance": [-76.916525, 38.916262], "bike": true, "entrances": [[-76.916525, 38.916262], [-76.91671, 38.916161]]},
+    {"name": "Clarendon", "point": [-77.095396, 38.886713], "bike_entrance": [-77.095708, 38.886738], "bike": true, "entrances": [[-77.095708, 38.886738], [-77.095202, 38.887108]]},
+    {"name": "Cleveland Park", "point": [-77.058045, 38.934771], "bike_entrance": [-77.058426, 38.935782], "bike": true, "entrances": [[-77.058426, 38.935782], [-77.059007, 38.936146], [-77.058537, 38.935985]]},
+    {"name": "College Park-U of Md", "point": [-76.928127, 38.978641], "bike_entrance": [-76.928021, 38.978141], "bike": true, "entrances": [[-76.928745, 38.978365], [-76.928021, 38.978141], [-76.928904, 38.978371], [-76.927902, 38.978208]]},
+    {"name": "Columbia Heights", "point": [-77.032554, 38.927846], "bike_entrance": [-77.032821, 38.928564], "bike": true, "entrances": [[-77.032821, 38.928564], [-77.03243, 38.928876], [-77.033032, 38.928619]]},
+    {"name": "Congress Heights", "point": [-76.988514, 38.845665], "bike_entrance": [-76.987807, 38.845116], "bike": true, "entrances": [[-76.987807, 38.845116], [-76.987778, 38.845398], [-76.98762, 38.844655]]},
+    {"name": "Court House", "point": [-77.087134, 38.890183], "bike_entrance": [-77.086102, 38.890508], "bike": true, "entrances": [[-77.085002, 38.891708], [-77.086102, 38.890508], [-77.084902, 38.890608], [-77.085302, 38.890308], [-77.085002, 38.891308]]},
+    {"name": "Crystal City", "point": [-77.050292, 38.857912], "bike_entrance": [-77.050784, 38.857945], "bike": true, "entrances": [[-77.050784, 38.857945], [-77.051402, 38.858008]]},
+    {"name": "Deanwood", "point": [-76.935259, 38.908186], "bike_entrance": [-76.934848, 38.908205], "bike": true, "entrances": [[-76.934848, 38.908205], [-76.934723, 38.908268], [-76.935172, 38.908561]]},
+    {"name": "Downtown Largo", "point": [-76.844554, 38.900608], "bike_entrance": [-76.844922, 38.899873], "bike": false, "entrances": [[-76.844922, 38.899873]]},
+    {"name": "Dunn Loring-Merrifield", "point": [-77.227163, 38.883633], "bike_entrance": [-77.228402, 38.882808], "bike": false, "entrances": [[-77.228402, 38.882808]]},
+    {"name": "Dupont Circle", "point": [-77.043417, 38.909606], "bike_entrance": [-77.04457, 38.910795], "bike": true, "entrances": [[-77.04457, 38.910795], [-77.043319, 38.908683], [-77.044726, 38.911006]]},
+    {"name": "East Falls Church", "point": [-77.156885, 38.885961], "bike_entrance": [-77.156602, 38.885908], "bike": false, "entrances": [[-77.156602, 38.885908]]},
+    {"name": "Eastern Market", "point": [-76.996003, 38.88463], "bike_entrance": [-76.99604, 38.884258], "bike": true, "entrances": [[-76.99604, 38.884258], [-76.995815, 38.884253]]},
+    {"name": "Eisenhower Ave", "point": [-77.070877, 38.800433], "bike_entrance": [-77.070902, 38.800608], "bike": false, "entrances": [[-77.070902, 38.800608]]},
+    {"name": "Farragut North", "point": [-77.039703, 38.90321], "bike_entrance": [-77.039304, 38.903034], "bike": true, "entrances": [[-77.039304, 38.903034], [-77.03918, 38.902781], [-77.04013, 38.90359], [-77.039834, 38.90393]]},
+    {"name": "Farragut West", "point": [-77.040698, 38.901321], "bike_entrance": [-77.041894, 38.901499], "bike": true, "entrances": [[-77.041894, 38.901499], [-77.039169, 38.901177], [-77.04197, 38.90163]]},
+    {"name": "Federal Center SW", "point": [-77.01587, 38.88508], "bike_entrance": [-77.016037, 38.884911], "bike": true, "entrances": [[-77.016037, 38.884911], [-77.015377, 38.884882]]},
+    {"name": "Federal Triangle", "point": [-77.028134, 38.893189], "bike_entrance": [-77.028323, 38.893772], "bike": true, "entrances": [[-77.028323, 38.893772], [-77.028715, 38.893834]]},
+    {"name": "Foggy Bottom-GWU", "point": [-77.05028, 38.900706], "bike_entrance": [-77.050861, 38.900843], "bike": true, "entrances": [[-77.050861, 38.900843], [-77.050465, 38.900903]]},
+    {"name": "Forest Glen", "point": [-77.042919, 39.014962], "bike_entrance": [-77.043012, 39.015274], "bike": true, "entrances": [[-77.043012, 39.015274], [-77.043033, 39.015354], [-77.043652, 39.015333], [-77.044332, 39.015828]]},
+    {"name": "Fort Totten", "point": [-77.002205, 38.951855], "bike_entrance": [-77.002491, 38.952654], "bike": false, "entrances": [[-77.002491, 38.952654]]},
+    {"name": "Franconia-Springfield", "point": [-77.167973, 38.76653], "bike_entrance": [-77.168594, 38.765917], "bike": true, "entrances": [[-77.168594, 38.765917], [-77.16871, 38.766073], [-77.169102, 38.766708]]},
+    {"name": "Friendship Heights", "point": [-77.084998, 38.959492], "bike_entrance": [-77.085202, 38.960226], "bike": true, "entrances": [[-77.085202, 38.960226], [-77.085019, 38.958526], [-77.086102, 38.960908], [-77.085402, 38.960748], [-77.085602, 38.961208], [-77.085765, 38.960453]]},
+    {"name": "Gallery Pl-Chinatown", "point": [-77.021918, 38.898325], "bike_entrance": [-77.021719, 38.897934], "bike": true, "entrances": [[-77.021719, 38.897934], [-77.021656, 38.89964], [-77.023769, 38.898056], [-77.021567, 38.897544]]},
+    {"name": "Georgia Ave-Petworth", "point": [-77.023463, 38.937442], "bike_entrance": [-77.024674, 38.936811], "bike": true, "entrances": [[-77.024674, 38.936811], [-77.024715, 38.937129], [-77.024108, 38.937031]]},
+    {"name": "Glenmont", "point": [-77.05356, 39.061792], "bike_entrance": [-77.053614, 39.061965], "bike": true, "entrances": [[-77.053366, 39.062284], [-77.053614, 39.061965], [-77.053184, 39.06232], [-77.053604, 39.06179]]},
+    {"name": "Greenbelt", "point": [-76.91106, 39.011154], "bike_entrance": [-76.910902, 39.010908], "bike": false, "entrances": [[-76.912002, 39.010808], [-76.910902, 39.010908]]},
+    {"name": "Greensboro", "point": [-77.23388, 38.920963], "bike_entrance": [-77.234009, 38.920509], "bike": true, "entrances": [[-77.233132, 38.920959], [-77.234009, 38.920509], [-77.234166, 38.920673], [-77.233006, 38.921115]]},
+    {"name": "Grosvenor-Strathmore", "point": [-77.103852, 39.029277], "bike_entrance": [-77.103602, 39.028908], "bike": false, "entrances": [[-77.103602, 39.028908], [-77.104502, 39.028808]]},
+    {"name": "Herndon", "point": [-77.38518, 38.952829], "bike_entrance": [-77.384878, 38.953544], "bike": true, "entrances": [[-77.384916, 38.951764], [-77.384751, 38.951543], [-77.384878, 38.953544], [-77.38455, 38.95176], [-77.38456, 38.95354]]},
+    {"name": "Huntington", "point": [-77.075208, 38.793924], "bike_entrance": [-77.075202, 38.794808], "bike": false, "entrances": [[-77.075202, 38.794808], [-77.075502, 38.792708]]},
+    {"name": "Hyattsville Crossing", "point": [-76.955884, 38.965393], "bike_entrance": [-76.955602, 38.965808], "bike": false, "entrances": [[-76.955602, 38.964808], [-76.955602, 38.965808]]},
+    {"name": "Innovation Center", "point": [-77.415297, 38.960766], "bike_entrance": [-77.417259, 38.960013], "bike": true, "entrances": [[-77.417259, 38.960013], [-77.416834, 38.962039], [-77.417216, 38.959947]]},
+    {"name": "Judiciary Square", "point": [-77.016641, 38.896098], "bike_entrance": [-77.017649, 38.896666], "bike": true, "entrances": [[-77.017465, 38.896827], [-77.017649, 38.896666], [-77.017525, 38.89706], [-77.015987, 38.895322]]},
+    {"name": "King St-Old Town", "point": [-77.060813, 38.806594], "bike_entrance": [-77.061202, 38.806308], "bike": false, "entrances": [[-77.061202, 38.806308]]},
+    {"name": "L'Enfant Plaza", "point": [-77.021911, 38.884846], "bike_entrance": [-77.022111, 38.88599], "bike": true, "entrances": [[-77.022111, 38.88599], [-77.021577, 38.886255], [-77.023548, 38.884457], [-77.020871, 38.88449]]},
+    {"name": "Landover", "point": [-76.8912, 38.933514], "bike_entrance": [-76.891202, 38.933408], "bike": false, "entrances": [[-76.891202, 38.933408]]},
+    {"name": "Loudoun Gateway", "point": [-77.460687, 38.992048], "bike_entrance": [-77.45998, 38.992871], "bike": true, "entrances": [[-77.45998, 38.992871], [-77.459282, 38.992894], [-77.459987, 38.99312]]},
+    {"name": "McLean", "point": [-77.210081, 38.92453], "bike_entrance": [-77.209496, 38.92481], "bike": true, "entrances": [[-77.208593, 38.924434], [-77.209496, 38.92481], [-77.209608, 38.924759], [-77.20827, 38.924596]]},
+    {"name": "McPherson Sq", "point": [-77.033636, 38.901341], "bike_entrance": [-77.032308, 38.901117], "bike": true, "entrances": [[-77.032308, 38.901117], [-77.032228, 38.900922], [-77.034953, 38.901137]]},
+    {"name": "Medical Center", "point": [-77.096955, 39.000064], "bike_entrance": [-77.097122, 38.999057], "bike": true, "entrances": [[-77.097122, 38.999057], [-77.097892, 38.999066]]},
+    {"name": "Metro Center", "point": [-77.02808, 38.898322], "bike_entrance": [-77.02791, 38.898926], "bike": true, "entrances": [[-77.02791, 38.898926], [-77.026672, 38.898435], [-77.029408, 38.89844], [-77.028234, 38.898992], [-77.026794, 38.898081], [-77.027894, 38.898527], [-77.028572, 38.897155], [-77.029384, 38.898034]]},
+    {"name": "Minnesota Ave", "point": [-76.94675, 38.899199], "bike_entrance": [-76.946703, 38.898819], "bike": true, "entrances": [[-76.946703, 38.898819], [-76.946927, 38.898615], [-76.946829, 38.899577]]},
+    {"name": "Morgan Boulevard", "point": [-76.868077, 38.893843], "bike_entrance": [-76.868548, 38.893771], "bike": false, "entrances": [[-76.868548, 38.893771], [-76.868407, 38.893559]]},
+    {"name": "Mt Vernon Sq 7th St-Convention Center", "point": [-77.021917, 38.906445], "bike_entrance": [-77.022128, 38.905953], "bike": true, "entrances": [[-77.02237, 38.905512], [-77.022128, 38.905953], [-77.02215, 38.905436]]},
+    {"name": "Navy Yard-Ballpark", "point": [-77.005088, 38.876489], "bike_entrance": [-77.004708, 38.876625], "bike": true, "entrances": [[-77.004708, 38.876625], [-77.007133, 38.876278], [-77.004497, 38.876677]]},
+    {"name": "Naylor Road", "point": [-76.956265, 38.851309], "bike_entrance": [-76.956802, 38.851008], "bike": false, "entrances": [[-76.956802, 38.851008]]},
+    {"name": "New Carrollton", "point": [-76.871844, 38.947793], "bike_entrance": [-76.872181, 38.948431], "bike": true, "entrances": [[-76.872181, 38.948431], [-76.872402, 38.948408], [-76.871802, 38.947908]]},
+    {"name": "NoMa-Gallaudet U", "point": [-77.003023, 38.907024], "bike_entrance": [-77.00343, 38.907287], "bike": false, "entrances": [[-77.003829, 38.905718], [-77.00343, 38.907287]]},
+    {"name": "North Bethesda", "point": [-77.112832, 39.048159], "bike_entrance": [-77.112553, 39.047426], "bike": false, "entrances": [[-77.112553, 39.047426], [-77.113202, 39.047208]]},
+    {"name": "Pentagon", "point": [-77.053718, 38.86947], "bike_entrance": [-77.053843, 38.869598], "bike": true, "entrances": [[-77.053843, 38.869598], [-77.05458, 38.869163], [-77.053655, 38.869865]]},
+    {"name": "Pentagon City", "point": [-77.059541, 38.86189], "bike_entrance": [-77.05897, 38.862817], "bike": true, "entrances": [[-77.05897, 38.862817], [-77.05911, 38.862556], [-77.059902, 38.862608]]},
+    {"name": "Potomac Ave", "point": [-76.985498, 38.881271], "bike_entrance": [-76.985108, 38.881057], "bike": true, "entrances": [[-76.985108, 38.881057], [-76.985205, 38.880776]]},
+    {"name": "Potomac Yard", "point": [-77.046407, 38.834014], "bike_entrance": [-77.046227, 38.834176], "bike": true, "entrances": [[-77.046227, 38.834176], [-77.047275, 38.835063], [-77.047455, 38.832856], [-77.047482, 38.832817], [-77.047261, 38.83495]]},
+    {"name": "Reston Town Center", "point": [-77.360187, 38.952776], "bike_entrance": [-77.360133, 38.953505], "bike": true, "entrances": [[-77.360879, 38.952256], [-77.360133, 38.953505], [-77.361163, 38.952304], [-77.359856, 38.95357]]},
+    {"name": "Rhode Island Ave-Brentwood", "point": [-76.995939, 38.921067], "bike_entrance": [-76.996075, 38.920478], "bike": false, "entrances": [[-76.996075, 38.920478]]},
+    {"name": "Rockville", "point": [-77.146128, 39.084329], "bike_entrance": [-77.146281, 39.084684], "bike": false, "entrances": [[-77.146579, 39.084478], [-77.146281, 39.084684]]},
+    {"name": "Ronald Reagan Washington National Airport", "point": [-77.044045, 38.853424], "bike_entrance": [-77.044091, 38.853471], "bike": true, "entrances": [[-77.044091, 38.853471], [-77.044702, 38.854608], [-77.043702, 38.852208]]},
+    {"name": "Rosslyn", "point": [-77.070911, 38.895987], "bike_entrance": [-77.071383, 38.896151], "bike": true, "entrances": [[-77.071383, 38.896151], [-77.07211, 38.895815], [-77.071712, 38.895956]]},
+    {"name": "Shady Grove", "point": [-77.16463, 39.119935], "bike_entrance": [-77.165009, 39.120084], "bike": true, "entrances": [[-77.165009, 39.120084], [-77.165002, 39.119908], [-77.164302, 39.120308]]},
+    {"name": "Shaw-Howard U", "point": [-77.021914, 38.913485], "bike_entrance": [-77.02162, 38.91423], "bike": true, "entrances": [[-77.02162, 38.91423], [-77.021684, 38.914506], [-77.022598, 38.912781]]},
+    {"name": "Silver Spring", "point": [-77.03102, 38.993957], "bike_entrance": [-77.030391, 38.993939], "bike": true, "entrances": [[-77.029749, 38.993371], [-77.030391, 38.993939], [-77.031202, 38.993908], [-77.031502, 38.994208], [-77.031902, 38.994108], [-77.031353, 38.993746]]},
+    {"name": "Smithsonian", "point": [-77.028069, 38.888026], "bike_entrance": [-77.028549, 38.887756], "bike": true, "entrances": [[-77.028549, 38.887756], [-77.028437, 38.889078], [-77.028566, 38.887384]]},
+    {"name": "Southern Avenue", "point": [-76.975056, 38.841094], "bike_entrance": [-76.975803, 38.8406], "bike": false, "entrances": [[-76.975691, 38.840446], [-76.975803, 38.8406]]},
+    {"name": "Spring Hill", "point": [-77.24156, 38.92896], "bike_entrance": [-77.241846, 38.928574], "bike": true, "entrances": [[-77.241007, 38.929158], [-77.241846, 38.928574], [-77.240802, 38.929308], [-77.241702, 38.928408]]},
+    {"name": "Stadium-Armory", "point": [-76.977091, 38.886717], "bike_entrance": [-76.977175, 38.885926], "bike": true, "entrances": [[-76.977175, 38.885926], [-76.977065, 38.888291], [-76.977046, 38.885663]]},
+    {"name": "Suitland", "point": [-76.931872, 38.843972], "bike_entrance": [-76.932102, 38.844408], "bike": false, "entrances": [[-76.932102, 38.844408]]},
+    {"name": "Takoma", "point": [-77.018179, 38.976086], "bike_entrance": [-77.017992, 38.975779], "bike": true, "entrances": [[-77.017992, 38.975779], [-77.017416, 38.975104]]},
+    {"name": "Tenleytown-AU", "point": [-77.07959, 38.948859], "bike_entrance": [-77.079278, 38.948108], "bike": true, "entrances": [[-77.079278, 38.948108], [-77.079363, 38.948085], [-77.080171, 38.948317]]},
+    {"name": "Twinbrook", "point": [-77.12082, 39.062475], "bike_entrance": [-77.12041, 39.06234], "bike": false, "entrances": [[-77.12041, 39.06234], [-77.120702, 39.062108]]},
+    {"name": "Tysons", "point": [-77.221718, 38.920682], "bike_entrance": [-77.222569, 38.920662], "bike": true, "entrances": [[-77.222569, 38.920662], [-77.222012, 38.919783], [-77.222571, 38.920583], [-77.222402, 38.919808]]},
+    {"name": "U Street/African-Amer Civil War Memorial/Cardozo", "point": [-77.027498, 38.91701], "bike_entrance": [-77.028923, 38.916775], "bike": true, "entrances": [[-77.028923, 38.916775], [-77.029198, 38.916831], [-77.025975, 38.916721]]},
+    {"name": "Union Station", "point": [-77.007417, 38.897774], "bike_entrance": [-77.00605, 38.897962], "bike": true, "entrances": [[-77.00605, 38.897962], [-77.005387, 38.898038], [-77.005245, 38.898006], [-77.007202, 38.897492], [-77.007229, 38.8984]]},
+    {"name": "Van Dorn Street", "point": [-77.129114, 38.799315], "bike_entrance": [-77.129228, 38.799543], "bike": false, "entrances": [[-77.129687, 38.799716], [-77.129228, 38.799543]]},
+    {"name": "Van Ness-UDC", "point": [-77.062988, 38.943273], "bike_entrance": [-77.063589, 38.943973], "bike": true, "entrances": [[-77.063589, 38.943973], [-77.063574, 38.944631], [-77.064033, 38.944539]]},
+    {"name": "Vienna/Fairfax-GMU", "point": [-77.272625, 38.877609], "bike_entrance": [-77.271288, 38.877386], "bike": false, "entrances": [[-77.271288, 38.877386], [-77.271544, 38.878308]]},
+    {"name": "Virginia Square-GMU", "point": [-77.10298, 38.883374], "bike_entrance": [-77.103301, 38.883025], "bike": true, "entrances": [[-77.103301, 38.883025], [-77.103283, 38.882838]]},
+    {"name": "Washington Dulles International Airport", "point": [-77.44815, 38.955792], "bike_entrance": [-77.448028, 38.956138], "bike": true, "entrances": [[-77.449348, 38.952925], [-77.448283, 38.956141], [-77.446128, 38.952928], [-77.448028, 38.956138], [-77.446084, 38.95293], [-77.449269, 38.952927]]},
+    {"name": "Waterfront", "point": [-77.017507, 38.87647], "bike_entrance": [-77.017358, 38.876636], "bike": true, "entrances": [[-77.017358, 38.876636], [-77.017539, 38.87699]]},
+    {"name": "West Falls Church", "point": [-77.189097, 38.900788], "bike_entrance": [-77.188944, 38.900936], "bike": true, "entrances": [[-77.188944, 38.900936], [-77.188883, 38.900326], [-77.189002, 38.901108]]},
+    {"name": "West Hyattsville", "point": [-76.969579, 38.955048], "bike_entrance": [-76.968906, 38.955724], "bike": false, "entrances": [[-76.968906, 38.955724]]},
+    {"name": "Wheaton", "point": [-77.050109, 39.037535], "bike_entrance": [-77.051977, 39.037944], "bike": true, "entrances": [[-77.052356, 39.037658], [-77.051977, 39.037944], [-77.052818, 39.037337], [-77.05028, 39.038678], [-77.051102, 39.038308]]},
+    {"name": "Wiehle-Reston East", "point": [-77.340062, 38.947741], "bike_entrance": [-77.340161, 38.947001], "bike": true, "entrances": [[-77.340161, 38.947001], [-77.338923, 38.948299], [-77.339902, 38.946908]]},
+    {"name": "Woodley Park-Zoo/Adams Morgan", "point": [-77.05242, 38.925093], "bike_entrance": [-77.052887, 38.925453], "bike": true, "entrances": [[-77.052887, 38.925453], [-77.052365, 38.924468]]}
+  ]
+}

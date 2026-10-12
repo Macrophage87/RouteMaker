@@ -6924,6 +6924,23 @@ docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-
   gap included) the plan takes the next departure, names it and the one after, and returns it as
   `transit.departure`. A routed first ride that misses it moves to the next catchable departure
   (and names the one after that); with none within the hour the option is dropped.
+- **Metro's typical timetable.** Until WMATA's rail GTFS is built (it needs a WMATA key), Metro
+  runs on `src/core/transitdata/metro-typical.json` (`transit.with_typical_metro`), added when the
+  schedule is loaded, or alone when no schedule is installed. It holds the opening hours per day
+  type, each line's minutes between trains per time band (wmata.com's line pages), each line's
+  stations in order with estimated run times, and the map's 98 stations (held equal to
+  `metro_stations()` by a test). Trains are laid out evenly, and a wait is always half the
+  interval (or the time to the first or last train), so no Metro departure is named or counted
+  down. Its credit reads "WMATA, wmata.com (typical service)"; there is no separate note. A built
+  schedule with WMATA's rail GTFS replaces it with no setting. Metrobus stays out until its GTFS is
+  built.
+- **"Scheduled" on every transit time** (the owner, 2026-10-12: "Make it clear whether it's a
+  schedule or live."). One word after each time the rider sees, GTFS or typical alike, in the
+  step text, the departure, the next departure, the countdown, the map label and the screen
+  reader's milestones: "Board the MARC Penn Line at 7:42 am scheduled", "every 8 min,
+  scheduled". Each transit step and `transit.departure` carry `source: "scheduled"`, and the
+  page takes the word from it (`sourceWord`, `lib/departure.ts`), so live times (v0.7) can say
+  "live" without new UI.
 - **Times.** A service-day minute is real elapsed time from GTFS's zero (noon less 12 hours), so
   daylight-saving days are right. From 1 to 5 am both service days are searched (owl trips past
   27:00 included). Stops without times (not timepoints) are interpolated by the build.

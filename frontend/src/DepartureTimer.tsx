@@ -7,7 +7,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { TransitDeparture } from "./lib/api.ts";
-import { countdown, departureText, mapLabel, milestone, milestoneSaid, missedSaid, mmss } from "./lib/departure.ts";
+import { countdown, departureText, mapLabel, milestone, milestoneSaid, missedSaid, mmss, sourceWord } from "./lib/departure.ts";
 
 export function DepartureTimer({
   departure,
@@ -62,7 +62,7 @@ export function DepartureTimer({
       </p>
       {state.close && !state.missed && (
         <p className="departure-timer notice">
-          Cutting it close. Departs in <span className="departure-count">{mmss(state.toDepartS)}</span>; time to spare{" "}
+          Cutting it close. Departs in <span className="departure-count">{mmss(state.toDepartS)}</span>, {sourceWord(departure)}; time to spare{" "}
           <span className="departure-count">{mmss(state.spareS)}</span>.
         </p>
       )}
