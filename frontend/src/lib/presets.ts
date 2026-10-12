@@ -25,7 +25,12 @@ export type PresetId =
 
 export interface PresetOption {
   id: PresetId;
+  /** The name as it shows; it may carry emoji (the transit types), which are never read out. */
   label: string;
+  /** The name a screen reader says, where the label has emoji: "Bikeshare plus walk, train or bus". */
+  spoken?: string;
+  /** More words the ride type search finds it by ("transit"), never shown. */
+  keywords?: string;
   /** What the ride type does today, in plain words; nothing it does not do yet. */
   description: string;
 }
@@ -101,16 +106,22 @@ export const PRESETS: readonly PresetOption[] = [
   },
   {
     // TRANSIT-ASSIST (Stephen, 2026-10-12): transit is two commuting ride types, chosen like any other.
+    // Renamed with emoji that evening (20:35): the emoji are aria-hidden wherever the name shows
+    // (PresetName), and `spoken` is the name a screen reader hears. The ids and links are unchanged.
     id: "bike-transit",
-    label: "Own Bike + Transit",
+    label: "Own Bike + 🚆🚌",
+    spoken: "Own bike plus train or bus",
+    keywords: "transit",
     description:
-      "Your own bike the whole way, with Metro, MARC, Light RailLink, Metro SubwayLink or a bus's bike rack: riding directly there, then the quickest trips by scheduled times, not live. Uses stations a bike can get into (Metro's elevators), and never leaves the bike.",
+      "Your own bike the whole way, with Metro, MARC, Light RailLink, Metro SubwayLink or a bus's bike rack: riding directly there, then the quickest transit trips by scheduled times, not live. Uses stations a bike can get into (Metro's elevators), and never leaves the bike.",
   },
   {
     id: "bikeshare-transit",
-    label: "Bikeshare + Transit",
+    label: "Bikeshare + 🚶🚆🚌",
+    spoken: "Bikeshare plus walk, train or bus",
+    keywords: "transit",
     description:
-      "Bikeshare directly there, or transit with either end a walk or a bikeshare bike, whichever is quicker (a bike is docked before you board). Metro, MARC, Light RailLink, Metro SubwayLink and buses; scheduled times, not live; docks from live availability where it can be read.",
+      "Bikeshare directly there, walking where that is quickest or the trip is short, or transit with either end a walk or a bikeshare bike, whichever is quicker (a bike is docked before you board). Metro, MARC, Light RailLink, Metro SubwayLink and buses; scheduled times, not live; docks from live availability where it can be read.",
   },
   {
     // REBALANCE-RIDE (Stephen, 2026-10-12): an Adventure ride type; the description is his.
@@ -150,6 +161,13 @@ export function parsePreset(value: unknown): PresetId {
   return isPreset(value) ? value : DEFAULT_PRESET;
 }
 
+/** The name as it shows (it may carry emoji: show it with PresetName, which hides them from a screen reader). */
 export function presetLabel(id: PresetId): string {
   return PRESETS.find((p) => p.id === id)?.label ?? id;
+}
+
+/** The name in words, for anything said or written as plain text (announcements, shared text, aria-labels). */
+export function presetSaid(id: PresetId): string {
+  const option = PRESETS.find((p) => p.id === id);
+  return option?.spoken ?? option?.label ?? id;
 }

@@ -6902,8 +6902,12 @@ way is said and left alone.
 
 ## Transit assist (TRANSIT-ASSIST, v0.6.0)
 
-There are two ride types, `bike-transit` (Own Bike + Transit) and `bikeshare-transit` (Bikeshare +
-Transit). Both are planned by `core.transit` from a compact schedule built from each system's static
+There are two ride types, `bike-transit` (Own Bike + 🚆🚌) and `bikeshare-transit` (Bikeshare +
+🚶🚆🚌). The emoji names are the owner's (2026-10-12, 20:35); the ids and links did not change.
+Wherever a name shows, its emoji are aria-hidden and the spoken name (`spoken` in
+`lib/presets.ts`: "Own bike plus train or bus", "Bikeshare plus walk, train or bus") is read
+instead: `PresetName` (`lib/presetName.ts`) in JSX, `presetSaid` in plain text. The ride type
+search also matches the spoken name and `keywords` ("transit"). Both are planned by `core.transit` from a compact schedule built from each system's static
 GTFS (`scripts/build_transit_schedule.py`, schema 2). The systems, their bike rules and the sources
 are listed in `src/core/transitdata/systems.json`. Sources and terms: docs/SOURCES.md. Running it:
 docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-assist.md.
@@ -6911,9 +6915,18 @@ docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-
 - **Options.** Riding the whole way is always one option. Up to three transit trips are added,
   quickest total first, one per distinct sequence of boardings. A trip has one or two transit legs,
   with a same-stop change or a walk or ride of up to 400 m (1,300 ft) between them.
-  - Own Bike + Transit never walks and never leaves the bike.
-  - Bikeshare + Transit docks before boarding. Each end is a walk or a bikeshare ride, whichever is
-    quicker.
+  - Own Bike + 🚆🚌 never walks and never leaves the bike.
+  - Bikeshare + 🚶🚆🚌 docks before boarding. Each end is a walk or a bikeshare ride, whichever is
+    quicker. It also offers walking the whole way (`transit.WALK_ONLY`) when walking is the
+    quickest option or the trip is under 1 mi (1.6 km) in a straight line (`WALK_ONLY_M`). The walk
+    is routed with Valhalla's pedestrian costing, as the bikeshare planner's walks are, and is the
+    answer's line itself (no bike route is asked for it).
+  - Each option carries `legs`, its legs compactly (walks and rides with a station's way in or out,
+    a transit leg with its wait). A transit trip's row shows them as marks, "🚶 4 min · 🚲 12 min ·
+    🔴 18 min", and a screen reader hears "walk 4 minutes, bikeshare 12 minutes, Red Line 18
+    minutes". The marks live in one module, `lib/transitMarks.ts`, shared with the station popups:
+    🚶 walk, 🚲 bike, Metro by line colour (🔴🟠🔵🟢🟡⚪), a bus "🚌C53", MARC and VRE "🚆Penn",
+    "🚆Fredericksburg", Light RailLink 🚈, Metro SubwayLink 🚇.
   - The rider's choice goes back as `transit_option`. A stale key falls back to the quickest, with
     a note.
 - **Calendars.** Each service's days come from `calendar.txt` and `calendar_dates.txt` for 45 days
@@ -6931,7 +6944,10 @@ docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-
   stations in order with estimated run times, and the map's 98 stations (held equal to
   `metro_stations()` by a test). Trains are laid out evenly, and a wait is always half the
   interval (or the time to the first or last train), so no Metro departure is named or counted
-  down. Its credit reads "WMATA, wmata.com (typical service)"; there is no separate note. A built
+  down. Before the first train the step names it instead of the interval ("first train 5:00 am
+  scheduled"). A holiday runs the typical Sunday timetable, and the holiday note says so. An
+  installed schedule that has run out (or does not reach the date asked for) leaves Metro on its
+  typical timetable alone, with a note; `check_operations` still asks for a rebuild. Its credit reads "WMATA, wmata.com (typical service)"; there is no separate note. A built
   schedule with WMATA's rail GTFS replaces it with no setting. Metrobus stays out until its GTFS is
   built.
 - **"Scheduled" on every transit time** (the owner, 2026-10-12: "Make it clear whether it's a
@@ -6953,8 +6969,8 @@ docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-
   calls and the line, at info level.
 - **Clock times.** A departure's clock ("1:30 am") is the wall time of its service day's minute,
   so a daylight-saving night says the time the station clock shows.
-- **Blackout dates.** Own Bike + Transit takes no bike on Metro on them ("Bikes aren't allowed on
-  Metro today (July 4)."); Bikeshare + Transit still rides Metro on foot.
+- **Blackout dates.** Own Bike + 🚆🚌 takes no bike on Metro on them ("Bikes aren't allowed on
+  Metro today (July 4)."); Bikeshare + 🚶🚆🚌 still rides Metro on foot.
 - **Departure in the app.**
   - The panel shows the departure in words (`lib/departure.ts`). Under 5 min to spare it adds a
     mm:ss countdown and the spare time (`DepartureTimer.tsx`).

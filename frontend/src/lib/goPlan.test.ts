@@ -158,7 +158,7 @@ test("My Go is read and saved at /api/me/go, same origin, with the CSRF token; a
 
 // ---- Go's chips (the owner's choices 3 and 10) ------------------------------------------------
 
-test("Go's ride types: the rider's own (My Go, Default until set), then Own Bike + Transit and Bikeshare + Transit", () => {
+test("Go's ride types: the rider's own (My Go, Default until set), then Own Bike + 🚆🚌 and Bikeshare + 🚶🚆🚌", () => {
   // The owner, 2026-10-12: "Default (user sets)", then the two transit types; Cargo and Bikeshare are under More.
   assert.deepEqual([...GO_FIXED], ["bike-transit", "bikeshare-transit"]);
   assert.deepEqual([...GO_RIDES], ["default", "bike-transit", "bikeshare-transit"]);
@@ -379,7 +379,7 @@ test("announcements: unset, Go is brief and Plan is full; a choice holds in both
 
 test("announcements: the essentials are always said; only the narration is extra", () => {
   const app = appSource();
-  for (const extra of ["announceExtra(FINDING_LOCATION);", "announceExtra(modeSaid(next));", "announceExtra(`${presetLabel(id)}.`);", 'announceExtra("The map is at your location.");'])
+  for (const extra of ["announceExtra(FINDING_LOCATION);", "announceExtra(modeSaid(next));", "announceExtra(`${presetSaid(id)}.`);", 'announceExtra("The map is at your location.");'])
     assert.ok(app.includes(extra), extra);
   // The start Go found, and when it could not, are essentials.
   assert.match(app, /announce\(GO_START_SAID\)/);

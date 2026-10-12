@@ -530,7 +530,7 @@ per-foot conversions are on FLOW-CALIBRATION.md.
 
 ## Transit timetables (GTFS) and bike rules (TRANSIT-ASSIST)
 
-The two transit ride types, Own Bike + Transit and Bikeshare + Transit, plan from each system's
+The two transit ride types, Own Bike + 🚆🚌 and Bikeshare + 🚶🚆🚌, plan from each system's
 published static GTFS timetable. The times are scheduled, not live, and every plan says "about"
 and "scheduled". Each plan names its sources under its steps, so these are plan credits and not
 map credits:
@@ -603,8 +603,8 @@ docs/OPERATIONS.md, "Transit schedule". Systems, rules and sources are listed in
     four bikes a car. Metro may restrict bikes during special events or crowding.
   - Blackout dates: July 4 every year, plus dates added by hand in
     `src/core/transitdata/metro-bike-blackouts.json`. The owner: bikes are allowed "at all times
-    except" those days, so on them Own Bike + Transit uses no Metro and says "Bikes aren't allowed
-    on Metro today (July 4)." Bikeshare + Transit, on foot, still rides Metro.
+    except" those days, so on them Own Bike + 🚆🚌 uses no Metro and says "Bikes aren't allowed
+    on Metro today (July 4)." Bikeshare + 🚶🚆🚌, on foot, still rides Metro.
   - Bike rules, Metrobus: <https://www.wmata.com/ride/guides/bikes/bikes-on-bus.html>. Each bus has
     a front rack for two bikes.
   - What a plan says, once per system it takes a bike on (systems.json `bike.rule`, one short
@@ -642,7 +642,7 @@ needs no bike access.
   <https://www.mta.maryland.gov/bike>: a front rack for two bikes, no bikes inside. The feed terms
   are as for MARC above.
 - **MTA Commuter Bus** (`https://feeds.mta.maryland.gov/gtfs/commuter-bus`). The bike page does not
-  cover commuter buses, so bike access is unclear and counts as closed. Bikeshare + Transit could
+  cover commuter buses, so bike access is unclear and counts as closed. Bikeshare + 🚶🚆🚌 could
   still walk to them.
 - **VRE** (`https://gtfs.vre.org/containercdngtfsupload/google_transit.zip`). Bike rules:
   <https://www.vre.org/about/onboard-policies/>, full-size bikes on all trains. The feed's terms

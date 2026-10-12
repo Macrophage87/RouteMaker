@@ -1949,7 +1949,7 @@ or a suggestion, and `my_go` is left out of the beta's data shipment (`scripts/b
 
 ## Transit schedule (TRANSIT-ASSIST, v0.6.0)
 
-The Own Bike + Transit and Bikeshare + Transit ride types read one file:
+The Own Bike + 🚆🚌 and Bikeshare + 🚶🚆🚌 ride types read one file:
 `$DATA_ROOT/tiles/transit/transit-schedule.json` (`settings.TRANSIT_SCHEDULE_PATH`). It sits under
 the tiles folder, which the web container already mounts read-only, so there is no new mount, and
 a weekly rebuild leaves it alone (it replaces only its own variant folders). Without the file,
@@ -1982,8 +1982,9 @@ metro-typical.json from each line's page (`https://www.wmata.com/ridertools/line
 - The web process reads the file again when it changes, so no restart is needed.
 
 **Refresh at least every 45 days.** The file holds 45 days of service from the build date
-(`--date`, default today). A plan for a later date answers with riding the whole way only, plus the
-note "The timetables installed run ... to ...". Refresh as well when an agency publishes a new
+(`--date`, default today). A plan for a later date (or any plan once the file has run out) uses
+Metro's typical timetable alone, which needs no refresh, with the note "Only Metro is planned: the
+other timetables installed end ...". Refresh as well when an agency publishes a new
 timetable, for example a MARC schedule change or a Metro shutdown. Planned closures reach the plans
 only through the published GTFS. With fewer than 7 days left, the api logs "the transit schedule
 runs out ..." once a day and `manage.py check_operations` alerts ("transit: the schedule runs out
@@ -1994,7 +1995,7 @@ docs/BETA-RUNBOOK.md). Ship it again after each refresh.
 
 **Bike blackout dates** (Metro, special events): July 4 is built in. Add other dates by hand to
 `src/core/transitdata/metro-bike-blackouts.json` as WMATA announces them. On such a date Own Bike +
-Transit uses no Metro and says "Bikes aren't allowed on Metro today (July 4)."; Bikeshare + Transit
+Transit uses no Metro and says "Bikes aren't allowed on Metro today (July 4)."; Bikeshare + 🚶🚆🚌
 still rides Metro on foot.
 
 **What is not checked:** live arrivals and GTFS-Realtime service alerts. Every plan says

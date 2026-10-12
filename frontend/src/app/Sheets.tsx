@@ -10,7 +10,8 @@ import type { StressAvailability } from "../MapView.tsx";
 import { SuggestionReview } from "../SuggestionReview.tsx";
 import type { RouteResponse } from "../lib/api.ts";
 import type { LonLat } from "../lib/geo.ts";
-import { PRESETS, presetLabel, type PresetId } from "../lib/presets.ts";
+import { PRESETS, type PresetId } from "../lib/presets.ts";
+import { PresetName } from "../lib/presetName.ts";
 import { filterRideGroups, rideTypeCount, RideTypeSearch } from "../lib/rideTypeGroups.ts";
 import { isPlainClick, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
 import { pointName } from "../lib/summary.ts";
@@ -296,7 +297,7 @@ function MyGoSection({ controls }: { controls: MyGoControls }) {
         Go's ride type
         <select value={myGo.ride ?? "default"} onChange={(event) => save({ ...myGo, ride: event.target.value === "default" ? null : (event.target.value as PresetId) })}>
           {PRESETS.filter((p) => p.id !== "mass-ride").map((p) => (
-            <option key={p.id} value={p.id}>
+            <option key={p.id} value={p.id} aria-label={p.spoken}>
               {p.label}
             </option>
           ))}
@@ -651,7 +652,7 @@ export function RideChips({
           aria-describedby={ownHint && index === 0 ? "ride-own-hint" : undefined}
         >
           <Icon name={RIDE_ICON[id] ?? "bike"} size={18} />
-          {presetLabel(id)}
+          <PresetName id={id} />
         </button>
       ))}
       {more && (
