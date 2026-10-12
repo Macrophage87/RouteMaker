@@ -622,6 +622,27 @@ def test_vre_runs_weekdays_only_and_says_so_at_weekends(vre_schedule) -> None:
     assert {c.reason for c in vre} == {"no VRE weekend service"}
 
 
+def test_a_vre_station_says_its_next_train_each_way_and_none_at_weekends(vre_schedule) -> None:
+    alexandria = [-77.0618, 38.8064]
+    weekday = [
+        t
+        for t in transit.station_times(vre_schedule, alexandria, at(2026, 9, 30, 6, 0))
+        if t.system.id == "vre"
+    ]
+    assert {t.route for t in weekday} == {"Fredericksburg Line", "Manassas Line"}
+    assert all(t.kind in ("next", "none") for t in weekday)
+    assert any(t.kind == "next" and t.depart is not None and t.toward for t in weekday)
+    saturday = [
+        (t.route, t.kind, t.today)
+        for t in transit.station_times(vre_schedule, alexandria, at(2026, 10, 3, 12, 0))
+        if t.system.id == "vre"
+    ]
+    assert sorted(saturday) == [
+        ("Fredericksburg Line", "none", False),
+        ("Manassas Line", "none", False),
+    ]
+
+
 def test_a_line_that_does_not_run_at_weekends_drops_out_and_is_said_plainly(schedule) -> None:
     saturday = plan_bike(schedule, NOMA, BALTIMORE, at(2026, 10, 3, 10, 0))
     assert "MARC Camden Line: no weekend service." in saturday.notes
