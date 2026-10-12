@@ -52,17 +52,33 @@ DEFAULT_RESULTS = 6
 PHOTON_MAX_RESULTS = 10
 OVERFETCH = 4
 
-# How strongly a search prefers places near its bias point (Photon 1.3.0, the
-# version rtuszik/photon-docker:2.4.0 ships; docs/api-v1.md, "Location Bias").
-# Photon scores a result as text + 30*scale*importance + 30*(1-scale)*nearness,
-# nearness being 1 within 0.1*2.2^(18-zoom) km and halving every
-# max(8, that*(zoom-3)) km beyond (SearchRequestBase.java). Its defaults, zoom
-# 12 and scale 0.4, are full nearness to 11 km and half at 113 km: barely any
-# preference across a coverage box about 170 km wide.
-# Zoom 14: full nearness to 2.3 km, half at about 28 km, so across town still
-# beats Baltimore while an exact far match ("BWI Airport" from DC) stays listed.
+# How strongly a search prefers places near its bias point. Photon 1.3.0 (what
+# rtuszik/photon-docker:2.4.0 ships) takes `zoom` and `location_bias_scale`
+# with lat/lon (docs/api-v1.md, "Location Bias"; defaults 12 and 0.4) and uses
+# them twice (src/main/java/de/komoot/photon/...):
+# 1. Candidates. opensearch/OpenSearchSearchHandler.buildQuery asks OpenSearch
+#    for round(max(6, limit) * 1.5) hits - 15 for our limit of 10 - scored
+#    text + 30*scale*importance + 30*(1-scale)*nearness (IMPORTANCE_FACTOR = 30
+#    in OpenSearchSearchHandler; the exp decay in opensearch/SearchQueryBuilder
+#    .addLocationBias, radius and decay radius from query/SearchRequestBase).
+# 2. Final order. Those hits are re-scored and sorted (OpenSearchSearchHandler
+#    .search): importance (0-1, opensearch/OpenSearchResult
+#    .adjustScoreByImportance) + (1-scale)*nearness (OpenSearchResult
+#    .adjustScoreByLocationBias: from 1 down to 0.9 linearly inside the radius,
+#    0.9 halving every decay radius outside) + how well the name matches the
+#    query (0-1, searcher/QueryReranker) + the OpenSearch score normalised to
+#    0-1 (opensearch/ResultScorer.adjustByNormalizedOpenSearchScore).
+# The radius is 0.1*2.2^(18-zoom) km and the decay radius max(8, radius*(zoom-3))
+# km (query/SearchRequestBase). Photon's zoom 12 is 11 km and 102 km: nearness
+# still half at 113 km, barely a preference across a coverage box about 170 km
+# wide.
+# Zoom 14: 2.3 km and 26 km, nearness half at about 28 km, so across town
+# should beat Baltimore; an exact far match ("BWI Airport" from DC) is expected
+# to stay listed - to be checked against the real index on a running stack.
 BIAS_ZOOM = 14
-# 0.2: nearness can outweigh prominence (Photon's importance, 0-1) by 4 to 1.
+# 0.2: nearness counts up to 0.8 in the final order (0.6 at Photon's default)
+# beside importance's 1.0, and 24 against importance's 6 in picking candidates,
+# so nearby places are among the 15 Photon re-ranks.
 BIAS_SCALE = 0.2
 
 # Two results with the same name and the same kind of OSM tag (its key) this

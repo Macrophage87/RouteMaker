@@ -631,7 +631,7 @@ test("privacy: the location state reaches only the note, the hint and the circle
     /note: hereInPlan && here \? approximateHint\(here\.accuracyM\) : "",/,
     /const hereCircle = hereInPlan && here \? \{ centre: here\.point, radiusM: here\.accuracyM \} : null;/,
     // Search's bias: the point, rounded to about 1 km in searchBiasPoint, never the accuracy or the flag.
-    /return searchBiasPoint\(here\?\.point, centre \? \[centre\.lng, centre\.lat\] : undefined\);/,
+    /return searchBiasPoint\(here\?\.point, centre \? \[centre\.lng, centre\.lat\] : undefined, view\);/,
   ];
   assert.ok(lines.length >= allowed.length);
   for (const line of lines) assert.ok(allowed.some((rule) => rule.test(line)), `unexpected use: ${line.trim()}`);

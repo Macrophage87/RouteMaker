@@ -27,6 +27,7 @@ import {
   nameSender,
   placeFromSearch,
   searchBiasPoint,
+  type ViewBounds,
   searchSender,
   searchView,
   placeEffect,
@@ -664,20 +665,24 @@ test("a search is sent with the map's bias; a name with its point", async () => 
   assert.deepEqual([Number(name.searchParams.get("lon")), Number(name.searchParams.get("lat"))], A);
 });
 
-test("a search is biased toward the rider's known location, else the map's centre", () => {
+test("a search is biased toward the rider's known location while it is in view, else the map's centre", () => {
   const rider: LonLat = [-76.62, 39.29]; // Baltimore
   const centre: LonLat = [-77.03, 38.9]; // the map on DC
   const outside: LonLat = [COVERAGE_BBOX[2] + 0.5, 39.0];
-  assert.deepEqual(searchBiasPoint(rider, centre), rider, "the location the app has wins over the map");
-  assert.deepEqual(searchBiasPoint([-76.61234, 39.28766], centre), [-76.61, 39.29], "rounded to about 1 km");
-  const sent = new URL(searchUrl("coffee", searchBiasPoint([-76.61234, 39.28766], centre)), "http://site.test");
+  const baltimore: ViewBounds = [-76.75, 39.2, -76.5, 39.4];
+  const dc: ViewBounds = [-77.15, 38.8, -76.9, 39.0];
+  const region: ViewBounds = [-78.0, 38.2, -76.0, 39.8];
+  assert.deepEqual(searchBiasPoint(rider, [-76.6, 39.3], baltimore), rider, "in view: the rider wins over the centre");
+  assert.deepEqual(searchBiasPoint(rider, centre, dc), centre, "panned away to plan elsewhere: the map's centre");
+  assert.deepEqual(searchBiasPoint(rider, centre, undefined), centre, "no view known: the map's centre");
+  assert.deepEqual(searchBiasPoint(null, centre, dc), centre, "no location yet: the map's centre, as before");
+  assert.deepEqual(searchBiasPoint(undefined, centre, dc), centre);
+  assert.deepEqual(searchBiasPoint(outside, centre, [-78, 38, -75, 40]), centre, "a location outside the map's area is no bias");
+  assert.equal(searchBiasPoint(outside, outside, [-78, 38, -75, 40]), undefined, "neither inside: no bias at all");
+  assert.equal(searchBiasPoint(null, undefined, undefined), undefined);
+  assert.deepEqual(searchBiasPoint([-76.61234, 39.28766], centre, region), [-76.61, 39.29], "rounded to about 1 km");
+  const sent = new URL(searchUrl("coffee", searchBiasPoint([-76.61234, 39.28766], centre, region)), "http://site.test");
   assert.deepEqual([sent.searchParams.get("lon"), sent.searchParams.get("lat")], ["-76.61000", "39.29000"]);
-  assert.deepEqual(searchBiasPoint(null, centre), centre, "no location yet: the map's centre, as before");
-  assert.deepEqual(searchBiasPoint(undefined, centre), centre);
-  assert.deepEqual(searchBiasPoint(outside, centre), centre, "a location outside the map is no bias");
-  assert.equal(searchBiasPoint(outside, outside), undefined, "neither inside: no bias at all");
-  assert.equal(searchBiasPoint(null, undefined), undefined);
-  assert.deepEqual(searchBiasPoint(rider, undefined), rider, "no map yet: still the rider");
 });
 
 test("a picked place keeps the name it was found by; one outside the map is refused", () => {

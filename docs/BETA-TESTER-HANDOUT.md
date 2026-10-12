@@ -150,7 +150,9 @@ You stay responsible for riding safely; the route can be wrong.
   nothing and keeps nothing. Check the place before you send it.
 - Your position stays on your phone. It is sent only when a new way is found from where you
   are, or when you ask for the nearest water or restroom (as "Use my location" does when
-  planning), and never kept.
+  planning), and never kept. Place search, when the app already knows where you are and that
+  spot is on the map you are looking at, sends an approximate location (about 1 km / 0.6 mi)
+  so nearby places come first.
 - Keep the screen on. If the browser cannot keep it on, Ride mode says so; on an iPhone set
   Settings, Display and Brightness, Auto-Lock to Never for the ride. In the background for more
   than 10 minutes, the ride pauses; press Resume.
