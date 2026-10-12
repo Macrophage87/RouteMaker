@@ -11,6 +11,10 @@ because the repository's `.gitignore` ignores every directory of that name.
 | --- | --- | --- | --- | --- |
 | `climbs.json` | every categorised climb on the routable network (Cat 5 to HC) | the live segment table (OpenStreetMap, via the rebuild) and USGS 3DEP one-arcsecond elevation, by `manage.py build_climbs` (`pipeline.climb_layer`) | **ODbL 1.0** (a produced work of the OSM data); 3DEP is public domain | the map's existing "© OpenStreetMap contributors (ODbL)" and "USGS 3DEP" |
 
+The api reads the same file (v0.6.0): Mountain Goat's hill seek routes through the climbs in it and
+names those a route rides (`src/core/hillseek.py`, FOLLOWUP-HILL-SEEK), so `docker/api.Dockerfile`
+copies it into the api image. Without it the api plans as before.
+
 What counts as a climb and its category is in `routemaker.climb_categories`; how the network is
 read, the keys of each entry and the one-way rule are in `pipeline.climb_layer`'s docstring.
 

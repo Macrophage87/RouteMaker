@@ -158,6 +158,25 @@ test("rideModel: a work zone on the route is a hazard cue; the disclaimer line i
   assert.ok(says("stoker", model.cues[0]), "Stoker hears an orange work zone");
 });
 
+test("rideModel: a climb in the description is not a cue, and the stretch after it is read against the stretch before", () => {
+  const route = lRoute();
+  const plain = rideModel(lRoute()).cues.map((c) => c.kind);
+  const stretches = route.description ?? [];
+  route.description = [
+    ...stretches.slice(0, 1),
+    {
+      ...stretch(600, 1400, "At 0.4 mi (0.6 km): Category 5 climb, 0.5 miles (0.8 km) at 5.4%, 141 ft (43 m) gained, to the summit at 0.9 mi (1.4 km)."),
+      kind: "climb",
+      tier: null,
+    },
+    ...stretches.slice(1),
+  ];
+  assert.deepEqual(
+    rideModel(route).cues.map((c) => c.kind),
+    plain,
+  );
+});
+
 test("measureMap: stops anchor on their vertices however the two measures drift", () => {
   // The route's measure says the stop is at 1,200 m; its vertex is at 1,000 m along the line.
   const along = new Float64Array([0, 500, 1000, 1500, 2000]);

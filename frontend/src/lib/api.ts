@@ -217,6 +217,23 @@ export interface JunctionGroupSummary {
   text: string;
 }
 
+/** A categorised climb a route rides uphill (core.api.HillClimbOut; FOLLOWUP-HILL-SEEK). */
+export interface HillClimb {
+  id: string;
+  category: "5" | "4" | "3" | "2" | "1" | "HC";
+  length_m: number;
+  gain_m: number;
+  grade_pct: number;
+  from_m: number;
+  to_m: number;
+  unpaved: boolean;
+  name: string | null;
+  /** "Category 4 climb, 0.8 miles (1.3 km) at 5.0%, 262 ft (80 m) gained". */
+  text: string;
+  /** Whether the hill seek asked the router for it. */
+  sought: boolean;
+}
+
 /**
  * One entry of the route's description (core.api.DescriptionEntryOut;
  * OWNER-DECISIONS 220): a stretch of one street at one stress tier, a
@@ -227,9 +244,11 @@ export interface DescriptionEntry {
   /**
    * "avoid": an Avoid-rated junction ahead (OWNER-DECISIONS 307), at a point. "workzone": a live
    * work zone along the route (FOLLOWUP-WORKZONES), severity "red" for a closure, "orange" for a
-   * penalty; or, at 0 with no severity, the work-zone disclaimer or the feeds not read.
+   * penalty; or, at 0 with no severity, the work-zone disclaimer or the feeds not read. "climb": a
+   * categorised climb the route rides uphill, from its foot to its summit, where Mountain Goat's hill
+   * seek ran (FOLLOWUP-HILL-SEEK).
    */
-  kind: "stretch" | "junction" | "via" | "walk" | "avoid" | "workzone";
+  kind: "stretch" | "junction" | "via" | "walk" | "avoid" | "workzone" | "climb";
   from_m: number;
   to_m: number;
   from_mi: number;
@@ -602,6 +621,17 @@ export interface RouteResponse {
     extra_climb_m: number;
     extra_distance_m: number;
     limited: "two_points" | "long_ride" | "timed_out" | "calm_first" | null;
+    /**
+     * The categorised climbs the kept route rides uphill, in order (FOLLOWUP-HILL-SEEK, OWNER-DECISIONS
+     * 205); `text` is the climb in words, US units first. Additive: older APIs leave it out.
+     */
+    climbs?: HillClimb[];
+    /**
+     * The hill seek: routes through the climbs near the line, compared with the router's own; null where
+     * it did not run. "no_climbs": the server has no Climbs layer file, so only the router's own routes
+     * were compared.
+     */
+    climb_seek?: { near: number; asked: number; found: number; limited: "no_climbs" | "time" | null } | null;
   } | null;
   /**
    * Present when the hills slider was past its middle on a ride type where that means "fine with
