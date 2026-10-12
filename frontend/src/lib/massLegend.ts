@@ -11,7 +11,7 @@ import type { RouteResponse } from "./api.ts";
 import { DC_BOUNDARY_CREDIT, MASS_DC_ONLY } from "./dcBoundary.ts";
 import { formatDistance } from "./format.ts";
 import { HazardLegend } from "./massHazards.ts";
-import { ROUTE_CASING_WIDTH, routeCasing, routeClasses, routeMarkDash, routeMarkWidth, type RouteClass, type RouteClassKey } from "./routeColours.ts";
+import { ROUTE_BAND, ROUTE_SWATCH_BAND_WIDTH, ROUTE_SWATCH_CASING_WIDTH, ROUTE_SWATCH_HEIGHT, routeCasing, routeClasses, routeMarkDash, routeMarkWidth, type RouteClass, type RouteClassKey } from "./routeColours.ts";
 import {
   AVOID_LEGEND_TEXT,
   CAPACITY_FIGURE_TITLE,
@@ -65,11 +65,13 @@ export function AvoidSwatch(): ReactElement {
  */
 export function RouteClassSwatch({ cls }: { cls: RouteClass }): ReactElement {
   const line = (stroke: string, width: number, extra: Record<string, unknown> = {}) =>
-    h("line", { x1: 3, y1: 7, x2: 33, y2: 7, stroke, strokeWidth: width, strokeLinecap: "round", ...extra });
+    h("line", { x1: 9, y1: 9, x2: 27, y2: 9, stroke, strokeWidth: width, strokeLinecap: "round", ...extra });
   return h(
     "svg",
-    { width: 36, height: 14, "aria-hidden": "true", className: "route-swatch" },
-    line(routeCasing(), ROUTE_CASING_WIDTH),
+    { width: 36, height: ROUTE_SWATCH_HEIGHT, "aria-hidden": "true", className: "route-swatch" },
+    // The corridor in miniature (routeColours.ts, ROUTE_SWATCH_CASING_WIDTH).
+    line(routeCasing(), ROUTE_SWATCH_CASING_WIDTH),
+    line(ROUTE_BAND, ROUTE_SWATCH_BAND_WIDTH),
     cls.ring ? line(cls.ring, cls.ringWidth ?? cls.haloWidth) : null,
     line(cls.halo, cls.haloWidth),
     line(cls.color, cls.width),

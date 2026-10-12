@@ -834,6 +834,27 @@ LTS 4 5.5, Avoid 6, unrated 5). Each has a halo a pixel wider each side
 its coral casing, the one exception to "dark under light, white under dark"
 (the test asserts it is that palette's own casing and at least 3:1).
 
+**The route's corridor.** The sections take the map's own colours (a Mass
+Ride's the capacity bands' colours, widths and dashes, the same as the roads
+under them), so the 11 px casing left the route reading as one more road
+(Stephen, 2026-10-12). A route in sections is drawn as a corridor
+(`routeCorridorPaint`): a 16 px white band (`route-band`) inside a 22 px
+casing in the route's blue (the dark slate in the colour-blind-friendly
+palette), about 3 px of each round the widest halo. Every class's edge on the
+white is 3:1 (its ring, its halo, or the section itself where a light halo
+merges into the band). A one-colour route keeps its 11 px white casing.
+
+Under a route the overlay's lines fade (`overlayFade`): to 0.45 under a Mass
+Ride's capacity route (`MASS_NETWORK_DIMMED`), to 0.8 under any other
+(`ROUTE_OVERLAY_FADE`; Stephen: "mute most of the colors when there's a
+route, for default too"). The fade multiplies each layer's own opacity
+(`fadedOpacity` scales a zoom step's outputs, so the zoom fades stay); Avoid
+roads fade too (the route will not ride them); the hazard rails and the trail
+names keep full strength (`keptUnderRoute`).
+With the High contrast switch on there is no fade, since the overlay's 3:1
+edges are measured at its own opacities. `lib/routeCorridor.test.ts` holds
+the widths, the contrasts, the fade and the wiring.
+
 **Tests.** `stressSalience.test.ts` covers: the rising ink and width, LTS 4's
 duty, chroma and contrast rising from LTS 3 to Avoid, the harshness rule, no
 black under LTS 3, LTS 2 against LTS 3 by dash length, period and width, the

@@ -436,3 +436,58 @@ export function routePaint(
     casingColor: hasSections ? sectionCasing : ROUTE_CASING_PLAIN,
   };
 }
+
+/**
+ * The route as a corridor over the road colours (Stephen, 2026-10-12: "The colors on mass ride are
+ * so bright that I can't see the actual route." and, of a regular route, "It's similar for regular
+ * routes too, but not as pronounced."). The route's sections are drawn in the map's own colours (a
+ * Mass Ride's in the capacity bands' colours, widths and dashes, the same as the roads under it),
+ * and the 11 px casing left a pixel or less of blue each side of the widest: the route read as one
+ * more road. So a route with sections is drawn on a white band (ROUTE_BAND_WIDTH) inside a wider
+ * casing in the route's own colour (ROUTE_CORRIDOR_CASING_WIDTH): about three pixels of white and
+ * three of blue each side of the widest halo (a Mass Ride's Wide open, 10.5 px). Every class's
+ * edge against the white is 3:1 (its halo or ring, or the section itself where its halo is white;
+ * routeCorridor.test.ts). The roads behind it fade (`overlayFade`). The route's own colours, halos
+ * and dashes are unchanged, so its legend still reads. A one-colour route (no sections) is as before.
+ */
+export const ROUTE_BAND = "#ffffff";
+export const ROUTE_BAND_WIDTH = 16;
+export const ROUTE_CORRIDOR_CASING_WIDTH = 22;
+/**
+ * The route legend's swatch, the corridor in miniature (FacilityBreakdown, massLegend's
+ * RouteClassSwatch): an 18 px tall swatch with a 17 px casing round a 13 px white band, so the
+ * section sits on white inside blue as on the map, with a pixel or more of each round the widest halo.
+ */
+export const ROUTE_SWATCH_HEIGHT = 18;
+export const ROUTE_SWATCH_CASING_WIDTH = 17;
+export const ROUTE_SWATCH_BAND_WIDTH = 13;
+/** The capacity roads' opacity while a Mass Ride's route is on the map: there to read, not to compete. */
+export const MASS_NETWORK_DIMMED = 0.45;
+/**
+ * The stress map's opacity under any other route (Stephen, 2026-10-12: "Maybe mute most of the
+ * colors when there's a route, for default too. Like an alpha of 0.8"): a lighter fade than a
+ * Mass Ride's, whose route has its own outline over roads of its own colours.
+ */
+export const ROUTE_OVERLAY_FADE = 0.8;
+
+/**
+ * The corridor's paint: the casing's width and the white band's opacity, for a route drawn in
+ * sections (`hasSections`) or as one line. A stale route's band dims with it.
+ */
+export function routeCorridorPaint(hasSections: boolean, stale: boolean): { casingWidth: number; bandOpacity: number } {
+  return {
+    casingWidth: hasSections ? ROUTE_CORRIDOR_CASING_WIDTH : ROUTE_CASING_WIDTH,
+    bandOpacity: hasSections ? (stale ? 0.45 : 1) : 0,
+  };
+}
+
+/**
+ * How much the map's road colours are faded under the route: MASS_NETWORK_DIMMED under a Mass
+ * Ride's capacity route, ROUTE_OVERLAY_FADE under any other route, none (1) with no route.
+ * Applied as a factor on each layer's own opacity (mapGlue.ts, setOverlayFade), so the overlay's
+ * zoom fades are kept.
+ */
+export function overlayFade(hasRoute: boolean, capacity: boolean): number {
+  if (!hasRoute) return 1;
+  return capacity ? MASS_NETWORK_DIMMED : ROUTE_OVERLAY_FADE;
+}

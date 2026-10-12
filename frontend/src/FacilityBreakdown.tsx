@@ -9,7 +9,7 @@ import { avoidMetres, breakdownParts, facilityRows, type BreakdownPart } from ".
 import type { RouteResponse } from "./lib/api.ts";
 import { routeWarning } from "./lib/dialsPanel.ts";
 import { useHighStressLanes, useStressStyle } from "./useStressStyle.ts";
-import { ROUTE_CASING_WIDTH, routeCasing, routeLegend, routeMarkDash, routeMarkWidth } from "./lib/routeColours.ts";
+import { ROUTE_BAND, ROUTE_SWATCH_BAND_WIDTH, ROUTE_SWATCH_CASING_WIDTH, ROUTE_SWATCH_HEIGHT, routeCasing, routeLegend, routeMarkDash, routeMarkWidth } from "./lib/routeColours.ts";
 import { seekNote, tolerateNote } from "./lib/summary.ts";
 
 /**
@@ -44,19 +44,21 @@ export function FacilityBreakdown({ route, part = "all" }: { route: RouteRespons
           <ul className="stress-list" aria-label="Route color legend">
             {colours.map((row) => (
               <li key={row.key}>
-                <svg width="36" height="14" aria-hidden="true">
-                  <line x1="3" y1="7" x2="33" y2="7" stroke={casing} strokeWidth={ROUTE_CASING_WIDTH} strokeLinecap="round" />
-                  {row.ring && <line x1="3" y1="7" x2="33" y2="7" stroke={row.ring} strokeWidth={row.ringWidth} strokeLinecap="round" />}
-                  <line x1="3" y1="7" x2="33" y2="7" stroke={row.halo} strokeWidth={row.haloWidth} strokeLinecap="round" />
-                  <line x1="3" y1="7" x2="33" y2="7" stroke={row.color} strokeWidth={row.width} strokeLinecap="round" />
+                <svg width="36" height={ROUTE_SWATCH_HEIGHT} aria-hidden="true">
+                  {/* The corridor in miniature: the casing round the white band, as the map draws the route. */}
+                  <line x1="9" y1="9" x2="27" y2="9" stroke={casing} strokeWidth={ROUTE_SWATCH_CASING_WIDTH} strokeLinecap="round" />
+                  <line x1="9" y1="9" x2="27" y2="9" stroke={ROUTE_BAND} strokeWidth={ROUTE_SWATCH_BAND_WIDTH} strokeLinecap="round" />
+                  {row.ring && <line x1="9" y1="9" x2="27" y2="9" stroke={row.ring} strokeWidth={row.ringWidth} strokeLinecap="round" />}
+                  <line x1="9" y1="9" x2="27" y2="9" stroke={row.halo} strokeWidth={row.haloWidth} strokeLinecap="round" />
+                  <line x1="9" y1="9" x2="27" y2="9" stroke={row.color} strokeWidth={row.width} strokeLinecap="round" />
                   {/* Avoid's white dash-dot, as the map draws it (397: not the colour alone). */}
                   {row.mark && (
                     <line
                       className="route-avoid-mark"
-                      x1="3"
-                      y1="7"
-                      x2="33"
-                      y2="7"
+                      x1="9"
+                      y1="9"
+                      x2="27"
+                      y2="9"
                       stroke={row.mark}
                       strokeWidth={routeMarkWidth(row.width)}
                       strokeDasharray={routeMarkDash(row.width)}
