@@ -85,6 +85,7 @@ same words.
 from __future__ import annotations
 
 import copy
+import math
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -530,6 +531,39 @@ def rebalance_ends(
     return [(distance, _dock_pick(station, snapshot)) for distance, station, _, _ in found]
 
 
+def _fill_words(pick: Pick, rounding) -> str:
+    fullness = None if pick.status is None else pick.status.fullness
+    if fullness is None:
+        return "its fill can't be read"
+    return f"{rounding(fullness * 100)}% full"
+
+
+def rebalance_pinned_start(picks: list[tuple[float, Pick]]) -> None:
+    """A dock the rider chose to start a Rebalance Ride from must be crowded (at least 3/4
+    full), as the pick-up list's are, or the rider is told why not."""
+    for _, pick in picks:
+        fullness = None if pick.status is None else pick.status.fullness
+        if fullness is None or fullness < FULL_AT_LEAST:
+            # Rounded down, so a station just short of 3/4 never reads "75% full".
+            raise NoBikeshare(
+                f"{pick.name} isn't crowded right now ({_fill_words(pick, math.floor)}), so it "
+                "can't start a Rebalance Ride. Choose another, or let the plan choose."
+            )
+
+
+def rebalance_pinned_end(picks: list[tuple[float, Pick]]) -> None:
+    """A dock the rider chose to end a Rebalance Ride at must need bikes (at most 1/4 full),
+    as the drop-off list's do, or the rider is told why not."""
+    for _, pick in picks:
+        fullness = None if pick.status is None else pick.status.fullness
+        if fullness is None or fullness > EMPTY_AT_MOST:
+            # Rounded up, so a station just over 1/4 never reads "25% full".
+            raise NoBikeshare(
+                f"{pick.name} doesn't need bikes right now ({_fill_words(pick, math.ceil)}), so "
+                "it can't end a Rebalance Ride. Choose another, or let the plan choose."
+            )
+
+
 def nearby_stations(
     point: LonLat, action: str, snapshot: gbfs.Snapshot, toward: LonLat | None = None
 ) -> list[NearbyStation]:
@@ -752,6 +786,8 @@ def plan(
     nearest_end: tuple[float, Pick] | None = None
     if pickup_station:
         docks, free = pinned_start(origin, pickup_station, bike, snapshot)
+        if rebalance:
+            rebalance_pinned_start(docks)
     elif rebalance:
         docks, free = rebalance_starts(origin, dest, bike, snapshot), []
     else:
@@ -771,6 +807,8 @@ def plan(
     if not use_outside:
         if dropoff_station:
             ends = pinned_end(dest, dropoff_station, snapshot)
+            if rebalance:
+                rebalance_pinned_end(ends)
         elif rebalance:
             ends = rebalance_ends(dest, origin, snapshot)
             if not ends:
@@ -803,7 +841,9 @@ def plan(
                 finishes.append((pick, leg))
         if not finishes:
             raise NoBikeshare(
-                "There is no way on foot from a dock with a free slot to the destination."
+                "There is no way on foot from a station that needs bikes to the destination."
+                if rebalance
+                else "There is no way on foot from a dock with a free slot to the destination."
             )
 
     # Every pair, quickest first: the real walks plus the estimated ride. Ties by the walks
@@ -825,6 +865,11 @@ def plan(
                 + (e_walk.duration_s if e_walk else 0.0)
             )
             pairs.append((cost, total, s_pick, s_walk, s_extra, e_pick, e_walk, e_extra))
+    if not pairs and rebalance:
+        raise NoBikeshare(
+            "The crowded stations and the ones that need bikes are within a few steps of each "
+            "other, so there is no Rebalance Ride to make. Try plain Bikeshare."
+        )
     if not pairs:
         raise NoBikeshare(
             "The nearest docks to the start and to the destination are the same, so there is "

@@ -222,8 +222,8 @@ export function PointsSection(props: PointsSectionProps) {
       {points.length === 1 && <p className="hint">{loneStartHint(preset, loopVias, accessMode)}</p>}
       {usesBikeshare(preset) && (
         <p className="hint">
-          Bikeshare plans take a start and an end only: the docks and the walks are chosen for you, unless you choose a station under Route. Remove
-          any stops to plan one.
+          Bikeshare plans, Rebalance Rides too, take a start and an end only: the stations and the walks are chosen for you, unless you choose a
+          station under Route. Remove any stops to plan one.
         </p>
       )}
       {/* Mass Ride planning covers DC only for now (OWNER-DECISIONS 418), in words beside the gray map. */}

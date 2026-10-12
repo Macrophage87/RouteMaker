@@ -25,7 +25,7 @@ const plan = (options: BikeshareOption[]) => ({ options }) as unknown as Bikesha
 const three = [option(1, "p1", "d1"), option(2, "p2", "d1"), option(3, "p1", "d2")];
 
 test("the first answer's options are kept for the trip; a re-plan of one pair does not shrink them", () => {
-  const key = optionsKey([A, B]);
+  const key = optionsKey([A, B], "bikeshare");
   const first = keepOptions(null, plan(three), key);
   assert.equal(first?.options.length, 3);
   const replanned = { ...option(2, "p2", "d1"), chosen: true };
@@ -39,11 +39,31 @@ test("the first answer's options are kept for the trip; a re-plan of one pair do
 });
 
 test("a new trip takes its own list; no trip, or no options, none", () => {
-  const first = keepOptions(null, plan(three), optionsKey([A, B]));
-  const moved = keepOptions(first, plan([option(1, "q1", "q2")]), optionsKey([B, A]));
+  const first = keepOptions(null, plan(three), optionsKey([A, B], "bikeshare"));
+  const moved = keepOptions(first, plan([option(1, "q1", "q2")]), optionsKey([B, A], "bikeshare"));
   assert.equal(moved?.options[0].pickup_station, "q1");
-  assert.equal(keepOptions(first, plan(three), optionsKey([A])), null);
-  assert.equal(keepOptions(null, null, optionsKey([A, B])), null);
+  assert.equal(keepOptions(first, plan(three), optionsKey([A], "bikeshare")), null);
+  assert.equal(keepOptions(null, null, optionsKey([A, B], "bikeshare")), null);
+});
+
+test("Bikeshare's options never carry over to a Rebalance Ride on the same trip, nor the other way round", () => {
+  const bikeshare = optionsKey([A, B], "bikeshare");
+  const rebalance = optionsKey([A, B], "rebalance");
+  assert.notEqual(bikeshare, rebalance);
+  // Bikeshare lists three; the Rebalance Ride's answer lists one: its own, not Bikeshare's three.
+  const first = keepOptions(null, plan(three), bikeshare);
+  const rebalanced = keepOptions(first, plan([option(1, "c1", "n1")]), rebalance);
+  assert.equal(rebalanced?.key, rebalance);
+  assert.deepEqual(rebalanced?.options.map((o) => o.pickup_station), ["c1"]);
+  // And back: Rebalance lists three; Bikeshare's one-pair answer is its own.
+  const rebalanceFirst = keepOptions(null, plan([option(1, "c1", "n1"), option(2, "c2", "n1")]), rebalance);
+  const back = keepOptions(rebalanceFirst, plan([option(1, "p1", "d1")]), bikeshare);
+  assert.equal(back?.key, bikeshare);
+  assert.deepEqual(back?.options.map((o) => o.pickup_station), ["p1"]);
+  // A list kept for one ride type is not the list for the other (Go matches the key it shows for).
+  assert.notEqual(first?.key, rebalance);
+  // Another ride type's answer (no bikeshare plan) leaves the list as it was.
+  assert.equal(keepOptions(first, null, optionsKey([A, B], "road")), first);
 });
 
 test("an option's pins hold its stations to the trip's ends; a stationless end is left to the server", () => {
@@ -72,7 +92,7 @@ test("a free e-bike's option replays the first answer; a dock's option is re-pla
 test("the first answer is replayed only when the free e-bike asked for it and the request is exactly its plan", () => {
   const dials = { bike: "ebike", stress: 80, ending: "dock" };
   const firstKey = sentPlanKey([A, B], "bikeshare", withStations(dials as never, {}));
-  const first = { key: firstKey, trip: optionsKey([A, B]), route: "first route" };
+  const first = { key: firstKey, trip: optionsKey([A, B], "bikeshare"), route: "first route" };
   // The key holds the stations (the link's key does not), so B's pinned plan never matches.
   const pinned = sentPlanKey([A, B], "bikeshare", withStations(dials as never, optionPins(three[1], [A, B])));
   assert.notEqual(pinned, firstKey);

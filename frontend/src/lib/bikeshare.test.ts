@@ -15,6 +15,7 @@ import {
   dockMarkers,
   endingChoices,
   hasEndingChoice,
+  planHeading,
   routeCredits,
   showsBikeshare,
   totals,
@@ -371,6 +372,12 @@ test("Bikeshare offers no loop: it plans a walk, a ride between docks and a walk
   assert.notEqual(loopView("default", false, [A, B]), null);
 });
 
-test("the points panel says Bikeshare takes a start and an end only", () => {
-  assert.match(appSource(), /Bikeshare plans take a start and an end only/);
+test("the points panel says Bikeshare and Rebalance Ride take a start and an end only", () => {
+  assert.match(appSource(), /Bikeshare plans, Rebalance Rides too, take a start and an end only/);
+});
+
+test("the plan's heading names the ride type: Bikeshare plan, or Rebalance Ride", () => {
+  assert.equal(planHeading(plan()), "Bikeshare plan: classic bike");
+  assert.equal(planHeading(plan({ rebalance: false, bike: "ebike" })), "Bikeshare plan: e-bike");
+  assert.equal(planHeading(plan({ rebalance: true })), "Rebalance Ride: classic bike");
 });

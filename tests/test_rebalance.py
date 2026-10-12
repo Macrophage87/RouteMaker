@@ -9,12 +9,14 @@ are over 3/4 full; near Dupont Circle, 18th & New Hampshire Ave NW is 11% full.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 from test_bikeshare import (
     COLUMBUS,
     DUPONT,
+    TWENTIETH_Q,
     UNION,
     FakeServices,
     run,
@@ -28,8 +30,10 @@ from core import bikeshare, presets
 from core.bikeshare import ENDING_DOCK, ENDING_OUTSIDE, NoBikeshare
 
 
-def rebalance(origin, dest, bike="classic", snap=None, ending=ENDING_DOCK, **kwargs):
-    services = FakeServices(ride_speed_kmh=presets.BIKESHARE_BIKES[bike].speed_kmh)
+def rebalance(
+    origin, dest, bike="classic", snap=None, ending=ENDING_DOCK, no_walk_to=None, **kwargs
+):
+    services = FakeServices(no_walk_to, ride_speed_kmh=presets.BIKESHARE_BIKES[bike].speed_kmh)
     snap = snap or snapshot()
     body = bikeshare.plan(
         origin,
@@ -157,9 +161,85 @@ def test_no_crowded_station_or_none_that_needs_bikes_is_said() -> None:
         rebalance(UNION, DUPONT, snap=snap)
 
 
-def test_without_availability_it_says_so() -> None:
-    from dataclasses import replace
+def test_a_chosen_start_must_be_crowded() -> None:
+    # Columbus Circle is 23% full: plain Bikeshare may start there, a Rebalance Ride may not.
+    snap = snapshot()
+    assert fill(snap, COLUMBUS.station_id) < bikeshare.FULL_AT_LEAST
+    with pytest.raises(NoBikeshare) as refusal:
+        rebalance(UNION, DUPONT, snap=snap, pickup_station=COLUMBUS.station_id)
+    assert str(refusal.value).startswith(
+        "Columbus Circle / Union Station isn't crowded right now (23% full), so it can't start "
+        "a Rebalance Ride."
+    )
 
+
+def test_a_chosen_end_must_need_bikes() -> None:
+    # 20th & Q St NW is 41% full: taking bikes back, but not one that needs them.
+    snap = snapshot()
+    assert fill(snap, TWENTIETH_Q.station_id) > bikeshare.EMPTY_AT_MOST
+    with pytest.raises(NoBikeshare) as refusal:
+        rebalance(UNION, DUPONT, snap=snap, dropoff_station=TWENTIETH_Q.station_id)
+    assert str(refusal.value).startswith(
+        "20th & Q St NW doesn't need bikes right now (41% full), so it can't end a Rebalance Ride."
+    )
+
+
+def test_the_fill_is_rounded_so_a_near_miss_never_reads_as_a_fit() -> None:
+    # 74.6% full is not crowded, and is said as 74%, not 75%.
+    snap = set_status(snapshot(), COLUMBUS, bikes=373, ebikes=0, docks=127)
+    with pytest.raises(NoBikeshare, match=r"\(74% full\)"):
+        rebalance(UNION, DUPONT, snap=snap, pickup_station=COLUMBUS.station_id)
+    # 25.4% full does not need bikes, and is said as 26%.
+    snap = set_status(snapshot(), TWENTIETH_Q, bikes=127, ebikes=0, docks=373)
+    with pytest.raises(NoBikeshare, match=r"\(26% full\)"):
+        rebalance(UNION, DUPONT, snap=snap, dropoff_station=TWENTIETH_Q.station_id)
+
+
+def test_chosen_stations_that_fit_are_taken_and_said() -> None:
+    snap = snapshot()
+    start = bikeshare.rebalance_starts(UNION, DUPONT, "classic", snap)[-1][1]
+    end = bikeshare.rebalance_ends(DUPONT, UNION, snap)[-1][1]
+    body, _, _ = rebalance(
+        UNION, DUPONT, snap=snap, pickup_station=start.station_id, dropoff_station=end.station_id
+    )
+    plan = body["bikeshare"]
+    assert plan["rebalance"] is True
+    assert plan["start"]["station_id"] == start.station_id
+    assert plan["end"]["station_id"] == end.station_id
+    assert f"{start.name}, which is crowded" in plan["steps"][0]["text"]
+    assert f"{end.name}, which needs bikes" in plan["steps"][1]["text"]
+
+
+def test_crowded_and_needy_stations_side_by_side_are_said_as_rebalance() -> None:
+    # One crowded station and one that needs bikes, a few metres apart: nothing to ride, and
+    # "the nearest docks are the same; walking is the way" would be wrong here.
+    snap = snapshot()
+    for station in snap.stations:
+        if station.station_id in snap.status:
+            snap = set_status(snap, station, bikes=5, ebikes=0, docks=5)
+    beside = replace(TWENTIETH_Q, lon=COLUMBUS.lon, lat=COLUMBUS.lat + 0.0001)
+    snap = replace(
+        snap, stations=[beside if s.station_id == beside.station_id else s for s in snap.stations]
+    )
+    snap = set_status(snap, COLUMBUS, bikes=20, docks=1)
+    snap = set_status(snap, beside, bikes=1, docks=19)
+    with pytest.raises(NoBikeshare) as refusal:
+        rebalance(UNION, DUPONT, snap=snap)
+    assert "no Rebalance Ride to make" in str(refusal.value)
+    assert "Walking is the way" not in str(refusal.value)
+
+
+def test_no_way_on_foot_from_the_end_says_stations_that_need_bikes() -> None:
+    snap = snapshot()
+    ends = bikeshare.rebalance_ends(DUPONT, UNION, snap)
+    with pytest.raises(NoBikeshare) as refusal:
+        rebalance(UNION, DUPONT, snap=snap, no_walk_to={tuple(p.point) for _, p in ends})
+    assert str(refusal.value) == (
+        "There is no way on foot from a station that needs bikes to the destination."
+    )
+
+
+def test_without_availability_it_says_so() -> None:
     with pytest.raises(NoBikeshare, match="can't be read"):
         rebalance(UNION, DUPONT, snap=replace(snapshot(), status=None))
 
@@ -199,6 +279,19 @@ class TestRebalanceApi:
         assert plan["start"]["name"] != COLUMBUS.name
         assert plan["end"]["name"] == "18th & New Hampshire Ave NW"
         assert plan["summary"].startswith("Rebalance Ride, classic bike")
+
+    def test_a_chosen_station_that_is_not_crowded_is_a_422_in_words(self, client) -> None:
+        response = post(
+            client,
+            {
+                "points": [UNION, DUPONT],
+                "preset": "rebalance",
+                "pickup_station": COLUMBUS.station_id,
+            },
+        )
+        assert response.status_code == 422, response.content
+        assert response.json()["code"] == "no_bikeshare"
+        assert "isn't crowded right now (23% full)" in response.json()["error"]
 
     def test_it_takes_the_bike_choice_as_bikeshare_does(self, client) -> None:
         response = post(client, {"points": [UNION, DUPONT], "preset": "rebalance", "bike": "ebike"})

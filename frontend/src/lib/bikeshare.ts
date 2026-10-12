@@ -55,6 +55,11 @@ export function bikeLabel(bike: Bike): string {
   return BIKES.find((b) => b.id === bike)?.label ?? bike;
 }
 
+/** The plan's heading: "Bikeshare plan: classic bike", or on a Rebalance Ride "Rebalance Ride: classic bike". */
+export function planHeading(plan: Pick<BikesharePlan, "bike" | "rebalance">): string {
+  return `${plan.rebalance ? "Rebalance Ride" : "Bikeshare plan"}: ${bikeLabel(plan.bike).toLowerCase()}`;
+}
+
 export function bikeshareOf(route: Pick<RouteResponse, "bikeshare"> | null | undefined): BikesharePlan | null {
   return route?.bikeshare ?? null;
 }
