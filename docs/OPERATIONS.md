@@ -6118,8 +6118,12 @@ What it does, with a plain line for each step:
 4. `aws ssm send-command` with `AWS-RunShellScript`: as root, a power-off scheduled for
    when the command's time is up (`shutdown -P`, the timeout plus an hour: a dead-man
    switch, so a box whose launcher died during the setup cannot run on for ever), and the
-   AWS CLI from snap if it is missing; then as `ubuntu`, nothing at all if the run already
-   has its result (SSM may run a command again after the box restarts), else
+   AWS CLI from snap if it is missing, and the run marker
+   (`/var/lib/routemaker-launch/current`: the launch's time and run URL); then as
+   `ubuntu`, nothing at all if the run already has its result or the marker names another
+   run (SSM may run a command again after the box restarts, and an old run's command must
+   neither redo that run nor let `box-rebuild.sh` power off the box under a newer one; an
+   older command also leaves the marker of a newer launch alone), else
    `~/RouteMaker` cloned if it is missing, the run's commit checked out there (the rule in
    "A run", step 2) and `box-rebuild.sh` run from it, its output appended to
    `~/cloud-rebuild.log` on the box. `--beta` passes `--beta-bundle`, `--refire` passes
@@ -6148,9 +6152,10 @@ and interruption behaviour Stop, AWS stops the box when it needs the capacity ba
 **starts it again by itself** when it has room. Nothing runs on it then (the launcher's
 command is not repeated, and if SSM did repeat it, it would find the result or carry the
 run on and power off), so a box restarted that way sits idle and billed until someone
-stops it. When the box stops with no result, the launcher calls `stop-instances` on it
-once more, though it is already stopped, so that the stop is a user's stop, which AWS
-does not restart. **That this prevents the restart is not verified**: after the first
+stops it. When a box the launcher started stops with no result, the launcher calls
+`stop-instances` on it once more, though it is already stopped, so that the stop is a
+user's stop, which AWS does not restart (a box it was given with `--use-running` is left
+to you). **That this prevents the restart is not verified**: after the first
 reclaim, look in the console (EC2, Instances) an hour or so later and stop the box if it
 is running; the budget alarm is the backstop.
 

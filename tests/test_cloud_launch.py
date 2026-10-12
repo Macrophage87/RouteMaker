@@ -118,6 +118,8 @@ def fake(tmp_path):
         "CLOUD_LAUNCH_POLL_S": "0",
         "CLOUD_LAUNCH_START_POLL_S": "0",
         "CLOUD_LAUNCH_START_WAIT_S": "5",
+        # Baked into the box's script: where the run marker goes on the "box".
+        "CLOUD_LAUNCH_MARKER": str(tmp_path / "box-state" / "current"),
     }
     for key in (
         "CLOUD_BUCKET",
@@ -246,7 +248,7 @@ def test_the_box_script_runs_with_its_one_time_setup(fake) -> None:
     tools = fake.root / "tools"
     tools.mkdir()
     (fake.root / "ubuntu").mkdir()
-    for tool in ("bash", "base64", "mktemp", "chmod", "tail", "cat", "mkdir", "printf", "dirname"):
+    for tool in ("bash", "base64", "mktemp", "chmod", "tail", "cat", "mkdir", "dirname", "cut"):
         found = shutil.which(tool)
         if found:
             (tools / tool).symlink_to(found)
@@ -273,6 +275,9 @@ def test_the_box_script_runs_with_its_one_time_setup(fake) -> None:
     assert f"git checkout --quiet --detach {COMMIT}" in steps
     assert steps[-1] == f"box-rebuild {URL}"
     assert "box-rebuild.sh exited 0" in done.stdout and "rebuilt" in done.stdout
+    marker = fake.root / "box-state" / "current"
+    launched, named = marker.read_text().split()
+    assert named == URL and launched.isdigit()
 
     # SSM running the command again after a restart: the result is there, so nothing runs.
     log.write_text("")
@@ -282,6 +287,30 @@ def test_the_box_script_runs_with_its_one_time_setup(fake) -> None:
     steps = log.read_text().splitlines()
     assert "snap install aws-cli --classic" not in steps, "installed the first time"
     assert not [s for s in steps if s.startswith(("git ", "box-rebuild"))]
+
+    # A newer launch (another run) owns the box: this older command, run again, does
+    # nothing, and leaves the newer launch's marker as it is.
+    other = "s3://bucket/rebuild-checkpoints/transfer/cloud-20261019"
+    marker.write_text(f"{int(launched) + 3600} {other}\n")
+    log.write_text("")
+    older = on_the_box(RESULT="")
+    assert older.returncode == 0, older.stdout + older.stderr
+    assert "a newer launch" in older.stdout
+    assert log.read_text() == "", "not even the power-off is scheduled"
+    assert marker.read_text() == f"{int(launched) + 3600} {other}\n"
+
+    # The ubuntu half checks the marker too: one naming another run means nothing to do.
+    _, ubuntu = fake.box_scripts()
+    marker.write_text(f"{launched} {other}\n")
+    log.write_text("")
+    for name in ("aws",):
+        (box_bin / name).write_text('#!/usr/bin/env bash\necho "aws $*" >>"$LOG"\nexit 1\n')
+    half = subprocess.run(
+        ["bash"], input=ubuntu, env={**box_env}, capture_output=True, text=True, timeout=30
+    )
+    assert half.returncode == 0, half.stdout + half.stderr
+    assert f"the box is on {other}, not {URL}" in half.stdout
+    assert log.read_text() == "", "no clone, no box-rebuild.sh, no power-off at its end"
 
 
 def test_swap_installs_then_swaps(fake) -> None:
@@ -444,8 +473,41 @@ def test_the_resume_hint_names_the_run_even_with_the_default_name(fake) -> None:
     assert done.returncode == 1
     url = re.search(r"run (cloud-\d{8}) at (s3://\S+);", done.stdout).group(2)
     assert url.startswith("s3://my-bucket/rebuild-checkpoints/transfer/cloud-")
-    assert f"scripts/cloud/launch.sh --no-send --beta --profile home {url}" in done.stderr
+    assert f"scripts/cloud/launch.sh --no-send --profile home --beta {url}" in done.stderr
     assert f"--refire {url}" in done.stderr
+
+
+def test_the_resume_hint_keeps_the_options_given(fake) -> None:
+    (fake.dir / "invocation").write_text("Failed\n")
+    (fake.dir / "result_after").write_text("99")
+    live = fake.root / "my live"
+
+    done = fake.run(
+        "--instance-id", "i-0fedcba9876543210", "--box-region", "eu-west-1",
+        "--bucket-region", "eu-central-1", "--bucket", "my-bucket", "--prefix", "p",
+        "--run", "cloud-test", "--live-dir", str(live), "--repo-url",
+        "https://example.org/fork.git", "--timeout-hours", "12", "--swap", "--refire",
+    )  # fmt: skip
+
+    assert done.returncode == 1
+    hint = (
+        "scripts/cloud/launch.sh --no-send --instance-id i-0fedcba9876543210"
+        " --box-region eu-west-1 --bucket-region eu-central-1"
+        f" --live-dir '{live}' --repo-url https://example.org/fork.git"
+        " --timeout-hours 12 --swap s3://my-bucket/p/cloud-test"
+    )
+    assert hint in done.stderr, done.stderr
+    assert hint.replace(" s3://", " --refire s3://") in done.stderr
+
+
+def test_a_reclaimed_box_it_did_not_start_is_not_stopped(fake) -> None:
+    (fake.dir / "states").write_text("running\nrunning\nrunning\nstopped\n")
+    (fake.dir / "result_after").write_text("99")
+
+    done = fake.run(URL, "--use-running")
+
+    assert done.returncode == 1 and "stopped with no result" in done.stderr
+    assert not fake.called("stop-instances")
 
 
 def test_success_with_no_result_is_a_failure_with_the_resume_hint(fake) -> None:

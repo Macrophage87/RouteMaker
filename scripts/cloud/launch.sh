@@ -77,6 +77,7 @@ profile=${CLOUD_PROFILE:-}
 repo_url=https://github.com/Macrophage87/RouteMaker.git
 run="" url="" live_dir="" allow_dirty=0 send=1 refire=0 beta=0 swap=0 use_running=0
 timeout_hours=30 dry_run=0
+given=("$@")
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--instance-id) [ $# -ge 2 ] || die "$1 needs a value"; instance=$2; shift 2 ;;
@@ -139,13 +140,14 @@ passed=()
 
 # Every AWS call goes through here: printed (and not run) with --dry-run. The box's own
 # region for EC2 and SSM; S3 in the bucket's region.
-show() {
+quoted() {
 	local a line=""
 	for a in "$@"; do
 		if [[ "$a" =~ ^[A-Za-z0-9_./:=@,+-]+$ ]]; then line+=" $a"; else line+=" '${a//\'/\'\\\'\'}'"; fi
 	done
-	echo " $line"
+	echo "${line# }"
 }
+show() { echo "  $(quoted "$@")"; }
 aws_box() {
 	if [ "$dry_run" = 1 ]; then show aws "${common[@]}" --region "$box_region" "$@"; return 0; fi
 	"$AWS" "${common[@]}" --region "$box_region" "$@"
@@ -164,11 +166,23 @@ script() {
 	AWS_REGION=$bucket_region AWS_DEFAULT_REGION=$bucket_region "$@"
 }
 # The command that carries this run on, for every message that ends a run part way.
+# The options given are kept (the box, the regions, --live-dir, --timeout-hours, --beta...),
+# less those that name the run, which the URL replaces, and those that only applied once.
+kept=()
+i=0
+while [ "$i" -lt "${#given[@]}" ]; do
+	a=${given[$i]}
+	case "$a" in
+		--run | --bucket | --prefix) i=$((i + 2)) ;;
+		--no-send | --refire | --dry-run) i=$((i + 1)) ;;
+		--instance-id | --box-region | --bucket-region | --profile | --live-dir | --repo-url | --timeout-hours)
+			kept+=("$a" "${given[$((i + 1))]}"); i=$((i + 2)) ;;
+		-*) kept+=("$a"); i=$((i + 1)) ;;
+		*) i=$((i + 1)) ;; # RUN_URL
+	esac
+done
 resume() {
-	local more=""
-	[ "$beta" = 0 ] || more+=" --beta"
-	[ -z "$profile" ] || more+=" --profile $profile"
-	echo "scripts/cloud/launch.sh --no-send$more${1:+ $1} $url"
+	quoted scripts/cloud/launch.sh --no-send "${kept[@]}" "$@" "$url"
 }
 box_state() { aws_box ec2 describe-instances --instance-ids "$instance" \
 	--query 'Reservations[0].Instances[0].State.Name' --output text; }
@@ -180,14 +194,22 @@ box_args=()
 [ "$refire" = 0 ] || box_args+=(--refire)
 [ "$beta" = 0 ] || box_args+=(--beta-bundle)
 ubuntu_script() {
-	printf 'run_url=%q commit=%q repo_url=%q bucket_region=%q\n' "$url" "$1" "$repo_url" "$bucket_region"
+	printf 'run_url=%q commit=%q repo_url=%q bucket_region=%q marker=%q\n' \
+		"$url" "$1" "$repo_url" "$bucket_region" "$2"
 	printf 'box_args=('
 	[ "${#box_args[@]}" = 0 ] || printf '%q ' "${box_args[@]}"
 	printf ')\n'
 	cat <<'EOF'
 set -euo pipefail
 export PATH="$PATH:/snap/bin" AWS_REGION="$bucket_region" AWS_DEFAULT_REGION="$bucket_region"
-# SSM may run a command again after the box restarts; a run that has its result is done.
+# SSM may run a command again after the box restarts. One for an older run must not touch
+# the run the box is on now (box-rebuild.sh would power it off at its end)...
+current=$(cut -d' ' -f2 "$marker" 2>/dev/null || true)
+if [ "$current" != "$run_url" ]; then
+	echo "launch: the box is on ${current:-no run}, not $run_url; nothing to do"
+	exit 0
+fi
+# ...and a run that has its result is done.
 if aws s3 ls "$run_url/out/SHA256SUMS" >/dev/null 2>&1; then
 	echo "launch: $run_url already has its result; nothing to do"
 	exit 0
@@ -208,11 +230,25 @@ tail -n 40 "$HOME/cloud-rebuild.log"
 exit "$rc"
 EOF
 }
+# The run marker: "<when launched> <RUN_URL>" of the newest launch, so a command SSM runs
+# again later knows whether it is still the box's run.
+launched=$(date +%s)
+marker_path=${CLOUD_LAUNCH_MARKER:-/var/lib/routemaker-launch/current}
 root_script() {
-	printf 'ubuntu_b64=%q deadman_min=%q\n' "$(ubuntu_script "$1" | base64 | tr -d '\n')" "$((exec_timeout / 60))"
+	printf 'ubuntu_b64=%q deadman_min=%q marker=%q launched=%q run_url=%q\n' \
+		"$(ubuntu_script "$1" "$marker_path" | base64 | tr -d '\n')" "$((exec_timeout / 60))" \
+		"$marker_path" "$launched" "$url"
 	cat <<'EOF'
 set -euo pipefail
 export PATH="$PATH:/snap/bin"
+newest=$(cut -d' ' -f1 "$marker" 2>/dev/null || echo 0)
+if [[ "$newest" =~ ^[0-9]+$ ]] && [ "$newest" -gt "$launched" ]; then
+	echo "launch: a newer launch ($(cat "$marker")) owns this box; this older command does nothing"
+	exit 0
+fi
+mkdir -p "$(dirname "$marker")"
+echo "$launched $run_url" >"$marker"
+chmod 0644 "$marker"
 # The dead-man switch: should the launcher at home die, the box still powers off (a stop,
 # with the launch template's shutdown behaviour) when the command's time is up.
 shutdown -P "+$deadman_min" "RouteMaker launch: the command's time is up" ||
@@ -370,7 +406,7 @@ if [ "$dry_run" = 1 ]; then
 	echo "  The box runs, as root:"
 	root_script "$commit" | sed 's/^ubuntu_b64=[^ ]* /ubuntu_b64=<the script below> /; s/^/    | /'
 	echo "  and as ubuntu:"
-	ubuntu_script "$commit" | sed 's/^/    | /'
+	ubuntu_script "$commit" "$marker_path" | sed 's/^/    | /'
 	aws_box ssm get-command-invocation --command-id "<command-id>" --instance-id "$instance" \
 		--query Status --output text
 	aws_s3 ls "$url/out/SHA256SUMS"
@@ -432,9 +468,12 @@ while :; do
 			box_output >&2
 			# A spot reclaim stops the box too, and a persistent request starts it again when
 			# AWS has room, to sit idle. Our own stop, even on a stopped box, is meant to make
-			# it a stop of ours, which is not restarted (OPERATIONS.md, "The launcher").
-			aws_box ec2 stop-instances --instance-ids "$instance" --output text >/dev/null 2>&1 ||
-				note "WARNING: could not stop $instance again; check in the console that it stays stopped"
+			# it a stop of ours, which is not restarted (OPERATIONS.md, "The launcher"). Only
+			# for a box this launcher started: one it was given is not its to stop.
+			if [ "$started" = 1 ]; then
+				aws_box ec2 stop-instances --instance-ids "$instance" --output text >/dev/null 2>&1 ||
+					note "WARNING: could not stop $instance again; check in the console that it stays stopped"
+			fi
 			stopped=1
 			fail "the box $state with no result: a failed rebuild (it powers itself off; its log is under ~/cloud-runs/$run/ on the box) or a spot reclaim. Carry the run on: $(resume) (after a failed rebuild: $(resume --refire))" ;;
 	esac
