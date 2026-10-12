@@ -140,6 +140,7 @@ export interface MtbReading {
   easier_m?: number | null;
   harder_m?: number | null;
   level_step?: number | null;
+  level_reach?: number | null;
   trail_weight?: number | null;
   singletrack_speed_kmh?: number | null;
   router_duration_s?: number | null;

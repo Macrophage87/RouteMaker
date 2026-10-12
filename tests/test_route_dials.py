@@ -2098,6 +2098,43 @@ class TestMountainBike:
         response = post(client, {**good_body("mountain-goat"), "mtb_preferred": 2})
         assert response.status_code == 400
 
+    def test_the_preferred_level_flips_the_choice_between_two_routes(
+        self, client, facility_segments, router
+    ):
+        """The second pass: two routes of equal length, one on a level-2 trail (way 101), one
+        on a level-3 trail (way 202). Preferring 2 takes the first, preferring 3 the second
+        (0.3 against 0.4 of a road metre each way), with the hardest at 3 for both."""
+        with connection.cursor() as cursor:
+            for way, level in ((101, 2), (202, 3)):
+                cursor.execute(
+                    f"UPDATE {facility_segments}.segment SET mtb_only = true, mtb_level = %s, "
+                    "is_trail_class = true, is_unpaved = true WHERE osm_way_id = %s",
+                    [level, way],
+                )
+        other = [(lon, lat + 0.002) for lon, lat in VERTICES]
+        first, second = (route_answer([(v, 2.0, FLAT)])["trip"] for v in (VERTICES, other))
+        traces = {
+            first["legs"][0]["shape"]: trace_answer(VERTICES, [(101, 0, 4, 2.0)]),
+            second["legs"][0]["shape"]: trace_answer(other, [(202, 0, 4, 2.0)]),
+        }
+
+        def transport(url, payload, timeout):
+            if url.endswith("/route"):
+                return {"trip": first, "alternates": [{"trip": second}]}
+            return traces[payload["encoded_polyline"]]
+
+        router(transport)
+        body = {**good_body("mountain-bike"), "mtb_level": 3}
+        two = post(client, {**body, "mtb_preferred": 2}).json()
+        three = post(client, {**body, "mtb_preferred": 3}).json()
+        assert two["mtb"]["candidates"] == three["mtb"]["candidates"] == 2
+        # Each answer rides its preferred level's trail: nothing easier or harder than it.
+        assert two["mtb"]["preferred_level"] == 2 and three["mtb"]["preferred_level"] == 3
+        for answer in (two, three):
+            assert answer["mtb"]["easier_m"] == answer["mtb"]["harder_m"] == 0
+            assert answer["mtb"]["singletrack_m"] > 0
+        assert two["geometry"] != three["geometry"]
+
     @pytest.mark.parametrize("level", [0, 5, "2", 2.5])
     def test_a_preferred_level_out_of_range_is_refused(
         self, client, facility_segments, router, level

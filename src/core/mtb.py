@@ -10,7 +10,7 @@ router's own routes (`routemaker.mtbmode`):
   search steers the router) and the router asked again, a few rounds;
 - trail seeking: among the router's routes, the shortest with a trail mile at half a road mile;
 - the rider's preferred level (the second pass, 1-4, default 2, never above the hardest): a
-  trail mile a level away from it, easier or harder, counts a little more (`mtbmode.LEVEL_STEP`),
+  trail mile at it counts less again, one a level away a little less (`mtbmode.trail_weight`),
   so among the router's routes the one nearest the preferred level wins; no graph change, no
   rebuild;
 - connecting roads: a route with LTS 3 runs of 0.5 mi or more, or any LTS 4 or Avoid, below one
@@ -270,6 +270,7 @@ def figures(reading: mtbmode.Reading) -> dict:
         "harder_m": round(reading.harder_m, 1),
         "trail_weight": mtbmode.TRAIL_WEIGHT,
         "level_step": mtbmode.LEVEL_STEP,
+        "level_reach": mtbmode.LEVEL_REACH,
         "singletrack_speed_kmh": mtbmode.SINGLETRACK_SPEED_KMH,
     }
 

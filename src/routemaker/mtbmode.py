@@ -28,8 +28,9 @@ router's routes, so one graph serves every choice.
 Second pass (the owner, 2026-10-11): "two options for difficulty: preferred difficulty and max
 difficulty. Basically it would try to find routes near that intended difficulty and avoid routes
 past max difficulty." The hardest level above is the max; the preferred level (default 2, never
-above the max: `preferred_level`) prices the trails up to it in the ranking, a level away from
-it costing LEVEL_STEP more of a road metre (`LEVEL_STEP`, `Reading.weighted_m`).
+above the max: `preferred_level`) discounts the trails near it in the ranking: a trail at it
+counts LEVEL_STEP x LEVEL_REACH less of a road metre, one a level away LEVEL_STEP less, and one
+further away the ordinary TRAIL_WEIGHT, as an unpaved path does (`Reading.weighted_m`).
 """
 
 from __future__ import annotations
@@ -46,11 +47,14 @@ UNRATED_LEVEL = 2
 # The rider's preferred level (the second pass): trails at it cost least. An old link or request
 # with only the hardest level prefers min(DEFAULT_PREFERRED_LEVEL, hardest).
 DEFAULT_PREFERRED_LEVEL = 2
-# Each level a trail is away from the preferred one, easier or harder, adds this much of a road
-# metre to its trail metre: at TRAIL_WEIGHT 0.5, a trail one level off counts 0.65 of a road
-# metre, three levels off 0.95, still below a road, so the preference never sends a route from a
-# trail onto a road; it picks among the trails.
-LEVEL_STEP = 0.15
+# A discount, never a surcharge (review of #104): a mountain-bike trail metre counts
+# TRAIL_WEIGHT - LEVEL_STEP x max(0, LEVEL_REACH - levels away from the preferred one) of a road
+# metre: 0.3 at the preferred level, 0.4 one level off, 0.5 (as an unpaved path, and as every
+# trail did before the preference) two or more off. So the preferred level is cheapest, an
+# off-level trail never costs more than a gravel path or than it did before, and the weight
+# stays above 0 (a trail is never free).
+LEVEL_STEP = 0.1
+LEVEL_REACH = 2
 
 # A metre of trail counts this much of a metre of road in the ranking (the owner's "a trail
 # mile counts about half a road mile").
@@ -175,25 +179,35 @@ class Reading:
     # Metres on trails up to the hardest level but easier, or harder, than the preferred one.
     easier_m: float = 0.0
     harder_m: float = 0.0
-    # The preference's price: LEVEL_STEP of a road metre per level away, summed over them.
-    level_extra_m: float = 0.0
+    # The preference's discount: LEVEL_STEP of a road metre per level of reach left, summed.
+    level_discount_m: float = 0.0
 
     @property
     def weighted_m(self) -> float:
         """The ranking's length: a trail metre counts TRAIL_WEIGHT of a road metre, and
-        LEVEL_STEP more for each level it is away from the preferred one."""
-        return self.length_m - self.trail_m + TRAIL_WEIGHT * self.trail_m + self.level_extra_m
+        less near the preferred level (`trail_weight`)."""
+        return self.length_m - self.trail_m + TRAIL_WEIGHT * self.trail_m - self.level_discount_m
 
     @property
     def breach_m(self) -> float:
         return self.long_lts3_m + self.lts4_m
 
 
+def trail_weight(level: int | None, preferred: int | None) -> float:
+    """What a trail metre of this level counts of a road metre, at this preferred level:
+    TRAIL_WEIGHT less LEVEL_STEP for each level of LEVEL_REACH left. No level (an unpaved
+    path) or no preference: TRAIL_WEIGHT."""
+    if level is None or preferred is None:
+        return TRAIL_WEIGHT
+    return TRAIL_WEIGHT - LEVEL_STEP * max(0, LEVEL_REACH - abs(level - preferred))
+
+
 def read(stretches: Sequence[Stretch], max_level: int, preferred: int | None = None) -> Reading:
     """A route's figures for the ranking, from its stretches in riding order. `preferred`
     None: no preferred level, every trail up to the hardest level alike (the first pass).
-    Only a way with a level is priced by it: a road, or an ordinary unpaved path (rated 0,
-    no MTB level: 456b), keeps its weight whatever the preference."""
+    Only a way with a level is discounted: a road, or an ordinary unpaved path (rated 0, no
+    MTB level: 456b), keeps its weight whatever the preference, and a trail past the hardest
+    level gets no discount (the hard rule ranks it)."""
     length = trail = single = over = lts4 = 0.0
     easier = harder = extra = 0.0
     long_lts3 = 0.0
@@ -210,12 +224,13 @@ def read(stretches: Sequence[Stretch], max_level: int, preferred: int | None = N
             single += s.metres
         if s.level is not None and s.level > max_level:
             over += s.metres
-        elif s.level is not None and preferred is not None and s.level != preferred:
+        elif s.level is not None and preferred is not None:
             if s.level < preferred:
                 easier += s.metres
-            else:
+            elif s.level > preferred:
                 harder += s.metres
-            extra += LEVEL_STEP * abs(s.level - preferred) * s.metres
+            if s.trail:
+                extra += (TRAIL_WEIGHT - trail_weight(s.level, preferred)) * s.metres
         if s.tier is not None and s.tier >= 4 and not s.trail:
             lts4 += s.metres
         if s.tier == GAP_TIER and not s.trail:
@@ -231,7 +246,7 @@ def better(a: Reading, b: Reading) -> bool:
     """Whether route `a` ranks above route `b`: fewer metres above the rider's level first
     (a hard rule the search tries to clear), then fewer metres of connecting road past the
     rule (beyond 50 m of slack, so a crossing does not decide it), then the shorter weighted
-    length (trail at half, more for a trail away from the preferred level)."""
+    length (trail at half, less for a trail near the preferred level)."""
     if abs(a.over_level_m - b.over_level_m) > 1.0:
         return a.over_level_m < b.over_level_m
     if abs(a.breach_m - b.breach_m) > 50.0:

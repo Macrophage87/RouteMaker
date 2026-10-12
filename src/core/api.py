@@ -301,8 +301,8 @@ class RouteIn(Schema):
         le=4,
         description=(
             "Mountain Bike only (docs/MTB-TOPO-PLAN.md, second pass): the trail level the rider"
-            " prefers, 1 to 4. Among the router's routes, trails at it cost least and trails"
-            " easier or harder (up to `mtb_level`) a little more the further they are from it."
+            " prefers, 1 to 4. Among the router's routes, trails at it cost least, a level"
+            " away a little more, and further away as an unpaved path (never more)."
             " Never above `mtb_level`: a higher one is held to it (`mtb.preferred_level` says"
             " what was used). Absent: 2, or `mtb_level` where that is lower."
         ),
@@ -1534,9 +1534,13 @@ class MtbOut(Schema):
     level_step: float | None = Field(
         default=None,
         description=(
-            "What each level away from `preferred_level` added to a trail metre in the ranking,"
-            " as a share of a road metre (0.15)."
+            "The preference's discount step, as a share of a road metre (0.1): a trail metre"
+            " counts `trail_weight` less `level_step` x max(0, `level_reach` - levels away from"
+            " `preferred_level`)."
         ),
+    )
+    level_reach: int | None = Field(
+        default=None, description="Levels the discount reaches from `preferred_level` (2)."
     )
     trail_weight: float | None = Field(
         default=None, description="What a trail metre counted in the ranking (0.5)."
