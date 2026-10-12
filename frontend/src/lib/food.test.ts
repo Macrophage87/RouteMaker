@@ -178,6 +178,10 @@ test("words: US units first with metric in brackets; the detour, the turn-off an
     "Near Crab. Restaurant: seafood, soft shell crab. Detour about +0.5 mi (0.8 km) and 4 min there and back, turning off at 12.3 mi (19.8 km) on your route. Hours as mapped: Mo-Su 11:00-22:00.",
   );
   assert.equal(foodHowFar({ ...r, detour: { ...r.detour!, extraM: 0, extraS: 0 } }), "On your route at 12.3 mi (19.8 km).");
+  // Just past the on-route margin the detour rounds to 0.0 mi: on your route, not "+0.0 mi (0.0 km)".
+  assert.equal(foodHowFar({ ...r, detour: { offM: 20, alongM: 19_800, extraM: 56, extraS: 14 } }), "On your route at 12.3 mi (19.8 km).");
+  assert.equal(foodHowFar({ ...r, detour: { offM: 28, alongM: 19_800, extraM: 80, extraS: 20 } }), "On your route at 12.3 mi (19.8 km).");
+  assert.match(foodHowFar({ ...r, detour: { offM: 29, alongM: 19_800, extraM: 81, extraS: 20 } }), /^Detour about \+0\.1 mi \(0\.1 km\)/);
   assert.equal(foodHowFar({ place: r.place, fromCentreM: 800 }), "0.5 mi (0.8 km) from the map's center in a straight line.");
 });
 
