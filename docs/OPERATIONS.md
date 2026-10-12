@@ -5958,10 +5958,20 @@ the defaults, so build those here.
 
    ```sh
    sudo -iu ubuntu
-   cd ~/RouteMaker && git pull --quiet
+   cd ~/RouteMaker && git fetch --quiet origin && git checkout --quiet --detach <the commit send-inputs printed>
    nohup scripts/cloud/box-rebuild.sh "s3://<bucket>/rebuild-checkpoints/transfer/cloud-20261011" >>~/cloud-rebuild.log 2>&1 &
    tail -f ~/cloud-rebuild.log
    ```
+
+   **Run the script from the commit being built, not `main`.** The build itself always
+   runs the manifest's commit (in `~/rm-build`), but the export step is this script's own,
+   and it tars the graphs its own list names. On 2026-10-11 the first real run
+   (cloud-v050-20261011) ran `main`'s copy, which lists five graphs, against a v0.5.0
+   build of six: `tiles-mtb.tar` was left out and the v0.5.0 import refuses that result.
+   The repair, with no rebuild: start the box, `cd ~/rm-build`, delete `export.done` and
+   `upload.done` from `~/cloud-runs/<run>/state/`, and run the same command from there.
+   Only the export and upload run again. The first time on a new box, install the AWS
+   CLI and clone the repository first (the one-time setup above).
 
    Closing the window does not stop it. It fetches and checks the inputs, checks out
    the manifest's commit in a separate clone (`~/rm-build`), writes that clone's own
