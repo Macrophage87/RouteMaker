@@ -6931,8 +6931,16 @@ docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-
   stations in order with estimated run times, and the map's 98 stations (held equal to
   `metro_stations()` by a test). Trains are laid out evenly, and a wait is always half the
   interval (or the time to the first or last train), so no Metro departure is named or counted
-  down. A plan that rides Metro adds one note, `TYPICAL_WORDS`. A built schedule with WMATA's rail
-  GTFS replaces it with no setting. Metrobus stays out until its GTFS is built.
+  down. Its credit reads "WMATA, wmata.com (typical service)"; there is no separate note. A built
+  schedule with WMATA's rail GTFS replaces it with no setting. Metrobus stays out until its GTFS is
+  built.
+- **"Scheduled" on every transit time** (the owner, 2026-10-12: "Make it clear whether it's a
+  schedule or live."). One word after each time the rider sees, GTFS or typical alike, in the
+  step text, the departure, the next departure, the countdown, the map label and the screen
+  reader's milestones: "Board the MARC Penn Line at 7:42 am scheduled", "every 8 min,
+  scheduled". Each transit step and `transit.departure` carry `source: "scheduled"`, and the
+  page takes the word from it (`sourceWord`, `lib/departure.ts`), so live times (v0.7) can say
+  "live" without new UI.
 - **Times.** A service-day minute is real elapsed time from GTFS's zero (noon less 12 hours), so
   daylight-saving days are right. From 1 to 5 am both service days are searched (owl trips past
   27:00 included). Stops without times (not timepoints) are interpolated by the build.

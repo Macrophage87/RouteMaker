@@ -31,8 +31,10 @@ data, so the file is built on the host and never committed (docs/SOURCES.md). A 
 is in it only where the agency published it in the static timetable; every transit answer says
 to check for track work. Until WMATA's rail GTFS is built (it needs a WMATA key), Metro runs on
 its committed typical timetable from wmata.com (`with_typical_metro`), with or without the file:
-waits are half the published interval, never a counted-down departure, and a plan that rides
-Metro says in one line that its times are typical. Metrobus waits for its GTFS.
+waits are half the published interval, never a counted-down departure, and its credit names it
+"typical service". Metrobus waits for its GTFS. Every transit time a rider sees says
+"scheduled" (`SCHEDULED`), timetable or typical alike: "8:12 am scheduled", "every 8 min,
+scheduled".
 
 The time of day
 ---------------
@@ -169,9 +171,11 @@ HOLIDAY_WORDS = (
     "Today is a federal holiday: each system's holiday timetable is used, as it publishes it."
 )
 SCHEDULED_WORDS = "Scheduled service: check for track work and service alerts before you go."
-# A plan on Metro's typical timetable says so, in one short line (the owner: "streamline over
-# bloat").
-TYPICAL_WORDS = "Metro times are typical, from wmata.com's hours and train frequency."
+# Every transit time a rider sees says where it is from, in one word (the owner, 2026-10-12:
+# "Make it clear whether it's a schedule or live."): "8:12 am scheduled", "every 8 min,
+# scheduled". GTFS timetables and Metro's typical timetable are both "scheduled"; live times
+# (v0.7) will say "live". Each transit step and the departure carry it as `source`.
+SCHEDULED = "scheduled"
 NO_TRANSIT_WORDS = (
     "No Metro, train or bus is scheduled between these places at this time: riding the whole"
     " way is the plan."
@@ -277,6 +281,7 @@ class Hop:
     depart: float | None = None
     after: float | None = None
     later: tuple[float, ...] = ()  # every later departure seen, for a rider who misses one
+    every: float | None = None  # a frequent service: minutes between departures
 
     @property
     def total_s(self) -> float:
@@ -790,6 +795,7 @@ class Leg:
     later: tuple[float, ...] = ()  # the departures after `depart` that were seen, in order
     board_at: str | None = None  # a transit leg's first stop, by name
     service_day: date | None = None  # a transit leg's service day, for its clock times
+    every: float | None = None  # a frequent service: minutes between departures
 
     @property
     def total_s(self) -> float:
@@ -808,7 +814,7 @@ class Leg:
         noun = "bus" if self.mode == BUS else "train"
         if self.after is None:
             return f"no later {noun} within the hour"
-        return f"next {noun} after that: {clock(self.after, self.service_day)}"
+        return f"next {noun} after that: {clock(self.after, self.service_day)} {SCHEDULED}"
 
     def words(self, last: bool = False) -> str:
         """The step as one sentence."""
@@ -834,13 +840,17 @@ class Leg:
         else:
             board = f"{'Change to' if self.change else 'Board'} {self.vehicle}"
         if self.depart is None:
-            return f"{board} (about {minutes(self.wait_s)} min wait); ride {m} min{at}."
+            wait = f"about {minutes(self.wait_s)} min wait"
+            if self.every is None:
+                return f"{board} ({wait}, {SCHEDULED}); ride {m} min{at}."
+            every = f"every {max(1, round(self.every))} min, {SCHEDULED}"
+            return f"{board} ({every}; {wait}); ride {m} min{at}."
         # An infrequent service (the owner, 2026-10-12): the departure, when the rider gets
         # there and the time to spare, and the one after it.
         spare = round(self.wait_s / 60)
         place = f" from {self.board_at}" if self.board_at else ""
         return (
-            f"{board} at {clock(self.depart, self.service_day)}{place}: you arrive"
+            f"{board} at {clock(self.depart, self.service_day)} {SCHEDULED}{place}: you arrive"
             f" {clock(self.arrive, self.service_day)},"
             f" {spare} min spare; {self._after_words()}. Ride {m} min{at}."
         )
@@ -959,9 +969,10 @@ def headway(times) -> float:
     return sum(gaps) / len(gaps)
 
 
-def typical_wait_min(minute: float, times) -> float:
-    """The wait on Metro's typical timetable: half the interval between its trains (the mean
-    gap of the next few), or, before the first train or for the last, the time until it."""
+def typical_wait_min(minute: float, times) -> tuple[float, float | None]:
+    """The wait on Metro's typical timetable, and the minutes between its trains: half the
+    interval (the mean gap of the next few), or, before the first train or for the last, the
+    time until it (the interval None for the last)."""
     distinct: list[float] = []
     for t in sorted(times):
         if not distinct or t - distinct[-1] >= 0.5:
@@ -969,7 +980,8 @@ def typical_wait_min(minute: float, times) -> float:
     seen = distinct[:DEPARTURES_SEEN]
     every = (seen[-1] - seen[0]) / (len(seen) - 1) if len(seen) > 1 else math.inf
     until = seen[0] - minute
-    return until if len(seen) == 1 or until > every else every / 2.0
+    wait = until if len(seen) == 1 or until > every else every / 2.0
+    return wait, None if math.isinf(every) else every
 
 
 def _hop(minute: float, entries, typical: bool = False) -> Hop:
@@ -983,8 +995,8 @@ def _hop(minute: float, entries, typical: bool = False) -> Hop:
     if typical or every <= FREQUENT_MIN:
         routes = tuple(sorted({e[2].route for e in entries}))
         ride = min(e[1] for e in entries)
-        wait_s = typical_wait_min(minute, times) * 60.0 if typical else every * 30.0
-        return Hop(wait_s, ride, routes, path, pattern.system, pattern.index, True)
+        wait, gap = typical_wait_min(minute, times) if typical else (every / 2.0, every)
+        return Hop(wait * 60.0, ride, routes, path, pattern.system, pattern.index, True, every=gap)
     later_times = []
     for t in times:
         if t >= (later_times[-1] if later_times else deps[0]) + 0.5:
@@ -1024,6 +1036,7 @@ def _transit_leg(
         later=hop.later,
         board_at=schedule.place(schedule.stops[hop.path[0]]),
         service_day=service_day,
+        every=hop.every,
     )
 
 
@@ -1689,7 +1702,8 @@ def _retimed(minute: float, legs: list[Leg]) -> tuple[list[Leg] | None, list[str
                 catchable = [t for t in leg.later if t >= arrive - 1e-6]
                 if not catchable or catchable[0] - arrive > MAX_WAIT_MIN:
                     notes.append(
-                        f"You would miss the {clock(missed, leg.service_day)} ({leg.vehicle})"
+                        f"You would miss the {clock(missed, leg.service_day)} {SCHEDULED}"
+                        f" ({leg.vehicle})"
                         " and no later one"
                         " leaves within the hour: that trip is left out."
                     )
@@ -1697,8 +1711,9 @@ def _retimed(minute: float, legs: list[Leg]) -> tuple[list[Leg] | None, list[str
                 rest = tuple(t for t in leg.later if t > catchable[0])
                 leg = replace(leg, depart=catchable[0], after=rest[0] if rest else None, later=rest)
                 notes.append(
-                    f"You would miss the {clock(missed, leg.service_day)} ({leg.vehicle}):"
-                    f" planned on the {clock(leg.depart, leg.service_day)} instead."
+                    f"You would miss the {clock(missed, leg.service_day)} {SCHEDULED}"
+                    f" ({leg.vehicle}): planned on the {clock(leg.depart, leg.service_day)}"
+                    f" {SCHEDULED} instead."
                 )
             leg = replace(leg, wait_s=max(0.0, (leg.depart - arrive) * 60.0))
         out.append(leg)
@@ -1740,8 +1755,9 @@ def departure(plan: Plan) -> dict | None:
             "close": leg.wait_s < CLOSE_S,
             "planned_at": _local(plan.when, plan.when.minute),
             "point": _pt(leg.coordinates[0]) if leg.coordinates else None,
+            "source": SCHEDULED,
             "label": (
-                f"{leg.system} {clock(leg.depart, plan.when.service_day)}"
+                f"{leg.system} {clock(leg.depart, plan.when.service_day)} {SCHEDULED}"
                 f" · {round(leg.wait_s / 60)} min spare"
             ),
         }
@@ -1769,7 +1785,7 @@ def label(option: Option, mode: str) -> str:
     return words[0].upper() + words[1:]
 
 
-def _notes(plan: Plan, rules: dict[str, str], typical: frozenset[str] = frozenset()) -> list[str]:
+def _notes(plan: Plan, rules: dict[str, str]) -> list[str]:
     legs = plan.legs
     notes = list(plan.notes)
     if plan.asked is not None:
@@ -1780,8 +1796,6 @@ def _notes(plan: Plan, rules: dict[str, str], typical: frozenset[str] = frozense
             said = f"{leg.system}: {rule[0].lower()}{rule[1:]}"
             if said not in notes:
                 notes.append(said)
-    if any(leg.transit and leg.system in typical for leg in legs):
-        notes.append(TYPICAL_WORDS)
     if any(leg.transit for leg in legs):
         notes.append(SCHEDULED_WORDS)
     return notes
@@ -1806,6 +1820,9 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
                 "lines": list(leg.lines),
                 "system": leg.system or None,
                 "departs": None if leg.depart is None else clock(leg.depart, leg.service_day),
+                "every_min": None if leg.every is None else max(1, round(leg.every)),
+                # Where a transit step's times are from: "scheduled" (live, from v0.7).
+                "source": SCHEDULED if leg.transit else None,
                 "with_bike": leg.bike,
                 # The route's own line is this step's: the map draws the rest from here.
                 "route_line": index == option.ride,
@@ -1821,8 +1838,7 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
     else:
         summary = f"About {total_min} min door to door, scheduled."
     used = list(dict.fromkeys(leg.system for leg in option.legs if leg.transit))
-    typical = frozenset(s.name for s in schedule.systems if s.typical) if schedule else frozenset()
-    notes = _notes(plan, rules, typical)
+    notes = _notes(plan, rules)
     out = {
         "mode": plan.mode,
         "key": option.key,

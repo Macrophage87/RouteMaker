@@ -4073,7 +4073,7 @@ async function goPick(p, box, text) {
   check("transit (Go): destination, then one tap on Own Bike + Transit, plans the trip (3 taps), the chip pressed",
     planned && taps === 3 && JSON.stringify(trip.pressed) === JSON.stringify(["Own Bike + Transit"]), JSON.stringify({ taps, trip }));
   check("transit (Go): the steps are a list named Steps, in order, read in riding order: ride, into the station, board, out, ride",
-    list?.role === "list" && list?.name === "Steps, in order" && trip.steps.length === 5 && /^Ride 4 min to Eastern Market\.$/.test(trip.steps[0]) && /^Board the Orange Line \(about 5 min wait\); ride 10 min to Federal Triangle\.$/.test(trip.steps[2]) && /to your destination\.$/.test(trip.steps[4]),
+    list?.role === "list" && list?.name === "Steps, in order" && trip.steps.length === 5 && /^Ride 4 min to Eastern Market\.$/.test(trip.steps[0]) && /^Board the Orange Line \(every 10 min, scheduled; about 5 min wait\); ride 10 min to Federal Triangle\.$/.test(trip.steps[2]) && /to your destination\.$/.test(trip.steps[4]),
     JSON.stringify({ list, steps: trip.steps }));
   check("transit (Go): the time shown is the door-to-door total, 'about' and named scheduled for a screen reader, with riding the whole way beside it",
     trip.total === "about 28 min" && trip.totalName === "Door-to-door time, scheduled" && /^Own Bike \+ Transit: About 28 min door to door, scheduled$/.test(trip.heading ?? "") && /^Riding the whole way: about 32 min\./.test(trip.compare ?? ""),
@@ -4123,10 +4123,10 @@ async function goPick(p, box, text) {
   await sleep(2100);
   const later = await p.eval("document.querySelector('.departure-label span')?.textContent ?? ''");
   check("transit (Go): an infrequent departure is said plainly: the MARC, when, from where, when you arrive and the spare, and the one after",
-    shown && /^MARC Penn Line \d{1,2}:\d{2} [ap]m from Union Station\. You arrive \d{1,2}:\d{2} [ap]m \(3 min spare\)\. Next after that: \d{1,2}:\d{2} [ap]m\.$/.test(first.text),
+    shown && /^MARC Penn Line \d{1,2}:\d{2} [ap]m scheduled from Union Station\. You arrive \d{1,2}:\d{2} [ap]m \(3 min spare\)\. Next after that: \d{1,2}:\d{2} [ap]m scheduled\.$/.test(first.text),
     JSON.stringify(first));
   check("transit (Go): cutting it close shows a mm:ss countdown and the spare, in the panel and on the map's label at the boarding stop, neither a live region",
-    /Cutting it close\. Departs in \d{2}:\d{2}; time to spare \d{2}:\d{2}\./.test(first.timer) && /^MARC \d{1,2}:\d{2} [ap]m · in \d{2}:\d{2} · \d{2}:\d{2} spare$/.test(first.label) && first.labelHidden === "true" && !first.live && later !== first.label,
+    /Cutting it close\. Departs in \d{2}:\d{2}, scheduled; time to spare \d{2}:\d{2}\./.test(first.timer) && /^MARC \d{1,2}:\d{2} [ap]m scheduled · in \d{2}:\d{2} · \d{2}:\d{2} spare$/.test(first.label) && first.labelHidden === "true" && !first.live && later !== first.label,
     JSON.stringify({ first, later }));
   check("transit (Go): both systems' timetables are credited", /WMATA GTFS \(scheduled times\); MDOT MTA GTFS \(scheduled times\)/.test(first.credit), first.credit);
   await p.shot(`${SHOTS}/transit_departure.png`);

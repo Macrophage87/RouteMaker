@@ -579,8 +579,9 @@ committed. No WMATA GTFS is committed.
   least 90 s, so a short downtown hop still counts its stop, and is rounded to the nearest 10 s.
   Red, Shady Grove to Glenmont, comes to about an hour.
 - **What the rider sees.** The wait is half the published interval, or the time to the first or
-  the last train. No Metro departure is named or counted down. A plan that rides Metro says once:
-  "Metro times are typical, from wmata.com's hours and train frequency."
+  the last train. No Metro departure is named or counted down. The step says "every 6 min,
+  scheduled", the same word as a timetable's, and the plan's credit line names the source:
+  "WMATA, wmata.com (typical service)".
 
 The feeds, and the compact file built from them (`transit-schedule.json`), stay on the host. They
 are never committed (see the terms below). The tests use a small fixture invented for the purpose

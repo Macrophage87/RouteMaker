@@ -246,8 +246,9 @@ def test_an_infrequent_service_waits_for_its_next_departure_and_names_the_one_af
     assert (hop.depart, hop.after, hop.wait_s) == (420, 480, 1200)
     leg = transit._transit_leg(schedule, hop, False, True)
     assert leg.words() == (
-        "Board the MARC Penn Line at 7:00 am from Union Station MARC: you arrive 6:40 am,"
-        " 20 min spare; next train after that: 8:00 am. Ride 45 min to Baltimore Penn Station."
+        "Board the MARC Penn Line at 7:00 am scheduled from Union Station MARC: you arrive"
+        " 6:40 am, 20 min spare; next train after that: 8:00 am scheduled. Ride 45 min to"
+        " Baltimore Penn Station."
     )
 
 
@@ -261,7 +262,9 @@ def test_go_is_told_the_departure_and_the_time_to_spare(schedule) -> None:
     assert departure["departs_at"] == "2026-09-30T07:00:00-04:00"
     assert departure["board_at"] == "Union Station MARC"
     spare = departure["spare_s"]
-    assert departure["label"] == f"MARC 7:00 am · {round(spare / 60)} min spare"
+    assert departure["label"] == f"MARC 7:00 am scheduled · {round(spare / 60)} min spare"
+    # Where the times are from, for the page's word (live times, v0.7, will say "live").
+    assert departure["source"] == "scheduled" and marc["source"] == "scheduled"
     assert departure["close"] is (spare < transit.CLOSE_S)
     # A frequent service has no departure to time.
     metro = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0))
@@ -278,7 +281,8 @@ def test_a_slower_routed_ride_that_misses_the_train_takes_the_next(schedule) -> 
     out = transit.block(slower, schedule)
     assert out["departure"]["departs"] == "8:00 am"
     assert any(
-        n.startswith("You would miss the 7:00 am (the MARC Penn Line)") for n in out["notes"]
+        n.startswith("You would miss the 7:00 am scheduled (the MARC Penn Line)")
+        for n in out["notes"]
     )
     assert out["total_s"] > transit.block(plan, schedule)["total_s"]
     # The one after the new departure is recomputed, not dropped: the 9:00.
@@ -443,7 +447,10 @@ def test_own_bike_lists_the_direct_ride_and_the_quickest_transit_trips(schedule)
     )
     words = [leg.words(last=i == 4) for i, leg in enumerate(metro.legs)]
     assert words[1] == "About 4 min into the station by the elevator."
-    assert words[2] == "Board the Orange Line (about 5 min wait); ride 10 min to Federal Triangle."
+    assert words[2] == (
+        "Board the Orange Line (every 10 min, scheduled; about 5 min wait); ride 10 min to"
+        " Federal Triangle."
+    )
     assert words[4].endswith("min to your destination.")
 
 
@@ -530,7 +537,7 @@ def test_a_change_at_the_same_station(schedule) -> None:
         "Smithsonian",
         True,
     )
-    assert second.words().startswith("Change to the Orange Line (about 5 min wait)")
+    assert second.words().startswith("Change to the Orange Line (every 10 min, scheduled;")
 
 
 def test_dc_to_baltimore_takes_marc_with_the_bike(schedule) -> None:
@@ -779,9 +786,9 @@ def test_typical_trains_run_from_opening_to_closing_at_each_bands_interval() -> 
 
 
 def test_the_typical_wait_is_half_the_interval_or_the_time_to_the_first_or_last_train() -> None:
-    assert transit.typical_wait_min(480, [483, 489, 495, 501]) == 3
-    assert transit.typical_wait_min(270, [300, 306, 312]) == 30  # before opening
-    assert transit.typical_wait_min(1430, [1435]) == 5  # the last train
+    assert transit.typical_wait_min(480, [483, 489, 495, 501]) == (3, 6)
+    assert transit.typical_wait_min(270, [300, 306, 312]) == (30, 6)  # before opening
+    assert transit.typical_wait_min(1430, [1435]) == (5, None)  # the last train
 
 
 def test_with_no_wmata_gtfs_metro_runs_its_typical_timetable_and_the_gtfs_replaces_it(
@@ -796,21 +803,24 @@ def test_with_no_wmata_gtfs_metro_runs_its_typical_timetable_and_the_gtfs_replac
     assert transit.with_typical_metro(schedule) is schedule
 
 
-def test_a_metro_trip_on_the_typical_timetable_has_no_departure_and_says_typical_once() -> None:
+def test_a_metro_trip_on_the_typical_timetable_has_no_departure_and_says_scheduled() -> None:
     typical = without_metro_gtfs()
     plan = plan_bike(typical, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 12, 0))
     metro = next(o for o in plan.options if not o.direct)
     legs = transit_legs(metro)
     assert [leg.system for leg in legs] == ["Metro"]
     assert legs[0].depart is None and 0 < legs[0].wait_s <= 6 * 60
-    assert "min wait" in legs[0].words()
+    # The same word as a timetable's, and the interval, never a departure.
+    assert ", scheduled; about " in legs[0].words() and legs[0].every is not None
     out = transit.block(transit.choose(plan, metro.key), typical)
     assert out["departure"] is None
-    assert out["notes"].count(transit.TYPICAL_WORDS) == 1
+    step = next(s for s in out["steps"] if s["mode"] == "metro")
+    assert step["source"] == "scheduled" and step["departs"] is None and step["every_min"]
+    # Its credit names it typical service; no separate note says so.
     assert out["credits"] == ["WMATA, wmata.com (typical service)"]
-    # Riding the whole way says nothing of it; neither does anything mention Metrobus.
+    assert not any("typical" in note for note in out["notes"])
+    # Nothing mentions Metrobus.
     direct = transit.block(transit.choose(plan, "direct"), typical)
-    assert transit.TYPICAL_WORDS not in direct["notes"]
     assert not any("bus" in note.lower() for note in out["notes"] + direct["notes"])
 
 
@@ -937,7 +947,7 @@ class TestApi:
         metro = next(o for o in trip["options"] if not o["direct"])
         again = post_transit(client, [CAPITOL_HILL, DOWNTOWN], transit_option=metro["key"])
         chosen = again.json()["transit"]
-        assert chosen["departure"] is None and transit.TYPICAL_WORDS in chosen["notes"]
+        assert chosen["departure"] is None and "typical service" in chosen["credits"][0]
         closures = client.get("/api/transit/closures", {"at": "2026-10-04T12:00:00"})
         assert closures.status_code == 200 and closures.json()["stations"] == []
 

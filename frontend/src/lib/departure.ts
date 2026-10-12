@@ -12,7 +12,21 @@
  * waiting. Under `CLOSE_S` to spare is "cutting it close": the countdown shows. Nothing here is a
  * live region; a screen reader hears the milestones only (`MILESTONES_S`), and a miss.
  */
-import type { TransitDeparture } from "./api.ts";
+import type { TimeSource, TransitDeparture } from "./api.ts";
+
+/**
+ * The word after every transit time, so a rider knows a timetable from a live time (the owner,
+ * 2026-10-12: "Make it clear whether it's a schedule or live."): "7:42 am scheduled". Everything is
+ * scheduled until live times arrive (v0.7), when the API says "live".
+ */
+export function sourceWord(departure: { source?: TimeSource | null }): TimeSource {
+  return departure.source ?? "scheduled";
+}
+
+/** A departure's clock with its word: "7:42 am scheduled". */
+export function departsSaid(departure: Pick<TransitDeparture, "departs" | "source">): string {
+  return `${departure.departs} ${sourceWord(departure)}`;
+}
 
 /** Less than this to spare is cutting it close: the countdown shows (core.transit.CLOSE_S). */
 export const CLOSE_S = 300;
@@ -59,19 +73,19 @@ function vehicleName(vehicle: string): string {
   return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
-/** The departure in words: "MARC Penn Line 7:42 am from Union Station. You arrive 7:36 am (6 min spare). Next after that: 8:15 am." */
+/** The departure in words: "MARC Penn Line 7:42 am scheduled from Union Station. You arrive 7:36 am (6 min spare). Next after that: 8:15 am scheduled." */
 export function departureText(departure: TransitDeparture): string {
   const from = departure.board_at ? ` from ${departure.board_at}` : "";
   const spare = Math.round(departure.spare_s / 60);
-  const next = departure.next ? `Next after that: ${departure.next}.` : "No later one within the hour.";
-  return `${vehicleName(departure.vehicle)} ${departure.departs}${from}. You arrive ${clockOf(departure.arrive_at)} (${spare} min spare). ${next}`;
+  const next = departure.next ? `Next after that: ${departure.next} ${sourceWord(departure)}.` : "No later one within the hour.";
+  return `${vehicleName(departure.vehicle)} ${departsSaid(departure)}${from}. You arrive ${clockOf(departure.arrive_at)} (${spare} min spare). ${next}`;
 }
 
 /** The map's label at the boarding stop: the plan's words, or when cutting it close the countdown to the departure and the time to spare. */
 export function mapLabel(departure: TransitDeparture, nowMs: number): string {
   const now = countdown(departure, nowMs);
-  if (now.missed) return `${departure.system} ${departure.departs} · missed`;
-  if (now.close) return `${departure.system} ${departure.departs} · in ${mmss(now.toDepartS)} · ${mmss(now.spareS)} spare`;
+  if (now.missed) return `${departure.system} ${departsSaid(departure)} · missed`;
+  if (now.close) return `${departure.system} ${departsSaid(departure)} · in ${mmss(now.toDepartS)} · ${mmss(now.spareS)} spare`;
   return departure.label;
 }
 
@@ -102,10 +116,10 @@ export function milestone(beforeS: number, nowS: number): number | null {
   return null;
 }
 
-export function milestoneSaid(departure: Pick<TransitDeparture, "system" | "departs">, mark: number): string {
-  return `${departure.system} ${departure.departs} leaves in ${mark / 60} minutes.`;
+export function milestoneSaid(departure: Pick<TransitDeparture, "system" | "departs" | "source">, mark: number): string {
+  return `${departure.system} ${departsSaid(departure)} leaves in ${mark / 60} minutes.`;
 }
 
-export function missedSaid(departure: Pick<TransitDeparture, "system" | "departs">): string {
-  return `You may miss the ${departure.departs} ${departure.system}. Planning the next departure.`;
+export function missedSaid(departure: Pick<TransitDeparture, "system" | "departs" | "source">): string {
+  return `You may miss the ${departure.system} ${departsSaid(departure)}. Planning the next departure.`;
 }
