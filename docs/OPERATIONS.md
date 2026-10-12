@@ -2846,7 +2846,7 @@ water layer's refresh by hand, and a later refresh runs the same:
 then records the printed counts, size and digest in
 `frontend/src/amenity-data/README.md` ("Places to eat", "Status") and commits
 the file. It is a hashed asset under `/assets/`, fetched on the first search
-only (about 450 KB compressed expected) and left out of the service worker's
+only (2.3 MB, 555 KB with `gzip -9`, for the committed file) and left out of the service worker's
 precache, so installing the app does not download it (`LAZY_ASSET` in
 `frontend/src/sw/swCore.mjs`); no edge, compose or deploy change. The
 release's checks add: the hashed `food-*.json` asset gives 200, `immutable`,
