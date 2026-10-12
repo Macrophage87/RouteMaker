@@ -180,3 +180,12 @@ export function goDestinationLocating(name: string): string {
 export function goDestinationNeedsStart(name: string): string {
   return `To ${name}. ${GO_START_UNAVAILABLE}`;
 }
+
+/**
+ * Whether a map tap (or the keyboard's Add at centre) in Go is the start for a destination that waits for one
+ * (the location denied, unavailable or still being found): the route to that destination is planned at once,
+ * as a start typed in the start box does (follow-up review of PR #95). Else the tap adds a point as before.
+ */
+export function goTapStartsPending(state: { mode: AppMode; pointCount: number; pending: boolean }): boolean {
+  return state.mode === "go" && state.pending && state.pointCount === 0;
+}

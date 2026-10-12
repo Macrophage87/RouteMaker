@@ -4426,12 +4426,14 @@ puts it, at most two presses away.
   before there is a start is never dropped nor made the start (`goPickAction`): while the
   location is still being found it waits ("To …: finding your location for the start…") and is
   routed when the location comes; with no location, it is kept ("To …. Current location not
-  available; type a start.") and the start typed in the start box plans the route to it. Picking a
+  available; type a start.") and a start typed in the start box, or tapped on the map (or Add at
+  centre), plans the route to it at once (`goTapStartsPending`, follow-up review of #95). Picking a
   destination with a start plans at once; Go then shows the routes to choose from open, and the ride types under the
   route, so Bikeshare is one press, and only a Bikeshare route names its pick-up and drop-off
   stations (the route's Bikeshare plan).
 - **Few presses** (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go"): from
-  opening Go, a typed destination is two taps to riding: the place picked, then Start ride. Go
+  opening Go, a typed destination is three taps to riding: Where to?, the place picked, then
+  Start ride (the review of #95 counted them); with the Home chip it is two: Home, then Start ride. Go
   starts the ride with Settings > Ride mode's cues and asks nothing first (Plan still asks the
   first time). **Announcements** (`lib/announceLevel.ts`, Settings > Display): Brief or Full,
   kept on this device; unset, Go is Brief and Plan is Full. The route found, guidance, the start
@@ -4452,10 +4454,26 @@ puts it, at most two presses away.
   and letters them on the map at each pick-up station. A button, a marker or the letter's key
   sets that option's stations (the station pins) and ending, which re-plans it. A re-plan's
   answer lists only the pair asked for, so the first answer's list is kept for the same start
-  and end; the order is the server's.
+  and end; the order is the server's. A free-floating e-bike's option has no pick-up station id
+  (the server offers one only as the plan's own start, the first answer's), so its pins would let
+  the server plan the best option again: picked after another option, it is shown again from the
+  first answer, kept with the list (`replaysFirst`, `replayFor`: the scheduler answers that one
+  request from it, matching the plan sent with its stations, `sentPlanKey`), with "Option A:
+  picking up at an e-bike outside a dock, as first planned." If the ride's settings changed since,
+  it is not re-planned, and Go's notice says so (`stationlessUnavailable`).
 - **Start and end pins** (the owner, 2026-10-11 21:29 UTC): a play triangle and a stop square
   (`lib/pointText.ts` `START_GLYPH`, `END_GLYPH`, hidden; the pins' names stay "Start", "End" and
   "Start and finish"), so A, B, C are only the offered places; stops keep their numbers.
+- **Go's map layers** (follow-up review of #95; the owner's decision is pending, and this is the
+  recommended default; `lib/goLayers.ts`): Go opens with the water and restroom layer and the
+  Metro and MARC stations off, so the phone's map shows the route; Plan opens with them on, as
+  before. The rider's own Layers choice wins in both views and is kept on this device
+  (`routemaker.waterLayer`, and now `routemaker.railLayer` for Metro and MARC, which were not kept
+  before). Unchosen, a switch to the other view shows that view's default. The Water and Restroom
+  chips still letter their places on the map while their sheet is open (those markers are not the
+  layer), and the route's Water and restrooms fold still lists the water and restrooms along the
+  route (it is route data, not the layer). One commit, so it reverts cleanly if the owner keeps the
+  layers on.
 - **My Go** (`lib/myGo.ts`; `core.models.MyGo`, migration 0019; GET/POST `/api/me/go`):
   Open in, Go's ride type and, signed in, Home. Signed in it is the account's (saved only
   after it has been read, so an early save never clears a Home), with a copy on the device

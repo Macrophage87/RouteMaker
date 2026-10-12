@@ -86,8 +86,9 @@ import {
 } from "./lib/sidebar.ts";
 import { canShareLink, shareContent, shareLink, shareSaidFor } from "./lib/share.ts";
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
-import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterTitle, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
+import { loadWaterRestrooms, readWaterChoice, saveWaterPrefs, waterAlongRoute, waterTitle, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
 import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
+import { railFor, readRailChoice, saveRailChoice, waterPrefsFor } from "./lib/goLayers.ts";
 import { climbsAlongRoute, loadClimbs, readClimbsOn, saveClimbsOn, type Climb, type ClimbsStatus } from "./lib/climbs.ts";
 // `no-inline`: the file is small until the build host fills it, and an inlined data: URL is refused by
 // the edge's connect-src 'self' (Caddyfile), so it stays its own hashed file under /assets/.
@@ -142,8 +143,8 @@ import { Fold } from "./Sidebar.tsx";
 import { BACK_LABEL, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib/sidebar.ts";
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
 import { letterKeyIndex, letterPlaces, placeLetter } from "./lib/letteredPlaces.ts";
-import { keepOptions, optionName, optionPins, optionSaid, optionsKey, pickedOption, type KeptOptions } from "./lib/bikeshareOptions.ts";
-import { GO_START_SAID, GO_START_UNAVAILABLE, goDestinationLocating, goDestinationNeedsStart, goPickAction, goStartLine, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, shouldAskGoStart, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
+import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, goDestinationLocating, goDestinationNeedsStart, goPickAction, goStartLine, goTapStartsPending, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, shouldAskGoStart, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type MyGo } from "./lib/myGo.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { PRESETS } from "./lib/presets.ts";
@@ -194,6 +195,9 @@ export function App() {
   // Go or Plan (lib/appMode.ts), and why it opened so (a later account My Go may still move it).
   const [mode, setModeState] = useState<AppMode>(OPENING.mode);
   const modeSwitched = useRef(false);
+  // The view now, for callbacks kept across renders (a map tap: lib/appMode.ts goTapStartsPending).
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
   // The rider's own My Go (lib/myGo.ts): the account's when signed in, this device's when not.
   const [myGo, setMyGo] = useState<MyGo>(START_MY_GO.myGo);
   const [myGoSaid, setMyGoSaid] = useState("");
@@ -262,17 +266,26 @@ export function App() {
     topoAsked.current = true;
     void topoAvailable().then(setTopoReady);
   }, [showTopoLines]);
-  const [rail, setRail] = useState<RailVisibility>({ metro: true, marc: true });
+  // Metro and MARC stations, and below the water and restrooms: on in Plan and off in Go until the rider
+  // chooses; their choice is kept on this device and wins in both views (lib/goLayers.ts).
+  const [railChoice, setRailChoice] = useState<RailVisibility | null>(() => readRailChoice());
+  const rail = useMemo(() => railFor(railChoice, mode), [railChoice, mode]);
+  const setRail = (next: RailVisibility) => {
+    setRailChoice(next);
+    saveRailChoice(next);
+  };
   // The Mass Ride map's federal-land shading (lib/federalLand.ts): the rider's
   // own switch, on by default, and whether its data has arrived.
   const [federalOn, setFederalOn] = useState(true);
   const [federalStatus, setFederalStatus] = useState<FederalStatus>("loading");
   const [federalData, setFederalData] = useState<FederalData | null>(null);
-  // Public water and restrooms (lib/waterRestrooms.ts): on by default for every ride type, its
-  // switches kept on this device; the data is fetched the first time it is shown.
-  const [waterPrefs, setWaterPrefsState] = useState<WaterPrefs>(() => readWaterPrefs());
+  // Public water and restrooms (lib/waterRestrooms.ts): on by default for every ride type in Plan and off in
+  // Go (lib/goLayers.ts), its switches kept on this device once changed; the data is fetched the first time it
+  // is shown.
+  const [waterChoice, setWaterChoice] = useState<WaterPrefs | null>(() => readWaterChoice());
+  const waterPrefs = useMemo(() => waterPrefsFor(waterChoice, mode), [waterChoice, mode]);
   const changeWaterPrefs = (next: WaterPrefs) => {
-    setWaterPrefsState(next);
+    setWaterChoice(next);
     saveWaterPrefs(next);
   };
   const [waterStatus, setWaterStatus] = useState<WaterStatus>("loading");
@@ -488,9 +501,19 @@ export function App() {
   // The plan the route on screen answers, as a kept route's key (keptPlanKey): set with the route, so a
   // keep during a re-plan in flight files the route shown under its own plan, never the next one's.
   const routedKey = useRef<string | null>(null);
+  // Go's Bikeshare options: the answer that listed them, and a free e-bike's option asking for it again
+  // (lib/bikeshareOptions.ts replaysFirst: that option has no station id to re-plan with).
+  const firstAnswer = useRef<FirstAnswer<RouteResponse> | null>(null);
+  const replayAsked = useRef<string | null>(null);
   if (scheduler.current === null) {
     scheduler.current = new RouteScheduler<Plan>({
       send: async (plan) => {
+        const replay = replayFor(firstAnswer.current, replayAsked.current, sentPlanKey(plan.points, plan.preset, plan.dials));
+        replayAsked.current = null;
+        if (replay) {
+          keptShown.current = null;
+          return { ok: true, route: replay };
+        }
         const result = await requestRoute(plan.points, plan.preset, { confirmLong: plan.confirmLong, dials: plan.dials });
         keptShown.current = null;
         if (result.ok || result.error.kind !== "network") return result;
@@ -505,6 +528,8 @@ export function App() {
       },
       onResult: (plan: Plan, result: RouteResult) => {
         if (result.ok) {
+          if (plan.preset === "bikeshare" && keepsFirst(bikeshareOf(result.route)))
+            firstAnswer.current = { key: sentPlanKey(plan.points, plan.preset, plan.dials), trip: optionsKey(plan.points), route: result.route };
           setRoute(result.route);
           setRoutedPoints(plan.points);
           setRoutedLoop(loopStops(plan.preset, plan.dials.loop));
@@ -875,6 +900,13 @@ export function App() {
       return;
     }
     setNotice(null);
+    // In Go, a destination waiting for a start: the tap is that start, and the route is planned at once.
+    const pending = goPending.current;
+    if (pending && goTapStartsPending({ mode: modeRef.current, pointCount: pointsRef.current.length, pending: true })) {
+      goPending.current = null;
+      routeGoRef.current(point, false, pending.dest, pending.name);
+      return;
+    }
     const next = addPoint(pointsRef.current, point, loopVias);
     commit(next);
     announce(addedSaid(next.indexOf(point), next.length, loopVias));
@@ -1706,19 +1738,39 @@ export function App() {
     const option = goOptions?.[index];
     // The one already planned: nothing to re-plan.
     if (!option || index === pickedOption(goOptions, bikeshareOf(shown))) return;
+    if (replaysFirst(option)) {
+      // A free e-bike: the first answer, shown again as it was (asking again could plan another bike or a
+      // dock). Only for the plan it answered; else it is not re-planned, and that is said.
+      const first = firstAnswer.current;
+      if (!first || first.trip !== optionsKey(points) || first.key !== sentPlanKey(points, preset, withStations(planDials, FIRST_ANSWER_PINS))) {
+        // Shown and said (Go's notice), so the option is plainly not re-planned.
+        setNotice(stationlessUnavailable(placeLetter(index)));
+        return;
+      }
+      replayAsked.current = first.key;
+      setStationPins(FIRST_ANSWER_PINS);
+      announce(optionReplaySaid(placeLetter(index), option));
+      return;
+    }
     setStationPins(optionPins(option, points));
     setDials((d) => ({ ...d, ending: option.ending }));
     announce(optionSaid(placeLetter(index), option));
   };
   // A new answer: the Keep button's line was about the route before it.
   useEffect(() => setKeepSpoken({ text: "", count: 0 }), [answer]);
-  // The layer in words: the points along the route shown, in riding order.
+  // The water and restrooms along the route shown, in riding order: the route's "Water and restrooms" fold.
+  // It is route data, not map clutter, so it is listed with the map layer off too (review of PR #96); the
+  // layer's two filters still apply. The file is loaded once a route is shown.
+  const routeShown = shown !== null;
+  useEffect(() => {
+    if (routeShown) void ensureWater();
+  }, [routeShown, ensureWater]);
   const waterAlong = useMemo(
     () =>
-      waterOn && waterData && shown
+      waterData && shown
         ? waterAlongRoute(shown.geometry.coordinates, waterData.filter((p) => waterVisible(p, waterPrefs)))
         : null,
-    [waterOn, waterData, waterPrefs, shown],
+    [waterData, waterPrefs, shown],
   );
   // The Climbs layer in words: the climbs the route rides, in riding order.
   const climbsAlong = useMemo(
@@ -2061,7 +2113,7 @@ export function App() {
         mode, actions, stations, go,
         stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef,
         confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
-        narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials, waterOn,
+        narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials,
         waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs,
         rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong,
       }}

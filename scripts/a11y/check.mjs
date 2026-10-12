@@ -3949,6 +3949,25 @@ async function goPick(p, box, text) {
   await p.close();
 }
 {
+  // Follow-up review of PR #95: with the location denied and a destination waiting, a tap on the map is the start,
+  // as a typed start is: the route to that destination is planned at once, the destination kept.
+  const p = await goWith("denied", { init: GEO_TWO });
+  await goPick(p, ".go-sheet .go-search", "Union");
+  await sleep(1200);
+  const waiting = await p.eval("document.querySelector('.go-notice')?.textContent ?? ''");
+  // A spot on the map itself, above Go's sheet and clear of the controls.
+  const at = await p.eval(`(() => { const r = document.querySelector('.maplibregl-canvas').getBoundingClientRect(); for (let y = r.top + 160; y < r.top + r.height / 2; y += 20) { const x = r.left + r.width / 2; if (document.elementFromPoint(x, y)?.classList.contains('maplibregl-canvas')) return [x, y]; } return null; })()`);
+  if (at) {
+    await p.s("Input.dispatchMouseEvent", { type: "mousePressed", x: at[0], y: at[1], button: "left", clickCount: 1 });
+    await p.s("Input.dispatchMouseEvent", { type: "mouseReleased", x: at[0], y: at[1], button: "left", clickCount: 1 });
+  }
+  const routed = await p.waitFor("!!document.querySelector('.go-summary .start-button')", 20000);
+  const after = await p.eval("({ dest: document.querySelector('.go-destination-name')?.textContent ?? '', points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean), notice: document.querySelector('.go-notice')?.textContent ?? '' })");
+  check("go start: with the location denied and a destination waiting, a tap on the map is the start and plans the route to that destination at once (the destination kept, two points)",
+    waiting.startsWith("To Union Station.") && !!at && routed && after.dest === "To Union Station" && after.points.length === 2 && after.points[1] === "-77.00630,38.89730" && after.notice === "", JSON.stringify({ waiting, at, after }));
+  await p.close();
+}
+{
   // Review of PR #95: a destination picked while Go is still finding the location (a cold GPS, or the permission
   // prompt still open) waits for it and is routed when it comes; it is not dropped.
   const SLOW = "(() => { const g = navigator.geolocation; const real = g.getCurrentPosition.bind(g); Object.defineProperty(g, 'getCurrentPosition', { configurable: true, value: (ok, fail, o) => setTimeout(() => real(ok, fail, o), 4000) }); })();";
@@ -3974,12 +3993,14 @@ async function goPick(p, box, text) {
 }
 {
   // The main flow (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go"): open Go, type a
-  // destination, then the taps are counted: the place picked (1) and Start ride (2), with no question between.
+  // destination, then the taps are counted: Where to? (1), the place picked (2) and Start ride (3), with no question
+  // between (the review of #95 counted 3; it is 2 with the Home chip).
   const GEO_STUB = `(() => { const real = window.fetch.bind(window); window.fetch = (input, init) => /\\/api\\/geocode/.test(String(input?.url ?? input)) ? Promise.resolve(new Response(JSON.stringify({ results: [{ name: "Union Station", label: "Union Station, Washington, DC", lon: -77.0063, lat: 38.8973, kind: "station" }], attribution: [] }), { headers: { "Content-Type": "application/json" } })) : real(input, init); })();`;
   const p = await goWith("granted", { init: GEO_STUB });
   await p.waitFor("/your current location/.test(document.querySelector('.go-start-line')?.textContent ?? '')", 20000);
   let taps = 0;
   await p.eval("document.querySelector('.go-sheet .go-search input').focus(); true");
+  taps += 1;
   await p.type("Union");
   await p.waitFor("!!document.querySelector('.go-sheet .go-search [role=option]')", 15000);
   await p.eval("(() => { const o = document.querySelector('.go-sheet .go-search [role=option]'); o.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); o.click(); return true; })()");
@@ -3990,9 +4011,32 @@ async function goPick(p, box, text) {
   taps += 1;
   await sleep(800);
   const riding = await p.eval("({ ride: !!document.querySelector('section.ride'), ask: !!document.querySelector('.ride-ask:not([hidden])') })");
-  check("go flow: from opening Go, a typed destination takes 2 taps to ride (the place, then Start ride), with no question or sheet between, and the route options shown at once",
-    routed && riding.ride && !riding.ask && taps === 2 && options.rides.includes("Bikeshare"), JSON.stringify({ taps, options, riding }));
+  check("go flow: from opening Go, a typed destination takes 3 taps to ride (Where to?, the place, then Start ride), with no question or sheet between, and the route options shown at once",
+    routed && riding.ride && !riding.ask && taps === 3 && options.rides.includes("Bikeshare"), JSON.stringify({ taps, options, riding }));
   await p.close();
+}
+{
+  // Go's map layers (follow-up review of PR #95; owner decision pending, the recommended default): Go opens with
+  // water and restrooms and the Metro and MARC stations off, Plan with them on; the Water chip still letters its
+  // places while its sheet is open.
+  const LAYERS = "({ water: document.querySelector('#sheet-layers .water-section input[type=checkbox]')?.checked, rail: [...document.querySelectorAll('#sheet-layers section[aria-labelledby=rail-heading] input[type=checkbox]')].map((x) => x.checked) })";
+  const go = await goWith("granted");
+  const goLayers = await go.eval(LAYERS);
+  const wide = await goWith("granted", { width: 1280, height: 900, mobile: false });
+  const planLayers = await wide.eval(LAYERS);
+  check("go layers: Go opens with water and restrooms and Metro and MARC off; Plan opens with them on, as before",
+    goLayers.water === false && JSON.stringify(goLayers.rail) === "[false,false]" && planLayers.water === true && JSON.stringify(planLayers.rail) === "[true,true]", JSON.stringify({ goLayers, planLayers }));
+  await wide.close();
+  await go.eval("[...document.querySelectorAll('.go-places .place-chip')].find((c) => c.textContent.trim() === 'Water').click(); true");
+  const lettered = await go.waitFor("document.querySelectorAll('.lettered-marker').length > 0", 20000);
+  const chip = await go.eval("({ markers: document.querySelectorAll('.lettered-marker').length, water: document.querySelector('#sheet-layers .water-section input[type=checkbox]')?.checked, sheet: !document.getElementById('sheet-nearest').hidden })");
+  await go.close();
+  // A rider's own Layers choice, kept on this device, wins in Go.
+  const kept = await goWith("granted", { init: "try { localStorage.setItem('routemaker.waterLayer', JSON.stringify({ on: true, basic: true, untreated: true })); localStorage.setItem('routemaker.railLayer', JSON.stringify({ metro: true, marc: false })); } catch {}" });
+  const keptLayers = await kept.eval(LAYERS);
+  await kept.close();
+  check("go layers: the Water chip still letters the nearest water on the map while its sheet is open, with the layer off; a rider's kept Layers choice (water on, Metro on, MARC off) wins in Go",
+    lettered && chip.markers > 0 && chip.water === false && chip.sheet && keptLayers.water === true && JSON.stringify(keptLayers.rail) === "[true,false]", JSON.stringify({ chip, keptLayers }));
 }
 {
   // Lettered places (the owner, 2026-10-11 21:04 UTC): the nearest listed are lettered in the list and on the
@@ -4065,6 +4109,37 @@ async function goPick(p, box, text) {
   await p.eval("document.querySelectorAll('.go-bike-option')[0].click(); true");
   const byButton = await p.waitFor(`document.querySelector('.go-bike-option[aria-pressed=true] .place-letter')?.textContent === 'A'`, 20000);
   check("go bikeshare options: marker C and button A each re-plan their option", byMarker && sentC.pickup_station === "fx-a" && sentC.dropoff_station === "fx-y" && byButton, JSON.stringify({ sentC }));
+  await p.close();
+}
+{
+  // Follow-up review of PR #95: a free-floating e-bike's option (A, the first answer's plan, with no pick-up station
+  // id) is shown again from that answer when picked after another, not re-planned to whatever is best by then.
+  const end = (name, id, at, kind = "dock") => ({ kind, name, lon: at[0], lat: at[1], station_id: id, availability: "known", bikes_available: 6, docks_available: 9, walk_m: 120, walk_s: 90, extra_m: 0, on_the_way: true, way_text: "on your way" });
+  const free = { rank: 1, chosen: true, pickup: end("an e-bike outside a dock", null, [-77.0395, 38.9095], "free_bike"), dropoff: end("Dock Xray", "fx-x", [-77.011, 38.891]), pickup_station: null, dropoff_station: "fx-x", ending: "dock",
+    ride_m: 3300, total_s: 1100, estimated: false, cost_m: 200, text: "Pick up an e-bike outside a dock, return at Dock Xray: about 18 min" };
+  const dock = { rank: 2, chosen: false, pickup: end("Dock Bravo", "fx-b", [-77.037, 38.909]), dropoff: end("Dock Xray", "fx-x", [-77.011, 38.891]), pickup_station: "fx-b", dropoff_station: "fx-x", ending: "dock",
+    ride_m: 3500, total_s: 1200, estimated: true, cost_m: 400, text: "Pick up at Dock Bravo, return at Dock Xray: about 20 min" };
+  // Asked again with no station, the server would now plan the dock (the e-bike was taken): the replay must not ask.
+  const route = (_n, page) => {
+    const r = JSON.parse(JSON.stringify(S_BIKESHARE));
+    const asked = JSON.parse(page.routeBodies.at(-1) || "{}");
+    r.bikeshare.options = asked.pickup_station === "fx-b" ? [{ ...dock, rank: 1, chosen: true, estimated: false }] : page.routeRequests > 1 ? [{ ...dock, rank: 1, chosen: true }] : [free, dock];
+    return r;
+  };
+  const p = await goWith("granted", { route, hash: "#p=-77.04000,38.91000;-77.01000,38.89000&preset=bikeshare&v=2&stress=80&hills=-20&bike=ebike" });
+  await p.eval("[...document.querySelectorAll('.mode-switch .mode-button')].find((x) => x.textContent === 'Go' && x.getClientRects().length).click(); true");
+  const listed = await p.waitFor("document.querySelectorAll('.go-bike-option').length === 2", 20000);
+  await p.eval("document.querySelectorAll('.go-bike-option')[1].click(); true");
+  const onB = await p.waitFor(`document.querySelector('.go-bike-option[aria-pressed=true] .place-letter')?.textContent === 'B'`, 20000);
+  const sentB = JSON.parse(p.routeBodies.at(-1) || "{}");
+  const before = p.routeRequests;
+  await p.eval("document.querySelectorAll('.go-bike-option')[0].click(); true");
+  const onA = await p.waitFor(`document.querySelector('.go-bike-option[aria-pressed=true] .place-letter')?.textContent === 'A'`, 10000);
+  await sleep(800);
+  const after = await p.eval("({ buttons: document.querySelectorAll('.go-bike-option').length, said: window.__said.slice(-4) })");
+  check("go bikeshare options: a free e-bike's option A, picked again after B, shows the first answer's plan again (no request that could plan another bike or a dock), A pressed, and says so politely",
+    listed && onB && sentB.pickup_station === "fx-b" && onA && p.routeRequests === before && after.buttons === 2 && after.said.some((t) => t.includes("Option A: picking up at an e-bike outside a dock, as first planned.")),
+    JSON.stringify({ sentB, requests: p.routeRequests - before, after }));
   await p.close();
 }
 {
@@ -4147,7 +4222,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 590;
+const EXPECTED = 594;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
