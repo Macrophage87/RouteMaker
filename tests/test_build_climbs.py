@@ -78,6 +78,26 @@ def test_read_segments_reads_the_routable_ways_with_their_columns(segment_schema
     assert third.unpaved is None and third.oneway is False
     assert second.coords[0] == pytest.approx(east(0), abs=1e-7)
     assert second.coords[-1] == pytest.approx(east(300), abs=1e-7)
+
+
+@db
+def test_read_segments_reads_only_ways_open_to_bicycles(segment_schemas):
+    """Owner report 2026-10-12 (a Cat 4 climb in the Travilah quarry): a climb rides only a
+    way the segment panel calls open. A drawn way whose bike-access reason closes it, or
+    names a reason this release does not know, carries no climb (unclear access is
+    closed); an override that reopened a way, or no reason at all, does."""
+    live, _ = segment_schemas
+    insert(live, 30, [east(0), east(300)])
+    insert(live, 31, [east(0), east(300)], bike_access_reason="override_open")
+    insert(live, 32, [east(0), east(300)], bike_access_reason="works")
+    insert(live, 33, [east(0), east(300)], bike_access_reason="private")
+    insert(live, 34, [east(0), east(300)], bike_access_reason="military")
+    insert(live, 35, [east(0), east(300)], bike_access_reason="a_reason_from_the_future")
+
+    segments = climb_layer.read_segments(live)
+
+    assert [s.key[0] for s in segments] == [30, 31]
+    assert climb_layer.open_access_reasons() == ["override_open"]
     # The streaming cursor's transaction is closed again: the connection is back in autocommit.
     assert connection.get_autocommit()
 
