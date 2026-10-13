@@ -378,7 +378,7 @@ class TestAnswer:
         access = section(body, "access")["Bike access"]
         assert access["value"] == (
             "Closed: a mountain-bike trail, not used for routes except by the Mountain Bike,"
-            " Gravel and Mountain Goat ride types (drawn as a thin grey dotted line when the"
+            " Gravel and Mountain Goat ride types (drawn on a ticked white edge, by level, when the"
             " Mountain-bike trails map layer is on)"
         )
 

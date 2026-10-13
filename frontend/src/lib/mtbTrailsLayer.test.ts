@@ -178,8 +178,9 @@ test("the not-for-routes line and each level's casing and line are the layers th
     mtbTrailLayers().map((l: { id: string }) => l.id),
     MTB_LAYER_IDS.slice(0, -1),
   );
-  assert.equal(MTB_LAYER_IDS[0], MTB_TRAIL_LAYER_ID);
-  assert.equal(MTB_LAYER_IDS.length, 10, "the dots, four casings and four lines (456), and the names (2026-10-10)");
+  assert.equal(MTB_LAYER_IDS[0], "mtb-trail-ticks", "the shared ticks at the bottom");
+  assert.ok(MTB_LAYER_IDS.includes(MTB_TRAIL_LAYER_ID));
+  assert.equal(MTB_LAYER_IDS.length, 12, "the ticks, the unrated trails' edge and dashes, four edges and four lines (456), and the names (2026-10-10)");
   assert.equal(MTB_LAYER_IDS.at(-1), "mtb-trail-label");
 });
 

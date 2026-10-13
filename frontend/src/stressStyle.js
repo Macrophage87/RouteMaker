@@ -864,10 +864,13 @@ export function subscribeMassRide(listener) {
  * 452 hid them; 452a, the owner: "I want people to know where the trails are, but make them
  * clear that it's not routing." So none of the routable layers (stress, unpaved,
  * surface-unknown, ring, gap, facility) draws one (`mtbHides`), and they have a look of their
- * own instead (`mtbTrailLayers`, MTB_TRAIL): a thin mid-grey line of fine dots, with no casing,
- * no rails and no stress colour, under every routable layer, from MTB_MIN_ZOOM (the zoom the
- * tiles carry them from, as before). The dots carry the meaning, not the grey: no routable
- * line on the map is a row of separate dots on nothing. This supersedes 290(b)'s "draw them
+ * own instead (`mtbTrailLayers`, MTB_TRAIL): first a thin mid-grey line of fine dots with no casing; since
+ * v0.6.0 (the owner, 2026-10-12: "Mountain bike trails seem plotted but don't show up very well") a 3 px
+ * line on a white edge (MTB_HALO) with short dark cross-ticks outside it (MTB_TICKS), grey dashes for an unrated
+ * trail, no rails and no stress colour, under every routable layer, from MTB_MIN_ZOOM (the zoom the tiles carry
+ * them from, as before). The ticks carry the meaning, not the colour: every routable line's casing and ring is
+ * solid, in every palette. In the Mountain Bike ride type the trails up to the rider's level draw as routable
+ * (slice 6) and only the harder ones in this look. This supersedes 290(b)'s "draw them
  * faint" (FOLLOWUP-MTB-FAINT). Since 454 the line is an optional map layer, off until the rider
  * turns it on (mtbTrailsOn, below; lib/mapGlue.ts overlayLayerShown). Not the tiles' `rough`: that is a rough surface (`is_rough`,
  * paved cobbles among them, 440), not this class, and a rough trail draws as any other.
@@ -924,27 +927,59 @@ export const mtbHides = ["!=", ["get", "mtb"], true];
 export const isMtbTrail = ["==", ["get", "mtb"], true];
 
 /**
- * The not-for-routes look (452a): a narrow mid-grey line of fine dots (`dash`, in line widths:
- * a dot as long as the line is wide, then a gap twice that), with no casing. #5f6368 is 3.5:1 or
- * more from every surface of the light base map (the lowest, scrub's green, 3.54:1; parks'
- * 3.57:1; white roads 6.05:1; mtbTrail.test.ts holds 3:1), and it is not a stress colour in
- * any palette. With the accessibility switch on (`strong`) the line is wider and darker
- * (#4b5260, the panels' muted text, 4.59:1 or more). The legend's swatch draws it on the base
- * map's earth colour (`legendGround`), so it reads as on the map in a dark panel too.
+ * The unrated trails' look: a mid-grey dashed line (`dash`, in line widths: a dash one and a half
+ * widths long, then a gap as long) on the white edge every mountain-bike trail has (MTB_HALO).
+ * Until v0.6.0 this was a 1.5 px line of fine dots with no edge, which the owner could hardly
+ * see (2026-10-12: "Mountain bike trails seem plotted but don't show up very well"); it is now as
+ * wide as a level's line. #5f6368 is 3.5:1 or more from every surface of the light base map (the
+ * lowest, scrub's green, 3.54:1; parks' 3.57:1; white roads 6.05:1; mtbTrail.test.ts holds 3:1)
+ * and 6.05:1 on its white edge, and it is not a stress colour in any palette. With the
+ * accessibility switch on (`strong`) the line is wider and darker (#4b5260, the panels' muted
+ * text, 4.59:1 or more). The legend's swatch draws it on the base map's earth colour
+ * (`legendGround`), so it reads as on the map in a dark panel too.
  */
 export const MTB_TRAIL = {
   color: "#5f6368",
   strongColor: "#4b5260",
-  width: 1.5,
-  strongWidth: 2,
-  dash: [1, 2],
+  width: 3,
+  strongWidth: 4,
+  dash: [1.5, 1.5],
   legendGround: "#e2dfda",
 };
+
+/**
+ * The white edge under every mountain-bike trail's line (v0.6.0, the owner's report of 2026-10-12): `px` each
+ * side of the line, `strongPx` with the accessibility switch. It lifts the line off park green, woods and the
+ * contour lines. Every line colour is 4.5:1 or more against it (mtbLevels.test.ts). A white edge alone is not the
+ * not-for-routes mark: LTS 4's casing is white in the default and accessible palettes.
+ */
+export const MTB_HALO = { color: "#ffffff", px: 1.5, strongPx: 2 };
+
+/** The white edge's width under a line `width` px wide, plain or with the accessibility switch. */
+function mtbHaloWidth(width, strong) {
+  return width + 2 * (strong ? MTB_HALO.strongPx : MTB_HALO.px);
+}
+
+/**
+ * The not-for-routes mark every mountain-bike trail shares (452a: "clearly unlike any routable trail or road"):
+ * short dark cross-ticks under the white edge, `px` past it a side (`strongPx` with the accessibility switch), in
+ * `dash` (in the ticks' own widths: about a 2 px tick every 12 px). Every stress tier's casing is a solid line, in
+ * every palette, so a ticked outer edge is a look no routable line has (mtbLevels.test.ts). One layer
+ * (`mtb-trail-ticks`) under every edge: the unrated line and every level's are the same width.
+ */
+export const MTB_TICKS = { color: "#1c1917", px: 2, strongPx: 2.5, dash: [0.2, 1] };
+export const MTB_TICKS_LAYER_ID = "mtb-trail-ticks";
+
+/** The ticks' paint, plain or with the accessibility switch: as wide as the white edge and `px` more a side. */
+export function mtbTicksPaint(strong = accessibilityOn()) {
+  const width = strong ? MTB_LEVEL.strongWidth : MTB_LEVEL.width;
+  return { "line-color": MTB_TICKS.color, "line-width": mtbHaloWidth(width, strong) + 2 * (strong ? MTB_TICKS.strongPx : MTB_TICKS.px), "line-dasharray": MTB_TICKS.dash };
+}
 
 /** The zoom the not-for-routes line draws from: where the tiles carry the trails (STRESS_ZOOMS.quiet, held equal by a test). */
 export const MTB_MIN_ZOOM = 14;
 
-/** The not-for-routes line's colour and width, plain or with the accessibility switch on. */
+/** The unrated trails' line: colour, width and dashes, plain or with the accessibility switch on. */
 export function mtbTrailPaint(strong = accessibilityOn()) {
   return {
     "line-color": strong ? MTB_TRAIL.strongColor : MTB_TRAIL.color,
@@ -953,8 +988,15 @@ export function mtbTrailPaint(strong = accessibilityOn()) {
   };
 }
 
-/** The not-for-routes layer's id: since 456 the unrated mountain-bike trails' grey dots. */
+/** The unrated trails' white edge (MTB_HALO), solid, under the line. */
+export function mtbTrailHaloPaint(strong = accessibilityOn()) {
+  const width = strong ? MTB_TRAIL.strongWidth : MTB_TRAIL.width;
+  return { "line-color": MTB_HALO.color, "line-width": mtbHaloWidth(width, strong) };
+}
+
+/** The not-for-routes layer's id: since 456 the unrated mountain-bike trails' grey dashes; and their white edge. */
 export const MTB_TRAIL_LAYER_ID = "mtb-trail";
+export const MTB_TRAIL_CASING_LAYER_ID = "mtb-trail-casing";
 
 /**
  * THE MOUNTAIN-BIKE LEVELS (OWNER-DECISIONS 456, 456a-c; docs/MTB-TOPO-PLAN.md, slice 2). The tiles
@@ -966,31 +1008,28 @@ export const MTB_TRAIL_LAYER_ID = "mtb-trail";
  * never the only cue; the legend and the road panel name the level in words (`name`,
  * core/segment_info.py MTB_LEVEL_COLOURS, held equal by a test). 452a asks the not-for-routes look to be
  * "clearly unlike any routable trail or road", so every level shares one mark no stress tier has
- * (MTB_LEVEL, below): dark cross-ticks in place of a casing, where every tier sits on a solid one, and
- * gaps of 1.5 line widths or more, where no tier's gap passes 1; and every level is 2 px, thinner than
- * any tier. No pattern is the unrated trails' dots, the unpaved mark, the surface-unknown dashes, a
- * rail's or a tier's (mtbLevels.test.ts). Each colour is 3:1 or more from every surface of the light
- * base map (mtbLevels.test.ts, as MTB_TRAIL's); the green is #28702c, darker than the starting #2e7d32,
- * which was 3.0009:1 on the base map's scrub (review of slice 2).
- * An unrated mountain-bike trail keeps the grey dots (`mtb-trail`, MTB_TRAIL; the plan's default).
+ * (MTB_TICKS): dark cross-ticks outside a white edge, where every tier's casing and ring is solid. No pattern is the unrated trails' dashes, the unpaved
+ * mark, the surface-unknown dashes, a rail's or a tier's (mtbLevels.test.ts). Each colour is 3:1 or
+ * more from every surface of the light base map (mtbLevels.test.ts, as MTB_TRAIL's) and 4.5:1 or more
+ * on the white edge; the green is #28702c, darker than the starting #2e7d32, which was 3.0009:1 on the
+ * base map's scrub (review of slice 2). Until v0.6.0 a level was 2 px over dark cross-ticks, thinner than
+ * any tier, and the owner could hardly see them (2026-10-12); a level is now 3 px (4 strong) on its
+ * white edge, the ticks outside it, the gaps shorter so the colour reads.
+ * An unrated mountain-bike trail keeps grey (`mtb-trail`, MTB_TRAIL; the plan's default), now dashed.
  */
 export const MTB_LEVELS = [
-  { level: 1, name: "green", color: "#28702c", dash: [6, 2], pattern: "long dashes", scale: "S1 or IMBA 1" },
-  { level: 2, name: "blue", color: "#1565c0", dash: [3, 2], pattern: "short dashes", scale: "S2 or IMBA 2" },
+  { level: 1, name: "green", color: "#28702c", dash: [6, 1.5], pattern: "long dashes", scale: "S1 or IMBA 1" },
+  { level: 2, name: "blue", color: "#1565c0", dash: [3, 1.5], pattern: "short dashes", scale: "S2 or IMBA 2" },
   { level: 3, name: "black", color: "#1c1917", dash: [4, 1.5, 1, 1.5], pattern: "dash-dot", scale: "S3 or IMBA 3" },
   { level: 4, name: "red", color: "#c62828", dash: [4, 1.5, 1, 1.5, 1, 1.5], pattern: "dash-dot-dot", scale: "S4 or above, or IMBA 4 or above" },
 ];
 
 /**
  * The levels' look, shared by all four: the line's width, plain and with the accessibility switch on
- * (`strong`), in pixels - wider than the grey dots so the colour reads, still thinner than LTS 1's
- * routable line at either strength (2 px against 2.5, 2.5 against 3) - and the not-for-routes mark
- * (452a): short dark cross-ticks drawn under the line (the "casing" layer), `tickPx` past it a side,
- * in `tickDash` (in that layer's own widths: a tick 1.5 px long every 10.5 px plain). Every stress
- * tier sits on a solid casing, so a ticked edge is a look no routable line has; the line's gaps show
- * the base map, not a casing.
+ * (`strong`), in pixels (as wide as the unrated trails' line), drawn on the white edge (MTB_HALO, the
+ * "casing" layer); the line's gaps show the white.
  */
-export const MTB_LEVEL = { width: 2, strongWidth: 2.5, tick: "#1c1917", tickPx: 2, strongTickPx: 2.5, tickDash: [0.25, 1.5] };
+export const MTB_LEVEL = { width: 3, strongWidth: 4 };
 
 /** The least gap, in line widths, any level's pattern has (452a: longer than any tier's). */
 export const MTB_LEVEL_MIN_GAP = 1.5;
@@ -999,8 +1038,17 @@ export const MTB_LEVEL_MIN_GAP = 1.5;
 export const mtbLevelLayerId = (level) => `mtb-level-${level}`;
 export const mtbLevelCasingLayerId = (level) => `mtb-level-casing-${level}`;
 
-/** The mountain-bike trail layer's lines (454, 456): the unrated dots and each level's casing and line, bottom first. */
-export const MTB_LINE_LAYER_IDS = [MTB_TRAIL_LAYER_ID, ...MTB_LEVELS.map((l) => mtbLevelCasingLayerId(l.level)), ...MTB_LEVELS.map((l) => mtbLevelLayerId(l.level))];
+/**
+ * The mountain-bike trail layer's lines (454, 456), bottom first: the shared ticks, every white edge (the unrated
+ * trails', then each level's), then every line, so no edge covers another trail's line where two meet.
+ */
+export const MTB_LINE_LAYER_IDS = [
+  MTB_TICKS_LAYER_ID,
+  MTB_TRAIL_CASING_LAYER_ID,
+  ...MTB_LEVELS.map((l) => mtbLevelCasingLayerId(l.level)),
+  MTB_TRAIL_LAYER_ID,
+  ...MTB_LEVELS.map((l) => mtbLevelLayerId(l.level)),
+];
 
 /**
  * THE MOUNTAIN-BIKE TRAIL NAMES. The owner, 2026-10-10: "Also, for mountain bikes, try to make sure trail names
@@ -1010,7 +1058,7 @@ export const MTB_LINE_LAYER_IDS = [MTB_TRAIL_LAYER_ID, ...MTB_LEVELS.map((l) => 
  * the layer's switch with the lines). MapLibre's collision drops a label that would overlap another, and
  * `text-padding` and `symbol-spacing` thin them further; `text-max-angle` is 45 (not the 30 the Mass Ride labels
  * use), so a name still fits along curvy singletrack at z15-16. The text is the line's own colour - its level's, or the
- * unrated dots' grey - on a white halo: each is 4.5:1 or more against the halo (green 6.10:1, blue 5.75:1, black
+ * unrated trails' grey - on a white halo: each is 4.5:1 or more against the halo (green 6.10:1, blue 5.75:1, black
  * 17.49:1, red 5.62:1, grey 6.05:1; mtbLevels.test.ts), where the base map's path-label grey is not (3.5:1). The
  * name is text a screen reader cannot reach on the canvas; the road panel says it in words (core/segment_info.py).
  */
@@ -1026,18 +1074,17 @@ export function isMtbLayerId(id) {
   return MTB_LAYER_IDS.includes(id);
 }
 
-/** A level's line and its cross-ticks (the `casing` layer), plain or with the accessibility switch on. */
+/** A level's line and its white edge (the `casing` layer), plain or with the accessibility switch on. */
 export function mtbLevelPaint(level, strong = accessibilityOn()) {
   const shape = MTB_LEVELS.find((l) => l.level === level);
   const width = strong ? MTB_LEVEL.strongWidth : MTB_LEVEL.width;
-  const tickWidth = width + 2 * (strong ? MTB_LEVEL.strongTickPx : MTB_LEVEL.tickPx);
   return {
     line: { "line-color": shape.color, "line-width": width, "line-dasharray": shape.dash },
-    casing: { "line-color": MTB_LEVEL.tick, "line-width": tickWidth, "line-dasharray": MTB_LEVEL.tickDash },
+    casing: { "line-color": MTB_HALO.color, "line-width": mtbHaloWidth(width, strong) },
   };
 }
 
-/** The names' text colour: the level's colour, or the unrated dots' grey (darker with the accessibility switch). */
+/** The names' text colour: the level's colour, or the unrated trails' grey (darker with the accessibility switch). */
 export function mtbLabelColor(strong = accessibilityOn()) {
   return ["match", ["get", "mtb_level"], ...MTB_LEVELS.flatMap((l) => [l.level, l.color]), strong ? MTB_TRAIL.strongColor : MTB_TRAIL.color];
 }
@@ -1067,15 +1114,19 @@ export function mtbLabelLayers(sourceId = "stress", when = DEFAULT_WHEN, strong 
 }
 
 /**
- * The mountain-bike trail layer (452a, 454, 456): the unrated trails' grey dots, then every level's cross-ticks,
- * then every level's line, all under every routable layer.
+ * The mountain-bike trail layer (452a, 454, 456): the shared dark ticks, every white edge (the unrated trails', then each level's), then
+ * the unrated trails' grey dashes and every level's line. Over the base map's park and land fills and the contour
+ * lines (lib/mapGlue.ts adds the overlay under the base map's labels; lib/topoLines.ts puts the contours under its
+ * roads), under every routable layer, and the route over all of it.
  */
 export function mtbTrailLayers(sourceId = "stress", when = DEFAULT_WHEN, strong = accessibilityOn()) {
   const filters = stressFilters(when);
   const base = { type: "line", source: sourceId, "source-layer": STRESS_TILE_LAYER, minzoom: MTB_MIN_ZOOM };
   return [
-    { id: MTB_TRAIL_LAYER_ID, ...base, filter: filters[MTB_TRAIL_LAYER_ID], paint: mtbTrailPaint(strong) },
+    { id: MTB_TICKS_LAYER_ID, ...base, filter: filters[MTB_TICKS_LAYER_ID], paint: mtbTicksPaint(strong) },
+    { id: MTB_TRAIL_CASING_LAYER_ID, ...base, filter: filters[MTB_TRAIL_CASING_LAYER_ID], paint: mtbTrailHaloPaint(strong) },
     ...MTB_LEVELS.map(({ level }) => ({ id: mtbLevelCasingLayerId(level), ...base, filter: filters[mtbLevelCasingLayerId(level)], paint: mtbLevelPaint(level, strong).casing })),
+    { id: MTB_TRAIL_LAYER_ID, ...base, filter: filters[MTB_TRAIL_LAYER_ID], paint: mtbTrailPaint(strong) },
     ...MTB_LEVELS.map(({ level }) => ({ id: mtbLevelLayerId(level), ...base, filter: filters[mtbLevelLayerId(level)], paint: mtbLevelPaint(level, strong).line })),
   ];
 }
@@ -1102,10 +1153,12 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
   const upTo = typeof routableMtb === "number" ? routableMtb : null;
   const hidden = upTo !== null ? [["any", mtbHides, mtbWithin(upTo)]] : routableMtb ? [] : [mtbHides];
   // The not-for-routes lines: the mountain-bike trails, or nothing once they are routable (or, at a level,
-  // only the trails above it). The grey dots draw the unrated ones (no `mtb_level`), and each level's casing
-  // and line the trails of that level (456).
+  // only the trails above it). The shared ticks draw every one of them; the grey dashes and their white edge
+  // the unrated ones (no `mtb_level`), and each level's white edge and line the trails of that level (456).
   const off = upTo !== null ? [["!", mtbWithin(upTo)]] : routableMtb ? [["boolean", false]] : [];
+  filters[MTB_TICKS_LAYER_ID] = ["all", drawnAt(when), isMtbTrail, ...off];
   filters[MTB_TRAIL_LAYER_ID] = ["all", drawnAt(when), isMtbTrail, ["!", ["has", "mtb_level"]], ...off];
+  filters[MTB_TRAIL_CASING_LAYER_ID] = filters[MTB_TRAIL_LAYER_ID];
   for (const { level } of MTB_LEVELS) {
     const filter = ["all", drawnAt(when), isMtbTrail, ["==", ["get", "mtb_level"], level], ...off];
     filters[mtbLevelCasingLayerId(level)] = filter;
@@ -1690,7 +1743,7 @@ export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN, showHig
  */
 export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
   return [
-    // The mountain-bike trails' not-for-routes line (452a), under every routable layer.
+    // The mountain-bike trails' layer (452a, 454, 456), under every routable layer.
     ...mtbTrailLayers(sourceId, when),
     ...ringLayers(sourceId, when, tiers),
     ...facilityLayers(sourceId, when),

@@ -99,7 +99,7 @@ def mtb_level(tags: dict[str, str]) -> int | None:
     A rating of 0 is the easiest grade on both scales, and it is no level here: a way rated
     0 on its scale or scales, and not 1 or more on the other, is a gravel trail, not an MTB
     level (456b), so it is None, like an unrated way, and keeps the look it has without a
-    rating (an ordinary unpaved path, or the grey dots of an unrated mountain-bike trail).
+    rating (an ordinary unpaved path, or the grey dashes of an unrated mountain-bike trail).
     A way rated 0 on one scale and 1 or more on the other takes the other's level.
 
     The rebuild writes it only on rated singletrack (`segment.mtb_level`;
