@@ -72,6 +72,7 @@ needed; reload the page to get the box back.
 - The first thing on the page is a button, "Accessibility mode", a switch that starts off.
   Turn it on to get Map tools by the map's zoom buttons, with "Add point at map center" and
   "Road info at map center". It stays on for this device. The same switch is in "More tips".
+- In Go, a press on the map, the route line included (or "Set destination at map center" in Map tools) makes that spot your destination and says "Destination set: …".
 - The next thing is a link, "Skip to the route planner". It takes you past the map to the
   planner.
 - The planner is an area (a landmark) called "Route planner"; screen readers may announce it
@@ -161,7 +162,9 @@ You stay responsible for riding safely; the route can be wrong.
   nothing and keeps nothing. Check the place before you send it.
 - Your position stays on your phone. It is sent only when a new way is found from where you
   are, or when you ask for the nearest water or restroom (as "Use my location" does when
-  planning), and never kept. A 311 report you send yourself carries it too.
+  planning), and never kept. A 311 report you send yourself carries it too. Place search, when
+  the app already knows where you are and that spot is on the map you are looking at, sends an
+  approximate location (about 1 km / 0.6 mi) so nearby places come first.
 - Keep the screen on. If the browser cannot keep it on, Ride mode says so; on an iPhone set
   Settings, Display and Brightness, Auto-Lock to Never for the ride. In the background for more
   than 10 minutes, the ride pauses; press Resume.

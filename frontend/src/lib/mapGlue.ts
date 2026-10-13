@@ -436,12 +436,15 @@ export type MapClickAction = "close-popup" | "ignore" | "station" | "line" | "po
  * route runs over it - owner, 2026-09-28: "Tap = station, drag = line" (a
  * press there that becomes a drag is the line's; pointerTarget). Then a click
  * on the line puts a via in that leg, and anywhere else it is a new point.
+ * With `lineTapIsPoint` (Go, where a press is the destination: the owner, 2026-10-12, "the location you press
+ * is the end"; stops belong in Plan), a click on the line is the map's like anywhere else; a drag of the line
+ * is unchanged (pointerTarget).
  */
-export function mapClickAction(state: PointerState & { afterDrag: boolean }): MapClickAction {
+export function mapClickAction(state: PointerState & { afterDrag: boolean; lineTapIsPoint?: boolean }): MapClickAction {
   if (state.popupOpen) return state.onStation ? "station" : "close-popup";
   if (state.afterDrag) return "ignore";
   if (state.onStation) return "station";
-  return state.onLine ? "line" : "point";
+  return state.onLine && !state.lineTapIsPoint ? "line" : "point";
 }
 
 export interface PointerAnswer {
@@ -489,6 +492,28 @@ export function pressGrab<L>(under: Under<unknown, L>, popupOpen: boolean): L | 
   return pointerTarget(stateOf(under, popupOpen)).grab ? under.line : null;
 }
 
+/**
+ * A map layer whose features open a card on a press (water and restrooms, climbs, federal land, and any card
+ * added later): its card is open, and whether a press at a screen point is on one of its shown features. Each
+ * card's own click handler opens and closes it; this is only what the main click needs to know of them.
+ */
+export interface FeatureCards {
+  open(): boolean;
+  hits(point: { x: number; y: number }): boolean;
+}
+
+/**
+ * Whether a press is a feature card's rather than the map's: on a shown feature of one of `cards` ("card": it
+ * opens that card), else while one of them is open ("close": the press only closes it), else null (the map's).
+ * Read in Go before the main click, where a press on the map sets the destination (lib/appMode.ts goTapSetsEnd):
+ * a press for a card, or to dismiss one, must not also replace the destination. Cards not yet on the map are null.
+ */
+export function featureCardPress(cards: ReadonlyArray<FeatureCards | null>, point: { x: number; y: number }): "card" | "close" | null {
+  const shown = cards.filter((card): card is FeatureCards => card !== null);
+  if (shown.some((card) => card.hits(point))) return "card";
+  return shown.some((card) => card.open()) ? "close" : null;
+}
+
 export interface ClickEffects<S, L> {
   closePopups(): void;
   openCard(station: S): void;
@@ -499,10 +524,10 @@ export interface ClickEffects<S, L> {
 /** Carry out a click at `under` (mapClickAction); returns what it was. */
 export function runClick<S, L>(
   under: Under<S, L>,
-  now: { popupOpen: boolean; afterDrag: boolean },
+  now: { popupOpen: boolean; afterDrag: boolean; lineTapIsPoint?: boolean },
   effects: ClickEffects<S, L>,
 ): MapClickAction {
-  const action = mapClickAction({ ...stateOf(under, now.popupOpen), afterDrag: now.afterDrag });
+  const action = mapClickAction({ ...stateOf(under, now.popupOpen), afterDrag: now.afterDrag, lineTapIsPoint: now.lineTapIsPoint });
   if (action === "close-popup" || action === "station") effects.closePopups();
   if (action === "station" && under.station !== null) effects.openCard(under.station);
   else if (action === "line" && under.line !== null) effects.lineDrop(under.line);
