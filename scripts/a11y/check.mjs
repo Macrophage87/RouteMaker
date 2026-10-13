@@ -3951,8 +3951,8 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   check("go: a phone with no link opens in Go: Menu, the Go/Plan switch (Go pressed), Layers and Locate over the map, and no bottom bar",
     go.mode === "Go" && go.top && !go.bar && JSON.stringify(go.topButtons) === JSON.stringify(["Menu", "Go", "Plan", "Layers", "Locate"]), JSON.stringify(go));
   // The owner, 2026-10-12: the rider's own ride type first (My Go; Default until set), then the two transit types.
-  check("go: the sheet has Where to?, the place chips Home, Food, Water and Restroom (no Work), and the ride types Default, Own Bike + Transit, Bikeshare + Transit and More ride types",
-    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Food", "Water", "Restroom"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Own Bike + Transit", "Bikeshare + Transit", "More ride types"]), JSON.stringify(go));
+  check("go: the sheet has Where to?, the place chips Home, Food, Water and Restroom (no Work), and the ride types Default, Own Bike + 🚆🚌, Bikeshare + 🚶🚆🚌 and More ride types",
+    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Food", "Water", "Restroom"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Own Bike + 🚆🚌Own bike plus train or bus", "Bikeshare + 🚶🚆🚌Bikeshare plus walk, train or bus", "More ride types"]), JSON.stringify(go));
   const own = await axNode(p, ".go-sheet .ride-chips .ride-type-chip");
   check("go: the first ride type is described as the rider's own, set in Settings", own?.name === "Default" && /^Your ride type\. Change it in Settings, under My Go\.$/.test(own?.description ?? ""), JSON.stringify(own));
   check("go: every control in the top bar and the sheet is 44 px or more each way, and nothing scrolls sideways at 390 px", go.small.length === 0 && !go.scroll, JSON.stringify(go.small));
@@ -4132,7 +4132,7 @@ async function goPressMap(p) {
   await sleep(800);
   const riding = await p.eval("({ ride: !!document.querySelector('section.ride'), ask: !!document.querySelector('.ride-ask:not([hidden])') })");
   check("go flow: from opening Go, a typed destination takes 3 taps to ride (Where to?, the place, then Start ride), with no question or sheet between, and the route options shown at once",
-    routed && riding.ride && !riding.ask && taps === 3 && options.rides.includes("Own Bike + Transit"), JSON.stringify({ taps, options, riding }));
+    routed && riding.ride && !riding.ask && taps === 3 && options.rides.includes("Own Bike + 🚆🚌Own bike plus train or bus"), JSON.stringify({ taps, options, riding }));
   await p.close();
 }
 
@@ -4154,7 +4154,7 @@ async function goPressMap(p) {
   await p.eval("(() => { const o = document.querySelector('.go-sheet .go-search [role=option]'); o.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); o.click(); return true; })()");
   taps += 1;
   await p.waitFor("!!document.querySelector('.go-route-rides .ride-chips button')", 20000);
-  await p.eval("[...document.querySelectorAll('.go-route-rides .ride-chips button')].find((x) => x.textContent.trim() === 'Own Bike + Transit').click(); true");
+  await p.eval("[...document.querySelectorAll('.go-route-rides .ride-chips button')].find((x) => x.textContent.trim() === 'Own Bike + 🚆🚌Own bike plus train or bus').click(); true");
   taps += 1;
   const planned = await p.waitFor("!!document.querySelector('ol.transit-steps li')", 20000);
   const trip = await p.eval(`(() => ({
@@ -4169,20 +4169,20 @@ async function goPressMap(p) {
     said: document.querySelector('.status-line')?.textContent ?? '',
     scroll: document.documentElement.scrollWidth > innerWidth }))()`);
   const list = await axNode(p, "ol.transit-steps");
-  check("transit (Go): destination, then one tap on Own Bike + Transit, plans the trip (3 taps), the chip pressed",
-    planned && taps === 3 && JSON.stringify(trip.pressed) === JSON.stringify(["Own Bike + Transit"]), JSON.stringify({ taps, trip }));
+  check("transit (Go): destination, then one tap on Own Bike + 🚆🚌, plans the trip (3 taps), the chip pressed",
+    planned && taps === 3 && JSON.stringify(trip.pressed) === JSON.stringify(["Own Bike + 🚆🚌Own bike plus train or bus"]), JSON.stringify({ taps, trip }));
   check("transit (Go): the steps are a list named Steps, in order, read in riding order: ride, into the station, board, out, ride",
     list?.role === "list" && list?.name === "Steps, in order" && trip.steps.length === 5 && /^Ride 4 min to Eastern Market\.$/.test(trip.steps[0]) && /^Board the Orange Line \(every 10 min, scheduled; about 5 min wait\); ride 10 min to Federal Triangle\.$/.test(trip.steps[2]) && /to your destination\.$/.test(trip.steps[4]),
     JSON.stringify({ list, steps: trip.steps }));
   check("transit (Go): the time shown is the door-to-door total, 'about' and named scheduled for a screen reader, with riding the whole way beside it",
-    trip.total === "about 28 min" && trip.totalName === "Door-to-door time, scheduled" && /^Own Bike \+ Transit: About 28 min door to door, scheduled$/.test(trip.heading ?? "") && /^Riding the whole way: about 32 min\./.test(trip.compare ?? ""),
+    trip.total === "about 28 min" && trip.totalName === "Door-to-door time, scheduled" && trip.heading === "Own Bike + 🚆🚌: About 28 min door to door, scheduledOwn bike plus train or bus: About 28 min door to door, scheduled" && /^Riding the whole way: about 32 min\./.test(trip.compare ?? ""),
     JSON.stringify(trip));
   check("transit (Go): the Metro line has a text marker, an image named in words (not colour alone)",
     trip.markers.length === 1 && trip.markers[0].role === "img" && trip.markers[0].label === "Metro, Orange Line, to Federal Triangle" && trip.markers[0].badge === "Metro" && trip.markers[0].hidden === "true",
     JSON.stringify(trip.markers));
   // The owner, 2026-10-12: riding the whole way is always an option; the options are a named list of toggle buttons.
   const options = await p.eval(`(() => ({
-    buttons: [...document.querySelectorAll('ol.transit-options button')].map((x) => ({ text: x.textContent.trim(), pressed: x.getAttribute('aria-pressed') })),
+    buttons: [...document.querySelectorAll('ol.transit-options button')].map((x) => ({ text: x.querySelector('[aria-hidden]')?.textContent.trim(), said: x.querySelector('.visually-hidden')?.textContent.trim(), pressed: x.getAttribute('aria-pressed') })),
     track: /Scheduled service; check for track work\./.test(document.querySelector('.transit-scheduled')?.textContent ?? '') }))()`);
   const optionList = await axNode(p, "ol.transit-options");
   check("transit (Go): the trips are a list named Trips, quickest first, lettered, the chosen one pressed, riding the whole way among them, and the track-work caution shown",
@@ -4190,7 +4190,7 @@ async function goPressMap(p) {
     JSON.stringify({ optionList, options }));
   check("transit (Go): the day's closed stations are asked for, to strike through on the map", p.closureRequests >= 1, String(p.closureRequests));
   check("transit (Go): the announcement is brief (the total and the comparison), no Start ride on the trip, nothing scrolls sideways",
-    /^Own Bike \+ Transit planned: About 28 min door to door, scheduled\. Riding the whole way/.test(trip.said) && !/Board the/.test(trip.said) && !trip.start && !trip.scroll,
+    /^Own bike plus train or bus planned: About 28 min door to door, scheduled\. Riding the whole way/.test(trip.said) && !/Board the/.test(trip.said) && !trip.start && !trip.scroll,
     JSON.stringify({ said: trip.said, start: trip.start, scroll: trip.scroll }));
   await p.shot(`${SHOTS}/transit_go.png`);
   await p.close();
@@ -4210,7 +4210,7 @@ async function goPressMap(p) {
   await p.waitFor("!!document.querySelector('.go-sheet .go-search [role=option]')", 15000);
   await p.eval("(() => { const o = document.querySelector('.go-sheet .go-search [role=option]'); o.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); o.click(); return true; })()");
   await p.waitFor("!!document.querySelector('.go-route-rides .ride-chips button')", 20000);
-  await p.eval("[...document.querySelectorAll('.go-route-rides .ride-chips button')].find((x) => x.textContent.trim() === 'Own Bike + Transit').click(); true");
+  await p.eval("[...document.querySelectorAll('.go-route-rides .ride-chips button')].find((x) => x.textContent.trim() === 'Own Bike + 🚆🚌Own bike plus train or bus').click(); true");
   const shown = await p.waitFor("!!document.querySelector('.departure-timer') && !!document.querySelector('.departure-label span')?.textContent", 20000);
   const first = await p.eval(`(() => ({
     text: document.querySelector('.departure-text')?.textContent ?? '',
