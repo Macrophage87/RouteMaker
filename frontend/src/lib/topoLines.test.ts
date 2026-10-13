@@ -242,7 +242,9 @@ test("availability is a HEAD of the archive; a 404 or a network failure is unava
 
 test("the layers sheet puts the switch under Trails and terrain; MapView keeps the map in line with it", () => {
   const app = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
-  const section = app.slice(app.indexOf('<h3 id="terrain-heading">'), app.indexOf("</section>", app.indexOf('<h3 id="terrain-heading">')));
+  const at = app.indexOf('headingId="terrain-heading"');
+  const section = app.slice(at, app.indexOf("</LayerSection>", at));
+  assert.match(section, /\{ key: "topo", label: TOPO_LINES_LABEL, on: showTopoLines \}/, "one of the section switch's layers");
   assert.match(section, /<TopoLinesSwitch on=\{showTopoLines\} onChange=\{\(on\) => setTopoLines\(on\)\} available=\{topoReady\} \/>/);
   const mapView = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   assert.match(mapView, /subscribeTopoLines\(sync\)/);

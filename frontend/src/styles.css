@@ -4601,6 +4601,71 @@ details.fold > summary .icon {
   margin-bottom: 8px;
 }
 
+/* A Layers section (lib/layerSection.ts): one row, the name, the section's switch and the disclosure,
+   each a 44 px target; its layers inside, closed to begin with. */
+.layer-section {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+
+.layer-section-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.layer-section-row h3 {
+  flex: 1;
+  margin: 0;
+}
+
+.layer-section .section-switch {
+  min-height: 44px;
+  padding: 4px 6px;
+}
+
+.layer-section .section-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.layer-section .section-chevron .icon {
+  transition: transform 0.15s;
+}
+
+.layer-section .section-chevron[aria-expanded="true"] .icon {
+  transform: rotate(180deg);
+}
+
+/* Kept in the page while empty (a live region shown with its words is often not read, the a11y review's N8). */
+.layer-section-status:empty {
+  margin: 0;
+}
+
+.layer-section-body {
+  padding: 4px 0 4px;
+}
+
+.layer-section-body > .hint,
+.layer-section-body .a11y-setting .hint {
+  margin-top: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .layer-section .section-chevron .icon {
+    transition: none;
+  }
+}
+
 .menu-pages {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
