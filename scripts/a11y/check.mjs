@@ -421,7 +421,9 @@ const SCROLL_BOXES = `(() => { const focusable = 'a[href], button:not([disabled]
   const view = await axNode(p, ".description-view input");
   const label = await p.eval("(() => { const r = document.querySelector('.description-view').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; })()");
   check("description: Full detail is named without a leading space and its target is 24 px tall", view?.name === "Full detail" && label.h >= 24, `${JSON.stringify(view?.name)} ${JSON.stringify(label)}`);
-  // A second press of Copy is said again.
+  // A second press of Copy is said again. The clipboard is one that answers: headless Chromium can leave the first
+  // writeText unsettled (no focus, no one to grant it), and then only the second press is replied to.
+  await p.eval("navigator.clipboard.writeText = () => Promise.resolve(); true");
   await p.eval(`window.__copy = []; new MutationObserver(() => { const t = document.querySelector('.description-status').textContent.trim(); if (t) window.__copy.push(t); })
     .observe(document.querySelector('.description-status'), { childList: true, subtree: true, characterData: true }); true`);
   const copyButton = "[...document.querySelectorAll('.description-actions button')].find((b) => /Copy description/.test(b.textContent))";
@@ -430,7 +432,7 @@ const SCROLL_BOXES = `(() => { const focusable = 'a[href], button:not([disabled]
   await p.eval(`${copyButton}.click(); true`);
   await sleep(700);
   const said = await p.eval("window.__copy");
-  check("description: Copy's reply is said again on a second press", said.length === 2 && said[0] === said[1], JSON.stringify(said));
+  check("description: Copy's reply is said again on a second press", said.length === 2 && said[0] === "Copied." && said[1] === said[0], JSON.stringify(said));
   await p.close();
 }
 {
@@ -3689,6 +3691,8 @@ const JUNCTION_BUTTON = "Suggest a junction change";
 }
 
 // ---- 26. Riding with kids (FOLLOWUP-KIDS-PRESET, OWNER-DECISIONS 240 (B)): a ride type like any other, by keyboard and screen reader ----
+// Every ride type: 15 since Own Bike + Transit and Bikeshare + Transit (#108) and Rebalance Ride (#110), in the dialog's
+// three groups (lib/rideTypeGroups.ts: Transportation 7, Adventure 6, Group 2).
 {
   const p = await open({ route: S_KIDS, hash: hashFor("default", 70) });
   const kidsCard = "[...document.querySelectorAll('.ride-type-card > button')].find((b) => b.querySelector('strong')?.textContent === 'Riding with kids')";
@@ -3699,7 +3703,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
     return { open: d.open, modal: d.matches(':modal'), cards: d.querySelectorAll('.ride-type-card > button').length,
       kids: !!k, pressed: k?.getAttribute('aria-pressed'), hint: k?.querySelector('.hint')?.textContent }; })()`);
   check("kids: the ride-type dialog is modal and offers Riding with kids among every ride type, with its sentence",
-    offered.open && offered.modal && offered.cards === 12 && offered.kids && /^Children on their own bikes: /.test(offered.hint ?? ""), JSON.stringify(offered));
+    offered.open && offered.modal && offered.cards === 15 && offered.kids && /^Children on their own bikes: /.test(offered.hint ?? ""), JSON.stringify(offered));
   check("kids: its card is a toggle button, not pressed while another ride type is in use", offered.pressed === "false", JSON.stringify(offered.pressed));
   await p.eval(`${kidsCard}.setAttribute('data-kids', ''); true`);
   const card = await axNode(p, "button[data-kids]");
@@ -4080,11 +4084,37 @@ async function goPressMap(p) {
   await goPick(p, ".go-sheet .go-search", "Union");
   await sleep(1200);
   const waiting = await p.eval("document.querySelector('.go-notice')?.textContent ?? ''");
+  // Everything said from the press on (not the last few entries: the map's own status lines, the zoom note and the
+  // contours, are recorded again after each change). The press is said in one line with what it waits for, so the
+  // notice never replaces "Destination set" a moment after it (review of #127): no Go line said after it.
+  const saidBefore = await p.eval("window.__said.length");
   const at = await goPressMap(p);
   await sleep(1200);
-  const after = await p.eval("({ notice: document.querySelector('.go-notice')?.textContent ?? '', hash: location.hash, box: !document.querySelector('.go-start-search').hidden, said: window.__said.slice(-4) })");
-  check("go press: with the location denied, a press on the map replaces the waiting destination and is not the start (\"To <spot>. Current location not available; type a start.\", no points yet)",
-    waiting.startsWith("To Union Station.") && !!at && /^To 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(after.notice) && !/p=/.test(after.hash) && after.box && after.said.some((t) => /^Destination set: 38\.\d{4}, -77\.\d{4}\.$/.test(t)), JSON.stringify({ waiting, at, after }));
+  const after = await p.eval(`({ notice: document.querySelector('.go-notice')?.textContent ?? '', hash: location.hash, box: !document.querySelector('.go-start-search').hidden, said: window.__said.slice(${saidBefore}).filter((t) => /^(Destination set|To |Current location)/.test(t)) })`);
+  check("go press: with the location denied, a press on the map replaces the waiting destination and is not the start (shown \"To <spot>. Current location not available; type a start.\", said in one line \"Destination set: <spot>. Current location not available; type a start.\", no points yet)",
+    waiting.startsWith("To Union Station.") && !!at && /^To 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(after.notice) && !/p=/.test(after.hash) && after.box &&
+      new Set(after.said.filter((t) => t.startsWith("Destination set"))).size === 1 && /^Destination set: 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(after.said.at(-1)) && !after.said.some((t) => /^To 38\./.test(t)), JSON.stringify({ waiting, at, after }));
+  await p.close();
+}
+{
+  // Review of #127: with no location and a slow look-up (a cold GPS, a timeout: up to a minute), a press is not left
+  // unsaid. Said with what it waits for once the look-up has run a second, then replaced when it fails.
+  const SLOW_FIX = "(() => { const g = navigator.geolocation; const real = g.getCurrentPosition.bind(g); Object.defineProperty(g, 'getCurrentPosition', { configurable: true, value: (ok, fail, o) => setTimeout(() => real(ok, fail, o), 3500) }); })();";
+  const p = await goWith("denied", { init: GEO_TWO + SLOW_FIX });
+  const none = await p.waitFor("/^Start: none yet/.test(document.querySelector('.go-start-line')?.textContent.trim() ?? '')", 20000);
+  const saidBefore = await p.eval("window.__said.length");
+  // The press's own lines (what was in the region before it is recorded again after each change, so it is left out).
+  const goLines = `window.__said.slice(${saidBefore}).filter((t) => /^(Destination set|To 38\\.)/.test(t))`;
+  const at = await goPressMap(p);
+  await sleep(2000);
+  const slow = await p.eval(`({ notice: document.querySelector('.go-notice')?.textContent ?? '', said: [...new Set(${goLines})] })`);
+  await p.waitFor("/Current location not available/.test(document.querySelector('.go-notice')?.textContent ?? '')", 10000);
+  await sleep(300);
+  const failed = await p.eval(`({ notice: document.querySelector('.go-notice')?.textContent ?? '', hash: location.hash, said: [...new Set(${goLines})] })`);
+  check("go press: with no location and a slow look-up, the press is said within a second with what it waits for (\"Destination set: <spot>. Finding your location for the start…\"), then \"Destination set: <spot>. Current location not available; type a start.\" when it fails",
+    none && !!at && /^To 38\.\d{4}, -77\.\d{4}: finding your location for the start/.test(slow.notice) && slow.said.length === 1 && /^Destination set: 38\.\d{4}, -77\.\d{4}\. Finding your location for the start…$/.test(slow.said[0]) &&
+      /^To 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(failed.notice) && failed.said.length === 2 && /^Destination set: 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(failed.said[1]) && !/p=/.test(failed.hash),
+    JSON.stringify({ none, at, slow, failed }));
   await p.close();
 }
 {
@@ -4140,9 +4170,15 @@ async function goPressMap(p) {
 {
   const p = await newPage(b, { width: 390, height: 844, mobile: true });
   await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
-  await mock(p, (n) => (n === 1 ? S_DEFAULT : S_TRANSIT));
+  // The plan for the ride type asked for (not the request's number: the chip can be pressed before the plan to the
+  // destination has gone out, and then only the transit plan is asked for).
+  await mock(p, () => (/"preset":"bike-transit"/.test(p.routeBodies?.at(-1) ?? "") ? S_TRANSIT : S_DEFAULT));
   await media(p, {});
-  await b.send("Browser.setPermission", { permission: { name: "geolocation" }, setting: "denied", origin: `http://127.0.0.1:${PORT}`, browserContextId: p.contextId });
+  // Go's start is the rider's location (with it denied, a picked destination waits for a typed start and nothing is
+  // planned), and the place search is answered in the page, as in the other Go blocks: "Union" finds Union Station.
+  await b.send("Browser.setPermission", { permission: { name: "geolocation" }, setting: "granted", origin: `http://127.0.0.1:${PORT}`, browserContextId: p.contextId });
+  await p.s("Emulation.setGeolocationOverride", { latitude: 38.9055, longitude: -77.0365, accuracy: 15 });
+  await p.s("Page.addScriptToEvaluateOnNewDocument", { source: GEO_TWO });
   await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/` });
   await p.waitFor("!!document.querySelector('.mode-switch')", 40000);
   await sleep(900);
@@ -4157,6 +4193,8 @@ async function goPressMap(p) {
   await p.eval("[...document.querySelectorAll('.go-route-rides .ride-chips button')].find((x) => x.textContent.trim() === 'Own Bike + 🚆🚌Own bike plus train or bus').click(); true");
   taps += 1;
   const planned = await p.waitFor("!!document.querySelector('ol.transit-steps li')", 20000);
+  // The route's sentence is said once it has stood a moment (lib/settle.ts ANNOUNCE_SETTLE_MS), after the steps show.
+  await p.waitFor("!!document.querySelector('.status-line')?.textContent.trim()", 5000);
   const trip = await p.eval(`(() => ({
     steps: [...document.querySelectorAll('ol.transit-steps > li')].map((e) => e.textContent.trim()),
     total: document.querySelector('.go-totals .total-time dd')?.textContent,
@@ -4199,9 +4237,15 @@ async function goPressMap(p) {
 {
   const p = await newPage(b, { width: 390, height: 844, mobile: true });
   await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
-  await mock(p, (n) => (n === 1 ? S_DEFAULT : transitMarc()));
+  // The plan for the ride type asked for (not the request's number: the chip can be pressed before the plan to the
+  // destination has gone out, and then only the transit plan is asked for).
+  await mock(p, () => (/"preset":"bike-transit"/.test(p.routeBodies?.at(-1) ?? "") ? transitMarc() : S_DEFAULT));
   await media(p, {});
-  await b.send("Browser.setPermission", { permission: { name: "geolocation" }, setting: "denied", origin: `http://127.0.0.1:${PORT}`, browserContextId: p.contextId });
+  // Go's start is the rider's location (with it denied, a picked destination waits for a typed start and nothing is
+  // planned), and the place search is answered in the page, as in the other Go blocks: "Union" finds Union Station.
+  await b.send("Browser.setPermission", { permission: { name: "geolocation" }, setting: "granted", origin: `http://127.0.0.1:${PORT}`, browserContextId: p.contextId });
+  await p.s("Emulation.setGeolocationOverride", { latitude: 38.9055, longitude: -77.0365, accuracy: 15 });
+  await p.s("Page.addScriptToEvaluateOnNewDocument", { source: GEO_TWO });
   await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/` });
   await p.waitFor("!!document.querySelector('.mode-switch')", 40000);
   await sleep(900);
@@ -4463,7 +4507,8 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 616;
+// The transit blocks (#108) and the Go press checks (#116) were added without raising it; they run since #127.
+const EXPECTED = 629;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
