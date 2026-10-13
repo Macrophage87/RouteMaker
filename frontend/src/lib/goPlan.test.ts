@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GO_START_SAID, GO_START_UNAVAILABLE, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goTapRoutedSaid, goPlaceName, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goStartFailedReason, goDestinationNeedsStartBecause, goPressNeedsStartBecause, goTapRoutedSaid, goPlaceName, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
@@ -208,12 +208,12 @@ test("Go's Where to? is the destination from the rider's location, in one edit, 
   assert.match(goTo, /goPending\.current = \{ dest, name, vias, pressed, said: pressed && action\.kind === "wait" \};\s*if \(action\.kind === "wait"\) \{\s*if \(pressed\) setNoticeSaying\(goDestinationLocating\(name\), goPressLocatingSaid\(name\)\);\s*else setNotice\(goDestinationLocating\(name\)\);/);
   // A look-up's answer settles the destination waiting on it, only while the plan has no start (a start typed during
   // a slow look-up is routed from; no "To X. Current location not available" after it; review after #127).
-  assert.match(goTo, /const settleGoWaiting = \(result: LocateResult\) => \{\s*goAwaiting\.current = false;\s*const pending = goPending\.current;\s*if \(!result\.ok \|\| !insideCoverage\(result\.fix\.point\)\) \{\s*setGoStart\(\{ kind: "none" \}\);\s*if \(pending && pointsRef\.current\.length === 0\) \{\s*if \(pending\.pressed\) setNoticeSaying\(goDestinationNeedsStart\(pending\.name\), goPressNeedsStartSaid\(pending\.name\)\);\s*else setNotice\(goDestinationNeedsStart\(pending\.name\)\);\s*\}\s*return;\s*\}\s*setHere\(result\.fix\);\s*setGoStart\(\{ kind: "here", point: result\.fix\.point \}\);\s*goPending\.current = null;\s*if \(pending && pointsRef\.current\.length === 0\) routeGo\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
+  assert.match(goTo, /const settleGoWaiting = \(result: LocateResult, reason = false\) => \{\s*goAwaiting\.current = false;\s*const pending = goPending\.current;\s*if \(!result\.ok \|\| !insideCoverage\(result\.fix\.point\)\) \{\s*setGoStart\(\{ kind: "none" \}\);\s*if \(pending && pointsRef\.current\.length === 0\) \{\s*const why = reason && !result\.ok \? result\.reason : null;\s*const shown = why \? goDestinationNeedsStartBecause\(pending\.name, why\) : goDestinationNeedsStart\(pending\.name\);\s*if \(pending\.pressed\) setNoticeSaying\(shown, why \? goPressNeedsStartBecause\(pending\.name, why\) : goPressNeedsStartSaid\(pending\.name\)\);\s*else setNotice\(shown\);\s*\}\s*return;\s*\}\s*setHere\(result\.fix\);\s*setGoStart\(\{ kind: "here", point: result\.fix\.point \}\);\s*clearGoPending\(\);\s*if \(pending && pointsRef\.current\.length === 0\) routeGo\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
   assert.match(goTo, /if \(!insideCoverage\(dest\)\) \{\s*setNotice\(OUTSIDE_NOTICE\);\s*return;/);
   // The opening look-up routes a destination picked while it ran; a start typed in routes one picked before it.
-  assert.match(appFile, /if \(pending\) \{\s*goPending\.current = null;\s*routeGoRef\.current\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
+  assert.match(appFile, /if \(pending\) \{\s*clearGoPending\(\);\s*routeGoRef\.current\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
   const startPick = appFile.slice(appFile.indexOf("const goStartPick = "), appFile.indexOf("const routeGo = ("));
-  assert.match(startPick, /if \(pending\) \{\s*goPending\.current = null;\s*routeGo\(point, false, pending\.dest, pending\.name, false, pending\.vias\);/);
+  assert.match(startPick, /if \(pending\) \{\s*clearGoPending\(\);\s*routeGo\(point, false, pending\.dest, pending\.name, false, pending\.vias\);/);
 });
 
 test("the Go/Plan switch: two toggle buttons in a named group, in Go's bar and Plan's header; a press is remembered as My Go's Open in", () => {
@@ -377,10 +377,25 @@ test("go tap: a press on the map in Go is the destination, routed as a picked on
   assert.match(locatePath, /if \(result === null\) \{[\s\S]*?if \(pressed\) sayLocating\(\);\s*goAwaiting\.current = true;\s*return;\s*\}\s*settleGoWaiting\(result\);/);
   // The gate busy: the look-up under way settles the destination when it answers, whoever asked for it (review after
   // #127: Go's Locate, Use my location and the nearest finder left a press told "Finding…" and never routed it).
-  assert.match(appFile, /const goLocate = async \(\) => \{\s*const result = await locateForGo\(\);\s*if \(result === null\) return;\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*if \(goWaiting\(\)\) \{\s*settleGoWaiting\(result\);\s*return;\s*\}/);
-  assert.match(appFile, /if \(!gate\.finish\(press\)\) return;\s*setLocating\(false\);\s*\/\/[^\n]*\n\s*if \(modeRef\.current === "go" && goWaitingRef\.current\(\)\) \{\s*goSettleRef\.current\(result\);\s*return;\s*\}/, "Use my location");
+  assert.match(appFile, /const goLocate = async \(\) => \{\s*const result = await locateForGo\(\);\s*if \(result === null\) return;\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*if \(goWaiting\(\)\) \{\s*settleGoWaiting\(result, true\);\s*return;\s*\}/);
+  assert.match(appFile, /if \(!gate\.finish\(press\)\) return;\s*setLocating\(false\);\s*\/\/[^\n]*\n\s*if \(goWaitingRef\.current\(\)\) \{\s*goSettleRef\.current\(result\);\s*return;\s*\}/, "Use my location");
   assert.match(appFile, /gate\.finish\(press\);\s*setLocating\(false\);\s*\/\/[^\n]*\n\s*if \(goWaitingRef\.current\(\)\) goSettleRef\.current\(result\);\s*return result;/, "the nearest finder");
-  assert.match(appFile, /const goWaiting = \(\) => goAwaiting\.current;/);
+  assert.match(appFile, /const goWaiting = \(\) => goAwaiting\.current && goPending\.current !== null && modeRef\.current === "go";/);
+  // A stale wait never silences Locate (review of #128): whenever the waiting destination goes (routed, a start typed,
+  // leaving Go), the wait goes with it; only the clear itself writes goPending to null.
+  assert.match(appFile, /const clearGoPending = \(\) => \{\s*goPending\.current = null;\s*goAwaiting\.current = false;\s*\};/);
+  assert.equal((appFile.match(/goPending\.current = null;/g) ?? []).length, 1, "every other clear goes through clearGoPending");
+  assert.match(appFile, /if \(action\.kind === "route"\) \{\s*clearGoPending\(\);/);
+  assert.match(appFile, /if \(next !== "go"\) clearGoPending\(\);/, "leaving Go drops the destination it kept");
+  // Locate's answer to a waiting destination keeps its reason (review of #128).
+  assert.match(appFile, /if \(goWaiting\(\)\) \{\s*settleGoWaiting\(result, true\);\s*return;\s*\}/);
+  assert.equal(goStartFailedReason("denied"), "Your location is blocked for this site. Allow location in the browser's site settings, or type a start.");
+  assert.equal(goStartFailedReason("unavailable"), "Your location could not be found right now. Try again, or type a start.");
+  assert.equal(goStartFailedReason("timeout"), "Finding your location took too long. Try again, or type a start.");
+  assert.equal(goStartFailedReason("unsupported"), "This browser cannot share your location. Type a start instead.");
+  assert.equal(goStartFailedReason("insecure"), "Your location can only be used on a secure (HTTPS) page. Type a start instead.");
+  assert.equal(goDestinationNeedsStartBecause("Union Station", "denied"), "To Union Station. Your location is blocked for this site. Allow location in the browser's site settings, or type a start.");
+  assert.equal(goPressNeedsStartBecause("38.9055, -77.0365", "timeout"), "Destination set: 38.9055, -77.0365. Finding your location took too long. Try again, or type a start.");
   // Go's opening look-up settles a destination that waited on it itself.
   assert.match(appFile, /setGoStart\(\{ kind: "idle" \}\);\s*return;\s*\}\s*\/\/[^\n]*\n\s*goAwaiting\.current = false;\s*const pending = goPending\.current;/);
   // Located later (a look-up that answers after the press), the pressed destination is routed and said as a press is.
