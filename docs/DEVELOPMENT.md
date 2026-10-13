@@ -674,14 +674,13 @@ alone. Shape comes first and colour second:
   from the base map (`testSupport/baseSurfaces.ts`, shared with
   mtbTrail.test.ts), each pattern distinct from the others and from every
   other line pattern on the map, every level unlike every stress tier on
-  dash (gaps 1.5 widths or more), edge (ticks against a solid casing) and
-  width, and the filters. The rebuild writes `mtb_level` on rated singletrack
+  dash (gaps 1.5 widths or more) and edge (ticks against a solid casing,
+  in every palette), and the filters. The rebuild writes `mtb_level` on rated singletrack
   only (`pipeline.trail_closures.mtb_level`). Since v0.6.0 (the owner could
   hardly see them) every trail is a 3 px line on a solid white edge
   (`MTB_HALO`; `mtb-trail-casing`, `mtb-level-casing-1..4`), unrated as grey
-  dashes; with the layer on, the Mountain Bike ride type draws the trails up
-  to its level in this look too, not in the routable layers
-  (`stressFilters`' `trailsLayer`).
+  dashes, over one shared layer of dark cross-ticks (`mtb-trail-ticks`,
+  `MTB_TICKS`; LTS 4's casing is white, so the ticks are the 452a mark).
 - **Unpaved in brown (302).** An unpaved road or trail is drawn in one brown
   ramp instead of the stress hues, light to dark from LTS 1 to Avoid, with the
   tier's own dash and width, so the stress still reads without colour

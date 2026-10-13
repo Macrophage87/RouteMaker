@@ -18,6 +18,7 @@ import {
   MTB_LEVELS,
   MTB_TRAIL,
   MTB_TRAIL_CASING_LAYER_ID,
+  MTB_TICKS_LAYER_ID,
   MTB_TRAILS_ROUTABLE,
   PALETTES,
   UNKNOWN_SURFACE_DASH,
@@ -47,8 +48,8 @@ function drawsWith(filter: unknown, id: string, properties: Record<string, unkno
 
 const WHENS = ["weekday_offpeak", "weekday_rush", "weekend"];
 const MTB_ID = "mtb-trail";
-/** The unrated trails' two layers: the white edge and the grey dashes (v0.6.0). */
-const UNRATED_IDS = [MTB_TRAIL_CASING_LAYER_ID, MTB_ID];
+/** The layers that draw an unrated trail: the shared ticks, the white edge and the grey dashes (v0.6.0). */
+const UNRATED_IDS = [MTB_TICKS_LAYER_ID, MTB_TRAIL_CASING_LAYER_ID, MTB_ID];
 
 /** The features a layer could draw: every tier, surface, facility and car-free time. */
 function samples(): Array<Record<string, unknown>> {
@@ -132,15 +133,15 @@ test("a future MTB mode (`routableMtb`) draws them as any other trail, and the n
   assert.equal(drawsWith(routable[MTB_ID], MTB_ID, trail), false);
 });
 
-test("the unrated line (v0.6.0, the owner's report of 2026-10-12): 3 px grey dashes on a solid white edge, no rails, from zoom 14, under every routable layer", () => {
+test("the unrated line (v0.6.0, the owner's report of 2026-10-12): 3 px grey dashes on a solid white edge over the shared ticks, no rails, from zoom 14, under every routable layer", () => {
   assert.equal(MTB_MIN_ZOOM, STRESS_ZOOMS.quiet, "where the tiles carry them, as before");
   for (const strong of [false, true]) {
     try {
       setAccessibility(strong, { remember: false });
       const layers = stressOverlayLayers("stress") as Layer[];
-      assert.equal(layers[0].id, MTB_TRAIL_CASING_LAYER_ID, "the bottom layer: every routable line draws over it");
-      // The unrated trails' edge and dashes, with no ring or rail of their own; the rest of the mountain-bike
-      // layer is the levels' edges and lines (456; mtbLevels.test.ts).
+      assert.equal(layers[0].id, MTB_TICKS_LAYER_ID, "the bottom layer: every routable line draws over it");
+      // The shared ticks, the unrated trails' edge and dashes, with no ring or rail of their own; the rest of the
+      // mountain-bike layer is the levels' edges and lines (456; mtbLevels.test.ts).
       assert.deepEqual(layers.filter((l) => l.id.startsWith("mtb")).map((l) => l.id), MTB_LAYER_IDS);
       const mine = mtbTrailLayers("stress") as Layer[];
       const edge = mine.find((l) => l.id === MTB_TRAIL_CASING_LAYER_ID)!;
@@ -156,7 +157,7 @@ test("the unrated line (v0.6.0, the owner's report of 2026-10-12): 3 px grey das
       assert.equal(width, strong ? MTB_TRAIL.strongWidth : MTB_TRAIL.width);
       assert.equal(layer.paint["line-color"], strong ? MTB_TRAIL.strongColor : MTB_TRAIL.color);
       assert.equal(edge.paint["line-color"], MTB_HALO.color);
-      // Wide enough to see (the fine 1.5 px dots were not), and a white edge at least 1.5 px each side.
+      // Wide enough to see (the 1.5 px line of v0.5.0 was not), and a white edge at least 1.5 px each side.
       assert.ok(width >= 3, `${width} px`);
       assert.ok((edge.paint["line-width"] as number) >= width + 3);
     } finally {

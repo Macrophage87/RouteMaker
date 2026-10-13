@@ -202,7 +202,7 @@ ACCESS_WORDS = {
     "mtb": (
         False,
         "Closed: a mountain-bike trail, not used for routes except by the Mountain Bike,"
-        " Gravel and Mountain Goat ride types (drawn on a white edge, by level, when the"
+        " Gravel and Mountain Goat ride types (drawn on a ticked white edge, by level, when the"
         " Mountain-bike trails map layer is on)",
     ),
     "dismount": (False, "Closed: a long walk-your-bike stretch"),
