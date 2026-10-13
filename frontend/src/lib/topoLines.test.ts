@@ -244,7 +244,8 @@ test("the layers sheet puts the switch under Trails and terrain; MapView keeps t
   const app = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
   const at = app.indexOf('headingId="terrain-heading"');
   const section = app.slice(at, app.indexOf("</LayerSection>", at));
-  assert.match(section, /\{ key: "topo", label: TOPO_LINES_LABEL, on: showTopoLines \}/, "one of the section switch's layers");
+  assert.match(section, /layers=\{terrainLayers\(terrain\)\}/, "the section switch's layers, topo among them when it can show");
+  assert.match(section, /if \("topo" in next && next\.topo !== showTopoLines\) setTopoLines\(next\.topo\);/);
   assert.match(section, /<TopoLinesSwitch on=\{showTopoLines\} onChange=\{\(on\) => setTopoLines\(on\)\} available=\{topoReady\} \/>/);
   const mapView = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
   assert.match(mapView, /subscribeTopoLines\(sync\)/);

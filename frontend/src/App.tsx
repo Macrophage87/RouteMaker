@@ -2431,8 +2431,8 @@ export function App() {
             <LayersSheet
               {...{
                 nav: sheetNav, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn,
-                setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, waterAlong,
-                addWaterStop, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn,
+                setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus,
+                rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn,
                 climbsStatus, climbsAlong, openLegend: (opener: HTMLElement) => openView("legend", opener, true),
               }}
             />
