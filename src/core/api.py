@@ -38,12 +38,13 @@ operator's station list could not be had. A missing availability feed is not an 
 is made and says availability is unknown.
 
 The two transit ride types (`bike-transit`, `bikeshare-transit`; `core.transit`) answer with a
-ranked list of options (`transit.options`: riding the whole way always, and the quickest transit
-trips), one of them planned: the body is its first ride leg and `transit` the rest of the trip,
+ranked list of options (`transit.options`: riding the whole way always, the quickest transit
+trips, and on Bikeshare + 🚶🚆🚌 walking the whole way where that is reasonable), one of them
+planned: the body is its first ride leg and `transit` the rest of the trip,
 scheduled. `transit_option` plans another by its key. They add 422 `no_transit` where no option
 at all can be made (the sentence says why), and 503
 `transit_unavailable` with Retry-After where the deployment has no transit schedule installed
-(or, Bikeshare + Transit, no bikeshare station list).
+(or, Bikeshare + 🚶🚆🚌, no bikeshare station list).
 
 The checks run in this order, outermost first: the content type and declared
 body size, then the per-minute count, then the in-flight slots, then Ninja's
@@ -1926,6 +1927,13 @@ class TransitStepOut(Schema):
     )
 
 
+class TransitOptionLegOut(Schema):
+    mode: Literal["walk", "ride", "bikeshare", "metro", "rail", "light-rail", "subway", "bus"]
+    system: str | None = Field(default=None, description='A transit leg\'s system: "Metro".')
+    lines: list[str] = Field(description='Its lines or routes: ["Red Line"], ["C53"].')
+    minutes: int
+
+
 class TransitOptionOut(Schema):
     key: str = Field(description="Send as `transit_option` on POST /api/route to plan it.")
     label: str = Field(
@@ -1934,7 +1942,21 @@ class TransitOptionOut(Schema):
     total_s: int
     minutes: int
     direct: bool = Field(description="Riding the whole way (on bikeshare: dock to dock).")
+    walk: bool = Field(
+        default=False,
+        description=(
+            "Walking the whole way (Bikeshare + 🚶🚆🚌, where walking is the quickest or the"
+            " trip is under 1 mi (1.6 km))."
+        ),
+    )
     chosen: bool = Field(description="The option this answer plans.")
+    legs: list[TransitOptionLegOut] = Field(
+        default_factory=list,
+        description=(
+            'Its legs compactly, for its row ("🚶 4 min · 🚲 12 min · 🔴 18 min"): walks and'
+            " rides with the station's way in or out, a transit leg with its wait."
+        ),
+    )
 
 
 class TransitDepartureOut(Schema):
@@ -1982,7 +2004,7 @@ class TransitOut(Schema):
     holiday: bool
     bike_blackout: bool = Field(
         description=(
-            "Own Bike + Transit on a Metro blackout date: no option takes the bike on Metro, and"
+            "Own Bike + 🚆🚌 on a Metro blackout date: no option takes the bike on Metro, and"
             " the notes say so."
         )
     )
@@ -2432,13 +2454,22 @@ UNROUTED_NOTE = (
 )
 
 
-def _unrouted_line(points: list[list[float]], preset_name: str, dials, seconds: float) -> dict:
+def _unrouted_line(
+    points: list[list[float]],
+    preset_name: str,
+    dials,
+    seconds: float,
+    metres: float | None = None,
+) -> dict:
     """The answer's line when the router did not draw it: straight from end to end, its time
-    the plan's own estimate, its streets unknown. Everything else in the body is empty."""
-    straight_m = sum(
-        haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
-    )
-    metres = round(straight_m * transit.DETOUR, 1)
+    the plan's own estimate, its streets unknown. Everything else in the body is empty. Also
+    walking the whole way, the line as the pedestrian router walked it (`metres` its length)."""
+    if metres is None:
+        straight_m = sum(
+            haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
+        )
+        metres = straight_m * transit.DETOUR
+    metres = round(metres, 1)
     preset = presets.PRESETS[preset_name]
     stress = presets.stress_start(preset_name, None) if dials.stress is None else dials.stress
     return {
@@ -2473,6 +2504,19 @@ def _unrouted_line(points: list[list[float]], preset_name: str, dials, seconds: 
     }
 
 
+def _walked_line(plan: transit.Plan, preset_name: str, dials) -> dict:
+    """Walking the whole way: the answer's line is the walk itself, as the pedestrian router
+    walked it (or straight where it did not), timed at walking pace; no bike route is asked."""
+    leg = plan.legs[0]
+    points = [list(p) for p in leg.coordinates]
+    metres = None
+    if not leg.estimated:
+        metres = sum(
+            haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
+        )
+    return _unrouted_line(points, preset_name, dials, leg.seconds, metres)
+
+
 def _transit_body(body: RouteIn, started: float | None) -> dict:
     """A transit ride type (`core.transit`): the options, the chosen one's first ride routed."""
     if started is None:
@@ -2496,7 +2540,19 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         )
         found = transit.plan_bike(schedule, start, end, when, services, speed)
     searched = routing.clock()
+    dials = routing.Dials(
+        stress=body.stress,
+        hills=body.hills,
+        when=body.when,
+        avoid_gravel=body.avoid_gravel,
+        trails_off=body.trails_off,
+        system_weight_kg=body.system_weight_kg,
+    )
     found = transit.choose(found, body.transit_option)
+    if found.option.walk:
+        answer = _walked_line(found, body.preset, dials)
+        answer["transit"] = transit.block(found, schedule)
+        return answer
     leg = found.legs[found.ride]
     # The line is the chosen option's first ride (or walk). Riding directly there, or an option
     # whose every ride and walk is a few yards (nothing the router could route), is drawn start to
@@ -2510,14 +2566,6 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     else:
         ride_from = list(leg.coordinates[0])
         ride_to = list(leg.coordinates[-1])
-    dials = routing.Dials(
-        stress=body.stress,
-        hills=body.hills,
-        when=body.when,
-        avoid_gravel=body.avoid_gravel,
-        trails_off=body.trails_off,
-        system_weight_kg=body.system_weight_kg,
-    )
 
     def line(points: list[list[float]]) -> dict | None:
         """The answer's line routed, or None when the router did not answer in time."""
@@ -2542,6 +2590,10 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             # The chosen trip's departure cannot be caught after all and it was left out: the
             # quickest left is planned, its own line routed (or drawn start to end).
             leg = timed.legs[timed.ride]
+            if timed.option.walk:
+                answer = _walked_line(timed, body.preset, dials)
+                answer["transit"] = transit.block(timed, schedule)
+                return answer
             if timed.option.direct and body.preset == presets.BIKE_TRANSIT:
                 points = [list(start), list(end)]
             elif transit.line_m(leg) >= transit.MIN_LINE_M:
@@ -2704,6 +2756,8 @@ def transit_station_times(request, params: Query[StationTimesIn], response: Http
 
 
 def _line_time(t: transit.LineTime, service_day) -> dict:
+    # After midnight, a way's next train may be the new day's first: its own service day.
+    service_day = t.service_day or service_day
     at = None
     if t.depart is not None:
         at = transit.day_zero(service_day) + timedelta(minutes=round(t.depart))

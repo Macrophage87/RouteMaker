@@ -12,7 +12,7 @@
  */
 import { CARRYINGS, WHENS, fitTarget, seeksClimbs, stressMax, trailsOffLocked, whenInSentence, type Dials } from "./dials.ts";
 import { formatDistance } from "./format.ts";
-import { presetLabel, type PresetId } from "./presets.ts";
+import { presetLabel, presetSaid, type PresetId } from "./presets.ts";
 import { isCustom } from "./rideTypeDialog.ts";
 
 /** The traffic slider's position in two or three words. */
@@ -44,10 +44,10 @@ export function whenShort(when: Dials["when"]): string {
 }
 
 /** The ride type as the summary names it: "Default", "Custom (based on Default)", with its load and assist. */
-export function rideTypeShort(preset: PresetId, dials: Dials): string {
+export function rideTypeShort(preset: PresetId, dials: Dials, name: (id: PresetId) => string = presetLabel): string {
   const carrying = CARRYINGS.find((c) => c.id === dials.carrying);
   return (
-    (isCustom(preset, dials) ? `Custom (based on ${presetLabel(preset)})` : presetLabel(preset)) +
+    (isCustom(preset, dials) ? `Custom (based on ${name(preset)})` : name(preset)) +
     (carrying ? `, ${carrying.label.toLowerCase()}` : "") +
     (dials.assist ? ", electric assist" : "")
   );
@@ -60,11 +60,11 @@ export function targetShort(metres: Dials["targetDistanceM"]): string | null {
 }
 
 /** The summary's parts, in order (312's: ride type, traffic and hills, when, target distance, loop, roads only, gravel). */
-export function rideSummaryParts(preset: PresetId, dials: Dials): string[] {
+export function rideSummaryParts(preset: PresetId, dials: Dials, name: (id: PresetId) => string = presetLabel): string[] {
   const locked = stressMax(preset) === 0;
   const target = targetShort(dials.targetDistanceM);
   return [
-    rideTypeShort(preset, dials),
+    rideTypeShort(preset, dials, name),
     locked ? "most direct roadway" : trafficShort(dials.stress),
     hillsShort(dials.hills, seeksClimbs(preset)),
     whenShort(dials.when),
@@ -82,5 +82,5 @@ export function rideSummary(preset: PresetId, dials: Dials): string {
 
 /** What is read: the same parts with commas. */
 export function rideSummarySpoken(preset: PresetId, dials: Dials): string {
-  return rideSummaryParts(preset, dials).join(", ");
+  return rideSummaryParts(preset, dials, presetSaid).join(", ");
 }

@@ -54,9 +54,10 @@ import {
 } from "./lib/roadInfo.ts";
 import type { PlaceChoice } from "./lib/geocode.ts";
 import { stationLinks } from "./lib/stationLinks.ts";
-import { TIMES_LABEL, requestStationTimes, stationTimeRows, type TimesRow } from "./lib/stationTimes.ts";
+import { TIMES_LABEL, requestStationTimes, shownLines, stationTimeRows } from "./lib/stationTimes.ts";
+import type { StationTimes } from "./lib/api.ts";
 import { WMATA_SLUGS } from "./lib/railData.ts";
-import type { Station } from "./lib/railStations.ts";
+import type { RailVisibility, Station } from "./lib/railStations.ts";
 import { StressPageLink } from "./lib/stressLegend.ts";
 import { closesDialog, nextFocus, tabStops, type TabCandidate } from "./lib/rideTypeDialog.ts";
 import { CHANGE_LTS_TEXT, NO_ME, fetchMe, type Me } from "./lib/stressEditor.ts";
@@ -87,6 +88,10 @@ interface Props {
   massRide: boolean;
   /** A station near the spot whose pages the panel offers, or null. */
   station: Station | null;
+  /** The map's rail toggles: a station's times show the lines of the systems shown, as its card does. */
+  rail?: RailVisibility;
+  /** Why a station is closed all day, or null (railClosures.ts): a closed station shows no times, as its card. */
+  stationClosed?: (station: Station) => string | null;
   /** An Avoid-rated junction on the route near the spot (avoidNearSpot), which the panel warns of first; null where none. */
   avoid?: AvoidItem | null;
   /**
@@ -142,20 +147,29 @@ function neighbour(items: HTMLElement[], from: HTMLElement, backwards: boolean):
   return after.length ? after[0] : items[0];
 }
 
-/** A nearby station's lines now, scheduled: the emoji and short words aria-hidden, the words said in full. */
-function StationTimesList({ station }: { station: Station }) {
-  const [rows, setRows] = useState<TimesRow[]>([]);
+/** Both rail systems shown: where the panel is not told the map's toggles. */
+const ALL_RAIL: RailVisibility = { metro: true, marc: true };
+
+/**
+ * A nearby station's lines now, scheduled, as its card on the map says them (railInteraction.ts): the
+ * lines of the systems the map shows, and none for a station closed all day. The emoji and short words
+ * are aria-hidden; the words are said in full.
+ */
+function StationTimesList({ station, rail, closed }: { station: Station; rail: RailVisibility; closed: boolean }) {
+  const [times, setTimes] = useState<StationTimes | null>(null);
   const [lon, lat] = station.point;
   useEffect(() => {
     let live = true;
-    setRows([]);
+    setTimes(null);
+    if (closed) return;
     void requestStationTimes([lon, lat]).then((answer) => {
-      if (live) setRows(answer ? stationTimeRows(answer.lines) : []);
+      if (live) setTimes(answer);
     });
     return () => {
       live = false;
     };
-  }, [lon, lat]);
+  }, [lon, lat, closed]);
+  const rows = !closed && times ? stationTimeRows(shownLines(times.lines, rail)) : [];
   if (rows.length === 0) return null;
   return (
     <ul className="station-times road-info-times" aria-label={TIMES_LABEL}>
@@ -169,7 +183,7 @@ function StationTimesList({ station }: { station: Station }) {
   );
 }
 
-export function RoadInfoDialog({ request, hazards = null, massRide, station, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
+export function RoadInfoDialog({ request, hazards = null, massRide, station, rail = ALL_RAIL, stationClosed, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
@@ -623,7 +637,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, avo
                 </li>
               ))}
             </ul>
-            <StationTimesList station={station} />
+            <StationTimesList station={station} rail={rail} closed={Boolean(stationClosed?.(station))} />
           </div>
         )}
         {ready && (

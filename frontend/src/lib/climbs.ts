@@ -17,6 +17,7 @@
  * (`pipeline.climb_layer`), loaded the first time the layer is shown. As waterRestrooms.ts, the
  * map parts are functions of a small map interface so a test can run them against a stand-in.
  */
+import { EXCLUDED_CLIMB_IDS } from "./climbExclusions.ts";
 import { formatClimb, formatDistance, formatFeet, formatMilesSpelled } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import { hexToRgb, rasterise, type Raster, type Rgb } from "./stationIcons.ts";
@@ -146,6 +147,8 @@ export function parseClimbs(value: unknown): Climb[] | null {
   const out: Climb[] = [];
   for (const raw of body.climbs as Array<Record<string, unknown>>) {
     if (!raw || typeof raw.id !== "string") continue;
+    // Taken off by hand: not a public way open to bikes (lib/climbExclusions.ts).
+    if (EXCLUDED_CLIMB_IDS.has(raw.id)) continue;
     const category = raw.c as ClimbCategory;
     if (!CLIMB_CATEGORIES.includes(category)) continue;
     if (!finite(raw.l) || !finite(raw.r) || !finite(raw.g) || !finite(raw.x) || !finite(raw.y)) continue;

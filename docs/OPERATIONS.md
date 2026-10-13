@@ -1952,7 +1952,7 @@ or a suggestion, and `my_go` is left out of the beta's data shipment (`scripts/b
 
 ## Transit schedule (TRANSIT-ASSIST, v0.6.0)
 
-The Own Bike + Transit and Bikeshare + Transit ride types read one file:
+The Own Bike + 🚆🚌 and Bikeshare + 🚶🚆🚌 ride types read one file:
 `$DATA_ROOT/tiles/transit/transit-schedule.json` (`settings.TRANSIT_SCHEDULE_PATH`). It sits under
 the tiles folder, which the web container already mounts read-only, so there is no new mount, and
 a weekly rebuild leaves it alone (it replaces only its own variant folders). Without the file,
@@ -1987,19 +1987,20 @@ metro-typical.json from each line's page (`https://www.wmata.com/ridertools/line
 - The web process reads the file again when it changes, so no restart is needed.
 
 **Refresh at least every 45 days.** The file holds 45 days of service from the build date
-(`--date`, default today). A plan for a later date answers with riding the whole way only, plus the
-note "The timetables installed run ... to ...". Refresh as well when an agency publishes a new
-timetable, for example a MARC or VRE schedule change or a Metro shutdown. Planned closures reach
-the plans only through the published GTFS. With fewer than 7 days left, the api logs "the transit
-schedule runs out ..." once a day and `manage.py check_operations` alerts ("transit: the schedule
-runs out on ..."; exit 1). An unreadable file alerts too; no file installed does not.
+(`--date`, default today). A plan for a later date (or any plan once the file has run out) uses
+Metro's typical timetable alone, which needs no refresh, with the note "Only Metro is planned: the
+other timetables installed cover ... to ...". Refresh as well when an agency publishes a new
+timetable, for example a MARC or VRE schedule change or a Metro shutdown. Planned closures reach the plans
+only through the published GTFS. With fewer than 7 days left, the api logs "the transit schedule
+runs out ..." once a day and `manage.py check_operations` alerts ("transit: the schedule runs out
+on ..."; exit 1). An unreadable file alerts too; no file installed does not.
 
 **The beta** gets the schedule in its data bundle (`ship-data.sh`'s `transit` part;
 docs/BETA-RUNBOOK.md). Ship it again after each refresh.
 
 **Bike blackout dates** (Metro, special events): July 4 is built in. Add other dates by hand to
 `src/core/transitdata/metro-bike-blackouts.json` as WMATA announces them. On such a date Own Bike +
-Transit uses no Metro and says "Bikes aren't allowed on Metro today (July 4)."; Bikeshare + Transit
+🚆🚌 uses no Metro and says "Bikes aren't allowed on Metro today (July 4)."; Bikeshare + 🚶🚆🚌
 still rides Metro on foot.
 
 **What is not checked:** live arrivals and GTFS-Realtime service alerts. Every plan says
@@ -5254,6 +5255,17 @@ off-road graph, says), and the Riding section has a "Mountain-bike difficulty" r
 S2 or IMBA 2"), on a way the layer draws only. The switch's description is now "From zoom 14: levels 1 to 4 by colour and
 pattern, unrated as grey dots. Not used for routes; Gravel and Mountain Goat may use unrated ones."
 
+**Since v0.6.0** (the owner, 2026-10-12: "Mountain bike trails seem plotted but don't show up very
+well"; front end only, no rebuild) every level is a 3 px line (4 px with the accessibility switch) on
+a solid white edge 1.5 px a side (2 px with the switch, `MTB_HALO`), level 1 and 2's gaps 1.5 widths
+([6, 1.5], [3, 1.5]); an unrated trail is grey dashes [1.5, 1.5] on the same edge, not dots. The
+not-for-routes mark is the dark cross-ticks, now one shared layer outside the white edge
+(`mtb-trail-ticks`, `MTB_TICKS`: 2 px past it a side, about a 2 px tick every 12 px), since LTS 4's
+casing is white too; every tier's casing and ring is solid in every palette (mtbLevels.test.ts). The
+Mountain Bike ride type is unchanged (slice 6): trails up to the rider's level draw as routable, the
+harder ones in this look. Words: "on a white edge with dark ticks", "unrated as grey dashes". Still
+from zoom 14, where the tiles carry them.
+
 **Trail names** (the owner, 2026-10-10 (15:16 UTC): "Also, for mountain bikes, try to make sure trail names are added in if they are available."). The rebuild writes `segment.mtb_name` (text, null otherwise; core
 migration 0014, state-only, after 0013) on the mountain-bike-only ways from
 `routemaker.singletrack.mtb_name`: the OSM `name`, else `mtb:name`, else `ref`, trimmed (a bare `ref` such as "12" comes last, as it could be misread as a level). It is a
@@ -5336,7 +5348,42 @@ and deploy the front end as usual. `tests/test_climb_layer.py::test_bundled_file
 and `climbs.test.ts` check the committed file.
 
 **What it reads.** Ways with `map_class = 'road'`, less `mtb_only` and `walk_bike`: access is the
-rebuild's, overrides included, so a barred, hidden or err-closed way never carries a climb. The ways
+rebuild's, overrides included, so a barred, hidden or err-closed way never carries a climb. And
+only a way the road panel calls open: `bike_access_reason` empty or `override_open`; any closing
+reason, or one the release does not know, is left out (unclear access is closed).
+
+**Only public ways open to bikes (owner report 2026-10-12).** "A marked climb appears to be a
+quarry, which isn't likely open to the public. Ensure only public roads open to bikes are marked."
+Climb `bd93dd04dc` (Cat 4, 1.2 mi (1,903 m), 512 ft (156 m) at 8.2%, unpaved) ran down into the
+Travilah quarry pit off Shady Grove Rd over nine ways tagged only `highway=track`, inside
+`landuse=quarry`: open by their own tags, so routable and drawn. Two fixes:
+
+- From the next rebuild, a way inside a quarry, a landfill or an industrial area is closed to
+  bicycles on every graph and left off the map (`restricted_areas.works_closures`,
+  `rm:no_bicycle=works`, the road panel's "inside a quarry, landfill or industrial site"), unless
+  its own tags open it (`bicycle=yes|designated|permissive`, or with no bicycle tag
+  `access=yes|permissive` or a cycleway), it is a numbered public road, DDOT's Roadway Block
+  records hold it (a District block matched to the way: DC data wins over OSM, OWNER-DECISIONS
+  190), or an owner's override reopens it. In an industrial area a named street that is not a
+  service road or a track (an industrial park's) stays open and is listed, unless its access
+  keeps it to destinations, customers or deliveries. Every way the rule looked at is in
+  `<DATA_ROOT>/rebuild/reports/works-closures.csv`. VALIDATE_SEGMENTS fails the build if any
+  highway way with an id in `REBUILD_SENTINEL_WORKS_CLOSED_RANGE` (the Travilah quarry's nine,
+  1379220522 to 1379220572) is not closed as `works`, and warns if fewer than nine are in the
+  extract. The climbs file then loses such climbs when it
+  is written again after that rebuild.
+- Now, without a rebuild: `routemaker.climb_exclusions.EXCLUDED` lists a climb by id with its
+  reason and source, and the builder, the hill seek (`core.hillseek.parse`) and the map
+  (`frontend/src/lib/climbExclusions.ts`, the same ids) all drop it, so the committed file need not
+  be rewritten. Add an id there (both files) for any other climb found on a closed way.
+
+Before shipping, audit the unnamed Cat 3 and Cat 4 climbs (274 in the committed file) against land
+use on the build host; a quarry, landfill or industrial site found under one goes in the list. To
+write the file again with the exclusions and the access filter, the command above is unchanged:
+
+    flock <the host's heavy.lock> docker compose exec -T rebuild ./manage.py build_climbs </dev/null
+
+The ways
 are joined into strokes across junctions (each way end paired with the one that continues it most
 nearly straight, within 45 degrees), sampled every 98 ft (30 m), and read both ways. A climb that
 rides a one-way segment against its drawn direction is left out; `road_oneway` has no direction, so

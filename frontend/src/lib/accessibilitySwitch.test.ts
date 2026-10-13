@@ -45,6 +45,7 @@ import {
   tiersFor,
 } from "../stressStyle.js";
 import { ROUTE_STRESS_SOURCE_ID, setRouteSections, setStressPalette } from "./mapGlue.ts";
+import { mtbLevelPaint, mtbTicksPaint, mtbTrailHaloPaint, mtbTrailPaint } from "../stressStyle.js";
 import { ROUTE_AVOID_MAGENTA, ROUTE_BLUE, ROUTE_CASING_CVD, routeCasing, routeClasses, routeLegend, routePaint, spanClass } from "./routeColours.ts";
 import { UNRATED, UNRATED_CVD_COLOUR, stressSegments, unrated } from "./stressBar.ts";
 import {
@@ -617,6 +618,21 @@ test("repaint wiring: LTS 2's gap layer (OWNER-DECISIONS 356) is repainted with 
       ["stress-gap-2", "line-width", JSON.stringify(gap.paint["line-width"])],
     ],
   );
+});
+
+test("repaint wiring: the mountain-bike trails' white edges and ticks (v0.6.0) widen with the switch, and narrow back", () => {
+  const ids = ["mtb-trail-ticks", "mtb-trail-casing", "mtb-trail", "mtb-level-casing-3", "mtb-level-3"];
+  for (const strong of [true, false]) {
+    const { map, paint } = recordingMap(ids, undefined);
+    withSwitch(strong, () => setStressPalette(map as never));
+    const width = (id: string) => paint.find(([layer, name]) => layer === id && name === "line-width")?.[2];
+    assert.equal(width("mtb-trail-casing"), mtbTrailHaloPaint(strong)["line-width"]);
+    assert.equal(width("mtb-trail-ticks"), mtbTicksPaint(strong)["line-width"]);
+    assert.equal(width("mtb-trail"), mtbTrailPaint(strong)["line-width"]);
+    assert.equal(width("mtb-level-casing-3"), mtbLevelPaint(3, strong).casing["line-width"]);
+    assert.equal(width("mtb-level-3"), mtbLevelPaint(3, strong).line["line-width"]);
+  }
+  assert.ok((mtbTrailHaloPaint(true)["line-width"] as number) > (mtbTrailHaloPaint(false)["line-width"] as number));
 });
 
 test("repaint wiring: a layer the map does not have (the overlay unavailable) is skipped, not an error", () => {

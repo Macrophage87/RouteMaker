@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PRESETS, DEFAULT_PRESET, TRANSIT_PRESETS, isPreset, isTransit, parsePreset, presetLabel, twoPointsOnly } from "./presets.ts";
+import { PRESETS, DEFAULT_PRESET, TRANSIT_PRESETS, isPreset, isTransit, parsePreset, presetLabel, presetSaid, twoPointsOnly } from "./presets.ts";
 
 test("the picker offers every ride type in PLAN's table", () => {
   assert.deepEqual(
@@ -26,9 +26,13 @@ test("the picker offers every ride type in PLAN's table", () => {
 });
 
 test("the transit ride types are named as the owner named them, scheduled and not live, two points only", () => {
-  // TRANSIT-ASSIST (Stephen, 2026-10-12): "Own Bike + Transit" and "Bikeshare + Transit", with "+".
-  assert.equal(presetLabel("bike-transit"), "Own Bike + Transit");
-  assert.equal(presetLabel("bikeshare-transit"), "Bikeshare + Transit");
+  // TRANSIT-ASSIST (Stephen, 2026-10-12 20:35): emoji names, said in words; the ids are unchanged.
+  assert.equal(presetLabel("bike-transit"), "Own Bike + 🚆🚌");
+  assert.equal(presetLabel("bikeshare-transit"), "Bikeshare + 🚶🚆🚌");
+  assert.equal(presetSaid("bike-transit"), "Own bike plus train or bus");
+  assert.equal(presetSaid("bikeshare-transit"), "Bikeshare plus walk, train or bus");
+  // A name without emoji is said as it shows.
+  assert.equal(presetSaid("rebalance"), "Rebalance Ride");
   for (const id of TRANSIT_PRESETS) {
     const description = PRESETS.find((p) => p.id === id)!.description;
     assert.match(description, /[Ss]cheduled times, not live/);

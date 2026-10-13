@@ -4,7 +4,7 @@ import { haversineM, type LonLat } from "./geo.ts";
 import { WHENS, carryingWords, hillsWords, seeksClimbs, stressWords, whenInSentence } from "./dials.ts";
 import type { ExportDials, GpxExport } from "./gpx.ts";
 import { JOIN_GAP_M, type ImportNote, type ImportedPlan } from "./gpxPlan.ts";
-import { presetLabel } from "./presets.ts";
+import { presetSaid } from "./presets.ts";
 import { gpxDescriptionText } from "./routeDescription.ts";
 import { FIDELITY_WITHIN_M, type Fidelity } from "./trackMatch.ts";
 import { formatClimb, formatDistance, milesFigure } from "./format.ts";
@@ -26,7 +26,7 @@ export const milesText = formatDistance;
 export const feetText = formatClimb;
 
 export function exportName(route: Pick<RouteResponse, "preset" | "distance_m">): string {
-  return `${presetLabel(route.preset)} route, ${milesText(route.distance_m)}`;
+  return `${presetSaid(route.preset)} route, ${milesText(route.distance_m)}`;
 }
 
 export function exportFileName(route: Pick<RouteResponse, "preset" | "distance_m">): string {
@@ -35,14 +35,14 @@ export function exportFileName(route: Pick<RouteResponse, "preset" | "distance_m
 
 export function exportDescription(route: Pick<RouteResponse, "preset" | "distance_m" | "climb_m" | "descent_m">): string {
   return (
-    `${presetLabel(route.preset)}. ${milesText(route.distance_m)}, ` +
+    `${presetSaid(route.preset)}. ${milesText(route.distance_m)}, ` +
     `climb ${feetText(route.climb_m)}, descent ${feetText(route.descent_m)}. Planned with RouteMaker.`
   );
 }
 
 /** The ride type and the sliders the route was planned with, in words (rte/desc). */
 export function rideText(route: Pick<RouteResponse, "preset"> & Partial<Pick<RouteResponse, "dials">>): string {
-  const head = `Ride type: ${presetLabel(route.preset)}.`;
+  const head = `Ride type: ${presetSaid(route.preset)}.`;
   const d = route.dials;
   if (!d) return head;
   const when = WHENS.find((w) => w.id === d.when)?.label;
@@ -180,7 +180,7 @@ export function importSentences(plan: ImportedPlan): string[] {
       ? // No count: fitting adds points after this is said (GpxPanel), and the list shows them.
         `${named} was a track of ${milesText(plan.referenceM)}; the plan follows it through points taken from its shape.`
       : plan.source === "route"
-        ? `${named} opened as a plan of its ${count} route points${plan.preset ? `, as a ${presetLabel(plan.preset)}` : ""}.`
+        ? `${named} opened as a plan of its ${count} route points${plan.preset ? `, as a ${presetSaid(plan.preset)}` : ""}.`
         : `${named} had no track or route; its ${count} waypoints are the plan, in the file's order.`;
   return [head, ...plan.notes.filter((note) => note.kind !== "preset-gone").map(noteText)];
 }
@@ -194,7 +194,7 @@ export function presetNotice(plan: Pick<ImportedPlan, "notes">): string | null {
     if (note.kind === "preset-gone") {
       return (
         `This file was planned as "${note.id}", a ride type RouteMaker no longer offers, ` +
-        `so it opened as ${presetLabel("default")}. Choose another ride type if you like.`
+        `so it opened as ${presetSaid("default")}. Choose another ride type if you like.`
       );
     }
   }

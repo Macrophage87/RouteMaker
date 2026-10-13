@@ -18,6 +18,10 @@ import {
   mtbTrailPaint,
   mtbTrailsOn,
   MTB_TRAIL_LAYER_ID,
+  MTB_TRAIL_CASING_LAYER_ID,
+  mtbTrailHaloPaint,
+  MTB_TICKS_LAYER_ID,
+  mtbTicksPaint,
   MTB_LEVELS,
   isMtbLayerId,
   mtbLevelCasingLayerId,
@@ -80,7 +84,7 @@ export interface OverlayMap {
  */
 export function overlayLayerShown(id: string, visible: boolean, mass: boolean = massRideOn(), mtb: boolean = mtbTrailsOn()): boolean {
   // The mountain-bike trails are a map layer of their own (OWNER-DECISIONS 454): their switch alone, in every mode,
-  // for the unrated trails' dots and each level's casing and line alike (456).
+  // for the shared ticks, the unrated trails' edge and dashes and each level's edge and line alike (456).
   if (isMtbLayerId(id)) return mtb;
   return visible && (MASS_IDS.has(id) ? mass : !mass);
 }
@@ -205,19 +209,22 @@ export function setStressPalette(
     const id = `facility-${facility.facility}`;
     if (map.getLayer(id)) map.setPaintProperty(id, "line-width", facilityWidthAt(facility, when));
   }
-  // The mountain-bike trails' not-for-routes line (452a): wider and darker with the accessibility switch.
+  // The unrated mountain-bike trails' line (452a): wider and darker with the accessibility switch, and its white edge wider.
   if (map.getLayer(MTB_TRAIL_LAYER_ID)) {
     const paint = mtbTrailPaint();
     map.setPaintProperty(MTB_TRAIL_LAYER_ID, "line-color", paint["line-color"]);
     map.setPaintProperty(MTB_TRAIL_LAYER_ID, "line-width", paint["line-width"]);
   }
-  // Each level's line and cross-ticks (456): wider with the accessibility switch; the colours and the ticks' dash (in widths) stay.
+  if (map.getLayer(MTB_TRAIL_CASING_LAYER_ID)) map.setPaintProperty(MTB_TRAIL_CASING_LAYER_ID, "line-width", mtbTrailHaloPaint()["line-width"]);
+  // The shared not-for-routes ticks (452a) sit outside the white edge, so they widen with it.
+  if (map.getLayer(MTB_TICKS_LAYER_ID)) map.setPaintProperty(MTB_TICKS_LAYER_ID, "line-width", mtbTicksPaint()["line-width"]);
+  // Each level's line and white edge (456): wider with the accessibility switch; the colours and the dashes (in widths) stay.
   for (const { level } of MTB_LEVELS) {
     const paint = mtbLevelPaint(level);
     if (map.getLayer(mtbLevelLayerId(level))) map.setPaintProperty(mtbLevelLayerId(level), "line-width", paint.line["line-width"]);
     if (map.getLayer(mtbLevelCasingLayerId(level))) map.setPaintProperty(mtbLevelCasingLayerId(level), "line-width", paint.casing["line-width"]);
   }
-  // The trail names (2026-10-10): an unrated trail's grey follows the dots' with the accessibility switch.
+  // The trail names (2026-10-10): an unrated trail's grey follows its line's with the accessibility switch.
   if (map.getLayer(MTB_LABEL_LAYER_ID)) {
     map.setPaintProperty(MTB_LABEL_LAYER_ID, "text-color", mtbLabelColor());
   }

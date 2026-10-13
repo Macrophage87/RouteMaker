@@ -178,8 +178,9 @@ test("the not-for-routes line and each level's casing and line are the layers th
     mtbTrailLayers().map((l: { id: string }) => l.id),
     MTB_LAYER_IDS.slice(0, -1),
   );
-  assert.equal(MTB_LAYER_IDS[0], MTB_TRAIL_LAYER_ID);
-  assert.equal(MTB_LAYER_IDS.length, 10, "the dots, four casings and four lines (456), and the names (2026-10-10)");
+  assert.equal(MTB_LAYER_IDS[0], "mtb-trail-ticks", "the shared ticks at the bottom");
+  assert.ok(MTB_LAYER_IDS.includes(MTB_TRAIL_LAYER_ID));
+  assert.equal(MTB_LAYER_IDS.length, 12, "the ticks, the unrated trails' edge and dashes, four edges and four lines (456), and the names (2026-10-10)");
   assert.equal(MTB_LAYER_IDS.at(-1), "mtb-trail-label");
 });
 
@@ -243,13 +244,15 @@ test("MapView shows or hides the layer in place when the switch changes, and App
   // The Trails and terrain section (lib/layerSection.ts): its switch turns the three on or off together; the
   // layer's own switch is the first inside.
   assert.match(sheet, /<LayerSection\s+id="terrain"\s+title="Trails and terrain"\s+headingId="terrain-heading"/);
-  assert.match(sheet, /\{ key: "mtb", label: MTB_TRAILS_LABEL, on: showMtbTrails \}/);
-  assert.match(sheet, /if \(next\.mtb !== showMtbTrails\) setMtbTrails\(next\.mtb\);/);
+  // Its layers through lib/terrainSection.ts (the trails only with the stress map; terrainSection.test.ts).
+  assert.match(app, /const terrain = \{ mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stressShowable\(stress\), topoReady, climbsStatus \};/);
+  assert.match(sheet, /layers=\{terrainLayers\(terrain\)\}/);
+  assert.match(sheet, /if \("mtb" in next && next\.mtb !== showMtbTrails\) setMtbTrails\(next\.mtb\);/);
   const terrain = sheet.slice(sheet.indexOf('<LayerSection\n        id="terrain"'));
-  assert.match(terrain.slice(0, terrain.indexOf("</LayerSection>")), /\}\s*>\s*<MtbTrailsSwitch on=\{showMtbTrails\} onChange=\{\(on\) => setMtbTrails\(on\)\} overlay=\{stress === "available"\} \/>/);
+  assert.match(terrain.slice(0, terrain.indexOf("</LayerSection>")), /\}\s*>\s*<MtbTrailsSwitch on=\{showMtbTrails\} onChange=\{\(on\) => setMtbTrails\(on\)\} overlay=\{stressShowable\(stress\)\} \/>/, "its hint says unavailable only once the stress map is known to be down, not while it is checked");
   // Every ride type: not inside a ride-type condition.
-  const before = sheet.slice(0, sheet.indexOf("<MtbTrailsSwitch"));
-  assert.ok(before.lastIndexOf('<LayerSection\n        id="terrain"') > before.lastIndexOf("&&"));
+  const at = sheet.indexOf('<LayerSection\n        id="terrain"');
+  assert.ok(at > 0 && !/&&|\?\s*$/.test(sheet.slice(at - 40, at).trim().split("\n").pop() ?? ""), "the section is not behind a condition");
 });
 
 // ---- the switch -------------------------------------------------------------
