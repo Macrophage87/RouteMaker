@@ -145,7 +145,7 @@ import { BACK_LABEL, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
 import { letterKeyIndex, letterPlaces, placeLetter } from "./lib/letteredPlaces.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
-import { GO_START_SAID, GO_START_UNAVAILABLE, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, shouldAskGoStart, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, shouldAskGoStart, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type MyGo } from "./lib/myGo.ts";
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
@@ -474,6 +474,19 @@ export function App() {
   // and routed once the start comes, from the location or the start box (lib/appMode.ts goPickAction).
   // `pressed`: set by a press on the map (said "Destination set" with what it waits for); `said`: that was said already.
   const goPending = useRef<{ dest: LonLat; name: string; vias?: LonLat[]; pressed?: boolean; said?: boolean } | null>(null);
+  // Set when a Go destination found Use my location's gate busy: the look-up under way answers for it (settleGoWaiting).
+  const goAwaiting = useRef(false);
+  // Nothing waits any more: the destination routed, or dropped (leaving Go).
+  const clearGoPending = () => {
+    goPending.current = null;
+    goAwaiting.current = false;
+  };
+  // Leaving Go (the switch, or the account's Open in once read): Plan does not route a destination Go was keeping
+  // for a start, and its notice ("To <spot>: finding your location…") goes with it.
+  const leaveGo = () => {
+    if (goPending.current) setNotice(null);
+    clearGoPending();
+  };
   const [locating, setLocating] = useState(false);
   // One look-up at a time, set before the await, so a second call in the same tick is refused too.
   const gate = useRef(locateGate()).current;
@@ -773,6 +786,7 @@ export function App() {
       if (laterMyGoApplies(OPENING.by, modeSwitched.current)) {
         const later = openingMode({ tab: null, planLink: false, openIn: account.openIn, wide: !window.matchMedia(NARROW).matches }).mode;
         setModeState((now) => (now === later ? now : later));
+        if (later !== "go") leaveGo();
         if (later === "go" && account.ride && !PLAN_LINK && !rideTouched.current && pointsRef.current.length === 0) {
           setPreset(account.ride);
           setDials(startDials(account.ride));
@@ -970,6 +984,11 @@ export function App() {
     const result = await locate(geoEnv);
     if (!gate.finish(press)) return;
     setLocating(false);
+    // A Go destination that waited on this look-up (pressed in Go while it ran): the answer is that destination's.
+    if (goWaitingRef.current()) {
+      goSettleRef.current(result);
+      return;
+    }
     // The ride as it is now, not as it was at the press: the rider may have turned the loop on or off meanwhile.
     const ride = rideRef.current;
     const placed = placeFix(result, pointsRef.current, { loop: loopStops(ride.preset, ride.dials.loop), choice });
@@ -1147,6 +1166,8 @@ export function App() {
           const result = await locate(geoEnv);
           gate.finish(press);
           setLocating(false);
+          // A Go destination that waited on this look-up is settled by its answer too.
+          if (goWaitingRef.current()) goSettleRef.current(result);
           return result;
         },
         start: () => pointsRef.current[0] ?? null,
@@ -1233,6 +1254,8 @@ export function App() {
         setGoStart({ kind: "idle" });
         return;
       }
+      // It settles a destination that waited on it itself, below.
+      goAwaiting.current = false;
       const pending = goPending.current;
       if (!result.ok || !insideCoverage(result.fix.point)) {
         setGoStart({ kind: "none" });
@@ -1247,7 +1270,7 @@ export function App() {
       if (pointsRef.current.length > 0) return;
       // A destination picked while the location was being found: routed now, not dropped.
       if (pending) {
-        goPending.current = null;
+        clearGoPending();
         routeGoRef.current(result.fix.point, true, pending.dest, pending.name, !!pending.pressed && !pending.said, pending.vias);
       } else announce(GO_START_SAID);
     })();
@@ -1264,7 +1287,7 @@ export function App() {
     // A destination picked before there was a start: the start typed here, then that destination.
     const pending = goPending.current;
     if (pending) {
-      goPending.current = null;
+      clearGoPending();
       routeGo(point, false, pending.dest, pending.name, false, pending.vias);
       return;
     }
@@ -1298,7 +1321,7 @@ export function App() {
     // found when Go opened. While the location is still being found, the destination waits for it.
     const action = goPickAction(pointsRef.current, goStartRef.current);
     if (action.kind === "route") {
-      goPending.current = null;
+      clearGoPending();
       routeGo(action.point, action.located, dest, name, pressed, vias);
       return;
     }
@@ -1325,25 +1348,45 @@ export function App() {
     const result = await locateForGo();
     window.clearTimeout(slow);
     if (result === null) {
-      // Another look-up is under way: its answer routes the destination, as Go's opening one does. A press is said
-      // now, as it is while Go's opening look-up runs.
+      // Another look-up is under way: its answer settles the destination waiting (settleGoWaiting), whichever asked
+      // for it (Go's opening look-up, an earlier destination's, Locate's, Use my location's or the nearest finder's).
+      // A press is said now, as it is while Go's opening look-up runs.
       if (pressed) sayLocating();
+      goAwaiting.current = true;
       return;
     }
+    settleGoWaiting(result);
+  };
+  // A Go look-up's answer for the destination waiting on it (the latest one picked or pressed): found, Go's start
+  // is the location and the destination is routed from it; not, the start box asks for a start, shown and said.
+  // Either way only while the plan has no start (one typed meanwhile is routed from, as Go's opening look-up does).
+  // `reason`: Locate's answer keeps its own reason in the line ("Your location is blocked…, or type a start.").
+  const settleGoWaiting = (result: LocateResult, reason = false) => {
+    goAwaiting.current = false;
+    const pending = goPending.current;
     if (!result.ok || !insideCoverage(result.fix.point)) {
       setGoStart({ kind: "none" });
-      // The destination waiting now (a later press replaces it while the look-up runs).
-      const waiting = goPending.current ?? { name, pressed };
-      if (waiting.pressed) setNoticeSaying(goDestinationNeedsStart(waiting.name), goPressNeedsStartSaid(waiting.name));
-      else setNotice(goDestinationNeedsStart(waiting.name));
+      if (pending && pointsRef.current.length === 0) {
+        const why = reason && !result.ok ? result.reason : null;
+        const shown = why ? goDestinationNeedsStartBecause(pending.name, why) : goDestinationNeedsStart(pending.name);
+        if (pending.pressed) setNoticeSaying(shown, why ? goPressNeedsStartBecause(pending.name, why) : goPressNeedsStartSaid(pending.name));
+        else setNotice(shown);
+      }
       return;
     }
     setHere(result.fix);
     setGoStart({ kind: "here", point: result.fix.point });
-    const pending = goPending.current;
-    goPending.current = null;
+    clearGoPending();
     if (pending && pointsRef.current.length === 0) routeGo(result.fix.point, true, pending.dest, pending.name, !!pending.pressed && !pending.said, pending.vias);
   };
+  // Whether a Go destination found the gate busy and still waits on the look-up under way (goAwaiting, in Go, with a
+  // destination waiting): then its answer is settleGoWaiting's, whoever asked for it.
+  const goWaiting = () => goAwaiting.current && goPending.current !== null && modeRef.current === "go";
+  // For Use my location's callback and the nearest finder, made before these (they read the current ones).
+  const goWaitingRef = useRef(goWaiting);
+  goWaitingRef.current = goWaiting;
+  const goSettleRef = useRef(settleGoWaiting);
+  goSettleRef.current = settleGoWaiting;
   // A map press (place, a callback kept across renders) goes through the current goTo.
   const goToRef = useRef(goTo);
   goToRef.current = goTo;
@@ -1370,6 +1413,12 @@ export function App() {
   const goLocate = async () => {
     const result = await locateForGo();
     if (result === null) return;
+    // A destination pressed or picked while Locate looked: its answer is that destination's (routed, or the start
+    // box asks for a start), not Locate's own notice or camera move.
+    if (goWaiting()) {
+      settleGoWaiting(result, true);
+      return;
+    }
     if (!result.ok) {
       setNotice(LOCATE_MESSAGES[result.reason]);
       return;
@@ -1643,6 +1692,7 @@ export function App() {
     setPanelOpen(true);
     setGoSheet("half");
     setModeState(next);
+    if (next !== "go") leaveGo();
     announceExtra(modeSaid(next));
     saveMyGoNow({ ...myGoRef.current, openIn: next }, false);
   };

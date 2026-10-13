@@ -15,6 +15,7 @@
  */
 
 import { coordinatesText } from "./geocode.ts";
+import { LOCATE_MESSAGES, type LocateFailure } from "./geolocation.ts";
 import type { LonLat } from "./geo.ts";
 
 export type AppMode = "go" | "plan";
@@ -216,6 +217,24 @@ export function goDestinationSet(name: string): string {
  */
 export function goPressLocatingSaid(name: string): string {
   return `${goDestinationSet(name)} Finding your location for the start…`;
+}
+
+/**
+ * Why Go's Locate could not find the rider, for a destination waiting on it: Locate's own reason (what to allow or
+ * try), ending in typing a start, as the start box asks, in place of searching for a place.
+ */
+export function goStartFailedReason(reason: LocateFailure): string {
+  return LOCATE_MESSAGES[reason].replace(/search for a place\.$/, "type a start.").replace(/Search for a place instead\.$/, "Type a start instead.");
+}
+
+/** Shown when a destination waited on Go's Locate and it failed: the destination and Locate's reason. */
+export function goDestinationNeedsStartBecause(name: string, reason: LocateFailure): string {
+  return `To ${name}. ${goStartFailedReason(reason)}`;
+}
+
+/** Said when a pressed destination waited on Go's Locate and it failed: one announcement, as goPressNeedsStartSaid. */
+export function goPressNeedsStartBecause(name: string, reason: LocateFailure): string {
+  return `${goDestinationSet(name)} ${goStartFailedReason(reason)}`;
 }
 
 /**
