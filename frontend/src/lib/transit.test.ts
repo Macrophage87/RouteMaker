@@ -14,6 +14,7 @@ import {
   closedName,
   drawOf,
   optionChosenSaid,
+  optionSaid,
   optionText,
   transitAttribution,
   transitFeatures,
@@ -27,7 +28,7 @@ import {
 const SRC = new URL("../", import.meta.url);
 const src = (path: string) => readFileSync(new URL(path, SRC), "utf8");
 
-// The shape POST /api/route answers for Own Bike + Transit (core.transit.block), trimmed.
+// The shape POST /api/route answers for Own Bike + 🚆🚌 (core.transit.block), trimmed.
 const PLAN: TransitPlan = {
   mode: "bike-transit",
   key: "ride>wmata-rail:eastern-market>federal-triangle>ride",
@@ -97,7 +98,7 @@ test("the total is said 'about' and 'scheduled', with riding the whole way besid
   assert.equal(transitOf(ROUTE), PLAN);
   assert.equal(transitOf({ transit: null }), null);
   const said = transitSaid(ROUTE)!;
-  assert.match(said, /^Own Bike \+ Transit planned: About 28 min door to door, scheduled\. Riding the whole way: about 32 min/);
+  assert.match(said, /^Own bike plus train or bus planned: About 28 min door to door, scheduled\. Riding the whole way: about 32 min/);
   // The announcement is brief: the steps are in the panel's list, not read out on arrival.
   assert.ok(!said.includes("Board the Orange Line"));
   assert.equal(announceRoute(ROUTE), said);
@@ -171,7 +172,7 @@ test("a closed station is said in words, not by colour alone", () => {
   assert.equal(closedName({ name: "Camden Station", reason: "no MARC weekend service" }), "Camden Station, closed: no MARC weekend service");
 });
 
-test("the credits carry the schedule's source, and the operator's on Bikeshare + Transit", () => {
+test("the credits carry the schedule's source, and the operator's on Bikeshare + 🚶🚆🚌", () => {
   assert.deepEqual(routeCredits(ROUTE), ["© OpenStreetMap contributors", "WMATA GTFS (scheduled times)"]);
   const share = { ...ROUTE, transit: { ...PLAN, mode: "bikeshare-transit" } } as RouteResponse;
   assert.deepEqual(routeCredits(share), ["© OpenStreetMap contributors", "Capital Bikeshare", "WMATA GTFS (scheduled times)"]);
@@ -197,11 +198,11 @@ test("the panel's steps are a labelled ordered list, with the total, comparison 
   const summary = src("TransitSummary.tsx");
   assert.equal(STEPS_LABEL, "Steps, in order");
   assert.match(summary, /<ol className="transit-steps" aria-label=\{STEPS_LABEL\}>/);
-  assert.match(summary, /<h3 id=\{`\$\{id\}-heading`\}>\{label\}<\/h3>/);
+  assert.match(summary, /<h3 id=\{`\$\{id\}-heading`\}>\n\s*<PresetName id=\{preset\} suffix=\{`: \$\{plan\.summary\.replace/);
   assert.match(summary, /plan\.riding_quicker \? "transit-compare notice"/);
   // The panel's time is the door-to-door total, named for a screen reader, not the first ride's.
   const panel = src("app/RoutePanel.tsx");
-  assert.match(panel, /const timeName = transit \? \(transit\.direct \? "Door-to-door time" : "Door-to-door time, scheduled"\) : "Moving time";/);
+  assert.match(panel, /const timeName = transit \? \(transit\.scheduled \? "Door-to-door time, scheduled" : "Door-to-door time"\) : "Moving time";/);
   assert.match(panel, /\{!go\.peek && transitFold\}/);
   // No Start ride on a transit plan, whose line is only the first ride, unless it is riding your own bike the whole way.
   assert.match(panel, /const wholeRide = !transit \|\| \(transit\.direct && transit\.mode === "bike-transit"\);/);
@@ -209,4 +210,26 @@ test("the panel's steps are a labelled ordered list, with the total, comparison 
   // The map's markers are images with their whole text equivalent, not buttons.
   const map = src("MapView.tsx");
   assert.match(map, /element\.className = "transit-marker";\n\s*element\.setAttribute\("role", "img"\);\n\s*element\.setAttribute\("aria-label", stop\.label\);/);
+});
+
+test("a transit trip's row shows its legs as marks, and a screen reader hears them in words", () => {
+  // Stephen, 2026-10-12: "🚶 4 min · 🚲 12 min · 🔴 18 min"; colour is never the only cue.
+  const option = {
+    label: "Walk, Metro to Metro Center (Red Line), walk",
+    minutes: 34,
+    legs: [
+      { mode: "walk", minutes: 4 },
+      { mode: "bikeshare", minutes: 12 },
+      { mode: "metro", system: "Metro", lines: ["Red Line"], minutes: 18 },
+    ],
+  };
+  assert.equal(optionText(option, 1), "B. 🚶 4 min · 🚲 12 min · 🔴 18 min: about 34 min");
+  assert.equal(optionSaid(option, 1), "B. walk 4 minutes, bikeshare 12 minutes, Red Line 18 minutes: about 34 min");
+  // Riding or walking the whole way keeps its words.
+  const walk = { label: "Walk the whole way", minutes: 7, legs: [{ mode: "walk", minutes: 7 }] };
+  assert.equal(optionText(walk, 0), "A. Walk the whole way: about 7 min");
+  assert.equal(optionSaid(walk, 0), "A. Walk the whole way: about 7 min");
+  // The button shows the marks aria-hidden and the words beside them.
+  const summary = readFileSync(new URL("../TransitSummary.tsx", import.meta.url), "utf8");
+  assert.match(summary, /<span aria-hidden="true">\{optionText\(option, index\)\}<\/span>\n\s*<span className="visually-hidden">\{optionSaid\(option, index\)\}<\/span>/);
 });

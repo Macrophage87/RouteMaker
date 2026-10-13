@@ -37,8 +37,8 @@ from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
 # street zoom; past about 100 ft it is as likely the next street.
 SNAP_RADIUS_M = 30.0
 # A drawn road or path this much further than a hidden way (a sidewalk mapped
-# beside it, a driveway) or a mountain-bike trail (drawn only as a thin dotted
-# line, not for routes, and only while its map layer is on: OWNER-DECISIONS
+# beside it, a driveway) or a mountain-bike trail (drawn only on its own layer,
+# not for routes, and only while its map layer is on: OWNER-DECISIONS
 # 452a, 454) is still the one meant: the rider
 # clicked what the map shows as a way to ride.
 DRAWN_PREFERENCE_M = 15.0
@@ -186,6 +186,11 @@ ACCESS_WORDS = {
         "Closed: inside a secure government site"
         " (closed unless there is evidence bikes are allowed)",
     ),
+    "works": (
+        False,
+        "Closed: inside a quarry, landfill or industrial site"
+        " (closed unless there is evidence bikes are allowed)",
+    ),
     "bicycle_no": (False, "Closed: no bicycles (a no-bike sign or rule, as mapped)"),
     "bicycle_use_sidepath": (False, "Closed: bicycles must use the side path"),
     "motorway": (False, "Closed: a freeway"),
@@ -202,7 +207,7 @@ ACCESS_WORDS = {
     "mtb": (
         False,
         "Closed: a mountain-bike trail, not used for routes except by the Mountain Bike,"
-        " Gravel and Mountain Goat ride types (drawn as a thin grey dotted line when the"
+        " Gravel and Mountain Goat ride types (drawn on a ticked white edge, by level, when the"
         " Mountain-bike trails map layer is on)",
     ),
     "dismount": (False, "Closed: a long walk-your-bike stretch"),
@@ -722,7 +727,7 @@ def access_rows(row: dict, bicycle: bool | None) -> tuple[bool | None, list[dict
         source = (
             OWNER
             if reason.startswith("override")
-            else (CLASSIFIER if reason in ("military", "secured", "err_closed") else OSM)
+            else (CLASSIFIER if reason in ("military", "secured", "works", "err_closed") else OSM)
         )
         return False, [_row("Bike access", known[1], source)]
     why = "Closed to bicycles" + (
@@ -775,6 +780,7 @@ ACCESS_SHORT = {
     "override_closed": "owner override",
     "military": "military area",
     "secured": "secure government site",
+    "works": "quarry, landfill or industrial site",
     "bicycle_no": "no-bike rule",
     "bicycle_use_sidepath": "use the side path",
     "motorway": "freeway",

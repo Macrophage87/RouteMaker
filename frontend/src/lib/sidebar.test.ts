@@ -736,9 +736,10 @@ test("a sheet's Escape: back, except in a dialog, on the place search, or when a
 
 test("the Layers sheet holds the switches in the mockup's order; the legend is its own sheet, behind Legend (the owner's choice 6)", () => {
   const sheet = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-legend"'));
-  // Traffic stress, high-stress lanes, federal land, water, rail stations, then trails and terrain.
+  // Traffic stress, high-stress lanes, federal land, water, rail stations, then trails and terrain; each a
+  // section of one row (lib/layerSection.ts), the layers inside.
   const parts = [
-    "Show traffic stress on the map",
+    'switchId="show-stress"',
     "<HighStressLanesSwitch",
     "<FederalLandFor",
     "<WaterSection",

@@ -12,7 +12,7 @@ import { requestRoute, type ClosedStation, type RouteResponse, type RouteResult 
 import { closedReason, matchClosures, requestClosures, serviceDayOf } from "./lib/railClosures.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatSeconds } from "./lib/format.ts";
-import { presetLabel, usesBikeshare, type PresetId } from "./lib/presets.ts";
+import { presetSaid, usesBikeshare, type PresetId } from "./lib/presets.ts";
 import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
@@ -1345,7 +1345,7 @@ export function App() {
   const pickRide = (id: PresetId) => {
     if (id === preset) return;
     choosePreset(id, mtbChosen(preset, id, chooseRideType(id, carries(id) ? "cargo" : null, dials)));
-    announceExtra(`${presetLabel(id)}.`);
+    announceExtra(`${presetSaid(id)}.`);
   };
   // Search prefers places near the rider: the location the app already has (`here`, rounded to about 1 km)
   // while it is in the map's view, else the map's centre.
@@ -1635,7 +1635,7 @@ export function App() {
     setLinkSaid("");
     setLinkSpoken("");
     const distanceM = !stale && routedPoints === points ? shown.distance_m : null;
-    const content = shareContent(linkToCopy(window.location, points, preset, dials), distanceM, presetLabel(preset));
+    const content = shareContent(linkToCopy(window.location, points, preset, dials), distanceM, presetSaid(preset));
     const outcome = shareLink(navigator, content);
     let said: string;
     try {
@@ -2062,7 +2062,7 @@ export function App() {
 
   const announcement =
     status.kind === "loading"
-      ? `Planning a ${presetLabel(preset)} route…`
+      ? `Planning a ${presetSaid(preset)} route…`
       : status.kind === "waiting"
         ? `The planner is busy; trying again in ${formatSeconds(status.seconds)}.`
         : status.kind === "ok" && route
@@ -2284,6 +2284,8 @@ export function App() {
         massRide={massMap}
         hazards={massHazards}
         station={roadInfo ? stationNearSpot(RAIL_STATIONS, rail, roadInfo.point, WMATA_SLUGS)?.station ?? null : null}
+        rail={rail}
+        stationClosed={railClosedReason}
         avoid={roadInfo ? avoidNearSpot(route, roadInfo.point) : null}
         junctionShown={roadInfo ? shownNear(route, roadInfo.point) : null}
         federal={roadInfo && federalShown(preset, true) ? federalAreaAt(roadInfo.point, federalData) : null}
@@ -2431,15 +2433,15 @@ export function App() {
             <LayersSheet
               {...{
                 nav: sheetNav, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn,
-                setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, waterAlong,
-                addWaterStop, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn,
+                setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus,
+                rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn,
                 climbsStatus, climbsAlong, openLegend: (opener: HTMLElement) => openView("legend", opener, true),
               }}
             />
             <LegendSheet
               {...{
                 nav: sheetNav, legendHeadingRef, massMap, stress, stressVisible, preset, zoom, facilitiesShown, waterPrefs,
-                waterStatus, climbsOn, climbsStatus,
+                waterStatus, climbsOn, climbsStatus, federalOn, federalStatus, rail,
               }}
             />
             <SuggestSheet nav={sheetNav} roadInfoAtCentre={roadInfoAtCentre} onReview={reviewOpener} />
