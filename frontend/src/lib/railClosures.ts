@@ -81,8 +81,7 @@ export function closedLabel(name: string): string {
   return `${name} (closed)`;
 }
 
-/** The service day a closure list is for, in Washington: before 3 am it is still the day before. */
-export function serviceDayOf(nowMs: number): string {
+function washingtonParts(nowMs: number): { day: Date; hour: number } {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/New_York",
     year: "numeric",
@@ -92,9 +91,24 @@ export function serviceDayOf(nowMs: number): string {
     hourCycle: "h23",
   }).formatToParts(new Date(nowMs));
   const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
-  const day = new Date(Date.UTC(get("year"), get("month") - 1, get("day")));
-  if (get("hour") < 3) day.setUTCDate(day.getUTCDate() - 1);
+  return { day: new Date(Date.UTC(get("year"), get("month") - 1, get("day"))), hour: get("hour") };
+}
+
+/** The service day a closure list is for, in Washington: before 3 am it is still the day before. */
+export function serviceDayOf(nowMs: number): string {
+  const { day, hour } = washingtonParts(nowMs);
+  if (hour < 3) day.setUTCDate(day.getUTCDate() - 1);
   return day.toISOString().slice(0, 10);
+}
+
+/**
+ * When the closure list is asked again: at 3 am, when the service day turns over, and at midnight
+ * too, since from then a station whose line runs on the new date is not closed (its first train is
+ * on its card; core.transit.closed_stations).
+ */
+export function closuresDayOf(nowMs: number): string {
+  const { day } = washingtonParts(nowMs);
+  return `${serviceDayOf(nowMs)} ${day.toISOString().slice(0, 10)}`;
 }
 
 type FetchLike = (url: string, init?: RequestInit) => Promise<Response>;

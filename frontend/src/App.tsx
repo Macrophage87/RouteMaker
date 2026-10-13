@@ -9,7 +9,7 @@ import { stationNearSpot } from "./lib/stationLinks.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
 import { requestRoute, type ClosedStation, type RouteResponse, type RouteResult } from "./lib/api.ts";
-import { closedReason, matchClosures, requestClosures, serviceDayOf } from "./lib/railClosures.ts";
+import { closedReason, closuresDayOf, matchClosures, requestClosures } from "./lib/railClosures.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatSeconds } from "./lib/format.ts";
 import { presetSaid, usesBikeshare, type PresetId } from "./lib/presets.ts";
@@ -273,14 +273,15 @@ export function App() {
   }, [showTopoLines]);
   const [rail, setRail] = useState<RailVisibility>({ metro: true, marc: true });
   // The rail stations with no service all day (railClosures.ts): struck through and greyed on the
-  // map, and "closed" in their cards and lists. Asked again when the service day turns over.
+  // map, and "closed" in their cards and lists. Asked again when the service day turns over, and at
+  // midnight (closuresDayOf).
   const [closedToday, setClosedToday] = useState<ClosedStation[]>([]);
   useEffect(() => {
     let day = "";
     const controller = new AbortController();
     let asking = false;
     const check = () => {
-      const today = serviceDayOf(Date.now());
+      const today = closuresDayOf(Date.now());
       if (today === day || asking) return;
       asking = true;
       void requestClosures({ signal: controller.signal }).then((stations) => {

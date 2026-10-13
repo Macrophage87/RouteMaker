@@ -950,18 +950,32 @@ class _Day:
 
     def departures(self, pattern: Pattern, pos: int, minute: float) -> list[float]:
         """The next `DEPARTURES_SEEN` departures of `pattern` from its stop `pos` at or after
-        `minute` (enough to tell a frequent service from a near pair)."""
+        `minute` (enough to tell a frequent service from a near pair). Each trip is timed with
+        the run times of its own band (the band it starts in), as the station card's are
+        (`_departures_at`), so a trip that started before a band edge keeps its own times."""
         found: list[float] = []
-        offset = pattern.runs_at(minute)[pos] / 60.0
-        low = math.ceil(minute - offset - 1e-9) * 2
+        reach = [runs[pos] / 60.0 for runs in pattern.runs if runs is not None]
+        if not reach:
+            reach = [pattern.runs_at(minute)[pos] / 60.0]
+        # A trip started this long before `minute` may still be on its way to the stop.
+        low = math.ceil(minute - max(reach) - 1e-9) * 2
+        soonest = min(reach)
+        offsets: dict[int | None, float] = {}
         for service, deps in pattern.trips.items():
             if service not in self.active:
                 continue
             taken = 0
             for encoded in deps[bisect_left(deps, low) :]:
-                at = (encoded >> 1) + offset
-                if at - minute > MAX_WAIT_MIN * 3:  # far enough for a missed one's next two
+                start = encoded >> 1
+                # far enough for a missed one's next two, whichever band times it
+                if start + soonest - minute > MAX_WAIT_MIN * 3:
                     break
+                band = band_index(start)
+                if band not in offsets:
+                    offsets[band] = pattern.runs_at(start)[pos] / 60.0
+                at = start + offsets[band]
+                if at - minute > MAX_WAIT_MIN * 3:
+                    continue
                 if at < minute or not self.boards(pattern, at, encoded):
                     continue
                 found.append(at)
@@ -1620,10 +1634,15 @@ def closed_stations(schedule: Schedule, moment: Moment) -> list[Closed]:
     """The stations with no service at all on the moment's service day (the owner, 2026-10-12:
     struck through and greyed on the map): a weekend or holiday a line does not run, or a
     planned closure the agency published in its timetable. A station outside its hours on a day
-    it runs is not closed. Bus stops are left out. Beyond the installed window nothing is said."""
+    it runs is not closed. Bus stops are left out. Beyond the installed window nothing is said.
+    Between midnight and 3 am (the day before's service day) a station with service on the new
+    date is not closed either: its card gives that day's first train (`station_times`). Only the
+    map's word changes; a plan still waits for the trains' actual departures."""
     if not schedule.covers(moment.service_day):
         return []
     active = schedule.active(moment.service_day)
+    if moment.service_day != moment.date:
+        active = active | schedule.active(moment.date)
     serving: dict[int, bool] = {}
     for pattern in schedule.patterns:
         runs = any(service in active for service in pattern.trips)
