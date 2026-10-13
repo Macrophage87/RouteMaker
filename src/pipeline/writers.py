@@ -87,6 +87,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             _half(row["stress"]),
             row.get("mtb_level"),
             row.get("mtb_name"),
+            _ratings_json(row["stress"]),
         )
         for row in rows
     ]
@@ -97,7 +98,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             args = ",".join(
                 cursor.mogrify(
                     "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)",
                     (
                         way_id,
                         ordinal,
@@ -137,6 +138,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                         half,
                         mtb_level,
                         mtb_name,
+                        ratings,
                     ),
                 )
                 for (
@@ -178,6 +180,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                     half,
                     mtb_level,
                     mtb_name,
+                    ratings,
                 ) in batch
             )
             cursor.execute(
@@ -193,7 +196,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                      stress_adjustment_note, stress_adjustment_display, attr_sources,
                      trail_name, trail_route, trail_bridge, calm_run_m, roadside,
                      stress_unsmoothed_tier, mass_usable_width_m, bike_access_reason,
-                     stress_half, mtb_level, mtb_name)
+                     stress_half, mtb_level, mtb_name, stress_ratings)
                     VALUES {args}"""
             )
             written += len(batch)
@@ -208,6 +211,36 @@ def _half(stress: StressResult) -> bool:
         return bool(getattr(adjustment, "half", False))
     # An agency's half step (`routemaker.agency_lts`), where no owner row set it.
     return bool(getattr(stress, "half", False))
+
+
+def _ratings_json(stress: StressResult) -> str | None:
+    """Every rating held for the way, for the road panel (`segment.stress_ratings`):
+    the classifier's tier and each agency's level, and which one set the way's
+    tier (`used`: `owner`, `rural floor`, or the agency). None where no agency
+    rated the way, which the panel reads as the classifier's tier standing alone."""
+    import json
+
+    from routemaker.agency_lts import chosen
+    from routemaker.stress import RURAL_FLOOR_RULE
+
+    ratings = getattr(stress, "agency_ratings", ())
+    if not ratings:
+        return None
+    if getattr(stress, "adjustment", None) is not None:
+        used = "owner"
+    elif RURAL_FLOOR_RULE in (stress.rule or ""):
+        used = "rural floor"
+    else:
+        used = chosen(ratings).agency
+    formula = getattr(stress, "formula_tier", None)
+    return json.dumps(
+        {
+            "formula": None if formula is None else int(formula),
+            "formula_rule": getattr(stress, "formula_rule", None),
+            "agencies": [{"agency": r.agency, "name": r.name, "level": r.level} for r in ratings],
+            "used": used,
+        }
+    )
 
 
 def _tier_or_none(tier) -> int | None:

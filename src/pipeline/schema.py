@@ -620,6 +620,13 @@ CREATE TABLE {schema}.segment (
     -- the rules that read the half take the midpoint (docs/stress/stress-number.md).
     stress_half                 boolean     NOT NULL DEFAULT false
                                 CHECK (NOT stress_half OR stress_tier < 5),
+    -- Every rating held for the way (`routemaker.agency_lts`; the owner,
+    -- 2026-10-13: "put all the relevant information in the tab when viewing the
+    -- road"): the classifier's tier, each agency's level, and which one set
+    -- `stress_tier` (`used`). Null where no agency rated the way. No migration:
+    -- the table is created whole on every rebuild, and the road panel reads it
+    -- only where the live table has it (`core.segment_info`).
+    stress_ratings              jsonb,
     CONSTRAINT segment_adjustment_shown CHECK (
         stress_adjustment_id IS NOT NULL
         OR (stress_computed_tier IS NULL AND stress_adjustment_direction IS NULL

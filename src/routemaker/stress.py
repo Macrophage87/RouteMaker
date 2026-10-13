@@ -6,11 +6,11 @@ carries another project's licence.
 
 Tiers run 1 to 4 on the Furth scale, where 1 is tolerable to most adults and
 children and 4 is tolerable only to the "strong and fearless". One scale,
-computed the same way everywhere from the same tables: an agency's finished
-score is never imported in place of this, because Maryland's runs 0 to 5 and
-"top-tier stress" would then mean different things on either side of the
-District line, while the Beginner invariant and the road-exposure report both
-key on it.
+computed the same way everywhere from the same tables. Since v0.7.0 an agency's
+own rating takes the place of this one where the agency rates the road (the
+owner, 2026-10-13: "Ratings from the local government win over a formula"),
+county over state; that is done by the rebuild after classification
+(`routemaker.agency_lts`), on this scale, and never inside this module.
 
 The ordering is speed, then facility, then volume, then surface. Volume is a
 modifier on two-lane roads rather than a primary variable: what makes a road

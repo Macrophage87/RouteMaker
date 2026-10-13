@@ -16,7 +16,6 @@ def test_the_county_wins_over_the_state():
     result = agency_lts.apply(FORMULA, ratings)
     assert result.tier is Stress.LTS1
     assert "Montgomery County Planning" in result.rule
-    assert "MDOT SHA" in result.rule
     # Both kept for the road panel, most local first, with the formula's tier.
     assert [r.agency for r in result.agency_ratings] == ["moco", "mdot-sha"]
     assert result.formula_tier is Stress.LTS4
@@ -70,3 +69,78 @@ def test_the_rural_floor_raises_a_county_one_and_a_half_to_two():
     rated = agency_lts.apply(FORMULA, [AgencyRating("moco", 1.5)])
     floored = rural_floor(rated, {"highway": "unclassified"}, urban=False)
     assert (floored.tier, floored.half) == (Stress.LTS2, False)
+
+
+def test_the_writer_records_every_rating_and_the_one_used():
+    import json
+
+    from pipeline import writers
+
+    rated = agency_lts.apply(FORMULA, [AgencyRating("mdot-sha", 3), AgencyRating("moco", 2.5)])
+    held = json.loads(writers._ratings_json(rated))
+    assert held["used"] == "moco" and held["formula"] == 4
+    assert [a["level"] for a in held["agencies"]] == [2.5, 3]
+    assert writers._half(rated) is True
+    floored = rural_floor(
+        agency_lts.apply(FORMULA, [AgencyRating("moco", 1)]), {"highway": "track"}, urban=False
+    )
+    assert json.loads(writers._ratings_json(floored))["used"] == "rural floor"
+    assert writers._ratings_json(FORMULA) is None
+
+
+def _way(osm_id, coords, **tags):
+    from pipeline.extract import Way
+
+    return Way(osm_id, {"highway": "unclassified", **tags}, list(range(len(coords))), coords)
+
+
+def test_the_rebuild_matches_each_agency_on_its_own(tmp_path):
+    import json
+
+    from pipeline import agency_ratings
+
+    line = [(-77.30 + i * 0.001, 39.20) for i in range(11)]
+    rows = [
+        {
+            "id": "moco-1-0",
+            "agency": "moco",
+            "level": 1,
+            "name": "Davis Mill Road",
+            "coordinates": line,
+        },
+        {
+            "id": "sha-9-0",
+            "agency": "mdot-sha",
+            "level": 3,
+            "name": "Davis Mill Road",
+            "coordinates": line,
+        },
+    ]
+    path = tmp_path / agency_ratings.FILE_NAME
+    path.write_text(json.dumps(rows))
+    features, ratings = agency_ratings.load(path)
+    way = _way(42, line, name="Davis Mill Road")
+    found = agency_ratings.ratings_by_way([way], [(42, line, False)], features, ratings)
+    assert sorted(r.agency for r in found[42]) == ["mdot-sha", "moco"]
+    assert agency_lts.chosen(found[42]).agency == "moco"
+
+
+def test_an_internal_only_agency_is_refused(tmp_path):
+    import json
+
+    from pipeline import agency_ratings
+
+    path = tmp_path / agency_ratings.FILE_NAME
+    path.write_text(
+        json.dumps(
+            [{"id": "a", "agency": "arlington", "level": 2, "coordinates": [[0, 0], [0, 1]]}]
+        )
+    )
+    with pytest.raises(agency_ratings.AgencyRatingsInvalid):
+        agency_ratings.load(path)
+
+
+def test_no_file_means_no_ratings(tmp_path):
+    from pipeline import agency_ratings
+
+    assert agency_ratings.load(tmp_path / "absent.json") == ((), {})

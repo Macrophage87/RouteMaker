@@ -879,3 +879,68 @@ def test_the_unnamed_titles_are_describes_words_and_the_front_ends() -> None:
     ts = (Path(__file__).parents[1] / "frontend/src/lib/roadInfo.ts").read_text(encoding="utf-8")
     assert f'UNNAMED_ROAD_TITLE = "{segment_info.UNNAMED_ROAD_TITLE}"' in ts
     assert f'UNNAMED_PATH_TITLE = "{segment_info.UNNAMED_PATH_TITLE}"' in ts
+
+
+@db
+class TestEveryRatingHeld:
+    """The owner, 2026-10-13: "put all the relevant information in the tab when
+    viewing the road" - every agency rating, the formula's, and which is used."""
+
+    RATINGS = {
+        "formula": 4,
+        "formula_rule": "mixed traffic, 35 mph or above",
+        "agencies": [
+            {"agency": "moco", "name": "Montgomery County Planning", "level": 2.5},
+            {"agency": "mdot-sha", "name": "MDOT SHA (statewide)", "level": 3},
+        ],
+        "used": "moco",
+    }
+
+    def test_each_rating_is_listed_with_the_one_used(self, client, segment_schemas, router):
+        live, _ = segment_schemas
+        insert(
+            live,
+            601,
+            [SPOT, east(SPOT, 100)],
+            stress_tier=2,
+            stress_half=True,
+            stress_rule="agency rating: Montgomery County Planning LTS 2.5",
+            stress_ratings=json.dumps(self.RATINGS),
+        )
+        router.answers = {"bicycle": [edge(601, "Davis Mill Road")]}
+        rows = section(get(client).json(), "stress")
+        assert rows["Why"]["value"] == "Rated LTS 2.5 by Montgomery County Planning"
+        county = rows["Montgomery County Planning rates it"]
+        assert county["value"].startswith("LTS 2.5") and "(used" in county["value"]
+        assert county["source"] == "Montgomery County Planning"
+        state = rows["MDOT SHA (statewide) rates it"]
+        assert state["value"].startswith("LTS 3") and "used" not in state["value"]
+        formula = rows["RouteMaker's formula"]
+        assert formula["value"].startswith("LTS 4") and "35 mph" in formula["value"]
+
+    def test_the_rural_floor_is_named_when_it_set_the_tier(self, client, segment_schemas, router):
+        live, _ = segment_schemas
+        held = {
+            **self.RATINGS,
+            "agencies": [{"agency": "moco", "name": "Montgomery County Planning", "level": 1}],
+            "used": "rural floor",
+        }
+        insert(
+            live,
+            602,
+            [SPOT, east(SPOT, 100)],
+            stress_tier=2,
+            stress_rule="agency rating: Montgomery County Planning LTS 1, rural road floor",
+            stress_ratings=json.dumps(held),
+        )
+        router.answers = {"bicycle": [edge(602, "Davis Mill Road")]}
+        rows = section(get(client).json(), "stress")
+        assert "rural road open to cars" in rows["Why"]["value"]
+        assert "rural roads open to cars" in rows["Used"]["value"]
+
+    def test_nothing_extra_without_an_agency(self, client, segment_schemas, router):
+        live, _ = segment_schemas
+        insert(live, 603, [SPOT, east(SPOT, 100)])
+        router.answers = {"bicycle": [edge(603, "Some Road")]}
+        rows = section(get(client).json(), "stress")
+        assert "RouteMaker's formula" not in rows

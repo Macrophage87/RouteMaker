@@ -241,6 +241,7 @@ OPTIONAL_COLUMNS = (
     "stress_half",
     "mtb_level",
     "mtb_name",
+    "stress_ratings",
 )
 REQUIRED_COLUMNS = (
     "osm_way_id",
@@ -460,6 +461,8 @@ _MIXED_PARTS = {
     "wide one-way floor": "a wide one-way road, so rated at least this",
     "two-way busy": "a busy two-way road",
     "shoulder read as a lane": "the shoulder read as a bike lane",
+    "narrow rural road": "a narrow or winding rural road",
+    "rural road floor": "a rural road open to cars, so rated at least LTS 2",
 }
 _TRAIL_KINDS = {
     "open to bicycles": "open to bicycles",
@@ -467,6 +470,8 @@ _TRAIL_KINDS = {
     "sidepath for bicycles": "a side path beside a road",
     "no bicycle facility": "not marked for bicycles",
 }
+# `routemaker.agency_lts.apply`'s rule, and any reasons appended after it.
+_AGENCY_RULE = re.compile(r"agency rating: (.+?) LTS (\d(?:\.5)?)(.*)")
 _SPEED = re.compile(r"(\d+(?:\.\d+)?) mph(?: or (?:below|above))?")
 
 
@@ -494,6 +499,10 @@ def rule_words(rule: str) -> str:
     if match:
         kind = _TRAIL_KINDS.get(match.group(2) or "", match.group(2) or "")
         return "Path away from traffic" + (f", {kind}" if kind else "")
+    match = _AGENCY_RULE.match(rule)
+    if match:
+        rest = _parts(match.group(3), _MIXED_PARTS)
+        return ", ".join([f"Rated LTS {match.group(2)} by {match.group(1)}", *rest])
     if rule.startswith("separated track alongside"):
         return "Separated bike track beside the road"
     if rule.startswith("mixed traffic"):
@@ -554,6 +563,41 @@ def stress_rows(row: dict) -> list[dict]:
     # A note marked route_only is for a route over the stretch, never a map click.
     if note and row.get("stress_adjustment_display") == "map":
         rows.append(_row("Note", str(note), OWNER))
+    return rows + rating_rows(row)
+
+
+# Which rating set the tier, in words, by `segment.stress_ratings`' `used`.
+_USED_WORDS = {
+    "owner": "the owner's rating is used",
+    "rural floor": "raised to LTS 2: rural roads open to cars are LTS 2 at least",
+}
+
+
+def rating_rows(row: dict) -> list[dict]:
+    """Every rating held for the way (`segment.stress_ratings`), each with its
+    source, and which one the map uses (the owner, 2026-10-13: "put all the
+    relevant information in the tab when viewing the road"). Nothing where no
+    agency rated the way: the Level and Why rows already say all there is."""
+    held = _json(row.get("stress_ratings"))
+    if not isinstance(held, dict) or not held.get("agencies"):
+        return []
+    used = held.get("used")
+    rows = []
+    for rating in held["agencies"]:
+        level = float(rating["level"])
+        whole = int(level)
+        value = tier_text(whole, level != whole)
+        if rating.get("agency") == used:
+            value += " (used: the most local agency's rating)"
+        rows.append(_row(f"{rating['name']} rates it", value, rating["name"]))
+    formula = held.get("formula")
+    if formula is not None:
+        value = tier_text(int(formula))
+        if held.get("formula_rule"):
+            value += f" ({rule_words(str(held['formula_rule']))})"
+        rows.append(_row("RouteMaker's formula", value, CLASSIFIER))
+    if used in _USED_WORDS:
+        rows.append(_row("Used", _USED_WORDS[used].capitalize(), OWNER))
     return rows
 
 

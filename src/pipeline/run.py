@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from routemaker import (
+    agency_lts,
     agency_roads,
     bike_lanes,
     cbd,
@@ -58,6 +59,7 @@ from routemaker.stress import classify, inferred_unpaved, is_rough, rural_floor,
 
 from . import (
     aadt_smoothing,
+    agency_ratings,
     borders,
     checkpoint,
     conflation,
@@ -415,6 +417,11 @@ class ReferenceData:
     # `pavement.json`. Optional like `roadway.json`: without it every street keeps
     # OSM's smoothness reading, as before, and the load logs that it is absent.
     pavement_blocks: tuple[pavement.Block, ...] = ()
+    # Agency bicycle stress layers (`pipeline.agency_ratings`, v0.7.0), from
+    # `agency-lts.json`: each record's line and its level. Optional like
+    # `roadway.json`: without it every way keeps the classifier's tier.
+    agency_lts_features: tuple[conflation.RoadFeature, ...] = ()
+    agency_lts_ratings: dict = field(default_factory=dict)
 
     @classmethod
     def load(
@@ -525,6 +532,13 @@ class ReferenceData:
             bridge_bicycle_legal=legality,
             road_blocks=road_blocks,
             pavement_blocks=cls.load_pavement(directory / "pavement.json"),
+            **dict(
+                zip(
+                    ("agency_lts_features", "agency_lts_ratings"),
+                    agency_ratings.load(directory / agency_ratings.FILE_NAME),
+                    strict=True,
+                )
+            ),
         )
 
     @staticmethod
@@ -2080,6 +2094,35 @@ def build_handlers(
             len(result.unmatched_features),
         )
 
+    def apply_agency_ratings(laned: set[int]) -> None:
+        """Agencies' own ratings over the classifier's tier, county over state
+        (`routemaker.agency_lts`; the owner, 2026-10-13), then the owner's rural
+        floor again, which ranks above them. A curated lane's owner tier stands."""
+        reference = context.require_reference()
+        # A test's stand-in reference may predate the field.
+        if not getattr(reference, "agency_lts_features", ()):
+            return
+        entries = [
+            (way.osm_id, way.coordinates, variants.is_trail_class(way.tags)) for way in context.ways
+        ]
+        rated = agency_ratings.ratings_by_way(
+            context.ways, entries, reference.agency_lts_features, reference.agency_lts_ratings
+        )
+        tags_of = {way.osm_id: way.tags for way in context.ways}
+        changed = 0
+        for way_id, ratings in rated.items():
+            current = context.stress_by_way.get(way_id)
+            if current is None or way_id in laned:
+                continue
+            result = rural_floor(
+                agency_lts.apply(current, ratings),
+                context.class_tags_by_way.get(way_id, tags_of[way_id]),
+                urban=way_id in reference.urban_way_ids,
+            )
+            changed += result.tier != current.tier or result.half != current.half
+            context.stress_by_way[way_id] = result
+        logger.info("agency stress ratings: %d ways rated, %d changed tier", len(rated), changed)
+
     def classify_stress() -> None:
         reference = context.require_reference()
         # Whose statutory speed default an unposted way takes (the District's
@@ -2231,6 +2274,7 @@ def build_handlers(
                 )
                 if facts.agency == agency_roads.DC_AGENCY and state_of.get(way.osm_id) == "DC":
                     reported.append((way, tags, match, overlaid))
+        apply_agency_ratings(laned)
         if context.road_facts_by_way:
             # Where an agency's record and the way's own tags disagree and the way
             # was left alone (an OSM lane the agency does not record; an OSM

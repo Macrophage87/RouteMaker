@@ -37,6 +37,8 @@ STATE = 2
 # internal comparison only (OWNER-DECISIONS 152, 153, 155) and never appear.
 AGENCIES: dict[str, tuple[str, int]] = {
     "moco": ("Montgomery County Planning", COUNTY),
+    # The District is its own local government: its rating ranks with a county's.
+    "ddot": ("DDOT", COUNTY),
     "mdot-sha": ("MDOT SHA (statewide)", STATE),
 }
 
@@ -95,11 +97,9 @@ def apply(result: StressResult, ratings: Iterable[AgencyRating]) -> StressResult
     if pick is None:
         return result
     tier, half = tier_of(pick.level)
-    level = f"{pick.level:g}"
-    others = [r for r in ratings if r is not pick and r.level != pick.level]
-    why = f"{AGENCY_RULE}: {pick.name} LTS {level}"
-    if others:
-        why += " (more local than " + ", ".join(f"{r.name} {r.level:g}" for r in others) + ")"
+    # The other agencies' levels are in `agency_ratings`, not the rule: the
+    # rule's commas separate the reasons appended after it (`stress.rural_floor`).
+    why = f"{AGENCY_RULE}: {pick.name} LTS {pick.level:g}"
     return replace(
         result,
         tier=tier,
