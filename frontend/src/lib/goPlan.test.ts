@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GO_START_SAID, GO_START_UNAVAILABLE, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, goTapRoutedSaid, goPlaceName, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, goTapRoutedSaid, goPlaceName, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
@@ -206,7 +206,7 @@ test("Go's Where to? is the destination from the rider's location, in one edit, 
   // Never the destination alone (it would become the start), and never dropped while the location is found.
   assert.doesNotMatch(goTo, /commit\(\[dest\]/);
   assert.match(goTo, /goPending\.current = \{ dest, name, vias, pressed, said: pressed && action\.kind === "wait" \};\s*if \(action\.kind === "wait"\) \{\s*if \(pressed\) setNoticeSaying\(goDestinationLocating\(name\), goPressLocatingSaid\(name\)\);\s*else setNotice\(goDestinationLocating\(name\)\);/);
-  assert.match(goTo, /setGoStart\(\{ kind: "none" \}\);\s*if \(pressed\) setNoticeSaying\(goDestinationNeedsStart\(name\), goPressNeedsStartSaid\(name\)\);\s*else setNotice\(goDestinationNeedsStart\(name\)\);/);
+  assert.match(goTo, /setGoStart\(\{ kind: "none" \}\);[\s\S]{0,200}?const waiting = goPending\.current \?\? \{ name, pressed \};\s*if \(waiting\.pressed\) setNoticeSaying\(goDestinationNeedsStart\(waiting\.name\), goPressNeedsStartSaid\(waiting\.name\)\);\s*else setNotice\(goDestinationNeedsStart\(waiting\.name\)\);/);
   assert.match(goTo, /if \(!insideCoverage\(dest\)\) \{\s*setNotice\(OUTSIDE_NOTICE\);\s*return;/);
   // The opening look-up routes a destination picked while it ran; a start typed in routes one picked before it.
   assert.match(appFile, /if \(pending\) \{\s*goPending\.current = null;\s*routeGoRef\.current\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
@@ -365,6 +365,14 @@ test("go tap: a press on the map in Go is the destination, routed as a picked on
   assert.doesNotMatch(appFile, /announce\(goDestinationSet\(/, "never said alone before a notice that would replace it");
   // The notice shown with it is not said again on its own (it would replace the fuller line).
   assert.match(appFile, /const setNoticeSaying = \(shown: string, said: string\) => \{\s*noticeSaidAs\.current = shown;\s*setNotice\(shown\);\s*announce\(said\);/);
+  // No location yet (Go's start none or idle): a look-up that is slow (a timeout takes up to a minute) or already under
+  // way (locateForGo answers null) does not leave the press unsaid. Said with "Finding your location…" once the look-up
+  // has run GO_PRESS_LOCATING_SAY_MS, or at once on null, and only once; a quick denial is said alone (review of #127).
+  assert.ok(GO_PRESS_LOCATING_SAY_MS > 0 && GO_PRESS_LOCATING_SAY_MS <= 1500, "a timeout is never left silent for long");
+  const locatePath = appFile.slice(appFile.indexOf("const mine = goPending.current;"), appFile.indexOf("setHere(result.fix);", appFile.indexOf("const mine = goPending.current;")));
+  assert.match(locatePath, /const sayLocating = \(\) => \{\s*if \(!mine \|\| goPending\.current !== mine \|\| mine\.said\) return;\s*mine\.said = true;\s*setNoticeSaying\(goDestinationLocating\(name\), goPressLocatingSaid\(name\)\);\s*\};/);
+  assert.match(locatePath, /const slow = pressed \? window\.setTimeout\(sayLocating, GO_PRESS_LOCATING_SAY_MS\) : undefined;\s*const result = await locateForGo\(\);\s*window\.clearTimeout\(slow\);/);
+  assert.match(locatePath, /if \(result === null\) \{[\s\S]*?if \(pressed\) sayLocating\(\);\s*return;\s*\}/);
   // Located later (a look-up that answers after the press), the pressed destination is routed and said as a press is.
   assert.match(appFile, /routeGo\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
   // Map tools in Go: the same button, named for what it does, and never disabled by the points limit.

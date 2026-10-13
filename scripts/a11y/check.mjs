@@ -4093,7 +4093,28 @@ async function goPressMap(p) {
   const after = await p.eval(`({ notice: document.querySelector('.go-notice')?.textContent ?? '', hash: location.hash, box: !document.querySelector('.go-start-search').hidden, said: window.__said.slice(${saidBefore}).filter((t) => /^(Destination set|To |Current location)/.test(t)) })`);
   check("go press: with the location denied, a press on the map replaces the waiting destination and is not the start (shown \"To <spot>. Current location not available; type a start.\", said in one line \"Destination set: <spot>. Current location not available; type a start.\", no points yet)",
     waiting.startsWith("To Union Station.") && !!at && /^To 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(after.notice) && !/p=/.test(after.hash) && after.box &&
-      after.said.length >= 1 && /^Destination set: 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(after.said.at(-1)) && !after.said.includes(after.notice), JSON.stringify({ waiting, at, after }));
+      new Set(after.said.filter((t) => t.startsWith("Destination set"))).size === 1 && /^Destination set: 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(after.said.at(-1)) && !after.said.some((t) => /^To 38\./.test(t)), JSON.stringify({ waiting, at, after }));
+  await p.close();
+}
+{
+  // Review of #127: with no location and a slow look-up (a cold GPS, a timeout: up to a minute), a press is not left
+  // unsaid. Said with what it waits for once the look-up has run a second, then replaced when it fails.
+  const SLOW_FIX = "(() => { const g = navigator.geolocation; const real = g.getCurrentPosition.bind(g); Object.defineProperty(g, 'getCurrentPosition', { configurable: true, value: (ok, fail, o) => setTimeout(() => real(ok, fail, o), 3500) }); })();";
+  const p = await goWith("denied", { init: GEO_TWO + SLOW_FIX });
+  const none = await p.waitFor("/^Start: none yet/.test(document.querySelector('.go-start-line')?.textContent.trim() ?? '')", 20000);
+  const saidBefore = await p.eval("window.__said.length");
+  // The press's own lines (what was in the region before it is recorded again after each change, so it is left out).
+  const goLines = `window.__said.slice(${saidBefore}).filter((t) => /^(Destination set|To 38\\.)/.test(t))`;
+  const at = await goPressMap(p);
+  await sleep(2000);
+  const slow = await p.eval(`({ notice: document.querySelector('.go-notice')?.textContent ?? '', said: [...new Set(${goLines})] })`);
+  await p.waitFor("/Current location not available/.test(document.querySelector('.go-notice')?.textContent ?? '')", 10000);
+  await sleep(300);
+  const failed = await p.eval(`({ notice: document.querySelector('.go-notice')?.textContent ?? '', hash: location.hash, said: [...new Set(${goLines})] })`);
+  check("go press: with no location and a slow look-up, the press is said within a second with what it waits for (\"Destination set: <spot>. Finding your location for the start…\"), then \"Destination set: <spot>. Current location not available; type a start.\" when it fails",
+    none && !!at && /^To 38\.\d{4}, -77\.\d{4}: finding your location for the start/.test(slow.notice) && slow.said.length === 1 && /^Destination set: 38\.\d{4}, -77\.\d{4}\. Finding your location for the start…$/.test(slow.said[0]) &&
+      /^To 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(failed.notice) && failed.said.length === 2 && /^Destination set: 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(failed.said[1]) && !/p=/.test(failed.hash),
+    JSON.stringify({ none, at, slow, failed }));
   await p.close();
 }
 {
@@ -4486,8 +4507,8 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-// 628: the transit blocks (#108) and the Go press checks (#116) were added without raising it; they now run (#127).
-const EXPECTED = 628;
+// The transit blocks (#108) and the Go press checks (#116) were added without raising it; they run since #127.
+const EXPECTED = 629;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

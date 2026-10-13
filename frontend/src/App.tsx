@@ -145,7 +145,7 @@ import { BACK_LABEL, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
 import { letterKeyIndex, letterPlaces, placeLetter } from "./lib/letteredPlaces.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
-import { GO_START_SAID, GO_START_UNAVAILABLE, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, shouldAskGoStart, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, shouldAskGoStart, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type MyGo } from "./lib/myGo.ts";
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
@@ -1313,15 +1313,29 @@ export function App() {
     // No location yet: one more look-up (the rider may have allowed it since); failing that the destination is
     // kept and the start box asks for a start. The destination is never made the start.
     setGoStart({ kind: "locating" });
+    // A pressed destination is said, with what it waits for, once the look-up has taken GO_PRESS_LOCATING_SAY_MS
+    // (a timeout can take up to a minute); a quick answer (a denial) is said alone, so nothing is replaced at once.
+    const mine = goPending.current;
+    const sayLocating = () => {
+      if (!mine || goPending.current !== mine || mine.said) return;
+      mine.said = true;
+      setNoticeSaying(goDestinationLocating(name), goPressLocatingSaid(name));
+    };
+    const slow = pressed ? window.setTimeout(sayLocating, GO_PRESS_LOCATING_SAY_MS) : undefined;
     const result = await locateForGo();
+    window.clearTimeout(slow);
     if (result === null) {
-      // Another look-up is under way: its answer routes the destination, as Go's opening one does.
+      // Another look-up is under way: its answer routes the destination, as Go's opening one does. A press is said
+      // now, as it is while Go's opening look-up runs.
+      if (pressed) sayLocating();
       return;
     }
     if (!result.ok || !insideCoverage(result.fix.point)) {
       setGoStart({ kind: "none" });
-      if (pressed) setNoticeSaying(goDestinationNeedsStart(name), goPressNeedsStartSaid(name));
-      else setNotice(goDestinationNeedsStart(name));
+      // The destination waiting now (a later press replaces it while the look-up runs).
+      const waiting = goPending.current ?? { name, pressed };
+      if (waiting.pressed) setNoticeSaying(goDestinationNeedsStart(waiting.name), goPressNeedsStartSaid(waiting.name));
+      else setNotice(goDestinationNeedsStart(waiting.name));
       return;
     }
     setHere(result.fix);
