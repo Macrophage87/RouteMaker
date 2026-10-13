@@ -18,21 +18,21 @@ import { createElement as h, type ReactElement } from "react";
 
 export const HIGH_STRESS_LANES_LABEL = "Show bike lanes on high-stress roads";
 
-/** Read on every focus, so kept short (under 150 characters; the salience review), in plain words (the a11y review's N2). */
-export const HIGH_STRESS_LANES_HINT =
-  "Painted lanes on heavy-traffic (LTS 4) and best-avoided roads are hidden on the map and in the route. Protected lanes and paths always show.";
+/**
+ * Read on every focus, so one short line (the salience review; the owner, 2026-10-12: "less wordy"), in plain
+ * words (the a11y review's N2); the legend's facility hint (stressLegend.ts) says how each facility is drawn.
+ */
+export const HIGH_STRESS_LANES_HINT = "Painted lanes on heavy-traffic (LTS 4) and best-avoided roads, on the map and in the route.";
 
 /** The description while the stress map is unavailable: the map has no lanes to hide then. */
-export const HIGH_STRESS_LANES_NO_MAP_HINT =
-  "Painted lanes on heavy-traffic (LTS 4) and best-avoided roads are hidden in the route's facility totals and description.";
+export const HIGH_STRESS_LANES_NO_MAP_HINT = "Painted lanes on heavy-traffic (LTS 4) and best-avoided roads, in route totals and description.";
 
 /**
  * The description on the Mass Ride map, which draws no lane, protected lane or path at any zoom
  * (OWNER-DECISIONS 417, 417a): "Protected lanes and paths always show" would be untrue there
  * (REBUILD-BUNDLE spec review S3), and the switch changes only the route's words.
  */
-export const HIGH_STRESS_LANES_MASS_HINT =
-  "The Mass Ride map draws no bike lanes. This changes only whether painted lanes on heavy-traffic (LTS 4) and best-avoided roads count in the route's description.";
+export const HIGH_STRESS_LANES_MASS_HINT = "Painted lanes on heavy-traffic (LTS 4) and best-avoided roads, in the route's description only.";
 
 export function HighStressLanesSwitch({
   on,

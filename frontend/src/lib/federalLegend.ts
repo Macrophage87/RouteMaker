@@ -1,6 +1,7 @@
 /**
  * The panel's Federal land section, shown only for a Mass Ride: the switch, the
- * status of the data, the legend and the standing note. Written with
+ * status of the data, the points on it and the standing note; the legend and the
+ * help are in the Legend sheet. Written with
  * createElement so a test renders it (as pointsList.ts, stressLegend.ts).
  *
  * The legend draws each kind with the map's own pattern and outline dash and
@@ -18,6 +19,7 @@ import {
   type FederalPoint,
 } from "./federalLand.ts";
 import type { PresetId } from "./presets.ts";
+import { LayerSection } from "./layerSection.ts";
 
 export type FederalStatus = "loading" | "ready" | "unavailable";
 
@@ -153,29 +155,42 @@ interface Props {
 }
 
 /**
- * The section; the caller renders it for a Mass Ride only (federalShown's preset test).
- * Its status line is one persistent role="status" element whose words change (the a11y
- * review's N8): a live region inserted with its text is often not read.
+ * The section in the Layers sheet (lib/layerSection.ts); the caller renders it for a Mass Ride only
+ * (federalShown's preset test). One row, its switch the layer's; its status line is the section's one
+ * persistent role="status" element whose words change (the a11y review's N8), said open or closed. Inside:
+ * the points list and the note. The legend and the help are behind Layers' Legend button (FederalLegendNotes).
  */
 export function FederalLandSection({ on, onChange, status, points = null, pointCount = 0, nameOf = (i) => `Point ${i + 1}` }: Props): ReactElement {
   return h(
-    "section",
-    { "aria-labelledby": "federal-heading", className: "federal-section" },
-    // An h3: the section sits in the Map layers sheet, under its h2 (OWNER-DECISIONS 312).
-    h("h3", { id: "federal-heading" }, FEDERAL_HEADING),
-    h(
-      "label",
-      { className: "toggle" },
-      h("input", { type: "checkbox", checked: on, onChange: (event: { target: { checked: boolean } }) => onChange(event.target.checked) }),
-      "Show federal land on the map",
-    ),
-    h("p", { className: "hint federal-status", role: "status" }, federalStatusText(on, status)),
-    on && status !== "unavailable" && h(FederalLegend),
+    LayerSection,
+    {
+      id: "federal",
+      title: FEDERAL_HEADING,
+      headingId: "federal-heading",
+      className: "federal-section",
+      layers: [{ key: "federal", label: FEDERAL_HEADING, on }],
+      onLayers: (next: Record<string, boolean>) => onChange(next.federal),
+      status: federalStatusText(on, status),
+    },
     h(FederalPointsList, { found: points, count: pointCount, nameOf }),
+    h("p", { className: "hint federal-note" }, `${FEDERAL_NOTE}.`),
+  );
+}
+
+/**
+ * The Legend sheet's federal land part, a Mass Ride's alone and while the layer is on: the four kinds in
+ * words and patterns, then the help, the ownership caveat and the route's badge (moved from Layers, the
+ * owner's "less wordy", 2026-10-12).
+ */
+export function FederalLegendNotes({ preset, on, status }: { preset: PresetId; on: boolean; status: FederalStatus }): ReactElement | null {
+  if (!federalShown(preset, on)) return null;
+  return h(
+    "div",
+    { className: "federal-notes" },
+    status !== "unavailable" && h(FederalLegend),
     h("p", { className: "hint federal-badge" }, FEDERAL_BADGE),
     h("p", { className: "hint" }, FEDERAL_HELP),
     h("p", { className: "hint" }, FEDERAL_OWNERSHIP),
-    h("p", { className: "hint federal-note" }, `${FEDERAL_NOTE}.`),
   );
 }
 
