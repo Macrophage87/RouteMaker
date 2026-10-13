@@ -162,7 +162,7 @@ export function LayersSheet(props: LayersSheetProps) {
         // Each layer's own status or hint line is inside; closed, the section says it.
         status={(open) => terrainStatus(open, terrain)}
       >
-        <MtbTrailsSwitch on={showMtbTrails} onChange={(on) => setMtbTrails(on)} overlay={stress === "available"} />
+        <MtbTrailsSwitch on={showMtbTrails} onChange={(on) => setMtbTrails(on)} overlay={stressShowable(stress)} />
         <ClimbsLayerControls on={climbsOn} onChange={changeClimbsOn} status={climbsStatus} items={climbsAlong} along={false} legend={false} />
         <TopoLinesSwitch on={showTopoLines} onChange={(on) => setTopoLines(on)} available={topoReady} />
       </LayerSection>

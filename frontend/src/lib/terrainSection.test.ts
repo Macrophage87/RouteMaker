@@ -8,6 +8,7 @@ import { readFileSync } from "node:fs";
 import { LayerSection, sectionPress, sectionState } from "./layerSection.ts";
 import { MTB_TRAILS_ROW_UNAVAILABLE, TOPO_LINES_ROW_UNAVAILABLE, stressShowable, terrainLayers, terrainStatus, type TerrainState } from "./terrainSection.ts";
 import { CLIMBS_LOADING } from "./climbsLegend.ts";
+import { MTB_TRAILS_HINT, MTB_TRAILS_NO_MAP_HINT, MtbTrailsSwitch } from "./mtbTrailsSwitch.ts";
 
 const all: TerrainState = { mtb: false, climbs: false, topo: false, stressAvailable: true, topoReady: true, climbsStatus: "ready" };
 const keys = (state: TerrainState) => terrainLayers(state).map((layer) => layer.key);
@@ -59,4 +60,14 @@ test("while the stress map is still being checked (page load), the trails stay i
   assert.equal(terrainStatus(false, { ...checking, stressAvailable: stressShowable("unavailable") }), MTB_TRAILS_ROW_UNAVAILABLE);
   const sheets = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
   assert.match(sheets, /stressAvailable: stressShowable\(stress\)/);
+});
+
+test("the trails' own switch, inside, follows the same rule: no unavailable hint while the stress map is checked", () => {
+  const hint = (stress: "checking" | "available" | "unavailable") =>
+    renderToStaticMarkup(createElement(MtbTrailsSwitch, { on: true, onChange: () => {}, overlay: stressShowable(stress) }));
+  assert.ok(hint("checking").includes(MTB_TRAILS_HINT) && !hint("checking").includes(MTB_TRAILS_NO_MAP_HINT));
+  assert.ok(hint("available").includes(MTB_TRAILS_HINT));
+  assert.ok(hint("unavailable").includes(MTB_TRAILS_NO_MAP_HINT));
+  const sheets = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
+  assert.match(sheets, /<MtbTrailsSwitch [^\n]*overlay=\{stressShowable\(stress\)\} \/>/);
 });

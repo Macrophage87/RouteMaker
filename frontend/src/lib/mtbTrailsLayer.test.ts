@@ -249,7 +249,7 @@ test("MapView shows or hides the layer in place when the switch changes, and App
   assert.match(sheet, /layers=\{terrainLayers\(terrain\)\}/);
   assert.match(sheet, /if \("mtb" in next && next\.mtb !== showMtbTrails\) setMtbTrails\(next\.mtb\);/);
   const terrain = sheet.slice(sheet.indexOf('<LayerSection\n        id="terrain"'));
-  assert.match(terrain.slice(0, terrain.indexOf("</LayerSection>")), /\}\s*>\s*<MtbTrailsSwitch on=\{showMtbTrails\} onChange=\{\(on\) => setMtbTrails\(on\)\} overlay=\{stress === "available"\} \/>/);
+  assert.match(terrain.slice(0, terrain.indexOf("</LayerSection>")), /\}\s*>\s*<MtbTrailsSwitch on=\{showMtbTrails\} onChange=\{\(on\) => setMtbTrails\(on\)\} overlay=\{stressShowable\(stress\)\} \/>/, "its hint says unavailable only once the stress map is known to be down, not while it is checked");
   // Every ride type: not inside a ride-type condition.
   const at = sheet.indexOf('<LayerSection\n        id="terrain"');
   assert.ok(at > 0 && !/&&|\?\s*$/.test(sheet.slice(at - 40, at).trim().split("\n").pop() ?? ""), "the section is not behind a condition");
