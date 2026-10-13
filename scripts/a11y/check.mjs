@@ -4175,6 +4175,29 @@ async function goPressMap(p) {
   await typed.close();
 }
 {
+  // Re-check of #128: leaving Go drops a destination it was keeping for a start, and its notice with it, in Plan and
+  // back in Go. Pressed while Go's opening look-up is still out (slow, then denied).
+  const SLOW_OPEN = "(() => { const g = navigator.geolocation; const real = g.getCurrentPosition.bind(g); Object.defineProperty(g, 'getCurrentPosition', { configurable: true, value: (ok, fail, o) => setTimeout(() => real(ok, fail, o), 8000) }); })();";
+  const p = await goWith("denied", { init: SLOW_OPEN });
+  const at = await goPressMap(p);
+  await sleep(600);
+  const waiting = await p.eval("document.querySelector('.go-notice')?.textContent ?? ''");
+  const notices = "[...document.querySelectorAll('.notice')].filter((e) => e.getClientRects().length).map((e) => e.textContent.trim()).join(' | ')";
+  await p.eval("[...document.querySelectorAll('nav.go-top .mode-button')].find((x) => x.textContent === 'Plan').click(); true");
+  await sleep(600);
+  const inPlan = await p.eval(notices);
+  await p.eval("[...document.querySelectorAll('.mode-switch .mode-button')].find((x) => x.textContent === 'Go' && x.getClientRects().length).click(); true");
+  await sleep(600);
+  const backInGo = await p.eval(notices);
+  await p.waitFor("/^Start: none yet/.test(document.querySelector('.go-start-line')?.textContent.trim() ?? '')", 15000);
+  await sleep(300);
+  const answered = await p.eval(`({ notices: ${notices}, hash: location.hash })`);
+  check("go: leaving Go drops a destination waiting for a start, and its notice (\"To <spot>: finding your location…\") with it, in Plan and back in Go; the look-up's later answer routes nothing",
+    !!at && /^To 38\.\d{4}, -77\.\d{4}: finding your location for the start/.test(waiting) && !/To 38\./.test(inPlan) && !/To 38\./.test(backInGo) && !/To 38\./.test(answered.notices) && !/p=/.test(answered.hash),
+    JSON.stringify({ at, waiting, inPlan, backInGo, answered }));
+  await p.close();
+}
+{
   // Review of PR #95: a destination picked while Go is still finding the location (a cold GPS, or the permission
   // prompt still open) waits for it and is routed when it comes; it is not dropped.
   const SLOW = "(() => { const g = navigator.geolocation; const real = g.getCurrentPosition.bind(g); Object.defineProperty(g, 'getCurrentPosition', { configurable: true, value: (ok, fail, o) => setTimeout(() => real(ok, fail, o), 4000) }); })();";
@@ -4565,7 +4588,7 @@ const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
 // The transit blocks (#108) and the Go press checks (#116) were added without raising it; they run since #127.
-const EXPECTED = 632;
+const EXPECTED = 633;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

@@ -481,6 +481,12 @@ export function App() {
     goPending.current = null;
     goAwaiting.current = false;
   };
+  // Leaving Go (the switch, or the account's Open in once read): Plan does not route a destination Go was keeping
+  // for a start, and its notice ("To <spot>: finding your location…") goes with it.
+  const leaveGo = () => {
+    if (goPending.current) setNotice(null);
+    clearGoPending();
+  };
   const [locating, setLocating] = useState(false);
   // One look-up at a time, set before the await, so a second call in the same tick is refused too.
   const gate = useRef(locateGate()).current;
@@ -780,6 +786,7 @@ export function App() {
       if (laterMyGoApplies(OPENING.by, modeSwitched.current)) {
         const later = openingMode({ tab: null, planLink: false, openIn: account.openIn, wide: !window.matchMedia(NARROW).matches }).mode;
         setModeState((now) => (now === later ? now : later));
+        if (later !== "go") leaveGo();
         if (later === "go" && account.ride && !PLAN_LINK && !rideTouched.current && pointsRef.current.length === 0) {
           setPreset(account.ride);
           setDials(startDials(account.ride));
@@ -1685,8 +1692,7 @@ export function App() {
     setPanelOpen(true);
     setGoSheet("half");
     setModeState(next);
-    // Plan does not route a destination Go was keeping for a start.
-    if (next !== "go") clearGoPending();
+    if (next !== "go") leaveGo();
     announceExtra(modeSaid(next));
     saveMyGoNow({ ...myGoRef.current, openIn: next }, false);
   };

@@ -386,7 +386,11 @@ test("go tap: a press on the map in Go is the destination, routed as a picked on
   assert.match(appFile, /const clearGoPending = \(\) => \{\s*goPending\.current = null;\s*goAwaiting\.current = false;\s*\};/);
   assert.equal((appFile.match(/goPending\.current = null;/g) ?? []).length, 1, "every other clear goes through clearGoPending");
   assert.match(appFile, /if \(action\.kind === "route"\) \{\s*clearGoPending\(\);/);
-  assert.match(appFile, /if \(next !== "go"\) clearGoPending\(\);/, "leaving Go drops the destination it kept");
+  // Leaving Go drops the destination it kept, and its notice with it (re-check of #128), from the switch and from
+  // the account's Open in once it is read.
+  assert.match(appFile, /const leaveGo = \(\) => \{\s*if \(goPending\.current\) setNotice\(null\);\s*clearGoPending\(\);\s*\};/);
+  assert.match(appFile, /setModeState\(next\);\s*if \(next !== "go"\) leaveGo\(\);/, "the Go/Plan switch");
+  assert.match(appFile, /setModeState\(\(now\) => \(now === later \? now : later\)\);\s*if \(later !== "go"\) leaveGo\(\);/, "the account's Open in");
   // Locate's answer to a waiting destination keeps its reason (review of #128).
   assert.match(appFile, /if \(goWaiting\(\)\) \{\s*settleGoWaiting\(result, true\);\s*return;\s*\}/);
   assert.equal(goStartFailedReason("denied"), "Your location is blocked for this site. Allow location in the browser's site settings, or type a start.");
