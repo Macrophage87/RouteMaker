@@ -2006,7 +2006,7 @@ curl -s 'http://localhost:8000/api/reverse?lat=38.90133&lon=-77.260598'
 | | `GET /api/geocode` | `GET /api/reverse` |
 | --- | --- | --- |
 | Parameters | `q` (2-200 characters after white space is collapsed), optional `lat` and `lon` together (a bias, inside `COVERAGE_BBOX`), `limit` 1-10 (default 6), `lang` (`en` only, the imported language) | `lat`, `lon` (inside `COVERAGE_BBOX`), `lang` (`en`) |
-| What reaches Photon | the query with US street abbreviations spelled out (`Blvd`, `St`, `Ave`, `Rd`, `Dr`, `Pkwy`, `Hwy`, `Ct`, `Ln`, `Pl`, `Sq`, `Ter`, `N`/`S`/`E`/`W`, `NE`/`NW`/`SE`/`SW`; `geocode.expand_abbreviations` has the rules), the bias, a count a few above `limit`, `lang`, and `bbox` = `COVERAGE_BBOX`; nothing else the request carries | `lat`, `lon`, `lang`, `limit=1`, `radius=0.25` km |
+| What reaches Photon | the query with US street abbreviations spelled out (`Blvd`, `St`, `Ave`, `Rd`, `Dr`, `Pkwy`, `Hwy`, `Ct`, `Ln`, `Pl`, `Sq`, `Ter`, `N`/`S`/`E`/`W`, `NE`/`NW`/`SE`/`SW`; `geocode.expand_abbreviations` has the rules), the bias with its strength (`zoom` 14 and `location_bias_scale` 0.2, `geocode.BIAS_ZOOM` and `BIAS_SCALE`, so nearby places rank first; the page sends the rider's location when it already has one, else the map's centre), a count a few above `limit`, `lang`, and `bbox` = `COVERAGE_BBOX`; nothing else the request carries | `lat`, `lon`, `lang`, `limit=1`, `radius=0.25` km |
 | 200 | `{"results": [...], "attribution": [...]}`, at most `limit` results, each inside the box, rows with the same name and OSM key within 300 m folded into one | the same shape, zero or one result |
 
 Each result is `{name, label, lon, lat, kind, osm_type, osm_id, osm_key,
@@ -4572,13 +4572,16 @@ puts it, at most two presses away.
   start line and said politely ("Start: your current location.") but not yet a point, so the
   link holds no position until a destination is picked; denied, unavailable or timed out, the
   start stays empty, the start box opens and "Current location not available; type a start." is
-  shown and said politely. A start typed in (Change start, `PlaceSearch variant="start"`) or
-  tapped on the map is the plan's first point and replaces the location. A destination picked
+  shown and said politely. A start typed in (Change start, `PlaceSearch variant="start"`), or
+  one placed in Plan, is the plan's first point and replaces the location (a press on the map in Go is the destination). A destination picked
   before there is a start is never dropped nor made the start (`goPickAction`): while the
   location is still being found it waits ("To …: finding your location for the start…") and is
   routed when the location comes; with no location, it is kept ("To …. Current location not
-  available; type a start.") and a start typed in the start box, or tapped on the map (or Add at
-  centre), plans the route to it at once (`goTapStartsPending`, follow-up review of #95). Picking a
+  available; type a start.") and a start typed in the start box plans the route to it at once. A
+  press on the map in Go, the route line included (a drag of the line still adds a stop; `lineTapIsPoint`), or Map tools' "Set destination at map center", is the destination, routed as a
+  picked one is and said "Destination set: …" (named by `goPlaceName`, the same on the sheet: its coordinates until
+  its place name comes; a press on a water, climb or federal-land card's feature, or one that only closes such a card,
+  is the card's alone, `featureCardPress`; `goTapSetsEnd`, the owner 2026-10-12; it replaces #95's tap-as-start). Picking a
   destination with a start plans at once; Go then shows the routes to choose from open, and the ride types under the
   route, so Bikeshare is one press, and only a Bikeshare route names its pick-up and drop-off
   stations (the route's Bikeshare plan).
@@ -4687,12 +4690,13 @@ Tests: `lib/sidebar.test.ts`.
   section, and is also said through `said` while the planner is hidden
   (`noticeSaidElsewhere`), never both at once. A Mass Ride loads the federal-land data
   whatever the shading switch says (`federalWanted`), for the planner's points list.
-- **Scrolling.** `.panel-body` is a column: the beta banner (its first child), the
+- **Scrolling.** `.panel-body` is a column: the status bar, the
   scrolling `.panel-scroll`, then the pinned route actions and bottom bar. On a short
   or zoomed screen (`@media (max-height: 32.5em), (max-width: 22.5em)`, 520 px and
   360 px at 16 px text) the whole `.panel` scrolls as one instead, so at 400% zoom of
-  1280x800 (320x200) the 96 px phone sheet scrolls all of its content, banner and
-  Dismiss included, where the pinned parts left the planner 0 px.
+  1280x800 (320x200) the 96 px phone sheet scrolls all of its content, where the
+  pinned parts left the planner 0 px. (The beta notice is not in the panel: it is the
+  "Beta" chip in the map's bottom-left corner, lib/betaBanner.ts.)
 - **Copy link** copies `linkToCopy`: this page and `encodePlan(points, preset, dials)`,
   the fragment App writes to the address bar, which never holds the weight (313). Its
   "Link copied." is polite, said again on a second press, and cleared when the plan
@@ -7503,7 +7507,9 @@ Washington, DC. GPS 38.91234, -77.03890." A distance from a far junction ("about
 ...", the old trail marker) is never said: it named unnamed ways and helped no one find the spot. The
 coordinates are never trimmed; the only cap is the note's 120 characters. The 311 menu's place line
 (`menuPlaceLine` in `lib/ride311.ts`) shows the same words and coordinates. Where am I? keeps its trail
-marker (`placeOnRoute`, `TRAIL_MARKER_M` in `lib/navigate.ts`).
+marker (`placeOnRoute`, `TRAIL_MARKER_M` in `lib/navigate.ts`), measured only from a junction on the
+trail itself with a named street; an unnamed way (`isUnnamed`, `wayRidden`) is said plainly ("On an
+unnamed path.") and is never used as a trail or a reference point.
 
 **Checks (N7).** `corridor.test.ts`, `report311.test.ts`, the trail cases in `navigate.test.ts` and
 `loadTile` in `stressProtocol.test.ts`; the browser suite's Ride mode section checks that the stress

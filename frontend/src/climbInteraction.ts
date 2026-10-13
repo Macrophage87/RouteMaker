@@ -49,18 +49,22 @@ export function attachClimbInteraction(map: MapLibreMap, options: ClimbInteracti
     popup?.remove();
     popup = null;
   };
-  const onClick = (event: maplibregl.MapMouseEvent) => {
-    close();
-    if (!options.visible() || options.otherPopupOpen() || !map.getLayer(CLIMBS_MARKER_LAYER)) return;
-    if (event.originalEvent.target !== map.getCanvas()) return;
-    const { x, y } = event.point;
+  /** The climb a press at `point` (screen pixels) is on, shown, within the tap slop; undefined if none. */
+  const at = ({ x, y }: { x: number; y: number }): Climb | undefined => {
+    if (!options.visible() || !map.getLayer(CLIMBS_MARKER_LAYER)) return undefined;
     const box: [[number, number], [number, number]] = [
       [x - TAP_SLOP, y - TAP_SLOP],
       [x + TAP_SLOP, y + TAP_SLOP],
     ];
     const feature = map.queryRenderedFeatures(box, { layers: [CLIMBS_MARKER_LAYER] })[0];
     const id = (feature?.properties as { id?: string } | undefined)?.id;
-    const c = id ? options.climb(id) : undefined;
+    return id ? options.climb(id) : undefined;
+  };
+  const onClick = (event: maplibregl.MapMouseEvent) => {
+    close();
+    if (options.otherPopupOpen()) return;
+    if (event.originalEvent.target !== map.getCanvas()) return;
+    const c = at(event.point);
     if (!c) return;
     const content = climbCardElement(c);
     content.addEventListener("keydown", (key) => {
@@ -79,6 +83,8 @@ export function attachClimbInteraction(map: MapLibreMap, options: ClimbInteracti
   return {
     close,
     open: () => popup !== null,
+    /** Whether a press at `point` is on a shown climb (its card's, not the map's: lib/mapGlue.ts featureCardPress). */
+    hits: (point: { x: number; y: number }) => at(point) !== undefined,
     detach() {
       close();
       map.off("click", onClick);

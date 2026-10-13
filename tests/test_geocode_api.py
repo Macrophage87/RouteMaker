@@ -186,7 +186,16 @@ class TestSearch:
             url="http://elsewhere.example/",
         )
         ((_path, params),) = fake.calls
-        assert set(params) == {"q", "lat", "lon", "limit", "lang", "bbox"}
+        assert set(params) == {
+            "q",
+            "lat",
+            "lon",
+            "zoom",
+            "location_bias_scale",
+            "limit",
+            "lang",
+            "bbox",
+        }
         assert params["q"] == "Purcellville"
         assert (params["lat"], params["lon"]) == (39.1, -77.5)
         # A few more than asked for, to fold near-identical rows, within
@@ -199,6 +208,17 @@ class TestSearch:
         get(client, SEARCH, q="Purcellville")
         ((_path, params),) = fake.calls
         assert "lat" not in params and "lon" not in params
+        assert "zoom" not in params and "location_bias_scale" not in params
+
+    def test_a_bias_is_sent_with_its_strength(self, client, photon) -> None:
+        """A bias point carries the zoom and scale that make nearby places
+        rank first (Photon's own defaults barely prefer them)."""
+        fake = photon(answer())
+        get(client, SEARCH, q="coffee", lat=str(INSIDE[1]), lon=str(INSIDE[0]))
+        ((_path, params),) = fake.calls
+        assert (params["lat"], params["lon"]) == pytest.approx((INSIDE[1], INSIDE[0]))
+        assert params["zoom"] == geocode.BIAS_ZOOM == 14
+        assert params["location_bias_scale"] == geocode.BIAS_SCALE == 0.2
 
     def test_whitespace_is_collapsed_before_it_is_sent(self, client, photon) -> None:
         fake = photon(answer())
@@ -1091,6 +1111,22 @@ class TestTransport:
         parsed = urllib.parse.urlsplit(path)
         assert parsed.path == "/api"
         assert urllib.parse.parse_qs(parsed.query) == {"q": ["a&b=c"], "limit": ["2"]}
+
+    def test_a_search_sends_the_bias_strength_only_with_a_point(self, photon_server) -> None:
+        """What reaches Photon's HTTP API: lat, lon, zoom and
+        location_bias_scale with a point, none of them without."""
+        url, seen = photon_server(200, json.dumps(answer()).encode())
+        with override_settings(PHOTON_URL=url):
+            geocode.search("coffee", lat=38.9, lon=-77.03, limit=5, lang="en")
+            geocode.search("coffee", limit=5, lang="en")
+        biased, plain = (dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(p).query)) for p in seen)
+        assert {k: biased[k] for k in ("lat", "lon", "zoom", "location_bias_scale")} == {
+            "lat": "38.9",
+            "lon": "-77.03",
+            "zoom": "14",
+            "location_bias_scale": "0.2",
+        }
+        assert not {"lat", "lon", "zoom", "location_bias_scale"} & set(plain)
 
     @pytest.mark.parametrize(
         ("status", "body"),
