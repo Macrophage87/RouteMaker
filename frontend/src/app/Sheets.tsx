@@ -17,8 +17,9 @@ import { isPlainClick, rememberPlanForSignIn, tabSession } from "../lib/signIn.t
 import { pointName } from "../lib/summary.ts";
 import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, setMtbTrails } from "../stressStyle.js";
 import { HighStressLanesSwitch } from "../lib/highStressLanesSwitch.ts";
-import { MTB_TRAILS_LABEL, MtbTrailsSwitch } from "../lib/mtbTrailsSwitch.ts";
-import { setTopoLines, TOPO_LINES_LABEL, TopoLinesSwitch } from "../lib/topoLines.ts";
+import { MtbTrailsSwitch } from "../lib/mtbTrailsSwitch.ts";
+import { setTopoLines, TopoLinesSwitch } from "../lib/topoLines.ts";
+import { stressShowable, terrainLayers, terrainStatus } from "../lib/terrainSection.ts";
 import { LayerSection } from "../lib/layerSection.ts";
 import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
 import { ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
@@ -38,10 +39,10 @@ import { GpxPanel } from "../GpxPanel.tsx";
 import { JunctionLegend, SheetFrame } from "../Sidebar.tsx";
 import { MASS_RIDE_LAYERS_NOTE, MENU_TITLE, SHEET_TITLES, STRESS_CHECKING, STRESS_UNAVAILABLE, type PanelView } from "../lib/sidebar.ts";
 import type { ImportedPlan } from "../lib/gpxPlan.ts";
-import type { WaterAlong, WaterPrefs, WaterStatus } from "../lib/waterRestrooms.ts";
+import type { WaterPrefs, WaterStatus } from "../lib/waterRestrooms.ts";
 import { WaterLegend, WaterLegendNotes, WaterSection } from "../lib/waterLegend.ts";
 import type { ClimbAlong, ClimbsStatus } from "../lib/climbs.ts";
-import { CLIMBS_HELP, CLIMBS_LABEL, ClimbsLayerControls, ClimbsLegend, climbsStatusText } from "../lib/climbsLegend.ts";
+import { CLIMBS_HELP, ClimbsLayerControls, ClimbsLegend } from "../lib/climbsLegend.ts";
 import { InstallOffer, KeptRoutes } from "../InstallableApp.tsx";
 import type { KeptRoute } from "../lib/offlineRoutes.ts";
 import { anyKept } from "../lib/offlineRouteStore.ts";
@@ -82,13 +83,11 @@ export interface LayersSheetProps {
   waterPrefs: WaterPrefs;
   changeWaterPrefs: (next: WaterPrefs) => void;
   waterStatus: WaterStatus;
-  waterAlong: WaterAlong[] | null;
   /** The Climbs layer (lib/climbs.ts): the switch, its data's status and the climbs the route rides. */
   climbsOn: boolean;
   changeClimbsOn: (on: boolean) => void;
   climbsStatus: ClimbsStatus;
   climbsAlong: ClimbAlong[] | null;
-  addWaterStop: (item: WaterAlong) => void;
   rail: RailVisibility;
   setRail: (next: RailVisibility) => void;
   showMtbTrails: boolean;
@@ -99,6 +98,8 @@ export interface LayersSheetProps {
 /** The Layers sheet: the map's switches, in the mockup's order, with the Legend button at its top. */
 export function LayersSheet(props: LayersSheetProps) {
   const { nav, openLegend, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsStatus, climbsAlong } = props;
+  // The Trails and terrain section's layers that can show, and its row's words (lib/terrainSection.ts).
+  const terrain = { mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stressShowable(stress), topoReady, climbsStatus };
   return (
     <SheetFrame
       id="sheet-layers"
@@ -152,20 +153,16 @@ export function LayersSheet(props: LayersSheetProps) {
         id="terrain"
         title="Trails and terrain"
         headingId="terrain-heading"
-        layers={[
-          { key: "mtb", label: MTB_TRAILS_LABEL, on: showMtbTrails },
-          { key: "climbs", label: CLIMBS_LABEL, on: climbsOn },
-          { key: "topo", label: TOPO_LINES_LABEL, on: showTopoLines },
-        ]}
+        layers={terrainLayers(terrain)}
         onLayers={(next) => {
-          if (next.mtb !== showMtbTrails) setMtbTrails(next.mtb);
-          if (next.climbs !== climbsOn) changeClimbsOn(next.climbs);
-          if (next.topo !== showTopoLines) setTopoLines(next.topo);
+          if ("mtb" in next && next.mtb !== showMtbTrails) setMtbTrails(next.mtb);
+          if ("climbs" in next && next.climbs !== climbsOn) changeClimbsOn(next.climbs);
+          if ("topo" in next && next.topo !== showTopoLines) setTopoLines(next.topo);
         }}
-        // The climbs' own status line is inside; closed, the section says it.
-        status={(open) => (open ? "" : climbsStatusText(climbsOn, climbsStatus))}
+        // Each layer's own status or hint line is inside; closed, the section says it.
+        status={(open) => terrainStatus(open, terrain)}
       >
-        <MtbTrailsSwitch on={showMtbTrails} onChange={(on) => setMtbTrails(on)} overlay={stress === "available"} />
+        <MtbTrailsSwitch on={showMtbTrails} onChange={(on) => setMtbTrails(on)} overlay={stressShowable(stress)} />
         <ClimbsLayerControls on={climbsOn} onChange={changeClimbsOn} status={climbsStatus} items={climbsAlong} along={false} legend={false} />
         <TopoLinesSwitch on={showTopoLines} onChange={(on) => setTopoLines(on)} available={topoReady} />
       </LayerSection>
