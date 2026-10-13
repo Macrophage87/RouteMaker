@@ -3,10 +3,10 @@
  * figures, its elevation profile and "Ride this climb" (the owner, 2026-10-12).
  *
  * Unlike the water card, a press on a climb is the climb's, not also a new point: MapView's click asks
- * `climbAt` first (after a station, which keeps its own card) and opens the card instead of placing a
- * point, in Plan and in Go alike. The summit marker wins over the route line drawn over it; the climb's
- * own line gives way to the route line, so a press on a route that rides a climb still adds a stop. The
- * click after the card is open only closes it, as a station card's does. It also closes on Escape (the
+ * `climbAt` first (after a station and a water or restroom icon, which keep their own cards) and opens the
+ * card instead of placing a point. In Plan only the summit marker opens it, so a press on the climb's dashed
+ * line still places a point on the climbing road; in Go the line opens it too (a feature card, never the
+ * destination). The click after the card is open only closes it, as a station card's does. It also closes on Escape (the
  * focus going back where it was), and does nothing while the layer is off. The road panel's "Climb
  * details" opens it from the keyboard, with the focus in it (`openCard(c, true)`).
  */
@@ -74,8 +74,8 @@ export function attachClimbInteraction(map: MapLibreMap, options: ClimbInteracti
     return (id && options.climb(id)) || null;
   };
 
-  /** The climb under a press: its summit marker, or (unless the route line is there too) its line. */
-  const climbAt = (point: { x: number; y: number }, onRouteLine: boolean): Climb | null => {
+  /** The climb under a press: its summit marker, or with `withLine` (Go) its dashed line too. */
+  const climbAt = (point: { x: number; y: number }, withLine: boolean): Climb | null => {
     if (!options.visible()) return null;
     const { x, y } = point;
     const marker = query(
@@ -85,7 +85,7 @@ export function attachClimbInteraction(map: MapLibreMap, options: ClimbInteracti
       ],
       CLIMBS_MARKER_LAYER,
     );
-    if (marker || onRouteLine) return marker;
+    if (marker || !withLine) return marker;
     return query(
       [
         [x - LINE_SLOP, y - LINE_SLOP],
@@ -116,6 +116,7 @@ export function attachClimbInteraction(map: MapLibreMap, options: ClimbInteracti
           climb: c,
           state,
           uid,
+          focusOnMount: focus,
           onRide: () => {
             close();
             options.onRide(c);
@@ -137,11 +138,9 @@ export function attachClimbInteraction(map: MapLibreMap, options: ClimbInteracti
     popup.on("close", () => {
       if (root === thisRoot) close();
     });
-    if (focus) {
-      map.easeTo({ center: [c.lon, c.lat] });
-      // After React has drawn it: the card itself takes the focus, so its name is said first.
-      window.setTimeout(() => (container.querySelector(".climb-popup") as HTMLElement | null)?.focus(), 0);
-    }
+    // With `focus` (the road panel's "Climb details") the card takes the focus itself once React has
+    // mounted it (ClimbCardView's focusOnMount), so its name is said first.
+    if (focus) map.easeTo({ center: [c.lon, c.lat] });
   };
 
   const onKey = (event: KeyboardEvent) => {
@@ -153,8 +152,8 @@ export function attachClimbInteraction(map: MapLibreMap, options: ClimbInteracti
     openCard,
     close: () => close(),
     open: () => popup !== null,
-    /** Whether a press at `point` is on a shown climb, its marker or its line (lib/mapGlue.ts featureCardPress). */
-    hits: (point: { x: number; y: number }) => climbAt(point, false) !== null,
+    /** Whether a Go press at `point` is on a shown climb, its marker or its line (lib/mapGlue.ts featureCardPress). */
+    hits: (point: { x: number; y: number }) => climbAt(point, true) !== null,
     detach() {
       close();
       window.removeEventListener("keydown", onKey);

@@ -4410,12 +4410,60 @@ async function goPressMap(p) {
   await p.close();
 }
 
+{
+  // The climb card from the keyboard (the owner, 2026-10-12; review of #123): with the Climbs layer on, Road
+  // info at map center on a climb offers "Climb here" and "Climb details"; Enter there opens the climb's card
+  // with the focus in it, its name said; Escape closes it and gives the focus back to the map.
+  const p = await open({ init: "try { localStorage.setItem('routemaker.climbs', '1'); } catch {}" });
+  // A point on the first climb in climb-data/climbs.json (Cat 2, 12,090 m, on its line).
+  const jumped = await jumpMap(p, -77.42194, 39.62173, 15);
+  // The layer's file loaded and drawn (the road panel offers a climb only once App has the climbs).
+  const drawn = await p.waitFor(`(() => { const el = document.querySelector('.map'); const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
+    for (let f = key ? el[key] : null; f; f = f.return) {
+      for (let h = f.memoizedState; h && typeof h === 'object' && 'next' in h; h = h.next) {
+        const m = h.memoizedState?.current;
+        if (m && typeof m.jumpTo === 'function') return !!m.getSource('climbs');
+      } }
+    return false; })()`, 30000);
+  await sleep(500);
+  const before = p.infoRequests.length;
+  await mapTool(p, "Road info at map center");
+  const t0 = Date.now();
+  while (p.infoRequests.length <= before && Date.now() - t0 < 8000) await sleep(50);
+  const offered = await p.waitFor("!!document.querySelector('dialog.road-info[open] .road-info-climb button')", 15000);
+  const here = await p.eval("document.querySelector('dialog.road-info .road-info-climb p')?.textContent ?? ''");
+  await p.eval("document.querySelector('dialog.road-info .road-info-climb button')?.focus(); true");
+  await p.enter();
+  const inCard = await p.waitFor("!document.querySelector('dialog.road-info[open]') && !!document.activeElement?.closest('.climb-popup')", 8000);
+  // Stays there (the dialog's own focus return and the map's move do not take it back).
+  await sleep(600);
+  const still = await p.eval("!!document.activeElement?.closest('.climb-popup')");
+  const card = await axNode(p, ".climb-popup");
+  const ride = await p.eval("[...document.querySelectorAll('.climb-popup button')].map((x) => x.textContent)");
+  check("climb card: Road info at map center on a climb offers Climb here and Climb details",
+    jumped && drawn && offered && /^Climb here: Category 2 climb, 7\.5 miles \(12\.1 km\) at 3\.0%/.test(here), JSON.stringify({ jumped, drawn, offered, here }));
+  check("climb card: Enter on Climb details puts the focus in the card, and it stays",
+    inCard && still, JSON.stringify({ inCard, still, active: await p.eval("document.activeElement?.className ?? ''") }));
+  check("climb card: the focused card is a group named by its title, with one button, Ride this climb",
+    card?.role === "group" && /climb/i.test(card?.name ?? "") && JSON.stringify(ride) === JSON.stringify(["Ride this climb"]), JSON.stringify({ card, ride }));
+  const chart = await p.waitFor("!!document.querySelector('.climb-popup svg[role=img]')", 8000);
+  const img = chart ? await axNode(p, ".climb-popup svg[role=img]") : null;
+  const caption = chart ? await axNode(p, ".climb-popup figcaption") : null;
+  check("climb card: the profile is a picture named by its text alternative, the caption not read twice",
+    img?.role === "image" && /^Climbs [\d,]+ ft \([\d,]+ m\) over 7\.5 mi \(12\.1 km\), steepest 9%\.$/.test(img?.name ?? "") && (caption === null || caption.ignored), JSON.stringify({ img, caption }));
+  await p.escape();
+  // Back where it was before the card: where the road panel left it (Map tools, which opened it), or the map.
+  const back = await p.waitFor("!document.querySelector('.climb-popup') && (document.activeElement === document.querySelector('.maplibregl-canvas') || !!document.activeElement?.closest('.map-tools-toggle, .map-tools-panel'))", 5000);
+  check("climb card: Escape closes it and gives the focus back to where it was (Map tools, or the map)", back, JSON.stringify({ active: await p.eval("document.activeElement?.className ?? ''") }));
+  await p.close();
+}
+
 b.close();
 
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 611;
+const EXPECTED = 616;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

@@ -1704,11 +1704,12 @@ ride type but Mountain Goat): `candidates`, `chosen` (0 is the router's own),
 negative where shorter), and `limited` (`two_points`, `long_ride`, `timed_out`,
 `calm_first`).
 
-**The climb card** (v0.6.0; the owner, 2026-10-12). A press on a climb's summit marker or dashed
-line opens its card (`climbInteraction.ts`, `lib/climbCard.ts`): MapView's click asks `climbAt`
-before `runClick`, after a station, so the press is never also a point or (in Go) a destination; the
-summit wins over the route line and the climb's line gives way to it; the next click only closes the
-card. The profile is GET /api/climbs/{id}/profile (`core.climbprofile`, read-only, rate-limited
+**The climb card** (v0.6.0; the owner, 2026-10-12). A press on a climb's summit marker (in Go,
+its dashed line too) opens its card (`climbInteraction.ts`, `lib/climbCard.ts`): MapView's click asks
+`climbAt` before `runClick`, after a station and a water or restroom icon (`water.hits`), so the press
+is never also a point or (in Go) a destination; in Plan a press on the dashed line places a point as
+before. The next click only closes the card (`climbClosing` keeps the water and federal cards from
+opening under it). "Climb details" focuses the card from ClimbCardView's own mount effect. The profile is GET /api/climbs/{id}/profile (`core.climbprofile`, read-only, rate-limited
 `climb-profile` 60 a minute, `ROUTING_IN_FLIGHT`): the climb is looked up by id in the committed
 file, the router asked once for a /route foot to summit through `hillseek.via_points` with
 `elevation_interval` 30 (standard, then offroad), the heights and grades read as the route chart's

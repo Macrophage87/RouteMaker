@@ -169,15 +169,17 @@ test("MapView: a climb press opens its card before the click can place a point, 
   const climbAt = click.indexOf("climbCard?.climbAt(");
   const run = click.indexOf("runClick(under");
   assert.ok(climbAt > 0 && run > climbAt, "the climb is asked for before runClick");
-  // A station keeps its own card; in Plan the route line keeps a press on the climb's line (not its marker);
-  // in Go (#116) a press on the route line is no edit, so the climb's line wins there.
-  assert.match(click, /!under\.station && !anyPopupOpen\(\)/);
-  assert.match(click, /const onRouteLine = under\.line !== null && !goPress;/);
-  assert.match(click, /climbAt\(event\.point, onRouteLine\)/);
+  // A station and a water or restroom icon keep their own cards; in Plan only the summit marker opens the
+  // card (a press on the climb's line places a point), in Go the line too.
+  assert.match(click, /!under\.station && !anyPopupOpen\(\) && !water\?\.hits\(event\.point\)/);
+  assert.match(click, /climbAt\(event\.point, goPress\)/);
+  // The click that closes the card opens no water or federal card under it.
+  assert.match(click, /climbCard\.close\(\);\s*climbClosing = true;/);
+  assert.match(view, /otherPopupOpen: \(\) => anyPopupOpen\(\) \|\| climbClosing,/);
   // And before Go's feature-card check, which lists the climb card too.
   assert.ok(climbAt < click.indexOf("featureCardPress(["));
   const interaction = readFileSync(new URL("../climbInteraction.ts", import.meta.url), "utf8");
-  assert.match(interaction, /if \(marker \|\| onRouteLine\) return marker;/);
+  assert.match(interaction, /if \(marker \|\| !withLine\) return marker;/);
   assert.doesNotMatch(interaction, /map\.on\("click"/, "no click of its own: MapView's decides");
 });
 
@@ -205,7 +207,7 @@ test("the card: name, facts, the map's shape with its meaning, one button", () =
   assert.ok(html.includes('aria-labelledby="u-title"'));
   assert.ok(html.includes("<dt>Length</dt><dd>0.6 mi (1.0 km)</dd>"));
   assert.ok(html.includes("<dt>Elevation gain</dt><dd>240 ft (73 m)</dd>"));
-  assert.ok(html.includes("Moderate: 4 to 7.9%"));
+  assert.ok(html.includes("Map marker: square. </span>Moderate: 4 to 7.9%"), "the shape named for a screen reader");
   assert.ok(html.includes('class="climb-swatch"'), "the real shape");
   assert.ok(html.includes("Mostly unpaved."));
   assert.ok(html.includes(PROFILE_LOADING));
@@ -224,9 +226,9 @@ test("each shape's meaning, as the legend says it", () => {
 
 test("the profile chart is a picture with its text alternative", () => {
   const html = renderToStaticMarkup(createElement(ClimbCardView, { climb: climb({ lengthM: 1290 }), state: { kind: "ready", profile: PROFILE }, uid: "u", onRide: () => {} }));
-  assert.ok(html.includes('role="img"'));
-  assert.ok(html.includes('aria-labelledby="u-profile-text"'));
-  assert.ok(html.includes('id="u-profile-text"'));
+  // Named once: the picture's own label; the caption beside it is for the eye.
+  assert.ok(html.includes('role="img" aria-label="Climbs 240 ft (73 m) over 0.8 mi (1.3 km), steepest 9%."'));
+  assert.ok(html.includes('id="u-profile-text" class="climb-profile-text" aria-hidden="true"'));
   assert.ok(html.includes("Climbs 240 ft (73 m) over 0.8 mi (1.3 km), steepest 9%."));
   assert.ok(html.includes('class="pc-line"'), "the route chart's line");
   assert.ok(html.includes("<dt>Steepest</dt><dd>9%</dd>"));

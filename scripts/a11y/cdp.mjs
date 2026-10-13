@@ -242,6 +242,12 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       status = 200;
       body = JSON.stringify(segmentInfoAt(page.editRoad.tier));
       type = "application/json";
+    } else if (/^\/api\/climbs\/[A-Za-z0-9]+\/profile$/.test(url.pathname)) {
+      // The climb card's profile (core/climbprofile.py): one small climb, whatever the id.
+      status = 200;
+      body = JSON.stringify({ id: url.pathname.split("/")[3], category: "2", length_m: 12090, gain_m: 368, avg_grade_pct: 3, max_grade_pct: 9,
+        interval_m: 30, m: [0, 30, 60, 90, 120], elevation_m: [150, 152, 155, 158, 160], grade_pct: [6.7, 8, 9, 8.3, 6.7] });
+      type = "application/json";
     } else if (url.pathname === "/api/me/go") {
       // My Go (UI-CLEANUP; core/api.py my_go_read, my_go_save): the account's, signed in only.
       (page.myGoRequests ??= []).push({ method: request.method, headers: request.headers, body: request.postData ? JSON.parse(request.postData) : null });

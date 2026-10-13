@@ -547,6 +547,8 @@ export function MapView(props: Props) {
       addWaterRestrooms(map as unknown as WaterMap, data, prefs, iconPixelRatio(), ROUTE_BOTTOM_LAYER);
     };
     let climbCard: ReturnType<typeof attachClimbInteraction> | null = null;
+    /** True for the rest of the click that closed a climb card, so no water or federal card opens under it. */
+    let climbClosing = false;
     let climbById = new Map<string, Climb>();
     /** Add the Climbs layer when its data has come, then show or hide it with the switch. */
     const syncClimbs = () => {
@@ -856,19 +858,20 @@ export function MapView(props: Props) {
         : { station: null, line: null };
       const point: LonLat = [event.lngLat.lng, event.lngLat.lat];
       const goPress = callbacks.current.pressSetsEnd === true;
-      // A climb (climbInteraction.ts): its card, in Plan and in Go, and never also a point or (in Go) the
-      // destination. The click after its card is open only closes it, or opens the card of the climb pressed.
-      // In Plan the route line keeps a press on the climb's line (a stop there); in Go a press on the route
-      // line is no edit (lineTapIsPoint), so the climb's line wins there.
-      const onRouteLine = under.line !== null && !goPress;
+      // A climb (climbInteraction.ts): its card, never also a point or (in Go) the destination. In Plan only
+      // its summit marker (a press on its dashed line places a point on the climbing road, as before); in Go
+      // its line too. A station and a water or restroom icon keep their own cards. The click after its card
+      // is open only closes it (no other card opens under it), or opens the card of the climb pressed.
       if (climbCard?.open()) {
         climbCard.close();
-        const next = onCanvas && !under.station ? climbCard.climbAt(event.point, onRouteLine) : null;
+        climbClosing = true;
+        window.setTimeout(() => (climbClosing = false), 0);
+        const next = onCanvas && !under.station && !water?.hits(event.point) ? climbCard.climbAt(event.point, goPress) : null;
         if (next) climbCard.openCard(next);
         return;
       }
-      if (onCanvas && !under.station && !anyPopupOpen() && performance.now() >= clickSuppressedUntil) {
-        const climb = climbCard?.climbAt(event.point, onRouteLine);
+      if (onCanvas && !under.station && !anyPopupOpen() && !water?.hits(event.point) && performance.now() >= clickSuppressedUntil) {
+        const climb = climbCard?.climbAt(event.point, goPress);
         if (climb) {
           climbCard?.openCard(climb);
           return;
@@ -1091,7 +1094,7 @@ export function MapView(props: Props) {
       // The water and restrooms card first, so a tap on a fountain on federal land shows the fountain's.
       water = attachWaterInteraction(map, {
         visible: () => callbacks.current.waterPrefs?.on === true,
-        otherPopupOpen: () => anyPopupOpen() || climbCard?.open() === true,
+        otherPopupOpen: () => anyPopupOpen() || climbClosing,
         point: (id) => waterById.get(id),
       });
       waterSync.current = () => syncWater();
@@ -1106,7 +1109,7 @@ export function MapView(props: Props) {
       syncClimbs();
       federal = attachFederalInteraction(map, {
         visible: () => callbacks.current.federalVisible,
-        otherPopupOpen: () => anyPopupOpen() || water?.open() === true || climbCard?.open() === true,
+        otherPopupOpen: () => anyPopupOpen() || water?.open() === true || climbCard?.open() === true || climbClosing,
       });
       federalSync.current = () => syncFederal();
       syncFederal();

@@ -18,7 +18,7 @@
  *
  * Written with createElement so a test renders it, as climbsLegend.ts.
  */
-import { createElement as h, type ReactElement } from "react";
+import { createElement as h, useEffect, useRef, type ReactElement } from "react";
 import type { RouteProfile } from "./api.ts";
 import { formatClimb, formatDistance } from "./format.ts";
 import { MAX_POINTS, haversineM, type LonLat } from "./geo.ts";
@@ -255,7 +255,7 @@ export function ClimbProfileChart({ climb, profile, uid }: { climb: Climb; profi
     { className: "climb-profile" },
     h(
       "svg",
-      { viewBox: `0 0 ${CHART_W} ${CHART_H}`, className: "pc-svg", role: "img", "aria-labelledby": `${uid}-profile-text` },
+      { viewBox: `0 0 ${CHART_W} ${CHART_H}`, className: "pc-svg", role: "img", "aria-label": summary },
       h(
         "defs",
         null,
@@ -282,7 +282,8 @@ export function ClimbProfileChart({ climb, profile, uid }: { climb: Climb; profi
       h("text", { className: "pc-axis-text", x: PLOT.left, y: PLOT.axisY, textAnchor: "start" }, axisDistance(0)),
       h("text", { className: "pc-axis-text", x: PLOT.right, y: PLOT.axisY, textAnchor: "end" }, axisDistance(total)),
     ),
-    h("figcaption", { id: `${uid}-profile-text`, className: "climb-profile-text" }, summary),
+    // Shown for the eye; the picture's own name says it, so it is not read twice.
+    h("figcaption", { id: `${uid}-profile-text`, className: "climb-profile-text", "aria-hidden": "true" }, summary),
     h("p", { className: "hint climb-profile-key" }, "Amber: 5% to 8% (dotted), 8% or more (hatched). Elevation: USGS 3DEP."),
   );
 }
@@ -293,15 +294,22 @@ export interface ClimbCardProps {
   /** Unique per card, for its ids. */
   uid: string;
   onRide: () => void;
+  /** Take the focus once mounted (the road panel's "Climb details"), so the card's name is said first. */
+  focusOnMount?: boolean;
 }
 
 /** The card's contents (climbInteraction.ts puts them in the map's popup). */
-export function ClimbCardView({ climb, state, uid, onRide }: ClimbCardProps): ReactElement {
+export function ClimbCardView({ climb, state, uid, onRide, focusOnMount = false }: ClimbCardProps): ReactElement {
   const shape = climbShape(climb.gradePct);
   const facts = climbFacts(climb, state);
+  const self = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focusOnMount) self.current?.focus();
+    // Once, when the card is first drawn: a later draw (the profile coming in) leaves the focus where it is.
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return h(
     "div",
-    { className: "climb-popup", role: "group", "aria-labelledby": `${uid}-title`, tabIndex: -1 },
+    { ref: self, className: "climb-popup", role: "group", "aria-labelledby": `${uid}-title`, tabIndex: -1 },
     h("strong", { className: "climb-title", id: `${uid}-title` }, climbTitle(climb)),
     h(
       "dl",
@@ -312,7 +320,7 @@ export function ClimbCardView({ climb, state, uid, onRide }: ClimbCardProps): Re
       "p",
       { className: "climb-steepness" },
       h(ClimbSwatch, { shape, number: climb.category }),
-      h("span", null, h("span", { className: "visually-hidden" }, "Map marker: "), SHAPE_STEEPNESS[shape], " average"),
+      h("span", null, h("span", { className: "visually-hidden" }, `Map marker: ${shape}. `), SHAPE_STEEPNESS[shape], " average"),
     ),
     climb.unpaved ? h("p", { className: "climb-detail" }, "Mostly unpaved.") : null,
     state.kind === "ready"

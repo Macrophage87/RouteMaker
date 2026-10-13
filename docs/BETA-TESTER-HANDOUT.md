@@ -246,7 +246,8 @@ descriptions. Plan's "Change" ride type list has the same search and groups.
 
 Turn on "Climbs" in Map layers. The number at a climb's top is its category; the shape around it
 is its steepness: a circle is gentle (under 4%), a square moderate (4 to 7.9%), a diamond steep
-(8% or more). "Show climbs from" hides the smaller ones. Tap a climb's top or its dashed line for
-its card: its length, gain, average and steepest grade and an elevation profile. "Ride this
-climb" puts it in your route: in Plan its bottom and top become your next stops before the
-destination; in Go the route goes to its top by way of its bottom.
+(8% or more). "Show climbs from" hides the smaller ones. Tap a climb's top (in Go, its dashed line
+too) for its card; in Plan a tap on the dashed line adds a point there as before. The card has
+its length, gain, average and steepest grade and an elevation profile. "Ride this climb" puts it
+in your route: in Plan its bottom and top become your next stops before the destination; in Go
+the route goes to its top by way of its bottom.
