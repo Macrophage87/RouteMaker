@@ -52,7 +52,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from routemaker import climb_categories
+from routemaker import climb_categories, climb_exclusions
 from routemaker.describe import point_words
 from routemaker.geo import Point, haversine
 
@@ -159,7 +159,8 @@ _missing: set[str] = set()
 
 def parse(doc: object) -> tuple[Climb, ...] | None:
     """The climbs of the file's document, or None where it is not the file's shape. An
-    entry that is not a categorised climb with a line is left out."""
+    entry that is not a categorised climb with a line is left out, and so is one taken
+    off by hand for not being a public way open to bikes (`routemaker.climb_exclusions`)."""
     if not isinstance(doc, dict) or doc.get("version") != FORMAT_VERSION:
         return None
     rows = doc.get("climbs")
@@ -180,6 +181,8 @@ def parse(doc: object) -> tuple[Climb, ...] | None:
                 name=row.get("n") or None,
             )
         except (KeyError, TypeError, ValueError):
+            continue
+        if climb_exclusions.is_excluded(climb.id):
             continue
         if len(line) >= 2 and climb.category in CATEGORY_RANK and climb.length_m > 0:
             out.append(climb)

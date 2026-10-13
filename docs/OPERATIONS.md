@@ -5348,7 +5348,42 @@ and deploy the front end as usual. `tests/test_climb_layer.py::test_bundled_file
 and `climbs.test.ts` check the committed file.
 
 **What it reads.** Ways with `map_class = 'road'`, less `mtb_only` and `walk_bike`: access is the
-rebuild's, overrides included, so a barred, hidden or err-closed way never carries a climb. The ways
+rebuild's, overrides included, so a barred, hidden or err-closed way never carries a climb. And
+only a way the road panel calls open: `bike_access_reason` empty or `override_open`; any closing
+reason, or one the release does not know, is left out (unclear access is closed).
+
+**Only public ways open to bikes (owner report 2026-10-12).** "A marked climb appears to be a
+quarry, which isn't likely open to the public. Ensure only public roads open to bikes are marked."
+Climb `bd93dd04dc` (Cat 4, 1.2 mi (1,903 m), 512 ft (156 m) at 8.2%, unpaved) ran down into the
+Travilah quarry pit off Shady Grove Rd over nine ways tagged only `highway=track`, inside
+`landuse=quarry`: open by their own tags, so routable and drawn. Two fixes:
+
+- From the next rebuild, a way inside a quarry, a landfill or an industrial area is closed to
+  bicycles on every graph and left off the map (`restricted_areas.works_closures`,
+  `rm:no_bicycle=works`, the road panel's "inside a quarry, landfill or industrial site"), unless
+  its own tags open it (`bicycle=yes|designated|permissive`, or with no bicycle tag
+  `access=yes|permissive` or a cycleway), it is a numbered public road, DDOT's Roadway Block
+  records hold it (a District block matched to the way: DC data wins over OSM, OWNER-DECISIONS
+  190), or an owner's override reopens it. In an industrial area a named street that is not a
+  service road or a track (an industrial park's) stays open and is listed, unless its access
+  keeps it to destinations, customers or deliveries. Every way the rule looked at is in
+  `<DATA_ROOT>/rebuild/reports/works-closures.csv`. VALIDATE_SEGMENTS fails the build if any
+  highway way with an id in `REBUILD_SENTINEL_WORKS_CLOSED_RANGE` (the Travilah quarry's nine,
+  1379220522 to 1379220572) is not closed as `works`, and warns if fewer than nine are in the
+  extract. The climbs file then loses such climbs when it
+  is written again after that rebuild.
+- Now, without a rebuild: `routemaker.climb_exclusions.EXCLUDED` lists a climb by id with its
+  reason and source, and the builder, the hill seek (`core.hillseek.parse`) and the map
+  (`frontend/src/lib/climbExclusions.ts`, the same ids) all drop it, so the committed file need not
+  be rewritten. Add an id there (both files) for any other climb found on a closed way.
+
+Before shipping, audit the unnamed Cat 3 and Cat 4 climbs (274 in the committed file) against land
+use on the build host; a quarry, landfill or industrial site found under one goes in the list. To
+write the file again with the exclusions and the access filter, the command above is unchanged:
+
+    flock <the host's heavy.lock> docker compose exec -T rebuild ./manage.py build_climbs </dev/null
+
+The ways
 are joined into strokes across junctions (each way end paired with the one that continues it most
 nearly straight, within 45 degrees), sampled every 98 ft (30 m), and read both ways. A climb that
 rides a one-way segment against its drawn direction is left out; `road_oneway` has no direction, so

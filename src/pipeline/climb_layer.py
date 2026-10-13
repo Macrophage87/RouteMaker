@@ -11,7 +11,14 @@ What it reads:
 - **The network**: the live segment table's ways the map draws as routable (`map_class` =
   `road`), less the mountain-bike-only ways (closed for every ride type today; 291) and the
   walk-your-bike connectors. Access is the rebuild's, overrides and all, so a way a bicycle
-  may not use (barred, hidden, err closed) never carries a climb.
+  may not use (barred, hidden, err closed) never carries a climb. And only a way the
+  segment panel calls open (`segment.bike_access_reason` empty or an open reason in
+  `core.segment_info.ACCESS_WORDS`): a way with a closing reason, or one this release
+  does not know, is left out (unclear access is closed, OWNER-DECISIONS 330). A way inside
+  a quarry, a landfill or an industrial area closes at the rebuild
+  (`pipeline.restricted_areas.works_closures`, owner report 2026-10-12); until a rebuild
+  carries that, a climb found on one is listed by hand (`routemaker.climb_exclusions`)
+  and never written.
 - **The ground**: the same 3DEP one-arcsecond HGT tiles the routers read
   (`<DATA_ROOT>/elevation/N38/N38W077.hgt`; `pipeline.elevation`), bilinear between posts.
 
@@ -58,7 +65,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from routemaker import climb_categories
+from routemaker import climb_categories, climb_exclusions
 from routemaker.climb_categories import Climb
 
 from .elevation import HGT_1ARCSEC_SIDE, TileName, tile_for
@@ -488,11 +495,14 @@ def find_all(segments: Sequence[SegmentLine], ground: HgtElevation) -> list[Foun
 
 def document(found: Sequence[Found], built: datetime | None = None) -> dict:
     """The file's contents: the climbs biggest first (so the map draws the biggest on top
-    where markers meet), with the counts per category."""
+    where markers meet), with the counts per category. A climb taken off by hand
+    (`routemaker.climb_exclusions`) is not written."""
     entries = [f.entry() for f in sorted(found, key=lambda f: -f.climb.gain_m)]
     # The same climb found twice (a stroke that is a closed ring) is kept once.
     unique: dict[str, dict] = {}
     for entry in entries:
+        if climb_exclusions.is_excluded(entry["id"]):
+            continue
         unique.setdefault(entry["id"], entry)
     climbs = list(unique.values())
     counts = Counter(entry["c"] for entry in climbs)
@@ -524,9 +534,20 @@ def write(path: Path | str, doc: dict) -> None:
 SEGMENT_QUERY = """
 SELECT osm_way_id, ordinal, ST_AsGeoJSON(geometry, 7), {oneway}, is_unpaved, {trail_name}
 FROM {schema}.segment
-WHERE map_class = 'road' AND NOT mtb_only AND NOT walk_bike
+WHERE map_class = 'road' AND NOT mtb_only AND NOT walk_bike{access}
 ORDER BY osm_way_id, ordinal
 """
+# The bike-access reasons (`segment.bike_access_reason`) the segment panel calls open
+# (`core.segment_info.ACCESS_WORDS`): a way with any other reason carries no climb.
+ACCESS_FILTER = " AND (bike_access_reason IS NULL OR bike_access_reason = ANY(%s))"
+
+
+def open_access_reasons() -> list[str]:
+    """The reasons a way open to bicycles may carry; every other one is closed, an unknown
+    one included (unclear access is closed, OWNER-DECISIONS 330)."""
+    from core.segment_info import ACCESS_WORDS
+
+    return sorted(reason for reason, (is_open, _words) in ACCESS_WORDS.items() if is_open)
 
 
 def read_segments(schema: str) -> list[SegmentLine]:
@@ -547,13 +568,15 @@ def read_segments(schema: str) -> list[SegmentLine]:
         schema=schema,
         oneway="road_oneway" if "road_oneway" in columns else "NULL",
         trail_name="trail_name" if "trail_name" in columns else "NULL",
+        access=ACCESS_FILTER if "bike_access_reason" in columns else "",
     )
+    params = [open_access_reasons()] if "bike_access_reason" in columns else []
     out: list[SegmentLine] = []
     # A named (server-side) cursor streams the rows instead of holding them all twice; psycopg2
     # allows one only inside a transaction, and Django runs in autocommit.
     with transaction.atomic(), connection.connection.cursor(name="climb_layer_segments") as cursor:
         cursor.itersize = 20_000
-        cursor.execute(query)
+        cursor.execute(query, params)
         for way, ordinal, geojson, oneway, unpaved, trail_name in cursor:
             coords = tuple((float(x), float(y)) for x, y in json.loads(geojson)["coordinates"])
             out.append(
