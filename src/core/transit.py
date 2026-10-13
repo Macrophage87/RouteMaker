@@ -1549,7 +1549,8 @@ def closed_stations(schedule: Schedule, moment: Moment) -> list[Closed]:
 
 STATION_NEAR_M = 400.0  # a stop this close to the map's station is at it (railClosures' MATCH_M)
 FREQUENT_MODES = (METRO, LIGHT_RAIL, SUBWAY)
-EVERY_SEEN_MIN = 60  # a frequent line's interval is read from its trains in the next hour
+EVERY_SEEN_MIN = 60  # a frequent line's interval is read from its trains within this
+EVERY_SEEN = 3  # and only from at least this many of them: fewer are said one by one
 EVERY = "every"
 NEXT = "next"
 NONE = "none"
@@ -1558,8 +1559,9 @@ NONE = "none"
 @dataclass(frozen=True)
 class LineTime:
     """One line's times at a station: `EVERY` (minutes between trains), `NEXT` (the next train
-    one way: its destination and service-day minute), or `NONE` (none more today that way;
-    `today` False when none ran at all, and `toward` None for both ways)."""
+    one way: its destination and minute of `service_day`, the moment's own when None), or
+    `NONE` (none more today that way; `today` False when none ran at all, and `toward` None for
+    both ways)."""
 
     stop: Stop
     system: System
@@ -1569,16 +1571,23 @@ class LineTime:
     toward: str | None = None
     depart: float | None = None
     today: bool = True
+    service_day: date | None = None
 
 
-def _departures_at(active, pattern: Pattern, pos: int, minute: float) -> list[float]:
-    """Every departure of `pattern` from its stop `pos` on the service day (`active`: the
-    services running), in service-day minutes (run times of the band at `minute`)."""
-    offset = pattern.runs_at(minute)[pos] / 60.0
+def _departures_at(active, pattern: Pattern, pos: int) -> list[float]:
+    """Every departure of `pattern` from its stop `pos` on a service day (`active`: the services
+    running), in service-day minutes: each trip's start plus the run times of its own band."""
+    offsets: dict[int | None, float] = {}
     out: list[float] = []
     for service, deps in pattern.trips.items():
-        if service in active:
-            out.extend((encoded >> 1) + offset for encoded in deps)
+        if service not in active:
+            continue
+        for encoded in deps:
+            start = encoded >> 1
+            band = band_index(start)
+            if band not in offsets:
+                offsets[band] = pattern.runs_at(start)[pos] / 60.0
+            out.append(start + offsets[band])
     return out
 
 
@@ -1596,13 +1605,14 @@ def _longest(patterns) -> Pattern:
 
 
 def _every_min(times: list[float]) -> int | None:
-    """The minutes between the next trains within `EVERY_SEEN_MIN` (at least two), else None."""
+    """The minutes between the next trains, read from at least `EVERY_SEEN` of them within
+    `EVERY_SEEN_MIN` of the first, else None."""
     distinct: list[float] = []
     for t in sorted(times):
         if not distinct or t - distinct[-1] >= 0.5:
             distinct.append(t)
     seen = [t for t in distinct if t - distinct[0] <= EVERY_SEEN_MIN][:DEPARTURES_SEEN]
-    if len(seen) < 2:
+    if len(seen) < EVERY_SEEN:
         return None
     return max(1, round((seen[-1] - seen[0]) / (len(seen) - 1)))
 
@@ -1610,11 +1620,16 @@ def _every_min(times: list[float]) -> int | None:
 def station_times(schedule: Schedule, point, when: datetime) -> list[LineTime]:
     """The lines at the rail stops within `STATION_NEAR_M` of `point` (the nearest of each
     system), at `when`: in the schedule's system order, then its route order. Bus stops are left
-    out, and beyond the installed window nothing is said."""
+    out, and beyond the installed window nothing is said. Between midnight and 3 am (the day
+    before's service day), a way with no more trains that night gives the first one of the new
+    day instead of "no more trains today"."""
     moment = moment_of(when)
     if not schedule.covers(moment.service_day):
         return []
     active = schedule.active(moment.service_day)
+    morning = None
+    if moment.service_day != moment.date and schedule.covers(moment.date):
+        morning = (schedule.active(moment.date), moment.date)
     nearest: dict[int, Stop] = {}
     for _distance_m, stop in schedule.near(point, STATION_NEAR_M):
         if stop.rail and stop.system not in nearest:
@@ -1640,42 +1655,51 @@ def station_times(schedule: Schedule, point, when: datetime) -> list[LineTime]:
             direction = _direction(schedule, pattern, reference)
             routes.setdefault(pattern.route, {}).setdefault(direction, []).append((pattern, pos))
         for route, ways in routes.items():
-            out.extend(_line_times(schedule, active, moment, stop, system, route, ways))
+            out.extend(_line_times(schedule, active, moment, morning, stop, system, route, ways))
     return out
 
 
-def _line_times(schedule, active, moment, stop, system, route, ways) -> list[LineTime]:
-    """One route's `LineTime`s at a stop, from its patterns there by direction."""
-    found = {}  # direction -> (every departure today, the next ones with their pattern)
+def _line_times(schedule, active, moment, morning, stop, system, route, ways) -> list[LineTime]:
+    """One route's `LineTime`s at a stop, from its patterns there by direction; `morning` (the
+    services and date of the new day, after midnight) gives a finished way its first train."""
+    # direction -> (every departure today, the next ones: minute, pattern, service day or None)
+    found: dict[int, tuple[list[float], list[tuple[float, Pattern, date | None]]]] = {}
     for direction, entries in sorted(ways.items()):
         today: list[float] = []
-        upcoming: list[tuple[float, Pattern]] = []
+        upcoming: list[tuple[float, Pattern, date | None]] = []
         for pattern, pos in entries:
-            for at in _departures_at(active, pattern, pos, moment.minute):
+            for at in _departures_at(active, pattern, pos):
                 today.append(at)
                 if at >= moment.minute:
-                    upcoming.append((at, pattern))
+                    upcoming.append((at, pattern, None))
+        if not upcoming and morning is not None:
+            for pattern, pos in entries:
+                upcoming.extend(
+                    (at, pattern, morning[1]) for at in _departures_at(morning[0], pattern, pos)
+                )
         upcoming.sort(key=lambda t: (t[0], t[1].index))
         found[direction] = (today, upcoming)
-    if not any(today for today, _upcoming in found.values()):
+    if not any(today or upcoming for today, upcoming in found.values()):
         return [LineTime(stop, system, route, NONE, today=False)]
     if system.mode in FREQUENT_MODES:
-        # Running now: trains at an interval, the next within it (before the first train of
-        # the morning, the first trains each way are said instead).
-        every = [
-            e
-            for _today, upcoming in found.values()
-            if (e := _every_min([t for t, _p in upcoming])) is not None
-            and upcoming[0][0] - moment.minute <= e + 1
-        ]
+        # Running now: at least `EVERY_SEEN` trains at an interval, the next within it (before
+        # the first train of the morning, the first trains each way are said instead).
+        every = []
+        for _today, upcoming in found.values():
+            tonight = [t for t, _p, day in upcoming if day is None]
+            e = _every_min(tonight)
+            if e is not None and tonight[0] - moment.minute <= e + 1:
+                every.append(e)
         if every:
             return [LineTime(stop, system, route, EVERY, every_min=min(every))]
     out = []
     for direction, (today, upcoming) in found.items():
         if upcoming:
-            at, pattern = upcoming[0]
+            at, pattern, day = upcoming[0]
             toward = schedule.stops[pattern.stops[-1]].name
-            out.append(LineTime(stop, system, route, NEXT, toward=toward, depart=at))
+            out.append(
+                LineTime(stop, system, route, NEXT, toward=toward, depart=at, service_day=day)
+            )
         else:
             # The destination of the way's longest pattern: where its trains went today.
             pattern = _longest(p for p, _pos in ways[direction])

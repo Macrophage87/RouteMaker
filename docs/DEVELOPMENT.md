@@ -6974,14 +6974,19 @@ docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-
 - **Station times.** `GET /api/transit/station-times?lon=&lat=` (`core.transit.station_times`)
   gives the lines at the rail stops by a map station (the nearest stop of each system within
   400 m), cached for a minute. `lib/stationTimes.ts` words them, with `lib/transitMarks.ts`'s marks.
-  - A frequent line (Metro, Light RailLink, SubwayLink): "🔴 Red Line: every 8 min, scheduled";
-    before the first train, the first train each way.
+  - A frequent line (Metro, Light RailLink, SubwayLink): "🔴 Red Line: every 8 min, scheduled",
+    read from at least three trains within the hour, the next one within the interval; otherwise
+    (before the first train, or the last few of the night) the next train each way.
   - A commuter line (MARC, VRE): the next train each way, "🚆Penn to Baltimore Penn Station 5:42
     pm, to Union Station 6:10 pm, scheduled"; "no more trains today", or "no trains today".
+  - Each departure is timed with the run times of its own time band. Between midnight and 3 am
+    (the day before's service day), a way with nothing more that night gives the new day's first
+    train, timed on its own service day, so a daylight-saving night says the clock's time.
   - Shown in the station's card (fetched when it opens; in the hover card once known) and under
     the road panel's nearby station, the keyboard's way to it. The emoji text is aria-hidden; a
-    visually hidden twin says it in words ("Red Line every 8 minutes, scheduled"). A closed
-    station keeps its "closed" words and shows no times; a 503 shows none.
+    visually hidden twin says it in words ("Red Line every 8 minutes, scheduled"). Both show the
+    lines of the systems the map's toggles show. A closed station keeps its "closed" words and
+    shows no times; a 503 shows none.
 - **Tests.** `tests/test_transit.py` runs on a synthetic fixture
   (`tests/data/transit/make_fixture.py`: WMATA rail and bus, MARC Penn and Camden lines, Light
   RailLink) with a straight-line router. Front-end tests: `lib/transit.test.ts`,
