@@ -1956,7 +1956,8 @@ a weekly rebuild leaves it alone (it replaces only its own variant folders). Wit
 transit plans use Metro alone, on its committed typical timetable
 (`src/core/transitdata/metro-typical.json`, from wmata.com; docs/SOURCES.md). A file that cannot
 be read answers 503 `transit_unavailable` ("Transit times are not available on this server right
-now."), and `GET /api/transit/closures` answers 503 too. Every other ride type is unaffected.
+now."), and `GET /api/transit/closures` and `GET /api/transit/station-times` answer 503 too
+(the station cards then show no times). Every other ride type is unaffected.
 
 **No WMATA key yet.** Build without it: the fetch skips WMATA, and the build reports
 "wmata-rail: no feed given, left out (the API runs Metro on its typical timetable)". MARC and

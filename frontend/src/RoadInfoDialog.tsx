@@ -5,7 +5,8 @@
  * 441m), which opens the stress editor (StressEditor.tsx) in this same dialog in place of the row.
  *
  * Compact, so the common case fits a phone without scrolling: the name, its kind, a
- * short summary list (one line a fact, read in order), a nearby station's pages, a
+ * short summary list (one line a fact, read in order), a nearby station's pages and its
+ * lines' times now (scheduled; lib/stationTimes.ts, as the station's card on the map says them), a
  * closed native "Details and sources" disclosure with every figure, its source in words,
  * the owner's rating, the way's id and its distance, and the action row.
  *
@@ -53,6 +54,7 @@ import {
 } from "./lib/roadInfo.ts";
 import type { PlaceChoice } from "./lib/geocode.ts";
 import { stationLinks } from "./lib/stationLinks.ts";
+import { TIMES_LABEL, requestStationTimes, stationTimeRows, type TimesRow } from "./lib/stationTimes.ts";
 import { WMATA_SLUGS } from "./lib/railData.ts";
 import type { Station } from "./lib/railStations.ts";
 import { StressPageLink } from "./lib/stressLegend.ts";
@@ -130,6 +132,33 @@ function neighbour(items: HTMLElement[], from: HTMLElement, backwards: boolean):
   }
   const after = items.filter((i) => from.compareDocumentPosition(i) & Node.DOCUMENT_POSITION_FOLLOWING);
   return after.length ? after[0] : items[0];
+}
+
+/** A nearby station's lines now, scheduled: the emoji and short words aria-hidden, the words said in full. */
+function StationTimesList({ station }: { station: Station }) {
+  const [rows, setRows] = useState<TimesRow[]>([]);
+  const [lon, lat] = station.point;
+  useEffect(() => {
+    let live = true;
+    setRows([]);
+    void requestStationTimes([lon, lat]).then((answer) => {
+      if (live) setRows(answer ? stationTimeRows(answer.lines) : []);
+    });
+    return () => {
+      live = false;
+    };
+  }, [lon, lat]);
+  if (rows.length === 0) return null;
+  return (
+    <ul className="station-times road-info-times" aria-label={TIMES_LABEL}>
+      {rows.map((row) => (
+        <li key={row.key}>
+          <span aria-hidden="true">{row.shown}</span>
+          <span className="visually-hidden">{row.spoken}</span>
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 export function RoadInfoDialog({ request, hazards = null, massRide, station, avoid = null, junctionShown = null, federal = null, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
@@ -568,6 +597,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, avo
                 </li>
               ))}
             </ul>
+            <StationTimesList station={station} />
           </div>
         )}
         {ready && (
