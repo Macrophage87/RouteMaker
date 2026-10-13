@@ -4,8 +4,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
 import { LayerSection, sectionPress, sectionState } from "./layerSection.ts";
-import { MTB_TRAILS_ROW_UNAVAILABLE, TOPO_LINES_ROW_UNAVAILABLE, terrainLayers, terrainStatus, type TerrainState } from "./terrainSection.ts";
+import { MTB_TRAILS_ROW_UNAVAILABLE, TOPO_LINES_ROW_UNAVAILABLE, stressShowable, terrainLayers, terrainStatus, type TerrainState } from "./terrainSection.ts";
 import { CLIMBS_LOADING } from "./climbsLegend.ts";
 
 const all: TerrainState = { mtb: false, climbs: false, topo: false, stressAvailable: true, topoReady: true, climbsStatus: "ready" };
@@ -44,4 +45,18 @@ test("closed, the row carries the climbs status and the unavailable layers the r
     `${CLIMBS_LOADING} ${MTB_TRAILS_ROW_UNAVAILABLE} ${TOPO_LINES_ROW_UNAVAILABLE}`,
   );
   assert.equal(terrainStatus(true, { ...all, topo: true, topoReady: false, climbs: true, climbsStatus: "loading" }), "", "open: each layer's own line says it");
+});
+
+test("while the stress map is still being checked (page load), the trails stay in the switch and nothing says unavailable", () => {
+  assert.equal(stressShowable("checking"), true);
+  assert.equal(stressShowable("available"), true);
+  assert.equal(stressShowable("unavailable"), false);
+  const checking = { ...all, mtb: true, stressAvailable: stressShowable("checking") };
+  assert.deepEqual(keys(checking), ["mtb", "climbs", "topo"]);
+  assert.equal(sectionState(terrainLayers({ ...checking, climbs: true, topoReady: false })), "on", "the trails and climbs on: On, not Some on");
+  assert.equal(terrainStatus(false, checking), "", "no spurious unavailable line");
+  // Once known down, it is said.
+  assert.equal(terrainStatus(false, { ...checking, stressAvailable: stressShowable("unavailable") }), MTB_TRAILS_ROW_UNAVAILABLE);
+  const sheets = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
+  assert.match(sheets, /stressAvailable: stressShowable\(stress\)/);
 });

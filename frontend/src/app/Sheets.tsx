@@ -19,7 +19,7 @@ import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibi
 import { HighStressLanesSwitch } from "../lib/highStressLanesSwitch.ts";
 import { MtbTrailsSwitch } from "../lib/mtbTrailsSwitch.ts";
 import { setTopoLines, TopoLinesSwitch } from "../lib/topoLines.ts";
-import { terrainLayers, terrainStatus } from "../lib/terrainSection.ts";
+import { stressShowable, terrainLayers, terrainStatus } from "../lib/terrainSection.ts";
 import { LayerSection } from "../lib/layerSection.ts";
 import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
 import { ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
@@ -99,7 +99,7 @@ export interface LayersSheetProps {
 export function LayersSheet(props: LayersSheetProps) {
   const { nav, openLegend, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsStatus, climbsAlong } = props;
   // The Trails and terrain section's layers that can show, and its row's words (lib/terrainSection.ts).
-  const terrain = { mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stress === "available", topoReady, climbsStatus };
+  const terrain = { mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stressShowable(stress), topoReady, climbsStatus };
   return (
     <SheetFrame
       id="sheet-layers"

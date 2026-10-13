@@ -10,11 +10,19 @@ import type { SectionLayer } from "./layerSection.ts";
 import { MTB_TRAILS_LABEL } from "./mtbTrailsSwitch.ts";
 import { TOPO_LINES_LABEL } from "./topoLines.ts";
 
+/** Only a stress map known to be down leaves the trails out; "checking" is not "unavailable". */
+export function stressShowable(stress: "checking" | "available" | "unavailable"): boolean {
+  return stress !== "unavailable";
+}
+
 export interface TerrainState {
   mtb: boolean;
   climbs: boolean;
   topo: boolean;
-  /** The stress tiles are on the page (App's `stress === "available"`). */
+  /**
+   * The stress tiles, which carry the trails, are not known to be down (stressShowable): true while they are
+   * still being checked at page load, so the trails stay in the switch and nothing says they are unavailable.
+   */
   stressAvailable: boolean;
   /** False once a check found no topo archive on the server. */
   topoReady: boolean;
