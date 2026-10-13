@@ -9,7 +9,8 @@ import type { BikeshareOption, RouteError, RouteResponse } from "../lib/api.ts";
 import { placeLetter } from "../lib/letteredPlaces.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration } from "../lib/format.ts";
-import { presetLabel, type PresetId } from "../lib/presets.ts";
+import { presetLabel, presetSaid, type PresetId } from "../lib/presets.ts";
+import { PresetName } from "../lib/presetName.ts";
 import { stressSegments, type StressSegment } from "../lib/stressBar.ts";
 import { calmSearchNote, detourView, paceText, stillPlanningSaid, movedPointsNote } from "../lib/summary.ts";
 import { isCancelKey } from "../lib/sheet.ts";
@@ -548,7 +549,7 @@ export function RouteSummary({
   const bikeshare = bikeshareOf(route);
   // A transit ride type (lib/transit.ts): the line is the first ride; the trip, its total and its steps are `transit`.
   const transit = transitOf(route);
-  const timeName = transit ? (transit.direct ? "Door-to-door time" : "Door-to-door time, scheduled") : "Moving time";
+  const timeName = transit ? (transit.scheduled ? "Door-to-door time, scheduled" : "Door-to-door time") : "Moving time";
   const timeText = transit ? transitTime(transit) : formatDuration(route.duration_s);
   const calm = calmPercent(route.stress_m);
   // Start ride is offered with the directions too (plan Q1). Not on a Bikeshare plan: the route
@@ -585,7 +586,7 @@ export function RouteSummary({
   const infoBody = (
     <div id={infoId} className="route-info" hidden={!info}>
       {bikeshare && <p className="hint">These figures are for the ride between the docks. The walks are above.</p>}
-      {transit && !transit.direct && (
+      {transit && transit.scheduled && (
         <p className="hint">The distance, climb and stress are for the first ride, the line on the map. The whole trip is in its steps.</p>
       )}
       {pace && <p className="hint pace">Moving time at {pace}, without stops.</p>}
@@ -628,10 +629,10 @@ export function RouteSummary({
 
   const transitFold = transit ? (
     // The trip, as a fold kept open: the step list is the plan (the owner, 2026-10-12: "a clear step list").
-    <Fold title={`${presetLabel(preset)} trip`} open className="transit-fold" icon="train">
+    <Fold title={`${presetLabel(preset)} trip`} said={`${presetSaid(preset)} trip`} open className="transit-fold" icon="train">
       <TransitSummary
         plan={transit}
-        label={`${presetLabel(preset)}: ${transit.summary.replace(/\.$/, "")}`}
+        preset={preset}
         onPick={transitControls?.onPick}
         busy={transitControls?.busy}
         announce={transitControls?.announce}
@@ -705,7 +706,7 @@ export function RouteSummary({
           <div className="go-chips" role="group" aria-label="Route options">
             <button type="button" className="chip go-ride-chip" onClick={go.onRide} aria-describedby="go-ride-hint">
               <Icon name="bike" size={18} />
-              {presetLabel(preset)}
+              <PresetName id={preset} />
             </button>
             <span id="go-ride-hint" hidden>
               Opens the ride settings.

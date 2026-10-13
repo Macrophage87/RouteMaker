@@ -5,6 +5,7 @@
  * types generated from the API's OpenAPI schema; until that step exists they
  * are written out here, against the contract rather than against a guess.
  */
+import type { TripLeg } from "./transitMarks.ts";
 import type { MtbReading } from "./mtbMode.ts";
 import { formatRoughDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
@@ -462,7 +463,7 @@ export interface TransitStep {
   coordinates: LonLat[];
 }
 
-/** One way to make the trip (the owner, 2026-10-12): riding the whole way, or a transit trip. */
+/** One way to make the trip (the owner, 2026-10-12): riding the whole way, walking it, or a transit trip. */
 export interface TransitOption {
   /** Sent back as `transit_option` to plan this one. */
   key: string;
@@ -471,7 +472,11 @@ export interface TransitOption {
   total_s: number;
   minutes: number;
   direct: boolean;
+  /** Walking the whole way (Bikeshare + 🚶🚆🚌, where that is reasonable). */
+  walk?: boolean;
   chosen: boolean;
+  /** Its legs compactly, for its row: "🚶 4 min · 🚲 12 min · 🔴 18 min" (lib/transitMarks.ts). */
+  legs?: TripLeg[];
 }
 
 /**

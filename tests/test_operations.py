@@ -466,7 +466,9 @@ def test_check_operations_alerts_when_the_transit_schedule_is_about_to_run_out(
     class Stub:
         last_day = start + timedelta(days=44)
 
-    monkeypatch.setattr(transit, "load", lambda _path: Stub())
+    # The alert reads the installed file itself (`_read`), not `load`, which would stand in
+    # Metro's typical timetable for a file that has run out.
+    monkeypatch.setattr(transit, "_read", lambda _path: Stub())
     out = StringIO()
     with pytest.raises(SystemExit) as exit_code:
         call_command("check_operations", stdout=out)

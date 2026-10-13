@@ -13,7 +13,8 @@
  * cards under their group's heading (lib/rideTypeGroups.ts).
  */
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { PRESETS, presetLabel, type PresetId } from "./lib/presets.ts";
+import { PRESETS, presetSaid, type PresetId } from "./lib/presets.ts";
+import { PresetName } from "./lib/presetName.ts";
 import { CARRYINGS, carries, type Carrying, type Dials } from "./lib/dials.ts";
 import { bikeLabel } from "./lib/bikeshare.ts";
 import { choose, closesDialog, initialCard, isCustom, nextFocus } from "./lib/rideTypeDialog.ts";
@@ -88,7 +89,13 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
       <div className="ride-type-current">
         <p>
           <strong>
-            {custom ? `Custom (based on ${presetLabel(preset)})` : presetLabel(preset)}
+            {custom ? (
+              <>
+                Custom (based on <PresetName id={preset} />)
+              </>
+            ) : (
+              <PresetName id={preset} />
+            )}
             {carrying ? `, ${carrying.label.toLowerCase()}` : ""}
             {dials.assist ? ", electric assist" : ""}
             {dials.bike ? `, ${bikeLabel(dials.bike).toLowerCase()}` : ""}
@@ -133,11 +140,13 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
                       aria-pressed={option.id === preset && (!carries(option.id) || dials.carrying === "cargo")}
                       onClick={() => pick(option.id, carries(option.id) ? "cargo" : null)}
                     >
-                      <strong>{option.label}</strong>
+                      <strong>
+                        <PresetName id={option.id} />
+                      </strong>
                       <span className="hint">{option.description}</span>
                     </button>
                     {carries(option.id) && (
-                      <div className="ride-type-loads" role="group" aria-label={`${option.label}: cargo or passengers`}>
+                      <div className="ride-type-loads" role="group" aria-label={`${presetSaid(option.id)}: cargo or passengers`}>
                         {CARRYINGS.map((load) => (
                           <button
                             key={load.id}

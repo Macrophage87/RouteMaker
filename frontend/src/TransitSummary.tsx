@@ -9,7 +9,9 @@
 import { useId } from "react";
 import type { TransitPlan } from "./lib/api.ts";
 import { WALK_CASING, WALK_COLOUR, WALK_DASH, WALK_LINE_WIDTH } from "./lib/bikeshare.ts";
-import { OPTIONS_LABEL, STEPS_LABEL, TRACK_WORK, TRANSIT_COLOUR, TRANSIT_DASH, TRANSIT_LINE_WIDTH, optionText, stepIcon } from "./lib/transit.ts";
+import type { PresetId } from "./lib/presets.ts";
+import { PresetName } from "./lib/presetName.ts";
+import { OPTIONS_LABEL, STEPS_LABEL, TRACK_WORK, TRANSIT_COLOUR, TRANSIT_DASH, TRANSIT_LINE_WIDTH, optionSaid, optionText, stepIcon } from "./lib/transit.ts";
 import { Icon } from "./Icon.tsx";
 import { DepartureTimer } from "./DepartureTimer.tsx";
 
@@ -24,14 +26,15 @@ function Swatch({ colour, dash, width }: { colour: string; dash: [number, number
 
 export function TransitSummary({
   plan,
-  label,
+  preset,
   onPick,
   busy = false,
   announce,
   onMissed,
 }: {
   plan: TransitPlan;
-  label: string;
+  /** The ride type, for the heading: its name (emoji kept from a screen reader) and the total. */
+  preset: PresetId;
   /** Plan another option, by its key; absent, the options are listed but not pressable. */
   onPick?: (key: string) => void;
   /** A plan is on its way: the buttons wait. */
@@ -44,7 +47,9 @@ export function TransitSummary({
   const id = useId();
   return (
     <section className="transit" aria-labelledby={`${id}-heading`}>
-      <h3 id={`${id}-heading`}>{label}</h3>
+      <h3 id={`${id}-heading`}>
+        <PresetName id={preset} suffix={`: ${plan.summary.replace(/\.$/, "")}`} />
+      </h3>
       {plan.options.length > 1 && (
         <ol className="transit-options" aria-label={OPTIONS_LABEL}>
           {plan.options.map((option, index) => (
@@ -58,7 +63,8 @@ export function TransitSummary({
                   if (!busy && onPick && !option.chosen) onPick(option.key);
                 }}
               >
-                {optionText(option, index)}
+                <span aria-hidden="true">{optionText(option, index)}</span>
+                <span className="visually-hidden">{optionSaid(option, index)}</span>
               </button>
             </li>
           ))}

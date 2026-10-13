@@ -89,9 +89,12 @@ export function Fold({
   onToggle,
   count,
   icon,
+  said,
   children,
 }: {
   title: string;
+  /** The title in words, where it shows emoji (a transit ride type's name): read in its place. */
+  said?: string;
   heading?: string;
   headingId?: string;
   open?: boolean;
@@ -116,9 +119,9 @@ export function Fold({
       icon ? lineIcon(icon) : null,
       // With a count, the line shows the title and the count apart (the count on the right) and is read as
       // one phrase, "Directions (11 steps)" (foldTitle): flex items read apart would add spaces round it.
-      h("span", { className: "fold-title", "aria-hidden": shown === null ? undefined : "true" }, title),
+      h("span", { className: "fold-title", "aria-hidden": shown === null && !said ? undefined : "true" }, title),
       shown === null ? null : h("span", { className: "fold-count", "aria-hidden": "true" }, shown),
-      shown === null ? null : h("span", { className: "visually-hidden" }, foldTitle(title, shown)),
+      shown === null && !said ? null : h("span", { className: "visually-hidden" }, shown === null ? said : foldTitle(said ?? title, shown)),
     ),
     h("div", { className: "fold-body" }, children),
   );

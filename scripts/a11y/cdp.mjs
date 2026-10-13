@@ -1033,7 +1033,7 @@ export const S_BIKESHARE = (() => {
 })();
 /** The same on an e-bike, with the out-of-dock ending on offer beside the dock (zones read, a fee in the data). */
 /**
- * Own Bike + Transit (TRANSIT-ASSIST; core.transit.block): the line is the first ride, to the
+ * Own Bike + 🚆🚌 (TRANSIT-ASSIST; core.transit.block): the line is the first ride, to the
  * station's elevator; the trip is the `transit` block, its Metro leg through two stations and the
  * far end's ride drawn past the line. Scheduled, so every total says "about" and "scheduled".
  */

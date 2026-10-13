@@ -10,7 +10,7 @@
  */
 import type { DescriptionCrossing, DescriptionEntry, RouteResponse } from "./api.ts";
 import { formatDistance, milesFigure } from "./format.ts";
-import { presetLabel } from "./presets.ts";
+import { presetSaid } from "./presets.ts";
 import { capacityDescription, capacitySummary } from "./massCapacity.ts";
 import { hazardLines } from "./massHazards.ts";
 import { HIGH_STRESS_LANE_MIN_TIER, highStressLanesOn } from "../stressStyle.js";
@@ -172,7 +172,7 @@ export function descriptionText(
   const entries = descriptionEntries(route, shown) ?? [];
   // Which view it is, said only where there is a choice of two.
   const which = hasOverview(route) ? (shown === "full" ? " Full detail." : " Overview, short stretches merged.") : "";
-  const head = `RouteMaker ${presetLabel(route.preset)} route, ${formatDistance(route.distance_m)}.${which}`;
+  const head = `RouteMaker ${presetSaid(route.preset)} route, ${formatDistance(route.distance_m)}.${which}`;
   const lead = capacityLead(route);
   // A Mass Ride's rider-marked hazards in riding order (FOLLOWUP-MASSRIDE-MAP part 3, 325).
   return [head, ...(lead ? [lead] : []), ...hazardLines(route), ...federal, ...entryLines(entries)].join("\n") + "\n";
