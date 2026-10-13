@@ -653,6 +653,18 @@ details.how summary {
   border: 1px solid #1f2937;
 }
 
+/* A station's lines now, scheduled (lib/stationTimes.ts): one line each, under the lines' swatches. */
+.station-times {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  font-size: 0.85rem;
+}
+
+.station-times li + li {
+  margin-top: 2px;
+}
+
 .station-entrance {
   color: var(--text-muted);
   margin: 4px 0 0;
@@ -1656,6 +1668,11 @@ dialog.road-info::backdrop {
 }
 
 .road-info-station-name {
+  margin: 0;
+}
+
+.road-info-times {
+  flex-basis: 100%;
   margin: 0;
 }
 

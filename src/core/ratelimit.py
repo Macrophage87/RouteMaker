@@ -130,6 +130,10 @@ TILES = Limit(scope="tiles", requests=600, window_s=60)
 # request per page load, so PLAN's figure for unauthenticated paths.
 COVERAGE = Limit(scope="coverage", requests=60, window_s=60)
 
+# A rail station's times (GET /api/transit/station-times): one request per station card opened,
+# each cached by the browser for a minute, so PLAN's figure for unauthenticated paths.
+STATION_TIMES = Limit(scope="station-times", requests=60, window_s=60)
+
 # Place search (GET /api/geocode), signed out by the owner's decision of
 # 2026-09-27. PLAN.md:65's figures for the geocoding proxy: "roughly 5 requests
 # per second burst and 60 per minute", "since ... a typeahead box does not need

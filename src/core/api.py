@@ -57,7 +57,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 from typing import Annotated, Literal
 
@@ -2630,6 +2630,93 @@ def transit_closures(request, params: Query[ClosuresIn], response: HttpResponse)
             }
             for c in transit.closed_stations(schedule, moment)
         ],
+    }
+
+
+# --- A station's times, for its card (the owner, 2026-10-12) -------------------------------
+#
+# GET /api/transit/station-times: the lines at a map station now (or `at`), from the installed
+# schedule (Metro on its typical timetable where no WMATA GTFS is): a frequent line's minutes
+# between trains, and a commuter line's next train each way (core.transit.station_times). Small,
+# and cached by the browser for a minute. 503 where no schedule can be read: the card just says
+# no times.
+
+
+class StationTimesIn(Schema):
+    lon: float = Field(ge=-180, le=180, description="The map station's point.")
+    lat: float = Field(ge=-90, le=90)
+    at: datetime | None = Field(
+        default=None,
+        description="When, ISO 8601 (local time in Washington without an offset). Absent: now.",
+    )
+
+
+class LineTimeOut(Schema):
+    system: str = Field(description='The system, by name: "Metro", "MARC", "VRE".')
+    line: str = Field(description='"Red Line", "Penn Line".')
+    station: str = Field(description="The stop's name in the timetable.")
+    kind: Literal["every", "next", "none"] = Field(
+        description=(
+            "`every`: a frequent line, `every_min` minutes between trains. `next`: the next train"
+            " toward `toward`, at `time`. `none`: no more trains today toward `toward` (none at"
+            " all today when `today` is false; `toward` null for both ways)."
+        )
+    )
+    every_min: int | None = None
+    toward: str | None = Field(default=None, description="The train's last stop.")
+    time: str | None = Field(default=None, description='Local clock time: "5:42 pm".')
+    at: datetime | None = Field(default=None, description="The departure, with its offset.")
+    today: bool = True
+
+
+class StationTimesOut(Schema):
+    service_day: str = Field(description="The GTFS service day (before 3 am, the day before).")
+    source: Literal["scheduled"] = Field(description="Where the times are from: the timetable.")
+    lines: list[LineTimeOut]
+
+
+@api.get(
+    "/transit/station-times",
+    response={200: StationTimesOut, 400: ErrorOut, 429: ErrorOut, 500: ErrorOut, 503: BusyOut},
+    summary="A rail station's lines now: minutes between trains, or the next train each way",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.STATION_TIMES), errors_as_json)
+def transit_station_times(request, params: Query[StationTimesIn], response: HttpResponse):
+    when = params.at or timezone.now()
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=ridetime.ZONE)
+    try:
+        schedule = transit.load(
+            settings.TRANSIT_SCHEDULE_PATH, when.astimezone(ridetime.ZONE).date()
+        )
+    except transit.Unavailable:
+        return _transit_refusal(
+            "Transit times are not available on this server right now.", "transit_unavailable", 503
+        )
+    moment = transit.moment_of(when)
+    found = transit.station_times(schedule, (params.lon, params.lat), when)
+    response["Cache-Control"] = "public, max-age=60"
+    return {
+        "service_day": moment.service_day.isoformat(),
+        "source": transit.SCHEDULED,
+        "lines": [_line_time(t, moment.service_day) for t in found],
+    }
+
+
+def _line_time(t: transit.LineTime, service_day) -> dict:
+    at = None
+    if t.depart is not None:
+        at = transit.day_zero(service_day) + timedelta(minutes=round(t.depart))
+    return {
+        "system": t.system.name,
+        "line": t.route,
+        "station": t.stop.name,
+        "kind": t.kind,
+        "every_min": t.every_min,
+        "toward": t.toward,
+        "time": None if t.depart is None else transit.clock(t.depart, service_day),
+        "at": None if at is None else at.astimezone(ridetime.ZONE).isoformat(),
+        "today": t.today,
     }
 
 
