@@ -21,7 +21,9 @@ test("everywhere a ride type's name shows, it goes through PresetName or the spo
   const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
   // Go's chips and the Ride sheet's, Go's ride chip, Plan's list and current type, the trip's heading.
   assert.match(read("../app/Sheets.tsx"), /<PresetName id=\{id\} \/>/);
-  assert.match(read("../app/Sheets.tsx"), /<option key=\{p\.id\} value=\{p\.id\} aria-label=\{p\.spoken\}>/);
+  // A native picker (VoiceOver, TalkBack) reads an option's text, not its aria-label: plain words there.
+  assert.match(read("../app/Sheets.tsx"), /<option key=\{p\.id\} value=\{p\.id\}>\n\s*\{presetSaid\(p\.id\)\}\n\s*<\/option>/);
+  assert.doesNotMatch(read("../app/Sheets.tsx"), /<option[^>]*aria-label/);
   assert.match(read("../app/RoutePanel.tsx"), /<PresetName id=\{preset\} \/>/);
   assert.match(read("../app/RoutePanel.tsx"), /said=\{`\$\{presetSaid\(preset\)\} trip`\}/);
   assert.match(read("../RideTypePicker.tsx"), /<PresetName id=\{option\.id\} \/>/);

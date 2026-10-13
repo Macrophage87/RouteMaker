@@ -10,7 +10,7 @@ import type { StressAvailability } from "../MapView.tsx";
 import { SuggestionReview } from "../SuggestionReview.tsx";
 import type { RouteResponse } from "../lib/api.ts";
 import type { LonLat } from "../lib/geo.ts";
-import { PRESETS, type PresetId } from "../lib/presets.ts";
+import { PRESETS, presetSaid, type PresetId } from "../lib/presets.ts";
 import { PresetName } from "../lib/presetName.ts";
 import { filterRideGroups, rideTypeCount, RideTypeSearch } from "../lib/rideTypeGroups.ts";
 import { isPlainClick, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
@@ -297,8 +297,8 @@ function MyGoSection({ controls }: { controls: MyGoControls }) {
         Go's ride type
         <select value={myGo.ride ?? "default"} onChange={(event) => save({ ...myGo, ride: event.target.value === "default" ? null : (event.target.value as PresetId) })}>
           {PRESETS.filter((p) => p.id !== "mass-ride").map((p) => (
-            <option key={p.id} value={p.id} aria-label={p.spoken}>
-              {p.label}
+            <option key={p.id} value={p.id}>
+              {presetSaid(p.id)}
             </option>
           ))}
         </select>

@@ -843,6 +843,37 @@ def test_walking_the_whole_way_is_offered_when_quickest_or_short_and_not_otherwi
     assert not transit.walk_offered(CAPITOL_HILL, DOWNTOWN, 3000.0, [])
 
 
+def test_own_bike_never_offers_walking_the_whole_way(schedule) -> None:
+    # Walking the whole way is Bikeshare + 🚶🚆🚌's: Own Bike + 🚆🚌 keeps the bike, even for
+    # a few blocks.
+    plan = plan_bike(schedule, CAPITOL_HILL, NEAR_CAPITOL_HILL, at(2026, 9, 30, 12, 0))
+    assert plan.direct is not None
+    assert not any(o.walk or o.key == transit.WALK_ONLY for o in plan.options)
+    assert not any(leg.mode == transit.WALK for o in plan.options for leg in o.legs)
+
+
+def test_the_walk_the_whole_way_is_routed_with_pedestrian_costing(monkeypatch) -> None:
+    from core import routing
+
+    asked = []
+
+    def answer(graph, endpoint, payload, deadline):
+        asked.append((graph, endpoint, payload))
+        return {"trip": {"legs": [{"shape": "", "summary": {"time": 420.0, "length": 0.55}}]}}
+
+    monkeypatch.setattr(routing, "_call", answer)
+    monkeypatch.setattr(routing, "decode_polyline6", lambda _shape: [(-77.0, 38.9), (-77.01, 38.9)])
+    services = transit.RoutingServices(routing.clock() + 30, presets.BIKESHARE_TRANSIT)
+    walked = services.walk(CAPITOL_HILL, NEAR_CAPITOL_HILL)
+    graph, endpoint, payload = asked[0]
+    assert (graph, endpoint, payload["costing"]) == ("standard", "route", "pedestrian")
+    assert payload["costing_options"] == {"pedestrian": {"walking_speed": transit.WALK_SPEED_KMH}}
+    assert walked.seconds == 420.0 and walked.metres == 550.0
+    # The option built from it is that walk, not an estimate.
+    option = transit._walk_whole(CAPITOL_HILL, NEAR_CAPITOL_HILL, services)
+    assert option.walk and option.legs[0].seconds == 420.0 and not option.legs[0].estimated
+
+
 def test_each_option_lists_its_legs_compactly_for_its_row(schedule) -> None:
     plan = transit.plan_bikeshare(
         schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), Straight(), SHARE
@@ -1016,7 +1047,14 @@ def test_an_expired_schedule_keeps_metro_on_its_typical_timetable(tmp_path) -> N
     assert [s.id for s in schedule.systems] == ["wmata-rail"] and schedule.covers(after_end)
     plan = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 11, 20, 12, 0))
     assert any(leg.system == "Metro" for o in plan.options for leg in transit_legs(o))
-    assert "the other timetables installed end November 11, 2026." in plan.notes[-1]
+    assert plan.notes[-1] == (
+        "Only Metro is planned: the other timetables installed cover September 28 to"
+        " November 11, 2026."
+    )
+    # A date before the file's window says the same, and is as true.
+    before = transit.load(path, date(2026, 9, 1))
+    assert [s.id for s in before.systems] == ["wmata-rail"]
+    assert "cover September 28 to November 11, 2026." in before.note
     # The operator is still told to rebuild it.
     assert "ran out on 2026-11-11" in transit.schedule_alert(path, after_end)
     # Within its window, the file itself.

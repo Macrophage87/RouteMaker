@@ -453,18 +453,19 @@ def load(path: Path, day: date | None = None) -> Schedule:
         return typical_only(day)
     schedule = _read(path)
     if not schedule.covers(day):
-        return _typical_beyond(day, schedule.last_day)
+        return _typical_beyond(day, schedule.start, schedule.last_day)
     return schedule
 
 
 @lru_cache(maxsize=8)
-def _typical_beyond(day: date, last_day: date) -> Schedule:
-    """Metro's typical timetable alone for a day the installed file does not reach, saying so."""
+def _typical_beyond(day: date, start: date, last_day: date) -> Schedule:
+    """Metro's typical timetable alone for a day the installed file does not reach (before its
+    first day or after its last), saying so."""
     return replace(
         typical_only(day),
         note=(
-            "Only Metro is planned: the other timetables installed end"
-            f" {last_day:%B} {last_day.day}, {last_day.year}."
+            "Only Metro is planned: the other timetables installed cover"
+            f" {start:%B} {start.day} to {last_day:%B} {last_day.day}, {last_day.year}."
         ),
     )
 
