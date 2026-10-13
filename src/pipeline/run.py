@@ -54,7 +54,7 @@ from routemaker import (
 )
 from routemaker.geo import Point
 from routemaker.shape import sinuosity
-from routemaker.stress import classify, inferred_unpaved, is_rough
+from routemaker.stress import classify, inferred_unpaved, is_rough, rural_floor, winding
 
 from . import (
     aadt_smoothing,
@@ -2175,7 +2175,12 @@ def build_handlers(
                 laned.add(way.osm_id)
                 context.class_tags_by_way[way.osm_id] = tags
 
-            def classified(aadt, tags=tags, way=way, match=match, facts=facts):
+            rural = way.osm_id not in reference.urban_way_ids
+            # The owner's narrow-road rule reads the line only outside urban
+            # areas (`stress.NARROW_RURAL_ROAD_MPH`).
+            bends = rural and winding(way.coordinates)
+
+            def classified(aadt, tags=tags, way=way, match=match, facts=facts, bends=bends):
                 return classify(
                     tags,
                     aadt=aadt,
@@ -2189,6 +2194,7 @@ def build_handlers(
                     divided=way.osm_id in divided_ways,
                     separate_facility=way.osm_id in separate_roads,
                     parking_width_m=facts.parking_reach_m if facts is not None else None,
+                    winding=bends,
                 )
 
             context.stress_by_way[way.osm_id] = classified(match.aadt if match else None)
@@ -2213,6 +2219,11 @@ def build_handlers(
                 context.stress_by_way[way.osm_id] = bike_lanes.owner_tier(
                     context.stress_by_way[way.osm_id], tags
                 )
+            # The owner's rural floor (2026-10-13), over the classifier's tier and
+            # under the owner's own corridors and rows below.
+            context.stress_by_way[way.osm_id] = rural_floor(
+                context.stress_by_way[way.osm_id], tags, urban=not rural
+            )
             if overlaid is not None:
                 context.stress_by_way[way.osm_id] = replace(
                     context.stress_by_way[way.osm_id],

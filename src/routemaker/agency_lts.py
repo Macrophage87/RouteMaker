@@ -1,0 +1,113 @@
+"""Agency bicycle stress ratings, in the owner's order of precedence (v0.7.0).
+
+The owner, 2026-10-13: "1. Ratings from Community Input (including my judgment)
+win over everything 2. Ratings from the local government win over a formula
+3. If neither are available, we use the formula criteria." And, of Maryland's
+statewide layer against Montgomery's: "Where they differ, put the county level
+over the state." So a way an agency rates takes that agency's level in place of
+the classifier's tier, the most local agency's where several rate it, and the
+owner's own rules and rows still rank above (`stress.rural_floor`, the override
+rows in `pipeline.overrides`).
+
+Every rating held for a way is kept beside the one used, because the owner asked
+for "all the relevant information in the tab when viewing the road": the road
+panel lists each, with which one the map uses and why.
+
+Levels are the agency's own numbers on our scale: 1 to 4 with half steps, and 5
+for an agency's highest level, which is Avoid ("if any ratings agency has it as
+LTS5. We should keep that unless there's a clear case for downgrading").
+Montgomery's 0.5 ("None") is no rating and is dropped before it gets here.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable
+from dataclasses import dataclass, replace
+
+from .stress import Stress, StressResult
+
+# How local an agency is. Lower wins: a county's rating over a state's.
+COUNTY = 1
+STATE = 2
+
+# The agencies whose ratings may set a tier, with their display names and how
+# local each is. An agency's layer is added here only once the owner has
+# approved its download and its licence allows publishing a derivative:
+# Arlington's Bike Comfort Index and Alexandria's Transport Streets are for
+# internal comparison only (OWNER-DECISIONS 152, 153, 155) and never appear.
+AGENCIES: dict[str, tuple[str, int]] = {
+    "moco": ("Montgomery County Planning", COUNTY),
+    "mdot-sha": ("MDOT SHA (statewide)", STATE),
+}
+
+AGENCY_RULE = "agency rating"
+
+
+@dataclass(frozen=True)
+class AgencyRating:
+    """One agency's level for one way."""
+
+    agency: str
+    level: float
+
+    @property
+    def name(self) -> str:
+        return AGENCIES[self.agency][0]
+
+    @property
+    def rank(self) -> int:
+        return AGENCIES[self.agency][1]
+
+
+def level_problem(level: float) -> str | None:
+    """Why a level cannot be used, or None: 1 to 5 in half steps, not 5.5."""
+    if level * 2 != int(level * 2):
+        return f"level {level} is not a whole or half step"
+    if not 1 <= level <= 5:
+        return f"level {level} is outside 1 to 5"
+    return None
+
+
+def tier_of(level: float) -> tuple[Stress, bool]:
+    """A level as (tier, half): 2.5 is LTS 2 and a half; 5 is Avoid."""
+    if level_problem(level):
+        raise ValueError(level_problem(level))
+    whole = int(level)
+    return Stress(whole), level != whole
+
+
+def chosen(ratings: Iterable[AgencyRating]) -> AgencyRating | None:
+    """The rating the map uses: the most local agency's. Two agencies at the same
+    rank on one way (two counties meeting at a line) take the higher level, the
+    stress-averse reading."""
+    ranked = sorted(ratings, key=lambda r: (r.rank, -r.level))
+    return ranked[0] if ranked else None
+
+
+def apply(result: StressResult, ratings: Iterable[AgencyRating]) -> StressResult:
+    """The way's tier with the agency's level in place of the classifier's.
+
+    The classifier's tier is kept (`formula_tier`, `formula_rule`) and every
+    rating is recorded (`agency_ratings`), for the road panel. An agency rating
+    replaces the formula's only; a tier the owner set comes later and wins."""
+    ratings = tuple(ratings)
+    pick = chosen(ratings)
+    if pick is None:
+        return result
+    tier, half = tier_of(pick.level)
+    level = f"{pick.level:g}"
+    others = [r for r in ratings if r is not pick and r.level != pick.level]
+    why = f"{AGENCY_RULE}: {pick.name} LTS {level}"
+    if others:
+        why += " (more local than " + ", ".join(f"{r.name} {r.level:g}" for r in others) + ")"
+    return replace(
+        result,
+        tier=tier,
+        half=half,
+        rule=why,
+        formula_tier=result.tier,
+        formula_rule=result.rule,
+        agency_ratings=tuple(sorted(ratings, key=lambda r: r.rank)),
+        # A tier set afresh drops the smoothing record, as an override row does.
+        unsmoothed_tier=None,
+    )

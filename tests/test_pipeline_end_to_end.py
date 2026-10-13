@@ -4610,7 +4610,8 @@ def test_the_rebuild_writes_the_ride_layer_and_the_track_surface(
     bare, bare_next = rows[BARE_PATH_ID], rows[BARE_PATH_NEXT_ID]
     assert bare[2] is None and bare[3] == bare_next[3] == pytest.approx(860, rel=0.05)
     west, east, on = rows[NAMED_STREET_ID], rows[NAMED_STREET_EAST_ID], rows[NAMED_ROAD_ON_ID]
-    assert west[0] == 1 and on[0] <= 2, "the roads are calm"
+    # LTS 2 at best outside an urban area (the owner's rural floor, 2026-10-13); still calm.
+    assert west[0] == 2 and on[0] <= 2, "the roads are calm"
     assert west[2] == "Gamma Street" and on[2] == "Delta Road"
     assert west[3] == east[3] == on[3] == pytest.approx(3460, rel=0.03), "one run (402a)"
     assert rows[ROADSIDE_PATH_ID][4] is True, "a trail 10 m beside a road is roadside (403)"

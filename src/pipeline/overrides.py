@@ -490,6 +490,11 @@ def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[in
             oneway=getattr(current, "oneway", None),
             graph_oneway=getattr(current, "graph_oneway", None),
             default_speed_mph=getattr(current, "default_speed_mph", None),
+            # The ratings beneath the owner's, for the road panel: the owner's
+            # row wins over every one of them, but the panel lists them all.
+            formula_tier=getattr(current, "formula_tier", None),
+            formula_rule=getattr(current, "formula_rule", None),
+            agency_ratings=getattr(current, "agency_ratings", ()),
         )
         applied += 1
 
@@ -499,7 +504,11 @@ def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[in
 def _step_now(current) -> float:
     """A way's level as it stands, half step included (an earlier row's half)."""
     adjustment = getattr(current, "adjustment", None)
-    half = adjustment is not None and getattr(adjustment, "half", False)
+    if adjustment is not None:
+        half = getattr(adjustment, "half", False)
+    else:
+        # An agency's half step (`routemaker.agency_lts`).
+        half = getattr(current, "half", False)
     return int(current.tier) + (0.5 if half else 0.0)
 
 

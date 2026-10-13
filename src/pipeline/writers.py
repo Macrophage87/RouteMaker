@@ -204,7 +204,10 @@ def _half(stress: StressResult) -> bool:
     """Whether an owner's override rated the way a half step (`StressAdjustment.half`).
     The level is public whatever the adjustment's visibility: only its reason is not."""
     adjustment = getattr(stress, "adjustment", None)
-    return bool(adjustment is not None and getattr(adjustment, "half", False))
+    if adjustment is not None:
+        return bool(getattr(adjustment, "half", False))
+    # An agency's half step (`routemaker.agency_lts`), where no owner row set it.
+    return bool(getattr(stress, "half", False))
 
 
 def _tier_or_none(tier) -> int | None:
