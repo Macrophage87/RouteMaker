@@ -4,14 +4,18 @@
  * and "Add as stop", which put the point on the station's elevator - the bike
  * entrance - or on the tapped elevator itself (owner, 2026-09-27), and the link
  * to the station's WMATA page or the MARC Penn Line timetable (OWNER-DECISIONS
- * 441b-441e; lib/stationLinks.ts).
+ * 441b-441e; lib/stationLinks.ts). The card also says each line's times now,
+ * scheduled (lib/stationTimes.ts): fetched when the card opens, and shown in
+ * the hover card too once they are known.
  */
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap, PointLike } from "maplibre-gl";
+import type { StationTimes } from "./lib/api.ts";
 import type { LonLat } from "./lib/geo.ts";
 import { focusBackTarget } from "./lib/mapGlue.ts";
 import { RailCards } from "./lib/railCards.ts";
 import { stationLinksElement } from "./lib/stationLinks.ts";
+import { TIMES_LABEL, cachedStationTimes, requestStationTimes, shownLines, stationTimeRows, type TimesRow } from "./lib/stationTimes.ts";
 import { WMATA_SLUGS } from "./lib/railData.ts";
 import { RAIL_LAYERS, STATION_MIN_ZOOM, railHitFrom, stationNear, type RailHit } from "./lib/railLayer.ts";
 import {
@@ -37,6 +41,8 @@ export interface RailInteractionOptions {
   pointCount(): number;
   /** "Make it a loop" is on: a station can be a start or a stop, not an end (OWNER-DECISIONS 374). */
   loop?(): boolean;
+  /** Why the station is closed today with the toggles as they are, or null (railClosures.ts). */
+  closedReason?(station: Station): string | null;
   /** `place` is the name the point carries: the station's, not its entrance's street (stationPlaceName). */
   onStationPoint(role: StationRole, point: LonLat, place: { name: string; label: string }): void;
 }
@@ -49,13 +55,41 @@ const ROLE_TEXT: Record<StationRole, string> = {
 /** Pixels around a tap that still count as on the station. */
 const TAP_SLOP = 6;
 
+/**
+ * The station's times, one line per transit line: the words shown with their emoji are aria-hidden,
+ * and a screen reader reads the same line in words ("Red Line every 8 minutes, scheduled").
+ */
+function fillTimes(list: HTMLElement, rows: readonly TimesRow[]) {
+  list.replaceChildren(
+    ...rows.map((row) => {
+      const item = document.createElement("li");
+      const shown = document.createElement("span");
+      shown.setAttribute("aria-hidden", "true");
+      shown.textContent = row.shown;
+      const spoken = document.createElement("span");
+      spoken.className = "visually-hidden";
+      spoken.textContent = row.spoken;
+      item.append(shown, spoken);
+      return item;
+    }),
+  );
+  list.hidden = rows.length === 0;
+}
+
+function timesRows(options: RailInteractionOptions, times: StationTimes | null | undefined): TimesRow[] {
+  return times ? stationTimeRows(shownLines(times.lines, options.visibility())) : [];
+}
+
 function summary(station: Station, options: RailInteractionOptions, elevatorTapped: boolean): HTMLElement {
   const root = document.createElement("div");
   root.className = "station-popup";
   const name = document.createElement("strong");
   name.className = "station-name";
-  name.textContent = station.name;
+  // "Camden Station, closed: no MARC weekend service", in words (railClosures.ts).
+  const closed = options.closedReason?.(station) ?? null;
+  name.textContent = closed ? `${station.name}, closed: ${closed}` : station.name;
   root.append(name);
+  if (closed) root.classList.add("station-closed");
   const lines = visibleLines(station, options.visibility());
   const row = document.createElement("div");
   row.className = "station-lines";
@@ -68,6 +102,14 @@ function summary(station: Station, options: RailInteractionOptions, elevatorTapp
   }
   row.append(document.createTextNode(linesLabel(lines)));
   root.append(row);
+  // A closed station keeps its "closed" words and says no times.
+  if (!closed) {
+    const times = document.createElement("ul");
+    times.className = "station-times";
+    times.setAttribute("aria-label", TIMES_LABEL);
+    fillTimes(times, timesRows(options, cachedStationTimes(station.point)));
+    root.append(times);
+  }
   const entrance = document.createElement("p");
   entrance.className = "station-entrance";
   entrance.textContent = elevatorTapped ? "Elevator: a way in with a bike." : entranceNote(bikeEntrance(station).kind);
@@ -177,6 +219,13 @@ export function attachRailInteraction(map: MapLibreMap, options: RailInteraction
         .setLngLat(hit.elevator ?? station.point)
         .setDOMContent(content)
         .addTo(map);
+      // The times now (scheduled), filled in when they come; none where the server has no timetable.
+      const times = content.querySelector<HTMLElement>(".station-times");
+      if (times) {
+        void requestStationTimes(station.point).then((answer) => {
+          if (popup.isOpen() && times.isConnected) fillTimes(times, timesRows(options, answer));
+        });
+      }
       return popup;
     },
   });

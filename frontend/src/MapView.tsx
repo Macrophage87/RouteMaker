@@ -40,6 +40,7 @@ import {
   markerDeps,
   popupsOpen,
   pressGrab,
+  featureCardPress,
   runClick,
   ROUTE_STRESS_SOURCE_ID,
   runHover,
@@ -62,7 +63,7 @@ import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
 import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
 import { addRailStations, ROUTE_BOTTOM_LAYER, setRailVisibility } from "./lib/railLayer.ts";
-import type { RailVisibility, StationRole } from "./lib/railStations.ts";
+import type { RailVisibility, Station, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
 import { stressProbe } from "./lib/stressProtocol.ts";
 import federalLandUrl from "./federal-data/federal-land.json?url";
@@ -72,8 +73,9 @@ import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
 import { addWaterRestrooms, setWaterPrefs, WATER_SOURCE_ID, type WaterMap, type WaterPoint, type WaterPrefs } from "./lib/waterRestrooms.ts";
 import { attachWaterInteraction } from "./waterInteraction.ts";
-import { addClimbs, CLIMBS_SOURCE_ID, setClimbsOn, type Climb, type ClimbsMap } from "./lib/climbs.ts";
+import { addClimbs, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, type Climb, type ClimbCategory, type ClimbsMap } from "./lib/climbs.ts";
 import { attachClimbInteraction } from "./climbInteraction.ts";
+import { climbCardAfterClose } from "./lib/climbCard.ts";
 import type { When } from "./lib/dials.ts";
 import { END_GLYPH, START_GLYPH, pointLabel } from "./lib/pointText.ts";
 import { LongPress, isInfoKey, repeatsInfoAsk, type InfoRequest } from "./lib/roadInfo.ts";
@@ -90,6 +92,20 @@ import {
   dockMarkers,
   walkFeatures,
 } from "./lib/bikeshare.ts";
+import {
+  RIDE_COLOUR,
+  RIDE_LINE_WIDTH,
+  TRANSIT_CASING,
+  TRANSIT_CASING_WIDTH,
+  TRANSIT_COLOUR,
+  TRANSIT_DASH,
+  TRANSIT_LINE_WIDTH,
+  transitFeatures,
+  transitAttribution,
+  transitMarkers,
+  transitOf,
+} from "./lib/transit.ts";
+import { countdown, labelSide, mapLabel } from "./lib/departure.ts";
 import {
   CARD_CLOSE_LABEL,
   cardName,
@@ -154,6 +170,12 @@ interface Props {
   lineEdit: LineEdit | null;
   /** The line was dragged (or clicked) to `point` from leg `leg` of the route through `points`. */
   onLineDrop: (leg: number, point: LonLat, points: LonLat[]) => void;
+  /**
+   * Go: a press sets the destination (lib/appMode.ts goTapSetsEnd). A click on the line is onMapClick's, not a
+   * via (a drag of it is still onLineDrop's), and a press on a feature card's layer, or one that only closes such
+   * a card, is the card's alone (lib/mapGlue.ts featureCardPress). Plan: off.
+   */
+  pressSetsEnd?: boolean;
   /** Remove the point at `index` (a via's Remove on the map). */
   onRemovePoint: (index: number) => void;
   /** Changes when the markers must be put back on the points as they are. */
@@ -179,6 +201,8 @@ interface Props {
   onCanvasFocus: (focused: boolean) => void;
   /** Which rail stations show (the panel's toggles). */
   rail: RailVisibility;
+  /** Why a station is closed all day with the toggles as they are, or null (railClosures.ts). */
+  railClosedReason?: (station: Station) => string | null;
   /**
    * The map is coloured by carrying capacity, riders per minute, not by traffic stress
    * (OWNER-DECISIONS 325-327; massStyle.js): a Mass Ride on tiles that carry a capacity (App's
@@ -209,6 +233,12 @@ interface Props {
   climbs?: readonly Climb[] | null;
   /** The Climbs switch (454: off until turned on). */
   climbsOn?: boolean;
+  /** "Show climbs from": the smallest category drawn (lib/climbs.ts climbShown). */
+  climbsFrom?: ClimbCategory;
+  /** The climb card's "Ride this climb" (lib/climbCard.ts). */
+  onRideClimb?: (climb: Climb) => void;
+  /** The road panel's "Climb details": open this climb's card with the focus in it; `n` changes for each ask. */
+  climbCardRequest?: { climb: Climb; n: number } | null;
   /** A station's Start here / End here / Add as stop, with its bike entrance. */
   onStationPoint: (role: StationRole, point: LonLat, place: { name: string; label: string }) => void;
   /**
@@ -255,6 +285,11 @@ const ACCURACY_SOURCE = "location-accuracy";
 // source's attribution, so the attribution control shows it exactly while a bikeshare plan's
 // layer is visible and never otherwise (OWNER-DECISIONS 301).
 const WALK_SOURCE = "bikeshare-walk";
+// A transit ride type's trip past its first ride (lib/transit.ts): Metro and bus dashed, walks
+// dotted, the far end's ride solid and thin, with the schedule's source citation as the source's
+// attribution, shown while the trip is (OWNER-DECISIONS 301).
+const TRANSIT_SOURCE = "transit-trip";
+const TRANSIT_LAYERS = ["transit-casing", "transit-ride", "transit-walk", "transit-line"];
 /** How far from the line's centre a mouse, or a finger, still grabs it. */
 const MOUSE_HIT_PX = 8;
 const TOUCH_HIT_PX = 18;
@@ -417,6 +452,8 @@ export function MapView(props: Props) {
   const waterSync = useRef<(() => void) | null>(null);
   /** Set once the map has loaded: puts the Climbs layer in line with the props. */
   const climbsSync = useRef<(() => void) | null>(null);
+  /** Set once the map has loaded: opens a climb's card with the focus in it (the road panel's "Climb details"). */
+  const climbCardOpener = useRef<((climb: Climb) => void) | null>(null);
   // The first route shown (a shared link, usually) is framed; after that the
   // map moves only when a route leaves the visible part of the map.
   const fitted = useRef(false);
@@ -511,12 +548,15 @@ export function MapView(props: Props) {
       addWaterRestrooms(map as unknown as WaterMap, data, prefs, iconPixelRatio(), ROUTE_BOTTOM_LAYER);
     };
     let climbCard: ReturnType<typeof attachClimbInteraction> | null = null;
+    /** True for the rest of the click that closed a climb card, so no water or federal card opens under it. */
+    let climbClosing = false;
     let climbById = new Map<string, Climb>();
     /** Add the Climbs layer when its data has come, then show or hide it with the switch. */
     const syncClimbs = () => {
       const on = callbacks.current.climbsOn === true;
       if (map.getSource(CLIMBS_SOURCE_ID)) {
         setClimbsOn(map as unknown as ClimbsMap, on);
+        setClimbsFrom(map as unknown as ClimbsMap, callbacks.current.climbsFrom ?? "5");
         climbCard?.close();
         return;
       }
@@ -524,7 +564,7 @@ export function MapView(props: Props) {
       if (!data || data.length === 0) return;
       climbById = new Map(data.map((c) => [c.id, c]));
       // Under the route, with the water and the stations (railLayer.ts's order).
-      addClimbs(map as unknown as ClimbsMap, data, on, iconPixelRatio(), ROUTE_BOTTOM_LAYER);
+      addClimbs(map as unknown as ClimbsMap, data, on, iconPixelRatio(), ROUTE_BOTTOM_LAYER, callbacks.current.climbsFrom ?? "5");
     };
     const anyPopupOpen = () => popupsOpen(popup.current, rail);
     /** Bring the federal-land layers in line with props.federalVisible, loading the data the first time. */
@@ -818,7 +858,31 @@ export function MapView(props: Props) {
         ? { station: stationAt(event.point), line: lineAt(event.point, touch ? TOUCH_HIT_PX : MOUSE_HIT_PX) }
         : { station: null, line: null };
       const point: LonLat = [event.lngLat.lng, event.lngLat.lat];
-      runClick(under, { popupOpen: anyPopupOpen(), afterDrag: performance.now() < clickSuppressedUntil }, {
+      const goPress = callbacks.current.pressSetsEnd === true;
+      // A climb (climbInteraction.ts): its card, never also a point or (in Go) the destination. In Plan only
+      // its summit marker (a press on its dashed line places a point on the climbing road, as before); in Go
+      // its line too. A station and a water or restroom icon keep their own cards. The click after its card
+      // is open only closes it (no other card opens under it), or opens the card of another climb pressed.
+      if (climbCard?.open()) {
+        const shownId = climbCard.shown();
+        climbCard.close();
+        climbClosing = true;
+        window.setTimeout(() => (climbClosing = false), 0);
+        // A press on the climb already shown only closes its card; on another climb, opens that one's.
+        const next = climbCardAfterClose(shownId, onCanvas && !under.station && !water?.hits(event.point) ? climbCard.climbAt(event.point, goPress) : null);
+        if (next) climbCard.openCard(next);
+        return;
+      }
+      if (onCanvas && !under.station && !anyPopupOpen() && !water?.hits(event.point) && performance.now() >= clickSuppressedUntil) {
+        const climb = climbCard?.climbAt(event.point, goPress);
+        if (climb) {
+          climbCard?.openCard(climb);
+          return;
+        }
+      }
+      // Go: read before the cards' own click handlers (attached after this one) open or close them.
+      const forCard = goPress && featureCardPress([water, climbCard, federal], event.point) !== null;
+      runClick(under, { popupOpen: anyPopupOpen() || forCard, afterDrag: performance.now() < clickSuppressedUntil, lineTapIsPoint: goPress }, {
         closePopups: () => {
           closePopup(false);
           rail?.closeCard();
@@ -955,6 +1019,40 @@ export function MapView(props: Props) {
         paint: { "line-color": WALK_COLOUR, "line-width": WALK_LINE_WIDTH, "line-dasharray": WALK_DASH },
       });
       syncBikeshare(map, callbacks.current.route);
+      // The attribution is the plan's own credits (WMATA's, MDOT MTA's, or both), set by syncTransit.
+      map.addSource(TRANSIT_SOURCE, { type: "geojson", data: transitFeatures(null), attribution: "" });
+      map.addLayer({
+        id: "transit-casing",
+        type: "line",
+        source: TRANSIT_SOURCE,
+        layout: { "line-join": "round", "line-cap": "round", visibility: "none" },
+        paint: { "line-color": TRANSIT_CASING, "line-width": TRANSIT_CASING_WIDTH, "line-opacity": 0.95 },
+      });
+      map.addLayer({
+        id: "transit-ride",
+        type: "line",
+        source: TRANSIT_SOURCE,
+        filter: ["==", ["get", "draw"], "ride"],
+        layout: { "line-join": "round", "line-cap": "round", visibility: "none" },
+        paint: { "line-color": RIDE_COLOUR, "line-width": RIDE_LINE_WIDTH },
+      });
+      map.addLayer({
+        id: "transit-walk",
+        type: "line",
+        source: TRANSIT_SOURCE,
+        filter: ["==", ["get", "draw"], "walk"],
+        layout: { "line-join": "round", "line-cap": "round", visibility: "none" },
+        paint: { "line-color": WALK_COLOUR, "line-width": WALK_LINE_WIDTH, "line-dasharray": WALK_DASH },
+      });
+      map.addLayer({
+        id: "transit-line",
+        type: "line",
+        source: TRANSIT_SOURCE,
+        filter: ["==", ["get", "draw"], "transit"],
+        layout: { "line-join": "round", "line-cap": "butt", visibility: "none" },
+        paint: { "line-color": TRANSIT_COLOUR, "line-width": TRANSIT_LINE_WIDTH, "line-dasharray": TRANSIT_DASH },
+      });
+      syncTransit(map, callbacks.current.route);
       map.addSource(EDIT_SOURCE, { type: "geojson", data: editData(null, []) });
       map.addLayer({
         id: "route-edit-preview",
@@ -979,12 +1077,17 @@ export function MapView(props: Props) {
       // Over the base map and the stress overlay, under the route and the
       // drag's handle and preview (railLayer.ts).
       // Left off, with a console warning, if a fixture no longer fits (railFixtures.ts).
-      if (RAIL_STATIONS.length > 0) addRailStations(map, RAIL_STATIONS, callbacks.current.rail, PENN_COLOUR, iconPixelRatio());
+      if (RAIL_STATIONS.length > 0) {
+        addRailStations(map, RAIL_STATIONS, callbacks.current.rail, PENN_COLOUR, iconPixelRatio(), (station) =>
+          Boolean(callbacks.current.railClosedReason?.(station)),
+        );
+      }
       rail = attachRailInteraction(map, {
         station: stationById,
         stations: RAIL_STATIONS,
         pennColour: PENN_COLOUR,
         visibility: () => callbacks.current.rail,
+        closedReason: (station) => callbacks.current.railClosedReason?.(station) ?? null,
         pointCount: () => callbacks.current.points.length,
         loop: () => callbacks.current.loopVias === true,
         onStationPoint: (role, point, place) => callbacks.current.onStationPoint(role, point, place),
@@ -994,21 +1097,22 @@ export function MapView(props: Props) {
       // The water and restrooms card first, so a tap on a fountain on federal land shows the fountain's.
       water = attachWaterInteraction(map, {
         visible: () => callbacks.current.waterPrefs?.on === true,
-        otherPopupOpen: () => anyPopupOpen(),
+        otherPopupOpen: () => anyPopupOpen() || climbClosing,
         point: (id) => waterById.get(id),
       });
       waterSync.current = () => syncWater();
       syncWater();
       climbCard = attachClimbInteraction(map, {
         visible: () => callbacks.current.climbsOn === true,
-        otherPopupOpen: () => anyPopupOpen() || water?.open() === true,
         climb: (id) => climbById.get(id),
+        onRide: (c) => callbacks.current.onRideClimb?.(c),
       });
+      climbCardOpener.current = (c) => climbCard?.openCard(c, true);
       climbsSync.current = () => syncClimbs();
       syncClimbs();
       federal = attachFederalInteraction(map, {
         visible: () => callbacks.current.federalVisible,
-        otherPopupOpen: () => anyPopupOpen() || water?.open() === true || climbCard?.open() === true,
+        otherPopupOpen: () => anyPopupOpen() || water?.open() === true || climbCard?.open() === true || climbClosing,
       });
       federalSync.current = () => syncFederal();
       syncFederal();
@@ -1034,6 +1138,7 @@ export function MapView(props: Props) {
       waterSync.current = null;
       climbCard?.detach();
       climbsSync.current = null;
+      climbCardOpener.current = null;
       stressCheck.cancel();
       if (hoverFrame) cancelAnimationFrame(hoverFrame);
       gesture.cancel();
@@ -1168,6 +1273,80 @@ export function MapView(props: Props) {
       return new maplibregl.Marker({ element, anchor: "center" }).setLngLat([dock.lon, dock.lat]).addTo(map);
     });
     return () => drawn.forEach((marker) => marker.remove());
+  }, [props.route]);
+
+  // A transit trip's lines past its first ride, and a text marker on each Metro and bus step, so the
+  // dashed line is named in words as well as drawn (not buttons: they do nothing when pressed).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current) return;
+    syncTransit(map, props.route);
+    const drawn = transitMarkers(transitOf(props.route)).map((stop) => {
+      const element = document.createElement("div");
+      element.className = "transit-marker";
+      element.setAttribute("role", "img");
+      element.setAttribute("aria-label", stop.label);
+      const badge = document.createElement("span");
+      badge.setAttribute("aria-hidden", "true");
+      badge.textContent = stop.badge;
+      element.appendChild(badge);
+      element.addEventListener("click", (event) => event.stopPropagation());
+      return new maplibregl.Marker({ element, anchor: "center" }).setLngLat([stop.lon, stop.lat]).addTo(map);
+    });
+    return () => drawn.forEach((marker) => marker.remove());
+  }, [props.route]);
+
+  // An infrequent departure's label at the boarding stop (lib/departure.ts): "MARC 7:42 am · 6 min
+  // spare", and, when cutting it close, the countdown to it. Hidden from screen readers (the panel
+  // says the same, and its milestones are announced there), so it is never a live region; it changes
+  // by text only, no animation. It sits above the stop, or below when the start or end marker is near.
+  useEffect(() => {
+    const map = mapRef.current;
+    const departure = transitOf(props.route)?.departure;
+    if (!map || !loaded.current || !departure?.point) return;
+    const element = document.createElement("div");
+    element.className = "departure-label";
+    element.setAttribute("aria-hidden", "true");
+    const text = document.createElement("span");
+    element.appendChild(text);
+    const leaving = departure;
+    const board = departure.point;
+    let marker: maplibregl.Marker | null = null;
+    let side: "above" | "below" | null = null;
+    const place = () => {
+      const points = callbacks.current.points;
+      const ends = points.length > 0 ? [points[0], points[points.length - 1]] : [];
+      const want = labelSide(
+        map.project(board),
+        ends.map((end) => map.project(end)),
+      );
+      if (want === side && marker) return;
+      side = want;
+      element.dataset.side = side;
+      marker?.remove();
+      // A new marker sets its own anchor class on the element; the old one's goes.
+      element.className = "departure-label";
+      marker = new maplibregl.Marker({ element, anchor: side === "above" ? "bottom" : "top", offset: [0, side === "above" ? -14 : 14] })
+        .setLngLat(board)
+        .addTo(map);
+      tick();
+    };
+    function tick() {
+      const now = Date.now();
+      const label = mapLabel(leaving, now);
+      if (text.textContent !== label) text.textContent = label;
+      const state = countdown(leaving, now);
+      element.classList.toggle("close", state.close && !state.missed);
+      element.classList.toggle("missed", state.missed);
+    }
+    place();
+    const timer = window.setInterval(tick, 1000);
+    map.on("zoomend", place);
+    return () => {
+      window.clearInterval(timer);
+      map.off("zoomend", place);
+      marker?.remove();
+    };
   }, [props.route]);
 
   // The accessibility switch (or the system's request for more contrast):
@@ -1519,8 +1698,8 @@ export function MapView(props: Props) {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loaded.current) return;
-    setRailVisibility(map, RAIL_STATIONS, props.rail);
-  }, [props.rail.metro, props.rail.marc]);
+    setRailVisibility(map, RAIL_STATIONS, props.rail, (station) => Boolean(props.railClosedReason?.(station)));
+  }, [props.rail.metro, props.rail.marc, props.railClosedReason]);
 
   // The federal-land shading: on for a Mass Ride, off for any other ride type.
   useEffect(() => {
@@ -1535,7 +1714,12 @@ export function MapView(props: Props) {
   // The Climbs layer: its data when it comes, and the switch.
   useEffect(() => {
     climbsSync.current?.();
-  }, [props.climbs, props.climbsOn]);
+  }, [props.climbs, props.climbsOn, props.climbsFrom]);
+
+  // The road panel's "Climb details": the climb's card, with the focus in it.
+  useEffect(() => {
+    if (props.climbCardRequest) climbCardOpener.current?.(props.climbCardRequest.climb);
+  }, [props.climbCardRequest]);
 
   return (
     <>
@@ -1618,6 +1802,21 @@ function syncBikeshare(map: MapLibreMap, route: RouteResponse | null): void {
   source.setData(walkFeatures(plan));
   const visibility = plan ? "visible" : "none";
   for (const id of ["bikeshare-walk-casing", "bikeshare-walk"]) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visibility);
+  }
+}
+
+/** A transit trip's lines on the map, and the layers' visibility, which is what shows the source citation. */
+function syncTransit(map: MapLibreMap, route: RouteResponse | null): void {
+  const source = map.getSource(TRANSIT_SOURCE) as GeoJSONSource | undefined;
+  if (!source) return;
+  const plan = transitOf(route);
+  // The systems this trip uses, cited while its lines show (OWNER-DECISIONS 301); the control
+  // reads a source's attribution when the style changes, which the visibility below does.
+  (source as unknown as { attribution?: string }).attribution = transitAttribution(plan);
+  source.setData(transitFeatures(plan));
+  const visibility = plan ? "visible" : "none";
+  for (const id of TRANSIT_LAYERS) {
     if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", visibility);
   }
 }

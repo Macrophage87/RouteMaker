@@ -125,7 +125,7 @@ def mtb_level(reason: str | None, tags: dict[str, str]) -> int | None:
     `routemaker.singletrack.mtb_level` on a way closed as rated singletrack, None on every
     other. So a level always means closed on every graph, and the legend's "Not used for
     routes" holds for every coloured line: a mountain-bike-class way whose rating the
-    singletrack rule does not read (`S2`, `0-2`) stays the grey dots the off-road graph
+    singletrack rule does not read (`S2`, `0-2`) stays the grey dashes the off-road graph
     rides (review of slice 2)."""
     return singletrack.mtb_level(tags) if reason == singletrack.NO_BICYCLE else None
 

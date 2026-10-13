@@ -9,6 +9,7 @@ it, what is kept, and why the search stops.
 from __future__ import annotations
 
 import dataclasses
+import gc
 import tempfile
 
 import pytest
@@ -2553,9 +2554,20 @@ class TestSeekLegByLeg:
     def test_a_late_leg_is_held_to_the_seeks_stop(self, monkeypatch) -> None:
         # 2.3 s left (mutant R8): the leg's least (2.5 s) may not run past the stop
         # and into the time kept back for the answer's traces.
-        ctx = self.leg_context(2, deadline_s=refine.REFINE_TRACE_RESERVE_S + 2.3)
-        worse = {f"t{i}": analysis(f"t{i}", "1" * 40, cost_s=9000.0) for i in (1, 2)}
-        world, _kept, _info = self.plan(monkeypatch, worse, [one_leg("t1"), one_leg("t2")], ctx=ctx)
+        # The deadline is wall-clock, 0.3 s above the seek's least round: a full garbage
+        # collection of the whole suite's heap landing inside it (deterministic, by
+        # allocation count, in CI's single process) ate those 0.3 s and the leg was never
+        # asked. Collected first and held off while the seek runs.
+        gc.collect()
+        gc.disable()
+        try:
+            ctx = self.leg_context(2, deadline_s=refine.REFINE_TRACE_RESERVE_S + 2.3)
+            worse = {f"t{i}": analysis(f"t{i}", "1" * 40, cost_s=9000.0) for i in (1, 2)}
+            world, _kept, _info = self.plan(
+                monkeypatch, worse, [one_leg("t1"), one_leg("t2")], ctx=ctx
+            )
+        finally:
+            gc.enable()
         assert world.deadlines[0] == pytest.approx(2.3, abs=0.1)
         assert max(world.deadlines) <= 2.3 + 0.05
 
@@ -2780,6 +2792,10 @@ class TestStressAverseWeights:
             ("trailmaxxing", None),
             ("cargo", presets.CARRYING_PEOPLE),
             ("bikeshare", None),
+            # Bikeshare + 🚶🚆🚌 rides a bikeshare bike, calm as Bikeshare is.
+            ("bikeshare-transit", None),
+            # Rebalance Ride rides a share bike, calm as Bikeshare is.
+            ("rebalance", None),
             ("kids", None),
             # Mountain Bike (slice 6): connecting roads up to LTS 2, LTS 4 only with no other way.
             ("mountain-bike", None),
@@ -2791,7 +2807,14 @@ class TestStressAverseWeights:
     def test_every_other_ride_keeps_1_2_3_and_no_hold(self) -> None:
         for name in presets.PRESETS:
             # Bikeshare is calm by default too (OWNER-DECISIONS 304(3): casual riders).
-            if name in ("trailmaxxing", "bikeshare", "kids", "mountain-bike"):
+            if name in (
+                "trailmaxxing",
+                "bikeshare",
+                "bikeshare-transit",
+                "rebalance",
+                "kids",
+                "mountain-bike",
+            ):
                 continue
             exposure = presets.exposure_for(name, presets.CARRYING_CARGO)
             assert exposure.weights == {"2": 0.0, "3": 1.0, "4": 2.0, "5": 3.0}, name

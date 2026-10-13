@@ -5,10 +5,11 @@
  * types generated from the API's OpenAPI schema; until that step exists they
  * are written out here, against the contract rather than against a guess.
  */
+import type { TripLeg } from "./transitMarks.ts";
 import type { MtbReading } from "./mtbMode.ts";
 import { formatRoughDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
-import type { PresetId } from "./presets.ts";
+import { twoPointsOnly, type PresetId } from "./presets.ts";
 import type { StressMetres } from "./stressBar.ts";
 import type { FacilityMetres } from "./facilityBar.ts";
 import type { NearbyStationsAnswer, StationAction } from "./stations.ts";
@@ -217,6 +218,23 @@ export interface JunctionGroupSummary {
   text: string;
 }
 
+/** A categorised climb a route rides uphill (core.api.HillClimbOut; FOLLOWUP-HILL-SEEK). */
+export interface HillClimb {
+  id: string;
+  category: "5" | "4" | "3" | "2" | "1" | "HC";
+  length_m: number;
+  gain_m: number;
+  grade_pct: number;
+  from_m: number;
+  to_m: number;
+  unpaved: boolean;
+  name: string | null;
+  /** "Category 4 climb, 0.8 miles (1.3 km) at 5.0%, 262 ft (80 m) gained". */
+  text: string;
+  /** Whether the hill seek asked the router for it. */
+  sought: boolean;
+}
+
 /**
  * One entry of the route's description (core.api.DescriptionEntryOut;
  * OWNER-DECISIONS 220): a stretch of one street at one stress tier, a
@@ -227,9 +245,11 @@ export interface DescriptionEntry {
   /**
    * "avoid": an Avoid-rated junction ahead (OWNER-DECISIONS 307), at a point. "workzone": a live
    * work zone along the route (FOLLOWUP-WORKZONES), severity "red" for a closure, "orange" for a
-   * penalty; or, at 0 with no severity, the work-zone disclaimer or the feeds not read.
+   * penalty; or, at 0 with no severity, the work-zone disclaimer or the feeds not read. "climb": a
+   * categorised climb the route rides uphill, from its foot to its summit, where Mountain Goat's hill
+   * seek ran (FOLLOWUP-HILL-SEEK).
    */
-  kind: "stretch" | "junction" | "via" | "walk" | "avoid" | "workzone";
+  kind: "stretch" | "junction" | "via" | "walk" | "avoid" | "workzone" | "climb";
   from_m: number;
   to_m: number;
   from_mi: number;
@@ -419,6 +439,144 @@ export interface BikeshareEnding {
  * The walks, docks, availability, fee and notes of a bikeshare plan (core.api.BikesharePlanOut,
  * FOLLOWUP-BIKESHARE). The route body around it is the ride leg between the docks.
  */
+/** One step of a transit plan (core.transit, POST /api/route's `transit.steps`). */
+export interface TransitStep {
+  /** A transit leg's mode is its system's: `metro` (WMATA), `rail` (MARC), `light-rail`, `subway`, `bus`. */
+  mode: "ride" | "take" | "bikeshare" | "walk" | "enter" | "exit" | "metro" | "rail" | "light-rail" | "subway" | "bus";
+  /** The step in one sentence, US units first, as it is read aloud. */
+  text: string;
+  seconds: number;
+  wait_s: number;
+  to: string | null;
+  lines: string[];
+  /** A transit leg's system, by name: "Metro", "MARC". */
+  system?: string | null;
+  /** An infrequent service (over 15 min apart): the departure taken, "7:42 am". */
+  departs?: string | null;
+  /** A frequent service: minutes between departures. */
+  every_min?: number | null;
+  /** Where a transit step's times are from: "scheduled" now; "live" from v0.7. Null off transit. */
+  source?: TimeSource | null;
+  with_bike: boolean;
+  /** This step is the route's own line (drawn as the route); its coordinates are empty. */
+  route_line: boolean;
+  coordinates: LonLat[];
+}
+
+/** One way to make the trip (the owner, 2026-10-12): riding the whole way, walking it, or a transit trip. */
+export interface TransitOption {
+  /** Sent back as `transit_option` to plan this one. */
+  key: string;
+  /** "Ride, Metro to Federal Triangle (Orange Line), ride". */
+  label: string;
+  total_s: number;
+  minutes: number;
+  direct: boolean;
+  /** Walking the whole way (Bikeshare + 🚶🚆🚌, where that is reasonable). */
+  walk?: boolean;
+  chosen: boolean;
+  /** Its legs compactly, for its row: "🚶 4 min · 🚲 12 min · 🔴 18 min" (lib/transitMarks.ts). */
+  legs?: TripLeg[];
+}
+
+/**
+ * The chosen trip's first infrequent departure (the owner, 2026-10-12: "make it clear when the next
+ * departure would be and if cutting it close, put a timer"). Times are ISO 8601 with their offset.
+ */
+/** Where a transit time is from, said after it: "8:12 am scheduled" (the owner, 2026-10-12: "Make it clear whether it's a schedule or live."). */
+export type TimeSource = "scheduled" | "live";
+
+export interface TransitDeparture {
+  /** Its index in `steps`. */
+  step: number;
+  system: string;
+  /** "the MARC Penn Line". */
+  vehicle: string;
+  board_at: string | null;
+  /** "7:42 am". */
+  departs: string;
+  departs_at: string;
+  arrive_at: string;
+  next: string | null;
+  next_at: string | null;
+  /** Time to spare at the stop, as planned. */
+  spare_s: number;
+  /** Under 5 minutes to spare: a countdown is shown. */
+  close: boolean;
+  /** The moment the plan is for. */
+  planned_at: string;
+  point: LonLat | null;
+  /** The map's label: "MARC 7:42 am scheduled · 6 min spare". */
+  label: string;
+  /** Where its times are from (absent from older answers: scheduled). */
+  source?: TimeSource;
+}
+
+/** A rail station with no service at all on a day (GET /api/transit/closures). */
+export interface ClosedStation {
+  name: string;
+  system: string;
+  lon: number;
+  lat: number;
+  /** "no MARC weekend service". */
+  reason: string;
+}
+
+/** One line's times at a station now (GET /api/transit/station-times; core.transit.station_times). */
+export interface StationLineTime {
+  /** "Metro", "MARC", "VRE", "Light RailLink". */
+  system: string;
+  /** "Red Line", "Penn Line". */
+  line: string;
+  /** The stop's name in the timetable. */
+  station: string;
+  /** every: a frequent line's minutes between trains; next: the next train one way; none: no more today that way. */
+  kind: "every" | "next" | "none";
+  every_min: number | null;
+  /** The train's last stop; null on a `none` for both ways. */
+  toward: string | null;
+  /** Local clock time: "5:42 pm". */
+  time: string | null;
+  at: string | null;
+  /** Whether the line runs at all today (that way). */
+  today: boolean;
+}
+
+export interface StationTimes {
+  service_day: string;
+  source: TimeSource;
+  lines: StationLineTime[];
+}
+
+/** A transit ride type's trip: scheduled times, not live. */
+export interface TransitPlan {
+  mode: "bike-transit" | "bikeshare-transit";
+  /** The chosen option's key, and whether it is riding the whole way. */
+  key: string;
+  direct: boolean;
+  /** Quickest first; riding the whole way is always one. */
+  options: TransitOption[];
+  total_s: number;
+  minutes: number;
+  /** "About N min door to door, scheduled." */
+  summary: string;
+  bike_only_s: number | null;
+  /** Riding the whole way, in words; null when it could not be timed. */
+  comparison: string | null;
+  riding_quicker: boolean;
+  steps: TransitStep[];
+  notes: string[];
+  day_type: "weekday" | "saturday" | "sunday";
+  band: string | null;
+  holiday: boolean;
+  bike_blackout: boolean;
+  scheduled: boolean;
+  /** The schedules' sources, for the systems the chosen trip uses. */
+  credits: string[];
+  /** The first infrequent departure, or null (absent from older answers). */
+  departure?: TransitDeparture | null;
+}
+
 export interface BikesharePlan {
   bike: Bike;
   ending: Ending;
@@ -448,6 +606,11 @@ export interface BikesharePlan {
   options?: BikeshareOption[];
   /** The plain source citation (OWNER-DECISIONS 301). */
   credit: string;
+  /**
+   * A Rebalance Ride (`preset: "rebalance"`): from a crowded station (at least 3/4 full) to one that needs bikes
+   * (at most 1/4 full). False on plain Bikeshare; absent from an older server.
+   */
+  rebalance?: boolean;
 }
 
 /** One end of a route option (core.api.BikeshareOptionEndOut). */
@@ -533,6 +696,8 @@ export interface RouteResponse {
   avoid_alternate?: (RouteResponse & { extra_distance_m: number; extra_duration_s: number }) | null;
   /** Bikeshare only: the walks, docks, availability, fee and notes around this ride leg; null elsewhere. */
   bikeshare?: BikesharePlan | null;
+  /** The transit ride types only (core.transit): the whole trip in steps around this body, its first ride leg. */
+  transit?: TransitPlan | null;
   /** Present on a loop (OWNER-DECISIONS 266). */
   loop?: LoopInfo | null;
   /** Mountain Bike only (docs/MTB-TOPO-PLAN.md, slice 6): the route's trail reading; null or absent elsewhere. */
@@ -602,6 +767,17 @@ export interface RouteResponse {
     extra_climb_m: number;
     extra_distance_m: number;
     limited: "two_points" | "long_ride" | "timed_out" | "calm_first" | null;
+    /**
+     * The categorised climbs the kept route rides uphill, in order (FOLLOWUP-HILL-SEEK, OWNER-DECISIONS
+     * 205); `text` is the climb in words, US units first. Additive: older APIs leave it out.
+     */
+    climbs?: HillClimb[];
+    /**
+     * The hill seek: routes through the climbs near the line, compared with the router's own; null where
+     * it did not run. "no_climbs": the server has no Climbs layer file, so only the router's own routes
+     * were compared.
+     */
+    climb_seek?: { near: number; asked: number; found: number; limited: "no_climbs" | "time" | null } | null;
   } | null;
   /**
    * Present when the hills slider was past its middle on a ride type where that means "fine with
@@ -697,6 +873,8 @@ export const LONG_RIDE_TIMED_OUT = "long_ride_timed_out";
 /** The API's codes on a bikeshare plan's 503 (the operator's station list unavailable) and 422 (no dock to use). */
 export const BIKESHARE_UNAVAILABLE = "bikeshare_unavailable";
 export const NO_BIKESHARE = "no_bikeshare";
+export const NO_TRANSIT = "no_transit";
+export const TRANSIT_UNAVAILABLE = "transit_unavailable";
 
 export type RouteResult = { ok: true; route: RouteResponse } | { ok: false; error: RouteError };
 
@@ -806,6 +984,14 @@ export function describeError(status: number, body: unknown, retryAfter: string 
       message: said ? asSentence(said) : "No dock can be used for this plan. Try the other bike type.",
     };
   }
+  if (status === 422 && code === NO_TRANSIT) {
+    return {
+      ...base,
+      kind: "no-route",
+      title: "No transit plan",
+      message: said ? asSentence(said) : "No Metro or bus combination can be planned here. Try riding the whole way.",
+    };
+  }
   if (status === 404 || status === 422) {
     return {
       ...base,
@@ -836,6 +1022,15 @@ export function describeError(status: number, body: unknown, retryAfter: string 
       kind: "bikeshare-unavailable",
       title: "Bikeshare data unavailable",
       message: `Station data is not available right now, so no dock can be chosen. ${wait(retryAfterS, "Try again shortly.")}`,
+    };
+  }
+  if (status === 503 && code === TRANSIT_UNAVAILABLE) {
+    return {
+      ...base,
+      kind: "timed-out",
+      title: "Transit times unavailable",
+      message: said ? asSentence(said) : `Transit times are not available right now. ${wait(retryAfterS, "Try again shortly.")}`,
+      noAutoResend: true,
     };
   }
   if (status === 503 && code === LONG_RIDE_TIMED_OUT) {
@@ -902,7 +1097,7 @@ export async function requestRoute(
         // routing.loop_wanted ignores it there too. Bikeshare has no loop either, and
         // its API refuses one, so a loop kept from another ride type is not sent.
         ...(options.dials
-          ? dialFields(preset === "mass-ride" || preset === "bikeshare" ? { ...options.dials, loop: false } : options.dials)
+          ? dialFields(preset === "mass-ride" || twoPointsOnly(preset) ? { ...options.dials, loop: false } : options.dials)
           : {}),
         ...(options.confirmLong ? { confirm_long: true } : {}),
       }),

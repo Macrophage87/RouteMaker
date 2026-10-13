@@ -140,6 +140,13 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
   page.routeBodies = [];
   page.stationRequests = [];
   page.infoRequests = [];
+  // The day's closed rail stations (GET /api/transit/closures; core.transit.closed_stations): none
+  // unless a check sets `closures`; `closureRequests` counts the asks.
+  page.closures = { service_day: "2026-10-12", stations: [] };
+  page.closureRequests = 0;
+  // A station's lines now (GET /api/transit/station-times; core.transit.station_times): none
+  // unless a check sets `stationTimes`.
+  page.stationTimes = { service_day: "2026-10-12", source: "scheduled", lines: [] };
   // The road panel's stress editor (OWNER-DECISIONS 441g, 441h; core/stress_edits.py): `admin` makes this
   // visitor an instance admin; `editRoad` is the one road's state, `editRequests` what the page sent
   // (method, path, headers, body), `tileUrls` the stress tiles asked for, and `editFail` an answer to give
@@ -213,6 +220,15 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       status = 200;
       body = JSON.stringify(typeof route === "function" ? route(n) : route);
       type = "application/json";
+    } else if (url.pathname === "/api/transit/closures") {
+      page.closureRequests += 1;
+      status = 200;
+      type = "application/json";
+      body = JSON.stringify(page.closures);
+    } else if (url.pathname === "/api/transit/station-times") {
+      status = 200;
+      type = "application/json";
+      body = JSON.stringify(page.stationTimes);
     } else if (url.pathname === "/api/bikeshare/stations" && request.method === "POST") {
       // The nearest stations to pick up from or return to (core/bikeshare.py nearby_stations).
       const asked = JSON.parse(request.postData ?? "{}");
@@ -225,6 +241,12 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       page.infoRequests.push(url.search);
       status = 200;
       body = JSON.stringify(segmentInfoAt(page.editRoad.tier));
+      type = "application/json";
+    } else if (/^\/api\/climbs\/[A-Za-z0-9]+\/profile$/.test(url.pathname)) {
+      // The climb card's profile (core/climbprofile.py): one small climb, whatever the id.
+      status = 200;
+      body = JSON.stringify({ id: url.pathname.split("/")[3], category: "2", length_m: 12090, gain_m: 368, avg_grade_pct: 3, max_grade_pct: 9,
+        interval_m: 30, m: [0, 30, 60, 90, 120], elevation_m: [150, 152, 155, 158, 160], grade_pct: [6.7, 8, 9, 8.3, 6.7] });
       type = "application/json";
     } else if (url.pathname === "/api/me/go") {
       // My Go (UI-CLEANUP; core/api.py my_go_read, my_go_save): the account's, signed in only.
@@ -1016,6 +1038,109 @@ export const S_BIKESHARE = (() => {
   return r;
 })();
 /** The same on an e-bike, with the out-of-dock ending on offer beside the dock (zones read, a fee in the data). */
+/**
+ * Own Bike + 🚆🚌 (TRANSIT-ASSIST; core.transit.block): the line is the first ride, to the
+ * station's elevator; the trip is the `transit` block, its Metro leg through two stations and the
+ * far end's ride drawn past the line. Scheduled, so every total says "about" and "scheduled".
+ */
+export const S_TRANSIT = (() => {
+  const r = copy();
+  r.preset = "bike-transit";
+  r.distance_m = 1200;
+  r.duration_s = 240;
+  r.dials = { stress: 70, hills: 0, when: "weekday", carrying: null };
+  r.calm_search = { rate: 0, rounds: 0, excluded: 0, limited: null };
+  const step = (mode, text, seconds, extra = {}) => ({ mode, text, seconds, wait_s: 0, to: null, lines: [], with_bike: false, route_line: false, coordinates: [], ...extra });
+  r.transit = {
+    mode: "bike-transit",
+    key: "ride>wmata-rail:eastern-market>federal-triangle>ride",
+    direct: false,
+    // The owner, 2026-10-12: riding the whole way is always one option; the rest quickest first.
+    options: [
+      { key: "ride>wmata-rail:eastern-market>federal-triangle>ride", label: "Ride, Metro to Federal Triangle (Orange Line), ride", total_s: 1680, minutes: 28, direct: false, chosen: true },
+      { key: "direct", label: "Ride the whole way", total_s: 1920, minutes: 32, direct: true, chosen: false },
+    ],
+    total_s: 1680,
+    minutes: 28,
+    summary: "About 28 min door to door, scheduled.",
+    bike_only_s: 1920,
+    comparison: "Riding the whole way: about 32 min. Transit saves about 4 min.",
+    riding_quicker: false,
+    steps: [
+      step("ride", "Ride 4 min to Eastern Market.", 240, { to: "Eastern Market", route_line: true }),
+      step("enter", "About 4 min into the station by the elevator.", 240, { with_bike: true }),
+      step("metro", "Board the Orange Line (every 10 min, scheduled; about 5 min wait); ride 10 min to Federal Triangle.", 600, {
+        wait_s: 300,
+        to: "Federal Triangle",
+        lines: ["Orange Line"],
+        system: "Metro",
+        departs: null,
+        with_bike: true,
+        coordinates: [coords[40], [-77.0051, 38.8851], [-77.0159, 38.8851], [-77.0281, 38.8932]],
+      }),
+      step("exit", "About 4 min out of the station by the elevator.", 240, { with_bike: true }),
+      step("ride", "Ride 1 min to your destination.", 60, { coordinates: [[-77.0281, 38.8932], [-77.03, 38.896]] }),
+    ],
+    notes: ["Metro: use the elevators and a car's end doors."],
+    day_type: "weekday",
+    band: "morning rush",
+    holiday: false,
+    bike_blackout: false,
+    scheduled: true,
+    credits: ["WMATA GTFS (scheduled times)"],
+    departure: null,
+  };
+  return r;
+})();
+
+/**
+ * An infrequent departure (the owner, 2026-10-12): the same trip on the MARC Penn Line, with under
+ * 5 min to spare, so the countdown shows in the panel and on the map's label. A function of the time
+ * the route is asked for, as the API's answer is.
+ */
+export function transitMarc(nowMs = Date.now()) {
+  const r = JSON.parse(JSON.stringify(S_TRANSIT));
+  const iso = (ms) => {
+    // Washington's offset in October: -04:00.
+    const local = new Date(ms - 4 * 3600 * 1000).toISOString().slice(0, 19);
+    return `${local}-04:00`;
+  };
+  const clock = (ms) => {
+    const d = new Date(ms - 4 * 3600 * 1000);
+    const h = d.getUTCHours();
+    return `${h % 12 || 12}:${String(d.getUTCMinutes()).padStart(2, "0")} ${h < 12 ? "am" : "pm"}`;
+  };
+  const departs = nowMs + 20 * 60 * 1000;
+  const spare = 200;
+  const metro = r.transit.steps[2];
+  r.transit.steps[2] = {
+    ...metro,
+    mode: "rail",
+    system: "MARC",
+    lines: ["Penn Line"],
+    departs: clock(departs),
+    text: `Board the MARC Penn Line at ${clock(departs)} scheduled from Union Station: you arrive ${clock(departs - spare * 1000)}, 3 min spare. Ride 10 min to Federal Triangle.`,
+  };
+  r.transit.credits = ["WMATA GTFS (scheduled times)", "MDOT MTA GTFS (scheduled times)"];
+  r.transit.departure = {
+    step: 2,
+    system: "MARC",
+    vehicle: "the MARC Penn Line",
+    board_at: "Union Station",
+    departs: clock(departs),
+    departs_at: iso(departs),
+    arrive_at: iso(departs - spare * 1000),
+    next: clock(departs + 60 * 60 * 1000),
+    next_at: iso(departs + 60 * 60 * 1000),
+    spare_s: spare,
+    close: true,
+    planned_at: iso(nowMs),
+    point: metro.coordinates[0],
+    label: `MARC ${clock(departs)} scheduled · 3 min spare`,
+    source: "scheduled",
+  };
+  return r;
+}
 export const S_BIKESHARE_EBIKE = (() => {
   const r = JSON.parse(JSON.stringify(S_BIKESHARE));
   r.dials = { ...r.dials, hills: -20, assist: true };

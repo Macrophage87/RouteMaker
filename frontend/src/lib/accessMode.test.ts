@@ -1,6 +1,7 @@
 // Accessibility mode's logic (OWNER-DECISIONS 455; lib/accessMode.ts).
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { ADD_AT_CENTRE_LABEL, SET_END_AT_CENTRE_LABEL, infoHelp } from "./roadInfo.ts";
 import {
   ACCESS_HELP,
   ACCESS_MODE_KEY,
@@ -122,4 +123,16 @@ test("the keyboard's ways name Map tools in both states, and say how to get it w
   assert.match(mapToolsWays(false).roadAndAdd, /^turn on accessibility mode/);
   // Shown only in More tips, which says where the switch is once, in its own line (the spec review's SF4).
   assert.doesNotMatch(mapToolsWays(false).addPoint + mapToolsWays(false).roadAndAdd, /first button/);
+});
+
+test("in Go the keyboard's ways name Map tools' button as Go labels it, Set destination at map center (review of #116)", () => {
+  for (const on of [true, false]) {
+    const w = mapToolsWays(on, true);
+    assert.ok(w.addPoint.includes(`"${SET_END_AT_CENTRE_LABEL}" in Map tools`), w.addPoint);
+    assert.ok(w.roadAndAdd.endsWith(`Road info at map center and ${SET_END_AT_CENTRE_LABEL}`), w.roadAndAdd);
+    assert.ok(!w.addPoint.includes(ADD_AT_CENTRE_LABEL) && !w.roadAndAdd.includes(ADD_AT_CENTRE_LABEL));
+    assert.ok(mapToolsWays(on).addPoint.includes(ADD_AT_CENTRE_LABEL), "Plan keeps its name");
+  }
+  assert.ok(infoHelp(true, true).includes(SET_END_AT_CENTRE_LABEL) && !infoHelp(true, true).includes(ADD_AT_CENTRE_LABEL));
+  assert.equal(infoHelp(true), infoHelp(true, false));
 });

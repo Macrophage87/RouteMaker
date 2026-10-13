@@ -1,0 +1,6 @@
+stop_id,stop_name,stop_lat,stop_lon,location_type,parent_station,wheelchair_boarding
+LR_CY,Camden Yards,39.285000,-76.620900,0,,1
+LR_CC,Convention Center,39.286900,-76.618600,0,,1
+LR_UC,University Center/Baltimore St,39.289600,-76.621500,0,,0
+LR_LM,Lexington Market,39.291700,-76.621900,0,,1
+LR_PS,Penn Station,39.306900,-76.615800,0,,1

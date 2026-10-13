@@ -18,7 +18,17 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { PresetId } from "./lib/presets.ts";
 import { BIKESHARE_HILLS, RIDE_SIZE_DEFAULT, WHENS, fitRideSize, offersBike, rideSizeOf, type Bike, type Dials, type When } from "./lib/dials.ts";
 import { BIKES } from "./lib/bikeshare.ts";
-import { MTB_LEVEL_LEGEND, MTB_LEVEL_OPTIONS, isMtb, mtbLevelOf, withMtbLevel } from "./lib/mtbMode.ts";
+import {
+  MTB_LEVEL_LEGEND,
+  MTB_LEVEL_OPTIONS,
+  MTB_PREFERRED_LEGEND,
+  isMtb,
+  mtbLevelOf,
+  mtbPreferredClamped,
+  mtbPreferredOf,
+  withMtbLevel,
+  withMtbPreferred,
+} from "./lib/mtbMode.ts";
 import { RIDE_SIZE_LABEL, panelView, parseTarget, type SliderView } from "./lib/dialsPanel.ts";
 import { defaultSplit, type StoredWeight } from "./lib/weight.ts";
 import { WeightSetting } from "./lib/weightDialog.ts";
@@ -223,6 +233,16 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
   };
   const view = panelView(preset, dials, draft);
   const trailsOffHintId = useId();
+  // What lowering the hardest trail level did to the preferred one, said politely (never a silent clamp),
+  // with the ride type and levels it was said of: a change from outside the panel (a link, a ride type, a
+  // reset) clears it, so it never speaks of levels no longer shown.
+  const mtbPreferredHintId = useId();
+  const mtbKey = `${preset}:${mtbLevelOf(dials)}:${mtbPreferredOf(dials)}`;
+  const [mtbClamp, setMtbClamp] = useState<{ said: string; key: string } | null>(null);
+  useEffect(() => {
+    if (mtbClamp && mtbClamp.key !== mtbKey) setMtbClamp(null);
+  }, [mtbKey, mtbClamp]);
+  const mtbClampSaid = mtbClamp?.key === mtbKey ? mtbClamp.said : "";
   return (
     <section className="dials" aria-labelledby="dials-heading">
       {/* Inside the Ride line's settings (Sidebar.tsx RideSettings), which is the h2. In the order of the
@@ -262,7 +282,12 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
                 name="mtb-level"
                 value={option.level}
                 checked={mtbLevelOf(dials) === option.level}
-                onChange={() => onCommit(withMtbLevel(dials, option.level))}
+                onChange={() => {
+                  const next = withMtbLevel(dials, option.level);
+                  const said = mtbPreferredClamped(dials, next);
+                  setMtbClamp(said ? { said, key: `${preset}:${mtbLevelOf(next)}:${mtbPreferredOf(next)}` } : null);
+                  onCommit(next);
+                }}
               />
               <span>
                 {option.label}
@@ -271,6 +296,40 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
             </label>
           ))}
           <p className="hint">The route uses no trail harder than this where any other way exists, and says so where it must.</p>
+        </fieldset>
+      )}
+      {isMtb(preset) && (
+        // The preferred level (the second pass): the same four levels, those above the hardest level
+        // disabled (the preferred level is never above it), and a polite status when a lower hardest
+        // level lowered it.
+        <fieldset className="mtb-level mtb-preferred" aria-describedby={mtbPreferredHintId}>
+          <legend>{MTB_PREFERRED_LEGEND}</legend>
+          {MTB_LEVEL_OPTIONS.map((option) => (
+            <label key={option.level} className="toggle">
+              <input
+                type="radio"
+                name="mtb-preferred"
+                value={option.level}
+                checked={mtbPreferredOf(dials) === option.level}
+                disabled={option.level > mtbLevelOf(dials)}
+                onChange={() => {
+                  setMtbClamp(null);
+                  onCommit(withMtbPreferred(dials, option.level));
+                }}
+              />
+              <span>
+                {option.label}
+                {option.level > mtbLevelOf(dials) && <span className="visually-hidden"> (above your hardest level)</span>}
+              </span>
+            </label>
+          ))}
+          <p className="hint" id={mtbPreferredHintId}>
+            Routes with trails at this level come first, then a level easier or harder; trails further from it count as
+            any other trail. It can&apos;t be harder than your hardest level: raise that to prefer a harder one.
+          </p>
+          <p className="hint mtb-preferred-said" role="status">
+            {mtbClampSaid}
+          </p>
         </fieldset>
       )}
       {view.assistToggle && (

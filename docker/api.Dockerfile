@@ -120,6 +120,10 @@ COPY --chown=root:root src ./src
 # /api/route fails with FileNotFoundError (REBUILD-BUNDLE correctness review 1).
 # tests/test_images.py holds every request-time file to this image's COPY set.
 COPY --chown=root:root fixtures/zoo ./fixtures/zoo
+# The Climbs layer's file, which the hill seek reads at request time
+# (src/core/hillseek.py, FOLLOWUP-HILL-SEEK). Without it Mountain Goat's climb
+# search compares the router's own alternatives only, as before, and says so.
+COPY --chown=root:root frontend/src/climb-data/climbs.json ./frontend/src/climb-data/climbs.json
 ENV PYTHONPATH=/app/src
 
 # Read-only to the process that runs it: nothing in the application writes to

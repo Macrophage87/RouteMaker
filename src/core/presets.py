@@ -499,6 +499,12 @@ BRAKE_GRADES = MappingProxyType(
         # A child brakes with small hands on a small bike: the cargo bike's 3%. The
         # implementation's proposal, not the owner's table (FOLLOWUP-KIDS-PRESET).
         "kids": 0.03,
+        # The transit ride types (TRANSIT-ASSIST): their bike legs brake as the ride types
+        # they are built on, Default's own bike and Bikeshare's share bike.
+        "bike-transit": 0.06,
+        "bikeshare-transit": 0.04,
+        # Rebalance Ride (REBALANCE-RIDE) rides a share bike, as Bikeshare does.
+        "rebalance": 0.04,
         # Riders who choose these want the descent.
         "mountain-goat": None,
         "mountain-bike": None,
@@ -535,6 +541,27 @@ BIKE_EBIKE = "ebike"
 BIKESHARE_STRESS = STRESS_TODAYS_TOP
 BIKESHARE_CLASSIC_SPEED_KMH = 13.0
 BIKESHARE_EBIKE_SPEED_KMH = 20.0
+
+
+# The transit ride types (TRANSIT-ASSIST; Stephen, 2026-10-12: transit is "two new
+# commuting ride types (modes)"). `core.transit` plans the trip: its best combination of
+# bike legs, Metro and bus, scheduled. The answer's route line is the first ride leg, and
+# that leg is planned on these presets, which are Default's own bike and Bikeshare's
+# classic bike under other names, so the stress order, the hills and the pace are those
+# ride types' (the implementation's choice, for the owner to confirm).
+# Rebalance Ride (REBALANCE-RIDE; Stephen, 2026-10-12: an Adventure ride type, named so as not
+# to use the operator's programme name): a bikeshare plan that picks up at a crowded station
+# near the start and returns to one that needs bikes near the destination (`core.bikeshare`,
+# `rebalance=True`). Its ride leg is Bikeshare's, the same weights under another name: stress
+# 80 with the stress-averse exposure, classic hills -60 at 13 km/h (8 mph), e-bike hills -20
+# at 20 km/h (12 mph) on the e-bike graph (`BIKESHARE_BIKES`).
+REBALANCE = "rebalance"
+# The ride types planned as a bikeshare trip (`core.bikeshare.plan`).
+BIKESHARE_PRESETS = frozenset({BIKESHARE, REBALANCE})
+
+BIKE_TRANSIT = "bike-transit"
+BIKESHARE_TRANSIT = "bikeshare-transit"
+TRANSIT_PRESETS = frozenset({BIKE_TRANSIT, BIKESHARE_TRANSIT})
 
 
 @dataclass(frozen=True)
@@ -813,6 +840,50 @@ PRESETS: MappingProxyType = MappingProxyType(
                 exposure=EXPOSURE_STRESS_AVERSE,
                 # The e-bike takes the e-bike graph and its own pace with `assist`.
                 assist_speed_kmh=BIKESHARE_EBIKE_SPEED_KMH,
+                bicycle_type="Hybrid",
+                avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
+                use_living_streets=_LIVING_STREETS,
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
+                gate_cost=CARGO_GATE_COST_S,
+                gate_penalty=CARGO_GATE_PENALTY_S,
+                cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
+            ),
+            _preset(
+                REBALANCE,
+                Variant.STANDARD,
+                # Bikeshare's own ride leg (above): the bikes and the riders are the same.
+                stress=BIKESHARE_STRESS,
+                hills=BIKESHARE_BIKES[BIKE_CLASSIC].hills,
+                exposure=EXPOSURE_STRESS_AVERSE,
+                assist_speed_kmh=BIKESHARE_EBIKE_SPEED_KMH,
+                bicycle_type="Hybrid",
+                avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
+                use_living_streets=_LIVING_STREETS,
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
+                gate_cost=CARGO_GATE_COST_S,
+                gate_penalty=CARGO_GATE_PENALTY_S,
+                cycling_speed=BIKESHARE_CLASSIC_SPEED_KMH,
+            ),
+            _preset(
+                BIKE_TRANSIT,
+                Variant.STANDARD,
+                # Default's own bike (above): the ride to the station or the bus stop.
+                stress=DEFAULT_STRESS,
+                hills=0,
+                bicycle_type="Hybrid",
+                avoid_bad_surfaces=_SURFACE_AVOIDANCE,
+                use_living_streets=_LIVING_STREETS,
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
+                gate_cost=VALHALLA_GATE_COST_S,
+                gate_penalty=VALHALLA_GATE_PENALTY_S,
+            ),
+            _preset(
+                BIKESHARE_TRANSIT,
+                Variant.STANDARD,
+                # Bikeshare's classic bike (above): dock to dock, a dock beside the station.
+                stress=BIKESHARE_STRESS,
+                hills=BIKESHARE_BIKES[BIKE_CLASSIC].hills,
+                exposure=EXPOSURE_STRESS_AVERSE,
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,

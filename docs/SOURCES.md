@@ -528,6 +528,157 @@ per-foot conversions are on FLOW-CALIBRATION.md.
   suggested width for the parking lane is 8 ft". Used for: the door zone and
   parking width (OWNER-DECISIONS 404 (1), 407 (1) and (2)).
 
+## Transit timetables (GTFS) and bike rules (TRANSIT-ASSIST)
+
+The two transit ride types, Own Bike + 🚆🚌 and Bikeshare + 🚶🚆🚌, plan from each system's
+published static GTFS timetable. The times are scheduled, not live, and every plan says "about"
+and "scheduled". Each plan names its sources under its steps, so these are plan credits and not
+map credits:
+
+- Credit: WMATA GTFS (scheduled times). Shown with a plan that uses Metro or Metrobus.
+- Credit: WMATA, wmata.com (typical service). Shown with a plan that uses Metro on its typical
+  timetable (below).
+- Credit: MDOT MTA GTFS (scheduled times). Shown with a plan that uses MARC, Light RailLink or
+  Metro SubwayLink.
+- Credit: VRE GTFS (scheduled times). Shown with a plan that uses VRE.
+
+### Metro's typical timetable (until WMATA's rail GTFS is built)
+
+WMATA's GTFS needs a developer key, which the owner does not have yet. The owner, 2026-10-12:
+"Just use defaults. The wmata website has a typical timetable for rail." and "Rail is so frequent
+that it's not a major issue. It's bus where the API helps." Until a schedule with WMATA's rail GTFS
+is built, Metro runs on `src/core/transitdata/metro-typical.json`. Once one is built, it replaces
+the typical timetable automatically. Metrobus stays out until its GTFS is built, and plans say
+nothing about it. The file holds facts and a documented estimate, not WMATA data files, so it is
+committed. No WMATA GTFS is committed.
+
+- **Opening hours and trains per hour.** Each line's page on wmata.com, read 2026-10-12:
+  <https://www.wmata.com/ridertools/line/red/info>, and `.../orange/info`, `.../blue/info`,
+  `.../green/info`, `.../yellow/info` and `.../silver/info`.
+  - Hours, every line: Monday to Thursday 5:00 am to 12:00 am; Friday 5:00 am to 2:00 am;
+    Saturday 6:00 am to 2:00 am; Sunday 6:00 am to 12:00 am.
+  - Bands: weekdays open to 7 am, 7 to 9 am (AM rush), 9 am to 4 pm, 4 to 6 pm (PM rush), 6 to
+    9:30 pm, and 9:30 pm to close; Saturday and Sunday open to 9:30 pm, and 9:30 pm to close.
+  - Minutes between trains, as published: Red 6, rush 4-5, late night 10 (weekends 6 and 10).
+    Orange, Blue and Silver 12, rush 9-10, late night 15 (weekends 12 and 15, except Orange on
+    Sunday late night, which its page gives as 10). Green and Yellow 6, weekday late night 7-8
+    (weekends 8 all day). "Every 4-5 min" is used as every 4.5 min.
+  - A federal holiday uses the Sunday hours and frequency. This is an assumption: WMATA publishes
+    each holiday's service separately (wmata.com, "Holiday and event schedules").
+- **Branches.** Half of the Silver Line's trains run to New Carrollton and half of the Yellow
+  Line's to Greenbelt. These are the same WMATA announcements the map cites in
+  `frontend/src/rail-data/metro-line-corrections.json`. The typical timetable alternates each
+  line's trains between its two ends.
+- **Stations.** The map's 98 Metro stations (`frontend/src/rail-data/`, sources above in that
+  folder's README), each with the bike entrance the GTFS build picks. A test holds them equal to
+  `scripts/build_transit_schedule.py`'s `metro_stations()`.
+- **Run times between stations: an estimate.** wmata.com's line pages give no run times, and the
+  station pages give only live arrivals. Each hop is the straight-line distance between the two
+  stations' map points at 33 mph (53 km/h), Metro's average speed including stops ("All trains
+  have a maximum speed of 75 mph (121 km/h), and average 33 mph (53 km/h), including stops.",
+  <https://en.wikipedia.org/wiki/Washington_Metro>, citing WMATA's Metro facts). Each hop is at
+  least 90 s, so a short downtown hop still counts its stop, and is rounded to the nearest 10 s.
+  Red, Shady Grove to Glenmont, comes to about an hour.
+- **What the rider sees.** The wait is half the published interval, or the time to the first or
+  the last train. No Metro departure is named or counted down. The step says "every 6 min,
+  scheduled", the same word as a timetable's, and the plan's credit line names the source:
+  "WMATA, wmata.com (typical service)".
+
+The feeds, and the compact file built from them (`transit-schedule.json`), stay on the host. They
+are never committed (see the terms below). The tests use a small fixture invented for the purpose
+(`tests/data/transit/make_fixture.py`), which holds no agency data. Fetch and build steps:
+docs/OPERATIONS.md, "Transit schedule". Systems, rules and sources are listed in one file:
+`src/core/transitdata/systems.json`.
+
+### In use (v0.6.0)
+
+- **WMATA Metrorail and Metrobus.** Feeds:
+  `https://api.wmata.com/gtfs/rail-gtfs-static.zip` and `.../bus-gtfs-static.zip`. Both need a
+  developer key (<https://developer.wmata.com/signup/>). The key is read from `WMATA_API_KEY` on
+  the host only and is never committed or printed.
+  - Terms: WMATA Transit Data Terms of Use (<https://developer.wmata.com/license>). The data is used
+    in the app under those terms. Redistributing the raw feeds is not assumed, so they are not
+    committed (owner question 1 in the design note).
+  - Bike rules, Metrorail: <https://www.wmata.com/ride/guides/bikes/bikes-on-rail.html>. Bikes are
+    allowed at all hours. Use the elevators (never escalators), board at a car's end doors, at most
+    four bikes a car. Metro may restrict bikes during special events or crowding.
+  - Blackout dates: July 4 every year, plus dates added by hand in
+    `src/core/transitdata/metro-bike-blackouts.json`. The owner: bikes are allowed "at all times
+    except" those days, so on them Own Bike + 🚆🚌 uses no Metro and says "Bikes aren't allowed
+    on Metro today (July 4)." Bikeshare + 🚶🚆🚌, on foot, still rides Metro.
+  - Bike rules, Metrobus: <https://www.wmata.com/ride/guides/bikes/bikes-on-bus.html>. Each bus has
+    a front rack for two bikes.
+  - What a plan says, once per system it takes a bike on (systems.json `bike.rule`, one short
+    line; the owner, 2026-10-12: "We need to streamline over bloat."): Metro "Use the elevators and
+    a car's end doors."; Metrobus "Use the front bike rack."; MARC "Ride in the car marked for
+    bikes."; Light RailLink and Metro SubwayLink "Use the elevators; ride in the priority seating
+    area."; VRE "Board last; bungee it to a car's south-end bench."
+- **MDOT MTA: MARC, Light RailLink and Metro SubwayLink.** Feeds:
+  `https://feeds.mta.maryland.gov/gtfs/marc`, `.../light-rail` and `.../metro`. No key is needed.
+  - Terms: the developer page (<https://www.mta.maryland.gov/developer-resources>) states no
+    licence. The site's terms (<https://www.mta.maryland.gov/terms-conditions>, read 2026-10-12) do
+    not address redistribution. The feeds are treated as not committable (owner question 1).
+  - Bike rules, MARC: <https://www.mta.maryland.gov/MARCbikes>. Full-size bikes are allowed on every
+    MARC train on all three lines. Ride in a car marked with the green Bicycle Entrance decal or
+    light, one bike each, and bring two bungee cords. If the racks are full, wait for the next
+    train.
+  - Bike rules, Light RailLink and Metro SubwayLink: <https://www.mta.maryland.gov/bike>. Bikes are
+    allowed at most two a vehicle, in the priority seating area. Use the elevators, never the
+    escalators. On a train crowded at rush hour, riders wait for the next one: that is advice, not a
+    ban.
+    - Applied as every trip takes a bike. The owner, 2026-10-12: "In general the rule is that you
+      can use it unless it's too crowded to do so. No API knows how many people can fit." There is
+      no crowding model and no crowding note ("It's common courtesy.").
+    - Every MARC, Light RailLink and Metro SubwayLink station takes a bike. The owner, 2026-10-12:
+      "I believe all stations have ways to board with either ramps or elevators. Most people can
+      carry bikes up and down stairs in a pinch." GTFS `wheelchair_boarding` is not read. Each
+      system's own rule above (which trains or cars, how many bikes) still applies.
+- **VRE (Virginia Railway Express): the Fredericksburg and Manassas Lines.** Added 2026-10-12 (the
+  owner: "The VRE timetable can be added"). Feed:
+  `https://gtfs.vre.org/containercdngtfsupload/google_transit.zip`, as VRE's mobile developer page
+  gives it (<https://vre.org/assets/1/6/VRE_Mobile_Developer_2024.pdf>, read 2026-10-12). No key is
+  needed.
+  - Terms (the same page): the site and its feeds and databases are VRE's property, "for your
+    personal, non-commercial use", and "You may not reproduce, redistribute, or frame VRE website
+    content without express written permission in advance from VRE." Queries to its data feeds are
+    allowed. No attribution is required; the plan credit above is given all the same. The feed and
+    the schedule built from it stay on the host and are never committed (owner question 1).
+  - Bike rules: <https://www.vre.org/about/onboard-policies/> (Baggage/Bicycles, read 2026-10-12).
+    "Full-size and collapsible bicycles are allowed on all trains." Tether the bike with a bungee
+    cord to the bench seats at a car's south end (the north-end bench is priority seating); bikes
+    board and leave last, after everyone else; check with the conductor. Applied as every trip
+    takes a bike (`vehicle` all).
+  - Every VRE station takes a bike (the owner's rule for commuter rail, as MARC above).
+  - The feed's route short names are numbers (2, 4), so a step names a line by its long name
+    ("the VRE Manassas Line"; systems.json `route_name` long).
+
+### Checked, for the next PR (not used yet)
+
+Unclear bike access counts as closed for a rider with their own bike. A walk to or from a stop
+needs no bike access.
+
+- **MTA Local and CityLink buses** (`https://feeds.mta.maryland.gov/gtfs/local-bus`).
+  <https://www.mta.maryland.gov/bike>: a front rack for two bikes, no bikes inside. The feed terms
+  are as for MARC above.
+- **MTA Commuter Bus** (`https://feeds.mta.maryland.gov/gtfs/commuter-bus`). The bike page does not
+  cover commuter buses, so bike access is unclear and counts as closed. Bikeshare + 🚶🚆🚌 could
+  still walk to them.
+- **Fairfax Connector**
+  (`https://www.fairfaxcounty.gov/connector/sites/connector/files/assets/connector_gtfs.zip`).
+  The terms require the line "Visit fairfaxconnector.com for more information" and use that helps
+  transit riders.
+- **DASH** (`http://dashbus.com/google_transit.zip`) and **ART**. Both feeds are listed by Virginia
+  DRPT's GTFS clearinghouse (the design note has ART's address).
+- **Ride On and TheBus.** Feeds and bike rules are not yet checked.
+- **DC Streetcar.** Service ended March 31, 2026 (DDOT), so there is nothing to add.
+
+### Limits
+
+- GTFS-Realtime service alerts are not used. The agencies' real-time endpoints cannot be reached
+  from the build environment, and their terms have not been checked. Planned closures that an
+  agency publishes in its static timetable (`calendar_dates.txt`) are used, but unplanned track
+  work is not. Every plan says "Scheduled service; check for track work."
+
 ## Used inside the project only (no credit)
 
 These are shown nowhere: no tile, route, fixture or page carries anything read from

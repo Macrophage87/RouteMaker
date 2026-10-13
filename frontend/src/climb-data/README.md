@@ -11,6 +11,10 @@ because the repository's `.gitignore` ignores every directory of that name.
 | --- | --- | --- | --- | --- |
 | `climbs.json` | every categorised climb on the routable network (Cat 5 to HC) | the live segment table (OpenStreetMap, via the rebuild) and USGS 3DEP one-arcsecond elevation, by `manage.py build_climbs` (`pipeline.climb_layer`) | **ODbL 1.0** (a produced work of the OSM data); 3DEP is public domain | the map's existing "© OpenStreetMap contributors (ODbL)" and "USGS 3DEP" |
 
+The api reads the same file (v0.6.0): Mountain Goat's hill seek routes through the climbs in it and
+names those a route rides (`src/core/hillseek.py`, FOLLOWUP-HILL-SEEK), so `docker/api.Dockerfile`
+copies it into the api image. Without it the api plans as before.
+
 What counts as a climb and its category is in `routemaker.climb_categories`; how the network is
 read, the keys of each entry and the one-way rule are in `pipeline.climb_layer`'s docstring.
 
@@ -34,3 +38,8 @@ and the rebuild's elevation tiles: 484,351 segments read, **3,750 climbs**, 85 s
 cells it had no ground for (N36-N37 and the cells east of 76 W or west of 78 W); all are outside
 the coverage box, so no climb inside it is left out. Writing it again is in docs/OPERATIONS.md,
 "The Climbs layer".
+
+One climb in the file is taken off by hand and is neither drawn nor sought: `bd93dd04dc`, a Cat 4
+down into the Travilah quarry (owner report 2026-10-12; `src/routemaker/climb_exclusions.py`, with
+the same ids in `src/lib/climbExclusions.ts`). So the map shows 3,749 climbs (Cat 4: 366). The
+next `build_climbs` leaves it out of the file itself, with any way whose bike access is closed.

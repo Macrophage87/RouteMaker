@@ -9,8 +9,8 @@
  * route's `dials` says what the API actually planned with.
  * tests/test_presets.py reads STARTS and holds it equal to the API's table.
  */
-import type { PresetId } from "./presets.ts";
-import { DEFAULT_MTB_LEVEL, fitMtbLevel } from "./mtbMode.ts";
+import { usesBikeshare, type PresetId } from "./presets.ts";
+import { DEFAULT_MTB_LEVEL, defaultMtbPreferred, fitMtbLevel, mtbLevelOf, mtbPreferredOf } from "./mtbMode.ts";
 
 export type When = "weekend" | "weekday_rush" | "weekday_offpeak" | "night";
 export type Carrying = "cargo" | "people";
@@ -64,6 +64,12 @@ export interface Dials {
    * Absent is the default, level 2 (lib/mtbMode.ts DEFAULT_MTB_LEVEL).
    */
   mtbLevel?: number;
+  /**
+   * Mountain Bike only (docs/MTB-TOPO-PLAN.md, second pass): the preferred trail level, 1 to 4, never
+   * above `mtbLevel`. Absent is the default: 2, or `mtbLevel` where that is lower (lib/mtbMode.ts
+   * mtbPreferredOf), so an older link with only the hardest level plans as it did.
+   */
+  mtbPreferred?: number;
   /** Bikeshare only: the bike. Absent is classic. */
   bike?: Bike;
   /**
@@ -79,6 +85,12 @@ export interface Dials {
    */
   pickupStation?: string;
   dropoffStation?: string;
+  /**
+   * The transit ride types only (TRANSIT-ASSIST): the option the rider chose from the answer's
+   * list, by its key (`transit.options[].key`). Session only, like the stations: added to a
+   * request (lib/transit.ts withTransitOption), in no link, since a timetable moves on.
+   */
+  transitOption?: string;
   /**
    * "Anticipated ride size" (PLAN items 128, 129, 139), Mass Ride only: the riders expected,
    * 100 to 2,000. It sets the group's length, which the corker load is counted over (the
@@ -179,6 +191,11 @@ export const STARTS: Record<PresetId, Start> = {
   bikeshare: { stress: 80, hills: -60, seek: true, assist: true },
   // FOLLOWUP-KIDS-PRESET: the top of the traffic slider, hills well toward avoid.
   kids: { stress: 100, hills: -80, seek: true },
+  // The transit ride types' bike legs start as Default's own bike and Bikeshare's classic (core.presets).
+  "bike-transit": { stress: 70, hills: 0, seek: true },
+  "bikeshare-transit": { stress: 80, hills: -60, seek: true },
+  // REBALANCE-RIDE: Bikeshare's own start (core.presets REBALANCE), with its bike choice.
+  rebalance: { stress: 80, hills: -60, seek: true, assist: true },
 };
 
 /** A ride time's label inside a sentence: only its first letter lowered, so "PM"
@@ -236,7 +253,7 @@ export function trailsAreOff(preset: PresetId, dials: Pick<Dials, "trailsOff">):
 
 export function offersAssist(preset: PresetId): boolean {
   // Bikeshare's assist is its bike choice, not Cargo Bike's toggle.
-  return STARTS[preset].assist === true && preset !== "bikeshare";
+  return STARTS[preset].assist === true && !usesBikeshare(preset);
 }
 
 /**
@@ -247,7 +264,7 @@ export function offersAssist(preset: PresetId): boolean {
 export const BIKESHARE_HILLS: Record<Bike, number> = { classic: -60, ebike: -20 };
 
 export function offersBike(preset: PresetId): boolean {
-  return preset === "bikeshare";
+  return usesBikeshare(preset);
 }
 
 export function isBike(value: unknown): value is Bike {
@@ -351,8 +368,8 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     carrying: start.carrying,
     assist: start.assist,
     ...(start.bike ? { bike: start.bike } : {}),
-    // Only an e-bike can end outside a dock.
-    ...(start.bike === "ebike" && dials.ending === "outside_dock" ? { ending: "outside_dock" as const } : {}),
+    // Only an e-bike can end outside a dock, and never on Rebalance Ride (it ends where a bike is needed).
+    ...(start.bike === "ebike" && dials.ending === "outside_dock" && preset !== "rebalance" ? { ending: "outside_dock" as const } : {}),
     ...(dials.avoidGravel === true ? { avoidGravel: true } : {}),
     ...(dials.trailsOff === true ? { trailsOff: true } : {}),
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),
@@ -360,6 +377,10 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     // The level, on Mountain Bike only, and only when it is not the default (the link stays short).
     ...(preset === "mountain-bike" && fitMtbLevel(dials.mtbLevel) !== undefined && fitMtbLevel(dials.mtbLevel) !== DEFAULT_MTB_LEVEL
       ? { mtbLevel: fitMtbLevel(dials.mtbLevel) }
+      : {}),
+    // The preferred level likewise, held to the hardest; left out where it is the default (min(2, hardest)).
+    ...(preset === "mountain-bike" && fitMtbLevel(dials.mtbPreferred) !== undefined && mtbPreferredOf(dials) !== defaultMtbPreferred(mtbLevelOf(dials))
+      ? { mtbPreferred: mtbPreferredOf(dials) }
       : {}),
     ...(offersRideSize(preset) && fitRideSize(dials.rideSize) !== undefined && fitRideSize(dials.rideSize) !== RIDE_SIZE_DEFAULT
       ? { rideSize: fitRideSize(dials.rideSize) }
@@ -384,12 +405,16 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   // Mountain Bike's level (fitDials keeps it on that ride type alone); absent is level 2.
   const level = fitMtbLevel(dials.mtbLevel);
   if (level !== undefined) fields.mtb_level = level;
+  // The preferred level (fitDials holds it to the hardest); absent is min(2, the hardest), as the API's.
+  const preferred = fitMtbLevel(dials.mtbPreferred);
+  if (preferred !== undefined) fields.mtb_preferred = Math.min(preferred, level ?? DEFAULT_MTB_LEVEL);
   if (dials.bike) fields.bike = dials.bike;
   if (dials.bike === "ebike" && dials.ending === "outside_dock") fields.ending = "outside_dock";
   if (dials.bike && dials.pickupStation) fields.pickup_station = dials.pickupStation;
   if (dials.bike && dials.dropoffStation && dials.ending !== "outside_dock") {
     fields.dropoff_station = dials.dropoffStation;
   }
+  if (dials.transitOption) fields.transit_option = dials.transitOption;
   return fields;
 }
 

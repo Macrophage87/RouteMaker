@@ -4,28 +4,32 @@
 // in to the suggest tools, and Review is an admin's; Settings is Display, Ride mode, This device and Account
 // with My Go; and the map's Water and Food chips open the nearest finder and Find food. In Go, Settings is
 // the Menu, with Plan, Suggest, GPX and Review above it. App.tsx keeps the state and the effects.
-import type { Dispatch, ReactNode, RefObject, SetStateAction } from "react";
+import { useEffect, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { StressAvailability } from "../MapView.tsx";
 import { SuggestionReview } from "../SuggestionReview.tsx";
 import type { RouteResponse } from "../lib/api.ts";
 import type { LonLat } from "../lib/geo.ts";
-import { PRESETS, presetLabel, type PresetId } from "../lib/presets.ts";
+import { PRESETS, presetSaid, type PresetId } from "../lib/presets.ts";
+import { PresetName } from "../lib/presetName.ts";
+import { filterRideGroups, rideTypeCount, RideTypeSearch } from "../lib/rideTypeGroups.ts";
 import { isPlainClick, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
 import { pointName } from "../lib/summary.ts";
 import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, setMtbTrails } from "../stressStyle.js";
 import { HighStressLanesSwitch } from "../lib/highStressLanesSwitch.ts";
 import { MtbTrailsSwitch } from "../lib/mtbTrailsSwitch.ts";
 import { setTopoLines, TopoLinesSwitch } from "../lib/topoLines.ts";
+import { stressShowable, terrainLayers, terrainStatus } from "../lib/terrainSection.ts";
+import { LayerSection } from "../lib/layerSection.ts";
 import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
 import { ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
 import { RideSettingsFields } from "../RideMode.tsx";
 import type { RidePrefs } from "../lib/rideOutput.ts";
 import type { RailVisibility } from "../lib/railStations.ts";
-import { RailStationsSection } from "../RailStations.tsx";
+import { RailStationsLegend, RailStationsSection } from "../RailStations.tsx";
 import { RAIL_STATIONS } from "../lib/railData.ts";
 import { federalPoints, federalShown, type FederalData } from "../lib/federalLand.ts";
-import { FederalLandFor, type FederalStatus } from "../lib/federalLegend.ts";
+import { FederalLandFor, FederalLegendNotes, type FederalStatus } from "../lib/federalLegend.ts";
 import { CAPACITY_LEGEND_TITLE, isMassRide } from "../lib/massCapacity.ts";
 import { MassLegend, MassZoomNotes } from "../lib/massLegend.ts";
 import { DC_BOUNDARY_CREDIT, MASS_DC_ONLY } from "../lib/dcBoundary.ts";
@@ -33,12 +37,12 @@ import { MtbTrailLegend, StressLegend } from "../lib/stressLegend.ts";
 import { refreshStressTiles } from "../lib/mapStyle.ts";
 import { GpxPanel } from "../GpxPanel.tsx";
 import { JunctionLegend, SheetFrame } from "../Sidebar.tsx";
-import { MASS_RIDE_LAYERS_NOTE, MENU_TITLE, SHEET_TITLES, type PanelView } from "../lib/sidebar.ts";
+import { MASS_RIDE_LAYERS_NOTE, MENU_TITLE, SHEET_TITLES, STRESS_CHECKING, STRESS_UNAVAILABLE, type PanelView } from "../lib/sidebar.ts";
 import type { ImportedPlan } from "../lib/gpxPlan.ts";
-import type { WaterAlong, WaterPrefs, WaterStatus } from "../lib/waterRestrooms.ts";
-import { WaterLegend, WaterSection } from "../lib/waterLegend.ts";
-import type { ClimbAlong, ClimbsStatus } from "../lib/climbs.ts";
-import { ClimbsLayerControls, ClimbsLegend } from "../lib/climbsLegend.ts";
+import type { WaterPrefs, WaterStatus } from "../lib/waterRestrooms.ts";
+import { WaterLegend, WaterLegendNotes, WaterSection } from "../lib/waterLegend.ts";
+import type { ClimbAlong, ClimbCategory, ClimbsStatus } from "../lib/climbs.ts";
+import { CLIMBS_HELP, ClimbsLayerControls, ClimbsLegend } from "../lib/climbsLegend.ts";
 import { InstallOffer, KeptRoutes } from "../InstallableApp.tsx";
 import type { KeptRoute } from "../lib/offlineRoutes.ts";
 import { anyKept } from "../lib/offlineRouteStore.ts";
@@ -79,13 +83,13 @@ export interface LayersSheetProps {
   waterPrefs: WaterPrefs;
   changeWaterPrefs: (next: WaterPrefs) => void;
   waterStatus: WaterStatus;
-  waterAlong: WaterAlong[] | null;
   /** The Climbs layer (lib/climbs.ts): the switch, its data's status and the climbs the route rides. */
   climbsOn: boolean;
   changeClimbsOn: (on: boolean) => void;
+  climbsFrom: ClimbCategory;
+  changeClimbsFrom: (from: ClimbCategory) => void;
   climbsStatus: ClimbsStatus;
   climbsAlong: ClimbAlong[] | null;
-  addWaterStop: (item: WaterAlong) => void;
   rail: RailVisibility;
   setRail: (next: RailVisibility) => void;
   showMtbTrails: boolean;
@@ -95,7 +99,9 @@ export interface LayersSheetProps {
 
 /** The Layers sheet: the map's switches, in the mockup's order, with the Legend button at its top. */
 export function LayersSheet(props: LayersSheetProps) {
-  const { nav, openLegend, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, waterAlong, addWaterStop, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsStatus, climbsAlong } = props;
+  const { nav, openLegend, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong } = props;
+  // The Trails and terrain section's layers that can show, and its row's words (lib/terrainSection.ts).
+  const terrain = { mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stressShowable(stress), topoReady, climbsStatus };
   return (
     <SheetFrame
       id="sheet-layers"
@@ -111,21 +117,21 @@ export function LayersSheet(props: LayersSheetProps) {
       }
     >
       {/* The mockup's order: the stress map, lanes on busy roads, federal land (Mass Ride's alone), water and
-          restrooms, Metro and MARC, mountain-bike trails, climbs and topo lines. High contrast is in Settings. */}
-      <section aria-labelledby="layers-heading" className="layer-group">
-        <h3 id="layers-heading">{massMap ? CAPACITY_LEGEND_TITLE : "Traffic stress"}</h3>
-        {stress === "available" && (
-          <label className="toggle">
-            <input id="show-stress" type="checkbox" checked={stressVisible} onChange={(event) => setStressVisible(event.target.checked)} />
-            {massMap ? "Show riders per minute on the map" : "Show traffic stress on the map"}
-          </label>
-        )}
-        {stress === "checking" && <p className="hint">Checking the stress map…</p>}
-        {stress === "unavailable" && <p className="hint">Stress map unavailable for now. Routes still show how much of each ride is on each stress level.</p>}
-        {/* Shown with or without the stress map: it also changes the route's facility totals
-            and description (the a11y review's SF4). */}
+          restrooms, Metro and MARC, then trails and terrain. High contrast is in Settings. Each section is one
+          row, its name, one switch for the whole section and a disclosure; its layers are inside (lib/layerSection.ts). */}
+      <LayerSection
+        id="stress"
+        title={massMap ? CAPACITY_LEGEND_TITLE : "Traffic stress"}
+        headingId="layers-heading"
+        switchId="show-stress"
+        layers={stress === "available" ? [{ key: "stress", label: massMap ? CAPACITY_LEGEND_TITLE : "Traffic stress", on: stressVisible }] : []}
+        onLayers={(next) => setStressVisible(next.stress)}
+        status={stress === "checking" ? STRESS_CHECKING : stress === "unavailable" ? STRESS_UNAVAILABLE : ""}
+      >
+        {/* Not one of the section's layers: shown with or without the stress map, as it also changes the
+            route's facility totals and description (the a11y review's SF4). */}
         <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} overlay={stress === "available"} massMap={massMap} />
-      </section>
+      </LayerSection>
 
       {/* Mass Ride's alone (OWNER-DECISIONS 324): null for every other ride type. */}
       <FederalLandFor
@@ -138,18 +144,30 @@ export function LayersSheet(props: LayersSheetProps) {
         nameOf={(index) => pointName(index, points.length) /* Mass Ride: no loop */}
       />
 
-      {/* The switch and its two filters; the list along the route is the route's fold, the legend behind Legend. */}
-      <WaterSection prefs={waterPrefs} onChange={changeWaterPrefs} status={waterStatus} items={waterAlong} onAddStop={addWaterStop} along={false} legend={false} />
+      {/* The switch and its two filters; the list along the route is the route's fold, the legend and help behind Legend. */}
+      <WaterSection prefs={waterPrefs} onChange={changeWaterPrefs} status={waterStatus} />
 
       {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
 
-      {/* OWNER-DECISIONS 454's optional layers, off until turned on, in every ride type. */}
-      <section aria-labelledby="terrain-heading" className="layer-group">
-        <h3 id="terrain-heading">Trails and terrain</h3>
-        <MtbTrailsSwitch on={showMtbTrails} onChange={(on) => setMtbTrails(on)} overlay={stress === "available"} />
-        <ClimbsLayerControls on={climbsOn} onChange={changeClimbsOn} status={climbsStatus} items={climbsAlong} along={false} legend={false} />
+      {/* OWNER-DECISIONS 454's optional layers, off until turned on, in every ride type. A layer's extra
+          control (the Climbs layer's "Show climbs from") sits under its own switch, inside the section. */}
+      <LayerSection
+        id="terrain"
+        title="Trails and terrain"
+        headingId="terrain-heading"
+        layers={terrainLayers(terrain)}
+        onLayers={(next) => {
+          if ("mtb" in next && next.mtb !== showMtbTrails) setMtbTrails(next.mtb);
+          if ("climbs" in next && next.climbs !== climbsOn) changeClimbsOn(next.climbs);
+          if ("topo" in next && next.topo !== showTopoLines) setTopoLines(next.topo);
+        }}
+        // Each layer's own status or hint line is inside; closed, the section says it.
+        status={(open) => terrainStatus(open, terrain)}
+      >
+        <MtbTrailsSwitch on={showMtbTrails} onChange={(on) => setMtbTrails(on)} overlay={stressShowable(stress)} />
+        <ClimbsLayerControls on={climbsOn} onChange={changeClimbsOn} from={climbsFrom} onFromChange={changeClimbsFrom} status={climbsStatus} items={climbsAlong} along={false} legend={false} />
         <TopoLinesSwitch on={showTopoLines} onChange={(on) => setTopoLines(on)} available={topoReady} />
-      </section>
+      </LayerSection>
 
       {/* Mockup v3's line; the Mass Ride layers sheet itself waits on FOLLOWUP-MASSRIDE-MAP (324-334). */}
       {!federalShown(preset, true) && <p className="hint mass-ride-layers">{MASS_RIDE_LAYERS_NOTE}</p>}
@@ -170,11 +188,14 @@ export interface LegendSheetProps {
   waterStatus: WaterStatus;
   climbsOn: boolean;
   climbsStatus: ClimbsStatus;
+  federalOn: boolean;
+  federalStatus: FederalStatus;
+  rail: RailVisibility;
 }
 
 /** The legend, behind Layers' Legend button (the owner's choice 6): what each zoom shows and how stress ratings work. */
 export function LegendSheet(props: LegendSheetProps) {
-  const { nav, legendHeadingRef, massMap, stress, stressVisible, preset, zoom, facilitiesShown, waterPrefs, waterStatus, climbsOn, climbsStatus } = props;
+  const { nav, legendHeadingRef, massMap, stress, stressVisible, preset, zoom, facilitiesShown, waterPrefs, waterStatus, climbsOn, climbsStatus, federalOn, federalStatus, rail } = props;
   return (
     <SheetFrame id="sheet-legend" title={SHEET_TITLES.legend} open={nav.view === "legend"} onBack={nav.back} backLabel={nav.backLabel("legend")} headingRef={legendHeadingRef}>
       <section aria-labelledby="sheet-legend-title" className="legend-body">
@@ -204,8 +225,13 @@ export function LegendSheet(props: LegendSheetProps) {
         )}
         {/* The junction markers are drawn with or without the stress map (spec review SF1). */}
         <JunctionLegend />
+        {/* Moved from Layers (the owner, 2026-10-12: "less wordy"): each layer's how-it-works, by its legend. */}
+        <FederalLegendNotes preset={preset} on={federalOn} status={federalStatus} />
         {waterPrefs.on && waterStatus === "ready" && <WaterLegend prefs={waterPrefs} />}
+        {waterPrefs.on && <WaterLegendNotes prefs={waterPrefs} />}
+        {RAIL_STATIONS.length > 0 && (rail.metro || rail.marc) && <RailStationsLegend />}
         {climbsOn && climbsStatus === "ready" && <ClimbsLegend />}
+        {climbsOn && <p className="hint climbs-help">{CLIMBS_HELP}</p>}
       </section>
     </SheetFrame>
   );
@@ -296,7 +322,7 @@ function MyGoSection({ controls }: { controls: MyGoControls }) {
         <select value={myGo.ride ?? "default"} onChange={(event) => save({ ...myGo, ride: event.target.value === "default" ? null : (event.target.value as PresetId) })}>
           {PRESETS.filter((p) => p.id !== "mass-ride").map((p) => (
             <option key={p.id} value={p.id}>
-              {p.label}
+              {presetSaid(p.id)}
             </option>
           ))}
         </select>
@@ -583,27 +609,90 @@ const RIDE_ICON: Partial<Record<PresetId, IconName>> = {
   "group-ride": "user",
   "mass-ride": "federal",
   trailmaxxing: "trail",
+  "bike-transit": "train",
+  "bikeshare-transit": "train",
+  rebalance: "bikeshare",
 };
 
-/** The ride type chips (Go's quick three and More, or every type in the Ride sheet), each a toggle button. */
-export function RideChips({ ids, preset, onPick, more, label }: { ids: readonly PresetId[]; preset: PresetId; onPick: (id: PresetId) => void; more?: (opener: HTMLElement) => void; label: string }) {
+/**
+ * Go's More ride types: every ride type, searchable, under its group's heading
+ * (RIDE-TYPE-ORGANISE, lib/rideTypeGroups.ts). The search comes first in the Tab order.
+ *
+ * The outline: the sheet's h2, then this list under its own h3 (read, not shown: the sheet
+ * already says what it is), its groups as h4 under it, so the Ride line's "Ride type" h3 that
+ * follows in Go's sheet is a sibling and not a fourth group. Each group is named once, by its
+ * heading (the chips' own group is left unnamed). The search is cleared whenever the sheet is
+ * left, as Plan's dialog clears it on closing, so the next visit shows every ride type.
+ */
+export function RideGroupChips({ preset, onPick, open }: { preset: PresetId; onPick: (id: PresetId) => void; open: boolean }) {
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
+  const groups = filterRideGroups(query);
   return (
-    <div className="chip-row ride-chips" role="group" aria-label={label}>
-      {ids.map((id) => (
-        <button key={id} type="button" className="chip ride-type-chip" aria-pressed={preset === id} onClick={() => onPick(id)}>
+    <section className="ride-groups" aria-labelledby="ride-sheet-types">
+      <h3 id="ride-sheet-types" className="visually-hidden">
+        Every ride type
+      </h3>
+      <RideTypeSearch id="ride-sheet-search" query={query} onQuery={setQuery} count={rideTypeCount(groups)} />
+      {groups.map((group) => (
+        <section key={group.id} className="ride-group" aria-labelledby={`ride-sheet-${group.id}`}>
+          <h4 id={`ride-sheet-${group.id}`}>{group.label}</h4>
+          <RideChips ids={group.ids} preset={preset} onPick={onPick} />
+        </section>
+      ))}
+    </section>
+  );
+}
+
+/** The ride type chips (Go's quick three and More, or every type in the Ride sheet), each a toggle button. */
+export function RideChips({
+  ids,
+  preset,
+  onPick,
+  more,
+  label,
+  ownHint,
+}: {
+  ids: readonly PresetId[];
+  preset: PresetId;
+  onPick: (id: PresetId) => void;
+  more?: (opener: HTMLElement) => void;
+  /** The chips' group name; left out where a heading already names them (Go's More ride types). */
+  label?: string;
+  /** Go: the first chip is the rider's own ride type (My Go), described as such. */
+  ownHint?: string;
+}) {
+  return (
+    <div className="chip-row ride-chips" role={label ? "group" : undefined} aria-label={label}>
+      {ids.map((id, index) => (
+        <button
+          key={id}
+          type="button"
+          className="chip ride-type-chip"
+          aria-pressed={preset === id}
+          onClick={() => onPick(id)}
+          aria-describedby={ownHint && index === 0 ? "ride-own-hint" : undefined}
+        >
           <Icon name={RIDE_ICON[id] ?? "bike"} size={18} />
-          {presetLabel(id)}
+          <PresetName id={id} />
         </button>
       ))}
       {more && (
         <button type="button" className="chip ride-more" onClick={(event) => more(event.currentTarget)} aria-describedby="ride-more-hint">
           <Icon name="more" size={18} />
-          More
+          More ride types
         </button>
       )}
       {more && (
         <span id="ride-more-hint" hidden>
           Every ride type and setting.
+        </span>
+      )}
+      {ownHint && (
+        <span id="ride-own-hint" hidden>
+          {ownHint}
         </span>
       )}
     </div>

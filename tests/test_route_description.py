@@ -110,7 +110,10 @@ class TestInTheAnswer:
         assert entries[1]["turn"]["onto"] == "Second Street"
         assert entries[1]["text"].split(": ")[1].startswith("Left onto Second Street")
 
-    @pytest.mark.parametrize("preset", sorted(set(presets.PRESETS) - {"bikeshare"}))
+    @pytest.mark.parametrize(
+        "preset",
+        sorted(set(presets.PRESETS) - {*presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS}),
+    )
     def test_every_preset_is_described(self, client, router, preset):
         router(named_world())
         body = post(client, good_body(preset)).json()
@@ -292,7 +295,8 @@ class TestSchema:
         }
         # "avoid": an Avoid-rated junction ahead (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307).
         # "workzone": a live work zone on the route (FOLLOWUP-WORKZONES, 341-349).
-        kinds = ["stretch", "junction", "via", "walk", "avoid", "workzone"]
+        # "climb": a categorised climb ridden where the hill seek ran (FOLLOWUP-HILL-SEEK, 205).
+        kinds = ["stretch", "junction", "via", "walk", "avoid", "workzone", "climb"]
         assert entry["properties"]["kind"]["enum"] == kinds
         for field in (
             "kind",

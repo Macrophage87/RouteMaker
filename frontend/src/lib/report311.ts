@@ -25,13 +25,18 @@
  * and 311.dc.gov itself could not be read from here (its robots.txt refuses fetches), so that hint
  * names none.
  *
- * The place (465, plan owner question 7): the nearest junction in the route's own street names, or on a
- * long trail the trail and a distance from one of its junctions (navigate.ts `placeOnRoute`). The
- * position is never looked up (no /api/reverse with it), and the message carries no coordinates.
- * Washington, DC only (369: "DC only for now"); elsewhere the action says so.
+ * The place (465, plan owner question 7; the owner, 2026-10-12: "Put the GPS coordinates in the 311.
+ * Sometimes it says, about 1.2 miles south of unnamed path." and "Description if you can. Like put the
+ * road and the coordinates"): the way the rider is on, in the route's own street names ("on 14th Street
+ * Northwest", or plainly "on an unnamed path"), a cross street only when a named junction of the route
+ * is within PLACE_NEAR_M ("near U Street Northwest"), never a distance from a far junction, and always
+ * the GPS position: latitude then longitude in decimal degrees to 5 places (about 1 m), the point on the
+ * route the words describe (`pointAt`). The position is never looked up (no /api/reverse with
+ * it); it leaves the phone only in the message the rider sends. Washington, DC only (369: "DC only for
+ * now"); elsewhere the action says so.
  */
-import { spokenDistance } from "./format.ts";
-import { otherStreet, type RoutePlace } from "./navigate.ts";
+import type { LonLat } from "./geo.ts";
+import { isUnnamed, pointAt, routeJunctions, stretchAt, wayRidden, type RideModel } from "./navigate.ts";
 
 export const DC_311_SHORT_CODE = "32311";
 export const DC_311_ONLINE = "https://311.dc.gov/";
@@ -73,7 +78,7 @@ export const REPORT_KINDS: { kind: ReportKind; label: string; keyword: string | 
 export const REPORT_SUMMARY = "Report a problem to DC 311";
 /** Said on the screen beside the action (369: "the screen says the message goes to DC 311"). */
 export const REPORT_PRIVACY =
-  "The message goes to DC 311 from your own phone. RouteMaker sends nothing and keeps nothing. The place is the nearest junction on your route, so check it before you send.";
+  "The message goes to DC 311 from your own phone. RouteMaker sends nothing and keeps nothing. The place is the road you are on and your GPS position, so check it before you send.";
 export const REPORT_OUTSIDE_DC = "Reports to 311 are for Washington, DC only, and this part of the route is outside the District.";
 export const REPORT_NO_PLACE = "Your place on the route is not known yet, so there is no location to report.";
 export const REPORT_OFF_ROUTE = "Off the planned route: the report's place comes from the route's street names, so it waits until you are back on a route.";
@@ -83,14 +88,57 @@ export const REPORT_OTHER_HINT =
   "DC's text service takes potholes and streetlights by keyword; for anything else, open DC 311 online and paste the report.";
 export const REPORT_NOTE_MAX = 120;
 
-/** The place as the message says it (US units: it is the text DC receives). */
-export function placeWords(place: RoutePlace): string | null {
-  if (!place) return null;
-  if (place.kind === "junction") return `near ${place.junction.streets[0]} and ${place.junction.streets[1]}`;
-  if (place.kind === "trail") {
-    return `on the ${place.trail}, about ${spokenDistance(place.metres)} ${place.direction} of ${otherStreet(place.junction, place.trail)}`;
+/**
+ * A cross street farther than this (500 ft, about 0.1 mi) from the rider is too far to help DC find the
+ * spot (the old "about 1.2 miles south of ..."), so the report names only the way the rider is on, and
+ * the GPS position carries the place.
+ */
+export const PLACE_NEAR_M = 500 / 3.28084;
+
+/** Whether a street name says nothing ("unnamed path"): shared with "Where am I?" (lib/navigate.ts). */
+export { isUnnamed };
+
+/**
+ * The place words (the owner, 2026-10-12: "Description if you can. Like put the road and the
+ * coordinates"): "on <the way ridden>", then "near <cross street>" when a named junction of the route is
+ * within PLACE_NEAR_M. Never a distance from a far junction. Null when neither is known.
+ */
+export function placeWords(way: string | null, cross: string | null): string | null {
+  if (way) return cross ? `on ${way} near ${cross}` : `on ${way}`;
+  return cross ? `near ${cross}` : null;
+}
+
+/** The GPS position as the report says it: "GPS 38.91234, -77.01234" (latitude first, 5 decimals, about 1 m). */
+export function gpsWords(point: LonLat): string {
+  return `GPS ${point[1].toFixed(5)}, ${point[0].toFixed(5)}`;
+}
+
+/** Where the report says the rider is: the words (null when none are known) and the GPS point. */
+export interface ReportPlace {
+  words: string | null;
+  point: LonLat;
+}
+
+/**
+ * The rider's place for the report at `progressM`: the way ridden there (the route's own street names),
+ * the nearest named junction's other street when within PLACE_NEAR_M, and always the point on the
+ * route there (`pointAt`, the same point the words describe).
+ */
+export function reportPlace(model: RideModel, progressM: number): ReportPlace {
+  const stretch = stretchAt(model, progressM);
+  const way = wayRidden(stretch);
+  let cross: string | null = null;
+  let best = PLACE_NEAR_M;
+  for (const j of routeJunctions(model)) {
+    const d = Math.abs(j.atM - progressM);
+    if (d > best) continue;
+    // The junction's street that is not the one ridden ("on 14th St NW near U St NW").
+    const other = j.streets[0] === stretch?.street ? j.streets[1] : j.streets[1] === stretch?.street ? j.streets[0] : j.streets[1];
+    if (isUnnamed(other)) continue;
+    cross = other;
+    best = d;
   }
-  return `on ${place.street}`;
+  return { words: placeWords(way, cross), point: pointAt(model, progressM) };
 }
 
 /** DC's text keyword for a kind, or null where it has none. */
@@ -106,18 +154,20 @@ export function onlineHint(kind: ReportKind): string | null {
 }
 
 /**
- * The report: what (for a kind with no keyword), where, then the rider's note. `forText`: the text
- * message, with DC's keyword first where it has one; the copy for DC 311 online has no keyword (its
- * form asks what the problem is itself), but a kind with no keyword names the problem first.
+ * The report: what (for a kind with no keyword), where (the words, when any help, then the GPS
+ * position), then the rider's note. `forText`: the text message, with DC's keyword first where it has
+ * one; the copy for DC 311 online has no keyword (its form asks what the problem is itself), but a kind
+ * with no keyword names the problem first. The only cap is the note's (REPORT_NOTE_MAX); the
+ * coordinates are never trimmed.
  */
-export function reportText(kind: ReportKind, place: RoutePlace, note = "", forText = false): string | null {
-  const where = placeWords(place);
-  if (!where) return null;
+export function reportText(kind: ReportKind, place: ReportPlace | null, note = "", forText = false): string | null {
+  if (!place) return null;
+  const where = `${place.words ? `${place.words}, ` : ""}Washington, DC. ${gpsWords(place.point)}`;
   const keyword = forText ? keywordOf(kind) : null;
   const tidy = note.replace(/\s+/g, " ").trim().slice(0, REPORT_NOTE_MAX);
   const problem = REPORT_KINDS.find((k) => k.kind === kind)?.problem ?? null;
   const what = keyword ? `${keyword} ` : problem ? `${problem}. ` : "";
-  return `${what}Location: ${where}, Washington, DC.${tidy ? ` ${/[.!?]$/.test(tidy) ? tidy : `${tidy}.`}` : ""}`;
+  return `${what}Location: ${where}.${tidy ? ` ${/[.!?]$/.test(tidy) ? tidy : `${tidy}.`}` : ""}`;
 }
 
 /** Whether the browser is a phone's, which can send a text (Android, iPhone, an iPad, which says it is a Mac). */

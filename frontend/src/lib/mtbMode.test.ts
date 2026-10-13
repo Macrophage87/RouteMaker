@@ -6,13 +6,17 @@ import { readFileSync } from "node:fs";
 import * as spec from "@maplibre/maplibre-gl-style-spec";
 import {
   DEFAULT_MTB_LEVEL,
+  DEFAULT_MTB_PREFERRED,
   MTB_LEVEL_OPTIONS,
   fitMtbLevel,
   mtbChosen,
   mtbLevelOf,
   mtbNotes,
+  mtbPreferredClamped,
+  mtbPreferredOf,
   mtbSaid,
   withMtbLevel,
+  withMtbPreferred,
 } from "./mtbMode.ts";
 import { dialFields, fitDials, startDials } from "./dials.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
@@ -156,4 +160,95 @@ test("the trail page's MORE link: a real link to MORE's own site, or none", asyn
     dialog,
     /<a href=\{more\.url\} target="_blank" rel="noopener noreferrer">\s+\{more\.label\}\s+<span className="visually-hidden"> \(opens in a new tab\)<\/span>/,
   );
+});
+
+// The second pass (the owner, 2026-10-11): a preferred level beside the hardest.
+test("the preferred level: 2 by default, never above the hardest, an old link's level reading as before", () => {
+  assert.equal(DEFAULT_MTB_PREFERRED, 2);
+  assert.equal(mtbPreferredOf({}), 2);
+  assert.equal(mtbPreferredOf({ mtbLevel: 1 }), 1);
+  assert.equal(mtbPreferredOf({ mtbLevel: 4 }), 2);
+  assert.equal(mtbPreferredOf({ mtbLevel: 3, mtbPreferred: 3 }), 3);
+  assert.equal(mtbPreferredOf({ mtbLevel: 2, mtbPreferred: 4 }), 2);
+  // An old link with only `level`: the hardest is that level, the preferred min(2, it).
+  for (const [level, preferred] of [[1, 1], [2, 2], [3, 2], [4, 2]]) {
+    const old = decodePlan(`#preset=mountain-bike&v=2&level=${level}`).dials;
+    assert.equal(mtbLevelOf(old), level);
+    assert.equal(mtbPreferredOf(old), preferred);
+    assert.equal(old.mtbPreferred, undefined);
+    assert.equal(dialFields(old).mtb_preferred, undefined);
+  }
+});
+
+test("choosing levels: the preferred held to the hardest, the default left out of the link", () => {
+  const start = { stress: 80 };
+  const hard = withMtbLevel(start, 4);
+  assert.deepEqual(withMtbPreferred(hard, 3), { stress: 80, mtbLevel: 4, mtbPreferred: 3 });
+  // The default (2) is not written.
+  assert.deepEqual(withMtbPreferred({ ...hard, mtbPreferred: 3 }, 2), { stress: 80, mtbLevel: 4 });
+  // Above the hardest: held to it.
+  assert.equal(mtbPreferredOf(withMtbPreferred(withMtbLevel(start, 3), 4)), 3);
+  // Lowering the hardest below the preferred lowers the preferred, and says so.
+  const before = { stress: 80, mtbLevel: 4, mtbPreferred: 3 };
+  const after = withMtbLevel(before, 2);
+  assert.equal(mtbPreferredOf(after), 2);
+  assert.equal(after.mtbPreferred, undefined);
+  assert.equal(mtbPreferredClamped(before, after), "Preferred trail level lowered to level 2 (blue): it can't be harder than the hardest level.");
+  // The default preferred (2) is lowered too, at a hardest of 1.
+  assert.match(mtbPreferredClamped({}, withMtbLevel({}, 1)) ?? "", /lowered to level 1 \(green\)/);
+  // Raising the hardest, or a preferred that fits, says nothing.
+  assert.equal(mtbPreferredClamped(before, withMtbLevel(before, 3)), null);
+  assert.equal(mtbPreferredClamped({}, withMtbLevel({}, 4)), null);
+});
+
+test("the preferred level is sent and linked on Mountain Bike only", () => {
+  const dials = fitDials("mountain-bike", { ...startDials("mountain-bike"), mtbLevel: 4, mtbPreferred: 3 });
+  assert.equal(dials.mtbPreferred, 3);
+  assert.equal(dialFields(dials).mtb_preferred, 3);
+  assert.equal(dialFields(dials).mtb_level, 4);
+  const hash = encodePlan([], "mountain-bike", dials);
+  assert.match(hash, /level=4/);
+  assert.match(hash, /prefer=3/);
+  const back = decodePlan(hash).dials;
+  assert.equal(back.mtbLevel, 4);
+  assert.equal(back.mtbPreferred, 3);
+  // A link whose preferred is above its hardest is held to it.
+  const held = decodePlan("#preset=mountain-bike&v=2&level=2&prefer=4").dials;
+  assert.equal(mtbPreferredOf(held), 2);
+  assert.equal(dialFields(held).mtb_preferred, undefined);
+  // Not on another ride type, not out of range, not the default.
+  assert.equal(fitDials("mountain-goat", { ...startDials("mountain-goat"), mtbPreferred: 3 }).mtbPreferred, undefined);
+  assert.equal(fitDials("mountain-bike", { mtbLevel: 4, mtbPreferred: 7 }).mtbPreferred, undefined);
+  assert.equal(fitDials("mountain-bike", { mtbLevel: 4, mtbPreferred: 2 }).mtbPreferred, undefined);
+  assert.doesNotMatch(encodePlan([], "mountain-bike", startDials("mountain-bike")), /prefer=/);
+});
+
+test("the preferred picker: real radio buttons in a fieldset with a legend, above-the-hardest disabled, a polite status", () => {
+  const panel = readFileSync(new URL("../DialsPanel.tsx", import.meta.url), "utf8");
+  assert.match(panel, /<fieldset className="mtb-level mtb-preferred" aria-describedby=\{mtbPreferredHintId\}>\s+<legend>\{MTB_PREFERRED_LEGEND\}<\/legend>/);
+  assert.match(panel, /<p className="hint" id=\{mtbPreferredHintId\}>\s+[^<]*can&apos;t be harder than your hardest level/);
+  assert.match(panel, /type="radio"\s+name="mtb-preferred"/);
+  assert.match(panel, /disabled=\{option\.level > mtbLevelOf\(dials\)\}/);
+  // A disabled level says why in its own name, not by its dimming alone.
+  assert.match(panel, /\{option\.level > mtbLevelOf\(dials\) && <span className="visually-hidden"> \(above your hardest level\)<\/span>\}/);
+  assert.match(panel, /const said = mtbPreferredClamped\(dials, next\);/);
+  assert.match(panel, /<p className="hint mtb-preferred-said" role="status">\s+\{mtbClampSaid\}/);
+  // The status is of the levels it was said of: a change from outside (a link, a ride type) clears it.
+  assert.match(panel, /const mtbKey = `\$\{preset\}:\$\{mtbLevelOf\(dials\)\}:\$\{mtbPreferredOf\(dials\)\}`;/);
+  assert.match(panel, /if \(mtbClamp && mtbClamp\.key !== mtbKey\) setMtbClamp\(null\);/);
+  assert.match(panel, /const mtbClampSaid = mtbClamp\?\.key === mtbKey \? mtbClamp\.said : "";/);
+});
+
+test("the route says where its trails go easier or harder than preferred", () => {
+  const mixed = mtbNotes({ max_level: 3, preferred_level: 2, trail_m: 5000, singletrack_m: 4000, over_level_m: 0, easier_m: 1609.344, harder_m: 804.672 });
+  assert.ok(mixed.notes.includes("1.0 mi (1.6 km) of trail is easier than your preferred level 2 (blue)."), mixed.notes.join(" | "));
+  assert.ok(mixed.notes.includes("0.5 mi (0.8 km) of trail is harder than your preferred level 2 (blue), up to level 3 (black)."), mixed.notes.join(" | "));
+  assert.deepEqual(mixed.warnings, []);
+  const at = mtbNotes({ max_level: 3, preferred_level: 3, trail_m: 5000, singletrack_m: 4000, over_level_m: 0, easier_m: 0, harder_m: 0 });
+  assert.ok(at.notes.includes("Its mountain-bike trails are at your preferred level 3 (black)."));
+  // An answer from before the second pass says nothing of it.
+  const old = mtbNotes({ max_level: 2, trail_m: 5000, singletrack_m: 4000, over_level_m: 0 });
+  assert.ok(old.notes.every((n) => !/preferred/.test(n)));
+  // A harder trail past the hardest is still the warning, with the hardest level named.
+  assert.match(mtbNotes({ max_level: 1, preferred_level: 1, over_level_m: 400 }).warnings[0], /raise your hardest level/);
 });

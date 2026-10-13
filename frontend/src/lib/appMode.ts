@@ -14,6 +14,10 @@
  * Pure, so the order is tested without a browser; App reads and writes the two stores.
  */
 
+import { coordinatesText } from "./geocode.ts";
+import { LOCATE_MESSAGES, type LocateFailure } from "./geolocation.ts";
+import type { LonLat } from "./geo.ts";
+
 export type AppMode = "go" | "plan";
 
 /** My Go's "Open in": a view, or "" for by screen size. */
@@ -133,14 +137,14 @@ export const GO_START_UNAVAILABLE = "Current location not available; type a star
 
 /**
  * Whether Go asks for the location now: only in Go (never in Plan), once per page, and only while the plan
- * has no point, so a start from the link (or one typed or tapped first) wins.
+ * has no point, so a start from the link (or one typed first) wins.
  */
 export function shouldAskGoStart(state: { mode: AppMode; asked: boolean; pointCount: number }): boolean {
   return state.mode === "go" && !state.asked && state.pointCount === 0;
 }
 
 /**
- * Go's start line: the plan's own first point when there is one (from the link, typed or tapped: it replaces
+ * Go's start line: the plan's own first point when there is one (from the link or typed: it replaces
  * the location), else the location, else what is happening.
  */
 export function goStartLine(start: GoStart, firstPointName: string | null): string {
@@ -182,10 +186,74 @@ export function goDestinationNeedsStart(name: string): string {
 }
 
 /**
- * Whether a map tap (or the keyboard's Add at centre) in Go is the start for a destination that waits for one
- * (the location denied, unavailable or still being found): the route to that destination is planned at once,
- * as a start typed in the start box does (follow-up review of PR #95). Else the tap adds a point as before.
+ * What a map press does in Go (the owner, 2026-10-12: "When on Go mode, make it so the location you press is the
+ * end"): a press on the open map (or the keyboard's Set destination at map center) is the destination, in place of
+ * any destination before it, and is routed as a destination picked in the search is (goPickAction): from the start
+ * Go has, else it waits for one. A press on a station, a place's letter or a water stop still opens its card. In
+ * Plan a press adds a point as before. This replaces the tap that was the start of a waiting destination (PR #95's
+ * follow-up review): with no location, the start is typed in the start box.
  */
-export function goTapStartsPending(state: { mode: AppMode; pointCount: number; pending: boolean }): boolean {
-  return state.mode === "go" && state.pending && state.pointCount === 0;
+export function goTapSetsEnd(mode: AppMode): boolean {
+  return mode === "go";
+}
+
+/**
+ * Go's name for a destination, the same in what is said and on the sheet's "To …": its place name once known (a
+ * pressed spot's is looked up after it is placed, and the sheet takes it when it comes), else its coordinates.
+ */
+export function goPlaceName(name: string | undefined, point: LonLat): string {
+  return name ?? coordinatesText(point);
+}
+
+/** Said when a press on the map sets Go's destination: an essential, said at Brief and at Full. */
+export function goDestinationSet(name: string): string {
+  return `Destination set: ${name}.`;
+}
+
+/**
+ * Said when a pressed destination has no start and must wait: "Destination set" and what it waits for, in one
+ * announcement. Said apart, the second replaced the first in the live region a moment later (about 140 ms with
+ * the location denied), so a screen reader could miss the essential part.
+ */
+export function goPressLocatingSaid(name: string): string {
+  return `${goDestinationSet(name)} Finding your location for the start…`;
+}
+
+/**
+ * Why Go's Locate could not find the rider, for a destination waiting on it: Locate's own reason (what to allow or
+ * try), ending in typing a start, as the start box asks, in place of searching for a place.
+ */
+export function goStartFailedReason(reason: LocateFailure): string {
+  return LOCATE_MESSAGES[reason].replace(/search for a place\.$/, "type a start.").replace(/Search for a place instead\.$/, "Type a start instead.");
+}
+
+/** Shown when a destination waited on Go's Locate and it failed: the destination and Locate's reason. */
+export function goDestinationNeedsStartBecause(name: string, reason: LocateFailure): string {
+  return `To ${name}. ${goStartFailedReason(reason)}`;
+}
+
+/** Said when a pressed destination waited on Go's Locate and it failed: one announcement, as goPressNeedsStartSaid. */
+export function goPressNeedsStartBecause(name: string, reason: LocateFailure): string {
+  return `${goDestinationSet(name)} ${goStartFailedReason(reason)}`;
+}
+
+/**
+ * How long Go's look-up for a pressed destination may take before the press is said with "Finding your location for
+ * the start…": a denial answers well inside it and is said once ("Current location not available"); a slow fix or a
+ * timeout (up to a minute) is not left silent.
+ */
+export const GO_PRESS_LOCATING_SAY_MS = 1000;
+
+/** Said when a pressed destination has no start and the location is not available: one announcement, as above. */
+export function goPressNeedsStartSaid(name: string): string {
+  return `${goDestinationSet(name)} ${GO_START_UNAVAILABLE}`;
+}
+
+/**
+ * What is said when a pressed destination is routed at once: at Full the extra "Planning a route" narration
+ * follows it in the same sentence (one announcement, so neither is lost); at Brief only the destination.
+ */
+export function goTapRoutedSaid(name: string, located: boolean, full: boolean): string {
+  const set = goDestinationSet(name);
+  return full ? `${set} Planning a route from ${located ? "your location" : "your start"}.` : set;
 }

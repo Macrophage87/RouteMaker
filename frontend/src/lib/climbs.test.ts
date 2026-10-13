@@ -7,6 +7,7 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import * as spec from "@maplibre/maplibre-gl-style-spec";
+import { EXCLUDED_CLIMB_IDS } from "./climbExclusions.ts";
 import {
   CLIMB_CATEGORIES,
   CLIMB_COLOUR,
@@ -169,8 +170,21 @@ test("the bundled file parses, and every climb in it is on the scale", () => {
   const raw = JSON.parse(readFileSync(new URL("../climb-data/climbs.json", import.meta.url), "utf8"));
   const climbs = parseClimbs(raw);
   assert.ok(climbs);
-  assert.equal(climbs.length, raw.climbs.length);
+  const listed = raw.climbs.filter((c: { id: string }) => EXCLUDED_CLIMB_IDS.has(c.id)).length;
+  assert.equal(climbs.length, raw.climbs.length - listed);
   for (const c of climbs) assert.ok(CLIMB_CATEGORIES.includes(c.category));
+});
+
+test("a climb taken off by hand is not read (owner report 2026-10-12, the Travilah quarry)", () => {
+  assert.ok(EXCLUDED_CLIMB_IDS.has("bd93dd04dc"));
+  const line = [[-77.22781, 39.07659], [-77.22397, 39.08333]];
+  const climbs = parseClimbs({
+    climbs: [
+      { id: "bd93dd04dc", c: "4", l: 1903, r: 156, g: 8.2, x: -77.22397, y: 39.08333, line, u: 1 },
+      { id: "kept", c: "4", l: 1903, r: 156, g: 8.2, x: -77.22397, y: 39.08333, line },
+    ],
+  });
+  assert.deepEqual(climbs?.map((c) => c.id), ["kept"]);
 });
 
 test("the switch is off until turned on, and kept on this device", () => {
@@ -300,7 +314,7 @@ test("the legend says each shape and the number in words", () => {
   const html = renderToStaticMarkup(createElement(ClimbsLegend));
   assert.ok(html.includes("Gentle: circle, under 4% average"));
   assert.ok(html.includes("Moderate: square, 4% to 7.9% average"));
-  assert.ok(html.includes("Very steep: diamond, 8% or steeper average"));
+  assert.ok(html.includes("Steep: diamond, 8% or steeper average"));
   assert.ok(html.includes("its category, 5 (smallest) to 1, then HC (the biggest)"));
   // The swatches are pictures of what the words say.
   assert.equal((html.match(/aria-hidden="true"/g) ?? []).length, 5);

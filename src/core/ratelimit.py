@@ -130,6 +130,10 @@ TILES = Limit(scope="tiles", requests=600, window_s=60)
 # request per page load, so PLAN's figure for unauthenticated paths.
 COVERAGE = Limit(scope="coverage", requests=60, window_s=60)
 
+# A rail station's times (GET /api/transit/station-times): one request per station card opened,
+# each cached by the browser for a minute, so PLAN's figure for unauthenticated paths.
+STATION_TIMES = Limit(scope="station-times", requests=60, window_s=60)
+
 # Place search (GET /api/geocode), signed out by the owner's decision of
 # 2026-09-27. PLAN.md:65's figures for the geocoding proxy: "roughly 5 requests
 # per second burst and 60 per minute", "since ... a typeahead box does not need
@@ -149,6 +153,10 @@ REVERSE = Limit(scope="reverse", requests=60, window_s=60)
 # for a rider clicking along a street.
 SEGMENT_INFO_BURST = Limit(scope="segment-info-10s", requests=20, window_s=10)
 SEGMENT_INFO = Limit(scope="segment-info", requests=60, window_s=60)
+
+# One climb's elevation profile (GET /api/climbs/{id}/profile): one request per climb card
+# opened, a router call the first time a climb is asked for and kept after. PLAN.md:65's 60.
+CLIMB_PROFILE = Limit(scope="climb-profile", requests=60, window_s=60)
 
 # Who the visitor is (GET /api/me: three yes/no flags the road panel asks once when it
 # opens) and the road panel's stress editor (core.stress_edits), both counted per client

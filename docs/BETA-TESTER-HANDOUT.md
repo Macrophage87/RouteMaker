@@ -72,17 +72,30 @@ needed; reload the page to get the box back.
 - The first thing on the page is a button, "Accessibility mode", a switch that starts off.
   Turn it on to get Map tools by the map's zoom buttons, with "Add point at map center" and
   "Road info at map center". It stays on for this device. The same switch is in "More tips".
+- In Go, a press on the map, the route line included (or "Set destination at map center" in Map tools) makes that spot your destination and says "Destination set: …".
 - The next thing is a link, "Skip to the route planner". It takes you past the map to the
   planner.
 - The planner is an area (a landmark) called "Route planner"; screen readers may announce it
   as "Route planner, complementary". Its heading is "RouteMaker".
-- Just under that heading is a region called "Beta notice", with a "Dismiss" button. It says
-  that routes may still use some paths where bikes are not allowed until the next map update.
-  Dismiss hides it until your next visit and puts you back at the planner.
-- The "High contrast" switch is in two places: the "Map layers" page (a button in the bar at
-  the bottom of the planner) and the "Settings" page (the last button in the same bar). It makes the lines bolder
-  and the borders and text stronger, and changes the stress colors to ones that do not rely
-  on red and green. Both switches are the same setting.
+- In the map's bottom-left corner is a small button, "Beta notice" (it shows the word "Beta"),
+  after the map's own controls. It says whether it is collapsed or expanded. Press it to open a
+  region, also called "Beta notice", right after it: it says that routes may still use some
+  paths where bikes are not allowed until the next map update. Press the button again, or
+  Escape, to close it; the focus stays on the button. It is not shown in Ride mode.
+- The "Layers" page (a button in the bar at the bottom of the planner) has one row per section:
+  Traffic stress, Water and restrooms, Rail stations and Trails and terrain (and Federal land on a
+  Mass Ride). Each row is the section's heading, a switch named for it, then a "layers" button that
+  says whether it is collapsed or expanded. The switch turns the whole section on or off; off
+  remembers which of its layers were on, and on brings those back. With only some on, it is on
+  and says "Some on" and which. Expand a row for each layer's own switch and a one-line hint; the
+  longer explanations are on the Legend page (the Legend button at the top of Layers).
+- The "High contrast" switch is on the "Settings" page (the last button in the same bar). It
+  makes the lines bolder and the borders and text stronger, and changes the stress colors to
+  ones that do not rely on red and green.
+- With the Climbs layer on (Layers), "Road info at map center" on a climb says "Climb here"
+  and offers "Climb details": the climb's card, with its length, gain, grades, a described
+  elevation profile and "Ride this climb". "Show climbs from" beside the switch hides the smaller
+  categories.
 - Ride mode (section 9) has its own heading, "Ride mode", which takes the focus when a ride
   starts. While it is on, the skip link says "Skip to ride mode" and the planner is hidden. Cues
   never move your focus: they are said through two live regions (the urgent ones, such as
@@ -105,7 +118,8 @@ Tell the person who gave you access. It helps to include:
 - what you expected, and what happened instead;
 - the browser and device, and the screen reader if you use one.
 
-If the beta notice shows a "Report a problem" link, you can use that instead.
+If the beta notice (the "Beta" button in the map's corner) shows a "Report a problem" link,
+you can use that instead.
 
 8. Updates
 ----------
@@ -143,14 +157,18 @@ You stay responsible for riding safely; the route can be wrong.
   Finding a new way off the route still needs a signal.
 - "Report a problem to DC 311" (Washington, DC only) writes a report for a pothole (chosen
   first), a downed tree, a vehicle parked in a bike lane, a roadway or bikeway obstructed, a
-  streetlight out or anything else, with the nearest junction on your route as the place. On a
+  streetlight out or anything else. The place is the road you are on, a cross street when one
+  is within about 500 feet, and your GPS position, for example "on R Street Northwest near Q
+  Street Northwest, Washington, DC. GPS 38.91234, -77.03890." On a
   phone, a pothole or a streetlight can be a text to DC 311 (32311) that you send yourself; the
   others go to DC 311 online, with the problem named in the report. There is always a link to
   DC 311 online and a button to copy the report for it. RouteMaker sends
   nothing and keeps nothing. Check the place before you send it.
 - Your position stays on your phone. It is sent only when a new way is found from where you
   are, or when you ask for the nearest water or restroom (as "Use my location" does when
-  planning), and never kept.
+  planning), and never kept. A 311 report you send yourself carries it too. Place search, when
+  the app already knows where you are and that spot is on the map you are looking at, sends an
+  approximate location (about 1 km / 0.6 mi) so nearby places come first.
 - Keep the screen on. If the browser cannot keep it on, Ride mode says so; on an iPhone set
   Settings, Display and Brightness, Auto-Lock to Never for the ride. In the background for more
   than 10 minutes, the ride pauses; press Resume.
@@ -182,3 +200,64 @@ RouteMaker can be installed like an app: it then opens from your home screen in 
 - When a new version is ready, a line at the top of the planner says "A new version of
   RouteMaker is ready." with a "Reload" button. It never interrupts a ride: it waits until you
   press "End ride". With no signal, a line there says you are offline.
+
+11. Bike and transit together
+-----------------------------
+
+In Go, the three main buttons are "Default" (your own ride type), "Own Bike + 🚆🚌" and
+"Bikeshare + 🚶🚆🚌". Cargo and plain Bikeshare are under "More ride types", where every ride
+type is grouped under Transportation, Adventure or Group, with a search box over their names and
+descriptions. Plan's "Change" ride type list has the same search and groups. Typing "transit",
+"walk", "train" or "bus" finds both transit types. A screen reader says their names in words:
+"Own bike plus train or bus" and "Bikeshare plus walk, train or bus".
+
+- Both transit types list a few trips, quickest first. "Ride the whole way" is always one of
+  them. Press a trip to put it on the map and in the steps.
+- A transit trip lists its legs with their minutes: "🚶 4 min · 🚲 12 min · 🔴 18 min". 🚶 is a
+  walk and 🚲 a bike. Metro shows its line's colour (🔴 Red, 🟠 Orange, 🔵 Blue, 🟢 Green, 🟡
+  Yellow, ⚪ Silver), a bus its route ("🚌C53"), MARC and VRE their line ("🚆Penn",
+  "🚆Fredericksburg"), Light RailLink 🚈 and Metro SubwayLink 🚇. A screen reader hears words
+  instead: "walk 4 minutes, bikeshare 12 minutes, Red Line 18 minutes".
+- Own Bike + 🚆🚌 takes your bike the whole way, on Metro, MARC, VRE, Light RailLink, Metro
+  SubwayLink or a bus's front rack. It never asks you to leave the bike somewhere.
+- Bikeshare + 🚶🚆🚌 docks the bike before you board. At each end it walks or uses a bikeshare
+  bike, whichever is quicker. The docks are named. It also offers "Walk the whole way" when
+  walking is quickest or the trip is under about 1 mile (1.6 km).
+- The steps show each ride, walk and train or bus in order, with the total door to door. They say
+  how riding the whole way compares.
+- On the map, a dashed line is the ride on transit, marked with its system's name. A dotted line
+  is a walk.
+- All times are "about" and scheduled, from the agencies' published timetables, not live.
+  Weekends and holidays use their own timetables. A line with no service that day says so, for
+  example "MARC Camden Line: no weekend service".
+- Where trains or buses come every 15 minutes or less, the plan counts half that as the wait.
+  Otherwise, as on MARC, it names the departure: "MARC Penn Line 7:42 am from Union Station. You
+  arrive 7:36 am (6 min spare). Next after that: 8:15 am." The same appears as a label on the map
+  at the station.
+- With under 5 minutes to spare, a countdown shows in the steps and on the map label. A screen
+  reader hears it at 10, 5 and 2 minutes, not every second. If you would miss the departure, it
+  says so and plans the next one.
+- A station with no service all day is greyed and struck through on the map, named "(closed)".
+  Its card says why, for example "Camden Station, closed: no MARC weekend service" (the Camden
+  Line runs on weekdays only). Routes never use a closed station.
+- Bikes are allowed on Metro at all hours except a few special-event days, such as July 4. On
+  those days Own Bike + 🚆🚌 uses no Metro and says so: "Bikes aren't allowed on Metro today
+  (July 4)." Bikeshare + 🚶🚆🚌 still uses Metro, because you walk on.
+- If the beta has no timetables installed, or they have run out, Metro still runs on its typical
+  timetable; the other systems wait until the timetables are rebuilt.
+- Before Metro opens, the step names the first train, for example "first train 5:00 am
+  scheduled".
+- Always check the agency for track work and service alerts before you go. RouteMaker does not
+  see them.
+
+
+12. Climbs on the map
+---------------------
+
+Turn on "Climbs" in Map layers. The number at a climb's top is its category; the shape around it
+is its steepness: a circle is gentle (under 4%), a square moderate (4 to 7.9%), a diamond steep
+(8% or more). "Show climbs from" hides the smaller ones. Tap a climb's top (in Go, its dashed line
+too) for its card; in Plan a tap on the dashed line adds a point there as before. The card has
+its length, gain, average and steepest grade and an elevation profile. "Ride this climb" puts it
+in your route: in Plan its bottom and top become your next stops before the destination; in Go
+the route goes to its top by way of its bottom.

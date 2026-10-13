@@ -94,6 +94,10 @@ export const PLANNER_EXTRAS = { zoomNotice: false, highContrastShortcut: false }
 /** The line in the Map layers sheet for every ride type but Mass Ride (mockup v3, Layers). */
 export const MASS_RIDE_LAYERS_NOTE = "Mass Ride has its own layers, such as federal land.";
 
+/** The Traffic stress section's status line while the stress tiles are checked, or down. */
+export const STRESS_CHECKING = "Checking the stress map…";
+export const STRESS_UNAVAILABLE = "Stress map unavailable for now. Routes still give their stress.";
+
 export const MORE_TIPS = "More tips";
 export const FEWER_TIPS = "Fewer tips";
 

@@ -1947,6 +1947,62 @@ or a suggestion, and `my_go` is left out of the beta's data shipment (`scripts/b
 `0018_junction_suggestions`, so the chain stays linear with one leaf. It reverses cleanly
 (`migrate core 0018` drops the table). `migrate` runs at `up`, as always.
 
+## Transit schedule (TRANSIT-ASSIST, v0.6.0)
+
+The Own Bike + 🚆🚌 and Bikeshare + 🚶🚆🚌 ride types read one file:
+`$DATA_ROOT/tiles/transit/transit-schedule.json` (`settings.TRANSIT_SCHEDULE_PATH`). It sits under
+the tiles folder, which the web container already mounts read-only, so there is no new mount, and
+a weekly rebuild leaves it alone (it replaces only its own variant folders). Without the file,
+transit plans use Metro alone, on its committed typical timetable
+(`src/core/transitdata/metro-typical.json`, from wmata.com; docs/SOURCES.md). A file that cannot
+be read answers 503 `transit_unavailable` ("Transit times are not available on this server right
+now."), and `GET /api/transit/closures` and `GET /api/transit/station-times` answer 503 too
+(the station cards then show no times). Every other ride type is unaffected.
+
+**No WMATA key yet.** Build without it: the fetch skips WMATA, and the build reports
+"wmata-rail: no feed given, left out (the API runs Metro on its typical timetable)". MARC and
+the MTA systems come from their GTFS, Metro from the typical timetable, and Metrobus is left out.
+Once a build includes WMATA's rail GTFS, it replaces the typical timetable with no other step.
+When WMATA changes its published hours or train frequency, edit `hours` and `lines` in
+metro-typical.json from each line's page (`https://www.wmata.com/ridertools/line/<colour>/info`).
+
+**Build it on the home PC.** The agencies' servers cannot be reached from the cloud.
+
+    export WMATA_API_KEY=...   # in the shell, from your own records; never in a committed file
+    python3 scripts/fetch_transit_gtfs.py --out-dir ~/rmdata/transit
+    .venv/bin/python scripts/build_transit_schedule.py --feeds ~/rmdata/transit \
+        --out "$DATA_ROOT/tiles/transit/transit-schedule.json"
+
+- The fetch writes one zip per system in `src/core/transitdata/systems.json`, plus a README with
+  each zip's URL, size, sha256 and time. The key is read from the environment variable only and is
+  never printed. `--only marc` fetches one system. The systems: WMATA Metro and Metrobus (key),
+  MARC, Light RailLink, Metro SubwayLink and VRE (`--only vre`; no key).
+- The build prints a report: stops and patterns per system, any Metro platform it could not match
+  to the map's stations, and any system whose zip is missing (left out, not fatal).
+- The zips and the built file are the agencies' data. Keep them on the host and never commit them
+  (docs/SOURCES.md, "Transit timetables").
+- The web process reads the file again when it changes, so no restart is needed.
+
+**Refresh at least every 45 days.** The file holds 45 days of service from the build date
+(`--date`, default today). A plan for a later date (or any plan once the file has run out) uses
+Metro's typical timetable alone, which needs no refresh, with the note "Only Metro is planned: the
+other timetables installed cover ... to ...". Refresh as well when an agency publishes a new
+timetable, for example a MARC or VRE schedule change or a Metro shutdown. Planned closures reach the plans
+only through the published GTFS. With fewer than 7 days left, the api logs "the transit schedule
+runs out ..." once a day and `manage.py check_operations` alerts ("transit: the schedule runs out
+on ..."; exit 1). An unreadable file alerts too; no file installed does not.
+
+**The beta** gets the schedule in its data bundle (`ship-data.sh`'s `transit` part;
+docs/BETA-RUNBOOK.md). Ship it again after each refresh.
+
+**Bike blackout dates** (Metro, special events): July 4 is built in. Add other dates by hand to
+`src/core/transitdata/metro-bike-blackouts.json` as WMATA announces them. On such a date Own Bike +
+🚆🚌 uses no Metro and says "Bikes aren't allowed on Metro today (July 4)."; Bikeshare + 🚶🚆🚌
+still rides Metro on foot.
+
+**What is not checked:** live arrivals and GTFS-Realtime service alerts. Every plan says
+"Scheduled service; check for track work."
+
 ## Avoid-rated junctions: adding one (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
 
 An Avoid rating is for a junction that is "just way too problematic", and only from the
@@ -5196,6 +5252,17 @@ off-road graph, says), and the Riding section has a "Mountain-bike difficulty" r
 S2 or IMBA 2"), on a way the layer draws only. The switch's description is now "From zoom 14: levels 1 to 4 by colour and
 pattern, unrated as grey dots. Not used for routes; Gravel and Mountain Goat may use unrated ones."
 
+**Since v0.6.0** (the owner, 2026-10-12: "Mountain bike trails seem plotted but don't show up very
+well"; front end only, no rebuild) every level is a 3 px line (4 px with the accessibility switch) on
+a solid white edge 1.5 px a side (2 px with the switch, `MTB_HALO`), level 1 and 2's gaps 1.5 widths
+([6, 1.5], [3, 1.5]); an unrated trail is grey dashes [1.5, 1.5] on the same edge, not dots. The
+not-for-routes mark is the dark cross-ticks, now one shared layer outside the white edge
+(`mtb-trail-ticks`, `MTB_TICKS`: 2 px past it a side, about a 2 px tick every 12 px), since LTS 4's
+casing is white too; every tier's casing and ring is solid in every palette (mtbLevels.test.ts). The
+Mountain Bike ride type is unchanged (slice 6): trails up to the rider's level draw as routable, the
+harder ones in this look. Words: "on a white edge with dark ticks", "unrated as grey dashes". Still
+from zoom 14, where the tiles carry them.
+
 **Trail names** (the owner, 2026-10-10 (15:16 UTC): "Also, for mountain bikes, try to make sure trail names are added in if they are available."). The rebuild writes `segment.mtb_name` (text, null otherwise; core
 migration 0014, state-only, after 0013) on the mountain-bike-only ways from
 `routemaker.singletrack.mtb_name`: the OSM `name`, else `mtb:name`, else `ref`, trimmed (a bare `ref` such as "12" comes last, as it could be misread as a level). It is a
@@ -5229,7 +5296,12 @@ turned on, kept per browser as `routemaker.climbs`) draws every categorised clim
 `frontend/src/climb-data/climbs.json`. That file is written on the build host from the live table
 and the elevation tiles, then committed. It is committed: 3,750 climbs, written on 2026-10-12 from
 staging build 20261011T215845Z (counts in `frontend/src/climb-data/README.md`); an empty file
-would make the switch say "No climbs yet". Nothing else depends on it: routing, the tiles and the rebuild are unchanged.
+would make the switch say "No climbs yet". The tiles and the rebuild do not depend on it. Since
+v0.6.0 the api reads it too: Mountain Goat's hill seek (FOLLOWUP-HILL-SEEK, `core.hillseek`) routes
+through the climbs in it, so `docker/api.Dockerfile` copies it into the api image and a new file
+reaches the planner with the next api image, not by itself. An api without it (or with a file it
+cannot read) plans as v0.5.0 did, choosing among the router's own alternatives only, and the answer's
+`hills_seek.climb_seek.limited` says `no_climbs`; the log says so once (a warning naming the path).
 
 **The scale** (the owner, 2026-10-10 and 2026-10-11; `routemaker.climb_categories`): score =
 length (m) x average grade (%), Garmin's scale with a Cat 5: Cat 5 over 4,000, Cat 4 over 8,000,
@@ -5273,7 +5345,30 @@ and deploy the front end as usual. `tests/test_climb_layer.py::test_bundled_file
 and `climbs.test.ts` check the committed file.
 
 **What it reads.** Ways with `map_class = 'road'`, less `mtb_only` and `walk_bike`: access is the
-rebuild's, overrides included, so a barred, hidden or err-closed way never carries a climb. The ways
+rebuild's, overrides included, so a barred, hidden or err-closed way never carries a climb. And
+only a way the road panel calls open: `bike_access_reason` empty or `override_open`; any closing
+reason, or one the release does not know, is left out (unclear access is closed).
+
+**Only public ways open to bikes (owner report 2026-10-12).** "A marked climb appears to be a
+quarry, which isn't likely open to the public. Ensure only public roads open to bikes are marked."
+Climb `bd93dd04dc` (Cat 4, 1.2 mi (1,903 m), 512 ft (156 m) at 8.2%, unpaved) ran down into the
+Travilah quarry pit off Shady Grove Rd over nine ways tagged only `highway=track`, inside
+`landuse=quarry`: open by their own tags, so routable and drawn. Closing such ways at the rebuild
+(a way inside a quarry, a landfill or an industrial area closed on every graph and left off the map)
+is release v0.7.0's, with the other changes that need a rebuild. In this release:
+
+- Now, without a rebuild: `routemaker.climb_exclusions.EXCLUDED` lists a climb by id with its
+  reason and source, and the builder, the hill seek (`core.hillseek.parse`) and the map
+  (`frontend/src/lib/climbExclusions.ts`, the same ids) all drop it, so the committed file need not
+  be rewritten. Add an id there (both files) for any other climb found on a closed way.
+
+Before shipping, audit the unnamed Cat 3 and Cat 4 climbs (274 in the committed file) against land
+use on the build host; a quarry, landfill or industrial site found under one goes in the list. To
+write the file again with the exclusions and the access filter, the command above is unchanged:
+
+    flock <the host's heavy.lock> docker compose exec -T rebuild ./manage.py build_climbs </dev/null
+
+The ways
 are joined into strokes across junctions (each way end paired with the one that continues it most
 nearly straight, within 45 degrees), sampled every 98 ft (30 m), and read both ways. A climb that
 rides a one-way segment against its drawn direction is left out; `road_oneway` has no direction, so
@@ -5936,20 +6031,30 @@ scripts/cloud/send-inputs.sh  --> in/   backup, reference, elevation, extracts -
 scripts/cloud/import-result.sh <-- out/  5 graphs, staging schema dump        <-- (powers off)
 ```
 
-This is the by-hand version of the cloud rebuild (no launcher, no S3 checkpoints, no
-on-demand fallback); this host stays the fallback, and its weekly rebuild is unchanged.
+`scripts/cloud/launch.sh` runs the three from here with one command ("The launcher",
+below); "A run" is the same thing by hand. There are no S3 checkpoints and no on-demand
+fallback yet; this host stays the fallback, and its weekly rebuild is unchanged.
 
 ### One-time setup (the owner, in the AWS console)
 
 - **No access keys anywhere.** The box gets an instance role; this host signs in with
-  IAM Identity Center (`aws configure sso`, then `aws sso login --profile <name>` before
-  each run).
+  `aws login --remote` (add `--profile <name>` to keep it apart from other accounts)
+  before each run: it prints a link to open in any browser, where you sign in to the
+  console as usual, and paste back the code it shows. This is what worked on 2026-10-11:
+  the account has no IAM Identity Center, so `aws configure sso` and `aws sso login` do
+  not apply, and `--remote` because WSL has no browser of its own. Sign in as an IAM user
+  with the launcher's permissions ("The launcher", below), not as the root user.
 - **The box:** a launch template with a memory-heavy type of at least 32 GiB and 8 vCPUs
   (m7i.2xlarge), Ubuntu with Docker and `docker-compose-v2` from user data, a 150 GiB gp3
   root volume, a security group with **no inbound rules** (the shell is Session Manager),
   IMDSv2 required, and spot with request type **Persistent** and interruption behaviour
   **Stop** (AWS refuses Stop with the default one-time request). Shutdown behaviour
-  **Stop**, so `box-rebuild.sh`'s power-off stops it. In the bucket's region.
+  **Stop**, so `box-rebuild.sh`'s power-off stops it. Any region: the launcher takes
+  the box's (`us-east-1` by default) and the bucket's (`us-west-2` by default) apart, and
+  the box reaches the bucket across regions. That costs money: S3 traffic between two
+  regions is billed per GB, both ways (the inputs down to the box, the graphs and the
+  staging dump back up), on top of the internet transfer to and from home. A box in the
+  bucket's region does not pay it.
 - **The role:** `AmazonSSMManagedInstanceCore` plus an inline policy that reaches one
   folder of the bucket and nothing else:
 
@@ -5965,7 +6070,8 @@ on-demand fallback); this host stays the fallback, and its weekly rebuild is unc
 - **The bucket:** a lifecycle rule scoped to the prefix `rebuild-checkpoints/` (never the
   whole bucket) expiring objects after 14 days, and a monthly budget alarm.
 - **On the box, once:** `sudo snap install aws-cli --classic`, then
-  `git clone https://github.com/Macrophage87/RouteMaker.git ~/RouteMaker`.
+  `git clone https://github.com/Macrophage87/RouteMaker.git ~/RouteMaker`. The launcher
+  does both itself when they are missing.
 
 ### A run
 
@@ -6087,6 +6193,131 @@ edits made after that time (from v0.4.0, the stress editor), as a rebuild does f
 made while it ran, that check gives way to the re-apply; the scripts pass the backup's
 time.
 
+### The launcher
+
+One command here does the whole run, with no console clicks: `scripts/cloud/launch.sh`.
+It drives the three scripts above and adds nothing to them, so "A run" is still what
+happens, and the rules before a run (the freeze, the pushed commit) are the same.
+
+Once, put the box and the bucket where the launcher finds them, e.g. in `~/.bashrc` (they
+are this deployment's, so never in the repository):
+
+```sh
+export CLOUD_INSTANCE_ID=i-...        # the box
+export CLOUD_BUCKET=<bucket>
+export CLOUD_PROFILE=<name>           # if you sign in with --profile
+# CLOUD_BOX_REGION [us-east-1], CLOUD_BUCKET_REGION [us-west-2],
+# CLOUD_PREFIX [rebuild-checkpoints/transfer] only if yours differ
+```
+
+Then, each time:
+
+```sh
+aws login --remote --profile <name>
+scripts/cloud/launch.sh                    # the run is cloud-<today, UTC>
+scripts/cloud/launch.sh --run cloud-20261018 --beta   # a name of your own; the beta's bundle too
+scripts/cloud/launch.sh --dry-run          # the commands it would run, and the box's script
+```
+
+What it does, with a plain line for each step:
+
+1. Checks before anything is sent, so a wrong instance id or region, a missing
+   permission, an expired sign-in or a box in use fails before the sudo prompt and the
+   upload: the box can be described and is stopped (a box still stopping is waited for
+   later), and the run's folder has no result yet (`out/SHA256SUMS`; install that one with
+   `import-result.sh`, or name a new run). Then `send-inputs.sh` (it asks for sudo here,
+   at the start).
+2. Reads the commit from the run's `in/MANIFEST.txt`.
+3. `aws ec2 start-instances` on the box if it is stopped, and waits (15 minutes at most)
+   until it is running and its SSM agent is online. A box that is already running is
+   refused, since another run may be on it; `--use-running` uses it, and the launcher
+   then does not stop it (`box-rebuild.sh` still powers it off at the end).
+4. `aws ssm send-command` with `AWS-RunShellScript`: as root, a power-off scheduled for
+   when the command's time is up (`shutdown -P`, the timeout plus an hour: a dead-man
+   switch, so a box whose launcher died during the setup cannot run on for ever), and the
+   AWS CLI from snap if it is missing, and the run marker
+   (`/var/lib/routemaker-launch/current`: the launch's time and run URL); then as
+   `ubuntu`, nothing at all if the run already has its result or the marker names another
+   run (SSM may run a command again after the box restarts, and an old run's command must
+   neither redo that run nor let `box-rebuild.sh` power off the box under a newer one; an
+   older command also leaves the marker of a newer launch alone), else
+   `~/RouteMaker` cloned if it is missing, the run's commit checked out there (the rule in
+   "A run", step 2) and `box-rebuild.sh` run from it, its output appended to
+   `~/cloud-rebuild.log` on the box. `--beta` passes `--beta-bundle`, `--refire` passes
+   `--refire`.
+5. Waits for `out/SHA256SUMS`, checking every minute, for 30 hours at most
+   (`--timeout-hours`), with a line every ten minutes. Each check also reads the command's
+   status (`get-command-invocation`) and the box's state. A command that failed (the
+   script stopped before the rebuild was fired) ends the wait with the end of the box's
+   output; so does a box that stopped with no result (a failed rebuild powers itself off,
+   and so does a spot reclaim).
+6. Stops the box, then `import-result.sh`: the install and its dry run, nothing served
+   changes. It may ask for sudo again here. Read the dry run, then swap as in "A run",
+   step 4. `--swap` does the swap straight after the dry run instead.
+
+However it ends (a failure, the time limit, Ctrl-C), a box the launcher started and
+that is still running is **stopped**, never terminated: its disk keeps the run's state,
+and `scripts/cloud/launch.sh --no-send <RUN_URL>` carries the run on from where it
+stopped (add `--refire` after a failed rebuild, as for `box-rebuild.sh`). Every message
+that ends a run part way prints that command with the run's URL: copy it, since the
+default run name is the day's, and the same command without the URL after midnight
+(UTC) would start a new run. A box it did not start is not stopped by the launcher.
+`--no-send` also skips sending for a run whose inputs are already in S3.
+
+**A spot reclaim, and a box that starts again by itself.** With a persistent spot request
+and interruption behaviour Stop, AWS stops the box when it needs the capacity back and
+**starts it again by itself** when it has room. Nothing runs on it then (the launcher's
+command is not repeated, and if SSM did repeat it, it would find the result or carry the
+run on and power off), so a box restarted that way sits idle and billed until someone
+stops it. When a box the launcher started stops with no result, the launcher calls
+`stop-instances` on it once more, though it is already stopped, so that the stop is a
+user's stop, which AWS does not restart (a box it was given with `--use-running` is left
+to you). **That this prevents the restart is not verified**: after the first
+reclaim, look in the console (EC2, Instances) an hour or so later and stop the box if it
+is running; the budget alarm is the backstop.
+
+**The sign-in can run out during a run.** The wait is hours, longer than an `aws login`
+session may last. If a check fails while it waits, the launcher says so and keeps
+waiting; run `aws login --remote` again in another window and it carries on. The box does
+not need this host: it powers itself off at the end either way.
+
+**The IAM user's permissions** (the least the launcher and the two home scripts need;
+`<account>`, `<instance-id>` and `<bucket>` are yours, and `us-east-1` the box's region).
+The first statement is `aws login` itself (the same two actions as AWS's managed policy
+`SignInLocalDevelopmentAccess`, which can be attached instead).
+`DescribeInstances`, `DescribeInstanceInformation` and `GetCommandInvocation` cannot be
+limited to one instance, so they name `*`; they only read. `AbortMultipartUpload` lets
+an upload of a large tar that stopped part way be cleaned up. If the box's disk is
+encrypted with your own KMS key, starting it also needs `kms:CreateGrant` on that key.
+
+```json
+{"Version": "2012-10-17", "Statement": [
+  {"Effect": "Allow", "Action": ["signin:AuthorizeOAuth2Access", "signin:CreateOAuth2Token"],
+   "Resource": "*"},
+  {"Effect": "Allow", "Action": ["ec2:StartInstances", "ec2:StopInstances"],
+   "Resource": "arn:aws:ec2:us-east-1:<account>:instance/<instance-id>"},
+  {"Effect": "Allow", "Action": "ec2:DescribeInstances", "Resource": "*"},
+  {"Effect": "Allow", "Action": "ssm:SendCommand",
+   "Resource": ["arn:aws:ec2:us-east-1:<account>:instance/<instance-id>",
+                "arn:aws:ssm:us-east-1::document/AWS-RunShellScript"]},
+  {"Effect": "Allow", "Action": ["ssm:GetCommandInvocation",
+                                 "ssm:DescribeInstanceInformation"], "Resource": "*"},
+  {"Effect": "Allow", "Action": "s3:ListBucket", "Resource": "arn:aws:s3:::<bucket>",
+   "Condition": {"StringLike": {"s3:prefix": ["rebuild-checkpoints/*"]}}},
+  {"Effect": "Allow", "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject",
+                                 "s3:AbortMultipartUpload"],
+   "Resource": "arn:aws:s3:::<bucket>/rebuild-checkpoints/*"}]}
+```
+
+`ssm:SendCommand` on `AWS-RunShellScript` is a root shell on the box, and on nothing
+else: the box holds nothing of this deployment's but the inputs it was sent.
+
+**Not built: a hands-off weekly run.** Running the launcher from cron needs a sign-in
+that lasts and renews without a person: IAM Identity Center, or a narrow role that a
+scheduler (an EventBridge schedule, say) assumes. Not `aws login`, which needs you at a
+browser, and not access keys, which this deployment does not keep anywhere. Until then
+the launcher is run by hand, and the weekly rebuild here goes on as before.
+
 ### The beta server from the same run
 
 A run can also feed the beta server directly, with no `ship-data.sh` from here. Start the
@@ -6139,6 +6370,8 @@ home's backup.
 
 **What has not been run:** the scripts are tested against stand-ins for `aws`, `docker`,
 `sudo` and, for the beta, `ship-data.sh`, `receive-data.sh` and `beta-compose.sh`
-(tests/test_cloud_scripts.py), and the command against a real PostGIS
+(tests/test_cloud_scripts.py), the launcher against a stand-in `aws` and stand-ins for
+the other scripts (tests/test_cloud_launch.py; its first real run is the first time it
+meets EC2 and SSM), and the command against a real PostGIS
 (tests/test_import_cloud_build.py). The first run on the box is the first real one, so
 keep its log and read the dry run before `--swap`.

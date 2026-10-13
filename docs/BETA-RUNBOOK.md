@@ -362,6 +362,13 @@ the notice says only to tell the person who gave you access. The link is built i
 repeat the same `--report-url` on every later ship that carries the front end (data updates and
 releases included), or the next `files` installs a notice without it.
 
+The bundle carries the transit ride types' schedule when it has been built at home
+(`$DATA_ROOT/tiles/transit/transit-schedule.json`, docs/OPERATIONS.md, "Transit schedule"). Without it
+`ship-data.sh` warns and leaves the `transit` part out, and the beta's transit plans say they are not
+available. Build it before shipping, and ship it again (`--without` every other part) when it is
+refreshed, at least every 45 days. Sending the agencies' timetables to our own server is not
+redistribution; the file is never committed (docs/SOURCES.md).
+
 It sends about 4 GB (see "What the bundle holds" below) and is resumable: if the connection drops the
 owner reruns the same command. `SHA256SUMS` arrives last, so a half-sent bundle has none.
 
@@ -375,8 +382,9 @@ sudo scripts/beta/receive-data.sh --bundle "$RM_INCOMING" --env-file .env files 
 ```
 
 `files` copies the four routing graphs under `tiles/<graph>/<build>/` and points `current` at the new
-build (the old one is recorded as `previous` and kept), then elevation, base map, the Photon index and
-the front end. It installs only the files `SHA256SUMS` lists and only the builds `MANIFEST.txt`
+build (the old one is recorded as `previous` and kept), then elevation, base map, the Photon index, the
+transit schedule (`tiles/transit/transit-schedule.json`, read by the transit ride types; docs/OPERATIONS.md,
+"Transit schedule") and the front end. It installs only the files `SHA256SUMS` lists and only the builds `MANIFEST.txt`
 names, so anything an earlier bundle left in `$RM_INCOMING` is skipped (and reported). If photon is
 running and the bundle carries its index, `files` stops photon first and starts it again after.
 It verifies every installed file's sha256 again. It refuses if `/data` lacks room.
@@ -702,11 +710,13 @@ own page again. The same goes for a 403 or 404 where a 502 was expected (nginx c
 every other line must PASS.
 
 Then check by eye, once, in a browser the owner can use: the page loads behind the password prompt,
-the map draws, a two-point route appears, and the **Beta notice** is shown in the planner panel, under the
-RouteMaker heading (it appears only in the front end built with `VITE_BETA=1`, which
+the map draws, a two-point route appears, and a small **Beta** chip is in the map's bottom-left
+corner (beside the planner on a computer, above the sheet on a phone); pressing it opens the beta
+note over the map (it appears only in the front end built with `VITE_BETA=1`, which
 `ship-data.sh --build-frontend` does). And one screen-reader pass (VoiceOver or NVDA): the password
-prompt is read and can be filled; "Beta notice" is in the landmarks list and is read after the
-heading; Dismiss puts focus on "Route planner".
+prompt is read and can be filled; the "Beta notice" button is reached by Tab after the map's
+controls and says collapsed or expanded; opened, the "Beta notice" region is read next, and Escape
+closes it with the focus on the button.
 
 ## 11. Report back to the owner
 
@@ -951,7 +961,7 @@ live within about 10 minutes, and nothing after it checks what a screen reader h
   `scripts/a11y/run.sh <a node_modules for that lockfile>` (offline; docs/DEVELOPMENT.md), and it
   must pass. CI and the agent run only `npm test`.
 - If the release changes anything `docs/BETA-TESTER-HANDOUT.md` describes (the skip link, the
-  landmarks, the headings, the beta notice, where Dismiss puts the focus), update the handout in
+  landmarks, the headings, the beta notice and its Beta chip), update the handout in
   the same release and send it to the testers again once the release is deployed.
 - The release that brings this agent (wip/beta-cd) also adds a paragraph about updates to the
   handout's section 8 (what testers hear during a deploy, and how long to wait): resend the
@@ -1260,4 +1270,5 @@ removes the agent, its logs and its snapshots (owner's say-so: they hold databas
 - **What the bundle holds** (sizes measured 2026-10-04): the four routing graphs' `tiles.tar` and sqlite files 2.2 GB
   (standard 611 MB, no-trail 450 MB, ebike 611 MB, weekend 611 MB), the Photon index 742 MB, elevation 310 MB, the base map
   298 MB, the database dump 207 MB (that figure still held the stress-tile cache, which is no longer shipped, so it is
-  smaller now), the front end 3 MB: about 3.74 GiB in 1259 files, checksummed one by one.
+  smaller now), the front end 3 MB: about 3.74 GiB in 1259 files, checksummed one by one. The transit schedule, once
+  built, is one JSON file.

@@ -674,9 +674,13 @@ alone. Shape comes first and colour second:
   from the base map (`testSupport/baseSurfaces.ts`, shared with
   mtbTrail.test.ts), each pattern distinct from the others and from every
   other line pattern on the map, every level unlike every stress tier on
-  dash (gaps 1.5 widths or more), edge (ticks against a solid casing) and
-  width, and the filters. The rebuild writes `mtb_level` on rated singletrack
-  only (`pipeline.trail_closures.mtb_level`).
+  dash (gaps 1.5 widths or more) and edge (ticks against a solid casing,
+  in every palette), and the filters. The rebuild writes `mtb_level` on rated singletrack
+  only (`pipeline.trail_closures.mtb_level`). Since v0.6.0 (the owner could
+  hardly see them) every trail is a 3 px line on a solid white edge
+  (`MTB_HALO`; `mtb-trail-casing`, `mtb-level-casing-1..4`), unrated as grey
+  dashes, over one shared layer of dark cross-ticks (`mtb-trail-ticks`,
+  `MTB_TICKS`; LTS 4's casing is white, so the ticks are the 452a mark).
 - **Unpaved in brown (302).** An unpaved road or trail is drawn in one brown
   ramp instead of the stress hues, light to dark from LTS 1 to Avoid, with the
   tier's own dash and width, so the stress still reads without colour
@@ -1424,7 +1428,9 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   climbing charge comes off each of its `alternates`, and `hills_tolerate` says
   what was compared and chosen. On Mountain Goat above it a climb
   search among the router's `alternates` (3), choosing the one that climbs most
-  within `1 + 0.5 * hills/100` of the direct route's length. Two-point plans
+  within `1 + 0.5 * hills/100` of the direct route's length, with routes through
+  the categorised climbs near the line added to them (the hill seek, "Seeking
+  hills" below). Two-point plans
   only, and not past 50 km of straight line (`routing.SEEK_MAX_SPAN_M`: a cold
   65 km search with alternates took 51 s on the live router); `hills_seek.limited`
   says when it was not done.
@@ -1702,6 +1708,85 @@ ride type but Mountain Goat): `candidates`, `chosen` (0 is the router's own),
 negative where shorter), and `limited` (`two_points`, `long_ride`, `timed_out`,
 `calm_first`).
 
+**The climb card** (v0.6.0; the owner, 2026-10-12). A press on a climb's summit marker (in Go,
+its dashed line too) opens its card (`climbInteraction.ts`, `lib/climbCard.ts`): MapView's click asks
+`climbAt` before `runClick`, after a station and a water or restroom icon (`water.hits`), so the press
+is never also a point or (in Go) a destination; in Plan a press on the dashed line places a point as
+before. The next click only closes the card (`climbClosing` keeps the water and federal cards from
+opening under it); a press on another climb opens that climb's card, and one on the climb shown only
+closes it (`climbCardAfterClose`). "Climb details" focuses the card from ClimbCardView's own mount effect. The profile is GET /api/climbs/{id}/profile (`core.climbprofile`, read-only, rate-limited
+`climb-profile` 60 a minute, `ROUTING_IN_FLIGHT`): the climb is looked up by id in the committed
+file, the router asked once for a /route foot to summit through `hillseek.via_points` with
+`elevation_interval` 30 (standard, then offroad), the heights and grades read as the route chart's
+(`routemaker.profile`), kept per process (512 climbs) and cached a day. "Ride this climb": Plan,
+`rideClimbEdit` (bottom then top before the destination, 25 m in from the ends); Go, `goTo(top, ...,
+[bottom])`. The keyboard path is the road panel's "Climb here" (`climbNearSpot`, 165 ft (50 m)) and
+"Climb details". "Show climbs from" (`routemaker.climbsFrom`) filters both layers by `rank`.
+
+**Seeking hills** (FOLLOWUP-HILL-SEEK, OWNER-DECISIONS 205: "a candidate generator
+that finds climbs near the line and routes through them, like the trail seek").
+Mountain Goat right of the detent chooses the route that climbs most within
+`presets.seek_distance_ratio` (1.05 at 10, 1.5 at 100) of the router's own route
+(`routing.choose_climb`). The router's three alternatives are its near-ties on time and
+rarely go out of their way for a hill, so the hill seek (`core.hillseek`, called by
+`routing.hill_seek`) adds routes through the categorised climbs near the line to them.
+It runs where the climb search does (below the top of the stress slider, two points,
+up to `SEEK_MAX_SPAN_M`, the alternatives' ask not timed out), but not on a round trip
+(the end within `LOOP_SAME_M`, 165 ft (50 m), of the start, or a loop: the corridor
+would be a circle and a route through a climb an out-and-back), and needs no rebuild:
+
+- **The climbs** are the Climbs layer's file, `frontend/src/climb-data/climbs.json`
+  (Cat 5 to HC, `pipeline.climb_layer`), read once per change of the file
+  (`hillseek.load`). The api image copies it. Without it (or with a file it cannot
+  read) nothing is asked, the plan is as before, and `climb_seek.limited` is
+  `no_climbs`; the log says so once for each path (a missing file) or each change of
+  the file (one it cannot read).
+- **The corridor** scales with the budget. A climb is kept when
+  `CIRCUITY x (start to foot + summit to end) + climb length <= ratio x the router's
+  own length`, with `CIRCUITY` 1.2: an ellipse round the straight line, which widens
+  as the dial goes right. Left out: climbs the router's own routes already ride uphill
+  (they add nothing), and mostly unpaved ones under Avoid gravel. Ranked by category
+  (HC first), then height gained, then the shorter estimate.
+- **The proposals**, at most `MAX_CANDIDATES` (3) router calls, as the trail seek's:
+  the best climb with the best other one that fits the budget beside it (both, in the
+  shorter order; two climbs whose feet or summits are under 1,000 ft (300 m) apart are
+  two sides of one hill and are not paired), the best alone, then the next best alone
+  that the calls before have not covered (the pair's partner is not asked for again).
+- **Uphill.** A climb is asked for as `through` locations along its line from 82 ft
+  (25 m) above its foot to 82 ft (25 m) below its summit, at most about 0.9 mi
+  (1.5 km) apart, three to six of them (`via_points`): the router must pass them in
+  order, so it rides the climb up. The request is the plan's own without
+  `alternates` (the work zones closed to bicycles stay left out).
+- **Time.** The seek has `SEEK_BUDGET_S` (8 s) from when it starts and stops 8 s
+  short of the plan's budget (`TRACE_RESERVE_S`, the answer's traces); a call is not
+  started with under 2 s left. A route the router has none for is skipped; a router
+  that times out ends the seek (`climb_seek.limited` `time`).
+- **The choice** is the climb search's, unchanged: the routes found join the router's
+  own and `choose_climb` keeps the one that climbs most within the budget (the
+  router's own on a tie).
+- **Naming.** The kept route's climbs are those it rides uphill by the front end's
+  rule (`climbsAlongRoute`; `hillseek.ridden`): every point of the climb's line within
+  165 ft (50 m) of the route, each further along than the last, and the stretch from
+  foot to summit 0.8 to 1.3 times the climb. Each is a row of `hills_seek.climbs`
+  (`id`, `category`, `length_m`, `gain_m`, `grade_pct`, `from_m`, `to_m` along the
+  route, `unpaved`, `name`, `text`, and `sought`, whether the seek asked for it), a
+  `climb` entry of the description ("At 3.2 mi (5.1 km): Category 4 climb, 0.8 miles
+  (1.3 km) at 6.2%, 262 ft (80 m) gained, to the summit at 4.0 mi (6.4 km).", at the
+  climb's foot; not a ride-mode cue), and a sentence of the route summary's hills note
+  ("It rides 1 climb: ...", with "Looking for routes through nearby climbs took too
+  long; only some were compared." when its time ran out and "The Climbs layer is not
+  available on this server, ..." without the file). Gains of 1,000 ft or more are
+  written with a thousands separator on both sides ("2,930 ft (893 m)"; the front end's
+  `formatClimb`, which the contour labels follow). `hills_seek.climb_seek` is `near` (climbs in the
+  corridor), `asked` (router calls), `found` (routes added) and `limited`, or null
+  where the seek did not run.
+
+Tests: `tests/test_hillseek.py` (pure: the file, the corridor, the proposals, the
+points, the ridden rule, the words, the seek with a stand-in router, and
+`routing.hill_seek` against a stand-in transport) and `TestHillSeek` in
+`tests/test_route_dials.py` (the plan, through the API). `scripts/mutants_hillseek.py`
+is their mutation pass, as `mutants_trailseek.py` is the trail seek's.
+
 **Calibration of the tiers** (OWNER-DECISIONS 83-143; `routemaker.stress`
 unless named; PLAN.md quotes the owner's words):
 
@@ -1935,7 +2020,7 @@ curl -s 'http://localhost:8000/api/reverse?lat=38.90133&lon=-77.260598'
 | | `GET /api/geocode` | `GET /api/reverse` |
 | --- | --- | --- |
 | Parameters | `q` (2-200 characters after white space is collapsed), optional `lat` and `lon` together (a bias, inside `COVERAGE_BBOX`), `limit` 1-10 (default 6), `lang` (`en` only, the imported language) | `lat`, `lon` (inside `COVERAGE_BBOX`), `lang` (`en`) |
-| What reaches Photon | the query with US street abbreviations spelled out (`Blvd`, `St`, `Ave`, `Rd`, `Dr`, `Pkwy`, `Hwy`, `Ct`, `Ln`, `Pl`, `Sq`, `Ter`, `N`/`S`/`E`/`W`, `NE`/`NW`/`SE`/`SW`; `geocode.expand_abbreviations` has the rules), the bias, a count a few above `limit`, `lang`, and `bbox` = `COVERAGE_BBOX`; nothing else the request carries | `lat`, `lon`, `lang`, `limit=1`, `radius=0.25` km |
+| What reaches Photon | the query with US street abbreviations spelled out (`Blvd`, `St`, `Ave`, `Rd`, `Dr`, `Pkwy`, `Hwy`, `Ct`, `Ln`, `Pl`, `Sq`, `Ter`, `N`/`S`/`E`/`W`, `NE`/`NW`/`SE`/`SW`; `geocode.expand_abbreviations` has the rules), the bias with its strength (`zoom` 14 and `location_bias_scale` 0.2, `geocode.BIAS_ZOOM` and `BIAS_SCALE`, so nearby places rank first; the page sends the rider's location when it already has one, else the map's centre), a count a few above `limit`, `lang`, and `bbox` = `COVERAGE_BBOX`; nothing else the request carries | `lat`, `lon`, `lang`, `limit=1`, `radius=0.25` km |
 | 200 | `{"results": [...], "attribution": [...]}`, at most `limit` results, each inside the box, rows with the same name and OSM key within 300 m folded into one | the same shape, zero or one result |
 
 Each result is `{name, label, lon, lat, kind, osm_type, osm_id, osm_key,
@@ -4452,6 +4537,12 @@ and its header). What the panel shows is in `app/`, moved out unchanged:
 - `app/Sheets.tsx`: `LayersSheet`, `GpxSheet` and `SettingsSheet`, each in its `SheetFrame`
   (since the UI-CLEANUP build also the Legend, Suggest, Review, Nearest, Find food and Ride
   sheets; and `app/Go.tsx`, below).
+- `lib/layerSection.ts`: `LayerSection`, one Layers section (the owner, 2026-10-12): a row of
+  its heading, one switch for the section (Off remembers which layers were on, in
+  `routemaker.layerSections`; On brings them back, else all; some on says "Some on") and a
+  disclosure, closed to begin with, over the layers' own switches. A layer's extra control (the
+  Climbs layer's "Show climbs from") goes inside, under that layer's switch; long help goes by
+  the legend in the Legend sheet, not in Layers.
 - `app/hooks.ts`: `useNarrow` (and `NARROW`), `useLongerThan`, `useSettled`.
 
 Each component is a pass-through: it takes its props under the names App gives them, keeps
@@ -4501,13 +4592,16 @@ puts it, at most two presses away.
   start line and said politely ("Start: your current location.") but not yet a point, so the
   link holds no position until a destination is picked; denied, unavailable or timed out, the
   start stays empty, the start box opens and "Current location not available; type a start." is
-  shown and said politely. A start typed in (Change start, `PlaceSearch variant="start"`) or
-  tapped on the map is the plan's first point and replaces the location. A destination picked
+  shown and said politely. A start typed in (Change start, `PlaceSearch variant="start"`), or
+  one placed in Plan, is the plan's first point and replaces the location (a press on the map in Go is the destination). A destination picked
   before there is a start is never dropped nor made the start (`goPickAction`): while the
   location is still being found it waits ("To …: finding your location for the start…") and is
   routed when the location comes; with no location, it is kept ("To …. Current location not
-  available; type a start.") and a start typed in the start box, or tapped on the map (or Add at
-  centre), plans the route to it at once (`goTapStartsPending`, follow-up review of #95). Picking a
+  available; type a start.") and a start typed in the start box plans the route to it at once. A
+  press on the map in Go, the route line included (a drag of the line still adds a stop; `lineTapIsPoint`), or Map tools' "Set destination at map center", is the destination, routed as a
+  picked one is and said "Destination set: …" (named by `goPlaceName`, the same on the sheet: its coordinates until
+  its place name comes; a press on a water, climb or federal-land card's feature, or one that only closes such a card,
+  is the card's alone, `featureCardPress`; `goTapSetsEnd`, the owner 2026-10-12; it replaces #95's tap-as-start). Picking a
   destination with a start plans at once; Go then shows the routes to choose from open, and the ride types under the
   route, so Bikeshare is one press, and only a Bikeshare route names its pick-up and drop-off
   stations (the route's Bikeshare plan).
@@ -4616,12 +4710,13 @@ Tests: `lib/sidebar.test.ts`.
   section, and is also said through `said` while the planner is hidden
   (`noticeSaidElsewhere`), never both at once. A Mass Ride loads the federal-land data
   whatever the shading switch says (`federalWanted`), for the planner's points list.
-- **Scrolling.** `.panel-body` is a column: the beta banner (its first child), the
+- **Scrolling.** `.panel-body` is a column: the status bar, the
   scrolling `.panel-scroll`, then the pinned route actions and bottom bar. On a short
   or zoomed screen (`@media (max-height: 32.5em), (max-width: 22.5em)`, 520 px and
   360 px at 16 px text) the whole `.panel` scrolls as one instead, so at 400% zoom of
-  1280x800 (320x200) the 96 px phone sheet scrolls all of its content, banner and
-  Dismiss included, where the pinned parts left the planner 0 px.
+  1280x800 (320x200) the 96 px phone sheet scrolls all of its content, where the
+  pinned parts left the planner 0 px. (The beta notice is not in the panel: it is the
+  "Beta" chip in the map's bottom-left corner, lib/betaBanner.ts.)
 - **Copy link** copies `linkToCopy`: this page and `encodePlan(points, preset, dials)`,
   the fragment App writes to the address bar, which never holds the weight (313). Its
   "Link copied." is polite, said again on a second press, and cleared when the plan
@@ -6834,6 +6929,111 @@ and the end, and `detourPoints` puts the place second, so the new route cues it 
 through the re-plan gate (`gate.online()` first, since the rider asked), and a re-plan already under
 way is said and left alone.
 
+## Transit assist (TRANSIT-ASSIST, v0.6.0)
+
+There are two ride types, `bike-transit` (Own Bike + 🚆🚌) and `bikeshare-transit` (Bikeshare +
+🚶🚆🚌). The emoji names are the owner's (2026-10-12, 20:35); the ids and links did not change.
+Wherever a name shows, its emoji are aria-hidden and the spoken name (`spoken` in
+`lib/presets.ts`: "Own bike plus train or bus", "Bikeshare plus walk, train or bus") is read
+instead: `PresetName` (`lib/presetName.ts`) in JSX, `presetSaid` in plain text. The ride type
+search also matches the spoken name and `keywords` ("transit"). Both are planned by `core.transit` from a compact schedule built from each system's static
+GTFS (`scripts/build_transit_schedule.py`, schema 2). The systems, their bike rules and the sources
+are listed in `src/core/transitdata/systems.json`. Sources and terms: docs/SOURCES.md. Running it:
+docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-assist.md.
+
+- **Options.** Riding the whole way is always one option. Up to three transit trips are added,
+  quickest total first, one per distinct sequence of boardings. A trip has one or two transit legs,
+  with a same-stop change or a walk or ride of up to 400 m (1,300 ft) between them.
+  - Own Bike + 🚆🚌 never walks and never leaves the bike.
+  - Bikeshare + 🚶🚆🚌 docks before boarding. Each end is a walk or a bikeshare ride, whichever is
+    quicker. It also offers walking the whole way (`transit.WALK_ONLY`) when walking is the
+    quickest option or the trip is under 1 mi (1.6 km) in a straight line (`WALK_ONLY_M`). The walk
+    is routed with Valhalla's pedestrian costing, as the bikeshare planner's walks are, and is the
+    answer's line itself (no bike route is asked for it).
+  - Each option carries `legs`, its legs compactly (walks and rides with a station's way in or out,
+    a transit leg with its wait). A transit trip's row shows them as marks, "🚶 4 min · 🚲 12 min ·
+    🔴 18 min", and a screen reader hears "walk 4 minutes, bikeshare 12 minutes, Red Line 18
+    minutes". The marks live in one module, `lib/transitMarks.ts`, shared with the station popups:
+    🚶 walk, 🚲 bike, Metro by line colour (🔴🟠🔵🟢🟡⚪), a bus "🚌C53", MARC and VRE "🚆Penn",
+    "🚆Fredericksburg", Light RailLink 🚈, Metro SubwayLink 🚇.
+  - The rider's choice goes back as `transit_option`. A stale key falls back to the quickest, with
+    a note.
+- **Calendars.** Each service's days come from `calendar.txt` and `calendar_dates.txt` for 45 days
+  from the build date, so holidays, weekend-only service and published shutdowns are exact. The
+  service day turns over at 3 am.
+- **Waits.** From the next three or four departures (two leaving the same minute count once): if
+  every gap is 15 min or less, the wait is half the mean gap. Otherwise (a near pair before a long
+  gap included) the plan takes the next departure, names it and the one after, and returns it as
+  `transit.departure`. A routed first ride that misses it moves to the next catchable departure
+  (and names the one after that); with none within the hour the option is dropped.
+- **Metro's typical timetable.** Until WMATA's rail GTFS is built (it needs a WMATA key), Metro
+  runs on `src/core/transitdata/metro-typical.json` (`transit.with_typical_metro`), added when the
+  schedule is loaded, or alone when no schedule is installed. It holds the opening hours per day
+  type, each line's minutes between trains per time band (wmata.com's line pages), each line's
+  stations in order with estimated run times, and the map's 98 stations (held equal to
+  `metro_stations()` by a test). Trains are laid out evenly, and a wait is always half the
+  interval (or the time to the first or last train), so no Metro departure is named or counted
+  down. Before the first train the step names it instead of the interval ("first train 5:00 am
+  scheduled"). A holiday runs the typical Sunday timetable, and the holiday note says so. An
+  installed schedule that has run out (or does not reach the date asked for) leaves Metro on its
+  typical timetable alone, with a note; `check_operations` still asks for a rebuild. Its credit reads "WMATA, wmata.com (typical service)"; there is no separate note. A built
+  schedule with WMATA's rail GTFS replaces it with no setting. Metrobus stays out until its GTFS is
+  built.
+- **"Scheduled" on every transit time** (the owner, 2026-10-12: "Make it clear whether it's a
+  schedule or live."). One word after each time the rider sees, GTFS or typical alike, in the
+  step text, the departure, the next departure, the countdown, the map label and the screen
+  reader's milestones: "Board the MARC Penn Line at 7:42 am scheduled", "every 8 min,
+  scheduled". Each transit step and `transit.departure` carry `source: "scheduled"`, and the
+  page takes the word from it (`sourceWord`, `lib/departure.ts`), so live times (v0.7) can say
+  "live" without new UI.
+- **Times.** A service-day minute is real elapsed time from GTFS's zero (noon less 12 hours), so
+  daylight-saving days are right. From 1 to 5 am both service days are searched (owl trips past
+  27:00 included). Stops without times (not timepoints) are interpolated by the build.
+- **Router budget.** The direct ride is routed first. Candidate legs are capped at 5 s a call and
+  `MAX_ROUTER_CALLS`, and stop 12 s into the request (`api.TRANSIT_CANDIDATES_S`); a refusal, a
+  timeout or a router that is down estimates the leg from the straight line, never fails the plan.
+  The answer's own line has the rest of the budget. If the router does not draw it in time (a
+  timeout or the router down), the leg is drawn straight with the plan's estimated time and a note
+  says so, as a short leg is. The api logs each plan's seconds in the search, the candidates' router
+  calls and the line, at info level.
+- **Clock times.** A departure's clock ("1:30 am") is the wall time of its service day's minute,
+  so a daylight-saving night says the time the station clock shows.
+- **Blackout dates.** Own Bike + 🚆🚌 takes no bike on Metro on them ("Bikes aren't allowed on
+  Metro today (July 4)."); Bikeshare + 🚶🚆🚌 still rides Metro on foot.
+- **Departure in the app.**
+  - The panel shows the departure in words (`lib/departure.ts`). Under 5 min to spare it adds a
+    mm:ss countdown and the spare time (`DepartureTimer.tsx`).
+  - The map shows a label at the boarding stop. It sits above the stop, or below when the start or
+    end marker is near, and turns into the countdown when time is short.
+  - Neither is a live region. The milestones (10, 5 and 2 min) and a miss go through the page's
+    status line. A miss plans again; `core.transit.with_ride` moves to the next departure.
+- **Closed stations.** `GET /api/transit/closures` lists the rail stations with no service all day,
+  and `lib/railClosures.ts` matches them to the map's stations.
+  - On the map, a closed station is struck through, grey and named "(closed)".
+  - Its card and the nearest-Metro list say "closed: reason".
+  - Routing never uses a closed station, because it has no departures that day.
+- **Station times.** `GET /api/transit/station-times?lon=&lat=` (`core.transit.station_times`)
+  gives the lines at the rail stops by a map station (the nearest stop of each system within
+  400 m), cached for a minute. `lib/stationTimes.ts` words them, with `lib/transitMarks.ts`'s marks.
+  - A frequent line (Metro, Light RailLink, SubwayLink): "🔴 Red Line: every 8 min, scheduled",
+    read from at least three trains within the hour, the next one within the interval; otherwise
+    (before the first train, or the last few of the night) the next train each way.
+  - A commuter line (MARC, VRE): the next train each way, "🚆Penn to Baltimore Penn Station 5:42
+    pm, to Union Station 6:10 pm, scheduled"; "no more trains today", or "no trains today".
+  - Each departure is timed with the run times of its own time band. Between midnight and 3 am
+    (the day before's service day), a way with nothing more that night gives the new day's first
+    train, timed on its own service day, so a daylight-saving night says the clock's time.
+  - Shown in the station's card (fetched when it opens; in the hover card once known) and under
+    the road panel's nearby station, the keyboard's way to it. The emoji text is aria-hidden; a
+    visually hidden twin says it in words ("Red Line every 8 minutes, scheduled"). Both show the
+    lines of the systems the map's toggles show. A closed station keeps its "closed" words and
+    shows no times; a 503 shows none.
+- **Tests.** `tests/test_transit.py` runs on a synthetic fixture
+  (`tests/data/transit/make_fixture.py`: WMATA rail and bus, MARC Penn and Camden lines, Light
+  RailLink) with a straight-line router. Front-end tests: `lib/transit.test.ts`,
+  `lib/departure.test.ts`, `lib/railClosures.test.ts` and `lib/stationTimes.test.ts`. a11y checks: the "transit (Go)" checks in
+  `scripts/a11y/check.mjs`.
+
 ## Bikeshare (FOLLOWUP-BIKESHARE, OWNER-DECISIONS 243-245, 299-301, 466, 466a)
 
 `POST /api/route` with `preset: "bikeshare"`, `bike` (`classic`, the default, or `ebike`) and
@@ -6962,6 +7162,33 @@ planned with a chosen station lists only the pair asked for, so a screen keeps t
 list; a free-floating e-bike is offered only as the plan's own start (it has no id to ask for
 again). Tests: `tests/test_bikeshare_direction.py` (each ranking case fails on nearest-first),
 `tests/test_bikeshare_api.py`, `tests/test_bikeshare_nearby.py`, `frontend/src/lib/stations.test.ts`.
+
+### Rebalance Ride (REBALANCE-RIDE; Stephen, 2026-10-12)
+
+An Adventure ride type, id `rebalance` (short path `/rebalance`), label "Rebalance Ride": move a
+share bike from a crowded station to one that needs bikes. The operator's reward points have no
+public feed (they are only in its app), so fill stands in for them, from the station status the
+Bikeshare plan already reads: bikes / (bikes + free docks), e-bikes counted. No points are shown
+and there are no new settings; the ride type is not given the operator's programme name, which
+appears only in its description.
+
+- `POST /api/route` with `preset: "rebalance"` is a Bikeshare plan (`core.bikeshare.plan` with
+  `rebalance=True`; two points, `bike` as Bikeshare's, `pickup_station` / `dropoff_station` as
+  Bikeshare's) whose docks are the station lists' own: the 3 best crowded stations near the start
+  (at least 3/4 full, renting, with a bike of the chosen type) and the 3 best near the destination
+  that need bikes (at most 1/4 full, returning), each ranked by the direction rule above, with no
+  distance cap (`rebalance_starts`, `rebalance_ends`). The quickest pair is chosen as on Bikeshare.
+- Always a dock at each end: no free-floating e-bike, no ending outside a dock (`ending:
+  "outside_dock"` is refused). With no availability feed, or no crowded station, or none that
+  needs bikes, the answer is 422 `no_bikeshare` saying which.
+- The steps say "which is crowded" and "which needs bikes"; the summary starts "Rebalance Ride";
+  `bikeshare.rebalance` is true.
+- The ride leg is Bikeshare's (`core.presets` `REBALANCE`): stress 80 with the stress-averse
+  exposure, classic hills -60 at 13 km/h (8 mph), e-bike hills -20 at 20 km/h (12 mph) on the
+  e-bike graph, descents costed past 4%.
+- Front end: `lib/presets.ts` (`usesBikeshare`), the station lists and route options as on
+  Bikeshare, in the Adventure group.
+- Tests: `tests/test_rebalance.py`, `frontend/src/lib/rebalance.test.ts`.
 
 ## Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
 
@@ -7293,7 +7520,7 @@ DC 311 link first, `smsHref` (iOS reads `sms:32311&body=`, Android `sms:32311?bo
 named "Text to DC 311 (3 2 3 1 1)" so a screen reader reads the code digit by digit. "Open DC 311
 online (new tab)" (https://311.dc.gov/) and Copy the report are always there too, since a tablet or a
 phone may not send texts; for Something else, and on a desktop (370), they are the way. `reportText`
-is "Location: <place>, Washington, DC." then the rider's note (at most 120 characters), shown and
+is "Location: <place>, Washington, DC. GPS <lat>, <lon>." then the rider's note (at most 120 characters), shown and
 copied as is; the text adds DC's keyword in front (`forText`), which a hint says. US units only, since
 it is the message itself. Whether DC's service reads a keyword and a place in one message is not
 verified until a real text is sent (the owner's).
@@ -7318,17 +7545,23 @@ so its hint says only that DC's parking requests include Parking Enforcement. No
 bikeway was found there, and 311.dc.gov's own form could not be read (its robots.txt refuses fetches),
 so that hint names none.
 
-The place is `placeOnRoute` (`lib/navigate.ts`), from the route's own data, never a lookup with the
-position (plan section 7, owner question 7): `routeJunctions` lists each change of named street
-between two stretches and each flagged crossing (a junction entry names the street crossed), and the
-nearest to the rider's progress, behind or ahead, is the place ("near Q Street Northwest and R Street
-Northwest"), which may be the last junction passed, as the owner accepted. On a named trail (a path
-stretch with a name) with no junction within `TRAIL_MARKER_M` (a quarter mile), 465's trail marker:
-the trail, the distance along the line from its last junction behind (else its next ahead) and the
-compass direction from there ("on the Capital Crescent Trail, about 1.2 miles northwest of
-Massachusetts Avenue Northwest"). Where am I? says the same on such a trail. OSM's posted mile markers
-(`highway=milestone`) and the trail's own start are not in the route's data, so this is a distance
-from a junction rather than a mile number (PLAN.md, FOLLOWUP-WEB-NAV, for the owner to confirm).
+The place is `reportPlace` (`lib/report311.ts`), from the route's own data, never a lookup with the
+position (plan section 7, owner question 7). Since v0.6.0 (the owner, 2026-10-12: "Put the GPS
+coordinates in the 311. Sometimes it says, about 1.2 miles south of unnamed path." and "Description if
+you can. Like put the road and the coordinates"): the way the rider is on at that point (`stretchAt`,
+the route's own street name, "on R Street Northwest", "on Capital Crescent Trail"; a way with no name is
+said plainly, "on an unnamed path" or "on an unnamed road"), then a cross street only when a named
+junction of the route (`routeJunctions`: each change of named street and each flagged crossing) is
+within `PLACE_NEAR_M` (500 ft, about 0.1 mi; "on R Street Northwest near Q Street Northwest"), and
+always the GPS position, latitude first in decimal degrees to 5 places (about 1 m), the point on the
+line the words describe (`pointAt`): "Location: on R Street Northwest near Q Street Northwest,
+Washington, DC. GPS 38.91234, -77.03890." A distance from a far junction ("about 1.2 miles south of
+...", the old trail marker) is never said: it named unnamed ways and helped no one find the spot. The
+coordinates are never trimmed; the only cap is the note's 120 characters. The 311 menu's place line
+(`menuPlaceLine` in `lib/ride311.ts`) shows the same words and coordinates. Where am I? keeps its trail
+marker (`placeOnRoute`, `TRAIL_MARKER_M` in `lib/navigate.ts`), measured only from a junction on the
+trail itself with a named street; an unnamed way (`isUnnamed`, `wayRidden`) is said plainly ("On an
+unnamed path.") and is never used as a trail or a reference point.
 
 **Checks (N7).** `corridor.test.ts`, `report311.test.ts`, the trail cases in `navigate.test.ts` and
 `loadTile` in `stressProtocol.test.ts`; the browser suite's Ride mode section checks that the stress

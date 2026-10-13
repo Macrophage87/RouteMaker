@@ -244,10 +244,6 @@ button.access-link {
   padding: 4px 14px 10px;
 }
 
-.panel-body > .beta-banner {
-  margin: 8px 14px 4px;
-}
-
 .panel-body[hidden] {
   display: none;
 }
@@ -655,6 +651,18 @@ details.how summary {
   height: 10px;
   border-radius: 50%;
   border: 1px solid #1f2937;
+}
+
+/* A station's lines now, scheduled (lib/stationTimes.ts): one line each, under the lines' swatches. */
+.station-times {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  font-size: 0.85rem;
+}
+
+.station-times li + li {
+  margin-top: 2px;
 }
 
 .station-entrance {
@@ -1081,10 +1089,12 @@ button.secondary {
   white-space: nowrap;
 }
 
-/* Beside the panel, not under it: a credit hidden behind the panel is not shown. */
+/* Beside the panel, not under it: a credit hidden behind the panel is not shown. Clear of the
+   beta build's "Beta" chip too (lib/betaBanner.ts), which sits just right of the panel. */
 @media (min-width: 721px) {
   .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib {
-    max-width: calc(100vw - 450px);
+    box-sizing: border-box;
+    max-width: calc(100vw - 510px);
   }
 }
 
@@ -1175,6 +1185,41 @@ dialog.ride-types::backdrop {
 
 .ride-types-body h2 {
   margin: 0;
+}
+
+/* RIDE-TYPE-ORGANISE: the search over the ride types (Plan's dialog and Go's Ride sheet), and the group headings. */
+.ride-type-search {
+  margin: 12px 0 4px;
+}
+
+.ride-type-search label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.ride-type-search input[type="search"] {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  /* 16px and up, or a phone zooms the page in when the box takes the focus. */
+  font: inherit;
+  font-size: max(1rem, 16px);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.ride-type-none {
+  margin: 8px 0 0;
+}
+
+.ride-type-group h3,
+.ride-group h4 {
+  margin: 16px 0 0;
+  font-size: 1rem;
 }
 
 .ride-type-cards {
@@ -1623,6 +1668,11 @@ dialog.road-info::backdrop {
 }
 
 .road-info-station-name {
+  margin: 0;
+}
+
+.road-info-times {
+  flex-basis: 100%;
   margin: 0;
 }
 
@@ -2120,35 +2170,78 @@ dialog.weight-dialog h2 {
   margin: 2px 0 0;
 }
 
-/* The private-beta notice (lib/betaBanner.ts): only in a build made with
-   VITE_BETA=1. The first child of the panel's body, under its header, over the
-   scrolling part: it never overlays the map or the sheet (final review,
-   accessibility S2), and its text follows the rider's font size. On a short or
-   zoomed screen the whole panel scrolls as one (the "short screens" rule at the
-   end of the sidebar block), so the banner scrolls with the planner and its
-   Dismiss is never clipped (re-check S1; the sidebar review's S1 and B2). */
-.beta-banner {
+/* The private-beta notice (lib/betaBanner.ts): only in a build made with VITE_BETA=1.
+   A "Beta" chip in the map's bottom-left corner, the one corner nothing else uses: the zoom
+   buttons and Map tools are top right, the credits and scales bottom right, Undo / Redo, the
+   Food and Water chips and Go's bar top left, and Ride mode's 311 button on the right edge
+   (the chip is not shown while riding). On a computer it sits just right of the planner; on
+   a phone it rides above the sheet, as the bottom-right controls do. Its note opens upwards
+   over the map. Its text follows the rider's font size; the chip is 44 px at least. */
+.beta-chip {
+  position: absolute;
+  left: 424px;
+  bottom: 10px;
+  z-index: 2;
   display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 8px 0 4px;
-  padding: 6px 6px 6px 10px;
-  background: var(--bg);
-  color: var(--text);
-  border: 2px solid var(--border);
-  border-radius: 8px;
+  flex-direction: column-reverse;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: calc(100% - 436px);
   font-size: 0.875rem;
 }
 
-.beta-banner p {
-  margin: 0;
-  flex: 1;
-}
-
-.beta-banner button {
+.beta-chip-button {
   min-height: 44px;
   min-width: 44px;
-  flex: none;
+  padding: 0 14px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--swatch-border);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.beta-chip-note {
+  width: min(20rem, 100%);
+  padding: 8px 12px;
+  background: var(--bg);
+  color: var(--text);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+
+.beta-chip-note[hidden] {
+  display: none;
+}
+
+.beta-chip-note p {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .beta-chip {
+    left: 10px;
+    max-width: calc(100% - 20px);
+  }
+
+  .app:has(.panel.open) .beta-chip {
+    bottom: calc(48% + 10px);
+  }
+
+  .app:has(.panel.closed) .beta-chip {
+    bottom: 76px;
+  }
+
+  .app.go-mode:has(.panel.go-peek) .beta-chip {
+    bottom: calc(34% + 10px);
+  }
+
+  .app.go-mode:has(.panel.go-half) .beta-chip {
+    bottom: calc(56% + 10px);
+  }
 }
 
 /* --- The sidebar redesign (OWNER-DECISIONS 312, mockup v3): Points first, the Ride line, folds, the
@@ -3266,7 +3359,81 @@ details.zoom-notes {
 }
 
 .climb-popup {
-  max-width: 240px;
+  max-width: 280px;
+}
+
+.climb-popup:focus {
+  outline: none;
+}
+
+.climb-popup:focus-visible {
+  outline: 2px solid var(--focus, currentColor);
+  outline-offset: 2px;
+}
+
+/* The climb card's figures (lib/climbCard.ts): a label and its value to a line. */
+.climb-popup .climb-facts {
+  margin: 6px 0 0;
+}
+
+.climb-popup .climb-facts > div {
+  display: flex;
+  gap: 6px;
+}
+
+.climb-popup .climb-facts dt {
+  color: var(--text-muted);
+}
+
+.climb-popup .climb-facts dt::after {
+  content: ":";
+}
+
+.climb-popup .climb-facts dd {
+  margin: 0;
+}
+
+/* The map's own shape beside what it means. */
+.climb-popup .climb-steepness {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.climb-popup .climb-profile {
+  margin: 6px 0 0;
+}
+
+.climb-popup .climb-profile .pc-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.climb-popup .climb-profile-text {
+  margin-top: 2px;
+}
+
+/* "Show climbs from" beside the Climbs switch. */
+.climbs-from {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 6px 0;
+}
+
+.road-info-climb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 8px;
+}
+
+.road-info-climb p {
+  margin: 0;
+  flex: 1 1 14em;
 }
 
 .climb-popup p {
@@ -3639,6 +3806,46 @@ details.zoom-notes {
 .bikeshare {
   margin: 0 0 12px;
 }
+
+/* The transit ride types (TRANSIT-ASSIST): the text marker on each Metro and bus line, and the
+   trip in the route panel. The marker's word, not its colour, says what the dashed line is. */
+.transit-marker span {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: #ffffff;
+  color: #3b0764;
+  border: 2px solid #5b21b6;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.3;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+}
+.transit {
+  margin: 0 0 12px;
+}
+.transit h3 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+}
+.transit-total {
+  margin: 0 0 4px;
+}
+.transit-steps {
+  margin: 8px 0;
+  padding-left: 1.6em;
+}
+.transit-steps li {
+  margin: 0 0 6px;
+}
+.transit-steps li > svg {
+  margin-right: 6px;
+  vertical-align: -2px;
+}
+.transit-notes {
+  margin: 6px 0;
+  padding-left: 1.2em;
+}
 .bikeshare h3 {
   margin: 0 0 6px;
   font-size: 1rem;
@@ -3696,6 +3903,14 @@ details.zoom-notes {
 }
 .mtb-level .hint {
   display: block;
+}
+/* The preferred level's levels above the hardest: unavailable, said by the disabled state and the hint. */
+.mtb-preferred .toggle:has(input:disabled) {
+  opacity: 0.6;
+}
+/* Kept in the page while empty (a live region must be there before it speaks), with no space taken. */
+.mtb-preferred .mtb-preferred-said:empty {
+  margin: 0;
 }
 
 /* The nearest stations to take a bike from or return one to (OWNER-DECISIONS 466a). The chosen one
@@ -4477,6 +4692,71 @@ details.fold > summary .icon {
   margin-bottom: 8px;
 }
 
+/* A Layers section (lib/layerSection.ts): one row, the name, the section's switch and the disclosure,
+   each a 44 px target; its layers inside, closed to begin with. */
+.layer-section {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+
+.layer-section-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.layer-section-row h3 {
+  flex: 1;
+  margin: 0;
+}
+
+.layer-section .section-switch {
+  min-height: 44px;
+  padding: 4px 6px;
+}
+
+.layer-section .section-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.layer-section .section-chevron .icon {
+  transition: transform 0.15s;
+}
+
+.layer-section .section-chevron[aria-expanded="true"] .icon {
+  transform: rotate(180deg);
+}
+
+/* Kept in the page while empty (a live region shown with its words is often not read, the a11y review's N8). */
+.layer-section-status:empty {
+  margin: 0;
+}
+
+.layer-section-body {
+  padding: 4px 0 4px;
+}
+
+.layer-section-body > .hint,
+.layer-section-body .a11y-setting .hint {
+  margin-top: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .layer-section .section-chevron .icon {
+    transition: none;
+  }
+}
+
 .menu-pages {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr));
@@ -4883,4 +5163,110 @@ details.fold > summary .icon {
 
 .go-bike-option-text {
   flex: 1 1 10em;
+}
+
+/* TRANSIT-ASSIST options and an infrequent departure (lib/departure.ts). The options are a list of
+   pressable rows, the chosen one marked by weight and a border as well as by aria-pressed. */
+.transit-options {
+  list-style: none;
+  margin: 6px 0 8px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.transit-option {
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 10px;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.transit-option.chosen {
+  font-weight: 700;
+  border: 2px solid var(--accent);
+}
+.transit-option[aria-disabled="true"] {
+  cursor: progress;
+}
+.departure {
+  margin: 6px 0;
+}
+.departure-text {
+  margin: 0 0 4px;
+}
+/* Go's sheet at peek: the departure in one line, the countdown when cutting it close. */
+.departure-compact {
+  margin: 4px 0 0;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.departure-timer {
+  margin: 0 0 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--notice-bg);
+  color: var(--notice-text);
+}
+/* Digits that do not shift as they change. */
+.departure-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+/* The departure's label on the map, at the boarding stop. The map is the light flavour in both
+   themes, so the label is the same in both: near-black on white, 17:1; when cutting it close, the
+   notice colours (8.1:1) with a thicker border, so the change is not colour alone (the text becomes
+   the countdown). Not a live region and aria-hidden: the panel says the same. No animation. */
+.departure-label {
+  pointer-events: none;
+}
+.departure-label span {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #111827;
+  border: 2px solid #111827;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+}
+.departure-label.close span {
+  background: #fff6db;
+  color: #5c4200;
+  border: 3px solid #5c4200;
+}
+.departure-label.missed span {
+  background: #fdecec;
+  color: #8a1111;
+  border: 3px dashed #8a1111;
+}
+.a11y .departure-label span {
+  font-size: 0.9rem;
+}
+
+/* A rail station closed all day: its card says "closed: ..." in words, in a muted colour as well. */
+.station-popup.station-closed .station-name {
+  color: var(--text-muted);
+}
+
+@media (forced-colors: active) {
+  .departure-label span,
+  .departure-label.close span,
+  .departure-label.missed span {
+    background: Canvas;
+    color: CanvasText;
+    border-color: CanvasText;
+  }
+  .transit-option.chosen {
+    border-color: Highlight;
+  }
 }

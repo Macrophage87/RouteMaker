@@ -541,7 +541,7 @@ class TestRouteWithAChosenStation:
                 client, {"points": [UNION_POINT, [-77.02, 38.9]], "preset": "default", **extra}
             )
             assert response.status_code == 400
-            assert "Bikeshare ride type only" in response.json()["error"]
+            assert "apply to Bikeshare and Rebalance Ride only" in response.json()["error"]
 
     def test_a_chosen_dropoff_is_not_for_an_outside_dock_ending(self, client, world) -> None:
         response = post(client, body("ebike", ending="outside_dock", dropoff_station="x"))

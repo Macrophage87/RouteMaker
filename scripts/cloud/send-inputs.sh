@@ -29,7 +29,7 @@
 # Options:
 #   --live-dir DIR   the live stack's checkout: .env and the commit [this repository]
 #   --stage DIR      where the files are assembled [~/cloud-runs/<run>/in]
-#   --profile NAME   the AWS CLI profile (`aws sso login --profile NAME` first)
+#   --profile NAME   the AWS CLI profile (`aws login --remote --profile NAME` first)
 #   --allow-dirty    send even though the checkout has uncommitted changes to tracked
 #                    files (the box builds the commit, not those changes)
 #   --no-transfer    assemble and checksum the stage, send nothing

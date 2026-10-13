@@ -266,6 +266,11 @@ export function iconId(lines: readonly LineKey[]): string {
   return `rail-${lines.join("-")}`;
 }
 
+/** A closed station's icon: grey, struck through, in its usual shape. */
+export function closedIconId(shape: "circle" | "square"): string {
+  return `rail-closed-${shape}`;
+}
+
 /** The icon's shape: a Metro station is round, a MARC-only one square, so the systems differ by more than colour. */
 export function iconShape(lines: readonly LineKey[]): "circle" | "square" {
   return lines.every((line) => line === "penn") ? "square" : "circle";
@@ -408,6 +413,8 @@ export interface StationFeatureProps {
   icon: string;
   /** Interchanges drawn over single-line stations where they touch. */
   sort: number;
+  /** No service all day (railClosures.ts): struck through, greyed, and named "(closed)". */
+  closed: boolean;
 }
 export interface EntranceFeatureProps {
   kind: "elevator" | "entrance";
@@ -424,20 +431,25 @@ export interface RailFeature {
 export function railFeatures(
   stations: readonly Station[],
   visibility: RailVisibility,
+  isClosed: (station: Station) => boolean = () => false,
 ): { type: "FeatureCollection"; features: RailFeature[] } {
   const features: RailFeature[] = [];
   for (const station of stations) {
     const lines = visibleLines(station, visibility);
     if (lines.length === 0) continue;
+    const closed = isClosed(station);
     features.push({
       type: "Feature",
       geometry: { type: "Point", coordinates: station.point },
       properties: {
         kind: "station",
         id: station.id,
-        name: station.name,
-        icon: iconId(lines),
-        sort: lines.length,
+        // Words as well as grey: "Union Station (closed)" (railClosures.ts).
+        name: closed ? `${station.name} (closed)` : station.name,
+        icon: closed ? closedIconId(iconShape(lines)) : iconId(lines),
+        // An open station is drawn over a closed one beside it.
+        sort: closed ? 0 : lines.length,
+        closed,
       },
     });
     for (const [kind, points] of [

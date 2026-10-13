@@ -8,6 +8,7 @@ real, because the breakdown is a PostGIS join.
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 
 import pytest
@@ -74,7 +75,10 @@ def sent_options(fake: FakeRouter) -> dict:
 
 @db
 class TestTheSlidersReachTheRouter:
-    @pytest.mark.parametrize("name", sorted(set(presets.PRESETS) - {"bikeshare"}))
+    @pytest.mark.parametrize(
+        "name",
+        sorted(set(presets.PRESETS) - {*presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS}),
+    )
     def test_absent_dials_are_the_presets_start(self, name, client, facility_segments, router):
         fake = router(standard_router())
         body = post(client, good_body(name)).json()
@@ -84,7 +88,13 @@ class TestTheSlidersReachTheRouter:
         assert sent_options(fake)["use_roads"] == presets.use_roads_for(presets.stress_start(name))
         assert sent_options(fake)["use_hills"] == presets.use_hills_for(start.hills)
 
-    @pytest.mark.parametrize("name", sorted(set(presets.PRESETS) - {"mass-ride", "bikeshare"}))
+    @pytest.mark.parametrize(
+        "name",
+        sorted(
+            set(presets.PRESETS)
+            - {"mass-ride", *presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS}
+        ),
+    )
     @pytest.mark.parametrize(("stress", "use_roads"), [(0, 1.0), (35, 0.55), (70, 0.1), (100, 0.0)])
     def test_stress_is_use_roads_run_backwards(
         self, name, stress, use_roads, client, facility_segments, router
@@ -418,11 +428,162 @@ def test_the_distance_budget_grows_with_the_slider(hills):
     assert presets.seek_distance_ratio(0) == 1.0
 
 
+# The hill seek's climb (FOLLOWUP-HILL-SEEK, 205): up from VERTICES[3] west to
+# VERTICES[1], so the direct route along VERTICES rides it down, not up.
+UPHILL_WEST = [VERTICES[3], VERTICES[2], VERTICES[1]]
+# The route through it: east to its foot, up it west, and on east to the end.
+THROUGH_THE_CLIMB = [VERTICES[0], VERTICES[3], VERTICES[2], VERTICES[1], VERTICES[4]]
+
+
+class HillSeekRouter(FakeRouter):
+    """The seeking router, answering a request through `through` points with
+    `through`: the route up the climb."""
+
+    def __init__(self, answers: dict, through: dict) -> None:
+        super().__init__(answers)
+        self.through = through
+
+    def __call__(self, url: str, payload: dict, timeout: float) -> dict:
+        locations = payload.get("locations") or []
+        if url.endswith("/route") and any(p.get("type") == "through" for p in locations):
+            self.calls.append((url, payload))
+            return self.through
+        return super().__call__(url, payload, timeout)
+
+    def through_calls(self) -> list[dict]:
+        return [
+            payload
+            for url, payload in self.calls
+            if any(p.get("type") == "through" for p in payload.get("locations") or [])
+        ]
+
+
+@db
+class TestHillSeek:
+    """The plan with the hill seek (`core.hillseek`, FOLLOWUP-HILL-SEEK, 205): a route
+    through a climb near the line joins the router's own and the climb search picks
+    among them; the climbs ridden are named. The climbs file is one made here."""
+
+    @pytest.fixture
+    def climbs_file(self, tmp_path, monkeypatch):
+        from core import hillseek
+
+        length = sum(
+            routing.haversine(routing.Point(*a), routing.Point(*b))
+            for a, b in zip(UPHILL_WEST, UPHILL_WEST[1:], strict=False)
+        )
+        path = tmp_path / "climbs.json"
+        row = {
+            "id": "uphillwest",
+            "c": "4",
+            "l": round(length),
+            "r": 90,
+            "g": round(9000 / length, 1),
+            "x": UPHILL_WEST[-1][0],
+            "y": UPHILL_WEST[-1][1],
+            "line": [list(p) for p in UPHILL_WEST],
+        }
+        path.write_text(json.dumps({"version": 1, "climbs": [row]}))
+        monkeypatch.setattr(hillseek, "CLIMBS_FILE", path)
+        return path
+
+    def seeking(self) -> HillSeekRouter:
+        # A direct route long enough that the climb is inside the budget at 100 (1.5x).
+        return HillSeekRouter(
+            {
+                "route": {"trip": _trip(VERTICES, 4.0, FLAT)},
+                "trace_attributes": trace_answer(VERTICES, [(101, 0, 4, 2.0)]),
+            },
+            {"trip": _trip(THROUGH_THE_CLIMB, 5.5, HILLY)},
+        )
+
+    def test_the_route_through_the_climb_is_chosen_and_named(
+        self, client, facility_segments, router, climbs_file
+    ):
+        fake = router(self.seeking())
+        body = post(client, {**good_body("mountain-goat"), "hills": 100}).json()
+        (asked,) = fake.through_calls()
+        assert "alternates" not in asked
+        assert asked["locations"][0]["type"] == "break"
+        assert asked["locations"][-1]["type"] == "break"
+        middle = asked["locations"][1:-1]
+        assert len(middle) >= 3 and {p["type"] for p in middle} == {"through"}
+        # Uphill: from near the climb's foot (east) to near its summit (west).
+        assert [p["lon"] for p in middle] == sorted((p["lon"] for p in middle), reverse=True)
+        seek = body["hills_seek"]
+        assert seek["candidates"] == 2
+        assert seek["chosen"] == 1
+        assert seek["climb_seek"] == {"near": 1, "asked": 1, "found": 1, "limited": None}
+        (named,) = seek["climbs"]
+        assert named["id"] == "uphillwest"
+        assert named["category"] == "4"
+        assert named["sought"] is True
+        assert named["text"].startswith("Category 4 climb, 0.5 miles (0.9 km) at ")
+        assert named["text"].endswith("295 ft (90 m) gained")
+        assert body["distance_m"] == pytest.approx(5500.0)
+        climbs_said = [e for e in body["description"] if e["kind"] == "climb"]
+        assert len(climbs_said) == 1
+        assert climbs_said[0]["text"].startswith("At ")
+        assert named["text"] in climbs_said[0]["text"]
+        assert climbs_said[0]["from_m"] < climbs_said[0]["to_m"]
+
+    def test_past_the_budget_it_is_not_asked_for(
+        self, client, facility_segments, router, climbs_file
+    ):
+        fake = router(self.seeking())
+        body = post(client, {**good_body("mountain-goat"), "hills": 10}).json()
+        assert fake.through_calls() == []
+        assert body["hills_seek"]["climb_seek"]["near"] == 0
+        assert body["hills_seek"]["chosen"] == 0
+        assert body["hills_seek"]["climbs"] == []
+
+    def test_without_the_climbs_file_it_is_the_routers_own(
+        self, client, facility_segments, router, tmp_path, monkeypatch
+    ):
+        from core import hillseek
+
+        monkeypatch.setattr(hillseek, "CLIMBS_FILE", tmp_path / "missing.json")
+        fake = router(self.seeking())
+        body = post(client, {**good_body("mountain-goat"), "hills": 100}).json()
+        assert fake.through_calls() == []
+        seek = body["hills_seek"]
+        assert seek["climb_seek"]["limited"] == "no_climbs"
+        assert seek["candidates"] == 1
+        assert seek["chosen"] == 0
+        assert not any(e["kind"] == "climb" for e in body["description"])
+
+    def test_a_via_point_does_not_seek(self, client, facility_segments, router, climbs_file):
+        fake = router(self.seeking())
+        points = [list(VERTICES[0]), list(VERTICES[2]), list(VERTICES[-1])]
+        body = post(client, {"points": points, "preset": "mountain-goat", "hills": 100}).json()
+        assert fake.through_calls() == []
+        assert body["hills_seek"]["climb_seek"] is None
+        assert body["hills_seek"]["climbs"] == []
+
+    def test_a_round_trip_does_not_seek(self, client, facility_segments, router, climbs_file):
+        """Start and end on one place: the corridor is a circle and a route through a
+        climb an out-and-back, so the seek is not run."""
+        fake = router(self.seeking())
+        points = [list(VERTICES[2]), [VERTICES[2][0] + 0.0001, VERTICES[2][1]]]
+        body = post(client, {"points": points, "preset": "mountain-goat", "hills": 100}).json()
+        assert fake.through_calls() == []
+        assert body["hills_seek"]["climb_seek"] is None
+
+    def test_fine_with_hills_does_not_seek(self, client, facility_segments, router, climbs_file):
+        fake = router(self.seeking())
+        body = post(client, {**good_body("default"), "hills": 100}).json()
+        assert fake.through_calls() == []
+        assert body["hills_seek"] is None
+
+
 @db
 class TestTheWeekendGraph:
     """The owner's "Build the weekend graph" (2026-09-27)."""
 
-    @pytest.mark.parametrize("name", sorted(set(presets.PRESETS) - {"bikeshare"}))
+    @pytest.mark.parametrize(
+        "name",
+        sorted(set(presets.PRESETS) - {*presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS}),
+    )
     def test_a_weekend_ride_on_the_standard_graph_takes_its_twin(
         self, name, client, facility_segments, router
     ):
@@ -1994,6 +2155,7 @@ class TestMountainBike:
         assert fake.calls[0][1].get("alternates") == routing.SEEK_ALTERNATES
         mtb = body["mtb"]
         assert mtb["max_level"] == 2 and mtb["limited"] is None
+        assert mtb["preferred_level"] == 2
         assert mtb["over_level_m"] == 0
         assert mtb["trail_weight"] == 0.5 and mtb["singletrack_speed_kmh"] == 10.0
 
@@ -2015,6 +2177,12 @@ class TestMountainBike:
         # At level 3 the same trail is within the choice.
         held = post(client, {**good_body("mountain-bike"), "mtb_level": 3}).json()["mtb"]
         assert held["max_level"] == 3 and held["over_level_m"] == 0
+        # Within the hardest level but above the preferred one (2): priced, and said.
+        assert held["preferred_level"] == 2 and held["harder_m"] == held["singletrack_m"]
+        at = post(
+            client, {**good_body("mountain-bike"), "mtb_level": 3, "mtb_preferred": 3}
+        ).json()["mtb"]
+        assert at["preferred_level"] == 3 and at["harder_m"] == 0 and at["easier_m"] == 0
         # The time counts the singletrack at about 6 mph (10 km/h), never faster than the router.
         assert held["router_duration_s"] is not None
         assert body["duration_s"] >= held["router_duration_s"]
@@ -2088,6 +2256,71 @@ class TestMountainBike:
         router(standard_router())
         response = post(client, {**good_body("mountain-goat"), "mtb_level": 2})
         assert response.status_code == 400
+        response = post(client, {**good_body("mountain-goat"), "mtb_preferred": 2})
+        assert response.status_code == 400
+
+    def test_the_preferred_level_flips_the_choice_between_two_routes(
+        self, client, facility_segments, router
+    ):
+        """The second pass: two routes of equal length, one on a level-2 trail (way 101), one
+        on a level-3 trail (way 202). Preferring 2 takes the first, preferring 3 the second
+        (0.4 against 0.45 of a road metre each way), with the hardest at 3 for both."""
+        with connection.cursor() as cursor:
+            for way, level in ((101, 2), (202, 3)):
+                cursor.execute(
+                    f"UPDATE {facility_segments}.segment SET mtb_only = true, mtb_level = %s, "
+                    "is_trail_class = true, is_unpaved = true WHERE osm_way_id = %s",
+                    [level, way],
+                )
+        other = [(lon, lat + 0.002) for lon, lat in VERTICES]
+        first, second = (route_answer([(v, 2.0, FLAT)])["trip"] for v in (VERTICES, other))
+        traces = {
+            first["legs"][0]["shape"]: trace_answer(VERTICES, [(101, 0, 4, 2.0)]),
+            second["legs"][0]["shape"]: trace_answer(other, [(202, 0, 4, 2.0)]),
+        }
+
+        def transport(url, payload, timeout):
+            if url.endswith("/route"):
+                return {"trip": first, "alternates": [{"trip": second}]}
+            return traces[payload["encoded_polyline"]]
+
+        router(transport)
+        body = {**good_body("mountain-bike"), "mtb_level": 3}
+        two = post(client, {**body, "mtb_preferred": 2}).json()
+        three = post(client, {**body, "mtb_preferred": 3}).json()
+        assert two["mtb"]["candidates"] == three["mtb"]["candidates"] == 2
+        # Each answer rides its preferred level's trail: nothing easier or harder than it.
+        assert two["mtb"]["preferred_level"] == 2 and three["mtb"]["preferred_level"] == 3
+        for answer in (two, three):
+            assert answer["mtb"]["easier_m"] == answer["mtb"]["harder_m"] == 0
+            assert answer["mtb"]["singletrack_m"] > 0
+        assert two["geometry"] != three["geometry"]
+
+    @pytest.mark.parametrize("level", [0, 5, "2", 2.5])
+    def test_a_preferred_level_out_of_range_is_refused(
+        self, client, facility_segments, router, level
+    ):
+        router(standard_router())
+        body = {**good_body("mountain-bike"), "mtb_preferred": level}
+        assert post(client, body).status_code == 400
+
+    def test_a_preferred_level_above_the_hardest_is_held_to_it(
+        self, client, facility_segments, router
+    ):
+        """Preferred never exceeds the hardest: clamped, and the answer says what was used."""
+        router(standard_router())
+        body = {**good_body("mountain-bike"), "mtb_level": 2, "mtb_preferred": 4}
+        mtb = post(client, body).json()["mtb"]
+        assert mtb["max_level"] == 2 and mtb["preferred_level"] == 2
+
+    def test_an_old_request_with_only_the_level_prefers_min_2(
+        self, client, facility_segments, router
+    ):
+        router(standard_router())
+        low = post(client, {**good_body("mountain-bike"), "mtb_level": 1}).json()["mtb"]
+        assert low["preferred_level"] == 1
+        high = post(client, {**good_body("mountain-bike"), "mtb_level": 4}).json()["mtb"]
+        assert high["preferred_level"] == 2
 
     def test_other_ride_types_say_nothing_of_it(self, client, facility_segments, router):
         router(standard_router())
@@ -2109,6 +2342,7 @@ class TestMountainBike:
         body = response.json()
         assert body["variant"] == "standard"
         assert body["mtb"]["max_level"] == 3
+        assert body["mtb"]["preferred_level"] == 2
         assert body["mtb"]["limited"] == "no_mtb_graph"
         assert routing._mtb_down()
 

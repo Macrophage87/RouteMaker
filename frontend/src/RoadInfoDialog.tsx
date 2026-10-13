@@ -5,7 +5,8 @@
  * 441m), which opens the stress editor (StressEditor.tsx) in this same dialog in place of the row.
  *
  * Compact, so the common case fits a phone without scrolling: the name, its kind, a
- * short summary list (one line a fact, read in order), a nearby station's pages, a
+ * short summary list (one line a fact, read in order), a nearby station's pages and its
+ * lines' times now (scheduled; lib/stationTimes.ts, as the station's card on the map says them), a
  * closed native "Details and sources" disclosure with every figure, its source in words,
  * the owner's rating, the way's id and its distance, and the action row.
  *
@@ -53,8 +54,10 @@ import {
 } from "./lib/roadInfo.ts";
 import type { PlaceChoice } from "./lib/geocode.ts";
 import { stationLinks } from "./lib/stationLinks.ts";
+import { TIMES_LABEL, requestStationTimes, shownLines, stationTimeRows } from "./lib/stationTimes.ts";
+import type { StationTimes } from "./lib/api.ts";
 import { WMATA_SLUGS } from "./lib/railData.ts";
-import type { Station } from "./lib/railStations.ts";
+import type { RailVisibility, Station } from "./lib/railStations.ts";
 import { StressPageLink } from "./lib/stressLegend.ts";
 import { closesDialog, nextFocus, tabStops, type TabCandidate } from "./lib/rideTypeDialog.ts";
 import { CHANGE_LTS_TEXT, NO_ME, fetchMe, type Me } from "./lib/stressEditor.ts";
@@ -69,6 +72,8 @@ import { JUNCTION_SUGGEST_TEXT, findJunction, junctionNote, type JunctionAt, typ
 import { AVOID_CARD_HEADING, AVOID_SYMBOL, avoidCardText, type AvoidItem } from "./lib/avoidJunctions.ts";
 import { FEDERAL_ADVICE, stopWarningShort, type FederalArea } from "./lib/federalStops.ts";
 import { HazardReport } from "./HazardReport.tsx";
+import { climbLabel, type Climb } from "./lib/climbs.ts";
+import { CLIMB_DETAILS_TEXT } from "./lib/climbCard.ts";
 import { HAZARD_REPORT_TEXT, hazardOnPiece, hazardPanelText, hazardSaid, type HazardCollection } from "./lib/massHazards.ts";
 
 interface Props {
@@ -83,6 +88,10 @@ interface Props {
   massRide: boolean;
   /** A station near the spot whose pages the panel offers, or null. */
   station: Station | null;
+  /** The map's rail toggles: a station's times show the lines of the systems shown, as its card does. */
+  rail?: RailVisibility;
+  /** Why a station is closed all day, or null (railClosures.ts): a closed station shows no times, as its card. */
+  stationClosed?: (station: Station) => string | null;
   /** An Avoid-rated junction on the route near the spot (avoidNearSpot), which the panel warns of first; null where none. */
   avoid?: AvoidItem | null;
   /**
@@ -95,6 +104,12 @@ interface Props {
    * null: the keyboard's and screen reader's way to learn what a shaded area is, at the map's center.
    */
   federal?: FederalArea | null;
+  /**
+   * The Climbs layer's climb at the spot, while the layer is on (lib/climbCard.ts climbNearSpot), or null: the
+   * keyboard's way to a climb's card ("Climb details", which closes the panel and opens the card, focused).
+   */
+  climb?: Climb | null;
+  onShowClimb?: (climb: Climb) => void;
   /** The dialog closed while showing `closed` (the App keeps a newer request: requestAfterClose). */
   onClose: (closed: InfoRequest | null) => void;
   /**
@@ -132,7 +147,43 @@ function neighbour(items: HTMLElement[], from: HTMLElement, backwards: boolean):
   return after.length ? after[0] : items[0];
 }
 
-export function RoadInfoDialog({ request, hazards = null, massRide, station, avoid = null, junctionShown = null, federal = null, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
+/** Both rail systems shown: where the panel is not told the map's toggles. */
+const ALL_RAIL: RailVisibility = { metro: true, marc: true };
+
+/**
+ * A nearby station's lines now, scheduled, as its card on the map says them (railInteraction.ts): the
+ * lines of the systems the map shows, and none for a station closed all day. The emoji and short words
+ * are aria-hidden; the words are said in full.
+ */
+function StationTimesList({ station, rail, closed }: { station: Station; rail: RailVisibility; closed: boolean }) {
+  const [times, setTimes] = useState<StationTimes | null>(null);
+  const [lon, lat] = station.point;
+  useEffect(() => {
+    let live = true;
+    setTimes(null);
+    if (closed) return;
+    void requestStationTimes([lon, lat]).then((answer) => {
+      if (live) setTimes(answer);
+    });
+    return () => {
+      live = false;
+    };
+  }, [lon, lat, closed]);
+  const rows = !closed && times ? stationTimeRows(shownLines(times.lines, rail)) : [];
+  if (rows.length === 0) return null;
+  return (
+    <ul className="station-times road-info-times" aria-label={TIMES_LABEL}>
+      {rows.map((row) => (
+        <li key={row.key}>
+          <span aria-hidden="true">{row.shown}</span>
+          <span className="visually-hidden">{row.spoken}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function RoadInfoDialog({ request, hazards = null, massRide, station, rail = ALL_RAIL, stationClosed, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
@@ -553,6 +604,24 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, avo
             </a>
           </p>
         )}
+        {climb && onShowClimb && (
+          <div className="road-info-climb">
+            <p id={id("climb")}>
+              <span className="road-info-label">Climb here:</span> {climbLabel(climb)}{climb.name ? `, on ${climb.name}` : ""}
+            </p>
+            <button
+              type="button"
+              className="secondary"
+              aria-describedby={id("climb")}
+              onClick={() => {
+                close();
+                onShowClimb(climb);
+              }}
+            >
+              {CLIMB_DETAILS_TEXT}
+            </button>
+          </div>
+        )}
         {station && links.length > 0 && (
           <div className="road-info-stations">
             {/* The station's name in view, beside its short links (OWNER-DECISIONS 441q; the a11y review's N2). */}
@@ -568,6 +637,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, avo
                 </li>
               ))}
             </ul>
+            <StationTimesList station={station} rail={rail} closed={Boolean(stationClosed?.(station))} />
           </div>
         )}
         {ready && (

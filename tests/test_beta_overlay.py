@@ -2296,6 +2296,79 @@ def test_receive_files_installs_only_listed_files_and_manifest_builds(tmp_path: 
     assert "not in SHA256SUMS" in done.stderr
 
 
+@needs_sh
+def test_ship_data_sends_the_transit_schedule_beside_the_tiles_when_it_is_built(
+    tmp_path: Path,
+) -> None:
+    """The transit ride types' schedule goes to our own beta server (not redistribution:
+    docs/SOURCES.md) at the path the api reads; not built at home, it is said and left out."""
+    if shutil.which("sha256sum") is None:
+        pytest.skip("needs sha256sum")
+    live = tmp_path / "live"
+    data = tmp_path / "data"
+    live.mkdir()
+    (data / "tiles" / "transit").mkdir(parents=True)
+    (live / "compose.yaml").write_text("services: {}\n")
+    (live / ".env").write_text(f"DATA_ROOT={data}\n")
+    stage = tmp_path / "stage"
+    args = ["bash", SHIP, "--live-dir", str(live), "--stage", str(stage), "--no-transfer"]
+    args += [
+        arg
+        for part in ("db", "frontend", "tiles", "elevation", "basemap", "photon")
+        for arg in ("--without", part)
+    ]
+    done = run(*args)
+    assert done.returncode == 2, done.stderr
+    assert "WARNING: no transit schedule" in done.stderr and "--without transit" in done.stderr
+    (data / "tiles" / "transit" / "transit-schedule.json").write_text('{"schema": 2}')
+    done = run(*args)
+    assert done.returncode == 0, done.stderr
+    assert (stage / "tiles" / "transit" / "transit-schedule.json").read_text() == '{"schema": 2}'
+    manifest = (stage / "MANIFEST.txt").read_text()
+    assert re.search(r"^parts=transit $", manifest, re.M), manifest
+    assert "tiles/transit/transit-schedule.json" in (stage / "SHA256SUMS").read_text()
+    # --without transit leaves it out, as any other part.
+    done = run(*args, "--without", "transit")
+    assert done.returncode == 2 and "nothing to ship" in done.stderr, done.stderr
+
+
+@needs_sh
+def test_receive_files_installs_the_transit_schedule_beside_the_tiles(tmp_path: Path) -> None:
+    if shutil.which("rsync") is None or shutil.which("sha256sum") is None:
+        pytest.skip("needs rsync and sha256sum")
+    data = tmp_path / "dr" / "routemaker"
+    (data / "tiles" / "transit").mkdir(parents=True)
+    (data / "tiles" / "transit" / "old.json").write_text("stale")
+    env = tmp_path / ".env"
+    env.write_text(f"DATA_ROOT={data}\n")
+    bundle = _bundle(tmp_path)
+    (bundle / "tiles" / "transit").mkdir(parents=True)
+    (bundle / "tiles" / "transit" / "transit-schedule.json").write_text('{"schema": 2}')
+    listed = ["frontend/index.html", "tiles/transit/transit-schedule.json"]
+    sums = subprocess.run(
+        ["sha256sum", *listed], cwd=bundle, capture_output=True, text=True, check=True
+    ).stdout
+    (bundle / "SHA256SUMS").write_text(sums)
+    manifest = (bundle / "MANIFEST.txt").read_text()
+    (bundle / "MANIFEST.txt").write_text(
+        manifest.replace("parts=frontend ", "parts=transit frontend ")
+    )
+    done = run(
+        "bash",
+        "scripts/beta/receive-data.sh",
+        "--bundle",
+        str(bundle),
+        "--env-file",
+        str(env),
+        "files",
+    )
+    assert done.returncode == 0, done.stderr
+    installed = data / "tiles" / "transit" / "transit-schedule.json"
+    assert installed.read_text() == '{"schema": 2}'
+    assert not (data / "tiles" / "transit" / "old.json").exists()
+    assert "transit schedule installed" in done.stderr
+
+
 def test_the_smoke_test_expects_206_for_the_base_maps_byte_range() -> None:
     text = (REPO / "scripts" / "beta" / "smoke-test.sh").read_text()
     line = next(x for x in text.splitlines() if "Range: bytes=" in x and "check_status" in x)

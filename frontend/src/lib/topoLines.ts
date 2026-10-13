@@ -83,8 +83,8 @@ export const TOPO_WIDTHS = {
 
 const FOOT_M = 0.3048;
 /** Short, read on every focus; the spacings through lib/format.ts, feet first. */
-export const TOPO_LINES_HINT = `Brown contour lines every ${formatClimb(100 * FOOT_M)} zoomed out, ${formatClimb(40 * FOOT_M)} at zoom 13, ${formatClimb(20 * FOOT_M)} from 14; every fifth heavier and labelled.`;
-export const TOPO_LINES_UNAVAILABLE_HINT = "Topo lines are not available on this server yet.";
+export const TOPO_LINES_HINT = `Contours every ${formatClimb(100 * FOOT_M)}, ${formatClimb(40 * FOOT_M)} at zoom 13, ${formatClimb(20 * FOOT_M)} from 14.`;
+export const TOPO_LINES_UNAVAILABLE_HINT = "Not available on this server yet.";
 
 type Expr = unknown[];
 const ele: Expr = ["get", TOPO_ELEVATION];
@@ -157,9 +157,13 @@ export function topoLayers(visible = true): Record<string, unknown>[] {
   return layers;
 }
 
-/** "500 ft (152 m)": feet first, metres in brackets (the owner's rule), as MapLibre computes it per line. */
+/**
+ * "500 ft (152 m)", "1,200 ft (366 m)": feet first, metres in brackets (the owner's rule), thousands separated
+ * as `formatClimb` writes them, as MapLibre computes it per line.
+ */
 export function topoLabelExpression(): Expr {
-  return ["concat", ["to-string", ele], " ft (", ["to-string", ["round", ["*", ele, 0.3048]]], " m)"];
+  const grouped = (value: Expr) => ["number-format", value, { locale: "en-US", "max-fraction-digits": 0 }];
+  return ["concat", grouped(ele), " ft (", grouped(["round", ["*", ele, 0.3048]]), " m)"];
 }
 
 /** The same label, worked out here, for the tests and any text alternative. */

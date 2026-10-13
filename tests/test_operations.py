@@ -431,6 +431,54 @@ def test_check_operations_reports_a_failed_job_even_when_nothing_is_stale() -> N
 
 
 @db
+def test_check_operations_alerts_when_the_transit_schedule_is_about_to_run_out(
+    tmp_path, monkeypatch
+) -> None:
+    """Under a week of timetable left is an alert; none installed is not (the transit ride
+    types are optional and say so themselves)."""
+    import json
+    from datetime import date
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from core import transit
+    from core.models import ScheduledRun
+    from core.runs import STALE_AFTER
+
+    now = timezone.now()
+    for task in STALE_AFTER:
+        ScheduledRun.objects.create(
+            task=task, started_at=now - timedelta(minutes=1), finished_at=now, succeeded=True
+        )
+    monkeypatch.setattr(settings, "TRANSIT_SCHEDULE_PATH", tmp_path / "none.json")
+    out = StringIO()
+    with pytest.raises(SystemExit) as exit_code:
+        call_command("check_operations", stdout=out)
+    assert exit_code.value.code == 0, out.getvalue()
+
+    # A schedule whose 45 days end in three days.
+    start = timezone.localdate() - timedelta(days=42)
+    path = tmp_path / "transit-schedule.json"
+    path.write_text(json.dumps({"stub": True}))
+    monkeypatch.setattr(settings, "TRANSIT_SCHEDULE_PATH", path)
+
+    class Stub:
+        last_day = start + timedelta(days=44)
+
+    # The alert reads the installed file itself (`_read`), not `load`, which would stand in
+    # Metro's typical timetable for a file that has run out.
+    monkeypatch.setattr(transit, "_read", lambda _path: Stub())
+    out = StringIO()
+    with pytest.raises(SystemExit) as exit_code:
+        call_command("check_operations", stdout=out)
+    assert exit_code.value.code == 1
+    assert "transit: the schedule runs out on" in out.getvalue()
+    assert "1 transit schedule to rebuild" in out.getvalue()
+    assert transit.STALE_DAYS == 7 and isinstance(Stub.last_day, date)
+
+
+@db
 def test_check_operations_counts_every_failed_job_and_lists_the_newest() -> None:
     """The count is the number that is wrong, not the number being shown.
 

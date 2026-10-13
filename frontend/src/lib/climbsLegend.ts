@@ -21,13 +21,14 @@ import {
   climbShape,
   SHAPE_WORDS,
   type ClimbAlong,
+  type ClimbCategory,
   type ClimbShape,
   type ClimbsStatus,
 } from "./climbs.ts";
 
 export const CLIMBS_LABEL = "Climbs";
 /** Read on every focus, so kept under 150 characters. */
-export const CLIMBS_HINT = `From zoom ${CLIMBS_MIN_ZOOM}: each climb's category at its top, the shape by its average grade. Changes no route.`;
+export const CLIMBS_HINT = `From zoom ${CLIMBS_MIN_ZOOM}. Changes no route.`;
 export const CLIMBS_LOADING = "Loading climbs…";
 export const CLIMBS_UNAVAILABLE = "Climbs are unavailable for now. The map and your route are not affected.";
 export const CLIMBS_EMPTY = "No climbs yet: the climbs are measured on the build server, and this map has not had them added.";
@@ -45,7 +46,7 @@ export const CLIMBS_ALONG_NO_ROUTE = "Plan a route to list the climbs it rides."
 export const CLIMB_LEGEND: ReadonlyArray<{ shape: ClimbShape; label: string }> = [
   { shape: "circle", label: "Gentle" },
   { shape: "square", label: "Moderate" },
-  { shape: "diamond", label: "Very steep" },
+  { shape: "diamond", label: "Steep" },
 ];
 
 /** The legend's swatch: the map's own shape, as an SVG of its inked pixels, with a sample number. */
@@ -80,7 +81,7 @@ export function ClimbsLegend(): ReactElement {
       "li",
       { key: "number" },
       h(ClimbSwatch, { shape: "circle", number: "3" }),
-      h("span", { className: "stress-label" }, "The number at a climb's top is its category, 5 (smallest) to 1, then HC (the biggest)"),
+      h("span", { className: "stress-label" }, "The number at a climb's top is its category, 5 (smallest) to 1, then HC (the biggest); the shape around it is its steepness"),
     ),
     ...CLIMB_LEGEND.map(({ shape, label }) =>
       h("li", { key: shape }, h(ClimbSwatch, { shape }), h("span", { className: "stress-label" }, `${label}: ${SHAPE_WORDS[shape]}`)),
@@ -167,11 +168,48 @@ export function ClimbsSwitch({ on, onChange }: { on: boolean; onChange: (on: boo
   );
 }
 
+export const CLIMBS_FROM_LABEL = "Show climbs from";
+
+/** "Show climbs from"'s choices, easiest first; HC spelled out, as a screen reader would say "H C". */
+export const CLIMBS_FROM_OPTIONS: ReadonlyArray<{ value: ClimbCategory; text: string }> = [
+  { value: "5", text: "All (Category 5 and up)" },
+  { value: "4", text: "Category 4 and up" },
+  { value: "3", text: "Category 3 and up" },
+  { value: "2", text: "Category 2 and up" },
+  { value: "1", text: "Category 1 and up" },
+  { value: "HC", text: "Hors catégorie (HC) only" },
+];
+
+/**
+ * "Show climbs from" (the owner, 2026-10-12): one native select beside the switch, labelled, so a keyboard
+ * and a screen reader reach it as any select; the map, the list and the road panel follow it. Nothing is
+ * announced on a change, as for the other layer settings: the select says its own new value.
+ */
+export function ClimbsFromSelect({ from, onChange }: { from: ClimbCategory; onChange: (from: ClimbCategory) => void }): ReactElement {
+  return h(
+    "div",
+    { className: "climbs-from" },
+    h("label", { htmlFor: "climbs-from" }, CLIMBS_FROM_LABEL),
+    h(
+      "select",
+      {
+        id: "climbs-from",
+        value: from,
+        onChange: (event: { target: { value: string } }) => onChange(event.target.value as ClimbCategory),
+      },
+      ...CLIMBS_FROM_OPTIONS.map((o) => h("option", { key: o.value, value: o.value }, o.text)),
+    ),
+  );
+}
+
 interface SectionProps {
   on: boolean;
   onChange: (on: boolean) => void;
   status: ClimbsStatus;
   items: ClimbAlong[] | null;
+  /** "Show climbs from", shown while the layer is on; absent where the caller does not offer it. */
+  from?: ClimbCategory;
+  onFromChange?: (from: ClimbCategory) => void;
 }
 
 /**
@@ -179,17 +217,17 @@ interface SectionProps {
  * inserted with its text is often not read), the legend, the list and the help. Sits inside the
  * "Trails and terrain" section, so it has no heading of its own above the list's.
  */
-export function ClimbsLayerControls({ on, onChange, status, items, along = true, legend = true }: SectionProps & { along?: boolean; legend?: boolean }): ReactElement {
+export function ClimbsLayerControls({ on, onChange, status, items, from, onFromChange, along = true, legend = true }: SectionProps & { along?: boolean; legend?: boolean }): ReactElement {
   // UI-CLEANUP: Layers keeps the switch only; the climbs on the route are in the Elevation and climbs fold
-  // and the legend behind Layers' Legend button (along and legend false there).
+  // and the legend behind Layers' Legend button (along and legend false there), with CLIMBS_HELP under it.
   const ready = on && status === "ready";
   return h(
     "div",
     { className: "climbs-controls" },
     h(ClimbsSwitch, { on, onChange }),
+    on && from !== undefined && onFromChange && h(ClimbsFromSelect, { from, onChange: onFromChange }),
     h("p", { className: "hint climbs-status", role: "status" }, climbsStatusText(on, status)),
     ready && legend && h(ClimbsLegend, null),
     ready && along && h(ClimbsAlongList, { items, headingId: "climbs-along-layers-heading" }),
-    on && h("p", { className: "hint" }, CLIMBS_HELP),
   );
 }
