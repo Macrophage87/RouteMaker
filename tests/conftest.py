@@ -53,6 +53,9 @@ def _no_long_trail_sentinels(settings):
     # And the secured-compound sentinels (owner report 2026-10-06) are the region's.
     settings.REBUILD_SENTINEL_SECURED_CLOSED_WAYS = ()
     settings.REBUILD_SENTINEL_SECURED_MIN_CLOSED = {}
+    # And the Travilah quarry's (owner report 2026-10-12).
+    settings.REBUILD_SENTINEL_WORKS_CLOSED_RANGE = ()
+    settings.REBUILD_SENTINEL_WORKS_MIN_IN_RANGE = 0
 
 
 @pytest.fixture
