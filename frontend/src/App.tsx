@@ -2284,6 +2284,8 @@ export function App() {
         massRide={massMap}
         hazards={massHazards}
         station={roadInfo ? stationNearSpot(RAIL_STATIONS, rail, roadInfo.point, WMATA_SLUGS)?.station ?? null : null}
+        rail={rail}
+        stationClosed={railClosedReason}
         avoid={roadInfo ? avoidNearSpot(route, roadInfo.point) : null}
         junctionShown={roadInfo ? shownNear(route, roadInfo.point) : null}
         federal={roadInfo && federalShown(preset, true) ? federalAreaAt(roadInfo.point, federalData) : null}

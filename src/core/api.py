@@ -2755,6 +2755,8 @@ def transit_station_times(request, params: Query[StationTimesIn], response: Http
 
 
 def _line_time(t: transit.LineTime, service_day) -> dict:
+    # After midnight, a way's next train may be the new day's first: its own service day.
+    service_day = t.service_day or service_day
     at = None
     if t.depart is not None:
         at = transit.day_zero(service_day) + timedelta(minutes=round(t.depart))

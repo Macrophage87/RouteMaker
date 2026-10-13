@@ -755,6 +755,125 @@ def test_typical_metro_at_a_station_is_its_interval_or_before_opening_its_first_
     assert all(t[2] == "next" and 5 * 60 <= t[5] < 6 * 60 for t in early)
 
 
+def test_an_interval_needs_three_trains_and_fewer_are_said_one_by_one() -> None:
+    assert transit._every_min([600.0, 610.0]) is None
+    assert transit._every_min([600.0, 610.0, 620.0]) == 10
+    # Three, but the third more than an hour after the first: not an interval.
+    assert transit._every_min([600.0, 610.0, 661.0]) is None
+
+
+def test_after_midnight_a_finished_line_gives_the_new_days_first_train(schedule) -> None:
+    # Thursday 1:30 am is Wednesday's service day, and nothing more runs on it: not "no more
+    # trains today", but the first train of Thursday morning, on Thursday's service day.
+    night = transit.station_times(schedule, UNION_STATION, at(2026, 10, 1, 1, 30))
+    penn = next(t for t in night if t.route == "Penn Line")
+    assert (penn.kind, penn.toward, penn.service_day) == (
+        "next",
+        "Baltimore Penn Station",
+        date(2026, 10, 1),
+    )
+    assert transit.clock(penn.depart, penn.service_day) == "6:00 am"
+    # At 11:30 pm, the same service day, it is still "no more trains today".
+    late = transit.station_times(schedule, UNION_STATION, at(2026, 9, 30, 23, 30))
+    assert all(t.kind == "none" and t.service_day is None for t in late)
+
+
+def test_the_night_the_clocks_go_back_says_the_times_the_station_clock_shows() -> None:
+    typical = without_metro_gtfs(date(2026, 10, 26))
+    # 1:30 am EDT on Sunday 2026-11-01: Saturday's trains still run (to 26:00, 1 am EST).
+    before = [
+        t
+        for t in transit.station_times(
+            typical, UNION_STATION, datetime(2026, 11, 1, 1, 30, tzinfo=ZONE)
+        )
+        if t.system.name == "Metro"
+    ]
+    assert [t.kind for t in before] == ["every"]
+    # 1:30 am EST, an hour later: closed, and Sunday's first trains at the time the clock says.
+    after = [
+        t
+        for t in transit.station_times(
+            typical, UNION_STATION, datetime(2026, 11, 1, 1, 30, fold=1, tzinfo=ZONE)
+        )
+        if t.system.name == "Metro"
+    ]
+    assert {t.kind for t in after} == {"next"} and {t.service_day for t in after} == {
+        date(2026, 11, 1)
+    }
+    assert {transit.clock(t.depart, t.service_day) for t in after} == {"6:22 am", "6:38 am"}
+
+
+def _branch_schedule() -> transit.Schedule:
+    """One commuter route along a line, A-B-C-D, with a short turn each way (B-C, C-A; its run
+    times slower in the evening rush than in the midday), weekday service only."""
+    system = transit.System(
+        0, "test-rail", "MARC", transit.RAIL, "the MARC {route}", "", True, "all", "", ""
+    )
+    names = ["Alpha", "Bravo", "Charlie", "Delta"]
+    stops = [
+        transit.Stop(
+            i,
+            name,
+            (-77.0 + 0.05 * i, 39.0),
+            (-77.0 + 0.05 * i, 39.0),
+            True,
+            ((-77.0 + 0.05 * i, 39.0),),
+            0,
+            True,
+        )
+        for i, name in enumerate(names)
+    ]
+    midday = 2
+    evening = 3
+
+    def runs(cumulative, slow):
+        return tuple(
+            tuple(c * 2 for c in cumulative) if band == evening and slow else tuple(cumulative)
+            for band in range(len(transit.BANDS))
+        )
+
+    def trips(*minutes):
+        return {0: tuple(m * 2 + 1 for m in minutes)}
+
+    assert transit.BANDS[midday][2] == "midday"
+    patterns = [
+        transit.Pattern(
+            0,
+            0,
+            "Penn Line",
+            (0, 1, 2, 3),
+            runs((0, 600, 1200, 1800), True),
+            trips(13 * 60, 16 * 60),
+        ),
+        transit.Pattern(1, 0, "Penn Line", (1, 2), runs((0, 600), False), trips(14 * 60 + 5)),
+        transit.Pattern(
+            2, 0, "Penn Line", (3, 2, 1, 0), runs((0, 600, 1200, 1800), False), trips(14 * 60 + 30)
+        ),
+        transit.Pattern(
+            3, 0, "Penn Line", (2, 1, 0), runs((0, 600, 1200), False), trips(14 * 60 + 20)
+        ),
+    ]
+    days = 14
+    return transit.Schedule([system], stops, patterns, ["1" * days], date(2026, 9, 28), days)
+
+
+def test_a_short_turn_heads_the_way_its_route_does_and_each_departure_takes_its_own_run_times():
+    branch = _branch_schedule()
+    bravo = list(branch.stops[1].point)
+    found = transit.station_times(branch, bravo, at(2026, 9, 30, 14, 0))
+    # Two ways, not one per pattern: the short turn to Charlie is the next train toward Delta's
+    # end (14:05), and toward Alpha the short turn from Charlie (it reaches Bravo at 14:30)
+    # beats the 14:30 from Delta, which reaches Bravo at 14:50.
+    assert [(t.kind, t.toward, t.depart) for t in found] == [
+        ("next", "Charlie", 14 * 60 + 5),
+        ("next", "Alpha", 14 * 60 + 30),
+    ]
+    # At 14:06 the next toward Delta is the 16:00, which reaches Bravo by the evening rush's
+    # run times (20 min), not the midday's the request was made in (10 min).
+    later = transit.station_times(branch, bravo, at(2026, 9, 30, 14, 6))
+    assert (later[0].toward, later[0].depart) == ("Delta", 16 * 60 + 20)
+
+
 def test_no_bike_on_metro_on_a_blackout_date_said_plainly_and_metro_on_foot_still_fine() -> None:
     schedule = schedule_from(date(2026, 7, 1))
     plan = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 7, 4, 10, 0))
@@ -1332,3 +1451,39 @@ class TestApi:
         response = client.get("/api/transit/station-times", {"lon": lon, "lat": lat})
         assert response.status_code == 503
         assert response.json()["code"] == "transit_unavailable"
+
+    def test_a_stations_times_are_limited_per_address_apart_from_the_other_limits(
+        self, client, installed
+    ) -> None:
+        from test_ratelimit import in_one_window
+
+        from core import ratelimit
+
+        limit = ratelimit.STATION_TIMES
+        assert limit.scope not in {ratelimit.COVERAGE.scope, ratelimit.ROUTING.scope}
+        far = {"lon": -77.5, "lat": 38.5}
+
+        def attempt(n):
+            headers = {"HTTP_X_FORWARDED_FOR": f"198.51.100.{70 + 100 * n}"}
+            statuses = {
+                client.get("/api/transit/station-times", far, **headers).status_code
+                for _ in range(limit.requests)
+            }
+            return statuses, client.get("/api/transit/station-times", far, **headers)
+
+        statuses, refused = in_one_window(limit.window_s, attempt)
+        assert statuses == {200}
+        assert refused.status_code == 429 and refused["Retry-After"]
+
+    def test_after_midnight_the_next_train_is_timed_on_its_own_day(self, client, installed):
+        lon, lat = UNION_STATION
+        body = client.get(
+            "/api/transit/station-times", {"lon": lon, "lat": lat, "at": "2026-10-01T01:30:00"}
+        ).json()
+        assert body["service_day"] == "2026-09-30"
+        penn = next(line for line in body["lines"] if line["line"] == "Penn Line")
+        assert (penn["kind"], penn["time"], penn["at"]) == (
+            "next",
+            "6:00 am",
+            "2026-10-01T06:00:00-04:00",
+        )
