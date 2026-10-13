@@ -15,10 +15,9 @@ What it reads:
   segment panel calls open (`segment.bike_access_reason` empty or an open reason in
   `core.segment_info.ACCESS_WORDS`): a way with a closing reason, or one this release
   does not know, is left out (unclear access is closed, OWNER-DECISIONS 330). A way inside
-  a quarry, a landfill or an industrial area closes at the rebuild
-  (`pipeline.restricted_areas.works_closures`, owner report 2026-10-12); until a rebuild
-  carries that, a climb found on one is listed by hand (`routemaker.climb_exclusions`)
-  and never written.
+  a quarry, a landfill or an industrial area is to close at the rebuild (release v0.7.0,
+  owner report 2026-10-12); until a rebuild carries that, a climb found on one is listed
+  by hand (`routemaker.climb_exclusions`) and never written.
 - **The ground**: the same 3DEP one-arcsecond HGT tiles the routers read
   (`<DATA_ROOT>/elevation/N38/N38W077.hgt`; `pipeline.elevation`), bilinear between posts.
 

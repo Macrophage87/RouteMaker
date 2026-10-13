@@ -44,10 +44,6 @@ from rebuild_fixtures import (
     DIVIDED_NORTH_ID,
     DIVIDED_SOUTH_ID,
     GIB,
-    INDUSTRIAL_DC_STREET_ID,
-    INDUSTRIAL_DC_STREET_LINE,
-    INDUSTRIAL_DRIVE_ID,
-    INDUSTRIAL_STREET_ID,
     LUA_LOADED_LOG,
     MOUNTAIN_BIKE_ID,
     NAMED_ROAD_ON_ID,
@@ -57,8 +53,6 @@ from rebuild_fixtures import (
     ONE_WAY_ID,
     OUTSIDE_ROAD_ID,
     PARALLEL_COUNT,
-    QUARRY_OPEN_TRACK_ID,
-    QUARRY_TRACK_ID,
     REGIONAL_ROUTE_ID,
     REPO,
     ROADSIDE_PATH_ID,
@@ -71,7 +65,6 @@ from rebuild_fixtures import (
     TRACK_GRADE1_ID,
     TRACK_NO_SURFACE_ID,
     WEEKEND_CLOSED_ID,
-    WORKS_OUTSIDE_ID,
     FakeBinaries,
     box,
     build_contraflow_extract,
@@ -81,7 +74,6 @@ from rebuild_fixtures import (
     build_parallel_extract,
     build_secured_extract,
     build_toy_extract,
-    build_works_extract,
     fake_fetch,
     install_source_extract,
     roomy_disk,
@@ -760,77 +752,6 @@ def test_a_secured_compound_is_closed_reported_and_left_off_the_map_through_the_
     assert reasons[SECURED_ROAD_ID] == "secured"
     assert reasons[SECURED_AND_BASE_ID] == "military"
     assert reasons[OUTSIDE_ROAD_ID] is None
-
-
-def test_a_quarry_and_an_industrial_area_close_their_own_ways_through_the_rebuild(
-    tmp_path, segment_schemas, states
-) -> None:
-    """The works rule wired through the rebuild (owner report 2026-10-12: a Cat 4 climb on
-    the Travilah quarry's haul roads, `highway=track` and nothing else). A quarry's track
-    closes on every graph, is left off the map and says why; one its own `bicycle=yes`
-    opens stays; an industrial area's unnamed drive closes and its named street stays; and
-    a service road DDOT's Roadway Block records hold stays open, as a public street (DC
-    data wins over OSM, OWNER-DECISIONS 190)."""
-    from pipeline import restricted_areas
-    from pipeline.extract import read_ways
-    from pipeline.run import DISCREPANCY_REPORT_DIR, WORKS_REPORT_NAME
-
-    source = install_source_extract(tmp_path, build_works_extract)
-    block = {
-        "id": "dc-plant",
-        "coordinates": INDUSTRIAL_DC_STREET_LINE,
-        "facts": {"agency": "dc-roadway-block", "name": "Plant Drive"},
-    }
-    context, report = run_pipeline(source, tmp_path, roadway=[block], skip=NOT_SWAPPED)
-
-    assert Stage.VALIDATE_TILES in report.completed
-    works = {m.way_id: m for m in context.works_ways}
-    assert works[QUARRY_TRACK_ID].closed
-    assert works[QUARRY_TRACK_ID].installation == "Test Quarry (quarry)"
-    assert not works[QUARRY_OPEN_TRACK_ID].closed
-    assert works[INDUSTRIAL_DRIVE_ID].closed
-    assert not works[INDUSTRIAL_STREET_ID].closed
-    assert WORKS_OUTSIDE_ID not in works
-    assert context.road_facts_by_way[INDUSTRIAL_DC_STREET_ID].agency == "dc-roadway-block"
-    assert not works[INDUSTRIAL_DC_STREET_ID].closed
-    assert works[INDUSTRIAL_DC_STREET_ID].why == restricted_areas.WHY_WORKS_DC_STREET
-    assert context.no_bicycle[QUARRY_TRACK_ID] == restricted_areas.WORKS_NO_BICYCLE
-    assert context.no_bicycle[INDUSTRIAL_DRIVE_ID] == restricted_areas.WORKS_NO_BICYCLE
-    for way_id in (
-        QUARRY_OPEN_TRACK_ID,
-        INDUSTRIAL_STREET_ID,
-        INDUSTRIAL_DC_STREET_ID,
-        WORKS_OUTSIDE_ID,
-    ):
-        assert way_id not in context.no_bicycle
-    for variant in Variant:
-        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
-        if QUARRY_TRACK_ID in tags:
-            assert tags[QUARRY_TRACK_ID].get("rm:no_bicycle") == "works", variant.value
-    rows = list(
-        csv.DictReader((context.work_dir / DISCREPANCY_REPORT_DIR / WORKS_REPORT_NAME).open())
-    )
-    assert {(int(r["way_id"]), r["status"]) for r in rows} == {
-        (QUARRY_TRACK_ID, "closed"),
-        (QUARRY_OPEN_TRACK_ID, "open"),
-        (INDUSTRIAL_DRIVE_ID, "closed"),
-        (INDUSTRIAL_STREET_ID, "open"),
-        (INDUSTRIAL_DC_STREET_ID, "open"),
-    }
-    drawn = stored_map_class(context)
-    assert drawn[QUARRY_TRACK_ID] == "hidden"
-    assert drawn[INDUSTRIAL_DRIVE_ID] == "hidden"
-    assert drawn[QUARRY_OPEN_TRACK_ID] == "road"
-    assert drawn[INDUSTRIAL_STREET_ID] == "road"
-    assert drawn[INDUSTRIAL_DC_STREET_ID] == "road"
-    assert drawn[WORKS_OUTSIDE_ID] == "road"
-    with connection.cursor() as cursor:
-        cursor.execute(
-            f"SELECT DISTINCT osm_way_id, bike_access_reason FROM {context.staging_schema}.segment"
-        )
-        reasons = dict(cursor.fetchall())
-    assert reasons[QUARRY_TRACK_ID] == "works"
-    assert reasons[WORKS_OUTSIDE_ID] is None
 
 
 DIALS_IDS = (

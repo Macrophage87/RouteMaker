@@ -112,9 +112,6 @@ MILITARY_REPORT_NAME = "military-closures.csv"
 # And every way inside a secured federal compound (owner report 2026-10-06;
 # `restricted_areas.secured_closures`), the same columns, `facility` for `installation`.
 SECURED_REPORT_NAME = "secured-closures.csv"
-# And every way inside a quarry, a landfill or an industrial area (owner report
-# 2026-10-12; `restricted_areas.works_closures`), the same columns, `site` for `installation`.
-WORKS_REPORT_NAME = "works-closures.csv"
 
 
 def write_reports(work_dir: Path, files: dict[str, str], what: str) -> None:
@@ -767,9 +764,6 @@ class RebuildContext:
     secured_through: list[tuple[list[int], list[int]]] = field(default_factory=list)
     # The curated compounds (`restricted_areas.SECURED_AREAS`) the extract has no area for.
     secured_missing: list[str] = field(default_factory=list)
-    # The ways inside a quarry, a landfill or an industrial area, closed or left open
-    # (`restricted_areas.works_closures`; owner report 2026-10-12; works-closures.csv).
-    works_ways: list[restricted_areas.MilitaryWay] = field(default_factory=list)
     border_nodes_by_way: dict[int, list[borders.BorderNode]] = field(default_factory=dict)
     override_report: overrides.OverrideReport | None = None
     # The fixture ways an approved access override wrote a `bicycle`,
@@ -846,7 +840,6 @@ class RebuildContext:
             "border_nodes_by_way",
             "military_ways",
             "secured_ways",
-            "works_ways",
         ):
             setattr(self, name, type(getattr(self, name))())
         self.reference = None
@@ -1480,57 +1473,6 @@ def assert_secured_closures(
         len(found) - closed,
     )
     return closed
-
-
-def assert_works_closures(
-    context: RebuildContext,
-    id_range: Sequence[int] | None,
-    min_present: int = 0,
-) -> int:
-    """The Travilah quarry's haul roads were closed (owner report 2026-10-12: a Cat 4 climb
-    down into the pit, over ways tagged only `highway=track` inside `landuse=quarry`).
-    Every highway way the extract has whose OSM id lies in `id_range` (first, last) must
-    carry `rm:no_bicycle=works`; fewer than `min_present` of them in the extract is warned
-    about (renumbered upstream?). Returns how many were checked."""
-    found = getattr(context, "works_ways", None) or []
-    closed = sum(1 for m in found if m.closed)
-    checked = 0
-    if id_range:
-        first, last = id_range
-        in_range = [
-            way.osm_id
-            for way in context.ways
-            if first <= way.osm_id <= last and (getattr(way, "tags", None) or {}).get("highway")
-        ]
-        checked = len(in_range)
-        wrong = [
-            way_id
-            for way_id in in_range
-            if context.no_bicycle.get(way_id) != restricted_areas.WORKS_NO_BICYCLE
-        ]
-        if checked < min_present:
-            logger.warning(
-                "works-closure sentinel: %d of %d Travilah quarry ways (%d..%d) in the extract "
-                "(renumbered upstream?)",
-                checked,
-                min_present,
-                first,
-                last,
-            )
-        if wrong:
-            raise ValidationFailed(
-                f"ways {wrong} in the Travilah quarry are not closed to bicycles "
-                "(rm:no_bicycle=works): the works rule did not run or lost its areas, so a "
-                "route or a climb could run through the quarry again (owner report 2026-10-12; "
-                "REBUILD_SENTINEL_WORKS_CLOSED_RANGE)"
-            )
-    logger.info(
-        "quarries, landfills and industrial areas: %d ways closed to bicycles, %d left open "
-        "(works-closures.csv)",
-        closed,
-        len(found) - closed,
-    )
-    return checked
 
 
 def assert_owner_stretches(context: RebuildContext, rows: Sequence) -> list:
@@ -2625,23 +2567,6 @@ def build_handlers(
             skip={m.way_id for m in context.military_ways},
         )
         secured_closed = {m.way_id for m in context.secured_ways if m.closed}
-        # And a working site's: a quarry, a landfill or an industrial area (owner report
-        # 2026-10-12: the Travilah quarry's haul roads, `highway=track` and nothing else,
-        # carried a Cat 4 climb), but for the ways the two rules above judged.
-        context.works_ways = restricted_areas.works_closures(
-            placed,
-            areas.get(restricted_areas.WORKS, []),
-            reopened=context.bicycle_override_ways,
-            skip={m.way_id for m in (*context.military_ways, *context.secured_ways)},
-            # A way DDOT's Roadway Block records hold is a public street, whatever OSM
-            # says of it (DC data wins over OSM, OWNER-DECISIONS 190).
-            dc_streets={
-                way_id
-                for way_id, facts in context.road_facts_by_way.items()
-                if facts.agency == agency_roads.DC_AGENCY
-            },
-        )
-        works_closed = {m.way_id for m in context.works_ways if m.closed}
         context.secured_missing = restricted_areas.secured_missing(areas[restricted_areas.SECURED])
         if context.secured_missing:
             logger.warning(
@@ -2651,19 +2576,13 @@ def build_handlers(
             )
         context.short_paths_hidden |= {
             m.way_id
-            for m in (*context.military_ways, *context.secured_ways, *context.works_ways)
+            for m in (*context.military_ways, *context.secured_ways)
             if m.closed and m.highway not in restricted_areas.TRAIL_CLASS_HIGHWAY
         }
         logger.info("%s", restricted_areas.military_summary(context.military_ways))
         logger.info(
             "%s",
             restricted_areas.military_summary(context.secured_ways, "secured federal compounds"),
-        )
-        logger.info(
-            "%s",
-            restricted_areas.military_summary(
-                context.works_ways, "quarries, landfills and industrial areas"
-            ),
         )
         missing_pentagon = restricted_areas.pentagon_open_missing(context.military_ways)
         if missing_pentagon:
@@ -2696,7 +2615,6 @@ def build_handlers(
                 SECURED_REPORT_NAME: restricted_areas.military_report_csv(
                     context.secured_ways, "facility"
                 ),
-                WORKS_REPORT_NAME: restricted_areas.military_report_csv(context.works_ways, "site"),
             },
             "military-closure",
         )
@@ -2710,7 +2628,6 @@ def build_handlers(
             military=military_closed,
             secured=secured_closed,
             reopened=context.bicycle_override_ways,
-            works=works_closed,
         )
         context.no_bicycle = nobike.reasons
         context.walk_bike = nobike.walk_bike
@@ -3392,11 +3309,6 @@ def build_handlers(
             context,
             _setting("REBUILD_SENTINEL_SECURED_CLOSED_WAYS"),
             _setting("REBUILD_SENTINEL_SECURED_MIN_CLOSED"),
-        )
-        assert_works_closures(
-            context,
-            _setting("REBUILD_SENTINEL_WORKS_CLOSED_RANGE"),
-            _setting("REBUILD_SENTINEL_WORKS_MIN_IN_RANGE"),
         )
         staging_checks()
         # Computed here, where the ways are, and held (and checkpointed) for
