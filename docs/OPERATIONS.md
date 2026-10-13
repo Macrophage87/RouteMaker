@@ -5347,10 +5347,15 @@ Travilah quarry pit off Shady Grove Rd over nine ways tagged only `highway=track
   bicycles on every graph and left off the map (`restricted_areas.works_closures`,
   `rm:no_bicycle=works`, the road panel's "inside a quarry, landfill or industrial site"), unless
   its own tags open it (`bicycle=yes|designated|permissive`, or with no bicycle tag
-  `access=yes|permissive` or a cycleway), it is a numbered public road, or an owner's override
-  reopens it. In an industrial area a named street that is not a service road or a track (an
-  industrial park's) stays open and is listed. Every way the rule looked at is in
-  `<DATA_ROOT>/rebuild/reports/works-closures.csv`. The climbs file then loses such climbs when it
+  `access=yes|permissive` or a cycleway), it is a numbered public road, DDOT's Roadway Block
+  records hold it (a District block matched to the way: DC data wins over OSM, OWNER-DECISIONS
+  190), or an owner's override reopens it. In an industrial area a named street that is not a
+  service road or a track (an industrial park's) stays open and is listed, unless its access
+  keeps it to destinations, customers or deliveries. Every way the rule looked at is in
+  `<DATA_ROOT>/rebuild/reports/works-closures.csv`. VALIDATE_SEGMENTS fails the build if any
+  highway way with an id in `REBUILD_SENTINEL_WORKS_CLOSED_RANGE` (the Travilah quarry's nine,
+  1379220522 to 1379220572) is not closed as `works`, and warns if fewer than nine are in the
+  extract. The climbs file then loses such climbs when it
   is written again after that rebuild.
 - Now, without a rebuild: `routemaker.climb_exclusions.EXCLUDED` lists a climb by id with its
   reason and source, and the builder, the hill seek (`core.hillseek.parse`) and the map

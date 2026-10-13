@@ -780,7 +780,7 @@ ACCESS_SHORT = {
     "override_closed": "owner override",
     "military": "military area",
     "secured": "secure government site",
-    "works": "quarry or industrial site",
+    "works": "quarry, landfill or industrial site",
     "bicycle_no": "no-bike rule",
     "bicycle_use_sidepath": "use the side path",
     "motorway": "freeway",

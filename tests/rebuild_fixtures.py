@@ -619,6 +619,10 @@ QUARRY_OPEN_TRACK_ID = 3201
 INDUSTRIAL_DRIVE_ID = 3202
 INDUSTRIAL_STREET_ID = 3203
 WORKS_OUTSIDE_ID = 3204
+# An industrial area's service road DDOT's Roadway Block records hold (DC data wins over
+# OSM, OWNER-DECISIONS 190): the e2e test passes a block along it.
+INDUSTRIAL_DC_STREET_ID = 3205
+INDUSTRIAL_DC_STREET_LINE = [[-77.0600, 38.9165], [-77.0600, 38.9285]]
 QUARRY_OUTLINE_ID = 3300
 INDUSTRIAL_OUTLINE_ID = 3301
 
@@ -655,6 +659,9 @@ def build_works_extract(path: Path) -> None:
             15: (-77.0650, 38.929),
             16: (-77.0620, 38.916),
             17: (-77.0620, 38.929),
+            # The service road DDOT records as a street.
+            20: (-77.0600, 38.916),
+            21: (-77.0600, 38.929),
             # The public street south of both, through the tracks' and streets' feet.
             18: (-77.085, 38.916),
             19: (-77.055, 38.916),
@@ -671,8 +678,9 @@ def build_works_extract(path: Path) -> None:
                 [16, 17],
                 {"highway": "residential", "name": "Industrial Court"},
             ),
+            INDUSTRIAL_DC_STREET_ID: ([20, 21], {"highway": "service", "name": "Plant Drive"}),
             WORKS_OUTSIDE_ID: (
-                [18, 10, 12, 14, 16, 19],
+                [18, 10, 12, 14, 16, 20, 19],
                 {"highway": "residential", "name": "Outside Street"},
             ),
             QUARRY_OUTLINE_ID: ([1, 2, 3, 4, 1], {"landuse": "quarry", "name": "Test Quarry"}),

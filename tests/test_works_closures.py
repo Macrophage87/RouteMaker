@@ -130,6 +130,12 @@ def test_an_override_reopens_one():
         ({"highway": "residential"}, True),
         ({"highway": "footway"}, True),
         ({"highway": "service", "bicycle": "yes"}, False),
+        # Kept to destinations, customers or deliveries: not a public street.
+        ({"highway": "residential", "name": "Plant Road", "access": "destination"}, True),
+        ({"highway": "residential", "name": "Plant Road", "access": "customers"}, True),
+        ({"highway": "residential", "name": "Plant Road", "access": "delivery"}, True),
+        ({"highway": "residential", "name": "Plant Road", "motor_vehicle": "destination"}, True),
+        ({"highway": "residential", "name": "Plant Road", "vehicle": "customers"}, True),
     ],
 )
 def test_in_an_industrial_area_only_its_own_drives_close(tags, closed):
@@ -168,4 +174,68 @@ def test_the_map_panel_words_the_reason():
 
     is_open, words = segment_info.ACCESS_WORDS["works"]
     assert not is_open and "quarry" in words
-    assert segment_info.ACCESS_SHORT["works"]
+    assert segment_info.ACCESS_SHORT["works"] == "quarry, landfill or industrial site"
+
+
+@pytest.mark.parametrize("area", [QUARRY, LANDFILL, INDUSTRIAL])
+@pytest.mark.parametrize(
+    "tags",
+    [
+        {"highway": "service"},
+        {"highway": "service", "name": "Plant Drive"},
+        {"highway": "residential"},
+        {"highway": "track"},
+    ],
+)
+def test_a_street_ddot_records_is_public_whatever_osm_says(area, tags):
+    """DC data wins over OSM (OWNER-DECISIONS 190): a way matched to a District Roadway
+    Block is a public street, open with its own reason; one with no match closes."""
+    m = judged(tags, area, osm_id=9, dc_streets={9})
+    assert not m.closed and m.why == ra.WHY_WORKS_DC_STREET
+    assert judged(tags, area, osm_id=9, dc_streets={8}).closed
+
+
+# --- The Travilah quarry sentinel (VALIDATE_SEGMENTS) --------------------------------
+
+
+def _sentinel_context(no_bicycle, ids, highway="track"):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        works_ways=[],
+        ways=[SimpleNamespace(osm_id=i, tags={"highway": highway}) for i in ids],
+        no_bicycle=no_bicycle,
+    )
+
+
+def test_the_quarry_sentinel_holds_every_way_in_its_range_closed(caplog):
+    from django.conf import settings
+
+    from pipeline import run
+
+    first, last = 1379220522, 1379220572
+    ids = [first, first + 10, last]
+    held = _sentinel_context({i: ra.WORKS_NO_BICYCLE for i in ids}, [*ids, last + 1, first - 1])
+    assert run.assert_works_closures(held, (first, last), 3) == 3
+    # One left open (or closed for another reason) fails the build.
+    for reason in (None, ra.MILITARY_NO_BICYCLE):
+        broken = {i: ra.WORKS_NO_BICYCLE for i in ids}
+        broken[first + 10] = reason
+        with pytest.raises(run.ValidationFailed, match="Travilah"):
+            run.assert_works_closures(_sentinel_context(broken, ids), (first, last), 3)
+    # Fewer present than the floor is warned about, not failed.
+    with caplog.at_level("WARNING"):
+        assert run.assert_works_closures(held, (first, last), 9) == 3
+    assert "Travilah" in caplog.text
+    # Not a highway: not asked. No range: nothing checked.
+    assert run.assert_works_closures(_sentinel_context({}, ids, None), (first, last)) == 0
+    assert run.assert_works_closures(_sentinel_context({}, ids), ()) == 0
+    # The region's numbers are the owner's report's nine ways.
+    assert settings.REBUILD_SENTINEL_WORKS_CLOSED_RANGE in ((), (first, last))
+
+
+def test_the_real_sentinel_settings():
+    from config import settings as real
+
+    assert real.REBUILD_SENTINEL_WORKS_CLOSED_RANGE == (1379220522, 1379220572)
+    assert real.REBUILD_SENTINEL_WORKS_MIN_IN_RANGE == 9

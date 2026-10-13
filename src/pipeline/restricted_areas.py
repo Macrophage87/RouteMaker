@@ -880,6 +880,16 @@ WORKS_NO_BICYCLE = "works"
 WHY_WORKS = "closed: inside a working site (quarry, landfill or industrial)"
 WHY_WORKS_TAGGED_OPEN = "open: its own access/bicycle tag lets the public ride it"
 WHY_WORKS_STREET = "open: a named street in an industrial area; owner to check it is public"
+WHY_WORKS_DC_STREET = (
+    "open: a public street in DDOT's Roadway Block records (DC data wins over OSM, "
+    "OWNER-DECISIONS 190)"
+)
+# Access values that keep a way in an industrial area closed, beyond `NO_PUBLIC_ACCESS`:
+# a way only for the site's customers, deliveries or own destinations is not a public
+# street a rider may use (unclear bike access is closed, OWNER-DECISIONS 330).
+WORKS_CLOSING_ACCESS = NO_PUBLIC_ACCESS | frozenset(
+    {"destination", "customers", "delivery", "agricultural", "forestry"}
+)
 
 
 def _works_label(area) -> str:
@@ -890,8 +900,13 @@ def _works_label(area) -> str:
 
 def works_street(tags) -> bool:
     """A named way in an industrial area that is not one of the site's own drives: a
-    street of an industrial park, public unless its tags say otherwise."""
-    return bool(tags.get("name")) and tags.get("highway") not in ("service", "track")
+    street of an industrial park, public unless its tags say otherwise (`access` or
+    `vehicle` in `WORKS_CLOSING_ACCESS`: no, private, destination, customers ...)."""
+    return (
+        bool(tags.get("name"))
+        and tags.get("highway") not in ("service", "track")
+        and not any(tags.get(key) in WORKS_CLOSING_ACCESS for key in ACCESS_KEYS)
+    )
 
 
 def works_open_tags(tags) -> bool:
@@ -911,16 +926,20 @@ def works_closures(
     areas: Sequence[Area],
     reopened: Collection[int] = frozenset(),
     skip: Collection[int] = frozenset(),
+    dc_streets: Collection[int] = frozenset(),
 ) -> list[MilitaryWay]:
     """Every highway way inside a working site (`WORKS`: a quarry, a landfill or an
     industrial area), closed or (with the reason) left open (owner report 2026-10-12;
     "err closed on bike access", OWNER-DECISIONS 330). Inside is at least
     INSIDE_FRACTION of the way's length. Open: an override's bicycle permission, a
-    numbered public road, a way whose own tags let the public ride it
-    (`works_open_tags`), and, in an industrial area
-    only, a named street that is not a service road or a track (`works_street`).
-    Everything else closes: a haul road tagged `highway=track` and nothing else among
-    it. `skip` are the ways the military and secured rules already judged."""
+    numbered public road, a public street DDOT's Roadway Block records hold (`dc_streets`,
+    the ways matched to a District block: DC data wins over OSM, OWNER-DECISIONS 190,
+    named in OSM or not), a way whose own tags let the public ride it
+    (`works_open_tags`), and, in an industrial area only, a named street that is not a
+    service road or a track and is not kept to destinations or customers
+    (`works_street`). Everything else closes: a haul road tagged `highway=track` and
+    nothing else among it. `skip` are the ways the military and secured rules already
+    judged."""
     if not areas:
         return []
     all_ways = [a for a in areas if getattr(a, "landuse", "") in WORKS_ALL_WAYS]
@@ -943,9 +962,11 @@ def works_closures(
             status, why = OPEN, WHY_OVERRIDE
         elif public_route(tags):
             status, why = OPEN, WHY_PUBLIC_ROUTE
+        elif osm_id in dc_streets:
+            status, why = OPEN, WHY_WORKS_DC_STREET
         elif works_open_tags(tags):
             status, why = OPEN, WHY_WORKS_TAGGED_OPEN
-        elif in_industrial and works_street(tags) and not _closing_access(tags):
+        elif in_industrial and works_street(tags):
             status, why = OPEN, WHY_WORKS_STREET
         else:
             status, why = CLOSED, WHY_WORKS

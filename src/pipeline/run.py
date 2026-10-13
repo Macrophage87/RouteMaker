@@ -1482,6 +1482,57 @@ def assert_secured_closures(
     return closed
 
 
+def assert_works_closures(
+    context: RebuildContext,
+    id_range: Sequence[int] | None,
+    min_present: int = 0,
+) -> int:
+    """The Travilah quarry's haul roads were closed (owner report 2026-10-12: a Cat 4 climb
+    down into the pit, over ways tagged only `highway=track` inside `landuse=quarry`).
+    Every highway way the extract has whose OSM id lies in `id_range` (first, last) must
+    carry `rm:no_bicycle=works`; fewer than `min_present` of them in the extract is warned
+    about (renumbered upstream?). Returns how many were checked."""
+    found = getattr(context, "works_ways", None) or []
+    closed = sum(1 for m in found if m.closed)
+    checked = 0
+    if id_range:
+        first, last = id_range
+        in_range = [
+            way.osm_id
+            for way in context.ways
+            if first <= way.osm_id <= last and (getattr(way, "tags", None) or {}).get("highway")
+        ]
+        checked = len(in_range)
+        wrong = [
+            way_id
+            for way_id in in_range
+            if context.no_bicycle.get(way_id) != restricted_areas.WORKS_NO_BICYCLE
+        ]
+        if checked < min_present:
+            logger.warning(
+                "works-closure sentinel: %d of %d Travilah quarry ways (%d..%d) in the extract "
+                "(renumbered upstream?)",
+                checked,
+                min_present,
+                first,
+                last,
+            )
+        if wrong:
+            raise ValidationFailed(
+                f"ways {wrong} in the Travilah quarry are not closed to bicycles "
+                "(rm:no_bicycle=works): the works rule did not run or lost its areas, so a "
+                "route or a climb could run through the quarry again (owner report 2026-10-12; "
+                "REBUILD_SENTINEL_WORKS_CLOSED_RANGE)"
+            )
+    logger.info(
+        "quarries, landfills and industrial areas: %d ways closed to bicycles, %d left open "
+        "(works-closures.csv)",
+        closed,
+        len(found) - closed,
+    )
+    return checked
+
+
 def assert_owner_stretches(context: RebuildContext, rows: Sequence) -> list:
     """Each owner-rated stretch (`REBUILD_SENTINEL_STRETCHES`; OWNER-DECISIONS 432) came
     out at the owner's tier. Off with no rows; skipped, with a warning, with no agency
@@ -2582,6 +2633,13 @@ def build_handlers(
             areas.get(restricted_areas.WORKS, []),
             reopened=context.bicycle_override_ways,
             skip={m.way_id for m in (*context.military_ways, *context.secured_ways)},
+            # A way DDOT's Roadway Block records hold is a public street, whatever OSM
+            # says of it (DC data wins over OSM, OWNER-DECISIONS 190).
+            dc_streets={
+                way_id
+                for way_id, facts in context.road_facts_by_way.items()
+                if facts.agency == agency_roads.DC_AGENCY
+            },
         )
         works_closed = {m.way_id for m in context.works_ways if m.closed}
         context.secured_missing = restricted_areas.secured_missing(areas[restricted_areas.SECURED])
@@ -3334,6 +3392,11 @@ def build_handlers(
             context,
             _setting("REBUILD_SENTINEL_SECURED_CLOSED_WAYS"),
             _setting("REBUILD_SENTINEL_SECURED_MIN_CLOSED"),
+        )
+        assert_works_closures(
+            context,
+            _setting("REBUILD_SENTINEL_WORKS_CLOSED_RANGE"),
+            _setting("REBUILD_SENTINEL_WORKS_MIN_IN_RANGE"),
         )
         staging_checks()
         # Computed here, where the ways are, and held (and checkpointed) for

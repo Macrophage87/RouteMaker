@@ -29,7 +29,13 @@ def test_the_quarry_climb_is_listed_with_a_reason_and_a_source():
 def test_the_front_end_lists_the_same_ids():
     text = TS.read_text()
     body = text[text.index("new Set([") : text.index("]);")]
-    assert set(re.findall(r'"([0-9a-f]{10})"', body)) == set(climb_exclusions.EXCLUDED)
+    # Every quoted string in the list, whatever its form: one that is not a climb id (10 hex
+    # digits) fails here rather than being skipped.
+    listed = re.findall(r"""["'`]([^"'`]*)["'`]""", body)
+    bad = [climb_id for climb_id in listed if not re.fullmatch(r"[0-9a-f]{10}", climb_id)]
+    assert not bad, f"not a climb id in lib/climbExclusions.ts: {bad}"
+    assert len(listed) == len(set(listed))
+    assert set(listed) == set(climb_exclusions.EXCLUDED)
 
 
 def test_the_hill_seek_never_reads_an_excluded_climb():
