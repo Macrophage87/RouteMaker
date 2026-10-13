@@ -15,13 +15,15 @@
  * focus back to Map tools when it closes. The crosshair shows the map's center while open.
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from "react";
-import { ADD_AT_CENTRE_LABEL, INFO_BUTTON_LABEL, MAP_TOOLS_LABEL } from "./lib/roadInfo.ts";
+import { ADD_AT_CENTRE_LABEL, INFO_BUTTON_LABEL, MAP_TOOLS_LABEL, SET_END_AT_CENTRE_LABEL } from "./lib/roadInfo.ts";
 
 interface Props {
   /** Put a point at the map's center (the next point of the plan). */
   onAddPoint: () => void;
   /** The plan has the most points it can: Add point is unavailable. */
   addDisabled: boolean;
+  /** Go: the spot at the center is the destination, and the button says so. */
+  setsEnd?: boolean;
   /** The road panel for the road at the map's center. */
   onRoadInfo: () => void;
   /** Show (or hide) the map's crosshair, the spot both act on. */
@@ -32,7 +34,7 @@ interface Props {
   onShown?: () => void;
 }
 
-export function MapTools({ onAddPoint, addDisabled, onRoadInfo, onCrosshair, toggleRef: outerRef, onShown }: Props) {
+export function MapTools({ onAddPoint, addDisabled, setsEnd = false, onRoadInfo, onCrosshair, toggleRef: outerRef, onShown }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const ownRef = useRef<HTMLButtonElement>(null);
@@ -95,7 +97,7 @@ export function MapTools({ onAddPoint, addDisabled, onRoadInfo, onCrosshair, tog
       </button>
       <div id={panelId} className="map-tools-panel" hidden={!open}>
         <button type="button" disabled={addDisabled} onClick={() => run(onAddPoint)}>
-          {ADD_AT_CENTRE_LABEL}
+          {setsEnd ? SET_END_AT_CENTRE_LABEL : ADD_AT_CENTRE_LABEL}
         </button>
         <button type="button" aria-haspopup="dialog" onClick={() => run(onRoadInfo)}>
           {INFO_BUTTON_LABEL}
