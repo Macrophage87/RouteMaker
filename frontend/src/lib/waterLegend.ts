@@ -9,6 +9,7 @@
  */
 import { createElement as h, type ReactElement } from "react";
 import { formatDistance } from "./format.ts";
+import { LayerSection } from "./layerSection.ts";
 import {
   ALONG_ROUTE_TEXT,
   WATER_CAUTION,
@@ -23,7 +24,8 @@ import {
 } from "./waterRestrooms.ts";
 
 export const WATER_HEADING = "Water and restrooms";
-export const WATER_SWITCH = "Show public water and restrooms on the map";
+/** The section's one line in Layers; WATER_HELP is by the legend. */
+export const WATER_HINT = "Public fountains, taps and restrooms, from street zoom.";
 export const WATER_LOADING = "Loading water and restrooms…";
 export const WATER_UNAVAILABLE = "Water and restrooms are unavailable for now. The map and your route are not affected.";
 export const WATER_BASIC_SWITCH = "Portable, pit and composting toilets";
@@ -136,8 +138,6 @@ interface SectionProps {
   prefs: WaterPrefs;
   onChange: (prefs: WaterPrefs) => void;
   status: WaterStatus;
-  items: WaterAlong[] | null;
-  onAddStop?: (item: WaterAlong) => void;
 }
 
 function checkbox(checked: boolean, onChange: (on: boolean) => void, label: string, className = "toggle"): ReactElement {
@@ -150,31 +150,40 @@ function checkbox(checked: boolean, onChange: (on: boolean) => void, label: stri
 }
 
 /**
- * The section in the Map layers sheet: the layer's switch and, while it is on, the two kinds a rider may
- * not want (basic toilets, untreated water); one persistent status line whose words change (a live region
- * inserted with its text is often not read); the legend, the list and the help.
+ * The section in the Layers sheet (lib/layerSection.ts): one row, its switch the layer's, and inside, the two
+ * kinds a rider may not want (basic toilets, untreated water) and one line. The status line is the section's,
+ * said open or closed. The list along the route is the route's "Water and restrooms" fold; the legend and the
+ * longer help are behind Layers' Legend button (WaterLegendNotes).
  */
-export function WaterSection({ prefs, onChange, status, items, onAddStop, along = true, legend = true }: SectionProps & { along?: boolean; legend?: boolean }): ReactElement {
-  // UI-CLEANUP: Layers keeps the switch and its two filters; the list along the route is the route's
-  // "Water and restrooms" fold, and the legend is behind Layers' Legend button (along and legend false there).
-  const ready = prefs.on && status === "ready";
+export function WaterSection({ prefs, onChange, status }: SectionProps): ReactElement {
   return h(
-    "section",
-    { "aria-labelledby": "water-heading", className: "water-section" },
-    h("h3", { id: "water-heading" }, WATER_HEADING),
-    checkbox(prefs.on, (on) => onChange({ ...prefs, on }), WATER_SWITCH),
-    prefs.on &&
-      h(
-        "fieldset",
-        { className: "water-kinds" },
-        h("legend", null, "Also show"),
-        checkbox(prefs.basic, (basic) => onChange({ ...prefs, basic }), WATER_BASIC_SWITCH),
-        checkbox(prefs.untreated, (untreated) => onChange({ ...prefs, untreated }), WATER_UNTREATED_SWITCH),
-      ),
-    h("p", { className: "hint water-status", role: "status" }, waterStatusText(prefs.on, status)),
-    ready && legend && h(WaterLegend, { prefs }),
-    ready && along && h(WaterAlongList, { items, onAddStop, headingId: "water-along-layers-heading" }),
+    LayerSection,
+    {
+      id: "water",
+      title: WATER_HEADING,
+      headingId: "water-heading",
+      className: "water-section",
+      layers: [{ key: "water", label: WATER_HEADING, on: prefs.on }],
+      onLayers: (next: Record<string, boolean>) => onChange({ ...prefs, on: next.water }),
+      status: waterStatusText(prefs.on, status),
+    },
+    h(
+      "fieldset",
+      { className: "water-kinds" },
+      h("legend", null, "Also show"),
+      checkbox(prefs.basic, (basic) => onChange({ ...prefs, basic }), WATER_BASIC_SWITCH),
+      checkbox(prefs.untreated, (untreated) => onChange({ ...prefs, untreated }), WATER_UNTREATED_SWITCH),
+    ),
+    h("p", { className: "hint" }, WATER_HINT),
+  );
+}
+
+/** The Legend sheet's words under the water legend: what is drawn and left out, and what untreated means. */
+export function WaterLegendNotes({ prefs }: { prefs: WaterPrefs }): ReactElement {
+  return h(
+    "div",
+    { className: "water-notes" },
     h("p", { className: "hint" }, WATER_HELP),
-    prefs.on && prefs.untreated && h("p", { className: "hint" }, WATER_UNTREATED_HELP),
+    prefs.untreated && h("p", { className: "hint" }, WATER_UNTREATED_HELP),
   );
 }
