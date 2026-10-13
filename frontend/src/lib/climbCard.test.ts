@@ -14,6 +14,7 @@ import {
   RIDE_CLIMB_TEXT,
   ClimbCardView,
   asRouteProfile,
+  climbCardAfterClose,
   climbEndName,
   climbEnds,
   climbFacts,
@@ -176,6 +177,9 @@ test("MapView: a climb press opens its card before the click can place a point, 
   // The click that closes the card opens no water or federal card under it.
   assert.match(click, /climbCard\.close\(\);\s*climbClosing = true;/);
   assert.match(view, /otherPopupOpen: \(\) => anyPopupOpen\(\) \|\| climbClosing,/);
+  // A press on the climb already shown only closes its card; the shown climb is read before closing.
+  assert.match(click, /const shownId = climbCard\.shown\(\);\s*climbCard\.close\(\);/);
+  assert.match(click, /const next = climbCardAfterClose\(shownId, /);
   // And before Go's feature-card check, which lists the climb card too.
   assert.ok(climbAt < click.indexOf("featureCardPress(["));
   const interaction = readFileSync(new URL("../climbInteraction.ts", import.meta.url), "utf8");
@@ -312,4 +316,18 @@ test("the select is labelled, beside the switch while the layer is on, and chang
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /filter\(\(item\) => climbShown\(item\.climb, climbsFrom\)\)/);
   assert.match(app, /climbNearSpot\(climbsData, roadInfo\.point, climbsFrom\)/);
+});
+
+test("a press on the climb whose card is open only closes it; on another climb, opens that one's card", () => {
+  const a = climb({ id: "a" });
+  const b = climb({ id: "b" });
+  assert.equal(climbCardAfterClose("a", a), null, "the same climb: closed, not opened again");
+  assert.equal(climbCardAfterClose("a", b), b, "another climb: its card");
+  assert.equal(climbCardAfterClose("a", null), null, "no climb pressed: only closed");
+  assert.equal(climbCardAfterClose(null, a), a);
+  const interaction = readFileSync(new URL("../climbInteraction.ts", import.meta.url), "utf8");
+  // The interaction knows which climb is shown, set on opening and cleared on closing.
+  assert.match(interaction, /close\(\);\s*shownId = c\.id;/);
+  assert.match(interaction, /popup = null;\s*shownId = null;/);
+  assert.match(interaction, /shown: \(\) => \(popup \? shownId : null\),/);
 });

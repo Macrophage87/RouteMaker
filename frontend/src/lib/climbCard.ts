@@ -185,6 +185,14 @@ export function rideClimbEdit(points: readonly LonLat[], ends: { bottom: LonLat;
 // --- The keyboard's way to a climb -------------------------------------------------
 
 /** How near the map's center a climb must pass for the road panel to offer it (metres). */
+/**
+ * The card a press opens while a climb's card is open: the climb pressed, unless it is the one already shown
+ * (that press only closes the card, rather than closing it and opening it again) or nothing was pressed.
+ */
+export function climbCardAfterClose(shownId: string | null, pressed: Climb | null): Climb | null {
+  return pressed && pressed.id !== shownId ? pressed : null;
+}
+
 export const CLIMB_NEAR_M = 50;
 
 function distanceToSegmentM(p: LonLat, a: LonLat, b: LonLat): number {

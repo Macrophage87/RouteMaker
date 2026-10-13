@@ -48,10 +48,13 @@ export function attachClimbInteraction(map: MapLibreMap, options: ClimbInteracti
   let root: Root | null = null;
   let returnTo: Element | null = null;
   let serial = 0;
+  /** The id of the climb whose card is open, or null. */
+  let shownId: string | null = null;
 
   const close = (focusBack = false) => {
     const was = popup;
     popup = null;
+    shownId = null;
     if (root) {
       const r = root;
       root = null;
@@ -97,6 +100,7 @@ export function attachClimbInteraction(map: MapLibreMap, options: ClimbInteracti
 
   const openCard = (c: Climb, focus = false) => {
     close();
+    shownId = c.id;
     serial += 1;
     const uid = `climb-card-${serial}`;
     returnTo = document.activeElement;
@@ -152,6 +156,8 @@ export function attachClimbInteraction(map: MapLibreMap, options: ClimbInteracti
     openCard,
     close: () => close(),
     open: () => popup !== null,
+    /** The id of the climb whose card is open, or null. */
+    shown: () => (popup ? shownId : null),
     /** Whether a Go press at `point` is on a shown climb, its marker or its line (lib/mapGlue.ts featureCardPress). */
     hits: (point: { x: number; y: number }) => climbAt(point, true) !== null,
     detach() {

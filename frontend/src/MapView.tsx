@@ -75,6 +75,7 @@ import { addWaterRestrooms, setWaterPrefs, WATER_SOURCE_ID, type WaterMap, type 
 import { attachWaterInteraction } from "./waterInteraction.ts";
 import { addClimbs, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, type Climb, type ClimbCategory, type ClimbsMap } from "./lib/climbs.ts";
 import { attachClimbInteraction } from "./climbInteraction.ts";
+import { climbCardAfterClose } from "./lib/climbCard.ts";
 import type { When } from "./lib/dials.ts";
 import { END_GLYPH, START_GLYPH, pointLabel } from "./lib/pointText.ts";
 import { LongPress, isInfoKey, repeatsInfoAsk, type InfoRequest } from "./lib/roadInfo.ts";
@@ -861,12 +862,14 @@ export function MapView(props: Props) {
       // A climb (climbInteraction.ts): its card, never also a point or (in Go) the destination. In Plan only
       // its summit marker (a press on its dashed line places a point on the climbing road, as before); in Go
       // its line too. A station and a water or restroom icon keep their own cards. The click after its card
-      // is open only closes it (no other card opens under it), or opens the card of the climb pressed.
+      // is open only closes it (no other card opens under it), or opens the card of another climb pressed.
       if (climbCard?.open()) {
+        const shownId = climbCard.shown();
         climbCard.close();
         climbClosing = true;
         window.setTimeout(() => (climbClosing = false), 0);
-        const next = onCanvas && !under.station && !water?.hits(event.point) ? climbCard.climbAt(event.point, goPress) : null;
+        // A press on the climb already shown only closes its card; on another climb, opens that one's.
+        const next = climbCardAfterClose(shownId, onCanvas && !under.station && !water?.hits(event.point) ? climbCard.climbAt(event.point, goPress) : null);
         if (next) climbCard.openCard(next);
         return;
       }
