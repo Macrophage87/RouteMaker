@@ -145,13 +145,15 @@ export const INFO_BUTTON_LABEL = "Road info at map center";
 /** The map's small disclosure by its zoom buttons (OWNER-DECISIONS 450) and the two map-center actions it holds. */
 export const MAP_TOOLS_LABEL = "Map tools";
 export const ADD_AT_CENTRE_LABEL = "Add point at map center";
+/** The same button in Go, where the spot is the destination (lib/appMode.ts goTapSetsEnd). */
+export const SET_END_AT_CENTRE_LABEL = "Set destination at map center";
 export const INFO_KEY = "i";
 /**
  * The help for the road panel. The keyboard's way in names Map tools, which is on the page only in
  * accessibility mode (455): off, it says to turn the mode on first. INFO_HELP is the mode-on text.
  */
-export function infoHelp(accessMode: boolean): string {
-  const ways = mapToolsWays(accessMode);
+export function infoHelp(accessMode: boolean, go = false): string {
+  const ways = mapToolsWays(accessMode, go);
   return (
     "Right-click the map (or press and hold on a phone) for a short summary of the road there (its traffic stress, speed and whether bikes are allowed), buttons to make the spot your start, end or a stop, and Street View and Edit in OSM links; Details and sources has every figure and where it came from. " +
     `From the keyboard: with the map focused, press I for the road at the center of the map, or ${ways.roadAndAdd}. ` +

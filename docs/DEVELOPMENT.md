@@ -2001,7 +2001,7 @@ curl -s 'http://localhost:8000/api/reverse?lat=38.90133&lon=-77.260598'
 | | `GET /api/geocode` | `GET /api/reverse` |
 | --- | --- | --- |
 | Parameters | `q` (2-200 characters after white space is collapsed), optional `lat` and `lon` together (a bias, inside `COVERAGE_BBOX`), `limit` 1-10 (default 6), `lang` (`en` only, the imported language) | `lat`, `lon` (inside `COVERAGE_BBOX`), `lang` (`en`) |
-| What reaches Photon | the query with US street abbreviations spelled out (`Blvd`, `St`, `Ave`, `Rd`, `Dr`, `Pkwy`, `Hwy`, `Ct`, `Ln`, `Pl`, `Sq`, `Ter`, `N`/`S`/`E`/`W`, `NE`/`NW`/`SE`/`SW`; `geocode.expand_abbreviations` has the rules), the bias, a count a few above `limit`, `lang`, and `bbox` = `COVERAGE_BBOX`; nothing else the request carries | `lat`, `lon`, `lang`, `limit=1`, `radius=0.25` km |
+| What reaches Photon | the query with US street abbreviations spelled out (`Blvd`, `St`, `Ave`, `Rd`, `Dr`, `Pkwy`, `Hwy`, `Ct`, `Ln`, `Pl`, `Sq`, `Ter`, `N`/`S`/`E`/`W`, `NE`/`NW`/`SE`/`SW`; `geocode.expand_abbreviations` has the rules), the bias with its strength (`zoom` 14 and `location_bias_scale` 0.2, `geocode.BIAS_ZOOM` and `BIAS_SCALE`, so nearby places rank first; the page sends the rider's location when it already has one, else the map's centre), a count a few above `limit`, `lang`, and `bbox` = `COVERAGE_BBOX`; nothing else the request carries | `lat`, `lon`, `lang`, `limit=1`, `radius=0.25` km |
 | 200 | `{"results": [...], "attribution": [...]}`, at most `limit` results, each inside the box, rows with the same name and OSM key within 300 m folded into one | the same shape, zero or one result |
 
 Each result is `{name, label, lon, lat, kind, osm_type, osm_id, osm_key,
@@ -4567,13 +4567,16 @@ puts it, at most two presses away.
   start line and said politely ("Start: your current location.") but not yet a point, so the
   link holds no position until a destination is picked; denied, unavailable or timed out, the
   start stays empty, the start box opens and "Current location not available; type a start." is
-  shown and said politely. A start typed in (Change start, `PlaceSearch variant="start"`) or
-  tapped on the map is the plan's first point and replaces the location. A destination picked
+  shown and said politely. A start typed in (Change start, `PlaceSearch variant="start"`), or
+  one placed in Plan, is the plan's first point and replaces the location (a press on the map in Go is the destination). A destination picked
   before there is a start is never dropped nor made the start (`goPickAction`): while the
   location is still being found it waits ("To …: finding your location for the start…") and is
   routed when the location comes; with no location, it is kept ("To …. Current location not
-  available; type a start.") and a start typed in the start box, or tapped on the map (or Add at
-  centre), plans the route to it at once (`goTapStartsPending`, follow-up review of #95). Picking a
+  available; type a start.") and a start typed in the start box plans the route to it at once. A
+  press on the map in Go, the route line included (a drag of the line still adds a stop; `lineTapIsPoint`), or Map tools' "Set destination at map center", is the destination, routed as a
+  picked one is and said "Destination set: …" (named by `goPlaceName`, the same on the sheet: its coordinates until
+  its place name comes; a press on a water, climb or federal-land card's feature, or one that only closes such a card,
+  is the card's alone, `featureCardPress`; `goTapSetsEnd`, the owner 2026-10-12; it replaces #95's tap-as-start). Picking a
   destination with a start plans at once; Go then shows the routes to choose from open, and the ride types under the
   route, so Bikeshare is one press, and only a Bikeshare route names its pick-up and drop-off
   stations (the route's Bikeshare plan).
@@ -6968,10 +6971,21 @@ docs/OPERATIONS.md, "Transit schedule". The design note is plans/v0.6.0-transit-
   - On the map, a closed station is struck through, grey and named "(closed)".
   - Its card and the nearest-Metro list say "closed: reason".
   - Routing never uses a closed station, because it has no departures that day.
+- **Station times.** `GET /api/transit/station-times?lon=&lat=` (`core.transit.station_times`)
+  gives the lines at the rail stops by a map station (the nearest stop of each system within
+  400 m), cached for a minute. `lib/stationTimes.ts` words them, with `lib/transitMarks.ts`'s marks.
+  - A frequent line (Metro, Light RailLink, SubwayLink): "🔴 Red Line: every 8 min, scheduled";
+    before the first train, the first train each way.
+  - A commuter line (MARC, VRE): the next train each way, "🚆Penn to Baltimore Penn Station 5:42
+    pm, to Union Station 6:10 pm, scheduled"; "no more trains today", or "no trains today".
+  - Shown in the station's card (fetched when it opens; in the hover card once known) and under
+    the road panel's nearby station, the keyboard's way to it. The emoji text is aria-hidden; a
+    visually hidden twin says it in words ("Red Line every 8 minutes, scheduled"). A closed
+    station keeps its "closed" words and shows no times; a 503 shows none.
 - **Tests.** `tests/test_transit.py` runs on a synthetic fixture
   (`tests/data/transit/make_fixture.py`: WMATA rail and bus, MARC Penn and Camden lines, Light
   RailLink) with a straight-line router. Front-end tests: `lib/transit.test.ts`,
-  `lib/departure.test.ts` and `lib/railClosures.test.ts`. a11y checks: the "transit (Go)" checks in
+  `lib/departure.test.ts`, `lib/railClosures.test.ts` and `lib/stationTimes.test.ts`. a11y checks: the "transit (Go)" checks in
   `scripts/a11y/check.mjs`.
 
 ## Bikeshare (FOLLOWUP-BIKESHARE, OWNER-DECISIONS 243-245, 299-301, 466, 466a)
@@ -7499,7 +7513,9 @@ Washington, DC. GPS 38.91234, -77.03890." A distance from a far junction ("about
 ...", the old trail marker) is never said: it named unnamed ways and helped no one find the spot. The
 coordinates are never trimmed; the only cap is the note's 120 characters. The 311 menu's place line
 (`menuPlaceLine` in `lib/ride311.ts`) shows the same words and coordinates. Where am I? keeps its trail
-marker (`placeOnRoute`, `TRAIL_MARKER_M` in `lib/navigate.ts`).
+marker (`placeOnRoute`, `TRAIL_MARKER_M` in `lib/navigate.ts`), measured only from a junction on the
+trail itself with a named street; an unnamed way (`isUnnamed`, `wayRidden`) is said plainly ("On an
+unnamed path.") and is never used as a trail or a reference point.
 
 **Checks (N7).** `corridor.test.ts`, `report311.test.ts`, the trail cases in `navigate.test.ts` and
 `loadTile` in `stressProtocol.test.ts`; the browser suite's Ride mode section checks that the stress

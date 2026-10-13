@@ -157,7 +157,7 @@ export function GoSheet({
           looking at), and Where to? follows for a new place. */}
       {routeShown && route}
       <div className="go-where" hidden={routeShown && size === "peek"}>
-        {/* The start (the owner, 2026-10-11): the rider's location by default; a typed or tapped start replaces it. */}
+        {/* The start (the owner, 2026-10-11): the rider's location by default; a typed start replaces it (a press on the map is the destination). */}
         {!routeShown && (
           <div className="go-start-row">
             <p className="go-start-line">
