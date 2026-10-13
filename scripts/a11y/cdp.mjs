@@ -144,6 +144,9 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
   // unless a check sets `closures`; `closureRequests` counts the asks.
   page.closures = { service_day: "2026-10-12", stations: [] };
   page.closureRequests = 0;
+  // A station's lines now (GET /api/transit/station-times; core.transit.station_times): none
+  // unless a check sets `stationTimes`.
+  page.stationTimes = { service_day: "2026-10-12", source: "scheduled", lines: [] };
   // The road panel's stress editor (OWNER-DECISIONS 441g, 441h; core/stress_edits.py): `admin` makes this
   // visitor an instance admin; `editRoad` is the one road's state, `editRequests` what the page sent
   // (method, path, headers, body), `tileUrls` the stress tiles asked for, and `editFail` an answer to give
@@ -222,6 +225,10 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       status = 200;
       type = "application/json";
       body = JSON.stringify(page.closures);
+    } else if (url.pathname === "/api/transit/station-times") {
+      status = 200;
+      type = "application/json";
+      body = JSON.stringify(page.stationTimes);
     } else if (url.pathname === "/api/bikeshare/stations" && request.method === "POST") {
       // The nearest stations to pick up from or return to (core/bikeshare.py nearby_stations).
       const asked = JSON.parse(request.postData ?? "{}");
