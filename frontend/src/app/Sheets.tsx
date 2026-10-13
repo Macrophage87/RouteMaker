@@ -38,7 +38,7 @@ import { MASS_RIDE_LAYERS_NOTE, MENU_TITLE, SHEET_TITLES, type PanelView } from 
 import type { ImportedPlan } from "../lib/gpxPlan.ts";
 import type { WaterAlong, WaterPrefs, WaterStatus } from "../lib/waterRestrooms.ts";
 import { WaterLegend, WaterSection } from "../lib/waterLegend.ts";
-import type { ClimbAlong, ClimbsStatus } from "../lib/climbs.ts";
+import type { ClimbAlong, ClimbCategory, ClimbsStatus } from "../lib/climbs.ts";
 import { ClimbsLayerControls, ClimbsLegend } from "../lib/climbsLegend.ts";
 import { InstallOffer, KeptRoutes } from "../InstallableApp.tsx";
 import type { KeptRoute } from "../lib/offlineRoutes.ts";
@@ -84,6 +84,8 @@ export interface LayersSheetProps {
   /** The Climbs layer (lib/climbs.ts): the switch, its data's status and the climbs the route rides. */
   climbsOn: boolean;
   changeClimbsOn: (on: boolean) => void;
+  climbsFrom: ClimbCategory;
+  changeClimbsFrom: (from: ClimbCategory) => void;
   climbsStatus: ClimbsStatus;
   climbsAlong: ClimbAlong[] | null;
   addWaterStop: (item: WaterAlong) => void;
@@ -96,7 +98,7 @@ export interface LayersSheetProps {
 
 /** The Layers sheet: the map's switches, in the mockup's order, with the Legend button at its top. */
 export function LayersSheet(props: LayersSheetProps) {
-  const { nav, openLegend, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, waterAlong, addWaterStop, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsStatus, climbsAlong } = props;
+  const { nav, openLegend, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, waterAlong, addWaterStop, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong } = props;
   return (
     <SheetFrame
       id="sheet-layers"
@@ -148,7 +150,7 @@ export function LayersSheet(props: LayersSheetProps) {
       <section aria-labelledby="terrain-heading" className="layer-group">
         <h3 id="terrain-heading">Trails and terrain</h3>
         <MtbTrailsSwitch on={showMtbTrails} onChange={(on) => setMtbTrails(on)} overlay={stress === "available"} />
-        <ClimbsLayerControls on={climbsOn} onChange={changeClimbsOn} status={climbsStatus} items={climbsAlong} along={false} legend={false} />
+        <ClimbsLayerControls on={climbsOn} onChange={changeClimbsOn} from={climbsFrom} onFromChange={changeClimbsFrom} status={climbsStatus} items={climbsAlong} along={false} legend={false} />
         <TopoLinesSwitch on={showTopoLines} onChange={(on) => setTopoLines(on)} available={topoReady} />
       </section>
 

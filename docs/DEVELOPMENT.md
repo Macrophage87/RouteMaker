@@ -1704,6 +1704,19 @@ ride type but Mountain Goat): `candidates`, `chosen` (0 is the router's own),
 negative where shorter), and `limited` (`two_points`, `long_ride`, `timed_out`,
 `calm_first`).
 
+**The climb card** (v0.6.0; the owner, 2026-10-12). A press on a climb's summit marker or dashed
+line opens its card (`climbInteraction.ts`, `lib/climbCard.ts`): MapView's click asks `climbAt`
+before `runClick`, after a station, so the press is never also a point or (in Go) a destination; the
+summit wins over the route line and the climb's line gives way to it; the next click only closes the
+card. The profile is GET /api/climbs/{id}/profile (`core.climbprofile`, read-only, rate-limited
+`climb-profile` 60 a minute, `ROUTING_IN_FLIGHT`): the climb is looked up by id in the committed
+file, the router asked once for a /route foot to summit through `hillseek.via_points` with
+`elevation_interval` 30 (standard, then offroad), the heights and grades read as the route chart's
+(`routemaker.profile`), kept per process (512 climbs) and cached a day. "Ride this climb": Plan,
+`rideClimbEdit` (bottom then top before the destination, 25 m in from the ends); Go, `goTo(top, ...,
+[bottom])`. The keyboard path is the road panel's "Climb here" (`climbNearSpot`, 165 ft (50 m)) and
+"Climb details". "Show climbs from" (`routemaker.climbsFrom`) filters both layers by `rank`.
+
 **Seeking hills** (FOLLOWUP-HILL-SEEK, OWNER-DECISIONS 205: "a candidate generator
 that finds climbs near the line and routes through them, like the trail seek").
 Mountain Goat right of the detent chooses the route that climbs most within

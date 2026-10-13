@@ -69,6 +69,8 @@ import { JUNCTION_SUGGEST_TEXT, findJunction, junctionNote, type JunctionAt, typ
 import { AVOID_CARD_HEADING, AVOID_SYMBOL, avoidCardText, type AvoidItem } from "./lib/avoidJunctions.ts";
 import { FEDERAL_ADVICE, stopWarningShort, type FederalArea } from "./lib/federalStops.ts";
 import { HazardReport } from "./HazardReport.tsx";
+import { climbLabel, type Climb } from "./lib/climbs.ts";
+import { CLIMB_DETAILS_TEXT } from "./lib/climbCard.ts";
 import { HAZARD_REPORT_TEXT, hazardOnPiece, hazardPanelText, hazardSaid, type HazardCollection } from "./lib/massHazards.ts";
 
 interface Props {
@@ -95,6 +97,12 @@ interface Props {
    * null: the keyboard's and screen reader's way to learn what a shaded area is, at the map's center.
    */
   federal?: FederalArea | null;
+  /**
+   * The Climbs layer's climb at the spot, while the layer is on (lib/climbCard.ts climbNearSpot), or null: the
+   * keyboard's way to a climb's card ("Climb details", which closes the panel and opens the card, focused).
+   */
+  climb?: Climb | null;
+  onShowClimb?: (climb: Climb) => void;
   /** The dialog closed while showing `closed` (the App keeps a newer request: requestAfterClose). */
   onClose: (closed: InfoRequest | null) => void;
   /**
@@ -132,7 +140,7 @@ function neighbour(items: HTMLElement[], from: HTMLElement, backwards: boolean):
   return after.length ? after[0] : items[0];
 }
 
-export function RoadInfoDialog({ request, hazards = null, massRide, station, avoid = null, junctionShown = null, federal = null, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
+export function RoadInfoDialog({ request, hazards = null, massRide, station, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
@@ -552,6 +560,24 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, avo
               <span className="visually-hidden"> (opens in a new tab)</span>
             </a>
           </p>
+        )}
+        {climb && onShowClimb && (
+          <div className="road-info-climb">
+            <p id={id("climb")}>
+              <span className="road-info-label">Climb here:</span> {climbLabel(climb)}{climb.name ? `, on ${climb.name}` : ""}
+            </p>
+            <button
+              type="button"
+              className="secondary"
+              aria-describedby={id("climb")}
+              onClick={() => {
+                close();
+                onShowClimb(climb);
+              }}
+            >
+              {CLIMB_DETAILS_TEXT}
+            </button>
+          </div>
         )}
         {station && links.length > 0 && (
           <div className="road-info-stations">

@@ -72,7 +72,7 @@ import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
 import { addWaterRestrooms, setWaterPrefs, WATER_SOURCE_ID, type WaterMap, type WaterPoint, type WaterPrefs } from "./lib/waterRestrooms.ts";
 import { attachWaterInteraction } from "./waterInteraction.ts";
-import { addClimbs, CLIMBS_SOURCE_ID, setClimbsOn, type Climb, type ClimbsMap } from "./lib/climbs.ts";
+import { addClimbs, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, type Climb, type ClimbCategory, type ClimbsMap } from "./lib/climbs.ts";
 import { attachClimbInteraction } from "./climbInteraction.ts";
 import type { When } from "./lib/dials.ts";
 import { END_GLYPH, START_GLYPH, pointLabel } from "./lib/pointText.ts";
@@ -225,6 +225,12 @@ interface Props {
   climbs?: readonly Climb[] | null;
   /** The Climbs switch (454: off until turned on). */
   climbsOn?: boolean;
+  /** "Show climbs from": the smallest category drawn (lib/climbs.ts climbShown). */
+  climbsFrom?: ClimbCategory;
+  /** The climb card's "Ride this climb" (lib/climbCard.ts). */
+  onRideClimb?: (climb: Climb) => void;
+  /** The road panel's "Climb details": open this climb's card with the focus in it; `n` changes for each ask. */
+  climbCardRequest?: { climb: Climb; n: number } | null;
   /** A station's Start here / End here / Add as stop, with its bike entrance. */
   onStationPoint: (role: StationRole, point: LonLat, place: { name: string; label: string }) => void;
   /**
@@ -438,6 +444,8 @@ export function MapView(props: Props) {
   const waterSync = useRef<(() => void) | null>(null);
   /** Set once the map has loaded: puts the Climbs layer in line with the props. */
   const climbsSync = useRef<(() => void) | null>(null);
+  /** Set once the map has loaded: opens a climb's card with the focus in it (the road panel's "Climb details"). */
+  const climbCardOpener = useRef<((climb: Climb) => void) | null>(null);
   // The first route shown (a shared link, usually) is framed; after that the
   // map moves only when a route leaves the visible part of the map.
   const fitted = useRef(false);
@@ -538,6 +546,7 @@ export function MapView(props: Props) {
       const on = callbacks.current.climbsOn === true;
       if (map.getSource(CLIMBS_SOURCE_ID)) {
         setClimbsOn(map as unknown as ClimbsMap, on);
+        setClimbsFrom(map as unknown as ClimbsMap, callbacks.current.climbsFrom ?? "5");
         climbCard?.close();
         return;
       }
@@ -545,7 +554,7 @@ export function MapView(props: Props) {
       if (!data || data.length === 0) return;
       climbById = new Map(data.map((c) => [c.id, c]));
       // Under the route, with the water and the stations (railLayer.ts's order).
-      addClimbs(map as unknown as ClimbsMap, data, on, iconPixelRatio(), ROUTE_BOTTOM_LAYER);
+      addClimbs(map as unknown as ClimbsMap, data, on, iconPixelRatio(), ROUTE_BOTTOM_LAYER, callbacks.current.climbsFrom ?? "5");
     };
     const anyPopupOpen = () => popupsOpen(popup.current, rail);
     /** Bring the federal-land layers in line with props.federalVisible, loading the data the first time. */
@@ -839,6 +848,21 @@ export function MapView(props: Props) {
         ? { station: stationAt(event.point), line: lineAt(event.point, touch ? TOUCH_HIT_PX : MOUSE_HIT_PX) }
         : { station: null, line: null };
       const point: LonLat = [event.lngLat.lng, event.lngLat.lat];
+      // A climb (climbInteraction.ts): its card, in Plan and in Go, and never also a point. The click
+      // after its card is open only closes it, or opens the card of the climb pressed.
+      if (climbCard?.open()) {
+        climbCard.close();
+        const next = onCanvas && !under.station ? climbCard.climbAt(event.point, under.line !== null) : null;
+        if (next) climbCard.openCard(next);
+        return;
+      }
+      if (onCanvas && !under.station && !anyPopupOpen() && performance.now() >= clickSuppressedUntil) {
+        const climb = climbCard?.climbAt(event.point, under.line !== null);
+        if (climb) {
+          climbCard?.openCard(climb);
+          return;
+        }
+      }
       runClick(under, { popupOpen: anyPopupOpen(), afterDrag: performance.now() < clickSuppressedUntil }, {
         closePopups: () => {
           closePopup(false);
@@ -1054,16 +1078,17 @@ export function MapView(props: Props) {
       // The water and restrooms card first, so a tap on a fountain on federal land shows the fountain's.
       water = attachWaterInteraction(map, {
         visible: () => callbacks.current.waterPrefs?.on === true,
-        otherPopupOpen: () => anyPopupOpen(),
+        otherPopupOpen: () => anyPopupOpen() || climbCard?.open() === true,
         point: (id) => waterById.get(id),
       });
       waterSync.current = () => syncWater();
       syncWater();
       climbCard = attachClimbInteraction(map, {
         visible: () => callbacks.current.climbsOn === true,
-        otherPopupOpen: () => anyPopupOpen() || water?.open() === true,
         climb: (id) => climbById.get(id),
+        onRide: (c) => callbacks.current.onRideClimb?.(c),
       });
+      climbCardOpener.current = (c) => climbCard?.openCard(c, true);
       climbsSync.current = () => syncClimbs();
       syncClimbs();
       federal = attachFederalInteraction(map, {
@@ -1094,6 +1119,7 @@ export function MapView(props: Props) {
       waterSync.current = null;
       climbCard?.detach();
       climbsSync.current = null;
+      climbCardOpener.current = null;
       stressCheck.cancel();
       if (hoverFrame) cancelAnimationFrame(hoverFrame);
       gesture.cancel();
@@ -1669,7 +1695,12 @@ export function MapView(props: Props) {
   // The Climbs layer: its data when it comes, and the switch.
   useEffect(() => {
     climbsSync.current?.();
-  }, [props.climbs, props.climbsOn]);
+  }, [props.climbs, props.climbsOn, props.climbsFrom]);
+
+  // The road panel's "Climb details": the climb's card, with the focus in it.
+  useEffect(() => {
+    if (props.climbCardRequest) climbCardOpener.current?.(props.climbCardRequest.climb);
+  }, [props.climbCardRequest]);
 
   return (
     <>

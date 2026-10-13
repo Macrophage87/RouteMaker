@@ -200,18 +200,18 @@ test("Go's places are Home, Food, Water and Restroom (no Work); Home needs sign-
 
 test("Go's Where to? is the destination from the rider's location, in one edit, with the loop off; without a location it keeps the destination and asks for a start", () => {
   const routeGo = appFile.slice(appFile.indexOf("const routeGo = ("), appFile.indexOf("const routeGoRef"));
-  assert.match(routeGo, /commit\(\[start, dest\], ride\.dials\.loop \? \{ \.\.\.ride, dials: \{ \.\.\.ride\.dials, loop: false \} \} : undefined\);/);
+  assert.match(routeGo, /commit\(\[start, \.\.\.vias, dest\], ride\.dials\.loop \? \{ \.\.\.ride, dials: \{ \.\.\.ride\.dials, loop: false \} \} : undefined\);/);
   const goTo = appFile.slice(appFile.indexOf("const goTo = async"), appFile.indexOf("const goToPlace"));
   assert.match(goTo, /const action = goPickAction\(pointsRef\.current, goStartRef\.current\);/);
   // Never the destination alone (it would become the start), and never dropped while the location is found.
   assert.doesNotMatch(goTo, /commit\(\[dest\]/);
-  assert.match(goTo, /goPending\.current = \{ dest, name \};\s*if \(action\.kind === "wait"\) \{\s*setNotice\(goDestinationLocating\(name\)\);/);
+  assert.match(goTo, /goPending\.current = \{ dest, name, vias \};\s*if \(action\.kind === "wait"\) \{\s*setNotice\(goDestinationLocating\(name\)\);/);
   assert.match(goTo, /setGoStart\(\{ kind: "none" \}\);\s*setNotice\(goDestinationNeedsStart\(name\)\);/);
   assert.match(goTo, /if \(!insideCoverage\(dest\)\) \{\s*setNotice\(OUTSIDE_NOTICE\);\s*return;/);
   // The opening look-up routes a destination picked while it ran; a start typed in routes one picked before it.
-  assert.match(appFile, /if \(pending\) \{\s*goPending\.current = null;\s*routeGoRef\.current\(result\.fix\.point, true, pending\.dest, pending\.name\);/);
+  assert.match(appFile, /if \(pending\) \{\s*goPending\.current = null;\s*routeGoRef\.current\(result\.fix\.point, true, pending\.dest, pending\.name, pending\.vias\);/);
   const startPick = appFile.slice(appFile.indexOf("const goStartPick = "), appFile.indexOf("const routeGo = ("));
-  assert.match(startPick, /if \(pending\) \{\s*goPending\.current = null;\s*routeGo\(point, false, pending\.dest, pending\.name\);/);
+  assert.match(startPick, /if \(pending\) \{\s*goPending\.current = null;\s*routeGo\(point, false, pending\.dest, pending\.name, pending\.vias\);/);
 });
 
 test("the Go/Plan switch: two toggle buttons in a named group, in Go's bar and Plan's header; a press is remembered as My Go's Open in", () => {
@@ -343,7 +343,7 @@ test("go tap: a map tap in Go while a destination waits is its start, and plans 
   // App: the tap (and Add at centre, which places through it) routes the waiting destination from the tapped point,
   // with the same one-edit route as the start box, and clears the wait.
   const place = appFile.slice(appFile.indexOf("const place = useCallback("), appFile.indexOf("// \"Use my location\": one look-up"));
-  assert.match(place, /const pending = goPending\.current;\s*if \(pending && goTapStartsPending\(\{ mode: modeRef\.current, pointCount: pointsRef\.current\.length, pending: true \}\)\) \{\s*goPending\.current = null;\s*routeGoRef\.current\(point, false, pending\.dest, pending\.name\);\s*return;\s*\}/);
+  assert.match(place, /const pending = goPending\.current;\s*if \(pending && goTapStartsPending\(\{ mode: modeRef\.current, pointCount: pointsRef\.current\.length, pending: true \}\)\) \{\s*goPending\.current = null;\s*routeGoRef\.current\(point, false, pending\.dest, pending\.name, pending\.vias\);\s*return;\s*\}/);
   assert.ok(place.indexOf("goTapStartsPending") > place.indexOf("if (!insideCoverage(point))"), "a tap outside the area is refused first");
   assert.match(appFile, /const modeRef = useRef\(mode\);\s*modeRef\.current = mode;/);
   assert.match(appFile, /const addAtCentre = \(\) => \{[\s\S]*?place\(\[lng, lat\]\);/);

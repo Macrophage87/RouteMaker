@@ -3301,7 +3301,81 @@ details.zoom-notes {
 }
 
 .climb-popup {
-  max-width: 240px;
+  max-width: 280px;
+}
+
+.climb-popup:focus {
+  outline: none;
+}
+
+.climb-popup:focus-visible {
+  outline: 2px solid var(--focus, currentColor);
+  outline-offset: 2px;
+}
+
+/* The climb card's figures (lib/climbCard.ts): a label and its value to a line. */
+.climb-popup .climb-facts {
+  margin: 6px 0 0;
+}
+
+.climb-popup .climb-facts > div {
+  display: flex;
+  gap: 6px;
+}
+
+.climb-popup .climb-facts dt {
+  color: var(--text-muted);
+}
+
+.climb-popup .climb-facts dt::after {
+  content: ":";
+}
+
+.climb-popup .climb-facts dd {
+  margin: 0;
+}
+
+/* The map's own shape beside what it means. */
+.climb-popup .climb-steepness {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.climb-popup .climb-profile {
+  margin: 6px 0 0;
+}
+
+.climb-popup .climb-profile .pc-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.climb-popup .climb-profile-text {
+  margin-top: 2px;
+}
+
+/* "Show climbs from" beside the Climbs switch. */
+.climbs-from {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 6px 0;
+}
+
+.road-info-climb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 8px;
+}
+
+.road-info-climb p {
+  margin: 0;
+  flex: 1 1 14em;
 }
 
 .climb-popup p {

@@ -83,6 +83,10 @@ needed; reload the page to get the box back.
   the bottom of the planner) and the "Settings" page (the last button in the same bar). It makes the lines bolder
   and the borders and text stronger, and changes the stress colors to ones that do not rely
   on red and green. Both switches are the same setting.
+- With the Climbs layer on (Map layers), "Road info at map center" on a climb says "Climb here"
+  and offers "Climb details": the climb's card, with its length, gain, grades, a described
+  elevation profile and "Ride this climb". "Show climbs from" beside the switch hides the smaller
+  categories.
 - Ride mode (section 9) has its own heading, "Ride mode", which takes the focus when a ride
   starts. While it is on, the skip link says "Skip to ride mode" and the planner is hidden. Cues
   never move your focus: they are said through two live regions (the urgent ones, such as
@@ -223,3 +227,14 @@ descriptions. Plan's "Change" ride type list has the same search and groups.
   available, and every other ride type works as usual.
 - Always check the agency for track work and service alerts before you go. RouteMaker does not
   see them.
+
+
+12. Climbs on the map
+---------------------
+
+Turn on "Climbs" in Map layers. The number at a climb's top is its category; the shape around it
+is its steepness: a circle is gentle (under 4%), a square moderate (4 to 7.9%), a diamond steep
+(8% or more). "Show climbs from" hides the smaller ones. Tap a climb's top or its dashed line for
+its card: its length, gain, average and steepest grade and an elevation profile. "Ride this
+climb" puts it in your route: in Plan its bottom and top become your next stops before the
+destination; in Go the route goes to its top by way of its bottom.

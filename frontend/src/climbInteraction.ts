@@ -1,87 +1,160 @@
 /**
- * Tapping or clicking a climb's summit marker: a small card with the climb in words ("Category 3
- * climb, 2.1 miles (3.4 km) at 4.6%"), what it gains, its surface and trail, and the caution that
- * the grade is an average over coarse elevation data.
+ * Pressing a climb, its summit marker or its line: the climb card (lib/climbCard.ts), with the climb's
+ * figures, its elevation profile and "Ride this climb" (the owner, 2026-10-12).
  *
- * As waterInteraction.ts, the card is information beside the map's own click, not instead of it: the
- * click still goes on to place a point. It closes on the next map click and on Escape, does nothing
- * while the layer is off, and holds back while another card is open. The climbs the route rides are
- * listed in words (lib/climbsLegend.ts), so nothing here is the only way to them.
+ * Unlike the water card, a press on a climb is the climb's, not also a new point: MapView's click asks
+ * `climbAt` first (after a station, which keeps its own card) and opens the card instead of placing a
+ * point, in Plan and in Go alike. The summit marker wins over the route line drawn over it; the climb's
+ * own line gives way to the route line, so a press on a route that rides a climb still adds a stop. The
+ * click after the card is open only closes it, as a station card's does. It also closes on Escape (the
+ * focus going back where it was), and does nothing while the layer is off. The road panel's "Climb
+ * details" opens it from the keyboard, with the focus in it (`openCard(c, true)`).
  */
 import * as maplibregl from "maplibre-gl";
-import type { Map as MapLibreMap } from "maplibre-gl";
-import { CLIMBS_MARKER_LAYER, climbCard, type Climb } from "./lib/climbs.ts";
+import type { Map as MapLibreMap, PointLike } from "maplibre-gl";
+import { createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { CLIMBS_LINE_LAYER, CLIMBS_MARKER_LAYER, type Climb } from "./lib/climbs.ts";
+import { ClimbCardView, fetchClimbProfile, type ProfileState } from "./lib/climbCard.ts";
 
 export interface ClimbInteractionOptions {
   visible(): boolean;
-  otherPopupOpen(): boolean;
   climb(id: string): Climb | undefined;
+  /** "Ride this climb": App puts it in the plan (Plan) or plans to its top (Go). */
+  onRide(c: Climb): void;
 }
 
-/** Pixels around a tap that still count as on the marker. */
+/** Pixels around a press that still count as on the marker, and on the dashed line. */
 const TAP_SLOP = 6;
+const LINE_SLOP = 8;
 
-/** The card's contents, as DOM; what it says is climbCard's (tested there). */
-export function climbCardElement(c: Climb): HTMLElement {
-  const card = climbCard(c);
-  const root = document.createElement("div");
-  root.className = "climb-popup";
-  const title = document.createElement("strong");
-  title.className = "climb-title";
-  title.textContent = card.title;
-  root.append(title);
-  for (const line of card.details) {
-    const detail = document.createElement("p");
-    detail.className = "climb-detail";
-    detail.textContent = line;
-    root.append(detail);
-  }
-  const caution = document.createElement("p");
-  caution.className = "climb-caution";
-  caution.textContent = card.caution;
-  root.append(caution);
-  return root;
+/** The profiles asked for this visit (they do not change); an error is not kept, so a later card asks again. */
+const profiles = new Map<string, ProfileState | Promise<ProfileState>>();
+
+function profileFor(id: string): ProfileState | Promise<ProfileState> {
+  const kept = profiles.get(id);
+  if (kept) return kept;
+  const asked = fetchClimbProfile(id).then((state) => {
+    if (state.kind === "error") profiles.delete(id);
+    else profiles.set(id, state);
+    return state;
+  });
+  profiles.set(id, asked);
+  return asked;
 }
 
 export function attachClimbInteraction(map: MapLibreMap, options: ClimbInteractionOptions) {
   let popup: maplibregl.Popup | null = null;
-  const close = () => {
-    popup?.remove();
+  let root: Root | null = null;
+  let returnTo: Element | null = null;
+  let serial = 0;
+
+  const close = (focusBack = false) => {
+    const was = popup;
     popup = null;
+    if (root) {
+      const r = root;
+      root = null;
+      // Not inside React's own render: the popup may be closed from a click React is handling.
+      queueMicrotask(() => r.unmount());
+    }
+    was?.remove();
+    if (focusBack && was) {
+      const back = returnTo;
+      const target = back instanceof HTMLElement && back.isConnected && back !== document.body ? back : map.getCanvas();
+      target.focus();
+    }
+    returnTo = null;
   };
-  const onClick = (event: maplibregl.MapMouseEvent) => {
-    close();
-    if (!options.visible() || options.otherPopupOpen() || !map.getLayer(CLIMBS_MARKER_LAYER)) return;
-    if (event.originalEvent.target !== map.getCanvas()) return;
-    const { x, y } = event.point;
-    const box: [[number, number], [number, number]] = [
-      [x - TAP_SLOP, y - TAP_SLOP],
-      [x + TAP_SLOP, y + TAP_SLOP],
-    ];
-    const feature = map.queryRenderedFeatures(box, { layers: [CLIMBS_MARKER_LAYER] })[0];
+
+  const query = (box: [PointLike, PointLike], layer: string): Climb | null => {
+    if (!map.getLayer(layer)) return null;
+    const feature = map.queryRenderedFeatures(box, { layers: [layer] })[0];
     const id = (feature?.properties as { id?: string } | undefined)?.id;
-    const c = id ? options.climb(id) : undefined;
-    if (!c) return;
-    const content = climbCardElement(c);
-    content.addEventListener("keydown", (key) => {
-      if (key.key === "Escape") close();
+    return (id && options.climb(id)) || null;
+  };
+
+  /** The climb under a press: its summit marker, or (unless the route line is there too) its line. */
+  const climbAt = (point: { x: number; y: number }, onRouteLine: boolean): Climb | null => {
+    if (!options.visible()) return null;
+    const { x, y } = point;
+    const marker = query(
+      [
+        [x - TAP_SLOP, y - TAP_SLOP],
+        [x + TAP_SLOP, y + TAP_SLOP],
+      ],
+      CLIMBS_MARKER_LAYER,
+    );
+    if (marker || onRouteLine) return marker;
+    return query(
+      [
+        [x - LINE_SLOP, y - LINE_SLOP],
+        [x + LINE_SLOP, y + LINE_SLOP],
+      ],
+      CLIMBS_LINE_LAYER,
+    );
+  };
+
+  const openCard = (c: Climb, focus = false) => {
+    close();
+    serial += 1;
+    const uid = `climb-card-${serial}`;
+    returnTo = document.activeElement;
+    const container = document.createElement("div");
+    container.addEventListener("keydown", (key) => {
+      if (key.key !== "Escape") return;
+      key.preventDefault();
+      key.stopPropagation();
+      close(true);
     });
-    popup = new maplibregl.Popup({ className: "rail-popup climb-card", offset: 12, focusAfterOpen: false, closeOnClick: true })
+    const thisRoot = createRoot(container);
+    root = thisRoot;
+    const draw = (state: ProfileState) => {
+      if (root !== thisRoot) return;
+      thisRoot.render(
+        createElement(ClimbCardView, {
+          climb: c,
+          state,
+          uid,
+          onRide: () => {
+            close();
+            options.onRide(c);
+          },
+        }),
+      );
+    };
+    const kept = profileFor(c.id);
+    if (kept instanceof Promise) {
+      draw({ kind: "loading" });
+      void kept.then(draw);
+    } else draw(kept);
+    // Not closed by MapLibre on a map click: MapView's click closes it, so that the same click does not
+    // also add a point (as a station card).
+    popup = new maplibregl.Popup({ className: "rail-popup climb-card", offset: 12, focusAfterOpen: false, closeOnClick: false, maxWidth: "300px" })
       .setLngLat([c.lon, c.lat])
-      .setDOMContent(content)
+      .setDOMContent(container)
       .addTo(map);
+    popup.on("close", () => {
+      if (root === thisRoot) close();
+    });
+    if (focus) {
+      map.easeTo({ center: [c.lon, c.lat] });
+      // After React has drawn it: the card itself takes the focus, so its name is said first.
+      window.setTimeout(() => (container.querySelector(".climb-popup") as HTMLElement | null)?.focus(), 0);
+    }
   };
+
   const onKey = (event: KeyboardEvent) => {
-    if (event.key === "Escape") close();
+    if (event.key === "Escape" && popup) close();
   };
-  map.on("click", onClick);
   window.addEventListener("keydown", onKey);
   return {
-    close,
+    climbAt,
+    openCard,
+    close: () => close(),
     open: () => popup !== null,
     detach() {
       close();
-      map.off("click", onClick);
       window.removeEventListener("keydown", onKey);
     },
   };
