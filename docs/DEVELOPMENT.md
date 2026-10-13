@@ -4531,6 +4531,12 @@ and its header). What the panel shows is in `app/`, moved out unchanged:
 - `app/Sheets.tsx`: `LayersSheet`, `GpxSheet` and `SettingsSheet`, each in its `SheetFrame`
   (since the UI-CLEANUP build also the Legend, Suggest, Review, Nearest, Find food and Ride
   sheets; and `app/Go.tsx`, below).
+- `lib/layerSection.ts`: `LayerSection`, one Layers section (the owner, 2026-10-12): a row of
+  its heading, one switch for the section (Off remembers which layers were on, in
+  `routemaker.layerSections`; On brings them back, else all; some on says "Some on") and a
+  disclosure, closed to begin with, over the layers' own switches. A layer's extra control (the
+  Climbs layer's "Show climbs from") goes inside, under that layer's switch; long help goes by
+  the legend in the Legend sheet, not in Layers.
 - `app/hooks.ts`: `useNarrow` (and `NARROW`), `useLongerThan`, `useSettled`.
 
 Each component is a pass-through: it takes its props under the names App gives them, keeps

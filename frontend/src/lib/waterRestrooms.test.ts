@@ -47,11 +47,15 @@ import {
   WATER_ALONG_NONE,
   WATER_BASIC_SWITCH,
   WATER_LEGEND,
+  WATER_HELP,
+  WATER_HINT,
   WATER_LOADING,
-  WATER_SWITCH,
   WATER_UNAVAILABLE,
+  WATER_UNTREATED_HELP,
   WATER_UNTREATED_SWITCH,
   WaterAlongList,
+  WaterLegend,
+  WaterLegendNotes,
   WaterSection,
   waterStatusText,
 } from "./waterLegend.ts";
@@ -333,31 +337,38 @@ test("in words: US units first, metric in brackets, every detail said", () => {
   );
 });
 
-test("the section: labelled switches, one status line, the legend and list only when ready", () => {
+test("the section: one row, its switch the layer's, one status line; the kinds and one line inside; the legend and help by Legend", () => {
   const html = (status: "loading" | "ready" | "unavailable", prefs: WaterPrefs = ALL) =>
-    renderToStaticMarkup(createElement(WaterSection, { prefs, onChange: () => {}, status, items: null }));
+    renderToStaticMarkup(createElement(WaterSection, { prefs, onChange: () => {}, status }));
   const loading = html("loading");
-  assert.match(loading, /<section aria-labelledby="water-heading"/);
-  assert.ok(loading.includes(`<input type="checkbox" checked=""/>${WATER_SWITCH}`));
+  assert.match(loading, /<section aria-labelledby="water-heading" class="layer-group layer-section water-section">/);
+  assert.match(loading, /<h3 id="water-heading">Water and restrooms<\/h3><button type="button" role="switch" id="water-section-switch" class="switch section-switch" aria-checked="true" aria-labelledby="water-heading">/);
   assert.ok(loading.includes(`<input type="checkbox" checked=""/>${WATER_BASIC_SWITCH}`));
   assert.ok(loading.includes(`<input type="checkbox" checked=""/>${WATER_UNTREATED_SWITCH}`));
   assert.ok(loading.includes("<legend>Also show</legend>"));
   assert.ok(loading.includes(`role="status">${WATER_LOADING}<`));
-  assert.ok(!loading.includes("water-legend"));
+  assert.ok(loading.includes(`<p class="hint">${WATER_HINT}</p>`));
+  // Less wordy (the owner, 2026-10-12): no legend, list or long help in Layers.
   const ready = html("ready");
-  assert.ok(ready.includes('aria-label="Water and restrooms legend"'));
-  for (const row of WATER_LEGEND) assert.ok(ready.includes(`${row.label}: ${row.shape}`), row.icon);
-  assert.ok(ready.includes(WATER_ALONG_NO_ROUTE));
-  // A kind switched off leaves the legend too.
-  const flushOnly = html("ready", { on: true, basic: false, untreated: false });
-  assert.ok(!flushOnly.includes("green upright box") && !flushOnly.includes("struck through"));
-  assert.ok(flushOnly.includes(`<input type="checkbox"/>${WATER_BASIC_SWITCH}`));
+  for (const gone of ["water-legend", WATER_ALONG_NO_ROUTE, "OpenStreetMap lists"]) assert.ok(!ready.includes(gone), gone);
   assert.ok(html("unavailable").includes(WATER_UNAVAILABLE));
-  // Off: the kind switches go, and the status line stays in the page, empty, so the next words are read.
+  // Off: the status line stays in the page, empty, so the next words are read.
   const off = html("loading", { ...ALL, on: false });
   assert.ok(off.includes('role="status"></p>'));
-  assert.ok(!off.includes(WATER_BASIC_SWITCH));
+  assert.match(off, /id="water-section-switch" class="switch section-switch" aria-checked="false"/);
   assert.equal(waterStatusText(false, "unavailable"), "");
+});
+
+test("the Legend sheet's water part: the legend by kind, then the help, and the untreated note while untreated water shows", () => {
+  const legend = renderToStaticMarkup(createElement(WaterLegend, { prefs: ALL }));
+  assert.ok(legend.includes('aria-label="Water and restrooms legend"'));
+  for (const row of WATER_LEGEND) assert.ok(legend.includes(`${row.label}: ${row.shape}`), row.icon);
+  // A kind switched off leaves the legend too.
+  const flushOnly = renderToStaticMarkup(createElement(WaterLegend, { prefs: { on: true, basic: false, untreated: false } }));
+  assert.ok(!flushOnly.includes("green upright box") && !flushOnly.includes("struck through"));
+  const notes = (prefs: WaterPrefs) => renderToStaticMarkup(createElement(WaterLegendNotes, { prefs }));
+  assert.ok(notes(ALL).includes(WATER_HELP) && notes(ALL).includes(WATER_UNTREATED_HELP));
+  assert.ok(!notes({ ...ALL, untreated: false }).includes(WATER_UNTREATED_HELP));
 });
 
 test("the list: a heading it is labelled by, one item per point, an Add as stop button named for it", () => {

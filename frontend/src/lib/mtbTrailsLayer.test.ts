@@ -240,10 +240,16 @@ test("MapView shows or hides the layer in place when the switch changes, and App
   assert.match(view, /subscribeMtbTrails\(\(\) => \{\s*const map = mapRef\.current;\s*if \(map && loaded\.current\) setStressVisibility\(map, callbacks\.current\.stressVisible\);/);
   const app = appSource();
   const sheet = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-gpx"'));
-  assert.match(sheet, /<h3 id="terrain-heading">Trails and terrain<\/h3>\s*(?:<TopoLinesSwitch [^\n]*\/>\s*)?<MtbTrailsSwitch on=\{showMtbTrails\} onChange=\{\(on\) => setMtbTrails\(on\)\} overlay=\{stress === "available"\} \/>/);
+  // The Trails and terrain section (lib/layerSection.ts): its switch turns the three on or off together; the
+  // layer's own switch is the first inside.
+  assert.match(sheet, /<LayerSection\s+id="terrain"\s+title="Trails and terrain"\s+headingId="terrain-heading"/);
+  assert.match(sheet, /\{ key: "mtb", label: MTB_TRAILS_LABEL, on: showMtbTrails \}/);
+  assert.match(sheet, /if \(next\.mtb !== showMtbTrails\) setMtbTrails\(next\.mtb\);/);
+  const terrain = sheet.slice(sheet.indexOf('<LayerSection\n        id="terrain"'));
+  assert.match(terrain.slice(0, terrain.indexOf("</LayerSection>")), /\}\s*>\s*<MtbTrailsSwitch on=\{showMtbTrails\} onChange=\{\(on\) => setMtbTrails\(on\)\} overlay=\{stress === "available"\} \/>/);
   // Every ride type: not inside a ride-type condition.
   const before = sheet.slice(0, sheet.indexOf("<MtbTrailsSwitch"));
-  assert.ok(before.lastIndexOf('<section aria-labelledby="terrain-heading" className="layer-group">') > before.lastIndexOf("&&"));
+  assert.ok(before.lastIndexOf('<LayerSection\n        id="terrain"') > before.lastIndexOf("&&"));
 });
 
 // ---- the switch -------------------------------------------------------------
@@ -256,9 +262,9 @@ test("the switch is a named button with role switch, its state, and a short plai
   assert.match(off, /<span class="switch-state" aria-hidden="true">Off<\/span>/);
   assert.match(off, new RegExp(`<p class="hint" id="mtb-trails-hint">${MTB_TRAILS_HINT}</p>`));
   assert.match(MTB_TRAILS_HINT, new RegExp(`from zoom ${MTB_MIN_ZOOM}`, "i"));
-  assert.match(MTB_TRAILS_HINT, /levels 1 to 4 by colour and pattern, unrated as grey dots/);
-  assert.match(MTB_TRAILS_HINT, /Not used for routes; Gravel and Mountain Goat may use unrated ones\.$/);
-  for (const hint of [MTB_TRAILS_HINT, MTB_TRAILS_NO_MAP_HINT]) assert.ok(hint.length < 150, `${hint.length} characters`);
+  // One short line (the owner, 2026-10-12: "less wordy"); the levels and the Gravel note are the legend's rows.
+  assert.equal(MTB_TRAILS_HINT, `From zoom ${MTB_MIN_ZOOM}. Not used for routes.`);
+  for (const hint of [MTB_TRAILS_HINT, MTB_TRAILS_NO_MAP_HINT]) assert.ok(hint.length <= 60, `${hint.length} characters`);
   const on = renderToStaticMarkup(createElement(MtbTrailsSwitch, { on: true, onChange: () => {} }));
   assert.match(on, /aria-checked="true"/);
   assert.match(on, />On<\/span>/);

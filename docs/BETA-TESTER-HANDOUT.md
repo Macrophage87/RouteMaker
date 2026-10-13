@@ -82,11 +82,17 @@ needed; reload the page to get the box back.
   region, also called "Beta notice", right after it: it says that routes may still use some
   paths where bikes are not allowed until the next map update. Press the button again, or
   Escape, to close it; the focus stays on the button. It is not shown in Ride mode.
-- The "High contrast" switch is in two places: the "Map layers" page (a button in the bar at
-  the bottom of the planner) and the "Settings" page (the last button in the same bar). It makes the lines bolder
-  and the borders and text stronger, and changes the stress colors to ones that do not rely
-  on red and green. Both switches are the same setting.
-- With the Climbs layer on (Map layers), "Road info at map center" on a climb says "Climb here"
+- The "Layers" page (a button in the bar at the bottom of the planner) has one row per section:
+  Traffic stress, Water and restrooms, Rail stations and Trails and terrain (and Federal land on a
+  Mass Ride). Each row is the section's heading, a switch named for it, then a "layers" button that
+  says whether it is collapsed or expanded. The switch turns the whole section on or off; off
+  remembers which of its layers were on, and on brings those back. With only some on, it is on
+  and says "Some on" and which. Expand a row for each layer's own switch and a one-line hint; the
+  longer explanations are on the Legend page (the Legend button at the top of Layers).
+- The "High contrast" switch is on the "Settings" page (the last button in the same bar). It
+  makes the lines bolder and the borders and text stronger, and changes the stress colors to
+  ones that do not rely on red and green.
+- With the Climbs layer on (Layers), "Road info at map center" on a climb says "Climb here"
   and offers "Climb details": the climb's card, with its length, gain, grades, a described
   elevation profile and "Ride this climb". "Show climbs from" beside the switch hides the smaller
   categories.

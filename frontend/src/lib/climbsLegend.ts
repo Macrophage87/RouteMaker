@@ -28,7 +28,7 @@ import {
 
 export const CLIMBS_LABEL = "Climbs";
 /** Read on every focus, so kept under 150 characters. */
-export const CLIMBS_HINT = `From zoom ${CLIMBS_MIN_ZOOM}: each climb's category at its top, the shape by its average grade. Changes no route.`;
+export const CLIMBS_HINT = `From zoom ${CLIMBS_MIN_ZOOM}. Changes no route.`;
 export const CLIMBS_LOADING = "Loading climbs…";
 export const CLIMBS_UNAVAILABLE = "Climbs are unavailable for now. The map and your route are not affected.";
 export const CLIMBS_EMPTY = "No climbs yet: the climbs are measured on the build server, and this map has not had them added.";
@@ -219,7 +219,7 @@ interface SectionProps {
  */
 export function ClimbsLayerControls({ on, onChange, status, items, from, onFromChange, along = true, legend = true }: SectionProps & { along?: boolean; legend?: boolean }): ReactElement {
   // UI-CLEANUP: Layers keeps the switch only; the climbs on the route are in the Elevation and climbs fold
-  // and the legend behind Layers' Legend button (along and legend false there).
+  // and the legend behind Layers' Legend button (along and legend false there), with CLIMBS_HELP under it.
   const ready = on && status === "ready";
   return h(
     "div",
@@ -229,6 +229,5 @@ export function ClimbsLayerControls({ on, onChange, status, items, from, onFromC
     h("p", { className: "hint climbs-status", role: "status" }, climbsStatusText(on, status)),
     ready && legend && h(ClimbsLegend, null),
     ready && along && h(ClimbsAlongList, { items, headingId: "climbs-along-layers-heading" }),
-    on && h("p", { className: "hint" }, CLIMBS_HELP),
   );
 }
