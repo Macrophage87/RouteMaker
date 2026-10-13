@@ -64,6 +64,36 @@ export function displayedPlaces(query: string, answered: string, result: GeoResu
   return result.places;
 }
 
+/**
+ * The rider's location as a search bias is rounded to this many degrees (about 1 km by 0.9 km here): inside
+ * the 2.3 km radius in which Photon gives a place nearly its full nearness at the server's bias zoom
+ * (core/geocode.py BIAS_ZOOM), and no more precise than that in the request, its log line or the browser's cache.
+ */
+export const BIAS_ROUNDING_DEG = 0.01;
+
+/** The map's view as west, south, east, north. */
+export type ViewBounds = readonly [number, number, number, number];
+
+/**
+ * The point a search is biased toward: the rider's location when the app already has it (from Use my
+ * location or Go's start; never asked for just to search) and it is in the map's view, rounded; else the
+ * map's centre, so a rider who has panned away to plan elsewhere searches near what they are looking at;
+ * and neither when it is outside the map's coverage. One rule for Go, Plan and My Go's home.
+ */
+export function searchBiasPoint(
+  here: LonLat | null | undefined,
+  centre: LonLat | undefined,
+  view: ViewBounds | undefined,
+): LonLat | undefined {
+  const inView = (p: LonLat) => view !== undefined && p[0] >= view[0] && p[0] <= view[2] && p[1] >= view[1] && p[1] <= view[3];
+  if (here && inView(here)) {
+    const round = (v: number) => Number((Math.round(v / BIAS_ROUNDING_DEG) * BIAS_ROUNDING_DEG).toFixed(2));
+    const near: LonLat = [round(here[0]), round(here[1])];
+    if (insideCoverage(near)) return near;
+  }
+  return centre && insideCoverage(centre) ? centre : undefined;
+}
+
 export function searchUrl(query: string, bias?: LonLat, limit: number = SEARCH_RESULTS): string {
   const params = new URLSearchParams({ q: query.slice(0, MAX_QUERY_CHARS), limit: String(limit) });
   if (bias) {
