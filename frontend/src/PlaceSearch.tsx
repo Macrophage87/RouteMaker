@@ -93,7 +93,7 @@ export function PlaceSearch({
   /** The plan has as many points as a route can take. */
   full: boolean;
   gate: GeoGate;
-  /** Where results should lean towards: the map's centre, when it is in the area. */
+  /** Where results should lean towards: the rider's known location (rounded) while it is in view, else the map's centre; none outside the area (lib/geocode.ts searchBiasPoint). */
   bias: () => LonLat | undefined;
   onPick: (place: Place, choice: PlaceChoice) => void;
 }) {

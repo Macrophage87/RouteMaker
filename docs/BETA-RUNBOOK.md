@@ -710,11 +710,13 @@ own page again. The same goes for a 403 or 404 where a 502 was expected (nginx c
 every other line must PASS.
 
 Then check by eye, once, in a browser the owner can use: the page loads behind the password prompt,
-the map draws, a two-point route appears, and the **Beta notice** is shown in the planner panel, under the
-RouteMaker heading (it appears only in the front end built with `VITE_BETA=1`, which
+the map draws, a two-point route appears, and a small **Beta** chip is in the map's bottom-left
+corner (beside the planner on a computer, above the sheet on a phone); pressing it opens the beta
+note over the map (it appears only in the front end built with `VITE_BETA=1`, which
 `ship-data.sh --build-frontend` does). And one screen-reader pass (VoiceOver or NVDA): the password
-prompt is read and can be filled; "Beta notice" is in the landmarks list and is read after the
-heading; Dismiss puts focus on "Route planner".
+prompt is read and can be filled; the "Beta notice" button is reached by Tab after the map's
+controls and says collapsed or expanded; opened, the "Beta notice" region is read next, and Escape
+closes it with the focus on the button.
 
 ## 11. Report back to the owner
 
@@ -959,7 +961,7 @@ live within about 10 minutes, and nothing after it checks what a screen reader h
   `scripts/a11y/run.sh <a node_modules for that lockfile>` (offline; docs/DEVELOPMENT.md), and it
   must pass. CI and the agent run only `npm test`.
 - If the release changes anything `docs/BETA-TESTER-HANDOUT.md` describes (the skip link, the
-  landmarks, the headings, the beta notice, where Dismiss puts the focus), update the handout in
+  landmarks, the headings, the beta notice and its Beta chip), update the handout in
   the same release and send it to the testers again once the release is deployed.
 - The release that brings this agent (wip/beta-cd) also adds a paragraph about updates to the
   handout's section 8 (what testers hear during a deploy, and how long to wait): resend the

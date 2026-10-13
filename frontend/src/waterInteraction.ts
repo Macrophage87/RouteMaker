@@ -60,18 +60,22 @@ export function attachWaterInteraction(map: MapLibreMap, options: WaterInteracti
     popup?.remove();
     popup = null;
   };
-  const onClick = (event: maplibregl.MapMouseEvent) => {
-    close();
-    if (!options.visible() || options.otherPopupOpen() || !map.getLayer(WATER_LAYER)) return;
-    if (event.originalEvent.target !== map.getCanvas()) return;
-    const { x, y } = event.point;
+  /** The place a press at `point` (screen pixels) is on, shown, within the tap slop; undefined if none. */
+  const at = ({ x, y }: { x: number; y: number }): WaterPoint | undefined => {
+    if (!options.visible() || !map.getLayer(WATER_LAYER)) return undefined;
     const box: [[number, number], [number, number]] = [
       [x - TAP_SLOP, y - TAP_SLOP],
       [x + TAP_SLOP, y + TAP_SLOP],
     ];
     const feature = map.queryRenderedFeatures(box, { layers: [WATER_LAYER] })[0];
     const id = (feature?.properties as { id?: string } | undefined)?.id;
-    const p = id ? options.point(id) : undefined;
+    return id ? options.point(id) : undefined;
+  };
+  const onClick = (event: maplibregl.MapMouseEvent) => {
+    close();
+    if (options.otherPopupOpen()) return;
+    if (event.originalEvent.target !== map.getCanvas()) return;
+    const p = at(event.point);
     if (!p) return;
     const content = waterCardElement(p);
     content.addEventListener("keydown", (key) => {
@@ -90,6 +94,8 @@ export function attachWaterInteraction(map: MapLibreMap, options: WaterInteracti
   return {
     close,
     open: () => popup !== null,
+    /** Whether a press at `point` is on a shown place (its card's, not the map's: lib/mapGlue.ts featureCardPress). */
+    hits: (point: { x: number; y: number }) => at(point) !== undefined,
     detach() {
       close();
       map.off("click", onClick);

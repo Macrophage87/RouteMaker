@@ -155,7 +155,7 @@ test("Plan: bottom then top as the next stops before the destination", () => {
 
 test("App: Go plans from its start to the top through the bottom; Plan takes the edit; one undoable commit", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /void goTo\(top, climbEndName\(climb, "the top"\), \[bottom\]\)/);
+  assert.match(app, /void goTo\(top, climbEndName\(climb, "the top"\), false, \[bottom\]\)/);
   assert.match(app, /commit\(\[start, \.\.\.vias, dest\]/);
   assert.match(app, /rideClimbEdit\(pointsRef\.current, \{ bottom, top \}, loopVias\)/);
   assert.match(app, /onRideClimb=\{riding \? ignore : rideClimb\}/);
@@ -169,9 +169,13 @@ test("MapView: a climb press opens its card before the click can place a point, 
   const climbAt = click.indexOf("climbCard?.climbAt(");
   const run = click.indexOf("runClick(under");
   assert.ok(climbAt > 0 && run > climbAt, "the climb is asked for before runClick");
-  // A station keeps its own card; the route line keeps a press on the climb's line (not its marker).
+  // A station keeps its own card; in Plan the route line keeps a press on the climb's line (not its marker);
+  // in Go (#116) a press on the route line is no edit, so the climb's line wins there.
   assert.match(click, /!under\.station && !anyPopupOpen\(\)/);
-  assert.match(click, /climbAt\(event\.point, under\.line !== null\)/);
+  assert.match(click, /const onRouteLine = under\.line !== null && !goPress;/);
+  assert.match(click, /climbAt\(event\.point, onRouteLine\)/);
+  // And before Go's feature-card check, which lists the climb card too.
+  assert.ok(climbAt < click.indexOf("featureCardPress(["));
   const interaction = readFileSync(new URL("../climbInteraction.ts", import.meta.url), "utf8");
   assert.match(interaction, /if \(marker \|\| onRouteLine\) return marker;/);
   assert.doesNotMatch(interaction, /map\.on\("click"/, "no click of its own: MapView's decides");

@@ -153,6 +153,8 @@ export function attachClimbInteraction(map: MapLibreMap, options: ClimbInteracti
     openCard,
     close: () => close(),
     open: () => popup !== null,
+    /** Whether a press at `point` is on a shown climb, its marker or its line (lib/mapGlue.ts featureCardPress). */
+    hits: (point: { x: number; y: number }) => climbAt(point, false) !== null,
     detach() {
       close();
       window.removeEventListener("keydown", onKey);
