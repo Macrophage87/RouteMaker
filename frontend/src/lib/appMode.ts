@@ -210,6 +210,20 @@ export function goDestinationSet(name: string): string {
 }
 
 /**
+ * Said when a pressed destination has no start and must wait: "Destination set" and what it waits for, in one
+ * announcement. Said apart, the second replaced the first in the live region a moment later (about 140 ms with
+ * the location denied), so a screen reader could miss the essential part.
+ */
+export function goPressLocatingSaid(name: string): string {
+  return `${goDestinationSet(name)} Finding your location for the start…`;
+}
+
+/** Said when a pressed destination has no start and the location is not available: one announcement, as above. */
+export function goPressNeedsStartSaid(name: string): string {
+  return `${goDestinationSet(name)} ${GO_START_UNAVAILABLE}`;
+}
+
+/**
  * What is said when a pressed destination is routed at once: at Full the extra "Planning a route" narration
  * follows it in the same sentence (one announcement, so neither is lost); at Brief only the destination.
  */

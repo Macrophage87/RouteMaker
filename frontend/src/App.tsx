@@ -144,7 +144,7 @@ import { BACK_LABEL, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
 import { letterKeyIndex, letterPlaces, placeLetter } from "./lib/letteredPlaces.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
-import { GO_START_SAID, GO_START_UNAVAILABLE, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, goTapRoutedSaid, goTapSetsEnd, goDestinationSet, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, shouldAskGoStart, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, shouldAskGoStart, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type MyGo } from "./lib/myGo.ts";
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
@@ -465,7 +465,8 @@ export function App() {
   const goStartAsked = useRef(false);
   // A destination picked in Go before it has a start (the location still being found, or not available): kept
   // and routed once the start comes, from the location or the start box (lib/appMode.ts goPickAction).
-  const goPending = useRef<{ dest: LonLat; name: string } | null>(null);
+  // `pressed`: set by a press on the map (said "Destination set" with what it waits for); `said`: that was said already.
+  const goPending = useRef<{ dest: LonLat; name: string; pressed?: boolean; said?: boolean } | null>(null);
   const [locating, setLocating] = useState(false);
   // One look-up at a time, set before the await, so a second call in the same tick is refused too.
   const gate = useRef(locateGate()).current;
@@ -821,9 +822,19 @@ export function App() {
   const plannerShownNow = useRef(true);
   // Go's sheet has no Points section: its notice is said through the app's region there too.
   plannerShownNow.current = view === "planner" && panelOpen && mode === "plan";
+  // A notice already said as part of a fuller line (a pressed destination waiting for a start) is not said again.
+  const noticeSaidAs = useRef<string | null>(null);
   useEffect(() => {
-    if (noticeSaidElsewhere(notice, plannerShownNow.current)) announce(notice as string);
+    const saidAlready = notice !== null && noticeSaidAs.current === notice;
+    noticeSaidAs.current = null;
+    if (!saidAlready && noticeSaidElsewhere(notice, plannerShownNow.current)) announce(notice as string);
   }, [notice, announce]);
+  // Shows `shown` and says `said` in its place, in one announcement.
+  const setNoticeSaying = (shown: string, said: string) => {
+    noticeSaidAs.current = shown;
+    setNotice(shown);
+    announce(said);
+  };
 
   // Which bands the Mass Ride map shows changes with the zoom (OWNER-DECISIONS 421). The legend's status
   // line says it; while the Legend sheet (UI-CLEANUP: behind Layers' Legend button) is not on screen it is
@@ -1218,7 +1229,10 @@ export function App() {
       const pending = goPending.current;
       if (!result.ok || !insideCoverage(result.fix.point)) {
         setGoStart({ kind: "none" });
-        if (pointsRef.current.length === 0) setNotice(pending ? goDestinationNeedsStart(pending.name) : GO_START_UNAVAILABLE);
+        if (pointsRef.current.length === 0) {
+          if (pending?.pressed) setNoticeSaying(goDestinationNeedsStart(pending.name), goPressNeedsStartSaid(pending.name));
+          else setNotice(pending ? goDestinationNeedsStart(pending.name) : GO_START_UNAVAILABLE);
+        }
         return;
       }
       setHere(result.fix);
@@ -1227,7 +1241,7 @@ export function App() {
       // A destination picked while the location was being found: routed now, not dropped.
       if (pending) {
         goPending.current = null;
-        routeGoRef.current(result.fix.point, true, pending.dest, pending.name);
+        routeGoRef.current(result.fix.point, true, pending.dest, pending.name, !!pending.pressed && !pending.said);
       } else announce(GO_START_SAID);
     })();
     // Once per page, when Go is first shown (locateForGo reads only refs and stable setters).
@@ -1280,11 +1294,12 @@ export function App() {
       routeGo(action.point, action.located, dest, name, pressed);
       return;
     }
-    goPending.current = { dest, name };
-    // A pressed destination with no start yet: said set, and kept for the start as a picked one is.
-    if (pressed) announce(goDestinationSet(name));
+    // A pressed destination with no start yet: kept for the start as a picked one is, and said set together with
+    // what it waits for, in one announcement (said apart, the second replaced the first a moment later).
+    goPending.current = { dest, name, pressed, said: pressed && action.kind === "wait" };
     if (action.kind === "wait") {
-      setNotice(goDestinationLocating(name));
+      if (pressed) setNoticeSaying(goDestinationLocating(name), goPressLocatingSaid(name));
+      else setNotice(goDestinationLocating(name));
       return;
     }
     // No location yet: one more look-up (the rider may have allowed it since); failing that the destination is
@@ -1297,14 +1312,15 @@ export function App() {
     }
     if (!result.ok || !insideCoverage(result.fix.point)) {
       setGoStart({ kind: "none" });
-      setNotice(goDestinationNeedsStart(name));
+      if (pressed) setNoticeSaying(goDestinationNeedsStart(name), goPressNeedsStartSaid(name));
+      else setNotice(goDestinationNeedsStart(name));
       return;
     }
     setHere(result.fix);
     setGoStart({ kind: "here", point: result.fix.point });
     const pending = goPending.current;
     goPending.current = null;
-    if (pending && pointsRef.current.length === 0) routeGo(result.fix.point, true, pending.dest, pending.name);
+    if (pending && pointsRef.current.length === 0) routeGo(result.fix.point, true, pending.dest, pending.name, !!pending.pressed && !pending.said);
   };
   // A map press (place, a callback kept across renders) goes through the current goTo.
   const goToRef = useRef(goTo);

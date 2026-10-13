@@ -311,7 +311,7 @@ test("the points notice is said through the app's region while the planner is hi
   assert.equal(noticeSaidElsewhere("", false), false);
   // Go shows the notice in its sheet without a live region of its own: the app's region says it there.
   assert.match(app, /plannerShownNow\.current = view === "planner" && panelOpen && mode === "plan";/);
-  assert.match(app, /if \(noticeSaidElsewhere\(notice, plannerShownNow\.current\)\) announce\(notice as string\);\s*\}, \[notice, announce\]\);/);
+  assert.match(app, /if \(!saidAlready && noticeSaidElsewhere\(notice, plannerShownNow\.current\)\) announce\(notice as string\);\s*\}, \[notice, announce\]\);/);
 });
 
 test("a Mass Ride loads the federal-land data whatever the shading switch says, for the planner's list (recheck R-N1)", () => {
