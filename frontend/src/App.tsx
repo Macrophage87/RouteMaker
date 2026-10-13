@@ -89,7 +89,8 @@ import { canShareLink, shareContent, shareLink, shareSaidFor } from "./lib/share
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
 import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterTitle, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
 import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
-import { climbsAlongRoute, loadClimbs, readClimbsOn, saveClimbsOn, type Climb, type ClimbsStatus } from "./lib/climbs.ts";
+import { climbShown, climbsAlongRoute, loadClimbs, readClimbsFrom, readClimbsOn, saveClimbsFrom, saveClimbsOn, type Climb, type ClimbCategory, type ClimbsStatus } from "./lib/climbs.ts";
+import { climbEndName, climbEnds, climbNearSpot, rideClimbEdit } from "./lib/climbCard.ts";
 // `no-inline`: the file is small until the build host fills it, and an inlined data: URL is refused by
 // the edge's connect-src 'self' (Caddyfile), so it stays its own hashed file under /assets/.
 import climbsUrl from "./climb-data/climbs.json?url&no-inline";
@@ -341,6 +342,12 @@ export function App() {
     setClimbsOnState(on);
     saveClimbsOn(on);
   };
+  // "Show climbs from" (the owner, 2026-10-12): the smallest category shown, kept on this device as the switch is.
+  const [climbsFrom, setClimbsFromState] = useState<ClimbCategory>(() => readClimbsFrom());
+  const changeClimbsFrom = (from: ClimbCategory) => {
+    setClimbsFromState(from);
+    saveClimbsFrom(from);
+  };
   const [climbsStatus, setClimbsStatus] = useState<ClimbsStatus>("loading");
   const [climbsData, setClimbsData] = useState<Climb[] | null>(null);
   const climbsLoad = useRef<Promise<Climb[] | null> | null>(null);
@@ -465,7 +472,7 @@ export function App() {
   const goStartAsked = useRef(false);
   // A destination picked in Go before it has a start (the location still being found, or not available): kept
   // and routed once the start comes, from the location or the start box (lib/appMode.ts goPickAction).
-  const goPending = useRef<{ dest: LonLat; name: string } | null>(null);
+  const goPending = useRef<{ dest: LonLat; name: string; vias?: LonLat[] } | null>(null);
   const [locating, setLocating] = useState(false);
   // One look-up at a time, set before the await, so a second call in the same tick is refused too.
   const gate = useRef(locateGate()).current;
@@ -1227,7 +1234,7 @@ export function App() {
       // A destination picked while the location was being found: routed now, not dropped.
       if (pending) {
         goPending.current = null;
-        routeGoRef.current(result.fix.point, true, pending.dest, pending.name);
+        routeGoRef.current(result.fix.point, true, pending.dest, pending.name, false, pending.vias);
       } else announce(GO_START_SAID);
     })();
     // Once per page, when Go is first shown (locateForGo reads only refs and stable setters).
@@ -1244,18 +1251,19 @@ export function App() {
     const pending = goPending.current;
     if (pending) {
       goPending.current = null;
-      routeGo(point, false, pending.dest, pending.name);
+      routeGo(point, false, pending.dest, pending.name, false, pending.vias);
       return;
     }
     commit([point]);
     announce(`Start: ${found.name}.`);
   };
-  // A Go route from `start` to `dest`, in one edit, with a loop the rider had on turned off (to a place and no further).
-  // `pressed`: the destination is a spot pressed on the map, said as "Destination set" (an essential).
-  const routeGo = (start: LonLat, located: boolean, dest: LonLat, name: string, pressed = false) => {
+  // A Go route from `start` to `dest` (through `vias`: a climb's bottom), in one edit, with a loop the rider had
+  // on turned off (to a place and no further). `pressed`: the destination is a spot pressed on the map, said as
+  // "Destination set" (an essential).
+  const routeGo = (start: LonLat, located: boolean, dest: LonLat, name: string, pressed = false, vias: LonLat[] = []) => {
     const ride = rideRef.current;
     setNotice(null);
-    commit([start, dest], ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
+    commit([start, ...vias, dest], ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
     if (located) setFromHere((prior) => [...prior, start]);
     if (pressed) announce(goTapRoutedSaid(name, located, saysExtra(announceLevelNow.current)));
     else announceExtra(`Planning a route to ${name} from ${located ? "your location" : "your start"}.`);
@@ -1265,7 +1273,7 @@ export function App() {
   // The opening look-up answers after later renders: it routes through the current one.
   const routeGoRef = useRef(routeGo);
   routeGoRef.current = routeGo;
-  const goTo = async (dest: LonLat, name: string, pressed = false) => {
+  const goTo = async (dest: LonLat, name: string, pressed = false, vias: LonLat[] = []) => {
     cancelLocateNotice();
     setNotice(null);
     if (!insideCoverage(dest)) {
@@ -1277,10 +1285,10 @@ export function App() {
     const action = goPickAction(pointsRef.current, goStartRef.current);
     if (action.kind === "route") {
       goPending.current = null;
-      routeGo(action.point, action.located, dest, name, pressed);
+      routeGo(action.point, action.located, dest, name, pressed, vias);
       return;
     }
-    goPending.current = { dest, name };
+    goPending.current = { dest, name, vias };
     // A pressed destination with no start yet: said set, and kept for the start as a picked one is.
     if (pressed) announce(goDestinationSet(name));
     if (action.kind === "wait") {
@@ -1304,7 +1312,7 @@ export function App() {
     setGoStart({ kind: "here", point: result.fix.point });
     const pending = goPending.current;
     goPending.current = null;
-    if (pending && pointsRef.current.length === 0) routeGo(result.fix.point, true, pending.dest, pending.name);
+    if (pending && pointsRef.current.length === 0) routeGo(result.fix.point, true, pending.dest, pending.name, false, pending.vias);
   };
   // A map press (place, a callback kept across renders) goes through the current goTo.
   const goToRef = useRef(goTo);
@@ -1807,8 +1815,11 @@ export function App() {
   );
   // The Climbs layer in words: the climbs the route rides, in riding order.
   const climbsAlong = useMemo(
-    () => (climbsOn && climbsData && shown ? climbsAlongRoute(shown.geometry.coordinates, climbsData) : null),
-    [climbsOn, climbsData, shown],
+    () =>
+      climbsOn && climbsData && shown
+        ? climbsAlongRoute(shown.geometry.coordinates, climbsData).filter((item) => climbShown(item.climb, climbsFrom))
+        : null,
+    [climbsOn, climbsData, shown, climbsFrom],
   );
   // Find food (lib/food.ts; FOOD-SEARCH, owner 2026-10-11): a map search by cuisine or name, in the
   // map's view or the whole area. The places file is fetched on the first search. The results are
@@ -2001,6 +2012,35 @@ export function App() {
     () => (shown ? federalRouteLines(shown, routedPoints, federalData) : []),
     [shown, routedPoints, federalData],
   );
+  // The climb card's "Ride this climb" (lib/climbCard.ts; the owner, 2026-10-12: "add it to a destination").
+  // Go: the climb's top is the destination and its bottom a stop on the way, planned at once from Go's start.
+  // Plan: its bottom then its top go in as the next two stops before the destination (rideClimbEdit). One
+  // edit either way, so Undo takes it back.
+  const rideClimb = (climb: Climb) => {
+    const { bottom, top } = climbEnds(climb);
+    namer.remember(bottom, climbEndName(climb, "Bottom"));
+    namer.remember(top, climbEndName(climb, "Top"));
+    if (modeRef.current === "go") {
+      showPlanner(true);
+      void goTo(top, climbEndName(climb, "the top"), false, [bottom]);
+      return;
+    }
+    if (!insideCoverage(bottom) || !insideCoverage(top)) {
+      setNotice(OUTSIDE_NOTICE);
+      return;
+    }
+    const edit = rideClimbEdit(pointsRef.current, { bottom, top }, loopVias);
+    if ("refused" in edit) {
+      setNotice(edit.refused);
+      return;
+    }
+    setNotice(null);
+    commit(edit.next);
+    announce(edit.said);
+  };
+  // The road panel's "Climb details" (the keyboard's way to a climb's card): the card, focused, once the panel has closed.
+  const [climbCardRequest, setClimbCardRequest] = useState<{ climb: Climb; n: number } | null>(null);
+  const showClimbCard = (climb: Climb) => window.setTimeout(() => setClimbCardRequest((prior) => ({ climb, n: (prior?.n ?? 0) + 1 })), 0);
   // Named in the plan as the list says it, as a place picked from search is.
   const addWaterStop = (item: WaterAlong) => {
     const point: LonLat = [item.point.lon, item.point.lat];
@@ -2259,6 +2299,9 @@ export function App() {
         waterPrefs={waterPrefs}
         climbs={climbsData}
         climbsOn={climbsOn}
+        climbsFrom={climbsFrom}
+        onRideClimb={riding ? ignore : rideClimb}
+        climbCardRequest={climbCardRequest}
         federalVisible={federalShown(preset, federalOn)}
         federalWanted={federalShown(preset, true) /* Mass Ride: the planner's points list needs the data whatever the switch says */}
         onFederalStatus={setFederalStatus}
@@ -2289,6 +2332,8 @@ export function App() {
         avoid={roadInfo ? avoidNearSpot(route, roadInfo.point) : null}
         junctionShown={roadInfo ? shownNear(route, roadInfo.point) : null}
         federal={roadInfo && federalShown(preset, true) ? federalAreaAt(roadInfo.point, federalData) : null}
+        climb={roadInfo && climbsOn ? climbNearSpot(climbsData, roadInfo.point, climbsFrom) : null}
+        onShowClimb={showClimbCard}
         onClose={closeRoadInfo}
         fallbackFocus={mapFocus}
         onStressChanged={(generation) => {
@@ -2434,7 +2479,7 @@ export function App() {
               {...{
                 nav: sheetNav, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn,
                 setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus,
-                rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn,
+                rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom,
                 climbsStatus, climbsAlong, openLegend: (opener: HTMLElement) => openView("legend", opener, true),
               }}
             />
