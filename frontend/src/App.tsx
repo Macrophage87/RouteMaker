@@ -2439,7 +2439,7 @@ export function App() {
             <LegendSheet
               {...{
                 nav: sheetNav, legendHeadingRef, massMap, stress, stressVisible, preset, zoom, facilitiesShown, waterPrefs,
-                waterStatus, climbsOn, climbsStatus,
+                waterStatus, climbsOn, climbsStatus, federalOn, federalStatus, rail,
               }}
             />
             <SuggestSheet nav={sheetNav} roadInfoAtCentre={roadInfoAtCentre} onReview={reviewOpener} />

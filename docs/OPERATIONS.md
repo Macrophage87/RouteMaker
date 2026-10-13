@@ -1338,7 +1338,10 @@ paths and protected lanes whatever their kind of way
 a car-free road such as Beach Drive in DC included - and its protected ways
 that are trails of their own (`is_trail_class`): a sidewalk or path
 designated for bicycles, an `is_sidepath`, a cycleway along a road whose tags
-say its facility is mapped separately. A protected lane tagged on the road
+say its facility is mapped separately - unless the cycleway's own OSM name is
+a trail's own, not the road's and not a generic one such as "Cycle Track"
+(`routemaker.facility.named_for_itself`: Rock Creek Trail beside Rock Creek and
+Potomac Parkway is a path). A protected lane tagged on the road
 way itself (`cycleway=track`, a lane with posts) waits for z13 with the roads.
 The table records no more than that, so a cycle track in DC's roadway mapped
 as a way of its own (15th Street NW, Pennsylvania Avenue NW) is drawn zoomed

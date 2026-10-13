@@ -27,6 +27,7 @@ import { LANES_HIDDEN_NOTE, descriptionEntries, descriptionText, lanesHiddenNote
 import {
   HIGH_STRESS_LANES_HINT,
   HIGH_STRESS_LANES_LABEL,
+  HIGH_STRESS_LANES_MASS_HINT,
   HIGH_STRESS_LANES_NO_MAP_HINT,
   HighStressLanesSwitch,
 } from "./highStressLanesSwitch.ts";
@@ -315,12 +316,10 @@ test("the switch is a labelled role=switch button with its state in words and a 
   assert.match(off, /<span class="switch-state" aria-hidden="true">Off<\/span>/);
   assert.match(off, /<p class="hint" id="high-lanes-hint">/);
   // Plain words, the tier in brackets (the a11y review's N2).
-  assert.match(HIGH_STRESS_LANES_HINT, /^Painted lanes on heavy-traffic \(LTS 4\) and best-avoided roads are hidden on the map and in the route\./);
-  assert.match(HIGH_STRESS_LANES_HINT, /Protected lanes and paths always show/);
+  assert.equal(HIGH_STRESS_LANES_HINT, "Painted lanes on heavy-traffic (LTS 4) and best-avoided roads, on the map and in the route.");
   assert.doesNotMatch(HIGH_STRESS_LANES_HINT, /LTS 4 and Avoid/);
-  // Read on every focus: kept short.
-  assert.ok(HIGH_STRESS_LANES_HINT.length < 150, `${HIGH_STRESS_LANES_HINT.length} characters`);
-  assert.ok(HIGH_STRESS_LANES_NO_MAP_HINT.length < 150, `${HIGH_STRESS_LANES_NO_MAP_HINT.length} characters`);
+  // Read on every focus, and the owner's "less wordy" (2026-10-12): one short line each.
+  for (const hint of [HIGH_STRESS_LANES_HINT, HIGH_STRESS_LANES_NO_MAP_HINT, HIGH_STRESS_LANES_MASS_HINT]) assert.ok(hint.length <= 100, `${hint.length} characters`);
   const on = renderToStaticMarkup(createElement(HighStressLanesSwitch, { on: true, onChange: () => {} }));
   assert.match(on, /aria-checked="true"/);
   assert.match(on, />On<\/span>/);
@@ -340,7 +339,7 @@ test("with no stress map the switch is still there, and its description says wha
   const html = renderToStaticMarkup(createElement(HighStressLanesSwitch, { on: false, onChange: () => {}, overlay: false }));
   assert.match(html, /role="switch"/);
   assert.ok(html.includes(`<p class="hint" id="high-lanes-hint">${HIGH_STRESS_LANES_NO_MAP_HINT.replace(/'/g, "&#x27;")}</p>`));
-  assert.equal(HIGH_STRESS_LANES_NO_MAP_HINT, "Painted lanes on heavy-traffic (LTS 4) and best-avoided roads are hidden in the route's facility totals and description.");
+  assert.equal(HIGH_STRESS_LANES_NO_MAP_HINT, "Painted lanes on heavy-traffic (LTS 4) and best-avoided roads, in route totals and description.");
   assert.doesNotMatch(HIGH_STRESS_LANES_NO_MAP_HINT, /map/, "the map has no lanes then");
   const withMap = renderToStaticMarkup(createElement(HighStressLanesSwitch, { on: false, onChange: () => {} }));
   assert.ok(withMap.includes(HIGH_STRESS_LANES_HINT), "with the map, the default");
@@ -353,7 +352,7 @@ test("the panel places the switch just before the High contrast switch, outside 
   // Settings, Display (UI-CLEANUP, the approved mockup's Layers and Menu).
   assert.match(
     app,
-    /\{stress === "unavailable" && <p[^\n]*<\/p>\}\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<HighStressLanesSwitch on=\{showHighLanes\} onChange=\{\(on\) => setHighStressLanes\(on\)\} overlay=\{stress === "available"\} massMap=\{massMap\} \/>\s*<\/section>/,
+    /status=\{stress === "checking" \? STRESS_CHECKING : stress === "unavailable" \? STRESS_UNAVAILABLE : ""\}\s*>\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<HighStressLanesSwitch on=\{showHighLanes\} onChange=\{\(on\) => setHighStressLanes\(on\)\} overlay=\{stress === "available"\} massMap=\{massMap\} \/>\s*<\/LayerSection>/,
   );
   assert.equal((app.match(/<HighStressLanesSwitch /g) ?? []).length, 1, "drawn in one place only");
   assert.ok(FACILITIES.length === 3);
