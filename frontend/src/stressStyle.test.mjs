@@ -246,8 +246,8 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const mtb = mtbTrailLayers("s").map((l) => l.id);
   assert.deepEqual(
     mtb,
-    ["mtb-trail", "mtb-level-casing-1", "mtb-level-casing-2", "mtb-level-casing-3", "mtb-level-casing-4", "mtb-level-1", "mtb-level-2", "mtb-level-3", "mtb-level-4"],
-    "the unrated mountain-bike trails' not-for-routes dots (OWNER-DECISIONS 452a), then each level's casing, then its line (456)",
+    ["mtb-trail-ticks", "mtb-trail-casing", "mtb-level-casing-1", "mtb-level-casing-2", "mtb-level-casing-3", "mtb-level-casing-4", "mtb-trail", "mtb-level-1", "mtb-level-2", "mtb-level-3", "mtb-level-4"],
+    "the shared not-for-routes ticks (452a), every white edge (the unrated trails', then each level's; v0.6.0), then the unrated trails' dashes (OWNER-DECISIONS 452a) and each level's line (456)",
   );
   // The whole mountain-bike layer under every routable line, and its names (2026-10-10) over them, under the Mass Ride's.
   assert.deepEqual(ids.slice(0, mtb.length), mtb);
@@ -258,8 +258,8 @@ test("the overlay is added casings first: every casing under every tier", () => 
   // A half step's outline under its dash, both over every tier line (458).
   for (let tier = 1; tier <= 4; tier++) assert.ok(ids.indexOf(`stress-half-outline-${tier}`) < ids.indexOf(`stress-half-${tier}`));
   assert.ok(Math.min(...halves.map((h) => ids.indexOf(h))) > Math.max(...tiers.map((t) => ids.indexOf(t))), "the half-step dashes are drawn over every tier line");
-  // The not-for-routes line under everything, so every routable line draws over it.
-  assert.equal(ids[0], "mtb-trail");
+  // The mountain-bike layer under everything, so every routable line draws over it.
+  assert.equal(ids[0], "mtb-trail-ticks", "the mountain-bike trails' shared ticks under everything");
   assert.ok(ids.indexOf("stress-unknown-casing") < ids.indexOf("stress-unknown"), "the edge under its line");
   assert.ok(Math.max(...casings.map((c) => ids.indexOf(c))) < ids.indexOf("stress-unknown-casing"), "after every casing");
   // The Mass Ride's layers (massStyle.js) are drawn over every stress layer, in their own order.

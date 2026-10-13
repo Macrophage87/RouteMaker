@@ -178,8 +178,9 @@ test("the not-for-routes line and each level's casing and line are the layers th
     mtbTrailLayers().map((l: { id: string }) => l.id),
     MTB_LAYER_IDS.slice(0, -1),
   );
-  assert.equal(MTB_LAYER_IDS[0], MTB_TRAIL_LAYER_ID);
-  assert.equal(MTB_LAYER_IDS.length, 10, "the dots, four casings and four lines (456), and the names (2026-10-10)");
+  assert.equal(MTB_LAYER_IDS[0], "mtb-trail-ticks", "the shared ticks at the bottom");
+  assert.ok(MTB_LAYER_IDS.includes(MTB_TRAIL_LAYER_ID));
+  assert.equal(MTB_LAYER_IDS.length, 12, "the ticks, the unrated trails' edge and dashes, four edges and four lines (456), and the names (2026-10-10)");
   assert.equal(MTB_LAYER_IDS.at(-1), "mtb-trail-label");
 });
 
@@ -240,10 +241,18 @@ test("MapView shows or hides the layer in place when the switch changes, and App
   assert.match(view, /subscribeMtbTrails\(\(\) => \{\s*const map = mapRef\.current;\s*if \(map && loaded\.current\) setStressVisibility\(map, callbacks\.current\.stressVisible\);/);
   const app = appSource();
   const sheet = app.slice(app.indexOf('id="sheet-layers"'), app.indexOf('id="sheet-gpx"'));
-  assert.match(sheet, /<h3 id="terrain-heading">Trails and terrain<\/h3>\s*(?:<TopoLinesSwitch [^\n]*\/>\s*)?<MtbTrailsSwitch on=\{showMtbTrails\} onChange=\{\(on\) => setMtbTrails\(on\)\} overlay=\{stress === "available"\} \/>/);
+  // The Trails and terrain section (lib/layerSection.ts): its switch turns the three on or off together; the
+  // layer's own switch is the first inside.
+  assert.match(sheet, /<LayerSection\s+id="terrain"\s+title="Trails and terrain"\s+headingId="terrain-heading"/);
+  // Its layers through lib/terrainSection.ts (the trails only with the stress map; terrainSection.test.ts).
+  assert.match(app, /const terrain = \{ mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stressShowable\(stress\), topoReady, climbsStatus \};/);
+  assert.match(sheet, /layers=\{terrainLayers\(terrain\)\}/);
+  assert.match(sheet, /if \("mtb" in next && next\.mtb !== showMtbTrails\) setMtbTrails\(next\.mtb\);/);
+  const terrain = sheet.slice(sheet.indexOf('<LayerSection\n        id="terrain"'));
+  assert.match(terrain.slice(0, terrain.indexOf("</LayerSection>")), /\}\s*>\s*<MtbTrailsSwitch on=\{showMtbTrails\} onChange=\{\(on\) => setMtbTrails\(on\)\} overlay=\{stressShowable\(stress\)\} \/>/, "its hint says unavailable only once the stress map is known to be down, not while it is checked");
   // Every ride type: not inside a ride-type condition.
-  const before = sheet.slice(0, sheet.indexOf("<MtbTrailsSwitch"));
-  assert.ok(before.lastIndexOf('<section aria-labelledby="terrain-heading" className="layer-group">') > before.lastIndexOf("&&"));
+  const at = sheet.indexOf('<LayerSection\n        id="terrain"');
+  assert.ok(at > 0 && !/&&|\?\s*$/.test(sheet.slice(at - 40, at).trim().split("\n").pop() ?? ""), "the section is not behind a condition");
 });
 
 // ---- the switch -------------------------------------------------------------
@@ -256,9 +265,9 @@ test("the switch is a named button with role switch, its state, and a short plai
   assert.match(off, /<span class="switch-state" aria-hidden="true">Off<\/span>/);
   assert.match(off, new RegExp(`<p class="hint" id="mtb-trails-hint">${MTB_TRAILS_HINT}</p>`));
   assert.match(MTB_TRAILS_HINT, new RegExp(`from zoom ${MTB_MIN_ZOOM}`, "i"));
-  assert.match(MTB_TRAILS_HINT, /levels 1 to 4 by colour and pattern, unrated as grey dots/);
-  assert.match(MTB_TRAILS_HINT, /Not used for routes; Gravel and Mountain Goat may use unrated ones\.$/);
-  for (const hint of [MTB_TRAILS_HINT, MTB_TRAILS_NO_MAP_HINT]) assert.ok(hint.length < 150, `${hint.length} characters`);
+  // One short line (the owner, 2026-10-12: "less wordy"); the levels and the Gravel note are the legend's rows.
+  assert.equal(MTB_TRAILS_HINT, `From zoom ${MTB_MIN_ZOOM}. Not used for routes.`);
+  for (const hint of [MTB_TRAILS_HINT, MTB_TRAILS_NO_MAP_HINT]) assert.ok(hint.length <= 60, `${hint.length} characters`);
   const on = renderToStaticMarkup(createElement(MtbTrailsSwitch, { on: true, onChange: () => {} }));
   assert.match(on, /aria-checked="true"/);
   assert.match(on, />On<\/span>/);

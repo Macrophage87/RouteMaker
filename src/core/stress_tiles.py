@@ -309,7 +309,7 @@ OPTIONAL_PROPERTIES = {
     # NO-BIKE-PATHS (OWNER-DECISIONS 290, 291): `mtb` marks a trail only a
     # mountain bike rides (kept open for Gravel and Mountain Goat, closed for
     # the rest) and `rough` a surface that sheds riders. The map draws an `mtb`
-    # trail in its own not-for-routes look, a thin dotted grey line, and in no
+    # trail in its own not-for-routes look, a line on a ticked white edge, and in no
     # routable layer (452a, superseding 452's hiding and 290(b)'s faint drawing;
     # frontend/src/stressStyle.js, `mtb-trail`); a future MTB mode would draw it
     # as routable. `rough` is not read: such a trail draws as any unpaved one,
@@ -320,7 +320,7 @@ OPTIONAL_PROPERTIES = {
     # OWNER-DECISIONS 456, 456a-c: an `mtb` trail's difficulty level, 1 to 4 (the higher of
     # `mtb:scale` and `mtb:scale:imba`; `routemaker.singletrack.mtb_level`), which the
     # mountain-bike trail layer draws in its level's colour, pattern and casing; left out
-    # of an unrated trail (drawn as the grey dots) and of every other way. Rated singletrack
+    # of an unrated trail (drawn as grey dashes) and of every other way. Rated singletrack
     # is drawn (`map_class` road) only where nothing but its rating closes it.
     "mtb_level": MTB_LEVEL_COLUMN,
     # The owner, 2026-10-10: "Also, for mountain bikes, try to make sure trail names are added

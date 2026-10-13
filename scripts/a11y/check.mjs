@@ -81,6 +81,16 @@ async function openSheet(p, label = "Layers") {
   }
 }
 
+/**
+ * Opens one Layers section (lib/layerSection.ts; the owner, 2026-10-12): each is a row, its name, one switch for
+ * the section and a disclosure, closed to begin with; the layers' own switches are inside. With no id, all.
+ */
+async function openSection(p, id = null) {
+  const sel = id ? `#${id}-section-body` : ".layer-section-body";
+  await p.eval(`[...document.querySelectorAll('#sheet-layers ${sel}')].forEach((body) => { const b = document.querySelector('[aria-controls="' + body.id + '"]'); if (b && b.getAttribute('aria-expanded') !== 'true') b.click(); }); true`);
+  await sleep(150);
+}
+
 /** Opens the route summary's Directions fold (a native details). */
 async function openDirections(p) {
   await p.eval("(() => { const d = document.querySelector('details.route-description'); if (d && !d.open) d.querySelector('summary').click(); return true; })()");
@@ -592,24 +602,27 @@ const federalFetched = (p) =>
   const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0) });
   await openSheet(p);
   await p.eval("document.getElementById('federal-heading')?.scrollIntoView({ block: 'center' }); true");
+  // UI-CLEANUP and "less wordy" (2026-10-12): the section is one row in Layers, its note inside; the legend
+  // rows and the help are in the Legend sheet.
+  await openSection(p, "federal");
   const section = await p.eval(`(() => { const s = document.querySelector('.federal-section'); if (!s) return null;
-    const items = [...s.querySelectorAll('.federal-legend li')];
+    const items = [...document.querySelectorAll('#sheet-legend .federal-legend li')];
     return { heading: s.querySelector('h3')?.textContent, items: items.length,
       cues: items.map((li) => /shaded with (dots|cross-hatch|rising diagonal stripes|falling diagonal stripes)/.test(li.textContent)),
       swatchesHidden: items.every((li) => li.querySelector('svg')?.getAttribute('aria-hidden') === 'true'),
       note: /Federal land - permit rules may differ \\(information, not legal advice\\)/.test(s.textContent),
-      checked: s.querySelector('input[type=checkbox]')?.checked }; })()`);
-  check("federal: a Mass Ride's panel has the section, four legend rows each naming its pattern, and the note",
+      checked: document.querySelector('#federal-section-switch')?.getAttribute('aria-checked') === 'true' }; })()`);
+  check("federal: a Mass Ride's panel has the section and the note; the Legend sheet four legend rows each naming its pattern",
     section && section.heading === "Federal land" && section.items === 4 && section.cues.every(Boolean) && section.swatchesHidden && section.note && section.checked, JSON.stringify(section));
   check("federal: the data is fetched for a Mass Ride", await federalFetched(p));
   await sleep(1500);
   await p.shot(`${SHOTS}/federal_map.png`, await p.eval("(() => { const r = document.querySelector('.map').getBoundingClientRect(); return { x: r.left, y: r.top, width: Math.round(r.width), height: Math.round(r.height) }; })()"));
-  const ax = await axNode(p, ".federal-section input[type=checkbox]");
-  check("federal: the switch is a checkbox named for what it does", ax?.role === "checkbox" && ax?.name === "Show federal land on the map", JSON.stringify(ax));
-  await p.eval("document.querySelector('.federal-section input[type=checkbox]').focus(); true");
+  const ax = await axNode(p, "#federal-section-switch");
+  check("federal: the section's switch is a switch named Federal land, on", ax?.role === "switch" && ax?.name === "Federal land" && String(ax?.checked) === "true", JSON.stringify(ax));
+  await p.eval("document.querySelector('#federal-section-switch').focus(); true");
   await p.key(" ", "Space", 32);
   await sleep(300);
-  const off = await p.eval("({ legend: !!document.querySelector('.federal-legend'), checked: document.querySelector('.federal-section input[type=checkbox]').checked, focus: document.activeElement?.type === 'checkbox' })");
+  const off = await p.eval("({ legend: !!document.querySelector('.federal-legend'), checked: document.querySelector('#federal-section-switch').getAttribute('aria-checked') === 'true', focus: document.activeElement?.id === 'federal-section-switch' })");
   check("federal: Space turns it off, the legend goes and the focus stays on the switch", !off.legend && !off.checked && off.focus, JSON.stringify(off));
   // Another ride type while it is shown: the section goes, and comes back with Mass Ride (OWNER-DECISIONS 324).
   await p.key(" ", "Space", 32);
@@ -620,7 +633,7 @@ const federalFetched = (p) =>
   check("federal: another ride type has no section, switch, legend or points list (324)", !elsewhere.section && !elsewhere.heading && !elsewhere.list, JSON.stringify(elsewhere));
   await p.eval(`location.hash = ${JSON.stringify(hashFor("mass-ride", 0))}; true`);
   await sleep(1200);
-  check("federal: back on Mass Ride the section is there again, the switch as it was left", await p.eval("!!document.querySelector('.federal-section') && document.querySelector('.federal-section input[type=checkbox]').checked && !!document.querySelector('.federal-legend')"));
+  check("federal: back on Mass Ride the section is there again, the switch as it was left", await p.eval("!!document.querySelector('.federal-section') && document.querySelector('#federal-section-switch').getAttribute('aria-checked') === 'true' && !!document.querySelector('.federal-legend')"));
   await p.close();
 }
 {
@@ -632,6 +645,7 @@ const federalFetched = (p) =>
 {
   const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0), width: 320, height: 800, mobile: true });
   await openSheet(p);
+  await openSection(p, "federal");
   await p.eval(`(() => { const s = document.createElement('style'); s.textContent = ${JSON.stringify(TEXT_SPACING)}; document.head.append(s);
     document.getElementById('federal-heading').scrollIntoView({ block: 'start' }); return true; })()`);
   await sleep(300);
@@ -647,18 +661,21 @@ const federalFetched = (p) =>
 {
   const p = await open();
   await openSheet(p);
+  await openSection(p, "stress");
   const id = "#high-lanes-switch";
   const before = await axNode(p, id);
   check("lanes switch: a switch named for what it does, off by default", before?.role === "switch" && before?.name === "Show bike lanes on high-stress roads" && String(before?.checked) === "false", JSON.stringify(before));
-  check("lanes switch: described, in plain words, by which roads are affected", /heavy-traffic \(LTS 4\) and best-avoided roads/.test(before?.description ?? "") && /Protected lanes and paths always show/.test(before?.description ?? ""), (before?.description ?? "").slice(0, 80));
+  check("lanes switch: described, in one plain line, by which roads are affected", /heavy-traffic \(LTS 4\) and best-avoided roads, on the map and in the route\.$/.test(before?.description ?? ""), (before?.description ?? "").slice(0, 100));
   const box = await p.eval(`(() => { const r = document.querySelector('${id}').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; })()`);
   check("lanes switch: its target is at least 24 px tall (2.5.8)", box.h >= 24 && box.w >= 24, JSON.stringify(box));
   check("lanes switch: its state is also in visible words, not colour", await p.eval(`document.querySelector('${id} .switch-state').textContent === 'Off'`));
-  // The keyboard: Tab to it from "Show traffic stress on the map" (312's order: traffic stress, high-stress
-  // lanes, high contrast), Space turns it on, Space again turns it off.
+  // The keyboard: from the Traffic stress section's switch, Tab is its disclosure, then the lanes switch
+  // inside (the section's order); Space turns it on, Space again turns it off.
   await p.eval("document.querySelector('#show-stress').focus(); true");
   await p.tab();
-  check("lanes switch: the next Tab stop after Show traffic stress on the map", await p.eval(`document.activeElement?.id === 'high-lanes-switch'`), await focused(p));
+  check("lanes switch: Tab from the section switch is the section's disclosure", await p.eval(`document.activeElement?.getAttribute('aria-controls') === 'stress-section-body'`), await focused(p));
+  await p.tab();
+  check("lanes switch: the next Tab stop after the section's disclosure", await p.eval(`document.activeElement?.id === 'high-lanes-switch'`), await focused(p));
   await p.key(" ", "Space", 32);
   await sleep(150);
   check("lanes switch: Space turns it on, and it is remembered in this browser", (await axNode(p, id))?.checked !== undefined && (await p.eval(`document.querySelector('${id}').getAttribute('aria-checked')`)) === "true" && (await p.eval("localStorage.getItem('routemaker.highStressLanes')")) === "on");
@@ -675,11 +692,12 @@ const federalFetched = (p) =>
 {
   const p = await open();
   await openSheet(p);
+  await openSection(p, "terrain");
   const id = "#mtb-trails-switch";
   const before = await axNode(p, id);
   check("mtb layer: a switch named Mountain-bike trails, off by default", before?.role === "switch" && before?.name === "Mountain-bike trails" && String(before?.checked) === "false", JSON.stringify(before));
-  check("mtb layer: described in plain words: what it draws, from which zoom, and that it is not used for routes",
-    /^From zoom 14: levels 1 to 4 by colour and pattern, unrated as grey dots\. Not used for routes; Gravel and Mountain Goat may use unrated ones\.$/.test(before?.description ?? ""), before?.description ?? "");
+  check("mtb layer: described in one plain line: from which zoom, and that it is not used for routes (the levels are the legend's)",
+    /^From zoom 14\. Not used for routes\.$/.test(before?.description ?? ""), before?.description ?? "");
   const headings = await p.eval("[...document.querySelectorAll('#sheet-layers h3')].map((e) => e.textContent)");
   const at = (name) => headings.indexOf(name);
   // UI-CLEANUP: the legend is its own sheet, behind Layers' Legend button; Layers is the switches.
@@ -699,6 +717,7 @@ const federalFetched = (p) =>
   // Every ride type (454): a Mass Ride has the switch too, and with it on its legend names the line.
   const p = await open({ route: S_MASS_CAPACITY, hash: hashFor("mass-ride", 0), stressTiles: "capacity" });
   await openSheet(p);
+  await openSection(p, "terrain");
   await sleep(1500);
   const ax = await axNode(p, "#mtb-trails-switch");
   check("mtb layer: a Mass Ride has the same switch", ax?.role === "switch" && ax?.name === "Mountain-bike trails", JSON.stringify(ax));
@@ -771,13 +790,74 @@ const federalFetched = (p) =>
   await p.close();
 }
 
+// ---- 12b. The Layers sections (the owner, 2026-10-12: "a general off and on for each section, then let it expand") ----
+for (const mobile of [false, true]) {
+  const p = await open(mobile ? { width: 390, height: 844, mobile: true } : {});
+  const where = mobile ? "phone" : "computer";
+  await openSheet(p);
+  const rows = await p.eval(`[...document.querySelectorAll('#sheet-layers .layer-section')].map((s) => { const h = s.querySelector('h3'); const sw = s.querySelector('.section-switch'); const d = s.querySelector('.section-chevron'); const body = document.getElementById(d.getAttribute('aria-controls'));
+    const r = (e) => { const b = e.getBoundingClientRect(); return Math.round(Math.min(b.width, b.height)); };
+    return { name: h.textContent, labelled: sw?.getAttribute('aria-labelledby') === h.id, expanded: d.getAttribute('aria-expanded'), hidden: body.hidden, inside: body.closest('.layer-section') === s, targets: [sw ? r(sw) : 44, r(d)] }; })`);
+  check(`sections (${where}): four, each named by its heading, its disclosure collapsed with aria-controls on its layers, 44 px targets`,
+    JSON.stringify(rows.map((r) => r.name)) === JSON.stringify(["Traffic stress", "Water and restrooms", "Rail stations", "Trails and terrain"]) && rows.every((r) => r.labelled && r.expanded === "false" && r.hidden && r.inside && r.targets.every((t) => t >= 44)), JSON.stringify(rows));
+  const ax = await axNode(p, "#terrain-section-switch");
+  const chevron = await axNode(p, "[aria-controls=terrain-section-body]");
+  check(`sections (${where}): the section's switch is a switch named for it, off; the disclosure a collapsed button named for its layers`,
+    ax?.role === "switch" && ax?.name === "Trails and terrain" && String(ax?.checked) === "false" && chevron?.role === "button" && chevron?.name === "Trails and terrain layers" && String(chevron?.expanded) === "false", JSON.stringify({ ax, chevron }));
+  // The keyboard: the section switch, its disclosure, then the next section's switch while it is closed.
+  await p.eval("document.querySelector('#rail-section-switch').focus(); true");
+  await p.tab();
+  const t1 = await p.eval("document.activeElement?.getAttribute('aria-controls')");
+  await p.tab();
+  const t2 = await p.eval("document.activeElement?.id");
+  check(`sections (${where}): Tab goes section switch, its disclosure, then the next section`, t1 === "rail-section-body" && t2 === "terrain-section-switch", JSON.stringify({ t1, t2 }));
+  // Space on the section switch: every layer in it on (nothing remembered yet).
+  await p.key(" ", "Space", 32);
+  await sleep(250);
+  const inner = () => p.eval("['mtb-trails-switch', 'climbs-switch', 'topo-lines-switch'].map((id) => document.getElementById(id).getAttribute('aria-checked'))");
+  const allOn = await inner();
+  check(`sections (${where}): Space turns the section on, all its layers with it, the focus kept`, JSON.stringify(allOn) === '["true","true","true"]' && (await p.eval("document.activeElement?.id")) === "terrain-section-switch" && (await p.eval("localStorage.getItem('routemaker.mtbTrails')")) === "on", JSON.stringify(allOn));
+  // Enter on the disclosure opens it; the layers' own switches turn two off: some on.
+  await p.tab();
+  await p.enter();
+  await sleep(200);
+  const opened = await p.eval("({ expanded: document.querySelector('[aria-controls=terrain-section-body]').getAttribute('aria-expanded'), hidden: document.getElementById('terrain-section-body').hidden, focus: document.activeElement?.getAttribute('aria-controls') })");
+  check(`sections (${where}): Enter on the disclosure shows the layers, aria-expanded true, the focus kept`, opened.expanded === "true" && !opened.hidden && opened.focus === "terrain-section-body", JSON.stringify(opened));
+  await p.tab();
+  check(`sections (${where}): Tab from the open disclosure is the first layer's switch`, (await p.eval("document.activeElement?.id")) === "mtb-trails-switch", await focused(p));
+  await p.eval("document.getElementById('climbs-switch').click(); document.getElementById('topo-lines-switch').click(); true");
+  await sleep(250);
+  const some = await axNode(p, "#terrain-section-switch");
+  const someWords = await p.eval("document.querySelector('#terrain-section-switch .switch-state').textContent");
+  check(`sections (${where}): some on: the switch says on, its state "Some on" in words, its description names the ones on`,
+    String(some?.checked) === "true" && someWords === "Some on" && some?.description === "Some on: Mountain-bike trails.", JSON.stringify({ some, someWords }));
+  // Off remembers which were on; On brings back just those.
+  await p.eval("document.getElementById('terrain-section-switch').click(); true");
+  await sleep(250);
+  const off = await inner();
+  const kept = await p.eval("localStorage.getItem('routemaker.layerSections')");
+  await p.eval("document.getElementById('terrain-section-switch').click(); true");
+  await sleep(250);
+  const back = await inner();
+  check(`sections (${where}): Off hides every layer and remembers; On turns back on only the ones that were`,
+    JSON.stringify(off) === '["false","false","false"]' && kept === '{"terrain":["mtb"]}' && JSON.stringify(back) === '["true","false","false"]', JSON.stringify({ off, kept, back }));
+  await p.shot(`${SHOTS}/layers_sections_${where}.png`);
+  // Leave the browser as the later sections expect it.
+  await p.eval("['routemaker.mtbTrails', 'routemaker.climbs', 'routemaker.topoLines', 'routemaker.layerSections'].forEach((k) => localStorage.removeItem(k)); true");
+  await p.close();
+}
+
 // ---- 13. The stress map unavailable: the lane switch is still there (the a11y review's SF4) ----
 {
   const p = await open({ stressTiles: false });
   await openSheet(p);
-  await p.waitFor("/Stress map unavailable/.test(document.querySelector('#layers-heading')?.parentElement?.textContent ?? '')", 15000);
+  // The app gives up on the tiles after its retries (about half a minute).
+  await p.waitFor("/Stress map unavailable/.test(document.querySelector('#layers-heading')?.closest('section')?.textContent ?? '')", 45000);
+  // The section has no layer to switch then: its row is its name and its disclosure, and the status says why.
+  check("stress section without the stress map: no section switch, its status says so", await p.eval("!document.querySelector('#show-stress') && /Stress map unavailable/.test(document.querySelector('#layers-heading').closest('section').querySelector('[role=status]').textContent)"));
+  await openSection(p, "stress");
   const ax = await axNode(p, "#high-lanes-switch");
-  check("lanes switch without the stress map: still a switch, described by what it changes then", ax?.role === "switch" && /hidden in the route's facility totals and description\./.test(ax?.description ?? "") && !/on the map/.test(ax?.description ?? ""), JSON.stringify(ax));
+  check("lanes switch without the stress map: still a switch, described by what it changes then", ax?.role === "switch" && /in route totals and description\./.test(ax?.description ?? "") && !/on the map/.test(ax?.description ?? ""), JSON.stringify(ax));
   await p.close();
 }
 
@@ -1009,8 +1089,9 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await sleep(300);
   const after = await p.eval("({ top: document.querySelector('.panel-scroll').scrollTop, focus: document.activeElement?.tagName })");
   check("plan: pressed on a scrolled planner it scrolls to the top and focuses the heading", before > 0 && after.top === 0 && after.focus === "H1", JSON.stringify({ before, after }));
-  // From a scrolled sheet: Plan shows the planner at its top.
+  // From a scrolled sheet: Plan shows the planner at its top (the Layers sections open, so it scrolls).
   await openSheet(p, "Map layers");
+  await openSection(p);
   await p.eval("document.querySelector('.panel-scroll').scrollTop = 200; true");
   await sleep(100);
   const sheetTop = await p.eval("document.querySelector('.panel-scroll').scrollTop");
@@ -1506,12 +1587,12 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   const gotLegend = await p.waitFor("!!document.querySelector('.mass-legend')", 15000);
   const legend = await p.eval(`(() => { const u = document.querySelector('.mass-legend'); if (!u) return null;
     return { name: u.getAttribute('aria-label'), rows: [...u.querySelectorAll('li')].map((li) => li.textContent), swatchesHidden: [...u.querySelectorAll('svg')].every((v) => v.getAttribute('aria-hidden') === 'true'),
-      heading: document.getElementById('layers-heading')?.textContent, toggle: document.querySelector('#show-stress')?.closest('label')?.textContent.trim(),
+      heading: document.getElementById('layers-heading')?.textContent, toggle: document.getElementById(document.querySelector('#show-stress')?.getAttribute('aria-labelledby') ?? '')?.textContent.trim(),
       stressLegend: !!document.querySelector('[aria-label="Traffic stress legend"]') }; })()`);
   check("capacity: the legend lists the four bands in order, then Avoid, each in words, named for the speed",
     gotLegend && legend?.rows.length === 5 && JSON.stringify(legend.rows.slice(0, 4)) === JSON.stringify(["Under 60: bottleneck", "60 to 120: tight", "120 to 200: good", "200 and up: wide open"]) && legend.rows[4] === "Marked Avoid: no capacity given" && /^Riders per minute at 6 to 8 mph \(10 to 13 km\/h\)$/.test(legend.name), JSON.stringify(legend));
   check("capacity: its swatches are hidden from a screen reader, the heading and the switch say riders per minute, and no stress legend is there",
-    legend?.swatchesHidden && legend.heading === legend.name && /riders per minute/.test(legend.toggle) && !legend.stressLegend, JSON.stringify(legend));
+    legend?.swatchesHidden && legend.heading === legend.name && /riders per minute/i.test(legend.toggle ?? "") && !legend.stressLegend, JSON.stringify(legend));
   const axLegend = await axNode(p, ".mass-legend");
   check("capacity: the legend is a list a screen reader names", axLegend?.role === "list" && /^Riders per minute at 6 to 8 mph/.test(axLegend?.name ?? ""), JSON.stringify(axLegend));
   const notes = await p.eval("[...document.querySelectorAll('#sheet-legend .hint')].map((h) => h.textContent).join(' | ')");
@@ -3870,8 +3951,8 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   check("go: a phone with no link opens in Go: Menu, the Go/Plan switch (Go pressed), Layers and Locate over the map, and no bottom bar",
     go.mode === "Go" && go.top && !go.bar && JSON.stringify(go.topButtons) === JSON.stringify(["Menu", "Go", "Plan", "Layers", "Locate"]), JSON.stringify(go));
   // The owner, 2026-10-12: the rider's own ride type first (My Go; Default until set), then the two transit types.
-  check("go: the sheet has Where to?, the place chips Home, Food, Water and Restroom (no Work), and the ride types Default, Own Bike + Transit, Bikeshare + Transit and More ride types",
-    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Food", "Water", "Restroom"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Own Bike + Transit", "Bikeshare + Transit", "More ride types"]), JSON.stringify(go));
+  check("go: the sheet has Where to?, the place chips Home, Food, Water and Restroom (no Work), and the ride types Default, Own Bike + 🚆🚌, Bikeshare + 🚶🚆🚌 and More ride types",
+    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Food", "Water", "Restroom"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Own Bike + 🚆🚌Own bike plus train or bus", "Bikeshare + 🚶🚆🚌Bikeshare plus walk, train or bus", "More ride types"]), JSON.stringify(go));
   const own = await axNode(p, ".go-sheet .ride-chips .ride-type-chip");
   check("go: the first ride type is described as the rider's own, set in Settings", own?.name === "Default" && /^Your ride type\. Change it in Settings, under My Go\.$/.test(own?.description ?? ""), JSON.stringify(own));
   check("go: every control in the top bar and the sheet is 44 px or more each way, and nothing scrolls sideways at 390 px", go.small.length === 0 && !go.scroll, JSON.stringify(go.small));
@@ -4057,7 +4138,7 @@ async function goPressMap(p) {
   await sleep(800);
   const riding = await p.eval("({ ride: !!document.querySelector('section.ride'), ask: !!document.querySelector('.ride-ask:not([hidden])') })");
   check("go flow: from opening Go, a typed destination takes 3 taps to ride (Where to?, the place, then Start ride), with no question or sheet between, and the route options shown at once",
-    routed && riding.ride && !riding.ask && taps === 3 && options.rides.includes("Own Bike + Transit"), JSON.stringify({ taps, options, riding }));
+    routed && riding.ride && !riding.ask && taps === 3 && options.rides.includes("Own Bike + 🚆🚌Own bike plus train or bus"), JSON.stringify({ taps, options, riding }));
   await p.close();
 }
 
@@ -4079,7 +4160,7 @@ async function goPressMap(p) {
   await p.eval("(() => { const o = document.querySelector('.go-sheet .go-search [role=option]'); o.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); o.click(); return true; })()");
   taps += 1;
   await p.waitFor("!!document.querySelector('.go-route-rides .ride-chips button')", 20000);
-  await p.eval("[...document.querySelectorAll('.go-route-rides .ride-chips button')].find((x) => x.textContent.trim() === 'Own Bike + Transit').click(); true");
+  await p.eval("[...document.querySelectorAll('.go-route-rides .ride-chips button')].find((x) => x.textContent.trim() === 'Own Bike + 🚆🚌Own bike plus train or bus').click(); true");
   taps += 1;
   const planned = await p.waitFor("!!document.querySelector('ol.transit-steps li')", 20000);
   const trip = await p.eval(`(() => ({
@@ -4094,20 +4175,20 @@ async function goPressMap(p) {
     said: document.querySelector('.status-line')?.textContent ?? '',
     scroll: document.documentElement.scrollWidth > innerWidth }))()`);
   const list = await axNode(p, "ol.transit-steps");
-  check("transit (Go): destination, then one tap on Own Bike + Transit, plans the trip (3 taps), the chip pressed",
-    planned && taps === 3 && JSON.stringify(trip.pressed) === JSON.stringify(["Own Bike + Transit"]), JSON.stringify({ taps, trip }));
+  check("transit (Go): destination, then one tap on Own Bike + 🚆🚌, plans the trip (3 taps), the chip pressed",
+    planned && taps === 3 && JSON.stringify(trip.pressed) === JSON.stringify(["Own Bike + 🚆🚌Own bike plus train or bus"]), JSON.stringify({ taps, trip }));
   check("transit (Go): the steps are a list named Steps, in order, read in riding order: ride, into the station, board, out, ride",
     list?.role === "list" && list?.name === "Steps, in order" && trip.steps.length === 5 && /^Ride 4 min to Eastern Market\.$/.test(trip.steps[0]) && /^Board the Orange Line \(every 10 min, scheduled; about 5 min wait\); ride 10 min to Federal Triangle\.$/.test(trip.steps[2]) && /to your destination\.$/.test(trip.steps[4]),
     JSON.stringify({ list, steps: trip.steps }));
   check("transit (Go): the time shown is the door-to-door total, 'about' and named scheduled for a screen reader, with riding the whole way beside it",
-    trip.total === "about 28 min" && trip.totalName === "Door-to-door time, scheduled" && /^Own Bike \+ Transit: About 28 min door to door, scheduled$/.test(trip.heading ?? "") && /^Riding the whole way: about 32 min\./.test(trip.compare ?? ""),
+    trip.total === "about 28 min" && trip.totalName === "Door-to-door time, scheduled" && trip.heading === "Own Bike + 🚆🚌: About 28 min door to door, scheduledOwn bike plus train or bus: About 28 min door to door, scheduled" && /^Riding the whole way: about 32 min\./.test(trip.compare ?? ""),
     JSON.stringify(trip));
   check("transit (Go): the Metro line has a text marker, an image named in words (not colour alone)",
     trip.markers.length === 1 && trip.markers[0].role === "img" && trip.markers[0].label === "Metro, Orange Line, to Federal Triangle" && trip.markers[0].badge === "Metro" && trip.markers[0].hidden === "true",
     JSON.stringify(trip.markers));
   // The owner, 2026-10-12: riding the whole way is always an option; the options are a named list of toggle buttons.
   const options = await p.eval(`(() => ({
-    buttons: [...document.querySelectorAll('ol.transit-options button')].map((x) => ({ text: x.textContent.trim(), pressed: x.getAttribute('aria-pressed') })),
+    buttons: [...document.querySelectorAll('ol.transit-options button')].map((x) => ({ text: x.querySelector('[aria-hidden]')?.textContent.trim(), said: x.querySelector('.visually-hidden')?.textContent.trim(), pressed: x.getAttribute('aria-pressed') })),
     track: /Scheduled service; check for track work\./.test(document.querySelector('.transit-scheduled')?.textContent ?? '') }))()`);
   const optionList = await axNode(p, "ol.transit-options");
   check("transit (Go): the trips are a list named Trips, quickest first, lettered, the chosen one pressed, riding the whole way among them, and the track-work caution shown",
@@ -4115,7 +4196,7 @@ async function goPressMap(p) {
     JSON.stringify({ optionList, options }));
   check("transit (Go): the day's closed stations are asked for, to strike through on the map", p.closureRequests >= 1, String(p.closureRequests));
   check("transit (Go): the announcement is brief (the total and the comparison), no Start ride on the trip, nothing scrolls sideways",
-    /^Own Bike \+ Transit planned: About 28 min door to door, scheduled\. Riding the whole way/.test(trip.said) && !/Board the/.test(trip.said) && !trip.start && !trip.scroll,
+    /^Own bike plus train or bus planned: About 28 min door to door, scheduled\. Riding the whole way/.test(trip.said) && !/Board the/.test(trip.said) && !trip.start && !trip.scroll,
     JSON.stringify({ said: trip.said, start: trip.start, scroll: trip.scroll }));
   await p.shot(`${SHOTS}/transit_go.png`);
   await p.close();
@@ -4135,7 +4216,7 @@ async function goPressMap(p) {
   await p.waitFor("!!document.querySelector('.go-sheet .go-search [role=option]')", 15000);
   await p.eval("(() => { const o = document.querySelector('.go-sheet .go-search [role=option]'); o.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); o.click(); return true; })()");
   await p.waitFor("!!document.querySelector('.go-route-rides .ride-chips button')", 20000);
-  await p.eval("[...document.querySelectorAll('.go-route-rides .ride-chips button')].find((x) => x.textContent.trim() === 'Own Bike + Transit').click(); true");
+  await p.eval("[...document.querySelectorAll('.go-route-rides .ride-chips button')].find((x) => x.textContent.trim() === 'Own Bike + 🚆🚌Own bike plus train or bus').click(); true");
   const shown = await p.waitFor("!!document.querySelector('.departure-timer') && !!document.querySelector('.departure-label span')?.textContent", 20000);
   const first = await p.eval(`(() => ({
     text: document.querySelector('.departure-text')?.textContent ?? '',
@@ -4340,7 +4421,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 593;
+const EXPECTED = 611;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

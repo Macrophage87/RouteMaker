@@ -1,6 +1,7 @@
 import { METRO_LINES, PENN_LABEL, type RailVisibility } from "./lib/railStations.ts";
 import { PENN_COLOUR } from "./lib/railData.ts";
 import { OUTLINE } from "./lib/stationIcons.ts";
+import { LayerSection } from "./lib/layerSection.ts";
 
 // The map's icons are ringed in OUTLINE, for the light base map; the legend
 // sits on the panel, which is dark in the dark theme, so its ring follows the
@@ -52,12 +53,29 @@ interface Props {
   onChange: (visibility: RailVisibility) => void;
 }
 
-/** The panel's rail stations section: the two toggles and the legend. */
+/** Layers' one line for the section; RAIL_HELP, by the legend, says the rest. */
+export const RAIL_HINT = "Tap a station to start, end or pass through it.";
+export const RAIL_HELP =
+  "The route uses a station's elevator, or its nearest entrance where none is listed. The station's card also links to " +
+  "its WMATA page or the MARC Penn Line timetable, and the road info panel offers them for a station nearby.";
+
+/**
+ * The Layers sheet's rail stations section (lib/layerSection.ts): one row, its switch for Metro and MARC
+ * together, and inside, each one's own checkbox and one line. The legend and the longer help are behind
+ * Layers' Legend button (RailStationsLegend).
+ */
 export function RailStationsSection({ visibility, onChange }: Props) {
-  const metro = Object.values(METRO_LINES);
   return (
-    <section aria-labelledby="rail-heading">
-      <h3 id="rail-heading">Rail stations</h3>
+    <LayerSection
+      id="rail"
+      title="Rail stations"
+      headingId="rail-heading"
+      layers={[
+        { key: "metro", label: "Metro", on: visibility.metro },
+        { key: "marc", label: PENN_LABEL, on: visibility.marc },
+      ]}
+      onLayers={(next) => onChange({ ...visibility, metro: next.metro, marc: next.marc })}
+    >
       <label className="toggle">
         <input
           type="checkbox"
@@ -74,6 +92,16 @@ export function RailStationsSection({ visibility, onChange }: Props) {
         />
         {PENN_LABEL}, Washington to Baltimore
       </label>
+      <p className="hint">{RAIL_HINT}</p>
+    </LayerSection>
+  );
+}
+
+/** The Legend sheet's rail stations rows and help (moved from Layers, the owner's "less wordy", 2026-10-12). */
+export function RailStationsLegend() {
+  const metro = Object.values(METRO_LINES);
+  return (
+    <>
       <ul className="legend rail-legend" aria-label="Rail stations legend">
         {metro.map((line) => (
           <li key={line.key}>
@@ -100,10 +128,7 @@ export function RailStationsSection({ visibility, onChange }: Props) {
           <span className="stress-label">Stairs or escalator entrance (closer in)</span>
         </li>
       </ul>
-      <p className="hint">
-        Tap a station to start, end or pass through it there; the route uses its elevator, or its nearest entrance where none is listed.
-        The station's card also links to its WMATA page or the MARC Penn Line timetable, and the road info panel offers them for a station nearby.
-      </p>
-    </section>
+      <p className="hint">{RAIL_HELP}</p>
+    </>
   );
 }

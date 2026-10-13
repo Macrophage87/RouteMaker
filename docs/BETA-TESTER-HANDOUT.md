@@ -82,10 +82,16 @@ needed; reload the page to get the box back.
   region, also called "Beta notice", right after it: it says that routes may still use some
   paths where bikes are not allowed until the next map update. Press the button again, or
   Escape, to close it; the focus stays on the button. It is not shown in Ride mode.
-- The "High contrast" switch is in two places: the "Map layers" page (a button in the bar at
-  the bottom of the planner) and the "Settings" page (the last button in the same bar). It makes the lines bolder
-  and the borders and text stronger, and changes the stress colors to ones that do not rely
-  on red and green. Both switches are the same setting.
+- The "Layers" page (a button in the bar at the bottom of the planner) has one row per section:
+  Traffic stress, Water and restrooms, Rail stations and Trails and terrain (and Federal land on a
+  Mass Ride). Each row is the section's heading, a switch named for it, then a "layers" button that
+  says whether it is collapsed or expanded. The switch turns the whole section on or off; off
+  remembers which of its layers were on, and on brings those back. With only some on, it is on
+  and says "Some on" and which. Expand a row for each layer's own switch and a one-line hint; the
+  longer explanations are on the Legend page (the Legend button at the top of Layers).
+- The "High contrast" switch is on the "Settings" page (the last button in the same bar). It
+  makes the lines bolder and the borders and text stronger, and changes the stress colors to
+  ones that do not rely on red and green.
 - Ride mode (section 9) has its own heading, "Ride mode", which takes the focus when a ride
   starts. While it is on, the skip link says "Skip to ride mode" and the planner is hidden. Cues
   never move your focus: they are said through two live regions (the urgent ones, such as
@@ -194,17 +200,25 @@ RouteMaker can be installed like an app: it then opens from your home screen in 
 11. Bike and transit together
 -----------------------------
 
-In Go, the three main buttons are "Default" (your own ride type), "Own Bike + Transit" and
-"Bikeshare + Transit". Cargo and plain Bikeshare are under "More ride types", where every ride
+In Go, the three main buttons are "Default" (your own ride type), "Own Bike + 🚆🚌" and
+"Bikeshare + 🚶🚆🚌". Cargo and plain Bikeshare are under "More ride types", where every ride
 type is grouped under Transportation, Adventure or Group, with a search box over their names and
-descriptions. Plan's "Change" ride type list has the same search and groups.
+descriptions. Plan's "Change" ride type list has the same search and groups. Typing "transit",
+"walk", "train" or "bus" finds both transit types. A screen reader says their names in words:
+"Own bike plus train or bus" and "Bikeshare plus walk, train or bus".
 
 - Both transit types list a few trips, quickest first. "Ride the whole way" is always one of
   them. Press a trip to put it on the map and in the steps.
-- Own Bike + Transit takes your bike the whole way, on Metro, MARC, VRE, Light RailLink, Metro
+- A transit trip lists its legs with their minutes: "🚶 4 min · 🚲 12 min · 🔴 18 min". 🚶 is a
+  walk and 🚲 a bike. Metro shows its line's colour (🔴 Red, 🟠 Orange, 🔵 Blue, 🟢 Green, 🟡
+  Yellow, ⚪ Silver), a bus its route ("🚌C53"), MARC and VRE their line ("🚆Penn",
+  "🚆Fredericksburg"), Light RailLink 🚈 and Metro SubwayLink 🚇. A screen reader hears words
+  instead: "walk 4 minutes, bikeshare 12 minutes, Red Line 18 minutes".
+- Own Bike + 🚆🚌 takes your bike the whole way, on Metro, MARC, VRE, Light RailLink, Metro
   SubwayLink or a bus's front rack. It never asks you to leave the bike somewhere.
-- Bikeshare + Transit docks the bike before you board. At each end it walks or uses a bikeshare
-  bike, whichever is quicker. The docks are named.
+- Bikeshare + 🚶🚆🚌 docks the bike before you board. At each end it walks or uses a bikeshare
+  bike, whichever is quicker. The docks are named. It also offers "Walk the whole way" when
+  walking is quickest or the trip is under about 1 mile (1.6 km).
 - The steps show each ride, walk and train or bus in order, with the total door to door. They say
   how riding the whole way compares.
 - On the map, a dashed line is the ride on transit, marked with its system's name. A dotted line
@@ -223,9 +237,11 @@ descriptions. Plan's "Change" ride type list has the same search and groups.
   Its card says why, for example "Camden Station, closed: no MARC weekend service" (the Camden
   Line runs on weekdays only). Routes never use a closed station.
 - Bikes are allowed on Metro at all hours except a few special-event days, such as July 4. On
-  those days Own Bike + Transit uses no Metro and says so: "Bikes aren't allowed on Metro today
-  (July 4)." Bikeshare + Transit still uses Metro, because you walk on.
-- If the beta has no timetables installed, the transit ride types say transit times are not
-  available, and every other ride type works as usual.
+  those days Own Bike + 🚆🚌 uses no Metro and says so: "Bikes aren't allowed on Metro today
+  (July 4)." Bikeshare + 🚶🚆🚌 still uses Metro, because you walk on.
+- If the beta has no timetables installed, or they have run out, Metro still runs on its typical
+  timetable; the other systems wait until the timetables are rebuilt.
+- Before Metro opens, the step names the first train, for example "first train 5:00 am
+  scheduled".
 - Always check the agency for track work and service alerts before you go. RouteMaker does not
   see them.

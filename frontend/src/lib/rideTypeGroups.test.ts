@@ -61,7 +61,7 @@ test("the search matches the description, and each word must be there", () => {
   // Both words, anywhere in name or description.
   const both = filterRideGroups("metro dock").flatMap((g) => g.ids);
   assert.ok(both.includes("bikeshare-transit"));
-  assert.ok(!both.includes("bike-transit"), "Own Bike + Transit has no dock");
+  assert.ok(!both.includes("bike-transit"), "Own Bike + 🚆🚌 has no dock");
 });
 
 test("a hyphen or an apostrophe does not stop a match", () => {
@@ -128,4 +128,14 @@ test("Go's More ride types and Plan's dialog: the search first, then each group 
 test("Go's three main buttons are as the transit lane left them", () => {
   const app = src("../App.tsx");
   assert.match(app, /<RideChips ids=\{goRideChips\(myGo\.ride\)\}[^>]*more=\{\(opener\) => openView\("ride", opener\)\}/);
+});
+
+test("the transit types are found by transit, walk, train or bus, though their names show emoji", () => {
+  // Stephen, 2026-10-12: renamed "Own Bike + 🚆🚌" and "Bikeshare + 🚶🚆🚌"; the search still finds them.
+  const found = (query: string) => filterRideGroups(query).flatMap((group) => group.ids);
+  for (const word of ["transit", "train", "bus", "Transit"]) {
+    assert.ok(found(word).includes("bike-transit") && found(word).includes("bikeshare-transit"), word);
+  }
+  assert.ok(found("walk").includes("bikeshare-transit"));
+  assert.ok(found("plus walk").includes("bikeshare-transit"));
 });

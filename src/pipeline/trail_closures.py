@@ -28,6 +28,7 @@ from .extract import Way
 from .restricted_areas import (
     MILITARY_NO_BICYCLE,
     SECURED_NO_BICYCLE,
+    WORKS_NO_BICYCLE,
     Area,
     reopened_by_override,
     ways_inside,
@@ -44,10 +45,12 @@ PARK_RULES: Mapping[int, str] = {}
 # Precedence, first match wins: a rule above has already said what the way is.
 # A military area's closure (`restricted_areas.military_closures`) comes first: no graph
 # reopens it, the off-road one included, whatever else the way is; and a secured
-# federal compound's (`restricted_areas.secured_closures`, owner report 2026-10-06) next.
+# federal compound's (`restricted_areas.secured_closures`, owner report 2026-10-06) next,
+# and a working site's (`restricted_areas.works_closures`, owner report 2026-10-12).
 ORDER = (
     MILITARY_NO_BICYCLE,
     SECURED_NO_BICYCLE,
+    WORKS_NO_BICYCLE,
     "zoo",
     singletrack.NO_BICYCLE,
     cbd.NO_BICYCLE,
@@ -125,7 +128,7 @@ def mtb_level(reason: str | None, tags: dict[str, str]) -> int | None:
     `routemaker.singletrack.mtb_level` on a way closed as rated singletrack, None on every
     other. So a level always means closed on every graph, and the legend's "Not used for
     routes" holds for every coloured line: a mountain-bike-class way whose rating the
-    singletrack rule does not read (`S2`, `0-2`) stays the grey dots the off-road graph
+    singletrack rule does not read (`S2`, `0-2`) stays the grey dashes the off-road graph
     rides (review of slice 2)."""
     return singletrack.mtb_level(tags) if reason == singletrack.NO_BICYCLE else None
 
@@ -159,10 +162,12 @@ def closures(
     military: Collection[int] = frozenset(),
     secured: Collection[int] = frozenset(),
     reopened: Collection[int] = frozenset(),
+    works: Collection[int] = frozenset(),
 ) -> TrailClosures:
     """Every NO-BIKE-PATHS closure, by way, and the ways `military` names (closed
     inside a military area, owner report 2026-10-05) and `secured` names (closed
-    inside a secured federal compound, 2026-10-06) under their own reasons.
+    inside a secured federal compound, 2026-10-06) and `works` names (closed inside a
+    quarry, a landfill or an industrial area, 2026-10-12) under their own reasons.
 
     `reopened` are the ways an approved access override wrote a bicycle key on. A
     mountain-bike-class way whose override lets a bicycle through is open, and so
@@ -185,7 +190,7 @@ def closures(
     spur = zoo.spur_ways()
     for way in ways:
         osm_id, tags = way.osm_id, way.tags
-        if osm_id in spur and osm_id not in military and osm_id not in secured:
+        if osm_id in spur and not (osm_id in military or osm_id in secured or osm_id in works):
             # Open and destination-only: no rule closes it (and nothing but the
             # Zoo rule would), so it is not asked.
             result.destination_only.add(osm_id)
@@ -195,6 +200,8 @@ def closures(
             reason = MILITARY_NO_BICYCLE
         elif osm_id in secured:
             reason = SECURED_NO_BICYCLE
+        elif osm_id in works:
+            reason = WORKS_NO_BICYCLE
         elif zoo.closed_way(osm_id, tags, way.coordinates, zoo_polygon):
             reason = zoo.NO_BICYCLE
         elif singletrack.is_singletrack(tags):

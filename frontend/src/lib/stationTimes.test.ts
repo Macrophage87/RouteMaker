@@ -119,7 +119,11 @@ test("the station's card and the road panel's nearby station say the times, emoj
   assert.match(card, /if \(!closed\) \{\s+const times = document\.createElement\("ul"\)/);
   assert.match(card, /requestStationTimes\(station\.point\)/);
   const panel = src("RoadInfoDialog.tsx");
-  assert.match(panel, /<StationTimesList station=\{station\} \/>/);
+  // The panel shows what the card shows: the toggles' systems, and no times for a closed station.
+  assert.match(panel, /<StationTimesList station=\{station\} rail=\{rail\} closed=\{Boolean\(stationClosed\?\.\(station\)\)\} \/>/);
+  assert.match(panel, /stationTimeRows\(shownLines\(times\.lines, rail\)\)/);
+  assert.match(panel, /if \(closed\) return;/);
+  assert.match(src("App.tsx"), /rail=\{rail\}\s+stationClosed=\{railClosedReason\}/);
   assert.match(panel, /<span aria-hidden="true">\{row\.shown\}<\/span>/);
   // Nothing new to press: no button or toggle comes with the times.
   assert.doesNotMatch(src("lib/stationTimes.ts"), /button|checkbox/);

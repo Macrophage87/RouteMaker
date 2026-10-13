@@ -41,10 +41,11 @@ import {
   FederalLandFor,
   FederalLandSection,
   FederalLegend,
+  FederalLegendNotes,
   federalPointText,
   federalStatusText,
 } from "./federalLegend.ts";
-import { PRESETS } from "./presets.ts";
+import { PRESETS, type PresetId } from "./presets.ts";
 import { MAP_ATTRIBUTION, MAP_CREDITS } from "./mapStyle.ts";
 import { appSource } from "../testSupport/appSource.mjs";
 
@@ -249,34 +250,42 @@ test("the legend lists every kind in the data with its pattern in words and its 
   assert.match(html, /aria-hidden="true"/, "the swatch is decoration; the words carry it");
 });
 
-test("the section: a labelled switch, the legend, the note; the legend goes when it is off or unavailable", () => {
+test("the section: one row, its switch named Federal land, the note inside; the legend and help are the Legend sheet's", () => {
   const render = (on: boolean, status: "loading" | "ready" | "unavailable") =>
     renderToStaticMarkup(createElement(FederalLandSection, { on, onChange: () => {}, status }));
   const shown = render(true, "ready");
   assert.match(shown, new RegExp(`<h3 id="federal-heading">${FEDERAL_HEADING}</h3>`));
-  assert.match(shown, /Show federal land on the map/);
-  assert.match(shown, /checked=""/);
+  assert.match(shown, /<button type="button" role="switch" id="federal-section-switch" class="switch section-switch" aria-checked="true" aria-labelledby="federal-heading">/);
+  assert.match(render(false, "ready"), /id="federal-section-switch" class="switch section-switch" aria-checked="false"/);
+  assert.match(shown, /aria-expanded="false" aria-controls="federal-section-body"/);
   assert.match(shown, /Federal land - permit rules may differ \(information, not legal advice\)\./);
-  assert.match(shown, /marks federal land by kind/);
-  assert.match(shown, /Ownership is not police jurisdiction/);
-  // The help is two short paragraphs, the ownership caveat its own; nothing promised, no "above" (the a11y review's SF6).
-  assert.ok(shown.includes(`<p class="hint">${FEDERAL_HELP}</p><p class="hint">${FEDERAL_OWNERSHIP}</p>`));
+  // Less wordy (the owner, 2026-10-12): the legend, the help and the ownership caveat are in the Legend sheet.
+  assert.doesNotMatch(shown, /federal-legend|marks federal land by kind|Ownership is not police jurisdiction/);
   for (const text of [FEDERAL_HELP, FEDERAL_OWNERSHIP]) {
     assert.doesNotMatch(text, /coming|above/, text);
     assert.ok(text.split(" ").length <= 40, `${text.split(" ").length} words`);
   }
-  assert.match(shown, /federal-legend/);
-  assert.doesNotMatch(render(false, "ready"), /federal-legend/);
-  const unavailable = render(true, "unavailable");
-  assert.ok(unavailable.includes(FEDERAL_UNAVAILABLE));
-  assert.doesNotMatch(unavailable, /federal-legend/);
+  assert.ok(render(true, "unavailable").includes(FEDERAL_UNAVAILABLE));
   assert.match(render(true, "loading"), /role="status"[^>]*>Loading federal land/);
+});
+
+test("the Legend sheet's federal part: a Mass Ride's, with the layer on: the legend (unless unavailable), the badge, the help, the caveat", () => {
+  const notes = (preset: PresetId, on: boolean, status: "loading" | "ready" | "unavailable") =>
+    renderToStaticMarkup(createElement(FederalLegendNotes, { preset, on, status }));
+  const shown = notes("mass-ride", true, "ready");
+  assert.match(shown, /federal-legend/);
+  // The help is two short paragraphs, the ownership caveat its own (the a11y review's SF6).
+  assert.ok(shown.includes(`<p class="hint">${FEDERAL_HELP}</p><p class="hint">${FEDERAL_OWNERSHIP}</p>`));
+  assert.doesNotMatch(notes("mass-ride", true, "unavailable"), /federal-legend/);
+  assert.equal(notes("mass-ride", false, "ready"), "");
+  assert.equal(notes("default", true, "ready"), "");
+  assert.match(readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8"), /<FederalLegendNotes preset=\{preset\} on=\{federalOn\} status=\{federalStatus\} \/>/);
 });
 
 test("the status line is one persistent role=status element whose words change, empty when there is nothing to say (the a11y review's N8)", () => {
   const status = (on: boolean, s: "loading" | "ready" | "unavailable") => {
     const html = renderToStaticMarkup(createElement(FederalLandSection, { on, onChange: () => {}, status: s }));
-    const found = [...html.matchAll(/<p class="hint federal-status" role="status">([^<]*)<\/p>/g)];
+    const found = [...html.matchAll(/<p class="hint layer-section-status" role="status">([^<]*)<\/p>/g)];
     assert.equal(found.length, 1, `${on} ${s}: one status line`);
     assert.equal((html.match(/role="status"/g) ?? []).length, 1, "and no other");
     return found[0][1];
@@ -440,9 +449,8 @@ test("every ride type but Mass Ride has no federal switch, legend, help or point
         createElement(FederalLandFor, { preset: preset.id, on, onChange: () => {}, status: "ready", points: [{ index: 0, name: "The Mall", manager: "NPS" }], pointCount: 2, nameOf: () => "Start" }),
       );
       if (preset.id === "mass-ride") {
-        assert.match(html, /Show federal land on the map/, `${preset.id}: the switch`);
+        assert.match(html, /id="federal-section-switch"/, `${preset.id}: the switch`);
         assert.match(html, /Your points on federal land:/);
-        assert.match(html, on ? /federal-legend/ : /^(?!.*federal-legend)/s, `${preset.id} ${on}: the legend with the switch`);
       } else {
         assert.equal(html, "", `${preset.id} (switch ${on ? "on" : "off"}): nothing`);
       }

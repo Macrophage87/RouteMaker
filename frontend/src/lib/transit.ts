@@ -1,6 +1,6 @@
 /**
- * The transit ride types on the page (TRANSIT-ASSIST; Stephen, 2026-10-12): Own Bike + Transit and
- * Bikeshare + Transit. The API answers each with its best combination (core.transit): the route's
+ * The transit ride types on the page (TRANSIT-ASSIST; Stephen, 2026-10-12): Own Bike + 🚆🚌 and
+ * Bikeshare + 🚶🚆🚌. The API answers each with its best combination (core.transit): the route's
  * line is the first ride leg, and the route's `transit` object is the whole trip, step by step, with
  * a scheduled total and the time of riding the whole way. These are the words, the map's lines and
  * markers and the credit, as plain functions so they can be tested without a browser.
@@ -11,7 +11,8 @@
 import type { ClosedStation, RouteResponse, TransitOption, TransitPlan, TransitStep } from "./api.ts";
 import type { Dials } from "./dials.ts";
 import type { LonLat } from "./geo.ts";
-import { isTransit, presetLabel, type PresetId } from "./presets.ts";
+import { isTransit, presetSaid, type PresetId } from "./presets.ts";
+import { legsSaid, legsText } from "./transitMarks.ts";
 
 export function transitOf(route: Pick<RouteResponse, "transit"> | null | undefined): TransitPlan | null {
   return route?.transit ?? null;
@@ -29,9 +30,24 @@ export const OPTIONS_LABEL = "Trips, quickest first";
 /** Said under every transit plan: the timetables carry only the closures an agency published in them. */
 export const TRACK_WORK = "Scheduled service; check for track work.";
 
-/** An option as its button and a screen reader say it: "A. Ride the whole way: about 12 min". */
-export function optionText(option: Pick<TransitOption, "label" | "minutes">, index: number): string {
-  return `${String.fromCharCode(65 + index)}. ${option.label}: about ${option.minutes} min`;
+/** Whether an option's row shows its legs as marks: a trip with a transit leg (Stephen, 2026-10-12). */
+function marked(option: Pick<TransitOption, "legs">): boolean {
+  return (option.legs ?? []).some((leg) => leg.mode !== "walk" && leg.mode !== "ride" && leg.mode !== "bikeshare");
+}
+
+/**
+ * An option as its button shows it: "A. Ride the whole way: about 12 min", and a transit trip by its
+ * legs, "B. 🚶 4 min · 🔴 18 min · 🚶 3 min: about 25 min" (the marks aria-hidden: `optionSaid`).
+ */
+export function optionText(option: Pick<TransitOption, "label" | "minutes" | "legs">, index: number): string {
+  const what = marked(option) ? legsText(option.legs ?? []) : option.label;
+  return `${String.fromCharCode(65 + index)}. ${what}: about ${option.minutes} min`;
+}
+
+/** The same option in words: "B. walk 4 minutes, Red Line 18 minutes, walk 3 minutes: about 25 min". */
+export function optionSaid(option: Pick<TransitOption, "label" | "minutes" | "legs">, index: number): string {
+  const what = marked(option) ? legsSaid(option.legs ?? []) : option.label;
+  return `${String.fromCharCode(65 + index)}. ${what}: about ${option.minutes} min`;
 }
 
 /** What is said when an option is chosen. */
@@ -60,7 +76,7 @@ export function closedName(station: Pick<ClosedStation, "name" | "reason">): str
 export function transitSaid(route: Pick<RouteResponse, "transit">): string | null {
   const plan = transitOf(route);
   if (!plan) return null;
-  const parts = [`${presetLabel(plan.mode)} planned: ${plan.summary}`];
+  const parts = [`${presetSaid(plan.mode)} planned: ${plan.summary}`];
   if (plan.comparison) parts.push(plan.comparison);
   if (plan.bike_blackout) parts.push("Bikes aren't allowed on Metro today.");
   return parts.join(" ");
