@@ -723,6 +723,12 @@ def test_after_midnight_a_station_that_runs_on_the_new_date_is_not_closed(schedu
     # A plan at 1 am still waits for the trains' actual times: nothing runs until the morning.
     plan = plan_bike(schedule, NOMA, BALTIMORE, at(2026, 10, 5, 1, 0))
     assert [o.direct for o in plan.options] == [True]
+    # Its notes say the lines that run on Monday are out of their hours, not "no weekend
+    # service"; at 1 am Sunday they still are "no weekend service".
+    assert "MARC Camden Line: no service at this time." in plan.notes
+    assert not any("weekend" in note for note in plan.notes)
+    sunday = plan_bike(schedule, NOMA, BALTIMORE, at(2026, 10, 4, 1, 0))
+    assert "MARC Camden Line: no weekend service." in sunday.notes
 
 
 # --- A station's times, for its card on the map (the owner, 2026-10-12) ---------------------
@@ -915,6 +921,21 @@ def test_the_planner_and_the_station_card_time_a_train_alike_across_a_band_edge(
     bravo = list(branch.stops[1].point)
     found = transit.station_times(branch, bravo, at(2026, 9, 30, 15, 1))
     assert ("Delta", 16 * 60 + 20) in [(t.toward, t.depart) for t in found]
+    # Down the line too: the planner's arrival at Charlie and Delta is when the card's timing
+    # has that train there. The 2:50 pm boards Bravo at 3:00 (an evening-rush minute) yet rides
+    # on midday times: at Charlie 3:10 and Delta 3:20, not 3:20 and 3:40.
+    down = {
+        later: sorted(transit._departures_at(branch.active(date(2026, 9, 30)), pattern, later))
+        for later in (2, 3)
+    }
+    assert down == {2: [15 * 60 + 10, 16 * 60 + 40], 3: [15 * 60 + 20, 17 * 60]}
+    for minute in [*range(14 * 60 + 45, 15 * 60 + 1), *range(15 * 60 + 21, 16 * 60 + 21)]:
+        moment = transit.moment_of(at(2026, 9, 30, minute // 60, minute % 60))
+        hops = transit._Day(branch, moment, bike=False).reach(1, moment.minute, {0})
+        trip = 0 if minute <= 15 * 60 else 1
+        for later, times in down.items():
+            hop = hops[pattern.stops[later]]
+            assert hop.depart + hop.ride_s / 60.0 == times[trip], (minute, later)
 
 
 def test_no_bike_on_metro_on_a_blackout_date_said_plainly_and_metro_on_foot_still_fine() -> None:

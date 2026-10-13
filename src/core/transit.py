@@ -953,7 +953,11 @@ class _Day:
         `minute` (enough to tell a frequent service from a near pair). Each trip is timed with
         the run times of its own band (the band it starts in), as the station card's are
         (`_departures_at`), so a trip that started before a band edge keeps its own times."""
-        found: list[float] = []
+        return [at for at, _start in self.trips_from(pattern, pos, minute)]
+
+    def trips_from(self, pattern: Pattern, pos: int, minute: float) -> list[tuple[float, int]]:
+        """`departures`, each with its trip's start minute (whose band times the rest of it)."""
+        found: list[tuple[float, int]] = []
         reach = [runs[pos] / 60.0 for runs in pattern.runs if runs is not None]
         if not reach:
             reach = [pattern.runs_at(minute)[pos] / 60.0]
@@ -978,7 +982,7 @@ class _Day:
                     continue
                 if at < minute or not self.boards(pattern, at, encoded):
                     continue
-                found.append(at)
+                found.append((at, start))
                 taken += 1
                 if taken == DEPARTURES_SEEN:
                     break
@@ -997,10 +1001,13 @@ class _Day:
             if patterns is not None and p_index not in patterns:
                 continue
             pattern = schedule.patterns[p_index]
-            deps = self.departures(pattern, pos, minute)
-            if not deps or deps[0] - minute > MAX_WAIT_MIN:
+            trips = self.trips_from(pattern, pos, minute)
+            if not trips or trips[0][0] - minute > MAX_WAIT_MIN:
                 continue
-            runs = pattern.runs_at(deps[0])
+            deps = [at for at, _start in trips]
+            # The ride by the first trip's own band, as its departure is: down the line it
+            # arrives when the station card says it leaves there.
+            runs = pattern.runs_at(trips[0][1])
             for later in range(pos + 1, len(pattern.stops)):
                 to = pattern.stops[later]
                 if to == stop or (targets is not None and to not in targets):
@@ -1551,11 +1558,14 @@ def _idle(day: _Day, stops) -> list[str]:
             if schedule.systems[pattern.system].idle_notes:
                 routes.setdefault((pattern.system, pattern.route), []).append(pattern)
     notes = []
+    running = running_services(schedule, moment)
     for (system_index, route), found in sorted(routes.items()):
         system = schedule.systems[system_index]
         services = {s for p in found for s in p.trips}
         name = system.route_name(route)
-        if not services & day.active:
+        # After midnight a line that runs on the new date is not "no weekend service": it is
+        # out of its hours (`closed_stations`' rule).
+        if not services & running:
             if moment.holiday:
                 notes.append(f"{name}: no holiday service.")
             elif moment.weekend:
@@ -1623,6 +1633,16 @@ def choose(plan: Plan, key: str | None) -> Plan:
     return replace(plan, chosen=0, asked=key)
 
 
+def running_services(schedule: Schedule, moment: Moment) -> frozenset[int]:
+    """The services that make a line "running" for the moment's words: its service day's, and
+    between midnight and 3 am (the day before's service day) the new date's too, since its first
+    train that morning is said (`station_times`). Plans still wait for actual departures."""
+    active = schedule.active(moment.service_day)
+    if moment.service_day != moment.date:
+        active = active | schedule.active(moment.date)
+    return active
+
+
 @dataclass(frozen=True)
 class Closed:
     stop: Stop
@@ -1640,9 +1660,7 @@ def closed_stations(schedule: Schedule, moment: Moment) -> list[Closed]:
     map's word changes; a plan still waits for the trains' actual departures."""
     if not schedule.covers(moment.service_day):
         return []
-    active = schedule.active(moment.service_day)
-    if moment.service_day != moment.date:
-        active = active | schedule.active(moment.date)
+    active = running_services(schedule, moment)
     serving: dict[int, bool] = {}
     for pattern in schedule.patterns:
         runs = any(service in active for service in pattern.trips)
