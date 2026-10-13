@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import type { ClosedStation } from "./api.ts";
-import { MATCH_M, closedLabel, closedReason, matchClosures, requestClosures, serviceDayOf } from "./railClosures.ts";
+import { MATCH_M, closedLabel, closedReason, closuresDayOf, matchClosures, requestClosures, serviceDayOf } from "./railClosures.ts";
 import { railFeatures, closedIconId, type Station } from "./railStations.ts";
 import { railImages, railLayers, RAIL_LAYERS } from "./railLayer.ts";
 import { CLOSED_STRIKE, closedStationIcon, hexToRgb } from "./stationIcons.ts";
@@ -108,6 +108,14 @@ test("the service day turns over at 3 am in Washington", () => {
   assert.equal(serviceDayOf(Date.parse("2026-10-17T02:59:00-04:00")), "2026-10-16");
   assert.equal(serviceDayOf(Date.parse("2026-10-17T03:00:00-04:00")), "2026-10-17");
   assert.equal(serviceDayOf(Date.parse("2026-12-31T23:30:00-05:00")), "2026-12-31");
+});
+
+test("the closures are asked again at midnight, when a line running on the new date opens, and at 3 am", () => {
+  const sunday = closuresDayOf(Date.parse("2026-10-18T23:59:00-04:00"));
+  const night = closuresDayOf(Date.parse("2026-10-19T00:00:00-04:00"));
+  const monday = closuresDayOf(Date.parse("2026-10-19T03:00:00-04:00"));
+  assert.equal(new Set([sunday, night, monday]).size, 3);
+  assert.equal(night, closuresDayOf(Date.parse("2026-10-19T02:59:00-04:00")));
 });
 
 test("the closures are asked for; a server without timetables, or no answer, greys nothing and is asked again", async () => {

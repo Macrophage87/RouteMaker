@@ -700,6 +700,37 @@ def test_a_station_closed_for_the_day_is_one_with_no_service_at_all_that_day(sch
     assert "Eastern Market" in {c.stop.name for c in sunday}
 
 
+def test_after_midnight_a_station_that_runs_on_the_new_date_is_not_closed(schedule) -> None:
+    # 1 am Monday is still Sunday's service day, when MARC's Camden Line and (in this fixture)
+    # Metro do not run; but both run on Monday, so no station is closed: its card gives
+    # Monday's first train instead.
+    night = transit.moment_of(at(2026, 10, 5, 1, 0))
+    assert night.service_day == date(2026, 10, 4)
+    assert transit.closed_stations(schedule, night) == []
+    camden = next(s for s in schedule.stops if s.name == "Camden Station")
+    first = [
+        (t.kind, t.service_day)
+        for t in transit.station_times(schedule, list(camden.point), at(2026, 10, 5, 1, 0))
+        if t.route == "Camden Line"
+    ]
+    assert first == [("next", date(2026, 10, 5))]
+    # Before midnight it is closed, and 1 am Sunday (Saturday's service day, no MARC on Sunday
+    # either) it still is.
+    sunday_night = transit.closed_stations(schedule, transit.moment_of(at(2026, 10, 4, 23, 30)))
+    assert "Eastern Market" in {c.stop.name for c in sunday_night}
+    saturday_night = transit.closed_stations(schedule, transit.moment_of(at(2026, 10, 4, 1, 0)))
+    assert "Camden Station" in {c.stop.name for c in saturday_night}
+    # A plan at 1 am still waits for the trains' actual times: nothing runs until the morning.
+    plan = plan_bike(schedule, NOMA, BALTIMORE, at(2026, 10, 5, 1, 0))
+    assert [o.direct for o in plan.options] == [True]
+    # Its notes say the lines that run on Monday are out of their hours, not "no weekend
+    # service"; at 1 am Sunday they still are "no weekend service".
+    assert "MARC Camden Line: no service at this time." in plan.notes
+    assert not any("weekend" in note for note in plan.notes)
+    sunday = plan_bike(schedule, NOMA, BALTIMORE, at(2026, 10, 4, 1, 0))
+    assert "MARC Camden Line: no weekend service." in sunday.notes
+
+
 # --- A station's times, for its card on the map (the owner, 2026-10-12) ---------------------
 
 UNION_STATION = [-77.0063, 38.8971]
@@ -803,9 +834,10 @@ def test_the_night_the_clocks_go_back_says_the_times_the_station_clock_shows() -
     assert {transit.clock(t.depart, t.service_day) for t in after} == {"6:22 am", "6:38 am"}
 
 
-def _branch_schedule() -> transit.Schedule:
+def _branch_schedule(first: int = 13 * 60) -> transit.Schedule:
     """One commuter route along a line, A-B-C-D, with a short turn each way (B-C, C-A; its run
-    times slower in the evening rush than in the midday), weekday service only."""
+    times slower in the evening rush than in the midday), weekday service only; the first train
+    toward Delta leaves Alpha at `first`, the second at 16:00."""
     system = transit.System(
         0, "test-rail", "MARC", transit.RAIL, "the MARC {route}", "", True, "all", "", ""
     )
@@ -843,7 +875,7 @@ def _branch_schedule() -> transit.Schedule:
             "Penn Line",
             (0, 1, 2, 3),
             runs((0, 600, 1200, 1800), True),
-            trips(13 * 60, 16 * 60),
+            trips(first, 16 * 60),
         ),
         transit.Pattern(1, 0, "Penn Line", (1, 2), runs((0, 600), False), trips(14 * 60 + 5)),
         transit.Pattern(
@@ -872,6 +904,38 @@ def test_a_short_turn_heads_the_way_its_route_does_and_each_departure_takes_its_
     # run times (20 min), not the midday's the request was made in (10 min).
     later = transit.station_times(branch, bravo, at(2026, 9, 30, 14, 6))
     assert (later[0].toward, later[0].depart) == ("Delta", 16 * 60 + 20)
+
+
+def test_the_planner_and_the_station_card_time_a_train_alike_across_a_band_edge() -> None:
+    # The 2:50 pm from Alpha runs on midday times (10 min to Bravo): it leaves Bravo at 3:00,
+    # though a request at 3:01 is in the evening rush (20 min). Neither the planner nor the card
+    # offers it at 3:01; both offer the 4:00 pm (by the evening's times, at Bravo 4:20).
+    branch = _branch_schedule(first=14 * 60 + 50)
+    pattern = branch.patterns[0]
+    card = sorted(transit._departures_at(branch.active(date(2026, 9, 30)), pattern, 1))
+    assert card == [15 * 60, 16 * 60 + 20]
+    for minute in range(14 * 60 + 45, 16 * 60 + 25):
+        moment = transit.moment_of(at(2026, 9, 30, minute // 60, minute % 60))
+        planner = transit._Day(branch, moment, bike=False).departures(pattern, 1, moment.minute)
+        assert planner == [t for t in card if t >= moment.minute], minute
+    bravo = list(branch.stops[1].point)
+    found = transit.station_times(branch, bravo, at(2026, 9, 30, 15, 1))
+    assert ("Delta", 16 * 60 + 20) in [(t.toward, t.depart) for t in found]
+    # Down the line too: the planner's arrival at Charlie and Delta is when the card's timing
+    # has that train there. The 2:50 pm boards Bravo at 3:00 (an evening-rush minute) yet rides
+    # on midday times: at Charlie 3:10 and Delta 3:20, not 3:20 and 3:40.
+    down = {
+        later: sorted(transit._departures_at(branch.active(date(2026, 9, 30)), pattern, later))
+        for later in (2, 3)
+    }
+    assert down == {2: [15 * 60 + 10, 16 * 60 + 40], 3: [15 * 60 + 20, 17 * 60]}
+    for minute in [*range(14 * 60 + 45, 15 * 60 + 1), *range(15 * 60 + 21, 16 * 60 + 21)]:
+        moment = transit.moment_of(at(2026, 9, 30, minute // 60, minute % 60))
+        hops = transit._Day(branch, moment, bike=False).reach(1, moment.minute, {0})
+        trip = 0 if minute <= 15 * 60 else 1
+        for later, times in down.items():
+            hop = hops[pattern.stops[later]]
+            assert hop.depart + hop.ride_s / 60.0 == times[trip], (minute, later)
 
 
 def test_no_bike_on_metro_on_a_blackout_date_said_plainly_and_metro_on_foot_still_fine() -> None:
