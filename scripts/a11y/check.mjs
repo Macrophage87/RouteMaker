@@ -3999,11 +3999,17 @@ async function goPressMap(p) {
   await goPick(p, ".go-sheet .go-search", "Union");
   await sleep(1200);
   const waiting = await p.eval("document.querySelector('.go-notice')?.textContent ?? ''");
+  // Everything said from the press on: "Destination set: …", then the notice asking for a start. Not the last few
+  // entries: the map's own status lines (the zoom note, the contours) are recorded again after each change, so an
+  // announcement followed by another falls out of a short tail.
+  const saidBefore = await p.eval("window.__said.length");
   const at = await goPressMap(p);
   await sleep(1200);
-  const after = await p.eval("({ notice: document.querySelector('.go-notice')?.textContent ?? '', hash: location.hash, box: !document.querySelector('.go-start-search').hidden, said: window.__said.slice(-4) })");
-  check("go press: with the location denied, a press on the map replaces the waiting destination and is not the start (\"To <spot>. Current location not available; type a start.\", no points yet)",
-    waiting.startsWith("To Union Station.") && !!at && /^To 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(after.notice) && !/p=/.test(after.hash) && after.box && after.said.some((t) => /^Destination set: 38\.\d{4}, -77\.\d{4}\.$/.test(t)), JSON.stringify({ waiting, at, after }));
+  const after = await p.eval(`({ notice: document.querySelector('.go-notice')?.textContent ?? '', hash: location.hash, box: !document.querySelector('.go-start-search').hidden, said: window.__said.slice(${saidBefore}).filter((t) => /^(Destination set|To )/.test(t)) })`);
+  const setAt = after.said.findIndex((t) => /^Destination set: 38\.\d{4}, -77\.\d{4}\.$/.test(t));
+  check("go press: with the location denied, a press on the map replaces the waiting destination and is not the start (said \"Destination set: <spot>.\", then \"To <spot>. Current location not available; type a start.\", no points yet)",
+    waiting.startsWith("To Union Station.") && !!at && /^To 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(after.notice) && !/p=/.test(after.hash) && after.box &&
+      setAt >= 0 && after.said.slice(setAt + 1).includes(after.notice), JSON.stringify({ waiting, at, after }));
   await p.close();
 }
 {
