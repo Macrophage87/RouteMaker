@@ -9,6 +9,7 @@ it, what is kept, and why the search stops.
 from __future__ import annotations
 
 import dataclasses
+import gc
 import tempfile
 
 import pytest
@@ -2553,9 +2554,20 @@ class TestSeekLegByLeg:
     def test_a_late_leg_is_held_to_the_seeks_stop(self, monkeypatch) -> None:
         # 2.3 s left (mutant R8): the leg's least (2.5 s) may not run past the stop
         # and into the time kept back for the answer's traces.
-        ctx = self.leg_context(2, deadline_s=refine.REFINE_TRACE_RESERVE_S + 2.3)
-        worse = {f"t{i}": analysis(f"t{i}", "1" * 40, cost_s=9000.0) for i in (1, 2)}
-        world, _kept, _info = self.plan(monkeypatch, worse, [one_leg("t1"), one_leg("t2")], ctx=ctx)
+        # The deadline is wall-clock, 0.3 s above the seek's least round: a full garbage
+        # collection of the whole suite's heap landing inside it (deterministic, by
+        # allocation count, in CI's single process) ate those 0.3 s and the leg was never
+        # asked. Collected first and held off while the seek runs.
+        gc.collect()
+        gc.disable()
+        try:
+            ctx = self.leg_context(2, deadline_s=refine.REFINE_TRACE_RESERVE_S + 2.3)
+            worse = {f"t{i}": analysis(f"t{i}", "1" * 40, cost_s=9000.0) for i in (1, 2)}
+            world, _kept, _info = self.plan(
+                monkeypatch, worse, [one_leg("t1"), one_leg("t2")], ctx=ctx
+            )
+        finally:
+            gc.enable()
         assert world.deadlines[0] == pytest.approx(2.3, abs=0.1)
         assert max(world.deadlines) <= 2.3 + 0.05
 

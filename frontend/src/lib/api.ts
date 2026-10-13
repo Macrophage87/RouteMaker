@@ -522,6 +522,32 @@ export interface ClosedStation {
   reason: string;
 }
 
+/** One line's times at a station now (GET /api/transit/station-times; core.transit.station_times). */
+export interface StationLineTime {
+  /** "Metro", "MARC", "VRE", "Light RailLink". */
+  system: string;
+  /** "Red Line", "Penn Line". */
+  line: string;
+  /** The stop's name in the timetable. */
+  station: string;
+  /** every: a frequent line's minutes between trains; next: the next train one way; none: no more today that way. */
+  kind: "every" | "next" | "none";
+  every_min: number | null;
+  /** The train's last stop; null on a `none` for both ways. */
+  toward: string | null;
+  /** Local clock time: "5:42 pm". */
+  time: string | null;
+  at: string | null;
+  /** Whether the line runs at all today (that way). */
+  today: boolean;
+}
+
+export interface StationTimes {
+  service_day: string;
+  source: TimeSource;
+  lines: StationLineTime[];
+}
+
 /** A transit ride type's trip: scheduled times, not live. */
 export interface TransitPlan {
   mode: "bike-transit" | "bikeshare-transit";
