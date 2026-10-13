@@ -2,9 +2,9 @@
 
 The owner, 2026-10-12: "A marked climb appears to be a quarry, which isn't likely open to the
 public. Ensure only public roads open to bikes are marked." The rule that keeps such a climb out
-for good is the rebuild's (release v0.7.0 closes the ways inside a quarry, a landfill or an
-industrial area, so they leave the map, the routers and the live table the climb builder
-reads); this list is for a climb found on a way the live table still carries
+for good is the rebuild's (`pipeline.restricted_areas.works_closures` closes the ways inside a
+quarry, a landfill or an industrial area, so they leave the map, the routers and the live table
+the climb builder reads); this list is for a climb found on a way the live table still carries
 until that rebuild, and for any the rule cannot see. Unclear bike access is closed
 (OWNER-DECISIONS 330).
 

@@ -526,6 +526,14 @@ REBUILD_SENTINEL_MILITARY_MIN_CLOSED = {
 # footway, a track and a service road with no access tag of their own, in the
 # 2026-10-03 extract. One the extract no longer has is warned about.
 REBUILD_SENTINEL_SECURED_CLOSED_WAYS = (902479602, 1276271654, 6084740)
+# The Travilah quarry's haul roads (Rockville Crushed Stone, Montgomery County MD), which
+# VALIDATE_SEGMENTS requires closed to bicycles (`pipeline.run.assert_works_closures`; the
+# owner's report, 2026-10-12: "A marked climb appears to be a quarry, which isn't likely
+# open to the public."): nine ways tagged only `highway=track`, inside `landuse=quarry`,
+# with OSM ids from 1379220522 to 1379220572. Every highway way in that range the extract
+# has must carry `rm:no_bicycle=works`; fewer than nine present is warned about.
+REBUILD_SENTINEL_WORKS_CLOSED_RANGE = (1379220522, 1379220572)
+REBUILD_SENTINEL_WORKS_MIN_IN_RANGE = 9
 # The fewest ways VALIDATE_SEGMENTS accepts closed in each secured federal compound (by the
 # name `restricted_areas.SECURED_AREAS` files it under, or OSM's for one the tag rule
 # finds), about three quarters of the 2026-10-03 extract's count: an outline deleted
