@@ -83,6 +83,7 @@ from routemaker.geo import Point, haversine
 from . import (
     audit,
     bikeshare,
+    climbprofile,
     gbfs,
     geocode,
     nearest,
@@ -3385,6 +3386,67 @@ def road_info(request, params: Query[SegmentInfoIn], response: HttpResponse):
     found = segment_info.segment_info(params.lat, params.lon)
     response["Cache-Control"] = f"private, max-age={SEGMENT_INFO_MAX_AGE_S}"
     return Status(200, {**found, "attribution": list(SEGMENT_INFO_ATTRIBUTION)})
+
+
+# --- One climb's elevation profile, for the map's climb card ------------------------
+
+CLIMB_PROFILE_MAX_AGE_S = 86_400
+
+
+class ClimbProfileOut(Schema):
+    """One climb of the Climbs layer, as the map's climb card draws it
+    (`core.climbprofile`): the file's figures, the steepest grade, and the heights
+    along it from its foot to its summit, as the route chart's `profile`."""
+
+    id: str
+    category: str
+    length_m: int
+    gain_m: float
+    avg_grade_pct: float
+    max_grade_pct: float | None = Field(
+        description=(
+            "The steepest grade on it, percent, read across four samples as the route chart"
+            " reads it."
+        )
+    )
+    interval_m: int
+    m: list[int] = Field(description="Metres from the climb's foot to each sample.")
+    elevation_m: list[float | None]
+    grade_pct: list[float | None]
+
+
+@api.get(
+    "/climbs/{climb_id}/profile",
+    response={200: ClimbProfileOut, 404: ErrorOut, 429: ErrorOut, 500: ErrorOut, 503: ErrorOut},
+    summary="One climb's elevation profile, from its foot to its summit (the map's climb card)",
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT),
+    ratelimit.rate_limited(ratelimit.CLIMB_PROFILE),
+    errors_as_json,
+)
+def climb_profile(request, climb_id: str, response: HttpResponse):
+    """Read-only: a climb is named by its id in the Climbs layer's file, never by a line,
+    and its heights are the router's (USGS 3DEP), as a route's are."""
+    if not (1 <= len(climb_id) <= 32 and climb_id.isalnum()):
+        return Status(404, {"error": "There is no such climb."})
+    try:
+        climb = climbprofile.find(climb_id)
+        if climb is None:
+            return Status(404, {"error": "There is no such climb."})
+        body = climbprofile.profile(climb)
+    except climbprofile.Unavailable as error:
+        logger.warning("climb profile unavailable: %s", error)
+        refusal = JsonResponse(
+            {"error": "The climb's elevation is not available right now. Try again shortly."},
+            status=503,
+        )
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+        return refusal
+    if body is None:
+        return Status(404, {"error": "There is no elevation for this climb."})
+    response["Cache-Control"] = f"public, max-age={CLIMB_PROFILE_MAX_AGE_S}"
+    return Status(200, body)
 
 
 # --- Who is asking, and the road panel's stress editor -----------------------------

@@ -200,18 +200,18 @@ test("Go's places are Home, Food, Water and Restroom (no Work); Home needs sign-
 
 test("Go's Where to? is the destination from the rider's location, in one edit, with the loop off; without a location it keeps the destination and asks for a start", () => {
   const routeGo = appFile.slice(appFile.indexOf("const routeGo = ("), appFile.indexOf("const routeGoRef"));
-  assert.match(routeGo, /commit\(\[start, dest\], ride\.dials\.loop \? \{ \.\.\.ride, dials: \{ \.\.\.ride\.dials, loop: false \} \} : undefined\);/);
+  assert.match(routeGo, /commit\(\[start, \.\.\.vias, dest\], ride\.dials\.loop \? \{ \.\.\.ride, dials: \{ \.\.\.ride\.dials, loop: false \} \} : undefined\);/);
   const goTo = appFile.slice(appFile.indexOf("const goTo = async"), appFile.indexOf("const goToPlace"));
   assert.match(goTo, /const action = goPickAction\(pointsRef\.current, goStartRef\.current\);/);
   // Never the destination alone (it would become the start), and never dropped while the location is found.
   assert.doesNotMatch(goTo, /commit\(\[dest\]/);
-  assert.match(goTo, /goPending\.current = \{ dest, name, pressed, said: pressed && action\.kind === "wait" \};\s*if \(action\.kind === "wait"\) \{\s*if \(pressed\) setNoticeSaying\(goDestinationLocating\(name\), goPressLocatingSaid\(name\)\);\s*else setNotice\(goDestinationLocating\(name\)\);/);
+  assert.match(goTo, /goPending\.current = \{ dest, name, vias, pressed, said: pressed && action\.kind === "wait" \};\s*if \(action\.kind === "wait"\) \{\s*if \(pressed\) setNoticeSaying\(goDestinationLocating\(name\), goPressLocatingSaid\(name\)\);\s*else setNotice\(goDestinationLocating\(name\)\);/);
   assert.match(goTo, /setGoStart\(\{ kind: "none" \}\);\s*if \(pressed\) setNoticeSaying\(goDestinationNeedsStart\(name\), goPressNeedsStartSaid\(name\)\);\s*else setNotice\(goDestinationNeedsStart\(name\)\);/);
   assert.match(goTo, /if \(!insideCoverage\(dest\)\) \{\s*setNotice\(OUTSIDE_NOTICE\);\s*return;/);
   // The opening look-up routes a destination picked while it ran; a start typed in routes one picked before it.
-  assert.match(appFile, /if \(pending\) \{\s*goPending\.current = null;\s*routeGoRef\.current\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said\);/);
+  assert.match(appFile, /if \(pending\) \{\s*goPending\.current = null;\s*routeGoRef\.current\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
   const startPick = appFile.slice(appFile.indexOf("const goStartPick = "), appFile.indexOf("const routeGo = ("));
-  assert.match(startPick, /if \(pending\) \{\s*goPending\.current = null;\s*routeGo\(point, false, pending\.dest, pending\.name\);/);
+  assert.match(startPick, /if \(pending\) \{\s*goPending\.current = null;\s*routeGo\(point, false, pending\.dest, pending\.name, false, pending\.vias\);/);
 });
 
 test("the Go/Plan switch: two toggle buttons in a named group, in Go's bar and Plan's header; a press is remembered as My Go's Open in", () => {
@@ -366,7 +366,7 @@ test("go tap: a press on the map in Go is the destination, routed as a picked on
   // The notice shown with it is not said again on its own (it would replace the fuller line).
   assert.match(appFile, /const setNoticeSaying = \(shown: string, said: string\) => \{\s*noticeSaidAs\.current = shown;\s*setNotice\(shown\);\s*announce\(said\);/);
   // Located later (a look-up that answers after the press), the pressed destination is routed and said as a press is.
-  assert.match(appFile, /routeGo\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said\);/);
+  assert.match(appFile, /routeGo\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
   // Map tools in Go: the same button, named for what it does, and never disabled by the points limit.
   assert.match(appFile, /addDisabled=\{!goTapSetsEnd\(mode\) && points\.length >= MAX_POINTS\}\s*setsEnd=\{goTapSetsEnd\(mode\)\}/);
   assert.match(src("../MapTools.tsx"), /\{setsEnd \? SET_END_AT_CENTRE_LABEL : ADD_AT_CENTRE_LABEL\}/);

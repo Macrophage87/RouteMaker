@@ -314,7 +314,7 @@ test("the legend says each shape and the number in words", () => {
   const html = renderToStaticMarkup(createElement(ClimbsLegend));
   assert.ok(html.includes("Gentle: circle, under 4% average"));
   assert.ok(html.includes("Moderate: square, 4% to 7.9% average"));
-  assert.ok(html.includes("Very steep: diamond, 8% or steeper average"));
+  assert.ok(html.includes("Steep: diamond, 8% or steeper average"));
   assert.ok(html.includes("its category, 5 (smallest) to 1, then HC (the biggest)"));
   // The swatches are pictures of what the words say.
   assert.equal((html.match(/aria-hidden="true"/g) ?? []).length, 5);

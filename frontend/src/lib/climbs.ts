@@ -92,6 +92,46 @@ export function saveClimbsOn(on: boolean, store: Store | null = defaultStore()):
   }
 }
 
+/**
+ * "Show climbs from" (the owner, 2026-10-12: "let people pick the minimum level to count for climbing on
+ * the map"): the smallest category the layer shows, the list and the keyboard's way to a climb included.
+ * Category 5 (every climb) unless the rider chose another on this device.
+ */
+export const CLIMBS_FROM_KEY = "routemaker.climbsFrom";
+export const CLIMBS_FROM_DEFAULT: ClimbCategory = "5";
+
+export function readClimbsFrom(store: Store | null = defaultStore()): ClimbCategory {
+  try {
+    const kept = store?.getItem(CLIMBS_FROM_KEY) as ClimbCategory | null | undefined;
+    return kept && CLIMB_CATEGORIES.includes(kept) ? kept : CLIMBS_FROM_DEFAULT;
+  } catch {
+    return CLIMBS_FROM_DEFAULT;
+  }
+}
+
+export function saveClimbsFrom(from: ClimbCategory, store: Store | null = defaultStore()): boolean {
+  try {
+    if (!store) return false;
+    store.setItem(CLIMBS_FROM_KEY, from);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** HC ranks 0, Category 5 ranks 5: the order the markers are sorted in. */
+export const climbRank = (category: ClimbCategory): number => CLIMB_CATEGORIES.indexOf(category);
+
+/** Whether a climb is shown with "Show climbs from" at `from`: that category or a harder one. */
+export function climbShown(c: Pick<Climb, "category">, from: ClimbCategory): boolean {
+  return climbRank(c.category) <= climbRank(from);
+}
+
+/** The map's filter for both layers: the same rule as climbShown, on each feature's rank. */
+export function climbsFilter(from: ClimbCategory): unknown[] {
+  return ["<=", ["get", "rank"], climbRank(from)];
+}
+
 // --- The file --------------------------------------------------------------------
 
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
@@ -157,6 +197,16 @@ export const SHAPE_WORDS: Record<ClimbShape, string> = {
   circle: "circle, under 4% average",
   square: "square, 4% to 7.9% average",
   diamond: "diamond, 8% or steeper average",
+};
+
+/**
+ * The shape's meaning, short, for the climb card beside the shape itself (the owner, 2026-10-12: "Also
+ * note that the icon means steepness on the map"): the same three bands as the legend.
+ */
+export const SHAPE_STEEPNESS: Record<ClimbShape, string> = {
+  circle: "Gentle: under 4%",
+  square: "Moderate: 4 to 7.9%",
+  diamond: "Steep: 8% or more",
 };
 
 /** The details after the name: the gain, the surface, the trail. */
@@ -368,7 +418,7 @@ export function climbLines(climbs: readonly Climb[]) {
     type: "FeatureCollection" as const,
     features: climbs.map((c) => ({
       type: "Feature" as const,
-      properties: { id: c.id, c: c.category },
+      properties: { id: c.id, c: c.category, rank: climbRank(c.category) },
       geometry: { type: "LineString" as const, coordinates: c.line },
     })),
   };
@@ -421,10 +471,18 @@ export interface ClimbsMap {
   hasImage(id: string): boolean;
   addImage(id: string, image: Omit<Raster, "pixelRatio">, options: { pixelRatio: number }): void;
   setLayoutProperty(id: string, name: string, value: unknown): void;
+  setFilter?(id: string, filter: unknown): void;
 }
 
 /** Add the icons, the sources and the two layers, once, under `beforeId` (the route's lowest layer); whether they were added. */
-export function addClimbs(map: ClimbsMap, climbs: readonly Climb[], on: boolean, pixelRatio: number, beforeId?: string): boolean {
+export function addClimbs(
+  map: ClimbsMap,
+  climbs: readonly Climb[],
+  on: boolean,
+  pixelRatio: number,
+  beforeId?: string,
+  from: ClimbCategory = CLIMBS_FROM_DEFAULT,
+): boolean {
   if (map.getSource(CLIMBS_SOURCE_ID)) return false;
   for (const shape of CLIMB_SHAPES) {
     if (map.hasImage(climbIconId(shape))) continue;
@@ -436,7 +494,7 @@ export function addClimbs(map: ClimbsMap, climbs: readonly Climb[], on: boolean,
   const before = beforeId && map.getLayer(beforeId) ? beforeId : undefined;
   const visibility = on ? "visible" : "none";
   for (const layer of [climbLineLayer(), climbMarkerLayer()]) {
-    map.addLayer({ ...layer, layout: { ...(layer.layout as object), visibility } }, before);
+    map.addLayer({ ...layer, filter: climbsFilter(from), layout: { ...(layer.layout as object), visibility } }, before);
   }
   return true;
 }
@@ -445,5 +503,12 @@ export function addClimbs(map: ClimbsMap, climbs: readonly Climb[], on: boolean,
 export function setClimbsOn(map: ClimbsMap, on: boolean): void {
   for (const id of CLIMBS_LAYERS) {
     if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", on ? "visible" : "none");
+  }
+}
+
+/** Show only the climbs of `from` and harder ("Show climbs from"), on both layers. */
+export function setClimbsFrom(map: ClimbsMap, from: ClimbCategory): void {
+  for (const id of CLIMBS_LAYERS) {
+    if (map.getLayer(id)) map.setFilter?.(id, climbsFilter(from));
   }
 }
