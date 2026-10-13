@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { GO_START_SAID, GO_START_UNAVAILABLE, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapStartsPending, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, MODE_LABEL, goDestinationLocating, goDestinationNeedsStart, goPickAction, goTapSetsEnd, goDestinationSet, goTapRoutedSaid, goPlaceName, OPEN_IN_LABEL, TAB_MODE_KEY, goRouteStart, goStartLine, hasPlanLink, shouldAskGoStart, laterMyGoApplies, modeSaid, openingMode, readTabMode, writeTabMode } from "./appMode.ts";
 import {
   ACCOUNT_COPY_KEY,
   DEVICE_KEY,
@@ -205,7 +205,7 @@ test("Go's Where to? is the destination from the rider's location, in one edit, 
   assert.match(goTo, /const action = goPickAction\(pointsRef\.current, goStartRef\.current\);/);
   // Never the destination alone (it would become the start), and never dropped while the location is found.
   assert.doesNotMatch(goTo, /commit\(\[dest\]/);
-  assert.match(goTo, /goPending\.current = \{ dest, name \};\s*if \(action\.kind === "wait"\) \{\s*setNotice\(goDestinationLocating\(name\)\);/);
+  assert.match(goTo, /goPending\.current = \{ dest, name \};[\s\S]{0,200}?if \(action\.kind === "wait"\) \{\s*setNotice\(goDestinationLocating\(name\)\);/);
   assert.match(goTo, /setGoStart\(\{ kind: "none" \}\);\s*setNotice\(goDestinationNeedsStart\(name\)\);/);
   assert.match(goTo, /if \(!insideCoverage\(dest\)\) \{\s*setNotice\(OUTSIDE_NOTICE\);\s*return;/);
   // The opening look-up routes a destination picked while it ran; a start typed in routes one picked before it.
@@ -335,18 +335,34 @@ test("go pick: route from the start Go has, wait while the location is found, el
   assert.match(goDestinationLocating("Union Station"), /^To Union Station: finding your location/);
 });
 
-test("go tap: a map tap in Go while a destination waits is its start, and plans at once, as a typed start does (follow-up review of PR #95)", () => {
-  assert.equal(goTapStartsPending({ mode: "go", pointCount: 0, pending: true }), true);
-  assert.equal(goTapStartsPending({ mode: "go", pointCount: 0, pending: false }), false, "no destination waiting: the tap adds a point");
-  assert.equal(goTapStartsPending({ mode: "go", pointCount: 1, pending: true }), false, "the plan has a start already");
-  assert.equal(goTapStartsPending({ mode: "plan", pointCount: 0, pending: true }), false, "Plan's taps add points as before");
-  // App: the tap (and Add at centre, which places through it) routes the waiting destination from the tapped point,
-  // with the same one-edit route as the start box, and clears the wait.
+test("go tap: a press on the map in Go is the destination, routed as a picked one is (the owner, 2026-10-12)", () => {
+  assert.equal(goTapSetsEnd("go"), true);
+  assert.equal(goTapSetsEnd("plan"), false, "Plan's presses add points as before");
+  assert.equal(goDestinationSet("38.9055, -77.0365"), "Destination set: 38.9055, -77.0365.");
+  assert.equal(goTapRoutedSaid("Union Station", true, false), "Destination set: Union Station.", "Brief: the destination only");
+  assert.equal(goTapRoutedSaid("Union Station", true, true), "Destination set: Union Station. Planning a route from your location.");
+  assert.equal(goTapRoutedSaid("Union Station", false, true), "Destination set: Union Station. Planning a route from your start.");
+  // App: the press (and Map tools' button, which places through it) goes to goTo as a pressed destination, after the
+  // area check and before the points limit (Go replaces the destination, it never adds a point); no tap is a start.
   const place = appFile.slice(appFile.indexOf("const place = useCallback("), appFile.indexOf("// \"Use my location\": one look-up"));
-  assert.match(place, /const pending = goPending\.current;\s*if \(pending && goTapStartsPending\(\{ mode: modeRef\.current, pointCount: pointsRef\.current\.length, pending: true \}\)\) \{\s*goPending\.current = null;\s*routeGoRef\.current\(point, false, pending\.dest, pending\.name\);\s*return;\s*\}/);
-  assert.ok(place.indexOf("goTapStartsPending") > place.indexOf("if (!insideCoverage(point))"), "a tap outside the area is refused first");
+  assert.match(place, /if \(goTapSetsEnd\(modeRef\.current\)\) \{\s*void goToRef\.current\(point, goPlaceName\(namer\.name\(point\)\?\.name, point\), true\);\s*return;\s*\}/);
+  // The same name on the sheet's "To …": the place name once looked up, else the coordinates that were said (review of #116).
+  assert.equal(goPlaceName(undefined, [-77.0365, 38.9055]), "38.9055, -77.0365");
+  assert.equal(goPlaceName("Dupont Circle", [-77.0434, 38.9096]), "Dupont Circle");
+  assert.match(appFile, /destination=\{shown && points\.length >= 2 \? goPlaceName\(namer\.name\(points\[points\.length - 1\]\)\?\.name, points\[points\.length - 1\]\) : null\}/);
+  assert.doesNotMatch(appFile, /\?\? "Destination"/);
+  assert.ok(place.indexOf("goTapSetsEnd") > place.indexOf("if (!insideCoverage(point))"), "a press outside the area is refused first");
+  assert.ok(place.indexOf("goTapSetsEnd") < place.indexOf("MAX_POINTS"), "Go's press is never refused for the points limit");
+  assert.doesNotMatch(place, /goPending/, "a press is never the start of a waiting destination now");
   assert.match(appFile, /const modeRef = useRef\(mode\);\s*modeRef\.current = mode;/);
+  assert.match(appFile, /const goToRef = useRef\(goTo\);\s*goToRef\.current = goTo;/);
   assert.match(appFile, /const addAtCentre = \(\) => \{[\s\S]*?place\(\[lng, lat\]\);/);
+  // Said: routed at once, "Destination set" (with the planning at Full); waiting for a start, "Destination set" too.
+  assert.match(appFile, /if \(pressed\) announce\(goTapRoutedSaid\(name, located, saysExtra\(announceLevelNow\.current\)\)\);\s*else announceExtra\(/);
+  assert.match(appFile, /goPending\.current = \{ dest, name \};\s*\/\/[^\n]*\n\s*if \(pressed\) announce\(goDestinationSet\(name\)\);/);
+  // Map tools in Go: the same button, named for what it does, and never disabled by the points limit.
+  assert.match(appFile, /addDisabled=\{!goTapSetsEnd\(mode\) && points\.length >= MAX_POINTS\}\s*setsEnd=\{goTapSetsEnd\(mode\)\}/);
+  assert.match(src("../MapTools.tsx"), /\{setsEnd \? SET_END_AT_CENTRE_LABEL : ADD_AT_CENTRE_LABEL\}/);
 });
 
 test("go start: App asks once when Go opens, says the start politely, and says when it is not available", () => {

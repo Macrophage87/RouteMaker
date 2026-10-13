@@ -36,7 +36,7 @@
  * now"); elsewhere the action says so.
  */
 import type { LonLat } from "./geo.ts";
-import { pointAt, routeJunctions, stretchAt, type RideModel } from "./navigate.ts";
+import { isUnnamed, pointAt, routeJunctions, stretchAt, wayRidden, type RideModel } from "./navigate.ts";
 
 export const DC_311_SHORT_CODE = "32311";
 export const DC_311_ONLINE = "https://311.dc.gov/";
@@ -95,24 +95,8 @@ export const REPORT_NOTE_MAX = 120;
  */
 export const PLACE_NEAR_M = 500 / 3.28084;
 
-/**
- * Whether a street name says nothing: the API's stand-ins for a way with no name ("unnamed path",
- * "unnamed road", "this part of the route"; src/routemaker/describe.py, lib/federalStops.ts).
- */
-export function isUnnamed(street: string | null | undefined): boolean {
-  return !street || /\bunnamed\b/i.test(street) || /^this part of the route$/i.test(street.trim());
-}
-
-type Stretch = RideModel["stretches"][number];
-
-/** The way ridden as the report says it: its name, else what it is ("an unnamed path"), else null (not traced). */
-export function wayWords(stretch: Stretch | null): string | null {
-  if (!stretch) return null;
-  if (!isUnnamed(stretch.street)) return stretch.street;
-  if (stretch.street && /^this part of the route$/i.test(stretch.street.trim())) return null;
-  if (stretch.facility === "path" || /\bpath\b/i.test(stretch.street ?? "")) return "an unnamed path";
-  return "an unnamed road";
-}
+/** Whether a street name says nothing ("unnamed path"): shared with "Where am I?" (lib/navigate.ts). */
+export { isUnnamed };
 
 /**
  * The place words (the owner, 2026-10-12: "Description if you can. Like put the road and the
@@ -142,7 +126,7 @@ export interface ReportPlace {
  */
 export function reportPlace(model: RideModel, progressM: number): ReportPlace {
   const stretch = stretchAt(model, progressM);
-  const way = wayWords(stretch);
+  const way = wayRidden(stretch);
   let cross: string | null = null;
   let best = PLACE_NEAR_M;
   for (const j of routeJunctions(model)) {

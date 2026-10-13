@@ -636,6 +636,27 @@ def test_vre_runs_weekdays_only_and_says_so_at_weekends(vre_schedule) -> None:
     assert {c.reason for c in vre} == {"no VRE weekend service"}
 
 
+def test_a_vre_station_says_its_next_train_each_way_and_none_at_weekends(vre_schedule) -> None:
+    alexandria = [-77.0618, 38.8064]
+    weekday = [
+        t
+        for t in transit.station_times(vre_schedule, alexandria, at(2026, 9, 30, 6, 0))
+        if t.system.id == "vre"
+    ]
+    assert {t.route for t in weekday} == {"Fredericksburg Line", "Manassas Line"}
+    assert all(t.kind in ("next", "none") for t in weekday)
+    assert any(t.kind == "next" and t.depart is not None and t.toward for t in weekday)
+    saturday = [
+        (t.route, t.kind, t.today)
+        for t in transit.station_times(vre_schedule, alexandria, at(2026, 10, 3, 12, 0))
+        if t.system.id == "vre"
+    ]
+    assert sorted(saturday) == [
+        ("Fredericksburg Line", "none", False),
+        ("Manassas Line", "none", False),
+    ]
+
+
 def test_a_line_that_does_not_run_at_weekends_drops_out_and_is_said_plainly(schedule) -> None:
     saturday = plan_bike(schedule, NOMA, BALTIMORE, at(2026, 10, 3, 10, 0))
     assert "MARC Camden Line: no weekend service." in saturday.notes
@@ -677,6 +698,61 @@ def test_a_station_closed_for_the_day_is_one_with_no_service_at_all_that_day(sch
     # Sunday: no Metro in this fixture at all.
     sunday = transit.closed_stations(schedule, transit.moment_of(at(2026, 10, 4, 12, 0)))
     assert "Eastern Market" in {c.stop.name for c in sunday}
+
+
+# --- A station's times, for its card on the map (the owner, 2026-10-12) ---------------------
+
+UNION_STATION = [-77.0063, 38.8971]
+PENN_STATION = [-76.6157, 39.3075]
+
+
+def times_at(schedule, point, when) -> list[tuple]:
+    return [
+        (t.system.name, t.route, t.kind, t.every_min, t.toward, t.depart, t.today)
+        for t in transit.station_times(schedule, point, when)
+    ]
+
+
+def test_a_station_says_each_frequent_lines_interval_and_each_commuter_lines_next_train_each_way(
+    schedule,
+) -> None:
+    # Wednesday 8 am at Union Station: Red every 6 min (frequencies.txt), and MARC's next trains
+    # leaving it (Union Station is the terminal: one way each). Only the nearest stop of each
+    # system counts, so the bus bay beside it is not one.
+    assert times_at(schedule, UNION_STATION, at(2026, 9, 30, 8, 0)) == [
+        ("Metro", "Red Line", "every", 6, None, None, True),
+        ("MARC", "Camden Line", "next", None, "Camden Station", 16 * 60 + 30, True),
+        ("MARC", "Penn Line", "next", None, "Baltimore Penn Station", 8 * 60, True),
+    ]
+    # Baltimore Penn Station: the Penn Line toward Washington, and Light RailLink every 15 min.
+    assert times_at(schedule, PENN_STATION, at(2026, 9, 30, 17, 30)) == [
+        ("MARC", "Penn Line", "next", None, "Union Station MARC", 18 * 60, True),
+        ("Light RailLink", "Light RailLink", "every", 15, None, None, True),
+    ]
+
+
+def test_a_station_says_plainly_when_no_more_trains_run_today(schedule) -> None:
+    late = times_at(schedule, UNION_STATION, at(2026, 9, 30, 23, 30))
+    assert ("MARC", "Penn Line", "none", None, "Baltimore Penn Station", None, True) in late
+    assert all(kind == "none" and today for _s, _r, kind, *_x, today in late)
+    # A Saturday: the Camden Line does not run at all (one line for both ways), the Penn Line does.
+    saturday = times_at(schedule, UNION_STATION, at(2026, 10, 3, 12, 0))
+    assert ("MARC", "Camden Line", "none", None, None, None, False) in saturday
+    assert ("MARC", "Penn Line", "next", None, "Baltimore Penn Station", 13 * 60, True) in saturday
+    # Far from every station, and beyond the installed window: nothing.
+    assert transit.station_times(schedule, [-77.5, 38.5], at(2026, 9, 30, 8, 0)) == []
+    assert transit.station_times(schedule, UNION_STATION, at(2027, 9, 30, 8, 0)) == []
+
+
+def test_typical_metro_at_a_station_is_its_interval_or_before_opening_its_first_trains() -> None:
+    typical = without_metro_gtfs()
+    morning = times_at(typical, UNION_STATION, at(2026, 9, 30, 8, 0))
+    red = [t for t in morning if t[0] == "Metro"]
+    assert len(red) == 1 and red[0][:3] == ("Metro", "Red Line", "every") and 3 <= red[0][3] <= 8
+    # 3:30 am, before Metro opens: the first train each way, by its terminal.
+    early = [t for t in times_at(typical, UNION_STATION, at(2026, 9, 30, 3, 30)) if t[0] == "Metro"]
+    assert {t[4] for t in early} == {"Glenmont", "Shady Grove"}
+    assert all(t[2] == "next" and 5 * 60 <= t[5] < 6 * 60 for t in early)
 
 
 def test_no_bike_on_metro_on_a_blackout_date_said_plainly_and_metro_on_foot_still_fine() -> None:
@@ -1177,3 +1253,44 @@ class TestApi:
         ]
         weekday = client.get("/api/transit/closures", {"at": "2026-09-30T22:30:00"}).json()
         assert weekday["stations"] == []
+
+    def test_a_stations_times_are_small_scheduled_and_cached_for_a_minute(
+        self, client, installed
+    ) -> None:
+        lon, lat = UNION_STATION
+        response = client.get(
+            "/api/transit/station-times", {"lon": lon, "lat": lat, "at": "2026-09-30T08:00:00"}
+        )
+        assert response.status_code == 200, response.content
+        assert response["Cache-Control"] == "public, max-age=60"
+        body = response.json()
+        assert body["service_day"] == "2026-09-30" and body["source"] == "scheduled"
+        red, camden, penn = body["lines"]
+        assert (red["system"], red["line"], red["kind"], red["every_min"]) == (
+            "Metro",
+            "Red Line",
+            "every",
+            6,
+        )
+        assert red["time"] is None and red["toward"] is None
+        assert (penn["kind"], penn["toward"], penn["time"]) == (
+            "next",
+            "Baltimore Penn Station",
+            "8:00 am",
+        )
+        assert penn["at"] == "2026-09-30T08:00:00-04:00" and penn["station"] == "Union Station MARC"
+        assert camden["time"] == "4:30 pm"
+        # A point with no station near it: no lines; no point at all: refused.
+        far = client.get("/api/transit/station-times", {"lon": -77.5, "lat": 38.5}).json()
+        assert far["lines"] == []
+        assert client.get("/api/transit/station-times").status_code in (400, 422)
+
+    def test_a_stations_times_are_a_503_where_no_schedule_can_be_read(
+        self, client, settings, tmp_path
+    ) -> None:
+        settings.TRANSIT_SCHEDULE_PATH = tmp_path / "broken.json"
+        settings.TRANSIT_SCHEDULE_PATH.write_text("{")
+        lon, lat = UNION_STATION
+        response = client.get("/api/transit/station-times", {"lon": lon, "lat": lat})
+        assert response.status_code == 503
+        assert response.json()["code"] == "transit_unavailable"
