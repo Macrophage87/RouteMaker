@@ -206,7 +206,9 @@ test("Go's Where to? is the destination from the rider's location, in one edit, 
   // Never the destination alone (it would become the start), and never dropped while the location is found.
   assert.doesNotMatch(goTo, /commit\(\[dest\]/);
   assert.match(goTo, /goPending\.current = \{ dest, name, vias, pressed, said: pressed && action\.kind === "wait" \};\s*if \(action\.kind === "wait"\) \{\s*if \(pressed\) setNoticeSaying\(goDestinationLocating\(name\), goPressLocatingSaid\(name\)\);\s*else setNotice\(goDestinationLocating\(name\)\);/);
-  assert.match(goTo, /setGoStart\(\{ kind: "none" \}\);[\s\S]{0,200}?const waiting = goPending\.current \?\? \{ name, pressed \};\s*if \(waiting\.pressed\) setNoticeSaying\(goDestinationNeedsStart\(waiting\.name\), goPressNeedsStartSaid\(waiting\.name\)\);\s*else setNotice\(goDestinationNeedsStart\(waiting\.name\)\);/);
+  // A look-up's answer settles the destination waiting on it, only while the plan has no start (a start typed during
+  // a slow look-up is routed from; no "To X. Current location not available" after it; review after #127).
+  assert.match(goTo, /const settleGoWaiting = \(result: LocateResult\) => \{\s*goAwaiting\.current = false;\s*const pending = goPending\.current;\s*if \(!result\.ok \|\| !insideCoverage\(result\.fix\.point\)\) \{\s*setGoStart\(\{ kind: "none" \}\);\s*if \(pending && pointsRef\.current\.length === 0\) \{\s*if \(pending\.pressed\) setNoticeSaying\(goDestinationNeedsStart\(pending\.name\), goPressNeedsStartSaid\(pending\.name\)\);\s*else setNotice\(goDestinationNeedsStart\(pending\.name\)\);\s*\}\s*return;\s*\}\s*setHere\(result\.fix\);\s*setGoStart\(\{ kind: "here", point: result\.fix\.point \}\);\s*goPending\.current = null;\s*if \(pending && pointsRef\.current\.length === 0\) routeGo\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
   assert.match(goTo, /if \(!insideCoverage\(dest\)\) \{\s*setNotice\(OUTSIDE_NOTICE\);\s*return;/);
   // The opening look-up routes a destination picked while it ran; a start typed in routes one picked before it.
   assert.match(appFile, /if \(pending\) \{\s*goPending\.current = null;\s*routeGoRef\.current\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
@@ -372,7 +374,15 @@ test("go tap: a press on the map in Go is the destination, routed as a picked on
   const locatePath = appFile.slice(appFile.indexOf("const mine = goPending.current;"), appFile.indexOf("setHere(result.fix);", appFile.indexOf("const mine = goPending.current;")));
   assert.match(locatePath, /const sayLocating = \(\) => \{\s*if \(!mine \|\| goPending\.current !== mine \|\| mine\.said\) return;\s*mine\.said = true;\s*setNoticeSaying\(goDestinationLocating\(name\), goPressLocatingSaid\(name\)\);\s*\};/);
   assert.match(locatePath, /const slow = pressed \? window\.setTimeout\(sayLocating, GO_PRESS_LOCATING_SAY_MS\) : undefined;\s*const result = await locateForGo\(\);\s*window\.clearTimeout\(slow\);/);
-  assert.match(locatePath, /if \(result === null\) \{[\s\S]*?if \(pressed\) sayLocating\(\);\s*return;\s*\}/);
+  assert.match(locatePath, /if \(result === null\) \{[\s\S]*?if \(pressed\) sayLocating\(\);\s*goAwaiting\.current = true;\s*return;\s*\}\s*settleGoWaiting\(result\);/);
+  // The gate busy: the look-up under way settles the destination when it answers, whoever asked for it (review after
+  // #127: Go's Locate, Use my location and the nearest finder left a press told "Finding…" and never routed it).
+  assert.match(appFile, /const goLocate = async \(\) => \{\s*const result = await locateForGo\(\);\s*if \(result === null\) return;\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*if \(goWaiting\(\)\) \{\s*settleGoWaiting\(result\);\s*return;\s*\}/);
+  assert.match(appFile, /if \(!gate\.finish\(press\)\) return;\s*setLocating\(false\);\s*\/\/[^\n]*\n\s*if \(modeRef\.current === "go" && goWaitingRef\.current\(\)\) \{\s*goSettleRef\.current\(result\);\s*return;\s*\}/, "Use my location");
+  assert.match(appFile, /gate\.finish\(press\);\s*setLocating\(false\);\s*\/\/[^\n]*\n\s*if \(goWaitingRef\.current\(\)\) goSettleRef\.current\(result\);\s*return result;/, "the nearest finder");
+  assert.match(appFile, /const goWaiting = \(\) => goAwaiting\.current;/);
+  // Go's opening look-up settles a destination that waited on it itself.
+  assert.match(appFile, /setGoStart\(\{ kind: "idle" \}\);\s*return;\s*\}\s*\/\/[^\n]*\n\s*goAwaiting\.current = false;\s*const pending = goPending\.current;/);
   // Located later (a look-up that answers after the press), the pressed destination is routed and said as a press is.
   assert.match(appFile, /routeGo\(result\.fix\.point, true, pending\.dest, pending\.name, !!pending\.pressed && !pending\.said, pending\.vias\);/);
   // Map tools in Go: the same button, named for what it does, and never disabled by the points limit.

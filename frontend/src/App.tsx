@@ -474,6 +474,8 @@ export function App() {
   // and routed once the start comes, from the location or the start box (lib/appMode.ts goPickAction).
   // `pressed`: set by a press on the map (said "Destination set" with what it waits for); `said`: that was said already.
   const goPending = useRef<{ dest: LonLat; name: string; vias?: LonLat[]; pressed?: boolean; said?: boolean } | null>(null);
+  // Set when a Go destination found Use my location's gate busy: the look-up under way answers for it (settleGoWaiting).
+  const goAwaiting = useRef(false);
   const [locating, setLocating] = useState(false);
   // One look-up at a time, set before the await, so a second call in the same tick is refused too.
   const gate = useRef(locateGate()).current;
@@ -970,6 +972,11 @@ export function App() {
     const result = await locate(geoEnv);
     if (!gate.finish(press)) return;
     setLocating(false);
+    // A Go destination that waited on this look-up (pressed in Go while it ran): the answer is that destination's.
+    if (modeRef.current === "go" && goWaitingRef.current()) {
+      goSettleRef.current(result);
+      return;
+    }
     // The ride as it is now, not as it was at the press: the rider may have turned the loop on or off meanwhile.
     const ride = rideRef.current;
     const placed = placeFix(result, pointsRef.current, { loop: loopStops(ride.preset, ride.dials.loop), choice });
@@ -1147,6 +1154,8 @@ export function App() {
           const result = await locate(geoEnv);
           gate.finish(press);
           setLocating(false);
+          // A Go destination that waited on this look-up is settled by its answer too.
+          if (goWaitingRef.current()) goSettleRef.current(result);
           return result;
         },
         start: () => pointsRef.current[0] ?? null,
@@ -1233,6 +1242,8 @@ export function App() {
         setGoStart({ kind: "idle" });
         return;
       }
+      // It settles a destination that waited on it itself, below.
+      goAwaiting.current = false;
       const pending = goPending.current;
       if (!result.ok || !insideCoverage(result.fix.point)) {
         setGoStart({ kind: "none" });
@@ -1325,25 +1336,42 @@ export function App() {
     const result = await locateForGo();
     window.clearTimeout(slow);
     if (result === null) {
-      // Another look-up is under way: its answer routes the destination, as Go's opening one does. A press is said
-      // now, as it is while Go's opening look-up runs.
+      // Another look-up is under way: its answer settles the destination waiting (settleGoWaiting), whichever asked
+      // for it (Go's opening look-up, an earlier destination's, Locate's, Use my location's or the nearest finder's).
+      // A press is said now, as it is while Go's opening look-up runs.
       if (pressed) sayLocating();
+      goAwaiting.current = true;
       return;
     }
+    settleGoWaiting(result);
+  };
+  // A Go look-up's answer for the destination waiting on it (the latest one picked or pressed): found, Go's start
+  // is the location and the destination is routed from it; not, the start box asks for a start, shown and said.
+  // Either way only while the plan has no start (one typed meanwhile is routed from, as Go's opening look-up does).
+  const settleGoWaiting = (result: LocateResult) => {
+    goAwaiting.current = false;
+    const pending = goPending.current;
     if (!result.ok || !insideCoverage(result.fix.point)) {
       setGoStart({ kind: "none" });
-      // The destination waiting now (a later press replaces it while the look-up runs).
-      const waiting = goPending.current ?? { name, pressed };
-      if (waiting.pressed) setNoticeSaying(goDestinationNeedsStart(waiting.name), goPressNeedsStartSaid(waiting.name));
-      else setNotice(goDestinationNeedsStart(waiting.name));
+      if (pending && pointsRef.current.length === 0) {
+        if (pending.pressed) setNoticeSaying(goDestinationNeedsStart(pending.name), goPressNeedsStartSaid(pending.name));
+        else setNotice(goDestinationNeedsStart(pending.name));
+      }
       return;
     }
     setHere(result.fix);
     setGoStart({ kind: "here", point: result.fix.point });
-    const pending = goPending.current;
     goPending.current = null;
     if (pending && pointsRef.current.length === 0) routeGo(result.fix.point, true, pending.dest, pending.name, !!pending.pressed && !pending.said, pending.vias);
   };
+  // Whether a Go destination found the gate busy and waits on the look-up under way (goAwaiting): then its answer is
+  // settleGoWaiting's, whoever asked for it.
+  const goWaiting = () => goAwaiting.current;
+  // For Use my location's callback and the nearest finder, made before these (they read the current ones).
+  const goWaitingRef = useRef(goWaiting);
+  goWaitingRef.current = goWaiting;
+  const goSettleRef = useRef(settleGoWaiting);
+  goSettleRef.current = settleGoWaiting;
   // A map press (place, a callback kept across renders) goes through the current goTo.
   const goToRef = useRef(goTo);
   goToRef.current = goTo;
@@ -1370,6 +1398,12 @@ export function App() {
   const goLocate = async () => {
     const result = await locateForGo();
     if (result === null) return;
+    // A destination pressed or picked while Locate looked: its answer is that destination's (routed, or the start
+    // box asks for a start), not Locate's own notice or camera move.
+    if (goWaiting()) {
+      settleGoWaiting(result);
+      return;
+    }
     if (!result.ok) {
       setNotice(LOCATE_MESSAGES[result.reason]);
       return;

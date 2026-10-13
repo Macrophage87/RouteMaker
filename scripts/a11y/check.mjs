@@ -4118,6 +4118,41 @@ async function goPressMap(p) {
   await p.close();
 }
 {
+  // Review after #127: a press made while Go's Locate (top bar) is still looking waits on Locate's answer. Found, the
+  // press is routed from the location; not found, the start box asks for a start, shown and said (not Locate's notice).
+  // The opening look-up fails at once (Go's start: none), and every later one takes 3 s.
+  const FIRST_FAILS = (ms) => `(() => { const g = navigator.geolocation; const real = g.getCurrentPosition.bind(g); let n = 0; Object.defineProperty(g, 'getCurrentPosition', { configurable: true, value: (ok, fail, o) => { n += 1; if (n === 1) { setTimeout(() => fail({ code: 2, message: 'unavailable', PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 }), 50); return; } setTimeout(() => real(ok, fail, o), ${ms}); } }); })();`;
+  const pressDuringLocate = async (p) => {
+    const none = await p.waitFor("/^Start: none yet/.test(document.querySelector('.go-start-line')?.textContent.trim() ?? '')", 20000);
+    const saidBefore = await p.eval("window.__said.length");
+    await p.eval("document.querySelector('.go-locate').click(); true");
+    await sleep(300);
+    const at = await goPressMap(p);
+    await sleep(1500);
+    const waiting = await p.eval(`({ notice: document.querySelector('.go-notice')?.textContent ?? '', said: [...new Set(window.__said.slice(${saidBefore}).filter((t) => /^(Destination set|To 38\\.)/.test(t)))] })`);
+    return { none, at, saidBefore, waiting };
+  };
+  const found = await goWith("granted", { init: GEO_TWO + FIRST_FAILS(3000) });
+  const a = await pressDuringLocate(found);
+  const routed = await found.waitFor("!!document.querySelector('.go-summary .start-button')", 20000);
+  const afterFound = await found.eval(`({ points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean), line: document.querySelector('.go-start-line')?.textContent.trim() ?? '', notice: document.querySelector('.go-notice')?.textContent ?? '' })`);
+  check("go press during Locate: a press while Go's Locate is looking waits on it (\"Destination set: <spot>. Finding your location for the start…\"), and Locate's answer routes it from the location (two points)",
+    a.none && !!a.at && a.waiting.said.length === 1 && /^Destination set: 38\.\d{4}, -77\.\d{4}\. Finding your location for the start…$/.test(a.waiting.said[0]) &&
+      routed && afterFound.points.length === 2 && afterFound.points[0] === "-77.03650,38.90550" && !/not available/.test(afterFound.notice), JSON.stringify({ a, afterFound }));
+  await found.close();
+  const SLOW_DENIED = "(() => { const g = navigator.geolocation; const real = g.getCurrentPosition.bind(g); Object.defineProperty(g, 'getCurrentPosition', { configurable: true, value: (ok, fail, o) => setTimeout(() => real(ok, fail, o), 3000) }); })();";
+  const lost = await goWith("denied", { init: GEO_TWO + SLOW_DENIED });
+  const d = await pressDuringLocate(lost);
+  await lost.waitFor("/Current location not available/.test(document.querySelector('.go-notice')?.textContent ?? '')", 10000);
+  await sleep(500);
+  const afterLost = await lost.eval(`({ notice: document.querySelector('.go-notice')?.textContent ?? '', line: document.querySelector('.go-start-line')?.textContent.trim() ?? '', hash: location.hash, said: [...new Set(window.__said.slice(${d.saidBefore}).filter((t) => /^(Destination set|To 38\\.|Your location is blocked)/.test(t)))] })`);
+  check("go press during Locate: when Locate's look-up fails, the waiting press is told so in one line (\"Destination set: <spot>. Current location not available; type a start.\"), shown, with the start box asking (not Locate's own notice)",
+    d.none && !!d.at && /^Destination set: 38\.\d{4}, -77\.\d{4}\. Finding your location for the start…$/.test(d.waiting.said[0] ?? "") &&
+      /^To 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(afterLost.notice) && /^Start: none yet/.test(afterLost.line) && !/p=/.test(afterLost.hash) &&
+      afterLost.said.length === 2 && /^Destination set: 38\.\d{4}, -77\.\d{4}\. Current location not available; type a start\.$/.test(afterLost.said[1]), JSON.stringify({ d, afterLost }));
+  await lost.close();
+}
+{
   // Review of PR #95: a destination picked while Go is still finding the location (a cold GPS, or the permission
   // prompt still open) waits for it and is routed when it comes; it is not dropped.
   const SLOW = "(() => { const g = navigator.geolocation; const real = g.getCurrentPosition.bind(g); Object.defineProperty(g, 'getCurrentPosition', { configurable: true, value: (ok, fail, o) => setTimeout(() => real(ok, fail, o), 4000) }); })();";
@@ -4508,7 +4543,7 @@ const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
 // The transit blocks (#108) and the Go press checks (#116) were added without raising it; they run since #127.
-const EXPECTED = 629;
+const EXPECTED = 631;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
