@@ -288,8 +288,12 @@ server {
     }
 
     # --- preset links (Caddyfile @preset-*) ----------------------------------------
-    location ~ ^/(default|trailmaxxing|group-ride|mass-ride|mountain-goat|mountain-bike|gravel|fast|cargo|ebike|bikeshare|kids|bike-transit|bikeshare-transit|rebalance)/?$ {
+    location ~ ^/(default|trailmaxxing|group-ride|mass-ride|mountain-goat|mountain-bike|gravel|fast|cargo|ebike|bikeshare|novice|bike-transit|bikeshare-transit|rebalance)/?$ {
         return 302 "/#preset=$1";
+    }
+    # Riding with kids became Novice and Nervous (v0.7.0; Caddyfile @renamed-kids): the old short link opens it.
+    location ~ ^/kids/?$ {
+        return 302 "/#preset=novice";
     }
 
     # --- Django's collected static files (Caddyfile handle_path /static/*) -----------

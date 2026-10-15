@@ -102,6 +102,8 @@ CONTRACT_KEYS = {
     "avoid_alternate",
     # Additive, TRANSIT-ASSIST (v0.6.0): null except on the two transit ride types.
     "transit",
+    # Additive, v0.7.0 Novice and Nervous: null except on that ride type.
+    "novice",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "5", "unknown"}
 
@@ -739,7 +741,7 @@ class TestWhatIsSentToTheRouter:
         preset = presets.PRESETS[name]
         middle = presets.costing(name, presets.stress_start(name), 0)
         if preset.hills < 0 and presets.maxcalm_for(preset.stress):
-            # Riding with kids (FOLLOWUP-KIDS-PRESET): the avoid half's trip at the hills
+            # Novice and Nervous (v0.7.0): the avoid half's trip at the hills
             # middle, and then the top of the slider's asks, as Trailmaxxing's below.
             assert fake.endpoints()[:2] == ["route", "route"]
             assert fake.calls[1][1]["costing_options"] == middle

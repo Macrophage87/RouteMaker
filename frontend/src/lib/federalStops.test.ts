@@ -335,7 +335,7 @@ test("the markers follow the warnings: the same words keep them, new words rebui
 test("the map's markers say the warning in their name and title and wear the badge", () => {
   const map = source("../MapView.tsx");
   assert.match(map, /const warning = props\.pointWarnings\?\.\[index\] \?\? null;/);
-  assert.match(map, /element\.className = `pin pin-\$\{kind\}\$\{warning \? " pin-federal" : ""\}`;/);
+  assert.match(map, /element\.className = `pin pin-\$\{via \? "via" : kind\}\$\{kind === "through" \? " pin-through" : ""\}\$\{warning \? " pin-federal" : ""\}`;/);
   assert.match(map, /const named = warning \? `\$\{name\}\. \$\{warning\}` : name;/);
   assert.match(map, /element\.setAttribute\("aria-label", via \? `\$\{said\} Drag to move; click for Remove\.` : `\$\{said\} Drag to move\.`\);/);
   const css = source("../styles.css");

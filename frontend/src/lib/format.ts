@@ -77,6 +77,15 @@ export function poundsRange(minLb: number, maxLb: number, minKg: number, maxKg: 
   return `${minLb} to ${maxLb} ${POUNDS_WORD} (${minKg} to ${maxKg} kg)`;
 }
 
+/**
+ * A change of distance, without its sign, always in tenths of a mile (v0.7.0's change summary, lib/planFirst.ts):
+ * "1.2 mi (1.9 km)"; "0.0 mi (0.0 km)" for a change too small to say.
+ */
+export function formatDistanceChange(metres: number): string {
+  const m = Math.abs(metres);
+  return `${(m / METRES_PER_MILE).toFixed(1)} mi (${(m / 1000).toFixed(1)} km)`;
+}
+
 /** "4.7 mi (7.6 km)"; below a tenth of a mile "500 ft (150 m)". */
 export function formatDistance(metres: number): string {
   if (!usable(metres)) return DASH;

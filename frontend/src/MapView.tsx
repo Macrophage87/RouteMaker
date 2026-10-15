@@ -77,7 +77,8 @@ import { addClimbs, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, type Climb, ty
 import { attachClimbInteraction } from "./climbInteraction.ts";
 import { climbCardAfterClose } from "./lib/climbCard.ts";
 import type { When } from "./lib/dials.ts";
-import { END_GLYPH, START_GLYPH, pointLabel } from "./lib/pointText.ts";
+import { END_GLYPH, START_GLYPH } from "./lib/pointText.ts";
+import { VIA_MARKS, kindSwitchLabel, markerLabels } from "./lib/pointKinds.ts";
 import { LongPress, isInfoKey, repeatsInfoAsk, type InfoRequest } from "./lib/roadInfo.ts";
 import { fetchMe } from "./lib/stressEditor.ts";
 import { JUNCTION_SUGGEST_TEXT } from "./lib/junctionSuggest.ts";
@@ -172,6 +173,8 @@ interface Props {
   loopVias?: boolean;
   route: RouteResponse | null;
   stale: boolean;
+  /** Plan mode (v0.7.0): the line before the last update, drawn dashed until the next change, or null. */
+  ghost?: readonly LonLat[] | null;
   stressVisible: boolean;
   /** The ride time the overlay follows, for the roads closed to cars at set times (lib/rideTime.ts). */
   when: When;
@@ -192,6 +195,8 @@ interface Props {
   pressSetsEnd?: boolean;
   /** Remove the point at `index` (a via's Remove on the map). */
   onRemovePoint: (index: number) => void;
+  /** The point menu's "Make this a stop / a via point" (v0.7.0, lib/pointKinds.ts), for the point at `index`. */
+  onSwitchKind?: (index: number) => void;
   /** Changes when the markers must be put back on the points as they are. */
   markerReset: number;
   /** The accuracy circle of the rider's location while its point is in the plan (OWNER-DECISIONS 395), or null. */
@@ -292,6 +297,14 @@ function registerPmtiles(): void {
 
 const DC_CENTRE: LonLat = [-77.03, 38.9];
 const ROUTE_SOURCE = "route";
+const GHOST_SOURCE = "route-ghost";
+
+/** The ghost line's data: the old route's line, or nothing. */
+function ghostData(line: readonly LonLat[] | null | undefined): object {
+  return line && line.length >= 2
+    ? { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: line.map((c) => [c[0], c[1]]) } }
+    : { type: "FeatureCollection", features: [] };
+}
 /** The route's sections by traffic stress (lib/routeColours.ts). */
 const ROUTE_STRESS_SOURCE = ROUTE_STRESS_SOURCE_ID;
 /** The handle and the dashed preview of a drag of the line. */
@@ -941,6 +954,15 @@ export function MapView(props: Props) {
       // The grey outside the District, shown in Mass Ride mode only (OWNER-DECISIONS 418; lib/dcBoundary.ts):
       // over the base map, under its labels, the overlays and the route.
       addDcMask(map, callbacks.current.massArea === true, new Set(stressOverlayLayers(STRESS_SOURCE_ID).map((l: { id: string }) => l.id)));
+      // Plan mode's ghost (v0.7.0, lib/planFirst.ts): the route before the last update, dashed, under the route.
+      map.addSource(GHOST_SOURCE, { type: "geojson", data: ghostData(callbacks.current.ghost) });
+      map.addLayer({
+        id: "route-ghost",
+        type: "line",
+        source: GHOST_SOURCE,
+        layout: { "line-join": "round", "line-cap": "butt" },
+        paint: { "line-color": "#4b5563", "line-width": 4, "line-opacity": 0.8, "line-dasharray": [2, 1.5] },
+      });
       map.addSource(ROUTE_SOURCE, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       map.addLayer({
         id: "route-casing",
@@ -1218,12 +1240,15 @@ export function MapView(props: Props) {
     // the page's body.
     const focusInPopup = popup.current?.getElement().contains(document.activeElement) ?? false;
     closePopup(focusInPopup);
+    // Each point's label by its kind (v0.7.0): a stop numbered among the stops, a via point a hollow ring.
+    const labels = markerLabels(props.points, VIA_MARKS.isVia, props.loopVias === true);
     markers.current = props.points.map((point, index) => {
-      const { text, name, kind } = pointLabel(index, props.points.length, props.loopVias === true);
-      const via = kind === "via";
+      const { text, name, kind } = labels[index];
+      // Stops and via points (between the ends) have the point menu; "via" was a stop's older name.
+      const via = kind === "via" || kind === "through";
       const element = document.createElement("div");
       const warning = props.pointWarnings?.[index] ?? null;
-      element.className = `pin pin-${kind}${warning ? " pin-federal" : ""}`;
+      element.className = `pin pin-${via ? "via" : kind}${kind === "through" ? " pin-through" : ""}${warning ? " pin-federal" : ""}`;
       // The start and the end show a glyph (a play triangle, a stop square), a stop its number.
       if (kind === "start") element.innerHTML = START_GLYPH;
       else if (kind === "end") element.innerHTML = END_GLYPH;
@@ -1250,11 +1275,7 @@ export function MapView(props: Props) {
         const { lng, lat } = marker.getLngLat();
         callbacks.current.onMovePoint(index, [lng, lat]);
       });
-      element.addEventListener("click", (event) => {
-        // A click on a marker is not a click on the map: without this it
-        // would also add a via point under the marker.
-        event.stopPropagation();
-        if (!via || dragged) return;
+      const openMenu = () => {
         // A via's click offers Remove beside it: a real button, so a finger
         // can use it as well as a mouse.
         // Where the focus goes back to on Escape: from a second via's click,
@@ -1272,13 +1293,63 @@ export function MapView(props: Props) {
           closePopup(true);
           callbacks.current.onRemovePoint(index);
         });
+        const items = [button];
+        // --- v0.7.0 "Via points vs stops": the point menu's one switch between a stop and a via point. ---
+        const switchLabel = kind === "through" ? kindSwitchLabel("via") : kindSwitchLabel("stop");
+        if (switchLabel && callbacks.current.onSwitchKind) {
+          const switcher = document.createElement("button");
+          switcher.type = "button";
+          switcher.className = "via-remove point-kind";
+          switcher.textContent = switchLabel;
+          switcher.addEventListener("click", (clicked) => {
+            clicked.stopPropagation();
+            closePopup(true);
+            callbacks.current.onSwitchKind?.(index);
+          });
+          items.push(switcher);
+        }
+        // A real menu (a screen reader hears "menu, 2 items"): the arrows move between its items.
+        const menu = document.createElement("div");
+        menu.className = "point-menu";
+        menu.setAttribute("role", "menu");
+        menu.setAttribute("aria-label", name);
+        for (const item of items) {
+          item.setAttribute("role", "menuitem");
+          menu.append(item);
+        }
+        menu.addEventListener("keydown", (key) => {
+          const at = items.indexOf(document.activeElement as HTMLButtonElement);
+          const to =
+            key.key === "ArrowDown" || key.key === "ArrowRight" ? (at + 1) % items.length
+            : key.key === "ArrowUp" || key.key === "ArrowLeft" ? (at - 1 + items.length) % items.length
+            : key.key === "Home" ? 0
+            : key.key === "End" ? items.length - 1
+            : null;
+          if (to === null) return;
+          key.preventDefault();
+          items[to].focus();
+        });
+        // --- end v0.7.0 ---
         // Not closed by MapLibre on a map click: the map's click handler
         // closes it, so that the same click does not also add a point.
         popup.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 14, className: "via-popup" })
           .setLngLat(marker.getLngLat())
-          .setDOMContent(button)
+          .setDOMContent(menu)
           .addTo(map);
         button.focus();
+      };
+      element.addEventListener("click", (event) => {
+        // A click on a marker is not a click on the map: without this it
+        // would also add a via point under the marker.
+        event.stopPropagation();
+        if (!via || dragged) return;
+        openMenu();
+      });
+      // A right-click or a long press on a stop or a via point opens the same menu (v0.7.0).
+      element.addEventListener("contextmenu", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (via && !dragged) openMenu();
       });
       if (via) {
         // A double-click removes it at once, and is not the map's zoom.
@@ -1299,6 +1370,13 @@ export function MapView(props: Props) {
     if (!map || !loaded.current) return;
     syncRoute(map, callbacks.current, fitted);
   }, [props.route, props.stale]);
+
+  // Plan mode's ghost of the route before the last update (v0.7.0).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current) return;
+    (map.getSource(GHOST_SOURCE) as GeoJSONSource | undefined)?.setData(ghostData(props.ghost));
+  }, [props.ghost]);
 
   // A bikeshare plan's walk legs and the docks it uses. The markers are not buttons, since they
   // do nothing when pressed: each is an image with its whole text equivalent as its name, and

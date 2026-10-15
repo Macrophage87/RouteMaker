@@ -23,7 +23,7 @@ export const RIDE_GROUPS: readonly RideGroup[] = [
   {
     id: "transportation",
     label: "Transportation",
-    ids: ["default", "bike-transit", "bikeshare-transit", "bikeshare", "cargo", "ebike", "kids"],
+    ids: ["default", "bike-transit", "bikeshare-transit", "bikeshare", "cargo", "ebike", "novice"],
   },
   {
     id: "adventure",

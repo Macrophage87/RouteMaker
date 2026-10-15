@@ -65,8 +65,8 @@ test("the shared URL is Copy link's, at its full precision and without the weigh
   assert.equal(sent[0].url, `https://x.test/${encodePlan(points, "default", dials)}`);
   assert.doesNotMatch(`${sent[0].url} ${sent[0].text}`, /weight|97\.5|\bkg\b|\blbs?\b/i);
   // App hands share exactly the link Copy link copies.
-  assert.match(app, /shareContent\(linkToCopy\(window\.location, points, preset, dials\), distanceM, presetSaid\(preset\)\)/);
-  assert.match(app, /copyText\(linkToCopy\(window\.location, points, preset, dials\), navigator\.clipboard, selectionCopy\)/);
+  assert.match(app, /shareContent\(linkToCopy\(window\.location, points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\), distanceM, presetSaid\(preset\)\)/);
+  assert.match(app, /copyText\(linkToCopy\(window\.location, points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\), navigator\.clipboard, selectionCopy\)/);
 });
 
 test("the rider closing the sheet is silent; any other failure says so and offers Copy link", async () => {

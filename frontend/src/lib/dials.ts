@@ -9,7 +9,7 @@
  * route's `dials` says what the API actually planned with.
  * tests/test_presets.py reads STARTS and holds it equal to the API's table.
  */
-import { usesBikeshare, type PresetId } from "./presets.ts";
+import { isTransit, usesBikeshare, type PresetId } from "./presets.ts";
 import { DEFAULT_MTB_LEVEL, defaultMtbPreferred, fitMtbLevel, mtbLevelOf, mtbPreferredOf } from "./mtbMode.ts";
 
 export type When = "weekend" | "weekday_rush" | "weekday_offpeak" | "night";
@@ -97,6 +97,11 @@ export interface Dials {
    * and not in dialFields (the other endpoints do not take it).
    */
   closureBypass?: string[];
+  /**
+   * The transit ride types only (v0.7.0, Novice and Nervous): the bike legs planned as Novice and Nervous
+   * plans them, for a novice rider offered transit where only a busy road connects. In the link; absent is off.
+   */
+  noviceLegs?: boolean;
   /**
    * "Anticipated ride size" (PLAN items 128, 129, 139), Mass Ride only: the riders expected,
    * 100 to 2,000. It sets the group's length, which the corker load is counted over (the
@@ -195,8 +200,8 @@ export const STARTS: Record<PresetId, Start> = {
   ebike: { stress: 70, hills: 50, seek: true },
   // The classic bike's start; the e-bike's hills start is BIKESHARE_BIKES.ebike.hills.
   bikeshare: { stress: 80, hills: -60, seek: true, assist: true },
-  // FOLLOWUP-KIDS-PRESET: the top of the traffic slider, hills well toward avoid.
-  kids: { stress: 100, hills: -80, seek: true },
+  // v0.7.0 Novice and Nervous: the top of the traffic slider, hills at Cargo's gentle -60 (core.presets NOVICE_HILLS).
+  novice: { stress: 100, hills: -60, seek: true },
   // The transit ride types' bike legs start as Default's own bike and Bikeshare's classic (core.presets).
   "bike-transit": { stress: 70, hills: 0, seek: true },
   "bikeshare-transit": { stress: 80, hills: -60, seek: true },
@@ -290,6 +295,8 @@ export const TARGET_MIN_M = 1_000;
 export const TARGET_MAX_M = 1_000_000;
 export const DEFAULT_CEILING_RATIO = 1.6;
 export const TARGET_CEILING_RATIO = 1.25;
+/** Novice and Nervous's shorter ceiling (`core.presets.NOVICE_CEILING_RATIO`, v0.7.0). */
+export const NOVICE_CEILING_RATIO = 1.4;
 /** The system weight's range and defaults (kg): `routemaker.effort`, which tests/test_presets.py holds this to. */
 // OWNER-DECISIONS 337: "The weight range must include everyone", for every ride type;
 // 338: a total outside it is planned with the nearer limit, not refused; 352: silently,
@@ -380,6 +387,7 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     ...(dials.trailsOff === true ? { trailsOff: true } : {}),
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),
     ...(dials.loop === true ? { loop: true } : {}),
+    ...(isTransit(preset) && dials.noviceLegs === true ? { noviceLegs: true } : {}),
     // The level, on Mountain Bike only, and only when it is not the default (the link stays short).
     ...(preset === "mountain-bike" && fitMtbLevel(dials.mtbLevel) !== undefined && fitMtbLevel(dials.mtbLevel) !== DEFAULT_MTB_LEVEL
       ? { mtbLevel: fitMtbLevel(dials.mtbLevel) }
@@ -421,6 +429,7 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
     fields.dropoff_station = dials.dropoffStation;
   }
   if (dials.transitOption) fields.transit_option = dials.transitOption;
+  if (dials.noviceLegs) fields.novice_legs = true;
   return fields;
 }
 

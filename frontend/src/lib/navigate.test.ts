@@ -720,6 +720,26 @@ test("replanPoints with two stops: each matched by its number", () => {
   assert.deepEqual(replanPoints(model, 100, at(100, 50), plan, false), [at(100, 50), plan[1], plan[2], plan[3]]);
 });
 
+test("a via point is no cue and no number, and a passed one is dropped from the re-plan (v0.7.0)", () => {
+  const coordinates = [at(0, 0), at(500, 0), at(1000, 0), at(1500, 0)];
+  const description: DescriptionEntry[] = [
+    stretch(0, 500, "a"),
+    { ...stretch(500, 500, "Stop 1."), kind: "via", via: 1 },
+    stretch(500, 1000, "b"),
+    { ...stretch(1000, 1000, "Stop 2."), kind: "via", via: 2 },
+    stretch(1000, 1500, "c"),
+  ];
+  // Point 1 is a via point: only point 2 is a stop, and it is Stop 1.
+  const model = rideModel({ ...lRoute(), geometry: { type: "LineString", coordinates }, distance_m: 1500, leg_ends: [1, 2, 3], description }, [1]);
+  const stops = model.cues.filter((c) => c.kind === "stop");
+  assert.deepEqual(stops.map((c) => [c.text, c.stop, c.point]), [["Stop 1.", 1, 2]]);
+  assert.deepEqual(model.passes?.map((x) => [x.point, Math.round(x.atM)]), [[1, 500]]);
+  const plan: LonLat[] = [at(0, 0), at(500, 0), at(1000, 0), at(1500, 0)];
+  assert.deepEqual(replanPoints(model, 700, at(700, 50), plan, false), [at(700, 50), plan[2], plan[3]]);
+  assert.deepEqual(replanPoints(model, 100, at(100, 50), plan, false), [at(100, 50), plan[1], plan[2], plan[3]]);
+  assert.deepEqual(replanPoints(model, 1200, at(1200, 50), plan, false), [at(1200, 50), plan[3]]);
+});
+
 /** East 300 m on A Street, left onto the Capital Crescent Trail north for 2,700 m, crossing River Road at 2,500 m. */
 function trailRoute(): RouteResponse {
   const description: DescriptionEntry[] = [

@@ -684,6 +684,18 @@ export interface MassHazardSpan {
   road: string;
 }
 
+/** core.api NoviceOut: what is left busy on a Novice and Nervous route. */
+export interface NoviceNote {
+  /** Metres on roads rated LTS 3 or above. */
+  busy_m: number;
+  /** The longest named run of them, or null. */
+  busiest: { name: string | null; metres: number; level: number } | null;
+  /** The calm search hit its 1.4 times ceiling. */
+  over_ceiling: boolean;
+  /** Only a busy road connects: offer transit or bikeshare. */
+  transit: boolean;
+}
+
 export interface RouteResponse {
   /**
    * Live work zones and DC's closures (FOLLOWUP-WORKZONES; v0.7.0 "DC closures source"): the closures to draw on
@@ -691,6 +703,11 @@ export interface RouteResponse {
    * none is running.
    */
   work_zones?: (NonNullable<WithClosures["work_zones"]> & { ride_at?: string | null; disclaimer?: string; sources?: string[] }) | null;
+  /**
+   * Novice and Nervous only (v0.7.0; core.routing novice_note): the busy riding left on the route and its longest
+   * named busy stretch, and whether transit or bikeshare should be offered; null or absent elsewhere.
+   */
+  novice?: NoviceNote | null;
   /** A Mass Ride's rider-marked hazards it passes, in riding order (325); null or absent on other ride types. */
   mass_hazards?: MassHazardSpan[] | null;
   /** The Avoid-rated junctions it passes, in route order (307); empty or absent where none. */
@@ -1086,7 +1103,7 @@ export async function requestRoute(
   preset: PresetId,
   // No abort signal: the scheduler never abandons a request, because an abort
   // in the browser does not free the API's in-flight slot (routeScheduler.ts).
-  options: { fetchImpl?: FetchLike; confirmLong?: boolean; dials?: Dials } = {},
+  options: { fetchImpl?: FetchLike; confirmLong?: boolean; dials?: Dials; vias?: readonly number[] } = {},
 ): Promise<RouteResult> {
   const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
   let response: Response;
@@ -1109,6 +1126,8 @@ export async function requestRoute(
         ...(options.confirmLong ? { confirm_long: true } : {}),
         // "Route through anyway" (v0.7.0, lib/closureMap.ts): this plan's only, in the request, never in a link.
         ...(options.dials?.closureBypass?.length ? { closure_bypass: options.dials.closureBypass } : {}),
+        // The via points (v0.7.0, "Via points vs stops"): passed without a stop. Never on a two-point ride type.
+        ...(options.vias?.length && !twoPointsOnly(preset) ? { via_points: [...options.vias] } : {}),
       }),
     });
   } catch {
