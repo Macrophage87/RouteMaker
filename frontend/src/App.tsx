@@ -23,7 +23,15 @@ import { neutralPaletteSearch, setMtbTrails, setRoutableMtb } from "./stressStyl
 import { setTopoLines, topoAvailable, useTopoLines } from "./lib/topoLines.ts";
 import { isMtb, mtbChosen, mtbLevelOf } from "./lib/mtbMode.ts";
 import { choose as chooseRideType } from "./lib/rideTypeDialog.ts";
-import { NOVICE_TRANSIT_CHOICES, noviceTransitSaid } from "./lib/noviceOffer.ts";
+import {
+  NOVICE_TRANSIT_CHOICES,
+  noviceOfferShown,
+  noviceTransitDials,
+  noviceTransitSaid,
+  noviceTripOf,
+  noviceTripPoints,
+  type NoviceTrip,
+} from "./lib/noviceOffer.ts";
 import {
   CANCELLED_SAID,
   PLANNING_SAID,
@@ -2299,6 +2307,26 @@ export function App() {
   useEffect(() => {
     setKeptOptions((kept) => keepOptions(kept, bikeshareOf(route), optionsKey(routedPoints, route?.preset ?? "")));
   }, [route, routedPoints]);
+  // Novice and Nervous where only a busy road connects (v0.7.0): both transit trips found at once, in the background,
+  // so they show beside the bike route unasked, each with its time; a later route's offer asks again.
+  const [noviceTrips, setNoviceTrips] = useState<{ key: string; trips: Partial<Record<PresetId, NoviceTrip>> } | null>(null);
+  const noviceKey = noviceOfferShown(shown, preset) ? JSON.stringify(routedPoints) : null;
+  useEffect(() => {
+    if (noviceKey === null) return;
+    const ends = noviceTripPoints(routedPoints);
+    const found = (id: PresetId, trip: NoviceTrip) =>
+      setNoviceTrips((was) => (was?.key === noviceKey ? { key: noviceKey, trips: { ...was.trips, [id]: trip } } : was));
+    setNoviceTrips({ key: noviceKey, trips: {} });
+    for (const choice of NOVICE_TRANSIT_CHOICES) {
+      void requestRoute(ends, choice.preset, { dials: noviceTransitDials(choice.preset) }).then(
+        (answer) => found(choice.preset, noviceTripOf(answer)),
+        () => found(choice.preset, { kind: "none" }),
+      );
+    }
+    // routedPoints is in noviceKey.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noviceKey]);
+  const noviceTripsShown = noviceTrips && noviceTrips.key === noviceKey ? noviceTrips.trips : undefined;
   const goOptions =
     mode === "go" && usesBikeshare(preset) && shown && keptOptions && keptOptions.key === optionsKey(points, preset) && keptOptions.options.length > 1
       ? keptOptions.options
@@ -2823,6 +2851,7 @@ export function App() {
       const label = NOVICE_TRANSIT_CHOICES.find((c) => c.preset === id)?.label ?? presetSaid(id);
       announce(noviceTransitSaid(label));
     },
+    noviceTrips: noviceTripsShown,
   };
   // A transit plan's options (lib/transit.ts): a press plans that one, for this trip; a departure the
   // rider would miss plans again, which takes the next one (lib/departure.ts).

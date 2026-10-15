@@ -10,7 +10,7 @@ import { placeLetter } from "../lib/letteredPlaces.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration } from "../lib/format.ts";
 import { presetLabel, presetSaid, type PresetId } from "../lib/presets.ts";
-import { NOVICE_TRANSIT_CHOICES, noviceOfferText } from "../lib/noviceOffer.ts";
+import { NOVICE_TRANSIT_CHOICES, noviceOfferText, noviceTripLine, type NoviceTrip } from "../lib/noviceOffer.ts";
 import { PresetName } from "../lib/presetName.ts";
 import { stressSegments, type StressSegment } from "../lib/stressBar.ts";
 import { calmSearchNote, detourView, paceText, stillPlanningSaid, movedPointsNote } from "../lib/summary.ts";
@@ -103,29 +103,48 @@ export interface GoRouteControls {
   options: { list: BikeshareOption[]; picked: number; busy: boolean; onPick: (index: number) => void } | null;
   /** Novice and Nervous's offer (v0.7.0, lib/noviceOffer.ts): plan the trip on this transit ride type instead. */
   onNoviceTransit?: (preset: PresetId) => void;
+  /** Each offered option's trip, found in the background as the offer shows (App), by ride type. */
+  noviceTrips?: Partial<Record<PresetId, NoviceTrip>>;
 }
 
 /**
- * Novice and Nervous where only a busy road connects (v0.7.0): the road named, and transit or bikeshare offered,
- * two buttons in a group; nothing otherwise.
+ * Novice and Nervous where only a busy road connects (v0.7.0): the road named, and beside the bike route, unasked,
+ * "Own bike + transit" and "Bikeshare + transit", each a button with its one-line note (its time door to door, and
+ * the busy stretch it avoids) as its description; nothing otherwise.
  */
-function NoviceTransitOffer({ route, preset, onTake }: { route: RouteResponse; preset: PresetId; onTake?: (preset: PresetId) => void }) {
+function NoviceTransitOffer({
+  route,
+  preset,
+  onTake,
+  trips,
+}: {
+  route: RouteResponse;
+  preset: PresetId;
+  onTake?: (preset: PresetId) => void;
+  trips?: Partial<Record<PresetId, NoviceTrip>>;
+}) {
   const text = noviceOfferText(route, preset);
   const id = useId();
-  if (!text || !onTake) return null;
+  if (!text || !onTake || !route.novice) return null;
+  const note = route.novice;
   return (
     <div className="novice-offer" role="group" aria-labelledby={id}>
       <p id={id} className="notice">
         <Icon name="warn" size={16} />
         {text}
       </p>
-      <div className="chip-row">
+      <ul className="novice-trips">
         {NOVICE_TRANSIT_CHOICES.map((choice) => (
-          <button key={choice.preset} type="button" className="chip" onClick={() => onTake(choice.preset)}>
-            {choice.label}
-          </button>
+          <li key={choice.preset}>
+            <button type="button" className="chip" aria-describedby={`${id}-${choice.preset}`} onClick={() => onTake(choice.preset)}>
+              {choice.label}
+            </button>
+            <span id={`${id}-${choice.preset}`} className="novice-trip-note">
+              {noviceTripLine(trips?.[choice.preset], note)}
+            </span>
+          </li>
         ))}
-      </div>
+      </ul>
     </div>
   );
 }
@@ -619,7 +638,7 @@ export function RouteSummary({
   const alerts = (
     <>
       <RouteAlerts route={route} answer={answer} choice={choice} around={around} onAround={onAround} />
-      <NoviceTransitOffer route={route} preset={preset} onTake={go.onNoviceTransit} />
+      <NoviceTransitOffer route={route} preset={preset} onTake={go.onNoviceTransit} trips={go.noviceTrips} />
     </>
   );
   const alertCount = (avoidNoticeFor(answer, choice) ? 1 : 0) + facilityNoticeCount(route);
