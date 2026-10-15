@@ -54,7 +54,7 @@ import {
 } from "./lib/roadInfo.ts";
 import type { PlaceChoice } from "./lib/geocode.ts";
 import { stationLinks } from "./lib/stationLinks.ts";
-import { TIMES_LABEL, requestStationTimes, shownLines, stationTimeRows } from "./lib/stationTimes.ts";
+import { TIMES_LABEL, requestStationTimes, stationCardRows } from "./lib/stationTimes.ts";
 import type { StationTimes } from "./lib/api.ts";
 import { WMATA_SLUGS } from "./lib/railData.ts";
 import type { RailVisibility, Station } from "./lib/railStations.ts";
@@ -169,7 +169,7 @@ function StationTimesList({ station, rail, closed }: { station: Station; rail: R
       live = false;
     };
   }, [lon, lat, closed]);
-  const rows = !closed && times ? stationTimeRows(shownLines(times.lines, rail)) : [];
+  const rows = !closed ? stationCardRows(times, rail) : [];
   if (rows.length === 0) return null;
   return (
     <ul className="station-times road-info-times" aria-label={TIMES_LABEL}>

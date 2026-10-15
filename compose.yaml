@@ -219,6 +219,11 @@ services:
       # The geocoder place search and place names are proxied to
       # (core.geocode); on this network only, like the routers.
       PHOTON_URL: ${PHOTON_URL:-http://photon:2322}
+      # Live data keys (v0.7.0), read by this service alone and never sent to a browser:
+      # WMATA's developer key (live Metro trains, incidents, elevator outages) and
+      # Mapillary's client token (the road panel's street photo). Empty: off.
+      WMATA_API_KEY: ${WMATA_API_KEY:-}
+      MAPILLARY_ACCESS_TOKEN: ${MAPILLARY_ACCESS_TOKEN:-}
       # The same /data this service's two mounts below are under, so
       # settings.TILES_DIR is /data/tiles and settings.STATIC_ROOT is
       # /data/static - both of them paths that exist in this container.

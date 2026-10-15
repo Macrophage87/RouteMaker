@@ -15,7 +15,7 @@ import type { LonLat } from "./lib/geo.ts";
 import { focusBackTarget } from "./lib/mapGlue.ts";
 import { RailCards } from "./lib/railCards.ts";
 import { stationLinksElement } from "./lib/stationLinks.ts";
-import { TIMES_LABEL, cachedStationTimes, requestStationTimes, shownLines, stationTimeRows, type TimesRow } from "./lib/stationTimes.ts";
+import { TIMES_LABEL, cachedStationTimes, requestStationTimes, stationCardRows, type TimesRow } from "./lib/stationTimes.ts";
 import { WMATA_SLUGS } from "./lib/railData.ts";
 import { RAIL_LAYERS, STATION_MIN_ZOOM, railHitFrom, stationNear, type RailHit } from "./lib/railLayer.ts";
 import {
@@ -77,7 +77,7 @@ function fillTimes(list: HTMLElement, rows: readonly TimesRow[]) {
 }
 
 function timesRows(options: RailInteractionOptions, times: StationTimes | null | undefined): TimesRow[] {
-  return times ? stationTimeRows(shownLines(times.lines, options.visibility())) : [];
+  return stationCardRows(times, options.visibility());
 }
 
 function summary(station: Station, options: RailInteractionOptions, elevatorTapped: boolean): HTMLElement {

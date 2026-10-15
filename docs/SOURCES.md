@@ -541,6 +541,42 @@ map credits:
 - Credit: MDOT MTA GTFS (scheduled times). Shown with a plan that uses MARC, Light RailLink or
   Metro SubwayLink.
 - Credit: VRE GTFS (scheduled times). Shown with a plan that uses VRE.
+- Credit: Data: WMATA. Shown with every live value (v0.7.0, below): a Metro station card's next
+  trains, an elevator out, a rail incident, and a plan's live lines.
+
+### WMATA live data (v0.7.0)
+
+- **Data:** WMATA's developer API, <https://developer.wmata.com/>: `Rail.svc/json/jStations`
+  (stations, codes and points; read once a day), `StationPrediction.svc/json/GetPrediction/All`
+  (next trains), `Incidents.svc/json/Incidents` (rail incidents) and
+  `Incidents.svc/json/ElevatorIncidents` (elevators and escalators out).
+- **Terms:** WMATA Transit Data Terms of Use, <https://developer.wmata.com/license>. A developer
+  key is required (`WMATA_API_KEY` on the server, the same key as the static GTFS fetch); it is
+  sent only in WMATA's `api_key` header, never in a URL, a log line or a page. Limits: 10 calls a
+  second, 50,000 a day; RouteMaker makes at most three calls every 45 s, and only while someone is
+  asking.
+- **Kept:** the latest reading only, one row of `bikeshare_feed_cache` (key `wmata`), replaced
+  in place; no history.
+- **Shown:** each live time says "live", each timetable time "scheduled"; with no reading the
+  timetable is shown alone. An elevator out where a rider takes their own bike is a warning
+  ("Elevator out at X: carry your bike on the stairs."), never an avoidance; it costs the trip 2
+  minutes in the ranking only.
+- Code: `src/core/wmata_live.py`, `src/core/transit_live.py`; fixtures shaped as WMATA documents
+  the answers in `tests/data/wmata/`.
+
+### MDOT MTA and VRE real-time feeds (checked 2026-10-15, not used)
+
+Public GTFS-Realtime feeds exist, but the build environment cannot reach them and their terms are
+not yet checked, and reading Protocol Buffers needs a dependency the project does not declare. Not
+built in v0.7.0; listed so they can be added:
+
+- MARC trip updates and vehicle positions:
+  `https://mdotmta-gtfs-rt.s3.amazonaws.com/MARC+RT/marc-tu.pb` and `.../marc-vp.pb` (no key).
+- MDOT MTA service alerts, every mode: `https://feeds.mta.maryland.gov/alerts.pb`.
+- MTA Light RailLink, Metro SubwayLink and buses: real-time is published through MTA's developer
+  page (<https://www.mta.maryland.gov/developer-resources>); the URLs were not listed publicly.
+- VRE trip updates: `https://gtfs.vre.org/containercdngtfsupload/TripUpdateFeed`
+  (Mobility Database `tld-1127-tu`).
 
 ### Metro's typical timetable (until WMATA's rail GTFS is built)
 
@@ -674,8 +710,9 @@ needs no bike access.
 
 ### Limits
 
-- GTFS-Realtime service alerts are not used. The agencies' real-time endpoints cannot be reached
-  from the build environment, and their terms have not been checked. Planned closures that an
+- GTFS-Realtime service alerts are not used (WMATA's own live API is, above). The other
+  agencies' real-time endpoints cannot be reached from the build environment, and their terms
+  have not been checked. Planned closures that an
   agency publishes in its static timetable (`calendar_dates.txt`) are used, but unplanned track
   work is not. Every plan says "Scheduled service; check for track work."
 

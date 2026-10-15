@@ -324,6 +324,14 @@ LONG_ROUTING_CONCURRENCY = 1
 PHOTON_URL = os.environ.get("PHOTON_URL", "http://photon:2322")
 PHOTON_TIMEOUT_S = 4.0
 
+# Live data keys (v0.7.0), set on the server by the owner; empty turns the feature off.
+# WMATA's developer key (core.wmata_live: next trains, incidents, elevator outages; the same
+# name the static GTFS fetch reads) and Mapillary's client token (core.street_photo: the road
+# panel's street photo). Both are used server-side only: never logged, never in a URL a
+# browser sees, never in a page.
+WMATA_API_KEY = os.environ.get("WMATA_API_KEY", "").strip()
+MAPILLARY_ACCESS_TOKEN = os.environ.get("MAPILLARY_ACCESS_TOKEN", "").strip()
+
 # The languages scripts/import_photon.sh imports names in, and so the only ones
 # a search may ask for; Photon falls back to the local name for the rest.
 PHOTON_LANGUAGES = ("en",)

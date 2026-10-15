@@ -1,0 +1,634 @@
+"""WMATA's live data: Metro's next trains, its rail incidents and its elevator outages (v0.7.0).
+
+The owner, 2026-10-13 11:16 UTC: "Can live values be implemented as well as station incident's
+like elevator closures and the like?" Then (11:17 UTC): "Elevator outages don't stop a ride
+outright, because many people can walk their bike upstairs." So an outage is a warning, never an
+avoidance: "Elevator out at Gallery Place: carry your bike on the stairs" (WMATA bars bikes on
+escalators), and a small ranking cost (`ELEVATOR_OUT_S`, `core.transit_live`) so a station whose
+elevator works wins a near-tie.
+
+What is read (WMATA's developer API, <https://developer.wmata.com/>; the key is WMATA's, sent only
+as its `api_key` header, never in a URL):
+
+- `Rail.svc/json/jStations`: the stations, their codes, names and points (kept a day);
+- `StationPrediction.svc/json/GetPrediction/All`: every station's next trains;
+- `Incidents.svc/json/Incidents`: rail incidents (delays, single-tracking, closures);
+- `Incidents.svc/json/ElevatorIncidents`: elevators and escalators out of service.
+
+How often: one reading for the whole deployment at most every `CACHE_TTL_S` (45 s), and only
+while someone is asking (a plan or a station card): WMATA allows 10 calls a second and 50,000 a
+day, and three calls a reading every 45 s is under 6,000 a day. The API workers share the reading
+through one row of `bikeshare_feed_cache` (key `ROW_KEY`; the table is "one current copy of a
+live third-party feed per key", core.models.BikeshareFeedCache), replaced in place: no history.
+A worker that finds it out of date and wins a PostgreSQL advisory lock reads WMATA; the others
+use its row. A failed reading pauses `FAILURE_PAUSE_S` and the last one is served for
+`STALE_GRACE_S` more, after which there is no live data and every time is the timetable's
+("scheduled").
+
+The key: the environment variable `KEY_ENV` (`WMATA_API_KEY`, the name the static GTFS fetch
+already uses, systems.json `key_env`), set on the server by the owner. With no key nothing is
+fetched and nothing is live. The key is never logged, never in a URL, never sent to a browser.
+
+Every live value the page shows carries `CREDIT` ("Data: WMATA").
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import math
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
+from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any, Protocol
+
+logger = logging.getLogger(__name__)
+
+KEY_ENV = "WMATA_API_KEY"
+KEY_HEADER = "api_key"
+API = "https://api.wmata.com"
+ALLOWED_HOSTS = frozenset({"api.wmata.com"})
+STATIONS_URL = f"{API}/Rail.svc/json/jStations"
+PREDICTIONS_URL = f"{API}/StationPrediction.svc/json/GetPrediction/All"
+INCIDENTS_URL = f"{API}/Incidents.svc/json/Incidents"
+ELEVATORS_URL = f"{API}/Incidents.svc/json/ElevatorIncidents"
+
+CREDIT = "Data: WMATA"
+ROW_KEY = "wmata"
+
+CACHE_TTL_S = 45.0
+STALE_GRACE_S = 120.0
+FAILURE_PAUSE_S = 15.0
+STATIONS_TTL_S = 24 * 3600.0
+SHARED_WAIT_S = 4.0
+SHARED_POLL_S = 0.25
+TIMEOUT_S = 3.0
+REFRESH_BUDGET_S = 3.0
+MAX_BYTES = 4_000_000
+USER_AGENT = "RouteMaker-transit-live"
+
+# A map point this close to a WMATA station is that station (the transit planner's
+# STATION_NEAR_M).
+STATION_NEAR_M = 400.0
+
+# WMATA's line codes, as the timetable names the lines ("Red Line").
+LINES = {
+    "RD": "Red Line",
+    "BL": "Blue Line",
+    "OR": "Orange Line",
+    "SV": "Silver Line",
+    "GR": "Green Line",
+    "YL": "Yellow Line",
+}
+
+
+class Unavailable(Exception):
+    """No live reading could be had."""
+
+
+Fetch = Callable[[str, float], bytes]
+
+
+def api_key() -> str:
+    """The key, from `settings.WMATA_API_KEY` (the environment variable `KEY_ENV`)."""
+    from django.conf import settings
+
+    return (getattr(settings, "WMATA_API_KEY", "") or "").strip()
+
+
+def configured() -> bool:
+    return bool(api_key())
+
+
+def _allowed(url: str) -> bool:
+    parts = urllib.parse.urlsplit(url)
+    return parts.scheme == "https" and parts.hostname in ALLOWED_HOSTS and not parts.query
+
+
+class _SameHostOnly(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not _allowed(newurl):
+            raise urllib.error.URLError("a redirect off WMATA's API host was refused")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_OPENER = urllib.request.build_opener(_SameHostOnly)
+
+
+def http_get(url: str, timeout: float) -> bytes:
+    """GET one WMATA API URL with the key in its header. Errors name the URL's path only:
+    the key is never in a URL, and never in a message."""
+    key = api_key()
+    if not key:
+        raise Unavailable("no WMATA key is set")
+    if not _allowed(url):
+        raise Unavailable("not a WMATA API URL")
+    path = urllib.parse.urlsplit(url).path
+    request = urllib.request.Request(
+        url,
+        headers={"Accept": "application/json", "User-Agent": USER_AGENT, KEY_HEADER: key},
+    )
+    try:
+        with _OPENER.open(request, timeout=timeout) as response:
+            body = response.read(MAX_BYTES + 1)
+    except urllib.error.HTTPError as error:
+        raise Unavailable(f"{path}: HTTP {error.code}") from None
+    except (TimeoutError, urllib.error.URLError, ConnectionError, OSError) as error:
+        raise Unavailable(f"{path}: {type(error).__name__}") from None
+    if len(body) > MAX_BYTES:
+        raise Unavailable(f"{path}: larger than expected")
+    return body
+
+
+# --- Parsed data ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Station:
+    code: str
+    name: str
+    lon: float
+    lat: float
+    together: tuple[str, ...] = ()  # the codes of the same station's other platforms
+    lines: tuple[str, ...] = ()  # "Red Line", ...
+
+
+@dataclass(frozen=True)
+class Train:
+    station: str  # the station code it is predicted at
+    line: str  # "Red Line"; "" where WMATA gives none (a train not in service)
+    destination: str
+    destination_code: str | None
+    minutes: int | None  # None: no time given
+    arriving: bool  # "ARR"
+    boarding: bool  # "BRD"
+    group: str
+
+
+@dataclass(frozen=True)
+class Incident:
+    lines: tuple[str, ...]  # "Red Line", ...
+    kind: str  # "Delay", "Alert"
+    text: str
+
+
+@dataclass(frozen=True)
+class Outage:
+    station: str  # the station code
+    station_name: str
+    unit: str  # "ELEVATOR" or "ESCALATOR"
+    where: str
+    back: str | None  # the estimated return, as WMATA gives it
+
+
+@dataclass(frozen=True)
+class Snapshot:
+    as_of: float  # epoch seconds of the reading
+    stations: dict[str, Station]
+    trains: tuple[Train, ...] = ()
+    incidents: tuple[Incident, ...] = ()
+    outages: tuple[Outage, ...] = ()
+    stale: bool = False
+
+    def station_near(self, point, limit_m: float = STATION_NEAR_M) -> Station | None:
+        """The nearest WMATA station within `limit_m` of `point` ([lon, lat])."""
+        best: tuple[float, Station] | None = None
+        for station in self.stations.values():
+            d = _metres(point, (station.lon, station.lat))
+            if d <= limit_m and (best is None or d < best[0]):
+                best = (d, station)
+        return None if best is None else best[1]
+
+    def codes(self, station: Station) -> tuple[str, ...]:
+        """A station's codes: its own and its other platforms' (Metro Center A01 and C01)."""
+        return (station.code, *station.together)
+
+    def name_of(self, code: str | None) -> str | None:
+        station = self.stations.get(code or "")
+        return None if station is None else station.name
+
+    def elevators_out(self, station: Station) -> list[Outage]:
+        codes = set(self.codes(station))
+        return [o for o in self.outages if o.station in codes and o.unit == "ELEVATOR"]
+
+    def trains_at(self, station: Station) -> list[Train]:
+        codes = set(self.codes(station))
+        return [t for t in self.trains if t.station in codes and t.line]
+
+    def lines_at(self, station: Station) -> list[str]:
+        """The lines that call at a station, its other platforms' too."""
+        out: list[str] = []
+        for code in self.codes(station):
+            found = self.stations.get(code)
+            for line in found.lines if found else ():
+                if line not in out:
+                    out.append(line)
+        return out
+
+    def incidents_on(self, lines) -> list[Incident]:
+        """WMATA's incidents on any of `lines` (by colour: "Red Line" is "Metrorail Red")."""
+        return [i for i in self.incidents if any(same_line(a, b) for a in lines for b in i.lines)]
+
+
+def same_line(a: str, b: str) -> bool:
+    """Whether two names are one Metro line: the colour word they start with ("Red Line" and
+    a timetable's "RED" or "Metrorail Red Line")."""
+    colours = {name.split()[0].lower() for name in LINES.values()}
+    words_a = {w for w in a.lower().split() if w in colours}
+    words_b = {w for w in b.lower().split() if w in colours}
+    return bool(words_a & words_b)
+
+
+def _metres(a, b) -> float:
+    lat = math.radians((a[1] + b[1]) / 2)
+    dx = (a[0] - b[0]) * 111_320.0 * math.cos(lat)
+    dy = (a[1] - b[1]) * 110_540.0
+    return math.hypot(dx, dy)
+
+
+def _text(value) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+
+def parse_stations(doc) -> dict[str, Station]:
+    out: dict[str, Station] = {}
+    items = doc.get("Stations") if isinstance(doc, dict) else None
+    for item in items if isinstance(items, list) else ():
+        if not isinstance(item, dict):
+            continue
+        code, name = _text(item.get("Code")), _text(item.get("Name"))
+        try:
+            lat, lon = float(item.get("Lat")), float(item.get("Lon"))
+        except (TypeError, ValueError):
+            continue
+        if not code or not name or not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            continue
+        together = tuple(
+            c
+            for c in (_text(item.get("StationTogether1")), _text(item.get("StationTogether2")))
+            if c
+        )
+        lines = tuple(
+            LINES[c] for n in range(1, 5) if (c := _text(item.get(f"LineCode{n}")).upper()) in LINES
+        )
+        out[code] = Station(code, name, lon, lat, together, lines)
+    return out
+
+
+def parse_trains(doc) -> tuple[Train, ...]:
+    out = []
+    items = doc.get("Trains") if isinstance(doc, dict) else None
+    for item in items if isinstance(items, list) else ():
+        if not isinstance(item, dict):
+            continue
+        station = _text(item.get("LocationCode"))
+        if not station:
+            continue
+        raw = _text(item.get("Min")).upper()
+        minutes = int(raw) if raw.isdigit() else None
+        if minutes is not None and minutes > 90:
+            minutes = None
+        out.append(
+            Train(
+                station=station,
+                line=LINES.get(_text(item.get("Line")).upper(), ""),
+                destination=_text(item.get("DestinationName")) or _text(item.get("Destination")),
+                destination_code=_text(item.get("DestinationCode")) or None,
+                minutes=0 if raw in ("ARR", "BRD") else minutes,
+                arriving=raw == "ARR",
+                boarding=raw == "BRD",
+                group=_text(item.get("Group")),
+            )
+        )
+    return tuple(out)
+
+
+def parse_incidents(doc) -> tuple[Incident, ...]:
+    out = []
+    items = doc.get("Incidents") if isinstance(doc, dict) else None
+    for item in items if isinstance(items, list) else ():
+        if not isinstance(item, dict):
+            continue
+        text = " ".join(_text(item.get("Description")).split())
+        if not text:
+            continue
+        codes = [c.strip().upper() for c in _text(item.get("LinesAffected")).split(";")]
+        lines = tuple(LINES[c] for c in codes if c in LINES)
+        out.append(Incident(lines, _text(item.get("IncidentType")) or "Alert", text))
+    return tuple(out)
+
+
+def parse_outages(doc) -> tuple[Outage, ...]:
+    out = []
+    items = doc.get("ElevatorIncidents") if isinstance(doc, dict) else None
+    for item in items if isinstance(items, list) else ():
+        if not isinstance(item, dict):
+            continue
+        station = _text(item.get("StationCode"))
+        unit = _text(item.get("UnitType")).upper()
+        if not station or unit not in ("ELEVATOR", "ESCALATOR"):
+            continue
+        out.append(
+            Outage(
+                station=station,
+                station_name=_text(item.get("StationName")),
+                unit=unit,
+                where=_text(item.get("LocationDescription")),
+                back=_text(item.get("EstimatedReturnToService")) or None,
+            )
+        )
+    return tuple(out)
+
+
+def build(docs: dict[str, Any], as_of: float, stale: bool = False) -> Snapshot:
+    stations = parse_stations(docs.get("stations"))
+    if not stations:
+        raise Unavailable("the station list could not be read")
+    return Snapshot(
+        as_of=as_of,
+        stations=stations,
+        trains=parse_trains(docs.get("predictions")),
+        incidents=parse_incidents(docs.get("incidents")),
+        outages=parse_outages(docs.get("elevators")),
+        stale=stale,
+    )
+
+
+# --- The shared copy ---------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Stored:
+    fetched_wall: float | None
+    docs: dict[str, Any]
+    stations_wall: float | None = None
+    failed_wall: float | None = None
+
+
+class SharedStore(Protocol):
+    def load(self) -> Stored | None: ...
+
+    def save(self, stored: Stored) -> None: ...
+
+    def mark_failed(self, wall: float) -> None: ...
+
+    def refresh_turn(self) -> Any: ...
+
+
+class DatabaseStore:
+    """One row of `bikeshare_feed_cache` (key `ROW_KEY`), replaced at every reading; the turn
+    to read WMATA is a session advisory lock, so one worker reads however many run."""
+
+    LOCK_KEY = 0x776D7461  # "wmta"
+
+    def load(self) -> Stored | None:
+        from .models import BikeshareFeedCache
+
+        row = BikeshareFeedCache.objects.filter(key=ROW_KEY).first()
+        if row is None:
+            return None
+        payload = row.payload if isinstance(row.payload, dict) else {}
+        docs = payload.get("docs")
+        stations_wall = payload.get("stations_wall")
+        return Stored(
+            fetched_wall=None if row.fetched_at is None else row.fetched_at.timestamp(),
+            docs=docs if isinstance(docs, dict) else {},
+            stations_wall=float(stations_wall) if isinstance(stations_wall, int | float) else None,
+            failed_wall=None if row.failed_at is None else row.failed_at.timestamp(),
+        )
+
+    def save(self, stored: Stored) -> None:
+        from .models import BikeshareFeedCache
+
+        BikeshareFeedCache.objects.update_or_create(
+            key=ROW_KEY,
+            defaults={
+                "payload": {"docs": stored.docs, "stations_wall": stored.stations_wall},
+                "fetched_at": (
+                    None
+                    if stored.fetched_wall is None
+                    else datetime.fromtimestamp(stored.fetched_wall, UTC)
+                ),
+                "failed_at": None,
+            },
+        )
+
+    def mark_failed(self, wall: float) -> None:
+        from .models import BikeshareFeedCache
+
+        BikeshareFeedCache.objects.update_or_create(
+            key=ROW_KEY, defaults={"failed_at": datetime.fromtimestamp(wall, UTC)}
+        )
+
+    @contextmanager
+    def refresh_turn(self) -> Iterator[bool]:
+        from django.db import connection
+
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT pg_try_advisory_lock(%s)", [self.LOCK_KEY])
+            got = bool(cursor.fetchone()[0])
+        try:
+            yield got
+        finally:
+            if got:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT pg_advisory_unlock(%s)", [self.LOCK_KEY])
+
+
+class Live:
+    """The cache: one live reading for all workers, read again at most every `CACHE_TTL_S`
+    while asked for. `snapshot()` never raises: None means nothing live (no key, or WMATA has
+    not answered for a while), and every time is then the timetable's."""
+
+    def __init__(
+        self,
+        fetch: Fetch = http_get,
+        store: SharedStore | None = None,
+        wall: Callable[[], float] = time.time,
+        sleep: Callable[[float], None] = time.sleep,
+        enabled: Callable[[], bool] = configured,
+    ) -> None:
+        self._fetch = fetch
+        self._store = store
+        self._wall = wall
+        self._sleep = sleep
+        self._enabled = enabled
+        self._lock = threading.Lock()
+        self._held: Stored | None = None
+        self._failed_at: float | None = None
+        self.readings = 0
+
+    def snapshot(self) -> Snapshot | None:
+        if not self._enabled():
+            return None
+        with self._lock:
+            now = self._wall()
+            fresh = self._fresh(self._held, now)
+            if fresh is not None:
+                return fresh
+            stored = self._load()
+            fresh = self._fresh(stored, now)
+            if fresh is not None:
+                self._held = stored
+                return fresh
+            paused = (self._failed_at is not None and now - self._failed_at < FAILURE_PAUSE_S) or (
+                stored is not None
+                and stored.failed_wall is not None
+                and 0 <= now - stored.failed_wall < FAILURE_PAUSE_S
+            )
+            if not paused:
+                got = self._refresh_or_borrow(now, stored or self._held)
+                if got is not None:
+                    return got
+            for held in (self._held, stored):
+                late = self._fresh(held, self._wall(), grace=True)
+                if late is not None:
+                    return late
+            return None
+
+    def _fresh(self, stored: Stored | None, now: float, grace: bool = False) -> Snapshot | None:
+        if stored is None or stored.fetched_wall is None or not stored.docs:
+            return None
+        age = now - stored.fetched_wall
+        limit = CACHE_TTL_S + STALE_GRACE_S if grace else CACHE_TTL_S
+        if age < 0 or age >= limit:
+            return None
+        try:
+            return build(stored.docs, stored.fetched_wall, stale=age >= CACHE_TTL_S)
+        except Unavailable:
+            return None
+
+    def _load(self) -> Stored | None:
+        if self._store is None:
+            return None
+        try:
+            return self._store.load()
+        except Exception as error:  # noqa: BLE001 - a store that fails is no store
+            logger.warning(
+                "wmata live: the shared copy could not be read: %s", type(error).__name__
+            )
+            return None
+
+    def _refresh_or_borrow(self, now: float, stored: Stored | None) -> Snapshot | None:
+        if self._store is None:
+            return self._read(now, stored)
+        try:
+            with self._store.refresh_turn() as mine:
+                if mine:
+                    again = self._load()
+                    fresh = self._fresh(again, now)
+                    if fresh is not None:
+                        self._held = again
+                        return fresh
+                    return self._read(now, again or stored)
+        except Exception as error:  # noqa: BLE001
+            logger.warning(
+                "wmata live: the shared copy could not be used: %s", type(error).__name__
+            )
+            return self._read(now, stored)
+        waited = 0.0
+        while waited < SHARED_WAIT_S:
+            self._sleep(SHARED_POLL_S)
+            waited += SHARED_POLL_S
+            again = self._load()
+            fresh = self._fresh(again, self._wall())
+            if fresh is not None:
+                self._held = again
+                return fresh
+        return None
+
+    def _get(self, url: str):
+        try:
+            return json.loads(self._fetch(url, TIMEOUT_S))
+        except ValueError:
+            raise Unavailable(f"{urllib.parse.urlsplit(url).path}: not JSON") from None
+
+    def _get_all(self, urls: dict[str, str]) -> dict[str, Any]:
+        """The documents, read at once, all within `REFRESH_BUDGET_S`: a plan waits for a
+        reading at most that long, once in `CACHE_TTL_S`."""
+        pool = ThreadPoolExecutor(max_workers=len(urls))
+        try:
+            futures = {name: pool.submit(self._get, url) for name, url in urls.items()}
+            deadline = time.monotonic() + REFRESH_BUDGET_S
+            out = {}
+            for name, future in futures.items():
+                try:
+                    out[name] = future.result(timeout=max(0.1, deadline - time.monotonic()))
+                except FutureTimeout:
+                    raise Unavailable(f"{name}: no answer in time") from None
+            return out
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+
+    def _read(self, now: float, previous: Stored | None) -> Snapshot | None:
+        self.readings += 1
+        try:
+            docs: dict[str, Any] = {}
+            stations_wall = previous.stations_wall if previous else None
+            old = (previous.docs or {}).get("stations") if previous else None
+            wanted = {
+                "predictions": PREDICTIONS_URL,
+                "incidents": INCIDENTS_URL,
+                "elevators": ELEVATORS_URL,
+            }
+            if old and stations_wall is not None and 0 <= now - stations_wall < STATIONS_TTL_S:
+                docs["stations"] = old
+            else:
+                wanted["stations"] = STATIONS_URL
+                stations_wall = now
+            docs.update(self._get_all(wanted))
+            snapshot = build(docs, now)
+        except Unavailable as error:
+            logger.warning("wmata live: %s", error)
+            self._failed_at = now
+            if self._store is not None:
+                try:
+                    self._store.mark_failed(now)
+                except Exception:  # noqa: BLE001
+                    logger.warning("wmata live: could not note the failure")
+            return None
+        stored = Stored(now, docs, stations_wall)
+        self._held = stored
+        self._failed_at = None
+        if self._store is not None:
+            try:
+                self._store.save(stored)
+            except Exception:  # noqa: BLE001
+                logger.warning("wmata live: could not keep the shared copy")
+        return snapshot
+
+
+# --- Words ------------------------------------------------------------------------------
+
+
+def elevator_words(station_name: str) -> str:
+    """The one-line warning (the owner, 2026-10-13 11:17 UTC)."""
+    return f"Elevator out at {station_name}: carry your bike on the stairs."
+
+
+def train_minutes(train: Train) -> str:
+    if train.boarding:
+        return "boarding"
+    if train.arriving or train.minutes == 0:
+        return "arriving"
+    return f"{train.minutes} min"
+
+
+def as_of_iso(snapshot: Snapshot) -> str:
+    from routemaker.ridetime import ZONE
+
+    return (
+        datetime.fromtimestamp(snapshot.as_of, UTC).astimezone(ZONE).isoformat(timespec="seconds")
+    )
+
+
+# The one cache of the process; its reading is shared by every worker.
+client = Live(store=DatabaseStore())

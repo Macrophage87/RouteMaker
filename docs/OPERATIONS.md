@@ -2003,8 +2003,19 @@ docs/BETA-RUNBOOK.md). Ship it again after each refresh.
 🚆🚌 uses no Metro and says "Bikes aren't allowed on Metro today (July 4)."; Bikeshare + 🚶🚆🚌
 still rides Metro on foot.
 
-**What is not checked:** live arrivals and GTFS-Realtime service alerts. Every plan says
-"Scheduled service; check for track work."
+**Live Metro data (v0.7.0).** With `WMATA_API_KEY` set in the api container's environment (the
+server's `.env`; the owner sets it, nobody else handles it), the api reads WMATA's next trains,
+rail incidents and elevator outages (`core.wmata_live`): at most three calls every 45 s for the
+whole deployment, only while someone plans a transit trip or opens a Metro station's card, shared
+through one row of `bikeshare_feed_cache` (key `wmata`, replaced in place, no history). Outbound
+host: `api.wmata.com` (add it to the beta's egress list). With no key, or WMATA not answering for
+about three minutes, everything is the timetable's and says "scheduled". An elevator out where a
+rider takes their bike is a warning on the plan and the station card, never an avoidance. To check
+it is working: open a Metro station's card on the map; its Metro lines say "live" and the card ends
+"Data: WMATA". The log says `wmata live: ...` (never the key) when a reading fails.
+
+**What is not checked:** MARC, MTA and VRE real-time (docs/SOURCES.md lists the feeds found).
+Every plan says "Scheduled service; check for track work."
 
 ## Avoid-rated junctions: adding one (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
 

@@ -94,6 +94,8 @@ from . import (
     segment_info,
     stoporder,
     transit,
+    transit_live,
+    wmata_live,
 )
 
 logger = logging.getLogger(__name__)
@@ -1917,6 +1919,22 @@ class AvoidAlternateOut(RouteBody):
     )
 
 
+class TransitStepLiveOut(Schema):
+    text: str = Field(description='"Live: Red Line toward Shady Grove in 3 min, 11 min."')
+    minutes: list[int]
+    source: Literal["live"] = "live"
+
+
+class TransitLiveOut(Schema):
+    warnings: list[str] = Field(
+        description='Elevators out where your bike needs one: "Elevator out at X: carry your'
+        ' bike on the stairs."'
+    )
+    alerts: list[str] = Field(description="WMATA's rail incidents on the lines used.")
+    credit: str = Field(description='"Data: WMATA".')
+    as_of: str = Field(description="When WMATA was read, local ISO time.")
+
+
 class TransitStepOut(Schema):
     mode: Literal[
         "ride",
@@ -1962,6 +1980,10 @@ class TransitStepOut(Schema):
             "[lon, lat] for the map: Metro and bus through their stops, walks straight, the far"
             " end's ride as routed; empty for the route line's own step."
         )
+    )
+    live: TransitStepLiveOut | None = Field(
+        default=None,
+        description="A Metro step's next trains its way now, from WMATA (core.transit_live).",
     )
 
 
@@ -2050,6 +2072,10 @@ class TransitOut(Schema):
     credits: list[str] = Field(description="The schedules' sources, for the systems used.")
     departure: TransitDepartureOut | None = Field(
         default=None, description="The first infrequent departure, or null where there is none."
+    )
+    live: TransitLiveOut | None = Field(
+        default=None,
+        description="WMATA's live values on this trip (v0.7.0); null with none to hand.",
     )
 
 
@@ -2628,10 +2654,14 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         trails_off=body.trails_off,
         system_weight_kg=body.system_weight_kg,
     )
+    # WMATA's live reading (core.wmata_live), if any: an elevator out on the way costs the trip
+    # a little in the ranking, and the block says the live values (core.transit_live).
+    live = wmata_live.client.snapshot()
+    found = transit_live.rank(found, live)
     found = transit.choose(found, body.transit_option)
     if found.option.walk:
         answer = _walked_line(found, body.preset, dials)
-        answer["transit"] = transit.block(found, schedule)
+        answer["transit"] = _transit_block(found, schedule, live)
         return answer
     leg = found.legs[found.ride]
     # The line is the chosen option's first ride (or walk). Riding directly there, or an option
@@ -2678,7 +2708,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             leg = timed.legs[timed.ride]
             if timed.option.walk:
                 answer = _walked_line(timed, body.preset, dials)
-                answer["transit"] = transit.block(timed, schedule)
+                answer["transit"] = _transit_block(timed, schedule, live)
                 return answer
             if timed.option.direct and body.preset == presets.BIKE_TRANSIT:
                 points = [list(start), list(end)]
@@ -2690,7 +2720,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             if answer is None:
                 answer, timed = unrouted(points, timed)
         found = timed
-    answer["transit"] = transit.block(found, schedule)
+    answer["transit"] = _transit_block(found, schedule, live)
     logger.info(
         "transit plan %s: search %.1f s (candidates %.1f s, %d calls), line %.1f s",
         body.preset,
@@ -2700,6 +2730,11 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         routing.clock() - searched,
     )
     return answer
+
+
+def _transit_block(plan: transit.Plan, schedule, live) -> dict:
+    """The answer's `transit` block, with WMATA's live values where there are any."""
+    return transit_live.annotate(transit.block(plan, schedule), plan, live)
 
 
 def _transit_refusal(message: str, code: str, status: int):
@@ -2807,10 +2842,37 @@ class LineTimeOut(Schema):
     today: bool = True
 
 
+class LiveTrainOut(Schema):
+    line: str = Field(description='"Red Line".')
+    toward: str = Field(description="The train's last stop.")
+    minutes: list[int] = Field(description="Minutes until the next trains that way (0: arriving).")
+    when: str = Field(description='"3 min, 11 min"; "arriving", "boarding".')
+
+
+class LiveElevatorOut(Schema):
+    words: str = Field(
+        description='"Elevator out at Gallery Place: carry your bike on the stairs."'
+    )
+    where: str = Field(description="WMATA's description of the unit.")
+
+
+class StationLiveOut(Schema):
+    station: str
+    trains: list[LiveTrainOut]
+    elevators: list[LiveElevatorOut]
+    alerts: list[str] = Field(description="WMATA's rail incidents on the station's lines.")
+    credit: str = Field(description='"Data: WMATA".')
+    as_of: str = Field(description="When WMATA was read, local ISO time.")
+
+
 class StationTimesOut(Schema):
     service_day: str = Field(description="The GTFS service day (before 3 am, the day before).")
-    source: Literal["scheduled"] = Field(description="Where the times are from: the timetable.")
+    source: Literal["scheduled"] = Field(description="Where `lines` are from: the timetable.")
     lines: list[LineTimeOut]
+    live: StationLiveOut | None = Field(
+        default=None,
+        description="A Metro station's live values (core.transit_live.station); null where none.",
+    )
 
 
 @api.get(
@@ -2833,11 +2895,18 @@ def transit_station_times(request, params: Query[StationTimesIn], response: Http
         )
     moment = transit.moment_of(when)
     found = transit.station_times(schedule, (params.lon, params.lat), when)
-    response["Cache-Control"] = "public, max-age=60"
+    # Live values only for now: a time asked for (`at`) is the timetable's alone.
+    live = (
+        None
+        if params.at
+        else transit_live.station((params.lon, params.lat), wmata_live.client.snapshot())
+    )
+    response["Cache-Control"] = "public, max-age=30" if live else "public, max-age=60"
     return {
         "service_day": moment.service_day.isoformat(),
         "source": transit.SCHEDULED,
         "lines": [_line_time(t, moment.service_day) for t in found],
+        "live": live,
     }
 
 
