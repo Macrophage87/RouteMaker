@@ -167,4 +167,4 @@ export async function saveMyGo(origin: string, myGo: MyGo, post: Fetch = fetch, 
 }
 
 /** The Home chip's words when there is no Home yet. */
-export const HOME_NOT_SET = "No Home yet: set it in My Go.";
+export const HOME_NOT_SET = "No Home yet: tap Home to set it.";

@@ -53,6 +53,7 @@ import {
   type InfoState,
 } from "./lib/roadInfo.ts";
 import type { PlaceChoice } from "./lib/geocode.ts";
+import { SET_AS_HOME_TEXT } from "./lib/homeSet.ts";
 import { stationLinks } from "./lib/stationLinks.ts";
 import { TIMES_LABEL, requestStationTimes, stationCardRows } from "./lib/stationTimes.ts";
 import type { StationTimes } from "./lib/api.ts";
@@ -128,6 +129,8 @@ interface Props {
   plan: { count: number; loop: boolean };
   /** Put the spot in the plan as its start, its end or a stop; the panel then closes. */
   onPlace: (choice: PlaceChoice, point: [number, number]) => void;
+  /** "Set as Home" (lib/homeSet.ts): the spot is the rider's Home; the panel then closes. Absent: no button. */
+  onSetHome?: (point: [number, number]) => void;
 }
 
 const FOCUSABLE =
@@ -225,7 +228,7 @@ function StreetPhotoView({ title, point, wayId }: { title: string; point: [numbe
   );
 }
 
-export function RoadInfoDialog({ request, hazards = null, massRide, station, rail = ALL_RAIL, stationClosed, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
+export function RoadInfoDialog({ request, hazards = null, massRide, station, rail = ALL_RAIL, stationClosed, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, onClose, fallbackFocus, onStressChanged, plan, onPlace, onSetHome }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
@@ -597,6 +600,20 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
                 </button>
               </li>
             ))}
+            {onSetHome && (
+              <li>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    onSetHome(request.point);
+                    close();
+                  }}
+                >
+                  {SET_AS_HOME_TEXT}
+                </button>
+              </li>
+            )}
           </ul>
         )}
         {request && actions.some((a) => a.unavailable) && (

@@ -5739,3 +5739,30 @@ details.fold > summary .icon {
   font-size: 0.75rem;
   font-weight: 600;
 }
+
+/* v0.7.0, Setting Home simply (lib/homeSet.ts): Go's Home sheet and Settings' (HomeSetter), the search and the
+   map way side by side, each control at least 44 px tall to tap. */
+.go-home-sheet[hidden] {
+  display: none;
+}
+.go-home-sheet {
+  margin: 4px 0 8px;
+}
+.home-setter .home-now {
+  margin: 0 0 4px;
+}
+.home-setter .home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.home-setter .home-actions button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.home-setter .home-pick-line {
+  margin: 6px 0 0;
+}
