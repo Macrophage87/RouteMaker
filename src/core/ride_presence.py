@@ -1,0 +1,445 @@
+"""Mass Ride and Group Ride links: the other riders as dots, and tap-to-send alerts (v0.7.0 plan,
+"Mass ride and Group Ride: see the others on the route" and "... tap to send an issue").
+
+Privacy is the shape of this module:
+
+- A position is rounded to a 20 m grid before it is kept, kept only in memory, and dropped
+  2 minutes after it was sent. It is never written to the database, to a file on disk or to a
+  log: nothing here logs at all, and the endpoints take positions in a POST body (the access log
+  carries no body).
+- A rider is a random per-ride token the device makes (it changes each ride); no account, name or
+  address is kept with it. A ride is a digest of the link's plan, so the server never holds the
+  route either.
+- An alert keeps its sender's rounded spot for as long as the alert lasts (10 minutes, or until
+  the sender clears it), because the alert is useless without it. Nothing outlives the ride.
+
+"Memory" across the api's gunicorn workers: each worker is its own process, so a dict in one is
+not seen by the others. The shared store is a directory on a tmpfs (by default /dev/shm, which is
+RAM, never disk), one small JSON file per ride under an exclusive lock. `RIDE_PRESENCE_DIR`
+names it; empty (the test suite) keeps everything in this process's memory. A directory that is
+not on a tmpfs is refused and the process falls back to its own memory, so a misconfiguration can
+make dots split between workers but can never put a position on disk.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import fcntl
+import json
+import math
+import os
+import re
+import secrets
+import threading
+import time
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
+
+# How long a dot lives after its last reading (the plan: "kept only in server memory for 2
+# minutes"; the front end draws it gone at the same age).
+DOT_TTL_S = 120
+# The rounding of every kept position: "rounded to about 20 m".
+GRID_M = 20.0
+# A device sends its position about every 15 s; one sooner than this is refused (429).
+MIN_POST_INTERVAL_S = 10
+# A device asks for the dots about every 15 s; one sooner than this is refused (429).
+MIN_POLL_INTERVAL_S = 3
+# A token is forgotten this long after it first appeared (sharing ends 12 hours after the ride's
+# start; the alert counts go with it).
+TOKEN_TTL_S = 12 * 3600
+# Bounds on memory, whatever a client sends.
+MAX_RIDERS_PER_RIDE = 3000
+MAX_RIDES = 500
+
+# Alerts (the plan's lists, limits and merge rule).
+ALERT_TTL_S = 10 * 60
+ALERT_MIN_INTERVAL_S = 60
+ALERTS_PER_RIDE = 10
+MERGE_WITHIN_S = 120
+MERGE_WITHIN_M = 200
+OTHER_TEXT_MAX = 80
+
+MASS_RIDE = "mass-ride"
+GROUP_RIDE = "group-ride"
+
+
+@dataclass(frozen=True)
+class AlertKind:
+    id: str
+    label: str
+    # Asks "Send to everyone on this ride?" before sending, against pocket taps.
+    confirm: bool = False
+    # The banner adds a "Call 911" link (a tel: link the rider taps; the app never calls).
+    call_911: bool = False
+
+
+ALERT_KINDS: dict[str, tuple[AlertKind, ...]] = {
+    MASS_RIDE: (
+        AlertKind("spread", "Extensive rider spread"),
+        AlertKind("emergency_vehicle", "Emergency vehicle coming through"),
+        AlertKind("aggressive", "Aggressive person"),
+        AlertKind("medical", "Medical emergency or crash", confirm=True, call_911=True),
+        AlertKind("reroute", "Rerouting, road closed"),
+        AlertKind("other", "Other"),
+    ),
+    GROUP_RIDE: (
+        AlertKind("off_back", "Rider off the back"),
+        AlertKind("crash", "Crash", confirm=True, call_911=True),
+        AlertKind("mechanical", "Mechanical or flat, stopping"),
+        AlertKind("wrong_turn", "Wrong turn"),
+        AlertKind("other", "Other"),
+    ),
+}
+
+RIDE_ID = re.compile(r"^[0-9a-f]{64}$")
+TOKEN = re.compile(r"^[0-9a-f]{32}$")
+
+
+class Refused(Exception):
+    """A request this module will not take, with its status and a sentence for the rider."""
+
+    def __init__(self, status: int, message: str, retry_after_s: int | None = None):
+        super().__init__(message)
+        self.status = status
+        self.message = message
+        self.retry_after_s = retry_after_s
+
+
+def kind_of(ride_type: str, kind: str) -> AlertKind | None:
+    for k in ALERT_KINDS.get(ride_type, ()):
+        if k.id == kind:
+            return k
+    return None
+
+
+def label_of(kind: str) -> str:
+    for kinds in ALERT_KINDS.values():
+        for k in kinds:
+            if k.id == kind:
+                return k.label
+    return "Alert"
+
+
+def rounded(lon: float, lat: float) -> tuple[float, float]:
+    """The position on a 20 m grid: what is kept, and all anyone else is ever shown."""
+    step_lat = GRID_M / 111_195.0
+    lat_r = round(lat / step_lat) * step_lat
+    step_lon = GRID_M / (111_195.0 * max(0.01, math.cos(math.radians(lat_r))))
+    lon_r = round(lon / step_lon) * step_lon
+    return round(lon_r, 6), round(lat_r, 6)
+
+
+def _distance_m(a: tuple[float, float], b: tuple[float, float]) -> float:
+    lat1, lat2 = math.radians(a[1]), math.radians(b[1])
+    dlat = lat2 - lat1
+    dlon = math.radians(b[0] - a[0])
+    h = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    return 2 * 6_371_008.8 * math.asin(min(1.0, math.sqrt(h)))
+
+
+# ---- the store -----------------------------------------------------------------------------
+
+
+def _on_tmpfs(path: str) -> bool:
+    """Whether `path` is on a tmpfs (RAM), by the longest matching mount point."""
+    try:
+        with open("/proc/mounts", encoding="utf-8") as mounts:
+            best, kind = "", ""
+            real = os.path.realpath(path)
+            for line in mounts:
+                parts = line.split()
+                if len(parts) < 3:
+                    continue
+                point = parts[1]
+                inside = real == point or real.startswith(point.rstrip("/") + "/")
+                if inside and len(point) > len(best):
+                    best, kind = point, parts[2]
+            return kind == "tmpfs"
+    except OSError:
+        return False
+
+
+class MemoryStore:
+    """This process's memory: the test suite, and the fallback."""
+
+    def __init__(self) -> None:
+        self._rides: dict[str, dict] = {}
+        self._lock = threading.Lock()
+
+    @contextlib.contextmanager
+    def ride(self, ride_id: str) -> Iterator[dict]:
+        with self._lock:
+            if ride_id not in self._rides and len(self._rides) >= MAX_RIDES:
+                _prune_rides(self._rides)
+                if len(self._rides) >= MAX_RIDES:
+                    raise Refused(503, "Too many rides are sharing right now; try again shortly.")
+            state = self._rides.setdefault(ride_id, _empty())
+            yield state
+            if _is_empty(state):
+                self._rides.pop(ride_id, None)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._rides.clear()
+
+
+def _prune_rides(rides: dict[str, dict]) -> None:
+    now = time.time()
+    for ride_id in list(rides):
+        _prune(rides[ride_id], now)
+        if _is_empty(rides[ride_id]):
+            del rides[ride_id]
+
+
+class TmpfsStore:
+    """One JSON file per ride in a tmpfs directory, read and written under an exclusive lock, so
+    every gunicorn worker sees the same dots. RAM only: the directory must be on a tmpfs."""
+
+    def __init__(self, directory: str) -> None:
+        self.directory = directory
+
+    @contextlib.contextmanager
+    def ride(self, ride_id: str) -> Iterator[dict]:
+        path = os.path.join(self.directory, f"{ride_id}.json")
+        if not os.path.exists(path):
+            try:
+                count = sum(1 for n in os.listdir(self.directory) if n.endswith(".json"))
+            except OSError:
+                count = 0
+            if count >= MAX_RIDES:
+                raise Refused(503, "Too many rides are sharing right now; try again shortly.")
+        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            with os.fdopen(os.dup(fd), "r+", encoding="utf-8") as handle:
+                raw = handle.read()
+                try:
+                    state = json.loads(raw) if raw else _empty()
+                except ValueError:
+                    state = _empty()
+                yield state
+                if _is_empty(state):
+                    os.unlink(path)
+                else:
+                    handle.seek(0)
+                    handle.truncate()
+                    handle.write(json.dumps(state, separators=(",", ":")))
+                    handle.flush()
+        finally:
+            os.close(fd)
+
+
+_store: MemoryStore | TmpfsStore | None = None
+_store_for: str | None = None
+
+
+def store():
+    """The store for `settings.RIDE_PRESENCE_DIR`: a tmpfs directory, or this process's memory."""
+    from django.conf import settings
+
+    global _store, _store_for
+    directory = getattr(settings, "RIDE_PRESENCE_DIR", "") or ""
+    if _store is None or _store_for != directory:
+        chosen: MemoryStore | TmpfsStore = MemoryStore()
+        if directory:
+            try:
+                os.makedirs(directory, mode=0o700, exist_ok=True)
+                if _on_tmpfs(directory):
+                    chosen = TmpfsStore(directory)
+            except OSError:
+                pass
+        _store, _store_for = chosen, directory
+    return _store
+
+
+# ---- a ride's state --------------------------------------------------------------------------
+
+
+def _empty() -> dict:
+    return {"riders": {}, "alerts": []}
+
+
+def _is_empty(state: dict) -> bool:
+    return not state["riders"] and not state["alerts"]
+
+
+def _prune(state: dict, now: float) -> None:
+    for token, rider in list(state["riders"].items()):
+        if now - rider.get("since", now) > TOKEN_TTL_S:
+            del state["riders"][token]
+            continue
+        if "at" in rider and now - rider["at"] > DOT_TTL_S:
+            # The position goes at 2 minutes; the token's counts stay for the ride's limits.
+            for key in ("lon", "lat", "at"):
+                rider.pop(key, None)
+    state["alerts"] = [a for a in state["alerts"] if now - a["last"] <= ALERT_TTL_S]
+
+
+def _rider(state: dict, token: str, now: float) -> dict:
+    rider = state["riders"].get(token)
+    if rider is None:
+        if len(state["riders"]) >= MAX_RIDERS_PER_RIDE:
+            raise Refused(503, "This ride has too many riders sharing right now.")
+        rider = state["riders"][token] = {"since": now}
+    return rider
+
+
+def _check(ride_id: str, token: str) -> None:
+    if not RIDE_ID.match(ride_id or ""):
+        raise Refused(404, "Not a ride link.")
+    if not TOKEN.match(token or ""):
+        raise Refused(400, "The ride token is missing.")
+
+
+def _position(lon, lat) -> tuple[float, float]:
+    from django.conf import settings
+
+    ok = all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (lon, lat))
+    if not ok or not all(math.isfinite(v) for v in (lon, lat)):
+        raise Refused(400, "The position is not a number.")
+    west, south, east, north = settings.COVERAGE_BBOX
+    if not (west <= lon <= east and south <= lat <= north):
+        raise Refused(400, "That position is outside the area this map covers.")
+    return rounded(float(lon), float(lat))
+
+
+def post_position(ride_id: str, token: str, lon, lat, now: Callable[[], float] = time.time) -> None:
+    """Keep this rider's dot (rounded) for 2 minutes."""
+    _check(ride_id, token)
+    spot = _position(lon, lat)
+    t = now()
+    with store().ride(ride_id) as state:
+        _prune(state, t)
+        rider = _rider(state, token, t)
+        last = rider.get("posted", 0)
+        if t - last < MIN_POST_INTERVAL_S:
+            raise Refused(
+                429, "Too soon; the next position goes in a few seconds.", MIN_POST_INTERVAL_S
+            )
+        rider.update(lon=spot[0], lat=spot[1], at=t, posted=t)
+
+
+def leave(ride_id: str, token: str, now: Callable[[], float] = time.time) -> None:
+    """Drop this rider's dot at once (sharing turned off)."""
+    _check(ride_id, token)
+    with store().ride(ride_id) as state:
+        _prune(state, now())
+        rider = state["riders"].get(token)
+        if rider is not None:
+            for key in ("lon", "lat", "at"):
+                rider.pop(key, None)
+
+
+def _alert_out(alert: dict, token: str, t: float) -> dict:
+    return {
+        "id": alert["id"],
+        "kind": alert["kind"],
+        "label": label_of(alert["kind"]),
+        "text": alert.get("text", ""),
+        "lon": alert["lon"],
+        "lat": alert["lat"],
+        # Age from the latest report, so a merged alert reads as fresh as its newest report.
+        "age_s": max(0, int(t - alert["last"])),
+        "count": len(alert["reporters"]),
+        "mine": alert["sender"] == token,
+        "call_911": any(
+            k.call_911 for ks in ALERT_KINDS.values() for k in ks if k.id == alert["kind"]
+        ),
+    }
+
+
+def read(ride_id: str, token: str, now: Callable[[], float] = time.time) -> dict:
+    """The other riders' dots (not this one's own) with their ages, and the ride's alerts."""
+    _check(ride_id, token)
+    t = now()
+    with store().ride(ride_id) as state:
+        _prune(state, t)
+        rider = _rider(state, token, t)
+        if t - rider.get("polled", 0) < MIN_POLL_INTERVAL_S:
+            raise Refused(429, "Too soon; the dots update every 15 seconds.", MIN_POLL_INTERVAL_S)
+        rider["polled"] = t
+        dots = [
+            {"lon": r["lon"], "lat": r["lat"], "age_s": max(0, int(t - r["at"]))}
+            for other, r in state["riders"].items()
+            if other != token and "at" in r
+        ]
+        alerts = [_alert_out(a, token, t) for a in state["alerts"]]
+    return {"dots": dots, "alerts": alerts}
+
+
+def send_alert(
+    ride_id: str,
+    token: str,
+    ride_type: str,
+    kind: str,
+    text: str,
+    lon,
+    lat,
+    now: Callable[[], float] = time.time,
+) -> dict:
+    """Send (or merge) an alert to everyone on the ride link. Answers the alert as others see it."""
+    _check(ride_id, token)
+    found = kind_of(ride_type, kind)
+    if found is None:
+        raise Refused(400, "Not an alert this ride type sends.")
+    text = (text or "").strip() if kind == "other" else ""
+    if kind == "other" and not text:
+        raise Refused(400, "Say what the issue is, in up to 80 characters.")
+    if len(text) > OTHER_TEXT_MAX:
+        raise Refused(400, "Say what the issue is in up to 80 characters.")
+    spot = _position(lon, lat)
+    t = now()
+    with store().ride(ride_id) as state:
+        _prune(state, t)
+        rider = _rider(state, token, t)
+        if rider.get("alerts", 0) >= ALERTS_PER_RIDE:
+            raise Refused(
+                429,
+                f"You have sent {ALERTS_PER_RIDE} alerts on this ride, the most one phone sends.",
+            )
+        if t - rider.get("alerted", 0) < ALERT_MIN_INTERVAL_S:
+            wait = int(ALERT_MIN_INTERVAL_S - (t - rider.get("alerted", 0))) + 1
+            raise Refused(429, "One alert a minute; try again shortly.", wait)
+        rider["alerts"] = rider.get("alerts", 0) + 1
+        rider["alerted"] = t
+        # The same issue near the same spot within 2 minutes is one alert: "2 riders reported".
+        for alert in state["alerts"]:
+            same = alert["kind"] == kind and (kind != "other" or alert.get("text") == text)
+            if (
+                same
+                and t - alert["last"] <= MERGE_WITHIN_S
+                and _distance_m((alert["lon"], alert["lat"]), spot) <= MERGE_WITHIN_M
+            ):
+                if token not in alert["reporters"]:
+                    alert["reporters"].append(token)
+                alert["last"] = t
+                return _alert_out(alert, token, t)
+        alert = {
+            "id": secrets.token_hex(8),
+            "kind": kind,
+            "text": text,
+            "lon": spot[0],
+            "lat": spot[1],
+            "first": t,
+            "last": t,
+            "sender": token,
+            "reporters": [token],
+        }
+        state["alerts"].append(alert)
+        return _alert_out(alert, token, t)
+
+
+def clear_alert(
+    ride_id: str, token: str, alert_id: str, now: Callable[[], float] = time.time
+) -> None:
+    """The sender clears their alert; nobody else can."""
+    _check(ride_id, token)
+    with store().ride(ride_id) as state:
+        _prune(state, now())
+        for alert in state["alerts"]:
+            if alert["id"] == alert_id:
+                if alert["sender"] != token:
+                    raise Refused(403, "Only the rider who sent an alert can clear it.")
+                state["alerts"].remove(alert)
+                return
+    raise Refused(404, "That alert has already gone.")

@@ -67,6 +67,36 @@ export interface ImportedPlan {
   referenceM: number;
   name?: string;
   notes: ImportNote[];
+  /**
+   * The file as it came (v0.7.0, "GPX export as close to identical as possible"): its text byte for byte,
+   * and its whole track (every point, with its elevation where it has one), for a verbatim export, a saved
+   * route, and the closure check. Absent on a plan not opened from a file.
+   */
+  verbatim?: Verbatim;
+}
+
+/** An opened file's own text and line, unchanged. */
+export interface Verbatim {
+  /** The file's text, or null once closed stretches were rerouted (the export is then written from `track`). */
+  text: string | null;
+  /** [lon, lat] or [lon, lat, elevation], every track point in the file's order (a route's points where it has no track). */
+  track: Array<[number, number] | [number, number, number]>;
+}
+
+/** The whole line of a parsed file: every track point with its elevation, or the first route's points. */
+export function verbatimTrack(file: GpxFile): Verbatim["track"] {
+  const out: Verbatim["track"] = [];
+  for (const t of file.tracks) {
+    t.segments.forEach((segment, s) => {
+      segment.forEach(([lon, lat], i) => {
+        const ele = t.elevations?.[s]?.[i];
+        out.push(typeof ele === "number" ? [lon, lat, ele] : [lon, lat]);
+      });
+    });
+  }
+  if (out.length >= 2) return out;
+  const route = file.routes.find((r) => r.points.length >= 2);
+  return route ? route.points.map((p) => [p.lon, p.lat] as [number, number]) : out;
 }
 
 export class ImportError extends Error {

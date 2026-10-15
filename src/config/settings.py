@@ -578,6 +578,12 @@ DISCORD_CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "")
 DISCORD_CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "")
 DISCORD_REDIRECT_URI = os.environ.get("DISCORD_REDIRECT_URI", "http://localhost:8000/auth/callback")
 
+# Mass Ride and Group Ride dots and alerts (core.ride_presence): shared between the api's
+# workers through this directory, which must be on a tmpfs (RAM; Docker gives every container
+# one at /dev/shm). Positions are never written to disk: a directory that is not a tmpfs is
+# refused and each worker keeps its own memory instead. Empty keeps them in process memory.
+RIDE_PRESENCE_DIR = "/dev/shm/routemaker-rides"
+
 # Keys a ban tombstone. A Discord id is a structured 64-bit value whose candidate
 # set any guild's member list resolves directly, so an unkeyed hash of one gives
 # no privacy against whoever holds a dump. This lives in SSM and never appears in

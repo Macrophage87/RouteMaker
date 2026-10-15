@@ -539,7 +539,7 @@ test("Start, GPX, Link and More are one row under the route's figures (UI-CLEANU
   assert.doesNotMatch(app, /\{\/\* Pinned under/);
   const summary = app.slice(app.indexOf("export function RouteSummary"));
   assert.ok(summary.indexOf("<StressFigure") < summary.indexOf("<RouteActions {...actions} start={start} />"));
-  assert.match(app, /<div className="route-actions-row">\s*\{start\}\s*<button type="button" className="secondary icon-button gpx-download" onClick=\{\(\) => downloadGpx\(shown, routedPoints, routedLoop, federalRoute\)\} aria-label="Download GPX">/);
+  assert.match(app, /<div className="route-actions-row">\s*\{start\}\s*<button type="button" className="secondary icon-button gpx-download" onClick=\{downloadRoute\} aria-label="Download GPX">/);
   assert.match(app, /<span role="status" className="visually-hidden">\s*\{linkSpoken\}/);
   // The spoken confirmation carries the location note (OWNER-DECISIONS 395), and the button is described by it.
   assert.equal(linkSpokenFor(true, ""), COPY_LINK_DONE);
@@ -943,7 +943,7 @@ test("the Settings sheet (384): Display, Ride mode, This device and Account, as 
   // The sign-in note has its own heading, so heading navigation does not file it under Display.
   assert.match(sheet, /<h3 id="settings-signin-heading">Account<\/h3>/);
   assert.match(sheet, /<AccessibilitySwitch\s+idBase="settings-contrast"\s+on=\{accessibilityOn\(\)\}\s+source=\{accessibilitySource\(\)\}\s+paletteFromAddress=\{paletteSetByAddress\(\)\}\s+onChange=\{\(on\) => setAccessibility\(on\)\}/);
-  assert.ok(sheet.indexOf("Display") < sheet.indexOf("sign in with Discord"), "the sign-in note is still there, after the display group");
+  assert.ok(sheet.indexOf("Display") < sheet.indexOf("Sign in with Discord"), "the sign-in note is still there, after the display group");
   assert.match(sheet, /onClick=\{\(e\) => isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)\}/);
   assert.doesNotMatch(app, /sheet-about|aboutHeadingRef|"about"/);
   // Go's Menu: Plan, Suggest, GPX and an admin's Review above the settings, each a button.

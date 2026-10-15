@@ -5270,3 +5270,137 @@ details.fold > summary .icon {
     border-color: Highlight;
   }
 }
+
+/* ---- v0.7.0: the others on a ride link, alerts, the closure dialog, saved routes and the Home offer ---- */
+.ride-group {
+  position: absolute;
+  top: 112px;
+  right: 8px;
+  z-index: 9;
+  max-width: min(360px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: none;
+}
+.app.riding .ride-group {
+  top: 64px;
+}
+.ride-group > * {
+  pointer-events: auto;
+}
+.ride-group-bar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.ride-consent,
+.ride-riders-panel,
+.ride-alert-panel,
+.ride-alert-banner {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 10px 12px;
+}
+.ride-consent-choices,
+.ride-alert-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.ride-alert-banners {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+.ride-alert-banner {
+  background: var(--error-bg);
+  color: var(--error-text);
+  border-color: var(--error-text);
+}
+.ride-alert-banner .call-911 {
+  font-weight: 700;
+  color: inherit;
+  margin-right: 8px;
+}
+
+.closure-dialog {
+  max-width: min(520px, calc(100vw - 32px));
+  background: var(--bg);
+  color: var(--text);
+  border: 2px solid var(--error-text);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+.closure-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+.closure-dialog h2 {
+  margin-top: 0;
+  color: var(--error-text);
+}
+.closure-list {
+  padding-left: 1.2em;
+}
+.closure-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.my-routes-list {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.my-route {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+.my-route-details {
+  flex: 1 1 100%;
+}
+.my-route-actions,
+.my-route-rename,
+.save-route-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 6px;
+}
+.save-route-form {
+  margin-top: 6px;
+}
+.save-route-said:empty {
+  display: none;
+}
+.saved-note .link {
+  font-weight: 700;
+}
+
+.home-offer {
+  margin: 8px 12px;
+  padding: 10px 12px;
+  background: var(--notice-bg);
+  color: var(--notice-text);
+  border-radius: 10px;
+}
+.home-offer p {
+  margin: 0 0 8px;
+}

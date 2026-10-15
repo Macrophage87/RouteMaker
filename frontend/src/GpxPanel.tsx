@@ -28,6 +28,11 @@ interface Props {
   getMap: () => MapLibreMap | null;
   /** A Mass Ride's federal-land lines, for the file's description (lib/federalStops.ts, item 239). */
   federal?: readonly string[];
+  /**
+   * Download GPX through the page (v0.7.0): closures are checked first, and an opened file not edited since
+   * downloads as the file it came from. Without it, the route shown is written here.
+   */
+  onDownload?: () => void;
 }
 
 function samePoints(a: readonly LonLat[], b: readonly LonLat[]): boolean {
@@ -69,7 +74,7 @@ type Reading = { kind: "idle" } | { kind: "reading"; name: string } | { kind: "e
  * route on screen (gpx.ts). Nothing is sent or saved.
  */
 export function GpxPanel(props: Props) {
-  const { route, routedPoints, points, planStatus, imported, onImport, onRefine, getMap, loop = false, federal = [] } = props;
+  const { route, routedPoints, points, planStatus, imported, onImport, onRefine, getMap, onDownload, loop = false, federal = [] } = props;
   const input = useRef<HTMLInputElement>(null);
   const [reading, setReading] = useState<Reading>({ kind: "idle" });
   const [showTrack, setShowTrack] = useState(true);
@@ -152,7 +157,8 @@ export function GpxPanel(props: Props) {
   };
 
   const download = () => {
-    if (route) downloadGpx(route, routedPoints, loop, federal);
+    if (onDownload) onDownload();
+    else if (route) downloadGpx(route, routedPoints, loop, federal);
   };
 
   return (
@@ -165,7 +171,7 @@ export function GpxPanel(props: Props) {
         <button type="button" onClick={() => input.current?.click()} disabled={reading.kind === "reading"}>
           Open GPX…
         </button>
-        <button type="button" onClick={download} disabled={!route}>
+        <button type="button" onClick={download} disabled={!route && !imported?.verbatim}>
           Download GPX
         </button>
       </div>
@@ -219,8 +225,9 @@ export function GpxPanel(props: Props) {
         </label>
       )}
       <p className="hint">
-        A file you open is read in this browser and never uploaded. The download is the route shown, with its
-        credits: © OpenStreetMap contributors (ODbL) and the traffic and elevation sources.
+        A file you open is read in this browser and never uploaded (unless you save it to your account). Opened and not
+        edited, the download is that file as it came; otherwise it is the route shown, with its credits: ©
+        OpenStreetMap contributors (ODbL) and the traffic and elevation sources.
       </p>
     </section>
   );

@@ -452,3 +452,25 @@ def test_every_request_to_discord_names_itself(monkeypatch) -> None:
     for request in seen:
         agent = request.get_header("User-agent") or ""
         assert agent and not agent.startswith("Python-urllib"), (request.full_url, agent)
+
+
+@pytest.mark.parametrize("missing", ["DISCORD_CLIENT_ID", "DISCORD_CLIENT_SECRET"])
+def test_sign_in_is_off_until_both_keys_are_set(client, settings, missing) -> None:
+    """v0.7.0: sign-in is on by default once the owner puts both keys in the server's
+    environment. With either empty there is no login to start or finish, and /api/me
+    tells the page not to offer one."""
+    setattr(settings, missing, "")
+    response = client.get(reverse("login"))
+    assert response.status_code == 503
+    assert "not set up" in response.content.decode()
+    assert STATE_SESSION_KEY not in client.session
+    assert client.get(reverse("login-callback"), {"state": "x", "code": "y"}).status_code == 503
+    me = client.get("/api/me", HTTP_X_FORWARDED_FOR="198.51.100.7")
+    assert me.status_code == 200 and me.json()["sign_in"] is False
+
+
+def test_with_both_keys_set_sign_in_is_offered(client) -> None:
+    me = client.get("/api/me", HTTP_X_FORWARDED_FOR="198.51.100.8")
+    assert me.json()["sign_in"] is True
+    response, _state = start_login(client)
+    assert response.status_code == 302

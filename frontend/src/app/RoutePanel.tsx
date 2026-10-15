@@ -38,7 +38,8 @@ import { rideSizeOf, type Dials, type Ending } from "../lib/dials.ts";
 import { CAPACITY_FOLD_TITLE, capacitySummary } from "../lib/massCapacity.ts";
 import { CapacityFigures, CapacityStats } from "../lib/massLegend.ts";
 import { outsideDcNote } from "../lib/dcBoundary.ts";
-import { downloadGpx } from "../GpxPanel.tsx";
+import { SaveRoute, type SaveRouteProps } from "../SaveRoute.tsx";
+import { SAVE_ROUTE } from "../lib/savedRoutes.ts";
 import { Fold, QuickFigures } from "../Sidebar.tsx";
 import { COPY_LINK, ROUTE_FOLDS, chartFoldOpen } from "../lib/sidebar.ts";
 import { SHARE_LABEL, SHARE_NAME } from "../lib/share.ts";
@@ -78,6 +79,12 @@ export interface RouteActionsProps {
   keeping: boolean;
   keepSpoken: { text: string; count: number };
   linkSaid: string;
+  /** Download GPX through the page: closures checked first, an unedited opened file as it came (v0.7.0). */
+  downloadRoute: () => void;
+  /** Save route (signed in), beside Share; null signed out. */
+  save: Omit<SaveRouteProps, "label" | "chip"> | null;
+  /** A reopened saved route's line about today's map, with Update route; null otherwise. */
+  savedNote: ReactNode;
 }
 
 /** Go's few extra controls on the route: its ride chip, the Routes chip and Plan in detail. */
@@ -327,15 +334,15 @@ export function RouteSection(props: RouteSectionProps) {
  * press is heard however More stands.
  */
 function RouteActions(props: RouteActionsProps & { start: ReactNode }) {
-  const { shown, routedPoints, routedLoop, federalRoute, copyLink, linkNote, canShare, shareRoute, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid, start } = props;
+  const { copyLink, linkNote, canShare, shareRoute, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid, start, downloadRoute, save } = props;
   const [more, setMore] = useState(false);
   const moreId = useId();
-  const hasMore = canShare || keepShown;
+  const hasMore = canShare || keepShown || save !== null;
   return (
     <div className="route-actions">
       <div className="route-actions-row">
         {start}
-        <button type="button" className="secondary icon-button gpx-download" onClick={() => downloadGpx(shown, routedPoints, routedLoop, federalRoute)} aria-label="Download GPX">
+        <button type="button" className="secondary icon-button gpx-download" onClick={downloadRoute} aria-label="Download GPX">
           <Icon name="download" />
           <span aria-hidden="true">GPX</span>
         </button>
@@ -357,6 +364,7 @@ function RouteActions(props: RouteActionsProps & { start: ReactNode }) {
               {SHARE_LABEL}
             </button>
           )}
+          {save && <SaveRoute {...save} label={SAVE_ROUTE} />}
           {keepShown && (
             <button type="button" className="secondary keep-offline" onClick={() => void keepForOffline()} aria-disabled={keeping} aria-describedby="keep-offline-said">
               {KEEP_LABEL}
@@ -696,6 +704,7 @@ export function RouteSummary({
         {!go.peek && <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />}
         {!go.peek && alerts}
         {!go.peek && noteList}
+        {!go.peek && actions.savedNote}
         {!go.peek && (
           <div className="actions start-ride go-start">
             {start}
@@ -724,6 +733,7 @@ export function RouteSummary({
             <span id="go-plan-hint" hidden>
               Plan in detail: the full planner, with this route.
             </span>
+            {actions.save && <SaveRoute {...actions.save} label={SAVE_ROUTE} chip />}
           </div>
         )}
         {!go.peek && picker && (
@@ -773,6 +783,7 @@ export function RouteSummary({
       {segments.length > 0 && <StressFigure segments={segments} />}
       {alerts}
       {noteList}
+      {actions.savedNote}
       <div className="actions start-ride">
         <RouteActions {...actions} start={start} />
         {startHint}
