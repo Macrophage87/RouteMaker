@@ -120,6 +120,15 @@ def _no_bikeshare_network(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_live_data_keys(settings):
+    """No test reads WMATA's live API or Mapillary's (v0.7.0): their keys are never set in a
+    test, so nothing is fetched. A test that wants live data installs its own fake
+    (tests/test_wmata_live.py, tests/test_street_photo.py)."""
+    settings.WMATA_API_KEY = ""
+    settings.MAPILLARY_ACCESS_TOKEN = ""
+
+
+@pytest.fixture(autouse=True)
 def _weekend_router_state(monkeypatch):
     """core.routing remembers a failed weekend router for a minute; no test
     inherits another's memory of one. And it plans a weekend ride on the

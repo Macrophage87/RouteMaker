@@ -127,6 +127,8 @@ BACKUP_EXCLUDED_TABLES = (
     "rate_limit_window",
     "stress_tile_cache",
     "bikeshare_feed_cache",
+    # Salted daily hashes of signed-out suggesters' addresses, v0.7.0: kept 24 hours.
+    "signed_out_send",
 )
 
 # How many dumps stay on the data volume. They are local-only for now - the

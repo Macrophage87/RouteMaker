@@ -198,7 +198,7 @@ server {
         add_header Strict-Transport-Security "max-age=86400" always;
         add_header Referrer-Policy "same-origin" always;
         add_header X-Content-Type-Options "nosniff" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.fbcdn.net; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;
         add_header Cache-Control "no-cache" always;
     }
 
@@ -208,7 +208,7 @@ server {
         add_header Strict-Transport-Security "max-age=86400" always;
         add_header Referrer-Policy "same-origin" always;
         add_header X-Content-Type-Options "nosniff" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.fbcdn.net; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;
         add_header Cache-Control "no-cache" always;
     }
 
@@ -228,7 +228,7 @@ server {
         add_header Strict-Transport-Security "max-age=86400" always;
         add_header Referrer-Policy "same-origin" always;
         add_header X-Content-Type-Options "nosniff" always;
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.fbcdn.net; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'" always;
         add_header Cache-Control "no-cache" always;
     }
 
@@ -368,12 +368,13 @@ server {
 
     # --- reverse look-ups, searches and road panels: a location in the query -----------
     # /api/reverse?lat=..&lon=.., /api/geocode?q=..&lat=..&lon=.. and
-    # /api/segment-info?lat=..&lon=.. (OWNER-DECISIONS 441a). An upstream error line (a
+    # /api/segment-info?lat=..&lon=.. (OWNER-DECISIONS 441a), and /api/street-photo?lon=..&lat=..
+    # (v0.7.0). An upstream error line (a
     # 502 while the api restarts on a deploy, a 504, a worker gunicorn killed) records the
-    # request with its query, so these three log only `crit` errors, to their own file
+    # request with its query, so these four log only `crit` errors, to their own file
     # (OWNER-DECISIONS 395). This loses their upstream diagnostics; the api's own log still
     # has its side. The proxy settings are location /'s below, line for line.
-    location ~ ^/api/(reverse|geocode|segment-info)/?$ {
+    location ~ ^/api/(reverse|geocode|segment-info|street-photo)/?$ {
         error_log /var/log/nginx/rmbeta-error.log crit;
         proxy_pass http://rmbeta_api;
         proxy_http_version 1.1;

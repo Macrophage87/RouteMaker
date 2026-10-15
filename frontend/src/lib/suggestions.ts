@@ -65,6 +65,12 @@ export interface SuggestionItem {
   step: number;
   words: string;
   reason: string;
+  /** Sent from the short form by someone not signed in (v0.7.0); absent from an older server. */
+  signed_out?: boolean;
+  /** The one-tap reasons' keys. */
+  reasons?: string[];
+  /** Open sends for the road that agree with it, itself included. */
+  agree?: number;
   status: "pending" | "sent_to_discord";
   created_at: string;
   sent_at: string | null;
@@ -162,6 +168,74 @@ export function suggestionLine(item: SuggestionItem): string {
 
 function levelName(step: number, words: string): string {
   return step === 5 ? "Avoid" : `LTS ${stepLabel(step)} (${words})`;
+}
+
+// --- The short form, for anyone the full form is not open to (v0.7.0; core/signed_out_suggestions.py) ---
+
+/** The short form's reason list, as the server gives it with the ticket: [key, words]. */
+export type QuickReason = [string, string];
+
+export const QUICK_REASONS_LABEL = "Why";
+export const QUICK_OTHER_LABEL = "What else (up to 200 characters)";
+export const QUICK_OTHER_MAX = 200;
+export const QUICK_NOTE = "Reviewed before anything changes. No account or address is kept.";
+
+/**
+ * A step as the short form's slider says it (the owner, 2026-10-13: a half step reads "Between 2 and 3:
+ * ..."): "2: Fine for adults", "Between 2 and 3: Fine for most confident adults", "Avoid".
+ */
+export function quickValueText(step: number): string {
+  if (step >= 5) return "Avoid";
+  const words = STEP_WORDS[stepLabel(step)] ?? "";
+  if (Number.isInteger(step)) return `${step}: ${words}`;
+  const low = Math.floor(step);
+  return `Between ${low} and ${step >= 4.5 ? "Avoid" : low + 1}: ${words}`;
+}
+
+/** The short form's own check before sending: the field and its sentence, or null. */
+export function quickProblem(
+  step: number,
+  current: number,
+  reasons: readonly string[],
+  other: string,
+): { field: "step" | "reasons" | "other"; message: string } | null {
+  if (step === current) return { field: "step", message: "Move the slider to the level you would give it." };
+  if (reasons.length === 0) return { field: "reasons", message: "Pick at least one reason." };
+  if (reasons.includes("other") && !other.trim()) return { field: "other", message: "Say what else, in a few words." };
+  if (other.trim().length > QUICK_OTHER_MAX) return { field: "other", message: `Other is at most ${QUICK_OTHER_MAX} characters.` };
+  return null;
+}
+
+export interface QuickTicket {
+  ticket: string;
+  reasons: QuickReason[];
+}
+
+/** GET /api/stress-suggestions/ticket: asked when the short form opens on a road (it also sets the CSRF cookie). */
+export async function fetchQuickTicket(origin: string, wayId: number, run: Fetch = fetch): Promise<QuickTicket | null> {
+  const r = await call<QuickTicket>(`${origin}/api/stress-suggestions/ticket?way=${wayId}`, { method: "GET" }, null, run);
+  if (!r.ok || typeof r.body.ticket !== "string" || !Array.isArray(r.body.reasons)) return null;
+  return r.body;
+}
+
+export interface QuickRequest {
+  osm_way_id: number;
+  lat: number;
+  lon: number;
+  step: number;
+  reasons: string[];
+  other: string;
+  ticket: string;
+  /** The honeypot: always empty from a person. */
+  website: string;
+}
+
+/** POST /api/stress-suggestions/signed-out. */
+export async function sendQuick(origin: string, request: QuickRequest, csrf: string | null, run: Fetch = fetch): Promise<SuggestOutcome> {
+  const r = await call<{ message: string }>(`${origin}/api/stress-suggestions/signed-out`, { method: "POST", body: JSON.stringify(request) }, csrf, run);
+  if (r.ok) return { kind: "sent", message: r.body.message };
+  const message = r.status === 429 ? "That's 10 suggestions today. Thank you; try again tomorrow." : r.message;
+  return { kind: "refused", status: r.status, message, field: r.field };
 }
 
 /** The map link the admin's Show on map uses: the app's own `#at=lon,lat` (lib/planHash.ts). */

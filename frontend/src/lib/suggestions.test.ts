@@ -6,6 +6,11 @@ import {
   STEP_WORDS,
   fetchSuggestions,
   mapLink,
+  QUICK_OTHER_MAX,
+  fetchQuickTicket,
+  quickProblem,
+  quickValueText,
+  sendQuick,
   reviewSuggestion,
   sendSuggestion,
   suggestProblem,
@@ -92,4 +97,35 @@ test("the privacy note says the road's location may be shared, and never the rid
   const { SUGGEST_PRIVACY } = await import("./suggestions.ts");
   assert.match(SUGGEST_PRIVACY, /road's location/);
   assert.match(SUGGEST_PRIVACY, /never your name or the spot you clicked/);
+});
+
+test("v0.7.0 short form: the slider says each level, half steps as between two", () => {
+  assert.equal(quickValueText(2), "2: Fine for adults");
+  assert.equal(quickValueText(2.5), "Between 2 and 3: Fine for most confident adults");
+  assert.equal(quickValueText(4.5), "Between 4 and Avoid: A very high-stress road");
+  assert.equal(quickValueText(5), "Avoid");
+});
+
+test("v0.7.0 short form: no change, no reason or an empty Other is said before sending", () => {
+  assert.equal(quickProblem(3, 3, ["calmer"], "")?.field, "step");
+  assert.equal(quickProblem(2, 3, [], "")?.field, "reasons");
+  assert.equal(quickProblem(2, 3, ["other"], "  ")?.field, "other");
+  assert.equal(quickProblem(2, 3, ["other"], "x".repeat(QUICK_OTHER_MAX + 1))?.field, "other");
+  assert.equal(quickProblem(2.5, 3, ["calmer"], ""), null);
+});
+
+test("v0.7.0 short form: the ticket is asked for the road; ten a day is said plainly", async () => {
+  const seen: string[] = [];
+  const run = (async (url: string | URL | Request) => {
+    seen.push(String(url));
+    return new Response(JSON.stringify({ ticket: "t", reasons: [["calmer", "Feels calmer than rated"]] }), { status: 200 });
+  }) as typeof fetch;
+  const ticket = await fetchQuickTicket("https://x.test", 5001, run);
+  assert.equal(ticket?.ticket, "t");
+  assert.equal(seen[0], "https://x.test/api/stress-suggestions/ticket?way=5001");
+  const limited = (async () => new Response(JSON.stringify({ error: "x" }), { status: 429 })) as typeof fetch;
+  const body = { osm_way_id: 5001, lat: 1, lon: 2, step: 2, reasons: ["calmer"], other: "", ticket: "t", website: "" };
+  const outcome = await sendQuick("https://x.test", body, "tok", limited);
+  assert.equal(outcome.kind, "refused");
+  assert.match(outcome.message, /10 suggestions today/);
 });

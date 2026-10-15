@@ -1841,6 +1841,24 @@ a JSON list defaulting to empty; nothing else changed). It follows the Avoid jun
 refused (400, `classifier_hidden`) on a way whose earlier override hides the classifier's own
 level (a hidden adjustment records no `stress_computed_tier`); an exact level works there.
 
+### Signed-out suggestions (v0.7.0)
+
+Anyone the full form is not open to (signed out, or the settings above keep it closed) gets a
+short form in the road panel: the level slider in half steps, one-tap reasons, and "Other" (up to
+200 characters). Sends join the same review list, marked "Sent signed out"
+(`core/signed_out_suggestions.py`). The list now groups each road's sends together, most agreed
+first, with "N sends for this road agree".
+
+The filters: no change or no reason is refused; a send without a ticket from opening the form on
+that road is refused; the hidden honeypot drops a send silently; e-mail addresses and phone
+numbers are taken out of Other. One send per road and 10 a day per device, where the device is a
+salted daily hash of the address (table `signed_out_send`, kept 24 hours, left out of backups and
+the beta's data shipment). The address itself is never stored.
+
+`SUGGEST_SIGNED_OUT_MIN_AGREE` (default 1, every send shows) hides a road's signed-out sends
+until that many agree. The owner reviews each send for now; raise it to 2 when volume grows.
+The migration is `0021_signed_out_suggestions`.
+
 ## Mass Ride hazards (FOLLOWUP-MASSRIDE-MAP part 3, OWNER-DECISIONS 325-327)
 
 A signed-in rider whom the **Suggestion settings** allow sees **Mark a hazard** in the road panel on a Mass
@@ -2003,8 +2021,19 @@ docs/BETA-RUNBOOK.md). Ship it again after each refresh.
 🚆🚌 uses no Metro and says "Bikes aren't allowed on Metro today (July 4)."; Bikeshare + 🚶🚆🚌
 still rides Metro on foot.
 
-**What is not checked:** live arrivals and GTFS-Realtime service alerts. Every plan says
-"Scheduled service; check for track work."
+**Live Metro data (v0.7.0).** With `WMATA_API_KEY` set in the api container's environment (the
+server's `.env`; the owner sets it, nobody else handles it), the api reads WMATA's next trains,
+rail incidents and elevator outages (`core.wmata_live`): at most three calls every 45 s for the
+whole deployment, only while someone plans a transit trip or opens a Metro station's card, shared
+through one row of `bikeshare_feed_cache` (key `wmata`, replaced in place, no history). Outbound
+host: `api.wmata.com` (add it to the beta's egress list). With no key, or WMATA not answering for
+about three minutes, everything is the timetable's and says "scheduled". An elevator out where a
+rider takes their bike is a warning on the plan and the station card, never an avoidance. To check
+it is working: open a Metro station's card on the map; its Metro lines say "live" and the card ends
+"Data: WMATA". The log says `wmata live: ...` (never the key) when a reading fails.
+
+**What is not checked:** MARC, MTA and VRE real-time (docs/SOURCES.md lists the feeds found).
+Every plan says "Scheduled service; check for track work."
 
 ## Avoid-rated junctions: adding one (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
 

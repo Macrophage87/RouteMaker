@@ -600,6 +600,42 @@ map credits:
 - Credit: MDOT MTA GTFS (scheduled times). Shown with a plan that uses MARC, Light RailLink or
   Metro SubwayLink.
 - Credit: VRE GTFS (scheduled times). Shown with a plan that uses VRE.
+- Credit: Data: WMATA. Shown with every live value (v0.7.0, below): a Metro station card's next
+  trains, an elevator out, a rail incident, and a plan's live lines.
+
+### WMATA live data (v0.7.0)
+
+- **Data:** WMATA's developer API, <https://developer.wmata.com/>: `Rail.svc/json/jStations`
+  (stations, codes and points; read once a day), `StationPrediction.svc/json/GetPrediction/All`
+  (next trains), `Incidents.svc/json/Incidents` (rail incidents) and
+  `Incidents.svc/json/ElevatorIncidents` (elevators and escalators out).
+- **Terms:** WMATA Transit Data Terms of Use, <https://developer.wmata.com/license>. A developer
+  key is required (`WMATA_API_KEY` on the server, the same key as the static GTFS fetch); it is
+  sent only in WMATA's `api_key` header, never in a URL, a log line or a page. Limits: 10 calls a
+  second, 50,000 a day; RouteMaker makes at most three calls every 45 s, and only while someone is
+  asking.
+- **Kept:** the latest reading only, one row of `bikeshare_feed_cache` (key `wmata`), replaced
+  in place; no history.
+- **Shown:** each live time says "live", each timetable time "scheduled"; with no reading the
+  timetable is shown alone. An elevator out where a rider takes their own bike is a warning
+  ("Elevator out at X: carry your bike on the stairs."), never an avoidance; it costs the trip 2
+  minutes in the ranking only.
+- Code: `src/core/wmata_live.py`, `src/core/transit_live.py`; fixtures shaped as WMATA documents
+  the answers in `tests/data/wmata/`.
+
+### MDOT MTA and VRE real-time feeds (checked 2026-10-15, not used)
+
+Public GTFS-Realtime feeds exist, but the build environment cannot reach them and their terms are
+not yet checked, and reading Protocol Buffers needs a dependency the project does not declare. Not
+built in v0.7.0; listed so they can be added:
+
+- MARC trip updates and vehicle positions:
+  `https://mdotmta-gtfs-rt.s3.amazonaws.com/MARC+RT/marc-tu.pb` and `.../marc-vp.pb` (no key).
+- MDOT MTA service alerts, every mode: `https://feeds.mta.maryland.gov/alerts.pb`.
+- MTA Light RailLink, Metro SubwayLink and buses: real-time is published through MTA's developer
+  page (<https://www.mta.maryland.gov/developer-resources>); the URLs were not listed publicly.
+- VRE trip updates: `https://gtfs.vre.org/containercdngtfsupload/TripUpdateFeed`
+  (Mobility Database `tld-1127-tu`).
 
 ### Metro's typical timetable (until WMATA's rail GTFS is built)
 
@@ -733,10 +769,28 @@ needs no bike access.
 
 ### Limits
 
-- GTFS-Realtime service alerts are not used. The agencies' real-time endpoints cannot be reached
-  from the build environment, and their terms have not been checked. Planned closures that an
+- GTFS-Realtime service alerts are not used (WMATA's own live API is, above). The other
+  agencies' real-time endpoints cannot be reached from the build environment, and their terms
+  have not been checked. Planned closures that an
   agency publishes in its static timetable (`calendar_dates.txt`) are used, but unplanned track
   work is not. Every plan says "Scheduled service; check for track work."
+
+## Street photos (Mapillary, v0.7.0)
+
+- **Data:** Mapillary's Graph API, `GET https://graph.mapillary.com/images` (fields `id`,
+  `captured_at`, `compass_angle`, `thumb_1024_url`, `geometry`, `is_pano`, `creator`), asked for
+  a box about 200 ft (60 m) across around the point on the road the panel describes.
+  <https://www.mapillary.com/developer/api-documentation>.
+- **Licence:** the imagery is CC BY-SA 4.0 (<https://www.mapillary.com/terms>).
+- Credit: Mapillary (CC BY-SA), linked, with the photo's date and its creator's name where
+  Mapillary gives one. Shown under the road panel's photo only.
+- **Token:** Mapillary's client access token (`MAPILLARY_ACCESS_TOKEN` on the server; the owner's
+  app, no user sign-in), sent only in the `Authorization` header from the server. The browser
+  loads the image itself from Mapillary's image host (`*.fbcdn.net`, in the CSP's `img-src`) and
+  opens Mapillary's viewer in a new tab; no Mapillary script is loaded.
+- **Kept:** each answer for an hour in the api's memory; nothing is stored.
+- Code: `src/core/street_photo.py`, `frontend/src/lib/streetPhoto.ts`; fixture
+  `tests/data/mapillary/`.
 
 ## Used inside the project only (no credit)
 

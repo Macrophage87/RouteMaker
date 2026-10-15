@@ -94,6 +94,8 @@ from . import (
     segment_info,
     stoporder,
     transit,
+    transit_live,
+    wmata_live,
 )
 
 logger = logging.getLogger(__name__)
@@ -2007,6 +2009,22 @@ class AvoidAlternateOut(RouteBody):
     )
 
 
+class TransitStepLiveOut(Schema):
+    text: str = Field(description='"Live: Red Line toward Shady Grove in 3 min, 11 min."')
+    minutes: list[int]
+    source: Literal["live"] = "live"
+
+
+class TransitLiveOut(Schema):
+    warnings: list[str] = Field(
+        description='Elevators out where your bike needs one: "Elevator out at X: carry your'
+        ' bike on the stairs."'
+    )
+    alerts: list[str] = Field(description="WMATA's rail incidents on the lines used.")
+    credit: str = Field(description='"Data: WMATA".')
+    as_of: str = Field(description="When WMATA was read, local ISO time.")
+
+
 class TransitStepOut(Schema):
     mode: Literal[
         "ride",
@@ -2052,6 +2070,10 @@ class TransitStepOut(Schema):
             "[lon, lat] for the map: Metro and bus through their stops, walks straight, the far"
             " end's ride as routed; empty for the route line's own step."
         )
+    )
+    live: TransitStepLiveOut | None = Field(
+        default=None,
+        description="A Metro step's next trains its way now, from WMATA (core.transit_live).",
     )
 
 
@@ -2140,6 +2162,10 @@ class TransitOut(Schema):
     credits: list[str] = Field(description="The schedules' sources, for the systems used.")
     departure: TransitDepartureOut | None = Field(
         default=None, description="The first infrequent departure, or null where there is none."
+    )
+    live: TransitLiveOut | None = Field(
+        default=None,
+        description="WMATA's live values on this trip (v0.7.0); null with none to hand.",
     )
 
 
@@ -2720,10 +2746,14 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         trails_off=body.trails_off,
         system_weight_kg=body.system_weight_kg,
     )
+    # WMATA's live reading (core.wmata_live), if any: an elevator out on the way costs the trip
+    # a little in the ranking, and the block says the live values (core.transit_live).
+    live = wmata_live.client.snapshot()
+    found = transit_live.rank(found, live)
     found = transit.choose(found, body.transit_option)
     if found.option.walk:
         answer = _walked_line(found, body.preset, dials)
-        answer["transit"] = transit.block(found, schedule)
+        answer["transit"] = _transit_block(found, schedule, live)
         return answer
     leg = found.legs[found.ride]
     # The line is the chosen option's first ride (or walk). Riding directly there, or an option
@@ -2770,7 +2800,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             leg = timed.legs[timed.ride]
             if timed.option.walk:
                 answer = _walked_line(timed, body.preset, dials)
-                answer["transit"] = transit.block(timed, schedule)
+                answer["transit"] = _transit_block(timed, schedule, live)
                 return answer
             if timed.option.direct and body.preset == presets.BIKE_TRANSIT:
                 points = [list(start), list(end)]
@@ -2782,7 +2812,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             if answer is None:
                 answer, timed = unrouted(points, timed)
         found = timed
-    answer["transit"] = transit.block(found, schedule)
+    answer["transit"] = _transit_block(found, schedule, live)
     logger.info(
         "transit plan %s: search %.1f s (candidates %.1f s, %d calls), line %.1f s",
         body.preset,
@@ -2792,6 +2822,11 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         routing.clock() - searched,
     )
     return answer
+
+
+def _transit_block(plan: transit.Plan, schedule, live) -> dict:
+    """The answer's `transit` block, with WMATA's live values where there are any."""
+    return transit_live.annotate(transit.block(plan, schedule), plan, live)
 
 
 def _transit_refusal(message: str, code: str, status: int):
@@ -2899,10 +2934,37 @@ class LineTimeOut(Schema):
     today: bool = True
 
 
+class LiveTrainOut(Schema):
+    line: str = Field(description='"Red Line".')
+    toward: str = Field(description="The train's last stop.")
+    minutes: list[int] = Field(description="Minutes until the next trains that way (0: arriving).")
+    when: str = Field(description='"3 min, 11 min"; "arriving", "boarding".')
+
+
+class LiveElevatorOut(Schema):
+    words: str = Field(
+        description='"Elevator out at Gallery Place: carry your bike on the stairs."'
+    )
+    where: str = Field(description="WMATA's description of the unit.")
+
+
+class StationLiveOut(Schema):
+    station: str
+    trains: list[LiveTrainOut]
+    elevators: list[LiveElevatorOut]
+    alerts: list[str] = Field(description="WMATA's rail incidents on the station's lines.")
+    credit: str = Field(description='"Data: WMATA".')
+    as_of: str = Field(description="When WMATA was read, local ISO time.")
+
+
 class StationTimesOut(Schema):
     service_day: str = Field(description="The GTFS service day (before 3 am, the day before).")
-    source: Literal["scheduled"] = Field(description="Where the times are from: the timetable.")
+    source: Literal["scheduled"] = Field(description="Where `lines` are from: the timetable.")
     lines: list[LineTimeOut]
+    live: StationLiveOut | None = Field(
+        default=None,
+        description="A Metro station's live values (core.transit_live.station); null where none.",
+    )
 
 
 @api.get(
@@ -2925,11 +2987,18 @@ def transit_station_times(request, params: Query[StationTimesIn], response: Http
         )
     moment = transit.moment_of(when)
     found = transit.station_times(schedule, (params.lon, params.lat), when)
-    response["Cache-Control"] = "public, max-age=60"
+    # Live values only for now: a time asked for (`at`) is the timetable's alone.
+    live = (
+        None
+        if params.at
+        else transit_live.station((params.lon, params.lat), wmata_live.client.snapshot())
+    )
+    response["Cache-Control"] = "public, max-age=30" if live else "public, max-age=60"
     return {
         "service_day": moment.service_day.isoformat(),
         "source": transit.SCHEDULED,
         "lines": [_line_time(t, moment.service_day) for t in found],
+        "live": live,
     }
 
 
@@ -3566,6 +3635,51 @@ def road_info(request, params: Query[SegmentInfoIn], response: HttpResponse):
     found = segment_info.segment_info(params.lat, params.lon)
     response["Cache-Control"] = f"private, max-age={SEGMENT_INFO_MAX_AGE_S}"
     return Status(200, {**found, "attribution": list(SEGMENT_INFO_ATTRIBUTION)})
+
+
+# --- The road panel's street photo (v0.7.0; core.street_photo) ------------------------------
+#
+# GET /api/street-photo: the newest Mapillary photo of the road at a point on it, looked up
+# server-side so the Mapillary token never reaches a browser. 204 where no photo can be looked
+# up (no token on this server, or Mapillary not answering): the panel then says nothing of one.
+
+
+class StreetPhotoIn(Schema):
+    lon: float = Field(ge=-180, le=180, description="The point on the road (the panel's on_way).")
+    lat: float = Field(ge=-90, le=90)
+    way: int | None = Field(
+        default=None, ge=1, description="The road's OSM way id: the photo faces along it."
+    )
+
+
+class StreetPhotoOut(Schema):
+    found: bool
+    words: str | None = Field(default=None, description='"No street photo here." when none.')
+    image_url: str | None = Field(default=None, description="The image, on Mapillary's host.")
+    viewer_url: str | None = Field(default=None, description="Mapillary's viewer at the image.")
+    captured: str | None = Field(default=None, description="The day it was taken, ISO 8601.")
+    date_words: str | None = Field(default=None, description='"Photo from June 2021".')
+    creator: str | None = Field(default=None, description="Its creator on Mapillary, if named.")
+    credit: str | None = None
+    credit_url: str | None = None
+    licence: str | None = None
+    licence_url: str | None = None
+
+
+@api.get(
+    "/street-photo",
+    response={200: StreetPhotoOut, 204: None, 400: ErrorOut, 403: ErrorOut, 429: ErrorOut},
+    summary="The newest Mapillary photo of the road at a point on it",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.STREET_PHOTO), same_site_only, errors_as_json)
+def street_photo_view(request, params: Query[StreetPhotoIn], response: HttpResponse):
+    from . import street_photo
+
+    found = street_photo.client.photo(params.lon, params.lat, params.way)
+    if found is None:
+        return Status(204, None)
+    response["Cache-Control"] = "private, max-age=600"
+    return Status(200, found)
 
 
 # --- One climb's elevation profile, for the map's climb card ------------------------
@@ -4638,6 +4752,13 @@ class SuggestionOut(Schema):
     step: float
     words: str
     reason: str
+    signed_out: bool = Field(
+        default=False, description="Sent from the short form by someone not signed in (v0.7.0)."
+    )
+    reasons: list[str] = Field(default_factory=list, description="The one-tap reasons' keys.")
+    agree: int = Field(
+        default=1, description="Open sends for the road that agree with it, itself included."
+    )
     status: Literal["pending", "sent_to_discord"]
     created_at: str
     sent_at: str | None = None
@@ -4720,6 +4841,95 @@ def stress_suggestion_create(request, body: SuggestionIn, response: HttpResponse
             "Nothing changes on the map until one of them reviews it.",
         },
     )
+
+
+# ---- Signed-out suggestions (v0.7.0; core.signed_out_suggestions) ----
+#
+# GET /api/stress-suggestions/ticket?way=: the short form's ticket, asked when it opens on a road
+# (proof the send came from an opened panel), and the CSRF cookie the send carries back.
+# POST /api/stress-suggestions/signed-out: the send. No account, address or device is stored.
+
+
+class SuggestTicketIn(Schema):
+    way: int = Field(ge=1, description="The road's OSM way id.")
+
+
+class SuggestTicketOut(Schema):
+    ticket: str
+    reasons: list[list[str]] = Field(description="The one-tap reasons: [key, words], in order.")
+
+
+class SignedOutSuggestionIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    osm_way_id: StrictInt
+    lat: StrictFloat = Field(ge=-90, le=90, description="The point on the road.")
+    lon: StrictFloat = Field(ge=-180, le=180)
+    step: StrictFloat = Field(description="1 to 5 by halves (5 is Avoid).")
+    reasons: list[str] = Field(max_length=6, description="Keys of the one-tap reasons.")
+    other: str = Field(default="", max_length=1000, description="Other's words, at most 200.")
+    ticket: str = Field(max_length=500)
+    website: str = Field(default="", max_length=200, description="Left empty (a honeypot).")
+
+
+SIGNED_OUT_THANKS = (
+    "Thanks. Your suggestion was sent for review. Nothing changes on the map until it is reviewed."
+)
+
+
+@api.get(
+    "/stress-suggestions/ticket",
+    response={200: SuggestTicketOut, 400: ErrorOut, 403: StressEditErrorOut, 429: ErrorOut},
+    summary="The short suggestion form's ticket for a road (anyone)",
+)
+@decorate_view(same_site_editor, ratelimit.rate_limited(ratelimit.SEGMENT_INFO), errors_as_json)
+def stress_suggestion_ticket(request, params: Query[SuggestTicketIn], response: HttpResponse):
+    from django.middleware.csrf import get_token
+
+    from . import signed_out_suggestions as quick
+
+    get_token(request)
+    _private(response)
+    return Status(
+        200,
+        {"ticket": quick.ticket(params.way), "reasons": [[k, w] for k, w in quick.REASONS.items()]},
+    )
+
+
+@api.post(
+    "/stress-suggestions/signed-out",
+    response={200: SuggestionCreatedOut, **SUGGESTION_RESPONSES},
+    summary="Suggest a road's traffic stress level from the short form (anyone)",
+)
+@decorate_view(
+    csrf_protected,
+    json_body_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def stress_suggestion_signed_out(request, body: SignedOutSuggestionIn, response: HttpResponse):
+    from . import signed_out_suggestions as quick
+    from . import stress_edits
+
+    _private(response)
+    try:
+        suggestion = quick.create(
+            ratelimit.client_address(request),
+            body.osm_way_id,
+            body.lat,
+            body.lon,
+            body.step,
+            body.reasons,
+            body.other,
+            body.ticket,
+            body.website,
+        )
+    except quick.Dropped:
+        return Status(200, {"id": 0, "message": SIGNED_OUT_THANKS})
+    except stress_edits.EditRefused as refused:
+        return _stress_error(refused.status, refused.message, refused.field, refused.code)
+    return Status(200, {"id": suggestion.pk, "message": SIGNED_OUT_THANKS})
 
 
 @api.get(

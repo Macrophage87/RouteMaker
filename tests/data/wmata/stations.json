@@ -1,0 +1,256 @@
+{
+ "Stations": [
+  {
+   "Address": {
+    "City": "Washington",
+    "State": "DC",
+    "Street": "",
+    "Zip": ""
+   },
+   "Code": "A01",
+   "Lat": 38.898303,
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lon": -77.028099,
+   "Name": "Metro Center",
+   "StationTogether1": "C01",
+   "StationTogether2": ""
+  },
+  {
+   "Address": {
+    "City": "Washington",
+    "State": "DC",
+    "Street": "",
+    "Zip": ""
+   },
+   "Code": "C01",
+   "Lat": 38.898303,
+   "LineCode1": "BL",
+   "LineCode2": "OR",
+   "LineCode3": "SV",
+   "LineCode4": null,
+   "Lon": -77.028099,
+   "Name": "Metro Center",
+   "StationTogether1": "A01",
+   "StationTogether2": ""
+  },
+  {
+   "Address": {
+    "City": "Washington",
+    "State": "DC",
+    "Street": "",
+    "Zip": ""
+   },
+   "Code": "B01",
+   "Lat": 38.89834,
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lon": -77.021851,
+   "Name": "Gallery Pl-Chinatown",
+   "StationTogether1": "F01",
+   "StationTogether2": ""
+  },
+  {
+   "Address": {
+    "City": "Washington",
+    "State": "DC",
+    "Street": "",
+    "Zip": ""
+   },
+   "Code": "F01",
+   "Lat": 38.89834,
+   "LineCode1": "GR",
+   "LineCode2": "YL",
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lon": -77.021851,
+   "Name": "Gallery Pl-Chinatown",
+   "StationTogether1": "B01",
+   "StationTogether2": ""
+  },
+  {
+   "Address": {
+    "City": "Washington",
+    "State": "DC",
+    "Street": "",
+    "Zip": ""
+   },
+   "Code": "B02",
+   "Lat": 38.896084,
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lon": -77.016643,
+   "Name": "Judiciary Square",
+   "StationTogether1": "",
+   "StationTogether2": ""
+  },
+  {
+   "Address": {
+    "City": "Washington",
+    "State": "DC",
+    "Street": "",
+    "Zip": ""
+   },
+   "Code": "B03",
+   "Lat": 38.897723,
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lon": -77.006433,
+   "Name": "Union Station",
+   "StationTogether1": "",
+   "StationTogether2": ""
+  },
+  {
+   "Address": {
+    "City": "Washington",
+    "State": "DC",
+    "Street": "",
+    "Zip": ""
+   },
+   "Code": "B11",
+   "Lat": 39.061713,
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lon": -77.05341,
+   "Name": "Glenmont",
+   "StationTogether1": "",
+   "StationTogether2": ""
+  },
+  {
+   "Address": {
+    "City": "Washington",
+    "State": "DC",
+    "Street": "",
+    "Zip": ""
+   },
+   "Code": "A15",
+   "Lat": 39.119819,
+   "LineCode1": "RD",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lon": -77.164921,
+   "Name": "Shady Grove",
+   "StationTogether1": "",
+   "StationTogether2": ""
+  },
+  {
+   "Address": {
+    "City": "Washington",
+    "State": "DC",
+    "Street": "",
+    "Zip": ""
+   },
+   "Code": "D01",
+   "Lat": 38.893757,
+   "LineCode1": "BL",
+   "LineCode2": "OR",
+   "LineCode3": "SV",
+   "LineCode4": null,
+   "Lon": -77.028218,
+   "Name": "Federal Triangle",
+   "StationTogether1": "",
+   "StationTogether2": ""
+  },
+  {
+   "Address": {
+    "City": "Washington",
+    "State": "DC",
+    "Street": "",
+    "Zip": ""
+   },
+   "Code": "D02",
+   "Lat": 38.888022,
+   "LineCode1": "BL",
+   "LineCode2": "OR",
+   "LineCode3": "SV",
+   "LineCode4": null,
+   "Lon": -77.028232,
+   "Name": "Smithsonian",
+   "StationTogether1": "",
+   "StationTogether2": ""
+  },
+  {
+   "Address": {
+    "City": "Washington",
+    "State": "DC",
+    "Street": "",
+    "Zip": ""
+   },
+   "Code": "D06",
+   "Lat": 38.884124,
+   "LineCode1": "BL",
+   "LineCode2": "OR",
+   "LineCode3": "SV",
+   "LineCode4": null,
+   "Lon": -76.995334,
+   "Name": "Eastern Market",
+   "StationTogether1": "",
+   "StationTogether2": ""
+  },
+  {
+   "Address": {
+    "City": "Washington",
+    "State": "DC",
+    "Street": "",
+    "Zip": ""
+   },
+   "Code": "D13",
+   "Lat": 38.947674,
+   "LineCode1": "OR",
+   "LineCode2": "SV",
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lon": -76.872144,
+   "Name": "New Carrollton",
+   "StationTogether1": "",
+   "StationTogether2": ""
+  },
+  {
+   "Address": {
+    "City": "Washington",
+    "State": "DC",
+    "Street": "",
+    "Zip": ""
+   },
+   "Code": "K08",
+   "Lat": 38.877693,
+   "LineCode1": "OR",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lon": -77.271562,
+   "Name": "Vienna/Fairfax-GMU",
+   "StationTogether1": "",
+   "StationTogether2": ""
+  },
+  {
+   "Address": {
+    "City": "Washington",
+    "State": "DC",
+    "Street": "",
+    "Zip": ""
+   },
+   "Code": "N12",
+   "Lat": 39.005703,
+   "LineCode1": "SV",
+   "LineCode2": null,
+   "LineCode3": null,
+   "LineCode4": null,
+   "Lon": -77.491124,
+   "Name": "Ashburn",
+   "StationTogether1": "",
+   "StationTogether2": ""
+  }
+ ]
+}

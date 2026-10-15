@@ -459,6 +459,8 @@ export interface TransitStep {
   /** Where a transit step's times are from: "scheduled" now; "live" from v0.7. Null off transit. */
   source?: TimeSource | null;
   with_bike: boolean;
+  /** A Metro step's next trains its way now, from WMATA: "Live: Red Line toward Shady Grove in 3 min, 11 min." */
+  live?: { text: string; minutes: number[]; source: "live" } | null;
   /** This step is the route's own line (drawn as the route); its coordinates are empty. */
   route_line: boolean;
   coordinates: LonLat[];
@@ -543,10 +545,25 @@ export interface StationLineTime {
   today: boolean;
 }
 
+/** A Metro station's live values (core.transit_live.station; v0.7.0), credited "Data: WMATA". */
+export interface StationLive {
+  station: string;
+  /** The next trains by line and way: minutes (0 arriving), and in words ("3 min, 11 min"; "arriving"). */
+  trains: { line: string; toward: string; minutes: number[]; when: string }[];
+  /** "Elevator out at Gallery Place: carry your bike on the stairs." */
+  elevators: { words: string; where: string }[];
+  /** WMATA's rail incidents on the station's lines. */
+  alerts: string[];
+  credit: string;
+  as_of: string;
+}
+
 export interface StationTimes {
   service_day: string;
   source: TimeSource;
   lines: StationLineTime[];
+  /** Live values where the station is WMATA's and a reading is to hand; null or absent otherwise. */
+  live?: StationLive | null;
 }
 
 /** A transit ride type's trip: scheduled times, not live. */
@@ -576,6 +593,18 @@ export interface TransitPlan {
   credits: string[];
   /** The first infrequent departure, or null (absent from older answers). */
   departure?: TransitDeparture | null;
+  /**
+   * WMATA's live values on this trip (v0.7.0): elevators out where the bike needs one (a warning, never an
+   * avoidance), rail incidents on the lines used, the credit and when it was read. Null with none.
+   */
+  live?: TransitLive | null;
+}
+
+export interface TransitLive {
+  warnings: string[];
+  alerts: string[];
+  credit: string;
+  as_of: string;
 }
 
 export interface BikesharePlan {

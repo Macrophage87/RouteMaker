@@ -54,7 +54,7 @@ import {
 } from "./lib/roadInfo.ts";
 import type { PlaceChoice } from "./lib/geocode.ts";
 import { stationLinks } from "./lib/stationLinks.ts";
-import { TIMES_LABEL, requestStationTimes, shownLines, stationTimeRows } from "./lib/stationTimes.ts";
+import { TIMES_LABEL, requestStationTimes, stationCardRows } from "./lib/stationTimes.ts";
 import type { StationTimes } from "./lib/api.ts";
 import { WMATA_SLUGS } from "./lib/railData.ts";
 import type { RailVisibility, Station } from "./lib/railStations.ts";
@@ -63,7 +63,9 @@ import { closesDialog, nextFocus, tabStops, type TabCandidate } from "./lib/ride
 import { CHANGE_LTS_TEXT, NO_ME, fetchMe, type Me } from "./lib/stressEditor.ts";
 import { StressEditor } from "./StressEditor.tsx";
 import { SuggestChange } from "./SuggestChange.tsx";
+import { SuggestQuick } from "./SuggestQuick.tsx";
 import { SUGGEST_TEXT } from "./lib/suggestions.ts";
+import { NO_PHOTO_TEXT, fetchStreetPhoto, photoAlt, type PhotoAnswer } from "./lib/streetPhoto.ts";
 
 /** The one button that holds the ways to suggest, when there are two or more (UI-CLEANUP). */
 export const SUGGEST_MENU_TEXT = "Suggest a change…";
@@ -169,7 +171,7 @@ function StationTimesList({ station, rail, closed }: { station: Station; rail: R
       live = false;
     };
   }, [lon, lat, closed]);
-  const rows = !closed && times ? stationTimeRows(shownLines(times.lines, rail)) : [];
+  const rows = !closed ? stationCardRows(times, rail) : [];
   if (rows.length === 0) return null;
   return (
     <ul className="station-times road-info-times" aria-label={TIMES_LABEL}>
@@ -180,6 +182,46 @@ function StationTimesList({ station, rail, closed }: { station: Station; rail: R
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * The road's street photo (v0.7.0; lib/streetPhoto.ts): the newest Mapillary photo facing along the road,
+ * a link to Mapillary's viewer in a new tab, its date under it and in its alt text, and the credit. One
+ * plain line where Mapillary has none; nothing where the server cannot look one up.
+ */
+function StreetPhotoView({ title, point, wayId }: { title: string; point: [number, number]; wayId: number | null }) {
+  const [photo, setPhoto] = useState<PhotoAnswer>(null);
+  const [lon, lat] = point;
+  useEffect(() => {
+    const controller = new AbortController();
+    setPhoto(null);
+    void fetchStreetPhoto(window.location.origin, [lon, lat], wayId, controller.signal).then((answer) => {
+      if (!controller.signal.aborted) setPhoto(answer);
+    });
+    return () => controller.abort();
+  }, [lon, lat, wayId]);
+  if (photo === null) return null;
+  if (photo === "none") return <p className="hint road-info-photo-none">{NO_PHOTO_TEXT}</p>;
+  return (
+    <figure className="road-info-photo">
+      <a href={photo.viewer_url} target="_blank" rel="noopener noreferrer">
+        <img src={photo.image_url} alt={photoAlt(title, photo)} width={1024} height={768} loading="lazy" referrerPolicy="no-referrer" />
+        <span className="visually-hidden"> (opens Mapillary in a new tab)</span>
+      </a>
+      <figcaption className="hint">
+        {photo.date_words}
+        {photo.creator ? `, by ${photo.creator}` : ""} ·{" "}
+        <a href={photo.credit_url} target="_blank" rel="noopener noreferrer">
+          {photo.credit}
+        </a>{" "}
+        (
+        <a href={photo.licence_url} target="_blank" rel="noopener noreferrer">
+          {photo.licence}
+        </a>
+        )
+      </figcaption>
+    </figure>
   );
 }
 
@@ -208,6 +250,9 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
   const [editing, setEditing] = useState(false);
   // A rider's "Suggest a change" form (OWNER-DECISIONS 441h; SuggestChange.tsx), open in place of the row.
   const [suggesting, setSuggesting] = useState(false);
+  // Whether the account answer is in: the short form (v0.7.0) waits for it, so a rider who may use the
+  // full form never sees the short one flash first.
+  const [meKnown, setMeKnown] = useState(false);
   const suggestButton = useRef<HTMLButtonElement>(null);
   const returnToSuggest = useRef(false);
   // The junction at the spot, for a rider who may suggest (OWNER-DECISIONS 232; SuggestJunction.tsx): its
@@ -262,6 +307,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
     const controller = new AbortController();
     void fetchMe(window.location.origin).then((who) => {
       setMe(who);
+      setMeKnown(true);
       // Only a rider who may suggest asks where the junction is (nobody else asks the endpoint anything).
       if (!who.can_suggest || controller.signal.aborted) return;
       void findJunction(window.location.origin, request.point, controller.signal).then((found) => {
@@ -437,7 +483,14 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
   // A rider the settings allow may suggest a level (an instance admin changes it instead).
   const suggestWay =
     ready && me.can_suggest && editableWay === null && ready.osm_way_id != null && ready.tier != null ? ready.osm_way_id : null;
-  const suggestingNow = suggesting && suggestWay !== null;
+  // Anyone else gets the short form (v0.7.0; SuggestQuick.tsx): signed out, or the settings keep the
+  // full form closed to them.
+  const quickWay =
+    meKnown && ready && !me.can_suggest && !me.can_change_lts && ready.osm_way_id != null && ready.tier != null
+      ? ready.osm_way_id
+      : null;
+  const suggestRoad = suggestWay ?? quickWay;
+  const suggestingNow = suggesting && suggestRoad !== null;
   // A Mass Ride's rider-marked hazard on this road (325), and whether this rider may mark one: a road
   // not marked Avoid (there the map shows only Avoid), by a rider the settings allow.
   const hazard = massRide ? hazardOnPiece(hazards, ready) : null;
@@ -447,7 +500,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
   // A junction at the spot, for a rider who may suggest (an instance admin never suggests).
   const suggestJunction = me.can_suggest ? junction : null;
   const suggestingJunctionNow = suggestingJunction && suggestJunction !== null && !suggestingNow && !reportingNow;
-  const suggestCount = [suggestJunction, suggestWay, hazardWay].filter((way) => way !== null).length;
+  const suggestCount = [suggestJunction, suggestRoad, hazardWay].filter((way) => way !== null).length;
   const suggestItems = (
     <>
               {suggestJunction !== null && (
@@ -463,7 +516,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
                   </button>
                 </li>
               )}
-              {suggestWay !== null && (
+              {suggestRoad !== null && (
                 <li>
                   <button type="button" className="road-info-button" ref={suggestButton} onClick={() => setSuggesting(true)}>
                     {SUGGEST_TEXT}
@@ -595,6 +648,9 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
             ))}
           </ul>
         )}
+        {ready && request && (
+          <StreetPhotoView title={ready.title} point={streetViewPoint(ready, request.point)} wayId={ready.osm_way_id} />
+        )}
         {more && (
           // A mountain-bike trail's MORE page: trailheads, trail info and the day's conditions (slice 6).
           <p className="road-info-more">
@@ -700,6 +756,19 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
                 setReload((n) => n + 1);
                 onStressChanged?.(generation);
               }}
+            />
+          </div>
+        )}
+        {request && suggestingNow && ready && quickWay !== null && (
+          <div className="road-info-actions">
+            <SuggestQuick
+              origin={window.location.origin}
+              wayId={quickWay}
+              title={ready.title}
+              current={ready.step ?? ready.tier ?? 3}
+              point={streetViewPoint(ready, request.point)}
+              halfSteps={ready.half_steps === true}
+              onClose={closeSuggest}
             />
           </div>
         )}

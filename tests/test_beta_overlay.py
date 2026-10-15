@@ -734,7 +734,7 @@ def test_reverse_and_geocode_log_errors_at_crit_only_with_the_api_proxy_settings
     """An upstream error line records the request with its query (OWNER-DECISIONS 395)."""
     full = stage("full")
     found = dict(locations(full))
-    body = found["~ ^/api/(reverse|geocode|segment-info)/?$"]
+    body = found["~ ^/api/(reverse|geocode|segment-info|street-photo)/?$"]
     assert re.findall(r"^\s*error_log\s+(.*?);", body, re.M) == [
         "/var/log/nginx/rmbeta-error.log crit"
     ]
@@ -756,10 +756,15 @@ def test_reverse_and_geocode_log_errors_at_crit_only_with_the_api_proxy_settings
         f.read_text() for f in (REPO / "frontend" / "src").rglob("*.ts*") if ".test." not in f.name
     ]
     queried = {m for text in sources for m in re.findall(r"[`\"'}](/api/[a-z-]+)\?", text)}
-    assert queried == {"/api/reverse", "/api/geocode", "/api/segment-info"}, queried
+    assert queried == {
+        "/api/reverse",
+        "/api/geocode",
+        "/api/segment-info",
+        "/api/street-photo",
+    }, queried
     for path in queried:
-        assert re.fullmatch(r"/api/(reverse|geocode|segment-info)/?", path), path
-    assert not re.fullmatch(r"/api/(reverse|geocode|segment-info)/?", "/api/route")
+        assert re.fullmatch(r"/api/(reverse|geocode|segment-info|street-photo)/?", path), path
+    assert not re.fullmatch(r"/api/(reverse|geocode|segment-info|street-photo)/?", "/api/route")
 
 
 def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and_acme() -> None:
