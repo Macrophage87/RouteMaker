@@ -187,13 +187,16 @@ test("Go's places are Home, Food, Water and Restroom (no Work); Home works signe
   assert.deepEqual(chips.slice(0, 4), ["Home", "Food", "Water", "Restroom"]);
   assert.doesNotMatch(go, /Work/);
   assert.ok(!("work" in ICON_PATHS), "the mockup's Work icon is gone with the chip");
-  assert.match(go, /aria-describedby=\{places\.homeReady \? undefined : homeHint\}/);
+  // The hint is the chip's description only while the Home sheet is shut (lib/homeSet.ts: the sheet replaces it).
+  assert.match(go, /aria-describedby=\{places\.homeReady \|\| homeShown \? undefined : homeHint\}/);
   assert.match(go, /\{HOME_NOT_SET\}/);
   assert.doesNotMatch(go, /Sign in/);
-  assert.match(HOME_NOT_SET, /My Go/);
+  // Was /My Go/: since "Setting Home simply" the chip sets Home in place, so the line points at the chip.
+  assert.match(HOME_NOT_SET, /tap Home/);
   assert.match(appFile, /homeReady: myGo\.home !== null,/);
-  // Without a Home, the chip opens My Go in Settings (one press, then the Home search).
-  assert.match(appFile, /if \(home\) \{[\s\S]*?void goTo\(home\.point, home\.label \|\| "Home"\);[\s\S]*?openView\("settings", chip\);/);
+  // Without a Home, the chip opens Go's Home sheet in place (was: My Go in Settings); with one, it rides there.
+  assert.match(go, /onClick=\{\(event\) => \(places\.homeReady \? places\.onHome\(event\.currentTarget\) : setHomeOpen\(!homeOpen\)\)\}/);
+  assert.match(appFile, /if \(!home\) return;[\s\S]*?void goTo\(home\.point, home\.label \|\| "Home"\);/);
   // Water and Restroom search from the rider's location, in their own sheet.
   assert.match(appFile, /onWater: \(chip\) => \{\s*openView\("nearest", chip\);\s*findNearestHere\("water"\);/);
   assert.match(appFile, /onRestroom: \(chip\) => \{\s*openView\("nearest", chip\);\s*findNearestHere\("restroom"\);/);
@@ -227,7 +230,8 @@ test("the Go/Plan switch: two toggle buttons in a named group, in Go's bar and P
   assert.match(change, /announceExtra\(modeSaid\(next\)\);/, "extra narration: said at Full, not at Brief");
   assert.match(change, /saveMyGoNow\(\{ \.\.\.myGoRef\.current, openIn: next \}, false\);/);
   // A save waits for the account's My Go to be read, so a Home is never overwritten by an early save.
-  assert.match(appFile, /if \(meRef\.current\.signed_in\) \{\s*if \(!accountMyGoRead\.current\) return;/);
+  // (Since "Setting Home simply" the early return also tells a Home save it was not kept, so it can say so.)
+  assert.match(appFile, /if \(meRef\.current\.signed_in\) \{\s*if \(!accountMyGoRead\.current\) \{\s*onSaved\?\.\(false\);\s*return;/);
 });
 
 // ---- the route summary (the owner's choices 4, 5 and 8) --------------------------------------

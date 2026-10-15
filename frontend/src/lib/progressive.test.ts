@@ -314,6 +314,10 @@ test("App: Go's controls are unchanged: no new button or field for any of it", (
   const go = readFileSync(new URL("../app/Go.tsx", import.meta.url), "utf8");
   // 18: v0.7.0's places stream added Go's More chip with Repair and Sights behind it, and Plan's
   // map chip for Places to see (PlanMapChips lives in Go.tsx); faster routing added none.
-  assert.equal((go.match(/<button/g) ?? []).length, 18, "the same buttons as before");
-  assert.equal((go.match(/<PlaceSearch/g) ?? []).length, 3, "the same search fields as before");
+  // 21 and 4 since "Setting Home simply" (lib/homeSet.ts): the Home sheet (HomeSetter, Go's and Settings') has
+  // Pick on the map, Clear Home and the Home search (which moved here from Settings), and More has Change Home.
+  // None is on Go until asked for: the sheet opens from the Home chip, Change Home is behind More
+  // (lib/homeSet.test.ts holds Go's always-shown row at five chips).
+  assert.equal((go.match(/<button/g) ?? []).length, 21, "the same buttons as before, and the Home sheet's");
+  assert.equal((go.match(/<PlaceSearch/g) ?? []).length, 4, "the same search fields as before, and the Home sheet's");
 });

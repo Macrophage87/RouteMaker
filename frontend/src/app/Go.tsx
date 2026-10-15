@@ -7,13 +7,14 @@
  *
  * Plan keeps the full panel; its map has Food and Water chips (PlanMapChips), where Go has place chips.
  */
-import { useId, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../Icon.tsx";
 import { PlaceSearch } from "../PlaceSearch.tsx";
 import type { LonLat } from "../lib/geo.ts";
 import type { GeoGate, Place, PlaceChoice } from "../lib/geocode.ts";
 import { MODE_LABEL, MODE_SWITCH_HINT, MODE_SWITCH_NAME, type AppMode } from "../lib/appMode.ts";
-import { HOME_NOT_SET } from "../lib/myGo.ts";
+import { HOME_NOT_SET, type Home } from "../lib/myGo.ts";
+import { CHANGE_HOME_TEXT, CLEAR_HOME_TEXT, HOME_PICK_LINE, PICK_ON_MAP_TEXT, homeName } from "../lib/homeSet.ts";
 import { BEST_ORDER_LABEL } from "../lib/stopOrder.ts";
 
 export type GoSheetSize = "peek" | "half" | "full";
@@ -99,8 +100,16 @@ export function GoTopBar({
 }
 
 export interface GoPlaces {
-  /** Signed in with a Home: the chip rides there. Else it opens My Go (and says why). */
+  /** With a Home (the account's, or this device's signed out): the chip rides there. Else it opens the Home sheet. */
   homeReady: boolean;
+  /** The Home there is, or null: the Home sheet shows it. */
+  home: Home | null;
+  /** The Home sheet's search picked a place. */
+  onHomePlace: (place: Place) => void;
+  onClearHome: () => void;
+  /** The Home sheet's "Pick on the map": the next tap on the map is Home (pressed again, it is not). */
+  homePicking: boolean;
+  onPickHome: () => void;
   signedIn: boolean;
   onHome: (chip: HTMLButtonElement) => void;
   onFood: (chip: HTMLButtonElement) => void;
@@ -110,6 +119,65 @@ export interface GoPlaces {
   onRepair: (chip: HTMLButtonElement) => void;
   /** Behind More: the nearest places to see (Plan's Places to see, five of them, no filters). */
   onSights: (chip: HTMLButtonElement) => void;
+}
+
+/**
+ * The Home sheet (lib/homeSet.ts): the place search, and in Go "Pick on the map"; with a Home, its name and Clear
+ * Home. One place to set, change and clear Home: Go's Home chip (no Home yet) or More's Change Home, and Settings.
+ * Nothing here takes the focus, except Clear Home's own when it goes with the Home: the search box then has it.
+ */
+export function HomeSetter({
+  home,
+  geoGate,
+  searchBias,
+  onPlace,
+  onClear,
+  picking = false,
+  onPickOnMap,
+}: {
+  home: Home | null;
+  geoGate: GeoGate;
+  searchBias: () => LonLat | undefined;
+  onPlace: (place: Place) => void;
+  onClear: () => void;
+  picking?: boolean;
+  /** Go only: the map way (Settings covers the map). */
+  onPickOnMap?: () => void;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  return (
+    <div className="home-setter" ref={box}>
+      {home && (
+        <p className="home-now">
+          <strong>Home: </strong>
+          {homeName(home)}
+        </p>
+      )}
+      <PlaceSearch variant="home" pointCount={0} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place) => onPlace(place)} />
+      <div className="actions home-actions">
+        {onPickOnMap && (
+          <button type="button" className="secondary" aria-pressed={picking} onClick={onPickOnMap}>
+            <Icon name="pin" size={18} />
+            {PICK_ON_MAP_TEXT}
+          </button>
+        )}
+        {home && (
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              onClear();
+              // The button goes with the Home: the focus goes to the search box beside it, not to the page.
+              box.current?.querySelector<HTMLInputElement>("input")?.focus();
+            }}
+          >
+            {CLEAR_HOME_TEXT}
+          </button>
+        )}
+      </div>
+      {picking && <p className="hint home-pick-line">{HOME_PICK_LINE}</p>}
+    </div>
+  );
 }
 
 /**
@@ -188,6 +256,10 @@ export function GoSheet({
   onStartPick: (place: Place) => void;
 }) {
   const homeHint = useId();
+  const homeSheetId = useId();
+  // The Home sheet: the Home chip opens it while there is no Home, More's Change Home once there is one.
+  const [homeOpen, setHomeOpen] = useState(false);
+  const homeShown = homeOpen || places.homePicking;
   const startBoxId = useId();
   const moreId = useId();
   const [startOpen, setStartOpen] = useState(false);
@@ -240,8 +312,10 @@ export function GoSheet({
           <button
             type="button"
             className="chip place-chip"
-            onClick={(event) => places.onHome(event.currentTarget)}
-            aria-describedby={places.homeReady ? undefined : homeHint}
+            onClick={(event) => (places.homeReady ? places.onHome(event.currentTarget) : setHomeOpen(!homeOpen))}
+            aria-expanded={places.homeReady ? undefined : homeShown}
+            aria-controls={places.homeReady ? undefined : homeSheetId}
+            aria-describedby={places.homeReady || homeShown ? undefined : homeHint}
           >
             <Icon name="home" size={18} />
             Home
@@ -272,8 +346,28 @@ export function GoSheet({
             <Icon name="camera" size={18} />
             Sights
           </button>
+          {places.homeReady && (
+            <button type="button" className="chip place-chip" aria-expanded={homeShown} aria-controls={homeSheetId} onClick={() => setHomeOpen(!homeOpen)}>
+              <Icon name="home" size={18} />
+              {CHANGE_HOME_TEXT}
+            </button>
+          )}
         </div>
-        {!places.homeReady && (
+        <div id={homeSheetId} className="go-home-sheet" role="group" aria-label="Home" hidden={!homeShown}>
+          {homeShown && (
+            <HomeSetter
+              home={places.home}
+              geoGate={geoGate}
+              searchBias={searchBias}
+              onPlace={places.onHomePlace}
+              onClear={places.onClearHome}
+              picking={places.homePicking}
+              onPickOnMap={places.onPickHome}
+            />
+          )}
+        </div>
+        {/* One short line, and only while there is no Home and its sheet is shut. */}
+        {!places.homeReady && !homeShown && (
           <p id={homeHint} className="hint go-home-hint">
             {HOME_NOT_SET}
           </p>

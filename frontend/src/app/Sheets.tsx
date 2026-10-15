@@ -52,12 +52,13 @@ import { anyKept } from "../lib/offlineRouteStore.ts";
 import { HAZARD_REVIEW } from "../lib/reviewSources.ts";
 import { DC_311_ONLINE, REPORT_KINDS } from "../lib/report311.ts";
 import { OPEN_IN_HINT, OPEN_IN_LABEL, type AppMode, type OpenIn } from "../lib/appMode.ts";
-import { myGoSummary, type MyGo } from "../lib/myGo.ts";
+import { myGoSummary, type Home, type MyGo } from "../lib/myGo.ts";
+import { homeFromPlace } from "../lib/homeSet.ts";
+import { HomeSetter } from "./Go.tsx";
 import { SIGN_IN_LINE } from "../lib/accountSettings.ts";
 import { MyRoutes, type MyRoutesProps } from "../MyRoutes.tsx";
 import type { GeoGate, Place } from "../lib/geocode.ts";
 import type { IconName } from "../lib/iconPaths.ts";
-import { PlaceSearch } from "../PlaceSearch.tsx";
 import { Icon } from "../Icon.tsx";
 import { ANNOUNCE_HINT, ANNOUNCE_LABEL, type AnnounceLevel } from "../lib/announceLevel.ts";
 import type { Status } from "./RoutePanel.tsx";
@@ -311,6 +312,8 @@ export interface MyGoControls {
   signedIn: boolean;
   /** Saves the whole of My Go (to the account signed in, else this device). */
   save: (next: MyGo) => void;
+  /** Sets (or with null clears) Home alone, and says so (lib/homeSet.ts). */
+  setHome: (home: Home | null) => void;
   /** What the last save said, politely. */
   said: string;
   geoGate: GeoGate;
@@ -338,7 +341,7 @@ function OpenInChoice({ value, onChange, idBase, hint }: { value: OpenIn; onChan
  * in and on this device when not; signed in, the Home that Go's Home chip rides to.
  */
 function MyGoSection({ controls }: { controls: MyGoControls }) {
-  const { myGo, signedIn, save, said, geoGate, searchBias } = controls;
+  const { myGo, signedIn, save, setHome, said, geoGate, searchBias } = controls;
   return (
     <section aria-labelledby="settings-my-go-heading" className="my-go">
       <h4 id="settings-my-go-heading">
@@ -361,17 +364,14 @@ function MyGoSection({ controls }: { controls: MyGoControls }) {
           ))}
         </select>
       </label>
+      {/* The same Home sheet as Go's (lib/homeSet.ts), without the map way: the map is behind Settings. */}
       <div className="my-go-home">
-        <p>
-          <strong>Home: </strong>
-          {myGo.home ? myGo.home.label || "set" : "not set"}
-        </p>
-        <PlaceSearch variant="home" pointCount={0} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place) => save({ ...myGo, home: { point: [place.lon, place.lat], label: place.name } })} />
-        {myGo.home && (
-          <button type="button" className="secondary" onClick={() => save({ ...myGo, home: null })}>
-            Clear Home
-          </button>
+        {!myGo.home && (
+          <p>
+            <strong>Home: </strong>not set
+          </p>
         )}
+        <HomeSetter home={myGo.home} geoGate={geoGate} searchBias={searchBias} onPlace={(place: Place) => setHome(homeFromPlace(place))} onClear={() => setHome(null)} />
       </div>
       <p className="hint my-go-said" role="status">
         {said}

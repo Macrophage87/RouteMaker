@@ -108,7 +108,8 @@ import {
   type LocateResult,
 } from "./lib/geolocation.ts";
 import { usePlaceNames } from "./usePlaceNames.ts";
-import { pickIntoPlan, placeFromSearch, searchBiasPoint, type Place, type ViewBounds, type PlaceChoice } from "./lib/geocode.ts";
+import { fetchPlaces, pickIntoPlan, placeFromSearch, reverseUrl, searchBiasPoint, type Place, type ViewBounds, type PlaceChoice } from "./lib/geocode.ts";
+import { HOME_CLEARED, HOME_PICK_CANCELLED, HOME_PICK_LINE, homeAtSpot, homeFromPlace, homeSetSaid } from "./lib/homeSet.ts";
 import { BottomBar } from "./Sidebar.tsx";
 import {
   copyText,
@@ -190,7 +191,7 @@ import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type
 import { letterKeyIndex, letterPlaces, placeLetter } from "./lib/letteredPlaces.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
 import { GO_START_SAID, GO_START_UNAVAILABLE, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, shouldAskGoStart, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
-import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type MyGo } from "./lib/myGo.ts";
+import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type Home, type MyGo } from "./lib/myGo.ts";
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, onSignIn, planFromSetting, sameSettings, saveSettings, SAVE_SETTLE_MS, type SettingsDoc } from "./lib/accountSettings.ts";
@@ -278,6 +279,10 @@ export function App() {
   // The rider's own My Go (lib/myGo.ts): the account's when signed in, this device's when not.
   const [myGo, setMyGo] = useState<MyGo>(START_MY_GO.myGo);
   const [myGoSaid, setMyGoSaid] = useState("");
+  // Go's Home sheet, "Pick on the map": the next tap on the map is Home (lib/homeSet.ts).
+  const [homePick, setHomePick] = useState(false);
+  const homePickRef = useRef(homePick);
+  homePickRef.current = homePick;
   // /api/me's flags: signed in (My Go to the account, the Home chip) and an instance admin (Review).
   const [me, setMe] = useState<Me>(NO_ME);
   // Go's sheet on a phone: its smallest (peek: the map gets the screen), half, or all of it.
@@ -1022,19 +1027,33 @@ export function App() {
     setMyGoSaid("");
     myGoSaidTimer.current = window.setTimeout(() => setMyGoSaid(text), 150);
   };
-  const saveMyGoNow = (next: MyGo, speak = true) => {
+  const saveMyGoNow = (next: MyGo, speak = true, onSaved?: (saved: boolean) => void) => {
     setMyGo(next);
     if (meRef.current.signed_in) {
-      if (!accountMyGoRead.current) return;
+      if (!accountMyGoRead.current) {
+        onSaved?.(false);
+        return;
+      }
       saveAccountCopy(next);
       void saveMyGo(window.location.origin, next).then((saved) => {
         if (saved) setMyGo(saved);
         if (speak) sayMyGo(saved ? MY_GO_SAVED : MY_GO_NOT_SAVED);
+        onSaved?.(saved !== null);
       });
     } else {
       saveDeviceMyGo(next);
       if (speak) sayMyGo(MY_GO_SAVED_DEVICE);
+      onSaved?.(true);
     }
+  };
+  // Home alone (lib/homeSet.ts): from the Home sheet's search, the map, or Settings. Said at once, politely, through
+  // the page's region ("Home set to <name>."); the focus stays where it is. Signed in, a save the account refused
+  // is said after it; signed out, it is kept on this device.
+  const setHome = (home: Home | null) => {
+    announce(home ? homeSetSaid(home) : HOME_CLEARED);
+    saveMyGoNow({ ...myGoRef.current, home }, false, (saved) => {
+      if (!saved) announce(MY_GO_NOT_SAVED);
+    });
   };
   // Saved settings (v0.7.0): the account's win on sign-in; an empty account takes this device's.
   const lastSettings = useRef<SettingsDoc | null>(null);
@@ -1252,6 +1271,12 @@ export function App() {
     cancelLocateNotice();
     if (!insideCoverage(point)) {
       setNotice(OUTSIDE_NOTICE);
+      return;
+    }
+    // The Home sheet's "Pick on the map" (lib/homeSet.ts): this tap is Home, not a point or a destination.
+    if (homePickRef.current) {
+      setHomePick(false);
+      void setHomeAtRef.current(point);
       return;
     }
     // In Go, the spot pressed is the destination, in place of any before it, routed as a picked one is.
@@ -1754,17 +1779,37 @@ export function App() {
     }
     goAddStopAt(point, found.name);
   };
-  // Go's Home chip: with a Home (the account's, or this device's when signed out), ride there; else My Go, under Settings.
-  const goHome = (chip: HTMLElement) => {
+  // Go's Home chip: with a Home (the account's, or this device's when signed out), ride there. Without one the chip
+  // opens Go's Home sheet (app/Go.tsx HomeSetter) in place, so it never comes here.
+  const goHome = () => {
     const home = myGoRef.current.home;
-    if (home) {
-      namer.remember(home.point, home.label || "Home", home.label || "Home");
-      void goTo(home.point, home.label || "Home");
+    if (!home) return;
+    namer.remember(home.point, home.label || "Home", home.label || "Home");
+    void goTo(home.point, home.label || "Home");
+  };
+  // Home at a spot on the map (the road panel's Set as Home, or Pick on the map then a tap): named by a name the page
+  // has, else the reverse look-up (through the page's one geocoding gate), else its coordinates.
+  const setHomeAt = async (point: LonLat) => {
+    if (!insideCoverage(point)) {
+      setNotice(OUTSIDE_NOTICE);
       return;
     }
-    openView("settings", chip);
-    window.setTimeout(() => document.getElementById("settings-my-go-heading")?.scrollIntoView?.({ block: "start" }), 50);
+    const known = namer.name(point)?.name;
+    const reverse = known ? null : await geoGate.run(() => fetchPlaces(reverseUrl(point))).catch(() => null);
+    setHome(homeAtSpot(point, known, reverse));
   };
+  const setHomeAtRef = useRef(setHomeAt);
+  setHomeAtRef.current = setHomeAt;
+  const pickHome = () => {
+    const on = !homePickRef.current;
+    setHomePick(on);
+    if (on && goSheet === "full") setGoSheet("half");
+    announce(on ? HOME_PICK_LINE : HOME_PICK_CANCELLED);
+  };
+  // Picking Home on the map is Go's, and ends when Go does (or a ride starts).
+  useEffect(() => {
+    if (mode !== "go" || riding) setHomePick(false);
+  }, [mode, riding]);
   // Go open with Home set and the rider's location found, and no route yet: the route Home is asked for early, so
   // the Home chip shows it finished (v0.7.0, "Faster routing" step 4).
   const homeEarly = me.signed_in && myGo.home !== null ? myGo.home.point : null;
@@ -2715,7 +2760,7 @@ export function App() {
   };
   // An instance admin's review (rider suggestions, Mass Ride hazard reports): from Suggest, or Go's Menu.
   const reviewOpener = me.can_change_lts ? (opener: HTMLElement) => openView("review", opener, true) : null;
-  const myGoControls = { myGo, signedIn: me.signed_in, save: saveMyGoNow, said: myGoSaid, geoGate, searchBias };
+  const myGoControls = { myGo, signedIn: me.signed_in, save: saveMyGoNow, setHome, said: myGoSaid, geoGate, searchBias };
   // Go's Menu (the Settings sheet in Go): Plan, Suggest, GPX and an admin's Review, each one step in.
   const menu = {
     onPlan: () => changeMode("plan"),
@@ -3305,6 +3350,7 @@ export function App() {
         }}
         plan={{ count: points.length, loop: loopVias }}
         onPlace={placeSpot}
+        onSetHome={(point) => void setHomeAt(point)}
       />
       {(crosshair.button || crosshair.canvas) && <div className="crosshair" aria-hidden="true" />}
       {!riding && !goMode && <PlanMapChips onFood={(chip) => openView("food", chip)} onWater={(chip) => openView("nearest", chip)} onPlaces={openPlaces} />}
@@ -3439,6 +3485,11 @@ export function App() {
                   onTopPlace={goEarlyToPlace}
                   places={{
                     homeReady: myGo.home !== null,
+                    home: myGo.home,
+                    onHomePlace: (found) => setHome(homeFromPlace(found)),
+                    onClearHome: () => setHome(null),
+                    homePicking: homePick,
+                    onPickHome: pickHome,
                     signedIn: me.signed_in,
                     onHome: goHome,
                     onFood: (chip) => openView("food", chip),
