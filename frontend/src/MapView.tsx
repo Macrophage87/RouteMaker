@@ -159,6 +159,8 @@ interface Props {
   loopVias?: boolean;
   route: RouteResponse | null;
   stale: boolean;
+  /** Plan mode (v0.7.0): the line before the last update, drawn dashed until the next change, or null. */
+  ghost?: readonly LonLat[] | null;
   stressVisible: boolean;
   /** The ride time the overlay follows, for the roads closed to cars at set times (lib/rideTime.ts). */
   when: When;
@@ -279,6 +281,14 @@ function registerPmtiles(): void {
 
 const DC_CENTRE: LonLat = [-77.03, 38.9];
 const ROUTE_SOURCE = "route";
+const GHOST_SOURCE = "route-ghost";
+
+/** The ghost line's data: the old route's line, or nothing. */
+function ghostData(line: readonly LonLat[] | null | undefined): object {
+  return line && line.length >= 2
+    ? { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: line.map((c) => [c[0], c[1]]) } }
+    : { type: "FeatureCollection", features: [] };
+}
 /** The route's sections by traffic stress (lib/routeColours.ts). */
 const ROUTE_STRESS_SOURCE = ROUTE_STRESS_SOURCE_ID;
 /** The handle and the dashed preview of a drag of the line. */
@@ -926,6 +936,15 @@ export function MapView(props: Props) {
       // The grey outside the District, shown in Mass Ride mode only (OWNER-DECISIONS 418; lib/dcBoundary.ts):
       // over the base map, under its labels, the overlays and the route.
       addDcMask(map, callbacks.current.massArea === true, new Set(stressOverlayLayers(STRESS_SOURCE_ID).map((l: { id: string }) => l.id)));
+      // Plan mode's ghost (v0.7.0, lib/planFirst.ts): the route before the last update, dashed, under the route.
+      map.addSource(GHOST_SOURCE, { type: "geojson", data: ghostData(callbacks.current.ghost) });
+      map.addLayer({
+        id: "route-ghost",
+        type: "line",
+        source: GHOST_SOURCE,
+        layout: { "line-join": "round", "line-cap": "butt" },
+        paint: { "line-color": "#4b5563", "line-width": 4, "line-opacity": 0.8, "line-dasharray": [2, 1.5] },
+      });
       map.addSource(ROUTE_SOURCE, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       map.addLayer({
         id: "route-casing",
@@ -1306,6 +1325,13 @@ export function MapView(props: Props) {
     if (!map || !loaded.current) return;
     syncRoute(map, callbacks.current, fitted);
   }, [props.route, props.stale]);
+
+  // Plan mode's ghost of the route before the last update (v0.7.0).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current) return;
+    (map.getSource(GHOST_SOURCE) as GeoJSONSource | undefined)?.setData(ghostData(props.ghost));
+  }, [props.ghost]);
 
   // A bikeshare plan's walk legs and the docks it uses. The markers are not buttons, since they
   // do nothing when pressed: each is an image with its whole text equivalent as its name, and

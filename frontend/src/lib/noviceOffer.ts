@@ -36,5 +36,5 @@ export function noviceOfferText(route: Pick<RouteResponse, "novice"> | null, pre
 
 /** Said when a choice is taken. */
 export function noviceTransitSaid(label: string): string {
-  return `${label}, with the bike legs planned for a novice rider. Planning.`;
+  return `${label}, with the bike legs planned for a novice rider.`;
 }

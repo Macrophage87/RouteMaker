@@ -24,6 +24,21 @@ import { setTopoLines, topoAvailable, useTopoLines } from "./lib/topoLines.ts";
 import { isMtb, mtbChosen, mtbLevelOf } from "./lib/mtbMode.ts";
 import { choose as chooseRideType } from "./lib/rideTypeDialog.ts";
 import { NOVICE_TRANSIT_CHOICES, noviceTransitSaid } from "./lib/noviceOffer.ts";
+import {
+  CANCELLED_SAID,
+  PLANNING_SAID,
+  RESET_NOTHING,
+  RESET_SAID,
+  changeSummary,
+  elapsedText,
+  planChanged,
+  planSentences,
+  routeButton,
+  routingStep,
+  type DrawnPlan,
+  type PhraseTarget,
+} from "./lib/planFirst.ts";
+import { PlanPanel } from "./app/PlanPanel.tsx";
 import { useHighStressLanes, useMtbTrails } from "./useStressStyle.ts";
 import { useStressStyle } from "./useStressStyle.ts";
 import { ANNOUNCE_SETTLE_MS } from "./lib/settle.ts";
@@ -52,7 +67,7 @@ import { RideMode, startRideGesture, type RideView } from "./RideMode.tsx";
 import { readRidePrefs, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf } from "./lib/bikeshare.ts";
-import { carries, startDials, trailsAreOff, type Dials } from "./lib/dials.ts";
+import { carries, hillsWords, seeksClimbs, startDials, stressMax, stressWords, trailsAreOff, type Dials } from "./lib/dials.ts";
 import { WeightStore, withWeight, type StoredWeight } from "./lib/weight.ts";
 import { stationEdit, type RailVisibility, type Station, type StationRole } from "./lib/railStations.ts";
 import { RAIL_STATIONS, WMATA_SLUGS, stationEntranceForPlace } from "./lib/railData.ts";
@@ -180,6 +195,11 @@ interface Plan {
   preset: PresetId;
   confirmLong: boolean;
   dials: Dials;
+  /** The ride as the rider set it, and its dials' key (App's routeKey): what Plan mode's Reset goes back to. */
+  ride?: Ride;
+  dialsKey?: string;
+  /** Plan mode's Route button asked for it (v0.7.0): its answer says what changed. */
+  pressed?: boolean;
 }
 
 const initialPlan = decodePlan(planToOpen(tabSession(), window.location.hash));
@@ -410,7 +430,7 @@ export function App() {
   const [view, setView] = useState<PanelView>("planner");
   // With a route shown the points are two or three lines and "Edit points" (the mockup's route view);
   // this opens the search, Add point and the rest again.
-  const [editPoints, setEditPoints] = useState(false);
+  const [, setEditPoints] = useState(false);
   const barButtons = useRef<Partial<Record<BarItem["id"], HTMLButtonElement | null>>>({});
   // The way back through the sheets (lib/sidebar.ts openOnto, backFrom): each step is the view that was
   // showing and what opened the next sheet (a bar button, a map chip, Go's Menu, Layers' Legend button).
@@ -583,7 +603,7 @@ export function App() {
         });
         keptShown.current = null;
         if (result.ok || result.error.kind !== "network") return result;
-        const kept = await keptAnswerFor<RouteResponse>(keptPlanKey(plan.points, plan.preset, plan.dials)).catch(() => undefined);
+        const kept = await keptAnswerFor<RouteResponse>(keptPlanKey(plan.points, plan.preset, plan.dials, viaIndices(plan.points, VIA_MARKS.isVia))).catch(() => undefined);
         if (!kept) return result;
         keptShown.current = kept;
         return { ok: true, route: kept.answer };
@@ -596,10 +616,20 @@ export function App() {
         if (result.ok) {
           if (usesBikeshare(plan.preset) && keepsFirst(bikeshareOf(result.route)))
             firstAnswer.current = { key: sentPlanKey(plan.points, plan.preset, plan.dials), trip: optionsKey(plan.points, plan.preset), route: result.route };
+          // Plan mode (v0.7.0, lib/planFirst.ts): the plan this route is drawn for, for Reset and for what the
+          // next update changes; an update pressed for keeps the old line as a dashed ghost, with a summary.
+          const before = drawnRef.current;
+          const drawnNow = { points: plan.points, ride: plan.ride ?? rideRef.current, dialsKey: plan.dialsKey ?? "", route: result.route };
+          drawnRef.current = drawnNow;
+          setDrawn(drawnNow);
+          if (plan.pressed && before) {
+            setGhost(before.route.geometry.coordinates);
+            setChangeLine(changeSummary(before.route, result.route));
+          }
           setRoute(result.route);
           setRoutedPoints(plan.points);
           setRoutedLoop(loopStops(plan.preset, plan.dials.loop));
-          routedKey.current = keptPlanKey(plan.points, plan.preset, plan.dials);
+          routedKey.current = keptPlanKey(plan.points, plan.preset, plan.dials, viaIndices(plan.points, VIA_MARKS.isVia));
           setStatus({ kind: "ok" });
           const kept = keptShown.current;
           const was = keptNotice.current;
@@ -650,6 +680,9 @@ export function App() {
       setImported(null);
       // Another plan's route opens compact, as a first route does.
       setEditPoints(false);
+      // A plan opened from a link opens drawn, in Plan as in Go (v0.7.0), and is not compared with the last one.
+      forgetDrawn();
+      setRouteAsk((n) => n + 1);
       setPoints(VIA_MARKS.markAt(plan.points, plan.vias));
       setPreset(plan.preset);
       setDials(plan.dials);
@@ -670,7 +703,27 @@ export function App() {
     return () => window.removeEventListener("pageshow", onShow);
   }, []);
 
-  // Route whenever the plan changes.
+  // Plan mode: write the plan first, then route (v0.7.0, lib/planFirst.ts). Go routes whenever the plan changes;
+  // Plan routes on its Route button, except a plan opened from a link, a kept route or a file (it opens drawn),
+  // the stations or a transit option chosen for the route shown (they re-plan it at once), and Undo back to the
+  // drawn plan after a Clear (it is drawn again).
+  const planFirst = mode === "plan" && !riding;
+  const [routeAsk, setRouteAsk] = useState(initialPlan.points.length >= 2 ? 1 : 0);
+  const routedAsk = useRef(0);
+  const asked = useRef<{ points: LonLat[]; preset: PresetId; routeKey: string; planDials: Dials; confirmedKm: number | null } | null>(null);
+  const drawnRef = useRef<(DrawnPlan<Ride> & { route: RouteResponse }) | null>(null);
+  const [drawn, setDrawn] = useState<(DrawnPlan<Ride> & { route: RouteResponse }) | null>(null);
+  const [ghost, setGhost] = useState<LonLat[] | null>(null);
+  const [changeLine, setChangeLine] = useState<string | null>(null);
+  /** Another plan opened (a link, a file): no Reset back to the last one, and no summary against it. */
+  const forgetDrawn = () => {
+    drawnRef.current = null;
+    setDrawn(null);
+    setGhost(null);
+    setChangeLine(null);
+  };
+
+  // Route when the plan changes (Go) or the Route button is pressed (Plan).
   useEffect(() => {
     if (points.length < 2) {
       scheduler.current?.clear();
@@ -678,10 +731,27 @@ export function App() {
       setStatus({ kind: "idle" });
       // The next route opens compact again (the correctness review's N1).
       setEditPoints(false);
+      asked.current = null;
       return;
     }
-    scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm) });
-  }, [points, preset, planDials, confirmedKm]);
+    const pressed = routeAsk !== routedAsk.current;
+    routedAsk.current = routeAsk;
+    const last = asked.current;
+    const samePlan = last !== null && last.points === points && last.preset === preset && last.routeKey === routeKey;
+    if (!pressed && samePlan && last.planDials === planDials && last.confirmedKm === confirmedKm) return;
+    const backToDrawn = answer === null && drawnRef.current !== null && !planChanged(drawnRef.current, points, preset, routeKey);
+    if (planFirst && !pressed && !samePlan && !backToDrawn) return;
+    asked.current = { points, preset, routeKey, planDials, confirmedKm };
+    scheduler.current?.request({
+      points,
+      preset,
+      dials: planDials,
+      confirmLong: sendsConfirmation(points, confirmedKm),
+      ride: rideRef.current,
+      dialsKey: routeKey,
+      pressed: pressed && planFirst,
+    });
+  }, [points, preset, planDials, confirmedKm, routeAsk, planFirst]);
 
   // The long-ride question and every error are in the sheet; on a phone whose
   // sheet is hidden they would otherwise be invisible, so the sheet opens
@@ -1631,6 +1701,9 @@ export function App() {
     const opened = plan.points.slice(0, MAX_POINTS);
     VIA_MARKS.markAt(opened, viaPointsNamed(plan.pointNames, opened.length));
     commit(opened, { ...rideAfterImport(plan, rideRef.current), imported: plan });
+    // An opened file is a saved route: it opens drawn (v0.7.0), and is not compared with the plan before it.
+    forgetDrawn();
+    setRouteAsk((n) => n + 1);
   };
   const getMap = useCallback(() => mapRef.current, []);
   // A fitting round for an opened track: part of the same edit as the import
@@ -1653,7 +1726,7 @@ export function App() {
     setRoadInfo({ point: [lng, lat], origin: "centre" });
   };
   const retry = () =>
-    scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm) });
+    scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm), ride: rideRef.current, dialsKey: routeKey });
   // The Mountain Bike ride type's level (slice 6): the map draws the trails up to it as routable.
   // Every other ride type, and a Mountain Bike ride with trails off, draws them as not for routes.
   const routableLevel = isMtb(preset) && !trailsAreOff(preset, dials) ? mtbLevelOf(dials) : null;
@@ -1700,7 +1773,7 @@ export function App() {
     setNotice(null);
     // Sent here as well as by the effect, which does not run again when the
     // confirmed span is unchanged; the debounce folds the two into one.
-    scheduler.current?.request({ points, preset, dials: planDials, confirmLong: true });
+    scheduler.current?.request({ points, preset, dials: planDials, confirmLong: true, ride: rideRef.current, dialsKey: routeKey });
     // The question goes away; the focus goes to where the answer will be.
     routeHeadingRef.current?.focus();
   };
@@ -1863,7 +1936,7 @@ export function App() {
     showPlanner(true);
     // The kept key leaves Mass Ride's ride size out (keptPlanKey); the size set now stays.
     const plan = decodePlan(kept.plan);
-    const hash = dials.rideSize && plan.preset === preset ? encodePlan(plan.points, plan.preset, { ...plan.dials, rideSize: dials.rideSize }) : kept.plan;
+    const hash = dials.rideSize && plan.preset === preset ? encodePlan(plan.points, plan.preset, { ...plan.dials, rideSize: dials.rideSize }, plan.vias) : kept.plan;
     if (window.location.hash !== hash) window.location.hash = hash;
     announce(`Opening ${kept.title}.`);
   };
@@ -2282,9 +2355,9 @@ export function App() {
   // minute) from a dead one (the a11y review's SF1).
   const slow = useLongerThan(status.kind === "loading", STILL_PLANNING_AFTER_MS);
 
-  // A route is on screen: the points are compact unless the rider is editing them.
-  const routeShownForPoints = shown !== null;
-  const compactPoints = routeShownForPoints && points.length >= 2 && !editPoints;
+  // Plan's search and point tools stay in view with a route (v0.7.0, "Keep adding stops by search"; the plan
+  // panel holds the plan in words): the points are no longer compacted.
+  const compactPoints = false;
   // A route arriving while the focus is in the search or the point tools hides
   // them: the focus goes to "Edit points" rather than dropping to the page (lib/sidebar.ts
   // rescueCompactFocus; the review's B1). After the sheet-order effect above, which may put the
@@ -2311,15 +2384,106 @@ export function App() {
   const loopHintId = useId();
   const [tips, setTips] = useState(false);
   const tipsId = useId();
+  // ---- Plan mode's plan panel (v0.7.0, "Plan mode: write the plan first, then route"; lib/planFirst.ts) ----
+  // The plan differs from the one the route shown was drawn for: the line greys, and the button reads Update route.
+  const planEdited = planFirst && planChanged(drawn, points, preset, routeKey);
+  // The ghost and the change summary last until the next change.
+  useEffect(() => {
+    if (!planEdited) return;
+    setGhost(null);
+    setChangeLine(null);
+  }, [planEdited]);
+  // While routing: the seconds since it began, for the step in words and the count.
+  const routingNow = status.kind === "loading" || status.kind === "waiting";
+  const [routingSince, setRoutingSince] = useState(0);
+  const [routingTick, setRoutingTick] = useState(0);
+  useEffect(() => {
+    if (!routingNow) return;
+    const start = Date.now();
+    setRoutingSince(start);
+    setRoutingTick(start);
+    const timer = window.setInterval(() => setRoutingTick(Date.now()), 500);
+    return () => window.clearInterval(timer);
+  }, [routingNow]);
+  const pressRoute = () => {
+    setRouteAsk((n) => n + 1);
+    announce(PLANNING_SAID);
+  };
+  const cancelRouting = () => {
+    scheduler.current?.clear();
+    // Nothing is asked now: a station chosen later re-plans only after the next Route.
+    asked.current = null;
+    setStatus(answer ? { kind: "ok" } : { kind: "idle" });
+    announce(CANCELLED_SAID);
+  };
+  // Reset: back to the plan the route was drawn for (its points, ride type and sliders), with no re-routing;
+  // one edit, so Undo brings the changes back.
+  const resetPlan = () => {
+    const back = drawnRef.current;
+    if (!back || !planEdited) return;
+    commit(back.points as LonLat[], back.ride);
+    setNotice(null);
+    announce(RESET_SAID);
+  };
+  // Clear: every point, the drawn route, its ghost and the change summary; the ride type and sliders stay.
+  const clearPlan = () => {
+    setGhost(null);
+    setChangeLine(null);
+    clearAll();
+  };
+  // A phrase of the plan opens its editor: a point's row (and the map goes to it), the ride type or a slider.
+  const openPhrase = (target: PhraseTarget) => {
+    if (target.kind === "point") {
+      const point = pointsRef.current[target.index];
+      if (point) mapRef.current?.flyTo({ center: point, zoom: Math.max(mapRef.current.getZoom(), 14) });
+      removeRefs.current[target.index]?.focus();
+      return;
+    }
+    const line = document.querySelector<HTMLButtonElement>("#ride-settings-heading button");
+    if (line?.getAttribute("aria-expanded") === "false") line.click();
+    window.setTimeout(() => {
+      const body = document.querySelector(".ride-settings-body");
+      const editor =
+        target.kind === "ride"
+          ? body?.querySelector<HTMLElement>("input[type=radio]:checked, button, input")
+          : body?.querySelectorAll<HTMLElement>('.dials input[type="range"]')[target.kind === "traffic" ? 0 : 1];
+      editor?.focus();
+      editor?.scrollIntoView?.({ block: "center" });
+    }, 0);
+  };
+  const planPanel = (
+    <PlanPanel
+      key="plan"
+      sentences={planSentences(points, VIA_MARKS.isVia, loopVias, (p) => namer.name(p)?.name, {
+        ride: presetSaid(preset),
+        traffic: stressMax(preset) > 0 ? stressWords(dials.stress) : null,
+        hills: hillsWords(dials.hills, seeksClimbs(preset)),
+      })}
+      onPhrase={openPhrase}
+      button={routeButton({ points: points.length, drawn: drawn !== null, changed: planEdited, routeShown: shown !== null })}
+      onRoute={pressRoute}
+      routing={routingNow ? { step: routingStep(routingTick - routingSince), elapsed: elapsedText(routingTick - routingSince) } : null}
+      onCancel={cancelRouting}
+      change={planEdited ? null : changeLine}
+      onCloseChange={() => {
+        setChangeLine(null);
+        setGhost(null);
+      }}
+      resetUnavailable={planEdited ? null : RESET_NOTHING}
+      onReset={resetPlan}
+      clearDisabled={points.length === 0}
+      onClear={clearPlan}
+    />
+  );
   const pointsSection = (
     <PointsSection key="points"
       {...{
         pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate,
         searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials,
         dials, accessMode, namer, removeAt, pointWarnings, removeRefs, preset, stationChoice, chooseStation,
-        routeShownForPoints, editPointsRef, setEditPoints, federalPlanner,
+        federalPlanner,
         pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, narrow,
-        undo, can, redo, clearAll, coverageShown, toggleAccessMode, announce, notice, tips, setTips, tipsId,
+        undo, can, redo, coverageShown, toggleAccessMode, announce, notice, tips, setTips, tipsId,
       }}
     />
   );
@@ -2428,7 +2592,8 @@ export function App() {
         openAt={OPEN_AT}
         pointWarnings={riding ? undefined : pointWarnings}
         route={riding && rideView ? rideView.route : shown}
-        stale={riding ? false : stale}
+        stale={riding ? false : stale || planEdited}
+        ghost={riding ? null : ghost}
         stressVisible={stressVisible && stress === "available"}
         when={mapWhen(dials.when ?? null)}
         framePadding={framePadding}
@@ -2656,7 +2821,10 @@ export function App() {
                   onStartPick={goStartPick}
                 />
               ) : (
-                order.map((id) => sections[id])
+                <>
+                  {planPanel}
+                  {order.map((id) => sections[id])}
+                </>
               )}
             </div>
 
