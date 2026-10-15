@@ -174,6 +174,34 @@ def test_western_loudoun_is_inside_the_box(place: str) -> None:
     assert west < lon < east and south < lat < north, (place, settings.COVERAGE_BBOX)
 
 
+# West Virginia's Eastern Panhandle (the owner, 2026-10-12: Martinsburg road
+# conditions "Next release"; the west edge widened from -78.0 to -78.05 W so all
+# of Martinsburg is in, plans/v0.7.0-ideas.md). -78.0 cut the city's west side.
+WEST_VIRGINIA_PLACES = {
+    "Martinsburg": (-77.964, 39.456),
+    "Martinsburg MARC station": (-77.961, 39.458),
+    "Harpers Ferry": (-77.737, 39.325),
+    "Shepherdstown": (-77.804, 39.430),
+    "Charles Town": (-77.860, 39.289),
+    "Inwood": (-78.040, 39.357),
+}
+# Martinsburg's city limits reach about -78.02 on the west (I-81's exits 12 and 13).
+MARTINSBURG_WEST = -78.02
+
+
+@pytest.mark.parametrize("place", sorted(WEST_VIRGINIA_PLACES))
+def test_the_eastern_panhandle_is_inside_the_box(place: str) -> None:
+    lon, lat = WEST_VIRGINIA_PLACES[place]
+    west, south, east, north = settings.COVERAGE_BBOX
+    assert west < lon < east and south < lat < north, (place, settings.COVERAGE_BBOX)
+
+
+def test_the_west_edge_clears_martinsburg_and_stops_short_of_winchester() -> None:
+    west = settings.COVERAGE_BBOX[0]
+    assert west < MARTINSBURG_WEST, "all of Martinsburg"
+    assert west > -78.16, "not Winchester, Virginia, which the owner did not ask for"
+
+
 # Maryland's northern extent in the Census TIGER state layer, which is the
 # Mason-Dixon line along Carroll, Baltimore and Harford counties.
 MASON_DIXON_LAT = 39.723

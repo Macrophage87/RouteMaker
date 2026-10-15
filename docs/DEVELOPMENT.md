@@ -3652,7 +3652,7 @@ curl -fsSL --retry 3 -o district-of-columbia-latest.osm.pbf.part <url>
 osmium merge --overwrite -f pbf dc.osm.pbf md.osm.pbf va.osm.pbf \
     -o merged.osm.pbf.part
 osmium extract --overwrite -f pbf -s smart -S types=any \
-    --bbox -78.0,38.2,-76.02,39.72 -o source.osm.pbf.part merged.osm.pbf
+    --bbox -78.05,38.2,-76.02,39.72 -o source.osm.pbf.part merged.osm.pbf
 ```
 
 `-s smart -S types=any` is PLAN:13's, and the `-S` half is the one that is easy
@@ -3686,6 +3686,48 @@ both binaries stood in for. Developing against a real extract means either
 running the rebuild on the deployment host or putting a small hand-made
 `merged.osm.pbf`/`source.osm.pbf` pair in `<DATA_ROOT>/extracts/`, which the
 freshness rule will then reuse.
+
+### The coverage box (west edge -78.05 W since v0.7.0)
+
+The box is **(-78.05, 38.2, -76.02, 39.72)**, west, south, east, north: 78.05° W
+(78° 3′ W) to 76.02° W, 38.2° N to 39.72° N, about 109 mi (175 km) east to west
+and 105 mi (169 km) north to south. v0.7.0 moved the west edge from -78.0 so
+all of Martinsburg, West Virginia is in (the owner, 2026-10-12; its city limits
+reach about -78.02); Harpers Ferry (-77.74), Shepherdstown and Charles Town were
+already inside, and Winchester, Virginia (-78.16) stays out.
+
+`settings.COVERAGE_BBOX` is the one value. Its copies, each held equal to it by a
+test, are `frontend/src/lib/geo.ts` (`COVERAGE_BBOX`, the map's coverage mask and
+GPX import), `scripts/fetch_basemap.sh` and `scripts/import_photon.sh` (`BBOX`),
+`scripts/build_contours.py` (`BBOX`) and `scripts/build_water_restrooms.py`
+(`COVERAGE_BBOX`, which `build_food.py` reads). What reads it, and what the new
+edge means for each:
+
+- The extract clip (`pipeline.source.clip_command`) and the classification
+  checkpoint (`pipeline.checkpoint`, a CLASSIFICATION setting): the first rebuild
+  after the change re-clips and does not resume an old checkpoint.
+- The elevation stage (`elevation.tiles_covering`): -78.05 lies in the W079
+  column, so two more one-degree HGT tiles, N38W079 and N39W079, about 26 MB
+  each, are fetched once and cached.
+- Contours (`scripts/build_contours.py`): the n39w079 and n40w079 3DEP cells join
+  the four, six in all.
+- The stress tiles (`core.stress_tiles.outside_coverage`, `straddles_coverage`)
+  and the pre-draw (`core.tile_cache`) cover the wider box: a few more tiles at
+  each zoom along the west edge, drawn by the post-promotion pre-draw.
+- The API's coverage checks (`core.api`, `RouteIn.inside_coverage`), Photon's
+  search box (`core.geocode`) and the More links (`routemaker.more_links`) read
+  settings and need nothing but the deploy.
+
+What the box does not do is add a state. The rebuild downloads the Geofabrik
+extracts in `pipeline.source.GEOFABRIK_REGIONS` (DC, Maryland, Virginia) and
+`pipeline.states.REQUIRED_STATES` lists the same three, so West Virginia's roads
+are in the map only once `west-virginia` joins them; that work, with West
+Virginia's statutory speed default and the closed-by-default US 340
+expressway, is the owner's local branch wip/wv (reports/WV-dev-r0.md on the
+PC), to be merged before the v0.7.0 rebuild. On the PC, after the merge and
+before the rebuild: re-fetch the basemap (`scripts/fetch_basemap.sh`),
+re-import Photon (`scripts/import_photon.sh`), rebuild contours and the water,
+restroom and food layers, then run the rebuild; the pre-draw follows the swap.
 
 ## Reference data
 

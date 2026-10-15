@@ -72,7 +72,7 @@ def test_outside_the_coverage_box_is_dropped():
 
 
 def test_settings_box_matches_the_water_layer():
-    assert mod.COVERAGE_BBOX == (-78.0, 38.2, -76.02, 39.72)
+    assert mod.COVERAGE_BBOX == (-78.05, 38.2, -76.02, 39.72)
 
 
 @pytest.mark.parametrize(

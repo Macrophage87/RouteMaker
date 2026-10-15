@@ -37,7 +37,7 @@ set -euo pipefail
 IMAGE="docker.io/rtuszik/photon-docker:2.4.0"
 # settings.COVERAGE_BBOX, west,south,east,north; tests/test_photon_trim.py holds
 # the two equal.
-BBOX="-78.0,38.2,-76.02,39.72"
+BBOX="-78.05,38.2,-76.02,39.72"
 LANGUAGES="en"
 # The import's heap. The container is capped at the serving limit (3 GB,
 # PLAN.md:60), so the import proves the index fits the box it will run in.

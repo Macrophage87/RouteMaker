@@ -6,7 +6,7 @@ export type LonLat = [number, number];
  * settings.COVERAGE_BBOX, (west, south, east, north). tests/test_frontend.py
  * holds the two equal, so a change to the region is a change here too.
  */
-export const COVERAGE_BBOX: readonly [number, number, number, number] = [-78.0, 38.2, -76.02, 39.72];
+export const COVERAGE_BBOX: readonly [number, number, number, number] = [-78.05, 38.2, -76.02, 39.72];
 
 /** The API's ceiling on points per request (2 to 25). */
 export const MAX_POINTS = 25;

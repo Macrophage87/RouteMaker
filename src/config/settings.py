@@ -174,7 +174,20 @@ VALHALLA_CONFIG_DIR = BASE_DIR / "valhalla"
 # of Cecil County and the Eastern Shore, which the region does not include.
 # Havre de Grace, the easternmost town the amendment names, is at -76.09.
 # tests/test_source.py holds the tile set and the places both.
-COVERAGE_BBOX = (-78.0, 38.2, -76.02, 39.72)
+#
+# West is -78.05, not -78.0, since v0.7.0: West Virginia's Eastern Panhandle
+# (the owner, 2026-10-12, Martinsburg "Next release"; plans/v0.7.0-ideas.md:
+# "Widen coverage west edge 78.0 -> 78.05 W so all of Martinsburg is in").
+# Martinsburg's west side reaches about -78.02; Harpers Ferry, Shepherdstown and
+# Charles Town were already inside. What the wider box costs, all on the next
+# rebuild and the owner's PC (docs/DEVELOPMENT.md, "The coverage box"): the
+# elevation stage fetches the W079 column too (N38W079 and N39W079, about 26 MB
+# of HGT each), contours take the n39w079 and n40w079 cells, and the basemap,
+# Photon index, water/restroom/food layers and the stress tile pre-draw are
+# re-run over the new box. The box only says where the map may reach: West
+# Virginia's roads are in the map only once its Geofabrik extract is downloaded
+# with the other three (`pipeline.source.GEOFABRIK_REGIONS`, the PC's wip/wv).
+COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
 
 # The coverage polygon itself, which `osmium extract --polygon` would take in
 # preference to the box. PLAN:13's region is a polygon and the box around it

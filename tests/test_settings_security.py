@@ -368,10 +368,10 @@ class TestTheSourceExtractsThreeKnobs:
         needs the region reads it from settings; what the corners must contain
         is asserted as places in `tests/test_source.py`.
         """
-        assert settings.COVERAGE_BBOX == (-78.0, 38.2, -76.02, 39.72)
+        assert settings.COVERAGE_BBOX == (-78.05, 38.2, -76.02, 39.72)
 
         west, south, east, north = settings.COVERAGE_BBOX
-        assert west == -78.0, "Frederick, and Loudoun to the Blue Ridge"
+        assert west == -78.05, "Martinsburg, Frederick, and Loudoun to the Blue Ridge"
         assert south == 38.2, "Fredericksburg to the south"
         assert east == -76.02, "Havre de Grace, without the W076 tile column"
         assert north == 39.72, "the owner's figure for the Mason-Dixon line"

@@ -4269,7 +4269,7 @@ proxy cannot reach the service.
    python3 scripts/fetch_agency_layer.py \
        --slug mdot-sha-aadt --item 77010abe7558425997b4fcdab02e2b64 \
        --layer https://services.arcgis.com/njFNhDsUCentVYJW/arcgis/rest/services/MDOT_SHA_Annual_Average_Daily_Traffic/FeatureServer/1 \
-       --bbox=-78.0,38.2,-76.02,39.72 \
+       --bbox=-78.05,38.2,-76.02,39.72 \
        --out-dir ~/rmdata/datasets --credit "State of Maryland (MDOT SHA)"
    sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs/mdot-sha-aadt"
    sudo install -o 10001 -g 10001 -m 644 ~/rmdata/datasets/mdot-sha-aadt/* \

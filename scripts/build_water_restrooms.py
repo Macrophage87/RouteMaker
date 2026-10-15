@@ -132,7 +132,7 @@ SOURCE_THRONE = "Throne units: throne-restrooms.json, a hand list with a source 
 
 # src/config/settings.py COVERAGE_BBOX (west, south, east, north); a test holds
 # the two equal.
-COVERAGE_BBOX = (-78.0, 38.2, -76.02, 39.72)
+COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
 
 PUBLIC_ACCESS = frozenset({"yes", "public", "permissive", "designated"})
 # Sources riders fill from; drinkable only when marked so.
