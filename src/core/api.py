@@ -2658,7 +2658,7 @@ def bikeshare_stations(request, body: NearbyStationsIn, response: HttpResponse):
 
 # --- Bikeshare docks and free e-bikes on the map (v0.7.0; core.micromobility) ----------------
 #
-# GET /api/bikeshare/docks?bbox=west,south,east,north&operators=cabi,lime answers the docks and
+# GET /api/bikeshare/docks?bbox=west,south,east,north&operators=cabi answers the docks and
 # free e-bikes in the rider's map view, from each operator's one shared live copy. The view is
 # bounded and the counts capped (core.micromobility), nothing is kept, and an operator whose
 # licence is not recorded is never contacted: it is listed, with `licensed` false, and nothing
@@ -2673,7 +2673,7 @@ class DocksIn(Schema):
     operators: str = Field(
         default="cabi",
         max_length=120,
-        description="Comma-separated operator ids to show (cabi, lime, veo). Default cabi.",
+        description="Comma-separated operator ids to show (cabi, the only one). Default cabi.",
     )
 
 

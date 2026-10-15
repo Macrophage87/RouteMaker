@@ -1,10 +1,11 @@
 /**
- * The Layers sheet's bikeshare section (v0.7.0; lib/bikeshareDocks.ts): one switch per service, in a
- * LayerSection (lib/layerSection.ts). A service whose licence is not recorded is listed, switched off and
- * unavailable, with why in words. Plain createElement, so node --test renders it.
+ * The Layers sheet's bikeshare section (v0.7.0; lib/bikeshareDocks.ts), a LayerSection (lib/layerSection.ts).
+ * Capital Bikeshare is the only service (Lime and Veo were left out, the owner 2026-10-15), so the section's
+ * switch is its switch, and inside is only the hint. Should the server name a second licensed service, each
+ * gets a switch of its own inside. Plain createElement, so node --test renders it.
  */
-import { createElement as h, useId, type ReactElement } from "react";
-import { DOCKS_HINT, DOCKS_SECTION_TITLE, NOT_LICENSED, type OperatorInfo } from "./bikeshareDocks.ts";
+import { createElement as h, type ReactElement } from "react";
+import { DOCKS_HINT, DOCKS_SECTION_TITLE, type OperatorInfo } from "./bikeshareDocks.ts";
 import { LayerSection } from "./layerSection.ts";
 
 export interface BikeshareSectionProps {
@@ -15,7 +16,6 @@ export interface BikeshareSectionProps {
 }
 
 export function BikeshareSection({ operators, choices, onChange, status }: BikeshareSectionProps): ReactElement {
-  const base = useId();
   const licensed = operators.filter((o) => o.licensed);
   return h(
     LayerSection,
@@ -27,27 +27,26 @@ export function BikeshareSection({ operators, choices, onChange, status }: Bikes
       onLayers: (next: Record<string, boolean>) => onChange({ ...choices, ...next }),
       status,
     },
-    ...operators.map((o) => {
-      const whyId = `${base}-${o.id}-why`;
-      return h(
-        "div",
-        { key: o.id, className: "bikeshare-operator" },
-        h(
-          "label",
-          { className: "toggle" },
-          h("input", {
-            type: "checkbox",
-            checked: o.licensed && choices[o.id] === true,
-            disabled: !o.licensed,
-            "aria-describedby": o.licensed ? undefined : whyId,
-            onChange: (event: { target: { checked: boolean } }) => onChange({ ...choices, [o.id]: event.target.checked }),
-          }),
-          h("span", { className: "operator-swatch", style: { background: o.colour }, "aria-hidden": "true" }, o.initial),
-          o.name,
-        ),
-        !o.licensed && h("p", { id: whyId, className: "hint" }, `${o.name}: ${NOT_LICENSED}.`),
-      );
-    }),
+    // One service: the section switch above is its switch, so no list of one.
+    ...(licensed.length > 1
+      ? licensed.map((o) =>
+          h(
+            "div",
+            { key: o.id, className: "bikeshare-operator" },
+            h(
+              "label",
+              { className: "toggle" },
+              h("input", {
+                type: "checkbox",
+                checked: choices[o.id] === true,
+                onChange: (event: { target: { checked: boolean } }) => onChange({ ...choices, [o.id]: event.target.checked }),
+              }),
+              h("span", { className: "operator-swatch", style: { background: o.colour }, "aria-hidden": "true" }, o.initial),
+              o.name,
+            ),
+          ),
+        )
+      : []),
     h("p", { className: "hint" }, DOCKS_HINT),
   );
 }

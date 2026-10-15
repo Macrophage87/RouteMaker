@@ -440,8 +440,8 @@ export function App() {
   useEffect(() => {
     if (waterOn) ensureRepair();
   }, [waterOn, ensureRepair]);
-  // Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): shown in the bikeshare ride types, one
-  // switch per service in Layers (Capital Bikeshare on by default), the choices kept on this device.
+  // Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): shown in the bikeshare ride types, with
+  // Capital Bikeshare's switch in Layers (on by default), the choice kept on this device.
   const docksActive = usesBikeshare(preset) || preset === "bikeshare-transit";
   const [docksOperators, setDocksOperators] = useState<OperatorInfo[]>(() => [...KNOWN_OPERATORS]);
   const [docksChoices, setDocksChoices] = useState<Record<string, boolean>>(() => readOperatorChoices());

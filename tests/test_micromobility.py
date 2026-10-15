@@ -29,12 +29,37 @@ def feeds(monkeypatch, db):
 # --- The operators ------------------------------------------------------------------------
 
 
-def test_only_capital_bikeshare_is_licensed_and_on_by_default():
+def test_capital_bikeshare_is_the_only_service():
+    # Lime (internal-only) and Veo (no published data terms) were left out (the owner, 2026-10-15).
+    assert [o.id for o in micromobility.OPERATORS] == ["cabi"]
     assert [o.id for o in micromobility.OPERATORS if micromobility.usable(o)] == ["cabi"]
     assert [o.id for o in micromobility.OPERATORS if o.on_by_default] == ["cabi"]
-    # Every other operator's switch exists, off, and its feed is never fetched.
-    for o in micromobility.OPERATORS[1:]:
-        assert not o.licensed and micromobility.client_for(o) is None
+
+
+def test_an_operator_without_a_licence_is_never_fetched():
+    unlicensed = micromobility.Operator(
+        id="other",
+        name="Other",
+        initial="O",
+        colour="#000000",
+        discovery_url="https://example.com/gbfs.json",
+        hosts=frozenset({"example.com"}),
+        licensed=False,
+        on_by_default=False,
+        docked=False,
+        credit="Other",
+    )
+    assert not micromobility.usable(unlicensed) and micromobility.client_for(unlicensed) is None
+
+
+def test_sources_says_why_lime_and_veo_are_left_out():
+    sources = (REPO / "docs" / "SOURCES.md").read_text()
+    section = re.search(
+        r"^## Other bikeshare and e-bike operators.*?\n(.*?)(?=^## )", sources, re.S | re.M
+    )
+    assert section, "docs/SOURCES.md has no section for the operators left out"
+    text = section.group(1)
+    assert "Lime" in text and "Veo" in text and "2026-10-15" in text
 
 
 def test_every_licensed_operator_has_its_licence_recorded_in_sources():
@@ -45,6 +70,18 @@ def test_every_licensed_operator_has_its_licence_recorded_in_sources():
         section = re.search(rf"^## {re.escape(o.name)}\n(.*?)(?=^## )", sources, re.S | re.M)
         assert section, f"docs/SOURCES.md has no section for {o.name}"
         assert "- Licence:" in section.group(1) and f"- Credit: `{o.credit}`" in section.group(1)
+
+
+def test_the_front_end_knows_the_same_operators():
+    """frontend/src/lib/bikeshareDocks.ts KNOWN_OPERATORS: the same ids, names, initials and
+    colours, so the Layers sheet before the server answers is the registry's."""
+    text = (REPO / "frontend" / "src" / "lib" / "bikeshareDocks.ts").read_text()
+    block = re.search(r"KNOWN_OPERATORS: readonly OperatorInfo\[\] = \[(.*?)\n\];", text, re.S)
+    assert block, "KNOWN_OPERATORS not found"
+    known = re.findall(
+        r'id: "([^"]+)", name: "([^"]+)", initial: "([^"]+)", colour: "([^"]+)"', block.group(1)
+    )
+    assert known == [(o.id, o.name, o.initial, o.colour) for o in micromobility.OPERATORS]
 
 
 def test_each_operator_has_an_initial_and_a_colour():
@@ -118,18 +155,19 @@ def test_the_endpoint_answers_the_view(client, feeds):
     assert all("bike_id" not in b and b["operator"] == "cabi" for b in data["free_bikes"])
     ops = {o["id"]: o for o in data["operators"]}
     assert ops["cabi"]["licensed"] and ops["cabi"]["on_by_default"]
-    assert not ops["lime"]["licensed"] and not ops["veo"]["licensed"]
-
-
-def test_an_unlicensed_operator_is_never_fetched(client, feeds):
-    data = client.get(DOCKS, {"bbox": VIEW, "operators": "lime,veo"}).json()
-    assert data["docks"] == [] and data["free_bikes"] == [] and data["credit"] == []
-    assert feeds.calls == []
+    assert list(ops) == ["cabi"]
 
 
 @pytest.mark.parametrize(
     "params",
-    [{"bbox": "-78,38,-76,40"}, {"bbox": VIEW, "operators": "uber"}, {"bbox": "x"}],
+    [
+        {"bbox": "-78,38,-76,40"},
+        {"bbox": VIEW, "operators": "uber"},
+        # Left out (the owner, 2026-10-15): no longer operators at all.
+        {"bbox": VIEW, "operators": "lime"},
+        {"bbox": VIEW, "operators": "cabi,veo"},
+        {"bbox": "x"},
+    ],
 )
 def test_bad_views_and_operators_are_refused(client, feeds, params):
     response = client.get(DOCKS, params)

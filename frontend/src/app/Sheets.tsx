@@ -104,7 +104,7 @@ export interface LayersSheetProps {
   placesOn: boolean;
   changePlacesOn: (on: boolean) => void;
   placesStatus: string;
-  /** Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): one switch per service. */
+  /** Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): Capital Bikeshare's switch. */
   bikeshare: { operators: readonly OperatorInfo[]; choices: Record<string, boolean>; onChange: (next: Record<string, boolean>) => void; status: string };
 }
 

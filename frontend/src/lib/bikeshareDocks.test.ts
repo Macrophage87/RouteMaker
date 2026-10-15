@@ -61,7 +61,8 @@ test("the view asked for is the map's, cut to the server's largest around its mi
   assert.ok(big.east - big.west <= MAX_SPAN_LON + 1e-9 && big.north - big.south <= MAX_SPAN_LAT + 1e-9);
   assert.equal((big.west + big.east) / 2, -77);
   const view = { west: -77.1, south: 38.85, east: -77.0, north: 38.95 };
-  assert.equal(docksPath(view, 13, ["cabi", "lime"]), "/api/bikeshare/docks?bbox=-77.1%2C38.85%2C-77%2C38.95&operators=cabi%2Clime");
+  assert.equal(docksPath(view, 13, ["cabi"]), "/api/bikeshare/docks?bbox=-77.1%2C38.85%2C-77%2C38.95&operators=cabi");
+  assert.equal(docksPath(view, 13, ["cabi", "other"]), "/api/bikeshare/docks?bbox=-77.1%2C38.85%2C-77%2C38.95&operators=cabi%2Cother");
   assert.equal(docksPath(view, 10.9, ["cabi"]), null, "zoomed out: nothing is asked");
   assert.equal(docksPath(view, 14, []), null, "every service off: nothing is asked");
 });
@@ -77,7 +78,7 @@ test("the answer is checked: bad rows are dropped, names filled, counts kept nul
   assert.equal(parsed.free_bikes.length, 1);
   assert.deepEqual(
     parsed.operators.map((o) => o.id),
-    ["cabi", "lime", "veo"],
+    ["cabi"],
   );
   assert.equal(parseDocks({ docks: [] }), null);
 });
@@ -106,18 +107,29 @@ test("the section's status line", () => {
   assert.equal(docksStatus(parsed, true, 14, true), "");
 });
 
-test("choices: Capital Bikeshare on, the others off, kept on the device; only licensed ones are asked for", () => {
+test("choices: Capital Bikeshare, the only service, on by default, kept on the device; only licensed ones are asked for", () => {
+  // Lime and Veo were left out (the owner, 2026-10-15): neither has usable terms.
+  assert.deepEqual(
+    KNOWN_OPERATORS.map((o) => o.id),
+    ["cabi"],
+  );
   const kept = new Map<string, string>();
   const store = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v) };
-  assert.deepEqual(readOperatorChoices(KNOWN_OPERATORS, store), { cabi: true, lime: false, veo: false });
-  saveOperatorChoices({ cabi: false, lime: true, veo: false }, store);
-  assert.deepEqual(JSON.parse(kept.get(OPERATORS_PREF_KEY)!), { cabi: false, lime: true, veo: false });
-  const choices = readOperatorChoices(KNOWN_OPERATORS, store);
-  assert.deepEqual(operatorsToAsk(choices, KNOWN_OPERATORS), [], "Lime is on but not licensed: never asked for");
-  const licensedLime = mergeOperators(KNOWN_OPERATORS, [{ ...KNOWN_OPERATORS[1], licensed: true }]);
-  assert.deepEqual(operatorsToAsk(choices, licensedLime), ["lime"]);
+  assert.deepEqual(readOperatorChoices(KNOWN_OPERATORS, store), { cabi: true });
+  saveOperatorChoices({ cabi: false }, store);
+  assert.deepEqual(JSON.parse(kept.get(OPERATORS_PREF_KEY)!), { cabi: false });
+  assert.deepEqual(operatorsToAsk(readOperatorChoices(KNOWN_OPERATORS, store), KNOWN_OPERATORS), []);
+  // A device that kept Lime or Veo switched on from before: the old choices are ignored.
+  kept.set(OPERATORS_PREF_KEY, JSON.stringify({ cabi: true, lime: true, veo: true }));
+  assert.deepEqual(readOperatorChoices(KNOWN_OPERATORS, store), { cabi: true });
+  assert.deepEqual(operatorsToAsk(readOperatorChoices(KNOWN_OPERATORS, store), KNOWN_OPERATORS), ["cabi"]);
+  // A service the server says is not licensed is never asked for, even switched on.
+  const other = { id: "other", name: "Other", initial: "O", colour: "#000000", licensed: false, on_by_default: false, docked: false };
+  const told = mergeOperators(KNOWN_OPERATORS, [other]);
+  assert.deepEqual(operatorsToAsk({ cabi: true, other: true }, told), ["cabi"]);
+  assert.deepEqual(operatorsToAsk({ cabi: true, other: true }, mergeOperators(KNOWN_OPERATORS, [{ ...other, licensed: true }])), ["cabi", "other"]);
   kept.set(OPERATORS_PREF_KEY, "garbage");
-  assert.deepEqual(readOperatorChoices(KNOWN_OPERATORS, store), { cabi: true, lime: false, veo: false });
+  assert.deepEqual(readOperatorChoices(KNOWN_OPERATORS, store), { cabi: true });
   const throwing = {
     getItem: () => {
       throw new Error("blocked");
@@ -126,7 +138,7 @@ test("choices: Capital Bikeshare on, the others off, kept on the device; only li
       throw new Error("blocked");
     },
   };
-  assert.deepEqual(readOperatorChoices(KNOWN_OPERATORS, throwing), { cabi: true, lime: false, veo: false });
+  assert.deepEqual(readOperatorChoices(KNOWN_OPERATORS, throwing), { cabi: true });
   assert.doesNotThrow(() => saveOperatorChoices({ cabi: true }, throwing));
 });
 
@@ -173,7 +185,7 @@ test("the signs are drawn: a white glyph on each colour", () => {
   const images = docksImages(KNOWN_OPERATORS, 2);
   assert.deepEqual(
     images.map(([id]) => id),
-    [BIKE_ICON, BOLT_ICON, SPACE_ICON, "free-bike-cabi", "free-bike-lime", "free-bike-veo"],
+    [BIKE_ICON, BOLT_ICON, SPACE_ICON, "free-bike-cabi"],
   );
   for (const [id, raster] of images) {
     let white = 0;
@@ -187,14 +199,19 @@ test("the signs are drawn: a white glyph on each colour", () => {
   }
 });
 
-test("Layers: one switch per service; one not licensed is listed off, disabled, with why in words", () => {
-  const html = renderToStaticMarkup(
-    createElement(BikeshareSection, { operators: KNOWN_OPERATORS, choices: { cabi: true, lime: true, veo: false }, onChange: () => {}, status: "" }),
-  );
+test("Layers: one service, so the section's own switch alone, with no list of one and no other service", () => {
+  const html = renderToStaticMarkup(createElement(BikeshareSection, { operators: KNOWN_OPERATORS, choices: { cabi: true }, onChange: () => {}, status: "" }));
   assert.match(html, /<h3 id="bikeshare-heading">Bikeshare and e-bikes<\/h3>/);
-  assert.match(html, /<input type="checkbox" checked=""\/><span class="operator-swatch"[^>]*aria-hidden="true">C<\/span>Capital Bikeshare/);
-  assert.match(html, /<input type="checkbox" disabled="" aria-describedby="[^"]+-lime-why"\/>/);
-  assert.match(html, /Lime: not available yet: its data licence is not yet confirmed\./);
+  assert.match(html, /role="switch" id="bikeshare-section-switch"[^>]*aria-checked="true"/);
+  assert.doesNotMatch(html, /type="checkbox"/);
+  assert.doesNotMatch(html, /Lime|Veo/);
+  assert.match(html, /Capital Bikeshare&#x27;s docks and e-bikes/);
+  const off = renderToStaticMarkup(createElement(BikeshareSection, { operators: KNOWN_OPERATORS, choices: { cabi: false }, onChange: () => {}, status: "" }));
+  assert.match(off, /aria-checked="false"/);
+  // A second licensed service, should the server name one: a switch each inside.
+  const two = [...KNOWN_OPERATORS, { id: "other", name: "Other", initial: "O", colour: "#000000", licensed: true, on_by_default: false, docked: false }];
+  const both = renderToStaticMarkup(createElement(BikeshareSection, { operators: two, choices: { cabi: true, other: false }, onChange: () => {}, status: "" }));
+  assert.equal((both.match(/type="checkbox"/g) ?? []).length, 2);
   const sheets = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
   assert.match(sheets, /<BikeshareSection \{\.\.\.bikeshare\} \/>/);
 });

@@ -11,10 +11,10 @@
  * images (a map label cannot draw colour emoji), so they look the same on every phone. A closed dock is grey,
  * labelled "Closed". Labels that would collide are left out by the map, not crowded.
  *
- * Free e-bikes: a ⚡ in the operator's colour with its initial beside it, so colour is never the only cue. The
- * Layers sheet's bikeshare section has one switch per operator: Capital Bikeshare on; the others off and not
- * available until the server says their licence is recorded (docs/SOURCES.md). The choices are kept on the
- * device.
+ * Free e-bikes: a ⚡ in the operator's colour with its initial beside it, so colour is never the only cue. Capital
+ * Bikeshare is the only service (Lime and Veo were left out, the owner 2026-10-15: neither has usable terms;
+ * docs/SOURCES.md), so the Layers sheet's bikeshare section is its one switch, on by default and kept on the
+ * device. A service the server says is licensed later gets a switch of its own there.
  *
  * Screen readers: the map's labels are decorative; a tap gives a card in words, and the route's station list
  * says the same counts ("5 classic, 2 e-bikes, 3 open docks", lib/stations.ts).
@@ -64,13 +64,12 @@ export interface DocksAnswer {
 }
 
 /**
- * The operators as core.micromobility.OPERATORS lists them (tests hold the two to the same ids, names, initials
- * and colours), for the Layers section before the server has answered. The server's `licensed` wins.
+ * The operators as core.micromobility.OPERATORS lists them (tests/test_micromobility.py holds the two to the same
+ * ids, names, initials and colours), for the Layers section before the server has answered. The server's
+ * `licensed` wins.
  */
 export const KNOWN_OPERATORS: readonly OperatorInfo[] = [
   { id: "cabi", name: "Capital Bikeshare", initial: "C", colour: "#c8102e", licensed: true, on_by_default: true, docked: true },
-  { id: "lime", name: "Lime", initial: "L", colour: "#0b7a33", licensed: false, on_by_default: false, docked: false },
-  { id: "veo", name: "Veo", initial: "V", colour: "#00727a", licensed: false, on_by_default: false, docked: false },
 ];
 
 export const DOCKS_MIN_ZOOM = 11;
@@ -166,7 +165,7 @@ export async function loadDocks(
   }
 }
 
-// --- The rider's choices (one switch per operator, kept on the device) ----------------------
+// --- The rider's choices (one switch per service, kept on the device) -----------------------
 
 export const OPERATORS_PREF_KEY = "routemaker.bikeshareOperators";
 type Store = Pick<Storage, "getItem" | "setItem">;
@@ -251,10 +250,9 @@ export function freeBikeCard(bike: FreeBike, operators: readonly OperatorInfo[],
 
 export const DOCKS_UNAVAILABLE = "Bikeshare docks are unavailable for now; the map tries again in a minute.";
 export const DOCKS_ZOOM_IN = "Zoom in to see bikeshare docks.";
-export const DOCKS_ALL_OFF = "Every service is off: switch one on to see its bikes.";
-export const DOCKS_HINT = "Shown in the Bikeshare, Bikeshare + Transit and Rebalance ride types. Other services appear here once their data licence is recorded.";
+export const DOCKS_ALL_OFF = "Bikeshare docks are off: switch them on to see the bikes.";
+export const DOCKS_HINT = "Capital Bikeshare's docks and e-bikes, shown in the Bikeshare, Bikeshare + Transit and Rebalance ride types.";
 export const DOCKS_SECTION_TITLE = "Bikeshare and e-bikes";
-export const NOT_LICENSED = "not available yet: its data licence is not yet confirmed";
 
 /** The section's status line. */
 export function docksStatus(answer: DocksAnswer | null, asked: boolean, zoom: number, anyOn: boolean): string {

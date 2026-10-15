@@ -13,13 +13,14 @@ view for the map, not the data handed on as a dataset (the Capital Bikeshare Dat
 Agreement forbids hosting or distributing the data as a stand-alone dataset; docs/SOURCES.md).
 A free bike's id is never passed on, and its position is rounded to about 36 ft (11 m).
 
-The operators (`OPERATORS`). Capital Bikeshare is the only one shown by default, and the only
-one routing uses. Every other operator's feed is fetched and shown only once its licence has
-been read, confirmed by the owner, and recorded in docs/SOURCES.md, and `licensed` set here
-(tests/test_micromobility.py holds every licensed operator to a section of docs/SOURCES.md);
-until then the Layers sheet shows its switch, off and unavailable, and the server never
-contacts it. A feed whose terms do not allow display stays out. Each operator has a colour near
-its own and an initial, so colour is never the only cue; no logos.
+The operators (`OPERATORS`): Capital Bikeshare only, shown by default and the only one routing
+uses. Lime and Veo were left out (the owner, 2026-10-15): Lime's feed is internal-only and Veo
+publishes no data terms, so neither has terms that allow display (docs/SOURCES.md). Another
+operator is added only once its licence has been read, confirmed by the owner and recorded in
+docs/SOURCES.md, with `licensed` set here (tests/test_micromobility.py holds every licensed
+operator to a section of docs/SOURCES.md); a listed operator that is not licensed is never
+contacted. Each operator has a colour near its own and an initial, so colour is never the only
+cue; no logos.
 """
 
 from __future__ import annotations
@@ -69,34 +70,6 @@ OPERATORS: tuple[Operator, ...] = (
         on_by_default=True,
         docked=True,
         credit=gbfs.CREDIT,
-    ),
-    # Dockless e-bikes in DDOT's and the counties' permit programs. Their public GBFS feeds and
-    # licences are to be read and confirmed by the owner before either is fetched or shown:
-    # fill in discovery_url and hosts from the operator's own published feed, record the licence
-    # in docs/SOURCES.md, then set licensed=True.
-    Operator(
-        id="lime",
-        name="Lime",
-        initial="L",
-        colour="#0b7a33",
-        discovery_url=None,
-        hosts=frozenset(),
-        licensed=False,
-        on_by_default=False,
-        docked=False,
-        credit="Lime",
-    ),
-    Operator(
-        id="veo",
-        name="Veo",
-        initial="V",
-        colour="#00727a",
-        discovery_url=None,
-        hosts=frozenset(),
-        licensed=False,
-        on_by_default=False,
-        docked=False,
-        credit="Veo",
     ),
 )
 BY_ID = {o.id: o for o in OPERATORS}
