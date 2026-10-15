@@ -124,6 +124,8 @@ API_IMAGE="ghcr.io/macrophage87/routemaker-api"
 #   saved_route                       user_id -> app_user: a rider's saved routes and GPX files (v0.7.0).
 #   signed_out_send                   salted daily hashes of signed-out suggesters' addresses (v0.7.0;
 #                                     core.signed_out_suggestions), kept 24 hours: never shipped.
+#   shared_route                      routes riders shared with the Share button (v0.7.0;
+#                                     core.shared_routes): a rider's own lines, never shipped.
 # tests/test_beta_overlay.py asserts this list, and that every table pointing at one of these is
 # excluded too or blanked (below); ship-data.sh refuses a dump that carries data for any name in it.
 EXCLUDED_TABLE_DATA=(
@@ -132,7 +134,7 @@ EXCLUDED_TABLE_DATA=(
 	django_admin_log scheduled_run stress_tile_cache bikeshare_feed_cache
 	app_user audit_log bootstrap_claim pending_instance_admin_removal ban_tombstone
 	configured_guild role_mapping stress_suggestion mass_hazard junction_suggestion stress_edit
-	my_go account_settings saved_route signed_out_send
+	my_go account_settings saved_route signed_out_send shared_route
 )
 # Tables the beta needs from home that also name a person or carry a rider's words: shipped with
 # those columns blanked, never whole. Each is left out of the dump and written instead as

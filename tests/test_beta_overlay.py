@@ -2028,6 +2028,8 @@ def test_the_dump_strips_every_identity_table_owner_decision_367() -> None:
         "my_go",
         "account_settings",
         "saved_route",
+        # the routes riders shared (core.shared_routes): their own lines, kept at home
+        "shared_route",
     }
     assert identities <= excluded, identities - excluded
     # what the beta needs from home stays: the overrides

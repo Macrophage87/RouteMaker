@@ -1854,3 +1854,35 @@ class SavedRoute(models.Model):
 
     def __str__(self) -> str:
         return f"Saved route {self.pk} for account {self.user_id}"
+
+
+class SharedRoute(models.Model):
+    """A route shared with the Share button, kept so the link opens the exact line (v0.7.0;
+    core.shared_routes).
+
+    The line exactly as shown, verbatim like a saved route or GPX track (`line`), with the plan's
+    inputs (so "Update route" can plan it again with today's map), a planned route's answer
+    without the rider's weight, or an opened GPX file's own text. The key is 128 random bits the
+    sharer's browser made (32 hex characters); nothing names who shared it: no account, no
+    address, no position. Kept a year after `last_opened_at`, then deleted.
+    """
+
+    id = models.CharField(primary_key=True, max_length=32)
+    name = models.CharField(max_length=120, blank=True, default="")
+    source = models.CharField(max_length=8, default="plan")
+    # [[lon, lat] or [lon, lat, ele], ...] exactly as shown or as the file had it.
+    line = models.JSONField()
+    distance_m = models.FloatField()
+    # {"hash": the plan link's fragment, "points": [[lon, lat], ...], "preset": id, "dials": {...}}
+    inputs = models.JSONField(default=dict)
+    answer = models.JSONField(null=True, blank=True)
+    gpx = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now)
+    last_opened_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "shared_route"
+        indexes = [models.Index(fields=["last_opened_at"], name="shared_route_last_opened")]
+
+    def __str__(self) -> str:
+        return f"Shared route {self.pk[:6]}…"
