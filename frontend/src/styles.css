@@ -1247,6 +1247,35 @@ dialog.ride-types::backdrop {
   border-color: var(--accent);
 }
 
+/* Go's More ride types: the icon beside the name and its one sentence. */
+.ride-sheet-cards {
+  margin-top: 8px;
+  gap: 8px;
+}
+
+.ride-sheet-cards .ride-type-card > button {
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  align-items: start;
+  min-height: 44px;
+  padding: 10px 12px;
+}
+
+.ride-sheet-cards .ride-card-icon {
+  grid-row: span 2;
+  display: flex;
+  padding-top: 1px;
+}
+
+.ride-sheet-cards .ride-type-card > button > .hint {
+  grid-column: 2;
+}
+
+/* The one in use: a thicker edge as well as the color, so it is not shown by color alone. */
+.ride-sheet-cards .ride-type-card > button[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
 .ride-type-loads {
   display: grid;
   grid-template-columns: 1fr 1fr;
