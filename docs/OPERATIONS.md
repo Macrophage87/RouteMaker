@@ -387,6 +387,73 @@ The table arrives with migration `core.0008_rate_limit_window`, which the
 `migrate` one-shot applies before the api starts; nothing else is needed on
 deploy.
 
+## Route timing, parallel router calls and kept routes (v0.7.0)
+
+The goal for Go is p95 under 3 s for trips under 10 mi. Each `POST /api/route`
+answer carries a `Server-Timing` header (open the browser's network panel to
+see it) with these phases: `wait` (time queued for a routing slot), `cache`,
+`route`, `zones`, `choose`, `search`, `answer`, `more`, then
+`router;desc="N calls"` (time spent in router calls, summed across threads) and
+`total`. Ninja's serialisation of the body is not counted. The api also logs
+one INFO line per route, `route timing preset=… band=0-2mi|2-5mi|5-10mi|… status=…
+total=… steps … router=… calls=…`, which has no coordinates. To get p95 by
+band, grep `route timing` from the api's log.
+
+- `ROUTER_PARALLEL_CALLS` (default 3) is the number of router calls one route
+  may have in flight at a time: the calm search's wide `/route` asks, the
+  traces of candidate routes and legs, and the delay measure. At 1 every call
+  runs in turn, as before v0.7.0. Valhalla sees up to this many calls per
+  routing slot, so up to 3 x 3 on compose's default pool.
+- `ROUTE_CACHE_TTL_S` (default 600; 0 turns it off) keeps a finished answer
+  for 10 minutes in each api worker's memory, up to 128 answers per worker, so
+  a hit happens only when the same worker serves the repeat. The key holds
+  the whole request, rounded to about 10 m, with every dial. It also holds the
+  stress edits' generation, a digest of the closures snapshot, the approved
+  junction ratings and hazards, and the ride time's rush and weekend state.
+  The keep also ends at the next closure start or end and at local midnight.
+  An answer that was cut short (a failed trace, a timed-out search) is not
+  kept. Bikeshare and transit plans are never kept.
+- `"quick": true` in a request (Go sends it when a ride is not under way) asks
+  for the first good route alone: the router's own route, its trace,
+  closures, and work zones. It skips the alternates, the calm search, hill
+  seeking, detours and the Novice offer, and comes back with
+  `"provisional": true`. The planner then asks once more without `quick`. If
+  the full answer is a different route and Start has not been pressed, it
+  swaps the route in and announces it once, politely ("Found a calmer route,
+  +2 min."), without moving focus. Loops, long rides and mountain-bike rides
+  ignore `quick`.
+- Go starts asking as soon as a destination is chosen (the top search result,
+  or a Home tap), at most 6 times a minute; the answer is used if the same
+  request is still wanted within 60 s.
+
+Mock timings, from the test suite's PostGIS fixture and a fake router that
+waits 0.20 s per `/route`, 0.40 s with alternates, 0.08 s per trace and
+0.05 s per locate. These numbers are medians of 5 runs, measured
+in-process. They show request shape, not production speed:
+
+| Request | Before | Pool of 3 | Quick first route | Cache hit |
+| --- | --- | --- | --- | --- |
+| 2 points, default | 295 ms | 297 ms | 295 ms | about 10 ms |
+| 2 points, stress 90 | 693 ms | 696 ms | 294 ms | about 10 ms |
+| 2 points, Novice | 1182 ms | 1104 ms | 293 ms | about 9 ms |
+| 2 points, cargo, hills -60 | 779 ms | 700 ms | 295 ms | about 11 ms |
+| 5 points, default | 537 ms | 376 ms | 374 ms | about 10 ms |
+
+The fake returns the same route for every search, so the calm search stops
+early. Real searches make more calls, and the pool saves more on them.
+
+**Warm tiles and router memory (step 6, the owner's decision).** No change is
+made here. The real routers took 43.9 s for Culpeper to Baltimore with their
+graph tiles cold and 9.5 s warm (routing.py's notes). A warm 12 km route takes
+about 0.2 s. So after a rebuild or a restart, the first rides in each area
+pay the cold cost. The options are:
+
+- Pre-warm each router after a restart with a few routes across the coverage.
+- Raise each router's tile cache, and its compose memory limit to match.
+
+Either way, the first step is to read `wait` and `router` from the timing
+log for a week.
+
 ## Intersection costs and the calm search: what to watch
 
 FOLLOWUP-INTERSECTIONS (2026-10-01, revised 2026-10-02; docs/DEVELOPMENT.md, "Intersection costs,
