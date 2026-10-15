@@ -4656,6 +4656,10 @@ def saved_routes_add(request):
     answer = body.get("answer")
     if answer is not None and (source != SavedRoute.Source.PLAN or not isinstance(answer, dict)):
         return _stress_error(400, "Only a planned route keeps its answer.", field="answer")
+    if answer is not None:
+        answer, problem = _clean_answer(answer)
+        if problem:
+            return _stress_error(400, problem, field="answer")
     gpx = body.get("gpx", "") or ""
     if not isinstance(gpx, str) or (gpx and source != SavedRoute.Source.GPX):
         return _stress_error(400, "Only an opened GPX file keeps its text.", field="gpx")
@@ -4747,6 +4751,38 @@ def saved_route_delete(request, route_id: int):
 # it was last opened; the expired go at every share and open.
 
 
+# The longest single string a kept answer may hold: the planner's own words (a turn, a notice,
+# an attribution) are a sentence or two; nothing it writes comes near this.
+ANSWER_STRING_MAX = 2000
+
+
+def _longest_string(value) -> int:
+    if isinstance(value, str):
+        return len(value)
+    if isinstance(value, dict):
+        return max((max(len(k), _longest_string(v)) for k, v in value.items()), default=0)
+    if isinstance(value, list):
+        return max((_longest_string(v) for v in value), default=0)
+    return 0
+
+
+def _clean_answer(answer) -> tuple[dict | None, str | None]:
+    """A kept route's answer as the planner's own (`RouteOut`), or (None, why not). A saved or
+    shared answer is served back as planner output, so it is read through the same schema the
+    planner answers with: keys it does not name are dropped, a malformed one is refused, and no
+    string in it is longer than `ANSWER_STRING_MAX`."""
+    import pydantic
+
+    try:
+        model = RouteOut.model_validate(answer)
+    except pydantic.ValidationError:
+        return None, "The route's answer is not one this planner gives."
+    out = model.model_dump(mode="json", by_alias=True)
+    if _longest_string(out) > ANSWER_STRING_MAX:
+        return None, "The route's answer holds text longer than this planner writes."
+    return out, None
+
+
 def _shared_out(row) -> dict:
     return {
         "id": row.pk,
@@ -4787,9 +4823,13 @@ def shared_route_add(request):
     problem = shared_routes.body_problem(body)
     if problem:
         return _stress_error(400, problem[0], field=problem[1])
+    answer = body.get("answer")
+    if answer is not None:
+        answer, problem = _clean_answer(answer)
+        if problem:
+            return _stress_error(400, problem, field="answer")
     now = timezone.now()
     _purge_shared(now)
-    answer = body.get("answer")
     try:
         with transaction.atomic():
             row = SharedRoute.objects.create(

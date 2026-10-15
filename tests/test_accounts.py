@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from itertools import count
+from pathlib import Path
 
 import pytest
 from django.test import Client
@@ -19,6 +20,8 @@ from core import accounts
 from core.models import AccountSettings, SavedRoute, Session, User
 
 db = pytest.mark.django_db(transaction=True)
+# A real planner answer (test_route_api's standard route): a kept answer is read as RouteOut.
+ANSWER = json.loads((Path(__file__).parent / "data" / "route_answer.json").read_text())
 
 _ids = count(93000)
 _clients = count(10)
@@ -71,7 +74,7 @@ def route_body(**changes) -> dict:
         "line": LINE,
         "distance_m": 1520.4,
         "inputs": INPUTS,
-        "answer": {"distance_m": 1520.4, "geometry": {"type": "LineString"}},
+        "answer": {**ANSWER, "distance_m": 1520.4},
         **changes,
     }
 
