@@ -72,8 +72,11 @@
 	redir @preset-ebike /#preset=ebike 302
 	@preset-bikeshare path /bikeshare /bikeshare/
 	redir @preset-bikeshare /#preset=bikeshare 302
-	@preset-kids path /kids /kids/
-	redir @preset-kids /#preset=kids 302
+	@preset-novice path /novice /novice/
+	redir @preset-novice /#preset=novice 302
+	# Riding with kids became Novice and Nervous (v0.7.0): its old short link opens the new ride type.
+	@renamed-kids path /kids /kids/
+	redir @renamed-kids /#preset=novice 302
 	@preset-bike-transit path /bike-transit /bike-transit/
 	redir @preset-bike-transit /#preset=bike-transit 302
 	@preset-bikeshare-transit path /bikeshare-transit /bikeshare-transit/

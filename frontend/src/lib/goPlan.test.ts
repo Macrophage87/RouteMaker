@@ -114,7 +114,7 @@ test("My Go reads what makes sense and drops the rest: an unknown view or ride, 
   assert.deepEqual(parseMyGo({ open_in: "plan", ride: "", home: { lon: Infinity, lat: 1 } }), { openIn: "plan", ride: null, home: null });
   // The body: Default is "", a Home's label is cut to the server's 120 characters.
   assert.deepEqual(myGoBody({ openIn: "", ride: "default", home: null }), { open_in: "", ride: "", home: null });
-  assert.deepEqual(myGoBody({ openIn: "go", ride: "kids", home: { point: [-77, 38.9], label: "x".repeat(200) } }).home, { lon: -77, lat: 38.9, label: "x".repeat(120) });
+  assert.deepEqual(myGoBody({ openIn: "go", ride: "novice", home: { point: [-77, 38.9], label: "x".repeat(200) } }).home, { lon: -77, lat: 38.9, label: "x".repeat(120) });
   assert.equal(myGoSummary(NO_MY_GO), "By screen size · Default");
   assert.equal(myGoSummary({ openIn: "go", ride: "cargo", home: null }), "Go · Cargo Bike");
 });
@@ -148,11 +148,13 @@ test("My Go is read and saved at /api/me/go, same origin, with the CSRF token; a
   assert.equal(await fetchMyGo("https://x.test", answer(401, { code: "signed_out" })), null);
   assert.equal(await fetchMyGo("https://x.test", (async () => { throw new Error("offline"); }) as unknown as typeof fetch), null);
   calls.length = 0;
-  const saved = await saveMyGo("https://x.test", { openIn: "plan", ride: "kids", home: null }, answer(200, { open_in: "plan", ride: "kids", home: null }), "a=1; csrftoken=tok%3D1");
-  assert.deepEqual(saved, { openIn: "plan", ride: "kids", home: null });
+  const saved = await saveMyGo("https://x.test", { openIn: "plan", ride: "novice", home: null }, answer(200, { open_in: "plan", ride: "novice", home: null }), "a=1; csrftoken=tok%3D1");
+  assert.deepEqual(saved, { openIn: "plan", ride: "novice", home: null });
+  // A ride saved before Riding with kids became Novice and Nervous (v0.7.0) is read as the new one.
+  assert.deepEqual(await fetchMyGo("https://x.test", answer(200, { open_in: "go", ride: "kids", home: null })), { openIn: "go", ride: "novice", home: null });
   assert.equal(calls[0].init.method, "POST");
   assert.equal((calls[0].init.headers as Record<string, string>)["X-CSRFToken"], "tok=1");
-  assert.deepEqual(JSON.parse(calls[0].init.body as string), { open_in: "plan", ride: "kids", home: null });
+  assert.deepEqual(JSON.parse(calls[0].init.body as string), { open_in: "plan", ride: "novice", home: null });
   assert.equal(await saveMyGo("https://x.test", NO_MY_GO, answer(403, {}), ""), null);
 });
 
@@ -164,7 +166,7 @@ test("Go's ride types: the rider's own (My Go, Default until set), then Own Bike
   assert.deepEqual([...GO_RIDES], ["default", "bike-transit", "bikeshare-transit"]);
   assert.deepEqual(goRideChips(null), ["default", "bike-transit", "bikeshare-transit"]);
   assert.deepEqual(goRideChips("cargo"), ["cargo", "bike-transit", "bikeshare-transit"]);
-  assert.deepEqual(goRideChips("kids"), ["kids", "bike-transit", "bikeshare-transit"]);
+  assert.deepEqual(goRideChips("novice"), ["novice", "bike-transit", "bikeshare-transit"]);
   // A stored My Go ride from before (Bikeshare was a Go chip) still works: it is the rider's own.
   assert.deepEqual(goRideChips("bikeshare"), ["bikeshare", "bike-transit", "bikeshare-transit"]);
   // The rider's own is a transit type: no chip twice, and Default fills the third place.

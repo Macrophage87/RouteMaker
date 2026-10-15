@@ -392,9 +392,46 @@ class RouteIn(Schema):
         ),
     )
 
+    novice_legs: StrictBool = Field(
+        default=False,
+        description=(
+            "Transit ride types only (v0.7.0, Novice and Nervous): plan the bike legs as Novice"
+            " and Nervous does, every road read one level of traffic stress up, so the page can"
+            " offer Own bike + Transit and Bikeshare + Transit beside a Novice and Nervous route"
+            " that still uses LTS 3 or worse (its `novice.transit`)."
+        ),
+    )
+    via_points: list[StrictInt] = Field(
+        default_factory=list,
+        max_length=MAX_POINTS,
+        description=(
+            "v0.7.0, via points vs stops: the indices into `points` of the via points, which only"
+            " shape the route. The route passes each without a U-turn or a stop; every other"
+            " point is a stop. Never the first or the last point. Absent: every point is a stop,"
+            " as before."
+        ),
+    )
+
+    @field_validator("preset", mode="before")
+    @classmethod
+    def _renamed_ride_types(cls, value):
+        """An old ride type's name (a link or a saved plan from before it was renamed) plans
+        as the ride type it became: "kids" is Novice and Nervous (v0.7.0)."""
+        return presets.resolve_preset(value) if isinstance(value, str) else value
+
     @model_validator(mode="after")
     def dials_fit_the_preset(self):
         preset = presets.PRESETS[self.preset]
+        if self.via_points:
+            last = len(self.points) - 1
+            if len(set(self.via_points)) != len(self.via_points) or any(
+                not 0 < index < last for index in self.via_points
+            ):
+                raise ValueError(
+                    "via_points are distinct indices of points between the start and the end"
+                )
+        if self.novice_legs and self.preset not in presets.TRANSIT_PRESETS:
+            raise ValueError("novice_legs applies to the transit ride types only")
         if self.hills is not None and self.hills > 0 and not preset.hills_seek:
             raise ValueError(
                 "Mass Ride does not look for climbs: a field that slows below balance speed on a"
@@ -2016,7 +2053,36 @@ class TransitOut(Schema):
     )
 
 
+class NoviceBusiestOut(Schema):
+    name: str | None = Field(description="The road's name, or null where it has none.")
+    metres: float
+    level: int = Field(description="Its worst real level of traffic stress, 3 to 5 (Avoid).")
+
+
+class NoviceOut(Schema):
+    busy_m: float = Field(description="Metres of real LTS 3 or worse on the route.")
+    busiest: NoviceBusiestOut | None = Field(
+        description="The longest run of LTS 3 or worse, by road; null where there is none."
+    )
+    over_ceiling: bool = Field(
+        description="The calmer routes found were longer than the ride type's 1.4x ceiling."
+    )
+    transit: bool = Field(
+        description=(
+            "Offer Own bike + Transit and Bikeshare + Transit beside this route (each requested"
+            " with `novice_legs`): it still uses LTS 3 or worse, or is held at the ceiling."
+        )
+    )
+
+
 class RouteOut(RouteBody):
+    novice: NoviceOut | None = Field(
+        default=None,
+        description=(
+            "Novice and Nervous only (v0.7.0): how much busy road the route still uses, read on"
+            " the real levels, and whether to offer transit beside it; null elsewhere."
+        ),
+    )
     avoid_search: AvoidSearchOut | None = None
     avoid_alternate: AvoidAlternateOut | None = Field(
         default=None,
@@ -2529,7 +2595,20 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     # The candidates' calls stop `TRANSIT_CANDIDATES_S` in, leaving the answer's own line
     # (routing.plan, below) the rest of the request's budget: a slow router estimates candidates,
     # it never times out the plan.
-    services = transit.RoutingServices(started + TRANSIT_CANDIDATES_S, body.preset)
+    # Novice and Nervous's transit options (v0.7.0): the bike legs priced as that ride type
+    # prices roads, one level up; a share bike keeps its own pace.
+    leg_preset = presets.NOVICE if body.novice_legs else body.preset
+    leg_costing = None
+    if body.novice_legs and body.preset == presets.BIKESHARE_TRANSIT:
+        leg_costing = presets.costing(presets.NOVICE)
+        leg_costing["bicycle"]["cycling_speed"] = presets.BIKESHARE_CLASSIC_SPEED_KMH
+    services = (
+        transit.RoutingServices(started + TRANSIT_CANDIDATES_S, leg_preset)
+        if leg_costing is None
+        else transit.RoutingServices(
+            started + TRANSIT_CANDIDATES_S, leg_preset, costing=leg_costing
+        )
+    )
     start, end = body.points
     if body.preset == presets.BIKESHARE_TRANSIT:
         found = transit.plan_bikeshare(schedule, start, end, when, services, gbfs.client.snapshot())
@@ -2571,7 +2650,13 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     def line(points: list[list[float]]) -> dict | None:
         """The answer's line routed, or None when the router did not answer in time."""
         try:
-            return routing.plan(points, body.preset, long_ride=False, started=started, dials=dials)
+            answered = routing.plan(
+                points, leg_preset, long_ride=False, started=started, dials=dials
+            )
+            # The ride type asked for, whichever ride type priced its bike leg.
+            answered["preset"] = body.preset
+            answered["novice"] = None
+            return answered
         except (routing.RouterUnavailable, routing.DeadlineExceeded) as error:
             logger.warning("transit plan: the answer's line was not routed: %s", error)
             return None
@@ -2843,6 +2928,7 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
             debug_junctions=body.debug_junctions,
             mtb_level=body.mtb_level,
             mtb_preferred=body.mtb_preferred,
+            vias=tuple(body.via_points),
         )
         return Status(
             200,
@@ -3658,6 +3744,7 @@ class MyGoIn(Schema):
     @field_validator("ride")
     @classmethod
     def known_ride(cls, ride: str) -> str:
+        ride = presets.resolve_preset(ride)
         if ride and ride not in presets.PRESETS:
             raise ValueError("not a ride type this planner offers")
         return ride
@@ -3695,7 +3782,7 @@ def _my_go_out(row) -> dict:
         home = {"lon": row.home_lon, "lat": row.home_lat, "label": row.home_label}
     return {
         "open_in": row.open_in if row is not None else "",
-        "ride": row.ride if row is not None else "",
+        "ride": presets.resolve_preset(row.ride) if row is not None else "",
         "home": home,
     }
 

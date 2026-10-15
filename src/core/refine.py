@@ -371,6 +371,28 @@ class Context:
     junction_ratings: tuple = ()
 
 
+def shift_classes(classes: list, shift: int) -> list:
+    """Each piece's class read `shift` levels up (`presets.Exposure.shift`, Novice and
+    Nervous), for the search; the same list where there is no shift."""
+    if shift <= 0:
+        return classes
+    out = []
+    for cls in classes:
+        tier, half = presets.shifted_tier(cls[0], getattr(cls, "half", False), shift)
+        out.append(
+            routing.PieceClass(
+                tier,
+                cls[1],
+                getattr(cls, "unpaved", None),
+                getattr(cls, "lanes", None),
+                getattr(cls, "oneway", None),
+                getattr(cls, "width_m", None),
+                half,
+            )
+        )
+    return out
+
+
 @dataclass
 class Analysis:
     """One candidate route, read."""
@@ -380,6 +402,9 @@ class Analysis:
     exposure_m: float
     climb_m: float
     pieces: list
+    # The classes the search reads: on a ride that reads every road a level up
+    # (`presets.Exposure.shift`, Novice and Nervous) the shifted ones, and the real ones in
+    # `real_classes`, which the answer's summary and breakdown read (None: the same).
     classes: list
     events: list | None
     # Metres along the route at which each via point is reached.
@@ -424,6 +449,15 @@ class Analysis:
     # `analyse`; None: the same as the weighted figures, a reading made without hills).
     flat_exposure_m: float | None = None
     rated_lts2_m: float | None = None
+    # See `classes`: the real classes where the search reads shifted ones, and the shift
+    # (the junctions' colours are read as many levels up, `presets.shifted_severity`).
+    real_classes: list | None = None
+    shift: int = 0
+
+    @property
+    def rated_classes(self) -> list:
+        """The classes as rated, never shifted: what the rider is shown."""
+        return self.classes if self.real_classes is None else self.real_classes
 
     @property
     def rated_exposure_m(self) -> float:
@@ -462,13 +496,14 @@ class Analysis:
     @property
     def red_m(self) -> float:
         """The very high stress (red) junctions' summed cost, as metres of quiet
-        riding (the junction model's own cost, 2,000 to 4,500 ft each)."""
-        return junction_cost_m(self.events, "red")
+        riding (the junction model's own cost, 2,000 to 4,500 ft each); with a shift,
+        the orange ones too (`presets.shifted_severity`)."""
+        return junction_cost_m(self.events, "red", self.shift)
 
     @property
     def orange_m(self) -> float:
         """The higher stress (orange) junctions' summed cost, in the same unit."""
-        return junction_cost_m(self.events, "orange")
+        return junction_cost_m(self.events, "orange", self.shift)
 
     @property
     def top_m(self) -> float:
@@ -537,11 +572,14 @@ def charged_m(read: Analysis, ctx: Context) -> float:
     return (1 - w) * read.length_m + w * effort
 
 
-def junction_cost_m(events: list | None, severity: str) -> float:
-    """The summed cost of the events of one severity, in metres."""
+def junction_cost_m(events: list | None, severity: str, shift: int = 0) -> float:
+    """The summed cost of the events of one severity (read `shift` levels up), in metres."""
     if not events:
         return 0.0
-    return sum(e.cost_ft for e in events if e.severity == severity) / model.FEET_PER_METRE
+    return (
+        sum(e.cost_ft for e in events if presets.shifted_severity(e.severity, shift) == severity)
+        / model.FEET_PER_METRE
+    )
 
 
 # How much better, at each level of `Analysis.key`, a candidate must be to count
@@ -801,7 +839,9 @@ def analyse(
         offset += sum(piece.metres for piece in made)
         if number < len(legs) - 1:
             via_m.append(offset)
-    classes = routing.classify(pieces, ctx.when, ctx.lanes_as_roadway)
+    real_classes = routing.classify(pieces, ctx.when, ctx.lanes_as_roadway)
+    shift = ctx.exposure.shift
+    classes = shift_classes(real_classes, shift)
     avoid_passages = avoid_model.passages(line, ctx.avoid) if ctx.avoid else []
     # The stress figures in hill-weighted metres (409): each piece's metres times its factor.
     hill = hill_of(trip, pieces, ctx)
@@ -837,6 +877,8 @@ def analyse(
         hill=hill,
         flat_exposure_m=flat_exposure_m(pieces, classes, weights),
         rated_lts2_m=stress_totals(*rated_metres(pieces, classes))["lts2_m"],
+        real_classes=real_classes if shift else None,
+        shift=shift,
     )
     if with_events:
         ctx.analyses[key] = result
@@ -1250,7 +1292,7 @@ def top_by_leg(analysis: Analysis) -> list[float]:
     bounds = leg_bounds(analysis)
     out = lts4_by_leg(analysis)
     for event in analysis.events or ():
-        if event.severity != "red":
+        if presets.shifted_severity(event.severity, analysis.shift) != "red":
             continue
         for k, (lo, hi) in enumerate(bounds):
             if lo <= event.m < hi or (k == len(bounds) - 1 and event.m >= hi):
@@ -2459,6 +2501,12 @@ def combine(reads: list[Analysis]) -> Analysis:
             r.exposure_m if r.flat_exposure_m is None else r.flat_exposure_m for r in reads
         ),
         rated_lts2_m=sum(r.lts2_m if r.rated_lts2_m is None else r.rated_lts2_m for r in reads),
+        real_classes=(
+            [c for r in reads for c in r.rated_classes]
+            if any(r.real_classes is not None for r in reads)
+            else None
+        ),
+        shift=max((r.shift for r in reads), default=0),
     )
 
 

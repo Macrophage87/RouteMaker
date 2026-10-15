@@ -151,8 +151,9 @@ export function linkToCopy(
   points: readonly LonLat[],
   preset: PresetId,
   dials: Dials,
+  vias: readonly number[] = [],
 ): string {
-  return `${location.origin}${location.pathname}${location.search}${encodePlan(points, preset, dials)}`;
+  return `${location.origin}${location.pathname}${location.search}${encodePlan(points, preset, dials, vias)}`;
 }
 
 /** The surface "Copy link" uses: the async clipboard where there is one, else the selection method. */

@@ -450,8 +450,10 @@ class TestTheSearchIsHandedTheRidesExposure:
             ({"preset": "cargo", "carrying": "cargo"}, False),
             ({"preset": "default"}, False),
             ({"preset": "default", "stress": 100}, False),
-            # FOLLOWUP-KIDS-PRESET (240 (B)): the same, with LTS 2 at a half.
-            ({"preset": "kids"}, "kids"),
+            # Novice and Nervous (v0.7.0): the same weights, read a level up.
+            ({"preset": "novice"}, "novice"),
+            # An old Riding with kids link plans as Novice and Nervous.
+            ({"preset": "kids"}, "novice"),
         ],
     )
     def test_the_plan_s_context(self, client, router, monkeypatch, dials, averse):
@@ -467,8 +469,8 @@ class TestTheSearchIsHandedTheRidesExposure:
         monkeypatch.setattr(refine, "refine", spy)
         assert post(client, {**good_body(), **dials}).status_code == 200
         expected = presets.EXPOSURE_NOT_IN_CONTROL if averse else presets.EXPOSURE_STANDARD
-        if averse == "kids":
-            expected = presets.EXPOSURE_KIDS
+        if averse == "novice":
+            expected = presets.EXPOSURE_NOVICE
         assert seen == [expected]
 
 

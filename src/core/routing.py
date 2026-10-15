@@ -853,9 +853,76 @@ class Dials:
     # Mountain Bike only, the second pass: the trail level the rider prefers, 1-4, never above
     # `mtb_level` (`mtbmode.preferred_level`); None: level 2, or `mtb_level` where that is lower.
     mtb_preferred: int | None = None
+    # Via points (v0.7.0, "Via points vs stops"): the indices of the rider's points that
+    # only shape the route. The router passes them without a U-turn or a stop
+    # (`VIA_LOCATION_TYPE`); every other point is a stop ("break"), as before.
+    vias: tuple[int, ...] = ()
     # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
     # A ride whose last point is its first is a loop whatever this says.
     loop: bool = False
+
+
+# How a via point is sent to the router (v0.7.0, "Via points vs stops"). The plan names
+# Valhalla's "through" (no forced stop, no U-turn). "break_through" is the same at the
+# point itself (no U-turn) but keeps the leg there, so the answer keeps one leg per point
+# and every per-leg figure (`leg_ends`, the calm search's legs, the stop list's distances)
+# lines up with the rider's points as before; the page does not announce, number or list
+# a via point, so nothing reads it as a stop.
+VIA_LOCATION_TYPE = "break_through"
+
+
+def location_type(index: int, count: int, vias: tuple[int, ...]) -> str:
+    """The router's type for the rider's point `index` of `count`: a via point's
+    (`VIA_LOCATION_TYPE`) where the point is one and not an end, else a stop's."""
+    if 0 < index < count - 1 and index in vias:
+        return VIA_LOCATION_TYPE
+    return "break"
+
+
+# Novice and Nervous (v0.7.0 plan): real LTS 3 or worse along the bike route past this
+# (metres, about a block, so a crossing of a busy road is not counted as riding on it), or a
+# route held at the ceiling, offers transit and bikeshare beside it (`novice_note`).
+NOVICE_BUSY_SLACK_M = 80.0
+
+
+def busiest_stretch(pieces: list, classes: list) -> dict | None:
+    """The longest run of real LTS 3 or worse along a route, by the road's name: its name
+    (None where the road has none), its metres and its worst level. None where there is
+    no such run."""
+    runs: list[list] = []  # [name, metres, worst]
+    last = None
+    for piece, cls in zip(pieces, classes, strict=False):
+        tier = cls[0]
+        busy = tier in ("3", "4", "5")
+        if not busy:
+            last = None
+            continue
+        names = getattr(piece, "names", None) or ()
+        name = names[0] if names else None
+        if last is not None and last[0] == name:
+            last[1] += piece.metres
+            last[2] = max(last[2], int(tier))
+        else:
+            last = [name, piece.metres, int(tier)]
+            runs.append(last)
+    if not runs:
+        return None
+    name, metres, worst = max(runs, key=lambda run: run[1])
+    return {"name": name, "metres": round(metres, 1), "level": worst}
+
+
+def novice_note(stress_m: dict, calm_search: dict | None, busiest: dict | None) -> dict:
+    """Novice and Nervous's reading of its own route (v0.7.0 plan, item 4): its real LTS 3
+    and worse metres, the busiest stretch, whether the search was held at the ceiling, and
+    whether to offer Own bike + Transit and Bikeshare + Transit beside it."""
+    busy_m = sum(float(stress_m.get(key, 0.0)) for key in ("3", "4", "5"))
+    held = bool(calm_search) and (calm_search or {}).get("limited") == "ceiling"
+    return {
+        "busy_m": round(busy_m, 1),
+        "busiest": busiest,
+        "over_ceiling": held,
+        "transit": busy_m > NOVICE_BUSY_SLACK_M or held,
+    }
 
 
 # A ride ends where it starts if its last point is within this of its first (metres).
@@ -1103,7 +1170,7 @@ def _exposure(
         if trace is None:
             return None
         pieces.extend(pieces_of_trace(trace))
-    stress, _facility = breakdown(pieces, when)
+    stress = presets.shift_stress(breakdown(pieces, when)[0], exposure.shift)
     weights = exposure.weights
     return sum(weights[tier] * stress[tier] for tier in weights), stress["4"] + stress["5"]
 
@@ -2387,8 +2454,13 @@ def plan(
     )
     request = {
         "locations": [
-            {"lon": lon, "lat": lat, "type": "break", "radius": STOP_RADIUS_M}
-            for lon, lat in points
+            {
+                "lon": lon,
+                "lat": lat,
+                "type": location_type(index, len(points), dials.vias),
+                "radius": STOP_RADIUS_M,
+            }
+            for index, (lon, lat) in enumerate(points)
         ],
         "costing": "bicycle",
         "costing_options": costing,
@@ -2587,7 +2659,7 @@ def plan(
         ceiling = (
             presets.target_ceiling_m(target_m)
             if target_m
-            else presets.default_ceiling_m(_trip_length_m(trip))
+            else presets.default_ceiling_m(_trip_length_m(trip), preset_name)
         )
     refine_context = refine.Context(
         variant=variant,
@@ -2860,7 +2932,7 @@ def plan(
             analysed = refine_context.analyses.get(tuple(leg.get("shape", "") for leg in legs))
             effort_m = round(analysed.effort_m, 1) if analysed is not None else None
             classes = (
-                analysed.classes
+                analysed.rated_classes
                 if analysed is not None and len(analysed.pieces) == len(pieces)
                 else classify(pieces, when, roadway_only=lanes_as_roadway)
             )
@@ -3118,6 +3190,12 @@ def plan(
             "mass_hazards": (
                 mass_hazards.along(leg_runs, pieces, classes, hazard_list)
                 if preset_name == "mass-ride"
+                else None
+            ),
+            # Novice and Nervous (v0.7.0): the busiest stretch, read on the real levels.
+            "novice": (
+                novice_note(stress, refined, busiest_stretch(pieces, classes))
+                if preset_name == presets.NOVICE and not over_budget
                 else None
             ),
         }

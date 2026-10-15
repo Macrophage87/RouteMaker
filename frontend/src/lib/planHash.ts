@@ -7,7 +7,8 @@
  * riders (owner decision, 2026-09-26).
  */
 import { MAX_POINTS, insideCoverage, type LonLat } from "./geo.ts";
-import { parsePreset, type PresetId } from "./presets.ts";
+import { PRESET_ALIASES, parsePreset, type PresetId } from "./presets.ts";
+import { decodeVias } from "./pointKinds.ts";
 import { STRESS_DEFAULT_AT, fitDials, isBike, isCarrying, isWhen, type Dials } from "./dials.ts";
 import { METRES_PER_MILE } from "./format.ts";
 
@@ -32,14 +33,21 @@ export function stressFromV1(old: number): number {
 
 export interface Plan {
   points: LonLat[];
+  /**
+   * The via points' indices (v0.7.0, "Via points vs stops": `via=1,3`); empty for an older link, where every
+   * point is a stop, as it was.
+   */
+  vias: number[];
   preset: PresetId;
   /** The sliders, the ride time and Cargo Bike's load (dials.ts). */
   dials: Dials;
 }
 
-export function encodePlan(points: readonly LonLat[], preset: PresetId, dials?: Dials): string {
+export function encodePlan(points: readonly LonLat[], preset: PresetId, dials?: Dials, vias: readonly number[] = []): string {
   const params = new URLSearchParams();
   if (points.length) params.set("p", points.map(([lon, lat]) => `${lon.toFixed(5)},${lat.toFixed(5)}`).join(";"));
+  // Each point's kind (v0.7.0): the via points by index; a new field an older link does not have.
+  if (vias.length) params.set("via", vias.join(","));
   params.set("preset", preset);
   if (dials) {
     params.set("v", PLAN_VERSION);
@@ -51,6 +59,8 @@ export function encodePlan(points: readonly LonLat[], preset: PresetId, dials?: 
     if (dials.avoidGravel) params.set("avoidgravel", "1");
     // "Keep to roads, not trails" (OWNER-DECISIONS 463, 463b). Absent is trails on, except on Mass Ride, which is always off.
     if (dials.trailsOff) params.set("trailsoff", "1");
+    // A novice rider's transit plan (v0.7.0): its bike legs as Novice and Nervous plans them.
+    if (dials.noviceLegs) params.set("novice", "1");
     // The target distance in miles, to a tenth. Absent is none; an older link has none.
     if (dials.targetDistanceM) params.set("targetmi", (dials.targetDistanceM / METRES_PER_MILE).toFixed(1));
     // Never the rider and bike weight (OWNER-DECISIONS 313): it is private.
@@ -105,10 +115,14 @@ export function decodePlan(hash: string): Plan {
     points.push(point);
     if (points.length === MAX_POINTS) break;
   }
-  const preset = parsePreset(params.get("preset"));
+  const named = params.get("preset");
+  const preset = parsePreset(named);
+  // A link to a ride type since renamed (Riding with kids, now Novice and Nervous, v0.7.0) opens the new ride
+  // type at its own starting sliders: the old ones were the old ride type's.
+  const renamed = named !== null && Object.hasOwn(PRESET_ALIASES, named);
   const when = params.get("when");
   const carrying = params.get("carrying");
-  const linked = numberOrUndefined(params.get("stress"));
+  const linked = renamed ? undefined : numberOrUndefined(params.get("stress"));
   const stress = linked === undefined || params.get("v") === PLAN_VERSION ? linked : stressFromV1(linked);
   const targetMiles = numberOrUndefined(params.get("targetmi"));
   const dials = fitDials(preset, {
@@ -116,17 +130,18 @@ export function decodePlan(hash: string): Plan {
     targetDistanceM: targetMiles === undefined ? undefined : Math.round(targetMiles * METRES_PER_MILE),
     // An older link's "sysweight" is ignored (OWNER-DECISIONS 313).
     loop: params.get("loop") === "1",
-    hills: numberOrUndefined(params.get("hills")),
+    hills: renamed ? undefined : numberOrUndefined(params.get("hills")),
     when: isWhen(when) ? when : null,
     carrying: isCarrying(carrying) ? carrying : null,
     assist: params.get("assist") === "1",
     avoidGravel: params.get("avoidgravel") === "1",
     trailsOff: params.get("trailsoff") === "1",
+    noviceLegs: params.get("novice") === "1",
     ...(isBike(params.get("bike")) ? { bike: params.get("bike") as "classic" | "ebike" } : {}),
     ...(params.get("ending") === "outside" ? { ending: "outside_dock" as const } : {}),
     rideSize: numberOrUndefined(params.get("riders")),
     mtbLevel: numberOrUndefined(params.get("level")),
     mtbPreferred: numberOrUndefined(params.get("prefer")),
   });
-  return { points, preset, dials };
+  return { points, vias: decodeVias(params.get("via"), points.length), preset, dials };
 }

@@ -338,10 +338,14 @@ def maxcalm_for(stress: int) -> bool:
     return calm_rate_for(stress) >= CALM_RATE_MAX
 
 
-def default_ceiling_m(first_m: float) -> float:
+def default_ceiling_m(first_m: float, preset_name: str | None = None) -> float:
     """The longest a plan may go where the rider set no target, from the length of
-    the router's own route (OWNER-DECISIONS 268: the 1.6x stays the ceiling)."""
-    return max(first_m * DEFAULT_CEILING_RATIO, first_m + DEFAULT_CEILING_EXTRA_M)
+    the router's own route (OWNER-DECISIONS 268: the 1.6x stays the ceiling), or the
+    ride type's own ratio where it has one (Novice and Nervous: NOVICE_CEILING_RATIO)."""
+    ratio = DEFAULT_CEILING_RATIO
+    if preset_name is not None and preset_name in PRESETS:
+        ratio = PRESETS[preset_name].ceiling_ratio
+    return max(first_m * ratio, first_m + DEFAULT_CEILING_EXTRA_M)
 
 
 def target_ceiling_m(target_m: float) -> float:
@@ -384,11 +388,48 @@ class Exposure:
     hold_lts4: bool = False
     # What a metre of LTS 2 counts, in metres of LTS 3 (FOLLOWUP-LTS2-WEIGHT).
     lts2: float = 0.0
+    # Novice and Nervous (v0.7.0 plan): how many levels up the search reads every road
+    # and junction before it prices them (`shifted_tier`, `shift_stress`): 1 there, so LTS 1
+    # is priced as 2, 1.5 as 2.5, 2 as 3, 3 as 4, 4 as Avoid, Avoid stays Avoid, and an
+    # orange junction is red. The weights above then apply to the shifted level, and the
+    # LTS 4 hold, which reads the shifted LTS 4, holds the real LTS 3 too. The route's
+    # own summary and breakdown read the real level, never the shifted one.
+    shift: int = 0
 
     @property
     def weights(self) -> dict[str, float]:
         """By tier, as the segment classes name them."""
         return {"2": self.lts2, "3": self.lts3, "4": self.lts4, "5": self.avoid}
+
+
+def shifted_tier(tier: str, half: bool, shift: int) -> tuple[str, bool]:
+    """A stress key and half-step flag read `shift` levels up (`Exposure.shift`): Avoid ("5")
+    is the top, and 4.5 read one up is Avoid (no half above it). "unknown" stays as it is."""
+    if shift <= 0 or tier not in ("1", "2", "3", "4", "5"):
+        return tier, half
+    level = int(tier) + shift
+    if level >= 5:
+        return "5", False
+    return str(level), half
+
+
+def shift_stress(stress: dict[str, float], shift: int) -> dict[str, float]:
+    """Metres by stress key (`routing.totals`'s shape), read `shift` levels up: each
+    level's metres move up, and everything at or past Avoid is Avoid."""
+    if shift <= 0:
+        return stress
+    out = dict.fromkeys(stress, 0.0)
+    for tier, metres in stress.items():
+        out[shifted_tier(tier, False, shift)[0]] += metres
+    return out
+
+
+def shifted_severity(severity: str | None, shift: int) -> str | None:
+    """A junction's colour read `shift` levels up: orange is red, red stays red. A junction
+    with no flag stays unflagged (its colour is not known past "not orange")."""
+    if shift <= 0 or severity not in ("orange", "red"):
+        return severity
+    return "red"
 
 
 # OWNER-DECISIONS 240 (A): "about a quarter of LTS 3".
@@ -400,12 +441,13 @@ EXPOSURE_STRESS_AVERSE = Exposure(lts3=1.0, lts4=8.0, avoid=16.0, hold_lts4=True
 # (Trailmaxxing, Cargo with passengers; items 240 (A) and 241): item 250's weights and
 # hold, and LTS 2 at a quarter of LTS 3.
 EXPOSURE_NOT_IN_CONTROL = replace(EXPOSURE_STRESS_AVERSE, lts2=LTS2_WEIGHT)
-# Riding with kids (FOLLOWUP-KIDS-PRESET, item 240 (B)): "LTS 1 strongly preferred, LTS 2
-# allowed but costly, LTS 3+ avoided hard". Item 250's weights and hold, and LTS 2 at
-# KIDS_LTS2_WEIGHT, twice item 240 (A)'s quarter. A developer default for the owner to
-# confirm: a metre of LTS 3 still counts two of LTS 2, and LTS 4 and Avoid rank first.
-KIDS_LTS2_WEIGHT = 0.5
-EXPOSURE_KIDS = replace(EXPOSURE_STRESS_AVERSE, lts2=KIDS_LTS2_WEIGHT)
+# Novice and Nervous, in Riding with kids' place (v0.7.0 plan, Stephen 2026-10-13: "assume
+# that each road is one LTS higher than typical and coordinate there"): Trailmaxxing's
+# not-in-control weights, read one level up (`Exposure.shift`). So a metre
+# of real LTS 2 counts as LTS 3 does (1), real
+# LTS 3 as LTS 4 (8, and held: never more than the router's own route), real LTS 4 as
+# Avoid (16), and real LTS 1 as LTS 2 (a quarter).
+EXPOSURE_NOVICE = replace(EXPOSURE_NOT_IN_CONTROL, shift=1)
 
 
 def exposure_for(preset_name: str, carrying: str | None = None) -> Exposure:
@@ -467,6 +509,9 @@ class Preset:
     # where a carrying choice has its own, that choice's.
     exposure: Exposure = EXPOSURE_STANDARD
     carrying_exposure: MappingProxyType | None = None
+    # The longest a plan may go where the rider set no target, as a multiple of the
+    # router's own route (`default_ceiling_m`).
+    ceiling_ratio: float = DEFAULT_CEILING_RATIO
 
 
 # Where a sustained descent starts to cost, per ride type, on the avoid half
@@ -496,9 +541,9 @@ BRAKE_GRADES = MappingProxyType(
         # A share bike is heavy (a classic about 45 lb) and its rider is often new to
         # it: a brake-riding descent starts early, on both bikes.
         "bikeshare": 0.04,
-        # A child brakes with small hands on a small bike: the cargo bike's 3%. The
-        # implementation's proposal, not the owner's table (FOLLOWUP-KIDS-PRESET).
-        "kids": 0.03,
+        # A nervous adult beginner brakes early, as a share bike's rider does (4%). The
+        # implementation's proposal, not the owner's table (v0.7.0, Novice and Nervous).
+        "novice": 0.04,
         # The transit ride types (TRANSIT-ASSIST): their bike legs brake as the ride types
         # they are built on, Default's own bike and Bikeshare's share bike.
         "bike-transit": 0.06,
@@ -572,30 +617,38 @@ class BikeProfile:
     system_weight_kg: int
 
 
-# Riding with kids (FOLLOWUP-KIDS-PRESET, OWNER-DECISIONS 240 (B), owner 2026-10-03: "A and
-# B sound good"): "a 'Riding with kids' preset for children on their own bikes. LTS 1
-# strongly preferred, LTS 2 allowed but costly, LTS 3+ avoided hard, slower planning speeds
-# and gentler hills. It builds on (A)." The owner named no numbers, so the figures here are
-# developer defaults, for the owner to confirm:
+# Novice and Nervous (v0.7.0 plan; Stephen 2026-10-13: "instead of riding with children, I'll
+# have a 'Novice and Nervous' mode. Basically, assume that each road is one LTS higher than
+# typical and coordinate there. Give transit options to avoid these stressful roads (and the
+# possibility of bikeshare too)."). It takes Riding with kids' place (FOLLOWUP-KIDS-PRESET,
+# OWNER-DECISIONS 240 (B)): old links and saved settings that name "kids" open it
+# (`PRESET_ALIASES`). The plan's defaults (the starred ones for Stephen to confirm):
 #
-# - Traffic: the top of the stress slider (STRESS_MAX), the least stressful route as
-#   Trailmaxxing plans it (LTS 4, Avoid and red junctions first, then LTS 3 and orange
-#   junctions, then distance), with the LTS 4 hold, and LTS 2 at KIDS_LTS2_WEIGHT (half of
-#   LTS 3) in the second figure (`EXPOSURE_KIDS`). The default ceiling (1.6 times the
-#   router's own route) and the rider's target distance apply as on any ride at the top.
-#   Not planned leg by leg (`long_calm`): rides with children are short.
-# - Speed: KIDS_PLANNING_SPEED_KMH, 6.2 mph (10 km/h), a child of about six to ten on
-#   their own bike, against Hybrid's 11.2 mph (18 km/h) and Mass Ride's parade 6 mph.
-# - Hills: KIDS_HILLS, -80 on the slider (`use_hills` 0.2), gentler than Cargo Bike's -60
-#   and short of Mass Ride's -95; a descent past 3% costs (`BRAKE_GRADES`).
-# - Living streets fully preferred (1.0, as Trailmaxxing); Hybrid; Valhalla's own turn,
-#   gate and surface figures. The rider may still move every slider.
-#
-# It rides the existing graphs (the standard graph and its weekend twin, or the no-trail
-# graph with trails off), so it needs no new Valhalla graph or variant and no rebuild.
-KIDS = "kids"
-KIDS_PLANNING_SPEED_KMH = 10.0
-KIDS_HILLS = -80
+# - Traffic: the top of the stress slider (STRESS_MAX), ranked as Trailmaxxing ranks
+#   (`EXPOSURE_NOVICE`), with every road and junction read one level up (`Exposure.shift`):
+#   real LTS 3 is held as LTS 4 is, real LTS 4 counts as Avoid. Costing and ranking only: no
+#   new graph and no map rebuild.
+# - Short detours, not Trailmaxxing's long ones: the ride is a means to get somewhere, so the
+#   ceiling is NOVICE_CEILING_RATIO (1.4) times the router's own route, not 1.6.
+# - Pace and hills: an adult beginner, not a child: Hybrid's 11.2 mph (18 km/h), hills -60
+#   (Cargo's gentle setting), living streets fully preferred (1.0).
+# - Transit and bikeshare instead of a scary road: where the bike route still uses real LTS 3
+#   or worse, or is held at the ceiling, the answer says so (`core.api`, the `novice` block)
+#   and the page offers Own bike + Transit and Bikeshare + Transit beside it, their bike legs
+#   priced the same way (`RouteIn.novice_legs`).
+# - No new buttons or settings. The route summary reads the real level.
+NOVICE = "novice"
+NOVICE_PLANNING_SPEED_KMH = 18.0
+NOVICE_HILLS = -60
+NOVICE_CEILING_RATIO = 1.4
+# Old names that open a ride type now named otherwise (links, saved settings, My Go).
+PRESET_ALIASES = MappingProxyType({"kids": NOVICE})
+
+
+def resolve_preset(name: str) -> str:
+    """A ride type's current id: an old name (`PRESET_ALIASES`) as the ride it became."""
+    return PRESET_ALIASES.get(name, name)
+
 
 # Mountain Bike (docs/MTB-TOPO-PLAN.md, slice 6; OWNER-DECISIONS 90, 111, 148, 454: "Mountain
 # Goat and Mountain Bike are separate modes"). A ride type that seeks trails, on its own graph
@@ -643,6 +696,7 @@ def _preset(
     long_calm: bool = False,
     exposure: Exposure = EXPOSURE_STANDARD,
     carrying_exposure: dict[str, Exposure] | None = None,
+    ceiling_ratio: float = DEFAULT_CEILING_RATIO,
     **options: Any,
 ) -> Preset:
     return Preset(
@@ -668,6 +722,7 @@ def _preset(
         long_calm=long_calm,
         exposure=exposure,
         carrying_exposure=MappingProxyType(carrying_exposure) if carrying_exposure else None,
+        ceiling_ratio=ceiling_ratio,
     )
 
 
@@ -906,19 +961,20 @@ PRESETS: MappingProxyType = MappingProxyType(
                 gate_penalty=VALHALLA_GATE_PENALTY_S,
             ),
             _preset(
-                KIDS,
+                NOVICE,
                 Variant.STANDARD,
-                # Item 240 (B): see "Riding with kids" above.
+                # See "Novice and Nervous" above.
                 stress=STRESS_MAX,
-                hills=KIDS_HILLS,
-                exposure=EXPOSURE_KIDS,
+                hills=NOVICE_HILLS,
+                exposure=EXPOSURE_NOVICE,
+                ceiling_ratio=NOVICE_CEILING_RATIO,
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=1.0,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
                 gate_cost=VALHALLA_GATE_COST_S,
                 gate_penalty=VALHALLA_GATE_PENALTY_S,
-                cycling_speed=KIDS_PLANNING_SPEED_KMH,
+                cycling_speed=NOVICE_PLANNING_SPEED_KMH,
             ),
         )
     }

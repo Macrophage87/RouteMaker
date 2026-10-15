@@ -110,6 +110,11 @@ export interface Cue {
   tier: number | null;
   /** A stop's number (from 1); null on any other cue. */
   stop: number | null;
+  /**
+   * A stop's place in the plan's points, when it differs from its number (v0.7.0: via points between are not
+   * numbered); the re-plan matches on it.
+   */
+  point?: number;
 }
 
 export interface RideModel {
@@ -123,6 +128,11 @@ export interface RideModel {
   stretches: { fromM: number; toM: number; street: string | null; tier: number | null; facility: DescriptionEntry["facility"] }[];
   /** Metres per second at the route's own pace (distance over moving time), for time to go. */
   paceMs: number | null;
+  /**
+   * The via points (v0.7.0, "Via points vs stops"): where the line passes each, by its place in the plan's
+   * points. Never a cue: a via point is not announced; the re-plan drops the ones passed.
+   */
+  passes?: { point: number; atM: number }[];
 }
 
 /** "0.4 to 1.2 mi (0.6 to 1.9 km): Left onto ..." without its position: the part after the first ": ". */
@@ -207,7 +217,7 @@ function cueKindOf(entry: DescriptionEntry, before: DescriptionEntry | null): Cu
 }
 
 /** The ride's model: the line, its measure and its cues, from the route as the API answered it. */
-export function rideModel(route: RouteResponse): RideModel {
+export function rideModel(route: RouteResponse, vias: readonly number[] = []): RideModel {
   const coordinates = route.geometry.coordinates;
   const along = lineAlong(coordinates);
   const lengthM = along.length ? along[along.length - 1] : 0;
@@ -217,12 +227,24 @@ export function rideModel(route: RouteResponse): RideModel {
   const entries = descriptionEntries(route, "full") ?? [];
   const cues: Cue[] = [];
   const stretches: RideModel["stretches"] = [];
+  const passes: { point: number; atM: number }[] = [];
   let before: DescriptionEntry | null = null;
   for (const entry of entries) {
     const fromM = toLine(entry.from_m);
     if (entry.kind === "stretch") stretches.push({ fromM, toM: toLine(entry.to_m), street: entry.street, tier: entry.tier, facility: entry.facility });
+    // A via point (v0.7.0): its place is kept for the re-plan, but it is no cue and has no number.
+    if (entry.kind === "via" && entry.via != null && vias.includes(entry.via)) {
+      passes.push({ point: entry.via, atM: fromM });
+      before = null;
+      continue;
+    }
     const kind = cueKindOf(entry, before);
-    if (kind !== null) {
+    if (kind === "stop" && vias.length && entry.via != null) {
+      // Stops are numbered among themselves: the via points before this one are left out of its number.
+      const point = entry.via;
+      const number = point - vias.filter((v) => v < point).length;
+      cues.push({ index: cues.length, kind, atM: fromM, text: `Stop ${number}.`, movement: null, street: entry.turn?.onto ?? entry.street ?? null, severity: entry.severity ?? entry.turn?.severity ?? null, tier: entry.tier, stop: number, point });
+    } else if (kind !== null) {
       cues.push({
         index: cues.length,
         kind,
@@ -240,7 +262,7 @@ export function rideModel(route: RouteResponse): RideModel {
   }
   cues.push({ index: cues.length, kind: "end", atM: lengthM, text: "The end of the route.", movement: null, street: null, severity: null, tier: null, stop: null });
   const paceMs = route.distance_m > 0 && route.duration_s > 0 ? route.distance_m / route.duration_s : null;
-  return { coordinates, along, lengthM, cues, stretches, paceMs };
+  return { coordinates, along, lengthM, cues, stretches, paceMs, ...(vias.length ? { passes } : {}) };
 }
 
 /** Which cues a verbosity level says unprompted (plan section 3's table; Quiet: arrival only). */
@@ -809,7 +831,10 @@ export function replanPoints(model: RideModel, progressM: number, here: LonLat, 
   const stops = loop ? points.slice(1) : points.slice(1, -1);
   const end = loop ? points[0] : points[points.length - 1];
   const left = stops.filter((_, i) => {
-    const cue = model.cues.find((c) => c.kind === "stop" && c.stop === i + 1);
+    // A via point passed is dropped as a stop passed is (v0.7.0); the line's own place for it.
+    const pass = model.passes?.find((p) => p.point === i + 1);
+    if (pass) return pass.atM > progressM + ARRIVE_M;
+    const cue = model.cues.find((c) => c.kind === "stop" && (c.point ?? c.stop) === i + 1);
     // A stop the description does not place (an older API) is kept: better one extra point than one lost.
     return cue === undefined || cue.atM > progressM + ARRIVE_M;
   });

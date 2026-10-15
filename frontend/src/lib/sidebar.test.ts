@@ -239,15 +239,15 @@ test("the points come first, the how-to is behind Points' Info, Swap beside the 
   assert.match(app, /<p className="hint" id="reverse-hint">/);
 });
 
-test("with a route shown the points are compact, behind 'Edit points', and the controls stay in the page", () => {
-  assert.match(app, /const compactPoints = routeShownForPoints && points\.length >= 2 && !editPoints;/);
+test("with a route shown Plan's search and point tools stay in view (v0.7.0), and stay in the page", () => {
+  // "Keep adding stops by search": no compacting and no Edit points; the plan panel holds the plan in words.
+  assert.match(app, /const compactPoints = false;/);
+  assert.doesNotMatch(app, /className="secondary icon-button edit-points"/);
   assert.match(app, /<div id="points-search" ref=\{pointsSearchRef\} className="points-controls" hidden=\{compactPoints\}>\s*<PlaceSearch/);
-  // Edit points controls both parts it hides (the correctness review's N6).
-  assert.match(app, /aria-expanded=\{!compactPoints\}\s+aria-controls="points-search points-edit"/);
   assert.match(app, /<div id="points-edit" ref=\{pointsEditRef\} hidden=\{compactPoints\}>/);
   // Clear, a plan from a link, or fewer than two points: the next route opens compact again (N1).
   assert.match(app, /const clearAll = \(\) => \{\s*setConfirmedKm\(null\);\s*setEditPoints\(false\);/);
-  assert.match(app, /setEditPoints\(false\);\s*setPoints\(plan\.points\);/);
+  assert.match(app, /setEditPoints\(false\);\s*\/\/ A plan opened from a link opens drawn[^\n]*\n\s*forgetDrawn\(\);\s*setRouteAsk\(\(n\) => n \+ 1\);\s*setPoints\(VIA_MARKS\.markAt\(plan\.points, plan\.vias\)\);/);
   assert.match(app, /setStatus\(\{ kind: "idle" \}\);\s*\/\/ The next route opens compact again[^\n]*\n\s*setEditPoints\(false\);/);
 });
 
@@ -299,7 +299,6 @@ test("the points compacting never leaves the focus in a hidden part: it goes to 
     app,
     /useLayoutEffect\(\(\) => \{\s*rescueCompactFocus\(\{\s*wasCompact: wasCompact\.current,\s*compact: compactPoints,\s*before: focusBeforeRender\.current,\s*hidden: \[pointsSearchRef\.current, pointsEditRef\.current\],\s*editPoints: editPointsRef\.current,\s*\}\);\s*wasCompact\.current = compactPoints;\s*\}, \[compactPoints\]\);/,
   );
-  assert.match(app, /ref=\{editPointsRef\}\s+className="secondary icon-button edit-points"/);
   // After the sheet-order effect, which may first put the focus back on the (now hidden) element.
   assert.ok(app.indexOf("rescueCompactFocus({") > app.indexOf("}, [routeFirst]);"));
 });
@@ -555,7 +554,7 @@ test("Start, GPX, Link and More are one row under the route's figures (UI-CLEANU
   // More holds Share and Keep for offline, a disclosure.
   assert.match(app, /className="secondary icon-button route-more" aria-expanded=\{more\} aria-controls=\{moreId\}/);
   // The link is this page and encodePlan's fragment, which never carries the weight (313).
-  assert.match(app, /copyText\(linkToCopy\(window\.location, points, preset, dials\), navigator\.clipboard, selectionCopy\)/);
+  assert.match(app, /copyText\(linkToCopy\(window\.location, points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\), navigator\.clipboard, selectionCopy\)/);
   assert.equal(linkSaidFor(true), COPY_LINK_DONE);
   assert.equal(linkSaidFor(false), COPY_LINK_FAILED);
   assert.match(app, /if \(press === linkPresses\.current\) setLinkSaid\(linkSaidFor\(done\)\);/);
@@ -565,7 +564,7 @@ test("Start, GPX, Link and More are one row under the route's figures (UI-CLEANU
 
 test("App writes exactly encodePlan's fragment to the address bar, and a new plan clears 'Link copied.'", () => {
   const writer = app.slice(app.indexOf("// Keep the link in step with the plan"), app.indexOf("}, [points, preset, dials]);"));
-  assert.match(writer, /const hash = encodePlan\(points, preset, dials\);\s*writtenHash\.current = hash;\s*window\.history\.replaceState\(null, "", hash\);/);
+  assert.match(writer, /const hash = encodePlan\(points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\);\s*writtenHash\.current = hash;\s*window\.history\.replaceState\(null, "", hash\);/);
   assert.equal((writer.match(/replaceState/g) ?? []).length, 1);
   assert.match(writer, /linkPresses\.current \+= 1;\s*setLinkSaid\(""\);/);
   // planDials (the dials with the weight) never reaches the address bar.
@@ -892,7 +891,7 @@ test("the skip link and its target stay: #route-planner is the aside, and every 
   assert.match(app, /\{status\.kind === "idle" && points\.length < 2 && !goMode && <p className="hint">No route yet\.<\/p>\}/);
   assert.equal((app.match(/aria-live="polite" className="status-line/g) ?? []).length, 1);
   assert.match(app, /\{said\.text\}/);
-  assert.match(app, /announce\(addedSaid\(next\.indexOf\(point\), next\.length, loopVias\)\)/);
+  assert.match(app, /announce\(kindSaid\(next, index, VIA_MARKS\.isVia, loopVias, "added"\)\)/);
 });
 
 test("on a desktop the points come first, then the Ride line, then the route; on a phone the route leads", () => {

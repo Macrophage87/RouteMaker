@@ -889,6 +889,87 @@ button.secondary {
   cursor: pointer;
 }
 
+/* Plan mode's plan panel (v0.7.0): the plan in sentences, Route (or its progress), the change line, Reset and Clear. */
+.plan-panel {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border, #d1d5db);
+}
+
+.plan-panel h2 {
+  margin: 0;
+}
+
+.plan-sentences {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.plan-phrase {
+  display: inline;
+  padding: 0;
+  min-height: 0;
+}
+
+.plan-route,
+.plan-routing,
+.plan-change,
+.plan-reset-clear {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.plan-routing progress {
+  flex: 1 1 8rem;
+}
+
+.route-button {
+  min-height: 44px;
+  padding: 0 20px;
+  font-weight: 700;
+}
+
+.route-button[aria-disabled="true"] {
+  opacity: 0.6;
+}
+
+.plan-elapsed {
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-reset-clear button[aria-disabled="true"] {
+  opacity: 0.6;
+}
+
+/* Novice and Nervous's transit offer (v0.7.0): the busy road named, then the two ways round it. */
+.novice-offer {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+/* Go's "Add a stop" with Best order beside it (v0.7.0), above the route. */
+.go-add-stop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.go-add-stop .place-search {
+  flex: 1 1 14rem;
+}
+
+/* A place's "Make this the destination" row (v0.7.0): under its place, indented, still tall enough to tap. */
+.place-results li.place-as-destination {
+  padding-left: 26px;
+}
+
 .place-results li.active,
 .place-results li:hover {
   background: var(--bg-soft);
@@ -1045,6 +1126,23 @@ button.secondary {
   position: absolute;
   inset: -10px;
   border-radius: 50%;
+}
+
+/* A via point (v0.7.0, "Via points vs stops"): it only shapes the route, so it is a small hollow ring with no
+   number; the line shows through it. A shape, not a colour alone, tells it from a numbered stop. */
+.pin-via.pin-through {
+  background: transparent;
+  width: 14px;
+  height: 14px;
+  border: 3px solid #1d4ed8;
+  box-shadow: 0 0 0 2px #ffffff, 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+
+/* The point menu (v0.7.0): Remove and the switch between a stop and a via point, one under the other. */
+.point-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 /* A via's Remove, beside it on the map. */

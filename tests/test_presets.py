@@ -32,8 +32,8 @@ CONTRACT_PRESETS = {
     "ebike",
     # FOLLOWUP-BIKESHARE (OWNER-DECISIONS 243-245, 299).
     "bikeshare",
-    # FOLLOWUP-KIDS-PRESET (OWNER-DECISIONS 240 (B)).
-    "kids",
+    # Novice and Nervous (v0.7.0), in Riding with kids' place (OWNER-DECISIONS 240 (B)).
+    "novice",
     # docs/MTB-TOPO-PLAN.md, slice 6 (OWNER-DECISIONS 90, 111, 148, 454).
     "mountain-bike",
     # TRANSIT-ASSIST (Stephen, 2026-10-12): the two transit ride types.
@@ -403,9 +403,9 @@ def test_every_ride_types_brake_grade_is_the_owners_approved_table() -> None:
         # Bikeshare's is the implementation's proposal, not the owner's table: a heavy
         # share bike brakes early (core.presets, "Bikeshare").
         "bikeshare": 0.04,
-        # Riding with kids': the implementation's proposal too (core.presets, "Riding with
-        # kids"), the cargo bike's 3%.
-        "kids": 0.03,
+        # Novice and Nervous: the implementation's proposal too (core.presets, "Novice and
+        # Nervous"), a share bike's 4%.
+        "novice": 0.04,
         # The transit ride types' bike legs brake as the ride types they are built on
         # (core.presets, "The transit ride types"): Default's and Bikeshare's.
         "bike-transit": 0.06,
@@ -528,67 +528,100 @@ class TestTargetDistance:
         assert presets.TARGET_DISTANCE_MAX_M >= 200_000  # the longest span a plan may have
 
 
-class TestRidingWithKids:
-    """FOLLOWUP-KIDS-PRESET (OWNER-DECISIONS 240 (B)): "a 'Riding with kids' preset for
-    children on their own bikes. LTS 1 strongly preferred, LTS 2 allowed but costly, LTS 3+
-    avoided hard, slower planning speeds and gentler hills. It builds on (A)." The numbers
-    are developer defaults for the owner to confirm; these tests hold what the owner said,
-    not the numbers, except where a number is the whole point."""
+class TestNoviceAndNervous:
+    """v0.7.0 plan, "Novice and Nervous ride type" (Stephen 2026-10-13: "assume that each road
+    is one LTS higher than typical and coordinate there"). It replaces Riding with kids
+    (FOLLOWUP-KIDS-PRESET); the plan's defaults are held here: one-level-up pricing, a 1.4x
+    detour ceiling, 11.2 mph, hills -60."""
 
-    def test_it_is_offered_and_rides_the_existing_graphs(self) -> None:
-        """No new Valhalla graph or variant: the standard graph, its weekend twin, and the
-        no-trail graph with trails off, as Default rides."""
-        assert presets.PRESETS["kids"].variant == Variant.STANDARD.value
+    def test_it_takes_riding_with_kids_place_and_old_names_open_it(self) -> None:
+        assert "kids" not in presets.PRESETS
+        assert presets.resolve_preset("kids") == presets.NOVICE
+        assert presets.resolve_preset("default") == "default"
+        assert presets.PRESETS[presets.NOVICE].name == "novice"
+
+    def test_it_rides_the_existing_graphs(self) -> None:
+        """Ranking and costing only: no new graph, no map rebuild."""
+        assert presets.PRESETS["novice"].variant == Variant.STANDARD.value
         for when in ("weekend", "weekday_rush", "weekday_offpeak"):
-            assert presets.variant_for_ride("kids", when) == presets.variant_for_ride(
+            assert presets.variant_for_ride("novice", when) == presets.variant_for_ride(
                 "default", when
             )
-        assert presets.variant_for_ride("kids", "weekend", trails_off=True) == "no-trail"
-        assert "kids" not in presets.OFFROAD_PRESETS
-        assert presets.PRESETS["kids"].assist_speed_kmh is None
-        assert presets.PRESETS["kids"].carrying is None
+        assert presets.variant_for_ride("novice", "weekend", trails_off=True) == "no-trail"
+        assert presets.PRESETS["novice"].assist_speed_kmh is None
+        assert presets.PRESETS["novice"].carrying is None
 
-    def test_lts3_and_worse_are_avoided_hard(self) -> None:
-        """The top of the slider: LTS 4, Avoid and red junctions ranked first, then LTS 3,
-        with item 250's weights and the LTS 4 hold."""
-        preset = presets.PRESETS["kids"]
-        assert preset.stress == presets.STRESS_MAX
-        assert presets.maxcalm_for(presets.stress_start("kids"))
-        assert options("kids")["use_roads"] == 0.0
-        exposure = presets.exposure_for("kids")
+    def test_every_road_is_priced_one_level_up(self) -> None:
+        """Item 2: LTS 1 as 2, 1.5 as 2.5, 2 as 3, 3 as 4, 4 as Avoid, Avoid stays Avoid."""
+        exposure = presets.exposure_for("novice")
+        assert exposure.shift == 1
         assert (exposure.lts3, exposure.lts4, exposure.avoid) == (1.0, 8.0, 16.0)
+        # The LTS 4 hold reads the shifted LTS 4, so it holds real LTS 3 too.
         assert exposure.hold_lts4
+        shifted = {
+            (tier, half): presets.shifted_tier(tier, half, 1)
+            for tier in ("1", "2", "3", "4", "5")
+            for half in (False, True)
+        }
+        assert shifted[("1", False)] == ("2", False)
+        assert shifted[("1", True)] == ("2", True)  # 1.5 as 2.5
+        assert shifted[("2", False)] == ("3", False)
+        assert shifted[("2", True)] == ("3", True)  # 2.5 as 3.5
+        assert shifted[("3", False)] == ("4", False)
+        assert shifted[("3", True)] == ("4", True)  # 3.5 as 4.5
+        assert shifted[("4", False)] == ("5", False)
+        assert shifted[("4", True)] == ("5", False)  # 4.5 as Avoid
+        assert shifted[("5", False)] == ("5", False)
+        assert presets.shifted_tier("unknown", False, 1) == ("unknown", False)
+        # So each real level costs what the next level costs on Trailmaxxing.
+        weights = exposure.weights
+        assert weights[presets.shifted_tier("2", False, 1)[0]] == 1.0
+        assert weights[presets.shifted_tier("3", False, 1)[0]] == 8.0
+        assert weights[presets.shifted_tier("4", False, 1)[0]] == 16.0
 
-    def test_lts2_counts_half_a_metre_of_lts3(self) -> None:
-        """Item 240 (B), "LTS 2 allowed but costly": a metre of LTS 2 counts half a metre
-        of LTS 3, twice Trailmaxxing's and Cargo with passengers' quarter (240 (A)), and
-        the weights the search reads say so."""
-        exposure = presets.exposure_for("kids")
-        assert exposure.lts2 == 0.5
-        assert exposure.weights == {"2": 0.5, "3": 1.0, "4": 8.0, "5": 16.0}
-        assert presets.exposure_for("trailmaxxing").weights["2"] == 0.25
+    def test_junction_colours_go_one_step_up(self) -> None:
+        assert presets.shifted_severity("orange", 1) == "red"
+        assert presets.shifted_severity("red", 1) == "red"
+        assert presets.shifted_severity(None, 1) is None
+        assert presets.shifted_severity("orange", 0) == "orange"
 
-    def test_it_plans_slower(self) -> None:
-        """Slower than every other ride type that sets a pace but Mass Ride's parade, and
-        than Hybrid's own: about 6 mph."""
-        speed = options("kids")["cycling_speed"]
-        assert 5 * MPH_TO_KMH <= speed <= 8 * MPH_TO_KMH
-        assert speed < presets.VALHALLA_DEFAULT_SPEED_KMH["Hybrid"]
-        for name in ("cargo", "ebike", "bikeshare"):
-            assert speed < options(name)["cycling_speed"], name
+    def test_shift_stress_moves_metres_up(self) -> None:
+        stress = {"1": 100.0, "2": 50.0, "3": 20.0, "4": 5.0, "5": 1.0, "unknown": 7.0}
+        assert presets.shift_stress(stress, 1) == {
+            "1": 0.0,
+            "2": 100.0,
+            "3": 50.0,
+            "4": 20.0,
+            "5": 6.0,
+            "unknown": 7.0,
+        }
+        assert presets.shift_stress(stress, 0) is stress
 
-    def test_its_hills_are_gentler(self) -> None:
-        assert options("kids")["use_hills"] < options("cargo")["use_hills"]
-        assert options("kids")["use_hills"] < options("default")["use_hills"]
-        brake = presets.PRESETS["kids"].brake_grade
-        assert brake is not None and brake <= presets.PRESETS["cargo"].brake_grade
-        # Every dial exists on every preset: the rider may still seek hills.
-        assert presets.PRESETS["kids"].hills_seek
+    def test_short_detours_not_trailmaxxings_long_ones(self) -> None:
+        """Item 3: a ceiling of 1.4x the router's own route, where Trailmaxxing has 1.6x."""
+        assert presets.PRESETS["novice"].ceiling_ratio == 1.4
+        assert presets.PRESETS["trailmaxxing"].ceiling_ratio == presets.DEFAULT_CEILING_RATIO
+        assert presets.default_ceiling_m(10_000, "novice") == pytest.approx(14_000)
+        assert presets.default_ceiling_m(10_000, "trailmaxxing") == pytest.approx(16_000)
+        assert presets.default_ceiling_m(10_000) == pytest.approx(16_000)
+        # Never less than a mile more, as on every ride type.
+        assert presets.default_ceiling_m(1_000, "novice") == pytest.approx(2_609.344)
+        assert not presets.PRESETS["novice"].long_calm
 
-    def test_it_prefers_living_streets_and_names_its_bicycle(self) -> None:
-        assert options("kids")["use_living_streets"] == 1.0
-        assert options("kids")["bicycle_type"] == "Hybrid"
-        assert not presets.PRESETS["kids"].long_calm
+    def test_the_top_of_the_slider(self) -> None:
+        assert presets.PRESETS["novice"].stress == presets.STRESS_MAX
+        assert presets.maxcalm_for(presets.stress_start("novice"))
+        assert options("novice")["use_roads"] == 0.0
+
+    def test_an_adult_beginners_pace_and_gentle_hills(self) -> None:
+        """Item 5: Hybrid's 11.2 mph (18 km/h), hills -60 (Cargo's gentle setting)."""
+        assert options("novice")["cycling_speed"] == pytest.approx(11.2 * MPH_TO_KMH, abs=0.05)
+        assert options("novice")["cycling_speed"] == presets.VALHALLA_DEFAULT_SPEED_KMH["Hybrid"]
+        assert presets.PRESETS["novice"].hills == -60
+        assert options("novice")["use_hills"] == options("cargo")["use_hills"]
+        assert options("novice")["use_living_streets"] == 1.0
+        assert options("novice")["bicycle_type"] == "Hybrid"
+        assert presets.PRESETS["novice"].hills_seek
 
 
 class TestMountainBike:

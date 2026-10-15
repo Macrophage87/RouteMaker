@@ -258,12 +258,14 @@ test("the button is in the point tools, only with two or more stops, and says wh
   const app = appSource();
   assert.equal(BEST_ORDER_LABEL, "Best order");
   assert.equal(STILL_FINDING_ORDER_SAID, "Still finding the best order.");
-  assert.match(app, /const orderShown = !isMassRide\(preset\) && stopsThatMove\(points, loopVias\) >= 2;/);
+  assert.match(app, /const orderShown = !isMassRide\(preset\) && stopsThatMove\(stopsOnly\(points, VIA_MARKS\.isVia, loopVias\)\.points, loopVias\) >= 2;/);
   assert.match(app, /\{orderShown && \(\s*<button[\s\S]{0,600}aria-disabled=\{ordering \? true : undefined\}\s*>\s*\{BEST_ORDER_LABEL\}/);
   // A second press while one is being found is answered, not sent.
   assert.match(app, /if \(orderingRef\.current\) \{\s*announce\(STILL_FINDING_ORDER_SAID\);\s*return;/);
   // The answer goes through applyAnswer with the ride as asked and as it is now, and only a new order is committed.
-  assert.match(app, /applyAnswer\(\s*\{ points: current, preset: ride\.preset, dials: ride\.dials, loop \},\s*\{ points: pointsRef\.current, preset: now\.preset, dials: now\.dials \}/);
+  // Asked of the stops only (v0.7.0): the via points go with the stop they lead to.
+  assert.match(app, /requestStopOrder\(stops\.points, ride\.preset, ride\.dials\)/);
+  assert.match(app, /applyAnswer\(\s*\{ points: current, preset: ride\.preset, dials: ride\.dials, loop, stops: stops\.points\.length < current\.length \? stops : undefined \},\s*\{ points: pointsRef\.current, preset: now\.preset, dials: now\.dials \}/);
   assert.match(app, /if \(applied\.commit\) commit\(applied\.commit\);\s*orderNotice\(applied\.say, pointsRef\.current\);/);
   // When the button leaves with the focus on it, the focus goes to Reverse.
   assert.match(app, /if \(orderShown \|\| !orderFocused\.current\) return;[\s\S]{0,200}reverseButton\.current\?\.focus\(\)/);

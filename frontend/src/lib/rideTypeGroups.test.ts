@@ -30,7 +30,7 @@ test("the groups are the owner's: Transportation, Adventure (Fast with it), Grou
     ["Transportation", "Adventure", "Group"],
   );
   const [transport, adventure, group] = RIDE_GROUPS;
-  assert.deepEqual([...transport.ids], ["default", "bike-transit", "bikeshare-transit", "bikeshare", "cargo", "ebike", "kids"]);
+  assert.deepEqual([...transport.ids], ["default", "bike-transit", "bikeshare-transit", "bikeshare", "cargo", "ebike", "novice"]);
   // Rebalance Ride (REBALANCE-RIDE): Stephen named it an adventure mode.
   assert.deepEqual([...adventure.ids], ["fast", "trailmaxxing", "mountain-goat", "mountain-bike", "gravel", "rebalance"]);
   assert.deepEqual([...group.ids], ["group-ride", "mass-ride"]);
@@ -68,8 +68,12 @@ test("a hyphen or an apostrophe does not stop a match", () => {
   const ebike = PRESETS.find((p) => p.id === "ebike")!;
   assert.ok(matchesRideType(ebike, "ebike"));
   assert.ok(matchesRideType(ebike, "e-bike"));
-  const kids = PRESETS.find((p) => p.id === "kids")!;
-  assert.ok(matchesRideType(kids, "childs pace"));
+  const cargo = PRESETS.find((p) => p.id === "cargo")!;
+  assert.ok(matchesRideType(cargo, "cargo bikes pace"));
+  // Novice and Nervous is found by the words a rider may look for (its keywords).
+  const novice = PRESETS.find((p) => p.id === "novice")!;
+  assert.ok(matchesRideType(novice, "kids"));
+  assert.ok(matchesRideType(novice, "beginner"));
 });
 
 test("no match leaves no groups, and says so", () => {

@@ -24,6 +24,7 @@
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type RefObject } from "react";
 import { requestRoute, type RouteResponse } from "./lib/api.ts";
+import { VIA_MARKS, viaIndices } from "./lib/pointKinds.ts";
 import type { Dials } from "./lib/dials.ts";
 import { insideCoverage, type LonLat } from "./lib/geo.ts";
 import type { PresetId } from "./lib/presets.ts";
@@ -375,11 +376,12 @@ export function RideMode({
   keepLastRide?: boolean;
 }) {
   const [route, setRoute] = useState(plannedRoute);
-  const model = useMemo(() => rideModel(route), [route]);
-  const modelRef = useRef(model);
-  modelRef.current = model;
   // What a re-plan builds on: the plan's points at first, then the last re-plan's (never a loop: its end is sent).
   const plan = useRef({ points: plannedPoints, loop: plannedLoop });
+  // The via points are not announced (v0.7.0): the model leaves them out of its cues.
+  const model = useMemo(() => rideModel(route, viaIndices(plan.current.points, VIA_MARKS.isVia)), [route]);
+  const modelRef = useRef(model);
+  modelRef.current = model;
   const [ride, setRide] = useState<RideState>(startState);
   const rideRef = useRef(ride);
   const prefsRef = useRef(prefs);
@@ -526,7 +528,7 @@ export function RideMode({
         setReplanNote(REPLAN_NO_SIGNAL);
         tell(REPLAN_NO_SIGNAL);
       }, REPLAN_TIMEOUT_MS);
-      const result = await requestRoute(points, preset, { dials: { ...dials, loop: false } });
+      const result = await requestRoute(points, preset, { dials: { ...dials, loop: false }, vias: viaIndices(points, VIA_MARKS.isVia) });
       window.clearTimeout(timer);
       gate.finish(result.ok);
       if (ended.current || ticket !== replanTicket.current) return;
@@ -540,7 +542,7 @@ export function RideMode({
       plan.current = { points, loop: false };
       // The first route, without the picker, during a ride (plan section 4).
       announcer.current?.drop();
-      const model = rideModel(result.route);
+      const model = rideModel(result.route, viaIndices(points, VIA_MARKS.isVia));
       modelRef.current = model;
       setRoute(result.route);
       // The rider stays where they are on the map until the next fix places them on the new route.

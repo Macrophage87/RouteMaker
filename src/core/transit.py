@@ -1179,16 +1179,20 @@ class RoutingServices:
         *,
         max_calls: int | None = None,
         per_call_s: float = CANDIDATE_CALL_S,
+        costing: dict | None = None,
     ) -> None:
         self._until = until
         self._preset = preset_name
+        # The bike legs' costing where it is not the preset's own (Novice and Nervous's
+        # Bikeshare + Transit: its pricing at the share bike's pace).
+        self._costing = costing
         self._max_calls = MAX_ROUTER_CALLS if max_calls is None else max_calls
         self._per_call_s = per_call_s
         self.calls = 0
         self.spent_s = 0.0  # time in router calls, for the API's log of its phases
 
     def ride(self, a: LonLat, b: LonLat) -> Ride | None:
-        return self._route(a, b, "bicycle", presets.costing(self._preset))
+        return self._route(a, b, "bicycle", self._costing or presets.costing(self._preset))
 
     def walk(self, a: LonLat, b: LonLat) -> Ride | None:
         """On foot, as the bikeshare planner walks (Valhalla's pedestrian costing at 3 mph)."""

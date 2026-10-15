@@ -112,7 +112,7 @@ export function elevationsAlong(
  * Mass Ride has no loop. `federal` is a Mass Ride's federal-land lines
  * (lib/federalStops.ts federalLines, item 239), carried in the description.
  */
-export function exportOf(route: ExportedRoute, points: readonly LonLat[], loop = false, federal: readonly string[] = []): GpxExport {
+export function exportOf(route: ExportedRoute, points: readonly LonLat[], loop = false, federal: readonly string[] = [], vias: readonly number[] = []): GpxExport {
   const dials: ExportDials | undefined = route.dials
     ? {
         stress: route.dials.stress,
@@ -132,6 +132,7 @@ export function exportOf(route: ExportedRoute, points: readonly LonLat[], loop =
     rideText: rideText(route),
     ...(gpxDescriptionText(route, federal) ? { routeText: gpxDescriptionText(route, federal) } : {}),
     planPoints: points,
+    ...(vias.length ? { vias } : {}),
     ...(loop && route.preset !== "mass-ride" ? { loop: true } : {}),
     geometry: route.geometry.coordinates,
     ...(route.profile ? { elevations: elevationsAlong(route.geometry.coordinates, route.profile) } : {}),
