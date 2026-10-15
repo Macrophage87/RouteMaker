@@ -253,6 +253,7 @@ OPTIONAL_COLUMNS = (
     "mtb_level",
     "mtb_name",
     "stress_ratings",
+    "sidepath_name",
 )
 REQUIRED_COLUMNS = (
     "osm_way_id",
@@ -1051,7 +1052,15 @@ def describe(row: dict, router: dict) -> dict:
     path = bool(row.get("is_trail_class"))
     # A mountain-bike trail's own name (`mtb_name`: name, ref or mtb:name) where the router
     # and the long-trail name have none (the owner, 2026-10-10).
-    name = router.get("name") or row.get("trail_name") or row.get("mtb_name")
+    # And an unnamed bike way beside a named street, that street's bike lane ("9th Street
+    # Northwest protected bike lane"; v0.7.0 "Go riding fixes" item 4), as the route
+    # description names it.
+    name = (
+        router.get("name")
+        or row.get("trail_name")
+        or row.get("mtb_name")
+        or row.get("sidepath_name")
+    )
     name_source = ROUTER if router.get("name") else (OSM if name else None)
     kind, kind_source = road_kind(router, row)
     title = name or (

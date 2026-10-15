@@ -59,6 +59,33 @@ export function writeRidePrefs(prefs: RidePrefs, store: KeyValueStore | null = b
   }
 }
 
+// ---- Track-up (v0.7.0, "Go riding fixes" item 1), kept on this device ---------------------------
+
+/**
+ * Whether the map turns with the rider's heading in a ride: track-up by default (the owner, 2026-10-15:
+ * "Aim for track up rather than north up, but leave that an option"); the ride settings' switch
+ * ("Turn the map to my heading") turns it off, and the choice is kept on this device.
+ */
+export const HEADING_UP_KEY = "routemaker.headingUp";
+export const HEADING_UP_DEFAULT = true;
+
+export function readHeadingUp(store: KeyValueStore | null = browserStore()): boolean {
+  try {
+    const raw = store?.getItem(HEADING_UP_KEY);
+    return raw === "0" ? false : raw === "1" ? true : HEADING_UP_DEFAULT;
+  } catch {
+    return HEADING_UP_DEFAULT;
+  }
+}
+
+export function writeHeadingUp(on: boolean, store: KeyValueStore | null = browserStore()): void {
+  try {
+    store?.setItem(HEADING_UP_KEY, on ? "1" : "0");
+  } catch {
+    // Blocked site data: the choice holds for this visit only.
+  }
+}
+
 export function toScreenReader(output: CueOutput): boolean {
   return output === "screen-reader" || output === "both";
 }

@@ -875,6 +875,12 @@ export interface RouteResponse {
    */
   leg_ends?: number[];
   /**
+   * Which side of the street the destination is on, from the router's destination maneuver (v0.7.0,
+   * "Go riding fixes" item 5): Ride mode's last cue says "Destination on your right". Null where the
+   * router does not say; absent from an older API.
+   */
+  arrival_side?: "left" | "right" | null;
+  /**
    * The route's sections by traffic stress, in route order, meeting end to
    * end from 0; one unknown section for a plan whose joins ran past the
    * budget. Absent from an older API, when the route is drawn in one colour.

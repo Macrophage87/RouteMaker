@@ -156,7 +156,7 @@ test("parkway runs by the NPS layer: an unnamed road or untraced part in its pol
   // The API's own words for a stretch with no name (describe.py _street_words); never null.
   assert.equal(UNNAMED_ROAD, "unnamed road");
   assert.equal(UNTRACED_STREET, "this part of the route");
-  assert.equal(UNNAMED_PATH, "unnamed path");
+  assert.equal(UNNAMED_PATH, "path");
   for (const street of [UNNAMED_ROAD, UNTRACED_STREET, null]) {
     assert.deepEqual(parkwayRuns([entry(...inside, street)], route, AREAS).map((r) => r.parkway.name), ["Suitland Pkwy"], String(street));
   }

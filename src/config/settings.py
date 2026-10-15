@@ -123,6 +123,12 @@ ADMIN_PATH = os.environ.get("DJANGO_ADMIN_PATH", "internal-8f3a/")
 # commented out in .env.example.
 ADMIN_BASEMAP_TILE_URL = os.environ.get("ADMIN_BASEMAP_TILE_URL", "").strip()
 
+# DC 311's Open311 (GeoReport v2) key (v0.7.0 "Go riding fixes" item 3; core.dc311): with it,
+# Ride mode's 311 picks are sent to DC from the server; without it (the default) the sender is
+# off and a pick opens the phone's text app to 311, filled in. The owner requests the key from
+# DC and sets it in the deployment's environment file; it is never written anywhere else.
+DC311_API_KEY = os.environ.get("DC311_API_KEY", "").strip()
+
 # Everything with state in it lives on the separate data volume, so nothing
 # durable sits on the root volume and the code directory holds no data. The
 # scheduled tasks resolve their paths from here rather than from their own

@@ -73,7 +73,12 @@ from django.conf import settings
 from django.db import connection
 from django.utils import timezone
 
-from pipeline.schema import MASS_WIDTH_COLUMN, STRESS_HALF_COLUMN, validate_schema_name
+from pipeline.schema import (
+    MASS_WIDTH_COLUMN,
+    SIDEPATH_NAME_COLUMN,
+    STRESS_HALF_COLUMN,
+    validate_schema_name,
+)
 from pipeline.variants import Variant
 from routemaker import avoid_junctions as avoid_rules
 from routemaker import (
@@ -1940,6 +1945,58 @@ def route_profile(
         return None
 
 
+# Valhalla's maneuver types for arriving with the destination on the right or the left
+# (`DirectionsLeg_Maneuver_Type`: kDestinationRight 5, kDestinationLeft 6; kDestination 4
+# says no side).
+_DESTINATION_SIDES = {5: "right", 6: "left"}
+
+
+def arrival_side_of(trip: dict) -> str | None:
+    """Which side of the street the destination is on (v0.7.0 "Go riding fixes" item 5):
+    the last leg's destination maneuver, else the destination location's `side_of_street`
+    as the router stated it. None where it says neither (a route made of pieces, an older
+    router, a destination on the line itself)."""
+    try:
+        legs = trip.get("legs") or []
+        maneuvers = (legs[-1].get("maneuvers") or []) if legs else []
+        if maneuvers:
+            side = _DESTINATION_SIDES.get(maneuvers[-1].get("type"))
+            if side:
+                return side
+        locations = trip.get("locations") or []
+        side = (locations[-1] or {}).get("side_of_street") if locations else None
+        return side if side in ("left", "right") else None
+    except (AttributeError, IndexError, TypeError):
+        return None
+
+
+def sidepath_names_of(pieces: list[Piece]) -> dict[int, str]:
+    """The street-side names of the route's ways that have no name of their own
+    (`segment.sidepath_name`, `routemaker.facility.side_street_names`), by way id.
+    Empty where the live table has no such column yet (a table built before it) or
+    the query fails: those ways are then just "path"."""
+    ids = sorted({p.way_id for p in pieces if not p.names and p.way_id})
+    if not ids:
+        return {}
+    try:
+        from .segment_info import live_columns
+
+        schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+        if SIDEPATH_NAME_COLUMN not in live_columns(schema):
+            return {}
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT osm_way_id, max({SIDEPATH_NAME_COLUMN}) FROM {schema}.segment "
+                f"WHERE osm_way_id = ANY(%s) AND {SIDEPATH_NAME_COLUMN} IS NOT NULL "
+                "GROUP BY osm_way_id",
+                [ids],
+            )
+            return {int(way): str(name) for way, name in cursor.fetchall() if name}
+    except Exception:  # noqa: BLE001 - the description says "path" without them
+        logger.warning("the street-side names of unnamed ways could not be read", exc_info=True)
+        return {}
+
+
 def describe_route(
     leg_runs: list,
     pieces: list[Piece],
@@ -1947,12 +2004,15 @@ def describe_route(
     events: list | None,
     summary: dict,
     walks: list[tuple[float, float]] | None = None,
+    side_names: dict[int, str] | None = None,
 ) -> tuple[list[dict], list[dict]] | None:
     """The route as words, in full and as an overview (`routemaker.describe`,
     OWNER-DECISIONS 220 and 226): built
     from the pieces and junction events the plan already has, with no router
-    call and no query. None where it could not be built: the route is answered
-    all the same."""
+    call. `side_names` (`sidepath_names_of`) names a piece of a way with no name of
+    its own after the street it runs alongside ("9th Street Northwest protected bike
+    lane"). None where it could not be built: the route is answered all the same."""
+    side_names = side_names or {}
     try:
         legs: list = []
         for run in leg_runs:
@@ -1963,7 +2023,12 @@ def describe_route(
                             pieces[i].metres,
                             classes[i][0],
                             classes[i][1],
-                            pieces[i].names,
+                            pieces[i].names
+                            or (
+                                (side_names[pieces[i].way_id],)
+                                if pieces[i].way_id in side_names
+                                else ()
+                            ),
                             pieces[i].use,
                             pieces[i].heading_in,
                             pieces[i].heading_out,
@@ -2468,7 +2533,9 @@ def plan(
         "costing_options": costing,
         "elevation_interval": ELEVATION_INTERVAL_M,
         "date_time": {"type": 3, "value": planning_time(when=when)},
-        "directions_type": "none",
+        # Maneuvers, without their narrative: the destination maneuver says which side of
+        # the street the destination is on (`arrival_side_of`, v0.7.0 "Go riding fixes" 5).
+        "directions_type": "maneuvers",
         "units": "kilometers",
     }
     # Live work zones (FOLLOWUP-WORKZONES, 341-349), in force at the ride time: a closure
@@ -3013,7 +3080,13 @@ def plan(
         )
         profile_s = clock() - profiled_from
         described = describe_route(
-            leg_runs, pieces, classes, events, trip.get("summary") or {}, walks
+            leg_runs,
+            pieces,
+            classes,
+            events,
+            trip.get("summary") or {},
+            walks,
+            sidepath_names_of(pieces),
         )
         described_full, described_overview = described if described else (None, None)
         # The Avoid-rated junctions it passes (307, 335), at their distance along the
@@ -3176,6 +3249,7 @@ def plan(
             "hills_tolerate": hills_tolerate,
             "attribution": list(ATTRIBUTION),
             "leg_ends": leg_ends,
+            "arrival_side": arrival_side_of(trip),
             "intersections": None if events is None else _intersection_rows(events),
             "intersection_groups": None if events is None else _intersection_groups(events),
             "junctions_debug": (

@@ -14,8 +14,10 @@ import {
   REPLAN_BACKOFF_MS,
   REPLAN_GAP_MS,
   ReplanGate,
+  arrivalSideWords,
   compassWord,
   cueSpoken,
+  isUnnamed,
   measureMap,
   nextAction,
   offThreshold,
@@ -32,6 +34,7 @@ import {
   startState,
   step,
   toGo,
+  turnWords,
   wayBack,
   wayRidden,
   whereAmI,
@@ -131,7 +134,8 @@ test("rideModel: a cue for the turn, the flagged crossing and the end; none for 
   const turn = model.cues[0];
   assert.equal(turn.movement, "left");
   assert.equal(turn.street, "B Street");
-  assert.equal(turn.text, "Left onto B Street at a signal, low stress (LTS 1).");
+  // The turn and the street only (v0.7.0 "Go riding fixes" item 2): no junction or stress words.
+  assert.equal(turn.text, "Left onto B Street.");
   assert.ok(Math.abs(turn.atM - 1000) < 2, `${turn.atM}`);
   assert.ok(Math.abs(model.lengthM - 2000) < 2);
 });
@@ -222,7 +226,7 @@ test("Full: advance, prepare and now at a turn, each once, farthest first", () =
     turn.map((e) => e.phase),
     ["advance", "prepare", "now"],
   );
-  assert.match(turn[0].spoken, /^In \d+ feet, left onto B Street at a signal, low stress \(LTS 1\)\.$/);
+  assert.match(turn[0].spoken, /^In \d+ feet, left onto B Street\.$/);
   assert.equal(turn[2].spoken, "Left now onto B Street.");
   assert.equal(turn[2].urgent, true);
   assert.equal(turn[0].urgent, false);
@@ -410,7 +414,7 @@ test("toGo and whereAmI: to the next stop and the end; US units spoken, metric o
   assert.ok(Math.abs(togo.end.metres - 1600) < 3);
   assert.ok(Math.abs((togo.end.seconds ?? 0) - 320) < 2, "at the route's own pace, 5 m/s");
   const spoken = whereAmI(model, state);
-  assert.match(spoken, /^On A Street\. Next, in 0\.4 miles: left onto B Street, busy road \(LTS 3\)\. 0\.4 miles to stop 1\. 1 mile to the end\.$/);
+  assert.match(spoken, /^On A Street\. Next, in 0\.4 miles: left onto B Street\. 0\.4 miles to stop 1\. 1 mile to the end\.$/);
   const shown = whereAmI(model, state, true);
   assert.match(shown, /0\.4 mi \(0\.6 km\) to stop 1/);
 });
@@ -832,10 +836,10 @@ test("whereAmI: an unnamed path is never a trail name nor a street to measure fr
   // Mid-trail: the only junctions are with unnamed paths, so no marker, just the trail.
   assert.deepEqual(placeOnRoute(model, 1600), { kind: "street", street: "Capital Crescent Trail" });
   assert.match(whereAmI(model, { ...startState(), progressM: 1600 }), /^On the Capital Crescent Trail\. /);
-  // Far along the unnamed path: said plainly, no distance, no "the unnamed path".
+  // Far along the unnamed path: said plainly ("a path", the owner's word), no distance, no "unnamed".
   for (const progressM of [100, 5000]) {
     const said = whereAmI(model, { ...startState(), progressM });
-    assert.match(said, /^On an unnamed path\. /);
+    assert.match(said, /^On a path\. /);
     assert.doesNotMatch(said, /of unnamed|the unnamed|about/i);
   }
   assert.notEqual(placeOnRoute(model, 5000)?.kind, "trail");
@@ -848,7 +852,7 @@ test("whereAmI: the named trail marker still measures from a named street", () =
   const model = rideModel(route);
   assert.match(whereAmI(model, { ...startState(), progressM: 1300 }), /^On the Capital Crescent Trail, about 0\.6 miles north of A Street\. /);
   // Past the trail onto the unnamed path, far from A Street: plainly the path.
-  assert.match(whereAmI(model, { ...startState(), progressM: 5000 }), /^On an unnamed path\. /);
+  assert.match(whereAmI(model, { ...startState(), progressM: 5000 }), /^On a path\. /);
 });
 
 test("whereAmI: the trail marker never measures from a junction off the trail", () => {
@@ -885,11 +889,13 @@ test("otherStreet: the trail's other street; off the trail, the named one whatev
 test("wayRidden: a name as given, an unnamed way plainly, and nothing for an untraced one", () => {
   const way = (street: string | null, facility: string | null = null) => wayRidden({ fromM: 0, toM: 100, street, facility } as RideModel["stretches"][number]);
   assert.equal(way("R Street Northwest"), "R Street Northwest");
-  assert.equal(way(null, "protected"), "an unnamed path");
-  assert.equal(way(null, "path"), "an unnamed path");
+  assert.equal(way(null, "protected"), "a path");
+  assert.equal(way(null, "path"), "a path");
   assert.equal(way(null), "an unnamed road");
   assert.equal(way("unnamed road", "protected"), "an unnamed road");
-  assert.equal(way("unnamed path"), "an unnamed path");
+  assert.equal(way("unnamed path"), "a path", "an older API's word");
+  assert.equal(way("path"), "a path");
+  assert.equal(way("9th Street Northwest protected bike lane", "protected"), "9th Street Northwest protected bike lane");
   assert.equal(way("this part of the route"), null);
   assert.equal(wayRidden(null), null);
 });
@@ -899,4 +905,46 @@ test("whereAmI on \"this part of the route\": On the route.", () => {
   route.description![2] = stretch(3000, 6000, "1.9 to 3.7 mi (3.0 to 6.0 km): this part of the route, low stress (LTS 1).", { street: "this part of the route" });
   const model = rideModel(route);
   assert.match(whereAmI(model, { ...startState(), progressM: 5000 }), /^On the route\. /);
+});
+
+// ---- Go riding fixes (v0.7.0 plan, 2026-10-15): the turn and the street only; the arrival side ----
+
+test("turn cues are the turn and the street only, never stress, LTS or junction words", () => {
+  assert.equal(turnWords("left", "R Street Northwest"), "Left onto R Street Northwest.");
+  assert.equal(turnWords("right", "9th Street Northwest protected bike lane"), "Right onto 9th Street Northwest protected bike lane.");
+  assert.equal(turnWords("right", "path"), "Right onto the path.");
+  assert.equal(turnWords("left", "unnamed path"), "Left onto the path.", "an older API's word");
+  assert.equal(turnWords("left", "unnamed road"), "Left.");
+  assert.equal(turnWords("left", null), "Left.");
+  const model = rideModel(lRoute());
+  const { events } = ride(model, "full", 0, 2000);
+  const turns = events.filter((e) => e.cue?.kind === "turn");
+  assert.ok(turns.length >= 3);
+  for (const event of turns) {
+    assert.doesNotMatch(event.spoken, /LTS|stress|signal|stop sign|junction/i, event.spoken);
+    assert.doesNotMatch(event.cue!.text, /LTS|stress|signal|stop sign|junction/i, event.cue!.text);
+  }
+});
+
+test("the last cue says which side the destination is on, from the router, and nothing when unknown", () => {
+  assert.equal(arrivalSideWords("right"), "Destination on your right.");
+  assert.equal(arrivalSideWords(null), "");
+  assert.equal(arrivalSideWords(undefined), "");
+  for (const side of ["left", "right"] as const) {
+    const model = rideModel({ ...lRoute(), arrival_side: side });
+    const end = model.cues[model.cues.length - 1];
+    assert.equal(end.text, `The end of the route. Destination on your ${side}.`);
+    const { events } = ride(model, "quiet", 0, 2000);
+    assert.equal(events.at(-1)?.spoken, `You have arrived at the end of the route. Destination on your ${side}.`);
+  }
+  const unknown = rideModel({ ...lRoute(), arrival_side: null });
+  assert.equal(unknown.cues.at(-1)?.text, "The end of the route.");
+  assert.equal(cueSpoken(unknown.cues.at(-1)!, "arrive", 0), "You have arrived at the end of the route.");
+});
+
+test("a path with no name is unnamed; a bike lane named for its street is a name", () => {
+  assert.equal(isUnnamed("path"), true);
+  assert.equal(isUnnamed("unnamed path"), true);
+  assert.equal(isUnnamed("9th Street Northwest bike lane"), false);
+  assert.equal(isUnnamed("Capital Crescent Trail"), false);
 });

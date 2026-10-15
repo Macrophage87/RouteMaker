@@ -1165,8 +1165,9 @@ class DescriptionEntryOut(Schema):
     from_mi: float
     to_mi: float
     street: str | None = Field(
-        description='The street, or "unnamed path" or "unnamed road"; null on a `via` and '
-        "where a junction's road has no name."
+        description="The street, an unnamed bike lane's name from the street beside it (\"9th"
+        ' Street Northwest protected bike lane"), or "path" or "unnamed road"; null on a `via`'
+        " and where a junction's road has no name."
     )
     tier: int | None = Field(description="1-5 on a stretch; null: not rated, or not a stretch.")
     facility: Literal["path", "protected", "lane"] | None = Field(
@@ -1855,6 +1856,13 @@ class RouteBody(Schema):
     # Index in geometry.coordinates of each leg's last vertex, one per leg
     # (points - 1); a leg starts where the one before it ends.
     leg_ends: list[int]
+    arrival_side: Literal["left", "right"] | None = Field(
+        default=None,
+        description=(
+            "Which side of the street the destination is on, from the router's destination"
+            " maneuver (Ride mode's last cue: 'Destination on your right'); null where unknown."
+        ),
+    )
     # The route's stressful junctions, in route order; null where they could not
     # be read in time (the route is answered all the same).
     intersections: list[IntersectionOut] | None
@@ -4667,6 +4675,54 @@ def closures_check(request):
     if problem:
         return _error(400, problem)
     return JsonResponse(work_zones.closures_on(line, when=when, bypass=bypass))
+
+
+# Ride mode's 311 (v0.7.0 "Go riding fixes" item 3; core.dc311): whether the server sends a
+# report to DC 311 itself (only with DC311_API_KEY set), and the sending. Off, the page opens
+# the phone's text app to 311 instead. The position and the words go to DC only, never a log.
+REPORT_311_BODY_MAX_BYTES = 2048
+
+
+@api.get("/report311", summary="Whether Ride mode's 311 reports are sent to DC from here")
+@decorate_view(errors_as_json)
+def report311_status(request):
+    from . import dc311
+
+    response = JsonResponse({"enabled": dc311.enabled()})
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@api.post("/report311", summary="Send one Ride mode report to DC 311 (only with a DC key)")
+@decorate_view(
+    same_site_only,
+    ratelimit.rate_limited(ratelimit.REPORT_311),
+    errors_as_json,
+)
+def report311_send(request):
+    from . import dc311
+
+    body, refusal = _json_body(request, REPORT_311_BODY_MAX_BYTES)
+    if refusal is not None:
+        return refusal
+    body = body if isinstance(body, dict) else {}
+    kind, lat, lon = body.get("kind"), body.get("lat"), body.get("lon")
+    description = body.get("description", "")
+    if kind not in dc311.KINDS:
+        return _error(400, f"kind is one of {', '.join(dc311.KINDS)}.")
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (lat, lon)):
+        return _error(400, "lat and lon are numbers.")
+    if not isinstance(description, str) or len(description) > dc311.DESCRIPTION_MAX:
+        return _error(400, f"description is text of at most {dc311.DESCRIPTION_MAX} characters.")
+    try:
+        ident = dc311.send(kind, float(lat), float(lon), description)
+    except dc311.NotSent as refused:
+        out = JsonResponse({"error": refused.message, "code": refused.code}, status=refused.status)
+        out["Cache-Control"] = "no-store"
+        return out
+    out = JsonResponse({"sent": True, "id": ident})
+    out["Cache-Control"] = "no-store"
+    return out
 
 
 # Mass Ride and Group Ride links: the other riders as dots, and alerts (v0.7.0 plan;

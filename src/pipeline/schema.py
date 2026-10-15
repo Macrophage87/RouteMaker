@@ -458,6 +458,9 @@ MTB_LEVEL_COLUMN = "mtb_level"
 # `name`. A column of its own, not `trail_name`: that one chains the long trails' runs,
 # which a mountain-bike way must never join (OWNER-DECISIONS 378).
 MTB_NAME_COLUMN = "mtb_name"
+# An unnamed bike way's name from the street beside it (`routemaker.facility.
+# side_street_names`): read by the route description (`core.routing`) and the road panel.
+SIDEPATH_NAME_COLUMN = "sidepath_name"
 WALK_BIKE_COLUMN = "walk_bike"
 ROUGH_COLUMN = "is_rough"
 ROAD_TRAIT_COLUMNS = ("road_speed_mph", "road_lanes", "road_oneway")
@@ -581,6 +584,13 @@ CREATE TABLE {schema}.segment (
     -- labels it with and the road panel says. Null on every other way and where none is
     -- mapped. Not `trail_name`, which chains the long trails' runs (378).
     mtb_name        text,
+    -- An unnamed cycleway or path's name from the named street it runs alongside
+    -- (`routemaker.facility.side_street_names`; v0.7.0 "Go riding fixes" item 4):
+    -- "9th Street Northwest bike lane", or "... protected bike lane" where tagged
+    -- separated or segregated. The route description and the road panel say it where
+    -- the way has no name of its own. Null on every other way, and on every row of a
+    -- table built before the column existed (the way is then just "path").
+    sidepath_name   text,
     -- What the classifier read the road at, for the intersection model
     -- (`routemaker.intersections`; OWNER-DECISIONS 165-167, 172): the speed and
     -- through lanes a direction as read (tags, an agency's record, a curated

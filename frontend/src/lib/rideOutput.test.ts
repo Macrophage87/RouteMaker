@@ -5,13 +5,16 @@ import assert from "node:assert/strict";
 import {
   Announcer,
   DEFAULT_PREFS,
+  HEADING_UP_KEY,
   POLITE_GAP_MS,
   RIDE_PREFS_KEY,
   ScreenWake,
   Voice,
+  readHeadingUp,
   readRidePrefs,
   toScreenReader,
   toVoice,
+  writeHeadingUp,
   writeRidePrefs,
   type Said,
   type SpeechEnv,
@@ -36,6 +39,21 @@ test("prefs: defaults, a round trip, and junk ignored", () => {
   const throwing = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } };
   assert.deepEqual(readRidePrefs(throwing), DEFAULT_PREFS);
   assert.doesNotThrow(() => writeRidePrefs(DEFAULT_PREFS, throwing));
+});
+
+test("track-up: on by default, the switch's choice kept on this device (Go riding fixes item 1)", () => {
+  assert.equal(readHeadingUp(memoryStore()), true);
+  assert.equal(readHeadingUp(null), true);
+  const store = memoryStore();
+  writeHeadingUp(false, store);
+  assert.equal(store.data[HEADING_UP_KEY], "0");
+  assert.equal(readHeadingUp(store), false);
+  writeHeadingUp(true, store);
+  assert.equal(readHeadingUp(store), true);
+  assert.equal(readHeadingUp(memoryStore({ [HEADING_UP_KEY]: "junk" })), true);
+  const throwing = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } };
+  assert.equal(readHeadingUp(throwing), true);
+  assert.doesNotThrow(() => writeHeadingUp(false, throwing));
 });
 
 test("outputs: which channel each choice uses", () => {

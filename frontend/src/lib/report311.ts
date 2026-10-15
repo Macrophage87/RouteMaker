@@ -79,6 +79,9 @@ export const REPORT_SUMMARY = "Report a problem to DC 311";
 /** Said on the screen beside the action (369: "the screen says the message goes to DC 311"). */
 export const REPORT_PRIVACY =
   "The message goes to DC 311 from your own phone. RouteMaker sends nothing and keeps nothing. The place is the road you are on and your GPS position, so check it before you send.";
+/** The same where the server sends reports to DC 311 itself (it has DC's key; core/dc311.py). */
+export const REPORT_PRIVACY_SERVER =
+  "A problem you pick is sent to DC 311 by RouteMaker's server, with the road you are on and your GPS position. RouteMaker keeps nothing.";
 export const REPORT_OUTSIDE_DC = "Reports to 311 are for Washington, DC only, and this part of the route is outside the District.";
 export const REPORT_NO_PLACE = "Your place on the route is not known yet, so there is no location to report.";
 export const REPORT_OFF_ROUTE = "Off the planned route: the report's place comes from the route's street names, so it waits until you are back on a route.";
@@ -186,4 +189,61 @@ function isApple(userAgent: string, maxTouchPoints: number): boolean {
 export function smsHref(text: string, userAgent: string, maxTouchPoints = 0): string {
   const join = isApple(userAgent, maxTouchPoints) ? "&" : "?";
   return `sms:${DC_311_SHORT_CODE}${join}body=${encodeURIComponent(text)}`;
+}
+
+// ---- One tap (v0.7.0, "Go riding fixes" item 3) -----------------------------------------------------
+//
+// The owner, 2026-10-15: "When reporting to 311 you should be able to select the report and send it. Too
+// many steps in between." So: tap 311, tap the problem, sent. Where the server sends to DC 311 itself (it
+// has DC's Open311 key: GET /api/report311, core/dc311.py), the pick sends it there; otherwise, on a phone,
+// the pick opens the text app to 311 with the problem, the place and the GPS filled in, one tap from sent;
+// on a computer, which sends no texts, the report opens below to copy into DC 311 online. The note is
+// optional and comes after, never before: "Add a note" opens the report, with the note under the sending.
+
+export const REPORT_SENT = "Sent to DC 311.";
+export const REPORT_READY = "Ready to send in Messages.";
+export const REPORT_FORM = "The report is below, to copy into DC 311 online.";
+export const REPORT_SEND_FAILED = "Could not send to DC 311 from here; the report is ready in Messages.";
+
+/** How a pick goes: sent by the server, a filled-in text message, or the report to copy. */
+export type PickWay = "server" | "sms" | "form";
+
+export function pickWay(serverOn: boolean, phone: boolean): PickWay {
+  return serverOn ? "server" : phone ? "sms" : "form";
+}
+
+type Fetch = typeof fetch;
+
+/** Whether the server sends reports to DC 311 itself (GET /api/report311); false when it cannot be asked. */
+export async function report311Enabled(origin: string, get: Fetch = fetch): Promise<boolean> {
+  try {
+    const response = await get(`${origin}/api/report311`, { headers: { Accept: "application/json" } });
+    if (!response.ok) return false;
+    const body = (await response.json()) as { enabled?: unknown };
+    return body.enabled === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Send one report through the server (POST /api/report311): the problem, the point the words describe and
+ * the words for DC 311 online. True when DC took it; false otherwise (off, refused, no signal), and the pick
+ * falls back to the text message.
+ */
+export async function sendReport311(origin: string, kind: ReportKind, place: ReportPlace, note = "", post: Fetch = fetch): Promise<boolean> {
+  const description = reportText(kind, place, note);
+  if (!description) return false;
+  try {
+    const response = await post(`${origin}/api/report311`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ kind, lat: Number(place.point[1].toFixed(5)), lon: Number(place.point[0].toFixed(5)), description }),
+    });
+    if (!response.ok) return false;
+    const body = (await response.json()) as { sent?: unknown };
+    return body.sent === true;
+  } catch {
+    return false;
+  }
 }

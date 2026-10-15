@@ -14,7 +14,8 @@
  * - Off route: re-planned automatically after the gate (plan Q5), or "Keep the planned route", which
  *   shows the way back. A re-plan never touches the plan in the address bar (plan Q2): it is the ride's
  *   own route, held here and in App's ride state only.
- * - Big text (map hidden), Re-centre (and the C key), heading-up, the ride's settings, End ride.
+ * - Big text (map hidden), Re-centre (and the C key), heading-up (track-up by default since v0.7.0), the
+ *   ride's settings, End ride; and an End button always in view at the top of the card, with Undo after.
  * - The map along the route, kept for dead spots (lib/corridor.ts, N5), and Report a problem to DC 311
  *   with the place in the route's street names (lib/report311.ts, N6; OWNER-DECISIONS 369, 465).
  *
@@ -37,6 +38,7 @@ import {
   REPLAN_NO_SIGNAL,
   ReplanGate,
   VERBOSITY_LABELS,
+  cueSpoken,
   nextAction,
   pointAt,
   replanPoints,
@@ -103,6 +105,14 @@ import {
   REPORT_OFF_ROUTE,
   REPORT_OUTSIDE_DC,
   REPORT_PRIVACY,
+  REPORT_PRIVACY_SERVER,
+  REPORT_FORM,
+  REPORT_READY,
+  REPORT_SEND_FAILED,
+  REPORT_SENT,
+  pickWay,
+  report311Enabled,
+  sendReport311,
   REPORT_SUMMARY,
   SHORT_CODE_SPOKEN,
   canText,
@@ -122,6 +132,11 @@ export const rideVoice = new Voice(browserSpeech());
 /** Said as the ride starts, inside the Start press, so the voice is unlocked by it. */
 export const RIDE_STARTED = "Ride started.";
 export const RIDE_ENDED = "Ride ended.";
+/** The always-visible End button's words and the name it is heard by (the visible "End" is in it). */
+export const END_TEXT = "End";
+export const END_RIDE_NAME = "End ride";
+/** How long Undo is offered after End (v0.7.0, "Go riding fixes" item 6); held while it has the focus. */
+export const UNDO_END_MS = 8_000;
 /** Hidden this long, the watch stops (privacy and battery) and the ride offers Resume (plan section 5). */
 export const HIDDEN_STOP_MS = 10 * 60_000;
 export const PAUSED_SAID = "Ride paused while the page was in the background. Press Resume to carry on.";
@@ -229,8 +244,10 @@ export function RideSettingsFields({
 const COPY_REPLY_DELAY_MS = 150;
 
 /**
- * Report to DC 311 (lib/report311.ts; OWNER-DECISIONS 369, 370, 465): what it is, an optional note, and
- * the message built from the rider's place: the road ridden in the route's street names, a cross street within 500 ft, and the GPS position. On a phone a pothole or a
+ * Report to DC 311 (lib/report311.ts; OWNER-DECISIONS 369, 370, 465): what it is, the message built from
+ * the rider's place and its sending, then an optional note (v0.7.0 "Go riding fixes" item 3: the note comes
+ * after, never before; the 311 button's one-tap pick is the usual way, and this fold is where "Add a note"
+ * and a computer's copy land). The place is: the road ridden in the route's street names, a cross street within 500 ft, and the GPS position. On a phone a pothole or a
  * streetlight is a Text to 311 link the rider sends; anything else (a downed tree, a vehicle in a bike
  * lane, a blocked road or bikeway, which the words name first), and everything on a desktop, is the
  * same words to copy into DC 311 online, with a hint naming its request there where one is known. The place follows the rider; the message is shown as sent.
@@ -245,6 +262,8 @@ function Report311({
   open,
   onOpen,
   summaryRef,
+  noteRef,
+  serverOn = false,
 }: {
   model: RideModel;
   progressM: number | null;
@@ -256,6 +275,9 @@ function Report311({
   open: boolean;
   onOpen: (open: boolean) => void;
   summaryRef: RefObject<HTMLElement | null>;
+  noteRef?: RefObject<HTMLInputElement | null>;
+  /** The server sends reports to DC 311 itself (it has DC's key): the privacy line says so. */
+  serverOn?: boolean;
 }) {
   const setKind = onKind;
   const [note, setNote] = useState("");
@@ -286,10 +308,6 @@ function Report311({
             </label>
           ))}
         </fieldset>
-        <label className="ride-report-note">
-          Note (optional)
-          <input type="text" value={note} maxLength={REPORT_NOTE_MAX} onChange={(event) => setNote(event.target.value)} />
-        </label>
         {text === null || sms === null ? (
           <p className="hint">{outside ? REPORT_OUTSIDE_DC : off ? REPORT_OFF_ROUTE : REPORT_NO_PLACE}</p>
         ) : (
@@ -323,7 +341,12 @@ function Report311({
             {!keyword && <p className="hint">{onlineHint(kind)}</p>}
           </>
         )}
-        <p className="hint">{REPORT_PRIVACY}</p>
+        {/* The note last: optional, and after the sending (the report above takes it in as it is typed). */}
+        <label className="ride-report-note">
+          Add a note (optional)
+          <input ref={noteRef} type="text" value={note} maxLength={REPORT_NOTE_MAX} onChange={(event) => setNote(event.target.value)} />
+        </label>
+        <p className="hint">{serverOn ? REPORT_PRIVACY_SERVER : REPORT_PRIVACY}</p>
       </div>
     </details>
   );
@@ -434,9 +457,8 @@ export function RideMode({
     setMenu311(false);
     button311.current?.focus();
   };
-  const pick311 = (kind: ReportKind) => {
-    setReportKind(kind);
-    setMenu311(false);
+  // The report fold opened and its summary focused (a computer's copy, a pick with no place yet).
+  const openReport = () => {
     focusReport.current = true;
     if (reportOpen) {
       focusReport.current = false;
@@ -444,6 +466,81 @@ export function RideMode({
       reportSummary.current?.scrollIntoView?.({ block: "start" });
     } else setReportOpen(true);
   };
+  // Whether the server sends reports to DC 311 itself (v0.7.0 "Go riding fixes" item 3): asked once a ride.
+  const [serverOn311, setServerOn311] = useState(false);
+  useEffect(() => {
+    let current = true;
+    void report311Enabled(window.location.origin).then((on) => {
+      if (current) setServerOn311(on);
+    });
+    return () => {
+      current = false;
+    };
+  }, []);
+  // What the pick did, shown under the 311 button and said through the rider's outputs (it answers a tap).
+  const [said311, setSaid311] = useState("");
+  const noteInput = useRef<HTMLInputElement>(null);
+  const focusNote = useRef(false);
+  const tell311 = useCallback((text: string) => {
+    setSaid311(text);
+    announcer.current?.answer(text);
+    if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
+  }, []);
+  // One tap: the problem picked is the report (Go riding fixes item 3). Sent by the server where it can;
+  // else, on a phone, the text app to 311 filled in; else the report below to copy. The focus goes back to
+  // the 311 button as the menu closes, never into a form.
+  const pick311 = (kind: ReportKind) => {
+    setReportKind(kind);
+    setMenu311(false);
+    const progress = rideRef.current.off ? null : rideRef.current.progressM;
+    const place = progress === null ? null : reportPlace(modelRef.current, progress);
+    if (!place || !inDc(place.point)) {
+      openReport();
+      return;
+    }
+    button311.current?.focus();
+    const agent = typeof navigator !== "undefined" ? navigator.userAgent : "";
+    const touch = typeof navigator !== "undefined" ? (navigator.maxTouchPoints ?? 0) : 0;
+    const phone = canText(agent, touch);
+    const toMessages = () => {
+      const sms = reportText(kind, place, "", true);
+      if (sms) window.location.assign(smsHref(sms, agent, touch));
+    };
+    const way = pickWay(serverOn311, phone);
+    if (way === "server") {
+      setSaid311("Sending to DC 311…");
+      void sendReport311(window.location.origin, kind, place).then((sent) => {
+        if (ended.current) return;
+        if (sent) tell311(REPORT_SENT);
+        else if (phone) {
+          toMessages();
+          tell311(REPORT_SEND_FAILED);
+        } else {
+          openReport();
+          tell311(REPORT_FORM);
+        }
+      });
+    } else if (way === "sms") {
+      toMessages();
+      tell311(REPORT_READY);
+    } else {
+      openReport();
+      tell311(REPORT_FORM);
+    }
+  };
+  // "Add a note" (after, never before): the report opens with the focus in its note field.
+  const addNote = () => {
+    focusNote.current = true;
+    if (reportOpen) {
+      focusNote.current = false;
+      noteInput.current?.focus();
+    } else setReportOpen(true);
+  };
+  useEffect(() => {
+    if (!reportOpen || !focusNote.current) return;
+    focusNote.current = false;
+    noteInput.current?.focus();
+  }, [reportOpen]);
   const gate = useRef(new ReplanGate()).current;
   const wake = useRef(new ScreenWake(browserWake())).current;
   const env = useRef(geoEnv ?? browserRideEnv()).current;
@@ -849,11 +946,20 @@ export function RideMode({
       <LiveRegion said={polite} urgent={false} />
       <LiveRegion said={assertive} urgent />
       <div className="cue-card">
-        <h2 id="ride-heading" ref={headingRef} tabIndex={-1} className="ride-heading">
-          Ride mode
-        </h2>
+        {/* The End button (v0.7.0, "Go riding fixes" item 6): always in view, at the top of the card, which
+            stays at every size and in Big text; one tap ends the ride, and the page offers Undo for a few
+            seconds (RideEnded). The End ride button below stays. */}
+        <div className="ride-top">
+          <h2 id="ride-heading" ref={headingRef} tabIndex={-1} className="ride-heading">
+            Ride mode
+          </h2>
+          <button type="button" className="danger ride-end" onClick={end} aria-label={END_RIDE_NAME}>
+            <Icon name="stop" size={18} />
+            {END_TEXT}
+          </button>
+        </div>
         {ride.arrived ? (
-          <p className="cue-text">You have arrived at the end of the route.</p>
+          <p className="cue-text">{cueSpoken(model.cues[model.cues.length - 1], "arrive", 0)}</p>
         ) : ride.off ? (
           <div className="cue-off">
             <CueShape shape="warn" />
@@ -872,7 +978,7 @@ export function RideMode({
             <CueShape shape={shape} />
             <div>
               <p className="cue-distance">In {formatDistance(cue.atM - progress)}</p>
-              <p className="cue-text">{cue.kind === "end" ? "The end of the route." : cue.text}</p>
+              <p className="cue-text">{cue.text}</p>
             </div>
           </div>
         ) : (
@@ -921,6 +1027,15 @@ export function RideMode({
             <span aria-hidden="true">{RIDE_311_TEXT}</span>
           </button>
           <Ride311Menu id={menu311Id} open={menu311} place={place311} headingRef={menu311Heading} onPick={pick311} onClose={close311} />
+          {said311 && !menu311 && (
+            <div className="ride-311-said">
+              {/* Shown, not a live region: it is said through the rider's own outputs (tell311). */}
+              <p>{said311}</p>
+              <button type="button" className="secondary" onClick={addNote}>
+                Add a note
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -970,7 +1085,7 @@ export function RideMode({
           </button>
           <button type="button" className="danger" onClick={end}>
             <Icon name="stop" size={20} />
-            End ride
+            {END_RIDE_NAME}
           </button>
         </div>
         {water && (
@@ -1023,6 +1138,8 @@ export function RideMode({
           open={reportOpen}
           onOpen={setReportOpen}
           summaryRef={reportSummary}
+          noteRef={noteInput}
+          serverOn={serverOn311}
         />
         <details className="fold ride-mode-settings">
           <summary>Ride settings</summary>
@@ -1037,5 +1154,39 @@ export function RideMode({
         </details>
       </div>
     </section>
+  );
+}
+
+/**
+ * After End (v0.7.0, "Go riding fixes" item 6): "Ride ended." and Undo for UNDO_END_MS, which a status
+ * region announces. The time is held while the focus is inside it (WCAG 2.2.1), so a keyboard or
+ * screen-reader rider who reaches Undo is not timed out of it. Undo starts the same ride again.
+ */
+export function RideEnded({ onUndo, onGone }: { onUndo: () => void; onGone: () => void }) {
+  const timer = useRef<number | undefined>(undefined);
+  const gone = useRef(onGone);
+  gone.current = onGone;
+  const arm = useCallback(() => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => gone.current(), UNDO_END_MS);
+  }, []);
+  useEffect(() => {
+    arm();
+    return () => window.clearTimeout(timer.current);
+  }, [arm]);
+  return (
+    <div
+      className="ride-ended"
+      role="status"
+      onFocus={() => window.clearTimeout(timer.current)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) arm();
+      }}
+    >
+      <span>{RIDE_ENDED}</span>
+      <button type="button" className="secondary" onClick={onUndo}>
+        Undo
+      </button>
+    </div>
   );
 }

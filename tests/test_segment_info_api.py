@@ -209,6 +209,27 @@ class TestAnswer:
         router.answers = {"bicycle": [edge(104, "R Street Northwest")]}
         assert get(client).json()["osm_way_id"] == 104
 
+    def test_an_unnamed_bike_lane_is_named_for_its_street(
+        self, client, segment_schemas, router
+    ) -> None:
+        # v0.7.0 "Go riding fixes" item 4: the rebuild's name for an unnamed protected lane
+        # beside a named street (`segment.sidepath_name`) is the panel's title.
+        live, _ = segment_schemas
+        insert(
+            live,
+            106,
+            [SPOT, east(SPOT, 50)],
+            stress_tier=1,
+            stress_rule="trail-class way (cycleway, open to bicycles)",
+            is_trail_class=True,
+            facility="protected",
+            sidepath_name="9th Street Northwest protected bike lane",
+        )
+        router.answers = {"bicycle": [edge(106, use="cycleway")]}
+        body = get(client).json()
+        assert body["title"] == "9th Street Northwest protected bike lane"
+        assert section(body, "road")["Name"]["value"] == "9th Street Northwest protected bike lane"
+
     def test_an_unnamed_path_says_so(self, client, segment_schemas, router) -> None:
         live, _ = segment_schemas
         insert(
@@ -224,7 +245,7 @@ class TestAnswer:
         )
         router.answers = {"bicycle": [edge(105, use="cycleway")]}
         body = get(client).json()
-        assert body["title"] == "Unnamed path"
+        assert body["title"] == "Path"
         assert section(body, "road")["Name"]["value"] == "No name mapped"
         assert section(body, "road")["Kind"]["value"] == "Bike path"
         assert section(body, "stress")["Level"]["value"] == "LTS 1: Comfortable for everyone"
@@ -878,7 +899,7 @@ def test_the_unnamed_titles_are_describes_words_and_the_front_ends() -> None:
     from routemaker import describe
 
     assert segment_info.UNNAMED_ROAD_TITLE == "Unnamed road" == describe.UNNAMED_ROAD.capitalize()
-    assert segment_info.UNNAMED_PATH_TITLE == "Unnamed path" == describe.UNNAMED_PATH.capitalize()
+    assert segment_info.UNNAMED_PATH_TITLE == "Path" == describe.UNNAMED_PATH.capitalize()
     ts = (Path(__file__).parents[1] / "frontend/src/lib/roadInfo.ts").read_text(encoding="utf-8")
     assert f'UNNAMED_ROAD_TITLE = "{segment_info.UNNAMED_ROAD_TITLE}"' in ts
     assert f'UNNAMED_PATH_TITLE = "{segment_info.UNNAMED_PATH_TITLE}"' in ts

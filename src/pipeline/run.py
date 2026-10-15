@@ -3267,6 +3267,12 @@ def build_handlers(
             ended_reversible_streets=frozenset(_setting("MASS_RIDE_DC_ENDED_REVERSIBLE_STREETS")),
         )
         rows: list[dict] = []
+        # An unnamed cycleway or path beside a named street is that street's bike lane
+        # (v0.7.0 "Go riding fixes" item 4), for the route description and the road panel.
+        sidepath_names = facility.side_street_names(
+            [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
+        )
+        logger.info("unnamed bike ways named for the street beside them: %d", len(sidepath_names))
         for way in context.ways:
             stress = context.stress_by_way[way.osm_id]
             trail = variants.is_trail_class(way.tags, way.osm_id, reference.sidepath_bridge_ids)
@@ -3361,6 +3367,7 @@ def build_handlers(
                         if long_trail and trail_routes.is_bridge_way(way.tags)
                         else 0,
                         bike_access_reason=access_reason,
+                        sidepath_name=sidepath_names.get(way.osm_id),
                     )
                 )
         writers.write_segments(context.staging_schema, rows)

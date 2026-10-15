@@ -204,6 +204,9 @@ services:
       # writes the id into the list and disables this path for good. The admin
       # is the only surface that reads it, so it goes to this service alone.
       BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID: ${BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID:-}
+      # DC 311's Open311 key (core.dc311): unset, Ride mode's 311 opens the phone's text
+      # app instead of sending from here. A secret, read by this service alone.
+      DC311_API_KEY: ${DC311_API_KEY:-}
       # The removal window. Read where a removal is scheduled, which is the
       # admin, which is this service.
       INSTANCE_ADMIN_REMOVAL_DELAY_SECONDS: ${INSTANCE_ADMIN_REMOVAL_DELAY_SECONDS:-3600}

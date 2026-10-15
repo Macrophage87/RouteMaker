@@ -213,7 +213,8 @@ interface Props {
    * Ride mode (WEB-NAV-plan.md section 1): the rider's position, a "you" arrow distinct from the scrub ring
    * (drawn over the accuracy circle, which `accuracy` carries), or null outside a ride. With `follow` the map
    * centres on it at each fix (one easeTo, no continuous animation); a pan by hand calls `onFollowBroken`.
-   * `headingUp` turns the map to the rider's heading; north-up otherwise. While riding the route is not
+   * `headingUp` turns the map to the rider's heading (track-up, the default since v0.7.0; north-up until a
+   * heading comes); north-up otherwise. The camera never moves the keyboard focus. While riding the route is not
    * re-framed when it changes (a re-plan).
    */
   rider?: { point: LonLat; headingDeg: number | null } | null;
@@ -1863,6 +1864,8 @@ export function MapView(props: Props) {
     if (rider === null) {
       riderMarker.current?.remove();
       riderMarker.current = null;
+      // The ride over: a map turned to the rider's heading (track-up, the default) is north-up again.
+      if (following.current && map.getBearing() !== 0) map.easeTo({ bearing: 0, duration: 0 });
       following.current = false;
       return;
     }
@@ -1883,7 +1886,9 @@ export function MapView(props: Props) {
       following.current = false;
       return;
     }
-    const bearing = props.headingUp && rider.headingDeg !== null ? rider.headingDeg : props.headingUp ? map.getBearing() : 0;
+    // Track-up: the rider's heading; with none yet, north-up, and with none for now (stopped at a light),
+    // the bearing the map has, so it does not swing north and back.
+    const bearing = props.headingUp && rider.headingDeg !== null ? rider.headingDeg : props.headingUp && following.current ? map.getBearing() : 0;
     // Close in once as following starts; a pinch out after that is kept (it does not stop following).
     const zoom = following.current ? map.getZoom() : Math.max(map.getZoom(), 16);
     following.current = true;

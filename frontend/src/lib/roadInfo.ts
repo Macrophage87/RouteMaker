@@ -128,8 +128,9 @@ export const NO_ROAD = "No road here";
 /** The panel's title for a way with no name (core/segment_info.py UNNAMED_ROAD_TITLE and
  * UNNAMED_PATH_TITLE, the route description's words capitalised; a Python test ties them). */
 export const UNNAMED_ROAD_TITLE = "Unnamed road";
-export const UNNAMED_PATH_TITLE = "Unnamed path";
-export const UNNAMED_TITLES: readonly string[] = [UNNAMED_ROAD_TITLE, UNNAMED_PATH_TITLE];
+export const UNNAMED_PATH_TITLE = "Path";
+/** With the title an older API gave a path with no name (before v0.7.0: "Unnamed path"). */
+export const UNNAMED_TITLES: readonly string[] = [UNNAMED_ROAD_TITLE, UNNAMED_PATH_TITLE, "Unnamed path"];
 /** How far the API looks for a way (core.segment_info.SNAP_RADIUS_M). */
 export const SNAP_RADIUS_M = 30;
 export const NO_ROAD_HINT = `No road or path within about ${formatRadius(SNAP_RADIUS_M)} of this spot.`;
