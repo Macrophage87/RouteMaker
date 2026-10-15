@@ -619,10 +619,14 @@ export function pickTarget<T, P extends T>(active: number, index: number, items:
 /** What a picked place is made: the start, the destination, or a stop on the way. */
 export type PlaceChoice = "start" | "end" | "via";
 
-/** The choice the box starts on: the start for an empty plan, else the destination (a stop in a loop). */
-export function defaultChoice(count: number, loop = false): PlaceChoice {
+/**
+ * The choice the box starts on: the start for an empty plan, then the destination, then a stop once the
+ * route has both ends and room (Stephen 2026-10-14, "keep adding stops by search"); a stop in a loop.
+ */
+export function defaultChoice(count: number, loop = false, full = false): PlaceChoice {
   if (count === 0) return "start";
-  return loop ? "via" : "end";
+  if (loop) return "via";
+  return count >= 2 && !full ? "via" : "end";
 }
 
 /**
@@ -631,7 +635,7 @@ export function defaultChoice(count: number, loop = false): PlaceChoice {
  * otherwise the plan's default.
  */
 export function choiceInForce(chosen: PlaceChoice | null, count: number, full: boolean, loop = false): PlaceChoice {
-  return chosen !== null && choicesFor(count, full, loop).includes(chosen) ? chosen : defaultChoice(count, loop);
+  return chosen !== null && choicesFor(count, full, loop).includes(chosen) ? chosen : defaultChoice(count, loop, full);
 }
 
 /**

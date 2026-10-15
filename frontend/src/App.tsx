@@ -2210,7 +2210,7 @@ export function App() {
       wasCompact: wasCompact.current,
       compact: compactPoints,
       before: focusBeforeRender.current,
-      hidden: [pointsSearchRef.current, pointsEditRef.current],
+      hidden: [pointsEditRef.current],
       editPoints: editPointsRef.current,
     });
     wasCompact.current = compactPoints;
