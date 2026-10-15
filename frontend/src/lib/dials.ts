@@ -189,8 +189,8 @@ export const STARTS: Record<PresetId, Start> = {
   ebike: { stress: 70, hills: 50, seek: true },
   // The classic bike's start; the e-bike's hills start is BIKESHARE_BIKES.ebike.hills.
   bikeshare: { stress: 80, hills: -60, seek: true, assist: true },
-  // FOLLOWUP-KIDS-PRESET: the top of the traffic slider, hills well toward avoid.
-  kids: { stress: 100, hills: -80, seek: true },
+  // v0.7.0 Novice and Nervous: the top of the traffic slider, hills at Cargo's gentle -60 (core.presets NOVICE_HILLS).
+  novice: { stress: 100, hills: -60, seek: true },
   // The transit ride types' bike legs start as Default's own bike and Bikeshare's classic (core.presets).
   "bike-transit": { stress: 70, hills: 0, seek: true },
   "bikeshare-transit": { stress: 80, hills: -60, seek: true },
@@ -284,6 +284,8 @@ export const TARGET_MIN_M = 1_000;
 export const TARGET_MAX_M = 1_000_000;
 export const DEFAULT_CEILING_RATIO = 1.6;
 export const TARGET_CEILING_RATIO = 1.25;
+/** Novice and Nervous's shorter ceiling (`core.presets.NOVICE_CEILING_RATIO`, v0.7.0). */
+export const NOVICE_CEILING_RATIO = 1.4;
 /** The system weight's range and defaults (kg): `routemaker.effort`, which tests/test_presets.py holds this to. */
 // OWNER-DECISIONS 337: "The weight range must include everyone", for every ride type;
 // 338: a total outside it is planned with the nearer limit, not refused; 352: silently,

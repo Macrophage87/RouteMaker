@@ -22,7 +22,7 @@ export const REFINE_ADD = 5;
 export const REFINE_GOAL = 0.97;
 import { COVERAGE_BBOX, MAX_POINTS, haversineM, insideCoverage, type LonLat } from "./geo.ts";
 import { PLAN_TYPE_PREFIX, parseDialsComment, type GpxFile, type GpxRoute } from "./gpx.ts";
-import { DEFAULT_PRESET, isPreset, type PresetId } from "./presets.ts";
+import { DEFAULT_PRESET, resolvePreset, type PresetId } from "./presets.ts";
 import { isCarrying, isWhen, type Dials } from "./dials.ts";
 import { cumulative, dedupe, fidelity, placesAlong, refineVias, significantIndexes, viaPoints, type Fidelity } from "./trackMatch.ts";
 
@@ -173,9 +173,12 @@ function referenceOf(line: readonly LonLat[]): LonLat[] {
 function rideOf(route: GpxRoute | undefined, notes: ImportNote[]): Pick<ImportedPlan, "preset" | "dials"> {
   const type = route?.type;
   if (!type || !type.startsWith(PLAN_TYPE_PREFIX)) return { preset: null };
-  const id = type.slice(PLAN_TYPE_PREFIX.length);
-  if (!isPreset(id)) {
-    notes.push({ kind: "preset-gone", id });
+  const named = type.slice(PLAN_TYPE_PREFIX.length);
+  // A ride type renamed since the file was saved opens as the ride type it became (Riding with kids is
+  // Novice and Nervous, v0.7.0).
+  const id = resolvePreset(named);
+  if (id === null) {
+    notes.push({ kind: "preset-gone", id: named });
     return { preset: DEFAULT_PRESET };
   }
   const fields = parseDialsComment(route?.cmt);

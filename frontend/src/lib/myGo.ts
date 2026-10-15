@@ -12,7 +12,7 @@
  */
 import { isOpenIn, type OpenIn } from "./appMode.ts";
 import type { LonLat } from "./geo.ts";
-import { isPreset, presetSaid, type PresetId } from "./presets.ts";
+import { presetSaid, resolvePreset, type PresetId } from "./presets.ts";
 import { csrfFromCookie } from "./stressEditor.ts";
 
 export interface Home {
@@ -67,7 +67,7 @@ export function parseMyGo(raw: unknown): MyGo {
   if (!raw || typeof raw !== "object") return NO_MY_GO;
   const body = raw as { open_in?: unknown; ride?: unknown; home?: unknown };
   const openIn = isOpenIn(body.open_in) ? body.open_in : "";
-  const ride = isPreset(body.ride) ? body.ride : null;
+  const ride = resolvePreset(body.ride);
   let home: Home | null = null;
   const h = body.home as { lon?: unknown; lat?: unknown; label?: unknown } | null | undefined;
   if (h && typeof h.lon === "number" && typeof h.lat === "number" && Number.isFinite(h.lon) && Number.isFinite(h.lat)) {

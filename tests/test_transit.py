@@ -1366,6 +1366,36 @@ class TestApi:
         # Midday (the pinned clock): Orange every 12 minutes, so a 6-minute wait.
         assert chosen["steps"][2]["wait_s"] == 360 and chosen["band"] == "midday"
 
+    @pytest.mark.parametrize("preset", [presets.BIKE_TRANSIT, presets.BIKESHARE_TRANSIT])
+    def test_novice_legs_price_the_bike_legs_as_novice_and_nervous(
+        self, client, segments, router, installed, monkeypatch, preset
+    ) -> None:
+        """v0.7.0, Novice and Nervous item 4: the transit options offered beside its route
+        plan their bike legs with the same one-level-up pricing; a share bike keeps its pace."""
+        from core import gbfs
+
+        seen = []
+
+        def services(until, leg_preset, costing=None):
+            seen.append((leg_preset, costing))
+            return Straight()
+
+        monkeypatch.setattr(transit, "RoutingServices", services)
+        monkeypatch.setattr(gbfs.client, "snapshot", lambda: SHARE)
+        fake = router(standard_router())
+        response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], preset, novice_legs=True)
+        assert response.status_code == 200, response.content
+        assert response.json()["preset"] == preset
+        assert response.json()["novice"] is None
+        bike = [p["costing_options"].get("bicycle") for _u, p in fake.calls]
+        assert any(b and b["use_roads"] == 0.0 for b in bike)
+        leg_preset, costing = seen[0]
+        assert leg_preset == presets.NOVICE
+        if preset == presets.BIKESHARE_TRANSIT:
+            assert costing["bicycle"]["cycling_speed"] == presets.BIKESHARE_CLASSIC_SPEED_KMH
+        else:
+            assert costing is None
+
     def test_a_router_too_slow_for_the_answers_line_draws_it_straight_and_says_so(
         self, client, segments, router, installed, monkeypatch, caplog
     ) -> None:

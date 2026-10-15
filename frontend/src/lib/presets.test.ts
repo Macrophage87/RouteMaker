@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PRESETS, DEFAULT_PRESET, TRANSIT_PRESETS, isPreset, isTransit, parsePreset, presetLabel, presetSaid, twoPointsOnly } from "./presets.ts";
+import { PRESETS, DEFAULT_PRESET, TRANSIT_PRESETS, isPreset, isTransit, parsePreset, presetLabel, resolvePreset, presetSaid, twoPointsOnly } from "./presets.ts";
 
 test("the picker offers every ride type in PLAN's table", () => {
   assert.deepEqual(
@@ -17,7 +17,7 @@ test("the picker offers every ride type in PLAN's table", () => {
       "cargo",
       "ebike",
       "bikeshare",
-      "kids",
+      "novice",
       "bike-transit",
       "bikeshare-transit",
       "rebalance",
@@ -42,17 +42,23 @@ test("the transit ride types are named as the owner named them, scheduled and no
   assert.ok(!twoPointsOnly("default"));
 });
 
-test("Riding with kids is a ride type of its own, said in plain words (OWNER-DECISIONS 240 (B))", () => {
-  const kids = PRESETS.find((p) => p.id === "kids");
-  assert.ok(kids);
-  assert.equal(kids.label, "Riding with kids");
-  // What the owner asked for, and nothing it does not do: calm first, gentler hills, a child's pace.
-  assert.match(kids.description, /^Children on their own bikes:/);
-  assert.match(kids.description, /quietest streets strongly preferred/);
-  assert.match(kids.description, /busy streets avoided hard/);
-  assert.match(kids.description, /Gentler hills/);
-  assert.match(kids.description, /a child's pace/);
-  assert.equal(parsePreset("kids"), "kids");
+test("Novice and Nervous takes Riding with kids' place, said in plain words (v0.7.0)", () => {
+  const novice = PRESETS.find((p) => p.id === "novice");
+  assert.ok(novice);
+  assert.equal(novice.label, "Novice and Nervous");
+  // What the plan says it does: one step busier, short detours, transit or bikeshare where only a busy road connects.
+  assert.match(novice.description, /one step busier/);
+  assert.match(novice.description, /short detours/);
+  assert.match(novice.description, /transit or bikeshare/);
+  // Two sentences at most (the simplicity rule).
+  assert.ok(novice.description.split(". ").length <= 2);
+  assert.equal(PRESETS.some((p) => (p.id as string) === "kids"), false);
+  // Old links, saved settings and GPX files that name "kids" open it.
+  assert.equal(parsePreset("kids"), "novice");
+  assert.equal(resolvePreset("kids"), "novice");
+  assert.equal(resolvePreset("novice"), "novice");
+  assert.equal(resolvePreset("nope"), null);
+  assert.equal(isPreset("kids"), false);
 });
 
 test("each preset explains itself in a sentence", () => {
