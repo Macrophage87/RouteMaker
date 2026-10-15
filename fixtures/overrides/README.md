@@ -336,6 +336,23 @@ files.
   (`moco-lts5-veirs-mill-road`, 1.96 carriageway-mi) are under `retire`, and
   the file holds 386 ways, 42.6 mi: loading it withdraws them, and the painted
   lane is marked in `fixtures/bike_lanes/` for the classifier to rate.
+  Since 2026-10-14 the 5 Darnestown Road rows (`moco-lts5-darnestown-road`,
+  3.57 mi [5.75 km]) are under `retire` too, for the owner's LTS 4 (the file
+  below), and the file holds 381 ways, 39.1 mi.
+- `2026-10-14-owner-darnestown-road.json` (v0.7.0): Darnestown Road's five
+  ways the county rates LTS 5 (5970658, 3.02 mi from the MD 109 junction at
+  Beallsville; 697630700, 222928109, 92183771 and 92183773, 0.55 mi west of
+  Quince Orchard Road) at tier 4, the owner's rating. The owner, 2026-10-14:
+  "Why was darnestown road rated Avoid in some places and LTS3 in others. It's
+  maybe a bit more stressful but that's high", then "LTS 4" on the decision
+  card. Hidden, category other, adjustment `darnestown-road-lts4`. It retires
+  the county's five Avoid rows itself, as the Montgomery file now does, so the
+  two load in either order. On the live table (the Veirs Mill rows already
+  gone), the Montgomery file's dry run reads 5 retire, 23 absent, 381 present,
+  and this file's 5 absent (or retire), 5 create. The county's LTS 5 still
+  reaches the ways through the v0.7.0 agency layer (`agency-lts.json`); this
+  row ranks above it, and the road panel lists the county's rating beneath the
+  owner's, the owner's marked as the one the map uses.
 - `2026-10-01-owner-baltimore-facilities.json` ("Load Baltimore facilities",
   OWNER-DECISIONS 182): 256 stress rows, the tier the classifier gives with the
   City of Baltimore's recorded bike lane, buffered, separated or contraflow lane
