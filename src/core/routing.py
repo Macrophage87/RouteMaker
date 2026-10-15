@@ -853,13 +853,13 @@ class Dials:
     # Mountain Bike only, the second pass: the trail level the rider prefers, 1-4, never above
     # `mtb_level` (`mtbmode.preferred_level`); None: level 2, or `mtb_level` where that is lower.
     mtb_preferred: int | None = None
-    # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
-    # A ride whose last point is its first is a loop whatever this says.
-    loop: bool = False
     # Via points (v0.7.0, "Via points vs stops"): the indices of the rider's points that
     # only shape the route. The router passes them without a U-turn or a stop
     # (`VIA_LOCATION_TYPE`); every other point is a stop ("break"), as before.
     vias: tuple[int, ...] = ()
+    # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
+    # A ride whose last point is its first is a loop whatever this says.
+    loop: bool = False
 
 
 # How a via point is sent to the router (v0.7.0, "Via points vs stops"). The plan names
