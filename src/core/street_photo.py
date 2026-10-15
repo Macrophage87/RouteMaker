@@ -3,8 +3,10 @@
 The owner, 2026-10-13 14:02 UTC: "Yes. Do that. Some of the photos are older, so make sure the date
 is listed too." The photo is the newest Mapillary image within `NEAR_M` (about 100 ft) of the spot
 on the road that faces along the road (within `FACING_DEG` of its bearing, either way); a
-panorama is left out (its picture is a flattened sphere). The answer gives its image URL (on
-Mapillary's image host), the month it was taken, its creator where Mapillary names one, and the
+panorama is left out (its picture is a flattened sphere). The answer gives its image URL (this
+server's `/api/street-photo/image/<id>`, which fetches the file from Mapillary's image host, so the
+page's CSP stays same-origin and the rider's browser never contacts Mapillary), the month it was
+taken, its creator where Mapillary names one, and the
 link to Mapillary's own viewer at that image (opened in a new tab: no embedded viewer, no
 MapillaryJS; the owner, 14:51 UTC: "Site would be fine").
 
@@ -44,8 +46,8 @@ logger = logging.getLogger(__name__)
 
 API_URL = "https://graph.mapillary.com/images"
 API_HOSTS = frozenset({"graph.mapillary.com"})
-# Where Mapillary serves its image files (its CDN), the only hosts an image URL may name; the
-# CSP's img-src allows the same (Caddyfile, deploy/beta/nginx-routemaker.conf.template).
+# Where Mapillary serves its image files (its CDN), the only hosts an image URL may name. This
+# server fetches the file (`StreetPhoto.image`); the page's CSP names no other host.
 IMAGE_HOST_SUFFIXES = (".fbcdn.net", ".mapillary.com")
 VIEWER_URL = "https://www.mapillary.com/app/?pKey={id}&focus=photo"
 FIELDS = (
@@ -63,6 +65,8 @@ TIMEOUT_S = 4.0
 MAX_BYTES = 2_000_000
 CACHE_S = 3600.0  # Mapillary's image URLs are signed for a while; an hour stays inside it
 CACHE_SIZE = 2000
+IMAGE_CACHE_SIZE = 64  # image files held in memory, the most recently shown
+IMAGE_PATH = "/api/street-photo/image/{id}"
 USER_AGENT = "RouteMaker-street-photo"
 NONE_WORDS = "No street photo here."
 
@@ -85,6 +89,23 @@ def http_get(url: str, headers: dict, timeout: float) -> bytes:
     parts = urllib.parse.urlsplit(url)
     if parts.scheme != "https" or parts.hostname not in API_HOSTS:
         raise Unavailable("not a Mapillary API URL")
+    request = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+            body = response.read(MAX_BYTES + 1)
+    except urllib.error.HTTPError as error:
+        raise Unavailable(f"HTTP {error.code}") from None
+    except (TimeoutError, urllib.error.URLError, ConnectionError, OSError) as error:
+        raise Unavailable(type(error).__name__) from None
+    if len(body) > MAX_BYTES:
+        raise Unavailable("larger than expected")
+    return body
+
+
+def image_get(url: str, headers: dict, timeout: float) -> bytes:
+    """One image file from Mapillary's image host (no token: the URL is signed)."""
+    if not image_url_ok(url):
+        raise Unavailable("not a Mapillary image URL")
     request = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
@@ -178,6 +199,7 @@ def choose(doc, lon: float, lat: float, bearing: float | None) -> dict | None:
     name = creator.get("username") if isinstance(creator, dict) else None
     return {
         "found": True,
+        "image_id": str(item["id"]),
         "image_url": item["thumb_1024_url"],
         "viewer_url": VIEWER_URL.format(id=item["id"]),
         "captured": when.date().isoformat(),
@@ -226,8 +248,13 @@ class StreetPhoto:
         fetch: Fetch = http_get,
         clock: Callable[[], float] = time.monotonic,
         bearing: Callable[[int, float, float], float | None] = road_bearing,
+        fetch_image: Fetch = image_get,
     ) -> None:
         self._fetch = fetch
+        self._fetch_image = fetch_image
+        # A shown photo's id -> (when, Mapillary's signed URL): only these are fetched.
+        self._sources: OrderedDict[str, tuple[float, str]] = OrderedDict()
+        self._images: OrderedDict[str, bytes] = OrderedDict()
         self._clock = clock
         self._bearing = bearing
         self._lock = threading.Lock()
@@ -258,12 +285,44 @@ class StreetPhoto:
         except (Unavailable, ValueError) as error:
             logger.warning("street photo: Mapillary did not answer: %s", error)
             return None
-        found = choose(doc, lon, lat, bearing) or NONE
+        chosen = choose(doc, lon, lat, bearing)
+        found = NONE
+        if chosen is not None:
+            image_id = chosen.pop("image_id")
+            source = chosen["image_url"]
+            found = {**chosen, "image_url": IMAGE_PATH.format(id=image_id)}
+            with self._lock:
+                self._sources[image_id] = (now, source)
+                while len(self._sources) > CACHE_SIZE:
+                    self._sources.popitem(last=False)
         with self._lock:
             self._cache[key] = (now, found)
             while len(self._cache) > CACHE_SIZE:
                 self._cache.popitem(last=False)
         return found
+
+    def image(self, image_id: str) -> bytes | None:
+        """A photo this server has shown, its file fetched from Mapillary (and kept), or None:
+        an id never shown, shown too long ago, or Mapillary not answering."""
+        now = self._clock()
+        with self._lock:
+            held = self._images.get(image_id)
+            if held is not None:
+                self._images.move_to_end(image_id)
+                return held
+            source = self._sources.get(image_id)
+        if source is None or now - source[0] >= CACHE_S:
+            return None
+        try:
+            body = self._fetch_image(source[1], {"User-Agent": USER_AGENT}, TIMEOUT_S)
+        except Unavailable as error:
+            logger.warning("street photo: the image did not load: %s", error)
+            return None
+        with self._lock:
+            self._images[image_id] = body
+            while len(self._images) > IMAGE_CACHE_SIZE:
+                self._images.popitem(last=False)
+        return body
 
 
 client = StreetPhoto()

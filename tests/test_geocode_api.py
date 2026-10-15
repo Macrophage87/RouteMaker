@@ -378,9 +378,16 @@ class TestSearch:
         assert "private" in cache and "max-age=" in cache
 
 
-def rows(scope: str) -> int:
+def rows(scope: str, address: str | None = None) -> int:
+    """The scope's window rows; with an address, only that client's."""
     with connection.cursor() as cursor:
-        cursor.execute("SELECT count(*) FROM rate_limit_window WHERE scope = %s", [scope])
+        if address is None:
+            cursor.execute("SELECT count(*) FROM rate_limit_window WHERE scope = %s", [scope])
+        else:
+            cursor.execute(
+                "SELECT count(*) FROM rate_limit_window WHERE scope = %s AND client = %s",
+                [scope, ratelimit.client_key(address)],
+            )
         return cursor.fetchone()[0]
 
 
@@ -419,10 +426,14 @@ class TestLimits:
             address = f"203.0.113.{80 + n}"
             spend(ratelimit.REVERSE_BURST, address, ratelimit.REVERSE_BURST.requests)
             headers = {"HTTP_X_FORWARDED_FOR": address}
-            return get(client, REVERSE, headers, lat=INSIDE[1], lon=INSIDE[0])
+            refused = get(client, REVERSE, headers, lat=INSIDE[1], lon=INSIDE[0])
+            # Counted for this attempt's client alone: an attempt that straddled a burst window
+            # and was retried may have spent the minute legitimately.
+            return refused, rows(ratelimit.REVERSE.scope, address)
 
-        assert in_one_window(ratelimit.REVERSE_BURST.window_s, attempt).status_code == 429
-        assert rows(ratelimit.REVERSE.scope) == 0
+        refused, spent = in_one_window(ratelimit.REVERSE_BURST.window_s, attempt)
+        assert refused.status_code == 429
+        assert spent == 0
 
     def test_a_plan_of_twenty_five_points_can_be_named_at_once(self) -> None:
         """A shared link opens with up to 25 points, and each is named."""
@@ -470,10 +481,12 @@ class TestLimits:
             address = f"203.0.113.{30 + n}"
             spend(ratelimit.GEOCODE_BURST, address, ratelimit.GEOCODE_BURST.requests)
             refused = get(client, SEARCH, {"HTTP_X_FORWARDED_FOR": address}, q="station")
-            return refused
+            # This attempt's client alone, as above.
+            return refused, rows(ratelimit.GEOCODE.scope, address)
 
-        assert in_one_window(ratelimit.GEOCODE_BURST.window_s, attempt).status_code == 429
-        assert rows(ratelimit.GEOCODE.scope) == 0
+        refused, spent = in_one_window(ratelimit.GEOCODE_BURST.window_s, attempt)
+        assert refused.status_code == 429
+        assert spent == 0
 
     def test_search_and_names_are_counted_apart(self, client, photon) -> None:
         """Naming a plan's points must not spend the search box's budget."""

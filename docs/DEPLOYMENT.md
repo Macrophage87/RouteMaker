@@ -286,6 +286,20 @@ refresh: until `worker` is recreated with the new key, Virginia's last zones are
 used and then, after two hours, the planner says Virginia's work zones could not
 be checked. `up -d`, not `restart`, for the reason given above.
 
+**`WMATA_API_KEY`, `MAPILLARY_ACCESS_TOKEN`: rotate at the issuer, then here,
+then `up -d api`.** The owner's keys for WMATA's live arrivals, alerts and
+elevator outages and for the road panel's street photo (v0.7.0). Both are issued
+by the provider, not generated here, optional (empty, that feature is off), held
+by `api` alone, sent only in a request header and never logged, and nothing is
+stored under them. A rotation costs at most the live values or street photos
+until `api` is recreated with the new value. `up -d`, not `restart`, as above.
+
+**`NPS_API_KEY`: rotate it at developer.nps.gov, then here, then `up -d
+worker`.** The owner's key for National Park Service alerts on the closures
+check (v0.7.0). Optional (empty, NPS alerts are off), held by `worker` alone,
+sent as the `X-Api-Key` header and never logged. A rotation costs at most a
+refresh: the last alerts are kept until `worker` holds the new key.
+
 **`BOT_INTERNAL_SECRET`** is shared between `api` and `bot`, and `bot` has no
 image in phase 1, so there is nothing on the other end of it to disagree with
 yet. When there is, both services read it from `.env` and both need recreating

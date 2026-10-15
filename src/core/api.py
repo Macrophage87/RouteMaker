@@ -3816,7 +3816,9 @@ class StreetPhotoIn(Schema):
 class StreetPhotoOut(Schema):
     found: bool
     words: str | None = Field(default=None, description='"No street photo here." when none.')
-    image_url: str | None = Field(default=None, description="The image, on Mapillary's host.")
+    image_url: str | None = Field(
+        default=None, description="The image, served by this server from Mapillary's host."
+    )
     viewer_url: str | None = Field(default=None, description="Mapillary's viewer at the image.")
     captured: str | None = Field(default=None, description="The day it was taken, ISO 8601.")
     date_words: str | None = Field(default=None, description='"Photo from June 2021".')
@@ -3841,6 +3843,26 @@ def street_photo_view(request, params: Query[StreetPhotoIn], response: HttpRespo
         return Status(204, None)
     response["Cache-Control"] = "private, max-age=600"
     return Status(200, found)
+
+
+@api.get(
+    "/street-photo/image/{image_id}",
+    response={200: None, 400: ErrorOut, 403: ErrorOut, 404: ErrorOut, 429: ErrorOut},
+    summary="A street photo's image file, fetched from Mapillary for the page",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.STREET_PHOTO), same_site_only, errors_as_json)
+def street_photo_image_view(request, image_id: str):
+    from . import street_photo
+
+    if not image_id.isdigit() or len(image_id) > 30:
+        return Status(404, {"error": "No such photo."})
+    body = street_photo.client.image(image_id)
+    if body is None:
+        return Status(404, {"error": "No such photo."})
+    served = HttpResponse(body, content_type="image/jpeg")
+    served["Cache-Control"] = "private, max-age=3600"
+    served["X-Content-Type-Options"] = "nosniff"
+    return served
 
 
 # --- One climb's elevation profile, for the map's climb card ------------------------

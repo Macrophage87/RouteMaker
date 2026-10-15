@@ -8,7 +8,7 @@ const src = (path: string) => readFileSync(new URL(path, SRC), "utf8");
 
 const ANSWER = {
   found: true,
-  image_url: "https://scontent-iad3-1.xx.fbcdn.net/m1/v/t6/abc.jpg?oh=1",
+  image_url: "/api/street-photo/image/123456",
   viewer_url: "https://www.mapillary.com/app/?pKey=123456&focus=photo",
   captured: "2021-06-14",
   date_words: "Photo from June 2021",
@@ -28,6 +28,9 @@ test("a photo's date is in its alt text with the road's name", () => {
 test("no photo is one plain line; an odd or unsafe answer is nothing", () => {
   assert.equal(readPhoto({ found: false, words: NO_PHOTO_TEXT }), "none");
   assert.equal(readPhoto({ ...ANSWER, image_url: "javascript:alert(1)" }), null);
+  // The image is this server's copy only: another host's file is refused, the CSP's img-src is same-origin.
+  assert.equal(readPhoto({ ...ANSWER, image_url: "https://scontent-iad3-1.xx.fbcdn.net/m1/v/t6/abc.jpg" }), null);
+  assert.equal(readPhoto({ ...ANSWER, image_url: "/api/street-photo/image/12/../x" }), null);
   assert.equal(readPhoto({ ...ANSWER, viewer_url: "http://www.mapillary.com/app" }), null);
   assert.equal(readPhoto({ ...ANSWER, date_words: 3 }), null);
   assert.equal(readPhoto("x"), null);

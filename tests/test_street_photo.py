@@ -136,3 +136,47 @@ def test_the_roads_bearing_is_read_from_its_live_segment(segment_schemas) -> Non
     assert east_west == pytest.approx(90.0, abs=1.0)
     assert north_south == pytest.approx(0.0, abs=1.0)
     assert street_photo.road_bearing(79, LON, LAT) is None
+
+
+def test_the_page_gets_this_servers_copy_of_the_image_never_mapillarys_host(settings) -> None:
+    """The CSP's img-src is same-origin (tests/test_frontend.py): the answer names this server's
+    image path, and only a photo it has shown is fetched, from Mapillary's host, without the
+    token, and kept."""
+    settings.MAPILLARY_ACCESS_TOKEN = SECRET
+    clock = Clock()
+    image = Fake(body=b"\xff\xd8jpeg")
+    client = street_photo.StreetPhoto(
+        Fake(), clock=clock, bearing=lambda *_: EAST_WEST, fetch_image=image
+    )
+    found = client.photo(LON, LAT, 5)
+    assert found["image_url"] == "/api/street-photo/image/1002"
+    assert "image_id" not in found
+    assert client.image("1001") is None and image.calls == []  # never shown here
+    assert client.image("1002") == b"\xff\xd8jpeg"
+    url, headers = image.calls[0]
+    assert url.startswith("https://scontent-iad3-1.xx.fbcdn.net/") and "An1002" in url
+    assert "Authorization" not in headers and SECRET not in url
+    assert client.image("1002") == b"\xff\xd8jpeg" and len(image.calls) == 1  # kept
+
+
+def test_an_image_not_answered_or_too_old_is_none(settings) -> None:
+    settings.MAPILLARY_ACCESS_TOKEN = SECRET
+    clock = Clock()
+    client = street_photo.StreetPhoto(
+        Fake(), clock=clock, bearing=lambda *_: EAST_WEST, fetch_image=Fake(fail=True)
+    )
+    client.photo(LON, LAT, 5)
+    assert client.image("1002") is None
+    late = street_photo.StreetPhoto(
+        Fake(), clock=clock, bearing=lambda *_: EAST_WEST, fetch_image=Fake(body=b"x")
+    )
+    late.photo(LON, LAT, 5)
+    clock.now = street_photo.CACHE_S
+    assert late.image("1002") is None
+
+
+def test_the_image_fetch_names_only_mapillarys_image_hosts() -> None:
+    with pytest.raises(street_photo.Unavailable):
+        street_photo.image_get("https://example.com/a.jpg", {}, 1.0)
+    with pytest.raises(street_photo.Unavailable):
+        street_photo.image_get("http://scontent.xx.fbcdn.net/a.jpg", {}, 1.0)

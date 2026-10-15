@@ -39,13 +39,18 @@ function https(value: unknown): value is string {
   }
 }
 
-/** The answer read safely: every URL https, every word a string. */
+/** The image is this server's own copy of Mapillary's file (the page's CSP names no other host). */
+export function ownImage(value: unknown): value is string {
+  return typeof value === "string" && /^\/api\/street-photo\/image\/\d{1,30}$/.test(value);
+}
+
+/** The answer read safely: the image this server's, every link https, every word a string. */
 export function readPhoto(body: unknown): PhotoAnswer {
   if (!body || typeof body !== "object") return null;
   const b = body as Record<string, unknown>;
   if (b.found === false) return "none";
   if (b.found !== true) return null;
-  if (!https(b.image_url) || !https(b.viewer_url) || !https(b.credit_url) || !https(b.licence_url)) return null;
+  if (!ownImage(b.image_url) || !https(b.viewer_url) || !https(b.credit_url) || !https(b.licence_url)) return null;
   if (typeof b.date_words !== "string" || typeof b.captured !== "string" || typeof b.credit !== "string" || typeof b.licence !== "string") {
     return null;
   }

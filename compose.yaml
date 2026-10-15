@@ -330,6 +330,9 @@ services:
       # 346: "the key stays server-side only"). This service alone reads the feeds;
       # empty, Virginia's work zones are off and nothing is asked of VDOT.
       SMARTERROADS_TOKEN: ${SMARTERROADS_TOKEN:-}
+      # The owner's NPS key for park alerts on the closures check (v0.7.0,
+      # core.closure_sources). Empty, the NPS alerts are off.
+      NPS_API_KEY: ${NPS_API_KEY:-}
     volumes:
       - ${DATA_ROOT}/backups:/data/backups
       # Read-only, and for one caller: `check_operations`. Its fourth check is
