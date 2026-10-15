@@ -132,6 +132,7 @@ import {
 import { avoidItems, avoidMarkerName } from "./lib/avoidJunctions.ts";
 import type { LetteredPlace } from "./lib/letteredPlaces.ts";
 import { avoidMarkerSvg } from "./lib/avoidIcon.ts";
+import { ViaHold } from "./lib/viaHold.ts";
 
 export type StressAvailability = "checking" | "available" | "unavailable";
 
@@ -1194,7 +1195,7 @@ export function MapView(props: Props) {
       const named = warning ? `${name}. ${warning}` : name;
       const said = warning ? named : `${name}.`;
       element.setAttribute("aria-label", via ? `${said} Drag to move; click for Remove.` : `${said} Drag to move.`);
-      element.title = via ? `${named} - drag to move, click for Remove, double-click to remove` : `${named} - drag to move`;
+      element.title = via ? `${named} - drag to move, click for Remove; right-click or long-press to remove` : `${named} - drag to move`;
       const marker = new maplibregl.Marker({ element, draggable: true, anchor: "center" })
         .setLngLat(point)
         .addTo(map);
@@ -1242,13 +1243,38 @@ export function MapView(props: Props) {
         button.focus();
       });
       if (via) {
+        // Once only: Android can send both the held touch and its contextmenu.
+        let removed = false;
+        const removeNow = () => {
+          if (removed) return;
+          removed = true;
+          closePopup(true);
+          callbacks.current.onRemovePoint(index);
+        };
         // A double-click removes it at once, and is not the map's zoom.
         element.addEventListener("dblclick", (event) => {
           event.stopPropagation();
           event.preventDefault();
-          closePopup(true);
-          callbacks.current.onRemovePoint(index);
+          removeNow();
         });
+        // A right-click, or a long press (Stephen 2026-10-13), removes it at once too, and is not the
+        // road panel's. Android's long press arrives as a contextmenu; iOS sends none, so a held touch
+        // that has not moved is timed here (lib/viaHold.ts). Undo brings it back.
+        element.addEventListener("contextmenu", (event) => {
+          event.stopPropagation();
+          event.preventDefault();
+          if (dragged) return;
+          hold.cancel();
+          removeNow();
+        });
+        const hold = new ViaHold(() => {
+          if (!dragged) removeNow();
+        });
+        element.addEventListener("touchstart", (event) => hold.start(event.touches), { passive: true });
+        element.addEventListener("touchmove", (event) => hold.move(event.touches), { passive: true });
+        element.addEventListener("touchend", () => hold.cancel());
+        element.addEventListener("touchcancel", () => hold.cancel());
+        marker.on("dragstart", () => hold.cancel());
       }
       return marker;
     });
