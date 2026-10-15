@@ -329,6 +329,7 @@ class TestReview:
         assert set(item) == {
             "id", "osm_way_id", "road", "lat", "lon", "current_step", "current_words",
             "step", "words", "reason", "status", "created_at", "sent_at",
+            "signed_out", "reasons", "agree",
         }  # fmt: skip
 
     def test_approve_now_applies_it_as_the_admins_edit(self, live) -> None:

@@ -224,6 +224,8 @@ services:
       # Mapillary's client token (the road panel's street photo). Empty: off.
       WMATA_API_KEY: ${WMATA_API_KEY:-}
       MAPILLARY_ACCESS_TOKEN: ${MAPILLARY_ACCESS_TOKEN:-}
+      # Signed-out LTS suggestions show once this many agree on a road: 1 shows each send.
+      SUGGEST_SIGNED_OUT_MIN_AGREE: ${SUGGEST_SIGNED_OUT_MIN_AGREE:-1}
       # The same /data this service's two mounts below are under, so
       # settings.TILES_DIR is /data/tiles and settings.STATIC_ROOT is
       # /data/static - both of them paths that exist in this container.

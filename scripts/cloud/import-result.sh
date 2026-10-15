@@ -294,7 +294,7 @@ if [ "$installed" = 0 ] && [ "$safety" = 1 ]; then
 	(umask 077 && compose exec -T postgis pg_dump -U "$pguser" -d "$pgdb" -Fc \
 		--exclude-table-data='*.cached_membership' --exclude-table-data='*.app_session' \
 		--exclude-table-data='*.rate_limit_window' --exclude-table-data='*.stress_tile_cache' \
-		--exclude-table-data='*.bikeshare_feed_cache' \
+		--exclude-table-data='*.bikeshare_feed_cache' --exclude-table-data='*.signed_out_send' \
 		</dev/null >"$dump")
 fi
 

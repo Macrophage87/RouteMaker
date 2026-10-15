@@ -1415,6 +1415,11 @@ class StressSuggestion(models.Model):
     edit = models.ForeignKey(
         StressEdit, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )
+    # v0.7.0, signed-out suggestions (core.signed_out_suggestions): sent from the short form by
+    # someone not signed in. No account, address or device is kept with it; `reasons` are the
+    # one-tap reasons' keys ("fast_traffic", ..., "other"), `reason` their words and any text.
+    signed_out = models.BooleanField(default=False)
+    reasons = models.JSONField(default=list, blank=True)
 
     class Meta:
         db_table = "stress_suggestion"
@@ -1440,6 +1445,28 @@ class StressSuggestion(models.Model):
     @property
     def current_step(self) -> float:
         return self.current_tier + 0.5 if self.current_half else self.current_tier
+
+
+class SignedOutSend(models.Model):
+    """One signed-out suggestion's count toward its sender's daily limits (v0.7.0;
+    core.signed_out_suggestions): 10 a day per device and one per road.
+
+    `device` is a salted hash of the sender's address and the day (HMAC with a key derived
+    from the server's secret, so it cannot be reversed or matched across days); the address
+    itself is never stored. Rows older than 24 hours are deleted at every send, so nothing
+    here outlives a day. Nothing links a row to its suggestion.
+    """
+
+    device = models.CharField(max_length=64)
+    osm_way_id = models.BigIntegerField()
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "signed_out_send"
+        indexes = [models.Index(fields=["device", "created_at"], name="signed_out_send_device")]
+
+    def __str__(self) -> str:
+        return f"way {self.osm_way_id} at {self.created_at:%Y-%m-%d %H:%M}"
 
 
 class AvoidJunction(models.Model):

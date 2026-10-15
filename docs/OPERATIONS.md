@@ -1841,6 +1841,24 @@ a JSON list defaulting to empty; nothing else changed). It follows the Avoid jun
 refused (400, `classifier_hidden`) on a way whose earlier override hides the classifier's own
 level (a hidden adjustment records no `stress_computed_tier`); an exact level works there.
 
+### Signed-out suggestions (v0.7.0)
+
+Anyone the full form is not open to (signed out, or the settings above keep it closed) gets a
+short form in the road panel: the level slider in half steps, one-tap reasons, and "Other" (up to
+200 characters). Sends join the same review list, marked "Sent signed out"
+(`core/signed_out_suggestions.py`). The list now groups each road's sends together, most agreed
+first, with "N sends for this road agree".
+
+The filters: no change or no reason is refused; a send without a ticket from opening the form on
+that road is refused; the hidden honeypot drops a send silently; e-mail addresses and phone
+numbers are taken out of Other. One send per road and 10 a day per device, where the device is a
+salted daily hash of the address (table `signed_out_send`, kept 24 hours, left out of backups and
+the beta's data shipment). The address itself is never stored.
+
+`SUGGEST_SIGNED_OUT_MIN_AGREE` (default 1, every send shows) hides a road's signed-out sends
+until that many agree. The owner reviews each send for now; raise it to 2 when volume grows.
+The migration is `0021_signed_out_suggestions`.
+
 ## Mass Ride hazards (FOLLOWUP-MASSRIDE-MAP part 3, OWNER-DECISIONS 325-327)
 
 A signed-in rider whom the **Suggestion settings** allow sees **Mark a hazard** in the road panel on a Mass

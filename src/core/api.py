@@ -4645,6 +4645,13 @@ class SuggestionOut(Schema):
     step: float
     words: str
     reason: str
+    signed_out: bool = Field(
+        default=False, description="Sent from the short form by someone not signed in (v0.7.0)."
+    )
+    reasons: list[str] = Field(default_factory=list, description="The one-tap reasons' keys.")
+    agree: int = Field(
+        default=1, description="Open sends for the road that agree with it, itself included."
+    )
     status: Literal["pending", "sent_to_discord"]
     created_at: str
     sent_at: str | None = None
@@ -4727,6 +4734,95 @@ def stress_suggestion_create(request, body: SuggestionIn, response: HttpResponse
             "Nothing changes on the map until one of them reviews it.",
         },
     )
+
+
+# ---- Signed-out suggestions (v0.7.0; core.signed_out_suggestions) ----
+#
+# GET /api/stress-suggestions/ticket?way=: the short form's ticket, asked when it opens on a road
+# (proof the send came from an opened panel), and the CSRF cookie the send carries back.
+# POST /api/stress-suggestions/signed-out: the send. No account, address or device is stored.
+
+
+class SuggestTicketIn(Schema):
+    way: int = Field(ge=1, description="The road's OSM way id.")
+
+
+class SuggestTicketOut(Schema):
+    ticket: str
+    reasons: list[list[str]] = Field(description="The one-tap reasons: [key, words], in order.")
+
+
+class SignedOutSuggestionIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    osm_way_id: StrictInt
+    lat: StrictFloat = Field(ge=-90, le=90, description="The point on the road.")
+    lon: StrictFloat = Field(ge=-180, le=180)
+    step: StrictFloat = Field(description="1 to 5 by halves (5 is Avoid).")
+    reasons: list[str] = Field(max_length=6, description="Keys of the one-tap reasons.")
+    other: str = Field(default="", max_length=1000, description="Other's words, at most 200.")
+    ticket: str = Field(max_length=500)
+    website: str = Field(default="", max_length=200, description="Left empty (a honeypot).")
+
+
+SIGNED_OUT_THANKS = (
+    "Thanks. Your suggestion was sent for review. Nothing changes on the map until it is reviewed."
+)
+
+
+@api.get(
+    "/stress-suggestions/ticket",
+    response={200: SuggestTicketOut, 400: ErrorOut, 403: StressEditErrorOut, 429: ErrorOut},
+    summary="The short suggestion form's ticket for a road (anyone)",
+)
+@decorate_view(same_site_editor, ratelimit.rate_limited(ratelimit.SEGMENT_INFO), errors_as_json)
+def stress_suggestion_ticket(request, params: Query[SuggestTicketIn], response: HttpResponse):
+    from django.middleware.csrf import get_token
+
+    from . import signed_out_suggestions as quick
+
+    get_token(request)
+    _private(response)
+    return Status(
+        200,
+        {"ticket": quick.ticket(params.way), "reasons": [[k, w] for k, w in quick.REASONS.items()]},
+    )
+
+
+@api.post(
+    "/stress-suggestions/signed-out",
+    response={200: SuggestionCreatedOut, **SUGGESTION_RESPONSES},
+    summary="Suggest a road's traffic stress level from the short form (anyone)",
+)
+@decorate_view(
+    csrf_protected,
+    json_body_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def stress_suggestion_signed_out(request, body: SignedOutSuggestionIn, response: HttpResponse):
+    from . import signed_out_suggestions as quick
+    from . import stress_edits
+
+    _private(response)
+    try:
+        suggestion = quick.create(
+            ratelimit.client_address(request),
+            body.osm_way_id,
+            body.lat,
+            body.lon,
+            body.step,
+            body.reasons,
+            body.other,
+            body.ticket,
+            body.website,
+        )
+    except quick.Dropped:
+        return Status(200, {"id": 0, "message": SIGNED_OUT_THANKS})
+    except stress_edits.EditRefused as refused:
+        return _stress_error(refused.status, refused.message, refused.field, refused.code)
+    return Status(200, {"id": suggestion.pk, "message": SIGNED_OUT_THANKS})
 
 
 @api.get(

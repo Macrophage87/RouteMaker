@@ -15,6 +15,7 @@ import {
   levelWords,
   loadProblem,
   reviewEntries,
+  roadDetail,
   reviewJunctionSuggestion,
   sendJunctionSuggestion,
   shownNear,
@@ -165,4 +166,17 @@ test("a list that did not load is named: roads, junctions or both", () => {
   assert.equal(loadProblem("Could not reach the server.", []), "Road suggestions could not load. Could not reach the server.");
   assert.equal(loadProblem([], "Not allowed."), "Junction suggestions could not load. Not allowed.");
   assert.equal(loadProblem("A.", "B."), "Road suggestions could not load. A. Junction suggestions could not load. B.");
+});
+
+test("v0.7.0: the server's grouping of roads is kept; a signed-out send and how many agree are said", () => {
+  const later = { ...ROAD, id: 8, created_at: "2026-10-12T14:00:00+00:00", agree: 2, signed_out: true };
+  const earlier = { ...ROAD, id: 9, created_at: "2026-10-09T14:00:00+00:00", agree: 1 };
+  // A road list with agreement counts stays in the server's order; the junctions follow, oldest first.
+  assert.deepEqual(
+    reviewEntries([later, earlier], [JUNCTION]).map((e) => e.key),
+    ["road-8", "road-9", "junction-3"],
+  );
+  assert.equal(roadDetail(later), "Sent signed out; 2 sends for this road agree.");
+  assert.equal(roadDetail({ ...ROAD, signed_out: true, agree: 1 }), "Sent signed out.");
+  assert.equal(roadDetail(ROAD), "");
 });

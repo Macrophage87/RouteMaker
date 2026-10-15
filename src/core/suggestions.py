@@ -220,12 +220,51 @@ def _record(user, way_id, lat, lon, name, row, tier, half, reason) -> StressSugg
     return suggestion
 
 
+# Open suggestions read before they are grouped and sorted (v0.7.0).
+OPEN_READ = 1000
+
+
+def _direction(suggestion: StressSuggestion) -> int:
+    """1 for a suggestion that the road is busier than rated, -1 calmer."""
+    return 1 if suggestion.step > suggestion.current_step else -1
+
+
 def open_suggestions(limit: int = 100) -> list[StressSuggestion]:
-    return list(
+    """The suggestions waiting, grouped by road and sorted by how many agree (the same way up
+    or down) and the size of the gap (v0.7.0). Each carries `agree`: how many open sends for its
+    road agree with it, itself included. A road's signed-out sends show once
+    `settings.SUGGEST_SIGNED_OUT_MIN_AGREE` of them agree (1: every one)."""
+    from django.conf import settings
+
+    rows = list(
         StressSuggestion.objects.filter(
             status__in=(StressSuggestion.Status.PENDING, StressSuggestion.Status.SENT)
-        ).order_by("created_at")[:limit]
+        ).order_by("created_at")[:OPEN_READ]
     )
+    by_road: dict[int, list[StressSuggestion]] = {}
+    for row in rows:
+        by_road.setdefault(row.osm_way_id, []).append(row)
+    minimum = getattr(settings, "SUGGEST_SIGNED_OUT_MIN_AGREE", 1)
+    groups = []
+    for road in by_road.values():
+        for row in road:
+            row.agree = sum(1 for other in road if _direction(other) == _direction(row))
+        signed_out_agree = max(
+            (
+                sum(1 for o in road if o.signed_out and _direction(o) == _direction(r))
+                for r in road
+                if r.signed_out
+            ),
+            default=0,
+        )
+        if signed_out_agree < minimum:
+            road = [r for r in road if not r.signed_out]
+        if not road:
+            continue
+        road.sort(key=lambda r: (-r.agree, -abs(r.step - r.current_step), r.created_at))
+        groups.append(road)
+    groups.sort(key=lambda g: (-g[0].agree, -abs(g[0].step - g[0].current_step), g[0].created_at))
+    return [row for group in groups for row in group][:limit]
 
 
 def _open(suggestion_id: int, *, lock: bool = True) -> StressSuggestion:
@@ -335,6 +374,11 @@ def summary(suggestion: StressSuggestion) -> dict:
         "step": suggestion.step,
         "words": segment_info.words_for(suggestion.tier, suggestion.half),
         "reason": suggestion.reason,
+        # v0.7.0: sent from the short form by someone not signed in, its one-tap reasons, and how
+        # many open sends for the road agree with it (itself included).
+        "signed_out": suggestion.signed_out,
+        "reasons": list(suggestion.reasons or []),
+        "agree": getattr(suggestion, "agree", 1),
         "status": suggestion.status,
         "created_at": suggestion.created_at.isoformat(),
         "sent_at": suggestion.sent_at.isoformat() if suggestion.sent_at else None,
