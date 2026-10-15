@@ -8,7 +8,8 @@ import { placeAtSpot, requestAfterClose, type InfoRequest } from "./lib/roadInfo
 import { stationNearSpot } from "./lib/stationLinks.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
-import { requestRoute, type ClosedStation, type RouteResponse, type RouteResult } from "./lib/api.ts";
+import { requestRoute, routeRequestBody, type ClosedStation, type RouteResponse, type RouteResult } from "./lib/api.ts";
+import { betterRouteSaid, EarlyStart, takesRefined } from "./lib/progressive.ts";
 import { closedReason, closuresDayOf, matchClosures, requestClosures } from "./lib/railClosures.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatSeconds } from "./lib/format.ts";
@@ -228,6 +229,8 @@ interface Plan {
   /** The stations and the transit option chosen with it: Reset puts them back too. */
   pins?: Pins;
   transitPick?: TransitPick | null;
+  /** Go (v0.7.0, "Faster routing"): the first good route at once, then its full plan (lib/progressive.ts). */
+  quick?: boolean;
 }
 
 const initialPlan = decodePlan(planToOpen(tabSession(), window.location.hash));
@@ -239,6 +242,8 @@ VIA_MARKS.markAt(initialPlan.points, initialPlan.vias);
 const START_MY_GO = readStartMyGo();
 /** A Go sheet's way back: to the map and the Go sheet, not a planner it does not show. */
 const GO_CLOSE_LABEL = "Close";
+/** Go's early start (v0.7.0, "Faster routing" step 4) asks only for trips up to this straight-line length (25 mi). */
+const GO_EARLY_MAX_KM = 40;
 const PLAN_LINK = hasPlanLink(window.location.hash) || initialPlan.points.length > 0;
 const OPENING = openingMode({ tab: readTabMode(), planLink: PLAN_LINK, openIn: START_MY_GO.myGo.openIn, wide: !window.matchMedia(NARROW).matches });
 // Go with nothing linked starts on My Go's ride type (the rider's saved settings, used as they are).
@@ -302,6 +307,9 @@ export function App() {
   // Everything the request is made from, as a key (v0.7.0): in Plan a station or a transit option chosen, a
   // weight or a slider moved, all mark the plan changed until Route or Update route.
   const planKey = JSON.stringify(planDials);
+  // The dials as they are, for Go's early start (v0.7.0, "Faster routing" step 4), which asks before the tap.
+  const planDialsNow = useRef(planDials);
+  planDialsNow.current = planDials;
   // "Make it a loop" chosen (OWNER-DECISIONS 374): the first point is the start and finish, every later one a stop.
   const loopVias = loopStops(preset, dials.loop);
   // What the planner answered, and which of its routes to choose from is shown
@@ -551,6 +559,9 @@ export function App() {
   const goPending = useRef<{ dest: LonLat; name: string; vias?: LonLat[]; pressed?: boolean; said?: boolean } | null>(null);
   // Set when a Go destination found Use my location's gate busy: the look-up under way answers for it (settleGoWaiting).
   const goAwaiting = useRef(false);
+  // A Go destination just picked (v0.7.0, "Faster routing" step 4): its route is asked for at once, not after the
+  // debounce that folds a burst of edits into one request.
+  const goPickedNow = useRef(false);
   // Nothing waits any more: the destination routed, or dropped (leaving Go).
   const clearGoPending = () => {
     goPending.current = null;
@@ -628,6 +639,18 @@ export function App() {
   // (lib/bikeshareOptions.ts replaysFirst: that option has no station id to re-plan with).
   const firstAnswer = useRef<FirstAnswer<RouteResponse> | null>(null);
   const replayAsked = useRef<string | null>(null);
+  // Go's first route, then a better one (v0.7.0, "Faster routing"; lib/progressive.ts): what the full plan reads when
+  // it comes (the route shown, and whether the rider has pressed Start), and the route sentence held while a full
+  // plan replaces its first route, so the swap is said once, by its own line.
+  const shownNow = useRef<{ answer: RouteResponse | null; riding: boolean; startAsked: boolean }>({ answer: null, riding: false, startAsked: false });
+  shownNow.current = { answer, riding, startAsked: rideAsk };
+  const routeSaidNow = useRef("");
+  const [refinedHeld, setRefinedHeld] = useState<{ route: RouteResponse; said: string } | null>(null);
+  // Go's early start (step 4): a request made before the tap, kept for the tap that makes the same request.
+  const earlyStart = useRef<EarlyStart | null>(null);
+  if (earlyStart.current === null) {
+    earlyStart.current = new EarlyStart({ allowed: () => modeRef.current === "go" && !shownNow.current.riding && !scheduler.current?.busy() });
+  }
   if (scheduler.current === null) {
     scheduler.current = new RouteScheduler<Plan>({
       send: async (plan) => {
@@ -643,11 +666,12 @@ export function App() {
           keptShown.current = null;
           return { ok: true, route: replay };
         }
-        const result = await requestRoute(plan.points, plan.preset, {
-          confirmLong: plan.confirmLong,
-          dials: plan.dials,
-          vias: viaIndices(plan.points, VIA_MARKS.isVia),
-        });
+        const asked = { confirmLong: plan.confirmLong, dials: plan.dials, vias: viaIndices(plan.points, VIA_MARKS.isVia), quick: plan.quick };
+        // Asked for already, before the tap (Go's early start): that request's answer, not a second request.
+        const early = earlyStart.current?.take(routeRequestBody(plan.points, plan.preset, asked)) ?? null;
+        const result = early
+          ? await early.catch(() => requestRoute(plan.points, plan.preset, asked))
+          : await requestRoute(plan.points, plan.preset, asked);
         keptShown.current = null;
         if (result.ok || result.error.kind !== "network") return result;
         const kept = await keptAnswerFor<RouteResponse>(keptPlanKey(plan.points, plan.preset, plan.dials, viaIndices(plan.points, VIA_MARKS.isVia))).catch(() => undefined);
@@ -700,6 +724,31 @@ export function App() {
           setRoute(null);
           setStatus({ kind: "error", error: result.error });
         }
+      },
+      // Go's first route (v0.7.0, "Faster routing"): its full plan is asked for once it is shown.
+      refine: (plan: Plan, shown: RouteResult) =>
+        shown.ok && shown.route.provisional
+          ? () =>
+              requestRoute(plan.points, plan.preset, {
+                confirmLong: plan.confirmLong,
+                dials: plan.dials,
+                vias: viaIndices(plan.points, VIA_MARKS.isVia),
+              })
+          : null,
+      // The full plan replaces the first route before Start only, and is said once where it is another route; the
+      // focus stays where it is, and the route's own sentence is not said again.
+      onRefined: (plan: Plan, result: RouteResult) => {
+        const now = shownNow.current;
+        if (!result.ok || !takesRefined(now.answer, now.riding, now.startAsked) || !now.answer) return;
+        // A first route not yet said (it stood less than a moment) is not held: the full plan's sentence is the one said.
+        const heard = routeSaidNow.current;
+        const line = heard ? betterRouteSaid(now.answer, result.route) : null;
+        if (heard) setRefinedHeld({ route: result.route, said: heard });
+        drawnRef.current = drawnRef.current ? { ...drawnRef.current, route: result.route } : drawnRef.current;
+        if (drawnRef.current) setDrawn(drawnRef.current);
+        setRoute(result.route);
+        routedKey.current = keptPlanKey(plan.points, plan.preset, plan.dials, viaIndices(plan.points, VIA_MARKS.isVia));
+        if (line) setNoticeSaying(line, line);
       },
     });
   }
@@ -812,7 +861,11 @@ export function App() {
       pressed: pressed && planFirst,
       pins: stationPins,
       transitPick,
-    });
+      // Go shows the first good route at once and swaps in the full plan before Start (v0.7.0, "Faster routing");
+      // Plan keeps the full search on its Route button.
+      quick: mode === "go" && !riding,
+    }, { now: goPickedNow.current && mode === "go" });
+    goPickedNow.current = false;
   }, [points, preset, planDials, confirmedKm, routeAsk, planFirst]);
 
   // The long-ride question and every error are in the sheet; on a phone whose
@@ -1489,6 +1542,7 @@ export function App() {
   const routeGo = (start: LonLat, located: boolean, dest: LonLat, name: string, pressed = false, vias: LonLat[] = []) => {
     const ride = rideRef.current;
     setNotice(null);
+    goPickedNow.current = true;
     commit([start, ...vias, dest], ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
     if (located) setFromHere((prior) => [...prior, start]);
     if (pressed) announce(goTapRoutedSaid(name, located, saysExtra(announceLevelNow.current)));
@@ -1587,6 +1641,25 @@ export function App() {
     }
     void goTo(point, found.name);
   };
+  // Go's early start (v0.7.0, "Faster routing" step 4; lib/progressive.ts): the route to a place the rider is looking
+  // at (the top search result, Home when Go opens), asked for before the tap exactly as the tap will ask for it: from
+  // Go's start, no stops, no loop, the dials as they are, the first route. Not for Bikeshare or transit (live
+  // stations), nor past GO_EARLY_MAX_KM of straight line; never during a ride.
+  const goEarly = (dest: LonLat) => {
+    if (modeRef.current !== "go" || shownNow.current.riding || !insideCoverage(dest)) return;
+    const action = goPickAction(pointsRef.current, goStartRef.current);
+    const ridePreset = rideRef.current.preset;
+    if (action.kind !== "route" || twoPointsOnly(ridePreset)) return;
+    const ends: LonLat[] = [action.point, dest];
+    if (spanKm(ends) > GO_EARLY_MAX_KM) return;
+    const { closureBypass: _bypass, ...kept } = planDialsNow.current;
+    const asked = { dials: { ...kept, loop: false }, quick: true };
+    earlyStart.current?.start(routeRequestBody(ends, ridePreset, asked), () => requestRoute(ends, ridePreset, asked));
+  };
+  const goEarlyToPlace = (found: Place) => {
+    const point = placeFromSearch(found, () => undefined, stationEntranceForPlace);
+    if (point) goEarly(point);
+  };
   // Go's "Add a stop" (v0.7.0, "Keep adding stops by search"): with a route, a place is a stop where it adds the
   // least distance, routed at once as any Go edit is; one edit, so Undo removes it. Without a route it is the
   // destination, as Where to? makes it.
@@ -1626,6 +1699,13 @@ export function App() {
     openView("settings", chip);
     window.setTimeout(() => document.getElementById("settings-my-go-heading")?.scrollIntoView?.({ block: "start" }), 50);
   };
+  // Go open with Home set and the rider's location found, and no route yet: the route Home is asked for early, so
+  // the Home chip shows it finished (v0.7.0, "Faster routing" step 4).
+  const homeEarly = me.signed_in && myGo.home !== null ? myGo.home.point : null;
+  useEffect(() => {
+    if (mode === "go" && !riding && points.length === 0 && goStart.kind === "here" && homeEarly) goEarly(homeEarly);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- asked once each time these change, not each render
+  }, [mode, riding, points.length, goStart.kind, homeEarly?.[0], homeEarly?.[1]]);
   // Go's Locate (the top bar): the map goes to the rider, and nothing is added to the plan.
   const goLocate = async () => {
     const result = await locateForGo();
@@ -2686,7 +2766,11 @@ export function App() {
   // The route's sentence once it has stood a moment (lib/settle.ts): routes
   // that replace each other quickly are said once, the last. "Planning..." is
   // shown but not said, so a release is one announcement, not two.
-  const routeSaid = useSettled(status.kind === "ok" ? announcement : "", ANNOUNCE_SETTLE_MS);
+  const settledSaid = useSettled(status.kind === "ok" ? announcement : "", ANNOUNCE_SETTLE_MS);
+  // While a full plan stands in for Go's first route, the region keeps the first route's sentence: the swap has its
+  // own line (lib/progressive.ts betterRouteSaid), said once, and a better route is not read out twice.
+  const routeSaid = refinedHeld && answer === refinedHeld.route ? refinedHeld.said : settledSaid;
+  routeSaidNow.current = routeSaid;
   // A plan still going after a few seconds is said once, so a screen-reader rider
   // can tell a slow plan (a calm route at the top of the slider takes up to half a
   // minute) from a dead one (the a11y review's SF1).
@@ -3161,6 +3245,7 @@ export function App() {
                   geoGate={geoGate}
                   searchBias={searchBias}
                   onPick={goToPlace}
+                  onTopPlace={goEarlyToPlace}
                   places={{
                     homeReady: me.signed_in && myGo.home !== null,
                     signedIn: me.signed_in,
