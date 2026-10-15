@@ -111,7 +111,8 @@ class TestSettings:
             {"home": {"lon": -77.0, "lat": 38.9}},
             {"v": 1, "plan": "#p=-77.0,38.9;-77.1,38.8&preset=default"},
             {"v": 1, "sections": {"a": {"b": {"c": {"d": 1}}}}},
-            {"v": 1, "weight": {"name": "x" * (accounts.SETTINGS_MAX_BYTES + 1)}},
+            {"v": 1, "weight": {"total_kg": 80}},
+            {"v": 1, "bikeshare": {"name": "x" * (accounts.SETTINGS_MAX_BYTES + 1)}},
         ],
     )
     def test_only_the_planner_s_own_settings_are_kept(self, doc) -> None:

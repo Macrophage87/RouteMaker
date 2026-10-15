@@ -28,7 +28,6 @@ SETTINGS_KEYS = frozenset(
         "climbsFrom",  # the smallest climb category shown
         "topo",  # contour lines on or off
         "sections",  # which Layers sections' switches were on
-        "weight",  # the remembered weight (OWNER-DECISIONS 313: saved when signed in)
         "bikeshare",  # the bikeshare and micromobility service switches
     }
 )
