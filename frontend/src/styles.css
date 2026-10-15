@@ -5054,6 +5054,24 @@ details.fold > summary .icon {
   font-size: 1rem;
 }
 
+/* What a 311 pick did ("Sent to DC 311."), under the button, with "Add a note" (Go riding fixes item 3). */
+.ride-311-said {
+  width: min(16rem, calc(100vw - 24px));
+  padding: 8px 10px;
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+
+.ride-311-said p {
+  margin: 0 0 6px;
+}
+
+.ride-311-said button {
+  min-height: 44px;
+}
+
 /* The road panel's "Suggest a change…": the ways to suggest, shown under it. */
 .road-info-suggest[hidden] {
   display: none;

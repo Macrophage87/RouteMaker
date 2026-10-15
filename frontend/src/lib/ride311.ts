@@ -3,8 +3,10 @@
  * round button of about 60 px on the right edge at thumb height. One tap opens a menu of large buttons:
  * Pothole, Downed tree, Vehicle parked in a bike lane, Roadway or bikeway obstructed, Streetlight out,
  * Something else. The existing report flow then continues." The menu names the rider's place, as the
- * report will ("Check it before you send"); a pick opens Report a problem to DC 311 (RideMode's Report311)
- * with that problem chosen, where the note, the text or DC 311 online, and Copy are as they were.
+ * report will ("Check it before you send"). Since v0.7.0 ("Go riding fixes" item 3: "tap 311, tap the
+ * problem, sent") a pick is the report: sent by the server where it has DC's key, else the phone's text
+ * app to 311 filled in (lib/report311.ts pickWay); a computer, or a pick with no place yet, opens Report a
+ * problem to DC 311 (RideMode's Report311) with that problem chosen. The note comes after ("Add a note").
  *
  * A createElement module, so a test renders it (node's runner reads .ts, not .tsx).
  */
