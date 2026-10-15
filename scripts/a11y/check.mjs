@@ -1010,7 +1010,7 @@ const FIRST_HINT = "Place the starting point, then a stop or two along the way."
   // With a route shown and the points compact, the box is still there (it sits outside what Edit points hides).
   const p = await open({ ride: false });
   const compact = await p.eval("(() => { const s = document.querySelector('#points-search'); const t = document.querySelector('.loop-toggle input'); return { searchHidden: s.hidden, box: !!t && t.getBoundingClientRect().height > 0 }; })()");
-  check("loop first: with a route shown and the points compact, the search is hidden and the box stays", compact.searchHidden && compact.box, JSON.stringify(compact));
+  check("loop first: with a route shown and the points compact, the search stays open (more stops by search) and the box stays", !compact.searchHidden && compact.box, JSON.stringify(compact));
   // The Plan button: first in the bar, current on the planner, returns from a sheet to the planner's heading.
   const bar = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => ({ text: x.querySelector('span').textContent, current: x.getAttribute('aria-current') }))");
   check("plan: five buttons, Plan first and current on the planner, the others not", bar.length === 5 && bar[0].text === "Plan" && bar[0].current === "true" && bar.slice(1).every((x) => !x.current), JSON.stringify(bar));
@@ -3965,7 +3965,7 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   check("go: the switch is a group named View, described by what each view is, of toggle buttons (Go pressed: not colour alone)",
     sw?.role === "group" && sw?.name === "View" && /^Go: type a place and ride\./.test(sw?.description ?? "") && pressed?.role === "button" && String(pressed?.pressed) === "true", JSON.stringify({ sw, pressed }));
   const home = await axNode(p, ".go-places .place-chip");
-  check("go: signed out, Home is described by why it needs a sign-in (the owner's choice 3)", home?.name === "Home" && home?.description === "Sign in with Discord to keep a Home.", JSON.stringify(home));
+  check("go: with no Home yet, Home is described by where to set it (signed out too)", home?.name === "Home" && home?.description === "No Home yet: set it in My Go.", JSON.stringify(home));
   // Screen-reader order follows the visual order: top bar (left to right), then the sheet.
   const order = await p.eval(`(() => { const els = [...document.querySelectorAll('nav.go-top button, .go-sheet button, .go-sheet input')].filter((e) => e.getClientRects().length && !e.closest('[hidden]'));
     const pos = els.map((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.left)]; });
@@ -3995,7 +3995,7 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   await sleep(300);
   await p.eval("document.querySelector('.go-sheet .ride-more').click(); true");
   await sleep(400);
-  const rideSheet = await p.eval("({ shown: !document.getElementById('sheet-ride').hidden, rides: document.querySelectorAll('#sheet-ride .ride-chips button').length, focus: document.activeElement?.tagName })");
+  const rideSheet = await p.eval("({ shown: !document.getElementById('sheet-ride').hidden, rides: document.querySelectorAll('#sheet-ride .ride-sheet-cards button').length, focus: document.activeElement?.tagName })");
   check("go: the ride types' More opens the Ride sheet with every ride type (the owner's choice 10), its heading focused", rideSheet.shown && rideSheet.rides >= 10 && rideSheet.focus === "H2", JSON.stringify(rideSheet));
   await p.shot(`${SHOTS}/go_390.png`);
   await p.close();

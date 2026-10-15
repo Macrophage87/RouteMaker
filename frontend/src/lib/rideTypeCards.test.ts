@@ -17,7 +17,7 @@ const render = (ids: readonly PresetId[], preset: PresetId) =>
 test("every ride type has one short plain sentence, shorter than its full description", () => {
   for (const option of PRESETS) {
     const summary = option.summary;
-    assert.ok(summary.length > 0 && summary.length <= 70, `${option.id}: ${summary.length} characters`);
+    assert.ok(summary.length > 0 && summary.length <= 50, `${option.id}: ${summary.length} characters`);
     assert.match(summary, /^[A-Z][^.!?;()]*\.$/, `${option.id}: one sentence, no asides`);
     assert.ok(summary.length < option.description.length, `${option.id}: shorter than its description`);
   }
