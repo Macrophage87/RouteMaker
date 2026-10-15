@@ -216,31 +216,45 @@ def _half(stress: StressResult) -> bool:
 def _ratings_json(stress: StressResult) -> str | None:
     """Every rating held for the way, for the road panel (`segment.stress_ratings`):
     the classifier's tier and each agency's level, and which one set the way's
-    tier (`used`: `owner`, `rural floor`, or the agency). None where no agency
-    rated the way, which the panel reads as the classifier's tier standing alone."""
+    tier (`used`: `owner`, `community`, `rural floor`, or the agency). None where
+    no agency rated the way, which the panel reads as the classifier's tier
+    standing alone.
+
+    An approved override row on the way is recorded as `override`, with whose
+    rating it is (`agency_lts.adjustment_source`: the owner's own, a reviewed
+    community rating, or an agency's loaded as a row, like Montgomery's LTS 5 of
+    2026-10-01) and its level; it set the tier, so it is `used`."""
     import json
 
-    from routemaker.agency_lts import chosen
+    from routemaker.agency_lts import adjustment_source, chosen, source_name
     from routemaker.stress import RURAL_FLOOR_RULE
 
     ratings = getattr(stress, "agency_ratings", ())
     if not ratings:
         return None
-    if getattr(stress, "adjustment", None) is not None:
-        used = "owner"
+    adjustment = getattr(stress, "adjustment", None)
+    override = None
+    if adjustment is not None:
+        used = adjustment_source(adjustment.adjustment_id)
+        override = {
+            "source": used,
+            "name": source_name(used),
+            "level": int(adjustment.tier) + (0.5 if getattr(adjustment, "half", False) else 0),
+        }
     elif RURAL_FLOOR_RULE in (stress.rule or ""):
         used = "rural floor"
     else:
         used = chosen(ratings).agency
     formula = getattr(stress, "formula_tier", None)
-    return json.dumps(
-        {
-            "formula": None if formula is None else int(formula),
-            "formula_rule": getattr(stress, "formula_rule", None),
-            "agencies": [{"agency": r.agency, "name": r.name, "level": r.level} for r in ratings],
-            "used": used,
-        }
-    )
+    held = {
+        "formula": None if formula is None else int(formula),
+        "formula_rule": getattr(stress, "formula_rule", None),
+        "agencies": [{"agency": r.agency, "name": r.name, "level": r.level} for r in ratings],
+        "used": used,
+    }
+    if override is not None:
+        held["override"] = override
+    return json.dumps(held)
 
 
 def _tier_or_none(tier) -> int | None:

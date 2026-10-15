@@ -29,7 +29,7 @@ from django.conf import settings
 from django.db import connection
 
 from pipeline.schema import validate_schema_name
-from routemaker import flow, more_links
+from routemaker import agency_lts, flow, more_links
 from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
 
 # How far from the spot a way may be and still be the one the rider meant: a
@@ -552,7 +552,7 @@ def stress_rows(row: dict) -> list[dict]:
     adjusted = row.get("stress_adjustment_id") is not None or str(
         row.get("stress_rule", "")
     ).startswith(("override:", "named corridor:"))
-    source = OWNER if adjusted else CLASSIFIER
+    source = override_source(row) if adjusted else CLASSIFIER
     rows = [
         _row("Level", tier_text(tier, half), source),
         _row("Why", rule_words(row["stress_rule"]), source),
@@ -562,7 +562,7 @@ def stress_rows(row: dict) -> list[dict]:
     if computed is not None and direction in ("up", "down"):
         rows.append(_row("Before the override", tier_text(int(computed)), CLASSIFIER))
     category = row.get("stress_adjustment_category")
-    if category in ADJUSTMENT_CATEGORIES:
+    if category in ADJUSTMENT_CATEGORIES and source == OWNER:
         rows.append(_row("Owner's reason", ADJUSTMENT_CATEGORIES[category].capitalize(), OWNER))
     note = row.get("stress_adjustment_note")
     # A note marked route_only is for a route over the stretch, never a map click.
@@ -571,27 +571,64 @@ def stress_rows(row: dict) -> list[dict]:
     return rows + rating_rows(row)
 
 
+def override_source(row: dict) -> str:
+    """Whose rating an adjusted segment's tier is, as the panel names the source:
+    the owner's own row, a reviewed community rating, or an agency's rating loaded
+    as a row (Montgomery's LTS 5 of 2026-10-01, `moco-lts5-*`). The owner,
+    2026-10-14: "It's also listed as owner override when it was county data"."""
+    source = agency_lts.adjustment_source(row.get("stress_adjustment_id"))
+    if source == agency_lts.OWNER:
+        return OWNER
+    if source == agency_lts.COMMUNITY:
+        return COMMUNITY
+    return agency_lts.source_name(source)
+
+
+COMMUNITY = "Community rating"
+
 # Which rating set the tier, in words, by `segment.stress_ratings`' `used`.
 _USED_WORDS = {
-    "owner": "the owner's rating is used",
+    "owner": "the owner's rating is used: owner and community ratings come first",
+    "community": "the community's rating is used: owner and community ratings come first",
     "rural floor": "raised to LTS 2: rural roads open to cars are LTS 2 at least",
 }
+
+
+def _level_text(level: object) -> str:
+    level = float(level)
+    whole = int(level)
+    return tier_text(whole, level != whole)
 
 
 def rating_rows(row: dict) -> list[dict]:
     """Every rating held for the way (`segment.stress_ratings`), each with its
     source, and which one the map uses (the owner, 2026-10-13: "put all the
     relevant information in the tab when viewing the road"). Nothing where no
-    agency rated the way: the Level and Why rows already say all there is."""
+    agency rated the way: the Level and Why rows already say all there is.
+
+    The order is the owner's precedence (2026-10-13): an override row first (the
+    owner's or the community's), then the agencies, most local first, then the
+    formula."""
     held = _json(row.get("stress_ratings"))
     if not isinstance(held, dict) or not held.get("agencies"):
         return []
     used = held.get("used")
     rows = []
+    agencies = {rating.get("agency") for rating in held["agencies"]}
+    override = held.get("override")
+    # An agency's rating loaded as a row is listed once, as that agency's.
+    if isinstance(override, dict) and override.get("source") not in agencies:
+        source = override.get("source")
+        label, named = {
+            agency_lts.OWNER: ("Owner's rating", OWNER),
+            agency_lts.COMMUNITY: ("Community rating", COMMUNITY),
+        }.get(source, (f"{override.get('name')} rates it", str(override.get("name"))))
+        value = _level_text(override["level"])
+        if source == used:
+            value += " (used: owner and community ratings come first)"
+        rows.append(_row(label, value, named))
     for rating in held["agencies"]:
-        level = float(rating["level"])
-        whole = int(level)
-        value = tier_text(whole, level != whole)
+        value = _level_text(rating["level"])
         if rating.get("agency") == used:
             value += " (used: the most local agency's rating)"
         rows.append(_row(f"{rating['name']} rates it", value, rating["name"]))
@@ -602,7 +639,8 @@ def rating_rows(row: dict) -> list[dict]:
             value += f" ({rule_words(str(held['formula_rule']))})"
         rows.append(_row("RouteMaker's formula", value, CLASSIFIER))
     if used in _USED_WORDS:
-        rows.append(_row("Used", _USED_WORDS[used].capitalize(), OWNER))
+        whose = COMMUNITY if used == agency_lts.COMMUNITY else OWNER
+        rows.append(_row("Used", _USED_WORDS[used].capitalize(), whose))
     return rows
 
 

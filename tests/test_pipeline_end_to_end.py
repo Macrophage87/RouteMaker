@@ -157,6 +157,7 @@ def run_pipeline(
     pavement=(),
     legality=(),
     crossings=(),
+    agency_lts=(),
     skip: frozenset[Stage] = frozenset(),
     build_id: str | None = None,
     disk_usage=roomy_disk,
@@ -171,6 +172,7 @@ def run_pipeline(
         pavement=pavement,
         legality=legality,
         crossings=crossings,
+        agency_lts=agency_lts,
     )
     context = RebuildContext(
         source_pbf=source,
@@ -1033,6 +1035,52 @@ def test_volume_reaches_the_classifier(workspace, states) -> None:
     assert context.stress_by_way[100].volume_source == "vdot"
     assert context.stress_by_way[100].volume_aadt == 900
     assert context.stress_by_way[100].volume_year == 2025
+
+
+def test_agency_ratings_reach_the_tier_and_the_segment_table(workspace, states) -> None:
+    """v0.7.0 (the owner's order, 2026-10-13): the county's rating over the state's
+    over the formula, every one kept for the road panel in `stress_ratings`."""
+    source, root = workspace
+    staging = settings.SEGMENT_SCHEMA_STAGING
+    line = [[-77.02, 38.90], [-76.98, 38.90]]
+    agency_lts = [
+        {
+            "id": "moco-1-0",
+            "agency": "moco",
+            "level": 2.5,
+            "name": "Test Road",
+            "coordinates": line,
+        },
+        {
+            "id": "sha-1-0",
+            "agency": "mdot-sha",
+            "level": 4,
+            "name": "Test Road",
+            "coordinates": line,
+        },
+    ]
+    context, _ = run_pipeline(source, root, agency_lts=agency_lts, skip=NOT_SWAPPED)
+    stress = context.stress_by_way[100]
+    assert (int(stress.tier), stress.half) == (2, True)
+    assert stress.rule.startswith("agency rating: Montgomery County Planning LTS 2.5")
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT stress_tier, stress_half, stress_ratings FROM {staging}.segment "
+            "WHERE osm_way_id = 100"
+        )
+        tier, half, held = cursor.fetchone()
+    held = json.loads(held) if isinstance(held, str) else held
+    assert (tier, half) == (2, True)
+    assert held["used"] == "moco"
+    assert [a["agency"] for a in held["agencies"]] == ["moco", "mdot-sha"]
+    assert held["formula"] is not None
+    # A way no agency rates keeps the formula and records nothing.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT count(*) FROM {staging}.segment "
+            "WHERE osm_way_id <> 100 AND stress_ratings IS NOT NULL"
+        )
+        assert cursor.fetchone()[0] == 0
 
 
 def test_the_agency_and_year_of_a_count_reach_the_segment_table(workspace, states) -> None:

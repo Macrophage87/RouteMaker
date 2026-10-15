@@ -144,3 +144,163 @@ def test_no_file_means_no_ratings(tmp_path):
     from pipeline import agency_ratings
 
     assert agency_ratings.load(tmp_path / "absent.json") == ((), {})
+
+
+# --- The owner's order end to end: owner and community rows over every agency -----
+
+
+def _stress_row(way, tier, adjustment_id, **extra):
+    from pipeline.overrides import Override
+
+    value = {
+        "tier": tier,
+        "adjustment_id": adjustment_id,
+        "category": "other",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only",
+        **extra,
+    }
+    return Override(kind="stress", osm_way_id=way, value=value, reason="r")
+
+
+def test_an_owner_row_outranks_a_county_avoid_and_keeps_every_rating():
+    """Darnestown Rd (the owner, 2026-10-14: "LTS 4" over Montgomery's LTS 5)."""
+    import json
+
+    from pipeline import overrides, writers
+
+    rated = agency_lts.apply(FORMULA, [AgencyRating("moco", 5), AgencyRating("mdot-sha", 4)])
+    assert rated.tier is Stress.AVOID
+    by_way = {5970658: rated}
+    applied, _ = overrides.apply_stress(by_way, [_stress_row(5970658, 4, "darnestown-road-lts4")])
+    assert applied == 1
+    result = by_way[5970658]
+    assert result.tier is Stress.LTS4
+    held = json.loads(writers._ratings_json(result))
+    assert held["used"] == "owner"
+    assert held["override"] == {"source": "owner", "name": "Owner", "level": 4}
+    assert [a["level"] for a in held["agencies"]] == [5, 4]
+    assert held["formula"] == 4
+
+
+def test_a_community_row_outranks_an_agency_and_says_so():
+    import json
+
+    from pipeline import overrides, writers
+
+    by_way = {7: agency_lts.apply(FORMULA, [AgencyRating("moco", 3)])}
+    overrides.apply_stress(by_way, [_stress_row(7, 2, "community-quiet-lane", half=True)])
+    held = json.loads(writers._ratings_json(by_way[7]))
+    assert held["used"] == "community"
+    assert held["override"]["level"] == 2.5
+
+
+def test_a_county_row_loaded_as_an_override_is_the_countys():
+    """Montgomery's LTS 5 rows of 2026-10-01 are the county's rating, not the owner's."""
+    import json
+
+    from pipeline import overrides, writers
+
+    by_way = {9: agency_lts.apply(FORMULA, [AgencyRating("moco", 5)])}
+    overrides.apply_stress(by_way, [_stress_row(9, 5, "moco-lts5-airpark-road")])
+    assert json.loads(writers._ratings_json(by_way[9]))["used"] == "moco"
+
+
+@pytest.mark.parametrize(
+    ("adjustment_id", "source"),
+    [
+        ("moco-lts5-darnestown-road", "moco"),
+        ("mdot-sha-us-29", "mdot-sha"),
+        ("ddot-k-st", "ddot"),
+        ("community-quiet-lane", "community"),
+        ("darnestown-road-lts4", "owner"),
+        ("edit-12", "owner"),
+        (None, "owner"),
+    ],
+)
+def test_whose_rating_an_override_row_is(adjustment_id, source):
+    assert agency_lts.adjustment_source(adjustment_id) == source
+
+
+def test_every_source_has_a_name_the_panel_shows():
+    names = {agency_lts.source_name(s) for s in ("moco", "mdot-sha", "ddot", "owner", "community")}
+    assert names == {"Montgomery County Planning", "MDOT SHA", "DDOT", "Owner", "Community"}
+
+
+def test_with_no_agency_rating_the_formula_stands_and_nothing_is_recorded():
+    from pipeline import writers
+
+    assert agency_lts.apply(FORMULA, ()) is FORMULA
+    assert writers._ratings_json(FORMULA) is None
+
+
+@pytest.mark.parametrize("level", [1.5, 2.5, 3.5, 4.5])
+def test_every_half_step_maps_one_to_one(level):
+    result = agency_lts.apply(FORMULA, [AgencyRating("moco", level)])
+    assert int(result.tier) + (0.5 if result.half else 0) == level
+
+
+def test_the_state_rates_where_the_county_does_not():
+    result = agency_lts.apply(FORMULA, [AgencyRating("mdot-sha", 2)])
+    assert result.tier is Stress.LTS2 and "MDOT SHA" in result.rule
+
+
+def test_a_state_avoid_under_a_county_rating_takes_the_county():
+    """County over state holds at LTS 5 as well: the county's own level is used."""
+    result = agency_lts.apply(FORMULA, [AgencyRating("mdot-sha", 5), AgencyRating("moco", 3)])
+    assert result.tier is Stress.LTS3
+
+
+def test_the_rural_floor_never_lowers_an_agency_avoid():
+    rated = agency_lts.apply(FORMULA, [AgencyRating("moco", 5)])
+    assert rural_floor(rated, {"highway": "unclassified"}, urban=False).tier is Stress.AVOID
+
+
+# --- The installer: Montgomery's 0.5 is no rating -----------------------------------
+
+
+def _moco_feature(objectid, level, **props):
+    return {
+        "type": "Feature",
+        "properties": {
+            "OBJECTID": objectid,
+            "STATUS": "Existing",
+            "LTS_EXIST": level,
+            "STREET_NAME": "Davis Mill",
+            "STREET_TYPE": "Rd",
+            **props,
+        },
+        "geometry": {"type": "LineString", "coordinates": [[-77.2, 39.2], [-77.19, 39.2]]},
+    }
+
+
+def test_the_installer_drops_moco_none_and_keeps_half_steps_and_avoid(tmp_path):
+    import importlib.util
+    import json
+    from collections import Counter
+
+    from rebuild_fixtures import REPO
+
+    spec = importlib.util.spec_from_file_location(
+        "install_agency_lts", REPO / "scripts" / "install_agency_lts.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    layer = tmp_path / "moco-bicycle-lts"
+    layer.mkdir()
+    features = [
+        _moco_feature(1, 0.5),
+        _moco_feature(2, 2.5),
+        _moco_feature(3, 5),
+        _moco_feature(4, 1, BIKEWAY="Sidepath"),
+        _moco_feature(5, 3, STATUS="Proposed"),
+    ]
+    (layer / "moco-bicycle-lts.geojson").write_text(
+        json.dumps({"type": "FeatureCollection", "features": features})
+    )
+    dropped = Counter()
+    rows = list(module.moco(tmp_path, dropped))
+    assert {row["id"]: row["level"] for row in rows} == {"moco-2-0": 2.5, "moco-3-0": 5.0}
+    assert rows[0]["name"] == "Davis Mill Rd"
+    assert dropped["moco: no rating (0.5 'None')"] == 1

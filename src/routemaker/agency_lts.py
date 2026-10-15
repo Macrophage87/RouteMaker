@@ -39,10 +39,45 @@ AGENCIES: dict[str, tuple[str, int]] = {
     "moco": ("Montgomery County Planning", COUNTY),
     # The District is its own local government: its rating ranks with a county's.
     "ddot": ("DDOT", COUNTY),
-    "mdot-sha": ("MDOT SHA (statewide)", STATE),
+    "mdot-sha": ("MDOT SHA", STATE),
 }
 
 AGENCY_RULE = "agency rating"
+
+# Whose rating an approved override row is. Most rows are the owner's own call, but
+# some carry an agency's rating that was loaded as a row before v0.7.0 read the
+# agency layers directly: `fixtures/overrides/2026-10-01-owner-moco-lts5-avoid.json`
+# holds Montgomery County Planning's LTS 5, and the road panel called it "Owner
+# override" (the owner, 2026-10-14: "It's also listed as owner override when it was
+# county data"). The row's adjustment id says whose it is, by its prefix: ids are
+# stable across rebuilds and shared by every way of one stretch.
+OWNER = "owner"
+COMMUNITY = "community"
+ADJUSTMENT_SOURCES: tuple[tuple[str, str], ...] = (
+    ("moco-lts5-", "moco"),
+    ("mdot-sha-", "mdot-sha"),
+    ("ddot-", "ddot"),
+    # A reviewed rider suggestion (the owner's order of 2026-10-13: "Ratings from
+    # Community Input (including my judgment) win over everything").
+    ("community-", COMMUNITY),
+)
+SOURCE_NAMES = {OWNER: "Owner", COMMUNITY: "Community"}
+
+
+def adjustment_source(adjustment_id: str | None) -> str:
+    """Whose rating an override row is: an agency key of `AGENCIES`, `community`,
+    or `owner` (every other row: the owner's own call)."""
+    for prefix, source in ADJUSTMENT_SOURCES:
+        if (adjustment_id or "").startswith(prefix):
+            return source
+    return OWNER
+
+
+def source_name(source: str) -> str:
+    """A source key (`adjustment_source`'s, or an agency's) as the road panel names it."""
+    if source in AGENCIES:
+        return AGENCIES[source][0]
+    return SOURCE_NAMES.get(source, source)
 
 
 @dataclass(frozen=True)

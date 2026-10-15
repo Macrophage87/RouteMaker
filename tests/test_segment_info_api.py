@@ -891,7 +891,7 @@ class TestEveryRatingHeld:
         "formula_rule": "mixed traffic, 35 mph or above",
         "agencies": [
             {"agency": "moco", "name": "Montgomery County Planning", "level": 2.5},
-            {"agency": "mdot-sha", "name": "MDOT SHA (statewide)", "level": 3},
+            {"agency": "mdot-sha", "name": "MDOT SHA", "level": 3},
         ],
         "used": "moco",
     }
@@ -913,7 +913,7 @@ class TestEveryRatingHeld:
         county = rows["Montgomery County Planning rates it"]
         assert county["value"].startswith("LTS 2.5") and "(used" in county["value"]
         assert county["source"] == "Montgomery County Planning"
-        state = rows["MDOT SHA (statewide) rates it"]
+        state = rows["MDOT SHA rates it"]
         assert state["value"].startswith("LTS 3") and "used" not in state["value"]
         formula = rows["RouteMaker's formula"]
         assert formula["value"].startswith("LTS 4") and "35 mph" in formula["value"]
@@ -937,6 +937,91 @@ class TestEveryRatingHeld:
         rows = section(get(client).json(), "stress")
         assert "rural road open to cars" in rows["Why"]["value"]
         assert "rural roads open to cars" in rows["Used"]["value"]
+
+    def test_a_county_row_reads_as_the_county_not_the_owner(self, client, segment_schemas, router):
+        """The owner, 2026-10-14: "It's also listed as owner override when it was
+        county data". Montgomery's LTS 5 rows (`moco-lts5-*`) name the county."""
+        live, _ = segment_schemas
+        insert(
+            live,
+            603,
+            [SPOT, east(SPOT, 100)],
+            stress_tier=5,
+            stress_rule="override: stress adjustment moco-lts5-airpark-road",
+            stress_adjustment_id="moco-lts5-airpark-road",
+            stress_computed_tier=3,
+            stress_adjustment_direction="up",
+            stress_adjustment_category="other",
+            stress_adjustment_display="route_only",
+        )
+        router.answers = {"bicycle": [edge(603, "Airpark Road")]}
+        rows = section(get(client).json(), "stress")
+        assert rows["Level"]["value"] == "Avoid"
+        assert rows["Level"]["source"] == "Montgomery County Planning"
+        assert rows["Why"]["source"] == "Montgomery County Planning"
+        assert "Owner's reason" not in rows
+
+    def test_an_owner_row_reads_as_the_owner(self, client, segment_schemas, router):
+        live, _ = segment_schemas
+        insert(
+            live,
+            604,
+            [SPOT, east(SPOT, 100)],
+            stress_tier=4,
+            stress_rule="override: stress adjustment darnestown-road-lts4",
+            stress_adjustment_id="darnestown-road-lts4",
+            stress_computed_tier=4,
+            stress_adjustment_direction="same",
+            stress_adjustment_category="other",
+            stress_adjustment_display="route_only",
+        )
+        router.answers = {"bicycle": [edge(604, "Darnestown Road")]}
+        rows = section(get(client).json(), "stress")
+        assert rows["Level"]["source"] == "Owner override"
+        assert rows["Owner's reason"]["value"] == "Other"
+
+    def test_the_owners_rating_is_listed_above_the_countys_avoid(
+        self, client, segment_schemas, router
+    ):
+        """Darnestown Rd (the owner, 2026-10-14, "LTS 4"): the map uses his LTS 4,
+        and the panel lists the county's LTS 5 (Avoid) and the formula beneath it."""
+        live, _ = segment_schemas
+        held = {
+            "formula": 4,
+            "formula_rule": "mixed traffic, 35 mph or above",
+            "agencies": [{"agency": "moco", "name": "Montgomery County Planning", "level": 5}],
+            "used": "owner",
+            "override": {"source": "owner", "name": "Owner", "level": 4},
+        }
+        insert(
+            live,
+            605,
+            [SPOT, east(SPOT, 100)],
+            stress_tier=4,
+            stress_rule="override: stress adjustment darnestown-road-lts4",
+            stress_adjustment_id="darnestown-road-lts4",
+            stress_ratings=json.dumps(held),
+        )
+        router.answers = {"bicycle": [edge(605, "Darnestown Road")]}
+        answer = get(client).json()
+        rows = section(answer, "stress")
+        assert rows["Level"]["value"].startswith("LTS 4")
+        owner = rows["Owner's rating"]
+        assert owner["value"].startswith("LTS 4") and "(used" in owner["value"]
+        assert owner["source"] == "Owner override"
+        county = rows["Montgomery County Planning rates it"]
+        assert county["value"] == "Avoid" and county["source"] == "Montgomery County Planning"
+        assert rows["RouteMaker's formula"]["value"].startswith("LTS 4")
+        assert "owner's rating is used" in rows["Used"]["value"]
+        # In the owner's order: his rating, then the county's, then the formula.
+        labels = [
+            row["label"] for s in answer["sections"] if s["id"] == "stress" for row in s["rows"]
+        ]
+        assert (
+            labels.index("Owner's rating")
+            < labels.index("Montgomery County Planning rates it")
+            < labels.index("RouteMaker's formula")
+        )
 
     def test_nothing_extra_without_an_agency(self, client, segment_schemas, router):
         live, _ = segment_schemas

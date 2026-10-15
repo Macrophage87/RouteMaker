@@ -331,6 +331,7 @@ def write_reference_data(
     crossings=(),
     roadway=(),
     pavement=(),
+    agency_lts=(),
 ) -> Path:
     """The reference inputs the rebuild refuses to run without.
 
@@ -367,6 +368,9 @@ def write_reference_data(
     # classifies from OSM and the defaults, and warns.
     if roadway:
         (directory / "roadway.json").write_text(json.dumps(list(roadway)))
+    # The agency bicycle stress layers (v0.7.0, `pipeline.agency_ratings`), optional too.
+    if agency_lts:
+        (directory / "agency-lts.json").write_text(json.dumps(list(agency_lts)))
     # DDOT's PCI blocks (DC-PCI), optional too.
     if pavement:
         (directory / "pavement.json").write_text(json.dumps(list(pavement)))
