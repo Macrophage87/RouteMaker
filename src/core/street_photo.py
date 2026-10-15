@@ -45,6 +45,8 @@ from pipeline.schema import validate_schema_name
 logger = logging.getLogger(__name__)
 
 API_URL = "https://graph.mapillary.com/images"
+# One image's record, to find its file again in a process that did not show it (StreetPhoto.image).
+IMAGE_API_URL = "https://graph.mapillary.com/{id}?fields=thumb_1024_url"
 API_HOSTS = frozenset({"graph.mapillary.com"})
 # Where Mapillary serves its image files (its CDN), the only hosts an image URL may name. This
 # server fetches the file (`StreetPhoto.image`); the page's CSP names no other host.
@@ -252,7 +254,7 @@ class StreetPhoto:
     ) -> None:
         self._fetch = fetch
         self._fetch_image = fetch_image
-        # A shown photo's id -> (when, Mapillary's signed URL): only these are fetched.
+        # A photo id -> (when, Mapillary's signed URL), shown here or looked up again (`_resolve`).
         self._sources: OrderedDict[str, tuple[float, str]] = OrderedDict()
         self._images: OrderedDict[str, bytes] = OrderedDict()
         self._clock = clock
@@ -301,9 +303,36 @@ class StreetPhoto:
                 self._cache.popitem(last=False)
         return found
 
+    def _resolve(self, image_id: str) -> str | None:
+        """Mapillary's signed file URL for one image, asked of the Graph API (the token in the
+        `Authorization` header only), or None. Used when this process did not show the photo:
+        gunicorn runs several workers, and the one that showed it may not be this one."""
+        if not configured() or not image_id.isdigit():
+            return None
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": USER_AGENT,
+            "Authorization": f"OAuth {token()}",
+        }
+        self.lookups += 1
+        try:
+            doc = json.loads(self._fetch(IMAGE_API_URL.format(id=image_id), headers, TIMEOUT_S))
+        except (Unavailable, ValueError) as error:
+            logger.warning("street photo: Mapillary did not answer: %s", error)
+            return None
+        url = doc.get("thumb_1024_url") if isinstance(doc, dict) else None
+        if not image_url_ok(url):
+            return None
+        with self._lock:
+            self._sources[image_id] = (self._clock(), url)
+            while len(self._sources) > CACHE_SIZE:
+                self._sources.popitem(last=False)
+        return url
+
     def image(self, image_id: str) -> bytes | None:
-        """A photo this server has shown, its file fetched from Mapillary (and kept), or None:
-        an id never shown, shown too long ago, or Mapillary not answering."""
+        """A photo's file, fetched from Mapillary's image host (and kept), or None: no such
+        photo, or Mapillary not answering. A photo this process showed within `CACHE_S` is
+        fetched from the URL it was given; any other is looked up again first (`_resolve`)."""
         now = self._clock()
         with self._lock:
             held = self._images.get(image_id)
@@ -311,10 +340,13 @@ class StreetPhoto:
                 self._images.move_to_end(image_id)
                 return held
             source = self._sources.get(image_id)
-        if source is None or now - source[0] >= CACHE_S:
+        url = source[1] if source is not None and now - source[0] < CACHE_S else None
+        if url is None:
+            url = self._resolve(image_id)
+        if url is None:
             return None
         try:
-            body = self._fetch_image(source[1], {"User-Agent": USER_AGENT}, TIMEOUT_S)
+            body = self._fetch_image(url, {"User-Agent": USER_AGENT}, TIMEOUT_S)
         except Unavailable as error:
             logger.warning("street photo: the image did not load: %s", error)
             return None
