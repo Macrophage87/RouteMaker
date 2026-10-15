@@ -183,6 +183,9 @@ ACCOUNT_WRITES = Limit(scope="account", requests=240, window_s=3600)
 # A kept line checked against the closures in force (POST /api/closures/check): asked when a
 # saved or shared route opens, on Start ride and before a download, so a few a minute at most.
 CLOSURE_CHECK = Limit(scope="closure-check", requests=30, window_s=60)
+# A report sent to DC 311 from Ride mode (POST /api/report311, core.dc311; v0.7.0 "Go riding
+# fixes" item 3): a rider reports a pothole or two on a ride, so 10 an hour is a cap on a script.
+REPORT_311 = Limit(scope="report-311", requests=10, window_s=3600)
 # The approved Mass Ride hazards (GET /api/mass-hazards, core.mass_hazards): the front end
 # asks once when the Mass Ride map opens and again after an admin's approval (it does not
 # poll), usually a 304; 60 a minute is PLAN's figure for unauthenticated paths.

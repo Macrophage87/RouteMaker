@@ -4244,6 +4244,54 @@ def closures_check(request):
     return JsonResponse(work_zones.closures_on(line, when=when, bypass=bypass))
 
 
+# Ride mode's 311 (v0.7.0 "Go riding fixes" item 3; core.dc311): whether the server sends a
+# report to DC 311 itself (only with DC311_API_KEY set), and the sending. Off, the page opens
+# the phone's text app to 311 instead. The position and the words go to DC only, never a log.
+REPORT_311_BODY_MAX_BYTES = 2048
+
+
+@api.get("/report311", summary="Whether Ride mode's 311 reports are sent to DC from here")
+@decorate_view(errors_as_json)
+def report311_status(request):
+    from . import dc311
+
+    response = JsonResponse({"enabled": dc311.enabled()})
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@api.post("/report311", summary="Send one Ride mode report to DC 311 (only with a DC key)")
+@decorate_view(
+    same_site_only,
+    ratelimit.rate_limited(ratelimit.REPORT_311),
+    errors_as_json,
+)
+def report311_send(request):
+    from . import dc311
+
+    body, refusal = _json_body(request, REPORT_311_BODY_MAX_BYTES)
+    if refusal is not None:
+        return refusal
+    body = body if isinstance(body, dict) else {}
+    kind, lat, lon = body.get("kind"), body.get("lat"), body.get("lon")
+    description = body.get("description", "")
+    if kind not in dc311.KINDS:
+        return _error(400, f"kind is one of {', '.join(dc311.KINDS)}.")
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (lat, lon)):
+        return _error(400, "lat and lon are numbers.")
+    if not isinstance(description, str) or len(description) > dc311.DESCRIPTION_MAX:
+        return _error(400, f"description is text of at most {dc311.DESCRIPTION_MAX} characters.")
+    try:
+        ident = dc311.send(kind, float(lat), float(lon), description)
+    except dc311.NotSent as refused:
+        out = JsonResponse({"error": refused.message, "code": refused.code}, status=refused.status)
+        out["Cache-Control"] = "no-store"
+        return out
+    out = JsonResponse({"sent": True, "id": ident})
+    out["Cache-Control"] = "no-store"
+    return out
+
+
 # Mass Ride and Group Ride links: the other riders as dots, and alerts (v0.7.0 plan;
 # core.ride_presence). No sign-in: a ride is the digest of the link's plan and a rider a random
 # per-ride token. Positions are in POST bodies only, kept in memory for 2 minutes, never logged;
