@@ -50,7 +50,7 @@ import { anyKept } from "../lib/offlineRouteStore.ts";
 import { HAZARD_REVIEW } from "../lib/reviewSources.ts";
 import { DC_311_ONLINE, REPORT_KINDS } from "../lib/report311.ts";
 import { OPEN_IN_HINT, OPEN_IN_LABEL, type AppMode, type OpenIn } from "../lib/appMode.ts";
-import { HOME_SIGN_IN, myGoSummary, type MyGo } from "../lib/myGo.ts";
+import { myGoSummary, type MyGo } from "../lib/myGo.ts";
 import type { GeoGate, Place } from "../lib/geocode.ts";
 import type { IconName } from "../lib/iconPaths.ts";
 import { PlaceSearch } from "../PlaceSearch.tsx";
@@ -316,7 +316,7 @@ function MyGoSection({ controls }: { controls: MyGoControls }) {
           {myGoSummary(myGo)}
         </span>
       </h4>
-      <p className="hint">{signedIn ? "Kept with your Discord account, on every device you sign in on." : "Kept on this device. Sign in to keep it with your account, with a Home."}</p>
+      <p className="hint">{signedIn ? "Kept with your Discord account, on every device you sign in on." : "Kept on this device. Sign in to keep it with your account."}</p>
       <OpenInChoice value={myGo.openIn} onChange={(openIn) => save({ ...myGo, openIn })} idBase="my-go" hint={OPEN_IN_HINT} />
       <label className="select-setting">
         Go's ride type
@@ -328,22 +328,18 @@ function MyGoSection({ controls }: { controls: MyGoControls }) {
           ))}
         </select>
       </label>
-      {signedIn ? (
-        <div className="my-go-home">
-          <p>
-            <strong>Home: </strong>
-            {myGo.home ? myGo.home.label || "set" : "not set"}
-          </p>
-          <PlaceSearch variant="home" pointCount={0} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place) => save({ ...myGo, home: { point: [place.lon, place.lat], label: place.name } })} />
-          {myGo.home && (
-            <button type="button" className="secondary" onClick={() => save({ ...myGo, home: null })}>
-              Clear Home
-            </button>
-          )}
-        </div>
-      ) : (
-        <p className="hint">{HOME_SIGN_IN}</p>
-      )}
+      <div className="my-go-home">
+        <p>
+          <strong>Home: </strong>
+          {myGo.home ? myGo.home.label || "set" : "not set"}
+        </p>
+        <PlaceSearch variant="home" pointCount={0} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place) => save({ ...myGo, home: { point: [place.lon, place.lat], label: place.name } })} />
+        {myGo.home && (
+          <button type="button" className="secondary" onClick={() => save({ ...myGo, home: null })}>
+            Clear Home
+          </button>
+        )}
+      </div>
       <p className="hint my-go-said" role="status">
         {said}
       </p>
