@@ -42,6 +42,7 @@ from rebuild_fixtures import (
 from config.procrastinate import (
     BACKUP_KEEP,
     BACKUP_TIMEOUT_S,
+    DC_CLOSURES_CRON,
     DEGRADED_GUILD_SWEEP_CRON,
     MEMBERSHIP_SWEEP_CRON,
     NIGHTLY_BACKUP_CRON,
@@ -82,6 +83,7 @@ def test_each_cron_constant_has_a_task_behind_it() -> None:
         "degraded_guild_sweep": DEGRADED_GUILD_SWEEP_CRON,
         "worker_heartbeat": WORKER_HEARTBEAT_CRON,
         "refresh_work_zones": WORK_ZONES_CRON,
+        "refresh_dc_closures": DC_CLOSURES_CRON,
     }
 
 
@@ -2181,6 +2183,7 @@ def test_every_alert_window_is_pinned() -> None:
         "worker_heartbeat": 10 * 60,
         # The work-zone feeds, every five minutes: six missed ticks, as the sweep.
         "refresh_work_zones": 30 * 60,
+        "refresh_dc_closures": 60 * 60,
     }
 
 
@@ -2211,6 +2214,7 @@ def test_each_alert_window_is_wider_than_its_schedule() -> None:
         "degraded_guild_sweep": DEGRADED_GUILD_SWEEP_CRON,
         "worker_heartbeat": WORKER_HEARTBEAT_CRON,
         "refresh_work_zones": WORK_ZONES_CRON,
+        "refresh_dc_closures": DC_CLOSURES_CRON,
     }
     assert set(crons) == set(STALE_AFTER), "every scheduled task is watched, and the reverse"
     base = timezone.now()

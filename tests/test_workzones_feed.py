@@ -239,7 +239,10 @@ def test_a_plan_leaves_out_a_closure_and_goes_round_a_penalty_zone_worth_it(
 
     side = ((-77.045, 38.905), (-77.045, 38.910))
     main = ((-77.04, 38.9), (-77.035, 38.9))
-    closed = wz.Zone("md-c", "md", wz.CLOSED, 0, side, "Side Road", None, None, None)
+    # An end date: a closure with none "may still apply" on a later ride and is not routed
+    # round (v0.7.0), and the suite's clock may make this ride a later one.
+    until = datetime.now(UTC) + timedelta(days=30)
+    closed = wz.Zone("md-c", "md", wz.CLOSED, 0, side, "Side Road", None, None, until)
     flagger = wz.Zone("md-f", "md", wz.PENALTY, 180, main, "Main Road", None, None, None)
     BikeshareFeedCache.objects.create(
         key=workzones.KEY,
@@ -294,7 +297,8 @@ def test_no_way_round_a_closure_plans_through_it_with_a_red_warning(client, monk
     from core import routing
 
     across = ((-77.04, 38.9), (-77.035, 38.9))  # under the route itself
-    closed = wz.Zone("md-c", "md", wz.CLOSED, 0, across, "Main Road", None, None, None)
+    until = datetime.now(UTC) + timedelta(days=30)
+    closed = wz.Zone("md-c", "md", wz.CLOSED, 0, across, "Main Road", None, None, until)
     BikeshareFeedCache.objects.create(
         key=workzones.KEY,
         payload={"feeds": {"md": {"read_at": datetime.now(UTC).isoformat(),

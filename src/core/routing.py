@@ -856,6 +856,8 @@ class Dials:
     # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
     # A ride whose last point is its first is a loop whatever this says.
     loop: bool = False
+    # v0.7.0 "Route through anyway": the closures this plan routes through (their ids).
+    closure_bypass: tuple[str, ...] = ()
 
 
 # A ride ends where it starts if its last point is within this of its first (metres).
@@ -2401,7 +2403,7 @@ def plan(
     # to bicycles is left out of every request this plan makes (the derived requests
     # copy this one), and the zones a rider may pass are weighed once the router has
     # answered (`work_zones.settle_penalties`). None where no refresh has ever run.
-    zones_plan = work_zones.plan_zones(points, when)
+    zones_plan = work_zones.plan_zones(points, when, bypass=dials.closure_bypass)
     if zones_plan is not None and zones_plan.exclude:
         request["exclude_polygons"] = list(zones_plan.exclude)
     # Past the detent the hills slider is a climb search among the router's
@@ -2493,6 +2495,15 @@ def plan(
 
     if zones_plan is not None:
         answer = work_zones.settle_penalties(
+            answer,
+            request,
+            zones_plan,
+            lambda trial: _route(variant, trial, deadline)[0],
+            lambda: deadline.at - clock(),
+        )
+        # What each closure did to this route and the time its detour adds (v0.7.0,
+        # "Closures on the map"): the card's "Detour adds about 4 min".
+        work_zones.measure_delays(
             answer,
             request,
             zones_plan,

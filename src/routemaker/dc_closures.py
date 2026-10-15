@@ -1150,9 +1150,14 @@ def street_key(name: str, quadrant: bool = True) -> str:
     for i, token in enumerate(tokens):
         if token == "st" and i == 0 and len(tokens) > 1:
             out.append("saint")
-        elif token in ("n", "s", "e", "w") and i + 1 < len(tokens) and tokens[i + 1] in (
-            "st",
-            "street",
+        elif (
+            token in ("n", "s", "e", "w")
+            and i + 1 < len(tokens)
+            and tokens[i + 1]
+            in (
+                "st",
+                "street",
+            )
         ):
             out.append(token)  # E Street
         else:

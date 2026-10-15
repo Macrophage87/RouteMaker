@@ -52,6 +52,9 @@ STALE_AFTER = {
     # The work-zone feeds (FOLLOWUP-WORKZONES), every five minutes: past half an hour
     # the planner's zones are going stale and the worker is not refreshing them.
     "refresh_work_zones": 30 * 60,
+    # DC's closures (v0.7.0), every fifteen minutes: past an hour the worker is not
+    # refreshing them.
+    "refresh_dc_closures": 60 * 60,
 }
 
 # How long a run row is kept. The five-minute tasks alone write about 105,000

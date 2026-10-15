@@ -290,6 +290,15 @@ class RouteIn(Schema):
             " default; it holds only facts about the route."
         ),
     )
+    closure_bypass: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(
+        default_factory=list,
+        max_length=50,
+        description=(
+            'v0.7.0, "Route through anyway": the ids of closures (`work_zones.closures[].id`)'
+            " the rider chose to route through for this plan. The plan then uses them, and"
+            " each is marked `bypassed` on the answer. Never remembered by the server."
+        ),
+    )
     loop: StrictBool = Field(
         default=False,
         description=(
@@ -1663,11 +1672,12 @@ class WorkZoneOut(Schema):
     """A live work zone the route runs along (FOLLOWUP-WORKZONES)."""
 
     id: str
-    kind: Literal["closed", "unknown", "penalty"] = Field(
+    kind: Literal["closed", "unknown", "penalty", "lane"] = Field(
         description=(
             '"closed": closed to bicycles (left out where it could be); "unknown": every lane'
             ' closed and bicycles not mentioned (342(3): penalised, with a warning); "penalty":'
-            " rideable, with a heads-up (342(4))."
+            ' rideable, with a heads-up (342(4)); "lane": a bike lane blocked with the road'
+            " open (v0.7.0, DDOT permits): a warning only."
         )
     )
     penalty_s: float
@@ -1678,9 +1688,78 @@ class WorkZoneOut(Schema):
     to_m: int
     start: str | None
     end: str | None
-    source: Literal["md", "va"]
+    source: Literal["md", "va", "dc", "mpd", "alertdc"]
     warning: bool = Field(description="True for a closure the rider may meet: shown in red.")
     text: str = Field(description="The heads-up as the description words it.")
+    bypassed: bool = Field(default=False, description="Routed through: the rider's choice.")
+    may_still_apply: bool = Field(
+        default=False,
+        description="No end given, on a later ride: warned of, not routed round (v0.7.0).",
+    )
+
+
+ClosureEffect = Literal["on_route", "routed_round", "bypassed", "may_still_apply", "none"]
+
+
+class ClosureOut(Schema):
+    """A closure drawn on the route's map, and its card (v0.7.0, "Closures on the map")."""
+
+    id: str
+    source: Literal["md", "va", "dc", "mpd", "alertdc"]
+    source_name: str = Field(
+        description='The source as the card names it: "MPD traffic advisory, Oct 15".'
+    )
+    url: str | None = Field(description="The source's own page.")
+    kind: Literal["closed", "unknown", "lane"]
+    severity: Literal["red", "amber"] = Field(
+        description='"red": a closed stretch (a barrier icon); "amber": a bike lane blocked.'
+    )
+    title: str = Field(
+        description='What is closed: "Constitution Avenue NW closed, 14th St to 18th St".'
+    )
+    road: str | None
+    when_text: str = Field(
+        description='"Closed today 4:30 am to 1:30 pm", "Permit: road closed until Oct 20".'
+    )
+    start: str | None
+    end: str | None
+    effect: ClosureEffect = Field(
+        description=(
+            '"on_route": the route runs along it; "routed_round": the route goes round it;'
+            ' "bypassed": routed through by the rider\'s choice; "may_still_apply": on the route,'
+            ' no end given on a later ride, not routed round; "none": no effect on the route.'
+        )
+    )
+    delay_s: int | None = Field(
+        description=(
+            "The extra time the detour round it adds on this route (for a bypassed one, the time"
+            " going round would add); null where it has none or it was not worked out in time."
+        )
+    )
+    effect_text: str = Field(description='"Detour adds about 4 min", "No effect on your route".')
+    can_bypass: bool = Field(description='Whether the card offers "Route through anyway".')
+    bypassed: bool
+    from_m: int | None = Field(description="Where the route meets it; null where it does not.")
+    to_m: int | None
+    point: LonLat = Field(description="Where its marker goes: the middle of its stretch.")
+    line: list[LonLat]
+
+
+class ClosureNoticeOut(Schema):
+    """A "Check before you go" notice: an NPS park alert, or an advisory that could not be
+    placed on the map (v0.7.0). Text and a link; never routed round."""
+
+    id: str
+    source: Literal["nps", "mpd", "alertdc"]
+    source_name: str
+    title: str
+    text: str
+    url: str | None
+    area: str = Field(description='An NPS park code ("rocr"), or "dc".')
+    area_name: str | None
+    point: LonLat | None = Field(description="The park's marker; null for a District-wide notice.")
+    category: str | None
+    when_text: str
 
 
 class WorkZonesOut(Schema):
@@ -1695,6 +1774,17 @@ class WorkZonesOut(Schema):
     unchecked: str | None
     sources: list[str]
     disclaimer: str
+    # v0.7.0 ("DC closures source"; "Closures on the map"). Additive.
+    ride_at: str | None = Field(
+        default=None, description="The ride's moment the zones were matched at."
+    )
+    closures: list[ClosureOut] = Field(
+        default_factory=list,
+        description="The closures to draw on the route's map: on it, or in force near it.",
+    )
+    notices: list[ClosureNoticeOut] = Field(
+        default_factory=list, description='"Check before you go": park alerts and unplaced text.'
+    )
 
 
 class RouteBody(Schema):
@@ -2413,6 +2503,7 @@ def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
         stress=body.stress,
         hills=profile.hills if body.hills is None else body.hills,
         when=body.when,
+        closure_bypass=tuple(body.closure_bypass),
         assist=profile.assist,
         avoid_gravel=body.avoid_gravel,
         # "Keep to roads, not trails" is one switch on every ride type (463b).
@@ -2545,6 +2636,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         stress=body.stress,
         hills=body.hills,
         when=body.when,
+        closure_bypass=tuple(body.closure_bypass),
         avoid_gravel=body.avoid_gravel,
         trails_off=body.trails_off,
         system_weight_kg=body.system_weight_kg,
@@ -2833,6 +2925,7 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
             stress=body.stress,
             hills=body.hills,
             when=body.when,
+            closure_bypass=tuple(body.closure_bypass),
             carrying=body.carrying,
             assist=body.assist,
             avoid_gravel=body.avoid_gravel,
@@ -4019,6 +4112,7 @@ def saved_route_delete(request, route_id: int):
 # ridden). Public, like planning; the line is only measured, never kept.
 CLOSURE_LINE_MAX_POINTS = 10_000
 CLOSURE_BODY_MAX_BYTES = 512 * 1024
+CLOSURE_BYPASS_MAX = 50
 
 
 @api.post("/closures/check", summary="The closures in force now that a route's line runs along")
@@ -4038,9 +4132,22 @@ def closures_check(request):
     problem = accounts.line_problem(line)
     if problem is None and len(line) > CLOSURE_LINE_MAX_POINTS:
         problem = f"Send at most {CLOSURE_LINE_MAX_POINTS:,} points; thin the line first."
+    # Additive (v0.7.0, "DC closures source"): the plan's ride-time dial, so a closure is
+    # matched at the ride, not today; and the closures the rider chose to route through.
+    extra = body if isinstance(body, dict) else {}
+    when = extra.get("when")
+    if problem is None and when is not None and when not in ridetime.WHENS:
+        problem = f"when is one of {', '.join(ridetime.WHENS)}."
+    bypass = extra.get("bypass") or []
+    if problem is None and (
+        not isinstance(bypass, list)
+        or len(bypass) > CLOSURE_BYPASS_MAX
+        or not all(isinstance(b, str) and 0 < len(b) <= 200 for b in bypass)
+    ):
+        problem = f"bypass is a list of at most {CLOSURE_BYPASS_MAX} closure ids."
     if problem:
         return _error(400, problem)
-    return JsonResponse(work_zones.closures_on(line))
+    return JsonResponse(work_zones.closures_on(line, when=when, bypass=bypass))
 
 
 # Mass Ride and Group Ride links: the other riders as dots, and alerts (v0.7.0 plan;

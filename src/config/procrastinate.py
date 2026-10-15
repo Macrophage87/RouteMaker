@@ -97,6 +97,13 @@ WORK_ZONES_CRON = "*/5 * * * *"
 # Each feed has three tries of 20 s; two feeds. Well inside the queue's thirty minutes.
 WORK_ZONES_TIMEOUT_S = 5 * 60
 
+# DC's closures (v0.7.0 plan, "DC closures source"): every fifteen minutes, each source read
+# when it is due (AlertDC and MPD every 15 min, NPS every 30, DDOT's permits every hour;
+# `core.closure_sources.EVERY_S`). Placing new permits and advisories asks the database,
+# Photon and the router, so it has longer than the work zones.
+DC_CLOSURES_CRON = "*/15 * * * *"
+DC_CLOSURES_TIMEOUT_S = 12 * 60
+
 # The plan's job rule: retried with exponential backoff, up to five times.
 # Procrastinate counts an attempt when a run finishes or is scheduled for
 # retry, after the retry decision, so the first failure is judged at
@@ -974,6 +981,23 @@ def refresh_work_zones(timestamp: int) -> None:
 
     with record("refresh_work_zones") as run:
         run.detail = run_with_deadline(refresh, WORK_ZONES_TIMEOUT_S, "refresh_work_zones")
+        run.save(update_fields=["detail"])
+
+
+@app.periodic(cron=DC_CLOSURES_CRON)
+@app.task(name="refresh_dc_closures", queue="maintenance", queueing_lock="refresh_dc_closures")
+def refresh_dc_closures(timestamp: int) -> None:
+    """Read DC's closure sources that are due and replace the planner's shared copy
+    (core.closure_sources): DDOT's TOPS permits, MPD's traffic advisories, AlertDC's traffic
+    items and, where the environment holds `NPS_API_KEY`, the NPS alerts. Not retried: the
+    next tick is the retry, and a source that fails keeps its last good copy. The key is
+    never written to the run row or the log.
+    """
+    from core.closure_sources import refresh
+    from core.runs import record, run_with_deadline
+
+    with record("refresh_dc_closures") as run:
+        run.detail = run_with_deadline(refresh, DC_CLOSURES_TIMEOUT_S, "refresh_dc_closures")
         run.save(update_fields=["detail"])
 
 
