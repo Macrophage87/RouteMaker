@@ -12,7 +12,8 @@
  */
 import { placeLetter } from "./letteredPlaces.ts";
 import { createElement as h, useEffect, useRef, type ReactElement } from "react";
-import { FOOD_DETOUR_NOTE, foodHowFar, foodKindText, FOOD_PAGE, type FoodResult, type FoodScope } from "./food.ts";
+import { FOOD_DETOUR_NOTE, foodHoursText, foodHowFar, foodKindText, FOOD_PAGE, isFarmFood, type FoodResult, type FoodScope } from "./food.ts";
+import { ICON_PATHS } from "./iconPaths.ts";
 
 export const FOOD_SUMMARY = "Find food";
 export const FOOD_HELP =
@@ -124,8 +125,22 @@ export function FoodFinder(props: FoodFinderProps): ReactElement {
                   null,
                   // The letter is the map marker's (lib/letteredPlaces.ts).
                   h("strong", null, `${placeLetter(i)}. ${r.place.name}`),
+                  // A farm stand or market has the apple (decorative: its kind is in the words beside it).
+                  isFarmFood(r.place.kind) &&
+                    h("svg", {
+                      className: "icon food-apple",
+                      width: 16,
+                      height: 16,
+                      viewBox: "0 0 24 24",
+                      fill: "none",
+                      stroke: "currentColor",
+                      strokeWidth: 2,
+                      "aria-hidden": "true",
+                      focusable: "false",
+                      dangerouslySetInnerHTML: { __html: ICON_PATHS.apple },
+                    }),
                   ` ${foodKindText(r.place)}. ${foodHowFar(r)}`,
-                  r.place.hours ? ` Hours as mapped: ${r.place.hours}.` : "",
+                  foodHoursText(r.place) ? ` ${foodHoursText(r.place)}` : "",
                 ),
                 h(
                   "span",
