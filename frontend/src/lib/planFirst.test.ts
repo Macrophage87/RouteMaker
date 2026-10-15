@@ -9,6 +9,7 @@ import {
   ROUTE_UP_TO_DATE,
   changeSummary,
   elapsedText,
+  legChanges,
   planChanged,
   planSentences,
   routeButton,
@@ -105,4 +106,30 @@ test("an update says what changed in one line, US units first", () => {
   );
   assert.equal(changeSummary(before, before), "The same route as before.");
   assert.equal(changeSummary(after, before).startsWith("−1.2 mi (1.9 km), −6 min, 0.4 mi (0.6 km) more on LTS 3 or busier"), true);
+});
+
+test("the per-leg details: each leg's length and change, new legs, and legs no longer ridden, US units first", () => {
+  const a = p(-77.0);
+  const b = p(-77.01);
+  const c = p(-77.02);
+  const d = p(-77.03);
+  const names = new Map<LonLat, string>([[a, "Union Market"], [c, "The Wharf"]]);
+  const nameOf = (q: LonLat) => names.get(q);
+  const isVia = () => false;
+  const line = (coordinates: LonLat[], leg_ends: number[]) => ({ geometry: { type: "LineString", coordinates }, leg_ends }) as unknown as Pick<RouteResponse, "geometry" | "leg_ends">;
+  const before = { points: [a, b, c], loop: false, route: line([a, b, c], [1, 2]) };
+  // The same first leg, ridden the long way round; the second now goes to d instead of c.
+  const after = { points: [a, b, d], loop: false, route: line([a, p(-77.005, 38.91), b, d], [2, 3]) };
+  const lines = legChanges(before, after, isVia, nameOf);
+  assert.equal(lines.length, 3);
+  assert.match(lines[0], /^Start \(Union Market\) to Stop 1: \d+\.\d mi \(\d+\.\d km\), \+\d+\.\d mi \(\d+\.\d km\)\.$/);
+  assert.match(lines[1], /^Stop 1 to End: \d+\.\d mi \(\d+\.\d km\), a new leg\.$/);
+  assert.match(lines[2], /^Stop 1 to End \(The Wharf\): no longer ridden \(was \d+\.\d mi \(\d+\.\d km\)\)\.$/);
+  // The same plan again: every leg unchanged.
+  assert.deepEqual(
+    legChanges(before, before, isVia, nameOf).map((l) => l.replace(/\d+\.\d mi \(\d+\.\d km\)/, "N")),
+    ["Start (Union Market) to Stop 1: N, unchanged.", "Stop 1 to End (The Wharf): N, unchanged."],
+  );
+  // Legs that do not fit the points (an older API): no details rather than wrong ones.
+  assert.deepEqual(legChanges(before, { ...after, route: line([a, b, d], [2]) }, isVia, nameOf), []);
 });

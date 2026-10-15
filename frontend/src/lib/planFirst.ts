@@ -11,8 +11,8 @@
  * - whether the plan changed since the route was drawn (planChanged), and why Reset is unavailable.
  */
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
-import type { LonLat } from "./geo.ts";
-import { formatDistanceChange } from "./format.ts";
+import { pathLengthM, type LonLat } from "./geo.ts";
+import { formatDistance, formatDistanceChange } from "./format.ts";
 import { namePoints } from "./pointKinds.ts";
 import type { StressMetres } from "./stressBar.ts";
 
@@ -186,4 +186,69 @@ export function changeSummary(before: Compared, after: Compared): string {
   if (parts.length === 0) return "The same route as before.";
   const line = parts.join(", ");
   return `${line[0].toUpperCase()}${line.slice(1)}.`;
+}
+
+/** A drawn route with the points it was drawn through, for its legs. */
+export interface LeggedRoute {
+  route: Pick<RouteResponse, "geometry" | "leg_ends">;
+  points: readonly LonLat[];
+  loop: boolean;
+}
+
+/** One leg of a route: its two ends (the plan's own point pairs), their names, and its length. */
+interface Leg {
+  from: LonLat;
+  to: LonLat;
+  label: string;
+  metres: number;
+}
+
+/** A route's legs, from the API's `leg_ends`; null where they do not fit its points (an older API). */
+function legsOf(drawn: LeggedRoute, isVia: (p: LonLat) => boolean, nameOf: (p: LonLat) => string | undefined): Leg[] | null {
+  const { route, points, loop } = drawn;
+  const through = loop ? [...points, points[0]] : [...points];
+  const ends = route.leg_ends;
+  const line = route.geometry.coordinates;
+  if (!Array.isArray(ends) || ends.length !== through.length - 1 || ends[ends.length - 1] !== line.length - 1) return null;
+  const named = namePoints(points, isVia, loop);
+  const say = (i: number) => {
+    const index = i % points.length;
+    const place = nameOf(points[index]);
+    const role = named[index]?.name ?? "Start";
+    return place ? `${role} (${place})` : role;
+  };
+  return ends.map((end, k) => ({
+    from: through[k],
+    to: through[k + 1],
+    label: `${say(k)} to ${say(k + 1)}`,
+    metres: pathLengthM(line.slice(k === 0 ? 0 : ends[k - 1], end + 1)),
+  }));
+}
+
+/**
+ * The per-leg details behind the change summary (inverted pyramid: the one line first, these on a tap): each leg
+ * of the new route with its length and, where the old route had the same leg (the same two points), the change;
+ * then the old legs that are gone. Empty where either route's legs cannot be read.
+ */
+export function legChanges(
+  before: LeggedRoute,
+  after: LeggedRoute,
+  isVia: (p: LonLat) => boolean,
+  nameOf: (p: LonLat) => string | undefined,
+): string[] {
+  const was = legsOf(before, isVia, nameOf);
+  const now = legsOf(after, isVia, nameOf);
+  if (!was || !now) return [];
+  const key = (leg: Leg) => `${leg.from[0]},${leg.from[1]}>${leg.to[0]},${leg.to[1]}`;
+  const old = new Map(was.map((leg) => [key(leg), leg]));
+  const lines = now.map((leg) => {
+    const match = old.get(key(leg));
+    old.delete(key(leg));
+    if (!match) return `${leg.label}: ${formatDistance(leg.metres)}, a new leg.`;
+    const d = leg.metres - match.metres;
+    const change = formatDistanceChange(d) === NO_CHANGE ? "unchanged" : `${d > 0 ? "+" : "−"}${formatDistanceChange(d)}`;
+    return `${leg.label}: ${formatDistance(leg.metres)}, ${change}.`;
+  });
+  for (const leg of old.values()) lines.push(`${leg.label}: no longer ridden (was ${formatDistance(leg.metres)}).`);
+  return lines;
 }

@@ -4,7 +4,7 @@
  * panel), which becomes a progress bar with its step, the seconds and Cancel while routing; the one-line summary
  * of what an update changed; and Reset and Clear side by side.
  */
-import { useEffect, useId, useRef, type KeyboardEvent } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { CLEAR_LABEL, RESET_LABEL, type Phrase, type PhraseTarget } from "../lib/planFirst.ts";
 
 export interface PlanPanelProps {
@@ -18,6 +18,8 @@ export interface PlanPanelProps {
   onCancel: () => void;
   /** What the last update changed, until the next change or its close; null otherwise. */
   change: string | null;
+  /** The per-leg details behind the summary's Details (lib/planFirst.ts legChanges); empty: no Details. */
+  details: readonly string[];
   onCloseChange: () => void;
   /** Why Reset does nothing now (null: it resets). */
   resetUnavailable: string | null;
@@ -27,7 +29,9 @@ export interface PlanPanelProps {
 }
 
 export function PlanPanel(props: PlanPanelProps) {
-  const { sentences, onPhrase, button, onRoute, routing, onCancel, change, onCloseChange, resetUnavailable, onReset, clearDisabled, onClear } = props;
+  const { sentences, onPhrase, button, onRoute, routing, onCancel, change, details, onCloseChange, resetUnavailable, onReset, clearDisabled, onClear } = props;
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsId = useId();
   const routeWhy = useId();
   const resetWhy = useId();
   const routeRef = useRef<HTMLButtonElement | null>(null);
@@ -112,10 +116,22 @@ export function PlanPanel(props: PlanPanelProps) {
       {change && (
         <p className="plan-change">
           <span>{change}</span>
+          {details.length > 0 && (
+            <button type="button" className="link" aria-expanded={detailsOpen} aria-controls={detailsId} onClick={() => setDetailsOpen(!detailsOpen)}>
+              Details<span className="visually-hidden"> by leg</span>
+            </button>
+          )}
           <button type="button" className="secondary icon-button" aria-label="Close the change summary" onClick={onCloseChange}>
             ×
           </button>
         </p>
+      )}
+      {change && details.length > 0 && (
+        <ul id={detailsId} className="plan-change-details" hidden={!detailsOpen}>
+          {details.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
       )}
       <div className="actions plan-reset-clear">
         <button

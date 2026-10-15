@@ -30,6 +30,7 @@ import {
   RESET_NOTHING,
   RESET_SAID,
   changeSummary,
+  legChanges,
   elapsedText,
   planChanged,
   planSentences,
@@ -202,6 +203,9 @@ registerStressProtocol(maplibregl, undefined, corridorStress);
  */
 type Snapshot = PlanSnapshot<LonLat[], Ride>;
 
+/** The plan the drawn route answers, for Plan mode's Reset, its change summary and its per-leg details (v0.7.0). */
+type Drawn = DrawnPlan<Ride> & { route: RouteResponse; loop: boolean; pins: Pins; transitPick: TransitPick | null };
+
 interface Plan {
   points: LonLat[];
   preset: PresetId;
@@ -212,6 +216,9 @@ interface Plan {
   dialsKey?: string;
   /** Plan mode's Route button asked for it (v0.7.0): its answer says what changed. */
   pressed?: boolean;
+  /** The stations and the transit option chosen with it: Reset puts them back too. */
+  pins?: Pins;
+  transitPick?: TransitPick | null;
 }
 
 const initialPlan = decodePlan(planToOpen(tabSession(), window.location.hash));
@@ -276,6 +283,9 @@ export function App() {
     () => withTransitOption(withStations(withWeight(routeDials, weight), stationChoice), preset, transitPick, trip),
     [routeKey, weight, stationChoice, preset, transitPick, trip],
   );
+  // Everything the request is made from, as a key (v0.7.0): in Plan a station or a transit option chosen, a
+  // weight or a slider moved, all mark the plan changed until Route or Update route.
+  const planKey = JSON.stringify(planDials);
   // "Make it a loop" chosen (OWNER-DECISIONS 374): the first point is the start and finish, every later one a stop.
   const loopVias = loopStops(preset, dials.loop);
   // What the planner answered, and which of its routes to choose from is shown
@@ -640,12 +650,22 @@ export function App() {
           // Plan mode (v0.7.0, lib/planFirst.ts): the plan this route is drawn for, for Reset and for what the
           // next update changes; an update pressed for keeps the old line as a dashed ghost, with a summary.
           const before = drawnRef.current;
-          const drawnNow = { points: plan.points, ride: plan.ride ?? rideRef.current, dialsKey: plan.dialsKey ?? "", route: result.route };
+          const drawnNow: Drawn = {
+            points: plan.points,
+            ride: plan.ride ?? rideRef.current,
+            dialsKey: plan.dialsKey ?? "",
+            route: result.route,
+            loop: loopStops(plan.preset, plan.dials.loop),
+            pins: plan.pins ?? {},
+            transitPick: plan.transitPick ?? null,
+          };
           drawnRef.current = drawnNow;
           setDrawn(drawnNow);
           if (plan.pressed && before) {
             setGhost(before.route.geometry.coordinates);
             setChangeLine(changeSummary(before.route, result.route));
+            // The per-leg details behind the summary's tap (inverted pyramid).
+            setChangeDetails(legChanges(before, drawnNow, VIA_MARKS.isVia, (p) => namer.name(p)?.name));
           }
           setRoute(result.route);
           setRoutedPoints(plan.points);
@@ -732,8 +752,9 @@ export function App() {
   const [routeAsk, setRouteAsk] = useState(initialPlan.points.length >= 2 ? 1 : 0);
   const routedAsk = useRef(0);
   const asked = useRef<{ points: LonLat[]; preset: PresetId; routeKey: string; planDials: Dials; confirmedKm: number | null } | null>(null);
-  const drawnRef = useRef<(DrawnPlan<Ride> & { route: RouteResponse }) | null>(null);
-  const [drawn, setDrawn] = useState<(DrawnPlan<Ride> & { route: RouteResponse }) | null>(null);
+  const drawnRef = useRef<Drawn | null>(null);
+  const [drawn, setDrawn] = useState<Drawn | null>(null);
+  const [changeDetails, setChangeDetails] = useState<string[]>([]);
   const [ghost, setGhost] = useState<LonLat[] | null>(null);
   const [changeLine, setChangeLine] = useState<string | null>(null);
   /** Another plan opened (a link, a file): no Reset back to the last one, and no summary against it. */
@@ -742,6 +763,7 @@ export function App() {
     setDrawn(null);
     setGhost(null);
     setChangeLine(null);
+    setChangeDetails([]);
   };
 
   // Route when the plan changes (Go) or the Route button is pressed (Plan).
@@ -760,8 +782,9 @@ export function App() {
     const last = asked.current;
     const samePlan = last !== null && last.points === points && last.preset === preset && last.routeKey === routeKey;
     if (!pressed && samePlan && last.planDials === planDials && last.confirmedKm === confirmedKm) return;
-    const backToDrawn = answer === null && drawnRef.current !== null && !planChanged(drawnRef.current, points, preset, routeKey);
-    if (planFirst && !pressed && !samePlan && !backToDrawn) return;
+    // In Plan every change waits for Route, the stations and a transit option too (they are part of planKey).
+    const backToDrawn = answer === null && drawnRef.current !== null && !planChanged(drawnRef.current, points, preset, planKey);
+    if (planFirst && !pressed && !backToDrawn) return;
     asked.current = { points, preset, routeKey, planDials, confirmedKm };
     scheduler.current?.request({
       points,
@@ -769,8 +792,10 @@ export function App() {
       dials: planDials,
       confirmLong: sendsConfirmation(points, confirmedKm),
       ride: rideRef.current,
-      dialsKey: routeKey,
+      dialsKey: planKey,
       pressed: pressed && planFirst,
+      pins: stationPins,
+      transitPick,
     });
   }, [points, preset, planDials, confirmedKm, routeAsk, planFirst]);
 
@@ -1779,7 +1804,7 @@ export function App() {
     setRoadInfo({ point: [lng, lat], origin: "centre" });
   };
   const retry = () =>
-    scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm), ride: rideRef.current, dialsKey: routeKey });
+    scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm), ride: rideRef.current, dialsKey: planKey, pins: stationPins, transitPick });
   // The Mountain Bike ride type's level (slice 6): the map draws the trails up to it as routable.
   // Every other ride type, and a Mountain Bike ride with trails off, draws them as not for routes.
   const routableLevel = isMtb(preset) && !trailsAreOff(preset, dials) ? mtbLevelOf(dials) : null;
@@ -1826,7 +1851,7 @@ export function App() {
     setNotice(null);
     // Sent here as well as by the effect, which does not run again when the
     // confirmed span is unchanged; the debounce folds the two into one.
-    scheduler.current?.request({ points, preset, dials: planDials, confirmLong: true, ride: rideRef.current, dialsKey: routeKey });
+    scheduler.current?.request({ points, preset, dials: planDials, confirmLong: true, ride: rideRef.current, dialsKey: planKey, pins: stationPins, transitPick });
     // The question goes away; the focus goes to where the answer will be.
     routeHeadingRef.current?.focus();
   };
@@ -2661,12 +2686,13 @@ export function App() {
   const tipsId = useId();
   // ---- Plan mode's plan panel (v0.7.0, "Plan mode: write the plan first, then route"; lib/planFirst.ts) ----
   // The plan differs from the one the route shown was drawn for: the line greys, and the button reads Update route.
-  const planEdited = planFirst && planChanged(drawn, points, preset, routeKey);
+  const planEdited = planFirst && planChanged(drawn, points, preset, planKey);
   // The ghost and the change summary last until the next change.
   useEffect(() => {
     if (!planEdited) return;
     setGhost(null);
     setChangeLine(null);
+    setChangeDetails([]);
   }, [planEdited]);
   // While routing: the seconds since it began, for the step in words and the count.
   const routingNow = status.kind === "loading" || status.kind === "waiting";
@@ -2697,6 +2723,8 @@ export function App() {
     const back = drawnRef.current;
     if (!back || !planEdited) return;
     commit(back.points as LonLat[], back.ride);
+    setStationPins(back.pins);
+    setTransitPick(back.transitPick);
     setNotice(null);
     announce(RESET_SAID);
   };
@@ -2704,6 +2732,7 @@ export function App() {
   const clearPlan = () => {
     setGhost(null);
     setChangeLine(null);
+    setChangeDetails([]);
     clearAll();
   };
   // A phrase of the plan opens its editor: a point's row (and the map goes to it), the ride type or a slider.
@@ -2740,8 +2769,10 @@ export function App() {
       routing={routingNow ? { step: routingStep(routingTick - routingSince), elapsed: elapsedText(routingTick - routingSince) } : null}
       onCancel={cancelRouting}
       change={planEdited ? null : changeLine}
+      details={changeDetails}
       onCloseChange={() => {
         setChangeLine(null);
+        setChangeDetails([]);
         setGhost(null);
       }}
       resetUnavailable={planEdited ? null : RESET_NOTHING}

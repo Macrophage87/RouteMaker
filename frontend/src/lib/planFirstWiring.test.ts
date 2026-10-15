@@ -10,7 +10,7 @@ const panel = read("../app/PlanPanel.tsx");
 test("Plan routes on its Route button; Go routes at once; a link, a file or Undo after Clear opens drawn", () => {
   assert.match(app, /const planFirst = mode === "plan" && !riding;/);
   assert.match(app, /const \[routeAsk, setRouteAsk\] = useState\(initialPlan\.points\.length >= 2 \? 1 : 0\);/);
-  assert.match(app, /if \(planFirst && !pressed && !samePlan && !backToDrawn\) return;/);
+  assert.match(app, /if \(planFirst && !pressed && !backToDrawn\) return;/);
   assert.match(app, /\}, \[points, preset, planDials, confirmedKm, routeAsk, planFirst\]\);/);
   // A link and an opened file are routed as they open.
   assert.ok((app.match(/forgetDrawn\(\);\s*setRouteAsk\(\(n\) => n \+ 1\);/g) ?? []).length >= 2);
@@ -20,10 +20,12 @@ test("Plan routes on its Route button; Go routes at once; a link, a file or Undo
 });
 
 test("a changed plan greys the line and keeps a dashed ghost of the old one with a summary after an update", () => {
-  assert.match(app, /const planEdited = planFirst && planChanged\(drawn, points, preset, routeKey\);/);
+  assert.match(app, /const planEdited = planFirst && planChanged\(drawn, points, preset, planKey\);/);
   assert.match(app, /stale=\{riding \? false : stale \|\| planEdited\}/);
   assert.match(app, /ghost=\{riding \? null : ghost\}/);
   assert.match(app, /if \(plan\.pressed && before\) \{\s*setGhost\(before\.route\.geometry\.coordinates\);\s*setChangeLine\(changeSummary\(before\.route, result\.route\)\);/);
+  // The per-leg details behind the summary.
+  assert.match(app, /setChangeDetails\(legChanges\(before, drawnNow, VIA_MARKS\.isVia, \(p\) => namer\.name\(p\)\?\.name\)\);/);
   const map = read("../MapView.tsx");
   assert.match(map, /"line-dasharray": \[2, 1\.5\]/);
 });
@@ -31,10 +33,29 @@ test("a changed plan greys the line and keeps a dashed ghost of the old one with
 test("Reset goes back to the drawn plan without routing, Clear keeps the ride, and both are undoable edits", () => {
   assert.match(app, /commit\(back\.points as LonLat\[\], back\.ride\);/);
   assert.match(app, /resetUnavailable=\{planEdited \? null : RESET_NOTHING\}/);
-  assert.match(app, /const clearPlan = \(\) => \{\s*setGhost\(null\);\s*setChangeLine\(null\);\s*clearAll\(\);/);
+  assert.match(app, /const clearPlan = \(\) => \{\s*setGhost\(null\);\s*setChangeLine\(null\);\s*setChangeDetails\(\[\]\);\s*clearAll\(\);/);
+  // Reset puts back the stations and the transit option the drawn plan was routed with.
+  assert.match(app, /setStationPins\(back\.pins\);\s*setTransitPick\(back\.transitPick\);/);
   // Reset is aria-disabled with its reason, never removed or disabled outright.
   assert.match(panel, /aria-disabled=\{resetUnavailable \? true : undefined\}/);
   assert.match(panel, /aria-describedby=\{resetUnavailable \? resetWhy : undefined\}/);
+});
+
+test("in Plan a station or a transit option is an edit like any other: it marks the plan changed and waits for Route", () => {
+  // Both are part of planDials, so of planKey, which the drawn plan is compared by.
+  assert.match(app, /const planKey = JSON\.stringify\(planDials\);/);
+  assert.match(app, /pins: stationPins, transitPick \}/);
+  // No exception lets them route at once: only the Route button, or going back to the drawn plan.
+  assert.doesNotMatch(app, /if \(planFirst && !pressed[^\n]*samePlan/);
+  assert.match(app, /const backToDrawn = answer === null && drawnRef\.current !== null && !planChanged\(drawnRef\.current, points, preset, planKey\);/);
+  assert.match(app, /dialsKey: planKey,\s*pressed: pressed && planFirst,\s*pins: stationPins,\s*transitPick,/);
+});
+
+test("the change line's Details opens the per-leg changes, a disclosure for the keyboard and screen readers", () => {
+  assert.match(panel, /aria-expanded=\{detailsOpen\} aria-controls=\{detailsId\} onClick=\{\(\) => setDetailsOpen\(!detailsOpen\)\}/);
+  assert.match(panel, /Details<span className="visually-hidden"> by leg<\/span>/);
+  assert.match(panel, /<ul id=\{detailsId\} className="plan-change-details" hidden=\{!detailsOpen\}>/);
+  assert.match(app, /details=\{changeDetails\}/);
 });
 
 test("the panel: sentences of links, Route with Enter or Ctrl+Enter, progress with its step, seconds and Cancel", () => {
