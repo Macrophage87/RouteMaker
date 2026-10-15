@@ -108,7 +108,7 @@ test("Go's More ride types and Plan's dialog: the search first, then each group 
   // Go: the list under its own h3, the groups as h4 under it, so the Ride line's "Ride type" h3 after
   // it in the sheet is not read as a fourth group; each group named once, by its heading.
   assert.match(go, /<section className="ride-groups" aria-labelledby="ride-sheet-types">\s*<h3 id="ride-sheet-types" className="visually-hidden">\s*Every ride type\s*<\/h3>/);
-  assert.match(go, /<section key=\{group\.id\} className="ride-group" aria-labelledby=\{`ride-sheet-\$\{group\.id\}`\}>\s*<h4 id=\{`ride-sheet-\$\{group\.id\}`\}>\{group\.label\}<\/h4>\s*<RideChips ids=\{group\.ids\} preset=\{preset\} onPick=\{onPick\} \/>/);
+  assert.match(go, /<section key=\{group\.id\} className="ride-group" aria-labelledby=\{`ride-sheet-\$\{group\.id\}`\}>\s*<h4 id=\{`ride-sheet-\$\{group\.id\}`\}>\{group\.label\}<\/h4>\s*<RideTypeCards ids=\{group\.ids\} preset=\{preset\} onPick=\{onPick\} idPrefix="ride-sheet" icon=\{rideIcon\} \/>/);
   assert.match(sheets, /role=\{label \? "group" : undefined\} aria-label=\{label\}/);
   // Go: the search is cleared whenever the sheet is left (as Plan's dialog on closing).
   assert.match(go, /useEffect\(\(\) => \{\s*if \(!open\) setQuery\(""\);\s*\}, \[open\]\);/);

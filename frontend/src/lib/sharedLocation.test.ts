@@ -113,7 +113,7 @@ test("the manifest: the Android share target and the desktop geo: handler", () =
 test("the search box reads a pasted link before it is cut, and the app opens a share in Go", () => {
   const search = readFileSync(new URL("../PlaceSearch.tsx", import.meta.url), "utf8");
   assert.match(search, /onPaste=\{\(event\) => \{[\s\S]*?if \(!parseShared\(text\)\) return;\s*event\.preventDefault\(\);/);
-  assert.match(search, /const offered: Place\[\] = \[\.\.\.sharedItems, \.\.\.places\];/);
+  assert.match(search, /const offered: Place\[\] = \[\.\.\.sharedItems, \.\.\.\(empty \? recent : places\)\];/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /useSharedLaunch\(\(place\) => \{\s*if \(modeRef\.current !== "go"\) changeMode\("go"\);\s*goToPlace\(place\);\s*\}, setNotice\);/);
 });

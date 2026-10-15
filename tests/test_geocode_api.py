@@ -220,6 +220,35 @@ class TestSearch:
         assert params["zoom"] == geocode.BIAS_ZOOM == 14
         assert params["location_bias_scale"] == geocode.BIAS_SCALE == 0.2
 
+    def test_bike_shop_lists_the_nearest_bike_shops(self, client, photon) -> None:
+        """ "bike shop" is a kind of place, not a name: the nearest places
+        tagged shop=bicycle around the bias point, nearest first."""
+        near = feature(
+            -77.03, 38.9, name="Near Cycles", type="house", osm_key="shop", osm_value="bicycle"
+        )
+        far = feature(
+            -77.05, 38.9, name="Far Bikes", type="house", osm_key="shop", osm_value="bicycle"
+        )
+        fake = photon(answer(near, far))
+        body = get(client, SEARCH, q="Bike  Shop", lat="38.9", lon="-77.0").json()
+        ((path, params),) = fake.calls
+        assert path == "/reverse"
+        assert params["osm_tag"] == "shop:bicycle"
+        assert (params["lat"], params["lon"]) == (38.9, -77.0)
+        assert params["radius"] == geocode.TAG_SEARCH_RADIUS_KM
+        assert [r["name"] for r in body["results"]] == ["Near Cycles", "Far Bikes"]
+
+    def test_bike_shop_without_a_bias_is_an_ordinary_search(self, client, photon) -> None:
+        fake = photon(answer())
+        get(client, SEARCH, q="bike shop")
+        ((path, params),) = fake.calls
+        assert path == "/api" and "osm_tag" not in params
+
+    def test_a_shop_name_with_bike_in_it_is_searched_by_name(self, client, photon) -> None:
+        fake = photon(answer())
+        get(client, SEARCH, q="bike shop annapolis", lat="38.9", lon="-77.0")
+        assert fake.calls[0][0] == "/api"
+
     def test_whitespace_is_collapsed_before_it_is_sent(self, client, photon) -> None:
         fake = photon(answer())
         get(client, SEARCH, q="  union \t  station ")

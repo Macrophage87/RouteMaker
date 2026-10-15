@@ -17,8 +17,10 @@ import {
   OPENING_ZOOM,
   STRESS_SOURCE_ID,
   buildStyle,
+  refreshStressTiles,
   stressTileTemplate,
 } from "./lib/mapStyle.ts";
+import { tileRev } from "./lib/tileRev.ts";
 import { fontStacks } from "./lib/corridor.ts";
 import { basemapArchive, setCorridorStyle, sweepCorridor } from "./lib/corridorStore.ts";
 import type { RouteResponse } from "./lib/api.ts";
@@ -146,6 +148,7 @@ import {
   type ClosureCard,
   type ClosureItem,
 } from "./lib/closureMap.ts";
+import { ViaHold } from "./lib/viaHold.ts";
 
 export type StressAvailability = "checking" | "available" | "unavailable";
 
@@ -944,6 +947,9 @@ export function MapView(props: Props) {
     const stressCheck = stressProbe(origin, STRESS_RECHECK_MS, {
       add: addStress,
       report: (availability) => callbacks.current.onStressAvailability(availability),
+      // A tile that failed while the server was down is asked for again once it is back: the edit
+      // generation's refresh, under the generation the tiles already have.
+      reload: () => refreshStressTiles(map, origin, tileRev()),
       disposed: () => disposed,
     });
 
@@ -1192,7 +1198,8 @@ export function MapView(props: Props) {
 
     map.on("error", (event) => {
       // A stress tile that failed after the endpoint had answered: check the
-      // endpoint again rather than trusting one tile's failure either way.
+      // endpoint again rather than trusting one tile's failure either way, and
+      // if it answers, ask for the tiles again (stressProbe's reload).
       const source = (event as { sourceId?: string }).sourceId;
       if (source === STRESS_SOURCE_ID) stressCheck.later(5_000);
     });
@@ -1259,7 +1266,7 @@ export function MapView(props: Props) {
       const named = warning ? `${name}. ${warning}` : name;
       const said = warning ? named : `${name}.`;
       element.setAttribute("aria-label", via ? `${said} Drag to move; click for Remove.` : `${said} Drag to move.`);
-      element.title = via ? `${named} - drag to move, click for Remove, double-click to remove` : `${named} - drag to move`;
+      element.title = via ? `${named} - drag to move; click, right-click or long-press for Remove; double-click to remove` : `${named} - drag to move`;
       const marker = new maplibregl.Marker({ element, draggable: true, anchor: "center" })
         .setLngLat(point)
         .addTo(map);
@@ -1276,7 +1283,7 @@ export function MapView(props: Props) {
         const { lng, lat } = marker.getLngLat();
         callbacks.current.onMovePoint(index, [lng, lat]);
       });
-      const openMenu = () => {
+      const offerRemove = () => {
         // A via's click offers Remove beside it: a real button, so a finger
         // can use it as well as a mouse.
         // Where the focus goes back to on Escape: from a second via's click,
@@ -1344,13 +1351,7 @@ export function MapView(props: Props) {
         // would also add a via point under the marker.
         event.stopPropagation();
         if (!via || dragged) return;
-        openMenu();
-      });
-      // A right-click or a long press on a stop or a via point opens the same menu (v0.7.0).
-      element.addEventListener("contextmenu", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        if (via && !dragged) openMenu();
+        offerRemove();
       });
       if (via) {
         // A double-click removes it at once, and is not the map's zoom.
@@ -1359,6 +1360,31 @@ export function MapView(props: Props) {
           event.preventDefault();
           closePopup(true);
           callbacks.current.onRemovePoint(index);
+        });
+        // A right-click, or a long press (Stephen 2026-10-13), offers Remove as a click does, and is not
+        // the road panel's: one more press removes it, so a finger that rested before a drag loses nothing.
+        // Android's long press arrives as a contextmenu; iOS sends none, so a held touch that has not moved
+        // is timed here (lib/viaHold.ts). Offering Remove twice (both on Android) shows it once.
+        element.addEventListener("contextmenu", (event) => {
+          event.stopPropagation();
+          event.preventDefault();
+          if (dragged) return;
+          hold.cancel();
+          offerRemove();
+        });
+        const hold = new ViaHold(() => {
+          if (!dragged) offerRemove();
+        });
+        element.addEventListener("touchstart", (event) => hold.start(event.touches), { passive: true });
+        element.addEventListener("touchmove", (event) => hold.move(event.touches), { passive: true });
+        element.addEventListener("touchend", () => hold.cancel());
+        element.addEventListener("touchcancel", () => hold.cancel());
+        marker.on("dragstart", () => hold.cancel());
+      } else {
+        // The start's and the end's right-click is not the map's (nor the browser's menu) either (v0.7.0).
+        element.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
         });
       }
       return marker;

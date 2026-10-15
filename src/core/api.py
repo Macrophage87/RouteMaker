@@ -2860,13 +2860,18 @@ def _unrouted_line(
     }
 
 
-def _walked_line(plan: transit.Plan, preset_name: str, dials) -> dict:
-    """Walking the whole way: the answer's line is the walk itself, as the pedestrian router
-    walked it (or straight where it did not), timed at walking pace; no bike route is asked."""
-    leg = plan.legs[0]
+def _walked_line(plan: transit.Plan, preset_name: str, dials, services=None) -> dict:
+    """The answer's line is a walk (walking the whole way, or a trip whose line is a walk): the
+    walk itself, as the pedestrian router walked it (or straight where it did not), timed at
+    walking pace; no bike route is asked. `services` walks a leg not yet walked by the router."""
+    leg = plan.legs[plan.ride]
     points = [list(p) for p in leg.coordinates]
     metres = None
-    if not leg.estimated:
+    walked = services.walk(points[0], points[-1]) if services is not None else None
+    if walked is not None and len(walked.coordinates) >= 2:
+        points = [list(p) for p in walked.coordinates]
+        metres = walked.metres
+    elif not leg.estimated:
         metres = sum(
             haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
         )
@@ -2923,10 +2928,28 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     live = wmata_live.client.snapshot()
     found = transit_live.rank(found, live)
     found = transit.choose(found, body.transit_option)
-    if found.option.walk:
-        answer = _walked_line(found, body.preset, dials)
-        answer["transit"] = _transit_block(found, schedule, live)
+    # The trip's other walks and rides are routed for the map in what is left of the budget.
+    draw = transit.RoutingServices(
+        min(
+            started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S,
+            routing.clock() + transit.DRAW_BUDGET_S,
+        ),
+        leg_preset,
+        max_calls=transit.MAX_DRAW_CALLS,
+        per_call_s=transit.DRAW_CALL_S,
+        costing=leg_costing,
+    )
+
+    def answered(answer: dict, plan: transit.Plan, lines: dict[int, dict] | None = None) -> dict:
+        # The later rides routed for their stress colours (`lines`) are drawn as routed; the
+        # trip's other walks and rides are routed for the map (transit.drawn).
+        lines = lines or {}
+        block = _transit_block(transit.drawn(plan, draw, skip=lines), schedule, live)
+        answer["transit"] = _with_leg_lines(block, lines)
         return answer
+
+    if found.option.walk:
+        return answered(_walked_line(found, body.preset, dials), found)
     leg = found.legs[found.ride]
     # The line is the chosen option's first ride (or walk). Riding directly there, or an option
     # whose every ride and walk is a few yards (nothing the router could route), is drawn start to
@@ -2935,6 +2958,10 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         transit.line_m(leg) < transit.MIN_LINE_M
     )
     retime = not whole or found.option.direct
+    if not whole and leg.mode in (transit.WALK, transit.TAKE):
+        # The line is a walk (Bikeshare + 🚶🚆🚌 with no ride worth a line): walked by the
+        # pedestrian router, never the bike's, and the plan keeps its walking times.
+        return answered(_walked_line(found, body.preset, dials, draw), found)
     if whole:
         ride_from, ride_to = list(start), list(end)
     else:
@@ -2987,9 +3014,10 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             # them again could drop this option too.
             leg = timed.legs[timed.ride]
             if timed.option.walk:
-                answer = _walked_line(timed, body.preset, dials)
-                answer["transit"] = _transit_block(timed, schedule, live)
-                return answer
+                return answered(_walked_line(timed, body.preset, dials), timed)
+            walked = leg.mode in (transit.WALK, transit.TAKE) and not timed.option.direct
+            if walked and transit.line_m(leg) >= transit.MIN_LINE_M:
+                return answered(_walked_line(timed, body.preset, dials, draw), timed)
             again_whole = timed.option.direct and body.preset == presets.BIKE_TRANSIT
             if again_whole:
                 points = [list(start), list(end)]
@@ -3007,7 +3035,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     finally:
         # A call still running past its wait is left to its own deadline, not waited for.
         pool.shutdown(wait=False, cancel_futures=True)
-    answer["transit"] = _with_leg_lines(_transit_block(found, schedule, live), lines)
+    answered(answer, found, lines)
     logger.info(
         "transit plan %s: search %.1f s (candidates %.1f s, %d calls), line %.1f s",
         body.preset,

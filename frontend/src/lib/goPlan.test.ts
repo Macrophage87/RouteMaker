@@ -13,7 +13,6 @@ import {
   GO_FIXED,
   GO_RIDES,
   HOME_NOT_SET,
-  HOME_SIGN_IN,
   NO_MY_GO,
   fetchMyGo,
   goRideChips,
@@ -119,12 +118,12 @@ test("My Go reads what makes sense and drops the rest: an unknown view or ride, 
   assert.equal(myGoSummary({ openIn: "go", ride: "cargo", home: null }), "Go · Cargo Bike");
 });
 
-test("signed out My Go stays on this device without a Home; the account's copy opens the next visit at once and goes with a sign-out", () => {
+test("signed out My Go stays on this device with its Home; the account's copy opens the next visit at once and goes with a sign-out", () => {
   const s = store();
   assert.deepEqual(readStartMyGo(s), { myGo: NO_MY_GO, account: false });
   saveDeviceMyGo({ openIn: "go", ride: "cargo", home: { point: [-77, 38.9], label: "Mine" } }, s);
-  assert.equal(JSON.parse(s.map.get(DEVICE_KEY) as string).home, null, "Home needs sign-in: never kept on the device");
-  assert.deepEqual(readStartMyGo(s), { myGo: { openIn: "go", ride: "cargo", home: null }, account: false });
+  assert.deepEqual(JSON.parse(s.map.get(DEVICE_KEY) as string).home, { lon: -77, lat: 38.9, label: "Mine" }, "Home without signing in, on the device");
+  assert.deepEqual(readStartMyGo(s), { myGo: { openIn: "go", ride: "cargo", home: { point: [-77, 38.9], label: "Mine" } }, account: false });
   saveAccountCopy({ openIn: "plan", ride: null, home: { point: [-77, 38.9], label: "Mine" } }, s);
   assert.equal(JSON.parse(s.map.get(ACCOUNT_COPY_KEY) as string).home, null);
   assert.deepEqual(readStartMyGo(s), { myGo: { openIn: "plan", ride: null, home: null }, account: true }, "the account's copy first");
@@ -183,18 +182,18 @@ test("Go's ride types: the rider's own (My Go, Default until set), then Own Bike
   assert.match(src("../app/Sheets.tsx"), /className="chip ride-type-chip"\s+aria-pressed=\{preset === id\}/);
 });
 
-test("Go's places are Home, Food, Water and Restroom (no Work); Home needs sign-in and says so", () => {
+test("Go's places are Home, Food, Water and Restroom (no Work); Home works signed out", () => {
   const chips = [...go.matchAll(/<Icon name="(\w+)" size=\{18\} \/>\s*(\w+)\s*<\/button>/g)].map((m) => m[2]);
   assert.deepEqual(chips.slice(0, 4), ["Home", "Food", "Water", "Restroom"]);
   assert.doesNotMatch(go, /Work/);
   assert.ok(!("work" in ICON_PATHS), "the mockup's Work icon is gone with the chip");
   assert.match(go, /aria-describedby=\{places\.homeReady \? undefined : homeHint\}/);
-  assert.match(go, /\{places\.signedIn \? HOME_NOT_SET : HOME_SIGN_IN\}/);
-  assert.equal(HOME_SIGN_IN, "Sign in with Discord to keep a Home.");
+  assert.match(go, /\{HOME_NOT_SET\}/);
+  assert.doesNotMatch(go, /Sign in/);
   assert.match(HOME_NOT_SET, /My Go/);
-  assert.match(appFile, /homeReady: me\.signed_in && myGo\.home !== null,/);
+  assert.match(appFile, /homeReady: myGo\.home !== null,/);
   // Without a Home, the chip opens My Go in Settings (one press, then the Home search).
-  assert.match(appFile, /if \(meRef\.current\.signed_in && home\) \{[\s\S]*?void goTo\(home\.point, home\.label \|\| "Home"\);[\s\S]*?openView\("settings", chip\);/);
+  assert.match(appFile, /if \(home\) \{[\s\S]*?void goTo\(home\.point, home\.label \|\| "Home"\);[\s\S]*?openView\("settings", chip\);/);
   // Water and Restroom search from the rider's location, in their own sheet.
   assert.match(appFile, /onWater: \(chip\) => \{\s*openView\("nearest", chip\);\s*findNearestHere\("water"\);/);
   assert.match(appFile, /onRestroom: \(chip\) => \{\s*openView\("nearest", chip\);\s*findNearestHere\("restroom"\);/);

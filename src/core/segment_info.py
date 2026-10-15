@@ -62,6 +62,12 @@ KMH_PER_MPH = 1.609344
 OSM = "OpenStreetMap"
 CLASSIFIER = "RouteMaker classifier"
 OWNER = "Owner override"
+# Montgomery County's LTS 5 roads (fixtures/overrides/2026-10-01-owner-moco-lts5-avoid.json,
+# OWNER-DECISIONS 181; docs/SOURCES.md) are loaded as adjustments but are the county's
+# data, not an owner's rating: their ids all start with this (`agency_lts.ADJUSTMENT_SOURCES`),
+# and the panel names the county as the agency ratings do.
+COUNTY_ADJUSTMENT_PREFIX = "moco-lts5-"
+COUNTY = agency_lts.source_name("moco")
 ROUTER = "OpenStreetMap, through RouteMaker's routing graph"
 NEXT_UPDATE = "Available after the next data update"
 
@@ -488,6 +494,8 @@ def rule_words(rule: str) -> str:
     """The classifier's rule (`segment.stress_rule`) in plain words."""
     rule = (rule or "").strip()
     rule = re.sub(r"\s*\(Furth: [^)]*\)", "", rule)
+    if rule.startswith(f"override: stress adjustment {COUNTY_ADJUSTMENT_PREFIX}"):
+        return "Montgomery County rates it LTS 5"
     if rule.startswith("override: stress adjustment") or rule.startswith("named corridor:"):
         return "Owner-rated corridor"
     if "curated lane at" in rule:
@@ -553,6 +561,8 @@ def stress_rows(row: dict) -> list[dict]:
         row.get("stress_rule", "")
     ).startswith(("override:", "named corridor:"))
     source = override_source(row) if adjusted else CLASSIFIER
+    whose = agency_lts.adjustment_source(row.get("stress_adjustment_id")) if adjusted else None
+    county = whose == "moco"
     rows = [
         _row("Level", tier_text(tier, half), source),
         _row("Why", rule_words(row["stress_rule"]), source),
@@ -560,14 +570,20 @@ def stress_rows(row: dict) -> list[dict]:
     computed = row.get("stress_computed_tier")
     direction = row.get("stress_adjustment_direction")
     if computed is not None and direction in ("up", "down"):
-        rows.append(_row("Before the override", tier_text(int(computed)), CLASSIFIER))
+        if county:
+            before = "Before the county's rating"
+        elif whose in agency_lts.AGENCIES:
+            before = "Before the agency's rating"
+        else:
+            before = "Before the override"
+        rows.append(_row(before, tier_text(int(computed)), CLASSIFIER))
     category = row.get("stress_adjustment_category")
     if category in ADJUSTMENT_CATEGORIES and source == OWNER:
         rows.append(_row("Owner's reason", ADJUSTMENT_CATEGORIES[category].capitalize(), OWNER))
     note = row.get("stress_adjustment_note")
     # A note marked route_only is for a route over the stretch, never a map click.
     if note and row.get("stress_adjustment_display") == "map":
-        rows.append(_row("Note", str(note), OWNER))
+        rows.append(_row("Note", str(note), source))
     return rows + rating_rows(row)
 
 

@@ -1,11 +1,12 @@
 /**
  * My Go (UI-CLEANUP, the owner's choice 2 of 2026-10-11): a rider's own default "go" — the view the
- * app opens in (Go or Plan, or by screen size) and the ride type Go uses — and, signed in, the Home
- * the Go sheet's Home chip rides to.
+ * app opens in (Go or Plan, or by screen size), the ride type Go uses, and the Home the Go sheet's
+ * Home chip rides to.
  *
  * Signed in it is saved to the Discord account (GET and POST /api/me/go; core.models.MyGo), so it
- * follows the rider to another phone. Signed out it stays on this device (localStorage), and there is
- * no Home: Home needs sign-in (the owner's choice 3).
+ * follows the rider to another phone. Signed out it stays on this device (localStorage), Home included
+ * (Stephen 2026-10-13: Home without signing in; nothing is sent to the server). Signing in uses the
+ * account's Home; the device's is kept for when the rider signs out, never merged silently.
  *
  * The account's copy is kept on the device as well (without Home), so the next visit opens in the
  * right view at once rather than after the network answers; a sign-out clears that copy.
@@ -105,17 +106,17 @@ export function readStartMyGo(store: Store | null = local()): { myGo: MyGo; acco
     const copy = store?.getItem(ACCOUNT_COPY_KEY);
     if (copy) return { myGo: { ...parseMyGo(JSON.parse(copy)), home: null }, account: true };
     const device = store?.getItem(DEVICE_KEY);
-    if (device) return { myGo: { ...parseMyGo(JSON.parse(device)), home: null }, account: false };
+    if (device) return { myGo: parseMyGo(JSON.parse(device)), account: false };
   } catch {
     // A refused or broken store: the defaults.
   }
   return { myGo: NO_MY_GO, account: false };
 }
 
-/** Keep this device's My Go (signed out); Home is never kept here. */
+/** Keep this device's My Go (signed out), Home included. */
 export function saveDeviceMyGo(myGo: MyGo, store: Store | null = local()): void {
   try {
-    store?.setItem(DEVICE_KEY, JSON.stringify({ ...myGoBody(myGo), home: null }));
+    store?.setItem(DEVICE_KEY, JSON.stringify(myGoBody(myGo)));
   } catch {
     // Not kept: it still applies to this visit.
   }
@@ -165,6 +166,5 @@ export async function saveMyGo(origin: string, myGo: MyGo, post: Fetch = fetch, 
   }
 }
 
-/** The Home chip's words when it cannot ride yet: signed out, or signed in with no Home. */
-export const HOME_SIGN_IN = "Sign in with Discord to keep a Home.";
+/** The Home chip's words when there is no Home yet. */
 export const HOME_NOT_SET = "No Home yet: set it in My Go.";

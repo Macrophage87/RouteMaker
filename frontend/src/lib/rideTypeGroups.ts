@@ -42,11 +42,11 @@ function fold(text: string): string {
   return text.toLowerCase().replace(/[-'’]/g, "");
 }
 
-/** Whether a ride type matches the search: every word of it is in the name (shown or spoken), its keywords or the description. */
+/** Whether a ride type matches the search: every word of it is in the name (shown or spoken), its keywords, summary or description. */
 export function matchesRideType(option: PresetOption, query: string): boolean {
   const words = fold(query).split(/\s+/).filter(Boolean);
   if (words.length === 0) return true;
-  const text = fold(`${option.label} ${option.spoken ?? ""} ${option.keywords ?? ""} ${option.description}`);
+  const text = fold(`${option.label} ${option.spoken ?? ""} ${option.keywords ?? ""} ${option.summary} ${option.description}`);
   return words.every((word) => text.includes(word));
 }
 

@@ -6,7 +6,8 @@
  *
  * The ARIA 1.2 combobox pattern: the input owns a listbox, the arrow keys
  * move through the options without leaving the input (aria-activedescendant),
- * Enter picks, Escape closes and then clears. The result count is announced
+ * Enter picks, Escape closes and then clears. The empty box lists "Your
+ * location" and then the last places picked (lib/recentPlaces.ts). The result count is announced
  * in a polite live region, and the options are tall enough to tap.
  *
  * A pasted map link (Google, Apple, Waze, geo:) or typed coordinates are read as a place
@@ -31,6 +32,7 @@ import {
 } from "./lib/geocode.ts";
 import type { LonLat } from "./lib/geo.ts";
 import { Icon } from "./Icon.tsx";
+import { readRecentPlaces, rememberRecentPlace } from "./lib/recentPlaces.ts";
 import { FINDING_LOCATION, hereEffectLine, locationMatches, searchStatusWithHere } from "./lib/geolocation.ts";
 import { parseShared, readShared, sharedPlace, SHARED_OPENING } from "./lib/sharedLocation.ts";
 
@@ -124,6 +126,8 @@ export function PlaceSearch({
   // A pasted link or typed coordinates: the place read from it, the link being opened, or why not.
   const [shared, setShared] = useState<{ place: Place } | { said: string } | null>(null);
   const sharedTurn = useRef(0);
+  // The last places picked in any search box, read again on focus so a pick in another box shows.
+  const [recent, setRecent] = useState<Place[]>(() => readRecentPlaces());
   const runner = useRef<PlaceSearchRunner | null>(null);
   const biasRef = useRef(bias);
   biasRef.current = bias;
@@ -156,7 +160,9 @@ export function PlaceSearch({
   // of its own under it, so it is an option a keyboard and a screen reader reach like any other.
   const offersDestination = variant === "plan" && !loop && effect === "via";
   const sharedItems: Place[] = shared && "place" in shared ? [shared.place] : [];
-  const offered: Place[] = [...sharedItems, ...places];
+  // The empty box lists the last places picked (v0.6.1), under "Your location".
+  const empty = query.trim() === "";
+  const offered: Place[] = [...sharedItems, ...(empty ? recent : places)];
   const listed: (Place | AsDestination)[] = offersDestination ? offered.flatMap((place) => [place, { destination: place }]) : offered;
   const items: (Place | AsDestination | typeof HERE)[] = showHere ? [HERE, ...listed] : listed;
   const expanded = open && items.length > 0;
@@ -209,6 +215,7 @@ export function PlaceSearch({
     onPick(place, as ?? (variant === "stop" ? "via" : single ? "end" : choice));
     sharedTurn.current += 1;
     setShared(null);
+    setRecent(rememberRecentPlace(place));
     setQuery("");
     setResult(null);
     setOpen(false);
@@ -287,6 +294,7 @@ export function PlaceSearch({
         onBlur={() => setOpen(false)}
         onFocus={(event) => {
           setOpen(true);
+          setRecent(readRecentPlaces());
           // On a phone the sheet is half the screen and the keyboard takes
           // much of the rest: bring the box to the top of the sheet so the
           // results under it can be seen.
@@ -321,7 +329,7 @@ export function PlaceSearch({
         </p>
       )}
       {locate && !locate.busy && locate.note && <p className="hint">{locate.note}</p>}
-      <ul id={listId} role="listbox" aria-label="Places found" className="place-results" hidden={!expanded}>
+      <ul id={listId} role="listbox" aria-label={empty ? "Your location and recent places" : "Places found"} className="place-results" hidden={!expanded}>
         {items.map((item, i) =>
           item === HERE ? (
             <li

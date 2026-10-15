@@ -243,7 +243,8 @@ test("with a route shown Plan's search and point tools stay in view (v0.7.0), an
   // "Keep adding stops by search": no compacting and no Edit points; the plan panel holds the plan in words.
   assert.match(app, /const compactPoints = false;/);
   assert.doesNotMatch(app, /className="secondary icon-button edit-points"/);
-  assert.match(app, /<div id="points-search" ref=\{pointsSearchRef\} className="points-controls" hidden=\{compactPoints\}>\s*<PlaceSearch/);
+  // The search is never hidden, so more stops can be added by search (v0.6.1 as well).
+  assert.match(app, /<div id="points-search" ref=\{pointsSearchRef\} className="points-controls">\s*<PlaceSearch/);
   assert.match(app, /<div id="points-edit" ref=\{pointsEditRef\} hidden=\{compactPoints\}>/);
   // Clear, a plan from a link, or fewer than two points: the next route opens compact again (N1).
   assert.match(app, /const clearAll = \(\) => \{\s*setConfirmedKm\(null\);\s*setEditPoints\(false\);/);
@@ -297,7 +298,7 @@ test("the points compacting never leaves the focus in a hidden part: it goes to 
   // App runs it in a layout effect on compactPoints, with what had the focus before that render.
   assert.match(
     app,
-    /useLayoutEffect\(\(\) => \{\s*rescueCompactFocus\(\{\s*wasCompact: wasCompact\.current,\s*compact: compactPoints,\s*before: focusBeforeRender\.current,\s*hidden: \[pointsSearchRef\.current, pointsEditRef\.current\],\s*editPoints: editPointsRef\.current,\s*\}\);\s*wasCompact\.current = compactPoints;\s*\}, \[compactPoints\]\);/,
+    /useLayoutEffect\(\(\) => \{\s*rescueCompactFocus\(\{\s*wasCompact: wasCompact\.current,\s*compact: compactPoints,\s*before: focusBeforeRender\.current,\s*hidden: \[pointsEditRef\.current\],\s*editPoints: editPointsRef\.current,\s*\}\);\s*wasCompact\.current = compactPoints;\s*\}, \[compactPoints\]\);/,
   );
   // After the sheet-order effect, which may first put the focus back on the (now hidden) element.
   assert.ok(app.indexOf("rescueCompactFocus({") > app.indexOf("}, [routeFirst]);"));

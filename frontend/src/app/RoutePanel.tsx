@@ -789,6 +789,10 @@ export function RouteSummary({
             {actions.save && <SaveRoute {...actions.save} label={SAVE_ROUTE} chip />}
           </div>
         )}
+        {/* The elevation chart, open whenever the sheet is bigger than peek (Stephen 2026-10-13: "on Go, add an
+            elevation chart to the map as well, even if relatively flat"), under Start and the route's options so
+            it never pushes them down; its key and tables stay in Plan. */}
+        {!go.peek && profile && chartKind(route) !== "mass" && <ElevationChart route={route} profile={profile} onScrub={onScrub} compact />}
         {!go.peek && picker && (
           <div id={routesId} className="go-routes" hidden={!routesOpen}>
             {picker}

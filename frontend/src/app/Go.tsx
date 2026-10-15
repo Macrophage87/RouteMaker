@@ -13,7 +13,7 @@ import { PlaceSearch } from "../PlaceSearch.tsx";
 import type { LonLat } from "../lib/geo.ts";
 import type { GeoGate, Place, PlaceChoice } from "../lib/geocode.ts";
 import { MODE_LABEL, MODE_SWITCH_HINT, MODE_SWITCH_NAME, type AppMode } from "../lib/appMode.ts";
-import { HOME_NOT_SET, HOME_SIGN_IN } from "../lib/myGo.ts";
+import { HOME_NOT_SET } from "../lib/myGo.ts";
 import { BEST_ORDER_LABEL } from "../lib/stopOrder.ts";
 
 export type GoSheetSize = "peek" | "half" | "full";
@@ -272,7 +272,7 @@ export function GoSheet({
         </div>
         {!places.homeReady && (
           <p id={homeHint} className="hint go-home-hint">
-            {places.signedIn ? HOME_NOT_SET : HOME_SIGN_IN}
+            {HOME_NOT_SET}
           </p>
         )}
         {!routeShown && rides}

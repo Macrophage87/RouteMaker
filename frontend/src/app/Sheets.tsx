@@ -13,6 +13,7 @@ import type { LonLat } from "../lib/geo.ts";
 import { PRESETS, presetSaid, type PresetId } from "../lib/presets.ts";
 import { PresetName } from "../lib/presetName.ts";
 import { filterRideGroups, rideTypeCount, RideTypeSearch } from "../lib/rideTypeGroups.ts";
+import { RideTypeCards } from "../lib/rideTypeCards.ts";
 import { isPlainClick, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
 import { pointName } from "../lib/summary.ts";
 import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, setMtbTrails } from "../stressStyle.js";
@@ -51,7 +52,7 @@ import { anyKept } from "../lib/offlineRouteStore.ts";
 import { HAZARD_REVIEW } from "../lib/reviewSources.ts";
 import { DC_311_ONLINE, REPORT_KINDS } from "../lib/report311.ts";
 import { OPEN_IN_HINT, OPEN_IN_LABEL, type AppMode, type OpenIn } from "../lib/appMode.ts";
-import { HOME_SIGN_IN, myGoSummary, type MyGo } from "../lib/myGo.ts";
+import { myGoSummary, type MyGo } from "../lib/myGo.ts";
 import { SIGN_IN_LINE } from "../lib/accountSettings.ts";
 import { MyRoutes, type MyRoutesProps } from "../MyRoutes.tsx";
 import type { GeoGate, Place } from "../lib/geocode.ts";
@@ -348,7 +349,7 @@ function MyGoSection({ controls }: { controls: MyGoControls }) {
           {myGoSummary(myGo)}
         </span>
       </h4>
-      <p className="hint">{signedIn ? "Kept with your Discord account, on every device you sign in on." : "Kept on this device. Sign in to keep it with your account, with a Home."}</p>
+      <p className="hint">{signedIn ? "Kept with your Discord account, on every device you sign in on." : "Kept on this device. Sign in to keep it with your account."}</p>
       <OpenInChoice value={myGo.openIn} onChange={(openIn) => save({ ...myGo, openIn })} idBase="my-go" hint={OPEN_IN_HINT} />
       <label className="select-setting">
         Go's ride type
@@ -360,22 +361,18 @@ function MyGoSection({ controls }: { controls: MyGoControls }) {
           ))}
         </select>
       </label>
-      {signedIn ? (
-        <div className="my-go-home">
-          <p>
-            <strong>Home: </strong>
-            {myGo.home ? myGo.home.label || "set" : "not set"}
-          </p>
-          <PlaceSearch variant="home" pointCount={0} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place) => save({ ...myGo, home: { point: [place.lon, place.lat], label: place.name } })} />
-          {myGo.home && (
-            <button type="button" className="secondary" onClick={() => save({ ...myGo, home: null })}>
-              Clear Home
-            </button>
-          )}
-        </div>
-      ) : (
-        <p className="hint">{HOME_SIGN_IN}</p>
-      )}
+      <div className="my-go-home">
+        <p>
+          <strong>Home: </strong>
+          {myGo.home ? myGo.home.label || "set" : "not set"}
+        </p>
+        <PlaceSearch variant="home" pointCount={0} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place) => save({ ...myGo, home: { point: [place.lon, place.lat], label: place.name } })} />
+        {myGo.home && (
+          <button type="button" className="secondary" onClick={() => save({ ...myGo, home: null })}>
+            Clear Home
+          </button>
+        )}
+      </div>
       <p className="hint my-go-said" role="status">
         {said}
       </p>
@@ -652,9 +649,12 @@ const RIDE_ICON: Partial<Record<PresetId, IconName>> = {
   rebalance: "bikeshare",
 };
 
+const rideIcon = (id: PresetId) => <Icon name={RIDE_ICON[id] ?? "bike"} size={20} />;
+
 /**
  * Go's More ride types: every ride type, searchable, under its group's heading
  * (RIDE-TYPE-ORGANISE, lib/rideTypeGroups.ts). The search comes first in the Tab order.
+ * Each type is a card with its name and one short sentence (lib/rideTypeCards.ts).
  *
  * The outline: the sheet's h2, then this list under its own h3 (read, not shown: the sheet
  * already says what it is), its groups as h4 under it, so the Ride line's "Ride type" h3 that
@@ -677,14 +677,14 @@ export function RideGroupChips({ preset, onPick, open }: { preset: PresetId; onP
       {groups.map((group) => (
         <section key={group.id} className="ride-group" aria-labelledby={`ride-sheet-${group.id}`}>
           <h4 id={`ride-sheet-${group.id}`}>{group.label}</h4>
-          <RideChips ids={group.ids} preset={preset} onPick={onPick} />
+          <RideTypeCards ids={group.ids} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} />
         </section>
       ))}
     </section>
   );
 }
 
-/** The ride type chips (Go's quick three and More, or every type in the Ride sheet), each a toggle button. */
+/** Go's quick ride type chips and the More button, each chip a toggle button. */
 export function RideChips({
   ids,
   preset,
@@ -697,7 +697,7 @@ export function RideChips({
   preset: PresetId;
   onPick: (id: PresetId) => void;
   more?: (opener: HTMLElement) => void;
-  /** The chips' group name; left out where a heading already names them (Go's More ride types). */
+  /** The chips' group name; leave it out where a heading already names them. */
   label?: string;
   /** Go: the first chip is the rider's own ride type (My Go), described as such. */
   ownHint?: string;
