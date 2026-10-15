@@ -3051,6 +3051,11 @@ details.zoom-notes {
   font-size: 13px;
 }
 
+/* Go's chart: one line kept for the reading, so a touch does not move the sheet. */
+.elevation-chart-compact .pc-readout {
+  min-height: 1.4em;
+}
+
 .pc-keys,
 .pc-source {
   margin: 0;
