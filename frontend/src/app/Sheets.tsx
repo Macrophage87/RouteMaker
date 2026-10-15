@@ -27,6 +27,8 @@ import { RideSettingsFields } from "../RideMode.tsx";
 import type { RidePrefs } from "../lib/rideOutput.ts";
 import type { RailVisibility } from "../lib/railStations.ts";
 import { RailStationsLegend, RailStationsSection } from "../RailStations.tsx";
+import { BikeshareSection } from "../lib/bikeshareSection.ts";
+import type { OperatorInfo } from "../lib/bikeshareDocks.ts";
 import { RAIL_STATIONS } from "../lib/railData.ts";
 import { federalPoints, federalShown, type FederalData } from "../lib/federalLand.ts";
 import { FederalLandFor, FederalLegendNotes, type FederalStatus } from "../lib/federalLegend.ts";
@@ -101,6 +103,8 @@ export interface LayersSheetProps {
   placesOn: boolean;
   changePlacesOn: (on: boolean) => void;
   placesStatus: string;
+  /** Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): one switch per service. */
+  bikeshare: { operators: readonly OperatorInfo[]; choices: Record<string, boolean>; onChange: (next: Record<string, boolean>) => void; status: string };
 }
 
 export const PLACES_LAYER_TITLE = "Places to see";
@@ -108,7 +112,7 @@ export const PLACES_LAYER_HINT = "Museums, historic sites, lighthouses, gardens,
 
 /** The Layers sheet: the map's switches, in the mockup's order, with the Legend button at its top. */
 export function LayersSheet(props: LayersSheetProps) {
-  const { nav, openLegend, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus } = props;
+  const { nav, openLegend, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare } = props;
   // The Trails and terrain section's layers that can show, and its row's words (lib/terrainSection.ts).
   const terrain = { mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stressShowable(stress), topoReady, climbsStatus };
   return (
@@ -157,6 +161,8 @@ export function LayersSheet(props: LayersSheetProps) {
       <WaterSection prefs={waterPrefs} onChange={changeWaterPrefs} status={waterStatus} />
 
       {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
+
+      <BikeshareSection {...bikeshare} />
 
       {/* v0.7.0: the places to see, one switch for the whole layer (the categories are Plan's Places to see filter). */}
       <LayerSection

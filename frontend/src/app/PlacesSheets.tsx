@@ -2,8 +2,9 @@
 // stays clean, but they can find it there. Plan can have more complexity"), and Plan's Places to see. Each list
 // is lettered as the map's markers are (lib/letteredPlaces.ts); a row's one button rides there (Go) or adds the
 // place as a stop. App.tsx keeps the state; the lists are lib/repair.ts's and lib/places.ts's.
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Popup, type Map as MapLibreMap, type MapMouseEvent } from "maplibre-gl";
+import type { ReactNode } from "react";
+import type { Map as MapLibreMap } from "maplibre-gl";
+import { setSource, tapCard, useMap } from "./mapOverlay.ts";
 import { Icon } from "../Icon.tsx";
 import { SheetFrame } from "../Sidebar.tsx";
 import { placeLetter } from "../lib/letteredPlaces.ts";
@@ -185,60 +186,6 @@ export const GO_SIGHTS_TITLE = "Sights";
 export const PLACE_VIEWS: readonly PanelView[] = ["repair", "places"];
 
 // --- The map: repair stands (with the water layer's switch) and the places to see layer ------------
-
-/** Run `draw` once the map is there (App sets it when MapView is ready), and again when its inputs change. */
-function useMap(getMap: () => MapLibreMap | null, draw: (map: MapLibreMap) => void | (() => void), deps: unknown[]) {
-  const [map, setMap] = useState<MapLibreMap | null>(() => getMap());
-  useEffect(() => {
-    if (map) return;
-    const id = window.setInterval(() => {
-      const found = getMap();
-      if (found) {
-        setMap(found);
-        window.clearInterval(id);
-      }
-    }, 500);
-    return () => window.clearInterval(id);
-  }, [map, getMap]);
-  const drawRef = useRef(draw);
-  drawRef.current = draw;
-  useEffect(() => {
-    if (!map) return;
-    return drawRef.current(map) ?? undefined;
-    // The caller's inputs decide when it redraws.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, ...deps]);
-}
-
-/** A small card on a tap, in words; the same facts are in the lists. */
-function tapCard(map: MapLibreMap, layer: string, words: (id: string) => string[] | null): () => void {
-  let popup: Popup | null = null;
-  const onClick = (event: MapMouseEvent & { features?: Array<{ properties?: Record<string, unknown> }> }) => {
-    const id = event.features?.[0]?.properties?.id;
-    const lines = typeof id === "string" ? words(id) : null;
-    if (!lines) return;
-    popup?.remove();
-    const body = document.createElement("div");
-    body.className = "place-card";
-    for (const [i, line] of lines.entries()) {
-      const p = document.createElement(i === 0 ? "strong" : "p");
-      p.textContent = line;
-      body.appendChild(p);
-    }
-    popup = new Popup({ closeButton: true, maxWidth: "260px" }).setLngLat(event.lngLat).setDOMContent(body).addTo(map);
-  };
-  map.on("click", layer, onClick);
-  return () => {
-    map.off("click", layer, onClick);
-    popup?.remove();
-  };
-}
-
-function setSource(map: MapLibreMap, id: string, data: object): void {
-  const source = map.getSource(id) as { setData?: (d: object) => void } | undefined;
-  if (source?.setData) source.setData(data);
-  else map.addSource(id, { type: "geojson", data: data as never });
-}
 
 /** The repair stands, drawn with the Water and restrooms layer's switch (the owner: "just the stands"). */
 export function RepairStandsOverlay({ getMap, places, on, pixelRatio }: { getMap: () => MapLibreMap | null; places: readonly RepairPlace[] | null; on: boolean; pixelRatio: number }) {

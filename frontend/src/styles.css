@@ -5404,3 +5404,27 @@ details.fold > summary .icon {
 .home-offer p {
   margin: 0 0 8px;
 }
+
+/* v0.7.0: Go's More row (Repair, Sights), the map's tap cards in words, and the bikeshare services' swatches. */
+.go-more-row[hidden] {
+  display: none;
+}
+.place-card p {
+  margin: 4px 0 0;
+}
+.bikeshare-operator .toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.operator-swatch {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid #ffffff;
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 600;
+}

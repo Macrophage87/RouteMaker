@@ -163,6 +163,8 @@ import { readGpx } from "./lib/gpxImport.ts";
 import { downloadGpx } from "./GpxPanel.tsx";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { RideGroup } from "./RideGroup.tsx";
+import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
+import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOperatorChoices, saveOperatorChoices, type OperatorInfo } from "./lib/bikeshareDocks.ts";
 import { SaveRoute } from "./SaveRoute.tsx";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
 import { isRideLink } from "./lib/rideGroup.ts";
@@ -368,6 +370,21 @@ export function App() {
   useEffect(() => {
     if (waterOn) ensureRepair();
   }, [waterOn, ensureRepair]);
+  // Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): shown in the bikeshare ride types, one
+  // switch per service in Layers (Capital Bikeshare on by default), the choices kept on this device.
+  const docksActive = usesBikeshare(preset) || preset === "bikeshare-transit";
+  const [docksOperators, setDocksOperators] = useState<OperatorInfo[]>(() => [...KNOWN_OPERATORS]);
+  const [docksChoices, setDocksChoices] = useState<Record<string, boolean>>(() => readOperatorChoices());
+  const [docksReport, setDocksReport] = useState<DocksReport>({ answer: null, asked: false, zoom: 0 });
+  const changeDocksChoices = (next: Record<string, boolean>) => {
+    setDocksChoices(next);
+    saveOperatorChoices(next);
+  };
+  const onDocksReport = useCallback((report: DocksReport) => {
+    setDocksReport(report);
+    if (report.answer) setDocksOperators((known) => mergeOperators(known, report.answer!.operators));
+  }, []);
+  const docksAsk = useMemo(() => operatorsToAsk(docksChoices, docksOperators), [docksChoices, docksOperators]);
   const [placesOn, setPlacesOnState] = useState<boolean>(() => readPlacesLayer());
   const changePlacesOn = (on: boolean) => {
     setPlacesOnState(on);
@@ -2814,6 +2831,14 @@ export function App() {
       />
       <RepairStandsOverlay getMap={getMap} places={Array.isArray(repairData) ? repairData : null} on={waterPrefs.on && !riding} pixelRatio={Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)))} />
       <PlacesOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={placesOn && !riding} />
+      <BikeshareDocksOverlay
+        active={docksActive}
+        getMap={getMap}
+        ask={docksAsk}
+        operators={docksOperators}
+        pixelRatio={Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)))}
+        onReport={onDocksReport}
+      />
       {rideGroupLine && (
         <RideGroup type={preset as "mass-ride" | "group-ride"} points={rideGroupPoints} line={rideGroupLine} getMap={getMap} here={rideView?.rider?.point ?? (here ? here.point : null)} />
       )}
@@ -2996,6 +3021,12 @@ export function App() {
                 rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom,
                 climbsStatus, climbsAlong, openLegend: (opener: HTMLElement) => openView("legend", opener, true),
                 placesOn, changePlacesOn, placesStatus: placesData === "unavailable" ? PLACES_UNAVAILABLE : Array.isArray(placesData) && placesData.length === 0 ? PLACES_NONE : "",
+                bikeshare: {
+                  operators: docksOperators,
+                  choices: docksChoices,
+                  onChange: changeDocksChoices,
+                  status: docksActive ? docksStatus(docksReport.answer, docksReport.asked, docksReport.zoom, docksAsk.length > 0) : "",
+                },
               }}
             />
             <LegendSheet
