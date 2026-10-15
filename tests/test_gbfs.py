@@ -550,7 +550,7 @@ def test_nothing_is_written_but_the_one_shared_row() -> None:
         ".create(",
         "INSERT",
     ):
-        assert forbidden not in source.replace("_OPENER.open(", ""), forbidden
+        assert forbidden not in source.replace("opener.open(", ""), forbidden
     assert source.count("update_or_create(") == 2  # save and mark_failed, both on key "current"
 
 
