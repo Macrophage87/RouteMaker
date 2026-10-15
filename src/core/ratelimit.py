@@ -113,6 +113,14 @@ ROUTING = Limit(scope="route", requests=60, window_s=60)
 # for several; it reads the shared one-minute copy of the operator's feed, never the feed itself.
 BIKESHARE_STATIONS = Limit(scope="bikeshare-stations", requests=60, window_s=60)
 
+# The docks and free e-bikes in the map's view (GET /api/bikeshare/docks, v0.7.0): asked about
+# once a minute while a bikeshare ride type's map is shown, and again after the map moves, so a
+# minute of panning asks for several; each reads the shared copies, never the feeds themselves.
+BIKESHARE_DOCKS = Limit(scope="bikeshare-docks", requests=120, window_s=60)
+
+# A short map link followed (POST /api/share/resolve, v0.7.0): one per link shared or pasted.
+SHARE_RESOLVE = Limit(scope="share-resolve", requests=30, window_s=60)
+
 # The stress tiles, counted apart from routing so that looking at the map never
 # spends the routing budget (nor routing the tiles'). PLAN's 60 per minute is a
 # figure for requests a person makes one at a time; a map makes them by the

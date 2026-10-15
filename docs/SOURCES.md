@@ -23,8 +23,9 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Credit: `© OpenStreetMap contributors`
 - What it is used for: every route, its roads, paths and facilities, the stress
   tiers' road attributes, the base map, place names and place search, the MARC Penn
-  Line stations and the Metro elevators DC does not list, and the public drinking water and
-  restrooms layer.
+  Line stations and the Metro elevators DC does not list, the public drinking water,
+  restrooms and bike repair stands layer, Go's Repair chip (stands and bike shops), Find food
+  (with farm stands and markets), and the places to see (Plan's Places to see, Go's Sights).
 - Dataset: OpenStreetMap, the regional extract from Geofabrik
   (<https://download.geofabrik.de/>), rebuilt weekly (docs/OPERATIONS.md, "The weekly
   rebuild").
@@ -35,8 +36,10 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Records: `frontend/src/rail-data/README.md` (the MARC and elevator fixtures);
   `frontend/src/amenity-data/README.md` (public drinking water and restrooms, the Water and
   restrooms layer, by `scripts/build_water_restrooms.py`); the same README's "Places to
-  eat" (restaurants, cafes and the like, the planner's Find food search, by
-  `scripts/build_food.py`). The layer's Throne smart
+  eat" (restaurants, cafes and the like, farm stands and markets, the planner's Find food
+  search, by `scripts/build_food.py`); and its "Places to see" (points of interest by
+  category, by `scripts/build_places.py`). The water file also holds bike repair stands and
+  bike shops (`scripts/build_water_restrooms.py`). The layer's Throne smart
   restrooms are not OSM: a hand list, `frontend/src/amenity-data/throne-restrooms.json`, each
   unit with its city, county, parks or news source URL and the date read (2026-10-11), placed
   with the US Census Bureau geocoder (<https://geocoding.geo.census.gov/>, public domain).
@@ -290,7 +293,10 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   system alerts, from the operator's official GBFS 1.1 feed (discovery feed
   <https://gbfs.capitalbikeshare.com/gbfs/gbfs.json>, which lists the feeds on `gbfs.lyft.com`);
   the Bikeshare ride type's docks and bike counts and its lists of the nearest stations
-  (`core.gbfs`, `core.bikeshare`). Read live while a rider plans, about once a minute for the whole
+  (`core.gbfs`, `core.bikeshare`); and, from v0.7.0, the docks and free e-bikes drawn on the map
+  in the bikeshare ride types, for the rider's map view only (`core.micromobility`, GET
+  /api/bikeshare/docks: a bounded view, capped counts, no bike ids, nothing kept), a live
+  display and not the data handed on as a dataset. Read live while a rider plans, about once a minute for the whole
   deployment, kept as one shared latest copy and never as history; there is no raw-file record and
   no sha256, because nothing is downloaded to keep. The sampled test fixtures
   (`tests/data/gbfs`) are a test sample, not a dataset.
@@ -308,6 +314,19 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Not used: the operator's no-parking zones, which exist only inside its app (OWNER-DECISIONS 305);
   its undocumented map endpoints and its points values (OWNER-DECISIONS 451).
 - Records: docs/OPERATIONS.md, "Bikeshare feeds"; docs/DEVELOPMENT.md, "Bikeshare".
+
+## Other bikeshare and e-bike operators (not shown until each licence is recorded)
+
+The map's bikeshare section has a switch for each dockless e-bike operator in DDOT's and the
+counties' permit programs (`core.micromobility.OPERATORS`: Lime, Veo), off and unavailable. No
+operator's feed is fetched or shown until its public GBFS feed and its licence or terms have been
+read, the owner has confirmed them (as for Capital Bikeshare), and a section for it is added here
+with its Credit, Dataset and Licence lines; then `licensed` is set in `core.micromobility`
+(tests/test_micromobility.py holds every licensed operator to its section here). A feed whose
+terms do not allow display stays out. Routing uses Capital Bikeshare only.
+
+- Lime: feed URL and licence not yet read or confirmed.
+- Veo: feed URL and licence not yet read or confirmed.
 
 ## Work zones (WZDx: Maryland DOT SHA and VDOT)
 

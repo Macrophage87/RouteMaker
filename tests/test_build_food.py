@@ -38,10 +38,22 @@ def _place(tags: dict[str, str]):
         ("pub", "p"),
         ("biergarten", "b"),
         ("food_court", "fc"),
+        ("marketplace", "m"),
     ],
 )
 def test_each_kind_counts(amenity, kind):
     assert _place({"amenity": amenity, "name": "X"}).kind == kind
+
+
+def test_farm_stand_is_food():
+    # The owner, 2026-10-14: "Add farm stands for food."
+    stand = _place(
+        {"shop": "farm", "name": "Orchard Stand", "opening_hours": "Sep-Nov Sa-Su 09:00-17:00"}
+    )
+    assert stand.kind == "fs" and stand.hours == "Sep-Nov Sa-Su 09:00-17:00"
+    assert _place({"shop": "farm", "name": "Private", "access": "private"}) is None
+    assert _place({"shop": "farm"}) is None  # unnamed
+    assert _place({"shop": "supermarket", "name": "Not a farm"}) is None
 
 
 @pytest.mark.parametrize(
@@ -175,6 +187,9 @@ OSM = """<?xml version='1.0' encoding='UTF-8'?>
  <node id="25" version="1" lat="38.81" lon="-77.09">
   <tag k="amenity" v="ice_cream"/><tag k="name" v="Pier Scoops"/>
  </node>
+ <node id="26" version="1" lat="39.10" lon="-77.20">
+  <tag k="shop" v="farm"/><tag k="name" v="Apple Barn"/>
+ </node>
  <way id="10" version="1">
   <nd ref="3"/><nd ref="4"/><nd ref="5"/><nd ref="6"/><nd ref="3"/>
   <tag k="amenity" v="pub"/><tag k="name" v="The Pub"/>
@@ -211,7 +226,7 @@ def test_reads_an_extract_and_writes_the_file(tmp_path, capsys):
     assert doc["source"] == "OpenStreetMap contributors, ODbL 1.0"
     ids = [p["id"] for p in doc["points"]]
     # n2 is unnamed, n7 is inside the airport; the relation is placed at its ring's mean.
-    assert ids == ["n1", "n25", "r40", "w10"]
+    assert ids == ["n1", "n25", "n26", "r40", "w10"]
     by = {p["id"]: p for p in doc["points"]}
     assert by["n1"] == {
         "id": "n1",
@@ -234,7 +249,8 @@ def test_reads_an_extract_and_writes_the_file(tmp_path, capsys):
     assert by["r40"]["n"] == "Market Hall" and by["r40"]["x"] == -77.09 and by["r40"]["y"] == 38.81
     assert text.count("\n") == len(ids) + 2  # the header line, one place per line, the close
     said = capsys.readouterr().out
-    assert "4 places (restaurant 2, ice_cream 1, pub 1); 2 with a cuisine" in said
+    assert by["n26"] == {"id": "n26", "x": -77.2, "y": 39.1, "k": "fs", "n": "Apple Barn"}
+    assert "5 places (restaurant 2, ice_cream 1, pub 1, farm_stand 1); 2 with a cuisine" in said
     assert "left out inside airports, military sites and prisons: 1 (airport 1)" in said
     assert f"{out}: {len(text.encode()):,} bytes" in said
 
@@ -248,5 +264,5 @@ def test_bundled_file_is_well_formed():
         assert p["id"][0] in "nwr" and p["id"][1:].isdigit() and p["id"] not in seen
         seen.add(p["id"])
         assert west <= p["x"] <= east and south <= p["y"] <= north
-        assert p["k"] in mod.KINDS.values() and p["n"].strip()
+        assert p["k"] in mod.KIND_NAMES and p["n"].strip()
         assert set(p) <= {"id", "x", "y", "k", "n", "c", "h", "web"}

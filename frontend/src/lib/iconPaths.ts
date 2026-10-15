@@ -61,6 +61,12 @@ export const ICON_PATHS = {
   "textsize": "<path d=\"M2.5 19 8 5h1.2l5.5 14M4.6 14h8.1\"/><path d=\"M14.5 19l3.6-8.5h.9L22.5 19M15.8 16h5.5\"/>",
   "tree": "<path d=\"M12 21v-6M12 3l6 8h-3l4 5H5l4-5H6z\"/>",
   "bikeshare": "<rect x=\"3\" y=\"3\" width=\"7\" height=\"18\" rx=\"1.5\"/><circle cx=\"15\" cy=\"17\" r=\"3\"/><path d=\"M15 17l2.5-6H21M13 11h4\"/>",
+  // v0.7.0: farm stands and markets (an apple), repair stands (a wrench), bike shops (a shop front), sights
+  // (a camera); "More" is the mockup's own.
+  "apple": "<path d=\"M12 7c-1.5-1.3-4.5-1.5-6 .5S4.5 13 6 16.5 9.5 21 12 20c2.5 1 4.5-.5 6-3.5s1.5-7.5 0-9.5-4.5-1.8-6-.5z\"/><path d=\"M12 7c0-2 1-3.5 3-4\"/>",
+  "wrench": "<path d=\"M15 4a5 5 0 0 0-4.6 6.9L4 17.3 6.7 20l6.4-6.4A5 5 0 0 0 20 9l-3 3-3-1-1-3 3-3z\"/>",
+  "shop": "<path d=\"M3 9l2-5h14l2 5M3 9h18M3 9v11h18V9M9 20v-6h6v6\"/>",
+  "camera": "<path d=\"M4 7h3l2-3h6l2 3h3v13H4z\"/><circle cx=\"12\" cy=\"13\" r=\"3.5\"/>",
 } as const;
 
 export type IconName = keyof typeof ICON_PATHS;

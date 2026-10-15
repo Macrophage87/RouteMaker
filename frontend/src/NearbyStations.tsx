@@ -2,7 +2,7 @@
  * The nearest stations to take a bike from or return one to (OWNER-DECISIONS 466, 466a).
  *
  * Under the points, once a start (and then an end) is placed: three stations, each a real button
- * named exactly as it is read, "Station name, 82% full, 2 e-bikes, 0.2 mi (320 m)", with
+ * named exactly as it is read, "Station name, 82% full: 7 classic, 2 e-bikes, 2 open docks, 0.2 mi (320 m)", with
  * aria-pressed for the one chosen. Once both ends are placed the stations on the rider's way come
  * first (the owner, 2026-10-11) and each label adds why in words: ", on your way" or ", adds 0.1 mi
  * (160 m) of riding". Choosing one makes the plan use it; pressing it again hands the choice back:

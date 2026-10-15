@@ -715,6 +715,8 @@ const FOOD_VALUES = new Set(["restaurant", "cafe", "fast_food", "bar", "pub", "i
 export function placeType(place: Pick<Place, "kind" | "osm_key" | "osm_value">): string {
   const key = place.osm_key ?? "";
   const value = place.osm_value ?? "";
+  // A place read from a pasted or shared map link (lib/sharedLocation.ts).
+  if (place.kind === "shared") return "From a map link";
   if (key === "railway" && (value === "station" || value === "halt")) return "Rail station";
   if (key === "public_transport" && value === "station") return "Station";
   if (key === "railway" && value === "subway_entrance") return "Station entrance";

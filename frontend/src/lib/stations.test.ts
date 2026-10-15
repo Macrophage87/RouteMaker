@@ -44,13 +44,14 @@ function station(over: Partial<NearbyStation> = {}): NearbyStation {
   };
 }
 
-test("a station reads as its name, the percentage full, its e-bikes and the distance, miles first (466a)", () => {
-  assert.equal(stationLabel(station()), "Columbus Circle / Union Station, 82% full, 2 e-bikes, 0.2 mi (320 m)");
+test("a station reads as its name, the percentage full, its classic bikes, e-bikes and open docks, and the distance, miles first (466a; v0.7.0)", () => {
+  assert.equal(stationLabel(station()), "Columbus Circle / Union Station, 82% full: 7 classic, 2 e-bikes, 2 open docks, 0.2 mi (320 m)");
   assert.equal(
-    stationLabel(station({ name: "20th & O St NW", percent_full: 24.6, ebikes: 1, distance_m: 1500 })),
-    "20th & O St NW, 25% full, 1 e-bike, 0.9 mi (1.5 km)",
+    stationLabel(station({ name: "20th & O St NW", percent_full: 24.6, bikes: 3, ebikes: 1, docks: 1, distance_m: 1500 })),
+    "20th & O St NW, 25% full: 2 classic, 1 e-bike, 1 open dock, 0.9 mi (1.5 km)",
   );
-  assert.equal(stationLabel(station({ ebikes: 0 })), "Columbus Circle / Union Station, 82% full, no e-bikes, 0.2 mi (320 m)");
+  // A count of 0 is said as 0, as the map's label shows it.
+  assert.equal(stationLabel(station({ bikes: 0, ebikes: 0, docks: 11 })), "Columbus Circle / Union Station, 82% full: 0 classic, 0 e-bikes, 11 open docks, 0.2 mi (320 m)");
 });
 
 test("distances: feet under a tenth of a mile, then miles to a tenth with metres in brackets", () => {
@@ -222,11 +223,11 @@ test("the chosen button is told apart by more than colour", () => {
 test("once both ends are placed a station says why in words: on your way, or the riding it adds", () => {
   assert.equal(
     stationLabel(station({ extra_m: 0, on_the_way: true })),
-    "Columbus Circle / Union Station, 82% full, 2 e-bikes, 0.2 mi (320 m), on your way",
+    "Columbus Circle / Union Station, 82% full: 7 classic, 2 e-bikes, 2 open docks, 0.2 mi (320 m), on your way",
   );
   assert.equal(
     stationLabel(station({ extra_m: 158, on_the_way: false })),
-    "Columbus Circle / Union Station, 82% full, 2 e-bikes, 0.2 mi (320 m), adds 520 ft (160 m) of riding",
+    "Columbus Circle / Union Station, 82% full: 7 classic, 2 e-bikes, 2 open docks, 0.2 mi (320 m), adds 520 ft (160 m) of riding",
   );
   // Without the other end (an older server too) the label is as before, with no reason.
   assert.equal(stationLabel(station({ extra_m: null, on_the_way: null })), stationLabel(station()));

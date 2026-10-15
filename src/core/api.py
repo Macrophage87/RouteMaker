@@ -87,11 +87,13 @@ from . import (
     climbprofile,
     gbfs,
     geocode,
+    micromobility,
     nearest,
     presets,
     ratelimit,
     routing,
     segment_info,
+    share_links,
     stoporder,
     transit,
     transit_live,
@@ -2575,6 +2577,165 @@ def bikeshare_stations(request, body: NearbyStationsIn, response: HttpResponse):
             "credit": gbfs.CREDIT,
         },
     )
+
+
+# --- Bikeshare docks and free e-bikes on the map (v0.7.0; core.micromobility) ----------------
+#
+# GET /api/bikeshare/docks?bbox=west,south,east,north&operators=cabi,lime answers the docks and
+# free e-bikes in the rider's map view, from each operator's one shared live copy. The view is
+# bounded and the counts capped (core.micromobility), nothing is kept, and an operator whose
+# licence is not recorded is never contacted: it is listed, with `licensed` false, and nothing
+# of it is shown. A GET of a map view, as a tile is: no point of the rider's is in it.
+
+
+class DocksIn(Schema):
+    bbox: str = Field(
+        max_length=120,
+        description="The map's view: west,south,east,north in degrees, at most 0.25 by 0.2.",
+    )
+    operators: str = Field(
+        default="cabi",
+        max_length=120,
+        description="Comma-separated operator ids to show (cabi, lime, veo). Default cabi.",
+    )
+
+
+class DockOut(Schema):
+    id: str
+    name: str
+    lon: float
+    lat: float
+    classic: int | None = Field(description="Classic bikes; null when availability is unknown.")
+    ebikes: int | None = Field(description="E-bikes; null when availability is unknown.")
+    docks: int | None = Field(description="Empty docks; null when availability is unknown.")
+    closed: bool = Field(description="Out of service, or silent for 30 minutes.")
+
+
+class FreeBikeOut(Schema):
+    operator: str
+    lon: float
+    lat: float
+
+
+class OperatorOut(Schema):
+    id: str
+    name: str
+    initial: str
+    colour: str
+    licensed: bool = Field(description="False: its feed licence is not yet recorded; not shown.")
+    on_by_default: bool
+    docked: bool
+
+
+class DocksOut(Schema):
+    availability: Literal["live", "stale", "unknown", "unavailable"] = Field(
+        description=(
+            "`unknown`: the stations are known but not their counts; `unavailable`: the"
+            " operator's feed could not be read."
+        )
+    )
+    as_of: float | None = Field(description="When the feed was read, epoch seconds.")
+    docks: list[DockOut]
+    free_bikes: list[FreeBikeOut]
+    operators: list[OperatorOut]
+    credit: list[str] = Field(description="The plain source citations of what is shown.")
+
+
+@api.get(
+    "/bikeshare/docks",
+    response={200: DocksOut, 400: ErrorOut, 429: ErrorOut, 500: ErrorOut},
+    summary="The bikeshare docks and free e-bikes in a map view, as they are now",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.BIKESHARE_DOCKS), errors_as_json)
+def bikeshare_docks(request, params: Query[DocksIn], response: HttpResponse):
+    response["Cache-Control"] = "no-store"
+    try:
+        box = micromobility.parse_bbox(params.bbox)
+    except ValueError as error:
+        return Status(400, {"error": str(error)})
+    wanted = [w.strip() for w in params.operators.split(",") if w.strip()]
+    unknown = [w for w in wanted if w not in micromobility.BY_ID]
+    if unknown:
+        return Status(400, {"error": f"unknown operator: {', '.join(unknown)}"})
+    docks: list[dict] = []
+    free: list[dict] = []
+    credit: list[str] = []
+    availability = "unavailable"
+    as_of: float | None = None
+    for operator in (micromobility.BY_ID[w] for w in dict.fromkeys(wanted)):
+        client = micromobility.client_for(operator)
+        if client is None:
+            continue
+        try:
+            snapshot = client.snapshot()
+        except gbfs.Unavailable:
+            continue
+        credit.append(operator.credit)
+        if operator.docked:
+            docks = [dataclasses.asdict(d) for d in micromobility.docks_in(snapshot, box)]
+            availability = (
+                "unknown" if snapshot.status is None else ("stale" if snapshot.stale else "live")
+            )
+            as_of = snapshot.as_of
+        free += [
+            {"operator": operator.id, "lon": lon, "lat": lat}
+            for lon, lat in micromobility.free_bikes_in(snapshot, box)
+        ]
+    return Status(
+        200,
+        {
+            "availability": availability,
+            "as_of": as_of,
+            "docks": docks,
+            "free_bikes": free,
+            "operators": [
+                {
+                    "id": o.id,
+                    "name": o.name,
+                    "initial": o.initial,
+                    "colour": o.colour,
+                    "licensed": micromobility.usable(o),
+                    "on_by_default": o.on_by_default,
+                    "docked": o.docked,
+                }
+                for o in micromobility.OPERATORS
+            ],
+            "credit": credit,
+        },
+    )
+
+
+# --- Short map links (v0.7.0, "Open shared locations in RouteMaker"; core.share_links) -------
+#
+# POST /api/share/resolve follows a short map link (maps.app.goo.gl, goo.gl/maps, maps.apple) to
+# the full link it stands for, which the browser then reads for its place. A POST, so the link
+# (a place the rider may be going) is in no URL or log line; it is kept nowhere.
+
+
+class ShareResolveIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(max_length=share_links.MAX_URL, description="A short map link.")
+
+
+class ShareResolveOut(Schema):
+    url: str = Field(description="The full map link the short one stands for.")
+
+
+@api.post(
+    "/share/resolve",
+    response={200: ShareResolveOut, 400: ErrorOut, 429: ErrorOut, 500: ErrorOut, 502: ErrorOut},
+    summary="Follow a short map link to the full link it stands for",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.SHARE_RESOLVE), json_body_only, errors_as_json)
+def share_resolve(request, body: ShareResolveIn, response: HttpResponse):
+    response["Cache-Control"] = "no-store"
+    try:
+        return Status(200, {"url": share_links.resolve(body.url)})
+    except share_links.NotAShortLink:
+        return Status(400, {"error": "That is not a short map link RouteMaker can open."})
+    except share_links.Unresolved:
+        return Status(502, {"error": "That link could not be opened just now; try again shortly."})
 
 
 def _stress_of(body: RouteIn) -> int:

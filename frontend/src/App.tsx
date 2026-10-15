@@ -153,6 +153,10 @@ import { FoodFinder } from "./lib/foodFinder.ts";
 // an inlined data: URL is refused by the edge's connect-src 'self'. Its own hashed file under
 // /assets/ also lets the service worker leave it out of the precache (swCore.mjs LAZY_ASSET).
 import foodUrl from "./amenity-data/food.json?url&no-inline";
+import placesUrl from "./amenity-data/places.json?url&no-inline";
+import { loadRepair, nearestRepair, repairFoundSaid, repairTitle, REPAIR_NO_ORIGIN, REPAIR_UNAVAILABLE, type RepairNearby, type RepairPlace } from "./lib/repair.ts";
+import { loadPlaces, placesSaid, placesToSee, readPlacesLayer, savePlacesLayer, sightsForGo, PLACES_NONE, PLACES_PAGE, PLACES_UNAVAILABLE, type PlaceFilter, type SightPlace, type SightResult } from "./lib/places.ts";
+import { PlacesOverlay, PlacesSheet, RepairSheet, RepairStandsOverlay } from "./app/PlacesSheets.tsx";
 import {
   findingSaid,
   requestNearest,
@@ -176,6 +180,7 @@ import { PointsSection, RideSection } from "./app/Planner.tsx";
 import { RouteSection, type Status } from "./app/RoutePanel.tsx";
 import { FoodSheet, GpxSheet, LayersSheet, LegendSheet, NearestSheet, ReviewSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
 import { GoAddStop, GoSheet, GoTopBar, ModeSwitch, PlanMapChips } from "./app/Go.tsx";
+import { useSharedLaunch } from "./app/sharedLaunch.ts";
 import { NearestFinder } from "./lib/nearestFinder.ts";
 import { NearbyStations } from "./NearbyStations.tsx";
 import { Fold } from "./Sidebar.tsx";
@@ -197,6 +202,8 @@ import { downloadGpx } from "./GpxPanel.tsx";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { bypassFor, bypassPlanKey, bypassSaid, toggleBypass, type Bypass } from "./lib/closureMap.ts";
 import { RideGroup } from "./RideGroup.tsx";
+import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
+import { KNOWN_OPERATORS, docksStatus, mergeOperators, operatorsToAsk, readOperatorChoices, saveOperatorChoices, type OperatorInfo } from "./lib/bikeshareDocks.ts";
 import { SaveRoute } from "./SaveRoute.tsx";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
 import { isRideLink } from "./lib/rideGroup.ts";
@@ -409,6 +416,59 @@ export function App() {
   useEffect(() => {
     if (waterOn) void ensureWater();
   }, [waterOn, ensureWater]);
+  // v0.7.0: repair stands and bike shops (the same file; the stands are drawn with the water layer's switch),
+  // and the places to see (their own layer, off by default, kept on this device). Each loaded when first needed;
+  // a load that failed is asked again next time.
+  const [repairData, setRepairData] = useState<RepairPlace[] | "unavailable" | null>(null);
+  const repairLoad = useRef(false);
+  const ensureRepair = useCallback(() => {
+    if (repairLoad.current) return;
+    repairLoad.current = true;
+    void loadRepair(waterRestroomsUrl).then((data) => {
+      if (!data) repairLoad.current = false;
+      setRepairData(data ?? "unavailable");
+    });
+  }, []);
+  useEffect(() => {
+    if (waterOn) ensureRepair();
+  }, [waterOn, ensureRepair]);
+  // Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): shown in the bikeshare ride types, one
+  // switch per service in Layers (Capital Bikeshare on by default), the choices kept on this device.
+  const docksActive = usesBikeshare(preset) || preset === "bikeshare-transit";
+  const [docksOperators, setDocksOperators] = useState<OperatorInfo[]>(() => [...KNOWN_OPERATORS]);
+  const [docksChoices, setDocksChoices] = useState<Record<string, boolean>>(() => readOperatorChoices());
+  const [docksReport, setDocksReport] = useState<DocksReport>({ answer: null, asked: false, zoom: 0 });
+  const changeDocksChoices = (next: Record<string, boolean>) => {
+    setDocksChoices(next);
+    saveOperatorChoices(next);
+  };
+  const onDocksReport = useCallback((report: DocksReport) => {
+    setDocksReport(report);
+    if (report.answer) setDocksOperators((known) => mergeOperators(known, report.answer!.operators));
+  }, []);
+  const docksAsk = useMemo(() => operatorsToAsk(docksChoices, docksOperators), [docksChoices, docksOperators]);
+  const [placesOn, setPlacesOnState] = useState<boolean>(() => readPlacesLayer());
+  const changePlacesOn = (on: boolean) => {
+    setPlacesOnState(on);
+    savePlacesLayer(on);
+  };
+  const [placesData, setPlacesData] = useState<SightPlace[] | "unavailable" | null>(null);
+  const placesLoad = useRef(false);
+  const ensurePlaces = useCallback(() => {
+    if (placesLoad.current) return;
+    placesLoad.current = true;
+    void loadPlaces(placesUrl).then((data) => {
+      if (!data) placesLoad.current = false;
+      setPlacesData(data ?? "unavailable");
+    });
+  }, []);
+  useEffect(() => {
+    if (placesOn) ensurePlaces();
+  }, [placesOn, ensurePlaces]);
+  const [placesFilter, setPlacesFilter] = useState<PlaceFilter>("all");
+  const [placesCount, setPlacesCount] = useState(PLACES_PAGE);
+  // Bumped by each Repair, Sights or Places to see press, so the list is from where the rider is then.
+  const [placesAsked, setPlacesAsked] = useState(0);
   // The Climbs layer (lib/climbs.ts; 454): off until turned on, kept on this device; the data is
   // fetched the first time it is shown. An empty file (before the build host has measured any) is
   // "empty", not "unavailable".
@@ -1938,6 +1998,11 @@ export function App() {
     announceExtra(modeSaid(next));
     saveMyGoNow({ ...myGoRef.current, openIn: next }, false);
   };
+  // A place shared to RouteMaker (the Share sheet, or a geo: link on desktop): Go's destination (app/sharedLaunch.ts).
+  useSharedLaunch((place) => {
+    if (modeRef.current !== "go") changeMode("go");
+    goToPlace(place);
+  }, setNotice);
   // "Copy link": this page with the plan's fragment from encodePlan, which never holds the weight
   // (OWNER-DECISIONS 313). Cleared first and set again a moment later, so a second press is said again.
   const copyLink = async () => {
@@ -2465,6 +2530,69 @@ export function App() {
     namer.remember(point, result.place.name);
     placeSpot("via", point);
   };
+  // v0.7.0's place sheets (app/PlacesSheets.tsx): Go's Repair and Sights behind More, Plan's Places to see.
+  // Go lists from the rider (the location Go found), Plan from the map's center.
+  const placesOrigin = (): { point: LonLat; fromRider: boolean } | null => {
+    const fix = here?.point ?? (goStart.kind === "here" ? goStart.point : null);
+    if (mode === "go" && fix) return { point: fix, fromRider: true };
+    const c = mapRef.current?.getCenter();
+    if (c) return { point: [c.lng, c.lat], fromRider: false };
+    return fix ? { point: fix, fromRider: true } : null;
+  };
+  const repairList = useMemo(() => {
+    if (view !== "repair") return null;
+    if (repairData === null) return { items: [] as RepairNearby[], said: "Loading repair stands and bike shops…" };
+    if (repairData === "unavailable") return { items: [] as RepairNearby[], said: REPAIR_UNAVAILABLE };
+    const from = placesOrigin();
+    if (!from) return { items: [] as RepairNearby[], said: REPAIR_NO_ORIGIN };
+    const items = nearestRepair(from.point, repairData);
+    return { items, said: repairFoundSaid(items, from.fromRider) };
+    // placesAsked: a new press is a new list from where the rider is now.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, repairData, placesAsked]);
+  const placesAll = useMemo((): SightResult[] | null => {
+    if (view !== "places" || !Array.isArray(placesData)) return null;
+    const from = placesOrigin();
+    if (!from) return [];
+    return mode === "go" ? sightsForGo(placesData, from.point, foodRoute) : placesToSee(placesData, from.point, foodRoute, placesFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, placesData, foodRoute, placesFilter, mode, placesAsked]);
+  const placesShown = placesAll && mode !== "go" ? placesAll.slice(0, placesCount) : placesAll;
+  const placesStatus =
+    placesData === null
+      ? "Loading places to see…"
+      : placesData === "unavailable"
+        ? PLACES_UNAVAILABLE
+        : placesData.length === 0
+          ? PLACES_NONE
+          : placesAll
+            ? placesSaid(placesAll.length, mode === "go" ? "all" : placesFilter, foodRoute !== null)
+            : "";
+  const openRepair = (chip: HTMLElement) => {
+    ensureRepair();
+    setPlacesAsked((n) => n + 1);
+    openView("repair", chip);
+  };
+  const openPlaces = (chip: HTMLElement) => {
+    ensurePlaces();
+    setPlacesAsked((n) => n + 1);
+    setPlacesCount(PLACES_PAGE);
+    openView("places", chip);
+  };
+  const rideToRepair = (item: RepairNearby) => goToLettered([item.place.lon, item.place.lat], repairTitle(item.place));
+  const showSight = (r: SightResult) => {
+    const map = mapRef.current;
+    const n = placesShown?.indexOf(r) ?? -1;
+    map?.flyTo({ center: [r.place.lon, r.place.lat], zoom: Math.max(map.getZoom(), 15) });
+    announce(`Showing ${r.place.name} on the map${n >= 0 ? `, marker ${placeLetter(n)}` : ""}.`);
+  };
+  const addSightStop = (r: SightResult) => {
+    const point: LonLat = [r.place.lon, r.place.lat];
+    namer.remember(point, r.place.name);
+    placeSpot("via", point);
+  };
+  // Go's Sights: one tap; a stop on the route when there is one (the owner: "a tap to add as a stop"), else the destination.
+  const goPickSight = (r: SightResult) => (points.length >= 2 ? addSightStop(r) : goToLettered([r.place.lon, r.place.lat], r.place.name));
   // The nearest finder (Plan's Water chip, Go's Water and Restroom chips): its own sheet now.
   const nearestProps = {
     from: nearestFrom,
@@ -2492,11 +2620,15 @@ export function App() {
   // the nearest water, restrooms or Metro, or the food found, lettered on the map as in the list. A pick (its
   // marker, Ride here in Go, or its letter's key) is the destination in Go, straight to the route options;
   // in Plan, the nearest's Ride here, and food's Show on map.
-  const letteredOf: "nearest" | "food" | "bikeshare" | null =
+  const letteredOf: "nearest" | "food" | "repair" | "places" | "bikeshare" | null =
     view === "nearest" && nearestList && nearestList.items.length > 0
       ? "nearest"
       : view === "food" && foodResults && foodResults.length > 0
         ? "food"
+        : view === "repair" && repairList && repairList.items.length > 0
+          ? "repair"
+          : view === "places" && placesShown && placesShown.length > 0
+            ? "places"
         : goOptions && !(panelOpen && view !== "planner")
           ? "bikeshare"
           : null;
@@ -2506,11 +2638,15 @@ export function App() {
         ? letterPlaces(nearestList.items, (item) => ({ point: item.place.point, title: item.place.title, metres: item.distanceM }))
         : letteredOf === "food" && foodResults
           ? letterPlaces(foodResults, (r) => ({ point: [r.place.lon, r.place.lat] as LonLat, title: r.place.name, metres: r.detour ? null : r.fromCentreM }))
+          : letteredOf === "repair" && repairList
+            ? letterPlaces(repairList.items, (item) => ({ point: [item.place.lon, item.place.lat] as LonLat, title: repairTitle(item.place), metres: item.metres }))
+            : letteredOf === "places" && placesShown
+              ? letterPlaces(placesShown, (r) => ({ point: [r.place.lon, r.place.lat] as LonLat, title: r.place.name, metres: r.detour ? null : r.metres }))
           : letteredOf === "bikeshare" && goOptions
             ? // Each option at its pick-up station, named as its button is.
               goOptions.map((o, i) => ({ letter: placeLetter(i), point: [o.pickup.lon, o.pickup.lat] as LonLat, name: optionName(placeLetter(i), o) }))
             : null,
-    [letteredOf, nearestList, foodResults, goOptions],
+    [letteredOf, nearestList, foodResults, repairList, placesShown, goOptions],
   );
   const goToLettered = (point: LonLat, title: string) => {
     namer.remember(point, title);
@@ -2538,6 +2674,14 @@ export function App() {
         goAddStopAt(point, r.place.name);
       } else if (mode === "go") goToLettered([r.place.lon, r.place.lat], r.place.name);
       else showFood(r);
+    } else if (letteredOf === "repair" && repairList) {
+      const item = repairList.items[index];
+      if (item) rideToRepair(item);
+    } else if (letteredOf === "places" && placesShown) {
+      const r = placesShown[index];
+      if (!r) return;
+      if (mode === "go") goPickSight(r);
+      else showSight(r);
     } else if (letteredOf === "bikeshare") {
       pickOption(index);
     }
@@ -3015,6 +3159,16 @@ export function App() {
           ) : null
         }
       />
+      <RepairStandsOverlay getMap={getMap} places={Array.isArray(repairData) ? repairData : null} on={waterPrefs.on && !riding} pixelRatio={Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)))} />
+      <PlacesOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={placesOn && !riding} />
+      <BikeshareDocksOverlay
+        active={docksActive}
+        getMap={getMap}
+        ask={docksAsk}
+        operators={docksOperators}
+        pixelRatio={Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)))}
+        onReport={onDocksReport}
+      />
       {rideGroupLine && (
         <RideGroup type={preset as "mass-ride" | "group-ride"} points={rideGroupPoints} line={rideGroupLine} getMap={getMap} here={rideView?.rider?.point ?? (here ? here.point : null)} />
       )}
@@ -3042,7 +3196,7 @@ export function App() {
         onPlace={placeSpot}
       />
       {(crosshair.button || crosshair.canvas) && <div className="crosshair" aria-hidden="true" />}
-      {!riding && !goMode && <PlanMapChips onFood={(chip) => openView("food", chip)} onWater={(chip) => openView("nearest", chip)} />}
+      {!riding && !goMode && <PlanMapChips onFood={(chip) => openView("food", chip)} onWater={(chip) => openView("nearest", chip)} onPlaces={openPlaces} />}
       {!riding && narrow && (can.undo || can.redo) && (
         // On a phone the sheet may be hidden while the rider edits the map,
         // so Undo and Redo sit on the map there (and only there: one of each
@@ -3174,6 +3328,8 @@ export function App() {
                       openView("nearest", chip);
                       findNearestHere("restroom");
                     },
+                    onRepair: openRepair,
+                    onSights: openPlaces,
                   }}
                   rides={<RideChips ids={goRideChips(myGo.ride)} preset={preset} onPick={pickRide} more={(opener) => openView("ride", opener)} label="Ride type" ownHint={OWN_RIDE_HINT} />}
                   notice={notice}
@@ -3210,6 +3366,13 @@ export function App() {
                 setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus,
                 rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom,
                 climbsStatus, climbsAlong, openLegend: (opener: HTMLElement) => openView("legend", opener, true),
+                placesOn, changePlacesOn, placesStatus: placesData === "unavailable" ? PLACES_UNAVAILABLE : Array.isArray(placesData) && placesData.length === 0 ? PLACES_NONE : "",
+                bikeshare: {
+                  operators: docksOperators,
+                  choices: docksChoices,
+                  onChange: changeDocksChoices,
+                  status: docksActive ? docksStatus(docksReport.answer, docksReport.asked, docksReport.zoom, docksAsk.length > 0) : "",
+                },
               }}
             />
             <LegendSheet
@@ -3248,6 +3411,24 @@ export function App() {
             >
               {foodFinder}
             </FoodSheet>
+            <RepairSheet nav={sheetNav} status={repairList?.said ?? ""} items={repairList?.items ?? null} at={new Date()} onRide={rideToRepair} />
+            <PlacesSheet
+              nav={sheetNav}
+              go={goMode}
+              status={placesStatus}
+              items={placesShown}
+              total={placesAll?.length ?? 0}
+              onMore={() => setPlacesCount((n) => n + PLACES_PAGE)}
+              filter={placesFilter}
+              onFilter={(next) => {
+                setPlacesFilter(next);
+                setPlacesCount(PLACES_PAGE);
+              }}
+              canAddStop={points.length >= 2}
+              onShow={showSight}
+              onAddStop={addSightStop}
+              onGoPick={goPickSight}
+            />
             <RideSheet nav={sheetNav}>
               <RideGroupChips preset={preset} onPick={pickRide} open={view === "ride"} />
               {/* Go's Ride sheet holds the Ride line and its dials; in Plan they are in the panel (one copy in the page). */}

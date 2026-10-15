@@ -16,7 +16,7 @@ import type { PresetId } from "./presets.ts";
  * the bottom bar, the map's chips, Go's Menu and the Layers sheet's Legend button open (UI-CLEANUP,
  * the approved mockup of 2026-10-11).
  */
-export type PanelView = "planner" | "layers" | "legend" | "suggest" | "review" | "gpx" | "settings" | "nearest" | "food" | "ride";
+export type PanelView = "planner" | "layers" | "legend" | "suggest" | "review" | "gpx" | "settings" | "nearest" | "food" | "ride" | "repair" | "places";
 
 /** The planner's own heading, where the focus goes when the Plan button returns to it (OWNER-DECISIONS 392). */
 export const PLANNER_TITLE = "RouteMaker";
@@ -32,6 +32,9 @@ export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
   nearest: "Nearest water, restroom or Metro",
   food: "Find food",
   ride: "Ride",
+  // v0.7.0: Go's Repair (behind More), and Plan's Places to see (Go calls it Sights).
+  repair: "Repair stands and bike shops",
+  places: "Places to see",
 };
 
 /** Go's Menu (the mockup's Menu sheet): Settings, with Plan, Suggest, GPX and Review above them. */

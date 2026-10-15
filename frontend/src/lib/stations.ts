@@ -52,6 +52,17 @@ export function ebikeCount(ebikes: number): string {
   return ebikes === 0 ? "no e-bikes" : ebikes === 1 ? "1 e-bike" : `${ebikes} e-bikes`;
 }
 
+/**
+ * The counts in words, the map's dock label said (v0.7.0, lib/bikeshareDocks.ts): "7 classic, 2 e-bikes,
+ * 2 open docks". `bikes` counts e-bikes too.
+ */
+export function stationCounts(station: Pick<NearbyStation, "bikes" | "ebikes" | "docks">): string {
+  const classic = Math.max(0, station.bikes - station.ebikes);
+  const ebikes = station.ebikes === 1 ? "1 e-bike" : `${station.ebikes} e-bikes`;
+  const docks = station.docks === 1 ? "1 open dock" : `${station.docks} open docks`;
+  return `${classic} classic, ${ebikes}, ${docks}`;
+}
+
 /** Why a station sits where it does in the list, in words: "on your way", "adds 0.1 mi (160 m) of riding", or null without the trip's other end. */
 export function wayWords(station: Pick<NearbyStation, "extra_m" | "on_the_way">): string | null {
   if (station.on_the_way === true) return "on your way";
@@ -62,14 +73,14 @@ export function wayWords(station: Pick<NearbyStation, "extra_m" | "on_the_way">)
 }
 
 /**
- * What a screen reader hears for one station, and what its button says: "Station name, 82% full,
- * 2 e-bikes, 0.2 mi (320 m)", and, once both ends are placed, ", on your way" or ", adds 0.1 mi
+ * What a screen reader hears for one station, and what its button says: "Station name, 82% full: 7 classic,
+ * 2 e-bikes, 2 open docks, 0.2 mi (320 m)", and, once both ends are placed, ", on your way" or ", adds 0.1 mi
  * (160 m) of riding".
  */
 export function stationLabel(
-  station: Pick<NearbyStation, "name" | "percent_full" | "ebikes" | "distance_m" | "extra_m" | "on_the_way">,
+  station: Pick<NearbyStation, "name" | "percent_full" | "bikes" | "ebikes" | "docks" | "distance_m" | "extra_m" | "on_the_way">,
 ): string {
-  const base = `${station.name}, ${Math.round(station.percent_full)}% full, ${ebikeCount(station.ebikes)}, ${stationDistance(station.distance_m)}`;
+  const base = `${station.name}, ${Math.round(station.percent_full)}% full: ${stationCounts(station)}, ${stationDistance(station.distance_m)}`;
   const why = wayWords(station);
   return why ? `${base}, ${why}` : base;
 }

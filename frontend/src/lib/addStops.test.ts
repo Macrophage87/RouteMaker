@@ -28,7 +28,7 @@ test("each result row offers 'Make this the destination' as an option of its own
   const search = source("../PlaceSearch.tsx");
   assert.match(search, /export const MAKE_DESTINATION = "Make this the destination";/);
   assert.match(search, /const offersDestination = variant === "plan" && !loop && effect === "via";/);
-  assert.match(search, /places\.flatMap\(\(place\) => \[place, \{ destination: place \}\]\)/);
+  assert.match(search, /offered\.flatMap\(\(place\) => \[place, \{ destination: place \}\]\)/);
   // An option in the listbox, reached by the arrows and said with its place.
   assert.match(search, /aria-label=\{`\$\{MAKE_DESTINATION\}: \$\{item\.destination\.name\}`\}/);
   assert.match(search, /onClick=\{\(\) => pick\(item\.destination, "end"\)\}/);

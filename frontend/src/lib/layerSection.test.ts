@@ -89,7 +89,7 @@ test("the Layers sheet: every section is a LayerSection, and the old long paragr
     assert.ok(legend.includes(part), part);
     assert.ok(!layers.includes(part), part);
   }
-  assert.equal((layers.match(/<LayerSection\b/g) ?? []).length, 2, "Traffic stress and Trails and terrain here; federal, water and rail in their own files");
+  assert.equal((layers.match(/<LayerSection\b/g) ?? []).length, 3, "Traffic stress, Places to see (v0.7.0) and Trails and terrain here; federal, water and rail in their own files");
   for (const file of ["./federalLegend.ts", "./waterLegend.ts", "../RailStations.tsx"]) {
     assert.match(readFileSync(new URL(file, import.meta.url), "utf8"), /LayerSection/, file);
   }

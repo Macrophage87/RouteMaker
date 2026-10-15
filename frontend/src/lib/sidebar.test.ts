@@ -629,7 +629,7 @@ test("the bottom bar is Plan, Layers, Suggest, GPX and Settings: real buttons, e
 });
 
 test("a sheet: Back is a labelled button, its heading takes the focus, Escape goes back", () => {
-  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Legend", "Suggest a change", "Review", "GPX file", "Settings", "Nearest water, restroom or Metro", "Find food", "Ride"]);
+  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Legend", "Suggest a change", "Review", "GPX file", "Settings", "Nearest water, restroom or Metro", "Find food", "Ride", "Repair stands and bike shops", "Places to see"]);
   // In visible words, not only an arrow, so the name and the label are one (OWNER-DECISIONS 393).
   assert.equal(BACK_LABEL, "Back to planner");
   assert.doesNotMatch(sidebar, /aria-label="Back to the planner"/);
