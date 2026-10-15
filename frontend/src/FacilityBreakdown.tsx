@@ -11,6 +11,7 @@ import { routeWarning } from "./lib/dialsPanel.ts";
 import { useHighStressLanes, useStressStyle } from "./useStressStyle.ts";
 import { ROUTE_BAND, ROUTE_SWATCH_BAND_WIDTH, ROUTE_SWATCH_CASING_WIDTH, ROUTE_SWATCH_HEIGHT, routeCasing, routeLegend, routeMarkDash, routeMarkWidth } from "./lib/routeColours.ts";
 import { seekNote, tolerateNote } from "./lib/summary.ts";
+import { tripStressSpans } from "./lib/transit.ts";
 
 /**
  * A row of a figure's list, read as label, figure, hint with a pause between
@@ -34,7 +35,8 @@ export function FacilityBreakdown({ route, part = "all" }: { route: RouteRespons
   const seek = seekNote(route.hills_seek) ?? tolerateNote(route.hills_tolerate);
   const avoid = avoidMetres(route.stress_m);
   const warning = routeWarning(route.preset, route.dials);
-  const colours = routeLegend(route.stress_spans);
+  // Every colour on the map, a transit trip's later rides' included (lib/transit.ts, tripStressSpans).
+  const colours = routeLegend(tripStressSpans(route));
   const casing = routeCasing();
   return (
     <>

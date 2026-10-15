@@ -464,6 +464,13 @@ export interface TransitStep {
   /** This step is the route's own line (drawn as the route); its coordinates are empty. */
   route_line: boolean;
   coordinates: LonLat[];
+  /**
+   * A ride after the route's own line (own bike or share bike), routed as that line is: its
+   * sections by traffic stress along `coordinates`, in the form of the body's `stress_spans`, so
+   * the map, its legend and the words colour and say it alike. Null or absent where it was not
+   * routed in time (an older API too): the step is then drawn as a plain line.
+   */
+  stress_spans?: StressSpan[] | null;
 }
 
 /** One way to make the trip (the owner, 2026-10-12): riding the whole way, walking it, or a transit trip. */

@@ -59,7 +59,8 @@ import type { When } from "./dials.ts";
 import { MASS_SOURCE_ID, STRESS_SOURCE_ID, massSource, stressSource } from "./mapStyle.ts";
 import { setDcMaskVisibility } from "./dcBoundary.ts";
 import type { RouteResponse } from "./api.ts";
-import { ROUTE_AVOID_MARK_DASH, routeCorridorPaint, overlayFade, routeClasses, routePaint, routeSections, sectionFeatures, usesCapacity, type RouteClassKey } from "./routeColours.ts";
+import { ROUTE_AVOID_MARK_DASH, routeCorridorPaint, overlayFade, routeClasses, routePaint, routeSections, sectionFeatures, usesCapacity, type RouteClassKey, type RouteSection } from "./routeColours.ts";
+import { transitRideLines, transitRideSections } from "./transit.ts";
 
 /** The parts of a MapLibre map these use. */
 export interface OverlayMap {
@@ -307,6 +308,36 @@ export function routeAvoidLayer(sourceId: string = ROUTE_STRESS_SOURCE_ID) {
 }
 
 /**
+ * The route's coloured sections, and a transit trip's later rides' after them (lib/transit.ts,
+ * `transitRideSections`), so every ride of the trip is drawn alike; null where there are none.
+ */
+export function routeAndRideSections(route: (Pick<RouteResponse, "geometry" | "stress_spans"> & Partial<Pick<RouteResponse, "transit">>) | null): RouteSection[] | null {
+  if (!route) return null;
+  const own = routeSections(route.geometry.coordinates as [number, number][], route.stress_spans) ?? [];
+  const all = [...own, ...transitRideSections(route.transit)];
+  return all.length > 0 ? all : null;
+}
+
+/**
+ * The route source's lines: the route, and each later ride of a transit trip drawn in the route's
+ * colours, so the casing and band go under those rides too. The pointer's hit test is made
+ * against the route's own geometry, never this source, so the rides cannot be grabbed.
+ */
+export function routeLineData(route: (Pick<RouteResponse, "geometry"> & Partial<Pick<RouteResponse, "transit">>) | null) {
+  if (!route) return { type: "FeatureCollection" as const, features: [] };
+  const rides = transitRideLines(route.transit);
+  if (rides.length === 0) return { type: "Feature" as const, properties: {}, geometry: route.geometry };
+  return {
+    type: "FeatureCollection" as const,
+    features: [route.geometry, ...rides.map((coordinates) => ({ type: "LineString" as const, coordinates }))].map((geometry) => ({
+      type: "Feature" as const,
+      properties: {},
+      geometry,
+    })),
+  };
+}
+
+/**
  * Draw the route's sections in the palette in use: cut the route at its
  * stress spans, put them in the sections source, and set the route layers'
  * opacities and casing. The colours travel in the features, so a change of
@@ -315,10 +346,10 @@ export function routeAvoidLayer(sourceId: string = ROUTE_STRESS_SOURCE_ID) {
  */
 export function setRouteSections(
   map: RouteSectionsMap,
-  route: Pick<RouteResponse, "geometry" | "stress_spans"> | null,
+  route: (Pick<RouteResponse, "geometry" | "stress_spans"> & Partial<Pick<RouteResponse, "transit">>) | null,
   stale: boolean,
 ): void {
-  const sections = route ? routeSections(route.geometry.coordinates as [number, number][], route.stress_spans) : null;
+  const sections = routeAndRideSections(route);
   (map.getSource(ROUTE_STRESS_SOURCE_ID) as { setData(data: object): void } | undefined)?.setData(sectionFeatures(sections));
   const paint = routePaint(sections !== null, stale);
   map.setPaintProperty("route-line", "line-opacity", paint.lineOpacity);

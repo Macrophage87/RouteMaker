@@ -44,6 +44,7 @@ import {
   runClick,
   ROUTE_STRESS_SOURCE_ID,
   runHover,
+  routeLineData,
   setRouteSections,
   setStressPalette,
   setStressVisibility,
@@ -2113,11 +2114,8 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
   const { route, stale } = props;
   const source = map.getSource(ROUTE_SOURCE) as GeoJSONSource | undefined;
   if (!source) return;
-  source.setData(
-    route
-      ? { type: "Feature", properties: {}, geometry: route.geometry }
-      : { type: "FeatureCollection", features: [] },
-  );
+  // The route, and a transit trip's later rides drawn in its colours (lib/mapGlue.ts, routeLineData).
+  source.setData(routeLineData(route) as never);
   setRouteSections(map, route, stale);
   // A ride's camera follows the rider; a re-planned route is not framed over it.
   if (!route || stale || route.geometry.coordinates.length < 2 || props.rider) return;

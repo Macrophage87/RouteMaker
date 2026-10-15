@@ -7,11 +7,23 @@
  * screen reader hears the same plan the map draws, in the order it is ridden.
  */
 import { useId } from "react";
-import type { TransitPlan } from "./lib/api.ts";
+import type { StressSpan, TransitPlan } from "./lib/api.ts";
 import { WALK_CASING, WALK_COLOUR, WALK_DASH, WALK_LINE_WIDTH } from "./lib/bikeshare.ts";
 import type { PresetId } from "./lib/presets.ts";
 import { PresetName } from "./lib/presetName.ts";
-import { OPTIONS_LABEL, STEPS_LABEL, TRACK_WORK, TRANSIT_COLOUR, TRANSIT_DASH, TRANSIT_LINE_WIDTH, optionSaid, optionText, stepIcon } from "./lib/transit.ts";
+import {
+  OPTIONS_LABEL,
+  RIDES_LEGEND,
+  STEPS_LABEL,
+  TRACK_WORK,
+  TRANSIT_COLOUR,
+  TRANSIT_DASH,
+  TRANSIT_LINE_WIDTH,
+  optionSaid,
+  optionText,
+  stepIcon,
+  stepStressSaid,
+} from "./lib/transit.ts";
 import { Icon } from "./Icon.tsx";
 import { DepartureTimer } from "./DepartureTimer.tsx";
 
@@ -31,8 +43,11 @@ export function TransitSummary({
   busy = false,
   announce,
   onMissed,
+  lineSpans,
 }: {
   plan: TransitPlan;
+  /** The route's own stress sections: its line is the first ride's, said in that step's words. */
+  lineSpans?: readonly StressSpan[];
   /** The ride type, for the heading: its name (emoji kept from a screen reader) and the total. */
   preset: PresetId;
   /** Plan another option, by its key; absent, the options are listed but not pressable. */
@@ -84,13 +99,18 @@ export function TransitSummary({
         </ul>
       )}
       <ol className="transit-steps" aria-label={STEPS_LABEL}>
-        {plan.steps.map((step, index) => (
-          <li key={index} className={`transit-step transit-${step.mode}`}>
-            <Icon name={stepIcon(step)} size={16} />
-            <span className="transit-step-text">{step.text}</span>
-            {step.live && <span className="transit-step-live"> {step.live.text}</span>}
-          </li>
-        ))}
+        {plan.steps.map((step, index) => {
+          // Each ride's traffic stress, in the route chart's words (every ride's, the first's too).
+          const stress = stepStressSaid(step, lineSpans);
+          return (
+            <li key={index} className={`transit-step transit-${step.mode}`}>
+              <Icon name={stepIcon(step)} size={16} />
+              <span className="transit-step-text">{step.text}</span>
+              {stress && <span className="transit-step-stress"> {stress}</span>}
+              {step.live && <span className="transit-step-live"> {step.live.text}</span>}
+            </li>
+          );
+        })}
       </ol>
       {(plan.notes.length > 0 || (plan.live?.alerts.length ?? 0) > 0) && (
         <ul className="transit-notes" aria-label="Notes on this plan">
@@ -111,8 +131,7 @@ export function TransitSummary({
           <p className="hint transit-legend">
             <Swatch colour={TRANSIT_COLOUR} dash={TRANSIT_DASH} width={TRANSIT_LINE_WIDTH} /> On the map, a dashed line marked with its
             system (Metro, MARC, Bus) is the ride on transit, through its stops.{" "}
-            <Swatch colour={WALK_COLOUR} dash={WALK_DASH} width={WALK_LINE_WIDTH} /> A dotted line is a walk. The line coloured by traffic
-            stress is the first ride, and a thin solid line is a ride after it.
+            <Swatch colour={WALK_COLOUR} dash={WALK_DASH} width={WALK_LINE_WIDTH} /> A dotted line is a walk. {RIDES_LEGEND}
           </p>
           <p className="hint transit-scheduled">
             {TRACK_WORK} Times are from each system's published timetables for this {plan.day_type === "weekday" ? "weekday" : plan.day_type}

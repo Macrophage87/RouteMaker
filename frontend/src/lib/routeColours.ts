@@ -274,7 +274,8 @@ export function usesCapacity(spans: readonly StressSpan[] | undefined): boolean 
   return !!spans && spans.some((span) => typeof span.rpm === "number");
 }
 
-function usableSpans(spans: readonly StressSpan[] | undefined): spans is readonly StressSpan[] {
+/** Whether sections can be drawn: some, meeting end to end from 0. */
+export function usableSpans(spans: readonly StressSpan[] | null | undefined): spans is readonly StressSpan[] {
   if (!spans || spans.length === 0) return false;
   let at = 0;
   for (const span of spans) {
