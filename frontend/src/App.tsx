@@ -149,6 +149,18 @@ import { GO_START_SAID, GO_START_UNAVAILABLE, goDestinationLocating, goDestinati
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type MyGo } from "./lib/myGo.ts";
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
+import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, onSignIn, planFromSetting, sameSettings, saveSettings, SAVE_SETTLE_MS, type SettingsDoc } from "./lib/accountSettings.ts";
+import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
+import { OPENED_SAID, SAVED_SAID, SAVE_FAILED, UPDATE_ROUTE, defaultRouteName, differenceLine, differsTooMuch, gpxSave, planSave, saveRoute, savedAnswer, type SavedRoute } from "./lib/savedRoutes.ts";
+import { checkClosures, closedStretches, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
+import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./lib/gpxVerbatim.ts";
+import { readGpx } from "./lib/gpxImport.ts";
+import { downloadGpx } from "./GpxPanel.tsx";
+import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
+import { RideGroup } from "./RideGroup.tsx";
+import { SaveRoute } from "./SaveRoute.tsx";
+import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
+import { isRideLink } from "./lib/rideGroup.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
 // With Ride mode's kept tiles behind the network, for dead spots (lib/corridorStore.ts).
@@ -543,6 +555,9 @@ export function App() {
   // A route kept for offline (WEB-NAV-plan.md section 8, P3) answers when the planner cannot be reached
   // and the plan is one the rider kept; the planner's notice says so, and the next real answer clears it.
   const keptShown = useRef<KeptRoute<RouteResponse> | null>(null);
+  // A saved route reopened (v0.7.0, saved routes): its line as saved answers its plan, unchanged, until the
+  // plan changes or the rider presses Update route.
+  const savedShown = useRef<{ key: string; answer: RouteResponse } | null>(null);
   const keptNotice = useRef<string | null>(null);
   // The plan the route on screen answers, as a kept route's key (keptPlanKey): set with the route, so a
   // keep during a re-plan in flight files the route shown under its own plan, never the next one's.
@@ -554,6 +569,12 @@ export function App() {
   if (scheduler.current === null) {
     scheduler.current = new RouteScheduler<Plan>({
       send: async (plan) => {
+        const saved = savedShown.current;
+        if (saved && saved.key === keptPlanKey(plan.points, plan.preset, plan.dials)) {
+          keptShown.current = null;
+          return { ok: true, route: saved.answer };
+        }
+        savedShown.current = null;
         const replay = replayFor(firstAnswer.current, replayAsked.current, sentPlanKey(plan.points, plan.preset, plan.dials));
         replayAsked.current = null;
         if (replay) {
@@ -765,6 +786,34 @@ export function App() {
       if (speak) sayMyGo(MY_GO_SAVED_DEVICE);
     }
   };
+  // Saved settings (v0.7.0): the account's win on sign-in; an empty account takes this device's.
+  const lastSettings = useRef<SettingsDoc | null>(null);
+  const [settingsSynced, setSettingsSynced] = useState(false);
+  const [homeAsk, setHomeAsk] = useState<HomeOffer | null>(null);
+  const syncSettingsOnSignIn = async (origin: string, live: () => boolean) => {
+    const account = await fetchSettings(origin);
+    if (!live() || account === undefined) return;
+    const device = deviceSettings({ preset: rideRef.current.preset, dials: rideRef.current.dials });
+    const step = onSignIn(account, device);
+    if (step.kind === "push-device") {
+      lastSettings.current = device;
+      void saveSettings(origin, device);
+    } else {
+      applyToDevice(step.doc);
+      lastSettings.current = step.doc;
+      setWaterPrefsState(readWaterPrefs());
+      setClimbsOnState(readClimbsOn());
+      setClimbsFromState(readClimbsFrom());
+      if (step.doc.topo !== undefined) setTopoLines(step.doc.topo, { remember: false });
+      const plan = planFromSetting(step.doc.plan);
+      if (plan && !PLAN_LINK && !rideTouched.current && pointsRef.current.length === 0 && modeRef.current !== "go") {
+        setPreset(plan.preset);
+        setDials(plan.dials);
+      }
+      if (!sameSettings(step.doc, device)) announce(ACCOUNT_SETTINGS_USED);
+    }
+    setSettingsSynced(true);
+  };
   useEffect(() => {
     let live = true;
     const origin = window.location.origin;
@@ -779,11 +828,14 @@ export function App() {
         }
         return;
       }
+      void syncSettingsOnSignIn(origin, () => live);
       const account = await fetchMyGo(origin);
       if (!live || !account) return;
       accountMyGoRead.current = true;
       setMyGo(account);
       saveAccountCopy(account);
+      // A Home kept on this device while signed out: offered to the account, never merged silently.
+      setHomeAsk(homeOffer(deviceHome(), account.home));
       if (laterMyGoApplies(OPENING.by, modeSwitched.current)) {
         const later = openingMode({ tab: null, planLink: false, openIn: account.openIn, wide: !window.matchMedia(NARROW).matches }).mode;
         setModeState((now) => (now === later ? now : later));
@@ -1562,6 +1614,7 @@ export function App() {
   // A fitting round for an opened track: part of the same edit as the import
   // (the rider did not make it), so it is not an undo step of its own.
   const refineImported = useCallback((next: LonLat[]) => {
+    if (importBase.current) importBase.current = { ...importBase.current, points: next };
     pointsRef.current = next;
     setPoints(next);
   }, []);
@@ -1804,6 +1857,228 @@ export function App() {
     }
     beginRide(ridePrefs);
   };
+  // ---- v0.7.0: saved routes, the verbatim GPX and the closure check ----
+  const origin = window.location.origin;
+  // Signed in, a change to the settings is saved once it settles (one save for a slider dragged).
+  useEffect(() => {
+    if (!me.signed_in || !settingsSynced) return;
+    const timer = window.setTimeout(() => {
+      const doc = deviceSettings({ preset, dials });
+      if (sameSettings(doc, lastSettings.current)) return;
+      lastSettings.current = doc;
+      void saveSettings(window.location.origin, doc);
+    }, SAVE_SETTLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [me.signed_in, settingsSynced, preset, dials, waterPrefs, climbsOn, climbsFrom, showTopoLines]);
+  const answerHome = (move: boolean) => {
+    const offer = homeAsk;
+    if (!offer) return;
+    answerHomeOffer(offer.device);
+    setHomeAsk(null);
+    if (move) saveMyGoNow({ ...myGoRef.current, home: offer.device }, false);
+    announce(move ? HOME_MOVED : HOME_KEPT);
+  };
+  // An opened file not edited since: its points and ride type as the import left them (a fitting round moves
+  // the base with it, refineImported).
+  const importBase = useRef<{ imported: ImportedPlan; points: LonLat[]; preset: PresetId } | null>(null);
+  if (!imported) importBase.current = null;
+  else if (importBase.current?.imported !== imported) importBase.current = { imported, points, preset };
+  const importEdited = !imported || importBase.current?.points !== points || importBase.current?.preset !== preset;
+  const fileName = () => imported?.name || keptTitle();
+  // A saved route's line about today's map (more than 5% apart in distance), with Update route.
+  const [savedNote, setSavedNote] = useState<{ key: string; savedM: number; todayM: number } | null>(null);
+  const [myRoutesVersion, setMyRoutesVersion] = useState(0);
+  const saveCurrent = async (name: string): Promise<string> => {
+    const verbatim = imported?.verbatim;
+    const body =
+      verbatim && !importEdited
+        ? gpxSave(name, verbatim.text ?? trackGpx(name, verbatim.track), verbatim.track, points, preset, dials)
+        : shown
+          ? planSave(name, shown, routedPoints, preset, dials)
+          : null;
+    if (!body) return SAVE_FAILED;
+    const outcome = await saveRoute(origin, body);
+    if (!outcome.ok) return outcome.message || SAVE_FAILED;
+    setMyRoutesVersion((v) => v + 1);
+    return SAVED_SAID(name);
+  };
+  const saveProps = me.signed_in
+    ? {
+        defaultName: () =>
+          defaultRouteName(routedPoints[0] && namer.name(routedPoints[0])?.name, routedPoints.length > 1 ? namer.name(routedPoints[routedPoints.length - 1])?.name : null),
+        onSave: saveCurrent,
+      }
+    : null;
+
+  // The closure check (v0.7.0, "closure warning first", and its correction): a route opened, Start ride, and a
+  // download are checked against the closures in force now; any hit asks in the major dialog.
+  const [closureAsk, setClosureAsk] = useState<ClosureAsk | null>(null);
+  const closurePending = useRef<{ line: number[][]; index: number[]; closures: Closure[]; gpx: boolean; proceed: () => void; afterGpx?: (track: number[][]) => void } | null>(null);
+  // A line the rider chose to ride anyway is not asked about again (on Start ride, say).
+  const closureLetGo = useRef<string | null>(null);
+  const lineKey = (line: readonly (readonly number[])[]) => `${line.length}:${line[0]?.join(",")}:${line[line.length - 1]?.join(",")}`;
+  const checkThen = async (why: CheckFor, line: readonly (readonly number[])[], gpx: boolean, proceed: () => void, afterGpx?: (track: number[][]) => void) => {
+    if (line.length < 2 || closureLetGo.current === lineKey(line)) {
+      proceed();
+      return;
+    }
+    const found = await checkClosures(origin, line);
+    if (!found || found.closures.length === 0) {
+      proceed();
+      return;
+    }
+    closurePending.current = { line: line.map((v) => [...v]), index: found.index, closures: found.closures, gpx, proceed, afterGpx };
+    setClosureAsk({ why, closures: found.closures, unchecked: found.unchecked });
+  };
+  const closureAnyway = () => {
+    const pending = closurePending.current;
+    closurePending.current = null;
+    setClosureAsk(null);
+    if (!pending) return;
+    closureLetGo.current = lineKey(pending.line);
+    pending.proceed();
+  };
+  const closureCancel = () => {
+    closurePending.current = null;
+    setClosureAsk(null);
+  };
+  // Reroute around them: an opened file keeps every point but the closed stretches, each replaced by a way round
+  // planned between the points either side; a planned route is planned again with today's map. A ride is not
+  // started by it: the rider presses Start ride again.
+  const closureReroute = async () => {
+    const pending = closurePending.current;
+    closurePending.current = null;
+    setClosureAsk(null);
+    if (!pending) return;
+    const file = rideRef.current.imported;
+    if (!pending.gpx || !file?.verbatim) {
+      savedShown.current = null;
+      setSavedNote(null);
+      announce("Planning again around the closures.");
+      retry();
+      return;
+    }
+    const stretches = closedStretches(pending.line, pending.closures, pending.index);
+    announce("Finding a way round the closures.");
+    const detours = await Promise.all(
+      stretches.map(async ({ before, after }) => {
+        const ends: LonLat[] = [
+          [pending.line[before][0], pending.line[before][1]],
+          [pending.line[after][0], pending.line[after][1]],
+        ];
+        const result = await requestRoute(ends, rideRef.current.preset, { dials: planDials });
+        return result.ok ? result.route.geometry.coordinates.map(([lon, lat]) => [lon, lat] as LonLat) : null;
+      }),
+    );
+    const failed = detours.filter((d) => d === null).length;
+    announce(reroutedSaid(stretches.length, failed));
+    if (failed === stretches.length) return;
+    const track = spliceDetours(pending.line, stretches, detours).map((v) => [...v]) as NonNullable<ImportedPlan["verbatim"]>["track"];
+    // The plan's own points inside a closed stretch go; the rest stay where the file put them.
+    const inside = (p: LonLat) => {
+      let best = 0;
+      let bestD = Infinity;
+      pending.line.forEach((v, i) => {
+        const d = (v[0] - p[0]) ** 2 + (v[1] - p[1]) ** 2;
+        if (d < bestD) {
+          bestD = d;
+          best = i;
+        }
+      });
+      return stretches.some((s, k) => detours[k] !== null && best > s.before && best < s.after);
+    };
+    const kept = pointsRef.current.filter((p, i, all) => i === 0 || i === all.length - 1 || !inside(p));
+    const next: ImportedPlan = { ...file, verbatim: { text: null, track }, reference: track.map(([lon, lat]) => [lon, lat] as LonLat) };
+    commit(kept, { ...rideRef.current, imported: next });
+    pending.afterGpx?.(track);
+  };
+  // Download GPX: an opened file not edited since downloads as it came; otherwise the route on screen.
+  const downloadRoute = () => {
+    const verbatim = imported?.verbatim;
+    const file = verbatim ? verbatimDownload(verbatim, importEdited, imported?.name) : null;
+    if (file && verbatim) {
+      const name = fileName();
+      void checkThen(
+        "download",
+        verbatim.track,
+        true,
+        () => downloadText(file.text, file.fileName),
+        (track) => downloadText(trackGpx(name, track as NonNullable<ImportedPlan["verbatim"]>["track"]), verbatimFileName(name)),
+      );
+      return;
+    }
+    if (!shown) return;
+    const route = shown;
+    const at = routedPoints;
+    void checkThen("download", route.geometry.coordinates, false, () => downloadGpx(route, at, routedLoop, federalRoute));
+  };
+  // Start ride: the line about to be ridden, checked first ("Ride it anyway" goes on to the ride).
+  const startRideChecked = () => {
+    if (!shown) return startRide();
+    void checkThen("ride", shown.geometry.coordinates, false, startRide);
+  };
+  // An opened file is checked at once, against its own track.
+  const openImportedChecked = (plan: ImportedPlan) => {
+    openImported(plan);
+    if (plan.verbatim) void checkThen("open", plan.verbatim.track, true, () => {});
+  };
+  // A plan link (or a plan left open) is checked once its first route is on screen.
+  const checkFirstAnswer = useRef(PLAN_LINK);
+  useEffect(() => {
+    if (!checkFirstAnswer.current || !route || riding) return;
+    checkFirstAnswer.current = false;
+    if (!imported) void checkThen("open", route.geometry.coordinates, false, () => {});
+  }, [route]);
+  // My routes: open as saved (the line unchanged), or export.
+  const openSaved = (saved: SavedRoute) => {
+    showPlanner(true);
+    setSavedNote(null);
+    if (saved.source === "gpx" && saved.gpx) {
+      void readGpx(new Blob([saved.gpx])).then((outcome) => {
+        if (!outcome.ok) {
+          announce(outcome.message);
+          return;
+        }
+        openImportedChecked({ ...outcome.plan, name: saved.name });
+        announce(OPENED_SAID(saved.name));
+      });
+      return;
+    }
+    const plan = decodePlan(saved.inputs.hash);
+    const answer = savedAnswer(saved);
+    const key = keptPlanKey(plan.points, plan.preset, plan.dials);
+    savedShown.current = answer ? { key, answer } : null;
+    if (window.location.hash !== saved.inputs.hash) window.location.hash = saved.inputs.hash;
+    else retry();
+    announce(OPENED_SAID(saved.name));
+    void checkThen("open", saved.line, false, () => {});
+    // Today's map, asked quietly: more than 5% apart in distance offers Update route; nothing changes without it.
+    void requestRoute(plan.points, plan.preset, { dials: plan.dials }).then((today) => {
+      if (today.ok && savedShown.current?.key === key && differsTooMuch(saved.distance_m, today.route.distance_m))
+        setSavedNote({ key, savedM: saved.distance_m, todayM: today.route.distance_m });
+    });
+  };
+  const exportSaved = (saved: SavedRoute) => {
+    if (saved.gpx) return downloadText(saved.gpx, verbatimFileName(saved.name));
+    const answer = savedAnswer(saved);
+    if (answer) downloadGpx(answer, saved.inputs.points, loopStops(saved.inputs.preset, saved.inputs.dials.loop));
+    else downloadText(trackGpx(saved.name, saved.line), verbatimFileName(saved.name));
+  };
+  const updateSaved = () => {
+    savedShown.current = null;
+    setSavedNote(null);
+    retry();
+  };
+  const savedNoteShown =
+    savedNote && savedNote.key === routedKey.current ? (
+      <p className="notice saved-note">
+        {differenceLine(savedNote.savedM, savedNote.todayM)}{" "}
+        <button type="button" className="link" onClick={updateSaved}>
+          {UPDATE_ROUTE}
+        </button>
+      </p>
+    ) : null;
+
   const backToRideOpener = () => {
     const opener = rideOpener.current;
     (opener?.isConnected ? opener : startRideRef.current)?.focus();
@@ -2255,6 +2530,7 @@ export function App() {
     ) : null;
   const actions = {
     routedLoop, copyLink, linkNote, canShare, shareRoute, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid,
+    downloadRoute, save: saveProps, savedNote: savedNoteShown,
   };
   const go = {
     onRide: () => openView("ride", document.activeElement instanceof HTMLElement ? document.activeElement : null),
@@ -2279,7 +2555,7 @@ export function App() {
         mode, actions, stations, go, transitControls,
         stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef,
         confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
-        narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials,
+        narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, startRideRef, rideSize, setDials,
         waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs,
         rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong,
       }}
@@ -2298,6 +2574,12 @@ export function App() {
     points: pointsSection,
     route: routeSection,
   };
+
+  // A Mass Ride or Group Ride link, in Go or riding: the others on the route (RideGroup), by the link's points.
+  const rideGroupPoints = riding && rideStart ? rideStart.points : points;
+  const rideGroupRoute = riding && rideView ? rideView.route : shown;
+  const rideGroupLine =
+    (goMode || riding) && isRideLink(preset, rideGroupPoints) && rideGroupRoute ? (rideGroupRoute.geometry.coordinates as LonLat[]) : null;
 
   return (
     <div className={`app${riding ? " riding" : ""}${riding && bigText ? " riding-big" : ""}${goMode && !riding ? " go-mode" : ""}`}>
@@ -2403,6 +2685,10 @@ export function App() {
           ) : null
         }
       />
+      {rideGroupLine && (
+        <RideGroup type={preset as "mass-ride" | "group-ride"} points={rideGroupPoints} line={rideGroupLine} getMap={getMap} here={rideView?.rider?.point ?? (here ? here.point : null)} />
+      )}
+      <ClosureDialog ask={closureAsk} onReroute={() => void closureReroute()} onAnyway={closureAnyway} onCancel={closureCancel} />
       <RoadInfoDialog
         request={roadInfo}
         massRide={massMap}
@@ -2519,6 +2805,22 @@ export function App() {
         </header>
         <div id="panel-body" className="panel-body" hidden={!panelOpen}>
           <AppStatusBar status={appStatus} />
+          {homeAsk && (
+            <section className="home-offer" aria-labelledby="home-offer-heading">
+              <h2 id="home-offer-heading" className="visually-hidden">
+                Home on this device
+              </h2>
+              <p>{homeAsk.question}</p>
+              <div className="actions">
+                <button type="button" onClick={() => answerHome(true)}>
+                  {homeAsk.move}
+                </button>
+                <button type="button" className="secondary" onClick={() => answerHome(false)}>
+                  {homeAsk.keep}
+                </button>
+              </div>
+            </section>
+          )}
           <div ref={panelBodyRef} className="panel-scroll">
             <div className="planner-view" hidden={view !== "planner"}>
               {goMode ? (
@@ -2574,8 +2876,9 @@ export function App() {
             <ReviewSheet nav={sheetNav} mapRef={mapRef} setHazardsAsked={setHazardsAsked} />
             <GpxSheet
               {...{
-                nav: sheetNav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported,
-                refineImported, getMap,
+                nav: sheetNav, shown, routedPoints, routedLoop, federalRoute, points, status, imported,
+                openImported: openImportedChecked, refineImported, getMap, downloadRoute,
+                saveControl: saveProps && !importEdited ? <SaveRoute {...saveProps} label={SAVE_ROUTE} /> : null,
               }}
             />
             <SettingsSheet
@@ -2583,6 +2886,8 @@ export function App() {
                 nav: sheetNav, settingsHeadingRef, ridePrefs, changeRidePrefs, keepShown, keptVersion, openKept, announce,
                 linkNote, accessMode, toggleAccessMode, mode, myGo: myGoControls, menu,
                 announcements: { level: announceLevel(announceChoice, mode), choose: chooseAnnounce },
+                signInAvailable: me.sign_in,
+                myRoutes: { version: myRoutesVersion, onOpen: openSaved, onExport: exportSaved, announce },
               }}
             />
             <NearestSheet nav={sheetNav}>

@@ -50,6 +50,8 @@ import { HAZARD_REVIEW } from "../lib/reviewSources.ts";
 import { DC_311_ONLINE, REPORT_KINDS } from "../lib/report311.ts";
 import { OPEN_IN_HINT, OPEN_IN_LABEL, type AppMode, type OpenIn } from "../lib/appMode.ts";
 import { HOME_SIGN_IN, myGoSummary, type MyGo } from "../lib/myGo.ts";
+import { SIGN_IN_LINE } from "../lib/accountSettings.ts";
+import { MyRoutes, type MyRoutesProps } from "../MyRoutes.tsx";
 import type { GeoGate, Place } from "../lib/geocode.ts";
 import type { IconName } from "../lib/iconPaths.ts";
 import { PlaceSearch } from "../PlaceSearch.tsx";
@@ -249,11 +251,15 @@ export interface GpxSheetProps {
   openImported: (plan: ImportedPlan) => void;
   refineImported: (next: LonLat[]) => void;
   getMap: () => MapLibreMap | null;
+  /** Download GPX: the page checks closures first, and an unedited opened file downloads as it came. */
+  downloadRoute: () => void;
+  /** Signed in: Save route for an opened file (its own text, verbatim); null signed out. */
+  saveControl: ReactNode;
 }
 
 /** The GPX sheet. */
 export function GpxSheet(props: GpxSheetProps) {
-  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, refineImported, getMap } = props;
+  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, refineImported, getMap, downloadRoute, saveControl } = props;
   return (
     <SheetFrame id="sheet-gpx" title={SHEET_TITLES.gpx} open={nav.view === "gpx"} onBack={nav.back} backLabel={nav.backLabel("gpx")}>
       <GpxPanel
@@ -267,7 +273,9 @@ export function GpxSheet(props: GpxSheetProps) {
         onImport={openImported}
         onRefine={refineImported}
         getMap={getMap}
+        onDownload={downloadRoute}
       />
+      {imported?.verbatim && saveControl}
     </SheetFrame>
   );
 }
@@ -367,12 +375,16 @@ export interface SettingsSheetProps {
   announcements: { level: AnnounceLevel; choose: (level: AnnounceLevel) => void };
   /** Go shows this sheet as its Menu: Plan, Suggest, GPX and (an admin's) Review above the settings. */
   mode: AppMode;
+  /** Whether this server can sign anyone in (GET /api/me's sign_in): the sign-in line is shown only then. */
+  signInAvailable: boolean;
+  /** My routes (signed in only): the saved routes, to open, rename, export or delete. */
+  myRoutes: MyRoutesProps;
   menu: { onPlan: () => void; onSuggest: (opener: HTMLElement) => void; onGpx: (opener: HTMLElement) => void; onReview: ((opener: HTMLElement) => void) | null };
 }
 
 /** The Settings sheet (Go's Menu): Display, Ride mode, This device and Account, as the mockup groups them. */
 export function SettingsSheet(props: SettingsSheetProps) {
-  const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, keepShown, keptVersion, openKept, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu, announcements } = props;
+  const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, keepShown, keptVersion, openKept, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu, announcements, signInAvailable, myRoutes } = props;
   const go = mode === "go";
   return (
     <SheetFrame
@@ -470,16 +482,16 @@ export function SettingsSheet(props: SettingsSheetProps) {
           <p className="hint signed-in">
             <Icon name="user" size={16} /> Signed in with Discord.
           </p>
-        ) : (
-          <p className="hint">
-            Planning works without signing in, and a plan made signed out is not saved; the link in the address bar reopens it. Saving routes and
-            peer review are coming for riders who{" "}
+        ) : signInAvailable ? (
+          // The plan's one line (item 4); the link is its first words. The plan in hand is kept across the round trip.
+          <p className="hint sign-in-line">
             <a href="/auth/login" onClick={(e) => isPlainClick(e) && rememberPlanForSignIn(tabSession(), window.location.hash, linkNote !== "")}>
-              sign in with Discord
+              Sign in with Discord
             </a>
-            ; your current plan is kept across the sign-in.
+            {SIGN_IN_LINE.slice("Sign in with Discord".length)}
           </p>
-        )}
+        ) : null}
+        {myGo.signedIn && <MyRoutes {...myRoutes} />}
         <MyGoSection controls={myGo} />
       </section>
     </SheetFrame>
