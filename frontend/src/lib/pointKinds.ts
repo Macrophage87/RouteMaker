@@ -158,6 +158,12 @@ export function addStopWhereShortest(points: readonly LonLat[], point: LonLat, l
   return { points: next, index: next.indexOf(point) };
 }
 
+/** Said when Go's "Add a stop" or a chip adds a stop: "Stop 2, Union Market, added. Undo removes it." */
+export function stopAddedSaid(points: readonly LonLat[], index: number, isVia: (p: LonLat) => boolean, loop: boolean, place: string): string {
+  const name = namePoints(points, isVia, loop)[index]?.name ?? "Stop";
+  return `${name}, ${place}, added. Undo removes it.`;
+}
+
 /** A via point's name: its markers, list rows and its route point in a GPX file (lib/gpx.ts planPointNames). */
 export const VIA_POINT_NAME = "Via point";
 

@@ -12,7 +12,7 @@ import { requestRoute, type ClosedStation, type RouteResponse, type RouteResult 
 import { closedReason, closuresDayOf, matchClosures, requestClosures } from "./lib/railClosures.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatSeconds } from "./lib/format.ts";
-import { presetSaid, usesBikeshare, type PresetId } from "./lib/presets.ts";
+import { presetSaid, twoPointsOnly, usesBikeshare, type PresetId } from "./lib/presets.ts";
 import { atFromHash, decodePlan, encodePlan } from "./lib/planHash.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
@@ -31,7 +31,19 @@ import { BetaChip, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { announceHow } from "./lib/candidates.ts";
 import { canReverse, loopStops, loopView, reversedPoints } from "./lib/loop.ts";
 import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
-import { VIA_MARKS, VIA_POINT_NAME, isMiddle, kindSaid, kindSwitchedSaid, namePoints, stopsOnly, viaIndices, viaPointsNamed } from "./lib/pointKinds.ts";
+import {
+  VIA_MARKS,
+  VIA_POINT_NAME,
+  addStopWhereShortest,
+  isMiddle,
+  kindSaid,
+  kindSwitchedSaid,
+  namePoints,
+  stopAddedSaid,
+  stopsOnly,
+  viaIndices,
+  viaPointsNamed,
+} from "./lib/pointKinds.ts";
 import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
 import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
@@ -138,7 +150,7 @@ import { NARROW, useLongerThan, useNarrow, useSettled } from "./app/hooks.ts";
 import { PointsSection, RideSection } from "./app/Planner.tsx";
 import { RouteSection, type Status } from "./app/RoutePanel.tsx";
 import { FoodSheet, GpxSheet, LayersSheet, LegendSheet, NearestSheet, ReviewSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
-import { GoSheet, GoTopBar, ModeSwitch, PlanMapChips } from "./app/Go.tsx";
+import { GoAddStop, GoSheet, GoTopBar, ModeSwitch, PlanMapChips } from "./app/Go.tsx";
 import { NearestFinder } from "./lib/nearestFinder.ts";
 import { NearbyStations } from "./NearbyStations.tsx";
 import { Fold } from "./Sidebar.tsx";
@@ -1411,6 +1423,34 @@ export function App() {
     }
     void goTo(point, found.name);
   };
+  // Go's "Add a stop" (v0.7.0, "Keep adding stops by search"): with a route, a place is a stop where it adds the
+  // least distance, routed at once as any Go edit is; one edit, so Undo removes it. Without a route it is the
+  // destination, as Where to? makes it.
+  const goAddStopAt = (point: LonLat, name: string) => {
+    const current = pointsRef.current;
+    const ride = rideRef.current;
+    if (current.length < 2 || twoPointsOnly(ride.preset)) {
+      void goTo(point, name);
+      return;
+    }
+    if (current.length >= MAX_POINTS) {
+      setNotice(maxPointsNotice());
+      return;
+    }
+    const loop = loopStops(ride.preset, ride.dials.loop);
+    const added = addStopWhereShortest(current, point, loop);
+    setNotice(null);
+    commit(added.points);
+    announce(stopAddedSaid(added.points, added.index, VIA_MARKS.isVia, loop, name));
+  };
+  const goAddStop = (found: Place) => {
+    const point = placeFromSearch(found, (p, name, label) => namer.remember(p, name, label), stationEntranceForPlace);
+    if (point === null) {
+      setNotice(OUTSIDE_NOTICE);
+      return;
+    }
+    goAddStopAt(point, found.name);
+  };
   // Go's Home chip (the owner's choice 3): signed in with a Home, ride there; else My Go, under Settings.
   const goHome = (chip: HTMLElement) => {
     const home = myGoRef.current.home;
@@ -1514,6 +1554,9 @@ export function App() {
   // Never on a Mass Ride (OWNER-DECISIONS 449), whose field rides the stops in the order set.
   // Best order moves stops only (v0.7.0): via points go with the stop they lead to.
   const orderShown = !isMassRide(preset) && stopsThatMove(stopsOnly(points, VIA_MARKS.isVia, loopVias).points, loopVias) >= 2;
+  // Go with a route (v0.7.0, "Keep adding stops by search"): "Add a stop" and Best order in the route sheet, and a
+  // chip's place a stop; never during a ride, nor on a ride type of a start and an end only.
+  const goStops = mode === "go" && !riding && points.length >= 2 && !twoPointsOnly(preset) && !isMassRide(preset);
   const reverseButton = useRef<HTMLButtonElement>(null);
   const orderFocused = useRef(false);
   // The button leaves when the stops drop below two (an undo, a removal, the loop): if it
@@ -2067,12 +2110,22 @@ export function App() {
     if (letteredOf === "nearest" && nearestList) {
       const item = nearestList.items[index];
       if (!item) return;
-      if (mode === "go") goToLettered(item.place.point, item.place.title);
+      // With a route in Go, a chip's place is a stop on it (v0.7.0); before one, the destination.
+      if (mode === "go" && goStops) {
+        namer.remember(item.place.point, item.place.title);
+        showPlanner(true);
+        goAddStopAt(item.place.point, item.place.title);
+      } else if (mode === "go") goToLettered(item.place.point, item.place.title);
       else rideToNearest(item);
     } else if (letteredOf === "food" && foodResults) {
       const r = foodResults[index];
       if (!r) return;
-      if (mode === "go") goToLettered([r.place.lon, r.place.lat], r.place.name);
+      if (mode === "go" && goStops) {
+        const point: LonLat = [r.place.lon, r.place.lat];
+        namer.remember(point, r.place.name);
+        showPlanner(true);
+        goAddStopAt(point, r.place.name);
+      } else if (mode === "go") goToLettered([r.place.lon, r.place.lat], r.place.name);
       else showFood(r);
     } else if (letteredOf === "bikeshare") {
       pickOption(index);
@@ -2577,6 +2630,19 @@ export function App() {
                   rides={<RideChips ids={goRideChips(myGo.ride)} preset={preset} onPick={pickRide} more={(opener) => openView("ride", opener)} label="Ride type" ownHint={OWN_RIDE_HINT} />}
                   notice={notice}
                   route={points.length > 1 || status.kind !== "idle" ? routeSection : null}
+                  addStop={
+                    goStops ? (
+                      <GoAddStop
+                        geoGate={geoGate}
+                        searchBias={searchBias}
+                        onPick={goAddStop}
+                        full={points.length >= MAX_POINTS}
+                        orderShown={orderShown}
+                        ordering={ordering}
+                        onBestOrder={() => void bestOrder()}
+                      />
+                    ) : null
+                  }
                   startLine={goStartLine(goStart, points.length > 0 ? (namer.name(points[0])?.name ?? "the point on the map") : null)}
                   startMissing={goStart.kind === "none" && points.length === 0}
                   onStartPick={goStartPick}

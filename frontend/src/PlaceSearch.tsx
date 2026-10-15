@@ -52,10 +52,19 @@ const SINGLE_HINT = {
   go: "The place you pick is where the route goes, from the start above.",
   home: "The place you pick is kept as your Home.",
   start: "The place you pick is where the route starts, in place of your location.",
+  stop: "The place you pick is a stop, where it adds the least distance.",
 } as const;
 
 /** The "Your location" choice in the list, ahead of the places found. */
 const HERE = "here" as const;
+
+/** A place's "Make this the destination" row (v0.7.0, "Keep adding stops by search"), under the place. */
+interface AsDestination {
+  destination: Place;
+}
+
+/** What the result row's second option says. */
+export const MAKE_DESTINATION = "Make this the destination";
 
 const CHOICE_LABEL: Record<PlaceChoice, string> = { start: "Start", end: "Destination", via: "Stop" };
 
@@ -84,7 +93,7 @@ export function PlaceSearch({
    * "plan": the Points search, with Start / Destination / Stop. "go" (UI-CLEANUP): Go's one Where to? box,
    * whose place is the destination, from the rider's location. "home": My Go's Home, a place and no more.
    */
-  variant?: "plan" | "go" | "home" | "start";
+  variant?: "plan" | "go" | "home" | "start" | "stop";
   /** Absent: no "Use my location" (a test or a build without it). */
   locate?: LocateControl;
   /** "Make it a loop" is on: a place is the start or a stop, never a destination (OWNER-DECISIONS 374). */
@@ -135,7 +144,11 @@ export function PlaceSearch({
   });
   // "Your location" leads the list while the box is empty or says so; it is never the Enter default.
   const showHere = locate?.support.available === true && locationMatches(query);
-  const items: (Place | typeof HERE)[] = showHere ? [HERE, ...places] : places;
+  // A pick that adds a stop (Plan with a start and an end) offers the place as the destination too, on a row
+  // of its own under it, so it is an option a keyboard and a screen reader reach like any other.
+  const offersDestination = variant === "plan" && !loop && effect === "via";
+  const listed: (Place | AsDestination)[] = offersDestination ? places.flatMap((place) => [place, { destination: place }]) : places;
+  const items: (Place | AsDestination | typeof HERE)[] = showHere ? [HERE, ...listed] : listed;
   const expanded = open && items.length > 0;
   const listId = `${id}-list`;
   const optionId = (i: number) => `${id}-opt-${i}`;
@@ -151,8 +164,8 @@ export function PlaceSearch({
     }
   };
 
-  const pick = (place: Place) => {
-    onPick(place, single ? "end" : choice);
+  const pick = (place: Place, as?: PlaceChoice) => {
+    onPick(place, as ?? (variant === "stop" ? "via" : single ? "end" : choice));
     setQuery("");
     setResult(null);
     setOpen(false);
@@ -185,6 +198,7 @@ export function PlaceSearch({
       // Enter with nothing highlighted takes the first place, never "Your location" (a look-up asks the browser's permission).
       const item = pickTarget(active, action.index, items, places);
       if (item === HERE) pickHere();
+      else if (item && "destination" in item) pick(item.destination, "end");
       else if (item) pick(item);
     } else if (action.kind === "close") {
       setOpen(false);
@@ -197,7 +211,7 @@ export function PlaceSearch({
   return (
     <div className={variant === "go" ? "place-search go-search" : "place-search"}>
       <label htmlFor={`${id}-input`} className={variant === "go" ? "place-search-label visually-hidden" : "place-search-label"}>
-        {variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : variant === "start" ? "Start from" : "Find a place"}
+        {variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : variant === "start" ? "Start from" : variant === "stop" ? "Add a stop" : "Find a place"}
       </label>
       <div className={locate || variant === "go" ? "place-search-row" : undefined}>
       {variant === "go" && <Icon name="search" className="search-icon" />}
@@ -215,7 +229,7 @@ export function PlaceSearch({
         spellCheck={false}
         enterKeyHint="search"
         maxLength={MAX_QUERY_CHARS}
-        placeholder={variant === "go" ? "Where to?" : variant === "start" ? "Type a start" : "A place, an address or a street"}
+        placeholder={variant === "go" ? "Where to?" : variant === "start" ? "Type a start" : variant === "stop" ? "Add a stop" : "A place, an address or a street"}
         value={query}
         onChange={(event) => change(event.target.value)}
         onKeyDown={onKeyDown}
@@ -270,6 +284,19 @@ export function PlaceSearch({
             >
               <span className="place-name">Your location</span>
               <span className="place-label">{hereEffectLine(effect, loop)}</span>
+            </li>
+          ) : "destination" in item ? (
+            <li
+              key={`dest:${item.destination.lon},${item.destination.lat},${item.destination.label}`}
+              id={optionId(i)}
+              role="option"
+              aria-selected={i === active}
+              aria-label={`${MAKE_DESTINATION}: ${item.destination.name}`}
+              className={i === active ? "active place-as-destination" : "place-as-destination"}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => pick(item.destination, "end")}
+            >
+              <span className="place-label">{MAKE_DESTINATION}</span>
             </li>
           ) : (
             <li

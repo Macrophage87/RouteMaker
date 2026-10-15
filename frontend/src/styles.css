@@ -889,6 +889,24 @@ button.secondary {
   cursor: pointer;
 }
 
+/* Go's "Add a stop" with Best order beside it (v0.7.0), above the route. */
+.go-add-stop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.go-add-stop .place-search {
+  flex: 1 1 14rem;
+}
+
+/* A place's "Make this the destination" row (v0.7.0): under its place, indented, still tall enough to tap. */
+.place-results li.place-as-destination {
+  padding-left: 26px;
+}
+
 .place-results li.active,
 .place-results li:hover {
   background: var(--bg-soft);

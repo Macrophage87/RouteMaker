@@ -14,6 +14,7 @@ import type { LonLat } from "../lib/geo.ts";
 import type { GeoGate, Place, PlaceChoice } from "../lib/geocode.ts";
 import { MODE_LABEL, MODE_SWITCH_HINT, MODE_SWITCH_NAME, type AppMode } from "../lib/appMode.ts";
 import { HOME_NOT_SET, HOME_SIGN_IN } from "../lib/myGo.ts";
+import { BEST_ORDER_LABEL } from "../lib/stopOrder.ts";
 
 export type GoSheetSize = "peek" | "half" | "full";
 
@@ -107,6 +108,40 @@ export interface GoPlaces {
   onRestroom: (chip: HTMLButtonElement) => void;
 }
 
+/**
+ * Go's "Add a stop" (v0.7.0, "Keep adding stops by search"): one field in the route sheet, above the route; a
+ * place picked is a stop where it adds the least distance, routed at once (Undo removes it). Best order sits
+ * beside it with two or more stops; it is the field's only company, so Go stays one control per feature.
+ */
+export function GoAddStop({
+  geoGate,
+  searchBias,
+  onPick,
+  full,
+  orderShown,
+  ordering,
+  onBestOrder,
+}: {
+  geoGate: GeoGate;
+  searchBias: () => LonLat | undefined;
+  onPick: (place: Place) => void;
+  full: boolean;
+  orderShown: boolean;
+  ordering: boolean;
+  onBestOrder: () => void;
+}) {
+  return (
+    <div className="go-add-stop">
+      <PlaceSearch variant="stop" pointCount={2} full={full} gate={geoGate} bias={searchBias} onPick={(place: Place) => onPick(place)} />
+      {orderShown && (
+        <button type="button" className="secondary" onClick={onBestOrder} aria-disabled={ordering ? true : undefined}>
+          {BEST_ORDER_LABEL}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /** Go's sheet: the handle, Where to?, the place chips, the ride types, the notice and the route. */
 export function GoSheet({
   size,
@@ -119,10 +154,13 @@ export function GoSheet({
   rides,
   notice,
   route,
+  addStop = null,
   startLine,
   startMissing,
   onStartPick,
 }: {
+  /** Go's "Add a stop" with a route (GoAddStop), or null: before a route, and during a ride. */
+  addStop?: ReactNode;
   size: GoSheetSize;
   onSize: (next: GoSheetSize) => void;
   pointCount: number;
@@ -155,6 +193,7 @@ export function GoSheet({
       </button>
       {/* Where to? stays first while there is no route; with one, the route comes first (it is what the rider is
           looking at), and Where to? follows for a new place. */}
+      {routeShown && addStop && size !== "peek" && addStop}
       {routeShown && route}
       <div className="go-where" hidden={routeShown && size === "peek"}>
         {/* The start (the owner, 2026-10-11): the rider's location by default; a typed start replaces it (a press on the map is the destination). */}
