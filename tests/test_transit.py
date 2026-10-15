@@ -1193,6 +1193,22 @@ def test_the_chosen_trips_other_walks_and_rides_are_routed_for_the_map(schedule)
     assert transit.drawn(direct, services) is direct and services.asked == ["walk", "walk"]
 
 
+def test_drawing_the_map_never_holds_a_ready_answer_long(monkeypatch) -> None:
+    """Drawing changes no times: its calls are few, short, and stop at their own budget."""
+    from core import routing
+
+    assert transit.MAX_DRAW_CALLS * transit.DRAW_CALL_S <= 10
+    now = [100.0]
+    monkeypatch.setattr(routing, "clock", lambda: now[0])
+    services = transit.RoutingServices(
+        now[0] + transit.DRAW_BUDGET_S, "default", max_calls=transit.MAX_DRAW_CALLS
+    )
+    now[0] += transit.DRAW_BUDGET_S + 0.1
+    # Past the budget: no call is made and the leg stays straight.
+    assert services.walk((-77.0, 38.9), (-77.01, 38.91)) is None
+    assert services.calls == 0
+
+
 def test_each_option_lists_its_legs_compactly_for_its_row(schedule) -> None:
     plan = transit.plan_bikeshare(
         schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), Straight(), SHARE

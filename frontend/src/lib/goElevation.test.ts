@@ -8,11 +8,11 @@ const src = (name: string) => readFileSync(new URL(name, import.meta.url), "utf8
 const panel = src("../app/RoutePanel.tsx");
 const chart = src("../ElevationChart.tsx");
 
-test("Go's route sheet shows the compact chart above Info, bigger than peek and not for a Mass Ride", () => {
+test("Go's route sheet shows the compact chart under Start, bigger than peek and not for a Mass Ride", () => {
   const go = panel.slice(panel.indexOf("if (goMode) {"));
   const line = '{!go.peek && profile && chartKind(route) !== "mass" && <ElevationChart route={route} profile={profile} onScrub={onScrub} compact />}';
   assert.ok(go.includes(line));
-  assert.ok(go.indexOf(line) < go.indexOf("{!go.peek && infoBody}"), "the chart leads, the details follow");
+  assert.ok(go.indexOf(line) > go.indexOf('className="actions start-ride go-start"'), "Start is never pushed down by the chart");
 });
 
 test("the compact chart keeps the slider and its words for a screen reader, and leaves the key and tables to Plan", () => {

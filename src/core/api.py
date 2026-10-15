@@ -2511,11 +2511,10 @@ def _walked_line(plan: transit.Plan, preset_name: str, dials, services=None) -> 
     leg = plan.legs[plan.ride]
     points = [list(p) for p in leg.coordinates]
     metres = None
-    if services is not None:
-        walked = services.walk(points[0], points[-1])
-        if walked is not None and len(walked.coordinates) >= 2:
-            points = [list(p) for p in walked.coordinates]
-            metres = walked.metres
+    walked = services.walk(points[0], points[-1]) if services is not None else None
+    if walked is not None and len(walked.coordinates) >= 2:
+        points = [list(p) for p in walked.coordinates]
+        metres = walked.metres
     elif not leg.estimated:
         metres = sum(
             haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
@@ -2557,9 +2556,13 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     found = transit.choose(found, body.transit_option)
     # The trip's other walks and rides are routed for the map in what is left of the budget.
     draw = transit.RoutingServices(
-        started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S,
+        min(
+            started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S,
+            routing.clock() + transit.DRAW_BUDGET_S,
+        ),
         body.preset,
         max_calls=transit.MAX_DRAW_CALLS,
+        per_call_s=transit.DRAW_CALL_S,
     )
 
     def answered(answer: dict, plan: transit.Plan) -> dict:

@@ -53,9 +53,9 @@ test("a lift, a move past the slop or a second finger calls it off", () => {
   assert.equal(held, 0, "a pinch never starts one");
 });
 
-test("the map removes a via on a right-click or a long press, once, and says so in its tooltip", () => {
+test("a right-click or a long press on a via offers Remove, as a click does, and says so in its tooltip", () => {
   const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
-  assert.match(map, /element\.addEventListener\("contextmenu", \(event\) => \{\s*event\.stopPropagation\(\);\s*event\.preventDefault\(\);/);
-  assert.match(map, /let removed = false;\s*const removeNow = \(\) => \{\s*if \(removed\) return;/);
-  assert.match(map, /right-click or long-press to remove/);
+  assert.match(map, /element\.addEventListener\("contextmenu", \(event\) => \{\s*event\.stopPropagation\(\);\s*event\.preventDefault\(\);\s*if \(dragged\) return;\s*hold\.cancel\(\);\s*offerRemove\(\);/);
+  assert.match(map, /new ViaHold\(\(\) => \{\s*if \(!dragged\) offerRemove\(\);/);
+  assert.match(map, /click, right-click or long-press for Remove/);
 });

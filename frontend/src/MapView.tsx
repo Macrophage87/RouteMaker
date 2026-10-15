@@ -1195,7 +1195,7 @@ export function MapView(props: Props) {
       const named = warning ? `${name}. ${warning}` : name;
       const said = warning ? named : `${name}.`;
       element.setAttribute("aria-label", via ? `${said} Drag to move; click for Remove.` : `${said} Drag to move.`);
-      element.title = via ? `${named} - drag to move, click for Remove; right-click or long-press to remove` : `${named} - drag to move`;
+      element.title = via ? `${named} - drag to move; click, right-click or long-press for Remove; double-click to remove` : `${named} - drag to move`;
       const marker = new maplibregl.Marker({ element, draggable: true, anchor: "center" })
         .setLngLat(point)
         .addTo(map);
@@ -1212,11 +1212,7 @@ export function MapView(props: Props) {
         const { lng, lat } = marker.getLngLat();
         callbacks.current.onMovePoint(index, [lng, lat]);
       });
-      element.addEventListener("click", (event) => {
-        // A click on a marker is not a click on the map: without this it
-        // would also add a via point under the marker.
-        event.stopPropagation();
-        if (!via || dragged) return;
+      const offerRemove = () => {
         // A via's click offers Remove beside it: a real button, so a finger
         // can use it as well as a mouse.
         // Where the focus goes back to on Escape: from a second via's click,
@@ -1241,34 +1237,35 @@ export function MapView(props: Props) {
           .setDOMContent(button)
           .addTo(map);
         button.focus();
+      };
+      element.addEventListener("click", (event) => {
+        // A click on a marker is not a click on the map: without this it
+        // would also add a via point under the marker.
+        event.stopPropagation();
+        if (!via || dragged) return;
+        offerRemove();
       });
       if (via) {
-        // Once only: Android can send both the held touch and its contextmenu.
-        let removed = false;
-        const removeNow = () => {
-          if (removed) return;
-          removed = true;
-          closePopup(true);
-          callbacks.current.onRemovePoint(index);
-        };
         // A double-click removes it at once, and is not the map's zoom.
         element.addEventListener("dblclick", (event) => {
           event.stopPropagation();
           event.preventDefault();
-          removeNow();
+          closePopup(true);
+          callbacks.current.onRemovePoint(index);
         });
-        // A right-click, or a long press (Stephen 2026-10-13), removes it at once too, and is not the
-        // road panel's. Android's long press arrives as a contextmenu; iOS sends none, so a held touch
-        // that has not moved is timed here (lib/viaHold.ts). Undo brings it back.
+        // A right-click, or a long press (Stephen 2026-10-13), offers Remove as a click does, and is not
+        // the road panel's: one more press removes it, so a finger that rested before a drag loses nothing.
+        // Android's long press arrives as a contextmenu; iOS sends none, so a held touch that has not moved
+        // is timed here (lib/viaHold.ts). Offering Remove twice (both on Android) shows it once.
         element.addEventListener("contextmenu", (event) => {
           event.stopPropagation();
           event.preventDefault();
           if (dragged) return;
           hold.cancel();
-          removeNow();
+          offerRemove();
         });
         const hold = new ViaHold(() => {
-          if (!dragged) removeNow();
+          if (!dragged) offerRemove();
         });
         element.addEventListener("touchstart", (event) => hold.start(event.touches), { passive: true });
         element.addEventListener("touchmove", (event) => hold.move(event.touches), { passive: true });

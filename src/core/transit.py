@@ -2033,8 +2033,12 @@ def with_ride(plan: Plan, seconds: float) -> Plan:
     return replace(plan, options=options, notes=plan.notes + notes)
 
 
-# The most router calls `drawn` makes for one trip's lines.
-MAX_DRAW_CALLS = 12
+# The most router calls `drawn` makes for one trip's lines, each one's cap, and the time they may
+# all take from when the trip is chosen: drawing changes no times, so it never holds an answer long
+# (review of #134: twelve 5 s calls could hold a ready answer for half a minute).
+MAX_DRAW_CALLS = 6
+DRAW_CALL_S = 1.5
+DRAW_BUDGET_S = 4.0
 _ON_FOOT = (WALK, TAKE)
 
 

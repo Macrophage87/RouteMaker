@@ -680,9 +680,6 @@ export function RouteSummary({
           </dl>
           {go.peek ? start : infoButton}
         </div>
-        {/* The elevation chart, open whenever the sheet is bigger than peek (Stephen 2026-10-13: "on Go, add an
-            elevation chart to the map as well, even if relatively flat"); its key and tables stay in Plan. */}
-        {!go.peek && profile && chartKind(route) !== "mass" && <ElevationChart route={route} profile={profile} onScrub={onScrub} compact />}
         {!go.peek && infoBody}
         {!go.peek && transitFold}
         {/* At peek the trip's panel is folded away, but an infrequent departure's countdown keeps
@@ -705,6 +702,10 @@ export function RouteSummary({
             {startHint}
           </div>
         )}
+        {/* The elevation chart, open whenever the sheet is bigger than peek (Stephen 2026-10-13: "on Go, add an
+            elevation chart to the map as well, even if relatively flat"), under Start so it never pushes Start
+            down; its key and tables stay in Plan. */}
+        {!go.peek && profile && chartKind(route) !== "mass" && <ElevationChart route={route} profile={profile} onScrub={onScrub} compact />}
         {!go.peek && (
           <div className="go-chips" role="group" aria-label="Route options">
             <button type="button" className="chip go-ride-chip" onClick={go.onRide} aria-describedby="go-ride-hint">
