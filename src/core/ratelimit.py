@@ -190,6 +190,11 @@ MY_GO_WRITES = Limit(scope="my-go", requests=60, window_s=3600)
 # /api/me/routes writes): the page saves settings a couple of seconds after a change settles,
 # and a rider saves, renames and deletes routes by hand, so 240 an hour is a cap on a script only.
 ACCOUNT_WRITES = Limit(scope="account", requests=240, window_s=3600)
+# A route shared with its exact line (POST /api/shared-routes, core.shared_routes; v0.7.0): one
+# per Share press, signed out or in, so 30 an hour per client is a cap on a script only. Opening
+# one (GET /api/shared-routes/{id}) is one per link opened: PLAN's 60 a minute.
+SHARED_ROUTE_WRITES = Limit(scope="shared-route", requests=30, window_s=3600)
+SHARED_ROUTE_READS = Limit(scope="shared-route-read", requests=60, window_s=60)
 # A kept line checked against the closures in force (POST /api/closures/check): asked when a
 # saved or shared route opens, on Start ride and before a download, so a few a minute at most.
 CLOSURE_CHECK = Limit(scope="closure-check", requests=30, window_s=60)

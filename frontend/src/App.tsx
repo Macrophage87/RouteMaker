@@ -125,7 +125,7 @@ import {
   type PanelView,
   type ViewCause,
 } from "./lib/sidebar.ts";
-import { canShareLink, shareContent, shareLink, shareSaidFor } from "./lib/share.ts";
+import { canShareLink, shareContent, shareLink, shareSaidFor, withGpxFile } from "./lib/share.ts";
 import type { ImportedPlan } from "./lib/gpxPlan.ts";
 import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, waterTitle, waterVisible, type WaterAlong, type WaterPoint, type WaterPrefs, type WaterStatus } from "./lib/waterRestrooms.ts";
 import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
@@ -200,7 +200,8 @@ import { OPENED_SAID, SAVED_SAID, SAVE_FAILED, UPDATE_ROUTE, defaultRouteName, d
 import { checkClosures, closedStretches, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
 import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./lib/gpxVerbatim.ts";
 import { readGpx } from "./lib/gpxImport.ts";
-import { downloadGpx } from "./GpxPanel.tsx";
+import { downloadGpx, routeGpxFile } from "./GpxPanel.tsx";
+import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, gpxShareFile, newSharedId, readShared, sharedBody, sharedIdFrom, storeShared, withSharedId } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { bypassFor, bypassPlanKey, bypassSaid, toggleBypass, type Bypass } from "./lib/closureMap.ts";
 import { RideGroup } from "./RideGroup.tsx";
@@ -258,6 +259,15 @@ const OPENING = openingMode({ tab: readTabMode(), planLink: PLAN_LINK, openIn: S
 const GO_START_RIDE = OPENING.mode === "go" && !PLAN_LINK && START_MY_GO.myGo.ride ? START_MY_GO.myGo.ride : null;
 // A spot link (`#at=lon,lat`, a rider suggestion's Discord post): the map opens there.
 const OPEN_AT = atFromHash(window.location.hash);
+// A shared route's link (v0.7.0, "share the identical route"; lib/sharedRoutes.ts): the exact line it names is
+// read before the link's first plan is answered, so the line opens unchanged rather than planned again.
+const SHARED_ID = sharedIdFrom(window.location.hash);
+let sharedArrived: () => void = () => {};
+const SHARED_WAIT: Promise<void> | null = SHARED_ID
+  ? new Promise<void>((resolve) => {
+      sharedArrived = resolve;
+    })
+  : null;
 
 /** The points notice for a point outside the map, from a click, a station, or the rider's location. */
 /** During a ride the map takes no edits and shows no plan pins (plan Q2: the plan stays as started). */
@@ -445,8 +455,8 @@ export function App() {
   useEffect(() => {
     if (waterOn) ensureRepair();
   }, [waterOn, ensureRepair]);
-  // Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): shown in the bikeshare ride types, one
-  // switch per service in Layers (Capital Bikeshare on by default), the choices kept on this device.
+  // Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): shown in the bikeshare ride types, with
+  // Capital Bikeshare's switch in Layers (on by default), the choice kept on this device.
   const docksActive = usesBikeshare(preset) || preset === "bikeshare-transit";
   const [docksOperators, setDocksOperators] = useState<OperatorInfo[]>(() => [...KNOWN_OPERATORS]);
   const [docksChoices, setDocksChoices] = useState<Record<string, boolean>>(() => readOperatorChoices());
@@ -725,6 +735,8 @@ export function App() {
   if (scheduler.current === null) {
     scheduler.current = new RouteScheduler<Plan>({
       send: async (plan) => {
+        // A shared route's link: its line first (openSaved sets savedShown), then this plan.
+        if (SHARED_WAIT) await SHARED_WAIT;
         const saved = savedShown.current;
         if (saved && saved.key === keptPlanKey(plan.points, plan.preset, plan.dials)) {
           keptShown.current = null;
@@ -2147,13 +2159,32 @@ export function App() {
       if (press === linkPresses.current) setLinkSpoken(linkSpokenFor(done, note));
     }, 150);
   };
-  // "Share": the same link as Copy link, to the phone's share sheet. The location line describes the button,
+  // "Share": Copy link's link, to the phone's share sheet. The location line describes the button,
   // so it is read before the sheet opens. Nothing is said when the sheet opened or the rider closed it;
   // a failure is said, offering Copy link. It shares the said lines with Copy link, so the last press speaks.
   // A press while the sheet is open is skipped. shareLink is called before any await, so the press's user
   // activation still holds. The distance is the route shown, so it is left out while a re-plan is pending
   // (the link carries the current points).
+  // v0.7.0, "share the identical route" (lib/sharedRoutes.ts): with the route settled, the link also names the
+  // exact line shown, sent to the server as the sheet opens, and the sheet carries the GPX file Download GPX
+  // would save where the browser can share files. A route shared again keeps its first id. A line too big to
+  // keep, or one that could not be sent, leaves the link with the inputs only, said in one line.
   const sharing = useRef(false);
+  const sharedLine = useRef<{ of: unknown; id: string; kept: Promise<boolean> } | null>(null);
+  const shareExact = () => {
+    const verbatim = imported?.verbatim;
+    if (verbatim && !importEdited) {
+      const name = fileName();
+      return {
+        of: verbatim,
+        save: gpxSave(name, verbatim.text ?? trackGpx(name, verbatim.track), verbatim.track, points, preset, dials),
+        file: verbatimDownload(verbatim, importEdited, imported?.name),
+      };
+    }
+    if (!shown || stale || routedPoints !== points) return null;
+    const name = defaultRouteName(routedPoints[0] && namer.name(routedPoints[0])?.name, routedPoints.length > 1 ? namer.name(routedPoints[routedPoints.length - 1])?.name : null);
+    return { of: shown, save: planSave(name, shown, routedPoints, preset, dials), file: routeGpxFile(shown, routedPoints, routedLoop, federalRoute) };
+  };
   const shareRoute = async () => {
     if (!shown || sharing.current) return;
     sharing.current = true;
@@ -2161,11 +2192,32 @@ export function App() {
     setLinkSaid("");
     setLinkSpoken("");
     const distanceM = !stale && routedPoints === points ? shown.distance_m : null;
-    const content = shareContent(linkToCopy(window.location, points, preset, dials, viaIndices(points, VIA_MARKS.isVia)), distanceM, presetSaid(preset));
+    let link = linkToCopy(window.location, points, preset, dials, viaIndices(points, VIA_MARKS.isVia));
+    const exact = shareExact();
+    let kept: Promise<boolean> | null = null;
+    if (exact) {
+      const before = sharedLine.current?.of === exact.of ? sharedLine.current : null;
+      const id = before?.id ?? newSharedId();
+      const body = before ? null : sharedBody(id, exact.save);
+      if (before || body) {
+        link = withSharedId(link, id);
+        kept = before?.kept ?? storeShared(origin, body!.json);
+        if (!before) sharedLine.current = { of: exact.of, id, kept };
+      } else kept = Promise.resolve(false);
+    }
+    const file = exact?.file ? gpxShareFile(exact.file.text, exact.file.fileName) : null;
+    const content = withGpxFile(navigator, shareContent(link, distanceM, presetSaid(preset)), file);
     const outcome = shareLink(navigator, content);
     let said: string;
     try {
-      said = shareSaidFor(await outcome);
+      const done = await outcome;
+      said = shareSaidFor(done);
+      // The line not kept: the link plans again when opened. Said unless the sheet failed (that line says more),
+      // and the next press tries again with a new id.
+      if (kept && !(await kept)) {
+        if (sharedLine.current?.kept === kept) sharedLine.current = null;
+        if (done !== "failed" && done !== "cancelled") said = SHARED_INPUTS_ONLY;
+      }
     } finally {
       sharing.current = false;
     }
@@ -2415,8 +2467,9 @@ export function App() {
     if (!imported) void checkThen("open", route.geometry.coordinates, false, () => {});
   }, [route]);
   // My routes: open as saved (the line unchanged), or export.
-  const openSaved = (saved: SavedRoute) => {
+  const openSaved = (saved: Pick<SavedRoute, "name" | "source" | "distance_m" | "line" | "inputs" | "answer" | "gpx">, said = OPENED_SAID(saved.name)) => {
     showPlanner(true);
+    setSharedNote(null);
     setSavedNote(null);
     if (saved.source === "gpx" && saved.gpx) {
       void readGpx(new Blob([saved.gpx])).then((outcome) => {
@@ -2425,7 +2478,7 @@ export function App() {
           return;
         }
         openImportedChecked({ ...outcome.plan, name: saved.name });
-        announce(OPENED_SAID(saved.name));
+        announce(said);
       });
       return;
     }
@@ -2435,7 +2488,7 @@ export function App() {
     savedShown.current = answer ? { key, answer } : null;
     if (window.location.hash !== saved.inputs.hash) window.location.hash = saved.inputs.hash;
     else retry();
-    announce(OPENED_SAID(saved.name));
+    announce(said);
     void checkThen("open", saved.line, false, () => {});
     // Today's map, asked quietly: more than 5% apart in distance offers Update route; nothing changes without it.
     void requestRoute(plan.points, plan.preset, { dials: plan.dials }).then((today) => {
@@ -2454,8 +2507,33 @@ export function App() {
     setSavedNote(null);
     retry();
   };
-  const savedNoteShown =
-    savedNote && savedNote.key === routedKey.current ? (
+  // A shared route's link (lib/sharedRoutes.ts): its exact line opens as a saved route does (the closure check,
+  // Update route); a line no longer kept leaves the link's inputs planned again, said in one line.
+  const [sharedNote, setSharedNote] = useState<string | null>(null);
+  // The "planned again" line is about the plan the link named: a change to the plan clears it.
+  useEffect(() => setSharedNote(null), [points, preset, dials]);
+  useEffect(() => {
+    if (!SHARED_ID) return;
+    let live = true;
+    void readShared(origin, SHARED_ID).then((shared) => {
+      if (!live) return;
+      if (shared) {
+        // The open's own check stands for the link's first-answer check.
+        checkFirstAnswer.current = false;
+        openSaved(shared, SHARED_OPENED(shared.name));
+      } else {
+        setSharedNote(SHARED_GONE);
+        announce(SHARED_GONE);
+      }
+      sharedArrived();
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const savedNoteShown = sharedNote ? (
+    <p className="notice saved-note">{sharedNote}</p>
+  ) : savedNote && savedNote.key === routedKey.current ? (
       <p className="notice saved-note">
         {differenceLine(savedNote.savedM, savedNote.todayM)}{" "}
         <button type="button" className="link" onClick={updateSaved}>

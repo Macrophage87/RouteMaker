@@ -197,6 +197,7 @@ declining every week with "grow the volume" as the only remedy.
 | `scheduled_run` rows | 30 days, plus the newest row and the newest successful row per task | `core.runs.prune_run_rows`, run nightly |
 | Finished `procrastinate_jobs` and their events | 30 days | `core.runs.prune_job_rows`, run nightly |
 | `rate_limit_window` rows (keyed client addresses) | 1 day idle, so at most about 30 hours | `core.ratelimit.purge_expired`, run by the six-hourly membership sweep |
+| `shared_route` rows (the exact lines Share links open) | 1 year after the link was last opened | `core.api` deletes the expired at every share and every open |
 
 Three rules are load-bearing rather than incidental:
 
@@ -1925,6 +1926,33 @@ the beta's data shipment). The address itself is never stored.
 `SUGGEST_SIGNED_OUT_MIN_AGREE` (default 1, every send shows) hides a road's signed-out sends
 until that many agree. The owner reviews each send for now; raise it to 2 when volume grows.
 The migration is `0021_signed_out_suggestions`.
+
+### Shared routes (v0.7.0)
+
+The owner, 2026-10-15 23:19 UTC: "The ability to share a gpx identical route should be in too?"
+**Share** (the existing button) now also keeps the exact line shown, verbatim like a saved route
+or an opened GPX file: its points in order, elevations, stops, and a planned route's answer, or an
+opened file's own text (`core/shared_routes.py`, table `shared_route`). The link carries the line's
+id beside the plan's inputs (`#p=...&preset=...&route=<id>`), and opening it shows that line
+unchanged; the closure check runs on opening and on Start ride, with the same dialog as a saved
+route ("Reroute around them"), and "Update route" plans the inputs again with today's map. On a
+phone whose share sheet takes files, the GPX file Download GPX would give goes with the link.
+
+- **The id** is 128 random bits (32 hex characters) the sharer's browser makes, so the share sheet
+  opens inside the press; the line is sent at the same time (POST `/api/shared-routes`) and stored
+  once (a taken id is 409). Unguessable: there is no list of shared routes.
+- **Signed out or in.** Nothing names the sharer: no account, no address, no position, and no
+  weight (OWNER-DECISIONS 313: a planned answer's `system_weight_kg` and the effort figure weighed
+  with it are taken out). Counted per client (`SHARED_ROUTE_WRITES`, 30 an hour; opening,
+  `SHARED_ROUTE_READS`, 60 a minute).
+- **At most 2 MB** a route. A bigger one (a long GPX file), or one that cannot be stored, is
+  shared as the plan's inputs only, and the page says so in one line; such a link, or one whose
+  line has gone, plans the route again as links always did, and says so.
+- **Kept a year after it was last opened**, then deleted at the next share or open. In the nightly
+  backups (a restored database keeps shared links working); never in the beta's data shipment
+  (`scripts/beta/ship-data.sh`).
+
+The migration is `0022_shared_route` (one new table; nothing else changed).
 
 ## Mass Ride hazards (FOLLOWUP-MASSRIDE-MAP part 3, OWNER-DECISIONS 325-327)
 

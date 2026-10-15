@@ -2658,7 +2658,7 @@ def bikeshare_stations(request, body: NearbyStationsIn, response: HttpResponse):
 
 # --- Bikeshare docks and free e-bikes on the map (v0.7.0; core.micromobility) ----------------
 #
-# GET /api/bikeshare/docks?bbox=west,south,east,north&operators=cabi,lime answers the docks and
+# GET /api/bikeshare/docks?bbox=west,south,east,north&operators=cabi answers the docks and
 # free e-bikes in the rider's map view, from each operator's one shared live copy. The view is
 # bounded and the counts capped (core.micromobility), nothing is kept, and an operator whose
 # licence is not recorded is never contacted: it is listed, with `licensed` false, and nothing
@@ -2673,7 +2673,7 @@ class DocksIn(Schema):
     operators: str = Field(
         default="cabi",
         max_length=120,
-        description="Comma-separated operator ids to show (cabi, lime, veo). Default cabi.",
+        description="Comma-separated operator ids to show (cabi, the only one). Default cabi.",
     )
 
 
@@ -4739,6 +4739,107 @@ def saved_route_delete(request, route_id: int):
         return _stress_error(404, "That saved route is not in your account.", code="not_found")
     row.delete()
     return _private(JsonResponse({"deleted": route_id}))
+
+
+# Shared routes (v0.7.0, "share the identical route"; core.shared_routes, core.models.SharedRoute):
+# the Share button keeps the exact line under a 128-bit id the page made, and the link it shares
+# opens that line unchanged. Signed out or in; nothing of the sharer is kept. Kept a year after
+# it was last opened; the expired go at every share and open.
+
+
+def _shared_out(row) -> dict:
+    return {
+        "id": row.pk,
+        "name": row.name,
+        "source": row.source,
+        "distance_m": row.distance_m,
+        "line": row.line,
+        "inputs": row.inputs,
+        "answer": row.answer,
+        "gpx": row.gpx,
+        "created_at": row.created_at.isoformat(),
+    }
+
+
+def _purge_shared(now) -> None:
+    from . import shared_routes
+    from .models import SharedRoute
+
+    SharedRoute.objects.filter(last_opened_at__lt=now - shared_routes.KEEP).delete()
+
+
+@api.post("/shared-routes", summary="Keep a shared route's exact line under the link's id")
+@decorate_view(
+    same_site_only,
+    ratelimit.rate_limited(ratelimit.SHARED_ROUTE_WRITES),
+    errors_as_json,
+)
+def shared_route_add(request):
+    from django.db import IntegrityError, transaction
+    from django.utils import timezone
+
+    from . import shared_routes
+    from .models import SharedRoute
+
+    body, refusal = _json_body(request, shared_routes.MAX_BYTES)
+    if refusal is not None:
+        return refusal
+    problem = shared_routes.body_problem(body)
+    if problem:
+        return _stress_error(400, problem[0], field=problem[1])
+    now = timezone.now()
+    _purge_shared(now)
+    answer = body.get("answer")
+    try:
+        with transaction.atomic():
+            row = SharedRoute.objects.create(
+                id=body["id"],
+                name=(body.get("name") or "").strip() or shared_routes.DEFAULT_NAME,
+                source=body.get("source", "plan"),
+                line=body["line"],
+                distance_m=float(body["distance_m"]),
+                inputs=body.get("inputs", {}),
+                answer=shared_routes.public_answer(answer) if answer is not None else None,
+                gpx=body.get("gpx", "") or "",
+                created_at=now,
+                last_opened_at=now,
+            )
+    except IntegrityError:
+        # Ids are 128 random bits: a taken one is a resend, never another rider's to replace.
+        return _stress_error(409, "That link's route is already kept.", code="taken")
+    response = JsonResponse({"id": row.pk}, status=201)
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@api.get("/shared-routes/{route_id}", summary="A shared route's exact line, as it was shared")
+@decorate_view(
+    same_site_only,
+    ratelimit.rate_limited(ratelimit.SHARED_ROUTE_READS),
+    errors_as_json,
+)
+def shared_route_read(request, route_id: str):
+    from django.utils import timezone
+
+    from . import shared_routes
+    from .models import SharedRoute
+
+    gone = _stress_error(
+        404, "That shared route is no longer kept; its link plans it again.", code="not_found"
+    )
+    if not shared_routes.id_ok(route_id):
+        return gone
+    row = SharedRoute.objects.filter(pk=route_id).first()
+    now = timezone.now()
+    if row is None or row.last_opened_at < now - shared_routes.KEEP:
+        _purge_shared(now)
+        return gone
+    # Kept a year from the last open; written at most once a day.
+    if row.last_opened_at < now - shared_routes.TOUCH_EVERY:
+        SharedRoute.objects.filter(pk=row.pk).update(last_opened_at=now)
+    response = JsonResponse(_shared_out(row))
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 # The closures a kept line runs along now (v0.7.0 plan, "GPX export as close to identical as

@@ -315,18 +315,21 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   its undocumented map endpoints and its points values (OWNER-DECISIONS 451).
 - Records: docs/OPERATIONS.md, "Bikeshare feeds"; docs/DEVELOPMENT.md, "Bikeshare".
 
-## Other bikeshare and e-bike operators (not shown until each licence is recorded)
+## Other bikeshare and e-bike operators (left out)
 
-The map's bikeshare section has a switch for each dockless e-bike operator in DDOT's and the
-counties' permit programs (`core.micromobility.OPERATORS`: Lime, Veo), off and unavailable. No
-operator's feed is fetched or shown until its public GBFS feed and its licence or terms have been
-read, the owner has confirmed them (as for Capital Bikeshare), and a section for it is added here
-with its Credit, Dataset and Licence lines; then `licensed` is set in `core.micromobility`
-(tests/test_micromobility.py holds every licensed operator to its section here). A feed whose
-terms do not allow display stays out. Routing uses Capital Bikeshare only.
+Capital Bikeshare is the only service on the map and the only one routing uses
+(`core.micromobility.OPERATORS`). The dockless e-bike operators in DDOT's and the counties' permit
+programs were left out because neither has usable terms (the owner, 2026-10-15):
 
-- Lime: feed URL and licence not yet read or confirmed.
-- Veo: feed URL and licence not yet read or confirmed.
+- Lime: its feed is internal-only; there is no public feed with terms to use.
+- Veo: it publishes no data terms.
+
+Neither is listed, fetched or shown, and the Layers sheet has no switch for either. Another
+operator is added only once its public GBFS feed and its licence or terms have been read, the owner
+has confirmed them (as for Capital Bikeshare), and a section for it is added here with its Credit,
+Dataset and Licence lines; then it is listed with `licensed` set in `core.micromobility`
+(tests/test_micromobility.py holds every licensed operator to its section here). A feed whose terms
+do not allow display stays out.
 
 ## Work zones (WZDx: Maryland DOT SHA and VDOT)
 
