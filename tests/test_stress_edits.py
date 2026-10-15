@@ -796,19 +796,30 @@ class TestMe:
             "signed_in": False,
             "can_change_lts": False,
             "can_suggest": False,
+            "sign_in": True,
         }
         assert r["Cache-Control"] == "no-store" and "csrftoken" not in r.cookies
 
     def test_a_signed_in_non_admin_is_signed_in_and_nothing_more(self, live) -> None:
         client = sign_in(Client(), make_user(admin=False))
         r = client.get(ME, **addr())
-        assert r.json() == {"signed_in": True, "can_change_lts": False, "can_suggest": False}
+        assert r.json() == {
+            "signed_in": True,
+            "can_change_lts": False,
+            "can_suggest": False,
+            "sign_in": True,
+        }
         assert "csrftoken" not in r.cookies
 
     def test_an_admin_may_and_gets_the_csrf_cookie(self, live) -> None:
         client = sign_in(Client(), make_user())
         r = client.get(ME, **addr())
-        assert r.json() == {"signed_in": True, "can_change_lts": True, "can_suggest": False}
+        assert r.json() == {
+            "signed_in": True,
+            "can_change_lts": True,
+            "can_suggest": False,
+            "sign_in": True,
+        }
         assert "csrftoken" in r.cookies
 
     def test_a_banned_admin_is_signed_out_and_may_not(self, live) -> None:
@@ -827,6 +838,7 @@ class TestMe:
             "signed_in",
             "can_change_lts",
             "can_suggest",
+            "sign_in",
         }
 
     def test_a_foreign_page_is_refused(self, client) -> None:

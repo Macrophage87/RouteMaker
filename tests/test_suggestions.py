@@ -142,7 +142,12 @@ class TestWhoMaySuggest:
         open_to("signed_in")
         client = sign_in(Client(), make_user(admin=False))
         r = client.get(ME, **addr())
-        assert r.json() == {"signed_in": True, "can_change_lts": False, "can_suggest": True}
+        assert r.json() == {
+            "signed_in": True,
+            "can_change_lts": False,
+            "can_suggest": True,
+            "sign_in": True,
+        }
         assert "csrftoken" in r.cookies
 
 
