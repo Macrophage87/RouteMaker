@@ -5404,3 +5404,58 @@ details.fold > summary .icon {
 .home-offer p {
   margin: 0 0 8px;
 }
+
+/* Closures on the map (v0.7.0, lib/closureMap.ts): button markers, above the route, ringed when focused. */
+.closure-marker {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  line-height: 0;
+  z-index: 3;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+}
+.closure-marker.closure-bypassed {
+  width: 18px;
+  height: 18px;
+}
+.closure-marker.closure-park {
+  width: 26px;
+  height: 26px;
+}
+.closure-marker:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+.closure-popup .maplibregl-popup-content {
+  border-left: 4px solid #c62828;
+}
+.closure-popup .maplibregl-popup-close-button {
+  color: var(--text);
+}
+.closure-card p {
+  margin: 4px 0 0;
+}
+.closure-card-effect {
+  font-weight: 700;
+}
+.closure-card-action {
+  margin-top: 8px;
+}
+.closure-notices-heading {
+  font-size: 1rem;
+  margin: 12px 0 4px;
+}
+@media (forced-colors: active) {
+  .closure-marker {
+    forced-color-adjust: none;
+  }
+  .closure-marker:focus-visible {
+    outline: 3px solid CanvasText;
+    box-shadow: 0 0 0 2px Canvas;
+  }
+}

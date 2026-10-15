@@ -130,6 +130,20 @@ import {
 import { avoidItems, avoidMarkerName } from "./lib/avoidJunctions.ts";
 import type { LetteredPlace } from "./lib/letteredPlaces.ts";
 import { avoidMarkerSvg } from "./lib/avoidIcon.ts";
+import {
+  CLOSED_RED,
+  CLOSURE_CARD_CLOSE,
+  LANE_AMBER,
+  closureCard,
+  closureFeatures,
+  closureMarkerName,
+  closuresOf,
+  noticeCard,
+  noticeMarkerName,
+  parkNoticesOf,
+  type ClosureCard,
+  type ClosureItem,
+} from "./lib/closureMap.ts";
 
 export type StressAvailability = "checking" | "available" | "unavailable";
 
@@ -256,6 +270,8 @@ interface Props {
   lettered?: readonly LetteredPlace[] | null;
   /** A lettered marker pressed: its index in the list. */
   onLettered?: (index: number) => void;
+  /** A closure card's "Route through anyway" (true) or Undo (false), for this plan (lib/closureMap.ts). */
+  onClosureBypass?: (item: ClosureItem, on: boolean) => void;
 }
 
 // One protocol for the page. MapLibre 4+ runs a custom protocol's handler on
@@ -281,6 +297,8 @@ const ROUTE_STRESS_SOURCE = ROUTE_STRESS_SOURCE_ID;
 /** The handle and the dashed preview of a drag of the line. */
 const EDIT_SOURCE = "route-edit";
 const ACCURACY_SOURCE = "location-accuracy";
+/** The closures in force at the ride (v0.7.0, lib/closureMap.ts). */
+const CLOSURE_SOURCE = "closures";
 // Bikeshare's walk legs (lib/bikeshare.ts): dotted, with the operator's source citation as the
 // source's attribution, so the attribution control shows it exactly while a bikeshare plan's
 // layer is visible and never otherwise (OWNER-DECISIONS 301).
@@ -989,6 +1007,33 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": ROUTE_BLUE, "line-width": ROUTE_LINE_WIDTH },
       });
+      // Closures in force at the ride (v0.7.0, lib/closureMap.ts): over the route, so a closed stretch on it shows.
+      // A white casing, then red (closed) or amber (bike lane blocked); dashed where it "may still apply". Their
+      // markers (buttons) carry the names and open the cards.
+      map.addSource(CLOSURE_SOURCE, { type: "geojson", data: closureFeatures(closuresOf(callbacks.current.route)) });
+      map.addLayer({
+        id: "closure-casing",
+        type: "line",
+        source: CLOSURE_SOURCE,
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": "#ffffff", "line-width": 9 },
+      });
+      map.addLayer({
+        id: "closure-line",
+        type: "line",
+        source: CLOSURE_SOURCE,
+        filter: ["==", ["get", "maybe"], 0],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": ["match", ["get", "severity"], "amber", LANE_AMBER, CLOSED_RED], "line-width": 5 },
+      });
+      map.addLayer({
+        id: "closure-line-maybe",
+        type: "line",
+        source: CLOSURE_SOURCE,
+        filter: ["==", ["get", "maybe"], 1],
+        layout: { "line-join": "round", "line-cap": "butt" },
+        paint: { "line-color": ["match", ["get", "severity"], "amber", LANE_AMBER, CLOSED_RED], "line-width": 5, "line-dasharray": [2, 1.2] },
+      });
       // Under the route (before its casing), so the circle's tint never covers the line.
       map.addSource(ACCURACY_SOURCE, { type: "geojson", data: accuracyData(callbacks.current.accuracy) });
       map.addLayer({
@@ -1519,6 +1564,71 @@ export function MapView(props: Props) {
     });
   }, [props.route, props.stale]);
 
+  // Closures on the map (v0.7.0, lib/closureMap.ts): in Go and Plan, every ride type, no layer switch. Each closure a
+  // button marker (a barrier for a closed stretch, amber for a blocked bike lane, a small mark on the line for one the
+  // rider routes through), each NPS alert a park marker; Tab reaches them, and their names say what each is. A press,
+  // Enter or Space opens the card, which takes the focus and gives it back on close; Escape closes it.
+  const closureMarkers = useRef<Marker[]>([]);
+  const closurePopup = useRef<Popup | null>(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    closurePopup.current?.remove();
+    closurePopup.current = null;
+    closureMarkers.current.forEach((marker) => marker.remove());
+    closureMarkers.current = [];
+    if (!map) return;
+    const items = props.route && !props.stale ? closuresOf(props.route) : [];
+    const source = map.getSource(CLOSURE_SOURCE) as GeoJSONSource | undefined;
+    source?.setData(closureFeatures(items));
+    const open = (opener: HTMLButtonElement, at: LonLat, card: ClosureCard, item: ClosureItem | null) => {
+      closurePopup.current?.remove();
+      const popup = showClosureCard(map, at, card, (bypass) => {
+        popup.remove();
+        if (item) callbacks.current.onClosureBypass?.(item, bypass);
+      });
+      closurePopup.current = popup;
+      popup.on("close", () => {
+        if (closurePopup.current === popup) closurePopup.current = null;
+        const active = document.activeElement;
+        if (opener.isConnected && (!active || active === document.body || popup.getElement().contains(active))) opener.focus();
+      });
+    };
+    const button = (className: string, name: string, svg: string) => {
+      const element = document.createElement("button");
+      element.type = "button";
+      element.className = className;
+      element.setAttribute("aria-label", name);
+      element.setAttribute("aria-haspopup", "dialog");
+      element.innerHTML = svg;
+      element.addEventListener("dblclick", (event) => event.stopPropagation());
+      return element;
+    };
+    for (const item of items) {
+      const element = button(
+        `closure-marker closure-${item.bypassed ? "bypassed" : item.severity}`,
+        closureMarkerName(item),
+        item.bypassed ? bypassedMarkSvg() : barrierSvg(item.severity),
+      );
+      element.addEventListener("click", (event) => {
+        // A click on a marker is not a click on the map: it must not add a point.
+        event.stopPropagation();
+        open(element, item.point, closureCard(item), item);
+      });
+      closureMarkers.current.push(new maplibregl.Marker({ element, anchor: "center" }).setLngLat(item.point).addTo(map));
+    }
+    const parks = props.route && !props.stale ? parkNoticesOf(props.route) : [];
+    for (const notice of parks) {
+      if (!notice.point) continue;
+      const point = notice.point;
+      const element = button("closure-marker closure-park", noticeMarkerName(notice), parkNoticeSvg());
+      element.addEventListener("click", (event) => {
+        event.stopPropagation();
+        open(element, point, noticeCard(notice), null);
+      });
+      closureMarkers.current.push(new maplibregl.Marker({ element, anchor: "center" }).setLngLat(point).addTo(map));
+    }
+  }, [props.route, props.stale]);
+
   // The lettered places (the owner, 2026-10-11 21:04 UTC): each a real button in a pin, its letter on it and its
   // name the letter, the place and how far; a press picks it as the list's row would.
   const letteredMarkers = useRef<Marker[]>([]);
@@ -1781,6 +1891,101 @@ function showJunctionCard(map: MapLibreMap, item: JunctionItem, takeFocus: boole
   close?.setAttribute("aria-label", CARD_CLOSE_LABEL);
   if (takeFocus) close?.focus();
   return card;
+}
+
+/**
+ * A closure's card (v0.7.0, lib/closureMap.ts closureCard): what is closed, the source named and linked, when it
+ * applies, the delay on this route, and "Route through anyway" or Undo. A dialog named for the closure; its close
+ * button takes the focus, and Escape closes it.
+ */
+function showClosureCard(map: MapLibreMap, at: LonLat, card: ClosureCard, onAction: (bypass: boolean) => void): Popup {
+  const body = document.createElement("div");
+  body.className = "closure-card";
+  const heading = document.createElement("strong");
+  heading.textContent = card.heading;
+  const what = document.createElement("p");
+  what.textContent = card.what;
+  const source = document.createElement("p");
+  source.className = "closure-card-source";
+  if (card.source.url) {
+    const link = document.createElement("a");
+    link.href = card.source.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = card.source.name;
+    source.append(link);
+  } else {
+    source.textContent = card.source.name;
+  }
+  const when = document.createElement("p");
+  when.textContent = card.when;
+  const effect = document.createElement("p");
+  effect.className = "closure-card-effect";
+  effect.textContent = card.effect;
+  body.append(heading, what, source, when, effect);
+  if (card.action) {
+    const action = card.action;
+    const press = document.createElement("button");
+    press.type = "button";
+    press.className = "secondary closure-card-action";
+    press.textContent = action.label;
+    press.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onAction(action.bypass);
+    });
+    body.append(press);
+  }
+  const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, focusAfterOpen: false, offset: 16, className: "closure-popup" })
+    .setLngLat(at)
+    .setDOMContent(body)
+    .addTo(map);
+  const element = popup.getElement();
+  element.setAttribute("role", "dialog");
+  element.setAttribute("aria-label", `${card.heading}: ${card.what}`);
+  element.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      popup.remove();
+    }
+  });
+  const close = element.querySelector<HTMLButtonElement>(".maplibregl-popup-close-button");
+  close?.setAttribute("aria-label", CLOSURE_CARD_CLOSE);
+  close?.focus();
+  return popup;
+}
+
+/** A road barrier: a striped board on two legs, red for a closure, amber for a blocked bike lane. */
+function barrierSvg(severity: "red" | "amber"): string {
+  const colour = severity === "amber" ? LANE_AMBER : CLOSED_RED;
+  return (
+    '<svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true" focusable="false">' +
+    `<circle cx="14" cy="14" r="13" fill="#ffffff" stroke="${colour}" stroke-width="2"/>` +
+    `<rect x="5" y="9" width="18" height="7" rx="1" fill="${colour}"/>` +
+    '<path d="M8 9l-3 7M13 9l-3 7M18 9l-3 7M23 9l-3 7" stroke="#ffffff" stroke-width="2"/>' +
+    `<path d="M8 16v6M20 16v6" stroke="${colour}" stroke-width="2"/>` +
+    "</svg>"
+  );
+}
+
+/** A closure the rider routes through: a small ringed bar on the line. */
+function bypassedMarkSvg(): string {
+  return (
+    '<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" focusable="false">' +
+    `<circle cx="9" cy="9" r="8" fill="#ffffff" stroke="${CLOSED_RED}" stroke-width="2"/>` +
+    `<rect x="4" y="7.5" width="10" height="3" fill="${CLOSED_RED}"/>` +
+    "</svg>"
+  );
+}
+
+/** A park's "check before you go": an exclamation mark on a dark green disc. */
+function parkNoticeSvg(): string {
+  return (
+    '<svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true" focusable="false">' +
+    '<circle cx="13" cy="13" r="12" fill="#1b5e20" stroke="#ffffff" stroke-width="2"/>' +
+    '<path d="M13 6v9" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>' +
+    '<circle cx="13" cy="19.5" r="1.8" fill="#ffffff"/>' +
+    "</svg>"
+  );
 }
 
 /** A wheel: a plain circle with spokes, no operator's mark. */

@@ -7,12 +7,15 @@
  * Escape is Cancel; on close the focus goes back where it was.
  */
 import { useEffect, useId, useRef } from "react";
+import type { ClosureNotice } from "./lib/closureMap.ts";
 import { CANCEL_LABEL, REROUTE_LABEL, anywayLabel, closureHeading, closureLead, type CheckFor, type Closure } from "./lib/closureCheck.ts";
 
 export interface ClosureAsk {
   why: CheckFor;
   closures: Closure[];
   unchecked: string | null;
+  /** v0.7.0: "Check before you go" (NPS park alerts, advisories that could not be placed), shown under the list. */
+  notices?: ClosureNotice[];
 }
 
 export function ClosureDialog({ ask, onReroute, onAnyway, onCancel }: { ask: ClosureAsk | null; onReroute: () => void; onAnyway: () => void; onCancel: () => void }) {
@@ -54,9 +57,45 @@ export function ClosureDialog({ ask, onReroute, onAnyway, onCancel }: { ask: Clo
             <p>{closureLead(ask.why)}</p>
             <ul role="list" className="closure-list">
               {ask.closures.map((c) => (
-                <li key={c.id}>{c.text}</li>
+                <li key={c.id}>
+                  {c.text}
+                  {/* v0.7.0: the DC sources' closures name their source, linked, as the map's card does. */}
+                  {c.source_name && (
+                    <>
+                      {" "}
+                      {c.url ? (
+                        <a href={c.url} target="_blank" rel="noopener noreferrer">
+                          Source: {c.source_name}
+                        </a>
+                      ) : (
+                        <>Source: {c.source_name}</>
+                      )}
+                      .
+                    </>
+                  )}
+                </li>
               ))}
             </ul>
+            {ask.notices && ask.notices.length > 0 && (
+              <>
+                <h3 className="closure-notices-heading">Check before you go</h3>
+                <ul role="list" className="closure-list">
+                  {ask.notices.map((n) => (
+                    <li key={n.id}>
+                      {n.area_name ? `${n.area_name}: ` : ""}
+                      {n.title}.{" "}
+                      {n.url ? (
+                        <a href={n.url} target="_blank" rel="noopener noreferrer">
+                          {n.source_name}
+                        </a>
+                      ) : (
+                        n.source_name
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
             {ask.unchecked && <p className="hint">{ask.unchecked}</p>}
           </div>
           <div className="closure-choices">

@@ -157,6 +157,7 @@ import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./li
 import { readGpx } from "./lib/gpxImport.ts";
 import { downloadGpx } from "./GpxPanel.tsx";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
+import { bypassFor, bypassPlanKey, bypassSaid, toggleBypass, type Bypass } from "./lib/closureMap.ts";
 import { RideGroup } from "./RideGroup.tsx";
 import { SaveRoute } from "./SaveRoute.tsx";
 import { SAVE_ROUTE } from "./lib/savedRoutes.ts";
@@ -236,10 +237,17 @@ export function App() {
   // start or end, or another ride type, starts from the quickest again. Request only, never the link.
   const [transitPick, setTransitPick] = useState<TransitPick | null>(null);
   const trip = optionsKey(points, preset);
-  const planDials = useMemo(
-    () => withTransitOption(withStations(withWeight(routeDials, weight), stationChoice), preset, transitPick, trip),
-    [routeKey, weight, stationChoice, preset, transitPick, trip],
-  );
+  // "Route through anyway" (v0.7.0, lib/closureMap.ts): the closures the rider chose to route through, for this plan
+  // (its start and end) only; request only, never the link. Undo takes one back out.
+  const [closureBypass, setClosureBypass] = useState<Bypass | null>(null);
+  const bypassPlan = bypassPlanKey(points);
+  const bypassIds = bypassFor(closureBypass, bypassPlan);
+  const bypassKey = bypassIds.join(",");
+  const planDials = useMemo(() => {
+    const made = withTransitOption(withStations(withWeight(routeDials, weight), stationChoice), preset, transitPick, trip);
+    return bypassIds.length ? { ...made, closureBypass: bypassIds } : made;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the ids' text, not the array
+  }, [routeKey, weight, stationChoice, preset, transitPick, trip, bypassKey]);
   // "Make it a loop" chosen (OWNER-DECISIONS 374): the first point is the start and finish, every later one a stop.
   const loopVias = loopStops(preset, dials.loop);
   // What the planner answered, and which of its routes to choose from is shown
@@ -1922,13 +1930,14 @@ export function App() {
       proceed();
       return;
     }
-    const found = await checkClosures(origin, line);
+    // At the plan's ride time (its When), with the closures it routes through anyway (v0.7.0).
+    const found = await checkClosures(origin, line, fetch, { when: planDials.when, bypass: planDials.closureBypass });
     if (!found || found.closures.length === 0) {
       proceed();
       return;
     }
     closurePending.current = { line: line.map((v) => [...v]), index: found.index, closures: found.closures, gpx, proceed, afterGpx };
-    setClosureAsk({ why, closures: found.closures, unchecked: found.unchecked });
+    setClosureAsk({ why, closures: found.closures, unchecked: found.unchecked, notices: found.notices });
   };
   const closureAnyway = () => {
     const pending = closurePending.current;
@@ -2640,6 +2649,10 @@ export function App() {
         scrubPoint={scrubPoint}
         lettered={riding ? null : lettered}
         onLettered={pickLettered}
+        onClosureBypass={(item, on) => {
+          setClosureBypass((now) => toggleBypass(now, bypassPlan, item.id, on));
+          announce(bypassSaid(item, on));
+        }}
         onReady={(map) => {
           mapRef.current = map;
           void fetchCoverage(window.location.origin).then((coverage) => {

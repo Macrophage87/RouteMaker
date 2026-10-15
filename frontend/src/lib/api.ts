@@ -13,6 +13,7 @@ import { twoPointsOnly, type PresetId } from "./presets.ts";
 import type { StressMetres } from "./stressBar.ts";
 import type { FacilityMetres } from "./facilityBar.ts";
 import type { NearbyStationsAnswer, StationAction } from "./stations.ts";
+import type { WithClosures } from "./closureMap.ts";
 import { dialFields, type Bike, type Carrying, type Dials, type Ending, type When } from "./dials.ts";
 
 /**
@@ -684,6 +685,12 @@ export interface MassHazardSpan {
 }
 
 export interface RouteResponse {
+  /**
+   * Live work zones and DC's closures (FOLLOWUP-WORKZONES; v0.7.0 "DC closures source"): the closures to draw on
+   * the map and their cards' words, and the "Check before you go" notices (lib/closureMap.ts). Null or absent where
+   * none is running.
+   */
+  work_zones?: (NonNullable<WithClosures["work_zones"]> & { ride_at?: string | null; disclaimer?: string; sources?: string[] }) | null;
   /** A Mass Ride's rider-marked hazards it passes, in riding order (325); null or absent on other ride types. */
   mass_hazards?: MassHazardSpan[] | null;
   /** The Avoid-rated junctions it passes, in route order (307); empty or absent where none. */
@@ -1100,6 +1107,8 @@ export async function requestRoute(
           ? dialFields(preset === "mass-ride" || twoPointsOnly(preset) ? { ...options.dials, loop: false } : options.dials)
           : {}),
         ...(options.confirmLong ? { confirm_long: true } : {}),
+        // "Route through anyway" (v0.7.0, lib/closureMap.ts): this plan's only, in the request, never in a link.
+        ...(options.dials?.closureBypass?.length ? { closure_bypass: options.dials.closureBypass } : {}),
       }),
     });
   } catch {

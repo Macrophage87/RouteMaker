@@ -92,6 +92,12 @@ export interface Dials {
    */
   transitOption?: string;
   /**
+   * "Route through anyway" (v0.7.0, lib/closureMap.ts): the closures the rider chose to route through, for this
+   * plan only. Session only, like the stations: added to the route request (lib/api.ts requestRoute), in no link,
+   * and not in dialFields (the other endpoints do not take it).
+   */
+  closureBypass?: string[];
+  /**
    * "Anticipated ride size" (PLAN items 128, 129, 139), Mass Ride only: the riders expected,
    * 100 to 2,000. It sets the group's length, which the corker load is counted over (the
    * owner, 2026-10-10: "Corkers were intended to also have a rollback based on the length of

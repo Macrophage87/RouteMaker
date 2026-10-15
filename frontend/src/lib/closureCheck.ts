@@ -15,6 +15,8 @@
  * closure to the first point after it, the rest of the file's line kept verbatim.
  */
 import { haversineM, type LonLat } from "./geo.ts";
+import type { ClosureNotice } from "./closureMap.ts";
+import type { When } from "./dials.ts";
 
 /** One closure the line runs along, as the API answers it. */
 export interface Closure {
@@ -28,12 +30,29 @@ export interface Closure {
   source: string;
   /** "Main Street, from 0.4 mi (0.6 km) to 0.6 mi (1.0 km) along the route, until Nov 14, 2026." */
   text: string;
+  // Additive (v0.7.0, "DC closures source"): the DC sources' closures come through the same check, with their
+  // card's words (lib/closureMap.ts) and whether, on a later ride, one with no end "may still apply".
+  may_still_apply?: boolean;
+  title?: string;
+  source_name?: string;
+  url?: string | null;
+  when_text?: string;
 }
 
 export interface ClosureAnswer {
   closures: Closure[];
   /** "Work zones could not be checked ..." where a feed is not available, else null. */
   unchecked: string | null;
+  /** Additive (v0.7.0): "Check before you go": the NPS park alerts and advisories that could not be placed. */
+  notices?: ClosureNotice[];
+  /** Additive (v0.7.0): the ride's moment the closures were matched at (the plan's When), ISO. */
+  ride_at?: string;
+}
+
+/** The plan's ride time and the closures it routes through anyway, sent with the line (v0.7.0). */
+export interface CheckAt {
+  when?: When | null;
+  bypass?: readonly string[];
 }
 
 /** Most points the check takes; a longer line is thinned (every k-th point), keeping where each came from. */
@@ -57,18 +76,30 @@ export function thinForCheck(line: readonly (readonly number[])[], max = CHECK_M
 type Fetch = typeof fetch;
 
 /** POST /api/closures/check, or null when it could not be asked (offline, refused): the route is then not held up. */
-export async function checkClosures(origin: string, line: readonly (readonly number[])[], post: Fetch = fetch): Promise<(ClosureAnswer & { index: number[] }) | null> {
+export async function checkClosures(
+  origin: string,
+  line: readonly (readonly number[])[],
+  post: Fetch = fetch,
+  at: CheckAt = {},
+): Promise<(ClosureAnswer & { index: number[] }) | null> {
   if (line.length < 2) return null;
   const thin = thinForCheck(line);
   try {
     const response = await post(`${origin}/api/closures/check`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ line: thin.line }),
+      // The plan's When, so a closure is matched at the ride and not today; and its "Route through anyway" ids.
+      body: JSON.stringify({ line: thin.line, ...(at.when ? { when: at.when } : {}), ...(at.bypass?.length ? { bypass: at.bypass } : {}) }),
     });
     if (!response.ok) return null;
     const body = (await response.json()) as Partial<ClosureAnswer>;
-    return { closures: Array.isArray(body.closures) ? body.closures : [], unchecked: body.unchecked ?? null, index: thin.index };
+    return {
+      closures: Array.isArray(body.closures) ? body.closures : [],
+      unchecked: body.unchecked ?? null,
+      notices: Array.isArray(body.notices) ? body.notices : [],
+      ride_at: body.ride_at,
+      index: thin.index,
+    };
   } catch {
     return null;
   }
