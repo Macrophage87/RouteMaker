@@ -68,7 +68,9 @@ import { MassRideCharts } from "./MassRideCharts.tsx";
 /** The vertical layout of each chart, in viewBox units. */
 const LAYOUT = {
   stress: { height: 152, elevTop: 10, elevBottom: 98, stripTop: 108, stripBottom: 120, axisY: 140 },
-  calm: { height: 202, elevTop: 10, elevBottom: 84, markerY: 95, calmTop: 106, calmBottom: 166, axisY: 188 },
+  // The rolling stress part sits 14 units lower than it did, so its "calm mi per mi" title clears the
+  // elevation's bottom label "(18 m)" at phone width (Stephen 2026-10-13: "The text is bunched together").
+  calm: { height: 216, elevTop: 10, elevBottom: 84, markerY: 109, calmTop: 120, calmBottom: 180, axisY: 202 },
 } as const;
 
 interface ChartProps {
