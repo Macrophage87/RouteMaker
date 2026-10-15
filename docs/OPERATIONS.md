@@ -4326,6 +4326,45 @@ proxy cannot reach the service.
    The before/after tier count for Maryland goes in the release notes: every
    tier a Maryland count moved is a road that was graded without one.
 
+## DC closures (v0.7.0)
+
+The worker task `refresh_dc_closures` (every 15 minutes, 12-minute bound) reads four
+sources, each when it is due, and keeps one shared copy in the `bikeshare_feed_cache`
+row keyed `closures` (`src/core/closure_sources.py`):
+
+| Source | URL | Every | Stale after | Dropped after | Becomes |
+|---|---|---|---|---|---|
+| DDOT TOPS permits (`dc`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/TOPS/MapServer/1/query` | 1 h | 3 h | 26 h | Closed block (IsRoadClosed), or "Bike lane blocked" (BikeLaneLength > 0, road open) |
+| MPD traffic advisories (`mpd`) | `mpdc.dc.gov/newsroom` | 15 min | 45 min | 6 h | Closures on the ways between the cross streets; the rest "Check before you go" text |
+| AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss` | 15 min | 45 min | 3 h | As MPD; only traffic and road items are kept, every other item is dropped unread |
+| NPS alerts (`nps`) | `developer.nps.gov/api/v1/alerts` | 30 min | 90 min | 6 h | Park-level "Check before you go" notices (rocr, nama, gwmp, choh, anac), never closures |
+
+NPS needs `NPS_API_KEY` in the worker's environment (sent as the `X-Api-Key` header);
+without it NPS is simply not read. The host needs egress to the four hosts (PLAYBOOK §0).
+
+**First checks on a new host.** The readers were built on saved sample pages
+(`tests/data/closures`), not on live downloads, so after the first run:
+
+1. `runs` shows `refresh_dc_closures` succeeding; a source that failed is named in the
+   warning `closures: the <source> source could not be read` (the URL and the key are
+   never logged).
+2. TOPS: the query asks `where=EXPIRATIONDATE >= DATE 'YYYY-MM-DD'` with `outSR=4326`,
+   `f=geojson`, and keeps Status in active, issued or approved. Confirm the layer's field
+   names (IsRoadClosed, BikeLaneLength, Status, the effective and expiration dates) and its
+   Status values; a permit count of zero with a successful run means one of them differs.
+3. MPD: confirm the newsroom lists "TRAFFIC ADVISORY" releases as links on `mpdc.dc.gov`
+   and that a release's body still reads "X from A to B" lines with dates and times.
+4. AlertDC: confirm the RSS item shape (title, description, pubDate, link).
+5. NPS: confirm the park boxes and marker points in `routemaker.dc_closures.PARKS`.
+6. A segment that cannot be placed (Photon finds no street, or Valhalla's route between the
+   cross streets leaves the named street) is shown as text with its link, never guessed;
+   it is looked for again after 6 hours.
+
+Closures follow the ride time (the When setting). One with no reliable end, on a ride
+more than 2 hours away, reads "may still apply" and does not reroute. A rider's "Route
+through anyway" is per plan and session only (`closure_bypass` on `/api/route`, `bypass`
+on `/api/closures/check`); nothing about it is stored.
+
 ## DC pavement condition (DC-PCI)
 
 DDOT's Pavement Condition Index is the smoothness reading of District streets from

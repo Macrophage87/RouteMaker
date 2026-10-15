@@ -338,9 +338,68 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Disclaimer (346), with every route that passes a zone: "Work zones are the transportation
   agencies' own data, read every few minutes. They may be out of date or wrong, and are not a
   guarantee the way is open or closed."
-- Not used: DC's TOPS permits (the owner, 2026-10-11: too much data); VDOT's road closures, planned
-  events, incidents and weather streams (347-349: follow-ups, FOLLOWUP-WORKZONES in PLAN.md).
+- Not used: VDOT's road closures, planned events, incidents and weather streams (347-349:
+  follow-ups, FOLLOWUP-WORKZONES in PLAN.md). DC's TOPS permits, left out on 2026-10-11, came in
+  with v0.7.0 (below, "DC closures").
 - Records: docs/OPERATIONS.md, "Work zones".
+
+## DC closures (v0.7.0: DDOT TOPS permits, MPD, AlertDC, NPS)
+
+The WZDx registry has no DC feed, so DC's closures come from four sources (v0.7.0 plan, "DC
+closures source"), read by the worker (`core.closure_sources`, `routemaker.dc_closures`) and
+kept as one shared latest copy, never as history. They feed the same closure model as the work
+zones: on the route's map (a red closed stretch, amber for a blocked bike lane, a park marker),
+in the route's words, and in the closure check (`POST /api/closures/check`). None of the four
+hosts was reachable from the cloud container this was built in; the readers were built on saved
+sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has the first check.
+
+### DDOT occupancy permits (TOPS)
+
+- Credit: `Road closures: DDOT (TOPS permits), CC BY 4.0`
+- Dataset: "Occupancy Permits (via DDOT TOPS)",
+  <https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/MapServer/1> (data.gov record
+  <https://catalog.data.gov/dataset/occupancy-permits-via-ddot-tops>; opendata.dc.gov item
+  80216437707b4135963eeb95047caeac). Fields per DDOT's wiki
+  (<https://ddotwiki.atlassian.net/wiki/spaces/GIS0107/pages/1875290657/Road+Closures>): Status,
+  IssuedDate, ExpirationDate, IsRoadClosed, BikeLaneLength, CurbLaneLength, TravelLane1-4Length.
+  Read every hour (DDOT refreshes it nightly); active permits only.
+- Use: `IsRoadClosed` closes the block the permit's point is snapped to; `BikeLaneLength` > 0
+  without a road closure is a "Bike lane blocked" warning, not a closure. Lane-only travel
+  closures are ignored. DDOT's own limits: one point a permit, start and end times unreliable,
+  NPS and Park Police closures often missing; the card says "Permit: road closed until Oct 20".
+- Publisher: District Department of Transportation.
+- Licence: CC BY 4.0 (confirmed by the owner, 2026-10-15 20:22 UTC). Not legal advice.
+
+### MPD traffic advisories
+
+- Credit: `MPD traffic advisories`
+- Pages: the "TRAFFIC ADVISORY" releases in MPD's newsroom, <https://mpdc.dc.gov/newsroom>, read
+  every 15 minutes. Only releases whose title says "Traffic Advisory" are fetched; every other
+  release is passed over on its title and never read or kept. Each "X from A to B" under a time
+  window becomes a closure on the ways of X between the cross streets; Emergency No Parking lists
+  are skipped; a line that will not parse, or a street that cannot be found, is kept as text with
+  the link under "Check before you go", never guessed.
+- Publisher: Metropolitan Police Department, District of Columbia.
+- Terms: public government releases (inferred public; not a licensed dataset). Not legal advice.
+
+### AlertDC
+
+- Credit: `AlertDC (HSEMA)`
+- Feed: <https://trainingtrack.hsema.dc.gov/NRss> (the host name says "training" but it carries
+  current alerts), read every 15 minutes. Only traffic and road items are read; every other alert
+  type (crime first) is dropped before its text is read, and is never stored, logged or shown.
+- Publisher: DC Homeland Security and Emergency Management Agency.
+- Terms: public government alerts (inferred public). Not legal advice.
+
+### NPS alerts
+
+- Credit: `NPS alerts`
+- API: <https://developer.nps.gov/api/v1/alerts>, parks rocr, nama, gwmp, choh and anac, read every
+  30 minutes with the owner's key (`NPS_API_KEY`, on the worker only, sent as `X-Api-Key`; off
+  without it). Alerts of category Park Closure, Danger and Caution; no geometry, so each is a
+  park-level "Check before you go" notice with its link, never a closure.
+- Publisher: U.S. National Park Service.
+- Terms: NPS API terms of service (public domain U.S. government data). Not legal advice.
 
 ## Atkinson Hyperlegible (the panel's font; not a map credit)
 
