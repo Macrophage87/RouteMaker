@@ -68,6 +68,8 @@ import { MassRideCharts } from "./MassRideCharts.tsx";
 /** The vertical layout of each chart, in viewBox units. */
 const LAYOUT = {
   stress: { height: 152, elevTop: 10, elevBottom: 98, stripTop: 108, stripBottom: 120, axisY: 140 },
+  // Go's chart: the elevation alone, so it stays short in the half sheet (the stress bar is just above it).
+  compact: { height: 104, elevTop: 10, elevBottom: 74, axisY: 92 },
   // The rolling stress part sits 14 units lower than it did, so its "calm mi per mi" title clears the
   // elevation's bottom label "(18 m)" at phone width (Stephen 2026-10-13: "The text is bunched together").
   calm: { height: 216, elevTop: 10, elevBottom: 84, markerY: 109, calmTop: 120, calmBottom: 180, axisY: 202 },
@@ -81,8 +83,9 @@ interface ChartProps {
   /** A Mass Ride's anticipated ride size, riders (the corker load's group length). */
   rideSize?: number;
   /**
-   * Go's chart (Stephen 2026-10-13: "on Go, add an elevation chart"): the plot and the reading under it
-   * only. The summary and the keys stay for a screen reader; the key, the source and the tables are Plan's.
+   * Go's chart (Stephen 2026-10-13: "on Go, add an elevation chart"): the elevation plot and the reading
+   * under it only (Go's stress bar is just above). The summary and the keys stay for a screen reader; the
+   * rolling stress, the key, the source and the tables are Plan's.
    */
   compact?: boolean;
 }
@@ -117,8 +120,8 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
   }, [active, reading.m, route, total]);
   useEffect(() => () => heard.current?.(null), []);
 
-  const calm = useMemo(() => usableCalm(profile), [profile]);
-  const layout = calm ? LAYOUT.calm : LAYOUT.stress;
+  const calm = useMemo(() => (compact ? null : usableCalm(profile)), [compact, profile]);
+  const layout = calm ? LAYOUT.calm : compact ? LAYOUT.compact : LAYOUT.stress;
   const range = useMemo(() => elevationRange(profile), [profile]);
   const elevTop = layout.elevTop;
   const elevBottom = layout.elevBottom;
@@ -315,7 +318,7 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
             </g>
           )}
 
-          {!calm && (
+          {!calm && !compact && (
             <g>
               {sections.map((s, i) => (
                 <StripRect key={i} section={s} x0={x(s.from_m)} w={Math.max(x(s.to_m) - x(s.from_m), 0)} uid={uid} />
@@ -334,7 +337,7 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
           {/* The scrub marker: a line through every track, and a ring on the line it reads. */}
           {active !== null && (
             <g className="pc-marker">
-              <line x1={markerX} y1={elevTop - 2} x2={markerX} y2={calmLayout ? calmLayout.calmBottom : LAYOUT.stress.stripBottom + 2} strokeDasharray="3 2" />
+              <line x1={markerX} y1={elevTop - 2} x2={markerX} y2={calmLayout ? calmLayout.calmBottom : compact ? elevBottom : LAYOUT.stress.stripBottom + 2} strokeDasharray="3 2" />
               {elevAtMarker !== null && <circle cx={markerX} cy={plot.y(elevAtMarker)} r="3.5" />}
               {calmY && reading.calm !== null && <circle cx={markerX} cy={calmY(reading.calm)} r="3.5" />}
             </g>

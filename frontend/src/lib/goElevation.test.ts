@@ -12,7 +12,10 @@ test("Go's route sheet shows the compact chart under Start, bigger than peek and
   const go = panel.slice(panel.indexOf("if (goMode) {"));
   const line = '{!go.peek && profile && chartKind(route) !== "mass" && <ElevationChart route={route} profile={profile} onScrub={onScrub} compact />}';
   assert.ok(go.includes(line));
-  assert.ok(go.indexOf(line) > go.indexOf('className="actions start-ride go-start"'), "Start is never pushed down by the chart");
+  assert.ok(go.indexOf(line) > go.indexOf('className="go-chips"'), "Start and the route's options are never pushed down by the chart");
+  // The elevation alone in Go: no rolling stress or strip, so it stays short.
+  assert.match(chart, /const calm = useMemo\(\(\) => \(compact \? null : usableCalm\(profile\)\), \[compact, profile\]\);/);
+  assert.match(chart, /\{!calm && !compact && \(/);
 });
 
 test("the compact chart keeps the slider and its words for a screen reader, and leaves the key and tables to Plan", () => {

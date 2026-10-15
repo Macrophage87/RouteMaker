@@ -58,7 +58,7 @@ export const PRESETS: readonly PresetOption[] = [
     id: "group-ride",
     label: "Group Ride",
     description: "A group riding with traffic at riding pace: quiet roads, fewer turns and gates.",
-    summary: "A group riding together on quiet roads with few turns.",
+    summary: "A group on quiet roads with few turns.",
   },
   {
     id: "mass-ride",
@@ -79,7 +79,7 @@ export const PRESETS: readonly PresetOption[] = [
     label: "Mountain Bike",
     description:
       "Seeks mountain-bike trails up to the level you choose, joined by calm roads, as a loop from your start unless you turn the loop off. Never uses trails closed to bikes or mapped closed when wet. Times singletrack at a mountain bike's pace.",
-    summary: "Mountain-bike trails at your level, joined by calm roads.",
+    summary: "Trails at your level, linked by calm roads.",
   },
   {
     id: "gravel",
@@ -98,7 +98,7 @@ export const PRESETS: readonly PresetOption[] = [
     label: "Cargo Bike",
     description:
       "A long, heavy bike, carrying cargo or with passengers (people or pets): gentle grades, no narrow barriers, times at a cargo bike's pace. With electric assist, e-bike rules and a little more speed, but hills still count.",
-    summary: "A long, heavy bike: gentle hills and no narrow barriers.",
+    summary: "Gentle hills and no narrow barriers.",
   },
   {
     id: "ebike",
@@ -111,7 +111,7 @@ export const PRESETS: readonly PresetOption[] = [
     label: "Bikeshare",
     description:
       "Walk to a dock with a bike, ride dock to dock, then walk to your destination. Choose a classic bike (hill-averse, slower) or an e-bike. Calm streets and paths first; docks are chosen from live availability where it can be read.",
-    summary: "Walk to a dock, ride a shared bike, then walk to the end.",
+    summary: "Walk to a dock, ride a shared bike, walk on.",
   },
   {
     // FOLLOWUP-KIDS-PRESET (OWNER-DECISIONS 240 (B)): children on their own bikes.
@@ -119,7 +119,7 @@ export const PRESETS: readonly PresetOption[] = [
     label: "Riding with kids",
     description:
       "Children on their own bikes: paths and the quietest streets strongly preferred, other quiet streets only when they save a real detour, busy streets avoided hard. Gentler hills, and times at a child's pace.",
-    summary: "Children on their own bikes, on paths and the quietest streets.",
+    summary: "Paths and the quietest streets, for kids.",
   },
   {
     // TRANSIT-ASSIST (Stephen, 2026-10-12): transit is two commuting ride types, chosen like any other.
@@ -131,7 +131,7 @@ export const PRESETS: readonly PresetOption[] = [
     keywords: "transit",
     description:
       "Your own bike the whole way, with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus's bike rack: riding directly there, then the quickest transit trips by scheduled times, not live. Uses stations a bike can get into (Metro's elevators), and never leaves the bike.",
-    summary: "Your own bike plus a train or bus for part of the trip.",
+    summary: "Your bike plus a train or bus.",
   },
   {
     id: "bikeshare-transit",
@@ -140,7 +140,7 @@ export const PRESETS: readonly PresetOption[] = [
     keywords: "transit",
     description:
       "Bikeshare directly there, walking where that is quickest or the trip is short, or transit with either end a walk or a bikeshare bike, whichever is quicker (a bike is docked before you board). Metro, MARC, VRE, Light RailLink, Metro SubwayLink and buses; scheduled times, not live; docks from live availability where it can be read.",
-    summary: "Bikeshare or walking plus a train or bus, whichever is quicker.",
+    summary: "Bikeshare or walking plus a train or bus.",
   },
   {
     // REBALANCE-RIDE (Stephen, 2026-10-12): an Adventure ride type; the description is his.
@@ -148,7 +148,7 @@ export const PRESETS: readonly PresetOption[] = [
     label: "Rebalance Ride",
     description:
       "Move a bikeshare bike from a crowded station to one that needs bikes. Rides like this can earn bikeshare reward points (Bike Angels in the Capital Bikeshare app); your points show there, not here.",
-    summary: "Move a bikeshare bike to a station that needs bikes.",
+    summary: "Move a shared bike where bikes are needed.",
   },
 ];
 
