@@ -58,3 +58,21 @@ test("3. 311: the pick is the report (sent, or the text app filled in); the note
   assert.ok(fold.indexOf("Add a note (optional)") > fold.indexOf("Copy the report"), "the note after the actions");
   assert.ok(fold.indexOf("Add a note (optional)") > fold.indexOf("<legend>What is it?</legend>"));
 });
+
+test("F1. Start unlocks the voice synchronously in the press, before the closure check's await", () => {
+  const start = app.slice(app.indexOf("const startRideChecked = () => {"), app.indexOf("// An opened file is checked at once"));
+  assert.ok(start.length > 100);
+  // The handler itself is not async: nothing it does before startRideGesture can yield the gesture.
+  assert.doesNotMatch(start, /const startRideChecked = async/);
+  const gesture = start.indexOf("startRideGesture(ridePrefs)");
+  assert.ok(gesture > 0, "Start calls startRideGesture itself");
+  assert.ok(gesture < start.indexOf("checkThen("), "the gesture comes before the check");
+  assert.doesNotMatch(start.slice(0, gesture), /await/);
+  // The ride that follows does not unlock (speak "Ride started.") a second time.
+  assert.match(app, /if \(!unlocked\) startRideGesture\(prefs\);/);
+  assert.match(start, /startRide\(unlocked\)/);
+  // A slow check is said politely; a closure found stops the voice the press began.
+  assert.match(start, /window\.setTimeout\(\(\) => announce\(CHECKING_CLOSURES\), CLOSURE_SLOW_MS\)/);
+  assert.match(start, /if \(unlocked\) rideVoice\.stop\(\);/);
+  assert.match(ride, /export const CHECKING_CLOSURES = "Checking closures…";/);
+});

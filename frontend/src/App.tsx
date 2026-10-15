@@ -73,7 +73,7 @@ import {
 import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
 import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
-import { RideEnded, RideMode, startRideGesture, type RideView } from "./RideMode.tsx";
+import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, RideEnded, RideMode, rideVoice, startRideGesture, type RideView } from "./RideMode.tsx";
 import { readHeadingUp, readRidePrefs, writeHeadingUp, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf } from "./lib/bikeshare.ts";
@@ -2230,9 +2230,10 @@ export function App() {
 
   // Start ride (plan Q1, Q3): the first ride asks how to say the cues; later rides start at once. The
   // voice is unlocked inside this press (iOS speaks only after a gesture).
-  const beginRide = (prefs: RidePrefs) => {
+  // unlocked: Start's own press has already unlocked the voice (startRideChecked), before its closure check.
+  const beginRide = (prefs: RidePrefs, unlocked = false) => {
     if (!shown) return;
-    startRideGesture(prefs);
+    if (!unlocked) startRideGesture(prefs);
     setRideStart({ route: shown, points: routedPoints, loop: routedLoop, dials: planDials });
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
     // the map the ride kept. A browser tab keeps nothing unless the rider presses Keep for offline.
@@ -2282,7 +2283,7 @@ export function App() {
     if (window.location.hash !== hash) window.location.hash = hash;
     announce(`Opening ${kept.title}.`);
   };
-  const startRide = () => {
+  const startRide = (unlocked = false) => {
     const opener = document.activeElement;
     rideOpener.current = opener instanceof HTMLElement && opener.closest(".start-ride, .description-actions") ? opener : startRideRef.current;
     // Go goes straight to the ride (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go"):
@@ -2291,7 +2292,7 @@ export function App() {
       setRideAsk(true);
       return;
     }
-    beginRide(ridePrefs);
+    beginRide(ridePrefs, unlocked);
   };
   // ---- v0.7.0: saved routes, the verbatim GPX and the closure check ----
   const origin = window.location.origin;
@@ -2353,7 +2354,7 @@ export function App() {
   // A line the rider chose to ride anyway is not asked about again (on Start ride, say).
   const closureLetGo = useRef<string | null>(null);
   const lineKey = (line: readonly (readonly number[])[]) => `${line.length}:${line[0]?.join(",")}:${line[line.length - 1]?.join(",")}`;
-  const checkThen = async (why: CheckFor, line: readonly (readonly number[])[], gpx: boolean, proceed: () => void, afterGpx?: (track: number[][]) => void) => {
+  const checkThen = async (why: CheckFor, line: readonly (readonly number[])[], gpx: boolean, proceed: () => void, afterGpx?: (track: number[][]) => void, onAsk?: () => void) => {
     if (line.length < 2 || closureLetGo.current === lineKey(line)) {
       proceed();
       return;
@@ -2364,6 +2365,7 @@ export function App() {
       proceed();
       return;
     }
+    onAsk?.();
     closurePending.current = { line: line.map((v) => [...v]), index: found.index, closures: found.closures, gpx, proceed, afterGpx };
     setClosureAsk({ why, closures: found.closures, unchecked: found.unchecked, notices: found.notices });
   };
@@ -2450,9 +2452,21 @@ export function App() {
     void checkThen("download", route.geometry.coordinates, false, () => downloadGpx(route, at, routedLoop, federalRoute));
   };
   // Start ride: the line about to be ridden, checked first ("Ride it anyway" goes on to the ride).
+  // The voice is unlocked first, synchronously inside the press (iOS speaks only in a gesture; after the
+  // check's await it would be too late). A press that asks the first-ride question unlocks in that dialog.
   const startRideChecked = () => {
-    if (!shown) return startRide();
-    void checkThen("ride", shown.geometry.coordinates, false, startRide);
+    const unlocked = ridePrefs.chosen || mode === "go";
+    if (unlocked) startRideGesture(ridePrefs);
+    if (!shown) return startRide(unlocked);
+    // A slow check is said politely; a found closure stops the "Ride started." just begun.
+    const slow = window.setTimeout(() => announce(CHECKING_CLOSURES), CLOSURE_SLOW_MS);
+    void checkThen("ride", shown.geometry.coordinates, false, () => {
+      window.clearTimeout(slow);
+      startRide(unlocked);
+    }, undefined, () => {
+      window.clearTimeout(slow);
+      if (unlocked) rideVoice.stop();
+    });
   };
   // An opened file is checked at once, against its own track.
   const openImportedChecked = (plan: ImportedPlan) => {

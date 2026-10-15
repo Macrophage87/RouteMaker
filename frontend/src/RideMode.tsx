@@ -155,6 +155,10 @@ export function startRideGesture(prefs: RidePrefs): void {
   if (toVoice(prefs.output)) rideVoice.unlock(RIDE_STARTED);
 }
 
+/** Said politely when Start's closure check takes more than a moment (CLOSURE_SLOW_MS). */
+export const CHECKING_CLOSURES = "Checking closures…";
+export const CLOSURE_SLOW_MS = 600;
+
 /** What App shows on the map for the ride. */
 export interface RideView {
   route: RouteResponse;
