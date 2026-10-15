@@ -7,8 +7,12 @@
  *
  * The cue words are the API's: each cue is a `description` entry (src/routemaker/describe.py), the
  * sentence after its "0.4 to 1.2 mi (0.6 to 1.9 km): " position, so there is still one wording of a
- * stretch to keep right (lib/routeDescription.ts). What is added here is only the timing ("In 500
- * feet, ..."), "now" at a turn, arrival, and the off-route sentences.
+ * stretch to keep right (lib/routeDescription.ts). A turn is the exception (v0.7.0, "Go riding
+ * fixes" item 2; the owner, 2026-10-15: "Only say the turn and street. LTS is just extra noise, we
+ * can see it."): its cue is the turn and the street alone, "Left onto R Street Northwest.", with no
+ * stress or junction words; the road panel and Plan keep the detail. What is added here is the timing
+ * ("In 500 feet, ..."), "now" at a turn, arrival and the side the destination is on (item 5), and the
+ * off-route sentences.
  *
  * Distances: the line is measured along its own vertices (trackMatch.ts `cumulative`), and the
  * description's metres (the route's traced length, scaled by describe.py to the route's distance) are
@@ -100,7 +104,10 @@ export interface Cue {
   kind: CueKind;
   /** Metres along the line (the geometry's own length). */
   atM: number;
-  /** The API's sentence, without its position: "Left onto R Street Northwest at a signal, low stress (LTS 1)." */
+  /**
+   * What the cue says, without a position: a turn's is the turn and the street only ("Left onto R
+   * Street Northwest."); any other cue's is the API's sentence ("R Street Northwest, busy road (LTS 3).").
+   */
   text: string;
   movement: "left" | "right" | null;
   /** The street the cue turns onto or is on, as the API names it; null where unnamed. */
@@ -133,6 +140,30 @@ export interface RideModel {
    * points. Never a cue: a via point is not announced; the re-plan drops the ones passed.
    */
   passes?: { point: number; atM: number }[];
+}
+
+/**
+ * A turn's cue (v0.7.0, "Go riding fixes" item 2): the turn and the street, nothing else. "Left onto R
+ * Street Northwest."; "Right onto the path." for a path with no name; "Left." where the street has none.
+ */
+export function turnWords(movement: "left" | "right", street: string | null): string {
+  const turn = movement === "left" ? "Left" : "Right";
+  if (street && /^(?:unnamed )?path$/i.test(street.trim())) return `${turn} onto the path.`;
+  return street && !isUnnamed(street) ? `${turn} onto ${street}.` : `${turn}.`;
+}
+
+/** Which side the destination is on (item 5), from the router's destination maneuver; null when unknown. */
+export type ArrivalSide = "left" | "right" | null | undefined;
+
+/** "Destination on your right." for a known side, else nothing. */
+export function arrivalSideWords(side: ArrivalSide): string {
+  return side === "left" || side === "right" ? `Destination on your ${side}.` : "";
+}
+
+/** The end cue's words: "The end of the route.", with the destination's side where the router knows it. */
+export function endWords(side: ArrivalSide): string {
+  const where = arrivalSideWords(side);
+  return where ? `The end of the route. ${where}` : "The end of the route.";
 }
 
 /** "0.4 to 1.2 mi (0.6 to 1.9 km): Left onto ..." without its position: the part after the first ": ". */
@@ -249,7 +280,12 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
         index: cues.length,
         kind,
         atM: fromM,
-        text: kind === "stop" ? `Stop ${entry.via ?? cues.filter((c) => c.kind === "stop").length + 1}.` : sentenceOf(entry),
+        text:
+          kind === "stop"
+            ? `Stop ${entry.via ?? cues.filter((c) => c.kind === "stop").length + 1}.`
+            : kind === "turn"
+              ? turnWords(entry.turn?.movement as "left" | "right", entry.turn?.onto ?? entry.street ?? null)
+              : sentenceOf(entry),
         movement: kind === "turn" ? (entry.turn?.movement as "left" | "right") : null,
         street: entry.turn?.onto ?? entry.street ?? null,
         severity: entry.severity ?? entry.turn?.severity ?? null,
@@ -260,7 +296,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
     if (entry.kind === "stretch") before = entry;
     else if (entry.kind === "via") before = null;
   }
-  cues.push({ index: cues.length, kind: "end", atM: lengthM, text: "The end of the route.", movement: null, street: null, severity: null, tier: null, stop: null });
+  cues.push({ index: cues.length, kind: "end", atM: lengthM, text: endWords(route.arrival_side), movement: null, street: null, severity: null, tier: null, stop: null });
   const paceMs = route.distance_m > 0 && route.duration_s > 0 ? route.distance_m / route.duration_s : null;
   return { coordinates, along, lengthM, cues, stretches, paceMs, ...(vias.length ? { passes } : {}) };
 }
@@ -429,7 +465,11 @@ const MOVEMENT_WORDS = { left: "Left", right: "Right" } as const;
 
 /** What is said for a cue at a phase, `distanceM` before it (US units only). */
 export function cueSpoken(cue: Cue, phase: Phase, distanceM: number): string {
-  if (cue.kind === "end") return "You have arrived at the end of the route.";
+  if (cue.kind === "end") {
+    // The side, where known, is the end cue's own last sentence ("Destination on your right.").
+    const side = cue.text.match(/Destination on your (?:left|right)\.$/)?.[0];
+    return side ? `You have arrived at the end of the route. ${side}` : "You have arrived at the end of the route.";
+  }
   if (cue.kind === "stop") return `You have reached stop ${cue.stop}.`;
   if (phase === "now" && cue.movement) {
     return `${MOVEMENT_WORDS[cue.movement]} now${cue.street ? ` onto ${cue.street}` : ""}.`;
@@ -664,21 +704,22 @@ export function wayBack(model: RideModel, state: RideState): { metres: number; d
  * name is never a place to measure from or a trail to name.
  */
 export function isUnnamed(street: string | null | undefined): boolean {
-  return !street || /\bunnamed\b/i.test(street) || /^this part of the route$/i.test(street.trim());
+  return !street || /\bunnamed\b/i.test(street) || /^(?:path|this part of the route)$/i.test(street.trim());
 }
 
 /**
  * The way ridden as said, for "Where am I?" and the 311 report: its name ("R Street Northwest"), else
- * what it is ("an unnamed path", "an unnamed road"), else null (not traced, or "this part of the route").
+ * what it is ("a path", the owner's word since v0.7.0, or "an unnamed road"), else null (not traced, or
+ * "this part of the route").
  */
 export function wayRidden(stretch: RideModel["stretches"][number] | null): string | null {
   if (!stretch) return null;
   if (!isUnnamed(stretch.street)) return stretch.street;
   if (stretch.street && /^this part of the route$/i.test(stretch.street.trim())) return null;
   // The API's own word first ("unnamed road"), else the facility.
-  if (/\bpath\b/i.test(stretch.street ?? "")) return "an unnamed path";
+  if (/\bpath\b/i.test(stretch.street ?? "")) return "a path";
   if (/\broad\b/i.test(stretch.street ?? "")) return "an unnamed road";
-  return stretch.facility === "path" || stretch.facility === "protected" ? "an unnamed path" : "an unnamed road";
+  return stretch.facility === "path" || stretch.facility === "protected" ? "a path" : "an unnamed road";
 }
 
 // ---- The rider's place in street names ("Where am I?", OWNER-DECISIONS 369, 465) -----------------------

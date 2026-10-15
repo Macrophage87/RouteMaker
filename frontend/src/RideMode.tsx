@@ -37,6 +37,7 @@ import {
   REPLAN_NO_SIGNAL,
   ReplanGate,
   VERBOSITY_LABELS,
+  cueSpoken,
   nextAction,
   pointAt,
   replanPoints,
@@ -853,7 +854,7 @@ export function RideMode({
           Ride mode
         </h2>
         {ride.arrived ? (
-          <p className="cue-text">You have arrived at the end of the route.</p>
+          <p className="cue-text">{cueSpoken(model.cues[model.cues.length - 1], "arrive", 0)}</p>
         ) : ride.off ? (
           <div className="cue-off">
             <CueShape shape="warn" />
@@ -872,7 +873,7 @@ export function RideMode({
             <CueShape shape={shape} />
             <div>
               <p className="cue-distance">In {formatDistance(cue.atM - progress)}</p>
-              <p className="cue-text">{cue.kind === "end" ? "The end of the route." : cue.text}</p>
+              <p className="cue-text">{cue.text}</p>
             </div>
           </div>
         ) : (

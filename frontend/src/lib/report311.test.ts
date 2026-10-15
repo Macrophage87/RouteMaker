@@ -129,12 +129,12 @@ test("reportPlace: the road at that point, a cross street within 500 ft, the sam
   assert.equal(reportPlace(m, 400).words, "on 14th Street Northwest", "the junction is 600 m off: no cross street");
   // The owner's case: far along an unnamed path, no "about 1.2 miles south of ...".
   const far = reportPlace(m, 2900);
-  assert.equal(far.words, "on an unnamed path");
+  assert.equal(far.words, "on a path");
   const text = reportText("pothole", far, "", true) ?? "";
-  assert.equal(text, `POTHOLE Location: on an unnamed path, Washington, DC. ${gpsWords(far.point)}.`);
+  assert.equal(text, `POTHOLE Location: on a path, Washington, DC. ${gpsWords(far.point)}.`);
   assert.doesNotMatch(text, /miles|of unnamed|unnamed path,? about/);
   // The path's start is within 500 ft of its junction with U Street: named only from the U Street side.
-  assert.equal(reportPlace(m, 1550).words, "on an unnamed path near U Street Northwest");
+  assert.equal(reportPlace(m, 1550).words, "on a path near U Street Northwest");
 });
 
 test("the copy for DC 311 online: the place in DC and its GPS position, then the note, with no text keyword", () => {
