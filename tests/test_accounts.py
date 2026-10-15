@@ -147,11 +147,14 @@ class TestRoutes:
         client, _user, csrf = signed_in()
         # A GPX track may run outside the map's area in part; it is kept as the file had it.
         line = [[-80.5, 40.0], *LINE]
-        body = route_body(source="gpx", line=line, answer=None, name="Mass Ride")
+        text = '<?xml version="1.0"?>\n<gpx version="1.1"><trk><trkseg/></trk></gpx>\n'
+        body = route_body(source="gpx", line=line, answer=None, name="Mass Ride", gpx=text)
         r = send(client, "post", "/api/me/routes", body, csrf)
         assert r.status_code == 201
         full = client.get(f"/api/me/routes/{r.json()['id']}", **addr()).json()
         assert full["line"] == line and full["source"] == "gpx" and full["answer"] is None
+        # The file's own text, byte for byte, for a verbatim export.
+        assert full["gpx"] == text
         refused = send(client, "post", "/api/me/routes", route_body(source="gpx"), csrf)
         assert refused.status_code == 400
 

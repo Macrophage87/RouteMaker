@@ -3852,6 +3852,7 @@ def _route_full(row) -> dict:
         "line": row.line,
         "inputs": row.inputs,
         "answer": row.answer,
+        "gpx": row.gpx,
     }
 
 
@@ -3928,6 +3929,9 @@ def saved_routes_add(request):
     answer = body.get("answer")
     if answer is not None and (source != SavedRoute.Source.PLAN or not isinstance(answer, dict)):
         return _stress_error(400, "Only a planned route keeps its answer.", field="answer")
+    gpx = body.get("gpx", "") or ""
+    if not isinstance(gpx, str) or (gpx and source != SavedRoute.Source.GPX):
+        return _stress_error(400, "Only an opened GPX file keeps its text.", field="gpx")
     with transaction.atomic():
         # Taken in turn per account, so two saves at once cannot both pass the cap.
         User.objects.select_for_update().filter(pk=request.user.pk).first()
@@ -3946,6 +3950,7 @@ def saved_routes_add(request):
             distance_m=float(distance),
             inputs=inputs,
             answer=answer,
+            gpx=gpx,
         )
     return _private(JsonResponse(_route_summary(row), status=201))
 

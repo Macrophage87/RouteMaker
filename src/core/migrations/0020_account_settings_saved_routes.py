@@ -61,6 +61,7 @@ class Migration(migrations.Migration):
                 ("distance_m", models.FloatField()),
                 ("inputs", models.JSONField(default=dict)),
                 ("answer", models.JSONField(blank=True, null=True)),
+                ("gpx", models.TextField(blank=True, default="")),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 (

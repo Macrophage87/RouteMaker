@@ -1813,6 +1813,9 @@ class SavedRoute(models.Model):
     # The planned route's whole answer as shown when saved (without the other candidates), so a
     # reopened route shows every panel as it was; null for a GPX file's line.
     answer = models.JSONField(null=True, blank=True)
+    # An opened GPX file's own text, byte for byte, so its export is the file as it came (its
+    # track points, elevations and waypoint names unchanged); empty for a planned route.
+    gpx = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
