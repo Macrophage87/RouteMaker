@@ -275,6 +275,32 @@ class TestParallel:
             routing._settled(traces, key)
         assert key not in traces
 
+    def test_a_trace_prefetched_to_a_shorter_deadline_is_asked_again_inline(
+        self, settings, monkeypatch
+    ) -> None:
+        """A trace prefetched for a step held to a shorter deadline (the middle-of-the-hills
+        check) that ran out is not this reader's running out: a reader with budget left asks
+        again inline; one with none gets the DeadlineExceeded."""
+        settings.ROUTER_PARALLEL_CALLS = 2
+        asked = []
+
+        def trace_leg(variant, costing, shape, deadline):
+            asked.append(deadline)
+            return {"edges": []}
+
+        monkeypatch.setattr(routing, "trace_leg", trace_leg)
+        key = routing._trace_key("standard", {}, "abc")
+        later = routing.Deadline(routing.clock() + 30, 10)
+        traces = {key: parallel.done(error=routing.DeadlineExceeded("step ran out"))}
+        assert routing._trace("standard", {}, "abc", later, traces) == {"edges": []}
+        assert asked == [later] and traces[key] == {"edges": []}
+
+        spent = routing.Deadline(routing.clock() - 1, 10)
+        traces = {key: parallel.done(error=routing.DeadlineExceeded("step ran out"))}
+        with pytest.raises(routing.DeadlineExceeded):
+            routing._trace("standard", {}, "abc", spent, traces)
+        assert len(asked) == 1 and key not in traces
+
     def test_the_pool_is_bounded_and_carries_the_requests_context(self, settings) -> None:
         settings.ROUTER_PARALLEL_CALLS = 3
         lock = threading.Lock()

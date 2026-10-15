@@ -1168,7 +1168,17 @@ def _trace(
     key = _trace_key(variant, costing, shape)
     if key not in traces:
         traces[key] = trace_leg(variant, costing, shape, deadline)
-    return _settled(traces, key)
+    prefetched = isinstance(traces[key], Future)
+    try:
+        return _settled(traces, key)
+    except DeadlineExceeded:
+        # A trace prefetched for a step held to a shorter deadline than this reader's (the
+        # middle-of-the-hills check runs to its own, `_middle_or_avoid`): its running out is
+        # not this reader's. Asked again inline, within this reader's own budget.
+        if not prefetched or deadline.at - clock() <= 0:
+            raise
+    traces[key] = trace_leg(variant, costing, shape, deadline)
+    return traces[key]
 
 
 def _trace_key(variant: str, costing: dict, shape: str) -> tuple:
