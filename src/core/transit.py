@@ -31,7 +31,10 @@ The answer is a route like any other ride type's (`routing.plan`): its line is t
 option's **first ride leg** (the whole ride, riding directly there), with the stress colours
 and the rest. The trip is the route's `transit` block (`block`): the options, and the chosen
 one's steps in order, each with its line on the map, the total ("about N min, scheduled") and
-the time of riding the whole way, said plainly when it is quicker.
+the time of riding the whole way, said plainly when it is quicker. A route line that is a walk
+is walked by Valhalla's pedestrian costing, and the chosen trip's other walks and rides are
+routed for the map too (`drawn`: pedestrian or bicycle costing), straight only where the router
+does not answer; the drawing never changes a time.
 
 Nothing here is live. The times are **scheduled**: each system's static GTFS, compacted on the
 host by scripts/build_transit_schedule.py into one file the API reads
@@ -2010,7 +2013,7 @@ def plan_bikeshare(schedule, start, end, when: datetime, services: Services, sna
 
 def with_ride(plan: Plan, seconds: float) -> Plan:
     """The plan with its chosen option's route line timed by the routed line (the answer's
-    own). A walk keeps its walking time: the line is the bike router's, the pace is not."""
+    own). A walk keeps its walking time (its line is the pedestrian router's, `drawn`'s)."""
     option = plan.option
     legs = list(option.legs)
     leg = legs[option.ride]
@@ -2028,6 +2031,48 @@ def with_ride(plan: Plan, seconds: float) -> Plan:
         return replace(plan, options=options, chosen=0, notes=plan.notes + notes)
     options[plan.chosen] = replace(option, legs=tuple(legs))
     return replace(plan, options=options, notes=plan.notes + notes)
+
+
+# The most router calls `drawn` makes for one trip's lines, each one's cap, and the time they may
+# all take from when the trip is chosen: drawing changes no times, so it never holds an answer long
+# (review of #134: twelve 5 s calls could hold a ready answer for half a minute).
+MAX_DRAW_CALLS = 6
+DRAW_CALL_S = 1.5
+DRAW_BUDGET_S = 4.0
+_ON_FOOT = (WALK, TAKE)
+
+
+def drawn(plan: Plan, services: Services) -> Plan:
+    """The plan with its chosen trip's walks and rides, all but the route line's (the answer's
+    own), routed for the map: a walk by Valhalla's pedestrian costing, a ride by the bike's, so
+    each is drawn along the streets and paths. Only the lines change, never a time; a leg the
+    router does not route (or one of a few yards) keeps its straight line."""
+    option = plan.option
+    legs = list(option.legs)
+    changed = False
+    for index, leg in enumerate(legs):
+        if index == option.ride or leg.mode not in (*_ON_FOOT, RIDE, SHARE):
+            continue
+        # A routed ride has its shape already; a leg of a few yards has no route to draw.
+        if len(leg.coordinates) != 2 or line_m(leg) < MIN_LINE_M:
+            continue
+        a, b = list(leg.coordinates[0]), list(leg.coordinates[-1])
+        routed = services.walk(a, b) if leg.mode in _ON_FOOT else services.ride(a, b)
+        if routed is None or len(routed.coordinates) < 2:
+            continue
+        # Joined to the leg's own ends (a stop's entrance, a dock), where the router snapped off.
+        points = list(routed.coordinates)
+        if points[0] != tuple(a):
+            points.insert(0, tuple(a))
+        if points[-1] != tuple(b):
+            points.append(tuple(b))
+        legs[index] = replace(leg, coordinates=tuple(points))
+        changed = True
+    if not changed:
+        return plan
+    options = list(plan.options)
+    options[plan.chosen] = replace(option, legs=tuple(legs))
+    return replace(plan, options=options)
 
 
 def _retimed(minute: float, legs: list[Leg]) -> tuple[list[Leg] | None, list[str]]:

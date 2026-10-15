@@ -142,7 +142,7 @@ export function PointsSection(props: PointsSectionProps) {
               ref={editPointsRef}
               className="secondary icon-button edit-points"
               aria-expanded={!compactPoints}
-              aria-controls="points-search points-edit"
+              aria-controls="points-edit"
               onClick={() => setEditPoints((on) => !on)}
             >
               <Icon name={compactPoints ? "edit" : "check"} />
@@ -190,8 +190,8 @@ export function PointsSection(props: PointsSectionProps) {
       {PLANNER_EXTRAS.highContrastShortcut && (
         <HighContrastShortcut on={accessibilityOn()} paletteFromAddress={paletteSetByAddress()} onChange={(on) => setAccessibility(on)} />
       )}
-      {/* The controls stay in the page while the points are compact (hidden), so the search keeps its state. */}
-      <div id="points-search" ref={pointsSearchRef} className="points-controls" hidden={compactPoints}>
+      {/* The search stays open with a route shown, so more stops can be added by search (Stephen 2026-10-14). */}
+      <div id="points-search" ref={pointsSearchRef} className="points-controls">
         <PlaceSearch
           pointCount={points.length}
           loop={loopVias}
