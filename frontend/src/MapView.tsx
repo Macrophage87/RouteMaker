@@ -17,8 +17,10 @@ import {
   OPENING_ZOOM,
   STRESS_SOURCE_ID,
   buildStyle,
+  refreshStressTiles,
   stressTileTemplate,
 } from "./lib/mapStyle.ts";
+import { tileRev } from "./lib/tileRev.ts";
 import { fontStacks } from "./lib/corridor.ts";
 import { basemapArchive, setCorridorStyle, sweepCorridor } from "./lib/corridorStore.ts";
 import type { RouteResponse } from "./lib/api.ts";
@@ -912,6 +914,9 @@ export function MapView(props: Props) {
     const stressCheck = stressProbe(origin, STRESS_RECHECK_MS, {
       add: addStress,
       report: (availability) => callbacks.current.onStressAvailability(availability),
+      // A tile that failed while the server was down is asked for again once it is back: the edit
+      // generation's refresh, under the generation the tiles already have.
+      reload: () => refreshStressTiles(map, origin, tileRev()),
       disposed: () => disposed,
     });
 
@@ -1124,7 +1129,8 @@ export function MapView(props: Props) {
 
     map.on("error", (event) => {
       // A stress tile that failed after the endpoint had answered: check the
-      // endpoint again rather than trusting one tile's failure either way.
+      // endpoint again rather than trusting one tile's failure either way, and
+      // if it answers, ask for the tiles again (stressProbe's reload).
       const source = (event as { sourceId?: string }).sourceId;
       if (source === STRESS_SOURCE_ID) stressCheck.later(5_000);
     });
