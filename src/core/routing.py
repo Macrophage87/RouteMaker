@@ -853,11 +853,11 @@ class Dials:
     # Mountain Bike only, the second pass: the trail level the rider prefers, 1-4, never above
     # `mtb_level` (`mtbmode.preferred_level`); None: level 2, or `mtb_level` where that is lower.
     mtb_preferred: int | None = None
+    # v0.7.0 "Route through anyway": the closures this plan routes through (their ids).
+    closure_bypass: tuple[str, ...] = ()
     # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
     # A ride whose last point is its first is a loop whatever this says.
     loop: bool = False
-    # v0.7.0 "Route through anyway": the closures this plan routes through (their ids).
-    closure_bypass: tuple[str, ...] = ()
 
 
 # A ride ends where it starts if its last point is within this of its first (metres).
