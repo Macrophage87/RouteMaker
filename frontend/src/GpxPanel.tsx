@@ -7,6 +7,7 @@ import { REFINE_ROUNDS, nextFitStep, prunedCount, startFit, type Fit, type Impor
 import { gpxWorker, importGpx } from "./lib/gpxImport.ts";
 import { exportFileName, exportOf, fidelityNotice, importSentences, presetNotice, prunedNotice } from "./lib/gpxText.ts";
 import { showReference } from "./lib/referenceLayer.ts";
+import { VIA_MARKS, viaIndices } from "./lib/pointKinds.ts";
 import { fidelity } from "./lib/trackMatch.ts";
 
 interface Props {
@@ -50,7 +51,7 @@ function bounds(line: readonly LonLat[]): [number, number, number, number] {
  * Download GPX and the sidebar's pinned one (App.tsx, OWNER-DECISIONS 312).
  */
 export function downloadGpx(route: RouteResponse, routedPoints: LonLat[], loop: boolean, federal: readonly string[] = []): void {
-  const blob = new Blob([writeGpx(exportOf(route, routedPoints, loop, federal))], { type: "application/gpx+xml" });
+  const blob = new Blob([writeGpx(exportOf(route, routedPoints, loop, federal, viaIndices(routedPoints, VIA_MARKS.isVia)))], { type: "application/gpx+xml" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;

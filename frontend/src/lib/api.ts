@@ -1079,7 +1079,7 @@ export async function requestRoute(
   preset: PresetId,
   // No abort signal: the scheduler never abandons a request, because an abort
   // in the browser does not free the API's in-flight slot (routeScheduler.ts).
-  options: { fetchImpl?: FetchLike; confirmLong?: boolean; dials?: Dials } = {},
+  options: { fetchImpl?: FetchLike; confirmLong?: boolean; dials?: Dials; vias?: readonly number[] } = {},
 ): Promise<RouteResult> {
   const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
   let response: Response;
@@ -1100,6 +1100,8 @@ export async function requestRoute(
           ? dialFields(preset === "mass-ride" || twoPointsOnly(preset) ? { ...options.dials, loop: false } : options.dials)
           : {}),
         ...(options.confirmLong ? { confirm_long: true } : {}),
+        // The via points (v0.7.0, "Via points vs stops"): passed without a stop. Never on a two-point ride type.
+        ...(options.vias?.length && !twoPointsOnly(preset) ? { via_points: [...options.vias] } : {}),
       }),
     });
   } catch {

@@ -36,7 +36,7 @@ test("each Remove button says which point it removes", () => {
 
 test("App shows the list from pointRows, with its removal and focus wiring", () => {
   const app = appSource();
-  assert.match(app, /<PointsList\s+rows=\{pointRows\(points, namer, loopVias\)\}\s+onRemove=\{removeAt\}/);
+  assert.match(app, /<PointsList\s+rows=\{pointRows\(points, namer, loopVias, VIA_MARKS\.isVia\)\}\s+onRemove=\{removeAt\}/);
   assert.match(app, /removeRefs\.current\[index\] = button;/);
 });
 

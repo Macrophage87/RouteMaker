@@ -247,7 +247,7 @@ test("with a route shown the points are compact, behind 'Edit points', and the c
   assert.match(app, /<div id="points-edit" ref=\{pointsEditRef\} hidden=\{compactPoints\}>/);
   // Clear, a plan from a link, or fewer than two points: the next route opens compact again (N1).
   assert.match(app, /const clearAll = \(\) => \{\s*setConfirmedKm\(null\);\s*setEditPoints\(false\);/);
-  assert.match(app, /setEditPoints\(false\);\s*setPoints\(plan\.points\);/);
+  assert.match(app, /setEditPoints\(false\);\s*setPoints\(VIA_MARKS\.markAt\(plan\.points, plan\.vias\)\);/);
   assert.match(app, /setStatus\(\{ kind: "idle" \}\);\s*\/\/ The next route opens compact again[^\n]*\n\s*setEditPoints\(false\);/);
 });
 
@@ -555,7 +555,7 @@ test("Start, GPX, Link and More are one row under the route's figures (UI-CLEANU
   // More holds Share and Keep for offline, a disclosure.
   assert.match(app, /className="secondary icon-button route-more" aria-expanded=\{more\} aria-controls=\{moreId\}/);
   // The link is this page and encodePlan's fragment, which never carries the weight (313).
-  assert.match(app, /copyText\(linkToCopy\(window\.location, points, preset, dials\), navigator\.clipboard, selectionCopy\)/);
+  assert.match(app, /copyText\(linkToCopy\(window\.location, points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\), navigator\.clipboard, selectionCopy\)/);
   assert.equal(linkSaidFor(true), COPY_LINK_DONE);
   assert.equal(linkSaidFor(false), COPY_LINK_FAILED);
   assert.match(app, /if \(press === linkPresses\.current\) setLinkSaid\(linkSaidFor\(done\)\);/);
@@ -565,7 +565,7 @@ test("Start, GPX, Link and More are one row under the route's figures (UI-CLEANU
 
 test("App writes exactly encodePlan's fragment to the address bar, and a new plan clears 'Link copied.'", () => {
   const writer = app.slice(app.indexOf("// Keep the link in step with the plan"), app.indexOf("}, [points, preset, dials]);"));
-  assert.match(writer, /const hash = encodePlan\(points, preset, dials\);\s*writtenHash\.current = hash;\s*window\.history\.replaceState\(null, "", hash\);/);
+  assert.match(writer, /const hash = encodePlan\(points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\);\s*writtenHash\.current = hash;\s*window\.history\.replaceState\(null, "", hash\);/);
   assert.equal((writer.match(/replaceState/g) ?? []).length, 1);
   assert.match(writer, /linkPresses\.current \+= 1;\s*setLinkSaid\(""\);/);
   // planDials (the dials with the weight) never reaches the address bar.
@@ -892,7 +892,7 @@ test("the skip link and its target stay: #route-planner is the aside, and every 
   assert.match(app, /\{status\.kind === "idle" && points\.length < 2 && !goMode && <p className="hint">No route yet\.<\/p>\}/);
   assert.equal((app.match(/aria-live="polite" className="status-line/g) ?? []).length, 1);
   assert.match(app, /\{said\.text\}/);
-  assert.match(app, /announce\(addedSaid\(next\.indexOf\(point\), next\.length, loopVias\)\)/);
+  assert.match(app, /announce\(kindSaid\(next, index, VIA_MARKS\.isVia, loopVias, "added"\)\)/);
 });
 
 test("on a desktop the points come first, then the Ride line, then the route; on a phone the route leads", () => {

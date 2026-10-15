@@ -684,7 +684,8 @@ test("App: a drag reads the old point before the commit, and moves by movePoint 
   assert.match(move, /^const move = useCallback\(\(index: number, point: LonLat\) => \{\s*cancelLocateNotice\(\);/, "a drag cancels a pending notice (N6)");
   const before = move.indexOf("const before = pointsRef.current[index];");
   const updater = move.indexOf("setFromHere((prior) => movedFromHere(prior, before, point));");
-  const commit = move.indexOf("commit(movePoint(pointsRef.current, index, point));");
+  // The moved point keeps its kind, a stop or a via point (v0.7.0, lib/pointKinds.ts).
+  const commit = move.indexOf("commit(movePoint(pointsRef.current, index, VIA_MARKS.moved(before, point)));");
   assert.ok(before > 0 && updater > before && commit > updater, "captured, then the updater, then the commit");
   // React may run an updater after commit() has replaced pointsRef.current: the updater never reads it.
   assert.doesNotMatch(move, /setFromHere\([^;]*pointsRef/);

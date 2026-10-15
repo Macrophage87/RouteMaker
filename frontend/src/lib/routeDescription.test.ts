@@ -174,9 +174,11 @@ test("stops are Stop N in the points list, the announcements, the map and the GP
     assert.doesNotMatch(source, /`Via |"Via |Via point|via point|Add as via/, file);
   }
   const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
-  assert.match(map, /import \{ END_GLYPH, START_GLYPH, pointLabel \} from "\.\/lib\/pointText\.ts";/);
+  assert.match(map, /import \{ END_GLYPH, START_GLYPH \} from "\.\/lib\/pointText\.ts";/);
+  // Stops are numbered among the stops; a via point (v0.7.0) is named from lib/pointKinds.ts alone.
+  assert.match(map, /markerLabels\(props\.points, VIA_MARKS\.isVia, props\.loopVias === true\)/);
   const app = appSource();
-  assert.match(app, /announce\(insertedSaid\(leg, next\.length, loopVias\)\)/);
+  assert.match(app, /announce\(insertedSaid\(leg, next\.length, loopVias, VIA_POINT_NAME\)\)/);
 });
 
 test("the GPX writer names a route's points Start, Stop N and End", () => {

@@ -23,6 +23,7 @@ import { PlaceSearch } from "../PlaceSearch.tsx";
 import { approximateHint, type Fix, type locateSupport } from "../lib/geolocation.ts";
 import type { usePlaceNames } from "../usePlaceNames.ts";
 import { pointRows, type Place, type PlaceChoice } from "../lib/geocode.ts";
+import { VIA_MARKS } from "../lib/pointKinds.ts";
 import { HighContrastShortcut, PlannerZoomNotice, RideSettings } from "../Sidebar.tsx";
 import { Icon } from "../Icon.tsx";
 import { PLANNER_EXTRAS, searchLede } from "../lib/sidebar.ts";
@@ -211,7 +212,7 @@ export function PointsSection(props: PointsSectionProps) {
         <p className="hint">{searchLede(loopVias, accessMode)}</p>
       ) : (
         <PointsList
-          rows={pointRows(points, namer, loopVias)}
+          rows={pointRows(points, namer, loopVias, VIA_MARKS.isVia)}
           onRemove={removeAt}
           warnings={pointWarnings}
           removeRef={(index, button) => {

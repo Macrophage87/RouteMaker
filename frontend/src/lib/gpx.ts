@@ -22,6 +22,7 @@
  */
 import type { LonLat } from "./geo.ts";
 import { LOOP_START_NAME } from "./loop.ts";
+import { VIA_POINT_NAME } from "./pointKinds.ts";
 
 export const GPX_NS_11 = "http://www.topografix.com/GPX/1/1";
 export const GPX_NS_10 = "http://www.topografix.com/GPX/1/0";
@@ -409,6 +410,11 @@ export interface GpxExport {
   routeText?: string;
   /** The plan's own points: start, vias, end (in a loop, the start and finish, then stops). */
   planPoints: readonly LonLat[];
+  /**
+   * The via points among them (v0.7.0, "Via points vs stops"), by index: each is a route point named
+   * "Via point", never a numbered stop, so a file opened again keeps each point's kind.
+   */
+  vias?: readonly number[];
   /** A loop the rider chose (OWNER-DECISIONS 374): the first point is "Start and finish" and the rest are stops. */
   loop?: boolean;
   /** The route line. */
@@ -439,6 +445,17 @@ export function planPointName(index: number, count: number, loop = false): strin
   if (index === 0) return loop ? LOOP_START_NAME : "Start";
   if (!loop && index === count - 1) return "End";
   return `Stop ${index}`;
+}
+
+/** Every plan point's name in a file: stops numbered among themselves, via points named VIA_POINT_NAME. */
+export function planPointNames(count: number, loop = false, vias: readonly number[] = []): string[] {
+  let stops = 0;
+  return Array.from({ length: count }, (_, index) => {
+    if (index === 0 || (!loop && index === count - 1)) return planPointName(index, count, loop);
+    if (vias.includes(index)) return VIA_POINT_NAME;
+    stops += 1;
+    return `Stop ${stops}`;
+  });
 }
 
 /**
@@ -475,9 +492,10 @@ export function writeGpx(input: GpxExport): string {
     const routeDesc = [input.rideText, input.routeText].filter((part) => part).join("\n\n");
     if (routeDesc) lines.push(`    <desc>${escapeXml(routeDesc)}</desc>`);
     lines.push(`    <type>${escapeXml(PLAN_TYPE_PREFIX + input.preset)}</type>`);
+    const names = planPointNames(input.planPoints.length, input.loop === true, input.vias);
     input.planPoints.forEach((p, index) => {
       lines.push(`    <rtept ${position(p)}>`);
-      lines.push(`      <name>${planPointName(index, input.planPoints.length, input.loop === true)}</name>`);
+      lines.push(`      <name>${names[index]}</name>`);
       lines.push("    </rtept>");
     });
     lines.push("  </rte>");

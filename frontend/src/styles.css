@@ -1047,6 +1047,23 @@ button.secondary {
   border-radius: 50%;
 }
 
+/* A via point (v0.7.0, "Via points vs stops"): it only shapes the route, so it is a small hollow ring with no
+   number; the line shows through it. A shape, not a colour alone, tells it from a numbered stop. */
+.pin-via.pin-through {
+  background: transparent;
+  width: 14px;
+  height: 14px;
+  border: 3px solid #1d4ed8;
+  box-shadow: 0 0 0 2px #ffffff, 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+
+/* The point menu (v0.7.0): Remove and the switch between a stop and a via point, one under the other. */
+.point-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 /* A via's Remove, beside it on the map. */
 .via-popup .maplibregl-popup-content {
   padding: 4px;

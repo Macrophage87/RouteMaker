@@ -31,7 +31,8 @@ import { BetaChip, betaReportUrl, isBetaBuild } from "./lib/betaBanner.ts";
 import { announceHow } from "./lib/candidates.ts";
 import { canReverse, loopStops, loopView, reversedPoints } from "./lib/loop.ts";
 import { FINDING_ORDER_SAID, STILL_FINDING_ORDER_SAID, applyAnswer, requestStopOrder, stopsThatMove } from "./lib/stopOrder.ts";
-import { addedSaid, insertedSaid, loopChangeSaid, removedSaid, reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
+import { VIA_MARKS, VIA_POINT_NAME, isMiddle, kindSaid, kindSwitchedSaid, namePoints, stopsOnly, viaIndices, viaPointsNamed } from "./lib/pointKinds.ts";
+import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
 import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
 import { RideMode, startRideGesture, type RideView } from "./RideMode.tsx";
@@ -169,6 +170,8 @@ interface Plan {
 }
 
 const initialPlan = decodePlan(planToOpen(tabSession(), window.location.hash));
+// The link's via points (v0.7.0, lib/pointKinds.ts): an older link has none, so every point is a stop.
+VIA_MARKS.markAt(initialPlan.points, initialPlan.vias);
 
 // Go or Plan (lib/appMode.ts; the owner's choices 1 and 2 of 2026-10-11): the tab's own view, else Plan for a
 // link with a plan in it, else My Go's Open in (the account's copy or this device's), else by screen size.
@@ -560,7 +563,11 @@ export function App() {
           keptShown.current = null;
           return { ok: true, route: replay };
         }
-        const result = await requestRoute(plan.points, plan.preset, { confirmLong: plan.confirmLong, dials: plan.dials });
+        const result = await requestRoute(plan.points, plan.preset, {
+          confirmLong: plan.confirmLong,
+          dials: plan.dials,
+          vias: viaIndices(plan.points, VIA_MARKS.isVia),
+        });
         keptShown.current = null;
         if (result.ok || result.error.kind !== "network") return result;
         const kept = await keptAnswerFor<RouteResponse>(keptPlanKey(plan.points, plan.preset, plan.dials)).catch(() => undefined);
@@ -607,7 +614,7 @@ export function App() {
   // Keep the link in step with the plan, without adding history entries. Exactly encodePlan's
   // fragment, which never holds the weight (313); Copy link builds the same one (linkToCopy).
   useEffect(() => {
-    const hash = encodePlan(points, preset, dials);
+    const hash = encodePlan(points, preset, dials, viaIndices(points, VIA_MARKS.isVia));
     writtenHash.current = hash;
     window.history.replaceState(null, "", hash);
     // "Link copied." was about the link before this change (the correctness review's N4).
@@ -630,7 +637,7 @@ export function App() {
       setImported(null);
       // Another plan's route opens compact, as a first route does.
       setEditPoints(false);
-      setPoints(plan.points);
+      setPoints(VIA_MARKS.markAt(plan.points, plan.vias));
       setPreset(plan.preset);
       setDials(plan.dials);
     };
@@ -963,8 +970,11 @@ export function App() {
     }
     setNotice(null);
     const next = addPoint(pointsRef.current, point, loopVias);
+    // A point tapped in between the ends is a via point (v0.7.0, "Via points vs stops"); its menu makes it a stop.
+    const index = next.indexOf(point);
+    if (isMiddle(index, next.length, loopVias) && index < next.length - 1) VIA_MARKS.via(point);
     commit(next);
-    announce(addedSaid(next.indexOf(point), next.length, loopVias));
+    announce(kindSaid(next, index, VIA_MARKS.isVia, loopVias, "added"));
   }, [commit, announce, loopVias]); // namer is the page's one, kept for the page (usePlaceNames)
 
   // "Use my location": one look-up per press (lib/geolocation.ts), then placeFix decides: from the button,
@@ -1024,7 +1034,8 @@ export function App() {
     // pointsRef.current (when an update, such as the setNotice above, is already pending; correctness R1).
     const before = pointsRef.current[index];
     setFromHere((prior) => movedFromHere(prior, before, point));
-    commit(movePoint(pointsRef.current, index, point));
+    // A dragged point keeps its kind (lib/pointKinds.ts).
+    commit(movePoint(pointsRef.current, index, VIA_MARKS.moved(before, point)));
   }, [commit]);
 
   // The route line dragged (or clicked) at `point` from leg `leg`: a via in
@@ -1039,14 +1050,15 @@ export function App() {
         setNotice("That point is outside the area this map covers; it was put back.");
         return;
       }
-      const next = insertIntoRide(routed, leg, point, loopVias);
+      // The line dragged is a via point (v0.7.0): it shapes the route, with no stop there.
+      const next = insertIntoRide(routed, leg, VIA_MARKS.via(point), loopVias);
       if (next === null) {
         setNotice(`A route can have at most ${MAX_POINTS} points.`);
         return;
       }
       setNotice(null);
       commit(next);
-      announce(insertedSaid(leg, next.length, loopVias));
+      announce(insertedSaid(leg, next.length, loopVias, VIA_POINT_NAME));
     },
     [commit, announce, loopVias],
   );
@@ -1455,11 +1467,24 @@ export function App() {
     (index: number) => {
       const current = pointsRef.current;
       if (index < 0 || index >= current.length) return;
-      const said = removedSaid(index, current.length, loopVias);
+      const said = kindSaid(current, index, VIA_MARKS.isVia, loopVias, "removed");
       commit(current.filter((_, i) => i !== index));
       announce(said);
     },
     [commit, announce, loopVias],
+  );
+  // The point menu's "Make this a stop / a via point" (v0.7.0): a new pair of the other kind in its place, one
+  // edit, so Undo switches it back.
+  const switchKind = useCallback(
+    (index: number) => {
+      const current = pointsRef.current;
+      const point = current[index];
+      if (!point || namePoints(current, VIA_MARKS.isVia, loopVias)[index]?.role === "start") return;
+      const to = VIA_MARKS.isVia(point) ? "stop" : "via";
+      commit(current.map((p, i) => (i === index ? VIA_MARKS.withKind(p, to) : p)));
+      announce(kindSwitchedSaid(to, namer.name(point)?.name));
+    },
+    [commit, announce, loopVias, namer],
   );
   // Reverse: in a loop the start stays and the stops go the other way around
   // (OWNER-DECISIONS 374); with a start and one stop that is no change, so a
@@ -1487,7 +1512,8 @@ export function App() {
   // most one stop it could change nothing, and a standing reason would crowd every
   // short ride's tools (More tips says when it appears).
   // Never on a Mass Ride (OWNER-DECISIONS 449), whose field rides the stops in the order set.
-  const orderShown = !isMassRide(preset) && stopsThatMove(points, loopVias) >= 2;
+  // Best order moves stops only (v0.7.0): via points go with the stop they lead to.
+  const orderShown = !isMassRide(preset) && stopsThatMove(stopsOnly(points, VIA_MARKS.isVia, loopVias).points, loopVias) >= 2;
   const reverseButton = useRef<HTMLButtonElement>(null);
   const orderFocused = useRef(false);
   // The button leaves when the stops drop below two (an undo, a removal, the loop): if it
@@ -1523,16 +1549,17 @@ export function App() {
     const current = pointsRef.current;
     const ride = rideRef.current;
     const loop = loopStops(ride.preset, ride.dials.loop);
-    if (isMassRide(ride.preset) || stopsThatMove(current, loop) < 2) return;
+    const stops = stopsOnly(current, VIA_MARKS.isVia, loop);
+    if (isMassRide(ride.preset) || stopsThatMove(stops.points, loop) < 2) return;
     orderingRef.current = true;
     setOrdering(true);
     announce(FINDING_ORDER_SAID);
-    const result = await requestStopOrder(current, ride.preset, ride.dials);
+    const result = await requestStopOrder(stops.points, ride.preset, ride.dials);
     orderingRef.current = false;
     setOrdering(false);
     const now = rideRef.current;
     const applied = applyAnswer(
-      { points: current, preset: ride.preset, dials: ride.dials, loop },
+      { points: current, preset: ride.preset, dials: ride.dials, loop, stops: stops.points.length < current.length ? stops : undefined },
       { points: pointsRef.current, preset: now.preset, dials: now.dials },
       result,
       namer,
@@ -1556,7 +1583,10 @@ export function App() {
     setConfirmedKm(null);
     setNotice(null);
     for (const [point, name] of namesToKeep(plan)) namer.remember(point, name);
-    commit(plan.points.slice(0, MAX_POINTS), { ...rideAfterImport(plan, rideRef.current), imported: plan });
+    // A file's points are stops (v0.7.0), but for those a RouteMaker file names "Via point" (lib/gpx.ts).
+    const opened = plan.points.slice(0, MAX_POINTS);
+    VIA_MARKS.markAt(opened, viaPointsNamed(plan.pointNames, opened.length));
+    commit(opened, { ...rideAfterImport(plan, rideRef.current), imported: plan });
   };
   const getMap = useCallback(() => mapRef.current, []);
   // A fitting round for an opened track: part of the same edit as the import
@@ -1704,7 +1734,7 @@ export function App() {
     setLinkSaid("");
     setLinkSpoken("");
     const note = linkNote;
-    const done = await copyText(linkToCopy(window.location, points, preset, dials), navigator.clipboard, selectionCopy);
+    const done = await copyText(linkToCopy(window.location, points, preset, dials, viaIndices(points, VIA_MARKS.isVia)), navigator.clipboard, selectionCopy);
     window.setTimeout(() => {
       if (press === linkPresses.current) setLinkSaid(linkSaidFor(done));
       if (press === linkPresses.current) setLinkSpoken(linkSpokenFor(done, note));
@@ -1724,7 +1754,7 @@ export function App() {
     setLinkSaid("");
     setLinkSpoken("");
     const distanceM = !stale && routedPoints === points ? shown.distance_m : null;
-    const content = shareContent(linkToCopy(window.location, points, preset, dials), distanceM, presetSaid(preset));
+    const content = shareContent(linkToCopy(window.location, points, preset, dials, viaIndices(points, VIA_MARKS.isVia)), distanceM, presetSaid(preset));
     const outcome = shareLink(navigator, content);
     let said: string;
     try {
@@ -2348,6 +2378,7 @@ export function App() {
         onLineDrop={riding ? ignore : insertOnLine}
         pressSetsEnd={goTapSetsEnd(mode)}
         onRemovePoint={riding ? ignore : removeFromMap}
+        onSwitchKind={riding ? ignore : switchKind}
         markerReset={markerReset}
         accuracy={riding ? rideCircle : hereCircle}
         rider={riding && rideView?.rider ? rideView.rider : null}

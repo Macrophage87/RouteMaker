@@ -59,9 +59,9 @@ export function stationSaid(index: number, count: number, loop: boolean): string
  * 2" reads as two places; "between Start and finish and Stop 2" does not), and
  * the closing leg's far end is the start too.
  */
-export function insertedSaid(leg: number, count: number, loop: boolean): string {
+export function insertedSaid(leg: number, count: number, loop: boolean, name = `Stop ${leg + 1}`): string {
   const at = (index: number) => (loop && (index === 0 || index >= count) ? "the start" : pointName(index, count, loop));
-  return `Stop ${leg + 1} added, between ${at(leg)} and ${at(leg + 2)}.`;
+  return `${name} added, between ${at(leg)} and ${at(leg + 2)}.`;
 }
 
 /**
