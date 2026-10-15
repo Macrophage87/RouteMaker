@@ -889,6 +889,13 @@ button.secondary {
   cursor: pointer;
 }
 
+/* Novice and Nervous's transit offer (v0.7.0): the busy road named, then the two ways round it. */
+.novice-offer {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0;
+}
+
 /* Go's "Add a stop" with Best order beside it (v0.7.0), above the route. */
 .go-add-stop {
   display: flex;

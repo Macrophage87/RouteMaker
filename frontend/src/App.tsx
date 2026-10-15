@@ -23,6 +23,7 @@ import { neutralPaletteSearch, setMtbTrails, setRoutableMtb } from "./stressStyl
 import { setTopoLines, topoAvailable, useTopoLines } from "./lib/topoLines.ts";
 import { isMtb, mtbChosen, mtbLevelOf } from "./lib/mtbMode.ts";
 import { choose as chooseRideType } from "./lib/rideTypeDialog.ts";
+import { NOVICE_TRANSIT_CHOICES, noviceTransitSaid } from "./lib/noviceOffer.ts";
 import { useHighStressLanes, useMtbTrails } from "./useStressStyle.ts";
 import { useStressStyle } from "./useStressStyle.ts";
 import { ANNOUNCE_SETTLE_MS } from "./lib/settle.ts";
@@ -2344,6 +2345,13 @@ export function App() {
     onPlan: () => changeMode("plan"),
     peek: goSheet === "peek",
     options: goOptions ? { list: goOptions, picked: pickedOption(goOptions, bikeshareOf(shown)), busy: stale, onPick: pickOption } : null,
+    // Novice and Nervous's offer where only a busy road connects (v0.7.0): the trip on a transit ride type, its
+    // bike legs still planned as Novice and Nervous plans them (`noviceLegs`, sent as novice_legs, kept in the link).
+    onNoviceTransit: (id: PresetId) => {
+      choosePreset(id, { ...chooseRideType(id, null, dials), noviceLegs: true });
+      const label = NOVICE_TRANSIT_CHOICES.find((c) => c.preset === id)?.label ?? presetSaid(id);
+      announce(noviceTransitSaid(label));
+    },
   };
   // A transit plan's options (lib/transit.ts): a press plans that one, for this trip; a departure the
   // rider would miss plans again, which takes the next one (lib/departure.ts).

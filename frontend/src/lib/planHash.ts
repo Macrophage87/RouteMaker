@@ -59,6 +59,8 @@ export function encodePlan(points: readonly LonLat[], preset: PresetId, dials?: 
     if (dials.avoidGravel) params.set("avoidgravel", "1");
     // "Keep to roads, not trails" (OWNER-DECISIONS 463, 463b). Absent is trails on, except on Mass Ride, which is always off.
     if (dials.trailsOff) params.set("trailsoff", "1");
+    // A novice rider's transit plan (v0.7.0): its bike legs as Novice and Nervous plans them.
+    if (dials.noviceLegs) params.set("novice", "1");
     // The target distance in miles, to a tenth. Absent is none; an older link has none.
     if (dials.targetDistanceM) params.set("targetmi", (dials.targetDistanceM / METRES_PER_MILE).toFixed(1));
     // Never the rider and bike weight (OWNER-DECISIONS 313): it is private.
@@ -134,6 +136,7 @@ export function decodePlan(hash: string): Plan {
     assist: params.get("assist") === "1",
     avoidGravel: params.get("avoidgravel") === "1",
     trailsOff: params.get("trailsoff") === "1",
+    noviceLegs: params.get("novice") === "1",
     ...(isBike(params.get("bike")) ? { bike: params.get("bike") as "classic" | "ebike" } : {}),
     ...(params.get("ending") === "outside" ? { ending: "outside_dock" as const } : {}),
     rideSize: numberOrUndefined(params.get("riders")),

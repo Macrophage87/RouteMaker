@@ -9,7 +9,7 @@
  * route's `dials` says what the API actually planned with.
  * tests/test_presets.py reads STARTS and holds it equal to the API's table.
  */
-import { usesBikeshare, type PresetId } from "./presets.ts";
+import { isTransit, usesBikeshare, type PresetId } from "./presets.ts";
 import { DEFAULT_MTB_LEVEL, defaultMtbPreferred, fitMtbLevel, mtbLevelOf, mtbPreferredOf } from "./mtbMode.ts";
 
 export type When = "weekend" | "weekday_rush" | "weekday_offpeak" | "night";
@@ -91,6 +91,11 @@ export interface Dials {
    * request (lib/transit.ts withTransitOption), in no link, since a timetable moves on.
    */
   transitOption?: string;
+  /**
+   * The transit ride types only (v0.7.0, Novice and Nervous): the bike legs planned as Novice and Nervous
+   * plans them, for a novice rider offered transit where only a busy road connects. In the link; absent is off.
+   */
+  noviceLegs?: boolean;
   /**
    * "Anticipated ride size" (PLAN items 128, 129, 139), Mass Ride only: the riders expected,
    * 100 to 2,000. It sets the group's length, which the corker load is counted over (the
@@ -376,6 +381,7 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     ...(dials.trailsOff === true ? { trailsOff: true } : {}),
     ...(fitTarget(dials.targetDistanceM) !== undefined ? { targetDistanceM: fitTarget(dials.targetDistanceM) } : {}),
     ...(dials.loop === true ? { loop: true } : {}),
+    ...(isTransit(preset) && dials.noviceLegs === true ? { noviceLegs: true } : {}),
     // The level, on Mountain Bike only, and only when it is not the default (the link stays short).
     ...(preset === "mountain-bike" && fitMtbLevel(dials.mtbLevel) !== undefined && fitMtbLevel(dials.mtbLevel) !== DEFAULT_MTB_LEVEL
       ? { mtbLevel: fitMtbLevel(dials.mtbLevel) }
@@ -417,6 +423,7 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
     fields.dropoff_station = dials.dropoffStation;
   }
   if (dials.transitOption) fields.transit_option = dials.transitOption;
+  if (dials.noviceLegs) fields.novice_legs = true;
   return fields;
 }
 
