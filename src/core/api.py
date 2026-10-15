@@ -4009,6 +4009,35 @@ def saved_route_delete(request, route_id: int):
     return _private(JsonResponse({"deleted": route_id}))
 
 
+# The closures a kept line runs along now (v0.7.0 plan, "GPX export as close to identical as
+# possible, closure warning first", with its correction: mainly when a kept route is opened or
+# ridden). Public, like planning; the line is only measured, never kept.
+CLOSURE_LINE_MAX_POINTS = 10_000
+CLOSURE_BODY_MAX_BYTES = 512 * 1024
+
+
+@api.post("/closures/check", summary="The closures in force now that a route's line runs along")
+@decorate_view(
+    same_site_only,
+    ratelimit.rate_limited(ratelimit.CLOSURE_CHECK),
+    errors_as_json,
+)
+def closures_check(request):
+    from . import accounts
+    from . import workzones as work_zones
+
+    body, refusal = _json_body(request, CLOSURE_BODY_MAX_BYTES)
+    if refusal is not None:
+        return refusal
+    line = body.get("line") if isinstance(body, dict) else None
+    problem = accounts.line_problem(line)
+    if problem is None and len(line) > CLOSURE_LINE_MAX_POINTS:
+        problem = f"Send at most {CLOSURE_LINE_MAX_POINTS:,} points; thin the line first."
+    if problem:
+        return _error(400, problem)
+    return JsonResponse(work_zones.closures_on(line))
+
+
 # Mass Ride and Group Ride links: the other riders as dots, and alerts (v0.7.0 plan;
 # core.ride_presence). No sign-in: a ride is the digest of the link's plan and a rider a random
 # per-ride token. Positions are in POST bodies only, kept in memory for 2 minutes, never logged;
