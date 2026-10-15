@@ -4009,6 +4009,97 @@ def saved_route_delete(request, route_id: int):
     return _private(JsonResponse({"deleted": route_id}))
 
 
+# Mass Ride and Group Ride links: the other riders as dots, and alerts (v0.7.0 plan;
+# core.ride_presence). No sign-in: a ride is the digest of the link's plan and a rider a random
+# per-ride token. Positions are in POST bodies only, kept in memory for 2 minutes, never logged;
+# counted per token in memory rather than per address in the database, because a whole ride's
+# phones can share one carrier address.
+
+
+def _ride_call(request, fn):
+    from . import ride_presence
+
+    site = request.META.get("HTTP_SEC_FETCH_SITE", "").strip().lower()
+    if site and site not in ("same-origin", "none"):
+        return _stress_error(403, "This answers this site's own pages only.")
+    try:
+        answer = fn(ride_presence)
+    except ride_presence.Refused as refused:
+        out = _stress_error(refused.status, refused.message)
+        if refused.retry_after_s:
+            out["Retry-After"] = str(refused.retry_after_s)
+        return out
+    return _private(JsonResponse(answer or {"ok": True}))
+
+
+def _ride_body(request):
+    body, refusal = _json_body(request, 2048)
+    if refusal is None and not isinstance(body, dict):
+        refusal = _stress_error(400, "Send an object.")
+    return body, refusal
+
+
+@api.get("/rides/{ride_id}", summary="The other riders' dots on a ride link, and its alerts")
+@decorate_view(errors_as_json)
+def ride_read(request, ride_id: str):
+    token = request.META.get("HTTP_X_RIDE_TOKEN", "")
+    return _ride_call(request, lambda rp: rp.read(ride_id, token))
+
+
+@api.post("/rides/{ride_id}/here", summary="Show this rider as a dot (rounded to 20 m) for 2 min")
+@decorate_view(errors_as_json)
+def ride_here(request, ride_id: str):
+    body, refusal = _ride_body(request)
+    if refusal is not None:
+        return refusal
+    return _ride_call(
+        request,
+        lambda rp: rp.post_position(
+            ride_id, body.get("token", ""), body.get("lon"), body.get("lat")
+        ),
+    )
+
+
+@api.post("/rides/{ride_id}/leave", summary="Stop showing this rider's dot at once")
+@decorate_view(errors_as_json)
+def ride_leave(request, ride_id: str):
+    body, refusal = _ride_body(request)
+    if refusal is not None:
+        return refusal
+    return _ride_call(request, lambda rp: rp.leave(ride_id, body.get("token", "")))
+
+
+@api.post("/rides/{ride_id}/alerts", summary="Send an alert to everyone on the ride link")
+@decorate_view(errors_as_json)
+def ride_alert(request, ride_id: str):
+    body, refusal = _ride_body(request)
+    if refusal is not None:
+        return refusal
+    return _ride_call(
+        request,
+        lambda rp: rp.send_alert(
+            ride_id,
+            body.get("token", ""),
+            str(body.get("ride_type", "")),
+            str(body.get("kind", "")),
+            str(body.get("text", "") or ""),
+            body.get("lon"),
+            body.get("lat"),
+        ),
+    )
+
+
+@api.post("/rides/{ride_id}/alerts/{alert_id}/clear", summary="Clear an alert you sent")
+@decorate_view(errors_as_json)
+def ride_alert_clear(request, ride_id: str, alert_id: str):
+    body, refusal = _ride_body(request)
+    if refusal is not None:
+        return refusal
+    return _ride_call(
+        request, lambda rp: rp.clear_alert(ride_id, body.get("token", ""), alert_id[:32])
+    )
+
+
 class StepOut(Schema):
     value: float = Field(description="1 to 5 by halves (1.5 is a half step; 5 is Avoid).")
     words: str

@@ -61,6 +61,11 @@ def _no_long_trail_sentinels(settings):
     # test about sign-in being off clears them itself.
     settings.DISCORD_CLIENT_ID = "test-client-id"
     settings.DISCORD_CLIENT_SECRET = "test-client-secret"
+    # Ride dots in this process's memory (core.ride_presence), a fresh store for each test.
+    settings.RIDE_PRESENCE_DIR = ""
+    from core import ride_presence
+
+    ride_presence._store = None
 
 
 @pytest.fixture
