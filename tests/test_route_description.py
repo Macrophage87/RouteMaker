@@ -388,6 +388,31 @@ class TestDescribeRoute:
         assert entries[1]["turn"]["movement"] == "left"
         assert entries[-1]["to_m"] == 1000
 
+    def test_an_unnamed_way_takes_its_street_side_name(self):
+        # v0.7.0 "Go riding fixes" item 4: a piece of a way with no name, and a name from
+        # the rebuild (`segment.sidepath_name`), is said by that name; another stays "path".
+        pieces = [
+            routing.Piece(1, -77.0, 38.9, 400.0, ("R Street Northwest",), "road", 90.0, 90.0),
+            routing.Piece(7, -77.0, 38.9, 600.0, (), "cycleway", 0.0, 0.0),
+            routing.Piece(8, -77.0, 38.9, 600.0, (), "cycleway", 0.0, 0.0),
+        ]
+        classes = [("2", "none"), ("1", "protected"), ("1", "path")]
+        entries, _overview = routing.describe_route(
+            [(0, 3)],
+            pieces,
+            classes,
+            None,
+            {"length": 1.6},
+            None,
+            {7: "9th Street Northwest protected bike lane"},
+        )
+        assert [e["street"] for e in entries] == [
+            "R Street Northwest",
+            "9th Street Northwest protected bike lane",
+            "path",
+        ]
+        assert "unnamed" not in " ".join(e["text"] for e in entries)
+
     def test_an_untraced_leg_is_carried(self):
         entries, _overview = routing.describe_route(
             [(0, 1), 500.0], self.pieces()[:1], [("1", "none")], None, {"length": 0.9}
@@ -405,6 +430,33 @@ class TestDescribeRoute:
         entries = routing.describe_route([(0, 5)], self.pieces(), [], None, {})
         assert entries is None
         assert "could not be built" in caplog.text
+
+
+@db
+def test_the_street_side_names_are_read_for_unnamed_ways_only(segment_schemas):
+    """v0.7.0 "Go riding fixes" item 4: `segment.sidepath_name`, for the route's ways with no
+    name of their own; a named way is never looked up."""
+    from django.db import connection
+
+    from core import segment_info
+
+    live, _staging = segment_schemas
+    segment_info.forget_columns()
+    with connection.cursor() as cursor:
+        for way, name in ((7, "9th Street Northwest protected bike lane"), (8, None), (9, "X")):
+            cursor.execute(
+                f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule, sidepath_name) VALUES (%s, 0, "
+                "ST_GeomFromText('LINESTRING(-77 38.9, -77 38.901)', 4326), 1, 'test', %s)",
+                [way, name],
+            )
+    pieces = [
+        routing.Piece(7, -77.0, 38.9, 10.0, (), "cycleway"),
+        routing.Piece(8, -77.0, 38.9, 10.0, (), "cycleway"),
+        routing.Piece(9, -77.0, 38.9, 10.0, ("Named Trail",), "cycleway"),
+    ]
+    assert routing.sidepath_names_of(pieces) == {7: "9th Street Northwest protected bike lane"}
+    segment_info.forget_columns()
 
 
 @db

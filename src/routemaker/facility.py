@@ -712,6 +712,134 @@ def separate_pairs(
     return found, roads
 
 
+# --- An unnamed bike lane beside a named street (v0.7.0, "Go riding fixes" item 4) ------------
+
+# The owner, 2026-10-15: "A protected bike lane was listed as an "unnamed path" near 9th
+# and R NW." A cycleway or path with no name of its own that runs alongside a named street
+# - within SIDE_STREET_M, roughly parallel (SIDE_STREET_ANGLE), for most of its length
+# (SIDE_STREET_FRACTION) - is that street's bike lane: "9th Street Northwest bike lane",
+# or "9th Street Northwest protected bike lane" where its tags say it is separated from
+# the road (`separation*` physical) or segregated (`segregated=yes`). The rebuild writes
+# the name onto `segment.sidepath_name`; the route description and the road panel say it
+# where the way has no name.
+SIDE_STREET_M = 20.0
+SIDE_STREET_ANGLE = 30.0
+SIDE_STREET_FRACTION = 0.6
+# The trail is looked at every this many metres along it.
+SIDE_STREET_STEP_M = 5.0
+# The streets a bike lane is named after: roads a rider would know by name. Not a
+# service road (a parking aisle, an alley), a track or a motorway.
+SIDE_STREET_HIGHWAY = frozenset(
+    {
+        "trunk", "trunk_link", "primary", "primary_link", "secondary", "secondary_link",
+        "tertiary", "tertiary_link", "residential", "unclassified", "living_street",
+    }
+)  # fmt: skip
+BIKE_LANE_WORDS = "bike lane"
+PROTECTED_BIKE_LANE_WORDS = "protected bike lane"
+
+
+def sidepath_name(street: str, tags: dict[str, str]) -> str:
+    """ "<street> bike lane", or "<street> protected bike lane" where the way is tagged
+    separated from the road or segregated."""
+    protected = tags.get("segregated") == "yes" or any(
+        _physical(tags.get(key)) for key in TRAIL_SEPARATION_KEYS
+    )
+    return f"{street} {PROTECTED_BIKE_LANE_WORDS if protected else BIKE_LANE_WORDS}"
+
+
+def _bearing(a: tuple[float, float], b: tuple[float, float]) -> float:
+    """The undirected bearing of a to b in the plane, degrees in [0, 180)."""
+    return math.degrees(math.atan2(b[0] - a[0], b[1] - a[1])) % 180.0
+
+
+def _angle_between(x: float, y: float) -> float:
+    """The angle between two undirected bearings, 0-90."""
+    d = abs(x - y) % 180.0
+    return min(d, 180.0 - d)
+
+
+def _samples(points: Sequence[tuple[float, float]], step: float):
+    """(point, the bearing there, the metres it stands for) every `step` along a line."""
+    for a, b in zip(points, points[1:], strict=False):
+        length = math.dist(a, b)
+        if length <= 0:
+            continue
+        bearing = _bearing(a, b)
+        count = max(1, math.ceil(length / step))
+        for k in range(count):
+            t = (k + 0.5) / count
+            yield (a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])), bearing, length / count
+
+
+def side_street_names(
+    ways: Sequence[tuple[int, dict[str, str], Sequence[tuple[float, float]]]]
+    | Iterable[tuple[int, dict[str, str], Sequence[tuple[float, float]]]],
+) -> dict[int, str]:
+    """Each unnamed bike way's name from the named street it runs alongside
+    (`sidepath_name`), by osm id; ways with none are left out.
+
+    `ways` is (osm id, tags, [(lon, lat), ...]). A way is asked when it is trail
+    class, has no `name`, and a bicycle may ride it as a path or a protected lane
+    (`facility`). It takes a street's name when at least SIDE_STREET_FRACTION of its
+    length lies within SIDE_STREET_M of that street's centreline and within
+    SIDE_STREET_ANGLE of parallel to it there. A street is a SIDE_STREET_HIGHWAY way
+    with a `name`; two ways of one name count as one street."""
+    lat0 = 38.9
+    cell = SIDE_STREET_M
+    # The candidates first, so only the streets near one are held (the region's named
+    # roads are millions of segments; the unnamed bike ways a few thousand).
+    ways = ways if isinstance(ways, Sequence) else list(ways)
+    candidates: list[tuple[int, dict[str, str], list[tuple[float, float]]]] = []
+    for osm_id, tags, coords in ways:
+        if (
+            len(coords) >= 2
+            and tags.get("highway") in TRAIL_CLASS_HIGHWAY
+            and not (tags.get("name") or "").strip()
+            and facility(tags) in (Facility.PATH, Facility.PROTECTED)
+        ):
+            candidates.append((osm_id, tags, [_xy(lon, lat, lat0) for lon, lat in coords]))
+    if not candidates:
+        return {}
+    wanted: set[tuple[int, int]] = set()
+    for _osm_id, _tags, points in candidates:
+        for p, _bearing_at, _metres in _samples(points, SIDE_STREET_STEP_M):
+            wanted.add((int(p[0] // cell), int(p[1] // cell)))
+    grid: dict[tuple[int, int], list[tuple[tuple[float, float], tuple[float, float], str]]] = {}
+    for _osm_id, tags, coords in ways:
+        name = (tags.get("name") or "").strip()
+        if not name or tags.get("highway") not in SIDE_STREET_HIGHWAY or len(coords) < 2:
+            continue
+        points = [_xy(lon, lat, lat0) for lon, lat in coords]
+        for a, b in zip(points, points[1:], strict=False):
+            x0, x1 = sorted((a[0], b[0]))
+            y0, y1 = sorted((a[1], b[1]))
+            for gx in range(int(x0 // cell) - 1, int(x1 // cell) + 2):
+                for gy in range(int(y0 // cell) - 1, int(y1 // cell) + 2):
+                    if (gx, gy) in wanted:
+                        grid.setdefault((gx, gy), []).append((a, b, name))
+    found: dict[int, str] = {}
+    for osm_id, tags, points in candidates:
+        total = 0.0
+        beside: dict[str, float] = {}
+        for p, bearing, metres in _samples(points, SIDE_STREET_STEP_M):
+            total += metres
+            near: str | None = None
+            nearest = SIDE_STREET_M
+            for a, b, name in grid.get((int(p[0] // cell), int(p[1] // cell)), ()):
+                d = _point_segment_m(p, a, b)
+                if d <= nearest and _angle_between(bearing, _bearing(a, b)) <= SIDE_STREET_ANGLE:
+                    near, nearest = name, d
+            if near is not None:
+                beside[near] = beside.get(near, 0.0) + metres
+        if total <= 0 or not beside:
+            continue
+        street, metres = max(beside.items(), key=lambda item: (item[1], item[0]))
+        if metres >= SIDE_STREET_FRACTION * total:
+            found[osm_id] = sidepath_name(street, tags)
+    return found
+
+
 def _length_m(coords: Sequence[tuple[float, float]]) -> float:
     if len(coords) < 2:
         return 0.0

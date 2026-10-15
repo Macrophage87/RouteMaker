@@ -82,7 +82,10 @@ TIER_WORDS = {
     "5": "Avoid (legal, but best avoided)",
 }
 UNRATED_WORDS = "stress not rated"
-UNNAMED_PATH = "unnamed path"
+# A path with no name of its own is just "path" (the owner, 2026-10-15: not "unnamed
+# path"); one beside a named street is that street's bike lane, named at the rebuild
+# (`routemaker.facility.side_street_names`) and handed in as the piece's name.
+UNNAMED_PATH = "path"
 # The street a stretch gets when its pieces have no name (a road) or were not traced. The
 # client reads these as unnamed (frontend/src/lib/federalStops.ts, held equal by
 # tests/test_describe.py TestFrontEndAgrees).
@@ -541,6 +544,12 @@ def _street_words(run: _Run) -> str:
     return UNNAMED_PATH if run.facility in ("path", "protected") or run.path else UNNAMED_ROAD
 
 
+def _in_sentence(street: str) -> str:
+    """The street as a sentence names it after "onto" or "on": "the path" for a path
+    with no name, the street itself otherwise."""
+    return f"the {street}" if street == UNNAMED_PATH else street
+
+
 def _stretch_sentence(
     run: _Run,
     start_m: float,
@@ -557,21 +566,25 @@ def _stretch_sentence(
     if turn is not None:
         movement = turn.movement
         if movement == "left":
-            lead = f"Left onto {street}"
+            lead = f"Left onto {_in_sentence(street)}"
         elif movement == "right":
-            lead = f"Right onto {street}"
+            lead = f"Right onto {_in_sentence(street)}"
         else:
-            lead = f"Continue onto {street}"
+            lead = f"Continue onto {_in_sentence(street)}"
         if event is not None:
             lead += _control_words(event.control, event.flagged)
             lead += _severity_suffix(event.severity if event.flagged else None)
     elif same_street_continues:
-        lead = f"Continue on {street}"
+        lead = f"Continue on {_in_sentence(street)}"
     else:
-        lead = street
+        lead = street[:1].upper() + street[1:] if street == UNNAMED_PATH else street
     words = tier_words(run.tier, run.facility)
     if words == PATH_WORDS and street == UNNAMED_PATH:
         words = "traffic-free"
+    elif street.endswith(" bike lane"):
+        # A bike lane named for its street ("9th Street Northwest protected bike lane")
+        # already says what it is: the facility is not said twice.
+        words = "traffic-free" if words == PATH_WORDS else TIER_WORDS.get(run.tier, UNRATED_WORDS)
     surface = surface_of(run)
     if surface:
         words = f"{words}, {surface}"
@@ -589,7 +602,9 @@ def _then_words(streets: list[tuple[str, str | None]]) -> str:
         return ""
     pieces = []
     for street, movement in streets[:MAX_NAMED_TURNS]:
-        pieces.append(f"{movement} on {street}" if movement in ("left", "right") else street)
+        pieces.append(
+            f"{movement} on {_in_sentence(street)}" if movement in ("left", "right") else street
+        )
     more = len(streets) - MAX_NAMED_TURNS
     if more > 0:
         listed = ", ".join(pieces) + f" and {more} more turn{'s' if more > 1 else ''}"

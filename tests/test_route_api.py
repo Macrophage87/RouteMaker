@@ -59,6 +59,8 @@ CONTRACT_KEYS = {
     # Additive, FOLLOWUP-HILLS-TOLERATE (OWNER-DECISIONS 242).
     "hills_tolerate",
     "leg_ends",
+    # Additive, v0.7.0 "Go riding fixes" item 5: the destination's side of the street.
+    "arrival_side",
     # Additive, FOLLOWUP-ROUTE-COLOURS (OWNER-DECISIONS item 81).
     "stress_spans",
     # Additive, FOLLOWUP-ELEVATION-CHART (OWNER-DECISIONS 322, 323, 328, 333): the elevation
@@ -249,6 +251,33 @@ class TestAnswer:
         assert body["geometry"]["type"] == "LineString"
         assert body["preset"] == "default"
         assert body["variant"] == presets.variant_for_ride("default", routing.default_when())
+
+    def test_the_destination_side_is_the_routers_destination_maneuver(
+        self, client, segments, router
+    ) -> None:
+        """v0.7.0 "Go riding fixes" item 5: the route asks for maneuvers (no narrative), and the
+        last leg's destination maneuver (type 5 right, 6 left) is `arrival_side`; with none,
+        the destination's `side_of_street`; with neither, null."""
+        fake = router(standard_router())
+        fake.answers["route"]["trip"]["legs"][-1]["maneuvers"] = [{"type": 1}, {"type": 6}]
+        body = post(client, good_body()).json()
+        assert body["arrival_side"] == "left"
+        route_calls = [p for url, p in fake.calls if url.endswith("/route")]
+        assert route_calls and route_calls[0]["directions_type"] == "maneuvers"
+
+        fake = router(standard_router())
+        fake.answers["route"]["trip"]["locations"] = [{}, {"side_of_street": "right"}]
+        assert post(client, good_body()).json()["arrival_side"] == "right"
+
+        router(standard_router())
+        assert post(client, good_body()).json()["arrival_side"] is None
+
+    def test_the_arrival_side_reads_only_a_stated_side(self) -> None:
+        assert routing.arrival_side_of({"legs": [{"maneuvers": [{"type": 5}]}]}) == "right"
+        assert routing.arrival_side_of({"legs": [{"maneuvers": [{"type": 4}]}]}) is None
+        assert routing.arrival_side_of({"legs": []}) is None
+        assert routing.arrival_side_of({"locations": [{"side_of_street": "none"}]}) is None
+        assert routing.arrival_side_of({"legs": "nonsense"}) is None
 
     def test_the_route_is_coloured_by_stretch_in_route_order(self, client, segments, router):
         """OWNER-DECISIONS item 81: "Could we also get a color on the route for

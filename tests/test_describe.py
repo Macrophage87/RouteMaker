@@ -511,26 +511,68 @@ class TestNamesAndKinds:
         entries = d.describe([unnamed(300.0, "1") + unnamed(40.0, "2") + unnamed(300.0, "1")])
         assert len(entries) == 1 and entries[0]["to_m"] == 640
 
-    def test_an_unnamed_trail_is_an_unnamed_path(self):
+    def test_an_unnamed_trail_is_a_path(self):
+        # The owner, 2026-10-15: "path", not "unnamed path".
         entries = d.describe([road(None, 1, 700, facility="path", use="cycleway")])
         assert len(entries) == 1  # its unnamed pieces are one stretch
-        assert entries[0]["street"] == "unnamed path"
-        assert entries[0]["text"].endswith("unnamed path, traffic-free.")
+        assert entries[0]["street"] == "path"
+        assert entries[0]["text"].endswith(": Path, traffic-free.")
+        assert "unnamed" not in entries[0]["text"]
 
-    def test_an_unnamed_sidewalk_is_an_unnamed_path_by_its_use(self):
+    def test_an_unnamed_sidewalk_is_a_path_by_its_use(self):
         entries = d.describe([road(None, 2, 700, use="footway")])
-        assert entries[0]["street"] == "unnamed path"
+        assert entries[0]["street"] == "path"
 
     def test_an_unnamed_path_is_not_called_a_path_twice(self):
         text = d.describe([road(None, 1, 700, facility="path", use="cycleway")])[0]["text"]
-        assert text.endswith("unnamed path, traffic-free.")
+        assert text.endswith("Path, traffic-free.")
+
+    def test_a_turn_onto_an_unnamed_path_is_onto_the_path(self):
+        entries = d.describe(
+            [
+                [
+                    d.Atom(400.0, "2", "none", ("A Street",), "road", 0.0, 0.0),
+                    d.Atom(600.0, "1", "path", (), "cycleway", 270.0, 270.0),
+                ]
+            ]
+        )
+        assert entries[1]["street"] == "path"
+        assert ": Left onto the path, traffic-free." in entries[1]["text"]
+
+    def test_a_bike_lane_named_for_its_street_says_its_name_once(self):
+        # An unnamed protected lane beside 9th Street NW, named at the rebuild
+        # (`routemaker.facility.side_street_names`) and handed in as the piece's name.
+        entries = d.describe(
+            [
+                [
+                    d.Atom(400.0, "2", "none", ("R Street Northwest",), "road", 90.0, 90.0),
+                    d.Atom(
+                        600.0,
+                        "1",
+                        "protected",
+                        ("9th Street Northwest protected bike lane",),
+                        "cycleway",
+                        0.0,
+                        0.0,
+                    ),
+                ]
+            ]
+        )
+        lane = entries[1]
+        assert lane["street"] == "9th Street Northwest protected bike lane"
+        assert lane["turn"]["onto"] == "9th Street Northwest protected bike lane"
+        assert (
+            ": Left onto 9th Street Northwest protected bike lane, low stress (LTS 1)."
+            in lane["text"]
+        )
+        assert lane["text"].count("protected bike lane") == 1
 
     def test_an_unnamed_stretch_that_is_a_path_for_part_of_it_is_a_path(self):
         atoms = [
             d.Atom(300.0, "2", "none", (), "road", 90.0, 90.0),
             d.Atom(300.0, "2", "none", (), "footway", 90.0, 90.0),
         ]
-        assert d.describe([atoms])[0]["street"] == "unnamed path"
+        assert d.describe([atoms])[0]["street"] == "path"
 
     def test_an_unnamed_road_is_an_unnamed_road(self):
         entries = d.describe([road(None, 2, 700)])

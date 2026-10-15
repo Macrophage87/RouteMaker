@@ -1848,6 +1848,13 @@ class RouteBody(Schema):
     # Index in geometry.coordinates of each leg's last vertex, one per leg
     # (points - 1); a leg starts where the one before it ends.
     leg_ends: list[int]
+    arrival_side: Literal["left", "right"] | None = Field(
+        default=None,
+        description=(
+            "Which side of the street the destination is on, from the router's destination"
+            " maneuver (Ride mode's last cue: 'Destination on your right'); null where unknown."
+        ),
+    )
     # The route's stressful junctions, in route order; null where they could not
     # be read in time (the route is answered all the same).
     intersections: list[IntersectionOut] | None
