@@ -314,6 +314,9 @@ class User(AbstractBaseUser):
             # A deleted account keeps no My Go (its Home is a place the rider lives).
             if previous is not None and self.is_deleted and not previous.is_deleted:
                 MyGo.objects.filter(user_id=self.pk).delete()
+                # Nor its saved settings and routes (v0.7.0: "deleted with the account").
+                AccountSettings.objects.filter(user_id=self.pk).delete()
+                SavedRoute.objects.filter(user_id=self.pk).delete()
 
         return super().save(*args, **kwargs)
 
@@ -1759,3 +1762,68 @@ class MyGo(models.Model):
 
     def __str__(self) -> str:
         return f"My Go for account {self.user_id}"
+
+
+class AccountSettings(models.Model):
+    """A signed-in rider's saved planning settings (v0.7.0 plan, "Discord sign-in on, with saved
+    settings and routes", item 2): the choices the device already remembers, kept with the
+    account so they follow the rider to another device.
+
+    One row per account, last write wins. `data` is the front end's own settings document
+    (frontend/src/lib/accountSettings.ts), checked for shape and size by the API before it is
+    written. My Go keeps its own row (`MyGo`), and Home stays there. Deleted with the account.
+    """
+
+    user = models.OneToOneField(
+        "User", on_delete=models.CASCADE, primary_key=True, related_name="account_settings"
+    )
+    data = models.JSONField(default=dict)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "account_settings"
+
+    def __str__(self) -> str:
+        return f"Settings for account {self.user_id}"
+
+
+class SavedRoute(models.Model):
+    """A route a signed-in rider saved (v0.7.0 plan, item 3).
+
+    The exact line as planned, kept verbatim like a GPX track (`line`), with the plan's inputs
+    (start, end, stops, ride type and dials, as the link's fragment and as fields), the name and
+    the date. A route from an opened GPX file is kept the same way, its own line verbatim.
+    Reopening shows `line` (and, for a planned route, the saved answer) unchanged; nothing is
+    re-planned unless the rider asks. Private to the account, never shared between accounts,
+    deleted with it, and at most `MAX_PER_ACCOUNT` per account.
+    """
+
+    MAX_PER_ACCOUNT = 200
+
+    class Source(models.TextChoices):
+        PLAN = "plan", "Planned in RouteMaker"
+        GPX = "gpx", "An opened GPX file"
+
+    user = models.ForeignKey("User", on_delete=models.CASCADE, related_name="saved_routes")
+    name = models.CharField(max_length=120)
+    source = models.CharField(max_length=8, choices=Source.choices, default=Source.PLAN)
+    # [[lon, lat] or [lon, lat, ele], ...] exactly as planned or as the file had it.
+    line = models.JSONField()
+    distance_m = models.FloatField()
+    # {"hash": the plan link's fragment, "points": [[lon, lat], ...], "preset": id, "dials": {...}}
+    inputs = models.JSONField(default=dict)
+    # The planned route's whole answer as shown when saved (without the other candidates), so a
+    # reopened route shows every panel as it was; null for a GPX file's line.
+    answer = models.JSONField(null=True, blank=True)
+    # An opened GPX file's own text, byte for byte, so its export is the file as it came (its
+    # track points, elevations and waypoint names unchanged); empty for a planned route.
+    gpx = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "saved_route"
+        indexes = [models.Index(fields=["user", "-created_at"], name="saved_route_user_recent")]
+
+    def __str__(self) -> str:
+        return f"Saved route {self.pk} for account {self.user_id}"

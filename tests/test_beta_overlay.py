@@ -2021,6 +2021,8 @@ def test_the_dump_strips_every_identity_table_owner_decision_367() -> None:
         "cached_membership",
         # a rider's own My Go holds their Home (core.models.MyGo)
         "my_go",
+        "account_settings",
+        "saved_route",
     }
     assert identities <= excluded, identities - excluded
     # what the beta needs from home stays: the overrides

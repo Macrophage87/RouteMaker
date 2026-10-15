@@ -455,3 +455,65 @@ def with_work_zones(body: dict, plan: rules.PlanZones | None) -> dict:
         "disclaimer": rules.DISCLAIMER,
     }
     return body
+
+
+# --- A kept line against the closures in force now ---------------------------------
+#
+# v0.7.0 plan, "GPX export as close to identical as possible, closure warning first", and its
+# CORRECTION: a saved route, a shared link, an opened GPX or a plan left open keeps its line
+# verbatim, so a closure that came in after it was planned is not routed round. When such a
+# route is opened, on Start ride, and before a GPX download or a save, the page sends the line
+# here and is told the closures it runs along now, to offer "Reroute around them".
+
+
+def _until_words(zone: rules.Zone) -> str:
+    if zone.end is None:
+        return "no end date given"
+    from routemaker import ridetime
+
+    local = zone.end.astimezone(ridetime.ZONE)
+    return f"until {local.strftime('%b')} {local.day}, {local.year}"
+
+
+def _mi_km(metres: float) -> str:
+    return f"{metres / 1609.344:.1f} mi ({metres / 1000:.1f} km)"
+
+
+def closures_on(line, at: datetime | None = None) -> dict:
+    """The closures in force at `at` (default now) that `line` runs along, in line order.
+
+    A closure is a work zone closed to bicycles, or with every lane closed and bicycles not
+    mentioned (the planner treats both as closures: `rules.severity` red). Each comes with its
+    stretch along the line (`from_m`, `to_m`, on the line as sent) and one line of words:
+    street, from and to along the route, until when.
+    """
+    found = snapshot()
+    moment = at or _now()
+    zones = [
+        z
+        for z in found.zones
+        if z.kind in (rules.CLOSED, rules.UNKNOWN) and rules.active(z, moment)
+    ]
+    passages = rules.along(line, zones) if zones else []
+    closures = []
+    for p in passages:
+        road = p.zone.road or "A road with no name in the feed"
+        closures.append(
+            {
+                "id": p.zone.zone_id,
+                "kind": p.zone.kind,
+                "road": p.zone.road,
+                "from_m": round(p.from_m),
+                "to_m": round(p.to_m),
+                "end": None if p.zone.end is None else p.zone.end.isoformat(),
+                "source": rules.SOURCES.get(p.zone.source, p.zone.source),
+                "text": (
+                    f"{road}, from {_mi_km(p.from_m)} to {_mi_km(p.to_m)} along the route,"
+                    f" {_until_words(p.zone)}."
+                ),
+            }
+        )
+    return {
+        "closures": closures,
+        "unchecked": unchecked_text(found.status) if found.status else None,
+    }

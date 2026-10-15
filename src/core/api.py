@@ -57,6 +57,7 @@ A malformed JSON body is counted, because only a script can send one.
 from __future__ import annotations
 
 import dataclasses
+import json
 import logging
 from datetime import datetime, timedelta
 from functools import wraps
@@ -3471,6 +3472,13 @@ class MeOut(Schema):
     can_suggest: bool = Field(
         description="The road panel offers Suggest a change (core.suggestions.may_suggest)."
     )
+    sign_in: bool = Field(
+        default=False,
+        description=(
+            "Whether this server can sign anyone in (both Discord keys are set): the page offers"
+            " Sign in with Discord only when it is true."
+        ),
+    )
 
 
 def _private(response: HttpResponse) -> HttpResponse:
@@ -3581,7 +3589,7 @@ def csrf_protected(view):
 @api.get(
     "/me",
     response={200: MeOut, 403: ErrorOut, 429: ErrorOut, 500: ErrorOut},
-    summary="Three yes/no flags: signed in, may change traffic stress, may suggest",
+    summary="Yes/no flags: signed in, may change traffic stress, may suggest, sign-in offered",
 )
 @decorate_view(
     ratelimit.rate_limited(ratelimit.ME),
@@ -3601,8 +3609,16 @@ def me(request, response: HttpResponse):
         # Sets the `csrftoken` cookie the editor sends back as `X-CSRFToken`.
         get_token(request)
     _private(response)
+    from .auth_views import sign_in_available
+
     return Status(
-        200, {"signed_in": signed, "can_change_lts": can_change, "can_suggest": can_suggest}
+        200,
+        {
+            "signed_in": signed,
+            "can_change_lts": can_change,
+            "can_suggest": can_suggest,
+            "sign_in": sign_in_available(),
+        },
     )
 
 
@@ -3743,6 +3759,379 @@ def my_go_save(request, body: MyGoIn, response: HttpResponse):
     )
     _private(response)
     return Status(200, _my_go_out(row))
+
+
+# Saved settings and saved routes (v0.7.0 plan, "Discord sign-in on, with saved settings and
+# routes"; core.accounts, core.models.AccountSettings and SavedRoute). The rider's own and
+# nobody else's: signed in, same site, CSRF on every write, counted per account. Signed out it is
+# 401 and the page keeps its settings on the device, as before.
+
+
+def _json_body(request, max_bytes: int):
+    """The parsed JSON body, or an error response: the same checks as `json_body_only`, with the
+    cap this endpoint needs."""
+    content_type = request.META.get("CONTENT_TYPE", "").split(";")[0].strip().lower()
+    if content_type != "application/json":
+        return None, _stress_error(400, "Send the body as application/json.")
+    try:
+        declared = int(request.META.get("CONTENT_LENGTH") or 0)
+    except ValueError:
+        return None, _stress_error(400, "Invalid Content-Length.")
+    if declared > max_bytes:
+        return None, _stress_error(400, f"The body is larger than {max_bytes // 1024} KB.")
+    try:
+        return json.loads(request.body or b"null"), None
+    except ValueError:
+        return None, _stress_error(400, "The body is not JSON.")
+
+
+def _settings_out(row) -> dict:
+    return {
+        "settings": row.data if row is not None else None,
+        "updated_at": row.updated_at.isoformat() if row is not None else None,
+    }
+
+
+@api.get("/me/settings", summary="The signed-in rider's saved settings (null when none yet)")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def account_settings_read(request):
+    from django.middleware.csrf import get_token
+
+    from .models import AccountSettings
+
+    get_token(request)
+    row = AccountSettings.objects.filter(user=request.user).first()
+    return _private(JsonResponse(_settings_out(row)))
+
+
+@api.post("/me/settings", summary="Save the signed-in rider's settings (the whole document)")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def account_settings_save(request):
+    from . import accounts
+    from .models import AccountSettings
+
+    body, refusal = _json_body(request, accounts.SETTINGS_MAX_BYTES + 1024)
+    if refusal is not None:
+        return refusal
+    data = body.get("settings") if isinstance(body, dict) else None
+    problem = accounts.settings_problem(data)
+    if problem:
+        return _stress_error(400, problem, field="settings")
+    # One row per account, last write wins (the plan).
+    row, _ = AccountSettings.objects.update_or_create(user=request.user, defaults={"data": data})
+    return _private(JsonResponse(_settings_out(row)))
+
+
+def _route_summary(row) -> dict:
+    return {
+        "id": row.pk,
+        "name": row.name,
+        "source": row.source,
+        "distance_m": row.distance_m,
+        "preset": (row.inputs or {}).get("preset", ""),
+        "created_at": row.created_at.isoformat(),
+        "updated_at": row.updated_at.isoformat(),
+    }
+
+
+def _route_full(row) -> dict:
+    return {
+        **_route_summary(row),
+        "line": row.line,
+        "inputs": row.inputs,
+        "answer": row.answer,
+        "gpx": row.gpx,
+    }
+
+
+def _saved_route(request, route_id: int):
+    from .models import SavedRoute
+
+    # Another account's route is "not found", never "forbidden": no route is shared.
+    return SavedRoute.objects.filter(user=request.user, pk=route_id).first()
+
+
+@api.get("/me/routes", summary="The signed-in rider's saved routes, newest first")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def saved_routes_list(request):
+    from django.middleware.csrf import get_token
+
+    from .models import SavedRoute
+
+    get_token(request)
+    rows = SavedRoute.objects.filter(user=request.user).order_by("-created_at", "-pk")
+    return _private(
+        JsonResponse(
+            {
+                "routes": [_route_summary(r) for r in rows.defer("line", "answer")],
+                "max": SavedRoute.MAX_PER_ACCOUNT,
+            }
+        )
+    )
+
+
+@api.post("/me/routes", summary="Save a route: its exact line, the plan's inputs and a name")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def saved_routes_add(request):
+    from django.db import transaction
+
+    from . import accounts
+    from .models import SavedRoute, User
+
+    body, refusal = _json_body(request, accounts.ROUTE_MAX_BYTES)
+    if refusal is not None:
+        return refusal
+    if not isinstance(body, dict):
+        return _stress_error(400, "Send the route as an object.")
+    name = body.get("name")
+    if not isinstance(name, str) or not name.strip() or len(name.strip()) > accounts.NAME_MAX:
+        return _stress_error(
+            400, f"Give the route a name of up to {accounts.NAME_MAX} characters.", field="name"
+        )
+    source = body.get("source", SavedRoute.Source.PLAN)
+    if source not in SavedRoute.Source.values:
+        return _stress_error(400, "Not a kind of route this planner saves.", field="source")
+    line = body.get("line")
+    problem = accounts.line_problem(line)
+    if problem:
+        return _stress_error(400, problem, field="line")
+    distance = body.get("distance_m")
+    if not accounts._finite(distance) or distance <= 0:
+        return _stress_error(400, "The route's distance is missing.", field="distance_m")
+    inputs = body.get("inputs", {})
+    problem = accounts.inputs_problem(inputs)
+    if problem:
+        return _stress_error(400, problem, field="inputs")
+    answer = body.get("answer")
+    if answer is not None and (source != SavedRoute.Source.PLAN or not isinstance(answer, dict)):
+        return _stress_error(400, "Only a planned route keeps its answer.", field="answer")
+    gpx = body.get("gpx", "") or ""
+    if not isinstance(gpx, str) or (gpx and source != SavedRoute.Source.GPX):
+        return _stress_error(400, "Only an opened GPX file keeps its text.", field="gpx")
+    with transaction.atomic():
+        # Taken in turn per account, so two saves at once cannot both pass the cap.
+        User.objects.select_for_update().filter(pk=request.user.pk).first()
+        if SavedRoute.objects.filter(user=request.user).count() >= SavedRoute.MAX_PER_ACCOUNT:
+            return _stress_error(
+                409,
+                f"You have {SavedRoute.MAX_PER_ACCOUNT} saved routes, the most an account keeps."
+                " Delete one in My routes to save this one.",
+                code="full",
+            )
+        row = SavedRoute.objects.create(
+            user=request.user,
+            name=name.strip(),
+            source=source,
+            line=line,
+            distance_m=float(distance),
+            inputs=inputs,
+            answer=answer,
+            gpx=gpx,
+        )
+    return _private(JsonResponse(_route_summary(row), status=201))
+
+
+@api.get("/me/routes/{route_id}", summary="One saved route, with its line, inputs and answer")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def saved_route_read(request, route_id: int):
+    row = _saved_route(request, route_id)
+    if row is None:
+        return _stress_error(404, "That saved route is not in your account.", code="not_found")
+    return _private(JsonResponse(_route_full(row)))
+
+
+@api.patch("/me/routes/{route_id}", summary="Rename a saved route")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def saved_route_rename(request, route_id: int):
+    from . import accounts
+
+    body, refusal = _json_body(request, MAX_BODY_BYTES)
+    if refusal is not None:
+        return refusal
+    name = body.get("name") if isinstance(body, dict) else None
+    if not isinstance(name, str) or not name.strip() or len(name.strip()) > accounts.NAME_MAX:
+        return _stress_error(
+            400, f"Give the route a name of up to {accounts.NAME_MAX} characters.", field="name"
+        )
+    row = _saved_route(request, route_id)
+    if row is None:
+        return _stress_error(404, "That saved route is not in your account.", code="not_found")
+    row.name = name.strip()
+    row.save(update_fields=["name", "updated_at"])
+    return _private(JsonResponse(_route_summary(row)))
+
+
+@api.delete("/me/routes/{route_id}", summary="Delete a saved route")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def saved_route_delete(request, route_id: int):
+    row = _saved_route(request, route_id)
+    if row is None:
+        return _stress_error(404, "That saved route is not in your account.", code="not_found")
+    row.delete()
+    return _private(JsonResponse({"deleted": route_id}))
+
+
+# The closures a kept line runs along now (v0.7.0 plan, "GPX export as close to identical as
+# possible, closure warning first", with its correction: mainly when a kept route is opened or
+# ridden). Public, like planning; the line is only measured, never kept.
+CLOSURE_LINE_MAX_POINTS = 10_000
+CLOSURE_BODY_MAX_BYTES = 512 * 1024
+
+
+@api.post("/closures/check", summary="The closures in force now that a route's line runs along")
+@decorate_view(
+    same_site_only,
+    ratelimit.rate_limited(ratelimit.CLOSURE_CHECK),
+    errors_as_json,
+)
+def closures_check(request):
+    from . import accounts
+    from . import workzones as work_zones
+
+    body, refusal = _json_body(request, CLOSURE_BODY_MAX_BYTES)
+    if refusal is not None:
+        return refusal
+    line = body.get("line") if isinstance(body, dict) else None
+    problem = accounts.line_problem(line)
+    if problem is None and len(line) > CLOSURE_LINE_MAX_POINTS:
+        problem = f"Send at most {CLOSURE_LINE_MAX_POINTS:,} points; thin the line first."
+    if problem:
+        return _error(400, problem)
+    return JsonResponse(work_zones.closures_on(line))
+
+
+# Mass Ride and Group Ride links: the other riders as dots, and alerts (v0.7.0 plan;
+# core.ride_presence). No sign-in: a ride is the digest of the link's plan and a rider a random
+# per-ride token. Positions are in POST bodies only, kept in memory for 2 minutes, never logged;
+# counted per token in memory rather than per address in the database, because a whole ride's
+# phones can share one carrier address.
+
+
+def _ride_call(request, fn):
+    from . import ride_presence
+
+    site = request.META.get("HTTP_SEC_FETCH_SITE", "").strip().lower()
+    if site and site not in ("same-origin", "none"):
+        return _stress_error(403, "This answers this site's own pages only.")
+    try:
+        answer = fn(ride_presence)
+    except ride_presence.Refused as refused:
+        out = _stress_error(refused.status, refused.message)
+        if refused.retry_after_s:
+            out["Retry-After"] = str(refused.retry_after_s)
+        return out
+    return _private(JsonResponse(answer or {"ok": True}))
+
+
+def _ride_body(request):
+    body, refusal = _json_body(request, 2048)
+    if refusal is None and not isinstance(body, dict):
+        refusal = _stress_error(400, "Send an object.")
+    return body, refusal
+
+
+@api.get("/rides/{ride_id}", summary="The other riders' dots on a ride link, and its alerts")
+@decorate_view(errors_as_json)
+def ride_read(request, ride_id: str):
+    token = request.META.get("HTTP_X_RIDE_TOKEN", "")
+    return _ride_call(request, lambda rp: rp.read(ride_id, token))
+
+
+@api.post("/rides/{ride_id}/here", summary="Show this rider as a dot (rounded to 20 m) for 2 min")
+@decorate_view(errors_as_json)
+def ride_here(request, ride_id: str):
+    body, refusal = _ride_body(request)
+    if refusal is not None:
+        return refusal
+    return _ride_call(
+        request,
+        lambda rp: rp.post_position(
+            ride_id, body.get("token", ""), body.get("lon"), body.get("lat")
+        ),
+    )
+
+
+@api.post("/rides/{ride_id}/leave", summary="Stop showing this rider's dot at once")
+@decorate_view(errors_as_json)
+def ride_leave(request, ride_id: str):
+    body, refusal = _ride_body(request)
+    if refusal is not None:
+        return refusal
+    return _ride_call(request, lambda rp: rp.leave(ride_id, body.get("token", "")))
+
+
+@api.post("/rides/{ride_id}/alerts", summary="Send an alert to everyone on the ride link")
+@decorate_view(errors_as_json)
+def ride_alert(request, ride_id: str):
+    body, refusal = _ride_body(request)
+    if refusal is not None:
+        return refusal
+    return _ride_call(
+        request,
+        lambda rp: rp.send_alert(
+            ride_id,
+            body.get("token", ""),
+            str(body.get("ride_type", "")),
+            str(body.get("kind", "")),
+            str(body.get("text", "") or ""),
+            body.get("lon"),
+            body.get("lat"),
+        ),
+    )
+
+
+@api.post("/rides/{ride_id}/alerts/{alert_id}/clear", summary="Clear an alert you sent")
+@decorate_view(errors_as_json)
+def ride_alert_clear(request, ride_id: str, alert_id: str):
+    body, refusal = _ride_body(request)
+    if refusal is not None:
+        return refusal
+    return _ride_call(
+        request, lambda rp: rp.clear_alert(ride_id, body.get("token", ""), alert_id[:32])
+    )
 
 
 class StepOut(Schema):

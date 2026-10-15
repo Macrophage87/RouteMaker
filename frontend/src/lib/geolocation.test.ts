@@ -632,12 +632,14 @@ test("privacy: the location state reaches only the note, the hint and the circle
     /const hereCircle = hereInPlan && here \? \{ centre: here\.point, radiusM: here\.accuracyM \} : null;/,
     // Search's bias: the point, rounded to about 1 km in searchBiasPoint, never the accuracy or the flag.
     /return searchBiasPoint\(here\?\.point, centre \? \[centre\.lng, centre\.lat\] : undefined, view\);/,
+    // A Mass Ride or Group Ride link (v0.7.0): the others on the route, shared only after the rider says yes there.
+    /<RideGroup type=\{preset as "mass-ride" \| "group-ride"\} points=\{rideGroupPoints\} line=\{rideGroupLine\} getMap=\{getMap\} here=\{rideView\?\.rider\?\.point \?\? \(here \? here\.point : null\)\} \/>/,
   ];
   assert.ok(lines.length >= allowed.length);
   for (const line of lines) assert.ok(allowed.some((rule) => rule.test(line)), `unexpected use: ${line.trim()}`);
   // The note's own uses: shown, described, said on Copy link, and (as a yes/no) the sign-in exception.
   const noteUse =
-    /const linkNote =|const note = linkNote;|linkNote \? "link-note"|\{linkNote && \(|\{linkNote\}|isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)|^\s*routedLoop, copyLink, linkNote, canShare,|const \{ shown, routedPoints, routedLoop, federalRoute, copyLink, linkNote, canShare,/;
+    /const linkNote =|const note = linkNote;|linkNote \? "link-note"|\{linkNote && \(|\{linkNote\}|isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)|^\s*routedLoop, copyLink, linkNote, canShare,|const \{ copyLink, linkNote, canShare,/;
   for (const line of app.split("\n").filter((l) => /\blinkNote\b/.test(l))) assert.match(line, noteUse, line.trim());
   // The circle round the located point goes to the map's accuracy prop and nowhere else.
   const circleUse = /const hereCircle =|accuracy=\{riding \? rideCircle : hereCircle\}/;

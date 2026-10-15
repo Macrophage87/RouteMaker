@@ -56,6 +56,16 @@ def _no_long_trail_sentinels(settings):
     # And the Travilah quarry's (owner report 2026-10-12).
     settings.REBUILD_SENTINEL_WORKS_CLOSED_RANGE = ()
     settings.REBUILD_SENTINEL_WORKS_MIN_IN_RANGE = 0
+    # Sign-in is on whenever both Discord keys are set (core.auth_views.sign_in_available).
+    # Placeholders, not keys: the exchange is always injected or patched in the suite, and a
+    # test about sign-in being off clears them itself.
+    settings.DISCORD_CLIENT_ID = "test-client-id"
+    settings.DISCORD_CLIENT_SECRET = "test-client-secret"
+    # Ride dots in this process's memory (core.ride_presence), a fresh store for each test.
+    settings.RIDE_PRESENCE_DIR = ""
+    from core import ride_presence
+
+    ride_presence._store = None
 
 
 @pytest.fixture
