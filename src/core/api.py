@@ -1158,8 +1158,9 @@ class DescriptionEntryOut(Schema):
     from_mi: float
     to_mi: float
     street: str | None = Field(
-        description='The street, or "unnamed path" or "unnamed road"; null on a `via` and '
-        "where a junction's road has no name."
+        description="The street, an unnamed bike lane's name from the street beside it (\"9th"
+        ' Street Northwest protected bike lane"), or "path" or "unnamed road"; null on a `via`'
+        " and where a junction's road has no name."
     )
     tier: int | None = Field(description="1-5 on a stretch; null: not rated, or not a stretch.")
     facility: Literal["path", "protected", "lane"] | None = Field(
