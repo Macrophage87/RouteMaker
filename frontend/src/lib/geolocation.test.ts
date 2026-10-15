@@ -632,6 +632,8 @@ test("privacy: the location state reaches only the note, the hint and the circle
     /const hereCircle = hereInPlan && here \? \{ centre: here\.point, radiusM: here\.accuracyM \} : null;/,
     // Search's bias: the point, rounded to about 1 km in searchBiasPoint, never the accuracy or the flag.
     /return searchBiasPoint\(here\?\.point, centre \? \[centre\.lng, centre\.lat\] : undefined, view\);/,
+    // Go's Repair and Sights (v0.7.0): the nearest worked out on the device from the location Go has; the point goes nowhere.
+    /const fix = here\?\.point \?\? \(goStart\.kind === "here" \? goStart\.point : null\);/,
     // A Mass Ride or Group Ride link (v0.7.0): the others on the route, shared only after the rider says yes there.
     /<RideGroup type=\{preset as "mass-ride" \| "group-ride"\} points=\{rideGroupPoints\} line=\{rideGroupLine\} getMap=\{getMap\} here=\{rideView\?\.rider\?\.point \?\? \(here \? here\.point : null\)\} \/>/,
   ];

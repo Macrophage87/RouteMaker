@@ -14,6 +14,8 @@ export const MILES_WORD = "miles";
 export const POUNDS_WORD = "pounds";
 /** A quarter mile, said as the plan says it (the ride dots' reach, lib/rideGroup.ts). */
 export const QUARTER_MILE = "a quarter mile (400 m)";
+/** Places to see along a route (v0.7.0, lib/places.ts). */
+export const HALF_MILE = "half a mile (0.8 km)";
 export const FEET_PER_METRE = 3.28084;
 export const KMH_PER_MPH = 1.609344;
 

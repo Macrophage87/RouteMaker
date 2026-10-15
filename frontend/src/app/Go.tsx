@@ -105,6 +105,10 @@ export interface GoPlaces {
   onFood: (chip: HTMLButtonElement) => void;
   onWater: (chip: HTMLButtonElement) => void;
   onRestroom: (chip: HTMLButtonElement) => void;
+  /** Behind More (v0.7.0, the owner 2026-10-14: "Make sure that go stays clean"): the nearest repair stands and shops. */
+  onRepair: (chip: HTMLButtonElement) => void;
+  /** Behind More: the nearest places to see (Plan's Places to see, five of them, no filters). */
+  onSights: (chip: HTMLButtonElement) => void;
 }
 
 /** Go's sheet: the handle, Where to?, the place chips, the ride types, the notice and the route. */
@@ -144,7 +148,10 @@ export function GoSheet({
 }) {
   const homeHint = useId();
   const startBoxId = useId();
+  const moreId = useId();
   const [startOpen, setStartOpen] = useState(false);
+  // More: one chip at the row's end that shows the rest (Repair, Sights); later additions go here, not on the row.
+  const [moreOpen, setMoreOpen] = useState(false);
   const startShown = startOpen || startMissing;
   const next = nextSheetSize(size);
   const routeShown = route !== null;
@@ -209,6 +216,20 @@ export function GoSheet({
             <Icon name="wc" size={18} />
             Restroom
           </button>
+          <button type="button" className="chip place-chip go-more" aria-expanded={moreOpen} aria-controls={moreId} onClick={() => setMoreOpen(!moreOpen)}>
+            <Icon name="more" size={18} />
+            More
+          </button>
+        </div>
+        <div id={moreId} className="chip-row go-places go-more-row" role="group" aria-label="More places" hidden={!moreOpen}>
+          <button type="button" className="chip place-chip" onClick={(event) => places.onRepair(event.currentTarget)}>
+            <Icon name="wrench" size={18} />
+            Repair
+          </button>
+          <button type="button" className="chip place-chip" onClick={(event) => places.onSights(event.currentTarget)}>
+            <Icon name="camera" size={18} />
+            Sights
+          </button>
         </div>
         {!places.homeReady && (
           <p id={homeHint} className="hint go-home-hint">
@@ -226,8 +247,16 @@ export function GoSheet({
   );
 }
 
-/** Plan's map chips (the mockup's Plan view): Food and Water open their sheets in the panel. */
-export function PlanMapChips({ onFood, onWater }: { onFood: (chip: HTMLButtonElement) => void; onWater: (chip: HTMLButtonElement) => void }) {
+/** Plan's map chips (the mockup's Plan view): Food, Water and Places to see open their sheets in the panel. */
+export function PlanMapChips({
+  onFood,
+  onWater,
+  onPlaces,
+}: {
+  onFood: (chip: HTMLButtonElement) => void;
+  onWater: (chip: HTMLButtonElement) => void;
+  onPlaces: (chip: HTMLButtonElement) => void;
+}) {
   return (
     <div className="map-chips" role="group" aria-label="Find on the map">
       <button type="button" className="chip map-chip" onClick={(event) => onFood(event.currentTarget)}>
@@ -237,6 +266,10 @@ export function PlanMapChips({ onFood, onWater }: { onFood: (chip: HTMLButtonEle
       <button type="button" className="chip map-chip" onClick={(event) => onWater(event.currentTarget)}>
         <Icon name="water" size={18} />
         Water
+      </button>
+      <button type="button" className="chip map-chip" onClick={(event) => onPlaces(event.currentTarget)}>
+        <Icon name="camera" size={18} />
+        Places to see
       </button>
     </div>
   );

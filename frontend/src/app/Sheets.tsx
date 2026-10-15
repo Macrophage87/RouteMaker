@@ -97,11 +97,18 @@ export interface LayersSheetProps {
   showMtbTrails: boolean;
   showTopoLines: boolean;
   topoReady: boolean;
+  /** The Places to see layer (v0.7.0; lib/places.ts): one switch, off by default; its status line. */
+  placesOn: boolean;
+  changePlacesOn: (on: boolean) => void;
+  placesStatus: string;
 }
+
+export const PLACES_LAYER_TITLE = "Places to see";
+export const PLACES_LAYER_HINT = "Museums, historic sites, lighthouses, gardens, viewpoints, markets and more, from zoom 11. The map chip Places to see lists them by category.";
 
 /** The Layers sheet: the map's switches, in the mockup's order, with the Legend button at its top. */
 export function LayersSheet(props: LayersSheetProps) {
-  const { nav, openLegend, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong } = props;
+  const { nav, openLegend, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus } = props;
   // The Trails and terrain section's layers that can show, and its row's words (lib/terrainSection.ts).
   const terrain = { mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stressShowable(stress), topoReady, climbsStatus };
   return (
@@ -150,6 +157,18 @@ export function LayersSheet(props: LayersSheetProps) {
       <WaterSection prefs={waterPrefs} onChange={changeWaterPrefs} status={waterStatus} />
 
       {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
+
+      {/* v0.7.0: the places to see, one switch for the whole layer (the categories are Plan's Places to see filter). */}
+      <LayerSection
+        id="places"
+        title={PLACES_LAYER_TITLE}
+        headingId="places-heading"
+        layers={[{ key: "places", label: PLACES_LAYER_TITLE, on: placesOn }]}
+        onLayers={(next) => changePlacesOn(next.places)}
+        status={placesStatus}
+      >
+        <p className="hint">{PLACES_LAYER_HINT}</p>
+      </LayerSection>
 
       {/* OWNER-DECISIONS 454's optional layers, off until turned on, in every ride type. A layer's extra
           control (the Climbs layer's "Show climbs from") sits under its own switch, inside the section. */}
