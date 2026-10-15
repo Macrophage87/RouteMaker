@@ -19,14 +19,16 @@
 import { formatDistance } from "./format.ts";
 import { UNNAMED_TITLES } from "./roadInfo.ts";
 
-/** GET /api/me: three yes/no flags, no name and no id. */
+/** GET /api/me: yes/no flags, no name and no id. */
 export interface Me {
   signed_in: boolean;
   can_change_lts: boolean;
   can_suggest: boolean;
+  /** Whether this server can sign anyone in (both Discord keys set): Sign in with Discord is offered only then. */
+  sign_in: boolean;
 }
 
-export const NO_ME: Me = { signed_in: false, can_change_lts: false, can_suggest: false };
+export const NO_ME: Me = { signed_in: false, can_change_lts: false, can_suggest: false, sign_in: false };
 
 export interface EditorStep {
   value: number;
@@ -372,6 +374,7 @@ export function fetchMe(origin: string, get: Fetch = fetch): Promise<Me> {
           signed_in: body.signed_in === true,
           can_change_lts: body.can_change_lts === true,
           can_suggest: body.can_suggest === true,
+          sign_in: body.sign_in === true,
         };
       } catch {
         // Not cached: the next panel asks again. Until then nobody is offered the editor.

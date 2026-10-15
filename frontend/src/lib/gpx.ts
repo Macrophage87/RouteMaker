@@ -39,6 +39,8 @@ export interface GpxPoint {
 export interface GpxTrack {
   name?: string;
   segments: LonLat[][];
+  /** Each trkpt's <ele> in metres, segment for segment and point for point; null where it has none. */
+  elevations?: (number | null)[][];
 }
 
 export interface GpxRoute {
@@ -140,7 +142,7 @@ interface Open {
 }
 
 /** Elements whose text the reader keeps. */
-const TEXT_ELEMENTS = new Set(["name", "type", "cmt"]);
+const TEXT_ELEMENTS = new Set(["name", "type", "cmt", "ele"]);
 
 /**
  * Read a GPX document. Throws GpxError for anything that is not well-formed
@@ -156,6 +158,9 @@ export function parseGpx(text: string): GpxFile {
   let points = 0;
   let track: GpxTrack | null = null;
   let segment: LonLat[] | null = null;
+  let heights: (number | null)[] | null = null;
+  // Whether the trkpt open now was kept, so the <ele> of a skipped one is not given to the one before.
+  let trkptKept = false;
   let route: GpxRoute | null = null;
   let point: GpxPoint | null = null;
   // Set inside the helpers below, so declared without narrowing to null.
@@ -212,11 +217,13 @@ export function parseGpx(text: string): GpxFile {
     if (!current || element.gpx === null) return;
     const name = element.gpx;
     if (name === "trk" && parent === "gpx") {
-      track = { segments: [] };
+      track = { segments: [], elevations: [] };
       current.tracks.push(track);
     } else if (name === "trkseg" && parent === "trk" && track) {
       segment = [];
+      heights = [];
       track.segments.push(segment);
+      track.elevations?.push(heights);
     } else if (name === "rte" && parent === "gpx") {
       route = { points: [] };
       current.routes.push(route);
@@ -226,6 +233,7 @@ export function parseGpx(text: string): GpxFile {
       (name === "wpt" && parent === "gpx")
     ) {
       countPoint();
+      trkptKept = false;
       const lat = coordinate(attributes.get("lat"), 90);
       const lon = coordinate(attributes.get("lon"), 180);
       if (lat === null || lon === null) {
@@ -235,6 +243,8 @@ export function parseGpx(text: string): GpxFile {
       }
       if (name === "trkpt") {
         segment?.push([lon, lat]);
+        heights?.push(null);
+        trkptKept = true;
       } else {
         point = { lon, lat };
         if (name === "rtept") route?.points.push(point);
@@ -267,11 +277,17 @@ export function parseGpx(text: string): GpxFile {
         route.type = value;
       } else if (name === "cmt" && parent === "rte" && route) {
         route.cmt = value;
+      } else if (name === "ele" && parent === "trkpt" && trkptKept && heights && heights.length) {
+        const ele = Number(value);
+        if (Number.isFinite(ele)) heights[heights.length - 1] = ele;
       }
       return;
     }
     if (name === "trk") track = null;
-    else if (name === "trkseg") segment = null;
+    else if (name === "trkseg") {
+      segment = null;
+      heights = null;
+    }
     else if (name === "rte") route = null;
     else if (name === "rtept" || name === "wpt") point = null;
   };
