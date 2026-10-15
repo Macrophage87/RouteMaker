@@ -696,7 +696,7 @@ test("PlaceSearch: Enter goes through pickTarget, and the list option passes the
   const search = code(read("../PlaceSearch.tsx"));
   assert.match(
     search,
-    /\} else if \(action\.kind === "pick"\) \{\s*const item = pickTarget\(active, action\.index, items, places\);\s*if \(item === HERE\) pickHere\(\);\s*else if \(item\) pick\(item\);/,
+    /\} else if \(action\.kind === "pick"\) \{\s*const item = pickTarget\(active, action\.index, items, offered\);\s*if \(item === HERE\) pickHere\(\);\s*else if \(item\) pick\(item\);/,
   );
   assert.match(body(search, "const pickHere = () => {", "};"), /locate\?\.onLocate\(choice\);\s*$/);
   // The details (P2, P3, P4, P4b, P8, P9).

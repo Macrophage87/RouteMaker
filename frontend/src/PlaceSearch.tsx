@@ -8,6 +8,10 @@
  * move through the options without leaving the input (aria-activedescendant),
  * Enter picks, Escape closes and then clears. The result count is announced
  * in a polite live region, and the options are tall enough to tap.
+ *
+ * A pasted map link (Google, Apple, Waze, geo:) or typed coordinates are read as a place
+ * (lib/sharedLocation.ts, v0.7.0 "Open shared locations"): it leads the list as one option, and a short
+ * link is followed by the server first.
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import {
@@ -28,6 +32,7 @@ import {
 import type { LonLat } from "./lib/geo.ts";
 import { Icon } from "./Icon.tsx";
 import { FINDING_LOCATION, hereEffectLine, locationMatches, searchStatusWithHere } from "./lib/geolocation.ts";
+import { parseShared, readShared, sharedPlace, SHARED_OPENING } from "./lib/sharedLocation.ts";
 
 // App.tsx's phone layout, where the panel is a bottom sheet.
 const PHONE = "(max-width: 720px)";
@@ -107,6 +112,9 @@ export function PlaceSearch({
   // What the rider asked a pick to be; null until they choose, which follows
   // the plan (the start of an empty plan, then the destination).
   const [chosen, setChosen] = useState<PlaceChoice | null>(null);
+  // A pasted link or typed coordinates: the place read from it, the link being opened, or why not.
+  const [shared, setShared] = useState<{ place: Place } | { said: string } | null>(null);
+  const sharedTurn = useRef(0);
   const runner = useRef<PlaceSearchRunner | null>(null);
   const biasRef = useRef(bias);
   biasRef.current = bias;
@@ -135,7 +143,9 @@ export function PlaceSearch({
   });
   // "Your location" leads the list while the box is empty or says so; it is never the Enter default.
   const showHere = locate?.support.available === true && locationMatches(query);
-  const items: (Place | typeof HERE)[] = showHere ? [HERE, ...places] : places;
+  const sharedItems: Place[] = shared && "place" in shared ? [shared.place] : [];
+  const offered: Place[] = [...sharedItems, ...places];
+  const items: (Place | typeof HERE)[] = showHere ? [HERE, ...offered] : offered;
   const expanded = open && items.length > 0;
   const listId = `${id}-list`;
   const optionId = (i: number) => `${id}-opt-${i}`;
@@ -143,6 +153,14 @@ export function PlaceSearch({
   const change = (value: string) => {
     setQuery(value);
     setOpen(true);
+    sharedTurn.current += 1;
+    // Coordinates typed or a whole link pasted in: the place it holds, offered first.
+    const found = parseShared(value);
+    if (found) {
+      openShared(value);
+      return;
+    }
+    setShared(null);
     if (value.trim().length < MIN_QUERY_CHARS) {
       runner.current?.clear();
       setResult(null);
@@ -151,8 +169,33 @@ export function PlaceSearch({
     }
   };
 
+  // A link or coordinates: read here, or (a short link) followed by the server; an address is searched for.
+  const openShared = (text: string) => {
+    const turn = ++sharedTurn.current;
+    runner.current?.clear();
+    setResult(null);
+    setOpen(true);
+    const found = parseShared(text);
+    if (found?.kind === "point") {
+      setShared({ place: sharedPlace(found.point, found.name) });
+      return;
+    }
+    setShared({ said: SHARED_OPENING });
+    void readShared(text).then((read) => {
+      if (turn !== sharedTurn.current) return;
+      if ("place" in read) setShared({ place: read.place });
+      else if ("query" in read) {
+        setShared(null);
+        setQuery(read.query);
+        runner.current?.request(read.query);
+      } else setShared({ said: read.error });
+    });
+  };
+
   const pick = (place: Place) => {
     onPick(place, single ? "end" : choice);
+    sharedTurn.current += 1;
+    setShared(null);
     setQuery("");
     setResult(null);
     setOpen(false);
@@ -183,7 +226,7 @@ export function PlaceSearch({
       setActive(action.active);
     } else if (action.kind === "pick") {
       // Enter with nothing highlighted takes the first place, never "Your location" (a look-up asks the browser's permission).
-      const item = pickTarget(active, action.index, items, places);
+      const item = pickTarget(active, action.index, items, offered);
       if (item === HERE) pickHere();
       else if (item) pick(item);
     } else if (action.kind === "close") {
@@ -218,6 +261,14 @@ export function PlaceSearch({
         placeholder={variant === "go" ? "Where to?" : variant === "start" ? "Type a start" : "A place, an address or a street"}
         value={query}
         onChange={(event) => change(event.target.value)}
+        onPaste={(event) => {
+          // A whole map link, longer than the box takes: read before the box cuts it.
+          const text = event.clipboardData.getData("text");
+          if (!parseShared(text)) return;
+          event.preventDefault();
+          setQuery(text.slice(0, MAX_QUERY_CHARS));
+          openShared(text);
+        }}
         onKeyDown={onKeyDown}
         onBlur={() => setOpen(false)}
         onFocus={(event) => {
@@ -290,6 +341,11 @@ export function PlaceSearch({
           ),
         )}
       </ul>
+      {shared && "said" in shared && (
+        <p className="hint" role="status">
+          {shared.said}
+        </p>
+      )}
       {expanded && places.length > 0 && (
         <p className="place-credit">
           Only places in this map's area.

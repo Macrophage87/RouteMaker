@@ -138,6 +138,7 @@ import { PointsSection, RideSection } from "./app/Planner.tsx";
 import { RouteSection, type Status } from "./app/RoutePanel.tsx";
 import { FoodSheet, GpxSheet, LayersSheet, LegendSheet, NearestSheet, ReviewSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
 import { GoSheet, GoTopBar, ModeSwitch, PlanMapChips } from "./app/Go.tsx";
+import { useSharedLaunch } from "./app/sharedLaunch.ts";
 import { NearestFinder } from "./lib/nearestFinder.ts";
 import { NearbyStations } from "./NearbyStations.tsx";
 import { Fold } from "./Sidebar.tsx";
@@ -1750,6 +1751,11 @@ export function App() {
     announceExtra(modeSaid(next));
     saveMyGoNow({ ...myGoRef.current, openIn: next }, false);
   };
+  // A place shared to RouteMaker (the Share sheet, or a geo: link on desktop): Go's destination (app/sharedLaunch.ts).
+  useSharedLaunch((place) => {
+    if (modeRef.current !== "go") changeMode("go");
+    goToPlace(place);
+  }, setNotice);
   // "Copy link": this page with the plan's fragment from encodePlan, which never holds the weight
   // (OWNER-DECISIONS 313). Cleared first and set again a moment later, so a second press is said again.
   const copyLink = async () => {
