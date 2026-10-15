@@ -14,7 +14,8 @@
  * - Off route: re-planned automatically after the gate (plan Q5), or "Keep the planned route", which
  *   shows the way back. A re-plan never touches the plan in the address bar (plan Q2): it is the ride's
  *   own route, held here and in App's ride state only.
- * - Big text (map hidden), Re-centre (and the C key), heading-up, the ride's settings, End ride.
+ * - Big text (map hidden), Re-centre (and the C key), heading-up (track-up by default since v0.7.0), the
+ *   ride's settings, End ride; and an End button always in view at the top of the card, with Undo after.
  * - The map along the route, kept for dead spots (lib/corridor.ts, N5), and Report a problem to DC 311
  *   with the place in the route's street names (lib/report311.ts, N6; OWNER-DECISIONS 369, 465).
  *
@@ -123,6 +124,11 @@ export const rideVoice = new Voice(browserSpeech());
 /** Said as the ride starts, inside the Start press, so the voice is unlocked by it. */
 export const RIDE_STARTED = "Ride started.";
 export const RIDE_ENDED = "Ride ended.";
+/** The always-visible End button's words and the name it is heard by (the visible "End" is in it). */
+export const END_TEXT = "End";
+export const END_RIDE_NAME = "End ride";
+/** How long Undo is offered after End (v0.7.0, "Go riding fixes" item 6); held while it has the focus. */
+export const UNDO_END_MS = 8_000;
 /** Hidden this long, the watch stops (privacy and battery) and the ride offers Resume (plan section 5). */
 export const HIDDEN_STOP_MS = 10 * 60_000;
 export const PAUSED_SAID = "Ride paused while the page was in the background. Press Resume to carry on.";
@@ -850,9 +856,18 @@ export function RideMode({
       <LiveRegion said={polite} urgent={false} />
       <LiveRegion said={assertive} urgent />
       <div className="cue-card">
-        <h2 id="ride-heading" ref={headingRef} tabIndex={-1} className="ride-heading">
-          Ride mode
-        </h2>
+        {/* The End button (v0.7.0, "Go riding fixes" item 6): always in view, at the top of the card, which
+            stays at every size and in Big text; one tap ends the ride, and the page offers Undo for a few
+            seconds (RideEnded). The End ride button below stays. */}
+        <div className="ride-top">
+          <h2 id="ride-heading" ref={headingRef} tabIndex={-1} className="ride-heading">
+            Ride mode
+          </h2>
+          <button type="button" className="danger ride-end" onClick={end} aria-label={END_RIDE_NAME}>
+            <Icon name="stop" size={18} />
+            {END_TEXT}
+          </button>
+        </div>
         {ride.arrived ? (
           <p className="cue-text">{cueSpoken(model.cues[model.cues.length - 1], "arrive", 0)}</p>
         ) : ride.off ? (
@@ -971,7 +986,7 @@ export function RideMode({
           </button>
           <button type="button" className="danger" onClick={end}>
             <Icon name="stop" size={20} />
-            End ride
+            {END_RIDE_NAME}
           </button>
         </div>
         {water && (
@@ -1038,5 +1053,39 @@ export function RideMode({
         </details>
       </div>
     </section>
+  );
+}
+
+/**
+ * After End (v0.7.0, "Go riding fixes" item 6): "Ride ended." and Undo for UNDO_END_MS, which a status
+ * region announces. The time is held while the focus is inside it (WCAG 2.2.1), so a keyboard or
+ * screen-reader rider who reaches Undo is not timed out of it. Undo starts the same ride again.
+ */
+export function RideEnded({ onUndo, onGone }: { onUndo: () => void; onGone: () => void }) {
+  const timer = useRef<number | undefined>(undefined);
+  const gone = useRef(onGone);
+  gone.current = onGone;
+  const arm = useCallback(() => {
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => gone.current(), UNDO_END_MS);
+  }, []);
+  useEffect(() => {
+    arm();
+    return () => window.clearTimeout(timer.current);
+  }, [arm]);
+  return (
+    <div
+      className="ride-ended"
+      role="status"
+      onFocus={() => window.clearTimeout(timer.current)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) arm();
+      }}
+    >
+      <span>{RIDE_ENDED}</span>
+      <button type="button" className="secondary" onClick={onUndo}>
+        Undo
+      </button>
+    </div>
   );
 }

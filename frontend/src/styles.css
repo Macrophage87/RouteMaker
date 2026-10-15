@@ -3692,6 +3692,63 @@ details.zoom-notes {
   color: var(--text-muted);
 }
 
+/*
+ * The heading and the always-visible End button (Go riding fixes item 6): kept at the top of the card as
+ * it scrolls, so End is in view at every size, in Big text and at 200% text.
+ */
+.ride-top {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -10px -14px 4px;
+  padding: 6px 14px 4px;
+  background: var(--bg);
+}
+
+.ride-top .ride-heading {
+  margin: 0;
+}
+
+.ride .ride-end {
+  flex: none;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 6px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+
+/* "Ride ended." with Undo for a few seconds, over the planner (RideMode's RideEnded). */
+.ride-ended {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  padding: 8px 8px 8px 16px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.ride-ended button {
+  min-height: 44px;
+  padding: 8px 14px;
+}
+
 .cue-next,
 .cue-off {
   display: flex;

@@ -72,8 +72,8 @@ import {
 import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
 import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
-import { RideMode, startRideGesture, type RideView } from "./RideMode.tsx";
-import { readRidePrefs, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
+import { RideEnded, RideMode, startRideGesture, type RideView } from "./RideMode.tsx";
+import { readHeadingUp, readRidePrefs, writeHeadingUp, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf } from "./lib/bikeshare.ts";
 import { carries, hillsWords, seeksClimbs, startDials, stressMax, stressWords, trailsAreOff, type Dials } from "./lib/dials.ts";
@@ -588,7 +588,13 @@ export function App() {
   const [rideAsk, setRideAsk] = useState(false);
   const [rideView, setRideView] = useState<RideView | null>(null);
   const [follow, setFollow] = useState(true);
-  const [headingUp, setHeadingUp] = useState(false);
+  // Track-up by default in a ride (v0.7.0, "Go riding fixes" item 1); the ride settings' switch is the
+  // option, kept on this device. Turning the map never moves the keyboard focus.
+  const [headingUp, setHeadingUpState] = useState(() => readHeadingUp());
+  const setHeadingUp = useCallback((on: boolean) => {
+    writeHeadingUp(on);
+    setHeadingUpState(on);
+  }, []);
   const [bigText, setBigText] = useState(false);
   const startRideRef = useRef<HTMLButtonElement>(null);
   const rideStartFirstRef = useRef<HTMLButtonElement>(null);
@@ -2272,13 +2278,34 @@ export function App() {
     const opener = rideOpener.current;
     (opener?.isConnected ? opener : startRideRef.current)?.focus();
   };
+  // The ride just ended, kept for Undo for a few seconds (v0.7.0, "Go riding fixes" item 6: one tap on
+  // End ends the ride with "Ride ended" and Undo). In memory only, as the ride itself is.
+  const endedRide = useRef<{ start: NonNullable<typeof rideStart>; big: boolean } | null>(null);
+  const [rideEnded, setRideEnded] = useState(0);
+  const rideNow = useRef({ start: rideStart, big: bigText });
+  rideNow.current = { start: rideStart, big: bigText };
   const endRide = useCallback(() => {
+    const { start, big } = rideNow.current;
+    endedRide.current = start ? { start, big } : null;
     setRiding(false);
     setRideStart(null);
-    setRideView(null);
     setBigText(false);
+    setRideView(null);
+    setRideEnded((n) => n + 1);
     focusStartAfterRide.current = true;
   }, []);
+  const undoEndRide = () => {
+    const ended = endedRide.current;
+    endedRide.current = null;
+    setRideEnded(0);
+    if (!ended) return;
+    startRideGesture(ridePrefs);
+    setRideStart(ended.start);
+    setFollow(true);
+    setBigText(ended.big);
+    setRideView(null);
+    setRiding(true);
+  };
   // After End ride the focus goes back to Start ride, once the planner shows again.
   useEffect(() => {
     if (riding || !focusStartAfterRide.current) return;
@@ -3078,6 +3105,16 @@ export function App() {
         {status.kind === "waiting" && <p>{announcement}</p>}
         {status.kind === "ok" && routeSaid && <p>{routeSaid}</p>}
       </div>
+      {!riding && rideEnded > 0 && (
+        <RideEnded
+          key={rideEnded}
+          onUndo={undoEndRide}
+          onGone={() => {
+            endedRide.current = null;
+            setRideEnded(0);
+          }}
+        />
+      )}
       {riding && rideStart && (
         <RideMode
           route={rideStart.route}
