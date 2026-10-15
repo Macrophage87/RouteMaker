@@ -95,6 +95,7 @@ export function PlaceSearch({
   loop = false,
   locate,
   variant = "plan",
+  onTopPlace,
 }: {
   /**
    * "plan": the Points search, with Start / Destination / Stop. "go" (UI-CLEANUP): Go's one Where to? box,
@@ -112,6 +113,8 @@ export function PlaceSearch({
   /** Where results should lean towards: the rider's known location (rounded) while it is in view, else the map's centre; none outside the area (lib/geocode.ts searchBiasPoint). */
   bias: () => LonLat | undefined;
   onPick: (place: Place, choice: PlaceChoice) => void;
+  /** The first place listed, each time another leads the list (Go's early start; v0.7.0, "Faster routing"). */
+  onTopPlace?: (place: Place) => void;
 }) {
   const id = useId();
   const single = variant !== "plan";
@@ -154,6 +157,14 @@ export function PlaceSearch({
     chosen,
     loop,
   });
+  // The place a pick (or Enter) would most likely take: Go starts routing there while the rider looks.
+  const top = places[0] ?? null;
+  const onTopPlaceNow = useRef(onTopPlace);
+  onTopPlaceNow.current = onTopPlace;
+  useEffect(() => {
+    if (top) onTopPlaceNow.current?.(top);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per place listed first, not per render
+  }, [top?.lon, top?.lat, top?.name]);
   // "Your location" leads the list while the box is empty or says so; it is never the Enter default.
   const showHere = locate?.support.available === true && locationMatches(query);
   // A pick that adds a stop (Plan with a start and an end) offers the place as the destination too, on a row

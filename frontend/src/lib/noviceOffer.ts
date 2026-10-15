@@ -45,8 +45,10 @@ function avoidedSaid(note: NoviceNote): string {
 }
 
 /** Whether the offer shows: Novice and Nervous, and the server's word that only busy roads (or the cap) are left. */
-export function noviceOfferShown(route: Pick<RouteResponse, "novice"> | null, preset: PresetId): boolean {
-  return preset === "novice" && route?.novice?.transit === true;
+export function noviceOfferShown(route: Pick<RouteResponse, "novice" | "provisional"> | null, preset: PresetId): boolean {
+  // Not on Go's first route (v0.7.0, "Faster routing"): the offer is decided on the full plan, so it does not show
+  // and then go as the better route arrives (the API sends no `novice` on a first route either).
+  return preset === "novice" && route?.provisional !== true && route?.novice?.transit === true;
 }
 
 /** The offer's lead sentence, or null where none is made. */

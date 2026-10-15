@@ -154,6 +154,7 @@ export function GoSheet({
   geoGate,
   searchBias,
   onPick,
+  onTopPlace,
   places,
   rides,
   notice,
@@ -171,6 +172,8 @@ export function GoSheet({
   geoGate: GeoGate;
   searchBias: () => LonLat | undefined;
   onPick: (place: Place) => void;
+  /** The top result of Where to? while the rider looks at it: Go starts routing there early (v0.7.0, "Faster routing"). */
+  onTopPlace?: (place: Place) => void;
   places: GoPlaces;
   /** The ride type chips (RideChips). */
   rides: ReactNode;
@@ -232,7 +235,7 @@ export function GoSheet({
             />
           </div>
         )}
-        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place, _choice: PlaceChoice) => onPick(place)} />
+        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place, _choice: PlaceChoice) => onPick(place)} onTopPlace={onTopPlace} />
         <div className="chip-row go-places" role="group" aria-label="Places">
           <button
             type="button"

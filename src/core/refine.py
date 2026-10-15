@@ -105,7 +105,7 @@ from routemaker import calm, climbs, effort, grade_stress, trace_junctions
 from routemaker import intersections as model
 from routemaker.geo import Point, haversine
 
-from . import junctions, legsplit, presets, routing, trailseek
+from . import junctions, legsplit, parallel, presets, routing, trailseek
 
 logger = logging.getLogger(__name__)
 
@@ -817,6 +817,8 @@ def analyse(
     key = tuple(leg.get("shape", "") for leg in legs)
     if with_events and key in ctx.analyses:
         return ctx.analyses[key]
+    # Every leg's trace at once (v0.7.0, "Faster routing" step 3), read in order below.
+    routing.prefetch_traces(ctx.variant, ctx.costing, [trip], deadline, ctx.traces)
     pieces: list = []
     raws: list = []
     marks: list = []
@@ -1210,6 +1212,21 @@ def _router_alternates(trip, best, first_exposure, stop_at, ctx: Context, info: 
         ]
     own = tuple(leg.get("shape", "") for leg in trip.get("legs") or [])
     best_trip = trip
+    # The router's routes are traced together (v0.7.0, "Faster routing" step 3), each then
+    # read in turn below as before.
+    routing.prefetch_traces(
+        ctx.variant,
+        ctx.costing,
+        [
+            candidate
+            for candidate in given
+            if (candidate.get("legs") or [])
+            and tuple(leg.get("shape", "") for leg in candidate["legs"]) != own
+            and not too_long(_trip_m(candidate), ctx)
+        ],
+        routing.Deadline(alt_stop, ctx.deadline.per_call_s),
+        ctx.traces,
+    )
     for candidate in given:
         legs = candidate.get("legs") or []
         # The route the search starts from is not an alternative to itself.
@@ -1881,10 +1898,8 @@ def _wide(best, best_trip, first_exposure, stop_at, ctx: Context, info: dict):
     # `first_exposure`: each point taken cannot raise the bar.
     start_retrace_m = retrace_m(best)
     locations = ctx.request.get("locations") or []
-    for lon, lat in vias:
-        if stop_at - routing.clock() < REFINE_ROUND_MIN_S or len(locations) < 2:
-            info["limited"] = info["limited"] or "time"
-            break
+
+    def wide_request(lon: float, lat: float) -> dict:
         request = {
             k: v for k, v in ctx.request.items() if k not in ("alternates", "exclude_locations")
         }
@@ -1893,12 +1908,50 @@ def _wide(best, best_trip, first_exposure, stop_at, ctx: Context, info: dict):
             {"lon": lon, "lat": lat, "type": "through"},
             locations[-1],
         ]
-        round_deadline = routing.Deadline(
-            stop_at, min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
+        return request
+
+    round_deadline = routing.Deadline(
+        stop_at, min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
+    )
+    # The wide routes do not depend on each other: asked together, and their traces
+    # after them, on the pool (v0.7.0, "Faster routing" step 3); each is then read in
+    # turn below, as before. Nothing is started without the time for one round.
+    asking = None
+    if (
+        parallel.enabled()
+        and len(vias) > 1
+        and len(locations) >= 2
+        and stop_at - routing.clock() >= REFINE_ROUND_MIN_S
+    ):
+        asking = [
+            parallel.submit(
+                routing._call, ctx.variant, "route", wide_request(lon, lat), round_deadline
+            )
+            for lon, lat in vias
+        ]
+        answered = []
+        for future in asking:
+            try:
+                answered.append(future.result().get("trip") or {})
+            except Exception:  # noqa: BLE001 - read again, and handled, in the loop below
+                continue
+        routing.prefetch_traces(
+            ctx.variant,
+            ctx.costing,
+            answered,
+            routing.Deadline(stop_at, ctx.deadline.per_call_s),
+            ctx.traces,
         )
+    for number, (lon, lat) in enumerate(vias):
+        if stop_at - routing.clock() < REFINE_ROUND_MIN_S or len(locations) < 2:
+            info["limited"] = info["limited"] or "time"
+            break
         asked += 1
         try:
-            answer = routing._call(ctx.variant, "route", request, round_deadline)
+            if asking is not None:
+                answer = asking[number].result()
+            else:
+                answer = routing._call(ctx.variant, "route", wide_request(lon, lat), round_deadline)
             candidate = answer.get("trip") or {}
             if not candidate.get("legs"):
                 continue

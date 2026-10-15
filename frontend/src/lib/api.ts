@@ -744,6 +744,12 @@ export interface RouteResponse {
    * named busy stretch, and whether transit or bikeshare should be offered; null or absent elsewhere.
    */
   novice?: NoviceNote | null;
+  /**
+   * v0.7.0, "Faster routing": true on a first route asked for with `quick` (Go): the router's own route with its
+   * closures, stress and words, before the search. The full plan follows (lib/routeScheduler.ts `refine`) and is
+   * swapped in before Start. Absent or false on a full plan.
+   */
+  provisional?: boolean;
   /** A Mass Ride's rider-marked hazards it passes, in riding order (325); null or absent on other ride types. */
   mass_hazards?: MassHazardSpan[] | null;
   /** The Avoid-rated junctions it passes, in route order (307); empty or absent where none. */
@@ -1140,12 +1146,45 @@ function looksLikeRoute(value: unknown): value is RouteResponse {
 
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
+/** What a route request is made from, besides its points and ride type (`requestRoute`, `routeRequestBody`). */
+export interface RouteRequestOptions {
+  confirmLong?: boolean;
+  dials?: Dials;
+  vias?: readonly number[];
+  /** v0.7.0, "Faster routing": the first good route at once, marked `provisional` (Go only). */
+  quick?: boolean;
+}
+
+/** POST /api/route's body as JSON text: the same text for the same plan, so it also keys Go's early start. */
+export function routeRequestBody(points: readonly LonLat[], preset: PresetId, options: RouteRequestOptions = {}): string {
+  // confirm_long only when the rider said yes to a long plan (LONG-RIDE
+  // contract); the API asks anonymous riders first with a 409.
+  return JSON.stringify({
+    points,
+    preset,
+    // A Mass Ride keeps Make it a loop for the next ride type but has no
+    // loop (OWNER-DECISIONS 374), so the flag is not sent; the API's
+    // routing.loop_wanted ignores it there too. Bikeshare has no loop either, and
+    // its API refuses one, so a loop kept from another ride type is not sent.
+    ...(options.dials
+      ? dialFields(preset === "mass-ride" || twoPointsOnly(preset) ? { ...options.dials, loop: false } : options.dials)
+      : {}),
+    ...(options.confirmLong ? { confirm_long: true } : {}),
+    // "Route through anyway" (v0.7.0, lib/closureMap.ts): this plan's only, in the request, never in a link.
+    ...(options.dials?.closureBypass?.length ? { closure_bypass: options.dials.closureBypass } : {}),
+    // The via points (v0.7.0, "Via points vs stops"): passed without a stop. Never on a two-point ride type.
+    ...(options.vias?.length && !twoPointsOnly(preset) ? { via_points: [...options.vias] } : {}),
+    // The first good route at once (v0.7.0, "Faster routing"); the API answers the full plan where it cannot.
+    ...(options.quick ? { quick: true } : {}),
+  });
+}
+
 export async function requestRoute(
   points: readonly LonLat[],
   preset: PresetId,
   // No abort signal: the scheduler never abandons a request, because an abort
   // in the browser does not free the API's in-flight slot (routeScheduler.ts).
-  options: { fetchImpl?: FetchLike; confirmLong?: boolean; dials?: Dials; vias?: readonly number[] } = {},
+  options: RouteRequestOptions & { fetchImpl?: FetchLike } = {},
 ): Promise<RouteResult> {
   const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
   let response: Response;
@@ -1153,24 +1192,7 @@ export async function requestRoute(
     response = await fetchImpl("/api/route", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      // confirm_long only when the rider said yes to a long plan (LONG-RIDE
-      // contract); the API asks anonymous riders first with a 409.
-      body: JSON.stringify({
-        points,
-        preset,
-        // A Mass Ride keeps Make it a loop for the next ride type but has no
-        // loop (OWNER-DECISIONS 374), so the flag is not sent; the API's
-        // routing.loop_wanted ignores it there too. Bikeshare has no loop either, and
-        // its API refuses one, so a loop kept from another ride type is not sent.
-        ...(options.dials
-          ? dialFields(preset === "mass-ride" || twoPointsOnly(preset) ? { ...options.dials, loop: false } : options.dials)
-          : {}),
-        ...(options.confirmLong ? { confirm_long: true } : {}),
-        // "Route through anyway" (v0.7.0, lib/closureMap.ts): this plan's only, in the request, never in a link.
-        ...(options.dials?.closureBypass?.length ? { closure_bypass: options.dials.closureBypass } : {}),
-        // The via points (v0.7.0, "Via points vs stops"): passed without a stop. Never on a two-point ride type.
-        ...(options.vias?.length && !twoPointsOnly(preset) ? { via_points: [...options.vias] } : {}),
-      }),
+      body: routeRequestBody(points, preset, options),
     });
   } catch {
     return {

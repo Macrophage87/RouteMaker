@@ -300,6 +300,13 @@ check (v0.7.0). Optional (empty, NPS alerts are off), held by `worker` alone,
 sent as the `X-Api-Key` header and never logged. A rotation costs at most a
 refresh: the last alerts are kept until `worker` holds the new key.
 
+**`DC311_API_KEY`: rotate it with DC 311, then here, then `up -d api`.** The
+owner's Open311 key for sending a ride's 311 report in one tap (v0.7.0,
+`core.dc311`). Optional: empty, the report opens a text to DC 311 instead. Held by
+`api` alone, sent only to DC's Open311 endpoint and never logged; nothing is
+stored under it. A rotation costs at most the one-tap send until `api` is
+recreated with the new value. `up -d`, not `restart`, as above.
+
 **`BOT_INTERNAL_SECRET`** is shared between `api` and `bot`, and `bot` has no
 image in phase 1, so there is nothing on the other end of it to disagree with
 yet. When there is, both services read it from `.env` and both need recreating

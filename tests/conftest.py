@@ -158,6 +158,23 @@ def _weekend_router_state(monkeypatch):
 _REAL_WEEKEND_CHECK: dict = {}
 
 
+@pytest.fixture(autouse=True)
+def _no_kept_routes(settings):
+    """The answer cache (`core.route_cache`, v0.7.0) is off: route tests change the segment
+    table, the fake router and the clock under a plan directly, which in a deployment only
+    a promotion or an edit does (each a new cache key). tests/test_route_cache.py turns it
+    on and tests the cache itself; nothing is kept from one test to the next either way."""
+    settings.ROUTE_CACHE_TTL_S = 0
+    try:
+        from core import route_cache
+    except Exception:  # noqa: BLE001 - modules that never load Django
+        yield
+        return
+    route_cache.clear()
+    yield
+    route_cache.clear()
+
+
 @pytest.fixture
 def weekday_clock(monkeypatch):
     """The ride time `core.routing` reads (`timezone.now`, behind `default_when`

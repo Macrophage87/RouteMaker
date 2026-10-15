@@ -106,6 +106,8 @@ CONTRACT_KEYS = {
     "transit",
     # Additive, v0.7.0 Novice and Nervous: null except on that ride type.
     "novice",
+    # Additive, v0.7.0 "Faster routing": true only on a first route asked for with `quick`.
+    "provisional",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "5", "unknown"}
 
@@ -461,12 +463,14 @@ class TestAnswer:
         assert profile["crossings_complete"] is None
 
     def test_an_over_budget_mass_ride_says_its_junctions_were_not_checked(
-        self, client, segments, router, monkeypatch
+        self, client, segments, router, monkeypatch, settings
     ) -> None:
         """Over budget the joins are skipped: the chart says "not checked"."""
         router(standard_router())
         clock = iter(range(0, 10_000, 30))
         monkeypatch.setattr(routing, "clock", lambda: float(next(clock)))
+        # Each read of the clock moves it: the calls are made in turn (`core.parallel`).
+        settings.ROUTER_PARALLEL_CALLS = 1
         response = post(client, good_body("mass-ride"))
         assert response.status_code == 200
         profile = response.json()["profile"]
@@ -1413,9 +1417,12 @@ class Clock:
 
 
 @pytest.fixture
-def clock(monkeypatch):
+def clock(monkeypatch, settings):
     fake = Clock()
     monkeypatch.setattr(routing, "time", fake)
+    # A fake clock advanced by each call (`timed`) models the calls one after another:
+    # the router calls run in turn, not on the pool (`core.parallel`, v0.7.0).
+    settings.ROUTER_PARALLEL_CALLS = 1
     return fake
 
 
