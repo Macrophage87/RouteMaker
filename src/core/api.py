@@ -2504,13 +2504,19 @@ def _unrouted_line(
     }
 
 
-def _walked_line(plan: transit.Plan, preset_name: str, dials) -> dict:
-    """Walking the whole way: the answer's line is the walk itself, as the pedestrian router
-    walked it (or straight where it did not), timed at walking pace; no bike route is asked."""
-    leg = plan.legs[0]
+def _walked_line(plan: transit.Plan, preset_name: str, dials, services=None) -> dict:
+    """The answer's line is a walk (walking the whole way, or a trip whose line is a walk): the
+    walk itself, as the pedestrian router walked it (or straight where it did not), timed at
+    walking pace; no bike route is asked. `services` walks a leg not yet walked by the router."""
+    leg = plan.legs[plan.ride]
     points = [list(p) for p in leg.coordinates]
     metres = None
-    if not leg.estimated:
+    if services is not None:
+        walked = services.walk(points[0], points[-1])
+        if walked is not None and len(walked.coordinates) >= 2:
+            points = [list(p) for p in walked.coordinates]
+            metres = walked.metres
+    elif not leg.estimated:
         metres = sum(
             haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
         )
@@ -2549,10 +2555,19 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         system_weight_kg=body.system_weight_kg,
     )
     found = transit.choose(found, body.transit_option)
-    if found.option.walk:
-        answer = _walked_line(found, body.preset, dials)
-        answer["transit"] = transit.block(found, schedule)
+    # The trip's other walks and rides are routed for the map in what is left of the budget.
+    draw = transit.RoutingServices(
+        started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S,
+        body.preset,
+        max_calls=transit.MAX_DRAW_CALLS,
+    )
+
+    def answered(answer: dict, plan: transit.Plan) -> dict:
+        answer["transit"] = transit.block(transit.drawn(plan, draw), schedule)
         return answer
+
+    if found.option.walk:
+        return answered(_walked_line(found, body.preset, dials), found)
     leg = found.legs[found.ride]
     # The line is the chosen option's first ride (or walk). Riding directly there, or an option
     # whose every ride and walk is a few yards (nothing the router could route), is drawn start to
@@ -2561,6 +2576,10 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         transit.line_m(leg) < transit.MIN_LINE_M
     )
     retime = not whole or found.option.direct
+    if not whole and leg.mode in (transit.WALK, transit.TAKE):
+        # The line is a walk (Bikeshare + 🚶🚆🚌 with no ride worth a line): walked by the
+        # pedestrian router, never the bike's, and the plan keeps its walking times.
+        return answered(_walked_line(found, body.preset, dials, draw), found)
     if whole:
         ride_from, ride_to = list(start), list(end)
     else:
@@ -2591,9 +2610,10 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             # quickest left is planned, its own line routed (or drawn start to end).
             leg = timed.legs[timed.ride]
             if timed.option.walk:
-                answer = _walked_line(timed, body.preset, dials)
-                answer["transit"] = transit.block(timed, schedule)
-                return answer
+                return answered(_walked_line(timed, body.preset, dials), timed)
+            walked = leg.mode in (transit.WALK, transit.TAKE) and not timed.option.direct
+            if walked and transit.line_m(leg) >= transit.MIN_LINE_M:
+                return answered(_walked_line(timed, body.preset, dials, draw), timed)
             if timed.option.direct and body.preset == presets.BIKE_TRANSIT:
                 points = [list(start), list(end)]
             elif transit.line_m(leg) >= transit.MIN_LINE_M:
@@ -2604,7 +2624,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             if answer is None:
                 answer, timed = unrouted(points, timed)
         found = timed
-    answer["transit"] = transit.block(found, schedule)
+    answered(answer, found)
     logger.info(
         "transit plan %s: search %.1f s (candidates %.1f s, %d calls), line %.1f s",
         body.preset,

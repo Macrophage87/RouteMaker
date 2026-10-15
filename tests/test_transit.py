@@ -26,6 +26,7 @@ import json
 import logging
 import math
 import sys
+from dataclasses import replace
 from datetime import date, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -1133,6 +1134,65 @@ def test_the_walk_the_whole_way_is_routed_with_pedestrian_costing(monkeypatch) -
     assert option.walk and option.legs[0].seconds == 420.0 and not option.legs[0].estimated
 
 
+class Bendy(Straight):
+    """The router, its lines bent through a point off the straight one, and each call kept."""
+
+    def __init__(self, answers: bool = True) -> None:
+        super().__init__()
+        self.asked: list[str] = []
+        self.answers = answers
+
+    def _bent(self, kind, found, a, b):
+        self.asked.append(kind)
+        if not self.answers:
+            return None
+        middle = ((a[0] + b[0]) / 2 + 0.001, (a[1] + b[1]) / 2)
+        return replace(found, coordinates=(tuple(a), middle, tuple(b)))
+
+    def ride(self, a, b):
+        return self._bent("ride", super().ride(a, b), a, b)
+
+    def walk(self, a, b):
+        return self._bent("walk", super().walk(a, b), a, b)
+
+
+def test_the_chosen_trips_other_walks_and_rides_are_routed_for_the_map(schedule) -> None:
+    # The owner, 2026-10-15: "The bikeshare mode doesn't seem to properly route walking." Every
+    # walk is walked (pedestrian costing) and every ride ridden for the map; no time changes.
+    plan = transit.plan_bikeshare(
+        schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), Straight(), SHARE
+    )
+    direct = transit.choose(plan, transit.DIRECT)
+    assert [leg.mode for leg in direct.legs] == ["take", "bikeshare", "walk"]
+    services = Bendy()
+    drawn = transit.drawn(direct, services)
+    # The route line (the bikeshare ride) is the answer's own; the two walks are walked.
+    assert services.asked == ["walk", "walk"]
+    assert [len(leg.coordinates) for leg in drawn.legs] == [3, 2, 3]
+    assert [leg.seconds for leg in drawn.legs] == [leg.seconds for leg in direct.legs]
+    assert drawn.option.total_s == direct.option.total_s
+    for before, after in zip(direct.legs, drawn.legs, strict=True):
+        assert after.coordinates[0] == before.coordinates[0]
+        assert after.coordinates[-1] == before.coordinates[-1]
+    # Walk, Metro, walk: the route line is the first walk, the last one is walked for the map.
+    metro = transit.choose(plan, next(o.key for o in plan.options if o.scheduled))
+    services = Bendy()
+    drawn = transit.drawn(metro, services)
+    walks = [i for i, leg in enumerate(drawn.legs) if leg.mode == transit.WALK]
+    assert walks[0] == drawn.ride and services.asked == ["walk"]
+    assert len(drawn.legs[walks[-1]].coordinates) == 3
+    assert len(drawn.legs[walks[0]].coordinates) == 2
+    # Own Bike + 🚆🚌: a ride estimated from the straight line is ridden for the map.
+    own = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 12, 0))
+    ridden = transit.choose(own, next(o.key for o in own.options if o.scheduled))
+    services = Bendy()
+    drawn = transit.drawn(ridden, services)
+    assert services.asked == ["ride"] and len(drawn.legs[-1].coordinates) == 3
+    # A router that does not answer: the straight lines stay, the plan as it was.
+    services = Bendy(answers=False)
+    assert transit.drawn(direct, services) is direct and services.asked == ["walk", "walk"]
+
+
 def test_each_option_lists_its_legs_compactly_for_its_row(schedule) -> None:
     plan = transit.plan_bikeshare(
         schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), Straight(), SHARE
@@ -1332,7 +1392,7 @@ def installed(tmp_path, settings, monkeypatch):
     path = tmp_path / "transit-schedule.json"
     path.write_text(built(date(2026, 9, 28))[0])
     settings.TRANSIT_SCHEDULE_PATH = path
-    monkeypatch.setattr(transit, "RoutingServices", lambda *_args: Straight())
+    monkeypatch.setattr(transit, "RoutingServices", lambda *_args, **_kwargs: Straight())
     return path
 
 
@@ -1414,7 +1474,7 @@ class TestApi:
     ) -> None:
         router(standard_router())
         settings.TRANSIT_SCHEDULE_PATH = tmp_path / "none.json"
-        monkeypatch.setattr(transit, "RoutingServices", lambda *_args: Straight())
+        monkeypatch.setattr(transit, "RoutingServices", lambda *_args, **_kwargs: Straight())
         response = post_transit(client, [CAPITOL_HILL, DOWNTOWN])
         assert response.status_code == 200, response.content
         trip = response.json()["transit"]
@@ -1452,6 +1512,37 @@ class TestApi:
         assert body["geometry"]["coordinates"] == [CAPITOL_HILL, NEAR_CAPITOL_HILL]
         assert body["duration_s"] == pytest.approx(body["transit"]["total_s"], abs=1)
         assert len(fake.calls) == calls
+
+    def test_a_bikeshare_trips_walks_are_walked_not_ridden_on_the_map(
+        self, client, segments, router, installed, monkeypatch
+    ) -> None:
+        # The route line of walk, Metro, walk is a walk: the pedestrian router's, never the
+        # bike's, and the other walk is walked for the map too. The times are the plan's.
+        fake = router(standard_router())
+        monkeypatch.setattr(gbfs.client, "snapshot", lambda: NO_DOCKS)
+        services = Bendy()
+        monkeypatch.setattr(transit, "RoutingServices", lambda *_args, **_kwargs: services)
+        response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], presets.BIKESHARE_TRANSIT)
+        assert response.status_code == 200, response.content
+        body = response.json()
+        trip = body["transit"]
+        assert [s["mode"] for s in trip["steps"]] == ["walk", "enter", "metro", "exit", "walk"]
+        assert "route" not in fake.endpoints()
+        first, last = trip["steps"][0], trip["steps"][-1]
+        assert first["route_line"] and len(body["geometry"]["coordinates"]) == 3
+        assert body["duration_s"] == pytest.approx(first["seconds"], abs=1)
+        assert not last["route_line"] and len(last["coordinates"]) == 3
+        # The same trip drawn straight (the router not answering) has the same times.
+        monkeypatch.setattr(
+            transit, "RoutingServices", lambda *_args, **_kwargs: Bendy(answers=False)
+        )
+        straight = post_transit(client, [CAPITOL_HILL, DOWNTOWN], presets.BIKESHARE_TRANSIT)
+        again = straight.json()
+        assert len(again["transit"]["steps"][-1]["coordinates"]) == 2
+        assert len(again["geometry"]["coordinates"]) == 2
+        assert again["transit"]["total_s"] == trip["total_s"]
+        timed = [(s["seconds"], s["wait_s"]) for s in again["transit"]["steps"]]
+        assert timed == [(s["seconds"], s["wait_s"]) for s in trip["steps"]]
 
     def test_a_transit_trip_is_two_points_no_loop_and_options_only_on_transit(
         self, client, router, installed
