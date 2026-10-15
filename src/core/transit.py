@@ -2015,12 +2015,25 @@ def plan_bikeshare(schedule, start, end, when: datetime, services: Services, sna
 def with_ride(plan: Plan, seconds: float) -> Plan:
     """The plan with its chosen option's route line timed by the routed line (the answer's
     own). A walk keeps its walking time: the line is the bike router's, the pace is not."""
+    return with_rides(plan, {plan.option.ride: seconds})
+
+
+def with_rides(plan: Plan, seconds: dict[int, float]) -> Plan:
+    """The plan with its chosen option's ride legs timed as routed: `seconds` by leg index
+    (the route line's own, and each later ride routed for its stress colours). A walk keeps
+    its walking time; the waits for infrequent departures are worked out again from the new
+    times, and an option whose departure can no longer be caught goes, as `with_ride`."""
     option = plan.option
     legs = list(option.legs)
-    leg = legs[option.ride]
-    if leg.mode not in (RIDE, SHARE):
+    changed = False
+    for index, routed in seconds.items():
+        leg = legs[index]
+        if leg.mode not in (RIDE, SHARE):
+            continue
+        legs[index] = replace(leg, seconds=routed, estimated=False)
+        changed = True
+    if not changed:
         return plan
-    legs[option.ride] = replace(leg, seconds=seconds, estimated=False)
     legs, notes = _retimed(plan.when.minute, legs)
     options = list(plan.options)
     if legs is None:

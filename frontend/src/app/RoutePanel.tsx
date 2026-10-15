@@ -692,6 +692,7 @@ export function RouteSummary({
     <Fold title={`${presetLabel(preset)} trip`} said={`${presetSaid(preset)} trip`} open className="transit-fold" icon="train">
       <TransitSummary
         plan={transit}
+        lineSpans={route.stress_spans}
         preset={preset}
         onPick={transitControls?.onPick}
         busy={transitControls?.busy}

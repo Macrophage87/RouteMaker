@@ -8,10 +8,12 @@
  * Every time here is scheduled (WMATA's static timetables), not live: the words say "about" and
  * "scheduled" wherever a total is given.
  */
-import type { ClosedStation, RouteResponse, TransitOption, TransitPlan, TransitStep } from "./api.ts";
+import type { ClosedStation, RouteResponse, StressSpan, TransitOption, TransitPlan, TransitStep } from "./api.ts";
 import type { Dials } from "./dials.ts";
 import type { LonLat } from "./geo.ts";
 import { isTransit, presetSaid, type PresetId } from "./presets.ts";
+import { stressShares } from "./profileChart.ts";
+import { routeSections, usableSpans, type RouteSection } from "./routeColours.ts";
 import { legsSaid, legsText } from "./transitMarks.ts";
 
 export function transitOf(route: Pick<RouteResponse, "transit"> | null | undefined): TransitPlan | null {
@@ -27,6 +29,8 @@ export function transitTime(plan: TransitPlan): string {
 export const STEPS_LABEL = "Steps, in order";
 /** The options' list's name (the owner, 2026-10-12: riding directly there always, then the quickest). */
 export const OPTIONS_LABEL = "Trips, quickest first";
+/** The legend's words for the rides: each is coloured by traffic stress, as the route is. */
+export const RIDES_LEGEND = "Every ride is coloured by traffic stress, as on the route, and a thin solid line is a ride whose streets could not be read in time.";
 /** Said under every transit plan: the timetables carry only the closures an agency published in them. */
 export const TRACK_WORK = "Scheduled service; check for track work.";
 
@@ -124,11 +128,65 @@ export interface TransitFeatureCollection {
   features: { type: "Feature"; properties: { draw: TransitDraw }; geometry: { type: "LineString"; coordinates: LonLat[] } }[];
 }
 
+/**
+ * A ride after the route's own line, cut into its coloured sections as the route is (its own bike
+ * from the exit station, the far end's share bike; Stephen, v0.7.0: "it doesn't seem to include
+ * the LTS of the section towards the destination"). Null for any other step, and for a ride the
+ * API could not route in time, which is drawn as a plain line instead.
+ */
+export function rideSections(step: Pick<TransitStep, "mode" | "route_line" | "coordinates" | "stress_spans">): RouteSection[] | null {
+  if (step.route_line || drawOf(step) !== "ride" || step.coordinates.length < 2) return null;
+  return routeSections(step.coordinates, step.stress_spans ?? undefined);
+}
+
+/** Every later ride's coloured sections, in trip order, for the map's route sections beside the route's own. */
+export function transitRideSections(plan: Pick<TransitPlan, "steps"> | null | undefined): RouteSection[] {
+  return (plan?.steps ?? []).flatMap((step) => rideSections(step) ?? []);
+}
+
+/** The later rides drawn in the route's colours, as lines: the route's casing goes under them too. */
+export function transitRideLines(plan: Pick<TransitPlan, "steps"> | null | undefined): LonLat[][] {
+  return (plan?.steps ?? []).filter((step) => rideSections(step) !== null).map((step) => step.coordinates);
+}
+
+/**
+ * The route's stress sections and every coloured later ride's after them, end to end, for the
+ * legend's lengths: the legend names every colour on the map, the later rides' included. The
+ * route's own where there are no coloured later rides.
+ */
+export function tripStressSpans(route: Pick<RouteResponse, "stress_spans"> & Partial<Pick<RouteResponse, "transit">>): StressSpan[] | undefined {
+  const later = (route.transit?.steps ?? []).filter((step) => rideSections(step) !== null);
+  if (later.length === 0) return route.stress_spans;
+  const out: StressSpan[] = [];
+  let at = 0;
+  for (const spans of [route.stress_spans, ...later.map((step) => step.stress_spans)]) {
+    if (!usableSpans(spans)) continue;
+    for (const span of spans) out.push({ ...span, from_m: at + span.from_m, to_m: at + span.to_m });
+    at += spans[spans.length - 1].to_m;
+  }
+  return out.length > 0 ? out : route.stress_spans;
+}
+
+/**
+ * A ride step's traffic stress in words, as the route chart's summary says the route's
+ * ("Traffic stress along it: 19% traffic-free path, 69% LTS 2, 12% LTS 3."), so a screen reader
+ * hears every ride's stress the same way. `spans`: the route's own, for the route line's step.
+ * Null where the step has none.
+ */
+export function stepStressSaid(step: Pick<TransitStep, "mode" | "route_line" | "coordinates" | "stress_spans">, routeSpans?: readonly StressSpan[]): string | null {
+  if (drawOf(step) !== "ride") return null;
+  const spans = step.route_line ? routeSpans : rideSections(step) ? step.stress_spans : null;
+  if (!usableSpans(spans)) return null;
+  const shares = stressShares(spans, 0);
+  return shares ? `Traffic stress along it: ${shares}.` : null;
+}
+
 export function transitFeatures(plan: TransitPlan | null): TransitFeatureCollection {
   const features: TransitFeatureCollection["features"] = [];
   for (const step of plan?.steps ?? []) {
     const draw = drawOf(step);
-    if (!draw || step.route_line || step.coordinates.length < 2) continue;
+    // A ride routed with its stress is drawn in the route's own colours (`transitRideSections`).
+    if (!draw || step.route_line || step.coordinates.length < 2 || rideSections(step)) continue;
     features.push({ type: "Feature", properties: { draw }, geometry: { type: "LineString", coordinates: step.coordinates } });
   }
   return { type: "FeatureCollection", features };

@@ -59,11 +59,14 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import datetime, timedelta
 from functools import wraps
 from typing import Annotated, Literal
 
 from django.conf import settings
+from django.db import connections
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from ninja import Field, NinjaAPI, Query, Schema, Status
@@ -2073,6 +2076,14 @@ class TransitStepOut(Schema):
             " end's ride as routed; empty for the route line's own step."
         )
     )
+    stress_spans: list[StressSpanOut] | None = Field(
+        default=None,
+        description=(
+            "A ride after the route line (own bike or share bike), routed as the route line"
+            " is: its sections by traffic stress along `coordinates`, in the form of the"
+            " body's `stress_spans`. Null where it was not routed in time (a plain line)."
+        ),
+    )
     live: TransitStepLiveOut | None = Field(
         default=None,
         description="A Metro step's next trains its way now, from WMATA (core.transit_live).",
@@ -2949,31 +2960,54 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         drawn = _unrouted_line(points, body.preset, dials, plan.legs[plan.ride].seconds)
         return drawn, dataclasses.replace(plan, notes=[*plan.notes, UNROUTED_NOTE])
 
-    answer = line([ride_from, ride_to])
-    if answer is None:
-        answer, found = unrouted([ride_from, ride_to], found)
-        retime = False
-    if retime:
-        timed = transit.with_ride(found, float(answer["duration_s"]))
+    # Every later ride of the chosen option (the ride from the exit station to the destination,
+    # the far end's bikeshare ride) is routed as the first is, with the same ride type and dials,
+    # for its stress colours (the owner, v0.7.0: "it doesn't seem to include the LTS of the
+    # section towards the destination"). They run beside the answer's own line in a small pool,
+    # inside the same budget; one that fails or runs out of time keeps its plain line from the
+    # search, and the plan never fails for it.
+    pool = ThreadPoolExecutor(max_workers=LEG_LINE_WORKERS, thread_name_prefix="transit-leg")
+    try:
+        later = {} if whole else _later_rides(pool, found, leg_preset, started, dials)
+        answer = line([ride_from, ride_to])
+        lines = _collected(later, started)
+        if answer is None:
+            answer, found = unrouted([ride_from, ride_to], found)
+            retime = False
+        # Each routed ride's own time (the later rides' too); the waits for infrequent
+        # departures are worked out again from them (transit.with_rides).
+        routed = {index: float(a["duration_s"]) for index, a in lines.items()}
+        if retime:
+            routed[found.ride] = float(answer["duration_s"])
+        timed = transit.with_rides(found, routed) if routed else found
         if timed.option.key != found.option.key:
             # The chosen trip's departure cannot be caught after all and it was left out: the
-            # quickest left is planned, its own line routed (or drawn start to end).
+            # quickest left is planned, its own line routed (or drawn start to end), and its
+            # later rides routed for their colours. Their times stay the plan's own: timing
+            # them again could drop this option too.
             leg = timed.legs[timed.ride]
             if timed.option.walk:
                 answer = _walked_line(timed, body.preset, dials)
                 answer["transit"] = _transit_block(timed, schedule, live)
                 return answer
-            if timed.option.direct and body.preset == presets.BIKE_TRANSIT:
+            again_whole = timed.option.direct and body.preset == presets.BIKE_TRANSIT
+            if again_whole:
                 points = [list(start), list(end)]
             elif transit.line_m(leg) >= transit.MIN_LINE_M:
                 points = [list(leg.coordinates[0]), list(leg.coordinates[-1])]
             else:
+                again_whole = True
                 points = [list(start), list(end)]
+            later = {} if again_whole else _later_rides(pool, timed, leg_preset, started, dials)
             answer = line(points)
+            lines = _collected(later, started)
             if answer is None:
                 answer, timed = unrouted(points, timed)
         found = timed
-    answer["transit"] = _transit_block(found, schedule, live)
+    finally:
+        # A call still running past its wait is left to its own deadline, not waited for.
+        pool.shutdown(wait=False, cancel_futures=True)
+    answer["transit"] = _with_leg_lines(_transit_block(found, schedule, live), lines)
     logger.info(
         "transit plan %s: search %.1f s (candidates %.1f s, %d calls), line %.1f s",
         body.preset,
@@ -2983,6 +3017,79 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         routing.clock() - searched,
     )
     return answer
+
+
+# The later rides of a transit trip routed at once, beside the answer's own line: a trip has at
+# most a ride at each end and the odd ride between stations, so a few threads cover it.
+LEG_LINE_WORKERS = 3
+
+
+def _later_rides(
+    pool: ThreadPoolExecutor,
+    plan: transit.Plan,
+    leg_preset: str,
+    started: float,
+    dials: routing.Dials,
+) -> dict[int, Future]:
+    """Each ride of the chosen option after its route line (own bike or share bike, long
+    enough to route), sent to the router in `pool` as the route line is: the same ride type,
+    dials and budget. By the leg's index in the option."""
+    option = plan.option
+    later: dict[int, Future] = {}
+    for index, leg in enumerate(option.legs):
+        if index == option.ride or leg.mode not in (transit.RIDE, transit.SHARE):
+            continue
+        if transit.line_m(leg) < transit.MIN_LINE_M:
+            continue
+        points = [list(leg.coordinates[0]), list(leg.coordinates[-1])]
+        later[index] = pool.submit(_leg_line, points, leg_preset, started, dials)
+    return later
+
+
+def _leg_line(points: list[list[float]], leg_preset: str, started: float, dials) -> dict | None:
+    """A later ride's line routed for its stress colours, or None: whatever goes wrong, the
+    leg keeps the plain line it was found with."""
+    try:
+        return routing.plan(points, leg_preset, long_ride=False, started=started, dials=dials)
+    except Exception as error:  # a later leg never fails the plan
+        logger.warning("transit plan: a later ride's line was not routed: %s", error)
+        return None
+    finally:
+        # This thread's own database connection (the plan reads the approved junctions).
+        connections.close_all()
+
+
+def _collected(later: dict[int, Future], started: float) -> dict[int, dict]:
+    """The later rides that were routed in time, by leg index. A call still running when the
+    request's router budget ends is let go: its leg keeps its plain line."""
+    out: dict[int, dict] = {}
+    end = started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S
+    for index, future in later.items():
+        try:
+            answered = future.result(timeout=max(0.0, end - routing.clock()))
+        except FutureTimeout:
+            logger.warning("transit plan: a later ride's line ran out of time")
+            continue
+        if answered is not None:
+            out[index] = answered
+    return out
+
+
+def _with_leg_lines(block: dict, lines: dict[int, dict]) -> dict:
+    """The `transit` block with each routed later ride's step drawn as routed, with its stress
+    sections in the form the route's own line has them (`stress_spans`), for the map, its
+    legend and the words to colour and say alike."""
+    steps = block["steps"]
+    for index, answered in lines.items():
+        if index >= len(steps) or steps[index]["route_line"]:
+            continue
+        coordinates = answered.get("geometry", {}).get("coordinates") or []
+        spans = answered.get("stress_spans")
+        if len(coordinates) < 2 or not spans:
+            continue
+        steps[index]["coordinates"] = coordinates
+        steps[index]["stress_spans"] = spans
+    return block
 
 
 def _transit_block(plan: transit.Plan, schedule, live) -> dict:
