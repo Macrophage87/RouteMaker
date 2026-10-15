@@ -388,14 +388,27 @@ def ride_layer_predicate(has_facility: bool, has_car_free: bool = False) -> str:
     return f"({paths} OR {roads})"
 
 
+def ride_layer_mtb_predicate(has_facility: bool) -> str:
+    """The mountain-bike trails the z12-13 ride layer carries as well, on a table
+    with the `mtb_only` column (`core.stress_tiles.RIDE_LAYER`; v0.7.0, the plan:
+    "MTB trails from zoom 12-13", the owner of 2026-10-12: "Mountain bike trails
+    seem plotted but don't show up very well"). Every one, whatever its run: the
+    map draws them only on their own layer, off until the rider turns it on, and
+    in the Mountain Bike ride type (frontend/src/stressStyle.js, MTB_MIN_ZOOM)."""
+    return f"({trails_predicate(has_facility)} AND {MTB_ONLY_COLUMN})"
+
+
 # The ride layer's own index (SEGMENT_DDL): a partial one holding only the rows a
 # ride-layer tile can draw, which are well under a tenth of the table, so a z12
 # tile's scan does not read every street in the box. The query's predicate implies
-# it: each of its terms is a run at or above the shorter of the two bars, or a
-# timed closure.
+# it: each of its terms is a run at or above the shorter of the two bars, a timed
+# closure, or a mountain-bike trail (`mtb_only`, MTB_ONLY_COLUMN below; v0.7.0). A
+# table built before v0.7.0 has the index without the last term, and its z12-13
+# tiles read the mountain-bike trails through the geometry index instead.
 _RIDE_INDEX_MIN_M = round(min(RIDE_PATH_RUN_MI, RIDE_ROAD_RUN_MI) * METRES_PER_MILE)
 RIDE_INDEX_PREDICATE = (
     f"COALESCE({CALM_RUN_COLUMN}, 0) >= {_RIDE_INDEX_MIN_M} OR cardinality({CAR_FREE_COLUMN}) > 0"
+    " OR mtb_only"
 )
 
 

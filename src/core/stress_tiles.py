@@ -40,6 +40,9 @@ RIDE LAYER below, on a table that has the column it reads:
   road of at least RIDE_ROAD_RUN_MI with no junction with a road at LTS 3 or above,
   `pipeline.calm_roads`) and the roads closed to cars at set times
   (`pipeline.schema.ride_layer_predicate`, on `calm_run_m`, which the rebuild writes).
+  Since v0.7.0 it also holds every mountain-bike trail (`mtb_only`, whatever its run;
+  `pipeline.schema.ride_layer_mtb_predicate`), which the map draws on their own layer
+  from zoom 12 rather than 14 (the plan: "MTB trails from zoom 12-13").
 - `BUSY`, the same zooms on a table without the `calm_run_m` column, which draws what
   z12-13 drew before 391: the paths and trails and the roads at LTS 3 and above - Avoid
   and the expressways included (`pipeline.schema.busy_predicate`). The map draws them
@@ -119,6 +122,7 @@ from pipeline.schema import (
     LongTrails,
     busy_predicate,
     long_trails_predicate,
+    ride_layer_mtb_predicate,
     ride_layer_predicate,
     trails_predicate,
     validate_schema_name,
@@ -165,8 +169,9 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 # capacity, `rpm`, on a table that has the column (OWNER-DECISIONS 325-327, 387). 7: the
 # rebuild bundle, which carries both, with the roadside trails' `roadside` (403) and
 # NO-BIKE-PATHS' `mtb` and `rough` (290, 291). 8: a judged trail bridge's `unpaved` is its
-# trail's surface, not its deck's (BRIDGE_UNPAVED).
-FORMAT_VERSION = 8
+# trail's surface, not its deck's (BRIDGE_UNPAVED). 9: the z12-13 ride layer carries the
+# mountain-bike trails (v0.7.0).
+FORMAT_VERSION = 9
 
 # Five minutes (OWNER-DECISIONS 460.6, "5 min sounds good"): an instance admin's change in
 # the road panel (core.stress_edits) is in the tiles at once, and other riders' browsers
@@ -211,6 +216,9 @@ class Level:
     # that has all three long-trail columns (LONG_TRAIL_COLUMNS); on one
     # without, today's tiles are drawn.
     long_trails: LongTrails | None = None
+    # Whether the level also carries every mountain-bike trail
+    # (`pipeline.schema.ride_layer_mtb_predicate`), on a table with `mtb_only`.
+    mtb_trails: bool = False
 
 
 # The thresholds are the named constants in `pipeline.schema`, from
@@ -243,6 +251,9 @@ RIDE_LAYER = Level(
     None,
     merged=True,
     predicate=ride_layer_predicate,
+    # v0.7.0: the mountain-bike trails from zoom 12, not 14 (the plan, "MTB trails
+    # from zoom 12-13"; the owner, 2026-10-12: they "don't show up very well").
+    mtb_trails=True,
 )
 BUSY = Level("busy", RIDE_LAYER_MIN_ZOOM, 4096, 32, None, merged=True, predicate=busy_predicate)
 FULL = Level("full", QUIET_STREETS_MIN_ZOOM, 4096, 64, None, merged=False)
@@ -474,6 +485,8 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = 
         if level.long_trails is not None and all(c in optional for c in LONG_TRAIL_COLUMNS):
             rule = long_trails_predicate(level.long_trails, has_car_free)
             where = f"({where}) AND {rule}"
+        if level.mtb_trails and MTB_ONLY_COLUMN in optional:
+            where = f"({where} OR {ride_layer_mtb_predicate(has_facility)})"
         if has_car_free:
             # A road closed to cars at set times is in a zoomed-out tile that
             # would not otherwise hold it only for those times: it carries them

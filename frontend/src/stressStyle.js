@@ -976,8 +976,8 @@ export function mtbTicksPaint(strong = accessibilityOn()) {
   return { "line-color": MTB_TICKS.color, "line-width": mtbHaloWidth(width, strong) + 2 * (strong ? MTB_TICKS.strongPx : MTB_TICKS.px), "line-dasharray": MTB_TICKS.dash };
 }
 
-/** The zoom the not-for-routes line draws from: where the tiles carry the trails (STRESS_ZOOMS.quiet, held equal by a test). */
-export const MTB_MIN_ZOOM = 14;
+/** The zoom the not-for-routes line draws from: where the tiles carry the trails (STRESS_ZOOMS.ride since v0.7.0, held equal by a test; the plan: "MTB trails from zoom 12-13"). */
+export const MTB_MIN_ZOOM = 12;
 
 /** The unrated trails' line: colour, width and dashes, plain or with the accessibility switch on. */
 export function mtbTrailPaint(strong = accessibilityOn()) {
