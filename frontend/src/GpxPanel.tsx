@@ -9,6 +9,7 @@ import { exportFileName, exportOf, fidelityNotice, importSentences, presetNotice
 import { showReference } from "./lib/referenceLayer.ts";
 import { VIA_MARKS, viaIndices } from "./lib/pointKinds.ts";
 import { fidelity } from "./lib/trackMatch.ts";
+import type { FileDownload } from "./lib/gpxVerbatim.ts";
 
 interface Props {
   /** The route on screen, or null. */
@@ -52,15 +53,24 @@ function bounds(line: readonly LonLat[]): [number, number, number, number] {
 }
 
 /**
- * Download the route shown as a GPX file, built here from it (gpx.ts). Shared by this panel's
- * Download GPX and the sidebar's pinned one (App.tsx, OWNER-DECISIONS 312).
+ * The route shown as a GPX file, built here from it (gpx.ts): its text and file name. What Download GPX saves and
+ * what Share attaches (v0.7.0, "share the identical route").
+ */
+export function routeGpxFile(route: RouteResponse, routedPoints: LonLat[], loop: boolean, federal: readonly string[] = []): FileDownload {
+  return { text: writeGpx(exportOf(route, routedPoints, loop, federal, viaIndices(routedPoints, VIA_MARKS.isVia))), fileName: exportFileName(route) };
+}
+
+/**
+ * Download the route shown as a GPX file (routeGpxFile). Shared by this panel's Download GPX and the sidebar's
+ * pinned one (App.tsx, OWNER-DECISIONS 312).
  */
 export function downloadGpx(route: RouteResponse, routedPoints: LonLat[], loop: boolean, federal: readonly string[] = []): void {
-  const blob = new Blob([writeGpx(exportOf(route, routedPoints, loop, federal, viaIndices(routedPoints, VIA_MARKS.isVia)))], { type: "application/gpx+xml" });
+  const file = routeGpxFile(route, routedPoints, loop, federal);
+  const blob = new Blob([file.text], { type: "application/gpx+xml" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = exportFileName(route);
+  link.download = file.fileName;
   document.body.append(link);
   link.click();
   link.remove();

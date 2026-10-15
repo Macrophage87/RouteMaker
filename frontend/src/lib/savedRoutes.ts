@@ -6,7 +6,8 @@
  *
  * Reopening shows the saved line unchanged. The page re-plans the same inputs with today's map only to
  * compare: if the distance differs by more than 5%, one line says so with an "Update route" link, and
- * nothing changes without that tap. At most 200 per account; sharing stays the link in the address bar.
+ * nothing changes without that tap. At most 200 per account. Share keeps the same body, signed out too, for the
+ * link it shares (lib/sharedRoutes.ts).
  */
 import type { RouteResponse } from "./api.ts";
 import type { Dials } from "./dials.ts";
@@ -195,7 +196,7 @@ export async function deleteRoute(origin: string, id: number, send: Fetch = fetc
 }
 
 /** The plan line and route a reopened planned route shows: its saved answer, unchanged. */
-export function savedAnswer(route: SavedRoute): RouteResponse | null {
+export function savedAnswer(route: Pick<SavedRoute, "source" | "answer">): RouteResponse | null {
   if (route.source !== "plan" || !route.answer) return null;
   return route.answer;
 }

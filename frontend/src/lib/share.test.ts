@@ -64,8 +64,10 @@ test("the shared URL is Copy link's, at its full precision and without the weigh
   assert.equal(sent[0].url, url);
   assert.equal(sent[0].url, `https://x.test/${encodePlan(points, "default", dials)}`);
   assert.doesNotMatch(`${sent[0].url} ${sent[0].text}`, /weight|97\.5|\bkg\b|\blbs?\b/i);
-  // App hands share exactly the link Copy link copies.
-  assert.match(app, /shareContent\(linkToCopy\(window\.location, points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\), distanceM, presetSaid\(preset\)\)/);
+  // App hands share the link Copy link copies, with only the shared line's id added (lib/sharedRoutes.ts).
+  assert.match(app, /let link = linkToCopy\(window\.location, points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\);/);
+  assert.match(app, /link = withSharedId\(link, id\);/);
+  assert.match(app, /shareContent\(link, distanceM, presetSaid\(preset\)\)/);
   assert.match(app, /copyText\(linkToCopy\(window\.location, points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\), navigator\.clipboard, selectionCopy\)/);
 });
 
@@ -101,7 +103,7 @@ test("App shows Share beside Copy link only where it is supported, named Share r
     /<div id=\{moreId\} className="route-more-body" hidden=\{!more\}>\s*\{canShare && \(\s*<button type="button" className="secondary share-route" onClick=\{shareRoute\} aria-label=\{SHARE_NAME\} aria-describedby=\{linkNote \? "link-note" : undefined\}>\s*\{SHARE_LABEL\}/,
   );
   // A failure is said in the polite status Copy link uses, and shown; success and cancel say nothing.
-  assert.match(app, /said = shareSaidFor\(await outcome\);/);
+  assert.match(app, /const done = await outcome;\s*said = shareSaidFor\(done\);/);
   assert.match(app, /if \(!said\) return;\s*window\.setTimeout/);
   assert.match(app, /if \(press === linkPresses\.current\) setLinkSpoken\(said\);/);
 });
