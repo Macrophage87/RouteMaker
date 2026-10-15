@@ -717,7 +717,10 @@ class TestWords:
                 "motor-only classification (motorway_link)",
                 "Highway-like road for motor traffic (motorway link)",
             ),
-            ("override: stress adjustment moco-lts5-georgia-avenue", "Owner-rated corridor"),
+            (
+                "override: stress adjustment moco-lts5-georgia-avenue",
+                "Montgomery County rates it LTS 5",
+            ),
             ("named corridor: c1, e2", "Owner-rated corridor"),
             ("trail-class way (footway)", "Path away from traffic"),
             (
@@ -879,3 +882,42 @@ def test_the_unnamed_titles_are_describes_words_and_the_front_ends() -> None:
     ts = (Path(__file__).parents[1] / "frontend/src/lib/roadInfo.ts").read_text(encoding="utf-8")
     assert f'UNNAMED_ROAD_TITLE = "{segment_info.UNNAMED_ROAD_TITLE}"' in ts
     assert f'UNNAMED_PATH_TITLE = "{segment_info.UNNAMED_PATH_TITLE}"' in ts
+
+
+def _adjusted_row(adjustment_id: str) -> dict:
+    return {
+        "stress_tier": 5,
+        "stress_rule": f"override: stress adjustment {adjustment_id}",
+        "stress_adjustment_id": adjustment_id,
+        "stress_computed_tier": 3,
+        "stress_adjustment_direction": "up",
+        "stress_adjustment_category": "other",
+        "stress_adjustment_note": None,
+        "stress_adjustment_display": "route_only",
+    }
+
+
+def test_a_montgomery_county_lts5_row_reads_as_county_data() -> None:
+    """The owner: "It's also listed as owner override when it was county data"."""
+    rows = {
+        r["label"]: r for r in segment_info.stress_rows(_adjusted_row("moco-lts5-airpark-road"))
+    }
+    assert rows["Level"]["value"] == "Avoid"
+    assert rows["Level"]["source"] == segment_info.COUNTY
+    assert rows["Why"]["value"] == "Montgomery County rates it LTS 5"
+    assert rows["Why"]["source"] == segment_info.COUNTY
+    assert rows["Before the county's rating"]["source"] == segment_info.CLASSIFIER
+    assert "Owner's reason" not in rows
+    assert "Before the override" not in rows
+    assert all(r["source"] != segment_info.OWNER for r in rows.values())
+
+
+def test_an_owner_adjusted_row_still_reads_as_an_owner_override() -> None:
+    rows = {
+        r["label"]: r
+        for r in segment_info.stress_rows(_adjusted_row("east-anacostia-suitland-parkway"))
+    }
+    assert rows["Level"]["source"] == segment_info.OWNER
+    assert rows["Why"]["value"] == "Owner-rated corridor"
+    assert rows["Owner's reason"]["value"] == "Other"
+    assert "Before the override" in rows

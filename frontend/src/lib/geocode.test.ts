@@ -450,11 +450,17 @@ test("a busy lookup is tried again once", async () => {
 
 // --- what a pick does -----------------------------------------------------------
 
-test("by default a pick is the start, then the destination, then a new destination", () => {
+test("by default a pick is the start, then the destination, then a stop", () => {
+  const via: LonLat = [-77.03, 38.893];
   assert.deepEqual(applyPlace([], A, defaultChoice(0)), [A]);
   assert.deepEqual(applyPlace([A], B, defaultChoice(1)), [A, B]);
-  assert.deepEqual(applyPlace([A, B], C, defaultChoice(2)), [A, C]);
-  assert.deepEqual(applyPlace([A, B, C], B, defaultChoice(3)), [A, B, B]);
+  assert.deepEqual(applyPlace([A, B], via, defaultChoice(2)), [A, via, B]);
+  assert.equal(defaultChoice(3), "via");
+});
+
+test("a full route's box starts on a new destination, since no stop fits", () => {
+  assert.equal(defaultChoice(MAX_POINTS, false, true), "end");
+  assert.equal(choiceInForce(null, MAX_POINTS, true), "end");
 });
 
 test("a pick can be made the start once there is one", () => {
@@ -478,7 +484,7 @@ test("with fewer than two points, a via is the start or the end", () => {
 
 test("the choice the box starts on is always one on offer", () => {
   for (const count of [0, 1, 2, 5, MAX_POINTS]) {
-    assert.ok(choicesFor(count, count >= MAX_POINTS).includes(defaultChoice(count)), `count ${count}`);
+    assert.ok(choicesFor(count, count >= MAX_POINTS).includes(defaultChoice(count, false, count >= MAX_POINTS)), `count ${count}`);
   }
 });
 
@@ -623,7 +629,7 @@ test("a choice no longer on offer gives way to the plan's default", () => {
   assert.equal(choiceInForce("via", MAX_POINTS, true), "end", "a full route takes no stop");
   assert.equal(choiceInForce("start", 2, false), "start");
   assert.equal(choiceInForce(null, 0, false), "start");
-  assert.equal(choiceInForce(null, 2, false), "end");
+  assert.equal(choiceInForce(null, 2, false), "via", "with both ends, a pick adds a stop");
 });
 
 test("the search box's request goes ahead of names waiting at the gate", async () => {

@@ -1399,10 +1399,10 @@ export function App() {
     }
     void goTo(point, found.name);
   };
-  // Go's Home chip (the owner's choice 3): signed in with a Home, ride there; else My Go, under Settings.
+  // Go's Home chip: with a Home (the account's, or this device's when signed out), ride there; else My Go, under Settings.
   const goHome = (chip: HTMLElement) => {
     const home = myGoRef.current.home;
-    if (meRef.current.signed_in && home) {
+    if (home) {
       namer.remember(home.point, home.label || "Home", home.label || "Home");
       void goTo(home.point, home.label || "Home");
       return;
@@ -2210,7 +2210,7 @@ export function App() {
       wasCompact: wasCompact.current,
       compact: compactPoints,
       before: focusBeforeRender.current,
-      hidden: [pointsSearchRef.current, pointsEditRef.current],
+      hidden: [pointsEditRef.current],
       editPoints: editPointsRef.current,
     });
     wasCompact.current = compactPoints;
@@ -2530,7 +2530,7 @@ export function App() {
                   searchBias={searchBias}
                   onPick={goToPlace}
                   places={{
-                    homeReady: me.signed_in && myGo.home !== null,
+                    homeReady: myGo.home !== null,
                     signedIn: me.signed_in,
                     onHome: goHome,
                     onFood: (chip) => openView("food", chip),

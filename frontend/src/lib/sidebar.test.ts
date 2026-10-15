@@ -239,11 +239,12 @@ test("the points come first, the how-to is behind Points' Info, Swap beside the 
   assert.match(app, /<p className="hint" id="reverse-hint">/);
 });
 
-test("with a route shown the points are compact, behind 'Edit points', and the controls stay in the page", () => {
+test("with a route shown the points are compact, behind 'Edit points', and the search stays open", () => {
   assert.match(app, /const compactPoints = routeShownForPoints && points\.length >= 2 && !editPoints;/);
-  assert.match(app, /<div id="points-search" ref=\{pointsSearchRef\} className="points-controls" hidden=\{compactPoints\}>\s*<PlaceSearch/);
-  // Edit points controls both parts it hides (the correctness review's N6).
-  assert.match(app, /aria-expanded=\{!compactPoints\}\s+aria-controls="points-search points-edit"/);
+  // The search is never hidden, so more stops can be added by search (Stephen 2026-10-14).
+  assert.match(app, /<div id="points-search" ref=\{pointsSearchRef\} className="points-controls">\s*<PlaceSearch/);
+  // Edit points controls the part it hides (the correctness review's N6).
+  assert.match(app, /aria-expanded=\{!compactPoints\}\s+aria-controls="points-edit"/);
   assert.match(app, /<div id="points-edit" ref=\{pointsEditRef\} hidden=\{compactPoints\}>/);
   // Clear, a plan from a link, or fewer than two points: the next route opens compact again (N1).
   assert.match(app, /const clearAll = \(\) => \{\s*setConfirmedKm\(null\);\s*setEditPoints\(false\);/);
@@ -297,7 +298,7 @@ test("the points compacting never leaves the focus in a hidden part: it goes to 
   // App runs it in a layout effect on compactPoints, with what had the focus before that render.
   assert.match(
     app,
-    /useLayoutEffect\(\(\) => \{\s*rescueCompactFocus\(\{\s*wasCompact: wasCompact\.current,\s*compact: compactPoints,\s*before: focusBeforeRender\.current,\s*hidden: \[pointsSearchRef\.current, pointsEditRef\.current\],\s*editPoints: editPointsRef\.current,\s*\}\);\s*wasCompact\.current = compactPoints;\s*\}, \[compactPoints\]\);/,
+    /useLayoutEffect\(\(\) => \{\s*rescueCompactFocus\(\{\s*wasCompact: wasCompact\.current,\s*compact: compactPoints,\s*before: focusBeforeRender\.current,\s*hidden: \[pointsEditRef\.current\],\s*editPoints: editPointsRef\.current,\s*\}\);\s*wasCompact\.current = compactPoints;\s*\}, \[compactPoints\]\);/,
   );
   assert.match(app, /ref=\{editPointsRef\}\s+className="secondary icon-button edit-points"/);
   // After the sheet-order effect, which may first put the focus back on the (now hidden) element.

@@ -33,6 +33,11 @@ export interface PresetOption {
   keywords?: string;
   /** What the ride type does today, in plain words; nothing it does not do yet. */
   description: string;
+  /**
+   * The gist in one short sentence, for Go's More ride types (Stephen, 2026-10-15: "a popout that
+   * has all these options and explains things more"); the detail stays in `description`.
+   */
+  summary: string;
 }
 
 export const PRESETS: readonly PresetOption[] = [
@@ -40,28 +45,33 @@ export const PRESETS: readonly PresetOption[] = [
     id: "default",
     label: "Default",
     description: "Everyday riding that prefers paths and quiet streets, even when a busier road would be faster.",
+    summary: "Everyday riding on paths and quiet streets.",
   },
   {
     id: "trailmaxxing",
     label: "Trailmaxxing",
     description:
       "The calmest route, aiming at your target distance: paths, protected lanes and quiet streets, with busy streets only where there is no other way. It finds the least stressful route, not the most trail, so it may add miles.",
+    summary: "The calmest route, aimed at your target distance.",
   },
   {
     id: "group-ride",
     label: "Group Ride",
     description: "A group riding with traffic at riding pace: quiet roads, fewer turns and gates.",
+    summary: "A group riding together on quiet roads with few turns.",
   },
   {
     id: "mass-ride",
     label: "Mass Ride",
     description:
       "A large group taking the roadway: roads only, no trails, no bike-lane preference, never against a one-way street's traffic, few turns, at parade pace.",
+    summary: "A large group taking the road at parade pace.",
   },
   {
     id: "mountain-goat",
     label: "Mountain Goat",
     description: "Looks for climbs: picks the hilliest of a few alternative routes, up to half again as long.",
+    summary: "Seeks out climbs for a hillier ride.",
   },
   {
     // docs/MTB-TOPO-PLAN.md, slice 6: a ride type of its own, separate from Mountain Goat (OWNER-DECISIONS 148).
@@ -69,33 +79,39 @@ export const PRESETS: readonly PresetOption[] = [
     label: "Mountain Bike",
     description:
       "Seeks mountain-bike trails up to the level you choose, joined by calm roads, as a loop from your start unless you turn the loop off. Never uses trails closed to bikes or mapped closed when wet. Times singletrack at a mountain bike's pace.",
+    summary: "Mountain-bike trails at your level, joined by calm roads.",
   },
   {
     id: "gravel",
     label: "Gravel",
     description: "Unpaved roads and trails cost nothing extra; it does not yet seek them out.",
+    summary: "Treats unpaved roads and trails like pavement.",
   },
   {
     id: "fast",
     label: "Fast",
     description: "Direct roads, few turns and smooth pavement, whatever the traffic.",
+    summary: "The most direct route, whatever the traffic.",
   },
   {
     id: "cargo",
     label: "Cargo Bike",
     description:
       "A long, heavy bike, carrying cargo or with passengers (people or pets): gentle grades, no narrow barriers, times at a cargo bike's pace. With electric assist, e-bike rules and a little more speed, but hills still count.",
+    summary: "A long, heavy bike: gentle hills and no narrow barriers.",
   },
   {
     id: "ebike",
     label: "E-bike",
     description: "Leaves out ways mapped as closed to e-bikes, starts fine with hills (the more direct route wins), times at assisted pace.",
+    summary: "Electric assist, so hills matter less.",
   },
   {
     id: "bikeshare",
     label: "Bikeshare",
     description:
       "Walk to a dock with a bike, ride dock to dock, then walk to your destination. Choose a classic bike (hill-averse, slower) or an e-bike. Calm streets and paths first; docks are chosen from live availability where it can be read.",
+    summary: "Walk to a dock, ride a shared bike, then walk to the end.",
   },
   {
     // FOLLOWUP-KIDS-PRESET (OWNER-DECISIONS 240 (B)): children on their own bikes.
@@ -103,6 +119,7 @@ export const PRESETS: readonly PresetOption[] = [
     label: "Riding with kids",
     description:
       "Children on their own bikes: paths and the quietest streets strongly preferred, other quiet streets only when they save a real detour, busy streets avoided hard. Gentler hills, and times at a child's pace.",
+    summary: "Children on their own bikes, on paths and the quietest streets.",
   },
   {
     // TRANSIT-ASSIST (Stephen, 2026-10-12): transit is two commuting ride types, chosen like any other.
@@ -114,6 +131,7 @@ export const PRESETS: readonly PresetOption[] = [
     keywords: "transit",
     description:
       "Your own bike the whole way, with Metro, MARC, VRE, Light RailLink, Metro SubwayLink or a bus's bike rack: riding directly there, then the quickest transit trips by scheduled times, not live. Uses stations a bike can get into (Metro's elevators), and never leaves the bike.",
+    summary: "Your own bike plus a train or bus for part of the trip.",
   },
   {
     id: "bikeshare-transit",
@@ -122,6 +140,7 @@ export const PRESETS: readonly PresetOption[] = [
     keywords: "transit",
     description:
       "Bikeshare directly there, walking where that is quickest or the trip is short, or transit with either end a walk or a bikeshare bike, whichever is quicker (a bike is docked before you board). Metro, MARC, VRE, Light RailLink, Metro SubwayLink and buses; scheduled times, not live; docks from live availability where it can be read.",
+    summary: "Bikeshare or walking plus a train or bus, whichever is quicker.",
   },
   {
     // REBALANCE-RIDE (Stephen, 2026-10-12): an Adventure ride type; the description is his.
@@ -129,6 +148,7 @@ export const PRESETS: readonly PresetOption[] = [
     label: "Rebalance Ride",
     description:
       "Move a bikeshare bike from a crowded station to one that needs bikes. Rides like this can earn bikeshare reward points (Bike Angels in the Capital Bikeshare app); your points show there, not here.",
+    summary: "Move a bikeshare bike to a station that needs bikes.",
   },
 ];
 

@@ -6,7 +6,8 @@
  *
  * The ARIA 1.2 combobox pattern: the input owns a listbox, the arrow keys
  * move through the options without leaving the input (aria-activedescendant),
- * Enter picks, Escape closes and then clears. The result count is announced
+ * Enter picks, Escape closes and then clears. The empty box lists "Your
+ * location" and then the last places picked (lib/recentPlaces.ts). The result count is announced
  * in a polite live region, and the options are tall enough to tap.
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
@@ -27,6 +28,7 @@ import {
 } from "./lib/geocode.ts";
 import type { LonLat } from "./lib/geo.ts";
 import { Icon } from "./Icon.tsx";
+import { readRecentPlaces, rememberRecentPlace } from "./lib/recentPlaces.ts";
 import { FINDING_LOCATION, hereEffectLine, locationMatches, searchStatusWithHere } from "./lib/geolocation.ts";
 
 // App.tsx's phone layout, where the panel is a bottom sheet.
@@ -107,6 +109,8 @@ export function PlaceSearch({
   // What the rider asked a pick to be; null until they choose, which follows
   // the plan (the start of an empty plan, then the destination).
   const [chosen, setChosen] = useState<PlaceChoice | null>(null);
+  // The last places picked in any search box, read again on focus so a pick in another box shows.
+  const [recent, setRecent] = useState<Place[]>(() => readRecentPlaces());
   const runner = useRef<PlaceSearchRunner | null>(null);
   const biasRef = useRef(bias);
   biasRef.current = bias;
@@ -135,7 +139,9 @@ export function PlaceSearch({
   });
   // "Your location" leads the list while the box is empty or says so; it is never the Enter default.
   const showHere = locate?.support.available === true && locationMatches(query);
-  const items: (Place | typeof HERE)[] = showHere ? [HERE, ...places] : places;
+  const empty = query.trim() === "";
+  const listed = empty ? recent : places;
+  const items: (Place | typeof HERE)[] = showHere ? [HERE, ...listed] : listed;
   const expanded = open && items.length > 0;
   const listId = `${id}-list`;
   const optionId = (i: number) => `${id}-opt-${i}`;
@@ -153,6 +159,7 @@ export function PlaceSearch({
 
   const pick = (place: Place) => {
     onPick(place, single ? "end" : choice);
+    setRecent(rememberRecentPlace(place));
     setQuery("");
     setResult(null);
     setOpen(false);
@@ -222,6 +229,7 @@ export function PlaceSearch({
         onBlur={() => setOpen(false)}
         onFocus={(event) => {
           setOpen(true);
+          setRecent(readRecentPlaces());
           // On a phone the sheet is half the screen and the keyboard takes
           // much of the rest: bring the box to the top of the sheet so the
           // results under it can be seen.
@@ -256,7 +264,7 @@ export function PlaceSearch({
         </p>
       )}
       {locate && !locate.busy && locate.note && <p className="hint">{locate.note}</p>}
-      <ul id={listId} role="listbox" aria-label="Places found" className="place-results" hidden={!expanded}>
+      <ul id={listId} role="listbox" aria-label={empty ? "Your location and recent places" : "Places found"} className="place-results" hidden={!expanded}>
         {items.map((item, i) =>
           item === HERE ? (
             <li

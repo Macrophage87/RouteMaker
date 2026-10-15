@@ -15,7 +15,9 @@ import {
   loadTile,
   protocolUrl,
   registerStressProtocol,
+  reloadAfterCheck,
   retryAfterS,
+  retryable,
   stressProbe,
   stressTilesAnswer,
 } from "./stressProtocol.ts";
@@ -88,11 +90,78 @@ test("never more than MAX_ATTEMPTS requests, however short the waits", async () 
 });
 
 test("what retrying cannot fix is not retried", async () => {
-  for (const status of [400, 404, 500, 502]) {
+  for (const status of [400, 404, 500]) {
     const once = answers([status, "1"], [200, null]);
     await assert.rejects(fetchTile(TILE, { get: once.get, wait: async () => {}, queue: new Queue(2) }));
     assert.equal(once.asked.length, 1, `${status} is not asked again`);
   }
+});
+
+test("retryable: refusals always; a server that is down only with retryDown", () => {
+  for (const status of [429, 503]) {
+    assert.equal(retryable(status, true), true);
+    assert.equal(retryable(status, false), true);
+  }
+  for (const status of [502, 504, null]) {
+    assert.equal(retryable(status, true), true, `${status} is waited out`);
+    assert.equal(retryable(status, false), false, `${status} fails at once without retryDown`);
+  }
+  for (const status of [400, 404, 500]) assert.equal(retryable(status, true), false);
+});
+
+test("a server that is down (502, 504, a failed request) is waited out like a 503", async () => {
+  for (const status of [502, 504]) {
+    const down = answers([status, null], [200, null]);
+    const c = clock();
+    const data = await fetchTile(TILE, { get: down.get, wait: c.wait, now: c.now, random: MIDDLE, queue: new Queue(2) });
+    assert.equal(data.byteLength, 3);
+    assert.equal(down.asked.length, 2, `${status} is asked again`);
+    const once = answers([status, null], [200, null]);
+    await assert.rejects(fetchTile(TILE, { get: once.get, wait: async () => {}, queue: new Queue(2), retryDown: false }));
+    assert.equal(once.asked.length, 1, `${status} without retryDown is not asked again`);
+  }
+  let calls = 0;
+  const restarting = (async () => {
+    calls += 1;
+    if (calls < 3) throw new TypeError("Failed to fetch");
+    return new Response(new Uint8Array([1]), { status: 200 });
+  }) as unknown as typeof fetch;
+  const c = clock();
+  const data = await fetchTile(TILE, { get: restarting, wait: c.wait, now: c.now, random: MIDDLE, queue: new Queue(2) });
+  assert.equal(data.byteLength, 1);
+  assert.equal(calls, 3);
+
+  // Without retryDown, the request's own error comes through.
+  const gone = (async () => {
+    throw new TypeError("Failed to fetch");
+  }) as unknown as typeof fetch;
+  await assert.rejects(fetchTile(TILE, { get: gone, queue: new Queue(2), retryDown: false }), TypeError);
+});
+
+test("a server that stays down is given up on after about GIVE_UP_S", async () => {
+  const down = (async () => {
+    throw new TypeError("Failed to fetch");
+  }) as unknown as typeof fetch;
+  const c = clock();
+  const queue = new Queue(2);
+  await assert.rejects(fetchTile(TILE, { get: down, wait: c.wait, now: c.now, random: MIDDLE, queue }), /gave up/);
+  assert.ok(c.now() <= GIVE_UP_S * 1000);
+  assert.equal(queue.inFlight, 0, "every failed request gave its place up");
+});
+
+test("a cancelled request is not asked again", async () => {
+  const controller = new AbortController();
+  let calls = 0;
+  const get = (async () => {
+    calls += 1;
+    controller.abort();
+    throw new DOMException("aborted", "AbortError");
+  }) as unknown as typeof fetch;
+  await assert.rejects(
+    fetchTile(TILE, { get, signal: controller.signal, wait: async () => {}, queue: new Queue(2) }),
+    { name: "AbortError" },
+  );
+  assert.equal(calls, 1);
 });
 
 test("Retry-After is read as seconds, with a default and a ceiling", () => {
@@ -243,6 +312,7 @@ function probeHarness(answers: boolean[]) {
   const check = stressProbe("https://example.test", 60_000, {
     answer: async () => answers.shift() ?? false,
     add: () => events.push("add"),
+    reload: () => events.push("reload"),
     report: (a) => events.push(a),
     disposed: () => gone,
     setTimer: (run, ms) => {
@@ -286,6 +356,85 @@ test("a check already waiting is not doubled, a cancelled one never runs, a late
   late.dispose();
   await late.check.probe();
   assert.deepEqual(late.events, []);
+});
+
+test("reloadAfterCheck: the tiles are asked for again only when a tile failed and the endpoint answers", () => {
+  assert.equal(reloadAfterCheck(true, true, Infinity, 60_000), "reload");
+  assert.equal(reloadAfterCheck(true, true, 60_000, 60_000), "reload");
+  assert.equal(reloadAfterCheck(true, true, 59_999, 60_000), "wait", "not twice within the gap");
+  assert.equal(reloadAfterCheck(true, false, Infinity, 60_000), "none");
+  assert.equal(reloadAfterCheck(false, true, Infinity, 60_000), "none");
+  assert.equal(reloadAfterCheck(false, false, Infinity, 60_000), "none");
+});
+
+test("a tile that keeps failing while the endpoint answers is reloaded at most once per recheck", async () => {
+  let t = 0;
+  const timers: Array<{ run: () => void; ms: number }> = [];
+  const events: string[] = [];
+  const check = stressProbe("https://example.test", 60_000, {
+    answer: async () => true,
+    add: () => {},
+    reload: () => events.push(`reload@${t}`),
+    report: () => {},
+    disposed: () => false,
+    now: () => t,
+    setTimer: (run, ms) => {
+      timers.push({ run, ms });
+      return null;
+    },
+  });
+  check.later(5_000);
+  t = 5_000;
+  timers.shift()!.run();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(events, ["reload@5000"]);
+  check.later(5_000); // the reloaded tile failed again
+  t = 10_000;
+  timers.shift()!.run();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(events, ["reload@5000"], "not again five seconds later");
+  assert.deepEqual(timers.map((x) => x.ms), [55_000], "but when the minute is up");
+  t = 65_000;
+  timers.shift()!.run();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(events, ["reload@5000", "reload@65000"]);
+  assert.equal(timers.length, 0);
+});
+
+test("tiles that failed while the server was down are asked for again when it is back, once", async () => {
+  // A Plan tab left open across a restart: tiles fail, the check finds the endpoint down, then back.
+  const h = probeHarness([true, false, true, true]);
+  await h.check.probe();
+  assert.deepEqual(h.events, ["add", "available"], "no reload at load");
+  h.check.later(5_000);
+  h.check.later(5_000);
+  assert.deepEqual(h.timers.map((t) => t.ms), [5_000]);
+  h.timers.shift()!.run();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(h.events.slice(2), ["unavailable"], "still down: nothing to reload yet");
+  assert.deepEqual(h.timers.map((t) => t.ms), [60_000]);
+  h.timers.shift()!.run();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(h.events.slice(3), ["add", "reload", "available"]);
+  // The failure was answered; a later check with no new failure does not reload again.
+  await h.check.probe();
+  assert.deepEqual(h.events.slice(6), ["add", "available"]);
+});
+
+test("the availability check does not wait out a server that is down", async () => {
+  let calls = 0;
+  const down = (async () => {
+    calls += 1;
+    throw new TypeError("Failed to fetch");
+  }) as unknown as typeof fetch;
+  assert.equal(await stressTilesAnswer("https://example.test", { get: down, queue: new Queue(2) }), false);
+  assert.equal(calls, 1);
+});
+
+test("MapView's check reloads the stress tiles through the edit-generation refresh", () => {
+  const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  assert.match(view, /reload: \(\) => refreshStressTiles\(map, origin, tileRev\(\)\)/);
+  assert.match(view, /if \(source === STRESS_SOURCE_ID\) stressCheck\.later\(/);
 });
 
 test("by default the check asks the tile endpoint itself, and a 404 leaves the overlay off", async () => {
