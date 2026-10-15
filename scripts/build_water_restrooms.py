@@ -44,6 +44,33 @@ What counts, from the OSM wiki's own tag definitions
   amenity=drinking_water or amenity=water_point (owner request, 2026-10-10:
   drop historic springs).
 
+Bike repair stands and bike shops (owner requests, 2026-10-14, "Bike repair
+stands in Go" in the v0.7.0 plan: "Especially around DC there are a bunch of
+bike repair stands"; "If you need some quick work done, have it show the
+nearest couple repair stands/bike shops"), from
+<https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dbicycle_repair_station>,
+<https://wiki.openstreetmap.org/wiki/Key:service:bicycle:*> and
+<https://wiki.openstreetmap.org/wiki/Tag:shop%3Dbicycle>:
+
+- a repair stand ("rs"): amenity=bicycle_repair_station, public by the same
+  rule as water and restrooms (an unclear access is closed), in use, and not
+  inside a secured site. Its kit, from service:bicycle:pump=yes ("p"),
+  service:bicycle:tools=yes ("t") and service:bicycle:chain_tool=yes ("c"),
+  is kept as letters ("" when none is mapped); fee and opening_hours as for
+  restrooms. The map draws stands with the Water and restrooms layer.
+- a bike shop ("bs"): shop=bicycle with a name (or brand), open to customers
+  (access=customers is fine here: a shop is for its customers), in use, not
+  inside a secured site; opening_hours and website kept. Shops are in the file
+  so Go's Repair chip works offline, and are never drawn as a layer (the owner:
+  "just the stands"). A shop mapped twice (a node inside its building) is one
+  place: the same name within SHOP_SAME_M, about 200 ft (60 m), keeps the
+  element with more details, the node on a tie.
+
+The plan asks for a DDOT repair-stand list from DC open data, DC winning over
+OSM, if one exists with a licence that allows it. None could be checked from
+the cloud build; one found later is merged here and recorded in
+docs/SOURCES.md.
+
 Nodes and ways are read (a restroom building is often a way); a way is placed
 at the mean of its nodes. Points outside the coverage box are dropped, and
 coordinates are rounded to 5 decimals, about 3 ft (1 m).
@@ -160,6 +187,16 @@ DETAIL_KEYS = frozenset(
     }
 )
 YES_NO = frozenset({"yes", "no"})
+# A shop is open to its customers; anything else (private, no, ...) is out.
+SHOP_ACCESS = PUBLIC_ACCESS | {"customers"}
+# service:bicycle:* keys read for a repair stand's kit, as the letters kept.
+REPAIR_KIT = (
+    ("service:bicycle:pump", "p"),
+    ("service:bicycle:tools", "t"),
+    ("service:bicycle:chain_tool", "c"),
+)
+SHOP_SAME_M = 60.0  # about 200 ft
+MAX_URL = 200
 WHEELCHAIR = frozenset({"yes", "limited", "no"})
 MAX_TEXT = 80
 
@@ -192,6 +229,12 @@ class Amenity:
     throne_unit: str | None = None
     # Placed from a street address, not the unit itself: the card says so.
     approx: bool = False
+    # A bike repair stand's kit as letters ("p" pump, "t" tools, "c" chain tool; "" none
+    # mapped); None for no stand.
+    repair: str | None = None
+    # A bike shop (shop=bicycle): Go's Repair chip lists it; never drawn as a layer.
+    shop: bool = False
+    website: str | None = None
 
 
 def is_historic_spring(tags: dict[str, str]) -> bool:
@@ -243,6 +286,24 @@ def is_public(tags: dict[str, str]) -> bool:
     return tags.get("disused") != "yes" and tags.get("abandoned") != "yes"
 
 
+def repair_of(tags: dict[str, str]) -> str | None:
+    """A repair stand's kit letters ("" for none mapped), or None when it is no repair stand."""
+    if tags.get("amenity") != "bicycle_repair_station":
+        return None
+    return "".join(letter for key, letter in REPAIR_KIT if tags.get(key) == "yes")
+
+
+def is_bike_shop(tags: dict[str, str]) -> bool:
+    return tags.get("shop") == "bicycle"
+
+
+def website_of(tags: dict[str, str]) -> str | None:
+    url = (tags.get("website") or tags.get("contact:website") or "").strip()
+    if not url.lower().startswith(("http://", "https://")) or len(url) > MAX_URL or " " in url:
+        return None
+    return url
+
+
 def is_throne(tags: dict[str, str]) -> bool:
     """An OSM restroom mapped as a Throne unit (operator, brand or name)."""
     return (
@@ -273,14 +334,41 @@ def _text(value: str | None) -> str | None:
     return value[:MAX_TEXT] if value else None
 
 
-def classify(osm: str, tags: dict[str, str], lon: float, lat: float) -> Amenity | None:
-    """The point's amenity, or None when it is neither public water nor a public restroom."""
-    water = water_of(tags)
-    toilet = toilet_of(tags)
-    if not (water or toilet) or not is_public(tags):
+def classify_shop(osm: str, tags: dict[str, str], lon: float, lat: float) -> Amenity | None:
+    """A bike shop open to its customers, with a name; None otherwise."""
+    access = tags.get("access")
+    if access is not None and access not in SHOP_ACCESS:
         return None
+    if tags.get("disused") == "yes" or tags.get("abandoned") == "yes":
+        return None
+    name = _text(tags.get("name")) or _text(tags.get("brand"))
+    if not name:
+        return None
+    return Amenity(
+        osm=osm,
+        lon=round(lon, 5),
+        lat=round(lat, 5),
+        water=None,
+        toilet=None,
+        name=name,
+        hours=_text(tags.get("opening_hours")),
+        shop=True,
+        website=website_of(tags),
+    )
+
+
+def classify(osm: str, tags: dict[str, str], lon: float, lat: float) -> Amenity | None:
+    """The point's amenity, or None when it is none of public water, a public restroom, a
+    public bike repair stand or a bike shop."""
     west, south, east, north = COVERAGE_BBOX
     if not (west <= lon <= east and south <= lat <= north):
+        return None
+    water = water_of(tags)
+    toilet = toilet_of(tags)
+    repair = repair_of(tags)
+    if water is None and toilet is None and repair is None:
+        return classify_shop(osm, tags, lon, lat) if is_bike_shop(tags) else None
+    if not is_public(tags):
         return None
     fee = tags.get("fee")
     wheelchair = tags.get("wheelchair")
@@ -298,7 +386,36 @@ def classify(osm: str, tags: dict[str, str], lon: float, lat: float) -> Amenity 
         seasonal=None if seasonal in (None, "no") else _text(seasonal),
         bottle=water == "p" and tags.get("bottle") == "yes",
         op=THRONE if is_throne(tags) else None,
+        repair=repair,
     )
+
+
+def merge_shops(amenities: list[Amenity]) -> list[Amenity]:
+    """One bike shop per name within SHOP_SAME_M: the richer element (hours, website), the
+    node on a tie."""
+    shops = [a for a in amenities if a.shop]
+    others = [a for a in amenities if not a.shop]
+
+    def richness(a: Amenity) -> tuple[int, bool]:
+        return (bool(a.hours) + bool(a.website), a.osm.startswith("n"))
+
+    kept: list[Amenity] = []
+    for a in sorted(shops, key=richness, reverse=True):
+        twin = next(
+            (
+                i
+                for i, k in enumerate(kept)
+                if (k.name or "").casefold() == (a.name or "").casefold()
+                and _metres(a.lon, a.lat, k.lon, k.lat) <= SHOP_SAME_M
+            ),
+            None,
+        )
+        if twin is None:
+            kept.append(a)
+        else:
+            k = kept[twin]
+            kept[twin] = replace(k, hours=k.hours or a.hours, website=k.website or a.website)
+    return others + kept
 
 
 @dataclass(frozen=True)
@@ -552,6 +669,9 @@ def from_document(doc: dict) -> list[Amenity]:
             op=p.get("op"),
             throne_unit=p.get("tu"),
             approx=p.get("ap") == 1,
+            repair=p.get("rs"),
+            shop=p.get("bs") == 1,
+            website=p.get("web"),
         )
         for p in doc["points"]
     ]
@@ -567,11 +687,22 @@ def read_extract(path: Path) -> tuple[list[Amenity], Counter]:
     secured: list[SecuredArea] = []
 
     def wanted(tags: dict[str, str]) -> bool:
-        return water_of(tags) is not None or toilet_of(tags) is not None
+        return (
+            water_of(tags) is not None
+            or toilet_of(tags) is not None
+            or repair_of(tags) is not None
+            or is_bike_shop(tags)
+        )
 
     def tagged(t) -> bool:
         # Cheap first test; every other building is skipped without a copy of its tags.
-        return "amenity" in t or "man_made" in t or "natural" in t or t.get("building") == "toilets"
+        return (
+            "amenity" in t
+            or "man_made" in t
+            or "natural" in t
+            or t.get("shop") == "bicycle"
+            or t.get("building") == "toilets"
+        )
 
     class Handler(osmium.SimpleHandler):
         def node(self, n):
@@ -633,7 +764,7 @@ def read_extract(path: Path) -> tuple[list[Amenity], Counter]:
         a = classify(e.osm, e.tags, e.lon, e.lat)
         if a:
             found.append(a)
-    return found, left_out
+    return merge_shops(found), left_out
 
 
 def _sort_key(a: Amenity) -> tuple[int, str, int, str]:
@@ -670,6 +801,12 @@ def document(amenities: list[Amenity]) -> dict:
             p["tu"] = a.throne_unit
         if a.approx:
             p["ap"] = 1
+        if a.repair is not None:
+            p["rs"] = a.repair
+        if a.shop:
+            p["bs"] = 1
+        if a.website:
+            p["web"] = a.website
         points.append(p)
     return {"source": SOURCE, "also": SOURCE_THRONE, "points": points}
 
@@ -725,6 +862,8 @@ def main(argv: list[str] | None = None) -> int:
         f"untreated water {count('water', 'n')}; restrooms flush {count('toilet', 'f')}, "
         f"basic {count('toilet', 'b')}, type not mapped {count('toilet', 'u')}"
     )
+    stands = sum(a.repair is not None for a in amenities)
+    print(f"bike repair stands {stands}; bike shops {sum(a.shop for a in amenities)}")
     waiting = sum(u["status"] != "open" for u in units)
     print(
         f"Throne: {added} added from the list, {matched} matched to OSM restrooms; "
