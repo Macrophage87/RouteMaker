@@ -170,6 +170,8 @@ class Snapshot:
     # source -> CURRENT, STALE or UNAVAILABLE, for every configured feed.
     status: dict[str, str] = field(default_factory=dict)
     read_at: dict[str, str | None] = field(default_factory=dict)
+    # DC's park-level and text-only notices (`core.closure_sources`, v0.7.0).
+    notices: tuple = ()
 
 
 _lock = threading.Lock()
@@ -183,35 +185,47 @@ def forget() -> None:
 
 
 def _load(now: datetime) -> Snapshot:
+    from . import closure_sources
     from .models import BikeshareFeedCache
 
-    row = BikeshareFeedCache.objects.filter(key=KEY).first()
-    if row is None:
-        # The worker has never refreshed: work zones are not running here at all (a
-        # checkout, or a deployment before its first refresh). Nothing is said.
-        return Snapshot()
-    payload = row.payload if isinstance(row.payload, dict) else {}
-    feeds = payload.get("feeds") or {}
+    rows = {
+        r.key: r
+        for r in BikeshareFeedCache.objects.filter(key__in=[KEY, closure_sources.KEY])
+    }
     zones: list[rules.Zone] = []
+    notices: list = []
     status: dict[str, str] = {}
     read_at: dict[str, str | None] = {}
-    # The feeds the worker reads: Maryland always, Virginia where the worker has the
-    # key (the API does not hold it, so it goes by what the worker stored).
-    for source in sorted(set(feeds) | PUBLIC):
-        feed = feeds.get(source) or {}
-        when = rules._when(feed.get("read_at"))
-        read_at[source] = feed.get("read_at")
-        age = None if when is None else (now - when).total_seconds()
-        if age is None or age > DROP_AFTER_S:
-            status[source] = UNAVAILABLE
-            continue
-        status[source] = CURRENT if age <= STALE_AFTER_S else STALE
-        for row_zone in feed.get("zones") or []:
-            try:
-                zones.append(rules.Zone.from_json(row_zone))
-            except (KeyError, TypeError, ValueError):
+    # A row the worker has never written is a source not running here at all (a
+    # checkout, or a deployment before its first refresh). Nothing is said of it.
+    row = rows.get(KEY)
+    if row is not None:
+        payload = row.payload if isinstance(row.payload, dict) else {}
+        feeds = payload.get("feeds") or {}
+        # The feeds the worker reads: Maryland always, Virginia where the worker has the
+        # key (the API does not hold it, so it goes by what the worker stored).
+        for source in sorted(set(feeds) | PUBLIC):
+            feed = feeds.get(source) or {}
+            when = rules._when(feed.get("read_at"))
+            read_at[source] = feed.get("read_at")
+            age = None if when is None else (now - when).total_seconds()
+            if age is None or age > DROP_AFTER_S:
+                status[source] = UNAVAILABLE
                 continue
-    return Snapshot(tuple(zones), status, read_at)
+            status[source] = CURRENT if age <= STALE_AFTER_S else STALE
+            for row_zone in feed.get("zones") or []:
+                try:
+                    zones.append(rules.Zone.from_json(row_zone))
+                except (KeyError, TypeError, ValueError):
+                    continue
+    row = rows.get(closure_sources.KEY)
+    if row is not None:
+        payload = row.payload if isinstance(row.payload, dict) else {}
+        more, notices, more_status, more_read = closure_sources.load(payload, now)
+        zones.extend(more)
+        status.update(more_status)
+        read_at.update(more_read)
+    return Snapshot(tuple(zones), status, read_at, tuple(notices))
 
 
 def snapshot(now: datetime | None = None) -> Snapshot:
@@ -252,13 +266,24 @@ def ride_moment(when: str, now: datetime | None = None) -> datetime:
     return local.replace(tzinfo=ridetime.ZONE).astimezone(UTC)
 
 
-def plan_zones(points, when: str, now: datetime | None = None) -> rules.PlanZones | None:
+def plan_zones(
+    points, when: str, now: datetime | None = None, bypass=()
+) -> rules.PlanZones | None:
     """The zones in force for a plan through `points` with the ride-time dial at `when`;
-    None where work zones are not running (no refresh has ever been stored)."""
+    None where work zones are not running (no refresh has ever been stored).
+
+    Closures follow the ride, not today (v0.7.0): they are matched against the dial's
+    moment, and one with no end given "may still apply" on a later ride and is not
+    routed round. `bypass` names the closures the rider chose to route through."""
     found = snapshot()
     if not found.status:
         return None
-    return rules.for_plan(found.zones, ride_moment(when, now), points, found.status)
+    now = now or _now()
+    plan = rules.for_plan(
+        found.zones, ride_moment(when, now), points, found.status, now=now, bypass=bypass
+    )
+    plan.notices = list(found.notices)
+    return plan
 
 
 def _trip_line(trip: dict) -> list[tuple[float, float]]:

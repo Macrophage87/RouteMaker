@@ -1325,6 +1325,8 @@ class BikeshareFeedCache(models.Model):
 
     CURRENT = "current"
     WORKZONES = "workzones"
+    # DC's closures (v0.7.0, `core.closure_sources`): the same kind of row, its own key.
+    CLOSURES = "closures"
 
     key = models.CharField(max_length=16, unique=True)
     payload = models.JSONField(null=True)

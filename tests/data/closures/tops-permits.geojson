@@ -1,0 +1,103 @@
+{
+  "type": "FeatureCollection",
+  "exceededTransferLimit": false,
+  "features": [
+    {
+      "type": "Feature",
+      "id": 101,
+      "geometry": { "type": "Point", "coordinates": [-77.0305, 38.8982] },
+      "properties": {
+        "OBJECTID": 101,
+        "TRACKINGNUMBER": "TOPS-2026-101",
+        "PERMITNUMBER": "PA261001",
+        "PERMITTYPE": "Public Space Occupancy",
+        "STATUS": "Issued",
+        "ISSUEDDATE": 1791648000000,
+        "EFFECTIVEDATE": 1791892800000,
+        "EXPIRATIONDATE": 1792980000000,
+        "ISROADCLOSED": "Y",
+        "BIKELANELENGTH": 0,
+        "CURBLANELENGTH": 120,
+        "TRAVELLANE1LENGTH": 120,
+        "TRAVELLANE2LENGTH": 120,
+        "TRAVELLANE3LENGTH": 0,
+        "TRAVELLANE4LENGTH": 0,
+        "STREETNAME": "G ST NW",
+        "WORKDESCRIPTION": "Crane lift, full road closure"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 102,
+      "geometry": { "type": "Point", "coordinates": [-77.0436, 38.9065] },
+      "properties": {
+        "OBJECTID": 102,
+        "PERMITNUMBER": "PA261002",
+        "STATUS": "Issued",
+        "ISSUEDDATE": 1791648000000,
+        "EFFECTIVEDATE": 1791648000000,
+        "EXPIRATIONDATE": 1793030400000,
+        "ISROADCLOSED": "N",
+        "BIKELANELENGTH": 80,
+        "CURBLANELENGTH": 80,
+        "TRAVELLANE1LENGTH": 0,
+        "STREETNAME": "15TH ST NW",
+        "WORKDESCRIPTION": "Dumpster in the curb lane"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 103,
+      "geometry": { "type": "Point", "coordinates": [-77.0250, 38.9010] },
+      "properties": {
+        "OBJECTID": 103,
+        "PERMITNUMBER": "PA261003",
+        "STATUS": "Issued",
+        "EXPIRATIONDATE": 1793030400000,
+        "ISROADCLOSED": "N",
+        "BIKELANELENGTH": 0,
+        "TRAVELLANE1LENGTH": 60,
+        "STREETNAME": "K ST NW"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 104,
+      "geometry": { "type": "Point", "coordinates": [-77.0200, 38.9000] },
+      "properties": {
+        "OBJECTID": 104,
+        "PERMITNUMBER": "PA261004",
+        "STATUS": "Issued",
+        "EXPIRATIONDATE": 1760000000000,
+        "ISROADCLOSED": "Y",
+        "STREETNAME": "H ST NW"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 105,
+      "geometry": { "type": "Point", "coordinates": [-77.0210, 38.9050] },
+      "properties": {
+        "OBJECTID": 105,
+        "PERMITNUMBER": "PA261005",
+        "STATUS": "Cancelled",
+        "EXPIRATIONDATE": 1793030400000,
+        "ISROADCLOSED": "Y",
+        "STREETNAME": "I ST NW"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 106,
+      "geometry": null,
+      "properties": {
+        "OBJECTID": 106,
+        "PERMITNUMBER": "PA261006",
+        "STATUS": "Issued",
+        "EXPIRATIONDATE": 1793030400000,
+        "ISROADCLOSED": "Y",
+        "STREETNAME": "L ST NW"
+      }
+    }
+  ]
+}
