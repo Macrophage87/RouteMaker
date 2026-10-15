@@ -59,6 +59,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import logging
+import time
 from datetime import datetime, timedelta
 from functools import wraps
 from typing import Annotated, Literal
@@ -90,9 +91,11 @@ from . import (
     nearest,
     presets,
     ratelimit,
+    route_cache,
     routing,
     segment_info,
     stoporder,
+    timing,
     transit,
     transit_live,
     wmata_live,
@@ -410,6 +413,17 @@ class RouteIn(Schema):
             " and Nervous does, every road read one level of traffic stress up, so the page can"
             " offer Own bike + Transit and Bikeshare + Transit beside a Novice and Nervous route"
             " that still uses LTS 3 or worse (its `novice.transit`)."
+        ),
+    )
+    quick: StrictBool = Field(
+        default=False,
+        description=(
+            'v0.7.0, "Faster routing": answer the first good route at once - the router\'s own'
+            " route with its closures, stress and description, and no search after it - marked"
+            " `provisional`. The client then asks again without it for the full plan and swaps"
+            " that in where it is better (Go, before Start only). Ignored where a first route"
+            " cannot be shown alone (a loop, a long ride or long calm plan, Mountain Bike,"
+            " Bikeshare and the transit ride types): the full plan is answered, not provisional."
         ),
     )
     via_points: list[StrictInt] = Field(
@@ -2192,6 +2206,14 @@ class NoviceOut(Schema):
 
 
 class RouteOut(RouteBody):
+    provisional: bool = Field(
+        default=False,
+        description=(
+            "True on a first route asked for with `quick`: the router's own route, its closures,"
+            " stress and words, before the search (no calm search, candidates, detour check or"
+            " Novice offer yet). Ask again without `quick` for the full plan."
+        ),
+    )
     novice: NoviceOut | None = Field(
         default=None,
         description=(
@@ -2393,6 +2415,42 @@ def json_body_only(view):
     errors_as_json,
 )
 def route(request, body: RouteIn, response: HttpResponse):
+    # Where the request's time goes, phase by phase (v0.7.0, "Faster routing" step 1): a
+    # Server-Timing header on every answer, and one log line with no location in it.
+    timings = timing.Timings(started=timing.now() - _waited_s(request))
+    timings.mark("wait")
+    token = timing.start(timings)
+    try:
+        answered = _route_answer(request, body, response)
+    finally:
+        timing.stop(token)
+    header = timings.header()
+    if isinstance(answered, HttpResponse):
+        answered["Server-Timing"] = header
+        status = answered.status_code
+    else:
+        response["Server-Timing"] = header
+        status = getattr(answered, "status_code", 200)
+    loop = routing.loop_wanted(body.points, body.loop, body.preset)
+    timings.log(body.preset, span_m(routing.loop_points(body.points, loop)), status)
+    return answered
+
+
+def _waited_s(request) -> float:
+    """Seconds from the request's arrival (`RequestClockMiddleware`) to now: the `wait`
+    phase. Read on the routing clock, at most a minute (gunicorn's own timeout)."""
+    started = getattr(request, "routing_started", None)
+    if started is None:
+        return 0.0
+    try:
+        # The monotonic clock `routing.clock` reads, read directly: the plan's own budget
+        # clock is not advanced by measuring it.
+        return min(60.0, max(0.0, float(time.monotonic() - started)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _route_answer(request, body: RouteIn, response: HttpResponse):
     # A loop is as long as its way back too.
     loop = routing.loop_wanted(body.points, body.loop, body.preset)
     span = span_m(routing.loop_points(body.points, loop))
@@ -3092,12 +3150,7 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
             mtb_preferred=body.mtb_preferred,
             vias=tuple(body.via_points),
         )
-        return Status(
-            200,
-            routing.plan(
-                body.points, body.preset, long_ride=long_ride, started=started, dials=dials
-            ),
-        )
+        return Status(200, _planned(body, dials, started, long_ride, long_calm))
     except (
         routing.TooLong,
         routing.NoRoute,
@@ -3105,6 +3158,60 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
         routing.DeadlineExceeded,
     ) as error:
         return _router_refusal(error, body, long_ride or long_calm)
+
+
+def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_calm: bool) -> dict:
+    """The plan's answer, from the short-term cache where an identical request was
+    answered within its life (`core.route_cache`, v0.7.0 "Faster routing" step 5), else
+    planned and kept there where it may be."""
+    timings = timing.current()
+    when = body.when or routing.default_when()
+    key = route_cache.key_for(
+        body.model_dump(mode="json"),
+        when,
+        routing.planning_time(when=when),
+        "long_ride" if long_ride else "long_calm" if long_calm else "",
+    )
+    if timings is not None:
+        timings.mark("cache")
+    if key is not None:
+        kept = route_cache.get(key.key, quick=body.quick)
+        if kept is not None:
+            if timings is not None:
+                timings.note("cache", "hit")
+            return kept
+    if timings is not None:
+        timings.note("cache", "miss" if key is not None else "off")
+    failures_before = timings.failures if timings is not None else 0
+    answered = routing.plan(
+        body.points,
+        body.preset,
+        long_ride=long_ride,
+        started=started,
+        dials=dials,
+        quick=body.quick,
+    )
+    if key is not None:
+        preset = presets.PRESETS[body.preset]
+        own_variant = presets.variant_for_ride(
+            body.preset,
+            when,
+            bool(body.assist) and preset.assist_speed_kmh is not None,
+            bool(body.trails_off),
+        )
+        if own_variant in routing.TWIN_VARIANTS and not routing._is_promoted(own_variant):
+            # Planned on the standard graph by design where no weekend or off-road build is
+            # served; an answer from it while the twin is merely down is not kept.
+            own_variant = "standard"
+        failures = (timings.failures if timings is not None else 0) - failures_before
+        # An answer whose plan ran into the answer's reserve may have skipped work for time.
+        budget_s = routing.LONG_PLAN_BUDGET_S if long_ride or long_calm else routing.PLAN_BUDGET_S
+        late = started is not None and routing.clock() - started >= (
+            budget_s - routing.ANSWER_RESERVE_S
+        )
+        if not late and route_cache.keepable(answered, own_variant, failures):
+            route_cache.put(key.key, answered, key.valid_s)
+    return answered
 
 
 def _router_refusal(error: Exception, body: RouteIn, long_plan: bool = False):

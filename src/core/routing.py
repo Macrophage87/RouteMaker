@@ -66,6 +66,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
+from concurrent.futures import Future
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -96,7 +97,7 @@ from routemaker.geo import Point, haversine
 from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
-from . import avoid_junctions, mass_hazards, mtb, presets
+from . import avoid_junctions, mass_hazards, mtb, parallel, presets, timing
 from . import workzones as work_zones
 
 logger = logging.getLogger(__name__)
@@ -261,12 +262,24 @@ def _call(variant: str, endpoint: str, payload: dict, deadline: Deadline) -> dic
     if remaining <= 0:
         raise DeadlineExceeded(f"no time left for {endpoint}")
     url = f"{settings.VALHALLA_UPSTREAMS[variant]}/{endpoint}"
+    began = timing.now()
+    failed = True
     try:
-        return _transport(url, payload, min(deadline.per_call_s, remaining))
+        answer = _transport(url, payload, min(deadline.per_call_s, remaining))
+        failed = False
+        return answer
+    except RouterRefused:
+        # An answer, if not a route: nothing was cut short.
+        failed = False
+        raise
     except RouterUnavailable as error:
         if clock() >= deadline.at:
             raise DeadlineExceeded(f"{endpoint} ran past the budget") from error
         raise
+    finally:
+        # Server-Timing's `router` (`core.timing`): every call's own time, and whether it
+        # failed for want of an answer (a plan the answer cache then does not keep).
+        timing.record_call(timing.now() - began, failed)
 
 
 def planning_time(now: datetime | None = None, when: str = ridetime.WEEKEND) -> str:
@@ -1147,10 +1160,59 @@ def _trace(
     remembered."""
     if traces is None:
         return trace_leg(variant, costing, shape, deadline)
-    key = (variant, shape, json.dumps(costing, sort_keys=True))
+    key = _trace_key(variant, costing, shape)
     if key not in traces:
         traces[key] = trace_leg(variant, costing, shape, deadline)
-    return traces[key]
+    return _settled(traces, key)
+
+
+def _trace_key(variant: str, costing: dict, shape: str) -> tuple:
+    return (variant, shape, json.dumps(costing, sort_keys=True))
+
+
+def _settled(traces: dict, key):
+    """`traces[key]`, waiting for it where it is still being asked for on the pool
+    (`prefetch_traces`). One that raised is not remembered, as before: the error is
+    raised here, once, to the reader that would have asked for it."""
+    value = traces[key]
+    if isinstance(value, Future):
+        try:
+            value = value.result()
+        except BaseException:
+            if traces.get(key) is value:
+                del traces[key]
+            raise
+        traces[key] = value
+    return value
+
+
+def prefetch_traces(
+    variant: str,
+    costing: dict,
+    trips: list[dict],
+    deadline: Deadline,
+    traces: dict | None,
+    at_least: int = 2,
+) -> None:
+    """Start the traces of `trips`' legs together on the pool (`core.parallel`, v0.7.0
+    step 3), so the reader that walks them one by one (`_trace`) finds them asked for
+    already. Only legs not asked for yet; nothing where the pool is off, there is no
+    plan's `traces` to keep them in, or fewer than `at_least` legs are wanted (one leg
+    alone is asked inline, unless something else runs beside it). Each call keeps the
+    plan's deadline."""
+    if traces is None or not parallel.enabled():
+        return
+    wanted: dict[tuple, str] = {}
+    for trip in trips:
+        for leg in (trip or {}).get("legs") or []:
+            shape = leg.get("shape", "")
+            key = _trace_key(variant, costing, shape)
+            if key not in traces and key not in wanted:
+                wanted[key] = shape
+    if not wanted or len(wanted) < at_least:
+        return
+    for key, shape in wanted.items():
+        traces[key] = parallel.submit(trace_leg, variant, costing, shape, deadline)
 
 
 def _exposure(
@@ -1166,6 +1228,7 @@ def _exposure(
     once, LTS 4 twice and Avoid three times unless the ride type weighs them
     otherwise) and its metres of LTS 4 and Avoid, as (exposure, metres); None
     when a leg cannot be traced."""
+    prefetch_traces(variant, costing, [trip], deadline, traces)
     pieces: list[Piece] = []
     for leg in trip.get("legs") or []:
         trace = _trace(variant, costing, leg.get("shape", ""), deadline, traces)
@@ -1212,6 +1275,8 @@ def calmer_or_own(
     """
     if chosen == 0:
         return 0
+    # Both routes' traces at once (v0.7.0 step 3); read below in the same order.
+    prefetch_traces(variant, costing, [trips[0], trips[chosen]], deadline, traces)
     try:
         own = _exposure(variant, costing, trips[0], when, deadline, traces, exposure)
         alternative = _exposure(variant, costing, trips[chosen], when, deadline, traces, exposure)
@@ -1264,6 +1329,8 @@ def no_busier_than_middle(
     middle_request = {key: value for key, value in request.items() if key != "alternates"} | {
         "costing_options": middle_costing
     }
+    # The hill-avoiding route's own trace runs beside the middle's /route (v0.7.0 step 3).
+    prefetch_traces(variant, costing, [trip], step, traces, at_least=1)
     try:
         answer = _call(variant, "route", middle_request, Deadline(step.at, limit))
         middle = answer.get("trip") or {}
@@ -2138,6 +2205,7 @@ def _detour(
             level = detour_rules.level(route_m, direct_m)
             if level is not None and deadline.at - clock() >= DETOUR_AVOIDED_MIN_S:
                 try:
+                    prefetch_traces(variant, direct_costing, [direct], deadline, traces)
                     pieces: list[Piece] = []
                     for leg in direct.get("legs") or []:
                         trace = _trace(
@@ -2376,17 +2444,21 @@ def plan(
     long_ride: bool = False,
     started: float | None = None,
     dials: Dials | None = None,
+    quick: bool = False,
 ) -> dict:
     """Route through `points` on `preset_name`, returning the contract's body.
 
     `long_ride` gives the request the long-ride time limits, and `started`
     (from `clock()`) is when the request arrived; the budget runs from then,
     or from now if it is not given. `dials` are the sliders and the ride time.
+    `quick` asks for the first good route only (`quick_applies`; v0.7.0, "Faster
+    routing" step 2): the answer then says `provisional`.
     Raises NoRoute, TooLong, RouterUnavailable, DeadlineExceeded, or KeyError
     for an unknown preset.
     """
     if started is None:
         started = clock()
+    timing.restart()
     dials = dials or Dials()
     points, moved_points = move_zoo_points(points)
     preset = presets.PRESETS[preset_name]
@@ -2430,6 +2502,10 @@ def plan(
     else:
         budget_s, per_call_s = PLAN_BUDGET_S, ROUTER_TIMEOUT_S
     deadline = Deadline(started + budget_s - ANSWER_RESERVE_S, per_call_s)
+    # The first good route only, where that is a route the rider may be shown (Go,
+    # `quick_applies`): the router's own route, its closures, stress and words, with no
+    # search after it. The full plan follows it from the client.
+    quick = quick and quick_applies(preset_name, loop, long_ride, long_calm)
     exposure = presets.exposure_for(preset_name, dials.carrying)
     # The approved Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, 307-310, 335), read at
     # request time: empty as shipped.
@@ -2495,7 +2571,7 @@ def plan(
             seek_limited = "two_points"
         elif long_ride or haversine(Point(*points[0]), Point(*points[1])) > span_limit:
             seek_limited = "long_ride"
-        else:
+        elif not quick:
             request["alternates"] = SEEK_ALTERNATES
     # Mountain Bike ranks the router's own routes by its trail rules (`core.mtb`): two-point
     # plans ask for them, as the hills search does.
@@ -2565,6 +2641,8 @@ def plan(
         except RouterRefused as again:
             raise NoRoute(str(again), no_path=again.code in NO_PATH_CODES) from again
 
+    timing.mark("route")
+    delays = None
     if zones_plan is not None:
         answer = work_zones.settle_penalties(
             answer,
@@ -2574,14 +2652,18 @@ def plan(
             lambda: deadline.at - clock(),
         )
         # What each closure did to this route and the time its detour adds (v0.7.0,
-        # "Closures on the map"): the card's "Detour adds about 4 min".
-        work_zones.measure_delays(
+        # "Closures on the map"): the card's "Detour adds about 4 min". It changes no
+        # route, so it runs beside the rest of the plan (v0.7.0 "Faster routing", step
+        # 3) and is waited for before the closures are written on the answer.
+        delays = parallel.submit(
+            work_zones.measure_delays,
             answer,
-            request,
+            dict(request),
             zones_plan,
-            lambda trial: _route(variant, trial, deadline)[0],
+            lambda trial, variant=variant: _route(variant, trial, deadline)[0],
             lambda: deadline.at - clock(),
         )
+        timing.mark("zones")
     routed_at = clock()
     trips = [answer.get("trip") or {}] + [
         (alternate or {}).get("trip") or {} for alternate in answer.get("alternates") or []
@@ -2599,7 +2681,7 @@ def plan(
     # put on one place.
     round_trip = loop or haversine(Point(*points[0]), Point(*points[-1])) <= LOOP_SAME_M
     sought = None
-    if climb_seek and seek_limited is None and not round_trip:
+    if climb_seek and seek_limited is None and not round_trip and not quick:
         sought = hill_seek(
             trips,
             points,
@@ -2640,7 +2722,7 @@ def plan(
     trip = trips[chosen]
     kept_middle = False
     trace_costing = costing
-    if avoiding:
+    if avoiding and not quick:
         middle_costing = presets.costing(
             preset_name, stress_dial, 0, assist=assist, avoid_gravel=avoid_gravel
         )
@@ -2656,7 +2738,10 @@ def plan(
     # budget; `refined` says what it did, or why it did not.
     from . import dedodge, refine, trailseek
 
+    timing.mark("choose")
     refine_limited = _refine_limit(preset_name, points, long_ride, climb_seek, deadline, long_calm)
+    if quick:
+        refine_limited = "quick"
     ceiling = None
     fitted_at = None
     fit, past = None, []
@@ -2747,7 +2832,7 @@ def plan(
             trip, refined = refine.refine_long(trip, refine_context)
         else:
             trip, refined = refine.refine(trip, refine_context)
-    elif refine_context.rate > 0:
+    elif refine_context.rate > 0 and not quick:
         # A calm search was asked for and could not run: say so.
         refined = {
             "rate": refine_context.rate,
@@ -2792,7 +2877,7 @@ def plan(
     # are the search's near-ties, picked again against the answer as it now is
     # (`dedodge.settle`), so the pass's bounds are the plan's.
     dodges = None
-    if not loop:
+    if not loop and not quick:
         trip, dodges = dedodge.apply(trip, refine_context)
         dedodge.settle(trip, refine_context, refined, dodges)
     # An Avoid-rated junction still on the answer (307-310, 335): the way round, taken
@@ -2801,7 +2886,7 @@ def plan(
     # on a loop), else offered (`core.avoid_junctions`). `searched` is what the search
     # did: at least one round, not cut short.
     avoid_info, avoid_trip = None, None
-    if avoid_list:
+    if avoid_list and not quick:
         searched = (
             refined is not None and (refined.get("rounds") or 0) > 0 and not refined.get("limited")
         )
@@ -2857,6 +2942,7 @@ def plan(
     # its description a "Stop 1" the rider never placed).
     long_info = (refined or {}).get("long") or {}
     plan_groups = long_info.get("stops") if long_info.get("answered") == "legs" else None
+    timing.mark("search")
 
     def _answer(
         trip: dict, refined: dict | None, alternate: bool = False, dodges_of: dict | None = None
@@ -2887,6 +2973,8 @@ def plan(
         # which no crossing lies before), which a Mass Ride's crossing group never
         # spans (OWNER-DECISIONS 247).
         stops_m: list[float] = []
+        # Every leg's trace at once (v0.7.0 step 3), read in order below.
+        prefetch_traces(variant, trace_costing, [trip], deadline, traces)
         for leg in legs:
             stops_m.append(traced_m)
             shape = decode_polyline6(leg.get("shape", ""))
@@ -3130,17 +3218,23 @@ def plan(
         straight_m = sum(
             haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
         )
-        detour = _detour(
-            round(float(summary.get("length", 0.0)) * 1000.0, 1),
-            straight_m,
-            request,
-            variant,
-            preset_name,
-            dials=(stress_dial, assist, avoid_gravel),
-            busy_m=stress["3"] + stress["4"] + stress["5"],
-            when=when,
-            deadline=deadline,
-            traces=traces,
+        # Not on a first route (`quick`): the direct route it would be weighed against is a
+        # second /route, and the full plan that follows says it.
+        detour = (
+            None
+            if quick
+            else _detour(
+                round(float(summary.get("length", 0.0)) * 1000.0, 1),
+                straight_m,
+                request,
+                variant,
+                preset_name,
+                dials=(stress_dial, assist, avoid_gravel),
+                busy_m=stress["3"] + stress["4"] + stress["5"],
+                when=when,
+                deadline=deadline,
+                traces=traces,
+            )
         )
         return {
             "preset": preset.name,
@@ -3204,14 +3298,20 @@ def plan(
                 else None
             ),
             # Novice and Nervous (v0.7.0): the busiest stretch, read on the real levels.
+            # Not on a first route (`quick`): the offer is decided on the route the search
+            # settles, so it does not come and go as the better route arrives.
             "novice": (
                 novice_note(stress, refined, busiest_stretch(pieces, classes))
-                if preset_name == presets.NOVICE and not over_budget
+                if preset_name == presets.NOVICE and not over_budget and not quick
                 else None
             ),
         }
 
-    body = work_zones.with_work_zones(_answer(trip, refined, dodges_of=dodges), zones_plan)
+    answered = _answer(trip, refined, dodges_of=dodges)
+    _wait_for_delays(delays)
+    body = work_zones.with_work_zones(answered, zones_plan)
+    body["provisional"] = quick
+    timing.mark("answer")
 
     def _with_mtb(answered: dict, info: dict | None) -> dict:
         """A Mountain Bike route's reading on its body, and its time at about 6 mph
@@ -3258,6 +3358,14 @@ def plan(
         else:
             avoid_info["alternate"] = "time"
     candidates = []
+    # The candidates' traces at once (v0.7.0 step 3); each is read in full below, in order.
+    prefetch_traces(
+        variant,
+        trace_costing,
+        [found for found, _reading in refine_context.candidates[1:]],
+        deadline,
+        traces,
+    )
     for found, _reading in refine_context.candidates[1:]:
         # Each is read in full (its traces are remembered, its junctions read once
         # across the joints of a long plan), inside what is left of the budget.
@@ -3278,7 +3386,28 @@ def plan(
             break
     body["candidates"] = candidates or None
     body["rank"] = 1 if candidates else None
+    timing.mark("more")
     return body
+
+
+def quick_applies(preset_name: str, loop: bool, long_ride: bool, long_calm: bool) -> bool:
+    """Whether a plan may answer its first good route alone (`plan(quick=True)`; v0.7.0,
+    "Faster routing" step 2). Not a loop (its way back is made by the search), a long
+    ride or a long calm plan (planned leg by leg), nor Mountain Bike, whose hardest-level
+    rule picks among the router's routes: a first route there could be one the rider
+    must not be sent on. Bikeshare and the transit ride types plan their own way."""
+    return not (loop or long_ride or long_calm or preset_name == mtb.PRESET)
+
+
+def _wait_for_delays(delays: Future | None) -> None:
+    """The closures' delay probes started beside the plan (`work_zones.measure_delays`):
+    waited for, as the closures are written from them. They never fail a plan."""
+    if delays is None:
+        return
+    try:
+        delays.result()
+    except Exception:  # noqa: BLE001 - a delay not worked out is None, as before
+        logger.info("closures: the delays could not be worked out", exc_info=True)
 
 
 # The credits are brief, as an in-text citation is (OWNER-DECISIONS 306: "keep it
