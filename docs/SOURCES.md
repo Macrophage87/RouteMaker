@@ -716,6 +716,23 @@ needs no bike access.
   agency publishes in its static timetable (`calendar_dates.txt`) are used, but unplanned track
   work is not. Every plan says "Scheduled service; check for track work."
 
+## Street photos (Mapillary, v0.7.0)
+
+- **Data:** Mapillary's Graph API, `GET https://graph.mapillary.com/images` (fields `id`,
+  `captured_at`, `compass_angle`, `thumb_1024_url`, `geometry`, `is_pano`, `creator`), asked for
+  a box about 200 ft (60 m) across around the point on the road the panel describes.
+  <https://www.mapillary.com/developer/api-documentation>.
+- **Licence:** the imagery is CC BY-SA 4.0 (<https://www.mapillary.com/terms>).
+- Credit: Mapillary (CC BY-SA), linked, with the photo's date and its creator's name where
+  Mapillary gives one. Shown under the road panel's photo only.
+- **Token:** Mapillary's client access token (`MAPILLARY_ACCESS_TOKEN` on the server; the owner's
+  app, no user sign-in), sent only in the `Authorization` header from the server. The browser
+  loads the image itself from Mapillary's image host (`*.fbcdn.net`, in the CSP's `img-src`) and
+  opens Mapillary's viewer in a new tab; no Mapillary script is loaded.
+- **Kept:** each answer for an hour in the api's memory; nothing is stored.
+- Code: `src/core/street_photo.py`, `frontend/src/lib/streetPhoto.ts`; fixture
+  `tests/data/mapillary/`.
+
 ## Used inside the project only (no credit)
 
 These are shown nowhere: no tile, route, fixture or page carries anything read from

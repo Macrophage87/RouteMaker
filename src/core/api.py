@@ -3544,6 +3544,51 @@ def road_info(request, params: Query[SegmentInfoIn], response: HttpResponse):
     return Status(200, {**found, "attribution": list(SEGMENT_INFO_ATTRIBUTION)})
 
 
+# --- The road panel's street photo (v0.7.0; core.street_photo) ------------------------------
+#
+# GET /api/street-photo: the newest Mapillary photo of the road at a point on it, looked up
+# server-side so the Mapillary token never reaches a browser. 204 where no photo can be looked
+# up (no token on this server, or Mapillary not answering): the panel then says nothing of one.
+
+
+class StreetPhotoIn(Schema):
+    lon: float = Field(ge=-180, le=180, description="The point on the road (the panel's on_way).")
+    lat: float = Field(ge=-90, le=90)
+    way: int | None = Field(
+        default=None, ge=1, description="The road's OSM way id: the photo faces along it."
+    )
+
+
+class StreetPhotoOut(Schema):
+    found: bool
+    words: str | None = Field(default=None, description='"No street photo here." when none.')
+    image_url: str | None = Field(default=None, description="The image, on Mapillary's host.")
+    viewer_url: str | None = Field(default=None, description="Mapillary's viewer at the image.")
+    captured: str | None = Field(default=None, description="The day it was taken, ISO 8601.")
+    date_words: str | None = Field(default=None, description='"Photo from June 2021".')
+    creator: str | None = Field(default=None, description="Its creator on Mapillary, if named.")
+    credit: str | None = None
+    credit_url: str | None = None
+    licence: str | None = None
+    licence_url: str | None = None
+
+
+@api.get(
+    "/street-photo",
+    response={200: StreetPhotoOut, 204: None, 400: ErrorOut, 403: ErrorOut, 429: ErrorOut},
+    summary="The newest Mapillary photo of the road at a point on it",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.STREET_PHOTO), same_site_only, errors_as_json)
+def street_photo_view(request, params: Query[StreetPhotoIn], response: HttpResponse):
+    from . import street_photo
+
+    found = street_photo.client.photo(params.lon, params.lat, params.way)
+    if found is None:
+        return Status(204, None)
+    response["Cache-Control"] = "private, max-age=600"
+    return Status(200, found)
+
+
 # --- One climb's elevation profile, for the map's climb card ------------------------
 
 CLIMB_PROFILE_MAX_AGE_S = 86_400

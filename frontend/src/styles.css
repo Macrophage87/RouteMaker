@@ -1891,6 +1891,28 @@ dialog.road-info::backdrop {
   min-height: 44px;
 }
 
+/* The road's street photo (v0.7.0): a short strip, so the panel still fits a phone. */
+.road-info-photo {
+  margin: 8px 0 0;
+}
+
+.road-info-photo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 160px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.road-info-photo figcaption {
+  margin-top: 4px;
+}
+
+.road-info-photo-none {
+  margin: 8px 0 0;
+}
+
 .road-info-details {
   margin-top: 10px;
   border-top: 1px solid var(--border);
