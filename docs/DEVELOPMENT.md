@@ -7826,7 +7826,9 @@ browser (`frontend/src/app/lockScreenRender.ts`) from a pure layout (`frontend/s
 2556 (an iPhone Pro; an Android phone fits it), white with dark text, the strip's rows in large type (miles 96 px
 with km small, the turn 64 px with a caution's reason, the road abbreviated 60 px). The top 28% and bottom 12%
 are left clear for the lock screen's clock and controls; the name and distance sit small under the top band and
-the credits small above the bottom one. Rows that do not fit go on further images, each headed "Part N of M" and
-saved one after another (`...-lock-1-of-3.png`); the status line says how many. No place is named. Tests:
+the credits small above the bottom one. Rows that do not fit go on further images, each headed "Part N of M"
+(`...-lock-1-of-3.png`). Where the browser can share files (a phone), all of them go to one share sheet; otherwise
+(a browser saves only one file per press) part 1 is saved and the same button becomes "Download part 2 of 3" and
+so on, no new control. The status line says only what was saved or sent. No place is named. Tests:
 `lockScreen.test.ts` (the bands, the width, cues per image and all of them once, naming, the line). Not yet
 drawn on a real phone's lock screen; the layout was checked by eye from a rasterised copy, not from the canvas.

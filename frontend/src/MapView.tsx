@@ -110,7 +110,7 @@ import {
   transitOf,
 } from "./lib/transit.ts";
 import { countdown, labelSide, mapLabel } from "./lib/departure.ts";
-import { lightMarkerLabel, lightMarkerText, type LightMark } from "./lib/lightTimes.ts";
+import { lightMarkerLabel, lightMarkerText, underControls, type LightMark } from "./lib/lightTimes.ts";
 import {
   CARD_CLOSE_LABEL,
   cardName,
@@ -1500,6 +1500,19 @@ export function MapView(props: Props) {
       element.setAttribute("aria-label", lightMarkerLabel(mark));
       (element.firstChild as HTMLElement).textContent = lightMarkerText(mark);
     }
+    // Not drawn where it would sit under the map's controls (the scale bar at the bottom right); it stays named.
+    const clear = () => {
+      const controls = Array.from(map.getContainer().querySelectorAll(".maplibregl-ctrl"), (c) => c.getBoundingClientRect());
+      for (const marker of drawn.values()) {
+        const element = marker.getElement();
+        element.classList.toggle("under-controls", underControls((element.firstChild as HTMLElement).getBoundingClientRect(), controls));
+      }
+    };
+    clear();
+    map.on("move", clear);
+    return () => {
+      map.off("move", clear);
+    };
   }, [props.lightMarks]);
   useEffect(() => {
     const drawn = lightDrawn.current;

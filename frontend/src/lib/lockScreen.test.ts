@@ -11,7 +11,11 @@ import {
   LOCK_WIDTH,
   lockScreenFileNames,
   lockScreenLayout,
+  lockCancelledLine,
+  lockPartButton,
+  lockPartLine,
   lockScreenLine,
+  lockSharedLine,
   wrapPx,
   type Measure,
 } from "./lockScreen.ts";
@@ -85,7 +89,6 @@ test("a long route is split into numbered images, every cue on one of them once,
   const roads = pages.flatMap((p) => p.lines.map((l) => /^St (\d+) NW$/.exec(l.text)?.[1]).filter(Boolean).map(Number));
   // The start is on the first street, then each turn.
   assert.deepEqual(roads, [0, ...Array.from({ length: 60 }, (_, k) => k)]);
-  assert.match(lockScreenLine(pages), new RegExp(`^Cue sheet image: \\d+ cues do not fit on one image, so there are ${pages.length}, Part 1 of ${pages.length} to Part ${pages.length} of ${pages.length}, downloaded one after another\\.$`));
 });
 
 test("the images are named as the GPX export is, numbered when there are more than one", () => {
@@ -97,4 +100,12 @@ test("the images are named as the GPX export is, numbered when there are more th
 test("wrapping by pixels never loops on a glyph wider than the line", () => {
   assert.deepEqual(wrapPx("Connecticut Ave NW", 60, 400, 400, measure), ["Connecticut", "Ave NW"]);
   assert.deepEqual(wrapPx("WW", 100, 700, 10, measure), ["W", "W"]);
+});
+
+test("several images: the line says only what was saved or sent, and the button names the next part", () => {
+  assert.equal(lockPartButton(1, 6), "Download part 2 of 6");
+  assert.equal(lockPartLine(1, 6, 40), "Cue sheet image: part 1 of 6 saved (40 cues on 6 images). Press Download part 2 of 6 for the next.");
+  assert.equal(lockPartLine(6, 6, 40), "Cue sheet image: part 6 of 6 saved (40 cues on 6 images). All 6 are saved.");
+  assert.equal(lockSharedLine(3, 20), "Cue sheet image: 20 cues on 3 images, Part 1 of 3 to Part 3 of 3, sent to the share sheet together.");
+  assert.equal(lockCancelledLine(3), "Cue sheet image: sharing cancelled, nothing saved. Press Download part 1 of 3 to save them one at a time.");
 });
