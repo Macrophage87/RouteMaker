@@ -1,0 +1,26 @@
+# Weekly update pull requests for every pinned dependency: the images' Python pins,
+# the front end's lockfile, the Dockerfiles' and compose files' base images, and the
+# CI actions (pinned by commit). Each is a pull request for CI and the owner to read;
+# nothing merges by itself.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /docker
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /docker
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
