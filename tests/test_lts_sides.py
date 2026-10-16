@@ -356,8 +356,9 @@ class TestAContraflowOnlyFacilityIsNotTheWithFlowRiders:
         },
         "current, implied": {"cycleway:left": "lane", "cycleway:left:oneway": "-1"},
         "current, both key": {
-            "cycleway:left": "lane",
+            "cycleway:both": "lane",
             "cycleway:both:oneway": "-1",
+            "cycleway:right": "no",
             "oneway:bicycle": "no",
         },
     }
@@ -370,6 +371,22 @@ class TestAContraflowOnlyFacilityIsNotTheWithFlowRiders:
         tagged = classify({**street, **self.FORMS[form]})
         assert tagged.tier is classify(street).tier
         assert "bike lane" not in tagged.rule
+
+    @pytest.mark.parametrize(
+        "oneway_key", ("cycleway:oneway", "cycleway:both:oneway", "cycleway:left:oneway")
+    )
+    def test_a_oneway_key_qualifies_only_its_own_level(self, oneway_key: str) -> None:
+        """A bare `cycleway:oneway` speaks for the bare `cycleway` value, a
+        `:both:oneway` for `cycleway:both`: neither turns the with-flow
+        `cycleway:right=lane` into a contraflow lane (review of 17f69082)."""
+        lane = {"cycleway:right": "lane", "cycleway:right:width": "2.0"}
+        with_flow = classify({**self.STREET, **lane})
+        assert "bike lane" in with_flow.rule
+        assert classify({**self.STREET, **lane, oneway_key: "-1"}) == with_flow
+        # At its own level it does: the bare value under a bare `:oneway`.
+        bare = {**self.STREET, "cycleway": "lane", "cycleway:width": "2.0"}
+        assert "bike lane" in classify(bare).rule
+        assert "bike lane" not in classify({**bare, "cycleway:oneway": "-1"}).rule
 
     def test_a_lane_with_the_traffic_is_not_contraflow(self) -> None:
         """`cycleway:right:oneway=yes` on `oneway=yes`, and the mirror on

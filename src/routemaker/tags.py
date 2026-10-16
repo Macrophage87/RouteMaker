@@ -427,23 +427,32 @@ class CyclewaySide:
         return self.against_traffic or bool(self.value and self.value.startswith("opposite"))
 
 
-CYCLEWAY_SIDE_ONEWAY_KEYS = {
-    side: (f"cycleway:{side}:oneway", "cycleway:both:oneway", "cycleway:oneway") for side in SIDES
-}
 _FORWARD_VALUES = frozenset({"yes", "true", "1"})
 
 
-def _against_traffic(tags: dict[str, str], side: str) -> bool:
-    """Whether a side's facility is one-way against a one-way road's traffic.
+def _first_key(tags: dict[str, str], keys: tuple[str, ...]) -> str | None:
+    """The most specific key present, read in precedence order (`_first`'s key)."""
+    for key in keys:
+        if tags.get(key):
+            return key
+    return None
+
+
+def _against_traffic(tags: dict[str, str], key: str | None) -> bool:
+    """Whether the facility a side's value came from (`key`) is one-way against
+    a one-way road's traffic.
 
     `cycleway:left=lane` + `cycleway:left:oneway=-1` is OSM's current form of
     the contraflow lane the older scheme wrote `cycleway:left=opposite_lane`.
+    The `:oneway` is read at the level of the key the value came from, never
+    another: a bare `cycleway:oneway` qualifies only the bare `cycleway`, so
+    it never makes a `cycleway:right=lane` with the traffic a contraflow one.
     The traffic runs against the way's nodes on `oneway=-1`, so there a
     facility tagged `oneway=yes` is the contraflow one.
     """
-    if not is_oneway(tags):
+    if key is None or not is_oneway(tags):
         return False
-    facility = _first(tags, CYCLEWAY_SIDE_ONEWAY_KEYS[side])
+    facility = tags.get(f"{key}:oneway")
     if facility == "-1":
         return tags.get("oneway") != "-1"
     if facility in _FORWARD_VALUES:
@@ -459,7 +468,8 @@ def cycleway_sides(tags: dict[str, str]) -> dict[str, CyclewaySide]:
         width = _first_width(tags, CYCLEWAY_SIDE_WIDTH_KEYS[side])
         if value is not None and _facility_rank(value) == 0:
             width = None
-        sides[side] = CyclewaySide(value, width, _against_traffic(tags, side))
+        against = _against_traffic(tags, _first_key(tags, CYCLEWAY_SIDE_KEYS[side]))
+        sides[side] = CyclewaySide(value, width, against)
     return sides
 
 
@@ -518,19 +528,40 @@ def cycleway_provision(tags: dict[str, str]) -> Provision:
     because the general key was unioned into the right side and the best value
     kept. The right side says `no`, and the side key is the more specific tag.
     """
+    return _provision(_directions(tags, cycleway_sides(tags)), min)
+
+
+def best_direction_provision(tags: dict[str, str]) -> Provision:
+    """The provision on the **best** direction, for the map alone (the review of
+    17f69082): where `cycleway_provision` takes the weakest direction, this takes
+    the strongest, and on a one-way street the contraflow rider's direction, every
+    side, is one of them. So a contraflow-only lane (11th Street NW's
+    `cycleway:left=lane` + `cycleway:left:oneway=-1`) is drawn as the lane it is,
+    while the tier and the routing price (`facility.facility`, `rm:facility`) stay
+    on the rider with the traffic, who has none."""
+    sides = cycleway_sides(tags)
+    directions = _directions(tags, sides)
+    if is_oneway(tags):
+        directions.append([sides["left"], sides["right"]])
+    return _provision(directions, max)
+
+
+def _provision(directions: list[list[CyclewaySide]], pick) -> Provision:
+    """The provision of the direction `pick` (min: the worst, max: the best) ranks
+    first, and its width the same way round across the directions that give it."""
     ranked = []
-    for candidates in _directions(tags, cycleway_sides(tags)):
+    for candidates in directions:
         best = max((s.rank for s in candidates), default=0)
         at_best = [s for s in candidates if s.rank == best]
         surveyed = [s.width_m for s in at_best if s.width_m is not None]
         ranked.append((best, at_best, max(surveyed) if surveyed else None))
-    rank = min(best for best, _, _ in ranked)
+    rank = pick(best for best, _, _ in ranked)
     used = [(sides, width) for best, sides, width in ranked if best == rank]
     widths = [width for _, width in used if width is not None]
     return Provision(
         rank,
         frozenset(s.value for sides, _ in used for s in sides if s.value is not None),
-        min(widths) if widths else None,
+        pick(widths) if widths else None,
     )
 
 

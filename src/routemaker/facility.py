@@ -53,6 +53,7 @@ from .ridetime import closed_settings
 from .tags import (
     CYCLEWAY_KEYS,
     PERMISSIVE_ACCESS,
+    best_direction_provision,
     cycleway_provision,
     narrow_access_lists,
     open_to_buses,
@@ -248,7 +249,33 @@ def facility(tags: dict[str, str], beside_separate_road: bool = False) -> Facili
         return Facility.NONE
     if closed_to_motor_traffic(tags):
         return Facility.PATH
-    provision = cycleway_provision(tags)
+    return _road_facility(tags, cycleway_provision(tags))
+
+
+def shown_facility(tags: dict[str, str], beside_separate_road: bool = False) -> Facility | None:
+    """The class the map and the road panel show where it is not `facility`'s, else None
+    (the review of 17f69082): the best direction's (`tags.best_direction_provision`), so
+    a contraflow-only lane shows as a lane. Display only: the tier and the routing price
+    (`rm:facility`, `lua/routemaker_remap.lua` `apply_facility`) stay on `facility`, the
+    rider with the traffic."""
+    scored = facility(tags, beside_separate_road)
+    highway = tags.get("highway")
+    if (
+        highway is None
+        or highway in TRAIL_CLASS_HIGHWAY
+        or highway in MOTOR_ONLY_HIGHWAY
+        or closed_to_motor_traffic(tags)
+    ):
+        return None
+    shown = _road_facility(tags, best_direction_provision(tags))
+    return shown if _RANK[shown] > _RANK[scored] else None
+
+
+_RANK = {"none": 0, "lane": 1, "protected": 2, "path": 3}
+
+
+def _road_facility(tags: dict[str, str], provision) -> Facility:
+    """A road's class from one provision (`tags.Provision`)."""
     if provision.rank >= 2:
         return Facility.PROTECTED
     if provision.rank == 1:

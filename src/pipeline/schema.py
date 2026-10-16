@@ -136,6 +136,11 @@ def _text_list(values) -> str:
 # prove the query's condition implies the index's - which it does for the same
 # expression.
 FACILITY_COLUMN = "facility"
+# The class the map and the road panel show where it is not `facility`'s
+# (`routemaker.facility.shown_facility`): a contraflow-only lane, which the rider
+# with the traffic does not have, so `facility` (the tier and the routing price)
+# says none. Null on every other way, and absent on a table built before it.
+FACILITY_SHOWN_COLUMN = "facility_shown"
 TRAIL_FACILITY = "path"
 ROADSIDE_TRAIL_FACILITY = "protected"
 
@@ -550,6 +555,9 @@ CREATE TABLE {schema}.segment (
     -- makes the way a path as well; empty on every other way.
     facility        text        NOT NULL DEFAULT 'none'
                     CHECK (facility IN ('path', 'protected', 'lane', 'none')),
+    -- The class shown where it is not `facility` (FACILITY_SHOWN_COLUMN): a
+    -- contraflow-only lane. Display only.
+    facility_shown  text        CHECK (facility_shown IN ('protected', 'lane')),
     car_free_when   text[]      NOT NULL DEFAULT '{{}}',
     -- How the stress map draws the way (`routemaker.facility.map_class`):
     -- `road`; `barred`, a public road a bicycle may not use, and `hidden`, a

@@ -23,7 +23,7 @@ import pytest
 from test_lua_remap import CONTRAFLOW_WRITES, _bike_access
 
 from pipeline.variants import Variant, has_contraflow_tag, inject
-from routemaker.facility import facility
+from routemaker.facility import facility, shown_facility
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "contraflow"
 WAYS = json.loads((FIXTURE / "dc-contraflow-streets.json").read_text())["ways"]
@@ -79,6 +79,17 @@ SOURCE_FACILITY = {
     50797092: "none",
 }
 
+# What the map draws instead, where the only lane runs against the traffic
+# (`facility.shown_facility`, the segment's `facility_shown`): the best direction's
+# class, marked one-direction in the tiles and the road panel. The routing price
+# (`rm:facility`) stays on SOURCE_FACILITY, the rider with the traffic.
+SHOWN_FACILITY = {
+    112192545: "lane",  # R Street NE
+    130927103: "lane",
+    29235004: "lane",  # 11th Street NW
+    50511364: "lane",
+}
+
 
 @pytest.mark.parametrize("way", WAYS, ids=IDS)
 def test_the_map_and_stress_classification_are_not_the_variants(way) -> None:
@@ -92,6 +103,8 @@ def test_the_map_and_stress_classification_are_not_the_variants(way) -> None:
     inject(Variant.NO_TRAIL, tags, way["osm_way_id"])
     assert tags == before, "the injection handed back a copy; the source tags are untouched"
     assert facility(tags).value == SOURCE_FACILITY[way["osm_way_id"]]
+    shown = shown_facility(tags)
+    assert (shown and shown.value) == SHOWN_FACILITY.get(way["osm_way_id"])
 
 
 def test_the_classifier_reads_the_with_flow_rider_on_either_tags() -> None:

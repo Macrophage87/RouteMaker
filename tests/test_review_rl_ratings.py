@@ -17,8 +17,11 @@ from pipeline import variants
 from pipeline.extract import Way
 from pipeline.rebuild import Stage
 from pipeline.run import RebuildContext, build_handlers
+from pipeline.schema import MOTOR_ONLY_RULE
 from routemaker import agency_lts
 from routemaker.agency_lts import AgencyRating
+from routemaker.facility import MapClass, map_class
+from routemaker.massflow import usable_width_m
 from routemaker.stress import (
     MOTORWAY_AVOID_RULE,
     Stress,
@@ -67,6 +70,12 @@ class TestAPaintedLaneOnAWideTwoWayStreet:
         assert not painted_lane_two_way_multilane({**SIX_LANE, "lanes": "2", **LANE})
         assert not painted_lane_two_way_multilane({**SIX_LANE, "oneway": "yes", **LANE})
         assert painted_lane_two_way_multilane({**SIX_LANE, "oneway": "yes", **LANE}, divided=True)
+        # The classifier's count wins over the tags' (the rebuild passes `rated.lanes`,
+        # which may come from an agency's block data).
+        untagged = {key: v for key, v in {**SIX_LANE, **LANE}.items() if key != "lanes"}
+        assert not painted_lane_two_way_multilane(untagged)
+        assert painted_lane_two_way_multilane(untagged, lanes=2)
+        assert not painted_lane_two_way_multilane({**SIX_LANE, **LANE}, lanes=1)
         assert not painted_lane_two_way_multilane({"highway": "cycleway", "lanes": "4", **LANE})
 
     def test_an_agency_still_wins_and_the_rural_floor_stays(self) -> None:
@@ -233,6 +242,28 @@ def test_an_open_motorway_is_avoid(highway, bicycle) -> None:
     assert segment_info.rule_words(result.rule) == "Avoid: highway-like road"
 
 
+def test_an_open_motorway_is_drawn_on_the_stress_and_mass_ride_maps() -> None:
+    """Avoid is drawn: the map class is a road, and the rule no longer starts with the
+    motor-only prefix the tiles' fallback filter drops (`schema.MOTOR_ONLY_RULE`, read
+    on a table without `map_class`), so both the stress and the Mass Ride tiles keep
+    it; and it has a usable width for the Mass Ride layer."""
+    tags = {"highway": "motorway", "maxspeed": "55 mph", "bicycle": "yes", "lanes": "2"}
+    result = classify(tags)
+    prefix = "motor-only classification ("
+    assert f"starts_with(stress_rule, '{prefix}')" == MOTOR_ONLY_RULE
+    assert not result.rule.startswith(prefix)
+    assert map_class(tags) is MapClass.ROAD
+    assert usable_width_m(tags, result.lanes) is not None
+
+
+def test_a_motorway_with_use_sidepath_stays_lts4_and_barred() -> None:
+    tags = {"highway": "motorway", "maxspeed": "55 mph", "bicycle": "use_sidepath"}
+    result = classify(tags)
+    assert result.tier is Stress.LTS4
+    assert result.rule.startswith("motor-only classification (")
+    assert map_class(tags) is MapClass.BARRED
+
+
 @pytest.mark.parametrize("bicycle", (None, "no", "use_sidepath", "unknown"))
 def test_a_motorway_not_open_to_bicycles_keeps_lts4(bicycle) -> None:
     tags = {"highway": "motorway", "maxspeed": "55 mph"}
@@ -265,6 +296,15 @@ def test_a_lane_list_is_read_as_its_largest(value, lanes) -> None:
 )
 def test_lanes_per_direction_reads_lists_and_the_untagged_direction(tags, lanes) -> None:
     assert lanes_per_direction(tags) == lanes
+
+
+@pytest.mark.parametrize("oneway", ("reversible", "alternating"))
+def test_a_reversible_road_reads_as_two_way(oneway) -> None:
+    """`oneway=reversible` or `alternating` is not a one-way (`tags.is_oneway`): the
+    lanes not tagged forward are read as the other direction's, as on any two-way road.
+    Pinned so a change to that reading is a decision, not an accident."""
+    assert lanes_per_direction({"lanes": "4", "lanes:forward": "1", "oneway": oneway}) == 3
+    assert lanes_per_direction({"lanes": "4;6", "oneway": oneway}) == 3
 
 
 def test_a_lane_list_no_longer_rates_a_rural_road_as_one_lane() -> None:
