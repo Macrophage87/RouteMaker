@@ -146,7 +146,15 @@ export function PlanPanel(props: PlanPanelProps) {
         >
           {RESET_LABEL}
         </button>
-        <button type="button" className="secondary" disabled={clearDisabled} onClick={onClear}>
+        {/* aria-disabled, not disabled: after a press empties the plan the button keeps the focus (review a11y-1). */}
+        <button
+          type="button"
+          className="secondary"
+          aria-disabled={clearDisabled || undefined}
+          onClick={() => {
+            if (!clearDisabled) onClear();
+          }}
+        >
           {CLEAR_LABEL}
         </button>
         {resetUnavailable && (

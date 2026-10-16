@@ -38,6 +38,8 @@ import {
   PLANNING_SAID,
   RESET_NOTHING,
   RESET_SAID,
+  CLEARED_SAID,
+  CLEAR_FOCUS_WAIT_MS,
   changeSummary,
   legChanges,
   elapsedText,
@@ -73,7 +75,7 @@ import {
 import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
 import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
-import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, RIDE_ENDED_SAID, RideEnded, RideMode, primeRideVoice, startRideGesture, type RideView } from "./RideMode.tsx";
+import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, RIDE_ENDED_SAID, RideEnded, RideMode, primeRideVoice, startRideGesture, voiceTurnedOn, type RideView } from "./RideMode.tsx";
 import { readHeadingUp, readRidePrefs, writeHeadingUp, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf } from "./lib/bikeshare.ts";
@@ -84,7 +86,9 @@ import { RAIL_STATIONS, WMATA_SLUGS, stationEntranceForPlace } from "./lib/railD
 import { federalShown, type FederalData } from "./lib/federalLand.ts";
 import { FEDERAL_POINTS_NONE, type FederalStatus } from "./lib/federalLegend.ts";
 import { federalAreaAt, federalRouteLines, pointAreas, stopWarningShort } from "./lib/federalStops.ts";
-import { addCoverageMask, fetchCoverage, watchForCapacity, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
+import { addCoverageMask, fetchCoverage, watchForCapacity, watchForFacilities, watchCentre, watchZoom } from "./lib/mapGlue.ts";
+import { STILL_RIDING_SAID, forgetStaleRideEntry, holdBackDuringRide } from "./lib/rideBack.ts";
+import { afterHistoryStep } from "./lib/rideFocus.ts";
 import { isMassRide, massBandsChangeSaid, massBandsSaid } from "./lib/massCapacity.ts";
 import { movePoint, planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
 import { mapWhen } from "./lib/rideTime.ts";
@@ -689,11 +693,27 @@ export function App() {
   // The Start ride button pressed (under the figures or in Directions): where the focus goes back to.
   const rideOpener = useRef<HTMLElement | null>(null);
   const rideCircle = rideView?.rider ? { centre: rideView.rider.point, radiusM: rideView.rider.accuracyM } : null;
+  const ridePrefsNow = useRef(ridePrefs);
+  ridePrefsNow.current = ridePrefs;
+  const ridingNow = useRef(riding);
+  ridingNow.current = riding;
   const changeRidePrefs = useCallback((next: RidePrefs) => {
+    // Voice turned on mid-ride: unlocked in this change's own gesture, as Start does (review RIDE-9).
+    // Before a ride, Start unlocks it; nothing is said then.
+    if (ridingNow.current) voiceTurnedOn(ridePrefsNow.current, next);
     writeRidePrefs(next);
     setRidePrefs(next);
   }, []);
   const mapRef = useRef<MapLibreMap | null>(null);
+  // Where the map's centre is drawn while the crosshair shows (review UI-2): after a padded move it
+  // is not the middle of the map, and Map tools' actions use the centre.
+  const crosshairShown = crosshair.button || crosshair.canvas;
+  const [crosshairAt, setCrosshairAt] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!crosshairShown || !map) return;
+    return watchCentre(map, setCrosshairAt);
+  }, [crosshairShown]);
   const panelRef = useRef<HTMLElement>(null);
   const panelBodyRef = useRef<HTMLDivElement>(null);
   const removeRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -1008,14 +1028,18 @@ export function App() {
     if (focusPlan && viewNow.current === "planner") planButtonRef.current?.focus();
   }, [focusPlan]);
 
-  // After Remove, the focus goes to the next Remove button, or (none left) to the search.
+  // After Remove, the focus goes to the next Remove button, or (none left) to the search; after Clear
+  // (index -1), to the search, Go's Where to? in Go, once the cleared route no longer hides it.
   useEffect(() => {
     const index = focusAfterRemove.current;
     if (index === null) return;
+    const target = index < 0 ? null : removeRefs.current[Math.min(index, points.length - 1)];
+    const search = pointsSearchRef.current ?? panelRef.current?.querySelector(".go-search") ?? null;
+    const input = search?.querySelector<HTMLElement>("input");
+    if (!target && index < 0 && route && input?.closest("[hidden]")) return;
     focusAfterRemove.current = null;
-    const target = removeRefs.current[Math.min(index, points.length - 1)];
-    (target ?? pointsSearchRef.current?.querySelector<HTMLElement>("input"))?.focus();
-  }, [points]);
+    (target ?? input)?.focus();
+  }, [points, route]);
 
   // The latest points, for handlers the map holds on to between renders.
   const pointsRef = useRef(points);
@@ -1248,6 +1272,8 @@ export function App() {
   /** Undo or redo: the list the history gives back, which is not itself an edit. */
   const travel = useCallback(
     (direction: "undo" | "redo") => {
+      const active = document.activeElement;
+      historyPress.current = active instanceof HTMLElement && active.dataset.history ? { direction, button: active, row: active.parentElement } : null;
       const before = rideRef.current;
       const next = edits.travel(direction);
       if (next === undefined) return;
@@ -1261,6 +1287,25 @@ export function App() {
   );
   const undo = useCallback(() => travel("undo"), [travel]);
   const redo = useCallback(() => travel("redo"), [travel]);
+  // Undo or Redo pressed for the last step it had goes (Redo, the map's buttons) or is disabled (Undo):
+  // the focus goes to the other one, or to the Points heading with neither (review a11y-2).
+  const historyPress = useRef<{ direction: "undo" | "redo"; button: HTMLElement; row: Element | null } | null>(null);
+  useEffect(() => {
+    const press = historyPress.current;
+    historyPress.current = null;
+    if (!press) return;
+    const usable = (element: Element): boolean => element instanceof HTMLElement && element.isConnected && !(element as HTMLButtonElement).disabled;
+    const other = press.row?.querySelector<HTMLElement>(`[data-history="${press.direction === "undo" ? "redo" : "undo"}"]`) ?? null;
+    const where = afterHistoryStep<Element>({ button: press.button, other }, document.activeElement, document.body, usable);
+    if (where === "stay") return;
+    (where === "other" ? other : pointsHeadingRef.current)?.focus();
+    // A phone's hidden sheet hides the heading too: the map, where the buttons were.
+    if (document.activeElement === document.body) mapRef.current?.getCanvas().focus();
+  }, [can]);
+  // A press whose step changed neither button (can unchanged) is not kept for a later change to act on.
+  useEffect(() => {
+    historyPress.current = null;
+  });
 
   // Ctrl+Z (Cmd+Z) undoes; Ctrl+Shift+Z (Cmd+Shift+Z) and Ctrl+Y redo;
   // anywhere but a text field, which has its own.
@@ -1984,6 +2029,13 @@ export function App() {
     // Clearing an opened file's plan puts the file away too; undo brings both back.
     const ride = rideRef.current;
     commit([], ride.imported ? { ...ride, imported: null } : undefined);
+    // Said, and the focus to the place search, as every other removal hands it on (review a11y-1).
+    announce(CLEARED_SAID);
+    focusAfterRemove.current = -1;
+    // Not kept past the clear's own renders: a route that does not go would leave it for a later edit.
+    window.setTimeout(() => {
+      if (focusAfterRemove.current === -1) focusAfterRemove.current = null;
+    }, CLEAR_FOCUS_WAIT_MS);
   };
   // An opened GPX file (GpxPanel): one edit, so one undo takes it back -
   // its points, the ride type it names (through the ride-type choice, which
@@ -2013,6 +2065,11 @@ export function App() {
   const addAtCentre = () => {
     const map = mapRef.current;
     if (!map) return;
+    // Map tools' Add point while the plan is full (aria-disabled, review a11y-7): its reason, said each press.
+    if (!goTapSetsEnd(mode) && pointsRef.current.length >= MAX_POINTS) {
+      announce(maxPointsNotice());
+      return;
+    }
     const { lng, lat } = map.getCenter();
     place([lng, lat]);
   };
@@ -2583,6 +2640,11 @@ export function App() {
     // Said by the page's region, always mounted; the focus goes to Undo (RideEnded), not back to Start (review F6).
     announce(RIDE_ENDED_SAID);
   }, [announce]);
+  // A back gesture during a ride does nothing; End ride is the way out (lib/rideBack.ts, review RIDE-2).
+  // Each held back is told, politely, once (review RIDE-2).
+  useEffect(() => (riding ? holdBackDuringRide(window, () => announce(STILL_RIDING_SAID)) : undefined), [riding, announce]);
+  // No ride is on at load: a ride's entry left by a reload is the page's own again.
+  useEffect(() => forgetStaleRideEntry(window), []);
   const undoEndRide = () => {
     const ended = endedRide.current;
     endedRide.current = null;
@@ -3458,7 +3520,9 @@ export function App() {
         onPlace={placeSpot}
         onSetHome={(point) => void setHomeAt(point)}
       />
-      {(crosshair.button || crosshair.canvas) && <div className="crosshair" aria-hidden="true" />}
+      {crosshairShown && (
+        <div className="crosshair" aria-hidden="true" style={crosshairAt ? { left: crosshairAt.x, top: crosshairAt.y } : undefined} />
+      )}
       {!riding && !goMode && <PlanMapChips onFood={(chip) => openView("food", chip)} onWater={(chip) => openView("nearest", chip)} onPlaces={openPlaces} />}
       {!riding && narrow && (can.undo || can.redo) && (
         // On a phone the sheet may be hidden while the rider edits the map,
@@ -3466,12 +3530,12 @@ export function App() {
         // per layout), each shown while it has something to give back.
         <div className="map-history">
           {can.undo && (
-            <button type="button" onClick={undo}>
+            <button type="button" data-history="undo" onClick={undo}>
               Undo
             </button>
           )}
           {can.redo && (
-            <button type="button" onClick={redo}>
+            <button type="button" data-history="redo" onClick={redo}>
               Redo
             </button>
           )}

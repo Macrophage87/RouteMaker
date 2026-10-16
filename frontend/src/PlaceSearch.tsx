@@ -35,6 +35,7 @@ import { Icon } from "./Icon.tsx";
 import { readRecentPlaces, rememberRecentPlace } from "./lib/recentPlaces.ts";
 import { FINDING_LOCATION, hereEffectLine, locationMatches, searchStatusWithHere } from "./lib/geolocation.ts";
 import { parseShared, readShared, sharedPlace, SHARED_OPENING } from "./lib/sharedLocation.ts";
+import { watchKeyboard } from "./lib/keyboardLift.ts";
 
 // App.tsx's phone layout, where the panel is a bottom sheet.
 const PHONE = "(max-width: 720px)";
@@ -146,6 +147,14 @@ export function PlaceSearch({
     });
   }
   useEffect(() => () => runner.current?.clear(), []);
+  // On a phone, while the box has the focus: the app is shortened by what the keyboard covers (iOS;
+  // lib/keyboardLift.ts, review UI-7), so the results in the sheet are not under it.
+  const keyboardWatch = useRef<(() => void) | null>(null);
+  const stopKeyboardWatch = () => {
+    keyboardWatch.current?.();
+    keyboardWatch.current = null;
+  };
+  useEffect(() => stopKeyboardWatch, []);
 
   const { places, answeredNow, searching, choices, choice, effect } = searchView({
     query,
@@ -307,14 +316,21 @@ export function PlaceSearch({
           openShared(text);
         }}
         onKeyDown={onKeyDown}
-        onBlur={() => setOpen(false)}
+        onBlur={() => {
+          setOpen(false);
+          stopKeyboardWatch();
+        }}
         onFocus={(event) => {
           setOpen(true);
           setRecent(readRecentPlaces());
           // On a phone the sheet is half the screen and the keyboard takes
           // much of the rest: bring the box to the top of the sheet so the
           // results under it can be seen.
-          if (window.matchMedia(PHONE).matches) event.currentTarget.scrollIntoView({ block: "start" });
+          if (window.matchMedia(PHONE).matches) {
+            stopKeyboardWatch();
+            keyboardWatch.current = watchKeyboard(window, document.documentElement);
+            event.currentTarget.scrollIntoView({ block: "start" });
+          }
         }}
       />
       {locate && (

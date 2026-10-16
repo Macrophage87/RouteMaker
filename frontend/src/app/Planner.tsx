@@ -232,12 +232,12 @@ export function PointsSection(props: PointsSectionProps) {
               </button>
             )}
             {!narrow && (
-              <button type="button" onClick={undo} disabled={!can.undo} aria-keyshortcuts="Control+Z Meta+Z">
+              <button type="button" data-history="undo" onClick={undo} disabled={!can.undo} aria-keyshortcuts="Control+Z Meta+Z">
                 Undo
               </button>
             )}
             {!narrow && can.redo && (
-              <button type="button" onClick={redo} aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y">
+              <button type="button" data-history="redo" onClick={redo} aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y">
                 Redo
               </button>
             )}

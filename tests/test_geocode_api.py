@@ -239,6 +239,18 @@ class TestSearch:
         assert params["radius"] == geocode.TAG_SEARCH_RADIUS_KM
         assert [r["name"] for r in body["results"]] == ["Near Cycles", "Far Bikes"]
 
+    @pytest.mark.parametrize("q", ["grocery", "Grocery Stores", "groceries", "supermarket"])
+    def test_grocery_lists_the_nearest_supermarkets(self, client, photon, q) -> None:
+        """Review SIMPLICITY-1: an errand search finds the nearest grocery."""
+        shop = feature(
+            -77.03, 38.9, name="Market", type="house", osm_key="shop", osm_value="supermarket"
+        )
+        fake = photon(answer(shop))
+        body = get(client, SEARCH, q=q, lat="38.9", lon="-77.0").json()
+        ((path, params),) = fake.calls
+        assert path == "/reverse" and params["osm_tag"] == "shop:supermarket"
+        assert [r["name"] for r in body["results"]] == ["Market"]
+
     def test_bike_shop_without_a_bias_is_an_ordinary_search(self, client, photon) -> None:
         fake = photon(answer())
         get(client, SEARCH, q="bike shop")

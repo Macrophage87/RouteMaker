@@ -16,6 +16,7 @@
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { ADD_AT_CENTRE_LABEL, INFO_BUTTON_LABEL, MAP_TOOLS_LABEL, SET_END_AT_CENTRE_LABEL } from "./lib/roadInfo.ts";
+import { maxPointsNotice } from "./lib/geolocation.ts";
 
 interface Props {
   /** Put a point at the map's center (the next point of the plan). */
@@ -96,9 +97,21 @@ export function MapTools({ onAddPoint, addDisabled, setsEnd = false, onRoadInfo,
         {MAP_TOOLS_LABEL}
       </button>
       <div id={panelId} className="map-tools-panel" hidden={!open}>
-        <button type="button" disabled={addDisabled} onClick={() => run(onAddPoint)}>
+        {/* aria-disabled, not disabled: it stays in the Tab order with its reason, and a press says the
+            reason (App's addAtCentre) and changes nothing (review a11y-7). */}
+        <button
+          type="button"
+          aria-disabled={addDisabled || undefined}
+          aria-describedby={addDisabled ? `${panelId}-full` : undefined}
+          onClick={() => (addDisabled ? onAddPoint() : run(onAddPoint))}
+        >
           {setsEnd ? SET_END_AT_CENTRE_LABEL : ADD_AT_CENTRE_LABEL}
         </button>
+        {addDisabled && (
+          <span id={`${panelId}-full`} className="visually-hidden">
+            {maxPointsNotice()}
+          </span>
+        )}
         <button type="button" aria-haspopup="dialog" onClick={() => run(onRoadInfo)}>
           {INFO_BUTTON_LABEL}
         </button>
