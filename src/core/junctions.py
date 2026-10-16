@@ -57,7 +57,6 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 
 from django.conf import settings
-from django.db import connection
 
 from pipeline.schema import (
     ROAD_COST_COLUMNS,
@@ -812,7 +811,10 @@ def roads_by_way(
     arrays = [list(column) for column in zip(*wanted_ways, strict=True)]
     params = [*arrays, *([when] if with_facility else []), *([when] if "%s" in half else [])]
     found: dict[tuple[int, int], Road] = {}
-    with connection.cursor() as cursor:
+    from .routing import plan_cursor
+
+    # Under the plan's statement timeout, where a plan is reading (review speed-9).
+    with plan_cursor() as cursor:
         cursor.execute(query, params)
         for (
             idx,

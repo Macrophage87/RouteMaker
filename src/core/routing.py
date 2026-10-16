@@ -57,7 +57,9 @@ to the profile turned upside down.
 from __future__ import annotations
 
 import bisect
+import contextvars
 import dataclasses
+import functools
 import http.client
 import itertools
 import json
@@ -65,13 +67,14 @@ import logging
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import Future
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 
 from django.conf import settings
-from django.db import connection
+from django.db import OperationalError, connection, transaction
 from django.utils import timezone
 
 from pipeline.schema import (
@@ -266,6 +269,57 @@ class Deadline:
 
     at: float
     per_call_s: float
+
+
+# When the plan running in this context must be done (monotonic; `plan` sets it, in a
+# context of its own): its segment-table reads run under a statement timeout of what is
+# left (`plan_cursor`), so a slow or blocked database ends the plan as its clock does, 503
+# with retry advice, not at gunicorn's kill (review speed-9). None outside a plan.
+_plan_ends: contextvars.ContextVar[float | None] = contextvars.ContextVar("plan_ends", default=None)
+# Postgres's query_canceled, which a statement timeout raises.
+QUERY_CANCELED = "57014"
+
+
+@contextmanager
+def plan_cursor() -> Iterator:
+    """A cursor for one of the plan's own reads of the segment table, under a statement
+    timeout of the time the plan has left; a read it cancels raises DeadlineExceeded. A
+    plain cursor outside a plan."""
+    ends = _plan_ends.get()
+    if ends is None:
+        with connection.cursor() as cursor:
+            yield cursor
+        return
+    left_ms = int((ends - clock()) * 1000)
+    if left_ms <= 0:
+        raise DeadlineExceeded("no time left to read the segment table")
+    outer = connection.in_atomic_block
+    try:
+        with transaction.atomic(), connection.cursor() as cursor:
+            previous = None
+            if outer:
+                # Inside a caller's transaction the setting would outlive this read.
+                cursor.execute("SELECT current_setting('statement_timeout')")
+                previous = cursor.fetchone()[0]
+            cursor.execute("SELECT set_config('statement_timeout', %s, true)", [str(left_ms)])
+            yield cursor
+            if previous is not None:
+                cursor.execute("SELECT set_config('statement_timeout', %s, true)", [previous])
+    except OperationalError as error:
+        if getattr(error.__cause__, "sqlstate", None) == QUERY_CANCELED:
+            raise DeadlineExceeded(f"a segment table read ran past {left_ms} ms") from error
+        raise
+
+
+def _own_context(fn):
+    """`fn` run in a copy of the caller's context, so what it sets there (`_plan_ends`)
+    ends with it."""
+
+    @functools.wraps(fn)
+    def run(*args, **kwargs):
+        return contextvars.copy_context().run(fn, *args, **kwargs)
+
+    return run
 
 
 def _call(variant: str, endpoint: str, payload: dict, deadline: Deadline) -> dict:
@@ -545,7 +599,7 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
     arrays = [[p.way_id for p in pieces], [p.lon for p in pieces], [p.lat for p in pieces]]
     whens = ([when, when] + ([when] if with_half else [])) if with_facility else []
     classes = []
-    with connection.cursor() as cursor:
+    with plan_cursor() as cursor:
         cursor.execute(query, whens + arrays)
         for row in cursor.fetchall():
             tier, kind = row[0], row[1]
@@ -743,7 +797,7 @@ def adjustments_used(pieces: list[Piece]) -> list[dict]:
     ]
     query = _ADJUSTMENT_JOIN.format(schema=schema)
     used = []
-    with connection.cursor() as cursor:
+    with plan_cursor() as cursor:
         cursor.execute(query, arrays)
         for adjustment_id, tier, direction, category, note, display, metres in cursor.fetchall():
             # The why is null where the table holds none: a hidden or
@@ -1580,7 +1634,7 @@ def walk_spans(leg_runs: list, pieces: list[Piece]) -> list[tuple[float, float]]
     try:
         if not _has_walk_column(schema):
             return []
-        with connection.cursor() as cursor:
+        with plan_cursor() as cursor:
             cursor.execute(
                 f"SELECT DISTINCT osm_way_id FROM {schema}.segment "
                 "WHERE osm_way_id = ANY(%s) AND walk_bike",
@@ -2024,7 +2078,7 @@ def sidepath_names_of(pieces: list[Piece]) -> dict[int, str]:
         schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
         if not segment_info.has_columns(schema, SIDEPATH_NAME_COLUMN):
             return {}
-        with connection.cursor() as cursor:
+        with plan_cursor() as cursor:
             cursor.execute(
                 f"SELECT osm_way_id, max({SIDEPATH_NAME_COLUMN}) FROM {schema}.segment "
                 f"WHERE osm_way_id = ANY(%s) AND {SIDEPATH_NAME_COLUMN} IS NOT NULL "
@@ -2479,6 +2533,7 @@ def move_zoo_points(points: list[list[float]]) -> tuple[list[list[float]], list[
     return out, moved
 
 
+@_own_context
 def plan(
     points: list[list[float]],
     preset_name: str,
@@ -2545,6 +2600,9 @@ def plan(
     else:
         budget_s, per_call_s = PLAN_BUDGET_S, ROUTER_TIMEOUT_S
     deadline = Deadline(started + budget_s - ANSWER_RESERVE_S, per_call_s)
+    # The segment table's reads may run to the end of the whole budget, the answer's own
+    # reserve included (`plan_cursor`).
+    _plan_ends.set(started + budget_s)
     # The first good route only, where that is a route the rider may be shown (Go,
     # `quick_applies`): the router's own route, its closures, stress and words, with no
     # search after it. The full plan follows it from the client.
