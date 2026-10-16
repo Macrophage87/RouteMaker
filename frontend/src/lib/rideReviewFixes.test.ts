@@ -11,9 +11,13 @@ const ride = source("../RideMode.tsx");
 test("a11y-3: going off route, back on, or out of DC hands a dropped focus to Where am I? and closes the 311 menu", () => {
   const rescue = ride.slice(ride.indexOf("const shownBefore = useRef"), ride.indexOf("}, [ride.off, show311]);"));
   assert.ok(rescue.length > 100, "one rescue for both changes");
-  assert.match(rescue, /if \(before\.off === ride\.off && before\.show311 === show311\) return;/);
+  // The decision is rideFocus.ts's (tested there); here, that the page asks it and focuses without a scroll.
+  assert.match(rescue, /if \(before\.off === now\.off && before\.show311 === now\.show311\) return;/);
   assert.match(rescue, /if \(!show311\) setMenu311\(false\);/);
-  assert.match(rescue, /if \(!active \|\| active === document\.body \|\| !active\.isConnected\) whereRef\.current\?\.focus\(\);/);
+  assert.match(rescue, /if \(rescueRideFocus\(\{ focusWasIn: focusWasIn\.current, before, now, focusLost \}\)\) \{\s*focusWasIn\.current = null;\s*whereRef\.current\?\.focus\(\{ preventScroll: true \}\);/);
+  assert.match(ride, /focusWasIn\.current = blockOf\(event\.target, \{ "311": block311\.current, off: blockOff\.current \}\);/);
+  assert.match(ride, /<div className="ride-311" ref=\{block311\}/);
+  assert.match(ride, /<div className="actions ride-off-actions" ref=\{blockOff\}>/);
   // After show311 is worked out, so it sees this render's value.
   assert.ok(ride.indexOf("const show311 = ride311Shown(") < ride.indexOf("const shownBefore = useRef"));
 });

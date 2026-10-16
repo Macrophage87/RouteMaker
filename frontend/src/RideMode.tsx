@@ -105,6 +105,7 @@ import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
 import { corridorNote, type PrefetchResult } from "./lib/corridor.ts";
 import { clearCorridor, copyCorridor, keepCorridor } from "./lib/corridorStore.ts";
 import { lastRideAdopter } from "./lib/offlineKeep.ts";
+import { blockOf, rescueRideFocus, type RideBlock } from "./lib/rideFocus.ts";
 import { inDc } from "./lib/dcBoundary.ts";
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import {
@@ -1047,16 +1048,33 @@ export function RideMode({
   const show311 = ride311Shown({ off: ride.off, progressM: progress, insideDc: (m) => inDc(pointAt(model, m)) });
   const place311 = show311 && progress !== null ? reportPlace(model, progress) : null;
 
-  // Off route, back on, or out of DC: the off-route buttons or the 311 block go, and a focus inside them
-  // goes to Where am I?, so W and C keep working (review a11y-3). The 311 menu closes with its block.
+  // Off route, back on, or out of DC: the off-route buttons or the 311 block go, and a focus that was in
+  // the one that went goes to Where am I?, so W and C keep working (review a11y-3; lib/rideFocus.ts). A
+  // removed element fires no focusout, so the last focusin says where the focus was. The 311 menu closes
+  // with its block.
+  const block311 = useRef<HTMLDivElement>(null);
+  const blockOff = useRef<HTMLDivElement>(null);
+  const focusWasIn = useRef<RideBlock | null>(null);
+  useEffect(() => {
+    const onFocusIn = (event: globalThis.FocusEvent) => {
+      focusWasIn.current = blockOf(event.target, { "311": block311.current, off: blockOff.current });
+    };
+    document.addEventListener("focusin", onFocusIn);
+    return () => document.removeEventListener("focusin", onFocusIn);
+  }, []);
   const shownBefore = useRef({ off: ride.off, show311 });
   useEffect(() => {
     const before = shownBefore.current;
-    shownBefore.current = { off: ride.off, show311 };
-    if (before.off === ride.off && before.show311 === show311) return;
+    const now = { off: ride.off, show311 };
+    shownBefore.current = now;
+    if (before.off === now.off && before.show311 === now.show311) return;
     if (!show311) setMenu311(false);
     const active = document.activeElement;
-    if (!active || active === document.body || !active.isConnected) whereRef.current?.focus();
+    const focusLost = !active || active === document.body || !active.isConnected;
+    if (rescueRideFocus({ focusWasIn: focusWasIn.current, before, now, focusLost })) {
+      focusWasIn.current = null;
+      whereRef.current?.focus({ preventScroll: true });
+    }
   }, [ride.off, show311]);
 
   return (
@@ -1141,7 +1159,7 @@ export function RideMode({
 
       {/* The 311 button (lib/ride311.ts): inside DC only, on the right edge at thumb height; its menu over the map. */}
       {show311 && (
-        <div className="ride-311" onKeyDown={(event) => {
+        <div className="ride-311" ref={block311} onKeyDown={(event) => {
           if (event.key === "Escape" && menu311) {
             event.preventDefault();
             close311();
@@ -1190,7 +1208,7 @@ export function RideMode({
           </div>
         ) : null}
         {ride.off && (
-          <div className="actions ride-off-actions">
+          <div className="actions ride-off-actions" ref={blockOff}>
             <button type="button" onClick={replanNow} aria-disabled={replanning}>
               Re-plan from here
             </button>
