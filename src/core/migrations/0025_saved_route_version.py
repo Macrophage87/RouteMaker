@@ -1,5 +1,6 @@
 # Saved-route versions (core.models.SavedRouteVersion): a saved route saved again with changes
-# keeps what it was, up to 20 per route. Follows 0023_shared_route_keep, so the chain stays linear.
+# keeps what it was, up to 20 per route. Follows 0024_shared_route_owner_preview, so the chain
+# stays linear.
 
 import django.db.models.deletion
 from django.db import migrations, models
@@ -7,7 +8,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("core", "0023_shared_route_keep"),
+        ("core", "0024_shared_route_owner_preview"),
     ]
 
     operations = [

@@ -1955,7 +1955,8 @@ phone whose share sheet takes files, the GPX file Download GPX would give goes w
 - **The id** is 128 random bits (32 hex characters) the sharer's browser makes, so the share sheet
   opens inside the press; the line is sent at the same time (POST `/api/shared-routes`) and stored
   once (a taken id is 409). Unguessable: there is no list of shared routes.
-- **Signed out or in.** Nothing names the sharer: no account, no address, no position, and no
+- **Signed out or in.** Nothing names the sharer but, signed in, the account (`owner`, so only
+  they can turn the link off): no address, no position, and no
   weight (OWNER-DECISIONS 313: a planned answer's `system_weight_kg` and the effort figure weighed
   with it are taken out). Counted per client (`SHARED_ROUTE_WRITES`, 30 an hour; opening,
   `SHARED_ROUTE_READS`, 60 a minute).
@@ -1970,8 +1971,35 @@ phone whose share sheet takes files, the GPX file Download GPX would give goes w
   backups (a restored database keeps shared links working); never in the beta's data shipment
   (`scripts/beta/ship-data.sh`).
 
-The migrations are `0022_shared_route` (one new table; nothing else changed) and
-`0023_shared_route_keep` (its two keeping columns).
+- **Turn off and new link.** A signed-in sharer's links are listed under My routes in Plan's
+  Settings ("Shared links"), each with **New link** (a new random id for the same route and
+  keeping; the old link is turned off) and **Turn off** (POST
+  `/api/me/shared-routes/<id>/revoke` and `/regenerate`, the owner's only, CSRF as My routes). A
+  turned-off link keeps a tombstone row with its route cleared, kept permanently, so the page
+  says "This link was turned off by its owner." (410) and plans nothing.
+- **Link previews.** Share's link is `/s/<id>#<inputs>&route=<id>`; Django answers `/s/<id>`
+  (Caddy's catch-all proxy): a browser is redirected to `/?route=<id>` (the fragment carries
+  over), a link fetcher (chat apps, social sites; `core.share_preview.is_fetcher`) gets
+  OpenGraph and Twitter card tags: the ride type and distance, the distance and climb, and
+  `/s/<id>/preview.png`, a 1200 x 630 PNG drawn by the server with the standard library (no
+  imaging package; glyphs from `scripts/make_preview_glyphs.py`), cached on the row. Where the
+  route starts, ends or stops at the owner's Home, the image leaves a circle of at least 0.2 mi
+  (322 m) round Home blank, its centre moved 60 to 150 m per account by a keyed hash of the
+  account id (the key derived from `DJANGO_SECRET_KEY`: rotating it moves the circles of links
+  made later) and one radius for all; that circle is frozen on the row when the link is made
+  (`preview_zone`), so moving Home later never uncovers it. A route shared signed out from Home
+  on the device, a link made before previews, and any share that does not say have no image; a
+  line too long to draw (past 20,000 px of stroke after thinning to 1,500 points) has none, kept
+  as an empty image so it is not tried again. A turned-off (410) or expired (404) link has no
+  preview; the image itself is served with an hour's public cache, so a chat app may show it up
+  to an hour after the link is turned off. The page varies on `User-Agent` and
+  `Sec-Fetch-Mode`. The installed app's worker opens `/s/<id>` as the page. Absolute URLs come
+  from the request's host. Counted per client (`SHARE_PREVIEWS`, 120 a minute; a new link also
+  counts as a share, `SHARED_ROUTE_WRITES`).
+
+The migrations are `0022_shared_route` (one new table; nothing else changed),
+`0023_shared_route_keep` (its two keeping columns) and `0024_shared_route_owner_preview` (the
+owner, the turned-off time and the preview's cache).
 
 ## Mass Ride hazards (FOLLOWUP-MASSRIDE-MAP part 3, OWNER-DECISIONS 325-327)
 

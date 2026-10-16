@@ -1,8 +1,9 @@
 """Share the identical route (v0.7.0; core.shared_routes): POST /api/shared-routes keeps the exact
 line under the link's 128-bit id, and GET /api/shared-routes/{id} gives it back unchanged.
 
-Signed out works; nothing of the sharer is kept (no account, no address, no weight); a taken id is
-never replaced; a route is at most 2 MB; it is kept a year after it was last opened.
+Signed out works; nothing of the sharer is kept but, signed in, the account (no address, no
+weight); a taken id is never replaced; a route is at most 2 MB; it is kept a year after it was
+last opened.
 """
 
 from __future__ import annotations
@@ -132,6 +133,14 @@ class TestSharedRoutes:
             "last_opened_at",
             "keep",
             "delete_after",
+            # Shared signed in, the account (and nothing else of it), so only it can turn the
+            # link off; and the link preview's image (core.share_preview).
+            "owner",
+            "revoked_at",
+            "preview_image",
+            "preview_zone",
+            "preview_key",
+            "preview_png",
         }
         assert "198.51.100" not in json.dumps([row.name, row.line, row.inputs, row.answer, row.gpx])
         # A position, an account or anything else not part of a route is refused, not kept.
@@ -302,7 +311,17 @@ def test_the_table_is_never_shipped_to_the_beta_and_is_documented() -> None:
 
 def test_the_migration_follows_the_newest() -> None:
     migrations = sorted((REPO / "src" / "core" / "migrations").glob("0*.py"))
-    assert migrations[-2].name == "0022_shared_route.py"
-    assert '("core", "0021_signed_out_suggestions")' in migrations[-2].read_text()
-    assert migrations[-1].name == "0023_shared_route_keep.py"
-    assert '("core", "0022_shared_route")' in migrations[-1].read_text()
+    names = [m.name for m in migrations]
+    # The shared-route chain in order, whatever follows it (0025_saved_route_version, say).
+    at = names.index("0022_shared_route.py")
+    assert names[at : at + 3] == [
+        "0022_shared_route.py",
+        "0023_shared_route_keep.py",
+        "0024_shared_route_owner_preview.py",
+    ]
+    assert '("core", "0021_signed_out_suggestions")' in migrations[at].read_text()
+    assert '("core", "0022_shared_route")' in migrations[at + 1].read_text()
+    assert '("core", "0023_shared_route_keep")' in migrations[at + 2].read_text()
+    # Each later migration follows the one before it, so the chain stays linear.
+    for before, after in zip(migrations[at + 2 :], migrations[at + 3 :], strict=False):
+        assert f'("core", "{before.stem}")' in after.read_text()
