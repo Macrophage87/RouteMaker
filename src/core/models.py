@@ -1758,8 +1758,10 @@ class MyGo(models.Model):
     One row per account, made the first time the rider saves any of it, and nothing else: no
     name, no history, no route. Signed out, the same choices stay in the browser
     (frontend/src/lib/myGo.ts). Home is one point and its label, as the rider picked it; it is
-    never put in a link, a log or a suggestion, and it goes with the account (deleted with the
-    row when the account is, and cleared by the account's deletion flag: `User.save`).
+    never put in a log or a suggestion (riding to it puts it in the plan's link, which then says
+    so: linkLocationNote in frontend/src/lib/geolocation.ts), and it goes with the account
+    (deleted with the row when the account is, and cleared by the account's deletion flag:
+    `User.save`).
     """
 
     class OpenIn(models.TextChoices):

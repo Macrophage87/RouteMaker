@@ -8,6 +8,7 @@
 import type { TripLeg } from "./transitMarks.ts";
 import type { MtbReading } from "./mtbMode.ts";
 import { formatRoughDistance } from "./format.ts";
+import { noteArrived } from "./departure.ts";
 import type { LonLat } from "./geo.ts";
 import { twoPointsOnly, type PresetId } from "./presets.ts";
 import type { StressMetres } from "./stressBar.ts";
@@ -1153,6 +1154,8 @@ export interface RouteRequestOptions {
   vias?: readonly number[];
   /** v0.7.0, "Faster routing": the first good route at once, marked `provisional` (Go only). */
   quick?: boolean;
+  /** The route alone, with no routes to choose from looked for (Ride mode's re-plans, review speed-5). */
+  routeOnly?: boolean;
 }
 
 /** POST /api/route's body as JSON text: the same text for the same plan, so it also keys Go's early start. */
@@ -1176,6 +1179,8 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
     ...(options.vias?.length && !twoPointsOnly(preset) ? { via_points: [...options.vias] } : {}),
     // The first good route at once (v0.7.0, "Faster routing"); the API answers the full plan where it cannot.
     ...(options.quick ? { quick: true } : {}),
+    // A ride's re-plan takes the first route only, so the API does not look for others to choose from.
+    ...(options.routeOnly ? { candidates: false } : {}),
   });
 }
 
@@ -1211,7 +1216,11 @@ export async function requestRoute(
   } catch {
     body = null;
   }
-  if (response.ok && looksLikeRoute(body)) return { ok: true, route: body };
+  if (response.ok && looksLikeRoute(body)) {
+    // A departure's countdown runs from this moment by the phone's clock, not the server's (review TB-6).
+    if (body.transit?.departure) noteArrived(body.transit.departure, Date.now());
+    return { ok: true, route: body };
+  }
   const status = response.ok ? 500 : response.status;
   const error = describeError(status, body, response.headers.get("Retry-After"));
   // A confirmed long plan can be refused because a long ride is already

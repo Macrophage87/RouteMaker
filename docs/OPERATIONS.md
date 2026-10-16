@@ -2074,9 +2074,11 @@ A signed-in rider's own Go settings (`core.models.MyGo`, table `my_go`; GET and 
 `/api/me/go`): the view the app opens in, Go's ride type and their Home (one point, rounded to 5
 decimal places, and its label). One row per account, made at the first save. Each rider reads and
 writes only their own row, from their session. The row is deleted when the account is marked
-deleted or removed. **Privacy.** A Home is where a rider lives: it is never put in a link, a log
-or a suggestion, and `my_go` is left out of the beta's data shipment (`scripts/beta/ship-data.sh`
-`EXCLUDED_TABLE_DATA`), as the other tables that point at an account are.
+deleted or removed. **Privacy.** A Home is where a rider lives: it is never put in a log or a
+suggestion. Riding to it with Go's Home chip makes it a plan point, so it is in the address bar
+and in a copied or shared link, and Copy link and Share then say "This link includes your Home as
+the destination." (`linkLocationNote`, `frontend/src/lib/geolocation.ts`). `my_go` is left out
+of the beta's data shipment (`scripts/beta/ship-data.sh` `EXCLUDED_TABLE_DATA`), as the other tables that point at an account are.
 
 **The migration** is `core/migrations/0019_my_go.py` (one new table; nothing else changed), after
 `0018_junction_suggestions`, so the chain stays linear with one leaf. It reverses cleanly
@@ -4519,13 +4521,11 @@ on `/api/closures/check`); nothing about it is stored.
 DDOT's Pavement Condition Index is the smoothness reading of District streets from
 v0.5.0 (owner, 2026-10-11: "DC score in most cases takes priority over OSM data").
 The download runs on the home PC at rebuild time: the cloud proxy cannot reach
-dcgis.dc.gov. **The service states no licence**: confirm the terms with DDOT or Open
-Data DC before the release ships (docs/SOURCES.md). Until the owner has, the code
-holds it back: `routemaker.pavement.LICENCE_CONFIRMED` is False, so step 2 refuses
-`--dc-pci` (exit 2, `--dc-pci refused: ... states no licence`) and a rebuild that
-finds a `pavement.json` logs `... is installed but not read` and leaves every street
-on OSM's reading. The commit that records the confirmation in docs/SOURCES.md sets it
-True; only then run steps 1 to 3.
+dcgis.dc.gov. The service itself states no licence; the owner confirmed it on 2026-10-16 under the
+District's data terms (CC0 1.0, or CC BY 4.0 where an
+item says so; credited either way) (docs/SOURCES.md), so `routemaker.pavement.LICENCE_CONFIRMED`
+is True and steps 1 to 3 run. (With it False, step 2 refuses `--dc-pci` and a rebuild
+that finds a `pavement.json` logs `... is installed but not read`.)
 
 1. **Fetch FY-25 once**, from the checkout on the host. There is no ArcGIS Online
    item, so no `--item`; the README the script writes records the service's own item
@@ -4785,21 +4785,20 @@ docker compose exec -T api python manage.py predraw_stress_tiles
 ```
 
 **Recreate `api` and `worker` after a rollback** to a table with fewer columns.
-Each process remembers, for its life, that the live segment table has the
-facility, adjustment, road-trait and junction-cost columns
-(`routing._has_facility_columns`, `_has_adjustment_columns`,
-`junctions.has_trait_columns`, `has_unsmoothed_tier` and `has_cost_columns`
-cache a True). Rolled back past the junction-cost columns
-(`road_default_speed_mph`, `road_urban`), routes still answer but lose every
-intersection: the logs say "the intersection events could not be read". Rolled
-back to a build from before those columns (20260927 and earlier), every route
-query still names `seg.car_free_when` and `facility`, nothing catches the
-database error, and every route answers 500 until the processes start again.
+Each process keeps the live segment table's columns by the table's oid
+(`segment_info.live_columns`; every "has the table this column?" check reads
+it), so its next check sees the older table. A query already running, or one
+built from a check made just before the rename, can still name a column the
+older table lacks (`seg.car_free_when` and `facility` on a build from 20260927
+or earlier), and nothing catches that database error: those routes answer 500.
+The recreate ends that window and drops anything else a process kept of the
+newer build. A column dropped or added in place keeps the oid and is seen
+within 10 seconds (`COLUMN_RECHECK_S`).
 `--force-recreate` with `--no-deps --no-build` starts fresh processes on the
 same images and touches no other service; a `restart` would do too, but the
 recreate is the form the rest of this page uses. Rolling forward again (a
-rebuild that adds the columns back) needs no recreate: the cached False is
-re-checked.
+rebuild that adds the columns back) needs no recreate: the new table's
+columns are read at the next check.
 
 The last line draws the stress tiles of the table put back: the pre-draw after
 the rolled-away rebuild's swap cleared that table's tiles from the cache, and
@@ -6383,11 +6382,14 @@ the defaults, so build those here.
    next rebuild with `scripts/cloud/import-result.sh --swap "$RUN_URL" --
    --accept-later-overrides`.
 
-**Rollback** is the ordinary one, dry and then confirmed, then restart the routers:
+**Rollback** is the ordinary one, dry and then confirmed, then restart the routers and
+the api (the older table may lack columns the api still names; "Recreate `api` and
+`worker` after a rollback", above):
 
 ```sh
 docker compose exec -T rebuild ./manage.py rollback_rebuild </dev/null
 docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm </dev/null
+docker compose up -d --no-deps --no-build --force-recreate api worker </dev/null   # after the routers' restart
 ```
 
 The safety dump is the last resort.

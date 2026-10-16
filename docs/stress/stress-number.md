@@ -196,9 +196,9 @@ the z12-13 ride layer's calm runs (`trail_routes.is_calm_candidate`,
 | Worth rule weight (1 / 2 / 3) | 0 | 0.5 | 1.5 | 2.5 |
 | LTS 4 hold, meters counted (`LTS4_TIERS`, `refine.py:960`) | 0 | 0 | 0.5 a meter | 1 (LTS 4 and Avoid both count 1) |
 | Strict order: top / second figure | - | 0 / 0.5 | 0.5 / 0.5 | 1 / 0 |
-| Junction, stopped side (0 / 1,200 / 3,000 ft, before factors) | 0 | 600 ft (orange) | 2,100 ft (red) | 3,000 ft |
-| Junction at a signal (0 / 150 / 300 ft) | 0 | 75 ft | 225 ft | 300 ft |
-| Left across oncoming (0 / 600 / 1,500 ft) | 0 | 300 ft | 1,050 ft (orange) | 1,500 ft |
+| Junction, stopped side (0 / 1,600 / 4,000 ft, before factors) | 0 | 800 ft (orange) | 2,800 ft (orange) | 4,000 ft (red) |
+| Junction at a signal (0 / 150 / 600 ft) | 0 | 75 ft | 375 ft | 600 ft |
+| Left across oncoming (0 / 800 / 4,000 ft) | 0 | 400 ft | 2,400 ft (orange) | 4,000 ft (red) |
 | Busy-road gate, `BUSY_TIER` 3 (on/off) | no | yes (cautious) | yes | yes |
 | Calm search target, tier 3+ / worst first 4+ (on/off) | no | yes (cautious) | yes / yes (cautious) | yes |
 | Calm-road run membership, LTS 1-2 (on/off) | yes | no (cautious) | no | no |
@@ -208,8 +208,8 @@ the z12-13 ride layer's calm runs (`trail_routes.is_calm_candidate`,
 | Map color and dash, painted-lane hiding (drawing) | lower level | lower level | lower level (lane drawn) | lower level (lane hidden, as LTS 4) |
 
 The junction values are base costs. The speed, lane, volume and rural factors and the
-cap apply afterwards, as for whole levels, and the orange and red thresholds (600 and
-2,000 ft) are unchanged. Junctions read 4.5 like 4 (tier 5 is 4 there).
+cap apply afterwards, as for whole levels, and the orange and red thresholds (800 and
+3,100 ft [244 and 945 m]) are unchanged. Junctions read 4.5 like 4 (tier 5 is 4 there).
 
 ### Parked
 
@@ -513,7 +513,7 @@ reference road, so it reads exactly 1, and the junction counts one for one).
 The route total is 2 + 0.625 = **2.625 calm mi** [4.2 calm km] over 2 mi. With the
 junction counted once in every window around it, the crossing raises the line over the
 whole mile rather than spiking. The step line stays at 1, and the crossing has its red
-diamond at 1.0 mi (3,300 ft is over the 2,000 ft [610 m] red threshold).
+diamond at 1.0 mi (3,300 ft is over the 3,100 ft [945 m] red threshold).
 
 ### Where the built chart differs from the design
 

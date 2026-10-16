@@ -239,7 +239,8 @@ export function PlaceSearch({
     onPick(place, as ?? (variant === "stop" ? "via" : single ? "end" : choice));
     sharedTurn.current += 1;
     setShared(null);
-    setRecent(rememberRecentPlace(place));
+    // A Home is not a recent place: it would outlast Clear Home and sign-out on a shared phone (review privacy-1).
+    if (variant !== "home") setRecent(rememberRecentPlace(place));
     setQuery("");
     setResult(null);
     setOpen(false);

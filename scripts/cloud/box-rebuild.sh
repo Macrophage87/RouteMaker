@@ -152,6 +152,14 @@ psql_() { compose exec -T postgis psql -U "$pguser" -d "$pgdb" -AtX -v ON_ERROR_
 manifest() { sed -n "s/^$1=//p" "$work/in/MANIFEST.txt" | tail -n1; }
 
 # --- fetch -------------------------------------------------------------------------------
+# A run carried on after send-inputs.sh sent other inputs to the same folder would build
+# what was fetched before and report it as this run: refuse instead (review pipeline-7).
+# Where the bucket cannot be read now, the inputs already fetched are what the run builds.
+if done_already fetch && "$AWS" s3 cp "$url/in/SHA256SUMS" "$state/SHA256SUMS.now" \
+	--only-show-errors 2>/dev/null; then
+	cmp -s "$state/SHA256SUMS.now" "$work/in/SHA256SUMS" ||
+		die "$url/in/ has other inputs than this run fetched (SHA256SUMS differs); send them to a new run name, or remove $state to start this one again"
+fi
 if ! done_already fetch; then
 	note "fetching $url/in/"
 	rm -f "$work/in/SHA256SUMS"

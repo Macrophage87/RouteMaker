@@ -711,7 +711,11 @@ export function RideMode({
         setReplanNote(REPLAN_NO_SIGNAL);
         tell(REPLAN_NO_SIGNAL);
       }, REPLAN_TIMEOUT_MS);
-      const result = await requestRoute(points, preset, { dials: { ...dials, loop: false }, vias: viaIndices(points, VIA_MARKS.isVia) });
+      const result = await requestRoute(points, preset, {
+        dials: { ...dials, loop: false },
+        vias: viaIndices(points, VIA_MARKS.isVia),
+        routeOnly: true,
+      });
       window.clearTimeout(timer);
       gate.finish(result.ok);
       if (ended.current || ticket !== replanTicket.current) return;

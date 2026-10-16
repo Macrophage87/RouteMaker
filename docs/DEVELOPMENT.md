@@ -4724,7 +4724,7 @@ the switch, the sheets, My Go and the 311 menu in a browser.
 ### The sidebar (312)
 
 OWNER-DECISIONS 312's layout, from mockup v3 (PLAN.md, FOLLOWUP-SIDEBAR-REDESIGN, has
-what differs). Code: `App.tsx` places it (its parts in `app/`, above); `Sidebar.tsx` (MoreTips, QuickFigures,
+what differs). Code: `App.tsx` places it (its parts in `app/`, above); `Sidebar.tsx` (QuickFigures,
 BottomBar, SheetFrame); `lib/sidebarParts.ts` (RideSettings, Fold, JunctionLegend and
 the two parts for open questions, written with createElement so a test renders them);
 `lib/sidebar.ts` (the decisions, pure); `lib/rideSummary.ts`; `lib/quickFigures.ts`.

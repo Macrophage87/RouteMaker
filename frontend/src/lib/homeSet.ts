@@ -24,6 +24,19 @@ import { coordinatesText, type GeoResult, type Place } from "./geocode.ts";
 import type { Home } from "./myGo.ts";
 
 /** The road panel's "Use this spot" button, and what the Home sheet's map way is called. */
+/**
+ * A point's name for a route's own name (a save, a shared line, a GPX file), with the rider's Home left
+ * unnamed (review privacy-2): a file or a saved name travels, so a point at Home is named as the
+ * point it is, "Start" or "End", by the name's own fallback. Coordinates are not touched.
+ */
+export function nameWithoutHome(name: (point: LonLat) => string | undefined, home: LonLat | null): (point: LonLat | undefined) => string | undefined {
+  return (point) => {
+    if (!point) return undefined;
+    if (home && point[0] === home[0] && point[1] === home[1]) return undefined;
+    return name(point);
+  };
+}
+
 export const SET_AS_HOME_TEXT = "Set as Home";
 export const PICK_ON_MAP_TEXT = "Pick on the map";
 /** Go's one line while the Home sheet's map way waits for a tap. */

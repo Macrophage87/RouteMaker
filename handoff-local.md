@@ -1,5 +1,7 @@
 # RouteMaker — handoff to the local implementer (Windows, Docker)
 
+> **Historical (review CH-8):** the phase 1 record, kept for the row numbers code and docs cite. It does not describe the project today: see [README.md](README.md) and [docs/](docs/).
+
 **For:** whoever picks this up next on a Windows machine with Docker, working with Claude Code.
 **Branch:** `claude/beautiful-mayer-4f7gg9` · **Suite:** 3313 tests, no failures (one skip on this host) · **Written:** 2026-09-24.
 

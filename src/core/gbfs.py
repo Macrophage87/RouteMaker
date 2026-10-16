@@ -40,6 +40,7 @@ handled as absent, never guessed (`core.bikeshare`).
 
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import re
@@ -154,7 +155,14 @@ def http_get(url: str, timeout: float, hosts: frozenset[str] = ALLOWED_HOSTS) ->
     try:
         with opener.open(request, timeout=timeout) as response:
             body = response.read(MAX_BYTES + 1)
-    except (TimeoutError, urllib.error.URLError, ConnectionError, OSError) as error:
+    # A reply cut off part way is an `http.client.HTTPException` (review api-2).
+    except (
+        TimeoutError,
+        urllib.error.URLError,
+        ConnectionError,
+        OSError,
+        http.client.HTTPException,
+    ) as error:
         raise Unavailable(str(error)) from error
     if len(body) > MAX_BYTES:
         raise Unavailable("a feed was larger than expected")
@@ -784,6 +792,9 @@ class Gbfs:
                 try:
                     docs[name] = future.result(timeout=max(0.1, deadline - self._clock()))
                 except (Unavailable, FutureTimeout):
+                    failed.add(name)
+                except Exception as error:  # noqa: BLE001 - any other way a feed fails (api-2)
+                    logger.warning("bikeshare feed %s failed: %s", name, error)
                     failed.add(name)
         finally:
             pool.shutdown(wait=False, cancel_futures=True)

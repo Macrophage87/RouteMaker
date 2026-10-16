@@ -8,6 +8,7 @@ from pipeline.elevation import (
     ElevationTileInvalid,
     ensure_tiles,
     expected_bytes,
+    fetch_3dep,
     gdalwarp_command,
     threedep_cell,
     tile_for,
@@ -164,6 +165,30 @@ def test_the_stage_puts_every_tile_the_box_touches_in_the_band_layout(tmp_path) 
         "N39/N39W078.hgt",
     }
     assert all(p.stat().st_size == 3601 * 3601 * 2 for p in ready)
+
+
+def test_the_downloaded_sources_are_cleared_once_every_tile_is_in_place(tmp_path) -> None:
+    # Review pipeline-9: the scratch grew without end and went into every cloud upload.
+    ensure_tiles(tmp_path, (-77.5, 38.5, -77.5, 38.5), fetch_recording([]), warp_writing(3601))
+    assert not (tmp_path / ".fetch").exists()
+
+
+def test_a_3dep_download_has_a_timeout(tmp_path, monkeypatch) -> None:
+    # Review pipeline-4: with none, a stalled transfer held the rebuild to its deadline.
+    import io
+    import urllib.request
+
+    from pipeline import elevation
+
+    asked = []
+
+    def urlopen(url, timeout=None):
+        asked.append(timeout)
+        return io.BytesIO(b"tif")
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    got = fetch_3dep(tile_for(-77.03, 38.90), tmp_path)
+    assert got.read_bytes() == b"tif" and asked == [elevation.FETCH_TIMEOUT_S]
 
 
 def test_the_deployments_region_fetches_its_six_tiles(tmp_path) -> None:

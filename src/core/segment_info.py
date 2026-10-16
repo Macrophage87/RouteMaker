@@ -52,9 +52,14 @@ LOCATE_TIMEOUT_S = 3.0
 # UNNAMED_TITLES; tests/test_segment_info_api.py ties the two).
 UNNAMED_ROAD_TITLE = UNNAMED_ROAD[:1].upper() + UNNAMED_ROAD[1:]
 UNNAMED_PATH_TITLE = UNNAMED_PATH[:1].upper() + UNNAMED_PATH[1:]
-# Missing optional columns are looked for again this often, so the first
-# answer after a rebuild's swap sees the new ones without a restart.
-COLUMN_RECHECK_S = 300.0
+# The live table's columns are kept by its oid (review CH-1, speed-11): a swap or a
+# rollback puts another table under the same name from another process (the `rebuild`
+# container), and each check reads the name's oid first, so another table is seen at once,
+# the older table's missing columns included, without an api restart. A column added in
+# place keeps the oid: the columns are read again this often as well. Both answers are
+# kept meanwhile: a column that is missing is not looked for on every reading. The
+# promotion and the rollback also forget them in their own process (`pipeline.promotion`).
+COLUMN_RECHECK_S = 10.0
 
 FEET_PER_METRE = 3.28084
 KMH_PER_MPH = 1.609344
@@ -268,29 +273,39 @@ REQUIRED_COLUMNS = (
     "is_rough",
 )
 
-_columns: dict[str, tuple[frozenset[str], float]] = {}
+# By schema: the table's oid when its columns were read, the columns, and when.
+_columns: dict[str, tuple[int | None, frozenset[str], float]] = {}
 
 
 def live_columns(schema: str) -> frozenset[str]:
-    """The live segment table's columns; looked for again every COLUMN_RECHECK_S
-    while one of OPTIONAL_COLUMNS is missing, since a swap only adds columns."""
+    """The live segment table's columns, kept while the name is the same table (its
+    oid) and read again every COLUMN_RECHECK_S. The one shared answer to "has the live
+    table this column?" (`has_columns`)."""
     known = _columns.get(schema)
     now = time.monotonic()
-    if known and (set(OPTIONAL_COLUMNS) <= known[0] or now - known[1] < COLUMN_RECHECK_S):
-        return known[0]
     with connection.cursor() as cursor:
+        cursor.execute("SELECT to_regclass(%s)::oid", [f"{schema}.segment"])
+        oid = cursor.fetchone()[0]
+        if known and known[0] == oid and now - known[2] < COLUMN_RECHECK_S:
+            return known[1]
         cursor.execute(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_schema = %s AND table_name = 'segment'",
-            [schema],
+            "SELECT attname::text FROM pg_attribute "
+            "WHERE attrelid = %s AND attnum > 0 AND NOT attisdropped",
+            [oid],
         )
-        found = frozenset(row[0] for row in cursor.fetchall())
-    _columns[schema] = (found, now)
+        found = frozenset(row[0] for row in cursor.fetchall()) if oid else frozenset()
+    _columns[schema] = (oid, found, now)
     return found
 
 
+def has_columns(schema: str, *names: str) -> bool:
+    """Whether the live segment table in `schema` has every one of `names`."""
+    return set(names) <= live_columns(schema)
+
+
 def forget_columns() -> None:
-    """For tests: the next answer reads the table's columns afresh."""
+    """The next answer reads the table's columns afresh: after a swap, a rollback or a
+    column added in place, and in tests."""
     _columns.clear()
 
 

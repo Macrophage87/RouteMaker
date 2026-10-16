@@ -3749,14 +3749,16 @@ def test_without_pci_blocks_the_rebuild_warns_and_tags_nothing(workspace, states
 
 
 def test_an_installed_pci_file_is_not_read_until_the_licence_is_confirmed(
-    workspace, states, caplog
+    workspace, states, caplog, monkeypatch
 ) -> None:
-    """The service states no licence (DC-PCI): while `pavement.LICENCE_CONFIRMED`
-    is False an installed `pavement.json` changes nothing in the graph."""
+    """The guard (DC-PCI): while `pavement.LICENCE_CONFIRMED` is False an installed
+    `pavement.json` changes nothing in the graph. The owner confirmed the licence on
+    2026-10-16, so the shipped value is True."""
     from pipeline.extract import read_ways
     from routemaker import pavement
 
-    assert pavement.LICENCE_CONFIRMED is False, "flip it only with the owner's confirmation"
+    assert pavement.LICENCE_CONFIRMED is True
+    monkeypatch.setattr(pavement, "LICENCE_CONFIRMED", False)
     source, root = workspace
     with caplog.at_level(logging.WARNING, logger="pipeline.run"):
         context, _ = run_pipeline(source, root, pavement=[pci_block("p-1", 41.5)], skip=NOT_SWAPPED)

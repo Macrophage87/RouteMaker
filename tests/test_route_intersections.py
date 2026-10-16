@@ -24,7 +24,7 @@ from test_route_api import (
     route_answer,
 )
 
-from core import junctions, presets, routing
+from core import presets, routing, segment_info
 
 # A route test plans a weekday ride unless it says otherwise: the weekend router
 # is chosen by the day the suite runs on (conftest `weekday_clock`).
@@ -59,7 +59,7 @@ def add_segments(live: str, rows) -> None:
                 "VALUES (%s, %s, ST_GeomFromText(%s, 4326), %s, 'test', %s, %s, %s)",
                 [way, ordinal, wkt, tier, speed, lanes, oneway],
             )
-    junctions._has_trait_columns_seen = False
+    segment_info.forget_columns()
 
 
 @pytest.fixture
@@ -370,7 +370,7 @@ class TestIntersectionsInTheAnswer:
                     "VALUES (%s, 0, ST_GeomFromText(%s, 4326), %s, 'test')",
                     [way, line(*pts), tier],
                 )
-        junctions._has_trait_columns_seen = False
+        segment_info.forget_columns()
         router(world())
         (junction,) = post(client, good_body()).json()["intersections"]
         assert junction["reason"] == "Crossing a heavy-traffic road (LTS 4), no signal mapped"

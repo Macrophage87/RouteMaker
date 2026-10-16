@@ -24,6 +24,9 @@ import {
   failureFor,
   hereEffectLine,
   linkLocationNote,
+  LINK_HAS_HOME_END,
+  LINK_HAS_HOME_POINT,
+  LINK_HAS_HOME_START,
   locate,
   locateGate,
   locateSupport,
@@ -572,6 +575,24 @@ test("the link note follows the point object: the start, a later point, a drag o
   assert.deepEqual(movedFromHere([here], undefined, moved), [here]);
 });
 
+test("privacy-2: a link with the rider's Home in it says so, as the destination, the start or a point", () => {
+  const here: LonLat = [-77.04, 38.9];
+  const other: LonLat = [-77.0, 38.95];
+  const home: LonLat = [-77.02, 38.92];
+  // Equal coordinates count: the Home chip, Undo or a reload all give the Home's own coordinates.
+  const atHome: LonLat = [-77.02, 38.92];
+  assert.equal(linkLocationNote([other, atHome], [], home), LINK_HAS_HOME_END);
+  assert.equal(linkLocationNote([atHome, other], [], home), LINK_HAS_HOME_START);
+  assert.equal(linkLocationNote([other, atHome, here], [], home), LINK_HAS_HOME_POINT);
+  assert.equal(linkLocationNote([atHome], [], home), LINK_HAS_HOME_START);
+  // From the location to Home: both are said, location first.
+  assert.equal(linkLocationNote([here, atHome], [here], home), `${LINK_HAS_LOCATION_START} ${LINK_HAS_HOME_END}`);
+  // No Home, or a plan away from it: as before.
+  assert.equal(linkLocationNote([here, other], [here], null), LINK_HAS_LOCATION_START);
+  assert.equal(linkLocationNote([other, [-77.02001, 38.92]], [], home), "");
+  assert.equal(LINK_HAS_HOME_END, "This link includes your Home as the destination.");
+});
+
 test("the accuracy circle is closed and about the radius", () => {
   const ring = accuracyRing([-77.04, 38.9], 100);
   assert.deepEqual(ring[0], ring[ring.length - 1]);
@@ -627,7 +648,7 @@ test("privacy: the location state reaches only the note, the hint and the circle
     /const \[here, setHere\] = useState<Fix \| null>\(null\);/,
     /const \[fromHere, setFromHere\] = useState<LonLat\[\]>\(\[\]\);/,
     /const hereInPlan = here !== null && points\.includes\(here\.point\);/,
-    /const linkNote = linkLocationNote\(points, fromHere\);/,
+    /const linkNote = linkLocationNote\(points, fromHere, myGo\.home\?\.point \?\? null\);/,
     /note: hereInPlan && here \? approximateHint\(here\.accuracyM\) : "",/,
     /const hereCircle = hereInPlan && here \? \{ centre: here\.point, radiusM: here\.accuracyM \} : null;/,
     // Search's bias: the point, rounded to about 1 km in searchBiasPoint, never the accuracy or the flag.

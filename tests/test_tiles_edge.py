@@ -111,6 +111,14 @@ def test_nothing_else_the_api_answers_is_encoded(edge) -> None:
     assert "Content-Encoding" not in headers, headers
 
 
+def test_a_route_answer_is_compressed_for_a_client_that_asks(edge) -> None:
+    # Review speed-4: the route answers are large JSON.
+    for path in ("/api/route", "/api/stop-order", "/api/nearest"):
+        status, headers, body = get(edge, path, Accept_Encoding="gzip")
+        assert status == 200 and headers.get("Content-Encoding") == "gzip", (path, headers)
+        assert gzip.decompress(body).decode() == BODY
+
+
 def test_zstd_is_offered_too(edge) -> None:
     status, headers, _ = get(edge, "/tiles/stress/14/1/1.pbf", Accept_Encoding="zstd")
     assert status == 200

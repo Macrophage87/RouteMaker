@@ -839,21 +839,13 @@ function linePaint(color, width, busy, zoomedOut = null) {
  * Ride tiles. Their filters also take out any feature with a capacity (`massHides`).
  */
 let massRide = false;
-const massListeners = new Set();
 
 export function massRideOn() {
   return massRide;
 }
 
 export function setMassRide(on) {
-  if (massRide === on) return;
   massRide = on;
-  massListeners.forEach((listener) => listener());
-}
-
-export function subscribeMassRide(listener) {
-  massListeners.add(listener);
-  return () => massListeners.delete(listener);
 }
 
 /**

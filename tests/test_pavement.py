@@ -9,8 +9,6 @@ from __future__ import annotations
 
 import importlib.util
 import json
-import subprocess
-import sys
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -208,15 +206,17 @@ def test_the_report_has_a_line_a_way() -> None:
     assert lines[2] == "2,80.0,good,pci,2026-02-27,b"
 
 
-def test_the_installer_refuses_the_layer_until_the_licence_is_confirmed(tmp_path) -> None:
-    """The service states no licence: nothing is written, not even the crossings."""
-    done = subprocess.run(
-        [sys.executable, str(INSTALL), "--data-root", str(tmp_path), "--dc-pci", str(SAMPLE)],
-        capture_output=True,
-        text=True,
-    )
-    assert done.returncode == 2
-    assert "--dc-pci refused" in done.stderr and "no licence" in done.stderr
+def test_the_installer_refuses_the_layer_while_the_licence_is_unconfirmed(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    """The guard, with the confirmation taken away: nothing is written, not even the
+    crossings. (The owner confirmed the licence on 2026-10-16, docs/SOURCES.md.)"""
+    monkeypatch.setattr(pavement, "LICENCE_CONFIRMED", False)
+    with pytest.raises(SystemExit) as done:
+        load_installer().main(["--data-root", str(tmp_path), "--dc-pci", str(SAMPLE)])
+    assert done.value.code == 2
+    err = capsys.readouterr().err
+    assert "--dc-pci refused" in err and "no licence" in err
     assert not (tmp_path / "reference").exists()
 
 

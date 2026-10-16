@@ -97,6 +97,13 @@ def test_alternates_are_available(config: dict) -> None:
     assert config["service_limits"]["max_alternates"] >= 2
 
 
+def test_the_router_waits_longer_than_the_api_does(config: dict) -> None:
+    # Review speed-3: at 30 s the router dropped a long ride's leg the api waited 45 s for.
+    from core import routing
+
+    assert config["httpd"]["service"]["timeout_seconds"] > routing.LONG_ROUTER_TIMEOUT_S
+
+
 def test_trace_actions_are_enabled(config: dict) -> None:
     """The stats block comes from trace_attributes; without it every route
     reports nothing."""

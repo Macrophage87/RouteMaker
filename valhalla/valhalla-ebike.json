@@ -9,7 +9,7 @@
       "listen": "tcp://*:8002",
       "loopback": "ipc:///tmp/loopback",
       "shutdown_seconds": 1,
-      "timeout_seconds": 30
+      "timeout_seconds": 47
     }
   },
   "logging": {

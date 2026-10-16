@@ -155,14 +155,13 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   "DC pavement condition (DC-PCI)"); not yet downloaded, so no size or sha256 yet.
 - Publisher: District Department of Transportation and DC GIS (the service's
   `accessInformation`: "DDOT and DC GIS").
-- Licence: **not stated; to be confirmed before this ships.** The layer's
-  `copyrightText` and description are empty and the service's item info has an empty
-  `licenseInfo` (read 2026-10-11). Open Data DC's layers are usually CC BY 4.0 (the
-  section above), but this service is not one of its items, so that cannot be assumed.
-  Until the owner confirms the terms with DDOT or Open Data DC, nothing derived from
-  it reaches the router: `routemaker.pavement.LICENCE_CONFIRMED` is False, so the
-  installer refuses `--dc-pci` and the rebuild ignores an installed `pavement.json`.
-  The commit that records the confirmation here (source and date) sets it True.
+- Licence: the District's data terms
+  (<https://dc.gov/page/terms-and-conditions-use-district-data>, "Terms and Conditions
+  of Use for District Data", sent by the owner 2026-10-16): CC0 1.0 by default, CC BY
+  4.0 where an item says so; credited either way, as the owner asked ("The distinction
+  doesn't matter here as we're going to cite them"). This layer's own `copyrightText`,
+  description and `licenseInfo` are empty (read 2026-10-11). Owner confirmation
+  2026-10-16; `routemaker.pavement.LICENCE_CONFIRMED` is True.
 - Assumption to confirm: `DATE1` is taken as the survey date; the service does not
   say which date field is which.
 - Records: the download's README; `fixtures/pavement/overrides.json` for the owner's

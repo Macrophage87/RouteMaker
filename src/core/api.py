@@ -380,8 +380,8 @@ class RouteIn(Schema):
         default=None,
         description=(
             "Transit ride types only: when the trip starts, ISO 8601 (with an offset, or local"
-            " time in Washington). Absent: now. Each system's own calendar for that day is used,"
-            " holidays and published closures included."
+            " time in Washington), within a year of now. Absent: now. Each system's own"
+            " calendar for that day is used, holidays and published closures included."
         ),
     )
     transit_option: str | None = Field(
@@ -431,6 +431,15 @@ class RouteIn(Schema):
             " that in where it is better (Go, before Start only). Ignored where a first route"
             " cannot be shown alone (a loop, a long ride or long calm plan, Mountain Bike,"
             " Bikeshare and the transit ride types): the full plan is answered, not provisional."
+        ),
+    )
+    candidates: StrictBool = Field(
+        default=True,
+        description=(
+            "False answers the plan's route alone: no routes to choose from are looked for"
+            " (`candidates` and `rank` are null), so a re-plan answers sooner and smaller."
+            " Ride mode sends it on every re-plan, which uses only the first route (review"
+            " speed-5). The route itself is planned as with true."
         ),
     )
     via_points: list[StrictInt] = Field(
@@ -525,6 +534,11 @@ class RouteIn(Schema):
             )
         return self
 
+    @field_validator("depart_at")
+    @classmethod
+    def _depart_near_now(cls, value: datetime | None) -> datetime | None:
+        return near_now(value)
+
     @field_validator("system_weight_kg")
     @classmethod
     def _weight_at_the_nearer_limit(cls, value: int | None) -> int | None:
@@ -568,6 +582,25 @@ class ConfirmLongOut(Schema):
     error: str
     code: Literal["confirm_long"]
     span_km: int
+
+
+# How far from now a trip's time may be (`depart_at`, `at`): a time near the year 1 or 9999
+# overflowed in the time zone's conversion and answered 500 (review api-5).
+WHEN_RANGE = timedelta(days=366)
+
+
+def near_now(value: datetime | None) -> datetime | None:
+    """`value` where it is within WHEN_RANGE of now (a time without an offset is local time
+    in Washington); otherwise a refusal, which the API answers 400."""
+    if value is None:
+        return None
+    at = value if value.tzinfo is not None else value.replace(tzinfo=ridetime.ZONE)
+    try:
+        if abs(at - timezone.now()) <= WHEN_RANGE:
+            return value
+    except OverflowError:
+        pass
+    raise ValueError("the time must be within a year of now")
 
 
 BusyCode = Literal["long_ride_timed_out", "bikeshare_unavailable", "transit_unavailable"]
@@ -3231,8 +3264,16 @@ def _transit_refusal(message: str, code: str, status: int):
 class ClosuresIn(Schema):
     at: datetime | None = Field(
         default=None,
-        description="When, ISO 8601 (local time in Washington without an offset). Absent: now.",
+        description=(
+            "When, ISO 8601 (local time in Washington without an offset), within a year of"
+            " now. Absent: now."
+        ),
     )
+
+    @field_validator("at")
+    @classmethod
+    def _at_near_now(cls, value: datetime | None) -> datetime | None:
+        return near_now(value)
 
 
 class ClosedStationOut(Schema):
@@ -3297,8 +3338,16 @@ class StationTimesIn(Schema):
     lat: float = Field(ge=-90, le=90)
     at: datetime | None = Field(
         default=None,
-        description="When, ISO 8601 (local time in Washington without an offset). Absent: now.",
+        description=(
+            "When, ISO 8601 (local time in Washington without an offset), within a year of"
+            " now. Absent: now."
+        ),
     )
+
+    @field_validator("at")
+    @classmethod
+    def _at_near_now(cls, value: datetime | None) -> datetime | None:
+        return near_now(value)
 
 
 class LineTimeOut(Schema):
@@ -3517,6 +3566,7 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
         started=started,
         dials=dials,
         quick=body.quick,
+        candidates=body.candidates,
     )
     if key is not None:
         preset = presets.PRESETS[body.preset]
@@ -3648,6 +3698,9 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
         carrying=body.carrying,
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
+        trails_off=body.trails_off,
+        mtb_level=body.mtb_level,
+        mtb_preferred=body.mtb_preferred,
         loop=body.loop,
     )
     started = getattr(request, "routing_started", None)
@@ -3739,6 +3792,9 @@ def nearest_places(request, body: NearestIn, response: HttpResponse):
         carrying=body.carrying,
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
+        trails_off=body.trails_off,
+        mtb_level=body.mtb_level,
+        mtb_preferred=body.mtb_preferred,
     )
     started = getattr(request, "routing_started", None)
     try:

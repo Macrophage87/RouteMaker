@@ -113,7 +113,7 @@ import {
 } from "./lib/geolocation.ts";
 import { usePlaceNames } from "./usePlaceNames.ts";
 import { fetchPlaces, pickIntoPlan, placeFromSearch, reverseUrl, searchBiasPoint, type Place, type ViewBounds, type PlaceChoice } from "./lib/geocode.ts";
-import { HOME_CLEARED, HOME_PICK_CANCELLED, HOME_PICK_LINE, homeAtSpot, homeFromPlace, homeSetSaid } from "./lib/homeSet.ts";
+import { HOME_CLEARED, HOME_PICK_CANCELLED, HOME_PICK_LINE, homeAtSpot, homeFromPlace, homeSetSaid, nameWithoutHome } from "./lib/homeSet.ts";
 import { BottomBar } from "./Sidebar.tsx";
 import {
   copyText,
@@ -135,8 +135,9 @@ import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, wa
 import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
 import { climbShown, climbsAlongRoute, loadClimbs, readClimbsFrom, readClimbsOn, saveClimbsFrom, saveClimbsOn, type Climb, type ClimbCategory, type ClimbsStatus } from "./lib/climbs.ts";
 import { climbEndName, climbEnds, climbNearSpot, rideClimbEdit } from "./lib/climbCard.ts";
-// `no-inline`: the file is small until the build host fills it, and an inlined data: URL is refused by
-// the edge's connect-src 'self' (Caddyfile), so it stays its own hashed file under /assets/.
+// A committed snapshot, deliberately (review CH-7): `manage.py build_climbs` on the build host writes it
+// after a rebuild, and the file is copied here and committed. `no-inline`: an inlined data: URL is
+// refused by the edge's connect-src 'self' (Caddyfile), so it stays its own hashed file under /assets/.
 import climbsUrl from "./climb-data/climbs.json?url&no-inline";
 import {
   FOOD_EMPTY_QUERY,
@@ -155,8 +156,9 @@ import {
   type FoodScope,
 } from "./lib/food.ts";
 import { FoodFinder } from "./lib/foodFinder.ts";
-// `no-inline`, as climbs.json: the committed file is a few bytes until the build host fills it, and
-// an inlined data: URL is refused by the edge's connect-src 'self'. Its own hashed file under
+// food.json is a committed snapshot, as climbs.json, refreshed with scripts/build_food.py and committed;
+// places.json is a few bytes until scripts/build_places.py fills it. `no-inline`, as climbs.json: an
+// inlined data: URL is refused by the edge's connect-src 'self'. Its own hashed file under
 // /assets/ also lets the service worker leave it out of the precache (swCore.mjs LAZY_ASSET).
 import foodUrl from "./amenity-data/food.json?url&no-inline";
 import placesUrl from "./amenity-data/places.json?url&no-inline";
@@ -723,6 +725,8 @@ export function App() {
   const focusAfterRemove = useRef<number | null>(null);
   const writtenHash = useRef<string>("");
   const { gate: geoGate, namer } = usePlaceNames(points);
+  // A route's own name (a save, a shared line, a GPX file) never carries the Home's label (review privacy-2).
+  const fileNamed = nameWithoutHome((point) => namer.name(point)?.name, myGo.home?.point ?? null);
 
   // One scheduler for the page: one request in flight, the latest plan only,
   // Retry-After waited out (routeScheduler.ts).
@@ -2243,7 +2247,7 @@ export function App() {
       };
     }
     if (!shown || stale || routedPoints !== points) return null;
-    const name = defaultRouteName(routedPoints[0] && namer.name(routedPoints[0])?.name, routedPoints.length > 1 ? namer.name(routedPoints[routedPoints.length - 1])?.name : null);
+    const name = defaultRouteName(fileNamed(routedPoints[0]), routedPoints.length > 1 ? fileNamed(routedPoints[routedPoints.length - 1]) : null);
     return { of: shown, save: planSave(name, shown, routedPoints, preset, dials), file: routeGpxFile(shown, routedPoints, routedLoop, federalRoute) };
   };
   // Share's link: the plan's inputs, and the exact line's id with that line sent (once per line and keeping).
@@ -2332,7 +2336,7 @@ export function App() {
   const keptTitle = () => {
     const first = routedPoints[0];
     const last = routedPoints[routedPoints.length - 1];
-    return routeTitle(first && namer.name(first)?.name, last && namer.name(last)?.name, routedLoop);
+    return routeTitle(fileNamed(first), fileNamed(last), routedLoop);
   };
   const keepForOffline = async () => {
     const plan = routedKey.current;
@@ -2419,7 +2423,7 @@ export function App() {
   const saveProps = me.signed_in
     ? {
         defaultName: () =>
-          defaultRouteName(routedPoints[0] && namer.name(routedPoints[0])?.name, routedPoints.length > 1 ? namer.name(routedPoints[routedPoints.length - 1])?.name : null),
+          defaultRouteName(fileNamed(routedPoints[0]), routedPoints.length > 1 ? fileNamed(routedPoints[routedPoints.length - 1]) : null),
         onSave: saveCurrent,
       }
     : null;
@@ -2482,7 +2486,8 @@ export function App() {
           [pending.line[before][0], pending.line[before][1]],
           [pending.line[after][0], pending.line[after][1]],
         ];
-        const result = await requestRoute(ends, rideRef.current.preset, { dials: planDials });
+        // The detour's line alone is used: no routes to choose from (review speed-5).
+        const result = await requestRoute(ends, rideRef.current.preset, { dials: planDials, routeOnly: true });
         return result.ok ? result.route.geometry.coordinates.map(([lon, lat]) => [lon, lat] as LonLat) : null;
       }),
     );
@@ -2692,8 +2697,8 @@ export function App() {
     return { top: 60, bottom: 60, right: 60, left: (panel?.right ?? 0) + 40 };
   }, []);
 
-  // Copy link keeps full precision; when the rider's location is in the plan it says so, in one line.
-  const linkNote = linkLocationNote(points, fromHere);
+  // Copy link keeps full precision; when the rider's location or Home is in the plan it says so (review privacy-2).
+  const linkNote = linkLocationNote(points, fromHere, myGo.home?.point ?? null);
 
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
