@@ -10,8 +10,8 @@ Two of the four are built now. Two are not, because they have no source.
 
 | Image | Built by | State |
 | --- | --- | --- |
-| `ghcr.io/macrophage87/routemaker-api:${TAG}` (services `api`, `worker`, `migrate`) | `docker/api.Dockerfile` | Written, never built |
-| `ghcr.io/macrophage87/routemaker-pipeline:${TAG}` (service `rebuild`) | `docker/pipeline.Dockerfile` | Written, never built |
+| `ghcr.io/macrophage87/routemaker-api:${TAG}` (services `api`, `worker`, `migrate`) | `docker/api.Dockerfile` | Built and run at home and on the beta (the deploy agent builds it per release) |
+| `ghcr.io/macrophage87/routemaker-pipeline:${TAG}` (service `rebuild`) | `docker/pipeline.Dockerfile` | Built and run at home and on the cloud rebuild box |
 | `ghcr.io/macrophage87/routemaker-renderer:${TAG}` | — | No source in the repository |
 | `ghcr.io/macrophage87/routemaker-bot:${TAG}` | — | No source in the repository |
 
@@ -70,12 +70,11 @@ A deploy is the other way round: `docker compose build`, then `up -d`. `up`
 under `never` does not rebuild a tag that is already in the store, so a source
 change reaches the containers only through `build` (or `up -d --build`).
 
-## Not built here — read this first
+## What the suite checks without a daemon
 
-**No image in this repository has ever been built.** The development environment
-has no running Docker daemon and its egress proxy blocks image registries, so
-nothing below has been executed. What has been done instead is written down
-exactly, in `tests/test_images.py`: every `COPY` source is checked against the
+Both images are built and run on real hosts (home, the beta, the cloud rebuild
+box). A development environment without a Docker daemon still checks them, in
+`tests/test_images.py`: every `COPY` source is checked against the
 repository, the `build:` contexts and dockerfile paths are checked to resolve,
 the pipeline image's `FROM` is held to the Valhalla tag the serving containers
 run (read out of `compose.yaml`, not restated), no Dockerfile may declare a
@@ -83,14 +82,11 @@ secret variable, and the `WORKDIR`/`COPY` layout is checked to put `manage.py`
 where compose's `["./manage.py", ...]` commands look for it. Each of those tests
 was confirmed to fail when the thing it checks was broken.
 
-Package names were checked as far as a blocked environment allows. The pipeline
-image's are Ubuntu 24.04 (noble) names and each was confirmed present in
-`packages.ubuntu.com`, which is reachable; the api image's are Debian bookworm
-names taken from knowledge, because `packages.debian.org` and the Debian archive
-indices are both blocked here. Every pinned Python version in `docker/*.txt` was
-confirmed present on PyPI, and each has a manylinux wheel for the interpreter
-its image runs. **Nothing here is a claim that either image builds.** The first
-`docker compose build` on a host with a daemon is the first real test.
+The pipeline image's packages are Ubuntu 24.04 (noble) names and the api image's
+Debian bookworm names; every pinned Python version in `docker/*.txt` has a
+manylinux wheel for the interpreter its image runs. A `docker compose build` on
+a host with a daemon is still the test that counts, and the deploy agent runs
+one for every beta release.
 
 ## Build
 

@@ -661,7 +661,7 @@ built in v0.7.0; listed so they can be added:
 
 ### Metro's typical timetable (until WMATA's rail GTFS is built)
 
-WMATA's GTFS needs a developer key, which the owner does not have yet. The owner, 2026-10-12:
+WMATA's GTFS needs a developer key; this is the fallback when no WMATA rail GTFS is built. The owner, 2026-10-12:
 "Just use defaults. The wmata website has a typical timetable for rail." and "Rail is so frequent
 that it's not a major issue. It's bus where the API helps." Until a schedule with WMATA's rail GTFS
 is built, Metro runs on `src/core/transitdata/metro-typical.json`. Once one is built, it replaces
