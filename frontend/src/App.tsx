@@ -170,6 +170,8 @@ import { TrailMilesOverlay } from "./app/trailMilesOverlay.ts";
 import { loadRepair, nearestRepair, repairFoundSaid, repairTitle, REPAIR_NO_ORIGIN, REPAIR_UNAVAILABLE, type RepairNearby, type RepairPlace } from "./lib/repair.ts";
 import { loadPlaces, placesSaid, placesToSee, readPlacesLayer, savePlacesLayer, sightsForGo, PLACES_NONE, PLACES_PAGE, PLACES_UNAVAILABLE, type PlaceFilter, type SightPlace, type SightResult } from "./lib/places.ts";
 import { PlacesOverlay, PlacesSheet, RepairSheet, RepairStandsOverlay } from "./app/PlacesSheets.tsx";
+import { ScenicOverlay } from "./app/ScenicOverlay.tsx";
+import { readScenicLayer, saveScenicLayer, scenicShown, scenicStatus } from "./lib/scenicLayer.ts";
 import {
   findingSaid,
   requestNearest,
@@ -519,9 +521,16 @@ export function App() {
       setPlacesData(data ?? "unavailable");
     });
   }, []);
+  // The Scenic layer (v0.8.0; lib/scenicLayer.ts): one switch in Plan's Layers, off by default, kept on this
+  // device. Its covered bridges and viewpoints are Places to see's file, fetched the first time it is shown.
+  const [scenicOn, setScenicOnState] = useState<boolean>(() => readScenicLayer());
+  const changeScenicOn = (on: boolean) => {
+    setScenicOnState(on);
+    saveScenicLayer(on);
+  };
   useEffect(() => {
-    if (placesOn) ensurePlaces();
-  }, [placesOn, ensurePlaces]);
+    if (placesOn || scenicOn) ensurePlaces();
+  }, [placesOn, scenicOn, ensurePlaces]);
   const [placesFilter, setPlacesFilter] = useState<PlaceFilter>("all");
   const [placesCount, setPlacesCount] = useState(PLACES_PAGE);
   // Bumped by each Repair, Sights or Places to see press, so the list is from where the rider is then.
@@ -3656,6 +3665,8 @@ export function App() {
       <RepairStandsOverlay getMap={getMap} places={Array.isArray(repairData) ? repairData : null} on={waterPrefs.on && !riding} pixelRatio={Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)))} />
       <PlacesOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={placesOn && !riding} />
       <TrailMilesOverlay getMap={getMap} data={trailMiles} />
+      {/* Not in Go, and not on the Mass Ride map (lib/scenicLayer.ts scenicShown). */}
+      <ScenicOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={scenicShown(scenicOn, mode, massMap)} placesOn={placesOn && !riding} />
       <BikeshareDocksOverlay
         active={docksActive}
         getMap={getMap}
@@ -3890,6 +3901,8 @@ export function App() {
                 rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom,
                 climbsStatus, climbsAlong, openLegend: (opener: HTMLElement) => openView("legend", opener, true),
                 placesOn, changePlacesOn, placesStatus: placesData === "unavailable" ? PLACES_UNAVAILABLE : Array.isArray(placesData) && placesData.length === 0 ? PLACES_NONE : "",
+                // Plan's alone (the brief: "not in Go"); null leaves the section out of Go's Layers.
+                scenic: mode === "go" ? null : { on: scenicOn, onChange: changeScenicOn, status: scenicStatus(scenicOn, stress !== "unavailable", placesData ?? "loading") },
                 bikeshare: {
                   operators: docksOperators,
                   choices: docksChoices,
@@ -3902,6 +3915,7 @@ export function App() {
               {...{
                 nav: sheetNav, legendHeadingRef, massMap, stress, stressVisible, preset, zoom, facilitiesShown, waterPrefs,
                 waterStatus, climbsOn, climbsStatus, federalOn, federalStatus, rail,
+                scenicOn: scenicShown(scenicOn, mode, massMap),
               }}
             />
             <SuggestSheet nav={sheetNav} roadInfoAtCentre={roadInfoAtCentre} onReview={reviewOpener} />

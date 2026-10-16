@@ -253,9 +253,10 @@ One place per line, short keys:
 | `id` | OSM element, `n` node, `w` way or `r` relation, then its id |
 | `x`, `y` | longitude, latitude (5 decimals; a way or relation at its outer ring's mean) |
 | `k` | category: `museum`, `historic`, `lighthouse`, `garden`, `viewpoint`, `market`, `zoo`, `nature`, `bridge`, `drink` |
-| `n` | `name` |
+| `n` | `name`; a covered bridge's `bridge:name` where it has one |
 | `h` | `opening_hours`, as mapped |
 | `web` | `website` (or `contact:website`), only an `http(s)://` address |
+| `cv` | `1` on a covered bridge (`bridge=covered`), left out otherwise: the Scenic layer (v0.8.0, `src/lib/scenicLayer.ts`) draws the covered bridges and the viewpoints from this file |
 
 ### Status
 

@@ -46,6 +46,8 @@ export interface SightPlace {
   name: string;
   hours?: string;
   website?: string;
+  /** A covered bridge (bridge=covered, the file's "cv"): the Scenic layer draws it by name (lib/scenicLayer.ts). */
+  covered?: true;
 }
 
 const text = (value: unknown): string | undefined => (typeof value === "string" && value.trim() ? value.trim() : undefined);
@@ -67,6 +69,7 @@ export function parsePlaces(value: unknown): SightPlace[] | null {
     if (hours) place.hours = hours;
     const website = text(raw.web);
     if (website && /^https?:\/\//i.test(website)) place.website = website;
+    if (raw.cv === 1 && category === "bridge") place.covered = true;
     out.push(place);
   }
   return out;
