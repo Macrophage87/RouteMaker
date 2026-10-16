@@ -92,6 +92,7 @@ from . import (
     climbprofile,
     gbfs,
     geocode,
+    map_match,
     micromobility,
     nearest,
     parallel,
@@ -3725,6 +3726,62 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
         refusal = _error(503, "Finding the best order took too long; try again shortly.")
         refusal["Retry-After"] = str(DEADLINE_RETRY_S)
         return refusal
+
+
+# Snapping an opened GPX track to the map's ways (core.map_match; PLAN.md, Import: map matching):
+# signed out or in, counted as routing is, and nothing kept. The body is the track's line, up to
+# map_match.MAX_POINTS points, which is larger than a route request, so it is read here with its
+# own cap rather than through `json_body_only`.
+class MatchOut(Schema):
+    line: list[list[float]] = Field(description="The snapped line, [lon, lat] pairs.")
+    matched_share: float = Field(
+        description="The share of the track's points the matcher put on a way, 0 to 1."
+    )
+
+
+@api.post(
+    "/match",
+    response={
+        200: MatchOut,
+        400: ErrorOut,
+        422: ErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+        503: BusyOut,
+    },
+    summary="Snap an opened GPX track to the routable network on a ride type's graph",
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT),
+    ratelimit.rate_limited(ratelimit.ROUTING),
+    errors_as_json,
+)
+def match_track(request):
+    body, refusal = _json_body(request, map_match.MAX_BYTES)
+    if refusal is not None:
+        return refusal
+    if not isinstance(body, dict) or set(body) - {"points", "preset"}:
+        return _error(400, "Send the track as an object with points and a ride type.")
+    preset = body.get("preset", "default")
+    if not isinstance(preset, str) or preset not in presets.PRESETS:
+        return _error(400, "Not a ride type this planner offers.")
+    try:
+        points = map_match.checked_points(body.get("points"))
+    except map_match.TrackProblem as problem:
+        return _error(400, str(problem))
+    try:
+        answer = map_match.match(points, preset, getattr(request, "routing_started", None))
+    except routing.RouterRefused:
+        return _error(
+            422,
+            "No street or path along the track could be found for this ride type: it may run"
+            " where the map has no way, or where this ride type does not ride.",
+        )
+    except (routing.RouterUnavailable, routing.DeadlineExceeded):
+        refusal = _error(503, "Snapping the track took too long or the router is busy; try again.")
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+        return refusal
+    return JsonResponse(answer)
 
 
 class NearestIn(RouteIn):

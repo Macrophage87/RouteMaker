@@ -2520,7 +2520,9 @@ export function App() {
       return stretches.some((s, k) => detours[k] !== null && best > s.before && best < s.after);
     };
     const kept = pointsRef.current.filter((p, i, all) => i === 0 || i === all.length - 1 || !inside(p));
-    const next: ImportedPlan = { ...file, verbatim: { text: null, track }, reference: track.map(([lon, lat]) => [lon, lat] as LonLat) };
+    // A snapped line (lib/gpxMatch.ts) was of the line before the detours: it goes with it.
+    const { matched: _snapped, ...unsnapped } = file;
+    const next: ImportedPlan = { ...unsnapped, verbatim: { text: null, track }, reference: track.map(([lon, lat]) => [lon, lat] as LonLat) };
     commit(kept, { ...rideRef.current, imported: next });
     pending.afterGpx?.(track);
   };
@@ -3821,6 +3823,8 @@ export function App() {
                 nav: sheetNav, shown, routedPoints, routedLoop, federalRoute, points, status, imported,
                 openImported: openImportedChecked, refineImported, getMap, downloadRoute,
                 ...(mode === "go" ? {} : { downloadCourse: downloadCourseRoute }),
+                // Snapping an opened track (lib/gpxMatch.ts) opens the plan along the snapped line: one edit, like the file.
+                ...(mode === "go" ? {} : { match: { preset, onMatched: openImported } }),
                 saveControl: saveProps && !importEdited ? <SaveRoute {...saveProps} label={SAVE_ROUTE} /> : null,
               }}
             />
