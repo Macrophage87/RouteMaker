@@ -443,7 +443,7 @@ function RouteActions(props: RouteActionsProps & { start: ReactNode }) {
     <div className="route-actions">
       <div className="route-actions-row">
         {start}
-        <button type="button" className="secondary icon-button gpx-download" onClick={downloadRoute} aria-label="Download GPX">
+        <button type="button" className="secondary icon-button gpx-download" onClick={() => downloadRoute()} aria-label="Download GPX">
           <Icon name="download" />
           <span aria-hidden="true">GPX</span>
         </button>

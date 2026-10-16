@@ -8,6 +8,7 @@ import {
   lightClock,
   lightLine,
   lightMarkerLabel,
+  underControls,
   lightMarks,
   pointAlong,
   routeLightMarks,
@@ -177,4 +178,13 @@ test("wired: marks on Plan's map only, the line in the route summary, no new con
   const light = view.slice(view.indexOf("const lightDrawn"), view.indexOf("An infrequent departure's label"));
   assert.doesNotMatch(light, /addEventListener/);
   assert.match(read("../styles.css"), /\.light-marker \{\n  pointer-events: none;\n\}/);
+});
+
+test("a light marker under the map's controls (the scale bar) is not drawn but keeps its name; one clear of them is", () => {
+  const scale = { left: 900, top: 700, right: 1000, bottom: 720 };
+  assert.equal(underControls({ left: 950, top: 690, right: 1010, bottom: 710 }, [scale]), true);
+  assert.equal(underControls({ left: 700, top: 690, right: 800, bottom: 710 }, [scale]), false);
+  assert.equal(underControls({ left: 950, top: 650, right: 1010, bottom: 700 }, [scale]), false, "touching is not under");
+  assert.match(readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8"), /element\.classList\.toggle\("under-controls", underControls\(/);
+  assert.match(readFileSync(new URL("../styles.css", import.meta.url), "utf8"), /\.light-marker\.under-controls span \{\n  visibility: hidden;\n\}/);
 });

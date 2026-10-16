@@ -207,8 +207,7 @@ import { OPENED_SAID, SAVED_SAID, SAVE_FAILED, UPDATE_ROUTE, defaultRouteName, d
 import { checkClosures, closedStretches, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
 import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./lib/gpxVerbatim.ts";
 import { readGpx } from "./lib/gpxImport.ts";
-import { downloadCourse, downloadGpx, routeGpxFile } from "./GpxPanel.tsx";
-import type { CourseFormat } from "./lib/course.ts";
+import { GPX_SAID_OPENED, GPX_SAID_ROUTE, GPX_SAID_TRACK, downloadCourse, downloadGpx, routeGpxFile, type FileFormat, type Said } from "./GpxPanel.tsx";
 import type { DeviceProfileId } from "./lib/deviceProfiles.ts";
 import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARE_KEEP_DEFAULT, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
@@ -2530,7 +2529,8 @@ export function App() {
     pending.afterGpx?.(track);
   };
   // Download GPX: an opened file not edited since downloads as it came; otherwise the route on screen.
-  const downloadRoute = () => {
+  // `said` (the GPX sheet's) gets the line saying what was saved, once it is, for the sheet's status region.
+  const downloadRoute = (said?: (line: string) => void) => {
     const verbatim = imported?.verbatim;
     const file = verbatim ? verbatimDownload(verbatim, importEdited, imported?.name) : null;
     if (file && verbatim) {
@@ -2539,23 +2539,32 @@ export function App() {
         "download",
         verbatim.track,
         true,
-        () => downloadText(file.text, file.fileName),
-        (track) => downloadText(trackGpx(name, track as NonNullable<ImportedPlan["verbatim"]>["track"]), verbatimFileName(name)),
+        () => {
+          downloadText(file.text, file.fileName);
+          said?.(GPX_SAID_OPENED);
+        },
+        (track) => {
+          downloadText(trackGpx(name, track as NonNullable<ImportedPlan["verbatim"]>["track"]), verbatimFileName(name));
+          said?.(GPX_SAID_TRACK);
+        },
       );
       return;
     }
     if (!shown) return;
     const route = shown;
     const at = routedPoints;
-    void checkThen("download", route.geometry.coordinates, false, () => downloadGpx(route, at, routedLoop, federalRoute));
+    void checkThen("download", route.geometry.coordinates, false, () => {
+      downloadGpx(route, at, routedLoop, federalRoute);
+      said?.(GPX_SAID_ROUTE);
+    });
   };
-  // Download a FIT or TCX course (Plan's GPX sheet): the route on screen, checked as Download GPX is; `said` gets
-  // the line saying what was fitted to the device, for the sheet's status region.
-  const downloadCourseRoute = (format: CourseFormat, profile: DeviceProfileId, said: (line: string) => void) => {
+  // Download a FIT or TCX course or a PDF cue sheet (Plan's GPX sheet): the route on screen, checked as Download GPX
+  // is; `said` gets the line saying what was made, for the sheet's status region.
+  const downloadCourseRoute = (format: FileFormat, profile: DeviceProfileId, said: Said) => {
     if (!shown) return;
     const route = shown;
     const at = routedPoints;
-    void checkThen("download", route.geometry.coordinates, false, () => said(downloadCourse(route, at, format, profile)));
+    void checkThen("download", route.geometry.coordinates, false, () => void Promise.resolve(downloadCourse(route, at, format, profile)).then(said));
   };
   // Start ride: the line about to be ridden, checked first ("Ride it anyway" goes on to the ride).
   // The voice is unlocked first, synchronously inside the press (iOS speaks only in a gesture; after the

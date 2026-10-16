@@ -11,6 +11,8 @@ import {
   formatDuration,
   formatExtra,
   formatFeet,
+  formatMileMarker,
+  formatMileMarkerUnits,
   formatPerMile,
   formatRoughDistance,
   formatRunMiles,
@@ -24,6 +26,13 @@ test("a distance is miles first, kilometres in brackets, to one place", () => {
   assert.equal(formatDistance(5480), "3.4 mi (5.5 km)");
   assert.equal(formatDistance(1609.344), "1.0 mi (1.6 km)");
   assert.equal(milesFigure(12_300), "7.6");
+});
+
+test("a cue sheet's mile marker is always tenths of a mile, kilometres in brackets, never feet", () => {
+  assert.equal(formatMileMarker(0), "0.0 mi (0.0 km)");
+  assert.equal(formatMileMarker(100), "0.1 mi (0.1 km)");
+  assert.equal(formatMileMarker(20_000), "12.4 mi (20.0 km)");
+  assert.equal(formatMileMarkerUnits(20_000), "mi (20.0 km)");
 });
 
 test("below a tenth of a mile a distance is feet, metres in brackets, to the nearest ten from a hundred", () => {
