@@ -14,6 +14,7 @@ import { compileCourse, courseFileName, courseLine, type CourseFormat } from "./
 import { DEFAULT_PROFILE, DEVICE_PROFILES, deviceProfile, type DeviceProfileId } from "./lib/deviceProfiles.ts";
 import { writeFit } from "./lib/fit.ts";
 import { writeTcx } from "./lib/tcx.ts";
+import { cueSheetFileName, cueSheetLine, cueSheetPdf, type CueSheetKind } from "./lib/cueSheetPdf.ts";
 
 interface Props {
   /** The route on screen, or null. */
@@ -40,10 +41,10 @@ interface Props {
    */
   onDownload?: () => void;
   /**
-   * Download a FIT or TCX course through the page, closures checked first as for GPX; `said` takes the line
-   * saying what was fitted to the device. Given in Plan only: without it (Go) the section offers GPX alone.
+   * Download a FIT or TCX course or a PDF cue sheet through the page, closures checked first as for GPX; `said`
+   * takes the line saying what was made. Given in Plan only: without it (Go) the section offers GPX alone.
    */
-  onDownloadCourse?: (format: CourseFormat, profile: DeviceProfileId, said: (line: string) => void) => void;
+  onDownloadCourse?: (format: FileFormat, profile: DeviceProfileId, said: (line: string) => void) => void;
 }
 
 function samePoints(a: readonly LonLat[], b: readonly LonLat[]): boolean {
@@ -99,25 +100,45 @@ function saveFile(body: BlobPart, type: string, fileName: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
+/** The PDF cue sheets, by file type (lib/cueSheetPdf.ts). */
+const PRINTS = { "pdf-sheet": "sheet", "pdf-strip": "strip" } as const satisfies Record<string, CueSheetKind>;
+
+/** Every file type but GPX: the courses and the PDF cue sheets. */
+export type FileFormat = CourseFormat | keyof typeof PRINTS;
+
 /**
- * Download the route shown as a FIT or TCX course fitted to a device profile (lib/course.ts), and return the one
- * line saying what was fitted. Its cues are Ride's; its via points are not cues, as in Ride.
+ * Download the route shown as a FIT or TCX course fitted to a device profile (lib/course.ts), or as a PDF cue sheet
+ * (lib/cueSheetPdf.ts), and return the one line saying what was made. Its cues are Ride's; its via points are not
+ * cues, as in Ride.
  */
-export function downloadCourse(route: RouteResponse, routedPoints: LonLat[], format: CourseFormat, profile: DeviceProfileId): string {
-  const course = compileCourse(route, deviceProfile(profile), format, viaIndices(routedPoints, VIA_MARKS.isVia));
+export function downloadCourse(route: RouteResponse, routedPoints: LonLat[], format: FileFormat, profile: DeviceProfileId): string {
+  const vias = viaIndices(routedPoints, VIA_MARKS.isVia);
+  if (format === "pdf-sheet" || format === "pdf-strip") {
+    const kind = PRINTS[format];
+    saveFile(cueSheetPdf(route, kind, vias), "application/pdf", cueSheetFileName(route, kind));
+    return cueSheetLine(route, kind, vias);
+  }
+  const course = compileCourse(route, deviceProfile(profile), format, vias);
   const fileName = courseFileName(route, format);
   if (format === "fit") saveFile(writeFit(course), "application/vnd.ant.fit", fileName);
   else saveFile(writeTcx(course), "application/vnd.garmin.tcx+xml", fileName);
   return courseLine(course);
 }
 
-export type ExportFormat = "gpx" | CourseFormat;
+export type ExportFormat = "gpx" | FileFormat;
 
 const FORMAT_LABELS: Record<ExportFormat, string> = {
   gpx: "GPX track",
   fit: "FIT course, with turn cues",
   tcx: "TCX course, with turn cues",
+  "pdf-sheet": "PDF cue sheet, to print",
+  "pdf-strip": "PDF handlebar strip, to print",
 };
+
+/** What the button says it downloads. */
+const FORMAT_WORDS: Record<ExportFormat, string> = { gpx: "GPX", fit: "FIT", tcx: "TCX", "pdf-sheet": "PDF", "pdf-strip": "PDF" };
+
+const isCourse = (format: ExportFormat): format is CourseFormat => format === "fit" || format === "tcx";
 
 /** The file type and device chosen last, on this device only (a convenience: the defaults stand without it). */
 const CHOICE_KEY = "routemaker.exportChoice";
@@ -125,7 +146,7 @@ const CHOICE_KEY = "routemaker.exportChoice";
 function readChoice(): { format: ExportFormat; profile: DeviceProfileId } {
   try {
     const saved = JSON.parse(localStorage.getItem(CHOICE_KEY) ?? "null") as { format?: string; profile?: string } | null;
-    const format = saved?.format === "fit" || saved?.format === "tcx" ? saved.format : "gpx";
+    const format = saved?.format && Object.hasOwn(FORMAT_LABELS, saved.format) ? (saved.format as ExportFormat) : "gpx";
     return { format, profile: deviceProfile(saved?.profile).id };
   } catch {
     return { format: "gpx", profile: DEFAULT_PROFILE };
@@ -270,7 +291,7 @@ export function GpxPanel(props: Props) {
               ))}
             </select>
           </label>
-          {choice.format !== "gpx" && (
+          {isCourse(choice.format) && (
             <label className="select-setting">
               Device
               <select value={choice.profile} onChange={(event) => choose({ profile: event.target.value as DeviceProfileId })}>
@@ -297,7 +318,7 @@ export function GpxPanel(props: Props) {
           Open GPX…
         </button>
         <button type="button" onClick={download} disabled={choice.format === "gpx" ? !route && !imported?.verbatim : !route}>
-          Download {choice.format.toUpperCase()}
+          Download {FORMAT_WORDS[choice.format]}
         </button>
       </div>
       <input
@@ -359,7 +380,13 @@ export function GpxPanel(props: Props) {
         edited, the download is that file as it came; otherwise it is the route shown, with its credits: ©
         OpenStreetMap contributors (ODbL) and the traffic and elevation sources.
       </p>
-      {choice.format !== "gpx" && (
+      {(choice.format === "pdf-sheet" || choice.format === "pdf-strip") && (
+        <p className="hint">
+          A cue sheet is the route shown with Ride's cues, to print: the sheet on letter paper, the strip at actual size
+          to cut out for the handlebar. Its credits are at the foot of every page.
+        </p>
+      )}
+      {isCourse(choice.format) && (
         <p className="hint">
           A course is the route shown with Ride's turn cues, fitted to the device. TCX carries the credits in its notes;
           FIT has no place for them but its name, which has them where the device leaves room: route data ©

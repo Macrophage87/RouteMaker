@@ -442,6 +442,22 @@ the shipped `licenses.txt`, which the map's "Software licences" link opens (384:
   `140e2bd25a7315c8a062508391426b0d8c3297400c947b8d847be28f73a199f0`.
 - Records: docs/DEVELOPMENT.md, "The sidebar (312)", "The font".
 
+## Helvetica character widths (the PDF cue sheets; not a map credit)
+
+Not a data source and no `Credit:` line: a table of numbers the PDF writer lays text out with.
+No font is bundled or embedded; the cue sheets name the PDF standard fonts Helvetica and
+Helvetica-Bold, which every PDF reader supplies.
+
+- What it is: the advance widths of WinAnsi codes 32 to 255 in Helvetica and Helvetica-Bold, in
+  `frontend/src/lib/pdf.ts` (`HELVETICA`, `HELVETICA_BOLD`), so lines wrap where the reader's
+  font will break them.
+- Publisher: Adobe Systems, the Core 14 AFM metrics (`Helvetica.afm`, `Helvetica-Bold.afm`).
+  Copied 2026-10-16 from the same figures as ReportLab 4 carries them
+  (`reportlab/pdfbase/_fontdata_widths_helvetica*.py`, BSD), indexed by its WinAnsi table.
+- Licence: Adobe's Core 14 AFM notice lets the metrics be used, copied and distributed for any
+  purpose without charge; only the widths are copied here, not the AFM files.
+- Records: docs/DEVELOPMENT.md, "PDF cue sheets".
+
 ## Noto Emoji skull and crossbones (the Avoid-rated junction marker; not a map credit)
 
 A bundled asset, like the panel's font, not a data source: no `Credit:` line and not in the

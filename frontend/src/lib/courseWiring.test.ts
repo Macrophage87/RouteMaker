@@ -15,7 +15,20 @@ test("the GPX section offers the course formats and devices, labelled, and says 
   const region = panel.slice(panel.indexOf('<div role="status" aria-live="polite">'));
   assert.match(region.slice(0, region.indexOf("</div>")), /<p key=\{courseSaid\.count\} className="hint gpx-course">/);
   // The button names the file it saves.
-  assert.match(panel, /Download \{choice\.format\.toUpperCase\(\)\}/);
+  assert.match(panel, /Download \{FORMAT_WORDS\[choice\.format\]\}/);
+  assert.match(panel, /const FORMAT_WORDS: Record<ExportFormat, string> = \{ gpx: "GPX", fit: "FIT", tcx: "TCX", "pdf-sheet": "PDF", "pdf-strip": "PDF" \};/);
+});
+
+test("the PDF cue sheets are two more file types in the same choice, with no device choice and no new button", () => {
+  const panel = read("../GpxPanel.tsx");
+  assert.match(panel, /"pdf-sheet": "PDF cue sheet, to print",/);
+  assert.match(panel, /"pdf-strip": "PDF handlebar strip, to print",/);
+  // The device choice is for a course only.
+  assert.match(panel, /\{isCourse\(choice\.format\) && \(\s*<label className="select-setting">\s*Device/);
+  // One download button, as before.
+  assert.equal(panel.match(/\n\s*Download \{/g)?.length, 1);
+  // Made through the same checked download, its line said in the same region.
+  assert.match(panel, /saveFile\(cueSheetPdf\(route, kind, vias\), "application\/pdf", cueSheetFileName\(route, kind\)\);\s*return cueSheetLine\(/);
 });
 
 test("Go adds no control: the choices appear only where the page passes the course download, which Go does not", () => {

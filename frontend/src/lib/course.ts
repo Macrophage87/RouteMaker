@@ -227,6 +227,35 @@ export function creditLine(attribution: readonly string[]): string {
   return `Route data: ${credit}.`;
 }
 
+/** A cue as every export reads it: Ride's, with its kind, its short name before any device's limit, and where it is. */
+export interface RouteCue {
+  type: CourseCueType;
+  name: string;
+  /** Ride's words in full. */
+  text: string;
+  /** Metres along the line (the finish's is the line's length). */
+  atM: number;
+  /** The street the cue turns onto or is on, or null where unnamed; for the start, the first stretch's. */
+  street: string | null;
+  priority: number;
+}
+
+/**
+ * Ride's cues for the route, in order, with the start first: the one list the FIT and TCX courses and the PDF cue
+ * sheets (cueSheetPdf.ts) are made from. `vias` are the plan's via points by index, which are not cues, as in Ride.
+ */
+export function routeCues(route: CompiledRoute, vias: readonly number[] = []): RouteCue[] {
+  const model = rideModel(route as RouteResponse, vias);
+  const all: RouteCue[] = [{ type: "start", name: "Start", text: "Start.", atM: 0, street: named(model.stretches[0]?.street ?? null), priority: PROTECTED }];
+  for (const cue of model.cues) {
+    const made = fromRide(cue);
+    if (!made) continue;
+    const atM = cue.kind === "end" ? model.lengthM : cue.atM;
+    all.push({ type: made.type, name: made.name, text: cue.text, atM, street: named(cue.street), priority: made.priority });
+  }
+  return all;
+}
+
 /**
  * The route shown as a course for `profile`. `vias` are the plan's via points by index (pointKinds.ts), which are
  * not cues, as in Ride.
@@ -242,13 +271,13 @@ export function compileCourse(route: CompiledRoute, profile: DeviceProfile, form
 
   // The cues, Ride's, in order, with the start first.
   const nameChars = format === "tcx" ? Math.min(TCX_CUE_NAME_CHARS, profile.cueNameChars) : profile.cueNameChars;
-  const all: (CourseCue & { priority: number })[] = [{ type: "start", vertex: 0, name: "Start", text: "Start.", priority: PROTECTED }];
-  for (const cue of rideModel(route as RouteResponse, vias).cues) {
-    const made = fromRide(cue);
-    if (!made) continue;
-    const vertex = cue.kind === "end" ? line.length - 1 : nearestVertex(along, cue.atM);
-    all.push({ type: made.type, vertex, name: clip(made.name, nameChars), text: cue.text, priority: made.priority });
-  }
+  const all: (CourseCue & { priority: number })[] = routeCues(route, vias).map((cue) => ({
+    type: cue.type,
+    vertex: cue.type === "start" ? 0 : cue.type === "finish" ? line.length - 1 : nearestVertex(along, cue.atM),
+    name: clip(cue.name, nameChars),
+    text: cue.text,
+    priority: cue.priority,
+  }));
 
   // Over the budget: the least important first, and of those the one nearest the cue before it. Where the cues
   // that must be kept pass it by themselves, nothing is dropped: giving up every turn would still not make the
