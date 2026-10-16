@@ -147,6 +147,16 @@ function percent(share: number): number {
   return p;
 }
 
+/** Most waypoint names said in the sentence; the rest are counted. */
+export const WAYPOINT_NAMES_SAID = 8;
+
+/** "Its 3 named waypoints are marked on the map: Coffee, Water, Summit." The names are the file's, cleaned (gpxPlan.ts). */
+export function waypointsShownText(names: readonly string[]): string {
+  const said = names.slice(0, WAYPOINT_NAMES_SAID).join(", ");
+  const more = names.length > WAYPOINT_NAMES_SAID ? `, and ${names.length - WAYPOINT_NAMES_SAID} more` : "";
+  return names.length === 1 ? `Its named waypoint is marked on the map: ${said}.` : `Its ${names.length} named waypoints are marked on the map: ${said}${more}.`;
+}
+
 function noteText(note: ImportNote): string {
   switch (note.kind) {
     case "outside":
@@ -159,8 +169,10 @@ function noteText(note: ImportNote): string {
         : `The plan follows its longest part; ${note.count} other parts lie more than ${milesText(JOIN_GAP_M)} from it and were left out.`;
     case "waypoints-unused":
       return note.count === 1
-        ? "Its waypoint was not used: the planner has no cue points yet."
-        : `Its ${note.count} waypoints were not used: the planner has no cue points yet.`;
+        ? "One waypoint was not marked on the map: it has no name, lies outside the area, or is past the most the map marks."
+        : `${note.count} waypoints were not marked on the map: they have no name, lie outside the area, or are past the most the map marks.`;
+    case "waypoints-shown":
+      return waypointsShownText(note.names);
     case "skipped":
       return note.count === 1
         ? "One point had no usable position and was skipped."

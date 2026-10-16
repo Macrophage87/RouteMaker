@@ -39,7 +39,7 @@ import { MassLegend, MassZoomNotes } from "../lib/massLegend.ts";
 import { DC_BOUNDARY_CREDIT, MASS_DC_ONLY } from "../lib/dcBoundary.ts";
 import { MtbTrailLegend, StressLegend } from "../lib/stressLegend.ts";
 import { refreshStressTiles } from "../lib/mapStyle.ts";
-import { GpxPanel, type FileFormat, type Said } from "../GpxPanel.tsx";
+import { GpxPanel, type FileFormat, type GpxPanelProps, type Said } from "../GpxPanel.tsx";
 import type { DeviceProfileId } from "../lib/deviceProfiles.ts";
 import { JunctionLegend, SheetFrame } from "../Sidebar.tsx";
 import { MASS_RIDE_LAYERS_NOTE, MENU_TITLE, SHEET_TITLES, STRESS_CHECKING, STRESS_UNAVAILABLE, type PanelView } from "../lib/sidebar.ts";
@@ -284,13 +284,15 @@ export interface GpxSheetProps {
   downloadRoute: (said?: (line: string) => void) => void;
   /** Plan only: download a FIT or TCX course or a PDF cue sheet (GpxPanel); absent in Go, which offers GPX alone. */
   downloadCourse?: (format: FileFormat, profile: DeviceProfileId, said: Said) => void;
+  /** Plan only: snap an opened track to the map's ways (GpxPanel, lib/gpxMatch.ts); absent in Go. */
+  match?: GpxPanelProps["match"];
   /** Signed in: Save route for an opened file (its own text, verbatim); null signed out. */
   saveControl: ReactNode;
 }
 
 /** The GPX sheet. */
 export function GpxSheet(props: GpxSheetProps) {
-  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, refineImported, getMap, downloadRoute, downloadCourse, saveControl } = props;
+  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, refineImported, getMap, downloadRoute, downloadCourse, match, saveControl } = props;
   return (
     <SheetFrame id="sheet-gpx" title={SHEET_TITLES.gpx} open={nav.view === "gpx"} onBack={nav.back} backLabel={nav.backLabel("gpx")}>
       <GpxPanel
@@ -306,6 +308,7 @@ export function GpxSheet(props: GpxSheetProps) {
         getMap={getMap}
         onDownload={downloadRoute}
         onDownloadCourse={downloadCourse}
+        match={match}
       />
       {imported?.verbatim && saveControl}
     </SheetFrame>
@@ -518,7 +521,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
             {SIGN_IN_LINE.slice("Sign in with Discord".length)}
           </p>
         ) : null}
-        {myGo.signedIn && <MyRoutes {...myRoutes} />}
+        {/* Versions in Plan only: Go's Menu is unchanged. */}
+        {myGo.signedIn && <MyRoutes {...myRoutes} versions={!go} />}
         <MyGoSection controls={myGo} />
       </section>
     </SheetFrame>

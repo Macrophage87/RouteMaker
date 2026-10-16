@@ -2,8 +2,9 @@
 # core.reviewed_closures), a rider's closure report as a kind of suggestion, and each saved
 # route's closure alerts (core.saved_route_alerts).
 #
-# Numbered 0026 beside the saved-route versions' 0025 and built on 0024: the dependency is set to
-# the chain's last migration when the two are merged.
+# Follows 0025_saved_route_version (the saved-route versions), so the chain stays linear.
+
+
 
 import django.db.models.deletion
 import django.utils.timezone
@@ -13,7 +14,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("core", "0024_shared_route_owner_preview"),
+        ("core", "0025_saved_route_version"),
     ]
 
     operations = [
