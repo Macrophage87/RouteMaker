@@ -53,6 +53,7 @@ import {
   nextAction,
   pointAt,
   replanPoints,
+  replanTold,
   rideModel,
   startState,
   step,
@@ -670,7 +671,7 @@ export function RideMode({
   // With `via`, a detour: from here to that place first, then on through what was left (the nearest water
   // or restroom, below). A detour's place becomes a stop of the new route, so it is cued and arrived at.
   const replan = useCallback(
-    async (here: LonLat, via?: LonLat) => {
+    async (here: LonLat, via?: LonLat, asked = false) => {
       if (ended.current) return;
       const current = rideRef.current;
       const left = replanPoints(modelRef.current, current.progressM ?? 0, here, plan.current.points, plan.current.loop);
@@ -689,14 +690,18 @@ export function RideMode({
       setReplanNote("");
       // The quiet level hears nothing unprompted but arrival, and the stoker only that a new route was
       // found (plan section 3, off route said once); the note stays on screen for all. A detour's outcome
-      // answers the rider's ask, so it is said whatever the level (sayDetour).
+      // answers the rider's ask, so it is said whatever the level (sayDetour); so is Re-plan from here's.
       const tell = (note: string) => {
         if (via) {
           sayDetour(note);
           return;
         }
-        const level = prefsRef.current.verbosity;
-        if (level === "full" || (level === "stoker" && note === REPLAN_FOUND)) announcer.current?.say(note, false);
+        const told = replanTold(asked, prefsRef.current.verbosity, note);
+        if (told === "say") announcer.current?.say(note, false);
+        if (told === "answer") {
+          announcer.current?.answer(note);
+          if (prefsRef.current.output === "neither") setPolite((s) => ({ text: note, count: s.count + 1 }));
+        }
       };
       // No answer in REPLAN_TIMEOUT_MS: the rider is told there is no signal, while the request goes on
       // (the gate stays busy until it settles, so no second one joins it at the server; a late new
@@ -974,7 +979,7 @@ export function RideMode({
     setKeepPlanned(false);
     gate.online();
     answer(REPLAN_FINDING);
-    void replan(here);
+    void replan(here, undefined, true);
   };
 
   // Water or restroom on the way (the owner, 2026-10-10: "If navigating, water sources and restrooms can be

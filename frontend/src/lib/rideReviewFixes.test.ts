@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { REPLAN_FINDING, REPLAN_STILL_WAITING } from "./navigate.ts";
+import { REPLAN_FAILED, REPLAN_FINDING, REPLAN_FOUND, REPLAN_NO_SIGNAL, REPLAN_STILL_WAITING, replanTold } from "./navigate.ts";
 
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const ride = source("../RideMode.tsx");
@@ -86,10 +86,24 @@ test("RIDE-10: a ride note reaches the polite region itself only with neither ou
 test("RIDE-5: Re-plan from here answers every press: finding, still waiting, or no fix yet", () => {
   assert.equal(REPLAN_FINDING, "Finding a new way from here.");
   assert.equal(REPLAN_STILL_WAITING, "Still waiting for the last re-plan.");
-  const press = ride.slice(ride.indexOf("const replanNow = () => {"), ride.indexOf("void replan(here);\n  };"));
+  const press = ride.slice(ride.indexOf("const replanNow = () => {"), ride.indexOf("void replan(here, undefined, true);\n  };"));
   assert.match(press, /if \(prefsRef\.current\.output === "neither"\) setPolite/);
   assert.match(press, /if \(replanning \|\| gate\.busy\) \{\s*answer\(REPLAN_STILL_WAITING\);\s*return;/);
   assert.match(press, /if \(!here\) \{\s*answer\(NO_FIX_YET\);\s*return;/);
   assert.match(press, /answer\(REPLAN_FINDING\);\s*$/);
   assert.doesNotMatch(press, /if \(replanning\) return;/, "no silent press");
+});
+
+test("RIDE-5: the outcome of a re-plan the rider asked for is answered at every level; an automatic one keeps the levels", () => {
+  for (const note of [REPLAN_FOUND, REPLAN_FAILED, REPLAN_NO_SIGNAL]) {
+    for (const level of ["full", "stoker", "quiet"] as const) assert.equal(replanTold(true, level, note), "answer", `${level}: ${note}`);
+  }
+  assert.equal(replanTold(false, "full", REPLAN_FAILED), "say");
+  assert.equal(replanTold(false, "stoker", REPLAN_FOUND), "say");
+  assert.equal(replanTold(false, "stoker", REPLAN_FAILED), "quiet");
+  assert.equal(replanTold(false, "quiet", REPLAN_FOUND), "quiet");
+  // The page: Re-plan from here asks; the automatic re-plans do not.
+  assert.match(ride, /async \(here: LonLat, via\?: LonLat, asked = false\) => \{/);
+  assert.match(ride, /const told = replanTold\(asked, prefsRef\.current\.verbosity, note\);/);
+  assert.equal(ride.match(/void replan\([^)]*\)\)?;/g)?.filter((call) => call.includes("true")).length, 1);
 });

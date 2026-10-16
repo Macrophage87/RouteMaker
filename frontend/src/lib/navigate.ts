@@ -990,3 +990,14 @@ export const REPLAN_NO_SIGNAL = "No signal: the planned route is still shown.";
 export const REPLAN_FAILED = "No new route was found; the planned route is still shown.";
 export const REPLAN_FINDING = "Finding a new way from here.";
 export const REPLAN_STILL_WAITING = "Still waiting for the last re-plan.";
+
+/**
+ * How a re-plan's outcome reaches the rider: one the rider asked for (Re-plan from here) is answered
+ * whatever the level, as a detour's is (review RIDE-5); an automatic one is said at the full level, and
+ * at the stoker's only when a new route was found; the quiet level hears it on screen only.
+ */
+export function replanTold(asked: boolean, level: Verbosity, note: string): "answer" | "say" | "quiet" {
+  if (asked) return "answer";
+  if (level === "full" || (level === "stoker" && note === REPLAN_FOUND)) return "say";
+  return "quiet";
+}
