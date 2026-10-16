@@ -74,7 +74,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from django.conf import settings
-from django.db import OperationalError, connection, transaction
+from django.db import DatabaseError, connection, transaction
 from django.utils import timezone
 
 from pipeline.schema import (
@@ -305,10 +305,29 @@ def plan_cursor() -> Iterator:
             yield cursor
             if previous is not None:
                 cursor.execute("SELECT set_config('statement_timeout', %s, true)", [previous])
-    except OperationalError as error:
-        if getattr(error.__cause__, "sqlstate", None) == QUERY_CANCELED:
+    except DatabaseError as error:
+        if _canceled(error):
             raise DeadlineExceeded(f"a segment table read ran past {left_ms} ms") from error
         raise
+
+
+def _canceled(error: BaseException) -> bool:
+    """Whether `error` (Django's wrapper, or the driver's own error under it) is
+    Postgres canceling the statement: psycopg's QueryCanceled, or sqlstate (psycopg 3)
+    or pgcode (psycopg 2) 57014."""
+    try:
+        from psycopg.errors import QueryCanceled
+    except ImportError:  # pragma: no cover - psycopg 3 is the driver in use
+        QueryCanceled = ()  # noqa: N806
+    for each in (error, error.__cause__):
+        if each is None:
+            continue
+        if isinstance(each, QueryCanceled):
+            return True
+        for name in ("sqlstate", "pgcode"):
+            if getattr(each, name, None) == QUERY_CANCELED:
+                return True
+    return False
 
 
 def _own_context(fn):
