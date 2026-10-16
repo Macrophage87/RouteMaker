@@ -380,6 +380,87 @@ class TestTurns:
         assert "Right onto B at a signal" in entries[1]["text"]
 
 
+class TestBearsAndJogs:
+    """The owner, 2026-10-16, riding east on Q Street NW in Shaw: "complex turns which
+    aren't announced". A slight turn onto another street is a bear; a jog (a short
+    stretch entered and left by turns) is never folded away."""
+
+    def test_q_street_bear_right_onto_a_diagonal(self):
+        # Straight east on Q St, then 40 degrees right onto a diagonal (SE-bound).
+        legs = [
+            flat(
+                road("Q Street Northwest", 2, 900, 90, 90),
+                road("Rhode Island Avenue Northwest", 2, 1300, 130, 130),
+            )
+        ]
+        entries = d.describe(legs)
+        assert entries[1]["turn"]["movement"] == "right"
+        legs = [
+            flat(
+                road("Q Street Northwest", 2, 900, 90, 90),
+                road("Rhode Island Avenue Northwest", 2, 1300, 122, 122),
+            )
+        ]
+        entries = d.describe(legs)
+        assert entries[1]["turn"]["movement"] == "bear_right"
+        assert (
+            entries[1]["text"]
+            .split(": ")[1]
+            .startswith("Bear right onto Rhode Island Avenue Northwest,")
+        )
+
+    def test_a_fork_left_is_a_bear(self):
+        legs = [flat(road("Main St", 1, 600, 0, 0), road("Fork Rd", 1, 600, 328, 328))]
+        entries = d.describe(legs)
+        assert entries[1]["turn"]["movement"] == "bear_left"
+        assert "Bear left onto Fork Rd," in entries[1]["text"]
+
+    def test_a_small_change_of_street_is_still_straight_on(self):
+        legs = [flat(road("A", 1, 600, 90, 90), road("B", 1, 600, 110, 110))]
+        assert d.describe(legs)[1]["turn"]["movement"] == "straight"
+
+    def test_a_curving_road_that_keeps_its_name_is_no_turn(self):
+        legs = [
+            flat(
+                road("Beach Dr", 1, 400, 0, 0),
+                road("Beach Dr", 1, 400, 32, 32),
+                road("Beach Dr", 1, 400, 70, 70),
+            )
+        ]
+        entries = d.describe(legs)
+        assert len(entries) == 1 and entries[0]["turn"] is None
+
+    def test_a_jog_under_300_ft_is_kept_with_both_its_turns(self):
+        # East on Q St, right onto 6th St (100 ft south), then bear left onto a
+        # south-east diagonal: two turns, not one straight-on folded across them.
+        legs = [
+            flat(
+                road("Q Street Northwest", 2, 900, 90, 90),
+                road("6th Street Northwest", 2, 30, 180, 180),
+                road("Rhode Island Avenue Northwest", 2, 1300, 145, 145),
+            )
+        ]
+        entries = d.describe(legs)
+        assert [e["street"] for e in entries] == [
+            "Q Street Northwest",
+            "6th Street Northwest",
+            "Rhode Island Avenue Northwest",
+        ]
+        assert [e["turn"]["movement"] for e in entries[1:]] == ["right", "bear_left"]
+        assert entries[1]["text"].split(": ")[1].startswith("Right onto 6th Street Northwest,")
+
+    def test_the_overview_names_a_bear(self):
+        legs = [
+            flat(
+                road("Long St", 1, 900, 0, 0),
+                road("B St", 1, 150, 35, 35),
+                road("C St", 1, 150, 35, 35),
+            )
+        ]
+        _full, short = d.describe_both(legs)
+        assert "then bear right on B St" in short[0]["text"]
+
+
 class TestJunctions:
     def test_a_crossing_of_a_busy_road_is_an_entry_of_its_own(self):
         legs = [road("Capital Crescent Trail", 1, 2000, facility="path")]

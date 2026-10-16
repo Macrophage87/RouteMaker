@@ -17,7 +17,13 @@ The rules:
 - A stretch under TINY_M (300 ft) is folded into a neighbour (on its own street
   if there is one, else the longer). One of LTS 3 or worse goes only into a
   neighbour at least as stressful, so it is never hidden or understated; an
-  untraced one is never folded.
+  untraced one is never folded, nor a jog: one of another street than both
+  neighbours, entered and left by a turn or a bear ("Right onto 6th Street" then
+  "Bear left onto Rhode Island Avenue" is two turns the rider makes, which folding
+  would read as one or none: the owner, 2026-10-16, on Q Street).
+- A change of street turning SLIGHT_MIN_DEG (30 degrees) or more off straight but
+  within STRAIGHT_MAX_DEG is a bear ("Bear right onto ..."); under it, straight on.
+  A bend along one street is never a turn.
 - A leg boundary (a via point, named "Stop N") is its own entry, and a stretch
   never spans it.
 - A turn names the street it turns onto and, where the junction model has read
@@ -66,6 +72,18 @@ TINY_M = 300.0 / FEET_PER_METRE
 SHORT_M = METRES_PER_MILE / 10
 # The overview merges stretches under a quarter of a mile (OWNER-DECISIONS 226).
 OVERVIEW_M = METRES_PER_MILE / 4
+# A change of street this far off straight on (and up to STRAIGHT_MAX_DEG, past
+# which it is a left or a right) is a bear: the rider leaves the street they were
+# on with a lean worth saying (the owner, 2026-10-16: "complex turns which aren't
+# announced" on Q Street).
+SLIGHT_MIN_DEG = 30.0
+# The words for a turn's movement, where it is one.
+TURN_WORDS = {
+    "left": "Left",
+    "right": "Right",
+    "bear_left": "Bear left",
+    "bear_right": "Bear right",
+}
 # How far from a change of street an event still is that junction.
 MATCH_M = 30.0
 # Tiers that are never folded into a neighbour.
@@ -277,23 +295,36 @@ def _rank(run: _Run) -> int:
     return int(run.tier) if run.tier.isdigit() else 0
 
 
+def _jog(before: _Run | None, run: _Run, after: _Run | None) -> bool:
+    """Whether `run` is a jog's middle: another street than both neighbours, entered
+    and left by a turn or a bear. Folded away, its two turns would be read as one
+    across it (a right then a left as straight on), so it is kept."""
+    if before is None or after is None:
+        return False
+    if _same_street(before, run) or _same_street(run, after):
+        return False
+    return (
+        _movement_between(before, run) in TURN_WORDS and _movement_between(run, after) in TURN_WORDS
+    )
+
+
 def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
     """Fold each stretch under TINY_M of one traced leg into a neighbour: the one
     on its own street if there is one, else the longer (the earlier on a tie). A
     stretch of LTS 3 or worse goes only into a neighbour at least as stressful, so
-    the description never says less than the route is. (An untraced leg is one
-    run and is never given to this.)"""
+    the description never says less than the route is, and a jog's middle (`_jog`)
+    is kept. (An untraced leg is one run and is never given to this.)"""
     changed = True
     while changed:
         changed = False
         i = 0
         while i < len(runs):
             run = runs[i]
-            if run.metres >= TINY_M:
-                i += 1
-                continue
             before = runs[i - 1] if i > 0 else None
             after = runs[i + 1] if i + 1 < len(runs) else None
+            if run.metres >= TINY_M or _jog(before, run, after):
+                i += 1
+                continue
             options = [n for n in (before, after) if n is not None]
             if run.tier in NEVER_HIDDEN:
                 options = [n for n in options if _rank(n) >= _rank(run)]
@@ -544,11 +575,21 @@ class _Turn:
 
 
 def _movement_between(before: _Run, after: _Run) -> str | None:
+    """ "left", "right", "bear_left", "bear_right" or "straight" from `before` into
+    `after`, from the headings at the junction; None where one is not known. A
+    bear is a turn of SLIGHT_MIN_DEG to STRAIGHT_MAX_DEG, which `movement_of`
+    calls straight."""
     a = before.last.heading_out if before.last else None
     b = after.first.heading_in if after.first else None
     if a is None or b is None:
         return None
-    return movement_of(a, b).value
+    movement = movement_of(a, b)
+    if movement is not Movement.STRAIGHT:
+        return movement.value
+    turn = (b - a + 540.0) % 360.0 - 180.0
+    if abs(turn) >= SLIGHT_MIN_DEG:
+        return "bear_right" if turn > 0 else "bear_left"
+    return movement.value
 
 
 def _street_words(run: _Run) -> str:
@@ -580,10 +621,8 @@ def _stretch_sentence(
     event = turn.event if turn else None
     if turn is not None:
         movement = turn.movement
-        if movement == "left":
-            lead = f"Left onto {_in_sentence(street)}"
-        elif movement == "right":
-            lead = f"Right onto {_in_sentence(street)}"
+        if movement in TURN_WORDS:
+            lead = f"{TURN_WORDS[movement]} onto {_in_sentence(street)}"
         else:
             lead = f"Continue onto {_in_sentence(street)}"
         if event is not None:
@@ -612,13 +651,15 @@ MAX_NAMED_TURNS = 3
 def _then_words(streets: list[tuple[str, str | None]]) -> str:
     """ ", then left on A, B and right on C and 2 more turns": the other streets
     a merged stretch runs along, each with its turn where it is a left or a right
-    (a street straight on is just named), at most MAX_NAMED_TURNS of them."""
+    or a bear (a street straight on is just named), at most MAX_NAMED_TURNS of them."""
     if not streets:
         return ""
     pieces = []
     for street, movement in streets[:MAX_NAMED_TURNS]:
         pieces.append(
-            f"{movement} on {_in_sentence(street)}" if movement in ("left", "right") else street
+            f"{TURN_WORDS[movement].lower()} on {_in_sentence(street)}"
+            if movement in TURN_WORDS
+            else street
         )
     more = len(streets) - MAX_NAMED_TURNS
     if more > 0:

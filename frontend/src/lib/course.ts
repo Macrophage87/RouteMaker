@@ -147,7 +147,7 @@ function fromRide(cue: Cue): { type: CourseCueType; name: string; priority: numb
   const street = named(cue.street);
   switch (cue.kind) {
     case "turn": {
-      const turn = cue.movement === "left" ? "left" : "right";
+      const turn = cue.movement === "left" || cue.movement === "bear_left" ? "left" : "right";
       return { type: turn, name: street ? abbreviateStreet(street) : turn === "left" ? "Left" : "Right", priority: street ? 4 : 3 };
     }
     case "onto":

@@ -12,6 +12,7 @@ import {
   END_PART_WAY_M,
   END_LEFT_MIN_M,
   END_LEFT_MIN_SHARE,
+  JOG_M,
   ONTO_TRAIL_MIN_M,
   planAfterEnd,
   GPS_WEAK_MS,
@@ -1179,4 +1180,81 @@ test("onto: a name only from the trail's route relation is never a Continue onto
     ]),
   );
   assert.equal(model.cues.filter((c) => c.kind === "onto").length, 0);
+});
+
+/** A turn entry's `turn`, for the bear and jog cues (the owner, 2026-10-16, on Q Street NW: "complex turns which aren't announced"). */
+const turning = (movement: "left" | "right" | "bear_left" | "bear_right", street: string) => ({ movement, onto: street, control: null, severity: null });
+
+test("bear: a bear right off Q Street onto a diagonal is a turn cue, said at Full and Stoker, not Quiet", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "Q Street Northwest.", { street: "Q Street Northwest" }),
+      stretch(900, 2200, "Bear right onto Rhode Island Avenue Northwest.", { street: "Rhode Island Avenue Northwest", turn: turning("bear_right", "Rhode Island Avenue Northwest") }),
+    ]),
+  );
+  const turn = model.cues[0];
+  assert.equal(turn.kind, "turn");
+  assert.equal(turn.movement, "bear_right");
+  assert.equal(turn.text, "Bear right onto Rhode Island Avenue Northwest.");
+  assert.ok(says("full", turn) && says("stoker", turn) && !says("quiet", turn));
+  assert.equal(cueSpoken(turn, "now", 0), "Bear right now onto Rhode Island Avenue Northwest.");
+  assert.equal(turnWords("bear_left", null), "Bear left.");
+  const spoken = ride(model, "stoker", 0, 1000).events.filter((e) => e.cue?.kind === "turn").map((e) => e.phase);
+  assert.deepEqual(spoken, ["ahead", "now"]);
+  assert.equal(ride(model, "quiet", 0, 1000).events.filter((e) => e.cue?.kind === "turn").length, 0);
+});
+
+test("jog: a right then a bear left 30 m on is one cue, said early for both; the second is kept for the card but not said again", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "Q Street Northwest.", { street: "Q Street Northwest" }),
+      stretch(900, 930, "Right onto 6th Street Northwest.", { street: "6th Street Northwest", turn: turning("right", "6th Street Northwest") }),
+      stretch(930, 2200, "Bear left onto Rhode Island Avenue Northwest.", { street: "Rhode Island Avenue Northwest", turn: turning("bear_left", "Rhode Island Avenue Northwest") }),
+    ]),
+  );
+  const [first, second] = model.cues;
+  assert.equal(first.text, "Right onto 6th Street Northwest, then immediately bear left onto Rhode Island Avenue Northwest.");
+  assert.equal(cueSpoken(first, "now", 0), "Right now onto 6th Street Northwest, then immediately bear left onto Rhode Island Avenue Northwest.");
+  assert.equal(
+    cueSpoken(first, "advance", 152.4),
+    `In ${spokenDistance(152.4)}, right onto 6th Street Northwest, then immediately bear left onto Rhode Island Avenue Northwest.`,
+  );
+  assert.ok(second.joined && second.movement === "bear_left");
+  assert.equal(nextAction(model, 910)?.index, second.index);
+  for (const level of ["full", "stoker"] as const) {
+    const said = ride(model, level, 0, 1200).events.filter((e) => e.cue?.kind === "turn");
+    assert.ok(said.length >= 2, level);
+    assert.ok(
+      said.every((e) => e.cue?.index === first.index),
+      level,
+    );
+  }
+  // Turns farther apart than JOG_M are each their own.
+  const apart = rideModel(
+    straightRoute([
+      stretch(0, 900, "Q Street Northwest.", { street: "Q Street Northwest" }),
+      stretch(900, 900 + JOG_M + 20, "Right onto 6th Street Northwest.", { street: "6th Street Northwest", turn: turning("right", "6th Street Northwest") }),
+      stretch(900 + JOG_M + 20, 2200, "Left onto R Street Northwest.", { street: "R Street Northwest", turn: turning("left", "R Street Northwest") }),
+    ]),
+  );
+  assert.deepEqual(
+    apart.cues.filter((c) => c.kind === "turn").map((c) => [c.text, !!c.joined]),
+    [
+      ["Right onto 6th Street Northwest.", false],
+      ["Left onto R Street Northwest.", false],
+    ],
+  );
+});
+
+test("bear: a curving road that keeps its name says nothing", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "Beach Drive.", { street: "Beach Drive" }),
+      stretch(900, 2200, "Continue on Beach Drive.", { street: "Beach Drive", tier: 2 }),
+    ]),
+  );
+  assert.deepEqual(
+    model.cues.map((c) => c.kind),
+    ["end"],
+  );
 });

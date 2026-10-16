@@ -244,7 +244,7 @@ export interface RideView {
   rider: { point: LonLat; headingDeg: number | null; accuracyM: number } | null;
 }
 
-function arrowFor(cue: Cue | null): "left" | "right" | "straight" | "stop" | "end" | "warn" {
+function arrowFor(cue: Cue | null): "left" | "right" | "bear_left" | "bear_right" | "straight" | "stop" | "end" | "warn" {
   if (!cue) return "straight";
   if (cue.kind === "end") return "end";
   if (cue.kind === "stop") return "stop";
@@ -258,6 +258,8 @@ function CueShape({ shape }: { shape: ReturnType<typeof arrowFor> }) {
   const paths: Record<typeof shape, string> = {
     left: "M30 52 V28 H14 M22 18 L12 28 L22 38",
     right: "M18 52 V28 H34 M26 18 L36 28 L26 38",
+    bear_left: "M30 52 V30 L14 14 M14 26 V14 H26",
+    bear_right: "M18 52 V30 L34 14 M22 14 H34 V26",
     straight: "M24 52 V10 M14 20 L24 10 L34 20",
     stop: "M14 10 V52 M14 12 H38 L32 20 L38 28 H14",
     end: "M14 10 V52 M14 12 H38 V28 H14 M26 12 V28 M14 20 H38",
