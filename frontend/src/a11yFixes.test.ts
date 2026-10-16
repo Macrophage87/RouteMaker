@@ -301,6 +301,12 @@ test("a level slider's words are heard once: its <output> is hidden, the value t
   }
 });
 
+test("Open GPX keeps the focus while a file is read: aria-disabled, a press then does nothing (review a11y-9)", () => {
+  const gpx = read("./GpxPanel.tsx");
+  assert.match(gpx, /if \(reading\.kind !== "reading"\) input\.current\?\.click\(\);\s*\}\}\s*aria-disabled=\{reading\.kind === "reading" \|\| undefined\}/);
+  assert.doesNotMatch(gpx, /disabled=\{reading\.kind === "reading"\}/);
+});
+
 test("Map tools' Add point, with the plan full, stays in the Tab order with its reason, said on a press (review a11y-7)", () => {
   assert.doesNotMatch(mapTools, /disabled=\{addDisabled\}/);
   assert.match(mapTools, /aria-disabled=\{addDisabled \|\| undefined\}\s*aria-describedby=\{addDisabled \? `\$\{panelId\}-full` : undefined\}/);

@@ -179,7 +179,15 @@ export function GpxPanel(props: Props) {
         GPX file
       </h3>
       <div className="actions">
-        <button type="button" onClick={() => input.current?.click()} disabled={reading.kind === "reading"}>
+        {/* aria-disabled, not disabled: the focus the file picker gives back stays here while the file
+            is read, and a press then does nothing (review a11y-9). */}
+        <button
+          type="button"
+          onClick={() => {
+            if (reading.kind !== "reading") input.current?.click();
+          }}
+          aria-disabled={reading.kind === "reading" || undefined}
+        >
           Open GPX…
         </button>
         <button type="button" onClick={download} disabled={!route && !imported?.verbatim}>
