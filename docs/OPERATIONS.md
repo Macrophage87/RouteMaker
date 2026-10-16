@@ -1299,11 +1299,12 @@ the same whatever the style decides):
   "Keep it faint if it parallels a protected bike path.", 78);
 - only a road (`segment.map_class = 'road'`) is drawn at all. A public road a
   bicycle may not use (`'barred'`: a motorway, a trunk road with
-  `bicycle=no` such as the George Washington Parkway, `motorroad=yes`,
-  `bicycle=use_sidepath`) is left to the base map, unmarked ("You can just
+  `bicycle=no` such as the George Washington Parkway, `motorroad=yes`) is left
+  to the base map, unmarked ("You can just
   leave the public roads where bikes aren't allowed as unmarked, using the base
   map", OWNER-DECISIONS 89, which replaced 73's white line); "legal but avoid"
-  (US 340) is a road and keeps its colour. A way no typical rider could use
+  (US 340, and `bicycle=use_sidepath`: legal, Avoid where a side path is mapped
+  beside it, review RL-1) is a road and keeps its colour. A way no typical rider could use
   (`'hidden'`) is not drawn either:
   - no road or path at all: BWI's terminal hallways (`highway=corridor` +
     `indoor=yes`), any `indoor` way, an elevator, a platform, a road or trail
@@ -4384,6 +4385,11 @@ failure to write one is a warning in the log and never fails the rebuild.
   the window (ways and length), whether a volume gate lay between them, and the
   link's tier against the tier on the agency's count. The log line is "AADT
   smoothing (400 m, ...): N of M counts replaced".
+- `use-sidepath-no-path.csv` (review RL-1; the owner, 2026-10-16): every road tagged
+  `bicycle=use_sidepath` with no side path mapped beside it (way id, name, OSM's
+  `tiger:county`, state). Such a road is rated on its own merits, not Avoid; each row
+  is a likely tagging error to review. The log line is "bicycle=use_sidepath roads: N
+  with a side path beside them (Avoid), M with none found".
 - `named-corridors.md` (284-286, 294-296; and Connecticut Ave NW, 409, 411): every way an entry of
   `fixtures/corridors/` took, its tier before and after, the exempt ones and why,
   and any entry that matched no way (also a warning in the log: the extract's

@@ -106,6 +106,9 @@ REMATCH_REPORT_NAME = "override-rematch"
 # corridors did (ARTERIAL review r0, SF4).
 SMOOTHING_REPORT_NAME = "aadt-smoothing.csv"
 CORRIDOR_REPORT_NAME = "named-corridors.md"
+# The `bicycle=use_sidepath` roads with no side path mapped beside them, rated on their
+# own merits, for review as likely tagging errors (review RL-1; the owner, 2026-10-16).
+USE_SIDEPATH_REPORT_NAME = "use-sidepath-no-path.csv"
 # DDOT's PCI per District street it reached, and whether it was applied (DC-PCI).
 PAVEMENT_REPORT_NAME = "dc-pavement-pci.csv"
 # Every way inside a military area, closed or left open, for the owner (owner report
@@ -706,6 +709,10 @@ class RebuildContext:
     road_attr_sources: dict[int, tuple[tuple[str, str], ...]] = field(default_factory=dict)
     road_disagreements: dict[int, tuple[str, ...]] = field(default_factory=dict)
     stress_by_way: dict[int, object] = field(default_factory=dict)
+    # The `bicycle=use_sidepath` roads with a side path mapped beside them, to that
+    # path's name (None where it has none), rated Avoid by `classify_stress` and said
+    # "riders are asked to use the side path" in the road panel (review RL-1).
+    use_sidepath_paths: dict[int, str | None] = field(default_factory=dict)
     # Whether a count is replaced by its street's median before classification
     # (`pipeline.aadt_smoothing`; OWNER-DECISIONS 285, 296: a data-quality fix
     # the owner can veto, which this is). To veto: set this default to False,
@@ -855,6 +862,7 @@ class RebuildContext:
             "road_attr_sources",
             "road_disagreements",
             "stress_by_way",
+            "use_sidepath_paths",
             "facility_by_way",
             "car_free_by_way",
             "trail_routes",
@@ -2229,6 +2237,18 @@ def build_handlers(
         _trails, separate_roads = facility.separate_pairs(
             (way.osm_id, way.tags, way.coordinates) for way in context.ways
         )
+        # The roads tagged `bicycle=use_sidepath`: Avoid where a side path is mapped
+        # beside them, their own rating otherwise, listed for review (review RL-1).
+        context.use_sidepath_paths, no_side_path = facility.use_sidepath_paths(
+            [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
+        )
+        logger.info(
+            "bicycle=use_sidepath roads: %d with a side path beside them (Avoid), %d with none "
+            "found (rated on their own merits, listed in %s)",
+            len(context.use_sidepath_paths),
+            len(no_side_path),
+            USE_SIDEPATH_REPORT_NAME,
+        )
         # The curated speed limits the map is missing (OWNER-DECISIONS 131),
         # read here because the tier is what they are for; a posted speed wins.
         speeds = speed_corrections.load()
@@ -2302,6 +2322,7 @@ def build_handlers(
                     separate_facility=way.osm_id in separate_roads,
                     parking_width_m=facts.parking_reach_m if facts is not None else None,
                     winding=bends,
+                    side_path=way.osm_id in context.use_sidepath_paths,
                 )
 
             context.stress_by_way[way.osm_id] = classified(match.aadt if match else None)
@@ -2377,8 +2398,18 @@ def build_handlers(
                     context.smoothing_report or aadt_smoothing.SmoothingReport()
                 ).to_csv(context.stress_by_way),
                 CORRIDOR_REPORT_NAME: context.corridor_report.to_markdown(),
+                USE_SIDEPATH_REPORT_NAME: facility.use_sidepath_report_csv(
+                    (
+                        way.osm_id,
+                        way.tags.get("name", ""),
+                        way.tags.get("tiger:county", ""),
+                        state_of.get(way.osm_id) or "",
+                    )
+                    for way in context.ways
+                    if way.osm_id in no_side_path
+                ),
             },
-            "AADT smoothing and named-corridor",
+            "AADT smoothing, named-corridor and use_sidepath",
         )
         if context.corridor_report.unmatched_entries:
             logger.warning(
@@ -2426,6 +2457,7 @@ def build_handlers(
                     jurisdiction=state_of.get(way.osm_id),
                     divided=way.osm_id in divided_ways,
                     separate_facility=way.osm_id in separate_roads,
+                    side_path=way.osm_id in context.use_sidepath_paths,
                 )
                 facts = context.road_facts_by_way[way.osm_id]
                 rows.append(
@@ -3325,6 +3357,14 @@ def build_handlers(
                 way.tags,
                 no_bicycle=context.no_bicycle.get(way.osm_id),
                 overridden=way.osm_id in context.bicycle_override_ways,
+                side_path=way.osm_id in context.use_sidepath_paths,
+            )
+            # On a `bicycle=use_sidepath` road, the side path it asks riders to use, for
+            # the road panel (review RL-1); on a trail, the street it runs beside.
+            side_name = (
+                context.use_sidepath_paths.get(way.osm_id)
+                if way.osm_id in context.use_sidepath_paths
+                else sidepath_names.get(way.osm_id)
             )
             for ordinal, piece in extract.iter_segments(way):
                 rows.append(
@@ -3383,7 +3423,7 @@ def build_handlers(
                         if long_trail and trail_routes.is_bridge_way(way.tags)
                         else 0,
                         bike_access_reason=access_reason,
-                        sidepath_name=sidepath_names.get(way.osm_id),
+                        sidepath_name=side_name,
                     )
                 )
         writers.write_segments(context.staging_schema, rows)

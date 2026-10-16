@@ -851,7 +851,13 @@ class TestAccessReason:
         [
             ({"highway": "residential"}, {}, None),
             ({"highway": "primary", "bicycle": "no"}, {}, "bicycle_no"),
-            ({"highway": "primary", "bicycle": "use_sidepath"}, {}, "bicycle_use_sidepath"),
+            # Only where a side path is mapped beside it (review RL-1).
+            ({"highway": "primary", "bicycle": "use_sidepath"}, {}, None),
+            (
+                {"highway": "primary", "bicycle": "use_sidepath"},
+                {"side_path": True},
+                "bicycle_use_sidepath",
+            ),
             ({"highway": "motorway"}, {}, "motorway"),
             ({"highway": "trunk", "motorroad": "yes"}, {}, "motorroad"),
             ({"highway": "service", "access": "private"}, {}, "private"),
