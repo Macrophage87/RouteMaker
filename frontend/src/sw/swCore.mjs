@@ -48,11 +48,12 @@ export const SKIP_WAITING = "SKIP_WAITING";
 /**
  * Assets left out of the precache, so an install does not download them: the Find food places
  * (about 555 KB compressed; lib/food.ts), which most rides never open, and the Climbs layer's file
- * (about 400 KB compressed; lib/climbs.ts), loaded only when the layer, off by default, is turned on. Fetched the first time the
+ * (about 400 KB compressed; lib/climbs.ts), loaded only when the layer, off by default, is turned on, and the
+ * federal land (about 87 KB compressed; lib/federalLand.ts), which only Mass Ride uses (review fe-perf-6). Fetched the first time the
  * page asks, kept then in the build's cache (so a search works offline after one use), and carried
  * into the next build's cache at its install while the file is unchanged.
  */
-export const LAZY_ASSET = /^\/assets\/(?:food|climbs)-[^/]*\.json$/;
+export const LAZY_ASSET = /^\/assets\/(?:food|climbs|federal-land)-[^/]*\.json$/;
 
 /** The build's own cache: its assets and its shell. */
 export function buildCache(buildId) {

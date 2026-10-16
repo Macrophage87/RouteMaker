@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { RAIL_FIXTURE_FILES, loadRailStations, stationsFromTexts, type RailTexts } from "./railFixtures.ts";
 import { checkRailFixtures, railFixtures } from "./railFixturesPlugin.mjs";
 
@@ -51,4 +52,24 @@ test("the build stops on a stale correction, and passes the committed fixtures",
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("the bundle gets slimmed GeoJSON fixtures that make the same stations (review fe-perf-7)", () => {
+  const plugin = railFixtures(fileURLToPath(DATA));
+  const bundled = (file: string) => {
+    const code = plugin.load(`${fileURLToPath(DATA)}${file}?raw`) as string;
+    return JSON.parse(code.replace(/^export default /, "").replace(/;$/, "")) as string;
+  };
+  const slim = { ...texts, metroStations: bundled("metro-stations.geojson"), metroEntrances: bundled("metro-entrances.geojson"), marc: bundled("marc-penn-stations.geojson"), osmElevators: bundled("metro-osm-elevators.geojson") };
+  assert.ok(slim.metroStations.length + slim.metroEntrances.length < 0.8 * (texts.metroStations.length + texts.metroEntrances.length));
+  assert.doesNotMatch(slim.metroEntrances, /CAPTUREYEAR|EXIT_TO_ST/);
+  assert.doesNotMatch(slim.metroStations, /ADDRESS/);
+  const full = stationsFromTexts(texts);
+  const slimmed = stationsFromTexts(slim);
+  assert.deepEqual(slimmed.map((s) => [s.id, s.name, s.metro, s.penn, s.elevators.length, s.osmElevators.length, s.entrances.length]), full.map((s) => [s.id, s.name, s.metro, s.penn, s.elevators.length, s.osmElevators.length, s.entrances.length]));
+  for (const [i, s] of slimmed.entries()) assert.ok(Math.abs(s.point[0] - full[i].point[0]) < 1e-6 && Math.abs(s.point[1] - full[i].point[1]) < 1e-6, s.name);
+  // Only the rail data's ?raw imports: anything else is Vite's.
+  assert.equal(plugin.load(`${fileURLToPath(DATA)}metro-stations.geojson`), null);
+  assert.equal(plugin.load(`${fileURLToPath(DATA)}metro-line-corrections.json?raw`), null);
+  assert.equal(plugin.load("/elsewhere/x.geojson?raw"), null);
 });

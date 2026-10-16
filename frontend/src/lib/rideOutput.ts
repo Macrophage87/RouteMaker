@@ -273,25 +273,38 @@ export class Voice {
 export interface WakeLockSentinelLike {
   release(): Promise<void>;
   readonly released: boolean;
+  /** The browser's own release (a low battery, a system setting), not only a hidden page's. */
+  addEventListener?(type: "release", listener: () => void): void;
 }
 
 export interface WakeEnv {
   request: (() => Promise<WakeLockSentinelLike>) | undefined;
+  /** Whether the page is in front; a lock let go while it is hidden is asked again when it shows. */
+  visible?: () => boolean;
 }
 
 export function browserWake(): WakeEnv {
   const wakeLock = typeof navigator !== "undefined" ? (navigator as Navigator & { wakeLock?: { request(type: "screen"): Promise<WakeLockSentinelLike> } }).wakeLock : undefined;
-  return { request: wakeLock ? () => wakeLock.request("screen") : undefined };
+  return { request: wakeLock ? () => wakeLock.request("screen") : undefined, visible: () => typeof document === "undefined" || document.visibilityState === "visible" };
 }
 
 /** What the rider is told when the screen may turn off. */
 export const WAKE_UNAVAILABLE =
   "This browser cannot keep the screen on. Keep your screen on yourself for this ride (on an iPhone: Settings, Display and Brightness, Auto-Lock, Never).";
 
+/** Said instead when the screen was kept on earlier in the ride and the browser stopped (review RIDE-8). */
+export const WAKE_LOST =
+  "The screen may now turn off: the browser stopped keeping it on. Keep your screen on yourself for this ride (on an iPhone: Settings, Display and Brightness, Auto-Lock, Never).";
+
+/** How many times a ride asks again for a lock the browser let go in front, before it stops asking. */
+export const WAKE_REASKS = 3;
+
 /** Holds the screen on while riding: asked at Start ride, again when the page shows, let go at End ride. */
 export class ScreenWake {
   private sentinel: WakeLockSentinelLike | null = null;
   private wanted = false;
+  private everHeld = false;
+  private reasks = 0;
   private readonly env: WakeEnv;
 
   constructor(env: WakeEnv) {
@@ -309,6 +322,18 @@ export class ScreenWake {
   }
 
   private pending: Promise<boolean> | null = null;
+  private lost: ((held: boolean) => void) | null = null;
+
+  /** Told whether a lock the browser let go mid-ride was got back. */
+  whenLost(listener: ((held: boolean) => void) | null): void {
+    this.lost = listener;
+  }
+
+  /** The screen note for a hold's outcome: none when held, else whether it never was or was let go. */
+  noteFor(held: boolean): string {
+    if (held) return "";
+    return this.everHeld ? WAKE_LOST : WAKE_UNAVAILABLE;
+  }
 
   private async request(): Promise<boolean> {
     try {
@@ -318,6 +343,19 @@ export class ScreenWake {
         return false;
       }
       this.sentinel = sentinel;
+      this.everHeld = true;
+      // Let go by the browser while the page is in front (review RIDE-8): asked again at once, and
+      // whether it came back is told (`whenLost`), so a lock that is gone is said, not assumed.
+      // A browser that keeps letting go is asked WAKE_REASKS times in a ride, then told as gone.
+      sentinel.addEventListener?.("release", () => {
+        if (this.sentinel !== sentinel || !this.wanted || !(this.env.visible?.() ?? true)) return;
+        if (this.reasks >= WAKE_REASKS) {
+          this.lost?.(false);
+          return;
+        }
+        this.reasks += 1;
+        void this.hold().then((held) => this.lost?.(held));
+      });
       return true;
     } catch {
       return false;

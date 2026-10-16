@@ -809,3 +809,32 @@ export function watchZoom(map: ZoomMap, zoom: (z: number, byRider: boolean) => v
   zoom(map.getZoom(), false);
   map.on("zoomend", (event) => zoom(map.getZoom(), event?.originalEvent != null));
 }
+
+/** The parts of a MapLibre map the crosshair watch uses. */
+export interface CentreMap {
+  getCenter(): { lng: number; lat: number };
+  project(lngLat: [number, number]): { x: number; y: number };
+  on(event: "move" | "resize", listener: () => void): unknown;
+  off(event: "move" | "resize", listener: () => void): unknown;
+}
+
+/**
+ * Report where the map's centre is drawn, in pixels from the map's top left, now and on every move,
+ * until the returned function is called. Map tools' crosshair sits there (review UI-2): a padded move
+ * (a junction from the list, the chart's scrub) leaves MapLibre's padding set, so `getCenter()`, which
+ * Map tools' actions use, is no longer the middle of the map.
+ */
+export function watchCentre(map: CentreMap, at: (pixel: { x: number; y: number }) => void): () => void {
+  const report = () => {
+    const { lng, lat } = map.getCenter();
+    const { x, y } = map.project([lng, lat]);
+    at({ x, y });
+  };
+  report();
+  map.on("move", report);
+  map.on("resize", report);
+  return () => {
+    map.off("move", report);
+    map.off("resize", report);
+  };
+}

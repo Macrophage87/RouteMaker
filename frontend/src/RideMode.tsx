@@ -34,15 +34,26 @@ import { formatDistance, formatDuration, spokenDistance } from "./lib/format.ts"
 import { LOCATE_MESSAGES } from "./lib/geolocation.ts";
 import {
   POOR_FIX_M,
+  GPS_WEAK_SAID,
+  weighFix,
+  CUE_SHEET_SAID,
+  cueSheet,
+  cueSheetAfterMs,
+  cueSheetShown,
+  CUE_SHEET_CHECK_MS,
+  type GpsWeakness,
   REPLAN_FAILED,
   REPLAN_FOUND,
   REPLAN_NO_SIGNAL,
+  REPLAN_FINDING,
+  REPLAN_STILL_WAITING,
   ReplanGate,
   VERBOSITY_LABELS,
   cueSpoken,
   nextAction,
   pointAt,
   replanPoints,
+  replanTold,
   rideModel,
   startState,
   step,
@@ -61,7 +72,6 @@ import {
   OUTPUT_LABELS,
   ScreenWake,
   Voice,
-  WAKE_UNAVAILABLE,
   browserSpeech,
   browserWake,
   toScreenReader,
@@ -94,8 +104,9 @@ import {
 import type { WaterPoint } from "./lib/waterRestrooms.ts";
 import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
 import { corridorNote, type PrefetchResult } from "./lib/corridor.ts";
-import { clearCorridor, keepCorridor } from "./lib/corridorStore.ts";
+import { clearCorridor, copyCorridor, keepCorridor } from "./lib/corridorStore.ts";
 import { lastRideAdopter } from "./lib/offlineKeep.ts";
+import { blockOf, rescueRideFocus, type RideBlock } from "./lib/rideFocus.ts";
 import { inDc } from "./lib/dcBoundary.ts";
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import {
@@ -192,6 +203,13 @@ export function startRideGesture(prefs: RidePrefs): void {
  * gesture has spoken once), so "Ride started." is said only when the ride does start. */
 export function primeRideVoice(prefs: RidePrefs): void {
   if (toVoice(prefs.output)) rideVoice.unlock(" ");
+}
+
+export const VOICE_ON = "Voice on.";
+
+/** Called inside the press that changes the ride's outputs: a voice newly chosen is unlocked there (iOS). */
+export function voiceTurnedOn(before: RidePrefs, next: RidePrefs, voice: Pick<Voice, "unlock"> = rideVoice): void {
+  if (!toVoice(before.output) && toVoice(next.output)) voice.unlock(VOICE_ON);
 }
 
 /** Said politely when Start's closure check takes more than a moment (CLOSURE_SLOW_MS). */
@@ -470,6 +488,12 @@ export function RideMode({
   const gpsSaid = useRef<string | null>(null);
   const wakeSaid = useRef("");
   const lastFixAt = useRef(Date.now());
+  // The last good fix and whether the weak-GPS note is up (lib/navigate.ts weighFix); a new watch starts afresh.
+  const gpsWeak = useRef<GpsWeakness>({ goodAt: Date.now(), weak: false });
+  // Weak GPS for long enough (cueSheetShown): the card shows the turns ahead as a list.
+  const [cueSheetOn, setCueSheetOn] = useState(false);
+  const cueSheetRef = useRef(false);
+  const cueSheetId = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const whereRef = useRef<HTMLButtonElement>(null);
   const sectionRef = useRef<HTMLElement>(null);
@@ -610,22 +634,29 @@ export function RideMode({
   const say = useCallback((events: RideEvent[]) => {
     for (const event of events) announcer.current?.say(event.spoken, event.urgent);
   }, []);
-  // A note about the ride itself (no GPS, the screen may sleep, paused): said once, politely, and through
-  // the polite region even with "neither" chosen, since it changes what the rider must do.
+  // A note about the ride itself (no GPS, the screen may sleep, paused): said once, politely, through the
+  // rider's outputs, and through the polite region with "neither" chosen, since it changes what the rider
+  // must do. Not with the voice as well: a screen reader on "voice" heard it twice (review RIDE-10).
   const notify = useCallback((text: string) => {
     if (!text) return;
     announcer.current?.note(text);
-    if (!toScreenReader(prefsRef.current.output)) setPolite((s) => ({ text, count: s.count + 1 }));
+    if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
   }, []);
   const noteWake = useCallback(
     (held: boolean) => {
-      const note = held ? "" : WAKE_UNAVAILABLE;
+      // Never held: the browser cannot; held earlier this ride and let go: it stopped (review RIDE-8).
+      const note = wake.noteFor(held);
       if (note && note !== wakeSaid.current) notify(note);
       wakeSaid.current = note;
       setWakeNote(note);
     },
-    [notify],
+    [notify, wake],
   );
+  // The browser letting the lock go mid-ride (review RIDE-8): asked again, and said if it is not back.
+  useEffect(() => {
+    wake.whenLost(noteWake);
+    return () => wake.whenLost(null);
+  }, [wake, noteWake]);
 
   // The detour's own status (below): said like an answer, since the rider asked for it.
   const [detourStatus, setDetourStatus] = useState("");
@@ -640,7 +671,7 @@ export function RideMode({
   // With `via`, a detour: from here to that place first, then on through what was left (the nearest water
   // or restroom, below). A detour's place becomes a stop of the new route, so it is cued and arrived at.
   const replan = useCallback(
-    async (here: LonLat, via?: LonLat) => {
+    async (here: LonLat, via?: LonLat, asked = false) => {
       if (ended.current) return;
       const current = rideRef.current;
       const left = replanPoints(modelRef.current, current.progressM ?? 0, here, plan.current.points, plan.current.loop);
@@ -659,14 +690,18 @@ export function RideMode({
       setReplanNote("");
       // The quiet level hears nothing unprompted but arrival, and the stoker only that a new route was
       // found (plan section 3, off route said once); the note stays on screen for all. A detour's outcome
-      // answers the rider's ask, so it is said whatever the level (sayDetour).
+      // answers the rider's ask, so it is said whatever the level (sayDetour); so is Re-plan from here's.
       const tell = (note: string) => {
         if (via) {
           sayDetour(note);
           return;
         }
-        const level = prefsRef.current.verbosity;
-        if (level === "full" || (level === "stoker" && note === REPLAN_FOUND)) announcer.current?.say(note, false);
+        const told = replanTold(asked, prefsRef.current.verbosity, note);
+        if (told === "say") announcer.current?.say(note, false);
+        if (told === "answer") {
+          announcer.current?.answer(note);
+          if (prefsRef.current.output === "neither") setPolite((s) => ({ text: note, count: s.count + 1 }));
+        }
       };
       // No answer in REPLAN_TIMEOUT_MS: the rider is told there is no signal, while the request goes on
       // (the gate stays busy until it settles, so no second one joins it at the server; a late new
@@ -704,12 +739,36 @@ export function RideMode({
     [dials, preset, gate, sayDetour],
   );
 
+  // No good fix for a minute, or for longer than the next turn is away: the turns ahead as a list, said
+  // once; a good fix brings the turn-by-turn card back (the owner, 2026-10-16). Asked on each fix and on
+  // a timer (below), so it comes when the fixes stop altogether too.
+  const checkCueSheet = useCallback(
+    (now: number) => {
+      const state = rideRef.current;
+      if (ended.current || state.arrived || pausedRef.current) return;
+      const sheet = cueSheetShown(gpsWeak.current, now, cueSheetAfterMs(modelRef.current, state.progressM ?? 0, state.speedMs));
+      if (sheet && !cueSheetRef.current) notify(CUE_SHEET_SAID);
+      cueSheetRef.current = sheet;
+      setCueSheetOn(sheet);
+    },
+    [notify],
+  );
+  useEffect(() => {
+    const timer = window.setInterval(() => checkCueSheet(Date.now()), CUE_SHEET_CHECK_MS);
+    return () => window.clearInterval(timer);
+  }, [checkCueSheet]);
+
   const onFix = useCallback(
     (fix: RideFix) => {
       if (ended.current) return;
       gpsSaid.current = null;
       lastFixAt.current = Date.now();
-      setGps("");
+      // Only poor fixes for a while: the cues are paused, so the GPS note says so, once (review RIDE-3).
+      const weighed = weighFix(gpsWeak.current, fix.accuracyM, lastFixAt.current);
+      gpsWeak.current = { goodAt: weighed.goodAt, weak: weighed.weak };
+      if (weighed.sayNow) notify(GPS_WEAK_SAID);
+      setGps(weighed.weak ? GPS_WEAK_SAID : "");
+      checkCueSheet(lastFixAt.current);
       const auto = !keepRef.current;
       const out = step(modelRef.current, rideRef.current, fix, prefsRef.current.verbosity, auto);
       rideRef.current = out.state;
@@ -724,7 +783,7 @@ export function RideMode({
         announcer.current?.answer(whereAmI(modelRef.current, out.state));
       }
     },
-    [gate, replan, say],
+    [gate, replan, say, notify, checkCueSheet],
   );
   const onFixRef = useRef(onFix);
   onFixRef.current = onFix;
@@ -733,6 +792,7 @@ export function RideMode({
   const stopWatch = useRef<(() => void) | null>(null);
   const startWatch = useCallback(() => {
     stopWatch.current?.();
+    gpsWeak.current = { goodAt: Date.now(), weak: false };
     stopWatch.current = watchRide(
       env,
       (fix) => onFixRef.current(fix),
@@ -846,6 +906,16 @@ export function RideMode({
   }, [route]);
   const handsOn = useRef(keepLastRide);
   useEffect(() => () => void clearCorridor(handsOn.current ? lastRideAdopter() : undefined), []);
+  // Hidden, the installed app may be closed and never reach End ride: the last ride gets the map kept
+  // so far now, as End ride would hand it on (review RIDE-1).
+  useEffect(() => {
+    if (!handsOn.current) return;
+    const onHide = () => {
+      if (document.visibilityState === "hidden" && !ended.current) void copyCorridor(lastRideAdopter());
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => document.removeEventListener("visibilitychange", onHide);
+  }, []);
   const corridorText = corridorNote(corridor);
 
   const resume = () => {
@@ -890,11 +960,26 @@ export function RideMode({
     if (back) announcer.current?.answer(`The planned route is ${spokenDistance(back.metres)} to the ${back.direction}.`);
   };
   const replanNow = () => {
-    if (replanning) return;
+    // The rider asked, so the press is answered, as Detour's is (review RIDE-5): through the rider's
+    // outputs, and the polite region with neither chosen.
+    const answer = (text: string) => {
+      announcer.current?.answer(text);
+      if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
+    };
+    // A re-plan still under way (or one kept waiting after Keep the planned route) holds the gate.
+    if (replanning || gate.busy) {
+      answer(REPLAN_STILL_WAITING);
+      return;
+    }
+    const here = rideRef.current.goodFix?.point ?? rideRef.current.fix?.point;
+    if (!here) {
+      answer(NO_FIX_YET);
+      return;
+    }
     setKeepPlanned(false);
     gate.online();
-    const here = rideRef.current.goodFix?.point ?? rideRef.current.fix?.point;
-    if (here) void replan(here);
+    answer(REPLAN_FINDING);
+    void replan(here, undefined, true);
   };
 
   // Water or restroom on the way (the owner, 2026-10-10: "If navigating, water sources and restrooms can be
@@ -954,16 +1039,6 @@ export function RideMode({
     void replan(here, item.place.point);
   };
 
-  // Off route over (back on, or a new route): its buttons go; a focus inside them goes to Where am I?.
-  const wasOff = useRef(false);
-  useEffect(() => {
-    if (wasOff.current && !ride.off) {
-      const active = document.activeElement;
-      if (!active || active === document.body || !active.isConnected) whereRef.current?.focus();
-    }
-    wasOff.current = ride.off;
-  }, [ride.off]);
-
   // Keys while the focus is in Ride mode (outside a text field): W where am I, C re-centre. Only there
   // (WCAG 2.1.4), so speech input or a stray key elsewhere on the page fires neither.
   useEffect(() => {
@@ -991,6 +1066,35 @@ export function RideMode({
   const shape = arrowFor(cue);
   const show311 = ride311Shown({ off: ride.off, progressM: progress, insideDc: (m) => inDc(pointAt(model, m)) });
   const place311 = show311 && progress !== null ? reportPlace(model, progress) : null;
+
+  // Off route, back on, or out of DC: the off-route buttons or the 311 block go, and a focus that was in
+  // the one that went goes to Where am I?, so W and C keep working (review a11y-3; lib/rideFocus.ts). A
+  // removed element fires no focusout, so the last focusin says where the focus was. The 311 menu closes
+  // with its block.
+  const block311 = useRef<HTMLDivElement>(null);
+  const blockOff = useRef<HTMLDivElement>(null);
+  const focusWasIn = useRef<RideBlock | null>(null);
+  useEffect(() => {
+    const onFocusIn = (event: globalThis.FocusEvent) => {
+      focusWasIn.current = blockOf(event.target, { "311": block311.current, off: blockOff.current });
+    };
+    document.addEventListener("focusin", onFocusIn);
+    return () => document.removeEventListener("focusin", onFocusIn);
+  }, []);
+  const shownBefore = useRef({ off: ride.off, show311 });
+  useEffect(() => {
+    const before = shownBefore.current;
+    const now = { off: ride.off, show311 };
+    shownBefore.current = now;
+    if (before.off === now.off && before.show311 === now.show311) return;
+    if (!show311) setMenu311(false);
+    const active = document.activeElement;
+    const focusLost = !active || active === document.body || !active.isConnected;
+    if (rescueRideFocus({ focusWasIn: focusWasIn.current, before, now, focusLost })) {
+      focusWasIn.current = null;
+      whereRef.current?.focus({ preventScroll: true });
+    }
+  }, [ride.off, show311]);
 
   return (
     <section ref={sectionRef} className={`ride ${big ? "ride-big" : ""}`} aria-labelledby="ride-heading">
@@ -1024,11 +1128,27 @@ export function RideMode({
               )}
             </div>
           </div>
+        ) : cueSheetOn ? (
+          // GPS weak for long (cueSheetShown): the turns ahead from the last good place, in order, the
+          // next first; a list a screen reader reads as one, with no control of its own.
+          <div className="cue-sheet">
+            <p id={cueSheetId} className="cue-then">
+              Turns ahead, in order:
+            </p>
+            <ol className="cue-sheet-list" aria-labelledby={cueSheetId}>
+              {cueSheet(model, progress ?? 0).map((row, i) => (
+                <li key={row.index} className={i === 0 ? "cue-sheet-next" : undefined} aria-current={i === 0 ? "step" : undefined}>
+                  <span className="cue-sheet-distance">{row.distance}:</span> {row.text}
+                </li>
+              ))}
+            </ol>
+          </div>
         ) : cue && progress !== null ? (
           <div className="cue-next">
             <CueShape shape={shape} />
             <div>
-              <p className="cue-distance">In {formatDistance(cue.atM - progress)}</p>
+              {/* Greyed while GPS is weak or lost (any GPS note): the distance is from an old fix, not where the rider is. */}
+              <p className={gps ? "cue-distance cue-distance-weak" : "cue-distance"}>In {formatDistance(cue.atM - progress)}</p>
               <p className="cue-text">{cue.text}</p>
             </div>
           </div>
@@ -1059,7 +1179,7 @@ export function RideMode({
 
       {/* The 311 button (lib/ride311.ts): inside DC only, on the right edge at thumb height; its menu over the map. */}
       {show311 && (
-        <div className="ride-311" onKeyDown={(event) => {
+        <div className="ride-311" ref={block311} onKeyDown={(event) => {
           if (event.key === "Escape" && menu311) {
             event.preventDefault();
             close311();
@@ -1108,7 +1228,7 @@ export function RideMode({
           </div>
         ) : null}
         {ride.off && (
-          <div className="actions ride-off-actions">
+          <div className="actions ride-off-actions" ref={blockOff}>
             <button type="button" onClick={replanNow} aria-disabled={replanning}>
               Re-plan from here
             </button>

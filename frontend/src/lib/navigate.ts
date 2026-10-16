@@ -51,6 +51,74 @@ export const RIDE_TOO_LONG =
 
 /** A fix less accurate than this moves the marker but is not used for cues or off route (about 165 ft). */
 export const POOR_FIX_M = 50;
+/**
+ * Only poor fixes for this long: the cues are paused without a word otherwise (a poor fix still counts
+ * as GPS alive, so the GPS-lost note never comes), so the rider is told once (review RIDE-3).
+ */
+export const GPS_WEAK_MS = 12_000;
+export const GPS_WEAK_SAID = "GPS is weak: turn cues paused.";
+
+/** The last good fix's time, and whether the weak-GPS note is up. */
+export interface GpsWeakness {
+  goodAt: number;
+  weak: boolean;
+}
+
+/** A fix of `accuracyM` at `now`: the next state, and `sayNow` the once the note goes up. A good fix takes it down. */
+export function weighFix(before: GpsWeakness, accuracyM: number, now: number): GpsWeakness & { sayNow: boolean } {
+  if (!(accuracyM > POOR_FIX_M)) return { goodAt: now, weak: false, sayNow: false };
+  if (before.weak || now - before.goodAt < GPS_WEAK_MS) return { ...before, sayNow: false };
+  return { goodAt: before.goodAt, weak: true, sayNow: true };
+}
+
+/**
+ * Weak GPS for longer than this, or than the ride would take to reach its next turn from the last good
+ * fix, whichever is longer: the card shows the turns ahead as an ordered list (the owner, 2026-10-16,
+ * review RIDE-3), since the turn-by-turn card cannot know where the rider is.
+ */
+export const CUE_SHEET_MIN_MS = 60_000;
+export const CUE_SHEET_SAID = "GPS is still weak: the turns ahead are shown as a list, next turn first.";
+/** The list's length: the turns of a dead spot, not the whole ride. */
+export const CUE_SHEET_ROWS = 10;
+
+/** How long only poor fixes since the last good one (at `progressM`, riding at `speedMs`) before the list shows. */
+export function cueSheetAfterMs(model: RideModel, progressM: number, speedMs: number): number {
+  const next = model.cues.find((c) => c.kind === "turn" && c.atM > progressM + 1);
+  // The ride's own speed; stopped (or not yet measured), the route's pace.
+  const speed = speedMs > MIN_SPEED_MS ? speedMs : model.paceMs;
+  if (!next || !speed) return CUE_SHEET_MIN_MS;
+  return Math.max(CUE_SHEET_MIN_MS, ((next.atM - progressM) / speed) * 1000);
+}
+
+/**
+ * Whether the list shows at `now`: no good fix since `goodAt` for `afterMs`, whether poor fixes came or
+ * none at all (RideMode asks on each fix and on a timer); a good fix (a new `goodAt`) ends it.
+ */
+export function cueSheetShown(weakness: GpsWeakness, now: number, afterMs: number): boolean {
+  return now - weakness.goodAt >= afterMs;
+}
+/** How often RideMode asks, so the list comes when the fixes stop altogether too. */
+export const CUE_SHEET_CHECK_MS = 3000;
+
+/** One row of the list: how far on from the row before (the first from `progressM`), and the cue. */
+export interface CueSheetRow {
+  index: number;
+  distance: string;
+  text: string;
+}
+
+/** The turns, stops and end ahead of `progressM`, in order, each with the distance from the one before. */
+export function cueSheet(model: RideModel, progressM: number): CueSheetRow[] {
+  let from = progressM;
+  return model.cues
+    .filter((c) => c.atM > progressM + 1 && (c.kind === "turn" || c.kind === "stop" || c.kind === "end"))
+    .slice(0, CUE_SHEET_ROWS)
+    .map((c, i) => {
+      const row = { index: c.index, distance: `${i === 0 ? "In" : "Then in"} ${formatDistance(c.atM - from)}`, text: c.text };
+      from = c.atM;
+      return row;
+    });
+}
 /** Seconds ahead, at the current speed, of a turn's first cue; never closer than ADVANCE_MIN_M (500 ft). */
 export const ADVANCE_S = 27;
 export const ADVANCE_MIN_M = 150;
@@ -920,3 +988,16 @@ export class ReplanGate {
 export const REPLAN_FOUND = "New route found.";
 export const REPLAN_NO_SIGNAL = "No signal: the planned route is still shown.";
 export const REPLAN_FAILED = "No new route was found; the planned route is still shown.";
+export const REPLAN_FINDING = "Finding a new way from here.";
+export const REPLAN_STILL_WAITING = "Still waiting for the last re-plan.";
+
+/**
+ * How a re-plan's outcome reaches the rider: one the rider asked for (Re-plan from here) is answered
+ * whatever the level, as a detour's is (review RIDE-5); an automatic one is said at the full level, and
+ * at the stoker's only when a new route was found; the quiet level hears it on screen only.
+ */
+export function replanTold(asked: boolean, level: Verbosity, note: string): "answer" | "say" | "quiet" {
+  if (asked) return "answer";
+  if (level === "full" || (level === "stoker" && note === REPLAN_FOUND)) return "say";
+  return "quiet";
+}

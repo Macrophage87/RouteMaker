@@ -803,11 +803,15 @@ export function MapView(props: Props) {
       const hit = grabAt(event.point, TOUCH_HIT_PX);
       if (!hit) {
         // Off the line: a finger held here opens the road panel.
-        if (!anyPopupOpen()) longPress.press(event.point.x, event.point.y);
+        if (!anyPopupOpen()) {
+          longPress.press(event.point.x, event.point.y);
+          watchTouchMoves(true);
+        }
         return;
       }
       grabbed = hit;
       gesture.press("touch", event.point.x, event.point.y);
+      watchTouchMoves(true);
     });
     const onTouchMove = (event: TouchEvent) => {
       if (longPress.pending) {
@@ -828,6 +832,7 @@ export function MapView(props: Props) {
     };
     const onTouchEnd = (event: TouchEvent) => {
       longPress.cancel();
+      watchTouchMoves(false);
       if (!gesture.active) return;
       const touch = event.changedTouches[0];
       finish(event.type === "touchend" && touch ? local(touch.clientX, touch.clientY) : null);
@@ -840,7 +845,8 @@ export function MapView(props: Props) {
         openInfo({ x: box.width / 2, y: box.height / 2 }, "centre");
         return;
       }
-      if (event.key !== "Escape") return;
+      // An Escape a sheet or dialog has handled already is not also the map's (review a11y-10).
+      if (event.key !== "Escape" || event.defaultPrevented) return;
       // Escape calls off a drag; otherwise it closes a via's Remove, and the
       // focus goes back where it was; otherwise a junction's card, likewise.
       if (gesture.active) finish(null);
@@ -875,7 +881,15 @@ export function MapView(props: Props) {
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
     window.addEventListener("mouseup", onRightUp);
-    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    // The page's touch moves, not passive (a line drag holds the map still), only while a line drag or a
+    // long press is under way: otherwise every scroll and pan of the page would wait on it (review fe-perf-4).
+    let watchingTouch = false;
+    function watchTouchMoves(on: boolean) {
+      if (on === watchingTouch) return;
+      watchingTouch = on;
+      if (on) window.addEventListener("touchmove", onTouchMove, { passive: false });
+      else window.removeEventListener("touchmove", onTouchMove);
+    }
     window.addEventListener("touchend", onTouchEnd);
     window.addEventListener("touchcancel", onTouchEnd);
     window.addEventListener("keydown", onKey);
@@ -1266,7 +1280,9 @@ export function MapView(props: Props) {
       // The warning ends with its own full stop.
       const named = warning ? `${name}. ${warning}` : name;
       const said = warning ? named : `${name}.`;
-      element.setAttribute("aria-label", via ? `${said} Drag to move; click for Remove.` : `${said} Drag to move.`);
+      // The name and warning only, and the keyboard's way to remove a via: a pin takes no focus, so
+      // dragging and clicking are the title's, for a pointer (review a11y-8).
+      element.setAttribute("aria-label", via ? `${said} Remove it from the Points list.` : said);
       element.title = via ? `${named} - drag to move; click, right-click or long-press for Remove; double-click to remove` : `${named} - drag to move`;
       const marker = new maplibregl.Marker({ element, draggable: true, anchor: "center" })
         .setLngLat(point)

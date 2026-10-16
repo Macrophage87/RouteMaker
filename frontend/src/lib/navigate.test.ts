@@ -8,6 +8,15 @@ import type { LonLat } from "./geo.ts";
 import { spokenDistance } from "./format.ts";
 import {
   ADVANCE_MIN_M,
+  GPS_WEAK_MS,
+  GPS_WEAK_SAID,
+  weighFix,
+  CUE_SHEET_MIN_MS,
+  CUE_SHEET_ROWS,
+  cueSheet,
+  cueSheetAfterMs,
+  cueSheetShown,
+  CUE_SHEET_CHECK_MS,
   BACK_ON_ROUTE_SAID,
   OFF_ROUTE_KEPT_SAID,
   OFF_ROUTE_SAID,
@@ -947,4 +956,65 @@ test("a path with no name is unnamed; a bike lane named for its street is a name
   assert.equal(isUnnamed("unnamed path"), true);
   assert.equal(isUnnamed("9th Street Northwest bike lane"), false);
   assert.equal(isUnnamed("Capital Crescent Trail"), false);
+});
+
+test("weighFix: 12 s of only poor fixes says GPS is weak once; a good fix takes it down (review RIDE-3)", () => {
+  assert.equal(GPS_WEAK_MS, 12_000);
+  assert.equal(GPS_WEAK_SAID, "GPS is weak: turn cues paused.");
+  let s = weighFix({ goodAt: 0, weak: false }, 5, 1000);
+  assert.deepEqual(s, { goodAt: 1000, weak: false, sayNow: false });
+  s = weighFix(s, 80, 12_999);
+  assert.equal(s.weak, false, "under 12 s since the good one");
+  s = weighFix(s, 80, 13_000);
+  assert.deepEqual(s, { goodAt: 1000, weak: true, sayNow: true });
+  s = weighFix(s, 120, 20_000);
+  assert.deepEqual(s, { goodAt: 1000, weak: true, sayNow: false }, "said once");
+  s = weighFix(s, 0, 21_000);
+  assert.deepEqual(s, { goodAt: 21_000, weak: false, sayNow: false }, "a fix with no accuracy counts as good, as step's does");
+  // Exactly POOR_FIX_M is good, as in step.
+  assert.equal(weighFix({ goodAt: 0, weak: true }, 50, 99_000).weak, false);
+});
+
+test("cueSheetAfterMs: the list after a minute, or the time to the next turn when that is longer (RIDE-3, owner)", () => {
+  const model = rideModel(lRoute()); // the turn at 1,000 m; the route's pace 5 m/s
+  assert.equal(CUE_SHEET_MIN_MS, 60_000);
+  assert.equal(cueSheetAfterMs(model, 900, 5), 60_000, "100 m at 5 m/s is 20 s: the minute floor");
+  assert.ok(Math.abs(cueSheetAfterMs(model, 0, 2) - 500_000) < 1000, "1,000 m at 2 m/s: 500 s");
+  assert.ok(Math.abs(cueSheetAfterMs(model, 0, 0) - 200_000) < 1000, "stopped: the route's pace");
+  assert.equal(cueSheetAfterMs(model, 1500, 5), 60_000, "no turn ahead: the floor");
+});
+
+test("cueSheetShown: from the weak note on, once the wait is over; a good fix goes back to the card", () => {
+  const after = 60_000;
+  let s = weighFix({ goodAt: 0, weak: false }, 5, 0);
+  s = weighFix(s, 80, 12_000);
+  assert.equal(s.weak, true);
+  assert.equal(cueSheetShown(s, 12_000, after), false, "the note first, the list later");
+  s = weighFix(s, 80, 59_999);
+  assert.equal(cueSheetShown(s, 59_999, after), false);
+  s = weighFix(s, 80, 60_000);
+  assert.equal(cueSheetShown(s, 60_000, after), true);
+  // A longer next-turn time holds it back.
+  assert.equal(cueSheetShown(s, 60_000, 200_000), false);
+  assert.equal(cueSheetShown(s, 200_000, 200_000), true);
+  // A good fix: back to turn by turn.
+  s = weighFix(s, 5, 61_000);
+  assert.equal(cueSheetShown(s, 61_000, after), false);
+  // No fixes at all after it (the timer asks): the list a minute on as well.
+  assert.equal(cueSheetShown(s, 61_000 + 59_999, after), false);
+  assert.equal(cueSheetShown(s, 61_000 + 60_000, after), true);
+  assert.ok(CUE_SHEET_CHECK_MS <= 5000, "asked every few seconds");
+});
+
+test("cueSheet: the turns, stops and end ahead in order, the next first, each distance from the one before", () => {
+  const model = rideModel(twoLegs()); // stop 1 at 1,000 m, then left onto B Street, the end at 2,000 m
+  const rows = cueSheet(model, 400);
+  assert.deepEqual(
+    rows.map((r) => r.text),
+    model.cues.filter((c) => c.atM > 401 && ["turn", "stop", "end"].includes(c.kind)).map((c) => c.text),
+  );
+  assert.match(rows[0].distance, /^In 0\.4 mi \(0\.6 km\)$/);
+  assert.ok(rows.slice(1).every((r) => r.distance.startsWith("Then in ")));
+  assert.ok(rows.length <= CUE_SHEET_ROWS);
+  assert.deepEqual(cueSheet(model, model.lengthM), []);
 });
