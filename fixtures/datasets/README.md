@@ -56,8 +56,10 @@ verbatim.
 (The Arlington row is the record of a download held outside the repository,
 in `rmdata/datasets/internal-only/`; the file and anything read from it are not
 checked in. The Alexandria Transport Streets download was held there too until
-the city's reply of 2026-10-16; it moves to
-`rmdata/datasets/alexandria-transport-streets/`, the same file, sha256 above.)
+the city's reply of 2026-10-16; it moves to the inputs folder the installer
+reads the other street layers from,
+`$DATA_ROOT/reference/inputs/alexandria-transport-streets/alexandria-transport-streets.geojson`,
+the same file, sha256 above (docs/OPERATIONS.md has the move and the check).)
 
 The Baltimore Multiuse Trails layer holds current and proposed trails (OWNER-
 DECISIONS 158). The proposed alignments are `mainSpur = 'Future Alignment'`,

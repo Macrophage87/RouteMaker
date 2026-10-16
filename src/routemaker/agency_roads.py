@@ -195,10 +195,29 @@ CARRIAGEWAY_HIGHWAYS = frozenset({"motorway", "trunk"})
 # The agencies whose posted speed only fills a gap in OSM's. Baltimore's `speed`
 # field is the city's attribute, not a survey of signs, and the owner chose
 # "Fill gaps only (Recommended)" (OWNER-DECISIONS 184). DC's posted limits take
-# precedence over OSM's (item 151). Alexandria's posted speed is a sourced default
-# (PLAN.md item 183): it fills a way OSM gives no `maxspeed`, and OSM's posted
-# speed, often surveyed there, stands where it has one.
-SPEED_FILLS_ONLY = frozenset({BALTIMORE_AGENCY, ALEXANDRIA_AGENCY})
+# precedence over OSM's (item 151). Alexandria's recorded speed is a sourced
+# default (PLAN.md item 183): it fills a way OSM gives no `maxspeed`, and OSM's
+# posted speed, often surveyed there, stands where it has one.
+#
+# Whether the city's speed should beat OSM's instead, as DC's does, is with the
+# owner (2026-10-16). This is the one switch: True moves Alexandria out of
+# SPEED_FILLS_ONLY into the record-wins group for the speed (its one-way and lanes
+# are never read either way).
+ALEXANDRIA_SPEED_WINS = False
+SPEED_FILLS_ONLY = frozenset(
+    {BALTIMORE_AGENCY} | (set() if ALEXANDRIA_SPEED_WINS else {ALEXANDRIA_AGENCY})
+)
+
+# The city layers whose blocks are held to the city's own streets
+# (`pipeline.conflation.road_facts_by_way`): never on a freeway, a trunk road or
+# their slip roads, whatever the names say (review: an unnamed "PRIMARY ROAD"
+# block gave the Capital Beltway 25 mph), and only on a way the city's blocks
+# cover almost wholly, so a way crossing the city line is left to OSM and the
+# defaults. The coverage stands in for the city boundary, which the rebuild does
+# not load: Transport Streets is the city's centerlines and ends at its line.
+CITY_ONLY_AGENCIES = frozenset({ALEXANDRIA_AGENCY})
+CITY_BARRED_HIGHWAYS = frozenset({"motorway", "motorway_link", "trunk", "trunk_link"})
+CITY_MIN_COVERAGE = 0.9
 
 # The agencies whose one-way and lane records are never used, for the classifier
 # or for routing: Baltimore's centerline (OWNER-DECISIONS 222, "Ignore it; keep
@@ -329,7 +348,8 @@ def resolve_withheld(
 # never a source: nothing that feeds the rebuild, a fixture or a published report
 # reads from it (`refuse_internal_only`). Alexandria's Transport Streets left it on
 # 2026-10-16, when the city confirmed its OpenData portal is CC0 (Alex311 request
-# 26-00041150); its raw file moves out to `datasets/alexandria-transport-streets/`.
+# 26-00041150); its raw file moves out to
+# `<DATA_ROOT>/reference/inputs/alexandria-transport-streets/`.
 INTERNAL_ONLY_DIR = "internal-only"
 
 

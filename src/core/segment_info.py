@@ -134,6 +134,8 @@ ATTR_SOURCES = {
     "baltimore-centerline": "Open Baltimore street centerline",
     "alexandria-transport-streets": "City of Alexandria Transport Streets",
 }
+# The sources whose speed is the city's record for the street rather than a posted sign.
+CITY_RECORDED = frozenset({"alexandria-transport-streets"})
 
 FACILITY_WORDS = {
     "path": "Traffic-free path",
@@ -709,6 +711,12 @@ def _attr(row: dict, key: str) -> str | None:
     return None
 
 
+def _speed_how(row: dict) -> str:
+    """How a known speed is known: "posted", or "recorded by the city" where it is
+    Alexandria's street record rather than a sign seen (PLAN.md item 183)."""
+    return "recorded by the city" if _attr(row, "maxspeed") in CITY_RECORDED else "posted"
+
+
 def traffic_rows(row: dict) -> list[dict]:
     rows = []
     path = bool(row.get("is_trail_class"))
@@ -733,7 +741,9 @@ def traffic_rows(row: dict) -> list[dict]:
         speed = row.get("road_speed_mph")
         if speed is not None:
             source = ATTR_SOURCES.get(_attr(row, "maxspeed") or "osm", OSM)
-            rows.append(_row("Speed limit", f"{mph_and_kmh(float(speed))}, posted", source))
+            rows.append(
+                _row("Speed limit", f"{mph_and_kmh(float(speed))}, {_speed_how(row)}", source)
+            )
         elif "maxspeed" in assumed:
             found = _SPEED.search(str(row.get("stress_rule") or ""))
             value = (
@@ -1067,7 +1077,7 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
     if not path:
         speed = row.get("road_speed_mph")
         if speed is not None:
-            add("speed", "Speed", f"{mph_and_kmh(float(speed))}, posted")
+            add("speed", "Speed", f"{mph_and_kmh(float(speed))}, {_speed_how(row)}")
         elif "maxspeed" in assumed:
             found = _SPEED.search(str(row.get("stress_rule") or ""))
             if found:

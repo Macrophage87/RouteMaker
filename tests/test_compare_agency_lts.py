@@ -93,6 +93,49 @@ def test_the_alexandria_report_is_a_published_one(tmp_path) -> None:
     assert "--out is required" in done.stderr
 
 
+def test_the_alexandria_report_reads_the_layer_as_the_rebuild_does(compare, tmp_path) -> None:
+    """Review: the report's own parsing kept the interstates and read the one-way, so its
+    numbers were not the rebuild's. It now takes the installer's parser and skips."""
+    import json
+
+    from routemaker import agency_roads
+
+    def record(object_id, **properties):
+        p = {
+            "OBJECTID": object_id,
+            "FULL_NAME": "S ROYAL ST",
+            "SPEED_LIMIT": 20,
+            "ONEWAY": "FROM_TO",
+            "MTFCC": "LOCAL NEIGHBORHOOD ROAD, RURAL ROAD, CITY STREET",
+            "SEG_EXIST": "Y",
+            **properties,
+        }
+        geometry = {"type": "LineString", "coordinates": [[-77.042, 38.804], [-77.042, 38.806]]}
+        return {"type": "Feature", "geometry": geometry, "properties": p}
+
+    layer = tmp_path / "alexandria-transport-streets.geojson"
+    layer.write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    record(1),
+                    record(2, MTFCC="INTERSTATE HIGHWAY", SPEED_LIMIT=55),
+                    record(3, MTFCC="ALLEY"),
+                    record(4, SPEED_LIMIT=None),
+                ],
+            }
+        )
+    )
+    blocks = compare.alexandria_blocks(layer)
+    assert [b.feature_id for b in blocks] == ["alexandria-1-0"]
+    assert blocks[0].facts == agency_roads.parse_alexandria_transport_streets(
+        record(1)["properties"]
+    )
+    with pytest.raises(InternalOnlySource):
+        compare.alexandria_blocks(tmp_path / "internal-only" / "x" / "layer.geojson")
+
+
 def test_internal_reports_are_ignored_by_git_wherever_they_land() -> None:
     done = subprocess.run(
         ["git", "check-ignore", "-q", "reports/data-comparison/internal/x.md"], cwd=REPO
