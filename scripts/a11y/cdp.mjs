@@ -248,6 +248,12 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
       body = JSON.stringify({ id: url.pathname.split("/")[3], category: "2", length_m: 12090, gain_m: 368, avg_grade_pct: 3, max_grade_pct: 9,
         interval_m: 30, m: [0, 30, 60, 90, 120], elevation_m: [150, 152, 155, 158, 160], grade_pct: [6.7, 8, 9, 8.3, 6.7] });
       type = "application/json";
+    } else if (url.pathname === "/api/shared-routes" && request.method === "POST") {
+      // Share keeps the exact line (lib/sharedRoutes.ts storeShared; core.shared_routes): kept, 201.
+      (page.sharedRequests ??= []).push(JSON.parse(request.postData ?? "{}"));
+      status = 201;
+      body = JSON.stringify({ id: JSON.parse(request.postData ?? "{}").id ?? "" });
+      type = "application/json";
     } else if (url.pathname === "/api/me/go") {
       // My Go (UI-CLEANUP; core/api.py my_go_read, my_go_save): the account's, signed in only.
       (page.myGoRequests ??= []).push({ method: request.method, headers: request.headers, body: request.postData ? JSON.parse(request.postData) : null });
@@ -707,10 +713,11 @@ export const S_DEFAULT = (() => {
   return r;
 })();
 /** Riding with kids (FOLLOWUP-KIDS-PRESET, OWNER-DECISIONS 240 (B)): the top of the traffic slider, hills toward avoid. */
+// Novice and Nervous, in Riding with kids' place since 9e50f609 (the API answers "novice"; old "kids" links open it).
 export const S_KIDS = (() => {
   const r = copy();
-  r.preset = "kids";
-  r.dials = { stress: 100, hills: -80, when: "weekday", carrying: null };
+  r.preset = "novice";
+  r.dials = { stress: 100, hills: -60, when: "weekday", carrying: null };
   r.calm_search = { rate: 10, rounds: 2, excluded: 3, limited: null };
   return r;
 })();

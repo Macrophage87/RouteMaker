@@ -82,7 +82,7 @@ import { climbCardAfterClose } from "./lib/climbCard.ts";
 import type { When } from "./lib/dials.ts";
 import { END_GLYPH, START_GLYPH } from "./lib/pointText.ts";
 import { VIA_MARKS, kindSwitchLabel, markerLabels } from "./lib/pointKinds.ts";
-import { LongPress, isInfoKey, repeatsInfoAsk, type InfoRequest } from "./lib/roadInfo.ts";
+import { LongPress, isInfoKey, liftOpenedInfo, repeatsInfoAsk, type InfoRequest } from "./lib/roadInfo.ts";
 import { fetchMe } from "./lib/stressEditor.ts";
 import { JUNCTION_SUGGEST_TEXT } from "./lib/junctionSuggest.ts";
 import {
@@ -707,6 +707,8 @@ export function MapView(props: Props) {
     // never prevents a default, so the map pans and pinches under it as ever; a drift,
     // a second finger or the finger lifting calls it off.
     let infoAt = 0;
+    // When the finger on the map went down, for its lift (liftOpenedInfo); null with no map touch.
+    let touchDownAt: number | null = null;
     const openInfo = (point: { x: number; y: number }, origin: InfoRequest["origin"]) => {
       const now = performance.now();
       if (repeatsInfoAsk(origin, now, infoAt, INFO_REPEAT_MS)) return;
@@ -803,6 +805,7 @@ export function MapView(props: Props) {
         return;
       }
       if (event.originalEvent.target !== canvas) return;
+      touchDownAt = performance.now();
       const hit = grabAt(event.point, TOUCH_HIT_PX);
       if (!hit) {
         // Off the line: a finger held here opens the road panel.
@@ -834,6 +837,10 @@ export function MapView(props: Props) {
       if (follow(local(touch.clientX, touch.clientY))) event.preventDefault();
     };
     const onTouchEnd = (event: TouchEvent) => {
+      // The lift of a press that opened the road panel (its long press or contextmenu) sends no click: it
+      // would press the panel's button now under the finger (Set as start, say) and close it.
+      if (event.type === "touchend" && liftOpenedInfo(touchDownAt, infoAt)) event.preventDefault();
+      touchDownAt = null;
       longPress.cancel();
       watchTouchMoves(false);
       if (!gesture.active) return;

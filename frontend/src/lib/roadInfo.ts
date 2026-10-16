@@ -117,6 +117,16 @@ export function repeatsInfoAsk(origin: InfoOrigin, now: number, lastSpotAt: numb
   return origin === "spot" && now - lastSpotAt < repeatMs;
 }
 
+/**
+ * Whether a finger's lift is the end of a press that opened the road panel (its long press, or the
+ * contextmenu a phone sends for one): that lift's click is cancelled, or it would press the panel's
+ * button now under the finger (Set as start, say) and close it. `downAt` is when the finger went down
+ * (null: no map touch), `spotAt` the last pointer ask's time.
+ */
+export function liftOpenedInfo(downAt: number | null, spotAt: number): boolean {
+  return downAt !== null && spotAt >= downAt;
+}
+
 export type InfoState =
   | { kind: "loading" }
   | { kind: "ready"; info: SegmentInfo }
