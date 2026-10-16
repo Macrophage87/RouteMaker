@@ -1621,6 +1621,17 @@ def test_every_table_that_holds_a_session_key_is_left_out_of_the_backup() -> Non
     )
 
 
+def test_operations_backups_section_names_every_excluded_table() -> None:
+    """OPS-8: the operator's page lists what the dump leaves out, all of it."""
+    from config.procrastinate import BACKUP_EXCLUDED_TABLES
+
+    text = (Path(__file__).resolve().parents[1] / "docs/OPERATIONS.md").read_text()
+    section = text.split("\n## Backups\n", 1)[1].split("\n## ", 1)[0]
+    assert "BACKUP_EXCLUDED_TABLES" in section
+    missing = [t for t in BACKUP_EXCLUDED_TABLES if f"`{t}`" not in section]
+    assert not missing, missing
+
+
 @pytest.mark.django_db(transaction=True)
 def test_the_runbooks_restore_is_clean_into_an_empty_database_and_fails_into_a_full_one(
     monkeypatch, tmp_path

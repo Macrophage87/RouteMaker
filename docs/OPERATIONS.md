@@ -2241,8 +2241,9 @@ not already remembered. With under 4 s left the way round is not asked, and the 
 ## Backups
 
 `pg_dump -Fc` to `<DATA_ROOT>/backups/routemaker-<UTC instant>.dump`, excluding
-the data of the session table, the cached membership table and the rate-limit
-table (`BACKUP_EXCLUDED_TABLES` in `config/procrastinate.py`), verified by reading the
+the data of every table in `BACKUP_EXCLUDED_TABLES` (`config/procrastinate.py`):
+`cached_membership`, `app_session`, `django_session`, `rate_limit_window`,
+`stress_tile_cache`, `bikeshare_feed_cache` and `signed_out_send`. Verified by reading the
 archive's own table of contents back with `pg_restore --list` — an archive with
 no table data at all is a dump of nothing, which is what a wrong database name
 produces while `pg_dump` exits zero.
@@ -2331,8 +2332,9 @@ remove. What empties PGDATA is `rm`, which is why step 2 is spelled out.
 ### What the restored deployment actually has
 
 - **No standing, until the membership cache is rebuilt.** The dump excludes the
-  cached membership table, the session table and the rate-limit table (whose
-  counts are worthless after a restore anyway), and phase 1 has no bot, so
+  data of every table in `BACKUP_EXCLUDED_TABLES` (see "Backups": the cached
+  memberships, both session tables, the rate-limit counters, whose counts are
+  worthless after a restore anyway, two caches and the signed-out send hashes), and phase 1 has no bot, so
   nothing refills the cache — the sweep that would is unbuilt (handoff.md
   section 7). Until it exists, a restored deployment grants **no** guild-derived
   standing at all: everyone is signed out (sessions went with the dump's
