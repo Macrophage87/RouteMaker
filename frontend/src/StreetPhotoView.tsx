@@ -4,10 +4,14 @@
  * plain line where Mapillary has none; nothing where the server cannot look one up.
  *
  * The road panel's, and Review's (ReviewMode.tsx: a small one in each row of a list, a full one on the road's
- * card), which asks Review's own path (`path`) and, in a row (`compact`), only once the row is on screen.
+ * card), which asks Review's own path (`path`) and, in a row (`compact`), only once the row is on screen. Each
+ * road's answer is asked for once and kept (PHOTOS).
  */
 import { useEffect, useRef, useState } from "react";
-import { NO_PHOTO_TEXT, fetchStreetPhoto, photoAlt, type PhotoAnswer, type PhotoPath } from "./lib/streetPhoto.ts";
+import { NO_PHOTO_TEXT, fetchStreetPhoto, makePhotoMemo, photoAlt, type PhotoAnswer, type PhotoPath } from "./lib/streetPhoto.ts";
+
+/** Every road's photo, asked for once a session (a re-render, the road opened again or its row back in view asks nothing). */
+const PHOTOS = makePhotoMemo();
 
 interface Props {
   title: string;
@@ -19,10 +23,10 @@ interface Props {
 }
 
 export function StreetPhotoView({ title, point, wayId, path = "/api/street-photo", compact = false }: Props) {
-  const [photo, setPhoto] = useState<PhotoAnswer>(null);
-  const [seen, setSeen] = useState(!compact);
-  const here = useRef<HTMLDivElement>(null);
   const [lon, lat] = point;
+  const [photo, setPhoto] = useState<PhotoAnswer>(() => PHOTOS.known(path, [lon, lat], wayId) ?? null);
+  const [seen, setSeen] = useState(!compact || PHOTOS.known(path, [lon, lat], wayId) !== undefined);
+  const here = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (seen || !here.current) return;
     if (typeof IntersectionObserver === "undefined") {
@@ -37,12 +41,15 @@ export function StreetPhotoView({ title, point, wayId, path = "/api/street-photo
   }, [seen]);
   useEffect(() => {
     if (!seen) return;
-    const controller = new AbortController();
-    setPhoto(null);
-    void fetchStreetPhoto(window.location.origin, [lon, lat], wayId, controller.signal, undefined, path).then((answer) => {
-      if (!controller.signal.aborted) setPhoto(answer);
+    let live = true;
+    setPhoto(PHOTOS.known(path, [lon, lat], wayId) ?? null);
+    // Not cancelled when the road changes: the answer is kept for the next time the road is drawn.
+    void PHOTOS.get(path, [lon, lat], wayId, () => fetchStreetPhoto(window.location.origin, [lon, lat], wayId, undefined, undefined, path)).then((answer) => {
+      if (live) setPhoto(answer);
     });
-    return () => controller.abort();
+    return () => {
+      live = false;
+    };
   }, [lon, lat, wayId, path, seen]);
   if (photo === null) return compact ? <div ref={here} className="review-photo-wait" /> : null;
   if (photo === "none") return <p className={compact ? "hint review-photo-none" : "hint road-info-photo-none"}>{NO_PHOTO_TEXT}</p>;

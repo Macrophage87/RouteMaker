@@ -734,7 +734,7 @@ def test_the_access_log_never_records_a_query_string() -> None:
 QUERY_PATHS = (
     "reverse|geocode|segment-info|street-photo|junction-suggestions/at"
     "|stress-suggestions/ticket|stress-suggestions/mine|transit/station-times|bikeshare/docks"
-    "|review/items|review/map|review/street-photo"
+    "|review/items|review/map|review/next|review/road/[0-9]+|review/street-photo"
 )
 
 
@@ -778,12 +778,17 @@ def test_reverse_and_geocode_log_errors_at_crit_only_with_the_api_proxy_settings
         # Review (an instance admin's): a way, an area's name, a point on a road
         "/api/review/items",
         "/api/review/map",
+        "/api/review/next",
         "/api/review/street-photo",
     }, queried
     covered = re.compile(rf"/api/({QUERY_PATHS})/?")
     for path in queried:
         assert covered.fullmatch(path), path
     assert not covered.fullmatch("/api/route")
+    # A road's own path names the way in the path itself (Review's card).
+    assert covered.fullmatch("/api/review/road/123")
+    assert not covered.fullmatch("/api/review/road/123/x")
+    assert not covered.fullmatch("/api/review/rulings")
 
 
 def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and_acme() -> None:
@@ -2348,11 +2353,15 @@ def test_the_update_path_names_only_live_and_override_and_empties_the_stale_tile
         assert table not in line, table
     assert "public" not in line  # the public tables come blanked, not from the dump
     assert 'blanked_sql "$extra.part" override' in text
-    # the beta's stress suggestions let go of stress_edit first, and stress_edit and override are
-    # emptied with DELETE: a TRUNCATE refuses a table another table's foreign key points at, even
-    # with no row pointing (tests/test_beta_update_sql.py runs these on the head schema)
+    # the beta's stress suggestions and Review's rulings let go of stress_edit (and a ruling of its
+    # access override) first, and stress_edit and override are emptied with DELETE: a TRUNCATE
+    # refuses a table another table's foreign key points at, even with no row pointing
+    # (tests/test_beta_update_sql.py runs these on the head schema)
     assert (
         'echo "UPDATE public.stress_suggestion SET edit_id = NULL WHERE edit_id IS NOT NULL;";'
+        ' echo "UPDATE public.review_ruling SET edit_id = NULL WHERE edit_id IS NOT NULL;";'
+        ' echo "UPDATE public.review_ruling SET access_override_id = NULL'
+        ' WHERE access_override_id IS NOT NULL;";'
         ' echo "DELETE FROM public.stress_edit;"; echo "DELETE FROM public.override;";'
         ' echo "TRUNCATE public.stress_tile_cache;";' in text
     )

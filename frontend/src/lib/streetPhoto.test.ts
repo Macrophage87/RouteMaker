@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { NO_PHOTO_TEXT, fetchStreetPhoto, photoAlt, readPhoto, streetPhotoUrl, type StreetPhoto } from "./streetPhoto.ts";
+import { NO_PHOTO_TEXT, fetchStreetPhoto, makePhotoMemo, photoAlt, readPhoto, streetPhotoUrl, type StreetPhoto } from "./streetPhoto.ts";
 
 const SRC = new URL("../", import.meta.url);
 const src = (path: string) => readFileSync(new URL(path, SRC), "utf8");
@@ -67,4 +67,40 @@ test("the panel shows the photo as a link to Mapillary in a new tab, the date un
   assert.match(view, /\{NO_PHOTO_TEXT\}/);
   // No token in the front end, and no Mapillary script.
   assert.doesNotMatch(src("lib/streetPhoto.ts"), /MLY\||access_token|mapillary-js/i);
+});
+
+test("a road's photo is asked for once, however often its row or card is drawn", async () => {
+  let clock = 0;
+  const memo = makePhotoMemo(2, 1000, () => clock);
+  let asked = 0;
+  const load = (answer: StreetPhoto | "none" | null) => () => {
+    asked += 1;
+    return Promise.resolve(answer);
+  };
+  const path = "/api/review/street-photo" as const;
+  assert.equal(memo.known(path, [-77.1, 38.9], 42), undefined);
+  const first = memo.get(path, [-77.1, 38.9], 42, load("none"));
+  assert.equal(memo.get(path, [-77.1, 38.9], 42, load("none")), first);
+  assert.equal(await first, "none");
+  assert.equal(memo.known(path, [-77.1, 38.9], 42), "none");
+  // Another point on the same road is the same road.
+  assert.equal(await memo.get(path, [-77.15, 38.91], 42, load("none")), "none");
+  assert.equal(asked, 1);
+  // The road panel's path is its own; nothing to say is asked again only after a while.
+  await memo.get("/api/street-photo", [-77.1, 38.9], 42, load(null));
+  await memo.get("/api/street-photo", [-77.1, 38.9], 42, load(null));
+  assert.equal(asked, 2);
+  clock = 2000;
+  await memo.get("/api/street-photo", [-77.1, 38.9], 42, load(null));
+  assert.equal(asked, 3);
+  // At most `limit` kept: the oldest goes first.
+  await memo.get(path, [-77.2, 38.9], 43, load("none"));
+  assert.equal(memo.known(path, [-77.1, 38.9], 42), undefined);
+});
+
+test("the photo view reads the memo, so drawing a row or card again asks nothing", () => {
+  const view = src("StreetPhotoView.tsx");
+  assert.match(view, /const PHOTOS = makePhotoMemo\(\);/);
+  assert.match(view, /PHOTOS\.get\(path, \[lon, lat\], wayId, \(\) => fetchStreetPhoto\(/);
+  assert.doesNotMatch(view, /AbortController/);
 });

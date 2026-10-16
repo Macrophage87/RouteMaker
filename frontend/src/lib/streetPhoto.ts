@@ -101,3 +101,41 @@ export function photoAlt(title: string, photo: StreetPhoto): string {
   const when = photo.date_words.replace(/^Photo from /, "");
   return `Street photo of ${title}, from ${when}`;
 }
+
+/**
+ * Each road's photo asked for once (Review's rows and card, and the road panel): the answer is kept by path and way
+ * (by point where there is no way), so a re-render, a road opened again or its row scrolled back into view asks nothing. Where there was nothing
+ * to say (null: no lookup possible, or the request failed) it is asked again after `retryMs`; at most `limit` are
+ * kept, the oldest let go first.
+ */
+export function makePhotoMemo(limit = 500, retryMs = 60_000, now: () => number = () => Date.now()) {
+  type Entry = { answer: Promise<PhotoAnswer>; known?: PhotoAnswer; at: number };
+  const kept = new Map<string, Entry>();
+  // A road by its way (its row and its card may name different points on it); a point with no way by the point.
+  const keyOf = (path: PhotoPath, point: LonLat, wayId: number | null) => (wayId != null ? `${path}|way ${wayId}` : `${path}|${point[0].toFixed(6)},${point[1].toFixed(6)}`);
+  const fresh = (key: string): Entry | undefined => {
+    const entry = kept.get(key);
+    if (entry && entry.known === null && now() - entry.at > retryMs) kept.delete(key);
+    return kept.get(key);
+  };
+  return {
+    /** The answer already in hand, or undefined while it is asked for (or never was). */
+    known(path: PhotoPath, point: LonLat, wayId: number | null): PhotoAnswer | undefined {
+      return fresh(keyOf(path, point, wayId))?.known;
+    },
+    get(path: PhotoPath, point: LonLat, wayId: number | null, load: () => Promise<PhotoAnswer>): Promise<PhotoAnswer> {
+      const key = keyOf(path, point, wayId);
+      const found = fresh(key);
+      if (found) return found.answer;
+      const entry: Entry = { answer: Promise.resolve(null), at: now() };
+      entry.answer = load().then((answer) => {
+        entry.known = answer;
+        entry.at = now();
+        return answer;
+      });
+      kept.set(key, entry);
+      while (kept.size > limit) kept.delete(kept.keys().next().value as string);
+      return entry.answer;
+    },
+  };
+}

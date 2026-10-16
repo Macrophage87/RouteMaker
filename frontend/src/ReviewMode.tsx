@@ -11,10 +11,12 @@
  * The map (the owner, 2026-10-16 15:39 UTC: "Make sure that discrepancies can be easily found in the map. Generally
  * highlighted, with those roads viewable from a distance"): every road of every list, not just a page, drawn bold with
  * a light halo above the stress lines, a colour and a dash pattern a list (lib/review.ts QUEUE_STYLE, colour-blind
- * safe), from a region's view down, with a dot a road so a short one never vanishes; zoomed further out, nearby roads
- * are one badge with their count, which zooms in when chosen. One switch a list shows or hides its roads, and Next
- * discrepancy (Alt+Shift+N) goes to the next road with no ruling, in the lists' order. The lines are the server's,
- * written when each list was computed (GET /api/review/map): simplified for the region view, whole when zoomed in.
+ * safe), with a dot a road below a street's zoom so a short one never vanishes; zoomed further out, nearby roads are
+ * one badge with their count, which zooms in when chosen (a road alone keeps its line, so no badge lies over its own
+ * roads). One switch a list shows or hides its roads, and Next discrepancy (Alt+Shift+N, left to a text box) goes to
+ * the next road with no ruling, in the lists' order (GET /api/review/next). The map asks for its view alone once it
+ * settles (GET /api/review/map: the view's roads at its zoom, up to a cap, simplified below a street's zoom), never a
+ * list's whole map.
  *
  * Keyboard and screen readers: every control is a real button, select, checkbox or text box with a name; in the
  * table, Up and Down move between the roads' buttons, and choosing one moves the focus to its card's heading, where
@@ -45,15 +47,15 @@ import {
   QUEUE_STYLE,
   REVIEW_STEPS,
   SETTLE_MS,
-  besideInOrder,
   decisionLabel,
-  fetchMap,
+  drawnOf,
+  fetchMapView,
+  fetchNext,
   fetchQueues,
   fetchRoadDetail,
   fetchRoads,
   isQueue,
   makeAnnouncer,
-  nextDiscrepancy,
   progressText,
   roadHeading,
   ruledSaid,
@@ -61,13 +63,15 @@ import {
   sortRoads,
   stepText,
   trafficText,
+  typingIn,
   undoRuling,
+  viewBox,
   type Decision,
   type Fact,
   type Filters,
   type ListKey,
   type QueueKey,
-  type QueueMap,
+  type MapView,
   type QueueSummary,
   type ReviewRoad,
   type RoadDetail,
@@ -79,20 +83,15 @@ import {
 const CURRENT = "review-current";
 const CURRENT_HALO = "review-current-halo";
 const LINES = "review-lines";
-const POINTS = "review-points";
 const HALO = "review-halo";
-const CLUSTERS = "review-clusters";
-const CLUSTER_COUNT = "review-cluster-count";
+const BADGES = "review-badges";
+const BADGE_COUNT = "review-badge-count";
 const DOTS = "review-dots";
 const lineLayer = (queue: QueueKey) => `review-line-${queue}`;
-/** From a region's view (about z8) down the lines are drawn; above it, the count badges alone. */
-const LINE_MIN_ZOOM = 7.5;
-/** Up to here nearby roads are grouped into a badge with their count. */
-const CLUSTER_MAX_ZOOM = 10;
-/** A dot a road while zoomed out, so a short road is never less than a dot. */
-const DOT_MAX_ZOOM = 13;
-/** From here the lines are drawn whole rather than simplified. */
-const HIGH_ZOOM = 13;
+/** Up to here the server groups nearby roads into a badge with their count (core.stress_review.CLUSTER_ZOOM). */
+const BADGE_MAX_ZOOM = 10;
+/** How long the map is still before its view is asked for. */
+const VIEW_WAIT_MS = 300;
 const NEXT_KEYS = "Alt+Shift+N";
 const EMPTY = { type: "FeatureCollection", features: [] };
 const PHOTO_PATH = "/api/review/street-photo";
@@ -113,11 +112,12 @@ export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged
   const [list, setList] = useState<ListKey>(wanted ?? DEFAULT_LIST);
   const [queues, setQueues] = useState<QueueSummary[] | null>(null);
   const [problem, setProblem] = useState("");
-  const [maps, setMaps] = useState<Partial<Record<QueueKey, QueueMap>>>({});
-  const [whole, setWhole] = useState<Partial<Record<QueueKey, QueueMap>>>({});
-  const [ruled, setRuled] = useState<Partial<Record<QueueKey, Set<number>>>>({});
   const [onMap, setOnMap] = useState<Set<QueueKey>>(() => new Set(QUEUES));
-  const [zoomedIn, setZoomedIn] = useState(false);
+  // The view's roads as last answered, and the lists they were asked for.
+  const [view, setView] = useState<{ view: MapView; lists: QueueKey[] } | null>(null);
+  // Bumped when the map settles after a move, and when a ruling or an undo changes what it shows.
+  const [moved, setMoved] = useState(0);
+  const [refresh, setRefresh] = useState(0);
   const [spot, setSpot] = useState<Spot | null>(null);
   const [asked, setAsked] = useState<{ spot: Spot; n: number } | null>(null);
   const origin = window.location.origin;
@@ -140,50 +140,37 @@ export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged
     void loadQueues();
   }, [loadQueues]);
 
-  // Each list's whole map, once a list is known to have roads: a read of what the server wrote with the list.
-  const loadMap = useCallback(
-    async (queue: QueueKey) => {
-      const found = await fetchMap(origin, queue);
-      if (typeof found === "string") return;
-      setMaps((old) => ({ ...old, [queue]: found }));
-      setRuled((old) => ({ ...old, [queue]: new Set(found.ruled) }));
-      setWhole((old) => {
-        const next = { ...old };
-        delete next[queue];
-        return next;
-      });
-    },
-    [origin],
-  );
-  const computedKey = (queues ?? []).map((q) => `${q.queue}:${q.computed_at ?? ""}:${q.total > 0}`).join(",");
-  useEffect(() => {
-    for (const q of queues ?? []) if (q.total > 0) void loadMap(q.queue);
-    // Only when a list was computed again (or first loaded), never on a count's change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [computedKey, loadMap]);
-
-  // Zoomed in, the lists shown are drawn whole (asked for once each).
-  useEffect(() => {
-    if (!zoomedIn) return;
-    for (const queue of QUEUES) {
-      if (!onMap.has(queue) || !maps[queue] || whole[queue]) continue;
-      void fetchMap(origin, queue, "high").then((found) => {
-        if (typeof found !== "string") setWhole((old) => ({ ...old, [queue]: found }));
-      });
-    }
-  }, [zoomedIn, onMap, maps, whole, origin]);
-
-  const orders = useMemo(() => {
-    const out: Partial<Record<QueueKey, number[]>> = {};
-    for (const queue of QUEUES) {
-      const features = maps[queue]?.lines.features ?? [];
-      out[queue] = [...features].sort((a, b) => a.properties.order - b.properties.order).map((f) => f.properties.way);
-    }
-    return out;
-  }, [maps]);
-
   const summary = (key: ListKey) => queues?.find((q) => q.queue === key) ?? null;
   const labelOf = (key: ListKey) => LISTS.find((l) => l.key === key)?.label ?? "";
+  // The lists drawn: switched on, with roads.
+  const drawnLists = QUEUES.filter((q) => onMap.has(q) && (summary(q)?.total ?? 0) > 0);
+  const drawnKey = drawnLists.join(",");
+  const computedKey = (queues ?? []).map((q) => `${q.queue}:${q.computed_at ?? ""}`).join(",");
+
+  // The view's roads, asked for once the map settles: never a list's whole map.
+  useEffect(() => {
+    const lists = drawnKey ? (drawnKey.split(",") as QueueKey[]) : [];
+    // A request a newer view replaces is cancelled.
+    const controller = new AbortController();
+    const wait = window.setTimeout(() => {
+      const map = getMap();
+      if (!map) return;
+      if (lists.length === 0) {
+        setView(null);
+        return;
+      }
+      const b = map.getBounds();
+      const zoom = map.getZoom();
+      void fetchMapView(origin, lists, viewBox(b.getWest(), b.getSouth(), b.getEast(), b.getNorth(), zoom), zoom, fetch, controller.signal).then((found) => {
+        if (!controller.signal.aborted && typeof found !== "string") setView({ view: found, lists });
+      });
+    }, VIEW_WAIT_MS);
+    return () => {
+      controller.abort();
+      window.clearTimeout(wait);
+    };
+  }, [moved, refresh, drawnKey, computedKey, origin, getMap]);
+
   const choose = (key: ListKey) => {
     setList(key);
     onList?.(key);
@@ -206,9 +193,23 @@ export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged
   const openRef = useRef(open);
   openRef.current = open;
 
-  const goNext = useCallback(() => {
-    const from = spot ?? (isQueue(list) ? { queue: list, way: -1 } : null);
-    const next = nextDiscrepancy(orders, ruled, onMap, from);
+  // The next road with no ruling, in the lists' order: after the one open, then each following list drawn, then round.
+  // Only the newest press opens its answer: a slower earlier one never opens after it.
+  const nextAsked = useRef(0);
+  const goNext = useCallback(async () => {
+    const asking = ++nextAsked.current;
+    const lists = drawnKey ? (drawnKey.split(",") as QueueKey[]) : [];
+    if (lists.length === 0) {
+      say("No more roads without a ruling on the map.");
+      return;
+    }
+    const from: Spot | null = spot ?? (isQueue(list) ? { queue: list, way: -1 } : null);
+    const next = await fetchNext(origin, { lists, queue: from?.queue ?? lists[0], way: from && from.way >= 0 ? from.way : null });
+    if (asking !== nextAsked.current) return;
+    if (typeof next === "string") {
+      say(next);
+      return;
+    }
     if (!next) {
       say("No more roads without a ruling on the map.");
       return;
@@ -217,49 +218,37 @@ export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged
     open(next);
     // labelOf reads LISTS only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spot, list, orders, ruled, onMap, say, open]);
+  }, [spot, list, drawnKey, origin, say, open]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey && event.code === "KeyN") {
+        // A letter typed into a text box is the box's.
+        if (typingIn(event.target)) return;
         event.preventDefault();
-        goNext();
+        void goNext();
       }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [goNext]);
 
-  const markRuled = useCallback((queue: QueueKey, ways: number[], on: boolean) => {
-    setRuled((old) => {
-      const next = new Set(old[queue] ?? []);
-      for (const way of ways) {
-        if (on) next.add(way);
-        else next.delete(way);
-      }
-      return { ...old, [queue]: next };
-    });
-  }, []);
-
-  // The map: every list's roads, bold with a halo above the stress lines, and the far view's count badges.
+  // The map: the view's roads, bold with a halo above the stress lines, a dot a road, and the far view's count badges.
   useMap(
     getMap,
     (map) => {
-      if (!map.getSource(LINES)) map.addSource(LINES, { type: "geojson", data: EMPTY as never });
-      if (!map.getSource(POINTS))
-        map.addSource(POINTS, { type: "geojson", data: EMPTY as never, cluster: true, clusterMaxZoom: CLUSTER_MAX_ZOOM, clusterRadius: 48 });
+      for (const source of [LINES, DOTS, BADGES]) if (!map.getSource(source)) map.addSource(source, { type: "geojson", data: EMPTY as never });
       // Under the chosen road's highlight where it is already drawn; otherwise on top of everything.
       const before = map.getLayer(CURRENT_HALO) ? CURRENT_HALO : undefined;
-      const width = ["interpolate", ["linear"], ["zoom"], LINE_MIN_ZOOM, 3.5, 12, 5, 16, 8];
+      const width = ["interpolate", ["linear"], ["zoom"], 5, 3, 12, 5, 16, 8];
       if (!map.getLayer(HALO))
         map.addLayer(
           {
             id: HALO,
             type: "line",
             source: LINES,
-            minzoom: LINE_MIN_ZOOM,
             layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": "#ffffff", "line-opacity": 0.9, "line-width": ["interpolate", ["linear"], ["zoom"], LINE_MIN_ZOOM, 7, 12, 9, 16, 13] },
+            paint: { "line-color": "#ffffff", "line-opacity": 0.9, "line-width": ["interpolate", ["linear"], ["zoom"], 5, 6, 12, 9, 16, 13] },
           } as never,
           before,
         );
@@ -271,10 +260,15 @@ export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged
             id: lineLayer(queue),
             type: "line",
             source: LINES,
-            minzoom: LINE_MIN_ZOOM,
             filter: ["==", ["get", "queue"], queue],
             layout: { "line-cap": style.dash ? "butt" : "round", "line-join": "round" },
-            paint: { "line-color": style.colour, "line-width": width, ...(style.dash ? { "line-dasharray": style.dash } : {}) },
+            paint: {
+              "line-color": style.colour,
+              "line-width": width,
+              // A road with a standing ruling fades.
+              "line-opacity": ["case", ["get", "ruled"], 0.35, 1],
+              ...(style.dash ? { "line-dasharray": style.dash } : {}),
+            },
           } as never,
           before,
         );
@@ -284,11 +278,10 @@ export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged
           {
             id: DOTS,
             type: "circle",
-            source: POINTS,
-            maxzoom: DOT_MAX_ZOOM,
-            filter: ["!", ["has", "point_count"]],
+            source: DOTS,
             paint: {
               "circle-color": ["match", ["get", "queue"], ...QUEUES.flatMap((q) => [q, QUEUE_STYLE[q].colour]), "#000000"],
+              "circle-opacity": ["case", ["get", "ruled"], 0.35, 1],
               "circle-radius": 5,
               "circle-stroke-color": "#ffffff",
               "circle-stroke-width": 2,
@@ -296,30 +289,33 @@ export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged
           } as never,
           before,
         );
-      if (!map.getLayer(CLUSTERS))
+      if (!map.getLayer(BADGES))
         map.addLayer(
           {
-            id: CLUSTERS,
+            id: BADGES,
             type: "circle",
-            source: POINTS,
-            filter: ["has", "point_count"],
+            source: BADGES,
             paint: {
               "circle-color": "#1f2937",
-              "circle-radius": ["step", ["get", "point_count"], 13, 10, 16, 100, 20, 1000, 24],
+              "circle-radius": ["step", ["get", "count"], 13, 10, 16, 100, 20, 1000, 24],
               "circle-stroke-color": "#ffffff",
               "circle-stroke-width": 2,
             },
           } as never,
           before,
         );
-      if (!map.getLayer(CLUSTER_COUNT))
+      if (!map.getLayer(BADGE_COUNT))
         map.addLayer(
           {
-            id: CLUSTER_COUNT,
+            id: BADGE_COUNT,
             type: "symbol",
-            source: POINTS,
-            filter: ["has", "point_count"],
-            layout: { "text-field": ["get", "point_count_abbreviated"], "text-font": [CLIMB_FONT], "text-size": 12, "text-allow-overlap": true },
+            source: BADGES,
+            layout: {
+              "text-field": ["case", [">=", ["get", "count"], 1000], ["concat", ["to-string", ["/", ["round", ["/", ["get", "count"], 100]], 10]], "k"], ["to-string", ["get", "count"]]],
+              "text-font": [CLIMB_FONT],
+              "text-size": 12,
+              "text-allow-overlap": true,
+            },
             paint: { "text-color": "#ffffff" },
           } as never,
           before,
@@ -331,58 +327,44 @@ export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged
         const queue = props?.queue as QueueKey | undefined;
         if (Number.isFinite(way) && queue && QUEUES.includes(queue)) openRef.current({ queue, way });
       };
-      const onCluster = (event: MapMouseEvent & { features?: Array<{ properties?: Record<string, unknown> }> }) => {
-        const id = Number(event.features?.[0]?.properties?.cluster_id);
-        const source = map.getSource(POINTS) as GeoJSONSource | undefined;
-        const fallback = () => map.easeTo({ center: event.lngLat, zoom: Math.min(map.getZoom() + 2, 16) });
-        if (!source || !Number.isFinite(id)) return fallback();
-        void Promise.resolve(source.getClusterExpansionZoom(id)).then(
-          (zoom) => map.easeTo({ center: event.lngLat, zoom: Math.min(Number(zoom) + 0.5, 16) }),
-          fallback,
-        );
-      };
+      // A badge zooms in to where its roads are drawn.
+      const onBadge = (event: MapMouseEvent) => map.easeTo({ center: event.lngLat, zoom: Math.min(map.getZoom() + 2, BADGE_MAX_ZOOM + 0.5) });
       const enter = () => (map.getCanvas().style.cursor = "pointer");
       const leave = () => (map.getCanvas().style.cursor = "");
-      const onZoom = () => setZoomedIn(map.getZoom() >= HIGH_ZOOM);
-      for (const layer of [...tapped, CLUSTERS]) {
+      const onMove = () => setMoved((n) => n + 1);
+      for (const layer of [...tapped, BADGES]) {
         map.on("mouseenter", layer, enter);
         map.on("mouseleave", layer, leave);
       }
       for (const layer of tapped) map.on("click", layer, onRoad);
-      map.on("click", CLUSTERS, onCluster);
-      map.on("zoomend", onZoom);
-      onZoom();
+      map.on("click", BADGES, onBadge);
+      map.on("moveend", onMove);
+      onMove();
       return () => {
-        for (const layer of [...tapped, CLUSTERS]) {
+        for (const layer of [...tapped, BADGES]) {
           map.off("mouseenter", layer, enter);
           map.off("mouseleave", layer, leave);
         }
         for (const layer of tapped) map.off("click", layer, onRoad);
-        map.off("click", CLUSTERS, onCluster);
-        map.off("zoomend", onZoom);
-        for (const layer of [CLUSTER_COUNT, CLUSTERS, DOTS, ...QUEUES.map(lineLayer), HALO]) if (map.getLayer(layer)) map.removeLayer(layer);
-        for (const source of [POINTS, LINES]) if (map.getSource(source)) map.removeSource(source);
+        map.off("click", BADGES, onBadge);
+        map.off("moveend", onMove);
+        for (const layer of [BADGE_COUNT, BADGES, DOTS, ...QUEUES.map(lineLayer), HALO]) if (map.getLayer(layer)) map.removeLayer(layer);
+        for (const source of [BADGES, DOTS, LINES]) if (map.getSource(source)) map.removeSource(source);
       };
     },
     [],
   );
 
-  // What the map shows: the lists switched on, simplified or whole, a ruled road faded.
-  const ruledKey = QUEUES.map((q) => (ruled[q] ? [...ruled[q]].join(".") : "")).join("|");
+  // What the map shows: the view's roads of the lists switched on now (one switched off goes at once).
+  const shownView = useMemo(() => drawnOf(view?.view ?? null, view?.lists ?? [], drawnKey ? (drawnKey.split(",") as QueueKey[]) : []), [view, drawnKey]);
   useMap(
     getMap,
     (map) => {
-      const lines = QUEUES.filter((q) => onMap.has(q)).flatMap((q) => ((zoomedIn && whole[q]) || maps[q])?.lines.features ?? []);
-      const points = QUEUES.filter((q) => onMap.has(q)).flatMap((q) => maps[q]?.points.features ?? []);
-      (map.getSource(LINES) as GeoJSONSource | undefined)?.setData({ type: "FeatureCollection", features: lines } as never);
-      (map.getSource(POINTS) as GeoJSONSource | undefined)?.setData({ type: "FeatureCollection", features: points } as never);
-      for (const queue of QUEUES) {
-        if (!map.getLayer(lineLayer(queue))) continue;
-        const done = [...(ruled[queue] ?? [])];
-        map.setPaintProperty(lineLayer(queue), "line-opacity", done.length ? ["case", ["in", ["get", "way"], ["literal", done]], 0.35, 1] : 1);
-      }
+      (map.getSource(LINES) as GeoJSONSource | undefined)?.setData((shownView?.lines ?? EMPTY) as never);
+      (map.getSource(DOTS) as GeoJSONSource | undefined)?.setData((shownView?.dots ?? EMPTY) as never);
+      (map.getSource(BADGES) as GeoJSONSource | undefined)?.setData((shownView?.badges ?? EMPTY) as never);
     },
-    [maps, whole, zoomedIn, onMap, ruledKey],
+    [shownView],
   );
 
   const toggle = (queue: QueueKey, on: boolean) => {
@@ -435,6 +417,7 @@ export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged
             <button type="button" className="secondary review-next" aria-keyshortcuts={NEXT_KEYS} onClick={goNext}>
               Next discrepancy <span className="hint">({NEXT_KEYS})</span>
             </button>
+            {view?.view.truncated && <p className="hint">Only the largest roads in view are drawn: zoom in for the rest.</p>}
           </fieldset>
         </div>
         <div className="review-main">
@@ -446,17 +429,16 @@ export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged
               label={labelOf(list)}
               getMap={getMap}
               say={say}
-              order={orders[list] ?? []}
               asked={asked && asked.spot.queue === list ? { way: asked.spot.way, n: asked.n } : null}
               onCurrent={(way) => setSpot(way === null ? null : { queue: list, way })}
               onStressChanged={onStressChanged}
-              onRuled={(ways) => {
-                markRuled(list, ways, true);
+              onRuled={() => {
+                setRefresh((n) => n + 1);
                 void loadQueues();
               }}
               onUndone={() => {
+                setRefresh((n) => n + 1);
                 void loadQueues();
-                void loadMap(list);
               }}
             />
           ) : list === "suggestions" ? (
@@ -523,17 +505,15 @@ interface QueueViewProps {
   summary: QueueSummary | null;
   getMap: () => MapLibreMap | null;
   say: (text: string) => void;
-  /** The list's every way, in its order (from its map), for Previous and Next from a road off this page. */
-  order: number[];
   /** A road to open (a tap on the map, or Next discrepancy). */
   asked: { way: number; n: number } | null;
   onCurrent: (way: number | null) => void;
   onStressChanged: (generation: number) => void;
-  onRuled: (ways: number[]) => void;
+  onRuled: () => void;
   onUndone: () => void;
 }
 
-function QueueView({ queue, label, summary, getMap, say, order, asked, onCurrent, onStressChanged, onRuled, onUndone }: QueueViewProps) {
+function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStressChanged, onRuled, onUndone }: QueueViewProps) {
   const base = useId();
   const id = (part: string) => `${base}-${part}`;
   const origin = window.location.origin;
@@ -683,6 +663,7 @@ function QueueView({ queue, label, summary, getMap, say, order, asked, onCurrent
     setCurrent(road);
     if (focusCard) setFocusNext(id("card"));
   };
+  const besideAsked = useRef(0);
   const move = (by: number) => {
     if (index >= 0) {
       const next = shown[index + by];
@@ -690,10 +671,16 @@ function QueueView({ queue, label, summary, getMap, say, order, asked, onCurrent
       else tell(by > 0 ? "That is the last road on this page." : "That is the first road on this page.");
       return;
     }
-    // A road opened from the map, off this page: the road beside it in the list's order.
-    const beside = current ? besideInOrder(order, current.osm_way_id, by) : null;
-    if (beside !== null) void openWay(beside);
-    else tell(by > 0 ? "That is the last road in this list." : "That is the first road in this list.");
+    // A road opened from the map, off this page: the road beside it in the list's order (the server's); only the newest
+    // press's answer opens.
+    if (!current) return;
+    const asking = ++besideAsked.current;
+    void fetchNext(origin, { lists: [queue], queue, way: current.osm_way_id, direction: by > 0 ? 1 : -1, openOnly: !all, wrap: false }).then((beside) => {
+      if (asking !== besideAsked.current) return;
+      if (typeof beside === "string") tell(beside);
+      else if (beside) void openWay(beside.way);
+      else tell(by > 0 ? "That is the last road in this list." : "That is the first road in this list.");
+    });
   };
 
   const rule = async (decision: Decision, ways: number[], level?: number) => {
@@ -720,7 +707,7 @@ function QueueView({ queue, label, summary, getMap, say, order, asked, onCurrent
     else setRoads(rest);
     setTotal((t) => (all ? t : Math.max(0, t - ruled.size)));
     setSelected(new Set());
-    onRuled([...ruled]);
+    onRuled();
     const road = current && ruled.has(current.osm_way_id) ? current : null;
     if (ways.length === 1 && road && rulings[0]) tell(ruledSaid(road, rulings[0], after ? after.name || `way ${after.osm_way_id}` : null));
     else tell(answer.body.message);
