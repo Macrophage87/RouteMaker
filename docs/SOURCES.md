@@ -25,7 +25,8 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   tiers' road attributes, the base map, place names and place search, the MARC Penn
   Line stations and the Metro elevators DC does not list, the public drinking water,
   restrooms and bike repair stands layer, Go's Repair chip (stands and bike shops), Find food
-  (with farm stands and markets), and the places to see (Plan's Places to see, Go's Sights).
+  (with farm stands and markets), the places to see (Plan's Places to see, Go's Sights), and the
+  trail mile markers (the 311 report, "Where am I?", the road panel and the map).
 - Dataset: OpenStreetMap, the regional extract from Geofabrik
   (<https://download.geofabrik.de/>), rebuilt weekly (docs/OPERATIONS.md, "The weekly
   rebuild").
@@ -38,7 +39,9 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   restrooms layer, by `scripts/build_water_restrooms.py`); the same README's "Places to
   eat" (restaurants, cafes and the like, farm stands and markets, the planner's Find food
   search, by `scripts/build_food.py`); and its "Places to see" (points of interest by
-  category, by `scripts/build_places.py`). The water file also holds bike repair stands and
+  category, by `scripts/build_places.py`); and its "Trail mile markers" (posted trail mile
+  markers and the long named trails' lines, for the 311 report, "Where am I?", the road panel and
+  the markers on the map, by `scripts/build_trail_miles.py`). The water file also holds bike repair stands and
   bike shops (`scripts/build_water_restrooms.py`). The layer's Throne smart
   restrooms are not OSM: a hand list, `frontend/src/amenity-data/throne-restrooms.json`, each
   unit with its city, county, parks or news source URL and the date read (2026-10-11), placed
