@@ -1089,3 +1089,35 @@ def costing(
             options.setdefault("cycling_speed", VALHALLA_DEFAULT_SPEED_KMH[kind])
             options["bicycle_type"] = "Road"
     return {"bicycle": options}
+
+
+# Go's "More direct" and "Calmer" (the owner, 2026-10-16: "in go mode see if it's possible to
+# change the routing to be one notch more traffic tolerant and one notch less tolerant on
+# routes and show them as options saying what's gained and the tradeoff"). A notch is one band
+# of the traffic slider's words (frontend lib/dials.ts stressWords), each stood for by one
+# position: Traffic tolerant, Direct, Balanced, Prefers quiet (Default's 70), Low-stress (the
+# old top), Calm, Calmest. Bike-only ride types and plain Bikeshare (its ride between the same
+# docks), not the multimodal trips (the owner, 21:21: "You can put it on bikeshare, but the
+# multimodal trips will have way too many options"): not the transit ride types, nor Rebalance
+# Ride, whose docks are the point of it; and not Mass Ride, whose slider is locked.
+STRESS_NOTCHES = (10, 25, 40, STRESS_DEFAULT_AT, STRESS_TODAYS_TOP, 90, STRESS_MAX)
+# Where a ride type's notches stop, inside its own limits (2026-10-16): Novice and Nervous
+# never goes more direct than Low-stress, and Fast never calmer than Direct, which is what
+# Fast means. Elsewhere 0 to the ride type's `stress_max`.
+NOTCH_LIMITS = MappingProxyType({NOVICE: (STRESS_TODAYS_TOP, STRESS_MAX), "fast": (0, 25)})
+
+
+def stress_notches(name: str, stress: int) -> tuple[int | None, int | None]:
+    """One notch more traffic tolerant (more direct) and one notch calmer than `stress` on
+    ride type `name`, each None where there is none: at an end of the slider, past the
+    ride type's limits (`NOTCH_LIMITS`), or on a ride type that offers neither. A position
+    between notches goes to the notch on each side of it; one below the lowest notch counts
+    as the lowest, so its calmer side is the next one up."""
+    preset = PRESETS[name]
+    if name == REBALANCE or name in TRANSIT_PRESETS or preset.stress_max <= STRESS_MIN:
+        return None, None
+    low, high = NOTCH_LIMITS.get(name, (STRESS_MIN, preset.stress_max))
+    at = max(stress, STRESS_NOTCHES[0])
+    direct = [n for n in STRESS_NOTCHES if low <= n < stress]
+    calmer = [n for n in STRESS_NOTCHES if at < n <= high]
+    return (direct[-1] if direct else None), (calmer[0] if calmer else None)

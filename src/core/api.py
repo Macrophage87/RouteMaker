@@ -2567,6 +2567,128 @@ def _route_answer(request, body: RouteIn, response: HttpResponse):
         ratelimit.release(held)
 
 
+# --- Go's "More direct" and "Calmer" (the owner, 2026-10-16) --------------------------------
+#
+# POST /api/route/neighbours plans the rider's trip one notch more traffic tolerant and one
+# notch calmer than the rider's own setting (`presets.stress_notches`), for Go to offer beside
+# the rider's own route. Go asks once its own route is shown, and never waits on the answer:
+# a plan or a ride's re-route asked for meanwhile is sent at once (frontend
+# lib/routeScheduler.ts). So this request never takes a slot a plan needs: it has routing's
+# deployment slots at the lowest priority and a client slot of its own
+# (`ratelimit.NEIGHBOURS_IN_FLIGHT`), and is refused at once when the pool is busy. It counts
+# as two routing requests, for the two plans. The plans run one after the other on the
+# request's own thread, through the route cache (Bikeshare's ride, between the rider's own
+# docks, as a Bikeshare plan is, uncached), inside NEIGHBOURS_BUDGET_S: each plan stops at
+# that budget's end (`routing.Deadline`), so nothing outlives the request, and one that fails
+# or runs out of time is left out. Nothing is compared here: the page compares each with the
+# routes it shows and keeps those that differ enough (frontend lib/neighbours.ts).
+
+# The seconds the two plans may take together, inside the request's own budget.
+NEIGHBOURS_BUDGET_S = 15
+# What the request counts against the routing limit: one for each plan.
+NEIGHBOURS_COST = 2
+
+
+class NeighbourOut(Schema):
+    kind: Literal["direct", "calmer"] = Field(
+        description="`direct`: one notch more traffic tolerant. `calmer`: one notch calmer."
+    )
+    stress: int = Field(description="The traffic slider's position it was planned at.")
+    route: RouteOut
+
+
+class NeighboursOut(Schema):
+    stress: int = Field(description="The rider's own position, as the notches were read from.")
+    options: list[NeighbourOut] = Field(
+        description=(
+            "Up to two, the more direct first; empty on a ride type that offers neither (Rebalance"
+            " Ride, the transit ride types, Mass Ride), at both ends of a ride type's limits, on"
+            " a long ride, and on a Bikeshare request that does not name its docks"
+            " (`pickup_station`, and `dropoff_station` unless it ends outside a dock): a"
+            " Bikeshare option keeps those docks and changes only the ride between them."
+        )
+    )
+
+
+@api.post(
+    "/route/neighbours",
+    response={
+        200: NeighboursOut,
+        400: ErrorOut,
+        422: ErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+        503: BusyOut,
+    },
+    summary="The same trip one notch more direct and one notch calmer (Go's route options)",
+    by_alias=True,
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.NEIGHBOURS_IN_FLIGHT, slots=ratelimit.neighbour_slots),
+    ratelimit.rate_limited(ratelimit.ROUTING, cost=NEIGHBOURS_COST),
+    json_body_only,
+    errors_as_json,
+)
+def route_neighbours(request, body: RouteIn):
+    stress = _stress_of(body)
+    loop = routing.loop_wanted(body.points, body.loop, body.preset)
+    if span_m(routing.loop_points(body.points, loop)) > CONFIRM_SPAN_M:
+        return Status(200, {"stress": stress, "options": []})
+    if body.preset == presets.BIKESHARE and not _same_docks(body):
+        return Status(200, {"stress": stress, "options": []})
+    direct, calmer = presets.stress_notches(body.preset, stress)
+    wanted = [
+        (kind, notch)
+        for kind, notch in (("direct", direct), ("calmer", calmer))
+        if notch is not None
+        # A long calm plan takes the long ride's slot and budget: not offered as an option.
+        and (
+            loop
+            or not routing.long_calm_for(
+                body.preset, body.points, notch, long_ride=False, trails_off=body.trails_off
+            )
+        )
+    ]
+    # The plans' budget runs out NEIGHBOURS_BUDGET_S from now, read as a plan's own budget.
+    started = routing.clock() - (routing.PLAN_BUDGET_S - NEIGHBOURS_BUDGET_S)
+    bodies = {
+        kind: body.model_copy(update={"stress": notch, "quick": False, "candidates": False})
+        for kind, notch in wanted
+    }
+    answered = {kind: _neighbour(bodies[kind], started) for kind, _ in wanted}
+    options = [
+        {"kind": kind, "stress": notch, "route": answered[kind]}
+        for kind, notch in wanted
+        if answered.get(kind) is not None
+    ]
+    return Status(200, {"stress": stress, "options": options})
+
+
+def _same_docks(body: RouteIn) -> bool:
+    """Whether a Bikeshare request names the docks of the rider's own plan, so its options
+    vary only the ride between them (the owner, 21:21): the pick-up dock, and the drop-off
+    dock unless the ride ends outside one. A plan from a free e-bike has no dock to hold."""
+    return body.pickup_station is not None and (
+        body.dropoff_station is not None or body.ending == bikeshare.ENDING_OUTSIDE
+    )
+
+
+def _neighbour(body: RouteIn, started: float) -> dict | None:
+    """One notch's plan, through the route cache, or None: whatever goes wrong, the option
+    is left out. Without the request's timing recorder, as a transit trip's later rides."""
+    token = timing.start(None)
+    try:
+        if body.preset == presets.BIKESHARE:
+            # Only the ride between the rider's docks changes (`_same_docks`).
+            return _bikeshare_body(body, started)
+        return _planned(body, _bike_dials(body), started, False, False)
+    except Exception as error:  # noqa: BLE001 - an option never fails the answer
+        logger.warning("route neighbours: a notch was not planned: %s", type(error).__name__)
+        return None
+    finally:
+        timing.stop(token)
+
+
 # --- The nearest stations to pick up from or return to (OWNER-DECISIONS 466, 466a) ---------
 #
 # POST /api/bikeshare/stations lists the three stations nearest a point that are at least 3/4
@@ -3536,24 +3658,7 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
         ) as error:
             return _router_refusal(error, body)
     try:
-        dials = routing.Dials(
-            stress=body.stress,
-            hills=body.hills,
-            when=body.when,
-            closure_bypass=tuple(body.closure_bypass),
-            carrying=body.carrying,
-            assist=body.assist,
-            avoid_gravel=body.avoid_gravel,
-            trails_off=body.trails_off,
-            target_distance_m=body.target_distance_m,
-            system_weight_kg=body.system_weight_kg,
-            loop=body.loop,
-            debug_junctions=body.debug_junctions,
-            mtb_level=body.mtb_level,
-            mtb_preferred=body.mtb_preferred,
-            vias=tuple(body.via_points),
-        )
-        return Status(200, _planned(body, dials, started, long_ride, long_calm))
+        return Status(200, _planned(body, _bike_dials(body), started, long_ride, long_calm))
     except (
         routing.TooLong,
         routing.NoRoute,
@@ -3561,6 +3666,27 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
         routing.DeadlineExceeded,
     ) as error:
         return _router_refusal(error, body, long_ride or long_calm)
+
+
+def _bike_dials(body: RouteIn) -> routing.Dials:
+    """The dials of a bike-only plan (not Bikeshare's nor a transit trip's), as asked."""
+    return routing.Dials(
+        stress=body.stress,
+        hills=body.hills,
+        when=body.when,
+        closure_bypass=tuple(body.closure_bypass),
+        carrying=body.carrying,
+        assist=body.assist,
+        avoid_gravel=body.avoid_gravel,
+        trails_off=body.trails_off,
+        target_distance_m=body.target_distance_m,
+        system_weight_kg=body.system_weight_kg,
+        loop=body.loop,
+        debug_junctions=body.debug_junctions,
+        mtb_level=body.mtb_level,
+        mtb_preferred=body.mtb_preferred,
+        vias=tuple(body.via_points),
+    )
 
 
 def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_calm: bool) -> dict:

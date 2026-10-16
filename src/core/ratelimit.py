@@ -268,10 +268,11 @@ VALUES (
     %(scope)s,
     %(client)s,
     to_timestamp(floor(extract(epoch FROM clock_timestamp()) / %(window)s) * %(window)s),
-    1
+    %(cost)s
 )
 ON CONFLICT (scope, client) DO UPDATE SET
-    hits = CASE WHEN w.window_start = EXCLUDED.window_start THEN w.hits + 1 ELSE 1 END,
+    hits = CASE WHEN w.window_start = EXCLUDED.window_start
+        THEN w.hits + %(cost)s ELSE %(cost)s END,
     window_start = EXCLUDED.window_start
 RETURNING
     w.hits,
@@ -280,10 +281,13 @@ RETURNING
 """
 
 
-def hit(limit: Limit, client: str) -> Decision:
-    """Count one request by `client` against `limit` and say whether it may proceed."""
+def hit(limit: Limit, client: str, cost: int = 1) -> Decision:
+    """Count one request by `client` against `limit`, as `cost` requests, and say whether
+    it may proceed."""
     with connection.cursor() as cursor:
-        cursor.execute(_HIT, {"scope": limit.scope, "client": client, "window": limit.window_s})
+        cursor.execute(
+            _HIT, {"scope": limit.scope, "client": client, "window": limit.window_s, "cost": cost}
+        )
         hits, remaining = cursor.fetchone()
     if hits <= limit.requests:
         return Decision(allowed=True, retry_after_s=0)
@@ -303,9 +307,10 @@ def purge_expired() -> int:
         return cursor.rowcount
 
 
-def rate_limited(limit: Limit):
-    """A view decorator: count the request, and answer 429 with Retry-After
-    instead of calling the view once the client's budget is spent.
+def rate_limited(limit: Limit, cost: int = 1):
+    """A view decorator: count the request (as `cost` requests: one that plans more than
+    one route), and answer 429 with Retry-After instead of calling the view once the
+    client's budget is spent.
 
     Applied outside any body parsing, so a refused request costs one upsert and
     nothing else.
@@ -314,7 +319,8 @@ def rate_limited(limit: Limit):
     def decorator(view):
         @wraps(view)
         def wrapped(request, *args, **kwargs):
-            decision = hit(limit, client_key(client_address(request)))
+            key = client_key(client_address(request))
+            decision = hit(limit, key) if cost == 1 else hit(limit, key, cost)
             if not decision.allowed:
                 response = JsonResponse(
                     {"error": "Too many requests from this address; try again shortly."},
@@ -399,10 +405,23 @@ class InFlight:
     # and 12 searches waiting, /healthz took 5.4 s (round-2 review). Beyond
     # this many, a request is refused at once.
     max_waiters: int = 0
+    # Another pool's scope_id whose deployment slots this one takes, or None for its own:
+    # a lower-priority pool sharing another's slots, with clients of its own.
+    total_scope_id: int | None = None
+    # How many of the deployment's slots must still be free once this request holds one;
+    # fewer, and it is refused at once (503). 0: no such rule.
+    leave_free: int = 0
 
     @property
     def total(self) -> int:
         return int(getattr(settings, self.total_setting))
+
+    @property
+    def total_class(self) -> int:
+        """The advisory-lock class of the deployment slots this pool takes."""
+        return _LOCK_CLASS_TOTAL + (
+            self.scope_id if self.total_scope_id is None else self.total_scope_id
+        )
 
 
 def search_slots() -> tuple[int, ...]:
@@ -426,6 +445,28 @@ ROOM_FOR_OTHERS = 2
 # single visitor never needs the second; it is there for several people behind
 # one address.
 ROUTING_IN_FLIGHT = InFlight(scope_id=1, per_client=2, total_setting="ROUTING_CONCURRENCY")
+
+# Go's More direct and Calmer (POST /api/route/neighbours): routing's own deployment slots,
+# at the lowest priority, so they never delay or refuse a plan or a ride's re-route. One per
+# client, in a client class of their own (a route from the same rider is not refused for
+# them). A slot is taken only while the pool is idle enough that ROOM_FOR_OTHERS slots stay
+# free beside it, last slot first, and the request is refused at once otherwise: the page
+# leaves the options out.
+NEIGHBOURS_IN_FLIGHT = InFlight(
+    scope_id=5,
+    per_client=1,
+    total_setting="ROUTING_CONCURRENCY",
+    total_scope_id=ROUTING_IN_FLIGHT.scope_id,
+    leave_free=ROOM_FOR_OTHERS,
+    client_busy="Route options are already being planned for this address.",
+    deployment_busy="The planner is busy; route options are left out.",
+)
+
+
+def neighbour_slots() -> tuple[int, ...]:
+    """Routing's deployment slots, the last first, for the route options."""
+    return tuple(reversed(range(NEIGHBOURS_IN_FLIGHT.total)))
+
 
 # Long rides (owner decision of 2026-09-26: planned, with a signed-out visitor
 # asked to confirm first) hold a worker for up to 50 s each. How many run at
@@ -616,12 +657,18 @@ def _take(limit: InFlight, client: int, held: list, slots=None) -> bool:
     """Take the slots into `held`; true if the request may run. False with
     nothing held means the deployment is full, false with the deployment slot
     held means the client is."""
-    total_class = _LOCK_CLASS_TOTAL + limit.scope_id
+    total_class = limit.total_class
     client_class = _LOCK_CLASS_CLIENT + limit.scope_id * 64
     order = range(limit.total) if slots is None else slots
     with connection.cursor() as cursor:
         shared = _take_one(cursor, [(total_class, slot) for slot in order])
         if shared is None:
+            return False
+        if limit.leave_free and limit.total - _held_in_class(cursor, total_class) < (
+            limit.leave_free
+        ):
+            # Too few left beside it: refused as a full deployment, holding nothing.
+            _release([shared])
             return False
         held.append(shared)
         if _try(cursor, (client_class, client)):
