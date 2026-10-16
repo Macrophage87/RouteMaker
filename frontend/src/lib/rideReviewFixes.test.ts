@@ -35,6 +35,12 @@ test("RIDE-3: weak GPS is shown in the ride's GPS note and said once; a good fix
   assert.match(ride, /stopWatch\.current\?\.\(\);\s*gpsWeak\.current = \{ goodAt: Date\.now\(\), weak: false \};/);
 });
 
+test("RIDE-8: a wake lock the browser lets go mid-ride is asked again, and the screen note says if it is not back", () => {
+  assert.match(ride, /useEffect\(\(\) => \{\s*wake\.whenLost\(noteWake\);\s*return \(\) => wake\.whenLost\(null\);\s*\}, \[wake, noteWake\]\);/);
+  const output = source("./rideOutput.ts");
+  assert.match(output, /visible: \(\) => typeof document === "undefined" \|\| document\.visibilityState === "visible"/);
+});
+
 test("RIDE-5: Re-plan from here answers every press: finding, still waiting, or no fix yet", () => {
   assert.equal(REPLAN_FINDING, "Finding a new way from here.");
   assert.equal(REPLAN_STILL_WAITING, "Still waiting for the last re-plan.");

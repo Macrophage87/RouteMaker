@@ -633,6 +633,11 @@ export function RideMode({
     },
     [notify],
   );
+  // The browser letting the lock go mid-ride (review RIDE-8): asked again, and said if it is not back.
+  useEffect(() => {
+    wake.whenLost(noteWake);
+    return () => wake.whenLost(null);
+  }, [wake, noteWake]);
 
   // The detour's own status (below): said like an answer, since the rider asked for it.
   const [detourStatus, setDetourStatus] = useState("");

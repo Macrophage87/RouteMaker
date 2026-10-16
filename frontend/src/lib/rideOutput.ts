@@ -273,15 +273,19 @@ export class Voice {
 export interface WakeLockSentinelLike {
   release(): Promise<void>;
   readonly released: boolean;
+  /** The browser's own release (a low battery, a system setting), not only a hidden page's. */
+  addEventListener?(type: "release", listener: () => void): void;
 }
 
 export interface WakeEnv {
   request: (() => Promise<WakeLockSentinelLike>) | undefined;
+  /** Whether the page is in front; a lock let go while it is hidden is asked again when it shows. */
+  visible?: () => boolean;
 }
 
 export function browserWake(): WakeEnv {
   const wakeLock = typeof navigator !== "undefined" ? (navigator as Navigator & { wakeLock?: { request(type: "screen"): Promise<WakeLockSentinelLike> } }).wakeLock : undefined;
-  return { request: wakeLock ? () => wakeLock.request("screen") : undefined };
+  return { request: wakeLock ? () => wakeLock.request("screen") : undefined, visible: () => typeof document === "undefined" || document.visibilityState === "visible" };
 }
 
 /** What the rider is told when the screen may turn off. */
@@ -309,6 +313,12 @@ export class ScreenWake {
   }
 
   private pending: Promise<boolean> | null = null;
+  private lost: ((held: boolean) => void) | null = null;
+
+  /** Told whether a lock the browser let go mid-ride was got back. */
+  whenLost(listener: ((held: boolean) => void) | null): void {
+    this.lost = listener;
+  }
 
   private async request(): Promise<boolean> {
     try {
@@ -318,6 +328,12 @@ export class ScreenWake {
         return false;
       }
       this.sentinel = sentinel;
+      // Let go by the browser while the page is in front (review RIDE-8): asked again at once, and
+      // whether it came back is told (`whenLost`), so a lock that is gone is said, not assumed.
+      sentinel.addEventListener?.("release", () => {
+        if (this.sentinel !== sentinel || !this.wanted || !(this.env.visible?.() ?? true)) return;
+        void this.hold().then((held) => this.lost?.(held));
+      });
       return true;
     } catch {
       return false;

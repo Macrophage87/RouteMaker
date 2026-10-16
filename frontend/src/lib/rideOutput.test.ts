@@ -224,6 +224,58 @@ test("ScreenWake: held, re-held after a hide, let go; unsupported and refused sa
   assert.equal(await new ScreenWake({ request: async () => { throw new Error("NotAllowed"); } }).hold(), false);
 });
 
+test("ScreenWake: a lock the browser lets go mid-ride is asked again, and whether it came back is told (review RIDE-8)", async () => {
+  let visible = true;
+  let refuse = false;
+  const releases: Array<() => void> = [];
+  let requests = 0;
+  const wake = new ScreenWake({
+    request: async () => {
+      requests += 1;
+      if (refuse) throw new Error("NotAllowed");
+      const sentinel = {
+        released: false,
+        release: async () => void (sentinel.released = true),
+        // The browser's release: the sentinel is released, then its listeners hear it.
+        addEventListener: (_type: "release", listener: () => void) =>
+          releases.push(() => {
+            sentinel.released = true;
+            listener();
+          }),
+      };
+      return sentinel;
+    },
+    visible: () => visible,
+  });
+  const told: boolean[] = [];
+  wake.whenLost((held) => told.push(held));
+  assert.equal(await wake.hold(), true);
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  // Let go in front (a low battery): asked again at once.
+  releases.at(-1)!();
+  await settle();
+  assert.equal(requests, 2);
+  assert.deepEqual(told, [true]);
+  // Refused this time: told, so the page can say the screen may sleep.
+  refuse = true;
+  releases.at(-1)!();
+  await settle();
+  assert.deepEqual(told, [true, false]);
+  // A release while hidden waits for the page to show (again()); one after End ride asks nothing.
+  refuse = false;
+  await wake.hold();
+  visible = false;
+  const before = requests;
+  releases.at(-1)!();
+  await settle();
+  assert.equal(requests, before);
+  visible = true;
+  await wake.letGo();
+  releases.at(-1)!();
+  await settle();
+  assert.equal(requests, before);
+});
+
 test("Announcer: a note goes at once and keeps a waiting cue, which goes after its gap", () => {
   const { a, said, advance } = announcer();
   a.say("one", false);
