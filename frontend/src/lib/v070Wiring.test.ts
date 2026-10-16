@@ -12,7 +12,7 @@ test("a route opened, Start ride and Download GPX are each checked against the c
   // Start ride (Plan's and Go's) goes through the check; "Ride it anyway" goes on to the ride.
   assert.match(app, /startRide: startRideChecked/);
   // Review F1: the press unlocks the voice first, so the check's callback carries that on (startRide(unlocked)).
-  assert.match(app, /void checkThen\("ride", shown\.geometry\.coordinates, false, \(\) => \{\s*window\.clearTimeout\(slow\);\s*startRide\(unlocked\);/);
+  assert.match(app, /void checkThen\("ride", shown\.geometry\.coordinates, false, \(\) => \{\s*window\.clearTimeout\(slow\);\s*startRide\(false\);/);
   // An opened GPX file (and a saved one, which opens the same way) is checked against its own track.
   assert.match(app, /openImported: openImportedChecked/);
   assert.match(app, /if \(plan\.verbatim\) void checkThen\("open", plan\.verbatim\.track, true/);

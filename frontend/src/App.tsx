@@ -73,7 +73,7 @@ import {
 import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
 import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
-import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, RIDE_ENDED_SAID, RideEnded, RideMode, rideVoice, startRideGesture, type RideView } from "./RideMode.tsx";
+import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, RIDE_ENDED_SAID, RideEnded, RideMode, primeRideVoice, startRideGesture, type RideView } from "./RideMode.tsx";
 import { readHeadingUp, readRidePrefs, writeHeadingUp, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf } from "./lib/bikeshare.ts";
@@ -2455,16 +2455,17 @@ export function App() {
   // check's await it would be too late). A press that asks the first-ride question unlocks in that dialog.
   const startRideChecked = () => {
     const unlocked = ridePrefs.chosen || mode === "go";
-    if (unlocked) startRideGesture(ridePrefs);
-    if (!shown) return startRide(unlocked);
-    // A slow check is said politely; a found closure stops the "Ride started." just begun.
+    if (!shown) return startRide(false);
+    // Unlocked silently inside the press; "Ride started." is said once the ride starts, after the
+    // check or "Ride it anyway" (review F1: never before a closure is found).
+    if (unlocked) primeRideVoice(ridePrefs);
+    // A slow check is said politely.
     const slow = window.setTimeout(() => announce(CHECKING_CLOSURES), CLOSURE_SLOW_MS);
     void checkThen("ride", shown.geometry.coordinates, false, () => {
       window.clearTimeout(slow);
-      startRide(unlocked);
+      startRide(false);
     }, undefined, () => {
       window.clearTimeout(slow);
-      if (unlocked) rideVoice.stop();
     });
   };
   // An opened file is checked at once, against its own track.

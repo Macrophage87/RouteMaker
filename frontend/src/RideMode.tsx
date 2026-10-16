@@ -188,6 +188,12 @@ export function startRideGesture(prefs: RidePrefs): void {
   if (toVoice(prefs.output)) rideVoice.unlock(RIDE_STARTED);
 }
 
+/** Start's press, before its closure check: unlocks the voice silently (iOS speaks only after a
+ * gesture has spoken once), so "Ride started." is said only when the ride does start. */
+export function primeRideVoice(prefs: RidePrefs): void {
+  if (toVoice(prefs.output)) rideVoice.unlock(" ");
+}
+
 /** Said politely when Start's closure check takes more than a moment (CLOSURE_SLOW_MS). */
 export const CHECKING_CLOSURES = "Checking closures…";
 export const CLOSURE_SLOW_MS = 600;
@@ -1210,8 +1216,11 @@ export function RideEnded({ onUndo, onGone }: { onUndo: () => void; onGone: () =
   const undo = useRef<HTMLButtonElement>(null);
   const { timer, hold } = useHoldTimer(UNDO_END_MS, onGone);
   useEffect(() => {
-    timer.start();
+    // Focus is put on Undo, not taken there by the rider, so it does not hold the bar (re-check of
+    // F6: a touch rider's bar would otherwise never go). Moving focus away and back does hold it.
     undo.current?.focus();
+    timer.focus(false);
+    timer.start();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as it shows
   }, []);
   return (

@@ -21,6 +21,15 @@ from core import api, gbfs, parallel, presets, routing, transit
 # The fixtures these tests take by name.
 FIXTURES = (router, segments, installed)
 
+
+@pytest.fixture(autouse=True)
+def pooled(router, settings):
+    """The later rides run on the router pool here, which these tests tell apart by
+    `parallel.inside()`: test_route_api's router fixture runs calls in turn, so put the pool
+    back."""
+    settings.ROUTER_PARALLEL_CALLS = 3
+
+
 db = pytest.mark.django_db(transaction=True)
 
 

@@ -482,6 +482,11 @@ def refresh(
         try:
             zones, notices = READERS[source](bounded_fetch, placer, places, moment, bounded_sleep)
         except (FeedError, ValueError) as error:
+            if out_of_time():
+                # Cut short by the refresh's budget, not a failure of the source: its copy is
+                # kept unchanged, so it is due again at the next tick (re-check of the review).
+                said.append(f"{source} not reached in time")
+                continue
             logger.warning("closures: the %s source could not be read (%s)", source, error)
             feeds[source] = {**kept, "failed_at": moment.isoformat()}
             said.append(f"{source} failed")

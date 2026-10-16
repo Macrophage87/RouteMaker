@@ -41,9 +41,10 @@ test("6. an End button always in view, named End ride, one tap; Ride ended with 
   // Review F6: said by the page's always-mounted polite region (not a status region mounted full), the focus on Undo.
   assert.match(ride, /<div className="ride-ended" role="group" aria-label=\{RIDE_ENDED\} \{\.\.\.hold\}>/);
   assert.doesNotMatch(ride.slice(ride.indexOf("export function RideEnded(")), /role="status"/);
+  // The focus put on Undo does not hold the bar: it is released before the 8 s start (re-check of F6).
+  assert.match(ride, /undo\.current\?\.focus\(\);\s*timer\.focus\(false\);\s*timer\.start\(\);/);
   assert.match(ride, /export const RIDE_ENDED_SAID = "Ride ended\. Undo available\.";/);
   assert.match(app, /announce\(RIDE_ENDED_SAID\);/);
-  assert.match(ride, /timer\.start\(\);\s*undo\.current\?\.focus\(\);/);
   assert.doesNotMatch(app, /focusStartAfterRide/);
   assert.match(ride, /onFocus: \(\) => timer\.current\?\.focus\(true\)/);
   assert.match(ride, /export const UNDO_END_MS = 8_000;/);
@@ -70,17 +71,19 @@ test("3. 311: the pick is the report (sent, or the text app filled in); the note
 test("F1. Start unlocks the voice synchronously in the press, before the closure check's await", () => {
   const start = app.slice(app.indexOf("const startRideChecked = () => {"), app.indexOf("// An opened file is checked at once"));
   assert.ok(start.length > 100);
-  // The handler itself is not async: nothing it does before startRideGesture can yield the gesture.
+  // The handler itself is not async: nothing it does before the unlock can yield the gesture.
   assert.doesNotMatch(start, /const startRideChecked = async/);
-  const gesture = start.indexOf("startRideGesture(ridePrefs)");
-  assert.ok(gesture > 0, "Start calls startRideGesture itself");
-  assert.ok(gesture < start.indexOf("checkThen("), "the gesture comes before the check");
-  assert.doesNotMatch(start.slice(0, gesture), /await/);
-  // The ride that follows does not unlock (speak "Ride started.") a second time.
+  const prime = start.indexOf("primeRideVoice(ridePrefs)");
+  assert.ok(prime > 0, "Start unlocks the voice itself");
+  assert.ok(prime < start.indexOf("checkThen("), "the unlock comes before the check");
+  assert.doesNotMatch(start.slice(0, prime), /await/);
+  // The unlock is silent; "Ride started." is said by the ride that does start, after the check or
+  // "Ride it anyway" (re-check: never said before a closure is found, always said for the ride).
+  assert.match(ride, /export function primeRideVoice\(prefs: RidePrefs\): void \{\s*if \(toVoice\(prefs\.output\)\) rideVoice\.unlock\(" "\);/);
+  assert.match(start, /startRide\(false\)/);
+  assert.doesNotMatch(start, /startRideGesture/);
   assert.match(app, /if \(!unlocked\) startRideGesture\(prefs\);/);
-  assert.match(start, /startRide\(unlocked\)/);
-  // A slow check is said politely; a closure found stops the voice the press began.
+  // A slow check is said politely.
   assert.match(start, /window\.setTimeout\(\(\) => announce\(CHECKING_CLOSURES\), CLOSURE_SLOW_MS\)/);
-  assert.match(start, /if \(unlocked\) rideVoice\.stop\(\);/);
   assert.match(ride, /export const CHECKING_CLOSURES = "Checking closures…";/);
 });

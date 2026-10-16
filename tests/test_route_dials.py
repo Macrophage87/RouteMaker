@@ -2061,11 +2061,14 @@ class TestStressSpansThroughThePlan:
         trace = trace_answer(VERTICES, [(101, 0, 4, 2.2)])
         calls = []
 
+        first_shape = route_answer(legs)["trip"]["legs"][0]["shape"]
+
         def transport(url, payload, timeout):
             if url.endswith("/route"):
                 return route_answer(legs)
             calls.append(payload["encoded_polyline"])
-            if len(calls) > 1:
+            # By the leg asked about, not the order: the router pool traces legs in any order.
+            if payload["encoded_polyline"] != first_shape:
                 raise routing.RouterRefused(400, 444, "no")
             return trace
 

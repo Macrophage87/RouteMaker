@@ -189,5 +189,5 @@ test("App: a shared link's line opens as a saved route does, before the link's f
   assert.match(opened, /differsTooMuch\(saved\.distance_m, today\.route\.distance_m\)/);
   // Start ride checks the line about to be ridden.
   // Review F1: through a callback that carries on the voice the press unlocked.
-  assert.match(app, /void checkThen\("ride", shown\.geometry\.coordinates, false, \(\) => \{\s*window\.clearTimeout\(slow\);\s*startRide\(unlocked\);/);
+  assert.match(app, /void checkThen\("ride", shown\.geometry\.coordinates, false, \(\) => \{\s*window\.clearTimeout\(slow\);\s*startRide\(false\);/);
 });

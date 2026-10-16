@@ -255,7 +255,7 @@ database initialised with the old one. The required values and what is optional:
 Never `source .env`; compose reads it. Never print it. Do not add `$` to a value (compose expands it).
 
 Outbound hosts the app reaches at runtime (v0.7.0; all TCP 443; the full server list, with the
-CD agent's and the host's own, is the project's `reports/beta-egress-allowlist.md`):
+CD agent's and the host's own, is kept outside this repository, with the owner):
 
 - **api:** `gbfs.capitalbikeshare.com`, `gbfs.lyft.com` (bikeshare); `api.wmata.com` (with
   `WMATA_API_KEY`); `graph.mapillary.com` and `*.fbcdn.net` (with `MAPILLARY_ACCESS_TOKEN`: the
@@ -265,7 +265,9 @@ CD agent's and the host's own, is the project's `reports/beta-egress-allowlist.m
   `google.com`, `maps.google.com`, `consent.google.com`, `maps.apple.com`; `discord.com` only
   with Discord sign-in.
 - **worker** (`refresh_dc_closures`, every 15 minutes): `maps2.dcgis.dc.gov`, `mpdc.dc.gov`,
-  `trainingtrack.hsema.dc.gov`, and `developer.nps.gov` (with `NPS_API_KEY`). It also reaches
+  `trainingtrack.hsema.dc.gov`, and `developer.nps.gov` (with `NPS_API_KEY`); and
+  (`refresh_work_zones`, every 5 minutes) `filter.ritis.org` (Maryland) and
+  `data.511-atis-ttrip-prod.iteriscloud.com` (Virginia, with `SMARTERROADS_TOKEN`). It also reaches
   Photon and the Valhalla containers on the compose network, as the api does.
 
 Undo: `rm .env` (only before the database exists; after, keep it).

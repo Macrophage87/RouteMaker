@@ -172,6 +172,8 @@ class TestRefresh:
         # A source not reached keeps its copy from the first refresh, unfailed.
         alertdc = stored("alertdc")
         assert alertdc["read_at"] == NOW.isoformat() and alertdc["failed_at"] is None
+        # A source cut short mid-fetch is not failed either, so it is due at the next tick.
+        assert all(stored(source)["failed_at"] is None for source in ("dc", "mpd", "alertdc"))
 
     def test_a_failed_source_keeps_its_last_good_copy(self) -> None:
         sources.refresh(Net(), no_sleep, lambda: NOW, Placer())
