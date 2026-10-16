@@ -12,15 +12,25 @@ audited and can be undone in the window, and only an instance admin reaches any 
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
+from django.db import connection
 from django.test import Client
 from test_stress_edits import addr, live_row, make_segment, make_user, post, sign_in
 
 from core import segment_info, stress_edits, stress_review
-from core.management.commands.import_cloud_build import later_overrides
-from core.models import AuditLogEntry, Override, ReviewItem, ReviewRuling, StressEdit
+from core.management.commands.import_cloud_build import later_overrides, review_reopenings
+from core.models import (
+    AuditLogEntry,
+    Override,
+    ReviewItem,
+    ReviewQueueState,
+    ReviewRuling,
+    StressEdit,
+)
 from routemaker import agency_lts
 
 db = pytest.mark.django_db(transaction=True)
@@ -110,14 +120,16 @@ class TestPrecompute:
         assert set(found) == {DROP, CLOSED, RISE}
         drop = found[DROP]
         assert (drop.kind, drop.old_step, drop.new_step, drop.build_id) == ("4-2", 4, 2, BUILD)
-        assert drop.details["new"]["source"] == "moco"
-        assert drop.details["old"]["source"] == "formula"
-        assert drop.length_m > 100 and drop.geometry is not None
+        assert drop.length_m > 100 and drop.geometry is not None and drop.score > 0
         assert found[CLOSED].kind == "closed" and found[CLOSED].new_closed
         assert found[RISE].kind == "1-2" and found[RISE].name == "Oak Street"
         out = stress_review.item_out(drop)
-        assert out["kind_label"] == "LTS 4 to LTS 2"
+        assert out["kind_label"] == "LTS 4 to LTS 2" and out["reason"] == "LTS 4 to LTS 2"
+        # The words are made when shown, from the rows the item keeps.
         assert out["new_source"] == "Montgomery County Planning"
+        assert out["old_source"] == "RouteMaker's formula"
+        # The queue's order: the size of the change along the road, a closure counted as 4.
+        assert found[CLOSED].score > found[DROP].score > found[RISE].score
         assert out["length"].endswith("km)") and " mi (" in out["length"]
         # Computed again, the queue is replaced, not doubled.
         stress_review.compute_rebuild(BUILD, live, staging)
@@ -153,10 +165,55 @@ class TestPrecompute:
             "stress,777,failed,,Elm Street,two candidates\n"
             "stress,778,rematched,9001,,\n"
         )
+        (tmp_path / "use-sidepath-no-path.csv").write_text(f"osm_way_id\n{SAME}\n")
         counts = stress_review.compute_all(BUILD, live, staging, tmp_path)
-        assert counts["rematch"] == 1 and counts["sidepath"] is None
+        assert counts["rematch"] == 1 and counts["sidepath"] == 1
+        assert counts["works_closure"] is None
         assert items("rematch")[777].name == "Elm Street"
         assert stress_review.actions(items("rematch")[777]) == ["accept"]
+        # The next build sent no reports: its file queues are cleared and say so, never the
+        # last build's rows shown as current.
+        counts = stress_review.compute_all("20261017T120000Z", live, staging, None)
+        assert counts["sidepath"] is None and items("sidepath") == {}
+        summary = {q["queue"]: q for q in stress_review.queue_summary()}
+        assert summary["sidepath"]["note"] == "No report from this build"
+        assert summary["sidepath"]["wired"] is False and summary["sidepath"]["total"] == 0
+        assert summary["disagreement"]["note"] == "" and summary["disagreement"]["wired"]
+
+    def test_a_cloud_build_never_reads_this_computers_reports(self, settings, tmp_path) -> None:
+        (tmp_path / "reports").mkdir()
+        settings.REBUILD_WORK_DIR = tmp_path
+        assert stress_review.reports_dir("") is None
+        assert stress_review.reports_dir("", own=True) == tmp_path / "reports"
+        assert stress_review.reports_dir("reports") == tmp_path / "reports"
+        assert stress_review.reports_dir("missing") is None
+
+    def test_the_tables_are_compared_in_one_sort_each_and_null_safe(self) -> None:
+        """DISTINCT ON (one sort of each table, never an array of every piece), and IS DISTINCT
+        FROM, so a value missing on one side is still a change."""
+        import inspect
+
+        sql = stress_review._agg_sql.__doc__ or ""
+        assert "DISTINCT ON" in sql
+        body = inspect.getsource(stress_review.compute_rebuild)
+        assert "o.step IS DISTINCT FROM n.step OR o.closed IS DISTINCT FROM n.closed" in body
+        assert "array_agg" not in inspect.getsource(stress_review)
+
+    def test_the_map_is_written_with_the_queue_in_its_order(self, tables) -> None:
+        live, staging = tables
+        stress_review.compute_rebuild(BUILD, live, staging)
+        state = ReviewQueueState.objects.get(queue="rebuild")
+        low, high, points = (
+            json.loads(m) for m in (state.map_low, state.map_high, state.map_points)
+        )
+        ways = [f["properties"]["way"] for f in low["features"]]
+        assert ways == [r["osm_way_id"] for r in stress_review.page("rebuild")["items"]]
+        assert [f["properties"]["order"] for f in low["features"]] == [1, 2, 3]
+        assert {f["geometry"]["type"] for f in points["features"]} == {"Point"}
+        assert len(high["features"]) == 3 and state.build_id == BUILD
+        payload = json.loads(stress_review.map_payload("rebuild"))
+        assert payload["lines"] == low and payload["points"] == points and payload["ruled"] == []
+        assert json.loads(stress_review.map_payload("rebuild", "high"))["points"]["features"] == []
 
 
 @pytest.fixture
@@ -198,8 +255,14 @@ class TestRulings:
         made, _ = stress_review.rule(admin, "rebuild", [CLOSED], "reject")
         access = made[0].access_override
         assert access.kind == "access" and access.value == {"bicycle": "yes"} and access.approved
-        # Meant for the next rebuild, so the swap does not refuse over it.
-        assert access.pk not in later_overrides(datetime(2020, 1, 1, tzinfo=UTC))
+        # Told apart by its source, never its words.
+        assert access.source == Override.Source.REVIEW
+        # Meant for the next rebuild, so the swap does not refuse over it, but lists it.
+        long_ago = datetime(2020, 1, 1, tzinfo=UTC)
+        assert access.pk not in later_overrides(long_ago)
+        assert review_reopenings(long_ago) == ([access.pk], [])
+        Override.objects.filter(pk=access.pk).update(evidence="something else")
+        assert review_reopenings(long_ago) == ([access.pk], [])
         made, refused = stress_review.rule(admin, "rebuild", [CLOSED], "set", step=2)
         assert made == [] and "not offered" in refused[0]["error"]
 
@@ -226,15 +289,70 @@ class TestRulings:
         later = made[0].at + stress_edits.UNDO_WINDOW + timedelta(seconds=1)
         with pytest.raises(stress_edits.Stale):
             stress_review.undo(admin, made[0].pk, now=later)
-        stress_review.undo(admin, made[0].pk)
-        assert Override.objects.get(pk=made[0].access_override_id).approved is False
+        read_at = made[0].at + timedelta(seconds=1)
+        stress_review.undo(admin, made[0].pk, now=made[0].at + timedelta(seconds=2))
+        access = Override.objects.get(pk=made[0].access_override_id)
+        assert access.approved is False and access.approved_at is None
         assert AuditLogEntry.objects.filter(action="review_ruling_undo").count() == 2
+        # Undone after the box's copy was read: the build has it open, and the import says so.
+        assert review_reopenings(read_at) == ([], [access.pk])
+
+    def test_a_batch_level_is_one_edit_one_generation_and_one_undo(self, queued) -> None:
+        admin = make_user()
+        before = StressEdit.objects.count()
+        made, refused = stress_review.rule(admin, "rebuild", [DROP, RISE], "set", step=3)
+        assert refused == [] and len(made) == 2
+        assert StressEdit.objects.count() == before + 1
+        edit = StressEdit.objects.latest("id")
+        assert sorted(edit.osm_way_ids) == [DROP, RISE]
+        assert {r.edit_id for r in made} == {edit.pk}
+        # Undoing one undoes the batch: both rulings, both roads.
+        ruling, generation = stress_review.undo(admin, made[1].pk)
+        assert generation is not None
+        assert ReviewRuling.objects.filter(undone_at__isnull=False).count() == 2
+        assert not Override.objects.filter(
+            osm_way_id__in=[DROP, RISE], kind="stress", approved=True, superseded_by__isnull=True
+        ).exists()
+        assert stress_review.page("rebuild")["total"] == 3
+
+    def test_a_batch_reject_is_one_edit_a_level_it_puts_back(self, queued) -> None:
+        made, _ = stress_review.rule(make_user(), "rebuild", [DROP, RISE], "reject")
+        assert sorted((r.osm_way_id, r.step) for r in made) == [(DROP, 4), (RISE, 1)]
+        assert len({r.edit_id for r in made}) == 2
+
+    def test_an_accept_lapses_when_a_build_changes_what_the_road_was_listed_for(
+        self, tables
+    ) -> None:
+        live, staging = tables
+        stress_review.compute_narrow_rural(staging)
+        admin = make_user()
+        stress_review.rule(admin, "narrow_rural", [NARROW], "accept")
+        assert stress_review.page("narrow_rural")["total"] == 0
+        # Computed again from the same build: the ruling stands.
+        stress_review.compute_narrow_rural(staging)
+        assert stress_review.page("narrow_rural")["total"] == 0
+        # A build that changes the road's level: listed again, for a new look.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {staging}.segment SET stress_tier = 3 WHERE osm_way_id = %s", [NARROW]
+            )
+        stress_review.compute_narrow_rural(staging)
+        assert stress_review.page("narrow_rural")["total"] == 1
+        summary = {q["queue"]: q for q in stress_review.queue_summary()}
+        assert summary["narrow_rural"]["reviewed"] == 0
 
     def test_the_road_detail_has_the_facts_and_the_history(self, queued) -> None:
         stress_review.rule(make_user(), "rebuild", [DROP], "reject")
         detail = stress_review.road_detail(DROP)
         assert any(f["label"] == "Level" for f in detail["facts"])
         assert any("Review" in h["what"] for h in detail["history"])
+        assert detail["new_facts"] == []
+
+    def test_a_rebuild_change_shows_the_new_builds_facts_beside_lives(self, queued) -> None:
+        detail = stress_review.road_detail(RISE, "rebuild")
+        level = {f["label"]: f["value"] for f in detail["facts"]}["Level"]
+        new_level = {f["label"]: f["value"] for f in detail["new_facts"]}["Level"]
+        assert level != new_level
 
 
 @db
@@ -270,11 +388,45 @@ class TestEndpoints:
         rider, csrf = admin_client(admin=False)
         for url in (ITEMS, "/api/review/queues", f"/api/review/road/{DROP}", "/api/review/rulings"):
             assert rider.get(url, **addr()).status_code == 403, url
+        for url in ("/api/review/map", "/api/review/street-photo?lon=-77&lat=38.9"):
+            assert rider.get(url, **addr()).status_code == 403, url
         r = post(
             rider, RULE, {"queue": "rebuild", "osm_way_ids": [DROP], "decision": "accept"}, csrf
         )
         assert r.status_code == 403
         assert not ReviewRuling.objects.exists()
+        made, _ = stress_review.rule(make_user(), "rebuild", [DROP], "accept")
+        assert post(rider, f"{RULE}/{made[0].pk}/undo", {}, csrf).status_code == 403
+        assert ReviewRuling.objects.get(pk=made[0].pk).undone_at is None
+
+    def test_a_write_without_the_csrf_token_is_refused(self, queued) -> None:
+        client, _csrf = admin_client()
+        body = {"queue": "rebuild", "osm_way_ids": [DROP], "decision": "accept"}
+        r = client.post(RULE, json.dumps(body), content_type="application/json", **addr())
+        assert r.status_code == 403
+        assert not ReviewRuling.objects.exists()
+        made, _ = stress_review.rule(make_user(), "rebuild", [DROP], "accept")
+        r = client.post(
+            f"{RULE}/{made[0].pk}/undo", "{}", content_type="application/json", **addr()
+        )
+        assert r.status_code == 403
+        assert ReviewRuling.objects.get(pk=made[0].pk).undone_at is None
+
+    def test_reviews_reads_and_writes_have_their_own_counts(self) -> None:
+        from core import api, ratelimit
+
+        assert ratelimit.REVIEW_READS.scope not in {
+            ratelimit.STRESS_EDIT_CLIENT.scope,
+            ratelimit.STREET_PHOTO.scope,
+            ratelimit.SEGMENT_INFO.scope,
+        }
+        assert ratelimit.REVIEW_READS.requests >= 600
+        names = {getattr(g, "__qualname__", "") for g in api.REVIEW_READ + api.REVIEW_RULING_WRITE}
+        assert names  # the guards are decorators
+        source = Path(api.__file__).read_text()
+        review = source[source.index("# ---- Review: the instance admin's queue") :]
+        assert "STRESS_EDIT_CLIENT" not in review and "REVIEW_WRITE)" not in review
+        assert "ratelimit.REVIEW_READS" in review and "ratelimit.REVIEW_RULINGS)" in review
 
     def test_list_rule_and_undo(self, queued) -> None:
         client, csrf = admin_client()
@@ -301,10 +453,50 @@ class TestEndpoints:
         assert r.status_code == 200 and r.json()["ruling"]["undone"]
         r = post(client, RULE, {"queue": "rebuild", "osm_way_ids": [DROP], "decision": "set"}, csrf)
         assert r.status_code == 400
-        box = {"queue": "rebuild", "west": -78, "south": 38, "east": -76, "north": 40}
-        features = client.get("/api/review/map", box, **addr()).json()["features"]
+        r = client.get("/api/review/map", {"queue": "rebuild"}, **addr())
+        assert r_cache(r) == "no-store"
+        features = r.json()["lines"]["features"]
         assert {f["properties"]["way"] for f in features} == {DROP, CLOSED, RISE}
+        assert {f["properties"]["queue"] for f in features} == {"rebuild"}
+        high = client.get("/api/review/map", {"queue": "rebuild", "detail": "high"}, **addr())
+        assert len(high.json()["lines"]["features"]) == 3
+        detail = client.get(f"/api/review/road/{RISE}", {"queue": "rebuild"}, **addr()).json()
+        assert detail["new_facts"]
 
 
 def r_cache(response) -> str:
     return response["Cache-Control"]
+
+
+REPO = Path(__file__).resolve().parents[1]
+# Every module that may read Review's tables: the review itself, its endpoints and commands, the
+# models and migrations, and the import that reports on it. Nothing that draws a tile, writes an
+# export, a share card or a link preview, or answers a rider.
+REVIEW_READERS = {
+    "src/core/models.py",
+    "src/core/stress_review.py",
+    "src/core/api.py",
+    "src/core/management/commands/import_cloud_build.py",
+    "src/core/management/commands/compute_review_queue.py",
+}
+
+
+# What reads Review's tables in code: its models, their tables by name, or the module itself.
+READS_REVIEW = re.compile(
+    r"\b(ReviewItem|ReviewRuling|ReviewQueueState)\b|['\"]review_(item|ruling|queue_state)\b"
+    r"|import stress_review|stress_review import|stress_review\.\w+\("
+)
+
+
+def test_only_reviews_own_code_reads_its_tables() -> None:
+    readers = set()
+    for path in (REPO / "src").rglob("*.py"):
+        relative = str(path.relative_to(REPO))
+        if "/migrations/" not in relative and READS_REVIEW.search(path.read_text()):
+            readers.add(relative)
+    assert readers == REVIEW_READERS, readers ^ REVIEW_READERS
+    # In the API, only Review's own section reads them: not the tiles, exports, share cards,
+    # link previews, or the road panel above it.
+    source = (REPO / "src" / "core" / "api.py").read_text()
+    head = source[: source.index("# ---- Review: the instance admin's queue")]
+    assert not READS_REVIEW.search(head)

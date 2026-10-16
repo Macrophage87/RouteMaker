@@ -371,12 +371,13 @@ server {
     # /api/segment-info?lat=..&lon=.. (OWNER-DECISIONS 441a), and /api/street-photo?lon=..&lat=..
     # (v0.7.0), and from v0.7.0 too /api/junction-suggestions/at?lat=..&lon=..,
     # /api/stress-suggestions/ticket?way=.., /api/transit/station-times?lon=..&lat=.. and
-    # /api/bikeshare/docks?bbox=.. (a way, a point or the area viewed). An upstream error line (a
+    # /api/bikeshare/docks?bbox=.., and Review's /api/review/items?way=.., /api/review/map and
+    # /api/review/street-photo?lon=..&lat=.. (a way, a point or the area viewed). An upstream error line (a
     # 502 while the api restarts on a deploy, a 504, a worker gunicorn killed) records the
     # request with its query, so these log only `crit` errors, to their own file
     # (OWNER-DECISIONS 395). This loses their upstream diagnostics; the api's own log still
     # has its side. The proxy settings are location /'s below, line for line.
-    location ~ ^/api/(reverse|geocode|segment-info|street-photo|junction-suggestions/at|stress-suggestions/ticket|transit/station-times|bikeshare/docks)/?$ {
+    location ~ ^/api/(reverse|geocode|segment-info|street-photo|junction-suggestions/at|stress-suggestions/ticket|transit/station-times|bikeshare/docks|review/items|review/map|review/street-photo)/?$ {
         error_log /var/log/nginx/rmbeta-error.log crit;
         proxy_pass http://rmbeta_api;
         proxy_http_version 1.1;

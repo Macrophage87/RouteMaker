@@ -734,6 +734,7 @@ def test_the_access_log_never_records_a_query_string() -> None:
 QUERY_PATHS = (
     "reverse|geocode|segment-info|street-photo|junction-suggestions/at"
     "|stress-suggestions/ticket|transit/station-times|bikeshare/docks"
+    "|review/items|review/map|review/street-photo"
 )
 
 
@@ -773,6 +774,10 @@ def test_reverse_and_geocode_log_errors_at_crit_only_with_the_api_proxy_settings
         "/api/stress-suggestions/ticket",
         "/api/transit/station-times",
         "/api/bikeshare/docks",
+        # Review (an instance admin's): a way, an area's name, a point on a road
+        "/api/review/items",
+        "/api/review/map",
+        "/api/review/street-photo",
     }, queried
     covered = re.compile(rf"/api/({QUERY_PATHS})/?")
     for path in queried:
@@ -2114,6 +2119,18 @@ def test_the_dump_strips_every_identity_table_owner_decision_367() -> None:
     # the tile cache is keyed on the live table's oid, which the beta's restore changes, so a
     # shipped row could never be served there (BETA-final-review correctness SF1)
     assert "stress_tile_cache" in excluded
+
+
+def test_reviews_queues_and_rulings_never_ship() -> None:
+    """Review mode's tables (core.stress_review) hold an instance admin's rulings and ratings
+    whose public use is pending: neither the beta nor the cloud box (which ship-data.sh's dump
+    also feeds) may ever get them."""
+    excluded = set(shipped_exclusions())
+    assert {"review_item", "review_ruling", "review_queue_state"} <= excluded
+    models = (REPO / "src" / "core" / "models.py").read_text()
+    review_tables = set(re.findall(r'db_table = "(review_\w+)"', models))
+    assert review_tables == {"review_item", "review_ruling", "review_queue_state"}
+    assert review_tables <= excluded
 
 
 def shipped_blanked() -> dict[str, set[str]]:

@@ -6159,6 +6159,61 @@ details.fold > summary .icon {
   padding-left: 18px;
 }
 
+/* The map's lists (ReviewMode.tsx): a switch a list, with its line drawn as on the map, and Next discrepancy. */
+.review-side {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.review-map-lists {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.review-map-toggle {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 24px;
+  font-size: 0.9em;
+}
+
+.review-swatch {
+  flex: none;
+}
+
+.review-next {
+  margin-top: 4px;
+}
+
+/* A row's street photo: a thumbnail, its date and credit under it. */
+.review-photo-cell {
+  width: 112px;
+}
+
+.review-photo-small img {
+  width: 104px;
+  max-height: 70px;
+}
+
+.review-photo-small figcaption {
+  font-size: 0.8em;
+}
+
+.review-photo-wait {
+  min-height: 24px;
+}
+
+.review-photo-none {
+  margin: 0;
+  font-size: 0.85em;
+}
+
 @media (max-width: 720px) {
   .panel.review-panel {
     width: 100%;

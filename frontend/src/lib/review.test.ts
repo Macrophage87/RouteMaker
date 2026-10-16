@@ -2,12 +2,20 @@
 // people who have admin access go/plan/review").
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { MODE_LABEL, isMode, isOpenIn, modeSaid, readLastReview, reopenReview, switchModes, writeLastReview } from "./appMode.ts";
 import {
   DEFAULT_LIST,
   LISTS,
+  QUEUES,
+  QUEUE_STYLE,
+  besideInOrder,
   decisionLabel,
+  fetchMap,
+  fetchRoadDetail,
   fetchRoads,
+  makeAnnouncer,
+  nextDiscrepancy,
   progressText,
   roadHeading,
   ruledSaid,
@@ -45,6 +53,7 @@ function road(way: number, change: Partial<ReviewRoad> = {}): ReviewRoad {
     aadt: null,
     bbox: null,
     geometry: null,
+    point: null,
     actions: ["accept", "reject", "set"],
     ruling: null,
     ...change,
@@ -126,4 +135,105 @@ test("the requests: a list's open roads with its filters, and a ruling with no r
   const body = JSON.parse(String(asked[1].init.body));
   assert.deepEqual(body, { queue: "disagreement", osm_way_ids: [5], decision: "set", step: 2 });
   assert.equal((asked[1].init.headers as Record<string, string>)["X-CSRFToken"], "token");
+});
+
+const src = (file: string) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+
+test("Next discrepancy: the next road with no ruling, in its list's order, then the next list shown, then round", () => {
+  const orders = { rebuild: [1, 2, 3], disagreement: [10, 11], sidepath: [20] };
+  const ruled = { rebuild: new Set([2]), disagreement: new Set([10]) };
+  const all = new Set(QUEUES);
+  assert.deepEqual(nextDiscrepancy(orders, ruled, all, { queue: "rebuild", way: 1 }), { queue: "rebuild", way: 3 });
+  assert.deepEqual(nextDiscrepancy(orders, ruled, all, { queue: "rebuild", way: 3 }), { queue: "disagreement", way: 11 });
+  // A list switched off on the map is passed over.
+  const noDisagreements = new Set(QUEUES.filter((q) => q !== "disagreement"));
+  assert.deepEqual(nextDiscrepancy(orders, ruled, noDisagreements, { queue: "rebuild", way: 3 }), { queue: "sidepath", way: 20 });
+  // Round to the start of the first list.
+  assert.deepEqual(nextDiscrepancy(orders, ruled, all, { queue: "sidepath", way: 20 }), { queue: "rebuild", way: 1 });
+  assert.deepEqual(nextDiscrepancy(orders, ruled, all, null), { queue: "rebuild", way: 1 });
+  // Round within the one list shown, to a road before the one open.
+  assert.deepEqual(nextDiscrepancy({ rebuild: [1, 2, 3] }, {}, all, { queue: "rebuild", way: 3 }), { queue: "rebuild", way: 1 });
+  // Everything ruled: nothing.
+  assert.equal(nextDiscrepancy({ rebuild: [1] }, { rebuild: new Set([1]) }, all, null), null);
+  assert.equal(nextDiscrepancy(orders, ruled, new Set(), null), null);
+});
+
+test("Previous and Next from a road off the page: the road beside it in its list's order", () => {
+  assert.equal(besideInOrder([5, 6, 7], 6, 1), 7);
+  assert.equal(besideInOrder([5, 6, 7], 6, -1), 5);
+  assert.equal(besideInOrder([5, 6, 7], 7, 1), null);
+  assert.equal(besideInOrder([5, 6, 7], 9, 1), null);
+});
+
+test("what is said within a moment is said together, never one message over another", () => {
+  const sent: string[] = [];
+  const timers: (() => void)[] = [];
+  const say = makeAnnouncer((text) => sent.push(text), 80, (run) => timers.push(run));
+  say("Rebuild changes: 3 of 10 reviewed.");
+  say("Oak Street: LTS 4 to LTS 2.");
+  say("Oak Street: LTS 4 to LTS 2.");
+  assert.equal(timers.length, 1);
+  timers[0]();
+  assert.deepEqual(sent, ["Rebuild changes: 3 of 10 reviewed. Oak Street: LTS 4 to LTS 2."]);
+  say("Undone.");
+  timers[1]();
+  assert.deepEqual(sent.at(-1), "Undone.");
+});
+
+test("each list's map style is its own colour and its own line, from the colour-blind-safe palette", () => {
+  const okabeIto = new Set(["#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7", "#000000"]);
+  const colours = QUEUES.map((q) => QUEUE_STYLE[q].colour);
+  assert.equal(new Set(colours).size, QUEUES.length);
+  assert.ok(colours.every((c) => okabeIto.has(c)));
+  // The two solid lines are the palette's most distinct pair; every other list is told by its dashes as well.
+  const patterns = QUEUES.map((q) => `${QUEUE_STYLE[q].colourName} ${QUEUE_STYLE[q].pattern}`);
+  assert.equal(new Set(patterns).size, QUEUES.length);
+});
+
+test("the map is asked for whole lists, once a detail, and the road's facts with the new build's for a rebuild", async () => {
+  const asked: string[] = [];
+  const run = (async (url: string) => {
+    asked.push(url);
+    return new Response(JSON.stringify({ queue: "rebuild", ruled: [], lines: { type: "FeatureCollection", features: [] }, points: { type: "FeatureCollection", features: [] } }), { status: 200 });
+  }) as typeof fetch;
+  await fetchMap("https://x", "rebuild", "low", run);
+  await fetchMap("https://x", "disagreement", "high", run);
+  await fetchRoadDetail("https://x", 5, "rebuild", run);
+  await fetchRoadDetail("https://x", 6, null, run);
+  assert.deepEqual(asked, [
+    "https://x/api/review/map?queue=rebuild&detail=low",
+    "https://x/api/review/map?queue=disagreement&detail=high",
+    "https://x/api/review/road/5?queue=rebuild",
+    "https://x/api/review/road/6",
+  ]);
+});
+
+test("Review's map draws every list bold above the stress lines from a region's view, with count badges further out", () => {
+  const view = src("ReviewMode.tsx");
+  assert.match(view, /const LINE_MIN_ZOOM = 7\.5;/);
+  assert.match(view, /cluster: true, clusterMaxZoom: CLUSTER_MAX_ZOOM/);
+  assert.match(view, /getClusterExpansionZoom/);
+  // A dot a road while zoomed out, so a short road never vanishes; a white halo under every line.
+  assert.match(view, /id: DOTS,\s*type: "circle"/);
+  assert.match(view, /id: HALO,\s*type: "line"/);
+  // No per-request bounding-box query: the lists' maps are read whole, as computed.
+  assert.doesNotMatch(view, /fetchOverlay|getBounds/);
+  assert.match(view, /aria-keyshortcuts=\{NEXT_KEYS\}/);
+  assert.match(view, /const NEXT_KEYS = "Alt\+Shift\+N";/);
+});
+
+test("a pending agency's level is information only on the card, with a note by the reason", () => {
+  const view = src("ReviewMode.tsx");
+  assert.match(view, /\{!s\.pending && current\.actions\.includes\("set"\)/);
+  assert.match(view, /Don&apos;t quote pending agencies&apos; data\./);
+  // The rows and the card show the road panel's street photo, from Review's own path.
+  assert.match(view, /<StreetPhotoView compact title=\{name\}/);
+  assert.match(view, /const PHOTO_PATH = "\/api\/review\/street-photo";/);
+});
+
+test("Review is an instance admin's alone", () => {
+  const app = src("App.tsx");
+  assert.match(app, /const canReview = me\.can_change_lts;/);
+  assert.match(app, /const reviews = found\.can_change_lts;/);
+  assert.doesNotMatch(app, /can_change_lts \|\| (me|found)\.can_review_closures/);
 });

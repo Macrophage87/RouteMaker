@@ -1,5 +1,5 @@
-# The instance admin's Review queue and its rulings (core.models.ReviewItem, ReviewRuling;
-# core.stress_review).
+# The instance admin's Review queue and its rulings (core.models.ReviewItem, ReviewRuling,
+# ReviewQueueState; core.stress_review), and Override's source for a Review reopening.
 #
 # Numbered 0029: 0027_suggestion_reviews and 0028_surface_override come from another branch and
 # are not on this one's base yet, so `dependencies` names 0026 until they merge.
@@ -17,6 +17,53 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.CreateModel(
+            name="ReviewQueueState",
+            fields=[
+                (
+                    "queue",
+                    models.CharField(
+                        choices=[
+                            ("rebuild", "Rebuild changes"),
+                            ("disagreement", "Rating disagreements"),
+                            ("sidepath", "Use side path, none mapped"),
+                            ("narrow_rural", "Narrow rural roads with no posted speed"),
+                            ("works_closure", "Industrial-area closures"),
+                            ("rematch", "Overrides that did not re-match"),
+                        ],
+                        max_length=16,
+                        primary_key=True,
+                        serialize=False,
+                    ),
+                ),
+                ("build_id", models.CharField(blank=True, default="", max_length=40)),
+                (
+                    "computed_at",
+                    models.DateTimeField(default=django.utils.timezone.now),
+                ),
+                ("note", models.TextField(blank=True, default="")),
+                ("map_low", models.TextField(blank=True, default="")),
+                ("map_high", models.TextField(blank=True, default="")),
+                ("map_points", models.TextField(blank=True, default="")),
+            ],
+            options={
+                "db_table": "review_queue_state",
+            },
+        ),
+        migrations.AlterField(
+            model_name="override",
+            name="source",
+            field=models.CharField(
+                choices=[
+                    ("file", "Reviewed file"),
+                    ("admin", "Typed into the admin"),
+                    ("panel", "Road panel (Change LTS)"),
+                    ("review", "Review mode (reopened)"),
+                ],
+                default="file",
+                max_length=16,
+            ),
+        ),
         migrations.CreateModel(
             name="ReviewItem",
             fields=[
@@ -65,6 +112,7 @@ class Migration(migrations.Migration):
                         blank=True, null=True, srid=4326
                     ),
                 ),
+                ("inputs", models.CharField(blank=True, default="", max_length=32)),
                 (
                     "computed_at",
                     models.DateTimeField(default=django.utils.timezone.now),
@@ -75,6 +123,7 @@ class Migration(migrations.Migration):
                 "indexes": [
                     models.Index(fields=["queue", "build_id", "kind"], name="review_item_kind"),
                     models.Index(fields=["queue", "-score"], name="review_item_score"),
+                    models.Index(fields=["queue", "-computed_at"], name="review_item_computed"),
                 ],
                 "constraints": [
                     models.UniqueConstraint(
@@ -128,6 +177,7 @@ class Migration(migrations.Migration):
                 ("at", models.DateTimeField(default=django.utils.timezone.now)),
                 ("actor_user_id", models.BigIntegerField(blank=True, null=True)),
                 ("undone_at", models.DateTimeField(blank=True, null=True)),
+                ("inputs", models.CharField(blank=True, default="", max_length=32)),
                 (
                     "access_override",
                     models.ForeignKey(

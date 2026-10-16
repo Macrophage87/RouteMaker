@@ -319,7 +319,9 @@ export function App() {
   // /api/me's flags: signed in (My Go to the account, the Home chip) and an instance admin (Review).
   const [me, setMe] = useState<Me>(NO_ME);
   // Review, the third view (lib/appMode.ts switchModes): an instance admin's, or a closures reviewer's.
-  const canReview = me.can_change_lts || me.can_review_closures;
+  // Review (the third mode) is an instance admin's alone: a closures reviewer who is not one marks closures in the road
+  // panel, as before, and never sees the mode.
+  const canReview = me.can_change_lts;
   // The list Review shows: Suggest's Review button opens the riders' suggestions.
   const [reviewList, setReviewList] = useState<ListKey | undefined>(undefined);
   // Go's sheet on a phone: its smallest (peek: the map gets the screen), half, or all of it.
@@ -1153,7 +1155,7 @@ export function App() {
       setMe(found);
       // A tab left in Review by an account that may no longer review opens in Plan; this device's last Review
       // comes back once the account is known to be one that may (lib/appMode.ts reopenReview).
-      const reviews = found.can_change_lts || found.can_review_closures;
+      const reviews = found.can_change_lts;
       if (!reviews && modeRef.current === "review") {
         setModeState("plan");
         writeTabMode("plan");
@@ -3054,12 +3056,11 @@ export function App() {
     onRide: (item: Nearby) => (mode === "go" ? goToLettered(item.place.point, item.place.title) : rideToNearest(item)),
     onAddStop: addNearestStop,
   };
-  // An instance admin's review (rider suggestions, Mass Ride hazard reports): from Suggest, or Go's Menu.
-  // An instance admin reviews everything; a closures reviewer (v0.7.0; instance admins for now) the closures.
-  // Both now open Review, the third view (lib/appMode.ts), on the riders' suggestions (a reviewer's closures).
+  // An instance admin's review (rider suggestions, Mass Ride hazard reports): from Suggest, or Go's Menu. It opens
+  // Review, the third view (lib/appMode.ts), on the riders' suggestions.
   const reviewOpener = canReview
     ? () => {
-        setReviewList(me.can_change_lts ? "suggestions" : "closures");
+        setReviewList("suggestions");
         changeMode("review");
       }
     : null;
@@ -3844,7 +3845,6 @@ export function App() {
                 <ReviewMode
                   getMap={getMap}
                   announce={announce}
-                  admin={me.can_change_lts}
                   list={reviewList}
                   onList={setReviewList}
                   onStressChanged={(generation) => {

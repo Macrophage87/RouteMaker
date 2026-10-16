@@ -183,6 +183,15 @@ SUGGEST_WRITES = Limit(scope="stress-suggest", requests=10, window_s=3600)
 # An instance admin's review of the suggestions (approve, delete, send to Discord): their own
 # count, larger than the editor's 60, so reviewing a backlog never blocks editing.
 SUGGEST_REVIEW_WRITES = Limit(scope="stress-suggest-review", requests=200, window_s=3600)
+# Review mode's reads (core.stress_review; GET /api/review/*), counted apart from the road
+# panel's editor: an admin holding an arrow key in the table asks for a road's card, facts and
+# street photo several times a second (the card's fetch waits for the key to settle, but a
+# careful pass is still a few requests a road), so 600 a minute per address. Its rulings are
+# counted per account (800 an hour: a batch is one request, so far above a working session)
+# and per address, each in its own count, never the editor's.
+REVIEW_READS = Limit(scope="review-read", requests=600, window_s=60)
+REVIEW_RULINGS = Limit(scope="review-ruling", requests=800, window_s=3600)
+REVIEW_RULINGS_CLIENT = Limit(scope="review-ruling-ip", requests=240, window_s=60)
 # A rider saving their own My Go (core.api my_go_save): one account's own settings, so a cap only on
 # a script hammering it; a rider changing them by hand saves a few times.
 MY_GO_WRITES = Limit(scope="my-go", requests=60, window_s=3600)

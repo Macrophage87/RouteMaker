@@ -31,6 +31,7 @@ rebuild. Every ruling is audited and can be undone within the editor's undo wind
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import logging
 from collections.abc import Callable, Iterable
@@ -39,9 +40,8 @@ from datetime import datetime
 from pathlib import Path
 
 from django.conf import settings
-from django.contrib.gis.geos import GEOSGeometry, Polygon
 from django.db import connection, transaction
-from django.db.models import Exists, OuterRef
+from django.db.models import Count, Exists, OuterRef, Q
 from django.utils import timezone
 
 from pipeline.schema import validate_schema_name
@@ -123,26 +123,28 @@ def _or_null(column: str, columns: frozenset[str], cast: str = "") -> str:
 
 
 def _agg_sql(schema: str, where: str = "") -> str:
-    """One row a way: its level (the highest of its pieces), whether a bicycle is barred, and
-    the rule, ratings, adjustment and formula tier of the piece that set the level. Takes the
-    closed class as its first parameter."""
+    """One row a way: its level (the highest of its pieces), whether a bicycle is barred on any
+    of them, and the rule, ratings, adjustment and formula tier of the piece that set the level.
+    One sort of the table (DISTINCT ON, the piece with the highest level first), never an array
+    of every piece. Takes the closed class as its first parameter."""
     columns = _columns(schema)
     step = _step_sql(columns)
-    order = f"ORDER BY {step} DESC, ordinal"
     return f"""
-        SELECT osm_way_id, max({step}) AS step, bool_or(map_class = %s) AS closed,
-               (array_agg(stress_rule {order}))[1] AS rule,
-               (array_agg({_or_null("stress_ratings", columns, "::text")} {order}))[1] AS ratings,
-               (array_agg({_or_null("stress_adjustment_id", columns)} {order}))[1] AS adjustment,
-               (array_agg({_or_null("stress_computed_tier", columns)} {order}))[1] AS computed
-        FROM {schema}.segment {where} GROUP BY osm_way_id
+        SELECT DISTINCT ON (osm_way_id) osm_way_id, {step} AS step,
+               COALESCE(bool_or(map_class = %s) OVER (PARTITION BY osm_way_id), false) AS closed,
+               stress_rule AS rule,
+               {_or_null("stress_ratings", columns, "::text")} AS ratings,
+               {_or_null("stress_adjustment_id", columns, "::text")} AS adjustment,
+               {_or_null("stress_computed_tier", columns)} AS computed
+        FROM {schema}.segment {where}
+        ORDER BY osm_way_id, {step} DESC NULLS LAST, ordinal
     """
 
 
 def _row(r) -> dict:
     return {
         "way": int(r[0]),
-        "step": float(r[1]),
+        "step": float(r[1]) if r[1] is not None else None,
         "closed": bool(r[2]),
         "rule": r[3] or "",
         "ratings": json.loads(r[4]) if r[4] else None,
@@ -151,51 +153,144 @@ def _row(r) -> dict:
     }
 
 
+def _raw(row: dict | None) -> dict:
+    """What an item keeps of a way's row for its card; the words are made when it is shown."""
+    if row is None:
+        return {}
+    return {k: row.get(k) for k in ("rule", "ratings", "adjustment", "computed")}
+
+
+def _digest(*parts) -> str:
+    """The `inputs` digest of what a road was listed for."""
+    text = json.dumps(parts, sort_keys=True, default=str)
+    return hashlib.md5(text.encode(), usedforsecurity=False).hexdigest()
+
+
 def _way_rows(schema: str, where: str = "", params: Iterable = ()) -> list[dict]:
     with connection.cursor() as cursor:
         cursor.execute(_agg_sql(schema, where), [CLOSED_CLASS, *params])
         return [_row(r) for r in cursor.fetchall()]
 
 
-def _facts(schema: str, ways: list[int]) -> dict[int, dict]:
-    """Each way's name, length, count, lines and area (the police layer's authority, which is
-    the county's in Maryland and Virginia, else the state's), in batches."""
+def _fill_facts(queue: str, schema: str, build_id: str = "") -> None:
+    """Each listed way's name (where the queue gave none), length, count, lines and area (the
+    police layer's authority, which is the county's in Maryland and Virginia, else the
+    state's), written in the database from `schema`: no way's lines pass through Python."""
+    if not _table_exists(schema):
+        return
     columns = _columns(schema)
     names = [c for c in ("trail_name", "sidepath_name", "mtb_name") if c in columns]
     name = f"max(COALESCE({', '.join(names)}))" if names else "NULL"
     aadt = "max(volume_aadt)" if "volume_aadt" in columns else "NULL"
-    out: dict[int, dict] = {}
-    for start in range(0, len(ways), CHUNK):
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"""
-                WITH w AS (
-                    SELECT osm_way_id, {name} AS name,
-                           sum(ST_Length(geometry::geography)) AS length_m, {aadt} AS aadt,
-                           ST_Multi(ST_Collect(geometry ORDER BY ordinal)) AS geom
-                    FROM {schema}.segment WHERE osm_way_id = ANY(%s) GROUP BY osm_way_id
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            UPDATE review_item i
+            SET name = CASE WHEN i.name = '' THEN COALESCE(f.name, '') ELSE i.name END,
+                length_m = COALESCE(f.length_m, 0), aadt = f.aadt, geometry = f.geom,
+                area = COALESCE(
+                  (SELECT j.name FROM jurisdiction j WHERE j.layer = 'police'
+                     AND ST_Intersects(j.geometry, ST_PointOnSurface(f.geom))
+                   ORDER BY j.name LIMIT 1),
+                  (SELECT j.name FROM jurisdiction j WHERE j.layer = 'state'
+                     AND ST_Intersects(j.geometry, ST_PointOnSurface(f.geom))
+                   ORDER BY j.name LIMIT 1),
+                  '')
+            FROM (
+                SELECT osm_way_id, {name} AS name,
+                       sum(ST_Length(geometry::geography)) AS length_m, {aadt} AS aadt,
+                       ST_Multi(ST_Collect(geometry ORDER BY ordinal)) AS geom
+                FROM {schema}.segment
+                WHERE osm_way_id IN (
+                    SELECT osm_way_id FROM review_item WHERE queue = %s AND build_id = %s
                 )
-                SELECT w.osm_way_id, w.name, w.length_m, w.aadt, ST_AsText(w.geom),
-                       COALESCE(
-                         (SELECT j.name FROM jurisdiction j WHERE j.layer = 'police'
-                            AND ST_Intersects(j.geometry, ST_PointOnSurface(w.geom))
-                          ORDER BY j.name LIMIT 1),
-                         (SELECT j.name FROM jurisdiction j WHERE j.layer = 'state'
-                            AND ST_Intersects(j.geometry, ST_PointOnSurface(w.geom))
-                          ORDER BY j.name LIMIT 1))
-                FROM w
-                """,
-                [ways[start : start + CHUNK]],
-            )
-            for r in cursor.fetchall():
-                out[int(r[0])] = {
-                    "name": r[1] or "",
-                    "length_m": float(r[2] or 0),
-                    "aadt": int(r[3]) if r[3] is not None else None,
-                    "geometry": GEOSGeometry(r[4], srid=4326) if r[4] else None,
-                    "area": r[5] or "",
-                }
-    return out
+                GROUP BY osm_way_id
+            ) f
+            WHERE i.queue = %s AND i.build_id = %s AND i.osm_way_id = f.osm_way_id
+            """,
+            [queue, build_id, queue, build_id],
+        )
+        # The queue's order (`page`): the size of the change or disagreement along the road,
+        # times its traffic for a disagreement (per thousand cars a day, at least 1).
+        cursor.execute(
+            f"UPDATE review_item SET score = {SCORE_SQL.get(queue, 'length_m')} "
+            "WHERE queue = %s AND build_id = %s",
+            [queue, build_id],
+        )
+
+
+SCORE_SQL = {
+    Queue.REBUILD: (
+        "(CASE WHEN kind IN ('closed', 'reopened') THEN 4 "
+        "ELSE abs(COALESCE(new_step, 0) - COALESCE(old_step, 0)) END) * length_m"
+    ),
+    Queue.DISAGREEMENT: "COALESCE(spread, 0) * length_m * greatest(1, COALESCE(aadt, 0) / 1000.0)",
+}
+
+# The map's size of a road's change or disagreement (its colour band and the far view's order).
+SIZE_SQL = (
+    "CASE WHEN new_closed AND NOT old_closed THEN 4 "
+    "ELSE COALESCE(spread, abs(COALESCE(new_step, 0) - COALESCE(old_step, 0))) END"
+)
+# How far the region view's lines are simplified, in degrees (about 30 m), and how many places
+# its coordinates keep; the street view keeps the lines whole, to a decimetre.
+LOW_TOLERANCE = 0.0003
+LOW_PLACES = 5
+HIGH_PLACES = 6
+NO_REPORT = "No report from this build"
+
+
+def _features(lines: str, places: int) -> str:
+    return f"""
+        SELECT COALESCE(json_build_object('type', 'FeatureCollection', 'features',
+          json_agg(json_build_object(
+            'type', 'Feature',
+            'geometry', ST_AsGeoJSON({lines}, {places})::json,
+            'properties', json_build_object(
+              'way', osm_way_id, 'queue', queue, 'order', rank, 'size', size,
+              'kind', kind, 'area', area, 'sources', sources_text))
+          ORDER BY rank))::text, '')
+        FROM ranked
+    """
+
+
+def write_state(queue: str, build_id: str = "", note: str = "") -> None:
+    """The queue's state row: when and from what it was computed, and its whole map (every
+    listed road, in the queue's order), built here once so that drawing it is a read."""
+    from .models import ReviewQueueState
+
+    items_build = build_id if queue == Queue.REBUILD else ""
+    ranked = f"""
+        WITH ranked AS (
+            SELECT osm_way_id, queue, kind, area, geometry,
+                   array_to_string(ARRAY(SELECT jsonb_array_elements_text(sources)), ',')
+                     AS sources_text,
+                   {SIZE_SQL} AS size,
+                   row_number() OVER (ORDER BY score DESC, osm_way_id) AS rank
+            FROM review_item
+            WHERE queue = %s AND build_id = %s AND geometry IS NOT NULL
+        )
+    """
+    maps = []
+    with connection.cursor() as cursor:
+        for body in (
+            _features(f"ST_SimplifyPreserveTopology(geometry, {LOW_TOLERANCE})", LOW_PLACES),
+            _features("geometry", HIGH_PLACES),
+            _features("ST_PointOnSurface(geometry)", LOW_PLACES),
+        ):
+            cursor.execute(ranked + body, [queue, items_build])
+            maps.append(cursor.fetchone()[0] or "")
+    ReviewQueueState.objects.update_or_create(
+        queue=queue,
+        defaults={
+            "build_id": build_id,
+            "computed_at": timezone.now(),
+            "note": note,
+            "map_low": maps[0],
+            "map_high": maps[1],
+            "map_points": maps[2],
+        },
+    )
 
 
 def deciding_source(row: dict) -> str:
@@ -214,37 +309,35 @@ def deciding_source(row: dict) -> str:
 
 
 def _state(row: dict | None) -> dict:
-    """A side of a rebuild change, for the item's card."""
-    if row is None:
+    """A side of an item (before or after a rebuild, or now), for its card: the rule in words
+    and who decided the level, made from the row the item keeps (`_raw`)."""
+    if not row:
         return {}
     source = deciding_source(row)
+    rule = row.get("rule") or ""
     return {
-        "rule": segment_info.rule_words(row["rule"]) if row["rule"] else "",
+        "rule": segment_info.rule_words(rule) if rule else "",
         "source": source,
         "source_name": source_name(source),
         "ratings": row.get("ratings"),
     }
 
 
-def _item(queue: str, way: int, facts: dict | None, **fields) -> ReviewItem:
-    facts = facts or {}
-    length = facts.get("length_m", 0.0)
+def _item(queue: str, way: int, **fields) -> ReviewItem:
+    """An item; its name, length, count, lines and area are filled in by `_fill_facts`."""
     return ReviewItem(
-        queue=queue,
-        osm_way_id=way,
-        name=(fields.pop("name", "") or facts.get("name", ""))[:300],
-        area=facts.get("area", ""),
-        length_m=length,
-        aadt=facts.get("aadt"),
-        geometry=facts.get("geometry"),
-        **fields,
+        queue=queue, osm_way_id=way, name=(fields.pop("name", "") or "")[:300], **fields
     )
 
 
-def _replace(queue: str, items: list[ReviewItem]) -> int:
+def _replace(queue: str, items: list[ReviewItem], schema: str | None, build_id: str = "") -> int:
+    """The queue's rows replaced whole, their facts read from `schema`, and its map written."""
     with transaction.atomic():
         ReviewItem.objects.filter(queue=queue).delete()
         ReviewItem.objects.bulk_create(items, batch_size=2000)
+        if schema:
+            _fill_facts(queue, schema)
+        write_state(queue, build_id)
     return len(items)
 
 
@@ -264,36 +357,44 @@ def compute_rebuild(build_id: str, live: str, staging: str) -> int:
     validate_schema_name(live)
     validate_schema_name(staging)
     if not (_table_exists(live) and _table_exists(staging)):
-        return _replace(Queue.REBUILD, [])
-    # Compared in the database: only the changed ways come back, never the two whole tables.
-    with connection.cursor() as cursor:
-        cursor.execute(
-            f"SELECT o.*, n.* FROM ({_agg_sql(live)}) o JOIN ({_agg_sql(staging)}) n "
-            "ON o.osm_way_id = n.osm_way_id WHERE o.step <> n.step OR o.closed <> n.closed",
-            [CLOSED_CLASS, CLOSED_CLASS],
+        return _replace(Queue.REBUILD, [], None, build_id)
+
+    def side(alias: str) -> str:
+        return (
+            f"jsonb_build_object('rule', {alias}.rule, 'ratings', {alias}.ratings::jsonb, "
+            f"'adjustment', {alias}.adjustment, 'computed', {alias}.computed)"
         )
-        changed = [(_row(r[:7]), _row(r[7:])) for r in cursor.fetchall()]
-    facts = _facts(staging, [n["way"] for _o, n in changed])
-    items = []
-    for o, n in changed:
-        kind = change_kind(o["step"], n["step"], o["closed"], n["closed"])
-        weight = 4.0 if kind in ("closed", "reopened") else abs(n["step"] - o["step"])
-        item = _item(
-            Queue.REBUILD,
-            n["way"],
-            facts.get(n["way"]),
-            build_id=build_id,
-            kind=kind,
-            old_step=o["step"],
-            new_step=n["step"],
-            old_closed=o["closed"],
-            new_closed=n["closed"],
-            details={"old": _state(o), "new": _state(n)},
-            reason=kind_label(Queue.REBUILD, kind),
-        )
-        item.score = weight * item.length_m
-        items.append(item)
-    return _replace(Queue.REBUILD, items)
+
+    # Compared and written in the database, a row a changed way as the two tables are read
+    # (`INSERT ... SELECT`): neither table, nor any way's lines, passes through Python. The
+    # words (the change, the rules, who decided) are made when an item is shown.
+    with transaction.atomic():
+        ReviewItem.objects.filter(queue=Queue.REBUILD).delete()
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                INSERT INTO review_item (
+                    queue, build_id, osm_way_id, name, area, reason, kind, old_step, new_step,
+                    old_closed, new_closed, details, sources, spread, length_m, aadt, score,
+                    inputs, computed_at)
+                SELECT %s, %s, n.osm_way_id, '', '', '',
+                       CASE WHEN n.closed AND NOT o.closed THEN 'closed'
+                            WHEN o.closed AND NOT n.closed THEN 'reopened'
+                            ELSE COALESCE(o.step::float8::text, '') || '-'
+                                 || COALESCE(n.step::float8::text, '') END,
+                       o.step, n.step, o.closed, n.closed,
+                       jsonb_build_object('old', {side("o")}, 'new', {side("n")}),
+                       '[]'::jsonb, NULL, 0, NULL, 0, '', %s
+                FROM ({_agg_sql(live)}) o JOIN ({_agg_sql(staging)}) n
+                  ON o.osm_way_id = n.osm_way_id
+                WHERE o.step IS DISTINCT FROM n.step OR o.closed IS DISTINCT FROM n.closed
+                """,
+                [Queue.REBUILD.value, build_id, timezone.now(), CLOSED_CLASS, CLOSED_CLASS],
+            )
+            count = cursor.rowcount
+        _fill_facts(Queue.REBUILD, staging, build_id)
+        write_state(Queue.REBUILD, build_id)
+    return count
 
 
 def rating_sources(
@@ -422,11 +523,15 @@ def pending_ratings(directory: Path | None = None) -> dict[int, list[tuple[str, 
 
 
 def compute_disagreements(
-    schema: str, reports: Path | None = None, pending: dict[int, list] | None = None
+    schema: str,
+    reports: Path | None = None,
+    pending: dict[int, list] | None = None,
+    *,
+    build_id: str = "",
 ) -> int:
     validate_schema_name(schema)
     if not _table_exists(schema):
-        return _replace(Queue.DISAGREEMENT, [])
+        return _replace(Queue.DISAGREEMENT, [], None, build_id)
     columns = _columns(schema)
     suggested = _open_suggestions()
     osm = _osm_tiers(reports)
@@ -434,60 +539,55 @@ def compute_disagreements(
     named = sorted(set(suggested) | set(osm) | set(pending))
     held = [c for c in ("stress_ratings", "stress_adjustment_id") if c in columns]
     where = " OR ".join([f"{c} IS NOT NULL" for c in held] + ["osm_way_id = ANY(%s)"])
-    found = []
+    items = []
     for row in _way_rows(schema, f"WHERE {where}", [named]):
         sources = rating_sources(
             row, suggested.get(row["way"]), osm.get(row["way"]), pending.get(row["way"], ())
         )
         told = disagreement(sources)
-        if told is not None:
-            found.append((row, sources, told))
-    facts = _facts(schema, [row["way"] for row, _s, _t in found])
-    items = []
-    for row, sources, (spread, keys, said) in found:
-        item = _item(
-            Queue.DISAGREEMENT,
-            row["way"],
-            facts.get(row["way"]),
-            kind="-".join(keys)[:40],
-            new_step=row["step"],
-            new_closed=row["closed"],
-            spread=spread,
-            sources=keys,
-            details={"new": _state(row), "sources": sources},
-            reason=said,
+        if told is None:
+            continue
+        spread, keys, said = told
+        items.append(
+            _item(
+                Queue.DISAGREEMENT,
+                row["way"],
+                kind="-".join(keys)[:40],
+                new_step=row["step"],
+                new_closed=row["closed"],
+                spread=spread,
+                sources=keys,
+                details={"new": _raw(row), "sources": sources},
+                reason=said,
+                inputs=_digest(row["step"], row["closed"], _raw(row), sources),
+            )
         )
-        # Size of the disagreement times traffic: the count where there is one (per thousand
-        # cars a day, at least 1), along the road's length.
-        item.score = spread * item.length_m * max(1.0, (item.aadt or 0) / 1000)
-        items.append(item)
-    return _replace(Queue.DISAGREEMENT, items)
+    return _replace(Queue.DISAGREEMENT, items, schema, build_id)
 
 
-def compute_narrow_rural(schema: str) -> int:
+def compute_narrow_rural(schema: str, *, build_id: str = "") -> int:
     validate_schema_name(schema)
     if not _table_exists(schema):
-        return _replace(Queue.NARROW_RURAL, [])
+        return _replace(Queue.NARROW_RURAL, [], None, build_id)
     rows = _way_rows(schema, "WHERE stress_rule LIKE %s", [f"%{NARROW_ROAD_RULE}%"])
-    facts = _facts(schema, [r["way"] for r in rows])
     reason = (
         "Narrow rural road with no posted speed: read at "
         f"{segment_info.mph_and_kmh(NARROW_RURAL_ROAD_MPH)}"
     )
-    items = []
-    for row in rows:
-        item = _item(
+    items = [
+        _item(
             Queue.NARROW_RURAL,
             row["way"],
-            facts.get(row["way"]),
-            kind=f"{row['step']:g}",
+            kind=f"{row['step']:g}" if row["step"] is not None else "",
             new_step=row["step"],
-            details={"new": _state(row)},
+            new_closed=row["closed"],
+            details={"new": _raw(row)},
             reason=reason,
+            inputs=_digest(row["step"], row["closed"], _raw(row)),
         )
-        item.score = item.length_m
-        items.append(item)
-    return _replace(Queue.NARROW_RURAL, items)
+        for row in rows
+    ]
+    return _replace(Queue.NARROW_RURAL, items, schema, build_id)
 
 
 @dataclass(frozen=True)
@@ -532,10 +632,17 @@ FILE_QUEUES = (
 )
 
 
-def compute_file_queue(spec: FileQueue, schema: str, reports: Path | None) -> int | None:
-    """The queue from its report, or None (left as it was) where the report is not there."""
+def compute_file_queue(
+    spec: FileQueue, schema: str, reports: Path | None, build_id: str = ""
+) -> int | None:
+    """The queue from its report, or None where this build has no such report: its rows are
+    then cleared and its state says so (`NO_REPORT`), so an older build's list is never shown
+    as this one's."""
     path = reports / spec.file if reports else None
     if path is None or not path.is_file():
+        with transaction.atomic():
+            ReviewItem.objects.filter(queue=spec.queue).delete()
+            write_state(spec.queue, build_id, note=NO_REPORT)
         return None
     rows: dict[int, dict] = {}
     for row in _read_csv(path):
@@ -547,29 +654,31 @@ def compute_file_queue(spec: FileQueue, schema: str, reports: Path | None) -> in
                 break
             except (KeyError, TypeError, ValueError):
                 continue
-    facts = _facts(schema, sorted(rows)) if _table_exists(schema) else {}
+    present = _table_exists(schema)
     now = (
         {r["way"]: r for r in _way_rows(schema, "WHERE osm_way_id = ANY(%s)", [sorted(rows)])}
-        if facts
+        if present
         else {}
     )
     items = []
     for way, row in rows.items():
         current = now.get(way)
-        item = _item(
-            spec.queue,
-            way,
-            facts.get(way),
-            name=row.get("name") or "",
-            kind=(row.get("kind") or row.get("highway") or "")[:40],
-            new_step=current["step"] if current else None,
-            new_closed=spec.closed or bool(current and current["closed"]),
-            details={"new": _state(current), "report": spec.file},
-            reason=spec.reason(row)[:500],
+        reason = spec.reason(row)[:500]
+        items.append(
+            _item(
+                spec.queue,
+                way,
+                name=row.get("name") or "",
+                kind=(row.get("kind") or row.get("highway") or "")[:40],
+                new_step=current["step"] if current else None,
+                new_closed=spec.closed or bool(current and current["closed"]),
+                details={"new": _raw(current), "report": spec.file},
+                reason=reason,
+                inputs=_digest(reason, current and current["step"], _raw(current)),
+            )
         )
-        item.score = item.length_m
-        items.append(item)
-    return _replace(spec.queue, items)
+    _replace(spec.queue, items, schema if present else None, build_id)
+    return len(items)
 
 
 def compute_all(build_id: str, live: str, staging: str | None, reports: Path | None) -> dict:
@@ -578,10 +687,10 @@ def compute_all(build_id: str, live: str, staging: str | None, reports: Path | N
     schema = staging if staging and _table_exists(staging) else live
     counts: dict[str, int | None] = {}
     counts[Queue.REBUILD] = compute_rebuild(build_id, live, staging) if staging else None
-    counts[Queue.DISAGREEMENT] = compute_disagreements(schema, reports)
-    counts[Queue.NARROW_RURAL] = compute_narrow_rural(schema)
+    counts[Queue.DISAGREEMENT] = compute_disagreements(schema, reports, build_id=build_id)
+    counts[Queue.NARROW_RURAL] = compute_narrow_rural(schema, build_id=build_id)
     for spec in FILE_QUEUES:
-        counts[spec.queue] = compute_file_queue(spec, schema, reports)
+        counts[spec.queue] = compute_file_queue(spec, schema, reports, build_id)
     return counts
 
 
@@ -647,7 +756,17 @@ def actions(item: ReviewItem) -> list[str]:
     return allowed
 
 
+def state_of(queue: str):
+    from .models import ReviewQueueState
+
+    return ReviewQueueState.objects.filter(queue=queue).first()
+
+
 def current_build(queue: str) -> str:
+    """The build a queue was last computed for: its state row's, else its newest item's."""
+    state = state_of(queue)
+    if state is not None:
+        return state.build_id
     latest = ReviewItem.objects.filter(queue=queue).order_by("-computed_at").first()
     return latest.build_id if latest else ""
 
@@ -656,13 +775,21 @@ def _rulings(queue: str):
     return ReviewRuling.objects.filter(queue=queue, undone_at__isnull=True)
 
 
+def _standing(rulings, queue: str, inputs):
+    """The rulings that still stand: of this build for the rebuild's changes; elsewhere a
+    level or a reopening always, and an Accept only while the road is listed for the same
+    inputs (a later build that changes them lists it again)."""
+    if queue == Queue.REBUILD:
+        return rulings
+    return rulings.filter(~Q(decision=Decision.ACCEPT) | Q(inputs=inputs))
+
+
 def _ruled_filter(queue: str):
-    """An Exists() for an item that has a standing ruling: of this build for the rebuild's
-    changes, of any time for the other queues."""
+    """An Exists() for an item that has a standing ruling (`_standing`)."""
     rulings = _rulings(queue).filter(osm_way_id=OuterRef("osm_way_id"))
     if queue == Queue.REBUILD:
         rulings = rulings.filter(build_id=OuterRef("build_id"))
-    return Exists(rulings)
+    return Exists(_standing(rulings, queue, OuterRef("inputs")))
 
 
 def items_of(queue: str, *, kind: str = "", source: str = "", area: str = ""):
@@ -679,51 +806,70 @@ def items_of(queue: str, *, kind: str = "", source: str = "", area: str = ""):
 
 
 def queue_summary() -> list[dict]:
-    """Each queue: how many roads, how many have a ruling, its filters, and whether it is wired."""
+    """Each queue: how many roads, how many have a ruling, its filters (with their counts), and
+    whether it is wired, every count made in the database."""
+    from .models import ReviewQueueState
+
+    states = {
+        s.queue: s for s in ReviewQueueState.objects.defer("map_low", "map_high", "map_points")
+    }
     out = []
     for queue, label in Queue.choices:
         query = items_of(queue)
-        kinds: dict[str, int] = {}
-        areas: dict[str, int] = {}
-        sources: dict[str, int] = {}
-        total = reviewed = 0
-        for kind, area, keys, ruled in query.values_list("kind", "area", "sources", "ruled"):
-            total += 1
-            reviewed += bool(ruled)
-            kinds[kind] = kinds.get(kind, 0) + 1
-            if area:
-                areas[area] = areas.get(area, 0) + 1
-            for key in keys or []:
-                sources[key] = sources.get(key, 0) + 1
+        counts = query.aggregate(total=Count("id"), reviewed=Count("id", filter=Q(ruled=True)))
+        plain = query.order_by()
+        kinds = plain.values_list("kind").annotate(n=Count("id")).order_by("-n", "kind")
+        areas = plain.exclude(area="").values_list("area").annotate(n=Count("id")).order_by("area")
+        sources: list[tuple[str, int]] = []
+        if queue == Queue.DISAGREEMENT:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT s, count(*) FROM review_item, jsonb_array_elements_text(sources) s "
+                    "WHERE queue = %s GROUP BY s ORDER BY s",
+                    [queue],
+                )
+                sources = cursor.fetchall()
+        state = states.get(queue)
+        note = state.note if state is not None else ""
+        total = counts["total"] or 0
         out.append(
             {
                 "queue": queue,
                 "label": label,
                 "build_id": current_build(queue) if queue == Queue.REBUILD else "",
+                "computed_for": state.build_id if state is not None else "",
+                "computed_at": state.computed_at.isoformat() if state is not None else None,
+                "note": note,
                 "total": total,
-                "reviewed": reviewed,
-                "wired": total > 0
-                or queue in (Queue.REBUILD, Queue.DISAGREEMENT, Queue.NARROW_RURAL),
-                "kinds": [
-                    {"kind": k, "label": kind_label(queue, k), "count": n}
-                    for k, n in sorted(kinds.items(), key=lambda kv: (-kv[1], kv[0]))
-                ],
-                "areas": [{"area": a, "count": n} for a, n in sorted(areas.items())],
-                "sources": [
-                    {"source": s, "label": source_name(s), "count": n}
-                    for s, n in sorted(sources.items())
-                ],
+                "reviewed": counts["reviewed"] or 0,
+                "wired": not note
+                and (total > 0 or queue in (Queue.REBUILD, Queue.DISAGREEMENT, Queue.NARROW_RURAL)),
+                "kinds": [{"kind": k, "label": kind_label(queue, k), "count": n} for k, n in kinds],
+                "areas": [{"area": a, "count": n} for a, n in areas],
+                "sources": [{"source": s, "label": source_name(s), "count": n} for s, n in sources],
             }
         )
+    # The learned model's gap list (the roads it rates far from the formula) is to be one more
+    # queue here, computed like the others into ReviewItem; nothing of it exists yet.
     return out
 
 
-def latest_rulings(queue: str, ways: list[int], build_id: str = "") -> dict[int, ReviewRuling]:
+def latest_rulings(
+    queue: str, ways: list[int], build_id: str = "", inputs: dict[int, str] | None = None
+) -> dict[int, ReviewRuling]:
+    """Each way's newest standing ruling (`_standing`; `inputs` is each item's)."""
     query = _rulings(queue).filter(osm_way_id__in=ways)
     if queue == Queue.REBUILD:
         query = query.filter(build_id=build_id)
     out: dict[int, ReviewRuling] = {}
     for ruling in query.order_by("at", "id"):
+        if (
+            queue != Queue.REBUILD
+            and ruling.decision == Decision.ACCEPT
+            and inputs is not None
+            and ruling.inputs != inputs.get(ruling.osm_way_id)
+        ):
+            continue
         out[ruling.osm_way_id] = ruling
     return out
 
@@ -755,14 +901,14 @@ def ruling_words(ruling: ReviewRuling) -> str:
 
 def item_out(item: ReviewItem, ruling: ReviewRuling | None = None, name: str | None = None) -> dict:
     details = item.details or {}
-    old, new = details.get("old") or {}, details.get("new") or {}
+    old, new = _state(details.get("old")), _state(details.get("new"))
     geometry = json.loads(item.geometry.geojson) if item.geometry is not None else None
     return {
         "queue": item.queue,
         "osm_way_id": item.osm_way_id,
         "name": name or item.name or "",
         "area": item.area,
-        "reason": item.reason,
+        "reason": item.reason or kind_label(item.queue, item.kind),
         "kind": item.kind,
         "kind_label": kind_label(item.queue, item.kind),
         "old_step": item.old_step,
@@ -785,6 +931,7 @@ def item_out(item: ReviewItem, ruling: ReviewRuling | None = None, name: str | N
         "aadt": item.aadt,
         "bbox": list(item.geometry.extent) if item.geometry is not None else None,
         "geometry": geometry,
+        "point": list(item.geometry.point_on_surface.coords) if item.geometry is not None else None,
         "actions": actions(item),
         "ruling": ruling_out(ruling) if ruling else None,
     }
@@ -803,7 +950,9 @@ def page(
     total = query.count()
     rows = list(query.order_by("-score", "osm_way_id")[(number - 1) * size : number * size])
     build = current_build(queue) if queue == Queue.REBUILD else ""
-    ruled = latest_rulings(queue, [r.osm_way_id for r in rows], build)
+    ruled = latest_rulings(
+        queue, [r.osm_way_id for r in rows], build, {r.osm_way_id: r.inputs for r in rows}
+    )
     return {
         "queue": queue,
         "build_id": build,
@@ -814,32 +963,24 @@ def page(
     }
 
 
-def map_features(queue: str, bbox: tuple[float, float, float, float], **filters) -> dict:
-    """The queue's roads in a box, for Review's overlay, coloured by `spread` (or the change)."""
-    box = Polygon.from_bbox(bbox)
-    box.srid = 4326
-    query = items_of(queue, **filters).filter(geometry__bboverlaps=box).order_by("-score")[:MAP_MAX]
-    features = []
-    for item in query:
-        if item.geometry is None:
-            continue
-        size = (
-            item.spread
-            if item.spread is not None
-            else abs((item.new_step or 0) - (item.old_step or 0))
-        )
-        features.append(
-            {
-                "type": "Feature",
-                "geometry": json.loads(item.geometry.geojson),
-                "properties": {
-                    "way": item.osm_way_id,
-                    "size": 4.0 if item.new_closed and not item.old_closed else size,
-                    "ruled": bool(item.ruled),
-                },
-            }
-        )
-    return {"type": "FeatureCollection", "features": features}
+def map_payload(queue: str, detail: str = "low") -> str:
+    """The queue's whole map as `write_state` made it, as JSON text: {queue, build_id, note,
+    lines (simplified for a region's view, or at full detail), points (one a road, for the far
+    view's count badges; the region view only), ruled (the ways with a standing ruling)}. The
+    lines are a read of one row; only the ruled ways are asked of the database each time."""
+    state = state_of(queue)
+    ruled = list(items_of(queue).filter(ruled=True).values_list("osm_way_id", flat=True))
+    empty = '{"type":"FeatureCollection","features":[]}'
+    lines = (state.map_high if detail == "high" else state.map_low) if state else ""
+    points = state.map_points if state and detail != "high" else ""
+    head = {
+        "queue": queue,
+        "build_id": state.build_id if state else "",
+        "note": state.note if state else "",
+        "detail": "high" if detail == "high" else "low",
+        "ruled": ruled,
+    }
+    return json.dumps(head)[:-1] + f', "lines": {lines or empty}, "points": {points or empty}' + "}"
 
 
 def unruled_rebuild_changes() -> tuple[int, int, str]:
@@ -863,6 +1004,8 @@ def _reason(text: str | None) -> str:
 
 
 def _reopen(actor, way: int, reason: str, now: datetime) -> Override:
+    """A closed road reopened: an approved access override whose source (`Override.Source.REVIEW`)
+    says it is a Review ruling's, applied at the next rebuild."""
     return Override.objects.create(
         kind=Override.Kind.ACCESS,
         osm_way_id=way,
@@ -871,7 +1014,7 @@ def _reopen(actor, way: int, reason: str, now: datetime) -> Override:
         evidence=EVIDENCE,
         approved=True,
         approved_at=now,
-        source=Override.Source.ADMIN,
+        source=Override.Source.REVIEW,
         created_by=actor,
         created_by_user_id=getattr(actor, "pk", None),
         approved_by=actor,
@@ -879,61 +1022,73 @@ def _reopen(actor, way: int, reason: str, now: datetime) -> Override:
     )
 
 
-def _rule_one(
-    actor, item: ReviewItem, decision: str, step, reason: str, now: datetime
-) -> ReviewRuling:
-    if decision not in actions(item):
-        raise stress_edits.Invalid("That ruling is not offered for this road.", "decision")
-    edit = access = None
-    target: float | None = None
-    with transaction.atomic():
-        if decision == Decision.REJECT and is_closure(item):
-            access = _reopen(actor, item.osm_way_id, reason or default_reason(now), now)
-        elif decision != Decision.ACCEPT:
-            target = item.old_step if decision == Decision.REJECT else step
-            tier, half = stress_edits.split_step(target)
-            spec = stress_edits.Spec(
-                tier=tier,
-                half=half,
-                at_least=False,
-                category=CATEGORY,
-                reason=reason or default_reason(now),
-            )
-            schema = stress_edits.live_schema()
-            columns = stress_edits.edit_columns(schema)
-            rows = stress_edits.read_rows(schema, columns, [item.osm_way_id]) if columns else {}
-            if not rows:
-                raise stress_edits.NotFound("That road is not in the map being served.")
-            expected = stress_edits.token_of(rows, [item.osm_way_id])
-            edit = stress_edits.apply(
-                actor, [item.osm_way_id], spec, expected, now=now, evidence=EVIDENCE
-            ).edit
-        ruling = ReviewRuling.objects.create(
-            queue=item.queue,
-            build_id=item.build_id,
-            osm_way_id=item.osm_way_id,
-            decision=decision,
-            step=target,
-            reason=reason,
-            at=now,
-            actor=actor,
-            actor_user_id=getattr(actor, "pk", None),
-            edit=edit,
-            access_override=access,
-        )
-        audit.record(
-            actor,
-            "review_ruling",
-            "review_ruling",
-            ruling.pk,
-            AuditLogEntry.Outcome.ALLOWED,
-            detail=(
-                f"{item.queue} {item.build_id} way {item.osm_way_id}: {ruling_words(ruling)}"
-                + (f"; edit {edit.pk}" if edit else "")
-                + (f"; access override {access.pk}" if access else "")
-            )[:2000],
-        )
+def _record(actor, item: ReviewItem, decision: str, target, reason: str, now, edit, access):
+    ruling = ReviewRuling.objects.create(
+        queue=item.queue,
+        build_id=item.build_id,
+        osm_way_id=item.osm_way_id,
+        decision=decision,
+        step=target,
+        reason=reason,
+        at=now,
+        actor=actor,
+        actor_user_id=getattr(actor, "pk", None),
+        edit=edit,
+        access_override=access,
+        inputs=item.inputs,
+    )
+    audit.record(
+        actor,
+        "review_ruling",
+        "review_ruling",
+        ruling.pk,
+        AuditLogEntry.Outcome.ALLOWED,
+        detail=(
+            f"{item.queue} {item.build_id} way {item.osm_way_id}: {ruling_words(ruling)}"
+            + (f"; edit {edit.pk}" if edit else "")
+            + (f"; access override {access.pk}" if access else "")
+        )[:2000],
+    )
     return ruling
+
+
+def _set_levels(
+    actor, items: list[ReviewItem], decision: str, target: float, reason: str, now: datetime
+) -> tuple[list[ReviewRuling], list[dict]]:
+    """One level for many roads: one stress edit (`stress_edits.apply`, as a batch), so one
+    generation of the tiles and one undo for them all, and a ruling a road sharing it."""
+    tier, half = stress_edits.split_step(target)
+    spec = stress_edits.Spec(
+        tier=tier,
+        half=half,
+        at_least=False,
+        category=CATEGORY,
+        reason=reason or default_reason(now),
+    )
+    schema = stress_edits.live_schema()
+    columns = stress_edits.edit_columns(schema)
+    ways = [i.osm_way_id for i in items]
+    rows = stress_edits.read_rows(schema, columns, ways) if columns else {}
+    present = {int(k.split(":")[0]) for k in rows}
+    refused = [
+        {"osm_way_id": i.osm_way_id, "error": "That road is not in the map being served."}
+        for i in items
+        if i.osm_way_id not in present
+    ]
+    items = [i for i in items if i.osm_way_id in present]
+    if not items:
+        return [], refused
+    ways = [i.osm_way_id for i in items]
+    expected = stress_edits.token_of(rows, ways)
+    try:
+        with transaction.atomic():
+            edit = stress_edits.apply(
+                actor, ways, spec, expected, now=now, evidence=EVIDENCE, batch=True
+            ).edit
+            made = [_record(actor, i, decision, target, reason, now, edit, None) for i in items]
+    except stress_edits.EditRefused as refusal:
+        return [], refused + [{"osm_way_id": w, "error": refusal.message} for w in ways]
+    return made, refused
 
 
 def rule(
@@ -946,7 +1101,10 @@ def rule(
     reason: str | None = None,
     now: datetime | None = None,
 ) -> tuple[list[ReviewRuling], list[dict]]:
-    """Rule on one road or a batch. Returns (the rulings made, the roads refused with why)."""
+    """Rule on one road or a batch. Returns (the rulings made, the roads refused with why).
+
+    A batch's levels are one stress edit a level (Change LTS: one; a rebuild's Reject: one for
+    each level the roads had before), so a batch is one change of the tiles and one undo."""
     if queue not in Queue.values:
         raise stress_edits.Invalid("There is no such review queue.", "queue")
     if decision not in Decision.values:
@@ -957,24 +1115,42 @@ def rule(
     if decision == Decision.SET:
         stress_edits.split_step(step)
     text = _reason(reason)
+    now = now or timezone.now()
     items = {i.osm_way_id: i for i in items_of(queue).filter(osm_way_id__in=ways)}
     made: list[ReviewRuling] = []
     refused: list[dict] = []
+    levels: dict[float, list[ReviewItem]] = {}
     for way in ways:
         item = items.get(way)
         if item is None:
             refused.append({"osm_way_id": way, "error": "That road is not in this queue."})
-            continue
-        try:
-            made.append(_rule_one(actor, item, decision, step, text, now or timezone.now()))
-        except stress_edits.EditRefused as refusal:
-            refused.append({"osm_way_id": way, "error": refusal.message})
+        elif decision not in actions(item):
+            refused.append(
+                {"osm_way_id": way, "error": "That ruling is not offered for this road."}
+            )
+        elif decision == Decision.ACCEPT:
+            with transaction.atomic():
+                made.append(_record(actor, item, decision, None, text, now, None, None))
+        elif decision == Decision.REJECT and is_closure(item):
+            with transaction.atomic():
+                access = _reopen(actor, way, text or default_reason(now), now)
+                made.append(_record(actor, item, decision, None, text, now, None, access))
+        else:
+            target = item.old_step if decision == Decision.REJECT else float(step)
+            levels.setdefault(target, []).append(item)
+    for target, group in levels.items():
+        done, failed = _set_levels(actor, group, decision, target, text, now)
+        made += done
+        refused += failed
+    order = {w: n for n, w in enumerate(ways)}
+    made.sort(key=lambda r: order[r.osm_way_id])
     return made, refused
 
 
 def undo(actor, ruling_id: int, *, now: datetime | None = None) -> tuple[ReviewRuling, int | None]:
     """Undo a ruling within the editor's undo window: its stress change by the editor's own
-    undo, its reopening by withdrawing the access row's approval."""
+    undo (with every ruling of the same batch, which shared that one edit), its reopening by
+    withdrawing the access row's approval."""
     now = now or timezone.now()
     with transaction.atomic():
         ruling = ReviewRuling.objects.select_for_update().filter(pk=ruling_id).first()
@@ -990,50 +1166,72 @@ def undo(actor, ruling_id: int, *, now: datetime | None = None) -> tuple[ReviewR
                 "too_old",
             )
         generation = None
+        together = [ruling]
         if ruling.edit_id:
             generation = stress_edits.undo(actor, ruling.edit_id, now=now).generation
+            together += list(
+                ReviewRuling.objects.select_for_update()
+                .filter(edit_id=ruling.edit_id, undone_at__isnull=True)
+                .exclude(pk=ruling.pk)
+            )
         if ruling.access_override_id:
-            Override.objects.filter(pk=ruling.access_override_id).update(approved=False)
-        ruling.undone_at = now
-        ruling.undone_by = actor
-        ruling.save(update_fields=["undone_at", "undone_by"])
+            Override.objects.filter(pk=ruling.access_override_id).update(
+                approved=False, approved_at=None, approved_by=None, approved_by_user_id=None
+            )
+        for one in together:
+            one.undone_at = now
+            one.undone_by = actor
+            one.save(update_fields=["undone_at", "undone_by"])
+        others = len(together) - 1
         audit.record(
             actor,
             "review_ruling_undo",
             "review_ruling",
             ruling.pk,
             AuditLogEntry.Outcome.ALLOWED,
-            detail=f"{ruling.queue} way {ruling.osm_way_id}: {ruling_words(ruling)} undone",
+            detail=f"{ruling.queue} way {ruling.osm_way_id}: {ruling_words(ruling)} undone"
+            + (f", with {others} more of the same batch" if others else ""),
         )
     return ruling, generation
 
 
-def road_detail(way: int) -> dict:
-    """The facts behind a road's rating as the live table holds them (the road panel's own rows:
-    level and rule, speed, lanes and count with their sources, facility), and its history: the
-    stress edits, override rows and rulings on it, newest first."""
+def _facts_of(schema: str, way: int) -> list[dict]:
+    """The road panel's own rows for a way as `schema` holds it: level and rule, speed, lanes
+    and count with their sources, facility."""
+    if not _table_exists(schema):
+        return []
+    columns = _columns(schema)
+    step = _step_sql(columns)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT * FROM {schema}.segment WHERE osm_way_id = %s "
+            f"ORDER BY {step} DESC NULLS LAST, ordinal LIMIT 1",
+            [way],
+        )
+        found = cursor.fetchone()
+        names = [d[0] for d in cursor.description]
+    if found is None:
+        return []
+    row = dict(zip(names, found, strict=True))
+    return (
+        segment_info.stress_rows(row)
+        + segment_info.traffic_rows(row)
+        + segment_info.riding_rows(row)
+    )
+
+
+def road_detail(way: int, queue: str = "") -> dict:
+    """The facts behind a road's rating as the live table holds them, and for a rebuild's change
+    as the build waiting in staging holds them too (`new_facts`), and its history: the stress
+    edits, override rows and rulings on it, newest first."""
     from .models import StressEdit
 
-    schema = stress_edits.live_schema()
-    facts: list[dict] = []
-    if _table_exists(schema):
-        columns = _columns(schema)
-        step = _step_sql(columns)
-        with connection.cursor() as cursor:
-            cursor.execute(
-                f"SELECT * FROM {schema}.segment WHERE osm_way_id = %s "
-                f"ORDER BY {step} DESC, ordinal LIMIT 1",
-                [way],
-            )
-            found = cursor.fetchone()
-            names = [d[0] for d in cursor.description]
-        if found is not None:
-            row = dict(zip(names, found, strict=True))
-            facts = (
-                segment_info.stress_rows(row)
-                + segment_info.traffic_rows(row)
-                + segment_info.riding_rows(row)
-            )
+    facts = _facts_of(stress_edits.live_schema(), way)
+    new_facts: list[dict] = []
+    if queue == Queue.REBUILD:
+        staging = settings.SEGMENT_SCHEMA_STAGING
+        validate_schema_name(staging)
+        new_facts = _facts_of(staging, way)
     history: list[dict] = []
     for edit in StressEdit.objects.filter(osm_way_ids__contains=[way]).order_by("-at")[:20]:
         history.append(
@@ -1059,7 +1257,7 @@ def road_detail(way: int) -> dict:
             {"at": ruling.at.isoformat(), "what": what + (" (undone)" if ruling.undone_at else "")}
         )
     history.sort(key=lambda h: h["at"], reverse=True)
-    return {"osm_way_id": way, "facts": facts, "history": history}
+    return {"osm_way_id": way, "facts": facts, "new_facts": new_facts, "history": history}
 
 
 def recent_rulings(queue: str | None = None, limit: int = 50) -> list[dict]:
@@ -1070,11 +1268,16 @@ def recent_rulings(queue: str | None = None, limit: int = 50) -> list[dict]:
     return [ruling_out(r, now) for r in query.order_by("-at", "-id")[:limit]]
 
 
-def reports_dir(path: str | None) -> Path | None:
-    """The rebuild's reports: `path` (relative to the rebuild's work directory), else its own."""
+def reports_dir(path: str | None, *, own: bool = False) -> Path | None:
+    """The build's reports: `path` (relative to the rebuild's work directory, or absolute). With
+    no path, the work directory's own reports only where `own` says the build is this
+    computer's (`compute_review_queue` after a rebuild here): a cloud build's import never
+    reads this computer's reports as the build's."""
     base = Path(settings.REBUILD_WORK_DIR)
     if path:
         found = Path(path) if Path(path).is_absolute() else base / path
-    else:
+    elif own:
         found = base / "reports"
+    else:
+        return None
     return found if found.is_dir() else None

@@ -6902,13 +6902,16 @@ class ReviewItemsIn(Schema):
 
 class ReviewMapIn(Schema):
     queue: REVIEW_QUEUES = "disagreement"
-    kind: str = Field(default="", max_length=40)
-    source: str = Field(default="", max_length=40)
-    area: str = Field(default="", max_length=200)
-    west: float = Field(ge=-180, le=180)
-    south: float = Field(ge=-90, le=90)
-    east: float = Field(ge=-180, le=180)
-    north: float = Field(ge=-90, le=90)
+    detail: Literal["low", "high"] = Field(
+        default="low",
+        description="low: lines simplified for a region's view, with a point a road; high: whole.",
+    )
+
+
+class ReviewRoadIn(Schema):
+    queue: REVIEW_QUEUES | None = Field(
+        default=None, description="rebuild: the facts of the build waiting in staging as well."
+    )
 
 
 class ReviewRulingIn(Schema):
@@ -6929,10 +6932,22 @@ class ReviewRulingsIn(Schema):
 
 REVIEW_RESPONSES = {200: ReviewAnyOut, **SUGGESTION_RESPONSES}
 
+# Review's own counts (ratelimit.REVIEW_READS, REVIEW_RULINGS, REVIEW_RULINGS_CLIENT), never the
+# road panel's editor's: browsing a list by keyboard reads fast, and a long review never spends
+# the admin's editing budget.
 REVIEW_READ = (
+    ratelimit.rate_limited(ratelimit.REVIEW_READS),
     instance_admin_only(audited=False),
     same_site_editor,
-    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+REVIEW_RULING_WRITE = (
+    ratelimit.user_rate_limited(ratelimit.REVIEW_RULINGS),
+    csrf_protected,
+    instance_admin_only(audited=True),
+    json_body_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.REVIEW_RULINGS_CLIENT),
     errors_as_json,
 )
 
@@ -6972,16 +6987,19 @@ def review_items(request, params: Query[ReviewItemsIn]):
 
 
 @api.get(
-    "/review/map", response=REVIEW_RESPONSES, summary="A queue's roads in a box (instance admin)"
+    "/review/map",
+    response=REVIEW_RESPONSES,
+    summary="Every road of a queue, for Review's map, as computed with it (instance admin)",
 )
 @decorate_view(*REVIEW_READ)
 def review_map(request, params: Query[ReviewMapIn]):
     from . import stress_review
 
-    box = (params.west, params.south, params.east, params.north)
-    return _review_answer(
-        stress_review.map_features(
-            params.queue, box, kind=params.kind, source=params.source, area=params.area
+    # The lines were made when the queue was computed (stress_review.write_state): a read.
+    return _private(
+        HttpResponse(
+            stress_review.map_payload(params.queue, params.detail),
+            content_type="application/json",
         )
     )
 
@@ -6992,10 +7010,27 @@ def review_map(request, params: Query[ReviewMapIn]):
     summary="The facts behind a road's rating and its history (instance admin)",
 )
 @decorate_view(*REVIEW_READ)
-def review_road(request, osm_way_id: int):
+def review_road(request, osm_way_id: int, params: Query[ReviewRoadIn]):
     from . import stress_review
 
-    return _review_answer(stress_review.road_detail(osm_way_id))
+    return _review_answer(stress_review.road_detail(osm_way_id, params.queue or ""))
+
+
+@api.get(
+    "/review/street-photo",
+    response={200: StreetPhotoOut, 204: None, **SUGGESTION_RESPONSES},
+    summary="The road panel's street photo, for Review's rows and cards (instance admin)",
+)
+@decorate_view(*REVIEW_READ)
+def review_street_photo(request, params: Query[StreetPhotoIn]):
+    """The road panel's own lookup (core.street_photo), counted in Review's reads: a list shows a
+    photo a row. Its image is the panel's own path (GET /api/street-photo/image/{id})."""
+    from . import street_photo
+
+    found = street_photo.client.photo(params.lon, params.lat, params.way)
+    if found is None:
+        return Status(204, None)
+    return _review_answer(found)
 
 
 @api.get("/review/rulings", response=REVIEW_RESPONSES, summary="Recent rulings (instance admin)")
@@ -7007,7 +7042,7 @@ def review_rulings(request, params: Query[ReviewRulingsIn]):
 
 
 @api.post("/review/rulings", response=REVIEW_RESPONSES, summary="Rule on roads (instance admin)")
-@decorate_view(*REVIEW_WRITE)
+@decorate_view(*REVIEW_RULING_WRITE)
 def review_rule(request, body: ReviewRulingIn):
     from . import stress_edits, stress_review
 
@@ -7042,7 +7077,7 @@ def review_rule(request, body: ReviewRulingIn):
     response=REVIEW_RESPONSES,
     summary="Undo a ruling within 30 minutes (instance admin)",
 )
-@decorate_view(*REVIEW_WRITE)
+@decorate_view(*REVIEW_RULING_WRITE)
 def review_undo(request, ruling_id: int, body: UndoIn):
     from . import stress_edits, stress_review
 

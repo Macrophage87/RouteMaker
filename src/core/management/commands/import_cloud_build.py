@@ -90,15 +90,15 @@ def staging_segments(staging: str) -> int | None:
 
 
 def later_overrides(read_at: datetime, *, panel_reapplied: bool = False) -> list[int]:
-    """Approved access overrides whose approval is newer than the box's copy. Where the
+    """Approved overrides whose approval is newer than the box's copy, but for Review's
+    reopenings (`review_reopenings`), which are listed apart and do not hold the swap. Where the
     swap re-applies the road panel's edits, the overrides those edits wrote are left out:
     only they are re-applied, so any other later approval is still missing from the build."""
     from core.models import Override, StressEdit
-    from core.stress_review import EVIDENCE as REVIEW_EVIDENCE
 
     later = list(
         Override.objects.filter(approved=True, approved_at__gt=read_at)
-        .exclude(kind=Override.Kind.ACCESS, evidence=REVIEW_EVIDENCE)
+        .exclude(kind=Override.Kind.ACCESS, source=Override.Source.REVIEW)
         .order_by("id")
         .values_list("id", flat=True)
     )
@@ -114,6 +114,36 @@ def later_overrides(read_at: datetime, *, panel_reapplied: bool = False) -> list
             panel.add(first)
         panel.update(p["override"] for p in pairs or [] if p.get("override") is not None)
     return [pk for pk in later if pk not in panel]
+
+
+def review_reopenings(read_at: datetime) -> tuple[list[int], list[int]]:
+    """Review's reopenings of closed roads (access overrides of source `review`) that this build
+    does not reflect: (approved after the box's copy, so not in it yet; undone after the box's
+    copy although approved before it, so still open in it). Both are told apart by the row's
+    source, never by its words. Neither holds the swap: the ruling was made on this build's
+    changes, and the next rebuild reads the row as it then stands."""
+    from core.models import Override, ReviewRuling
+
+    reopened = list(
+        Override.objects.filter(
+            kind=Override.Kind.ACCESS,
+            source=Override.Source.REVIEW,
+            approved=True,
+            approved_at__gt=read_at,
+        )
+        .order_by("id")
+        .values_list("id", flat=True)
+    )
+    undone = list(
+        ReviewRuling.objects.filter(
+            access_override__source=Override.Source.REVIEW,
+            at__lte=read_at,
+            undone_at__gt=read_at,
+        )
+        .order_by("access_override_id")
+        .values_list("access_override_id", flat=True)
+    )
+    return reopened, undone
 
 
 class Command(BaseCommand):
@@ -147,7 +177,8 @@ class Command(BaseCommand):
             default="",
             help=(
                 "The build's rebuild reports, for Review's queues: a directory, relative to "
-                "the rebuild's work directory or absolute. Without it, the work directory's own."
+                "the rebuild's work directory or absolute. Without it the queues read from "
+                "reports say the build had none (never this computer's own reports)."
             ),
         )
         parser.add_argument(
@@ -166,7 +197,7 @@ class Command(BaseCommand):
 
         try:
             counts = stress_review.compute_all(
-                build_id, live, staging, stress_review.reports_dir(reports)
+                build_id, live, staging, stress_review.reports_dir(reports, own=False)
             )
         except Exception as error:  # noqa: BLE001 - said, and the dry run goes on
             self.stderr.write(f"Review's queue was not computed: {error}")
@@ -176,7 +207,7 @@ class Command(BaseCommand):
         self.stdout.write(
             "review queue: "
             + ", ".join(wired)
-            + (f"; no report for: {', '.join(missing)}" if missing else "")
+            + (f"; {stress_review.NO_REPORT.lower()} for: {', '.join(missing)}" if missing else "")
         )
 
     def review_status(self) -> None:
@@ -264,6 +295,23 @@ class Command(BaseCommand):
                 f"{read_at:%Y-%m-%d %H:%M:%S} UTC are not in this build (ids "
                 + ", ".join(map(str, later))
                 + "); they take effect at the next rebuild"
+            )
+
+        reopened, undone = review_reopenings(read_at)
+        if reopened:
+            self.stdout.write(
+                f"{len(reopened)} Review reopening(s) approved after "
+                f"{read_at:%Y-%m-%d %H:%M:%S} UTC are not in this build (access override ids "
+                + ", ".join(map(str, reopened))
+                + "); they take effect at the next rebuild and do not hold the swap"
+            )
+        if undone:
+            self.stdout.write(
+                f"warning: {len(undone)} Review reopening(s) undone after "
+                f"{read_at:%Y-%m-%d %H:%M:%S} UTC are still open to bicycles in this build "
+                "(access override ids "
+                + ", ".join(map(str, undone))
+                + "); they close again at the next rebuild"
             )
 
         if later and not options["accept_later_overrides"]:

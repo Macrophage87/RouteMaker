@@ -185,6 +185,9 @@ class Override(models.Model):
         FILE = "file", "Reviewed file"
         ADMIN = "admin", "Typed into the admin"
         PANEL = "panel", "Road panel (Change LTS)"
+        # An instance admin's ruling in Review that reopened a closed road (core.stress_review):
+        # told apart by this value, never by its words, so the import can list it as one.
+        REVIEW = "review", "Review mode (reopened)"
 
     # Where the row came from. A row a file loaded and a row an instance admin
     # wrote in the road panel are told apart because the loader must never undo
@@ -2065,6 +2068,9 @@ class ReviewItem(models.Model):
     aadt = models.IntegerField(null=True, blank=True)
     score = models.FloatField(default=0)
     geometry = models.MultiLineStringField(srid=4326, null=True, blank=True)
+    # A digest of what the road was listed for (its level, access, rule and ratings, or the
+    # report's row): an Accept outside the rebuild's changes stands only while it is the same.
+    inputs = models.CharField(max_length=32, blank=True, default="")
     computed_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
@@ -2077,6 +2083,7 @@ class ReviewItem(models.Model):
         indexes = [
             models.Index(fields=["queue", "build_id", "kind"], name="review_item_kind"),
             models.Index(fields=["queue", "-score"], name="review_item_score"),
+            models.Index(fields=["queue", "-computed_at"], name="review_item_computed"),
         ]
 
     def __str__(self) -> str:
@@ -2118,6 +2125,8 @@ class ReviewRuling(models.Model):
     undone_by = models.ForeignKey(
         "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )
+    # The item's `inputs` when it was ruled on: an Accept lapses when a build changes them.
+    inputs = models.CharField(max_length=32, blank=True, default="")
 
     class Meta:
         db_table = "review_ruling"
@@ -2128,3 +2137,28 @@ class ReviewRuling(models.Model):
 
     def __str__(self) -> str:
         return f"{self.decision} on way {self.osm_way_id} ({self.queue})"
+
+
+class ReviewQueueState(models.Model):
+    """When each Review queue was last computed, and what it was computed from
+    (core.stress_review): a queue read from a rebuild's report says so when the build had none,
+    instead of showing an older build's rows as current. Its map, the whole list's lines
+    simplified for a region's view and kept at full detail for a street's, is written here at
+    the same time, so drawing it never runs the geometry SQL per request."""
+
+    queue = models.CharField(max_length=16, choices=ReviewItem.Queue.choices, primary_key=True)
+    build_id = models.CharField(max_length=40, blank=True, default="")
+    computed_at = models.DateTimeField(default=timezone.now)
+    # "" when computed; else why the list is empty ("No report from this build").
+    note = models.TextField(blank=True, default="")
+    # GeoJSON FeatureCollections: the lines simplified (a region's view) and at full detail,
+    # and one point a road (the far view's count badges).
+    map_low = models.TextField(blank=True, default="")
+    map_high = models.TextField(blank=True, default="")
+    map_points = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "review_queue_state"
+
+    def __str__(self) -> str:
+        return f"{self.queue} at {self.computed_at:%Y-%m-%d %H:%M}"

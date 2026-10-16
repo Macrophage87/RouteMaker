@@ -26,7 +26,10 @@ class Command(BaseCommand):
         parser.add_argument(
             "--reports-dir",
             default="",
-            help="The rebuild's reports (relative to its work directory, or absolute).",
+            help=(
+                "The build's reports (relative to the rebuild's work directory, or absolute). "
+                "Without it, the work directory's own: a rebuild run on this host."
+            ),
         )
 
     def handle(self, *args, **options) -> None:
@@ -35,7 +38,7 @@ class Command(BaseCommand):
             build,
             settings.SEGMENT_SCHEMA_LIVE,
             settings.SEGMENT_SCHEMA_STAGING if build else None,
-            stress_review.reports_dir(options["reports_dir"]),
+            stress_review.reports_dir(options["reports_dir"], own=True),
         )
         for queue, count in counts.items():
-            self.stdout.write(f"{queue}: {'no report, left as it was' if count is None else count}")
+            self.stdout.write(f"{queue}: {stress_review.NO_REPORT if count is None else count}")

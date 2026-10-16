@@ -1,70 +1,105 @@
 /**
  * Review mode (lib/review.ts; the owner, 2026-10-16: "Basically we'd have 3 modes for people who have admin access
- * go/plan/review"), beside Go and Plan for an instance admin (or a closures reviewer, who sees the closures only).
+ * go/plan/review"), beside Go and Plan for an instance admin.
  *
  * Desktop first, a split view: the panel holds every list with its count (a nav of toggle buttons), the chosen
  * list as a table with sortable columns, and the chosen road's card (its levels, every rating it holds side by side,
- * the facts behind them and its history) with the ruling buttons; the map beside it zooms to the road and, for
- * Review's queues, draws the list's roads coloured by the size of the change or disagreement. A tap on a road there
- * opens its card. The riders' suggestions, Mass Ride hazard reports and closure reports keep their own reviews
+ * the facts behind them, its street photo and its history) with the ruling buttons; the map beside it zooms to the
+ * road. The riders' suggestions, Mass Ride hazard reports and closure reports keep their own reviews
  * (SuggestionReview.tsx, ClosureReview.tsx), hosted here.
  *
- * Keyboard and screen readers: every control is a real button, select, checkbox or text box with a name; in the
- * table, Up and Down move between the roads' buttons, and choosing one moves the focus to its card's heading; the
- * card has Previous road and Next road. Every result is said in the app's polite live region (`announce`), and
- * the progress line ("12 of 601 reviewed") follows every ruling. Levels are said in words as well as numbers;
- * lengths in miles first, kilometres after.
+ * The map (the owner, 2026-10-16 15:39 UTC: "Make sure that discrepancies can be easily found in the map. Generally
+ * highlighted, with those roads viewable from a distance"): every road of every list, not just a page, drawn bold with
+ * a light halo above the stress lines, a colour and a dash pattern a list (lib/review.ts QUEUE_STYLE, colour-blind
+ * safe), from a region's view down, with a dot a road so a short one never vanishes; zoomed further out, nearby roads
+ * are one badge with their count, which zooms in when chosen. One switch a list shows or hides its roads, and Next
+ * discrepancy (Alt+Shift+N) goes to the next road with no ruling, in the lists' order. The lines are the server's,
+ * written when each list was computed (GET /api/review/map): simplified for the region view, whole when zoomed in.
  *
- * A ruling informed by an agency whose public use is still pending is the admin's own: its private reason is
- * never filled in from that row.
+ * Keyboard and screen readers: every control is a real button, select, checkbox or text box with a name; in the
+ * table, Up and Down move between the roads' buttons, and choosing one moves the focus to its card's heading, where
+ * Up and Down go on to the road before or after it in the list's order (a road opened from the map included); the
+ * card has Previous road and Next road. Every result is said in the app's polite live region, messages said
+ * together joined rather than one overwriting another (makeAnnouncer), and the progress line ("12 of 601 reviewed")
+ * follows every ruling. Levels are said in words as well as numbers; lengths in miles first, kilometres after. The
+ * card asks for a road's facts and photo once a held arrow key settles (SETTLE_MS).
+ *
+ * A ruling informed by an agency whose public use is still pending is the admin's own: its level is shown as
+ * information only (the admin picks a level with the usual control), and the private reason is never filled in
+ * from that row.
  */
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { GeoJSONSource, Map as MapLibreMap, MapMouseEvent } from "maplibre-gl";
 import { SuggestionReview } from "./SuggestionReview.tsx";
 import { ClosureReview } from "./ClosureReview.tsx";
+import { StreetPhotoView } from "./StreetPhotoView.tsx";
 import { useMap } from "./app/mapOverlay.ts";
+import { CLIMB_FONT } from "./lib/climbs.ts";
 import { HAZARD_REVIEW } from "./lib/reviewSources.ts";
 import { csrfFromCookie } from "./lib/stressEditor.ts";
 import {
   DEFAULT_LIST,
   LISTS,
   NO_FILTERS,
+  QUEUES,
+  QUEUE_STYLE,
   REVIEW_STEPS,
+  SETTLE_MS,
+  besideInOrder,
   decisionLabel,
-  fetchOverlay,
+  fetchMap,
   fetchQueues,
   fetchRoadDetail,
   fetchRoads,
   isQueue,
+  makeAnnouncer,
+  nextDiscrepancy,
   progressText,
   roadHeading,
   ruledSaid,
   sendRuling,
-  sizeColour,
   sortRoads,
   stepText,
   trafficText,
   undoRuling,
   type Decision,
+  type Fact,
   type Filters,
   type ListKey,
   type QueueKey,
+  type QueueMap,
   type QueueSummary,
   type ReviewRoad,
   type RoadDetail,
   type Ruling,
   type SortKey,
+  type Spot,
 } from "./lib/review.ts";
 
 const CURRENT = "review-current";
-const OVERLAY = "review-overlay";
-const OVERLAY_MIN_ZOOM = 10;
+const CURRENT_HALO = "review-current-halo";
+const LINES = "review-lines";
+const POINTS = "review-points";
+const HALO = "review-halo";
+const CLUSTERS = "review-clusters";
+const CLUSTER_COUNT = "review-cluster-count";
+const DOTS = "review-dots";
+const lineLayer = (queue: QueueKey) => `review-line-${queue}`;
+/** From a region's view (about z8) down the lines are drawn; above it, the count badges alone. */
+const LINE_MIN_ZOOM = 7.5;
+/** Up to here nearby roads are grouped into a badge with their count. */
+const CLUSTER_MAX_ZOOM = 10;
+/** A dot a road while zoomed out, so a short road is never less than a dot. */
+const DOT_MAX_ZOOM = 13;
+/** From here the lines are drawn whole rather than simplified. */
+const HIGH_ZOOM = 13;
+const NEXT_KEYS = "Alt+Shift+N";
+const EMPTY = { type: "FeatureCollection", features: [] };
+const PHOTO_PATH = "/api/review/street-photo";
 
 export interface ReviewModeProps {
   getMap: () => MapLibreMap | null;
   announce: (text: string) => void;
-  /** An instance admin: Review's queues, the suggestions and the hazards (a closures reviewer sees the closures). */
-  admin: boolean;
   /** A stress change was made: the map asks for its tiles again. */
   onStressChanged: (generation: number) => void;
   onHazardsChanged: () => void;
@@ -73,76 +108,360 @@ export interface ReviewModeProps {
   onList?: (list: ListKey) => void;
 }
 
-export function ReviewMode({ getMap, announce, admin, onStressChanged, onHazardsChanged, list: wanted, onList }: ReviewModeProps) {
+export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged, list: wanted, onList }: ReviewModeProps) {
   const base = useId();
-  const [list, setList] = useState<ListKey>(wanted ?? (admin ? DEFAULT_LIST : "closures"));
+  const [list, setList] = useState<ListKey>(wanted ?? DEFAULT_LIST);
   const [queues, setQueues] = useState<QueueSummary[] | null>(null);
   const [problem, setProblem] = useState("");
+  const [maps, setMaps] = useState<Partial<Record<QueueKey, QueueMap>>>({});
+  const [whole, setWhole] = useState<Partial<Record<QueueKey, QueueMap>>>({});
+  const [ruled, setRuled] = useState<Partial<Record<QueueKey, Set<number>>>>({});
+  const [onMap, setOnMap] = useState<Set<QueueKey>>(() => new Set(QUEUES));
+  const [zoomedIn, setZoomedIn] = useState(false);
+  const [spot, setSpot] = useState<Spot | null>(null);
+  const [asked, setAsked] = useState<{ spot: Spot; n: number } | null>(null);
   const origin = window.location.origin;
+  const say = useMemo(() => makeAnnouncer(announce), [announce]);
 
   useEffect(() => {
     if (wanted) setList(wanted);
   }, [wanted]);
 
   const loadQueues = useCallback(async () => {
-    if (!admin) return;
     const found = await fetchQueues(origin);
     if (typeof found === "string") setProblem(found);
     else {
       setProblem("");
       setQueues(found);
     }
-  }, [admin, origin]);
+  }, [origin]);
 
   useEffect(() => {
     void loadQueues();
   }, [loadQueues]);
 
-  const lists = LISTS.filter((l) => (admin ? true : l.key === "closures"));
+  // Each list's whole map, once a list is known to have roads: a read of what the server wrote with the list.
+  const loadMap = useCallback(
+    async (queue: QueueKey) => {
+      const found = await fetchMap(origin, queue);
+      if (typeof found === "string") return;
+      setMaps((old) => ({ ...old, [queue]: found }));
+      setRuled((old) => ({ ...old, [queue]: new Set(found.ruled) }));
+      setWhole((old) => {
+        const next = { ...old };
+        delete next[queue];
+        return next;
+      });
+    },
+    [origin],
+  );
+  const computedKey = (queues ?? []).map((q) => `${q.queue}:${q.computed_at ?? ""}:${q.total > 0}`).join(",");
+  useEffect(() => {
+    for (const q of queues ?? []) if (q.total > 0) void loadMap(q.queue);
+    // Only when a list was computed again (or first loaded), never on a count's change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [computedKey, loadMap]);
+
+  // Zoomed in, the lists shown are drawn whole (asked for once each).
+  useEffect(() => {
+    if (!zoomedIn) return;
+    for (const queue of QUEUES) {
+      if (!onMap.has(queue) || !maps[queue] || whole[queue]) continue;
+      void fetchMap(origin, queue, "high").then((found) => {
+        if (typeof found !== "string") setWhole((old) => ({ ...old, [queue]: found }));
+      });
+    }
+  }, [zoomedIn, onMap, maps, whole, origin]);
+
+  const orders = useMemo(() => {
+    const out: Partial<Record<QueueKey, number[]>> = {};
+    for (const queue of QUEUES) {
+      const features = maps[queue]?.lines.features ?? [];
+      out[queue] = [...features].sort((a, b) => a.properties.order - b.properties.order).map((f) => f.properties.way);
+    }
+    return out;
+  }, [maps]);
+
   const summary = (key: ListKey) => queues?.find((q) => q.queue === key) ?? null;
+  const labelOf = (key: ListKey) => LISTS.find((l) => l.key === key)?.label ?? "";
   const choose = (key: ListKey) => {
     setList(key);
     onList?.(key);
-    const label = LISTS.find((l) => l.key === key)?.label ?? "";
+    setAsked(null);
     const s = isQueue(key) ? summary(key) : null;
-    announce(s ? `${label}: ${progressText(s.reviewed, s.total)}.` : `${label}.`);
+    say(s ? `${labelOf(key)}: ${progressText(s.reviewed, s.total)}.` : `${labelOf(key)}.`);
   };
+
+  // A road to open: tapped on the map, or Next discrepancy. In another list, that list opens on it.
+  const open = useCallback(
+    (to: Spot) => {
+      if (to.queue !== list) {
+        setList(to.queue);
+        onList?.(to.queue);
+      }
+      setAsked((old) => ({ spot: to, n: (old?.n ?? 0) + 1 }));
+    },
+    [list, onList],
+  );
+  const openRef = useRef(open);
+  openRef.current = open;
+
+  const goNext = useCallback(() => {
+    const from = spot ?? (isQueue(list) ? { queue: list, way: -1 } : null);
+    const next = nextDiscrepancy(orders, ruled, onMap, from);
+    if (!next) {
+      say("No more roads without a ruling on the map.");
+      return;
+    }
+    if (next.queue !== (isQueue(list) ? list : null)) say(`${labelOf(next.queue)}.`);
+    open(next);
+    // labelOf reads LISTS only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spot, list, orders, ruled, onMap, say, open]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey && event.code === "KeyN") {
+        event.preventDefault();
+        goNext();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [goNext]);
+
+  const markRuled = useCallback((queue: QueueKey, ways: number[], on: boolean) => {
+    setRuled((old) => {
+      const next = new Set(old[queue] ?? []);
+      for (const way of ways) {
+        if (on) next.add(way);
+        else next.delete(way);
+      }
+      return { ...old, [queue]: next };
+    });
+  }, []);
+
+  // The map: every list's roads, bold with a halo above the stress lines, and the far view's count badges.
+  useMap(
+    getMap,
+    (map) => {
+      if (!map.getSource(LINES)) map.addSource(LINES, { type: "geojson", data: EMPTY as never });
+      if (!map.getSource(POINTS))
+        map.addSource(POINTS, { type: "geojson", data: EMPTY as never, cluster: true, clusterMaxZoom: CLUSTER_MAX_ZOOM, clusterRadius: 48 });
+      // Under the chosen road's highlight where it is already drawn; otherwise on top of everything.
+      const before = map.getLayer(CURRENT_HALO) ? CURRENT_HALO : undefined;
+      const width = ["interpolate", ["linear"], ["zoom"], LINE_MIN_ZOOM, 3.5, 12, 5, 16, 8];
+      if (!map.getLayer(HALO))
+        map.addLayer(
+          {
+            id: HALO,
+            type: "line",
+            source: LINES,
+            minzoom: LINE_MIN_ZOOM,
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-color": "#ffffff", "line-opacity": 0.9, "line-width": ["interpolate", ["linear"], ["zoom"], LINE_MIN_ZOOM, 7, 12, 9, 16, 13] },
+          } as never,
+          before,
+        );
+      for (const queue of QUEUES) {
+        const style = QUEUE_STYLE[queue];
+        if (map.getLayer(lineLayer(queue))) continue;
+        map.addLayer(
+          {
+            id: lineLayer(queue),
+            type: "line",
+            source: LINES,
+            minzoom: LINE_MIN_ZOOM,
+            filter: ["==", ["get", "queue"], queue],
+            layout: { "line-cap": style.dash ? "butt" : "round", "line-join": "round" },
+            paint: { "line-color": style.colour, "line-width": width, ...(style.dash ? { "line-dasharray": style.dash } : {}) },
+          } as never,
+          before,
+        );
+      }
+      if (!map.getLayer(DOTS))
+        map.addLayer(
+          {
+            id: DOTS,
+            type: "circle",
+            source: POINTS,
+            maxzoom: DOT_MAX_ZOOM,
+            filter: ["!", ["has", "point_count"]],
+            paint: {
+              "circle-color": ["match", ["get", "queue"], ...QUEUES.flatMap((q) => [q, QUEUE_STYLE[q].colour]), "#000000"],
+              "circle-radius": 5,
+              "circle-stroke-color": "#ffffff",
+              "circle-stroke-width": 2,
+            },
+          } as never,
+          before,
+        );
+      if (!map.getLayer(CLUSTERS))
+        map.addLayer(
+          {
+            id: CLUSTERS,
+            type: "circle",
+            source: POINTS,
+            filter: ["has", "point_count"],
+            paint: {
+              "circle-color": "#1f2937",
+              "circle-radius": ["step", ["get", "point_count"], 13, 10, 16, 100, 20, 1000, 24],
+              "circle-stroke-color": "#ffffff",
+              "circle-stroke-width": 2,
+            },
+          } as never,
+          before,
+        );
+      if (!map.getLayer(CLUSTER_COUNT))
+        map.addLayer(
+          {
+            id: CLUSTER_COUNT,
+            type: "symbol",
+            source: POINTS,
+            filter: ["has", "point_count"],
+            layout: { "text-field": ["get", "point_count_abbreviated"], "text-font": [CLIMB_FONT], "text-size": 12, "text-allow-overlap": true },
+            paint: { "text-color": "#ffffff" },
+          } as never,
+          before,
+        );
+      const tapped = [...QUEUES.map(lineLayer), DOTS];
+      const onRoad = (event: MapMouseEvent & { features?: Array<{ properties?: Record<string, unknown> }> }) => {
+        const props = event.features?.[0]?.properties;
+        const way = Number(props?.way);
+        const queue = props?.queue as QueueKey | undefined;
+        if (Number.isFinite(way) && queue && QUEUES.includes(queue)) openRef.current({ queue, way });
+      };
+      const onCluster = (event: MapMouseEvent & { features?: Array<{ properties?: Record<string, unknown> }> }) => {
+        const id = Number(event.features?.[0]?.properties?.cluster_id);
+        const source = map.getSource(POINTS) as GeoJSONSource | undefined;
+        const fallback = () => map.easeTo({ center: event.lngLat, zoom: Math.min(map.getZoom() + 2, 16) });
+        if (!source || !Number.isFinite(id)) return fallback();
+        void Promise.resolve(source.getClusterExpansionZoom(id)).then(
+          (zoom) => map.easeTo({ center: event.lngLat, zoom: Math.min(Number(zoom) + 0.5, 16) }),
+          fallback,
+        );
+      };
+      const enter = () => (map.getCanvas().style.cursor = "pointer");
+      const leave = () => (map.getCanvas().style.cursor = "");
+      const onZoom = () => setZoomedIn(map.getZoom() >= HIGH_ZOOM);
+      for (const layer of [...tapped, CLUSTERS]) {
+        map.on("mouseenter", layer, enter);
+        map.on("mouseleave", layer, leave);
+      }
+      for (const layer of tapped) map.on("click", layer, onRoad);
+      map.on("click", CLUSTERS, onCluster);
+      map.on("zoomend", onZoom);
+      onZoom();
+      return () => {
+        for (const layer of [...tapped, CLUSTERS]) {
+          map.off("mouseenter", layer, enter);
+          map.off("mouseleave", layer, leave);
+        }
+        for (const layer of tapped) map.off("click", layer, onRoad);
+        map.off("click", CLUSTERS, onCluster);
+        map.off("zoomend", onZoom);
+        for (const layer of [CLUSTER_COUNT, CLUSTERS, DOTS, ...QUEUES.map(lineLayer), HALO]) if (map.getLayer(layer)) map.removeLayer(layer);
+        for (const source of [POINTS, LINES]) if (map.getSource(source)) map.removeSource(source);
+      };
+    },
+    [],
+  );
+
+  // What the map shows: the lists switched on, simplified or whole, a ruled road faded.
+  const ruledKey = QUEUES.map((q) => (ruled[q] ? [...ruled[q]].join(".") : "")).join("|");
+  useMap(
+    getMap,
+    (map) => {
+      const lines = QUEUES.filter((q) => onMap.has(q)).flatMap((q) => ((zoomedIn && whole[q]) || maps[q])?.lines.features ?? []);
+      const points = QUEUES.filter((q) => onMap.has(q)).flatMap((q) => maps[q]?.points.features ?? []);
+      (map.getSource(LINES) as GeoJSONSource | undefined)?.setData({ type: "FeatureCollection", features: lines } as never);
+      (map.getSource(POINTS) as GeoJSONSource | undefined)?.setData({ type: "FeatureCollection", features: points } as never);
+      for (const queue of QUEUES) {
+        if (!map.getLayer(lineLayer(queue))) continue;
+        const done = [...(ruled[queue] ?? [])];
+        map.setPaintProperty(lineLayer(queue), "line-opacity", done.length ? ["case", ["in", ["get", "way"], ["literal", done]], 0.35, 1] : 1);
+      }
+    },
+    [maps, whole, zoomedIn, onMap, ruledKey],
+  );
+
+  const toggle = (queue: QueueKey, on: boolean) => {
+    const next = new Set(onMap);
+    if (on) next.add(queue);
+    else next.delete(queue);
+    setOnMap(next);
+    say(`${labelOf(queue)} ${on ? "shown" : "hidden"} on the map.`);
+  };
+
+  const mapped = QUEUES.filter((q) => (summary(q)?.total ?? 0) > 0);
 
   return (
     <section className="review-mode" aria-labelledby={`${base}-heading`}>
       <h2 id={`${base}-heading`}>Review</h2>
       {problem && <p role="alert">{problem}</p>}
       <div className="review-layout">
-        <nav className="review-lists" aria-label="Review lists">
-          <ul>
-            {lists.map((l) => {
-              const s = isQueue(l.key) ? summary(l.key) : null;
+        <div className="review-side">
+          <nav className="review-lists" aria-label="Review lists">
+            <ul>
+              {LISTS.map((l) => {
+                const s = isQueue(l.key) ? summary(l.key) : null;
+                return (
+                  <li key={l.key}>
+                    <button type="button" className="review-list-button" aria-pressed={list === l.key} onClick={() => choose(l.key)}>
+                      <span className="review-list-name">{l.label}</span>
+                      {s && <span className="review-list-count">{s.wired ? progressText(s.reviewed, s.total) : s.note || "Not wired yet"}</span>}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </nav>
+          <fieldset className="review-map-lists">
+            <legend>On the map</legend>
+            {mapped.length === 0 && <p className="hint">No list has roads to draw yet.</p>}
+            {mapped.map((queue) => {
+              const style = QUEUE_STYLE[queue];
               return (
-                <li key={l.key}>
-                  <button type="button" className="review-list-button" aria-pressed={list === l.key} onClick={() => choose(l.key)}>
-                    <span className="review-list-name">{l.label}</span>
-                    {s && <span className="review-list-count">{s.wired ? progressText(s.reviewed, s.total) : "Not wired yet"}</span>}
-                  </button>
-                </li>
+                <label key={queue} className="review-map-toggle">
+                  <input type="checkbox" checked={onMap.has(queue)} onChange={(event) => toggle(queue, event.target.checked)} />
+                  <svg className="review-swatch" width="28" height="10" viewBox="0 0 28 10" aria-hidden="true">
+                    <line x1="2" y1="5" x2="26" y2="5" stroke="#ffffff" strokeWidth="8" strokeLinecap="round" />
+                    <line x1="2" y1="5" x2="26" y2="5" stroke={style.colour} strokeWidth="4" strokeDasharray={style.dash ? style.dash.map((d) => d * 4).join(" ") : undefined} />
+                  </svg>
+                  {labelOf(queue)} ({style.colourName}, {style.pattern}): {(summary(queue)?.total ?? 0).toLocaleString("en-US")}
+                </label>
               );
             })}
-          </ul>
-        </nav>
+            <button type="button" className="secondary review-next" aria-keyshortcuts={NEXT_KEYS} onClick={goNext}>
+              Next discrepancy <span className="hint">({NEXT_KEYS})</span>
+            </button>
+          </fieldset>
+        </div>
         <div className="review-main">
-          {isQueue(list) && admin ? (
+          {isQueue(list) ? (
             <QueueView
               key={list}
               queue={list}
               summary={summary(list)}
-              label={LISTS.find((l) => l.key === list)?.label ?? ""}
+              label={labelOf(list)}
               getMap={getMap}
-              announce={announce}
+              say={say}
+              order={orders[list] ?? []}
+              asked={asked && asked.spot.queue === list ? { way: asked.spot.way, n: asked.n } : null}
+              onCurrent={(way) => setSpot(way === null ? null : { queue: list, way })}
               onStressChanged={onStressChanged}
-              onRuled={() => void loadQueues()}
+              onRuled={(ways) => {
+                markRuled(list, ways, true);
+                void loadQueues();
+              }}
+              onUndone={() => {
+                void loadQueues();
+                void loadMap(list);
+              }}
             />
-          ) : list === "suggestions" && admin ? (
+          ) : list === "suggestions" ? (
             <SuggestionReview onStressChanged={onStressChanged} />
-          ) : list === "hazards" && admin ? (
+          ) : list === "hazards" ? (
             <SuggestionReview source={HAZARD_REVIEW} onApproved={onHazardsChanged} />
           ) : (
             <ClosureReview />
@@ -162,6 +481,7 @@ const COLUMNS: Record<"rebuild" | "disagreement" | "other", { key: SortKey | nul
     { key: null, label: "Decided by" },
     { key: "traffic", label: "Traffic" },
     { key: "length", label: "Length" },
+    { key: null, label: "Street photo" },
     { key: null, label: "Ruling" },
   ],
   disagreement: [
@@ -172,6 +492,7 @@ const COLUMNS: Record<"rebuild" | "disagreement" | "other", { key: SortKey | nul
     { key: "spread", label: "Spread" },
     { key: "traffic", label: "Traffic" },
     { key: "length", label: "Length" },
+    { key: null, label: "Street photo" },
     { key: null, label: "Ruling" },
   ],
   other: [
@@ -180,21 +501,39 @@ const COLUMNS: Record<"rebuild" | "disagreement" | "other", { key: SortKey | nul
     { key: "new", label: "Now" },
     { key: null, label: "Reason" },
     { key: "length", label: "Length" },
+    { key: null, label: "Street photo" },
     { key: null, label: "Ruling" },
   ],
 };
+
+/** The map's facts and the new build's side by side, a row a fact (a rebuild's change); the map's alone elsewhere. */
+function factRows(now: Fact[], next: Fact[]): { label: string; now: string; next: string }[] {
+  const words = (facts: Fact[], label: string) =>
+    facts
+      .filter((f) => f.label === label)
+      .map((f) => `${f.value}${f.source ? ` (${f.source})` : ""}`)
+      .join("; ");
+  const labels = [...new Set([...now.map((f) => f.label), ...next.map((f) => f.label)])];
+  return labels.map((label) => ({ label, now: words(now, label), next: words(next, label) }));
+}
 
 interface QueueViewProps {
   queue: QueueKey;
   label: string;
   summary: QueueSummary | null;
   getMap: () => MapLibreMap | null;
-  announce: (text: string) => void;
+  say: (text: string) => void;
+  /** The list's every way, in its order (from its map), for Previous and Next from a road off this page. */
+  order: number[];
+  /** A road to open (a tap on the map, or Next discrepancy). */
+  asked: { way: number; n: number } | null;
+  onCurrent: (way: number | null) => void;
   onStressChanged: (generation: number) => void;
-  onRuled: () => void;
+  onRuled: (ways: number[]) => void;
+  onUndone: () => void;
 }
 
-function QueueView({ queue, label, summary, getMap, announce, onStressChanged, onRuled }: QueueViewProps) {
+function QueueView({ queue, label, summary, getMap, say, order, asked, onCurrent, onStressChanged, onRuled, onUndone }: QueueViewProps) {
   const base = useId();
   const id = (part: string) => `${base}-${part}`;
   const origin = window.location.origin;
@@ -206,6 +545,8 @@ function QueueView({ queue, label, summary, getMap, announce, onStressChanged, o
   const [problem, setProblem] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; ascending: boolean }>({ key: "score", ascending: false });
   const [current, setCurrent] = useState<ReviewRoad | null>(null);
+  // The road the card has settled on: a held arrow key asks for no facts, photo or zoom until it stops.
+  const [settled, setSettled] = useState<ReviewRoad | null>(null);
   const [detail, setDetail] = useState<RoadDetail | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [step, setStep] = useState(3);
@@ -214,12 +555,13 @@ function QueueView({ queue, label, summary, getMap, announce, onStressChanged, o
   const [last, setLast] = useState<Ruling | null>(null);
   const [said, setSaid] = useState("");
   const [focusNext, setFocusNext] = useState<string | null>(null);
-  const [overlayAsk, setOverlayAsk] = useState(0);
+  // A road asked for from the map: the page's own first road does not replace it when the page arrives.
+  const opening = useRef<number | null>(null);
   const perPage = 50;
   const columns = COLUMNS[queue === "rebuild" ? "rebuild" : queue === "disagreement" ? "disagreement" : "other"];
-  const say = (text: string) => {
+  const tell = (text: string) => {
     setSaid(text);
-    announce(text);
+    say(text);
   };
 
   const load = useCallback(
@@ -234,8 +576,10 @@ function QueueView({ queue, label, summary, getMap, announce, onStressChanged, o
       setTotal(found.total);
       setPage(found.page);
       setSelected(new Set());
-      const next = (keep !== null && found.items.find((r) => r.osm_way_id === keep)) || found.items[0] || null;
-      setCurrent(next);
+      if (opening.current === null) {
+        const next = (keep !== null && found.items.find((r) => r.osm_way_id === keep)) || found.items[0] || null;
+        setCurrent(next);
+      }
       return found;
     },
     [origin, queue, filters, all],
@@ -246,109 +590,92 @@ function QueueView({ queue, label, summary, getMap, announce, onStressChanged, o
   }, [load]);
 
   useEffect(() => {
+    onCurrent(current?.osm_way_id ?? null);
+    const wait = window.setTimeout(() => setSettled(current), SETTLE_MS);
+    return () => window.clearTimeout(wait);
+    // onCurrent is the parent's setter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current]);
+
+  useEffect(() => {
     if (focusNext === null) return;
     document.getElementById(focusNext)?.focus();
     setFocusNext(null);
   }, [focusNext, roads, current]);
 
-  // The chosen road's facts and history.
+  // The settled road's facts and history.
   useEffect(() => {
     setDetail(null);
-    if (!current) return;
+    if (!settled) return;
     let live = true;
-    void fetchRoadDetail(origin, current.osm_way_id).then((found) => {
+    void fetchRoadDetail(origin, settled.osm_way_id, queue === "rebuild" ? "rebuild" : null).then((found) => {
       if (live && typeof found !== "string") setDetail(found);
     });
     return () => {
       live = false;
     };
-  }, [origin, current]);
+  }, [origin, settled, queue]);
 
-  // The map: the chosen road highlighted and zoomed to; the list's roads in view, coloured by size.
+  // The chosen road, highlighted at once and zoomed to once settled.
   useMap(
     getMap,
     (map) => {
-      const empty = { type: "FeatureCollection", features: [] };
-      for (const sourceId of [OVERLAY, CURRENT]) if (!map.getSource(sourceId)) map.addSource(sourceId, { type: "geojson", data: empty as never });
-      if (!map.getLayer(OVERLAY))
-        map.addLayer({
-          id: OVERLAY,
-          type: "line",
-          source: OVERLAY,
-          paint: {
-            "line-width": ["interpolate", ["linear"], ["zoom"], 10, 2, 16, 6],
-            "line-opacity": ["case", ["get", "ruled"], 0.35, 0.85],
-            "line-color": ["step", ["get", "size"], sizeColour(0.5), 1, sizeColour(1), 2, sizeColour(2)],
-          },
-        });
+      if (!map.getSource(CURRENT)) map.addSource(CURRENT, { type: "geojson", data: EMPTY as never });
+      if (!map.getLayer(CURRENT_HALO))
+        map.addLayer({ id: CURRENT_HALO, type: "line", source: CURRENT, layout: { "line-cap": "round" }, paint: { "line-width": 16, "line-color": "#ffffff", "line-opacity": 0.95 } });
       if (!map.getLayer(CURRENT))
-        map.addLayer({ id: CURRENT, type: "line", source: CURRENT, paint: { "line-width": 8, "line-color": "#6a1b9a", "line-opacity": 0.9 } });
-      let asked = 0;
-      const refresh = () => {
-        const ask = ++asked;
-        const source = map.getSource(OVERLAY) as GeoJSONSource | undefined;
-        if (map.getZoom() < OVERLAY_MIN_ZOOM) {
-          source?.setData(empty as never);
-          return;
-        }
-        const b = map.getBounds();
-        void fetchOverlay(origin, queue, filters, { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() }).then((found) => {
-          if (ask === asked && typeof found !== "string") (map.getSource(OVERLAY) as GeoJSONSource | undefined)?.setData(found as never);
-        });
-      };
-      const onClick = (event: MapMouseEvent & { features?: Array<{ properties?: Record<string, unknown> }> }) => {
-        const way = Number(event.features?.[0]?.properties?.way);
-        if (Number.isFinite(way)) void openWay(way);
-      };
-      const enter = () => (map.getCanvas().style.cursor = "pointer");
-      const leave = () => (map.getCanvas().style.cursor = "");
-      map.on("moveend", refresh);
-      map.on("click", OVERLAY, onClick);
-      map.on("mouseenter", OVERLAY, enter);
-      map.on("mouseleave", OVERLAY, leave);
-      refresh();
+        map.addLayer({ id: CURRENT, type: "line", source: CURRENT, layout: { "line-cap": "round" }, paint: { "line-width": 9, "line-color": "#000000", "line-opacity": 0.9 } });
       return () => {
-        map.off("moveend", refresh);
-        map.off("click", OVERLAY, onClick);
-        map.off("mouseenter", OVERLAY, enter);
-        map.off("mouseleave", OVERLAY, leave);
-        for (const layer of [CURRENT, OVERLAY]) if (map.getLayer(layer)) map.removeLayer(layer);
-        for (const sourceId of [CURRENT, OVERLAY]) if (map.getSource(sourceId)) map.removeSource(sourceId);
+        for (const layer of [CURRENT, CURRENT_HALO]) if (map.getLayer(layer)) map.removeLayer(layer);
+        if (map.getSource(CURRENT)) map.removeSource(CURRENT);
       };
     },
-    [queue, filters, overlayAsk],
+    [],
   );
-
   useMap(
     getMap,
     (map) => {
-      const source = map.getSource(CURRENT) as GeoJSONSource | undefined;
-      source?.setData((current?.geometry ? { type: "Feature", geometry: current.geometry, properties: {} } : { type: "FeatureCollection", features: [] }) as never);
-      if (current?.bbox) {
-        const [w, s, e, n] = current.bbox;
-        const panel = document.getElementById("route-planner")?.getBoundingClientRect();
-        const left = panel && panel.right < window.innerWidth * 0.8 ? panel.right + 24 : 40;
-        map.fitBounds(
-          [
-            [w, s],
-            [e, n],
-          ],
-          { padding: { left, right: 40, top: 60, bottom: 60 }, maxZoom: 17, duration: 400 },
-        );
-      }
+      (map.getSource(CURRENT) as GeoJSONSource | undefined)?.setData((current?.geometry ? { type: "Feature", geometry: current.geometry, properties: {} } : EMPTY) as never);
     },
-    [current, overlayAsk],
+    [current],
+  );
+  useMap(
+    getMap,
+    (map) => {
+      if (!settled?.bbox) return;
+      const [w, s, e, n] = settled.bbox;
+      const panel = document.getElementById("route-planner")?.getBoundingClientRect();
+      const left = panel && panel.right < window.innerWidth * 0.8 ? panel.right + 24 : 40;
+      map.fitBounds(
+        [
+          [w, s],
+          [e, n],
+        ],
+        { padding: { left, right: 40, top: 60, bottom: 60 }, maxZoom: 17, duration: 400 },
+      );
+    },
+    [settled],
   );
 
-  // A tap on a road in the overlay: its card, with the list as it is.
-  const openWay = async (way: number) => {
-    const found = await fetchRoads(origin, queue, NO_FILTERS, { all: true, way });
-    if (typeof found === "string" || found.items.length === 0) return;
-    const road = found.items[0];
-    setCurrent(road);
-    say(`${roadHeading(road)}.`);
-    setFocusNext(id("card"));
-  };
+  // A road asked for from the map or Next discrepancy: its card, with the list as it is.
+  const openWay = useCallback(
+    async (way: number) => {
+      opening.current = way;
+      const found = await fetchRoads(origin, queue, NO_FILTERS, { all: true, way });
+      if (opening.current === way) opening.current = null;
+      if (typeof found === "string" || found.items.length === 0) return;
+      const road = found.items[0];
+      setCurrent(road);
+      tell(`${roadHeading(road)}.`);
+      setFocusNext(id("card"));
+    },
+    // tell and id are stable in effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [origin, queue],
+  );
+  useEffect(() => {
+    if (asked) void openWay(asked.way);
+  }, [asked?.n, asked?.way, openWay]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const shown = roads ? sortRoads(roads, sort.key, sort.ascending) : [];
   const index = current ? shown.findIndex((r) => r.osm_way_id === current.osm_way_id) : -1;
@@ -357,9 +684,16 @@ function QueueView({ queue, label, summary, getMap, announce, onStressChanged, o
     if (focusCard) setFocusNext(id("card"));
   };
   const move = (by: number) => {
-    const next = shown[index + by];
-    if (next) pick(next);
-    else say(by > 0 ? "That is the last road on this page." : "That is the first road on this page.");
+    if (index >= 0) {
+      const next = shown[index + by];
+      if (next) pick(next);
+      else tell(by > 0 ? "That is the last road on this page." : "That is the first road on this page.");
+      return;
+    }
+    // A road opened from the map, off this page: the road beside it in the list's order.
+    const beside = current ? besideInOrder(order, current.osm_way_id, by) : null;
+    if (beside !== null) void openWay(beside);
+    else tell(by > 0 ? "That is the last road in this list." : "That is the first road in this list.");
   };
 
   const rule = async (decision: Decision, ways: number[], level?: number) => {
@@ -372,7 +706,7 @@ function QueueView({ queue, label, summary, getMap, announce, onStressChanged, o
     );
     setBusy(false);
     if (!answer.ok) {
-      say(answer.message);
+      tell(answer.message);
       return;
     }
     const { rulings, refused, generation } = answer.body;
@@ -386,12 +720,11 @@ function QueueView({ queue, label, summary, getMap, announce, onStressChanged, o
     else setRoads(rest);
     setTotal((t) => (all ? t : Math.max(0, t - ruled.size)));
     setSelected(new Set());
-    onRuled();
-    setOverlayAsk((n) => n + 1);
+    onRuled([...ruled]);
     const road = current && ruled.has(current.osm_way_id) ? current : null;
-    if (ways.length === 1 && road && rulings[0]) say(ruledSaid(road, rulings[0], after ? after.name || `way ${after.osm_way_id}` : null));
-    else say(answer.body.message);
-    if (refused.length && ways.length === 1) say(refused[0].error);
+    if (ways.length === 1 && road && rulings[0]) tell(ruledSaid(road, rulings[0], after ? after.name || `way ${after.osm_way_id}` : null));
+    else tell(answer.body.message);
+    if (refused.length && ways.length === 1) tell(refused[0].error);
     if (after) pick(after);
     else if (!all && rest.length === 0) void load(1);
   };
@@ -402,21 +735,20 @@ function QueueView({ queue, label, summary, getMap, announce, onStressChanged, o
     const answer = await undoRuling(origin, last.id, csrfFromCookie(document.cookie));
     setBusy(false);
     if (!answer.ok) {
-      say(answer.message);
+      tell(answer.message);
       return;
     }
     if (typeof answer.body.generation === "number") onStressChanged(answer.body.generation);
     setLast(null);
-    onRuled();
-    setOverlayAsk((n) => n + 1);
-    say(`Undone: ${last.summary}. The road is back in the list.`);
+    onUndone();
+    tell(`Undone: ${last.summary}. The road is back in the list.`);
     void load(page, last.osm_way_id);
   };
 
   const sortBy = (key: SortKey) => {
     const ascending = sort.key === key ? !sort.ascending : key === "name" || key === "area";
     setSort({ key, ascending });
-    say(`Sorted by ${columns.find((c) => c.key === key)?.label ?? "size"}, ${ascending ? "ascending" : "descending"}.`);
+    tell(`Sorted by ${columns.find((c) => c.key === key)?.label ?? "size"}, ${ascending ? "ascending" : "descending"}.`);
   };
 
   const filterSelect = (name: keyof Filters, text: string, options: { value: string; label: string }[]) =>
@@ -442,6 +774,9 @@ function QueueView({ queue, label, summary, getMap, announce, onStressChanged, o
   const allShownSelected = shown.length > 0 && shown.every((r) => selected.has(r.osm_way_id));
   const batch = [...selected];
   const batchActions = (["accept", "reject", "set"] as Decision[]).filter((d) => shown.filter((r) => selected.has(r.osm_way_id)).every((r) => r.actions.includes(d)));
+  const pending = current ? current.sources.some((s) => s.pending) : false;
+  const facts = detail ? factRows(detail.facts, detail.new_facts) : [];
+  const sideBySide = queue === "rebuild" && (detail?.new_facts.length ?? 0) > 0;
 
   return (
     <div className="review-queue">
@@ -452,7 +787,13 @@ function QueueView({ queue, label, summary, getMap, announce, onStressChanged, o
           {summary.build_id ? ` (build ${summary.build_id})` : ""}
         </p>
       )}
-      {summary && !summary.wired && <p className="hint">Not wired yet: the rebuild report this list reads is not there. It fills in once a rebuild writes it.</p>}
+      {summary && summary.note && (
+        <p className="hint">
+          {summary.note}
+          {summary.computed_for ? ` (build ${summary.computed_for})` : ""}: this list fills in once a build sends its report.
+        </p>
+      )}
+      {summary && !summary.note && !summary.wired && <p className="hint">Not wired yet: the rebuild report this list reads is not there. It fills in once a rebuild writes it.</p>}
       {problem && <p role="alert">{problem}</p>}
       <div className="review-filters">
         {filterSelect(
@@ -567,6 +908,7 @@ function QueueView({ queue, label, summary, getMap, announce, onStressChanged, o
                       {queue !== "rebuild" && queue !== "disagreement" && <td>{road.reason}</td>}
                       {(queue === "rebuild" || queue === "disagreement") && <td>{trafficText(road.aadt)}</td>}
                       <td>{road.length}</td>
+                      <td className="review-photo-cell">{road.point && <StreetPhotoView compact title={name} point={road.point} wayId={road.osm_way_id} path={PHOTO_PATH} />}</td>
                       <td>{road.ruling ? road.ruling.summary : "None yet"}</td>
                     </tr>
                   );
@@ -590,9 +932,21 @@ function QueueView({ queue, label, summary, getMap, announce, onStressChanged, o
 
       {current && (
         <section className="review-card" aria-labelledby={id("card")}>
-          <h4 id={id("card")} tabIndex={-1}>
+          <h4
+            id={id("card")}
+            tabIndex={-1}
+            aria-describedby={id("card-keys")}
+            onKeyDown={(event) => {
+              if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+              event.preventDefault();
+              move(event.key === "ArrowDown" ? 1 : -1);
+            }}
+          >
             {roadHeading(current)}
           </h4>
+          <p id={id("card-keys")} className="visually-hidden">
+            Up and Down go to the road before or after this one.
+          </p>
           <p className="review-reason">{current.reason}</p>
           <dl className="review-levels">
             {current.queue === "rebuild" && (
@@ -616,6 +970,9 @@ function QueueView({ queue, label, summary, getMap, announce, onStressChanged, o
             <dt>Traffic</dt>
             <dd>{trafficText(current.aadt)}</dd>
           </dl>
+          {settled && settled.osm_way_id === current.osm_way_id && settled.point && (
+            <StreetPhotoView title={current.name || `Way ${current.osm_way_id}`} point={settled.point} wayId={settled.osm_way_id} path={PHOTO_PATH} />
+          )}
           {current.sources.length > 0 && (
             <table className="review-sources">
               <caption>Every rating this road holds</caption>
@@ -634,7 +991,8 @@ function QueueView({ queue, label, summary, getMap, announce, onStressChanged, o
                     <th scope="row">{s.name}</th>
                     <td>{stepText(s.level)}</td>
                     <td>
-                      {current.actions.includes("set") && s.level !== current.new_step && (
+                      {/* A pending agency's level is information only: the admin picks a level below, as their own. */}
+                      {!s.pending && current.actions.includes("set") && s.level !== current.new_step && (
                         <button type="button" className="secondary" aria-disabled={busy || undefined} onClick={() => void rule("set", [current.osm_way_id], s.level)}>
                           Use {stepText(s.level)}
                           <span className="visually-hidden"> from {s.name}</span>
@@ -651,8 +1009,13 @@ function QueueView({ queue, label, summary, getMap, announce, onStressChanged, o
             {current.ruling && <p>Ruled: {current.ruling.summary}.</p>}
             <label className="review-reason-field">
               Private reason (optional; never shown to riders)
-              <input type="text" maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} />
+              <input type="text" maxLength={500} value={reason} aria-describedby={pending ? id("pending-note") : undefined} onChange={(event) => setReason(event.target.value)} />
             </label>
+            {pending && (
+              <p id={id("pending-note")} className="hint">
+                Don&apos;t quote pending agencies&apos; data.
+              </p>
+            )}
             <div className="stress-editor-buttons">
               {current.actions
                 .filter((d) => d !== "set")
@@ -693,17 +1056,24 @@ function QueueView({ queue, label, summary, getMap, announce, onStressChanged, o
               )}
             </div>
           </div>
-          {detail && detail.facts.length > 0 && (
+          {facts.length > 0 && (
             <table className="review-facts">
-              <caption>The facts behind the rating</caption>
+              <caption>{sideBySide ? "The facts behind the rating, in the map now and in the new build" : "The facts behind the rating"}</caption>
+              {sideBySide && (
+                <thead>
+                  <tr>
+                    <th scope="col">Fact</th>
+                    <th scope="col">Map now</th>
+                    <th scope="col">New build</th>
+                  </tr>
+                </thead>
+              )}
               <tbody>
-                {detail.facts.map((f, i) => (
-                  <tr key={`${f.label}-${i}`}>
+                {facts.map((f) => (
+                  <tr key={f.label}>
                     <th scope="row">{f.label}</th>
-                    <td>
-                      {f.value}
-                      {f.source ? <span className="review-source"> ({f.source})</span> : null}
-                    </td>
+                    <td>{f.now || "—"}</td>
+                    {sideBySide && <td>{f.next || "—"}</td>}
                   </tr>
                 ))}
               </tbody>

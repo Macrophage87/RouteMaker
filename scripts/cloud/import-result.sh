@@ -22,7 +22,8 @@
 #   5. runs `manage.py import_cloud_build <build> --overrides-read-at <the dump's read_at>`, dry:
 #      every check the swap makes, and what it would change; it also precomputes Review's queue
 #      (the roads whose rating the build changes, for an instance admin's rulings), reading the
-#      box's reports.tar, unpacked under DATA_ROOT/rebuild/cloud-reports/<build>
+#      box's reports.tar, unpacked (again on every run) under
+#      DATA_ROOT/rebuild/cloud-reports/<build>; with none, those queues say the build had none
 # The swap says how many changed roads have no ruling yet; it does not wait for them.
 # Run it again after a failure and it carries on: a build directory left by an unpack
 # that stopped is unpacked again, and once step 4 has finished it goes straight to step 5.
@@ -313,10 +314,6 @@ if [ "$installed" = 0 ]; then
 	note "restoring the box's segment table as the staging schema"
 	compose exec -T postgis pg_restore --no-owner -U "$pguser" -d "$pgdb" <"$stage/staging.dump" ||
 		die "pg_restore did not exit 0. Nothing is served from staging; drop it (docker compose exec -T postgis psql -U $pguser -d $pgdb -c 'DROP SCHEMA staging CASCADE') and run this again"
-	if [ -f "$stage/reports.tar" ]; then
-		$SUDO mkdir -p "$data_root/rebuild/cloud-reports/$build"
-		$SUDO tar -C "$data_root/rebuild/cloud-reports/$build" --numeric-owner -xf "$stage/reports.tar"
-	fi
 	echo "$build" >"$stage/installed"
 	if [ "$remove_tars" = 1 ]; then
 		rm -f "$stage"/tiles-*.tar
@@ -324,6 +321,14 @@ if [ "$installed" = 0 ]; then
 fi
 
 # --- 5. dry run --------------------------------------------------------------------------
+# The box's reports, for Review's queues: unpacked again on every run (a re-run after a stopped
+# one, or a newer download), and none at all where this build sent none, so a queue read from
+# a report says "No report from this build" rather than showing another build's.
+$SUDO rm -rf "${data_root:?}/rebuild/cloud-reports/$build"
+if [ -f "$stage/reports.tar" ]; then
+	$SUDO mkdir -p "$data_root/rebuild/cloud-reports/$build"
+	$SUDO tar -C "$data_root/rebuild/cloud-reports/$build" --numeric-owner -xf "$stage/reports.tar"
+fi
 review=()
 if [ -d "$data_root/rebuild/cloud-reports/$build/reports" ]; then
 	review=(--review-reports-dir "cloud-reports/$build/reports")
