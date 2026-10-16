@@ -26,6 +26,7 @@
 import { METRES_PER_MILE, formatDistance, formatRoughDistance, spokenDistance } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { descriptionEntries } from "./routeDescription.ts";
+import { mileWords, trailMileAt, type TrailMiles } from "./trailMiles.ts";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
 
 // ---- Settings ---------------------------------------------------------------------------------
@@ -842,8 +843,9 @@ export type RoutePlace =
  * junction, behind or ahead (so it may be the last one passed rather than the true nearest, as the owner
  * accepted); on a named trail with no junction within TRAIL_MARKER_M, the trail and a distance from the
  * nearest junction of it, with the direction from there ("Capital Crescent Trail, about 1.2 miles
- * northwest of Massachusetts Avenue"). The trail's posted mile markers are not in the route's data
- * (PLAN.md, FOLLOWUP-WEB-NAV), so the distance is from a junction a reader can find on any map: one
+ * northwest of Massachusetts Avenue"). The trail's mile markers are not in the route's data (whereAmI
+ * takes them from lib/trailMiles.ts where the file knows the trail), so here the distance is from a
+ * junction a reader can find on any map: one
  * on the trail itself whose other street has a real name. With none, just the trail. An unnamed way is never a trail and
  * never the street measured from (the owner, 2026-10-12: "about 1.2 miles south of unnamed path").
  */
@@ -888,10 +890,11 @@ export function otherStreet(junction: RouteJunction, trail: string): string {
  * "Where am I?" (plan section 3): the street now, the next cue and its distance, the miles to the next
  * stop and to the end. `metric` adds the brackets for the screen; speech has US units only. On a named
  * trail far from any junction, the trail marker of OWNER-DECISIONS 465 ("Navigation cues on those
- * trails can use the same markers"). An unnamed way is said plainly ("On an unnamed path."), with no
- * distance from anywhere.
+ * trails can use the same markers"): its mile marker where `miles` (lib/trailMiles.ts) knows the trail
+ * ("On the Capital Crescent Trail, at mile marker 3." or "at about mile 3.2."), else the distance from a
+ * junction of it. An unnamed way is said plainly ("On an unnamed path."), with no distance from anywhere.
  */
-export function whereAmI(model: RideModel, state: RideState, metric = false): string {
+export function whereAmI(model: RideModel, state: RideState, metric = false, miles: TrailMiles | null = null): string {
   const dist = (m: number) => (metric ? formatDistance(m) : spokenDistance(m));
   if (state.arrived) return "You have arrived at the end of the route.";
   if (state.progressM === null) return "Finding your place on the route.";
@@ -905,10 +908,16 @@ export function whereAmI(model: RideModel, state: RideState, metric = false): st
   const stretch = stretchAt(model, state.progressM);
   // A named trail is "the" trail, with the marker or without: "On the Capital Crescent Trail."
   const way = isTrail(stretch) ? `the ${stretch.street}` : (wayRidden(stretch) ?? "the route");
+  // Away from a junction on a trail the file knows, its mile marker, posted or computed, in place of the
+  // distance from a junction (465: "Navigation cues on those trails can use the same markers").
+  const mile =
+    place?.kind !== "junction" && stretch && !isUnnamed(stretch.street) ? trailMileAt(miles, stretch.street, pointAt(model, state.progressM)) : null;
   const sentences = [
-    place?.kind === "trail"
-      ? `On ${way}, about ${dist(place.metres)} ${place.direction} of ${otherStreet(place.junction, place.trail)}.`
-      : `On ${way}.`,
+    mile
+      ? `On ${way}, at ${mileWords(mile)}.`
+      : place?.kind === "trail"
+        ? `On ${way}, about ${dist(place.metres)} ${place.direction} of ${otherStreet(place.junction, place.trail)}.`
+        : `On ${way}.`,
   ];
   const progress = state.progressM;
   const cue = model.cues.find((c) => c.atM > progress + 1 && (c.kind === "turn" || c.kind === "hazard" || c.kind === "walk"));

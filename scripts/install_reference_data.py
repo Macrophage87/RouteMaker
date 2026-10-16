@@ -55,6 +55,16 @@ DDOT's Pavement Condition Index goes to `pavement.json`, optional (DC-PCI):
 parsed by `routemaker.pavement`; `--dc-pci-fiscal-year` names the layer's year
 (default 2025) for the blocks whose survey date is empty.
 
+The Scenic layer's agency lines go to `scenic.json`, optional, read by the
+rebuild's scenic stage (`pipeline.scenic_layer`; v0.8.0), never by the classifier:
+
+    --rustic-roads moco-rustic-roads.geojson    Montgomery County Planning
+    --scenic-byways md-scenic-byways.geojson    MDOT SHA (MD iMAP)
+
+each as `scripts/fetch_agency_layer.py` stored it; `--byway-name-field` names the
+byway layer's name field, and `--rustic-name-field` the rustic roads' road-name field,
+where it is not one `routemaker.scenic` looks for (a layer with none is refused).
+
 Run with only --data-root it installs the crossings and reports which of the
 other two are still missing, exiting non-zero while any is. See
 docs/DEVELOPMENT.md, "Reference data", for where each input comes from.
@@ -547,6 +557,14 @@ def main(argv: list[str] | None = None) -> int:
         "--dc-pci", type=Path, help="DDOT Pavement Condition Index layer, GeoJSON as fetched"
     )
     parser.add_argument("--dc-pci-fiscal-year", type=int, default=None)
+    parser.add_argument(
+        "--rustic-roads", type=Path, help="Montgomery County Rustic Roads, GeoJSON as fetched"
+    )
+    parser.add_argument(
+        "--scenic-byways", type=Path, help="MDOT SHA Scenic Byways (MD iMAP), GeoJSON as fetched"
+    )
+    parser.add_argument("--byway-name-field", default=None)
+    parser.add_argument("--rustic-name-field", default=None)
     args = parser.parse_args(argv)
     if args.dc_pci:
         # Refused before anything is written while the licence is unconfirmed (DC-PCI).
@@ -568,6 +586,8 @@ def main(argv: list[str] | None = None) -> int:
         args.baltimore_centerline,
         args.alexandria_streets,
         args.dc_pci,
+        args.rustic_roads,
+        args.scenic_byways,
     )
     for path in (*inputs, *args.volume):
         if path is None:
@@ -651,6 +671,29 @@ def main(argv: list[str] | None = None) -> int:
         rows = [block.to_json() for block in blocks]
         (reference / "pavement.json").write_text(json.dumps(rows, separators=(",", ":")))
         print(f"wrote {reference / 'pavement.json'}: {len(rows)} pavement blocks (FY{year})")
+
+    if args.rustic_roads or args.scenic_byways:
+        # Both sources in one file, written whole: a rerun with one flag replaces the
+        # other's rows, so give both each time (docs/OPERATIONS.md, the Scenic layer).
+        from routemaker import scenic
+
+        rows = []
+        try:
+            for path, parse in (
+                (args.rustic_roads, lambda doc: scenic.rustic_rows(doc, args.rustic_name_field)),
+                (args.scenic_byways, lambda doc: scenic.byway_rows(doc, args.byway_name_field)),
+            ):
+                if path is None:
+                    continue
+                produced, dropped = parse(json.loads(path.read_text()))
+                print(f"  {path}: {len(produced)} scenic lines, {dropped} records left out")
+                rows.extend(produced)
+        except scenic.LayerUnreadable as unreadable:
+            parser.error(str(unreadable))
+        if len({row["id"] for row in rows}) != len(rows):
+            parser.error("two scenic lines share an id")
+        (reference / "scenic.json").write_text(json.dumps(rows, separators=(",", ":")))
+        print(f"wrote {reference / 'scenic.json'}: {len(rows)} scenic lines")
 
     missing = [name for name in REQUIRED if not (reference / name).exists()]
     for name in missing:

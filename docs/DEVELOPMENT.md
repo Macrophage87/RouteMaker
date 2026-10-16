@@ -4151,6 +4151,51 @@ against the extract that run left behind. docs/OPERATIONS.md, "First rebuild on
 a fresh host", has the whole sequence; the script runs in the `rebuild`
 container, which is the one that binds `reference` and `extracts`.
 
+### Scenic designations: `scenic.json` (v0.8.0)
+
+The Scenic map layer (the owner, 2026-10-16: "Basically looking for a scenic layer in
+general. Off by default. How about including covered bridges") names, per way, the
+designations it carries, in words: "Rustic Road (Montgomery County)", "Exceptional Rustic
+Road (Montgomery County)", "`<name>` Scenic Byway", "East Coast Greenway", "USBR 50", and a
+covered bridge's name, joined by " · " in that order, each once (a way along records of
+both kinds of rustic road says both)
+(`routemaker.scenic.phrase`). Three inputs:
+
+- `reference/scenic.json`, optional, from `install_reference_data.py --rustic-roads
+  --scenic-byways` (`routemaker.scenic.rustic_rows`, `byway_rows`): one row a line,
+  `{"id", "source", "label", "name", "coordinates"}`, `source` `moco-rustic` or
+  `md-byways`. `pipeline.scenic_layer.labels_by_way` matches each source on its own with
+  `conflation.conflate_blocks`, as the agency stress ratings are: never a trail, a service
+  or track way only where the record's road name agrees, and a differently named way never
+  (every rustic road record carries its road's name: the installer refuses a layer with
+  none). A byway record never carries one, its name being the byway's, so the name veto
+  cannot guard it; instead only trunk, primary, secondary, tertiary and unclassified ways
+  are candidates (`BYWAY_HIGHWAYS`: no parallel residential street, ramp, service road or
+  track) and a record must cover 70% of a way (`BYWAY_MIN_COVERAGE`, not the blocks'
+  half). A way takes the words of every record it lies along.
+- the extract's bicycle route relations (`scenic_layer.read_routes`, one more pass over the
+  relations, in `FETCH_EXTRACT`'s read with `trail_routes.read_routes`). A USBR is tagged
+  three ways in OSM and all are read (`routemaker.scenic.usbr_number`): `ref="USBR N"`; a
+  bare `ref=N` with `network=ncn` and `cycle_network` `US:US` or `US` (not `US:MD`, a state
+  route's own number); or a name "U.S. Bicycle Route N". The Greenway, relation 1774795 or
+  a relation named "East Coast Greenway…", is checked first and is never a USBR, though it
+  is on the national network too (`cycle_network=US`). A
+  relation's words reach the ways of every relation under it, so a state section of the
+  Greenway is the Greenway; cycles are cut.
+- the way's own tags: `bridge=covered`, named by `bridge:name`, else by a `name` that names
+  a bridge, else "Covered bridge".
+
+The words go to `segment.scenic` (text; no migration, as `sidepath_name`: the rebuild
+creates the table whole). The stress tiles carry only `scenic` = true (ETag letter `v`);
+the road panel (`core.segment_info`) has a Scenic summary row and a Scenic row under Road
+or path with its credits. **Nothing in the classifier, `variants` or the Lua reads it**
+(`tests/test_scenic.py` holds that): a scenic road keeps its tier and gets no routing
+bonus. The front end is `frontend/src/lib/scenicLayer.ts` and `app/ScenicOverlay.tsx`: a
+casing of two 1.5 px teal lines whose `line-gap-width` is the tier's casing, ring and
+rails, added under the lowest stress layer; and the covered bridges and viewpoints from
+`amenity-data/places.json` (`build_places.py` marks a covered bridge `cv`). The switch is
+in Plan's Layers only (`LayersSheetProps.scenic` is null in Go).
+
 ## Tiles and the swap
 
 Each variant's tiles live under `<DATA_ROOT>/tiles/<variant>/`: a dated build
@@ -7611,6 +7656,62 @@ coordinates are never trimmed; the only cap is the note's 120 characters. The 31
 marker (`placeOnRoute`, `TRAIL_MARKER_M` in `lib/navigate.ts`), measured only from a junction on the
 trail itself with a named street; an unnamed way (`isUnnamed`, `wayRidden`) is said plainly ("On an
 unnamed path.") and is never used as a trail or a reference point.
+
+**Trail mile markers (v0.8.0).** 465: "some trails like the MBT and CCT should have mile markers as
+they can go a distance without crossing a road"; Stephen, 2026-10-16: "Make sure the mile markers are
+added to 311 when built." `lib/trailMiles.ts` reads `amenity-data/trail-miles.json`, a committed
+snapshot built from the extract by `scripts/build_trail_miles.py` as the water, food and places files
+are (`frontend/src/amenity-data/README.md`, "Trail mile markers"): no tiles, no Valhalla, no API, so
+no map rebuild, only that script on the build host. The file holds the OSM mile markers
+(`highway=milestone` or `waterway=milestone` with `distance=*`, or "Mile 3", "MM 3", "MP 3" in `ref`,
+`name` or `inscription`; `railway=milestone` and an old road's `historic=milestone` are not trail
+markers), each with the named trail it stands on (within 80 ft, 25 m) and its posted figure in miles.
+A post nearer a main road (motorway, trunk, primary, secondary or their links) than the trail is the
+road's (I-66's mileposts beside the Custis Trail) and is left out. The file also holds lines, each
+piece of a named trail over 2 miles (3.2 km) drawn from cycleways and `bicycle=yes`/`designated`
+ways, from its mile 0 with `s`, the metres at the line's first point, but only where mile 0 is known:
+two or more of its posts that fit (posted miles grow 0.8 to 1.25 a mile along, none more than a
+quarter mile off; `s` their median), one post (`s` from it), or the build's `MILE_ZERO` table (the C&O
+Canal towpath and the Capital Crescent Trail from Georgetown, the Metropolitan Branch Trail from Union
+Station, the W&OD from Shirlington) with its mile-0 point within about a mile of the piece's end. Any
+other line is left out, so no mile is guessed: a trail not in the table and with no posts gets none,
+and a piece split from the rest by more than a quarter mile (400 m) never restarts at mile 0. The
+Mount Vernon and Custis trails stay out of the table until their posts' numbering is checked; their
+posts still work. The build fails (exit 1, nothing written) over 600,000 bytes. The docstring has the
+rest, with the OSM wiki pages it follows.
+
+All of it is worked out on the device, with the trail's name from the route (the stretch's street,
+the way's OSM name, matched by `trailKey`, worked out once per row as the file is read: case, "&" and punctuation aside) and the point the report
+already uses (`pointAt`): the position goes nowhere new. `trailMileAt` gives the nearest post of that
+trail within `MARKER_NEAR_M` (500 ft, about 0.1 mi, as `PLACE_NEAR_M`), else the computed mile on the
+nearest of its lines within `LINE_NEAR_M` (200 ft, 60 m; to a tenth, never below 0), else a post within
+half a mile, else nothing. `mileWords` says it: "mile marker 3" (as the post says it), "near mile
+marker 3" (a post farther than 500 ft, with no line), "about mile 3.2" (computed, never passed off as
+a post). Miles only, as a post says miles and the report is the message itself.
+
+* The 311 report: `reportPlace(model, progressM, miles)` adds it after the way ridden on any named way
+  the file knows, `placeWords`: "on Capital Crescent Trail at mile marker 3", "on Capital Crescent
+  Trail at about mile 3.2 near River Road" (a cross street within 500 ft still follows), then
+  "Washington, DC. GPS ...", the coordinates beside it as before. The 311 menu's place line, the copy for
+  DC 311 online, the text and the server's send all carry the same words.
+* "Where am I?": on a trail the file knows and away from a junction (`placeOnRoute` not a junction),
+  "On the Capital Crescent Trail, at about mile 3.2." in place of the distance from a junction of it,
+  which stays where the file has no line or post (465: "Navigation cues on those trails can use the
+  same markers"). Turn cues are unchanged: they already name the street turned onto.
+* The road panel: for a trail way, a "Trail mile" summary line after the server's, at the nearest
+  place on the way (`on_way`, else the spot): "Mile marker 3, 300 ft (91 m) away" or "About mile 3.2
+  here" (`milePanelRow`), US units first.
+* The map: the posts from z14 in (`MILE_MIN_ZOOM`), always, with no switch (the owner keeps Go to one
+  control a feature): a small brown dot with a white ring and "MM 3" beside it in text with a halo
+  (`TrailMilesOverlay`, `app/trailMilesOverlay.ts`, the v0.7.0 overlays' way), under the route; a tap
+  gives a card in words ("Capital Crescent Trail", "Mile marker 3.", "From OpenStreetMap."), and the
+  road panel is the keyboard's and screen reader's way to the same facts. The lines are never drawn.
+
+App fetches the file once the map reaches z14, a ride starts or the road panel opens; it is under
+`/assets/` and not a `LAZY_ASSET`, so the service worker precaches it and a ride has it in a dead
+spot. Until the build host fills it the file is empty and every place reads as before.
+`trailMiles.test.ts`, the trail cases in `report311.test.ts` and `navigate.test.ts`, and
+`tests/test_build_trail_miles.py` (which builds from a small made-up extract) check it.
 
 **Checks (N7).** `corridor.test.ts`, `report311.test.ts`, the trail cases in `navigate.test.ts` and
 `loadTile` in `stressProtocol.test.ts`; the browser suite's Ride mode section checks that the stress

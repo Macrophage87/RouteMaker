@@ -29,7 +29,7 @@ from django.conf import settings
 from django.db import connection
 
 from pipeline.schema import validate_schema_name
-from routemaker import agency_lts, flow, more_links
+from routemaker import agency_lts, flow, more_links, scenic
 from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
 from routemaker.stress import USE_SIDEPATH_RULE
 
@@ -241,6 +241,7 @@ ACCESS_WORDS = {
 # Every column this endpoint reads that an older live table may lack.
 OPTIONAL_COLUMNS = (
     "facility",
+    "facility_shown",
     "car_free_when",
     "map_class",
     "road_speed_mph",
@@ -265,6 +266,7 @@ OPTIONAL_COLUMNS = (
     "mtb_name",
     "stress_ratings",
     "sidepath_name",
+    "scenic",
 )
 REQUIRED_COLUMNS = (
     "osm_way_id",
@@ -776,11 +778,19 @@ def traffic_rows(row: dict) -> list[dict]:
     return rows
 
 
+# A lane against a one-way's traffic only (`segment.facility_shown`; the review of
+# 17f69082): shown as the lane it is, and said to be for the other direction alone.
+CONTRAFLOW_WORDS = ", against the one-way traffic only"
+
+
 def riding_rows(row: dict) -> list[dict]:
     rows = []
     facility = row.get("facility")
+    shown = row.get("facility_shown")
     if facility in FACILITY_WORDS:
         value = FACILITY_WORDS[facility]
+        if shown in FACILITY_WORDS:
+            value = FACILITY_WORDS[shown] + CONTRAFLOW_WORDS
         if facility == "none" and row.get("is_trail_class"):
             # A path the classifier does not count as a bike facility: a footway, a
             # sidewalk, a path not open to bicycles. It is not "shared with traffic".
@@ -1098,15 +1108,22 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
         credit = " ".join(str(x) for x in (who, year) if x)
         add("traffic", "Traffic", f"{int(aadt):,} a day" + (f" ({credit})" if credit else ""))
     facility = row.get("facility")
+    against = " (against traffic only)" if row.get("facility_shown") else ""
+    facility = row.get("facility_shown") or facility
     if facility == "protected":
-        add("bike_lane", "Bike lane", "Protected")
+        add("bike_lane", "Bike lane", "Protected" + against)
     elif facility == "lane":
-        add("bike_lane", "Bike lane", "Painted")
+        add("bike_lane", "Bike lane", "Painted" + against)
     elif facility == "path" and not path:
         add("bike_lane", "Bike lane", "Traffic-free path")
     when = [w.replace("_", " ") for w in row.get("car_free_when") or [] if isinstance(w, str)]
     if when:
         add("car_free", "Car-free", ", ".join(when))
+    # v0.8.0's Scenic layer: the designations in words, so the map's casing is never the
+    # only cue ("Rustic Road (Montgomery County)", "East Coast Greenway · USBR 50").
+    designations = scenic_text(row)
+    if designations:
+        add("scenic", "Scenic", designations)
     unpaved = row.get("is_unpaved")
     rough = bool(row.get("is_rough"))
     if unpaved is not None and (unpaved or rough or path):
@@ -1135,6 +1152,18 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
         riders = flow.level_riders_per_min(float(width))
         add("mass", "Room for", f"About {round(riders):,} riders a minute")
     return rows
+
+
+def scenic_text(row: dict) -> str | None:
+    """The way's scenic designations (`segment.scenic`, v0.8.0), or None."""
+    return (row.get("scenic") or "").strip() or None
+
+
+def scenic_rows(row: dict) -> list[dict]:
+    """The Road or path section's Scenic row, with who designates it (`routemaker.scenic`):
+    a fact about the road, not a stress input, so it is said beside its name."""
+    text = scenic_text(row)
+    return [_row("Scenic", text, scenic.credits(text))] if text else []
 
 
 def describe(row: dict, router: dict) -> dict:
@@ -1166,6 +1195,7 @@ def describe(row: dict, router: dict) -> dict:
             "rows": [
                 _row("Name", name or "No name mapped", name_source),
                 _row("Kind", kind, kind_source),
+                *scenic_rows(row),
             ],
         },
         {"id": "stress", "heading": "Traffic stress", "rows": stress_rows(row)},

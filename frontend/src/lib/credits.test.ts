@@ -25,6 +25,8 @@ test("the credits are short source names, exactly these, OpenStreetMap first (OW
       "Open Baltimore",
       "City of Alexandria",
       "Montgomery County Planning Department",
+      // v0.8.0: the Scenic layer's byways (Maryland iMAP's terms: derived data acknowledges the State of Maryland).
+      "State of Maryland (MDOT SHA)",
       "USGS 3DEP",
       "U.S. Census Bureau",
       "Photon",

@@ -4413,6 +4413,14 @@ failure to write one is a warning in the log and never fails the rebuild.
   `tiger:county`, state). Such a road is rated on its own merits, not Avoid; each row
   is a likely tagging error to review. The log line is "bicycle=use_sidepath roads: N
   with a side path beside them (Avoid), M with none found".
+- `painted-lane-agency-vs-formula.csv` (review RL-3; the owner, 2026-10-16): every road
+  with a painted lane on a two-way street with 2 or more lanes each way (the formula's
+  LTS 3 floor) in the District or rated by DDOT or Montgomery, with the agency's level
+  beside the formula's (way id, name, state, scope, agency, agency level, formula level
+  and rule, whether they differ). The agency's level is the one the map uses. Virginia's
+  such roads are listed with scope `comparison` and the formula's level alone: Review's
+  "Painted lanes" list puts Arlington's level beside them from the admin-only pending file,
+  so Arlington's ratings never reach the report.
 - `named-corridors.md` (284-286, 294-296; and Connecticut Ave NW, 409, 411): every way an entry of
   `fixtures/corridors/` took, its tier before and after, the exempt ones and why,
   and any entry that matched no way (also a warning in the log: the extract's
@@ -4672,6 +4680,114 @@ that finds a `pavement.json` logs `... is installed but not read`.)
    **Rolling it back** without a code change: remove `reference/pavement.json` and
    rebuild; every street then keeps OSM's reading, and the log says the file is
    absent.
+
+## The Scenic layer (v0.8.0)
+
+The owner, 2026-10-16: "Name in the road panel and have as a layer. Possibly the scenic
+roads and trails layer. We could also add the east coast greenway and usbr paths to that."
+and "Basically looking for a scenic layer in general. Off by default. How about including
+covered bridges". One switch, Scenic, in Plan's Map layers after Trails and terrain, off by
+default; not in Go. It changes no stress rating and no route.
+
+What it shows, and where each comes from (docs/SOURCES.md):
+
+| Designation | Source | Needs |
+|---|---|---|
+| Rustic Road / Exceptional Rustic Road (Montgomery County) | Montgomery County Planning's Rustic Roads layer, `CLASSLABEL2` | `reference/scenic.json` (steps 1, 2) and a rebuild |
+| `<name>` Scenic Byway | MDOT SHA's Scenic Byways on MD iMAP | the same |
+| East Coast Greenway, USBR 1, 11, 50 | OSM route relations in the extract | a rebuild |
+| Covered bridges (on the way and as named dots) | OSM `bridge=covered` | a rebuild; the dots, `scripts/build_places.py` |
+| Viewpoints (small rings) | OSM `tourism=viewpoint`, named | `scripts/build_places.py` |
+
+The rebuild writes the words to `segment.scenic` (`pipeline.scenic_layer`); the stress
+tiles carry `scenic` (true) for the casing, and the road panel says the words. A table
+built before v0.8.0 has no column: the layer then draws only the dots, and the panel
+says nothing. The dots come from Places to see's file, so a `build_places.py` run (step 4)
+marks the covered bridges (`cv`); until then the bridges show as Places to see's plain
+bridges and the Scenic layer draws only the viewpoints.
+
+Left out, with the reason recorded in docs/SOURCES.md: Virginia's Rural Rustic Roads (a
+paving programme; no scenic layer found), Virginia's Byways (VDOT asks for written
+permission) and Frederick County's draft rustic roads (no licence).
+
+1. **Fetch both layers once**, from the checkout on the host (standard library only).
+   Each is open with credit; the README the script writes keeps the licence text. The
+   byways are statewide, so they are clipped to the coverage box:
+
+   ```sh
+   export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
+   python3 scripts/fetch_agency_layer.py --slug moco-rustic-roads \
+       --item 0aa34f13d8fb4e4c9500e363ad5a4e07 \
+       --layer https://montgomeryplans.org/server/rest/services/Overlays/Rustic_Roads/MapServer/1 \
+       --out-dir ~/rmdata/datasets --credit "Montgomery County Planning"
+   python3 scripts/fetch_agency_layer.py --slug md-scenic-byways \
+       --item dc571b56e48a4f4292986c97a119e88a \
+       --layer https://services.arcgis.com/njFNhDsUCentVYJW/arcgis/rest/services/MDOT_SHA_Scenic_Byways/FeatureServer/0 \
+       --bbox=-78.05,38.2,-76.02,39.72 \
+       --out-dir ~/rmdata/datasets --credit "MDOT SHA (Maryland iMAP)"
+   for slug in moco-rustic-roads md-scenic-byways; do
+       sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs/$slug"
+       sudo install -o 10001 -g 10001 -m 644 ~/rmdata/datasets/$slug/* \
+           "$DATA_ROOT/reference/inputs/$slug/"
+   done
+   ```
+
+   Put each README's size and sha256 into docs/SOURCES.md. The script asks for GeoJSON
+   (`f=geojson`); if a server refuses it, the run fails with the server's error and
+   nothing is stored. Neither layer's field names could be read from the cloud build:
+   open one record of each and check `CLASSLABEL2` and a road name are in the rustic
+   roads (the name is one of `routemaker.scenic.ROAD_NAME_FIELDS`, else step 2 takes
+   `--rustic-name-field <field>`; a layer with no road name is refused, as the name keeps a
+   record off a parallel street), and the byway's name is in one of `BYWAY_NAME`,
+   `Byway_Name`, `BywayName`, `BYWAY`, `Byway`, `NAME`, `Name`
+   (`routemaker.scenic.BYWAY_NAME_FIELDS`), else step 2 takes `--byway-name-field <field>`.
+
+   **Confirm the route relations on the extract** before the first v0.8.0 rebuild: the ids
+   in docs/SOURCES.md (USBR 1 3022887, USBR 11 12126554, USBR 50 2532740, the Greenway
+   1774795) are from the sources note, not read from an extract here. With osmium on the
+   host, `osmium getid -r -t "$DATA_ROOT/extracts/source.osm.pbf" r3022887 r12126554
+   r2532740 r1774795 -f opl | grep '^r'` should print four relations; check each one's
+   `network`, `cycle_network`, `ref` and `name` match a form `routemaker.scenic.usbr_number`
+   reads (`ref="USBR N"`; a bare `ref=N` with `network=ncn` and `cycle_network` `US:US` or
+   `US`; or a name "U.S. Bicycle Route N"). The Greenway is matched by its id or a name
+   starting "East Coast Greenway", never as a USBR.
+
+2. **Install them**, both in one run (the file is written whole, so a run with one flag
+   drops the other's lines):
+
+   ```sh
+   docker compose exec -T rebuild python3 scripts/install_reference_data.py \
+       --data-root /data \
+       --rustic-roads /data/reference/inputs/moco-rustic-roads/moco-rustic-roads.geojson \
+       --scenic-byways /data/reference/inputs/md-scenic-byways/md-scenic-byways.geojson
+   ```
+
+   It prints `N scenic lines, N records left out` a layer and `wrote .../scenic.json`. A
+   rustic road record is left out only when its `CLASSLABEL2` is neither kind; a byway
+   one when it has no name or no line. A byway layer with no name field is refused with
+   the flag to use.
+
+3. **After the rebuild**, read the log:
+
+   | Line | What to look for |
+   |---|---|
+   | `scenic designations: moco-rustic, N of M records matched, N ways` | most records matched (the county's rustic roads lie mostly in the Agricultural Reserve) |
+   | `scenic designations: md-byways, N of M records matched, N ways` | most matched; a byway record along a trail matches nothing (trails are never candidates), and only trunk, primary, secondary, tertiary and unclassified roads with 70% or more of their length along a record take one (`pipeline.scenic_layer.BYWAY_HIGHWAYS`, `BYWAY_MIN_COVERAGE`) |
+   | `scenic ways (designated, covered bridges, scenic routes): N` | thousands, most of them the C&O towpath (USBR 50) and the Greenway |
+   | `.../scenic.json is absent, so no agency scenic designation is read` | should not appear once step 2 has run |
+
+   Then right-click roads you know in Plan (a rustic road in the Agricultural Reserve,
+   the C&O towpath, and Roddy Road's covered bridge in Frederick County if OSM maps it as
+   `bridge=covered`, which was not checked) and read the Scenic row; turn the layer on and
+   check the teal lines sit outside the stress colour.
+
+4. **The dots**: run `scripts/build_places.py` with the rebuild's extract, as for
+   Places to see (frontend/src/amenity-data/README.md), and deploy the front end. A
+   covered bridge is named by its `bridge:name` where it has one.
+
+**Rolling it back** without a code change: remove `reference/scenic.json` and rebuild; the
+layer then has the OSM designations only. The switch itself is the rider's; there is no
+server flag, and a layer nobody turns on draws nothing.
 
 ## Deployment actions
 

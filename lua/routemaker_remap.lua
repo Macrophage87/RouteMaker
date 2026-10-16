@@ -17,6 +17,16 @@
 -- asserted on. One global remap cannot serve use_roads 0 and use_roads 1 through
 -- the same field, so the stress signal travels by use_roads at layer 2 and
 -- stress-weighted ranking at layer 4 instead.
+--
+-- One exception, and it is not this file's: the rebuild itself
+-- (`pipeline.variants.with_speed_units`, review RL-5) rewrites a bare or upper-case
+-- posted speed (`maxspeed=45`, `45 MPH`, and the `:forward`, `:backward` and
+-- `:advisory` keys) to an explicit `45 mph` in every variant's extract before this
+-- transform reads it. Upstream reads a bare number as km/h; the classifier, and the
+-- sign, read it as mph. So the edge speed of such a way rises about 1.6 times, on
+-- every graph, Mass Ride's no-trail graph included. The value is the way's own
+-- surveyed number with its unit made explicit; this file still never writes
+-- `maxspeed`, and `FORBIDDEN_KEYS` still refuses it here.
 
 local M = {}
 
@@ -1358,7 +1368,8 @@ function M.denies_bicycle_at_border(tags, remapped)
 end
 
 -- Attributes this remap must never write, asserted by the test suite rather
--- than left to review.
+-- than left to review. (A bare `maxspeed` reaches it already rewritten to an
+-- explicit mph by the rebuild, review RL-5: see the header.)
 M.FORBIDDEN_KEYS = { highway = true, maxspeed = true }
 
 M.NARROW_GAP_M = 1.5

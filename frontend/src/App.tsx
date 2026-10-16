@@ -162,9 +162,16 @@ import { FoodFinder } from "./lib/foodFinder.ts";
 // /assets/ also lets the service worker leave it out of the precache (swCore.mjs LAZY_ASSET).
 import foodUrl from "./amenity-data/food.json?url&no-inline";
 import placesUrl from "./amenity-data/places.json?url&no-inline";
+// trail-miles.json too, until scripts/build_trail_miles.py fills it; precached (not LAZY_ASSET), as a ride's
+// 311 report and "Where am I?" read it in a dead spot.
+import trailMilesUrl from "./amenity-data/trail-miles.json?url&no-inline";
+import { loadTrailMiles, MILE_MIN_ZOOM, type TrailMiles } from "./lib/trailMiles.ts";
+import { TrailMilesOverlay } from "./app/trailMilesOverlay.ts";
 import { loadRepair, nearestRepair, repairFoundSaid, repairTitle, REPAIR_NO_ORIGIN, REPAIR_UNAVAILABLE, type RepairNearby, type RepairPlace } from "./lib/repair.ts";
 import { loadPlaces, placesSaid, placesToSee, readPlacesLayer, savePlacesLayer, sightsForGo, PLACES_NONE, PLACES_PAGE, PLACES_UNAVAILABLE, type PlaceFilter, type SightPlace, type SightResult } from "./lib/places.ts";
 import { PlacesOverlay, PlacesSheet, RepairSheet, RepairStandsOverlay } from "./app/PlacesSheets.tsx";
+import { ScenicOverlay } from "./app/ScenicOverlay.tsx";
+import { readScenicLayer, saveScenicLayer, scenicShown, scenicStatus } from "./lib/scenicLayer.ts";
 import {
   findingSaid,
   requestNearest,
@@ -514,9 +521,16 @@ export function App() {
       setPlacesData(data ?? "unavailable");
     });
   }, []);
+  // The Scenic layer (v0.8.0; lib/scenicLayer.ts): one switch in Plan's Layers, off by default, kept on this
+  // device. Its covered bridges and viewpoints are Places to see's file, fetched the first time it is shown.
+  const [scenicOn, setScenicOnState] = useState<boolean>(() => readScenicLayer());
+  const changeScenicOn = (on: boolean) => {
+    setScenicOnState(on);
+    saveScenicLayer(on);
+  };
   useEffect(() => {
-    if (placesOn) ensurePlaces();
-  }, [placesOn, ensurePlaces]);
+    if (placesOn || scenicOn) ensurePlaces();
+  }, [placesOn, scenicOn, ensurePlaces]);
   const [placesFilter, setPlacesFilter] = useState<PlaceFilter>("all");
   const [placesCount, setPlacesCount] = useState(PLACES_PAGE);
   // Bumped by each Repair, Sights or Places to see press, so the list is from where the rider is then.
@@ -720,6 +734,19 @@ export function App() {
   ridePrefsNow.current = ridePrefs;
   const ridingNow = useRef(riding);
   ridingNow.current = riding;
+  // Trail mile markers (lib/trailMiles.ts; OWNER-DECISIONS 465): fetched once the map is at the trail zooms,
+  // a ride starts or the road panel opens, and kept; a load that failed is asked again next time. No switch.
+  const [trailMiles, setTrailMiles] = useState<TrailMiles | null>(null);
+  const milesLoad = useRef(false);
+  const milesWanted = riding || roadInfo !== null || (zoom !== null && zoom >= MILE_MIN_ZOOM);
+  useEffect(() => {
+    if (!milesWanted || milesLoad.current) return;
+    milesLoad.current = true;
+    void loadTrailMiles(trailMilesUrl).then((data) => {
+      if (!data) milesLoad.current = false;
+      setTrailMiles(data);
+    });
+  }, [milesWanted]);
   const changeRidePrefs = useCallback((next: RidePrefs) => {
     // Voice turned on mid-ride: unlocked in this change's own gesture, as Start does (review RIDE-9).
     // Before a ride, Start unlocks it; nothing is said then.
@@ -3637,6 +3664,9 @@ export function App() {
       />
       <RepairStandsOverlay getMap={getMap} places={Array.isArray(repairData) ? repairData : null} on={waterPrefs.on && !riding} pixelRatio={Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)))} />
       <PlacesOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={placesOn && !riding} />
+      <TrailMilesOverlay getMap={getMap} data={trailMiles} />
+      {/* Not in Go, and not on the Mass Ride map (lib/scenicLayer.ts scenicShown). */}
+      <ScenicOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={scenicShown(scenicOn, mode, massMap)} placesOn={placesOn && !riding} />
       <BikeshareDocksOverlay
         active={docksActive}
         getMap={getMap}
@@ -3669,6 +3699,7 @@ export function App() {
         federal={roadInfo && federalShown(preset, true) ? federalAreaAt(roadInfo.point, federalData) : null}
         climb={roadInfo && climbsOn ? climbNearSpot(climbsData, roadInfo.point, climbsFrom) : null}
         onShowClimb={showClimbCard}
+        trailMiles={trailMiles}
         onClose={closeRoadInfo}
         fallbackFocus={mapFocus}
         onStressChanged={(generation) => {
@@ -3747,6 +3778,7 @@ export function App() {
           onView={setRideView}
           onEnd={endRide}
           water={ensureWater}
+          trailMiles={trailMiles}
           keepLastRide={isStandalone()}
         />
       )}
@@ -3869,6 +3901,8 @@ export function App() {
                 rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom,
                 climbsStatus, climbsAlong, openLegend: (opener: HTMLElement) => openView("legend", opener, true),
                 placesOn, changePlacesOn, placesStatus: placesData === "unavailable" ? PLACES_UNAVAILABLE : Array.isArray(placesData) && placesData.length === 0 ? PLACES_NONE : "",
+                // Plan's alone (the brief: "not in Go"); null leaves the section out of Go's Layers.
+                scenic: mode === "go" ? null : { on: scenicOn, onChange: changeScenicOn, status: scenicStatus(scenicOn, stress !== "unavailable", placesData ?? "loading") },
                 bikeshare: {
                   operators: docksOperators,
                   choices: docksChoices,
@@ -3881,6 +3915,7 @@ export function App() {
               {...{
                 nav: sheetNav, legendHeadingRef, massMap, stress, stressVisible, preset, zoom, facilitiesShown, waterPrefs,
                 waterStatus, climbsOn, climbsStatus, federalOn, federalStatus, rail,
+                scenicOn: scenicShown(scenicOn, mode, massMap),
               }}
             />
             <SuggestSheet nav={sheetNav} roadInfoAtCentre={roadInfoAtCentre} onReview={reviewOpener} />

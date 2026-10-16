@@ -101,6 +101,7 @@ import {
   type NearestKind,
 } from "./lib/nearest.ts";
 import type { WaterPoint } from "./lib/waterRestrooms.ts";
+import type { TrailMiles } from "./lib/trailMiles.ts";
 import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
 import { corridorNote, type PrefetchResult } from "./lib/corridor.ts";
 import { clearCorridor, copyCorridor, keepCorridor } from "./lib/corridorStore.ts";
@@ -331,6 +332,7 @@ function Report311({
   summaryRef,
   noteRef,
   serverOn = false,
+  miles = null,
 }: {
   model: RideModel;
   progressM: number | null;
@@ -345,11 +347,13 @@ function Report311({
   noteRef?: RefObject<HTMLInputElement | null>;
   /** The server sends reports to DC 311 itself (it has DC's key): the privacy line says so. */
   serverOn?: boolean;
+  /** The trail mile markers (lib/trailMiles.ts): on a trail the place names its mile. */
+  miles?: TrailMiles | null;
 }) {
   const setKind = onKind;
   const [note, setNote] = useState("");
   const [copied, setCopied] = useState("");
-  const place = progressM === null ? null : reportPlace(model, progressM);
+  const place = progressM === null ? null : reportPlace(model, progressM, miles);
   const outside = progressM !== null && !inDc(pointAt(model, progressM));
   // The words for DC 311 online (shown and copied), and the text message, which starts with DC's keyword.
   const text = outside ? null : reportText(kind, place, note);
@@ -436,6 +440,7 @@ export function RideMode({
   onView,
   onEnd,
   water,
+  trailMiles = null,
   geoEnv,
   keepLastRide = false,
 }: {
@@ -458,6 +463,11 @@ export function RideMode({
   onEnd: () => void;
   /** The water layer's points, loaded if they are not yet (App's ensureWater); for the detours. */
   water?: () => Promise<WaterPoint[] | null>;
+  /**
+   * The trail mile markers (lib/trailMiles.ts; OWNER-DECISIONS 465), once App has them: the 311 report and
+   * "Where am I?" name a trail's mile with them, on the device. Null before, or with none.
+   */
+  trailMiles?: TrailMiles | null;
   geoEnv?: RideGeoEnv;
   /**
    * The installed app (OWNER-DECISIONS 465a; lib/offlineKeep.ts): at End ride the map the ride kept is
@@ -472,6 +482,8 @@ export function RideMode({
   const model = useMemo(() => rideModel(route, viaIndices(plan.current.points, VIA_MARKS.isVia)), [route]);
   const modelRef = useRef(model);
   modelRef.current = model;
+  const milesRef = useRef(trailMiles);
+  milesRef.current = trailMiles;
   const [ride, setRide] = useState<RideState>(startState);
   const rideRef = useRef(ride);
   const prefsRef = useRef(prefs);
@@ -574,7 +586,7 @@ export function RideMode({
     setReportKind(kind);
     setMenu311(false);
     const progress = rideRef.current.off ? null : rideRef.current.progressM;
-    const place = progress === null ? null : reportPlace(modelRef.current, progress);
+    const place = progress === null ? null : reportPlace(modelRef.current, progress, milesRef.current);
     if (!place || !inDc(place.point)) {
       openReport();
       return;
@@ -794,7 +806,7 @@ export function RideMode({
       if (out.state.off && auto && !gate.busy && fix.accuracyM <= POOR_FIX_M && out.state.goodFix) void replan(out.state.goodFix.point);
       if (sayWhereNext.current && out.state.progressM !== null) {
         sayWhereNext.current = false;
-        announcer.current?.answer(whereAmI(modelRef.current, out.state));
+        announcer.current?.answer(whereAmI(modelRef.current, out.state, false, milesRef.current));
       }
     },
     [gate, replan, say, notify, checkCueSheet],
@@ -945,8 +957,8 @@ export function RideMode({
     whereRef.current?.focus();
   };
   const askWhere = useCallback(() => {
-    const spoken = whereAmI(modelRef.current, rideRef.current);
-    setWhere(whereAmI(modelRef.current, rideRef.current, true));
+    const spoken = whereAmI(modelRef.current, rideRef.current, false, milesRef.current);
+    setWhere(whereAmI(modelRef.current, rideRef.current, true, milesRef.current));
     // On demand: through the chosen outputs; with neither chosen, through the polite region too, since
     // the rider asked (the answer is also on screen).
     announcer.current?.answer(spoken);
@@ -1081,7 +1093,7 @@ export function RideMode({
   const back = ride.off ? wayBack(model, ride) : null;
   const shape = arrowFor(cue);
   const show311 = ride311Shown({ off: ride.off, progressM: progress, insideDc: (m) => inDc(pointAt(model, m)) });
-  const place311 = show311 && progress !== null ? reportPlace(model, progress) : null;
+  const place311 = show311 && progress !== null ? reportPlace(model, progress, trailMiles) : null;
 
   // Off route, back on, or out of DC: the off-route buttons or the 311 block go, and a focus that was in
   // the one that went goes to Where am I?, so W and C keep working (review a11y-3; lib/rideFocus.ts). A
@@ -1324,6 +1336,7 @@ export function RideMode({
           summaryRef={reportSummary}
           noteRef={noteInput}
           serverOn={serverOn311}
+          miles={trailMiles}
         />
         <details className="fold ride-mode-settings">
           <summary>Ride settings</summary>

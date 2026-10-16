@@ -749,6 +749,32 @@ BUFFER_KEYS = (
 )
 
 
+# A painted lane on a two-way street with this many through lanes each way or
+# more is LTS 3 at least (review RL-3; the owner, 2026-10-16). The words are the
+# mixed-traffic floor's, which `core.segment_info` already says in plain words.
+PAINTED_LANE_FLOOR_LANES = 2
+PAINTED_LANE_FLOOR = "two-way floor"
+
+
+def painted_lane_two_way_multilane(
+    tags: dict[str, str], divided: bool = False, lanes: int | None = None
+) -> bool:
+    """Whether a way is a painted lane on a two-way street with
+    `PAINTED_LANE_FLOOR_LANES` or more through lanes each way, the roads the RL-3
+    floor holds at LTS 3. A carriageway of a divided road is two-way. `lanes` is
+    the count the classifier read, where it has one; an untagged count is one
+    lane, which never qualifies."""
+    if tags.get("highway", "") in TRAIL_CLASS or tags.get("highway") in MOTOR_ONLY:
+        return False
+    if not is_oneway(tags) or divided:
+        values = cycleway_values(tags)
+        if values & PAINTED_CYCLEWAY and not values & SEPARATED_CYCLEWAY:
+            if lanes is None:
+                lanes = lanes_per_direction(tags) or DEFAULT_LANES_PER_DIRECTION
+            return lanes >= PAINTED_LANE_FLOOR_LANES
+    return False
+
+
 def lane_is_buffered(tags: dict[str, str], cycleways: set[str]) -> bool:
     """A painted lane with a buffer: `buffered_lane`, or a buffer tag that is not "no"."""
     if "buffered_lane" in cycleways:
@@ -895,8 +921,18 @@ def rural_floor(result: StressResult, tags: dict[str, str], urban: bool) -> Stre
 USE_SIDEPATH_RULE = "legal but avoid: riders asked to use the side path"
 
 
+# A motorway a bicycle may ride (review RL-6): rare here, and the road the
+# expressway rule is about at its most extreme, so it is "legal but avoid" too
+# rather than an ordinary LTS 4. Open by an explicit grant only: a motorway is
+# closed to bicycles by default, and unclear access is closed.
+MOTORWAY_AVOID_RULE = "legal but avoid: motorway open to bicycles"
+MOTORWAY_OPEN_BICYCLE = frozenset({"yes", "designated", "permissive", "official"})
+
+
 def legal_but_avoid(tags: dict[str, str]) -> str | None:
     """Why a way is "legal but avoid", or None. Posted speed only: never assumed."""
+    if tags.get("highway") in MOTOR_ONLY and tags.get("bicycle") in MOTORWAY_OPEN_BICYCLE:
+        return MOTORWAY_AVOID_RULE
     if tags.get("highway") not in AVOID_HIGHWAY or tags.get("expressway") != "yes":
         return None
     posted = parse_maxspeed_mph(tags.get("maxspeed"))
@@ -1126,6 +1162,13 @@ def _classify(
         if width is not None and parking is True and parking_width_m:
             table_width = width + parking_width_m
         tier, rule = _bike_lane_tier(speed_mph, scored_lanes, table_width, parking)
+        if painted_lane_two_way_multilane(tags, divided, lanes) and tier < Stress.LTS3:
+            # The owner, 2026-10-16 (review RL-3): a painted lane beside two or
+            # more through lanes each way on a two-way street stays LTS 3; the
+            # urban single-lane row above is mixed traffic's relief, not the
+            # lane's. Where DDOT or Montgomery rate the road, theirs wins
+            # (`agency_lts`), and the rebuild lists both for the owner.
+            tier, rule = Stress.LTS3, rule + f", {PAINTED_LANE_FLOOR}"
         if (
             FURTH_LANE_NO_CREDIT_MPH <= speed_mph <= DECENT_LANE_MAX_MPH
             and lanes < DECENT_LANE_MAX_LANES
@@ -1233,6 +1276,11 @@ def _classify(
                     shoulder_parking,
                     facility="paved shoulder",
                 )
+                if not oneway and lanes >= PAINTED_LANE_FLOOR_LANES and shoulder_tier < Stress.LTS3:
+                    # The painted lane's RL-3 floor, so a shoulder never rates a
+                    # road below the same road with a lane (the hierarchy above).
+                    shoulder_tier = Stress.LTS3
+                    shoulder_rule = shoulder_rule + f", {PAINTED_LANE_FLOOR}"
                 shoulder_table_tier = shoulder_tier
                 if shoulder_tier < tier:
                     tier, rule = shoulder_tier, shoulder_rule
