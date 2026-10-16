@@ -6884,3 +6884,31 @@ the other scripts (tests/test_cloud_launch.py; its first real run is the first t
 meets EC2 and SSM), and the command against a real PostGIS
 (tests/test_import_cloud_build.py). The first run on the box is the first real one, so
 keep its log and read the dry run before `--swap`.
+
+## Phone app (v0.8.0)
+
+The Android app in `mobile/` names no site in any build: the repository is public, and so are its
+Actions artifacts, so a server's address must not be in one. On first launch the app asks for the
+site's address (https only), checks it against `/healthz`, and keeps it in the app's preferences on
+that phone; touching and holding the app's icon and choosing "Site address", or clearing the app's
+storage in Android's settings, asks again. On the beta, the app then shows its own sign-in box for the
+basic-auth password, which it hands to the WebView for that run and never stores. `ROUTEMAKER_URL`
+builds an address in for a local build only; it is never set in CI, and the workflow fails if the
+synced config names a site.
+
+Builds: Actions, "Android app" (`.github/workflows/android.yml`). A pull request that touches
+`mobile/` or the workflow runs the app's tests and builds a debug APK (no secrets, no site address);
+by hand (`workflow_dispatch`), `debug` for a sideloaded test APK or `release` for a signed APK and
+Play bundle. The workflow uses
+no repository variables. The release key is four repository secrets the owner adds:
+`ROUTEMAKER_KEYSTORE_BASE64`, `ROUTEMAKER_KEYSTORE_PASSWORD`, `ROUTEMAKER_KEY_ALIAS`,
+`ROUTEMAKER_KEY_PASSWORD`; never a file in the repository. A Play id of the owner's own
+(`ROUTEMAKER_APP_ID`) is set in a local build. Changes under `mobile/` never trigger a beta deploy
+(`scripts/beta/cd_logic.py`).
+
+The server needs nothing for it: the WebView loads the site at its own origin, so cookies, CSRF and
+the API are a phone browser's, and Discord sign-in stays inside the app. The app works with the site
+already deployed: before v0.8.0 its compatibility layer gives the old Ride mode native location and
+voice; from v0.8.0 the site's own bridge does, with the cue notification. Deploying v0.8.0 needs no
+app rebuild. Install steps, permissions, privacy, TalkBack and what to check on a first ride:
+`mobile/README.md`. iOS can be added later from the same shell.

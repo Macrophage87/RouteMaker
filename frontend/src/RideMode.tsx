@@ -72,15 +72,14 @@ import {
   OUTPUT_LABELS,
   ScreenWake,
   Voice,
-  browserSpeech,
-  browserWake,
   toScreenReader,
   toVoice,
   type CueOutput,
   type RidePrefs,
   type Said,
 } from "./lib/rideOutput.ts";
-import { WAITING_FOR_GPS, browserRideEnv, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
+import { WAITING_FOR_GPS, watchRide, type RideGeoEnv } from "./lib/rideWatch.ts";
+import { rideGeoEnv, rideSpeech, rideWake, ridesHidden, showCue, speaksAloud } from "./lib/nativeShell.ts";
 import {
   DETOUR_BUSY,
   DETOUR_FULL,
@@ -139,8 +138,11 @@ import {
 import { RIDE_311_NAME, RIDE_311_TEXT, Ride311Menu, ride311Shown } from "./lib/ride311.ts";
 import { Icon } from "./Icon.tsx";
 
-/** One voice for the page: the Start ride press unlocks it (iOS speaks only after a gesture has). */
-export const rideVoice = new Voice(browserSpeech());
+/**
+ * One voice for the page: the Start ride press unlocks it (iOS speaks only after a gesture has). Web
+ * Speech in a browser; in the phone app (v0.8.0), the native voice, which goes on with the screen locked.
+ */
+export const rideVoice = new Voice(rideSpeech());
 
 /** Said as the ride starts, inside the Start press, so the voice is unlocked by it. */
 export const RIDE_STARTED = "Ride started.";
@@ -192,8 +194,12 @@ export const GPS_LOST_MS = 30_000;
 export const GPS_LOST_SAID = "No GPS signal: the cues are paused until it comes back.";
 
 /** The rider's responsibility and the battery, said before the first ride (plan sections 5 and 10). */
-export const RIDE_SAFETY =
+export const RIDE_SAFETY_BROWSER =
   "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. It needs the screen on and this page in front, and GPS with a lit screen drains the battery quickly.";
+/** In the phone app (v0.8.0) the cues go on with the screen locked, so the screen sentence is not said. */
+export const RIDE_SAFETY_APP =
+  "Ride mode guides you along the planned route; you stay responsible for riding safely and obeying the rules of the road, and the route can be wrong. In this app the cues go on with the screen locked until you end the ride, and GPS drains the battery.";
+export const RIDE_SAFETY = ridesHidden() ? RIDE_SAFETY_APP : RIDE_SAFETY_BROWSER;
 
 /** Called inside the Start ride press: unlock the voice with the first sentence, where the rider chose it. */
 export function startRideGesture(prefs: RidePrefs): void {
@@ -629,14 +635,18 @@ export function RideMode({
     noteInput.current?.focus();
   }, [reportOpen]);
   const gate = useRef(new ReplanGate()).current;
-  const wake = useRef(new ScreenWake(browserWake())).current;
-  const env = useRef(geoEnv ?? browserRideEnv()).current;
+  // In the phone app (lib/nativeShell.ts) the lock and the watch are the native ones; in a browser, the browser's.
+  const wake = useRef(new ScreenWake(rideWake())).current;
+  const env = useRef(geoEnv ?? rideGeoEnv()).current;
 
   // The outputs: the screen reader's regions and the voice, as the rider chose; through the throttle.
   const deliver = useCallback((said: Said) => {
     const output = prefsRef.current.output;
     if (toScreenReader(output)) (said.urgent ? setAssertive : setPolite)((s) => ({ text: said.text, count: s.count + 1 }));
-    if (toVoice(output)) rideVoice.speak(said.text, said.urgent);
+    // The voice as chosen; in the phone app also "my screen reader" while the page is hidden (nativeShell.ts).
+    if (speaksAloud(output, document.visibilityState === "hidden")) rideVoice.speak(said.text, said.urgent);
+    // The phone app's cue notification on Android (nothing in a browser).
+    showCue(said.text);
   }, []);
   const announcer = useRef<Announcer | null>(null);
   if (announcer.current === null) announcer.current = new Announcer(deliver);
@@ -859,6 +869,8 @@ export function RideMode({
     let timer: number | undefined;
     const onVisibility = () => {
       if (document.visibilityState === "hidden") {
+        // The phone app keeps the ride going with the screen locked (lib/nativeShell.ts): no pause there.
+        if (ridesHidden()) return;
         timer = window.setTimeout(() => {
           stopWatch.current?.();
           stopWatch.current = null;
