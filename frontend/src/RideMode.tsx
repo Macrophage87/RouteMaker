@@ -137,6 +137,18 @@ import {
 } from "./lib/report311.ts";
 import { RIDE_311_NAME, RIDE_311_TEXT, Ride311Menu, ride311Shown } from "./lib/ride311.ts";
 import { Icon } from "./Icon.tsx";
+import { DepartureTimer } from "./DepartureTimer.tsx";
+import {
+  RIDE_REST,
+  RIDE_REST_FINDING,
+  RIDE_REST_HINT,
+  approachReached,
+  approachWords,
+  restNear,
+  restReadySaid,
+  withFinish,
+  type RideTrip,
+} from "./lib/rideTrip.ts";
 
 /** One voice for the page: the Start ride press unlocks it (iOS speaks only after a gesture has). */
 export const rideVoice = new Voice(browserSpeech());
@@ -432,6 +444,8 @@ export function RideMode({
   water,
   geoEnv,
   keepLastRide = false,
+  trip = null,
+  onRideRest,
 }: {
   route: RouteResponse;
   /** The points the route was planned with, and whether it is a loop: what a re-plan builds on. */
@@ -458,6 +472,13 @@ export function RideMode({
    * handed to the last ride's kept route before it is cleared. Read once, at Start ride.
    */
   keepLastRide?: boolean;
+  /**
+   * A Bikeshare or transit plan's riding leg (lib/rideTrip.ts): the walk to the first dock said until the
+   * rider reaches it (never "off route"), and the dock or the boarding said at the end. Null otherwise.
+   */
+  trip?: RideTrip | null;
+  /** Ride the rest: plans the trip's last riding leg from `here` and starts it; else the words to say why not. */
+  onRideRest?: (here: LonLat | null) => Promise<string | null>;
 }) {
   const [route, setRoute] = useState(plannedRoute);
   // What a re-plan builds on: the plan's points at first, then the last re-plan's (never a loop: its end is sent).
@@ -467,6 +488,11 @@ export function RideMode({
   const modelRef = useRef(model);
   modelRef.current = model;
   const [ride, setRide] = useState<RideState>(startState);
+  // A Bikeshare or transit plan's walk to its first dock (lib/rideTrip.ts): until the rider reaches the
+  // line's start, the walk is said and shown, and no fix is taken as off route.
+  const approach = trip?.approach ?? null;
+  const [walking, setWalking] = useState(approach !== null);
+  const walkingRef = useRef(walking);
   const rideRef = useRef(ride);
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
@@ -773,11 +799,23 @@ export function RideMode({
       if (weighed.sayNow) notify(GPS_WEAK_SAID);
       setGps(weighed.weak ? GPS_WEAK_SAID : "");
       checkCueSheet(lastFixAt.current);
+      if (walkingRef.current && approach) {
+        if (!approachReached(modelRef.current, approach, fix)) {
+          // Walking to the dock: the marker moves; nothing is placed on the line or taken as off route.
+          const walked = { ...rideRef.current, fix, goodFix: fix.accuracyM <= POOR_FIX_M ? fix : rideRef.current.goodFix };
+          rideRef.current = walked;
+          setRide(walked);
+          return;
+        }
+        walkingRef.current = false;
+        setWalking(false);
+        notify(approach.reached);
+      }
       const auto = !keepRef.current;
       const out = step(modelRef.current, rideRef.current, fix, prefsRef.current.verbosity, auto);
       rideRef.current = out.state;
       setRide(out.state);
-      say(out.events);
+      say(withFinish(out.events, trip?.finish ?? null));
       // Back on the planned route: "Keep" has done its work; leaving it again re-plans as usual.
       if (out.events.some((e) => e.kind === "back-on-route") || (keepRef.current && !out.state.off)) setKeepPlanned(false);
       // Never from a poor fix: a re-plan from a Wi-Fi guess 300 m out would be wrong at once.
@@ -787,7 +825,7 @@ export function RideMode({
         announcer.current?.answer(whereAmI(modelRef.current, out.state));
       }
     },
-    [gate, replan, say, notify, checkCueSheet],
+    [gate, replan, say, notify, checkCueSheet, approach, trip],
   );
   const onFixRef = useRef(onFix);
   onFixRef.current = onFix;
@@ -840,6 +878,11 @@ export function RideMode({
       // The voice is not stopped here: End ride says "Ride ended." as the ride goes (end, below).
     };
   }, [startWatch, wake, noteWake]);
+  // The walk to the first dock, said once as the ride starts (after "Ride started.").
+  useEffect(() => {
+    if (approach) notify(approachWords(approach, null).spoken);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, at the start
+  }, []);
 
   // The page hidden and shown again (plan section 5): the lock again, a fresh place said once; hidden
   // over HIDDEN_STOP_MS, the watch stops and Resume is offered.
@@ -933,13 +976,40 @@ export function RideMode({
     whereRef.current?.focus();
   };
   const askWhere = useCallback(() => {
-    const spoken = whereAmI(modelRef.current, rideRef.current);
-    setWhere(whereAmI(modelRef.current, rideRef.current, true));
+    // Walking to the dock: the walk, from here.
+    const walk = walkingRef.current && approach ? approachWords(approach, rideRef.current.fix?.point ?? null) : null;
+    const spoken = walk ? walk.spoken : whereAmI(modelRef.current, rideRef.current);
+    setWhere(walk ? walk.shown : whereAmI(modelRef.current, rideRef.current, true));
     // On demand: through the chosen outputs; with neither chosen, through the polite region too, since
     // the rider asked (the answer is also on screen).
     announcer.current?.answer(spoken);
     if (prefsRef.current.output === "neither") setPolite((s) => ({ text: spoken, count: s.count + 1 }));
-  }, []);
+  }, [approach]);
+  // Ride the rest (lib/rideTrip.ts): offered near or past the stop where the transit ends, said once as it
+  // shows; the press is answered as Re-plan from here's is, and a new ride replaces this one.
+  const rest = trip?.rest ?? null;
+  const restShown = !!rest && !!onRideRest && !walking && restNear(rest, ride.fix?.point ?? null, ride.arrived);
+  const restSaid = useRef(false);
+  useEffect(() => {
+    if (!restShown || !rest || restSaid.current) return;
+    restSaid.current = true;
+    notify(restReadySaid(rest));
+  }, [restShown, rest, notify]);
+  const restBusy = useRef(false);
+  const rideTheRest = () => {
+    if (!onRideRest || restBusy.current) return;
+    const answer = (text: string) => {
+      announcer.current?.answer(text);
+      if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
+    };
+    restBusy.current = true;
+    answer(RIDE_REST_FINDING);
+    const here = rideRef.current.goodFix?.point ?? rideRef.current.fix?.point ?? null;
+    void onRideRest(here).then((said) => {
+      restBusy.current = false;
+      if (said && !ended.current) answer(said);
+    });
+  };
   const end = () => {
     ended.current = true;
     stopWatch.current?.();
@@ -1118,7 +1188,13 @@ export function RideMode({
           </button>
         </div>
         {ride.arrived ? (
-          <p className="cue-text">{cueSpoken(model.cues[model.cues.length - 1], "arrive", 0)}</p>
+          <>
+            <p className="cue-text">{trip?.finish?.shown ?? cueSpoken(model.cues[model.cues.length - 1], "arrive", 0)}</p>
+            {/* The boarding's departure, its countdown and milestones as in the trip's panel (said through the ride's outputs). */}
+            {trip?.departure && <DepartureTimer departure={trip.departure} announce={notify} />}
+          </>
+        ) : walking && approach ? (
+          <p className="cue-text">{approachWords(approach, ride.fix?.point ?? null).shown}</p>
         ) : ride.off ? (
           <div className="cue-off">
             <CueShape shape="warn" />
@@ -1239,6 +1315,16 @@ export function RideMode({
             <button type="button" className="secondary" onClick={keep} aria-pressed={keepPlanned}>
               Keep the planned route
             </button>
+          </div>
+        )}
+        {restShown && (
+          <div className="actions ride-rest">
+            <button type="button" onClick={rideTheRest} aria-describedby={`${settingsId}-rest`}>
+              {RIDE_REST}
+            </button>
+            <p id={`${settingsId}-rest`} className="hint">
+              {RIDE_REST_HINT}
+            </p>
           </div>
         )}
         {!follow && !big && <p className="hint">The map stopped following you. Re-centre follows again.</p>}

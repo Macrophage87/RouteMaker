@@ -27,6 +27,7 @@ import {
 } from "./lib/transit.ts";
 import { Icon } from "./Icon.tsx";
 import { DepartureTimer } from "./DepartureTimer.tsx";
+import { RIDE_REST, RIDE_REST_HINT } from "./lib/rideTrip.ts";
 
 function Swatch({ colour, dash, width }: { colour: string; dash: [number, number]; width: number }) {
   return (
@@ -45,6 +46,7 @@ export function TransitSummary({
   announce,
   onMissed,
   lineSpans,
+  onRideRest,
 }: {
   plan: TransitPlan;
   /** The route's own stress sections: its line is the first ride's, said in that step's words. */
@@ -59,6 +61,8 @@ export function TransitSummary({
   announce?: (text: string) => void;
   /** The departure would be missed: plan again, for the next one. */
   onMissed?: () => void;
+  /** Ride the rest (lib/rideTrip.ts), where the trip has a riding leg after its transit. */
+  onRideRest?: () => void;
 }) {
   const id = useId();
   return (
@@ -113,6 +117,16 @@ export function TransitSummary({
           );
         })}
       </ol>
+      {onRideRest && (
+        <div className="actions transit-rest">
+          <button type="button" className="secondary" onClick={onRideRest} aria-describedby={`${id}-rest`}>
+            {RIDE_REST}
+          </button>
+          <p id={`${id}-rest`} className="hint">
+            {RIDE_REST_HINT}
+          </p>
+        </div>
+      )}
       {(plan.notes.length > 0 || (plan.live?.alerts.length ?? 0) > 0) && (
         <ul className="transit-notes" aria-label="Notes on this plan">
           {(plan.live?.alerts ?? []).map((alert) => (
