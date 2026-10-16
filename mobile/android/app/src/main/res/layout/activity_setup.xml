@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The first-launch screen (SetupActivity): one labelled field, one button, one status line that
+     TalkBack reads as it changes (a polite live region). -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:fitsSystemWindows="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="24dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:accessibilityHeading="true"
+            android:text="@string/setup_title"
+            android:textAppearance="@style/TextAppearance.AppCompat.Headline" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/setup_about"
+            android:textAppearance="@style/TextAppearance.AppCompat.Body1"
+            android:textSize="18sp" />
+
+        <TextView
+            android:id="@+id/site_url_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:labelFor="@+id/site_url"
+            android:text="@string/setup_label"
+            android:textAppearance="@style/TextAppearance.AppCompat.Body2"
+            android:textSize="18sp" />
+
+        <EditText
+            android:id="@+id/site_url"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:autofillHints="url"
+            android:hint="@string/setup_hint"
+            android:imeOptions="actionGo"
+            android:importantForAutofill="yes"
+            android:inputType="textUri"
+            android:maxLines="1"
+            android:textSize="18sp" />
+
+        <Button
+            android:id="@+id/site_go"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:minHeight="48dp"
+            android:text="@string/setup_go"
+            android:textSize="18sp" />
+
+        <TextView
+            android:id="@+id/site_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:accessibilityLiveRegion="polite"
+            android:textAppearance="@style/TextAppearance.AppCompat.Body1"
+            android:textSize="18sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="@string/setup_change"
+            android:textAppearance="@style/TextAppearance.AppCompat.Caption"
+            android:textSize="16sp" />
+    </LinearLayout>
+</ScrollView>

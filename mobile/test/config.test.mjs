@@ -6,23 +6,26 @@ import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
-const { buildConfig, siteUrl, PLACEHOLDER_URL } = require("../site-config.js");
+const { buildConfig, siteUrl } = require("../site-config.js");
 const here = (path) => fileURLToPath(new URL(path, import.meta.url));
 
-test("without ROUTEMAKER_URL the placeholder: plainly not a release, and no real address committed", () => {
+test("no site address in the build: the app asks for it on first launch", () => {
   const config = buildConfig({});
-  assert.equal(config.server.url, PLACEHOLDER_URL);
-  assert.equal(PLACEHOLDER_URL, "https://routes.example.org");
-  assert.equal(siteUrl({}).placeholder, true);
-  assert.equal(config.server.cleartext, false);
+  assert.equal(config.server.url, undefined, "no server.url: the bundled www/index.html until an address is kept");
+  assert.equal(config.server.cleartext, undefined);
+  assert.equal(siteUrl({}), null);
+  assert.equal(siteUrl({ ROUTEMAKER_URL: "  " }), null);
   assert.equal(config.server.errorPath, "offline.html");
   assert.deepEqual(config.server.allowNavigation, ["discord.com"], "the sign-in round trip only");
   assert.ok(existsSync(here("../www/offline.html")));
+  assert.ok(existsSync(here("../www/index.html")));
+  // The bundled page is a placeholder: no script, nothing sent.
+  assert.doesNotMatch(readFileSync(here("../www/index.html"), "utf8"), /<script|https?:\/\//);
 });
 
-test("ROUTEMAKER_URL: an https origin only; http only for a development server, asked for by name", () => {
+test("ROUTEMAKER_URL, a local build's override: an https origin only; http only for a development server, asked for by name", () => {
   assert.equal(buildConfig({ ROUTEMAKER_URL: " https://beta.example.net/ " }).server.url, "https://beta.example.net");
-  assert.equal(siteUrl({ ROUTEMAKER_URL: "https://beta.example.net" }).placeholder, false);
+  assert.equal(buildConfig({ ROUTEMAKER_URL: "https://beta.example.net" }).server.cleartext, false);
   assert.throws(() => siteUrl({ ROUTEMAKER_URL: "http://10.0.2.2:5173" }), /https/);
   const dev = buildConfig({ ROUTEMAKER_URL: "http://10.0.2.2:5173", ROUTEMAKER_ALLOW_HTTP: "1" });
   assert.equal(dev.server.url, "http://10.0.2.2:5173");
@@ -32,6 +35,11 @@ test("ROUTEMAKER_URL: an https origin only; http only for a development server, 
   assert.throws(() => siteUrl({ ROUTEMAKER_URL: "https://user:pw@beta.example.net" }), /origin alone/);
   assert.throws(() => siteUrl({ ROUTEMAKER_URL: "javascript:alert(1)" }), /https/);
   assert.throws(() => siteUrl({ ROUTEMAKER_URL: "not a url" }), /not a URL/);
+});
+
+test("ROUTEMAKER_URL is refused in CI: an Actions artifact of a public repository must name no server", () => {
+  assert.throws(() => buildConfig({ CI: "true", ROUTEMAKER_URL: "https://beta.example.net" }), /local builds only/);
+  assert.equal(buildConfig({ CI: "true" }).server.url, undefined);
 });
 
 test("Android: the legacy bridge the background-location plugin needs; the inspector only when asked", () => {
@@ -80,5 +88,33 @@ test("release signing and the store id come from the environment; no key in the 
   const workflow = readFileSync(here("../../.github/workflows/android.yml"), "utf8");
   assert.match(workflow, /^on:\s*\n\s+workflow_dispatch:/m, "run by hand only");
   assert.doesNotMatch(workflow, /^\s+(pull_request|push):/m);
-  assert.match(workflow, /vars\.ROUTEMAKER_URL/);
+  // No repository variable, no address: the build names no server, and checks that it does not.
+  assert.doesNotMatch(workflow, /vars\./);
+  assert.doesNotMatch(workflow, /^\s+ROUTEMAKER_URL:/m);
+  assert.match(workflow, /No site address in the build/);
+});
+
+test("the first-launch screen: labelled for screen readers, https only, checked against /healthz, kept on the phone", () => {
+  const layout = readFileSync(here("../android/app/src/main/res/layout/activity_setup.xml"), "utf8");
+  assert.match(layout, /android:labelFor="@\+id\/site_url"/);
+  assert.match(layout, /android:id="@\+id\/site_url"[\s\S]*?android:inputType="textUri"/);
+  assert.match(layout, /android:accessibilityLiveRegion="polite"/, "status and errors are read out");
+  assert.match(layout, /android:accessibilityHeading="true"/);
+  const login = readFileSync(here("../android/app/src/main/res/layout/dialog_site_login.xml"), "utf8");
+  assert.match(login, /android:labelFor="@\+id\/login_user"/);
+  assert.match(login, /android:labelFor="@\+id\/login_password"/);
+  assert.match(login, /android:inputType="textPassword"/);
+  const java = (name) => readFileSync(here(`../android/app/src/main/java/org/routemaker/phone/${name}.java`), "utf8");
+  const address = java("SiteAddress");
+  assert.match(address, /PROBE_PATH = "\/healthz"/);
+  assert.match(readFileSync(here("../../src/config/urls.py"), "utf8"), /path\("healthz", health\.healthz/);
+  assert.match(java("SiteStore"), /getSharedPreferences\(PREFS, Context\.MODE_PRIVATE\)/);
+  // The basic-auth password is handed to the WebView for this run only, never kept by the app.
+  const auth = java("SiteWebViewClient");
+  assert.match(auth, /handler\.proceed\(/);
+  assert.doesNotMatch(auth, /setHttpAuthUsernamePassword|SharedPreferences|putString/);
+  // The launcher is the first-launch screen; the site's activity is not exported.
+  const manifest = readFileSync(here("../android/app/src/main/AndroidManifest.xml"), "utf8");
+  assert.match(manifest, /android:name="\.SetupActivity"[\s\S]*?android\.intent\.category\.LAUNCHER/);
+  assert.match(manifest, /android:name="\.MainActivity"[\s\S]*?android:exported="false"/);
 });

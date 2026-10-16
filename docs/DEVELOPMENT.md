@@ -7875,7 +7875,11 @@ none sent is a participant) and answers each dot's `role`. Still no name, token 
 The owner, 2026-10-16: a standalone app is needed for bikeshare riding with the phone in a pocket,
 because a browser's cues stop when the screen is off. `mobile/` is a thin Android app (Capacitor 8)
 that opens the live site; `mobile/README.md` is the full account (install, workflow, permissions,
-screen readers). The site's side:
+screen readers). No build carries the site's address (a public repository's Actions artifacts are
+public): the app's first-launch screen (`SetupActivity.java`) asks for it, https only, checks it
+against `/healthz` (`SiteAddress.java`, unit-tested in `app/src/test`) and keeps it in the app's
+preferences; `ROUTEMAKER_URL` is a local build's override only, refused when `CI` is set. The site's
+side:
 
 - `frontend/src/lib/nativeShell.ts` finds the shell through the injected `window.Capacitor`
   (`isNativePlatform()`, `nativePromise`, `nativeCallback`); no Capacitor package is in
@@ -7891,7 +7895,11 @@ screen readers). The site's side:
   page is hidden (TalkBack reads nothing of a hidden page, so nothing is said twice). `RIDE_SAFETY`
   drops "needs the screen on" in the app. RideGroup's own watch stays the browser's.
 - The page is marked `window.__routemakerNativeShell`, so the app's compatibility layer for sites older
-  than v0.8.0 (`mobile/android/app/src/main/assets/routemaker-compat.js`) stands aside.
+  than v0.8.0 (`mobile/android/app/src/main/assets/routemaker-compat.js`) stands aside. That layer
+  hands a watch to background location only when Ride mode's screen
+  (`section.ride[aria-labelledby="ride-heading"]`) is on the page as it starts, never Group or Mass
+  Ride sharing; keep that section's class and label, or update the layer and `mobile/test/compat.test.mjs`
+  (which reads `RideMode.tsx` and `RideGroup.tsx`) with them.
 - Tests: `frontend/src/lib/nativeShell.test.ts` (browser fallbacks, the watch, the notification's
   order and silence, the voice's turn-taking, the wake lock, no Capacitor import) and
   `rideWatch.test.ts` (nativeShell.ts is the one other `watchPosition`, held to the same no-leak rule);

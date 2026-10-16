@@ -2,8 +2,12 @@ name: Android app
 
 # The phone app (mobile/, v0.8.0): run by hand only (Actions, "Android app", Run workflow), never on a
 # push or a pull request. A debug build is debug-signed and installs by sideloading; a release build
-# needs the four ROUTEMAKER_KEYSTORE/KEY secrets (mobile/README.md). The site's address is the
-# repository variable ROUTEMAKER_URL; it is never committed.
+# needs the four ROUTEMAKER_KEYSTORE/KEY secrets (mobile/README.md).
+#
+# No build carries a site address: this repository is public, and so are its Actions artifacts (any
+# signed-in GitHub user can download them), so nothing here may name a server. The app asks for the
+# address on first launch and keeps it on the phone. ROUTEMAKER_URL is for local builds only: it is
+# never set here, site-config.js refuses it when CI is set, and the step after `cap sync` checks it.
 on:
   workflow_dispatch:
     inputs:
@@ -28,8 +32,6 @@ jobs:
       run:
         working-directory: mobile
     env:
-      ROUTEMAKER_URL: ${{ vars.ROUTEMAKER_URL }}
-      ROUTEMAKER_APP_ID: ${{ vars.ROUTEMAKER_APP_ID }}
       ROUTEMAKER_VERSION_CODE: ${{ github.run_number }}
       ROUTEMAKER_DEBUG: ${{ inputs.inspector && '1' || '0' }}
     steps:
@@ -43,15 +45,16 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-      - name: The site's address
-        run: |
-          if [ -z "$ROUTEMAKER_URL" ]; then
-            echo "::warning::The repository variable ROUTEMAKER_URL is not set: this build loads the placeholder https://routes.example.org and shows the no-connection page."
-          fi
       - run: npm ci
       - run: npm test
-      # Writes the resolved config (with the address) and the plugin projects into android/; none of it is committed.
+      # Writes the resolved config and the plugin projects into android/; none of it is committed.
       - run: npx cap sync android
+      - name: No site address in the build
+        run: |
+          node -e '
+            const c = require("./android/app/src/main/assets/capacitor.config.json");
+            if (c.server && c.server.url) { console.error("::error::The config names a site; a CI build must not."); process.exit(1); }
+          '
       - name: Debug APK
         if: inputs.build == 'debug'
         working-directory: mobile/android

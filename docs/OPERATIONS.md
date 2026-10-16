@@ -6771,12 +6771,22 @@ keep its log and read the dry run before `--swap`.
 
 ## Phone app (v0.8.0)
 
-The Android app in `mobile/` opens the site named by the repository variable `ROUTEMAKER_URL`; the
-address is never committed. Builds are by hand: Actions, "Android app" (`.github/workflows/android.yml`,
-`workflow_dispatch` only), `debug` for a sideloaded test APK, `release` for a signed APK and Play
-bundle. The release key is four repository secrets the owner adds: `ROUTEMAKER_KEYSTORE_BASE64`,
-`ROUTEMAKER_KEYSTORE_PASSWORD`, `ROUTEMAKER_KEY_ALIAS`, `ROUTEMAKER_KEY_PASSWORD`; never a file in
-the repository. Optional variable: `ROUTEMAKER_APP_ID` (the Play id).
+The Android app in `mobile/` names no site in any build: the repository is public, and so are its
+Actions artifacts, so a server's address must not be in one. On first launch the app asks for the
+site's address (https only), checks it against `/healthz`, and keeps it in the app's preferences on
+that phone; touching and holding the app's icon and choosing "Site address", or clearing the app's
+storage in Android's settings, asks again. On the beta, the app then shows its own sign-in box for the
+basic-auth password, which it hands to the WebView for that run and never stores. `ROUTEMAKER_URL`
+builds an address in for a local build only; it is never set in CI, and the workflow fails if the
+synced config names a site.
+
+Builds are by hand: Actions, "Android app" (`.github/workflows/android.yml`, `workflow_dispatch`
+only), `debug` for a sideloaded test APK, `release` for a signed APK and Play bundle. The workflow uses
+no repository variables. The release key is four repository secrets the owner adds:
+`ROUTEMAKER_KEYSTORE_BASE64`, `ROUTEMAKER_KEYSTORE_PASSWORD`, `ROUTEMAKER_KEY_ALIAS`,
+`ROUTEMAKER_KEY_PASSWORD`; never a file in the repository. A Play id of the owner's own
+(`ROUTEMAKER_APP_ID`) is set in a local build. Changes under `mobile/` never trigger a beta deploy
+(`scripts/beta/cd_logic.py`).
 
 The server needs nothing for it: the WebView loads the site at its own origin, so cookies, CSRF and
 the API are a phone browser's, and Discord sign-in stays inside the app. The app works with the site

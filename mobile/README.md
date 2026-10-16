@@ -25,7 +25,8 @@ background modes); the web side is already platform-neutral.
 
 ## How a test APK gets working cues before v0.8.0 is deployed
 
-The app loads whatever site `ROUTEMAKER_URL` names, so it has to work with the code that site runs.
+The app loads whatever site the rider typed on first launch, so it has to work with the code that
+site runs.
 There are two layers, and exactly one of them is active on any page:
 
 1. **The site's own bridge, from v0.8.0** (`frontend/src/lib/nativeShell.ts`). It detects the shell
@@ -36,12 +37,23 @@ There are two layers, and exactly one of them is active on any page:
 2. **The app's compatibility layer, for a site older than v0.8.0**
    (`android/app/src/main/assets/routemaker-compat.js`, injected at document start for the site's
    origin only by `RideCompatPlugin.java`). The old Ride mode knows nothing of the app, so this layer
-   swaps the browser APIs it already calls: `navigator.geolocation.watchPosition`/`clearWatch` go to
-   the background-location plugin, `speechSynthesis` goes to the native voice, and while a native watch
-   runs the page is told it is visible (so the old ten-minute pause never comes). Where the WebView has
-   no screen wake lock, it answers with a stand-in so the old page does not say "keep your screen on".
+   swaps the browser APIs it already calls: Ride mode's `navigator.geolocation.watchPosition`/
+   `clearWatch` go to the background-location plugin, `speechSynthesis` goes to the native voice, and
+   while a native ride watch runs with the page hidden, the old Ride mode's one ten-minute timer
+   (`HIDDEN_STOP_MS`) is not scheduled, so the old pause never comes. Where the WebView has no screen
+   wake lock, it answers with a stand-in so the old page does not say "keep your screen on".
    `getCurrentPosition` ("Use my location") is left alone. When the page carries the v0.8.0 mark, the
    layer stands aside entirely.
+
+   **Only Ride mode's watch goes native, never Group or Mass Ride location sharing** (`RideGroup.tsx`,
+   which promises to run only while the page is in front). Both use the same `watchRide` options, so
+   the call alone cannot tell them apart. A watch goes native only if Ride mode's screen
+   (`section.ride[aria-labelledby="ride-heading"]`) is on the page when it starts (Ride mode starts it
+   from that screen, at Start ride); any other watch is the WebView's own. Beyond that: the sites this
+   layer serves (v0.6 and v0.7) have Ride mode's watch as their only `watchPosition`, sharing arrived
+   with v0.8.0, whose own bridge marks the page (so the layer is off there and RideGroup's watch is the
+   browser's), and the layer never touches `visibilitychange`, so anything that stops when the page is
+   hidden still does. `test/compat.test.mjs` holds all of this.
 
 So a debug APK pointed at the current beta or live site should keep the GPS and the voice going with
 the screen locked today, without deploying anything. What the old site cannot have until v0.8.0 is
@@ -57,24 +69,58 @@ tile request cross-origin (CORS and cookie changes on the server, and MapLibre's
 go through Capacitor's native HTTP), and serving the bundle under the site's hostname makes
 Capacitor answer `/api` locally.
 
+## The site address: asked once, kept on the phone
+
+No build carries a site address. The repository is public, and so are its Actions artifacts (any
+signed-in GitHub user can download them), so an APK built there must not name a server. Instead, the
+first time RouteMaker opens it shows one screen, **"Which RouteMaker site?"**:
+
+- Type the site's address, such as `https://routes.example.org` (typing the name alone adds
+  `https://`). Only `https://` is accepted, and only the site itself (no `/page`, `?` or user name).
+- Continue checks it by fetching the site's public health path, `/healthz` (`200 ok`, or `503
+  degraded` while its database is down). A clear sentence says what is wrong otherwise: no answer
+  (no signal, no such name, a bad certificate) or "not a RouteMaker site". A site behind a password
+  (the beta's HTTP basic auth, which covers `/healthz` too) answers 401 asking for it; that is kept,
+  and the site's own sign-in box follows (below).
+- The address is kept in the app's private preferences on this phone only (never sent anywhere but
+  to that site, never in a backup: `allowBackup` is off).
+- For TalkBack: the screen has a heading, the field is labelled "Site address", and the checking
+  message and each error are read out as they appear (a polite live region).
+
+To change it: touch and hold the RouteMaker icon and choose **Site address**, or reset the app in
+Android's **Settings, Apps, RouteMaker, Storage, Clear storage** ("clear app data"). Clearing storage
+also clears the site's data in the app (sign-in, a saved Home), as uninstalling does; the next launch
+asks for the address again.
+
+**The beta's password (HTTP basic auth).** A WebView, unlike a browser, shows nothing when a site
+asks for a basic-auth password, so the app shows its own "Sign in to the site" box (user name and
+password, both labelled for TalkBack) for the kept site only; any other site's request is refused. The
+app never stores the password: it hands it to the WebView (`HttpAuthHandler.proceed`), which keeps it
+in memory until the app's process ends, and never calls `WebViewDatabase`'s saved-password store. So
+it is asked again after the app is closed or the phone restarts, never in the middle of a ride. The
+password fields carry autofill hints, so the rider's own password manager may offer to fill or save
+it; that is the rider's choice and outside the app.
+
 ## Installing a test build on an Android phone
 
-1. In the repository's **Settings, Secrets and variables, Actions, Variables**, add
-   `ROUTEMAKER_URL` = the site's origin (for example the beta's `https://...`, no path). Optional:
-   `ROUTEMAKER_APP_ID` (the Play Store id, a reverse domain you own; default `org.routemaker.phone`).
-2. **Actions, "Android app", Run workflow**, build `debug`. When it finishes, download the artifact
-   `routemaker-android-debug-N` (a zip holding `app-debug.apk`).
-3. On the phone, open the APK (from Files, Drive or a USB copy) and allow "Install unknown apps" for
+1. **Actions, "Android app", Run workflow**, build `debug`. When it finishes, download the artifact
+   `routemaker-android-debug-N` (a zip holding `app-debug.apk`). It names no site.
+2. On the phone, open the APK (from Files, Drive or a USB copy) and allow "Install unknown apps" for
    the app you opened it with. Play Protect may warn that the app is unknown; choose to install anyway.
-4. Open RouteMaker, plan a route, press Go and Start ride. Android asks for location ("While using the
-   app"), then, at the first cue, for notifications (Android 13+). Lock the phone and ride.
+3. Open RouteMaker and type the site's address (above); for the beta, sign in with its password when
+   asked.
+4. Plan a route, press Go and Start ride. Android asks for location ("While using the app"), then, at
+   the first cue, for notifications (Android 13+). Lock the phone and ride.
 
 Each workflow run signs its debug build with a fresh debug key, so a newer debug APK will not install
-over an older one: uninstall first (the site's data in the app, such as a Home, goes with it).
+over an older one: uninstall first (the site's data in the app, such as a Home, goes with it, and the
+next install asks for the site address again).
 
 What to check on the first ride (none of this could be tried here: there is no Android SDK or phone
 in the build environment):
 
+- the first-launch screen accepts the site's address (and, on the beta, the sign-in box takes its
+  password), refuses an `http://` one, and TalkBack reads its label and errors;
 - the "Riding with RouteMaker" notification appears at Start ride and goes at End ride;
 - cues keep coming with the phone locked in a pocket for more than ten minutes;
 - on a v0.8.0 site, the "Latest cue" notification follows the cues and clears at End ride;
@@ -106,17 +152,19 @@ the route request, as today). No analytics, no crash reporting, no tracking SDK.
 the network, location (fine and coarse, "while using the app"; never `ACCESS_BACKGROUND_LOCATION`),
 the location foreground service, and notifications; the local-notifications plugin's boot, exact-alarm
 and wake-lock permissions are removed, and `allowBackup` is off so the site's data in the app never
-goes to a cloud backup. `mobile/test/config.test.mjs` holds the permission list.
+goes to a cloud backup. The site address is kept in the app's private preferences only; the
+basic-auth password is never kept by the app (above). `mobile/test/config.test.mjs` holds the
+permission list.
 
 ## Building
 
 **Workflow** (`.github/workflows/android.yml`, run by hand only): Node 22, JDK 21, the runner's Android
-SDK; `npm ci`, `npm test`, `npx cap sync android`, then Gradle.
+SDK; `npm ci`, `npm test`, `npx cap sync android`, a check that the synced config names no site, then
+Gradle. It uses no repository variables: the build names no server, and its application id is
+`org.routemaker.phone`. Release signing needs these repository secrets:
 
 | Name | Kind | Used for |
 | --- | --- | --- |
-| `ROUTEMAKER_URL` | variable | the site's origin the app opens (required for a useful build) |
-| `ROUTEMAKER_APP_ID` | variable | the Android application id (optional) |
 | `ROUTEMAKER_KEYSTORE_BASE64` | secret | the release keystore, `base64 -w0 release.jks` |
 | `ROUTEMAKER_KEYSTORE_PASSWORD` | secret | its password |
 | `ROUTEMAKER_KEY_ALIAS` | secret | the key's alias |
@@ -134,24 +182,37 @@ Never commit it (`mobile/.gitignore` refuses `*.jks` and `*.keystore`).
 cd mobile
 npm ci
 npm test
-ROUTEMAKER_URL=https://your.site npx cap sync android
-cd android && ./gradlew assembleDebug    # app/build/outputs/apk/debug/app-debug.apk
+npx cap sync android
+cd android && ./gradlew test assembleDebug    # app/build/outputs/apk/debug/app-debug.apk
 ```
 
-`ROUTEMAKER_DEBUG=1` turns on Chrome's inspector (`chrome://inspect`). For a development server,
-`ROUTEMAKER_URL=http://10.0.2.2:5173 ROUTEMAKER_ALLOW_HTTP=1` (the emulator's address for the host);
-the resolved config, with the address, is written to `android/app/src/main/assets/capacitor.config.json`,
-which is git-ignored.
+Optional, for a local build only (never in CI; `site-config.js` refuses it when `CI` is set):
+`ROUTEMAKER_URL=https://your.site npx cap sync android` builds the address in, and the app then opens
+it without asking (the first-launch screen says so if opened). For a development server,
+`ROUTEMAKER_URL=http://10.0.2.2:5173 ROUTEMAKER_ALLOW_HTTP=1` (the emulator's address for the host).
+The resolved config, with the address, is written to `android/app/src/main/assets/capacitor.config.json`,
+which is git-ignored; run `npx cap sync android` again without it before building anything to share.
+Such an APK names the server: keep it off public places. `ROUTEMAKER_APP_ID` sets the application id
+(a reverse domain you own, for a Play listing) in a local build the same way.
+`ROUTEMAKER_DEBUG=1` turns on Chrome's inspector (`chrome://inspect`).
 
 ## Files
 
-- `site-config.js`: the Capacitor config built from the environment (`capacitor.config.js` calls it).
-- `www/offline.html`: shown when the site cannot be reached at launch.
-- `android/`: the generated Android project, plus `RideCompatPlugin.java`, `MainActivity.java` (which
-  registers it), `assets/routemaker-compat.js`, `res/drawable/ic_ride.xml` (the notifications' icon),
-  the manifest and `app/build.gradle` (store id, version and release signing from the environment).
-- `test/`: `npm test` (node's test runner): the config, the manifest, the workflow's trigger, and the
-  compatibility layer in a stand-in page. The site's bridge is tested in
+- `site-config.js`: the Capacitor config (`capacitor.config.js` calls it); no site address unless a
+  local build sets `ROUTEMAKER_URL`.
+- `www/offline.html`: shown when the site cannot be reached at launch; `www/index.html`: a placeholder
+  shown for a moment if the site's screen opens with no address kept.
+- `android/`: the generated Android project, plus, in `app/src/main/java/org/routemaker/phone/`:
+  `SetupActivity.java` (the launcher: the first-launch "Which RouteMaker site?" screen,
+  `res/layout/activity_setup.xml`), `SiteAddress.java` (the address and `/healthz` checks, unit-tested
+  in `app/src/test`), `SiteStore.java` (the app's preferences), `MainActivity.java` (puts the kept
+  address into Capacitor's config, registers the plugin below), `SiteWebViewClient.java` (the basic-auth
+  sign-in box, `res/layout/dialog_site_login.xml`) and `RideCompatPlugin.java`;
+  `assets/routemaker-compat.js`, `res/drawable/ic_ride.xml` (the notifications' icon), the manifest and
+  `app/build.gradle` (store id, version and release signing from the environment).
+- `test/`: `npm test` (node's test runner): the config, the manifest, the workflow (its trigger, no
+  repository variables, no address), the first-launch screen's labels, and the compatibility layer in
+  a stand-in page. `./gradlew test` runs `SiteAddressTest` (needs the Android SDK). The site's bridge is tested in
   `frontend/src/lib/nativeShell.test.ts`.
 
 Plugin versions are pinned in `package.json`. `@capacitor-community/background-geolocation` 1.2.26

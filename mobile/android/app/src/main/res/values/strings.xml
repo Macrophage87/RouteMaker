@@ -8,4 +8,24 @@
          a ride's watch runs; its title and text come from frontend/src/lib/nativeShell.ts). -->
     <string name="capacitor_background_geolocation_notification_channel_name">Riding with RouteMaker</string>
     <string name="capacitor_background_geolocation_notification_icon">drawable/ic_ride</string>
+
+    <!-- The first-launch screen (SetupActivity). -->
+    <string name="setup_title">Which RouteMaker site?</string>
+    <string name="setup_about">This app opens a RouteMaker website. Type its address once; it is kept on this phone only.</string>
+    <string name="setup_label">Site address</string>
+    <string name="setup_hint">https://routes.example.org</string>
+    <string name="setup_go">Continue</string>
+    <string name="setup_checking">Checking the site…</string>
+    <string name="setup_change">To change it later, touch and hold the RouteMaker icon and choose Site address, or clear the app\'s storage in Android\'s settings.</string>
+    <string name="setup_built_fixed">This build was made with its own site address, which it keeps using.</string>
+    <string name="shortcut_site_short">Site address</string>
+    <string name="shortcut_site_long">Change the site address</string>
+
+    <!-- The site's own password (HTTP basic auth). -->
+    <string name="login_title">Sign in to the site</string>
+    <string name="login_about">%1$s asks for a user name and password. They are used for this visit only.</string>
+    <string name="login_user">User name</string>
+    <string name="login_password">Password</string>
+    <string name="login_go">Sign in</string>
+    <string name="login_cancel">Cancel</string>
 </resources>

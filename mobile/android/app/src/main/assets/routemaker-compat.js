@@ -7,15 +7,26 @@
  * this layer gives its Ride mode the same three things from outside, through the browser APIs it
  * already calls:
  *
- * - navigator.geolocation.watchPosition / clearWatch: the background-geolocation plugin (fixes go on
- *   with the screen locked; Android's "Riding with RouteMaker" notification while a watch runs).
- *   getCurrentPosition ("Use my location") is the WebView's own, untouched.
+ * - navigator.geolocation.watchPosition / clearWatch, for Ride mode's navigation watch only: the
+ *   background-geolocation plugin (fixes go on with the screen locked; Android's "Riding with
+ *   RouteMaker" notification while it runs). A watch goes native only when Ride mode's screen
+ *   (`section.ride[aria-labelledby="ride-heading"]`, RideMode.tsx since v0.6) is on the page as it
+ *   starts: Ride mode starts its watch from that screen (the Start ride press). Any watch started
+ *   without that screen, and getCurrentPosition ("Use my location"), stay the WebView's own.
+ *   Group and Mass Ride location sharing (RideGroup.tsx) must never go native: it promises to run
+ *   only while the page is in front. The two watches use the same options, so they cannot be told apart
+ *   by the call; what keeps sharing out: (1) the sites this layer serves (v0.6 to v0.7) have Ride
+ *   mode's watch as their only watchPosition, and sharing arrived with v0.8.0, whose own bridge marks
+ *   the page, so this layer stands aside there; (2) the screen test above; (3) the page still hears
+ *   visibilitychange (never touched here), and sharing stops its watch when the page is hidden.
  * - speechSynthesis / SpeechSynthesisUtterance: the native text-to-speech plugin, which speaks with the
  *   screen locked.
- * - while a native watch runs, the page is told it is visible, so the old Ride mode's ten-minute
- *   "paused while the page was in the background" never comes; and navigator.wakeLock, where the
- *   WebView has none, answers with a lock that needs nothing, so the old page does not tell the rider
- *   to keep the screen on.
+ * - the old Ride mode's ten-minute pause: while a native ride watch runs and the page is hidden, its
+ *   one setTimeout of exactly HIDDEN_STOP_MS (10 minutes, RideMode.tsx) is not scheduled, so "Ride
+ *   paused while the page was in the background" never comes. The page still hears that it is hidden
+ *   (visibilitychange is never touched), so anything else on it that stops when hidden still does.
+ * - navigator.wakeLock, where the WebView has none, answers with a lock that needs nothing, so the old
+ *   page does not tell the rider to keep the screen on.
  *
  * Injected by RideCompatPlugin.java at document start, for the site's origin only, before Capacitor's
  * own bridge script: so window.Capacitor is looked up at each call, never at load. Nothing here stores,
@@ -48,6 +59,11 @@
   }
 
   // ---- The position --------------------------------------------------------------------------------
+  /** Ride mode's screen is on the page (its Start ride press starts the watch). */
+  function rideScreen() {
+    var doc = w.document;
+    return !!(doc && typeof doc.querySelector === "function" && doc.querySelector('section.ride[aria-labelledby="ride-heading"]'));
+  }
   var nativeWatches = {};
   var liveWatches = 0;
   var nextWatch = 1000000;
@@ -56,7 +72,7 @@
     var browserWatch = geo.watchPosition.bind(geo);
     var browserClear = geo.clearWatch.bind(geo);
     geo.watchPosition = function (ok, fail, options) {
-      var cap = active() ? bridge() : null;
+      var cap = active() && rideScreen() ? bridge() : null;
       if (!cap) return browserWatch(ok, fail, options);
       nextWatch += 1;
       var id = nextWatch;
@@ -107,34 +123,27 @@
     };
   }
 
-  // ---- Visible while riding ------------------------------------------------------------------------
+  // ---- No ten-minute pause while riding -------------------------------------------------------------
+  /** RideMode.tsx's HIDDEN_STOP_MS (v0.6 to v0.7): the only 10-minute setTimeout on those pages. */
+  var HIDDEN_STOP_MS = 600000;
   function riding() {
     return liveWatches > 0 && active();
   }
-  var proto = w.Document && w.Document.prototype;
-  var visibility = proto && Object.getOwnPropertyDescriptor(proto, "visibilityState");
-  var hiddenProp = proto && Object.getOwnPropertyDescriptor(proto, "hidden");
-  if (visibility && visibility.get && hiddenProp && hiddenProp.get) {
-    Object.defineProperty(w.document, "visibilityState", {
-      configurable: true,
-      get: function () {
-        return riding() ? "visible" : visibility.get.call(w.document);
-      },
-    });
-    Object.defineProperty(w.document, "hidden", {
-      configurable: true,
-      get: function () {
-        return riding() ? false : hiddenProp.get.call(w.document);
-      },
-    });
-    // The window's capture listener runs before any on the document: the page never hears the change.
-    w.addEventListener(
-      "visibilitychange",
-      function (event) {
-        if (riding()) event.stopImmediatePropagation();
-      },
-      true,
-    );
+  function hidden() {
+    var doc = w.document;
+    return !!(doc && doc.visibilityState === "hidden");
+  }
+  var browserTimeout = w.setTimeout;
+  if (typeof browserTimeout === "function") {
+    var skipped = -1;
+    w.setTimeout = function (fn, ms) {
+      if (ms === HIDDEN_STOP_MS && riding() && hidden()) {
+        // Not scheduled: the pause would stop the native watch the rider pocketed the phone for.
+        skipped -= 1;
+        return skipped;
+      }
+      return browserTimeout.apply(w, arguments);
+    };
   }
 
   // ---- The voice -----------------------------------------------------------------------------------
