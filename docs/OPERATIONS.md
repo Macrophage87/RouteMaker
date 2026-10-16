@@ -6364,8 +6364,11 @@ the defaults, so build those here.
    (`unwedge_job`, which changes nothing while a worker is alive) and the rebuild resumes
    from its checkpoints. It tries the same every ten minutes while the job is `doing`, in
    case the rebuild container was killed under a running script. **A failed rebuild**
-   saves the rebuild's log to `~/cloud-runs/<run>/rebuild-<utc>.log.gz` and powers off;
-   nothing is uploaded. To try again, start the box and run the same command with
+   saves the rebuild's log to `~/cloud-runs/<run>/rebuild-<utc>.log.gz`, uploads it to
+   `RUN_URL/failed/` with the last 400 lines of `~/cloud-rebuild.log`
+   (`box-rebuild-<utc>.log.gz`), and powers off; no result is uploaded. Read the logs from
+   home with `aws s3 cp RUN_URL/failed/<name> - | gunzip | less`, without starting the
+   box. Any other failure after the fire sends the same two files. To try again, start the box and run the same command with
    `--refire`. A job still unfinished after `--deadline-hours` (24) is given up on the
    same way, so a stuck run does not keep the box running. Before the rebuild is fired, a
    failure leaves the box running for you to fix it.
@@ -6480,7 +6483,9 @@ What it does, with a plain line for each step:
    status (`get-command-invocation`) and the box's state. A command that failed (the
    script stopped before the rebuild was fired) ends the wait with the end of the box's
    output; so does a box that stopped with no result (a failed rebuild powers itself off,
-   and so does a spot reclaim).
+   and so does a spot reclaim). Either way it names the log the box uploaded to
+   `RUN_URL/failed/` and prints its last 40 lines, or says none arrived (a reclaim, or a
+   failure before the fire).
 6. Stops the box, then `import-result.sh`: the install and its dry run, nothing served
    changes. It may ask for sudo again here. Read the dry run, then swap as in "A run",
    step 4. `--swap` does the swap straight after the dry run instead.

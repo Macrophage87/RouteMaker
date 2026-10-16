@@ -44,7 +44,7 @@
 #
 # Then the box powers itself off (with the launch template's "Shutdown behavior: Stop" that
 # is a stop, which costs only the disk). It powers off after a failed rebuild too, with the
-# rebuild's log saved under ~/cloud-runs/<run>/, and after --deadline-hours with the job
+# rebuild's log saved under ~/cloud-runs/<run>/ and uploaded to RUN_URL/failed/, and after --deadline-hours with the job
 # still unfinished; --no-stop keeps it running. To try a failed rebuild again, run the
 # same command with --refire: it fires a new job and carries on from there.
 #
@@ -148,7 +148,10 @@ power_off() {
 # shellcheck disable=SC2329 # invoked by the trap below
 on_exit() {
 	local rc=$?
-	if [ "$rc" != 0 ] && [ "$unattended" = 1 ]; then power_off; fi
+	if [ "$rc" != 0 ] && [ "$unattended" = 1 ]; then
+		send_failed_logs
+		power_off
+	fi
 }
 trap on_exit EXIT
 finish() {
@@ -309,7 +312,31 @@ unattended=1
 job=$(cat "$state/job")
 
 # --- wait --------------------------------------------------------------------------------
-save_log() { compose logs --no-color rebuild 2>&1 | gzip >"$work/rebuild-$(date -u +%Y%m%dT%H%M%SZ).log.gz" || true; }
+save_log() {
+	saved_log="$work/rebuild-$(date -u +%Y%m%dT%H%M%SZ).log.gz"
+	compose logs --no-color rebuild 2>&1 | gzip >"$saved_log" || true
+}
+# A failed run's logs go to RUN_URL/failed/ before the box powers off, so they can be read
+# from home without starting the box (launch.sh prints where, and the rebuild log's tail):
+# the rebuild's own log, and the end of this script's (~/cloud-rebuild.log) when there is one.
+failed_sent=0
+send_failed_logs() {
+	[ "$failed_sent" = 0 ] || return 0
+	failed_sent=1
+	[ -n "${saved_log:-}" ] || save_log
+	if "$AWS" s3 cp "$saved_log" "$url/failed/${saved_log##*/}" --only-show-errors; then
+		note "the rebuild's log is at $url/failed/${saved_log##*/}"
+	else
+		note "WARNING: could not upload the rebuild's log; it stays at $saved_log on the box"
+	fi
+	if [ -s "$HOME/cloud-rebuild.log" ]; then
+		local own
+		own="$work/box-rebuild-$(date -u +%Y%m%dT%H%M%SZ).log.gz"
+		tail -n 400 "$HOME/cloud-rebuild.log" | gzip >"$own" || true
+		"$AWS" s3 cp "$own" "$url/failed/${own##*/}" --only-show-errors ||
+			note "WARNING: could not upload the end of ~/cloud-rebuild.log"
+	fi
+}
 if ! done_already wait; then
 	note "waiting for rebuild job $job (hours; this checks every ${POLL_S}s)"
 	# On a resume the first `doing` is tried at once; after that every ten minutes, in
@@ -340,12 +367,14 @@ if ! done_already wait; then
 			*)
 				note "rebuild job $job ended $status; its log is saved under $work"
 				save_log
+				send_failed_logs
 				finish 1 ;;
 		esac
 		now=$(date +%s)
 		if [ "$now" -ge "$deadline" ]; then
 			note "rebuild job $job is still $status after $deadline_hours hours; giving up. Its log is saved under $work"
 			save_log
+			send_failed_logs
 			finish 1
 		fi
 		if [ $((now - last_report)) -ge 600 ]; then

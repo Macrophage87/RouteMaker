@@ -460,7 +460,11 @@ def test_a_failed_rebuild_saves_its_log_uploads_nothing_and_powers_off(fake, hom
     assert "ended failed" in done.stdout
     assert "sudo poweroff" in fake.calls()
     assert not fake.in_bucket("out").exists()
-    assert list((fake.root / "home" / "cloud-runs" / "cloud-20261011").glob("rebuild-*.log.gz"))
+    [log] = (fake.root / "home" / "cloud-runs" / "cloud-20261011").glob("rebuild-*.log.gz")
+    # Sent before the power-off, to be read from home without starting the box.
+    assert (fake.in_bucket("failed") / log.name).read_bytes() == log.read_bytes()
+    order = fake.calls()
+    assert order.index(f"failed/{log.name}") < order.index("sudo poweroff")
 
 
 def test_after_a_reclaim_it_carries_on_and_unwedges_the_job_the_dead_worker_held(

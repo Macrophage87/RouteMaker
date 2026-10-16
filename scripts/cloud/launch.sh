@@ -467,6 +467,20 @@ box_output() {
 		--query '[StandardOutputContent,StandardErrorContent]' --output text 2>/dev/null |
 		tail -n 40 | sed 's/^/  box | /' || true
 }
+# A failed box-rebuild.sh uploads its logs to RUN_URL/failed/ before it powers off: say
+# where, and show the end of the newest rebuild log, so a failure is read from here.
+failed_log() {
+	local name
+	name=$(aws_s3 ls "$url/failed/" 2>/dev/null | awk '{print $NF}' | grep '^rebuild-.*\.log\.gz$' |
+		sort | tail -n1) || name=""
+	if [ -z "$name" ]; then
+		echo "launch: no log reached $url/failed/ (the box stopped before it could send one)" >&2
+		return 0
+	fi
+	echo "launch: the rebuild's log is $url/failed/$name (and box-rebuild-*.log.gz beside it); its end:" >&2
+	{ aws_s3 cp "$url/failed/$name" - 2>/dev/null | gzip -dc 2>/dev/null | tail -n 40 |
+		sed 's/^/  log | /'; } >&2 || true
+}
 began=$(date +%s)
 deadline=$((began + TIMEOUT_S))
 last_report=$began
@@ -497,6 +511,7 @@ while :; do
 			aws_s3 ls "$url/out/SHA256SUMS" >/dev/null 2>&1 && break
 			echo "launch: the rebuild command ended $status on the box. Its output:" >&2
 			box_output >&2
+			failed_log
 			fail "no result. Read ~/cloud-rebuild.log on the box (Session Manager), then carry the run on: $(resume) (with --refire after a failed rebuild: $(resume --refire))" ;;
 		Success)
 			aws_s3 ls "$url/out/SHA256SUMS" >/dev/null 2>&1 && break
@@ -507,6 +522,7 @@ while :; do
 		stopping | stopped | shutting-down | terminated)
 			aws_s3 ls "$url/out/SHA256SUMS" >/dev/null 2>&1 && break
 			box_output >&2
+			failed_log
 			# A spot reclaim stops the box too, and a persistent request starts it again when
 			# AWS has room, to sit idle. Our own stop, even on a stopped box, is meant to make
 			# it a stop of ours, which is not restarted (OPERATIONS.md, "The launcher"). Only
@@ -516,7 +532,7 @@ while :; do
 					note "WARNING: could not stop $instance again; check in the console that it stays stopped"
 			fi
 			stopped=1
-			fail "the box $state with no result: a failed rebuild (it powers itself off; its log is under ~/cloud-runs/$run/ on the box) or a spot reclaim. Carry the run on: $(resume) (after a failed rebuild: $(resume --refire))" ;;
+			fail "the box $state with no result: a failed rebuild (it powers itself off; its log is in $url/failed/ and under ~/cloud-runs/$run/ on the box) or a spot reclaim. Carry the run on: $(resume) (after a failed rebuild: $(resume --refire))" ;;
 	esac
 	now=$(date +%s)
 	[ "$now" -lt "$deadline" ] ||

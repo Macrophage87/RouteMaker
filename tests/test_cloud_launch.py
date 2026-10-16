@@ -73,10 +73,21 @@ case "$1 $2" in
     esac ;;
   "s3 ls")
     [ ! -e "$FAKE_DIR/s3_denied" ] || exit 255
+    case "$3" in
+      */failed/)
+        [ -e "$FAKE_DIR/failed_log" ] || exit 1
+        echo "2026-10-16 10:00:00       2048 box-rebuild-20261016T100000Z.log.gz"
+        echo "2026-10-16 10:00:00       4096 rebuild-20261016T100000Z.log.gz"
+        exit 0 ;;
+    esac
     n=$(cat "$FAKE_DIR/result_after" 2>/dev/null || echo 99)
     echo $((n - 1)) >"$FAKE_DIR/result_after"
     [ "$n" -le 0 ] ;;
-  "s3 cp") cat "$FAKE_DIR/manifest" 2>/dev/null ;;
+  "s3 cp")
+    case "$3" in
+      */failed/rebuild-*) gzip -c "$FAKE_DIR/failed_log" ;;
+      *) cat "$FAKE_DIR/manifest" 2>/dev/null ;;
+    esac ;;
   *) exit 1 ;;
 esac
 """
@@ -351,6 +362,21 @@ def test_a_failed_command_says_so_shows_the_box_and_stops_it(fake) -> None:
     assert "--no-send" in done.stderr
     assert len(fake.called("stop-instances")) == 1
     assert not fake.called("import-result.sh")
+    assert "no log reached" in done.stderr
+
+
+def test_a_failed_rebuild_names_its_uploaded_log_and_shows_its_end(fake) -> None:
+    """The log is in RUN_URL/failed/, read from home without starting the box again."""
+    (fake.dir / "states").write_text("stopped\nstopped\nrunning\nrunning\nstopped\n")
+    (fake.dir / "result_after").write_text("99")
+    (fake.dir / "failed_log").write_text("step one\nTraceback: valhalla_build_tiles died\n")
+
+    done = fake.run(URL)
+
+    assert done.returncode == 1
+    assert f"{URL}/failed/rebuild-20261016T100000Z.log.gz" in done.stderr
+    assert "log | Traceback: valhalla_build_tiles died" in done.stderr
+    assert len(fake.called("stop-instances")) == 1
 
 
 def test_a_box_that_stops_with_no_result_ends_the_wait_and_is_stopped_once_more(fake) -> None:
