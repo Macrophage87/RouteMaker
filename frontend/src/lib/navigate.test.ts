@@ -8,6 +8,9 @@ import type { LonLat } from "./geo.ts";
 import { spokenDistance } from "./format.ts";
 import {
   ADVANCE_MIN_M,
+  GPS_WEAK_MS,
+  GPS_WEAK_SAID,
+  weighFix,
   BACK_ON_ROUTE_SAID,
   OFF_ROUTE_KEPT_SAID,
   OFF_ROUTE_SAID,
@@ -947,4 +950,21 @@ test("a path with no name is unnamed; a bike lane named for its street is a name
   assert.equal(isUnnamed("unnamed path"), true);
   assert.equal(isUnnamed("9th Street Northwest bike lane"), false);
   assert.equal(isUnnamed("Capital Crescent Trail"), false);
+});
+
+test("weighFix: 12 s of only poor fixes says GPS is weak once; a good fix takes it down (review RIDE-3)", () => {
+  assert.equal(GPS_WEAK_MS, 12_000);
+  assert.equal(GPS_WEAK_SAID, "GPS is weak: turn cues paused.");
+  let s = weighFix({ goodAt: 0, weak: false }, 5, 1000);
+  assert.deepEqual(s, { goodAt: 1000, weak: false, sayNow: false });
+  s = weighFix(s, 80, 12_999);
+  assert.equal(s.weak, false, "under 12 s since the good one");
+  s = weighFix(s, 80, 13_000);
+  assert.deepEqual(s, { goodAt: 1000, weak: true, sayNow: true });
+  s = weighFix(s, 120, 20_000);
+  assert.deepEqual(s, { goodAt: 1000, weak: true, sayNow: false }, "said once");
+  s = weighFix(s, 0, 21_000);
+  assert.deepEqual(s, { goodAt: 21_000, weak: false, sayNow: false }, "a fix with no accuracy counts as good, as step's does");
+  // Exactly POOR_FIX_M is good, as in step.
+  assert.equal(weighFix({ goodAt: 0, weak: true }, 50, 99_000).weak, false);
 });

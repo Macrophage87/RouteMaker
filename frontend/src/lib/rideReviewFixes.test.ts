@@ -24,6 +24,17 @@ test("RIDE-1: hidden in the installed app, the ride's map so far goes to the las
   assert.match(hook, /if \(!handsOn\.current\) return;/, "the installed app only, as End ride's hand-on");
 });
 
+test("RIDE-3: weak GPS is shown in the ride's GPS note and said once; a good fix clears it; no new control", () => {
+  const onFix = ride.slice(ride.indexOf("const onFix = useCallback("), ride.indexOf("const onFixRef = useRef(onFix);"));
+  assert.match(onFix, /const weighed = weighFix\(gpsWeak\.current, fix\.accuracyM, lastFixAt\.current\);/);
+  assert.match(onFix, /if \(weighed\.sayNow\) notify\(GPS_WEAK_SAID\);/);
+  assert.match(onFix, /setGps\(weighed\.weak \? GPS_WEAK_SAID : ""\);/);
+  // The existing note line, the one the GPS-lost notes use.
+  assert.equal(ride.match(/\{gps && ride\.fix && <p className="hint">\{gps\}<\/p>\}/g)?.length, 1);
+  // A new watch (Start, Resume) gives the first fixes their 12 s again.
+  assert.match(ride, /stopWatch\.current\?\.\(\);\s*gpsWeak\.current = \{ goodAt: Date\.now\(\), weak: false \};/);
+});
+
 test("RIDE-5: Re-plan from here answers every press: finding, still waiting, or no fix yet", () => {
   assert.equal(REPLAN_FINDING, "Finding a new way from here.");
   assert.equal(REPLAN_STILL_WAITING, "Still waiting for the last re-plan.");

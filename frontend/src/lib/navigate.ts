@@ -51,6 +51,25 @@ export const RIDE_TOO_LONG =
 
 /** A fix less accurate than this moves the marker but is not used for cues or off route (about 165 ft). */
 export const POOR_FIX_M = 50;
+/**
+ * Only poor fixes for this long: the cues are paused without a word otherwise (a poor fix still counts
+ * as GPS alive, so the GPS-lost note never comes), so the rider is told once (review RIDE-3).
+ */
+export const GPS_WEAK_MS = 12_000;
+export const GPS_WEAK_SAID = "GPS is weak: turn cues paused.";
+
+/** The last good fix's time, and whether the weak-GPS note is up. */
+export interface GpsWeakness {
+  goodAt: number;
+  weak: boolean;
+}
+
+/** A fix of `accuracyM` at `now`: the next state, and `sayNow` the once the note goes up. A good fix takes it down. */
+export function weighFix(before: GpsWeakness, accuracyM: number, now: number): GpsWeakness & { sayNow: boolean } {
+  if (!(accuracyM > POOR_FIX_M)) return { goodAt: now, weak: false, sayNow: false };
+  if (before.weak || now - before.goodAt < GPS_WEAK_MS) return { ...before, sayNow: false };
+  return { goodAt: before.goodAt, weak: true, sayNow: true };
+}
 /** Seconds ahead, at the current speed, of a turn's first cue; never closer than ADVANCE_MIN_M (500 ft). */
 export const ADVANCE_S = 27;
 export const ADVANCE_MIN_M = 150;

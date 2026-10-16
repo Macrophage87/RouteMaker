@@ -34,6 +34,9 @@ import { formatDistance, formatDuration, spokenDistance } from "./lib/format.ts"
 import { LOCATE_MESSAGES } from "./lib/geolocation.ts";
 import {
   POOR_FIX_M,
+  GPS_WEAK_SAID,
+  weighFix,
+  type GpsWeakness,
   REPLAN_FAILED,
   REPLAN_FOUND,
   REPLAN_NO_SIGNAL,
@@ -472,6 +475,8 @@ export function RideMode({
   const gpsSaid = useRef<string | null>(null);
   const wakeSaid = useRef("");
   const lastFixAt = useRef(Date.now());
+  // The last good fix and whether the weak-GPS note is up (lib/navigate.ts weighFix); a new watch starts afresh.
+  const gpsWeak = useRef<GpsWeakness>({ goodAt: Date.now(), weak: false });
   const headingRef = useRef<HTMLHeadingElement>(null);
   const whereRef = useRef<HTMLButtonElement>(null);
   const sectionRef = useRef<HTMLElement>(null);
@@ -711,7 +716,11 @@ export function RideMode({
       if (ended.current) return;
       gpsSaid.current = null;
       lastFixAt.current = Date.now();
-      setGps("");
+      // Only poor fixes for a while: the cues are paused, so the GPS note says so, once (review RIDE-3).
+      const weighed = weighFix(gpsWeak.current, fix.accuracyM, lastFixAt.current);
+      gpsWeak.current = { goodAt: weighed.goodAt, weak: weighed.weak };
+      if (weighed.sayNow) notify(GPS_WEAK_SAID);
+      setGps(weighed.weak ? GPS_WEAK_SAID : "");
       const auto = !keepRef.current;
       const out = step(modelRef.current, rideRef.current, fix, prefsRef.current.verbosity, auto);
       rideRef.current = out.state;
@@ -726,7 +735,7 @@ export function RideMode({
         announcer.current?.answer(whereAmI(modelRef.current, out.state));
       }
     },
-    [gate, replan, say],
+    [gate, replan, say, notify],
   );
   const onFixRef = useRef(onFix);
   onFixRef.current = onFix;
@@ -735,6 +744,7 @@ export function RideMode({
   const stopWatch = useRef<(() => void) | null>(null);
   const startWatch = useCallback(() => {
     stopWatch.current?.();
+    gpsWeak.current = { goodAt: Date.now(), weak: false };
     stopWatch.current = watchRide(
       env,
       (fix) => onFixRef.current(fix),
