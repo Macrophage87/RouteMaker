@@ -2705,6 +2705,11 @@ export function App() {
   // Share as image (ShareCardDialog, lib/shareCard.ts), beside Share in Plan's More: the route shown, the rider's
   // Home (never drawn: an end there is cut short), and an opened file's own name.
   const [shareCardOpen, setShareCardOpen] = useState(false);
+  const verbatimTrack = !importEdited ? imported?.verbatim?.track : undefined;
+  const verbatimEnds = useMemo<LonLat[]>(
+    () => (verbatimTrack && verbatimTrack.length > 0 ? [verbatimTrack[0], verbatimTrack[verbatimTrack.length - 1]].map(([lon, lat]) => [lon, lat] as LonLat) : []),
+    [verbatimTrack],
+  );
   const shareCardSource = useMemo<ShareCardSource | null>(
     () =>
       shown
@@ -2716,9 +2721,11 @@ export function App() {
             distanceM: shown.distance_m,
             climbM: shown.climb_m ?? null,
             profile: usableProfile(shown),
+            // An unedited opened file is shared as its own track: its ends are checked for Home too.
+            homeCheck: verbatimEnds,
           }
         : null,
-    [shown, routedPoints, myGo.home, imported?.name],
+    [shown, routedPoints, myGo.home, imported?.name, verbatimEnds],
   );
   // Go, a ride, or the route gone closes it for good, so it does not open again on its own.
   useEffect(() => {
@@ -3544,6 +3551,7 @@ export function App() {
         open={shareCardOpen && shareCardSource !== null && mode !== "go" && !riding}
         source={shareCardSource}
         settled={shareCardSettled}
+        keepKey={JSON.stringify(keepFields(shareKeep))}
         makeLink={shareCardLink}
         onClose={() => setShareCardOpen(false)}
       />

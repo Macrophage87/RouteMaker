@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import qrcode from "qrcode-generator";
 import { readFileSync } from "node:fs";
 import type { RouteProfile } from "./api.ts";
-import { haversineM, pathLengthM, type LonLat } from "./geo.ts";
+import { haversineM, type LonLat } from "./geo.ts";
 import {
   CARD_SIZES,
   CARD_SIZE_DEFAULT,
@@ -15,6 +15,8 @@ import {
   QR_HOME_END,
   QR_NEEDS_CONNECTION,
   QR_WAITS_FOR_ROUTE,
+  ZONE_SHIFT_MAX_M,
+  ZONE_SHIFT_MIN_M,
   cardAlt,
   cardAttribution,
   cardFileName,
@@ -23,12 +25,13 @@ import {
   cardRoute,
   cardSize,
   homeEnd,
+  homeZone,
   profileStrip,
   qrAvailability,
   qrFit,
   qrModules,
-  sliceLine,
   statsLine,
+  type CardRoute,
 } from "./shareCard.ts";
 
 test("the four sizes PLAN.md names, Square first and the default", () => {
@@ -95,6 +98,13 @@ test("the name: a file's or saved route's own, never one with Home in it", () =>
   assert.equal(cardName("ride HOME", null), null);
   assert.equal(cardName("Homestead loop", null), "Homestead loop");
   assert.equal(cardName("From 1600 elm street", home), null);
+  // Read as a street address: left out.
+  assert.equal(cardName("Loop from 42 Oak Ave", null), null);
+  assert.equal(cardName("1234 N Capitol St NE", null), null);
+  assert.equal(cardName("12b Rosemary Ln to the zoo", null), null);
+  // Numbers alone, or a street without one, are kept.
+  assert.equal(cardName("50 mile Sunday ride", null), "50 mile Sunday ride");
+  assert.equal(cardName("Beach Drive and back", null), "Beach Drive and back");
 });
 
 test("the credits drawn into the image: OpenStreetMap first, the base map, and USGS with the profile", () => {
@@ -143,65 +153,137 @@ test("the elevation strip: lowest at the bottom, highest at the top, split at a 
   const flat = profileStrip({ ...PROFILE, elevation_m: [5, 5, 5, 5, 5] }, STRIP)!;
   assert.ok(flat.runs[0].every(([, y]) => y === 125));
   // Cut at both ends: only the drawn part, stretched over the box.
-  const cut = profileStrip(PROFILE, STRIP, 0.25, 0.25)!;
+  const cut = profileStrip(PROFILE, STRIP, [[0.25, 0.75]])!;
   assert.equal(cut.minM, 20);
   assert.equal(cut.maxM, 40);
   assert.deepEqual(cut.runs, []);
+  // Cut in the middle (a stop at Home): a gap there, the x axis still the whole drawn span.
+  const gap = profileStrip({ ...PROFILE, elevation_m: [10, 20, 30, 40, 30] }, STRIP, [
+    [0, 0.3],
+    [0.7, 1],
+  ])!;
+  assert.deepEqual(
+    gap.runs.map((run) => run.map(([x]) => x)),
+    [
+      [10, 60],
+      [160, 210],
+    ],
+  );
+  assert.equal(gap.maxLabel, "131 ft (40 m)");
   assert.equal(profileStrip({ ...PROFILE, elevation_m: [null, null, 3, null, null] }, STRIP), null);
 });
 
 // A straight line north, about 111 m a step, 2.2 km long.
 const LINE: LonLat[] = Array.from({ length: 21 }, (_, i) => [-77.0, 38.9 + i * 0.001] as LonLat);
-const LENGTH = pathLengthM(LINE);
+const M_PER_DEG_LAT = 111_195;
+const north = (p: LonLat, m: number): LonLat => [p[0], p[1] + m / M_PER_DEG_LAT];
+const east = (p: LonLat, m: number): LonLat => [p[0] + m / (M_PER_DEG_LAT * Math.cos((p[1] * Math.PI) / 180)), p[1]];
+const JITTERS: [number, number][] = [
+  [0, 0],
+  [0.25, 1],
+  [0.5, 0.5],
+  [0.9, 0.99],
+];
 
-test("sliceLine cuts the line where the distances fall", () => {
-  const part = sliceLine(LINE, 300, LENGTH - 300);
-  assert.ok(Math.abs(pathLengthM(part) - (LENGTH - 600)) < 0.5);
-  assert.ok(Math.abs(haversineM(LINE[0], part[0]) - 300) < 0.5);
-  assert.deepEqual(sliceLine(LINE, 0, LENGTH), LINE);
+/** The closest any drawn part of the card (every piece, sampled every metre or so, and the pins) comes to `at`. */
+function closestDrawn(route: CardRoute, at: LonLat): number {
+  let best = Infinity;
+  for (const piece of route.pieces) {
+    for (let i = 1; i < piece.length; i += 1) {
+      const [a, b] = [piece[i - 1], piece[i]];
+      const steps = Math.max(1, Math.ceil(haversineM(a, b)));
+      for (let k = 0; k <= steps; k += 1) best = Math.min(best, haversineM([a[0] + ((b[0] - a[0]) * k) / steps, a[1] + ((b[1] - a[1]) * k) / steps], at));
+    }
+  }
+  for (const pin of [route.start, route.finish, ...route.stops]) if (pin) best = Math.min(best, haversineM(pin, at));
+  return best;
+}
+
+test("Home's circle holds everything within 0.2 mi of Home, wherever it is moved to", () => {
+  assert.ok(Math.abs(HOME_TRIM_M - 321.9) < 0.1);
+  const home = { point: LINE[10], label: "x" };
+  for (const jitter of JITTERS) {
+    const zone = homeZone(home, jitter)!;
+    const shift = haversineM(zone.centre, home.point);
+    assert.ok(shift >= ZONE_SHIFT_MIN_M - 0.5 && shift <= ZONE_SHIFT_MAX_M + 0.5, `moved ${shift} m`);
+    for (let deg = 0; deg < 360; deg += 15) {
+      const edge = east(north(home.point, Math.sin((deg * Math.PI) / 180) * HOME_TRIM_M), Math.cos((deg * Math.PI) / 180) * HOME_TRIM_M);
+      assert.ok(haversineM(edge, zone.centre) < zone.radiusM, `${jitter} ${deg}`);
+    }
+  }
+  assert.equal(homeZone(null, [0, 0]), null);
 });
 
-test("Home: an end within 300 m of it has no pin, and the line is cut 0.2 mi short there", () => {
+test("no Home: the line whole, every pin", () => {
   const points: LonLat[] = [LINE[0], LINE[10], LINE[20]];
-  const none = cardRoute(LINE, points, null)!;
-  assert.deepEqual(none.line, LINE);
-  assert.deepEqual([none.start, none.finish, none.stops], [LINE[0], LINE[20], [LINE[10]]]);
-  assert.equal(none.cutStart, 0);
+  const r = cardRoute(LINE, points, null)!;
+  assert.deepEqual(r.pieces, [LINE]);
+  assert.deepEqual(r.visible, [[0, 1]]);
+  assert.deepEqual([r.start, r.finish, r.stops], [LINE[0], LINE[20], [LINE[10]]]);
+  // Home 700 m off the line: beyond the circle however it is moved (150 m) and grown (to 473 m), so nothing cut.
+  const far = homeZone({ point: east(LINE[10], 700), label: "" }, [0.5, 1])!;
+  assert.ok(far.radiusM < 700 - ZONE_SHIFT_MAX_M);
+  assert.deepEqual(cardRoute(LINE, points, far)!.pieces, [LINE]);
+});
 
-  // Home 250 m from the start (inside HOME_NEAR_M).
-  const near = { point: [-77.0, 38.9 - 250 / 111_195] as LonLat, label: "Somewhere" };
-  assert.ok(haversineM(near.point, LINE[0]) < HOME_NEAR_M);
-  const r = cardRoute(LINE, points, near)!;
-  assert.equal(r.start, null);
-  assert.deepEqual(r.finish, LINE[20]);
-  assert.ok(Math.abs(haversineM(LINE[0], r.line[0]) - HOME_TRIM_M) < 0.5, "cut 0.2 mi from the start");
-  assert.ok(Math.abs(HOME_TRIM_M - 321.9) < 0.1);
-  assert.ok(Math.abs(r.cutStart - HOME_TRIM_M / LENGTH) < 1e-6);
-  assert.equal(r.cutEnd, 0);
-  // Nothing drawn is within the cut of Home.
-  assert.ok(r.line.every((p) => haversineM(p, LINE[0]) >= HOME_TRIM_M - 0.5));
-  assert.equal(homeEnd(LINE, points, near), true);
+test("Home: a start 250 m from it, heading through it, draws nothing within 0.2 mi", () => {
+  const home = { point: north(LINE[0], 250), label: "" };
+  for (const jitter of JITTERS) {
+    const r = cardRoute(LINE, [LINE[0], LINE[20]], homeZone(home, jitter))!;
+    assert.equal(r.start, null, "no start pin");
+    assert.deepEqual(r.finish, LINE[20]);
+    assert.equal(r.pieces.length, 1);
+    assert.ok(closestDrawn(r, home.point) >= HOME_TRIM_M - 0.5, `${jitter}: ${closestDrawn(r, home.point)}`);
+    assert.ok(r.visible[0][0] > 0 && r.visible[0][1] === 1);
+  }
+});
 
-  // A loop from Home: both ends cut, no start or finish pin, a stop at Home has none either.
+test("Home: a round-the-block start draws nothing within 0.2 mi", () => {
+  // From Home 150 m east, 150 m north, back west past Home's street and south to it, then away north.
+  const home = { point: LINE[0], label: "" };
+  const a = east(home.point, 150);
+  const b = north(a, 150);
+  const c = north(home.point, 150);
+  const line: LonLat[] = [home.point, a, b, c, east(c, -150), east(home.point, -150), home.point, ...LINE.slice(1)];
+  for (const jitter of JITTERS) {
+    const r = cardRoute(line, [home.point, LINE[20]], homeZone(home, jitter))!;
+    assert.equal(r.start, null);
+    assert.ok(closestDrawn(r, home.point) >= HOME_TRIM_M - 0.5, `${jitter}: ${closestDrawn(r, home.point)}`);
+  }
+});
+
+test("Home: a stop at Home mid-route splits the line round it and has no pin", () => {
+  const home = { point: LINE[10], label: "" };
+  for (const jitter of JITTERS) {
+    const r = cardRoute(LINE, [LINE[0], LINE[10], LINE[20]], homeZone(home, jitter))!;
+    assert.equal(r.pieces.length, 2, "two pieces");
+    assert.deepEqual(r.stops, []);
+    assert.deepEqual([r.start, r.finish], [LINE[0], LINE[20]]);
+    assert.ok(closestDrawn(r, home.point) >= HOME_TRIM_M - 0.5, `${jitter}: ${closestDrawn(r, home.point)}`);
+    assert.equal(r.visible.length, 2);
+    assert.ok(r.visible[0][1] < 0.5 && r.visible[1][0] > 0.5);
+  }
+  // A loop from Home: no start or finish pin.
   const loopLine = [...LINE, ...LINE.slice(0, -1).reverse()];
-  const atHome = { point: LINE[0], label: "Home" };
-  const loop = cardRoute(loopLine, [LINE[0], LINE[0], LINE[20], LINE[0]], atHome)!;
+  const loop = cardRoute(loopLine, [LINE[0], LINE[20], LINE[0]], homeZone({ point: LINE[0], label: "" }, [0, 0]))!;
   assert.equal(loop.start, null);
   assert.equal(loop.finish, null);
   assert.deepEqual(loop.stops, [LINE[20]]);
-  assert.ok(loop.line.every((p) => haversineM(p, LINE[0]) >= HOME_TRIM_M - 0.5));
-
-  // Home 400 m away is not near: nothing cut.
-  const far = { point: [-77.0, 38.9 - 400 / 111_195] as LonLat, label: "x" };
-  assert.deepEqual(cardRoute(LINE, points, far)!.line, LINE);
-  assert.equal(homeEnd(LINE, points, far), false);
-  // A stop at Home refuses the QR code too (the link carries every point).
-  assert.equal(homeEnd(LINE, points, { point: LINE[10], label: "" }), true);
-  assert.equal(homeEnd(LINE, points, null), false);
-
   // Too short to draw without showing Home.
-  const short = [...LINE.slice(0, 4), ...LINE.slice(0, 3).reverse()];
-  assert.equal(cardRoute(short, [short[0], short[0]], { point: short[0], label: "" }), null);
+  const short = [...LINE.slice(0, 5), ...LINE.slice(0, 4).reverse()];
+  assert.equal(cardRoute(short, [short[0], short[0]], homeZone({ point: short[0], label: "" }, [0, 0])), null);
+});
+
+test("the QR code is refused when an end or a stop is at Home, or an opened file's own track starts there", () => {
+  const points: LonLat[] = [LINE[0], LINE[10], LINE[20]];
+  assert.equal(homeEnd(LINE, points, { point: north(LINE[0], -250), label: "" }), true);
+  assert.equal(homeEnd(LINE, points, { point: LINE[10], label: "" }), true);
+  assert.equal(homeEnd(LINE, points, { point: east(LINE[5], 400), label: "" }), false);
+  assert.equal(homeEnd(LINE, points, null), false);
+  assert.ok(HOME_NEAR_M === 300);
+  // App adds the file's own track's ends to the points checked (ShareCardSource.homeCheck).
+  const trackStart = east(LINE[0], 900);
+  assert.equal(homeEnd(LINE, [...points, trackStart], { point: trackStart, label: "" }), true);
 });
 
 test("the QR code: refused at Home, offline, or while the route is planning; otherwise available", () => {
@@ -212,7 +294,7 @@ test("the QR code: refused at Home, offline, or while the route is planning; oth
 });
 
 test("the QR code's modules and their fit, with the quiet zone", () => {
-  const qr = qrcode(0, "M");
+  const qr = qrcode(0, "L");
   const link = "https://example.org/#p=-77.03,38.9;-77.01,38.91&preset=group&route=0123456789abcdef0123456789abcdef";
   qr.addData(link);
   qr.make();
@@ -253,6 +335,16 @@ test("the dialog: labelled, the focus in and back, labelled controls, alt text, 
   assert.match(dialog, /const \[profileOn, setProfileOn\] = useState\(true\);/);
   assert.match(dialog, /const \[onMap, setOnMap\] = useState\(false\);/);
   assert.match(dialog, /const \[qrOn, setQrOn\] = useState\(false\);/);
+  // "Draw it on the map" off with the profile off says why.
+  assert.match(dialog, /aria-describedby=\{!hasProfile \? `\$\{id\}-profile-why` : !profileOn \? `\$\{id\}-onmap-why` : undefined\}/);
+  // The QR code's link: a stale one (a later press, a new route, another keep choice, closed) is dropped; a throw
+  // is a failure; the reset follows the route, the keep choice and the dialog.
+  assert.match(dialog, /const ask = \+\+qrAsks\.current;/);
+  assert.match(dialog, /const link = await makeLink\(\)\.catch\(\(\) => null\);\s*if \(ask !== qrAsks\.current\) return;/);
+  assert.match(dialog, /qrAsks\.current \+= 1;\s*setQrOn\(false\);\s*setQrLink\(null\);\s*setQrNote\(null\);\s*\}, \[source\?\.line, keepKey, open\]\);/);
+  // Home's circle is moved by numbers kept on this device.
+  assert.match(dialog, /cardRoute\(source\.line, source\.points, homeZone\(source\.home, jitter\)\)/);
+  assert.match(dialog, /homeEnd\(source\.line, \[\.\.\.source\.points, \.\.\.source\.homeCheck\], source\.home\)/);
   // Share only where the browser can share the image file.
   assert.match(dialog, /navigator\.canShare\(\{ files: \[file\] \}\)/);
   assert.match(dialog, /\{shareable && \(/);
@@ -264,6 +356,10 @@ test("App: Share as image in Plan only, given Home to hide and the QR code's lin
   assert.match(app, /home: myGo\.home,/);
   assert.match(app, /name: imported\?\.name \?\? null,/);
   assert.match(app, /makeLink=\{shareCardLink\}/);
+  assert.match(app, /keepKey=\{JSON\.stringify\(keepFields\(shareKeep\)\)\}/);
+  // An unedited opened file's own track's ends are checked for Home too.
+  assert.match(app, /const verbatimTrack = !importEdited \? imported\?\.verbatim\?\.track : undefined;/);
+  assert.match(app, /homeCheck: verbatimEnds,/);
   assert.match(app, /shareImage: \(\) => setShareCardOpen\(true\)/);
   // Go has no entry point.
   const go = readFileSync(new URL("../app/Go.tsx", import.meta.url), "utf8");
@@ -280,4 +376,7 @@ test("the drawing: an offscreen map at the card's size with no rider markers; pi
   assert.match(render, /pin\(ctx, drawn\.start\.x, drawn\.start\.y, r, START, "S"\)/);
   assert.match(render, /pin\(ctx, drawn\.finish\.x, drawn\.finish\.y, r, FINISH, "F", true\)/);
   assert.match(render, /cardAttribution\(strip !== null\)/);
+  // The line in pieces round Home's circle; the QR code at level L.
+  assert.match(render, /type: "MultiLineString" as const, coordinates: route\.pieces/);
+  assert.match(render, /qrcode\(0, "L"\)/);
 });

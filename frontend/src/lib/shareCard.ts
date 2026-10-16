@@ -11,8 +11,9 @@
  *   the distance and the climb (US first, metric in brackets), "RouteMaker", the QR code when asked for, and the
  *   OpenStreetMap and base map credits drawn into the image, legible at its size (PLAN: the image travels without
  *   the page's attribution);
- * - privacy: start, finish and stops only, with no place's name drawn; an end at or near the rider's Home has no pin
- *   and the line is cut 0.2 mi (320 m) short there, and nothing is ever labelled Home;
+ * - privacy: start, finish and stops only, with no place's name drawn; nothing of the line and no pin is drawn
+ *   within 0.2 mi (320 m) of the rider's Home (a blank circle round it, moved off Home so its edge does not
+ *   point at it), and nothing is ever labelled Home;
  * - when the QR code can be had: it encodes the route's shared link (lib/sharedRoutes.ts), made as Share makes it.
  */
 import type { RouteProfile } from "./api.ts";
@@ -43,6 +44,7 @@ export const QR_NEEDS_CONNECTION = "Needs a connection: the QR code opens the sh
 export const QR_WAITS_FOR_ROUTE = "Available once the route has finished planning.";
 export const QR_HOME_END = "Not available: this route starts, ends or stops at Home, and its link would show where.";
 export const QR_LINK_FAILED = "Could not make the shared link, so the QR code is left out. Try again when online.";
+export const PROFILE_ON_MAP_OFF = "Turn on Elevation profile to draw it on the map.";
 export const PROFILE_NONE = "Not available: this route has no elevation data.";
 export const HOME_TOO_SHORT = "This route is too short to draw without showing Home.";
 
@@ -144,15 +146,21 @@ export function statsLine(distanceM: number, climbM: number | null | undefined):
   return `${formatDistance(distanceM)}${climb}`;
 }
 
+/** "1600 Elm Street", "12 N Main St": a house number then, within a few words, a street word. */
+const STREET_ADDRESS =
+  /\b\d+[a-z]?\s+(?:[\w.'-]+\s+){0,4}(?:street|st|avenue|ave|road|rd|drive|dr|lane|ln|court|ct|place|pl|boulevard|blvd|way|terrace|ter|circle|cir|parkway|pkwy|highway|hwy|row|alley|square|sq)\b\.?/i;
+
 /**
  * The name drawn, or null: an opened file's or saved route's own name, never a planned route's "<start> to <end>"
  * (made from place names, which can be Home or a saved place). A name holding the word Home, or Home's own label,
- * is left out too.
+ * is left out too, and so is one that reads as a street address (a file named after where someone lives); a
+ * name that only looks like one ("10 mi Beach Drive") is left out with them, on the safe side.
  */
 export function cardName(name: string | null | undefined, home: Home | null): string | null {
   const n = (name ?? "").trim();
   if (!n) return null;
   if (/\bhome\b/i.test(n)) return null;
+  if (STREET_ADDRESS.test(n)) return null;
   const label = home?.label.trim().toLowerCase();
   if (label && label.length >= 3 && n.toLowerCase().includes(label)) return null;
   return n.slice(0, 80);
@@ -185,72 +193,124 @@ export function cardAlt(opts: {
 
 // ---- Privacy: Home -------------------------------------------------------------------------------
 
-/** An end this close to Home is Home's (the owner, 2026-10-16: "within ~300 m"). */
+/** An end or stop this close to Home is Home's (the owner, 2026-10-16: "within ~300 m"): the QR code is refused. */
 export const HOME_NEAR_M = 300;
-/** How much of the line is left off at an end at Home: 0.2 mi. */
+/** No part of the line, and no pin, is drawn within this of Home: 0.2 mi. */
 export const HOME_TRIM_M = 0.2 * METRES_PER_MILE;
+/** The hidden circle's centre is moved this far from Home (and its radius grown by as much), so its edge does not point at Home. */
+export const ZONE_SHIFT_MIN_M = 60;
+export const ZONE_SHIFT_MAX_M = 150;
 
 export const nearHome = (point: LonLat | undefined, home: Home | null): boolean =>
   !!point && !!home && haversineM(point, home.point) <= HOME_NEAR_M;
 
-/** The line between `fromM` and `toM` along it (metres, measured on the line), cut where those fall. */
-export function sliceLine(line: readonly LonLat[], fromM: number, toM: number): LonLat[] {
-  const out: LonLat[] = [];
-  let at = 0;
-  const lerp = (a: LonLat, b: LonLat, t: number): LonLat => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+/** The circle the card leaves blank: around Home, moved, and large enough to hold everything within HOME_TRIM_M of it. */
+export interface HomeZone {
+  centre: LonLat;
+  radiusM: number;
+}
+
+const M_PER_DEG = (6_371_008.8 * Math.PI) / 180;
+
+/**
+ * Home's hidden circle. A gap cut by an exact circle round Home would give Home away (three points on its edge
+ * fix its centre), so the centre is moved `shift` metres in a direction, both from `jitter` (two numbers from 0 to
+ * 1, kept per device so cards do not average it out), and the radius grows by the same, so every point within
+ * HOME_TRIM_M of Home is still inside.
+ */
+export function homeZone(home: Home | null, jitter: readonly [number, number]): HomeZone | null {
+  if (!home) return null;
+  const shift = ZONE_SHIFT_MIN_M + Math.min(Math.max(jitter[1], 0), 1) * (ZONE_SHIFT_MAX_M - ZONE_SHIFT_MIN_M);
+  const angle = jitter[0] * 2 * Math.PI;
+  const [lon, lat] = home.point;
+  const centre: LonLat = [lon + (Math.cos(angle) * shift) / (M_PER_DEG * Math.cos((lat * Math.PI) / 180)), lat + (Math.sin(angle) * shift) / M_PER_DEG];
+  return { centre, radiusM: HOME_TRIM_M + shift + 1 };
+}
+
+const inZone = (p: LonLat | undefined, zone: HomeZone | null) => !!p && !!zone && haversineM(p, zone.centre) <= zone.radiusM;
+
+export interface CardRoute {
+  /** The line to draw: one piece, or several where it passes through Home's circle. */
+  pieces: LonLat[][];
+  /** The parts of the route drawn, as shares of its length (0 to 1), so the profile is cut alike. */
+  visible: [number, number][];
+  start: LonLat | null;
+  finish: LonLat | null;
+  /** The stops between, none of them in Home's circle. */
+  stops: LonLat[];
+}
+
+/** The shortest drawn line a card is made of: less would show little but where Home's circle is. */
+export const MIN_DRAWN_M = HOME_TRIM_M / 2;
+
+/**
+ * What the card draws of the route: start, finish and stops only, no names, and nothing inside Home's circle
+ * (homeZone): the line is cut where it enters and leaves it, into separate pieces, and a pin inside it is not drawn.
+ * Null when what is left is under MIN_DRAWN_M (HOME_TOO_SHORT).
+ */
+export function cardRoute(line: readonly LonLat[], points: readonly LonLat[], zone: HomeZone | null): CardRoute | null {
+  if (line.length < 2) return null;
+  // Metres east and north of the circle's centre: a segment is cut where it crosses the circle's edge.
+  const [clon, clat] = zone?.centre ?? [0, 0];
+  const kx = M_PER_DEG * Math.cos((clat * Math.PI) / 180);
+  const xy = (p: LonLat) => [(p[0] - clon) * kx, (p[1] - clat) * M_PER_DEG] as const;
+  const r2 = zone ? zone.radiusM ** 2 : -1;
+  let total = 0;
+  const parts: { a: LonLat; b: LonLat; from: number; to: number; out: boolean }[] = [];
   for (let i = 1; i < line.length; i += 1) {
     const a = line[i - 1];
     const b = line[i];
     const len = haversineM(a, b);
-    const next = at + len;
-    if (next >= fromM && at <= toM && len > 0) {
-      if (out.length === 0) out.push(at >= fromM ? a : lerp(a, b, (fromM - at) / len));
-      out.push(next <= toM ? b : lerp(a, b, (toM - at) / len));
+    const [ax, ay] = xy(a);
+    const [bx, by] = xy(b);
+    const dx = bx - ax;
+    const dy = by - ay;
+    const qa = dx * dx + dy * dy;
+    const qb = 2 * (ax * dx + ay * dy);
+    const qc = ax * ax + ay * ay - r2;
+    const ts = [0, 1];
+    const disc = qb * qb - 4 * qa * qc;
+    if (zone && qa > 0 && disc > 0) {
+      for (const t of [(-qb - Math.sqrt(disc)) / (2 * qa), (-qb + Math.sqrt(disc)) / (2 * qa)]) if (t > 0 && t < 1) ts.push(t);
     }
-    at = next;
-    if (at > toM) break;
+    ts.sort((x, y) => x - y);
+    const at = (t: number): LonLat => (t === 0 ? a : t === 1 ? b : [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+    for (let k = 1; k < ts.length; k += 1) {
+      const mid = (ts[k - 1] + ts[k]) / 2;
+      const mx = ax + dx * mid;
+      const my = ay + dy * mid;
+      parts.push({ a: at(ts[k - 1]), b: at(ts[k]), from: total + len * ts[k - 1], to: total + len * ts[k], out: !zone || mx * mx + my * my > r2 });
+    }
+    total += len;
   }
-  return out;
-}
-
-export interface CardRoute {
-  /** The line to draw, cut short at an end at Home. */
-  line: LonLat[];
-  /** The share of the line's length left off at the start and the finish (0 to 1), to cut the profile alike. */
-  cutStart: number;
-  cutEnd: number;
-  start: LonLat | null;
-  finish: LonLat | null;
-  /** The stops between, none of them at Home. */
-  stops: LonLat[];
-}
-
-/**
- * What the card draws of the route: start, finish and stops only, no names. An end at or within HOME_NEAR_M of
- * Home has no pin and the line is cut HOME_TRIM_M short there; a stop at Home has no pin. Null when cutting would
- * leave too little line to draw (HOME_TOO_SHORT).
- */
-export function cardRoute(line: readonly LonLat[], points: readonly LonLat[], home: Home | null): CardRoute | null {
-  if (line.length < 2) return null;
+  const pieces: LonLat[][] = [];
+  const visible: [number, number][] = [];
+  let drawnM = 0;
+  let piece: LonLat[] | null = null;
+  for (const part of parts) {
+    if (!part.out) {
+      piece = null;
+      continue;
+    }
+    drawnM += part.to - part.from;
+    if (!piece) {
+      piece = [part.a];
+      pieces.push(piece);
+      visible.push([part.from, part.to]);
+    }
+    piece.push(part.b);
+    visible[visible.length - 1][1] = part.to;
+  }
+  if (pieces.length === 0 || drawnM < MIN_DRAWN_M) return null;
   const first = line[0];
   const last = line[line.length - 1];
-  const startHome = nearHome(first, home) || nearHome(points[0], home);
-  const finishHome = nearHome(last, home) || nearHome(points[points.length - 1], home);
-  let length = 0;
-  for (let i = 1; i < line.length; i += 1) length += haversineM(line[i - 1], line[i]);
-  const fromM = startHome ? HOME_TRIM_M : 0;
-  const toM = finishHome ? length - HOME_TRIM_M : length;
-  if (toM - fromM < HOME_TRIM_M / 2) return null;
-  const drawn = startHome || finishHome ? sliceLine(line, fromM, toM) : line.slice();
-  if (drawn.length < 2) return null;
-  const between = points.slice(1, -1).filter((p) => !nearHome(p, home));
+  const hide = (p: LonLat | undefined) => inZone(p, zone);
   return {
-    line: drawn,
-    cutStart: length > 0 ? fromM / length : 0,
-    cutEnd: length > 0 ? (length - toM) / length : 0,
-    start: startHome ? null : first,
-    finish: finishHome ? null : last,
-    stops: between,
+    pieces,
+    visible: visible.map(([f, t]) => [total > 0 ? f / total : 0, total > 0 ? t / total : 1]),
+    start: hide(first) || hide(points[0]) ? null : first,
+    finish: hide(last) || hide(points[points.length - 1]) ? null : last,
+    stops: points.slice(1, -1).filter((p) => !hide(p)),
   };
 }
 
@@ -300,20 +360,24 @@ export interface ProfileStrip {
 
 /**
  * The route's elevation (the same samples the route's chart draws, RouteResponse.profile) scaled into `box`:
- * the drawn part only (from `cutStart` to `1 - cutEnd` of the route), the lowest at the box's bottom and the
- * highest at its top; a flat route sits in the middle. Null with fewer than two samples.
+ * the drawn parts only (`visible`, shares of the route's length, as CardRoute has them: a gap where the line is
+ * cut round Home), the lowest at the box's bottom and the highest at its top; a flat route sits in the middle.
+ * Null with fewer than two samples.
  */
-export function profileStrip(profile: RouteProfile, box: Rect, cutStart = 0, cutEnd = 0): ProfileStrip | null {
+export function profileStrip(profile: RouteProfile, box: Rect, visible: readonly (readonly [number, number])[] = [[0, 1]]): ProfileStrip | null {
   const total = profile.m[profile.m.length - 1] ?? 0;
-  if (!(total > 0)) return null;
-  const from = total * cutStart;
-  const to = total * (1 - cutEnd);
+  if (!(total > 0) || visible.length === 0) return null;
+  const ranges = visible.map(([f, t]) => [f * total, t * total] as const);
+  const from = ranges[0][0];
+  const to = ranges[ranges.length - 1][1];
+  if (!(to > from)) return null;
   const samples: (readonly [number, number] | null)[] = [];
   for (let i = 0; i < profile.m.length; i += 1) {
     const m = profile.m[i];
     const e = profile.elevation_m[i];
     if (m < from || m > to) continue;
-    samples.push(e === null || !Number.isFinite(e) ? null : [m, e]);
+    const shown = ranges.some(([f, t]) => m >= f && m <= t);
+    samples.push(!shown || e === null || !Number.isFinite(e) ? null : [m, e]);
   }
   const known = samples.filter((s): s is readonly [number, number] => s !== null);
   if (known.length < 2) return null;

@@ -53,15 +53,15 @@ async function drawMap(w: number, h: number, route: CardRoute, padding: { top: n
   div.style.cssText = `position:fixed;left:${-w - 100}px;top:0;width:${w}px;height:${h}px;pointer-events:none;`;
   document.body.appendChild(div);
   const style = buildStyle(window.location.origin, protomapsLayers(BASEMAP_SOURCE_ID, namedFlavor("light"), { lang: "en" }));
-  const line = { type: "Feature" as const, properties: {}, geometry: { type: "LineString" as const, coordinates: route.line } };
+  const line = { type: "Feature" as const, properties: {}, geometry: { type: "MultiLineString" as const, coordinates: route.pieces } };
   style.sources.card = { type: "geojson", data: line };
   const u = Math.min(w, h) / 1000;
   style.layers.push(
     { id: "card-casing", type: "line", source: "card", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#ffffff", "line-width": Math.max(8, 16 * u) } },
     { id: "card-line", type: "line", source: "card", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": LINE, "line-width": Math.max(5, 9 * u) } },
   );
-  const lons = route.line.map((p) => p[0]);
-  const lats = route.line.map((p) => p[1]);
+  const lons = route.pieces.flat().map((p) => p[0]);
+  const lats = route.pieces.flat().map((p) => p[1]);
   let map: maplibregl.Map | null = null;
   try {
     map = new maplibregl.Map({
@@ -158,7 +158,7 @@ function drawProfile(ctx: CanvasRenderingContext2D, box: Rect, profile: RoutePro
   const inset = Math.round(fontPx * 0.6);
   const labelH = Math.round(fontPx * 1.3);
   const plot = { x: box.x + inset, y: box.y + inset + labelH, w: box.w - inset * 2, h: box.h - inset * 2 - labelH * 2 };
-  const strip = profileStrip(profile, plot, route.cutStart, route.cutEnd);
+  const strip = profileStrip(profile, plot, route.visible);
   if (!strip) return null;
   const bottom = plot.y + plot.h;
   for (const run of strip.runs) {
@@ -187,7 +187,9 @@ function drawProfile(ctx: CanvasRenderingContext2D, box: Rect, profile: RoutePro
 }
 
 function drawQr(ctx: CanvasRenderingContext2D, box: Rect, link: string) {
-  const qr = qrcode(0, "M");
+  // Level L: the fewest modules for the link, so each is as large as the square allows (a camera reads a card off a
+  // screen, where damage is not the trouble).
+  const qr = qrcode(0, "L");
   qr.addData(link);
   qr.make();
   const modules = qrModules(qr);

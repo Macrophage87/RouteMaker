@@ -7,7 +7,7 @@
  * image file. "Image ready" and the errors are said through a polite status region inside the dialog, always
  * rendered: the page's own region is outside the modal, which makes it inert (RoadInfoDialog's note, review S1).
  */
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { RouteProfile } from "./lib/api.ts";
 import type { LonLat } from "./lib/geo.ts";
 import type { Home } from "./lib/myGo.ts";
@@ -25,6 +25,7 @@ import {
   PROFILE_LABEL,
   PROFILE_NONE,
   PROFILE_ON_MAP_LABEL,
+  PROFILE_ON_MAP_OFF,
   QR_LABEL,
   QR_LINK_FAILED,
   SHARE_FILE_LABEL,
@@ -36,6 +37,7 @@ import {
   cardRoute,
   cardSize,
   homeEnd,
+  homeZone,
   qrAvailability,
   type CardSizeId,
 } from "./lib/shareCard.ts";
@@ -50,6 +52,8 @@ export interface ShareCardSource {
   distanceM: number;
   climbM: number | null;
   profile: RouteProfile | null;
+  /** More points the shared link carries (an opened file's own track's ends): the QR code is refused if one is Home's. */
+  homeCheck: LonLat[];
 }
 
 export interface ShareCardDialogProps {
@@ -57,6 +61,8 @@ export interface ShareCardDialogProps {
   source: ShareCardSource | null;
   /** The route shown is the plan's (no re-plan pending), or an unedited opened file: its exact line can be shared. */
   settled: boolean;
+  /** The rider's keep choice for the shared link, as a key: a change makes the QR code's link again. */
+  keepKey: string;
   /** The shared link, made as Share makes it (the exact line kept, the rider's keep choice); null if it could not be. */
   makeLink: () => Promise<string | null>;
   onClose: () => void;
@@ -78,7 +84,32 @@ function canShareFile(file: File): boolean {
   }
 }
 
-export function ShareCardDialog({ open, source, settled, makeLink, onClose }: ShareCardDialogProps) {
+const JITTER_KEY = "routemaker.shareCardZone";
+
+/**
+ * Where Home's blank circle is moved to (lib/shareCard.ts homeZone): two random numbers kept on this device, so every
+ * card from it moves the circle alike and several cards cannot be laid over each other to find Home. Without
+ * storage, new ones for the page.
+ */
+function zoneJitter(): [number, number] {
+  try {
+    const kept = JSON.parse(localStorage.getItem(JITTER_KEY) ?? "null") as unknown;
+    if (Array.isArray(kept) && kept.length === 2 && kept.every((n) => typeof n === "number" && n >= 0 && n < 1)) return [kept[0], kept[1]];
+  } catch {
+    // Unreadable: new ones below.
+  }
+  const fresh = new Uint32Array(2);
+  crypto.getRandomValues(fresh);
+  const made: [number, number] = [fresh[0] / 2 ** 32, fresh[1] / 2 ** 32];
+  try {
+    localStorage.setItem(JITTER_KEY, JSON.stringify(made));
+  } catch {
+    // Not kept: this page's only.
+  }
+  return made;
+}
+
+export function ShareCardDialog({ open, source, settled, keepKey, makeLink, onClose }: ShareCardDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const opener = useRef<Element | null>(null);
@@ -105,8 +136,9 @@ export function ShareCardDialog({ open, source, settled, makeLink, onClose }: Sh
       window.removeEventListener("offline", update);
     };
   }, []);
-  const qr = qrAvailability({ online, settled, homeEnd: source ? homeEnd(source.line, source.points, source.home) : false });
-  const drawnRoute = source ? cardRoute(source.line, source.points, source.home) : null;
+  const qr = qrAvailability({ online, settled, homeEnd: source ? homeEnd(source.line, [...source.points, ...source.homeCheck], source.home) : false });
+  const [jitter] = useState(zoneJitter);
+  const drawnRoute = useMemo(() => (source ? cardRoute(source.line, source.points, homeZone(source.home, jitter)) : null), [source, jitter]);
   const name = source ? cardName(source.name, source.home) : null;
 
   useEffect(() => {
@@ -122,12 +154,15 @@ export function ShareCardDialog({ open, source, settled, makeLink, onClose }: Sh
     }
   }, [open]);
 
-  // A new route, or the dialog closed: the QR code's link is made again when next asked for.
+  // A new route, another keep choice, or the dialog closed: the QR code's link is made again when next asked for,
+  // and a link still being made for the one before is dropped when it comes (qrAsks).
+  const qrAsks = useRef(0);
   useEffect(() => {
+    qrAsks.current += 1;
     setQrOn(false);
     setQrLink(null);
     setQrNote(null);
-  }, [source?.line, open]);
+  }, [source?.line, keepKey, open]);
 
   // The preview, drawn again whenever a choice changes. One draw at a time (each is a map of its own, and a phone
   // has few to spare): a change while one is drawing waits for it, and only the latest change is drawn.
@@ -205,6 +240,8 @@ export function ShareCardDialog({ open, source, settled, makeLink, onClose }: Sh
   }, [open]);
 
   const toggleQr = async (on: boolean) => {
+    // Each press is an ask of its own: a link that comes after a later press (or a new route, or keep choice) is dropped.
+    const ask = ++qrAsks.current;
     setQrNote(null);
     if (!on) {
       setQrOn(false);
@@ -214,7 +251,8 @@ export function ShareCardDialog({ open, source, settled, makeLink, onClose }: Sh
     if (qrLink) return;
     // Download and Share wait for the link, so an image without the code is not saved by mistake.
     setBusy(true);
-    const link = await makeLink();
+    const link = await makeLink().catch(() => null);
+    if (ask !== qrAsks.current) return;
     if (link) setQrLink(link);
     else {
       setBusy(false);
@@ -224,7 +262,7 @@ export function ShareCardDialog({ open, source, settled, makeLink, onClose }: Sh
     }
   };
 
-  const file = preview ? new File([preview.blob], cardFileName(preview.size), { type: "image/png" }) : null;
+  const file = useMemo(() => (preview ? new File([preview.blob], cardFileName(preview.size), { type: "image/png" }) : null), [preview]);
   const shareable = file !== null && canShareFile(file);
   const download = () => {
     if (!preview) return;
@@ -293,7 +331,7 @@ export function ShareCardDialog({ open, source, settled, makeLink, onClose }: Sh
                 type="checkbox"
                 checked={hasProfile && profileOn && onMap}
                 disabled={!hasProfile || !profileOn}
-                aria-describedby={hasProfile ? undefined : `${id}-profile-why`}
+                aria-describedby={!hasProfile ? `${id}-profile-why` : !profileOn ? `${id}-onmap-why` : undefined}
                 onChange={(event) => setOnMap(event.target.checked)}
               />
               <label htmlFor={`${id}-onmap`}>{PROFILE_ON_MAP_LABEL}</label>
@@ -301,6 +339,11 @@ export function ShareCardDialog({ open, source, settled, makeLink, onClose }: Sh
             {!hasProfile && (
               <p id={`${id}-profile-why`} className="hint">
                 {PROFILE_NONE}
+              </p>
+            )}
+            {hasProfile && !profileOn && (
+              <p id={`${id}-onmap-why`} className="hint">
+                {PROFILE_ON_MAP_OFF}
               </p>
             )}
             <div className="share-card-check">
