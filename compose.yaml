@@ -110,7 +110,10 @@ services:
   caddy:
     <<: [*restart, *logging]
     image: docker.io/library/caddy:2.8-alpine
-    ports: ["80:80", "443:443"]
+    # RM_BIND: the address the ports are published on. Unset, every interface (a
+    # server); scripts/local-up.sh writes 127.0.0.1, so a DEBUG stack on a laptop is not
+    # reachable from the network it sits on.
+    ports: ["${RM_BIND:-0.0.0.0}:80:80", "${RM_BIND:-0.0.0.0}:443:443"]
     volumes:
       - ${DATA_ROOT}/caddy:/data
       - ${DATA_ROOT}/static:/srv/static:ro
