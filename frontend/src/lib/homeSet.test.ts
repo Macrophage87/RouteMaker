@@ -123,3 +123,11 @@ test("the map: Set as Home in the road panel (hold or right-click a spot), and P
   assert.match(app, /if \(mode !== "go" \|\| riding\) setHomePick\(false\);/);
   assert.equal(CHANGE_HOME_TEXT, "Change Home");
 });
+
+test("privacy-1: the Home search does not keep its pick in recent places; every other search does", () => {
+  const search = src("../PlaceSearch.tsx");
+  const at = search.indexOf("const pick = (place: Place");
+  const pick = search.slice(at, search.indexOf('setQuery("");', at));
+  assert.match(pick, /if \(variant !== "home"\) setRecent\(rememberRecentPlace\(place\)\);/);
+  assert.equal((search.match(/rememberRecentPlace\(/g) ?? []).length, 1, "no other way in");
+});
