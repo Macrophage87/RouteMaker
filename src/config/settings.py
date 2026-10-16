@@ -283,6 +283,13 @@ def routing_concurrency(web_concurrency: str | None) -> int:
 
 ROUTING_CONCURRENCY = routing_concurrency(os.environ.get("WEB_CONCURRENCY"))
 
+# v0.7.0 "Faster routing": the router calls one routing slot may have in flight on its pool
+# (core.parallel; at 1 every call runs in turn), and how long a finished answer is kept in a
+# worker's memory (core.route_cache; 0 turns the cache off). The router sees at most
+# ROUTER_PARALLEL_CALLS + 1 calls per slot: the pool's threads and the request's own.
+ROUTER_PARALLEL_CALLS = max(1, int(os.environ.get("ROUTER_PARALLEL_CALLS", "3")))
+ROUTE_CACHE_TTL_S = max(0, int(os.environ.get("ROUTE_CACHE_TTL_S", "600")))
+
 
 # How many stress tiles the api may draw from the segment table at once; a
 # tile served from the cache (core.tile_cache) takes no slot. What routing's and
