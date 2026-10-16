@@ -5,11 +5,16 @@ import {
   REFERENCE_LAYER,
   REFERENCE_SOURCE,
   ROUTE_CASING_LAYER,
+  WAYPOINTS_SOURCE,
+  WAYPOINT_DOT_LAYER,
+  WAYPOINT_NAME_LAYER,
   showReference,
+  showWaypoints,
+  waypointLayers,
   type ReferenceMap,
 } from "./referenceLayer.ts";
 import type { LonLat } from "./geo.ts";
-import { ROUTE_BOTTOM_LAYER, railLayers } from "./railLayer.ts";
+import { LABEL_FONT, ROUTE_BOTTOM_LAYER, railLayers } from "./railLayer.ts";
 import { STRESS_SOURCE_ID } from "./mapStyle.ts";
 import { stressOverlayLayers } from "../stressStyle.js";
 
@@ -84,6 +89,24 @@ test("over the stress overlay and the labels, under the rail stations and the ro
   assert.ok(at("labels") < at(REFERENCE_LAYER));
   assert.ok(rail.every((id) => at(id) > at(REFERENCE_LAYER)));
   assert.ok(at(REFERENCE_LAYER) < at(ROUTE_CASING_LAYER));
+});
+
+test("the file's named waypoints are a dot and a text label under the route, replaced or removed whole", () => {
+  const map = fakeMap(["roads", ROUTE_CASING_LAYER, "route-line"]);
+  const marks = [{ at: [-77, 38.9] as LonLat, name: "<b>Coffee</b>" }];
+  showWaypoints(map, marks);
+  assert.deepEqual(map.order, ["roads", WAYPOINT_DOT_LAYER, WAYPOINT_NAME_LAYER, ROUTE_CASING_LAYER, "route-line"]);
+  const data = (map.sources.get(WAYPOINTS_SOURCE) as { data: { features: { properties: { name: string } }[] } }).data;
+  // The name is a property the label's text field reads: drawn as text, never parsed as markup.
+  assert.equal(data.features[0].properties.name, "<b>Coffee</b>");
+  const label = waypointLayers()[1] as { layout: Record<string, unknown> };
+  assert.deepEqual(label.layout["text-field"], ["get", "name"]);
+  assert.deepEqual(label.layout["text-font"], [LABEL_FONT]);
+  showWaypoints(map, [...marks, { at: [-77.01, 38.91], name: "Water" }]);
+  assert.equal(map.order.filter((l) => l === WAYPOINT_DOT_LAYER).length, 1);
+  showWaypoints(map, null);
+  assert.equal(map.getLayer(WAYPOINT_NAME_LAYER), undefined);
+  assert.equal(map.getSource(WAYPOINTS_SOURCE), undefined);
 });
 
 test("the layer names it places itself by are the rail and route layers' own", () => {

@@ -1,7 +1,8 @@
 /**
  * My routes (v0.7.0 plan, item 3): a signed-in rider's saved routes, in Plan's Settings and Go's Menu. Each row
  * opens the route as it was saved, renames it, exports it as GPX, or deletes it (after a second press). The
- * list is read when the section is shown and again after each change.
+ * list is read when the section is shown and again after each change. In Plan a row also lists the route's
+ * versions (Versions, like Rename, opens under the row) and restores one as the latest, which opens it.
  *
  * In Plan, the rider's shared links follow (lib/sharedRoutes.ts): each is its link, with New link (a new link for
  * the same route, the old one turned off, copied where the browser allows) and Turn off (after a second press, as
@@ -14,32 +15,45 @@ import {
   MY_ROUTES,
   NAME_MAX,
   NONE_SAVED,
+  RESTORED_SAID,
+  RESTORE_FAILED,
   countLine,
   deleteRoute,
   listRoutes,
+  listVersions,
   readRoute,
   renameRoute,
+  restoreVersion,
   rowDetails,
+  versionDetails,
   type SavedRoute,
   type SavedSummary,
+  type SavedVersion,
 } from "./lib/savedRoutes.ts";
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import { NEW_LINK, SHARED_LINKS, TURN_OFF, keepSaid, listSharedLinks, regenerateSharedLink, revokeSharedLink, type SharedLink } from "./lib/sharedRoutes.ts";
 import { formatDistance } from "./lib/format.ts";
+import { alertLine } from "./lib/closureReview.ts";
 
 export interface MyRoutesProps {
   /** Bumped by the page after a save, so the list is read again. */
   version: number;
-  onOpen: (route: SavedRoute) => void;
+  /** Opens a route; `said` is the line to announce in place of "Opened ...". */
+  onOpen: (route: SavedRoute, said?: string) => void;
   onExport: (route: SavedRoute) => void;
   announce: (text: string) => void;
+  /** Plan only: each row lists its versions and restores one. Go's Menu is unchanged. */
+  versions?: boolean;
   /** Plan only: the rider's shared links, to turn off or replace. */
   sharedLinks?: boolean;
   /** A link turned off or replaced: the page's Share forgets the id it last gave. */
   onSharedChange?: () => void;
+  /** A route renamed or deleted here: the page's Save follows it (its next save is a version of the renamed one, or new). */
+  onRenamed?: (id: number, name: string) => void;
+  onDeleted?: (id: number) => void;
 }
 
-export function MyRoutes({ version, onOpen, onExport, announce, sharedLinks = false, onSharedChange = () => {} }: MyRoutesProps) {
+export function MyRoutes({ version, onOpen, onExport, announce, versions = false, sharedLinks = false, onSharedChange = () => {}, onRenamed = () => {}, onDeleted = () => {} }: MyRoutesProps) {
   const headingId = useId();
   const [routes, setRoutes] = useState<SavedSummary[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -47,6 +61,30 @@ export function MyRoutes({ version, onOpen, onExport, announce, sharedLinks = fa
   const [name, setName] = useState("");
   const [deleting, setDeleting] = useState<number | null>(null);
   const [reload, setReload] = useState(0);
+  // The row whose versions are shown, and them (null while read, or when they could not be).
+  const [showing, setShowing] = useState<{ id: number; list: SavedVersion[] | null; failed: boolean } | null>(null);
+  const showVersions = (id: number) => {
+    if (showing?.id === id) {
+      setShowing(null);
+      return;
+    }
+    setShowing({ id, list: null, failed: false });
+    void listVersions(window.location.origin, id).then((list) =>
+      setShowing((now) => (now?.id === id ? { id, list, failed: list === null } : now)),
+    );
+  };
+  const restore = (r: SavedSummary, v: SavedVersion) => {
+    if (v.id === null) return;
+    void restoreVersion(window.location.origin, r.id, v.id).then((route) => {
+      if (!route) {
+        announce(RESTORE_FAILED);
+        return;
+      }
+      setShowing(null);
+      setReload((n) => n + 1);
+      onOpen(route, RESTORED_SAID(r.name, v));
+    });
+  };
 
   useEffect(() => {
     let live = true;
@@ -86,6 +124,7 @@ export function MyRoutes({ version, onOpen, onExport, announce, sharedLinks = fa
                       if (!next) return;
                       void renameRoute(window.location.origin, r.id, next).then((ok) => {
                         announce(ok ? `Renamed to "${next}".` : "The name was not changed; try again shortly.");
+                        if (ok) onRenamed(r.id, next);
                         setRenaming(null);
                         setReload((n) => n + 1);
                       });
@@ -112,6 +151,8 @@ export function MyRoutes({ version, onOpen, onExport, announce, sharedLinks = fa
                     </button>
                     <span id={`my-route-${r.id}`} className="hint my-route-details">
                       {rowDetails(r)}
+                      {/* A closure in force on the saved line (v0.7.0 closures): one line, read with the route's name. */}
+                      {alertLine(r.closure_alerts) && <span className="my-route-closure"> {alertLine(r.closure_alerts)}</span>}
                     </span>
                     <span className="my-route-actions">
                       <button type="button" className="secondary icon-button" aria-label={`Export ${r.name} as GPX`} onClick={() => void full(r.id).then((route) => route && onExport(route))}>
@@ -129,6 +170,18 @@ export function MyRoutes({ version, onOpen, onExport, announce, sharedLinks = fa
                       >
                         Rename
                       </button>
+                      {versions && (
+                        <button
+                          type="button"
+                          className="secondary"
+                          aria-label={`Versions of ${r.name}`}
+                          aria-expanded={showing?.id === r.id}
+                          aria-controls={`my-route-versions-${r.id}`}
+                          onClick={() => showVersions(r.id)}
+                        >
+                          Versions
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="secondary"
@@ -140,6 +193,7 @@ export function MyRoutes({ version, onOpen, onExport, announce, sharedLinks = fa
                           }
                           void deleteRoute(window.location.origin, r.id).then((ok) => {
                             announce(ok ? `Deleted "${r.name}".` : "The route was not deleted; try again shortly.");
+                            if (ok) onDeleted(r.id);
                             setDeleting(null);
                             setReload((n) => n + 1);
                           });
@@ -148,6 +202,32 @@ export function MyRoutes({ version, onOpen, onExport, announce, sharedLinks = fa
                         {deleting === r.id ? "Delete?" : "Delete"}
                       </button>
                     </span>
+                    {versions && showing?.id === r.id && (
+                      <div id={`my-route-versions-${r.id}`} className="my-route-versions">
+                        {/* Reading and a failure are said politely; the list itself is not read out. */}
+                        <div role="status" aria-live="polite">
+                          {showing.failed && <p className="notice">The versions could not be read; try again shortly.</p>}
+                          {!showing.failed && showing.list === null && <p className="loading">Reading the versions…</p>}
+                        </div>
+                        {showing.list !== null && (
+                          <ol className="my-route-version-list" aria-label={`Versions of ${r.name}, newest first`}>
+                            {showing.list.map((v, i) => (
+                              <li key={v.id ?? "latest"}>
+                                <span className="hint">
+                                  {i === 0 ? "Latest: " : ""}
+                                  {versionDetails(v)}
+                                </span>
+                                {v.id !== null && (
+                                  <button type="button" className="secondary" aria-label={`Restore the version from ${versionDetails(v)}`} onClick={() => restore(r, v)}>
+                                    Restore
+                                  </button>
+                                )}
+                              </li>
+                            ))}
+                          </ol>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
               </li>

@@ -5648,6 +5648,52 @@ details.fold > summary .icon {
   gap: 6px;
   margin-top: 6px;
 }
+/* The rider's role (in the one question, and beside "Show me as a dot") and the key of the roles on the ride. */
+.ride-role {
+  border: 0;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.ride-role legend {
+  font-weight: 600;
+  padding: 0;
+}
+.ride-role .toggle,
+.ride-role-key li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ride-role .toggle {
+  min-height: 44px;
+}
+.ride-role-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-weight: 600;
+}
+.ride-role-select select {
+  min-height: 44px;
+}
+.ride-role-key {
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.ride-role-swatch {
+  flex: none;
+}
+@media (forced-colors: active) {
+  /* The swatches keep the map's colours and shapes (the canvas is not recoloured); their white edge holds on any Canvas. */
+  .ride-role-swatch {
+    forced-color-adjust: none;
+  }
+}
 .ride-alert-banners {
   display: flex;
   flex-direction: column;
@@ -5757,8 +5803,29 @@ details.fold > summary .icon {
   border-bottom: 1px solid var(--border);
   padding-bottom: 6px;
 }
-.my-route-details {
+.my-route-details,
+.my-route-versions {
   flex: 1 1 100%;
+}
+/* A closure in force on a saved route (v0.7.0 closures): its own line, said in words, not colour. */
+.my-route-closure {
+  display: block;
+  font-weight: 600;
+}
+.my-route-version-list {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.my-route-version-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
 }
 .my-route-actions,
 .my-route-rename,

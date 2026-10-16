@@ -48,6 +48,7 @@ from config.procrastinate import (
     NIGHTLY_BACKUP_CRON,
     REBUILD_TIMEOUT_S,
     ROUTER_RESTART_NOTICE,
+    SAVED_ROUTE_CLOSURES_CRON,
     SWEEP_TIMEOUT_S,
     WEEKLY_REBUILD_CRON,
     WORK_ZONES_CRON,
@@ -84,6 +85,7 @@ def test_each_cron_constant_has_a_task_behind_it() -> None:
         "worker_heartbeat": WORKER_HEARTBEAT_CRON,
         "refresh_work_zones": WORK_ZONES_CRON,
         "refresh_dc_closures": DC_CLOSURES_CRON,
+        "check_saved_route_closures": SAVED_ROUTE_CLOSURES_CRON,
     }
 
 
@@ -2246,6 +2248,7 @@ def test_every_alert_window_is_pinned() -> None:
         # The work-zone feeds, every five minutes: six missed ticks, as the sweep.
         "refresh_work_zones": 30 * 60,
         "refresh_dc_closures": 60 * 60,
+        "check_saved_route_closures": 60 * 60,
     }
 
 
@@ -2277,6 +2280,7 @@ def test_each_alert_window_is_wider_than_its_schedule() -> None:
         "worker_heartbeat": WORKER_HEARTBEAT_CRON,
         "refresh_work_zones": WORK_ZONES_CRON,
         "refresh_dc_closures": DC_CLOSURES_CRON,
+        "check_saved_route_closures": SAVED_ROUTE_CLOSURES_CRON,
     }
     assert set(crons) == set(STALE_AFTER), "every scheduled task is watched, and the reverse"
     base = timezone.now()

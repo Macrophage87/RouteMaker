@@ -1322,6 +1322,9 @@ class BikeshareFeedCache(models.Model):
     stand-alone dataset). It is excluded from the nightly dump and from the beta's data
     shipment, and refills itself.
 
+    The saved-route closure check keeps its state here too (key `SAVED_ALERTS`,
+    core.saved_route_alerts): a hash and a place reached, nothing personal.
+
     It holds one more row of the same kind: the live work zones (FOLLOWUP-WORKZONES,
     key `WORKZONES`, written by `core.workzones.refresh` every five minutes), the
     parsed zones of the Maryland and VDOT WZDx feeds as last read. Same life as the
@@ -1335,6 +1338,7 @@ class BikeshareFeedCache(models.Model):
     WORKZONES = "workzones"
     # DC's closures (v0.7.0, `core.closure_sources`): the same kind of row, its own key.
     CLOSURES = "closures"
+    SAVED_ALERTS = "saved_alerts"
 
     key = models.CharField(max_length=16, unique=True)
     payload = models.JSONField(null=True)
@@ -1396,6 +1400,9 @@ class StressSuggestion(models.Model):
 
     class Kind(models.TextChoices):
         ROAD = "road", "Road piece"
+        # v0.7.0 closures: a rider's report that the road is closed (the short form's "Closed"
+        # reason). Reviewed with the closures (core.reviewed_closures), never as a level.
+        CLOSURE = "closure", "Closure report"
 
     created_at = models.DateTimeField(default=timezone.now)
     suggester = models.ForeignKey(
@@ -1855,6 +1862,15 @@ class SavedRoute(models.Model):
     gpx = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # v0.7.0 closures (core.saved_route_alerts): the closures in force that the line runs along,
+    # as last found, shown in My routes; [] where none.
+    closure_alerts = models.JSONField(default=list, blank=True)
+    closures_checked_at = models.DateTimeField(null=True, blank=True)
+    # The line's box, so the check reads a line only where a closure could meet it.
+    bbox_west = models.FloatField(null=True, blank=True)
+    bbox_south = models.FloatField(null=True, blank=True)
+    bbox_east = models.FloatField(null=True, blank=True)
+    bbox_north = models.FloatField(null=True, blank=True)
 
     class Meta:
         db_table = "saved_route"
@@ -1862,6 +1878,49 @@ class SavedRoute(models.Model):
 
     def __str__(self) -> str:
         return f"Saved route {self.pk} for account {self.user_id}"
+
+
+class SavedRouteVersion(models.Model):
+    """An earlier version of a saved route: what it was before it was saved again with changes,
+    or before an earlier version was restored (core.api, /me/routes/{id}/versions).
+
+    The same fields as the route itself, kept verbatim, with when that version was saved
+    (`saved_at`) and when it stopped being the latest (`replaced_at`). The owner's own, like the
+    route: deleted with it, and at most `MAX_PER_ROUTE` per route, the oldest going first. They do
+    not count toward the account's `SavedRoute.MAX_PER_ACCOUNT`, but all of an account's versions
+    together are at most `MAX_BYTES_PER_ACCOUNT`, the oldest across the account going first.
+
+    An opened GPX file's text is kept once: a version whose file is the same as the version after
+    it (or the route itself, for the newest) keeps none and says so (`gpx_same_as_next`); its text
+    is that one's (core.api `_version_gpx`).
+    """
+
+    MAX_PER_ROUTE = 20
+    MAX_BYTES_PER_ACCOUNT = 50 * 1024 * 1024
+
+    route = models.ForeignKey(SavedRoute, on_delete=models.CASCADE, related_name="versions")
+    source = models.CharField(
+        max_length=8, choices=SavedRoute.Source.choices, default=SavedRoute.Source.PLAN
+    )
+    line = models.JSONField()
+    distance_m = models.FloatField()
+    inputs = models.JSONField(default=dict)
+    answer = models.JSONField(null=True, blank=True)
+    gpx = models.TextField(blank=True, default="")
+    gpx_same_as_next = models.BooleanField(default=False)
+    # What this version holds, in bytes (its line, inputs, answer and own file text as JSON).
+    size_bytes = models.IntegerField(default=0)
+    saved_at = models.DateTimeField()
+    replaced_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "saved_route_version"
+        indexes = [
+            models.Index(fields=["route", "-replaced_at"], name="saved_route_version_recent")
+        ]
+
+    def __str__(self) -> str:
+        return f"Version {self.pk} of saved route {self.route_id}"
 
 
 class SharedRoute(models.Model):
@@ -1921,3 +1980,44 @@ class SharedRoute(models.Model):
 
     def __str__(self) -> str:
         return f"Shared route {self.pk[:6]}…"
+
+
+class ReviewedClosure(models.Model):
+    """A closure a RouteMaker reviewer entered, or confirmed from a rider's report (v0.7.0
+    closures; core.reviewed_closures).
+
+    It takes part in routing and the closure check exactly as a feed's closure does
+    (`core.workzones.snapshot`), credited "Confirmed by a RouteMaker reviewer". The ways are kept
+    with their lines as the segment table had them when it was entered (`lines`, one
+    [[lon, lat], ...] per way, or one drawn line with no way), so a rebuild that renumbers or
+    moves a way does not move the closure. In force from `start` (null: at once) until `end`
+    (null: until a reviewer ends it), and no longer once `ended_at` is set.
+    """
+
+    created_at = models.DateTimeField(default=timezone.now)
+    created_by = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    osm_way_ids = models.JSONField(default=list, blank=True)
+    lines = models.JSONField(default=list)
+    road = models.CharField(max_length=200, blank=True, default="")
+    reason = models.TextField()
+    start = models.DateTimeField(null=True, blank=True)
+    end = models.DateTimeField(null=True, blank=True)
+    source_url = models.URLField(max_length=500, blank=True, default="")
+    # The rider's report it confirms, where it came from one.
+    report = models.ForeignKey(
+        StressSuggestion, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    ended_at = models.DateTimeField(null=True, blank=True)
+    ended_by = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
+    class Meta:
+        db_table = "reviewed_closure"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["ended_at", "end"], name="reviewed_closure_live")]
+
+    def __str__(self) -> str:
+        return f"Closure {self.pk}: {self.road or 'a road'}"

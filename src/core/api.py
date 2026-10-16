@@ -92,6 +92,7 @@ from . import (
     climbprofile,
     gbfs,
     geocode,
+    map_match,
     micromobility,
     nearest,
     parallel,
@@ -2390,6 +2391,9 @@ STRESS_EDIT_PATHS = (
     "/api/stress-suggestions",
     "/api/junction-suggestions",
     "/api/mass-hazards",
+    "/api/closures/reviewed",
+    "/api/closures/reports",
+    "/api/closures/stretch",
     "/api/me",
 )
 
@@ -3727,6 +3731,72 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
         return refusal
 
 
+# Snapping an opened GPX track to the map's ways (core.map_match; PLAN.md, Import: map matching):
+# signed out or in, counted as routing is, and nothing kept. The body is the track's line, up to
+# map_match.MAX_POINTS points, which is larger than a route request, so it is read here with its
+# own cap rather than through `json_body_only`.
+class MatchOut(Schema):
+    line: list[list[float]] = Field(description="The snapped line, [lon, lat] pairs.")
+    matched_share: float = Field(
+        description="The share of the track's points the matcher put on a way, 0 to 1."
+    )
+
+
+@api.post(
+    "/match",
+    response={
+        200: MatchOut,
+        400: ErrorOut,
+        422: ErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+        503: BusyOut,
+    },
+    summary="Snap an opened GPX track to the routable network on a ride type's graph",
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT),
+    ratelimit.rate_limited(ratelimit.ROUTING),
+    errors_as_json,
+)
+def match_track(request):
+    body, refusal = _json_body(request, map_match.MAX_BYTES)
+    if refusal is not None:
+        return refusal
+    if not isinstance(body, dict) or set(body) - {"points", "preset", "trails_off", "assist"}:
+        return _error(400, "Send the track as an object with points and a ride type.")
+    preset = body.get("preset", "default")
+    if not isinstance(preset, str) or preset not in presets.PRESETS:
+        return _error(400, "Not a ride type this planner offers.")
+    trails_off = body.get("trails_off", False)
+    assist = body.get("assist", False)
+    if not isinstance(trails_off, bool) or not isinstance(assist, bool):
+        return _error(400, "trails_off and assist are true or false.")
+    try:
+        points = map_match.checked_points(body.get("points"))
+    except map_match.TrackProblem as problem:
+        return _error(400, str(problem))
+    try:
+        answer = map_match.match(
+            points,
+            preset,
+            getattr(request, "routing_started", None),
+            trails_off=trails_off,
+            assist=assist,
+        )
+    except routing.RouterRefused:
+        return _error(
+            422,
+            "No street or path along the track could be found for this ride type: it may run"
+            " where the map has no way, or where this ride type does not ride.",
+        )
+    except (routing.RouterUnavailable, routing.DeadlineExceeded):
+        refusal = _error(503, "Snapping the track took too long or the router is busy; try again.")
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+        return refusal
+    return JsonResponse(answer)
+
+
 class NearestIn(RouteIn):
     """The route request's body, with `points` the rider's position and then the places."""
 
@@ -4292,6 +4362,13 @@ class MeOut(Schema):
     can_suggest: bool = Field(
         description="The road panel offers Suggest a change (core.suggestions.may_suggest)."
     )
+    can_review_closures: bool = Field(
+        default=False,
+        description=(
+            "A reviewer: the road panel offers Mark closed, and Review lists closure reports"
+            " (core.reviewed_closures.may_review)."
+        ),
+    )
     sign_in: bool = Field(
         default=False,
         description=(
@@ -4420,12 +4497,13 @@ def me(request, response: HttpResponse):
     """No name and no id, so nothing here can leak into a link or a log."""
     from django.middleware.csrf import get_token
 
-    from . import suggestions
+    from . import reviewed_closures, suggestions
 
     signed = signed_in(request)
     can_change = bool(signed and getattr(request.user, "is_instance_admin", False))
     can_suggest = bool(signed and suggestions.may_suggest(request.user))
-    if can_change or can_suggest:
+    can_review = bool(signed and reviewed_closures.may_review(request.user))
+    if can_change or can_suggest or can_review:
         # Sets the `csrftoken` cookie the editor sends back as `X-CSRFToken`.
         get_token(request)
     _private(response)
@@ -4437,6 +4515,7 @@ def me(request, response: HttpResponse):
             "signed_in": signed,
             "can_change_lts": can_change,
             "can_suggest": can_suggest,
+            "can_review_closures": can_review,
             "sign_in": sign_in_available(),
         },
     )
@@ -4606,7 +4685,8 @@ def _json_body(request, max_bytes: int):
         declared = int(request.META.get("CONTENT_LENGTH") or 0)
     except ValueError:
         return None, _stress_error(400, "Invalid Content-Length.")
-    if declared > max_bytes:
+    # The declared length, and the body itself (a missing or understated length is not trusted).
+    if declared > max_bytes or len(request.body) > max_bytes:
         return None, _stress_error(400, f"The body is larger than {max_bytes // 1024} KB.")
     try:
         return json.loads(request.body or b"null"), None
@@ -4673,6 +4753,9 @@ def _route_summary(row) -> dict:
         "preset": (row.inputs or {}).get("preset", ""),
         "created_at": row.created_at.isoformat(),
         "updated_at": row.updated_at.isoformat(),
+        # v0.7.0 closures (core.saved_route_alerts): the closures in force along the line, as
+        # last checked; [] where none.
+        "closure_alerts": list(row.closure_alerts or []),
     }
 
 
@@ -4766,6 +4849,21 @@ def saved_routes_add(request):
     gpx = body.get("gpx", "") or ""
     if not isinstance(gpx, str) or (gpx and source != SavedRoute.Source.GPX):
         return _stress_error(400, "Only an opened GPX file keeps its text.", field="gpx")
+    version_of = body.get("version_of")
+    if version_of is not None:
+        # Saved again: a new latest version of that route, not another route (so not counted
+        # toward the account's cap).
+        if not isinstance(version_of, int) or isinstance(version_of, bool):
+            return _stress_error(400, "Not a saved route.", field="version_of")
+        content = {
+            "source": source,
+            "line": line,
+            "distance_m": float(distance),
+            "inputs": inputs,
+            "answer": answer,
+            "gpx": gpx,
+        }
+        return _save_version(request, version_of, name.strip(), content)
     with transaction.atomic():
         # Taken in turn per account, so two saves at once cannot both pass the cap.
         User.objects.select_for_update().filter(pk=request.user.pk).first()
@@ -4786,7 +4884,198 @@ def saved_routes_add(request):
             answer=answer,
             gpx=gpx,
         )
+    from . import saved_route_alerts
+
+    saved_route_alerts.check(row)
     return _private(JsonResponse(_route_summary(row), status=201))
+
+
+# Saved-route versions (core.models.SavedRouteVersion): a save naming `version_of` replaces that
+# route's line and inputs, keeping what it was as a version; restoring a version does the same
+# with the version's. The owner's own: another account's route is "not found", as above.
+VERSION_FIELDS = ("source", "line", "distance_m", "inputs", "answer", "gpx")
+
+
+def _content_saved_at(row):
+    """When the route's latest version was saved: when the one before it was replaced, or when
+    the route was first saved."""
+    last = row.versions.order_by("-replaced_at", "-pk").values_list("replaced_at", flat=True)
+    return last.first() or row.created_at
+
+
+def _version_size(fields: dict) -> int:
+    """A version's bytes: its line, inputs and answer as JSON, and the file text it keeps."""
+    held = (fields["line"], fields["inputs"], fields["answer"])
+    return len(json.dumps(held, separators=(",", ":"))) + len(fields["gpx"].encode())
+
+
+def _version_gpx(version) -> str:
+    """A version's file text: its own, or (kept once) that of the first version after it that
+    keeps one, else the route's."""
+    if not version.gpx_same_as_next:
+        return version.gpx
+    later = (
+        version.route.versions.filter(gpx_same_as_next=False, replaced_at__gt=version.replaced_at)
+        .order_by("replaced_at", "pk")
+        .values_list("gpx", flat=True)
+        .first()
+    )
+    return version.route.gpx if later is None else later
+
+
+def _replace_content(row, content: dict) -> None:
+    """Keep the route as it is as a version, then make `content` the latest. Called in a
+    transaction with the route's row locked."""
+    from django.utils import timezone
+
+    from .models import SavedRouteVersion, User
+
+    # Taken in turn per account, so the account's byte cap is counted one save at a time.
+    User.objects.select_for_update().filter(pk=row.user_id).first()
+    kept = {f: getattr(row, f) for f in VERSION_FIELDS}
+    # The same file as the content replacing it: kept once, by the newer one.
+    same_file = bool(kept["gpx"]) and kept["gpx"] == content["gpx"]
+    if same_file:
+        kept["gpx"] = ""
+    SavedRouteVersion.objects.create(
+        route=row,
+        saved_at=_content_saved_at(row),
+        replaced_at=timezone.now(),
+        gpx_same_as_next=same_file,
+        size_bytes=_version_size(kept),
+        **kept,
+    )
+    for f, value in content.items():
+        setattr(row, f, value)
+    row.save()
+    # Past the caps the oldest go: per route, then across the account. Taking the oldest first
+    # never strands a version that keeps its file in a later one.
+    stale = list(
+        row.versions.order_by("-replaced_at", "-pk").values_list("pk", flat=True)[
+            SavedRouteVersion.MAX_PER_ROUTE :
+        ]
+    )
+    SavedRouteVersion.objects.filter(pk__in=stale).delete()
+    everything = SavedRouteVersion.objects.filter(route__user_id=row.user_id)
+    total = sum(everything.values_list("size_bytes", flat=True))
+    if total > SavedRouteVersion.MAX_BYTES_PER_ACCOUNT:
+        drop = []
+        for pk, size in everything.order_by("replaced_at", "pk").values_list("pk", "size_bytes"):
+            if total <= SavedRouteVersion.MAX_BYTES_PER_ACCOUNT:
+                break
+            drop.append(pk)
+            total -= size
+        SavedRouteVersion.objects.filter(pk__in=drop).delete()
+
+
+def _same_content(row, content: dict) -> bool:
+    # The answer is the planner's words about the same line and inputs; it does not decide.
+    return all(getattr(row, f) == content[f] for f in VERSION_FIELDS if f != "answer")
+
+
+def _locked_route(request, route_id: int):
+    from .models import SavedRoute
+
+    return SavedRoute.objects.select_for_update().filter(user=request.user, pk=route_id).first()
+
+
+def _save_version(request, route_id: int, name: str, content: dict):
+    from django.db import transaction
+
+    with transaction.atomic():
+        row = _locked_route(request, route_id)
+        if row is None:
+            return _stress_error(404, "That saved route is not in your account.", code="not_found")
+        changed = not _same_content(row, content)
+        if changed:
+            _replace_content(row, content)
+        if row.name != name:
+            row.name = name
+            row.save(update_fields=["name", "updated_at"])
+    if changed:
+        from . import saved_route_alerts
+
+        saved_route_alerts.check(row)  # a new line: its closures and box again
+    return _private(JsonResponse({**_route_summary(row), "versioned": changed}))
+
+
+@api.get("/me/routes/{route_id}/versions", summary="A saved route's versions, newest first")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def saved_route_versions(request, route_id: int):
+    from . import accounts
+    from .models import SavedRouteVersion
+
+    row = _saved_route(request, route_id)
+    if row is None:
+        return _stress_error(404, "That saved route is not in your account.", code="not_found")
+    kept = list(
+        row.versions.order_by("-replaced_at", "-pk").values(
+            "id", "saved_at", "distance_m", "source", "inputs"
+        )
+    )
+    latest = {
+        "id": None,
+        "saved_at": _content_saved_at(row),
+        "distance_m": row.distance_m,
+        "source": row.source,
+        "inputs": row.inputs,
+    }
+    entries = [latest, *kept]
+    out = []
+    for i, entry in enumerate(entries):
+        if i + 1 < len(entries):
+            change = accounts.change_phrase(entries[i + 1], entry)
+        else:
+            # The oldest kept: the first save, unless older versions went past the cap.
+            change = "First saved" if entry["saved_at"] == row.created_at else ""
+        out.append(
+            {
+                "id": entry["id"],
+                "saved_at": entry["saved_at"].isoformat(),
+                "distance_m": entry["distance_m"],
+                "source": entry["source"],
+                "change": change,
+            }
+        )
+    return _private(JsonResponse({"versions": out, "max": SavedRouteVersion.MAX_PER_ROUTE}))
+
+
+@api.post(
+    "/me/routes/{route_id}/versions/{version_id}/restore",
+    summary="Make an earlier version of a saved route its latest again",
+)
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def saved_route_restore(request, route_id: int, version_id: int):
+    from django.db import transaction
+
+    with transaction.atomic():
+        row = _locked_route(request, route_id)
+        version = row.versions.filter(pk=version_id).first() if row is not None else None
+        if version is None:
+            return _stress_error(404, "That version is not in your account.", code="not_found")
+        content = {f: getattr(version, f) for f in VERSION_FIELDS}
+        content["gpx"] = _version_gpx(version)
+        # Restoring makes a new latest version: the one it replaces stays in the list.
+        changed = not _same_content(row, content)
+        if changed:
+            _replace_content(row, content)
+    if changed:
+        from . import saved_route_alerts
+
+        saved_route_alerts.check(row)  # a new line: its closures and box again
+    return _private(JsonResponse(_route_full(row)))
 
 
 @api.get("/me/routes/{route_id}", summary="One saved route, with its line, inputs and answer")
@@ -5276,7 +5565,7 @@ def ride_here(request, ride_id: str):
     return _ride_call(
         request,
         lambda rp: rp.post_position(
-            ride_id, body.get("token", ""), body.get("lon"), body.get("lat")
+            ride_id, body.get("token", ""), body.get("lon"), body.get("lat"), body.get("role")
         ),
     )
 
@@ -6322,3 +6611,259 @@ def junction_suggestion_discord(request, suggestion_id: int, body: UndoIn, respo
             ],
         },
     )
+
+
+# ---- Closures a reviewer entered or confirmed (v0.7.0 closures; core.reviewed_closures) ----
+#
+# A reviewer (an instance admin, or a reviewer role in a configured Discord server) enters a
+# closure from the road panel, or confirms or rejects a rider's report, and ends one early. The
+# closures take part in routing and the closure check as a feed's do, credited "Confirmed by a
+# RouteMaker reviewer". Every write carries the CSRF token and is counted per account.
+
+
+def reviewer_only(*, audited: bool):
+    """A session of an account that may review closures, or 401 / 403."""
+
+    def decorator(view):
+        @wraps(view)
+        def wrapped(request, *args, **kwargs):
+            from . import reviewed_closures
+
+            if not signed_in(request):
+                return _stress_error(401, "Sign in to review closures.", code="signed_out")
+            if not reviewed_closures.may_review(request.user):
+                if audited:
+                    _refused(request, request.user, "not a reviewer")
+                return _stress_error(
+                    403, "Only a RouteMaker reviewer can enter a closure.", code="not_reviewer"
+                )
+            return view(request, *args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
+CLOSURE_REVIEW_WRITE = (
+    ratelimit.user_rate_limited(ratelimit.SUGGEST_REVIEW_WRITES),
+    csrf_protected,
+    reviewer_only(audited=True),
+    json_body_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+CLOSURE_REVIEW_READ = (
+    reviewer_only(audited=False),
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+
+
+class ReviewedClosureIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    osm_way_ids: list[StrictInt] | None = Field(
+        default=None, description="The road pieces closed (at most 40), or a drawn `line`."
+    )
+    line: list[list[float]] | None = Field(
+        default=None, description="A drawn stretch, [[lon, lat], ...], in place of the ways."
+    )
+    reason: str = Field(max_length=500, description="Required, at most 500 characters.")
+    start: str | None = Field(default=None, description="The first day, YYYY-MM-DD (today).")
+    end: str | None = Field(
+        default=None, description="The last day, YYYY-MM-DD; none: until a reviewer ends it."
+    )
+    url: str = Field(default="", max_length=500, description="The source's link, optional.")
+
+
+class ClosureConfirmIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(
+        default="", max_length=500, description="The report's fixed reasons where empty."
+    )
+    start: str | None = None
+    end: str | None = None
+    url: str = Field(default="", max_length=500)
+
+
+class ReviewedClosureOut(Schema):
+    id: int
+    road: str
+    osm_way_ids: list[int]
+    reason: str
+    start: str | None
+    end: str | None
+    url: str | None
+    when_text: str
+    from_report: bool
+    point: list[float] | None
+
+
+class ClosureReportOut(Schema):
+    id: int
+    osm_way_id: int
+    road: str
+    reason: str
+    reason_fixed: str = Field(description="The one-tap reasons' words only: the form's start.")
+    lat: float
+    lon: float
+    created_at: str
+
+
+class ClosureReviewOut(Schema):
+    closures: list[ReviewedClosureOut]
+    reports: list[ClosureReportOut]
+
+
+class ClosureDoneOut(Schema):
+    id: int
+    message: str
+
+
+class ClosureStretchOut(Schema):
+    name: str
+    osm_way_ids: list[int]
+    pieces: int
+    length_m: float
+    capped: bool
+    expected: str
+
+
+class ClosureStretchAnswer(Schema):
+    stretch: ClosureStretchOut | None
+
+
+def _closure_said(closure) -> str:
+    from . import reviewed_closures
+
+    said = reviewed_closures.summary(closure)
+    return (
+        f"Closure confirmed: {said['road']}, {said['when_text'][0].lower()}"
+        f"{said['when_text'][1:]}. New plans route round it within a minute."
+    )
+
+
+@api.get(
+    "/closures/reviewed",
+    response={200: ClosureReviewOut, **SUGGESTION_RESPONSES},
+    summary="The closures reviewers confirmed, in force or to come, and riders' reports (reviewer)",
+)
+@decorate_view(*CLOSURE_REVIEW_READ)
+def reviewed_closures_list(request, response: HttpResponse):
+    from django.middleware.csrf import get_token
+
+    from . import reviewed_closures
+
+    get_token(request)
+    _private(response)
+    return Status(
+        200,
+        {
+            "closures": [
+                reviewed_closures.summary(c)
+                for c in reviewed_closures.live_rows().order_by("start", "pk")
+            ],
+            "reports": [
+                reviewed_closures.report_summary(r) for r in reviewed_closures.open_reports()
+            ],
+        },
+    )
+
+
+@api.get(
+    "/closures/stretch/{osm_way_id}",
+    response={200: ClosureStretchAnswer, **SUGGESTION_RESPONSES},
+    summary="The named stretch a road piece is in, for Mark closed's extent choice (reviewer)",
+)
+@decorate_view(*CLOSURE_REVIEW_READ)
+def reviewed_closure_stretch(request, osm_way_id: int, response: HttpResponse):
+    from . import stress_edits
+
+    try:
+        stretch = stress_edits.stretch_state(osm_way_id)
+    except stress_edits.EditRefused as refused:
+        return _stress_error(refused.status, refused.message, refused.field, refused.code)
+    _private(response)
+    return Status(200, {"stretch": stretch})
+
+
+@api.post(
+    "/closures/reviewed",
+    response={201: ClosureDoneOut, **SUGGESTION_RESPONSES},
+    summary="Enter a closure: road pieces or a drawn line, reason, dates, source (reviewer)",
+)
+@decorate_view(*CLOSURE_REVIEW_WRITE)
+def reviewed_closure_create(request, body: ReviewedClosureIn, response: HttpResponse):
+    from . import reviewed_closures, stress_edits
+
+    try:
+        closure = reviewed_closures.create(
+            request.user,
+            way_ids=body.osm_way_ids,
+            reason=body.reason,
+            start=body.start,
+            end=body.end,
+            url=body.url,
+            line=body.line,
+        )
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(201, {"id": closure.pk, "message": _closure_said(closure)})
+
+
+@api.post(
+    "/closures/reviewed/{closure_id}/end",
+    response={200: ClosureDoneOut, **SUGGESTION_RESPONSES},
+    summary="End a confirmed closure now (reviewer)",
+)
+@decorate_view(*CLOSURE_REVIEW_WRITE)
+def reviewed_closure_end(request, closure_id: int, body: UndoIn, response: HttpResponse):
+    from . import reviewed_closures, stress_edits
+
+    try:
+        closure = reviewed_closures.end_now(request.user, closure_id)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    road = closure.road or "The drawn stretch"
+    return Status(200, {"id": closure.pk, "message": f"Ended. {road} is open again for new plans."})
+
+
+@api.post(
+    "/closures/reports/{report_id}/confirm",
+    response={201: ClosureDoneOut, **SUGGESTION_RESPONSES},
+    summary="Confirm a rider's closure report: the closure on its road piece (reviewer)",
+)
+@decorate_view(*CLOSURE_REVIEW_WRITE)
+def closure_report_confirm(request, report_id: int, body: ClosureConfirmIn, response: HttpResponse):
+    from . import reviewed_closures, stress_edits
+
+    try:
+        closure = reviewed_closures.confirm_report(
+            request.user, report_id, body.reason, body.start, body.end, body.url
+        )
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(201, {"id": closure.pk, "message": _closure_said(closure)})
+
+
+@api.post(
+    "/closures/reports/{report_id}/reject",
+    response={200: ClosureDoneOut, **SUGGESTION_RESPONSES},
+    summary="Reject a rider's closure report (reviewer)",
+)
+@decorate_view(*CLOSURE_REVIEW_WRITE)
+def closure_report_reject(request, report_id: int, body: UndoIn, response: HttpResponse):
+    from . import reviewed_closures, stress_edits
+
+    try:
+        report = reviewed_closures.reject_report(request.user, report_id)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(200, {"id": report.pk, "message": "Rejected. The report is deleted."})

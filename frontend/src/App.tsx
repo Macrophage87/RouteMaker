@@ -203,7 +203,7 @@ import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, onSignIn, planFromSetting, sameSettings, saveSettings, SAVE_SETTLE_MS, type SettingsDoc } from "./lib/accountSettings.ts";
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
-import { OPENED_SAID, SAVED_SAID, SAVE_FAILED, UPDATE_ROUTE, defaultRouteName, differenceLine, differsTooMuch, gpxSave, planSave, saveRoute, savedAnswer, type SavedRoute } from "./lib/savedRoutes.ts";
+import { OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, savedAnswer, versionOf, type OpenSaved, type SavedRoute } from "./lib/savedRoutes.ts";
 import { checkClosures, closedStretches, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
 import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./lib/gpxVerbatim.ts";
 import { readGpx } from "./lib/gpxImport.ts";
@@ -2047,6 +2047,8 @@ export function App() {
     setEditPoints(false);
     // Clearing an opened file's plan puts the file away too; undo brings both back.
     const ride = rideRef.current;
+    // Cleared, the next save is a new saved route.
+    openSavedRoute.current = null;
     commit([], ride.imported ? { ...ride, imported: null } : undefined);
     // Said, and the focus to the place search, as every other removal hands it on (review a11y-1).
     announce(CLEARED_SAID);
@@ -2425,6 +2427,9 @@ export function App() {
   // A saved route's line about today's map (more than 5% apart in distance), with Update route.
   const [savedNote, setSavedNote] = useState<{ key: string; savedM: number; todayM: number } | null>(null);
   const [myRoutesVersion, setMyRoutesVersion] = useState(0);
+  // The saved route on screen (opened from My routes, or saved last): in Plan, saved again under its own name it
+  // is a new version of that route (lib/savedRoutes.ts versionOf). A new file, a shared route or Clear forget it.
+  const openSavedRoute = useRef<OpenSaved | null>(null);
   const saveCurrent = async (name: string): Promise<string> => {
     const verbatim = imported?.verbatim;
     const body =
@@ -2434,14 +2439,19 @@ export function App() {
           ? planSave(name, shown, routedPoints, preset, dials)
           : null;
     if (!body) return SAVE_FAILED;
-    const outcome = await saveRoute(origin, body);
+    const of = versionOf(openSavedRoute.current, name, mode === "plan");
+    const outcome = await saveAsVersion(origin, body, of);
     if (!outcome.ok) return outcome.message || SAVE_FAILED;
     setMyRoutesVersion((v) => v + 1);
-    return SAVED_SAID(name);
+    if (mode === "plan") openSavedRoute.current = { id: outcome.route.id, name: outcome.route.name };
+    // No `versioned`: a plain save (or the route was gone, and this one is new).
+    if (outcome.versioned === undefined) return SAVED_SAID(name);
+    return outcome.versioned === false ? UNCHANGED_SAID(outcome.route.name, body.source) : VERSION_SAID(outcome.route.name);
   };
   const saveProps = me.signed_in
     ? {
         defaultName: () =>
+          (mode === "plan" ? openSavedRoute.current?.name : undefined) ??
           defaultRouteName(fileNamed(routedPoints[0]), routedPoints.length > 1 ? fileNamed(routedPoints[routedPoints.length - 1]) : null),
         onSave: saveCurrent,
       }
@@ -2528,7 +2538,9 @@ export function App() {
       return stretches.some((s, k) => detours[k] !== null && best > s.before && best < s.after);
     };
     const kept = pointsRef.current.filter((p, i, all) => i === 0 || i === all.length - 1 || !inside(p));
-    const next: ImportedPlan = { ...file, verbatim: { text: null, track }, reference: track.map(([lon, lat]) => [lon, lat] as LonLat) };
+    // A snapped line (lib/gpxMatch.ts) was of the line before the detours: it goes with it.
+    const { matched: _snapped, ...unsnapped } = file;
+    const next: ImportedPlan = { ...unsnapped, verbatim: { text: null, track }, reference: track.map(([lon, lat]) => [lon, lat] as LonLat) };
     commit(kept, { ...rideRef.current, imported: next });
     pending.afterGpx?.(track);
   };
@@ -2590,6 +2602,8 @@ export function App() {
   };
   // An opened file is checked at once, against its own track.
   const openImportedChecked = (plan: ImportedPlan) => {
+    // Another file is not the saved route on screen (a saved file reopened sets it again, openSaved).
+    openSavedRoute.current = null;
     openImported(plan);
     if (plan.verbatim) void checkThen("open", plan.verbatim.track, true, () => {});
   };
@@ -2601,10 +2615,13 @@ export function App() {
     if (!imported) void checkThen("open", route.geometry.coordinates, false, () => {});
   }, [route]);
   // My routes: open as saved (the line unchanged), or export.
-  const openSaved = (saved: Pick<SavedRoute, "name" | "source" | "distance_m" | "line" | "inputs" | "answer" | "gpx">, said = OPENED_SAID(saved.name)) => {
+  const openSaved = (saved: Pick<SavedRoute, "name" | "source" | "distance_m" | "line" | "inputs" | "answer" | "gpx"> & { id?: number | string }, said = OPENED_SAID(saved.name)) => {
     showPlanner(true);
     setSharedNote(null);
     setSavedNote(null);
+    // A saved route's own id (a shared route's is a string, and is not one of the rider's).
+    const own: OpenSaved | null = typeof saved.id === "number" ? { id: saved.id, name: saved.name } : null;
+    openSavedRoute.current = own;
     if (saved.source === "gpx" && saved.gpx) {
       void readGpx(new Blob([saved.gpx])).then((outcome) => {
         if (!outcome.ok) {
@@ -2612,6 +2629,7 @@ export function App() {
           return;
         }
         openImportedChecked({ ...outcome.plan, name: saved.name });
+        openSavedRoute.current = own;
         announce(said);
       });
       return;
@@ -3018,7 +3036,8 @@ export function App() {
     onAddStop: addNearestStop,
   };
   // An instance admin's review (rider suggestions, Mass Ride hazard reports): from Suggest, or Go's Menu.
-  const reviewOpener = me.can_change_lts ? (opener: HTMLElement) => openView("review", opener, true) : null;
+  // An instance admin reviews everything; a closures reviewer (v0.7.0; instance admins for now) the closures.
+  const reviewOpener = me.can_change_lts || me.can_review_closures ? (opener: HTMLElement) => openView("review", opener, true) : null;
   const myGoControls = { myGo, signedIn: me.signed_in, save: saveMyGoNow, setHome, said: myGoSaid, geoGate, searchBias };
   // Go's Menu (the Settings sheet in Go): Plan, Suggest, GPX and an admin's Review, each one step in.
   const menu = {
@@ -3825,12 +3844,14 @@ export function App() {
               }}
             />
             <SuggestSheet nav={sheetNav} roadInfoAtCentre={roadInfoAtCentre} onReview={reviewOpener} />
-            <ReviewSheet nav={sheetNav} mapRef={mapRef} setHazardsAsked={setHazardsAsked} />
+            <ReviewSheet nav={sheetNav} mapRef={mapRef} setHazardsAsked={setHazardsAsked} admin={me.can_change_lts} />
             <GpxSheet
               {...{
                 nav: sheetNav, shown, routedPoints, routedLoop, federalRoute, points, status, imported,
                 openImported: openImportedChecked, refineImported, getMap, downloadRoute,
                 ...(mode === "go" ? {} : { downloadCourse: downloadCourseRoute }),
+                // Snapping an opened track (lib/gpxMatch.ts) opens the plan along the snapped line: one edit, like the file.
+                ...(mode === "go" ? {} : { match: { preset, trailsOff: trailsAreOff(preset, dials), assist: dials.assist === true, onMatched: openImported } }),
                 saveControl: saveProps && !importEdited ? <SaveRoute {...saveProps} label={SAVE_ROUTE} /> : null,
               }}
             />
@@ -3841,7 +3862,15 @@ export function App() {
                 announcements: { level: announceLevel(announceChoice, mode), choose: chooseAnnounce },
                 signInAvailable: me.sign_in,
                 // Shared links are managed in Plan only (lib/sharedRoutes.ts listSharedLinks).
-                myRoutes: { version: myRoutesVersion, onOpen: openSaved, onExport: exportSaved, announce, sharedLinks: mode === "plan", onSharedChange: forgetSharedLine },
+                myRoutes: { version: myRoutesVersion, onOpen: openSaved, onExport: exportSaved, announce, sharedLinks: mode === "plan", onSharedChange: forgetSharedLine,
+                  // The saved route on screen follows a rename, and is forgotten once deleted (the next save is new).
+                  onRenamed: (id: number, name: string) => {
+                    openSavedRoute.current = afterRename(openSavedRoute.current, id, name);
+                  },
+                  onDeleted: (id: number) => {
+                    openSavedRoute.current = afterDelete(openSavedRoute.current, id);
+                  },
+                },
               }}
             />
             <NearestSheet nav={sheetNav}>

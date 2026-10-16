@@ -67,6 +67,8 @@ SOURCES = {
     "mpd": "MPD traffic advisory",
     "alertdc": "AlertDC (HSEMA)",
     "nps": "NPS alerts",
+    # Entered or confirmed by a reviewer (v0.7.0; `core.reviewed_closures`).
+    "reviewer": "Confirmed by a RouteMaker reviewer",
 }
 
 # Where a rider reads more, for a zone that carries no link of its own.
@@ -128,8 +130,9 @@ class Zone:
 
     @property
     def firm_end(self) -> bool:
-        """Whether the source gives an end: one without "may still apply" on a later ride."""
-        return self.end is not None
+        """Whether the source gives an end: one without "may still apply" on a later ride. A
+        reviewer's closure with no end lasts until a reviewer ends it (`core.reviewed_closures`)."""
+        return self.end is not None or self.source == "reviewer"
 
     def to_json(self) -> dict:
         return {
@@ -697,7 +700,7 @@ def heads_up(zone: Zone, at_m: float) -> str:
         lead = f"Heads-up at {where}{road}: {zone.reason}."
     else:
         lead = f"Work zone ahead at {where}{road}: {zone.reason}."
-    if zone.source in DC_SOURCES and zone.kind == CLOSED:
+    if zone.source in CLOSURE_SOURCES and zone.kind == CLOSED:
         lead = f"Road closed ahead at {where}{road}: walk round or find another way."
         said = f" {zone.title.rstrip('.')}." if zone.title else said
     return f"{lead}{said}{_until(zone)} Source: {source}."
@@ -705,6 +708,9 @@ def heads_up(zone: Zone, at_m: float) -> str:
 
 # The sources whose zones are DC's closures and blocked lanes, not work zones (v0.7.0).
 DC_SOURCES = frozenset({"dc", "mpd", "alertdc"})
+# The sources whose closed zones are said as a road closed, not a work zone: DC's, and the
+# closures a reviewer confirmed.
+CLOSURE_SOURCES = DC_SOURCES | {"reviewer"}
 
 
 # --- The card's words (v0.7.0, "Closures on the map") ------------------------------
@@ -758,6 +764,8 @@ def when_text(zone: Zone, now: datetime | None, future: bool) -> str:
     start, end = zone.start, zone.end
     if end is None:
         lead = f"{verb} from {day_text(start, now)} {clock_text(start)}" if start else verb
+        if zone.source == "reviewer":
+            return f"{lead} until a reviewer ends it"
         if future:
             return f"{lead}; no end time given, so it may still apply on your ride day"
         return f"{lead}; no end time given"

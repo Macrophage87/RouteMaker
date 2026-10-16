@@ -146,6 +146,7 @@ class TestWhoMaySuggest:
             "signed_in": True,
             "can_change_lts": False,
             "can_suggest": True,
+            "can_review_closures": False,
             "sign_in": True,
         }
         assert "csrftoken" in r.cookies

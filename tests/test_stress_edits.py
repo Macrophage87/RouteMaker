@@ -796,6 +796,7 @@ class TestMe:
             "signed_in": False,
             "can_change_lts": False,
             "can_suggest": False,
+            "can_review_closures": False,
             "sign_in": True,
         }
         assert r["Cache-Control"] == "no-store" and "csrftoken" not in r.cookies
@@ -807,6 +808,7 @@ class TestMe:
             "signed_in": True,
             "can_change_lts": False,
             "can_suggest": False,
+            "can_review_closures": False,
             "sign_in": True,
         }
         assert "csrftoken" not in r.cookies
@@ -818,6 +820,7 @@ class TestMe:
             "signed_in": True,
             "can_change_lts": True,
             "can_suggest": False,
+            "can_review_closures": True,
             "sign_in": True,
         }
         assert "csrftoken" in r.cookies
@@ -838,6 +841,7 @@ class TestMe:
             "signed_in",
             "can_change_lts",
             "can_suggest",
+            "can_review_closures",
             "sign_in",
         }
 

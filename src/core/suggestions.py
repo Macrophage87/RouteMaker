@@ -236,10 +236,13 @@ def open_suggestions(limit: int = 100) -> list[StressSuggestion]:
     `settings.SUGGEST_SIGNED_OUT_MIN_AGREE` of them agree (1: every one)."""
     from django.conf import settings
 
+    # A rider's closure report is reviewed with the closures (core.reviewed_closures), not here.
     rows = list(
         StressSuggestion.objects.filter(
             status__in=(StressSuggestion.Status.PENDING, StressSuggestion.Status.SENT)
-        ).order_by("created_at")[:OPEN_READ]
+        )
+        .exclude(kind=StressSuggestion.Kind.CLOSURE)
+        .order_by("created_at")[:OPEN_READ]
     )
     by_road: dict[int, list[StressSuggestion]] = {}
     for row in rows:
@@ -267,7 +270,9 @@ def open_suggestions(limit: int = 100) -> list[StressSuggestion]:
     return [row for group in groups for row in group][:limit]
 
 
-def _open(suggestion_id: int, *, lock: bool = True) -> StressSuggestion:
+def _open(suggestion_id: int, *, lock: bool = True, level: bool = True) -> StressSuggestion:
+    """An open suggestion; `level`: one of a level, not a closure report (which is confirmed or
+    rejected with the closures, core.reviewed_closures)."""
     rows = StressSuggestion.objects.all()
     if lock:
         rows = rows.select_for_update()
@@ -276,6 +281,8 @@ def _open(suggestion_id: int, *, lock: bool = True) -> StressSuggestion:
         raise stress_edits.NotFound("That suggestion is not there.")
     if suggestion.status not in (StressSuggestion.Status.PENDING, StressSuggestion.Status.SENT):
         raise Conflict(f"That suggestion was {suggestion.get_status_display().lower()} already.")
+    if level and suggestion.kind == StressSuggestion.Kind.CLOSURE:
+        raise Conflict("That is a closure report: confirm or reject it under Closures.")
     return suggestion
 
 
@@ -310,7 +317,7 @@ def approve(admin, suggestion_id: int) -> tuple[StressSuggestion, stress_edits.E
 
 def delete(admin, suggestion_id: int) -> StressSuggestion:
     with transaction.atomic():
-        suggestion = _open(suggestion_id)
+        suggestion = _open(suggestion_id, level=False)
         suggestion.status = StressSuggestion.Status.DELETED
         suggestion.decided_at = timezone.now()
         suggestion.decided_by = admin

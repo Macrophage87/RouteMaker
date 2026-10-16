@@ -75,6 +75,8 @@ import { JUNCTION_SUGGEST_TEXT, findJunction, junctionNote, type JunctionAt, typ
 import { AVOID_CARD_HEADING, AVOID_SYMBOL, avoidCardText, type AvoidItem } from "./lib/avoidJunctions.ts";
 import { FEDERAL_ADVICE, stopWarningShort, type FederalArea } from "./lib/federalStops.ts";
 import { HazardReport } from "./HazardReport.tsx";
+import { ClosureEntry } from "./ClosureEntry.tsx";
+import { MARK_CLOSED_TEXT } from "./lib/closureReview.ts";
 import { climbLabel, type Climb } from "./lib/climbs.ts";
 import { CLIMB_DETAILS_TEXT } from "./lib/climbCard.ts";
 import { HAZARD_REPORT_TEXT, hazardOnPiece, hazardPanelText, hazardSaid, type HazardCollection } from "./lib/massHazards.ts";
@@ -272,6 +274,10 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
   const [reporting, setReporting] = useState(false);
   const hazardButton = useRef<HTMLButtonElement>(null);
   const returnToHazard = useRef(false);
+  // A reviewer's "Mark closed" (v0.7.0 closures; ClosureEntry.tsx), open in place of the row.
+  const [closing, setClosing] = useState(false);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const returnToClosing = useRef(false);
   // The hazards as they are when the answer comes, read inside its callback.
   const hazardsRef = useRef(massRide ? hazards : null);
   hazardsRef.current = massRide ? hazards : null;
@@ -303,6 +309,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
     setEditing(false);
     setSuggesting(false);
     setReporting(false);
+    setClosing(false);
     setJunction(null);
     setSuggestingJunction(false);
     setSuggestMenu(false);
@@ -374,6 +381,14 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
     }
   }, [suggesting]);
 
+  // Back from Mark closed: its button takes the focus.
+  useEffect(() => {
+    if (!closing && returnToClosing.current) {
+      returnToClosing.current = false;
+      closeButton.current?.focus();
+    }
+  }, [closing]);
+
   // Back from the hazard form: Mark a hazard takes the focus.
   useEffect(() => {
     if (!reporting && returnToHazard.current) {
@@ -435,6 +450,11 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
     setReporting(false);
   };
 
+  const closeClosing = () => {
+    returnToClosing.current = true;
+    setClosing(false);
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLDialogElement>) => {
     if (closesDialog(event.key)) {
       event.preventDefault();
@@ -442,6 +462,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
       if (editing) closeEditor();
       else if (suggesting) closeSuggest();
       else if (reporting) closeHazard();
+      else if (closing) closeClosing();
       else if (suggestingJunction) closeJunction();
       else close();
       return;
@@ -500,9 +521,12 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
   const hazardWay =
     massRide && ready && me.can_suggest && ready.osm_way_id != null && ready.tier != null && ready.tier !== 5 ? ready.osm_way_id : null;
   const reportingNow = reporting && hazardWay !== null;
+  // A reviewer marks the road closed (v0.7.0 closures): an instance admin or a reviewer role.
+  const closureWay = ready && me.can_review_closures && ready.osm_way_id != null ? ready.osm_way_id : null;
+  const closingNow = closing && closureWay !== null;
   // A junction at the spot, for a rider who may suggest (an instance admin never suggests).
   const suggestJunction = me.can_suggest ? junction : null;
-  const suggestingJunctionNow = suggestingJunction && suggestJunction !== null && !suggestingNow && !reportingNow;
+  const suggestingJunctionNow = suggestingJunction && suggestJunction !== null && !suggestingNow && !reportingNow && !closingNow;
   const suggestCount = [suggestJunction, suggestRoad, hazardWay].filter((way) => way !== null).length;
   const suggestItems = (
     <>
@@ -814,12 +838,17 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
             />
           </div>
         )}
+        {request && closingNow && ready && closureWay !== null && (
+          <div className="road-info-actions">
+            <ClosureEntry origin={window.location.origin} wayId={closureWay} title={ready.title} onClose={closeClosing} />
+          </div>
+        )}
         {request && suggestingJunctionNow && suggestJunction !== null && (
           <div className="road-info-actions">
             <SuggestJunction origin={window.location.origin} junction={suggestJunction} shown={junctionShown} onClose={closeJunction} />
           </div>
         )}
-        {request && !(editing && editableWay !== null) && !suggestingNow && !reportingNow && !suggestingJunctionNow && (
+        {request && !(editing && editableWay !== null) && !suggestingNow && !reportingNow && !closingNow && !suggestingJunctionNow && (
           <div className="road-info-actions">
             <ul className="road-info-buttons" aria-label="Actions">
               <li>
@@ -850,6 +879,13 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
                 <li>
                   <button type="button" className="road-info-button" ref={changeButton} onClick={() => setEditing(true)}>
                     {CHANGE_LTS_TEXT}
+                  </button>
+                </li>
+              )}
+              {closureWay !== null && (
+                <li>
+                  <button type="button" className="road-info-button" ref={closeButton} onClick={() => setClosing(true)}>
+                    {MARK_CLOSED_TEXT}
                   </button>
                 </li>
               )}
