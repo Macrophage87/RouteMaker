@@ -54,6 +54,7 @@ import {
   type RideState,
   type Verbosity,
 } from "./navigate.ts";
+import { parseTrailMiles } from "./trailMiles.ts";
 
 const M_PER_DEG = 111_195;
 const LAT = 38.9;
@@ -813,6 +814,24 @@ test("whereAmI on a long trail says the trail marker, US units spoken and metric
   assert.match(whereAmI(model, state, true), /^On the Capital Crescent Trail, about 0\.6 mi \(1\.0 km\) north of A Street\./);
   // On a street, as before.
   assert.match(whereAmI(model, { ...startState(), progressM: 100 }), /^On A Street\. /);
+});
+
+test("whereAmI on a long trail the mile file knows: its mile marker, posted or computed, in place of the junction (465)", () => {
+  const model = rideModel(trailRoute());
+  const state = { ...startState(), progressM: 1300 };
+  // The trail's line from mile 0, a mile south of where the route meets it.
+  const line = { n: "Capital Crescent Trail", s: 1609, l: [at(300, 0), at(300, 3000)] };
+  const computed = parseTrailMiles({ trails: [line], markers: [] });
+  assert.match(whereAmI(model, state, false, computed), /^On the Capital Crescent Trail, at about mile 1\.6\. Next, in 0\.7 miles: cross River Road/);
+  assert.match(whereAmI(model, state, true, computed), /^On the Capital Crescent Trail, at about mile 1\.6\. /);
+  const [x, y] = at(300, 1050);
+  const posted = parseTrailMiles({ trails: [line], markers: [{ id: "n1", x, y, t: "Capital Crescent Trail", m: 2 }] });
+  assert.match(whereAmI(model, state, false, posted), /^On the Capital Crescent Trail, at mile marker 2\. /);
+  // Near the crossing the crossing still names the place; on a street, the street; another trail's file, the junction.
+  assert.match(whereAmI(model, { ...startState(), progressM: 2400 }, false, computed), /^On the Capital Crescent Trail\. /);
+  assert.match(whereAmI(model, { ...startState(), progressM: 100 }, false, computed), /^On A Street\. /);
+  const other = parseTrailMiles({ trails: [{ ...line, n: "Metropolitan Branch Trail" }], markers: [] });
+  assert.match(whereAmI(model, state, false, other), /about 0\.6 miles north of A Street/);
 });
 
 /**

@@ -7612,6 +7612,53 @@ marker (`placeOnRoute`, `TRAIL_MARKER_M` in `lib/navigate.ts`), measured only fr
 trail itself with a named street; an unnamed way (`isUnnamed`, `wayRidden`) is said plainly ("On an
 unnamed path.") and is never used as a trail or a reference point.
 
+**Trail mile markers (v0.8.0).** 465: "some trails like the MBT and CCT should have mile markers as
+they can go a distance without crossing a road"; Stephen, 2026-10-16: "Make sure the mile markers are
+added to 311 when built." `lib/trailMiles.ts` reads `amenity-data/trail-miles.json`, a committed
+snapshot built from the extract by `scripts/build_trail_miles.py` as the water, food and places files
+are (`frontend/src/amenity-data/README.md`, "Trail mile markers"): no tiles, no Valhalla, no API, so
+no map rebuild, only that script on the build host. The file holds the OSM mile markers
+(`highway=milestone` or `waterway=milestone` with `distance=*`, or "Mile 3", "MM 3", "MP 3" in `ref`,
+`name` or `inscription`; `railway=milestone` and an old road's `historic=milestone` are not trail
+markers), each with the named trail it stands on (within 80 ft, 25 m) and its posted figure in miles,
+and each named trail over 2 miles (3.2 km) as one line from its mile 0 with `s`, the metres at the
+line's first point. Mile 0: the way two or more posts count, with `s` set from them (their median);
+with one post, the end that fits it; with none, the end nearer the US Capitol, as the region's long
+trails count out of the city. The docstring has the rest, with the OSM wiki pages it follows.
+
+All of it is worked out on the device, with the trail's name from the route (the stretch's street,
+the way's OSM name, matched by `trailKey`: case, "&" and punctuation aside) and the point the report
+already uses (`pointAt`): the position goes nowhere new. `trailMileAt` gives the nearest post of that
+trail within `MARKER_NEAR_M` (500 ft, about 0.1 mi, as `PLACE_NEAR_M`), else the computed mile on the
+nearest of its lines within `LINE_NEAR_M` (200 ft, 60 m; to a tenth, never below 0), else a post within
+half a mile, else nothing. `mileWords` says it: "mile marker 3" (as the post says it), "near mile
+marker 3" (a post farther than 500 ft, with no line), "about mile 3.2" (computed, never passed off as
+a post). Miles only, as a post says miles and the report is the message itself.
+
+* The 311 report: `reportPlace(model, progressM, miles)` adds it after the way ridden on any named way
+  the file knows, `placeWords`: "on Capital Crescent Trail at mile marker 3", "on Capital Crescent
+  Trail at about mile 3.2 near River Road" (a cross street within 500 ft still follows), then
+  "Washington, DC. GPS ...", the coordinates beside it as before. The 311 menu's place line, the copy for
+  DC 311 online, the text and the server's send all carry the same words.
+* "Where am I?": on a trail the file knows and away from a junction (`placeOnRoute` not a junction),
+  "On the Capital Crescent Trail, at about mile 3.2." in place of the distance from a junction of it,
+  which stays where the file has no line or post (465: "Navigation cues on those trails can use the
+  same markers"). Turn cues are unchanged: they already name the street turned onto.
+* The road panel: for a trail way, a "Trail mile" summary line after the server's, at the nearest
+  place on the way (`on_way`, else the spot): "Mile marker 3, 300 ft (91 m) away" or "About mile 3.2
+  here" (`milePanelRow`), US units first.
+* The map: the posts from z14 in (`MILE_MIN_ZOOM`), always, with no switch (the owner keeps Go to one
+  control a feature): a small brown dot with a white ring and "MM 3" beside it in text with a halo
+  (`TrailMilesOverlay`, `app/trailMilesOverlay.ts`, the v0.7.0 overlays' way), under the route; a tap
+  gives a card in words ("Capital Crescent Trail", "Mile marker 3.", "From OpenStreetMap."), and the
+  road panel is the keyboard's and screen reader's way to the same facts. The lines are never drawn.
+
+App fetches the file once the map reaches z14, a ride starts or the road panel opens; it is under
+`/assets/` and not a `LAZY_ASSET`, so the service worker precaches it and a ride has it in a dead
+spot. Until the build host fills it the file is empty and every place reads as before.
+`trailMiles.test.ts`, the trail cases in `report311.test.ts` and `navigate.test.ts`, and
+`tests/test_build_trail_miles.py` (which builds from a small made-up extract) check it.
+
 **Checks (N7).** `corridor.test.ts`, `report311.test.ts`, the trail cases in `navigate.test.ts` and
 `loadTile` in `stressProtocol.test.ts`; the browser suite's Ride mode section checks that the stress
 tiles along the mocked route are kept at z12-14, that one answers the tile loader at once with the
