@@ -27,7 +27,7 @@ export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
   legend: "Legend",
   suggest: "Suggest a change",
   review: "Review",
-  gpx: "GPX file",
+  gpx: "Route file",
   settings: "Settings",
   nearest: "Nearest water, restroom or Metro",
   food: "Find food",
@@ -60,7 +60,7 @@ export const BAR_ITEMS: readonly BarItem[] = [
   { id: "plan", label: "Plan", opens: "planner", description: "Shows the planner: the points, the ride settings and the route." },
   { id: "layers", label: "Layers", opens: "layers", description: "Opens the map layers and their switches; the legend is behind its Legend button." },
   { id: "suggest", label: "Suggest", opens: "suggest", description: "Opens the ways to suggest a change to the map, or report a problem to DC 311." },
-  { id: "gpx", label: "GPX", opens: "gpx", description: "Opens the GPX file tools: open a file, or download the route." },
+  { id: "gpx", label: "Export", opens: "gpx", description: "Opens the route file tools: open a GPX file, or download the route." },
   { id: "settings", label: "Settings", opens: "settings", description: "Opens the settings: display, Ride mode, this device and your account." },
 ];
 

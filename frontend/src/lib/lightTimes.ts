@@ -226,6 +226,22 @@ export function lightMarkerLabel(mark: LightMark): string {
   return `${lightMarkerText(mark)}, where you will be near ${formatMilePost(mark.alongM ?? 0)}`;
 }
 
+export interface Box {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/**
+ * Whether a light marker's box lies under one of the map's controls (the scale bar, the credits, the zoom
+ * buttons): there it is not drawn, since the route summary's line says the same and a label half under the
+ * scale bar reads as neither.
+ */
+export function underControls(marker: Box, controls: readonly Box[]): boolean {
+  return controls.some((c) => marker.left < c.right && marker.right > c.left && marker.top < c.bottom && marker.bottom > c.top);
+}
+
 /**
  * The marks for a planned route, leaving at `nowMs`, or none: not for a transit or bikeshare plan (its
  * line is not the whole trip), nor where the ride time chosen is not the time now (the When control is

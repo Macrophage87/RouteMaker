@@ -174,13 +174,30 @@ export function lockScreenFileNames(route: Pick<RouteResponse, "preset" | "dista
   return count === 1 ? [`${base}.png`] : Array.from({ length: count }, (_, i) => `${base}-${i + 1}-of-${count}.png`);
 }
 
-/** What the download made, for the GPX section's status line. */
+const cuesWord = (cues: number) => `${cues} ${cues === 1 ? "cue" : "cues"}`;
+
+/** The one image's line, for the GPX section's status region. */
 export function lockScreenLine(pages: readonly Pick<LockPage, "cues">[]): string {
-  const cues = pages.reduce((n, p) => n + p.cues, 0);
-  const noun = cues === 1 ? "cue" : "cues";
-  if (pages.length === 1) return `Cue sheet image: ${cues} ${noun} on one image, for a phone lock screen.`;
-  return (
-    `Cue sheet image: ${cues} ${noun} do not fit on one image, so there are ${pages.length}, ` +
-    `Part 1 of ${pages.length} to Part ${pages.length} of ${pages.length}, downloaded one after another.`
-  );
+  return `Cue sheet image: ${cuesWord(pages.reduce((n, p) => n + p.cues, 0))} on one image, for a phone lock screen.`;
+}
+
+/** The download button's words while parts are left to save: "Download part 2 of 6". */
+export function lockPartButton(next: number, count: number): string {
+  return `Download part ${next + 1} of ${count}`;
+}
+
+/** Several images sent to the phone's share sheet together. */
+export function lockSharedLine(count: number, cues: number): string {
+  return `Cue sheet image: ${cuesWord(cues)} on ${count} images, Part 1 of ${count} to Part ${count} of ${count}, sent to the share sheet together.`;
+}
+
+/** One part saved, said only once it is: what is left and the button that saves it. */
+export function lockPartLine(saved: number, count: number, cues: number): string {
+  const head = `Cue sheet image: part ${saved} of ${count} saved (${cuesWord(cues)} on ${count} images).`;
+  return saved < count ? `${head} Press ${lockPartButton(saved, count)} for the next.` : `${head} All ${count} are saved.`;
+}
+
+/** The share sheet closed without sending: nothing saved, and how to save them one at a time instead. */
+export function lockCancelledLine(count: number): string {
+  return `Cue sheet image: sharing cancelled, nothing saved. Press ${lockPartButton(0, count)} to save them one at a time.`;
 }

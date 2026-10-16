@@ -14,8 +14,8 @@ import { compileCourse, courseFileName, courseLine, type CourseFormat } from "./
 import { DEFAULT_PROFILE, DEVICE_PROFILES, deviceProfile, type DeviceProfileId } from "./lib/deviceProfiles.ts";
 import { writeFit } from "./lib/fit.ts";
 import { writeTcx } from "./lib/tcx.ts";
-import { cueSheetFileName, cueSheetLine, cueSheetPdf, type CueSheetKind } from "./lib/cueSheetPdf.ts";
-import { lockScreenFileNames, lockScreenLine } from "./lib/lockScreen.ts";
+import { cueSheetDocument, cueSheetFileName, cueSheetLine, type CueSheetKind } from "./lib/cueSheetPdf.ts";
+import { lockCancelledLine, lockPartButton, lockPartLine, lockScreenFileNames, lockScreenLine, lockSharedLine } from "./lib/lockScreen.ts";
 import { renderLockScreens } from "./app/lockScreenRender.ts";
 
 interface Props {
@@ -41,12 +41,12 @@ interface Props {
    * Download GPX through the page (v0.7.0): closures are checked first, and an opened file not edited since
    * downloads as the file it came from. Without it, the route shown is written here.
    */
-  onDownload?: () => void;
+  onDownload?: (said: (line: string) => void) => void;
   /**
    * Download a FIT or TCX course or a PDF cue sheet through the page, closures checked first as for GPX; `said`
    * takes the line saying what was made. Given in Plan only: without it (Go) the section offers GPX alone.
    */
-  onDownloadCourse?: (format: FileFormat, profile: DeviceProfileId, said: (line: string) => void) => void;
+  onDownloadCourse?: (format: FileFormat, profile: DeviceProfileId, said: Said) => void;
 }
 
 function samePoints(a: readonly LonLat[], b: readonly LonLat[]): boolean {
@@ -112,15 +112,46 @@ export type FileFormat = CourseFormat | keyof typeof PRINTS | "png-lock";
 export const LOCK_IMAGE_FAILED = "Could not make the cue sheet image. Try again, or use the PDF handlebar strip.";
 
 /** Save the lock-screen images one after another (a browser takes a moment between downloads), then say what was made. */
-async function downloadLockScreens(route: RouteResponse, vias: readonly number[]): Promise<string> {
+/** Lock-screen images not yet saved: a browser saves only one file per press, so each further part waits for one. */
+export interface PartQueue {
+  blobs: Blob[];
+  names: string[];
+  /** The index of the next part to save. */
+  next: number;
+  cues: number;
+}
+
+/** What a download says: a line, and for the lock-screen images any parts still to save. */
+export type Made = string | { line: string; queue: PartQueue | null };
+export type Said = (made: Made) => void;
+
+/**
+ * The lock-screen images: one is saved; several go to the share sheet together where the browser can share files
+ * (a phone's, which is where they are wanted), and otherwise part 1 is saved and the button saves each next part.
+ * The line says only what was actually saved or sent.
+ */
+async function downloadLockScreens(route: RouteResponse, vias: readonly number[]): Promise<Made> {
   try {
     const { pages, blobs } = await renderLockScreens(route, vias);
     const names = lockScreenFileNames(route, blobs.length);
-    for (let i = 0; i < blobs.length; i += 1) {
-      if (i > 0) await new Promise((resolve) => setTimeout(resolve, 400));
-      saveFile(blobs[i], "image/png", names[i]);
+    if (blobs.length === 1) {
+      saveFile(blobs[0], "image/png", names[0]);
+      return lockScreenLine(pages);
     }
-    return lockScreenLine(pages);
+    const cues = pages.reduce((n, p) => n + p.cues, 0);
+    const queue = (next: number): PartQueue => ({ blobs, names, next, cues });
+    const files = blobs.map((b, i) => new File([b], names[i], { type: "image/png" }));
+    if (typeof navigator.canShare === "function" && navigator.canShare({ files })) {
+      try {
+        await navigator.share({ files });
+        return { line: lockSharedLine(blobs.length, cues), queue: null };
+      } catch (error) {
+        if ((error as Error)?.name === "AbortError") return { line: lockCancelledLine(blobs.length), queue: queue(0) };
+        // Refused (no gesture left after drawing, say): saved one at a time instead.
+      }
+    }
+    saveFile(blobs[0], "image/png", names[0]);
+    return { line: lockPartLine(1, blobs.length, cues), queue: queue(1) };
   } catch {
     return LOCK_IMAGE_FAILED;
   }
@@ -131,13 +162,14 @@ async function downloadLockScreens(route: RouteResponse, vias: readonly number[]
  * (lib/cueSheetPdf.ts), and return the one line saying what was made. Its cues are Ride's; its via points are not
  * cues, as in Ride.
  */
-export function downloadCourse(route: RouteResponse, routedPoints: LonLat[], format: FileFormat, profile: DeviceProfileId): string | Promise<string> {
+export function downloadCourse(route: RouteResponse, routedPoints: LonLat[], format: FileFormat, profile: DeviceProfileId): string | Promise<Made> {
   const vias = viaIndices(routedPoints, VIA_MARKS.isVia);
   if (format === "png-lock") return downloadLockScreens(route, vias);
   if (format === "pdf-sheet" || format === "pdf-strip") {
     const kind = PRINTS[format];
-    saveFile(cueSheetPdf(route, kind, vias), "application/pdf", cueSheetFileName(route, kind));
-    return cueSheetLine(route, kind, vias);
+    const made = cueSheetDocument(route, kind, vias);
+    saveFile(made.bytes, "application/pdf", cueSheetFileName(route, kind));
+    return cueSheetLine(route, kind, vias, made.pages);
   }
   const course = compileCourse(route, deviceProfile(profile), format, vias);
   const fileName = courseFileName(route, format);
@@ -147,6 +179,11 @@ export function downloadCourse(route: RouteResponse, routedPoints: LonLat[], for
 }
 
 export type ExportFormat = "gpx" | FileFormat;
+
+/** What a GPX download says once it is saved: the route shown, the opened file as it came, or its track. */
+export const GPX_SAID_ROUTE = "GPX track: the route shown, with its credits.";
+export const GPX_SAID_OPENED = "GPX file: the file you opened, as it came.";
+export const GPX_SAID_TRACK = "GPX track: the opened file's track, rerouted round the closures.";
 
 const FORMAT_LABELS: Record<ExportFormat, string> = {
   gpx: "GPX track",
@@ -204,8 +241,22 @@ export function GpxPanel(props: Props) {
   // What the last course download fitted to the device, said in the status region below; a new route, another
   // file type or another device clears it.
   const [courseSaid, setCourseSaid] = useState<{ text: string; count: number } | null>(null);
-  useEffect(() => setCourseSaid(null), [route, choice.format, choice.profile]);
-  const sayCourse = (text: string) => setCourseSaid((s) => ({ text, count: (s?.count ?? 0) + 1 }));
+  // Lock-screen images still to save, one per press of the same button ("Download part 2 of 6").
+  const [parts, setParts] = useState<PartQueue | null>(null);
+  useEffect(() => {
+    setCourseSaid(null);
+    setParts(null);
+  }, [route, choice.format, choice.profile]);
+  const sayCourse: Said = (made) => {
+    setParts(typeof made === "string" ? null : made.queue && made.queue.next < made.queue.blobs.length ? made.queue : null);
+    const text = typeof made === "string" ? made : made.line;
+    setCourseSaid((s) => ({ text, count: (s?.count ?? 0) + 1 }));
+  };
+  const saveNextPart = (queue: PartQueue) => {
+    saveFile(queue.blobs[queue.next], "image/png", queue.names[queue.next]);
+    const saved = queue.next + 1;
+    sayCourse({ line: lockPartLine(saved, queue.blobs.length, queue.cues), queue: { ...queue, next: saved } });
+  };
   const input = useRef<HTMLInputElement>(null);
   const [reading, setReading] = useState<Reading>({ kind: "idle" });
   const [showTrack, setShowTrack] = useState(true);
@@ -288,12 +339,20 @@ export function GpxPanel(props: Props) {
   };
 
   const download = () => {
+    // The route was checked when part 1 was made; each further part is saved as it is.
+    if (parts && choice.format === "png-lock") {
+      saveNextPart(parts);
+      return;
+    }
     if (choice.format !== "gpx") {
       onDownloadCourse?.(choice.format, choice.profile, sayCourse);
       return;
     }
-    if (onDownload) onDownload();
-    else if (route) downloadGpx(route, routedPoints, loop, federal);
+    if (onDownload) onDownload(sayCourse);
+    else if (route) {
+      downloadGpx(route, routedPoints, loop, federal);
+      sayCourse(GPX_SAID_ROUTE);
+    }
   };
 
   return (
@@ -341,7 +400,7 @@ export function GpxPanel(props: Props) {
           Open GPX…
         </button>
         <button type="button" onClick={download} disabled={choice.format === "gpx" ? !route && !imported?.verbatim : !route}>
-          Download {FORMAT_WORDS[choice.format]}
+          {parts ? lockPartButton(parts.next, parts.blobs.length) : `Download ${FORMAT_WORDS[choice.format]}`}
         </button>
       </div>
       <input

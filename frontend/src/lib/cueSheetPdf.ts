@@ -112,14 +112,16 @@ export function cueSheetFileName(route: Pick<RouteResponse, "preset" | "distance
 }
 
 /**
- * What the download made, for the GPX section's status line: "PDF cue sheet: 8 cues, on letter paper." or "PDF
- * handlebar strip: 7 cues, 3 by 11 inches (7.6 by 27.9 cm); print at actual size and cut out."
+ * What the download made, for the GPX section's status line: "PDF cue sheet: 8 cues, on letter paper." (or "on 2
+ * pages of letter paper"), "PDF handlebar strip: 7 cues, 3 by 11 inches (7.6 by 27.9 cm); print at actual size and
+ * cut out." (or "on 3 strips, each 3 by 11 inches ...; print at actual size and cut them out.").
  */
-export function cueSheetLine(route: SheetRoute, kind: CueSheetKind, vias: readonly number[] = []): string {
+export function cueSheetLine(route: SheetRoute, kind: CueSheetKind, vias: readonly number[] = [], pages = 1): string {
   const rows = cueRows(route, kind, vias).length;
   const cues = `${rows.toLocaleString("en-US")} ${rows === 1 ? "cue" : "cues"}`;
-  return kind === "sheet"
-    ? `PDF cue sheet: ${cues}, on letter paper.`
+  if (kind === "sheet") return pages > 1 ? `PDF cue sheet: ${cues}, on ${pages} pages of letter paper.` : `PDF cue sheet: ${cues}, on letter paper.`;
+  return pages > 1
+    ? `PDF handlebar strip: ${cues}, on ${pages} strips, each 3 by 11 inches (7.6 by 27.9 cm); print at actual size and cut them out.`
     : `PDF handlebar strip: ${cues}, 3 by 11 inches (7.6 by 27.9 cm); print at actual size and cut out.`;
 }
 
@@ -226,7 +228,13 @@ function layoutTable(rows: readonly CueRow[], columns: readonly Column[], size: 
     // Each cell's lines, each with its own size and the depth of its baseline below the row's top.
     const cells = columns.map((c) => {
       const made = c.cell(row);
-      const parts = typeof made === "string" ? [{ text: made, size, font: c.font }] : made;
+      // A part's type is made smaller (to 8 pt at least) until its longest word fits, so a long street name is
+      // never split mid-word ("Massachusetts", not "Massachuse" / "tts").
+      const parts = (typeof made === "string" ? [{ text: made, size, font: c.font }] : made).map((part) => {
+        const longest = part.text.split(/\s+/).reduce((w, word) => Math.max(w, textWidth(word, part.font, 1)), 0);
+        const fit = longest > 0 ? (c.width - pad * 2) / longest : part.size;
+        return { ...part, size: Math.max(Math.min(part.size, Math.floor(fit * 2) / 2), 8) };
+      });
       let depth = pad;
       const lines = parts.flatMap((part) =>
         wrapText(part.text, part.font, part.size, c.width - pad * 2).map((line) => {
@@ -296,6 +304,11 @@ function stripTurn(row: CueRow): Part[] {
 
 /** The PDF file of a cue sheet for the route shown. `vias` are the plan's via points by index, not cues, as in Ride. */
 export function cueSheetPdf(route: SheetRoute, kind: CueSheetKind, vias: readonly number[] = []): Uint8Array<ArrayBuffer> {
+  return cueSheetDocument(route, kind, vias).bytes;
+}
+
+/** The PDF file of a cue sheet and how many pages (or strips) it runs to. */
+export function cueSheetDocument(route: SheetRoute, kind: CueSheetKind, vias: readonly number[] = []): { bytes: Uint8Array<ArrayBuffer>; pages: number } {
   const rows = cueRows(route, kind, vias);
   const title = cueSheetTitle(route, kind);
   const credit = sheetCredit(route);
@@ -329,7 +342,7 @@ export function cueSheetPdf(route: SheetRoute, kind: CueSheetKind, vias: readonl
     flow.para(pdf.element("H2"), "Credits", 13, "bold", 2, 10 * 1.25);
     flow.para(pdf.element("P"), credit, 10, "regular", 0);
     footers(pdf, foot.side, foot.y, foot.size, credit);
-    return pdf.bytes();
+    return { bytes: pdf.bytes(), pages: pdf.pageCount };
   }
   const foot = { side: 12, y: 14, size: 6 };
   const pdf = new TaggedPdf(STRIP.width, STRIP.height, { title, creator: CREATOR, lang: "en-US" });
@@ -348,8 +361,8 @@ export function cueSheetPdf(route: SheetRoute, kind: CueSheetKind, vias: readonl
         ],
         font: "bold",
       },
-      { head: "Turn", width: 58, cell: stripTurn, font: "bold" },
-      { head: "Road", width: STRIP.width - 24 - 54 - 58, cell: (r) => abbreviateStreet(r.road), font: "regular" },
+      { head: "Turn", width: 50, cell: stripTurn, font: "bold" },
+      { head: "Road", width: STRIP.width - 24 - 54 - 50, cell: (r) => abbreviateStreet(r.road), font: "regular" },
     ],
     13,
     8,
@@ -359,5 +372,5 @@ export function cueSheetPdf(route: SheetRoute, kind: CueSheetKind, vias: readonl
   flow.y -= 6;
   flow.para(pdf.element("P"), credit, 6.5, "regular", 0);
   footers(pdf, foot.side, foot.y, foot.size, credit);
-  return pdf.bytes();
+  return { bytes: pdf.bytes(), pages: pdf.pageCount };
 }

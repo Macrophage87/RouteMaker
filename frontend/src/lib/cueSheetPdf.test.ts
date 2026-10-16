@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { DescriptionEntry } from "./api.ts";
 import { routeCues } from "./course.ts";
-import { cueRows, cueSheetFileName, cueSheetLine, cueSheetPdf, cueSheetTitle, rowDistance, sheetWarnings, summaryLine } from "./cueSheetPdf.ts";
+import { cueRows, cueSheetDocument, cueSheetFileName, cueSheetLine, cueSheetPdf, cueSheetTitle, rowDistance, sheetWarnings, summaryLine } from "./cueSheetPdf.ts";
 import { TaggedPdf, textWidth, winAnsi, wrapText } from "./pdf.ts";
 import { sampleRoute } from "./courseRoute.test.fixture.ts";
 
@@ -243,6 +243,21 @@ test("a long route runs to more pages, the header carried over as an artifact, t
 test("the status line says what was made, in US units with metric in brackets", () => {
   assert.equal(cueSheetLine(sampleRoute(), "sheet"), "PDF cue sheet: 8 cues, on letter paper.");
   assert.equal(cueSheetLine(sampleRoute(), "strip"), "PDF handlebar strip: 7 cues, 3 by 11 inches (7.6 by 27.9 cm); print at actual size and cut out.");
+});
+
+test("more than one page or strip is said, with how many", () => {
+  assert.equal(cueSheetLine(sampleRoute(), "strip", [], 3), "PDF handlebar strip: 7 cues, on 3 strips, each 3 by 11 inches (7.6 by 27.9 cm); print at actual size and cut them out.");
+  assert.equal(cueSheetLine(sampleRoute(), "sheet", [], 2), "PDF cue sheet: 8 cues, on 2 pages of letter paper.");
+  assert.equal(cueSheetDocument(sampleRoute(), "strip").pages, 1);
+});
+
+test("the strip never splits a street's name mid-word: the cell's type is made smaller until its longest word fits", () => {
+  const description = sampleRoute().description?.map((e) =>
+    e.turn?.movement === "left" ? { ...e, street: "Massachusetts Avenue Northwest", turn: { ...e.turn, onto: "Massachusetts Avenue Northwest" } } : e,
+  );
+  const text = shownText(latin1(cueSheetPdf(sampleRoute({ description }), "strip")));
+  assert.ok(text.some((t) => t.trim() === "Massachusetts"), JSON.stringify(text));
+  assert.ok(!text.some((t) => /^Massachuse\S*$/.test(t.trim()) && t.trim() !== "Massachusetts"));
 });
 
 test("one route always gives the same bytes", () => {

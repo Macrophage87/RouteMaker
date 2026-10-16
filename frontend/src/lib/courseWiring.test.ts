@@ -15,11 +15,15 @@ test("the GPX section offers the course formats and devices, labelled, and says 
   const region = panel.slice(panel.indexOf('<div role="status" aria-live="polite">'));
   assert.match(region.slice(0, region.indexOf("</div>")), /<p key=\{courseSaid\.count\} className="hint gpx-course">/);
   // The line goes with a new route, file type or device: it named the last one.
-  assert.match(panel, /useEffect\(\(\) => setCourseSaid\(null\), \[route, choice\.format, choice\.profile\]\);/);
+  // So do the lock-screen parts still to save.
+  assert.match(panel, /useEffect\(\(\) => \{\s*setCourseSaid\(null\);\s*setParts\(null\);\s*\}, \[route, choice\.format, choice\.profile\]\);/);
+  // A GPX download says its line too, once saved.
+  assert.match(panel, /if \(onDownload\) onDownload\(sayCourse\);/);
+  assert.match(read("../App.tsx"), /downloadGpx\(route, at, routedLoop, federalRoute\);\s*said\?\.\(GPX_SAID_ROUTE\);/);
   // The section's hidden heading names what it holds now, not GPX alone.
   assert.match(panel, /<h3 id="gpx-heading" className="visually-hidden">\s*Route file\s*<\/h3>/);
   // The button names the file it saves.
-  assert.match(panel, /Download \{FORMAT_WORDS\[choice\.format\]\}/);
+  assert.match(panel, /\{parts \? lockPartButton\(parts\.next, parts\.blobs\.length\) : `Download \$\{FORMAT_WORDS\[choice\.format\]\}`\}/);
   assert.match(panel, /const FORMAT_WORDS: Record<ExportFormat, string> = \{ gpx: "GPX", fit: "FIT", tcx: "TCX", "pdf-sheet": "PDF", "pdf-strip": "PDF", "png-lock": "image" \};/);
   // The lock-screen image: one more file type, its line said in the same region (or why it could not be made).
   assert.match(panel, /"png-lock": "Cue sheet image, for a phone lock screen",/);
@@ -33,9 +37,9 @@ test("the PDF cue sheets are two more file types in the same choice, with no dev
   // The device choice is for a course only.
   assert.match(panel, /\{isCourse\(choice\.format\) && \(\s*<label className="select-setting">\s*Device/);
   // One download button, as before.
-  assert.equal(panel.match(/\n\s*Download \{/g)?.length, 1);
+  assert.equal(panel.match(/`Download \$\{/g)?.length, 1);
   // Made through the same checked download, its line said in the same region.
-  assert.match(panel, /saveFile\(cueSheetPdf\(route, kind, vias\), "application\/pdf", cueSheetFileName\(route, kind\)\);\s*return cueSheetLine\(/);
+  assert.match(panel, /const made = cueSheetDocument\(route, kind, vias\);\s*saveFile\(made\.bytes, "application\/pdf", cueSheetFileName\(route, kind\)\);\s*return cueSheetLine\(route, kind, vias, made\.pages\);/);
 });
 
 test("Go adds no control: the choices appear only where the page passes the course download, which Go does not", () => {

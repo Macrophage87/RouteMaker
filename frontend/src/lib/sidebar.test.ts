@@ -539,7 +539,7 @@ test("Start, GPX, Link and More are one row under the route's figures (UI-CLEANU
   assert.doesNotMatch(app, /\{\/\* Pinned under/);
   const summary = app.slice(app.indexOf("export function RouteSummary"));
   assert.ok(summary.indexOf("<StressFigure") < summary.indexOf("<RouteActions {...actions} start={start} />"));
-  assert.match(app, /<div className="route-actions-row">\s*\{start\}\s*<button type="button" className="secondary icon-button gpx-download" onClick=\{downloadRoute\} aria-label="Download GPX">/);
+  assert.match(app, /<div className="route-actions-row">\s*\{start\}\s*<button type="button" className="secondary icon-button gpx-download" onClick=\{\(\) => downloadRoute\(\)\} aria-label="Download GPX">/);
   assert.match(app, /<span role="status" className="visually-hidden">\s*\{linkSpoken\}/);
   // The spoken confirmation carries the location note (OWNER-DECISIONS 395), and the button is described by it.
   assert.equal(linkSpokenFor(true, ""), COPY_LINK_DONE);
@@ -607,8 +607,8 @@ test("copyText uses the clipboard, falls back to the selection method, and says 
 
 // ---- the bottom bar and its sheets ------------------------------------------------
 
-test("the bottom bar is Plan, Layers, Suggest, GPX and Settings: real buttons, each with words (the owner's choice 6)", () => {
-  assert.deepEqual(BAR_ITEMS.map((i) => i.label), ["Plan", "Layers", "Suggest", "GPX", "Settings"]);
+test("the bottom bar is Plan, Layers, Suggest, Export and Settings: real buttons, each with words (the owner's choice 6)", () => {
+  assert.deepEqual(BAR_ITEMS.map((i) => i.label), ["Plan", "Layers", "Suggest", "Export", "Settings"]);
   assert.deepEqual(BAR_ITEMS.map((i) => i.opens), ["planner", "layers", "suggest", "gpx", "settings"]);
   assert.equal(BAR_ITEMS[0].id, "plan", "Plan is first (OWNER-DECISIONS 392, 393)");
   assert.ok(BAR_ITEMS.every((i) => i.description.length > 0));
@@ -630,7 +630,7 @@ test("the bottom bar is Plan, Layers, Suggest, GPX and Settings: real buttons, e
 });
 
 test("a sheet: Back is a labelled button, its heading takes the focus, Escape goes back", () => {
-  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Legend", "Suggest a change", "Review", "GPX file", "Settings", "Nearest water, restroom or Metro", "Find food", "Ride", "Repair stands and bike shops", "Places to see"]);
+  assert.deepEqual(Object.values(SHEET_TITLES), ["Layers", "Legend", "Suggest a change", "Review", "Route file", "Settings", "Nearest water, restroom or Metro", "Find food", "Ride", "Repair stands and bike shops", "Places to see"]);
   // In visible words, not only an arrow, so the name and the label are one (OWNER-DECISIONS 393).
   assert.equal(BACK_LABEL, "Back to planner");
   assert.doesNotMatch(sidebar, /aria-label="Back to the planner"/);
