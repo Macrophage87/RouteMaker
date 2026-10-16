@@ -950,6 +950,11 @@ def test_no_bike_on_metro_on_a_blackout_date_said_plainly_and_metro_on_foot_stil
     assert (
         out["notes"][0] == "Bikes aren't allowed on Metro today (July 4)." and out["bike_blackout"]
     )
+    # Half past midnight is still July 4's service day (review TB-4).
+    late = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 7, 5, 0, 30))
+    assert not any(leg.system == "Metro" for o in late.options for leg in o.legs if leg.transit)
+    assert late.notes[0] == "Bikes aren't allowed on Metro today (July 4)."
+    assert transit.block(late, schedule)["bike_blackout"]
     # The day before, Metro takes the bike as usual.
     usual = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 7, 3, 10, 0))
     assert any(leg.system == "Metro" for o in usual.options for leg in o.legs if leg.transit)

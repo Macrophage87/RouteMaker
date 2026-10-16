@@ -806,6 +806,15 @@ def bike_blackout(day: date, path: Path = BLACKOUTS_PATH) -> bool:
     return day.strftime("%m-%d") in recurring or day.isoformat() in dates
 
 
+def blackout_day(moment: Moment) -> date | None:
+    """The blackout date a moment falls in, or None: its service day (00:30 on July 5 is
+    still July 4's service) or its calendar date (review TB-4)."""
+    for day in (moment.service_day, moment.date):
+        if bike_blackout(day):
+            return day
+    return None
+
+
 # --- When ------------------------------------------------------------------------------
 
 
@@ -1015,7 +1024,8 @@ class _Day:
         self.active = schedule.active(moment.service_day)
         self._cache: dict[tuple, dict[int, Hop]] = {}
         # A blackout date: no bike on Metro at all (a rider on foot still rides it).
-        self.blackout = bike and bike_blackout(moment.date)
+        self.blackout_day = blackout_day(moment) if bike else None
+        self.blackout = self.blackout_day is not None
 
     def boards(self, pattern: Pattern, minute: float, encoded: int) -> bool:
         if not self.bike:
@@ -1968,7 +1978,7 @@ def plan_bike(schedule, start, end, when: datetime, services: Services, speed_km
     found: list[Option] = []
     notes = _window_note(schedule, moment)
     if day.blackout:
-        notes.append(blackout_words(moment.date))
+        notes.append(blackout_words(day.blackout_day))
     # Riding directly there first: it is always offered, so it has the router before the
     # candidates; with no answer it is estimated from the straight line.
     whole = services.ride(start, end)
@@ -2412,7 +2422,8 @@ def block(plan: Plan, schedule: Schedule | None = None) -> dict:
         "band": None,
         "holiday": plan.when.holiday,
         # Own Bike + 🚆🚌 on a blackout date: no option takes a bike on Metro, and it is said.
-        "bike_blackout": plan.mode == presets.BIKE_TRANSIT and bike_blackout(plan.moment.date),
+        "bike_blackout": plan.mode == presets.BIKE_TRANSIT
+        and blackout_day(plan.moment) is not None,
         "scheduled": option.scheduled,
         "credits": [plan.credits[name] for name in used if plan.credits.get(name)],
         "departure": departure(plan),
