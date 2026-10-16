@@ -3801,10 +3801,10 @@ the first host to run it is the first test of it.
    `internal-only/` until the city's reply of 2026-10-16, and the installer
    refuses any path under that directory, so move it once, before the first
    install that names it, into the inputs folder beside the other street layers
-   (`$DATA_ROOT` is the data root the paths above are under), and check it is
-   the file recorded in `fixtures/datasets/README.md`:
+   and check it is the file recorded in `fixtures/datasets/README.md`:
 
    ```sh
+   export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
    mkdir -p "$DATA_ROOT/reference/inputs/alexandria-transport-streets"
    mv ~/rmdata/datasets/internal-only/alexandria-transport-streets/* \
       "$DATA_ROOT/reference/inputs/alexandria-transport-streets/"
