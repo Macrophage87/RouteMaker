@@ -291,3 +291,12 @@ test("the page's first two stops, the switch and the skip link, are at least 44 
   assert.match(declared(".access-link"), /min-height:\s*44px/);
   assert.match(declared(".skip-link"), /min-height:\s*44px/);
 });
+
+test("a level slider's words are heard once: its <output> is hidden, the value text says them (review a11y-4)", () => {
+  for (const name of ["./SuggestChange.tsx", "./StressEditor.tsx", "./SuggestQuick.tsx"]) {
+    const outputs = read(name).match(/<output [^>]*>/g) ?? [];
+    assert.ok(outputs.length >= 1, name);
+    for (const output of outputs) assert.match(output, /aria-hidden="true"/, name);
+    assert.match(read(name), /aria-valuetext=/, name);
+  }
+});
