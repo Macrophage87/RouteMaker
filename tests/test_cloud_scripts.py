@@ -443,6 +443,19 @@ def test_the_box_refuses_a_folder_whose_upload_did_not_finish(fake, home) -> Non
     assert "poweroff" not in fake.calls(), "a failure before the rebuild leaves the box up"
 
 
+def test_a_resumed_run_refuses_inputs_sent_again_since_it_fetched(fake, home) -> None:
+    # Review pipeline-7: once fetched, the bucket's checksums were never read again.
+    assert send(fake, home).returncode == 0
+    (fake.dir / "job_status").write_text("doing\nfailed\n")
+    box(fake, "--no-stop")
+    sums = fake.in_bucket("in") / "SHA256SUMS"
+    sums.write_text(sums.read_text() + "0" * 64 + "  another.tar\n")
+
+    done, _ = box(fake)
+
+    assert done.returncode == 2 and "other inputs than this run fetched" in done.stderr
+
+
 def test_the_box_refuses_a_file_that_does_not_match_its_checksum(fake, home) -> None:
     assert send(fake, home).returncode == 0
     (fake.in_bucket("in") / "reference.tar").write_text("tampered")
