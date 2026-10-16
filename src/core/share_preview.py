@@ -280,6 +280,8 @@ def drawn_route(line, points, zone) -> dict | None:
     points = [(float(p[0]), float(p[1])) for p in points or []]
     if len(line) < 2:
         return None
+    # Thinned before the cut, so no chord of the drawn line can cut into Home's circle.
+    line = _thinned([line])[0]
     zone = zone if at_home(line, points, zone) else None
     clon, clat = zone[0] if zone else (0.0, 0.0)
     kx = M_PER_DEG * math.cos(math.radians(clat))
@@ -324,6 +326,8 @@ def drawn_route(line, points, zone) -> dict | None:
     first, last = line[0], line[-1]
     return {
         "pieces": pieces,
+        # The circle cut, or None: the drawing leaves it blank whatever its stroke and pins reach.
+        "zone": zone,
         "start": None if _in_zone(first, zone) or (points and _in_zone(points[0], zone)) else first,
         "finish": None if _in_zone(last, zone) or (points and _in_zone(points[-1], zone)) else last,
         "stops": [p for p in points[1:-1] if not _in_zone(p, zone)],
@@ -487,7 +491,7 @@ def render_png(drawn: dict, stats: str) -> bytes | None:
         return WIDTH / 2 + (p[0] * kx - mid_x) * scale, MAP_H / 2 - (p[1] - mid_y) * scale
 
     paths = []
-    for piece in _thinned(drawn["pieces"]):
+    for piece in drawn["pieces"]:
         path = []
         for p in piece:
             q = at(p)
@@ -518,6 +522,15 @@ def render_png(drawn: dict, stats: str) -> bytes | None:
             x, y = at(end)
             canvas.disc(x, y, 14, BAND_COLOUR)
             canvas.disc(x, y, 10, colour)
+    zone = drawn.get("zone")
+    if zone:
+        # Nothing inside Home's circle, not even a round line end or a pin's edge reaching in.
+        cx, cy = at(zone[0])
+        r = zone[1] / M_PER_DEG * scale
+        for y in range(max(0, int(cy - r - 1)), min(MAP_H, int(cy + r + 2))):
+            for x in range(max(0, int(cx - r - 1)), min(WIDTH, int(cx + r + 2))):
+                if (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 <= r * r:
+                    canvas.blend(x, y, BACKGROUND, 1)
     for x in range(WIDTH):
         canvas.blend(x, MAP_H, RULE, 1)
     baseline = MAP_H + (BAND + 24) // 2

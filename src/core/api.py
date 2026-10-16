@@ -4564,9 +4564,17 @@ def my_go_read(request, response: HttpResponse):
     errors_as_json,
 )
 def my_go_save(request, body: MyGoIn, response: HttpResponse):
-    from .models import MyGo
+    from .models import MyGo, SharedRoute
 
     home = body.home
+    before = MyGo.objects.filter(user=request.user).values_list("home_lon", "home_lat").first()
+    after = (round(home.lon, 5), round(home.lat, 5)) if home else (None, None)
+    if before is not None and before != (None, None) and tuple(before) != after:
+        # Home cleared or moved: a link's frozen circle round the old Home is a point near it, so
+        # it goes, and those links lose their image rather than show the old Home uncovered.
+        SharedRoute.objects.filter(owner=request.user, preview_zone__isnull=False).update(
+            preview_zone=None, preview_image=False, preview_png=None, preview_key=""
+        )
     row, _ = MyGo.objects.update_or_create(
         user=request.user,
         defaults={

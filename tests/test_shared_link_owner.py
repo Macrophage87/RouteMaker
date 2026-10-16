@@ -385,3 +385,81 @@ class TestPreview:
         zone = share_preview.home_zone(HOME, (0.0, 0.0))
         assert share_preview.drawn_route(short, [short[0], short[-1]], zone) is None
         assert math.isclose(share_preview.HOME_TRIM_M, 322.0)
+
+
+def _pixel_of(drawn):
+    """The image's own placing of a point (share_preview.render_png's projection)."""
+    every = [p for piece in drawn["pieces"] for p in piece]
+    kx = math.cos(math.radians(sum(p[1] for p in every) / len(every)))
+    xs, ys = [p[0] * kx for p in every], [p[1] for p in every]
+    scale = min(
+        (share_preview.WIDTH - 2 * share_preview.PAD) / (max(xs) - min(xs)),
+        (share_preview.MAP_H - 2 * share_preview.PAD) / (max(ys) - min(ys)),
+    )
+    mx, my = (max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2
+    return scale, lambda p: (
+        share_preview.WIDTH / 2 + (p[0] * kx - mx) * scale,
+        share_preview.MAP_H / 2 - (p[1] - my) * scale,
+    )
+
+
+@db
+class TestHomeFollowUps:
+    def test_no_drawn_pixel_falls_inside_homes_circle_even_thinned(self) -> None:
+        # Thousands of points (thinned to 1,500) curling round Home before leaving it.
+        line = []
+        for i in range(6000):
+            a, r = i / 120, 0.0002 + i * 0.000004
+            line.append([HOME[0] + r * math.cos(a) * 1.3, HOME[1] + r * math.sin(a)])
+        zone = share_preview.home_zone(HOME, share_preview.zone_jitter(5))
+        drawn = share_preview.drawn_route(line, [line[0], line[-1]], zone)
+        assert drawn is not None and drawn["zone"] == zone
+        png = share_preview.render_png(drawn, "x")
+        width, _, px = png_pixels(png)
+        scale, at = _pixel_of(drawn)
+        cx, cy = at(zone[0])
+        r = zone[1] / share_preview.M_PER_DEG * scale
+        background = share_preview.BACKGROUND
+        inside = 0
+        for y in range(int(cy - r), int(cy + r) + 1):
+            for x in range(int(cx - r), int(cx + r) + 1):
+                if 0 <= x < width and 0 <= y < share_preview.MAP_H:
+                    if (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 <= r * r:
+                        inside += 1
+                        i = (y * width + x) * 3
+                        assert tuple(px[i : i + 3]) == background, (x, y)
+        assert inside > 100
+
+    def test_moving_or_clearing_home_drops_frozen_circles_and_their_images(self) -> None:
+        client, user, csrf = signed_in()
+        MyGo.objects.create(user=user, home_lon=HOME[0], home_lat=HOME[1], home_label="x")
+        frozen = share(client)
+        far = [[HOME[0] + 0.05, HOME[1]], [HOME[0] + 0.08, HOME[1] + 0.01]]
+        loose = share(client, line=far, inputs={**INPUTS, "points": far})
+        assert SharedRoute.objects.get(pk=frozen).preview_zone is not None
+        assert SharedRoute.objects.get(pk=loose).preview_zone is None
+
+        def save_home(home) -> None:
+            r = client.post(
+                "/api/me/go",
+                data=json.dumps({"open_in": "", "ride": "", "home": home}),
+                content_type="application/json",
+                HTTP_X_CSRFTOKEN=csrf,
+                **addr(),
+            )
+            assert r.status_code == 200, r.content
+
+        # The same Home saved again changes nothing.
+        save_home({"lon": HOME[0], "lat": HOME[1], "label": "x"})
+        assert SharedRoute.objects.get(pk=frozen).preview_zone is not None
+        save_home({"lon": HOME[0] + 0.01, "lat": HOME[1], "label": "x"})
+        row = SharedRoute.objects.get(pk=frozen)
+        assert row.preview_zone is None and row.preview_image is False and row.preview_png is None
+        assert Client().get(f"/s/{frozen}/preview.png", **CRAWLER, **addr()).status_code == 404
+        assert SharedRoute.objects.get(pk=loose).preview_image is True
+        # Cleared: the same for a link frozen round the new Home.
+        moved = [[HOME[0] + 0.01, HOME[1]], [HOME[0] + 0.01, HOME[1] + 0.03]]
+        again = share(client, line=moved, inputs={**INPUTS, "points": moved})
+        assert SharedRoute.objects.get(pk=again).preview_zone is not None
+        save_home(None)
+        assert SharedRoute.objects.get(pk=again).preview_zone is None
