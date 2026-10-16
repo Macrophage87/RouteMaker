@@ -86,7 +86,7 @@ test("points outside the coverage box are dropped, and at most twenty-five kept"
   assert.deepEqual(decodePlan("#p=-77,38.9;-70,38.9").points, [[-77, 38.9]]);
 });
 
-// Owner item 204: routemaker.cieply.com/trailmaxxing is redirected by the edge to
+// Owner item 204: beta.example.org/trailmaxxing is redirected by the edge to
 // "/#preset=trailmaxxing", a link with a ride type and nothing else.
 test("a link with only a ride type opens the planner on it, with that ride type's own dials", () => {
   for (const id of PRESETS.map((p) => p.id)) {

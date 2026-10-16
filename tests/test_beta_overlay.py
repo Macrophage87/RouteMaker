@@ -1012,24 +1012,26 @@ def test_rendering_the_full_stage_fills_every_placeholder(tmp_path: Path) -> Non
         "full",
         "--env-file",
         "/nonexistent",
+        "--server-name",
+        "beta.example.org",
         "--cert-fullchain",
-        "/etc/letsencrypt/live/routemaker.cieply.com/fullchain.pem",
+        "/etc/letsencrypt/live/beta.example.org/fullchain.pem",
         "--cert-key",
-        "/etc/letsencrypt/live/routemaker.cieply.com/privkey.pem",
+        "/etc/letsencrypt/live/beta.example.org/privkey.pem",
         "--tls-options-include",
         "/etc/letsencrypt/options-ssl-nginx.conf",
     )
     assert out.returncode == 0, out.stderr
     text = out.stdout
     assert not re.search(r"@[A-Z_]+@", text)
-    assert "server_name routemaker.cieply.com;" in text
+    assert "server_name beta.example.org;" in text
     assert "server 127.0.0.1:8087;" in text
     assert "root /data/routemaker/frontend;" in text
     assert f"alias {REPO}/deploy/beta/401.html;" in text
     assert f"alias {REPO}/deploy/beta/502.html;" in text
-    assert "ssl_certificate     /etc/letsencrypt/live/routemaker.cieply.com/fullchain.pem;" in text
+    assert "ssl_certificate     /etc/letsencrypt/live/beta.example.org/fullchain.pem;" in text
     assert "include /etc/letsencrypt/options-ssl-nginx.conf;" in text
-    assert '"~^https://routemaker\\.cieply\\.com\\|" 0;' in text
+    assert '"~^https://beta\\.example\\.org\\|" 0;' in text
     assert (
         "BEGIN stage" not in text and "acme" in text
     )  # the ACME location stays in the port-80 server
@@ -1041,7 +1043,7 @@ def test_rendering_without_a_tls_include_drops_that_line_and_reads_env_values(
     tmp_path: Path,
 ) -> None:
     env = tmp_path / ".env"
-    env.write_text("DATA_ROOT=/data/rm-test\nBETA_API_PORT=8123\n")
+    env.write_text("DATA_ROOT=/data/rm-test\nBETA_API_PORT=8123\nRM_BETA_HOST=beta.example.net\n")
     out = run(
         "sh",
         "scripts/beta/render-nginx.sh",
@@ -1056,12 +1058,22 @@ def test_rendering_without_a_tls_include_drops_that_line_and_reads_env_values(
     )
     assert out.returncode == 0, out.stderr
     assert "server 127.0.0.1:8123;" in out.stdout and "root /data/rm-test/frontend;" in out.stdout
+    assert "server_name beta.example.net;" in out.stdout, "the name is the .env's"
     assert "include " not in out.stdout.split("ssl_protocols")[1].split("# ---")[0]
 
 
 @needs_sh
 def test_rendering_the_acme_stage_has_no_tls_no_auth_and_no_app() -> None:
-    out = run("sh", "scripts/beta/render-nginx.sh", "--stage", "acme", "--env-file", "/nonexistent")
+    out = run(
+        "sh",
+        "scripts/beta/render-nginx.sh",
+        "--stage",
+        "acme",
+        "--env-file",
+        "/nonexistent",
+        "--server-name",
+        "beta.example.org",
+    )
     assert out.returncode == 0, out.stderr
     text = out.stdout
     assert "listen 443" not in text and "ssl_certificate" not in text and "proxy_pass" not in text
@@ -1083,8 +1095,23 @@ def test_rendering_the_acme_stage_has_no_tls_no_auth_and_no_app() -> None:
     ],
 )
 def test_the_renderer_refuses_bad_input(args: list[str]) -> None:
-    out = run("sh", "scripts/beta/render-nginx.sh", "--env-file", "/nonexistent", *args)
+    out = run(
+        "sh",
+        "scripts/beta/render-nginx.sh",
+        "--env-file",
+        "/nonexistent",
+        "--server-name",
+        "beta.example.org",
+        *args,
+    )
     assert out.returncode == 2, (args, out.stdout, out.stderr)
+
+
+@needs_sh
+def test_the_renderer_refuses_without_a_server_name_and_says_where_it_goes() -> None:
+    """The beta's name is server config, never a default in the repository (sec-infra-8)."""
+    out = run("sh", "scripts/beta/render-nginx.sh", "--stage", "acme", "--env-file", "/nonexistent")
+    assert out.returncode == 2 and "RM_BETA_HOST" in out.stderr
 
 
 @needs_sh
@@ -1098,6 +1125,8 @@ def test_the_renderer_never_overwrites_without_being_told(tmp_path: Path) -> Non
         "acme",
         "--env-file",
         "/nonexistent",
+        "--server-name",
+        "beta.example.org",
         "--out",
         str(target),
     )
@@ -1125,7 +1154,10 @@ def test_every_beta_script_is_executable(script: Path) -> None:
 @needs_sh
 def test_make_env_writes_a_private_complete_env_and_never_overwrites(tmp_path: Path) -> None:
     target = tmp_path / ".env"
-    done = run("sh", "scripts/beta/make-env.sh", "--out", str(target), "--tag", "abc123def456")
+    args = ["--out", str(target), "--tag", "abc123def456"]
+    nameless = run("sh", "scripts/beta/make-env.sh", *args)
+    assert nameless.returncode == 2 and "--host" in nameless.stderr and not target.exists()
+    done = run("sh", "scripts/beta/make-env.sh", *args, "--host", "beta.example.net")
     assert done.returncode == 0, done.stderr
     assert (target.stat().st_mode & 0o777) == 0o600
     values = dict(
@@ -1138,10 +1170,15 @@ def test_make_env_writes_a_private_complete_env_and_never_overwrites(tmp_path: P
     assert len({values[k] for k in ("DJANGO_SECRET_KEY", "KEY_ENCRYPTION_KEY", "PGPASSWORD")}) == 3
     assert values["TAG"] == "abc123def456" and values["COMPOSE_PROJECT_NAME"] == "routemaker-beta"
     assert values["DATA_ROOT"] == "/data/routemaker" and values["BETA_API_PORT"] == "8087"
-    assert "@" not in target.read_text().replace("routemaker.cieply.com", "")
+    assert "@" not in target.read_text()
+    # The beta's name is the server's own, from --host (sec-infra-8).
+    assert values["RM_BETA_HOST"] == values["DJANGO_ALLOWED_HOSTS"] == "beta.example.net"
+    assert values["DISCORD_REDIRECT_URI"] == "https://beta.example.net/auth/callback"
     for secret in (values["PGPASSWORD"], values["DJANGO_SECRET_KEY"]):
         assert secret not in done.stdout and secret not in done.stderr
-    again = run("sh", "scripts/beta/make-env.sh", "--out", str(target), "--tag", "x")
+    again = run(
+        "sh", "scripts/beta/make-env.sh", "--out", str(target), "--tag", "x", "--host", "b.example"
+    )
     assert again.returncode == 2 and "already exists" in again.stderr
 
 
@@ -2592,7 +2629,7 @@ def test_the_runbook_records_the_servers_facts_and_checks_them_read_only() -> No
     assert "export RM_SSH_HOST=<" in RUNBOOK[: RUNBOOK.index("## 1. Prerequisites")]
     for fact in ('ssh "$RM_SSH_HOST"', "`nofail`", "root disk", "8400 MiB", "x86_64"):
         assert fact in step1, fact
-    assert "https://api.ipify.org" in step1 and "getent ahostsv4 routemaker.cieply.com" in step1
+    assert "https://api.ipify.org" in step1 and "getent ahostsv4 beta.example.org" in step1
     assert '[ -n "$dns" ] && [ -n "$me" ] && [ "$dns" = "$me" ]' in step1  # re-check ops SF-A
     assert "amazonaws" not in RUNBOOK and "7900" not in RUNBOOK
     assert "uname -m; docker info -f '{{.Architecture}}'" in step1  # ops SF-G
@@ -2700,9 +2737,7 @@ def test_the_predraw_runs_detached_and_follows_every_restore() -> None:
 def test_the_runbook_checks_the_401_at_once_and_says_how_to_recover() -> None:
     """Re-check operations SF-F."""
     nine_c = RUNBOOK[RUNBOOK.index("### 9c. The full site") : RUNBOOK.index("## 10. Smoke")]
-    assert (
-        "curl -s -m 10 -o /dev/null -w '%{http_code}\\n' https://routemaker.cieply.com/" in nine_c
-    )
+    assert "curl -s -m 10 -o /dev/null -w '%{http_code}\\n' https://beta.example.org/" in nine_c
     assert "000: no answer" in nine_c  # re-check 2 ops NIT-4
     ten = RUNBOOK[RUNBOOK.index("## 10. Smoke") : RUNBOOK.index("## 11. Report")]
     assert "**If the 401 lines fail with 403 or 404**" in ten and "--no-401-page" in ten
@@ -2764,6 +2799,7 @@ def test_the_wrapper_and_the_checker_refuse_docker_settings_env_i_would_drop(
 def test_the_renderer_can_leave_out_the_sign_in_page() -> None:
     """Re-check operations SF-F: the recovery is a re-render, never a hand edit."""
     args = ["--stage", "full", "--env-file", "/nonexistent", "--cert-fullchain", "/c/f.pem"]
+    args += ["--server-name", "beta.example.org"]
     args += ["--cert-key", "/c/k.pem"]
     with_page = run("sh", "scripts/beta/render-nginx.sh", *args)
     without = run("sh", "scripts/beta/render-nginx.sh", *args, "--no-401-page")
@@ -2866,6 +2902,19 @@ def test_the_smoke_test_can_skip_the_sign_in_pages_text() -> None:
     assert "Rerun the smoke test with\n`--no-401-page`" in ten
     unknown = run("bash", "scripts/beta/smoke-test.sh", "--bogus")
     assert unknown.returncode == 2
+
+
+@needs_sh
+def test_the_local_smoke_test_reads_the_betas_name_from_env_or_refuses(tmp_path: Path) -> None:
+    """sec-infra-8: no default name in the repository; RM_BETA_HOST from .env, else a refusal."""
+    (tmp_path / "scripts" / "beta").mkdir(parents=True)
+    shutil.copy(REPO / "scripts" / "beta" / "smoke-test.sh", tmp_path / "scripts" / "beta")
+    script = str(tmp_path / "scripts" / "beta" / "smoke-test.sh")
+    refused = run("bash", script, "--local", "--port", "1", env={"RM_BETA_HOST": ""})
+    assert refused.returncode == 2 and "RM_BETA_HOST" in refused.stderr
+    (tmp_path / ".env").write_text("RM_BETA_HOST=beta.example.net\n")
+    named = run("bash", script, "--local", "--port", "1", env={"RM_BETA_HOST": ""})
+    assert "RM_BETA_HOST" not in named.stderr and "FAIL" in named.stdout, "it went on to check"
 
 
 def test_the_ci_tool_versions_step_cannot_fail_the_required_check() -> None:
@@ -3106,6 +3155,7 @@ def test_the_renderer_needs_the_sign_in_page_only_without_the_flag(tmp_path: Pat
     )
     script = str(tmp_path / "scripts" / "beta" / "render-nginx.sh")
     args = ["--stage", "full", "--env-file", "/nonexistent", "--cert-fullchain", "/c/f.pem"]
+    args += ["--server-name", "beta.example.org"]
     args += ["--cert-key", "/c/k.pem"]
     refused = run("sh", script, *args, cwd=tmp_path)
     assert (
@@ -3168,7 +3218,7 @@ def test_the_runbook_decides_tls_by_rule_and_never_uses_the_nginx_authenticator(
     for line in runbook_commands():
         assert "--nginx" not in line, line
     assert "openssl x509" in RUNBOOK and "subjectAltName" in RUNBOOK
-    assert "*.cieply.com" in RUNBOOK and "14 days" in RUNBOOK
+    assert "*.example.org" in RUNBOOK and "14 days" in RUNBOOK
     assert "certbot certonly --webroot" in RUNBOOK
 
 
@@ -3184,6 +3234,7 @@ def test_the_runbook_keeps_nginx_copies_private_and_passwords_out_of_the_transcr
 @needs_sh
 def test_the_renderer_drops_template_lines_and_can_drop_ipv6() -> None:
     args = ["--stage", "full", "--env-file", "/nonexistent", "--cert-fullchain", "/c/f.pem"]
+    args += ["--server-name", "beta.example.org"]
     args += ["--cert-key", "/c/k.pem"]
     with_v6 = run("sh", "scripts/beta/render-nginx.sh", *args)
     without = run("sh", "scripts/beta/render-nginx.sh", *args, "--no-ipv6")

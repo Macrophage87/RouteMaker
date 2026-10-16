@@ -18,7 +18,7 @@ For the sender (do not send this part)
 RouteMaker beta: how to get in
 ==============================
 
-    Address:    https://routemaker.cieply.com
+    Address:    https://beta.example.org
     User name:  (filled in by whoever gives you access)
     Password:   (sent with it, as text you can copy)
 

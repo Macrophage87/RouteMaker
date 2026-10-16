@@ -1,8 +1,15 @@
 # Beta runbook: RouteMaker on the owner's server
 
 For the owner's Claude on the server. It stands up a private beta of RouteMaker at
-`https://routemaker.cieply.com` for trusted friends and family (OWNER-DECISIONS 360-362). Read
+`https://beta.example.org` for trusted friends and family (OWNER-DECISIONS 360-362). Read
 the whole file before running anything. Every step says what it changes and how to undo it.
+
+**`beta.example.org` stands for the beta's real name** throughout: the owner gives it to you, and
+it lives only in the server's `.env` (`RM_BETA_HOST`, written by `make-env.sh --host`), never in
+this repository. Type the real name wherever this file says `beta.example.org`.
+`render-nginx.sh`, `smoke-test.sh --local` and the deploy agent read it from `.env` and stop with
+a message naming `RM_BETA_HOST` when it is missing; on a server set up before v0.7.0, add the line
+`RM_BETA_HOST=<the beta's name>` to `.env` once.
 
 ## What this changes on the host, and nothing else
 
@@ -96,7 +103,7 @@ What to expect on this server (the owner's check, 2026-10-04); a check below tha
 - available memory is at least the 8400 MiB threshold below (the 7358 MiB startup peak plus the
   checker's 1 GiB margin);
 - an x86_64 machine (the api image is built at home, on x86_64);
-- `routemaker.cieply.com` resolves to this server's own public address (checked live below; the
+- `beta.example.org` resolves to this server's own public address (checked live below; the
   address is not written down here).
 
 ```sh
@@ -117,8 +124,8 @@ nginx -v; sudo nginx -T 2>/dev/null | grep -E '^\s*(include|user) ' | head   # w
 command -v git rsync openssl curl python3 sha256sum
 sudo docker compose version                      # the compose plugin must also work under sudo (receive-data.sh files/db run with sudo)
 python3 -c 'import yaml' && echo "pyyaml ok"      # the pre-flight checker needs it; if missing, see below (no system package is installed)
-dns=$(getent ahostsv4 routemaker.cieply.com | awk 'NR == 1 {print $1}'); me=$(curl -s -m 10 https://api.ipify.org)
-[ -n "$dns" ] && [ -n "$me" ] && [ "$dns" = "$me" ] && echo "DNS points here" || echo "STOP: routemaker.cieply.com does not resolve to this server's public address (or the check could not run)"
+dns=$(getent ahostsv4 beta.example.org | awk 'NR == 1 {print $1}'); me=$(curl -s -m 10 https://api.ipify.org)
+[ -n "$dns" ] && [ -n "$me" ] && [ "$dns" = "$me" ] && echo "DNS points here" || echo "STOP: beta.example.org does not resolve to this server's public address (or the check could not run)"
 sudo nginx -T 2>/dev/null | grep -c 'listen \[::\]'   # 0: the other sites do not listen on IPv6; render with --no-ipv6 in 9c
 rm_absent "$RM_SRC" "$RM_INCOMING" "$RM_DATA" "$HOME/routemaker-beta-passwords.txt" "$HOME/routemaker-beta-venv" /var/www/routemaker-acme /etc/nginx/routemaker-beta.htpasswd && echo "all absent"   # any EXISTS line is a stop
 ```
@@ -146,11 +153,11 @@ done
 
 Then apply this rule, and report which option it gave and why:
 
-- **Option B (reuse)** if some certificate's subjectAltName contains `routemaker.cieply.com` or
-  `*.cieply.com`, **and** its `notAfter` is more than 14 days away, **and** it renews automatically
+- **Option B (reuse)** if some certificate's subjectAltName contains `beta.example.org` or
+  `*.example.org`, **and** its `notAfter` is more than 14 days away, **and** it renews automatically
   (it is listed by `certbot certificates`, or the owner confirms how it is renewed).
 - **Option A (a new certificate for this one name)** otherwise: `certbot certonly --webroot` for
-  `routemaker.cieply.com` only (step 9b).
+  `beta.example.org` only (step 9b).
 
 Record the choice for step 9c, which branches on it, in the vars file:
 `echo 'export TLS_OPTION=A' >> "$RM_STATE/vars.sh"` or `echo 'export TLS_OPTION=B' >> "$RM_STATE/vars.sh"`.
@@ -175,7 +182,7 @@ Decide and note down:
   `export NGINX_SITE=/etc/nginx/sites-available/routemaker-beta.conf NGINX_LINK=/etc/nginx/sites-enabled/routemaker-beta.conf`.
   Append that `export NGINX_SITE=... NGINX_LINK=...` line to `$RM_STATE/vars.sh`.
   Then `rm_absent "$NGINX_SITE" "$NGINX_LINK" && echo "site file absent"`; an EXISTS line is a stop.
-- **Whether `routemaker.cieply.com` already points here.** If `getent` shows another address, stop;
+- **Whether `beta.example.org` already points here.** If `getent` shows another address, stop;
   the owner has to change DNS first.
 
 Never run anything under `scripts/boot/`, nor `scripts/local-up.sh`, and do not follow
@@ -231,7 +238,7 @@ Undo: `rm -rf "$RM_SRC"`.
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
 cd "$RM_SRC"
-scripts/beta/make-env.sh --data-root "$RM_DATA" --api-port "$BETA_API_PORT"       # TAG defaults to the first 12 characters of the sha
+scripts/beta/make-env.sh --host <the beta's name> --data-root "$RM_DATA" --api-port "$BETA_API_PORT"   # TAG defaults to the first 12 characters of the sha
 ```
 
 It generates `DJANGO_SECRET_KEY`, `KEY_ENCRYPTION_KEY` and `PGPASSWORD` as random hex and prints
@@ -241,10 +248,10 @@ database initialised with the old one. The required values and what is optional:
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `DJANGO_SECRET_KEY`, `KEY_ENCRYPTION_KEY`, `PGPASSWORD` | yes | generated by `make-env.sh` |
-| `DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS` | yes | already `routemaker.cieply.com` / `https://routemaker.cieply.com` |
+| `RM_BETA_HOST`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS` | yes | from `--host`: the name, the name, `https://` the name |
 | `DATA_ROOT`, `TAG`, `COMPOSE_PROJECT_NAME` | yes | `/data/routemaker`, the short sha, `routemaker-beta` |
 | `BETA_API_PORT`, `BETA_WEB_CONCURRENCY` | yes | `8087`, `6` (two route plans at once, one worker always free; the checker refuses more) |
-| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI` | **no** | Planning works signed out. Leave empty and there is no sign-in. To enable it the owner adds `https://routemaker.cieply.com/auth/callback` to the Discord application and gives you the id and secret; edit `.env`, rerun the gate (`"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env`, which must print "beta compose: ok"), then `beta-compose.sh up -d api`. From v0.7.0 sign-in is on by itself once both keys are set (the Settings line "Sign in with Discord to save routes and sync settings across devices." appears); migration 0020 adds saved settings and routes. Ride links keep anonymous rider dots in the api container's `/dev/shm` (a tmpfs, memory only), so the api needs no volume for them. |
+| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI` | **no** | Planning works signed out. Leave empty and there is no sign-in. To enable it the owner adds `https://beta.example.org/auth/callback` to the Discord application and gives you the id and secret; edit `.env`, rerun the gate (`"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env`, which must print "beta compose: ok"), then `beta-compose.sh up -d api`. From v0.7.0 sign-in is on by itself once both keys are set (the Settings line "Sign in with Discord to save routes and sync settings across devices." appears); migration 0020 adds saved settings and routes. Ride links keep anonymous rider dots in the api container's `/dev/shm` (a tmpfs, memory only), so the api needs no volume for them. |
 | `BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID` | no | The beta's database carries **no accounts** (the dump strips them, OWNER-DECISIONS 367.3), so the owner claims instance admin afresh. Set this to the owner's Discord user id only if Discord sign-in is turned on, and have the owner sign in once promptly after the api starts. Otherwise leave it empty. |
 | `WMATA_API_KEY`, `MAPILLARY_ACCESS_TOKEN` | no | v0.7.0 live data. The owner pastes them into `.env` himself (nobody else reads or types them); then `beta-compose.sh up -d api`. Empty: timetable times only, no street photo. Allow outbound `api.wmata.com`, `graph.mapillary.com` and `*.fbcdn.net` from the api: the server fetches the photo's file from Mapillary's image host and serves the browser its own copy, so the CSP's `img-src` stays `'self'` and the browser never contacts Mapillary. Check: a Metro station's card says "live" and "Data: WMATA"; a road panel shows "Photo from <month year>" or "No street photo here." |
 | `DC311_API_KEY` | no | v0.7.0 Ride mode's 311 sent from the server (`core/dc311.py`), read by the api. The owner pastes it himself, only once DC issues one; then `beta-compose.sh up -d api`. Empty: Ride mode opens the phone's text app to 311 instead. Allow outbound `app.311.dc.gov` from the api. Each send needs a 15-minute ticket from `GET /api/report311`, and at most 60 reports an hour leave the server in all. |
@@ -509,7 +516,7 @@ Health and memory:
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
 cd "$RM_SRC"
-curl -s -H 'Host: routemaker.cieply.com' "http://127.0.0.1:$BETA_API_PORT/healthz"   # ok
+curl -s -H 'Host: beta.example.org' "http://127.0.0.1:$BETA_API_PORT/healthz"   # ok
 scripts/beta/smoke-test.sh --local                                              # route, search, reverse, stress tile; all PASS
 docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}' | grep routemaker-beta
 free -m
@@ -521,7 +528,7 @@ Every container should sit well under its cap (api about 0.5 GiB at six workers,
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
-for i in 1 2; do curl -s -o /dev/null -w "plan $i: %{http_code} in %{time_total}s\n" -H 'Host: routemaker.cieply.com' \
+for i in 1 2; do curl -s -o /dev/null -w "plan $i: %{http_code} in %{time_total}s\n" -H 'Host: beta.example.org' \
   -H 'Content-Type: application/json' -d '{"points":[[-77.0353,38.8895],[-77.0369,38.9072]],"preset":"default"}' \
   "http://127.0.0.1:$BETA_API_PORT/api/route" & done; wait
 docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}' | grep -E 'api|photon'
@@ -604,11 +611,11 @@ on Ubuntu), with a password in the same format. Undo: `sudo rm /etc/nginx/routem
 ### 9b. TLS: the option step 1's discovery chose
 
 Use the rule from step 1 (OWNER-DECISIONS 367.1): **B** if an existing certificate covers
-`routemaker.cieply.com` or `*.cieply.com`, is more than 14 days from expiry and renews
+`beta.example.org` or `*.example.org`, is more than 14 days from expiry and renews
 automatically; **A** otherwise. Say in your report which one, with the `openssl x509` lines that
 decided it.
 
-**Option A: certbot issues a certificate for `routemaker.cieply.com` only, by webroot.** Install
+**Option A: certbot issues a certificate for `beta.example.org` only, by webroot.** Install
 the stage-1 file, which answers only the ACME challenge on port 80, then run certbot's `--webroot`
 authenticator. It writes the challenge into `/var/www/routemaker-acme` and touches no nginx file;
 its renewals reuse the same `webroot_path`. Not `--nginx` (it edits and reloads the host's nginx
@@ -621,13 +628,13 @@ rm_absent /var/www/routemaker-acme "$NGINX_SITE" "$NGINX_LINK" && sudo install -
 scripts/beta/render-nginx.sh --stage acme [--no-ipv6] --out "$RM_STATE/routemaker-beta.acme.conf"
 rm_absent "$NGINX_SITE" "$NGINX_LINK" && sudo install -m 644 "$RM_STATE/routemaker-beta.acme.conf" "$NGINX_SITE" && { [ "$NGINX_LINK" = "$NGINX_SITE" ] || sudo ln -s "$NGINX_SITE" "$NGINX_LINK"; }
 sudo nginx -t && sudo nginx -s reload
-sudo certbot certonly --webroot -w /var/www/routemaker-acme -d routemaker.cieply.com
-sudo ls /etc/letsencrypt/live/routemaker.cieply.com/        # fullchain.pem and privkey.pem
+sudo certbot certonly --webroot -w /var/www/routemaker-acme -d beta.example.org
+sudo ls /etc/letsencrypt/live/beta.example.org/        # fullchain.pem and privkey.pem
 ```
 
 Certbot's existing renewal timer renews it; the port-80 ACME location stays in the final file for
-that. Then continue to 9c with `--cert-fullchain /etc/letsencrypt/live/routemaker.cieply.com/fullchain.pem`
-and `--cert-key /etc/letsencrypt/live/routemaker.cieply.com/privkey.pem`.
+that. Then continue to 9c with `--cert-fullchain /etc/letsencrypt/live/beta.example.org/fullchain.pem`
+and `--cert-key /etc/letsencrypt/live/beta.example.org/privkey.pem`.
 
 **Option B: reuse the certificate step 1 found.** Use its paths as they are, and skip stage 1.
 For a certbot certificate, `sudo certbot certificates` gives them: its `Certificate Path` is
@@ -659,7 +666,7 @@ cd "$RM_SRC"
 # option B: stage 1 was skipped, so this is a new file and must not exist yet
 [ "$TLS_OPTION" = B ] && rm_absent "$NGINX_SITE" "$NGINX_LINK" && sudo install -m 644 "$RM_STATE/routemaker-beta.full.conf" "$NGINX_SITE" && { [ "$NGINX_LINK" = "$NGINX_SITE" ] || sudo ln -s "$NGINX_SITE" "$NGINX_LINK"; }
 sudo nginx -t && sudo nginx -s reload                                   # -t must say "syntax is ok" and "test is successful"
-curl -s -m 10 -o /dev/null -w '%{http_code}\n' https://routemaker.cieply.com/   # must print 401 at once; 403 or 404: nginx cannot serve the sign-in page (step 10, "If the 401 lines fail"); 000: no answer (TLS, listen or DNS): take the site offline with rollback D and report
+curl -s -m 10 -o /dev/null -w '%{http_code}\n' https://beta.example.org/   # must print 401 at once; 403 or 404: nginx cannot serve the sign-in page (step 10, "If the 401 lines fail"); 000: no answer (TLS, listen or DNS): take the site offline with rollback D and report
 ```
 
 `--no-ipv6` drops the `listen [::]:80` and `listen [::]:443` lines: give it when step 1 found no
@@ -693,7 +700,7 @@ site's own pages.
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
 cd "$RM_SRC"
-scripts/beta/smoke-test.sh --public https://routemaker.cieply.com --passwords-file ~/routemaker-beta-passwords.txt
+scripts/beta/smoke-test.sh --public https://beta.example.org --passwords-file ~/routemaker-beta-passwords.txt
 ```
 
 (It signs in as the first tester in the file, reading the password itself and passing it to curl on
@@ -841,7 +848,7 @@ docker image rm ghcr.io/macrophage87/routemaker-api:<TAG>
 # destructive, owner's say-so: the data and the checkout
 sudo rm -rf /data/routemaker /data/routemaker-incoming /data/routemaker-src /var/www/routemaker-acme "$HOME/routemaker-beta-state"
 # only if Option A created it and nothing else uses it:
-sudo certbot delete --cert-name routemaker.cieply.com
+sudo certbot delete --cert-name beta.example.org
 ```
 
 ## Shipping an update later

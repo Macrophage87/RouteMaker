@@ -72,7 +72,8 @@
 #   RM_CD_DOCKER_FREE_GIB        GiB that must be free on Docker's root before a deploy [3]
 #   RM_CD_REQUIRE_SIGNED_TAGS    1: also require `git verify-tag` to pass [0]
 #   RM_CD_KEEP                   release snapshots kept in $RM_STATE/cd/backups [3]
-#   RM_CD_HOST                   Host header for the local health check [routemaker.cieply.com]
+#   RM_CD_HOST                   Host header for the local health check [RM_BETA_HOST from the
+#                                checkout's .env; one of the two is required]
 # DOCKER and CURL name the docker and curl binaries [docker, curl] (the tests use stubs).
 set -uo pipefail
 export LC_ALL=C
@@ -108,7 +109,9 @@ load_vars() {
 	case "$gh_repo" in *[!A-Za-z0-9._/-]* | */*/* | /* | */) die "RM_CD_GITHUB_REPO '$gh_repo' is not owner/name" ;; */*) ;; *) die "RM_CD_GITHUB_REPO '$gh_repo' is not owner/name" ;; esac
 	keep=${RM_CD_KEEP:-3}
 	case "$keep" in '' | *[!0-9]* | 0) die "RM_CD_KEEP must be a whole number of 1 or more" ;; esac
-	health_host=${RM_CD_HOST:-routemaker.cieply.com}
+	# The beta's name is server config, never in the repository (review sec-infra-8).
+	health_host=${RM_CD_HOST:-$(env_value RM_BETA_HOST 2>/dev/null)}
+	[ -n "$health_host" ] || die "no host for the health check: set RM_BETA_HOST=<the beta's name> in $RM_SRC/.env (docs/BETA-RUNBOOK.md, section 0)"
 	docker_free_gib=${RM_CD_DOCKER_FREE_GIB:-3}
 	case "$docker_free_gib" in '' | *[!0-9]*) die "RM_CD_DOCKER_FREE_GIB must be a whole number of GiB" ;; esac
 	progress="$cd_dir/in-progress"

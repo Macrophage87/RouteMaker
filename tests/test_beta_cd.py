@@ -629,6 +629,7 @@ class Beta:
         )
         (self.src / ".env").write_text(
             f"COMPOSE_PROJECT_NAME=routemaker-beta\nDATA_ROOT={self.data}\nTAG={self.v1[:12]}\n"
+            "RM_BETA_HOST=beta.example.org\n"
         )
         (self.src / ".git" / "info" / "exclude").write_text(".env\n")
         self.state = tmp / "state"

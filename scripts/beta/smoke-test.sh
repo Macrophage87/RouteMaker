@@ -4,9 +4,11 @@
 # and byte ranges, and Django's static files.
 # Read-only: it only sends GET and one POST /api/route, which plans a short ride and saves nothing.
 #
-#   scripts/beta/smoke-test.sh --local [--port 8087] [--host routemaker.cieply.com]
-#       Straight to the api on 127.0.0.1, before nginx is involved. No credentials.
-#   scripts/beta/smoke-test.sh --public https://routemaker.cieply.com --passwords-file ~/routemaker-beta-passwords.txt
+#   scripts/beta/smoke-test.sh --local [--port 8087] [--host NAME]
+#       Straight to the api on 127.0.0.1, before nginx is involved. No credentials. The Host
+#       header is --host, else RM_BETA_HOST from the environment or the checkout's .env (the
+#       beta's name is server config, never in the repository).
+#   scripts/beta/smoke-test.sh --public https://beta.example.org --passwords-file ~/routemaker-beta-passwords.txt
 #       Through nginx and TLS, as the first tester in the file make-htpasswd.sh wrote (or as
 #       BETA_USER, if set). The password is read from that file, never printed, and handed to
 #       curl on standard input, so it is in no process listing, history line or transcript.
@@ -18,7 +20,7 @@
 # Exit status 0 only if every check passed.
 set -uo pipefail
 
-mode=""; port=""; host="routemaker.cieply.com"; base=""; passwords_file=""; page401=1
+mode=""; port=""; host=""; base=""; passwords_file=""; page401=1
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--local) mode=local; shift ;;
@@ -35,12 +37,15 @@ done
 command -v curl >/dev/null 2>&1 || { echo "smoke-test: curl is required" >&2; exit 2; }
 
 if [ "$mode" = local ]; then
+	here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 	if [ -z "$port" ]; then
-		here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 		port=$(sed -n 's/^[[:space:]]*BETA_API_PORT[[:space:]]*=//p' "$here/../../.env" 2>/dev/null | tail -n 1 | tr -d '\r')
 		port=${port:-8087}
 	fi
 	base="http://127.0.0.1:$port"
+	[ -n "$host" ] || host=${RM_BETA_HOST:-}
+	[ -n "$host" ] || host=$(sed -n 's/^[[:space:]]*RM_BETA_HOST[[:space:]]*=//p' "$here/../../.env" 2>/dev/null | tail -n 1 | tr -d "\r\"'")
+	[ -n "$host" ] || { echo "smoke-test: no host: set RM_BETA_HOST=<the beta's name> in .env (docs/BETA-RUNBOOK.md, section 0), or pass --host" >&2; exit 2; }
 fi
 base=${base%/}
 
