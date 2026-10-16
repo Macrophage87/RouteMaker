@@ -231,7 +231,8 @@ const inZone = (p: LonLat | undefined, zone: HomeZone | null) => !!p && !!zone &
 
 /**
  * Whether the route starts, ends or stops at Home: its line's ends, or any of `points`, inside Home's circle. Only
- * then is the circle cut out (cardRoute) and the QR code refused (qrAvailability); a route that only passes by is
+ * then is the circle cut out (cardRoute) and the QR code refused (qrAvailability), unless the rider unchecks "Hide
+ * the part near Home" in the dialog to show it; a route that only passes by is
  * drawn whole, as if no Home were set, since a gap there would point at Home.
  */
 export const homeEnd = (line: readonly LonLat[], points: readonly LonLat[], zone: HomeZone | null): boolean =>

@@ -140,11 +140,12 @@ export function ShareCardDialog({ open, source, settled, keepKey, makeLink, onCl
   }, []);
   const [jitter] = useState(zoneJitter);
   const zone = useMemo(() => homeZone(source?.home ?? null, jitter), [source?.home, jitter]);
-  // Home's circle applies only where the route starts, ends or stops in it (lib/shareCard.ts homeEnd): then the QR
-  // code is refused and "Hide the part near Home" is offered, checked; a route that only passes by is drawn whole.
+  // Home's circle applies only where the route starts, ends or stops in it (lib/shareCard.ts homeEnd): then "Hide
+  // the part near Home" is offered, checked, and the QR code is refused while it is; unchecked, the rider has chosen
+  // to show Home, so the QR code is allowed (its link says it includes Home). A route that only passes by is drawn whole.
   const atHome = source ? homeEnd(source.line, [...source.points, ...source.homeCheck], zone) : false;
-  const qr = qrAvailability({ online, settled, homeEnd: atHome });
   const [hideHome, setHideHome] = useState(true);
+  const qr = qrAvailability({ online, settled, homeEnd: atHome && hideHome });
   const drawnRoute = useMemo(
     () => (source ? cardRoute(source.line, source.points, hideHome ? zone : null, source.homeCheck) : null),
     [source, zone, hideHome],

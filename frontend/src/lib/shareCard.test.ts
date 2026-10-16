@@ -377,7 +377,8 @@ test("the dialog: labelled, the focus in and back, labelled controls, alt text, 
   // The circle only where Home is an end or stop (the same test for the QR code), and only while
   // "Hide the part near Home" is checked.
   assert.match(dialog, /const atHome = source \? homeEnd\(source\.line, \[\.\.\.source\.points, \.\.\.source\.homeCheck\], zone\) : false;/);
-  assert.match(dialog, /qrAvailability\(\{ online, settled, homeEnd: atHome \}\)/);
+  // Unchecked, the rider has chosen to show Home: the QR code is allowed too.
+  assert.match(dialog, /qrAvailability\(\{ online, settled, homeEnd: atHome && hideHome \}\)/);
   assert.match(dialog, /cardRoute\(source\.line, source\.points, hideHome \? zone : null, source\.homeCheck\)/);
   // Hide the part near Home: one labelled checkbox, only where Home is an end or stop, checked by default and
   // again on every open (and for a new route), redrawing the preview when changed.
