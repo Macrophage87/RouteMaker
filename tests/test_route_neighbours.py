@@ -8,9 +8,17 @@ from __future__ import annotations
 import json
 
 import pytest
+from django.test import override_settings
 from test_bikeshare_api import body as bikeshare_body
 from test_bikeshare_api import world  # noqa: F401 - a fixture
-from test_route_api import VERTICES, router, segments, standard_router  # noqa: F401 - fixtures
+from test_route_api import (  # noqa: F401 - fixtures
+    VERTICES,
+    hold_slots,
+    our_advisory_locks,
+    router,
+    segments,
+    standard_router,
+)
 
 from core import api, presets, ratelimit
 
@@ -175,7 +183,7 @@ class TestBikeshare:
         assert routers.calls == []
 
 
-def test_it_counts_as_one_routing_request_with_one_slot() -> None:
+def test_it_is_limited_by_routing_count_and_its_own_slots() -> None:
     limits = [
         d.limits
         for _prefix, routes in api.api._routers
@@ -185,6 +193,95 @@ def test_it_counts_as_one_routing_request_with_one_slot() -> None:
         for d in getattr(op, "_run_decorators", [])
         if getattr(d, "limits", None) is not None
     ]
-    assert len(limits) == 2
-    assert ratelimit.ROUTING in limits
-    assert ratelimit.ROUTING_IN_FLIGHT in limits
+    assert sorted(map(repr, limits)) == sorted(
+        map(repr, [ratelimit.ROUTING, ratelimit.NEIGHBOURS_IN_FLIGHT])
+    )
+    # Routing's own deployment slots, with clients of its own and room left for plans.
+    neighbours = ratelimit.NEIGHBOURS_IN_FLIGHT
+    assert neighbours.total_class == ratelimit.ROUTING_IN_FLIGHT.total_class
+    assert neighbours.per_client == 1
+    assert neighbours.leave_free == ratelimit.ROOM_FOR_OTHERS
+
+
+def routing_slots(total: int):
+    return [(ratelimit.ROUTING_IN_FLIGHT.total_class, s) for s in range(total)]
+
+
+def neighbours_client_slot(address: str):
+    key = ratelimit._client_lock_id(ratelimit.client_key(address))
+    return (ratelimit._LOCK_CLASS_CLIENT + ratelimit.NEIGHBOURS_IN_FLIGHT.scope_id * 64, key)
+
+
+@db
+class TestNeverInTheWay:
+    def test_it_counts_as_two_routing_requests(self, client, segments, router) -> None:  # noqa: F811
+        from core.models import RateLimitWindow
+
+        router(standard_router())
+        post(client, body_for(stress=70))
+        assert list(RateLimitWindow.objects.values_list("scope", "hits")) == [
+            (ratelimit.ROUTING.scope, api.NEIGHBOURS_COST)
+        ]
+
+    @override_settings(ROUTING_CONCURRENCY=3)
+    def test_a_plan_while_the_options_hold_their_slot_is_planned(
+        self,
+        client,
+        segments,  # noqa: F811
+        router,  # noqa: F811
+    ) -> None:
+        """The review's blocker: on the default pool of three, a rider's re-plan or ride
+        re-route sent while their options compute is answered, not refused."""
+        router(standard_router())
+        address = "198.51.100.70"
+        # The options in flight: their client slot and routing's last slot, as they take it.
+        other = hold_slots([neighbours_client_slot(address), routing_slots(3)[-1]])
+        try:
+            response = client.post(
+                "/api/route",
+                data=json.dumps(body_for(stress=70)),
+                content_type="application/json",
+                HTTP_X_FORWARDED_FOR=address,
+            )
+        finally:
+            other.close()
+        assert response.status_code == 200
+
+    @override_settings(ROUTING_CONCURRENCY=3)
+    def test_refused_at_once_while_any_plan_runs_on_the_default_pool(
+        self,
+        client,
+        segments,  # noqa: F811
+        router,  # noqa: F811
+    ) -> None:
+        fake = router(standard_router())
+        other = hold_slots(routing_slots(3)[:1])
+        try:
+            response = post(client, body_for(stress=70))
+        finally:
+            other.close()
+        assert response.status_code == 503
+        assert int(response["Retry-After"]) >= 1
+        assert fake.calls == []
+        assert our_advisory_locks() == 0, "a refused request holds nothing"
+
+    @override_settings(ROUTING_CONCURRENCY=3)
+    def test_one_at_a_time_per_client(self, client, segments, router) -> None:  # noqa: F811
+        router(standard_router())
+        address = "198.51.100.71"
+        other = hold_slots([neighbours_client_slot(address)])
+        try:
+            response = client.post(
+                PATH,
+                data=json.dumps(body_for(stress=70)),
+                content_type="application/json",
+                HTTP_X_FORWARDED_FOR=address,
+            )
+        finally:
+            other.close()
+        assert response.status_code == 429
+
+    def test_the_slots_are_released(self, client, segments, router) -> None:  # noqa: F811
+        router(standard_router())
+        assert post(client, body_for(stress=70)).status_code == 200
+        assert our_advisory_locks() == 0

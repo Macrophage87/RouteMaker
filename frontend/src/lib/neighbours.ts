@@ -46,7 +46,7 @@ export function neighbourDials(preset: PresetId, dials: Dials, final: RouteRespo
   };
 }
 
-/** An option is shown only where it saves or costs at least this much time (the owner's coordinator, 2026-10-16)... */
+/** An option is shown only where it saves or costs at least this much time (the coordinator, 2026-10-16)... */
 export const MIN_TIME_S = 120;
 /** ...or moves at least this much riding between stress tiers: 0.3 mi (0.5 km). */
 export const MIN_MOVED_M = 483;
@@ -115,7 +115,7 @@ function trailName(name: string): string {
 
 /**
  * The option's line against the rider's own route: what it gains, then what it costs, US units first.
- * "4 min faster, 0.6 mi (1.0 km) more on busier streets (LTS 3)"; "0.9 mi (1.4 km) less on busy streets, 3 min
+ * "4 min faster, 0.6 mi (1.0 km) more on busier streets"; "0.9 mi (1.4 km) less on busy streets, 3 min
  * longer"; a notable trail gained or left is named last of its side ("on the Metropolitan Branch Trail"). Empty where
  * it gains nothing, and such an option is not offered.
  */
@@ -129,8 +129,8 @@ export function tradeoffLine(own: RouteResponse, other: RouteResponse): string {
   if (dBusy <= -SAID_M) gains.push(`${formatDistanceChange(dBusy)} less on busy streets`);
   if (dBusy >= SAID_M) {
     const d4 = lts4(other) - lts4(own);
-    const d3 = tier(other, "3") - tier(own, "3");
-    const which = d4 >= SAID_M && d3 >= SAID_M ? "busy streets (LTS 3-4)" : d4 >= SAID_M ? "heavy-traffic roads (LTS 4)" : "busier streets (LTS 3)";
+    // In words, never as a level number (the review's 8): heavy-traffic roads where those grow, else busier streets.
+    const which = d4 >= SAID_M ? "heavy-traffic roads" : "busier streets";
     costs.push(`${formatDistanceChange(dBusy)} more on ${which}`);
   }
   if (dt >= SAID_S) costs.push(`${time} longer`);
@@ -146,23 +146,32 @@ function holdsLts4(preset: PresetId, dials: Pick<Dials, "carrying"> | undefined)
   return preset === "novice" || (preset === "cargo" && dials?.carrying === "people");
 }
 
+/** Go's route choice holds at most this many rows: the rider's own, its routes to choose from, then the options. */
+export const MAX_ROWS = 4;
+
 /**
- * The options to offer beside `own`, more direct first, each a route tagged with its kind, setting and line: those
- * that differ enough from it (and from each other), that gain something, and, on a ride that holds LTS 4, a more direct
- * one that adds none. Empty where none is left.
+ * The options to offer beside `answer`, more direct first, each a route tagged with its kind, setting and line. Kept
+ * only where it does what its name says (More direct saves at least a minute, Calmer takes at least 250 ft (80 m) off
+ * busy riding), differs enough from every route already in the choice (the answer, its routes to choose from, and a
+ * kept option), and, on a ride that holds LTS 4, a more direct one adds none. The choice stays at MAX_ROWS rows: the
+ * options go first. Each line is against the rider's own route, the answer.
  */
 export function keptNeighbours(
-  own: RouteResponse,
+  answer: RouteResponse,
   options: readonly NeighbourOption[],
   preset: PresetId,
   dials?: Pick<Dials, "carrying">,
 ): RouteResponse[] {
+  const shown = [answer, ...(answer.candidates ?? [])];
   const kept: RouteResponse[] = [];
   for (const option of [...options].sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "direct" ? -1 : 1))) {
+    if (shown.length + kept.length >= MAX_ROWS) break;
     const route = option.route;
-    if (!differsEnough(own, route) || kept.some((k) => !differsEnough(k, route))) continue;
-    if (option.kind === "direct" && holdsLts4(preset, dials) && lts4(route) > lts4(own) + LTS4_ROUNDING_M) continue;
-    const line = tradeoffLine(own, route);
+    if ([...shown, ...kept].some((r) => !differsEnough(r, route))) continue;
+    if (option.kind === "direct" && route.duration_s > answer.duration_s - SAID_S) continue;
+    if (option.kind === "calmer" && busy(route) > busy(answer) - SAID_M) continue;
+    if (option.kind === "direct" && holdsLts4(preset, dials) && lts4(route) > lts4(answer) + LTS4_ROUNDING_M) continue;
+    const line = tradeoffLine(answer, route);
     if (!line) continue;
     kept.push({ ...route, neighbour: { kind: option.kind, stress: option.stress, line } });
   }
@@ -175,11 +184,11 @@ export function withNeighbours(answer: RouteResponse | null, kept: readonly Rout
   return { ...answer, candidates: [...(answer.candidates ?? []), ...kept] };
 }
 
-/** Said once, through the app's polite region, when the options arrive: "2 other routes: more direct, calmer." */
+/** Said once, through the app's polite region, when the options arrive: "More direct and Calmer added to the route choice." */
 export function neighboursSaid(kept: readonly RouteResponse[]): string {
-  const names = kept.flatMap((r) => (r.neighbour ? [NEIGHBOUR_NAME[r.neighbour.kind].toLowerCase()] : []));
+  const names = kept.flatMap((r) => (r.neighbour ? [NEIGHBOUR_NAME[r.neighbour.kind]] : []));
   if (names.length === 0) return "";
-  return `${names.length} other ${names.length === 1 ? "route" : "routes"}: ${names.join(", ")}.`;
+  return `${names.join(" and ")} added to the route choice.`;
 }
 
 /**

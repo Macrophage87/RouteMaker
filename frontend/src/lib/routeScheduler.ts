@@ -32,13 +32,15 @@
  *   (a Retry-After still holds for what is sent next).
  * - once the route shown is final (its full plan, or an answer that was full already), one
  *   more request may follow for the same plan (`after`: Go's More direct and Calmer,
- *   lib/neighbours.ts), the same way: the one request in flight, never aborted, its answer
- *   given (`onAfter`) only for the plan still asked for, and a plan asked for meanwhile
- *   waiting for it. Nothing is shown as loading while it runs: the route is shown already.
+ *   lib/neighbours.ts). It stands outside these rules, at the lowest priority: it is not
+ *   the request in flight, so a plan or a ride's re-route asked for meanwhile is sent at
+ *   once (the API gives it slots of its own, ratelimit.NEIGHBOURS_IN_FLIGHT); its answer
+ *   is given (`onAfter`) only for the plan still asked for, and a refusal of it holds
+ *   nothing back. Nothing is shown as loading while it runs: the route is shown already.
  */
 import { RETRY_AFTER_CAP_S, type RouteError, type RouteResult } from "./api.ts";
 
-/** What an `after` request answers: the scheduler reads only whether it was refused, and its Retry-After. */
+/** What an `after` request answers: the scheduler gives it on, or drops it for a plan since changed. */
 export type AfterResult = { ok: true } | { ok: false; error: RouteError };
 
 export interface Timers {
@@ -88,7 +90,7 @@ export class RouteScheduler<P, A extends AfterResult = AfterResult> {
   private latest: P | null = null;
   private generation = 0;
   private inFlight = false;
-  /** The request in flight follows a route shown: its full plan (`refine`) or the request after it (`after`). */
+  /** The request in flight is a full plan following a first route shown (`refine`). */
   private refining = false;
   private debounce: unknown = null;
   /** While set, the API's last Retry-After has not passed: nothing is sent. */
@@ -259,22 +261,17 @@ export class RouteScheduler<P, A extends AfterResult = AfterResult> {
   private startAfter(plan: P, generation: number, final: RouteResult): void {
     const follow = this.options.after?.(plan, final) ?? null;
     if (follow === null || generation !== this.generation || this.latest !== null) return;
-    this.inFlight = true;
-    this.refining = true;
+    // Not the request in flight: nothing waits for it, and its refusal holds nothing back.
     follow().then(
-      (answer) => this.settleAfter(plan, generation, answer),
-      () => this.settleAfter(plan, generation, null),
+      (answer) => {
+        if (generation === this.generation) this.options.onAfter?.(plan, answer);
+      },
+      () => {},
     );
   }
 
-  private settleAfter(plan: P, generation: number, result: A | null): void {
-    this.settleFollow(result);
-    if (generation === this.generation && result !== null) this.options.onAfter?.(plan, result);
-    this.next(generation);
-  }
-
-  /** A follow-up request settled: the slot is free, and a Retry-After it carried holds for what is sent next. */
-  private settleFollow(result: AfterResult | null): void {
+  /** The full plan settled: the slot is free, and a Retry-After it carried holds for what is sent next. */
+  private settleFollow(result: RouteResult | null): void {
     this.inFlight = false;
     this.refining = false;
     const error = result && !result.ok ? result.error : null;
@@ -282,7 +279,7 @@ export class RouteScheduler<P, A extends AfterResult = AfterResult> {
     if (retryAfterS !== undefined && this.hold === null) this.holdFor(Math.min(RETRY_AFTER_CAP_S, retryAfterS));
   }
 
-  /** After a follow-up: the plan asked for meanwhile goes now, or the scheduler is idle again. */
+  /** After the full plan: the plan asked for meanwhile goes now, or the scheduler is idle again. */
   private next(generation: number): void {
     if (this.latest === null) {
       if (generation !== this.generation) this.state({ kind: "idle" });

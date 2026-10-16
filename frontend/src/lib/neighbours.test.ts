@@ -53,13 +53,38 @@ const OWN = route();
 const DIRECT = route({ duration_s: 1800 - 240, s: [3000, 2000 - 966, 1000 + 966, 0] });
 
 test("the tradeoff says what is gained first, then the cost, miles first and kilometres in brackets", () => {
-  assert.equal(tradeoffLine(OWN, DIRECT), "4 min faster, 0.6 mi (1.0 km) more on busier streets (LTS 3)");
+  assert.equal(tradeoffLine(OWN, DIRECT), "4 min faster, 0.6 mi (1.0 km) more on busier streets");
   const calmer = route({ duration_s: 1980, s: [4448, 2000, 0, 0] });
   assert.equal(tradeoffLine(OWN, calmer), "0.6 mi (1.0 km) less on busy streets, 3 min longer");
   const lts4 = route({ duration_s: 1500, s: [2000, 2000, 1000, 1000] });
-  assert.equal(tradeoffLine(OWN, lts4), "5 min faster, 0.6 mi (1.0 km) more on heavy-traffic roads (LTS 4)");
+  assert.equal(tradeoffLine(OWN, lts4), "5 min faster, 0.6 mi (1.0 km) more on heavy-traffic roads");
   const both = route({ duration_s: 1500, s: [1000, 2000, 2000, 1000] });
-  assert.equal(tradeoffLine(OWN, both), "5 min faster, 1.2 mi (2.0 km) more on busy streets (LTS 3-4)");
+  assert.equal(tradeoffLine(OWN, both), "5 min faster, 1.2 mi (2.0 km) more on heavy-traffic roads");
+  // Rider-facing words name no stress level by number (the review's 8).
+  for (const r of [DIRECT, lts4, both, calmer]) assert.doesNotMatch(tradeoffLine(OWN, r), /LTS/);
+});
+
+test("each option must do what its name says: More direct saves a minute, Calmer takes busy riding off", () => {
+  // A "more direct" route that is no faster, though it differs: not offered.
+  const notFaster = route({ duration_s: 1790, s: [2000, 1000, 3000, 0] });
+  assert.deepEqual(keptNeighbours(OWN, [option("direct", notFaster)], "default"), []);
+  // A "calmer" route that is quicker but no calmer: not offered as Calmer.
+  const notCalmer = route({ duration_s: 1500, s: [3000, 2000, 1000, 0] });
+  assert.deepEqual(keptNeighbours(OWN, [option("calmer", notCalmer)], "default"), []);
+});
+
+test("an option the same as one of the routes to choose from is dropped, and the choice holds at most 4 rows", () => {
+  const answer = { ...OWN, candidates: [{ ...DIRECT }] };
+  assert.deepEqual(keptNeighbours(answer, [option("direct", DIRECT)], "default"), [], "already in the choice");
+  const calmer = route({ duration_s: 1980, s: [4448, 2000, 0, 0] });
+  const three = { ...OWN, candidates: [route({ duration_s: 2400 }), route({ duration_s: 2600 })] };
+  assert.deepEqual(
+    keptNeighbours(three, [option("direct", DIRECT), option("calmer", calmer)], "default").map((r) => r.neighbour?.kind),
+    ["direct"],
+    "three routes already: one option",
+  );
+  const four = { ...three, candidates: [...(three.candidates ?? []), route({ duration_s: 2800 })] };
+  assert.deepEqual(keptNeighbours(four, [option("direct", DIRECT), option("calmer", calmer)], "default"), [], "four already: none");
 });
 
 test("a route that gains nothing has no line, and is not offered", () => {
@@ -71,7 +96,7 @@ test("a route that gains nothing has no line, and is not offered", () => {
 test("a notable trail gained or left is named in the same line", () => {
   const own = route({ description: [stretch("Metropolitan Branch Trail", 0, 2000)] });
   const direct = { ...DIRECT, description: [] };
-  assert.equal(tradeoffLine(own, direct), "4 min faster, 0.6 mi (1.0 km) more on busier streets (LTS 3), leaves the Metropolitan Branch Trail");
+  assert.equal(tradeoffLine(own, direct), "4 min faster, 0.6 mi (1.0 km) more on busier streets, leaves the Metropolitan Branch Trail");
   const calmer = route({ duration_s: 1980, s: [4448, 2000, 0, 0], description: [stretch("the Capital Crescent Trail", 0, 1500)] });
   assert.equal(tradeoffLine(OWN, calmer), "0.6 mi (1.0 km) less on busy streets, on the Capital Crescent Trail, 3 min longer");
 });
@@ -137,7 +162,7 @@ test("Go's route choice: the rider's own first, then More direct and Calmer, eac
   assert.ok(rows);
   assert.equal(rows[0].name, `${YOUR_SETTING} 3.7 mi (6.0 km)`);
   assert.deepEqual(rows.slice(1), [
-    { name: "More direct", line: "4 min faster, 0.6 mi (1.0 km) more on busier streets (LTS 3)" },
+    { name: "More direct", line: "4 min faster, 0.6 mi (1.0 km) more on busier streets" },
     { name: "Calmer", line: "0.6 mi (1.0 km) less on busy streets, 3 min longer" },
   ]);
   assert.equal(candidatesHint(picked), `${NEIGHBOURS_HINT} The map shows the one chosen, and the route description below follows it.`);
@@ -150,8 +175,8 @@ test("Go's route choice: the rider's own first, then More direct and Calmer, eac
 });
 
 test("calm candidates keep their names, with More direct after them", () => {
-  const answer = { ...OWN, candidates: [route({ distance_m: 7000 })] };
-  const picked = withNeighbours(answer, keptNeighbours(OWN, [option("direct", DIRECT, 90)], "trailmaxxing"));
+  const answer = { ...OWN, candidates: [route({ distance_m: 7000, duration_s: 2400 })] };
+  const picked = withNeighbours(answer, keptNeighbours(answer, [option("direct", DIRECT, 90)], "trailmaxxing"));
   const rows = candidateRows(picked) ?? [];
   assert.match(rows[0].name, /^Route 1/);
   assert.match(rows[1].name, /^Route 2:/);
@@ -161,8 +186,8 @@ test("calm candidates keep their names, with More direct after them", () => {
 
 test("said once on arrival in a short line, and a choice is said by its name", () => {
   const kept = keptNeighbours(OWN, [option("direct", DIRECT), option("calmer", route({ duration_s: 1980, s: [4448, 2000, 0, 0] }))], "default");
-  assert.equal(neighboursSaid(kept), "2 other routes: more direct, calmer.");
-  assert.equal(neighboursSaid(kept.slice(1)), "1 other route: calmer.");
+  assert.equal(neighboursSaid(kept), "More direct and Calmer added to the route choice.");
+  assert.equal(neighboursSaid(kept.slice(1)), "Calmer added to the route choice.");
   assert.equal(neighboursSaid([]), "");
   const picked = withNeighbours(OWN, kept);
   assert.deepEqual(announceHow(picked, 2, true), { chosen: { rank: 3, of: 3, name: "Calmer" } });
@@ -274,7 +299,7 @@ function setup() {
 const FIRST = { ...OWN, provisional: true };
 const FULL = { ...OWN, provisional: false };
 
-test("the options are asked for after the full plan, as the one request in flight, and the route is not shown as loading", async () => {
+test("the options are asked for after the full plan, never as the request in flight, and the route is not shown as loading", async () => {
   const t = setup();
   t.scheduler.request(1);
   await t.timers.advance(300);
@@ -284,11 +309,10 @@ test("the options are asked for after the full plan, as the one request in fligh
   await flush();
   assert.deepEqual(t.waiting.map((w) => w.kind), ["send", "refine", "after"]);
   assert.equal(t.states.at(-1), "idle", "the route stands: nothing says planning");
+  assert.equal(t.scheduler.busy(), false, "nothing waits for them");
   t.waiting[2].answer({ ok: true, options: [] });
   await flush();
   assert.deepEqual(t.after.map((a) => a.plan), [1]);
-  assert.equal(t.most(), 1, "one request at a time");
-  assert.equal(t.scheduler.busy(), false);
 });
 
 test("a full answer at once is followed by the options directly", async () => {
@@ -300,37 +324,52 @@ test("a full answer at once is followed by the options directly", async () => {
   assert.deepEqual(t.waiting.map((w) => w.kind), ["send", "after"]);
 });
 
-test("a new plan while the options compute waits for them, and their answer is dropped", async () => {
+test("a new plan while the options compute is sent at once, and their late answer is dropped", async () => {
   const t = setup();
   t.scheduler.request(1);
   await t.timers.advance(300);
   t.waiting[0].answer({ ok: true, route: FULL });
   await flush();
   t.scheduler.request(2);
-  await t.timers.advance(1000);
-  assert.equal(t.states.at(-1), "pending");
-  assert.equal(t.waiting.length, 2, "never two at once");
+  await t.timers.advance(300);
+  assert.deepEqual(t.waiting.map((w) => [w.kind, w.plan]), [["send", 1], ["after", 1], ["send", 2]], "not held behind them");
   t.waiting[1].answer({ ok: true, options: [] });
   await flush();
   assert.deepEqual(t.after, [], "the options of a plan no longer asked for are not given");
-  assert.deepEqual(t.waiting.map((w) => [w.kind, w.plan]), [["send", 1], ["after", 1], ["send", 2]]);
-  assert.equal(t.most(), 1);
 });
 
-test("a refused options request holds its Retry-After for the next plan, and nothing else happens", async () => {
+test("Start pressed while the options compute: the ride's re-route goes at once", async () => {
   const t = setup();
   t.scheduler.request(1);
   await t.timers.advance(300);
   t.waiting[0].answer({ ok: true, route: FULL });
   await flush();
-  t.waiting[1].answer({ ok: false, error: describeError(429, null, "3") });
+  assert.equal(t.waiting.at(-1)?.kind, "after");
+  // The ride starts and soon re-routes (Ride mode sends its re-plans at once).
+  t.scheduler.request(2, { now: true });
+  await flush();
+  assert.deepEqual(t.waiting.at(-1), { ...t.waiting.at(-1), kind: "send", plan: 2 }, "sent without waiting");
+  t.waiting.at(-1)!.answer({ ok: true, route: FULL });
+  await flush();
+  assert.deepEqual(t.shown, [1, 2]);
+  t.waiting[1].answer({ ok: true, options: [] });
+  await flush();
+  assert.equal(t.after.some((a) => a.plan === 1), false);
+});
+
+test("a refused options request holds nothing back: the next plan goes at once", async () => {
+  const t = setup();
+  t.scheduler.request(1);
+  await t.timers.advance(300);
+  t.waiting[0].answer({ ok: true, route: FULL });
+  await flush();
+  t.waiting[1].answer({ ok: false, error: describeError(503, null, "5") });
   await flush();
   assert.deepEqual(t.shown, [1]);
   t.scheduler.request(2);
-  await t.timers.advance(2500);
-  assert.equal(t.waiting.length, 2, "held by the Retry-After");
-  await t.timers.advance(1000);
-  assert.equal(t.waiting.length, 3);
+  await t.timers.advance(300);
+  assert.equal(t.waiting.length, 3, "no Retry-After hold from the options");
+  assert.equal(t.states.includes("waiting"), false);
 });
 
 test("App: asked for in Go only, before Start, on the ride types that offer them; said once by their own line", () => {
@@ -341,6 +380,8 @@ test("App: asked for in Go only, before Start, on the ride types that offer them
   assert.match(body, /modeRef\.current !== "go" \|\| now\.riding \|\| now\.startAsked/);
   assert.match(body, /!offersNeighbours\(plan\.preset\) \|\| plan\.confirmLong/);
   assert.match(app, /announce\(neighboursSaid\(kept\)\)/);
+  // Ride mode starts with no options asked for: Start pressed or a ride on, none are.
+  assert.match(app.slice(app.indexOf("onAfter:")), /now\.riding\) return;/);
   // The route's own sentence is the answer's, so it is not read again when they come.
   assert.match(app, /chosen \? announceHow\(picked, choice, true\) : announceHow\(answer, choice, false\)/);
   // Shown in the existing choice: the route section gets the answer with them.

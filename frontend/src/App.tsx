@@ -907,8 +907,8 @@ export function App() {
         routedKey.current = keptPlanKey(plan.points, plan.preset, plan.dials, viaIndices(plan.points, VIA_MARKS.isVia));
         if (line) setNoticeSaying(line, line);
       },
-      // Go's More direct and Calmer (lib/neighbours.ts), once the route shown is final: one request for both, the one
-      // request in flight, so the rider's own route never waits for them and Start never does. Not once Start is
+      // Go's More direct and Calmer (lib/neighbours.ts), once the route shown is final: one request for both, at the
+      // lowest priority, so nothing waits for it (a re-plan, Start or a ride's re-route goes at once). Not once Start is
       // pressed or a ride is on, not for a long ride, and not on a ride type that offers neither.
       after: (plan: Plan, final: RouteResult) => {
         const now = shownNow.current;

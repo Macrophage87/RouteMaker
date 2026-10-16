@@ -2571,18 +2571,22 @@ def _route_answer(request, body: RouteIn, response: HttpResponse):
 #
 # POST /api/route/neighbours plans the rider's trip one notch more traffic tolerant and one
 # notch calmer than the rider's own setting (`presets.stress_notches`), for Go to offer beside
-# the rider's own route. Go asks once its own route is shown, as the one request it has in
-# flight (frontend lib/routeScheduler.ts), so the rider's route never waits for these. It is
-# one request: one count of the routing limit and one routing slot for both plans, which run
-# side by side (the more direct on the router pool, the calmer, which may search, on the
-# request's own thread) through the route cache (Bikeshare's ride, between the rider's own docks,
-# as a Bikeshare plan is, uncached). Each has a shorter budget than a plan, so a
-# new plan asked for meanwhile waits less; one that fails or runs out of time is left out.
-# Nothing is compared here: the page compares each with the route it shows and keeps those
-# that differ enough (frontend lib/neighbours.ts).
+# the rider's own route. Go asks once its own route is shown, and never waits on the answer:
+# a plan or a ride's re-route asked for meanwhile is sent at once (frontend
+# lib/routeScheduler.ts). So this request never takes a slot a plan needs: it has routing's
+# deployment slots at the lowest priority and a client slot of its own
+# (`ratelimit.NEIGHBOURS_IN_FLIGHT`), and is refused at once when the pool is busy. It counts
+# as two routing requests, for the two plans. The plans run one after the other on the
+# request's own thread, through the route cache (Bikeshare's ride, between the rider's own
+# docks, as a Bikeshare plan is, uncached), inside NEIGHBOURS_BUDGET_S: each plan stops at
+# that budget's end (`routing.Deadline`), so nothing outlives the request, and one that fails
+# or runs out of time is left out. Nothing is compared here: the page compares each with the
+# routes it shows and keeps those that differ enough (frontend lib/neighbours.ts).
 
 # The seconds the two plans may take together, inside the request's own budget.
 NEIGHBOURS_BUDGET_S = 15
+# What the request counts against the routing limit: one for each plan.
+NEIGHBOURS_COST = 2
 
 
 class NeighbourOut(Schema):
@@ -2620,8 +2624,8 @@ class NeighboursOut(Schema):
     by_alias=True,
 )
 @decorate_view(
-    ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT),
-    ratelimit.rate_limited(ratelimit.ROUTING),
+    ratelimit.in_flight_limited(ratelimit.NEIGHBOURS_IN_FLIGHT, slots=ratelimit.neighbour_slots),
+    ratelimit.rate_limited(ratelimit.ROUTING, cost=NEIGHBOURS_COST),
     json_body_only,
     errors_as_json,
 )
@@ -2651,20 +2655,7 @@ def route_neighbours(request, body: RouteIn):
         kind: body.model_copy(update={"stress": notch, "quick": False, "candidates": False})
         for kind, notch in wanted
     }
-    pending = {
-        kind: parallel.submit(_neighbour, bodies[kind], started)
-        for kind, _ in wanted
-        if kind == "direct" and len(wanted) > 1
-    }
-    answered = {
-        kind: _neighbour(bodies[kind], started) for kind, _ in wanted if kind not in pending
-    }
-    end = started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S
-    for kind, future in pending.items():
-        try:
-            answered[kind] = future.result(timeout=max(0.0, end - routing.clock()))
-        except FutureTimeout:
-            logger.warning("route neighbours: the %s plan ran out of time", kind)
+    answered = {kind: _neighbour(bodies[kind], started) for kind, _ in wanted}
     options = [
         {"kind": kind, "stress": notch, "route": answered[kind]}
         for kind, notch in wanted
@@ -2686,7 +2677,6 @@ def _neighbour(body: RouteIn, started: float) -> dict | None:
     """One notch's plan, through the route cache, or None: whatever goes wrong, the option
     is left out. Without the request's timing recorder, as a transit trip's later rides."""
     token = timing.start(None)
-    on_pool = parallel.inside()
     try:
         if body.preset == presets.BIKESHARE:
             # Only the ride between the rider's docks changes (`_same_docks`).
@@ -2697,9 +2687,6 @@ def _neighbour(body: RouteIn, started: float) -> dict | None:
         return None
     finally:
         timing.stop(token)
-        if on_pool:
-            # The pool thread's own database connection, as `_leg_line` closes it.
-            connections.close_all()
 
 
 # --- The nearest stations to pick up from or return to (OWNER-DECISIONS 466, 466a) ---------
