@@ -1265,9 +1265,9 @@ export function App() {
   /** Undo or redo: the list the history gives back, which is not itself an edit. */
   const travel = useCallback(
     (direction: "undo" | "redo") => {
-      const before = rideRef.current;
       const active = document.activeElement;
       historyPress.current = active instanceof HTMLElement && active.dataset.history ? { direction, button: active, row: active.parentElement } : null;
+      const before = rideRef.current;
       const next = edits.travel(direction);
       if (next === undefined) return;
       setNotice(null);
