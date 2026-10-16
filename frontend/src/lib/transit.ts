@@ -34,6 +34,22 @@ export const RIDES_LEGEND = "Every ride is coloured by traffic stress, as on the
 /** Said under every transit plan: the timetables carry only the closures an agency published in them. */
 export const TRACK_WORK = "Scheduled service; check for track work.";
 
+/** The credit Metro's typical timetable carries (core/transitdata/metro-typical.json): no counted departures. */
+const TYPICAL_CREDIT = /\(typical service\)/;
+
+/**
+ * Where a scheduled plan's times are from, and so what its waits are (review TB-13): the systems'
+ * published timetables, Metro's typical service (from its credit), or both.
+ */
+export function timesFromText(plan: Pick<TransitPlan, "credits" | "day_type" | "holiday">): string {
+  const day = `${plan.day_type === "weekday" ? "weekday" : plan.day_type}${plan.holiday ? " (a holiday)" : ""}`;
+  const typical = plan.credits.filter((credit) => TYPICAL_CREDIT.test(credit)).length;
+  const metro = (when: string) => `Metro's times are its typical ${when}service from wmata.com, not a timetable: its wait is half the usual time between trains.`;
+  if (typical > 0 && typical === plan.credits.length) return metro(`${day} `);
+  const published = `Times are from each system's published timetables for this ${day}: where trains or buses come every 15 minutes or less, the wait is half the time between them; otherwise it is the time to the next one.`;
+  return typical > 0 ? `${published} ${metro("")}` : published;
+}
+
 /** Whether an option's row shows its legs as marks: a trip with a transit leg (Stephen, 2026-10-12). */
 function marked(option: Pick<TransitOption, "legs">): boolean {
   return (option.legs ?? []).some((leg) => leg.mode !== "walk" && leg.mode !== "ride" && leg.mode !== "bikeshare");

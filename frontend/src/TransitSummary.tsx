@@ -23,6 +23,7 @@ import {
   optionText,
   stepIcon,
   stepStressSaid,
+  timesFromText,
 } from "./lib/transit.ts";
 import { Icon } from "./Icon.tsx";
 import { DepartureTimer } from "./DepartureTimer.tsx";
@@ -134,9 +135,7 @@ export function TransitSummary({
             <Swatch colour={WALK_COLOUR} dash={WALK_DASH} width={WALK_LINE_WIDTH} /> A dotted line is a walk. {RIDES_LEGEND}
           </p>
           <p className="hint transit-scheduled">
-            {TRACK_WORK} Times are from each system's published timetables for this {plan.day_type === "weekday" ? "weekday" : plan.day_type}
-            {plan.holiday ? " (a holiday)" : ""}: where trains or buses come every 15 minutes or less, the wait is half the time between
-            them; otherwise it is the time to the next one. {plan.live ? "Times marked live are WMATA's next trains." : "Not live arrivals."}
+            {TRACK_WORK} {timesFromText(plan)} {plan.live ? "Times marked live are WMATA's next trains." : "Not live arrivals."}
           </p>
         </>
       )}
