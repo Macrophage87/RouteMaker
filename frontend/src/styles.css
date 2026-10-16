@@ -1227,6 +1227,11 @@ button.secondary {
 }
 
 @media (max-width: 720px) {
+  /* Shortened by the keyboard while a place search has the focus on iOS (lib/keyboardLift.ts, review UI-7). */
+  .app {
+    height: calc(100% - var(--keyboard-lift, 0px));
+  }
+
   .panel {
     top: auto;
     bottom: 0;
