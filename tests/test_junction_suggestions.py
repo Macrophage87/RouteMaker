@@ -372,6 +372,28 @@ class TestReview:
         entry = AuditLogEntry.objects.filter(action="junction_suggest_approve").last()
         assert entry.detail == f"kept avoid junction {avoid.pk}"
 
+    def test_an_approval_locks_the_place_before_it_looks(self, live) -> None:
+        # Review api-3: two approvals at once each found no Avoid junction and made one.
+        from django.test.utils import CaptureQueriesContext
+
+        open_to("signed_in")
+        s = suggest(level=5)
+        with CaptureQueriesContext(connection) as queries:
+            js.approve(make_user(), s.pk)
+        sql = [q["sql"] for q in queries]
+        locks = [i for i, q in enumerate(sql) if "pg_advisory_xact_lock" in q]
+        looks = [i for i, q in enumerate(sql) if "avoid_junction" in q.lower()]
+        assert len(locks) == 9 and looks and max(locks) < min(looks)
+
+    @pytest.mark.parametrize("east, north", [(0.0, 0.0), (14.9, 0.0), (0.0, -14.9), (10, 10)])
+    def test_two_places_within_a_match_share_a_lock(self, east, north) -> None:
+        import math
+
+        for lon, lat in ((-77.0, 38.9), (-77.000135, 38.900135), (-76.99999, 38.89999)):
+            other_lon = lon + east / (111_000 * math.cos(math.radians(lat)))
+            other_lat = lat + north / 111_000
+            assert set(js.lock_cells(lon, lat)) & set(js.lock_cells(other_lon, other_lat))
+
     def test_approving_a_lower_level_withdraws_the_avoid_rating(self, live) -> None:
         open_to("signed_in")
         avoid = AvoidJunction.objects.create(
