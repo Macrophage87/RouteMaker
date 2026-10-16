@@ -1919,6 +1919,8 @@ def build_handlers(
             extracts_dir / source.CLIPPED_NAME,
             max_age=_setting("SOURCE_EXTRACT_MAX_AGE"),
             force=_setting("SOURCE_EXTRACT_FORCE_REFRESH"),
+            urls=_setting("SOURCE_EXTRACT_URLS"),
+            region=context.coverage_polygon or context.coverage_bbox,
         )
 
         # The disk gate, before anything is written *and before the download*.

@@ -2936,7 +2936,11 @@ deliberately just under the weekly cadence. At seven or more the ordinary weekly
 run would accept last week's snapshot and the map would age by a week every
 week; below it, a rebuild re-run in the same week (a retry, a hand-fired run, a
 second attempt after a validation failure) reuses what is on disk instead of
-pulling 1–2 GB again.
+pulling 1–2 GB again. It is also rebuilt, whatever its age, when it was made from
+other download URLs or another clip area than this deployment's (v0.7.0 added West
+Virginia and moved the west edge): the stage writes what it used to
+`extracts/source.made-from.json` after the clip, and an extract without that file, from
+before v0.7.0, is rebuilt once.
 
 **Forcing a refresh**, when a rebuild must start from today's Geofabrik build:
 

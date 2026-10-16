@@ -62,6 +62,8 @@ them. They are built as argument lists and asserted by tests for that reason.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -89,6 +91,11 @@ GEOFABRIK_EXTRACTS = tuple(
 # the last one put them.
 MERGED_NAME = "merged.osm.pbf"
 CLIPPED_NAME = "source.osm.pbf"
+# What the two files were made from: the download URLs and the clip area, written last.
+# A recent extract made from other regions or another area (v0.7.0 added West Virginia and
+# moved the west edge) is rebuilt rather than kept for its age; one without this record,
+# from before it was written, is rebuilt once.
+MADE_FROM_NAME = "source.made-from.json"
 
 # Every osmium output here is written to `<name>.part` and renamed on success,
 # and osmium cannot guess a format from that name - so each one says `-f pbf`.
@@ -374,6 +381,24 @@ def age(path: Path, now: datetime) -> timedelta | None:
     return now - datetime.fromtimestamp(path.stat().st_mtime, UTC)
 
 
+def made_from(urls: Sequence[str], region: Path | Sequence[float]) -> str:
+    """The record of what an extract is made from: the URLs, and the clip box or the
+    polygon file's contents (its hash, so an edited polygon counts as another area)."""
+    if isinstance(region, (str, Path)):
+        area: object = {"polygon": hashlib.sha256(Path(region).read_bytes()).hexdigest()}
+    else:
+        area = {"bbox": [float(v) for v in region]}
+    return json.dumps({"urls": list(urls), "area": area}, sort_keys=True)
+
+
+def write_made_from(directory: Path, urls: Sequence[str], region: Path | Sequence[float]) -> Path:
+    path = Path(directory) / MADE_FROM_NAME
+    partial = path.with_name(path.name + ".part")
+    partial.write_text(made_from(urls, region) + "\n", encoding="utf-8")
+    partial.replace(path)
+    return path
+
+
 def refresh_reason(
     merged: Path,
     clipped: Path,
@@ -381,6 +406,8 @@ def refresh_reason(
     max_age: timedelta = DEFAULT_MAX_AGE,
     now: datetime | None = None,
     force: bool = False,
+    urls: Sequence[str] | None = None,
+    region: Path | Sequence[float] | None = None,
 ) -> str | None:
     """Why the extract has to be rebuilt, or None to reuse what is on disk.
 
@@ -404,6 +431,14 @@ def refresh_reason(
                 f"the {what} extract {path} is {file_age.days} days old, past the "
                 f"{max_age.days}-day limit"
             )
+    if urls is not None and region is not None:
+        record = Path(clipped).parent / MADE_FROM_NAME
+        try:
+            held = record.read_text(encoding="utf-8").strip()
+        except FileNotFoundError:
+            return f"the extract has no record of what it was made from ({record})"
+        if held != made_from(urls, region):
+            return "the extract was made from other regions or another clip area"
     return None
 
 
@@ -427,7 +462,9 @@ def ensure_extract(
     merged = directory / MERGED_NAME
     clipped = directory / CLIPPED_NAME
 
-    reason = refresh_reason(merged, clipped, max_age=max_age, now=now, force=force)
+    reason = refresh_reason(
+        merged, clipped, max_age=max_age, now=now, force=force, urls=urls, region=region
+    )
     if reason is None:
         logger.info("reusing the source extract at %s; nothing downloaded", clipped)
         return SourceExtract(merged=merged, clipped=clipped, downloads=(), refreshed=False)
@@ -437,6 +474,7 @@ def ensure_extract(
     downloads = tuple(download(url, directory / download_name(url), run) for url in urls)
     merge(downloads, merged, run)
     clip(merged, clipped, region, run)
+    write_made_from(directory, urls, region)
     logger.info(
         "source extract rebuilt: %s (%.1f GiB) from %d regions, clipped to %s (%.1f GiB)",
         merged,

@@ -851,6 +851,15 @@ def install_source_extract(directory: Path, build=build_toy_extract, **kwargs) -
     build(clipped, **kwargs)
     # The merged file carries the state boundaries the rebuild reads.
     add_state_boundaries(clipped, directory / source_module.MERGED_NAME)
+    # And the record of what they were made from, as the stage writes it for this
+    # deployment's settings, so the reuse is the made-from check's as well as the age's.
+    from django.conf import settings
+
+    source_module.write_made_from(
+        directory,
+        settings.SOURCE_EXTRACT_URLS,
+        settings.COVERAGE_POLYGON or tuple(settings.COVERAGE_BBOX),
+    )
     return clipped
 
 

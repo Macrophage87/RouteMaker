@@ -571,6 +571,40 @@ def test_an_extract_older_than_the_limit_is_rebuilt(tmp_path) -> None:
     assert source.DEFAULT_MAX_AGE == timedelta(days=6)
 
 
+def test_a_recent_extract_made_from_other_regions_or_another_area_is_rebuilt(tmp_path) -> None:
+    """v0.7.0 added West Virginia and moved the west edge: a three-day-old extract made
+    without them would have been kept for its age, and the map built without the
+    Panhandle. The record of what it was made from decides as well as the age."""
+    for name in (source.MERGED_NAME, source.CLIPPED_NAME):
+        (tmp_path / name).write_text("last Tuesday")
+        age_file(tmp_path / name, days=3)
+    paths = (tmp_path / source.MERGED_NAME, tmp_path / source.CLIPPED_NAME)
+    urls = source.GEOFABRIK_EXTRACTS
+
+    # Made before the record was written: rebuilt once.
+    assert "no record of what it was made from" in source.refresh_reason(
+        *paths, urls=urls, region=BBOX
+    )
+    source.write_made_from(tmp_path, urls[:3], BBOX)
+    assert "other regions or another clip area" in source.refresh_reason(
+        *paths, urls=urls, region=BBOX
+    )
+    source.write_made_from(tmp_path, urls, (-78.0, *BBOX[1:]))
+    assert "other regions or another clip area" in source.refresh_reason(
+        *paths, urls=urls, region=BBOX
+    )
+    source.write_made_from(tmp_path, urls, BBOX)
+    assert source.refresh_reason(*paths, urls=urls, region=BBOX) is None
+
+
+def test_the_stage_records_what_its_extract_was_made_from(tmp_path) -> None:
+    run = FakeOsmium()
+    source.ensure_extract(tmp_path / "extracts", BBOX, run)
+    held = (tmp_path / "extracts" / source.MADE_FROM_NAME).read_text().strip()
+    assert held == source.made_from(source.GEOFABRIK_EXTRACTS, BBOX)
+    assert "west-virginia-latest.osm.pbf" in held
+
+
 def test_a_forced_refresh_needs_no_reason_of_its_own(tmp_path) -> None:
     for name in (source.MERGED_NAME, source.CLIPPED_NAME):
         (tmp_path / name).write_text("today's")
