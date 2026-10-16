@@ -34,9 +34,15 @@
  * route the words describe (`pointAt`). The position is never looked up (no /api/reverse with
  * it); it leaves the phone only in the message the rider sends. Washington, DC only (369: "DC only for
  * now"); elsewhere the action says so.
+ *
+ * On a named trail (465: "some trails like the MBT and CCT should have mile markers as they can go a distance
+ * without crossing a road"; Stephen, 2026-10-16: "Make sure the mile markers are added to 311 when built") the
+ * words add the trail's mile (lib/trailMiles.ts, worked out on the phone): "on Capital Crescent Trail at mile
+ * marker 3" where OSM maps a post within 500 ft, else "on Capital Crescent Trail at about mile 3.2".
  */
 import type { LonLat } from "./geo.ts";
 import { isUnnamed, pointAt, routeJunctions, stretchAt, wayRidden, type RideModel } from "./navigate.ts";
+import { mileWords, trailMileAt, type TrailMiles } from "./trailMiles.ts";
 
 export const DC_311_SHORT_CODE = "32311";
 export const DC_311_ONLINE = "https://311.dc.gov/";
@@ -102,11 +108,13 @@ export { isUnnamed };
 
 /**
  * The place words (the owner, 2026-10-12: "Description if you can. Like put the road and the
- * coordinates"): "on <the way ridden>", then "near <cross street>" when a named junction of the route is
- * within PLACE_NEAR_M. Never a distance from a far junction. Null when neither is known.
+ * coordinates"): "on <the way ridden>", then on a trail "at <its mile>" (465), then "near <cross street>"
+ * when a named junction of the route is within PLACE_NEAR_M. Never a distance from a far junction. Null
+ * when nothing is known.
  */
-export function placeWords(way: string | null, cross: string | null): string | null {
-  if (way) return cross ? `on ${way} near ${cross}` : `on ${way}`;
+export function placeWords(way: string | null, cross: string | null, mile: string | null = null): string | null {
+  const near = cross ? ` near ${cross}` : "";
+  if (way) return `on ${way}${mile ? ` at ${mile}` : ""}${near}`;
   return cross ? `near ${cross}` : null;
 }
 
@@ -123,10 +131,11 @@ export interface ReportPlace {
 
 /**
  * The rider's place for the report at `progressM`: the way ridden there (the route's own street names),
- * the nearest named junction's other street when within PLACE_NEAR_M, and always the point on the
- * route there (`pointAt`, the same point the words describe).
+ * on a trail in `miles` its mile there (lib/trailMiles.ts), the nearest named junction's other street
+ * when within PLACE_NEAR_M, and always the point on the route there (`pointAt`, the same point the words
+ * describe).
  */
-export function reportPlace(model: RideModel, progressM: number): ReportPlace {
+export function reportPlace(model: RideModel, progressM: number, miles: TrailMiles | null = null): ReportPlace {
   const stretch = stretchAt(model, progressM);
   const way = wayRidden(stretch);
   let cross: string | null = null;
@@ -140,7 +149,9 @@ export function reportPlace(model: RideModel, progressM: number): ReportPlace {
     cross = other;
     best = d;
   }
-  return { words: placeWords(way, cross), point: pointAt(model, progressM) };
+  const point = pointAt(model, progressM);
+  const mile = isUnnamed(stretch?.street) ? null : trailMileAt(miles, stretch?.street, point);
+  return { words: placeWords(way, cross, mile ? mileWords(mile) : null), point };
 }
 
 /** DC's text keyword for a kind, or null where it has none. */

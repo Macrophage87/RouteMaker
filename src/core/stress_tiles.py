@@ -103,6 +103,7 @@ from pipeline.schema import (
     CALM_RUN_COLUMN,
     CAR_FREE_COLUMN,
     FACILITY_COLUMN,
+    FACILITY_SHOWN_COLUMN,
     MAP_CLASS_COLUMN,
     MASS_WIDTH_COLUMN,
     MOTOR_ONLY_RULE,
@@ -358,6 +359,11 @@ OPTIONAL_PROPERTIES = {
     # out. Only the flag: the words are the road panel's (`core.segment_info`), and the map
     # draws a thin casing outside the stress line where it is set (frontend/src/lib/scenicLayer.ts).
     "scenic": SCENIC_COLUMN,
+    # A lane against a one-way's traffic only (the review of 17f69082): true, or left
+    # out. Where the column is there, `facility` is the class shown
+    # (`routemaker.facility.shown_facility`), so such a lane draws as a lane; the
+    # tier and the routing price stay on the rider with the traffic.
+    "contraflow": FACILITY_SHOWN_COLUMN,
 }
 
 # The tile property `rpm` is rounded down to a multiple of this (OPTIONAL_EXPRESSIONS).
@@ -388,6 +394,7 @@ OPTIONAL_EXPRESSIONS = {
     "roadside": f"NULLIF(s.{ROADSIDE_COLUMN}, false)",
     "half": f"NULLIF(s.{STRESS_HALF_COLUMN}, false)",
     "scenic": f"CASE WHEN s.{SCENIC_COLUMN} IS NOT NULL THEN true END",
+    "contraflow": f"CASE WHEN s.{FACILITY_SHOWN_COLUMN} IS NOT NULL THEN true END",
     # `rpm`: the Mass Ride capacity, riders a minute, rounded DOWN to a multiple of
     # RPM_STEP. The Mass Ride bands (60, 120, 200) are multiples of it, so a
     # feature never moves band; and the zoomed-out levels, which collect every
@@ -486,6 +493,8 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = 
             carried[name] = OPTIONAL_EXPRESSIONS.get(name, f"s.{column}")
         elif name in FALLBACKS:
             carried[name] = FALLBACKS[name]
+    if FACILITY_SHOWN_COLUMN in optional and FACILITY_COLUMN in optional:
+        carried["facility"] = f"COALESCE(s.{FACILITY_SHOWN_COLUMN}, s.{FACILITY_COLUMN})"
     has_facility = FACILITY_COLUMN in optional
     has_car_free = CAR_FREE_COLUMN in optional
     if level.predicate is not None:
@@ -624,6 +633,8 @@ ETAG_LETTERS = {
     MTB_NAME_COLUMN: "n",
     # `v` for a view: `s` is the separate bikeway's.
     SCENIC_COLUMN: "v",
+    # `a` for against the traffic: the class shown on a contraflow-only lane.
+    FACILITY_SHOWN_COLUMN: "a",
 }
 
 

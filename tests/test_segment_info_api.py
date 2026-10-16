@@ -180,6 +180,30 @@ class TestAnswer:
         # The router was asked at the spot on the way, with the bicycle costing only.
         assert [c[2] for c in router.calls] == ["bicycle"]
 
+    def test_a_contraflow_only_lane_is_named_for_its_one_direction(
+        self, client, segment_schemas, router
+    ) -> None:
+        """No facility with the traffic (`facility`, what routing prices) but a lane
+        against it (`facility_shown`): the panel names the lane and its direction."""
+        live, _ = segment_schemas
+        insert(
+            live,
+            102,
+            [SPOT, east(SPOT, 100)],
+            stress_tier=2,
+            facility="none",
+            facility_shown="lane",
+        )
+        router.answers = {
+            "bicycle": [edge(102, "11th Street Northwest", classification="residential")]
+        }
+        body = get(client).json()
+        riding = section(body, "riding")
+        assert riding["Bike facility"]["value"] == (
+            "Painted bike lane, against the one-way traffic only"
+        )
+        assert "Bike lane: Painted (against traffic only)" in summary(body)
+
     def test_nothing_within_reach_is_no_road_here(self, client, segment_schemas, router) -> None:
         live, _ = segment_schemas
         insert(live, 102, [north(SPOT, 200), east(north(SPOT, 200), 50)])

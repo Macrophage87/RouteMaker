@@ -26,6 +26,7 @@ import {
   smsHref,
   type ReportPlace,
 } from "./report311.ts";
+import { parseTrailMiles } from "./trailMiles.ts";
 
 // ---- One tap (v0.7.0, "Go riding fixes" item 3): tap 311, tap the problem, sent ----
 
@@ -191,6 +192,33 @@ test("reportPlace: the road at that point, a cross street within 500 ft, the sam
   assert.doesNotMatch(text, /miles|of unnamed|unnamed path,? about/);
   // The path's start is within 500 ft of its junction with U Street: named only from the U Street side.
   assert.equal(reportPlace(m, 1550).words, "on a path near U Street Northwest");
+});
+
+test("reportPlace on a trail: the trail's mile marker beside the road and the coordinates (465; Stephen, 2026-10-16)", () => {
+  const m = model();
+  m.stretches = [
+    { fromM: 0, toM: 1000, street: "14th Street Northwest", tier: 1, facility: "lane" },
+    { fromM: 1000, toM: 3000, street: "Metropolitan Branch Trail", tier: 1, facility: "path" },
+  ];
+  // The trail's line runs north with the route from its mile 0, 1,000 m south of the route's start.
+  const line = { n: "Metropolitan Branch Trail", s: 1000, l: [[-77.03, 38.9], [-77.03, 38.9 + 3000 / 111_195]] };
+  const computed = parseTrailMiles({ trails: [line], markers: [] });
+  const far = reportPlace(m, 2500, computed);
+  assert.equal(far.words, "on Metropolitan Branch Trail at about mile 2.2");
+  assert.equal(
+    reportText("pothole", far, "", true),
+    `POTHOLE Location: on Metropolitan Branch Trail at about mile 2.2, Washington, DC. ${gpsWords(far.point)}.`,
+    "the mile and the coordinates, side by side",
+  );
+  // A posted marker within 500 ft is named as the post says it.
+  const posted = parseTrailMiles({ trails: [line], markers: [{ id: "n9", x: -77.03, y: 38.9 + 2560 / 111_195, t: "Metropolitan Branch Trail", m: 2 }] });
+  assert.equal(reportPlace(m, 2500, posted).words, "on Metropolitan Branch Trail at mile marker 2");
+  // Near a cross street: both.
+  assert.equal(reportPlace(m, 1100, computed).words, "on Metropolitan Branch Trail at about mile 1.3 near 14th Street Northwest");
+  // A street, or no file yet: as before.
+  assert.equal(reportPlace(m, 400, computed).words, "on 14th Street Northwest");
+  assert.equal(reportPlace(m, 2500).words, "on Metropolitan Branch Trail");
+  assert.equal(placeWords("Metropolitan Branch Trail", null, "mile marker 2"), "on Metropolitan Branch Trail at mile marker 2");
 });
 
 test("the copy for DC 311 online: the place in DC and its GPS position, then the note, with no text keyword", () => {
