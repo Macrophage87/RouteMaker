@@ -13,17 +13,21 @@
 # from a real build, which has not happened - see docs/DEPLOYMENT.md.
 
 Django==5.2.17
-# Named by PLAN.md:64 (its assets are collected into the Caddy-served volume)
-# and carried in requirements-dev.txt. Nothing under src/ imports it yet; it is
-# installed so the API layer does not change the image when it lands.
+# The HTTP API: src/core/api.py is a NinjaAPI, served under /api/ (its docs
+# assets are collected into the Caddy-served volume).
 django-ninja==1.7.0
 # GeoDjango's PostGIS backend. The binary wheel bundles its own libpq, so the
 # image needs no libpq for Django itself - it needs one for pg_dump.
 psycopg2-binary==2.9.13
+# Psycopg 3: procrastinate's own driver, and imported directly by core.runs
+# (`from psycopg import pq`, the worker's connection check). Pinned here rather
+# than left to procrastinate's resolution, since this code imports it.
+psycopg==3.3.6
 # The worker. Its Django integration ships the job schema as migrations, which
 # is why `migrate` is the only step that creates and upgrades it.
 procrastinate==3.9.0
-# routemaker.gpx parses uploaded GPX, which is untrusted XML.
+# routemaker.gpx reads GPX tracks (the reference fixtures today). GPX is XML from
+# outside this repository, so it is parsed with defusedxml only: no fallback.
 defusedxml==0.7.1
 # pipeline.extract, the only module that knows what a PBF is. Installed in the
 # api image as well as the pipeline one: the maintenance worker imports
