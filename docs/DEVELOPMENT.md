@@ -7783,3 +7783,50 @@ schema is not in the repository) and not yet loaded on a device.
 
 Tests: `course.test.ts` (cues, pinning, Home naming, budgets, thinning, names, the trimmed line, TCX), `fit.test.ts`
 (the round trip), `courseWiring.test.ts` (the section's controls, its live region, no control in Go).
+
+## PDF cue sheets (v0.7.0, "All the sharing and export")
+
+The same "File type" choice in Plan's GPX section has two more entries, "PDF cue sheet, to print" and "PDF handlebar
+strip, to print"; the button says "Download PDF", there is no Device choice for them, and Go is unchanged (GPX
+alone). The download goes through the same closure check as a course (App.tsx `downloadCourseRoute`), and its line
+("PDF cue sheet: 42 cues, on letter paper.") is said in the same polite status region. Marshal sheets, the
+intersection list and the agency packet are not built yet.
+
+- **The cues** are the FIT and TCX courses' (`course.ts routeCues`, Ride's `rideModel` cues with the start first),
+  never trimmed to a budget: paper has room. Rows: miles from the start with km in brackets (`format.ts
+  formatMileMarker`, always tenths, never feet), the turn (Start, Left, Right, Caution, Walk, Note, Stop N,
+  Finish), the road as the API names it, and Ride's words as notes where the turn and road do not say it all.
+- **The rider sheet** (`frontend/src/lib/cueSheetPdf.ts`): US Letter, the GPX export's name (`exportName`: ride
+  type and distance), distance, climb, descent and moving time, the route's warnings (the Avoid notice, the
+  traffic-tolerant warning, parks to check before you go), the cue table, and the credits. **The handlebar strip**:
+  a 3 by 11 inch page to print at actual size and cut out, the miles at 16 pt, the turn and the road (abbreviated
+  as on a unit's screen, "17th St NW") at 13 pt, a caution's short reason (Avoid-rated, Work zone, Crossing) small
+  under it, no notes on busier, calmer or unpaved stretches. Flagged crossings are notes to a course (the FIT and TCX
+  budget can drop them) but a Caution on paper, as Ride says them.
+- **No place is named**, so a Home never is: the name is the ride type and distance, the plan's points Start,
+  Stop N and Finish. Credits are `creditLine` (the GPX export's words) in every page's footer and once at the end.
+- **The writer** (`frontend/src/lib/pdf.ts`), with no library: PDF 1.7, the standard Helvetica faces in
+  WinAnsiEncoding (not embedded; widths in docs/SOURCES.md), uncompressed ASCII content. Tagged, not
+  PDF/UA-conformant (standard fonts not embedded, no XMP): a structure tree of Document, H1, H2, P and Table
+  (THead and TBody, TR, TH with column scope, TD), each text run a marked-content sequence in the parent tree;
+  footers, rules and a table header carried onto a later page are Artifacts; /Lang en-US, /MarkInfo (Marked,
+  Suspects false), DisplayDocTitle, /Tabs /S. The bottom margin is set from the footer's measured height; a heading
+  is kept with what follows it, and the table header with its first row at that row's height. Clean and reproducible: Info has the title and Creator RouteMaker only (no
+  author, producer or dates) and the /ID is a hash of the body, so one route gives the same bytes.
+
+Tests: `cueSheetPdf.test.ts` (the rows, units, warnings, Home, credits, the xref and trailer, the structure tree,
+paging, determinism, the writer's encoding and wrapping), `courseWiring.test.ts` (the two file types, no device
+choice for them, one button). Checked by hand once with poppler (`pdfinfo` reports Tagged: yes and reads the
+structure tree in order; `pdftotext` the text layer) and pypdf in strict mode; not yet checked with a PDF/UA
+validator or read aloud by a screen reader.
+
+**Cue sheet image, for a phone lock screen** (the owner: "a lot of people take pictures of them on their phones and
+use them as lock screens"): one more entry in the same choice, "Download image". A PNG drawn on a canvas in the
+browser (`frontend/src/app/lockScreenRender.ts`) from a pure layout (`frontend/src/lib/lockScreen.ts`): 1179 by
+2556 (an iPhone Pro; an Android phone fits it), white with dark text, the strip's rows in large type (miles 96 px
+with km small, the turn 64 px with a caution's reason, the road abbreviated 60 px). The top 28% and bottom 12%
+are left clear for the lock screen's clock and controls; the name and distance sit small under the top band and
+the credits small above the bottom one. Rows that do not fit go on further images, each headed "Part N of M" and
+saved one after another (`...-lock-1-of-3.png`); the status line says how many. No place is named. Tests:
+`lockScreen.test.ts` (the bands, the width, cues per image and all of them once, naming, the line). Not yet
+drawn on a real phone's lock screen; the layout was checked by eye from a rasterised copy, not from the canvas.

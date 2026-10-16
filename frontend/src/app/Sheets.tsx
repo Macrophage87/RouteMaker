@@ -38,8 +38,7 @@ import { MassLegend, MassZoomNotes } from "../lib/massLegend.ts";
 import { DC_BOUNDARY_CREDIT, MASS_DC_ONLY } from "../lib/dcBoundary.ts";
 import { MtbTrailLegend, StressLegend } from "../lib/stressLegend.ts";
 import { refreshStressTiles } from "../lib/mapStyle.ts";
-import { GpxPanel } from "../GpxPanel.tsx";
-import type { CourseFormat } from "../lib/course.ts";
+import { GpxPanel, type FileFormat } from "../GpxPanel.tsx";
 import type { DeviceProfileId } from "../lib/deviceProfiles.ts";
 import { JunctionLegend, SheetFrame } from "../Sidebar.tsx";
 import { MASS_RIDE_LAYERS_NOTE, MENU_TITLE, SHEET_TITLES, STRESS_CHECKING, STRESS_UNAVAILABLE, type PanelView } from "../lib/sidebar.ts";
@@ -282,8 +281,8 @@ export interface GpxSheetProps {
   getMap: () => MapLibreMap | null;
   /** Download GPX: the page checks closures first, and an unedited opened file downloads as it came. */
   downloadRoute: () => void;
-  /** Plan only: download a FIT or TCX course (GpxPanel); absent in Go, which offers GPX alone. */
-  downloadCourse?: (format: CourseFormat, profile: DeviceProfileId, said: (line: string) => void) => void;
+  /** Plan only: download a FIT or TCX course or a PDF cue sheet (GpxPanel); absent in Go, which offers GPX alone. */
+  downloadCourse?: (format: FileFormat, profile: DeviceProfileId, said: (line: string) => void) => void;
   /** Signed in: Save route for an opened file (its own text, verbatim); null signed out. */
   saveControl: ReactNode;
 }
