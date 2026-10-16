@@ -370,6 +370,16 @@ def zones(now: datetime | None = None) -> list[rules.Zone]:
     return [zone for row in live_rows(now).order_by("pk") for zone in zones_of(row)]
 
 
+def changed_at() -> datetime | None:
+    """When the reviewed closures last changed: the newest one entered or ended (None: none).
+    A closure is only ever entered or ended, so this moves exactly when the rows do."""
+    from django.db.models import Max
+    from django.db.models.functions import Greatest
+
+    found = ReviewedClosure.objects.aggregate(at=Greatest(Max("created_at"), Max("ended_at")))
+    return found["at"]
+
+
 def summary(closure: ReviewedClosure, now: datetime | None = None) -> dict:
     """One closure as the reviewer's list shows it (no account)."""
     now = now or timezone.now()

@@ -4427,25 +4427,24 @@ def _refused(request, user, detail: str) -> None:
     )
 
 
-def instance_admin_only(*, audited: bool):
+def instance_admin_only(*, audited: bool, doing: str = "change traffic stress"):
     """A session of an active instance admin, or 401 (no session) or 403.
 
     `audited`: a write refused to a signed-in account is written to the audit log (the
     plan: every refused write is). A read refused is not, as the admin's page views are not.
+    `doing` finishes the refusals' sentences ("Sign in to ...").
     """
 
     def decorator(view):
         @wraps(view)
         def wrapped(request, *args, **kwargs):
             if not signed_in(request):
-                return _stress_error(401, "Sign in to change traffic stress.", code="signed_out")
+                return _stress_error(401, f"Sign in to {doing}.", code="signed_out")
             user = request.user
             if not getattr(user, "is_instance_admin", False):
                 if audited:
                     _refused(request, user, "not an instance admin")
-                return _stress_error(
-                    403, "Only an instance admin can change traffic stress.", code="not_admin"
-                )
+                return _stress_error(403, f"Only an instance admin can {doing}.", code="not_admin")
             return view(request, *args, **kwargs)
 
         return wrapped
@@ -6831,8 +6830,9 @@ def reviewer_only(*, audited: bool):
             if not reviewed_closures.may_review(request.user):
                 if audited:
                     _refused(request, request.user, "not a reviewer")
+                doing = "enter a closure" if audited else "review closures"
                 return _stress_error(
-                    403, "Only a RouteMaker reviewer can enter a closure.", code="not_reviewer"
+                    403, f"Only a RouteMaker reviewer can {doing}.", code="not_reviewer"
                 )
             return view(request, *args, **kwargs)
 
@@ -7141,6 +7141,11 @@ class ReviewRulingIn(Schema):
         default=None, description="Change LTS: 1 to 5 by halves (5 is Avoid)."
     )
     reason: str = Field(default="", max_length=2000, description="Private; optional.")
+    source: str | None = Field(
+        default=None,
+        max_length=40,
+        description="Change LTS to the level this listed source holds; the evidence names it.",
+    )
 
 
 class ReviewRulingsIn(Schema):
@@ -7154,14 +7159,14 @@ REVIEW_RESPONSES = {200: ReviewAnyOut, **SUGGESTION_RESPONSES}
 # the admin's editing budget.
 REVIEW_READ = (
     ratelimit.rate_limited(ratelimit.REVIEW_READS),
-    instance_admin_only(audited=False),
+    instance_admin_only(audited=False, doing="use Review"),
     same_site_editor,
     errors_as_json,
 )
 REVIEW_RULING_WRITE = (
     ratelimit.user_rate_limited(ratelimit.REVIEW_RULINGS),
     csrf_protected,
-    instance_admin_only(audited=True),
+    instance_admin_only(audited=True, doing="use Review"),
     json_body_only,
     same_site_editor,
     ratelimit.rate_limited(ratelimit.REVIEW_RULINGS_CLIENT),
@@ -7291,6 +7296,7 @@ def review_rule(request, body: ReviewRulingIn):
             body.decision,
             step=body.step,
             reason=body.reason,
+            source=body.source,
         )
     except stress_edits.EditRefused as refusal:
         return _edit_refusal(request, refusal)

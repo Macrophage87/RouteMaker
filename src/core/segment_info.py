@@ -23,9 +23,11 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 
 from django.conf import settings
+from django.core.signals import request_finished, request_started
 from django.db import connection
 
 from pipeline.schema import validate_schema_name
@@ -59,7 +61,9 @@ UNNAMED_PATH_TITLE = UNNAMED_PATH[:1].upper() + UNNAMED_PATH[1:]
 # place keeps the oid: the columns are read again this often as well. Both answers are
 # kept meanwhile: a column that is missing is not looked for on every reading. The
 # promotion and the rollback also forget them in their own process (`pipeline.promotion`).
-COLUMN_RECHECK_S = 10.0
+# Within one request the oid is read once: a request asks several times (routing, junctions,
+# the road panel), and one answer for the whole request is the consistent one anyway.
+COLUMN_RECHECK_S = 60.0
 
 FEET_PER_METRE = 3.28084
 KMH_PER_MPH = 1.609344
@@ -275,18 +279,37 @@ REQUIRED_COLUMNS = (
 
 # By schema: the table's oid when its columns were read, the columns, and when.
 _columns: dict[str, tuple[int | None, frozenset[str], float]] = {}
+# This thread's current request's answers by schema (None outside a request: every call checks).
+_request = threading.local()
+
+
+def _request_began(**_kwargs) -> None:
+    _request.columns = {}
+
+
+def _request_ended(**_kwargs) -> None:
+    _request.columns = None
+
+
+request_started.connect(_request_began, dispatch_uid="segment_info.columns.began")
+request_finished.connect(_request_ended, dispatch_uid="segment_info.columns.ended")
 
 
 def live_columns(schema: str) -> frozenset[str]:
     """The live segment table's columns, kept while the name is the same table (its
     oid) and read again every COLUMN_RECHECK_S. The one shared answer to "has the live
-    table this column?" (`has_columns`)."""
+    table this column?" (`has_columns`). Within a request, the first answer stands."""
+    this_request = getattr(_request, "columns", None)
+    if this_request is not None and schema in this_request:
+        return this_request[schema]
     known = _columns.get(schema)
     now = time.monotonic()
     with connection.cursor() as cursor:
         cursor.execute("SELECT to_regclass(%s)::oid", [f"{schema}.segment"])
         oid = cursor.fetchone()[0]
         if known and known[0] == oid and now - known[2] < COLUMN_RECHECK_S:
+            if this_request is not None:
+                this_request[schema] = known[1]
             return known[1]
         cursor.execute(
             "SELECT attname::text FROM pg_attribute "
@@ -295,6 +318,8 @@ def live_columns(schema: str) -> frozenset[str]:
         )
         found = frozenset(row[0] for row in cursor.fetchall()) if oid else frozenset()
     _columns[schema] = (oid, found, now)
+    if this_request is not None:
+        this_request[schema] = found
     return found
 
 
@@ -307,6 +332,8 @@ def forget_columns() -> None:
     """The next answer reads the table's columns afresh: after a swap, a rollback or a
     column added in place, and in tests."""
     _columns.clear()
+    if getattr(_request, "columns", None) is not None:
+        _request.columns = {}
 
 
 # --- the nearest way -------------------------------------------------------------------

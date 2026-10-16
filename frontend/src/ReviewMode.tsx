@@ -463,7 +463,6 @@ const COLUMNS: Record<"rebuild" | "disagreement" | "other", { key: SortKey | nul
     { key: null, label: "Decided by" },
     { key: "traffic", label: "Traffic" },
     { key: "length", label: "Length" },
-    { key: null, label: "Street photo" },
     { key: null, label: "Ruling" },
   ],
   disagreement: [
@@ -474,7 +473,6 @@ const COLUMNS: Record<"rebuild" | "disagreement" | "other", { key: SortKey | nul
     { key: "spread", label: "Spread" },
     { key: "traffic", label: "Traffic" },
     { key: "length", label: "Length" },
-    { key: null, label: "Street photo" },
     { key: null, label: "Ruling" },
   ],
   other: [
@@ -483,7 +481,6 @@ const COLUMNS: Record<"rebuild" | "disagreement" | "other", { key: SortKey | nul
     { key: "new", label: "Now" },
     { key: null, label: "Reason" },
     { key: "length", label: "Length" },
-    { key: null, label: "Street photo" },
     { key: null, label: "Ruling" },
   ],
 };
@@ -683,12 +680,12 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
     });
   };
 
-  const rule = async (decision: Decision, ways: number[], level?: number) => {
+  const rule = async (decision: Decision, ways: number[], level?: number, source?: string) => {
     if (busy || ways.length === 0) return;
     setBusy(true);
     const answer = await sendRuling(
       origin,
-      { queue, osm_way_ids: ways, decision, ...(decision === "set" ? { step: level ?? step } : {}), ...(reason.trim() ? { reason: reason.trim() } : {}) },
+      { queue, osm_way_ids: ways, decision, ...(decision === "set" ? { step: level ?? step } : {}), ...(source ? { source } : {}), ...(reason.trim() ? { reason: reason.trim() } : {}) },
       csrfFromCookie(document.cookie),
     );
     setBusy(false);
@@ -895,7 +892,6 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
                       {queue !== "rebuild" && queue !== "disagreement" && <td>{road.reason}</td>}
                       {(queue === "rebuild" || queue === "disagreement") && <td>{trafficText(road.aadt)}</td>}
                       <td>{road.length}</td>
-                      <td className="review-photo-cell">{road.point && <StreetPhotoView compact title={name} point={road.point} wayId={road.osm_way_id} path={PHOTO_PATH} />}</td>
                       <td>{road.ruling ? road.ruling.summary : "None yet"}</td>
                     </tr>
                   );
@@ -980,7 +976,7 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
                     <td>
                       {/* A pending agency's level is information only: the admin picks a level below, as their own. */}
                       {!s.pending && current.actions.includes("set") && s.level !== current.new_step && (
-                        <button type="button" className="secondary" aria-disabled={busy || undefined} onClick={() => void rule("set", [current.osm_way_id], s.level)}>
+                        <button type="button" className="secondary" aria-disabled={busy || undefined} onClick={() => void rule("set", [current.osm_way_id], s.level, s.key)}>
                           Use {stepText(s.level)}
                           <span className="visually-hidden"> from {s.name}</span>
                         </button>
