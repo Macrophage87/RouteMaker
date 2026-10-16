@@ -2748,6 +2748,44 @@ class TestSeekWiring:
         assert order == ["wide", ("seek", True, "w")]
         assert kept["legs"][0]["shape"] == "w"
 
+    def test_a_junction_already_located_in_the_plan_is_not_asked_again(self, monkeypatch) -> None:
+        # Review speed-1: the candidates share most of their junctions.
+        asked = []
+
+        def call(variant, endpoint, payload, deadline):
+            asked.append([(p["lon"], p["lat"], p["radius"]) for p in payload["locations"]])
+            return [{"at": (p["lon"], p["lat"], p["radius"])} for p in payload["locations"]]
+
+        monkeypatch.setattr(routing, "_call", call)
+        ctx = context()
+        deadline = routing.Deadline(routing.clock() + 30, 30)
+        locate = refine.locator(ctx.variant, deadline, ctx.located)
+
+        def payload(*points, radius=1):
+            return {"locations": [{"lon": x, "lat": y, "radius": radius} for x, y in points]}
+
+        first = locate(payload((-77.0, 38.9), (-77.1, 38.9)))
+        assert first == [{"at": (-77.0, 38.9, 1)}, {"at": (-77.1, 38.9, 1)}]
+        again = locate(payload((-77.1, 38.9), (-77.2, 38.9), (-77.0, 38.9)))
+        assert again == [{"at": (-77.1, 38.9, 1)}, {"at": (-77.2, 38.9, 1)}, first[0]]
+        assert asked[1] == [(-77.2, 38.9, 1)]
+        # Only what was asked: another radius is another answer, and nothing new, no call.
+        locate(payload((-77.0, 38.9), radius=60))
+        assert asked[2] == [(-77.0, 38.9, 60)]
+        assert locate(payload((-77.0, 38.9))) == [first[0]] and len(asked) == 3
+
+    def test_a_short_locate_answer_ends_where_the_router_ended_it(self, monkeypatch) -> None:
+        monkeypatch.setattr(routing, "_call", lambda variant, endpoint, payload, deadline: [{}])
+        ctx = context()
+        locate = refine.locator(
+            ctx.variant, routing.Deadline(routing.clock() + 30, 30), ctx.located
+        )
+        points = [
+            {"lon": -77.0, "lat": 38.9, "radius": 1},
+            {"lon": -77.1, "lat": 38.9, "radius": 1},
+        ]
+        assert locate({"locations": points}) == [{}]
+
     def test_junctions_that_cannot_be_read_are_unread_not_none_found(self, monkeypatch) -> None:
         from core import junctions
 
