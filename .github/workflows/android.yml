@@ -1,14 +1,20 @@
 name: Android app
 
-# The phone app (mobile/, v0.8.0): run by hand only (Actions, "Android app", Run workflow), never on a
-# push or a pull request. A debug build is debug-signed and installs by sideloading; a release build
-# needs the four ROUTEMAKER_KEYSTORE/KEY secrets (mobile/README.md).
+# The phone app (mobile/, v0.8.0). On a pull request that touches mobile/ or this file: `npm test`, the
+# Java unit tests and a debug APK (a debug build only; the secrets are never used there). By hand
+# (Actions, "Android app", Run workflow): a debug or a release build. A debug build is debug-signed and
+# installs by sideloading; a release build needs the four ROUTEMAKER_KEYSTORE/KEY secrets
+# (mobile/README.md). Never on a push.
 #
 # No build carries a site address: this repository is public, and so are its Actions artifacts (any
 # signed-in GitHub user can download them), so nothing here may name a server. The app asks for the
 # address on first launch and keeps it on the phone. ROUTEMAKER_URL is for local builds only: it is
 # never set here, site-config.js refuses it when CI is set, and the step after `cap sync` checks it.
 on:
+  pull_request:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/android.yml"
   workflow_dispatch:
     inputs:
       build:
@@ -32,11 +38,16 @@ jobs:
       run:
         working-directory: mobile
     env:
+      # A pull request always builds debug, without the inspector; release only by hand.
+      BUILD: ${{ github.event_name == 'workflow_dispatch' && inputs.build || 'debug' }}
       ROUTEMAKER_VERSION_CODE: ${{ github.run_number }}
-      ROUTEMAKER_DEBUG: ${{ inputs.inspector && '1' || '0' }}
+      ROUTEMAKER_DEBUG: ${{ github.event_name == 'workflow_dispatch' && inputs.inspector && '1' || '0' }}
     steps:
       # Pinned by commit (the tag each pointed to), as ci.yml pins its own; bump deliberately.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # No token left in .git for the build's scripts (npm, Gradle and their plugins) to read.
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
@@ -55,12 +66,15 @@ jobs:
             const c = require("./android/app/src/main/assets/capacitor.config.json");
             if (c.server && c.server.url) { console.error("::error::The config names a site; a CI build must not."); process.exit(1); }
           '
+      - name: Java unit tests
+        working-directory: mobile/android
+        run: ./gradlew --no-daemon testDebugUnitTest
       - name: Debug APK
-        if: inputs.build == 'debug'
+        if: env.BUILD == 'debug'
         working-directory: mobile/android
         run: ./gradlew --no-daemon assembleDebug
       - name: Release APK and bundle
-        if: inputs.build == 'release'
+        if: env.BUILD == 'release' && github.event_name == 'workflow_dispatch'
         working-directory: mobile/android
         env:
           KEYSTORE_BASE64: ${{ secrets.ROUTEMAKER_KEYSTORE_BASE64 }}
@@ -78,9 +92,9 @@ jobs:
           rm -f "$RUNNER_TEMP/release.jks"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: routemaker-android-${{ inputs.build }}-${{ github.run_number }}
+          name: routemaker-android-${{ env.BUILD }}-${{ github.run_number }}
           path: |
-            mobile/android/app/build/outputs/apk/${{ inputs.build }}/*.apk
+            mobile/android/app/build/outputs/apk/${{ env.BUILD }}/*.apk
             mobile/android/app/build/outputs/bundle/release/*.aab
           if-no-files-found: error
           retention-days: 30

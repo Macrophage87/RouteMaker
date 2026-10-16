@@ -113,6 +113,14 @@ export class CueNotice {
     this.last = "";
   }
 
+  /**
+   * The answer to the notifications question asked at Start ride (`askRidePermissions`). Refused: no
+   * cue notification this ride, so the plugin's schedule never asks again mid-ride.
+   */
+  allow(granted: boolean): void {
+    this.refused = !granted;
+  }
+
   show(text: string): void {
     if (!this.live || this.refused || !text || text === this.last) return;
     this.last = text;
@@ -169,14 +177,48 @@ export class CueNotice {
 export const BACKGROUND_TITLE = "Riding with RouteMaker";
 export const BACKGROUND_MESSAGE = "Your location is used for Ride mode's cues and stays on this phone. End the ride to stop.";
 
-/** The plugin's options: the service only while a ride's watch runs; fresh fixes only; every fix. */
+/**
+ * The plugin's options: the service only while a ride's watch runs; fresh fixes only; every fix. Never
+ * the plugin's own permission request: background-geolocation 1.2.26's addWatcher asks for location and
+ * starts its foreground service at once, before the answer; Android 14+ refuses a location foreground
+ * service without the permission (the plugin swallows the error) and nothing promotes it after the
+ * grant, so the first ride would stop at the screen lock. `askRidePermissions` asks first instead.
+ */
 export const NATIVE_WATCH_OPTIONS = {
   backgroundTitle: BACKGROUND_TITLE,
   backgroundMessage: BACKGROUND_MESSAGE,
-  requestPermissions: true,
+  requestPermissions: false,
   stale: false,
   distanceFilter: 0,
 } as const;
+
+/** Capacitor's requestPermissions, with the plugins' own aliases (their @Permission annotations). */
+export const LOCATION_PERMISSION = { permissions: ["location"] } as const;
+export const NOTICE_PERMISSION = { permissions: ["display"] } as const;
+
+export interface RidePermissions {
+  location: boolean;
+  notices: boolean;
+}
+
+/**
+ * Asked at Start ride, before the watcher is added: location (Android's "While using the app"), then,
+ * on Android, notifications (13+: the "Riding with RouteMaker" service notification and the cue
+ * notification need it), so nothing is asked mid-ride at the first cue. Already granted: answered at
+ * once, nothing shown. Location refused: notifications are not asked. Rejects only when the location
+ * request itself fails.
+ */
+export async function askRidePermissions(bridge: CapacitorBridge, askNotices: boolean): Promise<RidePermissions> {
+  const geo = await bridge.nativePromise(GEO_PLUGIN, "requestPermissions", { permissions: [...LOCATION_PERMISSION.permissions] });
+  const location = (geo as { location?: unknown } | null | undefined)?.location === "granted";
+  if (!location || !askNotices) return { location, notices: false };
+  try {
+    const shown = await bridge.nativePromise(NOTICE_PLUGIN, "requestPermissions", { permissions: [...NOTICE_PERMISSION.permissions] });
+    return { location, notices: (shown as { display?: unknown } | null | undefined)?.display === "granted" };
+  } catch {
+    return { location, notices: false };
+  }
+}
 
 /** The plugin's fix, as its definitions.d.ts gives it. */
 interface NativeLocation {
@@ -202,41 +244,64 @@ export function nativePosition(location: NativeLocation): WatchPosition {
 }
 
 /**
- * A `WatchApi` over the plugin: a watch adds a watcher (the plugin's callback id is its id) and starts
- * the cue notification; clearing it removes the watcher, which stops the service and its notification,
- * and clears the cue notification.
+ * A `WatchApi` over the plugin: a watch asks the permissions (`askRidePermissions`), then adds a watcher
+ * (the plugin's callback id is its id) and starts the cue notification; clearing it removes the watcher,
+ * which stops the service and its notification, and clears the cue notification. A watch cleared while
+ * the permission question is still open never adds its watcher.
  */
-export function nativeWatchApi(bridge: CapacitorBridge, notice: CueNotice | null): WatchApi {
-  const watchers = new Map<number, string>();
+export function nativeWatchApi(bridge: CapacitorBridge, notice: CueNotice | null, askNotices = notice !== null): WatchApi {
+  // null: still asking the permissions; a string: the plugin's callback id.
+  const watchers = new Map<number, string | null>();
   let next = 0;
+  const drop = (id: number) => {
+    watchers.delete(id);
+    if (watchers.size === 0) notice?.stop();
+  };
   return {
     watchPosition(ok, fail) {
       next += 1;
       const id = next;
-      let callbackId = "";
-      try {
-        callbackId = bridge.nativeCallback(GEO_PLUGIN, "addWatcher", { ...NATIVE_WATCH_OPTIONS }, (data, error) => {
-          if (!watchers.has(id)) return;
-          if (error || !data) {
-            fail({ code: nativeErrorCode(error) });
-            return;
-          }
-          ok(nativePosition(data as NativeLocation));
-        });
-      } catch {
+      watchers.set(id, null);
+      const start = (granted: RidePermissions) => {
+        if (!watchers.has(id)) return;
+        if (!granted.location) {
+          drop(id);
+          fail({ code: 1 });
+          return;
+        }
+        let callbackId = "";
+        try {
+          callbackId = bridge.nativeCallback(GEO_PLUGIN, "addWatcher", { ...NATIVE_WATCH_OPTIONS }, (data, error) => {
+            if (watchers.get(id) !== callbackId) return;
+            if (error || !data) {
+              fail({ code: nativeErrorCode(error) });
+              return;
+            }
+            ok(nativePosition(data as NativeLocation));
+          });
+        } catch {
+          drop(id);
+          fail({ code: 2 });
+          return;
+        }
+        watchers.set(id, callbackId);
+        if (notice) {
+          notice.allow(granted.notices);
+          notice.start();
+        }
+      };
+      askRidePermissions(bridge, askNotices).then(start, () => {
+        if (!watchers.has(id)) return;
+        drop(id);
         fail({ code: 2 });
-        return id;
-      }
-      watchers.set(id, callbackId);
-      notice?.start();
+      });
       return id;
     },
     clearWatch(id) {
       const callbackId = watchers.get(id);
       if (callbackId === undefined) return;
-      watchers.delete(id);
-      void bridge.nativePromise(GEO_PLUGIN, "removeWatcher", { id: callbackId }).catch(() => undefined);
-      if (watchers.size === 0) notice?.stop();
+      if (callbackId !== null) void bridge.nativePromise(GEO_PLUGIN, "removeWatcher", { id: callbackId }).catch(() => undefined);
+      drop(id);
     },
   };
 }

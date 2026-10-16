@@ -6780,8 +6780,10 @@ basic-auth password, which it hands to the WebView for that run and never stores
 builds an address in for a local build only; it is never set in CI, and the workflow fails if the
 synced config names a site.
 
-Builds are by hand: Actions, "Android app" (`.github/workflows/android.yml`, `workflow_dispatch`
-only), `debug` for a sideloaded test APK, `release` for a signed APK and Play bundle. The workflow uses
+Builds: Actions, "Android app" (`.github/workflows/android.yml`). A pull request that touches
+`mobile/` or the workflow runs the app's tests and builds a debug APK (no secrets, no site address);
+by hand (`workflow_dispatch`), `debug` for a sideloaded test APK or `release` for a signed APK and
+Play bundle. The workflow uses
 no repository variables. The release key is four repository secrets the owner adds:
 `ROUTEMAKER_KEYSTORE_BASE64`, `ROUTEMAKER_KEYSTORE_PASSWORD`, `ROUTEMAKER_KEY_ALIAS`,
 `ROUTEMAKER_KEY_PASSWORD`; never a file in the repository. A Play id of the owner's own

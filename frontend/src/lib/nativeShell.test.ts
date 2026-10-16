@@ -41,6 +41,8 @@ function fakeBridge(platform = "android", plugins = ["BackgroundGeolocation", "T
   const pending: { call: Call; resolve: () => void; reject: (e: unknown) => void }[] = [];
   let auto = true;
   let reject: ((call: Call) => boolean) | null = null;
+  // The permission questions are answered at once (the device's dialog), granted unless `grant` says not.
+  let grants: { location: string; display: string } = { location: "granted", display: "granted" };
   let ids = 0;
   const bridge: CapacitorBridge = {
     isNativePlatform: () => true,
@@ -50,6 +52,7 @@ function fakeBridge(platform = "android", plugins = ["BackgroundGeolocation", "T
       const call = { plugin, method, options };
       calls.push(call);
       if (reject?.(call)) return Promise.reject(new Error("refused"));
+      if (method === "requestPermissions") return Promise.resolve(plugin === "BackgroundGeolocation" ? { location: grants.location } : { display: grants.display });
       if (auto) return Promise.resolve(undefined);
       return new Promise<unknown>((resolve, fail) => pending.push({ call, resolve: () => resolve(undefined), reject: fail }));
     },
@@ -68,6 +71,7 @@ function fakeBridge(platform = "android", plugins = ["BackgroundGeolocation", "T
     send: (id: string, data: unknown, error?: unknown) => callbacks.get(id)?.(data, error),
     manual: () => void (auto = false),
     refuse: (rule: (call: Call) => boolean) => void (reject = rule),
+    grant: (answers: Partial<{ location: string; display: string }>) => void (grants = { ...grants, ...answers }),
     names: () => calls.map((c) => `${c.plugin}.${c.method}`),
   };
 }
@@ -151,7 +155,7 @@ test("findShell: Android has the cue notification; iOS has none; a missing plugi
   assert.equal(speaksAloud("screen-reader", true, bare), false);
 });
 
-test("the native watch: Start adds a watcher with the riding notification; fixes reach Ride mode; End removes it", () => {
+test("the native watch: Start adds a watcher with the riding notification; fixes reach Ride mode; End removes it", async () => {
   const fake = fakeBridge();
   const found = findShell({ Capacitor: fake.bridge });
   const fixes: RideFix[] = [];
@@ -160,7 +164,8 @@ test("the native watch: Start adds a watcher with the riding notification; fixes
   assert.equal(env.isSecureContext, true);
   assert.equal(ridesHidden(found), true);
   const stop = watchRide(env, (f) => fixes.push(f), (r) => fails.push(r), () => 42);
-  assert.deepEqual(fake.calls[0], { plugin: "BackgroundGeolocation", method: "addWatcher", options: { ...NATIVE_WATCH_OPTIONS } });
+  await flush();
+  assert.deepEqual(fake.calls[2], { plugin: "BackgroundGeolocation", method: "addWatcher", options: { ...NATIVE_WATCH_OPTIONS } });
   assert.equal(NATIVE_WATCH_OPTIONS.backgroundTitle, BACKGROUND_TITLE);
   assert.equal(BACKGROUND_TITLE, "Riding with RouteMaker");
   fake.send("cb1", { latitude: 38.9, longitude: -77.03, accuracy: 6, speed: 5, bearing: 180, time: 1, altitude: null, altitudeAccuracy: null, simulated: false });
@@ -180,14 +185,72 @@ test("the native watch: Start adds a watcher with the riding notification; fixes
   assert.equal(fake.calls.filter((c) => c.method === "removeWatcher").length, 1);
 });
 
-test("a watcher the bridge cannot add is said as unavailable, not thrown", () => {
+test("a watcher the bridge cannot add is said as unavailable, not thrown", async () => {
   const fake = fakeBridge();
   fake.bridge.nativeCallback = () => {
     throw new Error("no plugin");
   };
   const fails: LocateFailure[] = [];
   watchRide(rideGeoEnv(findShell({ Capacitor: fake.bridge })), () => assert.fail(), (r) => fails.push(r));
+  await flush();
   assert.deepEqual(fails, ["unavailable"]);
+});
+
+test("Start ride asks location, then notifications, and only then adds the watcher (the plugin never asks itself)", async () => {
+  const fake = fakeBridge("android");
+  const found = findShell({ Capacitor: fake.bridge });
+  watchRide(rideGeoEnv(found), () => undefined, () => undefined);
+  assert.deepEqual(fake.names(), ["BackgroundGeolocation.requestPermissions"], "nothing else before the location answer");
+  await flush();
+  assert.deepEqual(fake.names(), ["BackgroundGeolocation.requestPermissions", "LocalNotifications.requestPermissions", "BackgroundGeolocation.addWatcher"]);
+  assert.deepEqual(fake.calls[0].options, { permissions: ["location"] });
+  assert.deepEqual(fake.calls[1].options, { permissions: ["display"] });
+  // 1.2.26's own request starts the foreground service before the grant, which Android 14+ refuses.
+  assert.equal(NATIVE_WATCH_OPTIONS.requestPermissions, false);
+});
+
+test("location refused at Start ride: said as refused; no watcher, no notifications question", async () => {
+  const fake = fakeBridge("android");
+  fake.grant({ location: "denied" });
+  const found = findShell({ Capacitor: fake.bridge });
+  const fails: LocateFailure[] = [];
+  watchRide(rideGeoEnv(found), () => assert.fail(), (r) => fails.push(r));
+  await flush();
+  assert.deepEqual(fails, ["denied"]);
+  assert.deepEqual(fake.names(), ["BackgroundGeolocation.requestPermissions"]);
+});
+
+test("the location question failing: said as unavailable", async () => {
+  const fake = fakeBridge("android");
+  fake.refuse((call) => call.method === "requestPermissions" && call.plugin === "BackgroundGeolocation");
+  const fails: LocateFailure[] = [];
+  watchRide(rideGeoEnv(findShell({ Capacitor: fake.bridge })), () => assert.fail(), (r) => fails.push(r));
+  await flush();
+  assert.deepEqual(fails, ["unavailable"]);
+  assert.ok(!fake.names().includes("BackgroundGeolocation.addWatcher"));
+});
+
+test("End ride while the permission question is open: the watcher is never added", async () => {
+  const fake = fakeBridge("android");
+  const stop = watchRide(rideGeoEnv(findShell({ Capacitor: fake.bridge })), () => assert.fail(), () => assert.fail());
+  stop();
+  await flush();
+  assert.ok(!fake.names().includes("BackgroundGeolocation.addWatcher"));
+  assert.ok(!fake.names().includes("BackgroundGeolocation.removeWatcher"), "nothing to remove");
+});
+
+test("notifications refused at Start ride: the ride goes on, and no cue notification ever asks again mid-ride", async () => {
+  const fake = fakeBridge("android");
+  fake.grant({ display: "denied" });
+  const found = findShell({ Capacitor: fake.bridge });
+  const fixes: RideFix[] = [];
+  watchRide(rideGeoEnv(found), (f) => fixes.push(f), () => assert.fail());
+  await flush();
+  fake.send("cb1", { latitude: 38.9, longitude: -77.03, accuracy: 6, speed: null, bearing: null, time: 1 });
+  assert.equal(fixes.length, 1);
+  showCue("Left onto P St NW", found);
+  await found!.notice!.settled();
+  assert.deepEqual(fake.names(), ["BackgroundGeolocation.requestPermissions", "LocalNotifications.requestPermissions", "BackgroundGeolocation.addWatcher"]);
 });
 
 // ---- In the shell: the cue notification -------------------------------------------------------------------
@@ -199,6 +262,8 @@ test("Android's cue notification: only while a ride's watch runs; silent channel
   await found!.notice!.settled();
   assert.deepEqual(fake.calls, [], "nothing before a ride");
   const stop = watchRide(rideGeoEnv(found), () => undefined, () => undefined);
+  await flush();
+  fake.calls.splice(0, 2); // the two permission questions (tested above)
   showCue("In 500 feet, left onto 14th St NW", found);
   showCue("In 500 feet, left onto 14th St NW", found);
   showCue("Left now", found);
@@ -239,6 +304,7 @@ test("a cue update still in flight at End never brings the notification back", a
   fake.manual();
   const found = findShell({ Capacitor: fake.bridge });
   const stop = watchRide(rideGeoEnv(found), () => undefined, () => undefined);
+  await flush();
   showCue("Right onto Q St NW", found);
   showCue("Left onto 15th St NW", found);
   stop();
@@ -258,6 +324,7 @@ test("notifications refused (Android 13+): the ride goes on and is not asked aga
   fake.refuse((call) => call.method === "schedule");
   const found = findShell({ Capacitor: fake.bridge });
   watchRide(rideGeoEnv(found), () => undefined, () => undefined);
+  await flush();
   showCue("Left onto P St NW", found);
   await found!.notice!.settled();
   showCue("Right onto 16th St NW", found);
@@ -269,10 +336,12 @@ test("iOS: no cue notification at all (VoiceOver would read each banner over the
   const fake = fakeBridge("ios");
   const found = findShell({ Capacitor: fake.bridge });
   const stop = watchRide(rideGeoEnv(found), () => undefined, () => undefined);
+  await flush();
   showCue("Left onto P St NW", found);
   stop();
   await flush();
-  assert.deepEqual(fake.names(), ["BackgroundGeolocation.addWatcher", "BackgroundGeolocation.removeWatcher"]);
+  // No notifications question either: iOS has no cue notification, and its location pill needs none.
+  assert.deepEqual(fake.names(), ["BackgroundGeolocation.requestPermissions", "BackgroundGeolocation.addWatcher", "BackgroundGeolocation.removeWatcher"]);
 });
 
 // ---- In the shell: the voice ------------------------------------------------------------------------------

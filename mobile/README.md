@@ -63,7 +63,8 @@ the Ride mode safety note (it still says the screen must stay on).
 **The server needs no change.** The WebView loads the site at its own origin, so cookies, CSRF
 (`CSRF_TRUSTED_ORIGINS`, `SESSION_COOKIE_SAMESITE = "Lax"`) and same-origin API calls are exactly a
 phone browser's; no CORS is involved. The Discord sign-in round trip stays inside the app
-(`server.allowNavigation: ["discord.com"]`), so the session cookie lands in the app's WebView. Two
+(`server.allowNavigation: ["discord.com"]`), so the session cookie lands in the app's WebView (the
+native bridge does not reach Discord's pages: see "The native bridge, for the site only"). Two
 alternatives were set aside: bundling the built front end in the APK would make every `/api` and
 tile request cross-origin (CORS and cookie changes on the server, and MapLibre's tile workers do not
 go through Capacitor's native HTTP), and serving the bundle under the site's hostname makes
@@ -109,8 +110,8 @@ it; that is the rider's choice and outside the app.
    the app you opened it with. Play Protect may warn that the app is unknown; choose to install anyway.
 3. Open RouteMaker and type the site's address (above); for the beta, sign in with its password when
    asked.
-4. Plan a route, press Go and Start ride. Android asks for location ("While using the app"), then, at
-   the first cue, for notifications (Android 13+). Lock the phone and ride.
+4. Plan a route, press Go and Start ride. Android asks for location ("While using the app"), then for
+   notifications (Android 13+), both at Start ride and never mid-ride. Lock the phone and ride.
 
 Each workflow run signs its debug build with a fresh debug key, so a newer debug APK will not install
 over an older one: uninstall first (the site's data in the app, such as a Home, goes with it, and the
@@ -121,7 +122,10 @@ in the build environment):
 
 - the first-launch screen accepts the site's address (and, on the beta, the sign-in box takes its
   password), refuses an `http://` one, and TalkBack reads its label and errors;
-- the "Riding with RouteMaker" notification appears at Start ride and goes at End ride;
+- on a fresh install (Android 14+ especially), the very first ride: grant location at Start ride, lock
+  the phone, and the cues keep coming (the permission is asked before the service starts, below);
+- the "Riding with RouteMaker" notification appears at Start ride and goes at End ride, and no "Latest
+  cue" is left on the shade after the app is swiped away and opened again;
 - cues keep coming with the phone locked in a pocket for more than ten minutes;
 - on a v0.8.0 site, the "Latest cue" notification follows the cues and clears at End ride;
 - battery: the service asks for every fix (high accuracy, no distance filter) while the ride runs.
@@ -144,6 +148,32 @@ tell whether TalkBack is on, so the choice is what keeps cues from being said tw
 - On an older site (compatibility layer), "My screen reader" is silent with the phone locked: choose
   "RouteMaker's voice" for pocket riding until v0.8.0 is deployed.
 
+## Permissions at Start ride
+
+Start ride asks for location, then (Android 13+) for notifications, and only then adds the location
+watcher; already granted, nothing is shown. The watcher is added with the plugin's own
+`requestPermissions: false`: background-geolocation 1.2.26 would otherwise start its foreground
+service before the answer, Android 14+ refuses a location foreground service without the permission
+(the plugin swallows the error), and nothing promotes the service after the grant, so the first ride
+would stop at the screen lock. Refused location: Ride mode says so, as in a browser. Refused
+notifications: the ride goes on (the service still runs; its notification is hidden), and the cue
+notification is not asked for again mid-ride. Both the site's bridge (`nativeShell.ts`,
+`askRidePermissions`) and the compatibility layer do this.
+
+## The native bridge, for the site only
+
+The background-geolocation plugin needs Capacitor's legacy bridge (`android.useLegacyBridge`, its
+README: otherwise fixes stop after five minutes in the background), still with Capacitor 8 and
+1.2.26. That bridge is a `WebView.addJavascriptInterface` object, which Android hands to every page and
+frame the WebView shows, Discord's sign-in pages included. `GuardedBridge.java` replaces it with an
+object of the same name that passes a call to the plugins only while the WebView's top-level page is
+the kept site (`SiteWebViewClient.topLevelIsSite()`: cleared before a top-level navigation leaves the
+site, set as each top-level page starts); any other call is dropped. It reaches Capacitor's handler by
+its private field name (pinned Capacitor 8.5.3; `npm test` fails if a Capacitor bump moves it, and if
+it cannot be found at run time the bridge is removed rather than left open). What it cannot tell apart:
+a frame inside the site's own page (the site embeds none), and the moment between a back or forward
+navigation's commit and its `onPageStarted`.
+
 ## Privacy
 
 Positions stay on the phone, as on the website: the plugin hands each fix to the page, the page uses
@@ -151,16 +181,22 @@ it for the cues and forgets it, and nothing sends the rider's position to the se
 the route request, as today). No analytics, no crash reporting, no tracking SDK. The manifest asks for
 the network, location (fine and coarse, "while using the app"; never `ACCESS_BACKGROUND_LOCATION`),
 the location foreground service, and notifications; the local-notifications plugin's boot, exact-alarm
-and wake-lock permissions are removed, and `allowBackup` is off so the site's data in the app never
-goes to a cloud backup. The site address is kept in the app's private preferences only; the
+and wake-lock permissions are removed, and `allowBackup` is off and `dataExtractionRules`
+(`res/xml/data_extraction_rules.xml`) exclude everything, so the site's data in the app never goes to
+a cloud backup or, on Android 12+, to a new phone by device transfer. The plugin's location service is
+declared not exported (only the app binds it), and a GPS is not required to install. A "Latest cue"
+notification is cleared when the app starts and when the site's screen goes, so none is left stale. The site address is kept in the app's private preferences only; the
 basic-auth password is never kept by the app (above). `mobile/test/config.test.mjs` holds the
 permission list.
 
 ## Building
 
-**Workflow** (`.github/workflows/android.yml`, run by hand only): Node 22, JDK 21, the runner's Android
-SDK; `npm ci`, `npm test`, `npx cap sync android`, a check that the synced config names no site, then
-Gradle. It uses no repository variables: the build names no server, and its application id is
+**Workflow** (`.github/workflows/android.yml`): on a pull request that touches `mobile/` or the
+workflow, a debug build only; by hand (Run workflow), debug or release; never on a push. Node 22, JDK
+21, the runner's Android SDK; `npm ci`, `npm test`, `npx cap sync android`, a check that the synced
+config names no site, `./gradlew testDebugUnitTest`, then the APK. The checkout keeps no token
+(`persist-credentials: false`); actions are pinned by commit. A pull request's debug APK names no site,
+so it is fine as a public artifact. It uses no repository variables: the build names no server, and its application id is
 `org.routemaker.phone`. Release signing needs these repository secrets:
 
 | Name | Kind | Used for |
@@ -207,12 +243,14 @@ Such an APK names the server: keep it off public places. `ROUTEMAKER_APP_ID` set
   `res/layout/activity_setup.xml`), `SiteAddress.java` (the address and `/healthz` checks, unit-tested
   in `app/src/test`), `SiteStore.java` (the app's preferences), `MainActivity.java` (puts the kept
   address into Capacitor's config, registers the plugin below), `SiteWebViewClient.java` (the basic-auth
-  sign-in box, `res/layout/dialog_site_login.xml`) and `RideCompatPlugin.java`;
+  sign-in box, `res/layout/dialog_site_login.xml`, and which page is on top), `GuardedBridge.java`
+  (the native bridge for the site only) and `RideCompatPlugin.java`;
   `assets/routemaker-compat.js`, `res/drawable/ic_ride.xml` (the notifications' icon), the manifest and
   `app/build.gradle` (store id, version and release signing from the environment).
-- `test/`: `npm test` (node's test runner): the config, the manifest, the workflow (its trigger, no
-  repository variables, no address), the first-launch screen's labels, and the compatibility layer in
-  a stand-in page. `./gradlew test` runs `SiteAddressTest` (needs the Android SDK). The site's bridge is tested in
+- `test/`: `npm test` (node's test runner): the config, the manifest, the workflow (its triggers, no
+  repository variables, no address), the first-launch screen's labels, the bridge guard, and the
+  compatibility layer in a stand-in page. `./gradlew testDebugUnitTest` runs `SiteAddressTest` (needs
+  the Android SDK); the workflow runs both on each pull request that touches `mobile/`. The site's bridge is tested in
   `frontend/src/lib/nativeShell.test.ts`.
 
 Plugin versions are pinned in `package.json`. `@capacitor-community/background-geolocation` 1.2.26

@@ -7887,8 +7887,10 @@ side:
   `rideSpeech()` and `rideWake()` return `browserRideEnv()`, `browserSpeech()` and `browserWake()`, so
   the site is unchanged.
 - In the shell, Ride mode (`RideMode.tsx`) gets the background-geolocation watch behind the same
-  `RideGeoEnv` (`watchRide` is unchanged; End ride's `clearWatch` removes the native watcher, which
-  stops the foreground service), the native voice behind the same `SpeechEnv` (rideOutput's `Voice`
+  `RideGeoEnv` (`watchRide` is unchanged; Start ride's watch first asks location, then notifications,
+  through `askRidePermissions`, and only then adds the watcher with the plugin's own request off, since
+  plugin 1.2.26 would start its foreground service before the grant and Android 14+ refuses that; End
+  ride's `clearWatch` removes the native watcher, which stops the foreground service), the native voice behind the same `SpeechEnv` (rideOutput's `Voice`
   is unchanged), a wake lock that never says "keep your screen on yourself", no `HIDDEN_STOP_MS` pause
   (`ridesHidden()`), Android's silent "Latest cue" notification (`showCue`, each delivered sentence),
   and `speaksAloud()`: the rider's output choice as before, plus "My screen reader" spoken while the

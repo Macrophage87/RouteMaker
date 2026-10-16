@@ -39,7 +39,9 @@ function buildConfig(env = process.env) {
   const server = {
     // Sign-in (/auth/login) is a round trip through Discord's authorize page: kept in the app, so the
     // session cookie lands in the app's WebView. Any other site opens in the phone's browser. The
-    // native bridge and the compatibility script are given to the site's own origin only.
+    // compatibility script is injected for the site's own origin only (RideCompatPlugin.java); the
+    // native bridge reaches every page the WebView shows, Discord's too, so GuardedBridge.java passes
+    // its calls to the plugins only while the top-level page is the kept site.
     allowNavigation: ["discord.com"],
     // Shown when the site cannot be reached at launch (no signal).
     errorPath: "offline.html",
@@ -58,7 +60,9 @@ function buildConfig(env = process.env) {
     server,
     android: {
       // @capacitor-community/background-geolocation: keeps fixes reaching the page after 5 minutes in
-      // the background (its README, issue 89).
+      // the background (its README, issue 89). Still needed with Capacitor 8 and plugin 1.2.26. The
+      // legacy bridge is a JavaScript interface on every page and frame, whatever its origin (Discord's
+      // sign-in pages too): GuardedBridge.java drops each call unless the top-level page is the site.
       useLegacyBridge: true,
       allowMixedContent: false,
       // Chrome's remote inspector only for a development build.

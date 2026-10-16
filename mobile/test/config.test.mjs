@@ -45,6 +45,18 @@ test("ROUTEMAKER_URL is refused in CI: an Actions artifact of a public repositor
 test("Android: the legacy bridge the background-location plugin needs; the inspector only when asked", () => {
   const config = buildConfig({});
   assert.equal(config.android.useLegacyBridge, true);
+  // The legacy bridge is a JavaScript interface every page and frame gets: GuardedBridge passes calls on
+  // only while the top-level page is the kept site. It reaches Capacitor's handler by its field name.
+  const guard = readFileSync(here("../android/app/src/main/java/org/routemaker/phone/GuardedBridge.java"), "utf8");
+  assert.match(guard, /getDeclaredField\("msgHandler"\)/);
+  assert.match(guard, /if \(!client\.topLevelIsSite\(\)\)/);
+  const capBridge = readFileSync(here("../node_modules/@capacitor/android/capacitor/src/main/java/com/getcapacitor/Bridge.java"), "utf8");
+  assert.match(capBridge, /private final MessageHandler msgHandler;/, "Capacitor still keeps its handler there");
+  const capHandler = readFileSync(here("../node_modules/@capacitor/android/capacitor/src/main/java/com/getcapacitor/MessageHandler.java"), "utf8");
+  assert.match(capHandler, /webView\.addJavascriptInterface\(this, "androidBridge"\)/);
+  assert.match(capHandler, /public void postMessage\(String jsonStr\)/);
+  const main = readFileSync(here("../android/app/src/main/java/org/routemaker/phone/MainActivity.java"), "utf8");
+  assert.match(main, /GuardedBridge\.install\(bridge, client\)/);
   assert.equal(config.android.allowMixedContent, false);
   assert.equal(config.android.webContentsDebuggingEnabled, false);
   assert.equal(buildConfig({ ROUTEMAKER_DEBUG: "1" }).android.webContentsDebuggingEnabled, true);
@@ -79,6 +91,36 @@ test("the manifest asks for the network, the location and notifications, and rem
   assert.match(manifest, /LocalNotificationRestoreReceiver"\s*tools:node="remove"/);
 });
 
+test("the manifest: the location service not exported, GPS not required, nothing backed up or transferred", () => {
+  const manifest = readFileSync(here("../android/app/src/main/AndroidManifest.xml"), "utf8");
+  assert.match(manifest, /BackgroundGeolocationService"\s*android:exported="false"\s*tools:replace="android:exported"/);
+  assert.match(manifest, /android\.hardware\.location\.gps" android:required="false" tools:replace="android:required"/);
+  assert.match(manifest, /android:dataExtractionRules="@xml\/data_extraction_rules"/);
+  const rules = readFileSync(here("../android/app/src/main/res/xml/data_extraction_rules.xml"), "utf8");
+  for (const part of ["cloud-backup", "device-transfer"]) {
+    const block = rules.match(new RegExp(`<${part}>([\\s\\S]*?)</${part}>`))[1];
+    const excluded = [...block.matchAll(/<exclude domain="(\w+)" path="\." \/>/g)].map((m) => m[1]).sort();
+    assert.deepEqual(excluded, ["database", "device_database", "device_file", "device_root", "device_sharedpref", "external", "file", "root", "sharedpref"], part);
+    assert.doesNotMatch(block, /<include/);
+  }
+});
+
+test("the cue notification is cleared at app start and when the site's screen goes", () => {
+  const main = readFileSync(here("../android/app/src/main/java/org/routemaker/phone/MainActivity.java"), "utf8");
+  const id = Number(main.match(/CUE_NOTICE_ID = (\d+);/)[1]);
+  const shell = readFileSync(here("../../frontend/src/lib/nativeShell.ts"), "utf8");
+  assert.equal(id, Number(shell.match(/export const CUE_NOTICE_ID = ([\d_]+);/)[1].replace(/_/g, "")));
+  const create = main.slice(main.indexOf("public void onCreate"), main.indexOf("registerPlugin"));
+  assert.match(create, /cancelCueNotice\(\);/, "before anything else in onCreate");
+  assert.match(main, /public void onDestroy\(\) \{\s*\/\/[^\n]*\n\s*cancelCueNotice\(\);/);
+});
+
+test("no template tests left from the Capacitor project", () => {
+  assert.equal(existsSync(here("../android/app/src/test/java/com/getcapacitor")), false);
+  assert.equal(existsSync(here("../android/app/src/androidTest/java/com/getcapacitor")), false);
+  assert.ok(existsSync(here("../android/app/src/test/java/org/routemaker/phone/SiteAddressTest.java")));
+});
+
 test("release signing and the store id come from the environment; no key in the repository", () => {
   const gradle = readFileSync(here("../android/app/build.gradle"), "utf8");
   for (const name of ["ROUTEMAKER_KEYSTORE_FILE", "ROUTEMAKER_KEYSTORE_PASSWORD", "ROUTEMAKER_KEY_ALIAS", "ROUTEMAKER_KEY_PASSWORD", "ROUTEMAKER_APP_ID"]) {
@@ -86,8 +128,15 @@ test("release signing and the store id come from the environment; no key in the 
   }
   assert.doesNotMatch(gradle, /storePassword\s+["']/);
   const workflow = readFileSync(here("../../.github/workflows/android.yml"), "utf8");
-  assert.match(workflow, /^on:\s*\n\s+workflow_dispatch:/m, "run by hand only");
-  assert.doesNotMatch(workflow, /^\s+(pull_request|push):/m);
+  // Pull requests touching the app: tests and a debug APK only; release by hand only; never on a push.
+  assert.match(workflow, /^on:\s*\n\s+pull_request:\s*\n\s+paths:\s*\n\s+- "mobile\/\*\*"\s*\n\s+- "\.github\/workflows\/android\.yml"\s*\n\s+workflow_dispatch:/m);
+  assert.doesNotMatch(workflow, /^\s+push:/m);
+  assert.match(workflow, /BUILD: \$\{\{ github\.event_name == 'workflow_dispatch' && inputs\.build \|\| 'debug' \}\}/);
+  assert.match(workflow, /if: env\.BUILD == 'release' && github\.event_name == 'workflow_dispatch'/);
+  assert.match(workflow, /\.\/gradlew --no-daemon testDebugUnitTest/);
+  assert.match(workflow, /- run: npm test/);
+  assert.match(workflow, /persist-credentials: false/);
+  for (const uses of workflow.matchAll(/uses: (\S+)/g)) assert.match(uses[1], /@[0-9a-f]{40}$/, `${uses[1]} pinned by commit`);
   // No repository variable, no address: the build names no server, and checks that it does not.
   assert.doesNotMatch(workflow, /vars\./);
   assert.doesNotMatch(workflow, /^\s+ROUTEMAKER_URL:/m);

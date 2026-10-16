@@ -64,6 +64,8 @@ function page({ wakeLock = false } = {}) {
   const callbacks = new Map();
   const pending = [];
   let ids = 0;
+  // The permission questions, answered at once (the device's dialog): granted unless `grant` says not.
+  const grants = { BackgroundGeolocation: { location: "granted" }, LocalNotifications: { display: "granted" } };
   const capacitor = {
     isNativePlatform: () => true,
     nativeCallback: (plugin, method, options, cb) => {
@@ -73,6 +75,10 @@ function page({ wakeLock = false } = {}) {
       return `cb${ids}`;
     },
     nativePromise: (plugin, method, options) => {
+      if (method === "requestPermissions") {
+        log.push(`${plugin}.requestPermissions:${options.permissions.join(",")}`);
+        return Promise.resolve(grants[plugin]);
+      }
       log.push(`${plugin}.${method}${options && options.text ? `:${options.text}` : options && options.id ? `:${options.id}` : ""}`);
       return new Promise((resolve) => pending.push(resolve));
     },
@@ -87,6 +93,7 @@ function page({ wakeLock = false } = {}) {
     hide: () => void (realState = "hidden"),
     show: () => void (realState = "visible"),
     ride: (on) => void (rideShown = on),
+    grant: (plugin, answer) => void (grants[plugin] = answer),
     timers,
   };
 }
@@ -115,7 +122,9 @@ test("a v0.8.0 site (marked) in the shell: the layer stands aside", () => {
   assert.match(readFileSync(here("../../frontend/src/lib/nativeShell.ts"), "utf8"), /export const BRIDGE_MARK = "__routemakerNativeShell";/);
 });
 
-test("an older site in the shell: Ride mode's watch is native, fixes arrive as browser positions, End removes it", () => {
+const ASKED = ["BackgroundGeolocation.requestPermissions:location", "LocalNotifications.requestPermissions:display"];
+
+test("an older site in the shell: Ride mode's watch is native, fixes arrive as browser positions, End removes it", async () => {
   const p = page();
   p.shell();
   p.ride(true);
@@ -123,7 +132,11 @@ test("an older site in the shell: Ride mode's watch is native, fixes arrive as b
   const fails = [];
   const geo = p.window.navigator.geolocation;
   const id = geo.watchPosition((pos) => fixes.push(pos), (e) => fails.push(e.code), { enableHighAccuracy: true });
-  assert.deepEqual(p.log, ["BackgroundGeolocation.addWatcher"]);
+  // Location, then notifications, at Start ride; only then the watcher (the plugin never asks itself).
+  assert.deepEqual(p.log, [ASKED[0]]);
+  await flush();
+  assert.deepEqual(p.log, [...ASKED, "BackgroundGeolocation.addWatcher"]);
+  assert.match(SCRIPT, /requestPermissions: false, stale: false/);
   p.send("cb1", { latitude: 38.9, longitude: -77, accuracy: 5, speed: 4, bearing: 90, time: 7, altitude: null, altitudeAccuracy: null });
   assert.equal(fixes.length, 1);
   assert.deepEqual(JSON.parse(JSON.stringify(fixes[0])), {
@@ -141,7 +154,7 @@ test("an older site in the shell: Ride mode's watch is native, fixes arrive as b
   assert.equal(p.log.at(-1), "web-current", "Use my location stays the WebView's own");
 });
 
-test("an older site in the shell: a watch started without Ride mode's screen (Group or Mass Ride sharing) stays the browser's", () => {
+test("an older site in the shell: a watch started without Ride mode's screen (Group or Mass Ride sharing) stays the browser's", async () => {
   const p = page();
   p.shell();
   const geo = p.window.navigator.geolocation;
@@ -152,19 +165,49 @@ test("an older site in the shell: a watch started without Ride mode's screen (Gr
   p.ride(true);
   const ride = geo.watchPosition(() => {}, () => {});
   assert.notEqual(ride, 1);
+  await flush();
   geo.clearWatch(sharing);
   geo.clearWatch(ride);
   // Ride mode's screen gone (End ride, back to the planner): a new watch is the browser's again.
   p.ride(false);
   const later = geo.watchPosition(() => {}, () => {});
   geo.clearWatch(later);
-  assert.deepEqual(p.log, ["web-watch", "BackgroundGeolocation.addWatcher", "web-clear:1", "BackgroundGeolocation.removeWatcher:cb1", "web-watch", "web-clear:1"]);
+  assert.deepEqual(p.log, ["web-watch", ...ASKED, "BackgroundGeolocation.addWatcher", "web-clear:1", "BackgroundGeolocation.removeWatcher:cb1", "web-watch", "web-clear:1"]);
   // A watch started with Ride mode's screen shown still hears that the page is hidden (nothing here
   // touches visibilitychange), so sharing, which stops when hidden, would stop with the screen locked.
   assert.equal(p.captures.filter((c) => c.type === "visibilitychange").length, 0, "visibility is never intercepted");
   p.hide();
   assert.equal(p.window.document.visibilityState, "hidden");
   assert.equal(p.window.document.hidden, true);
+});
+
+test("an older site: location refused at Start ride is said as refused; no watcher, no notifications question", async () => {
+  const p = page();
+  p.shell();
+  p.ride(true);
+  p.grant("BackgroundGeolocation", { location: "denied" });
+  const fails = [];
+  p.window.navigator.geolocation.watchPosition(() => assert.fail(), (e) => fails.push(e.code));
+  await flush();
+  assert.deepEqual(fails, [1]);
+  assert.deepEqual(p.log, [ASKED[0]]);
+});
+
+test("an older site: notifications refused still rides; End ride while asking never adds a watcher", async () => {
+  const p = page();
+  p.shell();
+  p.ride(true);
+  p.grant("LocalNotifications", { display: "denied" });
+  const geo = p.window.navigator.geolocation;
+  const id = geo.watchPosition(() => {}, () => assert.fail());
+  await flush();
+  assert.deepEqual(p.log, [...ASKED, "BackgroundGeolocation.addWatcher"]);
+  geo.clearWatch(id);
+  p.log.length = 0;
+  const early = geo.watchPosition(() => {}, () => assert.fail());
+  geo.clearWatch(early);
+  await flush();
+  assert.deepEqual(p.log, [ASKED[0]], "cleared before the answer: no watcher, nothing to remove");
 });
 
 test("Ride mode's screen is what the layer looks for, and sharing's panel is not it", () => {

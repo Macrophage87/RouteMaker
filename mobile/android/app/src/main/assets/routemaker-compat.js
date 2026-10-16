@@ -79,38 +79,87 @@
       var error = function (code, message) {
         if (typeof fail === "function") fail({ code: code, message: message || "", PERMISSION_DENIED: 1, POSITION_UNAVAILABLE: 2, TIMEOUT: 3 });
       };
-      var callbackId;
+      // "" while the permission questions are open; then the plugin's callback id.
+      nativeWatches[id] = "";
+      liveWatches += 1;
+      var drop = function () {
+        if (nativeWatches[id] === undefined) return;
+        delete nativeWatches[id];
+        liveWatches -= 1;
+      };
+      var addWatcher = function () {
+        if (nativeWatches[id] !== "") return; // End ride while asking
+        var callbackId;
+        try {
+          // Never the plugin's own permission request (1.2.26 starts its foreground service before the
+          // answer, which Android 14+ refuses, so the first ride would stop at the screen lock): asked above.
+          callbackId = cap.nativeCallback(
+            "BackgroundGeolocation",
+            "addWatcher",
+            { backgroundTitle: TITLE, backgroundMessage: MESSAGE, requestPermissions: false, stale: false, distanceFilter: 0 },
+            function (data, err) {
+              if (nativeWatches[id] !== callbackId) return;
+              if (err || !data) {
+                error(err && err.code === "NOT_AUTHORIZED" ? 1 : 2, err && err.message);
+                return;
+              }
+              ok({
+                coords: {
+                  latitude: data.latitude,
+                  longitude: data.longitude,
+                  accuracy: data.accuracy,
+                  altitude: data.altitude === undefined ? null : data.altitude,
+                  altitudeAccuracy: data.altitudeAccuracy === undefined ? null : data.altitudeAccuracy,
+                  heading: data.bearing === undefined ? null : data.bearing,
+                  speed: data.speed === undefined ? null : data.speed,
+                },
+                timestamp: typeof data.time === "number" ? data.time : Date.now(),
+              });
+            },
+          );
+        } catch (e) {
+          drop();
+          error(2, "The location service could not start.");
+          return;
+        }
+        nativeWatches[id] = callbackId;
+      };
+      // At Start ride: location, then notifications (Android 13+, for the "Riding with RouteMaker"
+      // notification), then the watcher; nothing is asked mid-ride. Granted already: no dialog.
+      var asked;
       try {
-        callbackId = cap.nativeCallback(
-          "BackgroundGeolocation",
-          "addWatcher",
-          { backgroundTitle: TITLE, backgroundMessage: MESSAGE, requestPermissions: true, stale: false, distanceFilter: 0 },
-          function (data, err) {
-            if (nativeWatches[id] === undefined) return;
-            if (err || !data) {
-              error(err && err.code === "NOT_AUTHORIZED" ? 1 : 2, err && err.message);
-              return;
-            }
-            ok({
-              coords: {
-                latitude: data.latitude,
-                longitude: data.longitude,
-                accuracy: data.accuracy,
-                altitude: data.altitude === undefined ? null : data.altitude,
-                altitudeAccuracy: data.altitudeAccuracy === undefined ? null : data.altitudeAccuracy,
-                heading: data.bearing === undefined ? null : data.bearing,
-                speed: data.speed === undefined ? null : data.speed,
-              },
-              timestamp: typeof data.time === "number" ? data.time : Date.now(),
-            });
-          },
-        );
+        asked = cap.nativePromise("BackgroundGeolocation", "requestPermissions", { permissions: ["location"] });
       } catch (e) {
+        asked = null;
+      }
+      if (!asked || typeof asked.then !== "function") {
+        drop();
         error(2, "The location service could not start.");
         return id;
       }
-      nativeWatches[id] = callbackId;
-      liveWatches += 1;
+      asked.then(
+        function (answer) {
+          if (nativeWatches[id] !== "") return;
+          if (!answer || answer.location !== "granted") {
+            drop();
+            error(1, "Location permission refused.");
+            return;
+          }
+          var shown = null;
+          try {
+            shown = cap.nativePromise("LocalNotifications", "requestPermissions", { permissions: ["display"] });
+          } catch (e) {
+            shown = null;
+          }
+          if (shown && typeof shown.then === "function") shown.then(addWatcher, addWatcher);
+          else addWatcher();
+        },
+        function (e) {
+          if (nativeWatches[id] !== "") return;
+          drop();
+          error(2, e && e.message);
+        },
+      );
       return id;
     };
     geo.clearWatch = function (id) {
@@ -119,7 +168,7 @@
       delete nativeWatches[id];
       liveWatches -= 1;
       var cap = bridge();
-      if (cap) quiet(cap.nativePromise("BackgroundGeolocation", "removeWatcher", { id: callbackId }));
+      if (cap && callbackId) quiet(cap.nativePromise("BackgroundGeolocation", "removeWatcher", { id: callbackId }));
     };
   }
 
