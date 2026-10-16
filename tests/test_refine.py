@@ -2774,6 +2774,32 @@ class TestSeekWiring:
         assert asked[2] == [(-77.0, 38.9, 60)]
         assert locate(payload((-77.0, 38.9))) == [first[0]] and len(asked) == 3
 
+    def test_two_candidates_sharing_a_junction_ask_it_once_in_the_plan(self, monkeypatch) -> None:
+        # Review speed-1, through the plan's own reading (`events_of_raws`): the second
+        # candidate's reading asks only its own junction.
+        from types import SimpleNamespace
+
+        from core import junctions
+
+        asked = []
+
+        def call(variant, endpoint, payload, deadline):
+            asked.extend((p["lon"], p["lat"]) for p in payload["locations"])
+            return [{} for _ in payload["locations"]]
+
+        def events_of(raws, when, with_facility, locate, group, cut_short=(), ratings=None):
+            junctions._ask(raws, range(len(raws)), junctions.LOCATE_RADIUS_M, locate, cut_short)
+            return []
+
+        monkeypatch.setattr(routing, "_call", call)
+        monkeypatch.setattr(junctions, "events_of", events_of)
+        shared, mine, theirs = (SimpleNamespace(lon=-77.0 + i * 1e-3, lat=38.9) for i in range(3))
+        ctx = context()
+        deadline = routing.Deadline(routing.clock() + 30, 30)
+        assert refine.events_of_raws([shared, mine], ctx, deadline) == []
+        assert refine.events_of_raws([theirs, shared], ctx, deadline) == []
+        assert asked == [(shared.lon, shared.lat), (mine.lon, mine.lat), (theirs.lon, theirs.lat)]
+
     def test_a_short_locate_answer_ends_where_the_router_ended_it(self, monkeypatch) -> None:
         monkeypatch.setattr(routing, "_call", lambda variant, endpoint, payload, deadline: [{}])
         ctx = context()
