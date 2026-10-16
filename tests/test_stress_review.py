@@ -388,7 +388,9 @@ class TestPendingAgenciesStayPrivate:
     def test_no_pending_agency_can_decide_or_is_confirmed(self) -> None:
         for agency in agency_lts.PENDING_AGENCIES:
             assert agency not in agency_lts.AGENCIES
-            assert agency_lts.public_use_confirmed(agency) is False
+        # Arlington has not answered; Alexandria confirmed CC0 on 2026-10-16.
+        assert agency_lts.public_use_confirmed("arlington") is False
+        assert agency_lts.public_use_confirmed("alexandria") is True
         assert agency_lts.public_use_confirmed("moco") is True
 
     def test_one_switch_confirms_an_agencys_public_use(self, monkeypatch) -> None:

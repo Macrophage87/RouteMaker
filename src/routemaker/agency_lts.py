@@ -63,11 +63,11 @@ PENDING_AGENCIES: dict[str, str] = {
 # The one switch: an agency's public use confirmed, by its key. While False, Review labels it
 # "(pending permission)", counts it in a disagreement's spread as information only, and offers
 # no one-click "Use" of its level. The City of Alexandria confirmed CC0 for its OpenData data on
-# 2026-10-16; its flag is flipped here once its layers are cleared for public use. Arlington's
-# stays False until it answers.
+# 2026-10-16 (Alex311 request 26-00041150) and its two layers are cleared (docs/SOURCES.md, "City
+# of Alexandria"), so its flag is True. Arlington's stays False until it answers.
 PUBLIC_USE_CONFIRMED: dict[str, bool] = {
     "arlington": False,
-    "alexandria": False,
+    "alexandria": True,
 }
 PENDING_LABEL = " (pending permission)"
 
