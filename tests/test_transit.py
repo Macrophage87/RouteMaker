@@ -1471,10 +1471,16 @@ class TestApi:
         assert any(b and b["use_roads"] == 0.0 for b in bike)
         leg_preset, costing = seen[0]
         assert leg_preset == presets.NOVICE
+        # The routed lines are priced as the candidates were, so the retiming is at the same
+        # pace: a share bike's on Bikeshare + Transit, Novice's own on Bike + Transit.
+        line_speeds = {b.get("cycling_speed") for b in bike if b}
         if preset == presets.BIKESHARE_TRANSIT:
             assert costing["bicycle"]["cycling_speed"] == presets.BIKESHARE_CLASSIC_SPEED_KMH
+            assert line_speeds == {presets.BIKESHARE_CLASSIC_SPEED_KMH}
         else:
             assert costing is None
+            novice = presets.costing(presets.NOVICE)["bicycle"].get("cycling_speed")
+            assert line_speeds == {novice}
 
     def test_a_router_too_slow_for_the_answers_line_draws_it_straight_and_says_so(
         self, client, segments, router, installed, monkeypatch, caplog

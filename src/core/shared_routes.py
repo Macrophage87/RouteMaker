@@ -40,6 +40,18 @@ SOURCES = ("plan", "gpx")
 KEYS = frozenset({"id", "name", "source", "line", "distance_m", "inputs", "answer", "gpx"})
 
 
+def prune(now=None) -> int:
+    """Delete the rows not opened for `KEEP`; how many. Run at every share and open
+    (`core.api`), and nightly by the backup task, so a quiet server drops them too."""
+    from django.utils import timezone
+
+    from .models import SharedRoute
+
+    now = now or timezone.now()
+    deleted, _ = SharedRoute.objects.filter(last_opened_at__lt=now - KEEP).delete()
+    return deleted
+
+
 def id_ok(value) -> bool:
     return isinstance(value, str) and ID_RE.fullmatch(value) is not None
 

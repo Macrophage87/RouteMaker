@@ -283,6 +283,13 @@ def routing_concurrency(web_concurrency: str | None) -> int:
 
 ROUTING_CONCURRENCY = routing_concurrency(os.environ.get("WEB_CONCURRENCY"))
 
+# v0.7.0 "Faster routing": the router calls one routing slot may have in flight on its pool
+# (core.parallel; at 1 every call runs in turn), and how long a finished answer is kept in a
+# worker's memory (core.route_cache; 0 turns the cache off). The router sees at most
+# ROUTER_PARALLEL_CALLS + 1 calls per slot: the pool's threads and the request's own.
+ROUTER_PARALLEL_CALLS = max(1, int(os.environ.get("ROUTER_PARALLEL_CALLS", "3")))
+ROUTE_CACHE_TTL_S = max(0, int(os.environ.get("ROUTE_CACHE_TTL_S", "600")))
+
 
 # How many stress tiles the api may draw from the segment table at once; a
 # tile served from the cache (core.tile_cache) takes no slot. What routing's and
@@ -856,6 +863,13 @@ SESSION_SAVE_EVERY_REQUEST = False
 CSRF_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SAMESITE = "Lax"
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+# The largest request body Django reads (v0.7.0): a saved route is up to 4 MB
+# (core.accounts.ROUTE_MAX_BYTES) and a shared one 2 MB (core.shared_routes.MAX_BYTES), so
+# Django's 2.5 MB default refused a long saved route as a 400 before the view's own cap. 5 MiB,
+# as the edge allows those paths (Caddyfile @routes_body, nginx's /api/(shared-routes|me)
+# location); every other path stays at 1 MiB at the edge. tests/test_beta_overlay.py holds the
+# three layers together.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 X_FRAME_OPTIONS = "DENY"
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "same-origin"

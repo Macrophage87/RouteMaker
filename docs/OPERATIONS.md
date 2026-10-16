@@ -197,7 +197,8 @@ declining every week with "grow the volume" as the only remedy.
 | `scheduled_run` rows | 30 days, plus the newest row and the newest successful row per task | `core.runs.prune_run_rows`, run nightly |
 | Finished `procrastinate_jobs` and their events | 30 days | `core.runs.prune_job_rows`, run nightly |
 | `rate_limit_window` rows (keyed client addresses) | 1 day idle, so at most about 30 hours | `core.ratelimit.purge_expired`, run by the six-hourly membership sweep |
-| `shared_route` rows (the exact lines Share links open) | 1 year after the link was last opened | `core.api` deletes the expired at every share and every open |
+| `shared_route` rows (the exact lines Share links open) | 1 year after the link was last opened | `core.shared_routes.prune`, at every share and every open, and nightly by the backup task |
+| `signed_out_send` rows (a device's salted daily hash and the road, for the signed-out suggestion limits) | 24 hours | `core.signed_out_suggestions.prune`, at every signed-out send, and nightly by the backup task |
 
 Three rules are load-bearing rather than incidental:
 
@@ -403,9 +404,22 @@ band, grep `route timing` from the api's log.
 - `ROUTER_PARALLEL_CALLS` (default 3) is the number of router calls one route
   may have in flight at a time: the calm search's wide `/route` asks, the
   traces of candidate routes and legs, and the delay measure. At 1 every call
-  runs in turn, as before v0.7.0. Valhalla sees up to this many calls per
-  routing slot, so up to 3 x 3 on compose's default pool.
-- `ROUTE_CACHE_TTL_S` (default 600; 0 turns it off) keeps a finished answer
+  runs in turn, as before v0.7.0. The pool is one per api worker process, and
+  a transit trip's later rides (`api._later_rides`) run on it too rather than
+  on a pool of their own; a plan on a pool thread makes its calls in turn. So
+  one routing slot has at most `ROUTER_PARALLEL_CALLS` + 1 router calls in
+  flight (the pool's threads and the request's own thread): 4 per slot at the
+  default, 12 on compose's 3 slots, 8 on the beta's 2. Read from the
+  environment by `config/settings.py`; compose passes it to the api.
+- Database connections: the request thread holds one, and a transit trip's
+  later rides each open one on their pool thread (closed when the ride is
+  routed). That is at most `ROUTER_PARALLEL_CALLS` more per routing slot. On
+  the beta (`max_connections=40`): 6 api workers, one each, plus 2 slots x 3
+  = 12 for the api at most; the worker's procrastinate (4 jobs and its
+  listener) about 6; `migrate` and an operator's shell 1 each. About 20 at
+  the worst case, half the limit. Raising `ROUTER_PARALLEL_CALLS` or
+  `BETA_WEB_CONCURRENCY` adds to it: keep the sum under 40.
+- `ROUTE_CACHE_TTL_S` (default 600; 0 turns it off; read from the environment, passed to the api by compose) keeps a finished answer
   for 10 minutes in each api worker's memory, up to 128 answers per worker, so
   a hit happens only when the same worker serves the repeat. The key holds
   the whole request, rounded to about 10 m, with every dial. It also holds the

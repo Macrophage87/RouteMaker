@@ -180,3 +180,46 @@ def test_the_image_fetch_names_only_mapillarys_image_hosts() -> None:
         street_photo.image_get("https://example.com/a.jpg", {}, 1.0)
     with pytest.raises(street_photo.Unavailable):
         street_photo.image_get("http://scontent.xx.fbcdn.net/a.jpg", {}, 1.0)
+
+
+class Graph:
+    """Mapillary's Graph API: the search answer, or one image's record."""
+
+    def __init__(self, thumb: str) -> None:
+        self.calls: list[tuple[str, dict]] = []
+        self.thumb = thumb
+
+    def __call__(self, url: str, headers: dict, _timeout: float) -> bytes:
+        self.calls.append((url, headers))
+        if url.startswith(street_photo.API_URL):
+            return (DATA / "images.json").read_bytes()
+        return json.dumps({"thumb_1024_url": self.thumb}).encode()
+
+
+def test_another_process_finds_the_image_again_through_the_graph_api(settings) -> None:
+    """Gunicorn runs several workers: the one that showed the photo is often not the one the
+    image request reaches. A fresh StreetPhoto (another process's memory) asks the Graph API for
+    the image's file URL, with the token in the header only, checks its host, then fetches it."""
+    settings.MAPILLARY_ACCESS_TOKEN = SECRET
+    shown_by = street_photo.StreetPhoto(Fake(), bearing=lambda *_: EAST_WEST)
+    assert shown_by.photo(LON, LAT, 5)["image_url"] == "/api/street-photo/image/1002"
+    thumb = "https://scontent-iad3-1.xx.fbcdn.net/m1/v/t6/An1002.jpg?oe=1"
+    graph, image = Graph(thumb), Fake(body=b"\xff\xd8jpeg")
+    other = street_photo.StreetPhoto(graph, bearing=lambda *_: EAST_WEST, fetch_image=image)
+    assert other.image("1002") == b"\xff\xd8jpeg"
+    ((url, headers),) = graph.calls
+    assert url == "https://graph.mapillary.com/1002?fields=thumb_1024_url"
+    assert headers["Authorization"] == f"OAuth {SECRET}" and SECRET not in url
+    assert image.calls[0][0] == thumb and "Authorization" not in image.calls[0][1]
+    assert other.image("1002") == b"\xff\xd8jpeg" and len(graph.calls) == 1  # kept
+
+
+def test_a_looked_up_url_on_another_host_is_not_fetched(settings) -> None:
+    settings.MAPILLARY_ACCESS_TOKEN = SECRET
+    image = Fake(body=b"x")
+    other = street_photo.StreetPhoto(
+        Graph("https://evil.example/a.jpg"), bearing=lambda *_: None, fetch_image=image
+    )
+    assert other.image("1002") is None and image.calls == []
+    settings.MAPILLARY_ACCESS_TOKEN = ""
+    assert street_photo.StreetPhoto(Graph("x"), fetch_image=image).image("1002") is None

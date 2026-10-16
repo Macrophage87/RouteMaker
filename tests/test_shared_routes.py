@@ -43,6 +43,15 @@ def new_id() -> str:
     return secrets.token_hex(16)
 
 
+def planned(**changes) -> dict:
+    """A real planner answer (tests/data/route_answer.json, the /api/route answer of
+    test_route_api's standard route), with a rider's weight in its dials."""
+    answer = json.loads((REPO / "tests" / "data" / "route_answer.json").read_text())
+    answer["dials"]["system_weight_kg"] = 82
+    answer["effort_m"] = 1700.0
+    return {**answer, **changes}
+
+
 def body(**changes) -> dict:
     return {
         "id": new_id(),
@@ -51,13 +60,7 @@ def body(**changes) -> dict:
         "line": LINE,
         "distance_m": 1520.4,
         "inputs": INPUTS,
-        "answer": {
-            "distance_m": 1520.4,
-            "geometry": {"type": "LineString"},
-            "candidates": [{"x": 1}],
-            "effort_m": 1700.0,
-            "dials": {"stress": 70, "hills": 0, "system_weight_kg": 82},
-        },
+        "answer": planned(),
         **changes,
     }
 
@@ -82,7 +85,30 @@ class TestSharedRoutes:
         assert out["line"] == LINE and out["inputs"] == INPUTS
         assert out["distance_m"] == 1520.4 and out["source"] == "plan"
         assert out["name"] == "Lincoln Memorial to Logan Circle"
-        assert out["answer"]["distance_m"] == 1520.4
+        assert out["answer"]["distance_m"] == 2200.0
+        assert out["answer"]["stress_m"] == sent["answer"]["stress_m"]
+
+    def test_the_answer_is_read_as_the_planners_own(self) -> None:
+        """The answer is served back as planner output, so it is read through RouteOut: a key
+        the planner never writes is dropped, a malformed answer or an overlong string is
+        refused."""
+        client = Client()
+        sent = body(
+            answer=planned(script="<x>", geometry={"type": "LineString", "coordinates": []})
+        )
+        sent["answer"]["profile"] = None
+        assert post(client, sent).status_code == 201
+        kept = SharedRoute.objects.get(pk=sent["id"]).answer
+        assert "script" not in kept and kept["preset"] == "default"
+        for bad in (
+            {"distance_m": 1520.4, "geometry": {"type": "LineString"}},
+            planned(preset="nope"),
+            planned(stress_m="lots"),
+            planned(attribution=["x" * 2001]),
+            [1, 2],
+        ):
+            r = post(client, body(answer=bad))
+            assert r.status_code == 400 and r.json()["field"] == "answer", bad
 
     def test_no_weight_and_nothing_of_the_sharer_is_kept(self) -> None:
         client = Client()
@@ -113,7 +139,9 @@ class TestSharedRoutes:
 
     def test_an_answer_without_a_weight_keeps_its_effort(self) -> None:
         client = Client()
-        sent = body(answer={"distance_m": 1520.4, "effort_m": 1700.0, "dials": {"stress": 70}})
+        answer = planned()
+        answer["dials"]["system_weight_kg"] = None
+        sent = body(answer=answer)
         post(client, sent)
         assert SharedRoute.objects.get(pk=sent["id"]).answer["effort_m"] == 1700.0
 
@@ -154,6 +182,12 @@ class TestSharedRoutes:
         r = post(Client(), body(**changes))
         assert r.status_code == 400 and r.json()["error"]
         assert not SharedRoute.objects.exists()
+
+    def test_a_deeply_nested_body_is_a_400(self) -> None:
+        """Nesting past the JSON parser's stack raises RecursionError: refused, not a 500."""
+        deep = "[" * 200_000 + "]" * 200_000
+        r = Client().post(URL, data=deep, content_type="application/json", **addr())
+        assert r.status_code == 400 and r.json()["error"] == "The body is not JSON."
 
     def test_at_most_2_mb(self) -> None:
         assert shared_routes.MAX_BYTES == 2 * 1024 * 1024

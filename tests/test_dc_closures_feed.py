@@ -144,6 +144,35 @@ class TestRefresh:
         # Constitution Avenue was not placed: it is looked for again only after RETRY_PLACE_S.
         assert placer.calls == first
 
+    def test_nothing_starts_past_the_refresh_budget(self) -> None:
+        """Every 15 minutes on a maintenance slot: past `REFRESH_BUDGET_S` no fetch, retry or
+        place look-up starts, a fetch is cut to what is left, and a source not reached keeps
+        its last good copy and is due again next time."""
+        sources.refresh(Net(), no_sleep, lambda: NOW, Placer())
+        assert sources.REFRESH_BUDGET_S <= 5 * 60
+
+        clock = [0.0]
+        timeouts: list[float] = []
+
+        class Slow(Net):
+            def __call__(self, url, timeout, headers):
+                timeouts.append(timeout)
+                clock[0] += 70.0  # each fetch takes 70 s of the budget
+                return super().__call__(url, timeout, headers)
+
+        placer = Placer()
+        later = NOW + timedelta(hours=2)
+        net = Slow()
+        line = sources.refresh(
+            net, no_sleep, lambda: later, placer, budget_s=100.0, clock=lambda: clock[0]
+        )
+        assert "not reached in time" in line
+        assert all(t <= sources.TIMEOUT_S for t in timeouts) and timeouts[1] <= 30.0
+        assert clock[0] <= 100.0 + 70.0, "nothing was started past the budget"
+        # A source not reached keeps its copy from the first refresh, unfailed.
+        alertdc = stored("alertdc")
+        assert alertdc["read_at"] == NOW.isoformat() and alertdc["failed_at"] is None
+
     def test_a_failed_source_keeps_its_last_good_copy(self) -> None:
         sources.refresh(Net(), no_sleep, lambda: NOW, Placer())
         later = NOW + timedelta(hours=2)

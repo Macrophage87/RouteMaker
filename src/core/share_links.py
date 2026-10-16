@@ -16,6 +16,7 @@ and the link is in the POST body, so it is in no URL or log line, and it is kept
 
 from __future__ import annotations
 
+import http.client
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -55,26 +56,45 @@ class Unresolved(Exception):
     """The short link could not be followed to a map link."""
 
 
+def _port_ok(parts: urllib.parse.SplitResult) -> bool:
+    """Whether the link names no port or 443; a port that is not a number (`parts.port` raises
+    ValueError) is not."""
+    try:
+        return parts.port in (None, 443)
+    except ValueError:
+        return False
+
+
+def _split(url: str) -> urllib.parse.SplitResult | None:
+    try:
+        return urllib.parse.urlsplit(url)
+    except ValueError:  # e.g. an unclosed IPv6 bracket
+        return None
+
+
 def is_short_link(url: str) -> bool:
-    parts = urllib.parse.urlsplit(url.strip())
+    parts = _split(url.strip())
+    if parts is None:
+        return False
     prefix = SHORT_HOSTS.get(parts.hostname or "")
     return (
         parts.scheme == "https"
         and prefix is not None
         and not parts.username
-        and parts.port in (None, 443)
+        and _port_ok(parts)
         and parts.path.startswith(prefix)
         and len(parts.path) > len(prefix)
     )
 
 
 def _allowed_hop(url: str) -> bool:
-    parts = urllib.parse.urlsplit(url)
+    parts = _split(url)
     return (
-        parts.scheme == "https"
+        parts is not None
+        and parts.scheme == "https"
         and parts.hostname in FOLLOW_HOSTS
         and not parts.username
-        and parts.port in (None, 443)
+        and _port_ok(parts)
     )
 
 
@@ -98,6 +118,10 @@ def location_of(url: str, timeout: float) -> str | None:
         raise Unresolved(f"the link answered {answer.code}") from answer
     except (TimeoutError, urllib.error.URLError, ConnectionError, OSError) as error:
         raise Unresolved(str(error)) from error
+    except (http.client.HTTPException, ValueError) as error:
+        # A hop urllib cannot ask (http.client.InvalidURL: a control character in the
+        # Location) or a malformed answer: unresolved, never a 500.
+        raise Unresolved(type(error).__name__) from error
 
 
 def resolve(url: str, get_location: LocationOf = location_of) -> str:
@@ -111,7 +135,10 @@ def resolve(url: str, get_location: LocationOf = location_of) -> str:
         target = get_location(current, TIMEOUT_S)
         if target is None:
             break
-        target = urllib.parse.urljoin(current, target)
+        try:
+            target = urllib.parse.urljoin(current, target)
+        except ValueError:
+            raise Unresolved("the link led somewhere unreadable") from None
         if not _allowed_hop(target) or len(target) > MAX_URL:
             raise Unresolved("the link led off the map sites")
         current = target

@@ -235,10 +235,15 @@ export async function sendReport311(origin: string, kind: ReportKind, place: Rep
   const description = reportText(kind, place, note);
   if (!description) return false;
   try {
+    // A fresh short-lived ticket from GET /api/report311 first: the server takes a send only with one.
+    const status = await post(`${origin}/api/report311`, { headers: { Accept: "application/json" } });
+    if (!status.ok) return false;
+    const { ticket } = (await status.json()) as { ticket?: unknown };
+    if (typeof ticket !== "string") return false;
     const response = await post(`${origin}/api/report311`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ kind, lat: Number(place.point[1].toFixed(5)), lon: Number(place.point[0].toFixed(5)), description }),
+      body: JSON.stringify({ kind, lat: Number(place.point[1].toFixed(5)), lon: Number(place.point[0].toFixed(5)), description, ticket }),
     });
     if (!response.ok) return false;
     const body = (await response.json()) as { sent?: unknown };

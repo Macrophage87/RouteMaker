@@ -16,7 +16,7 @@ import pytest
 from test_route_api import router, segments, standard_router
 from test_transit import CAPITOL_HILL, DOWNTOWN, SHARE, installed, post_transit
 
-from core import api, gbfs, presets, routing, transit
+from core import api, gbfs, parallel, presets, routing, transit
 
 # The fixtures these tests take by name.
 FIXTURES = (router, segments, installed)
@@ -25,8 +25,8 @@ db = pytest.mark.django_db(transaction=True)
 
 
 def later_leg() -> bool:
-    """Whether this router call is a later ride's (they run in the pool's threads)."""
-    return threading.current_thread().name.startswith("transit-leg")
+    """Whether this router call is a later ride's (they run on the router pool, core.parallel)."""
+    return parallel.inside()
 
 
 def metro_key(client) -> str:
@@ -213,6 +213,54 @@ class TestLaterRides:
         last = steps[-1]
         assert last["mode"] == "bikeshare" and not last["route_line"]
         assert last["stress_spans"] and len(last["coordinates"]) >= 2
+
+
+@db
+@pytest.mark.usefixtures("weekday_clock")
+@pytest.mark.parametrize("bound", [1, 2, 3])
+def test_a_transit_plan_keeps_to_the_router_pools_bound(
+    client, segments, router, installed, monkeypatch, settings, bound
+) -> None:
+    """The later rides run on the router pool (`core.parallel`), not a pool of their own, so a
+    transit request never has more than ROUTER_PARALLEL_CALLS + 1 router calls in flight (the
+    pool's threads and the request's own). With the pool off they run in turn after the line."""
+    import time
+
+    settings.ROUTER_PARALLEL_CALLS = bound
+    fake = router(standard_router())
+    lock = threading.Lock()
+    state = {"now": 0, "most": 0}
+
+    def slow(url, payload, timeout):
+        with lock:
+            state["now"] += 1
+            state["most"] = max(state["most"], state["now"])
+        try:
+            time.sleep(0.02)
+            return fake(url, payload, timeout)
+        finally:
+            with lock:
+                state["now"] -= 1
+
+    real = routing.plan
+    order: list[str] = []
+
+    def spy(points, preset_name, **kwargs):
+        order.append("later" if later_leg() else "line")
+        return real(points, preset_name, **kwargs)
+
+    key = metro_key(client)
+    monkeypatch.setattr(routing, "_transport", slow)
+    monkeypatch.setattr(routing, "plan", spy)
+    state["most"] = 0
+    response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], transit_option=key)
+    assert response.status_code == 200, response.content
+    assert response.json()["transit"]["steps"][-1]["stress_spans"]
+    assert 1 <= state["most"] <= max(1, bound) + (1 if bound > 1 else 0)
+    if bound == 1:
+        assert order == ["line", "line"]  # the later ride, in turn, on the request's thread
+    else:
+        assert sorted(order) == ["later", "line"]
 
 
 def test_with_rides_times_each_routed_ride_and_keeps_walks() -> None:

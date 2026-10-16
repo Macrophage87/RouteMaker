@@ -13,7 +13,8 @@ route again within minutes; each used to be a whole plan. An answer is kept here
 - whether it was planned as a long ride, or a long calm plan;
 - the ride time: the setting asked for, or the one of the moment where none was (so a
   plan made just before the evening rush is not given once the rush starts), and the
-  instant the router is asked about (`routing.planning_time`);
+  instant the router is asked about (`routing.planning_time`), and whether the closures
+  are matched at now or at that instant (`workzones.ride_moment`);
 - the live segment table and its edit generation (`stress_tiles.live_state`): a
   promotion, or any road-panel edit or undo (`stress_edits.bump_generation`), is a new
   key, so no answer from before it is given again;
@@ -217,7 +218,9 @@ class Key:
     valid_s: float
 
 
-def key_for(fields: dict, when: str, planning_at: str, long_plan: str) -> Key | None:
+def key_for(
+    fields: dict, when: str, planning_at: str, long_plan: str, now: datetime | None = None
+) -> Key | None:
     """The key for a request (`fields`: the validated request), planned with the ride
     time `when` (the setting used) and `planning_at` (the router's instant), as
     `long_plan` ("", "long_ride" or "long_calm"). None where the state it depends on
@@ -226,13 +229,17 @@ def key_for(fields: dict, when: str, planning_at: str, long_plan: str) -> Key | 
 
     if ttl_s() <= 0:
         return None
-    now = datetime.now(UTC)
+    now = now or datetime.now(UTC)
     try:
         closures, next_change = _closures_part(now)
         made = {
             "request": request_part(fields),
             "when": when,
             "planning_at": planning_at,
+            # The moment closures are matched at (`workzones.ride_moment`): now while the dial
+            # is on the setting of the moment, else `planning_at`. A dial set to "weekday peak"
+            # is now at 8:55 and next Tuesday's 8:00 at 9:05, with the same `when`.
+            "ride_now": ridetime.when_at(now) == when,
             "long": long_plan,
             "edits": _edits_part(),
             "closures": closures,

@@ -100,9 +100,11 @@ WORK_ZONES_TIMEOUT_S = 5 * 60
 # DC's closures (v0.7.0 plan, "DC closures source"): every fifteen minutes, each source read
 # when it is due (AlertDC and MPD every 15 min, NPS every 30, DDOT's permits every hour;
 # `core.closure_sources.EVERY_S`). Placing new permits and advisories asks the database,
-# Photon and the router, so it has longer than the work zones.
+# Photon and the router. The refresh stops starting work after
+# `core.closure_sources.REFRESH_BUDGET_S` (5 minutes); this hard deadline is the backstop, so
+# the task holds a maintenance slot at most 6 of every 15 minutes (it was 12).
 DC_CLOSURES_CRON = "*/15 * * * *"
-DC_CLOSURES_TIMEOUT_S = 12 * 60
+DC_CLOSURES_TIMEOUT_S = 6 * 60
 
 # The plan's job rule: retried with exponential backoff, up to five times.
 # Procrastinate counts an attempt when a run finishes or is scheduled for
@@ -785,6 +787,7 @@ def nightly_backup(timestamp: int) -> None:
     """
     from django.conf import settings
 
+    from core import shared_routes, signed_out_suggestions
     from core.runs import prune_job_rows, prune_run_rows, record
     from pipeline import retention
 
@@ -799,9 +802,14 @@ def nightly_backup(timestamp: int) -> None:
             pruned_dumps = retention.prune_backups(settings.BACKUP_DIR, keep=BACKUP_KEEP)
             pruned_runs = prune_run_rows()
             pruned_jobs = prune_job_rows()
+            # Rows that are otherwise dropped only when someone shares, opens or sends
+            # (core.shared_routes, core.signed_out_suggestions): a quiet server drops them too.
+            pruned_shared = shared_routes.prune()
+            pruned_sends = signed_out_suggestions.prune()
         run.detail = (
             f"{destination}; pruned {len(pruned_dumps)} old dumps, "
-            f"{pruned_runs} run rows, {pruned_jobs} finished job rows"
+            f"{pruned_runs} run rows, {pruned_jobs} finished job rows, "
+            f"{pruned_shared} shared routes, {pruned_sends} signed-out send rows"
         )
         run.save(update_fields=["detail"])
 

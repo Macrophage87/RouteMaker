@@ -222,6 +222,11 @@ services:
       # The geocoder place search and place names are proxied to
       # (core.geocode); on this network only, like the routers.
       PHOTON_URL: ${PHOTON_URL:-http://photon:2322}
+      # v0.7.0 "Faster routing" (docs/OPERATIONS.md): router calls one route may have in
+      # flight on its pool (1: one at a time), and how long a finished answer is kept in a
+      # worker's memory (0: not kept).
+      ROUTER_PARALLEL_CALLS: ${ROUTER_PARALLEL_CALLS:-3}
+      ROUTE_CACHE_TTL_S: ${ROUTE_CACHE_TTL_S:-600}
       # Live data keys (v0.7.0), read by this service alone and never sent to a browser:
       # WMATA's developer key (live Metro trains, incidents, elevator outages) and
       # Mapillary's client token (the road panel's street photo). Empty: off.
@@ -336,6 +341,16 @@ services:
       # The owner's NPS key for park alerts on the closures check (v0.7.0,
       # core.closure_sources). Empty, the NPS alerts are off.
       NPS_API_KEY: ${NPS_API_KEY:-}
+      # The closures refresh (refresh_dc_closures) places an advisory on its streets with the
+      # self-hosted Photon and checks it with the router, so this service reaches them as the
+      # api does, by the same variables.
+      VALHALLA_STANDARD_URL: ${VALHALLA_STANDARD_URL:-http://valhalla-standard:8002}
+      VALHALLA_NO_TRAIL_URL: ${VALHALLA_NO_TRAIL_URL:-http://valhalla-no-trail:8002}
+      VALHALLA_EBIKE_URL: ${VALHALLA_EBIKE_URL:-http://valhalla-ebike:8002}
+      VALHALLA_WEEKEND_URL: ${VALHALLA_WEEKEND_URL:-http://valhalla-weekend:8002}
+      VALHALLA_OFFROAD_URL: ${VALHALLA_OFFROAD_URL:-http://valhalla-offroad:8002}
+      VALHALLA_MTB_URL: ${VALHALLA_MTB_URL:-http://valhalla-mtb:8002}
+      PHOTON_URL: ${PHOTON_URL:-http://photon:2322}
     volumes:
       - ${DATA_ROOT}/backups:/data/backups
       # Read-only, and for one caller: `check_operations`. Its fourth check is

@@ -2046,6 +2046,31 @@ def test_the_backup_also_prunes_the_run_and_job_history(monkeypatch, tmp_path) -
     assert "1 run rows, 1 finished job rows" in detail
 
 
+@pytest.mark.django_db(transaction=True)
+def test_the_backup_also_prunes_shared_routes_and_signed_out_sends(monkeypatch, tmp_path) -> None:
+    """Shared routes and signed-out send rows were dropped only when someone shared, opened or
+    sent; a quiet server kept them past their retention. The nightly task drops them too."""
+    from core import shared_routes, signed_out_suggestions
+    from core.models import ScheduledRun, SharedRoute, SignedOutSend
+
+    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
+    now = timezone.now()
+    line = [[-77.0, 38.9], [-77.01, 38.91]]
+    old = now - shared_routes.KEEP - timedelta(days=1)
+    SharedRoute.objects.create(id="a" * 32, line=line, distance_m=1.0, last_opened_at=old)
+    SharedRoute.objects.create(id="b" * 32, line=line, distance_m=1.0, last_opened_at=now)
+    stale = now - signed_out_suggestions.KEEP - timedelta(hours=1)
+    SignedOutSend.objects.create(device="d" * 64, osm_way_id=1, created_at=stale)
+    SignedOutSend.objects.create(device="d" * 64, osm_way_id=2, created_at=now)
+
+    app.tasks["nightly_backup"].func(timestamp=0)
+
+    assert list(SharedRoute.objects.values_list("id", flat=True)) == ["b" * 32]
+    assert list(SignedOutSend.objects.values_list("osm_way_id", flat=True)) == [2]
+    detail = ScheduledRun.objects.filter(task="nightly_backup").order_by("-started_at")[0].detail
+    assert "1 shared routes, 1 signed-out send rows" in detail
+
+
 def test_the_local_dump_retention_is_a_week() -> None:
     """Long enough that corruption noticed over a weekend still has a local copy
     to restore from; short enough that the volume carries gigabytes rather than a

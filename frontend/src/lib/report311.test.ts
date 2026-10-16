@@ -64,13 +64,17 @@ test("the server's sender: asked once whether it is on, and a report sent with t
   assert.equal(await report311Enabled("https://x", fakeFetch([{ status: 200, body: { enabled: false } }]).fn), false);
   assert.equal(await report311Enabled("https://x", fakeFetch([{ status: 0, throws: true }]).fn), false);
 
-  const send = fakeFetch([{ status: 200, body: { sent: true, id: "1" } }]);
+  // A fresh signed ticket is asked for first (GET), and sent back with the report (POST).
+  const send = fakeFetch([{ status: 200, body: { enabled: true, ticket: "t1" } }, { status: 200, body: { sent: true, id: "1" } }]);
   assert.equal(await sendReport311("https://x", "pothole", JUNCTION, "", send.fn), true);
-  const body = JSON.parse(String(send.calls[0].init?.body));
-  assert.equal(send.calls[0].init?.method, "POST");
-  assert.deepEqual(body, { kind: "pothole", lat: 38.91057, lon: -77.0389, description: `Location: on Q Street Northwest near R Street Northwest, Washington, DC. ${J_GPS}.` });
+  assert.equal(send.calls[0].init?.method, undefined);
+  const body = JSON.parse(String(send.calls[1].init?.body));
+  assert.equal(send.calls[1].init?.method, "POST");
+  assert.deepEqual(body, { kind: "pothole", lat: 38.91057, lon: -77.0389, description: `Location: on Q Street Northwest near R Street Northwest, Washington, DC. ${J_GPS}.`, ticket: "t1" });
   // Off, refused or no signal: not sent, and the pick falls back to the text message.
-  assert.equal(await sendReport311("https://x", "pothole", JUNCTION, "", fakeFetch([{ status: 503, body: { code: "dc311_off" } }]).fn), false);
+  assert.equal(await sendReport311("https://x", "pothole", JUNCTION, "", fakeFetch([{ status: 200, body: { enabled: false } }]).fn), false);
+  const ticketed = { status: 200, body: { enabled: true, ticket: "t1" } };
+  assert.equal(await sendReport311("https://x", "pothole", JUNCTION, "", fakeFetch([ticketed, { status: 503, body: { code: "dc311_off" } }]).fn), false);
   assert.equal(await sendReport311("https://x", "pothole", JUNCTION, "", fakeFetch([{ status: 0, throws: true }]).fn), false);
 });
 
