@@ -41,6 +41,14 @@ test("RIDE-8: a wake lock the browser lets go mid-ride is asked again, and the s
   assert.match(output, /visible: \(\) => typeof document === "undefined" \|\| document\.visibilityState === "visible"/);
 });
 
+test("RIDE-9: voice chosen after Start is unlocked inside that change's press, saying Voice on.", () => {
+  assert.match(ride, /export const VOICE_ON = "Voice on\.";/);
+  assert.match(ride, /if \(!toVoice\(before\.output\) && toVoice\(next\.output\)\) voice\.unlock\(VOICE_ON\);/);
+  const app = source("../App.tsx");
+  const change = app.slice(app.indexOf("const changeRidePrefs = useCallback("), app.indexOf("const changeRidePrefs = useCallback(") + 400);
+  assert.match(change, /voiceTurnedOn\(ridePrefsNow\.current, next\);\s*writeRidePrefs\(next\);/);
+});
+
 test("RIDE-5: Re-plan from here answers every press: finding, still waiting, or no fix yet", () => {
   assert.equal(REPLAN_FINDING, "Finding a new way from here.");
   assert.equal(REPLAN_STILL_WAITING, "Still waiting for the last re-plan.");

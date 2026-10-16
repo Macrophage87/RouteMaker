@@ -199,6 +199,13 @@ export function primeRideVoice(prefs: RidePrefs): void {
   if (toVoice(prefs.output)) rideVoice.unlock(" ");
 }
 
+export const VOICE_ON = "Voice on.";
+
+/** Called inside the press that changes the ride's outputs: a voice newly chosen is unlocked there (iOS). */
+export function voiceTurnedOn(before: RidePrefs, next: RidePrefs, voice: Pick<Voice, "unlock"> = rideVoice): void {
+  if (!toVoice(before.output) && toVoice(next.output)) voice.unlock(VOICE_ON);
+}
+
 /** Said politely when Start's closure check takes more than a moment (CLOSURE_SLOW_MS). */
 export const CHECKING_CLOSURES = "Checking closures…";
 export const CLOSURE_SLOW_MS = 600;
