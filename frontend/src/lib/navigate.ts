@@ -107,11 +107,14 @@ export interface CueSheetRow {
   text: string;
 }
 
-/** The turns, stops and end ahead of `progressM`, in order, each with the distance from the one before. */
+/**
+ * The turns, stops and end ahead of `progressM`, in order, each with the distance from the one before. A jog's
+ * second turn has no row: the first's says it.
+ */
 export function cueSheet(model: RideModel, progressM: number): CueSheetRow[] {
   let from = progressM;
   return model.cues
-    .filter((c) => c.atM > progressM + 1 && (c.kind === "turn" || c.kind === "onto" || c.kind === "stop" || c.kind === "end"))
+    .filter((c) => c.atM > progressM + 1 && !c.joined && (c.kind === "turn" || c.kind === "onto" || c.kind === "stop" || c.kind === "end"))
     .slice(0, CUE_SHEET_ROWS)
     .map((c, i) => {
       const row = { index: c.index, distance: `${i === 0 ? "In" : "Then in"} ${formatDistance(c.atM - from)}`, text: c.text };
@@ -166,6 +169,20 @@ const MAX_SPEED_MS = 20;
 
 export type CueKind = "turn" | "onto" | "hazard" | "walk" | "busy" | "calmer" | "unpaved" | "stop" | "end";
 
+/** A turn's movement: a bear is a change of street a little off straight (the API's describe.SLIGHT_MIN_DEG). */
+export type TurnMovement = "left" | "right" | "bear_left" | "bear_right";
+
+function isTurnMovement(movement: string | null | undefined): movement is TurnMovement {
+  return movement === "left" || movement === "right" || movement === "bear_left" || movement === "bear_right";
+}
+
+/**
+ * A jog (the owner, 2026-10-16, on Q Street NW: "complex turns which aren't announced"): a turn this
+ * close after another is said with it, "Right onto 6th Street, then immediately bear left onto Rhode
+ * Island Avenue.", early enough for both.
+ */
+export const JOG_M = 100;
+
 export interface Cue {
   /** Its place in the list, also its key. */
   index: number;
@@ -177,7 +194,7 @@ export interface Cue {
    * Street Northwest."); any other cue's is the API's sentence ("R Street Northwest, busy road (LTS 3).").
    */
   text: string;
-  movement: "left" | "right" | null;
+  movement: TurnMovement | null;
   /** The street the cue turns onto or is on, as the API names it; null where unnamed. */
   street: string | null;
   severity: "orange" | "red" | "avoid" | null;
@@ -185,6 +202,14 @@ export interface Cue {
   tier: number | null;
   /** A stop's number (from 1); null on any other cue. */
   stop: number | null;
+  /** A jog's first turn: the turn just after it (within JOG_M), said with it. */
+  then?: { movement: TurnMovement; street: string | null };
+  /**
+   * A jog's second turn: said with the turn before (its `then`); on its own only at "now", and only where the
+   * turn before's "now" was never said (a gap in the fixes, a ride started or rejoined between the two). Still on
+   * the card and in the courses; not a row of the cue sheets.
+   */
+  joined?: boolean;
   /** The description entry's kind it came from (a course export keeps Avoid and work-zone hazards); absent on the end. */
   source?: DescriptionEntry["kind"];
   /**
@@ -214,10 +239,11 @@ export interface RideModel {
 
 /**
  * A turn's cue (v0.7.0, "Go riding fixes" item 2): the turn and the street, nothing else. "Left onto R
- * Street Northwest."; "Right onto the path." for a path with no name; "Left." where the street has none.
+ * Street Northwest."; "Right onto the path." for a path with no name; "Left." where the street has none;
+ * "Bear right onto ..." for a bear.
  */
-export function turnWords(movement: "left" | "right", street: string | null): string {
-  const turn = movement === "left" ? "Left" : "Right";
+export function turnWords(movement: TurnMovement, street: string | null): string {
+  const turn = MOVEMENT_WORDS[movement];
   if (street && /^(?:unnamed )?path$/i.test(street.trim())) return `${turn} onto the path.`;
   return street && !isUnnamed(street) ? `${turn} onto ${street}.` : `${turn}.`;
 }
@@ -349,8 +375,7 @@ function cueKindOf(entry: DescriptionEntry, before: DescriptionEntry | null, las
   // A categorised climb (FOLLOWUP-HILL-SEEK) is in the list to read, not a cue on the move.
   if (entry.kind === "climb") return null;
   if (entry.kind === "junction") return entry.severity || entry.group ? "hazard" : null;
-  const movement = entry.turn?.movement ?? null;
-  if (movement === "left" || movement === "right") return "turn";
+  if (isTurnMovement(entry.turn?.movement)) return "turn";
   if (entry.turn?.severity) return "hazard";
   // The first stretch is where the ride starts: nothing to warn of ahead of it.
   if (before === null) return null;
@@ -402,11 +427,11 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
           kind === "stop"
             ? `Stop ${entry.via ?? cues.filter((c) => c.kind === "stop").length + 1}.`
             : kind === "turn"
-              ? turnWords(entry.turn?.movement as "left" | "right", entry.turn?.onto ?? entry.street ?? null)
+              ? turnWords(entry.turn?.movement as TurnMovement, entry.turn?.onto ?? entry.street ?? null)
               : kind === "onto"
                 ? ontoWords(entry.street as string)
                 : sentenceOf(entry),
-        movement: kind === "turn" ? (entry.turn?.movement as "left" | "right") : null,
+        movement: kind === "turn" ? (entry.turn?.movement as TurnMovement) : null,
         street: entry.turn?.onto ?? entry.street ?? null,
         severity: entry.severity ?? entry.turn?.severity ?? null,
         tier: entry.tier,
@@ -422,9 +447,32 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
       lastNamed = null;
     }
   }
+  joinJogs(cues);
   cues.push({ index: cues.length, kind: "end", atM: lengthM, text: endWords(route.arrival_side), movement: null, street: null, severity: null, tier: null, stop: null });
   const paceMs = route.distance_m > 0 && route.duration_s > 0 ? route.distance_m / route.duration_s : null;
   return { coordinates, along, lengthM, cues, stretches, paceMs, ...(vias.length ? { passes } : {}) };
+}
+
+/** ", then immediately bear left onto Rhode Island Avenue.": a jog's second turn, after the first. */
+function thenWords(then: NonNullable<Cue["then"]>): string {
+  return `, then immediately ${lowerFirst(turnWords(then.movement, then.street))}`;
+}
+
+/**
+ * A jog: each turn within JOG_M after a turn (not itself a jog's second) is said with it, the first
+ * cue's text "Right onto 6th Street, then immediately bear left onto ...", the second kept (`joined`)
+ * for the card and the courses (`phasesFor`, `step`).
+ */
+function joinJogs(cues: Cue[]): void {
+  for (let i = 0; i + 1 < cues.length; i++) {
+    const first = cues[i];
+    const second = cues[i + 1];
+    if (first.kind !== "turn" || second.kind !== "turn" || first.joined || !first.movement || !second.movement) continue;
+    if (second.atM - first.atM > JOG_M) continue;
+    first.then = { movement: second.movement, street: second.street };
+    first.text = first.text.replace(/\.$/, "") + thenWords(first.then);
+    second.joined = true;
+  }
 }
 
 /** Which cues a verbosity level says unprompted (plan section 3's table; Quiet: arrival only). */
@@ -578,16 +626,16 @@ export function offThreshold(accuracyM: number): number {
   return Math.min(OFF_MAX_M, Math.max(OFF_MIN_M, OFF_ACCURACY_FACTOR * Math.max(accuracyM, 0)));
 }
 
+function lowerFirst(text: string): string {
+  return text ? text[0].toLowerCase() + text.slice(1) : text;
+}
+
 /** Speech drops the metric the screen keeps: " (90 m)", " (0.6 to 1.9 km)" and "(LTS 1)" kept. */
 export function withoutMetric(text: string): string {
   return text.replace(/\s\((?:about )?[\d.,]+(?: to [\d.,]+)? (?:km|m|km\/h)\)/g, "");
 }
 
-function lowerFirst(text: string): string {
-  return text ? text[0].toLowerCase() + text.slice(1) : text;
-}
-
-const MOVEMENT_WORDS = { left: "Left", right: "Right" } as const;
+const MOVEMENT_WORDS = { left: "Left", right: "Right", bear_left: "Bear left", bear_right: "Bear right" } as const;
 
 /** What is said for a cue at a phase, `distanceM` before it (US units only). */
 export function cueSpoken(cue: Cue, phase: Phase, distanceM: number): string {
@@ -598,12 +646,17 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number): string {
   }
   if (cue.kind === "stop") return `You have reached stop ${cue.stop}.`;
   if (phase === "now" && cue.movement) {
+    // A jog's "now" is short, the second turn being only seconds on: "Right now, then bear left onto ...".
+    if (cue.then) return `${MOVEMENT_WORDS[cue.movement]} now, then ${lowerFirst(turnWords(cue.then.movement, cue.then.street))}`;
     return `${MOVEMENT_WORDS[cue.movement]} now${cue.street ? ` onto ${cue.street}` : ""}.`;
   }
   return `In ${spokenDistance(distanceM)}, ${lowerFirst(withoutMetric(cue.text))}`;
 }
 
-/** The phases a cue is said at, at a level, farthest first, with their thresholds at a speed. */
+/**
+ * The phases a cue is said at, at a level, farthest first, with their thresholds at a speed. A jog's second turn
+ * has "now" only, which `step` marks said when the turn before says its own "now".
+ */
 export function phasesFor(level: Verbosity, cue: Cue, speedMs: number): { phase: Phase; withinM: number }[] {
   if (!says(level, cue)) return [];
   if (cue.kind === "stop" || cue.kind === "end") return [{ phase: "arrive", withinM: ARRIVE_M }];
@@ -612,6 +665,7 @@ export function phasesFor(level: Verbosity, cue: Cue, speedMs: number): { phase:
   const prepare = Math.max(PREPARE_MIN_M, PREPARE_S * v);
   const ahead = Math.max(STOKER_MIN_M, STOKER_S * v);
   const now = Math.max(NOW_M, NOW_S * v);
+  if (cue.joined) return [{ phase: "now", withinM: now }];
   if (level === "stoker") {
     // One warning ahead, and "now" at a turn (plan Q6: the stoker braces for the lean).
     return cue.kind === "turn" ? [{ phase: "ahead", withinM: ahead }, { phase: "now", withinM: now }] : [{ phase: "ahead", withinM: ahead }];
@@ -753,6 +807,8 @@ export function step(
         cue,
         phase: phase.phase,
       });
+      // A jog's "now" says its second turn too, which then says nothing of its own.
+      if (phase.phase === "now" && cue.then) said[cue.index + 1] = ["now"];
     }
     said[cue.index] = phases.slice(0, phases.indexOf(phase) + 1).map((p) => p.phase);
     // A stop is passed once reached; the next cue waits for the next fix.

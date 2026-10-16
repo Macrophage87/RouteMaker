@@ -2184,6 +2184,7 @@ def describe_route(
                             pieces[i].heading_in,
                             pieces[i].heading_out,
                             getattr(classes[i], "unpaved", None),
+                            bool(pieces[i].road and pieces[i].road.roundabout),
                         )
                         for i in range(run[0], run[1])
                     ]

@@ -260,7 +260,8 @@ export interface DescriptionEntry {
   tier: number | null;
   facility: "path" | "protected" | "lane" | null;
   turn: {
-    movement: "left" | "straight" | "right" | null;
+    /** "bear_left" / "bear_right": a change of street 20 to 60 degrees off straight (describe.SLIGHT_MIN_DEG, BEAR_MAX_DEG). */
+    movement: "left" | "straight" | "right" | "bear_left" | "bear_right" | null;
     onto: string | null;
     control: "signal" | "stop" | "cross_stop" | "all_stop" | "none" | null;
     severity: "orange" | "red" | null;
