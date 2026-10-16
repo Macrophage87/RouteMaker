@@ -177,6 +177,14 @@ def main() -> int:
                 break
             offset += len(features)
         out.write("]}")
+    if written != expected:
+        # A short download is never stored under the real name: a rerun would refuse it as
+        # already downloaded (review pipeline-8). The `.part` is kept to look at.
+        print(
+            f"{temp}: {written} features, but the service reported {expected}; not stored",
+            file=sys.stderr,
+        )
+        return 3
     temp.replace(target)
     digest = hashlib.sha256(target.read_bytes()).hexdigest()
 
@@ -221,7 +229,7 @@ The file is exactly what the service returned, one download, not edited.
 """
     (directory / "README.md").write_text(readme, encoding="utf-8")
     print(f"{target}: {written} features, sha256 {digest}")
-    return 0 if written == expected else 3
+    return 0
 
 
 if __name__ == "__main__":
