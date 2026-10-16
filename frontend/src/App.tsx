@@ -3238,6 +3238,7 @@ export function App() {
     onRide: () => openView("ride", document.activeElement instanceof HTMLElement ? document.activeElement : null),
     onPlan: () => changeMode("plan"),
     peek: goSheet === "peek",
+    full: goSheet === "full" || (!narrow && goSheet !== "peek"),
     options: goOptions ? { list: goOptions, picked: pickedOption(goOptions, bikeshareOf(shown)), busy: stale, onPick: pickOption } : null,
     // Novice and Nervous's offer where only a busy road connects (v0.7.0): the trip on a transit ride type, its
     // bike legs still planned as Novice and Nervous plans them (`noviceLegs`, sent as novice_legs, kept in the link).

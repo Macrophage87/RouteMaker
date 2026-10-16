@@ -8,9 +8,11 @@ const src = (name: string) => readFileSync(new URL(name, import.meta.url), "utf8
 const panel = src("../app/RoutePanel.tsx");
 const chart = src("../ElevationChart.tsx");
 
-test("Go's route sheet shows the compact chart under Start, bigger than peek and not for a Mass Ride", () => {
+test("Go's route sheet shows the compact chart under Start, at the full sheet only and not for a Mass Ride", () => {
   const go = panel.slice(panel.indexOf("if (goMode) {"));
-  const line = '{!go.peek && profile && chartKind(route) !== "mass" && <ElevationChart route={route} profile={profile} onScrub={onScrub} compact />}';
+  // Review F8: full sheet only (or a wide page, which has no sheet), so the half sheet is about one screen.
+  const line = '{go.full && profile && chartKind(route) !== "mass" && <ElevationChart route={route} profile={profile} onScrub={onScrub} compact />}';
+  assert.match(src("../App.tsx"), /full: goSheet === "full" \|\| \(!narrow && goSheet !== "peek"\),/);
   assert.ok(go.includes(line));
   assert.ok(go.indexOf(line) > go.indexOf('className="go-chips"'), "Start and the route's options are never pushed down by the chart");
   // The elevation alone in Go: no rolling stress or strip, so it stays short.

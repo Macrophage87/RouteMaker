@@ -96,6 +96,8 @@ export interface GoRouteControls {
   onPlan: () => void;
   /** The sheet is at its smallest (peek): the route's time, Start and the stress bar only. */
   peek: boolean;
+  /** The sheet is at full height (or the page is wide, with no sheet): the elevation chart shows (review F8). */
+  full: boolean;
   /**
    * A Bikeshare route's options, lettered A, B, C (lib/bikeshareOptions.ts), with the one the shown plan
    * rides (-1: none yet); a press re-plans that pair. Null off Bikeshare, or with one option.
@@ -797,10 +799,10 @@ export function RouteSummary({
             {actions.save && <SaveRoute {...actions.save} label={SAVE_ROUTE} chip />}
           </div>
         )}
-        {/* The elevation chart, open whenever the sheet is bigger than peek (Stephen 2026-10-13: "on Go, add an
-            elevation chart to the map as well, even if relatively flat"), under Start and the route's options so
-            it never pushes them down; its key and tables stay in Plan. */}
-        {!go.peek && profile && chartKind(route) !== "mass" && <ElevationChart route={route} profile={profile} onScrub={onScrub} compact />}
+        {/* The elevation chart (Stephen 2026-10-13: "on Go, add an elevation chart to the map as well, even if
+            relatively flat"), at the full sheet only (review F8: at half it made the sheet more than a screen), under
+            Start and the route's options so it never pushes them down; its key and tables stay in Plan. */}
+        {go.full && profile && chartKind(route) !== "mass" && <ElevationChart route={route} profile={profile} onScrub={onScrub} compact />}
         {!go.peek && picker && (
           <div id={routesId} className="go-routes" hidden={!routesOpen}>
             {picker}
