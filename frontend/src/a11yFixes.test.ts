@@ -301,6 +301,10 @@ test("a level slider's words are heard once: its <output> is hidden, the value t
   }
 });
 
+test("the map's Escape skips one a sheet has handled already (review a11y-10)", () => {
+  assert.match(mapView, /if \(event\.key !== "Escape" \|\| event\.defaultPrevented\) return;\s*\/\/ Escape calls off a drag/);
+});
+
 test("Open GPX keeps the focus while a file is read: aria-disabled, a press then does nothing (review a11y-9)", () => {
   const gpx = read("./GpxPanel.tsx");
   assert.match(gpx, /if \(reading\.kind !== "reading"\) input\.current\?\.click\(\);\s*\}\}\s*aria-disabled=\{reading\.kind === "reading" \|\| undefined\}/);

@@ -840,7 +840,8 @@ export function MapView(props: Props) {
         openInfo({ x: box.width / 2, y: box.height / 2 }, "centre");
         return;
       }
-      if (event.key !== "Escape") return;
+      // An Escape a sheet or dialog has handled already is not also the map's (review a11y-10).
+      if (event.key !== "Escape" || event.defaultPrevented) return;
       // Escape calls off a drag; otherwise it closes a via's Remove, and the
       // focus goes back where it was; otherwise a junction's card, likewise.
       if (gesture.active) finish(null);
