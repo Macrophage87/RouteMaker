@@ -2713,7 +2713,7 @@ export function App() {
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
   // Share as image (ShareCardDialog, lib/shareCard.ts), beside Share in Plan's More: the route shown, the rider's
-  // Home (never drawn: an end there is cut short), and an opened file's own name.
+  // Home (an end or stop there is cut out of the image unless the rider unchecks it), and an opened file's own name.
   const [shareCardOpen, setShareCardOpen] = useState(false);
   const verbatimTrack = !importEdited ? imported?.verbatim?.track : undefined;
   const verbatimEnds = useMemo<LonLat[]>(

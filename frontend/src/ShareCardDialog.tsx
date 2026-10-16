@@ -2,7 +2,8 @@
  * Share as image (lib/shareCard.ts; the owner, 2026-10-16): opened from "Share as image" beside Share in Plan's
  * More. The platform's modal <dialog>, as the closure and road-info dialogs are: the page behind is inert, Escape
  * closes it, the focus starts on its heading and goes back to the button on close. In it: the size, Elevation
- * profile (on by default where the route has elevation) with "Draw it on the map", QR code (off by default), the
+ * profile (on by default where the route has elevation) with "Draw it on the map", QR code (off by default), "Hide
+ * the part near Home" (only where the route starts, ends or stops at Home; checked each time it opens), the
  * preview with a text alternative describing the route, and Download, with Share where the browser can share an
  * image file. "Image ready" and the errors are said through a polite status region inside the dialog, always
  * rendered: the page's own region is outside the modal, which makes it inert (RoadInfoDialog's note, review S1).
@@ -16,6 +17,7 @@ import {
   CARD_SIZE_DEFAULT,
   CLOSE_LABEL,
   DOWNLOAD_LABEL,
+  HIDE_HOME_LABEL,
   HOME_TOO_SHORT,
   IMAGE_DOWNLOADED,
   IMAGE_FAILED,
@@ -52,7 +54,7 @@ export interface ShareCardSource {
   distanceM: number;
   climbM: number | null;
   profile: RouteProfile | null;
-  /** More points the shared link carries (an opened file's own track's ends): the QR code is refused if one is Home's. */
+  /** More points the shared link carries (an opened file's own track's ends): checked for Home as the ends and stops are. */
   homeCheck: LonLat[];
 }
 
@@ -136,9 +138,17 @@ export function ShareCardDialog({ open, source, settled, keepKey, makeLink, onCl
       window.removeEventListener("offline", update);
     };
   }, []);
-  const qr = qrAvailability({ online, settled, homeEnd: source ? homeEnd(source.line, [...source.points, ...source.homeCheck], source.home) : false });
   const [jitter] = useState(zoneJitter);
-  const drawnRoute = useMemo(() => (source ? cardRoute(source.line, source.points, homeZone(source.home, jitter)) : null), [source, jitter]);
+  const zone = useMemo(() => homeZone(source?.home ?? null, jitter), [source?.home, jitter]);
+  // Home's circle applies only where the route starts, ends or stops in it (lib/shareCard.ts homeEnd): then the QR
+  // code is refused and "Hide the part near Home" is offered, checked; a route that only passes by is drawn whole.
+  const atHome = source ? homeEnd(source.line, [...source.points, ...source.homeCheck], zone) : false;
+  const qr = qrAvailability({ online, settled, homeEnd: atHome });
+  const [hideHome, setHideHome] = useState(true);
+  const drawnRoute = useMemo(
+    () => (source ? cardRoute(source.line, source.points, hideHome ? zone : null, source.homeCheck) : null),
+    [source, zone, hideHome],
+  );
   const name = source ? cardName(source.name, source.home) : null;
 
   useEffect(() => {
@@ -163,6 +173,10 @@ export function ShareCardDialog({ open, source, settled, keepKey, makeLink, onCl
     setQrLink(null);
     setQrNote(null);
   }, [source?.line, keepKey, open]);
+  // Not remembered: checked again each time the dialog opens, and for a new route.
+  useEffect(() => {
+    setHideHome(true);
+  }, [source?.line, open]);
 
   // The preview, drawn again whenever a choice changes. One draw at a time (each is a map of its own, and a phone
   // has few to spare): a change while one is drawing waits for it, and only the latest change is drawn.
@@ -226,7 +240,7 @@ export function ShareCardDialog({ open, source, settled, keepKey, makeLink, onCl
       },
     );
     // drawnRoute and name follow source (App memoises it).
-  }, [open, source, size, profileOn, onMap, qrWanted, qrLink]);
+  }, [open, source, size, profileOn, onMap, qrWanted, qrLink, hideHome]);
 
   // Closed: the image is let go.
   useEffect(() => {
@@ -282,6 +296,12 @@ export function ShareCardDialog({ open, source, settled, keepKey, makeLink, onCl
     });
   };
 
+  const homeChoice = atHome && (
+    <div className="share-card-check">
+      <input id={`${id}-home`} type="checkbox" checked={hideHome} onChange={(event) => setHideHome(event.target.checked)} />
+      <label htmlFor={`${id}-home`}>{HIDE_HOME_LABEL}</label>
+    </div>
+  );
   const qrDisabled = !qr.ok;
   const qrWhy = !qr.ok ? qr.why : qrNote;
   return (
@@ -302,6 +322,8 @@ export function ShareCardDialog({ open, source, settled, keepKey, makeLink, onCl
         {said.text}
         {said.count % 2 === 1 ? " " : ""}
       </p>
+      {/* First, and in one place: unchecked on a route too short to draw cut, it keeps the focus as the rest appears. */}
+      {open && source && homeChoice}
       {open && source && !drawnRoute && <p className="notice">{HOME_TOO_SHORT}</p>}
       {open && source && drawnRoute && (
         <>
