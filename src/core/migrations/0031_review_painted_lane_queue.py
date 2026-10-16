@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("core", "0029_review_queue"),
+        ("core", "0030_review_map_by_view"),
     ]
 
     operations = [
