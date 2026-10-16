@@ -222,12 +222,6 @@ button.access-link {
   font-size: 1.25rem;
 }
 
-.tagline {
-  margin: 2px 0 0;
-  color: var(--text-muted);
-  font-size: 0.9rem;
-}
-
 /* The body is a column: the banner, the part that scrolls, then what is pinned under it (the route's
    GPX and link, the bottom bar), which stay in view (OWNER-DECISIONS 312). */
 .panel-body {
@@ -413,8 +407,7 @@ progress.planning {
 }
 
 /* Live regions that stay in the page while empty (the a11y review's SF3, N8). */
-.dial-rule:empty,
-.federal-status:empty {
+.dial-rule:empty {
   margin: 0;
 }
 
@@ -1247,10 +1240,6 @@ button.secondary {
 
   .panel-toggle {
     display: inline-block;
-  }
-
-  .tagline {
-    display: none;
   }
 
   .maplibregl-ctrl-bottom-right,
@@ -2188,6 +2177,13 @@ ul.station-links {
    the system's colours: their outlines and borders are real borders, which
    forced colours keeps, and the colours of the rest come from the system. */
 @media (forced-colors: active) {
+  /* A pressed toggle's own colours are replaced too, so it would look like any other button: a ring
+     marks it (review UI-6), leaving the focus ring its own. */
+  [aria-pressed="true"]:not(:focus-visible) {
+    outline: 3px solid ButtonText;
+    outline-offset: -3px;
+  }
+
   .legend svg,
   .stress-list svg,
   .swatch,
@@ -2791,12 +2787,17 @@ details.zoom-notes {
   display: none;
 }
 
+/* Kept in view while a long sheet scrolls, so Back stays one press away (review UI-5). */
 .sheet-header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin: 4px 0 0;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg);
 }
 
 .sheet-header h2 {
@@ -4677,6 +4678,11 @@ details.zoom-notes {
     max-height: calc(100% - 64px);
   }
 
+  /* With the destination line under Go's bar, the bar is taller (review UI-3; the desktop rule below). */
+  .app.go-mode:has(.go-destination) .panel.go-panel.go-full {
+    max-height: calc(100% - 114px);
+  }
+
   .app.go-mode:has(.panel.go-peek) .maplibregl-ctrl-bottom-right {
     bottom: 34%;
   }
@@ -4780,6 +4786,7 @@ details.zoom-notes {
 .section-tools {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
 }
 
@@ -4882,8 +4889,7 @@ details.fold > summary .icon {
   gap: 6px;
 }
 
-.alert-full,
-.alert-more-body {
+.alert-full {
   flex-basis: 100%;
 }
 
