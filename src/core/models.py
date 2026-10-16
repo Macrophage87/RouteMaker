@@ -2021,3 +2021,110 @@ class ReviewedClosure(models.Model):
 
     def __str__(self) -> str:
         return f"Closure {self.pk}: {self.road or 'a road'}"
+
+
+class ReviewItem(models.Model):
+    """One road in an instance admin's Review queue (core.stress_review; the owner, 2026-10-16:
+    "Add a mode that will allow people with admin access the ability to look at these roads and
+    make a ruling").
+
+    Precomputed when a build is installed (`import_cloud_build`'s dry run) or by
+    `manage.py compute_review_queue`, never per request: the rebuild's stress changes compare two
+    whole segment tables. Each queue's rows are replaced whole when it is computed again; the
+    rulings (`ReviewRuling`) keep their own copy of the queue, build and way, so they outlive it.
+    """
+
+    class Queue(models.TextChoices):
+        REBUILD = "rebuild", "Rebuild changes"
+        DISAGREEMENT = "disagreement", "Rating disagreements"
+        SIDEPATH = "sidepath", "Use side path, none mapped"
+        NARROW_RURAL = "narrow_rural", "Narrow rural roads with no posted speed"
+        WORKS_CLOSURE = "works_closure", "Industrial-area closures"
+        REMATCH = "rematch", "Overrides that did not re-match"
+
+    queue = models.CharField(max_length=16, choices=Queue.choices)
+    # The build the rebuild changes are of; "" on the other queues.
+    build_id = models.CharField(max_length=40, blank=True, default="")
+    osm_way_id = models.BigIntegerField()
+    name = models.TextField(blank=True, default="")
+    area = models.TextField(blank=True, default="")
+    reason = models.TextField(blank=True, default="")
+    # What the queue is filtered by: a change ("4-2", "closed"), the sources that disagree.
+    kind = models.CharField(max_length=40, blank=True, default="")
+    # The level before and after a rebuild; elsewhere `new_step` is the level now.
+    old_step = models.FloatField(null=True, blank=True)
+    new_step = models.FloatField(null=True, blank=True)
+    old_closed = models.BooleanField(default=False)
+    new_closed = models.BooleanField(default=False)
+    # Rules, sources and every rating held, for the item's card.
+    details = models.JSONField(default=dict, blank=True)
+    # The rating sources at either end of a disagreement.
+    sources = models.JSONField(default=list, blank=True)
+    spread = models.FloatField(null=True, blank=True)
+    length_m = models.FloatField(default=0)
+    aadt = models.IntegerField(null=True, blank=True)
+    score = models.FloatField(default=0)
+    geometry = models.MultiLineStringField(srid=4326, null=True, blank=True)
+    computed_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "review_item"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["queue", "build_id", "osm_way_id"], name="review_item_one_a_way"
+            )
+        ]
+        indexes = [
+            models.Index(fields=["queue", "build_id", "kind"], name="review_item_kind"),
+            models.Index(fields=["queue", "-score"], name="review_item_score"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.queue} way {self.osm_way_id}"
+
+
+class ReviewRuling(models.Model):
+    """An instance admin's ruling on one road of the Review queue (core.stress_review).
+
+    Accept records the decision only. Reject and Change LTS write what the road panel writes:
+    a stress change is the editor's own approved override, live edit and `StressEdit` (`edit`),
+    so it outranks an agency and the formula and is re-applied by the swap; reopening a closed
+    road is an approved access override (`access_override`), applied at the next rebuild.
+    """
+
+    class Decision(models.TextChoices):
+        ACCEPT = "accept", "Accept"
+        REJECT = "reject", "Reject"
+        SET = "set", "Change LTS"
+
+    queue = models.CharField(max_length=16, choices=ReviewItem.Queue.choices)
+    build_id = models.CharField(max_length=40, blank=True, default="")
+    osm_way_id = models.BigIntegerField()
+    decision = models.CharField(max_length=8, choices=Decision.choices)
+    step = models.FloatField(null=True, blank=True)
+    reason = models.TextField(blank=True, default="")
+    at = models.DateTimeField(default=timezone.now)
+    actor = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    actor_user_id = models.BigIntegerField(null=True, blank=True)
+    edit = models.ForeignKey(
+        StressEdit, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    access_override = models.ForeignKey(
+        Override, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    undone_at = models.DateTimeField(null=True, blank=True)
+    undone_by = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
+    class Meta:
+        db_table = "review_ruling"
+        ordering = ["-at", "-id"]
+        indexes = [
+            models.Index(fields=["queue", "build_id", "osm_way_id"], name="review_ruling_way")
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.decision} on way {self.osm_way_id} ({self.queue})"

@@ -44,6 +44,24 @@ AGENCIES: dict[str, tuple[str, int]] = {
 
 AGENCY_RULE = "agency rating"
 
+# Agencies whose ratings the owner may see in Review, an instance admin's view and not public,
+# before their public use is confirmed (the owner, 2026-10-16: "You can display them in review as
+# that's not public. At least until I get a response back from Arlington and Alexandria"; "They can
+# still inform them"). Each is (Review's label, public use confirmed). While a flag is False the
+# source is never in `AGENCIES` and never in the segment table, so never in the tiles, the road
+# panel, routing, an export, a share card or a link preview: only `core.stress_review` reads it,
+# and it never decides a level. A ruling it informs is the admin's own owner override.
+PENDING_AGENCIES: dict[str, tuple[str, bool]] = {
+    "arlington": ("Arlington (pending permission)", False),
+    "alexandria": ("Alexandria (pending permission)", False),
+}
+
+
+def public_use_confirmed(agency: str) -> bool:
+    """Whether a pending agency's ratings may reach a public surface (False for both today)."""
+    return PENDING_AGENCIES.get(agency, ("", True))[1]
+
+
 # Whose rating an approved override row is. Most rows are the owner's own call, but
 # some carry an agency's rating that was loaded as a row before v0.7.0 read the
 # agency layers directly: `fixtures/overrides/2026-10-01-owner-moco-lts5-avoid.json`

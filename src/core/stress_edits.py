@@ -654,8 +654,11 @@ def apply(
     expected: str,
     *,
     now: datetime | None = None,
+    evidence: str = EVIDENCE,
 ) -> EditResult:
-    """Make the change, at once. Raises EditRefused (Invalid, NotFound or Stale)."""
+    """Make the change, at once. Raises EditRefused (Invalid, NotFound or Stale).
+
+    `evidence` is the override row's: where the change was made (Review's rulings say so)."""
     way_ids = sorted(set(int(w) for w in way_ids))
     if not way_ids or len(way_ids) > MAX_WAYS:
         raise Invalid(f"Change at most {MAX_WAYS} road pieces at a time.", "osm_way_ids")
@@ -710,7 +713,7 @@ def apply(
                     osm_way_id=way,
                     value={},
                     reason=spec.reason.strip(),
-                    evidence=EVIDENCE,
+                    evidence=evidence,
                     approved=False,
                     source=Override.Source.PANEL,
                     created_by=actor,

@@ -26,7 +26,13 @@ dry run as well, and before anything is moved:
   it are re-applied, as a rebuild does for edits made while it ran. Before that
   release nothing re-applies them, so an access override approved after it is
   not in the box's map: the command names them and refuses the swap unless
-  `--accept-later-overrides` says they can wait for the next rebuild.
+  `--accept-later-overrides` says they can wait for the next rebuild. A road reopened by a
+  ruling in Review (`core.stress_review`) is meant for the next rebuild and is only counted.
+
+The dry run also precomputes Review's queue (`core.stress_review.compute_all`): the roads whose
+level or access the build changes, the rating disagreements and the rebuild reports' lists, from
+`--review-reports-dir` (the build's reports, as import-result.sh unpacks them). Both runs say how
+many changed roads have no ruling yet; that never blocks the swap.
 """
 
 from __future__ import annotations
@@ -88,9 +94,11 @@ def later_overrides(read_at: datetime, *, panel_reapplied: bool = False) -> list
     swap re-applies the road panel's edits, the overrides those edits wrote are left out:
     only they are re-applied, so any other later approval is still missing from the build."""
     from core.models import Override, StressEdit
+    from core.stress_review import EVIDENCE as REVIEW_EVIDENCE
 
     later = list(
         Override.objects.filter(approved=True, approved_at__gt=read_at)
+        .exclude(kind=Override.Kind.ACCESS, evidence=REVIEW_EVIDENCE)
         .order_by("id")
         .values_list("id", flat=True)
     )
@@ -135,10 +143,55 @@ class Command(BaseCommand):
             ),
         )
         parser.add_argument(
+            "--review-reports-dir",
+            default="",
+            help=(
+                "The build's rebuild reports, for Review's queues: a directory, relative to "
+                "the rebuild's work directory or absolute. Without it, the work directory's own."
+            ),
+        )
+        parser.add_argument(
             "--confirm",
             action="store_true",
-            help="Actually swap. Without it this checks and prints, and touches nothing.",
+            help=(
+                "Actually swap. Without it this checks and prints, and changes nothing served "
+                "(it fills Review's queue)."
+            ),
         )
+
+    def review_queue(self, build_id: str, live: str, staging: str, reports: str) -> None:
+        """Precompute Review's queue against the build waiting in staging. A failure is said and
+        the dry run goes on: the review is a help to the swap, never a condition of it."""
+        from core import stress_review
+
+        try:
+            counts = stress_review.compute_all(
+                build_id, live, staging, stress_review.reports_dir(reports)
+            )
+        except Exception as error:  # noqa: BLE001 - said, and the dry run goes on
+            self.stderr.write(f"Review's queue was not computed: {error}")
+            return
+        wired = [f"{n} {q.replace('_', ' ')}" for q, n in counts.items() if n is not None]
+        missing = [q.replace("_", " ") for q, n in counts.items() if n is None]
+        self.stdout.write(
+            "review queue: "
+            + ", ".join(wired)
+            + (f"; no report for: {', '.join(missing)}" if missing else "")
+        )
+
+    def review_status(self) -> None:
+        from core import stress_review
+
+        try:
+            unruled, total, build = stress_review.unruled_rebuild_changes()
+        except Exception as error:  # noqa: BLE001 - a note, never a condition of the swap
+            self.stderr.write(f"Review's status could not be read: {error}")
+            return
+        if total:
+            self.stdout.write(
+                f"review: {unruled} of {total} changed roads in build {build} have no ruling yet "
+                "(Review mode, Rebuild changes); this does not block the swap"
+            )
 
     def handle(self, *args, **options) -> None:
         from core.audit import record
@@ -222,6 +275,10 @@ class Command(BaseCommand):
             if options["confirm"]:
                 raise CommandError("nothing was imported: " + message)
             self.stdout.write("note: --confirm alone will refuse: " + message)
+
+        if not options["confirm"]:
+            self.review_queue(build_id, live, staging, options["review_reports_dir"])
+        self.review_status()
 
         if not options["confirm"]:
             self.stdout.write("dry run: nothing was changed. Re-run with --confirm to swap.")

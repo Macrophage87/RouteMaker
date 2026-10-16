@@ -4,11 +4,9 @@
 // in to the suggest tools, and Review is an admin's; Settings is Display, Ride mode, This device and Account
 // with My Go; and the map's Water and Food chips open the nearest finder and Find food. In Go, Settings is
 // the Menu, with Plan, Suggest, GPX and Review above it. App.tsx keeps the state and the effects.
-import { useEffect, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
+import { useEffect, useState, type ReactNode, type RefObject } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { StressAvailability } from "../MapView.tsx";
-import { SuggestionReview } from "../SuggestionReview.tsx";
-import { ClosureReview } from "../ClosureReview.tsx";
 import type { RouteResponse } from "../lib/api.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { PRESETS, presetSaid, type PresetId } from "../lib/presets.ts";
@@ -38,7 +36,6 @@ import { CAPACITY_LEGEND_TITLE, isMassRide } from "../lib/massCapacity.ts";
 import { MassLegend, MassZoomNotes } from "../lib/massLegend.ts";
 import { DC_BOUNDARY_CREDIT, MASS_DC_ONLY } from "../lib/dcBoundary.ts";
 import { MtbTrailLegend, StressLegend } from "../lib/stressLegend.ts";
-import { refreshStressTiles } from "../lib/mapStyle.ts";
 import { GpxPanel, type FileFormat, type GpxPanelProps, type Said } from "../GpxPanel.tsx";
 import type { DeviceProfileId } from "../lib/deviceProfiles.ts";
 import { JunctionLegend, SheetFrame } from "../Sidebar.tsx";
@@ -51,7 +48,6 @@ import { CLIMBS_HELP, ClimbsLayerControls, ClimbsLegend } from "../lib/climbsLeg
 import { InstallOffer, KeptRoutes } from "../InstallableApp.tsx";
 import type { KeptRoute } from "../lib/offlineRoutes.ts";
 import { anyKept } from "../lib/offlineRouteStore.ts";
-import { HAZARD_REVIEW } from "../lib/reviewSources.ts";
 import { DC_311_ONLINE, REPORT_KINDS } from "../lib/report311.ts";
 import { OPEN_IN_HINT, OPEN_IN_LABEL, type AppMode, type OpenIn } from "../lib/appMode.ts";
 import { myGoSummary, type Home, type MyGo } from "../lib/myGo.ts";
@@ -569,41 +565,13 @@ export function SuggestSheet({ nav, roadInfoAtCentre, onReview }: SuggestSheetPr
       {onReview && (
         <section aria-labelledby="suggest-review-heading" className="settings-group">
           <h3 id="suggest-review-heading">Review</h3>
-          <p className="hint">Riders' suggestions, Mass Ride hazard reports and closure reports waiting for review.</p>
+          <p className="hint">Riders' suggestions, Mass Ride hazard reports and closure reports are in Review, beside Go and Plan.</p>
           <button type="button" className="secondary open-review" onClick={(event) => onReview(event.currentTarget)}>
             <Icon name="shield" />
             Review suggestions
           </button>
         </section>
       )}
-    </SheetFrame>
-  );
-}
-
-export interface ReviewSheetProps {
-  nav: SheetNav;
-  mapRef: RefObject<MapLibreMap | null>;
-  setHazardsAsked: Dispatch<SetStateAction<number>>;
-  /** An instance admin: the suggestions' and hazards' reviews are shown (the closures' shows itself to a reviewer). */
-  admin: boolean;
-}
-
-/** An instance admin's review of rider suggestions and Mass Ride hazard reports (OWNER-DECISIONS 460.5), moved out of Settings. */
-export function ReviewSheet({ nav, mapRef, setHazardsAsked, admin }: ReviewSheetProps) {
-  return (
-    <SheetFrame id="sheet-review" title={SHEET_TITLES.review} open={nav.view === "review"} onBack={nav.back} backLabel={nav.backLabel("review")}>
-      {admin && (
-        <SuggestionReview
-          onStressChanged={(generation) => {
-            const map = mapRef.current;
-            if (map) refreshStressTiles(map, window.location.origin, generation);
-          }}
-        />
-      )}
-      {/* The same review for riders' Mass Ride hazard reports (FOLLOWUP-MASSRIDE-MAP part 3). */}
-      {admin && <SuggestionReview source={HAZARD_REVIEW} onApproved={() => setHazardsAsked((n) => n + 1)} />}
-      {/* Riders' closure reports and the reviewers' closures (v0.7.0 closures), for a reviewer. */}
-      <ClosureReview />
     </SheetFrame>
   );
 }

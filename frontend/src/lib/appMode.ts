@@ -18,18 +18,30 @@ import { coordinatesText } from "./geocode.ts";
 import { LOCATE_MESSAGES, type LocateFailure } from "./geolocation.ts";
 import type { LonLat } from "./geo.ts";
 
-export type AppMode = "go" | "plan";
+/**
+ * Review (the owner, 2026-10-16: "Basically we'd have 3 modes for people who have admin access go/plan/review") is
+ * the third, offered to an instance admin only (a closures reviewer too): its queues of roads to rule on
+ * (ReviewMode.tsx). Everyone else has exactly Go and Plan.
+ */
+export type AppMode = "go" | "plan" | "review";
 
-/** My Go's "Open in": a view, or "" for by screen size. */
-export type OpenIn = "" | AppMode;
+/** My Go's "Open in": Go or Plan, or "" for by screen size (Review is remembered on the device: readLastReview). */
+export type OpenIn = "" | "go" | "plan";
 
 /** The tab's own view (sessionStorage): kept across a reload, forgotten with the tab. */
 export const TAB_MODE_KEY = "routemaker.tab-mode";
 
-export const MODE_LABEL: Record<AppMode, string> = { go: "Go", plan: "Plan" };
+export const MODE_LABEL: Record<AppMode, string> = { go: "Go", plan: "Plan", review: "Review" };
 
 /** What each view is for, said as the switch's description. */
 export const MODE_SWITCH_HINT = "Go: type a place and ride. Plan: every tool. Both keep the same route.";
+/** The same with Review, for an admin. */
+export const MODE_SWITCH_HINT_REVIEW = `${MODE_SWITCH_HINT} Review: roads waiting for your ruling.`;
+
+/** The views the switch offers: Review only to someone who may review. */
+export function switchModes(canReview: boolean): AppMode[] {
+  return canReview ? ["go", "plan", "review"] : ["go", "plan"];
+}
 
 /** The switch's landmark-free group name. */
 export const MODE_SWITCH_NAME = "View";
@@ -44,7 +56,7 @@ export const OPEN_IN_LABEL: Record<OpenIn, string> = {
 export const OPEN_IN_HINT = "By screen size: a phone opens in Go, a wider screen in Plan. A shared link always opens in Plan.";
 
 export function isMode(value: unknown): value is AppMode {
-  return value === "go" || value === "plan";
+  return value === "go" || value === "plan" || value === "review";
 }
 
 interface TabStore {
@@ -80,7 +92,49 @@ export function writeTabMode(mode: AppMode, store: TabStore | null = tabStore())
 }
 
 export function isOpenIn(value: unknown): value is OpenIn {
-  return value === "" || isMode(value);
+  return value === "" || value === "go" || value === "plan";
+}
+
+/** Whether this device last left the app in Review (localStorage; Review is not one of My Go's choices). */
+export const LAST_REVIEW_KEY = "routemaker.last-review";
+
+interface DeviceStore {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+function deviceStore(): DeviceStore | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+export function readLastReview(store: DeviceStore | null = deviceStore()): boolean {
+  try {
+    return store?.getItem(LAST_REVIEW_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function writeLastReview(on: boolean, store: DeviceStore | null = deviceStore()): void {
+  try {
+    if (on) store?.setItem(LAST_REVIEW_KEY, "1");
+    else store?.removeItem(LAST_REVIEW_KEY);
+  } catch {
+    // Not kept.
+  }
+}
+
+/**
+ * Whether the app, once it knows the account may review, moves to Review: the device was last left in it, and the
+ * view opened was the screen's or My Go's guess (a tab's own view or a shared link wins), with no switch since.
+ */
+export function reopenReview(state: { lastReview: boolean; canReview: boolean; by: "tab" | "link" | "my-go" | "screen"; switched: boolean; mode: AppMode }): boolean {
+  return state.lastReview && state.canReview && !state.switched && state.mode !== "review" && (state.by === "screen" || state.by === "my-go");
 }
 
 /** Whether the address carries a plan (a shared link): its points or its ride, not only a map position. */
@@ -122,6 +176,7 @@ export function laterMyGoApplies(by: "tab" | "link" | "my-go" | "screen", switch
 
 /** What a switch says, politely, once the view has changed. */
 export function modeSaid(mode: AppMode): string {
+  if (mode === "review") return "Review: roads waiting for your ruling.";
   return mode === "go" ? "Go: type a place, then Start." : "Plan: the full planner.";
 }
 

@@ -328,7 +328,7 @@ test("Mass Ride's points on federal land: a warning on each row and marker, and 
   assert.match(points, /federalAreas\.every\(\(area\) => area === null\) && \(\s*<p className="hint federal-points">\{FEDERAL_POINTS_NONE\}<\/p>/);
   assert.match(points, /\{federalPlanner\}/);
   assert.match(points, /onRemove=\{removeAt\}\s+warnings=\{pointWarnings\}/);
-  assert.match(app, /pointWarnings=\{riding \? undefined : pointWarnings\}/);
+  assert.match(app, /pointWarnings=\{riding \|\| reviewing \? undefined : pointWarnings\}/);
   // The Map layers sheet keeps its own list.
   const html = renderToStaticMarkup(
     createElement(FederalPointsList, {

@@ -12,7 +12,7 @@ import { Icon } from "../Icon.tsx";
 import { PlaceSearch } from "../PlaceSearch.tsx";
 import type { LonLat } from "../lib/geo.ts";
 import type { GeoGate, Place, PlaceChoice } from "../lib/geocode.ts";
-import { MODE_LABEL, MODE_SWITCH_HINT, MODE_SWITCH_NAME, type AppMode } from "../lib/appMode.ts";
+import { MODE_LABEL, MODE_SWITCH_HINT, MODE_SWITCH_HINT_REVIEW, MODE_SWITCH_NAME, type AppMode } from "../lib/appMode.ts";
 import { HOME_NOT_SET, type Home } from "../lib/myGo.ts";
 import { CHANGE_HOME_TEXT, CLEAR_HOME_TEXT, HOME_PICK_LINE, PICK_ON_MAP_TEXT, homeClosesSheet, homeName, homeSetKey } from "../lib/homeSet.ts";
 import { BEST_ORDER_LABEL } from "../lib/stopOrder.ts";
@@ -26,18 +26,31 @@ export function nextSheetSize(size: GoSheetSize): GoSheetSize {
 
 const SIZE_SAID: Record<GoSheetSize, string> = { peek: "small", half: "half height", full: "full height" };
 
-/** Go or Plan: two toggle buttons, the pressed one the view in use (the owner's choice 1: either view can switch). */
-export function ModeSwitch({ mode, onChange, className = "" }: { mode: AppMode; onChange: (next: AppMode) => void; className?: string }) {
+/**
+ * Go or Plan: two toggle buttons, the pressed one the view in use (the owner's choice 1: either view can switch). For
+ * someone who may review, the panel's switch has a third, Review (lib/appMode.ts switchModes); Go's own bar keeps two.
+ */
+export function ModeSwitch({
+  mode,
+  onChange,
+  className = "",
+  modes = ["go", "plan"],
+}: {
+  mode: AppMode;
+  onChange: (next: AppMode) => void;
+  className?: string;
+  modes?: readonly AppMode[];
+}) {
   const hintId = useId();
   return (
     <div className={`mode-switch ${className}`.trim()} role="group" aria-label={MODE_SWITCH_NAME} aria-describedby={hintId}>
-      {(["go", "plan"] as const).map((m) => (
+      {modes.map((m) => (
         <button key={m} type="button" className="mode-button" aria-pressed={mode === m} onClick={() => onChange(m)}>
           {MODE_LABEL[m]}
         </button>
       ))}
       <span id={hintId} hidden>
-        {MODE_SWITCH_HINT}
+        {modes.includes("review") ? MODE_SWITCH_HINT_REVIEW : MODE_SWITCH_HINT}
       </span>
     </div>
   );
