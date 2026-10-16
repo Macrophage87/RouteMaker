@@ -40,7 +40,7 @@ import { CAPACITY_FOLD_TITLE, capacitySummary } from "../lib/massCapacity.ts";
 import { CapacityFigures, CapacityStats } from "../lib/massLegend.ts";
 import { outsideDcNote } from "../lib/dcBoundary.ts";
 import { SaveRoute, type SaveRouteProps } from "../SaveRoute.tsx";
-import { SAVE_ROUTE } from "../lib/savedRoutes.ts";
+import { SAVE_ROUTE, SAVE_SHORT } from "../lib/savedRoutes.ts";
 import { Fold, QuickFigures } from "../Sidebar.tsx";
 import { COPY_LINK, ROUTE_FOLDS, chartFoldOpen } from "../lib/sidebar.ts";
 import { SHARE_LABEL, SHARE_NAME } from "../lib/share.ts";
@@ -778,25 +778,27 @@ export function RouteSummary({
           <div className="go-chips" role="group" aria-label="Route options">
             <button type="button" className="chip go-ride-chip" onClick={go.onRide} aria-describedby="go-ride-hint">
               <Icon name="bike" size={18} />
-              <PresetName id={preset} />
+              {/* A long name is cut short with an ellipsis (its accessible name is whole), so the row never wraps. */}
+              <span className="go-chip-name">
+                <PresetName id={preset} />
+              </span>
             </button>
             <span id="go-ride-hint" hidden>
               Opens the ride settings.
             </span>
             {picker && (
               <button type="button" className="chip go-routes-chip" aria-expanded={routesOpen} aria-controls={routesId} onClick={() => setRoutesOpen(!routesOpen)}>
-                <Icon name="routes" size={18} />
                 {`${pickerCount} routes`}
               </button>
             )}
             <button type="button" className="chip go-plan-chip" onClick={go.onPlan} aria-describedby="go-plan-hint">
-              <Icon name="list" size={18} />
               Plan
             </button>
             <span id="go-plan-hint" hidden>
               Plan in detail: the full planner, with this route.
             </span>
-            {actions.save && <SaveRoute {...actions.save} label={SAVE_ROUTE} chip />}
+            {/* Shown "Save", named "Save route" (review F15: one row at 390 px with the ride type, the routes and Plan). */}
+            {actions.save && <SaveRoute {...actions.save} label={SAVE_ROUTE} shown={SAVE_SHORT} chip />}
           </div>
         )}
         {/* The elevation chart (Stephen 2026-10-13: "on Go, add an elevation chart to the map as well, even if

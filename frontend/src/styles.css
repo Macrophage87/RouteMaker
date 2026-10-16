@@ -5647,6 +5647,42 @@ details.fold > summary .icon {
 .save-route-said:empty {
   display: none;
 }
+
+/* Go's route chips (review F15): one row at 390 px. The ride type's chip takes what is left and cuts a long name
+   short; Save's name form and its line go under the row, each on a line of its own. */
+.go-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0;
+}
+.go-chips > .chip {
+  flex: none;
+  padding: 0 10px;
+}
+.go-chips > .go-ride-chip {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: max-content;
+}
+.go-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.go-chips > .save-route {
+  display: contents;
+}
+.go-chips .save-route-chip {
+  flex: none;
+  padding: 0 10px;
+}
+.go-chips .save-route-form,
+.go-chips .save-route-said {
+  flex: 1 0 100%;
+}
 .saved-note .link {
   font-weight: 700;
 }

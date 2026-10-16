@@ -115,6 +115,8 @@ export function differenceLine(savedM: number, todayM: number): string {
 
 export const UPDATE_ROUTE = "Update route";
 export const SAVE_ROUTE = "Save route";
+/** Go's chip shows this; it is named SAVE_ROUTE (the words shown are in the name). */
+export const SAVE_SHORT = "Save";
 export const MY_ROUTES = "My routes";
 export const SAVED_SAID = (name: string) => `Saved "${name}" to My routes.`;
 export const SAVE_FAILED = "The route was not saved; try again shortly.";
