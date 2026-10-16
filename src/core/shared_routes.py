@@ -17,13 +17,16 @@ Signed out or in, nothing of the rider is kept: no account, no address (the rate
 salted hash, `core.ratelimit`), and no weight (OWNER-DECISIONS 313): `public_answer` takes the
 rider's system weight and the effort figure weighed with it out of a planned route's answer. A row
 is kept a year after it was last opened (`KEEP`), then deleted at the next share or open; the
-whole body is at most `MAX_BYTES`. Models: `core.models.SharedRoute`; endpoints in `core.api`.
+sharer may instead keep it permanently or until a date (`KEEP_CHOICES`; the owner, 2026-10-16:
+"For the 1 year deletion, make this the default. For other users, we can offer "keep permanently"
+and "delete after <date>""). The whole body is at most `MAX_BYTES`. Models:
+`core.models.SharedRoute`; endpoints in `core.api`.
 """
 
 from __future__ import annotations
 
 import re
-from datetime import timedelta
+from datetime import date, timedelta
 
 from . import accounts
 
@@ -36,20 +39,53 @@ KEEP = timedelta(days=365)
 # An open writes its time at most once a day.
 TOUCH_EVERY = timedelta(days=1)
 DEFAULT_NAME = "Shared route"
+# How long the sharer keeps it: a year after the last open (the default), permanently, or through
+# `delete_after`. The page offers tomorrow or later in the sharer's own time zone, so the server
+# (UTC) accepts today or later: a sharer west of UTC in the evening is already on UTC's tomorrow.
+KEEP_CHOICES = ("year", "forever", "until")
 SOURCES = ("plan", "gpx")
-KEYS = frozenset({"id", "name", "source", "line", "distance_m", "inputs", "answer", "gpx"})
+KEYS = frozenset(
+    {"id", "name", "source", "line", "distance_m", "inputs", "answer", "gpx"}
+    | {"keep", "delete_after"}
+)
 
 
 def prune(now=None) -> int:
-    """Delete the rows not opened for `KEEP`; how many. Run at every share and open
+    """Delete the expired rows (`expired`); how many. Run at every share and open
     (`core.api`), and nightly by the backup task, so a quiet server drops them too."""
+    from django.db.models import Q
     from django.utils import timezone
 
     from .models import SharedRoute
 
     now = now or timezone.now()
-    deleted, _ = SharedRoute.objects.filter(last_opened_at__lt=now - KEEP).delete()
+    deleted, _ = SharedRoute.objects.filter(
+        Q(keep="year", last_opened_at__lt=now - KEEP)
+        | Q(keep="until", delete_after__lt=timezone.localdate(now))
+    ).delete()
     return deleted
+
+
+def expired(row, now) -> bool:
+    """Whether a kept row is past its keeping, as `prune` reads it."""
+    from django.utils import timezone
+
+    if row.keep == "forever":
+        return False
+    if row.keep == "until":
+        return row.delete_after is None or row.delete_after < timezone.localdate(now)
+    return row.last_opened_at < now - KEEP
+
+
+def delete_after_of(value, today: date) -> date | None:
+    """A "delete after" date as sent ("YYYY-MM-DD"), or None when it is not today or later."""
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return None
+    try:
+        day = date.fromisoformat(value)
+    except ValueError:
+        return None
+    return day if day >= today else None
 
 
 def id_ok(value) -> bool:
@@ -67,7 +103,7 @@ def public_answer(answer: dict) -> dict:
     return out
 
 
-def body_problem(body) -> tuple[str, str | None] | None:
+def body_problem(body, today: date | None = None) -> tuple[str, str | None] | None:
     """Why a shared route cannot be kept, as (message, field), or None."""
     if not isinstance(body, dict):
         return "Send the route as an object.", None
@@ -97,4 +133,14 @@ def body_problem(body) -> tuple[str, str | None] | None:
     gpx = body.get("gpx", "") or ""
     if not isinstance(gpx, str) or (gpx and source != "gpx"):
         return "Only an opened GPX file keeps its text.", "gpx"
+    keep = body.get("keep", "year")
+    if keep not in KEEP_CHOICES:
+        return "Keep a shared route for a year, permanently, or until a date.", "keep"
+    if keep == "until":
+        from django.utils import timezone
+
+        if delete_after_of(body.get("delete_after"), today or timezone.localdate()) is None:
+            return "Pick a later date to delete the shared route.", "delete_after"
+    elif body.get("delete_after") not in (None, ""):
+        return "Only a route kept until a date has a date to delete it.", "delete_after"
     return None

@@ -4772,7 +4772,8 @@ def saved_route_delete(request, route_id: int):
 # Shared routes (v0.7.0, "share the identical route"; core.shared_routes, core.models.SharedRoute):
 # the Share button keeps the exact line under a 128-bit id the page made, and the link it shares
 # opens that line unchanged. Signed out or in; nothing of the sharer is kept. Kept a year after
-# it was last opened; the expired go at every share and open.
+# it was last opened (or permanently, or until a date, as the sharer chose); the expired go at
+# every share and open.
 
 
 # The longest single string a kept answer may hold: the planner's own words (a turn, a notice,
@@ -4818,6 +4819,8 @@ def _shared_out(row) -> dict:
         "answer": row.answer,
         "gpx": row.gpx,
         "created_at": row.created_at.isoformat(),
+        "keep": row.keep,
+        "delete_after": row.delete_after.isoformat() if row.delete_after else None,
     }
 
 
@@ -4853,6 +4856,12 @@ def shared_route_add(request):
             return _stress_error(400, problem, field="answer")
     now = timezone.now()
     _purge_shared(now)
+    keep = body.get("keep", "year")
+    delete_after = (
+        shared_routes.delete_after_of(body.get("delete_after"), timezone.localdate(now))
+        if keep == "until"
+        else None
+    )
     try:
         with transaction.atomic():
             row = SharedRoute.objects.create(
@@ -4866,6 +4875,8 @@ def shared_route_add(request):
                 gpx=body.get("gpx", "") or "",
                 created_at=now,
                 last_opened_at=now,
+                keep=keep,
+                delete_after=delete_after,
             )
     except IntegrityError:
         # Ids are 128 random bits: a taken one is a resend, never another rider's to replace.
@@ -4894,10 +4905,10 @@ def shared_route_read(request, route_id: str):
         return gone
     row = SharedRoute.objects.filter(pk=route_id).first()
     now = timezone.now()
-    if row is None or row.last_opened_at < now - shared_routes.KEEP:
+    if row is None or shared_routes.expired(row, now):
         _purge_shared(now)
         return gone
-    # Kept a year from the last open; written at most once a day.
+    # A year's keeping counts from the last open; written at most once a day.
     if row.last_opened_at < now - shared_routes.TOUCH_EVERY:
         SharedRoute.objects.filter(pk=row.pk).update(last_opened_at=now)
     response = JsonResponse(_shared_out(row))

@@ -191,3 +191,30 @@ test("App: a shared link's line opens as a saved route does, before the link's f
   // Review F1: through a callback that carries on the voice the press unlocked.
   assert.match(app, /void checkThen\("ride", shown\.geometry\.coordinates, false, \(\) => \{\s*window\.clearTimeout\(slow\);\s*startRide\(false\);/);
 });
+
+test("a shared line is kept a year by default; permanently or until a date if the sharer picks (owner, 2026-10-16)", async () => {
+  const keepMod = await import("./sharedRoutes.ts");
+  const { keepFields, dayFromToday, SHARE_KEEP_DEFAULT, SHARE_KEEP_OPTIONS } = keepMod;
+  const now = new Date(2026, 9, 16, 21, 30);
+  assert.equal(dayFromToday(1, now), "2026-10-17");
+  assert.equal(dayFromToday(30, now), "2026-11-15");
+  assert.deepEqual(keepFields(SHARE_KEEP_DEFAULT, now), { keep: "year" });
+  assert.deepEqual(keepFields({ keep: "forever", deleteAfter: "" }, now), { keep: "forever" });
+  assert.deepEqual(keepFields({ keep: "until", deleteAfter: "2026-11-15" }, now), { keep: "until", delete_after: "2026-11-15" });
+  // No date from tomorrow on: the default year, never a refused share.
+  for (const bad of ["", "2026-10-16", "2026-10-01", "next week"]) assert.deepEqual(keepFields({ keep: "until", deleteAfter: bad }, now), { keep: "year" });
+  assert.deepEqual(SHARE_KEEP_OPTIONS.map(([choice]) => choice), ["year", "forever", "until"]);
+  // The body carries it; the default is the first option.
+  const save = planSave("A", ROUTE, POINTS, "default", startDials("default"));
+  assert.equal(keepMod.sharedBody("0".repeat(32), save)!.body.keep, "year");
+  assert.equal(keepMod.sharedBody("0".repeat(32), save, { keep: "until", deleteAfter: "2999-01-01" })!.body.delete_after, "2999-01-01");
+});
+
+test("the keeping is chosen under Share in Plan's More only; a different keeping is a new line", () => {
+  const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
+  assert.match(panel, /\{canShare && <ShareKeepField value=\{shareKeep\} onChange=\{onShareKeep\} \/>\}/);
+  assert.equal(panel.match(/<ShareKeepField /g)?.length, 1, "one place: Plan's More, not Go");
+  assert.match(panel, /value\.keep === "until" && \(/);
+  assert.match(app, /sharedLine\.current\?\.of === exact\.of && sharedLine\.current\.keep === keep/);
+  assert.match(app, /sharedBody\(id, exact\.save, shareKeep\)/);
+});

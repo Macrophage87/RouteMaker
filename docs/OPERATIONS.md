@@ -1962,11 +1962,16 @@ phone whose share sheet takes files, the GPX file Download GPX would give goes w
 - **At most 2 MB** a route. A bigger one (a long GPX file), or one that cannot be stored, is
   shared as the plan's inputs only, and the page says so in one line; such a link, or one whose
   line has gone, plans the route again as links always did, and says so.
-- **Kept a year after it was last opened**, then deleted at the next share or open. In the nightly
+- **Kept a year after it was last opened** by default, then deleted at the next share or open.
+  In Plan the sharer may pick, beside Share, to keep it permanently or until a date (the owner,
+  2026-10-16: "For the 1 year deletion, make this the default. For other users, we can offer
+  "keep permanently" and "delete after <date>""): columns `keep` and `delete_after`; a route kept
+  until a date is deleted the day after it, opened or not. In the nightly
   backups (a restored database keeps shared links working); never in the beta's data shipment
   (`scripts/beta/ship-data.sh`).
 
-The migration is `0022_shared_route` (one new table; nothing else changed).
+The migrations are `0022_shared_route` (one new table; nothing else changed) and
+`0023_shared_route_keep` (its two keeping columns).
 
 ## Mass Ride hazards (FOLLOWUP-MASSRIDE-MAP part 3, OWNER-DECISIONS 325-327)
 

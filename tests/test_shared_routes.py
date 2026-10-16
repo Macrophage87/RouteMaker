@@ -130,6 +130,8 @@ class TestSharedRoutes:
             "gpx",
             "created_at",
             "last_opened_at",
+            "keep",
+            "delete_after",
         }
         assert "198.51.100" not in json.dumps([row.name, row.line, row.inputs, row.answer, row.gpx])
         # A position, an account or anything else not part of a route is refused, not kept.
@@ -232,6 +234,53 @@ class TestSharedRoutes:
         post(client, body())
         assert not SharedRoute.objects.filter(pk=fresh["id"]).exists()
 
+    def test_the_sharer_may_keep_it_permanently_or_until_a_date(self) -> None:
+        """The owner, 2026-10-16: a year is the default; "keep permanently" and "delete after
+        <date>" are the sharer's to pick."""
+        client = Client()
+        today = timezone.localdate()
+        year, forever = body(), body(keep="forever")
+        until = body(keep="until", delete_after=(today + timedelta(days=30)).isoformat())
+        for sent in (year, forever, until):
+            assert post(client, sent).status_code == 201
+        assert SharedRoute.objects.get(pk=year["id"]).keep == "year"
+        got = client.get(f"{URL}/{until['id']}", **addr()).json()
+        assert got["keep"] == "until" and got["delete_after"] == until["delete_after"]
+
+        long_ago = timezone.now() - timedelta(days=3000)
+        SharedRoute.objects.update(last_opened_at=long_ago)
+        # Permanently: never pruned, however long unopened.
+        assert client.get(f"{URL}/{forever['id']}", **addr()).status_code == 200
+        # Until a date: kept through it whatever the last open, gone the day after.
+        assert client.get(f"{URL}/{until['id']}", **addr()).status_code == 200
+        assert client.get(f"{URL}/{year['id']}", **addr()).status_code == 404
+        SharedRoute.objects.filter(pk=until["id"]).update(delete_after=today - timedelta(days=1))
+        assert client.get(f"{URL}/{until['id']}", **addr()).status_code == 404
+        assert set(SharedRoute.objects.values_list("pk", flat=True)) == {forever["id"]}
+
+    @pytest.mark.parametrize(
+        "changes",
+        [
+            {"keep": "decade"},
+            {"keep": "until"},
+            {"keep": "until", "delete_after": "2026-13-01"},
+            {"keep": "until", "delete_after": "tomorrow"},
+            {"keep": "year", "delete_after": "2099-01-01"},
+        ],
+    )
+    def test_a_bad_keeping_is_refused(self, changes) -> None:
+        r = post(Client(), body(**changes))
+        assert r.status_code == 400 and r.json()["error"]
+        assert not SharedRoute.objects.exists()
+
+    def test_a_delete_date_is_today_or_later(self) -> None:
+        """Today, in UTC: the page offers the sharer's own tomorrow or later, which west of UTC
+        in the evening is UTC's today."""
+        today = timezone.localdate()
+        r = post(Client(), body(keep="until", delete_after=(today - timedelta(days=1)).isoformat()))
+        assert r.status_code == 400 and r.json()["field"] == "delete_after"
+        assert post(Client(), body(keep="until", delete_after=today.isoformat())).status_code == 201
+
     def test_sharing_is_rate_limited_per_client(self) -> None:
         client = Client()
         here = {"HTTP_X_FORWARDED_FOR": "203.0.113.9"}
@@ -253,5 +302,7 @@ def test_the_table_is_never_shipped_to_the_beta_and_is_documented() -> None:
 
 def test_the_migration_follows_the_newest() -> None:
     migrations = sorted((REPO / "src" / "core" / "migrations").glob("0*.py"))
-    assert migrations[-1].name == "0022_shared_route.py"
-    assert '("core", "0021_signed_out_suggestions")' in migrations[-1].read_text()
+    assert migrations[-2].name == "0022_shared_route.py"
+    assert '("core", "0021_signed_out_suggestions")' in migrations[-2].read_text()
+    assert migrations[-1].name == "0023_shared_route_keep.py"
+    assert '("core", "0022_shared_route")' in migrations[-1].read_text()

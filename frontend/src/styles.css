@@ -4900,6 +4900,15 @@ details.fold > summary .icon {
   display: none;
 }
 
+/* How long a shared link is kept, under Share: its own line so the select and the date stay readable. */
+.share-keep {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  flex-basis: 100%;
+}
+
 /* Go's route: the time first and large, Start full width, then the chips. */
 .go-head {
   display: flex;

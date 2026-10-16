@@ -44,6 +44,15 @@ import { SAVE_ROUTE, SAVE_SHORT } from "../lib/savedRoutes.ts";
 import { Fold, QuickFigures } from "../Sidebar.tsx";
 import { COPY_LINK, ROUTE_FOLDS, chartFoldOpen } from "../lib/sidebar.ts";
 import { SHARE_LABEL, SHARE_NAME } from "../lib/share.ts";
+import {
+  SHARE_DELETE_AFTER_LABEL,
+  SHARE_KEEP_LABEL,
+  SHARE_KEEP_OPTIONS,
+  SHARE_UNTIL_DAYS,
+  dayFromToday,
+  type ShareKeep,
+  type ShareKeepChoice,
+} from "../lib/sharedRoutes.ts";
 import { calmPercent, quickFigures, stressBarKey, stressBarLabel } from "../lib/quickFigures.ts";
 import { junctionItems } from "../lib/intersectionMarkers.ts";
 import type { WaterAlong, WaterStatus } from "../lib/waterRestrooms.ts";
@@ -74,6 +83,9 @@ export interface RouteActionsProps {
   linkNote: string;
   canShare: boolean;
   shareRoute: () => void;
+  /** How long the server keeps a shared line, chosen under Share (lib/sharedRoutes.ts ShareKeep). */
+  shareKeep: ShareKeep;
+  onShareKeep: (keep: ShareKeep) => void;
   linkSpoken: string;
   keepShown: boolean;
   keepForOffline: () => Promise<void>;
@@ -384,12 +396,40 @@ export function RouteSection(props: RouteSectionProps) {
 }
 
 /**
+ * Under Share in Plan's More: how long the shared link's exact line is kept. A year after it was last opened is the
+ * default; "Until a date" shows the date, starting a month out (the owner, 2026-10-16).
+ */
+function ShareKeepField({ value, onChange }: { value: ShareKeep; onChange: (keep: ShareKeep) => void }) {
+  const id = useId();
+  const choose = (keep: ShareKeepChoice) =>
+    onChange({ keep, deleteAfter: keep === "until" && !value.deleteAfter ? dayFromToday(SHARE_UNTIL_DAYS) : value.deleteAfter });
+  return (
+    <div className="share-keep">
+      <label htmlFor={`${id}-keep`}>{SHARE_KEEP_LABEL}</label>
+      <select id={`${id}-keep`} value={value.keep} onChange={(event) => choose(event.target.value as ShareKeepChoice)}>
+        {SHARE_KEEP_OPTIONS.map(([choice, label]) => (
+          <option key={choice} value={choice}>
+            {label}
+          </option>
+        ))}
+      </select>
+      {value.keep === "until" && (
+        <>
+          <label htmlFor={`${id}-date`}>{SHARE_DELETE_AFTER_LABEL}</label>
+          <input id={`${id}-date`} type="date" min={dayFromToday(1)} value={value.deleteAfter} onChange={(event) => onChange({ ...value, deleteAfter: event.target.value })} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
  * Start's row in Plan: Download GPX and Copy link as icon buttons beside it, and More (a disclosure)
  * holding Share and Keep for offline (the owner's choice 8). The said lines stay outside More, so a
  * press is heard however More stands.
  */
 function RouteActions(props: RouteActionsProps & { start: ReactNode }) {
-  const { copyLink, linkNote, canShare, shareRoute, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid, start, downloadRoute, save } = props;
+  const { copyLink, linkNote, canShare, shareRoute, shareKeep, onShareKeep, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid, start, downloadRoute, save } = props;
   const [more, setMore] = useState(false);
   const moreId = useId();
   const hasMore = canShare || keepShown || save !== null;
@@ -419,6 +459,7 @@ function RouteActions(props: RouteActionsProps & { start: ReactNode }) {
               {SHARE_LABEL}
             </button>
           )}
+          {canShare && <ShareKeepField value={shareKeep} onChange={onShareKeep} />}
           {save && <SaveRoute {...save} label={SAVE_ROUTE} />}
           {keepShown && (
             <button type="button" className="secondary keep-offline" onClick={() => void keepForOffline()} aria-disabled={keeping} aria-describedby="keep-offline-said">

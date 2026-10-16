@@ -201,7 +201,7 @@ import { checkClosures, closedStretches, reroutedSaid, spliceDetours, type Closu
 import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./lib/gpxVerbatim.ts";
 import { readGpx } from "./lib/gpxImport.ts";
 import { downloadGpx, routeGpxFile } from "./GpxPanel.tsx";
-import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, gpxShareFile, newSharedId, readShared, sharedBody, sharedIdFrom, storeShared, withSharedId } from "./lib/sharedRoutes.ts";
+import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARE_KEEP_DEFAULT, gpxShareFile, keepFields, newSharedId, readShared, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { bypassFor, bypassPlanKey, bypassSaid, toggleBypass, type Bypass } from "./lib/closureMap.ts";
 import { RideGroup } from "./RideGroup.tsx";
@@ -2169,7 +2169,10 @@ export function App() {
   // would save where the browser can share files. A route shared again keeps its first id. A line too big to
   // keep, or one that could not be sent, leaves the link with the inputs only, said in one line.
   const sharing = useRef(false);
-  const sharedLine = useRef<{ of: unknown; id: string; kept: Promise<boolean> } | null>(null);
+  const sharedLine = useRef<{ of: unknown; keep: string; id: string; kept: Promise<boolean> } | null>(null);
+  // How long the server keeps the shared line, chosen beside Share in Plan (lib/sharedRoutes.ts ShareKeep). A
+  // route shared again with another keeping is a new line under a new id.
+  const [shareKeep, setShareKeep] = useState<ShareKeep>(SHARE_KEEP_DEFAULT);
   const shareExact = () => {
     const verbatim = imported?.verbatim;
     if (verbatim && !importEdited) {
@@ -2195,13 +2198,14 @@ export function App() {
     const exact = shareExact();
     let kept: Promise<boolean> | null = null;
     if (exact) {
-      const before = sharedLine.current?.of === exact.of ? sharedLine.current : null;
+      const keep = JSON.stringify(keepFields(shareKeep));
+      const before = sharedLine.current?.of === exact.of && sharedLine.current.keep === keep ? sharedLine.current : null;
       const id = before?.id ?? newSharedId();
-      const body = before ? null : sharedBody(id, exact.save);
+      const body = before ? null : sharedBody(id, exact.save, shareKeep);
       if (before || body) {
         link = withSharedId(link, id);
         kept = before?.kept ?? storeShared(origin, body!.json);
-        if (!before) sharedLine.current = { of: exact.of, id, kept };
+        if (!before) sharedLine.current = { of: exact.of, keep, id, kept };
       } else kept = Promise.resolve(false);
     }
     const file = exact?.file ? gpxShareFile(exact.file.text, exact.file.fileName) : null;
@@ -3232,7 +3236,7 @@ export function App() {
       </Fold>
     ) : null;
   const actions = {
-    routedLoop, copyLink, linkNote, canShare, shareRoute, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid,
+    routedLoop, copyLink, linkNote, canShare, shareRoute, shareKeep, onShareKeep: setShareKeep, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid,
     downloadRoute, save: saveProps, savedNote: savedNoteShown,
   };
   const go = {

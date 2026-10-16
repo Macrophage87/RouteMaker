@@ -31,10 +31,49 @@ export const SHARED_INPUTS_ONLY = "Exact line not kept: the link plans the route
 export const SHARED_GONE = "Exact line gone: planned again from its points.";
 export const SHARED_OPENED = (name: string) => `Opened "${name}", as it was shared.`;
 
-/** What POST /api/shared-routes takes: a saved route's body with the link's id. */
+/**
+ * How long the server keeps a shared line (core.shared_routes.KEEP_CHOICES; the owner, 2026-10-16: "For the 1 year
+ * deletion, make this the default. For other users, we can offer "keep permanently" and "delete after <date>"").
+ * Chosen beside Share in Plan's More; Go always keeps the default.
+ */
+export type ShareKeepChoice = "year" | "forever" | "until";
+export interface ShareKeep {
+  keep: ShareKeepChoice;
+  /** "YYYY-MM-DD", the sharer's own date; read only for "until". */
+  deleteAfter: string;
+}
+export const SHARE_KEEP_DEFAULT: ShareKeep = { keep: "year", deleteAfter: "" };
+export const SHARE_KEEP_LABEL = "Keep shared link";
+export const SHARE_KEEP_OPTIONS: readonly (readonly [ShareKeepChoice, string])[] = [
+  ["year", "1 year after last opened"],
+  ["forever", "Permanently"],
+  ["until", "Until a date"],
+];
+export const SHARE_DELETE_AFTER_LABEL = "Delete after";
+/** The date "Until a date" starts at: a month from today. */
+export const SHARE_UNTIL_DAYS = 30;
+
+/** `days` from today, in the sharer's own time zone, as "YYYY-MM-DD". */
+export function dayFromToday(days: number, now: Date = new Date()): string {
+  const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/** The keeping a share sends. "Until a date" with no date from tomorrow on keeps the default (a year). */
+export function keepFields(choice: ShareKeep, now: Date = new Date()): { keep: ShareKeepChoice; delete_after?: string } {
+  if (choice.keep === "until") {
+    const ok = /^\d{4}-\d{2}-\d{2}$/.test(choice.deleteAfter) && choice.deleteAfter >= dayFromToday(1, now);
+    return ok ? { keep: "until", delete_after: choice.deleteAfter } : { keep: "year" };
+  }
+  return { keep: choice.keep };
+}
+
+/** What POST /api/shared-routes takes: a saved route's body with the link's id and its keeping. */
 export interface SharedBody extends Omit<SaveBody, "name"> {
   id: string;
   name: string;
+  keep?: ShareKeepChoice;
+  delete_after?: string;
 }
 
 /** What GET /api/shared-routes/{id} gives: what App's openSaved reads of a saved route. */
@@ -75,8 +114,8 @@ export function publicAnswer(answer: RouteResponse): RouteResponse {
  * The body to send, as JSON, or null when it is larger than the server keeps (the link is then the inputs only).
  * `save` is what Save route would send (planSave or gpxSave), so the shared line is the saved one's.
  */
-export function sharedBody(id: string, save: SaveBody): { body: SharedBody; json: string } | null {
-  const body: SharedBody = { ...save, id, ...(save.answer ? { answer: publicAnswer(save.answer) } : {}) };
+export function sharedBody(id: string, save: SaveBody, keep: ShareKeep = SHARE_KEEP_DEFAULT): { body: SharedBody; json: string } | null {
+  const body: SharedBody = { ...save, id, ...(save.answer ? { answer: publicAnswer(save.answer) } : {}), ...keepFields(keep) };
   const json = JSON.stringify(body);
   return new TextEncoder().encode(json).length > SHARED_MAX_BYTES ? null : { body, json };
 }

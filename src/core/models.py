@@ -1865,7 +1865,8 @@ class SharedRoute(models.Model):
     inputs (so "Update route" can plan it again with today's map), a planned route's answer
     without the rider's weight, or an opened GPX file's own text. The key is 128 random bits the
     sharer's browser made (32 hex characters); nothing names who shared it: no account, no
-    address, no position. Kept a year after `last_opened_at`, then deleted.
+    address, no position. Kept a year after `last_opened_at` (`keep` "year", the default),
+    permanently ("forever"), or through `delete_after` ("until"), then deleted.
     """
 
     id = models.CharField(primary_key=True, max_length=32)
@@ -1880,6 +1881,8 @@ class SharedRoute(models.Model):
     gpx = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(default=timezone.now)
     last_opened_at = models.DateTimeField(default=timezone.now)
+    keep = models.CharField(max_length=8, default="year")
+    delete_after = models.DateField(null=True, blank=True)
 
     class Meta:
         db_table = "shared_route"
