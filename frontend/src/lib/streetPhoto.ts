@@ -67,21 +67,28 @@ export function readPhoto(body: unknown): PhotoAnswer {
   };
 }
 
-export function streetPhotoUrl(origin: string, point: LonLat, wayId: number | null): string {
+/** Where the photo is looked up: the road panel's own path, or Review's (the same lookup, counted in Review's reads,
+ * since its lists show a photo a row; instance admins only). */
+export type PhotoPath = "/api/street-photo" | "/api/review/street-photo";
+
+export function streetPhotoUrl(origin: string, point: LonLat, wayId: number | null, path: PhotoPath = "/api/street-photo"): string {
   const [lon, lat] = point.map((v) => v.toFixed(6));
-  return `${origin}/api/street-photo?lon=${lon}&lat=${lat}${wayId != null ? `&way=${wayId}` : ""}`;
+  const query = `lon=${lon}&lat=${lat}${wayId != null ? `&way=${wayId}` : ""}`;
+  // Spelled out, so the beta's nginx test sees every path a place is sent to (tests/test_beta_overlay.py).
+  return path === "/api/review/street-photo" ? `${origin}/api/review/street-photo?${query}` : `${origin}/api/street-photo?${query}`;
 }
 
-/** GET /api/street-photo for the point on the road. */
+/** GET /api/street-photo (or Review's copy of it) for the point on the road. */
 export async function fetchStreetPhoto(
   origin: string,
   point: LonLat,
   wayId: number | null,
   signal?: AbortSignal,
   fetchImpl: FetchLike = (url, init) => fetch(url, init),
+  path: PhotoPath = "/api/street-photo",
 ): Promise<PhotoAnswer> {
   try {
-    const response = await fetchImpl(streetPhotoUrl(origin, point, wayId), { headers: { Accept: "application/json" }, signal });
+    const response = await fetchImpl(streetPhotoUrl(origin, point, wayId, path), { headers: { Accept: "application/json" }, signal });
     if (response.status !== 200) return null;
     return readPhoto(await response.json());
   } catch {

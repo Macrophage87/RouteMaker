@@ -69,7 +69,7 @@ test("a phone opens in Go and a wide screen in Plan; a shared link opens in Plan
   assert.equal(laterMyGoApplies("link", false), false);
   assert.equal(laterMyGoApplies("tab", false), false);
   assert.equal(laterMyGoApplies("screen", true), false);
-  assert.deepEqual(MODE_LABEL, { go: "Go", plan: "Plan" });
+  assert.deepEqual(MODE_LABEL, { go: "Go", plan: "Plan", review: "Review" }, "Review: offered to an admin only (lib/review.test.ts)");
   assert.deepEqual(OPEN_IN_LABEL, { "": "By screen size", go: "Go", plan: "Plan" });
   assert.match(modeSaid("go"), /^Go/);
   assert.match(modeSaid("plan"), /^Plan/);
@@ -223,7 +223,7 @@ test("Go's Where to? is the destination from the rider's location, in one edit, 
 test("the Go/Plan switch: two toggle buttons in a named group, in Go's bar and Plan's header; a press is remembered as My Go's Open in", () => {
   assert.match(go, /role="group" aria-label=\{MODE_SWITCH_NAME\} aria-describedby=\{hintId\}/);
   assert.match(go, /className="mode-button" aria-pressed=\{mode === m\} onClick=\{\(\) => onChange\(m\)\}/);
-  assert.match(appFile, /\{!goMode && <ModeSwitch mode=\{mode\} onChange=\{changeMode\} className="panel-mode" \/>\}/);
+  assert.match(appFile, /\{!goMode && <ModeSwitch mode=\{mode\} onChange=\{changeMode\} className="panel-mode" modes=\{switchModes\(canReview\)\} \/>\}/);
   assert.match(appFile, /<GoTopBar\s+mode=\{mode\}\s+onMode=\{changeMode\}/);
   const change = appFile.slice(appFile.indexOf("const changeMode = "), appFile.indexOf("// \"Copy link\""));
   assert.match(change, /writeTabMode\(next\);/);

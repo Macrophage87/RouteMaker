@@ -39,6 +39,8 @@ test("no photo is one plain line; an odd or unsafe answer is nothing", () => {
 
 test("the server is asked for the point on the road and the way; 204 and failures say nothing", async () => {
   assert.equal(streetPhotoUrl("https://x", [-77.1, 38.9], 42), "https://x/api/street-photo?lon=-77.100000&lat=38.900000&way=42");
+  // Review asks its own path (the same lookup, counted in Review's reads).
+  assert.equal(streetPhotoUrl("https://x", [-77.1, 38.9], null, "/api/review/street-photo"), "https://x/api/review/street-photo?lon=-77.100000&lat=38.900000");
   const asked: string[] = [];
   const ok = async (url: string) => {
     asked.push(url);
@@ -57,9 +59,12 @@ test("the server is asked for the point on the road and the way; 204 and failure
 test("the panel shows the photo as a link to Mapillary in a new tab, the date under it, and no new controls", () => {
   const panel = src("RoadInfoDialog.tsx");
   assert.match(panel, /<StreetPhotoView title=\{ready\.title\} point=\{streetViewPoint\(ready, request\.point\)\} wayId=\{ready\.osm_way_id\} \/>/);
-  assert.match(panel, /<img src=\{photo\.image_url\} alt=\{photoAlt\(title, photo\)\}/);
-  assert.match(panel, /<a href=\{photo\.viewer_url\} target="_blank" rel="noopener noreferrer">/);
-  assert.match(panel, /\{photo\.date_words\}/);
+  // The photo itself is one component, the road panel's and Review's (StreetPhotoView.tsx).
+  const view = src("StreetPhotoView.tsx");
+  assert.match(view, /<img src=\{photo\.image_url\} alt=\{photoAlt\(title, photo\)\}/);
+  assert.match(view, /<a href=\{photo\.viewer_url\} target="_blank" rel="noopener noreferrer">/);
+  assert.match(view, /\{photo\.date_words\}/);
+  assert.match(view, /\{NO_PHOTO_TEXT\}/);
   // No token in the front end, and no Mapillary script.
   assert.doesNotMatch(src("lib/streetPhoto.ts"), /MLY\||access_token|mapillary-js/i);
 });

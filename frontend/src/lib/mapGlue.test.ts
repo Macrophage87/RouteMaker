@@ -308,7 +308,7 @@ test("Go (lineTapIsPoint): a click on the line is the map's, a point, like anywh
   assert.match(mapView, /const goPress = callbacks\.current\.pressSetsEnd === true;/);
   assert.match(mapView, /runClick\(under, \{ popupOpen: anyPopupOpen\(\) \|\| forCard, afterDrag: performance\.now\(\) < clickSuppressedUntil, lineTapIsPoint: goPress \}/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /onLineDrop=\{riding \? ignore : insertOnLine\}\s*pressSetsEnd=\{goTapSetsEnd\(mode\)\}/);
+  assert.match(app, /onLineDrop=\{riding \|\| reviewing \? ignore : insertOnLine\}\s*pressSetsEnd=\{goTapSetsEnd\(mode\)\}/);
 });
 
 /** A feature card stand-in: open or not, and the screen points its shown features are at. */

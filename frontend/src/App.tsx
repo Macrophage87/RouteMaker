@@ -187,7 +187,7 @@ import { NARROW, useLongerThan, useMinute, useNarrow, useSettled } from "./app/h
 import { routeLightMarks, sameLightMarks, type LightMark } from "./lib/lightTimes.ts";
 import { PointsSection, RideSection } from "./app/Planner.tsx";
 import { RouteSection, type Status } from "./app/RoutePanel.tsx";
-import { FoodSheet, GpxSheet, LayersSheet, LegendSheet, NearestSheet, ReviewSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
+import { FoodSheet, GpxSheet, LayersSheet, LegendSheet, NearestSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
 import { GoAddStop, GoSheet, GoTopBar, ModeSwitch, PlanMapChips } from "./app/Go.tsx";
 import { useSharedLaunch } from "./app/sharedLaunch.ts";
 import { NearestFinder } from "./lib/nearestFinder.ts";
@@ -197,7 +197,9 @@ import { BACK_LABEL, SHEET_TITLES, backFrom, openOnto, type Opened } from "./lib
 import { announceLevel, readAnnounceChoice, saysExtra, writeAnnounceChoice, type AnnounceChoice, type AnnounceLevel } from "./lib/announceLevel.ts";
 import { letterKeyIndex, letterPlaces, placeLetter } from "./lib/letteredPlaces.ts";
 import { FIRST_ANSWER_PINS, keepOptions, keepsFirst, optionName, optionPins, optionReplaySaid, optionSaid, optionsKey, pickedOption, replayFor, replaysFirst, sentPlanKey, stationlessUnavailable, type FirstAnswer, type KeptOptions } from "./lib/bikeshareOptions.ts";
-import { GO_START_SAID, GO_START_UNAVAILABLE, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readTabMode, shouldAskGoStart, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
+import { GO_START_SAID, GO_START_UNAVAILABLE, goDestinationLocating, goDestinationNeedsStart, goPickAction, goPlaceName, goStartLine, goTapRoutedSaid, goTapSetsEnd, goPressLocatingSaid, goPressNeedsStartSaid, goDestinationNeedsStartBecause, goPressNeedsStartBecause, GO_PRESS_LOCATING_SAY_MS, hasPlanLink, laterMyGoApplies, modeSaid, openingMode, readLastReview, readTabMode, reopenReview, shouldAskGoStart, switchModes, writeLastReview, writeTabMode, type AppMode, type GoStart } from "./lib/appMode.ts";
+import { ReviewMode } from "./ReviewMode.tsx";
+import type { ListKey } from "./lib/review.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type Home, type MyGo } from "./lib/myGo.ts";
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
@@ -316,6 +318,12 @@ export function App() {
   homePickRef.current = homePick;
   // /api/me's flags: signed in (My Go to the account, the Home chip) and an instance admin (Review).
   const [me, setMe] = useState<Me>(NO_ME);
+  // Review, the third view (lib/appMode.ts switchModes): an instance admin's, or a closures reviewer's.
+  // Review (the third mode) is an instance admin's alone: a closures reviewer who is not one marks closures in the road
+  // panel, as before, and never sees the mode.
+  const canReview = me.can_change_lts;
+  // The list Review shows: Suggest's Review button opens the riders' suggestions.
+  const [reviewList, setReviewList] = useState<ListKey | undefined>(undefined);
   // Go's sheet on a phone: its smallest (peek: the map gets the screen), half, or all of it.
   const [goSheet, setGoSheet] = useState<"peek" | "half" | "full">("half");
   // The rider and bike weight (OWNER-DECISIONS 313-318): kept apart from `dials`, which
@@ -1145,6 +1153,17 @@ export function App() {
     void fetchMe(origin).then(async (found) => {
       if (!live) return;
       setMe(found);
+      // A tab left in Review by an account that may no longer review opens in Plan; this device's last Review
+      // comes back once the account is known to be one that may (lib/appMode.ts reopenReview).
+      const reviews = found.can_change_lts;
+      if (!reviews && modeRef.current === "review") {
+        setModeState("plan");
+        writeTabMode("plan");
+      } else if (reopenReview({ lastReview: readLastReview(), canReview: reviews, by: OPENING.by, switched: modeSwitched.current, mode: modeRef.current })) {
+        modeSwitched.current = true;
+        setModeState("review");
+        leaveGo();
+      }
       if (!found.signed_in) {
         // Signed out (or the account's copy is from before a sign-out): this device's My Go.
         if (START_MY_GO.account) {
@@ -2218,7 +2237,9 @@ export function App() {
     setModeState(next);
     if (next !== "go") leaveGo();
     announceExtra(modeSaid(next));
-    saveMyGoNow({ ...myGoRef.current, openIn: next }, false);
+    // Review is remembered on this device; Go and Plan are My Go's Open in, as before.
+    writeLastReview(next === "review");
+    if (next !== "review") saveMyGoNow({ ...myGoRef.current, openIn: next }, false);
   };
   // A place shared to RouteMaker (the Share sheet, or a geo: link on desktop): Go's destination (app/sharedLaunch.ts).
   useSharedLaunch((place) => {
@@ -3035,16 +3056,21 @@ export function App() {
     onRide: (item: Nearby) => (mode === "go" ? goToLettered(item.place.point, item.place.title) : rideToNearest(item)),
     onAddStop: addNearestStop,
   };
-  // An instance admin's review (rider suggestions, Mass Ride hazard reports): from Suggest, or Go's Menu.
-  // An instance admin reviews everything; a closures reviewer (v0.7.0; instance admins for now) the closures.
-  const reviewOpener = me.can_change_lts || me.can_review_closures ? (opener: HTMLElement) => openView("review", opener, true) : null;
+  // An instance admin's review (rider suggestions, Mass Ride hazard reports): from Suggest, or Go's Menu. It opens
+  // Review, the third view (lib/appMode.ts), on the riders' suggestions.
+  const reviewOpener = canReview
+    ? () => {
+        setReviewList("suggestions");
+        changeMode("review");
+      }
+    : null;
   const myGoControls = { myGo, signedIn: me.signed_in, save: saveMyGoNow, setHome, said: myGoSaid, geoGate, searchBias };
   // Go's Menu (the Settings sheet in Go): Plan, Suggest, GPX and an admin's Review, each one step in.
   const menu = {
     onPlan: () => changeMode("plan"),
     onSuggest: (opener: HTMLElement) => openView("suggest", opener, true),
     onGpx: (opener: HTMLElement) => openView("gpx", opener, true),
-    onReview: reviewOpener,
+    onReview: canReview ? () => changeMode("review") : null,
   };
   // The lettered places (the owner, 2026-10-11 21:04 UTC; lib/letteredPlaces.ts): the list on the sheet open,
   // the nearest water, restrooms or Metro, or the food found, lettered on the map as in the list. A pick (its
@@ -3409,6 +3435,8 @@ export function App() {
     />
   );
   const goMode = mode === "go";
+  // Review (lib/appMode.ts): the panel holds the queues and the map their roads; the plan stays as it was, unshown.
+  const reviewing = mode === "review" && canReview;
   announceLevelNow.current = announceLevel(announceChoice, mode);
   const chooseAnnounce = (level: AnnounceLevel) => {
     setAnnounceChoice(level);
@@ -3529,22 +3557,22 @@ export function App() {
         />
       )}
       <MapView
-        points={riding ? NO_POINTS : points}
+        points={riding || reviewing ? NO_POINTS : points}
         loopVias={loopVias}
         openAt={OPEN_AT}
-        pointWarnings={riding ? undefined : pointWarnings}
-        route={riding && rideView ? rideView.route : shown}
+        pointWarnings={riding || reviewing ? undefined : pointWarnings}
+        route={riding && rideView ? rideView.route : reviewing ? null : shown}
         stale={riding ? false : stale || planEdited}
-        ghost={riding ? null : ghost}
+        ghost={riding || reviewing ? null : ghost}
         lightMarks={riding || mode !== "plan" ? null : light}
         stressVisible={stressVisible && stress === "available"}
         when={mapWhen(dials.when ?? null)}
         framePadding={framePadding}
         onStressAvailability={setStress}
-        onMapClick={riding ? ignore : place}
+        onMapClick={riding || reviewing ? ignore : place}
         onMovePoint={riding ? ignore : move}
-        lineEdit={riding ? null : lineEdit}
-        onLineDrop={riding ? ignore : insertOnLine}
+        lineEdit={riding || reviewing ? null : lineEdit}
+        onLineDrop={riding || reviewing ? ignore : insertOnLine}
         pressSetsEnd={goTapSetsEnd(mode)}
         onRemovePoint={riding ? ignore : removeFromMap}
         onSwitchKind={riding ? ignore : switchKind}
@@ -3727,7 +3755,7 @@ export function App() {
         ref={panelRef}
         id="route-planner"
         tabIndex={-1}
-        className={`panel ${panelOpen ? "open" : "closed"}${goMode ? ` go-panel go-${goSheet}` : ""}`}
+        className={`panel ${panelOpen ? "open" : "closed"}${goMode ? ` go-panel go-${goSheet}` : ""}${reviewing ? " review-panel" : ""}`}
         aria-label="Route planner"
         hidden={riding}
       >
@@ -3735,7 +3763,7 @@ export function App() {
           <h1 ref={plannerHeadingRef} tabIndex={-1} className={goMode ? "visually-hidden" : undefined}>
             {PLANNER_TITLE}
           </h1>
-          {!goMode && <ModeSwitch mode={mode} onChange={changeMode} className="panel-mode" />}
+          {!goMode && <ModeSwitch mode={mode} onChange={changeMode} className="panel-mode" modes={switchModes(canReview)} />}
           <button
             type="button"
             hidden={goMode}
@@ -3813,6 +3841,18 @@ export function App() {
                   startMissing={goStart.kind === "none" && points.length === 0}
                   onStartPick={goStartPick}
                 />
+              ) : reviewing ? (
+                <ReviewMode
+                  getMap={getMap}
+                  announce={announce}
+                  list={reviewList}
+                  onList={setReviewList}
+                  onStressChanged={(generation) => {
+                    const map = mapRef.current;
+                    if (map) refreshStressTiles(map, window.location.origin, generation);
+                  }}
+                  onHazardsChanged={() => setHazardsAsked((n) => n + 1)}
+                />
               ) : (
                 <>
                   {planPanel}
@@ -3844,7 +3884,6 @@ export function App() {
               }}
             />
             <SuggestSheet nav={sheetNav} roadInfoAtCentre={roadInfoAtCentre} onReview={reviewOpener} />
-            <ReviewSheet nav={sheetNav} mapRef={mapRef} setHazardsAsked={setHazardsAsked} admin={me.can_change_lts} />
             <GpxSheet
               {...{
                 nav: sheetNav, shown, routedPoints, routedLoop, federalRoute, points, status, imported,

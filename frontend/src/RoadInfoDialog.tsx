@@ -66,7 +66,7 @@ import { StressEditor } from "./StressEditor.tsx";
 import { SuggestChange } from "./SuggestChange.tsx";
 import { SuggestQuick } from "./SuggestQuick.tsx";
 import { SUGGEST_TEXT, fetchMySuggestion, mySuggestionText, type MySuggestion } from "./lib/suggestions.ts";
-import { NO_PHOTO_TEXT, fetchStreetPhoto, photoAlt, type PhotoAnswer } from "./lib/streetPhoto.ts";
+import { StreetPhotoView } from "./StreetPhotoView.tsx";
 
 /** The one button that holds the ways to suggest, when there are two or more (UI-CLEANUP). */
 export const SUGGEST_MENU_TEXT = "Suggest a change…";
@@ -187,46 +187,6 @@ function StationTimesList({ station, rail, closed }: { station: Station; rail: R
         </li>
       ))}
     </ul>
-  );
-}
-
-/**
- * The road's street photo (v0.7.0; lib/streetPhoto.ts): the newest Mapillary photo facing along the road,
- * a link to Mapillary's viewer in a new tab, its date under it and in its alt text, and the credit. One
- * plain line where Mapillary has none; nothing where the server cannot look one up.
- */
-function StreetPhotoView({ title, point, wayId }: { title: string; point: [number, number]; wayId: number | null }) {
-  const [photo, setPhoto] = useState<PhotoAnswer>(null);
-  const [lon, lat] = point;
-  useEffect(() => {
-    const controller = new AbortController();
-    setPhoto(null);
-    void fetchStreetPhoto(window.location.origin, [lon, lat], wayId, controller.signal).then((answer) => {
-      if (!controller.signal.aborted) setPhoto(answer);
-    });
-    return () => controller.abort();
-  }, [lon, lat, wayId]);
-  if (photo === null) return null;
-  if (photo === "none") return <p className="hint road-info-photo-none">{NO_PHOTO_TEXT}</p>;
-  return (
-    <figure className="road-info-photo">
-      <a href={photo.viewer_url} target="_blank" rel="noopener noreferrer">
-        <img src={photo.image_url} alt={photoAlt(title, photo)} width={1024} height={768} loading="lazy" referrerPolicy="no-referrer" />
-        <span className="visually-hidden"> (opens Mapillary in a new tab)</span>
-      </a>
-      <figcaption className="hint">
-        {photo.date_words}
-        {photo.creator ? `, by ${photo.creator}` : ""} ·{" "}
-        <a href={photo.credit_url} target="_blank" rel="noopener noreferrer">
-          {photo.credit}
-        </a>{" "}
-        (
-        <a href={photo.licence_url} target="_blank" rel="noopener noreferrer">
-          {photo.licence}
-        </a>
-        )
-      </figcaption>
-    </figure>
   );
 }
 

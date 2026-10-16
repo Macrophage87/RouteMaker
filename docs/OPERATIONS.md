@@ -6484,6 +6484,18 @@ the defaults, so build those here.
    a failure and it carries on; once the install has finished, a second run goes straight
    to the dry run. `--remove-tars` deletes the downloaded graph tars once unpacked.
 
+   The dry run also fills **Review**'s lists (an instance admin's third mode, beside Go and
+   Plan; `core.stress_review`), see "Review mode: shipping and its lists" below. It prints
+   `review queue, in roads (...)`: how many roads each list holds, and which lists read from a
+   report the box sent none for (`no report from this build for: ...`; those lists are
+   emptied and say so in Review, never showing an older build's rows). It counts whole ways
+   (a way at its highest piece's level, half steps included, and a change of bicycle access);
+   the stress change report above it counts segments by whole tier. Then
+   `review: N of M changed roads ... have no ruling yet`, on the swap too: it never blocks.
+   Access overrides that Review's rulings wrote (a reopened road; source `review`) are listed
+   on a line of their own and do not hold the swap; a reopening undone after the dump is
+   flagged as still open in this build.
+
 4. **Here:** swap.
 
    ```sh
@@ -6520,6 +6532,38 @@ the build, unless `--accept-later-overrides`. Where the swap re-applies the road
 edits made after that time (from v0.4.0, the stress editor), as a rebuild does for edits
 made while it ran, that check gives way to the re-apply; the scripts pass the dump's
 time.
+
+### Review mode: shipping and its lists
+
+Review (the owner, 2026-10-16) is an instance admin's queues of roads to rule on: Rebuild
+changes, Rating disagreements, narrow rural roads, side paths not mapped, industrial-area
+closures and overrides that did not re-match, beside the riders' suggestions, hazard reports
+and closure reports. A ruling is the road panel's own change (an owner override, re-applied by
+the swap) or, for a closed road, an approved access override (source `review`) applied at the
+next rebuild; every ruling is audited and can be undone for 30 minutes.
+
+To ship it to a host:
+
+1. Deploy, then `docker compose exec -T api python manage.py migrate` (`0029_review_queue`:
+   `review_item`, `review_ruling`, `review_queue_state`, and the override source `review`).
+   `ship-data.sh` never sends these three tables to the beta or the cloud box.
+2. Fill the lists. A cloud build's dry run does it (above). After a rebuild run on this
+   host, or after adding a ratings file (step 3):
+   `docker compose exec -T api python manage.py compute_review_queue` (the live table and
+   this host's own `rebuild/reports`), with `--build-id <id>` before a swap to list the
+   rebuild's changes against `staging`, and `--reports-dir <dir>` for another build's
+   reports. Each list it computes replaces its rows and its map; the rulings stay.
+3. Optional, ratings whose public use is pending (`routemaker.agency_lts.PENDING_AGENCIES`):
+   put `<agency>-ratings.csv` (columns `osm_way_id,level`; a level 1 to 5 by halves) in
+   `<DATA_ROOT>/internal-only/review/` (`REVIEW_PENDING_DIR`), e.g. `arlington-ratings.csv`.
+   Nothing but Review reads that folder; keep it out of every bundle. Such a rating is
+   counted in a disagreement and shown labelled "(pending permission)" while
+   `agency_lts.PUBLIC_USE_CONFIRMED` says False for it; it never decides a level.
+
+The lists' Area is the county from `<DATA_ROOT>/reference/counties.geojson`, the stress change
+report's own file (`install_reference_data.py --counties`); without it the column is empty.
+Review's reads have their own rate limit (`review-read`, 600 a minute an address) and its
+rulings theirs (`review-ruling`, 800 an hour an account), apart from the road panel's editor.
 
 ### The launcher
 

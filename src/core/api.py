@@ -2394,6 +2394,7 @@ STRESS_EDIT_PATHS = (
     "/api/closures/reviewed",
     "/api/closures/reports",
     "/api/closures/stretch",
+    "/api/review",
     "/api/me",
 )
 
@@ -7030,3 +7031,223 @@ def closure_report_reject(request, report_id: int, body: UndoIn, response: HttpR
         return _edit_refusal(request, refused)
     _private(response)
     return Status(200, {"id": report.pk, "message": "Rejected. The report is deleted."})
+
+
+# ---- Review: the instance admin's queue of roads to rule on (core.stress_review) ----
+#
+# GET /api/review/queues, /api/review/items, /api/review/map, /api/review/road/{way} and
+# /api/review/rulings; POST /api/review/rulings and /api/review/rulings/{id}/undo. Instance admins
+# only (401 signed out, 403 otherwise), with the editor's guards on the writes. What is listed here
+# may carry ratings whose public use is pending (agency_lts.PENDING_AGENCIES): it is never cached
+# and never reaches a rider.
+
+REVIEW_QUEUES = Literal[
+    "rebuild", "disagreement", "sidepath", "narrow_rural", "works_closure", "rematch"
+]
+
+
+class ReviewAnyOut(Schema):
+    """The answer as `core.stress_review` builds it (queues, items, features or rulings)."""
+
+    model_config = ConfigDict(extra="allow")
+
+
+class ReviewItemsIn(Schema):
+    queue: REVIEW_QUEUES = "rebuild"
+    kind: str = Field(default="", max_length=40)
+    source: str = Field(default="", max_length=40)
+    area: str = Field(default="", max_length=200)
+    open_only: bool = Field(default=True, description="Only roads with no ruling yet.")
+    page: int = Field(default=1, ge=1, le=100000)
+    per_page: int = Field(default=25, ge=1, le=100)
+    way: int | None = Field(default=None, description="One road (a tap on Review's map).")
+
+
+class ReviewMapIn(Schema):
+    queue: REVIEW_QUEUES = "disagreement"
+    detail: Literal["low", "high"] = Field(
+        default="low",
+        description="low: lines simplified for a region's view, with a point a road; high: whole.",
+    )
+
+
+class ReviewRoadIn(Schema):
+    queue: REVIEW_QUEUES | None = Field(
+        default=None, description="rebuild: the facts of the build waiting in staging as well."
+    )
+
+
+class ReviewRulingIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    queue: REVIEW_QUEUES
+    osm_way_ids: list[StrictInt] = Field(min_length=1, max_length=200)
+    decision: Literal["accept", "reject", "set"]
+    step: StrictFloat | None = Field(
+        default=None, description="Change LTS: 1 to 5 by halves (5 is Avoid)."
+    )
+    reason: str = Field(default="", max_length=2000, description="Private; optional.")
+
+
+class ReviewRulingsIn(Schema):
+    queue: REVIEW_QUEUES | None = None
+
+
+REVIEW_RESPONSES = {200: ReviewAnyOut, **SUGGESTION_RESPONSES}
+
+# Review's own counts (ratelimit.REVIEW_READS, REVIEW_RULINGS, REVIEW_RULINGS_CLIENT), never the
+# road panel's editor's: browsing a list by keyboard reads fast, and a long review never spends
+# the admin's editing budget.
+REVIEW_READ = (
+    ratelimit.rate_limited(ratelimit.REVIEW_READS),
+    instance_admin_only(audited=False),
+    same_site_editor,
+    errors_as_json,
+)
+REVIEW_RULING_WRITE = (
+    ratelimit.user_rate_limited(ratelimit.REVIEW_RULINGS),
+    csrf_protected,
+    instance_admin_only(audited=True),
+    json_body_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.REVIEW_RULINGS_CLIENT),
+    errors_as_json,
+)
+
+
+def _review_answer(body: dict) -> JsonResponse:
+    return _private(JsonResponse(body))
+
+
+@api.get("/review/queues", response=REVIEW_RESPONSES, summary="Review's queues (instance admin)")
+@decorate_view(*REVIEW_READ)
+def review_queues(request):
+    from django.middleware.csrf import get_token
+
+    from . import stress_review
+
+    get_token(request)
+    return _review_answer({"queues": stress_review.queue_summary()})
+
+
+@api.get("/review/items", response=REVIEW_RESPONSES, summary="A page of a queue (instance admin)")
+@decorate_view(*REVIEW_READ)
+def review_items(request, params: Query[ReviewItemsIn]):
+    from . import stress_review
+
+    return _review_answer(
+        stress_review.page(
+            params.queue,
+            kind=params.kind,
+            source=params.source,
+            area=params.area,
+            open_only=params.open_only,
+            number=params.page,
+            size=params.per_page,
+            way=params.way,
+        )
+    )
+
+
+@api.get(
+    "/review/map",
+    response=REVIEW_RESPONSES,
+    summary="Every road of a queue, for Review's map, as computed with it (instance admin)",
+)
+@decorate_view(*REVIEW_READ)
+def review_map(request, params: Query[ReviewMapIn]):
+    from . import stress_review
+
+    # The lines were made when the queue was computed (stress_review.write_state): a read.
+    return _private(
+        HttpResponse(
+            stress_review.map_payload(params.queue, params.detail),
+            content_type="application/json",
+        )
+    )
+
+
+@api.get(
+    "/review/road/{osm_way_id}",
+    response=REVIEW_RESPONSES,
+    summary="The facts behind a road's rating and its history (instance admin)",
+)
+@decorate_view(*REVIEW_READ)
+def review_road(request, osm_way_id: int, params: Query[ReviewRoadIn]):
+    from . import stress_review
+
+    return _review_answer(stress_review.road_detail(osm_way_id, params.queue or ""))
+
+
+@api.get(
+    "/review/street-photo",
+    response={200: StreetPhotoOut, 204: None, **SUGGESTION_RESPONSES},
+    summary="The road panel's street photo, for Review's rows and cards (instance admin)",
+)
+@decorate_view(*REVIEW_READ)
+def review_street_photo(request, params: Query[StreetPhotoIn]):
+    """The road panel's own lookup (core.street_photo), counted in Review's reads: a list shows a
+    photo a row. Its image is the panel's own path (GET /api/street-photo/image/{id})."""
+    from . import street_photo
+
+    found = street_photo.client.photo(params.lon, params.lat, params.way)
+    if found is None:
+        return Status(204, None)
+    return _review_answer(found)
+
+
+@api.get("/review/rulings", response=REVIEW_RESPONSES, summary="Recent rulings (instance admin)")
+@decorate_view(*REVIEW_READ)
+def review_rulings(request, params: Query[ReviewRulingsIn]):
+    from . import stress_review
+
+    return _review_answer({"rulings": stress_review.recent_rulings(params.queue)})
+
+
+@api.post("/review/rulings", response=REVIEW_RESPONSES, summary="Rule on roads (instance admin)")
+@decorate_view(*REVIEW_RULING_WRITE)
+def review_rule(request, body: ReviewRulingIn):
+    from . import stress_edits, stress_review
+
+    try:
+        made, refused = stress_review.rule(
+            request.user,
+            body.queue,
+            body.osm_way_ids,
+            body.decision,
+            step=body.step,
+            reason=body.reason,
+        )
+    except stress_edits.EditRefused as refusal:
+        return _edit_refusal(request, refusal)
+    generation = max((r.edit.generation for r in made if r.edit_id), default=None)
+    count = len(made)
+    message = f"{count} road{'s' if count != 1 else ''} ruled" + (
+        f"; {len(refused)} could not be: {refused[0]['error']}" if refused else "."
+    )
+    return _review_answer(
+        {
+            "rulings": [stress_review.ruling_out(r) for r in made],
+            "refused": refused,
+            "generation": generation,
+            "message": message,
+        }
+    )
+
+
+@api.post(
+    "/review/rulings/{ruling_id}/undo",
+    response=REVIEW_RESPONSES,
+    summary="Undo a ruling within 30 minutes (instance admin)",
+)
+@decorate_view(*REVIEW_RULING_WRITE)
+def review_undo(request, ruling_id: int, body: UndoIn):
+    from . import stress_edits, stress_review
+
+    try:
+        ruling, generation = stress_review.undo(request.user, ruling_id)
+    except stress_edits.EditRefused as refusal:
+        return _edit_refusal(request, refusal)
+    return _review_answer(
+        {"ruling": stress_review.ruling_out(ruling), "generation": generation, "message": "Undone."}
+    )

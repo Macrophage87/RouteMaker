@@ -145,6 +145,9 @@ DC311_API_KEY = os.environ.get("DC311_API_KEY", "").strip()
 # environment lookups, so one variable moves all of them together.
 DATA_ROOT = Path(os.environ.get("DATA_ROOT", BASE_DIR / "data"))
 REBUILD_WORK_DIR = DATA_ROOT / "rebuild"
+# Ratings whose public use is pending (routemaker.agency_lts.PENDING_AGENCIES), for Review only
+# (core.stress_review.pending_ratings): kept on the data volume, never in the repository.
+REVIEW_PENDING_DIR = DATA_ROOT / "internal-only" / "review"
 REBUILD_SOURCE_PBF = DATA_ROOT / "extracts" / "source.osm.pbf"
 REBUILD_REFERENCE_DIR = DATA_ROOT / "reference"
 # The crossings fixture as the image carries it (the pipeline image copies

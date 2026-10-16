@@ -67,6 +67,9 @@ REASON_MAX = 500
 # A change is one road piece, or one named stretch of at most this many (phase 5).
 MAX_STRETCH_WAYS = 40
 MAX_WAYS = MAX_STRETCH_WAYS
+# Review's batch ruling (core.stress_review.rule): one level for up to this many roads an
+# instance admin chose from a list, as one change with one undo.
+MAX_BATCH_WAYS = 200
 # A named stretch ends at a junction with a road of another name at this level or above: where
 # the junction model would warn of a high-stress crossing (orange or worse). An unsignalized
 # crossing of a 2.5 road costs 600 ft, the orange line (routemaker.intersections; the segment
@@ -654,15 +657,22 @@ def apply(
     expected: str,
     *,
     now: datetime | None = None,
+    evidence: str = EVIDENCE,
+    batch: bool = False,
 ) -> EditResult:
-    """Make the change, at once. Raises EditRefused (Invalid, NotFound or Stale)."""
+    """Make the change, at once. Raises EditRefused (Invalid, NotFound or Stale).
+
+    `evidence` is the override row's: where the change was made (Review's rulings say so).
+    `batch` is Review's: the ways are the roads an admin chose from a list, up to
+    `MAX_BATCH_WAYS`, not a named stretch, and are still one edit with one undo."""
     way_ids = sorted(set(int(w) for w in way_ids))
-    if not way_ids or len(way_ids) > MAX_WAYS:
-        raise Invalid(f"Change at most {MAX_WAYS} road pieces at a time.", "osm_way_ids")
+    most = MAX_BATCH_WAYS if batch else MAX_WAYS
+    if not way_ids or len(way_ids) > most:
+        raise Invalid(f"Change at most {most} road pieces at a time.", "osm_way_ids")
     validate(spec)
     schema = live_schema()
     # Asked of the router before any lock is taken; the token below still catches a change.
-    if len(way_ids) > 1 and live_oid(schema) is not None:
+    if len(way_ids) > 1 and not batch and live_oid(schema) is not None:
         _check_stretch(schema, way_ids)
     try:
         with transaction.atomic():
@@ -710,7 +720,7 @@ def apply(
                     osm_way_id=way,
                     value={},
                     reason=spec.reason.strip(),
-                    evidence=EVIDENCE,
+                    evidence=evidence,
                     approved=False,
                     source=Override.Source.PANEL,
                     created_by=actor,

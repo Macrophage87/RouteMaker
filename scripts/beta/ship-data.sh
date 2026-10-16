@@ -129,6 +129,9 @@ API_IMAGE="ghcr.io/macrophage87/routemaker-api"
 #   saved_route_version               earlier versions of a rider's saved routes (v0.7.0): never shipped.
 #   reviewed_closure                  closures home's reviewers confirmed (v0.7.0; core.reviewed_closures):
 #                                     the reviewer's account and a rider's reported words, never shipped.
+#   review_item review_ruling         Review mode's queues, rulings and their maps (v0.7.0;
+#   review_queue_state                core.stress_review): an instance admin's own, and ratings whose
+#                                     public use is pending (agency_lts.PENDING_AGENCIES), never shipped.
 #   stress_suggestion_review          reviewers' agree and disagree on home's waiting suggestions
 #                                     (v0.7.0; core.suggestions.review): suggestion_id ->
 #                                     stress_suggestion, reviewer_id -> app_user. Never shipped.
@@ -141,6 +144,7 @@ EXCLUDED_TABLE_DATA=(
 	app_user audit_log bootstrap_claim pending_instance_admin_removal ban_tombstone
 	configured_guild role_mapping stress_suggestion mass_hazard junction_suggestion stress_edit
 	my_go account_settings saved_route saved_route_version signed_out_send shared_route reviewed_closure
+	review_item review_ruling review_queue_state
 	stress_suggestion_review
 )
 # Tables the beta needs from home that also name a person or carry a rider's words: shipped with

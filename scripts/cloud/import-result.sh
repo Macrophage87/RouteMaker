@@ -20,7 +20,11 @@
 #   4. unpacks the six graphs' build directories under DATA_ROOT/tiles, beside the ones
 #      being served, and restores the box's segment table as the staging schema
 #   5. runs `manage.py import_cloud_build <build> --overrides-read-at <the dump's read_at>`, dry:
-#      every check the swap makes, and what it would change
+#      every check the swap makes, and what it would change; it also precomputes Review's queue
+#      (the roads whose rating the build changes, for an instance admin's rulings), reading the
+#      box's reports.tar, unpacked (again on every run) under
+#      DATA_ROOT/rebuild/cloud-reports/<build>; with none, those queues say the build had none
+# The swap says how many changed roads have no ruling yet; it does not wait for them.
 # Run it again after a failure and it carries on: a build directory left by an unpack
 # that stopped is unpacked again, and once step 4 has finished it goes straight to step 5.
 #
@@ -320,5 +324,17 @@ if [ "$installed" = 0 ]; then
 fi
 
 # --- 5. dry run --------------------------------------------------------------------------
-import_cmd ${extra[@]+"${extra[@]}"}
+# The box's reports, for Review's queues: unpacked again on every run (a re-run after a stopped
+# one, or a newer download), and none at all where this build sent none, so a queue read from
+# a report says "No report from this build" rather than showing another build's.
+$SUDO rm -rf "${data_root:?}/rebuild/cloud-reports/$build"
+if [ -f "$stage/reports.tar" ]; then
+	$SUDO mkdir -p "$data_root/rebuild/cloud-reports/$build"
+	$SUDO tar -C "$data_root/rebuild/cloud-reports/$build" --numeric-owner -xf "$stage/reports.tar"
+fi
+review=()
+if [ -d "$data_root/rebuild/cloud-reports/$build/reports" ]; then
+	review=(--review-reports-dir "cloud-reports/$build/reports")
+fi
+import_cmd ${review[@]+"${review[@]}"} ${extra[@]+"${extra[@]}"}
 note "installed. Nothing served has changed. To swap it in: scripts/cloud/import-result.sh --swap $url"

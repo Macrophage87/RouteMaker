@@ -67,15 +67,22 @@ async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 
 
 /**
  * Opens a bottom-bar sheet by its button's label ("Layers", "Suggest", "Export", "Settings"; Plan's GPX is Export since 5efab18a). UI-CLEANUP: "Map
- * layers" is "Layers", and "Legend" is the Legend sheet, one step in from Layers (its Legend button), and "Review" the admin's review, one step in from Suggest.
+ * layers" is "Layers", and "Legend" is the Legend sheet, one step in from Layers (its Legend button). "Review" is the admin's Review mode
+ * (ReviewMode.tsx), opened from Suggest's Review button on its Rider suggestions list; "Review hazards" is the same mode on its Mass Ride
+ * hazard reports list.
  */
 async function openSheet(p, label = "Layers") {
   const name = label === "Map layers" ? "Layers" : label;
-  const bar = name === "Legend" ? "Layers" : name === "Review" ? "Suggest" : name;
+  const review = name === "Review" || name === "Review hazards";
+  const bar = name === "Legend" ? "Layers" : review ? "Suggest" : name;
   await p.eval(`[...document.querySelectorAll('.bar-button')].find((b) => b.textContent.startsWith(${JSON.stringify(bar)}))?.click(); true`);
   await sleep(250);
-  if (name === "Review") {
+  if (review) {
     await p.eval("document.querySelector('#sheet-suggest .open-review')?.click(); true");
+    await p.waitFor("!!document.querySelector('.review-mode .review-list-button[aria-pressed=\"true\"]')", 8000);
+    if (name === "Review hazards") {
+      await p.eval("[...document.querySelectorAll('.review-list-button')].find((b) => b.textContent.startsWith('Mass Ride hazard reports'))?.click(); true");
+    }
     await sleep(250);
   }
   if (name === "Legend") {
@@ -3033,9 +3040,9 @@ async function hazardsAsked(p, ms = 15000) {
   await p.close();
 }
 {
-  // The instance admin's review: hazard reports in their own section of the same review, the same three actions.
+  // The instance admin's review: hazard reports in their own list of Review mode, the same three actions.
   const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
-  await openSheet(p, "Review");
+  await openSheet(p, "Review hazards");
   await p.waitFor("[...document.querySelectorAll('.hazard-review button')].some((b) => b.textContent === 'Show hazard reports')", 8000);
   await p.eval("[...document.querySelectorAll('.hazard-review button')].find((b) => b.textContent === 'Show hazard reports').click(); true");
   await p.waitFor("!!document.querySelector('.hazard-review .suggestion-item h4')", 8000);

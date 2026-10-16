@@ -370,6 +370,83 @@ def test_where_panel_edits_are_re_applied_a_later_admin_override_still_refuses(
     assert serving(deployment) == {OLD}
 
 
+def test_the_dry_run_fills_reviews_queue_and_says_what_it_did(
+    deployment, settings, tmp_path
+) -> None:
+    """Review's queue is precomputed against the build in staging, and the queues read from a
+    report say so when the build sent none: this computer's own reports are never read as the
+    cloud build's (a report under REBUILD_WORK_DIR/reports here is ignored)."""
+    work = tmp_path / "work"
+    (work / "reports").mkdir(parents=True)
+    (work / "reports" / "use-sidepath-no-path.csv").write_text("osm_way_id\n1\n")
+    settings.REBUILD_WORK_DIR = work
+    with connection.cursor() as cursor:
+        cursor.execute("UPDATE staging.segment SET stress_tier = 4 WHERE osm_way_id = 1")
+
+    out = run(NEW, "--overrides-read-at", READ_AT)
+    assert (
+        "review queue, in roads (whole ways; the stress changes above count segments): 1 rebuild,"
+        in out
+    )
+    # The two reports agree on the one road that changed.
+    assert "stress changes, live -> staging: 1 segments" in out
+    assert "no report from this build for: sidepath, works closure, rematch" in out
+    assert (
+        f"review: 1 of 1 changed roads in build {NEW} have no ruling yet (Review mode, "
+        "Rebuild changes); this does not block the swap"
+    ) in out
+
+    # Given the build's own reports, they are read.
+    reports = tmp_path / "cloud" / "reports"
+    reports.mkdir(parents=True)
+    (reports / "works-closures.csv").write_text("way_id,status\n2,closed\n")
+    out = run(NEW, "--overrides-read-at", READ_AT, "--review-reports-dir", str(reports))
+    assert "1 works closure" in out and "for: sidepath, rematch" in out
+
+
+def test_reviews_reopenings_are_listed_apart_and_do_not_hold_the_swap(deployment) -> None:
+    from datetime import datetime
+
+    from core.models import Override, ReviewRuling
+
+    def reopening(at: str) -> Override:
+        return Override.objects.create(
+            kind=Override.Kind.ACCESS,
+            osm_way_id=7,
+            value={"bicycle": "yes"},
+            reason="Admin review, Oct 2026",
+            evidence="any words at all",
+            approved=True,
+            approved_at=datetime.fromisoformat(at),
+            source=Override.Source.REVIEW,
+        )
+
+    later = reopening("2026-10-05T12:00:00+00:00")
+    out = run(NEW, "--overrides-read-at", READ_AT)
+    assert (
+        "1 Review reopening(s) approved after 2026-10-04 07:00:00 UTC are not in this build "
+        f"(access override ids {later.pk}); they take effect at the next rebuild"
+    ) in out
+    assert "--confirm alone will refuse" not in out
+
+    # One made before the box's copy and undone after it: still open in this build.
+    earlier = reopening("2026-10-03T12:00:00+00:00")
+    ReviewRuling.objects.create(
+        queue="rebuild",
+        osm_way_id=7,
+        decision="reject",
+        at=datetime.fromisoformat("2026-10-03T12:00:00+00:00"),
+        access_override=earlier,
+        undone_at=datetime.fromisoformat("2026-10-05T12:00:00+00:00"),
+    )
+    Override.objects.filter(pk=earlier.pk).update(approved=False, approved_at=None)
+    out = run(NEW, "--overrides-read-at", READ_AT)
+    assert (
+        "warning: 1 Review reopening(s) undone after 2026-10-04 07:00:00 UTC are still open to "
+        f"bicycles in this build (access override ids {earlier.pk})"
+    ) in out
+
+
 def test_the_dry_run_reports_stress_changes_by_county(deployment, settings, tmp_path) -> None:
     """The owner's review before promotion (2026-10-16): what changed, totals by county,
     from reference/counties.geojson (the jurisdiction table has no county layer)."""

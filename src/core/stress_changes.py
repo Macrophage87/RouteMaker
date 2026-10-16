@@ -22,9 +22,12 @@ that holds its midpoint.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+from django.conf import settings
 from django.db import connection
 
 COUNTIES_FILE = "counties.geojson"
@@ -85,8 +88,15 @@ def load_counties(path: Path) -> list[tuple[str, str]]:
     ]
 
 
-def changes(live: str, staging: str, counties: list[tuple[str, str]]) -> list[Change]:
-    """Every (county, old tier, new tier) with a segment that moved, largest first."""
+def reference_counties() -> list[tuple[str, str]]:
+    """The counties file this host has (`REBUILD_REFERENCE_DIR`), or [] without one."""
+    return load_counties(Path(settings.REBUILD_REFERENCE_DIR) / COUNTIES_FILE)
+
+
+@contextmanager
+def county_table(counties: list[tuple[str, str]]) -> Iterator[None]:
+    """The counties as a temporary table (`stress_change_county`) for `county_of`, dropped after.
+    The one county lookup: this report's, and Review's Area column (core.stress_review)."""
     with connection.cursor() as cursor:
         cursor.execute("DROP TABLE IF EXISTS stress_change_county")
         cursor.execute("CREATE TEMP TABLE stress_change_county (name text, geom geometry)")
@@ -97,6 +107,25 @@ def changes(live: str, staging: str, counties: list[tuple[str, str]]) -> list[Ch
                 [name, geometry],
             )
         cursor.execute("CREATE INDEX ON stress_change_county USING gist (geom)")
+    try:
+        yield
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute("DROP TABLE IF EXISTS stress_change_county")
+
+
+def county_of(point_sql: str) -> str:
+    """SQL for the name of the county holding a point, NULL outside every county (inside
+    `county_table`)."""
+    return (
+        "(SELECT c.name FROM stress_change_county c "
+        f"WHERE ST_Intersects(c.geom, {point_sql}) ORDER BY c.name LIMIT 1)"
+    )
+
+
+def changes(live: str, staging: str, counties: list[tuple[str, str]]) -> list[Change]:
+    """Every (county, old tier, new tier) with a segment that moved, largest first."""
+    with county_table(counties), connection.cursor() as cursor:
         cursor.execute(
             f"""
             WITH moved AS (
@@ -107,10 +136,7 @@ def changes(live: str, staging: str, counties: list[tuple[str, str]]) -> list[Ch
                 JOIN {live}.segment l ON {PAIRED}
                 WHERE s.stress_tier IS DISTINCT FROM l.stress_tier
             )
-            SELECT coalesce(
-                       (SELECT c.name FROM stress_change_county c
-                        WHERE ST_Intersects(c.geom, moved.mid) ORDER BY c.name LIMIT 1),
-                       %s) AS county,
+            SELECT coalesce({county_of("moved.mid")}, %s) AS county,
                    old, new, count(*), coalesce(sum(metres), 0)
             FROM moved
             GROUP BY 1, 2, 3
@@ -119,7 +145,6 @@ def changes(live: str, staging: str, counties: list[tuple[str, str]]) -> list[Ch
             [NO_COUNTY],
         )
         rows = cursor.fetchall()
-        cursor.execute("DROP TABLE IF EXISTS stress_change_county")
     return [
         Change(county, old, new, segments, metres / METRES_PER_MILE)
         for county, old, new, segments, metres in rows
