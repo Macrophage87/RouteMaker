@@ -37,11 +37,12 @@ filtered to the counties the coverage box reaches:
 
     --counties tl_2024_us_county.geojson
 
-Two agency street layers go to `roadway.json`, optional, read by the rebuild's
-volume-conflation stage (OWNER-DECISIONS 151, 159):
+Three agency street layers go to `roadway.json`, optional, read by the rebuild's
+volume-conflation stage (OWNER-DECISIONS 151, 159; PLAN.md item 183):
 
     --roadway-block dc-roadway-block.geojson          DDOT, CC BY 4.0
     --baltimore-centerline baltimore-street-centerline.geojson   Open Baltimore
+    --alexandria-streets alexandria-transport-streets.geojson    City of Alexandria, CC0
 
 Each is the layer exactly as `scripts/fetch_agency_layer.py` stored it; the
 posted speed, lanes by direction, one-way, bike facility, parking and count are
@@ -405,7 +406,9 @@ def volume_rows(volume: Path, source: str, year: int | None, aadt_property: str)
     return rows
 
 
-def roadway_rows(roadway_block: Path | None, baltimore: Path | None) -> list[dict]:
+def roadway_rows(
+    roadway_block: Path | None, baltimore: Path | None, alexandria: Path | None = None
+) -> list[dict]:
     """Agency street blocks in the shape `ReferenceData.load_road_blocks` reads.
 
     Streamed one feature at a time: the Baltimore centerline is 152 MB of
@@ -428,13 +431,13 @@ def roadway_rows(roadway_block: Path | None, baltimore: Path | None) -> list[dic
     layers = (
         (roadway_block, "dc", lambda props: agency_roads.parse_dc_roadway_block(props)),
         (baltimore, "baltimore", agency_roads.parse_baltimore_centerline),
+        (alexandria, "alexandria", agency_roads.parse_alexandria_transport_streets),
     )
     for path, prefix, parse in layers:
         if path is None:
             continue
-        # The internal-comparison layers (Arlington's Bike Comfort Index,
-        # Alexandria's Transport Streets; OWNER-DECISIONS 155) are never a
-        # rebuild input.
+        # The internal-comparison layer (Arlington's Bike Comfort Index;
+        # OWNER-DECISIONS 155) is never a rebuild input.
         agency_roads.refuse_internal_only(path)
         kept = 0
         for number, feature in enumerate(agency_roads.iter_features(path)):
@@ -536,6 +539,11 @@ def main(argv: list[str] | None = None) -> int:
         "--baltimore-centerline", type=Path, help="Baltimore street centerline, GeoJSON as fetched"
     )
     parser.add_argument(
+        "--alexandria-streets",
+        type=Path,
+        help="City of Alexandria Transport Streets (CC0), GeoJSON as fetched",
+    )
+    parser.add_argument(
         "--dc-pci", type=Path, help="DDOT Pavement Condition Index layer, GeoJSON as fetched"
     )
     parser.add_argument("--dc-pci-fiscal-year", type=int, default=None)
@@ -547,10 +555,10 @@ def main(argv: list[str] | None = None) -> int:
         if not pavement.LICENCE_CONFIRMED:
             parser.error(f"--dc-pci refused: {pavement.LICENCE_PENDING}")
 
-    # The internal-comparison layers (Arlington's Bike Comfort Index,
-    # Alexandria's Transport Streets; OWNER-DECISIONS 155) are never a rebuild
-    # input. Refused before anything is written (review r2: the crossings
-    # fixture was installed first, so a refused run still changed the data root).
+    # The internal-comparison layer (Arlington's Bike Comfort Index;
+    # OWNER-DECISIONS 155) is never a rebuild input. Refused before anything is
+    # written (review r2: the crossings fixture was installed first, so a refused
+    # run still changed the data root).
     from routemaker.agency_roads import InternalOnlySource, refuse_internal_only
 
     inputs = (
@@ -558,6 +566,7 @@ def main(argv: list[str] | None = None) -> int:
         args.urban_areas,
         args.roadway_block,
         args.baltimore_centerline,
+        args.alexandria_streets,
         args.dc_pci,
     )
     for path in (*inputs, *args.volume):
@@ -620,9 +629,11 @@ def main(argv: list[str] | None = None) -> int:
         (reference / "volume.json").write_text(json.dumps(rows))
         print(f"wrote {reference / 'volume.json'}: {len(rows)} count lines")
 
-    if args.roadway_block or args.baltimore_centerline:
+    if args.roadway_block or args.baltimore_centerline or args.alexandria_streets:
         try:
-            blocks = roadway_rows(args.roadway_block, args.baltimore_centerline)
+            blocks = roadway_rows(
+                args.roadway_block, args.baltimore_centerline, args.alexandria_streets
+            )
         except InternalOnlySource as refused:
             parser.error(str(refused))
         if len({row["id"] for row in blocks}) != len(blocks):

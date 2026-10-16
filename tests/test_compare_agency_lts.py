@@ -1,10 +1,11 @@
 """The analysis script that compares our tiers with other agencies' (scripts/analysis/
 compare_agency_lts.py): its guards on the internal-only layers.
 
-OWNER-DECISIONS 155: Arlington's Bike Comfort Index and Alexandria's Transport Streets are
-for internal comparison only, never copied into anything published. Review r1 found the
-script would write their reports wherever `--out` pointed, the repository included, and
-nothing refused one of those layers as a published input.
+OWNER-DECISIONS 155: Arlington's Bike Comfort Index is for internal comparison only, never
+copied into anything published. Review r1 found the script would write its report wherever
+`--out` pointed, the repository included, and nothing refused the layer as a published
+input. Alexandria's Transport Streets was internal too until the city's CC0 reply of
+2026-10-16 (Alex311 request 26-00041150); its report is now a published one.
 """
 
 from __future__ import annotations
@@ -55,7 +56,7 @@ def test_a_published_report_never_reads_an_internal_only_layer(compare, tmp_path
 
 def test_the_internal_subcommands_refuse_the_repository_before_reading_anything(tmp_path) -> None:
     """Refused at once, before the slow part, and nothing is written."""
-    for dataset in ("arlington", "alexandria"):
+    for dataset in ("arlington",):
         done = subprocess.run(
             [
                 sys.executable,
@@ -71,6 +72,25 @@ def test_the_internal_subcommands_refuse_the_repository_before_reading_anything(
         assert done.returncode != 0, dataset
         assert "inside the repository" in done.stderr + done.stdout
     assert not (REPO / "reports" / "data-comparison" / "internal").exists()
+
+
+def test_the_alexandria_report_is_a_published_one(tmp_path) -> None:
+    """Transport Streets is CC0 since 2026-10-16: its report needs --out like the other
+    published ones, and --internal-out alone is not enough."""
+    done = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "alexandria",
+            *("--datasets", str(tmp_path), "--ways-dir", str(tmp_path)),
+            *("--state-polygons", "x", "--urban", "x", "--live-ways", "x"),
+            *("--internal-out", str(tmp_path / "internal")),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert done.returncode != 0
+    assert "--out is required" in done.stderr
 
 
 def test_internal_reports_are_ignored_by_git_wherever_they_land() -> None:

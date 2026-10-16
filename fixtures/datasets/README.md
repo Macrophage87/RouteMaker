@@ -27,9 +27,9 @@ to run again where its output exists.
 | Baltimore street centerline | posted speed (the city's `speed` field, **only where OSM has no `maxspeed`**, OWNER-DECISIONS 184) and one-way, conflated onto Baltimore's OSM ways | yes: open licence by city code, credited |
 | Baltimore bike facilities and multiuse trails | a candidate list of facilities OSM lacks, and **loaded** override rows (OWNER-DECISIONS 182), `fixtures/overrides/2026-10-01-owner-baltimore-facilities.json` | yes (as above), credited |
 | MDOT SHA AADT Segments (v0.5.0, FOLLOWUP-MDOT-AADT, OWNER-DECISIONS 429; item `77010abe7558425997b4fcdab02e2b64` layer 1, fetched at the rebuild with `--bbox`, docs/OPERATIONS.md "Maryland traffic counts (MDOT SHA)") | Maryland's traffic counts for the stress classifier, installed as the third `--volume` (`mdot-sha`) | through the tiles and the route only; the segment table names each segment (`volume_source = 'mdot-sha'`) so a published derivative can withhold them until Maryland's waiver (PLAN.md, Licensing); credited "State of Maryland (MDOT SHA)" |
-| Alexandria Bike Lane Routes | a cross-check of OSM's bike lanes | yes: CC0 |
+| Alexandria Bike Lane Routes | a cross-check of OSM's bike lanes | yes: CC0 (the city's OpenData portal) |
 | Arlington Bike Comfort Index | **internal comparison only** (OWNER-DECISIONS 152, 155) | **no**; never in tiles, routes, fixtures or this repository |
-| Alexandria Transport Streets | **internal comparison only** (OWNER-DECISIONS 153, 155) | **no**; as above |
+| Alexandria Transport Streets | posted speed (`SPEED_LIMIT`), **only where OSM has no `maxspeed`** (PLAN.md item 183), conflated onto Alexandria's OSM ways (`agency_roads.parse_alexandria_transport_streets`); its one-way is not read. Internal comparison only until 2026-10-16 (OWNER-DECISIONS 153, 155) | yes: CC0 (City of Alexandria OpenData portal), confirmed by Alex311 reply 2026-10-16, request 26-00041150; credited "City of Alexandria" |
 
 Not downloaded: MDOT's "Road Separated Bike Routes" web map (iMAP item
 66bf7d61948b4ef48aea94327b504f86): its terms bar trip-planning use, so it is
@@ -51,11 +51,13 @@ verbatim.
 | Multiuse Trails (City of Baltimore) | <https://services1.arcgis.com/UWYHeuuJISiGmgXx/ArcGIS/rest/services/multiuseTrails2023/FeatureServer/0>, item `34260bfb3df74d3994e0c73fde47630b` (modified 2026-07-01) | 20:45:25 | 162 of 163 | 434,452 | `a0346799b9e519e56b7add57e186f484f051f8ba555adca334e7fe4023ed7eed` |
 | Street Centerline (Native) (City of Baltimore) | <https://baltegis.baltimorecity.gov/mapping/rest/services/Address_Points/Street_Centerline_Native/FeatureServer/0>, item `69d9eb1e37044f1c9cc9941df1797c43` (modified 2026-08-14) | 20:45:26 | 48,522 (25 pages) | 152,214,630 | `b386865bca7d95826008a0b825d035926453db2ac51a0f103ecabb6bf67f9dd8` |
 | Bike Comfort Index (Arlington County) - internal | <https://services1.arcgis.com/JrtUzVcH8S2wnzVH/arcgis/rest/services/Bike_Comfort_Index/FeatureServer/0>, item `d0fe44f631c1460089a49ecaa1377fa9` (modified 2026-07-10) | 20:46:19 | 6,694 | 12,204,740 | `2acc22a157e7afdae1d5f79060581be7c0bd85d3cf412ebc97772c6608f2765a` |
-| Transport Streets (City of Alexandria) - internal | <https://services2.arcgis.com/ChYV69FhfjwkvRmy/arcgis/rest/services/Transport%20Streets/FeatureServer/0>, item `dccf9eda6b6c443b8133abf2542854b1` (modified 2026-04-07) | 20:46:26 | 5,677 | 5,032,968 | `5e8f8765cb368243cf9a231cc858f4951840050b9022222ec66c1e7306c8f1f0` |
+| Transport Streets (City of Alexandria) | <https://services2.arcgis.com/ChYV69FhfjwkvRmy/arcgis/rest/services/Transport%20Streets/FeatureServer/0>, item `dccf9eda6b6c443b8133abf2542854b1` (modified 2026-04-07) | 20:46:26 | 5,677 | 5,032,968 | `5e8f8765cb368243cf9a231cc858f4951840050b9022222ec66c1e7306c8f1f0` |
 
-(The Arlington and Alexandria Transport Streets rows are the record of a
-download held outside the repository, in `rmdata/datasets/internal-only/`; the
-files and anything read from them are not checked in.)
+(The Arlington row is the record of a download held outside the repository,
+in `rmdata/datasets/internal-only/`; the file and anything read from it are not
+checked in. The Alexandria Transport Streets download was held there too until
+the city's reply of 2026-10-16; it moves to
+`rmdata/datasets/alexandria-transport-streets/`, the same file, sha256 above.)
 
 The Baltimore Multiuse Trails layer holds current and proposed trails (OWNER-
 DECISIONS 158). The proposed alignments are `mainSpur = 'Future Alignment'`,
@@ -71,7 +73,7 @@ Alignment'`): 162 of the layer's 163 features were downloaded.
 | Alexandria Bike Lane Routes | "cc0" | "Bike Lanes, Transit City of Alexandria, VA GIS" |
 | Baltimore DOT BMC Bike Facilities, Multiuse Trails, Street Centerline (Native) | the three items carry no licence text. The basis is Baltimore City Code Art. 1 §9-1(h) (<https://codes.baltimorecity.gov/us/md/cities/baltimore/code/1/9-1#(h)>), as the owner quoted it (OWNER-DECISIONS 159): "Datasets published on the Open Data Portal shall be available to the public on an open license basis, with no restrictions on copying, publishing, further distributing, modifying, or using the data for any non-commercial or commercial purpose." | facilities: "City of Baltimore. Baltimore City Department of Transportation (DOT)"; trails: "City of Baltimore. Department of Recreation & Parks (BCRP). Department of Transportation (DOT)"; centerline: none |
 | Arlington Bike Comfort Index | "Please review the Arlington County data disclaimer." (a pointer, not a licence) | "Arlington County, Virginia; Department of Environmental Services" |
-| Alexandria Transport Streets | "City of Alexandria, VA GIS" (not a licence) | none |
+| Alexandria Transport Streets | "City of Alexandria, VA GIS" (not a licence). The basis is the city's reply (Alex311 request 26-00041150, 2026-10-16): "Any of the data found on our OpenData portal is under the CC0 license and is allowed to be used for your application." The item is on the portal (<https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::transport-streets>), owned by the city's `AlexGIS_AlexGIS` account in the "Open Data Group for the City of Alexandria, Virginia" (checked 2026-10-16) | none |
 
 ### Credits
 
@@ -112,8 +114,10 @@ loading its LTS 5 as Avoid (OWNER-DECISIONS 181):
 So the layer passes, credited, and the PLAN's older "check-only" note for it is
 superseded (PLAN.md, "Owner amendments", 2026-10-01). Arlington's Bike Comfort
 Index and Alexandria's Transport Streets did not reach the gate: their licence
-fields are a pointer and an agency name, and they stay internal comparison only
-(OWNER-DECISIONS 155).
+fields are a pointer and an agency name, and they stayed internal comparison only
+(OWNER-DECISIONS 155). Alexandria's passed on 2026-10-16, when the city said its
+OpenData portal is CC0 (above): CC0 asks nothing of a recipient, so all three
+questions are answered yes. Arlington's is still pending.
 
 ## What was found in the data
 
@@ -175,7 +179,15 @@ otherwise rediscover; each is pinned by a test.
 * Montgomery's `LTS_EXIST` takes 0.5, 1, 2, 2.5, 3, 4 and 5: **3 and 4 are
   separate** (OWNER-DECISIONS 149, confirmed), and so are 2 and 2.5.
 * Alexandria's Transport Streets has `SPEED_LIMIT` and `ONEWAY`; `LANES` is
-  empty on all 5,677 lines and there is no LTS.
+  empty on all 5,677 lines and there is no LTS. `RD_CLASS` is empty too; the
+  class is in `MTFCC`. Queried on the live service 2026-10-16: 1,605 lines at
+  20 mph, 3,031 at 25, 466 above 25, 3 with none; of the 3,733 local-street lines
+  (`MTFCC` "LOCAL NEIGHBORHOOD ROAD, RURAL ROAD, CITY STREET"), 1,591 at 20 mph and
+  1,938 at 25. So the city has no single residential figure: each street keeps its
+  own. The layer classes the George Washington Memorial Parkway (the National Park
+  Service's road) as "INTERSTATE HIGHWAY" at 50 mph; the parser skips the
+  interstates and ramps, the parking aisles, alleys, walkways, private roads and
+  driveways.
 * Arlington's Bike Comfort Index has an `LTS` field (`LTS 0` to `LTS 4`,
   `Not Applicable`, `Check`).
 
@@ -185,7 +197,7 @@ Re-run `scripts/fetch_agency_layer.py` into a new directory when an agency
 revises a layer, with the owner's go for the download, and update the tables
 above. The refetch needs a new `--out-dir` because the script refuses to
 overwrite. Then reinstall: `scripts/install_reference_data.py --roadway-block
-... --baltimore-centerline ...`.
+... --baltimore-centerline ... --alexandria-streets ...`.
 
 ## Federal land (2026-10-03)
 

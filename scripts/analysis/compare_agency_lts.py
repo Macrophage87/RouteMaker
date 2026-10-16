@@ -2,10 +2,10 @@
 # ruff: noqa: E501 - report prose and table rows run long
 """Our tier against other agencies' bicycle stress layers, and Baltimore's facility records.
 
-    python scripts/analysis/compare_agency_lts.py moco|alexandria-lanes|baltimore \\
+    python scripts/analysis/compare_agency_lts.py moco|alexandria|alexandria-lanes|baltimore \\
         --datasets DIR --ways-dir DIR --state-polygons FILE --urban FILE --live-ways FILE \\
         [--roadway reference/roadway.json] --out DIR [--overrides-out fixtures/overrides]
-    python scripts/analysis/compare_agency_lts.py arlington|alexandria ... --internal-out DIR
+    python scripts/analysis/compare_agency_lts.py arlington ... --internal-out DIR
 
 Each subcommand reads one agency's layer as `scripts/fetch_agency_layer.py` stored it,
 matches it to the OSM ways that lie along it (`pipeline.conflation.conflate_blocks`, with the
@@ -16,11 +16,14 @@ miles, the disagreement by OSM road class, and the largest disagreements, groupe
 and by the pair of tiers. `moco` and `baltimore` also write the override files the owner
 approved (OWNER-DECISIONS 181, 182) to `--overrides-out`.
 
-Arlington's Bike Comfort Index and Alexandria's Transport Streets are for INTERNAL
-comparison only (OWNER-DECISIONS 152, 153, 155): their reports name no value that could be
-copied into a fixture, and go only to `--internal-out`, which is refused inside the
-repository (`internal_output_dir`). The published subcommands refuse a layer under
-`internal-only/` (`agency_roads.refuse_internal_only`).
+Arlington's Bike Comfort Index is for INTERNAL comparison only (OWNER-DECISIONS 152,
+155): its report names no value that could be copied into a fixture, and goes only to
+`--internal-out`, which is refused inside the repository (`internal_output_dir`). The
+published subcommands refuse a layer under `internal-only/`
+(`agency_roads.refuse_internal_only`). Alexandria's Transport Streets was internal as well
+until 2026-10-16, when the city confirmed its OpenData portal is CC0 (Alex311 request
+26-00041150); `alexandria` is now a published report, read from
+`<datasets>/alexandria-transport-streets/`.
 """
 
 from __future__ import annotations
@@ -734,15 +737,14 @@ def arlington(args, ctx: Context) -> None:
 
 
 # ---------------------------------------------------------------------------------------
-# Alexandria (internal for Transport Streets; Bike Lane Routes is CC0)
+# Alexandria (Transport Streets and Bike Lane Routes, both CC0 on the city's OpenData portal)
 # ---------------------------------------------------------------------------------------
 
 
 def alexandria(args, ctx: Context) -> None:
-    out_dir = internal_output_dir(args.internal_out)
-    streets = (
+    out_dir = Path(args.out)
+    streets = published_layer(
         Path(args.datasets)
-        / "internal-only"
         / "alexandria-transport-streets"
         / "alexandria-transport-streets.geojson"
     )
@@ -855,13 +857,14 @@ def alexandria(args, ctx: Context) -> None:
             ]
         )
     out = [
-        "# INTERNAL COMPARISON ONLY: our tier against Alexandria's Transport Streets speed and one-way",
+        "# Our tier against Alexandria's Transport Streets speed and one-way",
         "",
         'City of Alexandria, VA GIS, "Transport Streets" (ArcGIS item dccf9eda6b6c443b8133abf2542854b1), '
-        'retrieved 2026-10-01. Its licence field says only "City of Alexandria, VA GIS", so by the owner\'s '
-        "decision (items 153, 155) it is consulted for research and nothing in it is copied into published "
-        "output or fixtures. Its fields (checked first): `SPEED_LIMIT` and `ONEWAY` are filled; `LANES` is "
-        "empty on all 5,677 records, and the layer carries no LTS.",
+        "retrieved 2026-10-01. CC0 (City of Alexandria OpenData portal), confirmed by Alex311 reply "
+        "2026-10-16, request 26-00041150. Its fields (checked first): `SPEED_LIMIT` and `ONEWAY` are "
+        "filled; `LANES` is empty on all 5,677 records, and the layer carries no LTS. The rebuild reads "
+        "its speed only where OSM has none (PLAN.md item 183); this report puts it and the one-way in "
+        "place of OSM's everywhere, to show what the city's record would change.",
         "",
         "So the comparison is of the tier the classifier gives a way with OSM's own tags (ours) against the "
         "tier it gives the same way with Alexandria's posted speed and one-way direction in place of "
@@ -905,13 +908,13 @@ def alexandria(args, ctx: Context) -> None:
         "",
     ]
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "alexandria-internal-comparison.md").write_text("\n".join(out))
+    (out_dir / "alexandria-transport-streets-check.md").write_text("\n".join(out))
     print("alexandria transport streets", len(records), f"{total:.0f} mi")
 
 
 def alexandria_lanes(args, ctx: Context) -> None:
-    """Bike Lane Routes (CC0): OSM ways that lack a lane the city records. Published; kept apart
-    from the internal Transport Streets comparison so the two never share an output."""
+    """Bike Lane Routes (CC0): OSM ways that lack a lane the city records. Published, as the
+    Transport Streets comparison now is (`alexandria`)."""
     lanes_layer = published_layer(
         Path(args.datasets) / "alexandria-bike-lane-routes" / "alexandria-bike-lane-routes.geojson"
     )
@@ -1614,7 +1617,7 @@ def main() -> int:
     )
     parser.add_argument("--overrides-out", default=str(OVERRIDES))
     args = parser.parse_args()
-    internal = args.dataset in ("arlington", "alexandria")
+    internal = args.dataset == "arlington"
     if internal:
         internal_output_dir(args.internal_out)  # refuse before the slow part
     elif not args.out:

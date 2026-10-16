@@ -519,9 +519,10 @@ class StressResult:
     # Where each input the classifier read came from, as (attribute, source)
     # pairs, on a way an agency's street layer was matched to: `maxspeed`,
     # `lanes`, `oneway`, `bike`, `parking` and `aadt` each name the agency
-    # (`dc-roadway-block`, `baltimore-centerline`) where its value took
-    # precedence, `osm` where the way's own tag stood, `default` where neither
-    # said and the classifier assumed. Empty on a way no agency layer reached.
+    # (`dc-roadway-block`, `baltimore-centerline`, `alexandria-transport-streets`)
+    # where its value took precedence, `osm` where the way's own tag stood,
+    # `default` where neither said and the classifier assumed. Empty on a way no
+    # agency layer reached.
     attr_sources: tuple[tuple[str, str], ...] = ()
     # What the classifier read the road at, kept for the intersection model
     # (`routemaker.intersections`; OWNER-DECISIONS 165-167): the speed and the

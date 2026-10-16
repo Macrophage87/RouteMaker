@@ -132,6 +132,7 @@ ATTR_SOURCES = {
     "osm": OSM,
     "dc-roadway-block": "DC Roadway Block (DDOT / DC GIS), DC Open Data (CC BY 4.0, adapted)",
     "baltimore-centerline": "Open Baltimore street centerline",
+    "alexandria-transport-streets": "City of Alexandria Transport Streets",
 }
 
 FACILITY_WORDS = {
