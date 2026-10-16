@@ -4941,7 +4941,11 @@ REPORT_311_BODY_MAX_BYTES = 2048
 def report311_status(request):
     from . import dc311
 
-    response = JsonResponse({"enabled": dc311.enabled()})
+    on = dc311.enabled()
+    # On, the answer carries a short-lived signed ticket that a send must bring back.
+    response = JsonResponse(
+        {"enabled": True, "ticket": dc311.ticket()} if on else {"enabled": False}
+    )
     response["Cache-Control"] = "no-store"
     return response
 
@@ -4967,6 +4971,24 @@ def report311_send(request):
         return _error(400, "lat and lon are numbers.")
     if not isinstance(description, str) or len(description) > dc311.DESCRIPTION_MAX:
         return _error(400, f"description is text of at most {dc311.DESCRIPTION_MAX} characters.")
+    if dc311.enabled():
+        if not dc311.ticket_ok(body.get("ticket")):
+            out = JsonResponse(
+                {"error": "Ask the server again, then send the report.", "code": "no_ticket"},
+                status=403,
+            )
+            out["Cache-Control"] = "no-store"
+            return out
+        everyone = ratelimit.Limit(
+            scope=dc311.GLOBAL_SCOPE, requests=dc311.HOURLY_MAX, window_s=3600
+        )
+        if not ratelimit.hit(everyone, "all").allowed:
+            out = JsonResponse(
+                {"error": "DC 311 reports from here are paused for now.", "code": "busy"},
+                status=429,
+            )
+            out["Cache-Control"] = "no-store"
+            return out
     try:
         ident = dc311.send(kind, float(lat), float(lon), description)
     except dc311.NotSent as refused:

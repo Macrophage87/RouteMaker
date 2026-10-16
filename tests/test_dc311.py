@@ -82,7 +82,21 @@ def test_the_endpoints(client, dc, settings) -> None:
     assert off.status_code == 503 and off.json()["code"] == "dc311_off"
 
     settings.DC311_API_KEY = "placeholder-not-a-key"
-    assert client.get("/api/report311").json() == {"enabled": True}
+    status = client.get("/api/report311").json()
+    assert status["enabled"] is True and dc311.ticket_ok(status["ticket"])
+    # On, a send without the page's ticket (or with a forged one) is refused, nothing sent.
+    for ticket in (None, "forged", status["ticket"] + "x"):
+        refused = client.post(
+            "/api/report311",
+            data=json.dumps({"kind": "pothole", **HERE, "ticket": ticket}),
+            content_type="application/json",
+            **headers,
+        )
+        assert refused.status_code == 403 and refused.json()["code"] == "no_ticket"
+    assert dc == []
+    body = json.dumps(
+        {"kind": "pothole", **HERE, "description": "Pothole.", "ticket": status["ticket"]}
+    )
     sent = client.post("/api/report311", data=body, content_type="application/json", **headers)
     assert sent.status_code == 200 and sent.json() == {"sent": True, "id": "21-00012345"}
     bad = client.post(
@@ -93,3 +107,36 @@ def test_the_endpoints(client, dc, settings) -> None:
     )
     assert bad.status_code == 400
     assert len(dc) == 1
+
+
+def test_a_ticket_is_short_lived(settings, monkeypatch) -> None:
+    from django.core import signing
+
+    value = dc311.ticket()
+    assert dc311.ticket_ok(value)
+    later = signing.loads
+    monkeypatch.setattr(
+        signing,
+        "loads",
+        lambda v, salt, max_age: later(v, salt=salt, max_age=max_age - dc311.TICKET_MAX_AGE_S - 1),
+    )
+    assert not dc311.ticket_ok(value)
+    assert dc311.TICKET_MAX_AGE_S <= 30 * 60
+
+
+@pytest.mark.django_db
+def test_every_address_together_is_held_to_an_hourly_cap(client, dc, settings, monkeypatch) -> None:
+    """However many addresses send, at most HOURLY_MAX reports an hour go to DC from here."""
+    settings.DC311_API_KEY = "placeholder-not-a-key"
+    monkeypatch.setattr(dc311, "HOURLY_MAX", 2)
+    codes = []
+    for n in range(3):
+        ticket = client.get("/api/report311").json()["ticket"]
+        r = client.post(
+            "/api/report311",
+            data=json.dumps({"kind": "pothole", **HERE, "ticket": ticket}),
+            content_type="application/json",
+            HTTP_X_FORWARDED_FOR=f"198.51.100.{60 + n}",
+        )
+        codes.append(r.status_code)
+    assert codes == [200, 200, 429] and len(dc) == 2

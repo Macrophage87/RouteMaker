@@ -32,6 +32,7 @@ import urllib.parse
 import urllib.request
 
 from django.conf import settings
+from django.core import signing
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,32 @@ SERVICE_NAMES: dict[str, tuple[str, ...]] = {
     "other": (),
 }
 KINDS = tuple(SERVICE_NAMES)
+
+
+# A send needs a ticket from the page (GET /api/report311 gives one while the sender is on),
+# signed by the server and good for `TICKET_MAX_AGE_S`, as a signed-out suggestion needs one from
+# opening the road's panel (core.signed_out_suggestions). And however many riders send, at most
+# `HOURLY_MAX` reports an hour leave this server for DC (`GLOBAL_LIMIT`, counted in the database
+# so every worker shares it), on top of the per-address limit (ratelimit.REPORT_311).
+TICKET_SALT = "routemaker/report-311/v1"
+TICKET_MAX_AGE_S = 15 * 60
+HOURLY_MAX = 60
+GLOBAL_SCOPE = "report-311-all"
+
+
+def ticket() -> str:
+    """What the page sends back with a report: proof it asked this server first, signed, dated."""
+    return signing.dumps({"r": 311}, salt=TICKET_SALT, compress=True)
+
+
+def ticket_ok(value) -> bool:
+    if not isinstance(value, str) or not value or len(value) > 512:
+        return False
+    try:
+        found = signing.loads(value, salt=TICKET_SALT, max_age=TICKET_MAX_AGE_S)
+    except signing.BadSignature:
+        return False
+    return isinstance(found, dict) and found.get("r") == 311
 
 
 class NotSent(Exception):
