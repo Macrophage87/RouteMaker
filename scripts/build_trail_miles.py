@@ -23,7 +23,11 @@ What counts as a mile marker, from the OSM wiki
   ("Mile 3"; trail mappers often use tourism=information or marker=post);
 - railway=milestone (railway:position, a railway's chainage) and
   historic=milestone alone (an old road's stone) are not trail markers and are
-  left out; so is any marker more than MARKER_TRAIL_M from a named trail.
+  left out; so is any marker more than MARKER_TRAIL_M from a named trail, and
+  any marker nearer a main road (highway=motorway, trunk, primary or
+  secondary, or their _link) than the trail: an interstate's or state route's
+  milepost beside a trail (I-66's posts beside the Custis Trail) counts the
+  road's miles, not the trail's.
 
 distance=* defaults to kilometres on the wiki, but posts on the region's
 trails count miles and mappers copy the post, so a figure with no unit is read
@@ -36,25 +40,45 @@ designated or permissive; bicycle=no and area=yes are left out. A marker
 belongs to the nearest such way within MARKER_TRAIL_M, about 80 ft (25 m), and
 takes its name.
 
-The lines (for the computed mile where no marker is near): the ways of one
-name joined at shared nodes, pieces whose ends lie within JOIN_M, about a
-quarter mile (400 m, the stress tiles' trail-run gap), of each other joined
-across the gap (a trail that runs on a street for a block), and the longest
-path through each joined group taken as the trail's line. A line shorter than
+The lines (for the computed mile where no marker is near) are drawn only from
+ways a bike is meant for: highway=cycleway, or bicycle=yes or designated, or
+any way of a trail in MILE_ZERO. The ways of one name are joined at shared
+nodes, pieces whose ends lie within JOIN_M, about a quarter mile (400 m, the
+stress tiles' trail-run gap), of each other joined across the gap (a trail
+that runs on a street for a block), and the longest path through each joined
+group taken as the trail's line. A line shorter than
 TRAIL_MIN_M (2 miles, 3.2 km) is dropped: a short trail meets a road soon
 enough. The line is simplified to about 30 ft (10 m) and rounded to 5
 decimals, about 3 ft (1 m).
 
-Where mile 0 is: with two or more of the trail's markers within
-LINE_MARKER_M (100 ft, 30 m) of its line, the line runs the way their figures
-grow, and `s` (the metres at the line's first point) is set so the computed
-mile agrees with the posts (the median of each marker's posted metres less
-its metres along). With one marker, the line runs from the end that makes its
-figure closest to its distance along, and `s` is 0. With none, the line starts
-at the end nearer the US Capitol: the region's long trails (the CCT, the MBT,
-the W&OD, the C&O towpath, the Anacostia and Mount Vernon trails) count their
-miles out from the city. A rider's computed mile is said as "about mile 3.2",
-never as a post.
+Where mile 0 is, for each line (each joined piece of a trail on its own):
+
+- with two or more of the trail's markers within LINE_MARKER_M (100 ft, 30 m)
+  of the line that fit it, the line runs the way their figures grow, and `s`
+  (the metres at the line's first point) is set so the computed mile agrees
+  with the posts (the median of each marker's posted metres less its metres
+  along). They fit when the posted miles grow with the miles along at a rate
+  within FIT_SLOPE (0.8 to 1.25) and no post is more than FIT_RESIDUAL_M (a
+  quarter mile) from where the fit puts it; a set that does not fit (stray
+  posts, two numberings) counts as no posts;
+- with one marker, the line runs away from the trail's MILE_ZERO end where the
+  table has the trail, else from the end that makes the figure closest to its
+  distance along; `s` is the post's metres less its metres along, so the
+  computed mile agrees with it;
+- with none, only a trail in MILE_ZERO whose mile-0 point lies within
+  MILE_ZERO_NEAR_M (about a mile, 1.5 km) of an end of this line gets a line,
+  starting there, `s` 0. Any other line is left out: no mile is guessed for it.
+  So a piece of a trail split from the rest by more than JOIN_M (a long
+  on-street stretch) never restarts at mile 0: it gets a line only from its own
+  posts.
+
+MILE_ZERO holds only the trails whose mile 0 is known: the C&O Canal towpath
+(Georgetown, at Rock Creek's mouth; the canal's own mileage), the Capital
+Crescent Trail (Georgetown), the Metropolitan Branch Trail (Union Station) and
+the W&OD (Shirlington). Other trails (the Mount Vernon Trail, the Custis
+Trail) are left out until their posts' numbering is checked; their mapped
+posts still work. A rider's computed mile is said as "about mile 3.2", never
+as a post.
 
 Run from the repository root with the development venv (osmium is in
 requirements-dev.txt):
@@ -63,7 +87,9 @@ requirements-dev.txt):
         --pbf <DATA_ROOT>/extracts/source.osm.pbf
 
 It writes frontend/src/amenity-data/trail-miles.json
-(frontend/src/amenity-data/README.md, "Trail mile markers").
+(frontend/src/amenity-data/README.md, "Trail mile markers"), and fails
+(exit 1, nothing written) over SIZE_BUDGET bytes, as the front end keeps the
+file offline.
 """
 
 from __future__ import annotations
@@ -94,13 +120,36 @@ LINE_MARKER_M = 30.0  # about 100 ft
 JOIN_M = 400.0  # about a quarter mile; pipeline.schema.TRAIL_RUN_GAP_M
 TRAIL_MIN_M = 2 * METRES_PER_MILE
 SIMPLIFY_M = 10.0  # about 30 ft
-# The US Capitol: with no markers, a line starts at its end nearer here.
-CAPITOL = (-77.00905, 38.88990)
-# Over this the front end's offline copy grows too much; the build warns.
-SIZE_WARN = 600_000
+# A multi-post fit: posted miles per mile along, and the most a post may be off it.
+FIT_SLOPE = (0.8, 1.25)
+FIT_RESIDUAL_M = METRES_PER_MILE / 4
+# Mile 0 of the trails whose numbering is known, by trail_key (see the docstring).
+_GEORGETOWN_LOCK = (-77.0577, 38.9008)  # C&O Canal mile 0, Rock Creek's mouth
+_CCT_ZERO = (-77.0680, 38.9030)  # Georgetown, Water Street
+_MBT_ZERO = (-77.0060, 38.8990)  # Union Station
+_WOD_ZERO = (-77.0870, 38.8440)  # Shirlington
+MILE_ZERO = {
+    "chesapeake and ohio canal towpath": _GEORGETOWN_LOCK,
+    "c and o canal towpath": _GEORGETOWN_LOCK,
+    "c and o canal trail": _GEORGETOWN_LOCK,
+    "capital crescent trail": _CCT_ZERO,
+    "metropolitan branch trail": _MBT_ZERO,
+    "washington and old dominion trail": _WOD_ZERO,
+    "washington and old dominion railroad trail": _WOD_ZERO,
+    "w and od trail": _WOD_ZERO,
+    "w and od railroad regional park": _WOD_ZERO,
+}
+MILE_ZERO_NEAR_M = 1500.0  # about a mile
+# Over this the front end's offline copy grows too much; the build fails.
+SIZE_BUDGET = 600_000
 
 TRAIL_HIGHWAYS = frozenset({"cycleway", "path", "track", "bridleway"})
 RIDE_FOOTWAY = frozenset({"yes", "designated", "permissive"})
+LINE_BICYCLE = frozenset({"yes", "designated"})
+MAIN_ROADS = frozenset(
+    {"motorway", "trunk", "primary", "secondary"}
+    | {f"{k}_link" for k in ("motorway", "trunk", "primary", "secondary")}
+)
 MILESTONE_KEYS = ("highway", "waterway")
 _NUMBER = r"([0-9]+(?:\.[0-9]+)?)"
 _DISTANCE = re.compile(rf"^\s*{_NUMBER}\s*(mi|mile|miles|km|m)?\s*$", re.IGNORECASE)
@@ -170,6 +219,19 @@ def is_trail(tags: dict[str, str]) -> bool:
     if highway in TRAIL_HIGHWAYS:
         return True
     return highway == "footway" and tags.get("bicycle") in RIDE_FOOTWAY
+
+
+def trail_key(name: str) -> str:
+    """A trail's name to match on, as lib/trailMiles.ts trailKey: lower case, "&" as "and"."""
+    name = re.sub(r"[^a-z0-9 ]+", " ", name.lower().replace("&", " and "))
+    return " ".join(name.split())
+
+
+def is_line_way(tags: dict[str, str]) -> bool:
+    """A trail way the lines are drawn from: one a bike is meant for, or a MILE_ZERO trail's."""
+    if tags.get("highway") == "cycleway" or tags.get("bicycle") in LINE_BICYCLE:
+        return True
+    return trail_key(tags.get("name", "")) in MILE_ZERO
 
 
 def _flat(origin_lat: float):
@@ -299,34 +361,61 @@ def trail_lines(ways: list[list[tuple[int, float, float]]]) -> list[list[tuple[f
     return out
 
 
-def orient(line, markers: list[Marker]) -> tuple[list[tuple[float, float]], int]:
-    """The line running from mile 0, and the metres at its first point (see the docstring)."""
+def _fit(near: list[tuple[float, float]]) -> tuple[float, float] | None:
+    """(slope, start) of posted metres against metres along, or None when the posts do not fit."""
+    n = len(near)
+    ma = sum(a for a, _ in near) / n
+    mp = sum(p for _, p in near) / n
+    sxx = sum((a - ma) ** 2 for a, _ in near)
+    if sxx == 0:
+        return None
+    slope = sum((a - ma) * (p - mp) for a, p in near) / sxx
+    offsets = sorted(p - a for a, p in near)
+    mid = n // 2
+    start = offsets[mid] if n % 2 else (offsets[mid - 1] + offsets[mid]) / 2
+    return slope, start
+
+
+def orient(
+    line, markers: list[Marker], zero: tuple[float, float] | None = None
+) -> tuple[list[tuple[float, float]], int] | None:
+    """The line running from mile 0 and the metres at its first point, or None when no mile
+    can be given along it (see the docstring). `zero` is the trail's MILE_ZERO point, if any."""
+    line = list(line)
+    total = line_length(line)
     near = []
     for m in markers:
         off, along = project(line, (m.lon, m.lat))
         if off <= LINE_MARKER_M:
             near.append((along, m.mile * METRES_PER_MILE))
-    total = line_length(line)
     if len(near) >= 2:
-        n = len(near)
-        ma = sum(a for a, _ in near) / n
-        mm = sum(p for _, p in near) / n
-        slope = sum((a - ma) * (p - mm) for a, p in near)
-        if slope < 0:
-            line = list(reversed(line))
+        fit = _fit(near)
+        if fit and fit[0] < 0:
+            line.reverse()
             near = [(total - a, p) for a, p in near]
-        offsets = sorted(p - a for a, p in near)
-        mid = len(offsets) // 2
-        start = offsets[mid] if len(offsets) % 2 else (offsets[mid - 1] + offsets[mid]) / 2
-        return list(line), round(start)
+            fit = _fit(near)
+        if fit and FIT_SLOPE[0] <= fit[0] <= FIT_SLOPE[1]:
+            start = fit[1]
+            if all(abs(p - (a + start)) <= FIT_RESIDUAL_M for a, p in near):
+                return line, round(start)
+        near = []  # stray posts or two numberings: as if none
     if len(near) == 1:
         along, posted = near[0]
-        if abs(posted - (total - along)) < abs(posted - along):
-            line = list(reversed(line))
-        return list(line), 0
-    if metres(line[-1], CAPITOL) < metres(line[0], CAPITOL):
-        line = list(reversed(line))
-    return list(line), 0
+        if zero is not None:
+            backwards = metres(line[-1], zero) < metres(line[0], zero)
+        else:
+            backwards = abs(posted - (total - along)) < abs(posted - along)
+        if backwards:
+            line.reverse()
+            along = total - along
+        return line, round(posted - along)
+    if zero is None:
+        return None
+    if metres(line[-1], zero) < metres(line[0], zero):
+        line.reverse()
+    if metres(line[0], zero) > MILE_ZERO_NEAR_M:
+        return None
+    return line, 0
 
 
 class _Grid:
@@ -350,7 +439,8 @@ class _Grid:
             for y in ys:
                 self.cells[(x, y)].append((name, a, b))
 
-    def nearest(self, point, within: float) -> str | None:
+    def nearest(self, point, within: float) -> tuple[str | None, float]:
+        """The nearest segment's name within `within` metres (None for none), and its distance."""
         cx, cy = int(math.floor(point[0] / self.CELL)), int(math.floor(point[1] / self.CELL))
         best, name = within, None
         for x in (cx - 1, cx, cx + 1):
@@ -359,7 +449,7 @@ class _Grid:
                     d, _ = project((a, b), point)
                     if d <= best:
                         best, name = d, trail
-        return name
+        return name, best
 
 
 def in_box(lon: float, lat: float) -> bool:
@@ -367,45 +457,65 @@ def in_box(lon: float, lat: float) -> bool:
     return west <= lon <= east and south <= lat <= north
 
 
+Ways = dict[str, list[list[tuple[int, float, float]]]]
+
+
 def build(
-    markers: list[Marker], ways: dict[str, list[list[tuple[int, float, float]]]]
-) -> tuple[list[Trail], list[Marker], int]:
-    """The trails' lines, the markers kept (each with its trail), and how many no trail took."""
+    markers: list[Marker],
+    ways: Ways,
+    roads: list[list[tuple[int, float, float]]] = (),
+    line_ways: Ways | None = None,
+) -> tuple[list[Trail], list[Marker], Counter]:
+    """The trails' lines, the markers kept (each with its trail), and the markers left out by
+    why ("trail": no named trail near; "road": nearer a main road). `ways` are every named
+    trail way, `line_ways` those the lines are drawn from (all of `ways` when not given)."""
     grid = _Grid()
     for name, parts in ways.items():
         for way in parts:
             for (_, x1, y1), (_, x2, y2) in pairwise(way):
                 grid.add(name, (x1, y1), (x2, y2))
+    road_grid = _Grid()
+    for way in roads:
+        for (_, x1, y1), (_, x2, y2) in pairwise(way):
+            road_grid.add("road", (x1, y1), (x2, y2))
     kept: list[Marker] = []
-    lost = 0
+    lost: Counter = Counter()
     for m in markers:
-        name = grid.nearest((m.lon, m.lat), MARKER_TRAIL_M)
+        name, d = grid.nearest((m.lon, m.lat), MARKER_TRAIL_M)
         if name is None:
-            lost += 1
+            lost["trail"] += 1
+        elif road_grid.nearest((m.lon, m.lat), d)[0] is not None:
+            lost["road"] += 1
         else:
             kept.append(Marker(m.osm, round(m.lon, 5), round(m.lat, 5), m.mile, name))
     by_trail: dict[str, list[Marker]] = defaultdict(list)
     for m in kept:
         by_trail[m.trail].append(m)
     trails: list[Trail] = []
-    for name in sorted(ways):
-        for line in trail_lines(ways[name]):
+    line_ways = ways if line_ways is None else line_ways
+    for name in sorted(line_ways):
+        zero = MILE_ZERO.get(trail_key(name))
+        for line in trail_lines(line_ways[name]):
             if line_length(line) < TRAIL_MIN_M:
                 continue
             # Simplified first, so the start is measured along the line the front end measures.
-            short, start = orient(simplify(line), by_trail.get(name, []))
+            oriented = orient(simplify(line), by_trail.get(name, []), zero)
+            if oriented is None:
+                continue
+            short, start = oriented
             trails.append(Trail(name, start, tuple((round(x, 5), round(y, 5)) for x, y in short)))
     return trails, kept, lost
 
 
-def read_extract(
-    path: Path,
-) -> tuple[list[Marker], dict[str, list[list[tuple[int, float, float]]]]]:
-    """The marker candidates and the named trail ways in the coverage box."""
+def read_extract(path: Path) -> tuple[list[Marker], Ways, list, Ways]:
+    """The marker candidates, the named trail ways, the main roads, and the trail ways the
+    lines are drawn from, in the coverage box."""
     import osmium
 
     markers: list[Marker] = []
-    ways: dict[str, list[list[tuple[int, float, float]]]] = defaultdict(list)
+    ways: Ways = defaultdict(list)
+    line_ways: Ways = defaultdict(list)
+    roads: list[list[tuple[int, float, float]]] = []
 
     class Handler(osmium.SimpleHandler):
         def node(self, n):
@@ -420,17 +530,27 @@ def read_extract(
                 markers.append(Marker(f"n{n.id}", lon, lat, mile))
 
         def way(self, w):
-            if "highway" not in w.tags or not is_trail(dict(w.tags)):
+            if "highway" not in w.tags:
+                return
+            tags = dict(w.tags)
+            road = tags["highway"] in MAIN_ROADS
+            if not road and not is_trail(tags):
                 return
             nodes = [
                 (nd.ref, nd.location.lon, nd.location.lat) for nd in w.nodes if nd.location.valid()
             ]
             if len(nodes) < 2 or not any(in_box(x, y) for _, x, y in nodes):
                 return
-            ways[water._text(w.tags.get("name"))].append(nodes)
+            if road:
+                roads.append(nodes)
+                return
+            name = water._text(tags.get("name"))
+            ways[name].append(nodes)
+            if is_line_way(tags):
+                line_ways[name].append(nodes)
 
     Handler().apply_file(str(path), locations=True)
-    return markers, dict(ways)
+    return markers, dict(ways), roads, dict(line_ways)
 
 
 def document(trails: list[Trail], markers: list[Marker]) -> dict:
@@ -449,8 +569,9 @@ def document(trails: list[Trail], markers: list[Marker]) -> dict:
     }
 
 
-def write_document(doc: dict, out: Path) -> int:
-    """Write the file, one trail or marker per line; its size in bytes."""
+def write_document(doc: dict, out: Path, budget: int | None = None) -> int:
+    """Write the file, one trail or marker per line; its size in bytes. Over `budget`
+    nothing is written (the size is still returned)."""
 
     def block(rows: list) -> str:
         lines = [json.dumps(r, ensure_ascii=False, separators=(",", ":")) for r in rows]
@@ -465,8 +586,10 @@ def write_document(doc: dict, out: Path) -> int:
         + block(doc["markers"])
         + "}\n"
     )
-    out.parent.mkdir(parents=True, exist_ok=True)
     data = text.encode("utf-8")
+    if budget is not None and len(data) > budget:
+        return len(data)
+    out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(data)
     return len(data)
 
@@ -477,18 +600,25 @@ def main(argv: list[str] | None = None) -> int:
         "--pbf", type=Path, required=True, help="<DATA_ROOT>/extracts/source.osm.pbf"
     )
     parser.add_argument("--out", type=Path, default=OUT)
+    parser.add_argument("--budget", type=int, default=SIZE_BUDGET, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
-    candidates, ways = read_extract(args.pbf)
-    trails, markers, lost = build(candidates, ways)
-    size = write_document(document(trails, markers), args.out)
+    candidates, ways, roads, line_ways = read_extract(args.pbf)
+    trails, markers, lost = build(candidates, ways, roads, line_ways)
+    size = write_document(document(trails, markers), args.out, args.budget)
     on = Counter(m.trail for m in markers)
     print(f"{len(trails)} trail lines over {TRAIL_MIN_M / METRES_PER_MILE:g} miles")
     top = ", ".join(f"{name} {n}" for name, n in on.most_common(8)) or "none"
     print(f"{len(markers)} mile markers on {len(on)} trails ({top})")
-    print(f"left out, not on a named trail: {lost}")
+    print(f"left out, not on a named trail: {lost['trail']}")
+    print(f"left out, nearer a main road than the trail: {lost['road']}")
+    if size > args.budget:
+        print(
+            f"error: {size:,} bytes, over {args.budget:,}; nothing written "
+            "(the front end keeps the file offline)",
+            file=sys.stderr,
+        )
+        return 1
     print(f"{args.out}: {size:,} bytes")
-    if size > SIZE_WARN:
-        print(f"warning: over {SIZE_WARN:,} bytes; the front end keeps it offline", file=sys.stderr)
     return 0
 
 

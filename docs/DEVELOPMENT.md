@@ -7620,14 +7620,23 @@ are (`frontend/src/amenity-data/README.md`, "Trail mile markers"): no tiles, no 
 no map rebuild, only that script on the build host. The file holds the OSM mile markers
 (`highway=milestone` or `waterway=milestone` with `distance=*`, or "Mile 3", "MM 3", "MP 3" in `ref`,
 `name` or `inscription`; `railway=milestone` and an old road's `historic=milestone` are not trail
-markers), each with the named trail it stands on (within 80 ft, 25 m) and its posted figure in miles,
-and each named trail over 2 miles (3.2 km) as one line from its mile 0 with `s`, the metres at the
-line's first point. Mile 0: the way two or more posts count, with `s` set from them (their median);
-with one post, the end that fits it; with none, the end nearer the US Capitol, as the region's long
-trails count out of the city. The docstring has the rest, with the OSM wiki pages it follows.
+markers), each with the named trail it stands on (within 80 ft, 25 m) and its posted figure in miles.
+A post nearer a main road (motorway, trunk, primary, secondary or their links) than the trail is the
+road's (I-66's mileposts beside the Custis Trail) and is left out. The file also holds lines, each
+piece of a named trail over 2 miles (3.2 km) drawn from cycleways and `bicycle=yes`/`designated`
+ways, from its mile 0 with `s`, the metres at the line's first point, but only where mile 0 is known:
+two or more of its posts that fit (posted miles grow 0.8 to 1.25 a mile along, none more than a
+quarter mile off; `s` their median), one post (`s` from it), or the build's `MILE_ZERO` table (the C&O
+Canal towpath and the Capital Crescent Trail from Georgetown, the Metropolitan Branch Trail from Union
+Station, the W&OD from Shirlington) with its mile-0 point within about a mile of the piece's end. Any
+other line is left out, so no mile is guessed: a trail not in the table and with no posts gets none,
+and a piece split from the rest by more than a quarter mile (400 m) never restarts at mile 0. The
+Mount Vernon and Custis trails stay out of the table until their posts' numbering is checked; their
+posts still work. The build fails (exit 1, nothing written) over 600,000 bytes. The docstring has the
+rest, with the OSM wiki pages it follows.
 
 All of it is worked out on the device, with the trail's name from the route (the stretch's street,
-the way's OSM name, matched by `trailKey`: case, "&" and punctuation aside) and the point the report
+the way's OSM name, matched by `trailKey`, worked out once per row as the file is read: case, "&" and punctuation aside) and the point the report
 already uses (`pointAt`): the position goes nowhere new. `trailMileAt` gives the nearest post of that
 trail within `MARKER_NEAR_M` (500 ft, about 0.1 mi, as `PLACE_NEAR_M`), else the computed mile on the
 nearest of its lines within `LINE_NEAR_M` (200 ft, 60 m; to a tenth, never below 0), else a post within

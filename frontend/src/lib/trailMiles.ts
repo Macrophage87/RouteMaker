@@ -8,8 +8,10 @@
  *
  * The data is amenity-data/trail-miles.json, built from the project's extract by scripts/build_trail_miles.py
  * (what counts as a marker and as a trail, how a trail's line is found and which end is mile 0, in its
- * docstring): the markers, each with its trail's name and posted figure, and each long trail's line from its
- * mile 0, with `s`, the metres at the line's first point that make the computed mile agree with the posts.
+ * docstring): the markers, each with its trail's name and posted figure, and a line from mile 0 for each long
+ * trail whose mile 0 is known (from its own posts, or the build's table of known trails), with `s`, the metres
+ * at the line's first point that make the computed mile agree with the posts. A trail with no line gets no
+ * computed mile, only its posts: a guessed mile 0 would be wrong.
  * The map draws the markers from MILE_MIN_ZOOM in, always (no switch: the owner's "Go stays one control per
  * feature"); a tap names the marker in words, and the road panel names the nearest for a trail way.
  *
@@ -26,12 +28,16 @@ export interface TrailMarker {
   lat: number;
   /** The trail's name, as OSM names it. */
   trail: string;
+  /** `trailKey(trail)`, worked out once when the file is read. */
+  key: string;
   /** The figure on the post, in miles. */
   mile: number;
 }
 
 export interface TrailLine {
   trail: string;
+  /** `trailKey(trail)`, worked out once when the file is read. */
+  key: string;
   /** The line from mile 0. */
   line: LonLat[];
   /** Metres along the line to each point. */
@@ -63,7 +69,7 @@ export function parseTrailMiles(value: unknown): TrailMiles | null {
   for (const raw of body.markers as Array<Record<string, unknown>>) {
     const trail = text(raw?.t);
     if (!raw || typeof raw.id !== "string" || !trail || !finite(raw.x) || !finite(raw.y) || !finite(raw.m) || raw.m < 0) continue;
-    markers.push({ id: raw.id, lon: raw.x, lat: raw.y, trail, mile: raw.m });
+    markers.push({ id: raw.id, lon: raw.x, lat: raw.y, trail, key: trailKey(trail), mile: raw.m });
   }
   const lines: TrailLine[] = [];
   for (const raw of body.trails as Array<Record<string, unknown>>) {
@@ -73,7 +79,7 @@ export function parseTrailMiles(value: unknown): TrailMiles | null {
     if (line.length < 2) continue;
     const along = new Float64Array(line.length);
     for (let i = 1; i < line.length; i++) along[i] = along[i - 1] + haversineM(line[i - 1], line[i]);
-    lines.push({ trail, line, along, startM: finite(raw.s) ? raw.s : 0 });
+    lines.push({ trail, key: trailKey(trail), line, along, startM: finite(raw.s) ? raw.s : 0 });
   }
   return { markers, lines };
 }
@@ -140,7 +146,7 @@ export function trailMileAt(data: TrailMiles | null | undefined, trail: string |
   let marker: TrailMarker | null = null;
   let markerM = Infinity;
   for (const m of data.markers) {
-    if (trailKey(m.trail) !== key) continue;
+    if (m.key !== key) continue;
     const d = haversineM(point, [m.lon, m.lat]);
     if (d < markerM) {
       marker = m;
@@ -150,7 +156,7 @@ export function trailMileAt(data: TrailMiles | null | undefined, trail: string |
   if (marker && markerM <= MARKER_NEAR_M) return { kind: "marker", trail: marker.trail, mile: marker.mile, metres: markerM };
   let best: { line: TrailLine; offM: number; alongM: number } | null = null;
   for (const line of data.lines) {
-    if (trailKey(line.trail) !== key) continue;
+    if (line.key !== key) continue;
     const at = projectOnLine(line.line, line.along, point);
     if (at.offM <= LINE_NEAR_M && (!best || at.offM < best.offM)) best = { line, ...at };
   }

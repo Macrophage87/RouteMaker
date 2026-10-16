@@ -45,6 +45,8 @@ test("the file: markers and lines, the lines measured; bad rows dropped; the wro
   const data = parseTrailMiles(file())!;
   assert.equal(data.markers.length, 2);
   assert.equal(data.lines.length, 1);
+  assert.equal(data.markers[0].key, "capital crescent trail", "the name to match on, worked out once");
+  assert.equal(data.lines[0].key, "capital crescent trail");
   assert.ok(Math.abs(data.lines[0].along[2] - 4000) < 1, `${data.lines[0].along[2]}`);
   const messy = parseTrailMiles({
     trails: [{ n: "One point", l: [north(0)] }, { n: " ", l: [north(0), north(10)] }, { n: "Kept", l: [north(0), north(10)] }],
