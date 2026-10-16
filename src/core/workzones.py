@@ -201,7 +201,7 @@ def forget() -> None:
 
 
 def _load(now: datetime) -> Snapshot:
-    from . import closure_sources
+    from . import closure_sources, reviewed_closures
     from .models import BikeshareFeedCache
 
     rows = {r.key: r for r in BikeshareFeedCache.objects.filter(key__in=[KEY, closure_sources.KEY])}
@@ -238,6 +238,18 @@ def _load(now: datetime) -> Snapshot:
         zones.extend(more)
         status.update(more_status)
         read_at.update(more_read)
+    # The closures a reviewer entered or confirmed (v0.7.0; core.reviewed_closures): read from
+    # their own table, so always current; named only while there are some. A failure to read
+    # them leaves the feeds' zones in use.
+    try:
+        reviewed = reviewed_closures.zones(now)
+    except Exception:  # noqa: BLE001 - the feeds' zones still stand
+        logger.warning("reviewed closures could not be read", exc_info=True)
+        reviewed = []
+    if reviewed:
+        zones.extend(reviewed)
+        status[reviewed_closures.SOURCE] = CURRENT
+        read_at[reviewed_closures.SOURCE] = now.isoformat()
     return Snapshot(tuple(zones), status, read_at, tuple(notices))
 
 
@@ -515,6 +527,7 @@ NAMES = {
     "mpd": "MPD's traffic advisories",
     "alertdc": "AlertDC",
     "nps": "the NPS alerts",
+    "reviewer": "the closures RouteMaker's reviewers confirmed",
 }
 
 # How near the route a closure in force is drawn on its map, metres (a closure further
@@ -751,6 +764,8 @@ def with_work_zones(body: dict, plan: rules.PlanZones | None, now: datetime | No
 
 def _until_words(zone: rules.Zone, future: bool = False) -> str:
     if zone.end is None:
+        if zone.source == "reviewer":
+            return "until a reviewer ends it"
         if future:
             return "no end date given, so it may still apply on your ride day"
         return "no end date given"

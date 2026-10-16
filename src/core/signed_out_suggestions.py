@@ -46,6 +46,7 @@ from django.utils import timezone
 from . import audit, stress_edits, suggestions
 from .models import AuditLogEntry, SignedOutSend, StressSuggestion
 
+CLOSED = "closed"
 # The one-tap reasons, in the form's order: key -> words.
 REASONS = {
     "fast_traffic": "Fast traffic",
@@ -53,6 +54,9 @@ REASONS = {
     "narrow": "No shoulder or narrow",
     "bike_lane": "Bike lane missing or blocked",
     "calmer": "Feels calmer than rated",
+    # v0.7.0 closures: a report that the road is closed, reviewed with the closures
+    # (core.reviewed_closures), with or without a level.
+    CLOSED: "Closed (works, an event, fenced off)",
     "other": "Other",
 }
 OTHER_MAX = 200
@@ -167,7 +171,8 @@ def create(
             "step",
             "half_unavailable",
         )
-    if float(stress_edits.current_step(row)) == tier + (0.5 if half else 0.0):
+    closure = CLOSED in chosen
+    if not closure and float(stress_edits.current_step(row)) == tier + (0.5 if half else 0.0):
         raise stress_edits.Invalid("Choose a level other than the road's own.", "step")
     lat, lon = suggestions.snap(way_id, lat, lon)
     device = device_hash(address)
@@ -189,6 +194,7 @@ def create(
             suggester=None,
             suggester_user_id=None,
             signed_out=True,
+            kind=StressSuggestion.Kind.CLOSURE if closure else StressSuggestion.Kind.ROAD,
             osm_way_id=way_id,
             lat=float(lat),
             lon=float(lon),

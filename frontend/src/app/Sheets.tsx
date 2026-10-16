@@ -8,6 +8,7 @@ import { useEffect, useState, type Dispatch, type ReactNode, type RefObject, typ
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { StressAvailability } from "../MapView.tsx";
 import { SuggestionReview } from "../SuggestionReview.tsx";
+import { ClosureReview } from "../ClosureReview.tsx";
 import type { RouteResponse } from "../lib/api.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { PRESETS, presetSaid, type PresetId } from "../lib/presets.ts";
@@ -568,7 +569,7 @@ export function SuggestSheet({ nav, roadInfoAtCentre, onReview }: SuggestSheetPr
       {onReview && (
         <section aria-labelledby="suggest-review-heading" className="settings-group">
           <h3 id="suggest-review-heading">Review</h3>
-          <p className="hint">Riders' suggestions and Mass Ride hazard reports waiting for an admin.</p>
+          <p className="hint">Riders' suggestions, Mass Ride hazard reports and closure reports waiting for review.</p>
           <button type="button" className="secondary open-review" onClick={(event) => onReview(event.currentTarget)}>
             <Icon name="shield" />
             Review suggestions
@@ -583,20 +584,26 @@ export interface ReviewSheetProps {
   nav: SheetNav;
   mapRef: RefObject<MapLibreMap | null>;
   setHazardsAsked: Dispatch<SetStateAction<number>>;
+  /** An instance admin: the suggestions' and hazards' reviews are shown (the closures' shows itself to a reviewer). */
+  admin: boolean;
 }
 
 /** An instance admin's review of rider suggestions and Mass Ride hazard reports (OWNER-DECISIONS 460.5), moved out of Settings. */
-export function ReviewSheet({ nav, mapRef, setHazardsAsked }: ReviewSheetProps) {
+export function ReviewSheet({ nav, mapRef, setHazardsAsked, admin }: ReviewSheetProps) {
   return (
     <SheetFrame id="sheet-review" title={SHEET_TITLES.review} open={nav.view === "review"} onBack={nav.back} backLabel={nav.backLabel("review")}>
-      <SuggestionReview
-        onStressChanged={(generation) => {
-          const map = mapRef.current;
-          if (map) refreshStressTiles(map, window.location.origin, generation);
-        }}
-      />
+      {admin && (
+        <SuggestionReview
+          onStressChanged={(generation) => {
+            const map = mapRef.current;
+            if (map) refreshStressTiles(map, window.location.origin, generation);
+          }}
+        />
+      )}
       {/* The same review for riders' Mass Ride hazard reports (FOLLOWUP-MASSRIDE-MAP part 3). */}
-      <SuggestionReview source={HAZARD_REVIEW} onApproved={() => setHazardsAsked((n) => n + 1)} />
+      {admin && <SuggestionReview source={HAZARD_REVIEW} onApproved={() => setHazardsAsked((n) => n + 1)} />}
+      {/* Riders' closure reports and the reviewers' closures (v0.7.0 closures), for a reviewer. */}
+      <ClosureReview />
     </SheetFrame>
   );
 }

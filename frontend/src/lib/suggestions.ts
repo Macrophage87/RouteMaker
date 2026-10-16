@@ -176,6 +176,8 @@ function levelName(step: number, words: string): string {
 export type QuickReason = [string, string];
 
 export const QUICK_REASONS_LABEL = "Why";
+/** The one-tap reason that reports the road closed (core/signed_out_suggestions.py, CLOSED). */
+export const QUICK_CLOSED = "closed";
 export const QUICK_OTHER_LABEL = "What else (up to 200 characters)";
 export const QUICK_OTHER_MAX = 200;
 export const QUICK_NOTE = "Reviewed before anything changes. No account or address is kept.";
@@ -199,7 +201,8 @@ export function quickProblem(
   reasons: readonly string[],
   other: string,
 ): { field: "step" | "reasons" | "other"; message: string } | null {
-  if (step === current) return { field: "step", message: "Move the slider to the level you would give it." };
+  // "Closed" (v0.7.0 closures) is a closure report: the level may stay as it is.
+  if (step === current && !reasons.includes(QUICK_CLOSED)) return { field: "step", message: "Move the slider to the level you would give it." };
   if (reasons.length === 0) return { field: "reasons", message: "Pick at least one reason." };
   if (reasons.includes("other") && !other.trim()) return { field: "other", message: "Say what else, in a few words." };
   if (other.trim().length > QUICK_OTHER_MAX) return { field: "other", message: `Other is at most ${QUICK_OTHER_MAX} characters.` };
