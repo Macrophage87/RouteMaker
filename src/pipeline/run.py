@@ -55,7 +55,14 @@ from routemaker import (
 )
 from routemaker.geo import Point
 from routemaker.shape import sinuosity
-from routemaker.stress import classify, inferred_unpaved, is_rough, rural_floor, winding
+from routemaker.stress import (
+    classify,
+    inferred_unpaved,
+    is_rough,
+    painted_lane_two_way_multilane,
+    rural_floor,
+    winding,
+)
 
 from . import (
     aadt_smoothing,
@@ -731,6 +738,9 @@ class RebuildContext:
     # times in which a timed closure makes a road car-free. Computed once, after
     # the access overrides, by the first stage that needs them.
     facility_by_way: dict[int, str] = field(default_factory=dict)
+    # The class the map shows where it is not `facility_by_way`'s: a contraflow-only
+    # lane (`facility.shown_facility`; the review of 17f69082). Display only.
+    facility_shown_by_way: dict[int, str] = field(default_factory=dict)
     car_free_by_way: dict[int, frozenset[str]] = field(default_factory=dict)
     # The route level of each way in an OSM route relation (`pipeline.trail_routes`).
     trail_routes: dict[int, int] = field(default_factory=dict)
@@ -866,6 +876,7 @@ class RebuildContext:
             "stress_by_way",
             "use_sidepath_paths",
             "facility_by_way",
+            "facility_shown_by_way",
             "car_free_by_way",
             "trail_routes",
             "route_names",
@@ -2362,6 +2373,23 @@ def build_handlers(
                 if facts.agency == agency_roads.DC_AGENCY and state_of.get(way.osm_id) == "DC":
                     reported.append((way, tags, match, overlaid))
         apply_agency_ratings(laned)
+        # The RL-3 roads with the agency's level beside the formula's, for the owner
+        # (`agency_lts.PAINTED_LANE_REPORT_NAME`), read before the corridors and rows.
+        painted_lane_rows = []
+        for way in context.ways:
+            rated = context.stress_by_way.get(way.osm_id)
+            # The lanes the classifier read (None where it assumed one).
+            if rated is None or not painted_lane_two_way_multilane(
+                context.class_tags_by_way.get(way.osm_id, way.tags),
+                divided=way.osm_id in divided_ways,
+                lanes=rated.lanes,
+            ):
+                continue
+            row = agency_lts.painted_lane_row(
+                way.osm_id, way.tags.get("name", ""), state_of.get(way.osm_id) or "", rated
+            )
+            if row is not None:
+                painted_lane_rows.append(row)
         if context.road_facts_by_way:
             # Where an agency's record and the way's own tags disagree and the way
             # was left alone (an OSM lane the agency does not record; an OSM
@@ -2410,8 +2438,11 @@ def build_handlers(
                     for way in context.ways
                     if way.osm_id in no_side_path
                 ),
+                agency_lts.PAINTED_LANE_REPORT_NAME: agency_lts.painted_lane_report_csv(
+                    painted_lane_rows
+                ),
             },
-            "AADT smoothing, named-corridor and use_sidepath",
+            "AADT smoothing, named-corridor, use_sidepath and painted-lane",
         )
         if context.corridor_report.unmatched_entries:
             logger.warning(
@@ -2828,10 +2859,13 @@ def build_handlers(
             # The tags the classifier read where an agency's street layer
             # corrected them, so the facility the map draws is the facility the
             # tier was scored on.
+            class_tags = context.class_tags_by_way.get(way.osm_id, way.tags)
             context.facility_by_way[way.osm_id] = facility.facility(
-                context.class_tags_by_way.get(way.osm_id, way.tags),
-                beside_separate_road=way.osm_id in beside,
+                class_tags, beside_separate_road=way.osm_id in beside
             ).value
+            shown = facility.shown_facility(class_tags, beside_separate_road=way.osm_id in beside)
+            if shown is not None:
+                context.facility_shown_by_way[way.osm_id] = shown.value
             closed = facility.car_free_when(way.tags)
             if closed:
                 context.car_free_by_way[way.osm_id] = closed
@@ -2841,6 +2875,11 @@ def build_handlers(
                 context.facility_by_way[way.osm_id] = facility.Facility.NONE.value
             if car_free_tier_1(way, context.stress_by_way):
                 car_free_for_good += 1
+        logger.info(
+            "contraflow-only facilities shown on the map where the rider with the traffic "
+            "has none: %s",
+            dict(sorted(Counter(context.facility_shown_by_way.values()).items())) or "none",
+        )
         logger.info(
             "facility classes: %s; %d ways car-free at set times, %d car-free for good "
             "(tier 1), %d beside a road that maps its facility separately, %d CBD sidewalks "
@@ -2901,6 +2940,14 @@ def build_handlers(
             "%d signalised trail crossings marked from their crossing ways", len(signal_tags)
         )
 
+        # Review RL-5: the ways whose posted speed every variant's extract carries as an
+        # explicit mph (`variants.with_speed_units`), so the change shows in the
+        # before/after; their edge speeds rise about 1.6 times.
+        logger.info(
+            "posted speeds written as explicit mph in the extracts (a bare number or "
+            "upper-case MPH, read as km/h by the router before): %d ways",
+            sum(1 for way in context.ways if variants.with_speed_units(way.tags) is not way.tags),
+        )
         for variant in variants.Variant:
             per_way_tags: dict[int, dict[str, str]] = {}
             node_lists: dict[int, list[int]] = {}
@@ -3381,6 +3428,7 @@ def build_handlers(
                         is_rough=is_rough(way.tags),
                         lit=lit_value(way.tags),
                         facility=way_facility,
+                        facility_shown=context.facility_shown_by_way.get(way.osm_id),
                         car_free_when=car_free_when,
                         map_class=way_map_class,
                         separate_bikeway=facility.has_separate_bikeway(way.tags),

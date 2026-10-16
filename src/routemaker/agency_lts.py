@@ -21,6 +21,8 @@ Montgomery's 0.5 ("None") is no rating and is dropped before it gets here.
 
 from __future__ import annotations
 
+import csv
+import io
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 
@@ -189,3 +191,67 @@ def apply(result: StressResult, ratings: Iterable[AgencyRating]) -> StressResult
         # A tier set afresh drops the smoothing record, as an override row does.
         unsmoothed_tier=None,
     )
+
+
+# The rebuild's list of the roads review RL-3 is about (the owner, 2026-10-16: "defer to local
+# government ratings"; the formula holds a painted lane on a two-way street with two or more
+# lanes each way at LTS 3, `stress.painted_lane_two_way_multilane`): each such road in the
+# District or rated by DDOT or Montgomery, with the agency's level beside the formula's, for his
+# review. A Virginia road is listed too, scope `comparison`, with the formula's level alone: the
+# admin-only Review puts Arlington's level beside it from its own file
+# (`core.stress_review.pending_ratings`), so Arlington's ratings never reach this report.
+PAINTED_LANE_REPORT_NAME = "painted-lane-agency-vs-formula.csv"
+PAINTED_LANE_AGENCIES = ("ddot", "moco")
+PAINTED_LANE_COMPARISON = "comparison"
+PAINTED_LANE_COLUMNS = (
+    "way_id",
+    "name",
+    "state",
+    "scope",
+    "agency",
+    "agency_level",
+    "formula_level",
+    "formula_rule",
+    "differs",
+)
+
+
+def painted_lane_row(
+    way_id: int, name: str, state: str, result: StressResult
+) -> dict[str, str] | None:
+    """One road's row of `PAINTED_LANE_REPORT_NAME`, or None where it is out of scope (not in
+    the District, not rated by DDOT or Montgomery, not in Virginia). The caller has already
+    found it to be one of the RL-3 roads."""
+    local = [r for r in result.agency_ratings if r.agency in PAINTED_LANE_AGENCIES]
+    pick = chosen(local)
+    if pick is not None:
+        scope = "DC" if pick.agency == "ddot" else "MoCo"
+    elif state == "DC":
+        scope = "DC"
+    elif state == "VA":
+        scope = PAINTED_LANE_COMPARISON
+    else:
+        return None
+    formula = result.formula_tier if result.formula_tier is not None else result.tier
+    rule = result.formula_rule if result.formula_rule is not None else result.rule
+    return {
+        "way_id": str(way_id),
+        "name": name,
+        "state": state,
+        "scope": scope,
+        "agency": pick.agency if pick else "",
+        "agency_level": f"{pick.level:g}" if pick else "",
+        "formula_level": str(int(formula)),
+        "formula_rule": rule,
+        "differs": ("yes" if pick.level != int(formula) else "no") if pick else "",
+    }
+
+
+def painted_lane_report_csv(rows: Iterable[dict[str, str]]) -> str:
+    """`PAINTED_LANE_REPORT_NAME` from `painted_lane_row`'s rows, ordered by way."""
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=PAINTED_LANE_COLUMNS, lineterminator="\n")
+    writer.writeheader()
+    for row in sorted(rows, key=lambda r: int(r["way_id"])):
+        writer.writerow(row)
+    return out.getvalue()

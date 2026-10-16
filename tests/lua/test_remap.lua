@@ -1181,6 +1181,12 @@ do
   check("3.5 raises a 25 mph road to 90 km/h", slow["maxspeed:practical"] == "90")
   check("speed_kph reads km/h, mph and nothing else", M.speed_kph("50") == 50 and M.speed_kph("35 mph") == 56
     and M.speed_kph("walk") == nil and M.speed_kph(nil) == nil)
+  -- Review RL-5: the rebuild writes a bare `maxspeed=45` as `45 mph`
+  -- (`pipeline.variants.with_speed_units`), which reads as 72 km/h, not 45.
+  check("speed_kph reads the rebuild's explicit mph", M.speed_kph("45 mph") == 72)
+  local rewritten = M.remap_way({ highway = "trunk", maxspeed = "60 mph" }, { stress_tier = 3, stress_half = true })
+  check("3.5's speed mark reads the rewritten mph: 60 mph keeps 97 km/h",
+    rewritten["maxspeed:practical"] == "97")
   check("3.5 adds the intermediate lane count both ways",
     o["lanes:forward"] == M.HALF_GRADED_LANES and o["lanes:backward"] == M.HALF_GRADED_LANES)
   check("3.5's marks sit between the road's and LTS 4's",

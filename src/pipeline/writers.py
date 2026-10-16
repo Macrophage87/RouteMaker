@@ -89,6 +89,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             row.get("mtb_name"),
             _ratings_json(row["stress"]),
             row.get("sidepath_name"),
+            row.get("facility_shown"),
         )
         for row in rows
     ]
@@ -99,7 +100,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             args = ",".join(
                 cursor.mogrify(
                     "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s)",
+                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s)",
                     (
                         way_id,
                         ordinal,
@@ -141,6 +142,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                         mtb_name,
                         ratings,
                         sidepath_name,
+                        facility_shown,
                     ),
                 )
                 for (
@@ -184,6 +186,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                     mtb_name,
                     ratings,
                     sidepath_name,
+                    facility_shown,
                 ) in batch
             )
             cursor.execute(
@@ -199,7 +202,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                      stress_adjustment_note, stress_adjustment_display, attr_sources,
                      trail_name, trail_route, trail_bridge, calm_run_m, roadside,
                      stress_unsmoothed_tier, mass_usable_width_m, bike_access_reason,
-                     stress_half, mtb_level, mtb_name, stress_ratings, sidepath_name)
+                     stress_half, mtb_level, mtb_name, stress_ratings, sidepath_name,
+                     facility_shown)
                     VALUES {args}"""
             )
             written += len(batch)

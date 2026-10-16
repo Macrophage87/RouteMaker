@@ -7042,7 +7042,13 @@ def closure_report_reject(request, report_id: int, body: UndoIn, response: HttpR
 # and never reaches a rider.
 
 REVIEW_QUEUES = Literal[
-    "rebuild", "disagreement", "sidepath", "narrow_rural", "works_closure", "rematch"
+    "rebuild",
+    "disagreement",
+    "sidepath",
+    "narrow_rural",
+    "works_closure",
+    "rematch",
+    "painted_lane",
 ]
 
 
