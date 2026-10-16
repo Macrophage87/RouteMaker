@@ -241,15 +241,18 @@ def _load(now: datetime) -> Snapshot:
     # The closures a reviewer entered or confirmed (v0.7.0; core.reviewed_closures): read from
     # their own table, so always current; named only while there are some. A failure to read
     # them leaves the feeds' zones in use.
+    # Their "read at" is when they last changed, so the snapshot (and the route cache's key
+    # made from it) stays the same while they do.
     try:
         reviewed = reviewed_closures.zones(now)
+        changed = reviewed_closures.changed_at() if reviewed else None
     except Exception:  # noqa: BLE001 - the feeds' zones still stand
         logger.warning("reviewed closures could not be read", exc_info=True)
-        reviewed = []
+        reviewed, changed = [], None
     if reviewed:
         zones.extend(reviewed)
         status[reviewed_closures.SOURCE] = CURRENT
-        read_at[reviewed_closures.SOURCE] = now.isoformat()
+        read_at[reviewed_closures.SOURCE] = (changed or now).isoformat()
     return Snapshot(tuple(zones), status, read_at, tuple(notices))
 
 

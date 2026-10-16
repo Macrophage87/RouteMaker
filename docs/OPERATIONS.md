@@ -2006,6 +2006,9 @@ phone whose share sheet takes files, the GPX file Download GPX would give goes w
   `Sec-Fetch-Mode`. The installed app's worker opens `/s/<id>` as the page. Absolute URLs come
   from the request's host. Counted per client (`SHARE_PREVIEWS`, 120 a minute; a new link also
   counts as a share, `SHARED_ROUTE_WRITES`).
+  On the beta, previews are inert while its basic auth covers `/s/`
+  (`deploy/beta/nginx-routemaker.conf.template`): a link fetcher gets the sign-in refusal, so
+  a chat app shows a bare link. Opening the link in a browser works as anywhere else.
 
 The migrations are `0022_shared_route` (one new table; nothing else changed),
 `0023_shared_route_keep` (its two keeping columns) and `0024_shared_route_owner_preview` (the
@@ -4590,6 +4593,9 @@ item says so; credited either way) (docs/SOURCES.md), so `routemaker.pavement.LI
 is True and steps 1 to 3 run. (With it False, step 2 refuses `--dc-pci` and a rebuild
 that finds a `pavement.json` logs `... is installed but not read`.)
 
+**Hold (v0.7.0): do not install `pavement.json` until the v0.8.0 rebuild.** v0.7.0 ships the
+graph built without it; steps 1 to 3 are for that rebuild.
+
 1. **Fetch FY-25 once**, from the checkout on the host. There is no ArcGIS Online
    item, so no `--item`; the README the script writes records the service's own item
    info and says the licence is to be confirmed. It pages at 1,000 a request
@@ -6455,6 +6461,11 @@ the defaults, so build those here.
    a failure and it carries on; once the install has finished, a second run goes straight
    to the dry run. `--remove-tars` deletes the downloaded graph tars once unpacked.
 
+   **The v0.7.0 build** was made at commit `4f34f76d`, and the release ships a later one, so
+   its install and swap here both take `--allow-sha-mismatch`
+   (`import-result.sh --profile <name> --allow-sha-mismatch [--swap] "$RUN_URL"`), and so does
+   the beta's (below).
+
    The dry run also fills **Review**'s lists (an instance admin's third mode, beside Go and
    Plan; `core.stress_review`), see "Review mode: shipping and its lists" below. It prints
    `review queue, in roads (...)`: how many roads each list holds, and which lists read from a
@@ -6482,6 +6493,21 @@ the defaults, so build those here.
    next rebuild with `scripts/cloud/import-result.sh --swap "$RUN_URL" --
    --accept-later-overrides`.
 
+5. **Once, for a run whose inputs the older `send-inputs.sh` sent** (before v0.7.0's, e.g. the
+   v0.7.0 build's run at `4f34f76d`): that version uploaded the whole nightly backup, accounts
+   and Homes included, as `in/routemaker-<utc>.dump`. The box's prune only deletes an older
+   run's dump after a newer run finishes, so once this run is imported and swapped, and with the
+   owner's go, delete that run's copy by hand, in the bucket and on the box (in the home folder
+   of the user `box-rebuild.sh` ran as):
+
+   ```sh
+   aws --profile <name> s3 ls "$RUN_URL/in/"
+   aws --profile <name> s3 rm "$RUN_URL/in/routemaker-<utc>.dump"
+   rm -f ~/cloud-runs/<run>/in/routemaker-*.dump     # on the box, over SSM
+   ```
+
+   A run sent by today's `send-inputs.sh` has only `db.tar`, with no rider data, and needs none of this.
+
 **Rollback** is the ordinary one, dry and then confirmed, then restart the routers and
 the api (the older table may lack columns the api still names; "Recreate `api` and
 `worker` after a rollback", above):
@@ -6507,7 +6533,8 @@ time.
 ### Review mode: shipping and its lists
 
 Review (the owner, 2026-10-16) is an instance admin's queues of roads to rule on: Rebuild
-changes, Rating disagreements, narrow rural roads, side paths not mapped, industrial-area
+changes, Rating disagreements, narrow rural roads, side paths not mapped (fills after the
+v0.8.0 rebuild), industrial-area
 closures and overrides that did not re-match, beside the riders' suggestions, hazard reports
 and closure reports. A ruling is the road panel's own change (an owner override, re-applied by
 the swap) or, for a closed road, an approved access override (source `review`) applied at the
@@ -6535,6 +6562,11 @@ To ship it to a host:
    Nothing but Review reads that folder; keep it out of every bundle. Such a rating is
    counted in a disagreement and shown labelled "(pending permission)" while
    `agency_lts.PUBLIC_USE_CONFIRMED` says False for it; it never decides a level.
+
+**Review is home's only.** Its lists are never sent to the beta, and the beta's api has no
+rebuild reports to compute them from; a ruling made there would be lost anyway, since every
+beta data update resets `override` to home's. Rule at home; the rulings reach the beta with its
+next data update, as any override does.
 
 The lists' Area is the county from `<DATA_ROOT>/reference/counties.geojson`, the stress change
 report's own file (`install_reference_data.py --counties`); without it the column is empty.
@@ -6720,7 +6752,10 @@ done. Then it runs the runbook's "New data only" steps 2 to 5:
 
 Then run `scripts/beta/smoke-test.sh --public` yourself once the pre-draw has finished,
 and resume continuous deployment. The box builds home's commit, so a beta on a
-different release needs `--allow-sha-mismatch`, exactly as for a bundle sent from here.
+different release needs `--allow-sha-mismatch`, exactly as for a bundle sent from here; the
+v0.7.0 bundle was built at `4f34f76d`, so it always does
+(`import-result.sh --beta --allow-sha-mismatch [--swap] "$RUN_URL"`, which passes it to
+`receive-data.sh`).
 Rollback is the runbook's: rollback A for the graphs, the `pre-update` dump for the
 database.
 

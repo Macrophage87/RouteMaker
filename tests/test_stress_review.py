@@ -440,6 +440,23 @@ class TestRulings:
         assert made[0].edit is None
         assert not Override.objects.filter(osm_way_id=RATED).exists()
 
+    def test_using_a_sources_level_names_it_in_the_evidence(self, queued) -> None:
+        admin = make_user()
+        item = ReviewItem.objects.get(queue="disagreement", osm_way_id=RATED)
+        moco = next(s for s in item.details["sources"] if s["key"] == "moco")
+        for wrong in ({"step": moco["level"] + 1}, {"step": moco["level"], "source": "ddot"}):
+            with pytest.raises(stress_edits.Invalid):
+                stress_review.rule(
+                    admin, "disagreement", [RATED], "set", **{"source": "moco", **wrong}
+                )
+        made, refused = stress_review.rule(
+            admin, "disagreement", [RATED], "set", step=moco["level"], source="moco"
+        )
+        assert refused == [] and len(made) == 1
+        row = Override.objects.get(osm_way_id=RATED, kind="stress", approved=True)
+        assert row.evidence == stress_review.evidence_using("Montgomery County Planning")
+        assert "Montgomery County Planning" in row.evidence
+
     def test_reject_of_a_newly_closed_road_reopens_it_at_the_next_rebuild(self, queued) -> None:
         admin = make_user()
         made, _ = stress_review.rule(admin, "rebuild", [CLOSED], "reject")
@@ -587,10 +604,14 @@ def admin_client(admin=True):
 @db
 class TestEndpoints:
     def test_only_an_instance_admin(self, queued) -> None:
-        assert Client().get(ITEMS, **addr()).status_code == 401
+        signed_out = Client().get(ITEMS, **addr())
+        assert signed_out.status_code == 401
+        assert signed_out.json()["error"] == "Sign in to use Review."
         rider, csrf = admin_client(admin=False)
         for url in (ITEMS, "/api/review/queues", f"/api/review/road/{DROP}", "/api/review/rulings"):
-            assert rider.get(url, **addr()).status_code == 403, url
+            refused = rider.get(url, **addr())
+            assert refused.status_code == 403, url
+            assert refused.json()["error"] == "Only an instance admin can use Review."
         for url in (
             "/api/review/map?west=-78&south=38&east=-76&north=40&zoom=14",
             "/api/review/next",

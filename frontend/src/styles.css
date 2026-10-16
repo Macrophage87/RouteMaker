@@ -6199,29 +6199,6 @@ details.fold > summary .icon {
   margin-top: 4px;
 }
 
-/* A row's street photo: a thumbnail, its date and credit under it. */
-.review-photo-cell {
-  width: 112px;
-}
-
-.review-photo-small img {
-  width: 104px;
-  max-height: 70px;
-}
-
-.review-photo-small figcaption {
-  font-size: 0.8em;
-}
-
-.review-photo-wait {
-  min-height: 24px;
-}
-
-.review-photo-none {
-  margin: 0;
-  font-size: 0.85em;
-}
-
 @media (max-width: 720px) {
   .panel.review-panel {
     width: 100%;

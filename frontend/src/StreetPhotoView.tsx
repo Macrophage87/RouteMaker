@@ -3,11 +3,11 @@
  * a link to Mapillary's viewer in a new tab, its date under it and in its alt text, and the credit. One
  * plain line where Mapillary has none; nothing where the server cannot look one up.
  *
- * The road panel's, and Review's (ReviewMode.tsx: a small one in each row of a list, a full one on the road's
- * card), which asks Review's own path (`path`) and, in a row (`compact`), only once the row is on screen. Each
- * road's answer is asked for once and kept (PHOTOS).
+ * The road panel's, and Review's (ReviewMode.tsx: on the road's card once it settles, never in the list's rows,
+ * so a page of roads asks for no photos), which asks Review's own path (`path`). Each road's answer is asked
+ * for once and kept (PHOTOS).
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { NO_PHOTO_TEXT, fetchStreetPhoto, makePhotoMemo, photoAlt, type PhotoAnswer, type PhotoPath } from "./lib/streetPhoto.ts";
 
 /** Every road's photo, asked for once a session (a re-render, the road opened again or its row back in view asks nothing). */
@@ -18,29 +18,12 @@ interface Props {
   point: [number, number];
   wayId: number | null;
   path?: PhotoPath;
-  /** A table row's: a thumbnail, asked for once it is scrolled into view. */
-  compact?: boolean;
 }
 
-export function StreetPhotoView({ title, point, wayId, path = "/api/street-photo", compact = false }: Props) {
+export function StreetPhotoView({ title, point, wayId, path = "/api/street-photo" }: Props) {
   const [lon, lat] = point;
   const [photo, setPhoto] = useState<PhotoAnswer>(() => PHOTOS.known(path, [lon, lat], wayId) ?? null);
-  const [seen, setSeen] = useState(!compact || PHOTOS.known(path, [lon, lat], wayId) !== undefined);
-  const here = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (seen || !here.current) return;
-    if (typeof IntersectionObserver === "undefined") {
-      setSeen(true);
-      return;
-    }
-    const watch = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) setSeen(true);
-    });
-    watch.observe(here.current);
-    return () => watch.disconnect();
-  }, [seen]);
-  useEffect(() => {
-    if (!seen) return;
     let live = true;
     setPhoto(PHOTOS.known(path, [lon, lat], wayId) ?? null);
     // Not cancelled when the road changes: the answer is kept for the next time the road is drawn.
@@ -50,11 +33,11 @@ export function StreetPhotoView({ title, point, wayId, path = "/api/street-photo
     return () => {
       live = false;
     };
-  }, [lon, lat, wayId, path, seen]);
-  if (photo === null) return compact ? <div ref={here} className="review-photo-wait" /> : null;
-  if (photo === "none") return <p className={compact ? "hint review-photo-none" : "hint road-info-photo-none"}>{NO_PHOTO_TEXT}</p>;
+  }, [lon, lat, wayId, path]);
+  if (photo === null) return null;
+  if (photo === "none") return <p className="hint road-info-photo-none">{NO_PHOTO_TEXT}</p>;
   return (
-    <figure className={compact ? "road-info-photo review-photo-small" : "road-info-photo"}>
+    <figure className="road-info-photo">
       <a href={photo.viewer_url} target="_blank" rel="noopener noreferrer">
         <img src={photo.image_url} alt={photoAlt(title, photo)} width={1024} height={768} loading="lazy" referrerPolicy="no-referrer" />
         <span className="visually-hidden"> (opens Mapillary in a new tab)</span>

@@ -164,6 +164,8 @@ def test_no_discord_token_is_persisted_anywhere(client, monkeypatch) -> None:
         # permission, so counting them would count one row twice.
         if model._meta.managed and not model._meta.proxy and model.objects.count()
     }
+    # The sign-in rate limit's count (a scope, a keyed digest of the address, a number).
+    assert populated.pop("RateLimitWindow") == 1
     assert populated == {"User": 1, "Session": 1}
     assert not User.objects.get(discord_user_id=782).has_usable_password()
     assert Session.objects.get().issued_epoch == User.objects.get(discord_user_id=782).session_epoch

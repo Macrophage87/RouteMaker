@@ -884,6 +884,12 @@ so if that ship used another `--report-url`, the agent's next front-end build ke
    `scripts/beta/beta-compose.sh exec -T api ./manage.py shell -c "from django.contrib.sessions.models import Session; Session.objects.all().delete()"`.
 4. Tighten what is already on disk (new files get these modes by themselves):
    `chmod 700 "$RM_DATA/backups"` and `chmod 600 "$RM_DATA"/backups/*` (with sudo where root owns them).
+5. The v0.7.0 data bundle was built on the cloud box at commit `4f34f76d`, not the release's, so its
+   data update takes `--allow-sha-mismatch`:
+   `scripts/cloud/import-result.sh --beta --allow-sha-mismatch [--swap] "$RUN_URL"`, which passes it to
+   `receive-data.sh` (run by hand, `receive-data.sh --bundle "$RM_INCOMING" --env-file .env
+   --allow-sha-mismatch verify`, and the same for `files` and `db`). At home, that run's
+   `import-result.sh` takes the same flag (OPERATIONS.md, "Rebuilding on the cloud box").
 
 **New data only** (a fresh build of the tiles, database or Photon index, same release):
 
@@ -1260,6 +1266,11 @@ removes the agent, its logs and its snapshots (owner's say-so: they hold databas
   the arithmetic.
 - **Overrides:** the beta's `override` table comes from home. `db --update-data` replaces it with home's, so an
   override made on the beta does not survive a data update (the `pre-update` dump keeps it). Curate overrides at home.
+- **Review is home's only:** its lists are never shipped and the beta has no rebuild reports to compute them, and a
+  ruling made here would go with the next data update like any override. Rule at home (OPERATIONS.md, "Review mode:
+  shipping and its lists").
+- **Link previews are inert here** while the basic auth covers `/s/`: a chat app's fetcher is refused, so a shared link
+  shows as a bare link. Opening it in a browser (signed in to the beta) works.
 - **Photon's memory margin (review r1, N8):** heap 896M + direct buffers 192M + about 192M of other native memory is
   1280M of the 1300M cap; the 192M is an estimate. On the first smoke run, report photon's anonymous memory
   (`docker exec <photon container> sh -c 'cat /sys/fs/cgroup/memory.current; grep -E "^(anon|file) " /sys/fs/cgroup/memory.stat'`;

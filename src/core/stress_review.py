@@ -96,6 +96,11 @@ def source_name(key: str) -> str:
     return agency_lts.source_name(key)
 
 
+def evidence_using(name: str) -> str:
+    """A ruling that took one source's level ("Use" on the card): the evidence names it."""
+    return f"Instance admin's ruling in Review, using {name}'s level (owner/instance admin)"
+
+
 # --- Reading a segment table ----------------------------------------------------------------
 
 
@@ -1220,7 +1225,13 @@ def _record(actor, item: ReviewItem, decision: str, target, reason: str, now, ed
 
 
 def _set_levels(
-    actor, items: list[ReviewItem], decision: str, target: float, reason: str, now: datetime
+    actor,
+    items: list[ReviewItem],
+    decision: str,
+    target: float,
+    reason: str,
+    now: datetime,
+    evidence: str = EVIDENCE,
 ) -> tuple[list[ReviewRuling], list[dict]]:
     """One level for many roads: one stress edit (`stress_edits.apply`, as a batch), so one
     generation of the tiles and one undo for them all, and a ruling a road sharing it."""
@@ -1250,7 +1261,7 @@ def _set_levels(
     try:
         with transaction.atomic():
             edit = stress_edits.apply(
-                actor, ways, spec, expected, now=now, evidence=EVIDENCE, batch=True
+                actor, ways, spec, expected, now=now, evidence=evidence, batch=True
             ).edit
             made = [_record(actor, i, decision, target, reason, now, edit, None) for i in items]
     except stress_edits.EditRefused as refusal:
@@ -1266,12 +1277,15 @@ def rule(
     *,
     step: float | None = None,
     reason: str | None = None,
+    source: str | None = None,
     now: datetime | None = None,
 ) -> tuple[list[ReviewRuling], list[dict]]:
     """Rule on one road or a batch. Returns (the rulings made, the roads refused with why).
 
     A batch's levels are one stress edit a level (Change LTS: one; a rebuild's Reject: one for
-    each level the roads had before), so a batch is one change of the tiles and one undo."""
+    each level the roads had before), so a batch is one change of the tiles and one undo.
+    `source`: Change LTS on one road to the level one of its listed sources holds (not a
+    pending agency's), named in the edit's evidence."""
     if queue not in Queue.values:
         raise stress_edits.Invalid("There is no such review queue.", "queue")
     if decision not in Decision.values:
@@ -1284,6 +1298,9 @@ def rule(
     text = _reason(reason)
     now = now or timezone.now()
     items = {i.osm_way_id: i for i in items_of(queue).filter(osm_way_id__in=ways)}
+    evidence = EVIDENCE
+    if source:
+        evidence = _evidence_of(source, decision, step, [items.get(w) for w in ways])
     made: list[ReviewRuling] = []
     refused: list[dict] = []
     levels: dict[float, list[ReviewItem]] = {}
@@ -1306,12 +1323,28 @@ def rule(
             target = item.old_step if decision == Decision.REJECT else float(step)
             levels.setdefault(target, []).append(item)
     for target, group in levels.items():
-        done, failed = _set_levels(actor, group, decision, target, text, now)
+        done, failed = _set_levels(actor, group, decision, target, text, now, evidence)
         made += done
         refused += failed
     order = {w: n for n, w in enumerate(ways)}
     made.sort(key=lambda r: order[r.osm_way_id])
     return made, refused
+
+
+def _evidence_of(source: str, decision: str, step, items: list) -> str:
+    """The evidence for a ruling that took `source`'s level, or Invalid where the one road
+    listed does not hold that level from that source (or holds it only as a pending agency's)."""
+    item = items[0] if len(items) == 1 else None
+    if decision == Decision.SET and item is not None:
+        for row in (item.details or {}).get("sources") or []:
+            if (
+                isinstance(row, dict)
+                and row.get("key") == source
+                and not row.get("pending")
+                and row.get("level") == float(step)
+            ):
+                return evidence_using(str(row.get("name") or source_name(source)))
+    raise stress_edits.Invalid("That level is not one this road's sources hold.", "source")
 
 
 def undo(actor, ruling_id: int, *, now: datetime | None = None) -> tuple[ReviewRuling, int | None]:

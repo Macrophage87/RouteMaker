@@ -266,8 +266,11 @@ test("a pending agency's level is information only on the card, with a note by t
   const view = src("ReviewMode.tsx");
   assert.match(view, /\{!s\.pending && current\.actions\.includes\("set"\)/);
   assert.match(view, /Don&apos;t quote pending agencies&apos; data\./);
-  // The rows and the card show the road panel's street photo, from Review's own path.
-  assert.match(view, /<StreetPhotoView compact title=\{name\}/);
+  // The card shows the road panel's street photo, from Review's own path; the list's rows ask for none.
+  assert.equal(view.match(/<StreetPhotoView /g)?.length, 1);
+  assert.doesNotMatch(view, /Street photo" \}/);
+  // "Use" on a source's level sends the source, so the evidence names it.
+  assert.match(view, /rule\("set", \[current\.osm_way_id\], s\.level, s\.key\)/);
   assert.match(view, /const PHOTO_PATH = "\/api\/review\/street-photo";/);
 });
 
