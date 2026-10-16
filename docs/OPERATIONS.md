@@ -4521,13 +4521,11 @@ on `/api/closures/check`); nothing about it is stored.
 DDOT's Pavement Condition Index is the smoothness reading of District streets from
 v0.5.0 (owner, 2026-10-11: "DC score in most cases takes priority over OSM data").
 The download runs on the home PC at rebuild time: the cloud proxy cannot reach
-dcgis.dc.gov. **The service states no licence**: confirm the terms with DDOT or Open
-Data DC before the release ships (docs/SOURCES.md). Until the owner has, the code
-holds it back: `routemaker.pavement.LICENCE_CONFIRMED` is False, so step 2 refuses
-`--dc-pci` (exit 2, `--dc-pci refused: ... states no licence`) and a rebuild that
-finds a `pavement.json` logs `... is installed but not read` and leaves every street
-on OSM's reading. The commit that records the confirmation in docs/SOURCES.md sets it
-True; only then run steps 1 to 3.
+dcgis.dc.gov. The service itself states no licence; the owner confirmed it on 2026-10-16 under the
+District's data terms (CC0 1.0, or CC BY 4.0 where an
+item says so; credited either way) (docs/SOURCES.md), so `routemaker.pavement.LICENCE_CONFIRMED`
+is True and steps 1 to 3 run. (With it False, step 2 refuses `--dc-pci` and a rebuild
+that finds a `pavement.json` logs `... is installed but not read`.)
 
 1. **Fetch FY-25 once**, from the checkout on the host. There is no ArcGIS Online
    item, so no `--item`; the README the script writes records the service's own item
