@@ -31,7 +31,6 @@ from django.db import connection
 from pipeline.schema import validate_schema_name
 from routemaker import agency_lts, flow, more_links
 from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
-from routemaker.stress import USE_SIDEPATH_RULE
 
 # How far from the spot a way may be and still be the one the rider meant: a
 # right-click on a drawn road lands within a few metres of its centre line at
@@ -204,9 +203,7 @@ ACCESS_WORDS = {
         " (closed unless there is evidence bikes are allowed)",
     ),
     "bicycle_no": (False, "Closed: no bicycles (a no-bike sign or rule, as mapped)"),
-    # Legal, rated Avoid, where a side path is mapped beside it (review RL-1; the owner,
-    # 2026-10-16: "It's very much not recommended, but I believe still legal").
-    "bicycle_use_sidepath": (True, "Open: legal, but riders are asked to use the side path"),
+    "bicycle_use_sidepath": (False, "Closed: bicycles must use the side path"),
     "motorway": (False, "Closed: a freeway"),
     "motorroad": (False, "Closed: a motor-vehicle-only road"),
     "private": (False, "Closed: private, or no public access"),
@@ -528,8 +525,6 @@ def _rule_words(rule: str) -> str:
         return "Owner-rated corridor"
     if "curated lane at" in rule:
         return "Owner-rated: a bike lane on a road this busy is LTS 4"
-    if rule.startswith(USE_SIDEPATH_RULE):
-        return "Avoid: riders are asked to use the side path"
     if rule.startswith("legal but avoid"):
         posted = _SPEED.search(rule)
         return "Avoid: highway-like road" + (f", posted {posted.group(0)}" if posted else "")
@@ -861,18 +856,6 @@ def surface_words(row: dict) -> str:
     return words
 
 
-# A `bicycle=use_sidepath` road with a side path mapped beside it (review RL-1).
-USE_SIDEPATH_REASON = "bicycle_use_sidepath"
-
-
-def use_sidepath_words(row: dict) -> str:
-    """The owner's words for a `bicycle=use_sidepath` road (2026-10-16), naming the side
-    path where it has a name (`segment.sidepath_name` on a road)."""
-    words = "Legal, but riders are asked to use the side path"
-    name = row.get("sidepath_name") if not row.get("is_trail_class") else None
-    return f"{words}: {name}" if name else words
-
-
 def access_rows(row: dict, bicycle: bool | None) -> tuple[bool | None, list[dict]]:
     """Whether a bicycle may use the way, and the rows saying so and why."""
     have_reason = "bike_access_reason" in row
@@ -890,8 +873,6 @@ def access_rows(row: dict, bicycle: bool | None) -> tuple[bool | None, list[dict
     if bicycle is None:
         return None, [_row("Bike access", "Not known right now (the router did not answer)", None)]
     if bicycle:
-        if reason == USE_SIDEPATH_REASON:
-            return True, [_row("Bike access", use_sidepath_words(row), OSM)]
         if known is not None and known[0]:
             return True, [
                 _row("Bike access", known[1], OWNER if reason.startswith("override") else OSM)
@@ -956,6 +937,7 @@ ACCESS_SHORT = {
     "secured": "secure government site",
     "works": "quarry, landfill or industrial site",
     "bicycle_no": "no-bike rule",
+    "bicycle_use_sidepath": "use the side path",
     "motorway": "freeway",
     "motorroad": "motor vehicles only",
     "private": "private",
@@ -1110,8 +1092,6 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
         # OWNER-DECISIONS 452a: said as the map draws it, with its level (456); the off-road
         # graph's ride types do use it, unless it is rated singletrack.
         add("bikes", "Bikes", mtb_summary(row))
-    elif open_ is True and reason == USE_SIDEPATH_REASON:
-        add("bikes", "Bikes", use_sidepath_words(row))
     elif open_ is True:
         add("bikes", "Bikes", "Allowed")
     elif open_ is False:
@@ -1134,13 +1114,11 @@ def describe(row: dict, router: dict) -> dict:
     # And an unnamed bike way beside a named street, that street's bike lane ("9th Street
     # Northwest protected bike lane"; v0.7.0 "Go riding fixes" item 4), as the route
     # description names it.
-    # On a road, `sidepath_name` is the side path it asks riders to use (review RL-1),
-    # never the road's own name.
     name = (
         router.get("name")
         or row.get("trail_name")
         or row.get("mtb_name")
-        or (row.get("sidepath_name") if path else None)
+        or row.get("sidepath_name")
     )
     name_source = ROUTER if router.get("name") else (OSM if name else None)
     kind, kind_source = road_kind(router, row)

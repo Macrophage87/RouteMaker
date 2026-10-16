@@ -358,16 +358,9 @@ NOT_A_WAY_HIGHWAY = frozenset(
 # A motorway and its ramps bar bicycles unless a bicycle tag opens them.
 BARRED_HIGHWAY = frozenset({"motorway", "motorway_link"})
 
-# A bicycle tag that keeps a bicycle off the roadway: barred or private.
-BARRING_BICYCLE = frozenset({"no", "private"})
-
-# `bicycle=use_sidepath`: riders are asked to use the side path, but the roadway
-# is still legal (the owner, 2026-10-16: "It's very much not recommended, but I
-# believe still legal"; review RL-1), as Valhalla's transform reads it too. It
-# is drawn and routed; where a side path is mapped beside it (`use_sidepath_paths`)
-# it is rated Avoid, and where none is it is rated on its own merits and listed
-# for review as a likely tagging error.
-USE_SIDEPATH = "use_sidepath"
+# A bicycle tag that keeps a bicycle off the roadway: barred, private, or sent
+# to the sidepath beside it.
+BARRING_BICYCLE = frozenset({"no", "private", "use_sidepath"})
 
 # Access values that keep the public out, a bicycle included, unless the
 # bicycle tag says otherwise: the road is no one's to ride, and is left off the
@@ -447,14 +440,14 @@ def map_class(tags: dict[str, str]) -> MapClass:
     """How the stress map draws a way, by its own tags; a road inside a
     military base is found by its place (`pipeline.military`). BARRED: a
     public road a bicycle may not use - a motorway, `bicycle=no` (the George
-    Washington, Suitland and Clara Barton parkways), `motorroad=yes`.
-    HIDDEN: a way no typical rider could use - no road
+    Washington, Suitland and Clara Barton parkways), `motorroad=yes`,
+    `bicycle=use_sidepath`. HIDDEN: a way no typical rider could use - no road
     or path at all (a terminal hallway, `indoor`), a sidewalk or crosswalk, a
     parking aisle or driveway, and a road or path the public may not enter
     (`access` or `vehicle` of no, private, military, restricted, permit), a
     bicycle or foot tag reopening it. Neither is drawn (OWNER-DECISIONS 89).
-    "Legal but avoid" (US 340, `bicycle=use_sidepath`) is a road a bicycle may
-    use, and keeps its tier."""
+    "Legal but avoid" (US 340) is a road a bicycle may use, and keeps its
+    tier."""
     highway = tags.get("highway")
     if highway in NOT_A_WAY_HIGHWAY or tags.get("indoor", "no") != "no":
         return MapClass.HIDDEN
@@ -509,7 +502,6 @@ def bike_access_reason(
     *,
     no_bicycle: str | None = None,
     overridden: bool = False,
-    side_path: bool = False,
 ) -> str | None:
     """Why a bicycle may not use a way, or why it was reopened, as one short code
     for the map's road panel (`segment.bike_access_reason`; OWNER-DECISIONS 441a;
@@ -521,11 +513,6 @@ def bike_access_reason(
     first, closed or open by the tag it left, unless a closure rule still closed
     the way; then the rule's reason, then what the way's own tags say. Whether the
     graph lets a bicycle on the way is the router's to say: this is only the why.
-
-    `side_path` says a side path is mapped beside a `bicycle=use_sidepath` road
-    (`use_sidepath_paths`): the road is open, and the panel says riders are asked to
-    use it. With none mapped the tag is read as a likely tagging error and says
-    nothing here.
     """
     bicycle = tags.get("bicycle")
     if overridden and no_bicycle is None:
@@ -539,6 +526,8 @@ def bike_access_reason(
         return None
     if bicycle == "no":
         return "bicycle_no"
+    if bicycle == "use_sidepath":
+        return "bicycle_use_sidepath"
     if bicycle == "private" or any(tags.get(k) in NO_PUBLIC_ACCESS for k in ("access", "vehicle")):
         return "private"
     if bicycle is None and physically_closed(tags):
@@ -547,9 +536,6 @@ def bike_access_reason(
         return "motorway"
     if tags.get("motorroad") == "yes":
         return "motorroad"
-    # Last: `use_sidepath` never opens a way something above closes (review RL-1).
-    if bicycle == USE_SIDEPATH and side_path:
-        return "bicycle_use_sidepath"
     return None
 
 
@@ -852,166 +838,6 @@ def side_street_names(
         if metres >= SIDE_STREET_FRACTION * total:
             found[osm_id] = sidepath_name(street, tags)
     return found
-
-
-# --- The side path a `bicycle=use_sidepath` road asks riders to use (review RL-1) -----------
-
-# The owner, 2026-10-16: "For the use-sidepath roads, make sure there's a sidepath
-# marked." A road tagged `bicycle=use_sidepath` is rated Avoid only where a side path is
-# mapped beside it: a trail-class way a bicycle may ride (a cycleway, a path, a footway or
-# sidewalk open to bicycles; `trail_open_to_bicycle`) within USE_SIDEPATH_M of the road's
-# centreline and within SIDE_STREET_ANGLE of parallel to it, along at least
-# SIDE_STREET_FRACTION of the road's length. 30 m reaches a side path across a wide
-# verge or a slip lane; the angle keeps a crosswalk or a path that only crosses out.
-USE_SIDEPATH_M = 30.0
-
-
-def is_use_sidepath_road(tags: dict[str, str]) -> bool:
-    """A road (not a trail-class way) tagged `bicycle=use_sidepath` that nothing else
-    closes: not a motorway or `motorroad=yes`, and no `access` or `vehicle` keeping the
-    public out (`map_class` hides or bars those, and the remap closes them)."""
-    highway = tags.get("highway")
-    return (
-        tags.get("bicycle") == USE_SIDEPATH
-        and highway is not None
-        and highway not in TRAIL_CLASS_HIGHWAY
-        and highway not in BARRED_HIGHWAY
-        and tags.get("motorroad") != "yes"
-        and not any(tags.get(key) in NO_PUBLIC_ACCESS for key in ("access", "vehicle"))
-    )
-
-
-# The keys that put a side path on the road's own way: a cycle track
-# (`cycleway*=track`), or a sidewalk open to bicycles (`sidewalk:*:bicycle`).
-ON_ROAD_TRACK_KEYS = ("cycleway", "cycleway:left", "cycleway:right", "cycleway:both")
-ON_ROAD_SIDEWALK_KEYS = (
-    "sidewalk:bicycle",
-    "sidewalk:left:bicycle",
-    "sidewalk:right:bicycle",
-    "sidewalk:both:bicycle",
-)
-
-
-def has_side_path_on_the_road(tags: dict[str, str]) -> bool:
-    """Whether the road's own tags map its side path on it: a cycle track, or a
-    sidewalk open to bicycles (`yes` or `designated`)."""
-    return any(tags.get(key) == "track" for key in ON_ROAD_TRACK_KEYS) or any(
-        tags.get(key) in ("yes", "designated") for key in ON_ROAD_SIDEWALK_KEYS
-    )
-
-
-def _is_crossing(tags: dict[str, str]) -> bool:
-    return bool({tags.get(key) for key in CROSSING_KEYS} & {CROSSING, TRAFFIC_ISLAND})
-
-
-def use_sidepath_paths(
-    ways: Sequence[tuple[int, dict[str, str], Sequence[tuple[float, float]]]]
-    | Iterable[tuple[int, dict[str, str], Sequence[tuple[float, float]]]],
-) -> tuple[dict[int, str | None], set[int]]:
-    """(each `bicycle=use_sidepath` road with a side path mapped beside it, by osm id, to
-    that path's name or None where it has none; the roads with no side path found).
-
-    `ways` is (osm id, tags, [(lon, lat), ...]). A road the tag does not leave open
-    (`is_use_sidepath_road`), or with no length, is in neither. A side path on the
-    road's own way (`has_side_path_on_the_road`) counts. Otherwise the road is looked
-    at every SIDE_STREET_STEP_M; a step is covered where a bikeable trail-class way that
-    is not a crossing lies within USE_SIDEPATH_M and within SIDE_STREET_ANGLE of
-    parallel. The name is that of the named path covering the most of the road, where
-    any does, and never the road's own name.
-
-    Per way, not per segment: the graph carries one tier per way (the remap reads the
-    way's tier), so a way split into Avoid and not-Avoid pieces would show the map one
-    thing and route another."""
-    lat0 = 38.9
-    cell = USE_SIDEPATH_M
-    ways = ways if isinstance(ways, Sequence) else list(ways)
-    found: dict[int, str | None] = {}
-    roads: list[tuple[int, str, list[tuple[float, float]]]] = []
-    for osm_id, tags, coords in ways:
-        if not is_use_sidepath_road(tags) or len(coords) < 2:
-            continue
-        points = [_xy(lon, lat, lat0) for lon, lat in coords]
-        if sum(math.dist(a, b) for a, b in zip(points, points[1:], strict=False)) <= 0:
-            continue
-        if has_side_path_on_the_road(tags):
-            found[osm_id] = None
-            continue
-        roads.append((osm_id, (tags.get("name") or "").strip().casefold(), points))
-    if not roads:
-        return found, set()
-    wanted: set[tuple[int, int]] = set()
-    for _osm_id, _name, points in roads:
-        for p, _bearing_at, _metres in _samples(points, SIDE_STREET_STEP_M):
-            wanted.add((int(p[0] // cell), int(p[1] // cell)))
-    xs = [x for _i, _n, points in roads for x, _y in points]
-    ys = [y for _i, _n, points in roads for _x, y in points]
-    box = (min(xs) - cell, min(ys) - cell, max(xs) + cell, max(ys) + cell)
-    grid: dict[tuple[int, int], list[tuple[tuple[float, float], tuple[float, float], str]]] = {}
-    for _osm_id, tags, coords in ways:
-        if (
-            tags.get("highway") not in TRAIL_CLASS_HIGHWAY
-            or tags.get("highway") == "steps"
-            or len(coords) < 2
-        ):
-            continue
-        points = [_xy(lon, lat, lat0) for lon, lat in coords]
-        if (
-            max(x for x, _y in points) < box[0]
-            or min(x for x, _y in points) > box[2]
-            or max(y for _x, y in points) < box[1]
-            or min(y for _x, y in points) > box[3]
-        ):
-            continue
-        cells: list[tuple[tuple[int, int], tuple[float, float], tuple[float, float]]] = []
-        for a, b in zip(points, points[1:], strict=False):
-            x0, x1 = sorted((a[0], b[0]))
-            y0, y1 = sorted((a[1], b[1]))
-            for gx in range(int(x0 // cell) - 1, int(x1 // cell) + 2):
-                for gy in range(int(y0 // cell) - 1, int(y1 // cell) + 2):
-                    if (gx, gy) in wanted:
-                        cells.append(((gx, gy), a, b))
-        if not cells or _is_crossing(tags) or not trail_open_to_bicycle(tags):
-            continue
-        name = (tags.get("name") or "").strip()
-        for key, a, b in cells:
-            grid.setdefault(key, []).append((a, b, name))
-    missing: set[int] = set()
-    for osm_id, road_name, points in roads:
-        total = covered = 0.0
-        named: dict[str, float] = {}
-        for p, bearing, metres in _samples(points, SIDE_STREET_STEP_M):
-            total += metres
-            near: str | None = None
-            nearest = USE_SIDEPATH_M
-            for a, b, name in grid.get((int(p[0] // cell), int(p[1] // cell)), ()):
-                d = _point_segment_m(p, a, b)
-                if d <= nearest and _angle_between(bearing, _bearing(a, b)) <= SIDE_STREET_ANGLE:
-                    near, nearest = name, d
-            if near is not None:
-                covered += metres
-                if near and near.casefold() != road_name:
-                    named[near] = named.get(near, 0.0) + metres
-        if covered >= SIDE_STREET_FRACTION * total:
-            found[osm_id] = (
-                max(named.items(), key=lambda item: (item[1], item[0]))[0] if named else None
-            )
-        else:
-            missing.add(osm_id)
-    return found, missing
-
-
-def use_sidepath_report_csv(rows: Iterable[tuple[int, str, str, str]]) -> str:
-    """`use-sidepath-no-path.csv`: the `bicycle=use_sidepath` roads with no side path
-    mapped beside them, rated on their own merits, for review as likely tagging errors.
-    `rows` is (way id, name, county, state)."""
-
-    def cell(text: str) -> str:
-        return '"' + text.replace('"', '""') + '"' if any(c in text for c in ',"\n') else text
-
-    lines = ["way_id,name,county,state"]
-    for way_id, name, county, state in sorted(rows):
-        lines.append(",".join([str(way_id), cell(name), cell(county), cell(state)]))
-    return "\n".join(lines) + "\n"
 
 
 def _length_m(coords: Sequence[tuple[float, float]]) -> float:

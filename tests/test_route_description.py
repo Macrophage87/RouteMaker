@@ -443,25 +443,17 @@ def test_the_street_side_names_are_read_for_unnamed_ways_only(segment_schemas):
     live, _staging = segment_schemas
     segment_info.forget_columns()
     with connection.cursor() as cursor:
-        # Way 10 is an unnamed bicycle=use_sidepath road: its sidepath_name is the side
-        # path it asks riders to use (review RL-1), never the road's own name.
-        for way, name, trail in (
-            (7, "9th Street Northwest protected bike lane", True),
-            (8, None, True),
-            (9, "X", True),
-            (10, "Some Trail", False),
-        ):
+        for way, name in ((7, "9th Street Northwest protected bike lane"), (8, None), (9, "X")):
             cursor.execute(
                 f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
-                "stress_rule, sidepath_name, is_trail_class) VALUES (%s, 0, "
-                "ST_GeomFromText('LINESTRING(-77 38.9, -77 38.901)', 4326), 1, 'test', %s, %s)",
-                [way, name, trail],
+                "stress_rule, sidepath_name) VALUES (%s, 0, "
+                "ST_GeomFromText('LINESTRING(-77 38.9, -77 38.901)', 4326), 1, 'test', %s)",
+                [way, name],
             )
     pieces = [
         routing.Piece(7, -77.0, 38.9, 10.0, (), "cycleway"),
         routing.Piece(8, -77.0, 38.9, 10.0, (), "cycleway"),
         routing.Piece(9, -77.0, 38.9, 10.0, ("Named Trail",), "cycleway"),
-        routing.Piece(10, -77.0, 38.9, 10.0, (), "road"),
     ]
     assert routing.sidepath_names_of(pieces) == {7: "9th Street Northwest protected bike lane"}
     segment_info.forget_columns()
