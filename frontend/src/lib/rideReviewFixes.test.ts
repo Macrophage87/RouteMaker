@@ -16,3 +16,9 @@ test("a11y-3: going off route, back on, or out of DC hands a dropped focus to Wh
   // After show311 is worked out, so it sees this render's value.
   assert.ok(ride.indexOf("const show311 = ride311Shown(") < ride.indexOf("const shownBefore = useRef"));
 });
+
+test("RIDE-1: hidden in the installed app, the ride's map so far goes to the last ride, and the ride keeps going", () => {
+  assert.match(ride, /if \(document\.visibilityState === "hidden" && !ended\.current\) void copyCorridor\(lastRideAdopter\(\)\);/);
+  const hook = ride.slice(ride.indexOf("const onHide = () =>") - 200, ride.indexOf("const onHide = () =>"));
+  assert.match(hook, /if \(!handsOn\.current\) return;/, "the installed app only, as End ride's hand-on");
+});

@@ -94,7 +94,7 @@ import {
 import type { WaterPoint } from "./lib/waterRestrooms.ts";
 import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
 import { corridorNote, type PrefetchResult } from "./lib/corridor.ts";
-import { clearCorridor, keepCorridor } from "./lib/corridorStore.ts";
+import { clearCorridor, copyCorridor, keepCorridor } from "./lib/corridorStore.ts";
 import { lastRideAdopter } from "./lib/offlineKeep.ts";
 import { inDc } from "./lib/dcBoundary.ts";
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
@@ -846,6 +846,16 @@ export function RideMode({
   }, [route]);
   const handsOn = useRef(keepLastRide);
   useEffect(() => () => void clearCorridor(handsOn.current ? lastRideAdopter() : undefined), []);
+  // Hidden, the installed app may be closed and never reach End ride: the last ride gets the map kept
+  // so far now, as End ride would hand it on (review RIDE-1).
+  useEffect(() => {
+    if (!handsOn.current) return;
+    const onHide = () => {
+      if (document.visibilityState === "hidden" && !ended.current) void copyCorridor(lastRideAdopter());
+    };
+    document.addEventListener("visibilitychange", onHide);
+    return () => document.removeEventListener("visibilitychange", onHide);
+  }, []);
   const corridorText = corridorNote(corridor);
 
   const resume = () => {
