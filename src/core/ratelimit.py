@@ -163,6 +163,9 @@ SEGMENT_INFO_BURST = Limit(scope="segment-info-10s", requests=20, window_s=10)
 SEGMENT_INFO = Limit(scope="segment-info", requests=60, window_s=60)
 # The road panel's street photo (GET /api/street-photo, v0.7.0): one per panel opened, as above.
 STREET_PHOTO = Limit(scope="street-photo", requests=60, window_s=60)
+# The rider's own latest suggestion for the road (GET /api/stress-suggestions/mine): one per
+# panel opened by a signed-in rider, as above, kept apart so it never eats the panel's budget.
+MY_SUGGESTION = Limit(scope="my-suggestion", requests=60, window_s=60)
 
 # One climb's elevation profile (GET /api/climbs/{id}/profile): one request per climb card
 # opened, a router call the first time a climb is asked for and kept after. PLAN.md:65's 60.

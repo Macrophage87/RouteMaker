@@ -6273,8 +6273,8 @@ class MySuggestionAnswerOut(Schema):
 )
 @decorate_view(
     same_site_editor,
-    # Asked on every road panel a signed-in rider opens: the panel's own budget, not the edits'.
-    ratelimit.rate_limited(ratelimit.SEGMENT_INFO),
+    # Asked on every road panel a signed-in rider opens: a budget of its own, like the photo's.
+    ratelimit.rate_limited(ratelimit.MY_SUGGESTION),
     errors_as_json,
 )
 def stress_suggestion_mine(request, params: Query[MySuggestionIn], response: HttpResponse):
