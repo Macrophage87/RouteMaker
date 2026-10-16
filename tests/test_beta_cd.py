@@ -601,6 +601,8 @@ if [ "$1" = "+%H" ] && [ -n "${STUB_HOUR:-}" ]; then
   [ "${TZ:-}" = America/New_York ] && echo "$STUB_HOUR" || echo 99; exit 0
 fi
 if [ "$1" = -u ] && [ "$2" = "+%H%M" ]; then echo "${STUB_UTC:-1200}"; exit 0; fi
+# the zone's abbreviation: what a host without tzdata answers (the bare name) under STUB_NO_TZDATA
+if [ "$1" = "+%Z" ]; then [ -n "${STUB_NO_TZDATA:-}" ] && echo America || echo EDT; exit 0; fi
 exec REAL_DATE "$@"
 """
 GITHUB = "https://github.com/Macrophage87/RouteMaker.git"
@@ -611,7 +613,7 @@ ROUTERS = "valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend"
 class Beta:
     """A throwaway origin, a beta checkout of it at v0.1.0, and a state directory."""
 
-    def __init__(self, tmp: Path) -> None:
+    def __init__(self, tmp: Path, extra: dict[str, str] | None = None) -> None:
         self.tmp = tmp
         self.origin = tmp / "origin"
         self.origin.mkdir()
@@ -628,6 +630,7 @@ class Beta:
                 "frontend/package-lock.json": "{}\n",
                 "valhalla/valhalla-standard.json": _vjson(),
                 "valhalla/valhalla-offroad.json": _vjson(),
+                **(extra or {}),
             },
         )
         self.tag("v0.1.0")
@@ -1440,6 +1443,31 @@ def test_no_deploy_starts_in_the_nightly_backup_slot(beta: Beta, utc: str, waits
     done = beta.agent("run", "--dry-run", STUB_UTC=utc)
     assert ("would deploy v0.2.0" in done.stdout) is not waits, done.stdout
     assert ("nightly backup runs at 07:00 UTC" in done.stdout) is waits
+
+
+@pytest.mark.parametrize(
+    ("utc", "waits"), [("2354", False), ("2355", True), ("0029", True), ("0030", False)]
+)
+def test_the_backup_slot_follows_nightly_backup_cron_across_midnight(
+    tmp_path: Path, utc: str, waits: bool
+) -> None:
+    """Review round 2: the slot is read from NIGHTLY_BACKUP_CRON in the checkout."""
+    if shutil.which("git") is None or shutil.which("flock") is None:
+        pytest.skip("needs git and flock")
+    beta = Beta(tmp_path, {"src/config/procrastinate.py": 'NIGHTLY_BACKUP_CRON = "0 0 * * *"\n'})
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", "--dry-run", STUB_UTC=utc)
+    assert ("would deploy v0.2.0" in done.stdout) is not waits, done.stdout
+    said = "the nightly backup runs at 00:00 UTC; deploying after 00:30 UTC"
+    assert (said in done.stdout) is waits
+
+
+def test_a_deploy_window_without_time_zone_data_is_an_error_in_status(beta: Beta) -> None:
+    """Review round 2: a host without tzdata would read the window in UTC; it is an error."""
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", RM_CD_WINDOW="02-06", STUB_NO_TZDATA="1")
+    assert done.returncode == 1
+    assert "error:" in beta.status() and "tzdata" in beta.status()
 
 
 def test_an_origin_other_than_the_ci_repository_is_an_error(beta: Beta) -> None:

@@ -1171,7 +1171,7 @@ Optional settings, appended to `vars.sh` like any later decision (never a secret
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `export RM_CD_WINDOW=02-06` | any hour | Washington hours (America/New_York, whatever the host's zone) in which a deploy may start, never 06:55 to 07:30 UTC while the nightly backup runs (the two hours differ; `22-04` wraps past midnight). Recommended: a deploy stops the api and worker while it builds (step 6), so a window keeps the builds and the downtime to quiet hours |
+| `export RM_CD_WINDOW=02-06` | any hour | Washington hours (America/New_York, whatever the host's zone) in which a deploy may start, never from 5 minutes before the nightly backup to 30 after it (06:55 to 07:30 UTC for `NIGHTLY_BACKUP_CRON`'s 07:00, read from the checkout; the two hours differ; `22-04` wraps past midnight). A host without time zone data (tzdata) reports a set window as an error. Recommended: a deploy stops the api and worker while it builds (step 6), so a window keeps the builds and the downtime to quiet hours |
 | `export RM_CD_DOCKER_FREE_GIB=5` | `3` | GiB that must be free on Docker's root (`docker info`) before a deploy; less, and the release waits |
 | `export RM_CD_REQUIRE_SIGNED_TAGS=1` | `0` | also require a good tag signature |
 | `export RM_CD_KEEP=5` | `3` | release snapshots kept in `$RM_STATE/cd/backups` (each about 200 MB, on `$HOME`'s disk) |

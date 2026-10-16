@@ -170,6 +170,11 @@ window_problem() {
 	from=$((10#${w%-*})); to=$((10#${w#*-}))
 	if [ "$from" -gt 23 ] || [ "$to" -gt 24 ]; then echo "RM_CD_WINDOW '$w': the hours run from 00 to 23 (24 may end a window)"; return 0; fi
 	[ "$from" != "$to" ] || { echo "RM_CD_WINDOW '$w' opens and closes at the same hour, so it would never open; leave it unset for any hour"; return 0; }
+	# Without the zone's data, date answers in UTC under the zone's name: say so, not a wrong hour.
+	case "$(TZ=America/New_York date +%Z)" in
+		EST | EDT) ;;
+		*) echo "RM_CD_WINDOW is read in Washington time, and this host has no time zone data for America/New_York: install tzdata"; return 0 ;;
+	esac
 	return 1
 }
 in_window() { # RM_CD_WINDOW has passed window_problem
@@ -179,12 +184,25 @@ in_window() { # RM_CD_WINDOW has passed window_problem
 	from=$((10#${w%-*})); to=$((10#${w#*-})); now=$((10#$(TZ=America/New_York date +%H)))
 	if [ "$from" -le "$to" ]; then [ "$now" -ge "$from" ] && [ "$now" -lt "$to" ]; else [ "$now" -ge "$from" ] || [ "$now" -lt "$to" ]; fi
 }
-# 06:55 to 07:30 UTC: the nightly backup (NIGHTLY_BACKUP_CRON, 07:00 UTC) runs then. A deploy
-# that started in it would take its pre-release snapshot and restart the stack under the dump.
+# From 5 minutes before the nightly backup to 30 after it (06:55 to 07:30 UTC for 07:00): a
+# deploy that started then would take its pre-release snapshot and restart the stack under the
+# dump. Its time is NIGHTLY_BACKUP_CRON ("M H * * *", UTC) in the checkout, else 07:00.
+backup_minute() {
+	local m="" h=""
+	read -r m h < <(sed -n 's/^NIGHTLY_BACKUP_CRON = "\([0-9]\{1,2\}\) \([0-9]\{1,2\}\) \* \* \*"$/\1 \2/p' \
+		"$RM_SRC/src/config/procrastinate.py" 2>/dev/null | tail -n1) || true
+	if [[ "$m" =~ ^[0-9]+$ ]] && [[ "$h" =~ ^[0-9]+$ ]] && [ $((10#$m)) -lt 60 ] && [ $((10#$h)) -lt 24 ]; then
+		echo $((10#$h * 60 + 10#$m))
+	else
+		echo 420
+	fi
+}
+hhmm() { printf '%02d:%02d' $(($1 / 60)) $(($1 % 60)); }
 in_backup_slot() {
-	local hm
-	hm=$((10#$(date -u +%H%M)))
-	[ "$hm" -ge 655 ] && [ "$hm" -lt 730 ]
+	local now
+	now=$((10#$(date -u +%H%M)))
+	now=$((now / 100 * 60 + now % 100))
+	[ $(((now - $1 + 5 + 1440) % 1440)) -lt 35 ]
 }
 # Prints why the checkout's origin is not the GitHub repository whose CI the agent reads, and
 # succeeds, if it is not: code and CI must come from the same place, over https.
@@ -706,7 +724,8 @@ pass() {
 			h=$(lock_hash "$new")
 		fi
 		in_window || { rm -f "$gate_file"; finish waiting "$tag: outside the deploy window RM_CD_WINDOW=$RM_CD_WINDOW"; return 0; }
-		! in_backup_slot || { rm -f "$gate_file"; finish waiting "$tag: the nightly backup runs at 07:00 UTC; deploying after 07:30 UTC"; return 0; }
+		backup_at=$(backup_minute)
+		! in_backup_slot "$backup_at" || { rm -f "$gate_file"; finish waiting "$tag: the nightly backup runs at $(hhmm "$backup_at") UTC; deploying after $(hhmm $(((backup_at + 30) % 1440))) UTC"; return 0; }
 		predraw_running && { rm -f "$gate_file"; finish waiting "$tag: a stress-tile pre-draw is running; deploying after it"; return 0; }
 		free=$(free_kib "$cd_dir/backups")
 		[ "${free:-0}" -ge 1048576 ] || { rm -f "$gate_file"; finish waiting "$tag: less than 1 GiB free for the snapshot in $cd_dir/backups"; return 0; }
