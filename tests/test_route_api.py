@@ -853,6 +853,18 @@ class TestRefusedInput:
             client, router, {"points": [list(VERTICES[0])], "preset": "default"}
         )
 
+    @pytest.mark.parametrize(
+        "at", ["0001-01-01T00:00:00", "9999-12-31T23:59:00", "2029-01-01T08:00:00-05:00"]
+    )
+    def test_a_time_more_than_a_year_off(self, at, client, router) -> None:
+        # Review api-5: near the year 1 or 9999 the time zone's conversion overflowed (500).
+        body = {**good_body(presets.BIKE_TRANSIT), "depart_at": at}
+        assert "within a year" in refused_before_the_router(client, router, body)["error"]
+        for path in ("/api/transit/closures", "/api/transit/station-times"):
+            response = client.get(path, {"lon": -77.0, "lat": LAT, "at": at})
+            assert response.status_code == 400, (path, response.content)
+            assert "within a year" in response.json()["error"]
+
     def test_twenty_six_points(self, client, router) -> None:
         points = [[-77.05 + i * 0.001, LAT] for i in range(26)]
         refused_before_the_router(client, router, {"points": points, "preset": "default"})

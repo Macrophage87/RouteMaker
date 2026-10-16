@@ -380,8 +380,8 @@ class RouteIn(Schema):
         default=None,
         description=(
             "Transit ride types only: when the trip starts, ISO 8601 (with an offset, or local"
-            " time in Washington). Absent: now. Each system's own calendar for that day is used,"
-            " holidays and published closures included."
+            " time in Washington), within a year of now. Absent: now. Each system's own"
+            " calendar for that day is used, holidays and published closures included."
         ),
     )
     transit_option: str | None = Field(
@@ -534,6 +534,11 @@ class RouteIn(Schema):
             )
         return self
 
+    @field_validator("depart_at")
+    @classmethod
+    def _depart_near_now(cls, value: datetime | None) -> datetime | None:
+        return near_now(value)
+
     @field_validator("system_weight_kg")
     @classmethod
     def _weight_at_the_nearer_limit(cls, value: int | None) -> int | None:
@@ -577,6 +582,25 @@ class ConfirmLongOut(Schema):
     error: str
     code: Literal["confirm_long"]
     span_km: int
+
+
+# How far from now a trip's time may be (`depart_at`, `at`): a time near the year 1 or 9999
+# overflowed in the time zone's conversion and answered 500 (review api-5).
+WHEN_RANGE = timedelta(days=366)
+
+
+def near_now(value: datetime | None) -> datetime | None:
+    """`value` where it is within WHEN_RANGE of now (a time without an offset is local time
+    in Washington); otherwise a refusal, which the API answers 400."""
+    if value is None:
+        return None
+    at = value if value.tzinfo is not None else value.replace(tzinfo=ridetime.ZONE)
+    try:
+        if abs(at - timezone.now()) <= WHEN_RANGE:
+            return value
+    except OverflowError:
+        pass
+    raise ValueError("the time must be within a year of now")
 
 
 BusyCode = Literal["long_ride_timed_out", "bikeshare_unavailable", "transit_unavailable"]
@@ -3240,8 +3264,16 @@ def _transit_refusal(message: str, code: str, status: int):
 class ClosuresIn(Schema):
     at: datetime | None = Field(
         default=None,
-        description="When, ISO 8601 (local time in Washington without an offset). Absent: now.",
+        description=(
+            "When, ISO 8601 (local time in Washington without an offset), within a year of"
+            " now. Absent: now."
+        ),
     )
+
+    @field_validator("at")
+    @classmethod
+    def _at_near_now(cls, value: datetime | None) -> datetime | None:
+        return near_now(value)
 
 
 class ClosedStationOut(Schema):
@@ -3306,8 +3338,16 @@ class StationTimesIn(Schema):
     lat: float = Field(ge=-90, le=90)
     at: datetime | None = Field(
         default=None,
-        description="When, ISO 8601 (local time in Washington without an offset). Absent: now.",
+        description=(
+            "When, ISO 8601 (local time in Washington without an offset), within a year of"
+            " now. Absent: now."
+        ),
     )
+
+    @field_validator("at")
+    @classmethod
+    def _at_near_now(cls, value: datetime | None) -> datetime | None:
+        return near_now(value)
 
 
 class LineTimeOut(Schema):
