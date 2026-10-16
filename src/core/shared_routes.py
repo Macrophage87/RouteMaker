@@ -13,19 +13,27 @@ sheet still opens inside the press (a share sheet refuses to open after a wait);
 ever stored once (`409` if taken). The link carries the plan's inputs as well, so a link whose line
 was never stored, or has since gone, plans its route again from them, as every link did before.
 
-Signed out or in, nothing of the rider is kept: no account, no address (the rate limit keys on a
-salted hash, `core.ratelimit`), and no weight (OWNER-DECISIONS 313): `public_answer` takes the
-rider's system weight and the effort figure weighed with it out of a planned route's answer. A row
-is kept a year after it was last opened (`KEEP`), then deleted at the next share or open; the
-sharer may instead keep it permanently or until a date (`KEEP_CHOICES`; the owner, 2026-10-16:
-"For the 1 year deletion, make this the default. For other users, we can offer "keep permanently"
-and "delete after <date>""). The whole body is at most `MAX_BYTES`. Models:
+Nothing of the rider is kept but, signed in, the account (`owner`, below): no address (the rate
+limit keys on a salted hash, `core.ratelimit`), and no weight (OWNER-DECISIONS 313):
+`public_answer` takes the rider's system weight and the effort figure weighed with it out of a
+planned route's answer. A row is kept a year after it was last opened (`KEEP`), then deleted at the
+next share or open; the sharer may instead keep it permanently or until a date (`KEEP_CHOICES`; the
+owner, 2026-10-16: "For the 1 year deletion, make this the default. For other users, we can offer
+"keep permanently" and "delete after <date>""). The whole body is at most `MAX_BYTES`. Models:
 `core.models.SharedRoute`; endpoints in `core.api`.
+
+Shared signed in, the row names its owner (and nothing else of them), who alone can turn the link
+off (`revoke`) or swap it for a new one (`regenerate`: a new random id with the same route and
+keeping, the old one turned off), from My routes in Plan. A turned-off link stays as a tombstone
+with its route cleared and is kept permanently, so its link keeps saying it was turned off
+(`REVOKED`, 410) rather than planning its points again once the row was gone. The link's preview,
+for chat apps that fetch it: `core.share_preview`.
 """
 
 from __future__ import annotations
 
 import re
+import secrets
 from datetime import date, timedelta
 
 from . import accounts
@@ -46,8 +54,10 @@ KEEP_CHOICES = ("year", "forever", "until")
 SOURCES = ("plan", "gpx")
 KEYS = frozenset(
     {"id", "name", "source", "line", "distance_m", "inputs", "answer", "gpx"}
-    | {"keep", "delete_after"}
+    | {"keep", "delete_after", "preview_image"}
 )
+# What a turned-off link's page and preview say: plainly, with no detail.
+REVOKED = "This link was turned off by its owner."
 
 
 def prune(now=None) -> int:
@@ -75,6 +85,55 @@ def expired(row, now) -> bool:
     if row.keep == "until":
         return row.delete_after is None or row.delete_after < timezone.localdate(now)
     return row.last_opened_at < now - KEEP
+
+
+def revoke(row, now) -> None:
+    """Turn the link off: keep only the tombstone (its id, owner and time), permanently."""
+    row.revoked_at = now
+    row.name = ""
+    row.line = []
+    row.inputs = {}
+    row.answer = None
+    row.gpx = ""
+    row.keep = "forever"
+    row.delete_after = None
+    row.preview_png = None
+    row.preview_key = ""
+    row.save()
+
+
+def regenerate(row, now):
+    """A new link for the same route and keeping, the old one turned off; the new row."""
+    from django.db import transaction
+
+    from .models import SharedRoute
+
+    with transaction.atomic():
+        fresh = SharedRoute.objects.create(
+            id=secrets.token_hex(16),
+            name=row.name,
+            source=row.source,
+            line=row.line,
+            distance_m=row.distance_m,
+            inputs=row.inputs,
+            answer=row.answer,
+            gpx=row.gpx,
+            created_at=now,
+            last_opened_at=now,
+            keep=row.keep,
+            delete_after=row.delete_after,
+            owner=row.owner,
+            preview_image=row.preview_image,
+        )
+        revoke(row, now)
+    return fresh
+
+
+def link_of(row, origin: str) -> str:
+    """The link Share gives for a kept row: its preview path, then the plan's inputs and the id
+    (frontend/src/lib/sharedRoutes.ts withSharedId)."""
+    fragment = str((row.inputs or {}).get("hash", "")).lstrip("#")
+    return f"{origin}/s/{row.pk}#{fragment + '&' if fragment else ''}route={row.pk}"
 
 
 def delete_after_of(value, today: date) -> date | None:
@@ -133,6 +192,8 @@ def body_problem(body, today: date | None = None) -> tuple[str, str | None] | No
     gpx = body.get("gpx", "") or ""
     if not isinstance(gpx, str) or (gpx and source != "gpx"):
         return "Only an opened GPX file keeps its text.", "gpx"
+    if not isinstance(body.get("preview_image", True), bool):
+        return "Say whether the link may have a preview image.", "preview_image"
     keep = body.get("keep", "year")
     if keep not in KEEP_CHOICES:
         return "Keep a shared route for a year, permanently, or until a date.", "keep"

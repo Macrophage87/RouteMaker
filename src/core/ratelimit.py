@@ -195,6 +195,9 @@ ACCOUNT_WRITES = Limit(scope="account", requests=240, window_s=3600)
 # one (GET /api/shared-routes/{id}) is one per link opened: PLAN's 60 a minute.
 SHARED_ROUTE_WRITES = Limit(scope="shared-route", requests=30, window_s=3600)
 SHARED_ROUTE_READS = Limit(scope="shared-route-read", requests=60, window_s=60)
+# A shared link fetched for its preview (GET /s/{id} and its image, core.share_preview): a chat
+# app's fetchers share few addresses, so twice the reads.
+SHARE_PREVIEWS = Limit(scope="share-preview", requests=120, window_s=60)
 # A kept line checked against the closures in force (POST /api/closures/check): asked when a
 # saved or shared route opens, on Start ride and before a download, so a few a minute at most.
 CLOSURE_CHECK = Limit(scope="closure-check", requests=30, window_s=60)
