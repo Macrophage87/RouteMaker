@@ -1110,7 +1110,7 @@ The paths' rule is unchanged, and so is its bar (region, Annandale-Alexandria bo
 4,725 and 60.3; 1 mi 4,276 and 51.1; 2 mi 3,730 and 47.1 (every candidate path is 5,233
 and 75.3; 152 mi of mountain-bike trail are left out). Before and after pictures of
 central DC, Bethesda and Chevy Chase, the Agricultural Reserve and Baltimore, with the
-same rule at 1 mi for comparison, are in reports/ride-layer-before-after.html
+same rule at 1 mi for comparison, are in reports/ride-layer-before-after.html (not in the repository)
 (`rmdata/demo/reports`). Re-measure on a copy before moving a bar, and update
 `RIDE_RUN_MI` in `frontend/src/lib/stressLegend.ts` with it (a test holds them equal).
 
@@ -4105,7 +4105,7 @@ held on a way with a mountain-bike rating: Valhalla's C++ parser (3.5.1 to 3.9.1
 `mtb:scale`, `mtb:scale:imba`, `mtb:scale:uphill` and `mtb:description` after
 the Lua transform and reopens the way from any of them, so 753 singletrack ways
 (286.6 mi [461.3 km]) and 27 rated OSM closures stayed routable while every Lua
-check passed (reports/SINGLETRACK-DIAG-r0). `lua/graph.lua` now strips the
+check passed (reports/SINGLETRACK-DIAG-r0 (not in the repository)). `lua/graph.lua` now strips the
 ratings from whatever upstream's transform leaves closed in either direction.
 Three checks stand between a change to that and a rider on singletrack.
 
@@ -5435,7 +5435,7 @@ trail or road"; `MTB_LEVEL`): short dark (#1c1917) cross-ticks under the line, 2
 a tick 1.5 px long every 10.5 px, where every tier sits on a solid casing; gaps of 1.5 line widths
 or more, where no tier's passes 1; and a 2 px line (2.5 px with the accessibility switch), thinner
 than any tier. The review screenshot, z15, the four levels beside LTS 2, LTS 4 and Avoid, is
-reports/v0.4.0/mtb-levels-vs-stress.png in the project files (and `-strong` with the switch on).
+reports/v0.4.0/mtb-levels-vs-stress.png (not in the repository) in the project files (and `-strong` with the switch on).
 
 | Level | Rated | Colour | Pattern | Lowest ratio to the base map |
 | --- | --- | --- | --- | --- |
@@ -5609,10 +5609,10 @@ calibration, main's front end and log changes, the route chart, the z12-13 ride 
 (calm roads at 2 mi, roadside trails), the Mass Ride capacity map and the reversible-lane
 and Connecticut Ave NW changes, the Connecticut lane override and the Dupont underpass, and
 the Mass Ride map's own tiles, DC mask, border roads and zoom focus (OWNER-DECISIONS 391,
-394-427; reports/REBUILD-BUNDLE-integration.md; the `reports/` named here are the project's review
-reports, kept outside the repository), and, from fix round 2 (reports/REBUILD-BUNDLE-fix2.md),
+394-427; reports/REBUILD-BUNDLE-integration.md (not in the repository); the `reports/` named here are the project's review
+reports, kept outside the repository), and, from fix round 2 (reports/REBUILD-BUNDLE-fix2.md (not in the repository)),
 the military-area closure (owner report 2026-10-05), South Capitol St at LTS 4 (432) and Veirs
-Mill Rd (433), and, from fix round 3 (reports/REBUILD-BUNDLE-fix3.md), the narrower military
+Mill Rd (433), and, from fix round 3 (reports/REBUILD-BUNDLE-fix3.md (not in the repository)), the narrower military
 rule and the owner's reopenings (437, 437a-c).
 Nothing in it is live until the rebuild promotes the new table.
 
@@ -5865,7 +5865,7 @@ the dry run each prints after `grep -v '^present:'`:
    four crosswalk and traffic-island ways (way ids only, no names). Dry: 4 create (access,
    `bicycle=yes`), no conflict.
 
-These counts were checked on 2026-10-06 (reports/PRE-REBUILD-fix1.md): a copy of the live
+These counts were checked on 2026-10-06 (reports/PRE-REBUILD-fix1.md (not in the repository)): a copy of the live
 `override` table (1,783 approved rows: 232 access, 1,551 stress; max id 1783) in a private
 database, the six files dry-run and loaded in this order, then the five checks below,
 which gave 0, `3|36 4|90 5|252`, 126, 11 and 4; 251 rows written in all (before 445f, which retires two more rows: now `3|36 4|90 5|250`, retire 529, present 248, still 128 written). A second dry run of each file then printed only

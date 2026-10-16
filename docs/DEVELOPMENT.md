@@ -1061,7 +1061,7 @@ order), and nothing asks for hazards.
   (`settings.MASS_RIDE_DC_VERIFIED_REVERSIBLE_BLOCKS`, BLOCKKEYs, empty for now) names it, half
   (rounded down) to each direction, and never on a street in
   `MASS_RIDE_DC_ENDED_REVERSIBLE_STREETS` (Connecticut Ave NW). The 57 blocks DC still records
-  as reversible (7.5 mi) are listed in reports/MASSRIDE-MAP-rev2.md for the owner to check. A
+  as reversible (7.5 mi) are listed in reports/MASSRIDE-MAP-rev2.md (not in the repository) for the owner to check. A
   block recording a lane width of `MASS_RIDE_DC_WIDE_LANE_FT` (16 ft) or more and no parking lane
   (`parking_lanes` 0) is read at `MASS_RIDE_DC_WIDE_LANE_CAP_FT` (11 ft) a lane (407 (3): likely
   shared parking and driving lanes); 453 blocks, 25.4 mi. Both are `massflow.DcRules`. The
@@ -1878,7 +1878,7 @@ lie in West Virginia and Pennsylvania, whose boundaries do not close in the
 merged extract; they keep the class tables.
 
 **Deviations from the literature review**
-(`reports/LTS-literature-review.md`), kept here because each is a decision,
+(`reports/LTS-literature-review.md` (not in the repository)), kept here because each is a decision,
 not an oversight:
 
 1. A one-way street with up to two lanes stays on the single-lane row; the
@@ -2078,10 +2078,10 @@ FOLLOWUP-INTERSECTIONS (2026-10-01, revised 2026-10-02 after the round-1 and
 round-2 reviews; OWNER-DECISIONS 133-136, 138, 163-169, 171, 172, 185-188,
 194-196; the crossing
 costs and the slider's top end are from "Bicycle stress literature in depth",
-`reports/LTS-literature-review-2.md`: "Crossing penalties by control type and
+`reports/LTS-literature-review-2.md` (not in the repository): "Crossing penalties by control type and
 right of way", "Left turns, multi-lane merges capped by box turns, and slip
 lanes" and "The stress slider's top end"; the Mass Ride flow figures are from
-"Mass ride flow evidence", `reports/MASSRIDE-flow-evidence.md`). Three things,
+"Mass ride flow evidence", `reports/MASSRIDE-flow-evidence.md` (not in the repository)). Three things,
 built on one mechanism: the traffic slider has a top end, a junction costs what
 it costs a rider, and a route shows its stressful junctions.
 
@@ -3725,7 +3725,7 @@ extracts in `pipeline.source.GEOFABRIK_REGIONS` (DC, Maryland, Virginia) and
 `pipeline.states.REQUIRED_STATES` lists the same three, so West Virginia's roads
 are in the map only once `west-virginia` joins them; that work, with West
 Virginia's statutory speed default and the closed-by-default US 340
-expressway, is the owner's local branch wip/wv (reports/WV-dev-r0.md on the
+expressway, is the owner's local branch wip/wv (reports/WV-dev-r0.md (not in the repository) on the
 PC), to be merged before the v0.7.0 rebuild. On the PC, after the merge and
 before the rebuild: re-fetch the basemap (`scripts/fetch_basemap.sh`),
 re-import Photon (`scripts/import_photon.sh`), rebuild contours and the water,
@@ -4609,7 +4609,7 @@ shown), and `scripts/a11y/check.mjs` passed the same checks.
 
 ### Go and Plan (UI-CLEANUP, the approved mockup of 2026-10-11)
 
-The layout Stephen approved on 2026-10-11 (reports/v0.5.0/ui-mockup.html and its 72-row
+The layout Stephen approved on 2026-10-11 (reports/v0.5.0/ui-mockup.html (not in the repository) and its 72-row
 control table; PLAN.md, UI-CLEANUP). Nothing was removed: every control is where the table
 puts it, at most two presses away.
 
