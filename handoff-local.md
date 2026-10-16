@@ -1,5 +1,10 @@
 # RouteMaker — handoff to the local implementer (Windows, Docker)
 
+> **Historical record (phase 1, September 2026).** Kept as written; its branch, counts and
+> task lists are out of date. For the current state read README.md, PLAN.md and
+> docs/DEVELOPMENT.md (the code), docs/OPERATIONS.md (a deployment) and docs/BETA-RUNBOOK.md
+> (the beta).
+
 **For:** whoever picks this up next on a Windows machine with Docker, working with Claude Code.
 **Branch:** `claude/beautiful-mayer-4f7gg9` · **Suite:** 3313 tests, no failures (one skip on this host) · **Written:** 2026-09-24.
 
@@ -97,7 +102,6 @@ git config --global credential.helper "/mnt/c/Program\ Files/Git/mingw64/bin/git
 # the checkout, in the Linux filesystem
 mkdir -p ~/src && cd ~/src
 git clone https://github.com/Macrophage87/RouteMaker.git && cd RouteMaker
-git checkout claude/beautiful-mayer-4f7gg9
 
 # PostgreSQL 16 + PostGIS from the PostgreSQL project's repository, and the Lua interpreters
 sudo apt-get update && sudo apt-get install -y postgresql-common ca-certificates curl

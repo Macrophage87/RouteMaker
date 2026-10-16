@@ -1,5 +1,10 @@
 # RouteMaker phase 1 — handoff
 
+> **Historical record (phase 1, September 2026).** Kept as written; its branch, counts and
+> task lists are out of date. For the current state read README.md, PLAN.md and
+> docs/DEVELOPMENT.md (the code), docs/OPERATIONS.md (a deployment) and docs/BETA-RUNBOOK.md
+> (the beta).
+
 > **Next implementer: start with `handoff-local.md`** — the short handoff for a local machine with
 > Docker (written for Windows/WSL2), with the task list. This file is the full record of rounds 3–10.
 
