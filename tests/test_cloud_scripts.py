@@ -115,6 +115,10 @@ case "$1" in
       *"to_regnamespace('staging') IS NULL"*)
         cat "$FAKE_DIR/staging_absent" 2>/dev/null || echo t ;;
       *"string_agg"*) cat "$FAKE_DIR/in_flight" 2>/dev/null ;;
+      *"to_regclass('live.segment')"*)
+        [ ! -e "$FAKE_DIR/psql_fails" ] || { echo "psql: connection refused" >&2; exit 2; }
+        cat "$FAKE_DIR/live_table" 2>/dev/null || echo t ;;
+      *"DISTINCT volume_source"*) cat "$FAKE_DIR/live_sources" 2>/dev/null ;;
       *"cat > /tmp/cloud.use"*) cat >"$FAKE_DIR/cloud.use" ;;
       *" -q -1 "*) cat >>"$FAKE_DIR/blanked.sql" ;;
       *run_rebuild_now*)
@@ -344,6 +348,86 @@ def test_send_refuses_when_ship_data_makes_no_dump(fake, home) -> None:
 
     assert done.returncode == 2 and "no database dump" in done.stderr
     assert not fake.in_bucket("in").exists()
+
+
+def test_send_refuses_a_reference_folder_missing_a_live_count_source(fake, home) -> None:
+    """The v0.7.0 staging run was sent a folder without MDOT SHA's counts: 5,954 busy
+    roads lost their count and their volume step-ups."""
+    _, data = home
+    (fake.dir / "live_sources").write_text("ddot\nmdot-sha\nvdot\n")
+    (data / "reference" / "volume.json").write_text(
+        '[{"id": "a", "agency": "vdot"}, {"id": "b", "agency":"ddot"}]'
+    )
+
+    done = send(fake, home)
+
+    assert done.returncode == 2 and "no traffic counts from mdot-sha" in done.stderr
+    assert not fake.in_bucket("in").exists()
+
+    (data / "reference" / "volume.json").write_text(
+        '[{"agency": "vdot"}, {"agency": "ddot"}, {"agency": "mdot-sha"}]'
+    )
+    assert send(fake, home).returncode == 0
+
+
+def test_a_first_deployment_with_no_live_map_skips_the_count_check(fake, home) -> None:
+    (fake.dir / "live_table").write_text("f\n")
+    (fake.dir / "live_sources").write_text("mdot-sha\n")
+
+    done = send(fake, home)
+
+    assert done.returncode == 0, done.stderr
+    assert "no live segment table here" in done.stdout
+
+
+def test_a_database_that_does_not_answer_is_said_not_swallowed(fake, home) -> None:
+    (fake.dir / "psql_fails").touch()
+
+    done = send(fake, home)
+
+    assert done.returncode == 2
+    assert "psql: connection refused" in done.stderr and "is it running" in done.stderr
+    assert not fake.in_bucket("in").exists()
+
+
+def test_send_takes_another_reference_folder_only_with_the_live_builds_files(fake, home) -> None:
+    _, data = home
+    (data / "reference" / "agency").mkdir()
+    (data / "reference" / "agency" / "layer.json").write_text("live layer")
+    other = fake.root / "other-reference"
+    (other / "agency").mkdir(parents=True)
+    (other / "reference.file").write_text("an older copy")
+    (other / "agency" / "layer.json").write_text("live layer")
+
+    done = send(fake, home, "--reference-dir", str(other))
+    assert done.returncode == 2 and "reference.file differs from" in done.stderr
+
+    (other / "reference.file").write_text("reference")
+    (other / "agency" / "layer.json").write_text("an older layer")
+    done = send(fake, home, "--reference-dir", str(other))
+    assert done.returncode == 2 and "agency/layer.json differs from" in done.stderr, "recursive"
+
+    (other / "agency" / "layer.json").unlink()
+    done = send(fake, home, "--reference-dir", str(other))
+    assert done.returncode == 2 and "has no agency/layer.json" in done.stderr
+
+    (other / "agency" / "layer.json").write_text("live layer")
+    (other / "volume.json").write_text("[]")
+    done = send(fake, home, "--reference-dir", str(other))
+    assert done.returncode == 0, done.stderr
+    packed = subprocess.run(
+        ["tar", "-tf", str(fake.in_bucket("in") / "reference.tar")], capture_output=True, text=True
+    )
+    assert {"reference/reference.file", "reference/volume.json"} <= {
+        name.rstrip("/") for name in packed.stdout.split()
+    }
+
+
+def test_send_runs_git_with_the_checkout_marked_safe(fake, home) -> None:
+    live, _ = home
+    assert send(fake, home).returncode == 0
+    gits = [line for line in fake.calls().splitlines() if line.startswith("git ")]
+    assert gits and all(f"-c safe.directory={live} " in line for line in gits)
 
 
 def test_send_refuses_a_stage_inside_data_root(fake, home) -> None:
@@ -725,6 +809,9 @@ def test_the_import_installs_restores_and_dry_runs_without_swapping(fake, result
     assert "pg_restore --no-owner" in calls
     assert f"import_cloud_build {BUILD} --overrides-read-at 20261011T070000Z" in calls
     assert "--confirm" not in calls and "restart" not in calls
+    # Run as root on the owner's checkout, git refuses it as "dubious ownership" without this.
+    assert f"git -c safe.directory={result[0]} -C {result[0]} rev-parse HEAD" in calls
+    assert "import-result: installed." in done.stdout, "launch.sh reads this line"
 
 
 def test_the_swap_confirms_restarts_the_routers_and_predraws(fake, result) -> None:
