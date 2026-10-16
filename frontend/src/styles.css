@@ -146,13 +146,14 @@ body {
 }
 
 /* The skip link (lib/skipLink.ts) and, before it, the accessibility mode switch (lib/accessMode.ts; 455):
-   the page's first two stops, each shown while focused, each at least 44 px tall like the panel's buttons. */
+   the page's first two stops, each shown while focused, each at least 44 px tall like the panel's buttons.
+   Above Go's top bar (.go-top, z-index 10), which painted over them (review UI-1). */
 .access-link,
 .skip-link {
   position: absolute;
   top: 8px;
   left: 8px;
-  z-index: 10;
+  z-index: 20;
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -219,12 +220,6 @@ button.access-link {
 .panel-header h1 {
   margin: 0;
   font-size: 1.25rem;
-}
-
-.tagline {
-  margin: 2px 0 0;
-  color: var(--text-muted);
-  font-size: 0.9rem;
 }
 
 /* The body is a column: the banner, the part that scrolls, then what is pinned under it (the route's
@@ -412,8 +407,7 @@ progress.planning {
 }
 
 /* Live regions that stay in the page while empty (the a11y review's SF3, N8). */
-.dial-rule:empty,
-.federal-status:empty {
+.dial-rule:empty {
   margin: 0;
 }
 
@@ -801,7 +795,8 @@ button.secondary {
   margin-top: 0;
 }
 
-/* The map's center, which Map tools' two actions use, while it is open. */
+/* The map's center, which Map tools' two actions use, while it is open. App.tsx sets left and top to
+   where the centre is drawn (review UI-2); above the panel (z-index 2), so Go's sheet does not hide it. */
 .crosshair {
   position: absolute;
   left: 50%;
@@ -810,7 +805,7 @@ button.secondary {
   height: 28px;
   margin: -14px 0 0 -14px;
   pointer-events: none;
-  z-index: 1;
+  z-index: 3;
   background:
     linear-gradient(#111 0 0) center / 2px 100% no-repeat,
     linear-gradient(#111 0 0) center / 100% 2px no-repeat;
@@ -1225,6 +1220,11 @@ button.secondary {
 }
 
 @media (max-width: 720px) {
+  /* Shortened by the keyboard while a place search has the focus on iOS (lib/keyboardLift.ts, review UI-7). */
+  .app {
+    height: calc(100% - var(--keyboard-lift, 0px));
+  }
+
   .panel {
     top: auto;
     bottom: 0;
@@ -1240,10 +1240,6 @@ button.secondary {
 
   .panel-toggle {
     display: inline-block;
-  }
-
-  .tagline {
-    display: none;
   }
 
   .maplibregl-ctrl-bottom-right,
@@ -2181,6 +2177,13 @@ ul.station-links {
    the system's colours: their outlines and borders are real borders, which
    forced colours keeps, and the colours of the rest come from the system. */
 @media (forced-colors: active) {
+  /* A pressed toggle's own colours are replaced too, so it would look like any other button: a ring
+     marks it (review UI-6), leaving the focus ring its own. */
+  [aria-pressed="true"]:not(:focus-visible) {
+    outline: 3px solid ButtonText;
+    outline-offset: -3px;
+  }
+
   .legend svg,
   .stress-list svg,
   .swatch,
@@ -2784,12 +2787,17 @@ details.zoom-notes {
   display: none;
 }
 
+/* Kept in view while a long sheet scrolls, so Back stays one press away (review UI-5). */
 .sheet-header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin: 4px 0 0;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg);
 }
 
 .sheet-header h2 {
@@ -3826,6 +3834,12 @@ details.zoom-notes {
   font-variant-numeric: tabular-nums;
 }
 
+/* GPS weak (RideMode, review RIDE-3): the distance is from the last good fix, so it is greyed; the GPS
+   note under the controls says why. The muted text colour, which keeps its contrast. */
+.cue-distance-weak {
+  color: var(--text-muted);
+}
+
 .cue-text {
   font-size: 1.25rem;
   margin: 2px 0;
@@ -3833,6 +3847,25 @@ details.zoom-notes {
 
 .cue-then {
   margin: 2px 0;
+}
+
+/* The turns ahead while GPS is weak (RideMode's cue sheet): the next one first, larger and bold. */
+.cue-sheet-list {
+  margin: 4px 0;
+  padding-left: 1.5em;
+}
+
+.cue-sheet-list li {
+  margin: 2px 0;
+}
+
+.cue-sheet-next {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.cue-sheet-distance {
+  font-variant-numeric: tabular-nums;
 }
 
 .ride-togo {
@@ -4651,6 +4684,11 @@ details.zoom-notes {
     max-height: calc(100% - 64px);
   }
 
+  /* With the destination line under Go's bar, the bar is taller (review UI-3; the desktop rule below). */
+  .app.go-mode:has(.go-destination) .panel.go-panel.go-full {
+    max-height: calc(100% - 114px);
+  }
+
   .app.go-mode:has(.panel.go-peek) .maplibregl-ctrl-bottom-right {
     bottom: 34%;
   }
@@ -4754,6 +4792,7 @@ details.zoom-notes {
 .section-tools {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
 }
 
@@ -4856,8 +4895,7 @@ details.fold > summary .icon {
   gap: 6px;
 }
 
-.alert-full,
-.alert-more-body {
+.alert-full {
   flex-basis: 100%;
 }
 

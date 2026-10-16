@@ -8,6 +8,7 @@ e-bike single ride, with no out-of-dock fee). They are a test sample, not a data
 
 from __future__ import annotations
 
+import http.client
 import json
 import urllib.error
 import urllib.request
@@ -174,6 +175,23 @@ def test_a_feed_larger_than_expected_is_refused(monkeypatch) -> None:
 
     monkeypatch.setattr(gbfs._OPENER, "open", lambda request, timeout: Big())
     with pytest.raises(gbfs.Unavailable, match="larger than expected"):
+        gbfs.http_get(DISCOVERY, 3.0)
+
+
+def test_a_reply_cut_off_part_way_is_unavailable(monkeypatch) -> None:
+    # Review api-2: IncompleteRead was a 500, and the failure pause was never set.
+    class Cut:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self, limit):
+            raise http.client.IncompleteRead(b"{")
+
+    monkeypatch.setattr(gbfs._OPENER, "open", lambda request, timeout: Cut())
+    with pytest.raises(gbfs.Unavailable):
         gbfs.http_get(DISCOVERY, 3.0)
 
 
@@ -477,6 +495,17 @@ def test_an_optional_feed_that_fails_is_unknown_not_empty() -> None:
     assert snap.status is None and snap.free_bikes is None
     assert snap.failed == {"station_status", "free_bike_status"}
     assert snap.pricing is not None  # the rest is still read
+
+
+def test_an_optional_feed_that_fails_any_other_way_is_a_failed_feed() -> None:
+    class Odd(FakeNetwork):
+        def __call__(self, url: str, timeout: float) -> bytes:
+            if url != DISCOVERY and self.by_url[url] == "station_status":
+                raise RuntimeError("not one of the expected failures")
+            return super().__call__(url, timeout)
+
+    snap = gbfs.Gbfs(Odd(), Clock(), wall=feed_wall).snapshot()
+    assert snap.status is None and snap.failed == {"station_status"}
 
 
 def test_without_the_station_list_there_is_no_snapshot() -> None:

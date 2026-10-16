@@ -299,6 +299,10 @@ class Context:
     # reads (`routemaker.effort`).
     mass_kg: float = effort.MASS_KG
     analyses: dict = field(default_factory=dict)
+    # The router's `/locate` answers already had in this plan, by (graph, lon, lat,
+    # radius) (`locator`): the candidates are mostly detours of one route and share
+    # most of its junctions, so each is asked once (review speed-1).
+    located: dict = field(default_factory=dict)
     # Whether the wider search runs after the exclusion rounds (`wide_search_for`).
     wide: bool = False
     # Whether the trail seek runs after them (`trailseek.seek_for`), the segment
@@ -772,11 +776,31 @@ def too_long(length_m: float, ctx: Context) -> bool:
     return ctx.ceiling_m is not None and length_m > ctx.ceiling_m
 
 
-def locator(variant: str, deadline: routing.Deadline):
-    """`/locate` through the plan's own budgeted router call."""
+def locator(variant: str, deadline: routing.Deadline, located: dict | None = None):
+    """`/locate` through the plan's own budgeted router call. With `located` (the
+    plan's `Context.located`), a place and radius already answered is not asked again:
+    only the others are sent, and the answers come back in the order asked. A short
+    answer from the router ends the list where it ended, as the router's would."""
 
     def locate(payload: dict) -> list[dict]:
-        return routing._call(variant, "locate", payload, deadline)
+        if located is None:
+            return routing._call(variant, "locate", payload, deadline)
+        keys = [
+            (variant, round(p["lon"], 6), round(p["lat"], 6), p.get("radius"))
+            for p in payload["locations"]
+        ]
+        unseen = [i for i, key in enumerate(keys) if key not in located]
+        if unseen:
+            asked = {**payload, "locations": [payload["locations"][i] for i in unseen]}
+            answers = routing._call(variant, "locate", asked, deadline)
+            for i, answer in zip(unseen, answers, strict=False):
+                located[keys[i]] = answer
+        out = []
+        for key in keys:
+            if key not in located:
+                break
+            out.append(located[key])
+        return out
 
     return locate
 
@@ -792,7 +816,7 @@ def events_of_raws(raws, ctx: Context, deadline: routing.Deadline) -> list | Non
             raws,
             ctx.when,
             ctx.with_facility,
-            locator(ctx.variant, deadline),
+            locator(ctx.variant, deadline, ctx.located),
             ctx.group,
             cut_short=(routing.DeadlineExceeded,),
             ratings=ctx.junction_ratings,

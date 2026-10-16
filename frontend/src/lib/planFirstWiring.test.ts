@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { CLEARED_SAID } from "./planFirst.ts";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const app = read("../App.tsx");
@@ -39,6 +40,19 @@ test("Reset goes back to the drawn plan without routing, Clear keeps the ride, a
   // Reset is aria-disabled with its reason, never removed or disabled outright.
   assert.match(panel, /aria-disabled=\{resetUnavailable \? true : undefined\}/);
   assert.match(panel, /aria-describedby=\{resetUnavailable \? resetWhy : undefined\}/);
+});
+
+test("Clear says so and hands the focus to the place search; Plan's Clear stays focusable (review a11y-1)", () => {
+  assert.equal(CLEARED_SAID, "Plan cleared. Undo brings it back.");
+  assert.match(app, /commit\(\[\], ride\.imported \? \{ \.\.\.ride, imported: null \} : undefined\);\s*\/\/[^\n]*\n\s*announce\(CLEARED_SAID\);\s*focusAfterRemove\.current = -1;/);
+  // -1: no Remove button, the search; Go's Where to? waits for the cleared route to stop hiding it.
+  assert.match(app, /const target = index < 0 \? null : removeRefs\.current/);
+  assert.match(app, /panelRef\.current\?\.querySelector\("\.go-search"\)/);
+  assert.match(app, /if \(!target && index < 0 && route && input\?\.closest\("\[hidden\]"\)\) return;/);
+  assert.match(panel, /aria-disabled=\{clearDisabled \|\| undefined\}\s*onClick=\{\(\) => \{\s*if \(!clearDisabled\) onClear\(\);/);
+  assert.doesNotMatch(panel, /disabled=\{clearDisabled\}/);
+  // Not left for a later edit when the route does not go.
+  assert.match(app, /if \(focusAfterRemove\.current === -1\) focusAfterRemove\.current = null;\s*\}, CLEAR_FOCUS_WAIT_MS\);/);
 });
 
 test("in Plan a station or a transit option is an edit like any other: it marks the plan changed and waits for Route", () => {

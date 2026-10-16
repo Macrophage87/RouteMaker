@@ -9,6 +9,7 @@ database.
 
 from __future__ import annotations
 
+import http.client
 import http.server
 import json
 import socket
@@ -237,6 +238,18 @@ class TestSearch:
         assert (params["lat"], params["lon"]) == (38.9, -77.0)
         assert params["radius"] == geocode.TAG_SEARCH_RADIUS_KM
         assert [r["name"] for r in body["results"]] == ["Near Cycles", "Far Bikes"]
+
+    @pytest.mark.parametrize("q", ["grocery", "Grocery Stores", "groceries", "supermarket"])
+    def test_grocery_lists_the_nearest_supermarkets(self, client, photon, q) -> None:
+        """Review SIMPLICITY-1: an errand search finds the nearest grocery."""
+        shop = feature(
+            -77.03, 38.9, name="Market", type="house", osm_key="shop", osm_value="supermarket"
+        )
+        fake = photon(answer(shop))
+        body = get(client, SEARCH, q=q, lat="38.9", lon="-77.0").json()
+        ((path, params),) = fake.calls
+        assert path == "/reverse" and params["osm_tag"] == "shop:supermarket"
+        assert [r["name"] for r in body["results"]] == ["Market"]
 
     def test_bike_shop_without_a_bias_is_an_ordinary_search(self, client, photon) -> None:
         fake = photon(answer())
@@ -1187,6 +1200,15 @@ class TestTransport:
     def test_anything_but_a_feature_list_is_unavailable(self, photon_server, status, body) -> None:
         url, _seen = photon_server(status, body)
         with override_settings(PHOTON_URL=url), pytest.raises(geocode.Unavailable):
+            geocode._get("/api", {"q": "x"})
+
+    def test_an_answer_cut_off_part_way_is_unavailable(self, monkeypatch) -> None:
+        # Review api-2: IncompleteRead is not an OSError.
+        def broken(request, timeout):
+            raise http.client.IncompleteRead(b"{")
+
+        monkeypatch.setattr(geocode.urllib.request, "urlopen", broken)
+        with pytest.raises(geocode.Unavailable):
             geocode._get("/api", {"q": "x"})
 
     def test_nobody_listening_is_unavailable(self) -> None:

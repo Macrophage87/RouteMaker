@@ -921,6 +921,21 @@ def works_open_tags(tags) -> bool:
     return tags.get("access") in PUBLIC_ACCESS or tags.get("highway") == "cycleway"
 
 
+# A bare `highway=track` with at least this much of its length inside a quarry or a
+# landfill is one of its haul roads, even when most of it runs outside the mapped
+# outline (the Travilah quarry's ways 1379220535 and 1379220571 failed the rebuild of
+# 2026-10-16 at under half inside; "err closed on bike access", OWNER-DECISIONS 330).
+HAUL_TRACK_MIN_INSIDE_M = 30.0
+
+
+def _haul_track_in_pit(tags, coords, share: float) -> bool:
+    """A track with no tag that opens it, `HAUL_TRACK_MIN_INSIDE_M` or more of it inside
+    a quarry or a landfill (`share` of its length)."""
+    if tags.get("highway") != "track" or works_open_tags(tags) or public_route(tags):
+        return False
+    return share * _length_m(coords) >= HAUL_TRACK_MIN_INSIDE_M
+
+
 def works_closures(
     ways,
     areas: Sequence[Area],
@@ -953,7 +968,7 @@ def works_closures(
             continue
         share, area = strict.share(coords) if strict is not None else (0.0, None)
         in_industrial = False
-        if share < INSIDE_FRACTION:
+        if share < INSIDE_FRACTION and not _haul_track_in_pit(tags, coords, share):
             share, area = lenient.share(coords) if lenient is not None else (0.0, None)
             if share < INSIDE_FRACTION:
                 continue

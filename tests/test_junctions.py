@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 from django.db import connection
 
-from core import junctions
+from core import junctions, segment_info
 from routemaker import intersections as model
 from routemaker.intersections import Control, Movement, Road
 from routemaker.trace_junctions import RawJunction
@@ -816,7 +816,13 @@ class TestNodesAt:
             return [crossroads() for _ in payload["locations"]]
 
         found = junctions.nodes_at(raws, locate)
-        # The node, then around each node with no signal for its approaches.
+        # The node, then around each node with no signal for its approaches. A round's
+        # batches are asked at once on the router pool (review speed-2), so in any order.
+        rounds = [asked[:3], asked[3:]]
+        assert [p["locations"][0]["radius"] for p in asked] == [1, 1, 1, 30, 30, 30]
+        asked = [
+            p for batches in rounds for p in sorted(batches, key=lambda p: p["locations"][0]["lon"])
+        ]
         assert [len(p["locations"]) for p in asked] == [50, 50, 20, 50, 50, 20]
         assert all(p["verbose"] and p["costing"] == "bicycle" for p in asked)
         assert asked[0]["locations"][1] == {"lon": raws[1].lon, "lat": raws[1].lat, "radius": 1}
@@ -891,11 +897,10 @@ class TestNodesAt:
         assert junctions.control_of(found[0]) is Control.STOP
 
     def test_a_batch_the_router_will_not_answer_leaves_its_junctions_unknown(self) -> None:
-        calls = []
-
         def locate(payload: dict):
-            calls.append(1)
-            if len(calls) == 1:
+            # The first batch, by its size: the batches are asked at once on the router
+            # pool (review speed-2), so in no set order.
+            if len(payload["locations"]) == junctions.LOCATE_BATCH:
                 raise RuntimeError("down")
             return [crossroads() for _ in payload["locations"]]
 
@@ -1005,7 +1010,7 @@ def grid(segment_schemas):
                 "VALUES (%s, %s, ST_GeomFromText(%s, 4326), %s, 'test', %s, %s, %s, %s)",
                 [way, ordinal, wkt, tier, speed, lanes, oneway, aadt],
             )
-    junctions._has_trait_columns_seen = False
+    segment_info.forget_columns()
     return live
 
 
@@ -1036,7 +1041,7 @@ class TestRoadsByWay:
                     "stress_rule) VALUES (20, %s, ST_GeomFromText(%s, 4326), %s, 'test')",
                     [ordinal, line(*points), tier],
                 )
-        junctions._has_trait_columns_seen = False
+        segment_info.forget_columns()
         assert junctions.roads_by_way([(0, 20, LON, LAT)], "weekend", False)[(0, 20)].tier == 3
         far = (LON + 0.009, LAT)
         assert junctions.roads_by_way([(0, 20, *far)], "weekend", False)[(0, 20)].tier == 4
@@ -1051,7 +1056,7 @@ class TestRoadsByWay:
                 "stress_rule) VALUES (20, 0, ST_GeomFromText(%s, 4326), 4, 'test')",
                 [line((LON, LAT - 0.002), (LON, LAT))],
             )
-        junctions._has_trait_columns_seen = False
+        segment_info.forget_columns()
         assert not junctions.has_trait_columns(live)
         assert junctions.roads_by_way([(0, 20, LON, LAT)], "weekend", False)[(0, 20)] == Road(4)
 
@@ -1066,8 +1071,7 @@ class TestRoadsByWay:
                 "VALUES (20, 0, ST_GeomFromText(%s, 4326), 4, 'test', 55, false)",
                 [line((LON, LAT - 0.002), (LON, LAT))],
             )
-        junctions._has_trait_columns_seen = False
-        junctions._has_cost_columns_seen = False
+        segment_info.forget_columns()
         road = junctions.roads_by_way([(0, 20, LON, LAT)], "weekend", False)[(0, 20)]
         assert (road.speed_mph, road.default_speed_mph, road.urban) == (None, 55.0, False)
 
@@ -1075,9 +1079,9 @@ class TestRoadsByWay:
         live, _staging = segment_schemas
         with connection.cursor() as cursor:
             cursor.execute(f"ALTER TABLE {live}.segment DROP COLUMN road_urban")
-        junctions._has_cost_columns_seen = False
+        segment_info.forget_columns()
         assert not junctions.has_cost_columns(live)
-        junctions._has_cost_columns_seen = False
+        segment_info.forget_columns()
 
     def test_a_table_before_the_cost_columns_reads_none(self, segment_schemas) -> None:
         live, _staging = segment_schemas
@@ -1089,11 +1093,11 @@ class TestRoadsByWay:
                 "stress_rule) VALUES (20, 0, ST_GeomFromText(%s, 4326), 4, 'test')",
                 [line((LON, LAT - 0.002), (LON, LAT))],
             )
-        junctions._has_cost_columns_seen = False
+        segment_info.forget_columns()
         assert not junctions.has_cost_columns(live)
         road = junctions.roads_by_way([(0, 20, LON, LAT)], "weekend", False)[(0, 20)]
         assert (road.default_speed_mph, road.urban) == (None, None)
-        junctions._has_cost_columns_seen = False
+        segment_info.forget_columns()
 
     def test_a_smoothed_link_is_crossed_at_its_raw_count_and_tier(self, segment_schemas) -> None:
         """1st St NW at Q St (OWNER-DECISIONS 285, 303; ARTERIAL review r0, SF1): the
@@ -1107,7 +1111,7 @@ class TestRoadsByWay:
                 "VALUES (483241819, 0, ST_GeomFromText(%s, 4326), 2, 'test', 10665, 3)",
                 [line((LON, LAT - 0.002), (LON, LAT))],
             )
-        junctions._has_trait_columns_seen = False
+        segment_info.forget_columns()
         asked = [(0, 483241819, LON, LAT)]
         road = junctions.roads_by_way(asked, "weekend", False)[(0, 483241819)]
         assert (road.tier, road.aadt) == (3, 10665) and road.busy
@@ -1125,10 +1129,10 @@ class TestRoadsByWay:
                 "stress_rule) VALUES (20, 0, ST_GeomFromText(%s, 4326), 2, 'test')",
                 [line((LON, LAT - 0.002), (LON, LAT))],
             )
-        junctions._has_unsmoothed_tier_seen = False
+        segment_info.forget_columns()
         assert not junctions.has_unsmoothed_tier(live)
         assert junctions.roads_by_way([(0, 20, LON, LAT)], "weekend", False)[(0, 20)].tier == 2
-        junctions._has_unsmoothed_tier_seen = False
+        segment_info.forget_columns()
 
     def test_a_road_closed_to_cars_at_the_ride_time_is_tier_one(self, segment_schemas) -> None:
         live, _staging = segment_schemas
@@ -1139,7 +1143,7 @@ class TestRoadsByWay:
                 "ARRAY['weekend'])",
                 [line((LON, LAT - 0.002), (LON, LAT))],
             )
-        junctions._has_trait_columns_seen = False
+        segment_info.forget_columns()
         asked = [(0, 20, LON, LAT)]
         assert junctions.roads_by_way(asked, "weekend", with_facility=True)[(0, 20)].tier == 1
         assert junctions.roads_by_way(asked, "weekday_rush", with_facility=True)[(0, 20)].tier == 4
@@ -1510,11 +1514,9 @@ class TestAReadingTheClockCutsShort:
     def test_a_batch_cut_off_by_the_clock_is_reported(self) -> None:
         from core import junctions, routing
 
-        calls = []
-
         def locate(payload):
-            calls.append(payload)
-            if len(calls) == 2:
+            # The second batch, by its size (the batches are asked in no set order).
+            if len(payload["locations"]) == 3:
                 raise routing.DeadlineExceeded("no time left for locate")
             return [{} for _ in payload["locations"]]
 
@@ -1539,6 +1541,29 @@ class TestAReadingTheClockCutsShort:
             raise routing.DeadlineExceeded("late")
 
         assert junctions._ask(self.raws(3), range(3), 10, locate) == {}
+
+    def test_on_the_pool_the_batches_are_asked_at_once_and_read_in_order(self, settings) -> None:
+        """Review speed-2: the batches go to the router together, not one after another,
+        and each answer still lands at its own junction."""
+        import threading
+
+        from core import junctions, routing
+
+        settings.ROUTER_PARALLEL_CALLS = 2
+        both_in = threading.Barrier(2, timeout=5)
+        calls = []
+
+        def locate(payload):
+            calls.append(payload)
+            if len(calls) <= 2:
+                both_in.wait()  # a batch asked only after the last one answered breaks this
+            return [{"lon": loc["lon"]} for loc in payload["locations"]]
+
+        raws = self.raws(junctions.LOCATE_BATCH * 2 + 3)
+        got = junctions._ask(raws, range(len(raws)), 10, locate, (routing.DeadlineExceeded,))
+        assert len(calls) == 3
+        assert sorted(got) == list(range(len(raws)))
+        assert all(got[i] == {"lon": raws[i].lon} for i in got)
 
     def test_the_planners_reading_raises_and_is_not_remembered(self, monkeypatch) -> None:
         from core import junctions, refine, routing

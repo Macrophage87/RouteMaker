@@ -4,6 +4,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import type { ProfileCrossing, RouteProfile, RouteResponse } from "./api.ts";
 import { contrastRatio } from "../stressStyle.js";
 import { ROUTE_AVOID_MAGENTA } from "./routeColours.ts";
@@ -285,6 +286,24 @@ test("the nearest sample, and the map point along the line", () => {
   const mid = lonLatAt(line, 1000, 2000);
   assert.ok(mid !== null && mid[0] < -77 && mid[0] >= -77.01 - 1e-9);
   assert.equal(lonLatAt([], 5, 10), null);
+});
+
+test("lonLatAt measures a line once, and a new line afresh (review fe-perf-2)", () => {
+  const line: [number, number][] = [
+    [-77, 38.9],
+    [-77.01, 38.9],
+  ];
+  const first = lonLatAt(line, 500, 1000);
+  assert.deepEqual(lonLatAt(line, 500, 1000), first, "the cached lengths give the same point");
+  // Another array with other coordinates is not answered from the first one's lengths.
+  const other: [number, number][] = [
+    [-77, 38.9],
+    [-77, 38.92],
+  ];
+  const mid = lonLatAt(other, 500, 1000);
+  assert.ok(mid !== null && Math.abs(mid[0] + 77) < 1e-9 && Math.abs(mid[1] - 38.91) < 1e-9, JSON.stringify(mid));
+  const source = readFileSync(new URL("./profileChart.ts", import.meta.url), "utf8");
+  assert.match(source, /const lengthsOf = new WeakMap<readonly LonLat\[\], number\[\]>\(\);/);
 });
 
 test("the climbs table: start mile, length, gain, average and maximum grade, stress; on a Mass Ride the capacity drop", () => {

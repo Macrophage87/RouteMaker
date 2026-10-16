@@ -225,11 +225,6 @@ def condition_intervals(condition: str) -> list[tuple[int, int]]:
     return intervals
 
 
-def holds_at(condition: str, weekday: int, minute: int) -> bool:
-    moment = weekday * 1440 + minute
-    return any(start <= moment < end for start, end in condition_intervals(condition))
-
-
 def branches(value: str | None) -> list[tuple[str, str]]:
     """`value @ (condition)` branches of an OSM conditional tag."""
     return [(v, c) for v, c in _BRANCH.findall(value or "")]

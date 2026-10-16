@@ -274,7 +274,64 @@ test("App: a press goes through accessModeToggle (tested in accessMode.test.ts):
   assert.match(mapTools, /useEffect\(\(\) => onShown\?\.\(\), \[\]\)/);
 });
 
+test("the switch and the skip link show above Go's top bar (review UI-1)", () => {
+  const z = (selector: string) => Math.max(...[...declared(selector).matchAll(/z-index:\s*(\d+)/g)].map((m) => Number(m[1])));
+  assert.ok(z(".skip-link") > z(".go-top"), "the skip link above .go-top");
+  assert.ok(z(".access-link") > z(".go-top"), "the switch above .go-top");
+});
+
+test("Map tools' crosshair is drawn at the map's centre, above the sheet (review UI-2)", () => {
+  assert.match(app, /return watchCentre\(map, setCrosshairAt\);/);
+  assert.match(app, /className="crosshair"[^>]*style=\{crosshairAt \? \{ left: crosshairAt\.x, top: crosshairAt\.y \}/);
+  const z = (selector: string) => Number(/z-index:\s*(\d+)/.exec(declared(selector))?.[1]);
+  assert.ok(z(".crosshair") > z(".panel"), "above the panel and Go's sheet");
+});
+
 test("the page's first two stops, the switch and the skip link, are at least 44 px tall (the a11y review's N3)", () => {
   assert.match(declared(".access-link"), /min-height:\s*44px/);
   assert.match(declared(".skip-link"), /min-height:\s*44px/);
+});
+
+test("a level slider's words are heard once: its <output> is hidden, the value text says them (review a11y-4)", () => {
+  for (const name of ["./SuggestChange.tsx", "./StressEditor.tsx", "./SuggestQuick.tsx"]) {
+    const outputs = read(name).match(/<output [^>]*>/g) ?? [];
+    assert.ok(outputs.length >= 1, name);
+    for (const output of outputs) assert.match(output, /aria-hidden="true"/, name);
+    assert.match(read(name), /aria-valuetext=/, name);
+  }
+});
+
+test("Undo or Redo that runs out hands the focus to the other, or the Points heading (review a11y-2)", () => {
+  const planner = read("./app/Planner.tsx");
+  assert.match(planner, /data-history="undo" onClick=\{undo\} disabled=\{!can\.undo\}/);
+  assert.match(planner, /data-history="redo" onClick=\{redo\}/);
+  assert.match(app, /<button type="button" data-history="undo" onClick=\{undo\}>/);
+  assert.match(app, /<button type="button" data-history="redo" onClick=\{redo\}>/);
+  // Only a press of one of them: Ctrl+Z from elsewhere moves nothing.
+  assert.match(app, /historyPress\.current = active instanceof HTMLElement && active\.dataset\.history \?/);
+  const rescue = app.slice(app.indexOf("const historyPress = useRef"), app.indexOf("}, [can]);"));
+  // The decision is afterHistoryStep's (lib/rideFocus.test.ts runs it); here, that App asks it.
+  assert.match(rescue, /const where = afterHistoryStep<Element>\(\{ button: press\.button, other \}, document\.activeElement, document\.body, usable\);/);
+  assert.match(rescue, /\(where === "other" \? other : pointsHeadingRef\.current\)\?\.focus\(\);/);
+  // A press that changed nothing is dropped after its render.
+  assert.match(app, /useEffect\(\(\) => \{\s*historyPress\.current = null;\s*\}\);/);
+});
+
+test("the map's Escape skips one a sheet has handled already (review a11y-10)", () => {
+  assert.match(mapView, /if \(event\.key !== "Escape" \|\| event\.defaultPrevented\) return;\s*\/\/ Escape calls off a drag/);
+});
+
+test("Open GPX keeps the focus while a file is read: aria-disabled, a press then does nothing (review a11y-9)", () => {
+  const gpx = read("./GpxPanel.tsx");
+  assert.match(gpx, /if \(reading\.kind !== "reading"\) input\.current\?\.click\(\);\s*\}\}\s*aria-disabled=\{reading\.kind === "reading" \|\| undefined\}/);
+  assert.doesNotMatch(gpx, /disabled=\{reading\.kind === "reading"\}/);
+});
+
+test("Map tools' Add point, with the plan full, stays in the Tab order with its reason, said on a press (review a11y-7)", () => {
+  assert.doesNotMatch(mapTools, /disabled=\{addDisabled\}/);
+  assert.match(mapTools, /aria-disabled=\{addDisabled \|\| undefined\}\s*aria-describedby=\{addDisabled \? `\$\{panelId\}-full` : undefined\}/);
+  assert.match(mapTools, /onClick=\{\(\) => \(addDisabled \? onAddPoint\(\) : run\(onAddPoint\)\)\}/);
+  assert.match(mapTools, /<span id=\{`\$\{panelId\}-full`\} className="visually-hidden">\s*\{maxPointsNotice\(\)\}/);
+  const add = app.slice(app.indexOf("const addAtCentre = () => {"), app.indexOf("place([lng, lat]);"));
+  assert.match(add, /if \(!goTapSetsEnd\(mode\) && pointsRef\.current\.length >= MAX_POINTS\) \{\s*announce\(maxPointsNotice\(\)\);\s*return;/);
 });

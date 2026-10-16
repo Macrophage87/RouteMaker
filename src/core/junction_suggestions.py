@@ -187,6 +187,30 @@ def _near(lon: float, lat: float) -> dict:
     return {"location__distance_lte": (Point(lon, lat, srid=4326), D(m=RATING_MATCH_M))}
 
 
+# The grid the approvals lock by (`_lock_near`), in degrees: two rating matches across, so
+# two places within RATING_MATCH_M of each other are in the same or neighbouring cells
+# (east-west too, south of 60 degrees north).
+LOCK_CELL_DEG = 2 * RATING_MATCH_M / 111_000
+
+
+def lock_cells(lon: float, lat: float) -> list[tuple[int, int]]:
+    """The grid cells around a place, its own and its eight neighbours, in one order."""
+    x, y = int(lon // LOCK_CELL_DEG), int(lat // LOCK_CELL_DEG)
+    return sorted((x + dx, y + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1))
+
+
+def _lock_near(lon: float, lat: float) -> None:
+    """Hold, to the end of the transaction, the cells around a place: two approvals at
+    one junction take turns, so the second sees the first's Avoid junction before it looks
+    (review api-3; a row lock cannot hold a row not made yet). Two places within
+    RATING_MATCH_M share a cell, and each takes its cells in one order, so two never wait
+    on each other. The two-key form: its keys never meet the one-key locks of
+    `core.stress_edits`."""
+    with connection.cursor() as cursor:
+        for x, y in lock_cells(lon, lat):
+            cursor.execute("SELECT pg_advisory_xact_lock(%s, %s)", [x & 0x7FFFFFFF, y & 0x7FFFFFFF])
+
+
 def shown_now(node: Node, shown: str | None) -> int:
     """The level the map shows at the junction: an approved override's, else Avoid where an
     approved Avoid junction is there, else what the rider's route showed (its marker; "none"
@@ -328,6 +352,7 @@ def approve(admin, suggestion_id: int) -> JunctionSuggestion:
     withdrawn: list[str] = []
     with transaction.atomic():
         suggestion = _open(suggestion_id)
+        _lock_near(suggestion.lon, suggestion.lat)
         near = _near(suggestion.lon, suggestion.lat)
         point = Point(suggestion.lon, suggestion.lat, srid=4326)
         name = (suggestion.name or "A junction rated by riders")[:200]
@@ -337,7 +362,20 @@ def approve(admin, suggestion_id: int) -> JunctionSuggestion:
             old.withdrawn_at = now
             old.save(update_fields=["active", "withdrawn_at"])
             withdrawn.append(f"junction override {old.pk}")
-        if suggestion.target_level == AVOID:
+        already = (
+            AvoidJunction.objects.select_for_update()
+            .filter(approved=True, **near)
+            .order_by("pk")
+            .first()
+            if suggestion.target_level == AVOID
+            else None
+        )
+        if already is not None:
+            # Already rated Avoid there (another rider's suggestion, approved first): the
+            # one rating is kept, so routes are not charged twice (review api-3).
+            suggestion.avoid = already
+            made = f"kept avoid junction {already.pk}"
+        elif suggestion.target_level == AVOID:
             avoid = AvoidJunction.objects.create(
                 name=name,
                 location=point,

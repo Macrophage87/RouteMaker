@@ -839,21 +839,13 @@ function linePaint(color, width, busy, zoomedOut = null) {
  * Ride tiles. Their filters also take out any feature with a capacity (`massHides`).
  */
 let massRide = false;
-const massListeners = new Set();
 
 export function massRideOn() {
   return massRide;
 }
 
 export function setMassRide(on) {
-  if (massRide === on) return;
   massRide = on;
-  massListeners.forEach((listener) => listener());
-}
-
-export function subscribeMassRide(listener) {
-  massListeners.add(listener);
-  return () => massListeners.delete(listener);
 }
 
 /**
@@ -1179,8 +1171,9 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
     filters[`stress-unpaved-${tier.tier}`] = [...filter, ["==", ["get", "unpaved"], true]];
     if (tier.tier < 5) {
       // A half step's dash (441r-441v, 458): the feature's own tier is this one (not a road closed to cars
-      // now, which draws as a path at 1) and it carries the half.
-      const half = [...filter, ["==", ["get", "tier"], tier.tier], isHalfStep];
+      // now, which draws as a path at 1, even one whose own tier is 1: the router drops its half then, review
+      // CH-5) and it carries the half.
+      const half = [...filter, ["==", ["get", "tier"], tier.tier], ["!", carFreeNow(when)], isHalfStep];
       filters[`stress-half-outline-${tier.tier}`] = half;
       filters[`stress-half-${tier.tier}`] = half;
     }

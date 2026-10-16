@@ -4,8 +4,9 @@
  *
  * - A native range control for the level, 1 to 5 by halves (441i; whole steps where the road data
  *   cannot hold a half step yet). Its value is read as its words ("3.5, Stressful even for
- *   experienced cyclists"), shown beside it in an `<output>`, and moves with the arrow keys, Home
- *   and End: no pointer needed. The panel itself is
+ *   experienced cyclists"), shown beside it in an `<output>` (hidden from a screen reader, which
+ *   hears the value text once; review a11y-4), and moves with the arrow keys, Home and End: no
+ *   pointer needed. The panel itself is
  *   reached from the keyboard (I on the map, or Map tools in accessibility mode).
  * - "Only raise it", a category, a required private reason (never shown to riders) and an optional
  *   public note, each a labelled native control.
@@ -299,7 +300,7 @@ export function StressEditor({ origin, wayId, title, onClose, onChanged }: Props
                 aria-invalid={error?.field === "step" ? true : undefined}
                 onChange={(event) => setStep(Number(event.target.value))}
               />
-              <output htmlFor={id("step")} className="stress-editor-output">
+              <output htmlFor={id("step")} className="stress-editor-output" aria-hidden="true">
                 {stepWords}
               </output>
             </div>

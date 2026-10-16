@@ -386,8 +386,10 @@ def perform_swap(
                 error, failures, describe_state(links_before, rows_before)
             ) from error
         raise
-    from core import stress_edits
+    from core import segment_info, stress_edits
 
+    # Another table is live: none of its columns are taken from the one it replaced (CH-1).
+    segment_info.forget_columns()
     outcome.edits_reapplied = stress_edits.after_promotion(overrides_read_at)
     return outcome
 
@@ -561,6 +563,8 @@ def rollback(tiles_dir: Path) -> None:
 
     # The older table is live again. It predates edits an admin made in the road panel since
     # it was built; re-apply them (never raising: the rollback stands whatever this does).
-    from core import stress_edits
+    from core import segment_info, stress_edits
 
+    # The older table may lack columns the retired one had (review CH-1).
+    segment_info.forget_columns()
     stress_edits.after_rollback()

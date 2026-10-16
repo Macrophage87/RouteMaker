@@ -57,7 +57,9 @@ to the profile turned upside down.
 from __future__ import annotations
 
 import bisect
+import contextvars
 import dataclasses
+import functools
 import http.client
 import itertools
 import json
@@ -65,13 +67,14 @@ import logging
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import Future
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 
 from django.conf import settings
-from django.db import connection
+from django.db import DatabaseError, connection, transaction
 from django.utils import timezone
 
 from pipeline.schema import (
@@ -102,7 +105,7 @@ from routemaker.geo import Point, haversine
 from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
-from . import avoid_junctions, mass_hazards, mtb, parallel, presets, timing
+from . import avoid_junctions, mass_hazards, mtb, parallel, presets, segment_info, timing
 from . import workzones as work_zones
 
 logger = logging.getLogger(__name__)
@@ -249,7 +252,14 @@ def _transport(url: str, payload: dict, timeout: float) -> dict:
                 error.code, body.get("error_code"), str(body.get("error", ""))
             ) from error
         raise RouterUnavailable(f"router answered {error.code}") from error
-    except (TimeoutError, urllib.error.URLError, ConnectionError, ValueError) as error:
+    except (
+        TimeoutError,
+        urllib.error.URLError,
+        ConnectionError,
+        # A reply cut off part way (IncompleteRead, BadStatusLine): review api-2.
+        http.client.HTTPException,
+        ValueError,
+    ) as error:
         raise RouterUnavailable(str(error)) from error
 
 
@@ -259,6 +269,76 @@ class Deadline:
 
     at: float
     per_call_s: float
+
+
+# When the plan running in this context must be done (monotonic; `plan` sets it, in a
+# context of its own): its segment-table reads run under a statement timeout of what is
+# left (`plan_cursor`), so a slow or blocked database ends the plan as its clock does, 503
+# with retry advice, not at gunicorn's kill (review speed-9). None outside a plan.
+_plan_ends: contextvars.ContextVar[float | None] = contextvars.ContextVar("plan_ends", default=None)
+# Postgres's query_canceled, which a statement timeout raises.
+QUERY_CANCELED = "57014"
+
+
+@contextmanager
+def plan_cursor() -> Iterator:
+    """A cursor for one of the plan's own reads of the segment table, under a statement
+    timeout of the time the plan has left; a read it cancels raises DeadlineExceeded. A
+    plain cursor outside a plan."""
+    ends = _plan_ends.get()
+    if ends is None:
+        with connection.cursor() as cursor:
+            yield cursor
+        return
+    left_ms = int((ends - clock()) * 1000)
+    if left_ms <= 0:
+        raise DeadlineExceeded("no time left to read the segment table")
+    outer = connection.in_atomic_block
+    try:
+        with transaction.atomic(), connection.cursor() as cursor:
+            previous = None
+            if outer:
+                # Inside a caller's transaction the setting would outlive this read.
+                cursor.execute("SELECT current_setting('statement_timeout')")
+                previous = cursor.fetchone()[0]
+            cursor.execute("SELECT set_config('statement_timeout', %s, true)", [str(left_ms)])
+            yield cursor
+            if previous is not None:
+                cursor.execute("SELECT set_config('statement_timeout', %s, true)", [previous])
+    except DatabaseError as error:
+        if _canceled(error):
+            raise DeadlineExceeded(f"a segment table read ran past {left_ms} ms") from error
+        raise
+
+
+def _canceled(error: BaseException) -> bool:
+    """Whether `error` (Django's wrapper, or the driver's own error under it) is
+    Postgres canceling the statement: psycopg's QueryCanceled, or sqlstate (psycopg 3)
+    or pgcode (psycopg 2) 57014."""
+    try:
+        from psycopg.errors import QueryCanceled
+    except ImportError:  # pragma: no cover - psycopg 3 is the driver in use
+        QueryCanceled = ()  # noqa: N806
+    for each in (error, error.__cause__):
+        if each is None:
+            continue
+        if isinstance(each, QueryCanceled):
+            return True
+        for name in ("sqlstate", "pgcode"):
+            if getattr(each, name, None) == QUERY_CANCELED:
+                return True
+    return False
+
+
+def _own_context(fn):
+    """`fn` run in a copy of the caller's context, so what it sets there (`_plan_ends`)
+    ends with it."""
+
+    @functools.wraps(fn)
+    def run(*args, **kwargs):
+        return contextvars.copy_context().run(fn, *args, **kwargs)
+
+    return run
 
 
 def _call(variant: str, endpoint: str, payload: dict, deadline: Deadline) -> dict:
@@ -400,43 +480,21 @@ ORDER BY p.ordinality
 # Whether the live segment table has the Mass Ride capacity column
 # (`pipeline.schema.MASS_WIDTH_COLUMN`): written by the first rebuild after the
 # capacity map shipped. Without it a Mass Ride's sections carry no capacity and
-# the map draws them by stress, as it did. Remembered once seen, as above.
-_capacity_column_seen = False
+# the map draws them by stress, as it did. Every such check reads the one shared
+# answer, `segment_info.live_columns` (review CH-1).
 
 
 def _has_capacity_column(schema: str) -> bool:
-    global _capacity_column_seen
-    if _capacity_column_seen:
-        return True
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
-            "AND table_name = 'segment' AND column_name = %s",
-            [schema, MASS_WIDTH_COLUMN],
-        )
-        _capacity_column_seen = cursor.fetchone()[0] == 1
-    return _capacity_column_seen
+    return segment_info.has_columns(schema, MASS_WIDTH_COLUMN)
 
 
 # Whether the live segment table has the half-step column (`pipeline.schema.
 # STRESS_HALF_COLUMN`): written by the first rebuild after half steps shipped, or added in
 # place by `manage.py add_stress_half_column`. Without it every piece is a whole step.
-# Remembered once seen, as above.
-_half_column_seen = False
 
 
 def _has_half_column(schema: str) -> bool:
-    global _half_column_seen
-    if _half_column_seen:
-        return True
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
-            "AND table_name = 'segment' AND column_name = %s",
-            [schema, STRESS_HALF_COLUMN],
-        )
-        _half_column_seen = cursor.fetchone()[0] == 1
-    return _half_column_seen
+    return segment_info.has_columns(schema, STRESS_HALF_COLUMN)
 
 
 # A road closed to motor traffic only at set times is a path for a ride inside
@@ -448,9 +506,7 @@ _TIER_AT = "CASE WHEN %s = ANY(seg.car_free_when) THEN 1 ELSE seg.stress_tier EN
 
 # Whether the live segment table has the facility columns yet. They arrive with
 # the first rebuild after this code; until then the breakdown is all unknown
-# rather than an error. Remembered once seen, since a schema is only ever
-# replaced by a newer build of itself.
-_facility_columns_seen = False
+# rather than an error.
 
 
 def _has_trait_columns(schema: str) -> bool:
@@ -460,17 +516,7 @@ def _has_trait_columns(schema: str) -> bool:
 
 
 def _has_facility_columns(schema: str) -> bool:
-    global _facility_columns_seen
-    if _facility_columns_seen:
-        return True
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
-            "AND table_name = 'segment' AND column_name IN ('facility', 'car_free_when')",
-            [schema],
-        )
-        _facility_columns_seen = cursor.fetchone()[0] == 2
-    return _facility_columns_seen
+    return segment_info.has_columns(schema, "facility", "car_free_when")
 
 
 # The facility classes a ride on the roadway does not use: a mass ride takes
@@ -572,7 +618,7 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
     arrays = [[p.way_id for p in pieces], [p.lon for p in pieces], [p.lat for p in pieces]]
     whens = ([when, when] + ([when] if with_half else [])) if with_facility else []
     classes = []
-    with connection.cursor() as cursor:
+    with plan_cursor() as cursor:
         cursor.execute(query, whens + arrays)
         for row in cursor.fetchall():
             tier, kind = row[0], row[1]
@@ -739,21 +785,10 @@ ADJUSTMENT_COLUMNS = (
     "stress_adjustment_note",
     "stress_adjustment_display",
 )
-_adjustment_columns_seen = False
 
 
 def _has_adjustment_columns(schema: str) -> bool:
-    global _adjustment_columns_seen
-    if _adjustment_columns_seen:
-        return True
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
-            "AND table_name = 'segment' AND column_name = ANY(%s)",
-            [schema, list(ADJUSTMENT_COLUMNS)],
-        )
-        _adjustment_columns_seen = cursor.fetchone()[0] == len(ADJUSTMENT_COLUMNS)
-    return _adjustment_columns_seen
+    return segment_info.has_columns(schema, *ADJUSTMENT_COLUMNS)
 
 
 def adjustments_used(pieces: list[Piece]) -> list[dict]:
@@ -781,7 +816,7 @@ def adjustments_used(pieces: list[Piece]) -> list[dict]:
     ]
     query = _ADJUSTMENT_JOIN.format(schema=schema)
     used = []
-    with connection.cursor() as cursor:
+    with plan_cursor() as cursor:
         cursor.execute(query, arrays)
         for adjustment_id, tier, direction, category, note, display, metres in cursor.fetchall():
             # The why is null where the table holds none: a hidden or
@@ -799,11 +834,6 @@ def adjustments_used(pieces: list[Piece]) -> list[dict]:
                 }
             )
     return used
-
-
-def stress_breakdown(pieces: list[Piece]) -> dict[str, float]:
-    """Metres per stress tier, keyed "1".."4" and "unknown"."""
-    return breakdown(pieces, ridetime.WEEKEND)[0]
 
 
 def trace_leg(variant: str, costing: dict, shape: str, deadline: Deadline) -> dict | None:
@@ -1256,7 +1286,10 @@ def _exposure(
     """A trip's traffic exposure by the plan's weights (`presets.Exposure`: LTS 3
     once, LTS 4 twice and Avoid three times unless the ride type weighs them
     otherwise) and its metres of LTS 4 and Avoid, as (exposure, metres); None
-    when a leg cannot be traced."""
+    when a leg cannot be traced. A half step counts as the calm search counts it, at
+    its midpoint (`refine.half_exposure_m`, `refine.stress_totals`; review RL-7)."""
+    from . import refine
+
     prefetch_traces(variant, costing, [trip], deadline, traces)
     pieces: list[Piece] = []
     for leg in trip.get("legs") or []:
@@ -1264,9 +1297,15 @@ def _exposure(
         if trace is None:
             return None
         pieces.extend(pieces_of_trace(trace))
-    stress = presets.shift_stress(breakdown(pieces, when)[0], exposure.shift)
+    classes = refine.shift_classes(classify(pieces, when), exposure.shift)
+    stress = totals(zip(pieces, classes, strict=True))[0]
+    halves = refine.half_metres(pieces, classes)
     weights = exposure.weights
-    return sum(weights[tier] * stress[tier] for tier in weights), stress["4"] + stress["5"]
+    return (
+        sum(weights[tier] * stress[tier] for tier in weights)
+        + refine.half_exposure_m(halves, weights),
+        refine.stress_totals(stress, halves)["lts4_m"],
+    )
 
 
 def _hold_refuses(held: tuple, reference: tuple, exposure: presets.Exposure) -> bool:
@@ -1601,21 +1640,10 @@ def _events(refine_context, legs: list, raws: list, deadline: Deadline) -> list 
 
 # Whether the live segment table has the walk_bike column yet (a table built
 # before NO-BIKE-PATHS has none; the route then carries no walk notes).
-_walk_column_seen = False
 
 
 def _has_walk_column(schema: str) -> bool:
-    global _walk_column_seen
-    if _walk_column_seen:
-        return True
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
-            "AND table_name = 'segment' AND column_name = 'walk_bike'",
-            [schema],
-        )
-        _walk_column_seen = cursor.fetchone()[0] == 1
-    return _walk_column_seen
+    return segment_info.has_columns(schema, "walk_bike")
 
 
 def walk_spans(leg_runs: list, pieces: list[Piece]) -> list[tuple[float, float]]:
@@ -1629,7 +1657,7 @@ def walk_spans(leg_runs: list, pieces: list[Piece]) -> list[tuple[float, float]]
     try:
         if not _has_walk_column(schema):
             return []
-        with connection.cursor() as cursor:
+        with plan_cursor() as cursor:
             cursor.execute(
                 f"SELECT DISTINCT osm_way_id FROM {schema}.segment "
                 "WHERE osm_way_id = ANY(%s) AND walk_bike",
@@ -2070,12 +2098,10 @@ def sidepath_names_of(pieces: list[Piece]) -> dict[int, str]:
     if not ids:
         return {}
     try:
-        from .segment_info import live_columns
-
         schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
-        if SIDEPATH_NAME_COLUMN not in live_columns(schema):
+        if not segment_info.has_columns(schema, SIDEPATH_NAME_COLUMN):
             return {}
-        with connection.cursor() as cursor:
+        with plan_cursor() as cursor:
             cursor.execute(
                 f"SELECT osm_way_id, max({SIDEPATH_NAME_COLUMN}) FROM {schema}.segment "
                 f"WHERE osm_way_id = ANY(%s) AND {SIDEPATH_NAME_COLUMN} IS NOT NULL "
@@ -2530,6 +2556,7 @@ def move_zoo_points(points: list[list[float]]) -> tuple[list[list[float]], list[
     return out, moved
 
 
+@_own_context
 def plan(
     points: list[list[float]],
     preset_name: str,
@@ -2537,6 +2564,7 @@ def plan(
     started: float | None = None,
     dials: Dials | None = None,
     quick: bool = False,
+    candidates: bool = True,
 ) -> dict:
     """Route through `points` on `preset_name`, returning the contract's body.
 
@@ -2544,7 +2572,8 @@ def plan(
     (from `clock()`) is when the request arrived; the budget runs from then,
     or from now if it is not given. `dials` are the sliders and the ride time.
     `quick` asks for the first good route only (`quick_applies`; v0.7.0, "Faster
-    routing" step 2): the answer then says `provisional`.
+    routing" step 2): the answer then says `provisional`. `candidates` False looks for
+    no routes to choose from beside the answer (Ride mode's re-plans, review speed-5).
     Raises NoRoute, TooLong, RouterUnavailable, DeadlineExceeded, or KeyError
     for an unknown preset.
     """
@@ -2594,6 +2623,9 @@ def plan(
     else:
         budget_s, per_call_s = PLAN_BUDGET_S, ROUTER_TIMEOUT_S
     deadline = Deadline(started + budget_s - ANSWER_RESERVE_S, per_call_s)
+    # The segment table's reads may run to the end of the whole budget, the answer's own
+    # reserve included (`plan_cursor`).
+    _plan_ends.set(started + budget_s)
     # The first good route only, where that is a route the rider may be shown (Go,
     # `quick_applies`): the router's own route, its closures, stress and words, with no
     # search after it. The full plan follows it from the client.
@@ -2854,6 +2886,9 @@ def plan(
             if target_m
             else presets.default_ceiling_m(_trip_length_m(trip), preset_name)
         )
+    # Routes to choose from beside the answer: at the top of the slider, never on a Mass Ride,
+    # and not where the request wants the route alone (a ride's re-plan, review speed-5).
+    offering = maxcalm and preset_name != "mass-ride" and candidates
     refine_context = refine.Context(
         variant=variant,
         request=request,
@@ -2886,14 +2921,14 @@ def plan(
         maxcalm=maxcalm,
         ceiling_m=ceiling,
         target_m=target_m,
-        # Up to ALT_MAX routes to choose from at the top of the slider (OWNER-DECISIONS 265).
-        alternates=refine.ALT_MAX if maxcalm and preset_name != "mass-ride" else 0,
+        # Up to ALT_MAX routes to choose from (OWNER-DECISIONS 265).
+        alternates=refine.ALT_MAX if offering else 0,
         # The router's own alternatives ranked with the calm search's (OWNER-DECISIONS 435):
         # the plan's own, where it asked for them with the request the search starts
         # from (none again where that ask timed out), else asked for by the search.
         rank_alternates=presets.calm_rate_for(stress_dial) > 0,
         router_trips=plan_alternates(request, trips, timed_out, fit is not None or bool(past)),
-        options=[] if maxcalm and preset_name != "mass-ride" and not long_calm else None,
+        options=[] if offering and not long_calm else None,
         avoid=avoid_list,
         junction_ratings=junction_ratings,
     )
