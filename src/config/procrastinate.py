@@ -987,7 +987,9 @@ def refresh_work_zones(timestamp: int) -> None:
 
     Not retried, as the heartbeat is not: the next tick is the retry, and a feed that
     fails keeps its last good zones until they are two hours old, when the planner
-    says it could not check them. Virginia's feed is read only where the environment
+    says it could not check them. A feed with no good read for twenty minutes fails the
+    run (after the copy is saved), so a feed that is down for good turns the task stale on
+    the operations page. Virginia's feed is read only where the environment
     holds `SMARTERROADS_TOKEN`, and the key is never written to the run row or the log.
     """
     from core.runs import record, run_with_deadline

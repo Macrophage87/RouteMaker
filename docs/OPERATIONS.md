@@ -6210,7 +6210,10 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
 
    Expect `succeeded = t` and a detail like `work zones: md 143 zones` (and `va N zones` once the key
    is in). `md failed` means the feed did not answer three tries; the worker log says why, never
-   with the URL. `md 0 zones` on a weekday is worth a look: the feed may have changed shape. The
+   with the URL. A run whose feed has had no good read for 20 minutes (or never had one) fails,
+   with `succeeded = f` and `...; no good read in 20 minutes: md`, after saving what it could: the
+   zones read before stay in use as the labels below say, and the failing runs are what turns
+   `refresh_work_zones` stale on the operations page. `md 0 zones` on a weekday is worth a look: the feed may have changed shape. The
    parser was written against the WZDx specification without a live download, so check the first
    real reading here.
 2. Plan a route along a road you know has a lane closure listed in the feed (the Maryland 511 map

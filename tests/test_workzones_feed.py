@@ -66,11 +66,16 @@ class TestRefresh:
     def test_virginia_with_the_key_and_the_key_is_never_logged(self, monkeypatch, caplog) -> None:
         monkeypatch.setenv(workzones.TOKEN_ENV, KEY)
         feeds = Feeds(md=SAMPLE, va=[workzones.FeedError("HTTP 503")] * 3)
-        line = workzones.refresh(feeds, no_sleep, lambda: NOW)
+        # Virginia has never been read, so the run fails, with Maryland's zones saved (OPS-3).
+        with pytest.raises(workzones.FeedError) as failed:
+            workzones.refresh(feeds, no_sleep, lambda: NOW)
+        line = str(failed.value)
         assert f"token={KEY}" in feeds.urls[-1]
         assert len([u for u in feeds.urls if "iteriscloud" in u]) == workzones.TRIES
-        assert line == "work zones: md 5 zones, va failed"
+        assert line == "work zones: md 5 zones, va failed; no good read in 20 minutes: va"
         assert KEY not in caplog.text and KEY not in line
+        stored = BikeshareFeedCache.objects.get(key=workzones.KEY).payload["feeds"]
+        assert len(stored["md"]["zones"]) == 5
 
     def test_a_failed_read_keeps_the_last_good_copy(self) -> None:
         workzones.refresh(Feeds(md=SAMPLE), no_sleep, lambda: NOW)
@@ -79,6 +84,12 @@ class TestRefresh:
         feed = BikeshareFeedCache.objects.get(key=workzones.KEY).payload["feeds"]["md"]
         assert feed["read_at"] == NOW.isoformat() and feed["failed_at"] == later.isoformat()
         assert len(feed["zones"]) == 5
+        # Still failing past the twenty minutes: the copy is kept and the run fails (OPS-3).
+        much_later = NOW + timedelta(minutes=21)
+        with pytest.raises(workzones.FeedError, match="no good read in 20 minutes: md"):
+            workzones.refresh(Feeds(md=[ValueError("bad json")] * 3), no_sleep, lambda: much_later)
+        feed = BikeshareFeedCache.objects.get(key=workzones.KEY).payload["feeds"]["md"]
+        assert feed["failed_at"] == much_later.isoformat() and len(feed["zones"]) == 5
 
     def test_a_retry_that_succeeds(self) -> None:
         feeds = Feeds(md=[workzones.FeedError("TimeoutError"), SAMPLE])
@@ -99,7 +110,8 @@ class TestSnapshot:
         assert workzones.plan_zones([(-77.03, 38.95), (-77.03, 38.96)], "weekend") is None
 
     def test_a_feed_that_never_read_well_is_unavailable(self) -> None:
-        workzones.refresh(Feeds(md=[ValueError("bad")] * 3), no_sleep, lambda: NOW)
+        with pytest.raises(workzones.FeedError):  # the run fails, the row is still written
+            workzones.refresh(Feeds(md=[ValueError("bad")] * 3), no_sleep, lambda: NOW)
         assert workzones._load(NOW).status == {"md": "unavailable"}
 
     def test_the_api_goes_by_what_the_worker_stored_not_its_own_key(self, monkeypatch) -> None:
