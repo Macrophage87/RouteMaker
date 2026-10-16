@@ -829,6 +829,50 @@ def test_the_swap_confirms_restarts_the_routers_and_predraws(fake, result) -> No
     assert calls.index("--confirm") < calls.index("restart") < calls.index("predraw")
 
 
+def test_the_dry_run_reads_the_boxs_reports_and_never_an_older_copy(fake, result) -> None:
+    out = fake.in_bucket("out")
+    box_reports = fake.root / "boxreports"
+    (box_reports / "reports").mkdir(parents=True)
+    (box_reports / "reports" / "stress-changes.csv").write_text("osm_way_id\n5\n")
+    subprocess.run(
+        ["tar", "-C", str(box_reports), "-cf", str(out / "reports.tar"), "reports"], check=True
+    )
+    subprocess.run(
+        "sha256sum -- MANIFEST.txt staging.dump tiles-*.tar reports.tar > SHA256SUMS",
+        shell=True,
+        cwd=out,
+        check=True,
+    )
+    _, data = result
+    unpacked = data / "rebuild" / "cloud-reports" / BUILD / "reports"
+    unpacked.mkdir(parents=True)
+    (unpacked / "left-from-an-earlier-run.csv").write_text("old")
+
+    done = importing(fake, result)
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert sorted(p.name for p in unpacked.iterdir()) == ["stress-changes.csv"]
+    assert f"--review-reports-dir cloud-reports/{BUILD}/reports" in fake.calls()
+
+    # A run whose box sent no reports: none are read, and the earlier ones are gone.
+    (fake.dir / "calls.log").unlink()
+    (out / "reports.tar").unlink()
+    subprocess.run(
+        "sha256sum -- MANIFEST.txt staging.dump tiles-*.tar > SHA256SUMS",
+        shell=True,
+        cwd=out,
+        check=True,
+    )
+    stage = fake.root / "home" / "cloud-runs" / "cloud-20261011" / "out"
+    (stage / "reports.tar").unlink(missing_ok=True)
+
+    done = importing(fake, result)
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert not (data / "rebuild" / "cloud-reports" / BUILD).exists()
+    assert "--review-reports-dir" not in fake.calls()
+
+
 def assert_nothing_installed(fake, data: Path) -> None:
     calls = fake.calls()
     assert "pg_dump" not in calls and "pg_restore" not in calls and "sudo tar" not in calls
