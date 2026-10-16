@@ -17,7 +17,7 @@ from django.test import Client
 from django.utils import timezone
 
 from core import accounts
-from core.models import AccountSettings, SavedRoute, Session, User
+from core.models import AccountSettings, SavedRoute, SavedRouteVersion, Session, User
 
 db = pytest.mark.django_db(transaction=True)
 # A real planner answer (test_route_api's standard route): a kept answer is read as RouteOut.
@@ -227,3 +227,139 @@ def test_settings_and_routes_go_with_the_account() -> None:
     user.save()
     assert not AccountSettings.objects.filter(user=user).exists()
     assert not SavedRoute.objects.filter(user=user).exists()
+
+
+# Saved-route versions: a route saved again with changes (`version_of`) keeps what it was, up to
+# 20 per route, and the owner lists them and restores one; another account cannot.
+MOVED = {
+    **INPUTS,
+    "points": [[-77.03651, 38.89768], [-77.0300, 38.9000], [-77.02101, 38.90455]],
+}
+
+
+def saved_again(client, csrf, rid: int, **changes):
+    return send(client, "post", "/api/me/routes", route_body(version_of=rid, **changes), csrf)
+
+
+@db
+class TestRouteVersions:
+    def test_saving_again_with_changes_keeps_the_previous_version(self) -> None:
+        client, user, csrf = signed_in()
+        rid = send(client, "post", "/api/me/routes", route_body(), csrf).json()["id"]
+        line = [*LINE, [-77.019, 38.905]]
+        r = saved_again(client, csrf, rid, line=line, distance_m=1700.0, inputs=MOVED)
+        assert r.status_code == 200 and r.json()["versioned"] is True and r.json()["id"] == rid
+        # Still one saved route: a version is not counted toward the 200.
+        assert SavedRoute.objects.filter(user=user).count() == 1
+        assert client.get(f"/api/me/routes/{rid}", **addr()).json()["line"] == line
+        versions = client.get(f"/api/me/routes/{rid}/versions", **addr()).json()
+        assert versions["max"] == 20
+        listed = versions["versions"]
+        assert [v["distance_m"] for v in listed] == [1700.0, 1520.4]
+        assert listed[0]["id"] is None and listed[0]["change"] == "Stop added"
+        assert listed[1]["change"] == "First saved"
+        assert SavedRouteVersion.objects.get(route_id=rid).line == LINE
+
+    def test_saving_again_unchanged_keeps_no_version(self) -> None:
+        client, _user, csrf = signed_in()
+        rid = send(client, "post", "/api/me/routes", route_body(), csrf).json()["id"]
+        r = saved_again(client, csrf, rid)
+        assert r.status_code == 200 and r.json()["versioned"] is False
+        assert not SavedRouteVersion.objects.filter(route_id=rid).exists()
+
+    def test_restoring_makes_a_new_latest_version(self) -> None:
+        client, _user, csrf = signed_in()
+        rid = send(client, "post", "/api/me/routes", route_body(), csrf).json()["id"]
+        saved_again(client, csrf, rid, line=LINE[:2], distance_m=900.0, inputs=MOVED)
+        first = client.get(f"/api/me/routes/{rid}/versions", **addr()).json()["versions"][1]
+        r = send(client, "post", f"/api/me/routes/{rid}/versions/{first['id']}/restore", {}, csrf)
+        assert r.status_code == 200
+        assert r.json()["line"] == LINE and r.json()["distance_m"] == 1520.4
+        listed = client.get(f"/api/me/routes/{rid}/versions", **addr()).json()["versions"]
+        # The restored one is the latest; the one it replaced and the original both stay.
+        assert [v["distance_m"] for v in listed] == [1520.4, 900.0, 1520.4]
+        assert listed[0]["change"] == "Stop removed"
+
+    def test_at_most_20_versions_per_route_the_oldest_going_first(self) -> None:
+        client, _user, csrf = signed_in()
+        rid = send(client, "post", "/api/me/routes", route_body(), csrf).json()["id"]
+        for i in range(SavedRouteVersion.MAX_PER_ROUTE + 3):
+            assert saved_again(client, csrf, rid, distance_m=2000.0 + i).json()["versioned"]
+        kept = SavedRouteVersion.objects.filter(route_id=rid)
+        assert kept.count() == SavedRouteVersion.MAX_PER_ROUTE
+        assert 1520.4 not in set(kept.values_list("distance_m", flat=True))
+        listed = client.get(f"/api/me/routes/{rid}/versions", **addr()).json()["versions"]
+        assert len(listed) == SavedRouteVersion.MAX_PER_ROUTE + 1
+        assert listed[0]["change"] == "Line changed"
+        # Older versions went past the cap, so the oldest kept is not the first save.
+        assert listed[-1]["change"] == ""
+
+    def test_the_200_route_cap_is_unchanged_and_saving_again_passes_it(self) -> None:
+        client, user, csrf = signed_in()
+        rid = send(client, "post", "/api/me/routes", route_body(), csrf).json()["id"]
+        SavedRoute.objects.bulk_create(
+            SavedRoute(user=user, name=f"r{i}", line=LINE, distance_m=1.0, inputs={})
+            for i in range(SavedRoute.MAX_PER_ACCOUNT - 1)
+        )
+        assert send(client, "post", "/api/me/routes", route_body(), csrf).status_code == 409
+        assert saved_again(client, csrf, rid, distance_m=99.0).status_code == 200
+
+    def test_another_account_cannot_see_save_over_or_restore_versions(self) -> None:
+        owner, _u, csrf = signed_in()
+        rid = send(owner, "post", "/api/me/routes", route_body(), csrf).json()["id"]
+        saved_again(owner, csrf, rid, distance_m=1700.0, inputs=MOVED)
+        vid = SavedRouteVersion.objects.get(route_id=rid).pk
+        other, _o, other_csrf = signed_in()
+        assert other.get(f"/api/me/routes/{rid}/versions", **addr()).status_code == 404
+        r = send(other, "post", f"/api/me/routes/{rid}/versions/{vid}/restore", {}, other_csrf)
+        assert r.status_code == 404
+        assert saved_again(other, other_csrf, rid, distance_m=5.0).status_code == 404
+        # The other account's own route cannot reach the owner's version either.
+        mine = send(other, "post", "/api/me/routes", route_body(), other_csrf).json()["id"]
+        r = send(other, "post", f"/api/me/routes/{mine}/versions/{vid}/restore", {}, other_csrf)
+        assert r.status_code == 404
+        assert SavedRoute.objects.get(pk=rid).distance_m == 1700.0
+
+    def test_signed_out_and_without_csrf_is_refused(self, client) -> None:
+        assert client.get("/api/me/routes/1/versions", **addr()).status_code == 401
+        owner, _u, csrf = signed_in()
+        rid = send(owner, "post", "/api/me/routes", route_body(), csrf).json()["id"]
+        saved_again(owner, csrf, rid, distance_m=1700.0)
+        vid = SavedRouteVersion.objects.get(route_id=rid).pk
+        r = send(owner, "post", f"/api/me/routes/{rid}/versions/{vid}/restore", {}, None)
+        assert r.status_code == 403
+
+    def test_versions_go_with_the_route(self) -> None:
+        client, _user, csrf = signed_in()
+        rid = send(client, "post", "/api/me/routes", route_body(), csrf).json()["id"]
+        saved_again(client, csrf, rid, distance_m=1700.0)
+        client.delete(f"/api/me/routes/{rid}", HTTP_X_CSRFTOKEN=csrf, **addr())
+        assert not SavedRouteVersion.objects.filter(route_id=rid).exists()
+
+
+@pytest.mark.parametrize(
+    ("older", "newer", "said"),
+    [
+        ({"preset": "default"}, {"preset": "group-ride"}, "Ride type changed"),
+        ({"points": [[0, 0], [1, 1]]}, {"points": [[0, 1], [1, 1]]}, "Start moved"),
+        ({"points": [[0, 0], [1, 1]]}, {"points": [[0, 0], [1, 2]]}, "End moved"),
+        ({"points": [[0, 0], [5, 5], [1, 1]]}, {"points": [[0, 0], [1, 1]]}, "Stop removed"),
+        ({"dials": {"stress": 1}}, {"dials": {"stress": 2}}, "Settings changed"),
+        (
+            {"preset": "a", "points": [[0, 0], [1, 1]]},
+            {"preset": "b", "points": [[0, 0], [2, 2], [3, 3], [1, 1]]},
+            "Ride type changed, stops added",
+        ),
+    ],
+)
+def test_change_phrase(older, newer, said) -> None:
+    a = {"source": "plan", "distance_m": 10.0, "inputs": older}
+    b = {"source": "plan", "distance_m": 10.0, "inputs": newer}
+    assert accounts.change_phrase(a, b) == said
+
+
+def test_change_phrase_of_a_source_or_line_change() -> None:
+    a = {"source": "plan", "distance_m": 10.0, "inputs": {}}
+    assert accounts.change_phrase(a, {**a, "source": "gpx"}) == "From a GPX file"
+    assert accounts.change_phrase(a, {**a, "distance_m": 50.0}) == "Line changed"
+    assert accounts.change_phrase(a, dict(a)) == "Same plan"

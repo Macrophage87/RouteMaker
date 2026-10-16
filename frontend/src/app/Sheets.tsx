@@ -517,7 +517,8 @@ export function SettingsSheet(props: SettingsSheetProps) {
             {SIGN_IN_LINE.slice("Sign in with Discord".length)}
           </p>
         ) : null}
-        {myGo.signedIn && <MyRoutes {...myRoutes} />}
+        {/* Versions in Plan only: Go's Menu is unchanged. */}
+        {myGo.signedIn && <MyRoutes {...myRoutes} versions={!go} />}
         <MyGoSection controls={myGo} />
       </section>
     </SheetFrame>

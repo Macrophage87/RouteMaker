@@ -4758,6 +4758,21 @@ def saved_routes_add(request):
     gpx = body.get("gpx", "") or ""
     if not isinstance(gpx, str) or (gpx and source != SavedRoute.Source.GPX):
         return _stress_error(400, "Only an opened GPX file keeps its text.", field="gpx")
+    version_of = body.get("version_of")
+    if version_of is not None:
+        # Saved again: a new latest version of that route, not another route (so not counted
+        # toward the account's cap).
+        if not isinstance(version_of, int) or isinstance(version_of, bool):
+            return _stress_error(400, "Not a saved route.", field="version_of")
+        content = {
+            "source": source,
+            "line": line,
+            "distance_m": float(distance),
+            "inputs": inputs,
+            "answer": answer,
+            "gpx": gpx,
+        }
+        return _save_version(request, version_of, name.strip(), content)
     with transaction.atomic():
         # Taken in turn per account, so two saves at once cannot both pass the cap.
         User.objects.select_for_update().filter(pk=request.user.pk).first()
@@ -4779,6 +4794,142 @@ def saved_routes_add(request):
             gpx=gpx,
         )
     return _private(JsonResponse(_route_summary(row), status=201))
+
+
+# Saved-route versions (core.models.SavedRouteVersion): a save naming `version_of` replaces that
+# route's line and inputs, keeping what it was as a version; restoring a version does the same
+# with the version's. The owner's own: another account's route is "not found", as above.
+VERSION_FIELDS = ("source", "line", "distance_m", "inputs", "answer", "gpx")
+
+
+def _content_saved_at(row):
+    """When the route's latest version was saved: when the one before it was replaced, or when
+    the route was first saved."""
+    last = row.versions.order_by("-replaced_at", "-pk").values_list("replaced_at", flat=True)
+    return last.first() or row.created_at
+
+
+def _replace_content(row, content: dict) -> None:
+    """Keep the route as it is as a version, then make `content` the latest. Called in a
+    transaction with the route's row locked."""
+    from django.utils import timezone
+
+    from .models import SavedRouteVersion
+
+    SavedRouteVersion.objects.create(
+        route=row,
+        saved_at=_content_saved_at(row),
+        replaced_at=timezone.now(),
+        **{f: getattr(row, f) for f in VERSION_FIELDS},
+    )
+    for f, value in content.items():
+        setattr(row, f, value)
+    row.save()
+    # Past the cap the oldest go.
+    stale = row.versions.order_by("-replaced_at", "-pk").values_list("pk", flat=True)[
+        SavedRouteVersion.MAX_PER_ROUTE :
+    ]
+    SavedRouteVersion.objects.filter(pk__in=list(stale)).delete()
+
+
+def _same_content(row, content: dict) -> bool:
+    # The answer is the planner's words about the same line and inputs; it does not decide.
+    return all(getattr(row, f) == content[f] for f in VERSION_FIELDS if f != "answer")
+
+
+def _locked_route(request, route_id: int):
+    from .models import SavedRoute
+
+    return SavedRoute.objects.select_for_update().filter(user=request.user, pk=route_id).first()
+
+
+def _save_version(request, route_id: int, name: str, content: dict):
+    from django.db import transaction
+
+    with transaction.atomic():
+        row = _locked_route(request, route_id)
+        if row is None:
+            return _stress_error(404, "That saved route is not in your account.", code="not_found")
+        changed = not _same_content(row, content)
+        if changed:
+            _replace_content(row, content)
+        if row.name != name:
+            row.name = name
+            row.save(update_fields=["name", "updated_at"])
+    return _private(JsonResponse({**_route_summary(row), "versioned": changed}))
+
+
+@api.get("/me/routes/{route_id}/versions", summary="A saved route's versions, newest first")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def saved_route_versions(request, route_id: int):
+    from . import accounts
+    from .models import SavedRouteVersion
+
+    row = _saved_route(request, route_id)
+    if row is None:
+        return _stress_error(404, "That saved route is not in your account.", code="not_found")
+    kept = list(
+        row.versions.order_by("-replaced_at", "-pk").values(
+            "id", "saved_at", "distance_m", "source", "inputs"
+        )
+    )
+    latest = {
+        "id": None,
+        "saved_at": _content_saved_at(row),
+        "distance_m": row.distance_m,
+        "source": row.source,
+        "inputs": row.inputs,
+    }
+    entries = [latest, *kept]
+    out = []
+    for i, entry in enumerate(entries):
+        if i + 1 < len(entries):
+            change = accounts.change_phrase(entries[i + 1], entry)
+        else:
+            # The oldest kept: the first save, unless older versions went past the cap.
+            change = "First saved" if entry["saved_at"] == row.created_at else ""
+        out.append(
+            {
+                "id": entry["id"],
+                "saved_at": entry["saved_at"].isoformat(),
+                "distance_m": entry["distance_m"],
+                "source": entry["source"],
+                "change": change,
+            }
+        )
+    return _private(JsonResponse({"versions": out, "max": SavedRouteVersion.MAX_PER_ROUTE}))
+
+
+@api.post(
+    "/me/routes/{route_id}/versions/{version_id}/restore",
+    summary="Make an earlier version of a saved route its latest again",
+)
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def saved_route_restore(request, route_id: int, version_id: int):
+    from django.db import transaction
+
+    with transaction.atomic():
+        row = _locked_route(request, route_id)
+        version = row.versions.filter(pk=version_id).first() if row is not None else None
+        if version is None:
+            return _stress_error(404, "That version is not in your account.", code="not_found")
+        content = {f: getattr(version, f) for f in VERSION_FIELDS}
+        # Restoring makes a new latest version: the one it replaces stays in the list.
+        if not _same_content(row, content):
+            _replace_content(row, content)
+    return _private(JsonResponse(_route_full(row)))
 
 
 @api.get("/me/routes/{route_id}", summary="One saved route, with its line, inputs and answer")

@@ -1,7 +1,8 @@
 /**
  * My routes (v0.7.0 plan, item 3): a signed-in rider's saved routes, in Plan's Settings and Go's Menu. Each row
  * opens the route as it was saved, renames it, exports it as GPX, or deletes it (after a second press). The
- * list is read when the section is shown and again after each change.
+ * list is read when the section is shown and again after each change. In Plan a row also lists the route's
+ * versions (Versions, like Rename, opens under the row) and restores one as the latest, which opens it.
  */
 import { useEffect, useId, useState } from "react";
 import { Icon } from "./Icon.tsx";
@@ -10,25 +11,34 @@ import {
   MY_ROUTES,
   NAME_MAX,
   NONE_SAVED,
+  RESTORED_SAID,
+  RESTORE_FAILED,
   countLine,
   deleteRoute,
   listRoutes,
+  listVersions,
   readRoute,
   renameRoute,
+  restoreVersion,
   rowDetails,
+  versionDetails,
   type SavedRoute,
   type SavedSummary,
+  type SavedVersion,
 } from "./lib/savedRoutes.ts";
 
 export interface MyRoutesProps {
   /** Bumped by the page after a save, so the list is read again. */
   version: number;
-  onOpen: (route: SavedRoute) => void;
+  /** Opens a route; `said` is the line to announce in place of "Opened ...". */
+  onOpen: (route: SavedRoute, said?: string) => void;
   onExport: (route: SavedRoute) => void;
   announce: (text: string) => void;
+  /** Plan only: each row lists its versions and restores one. Go's Menu is unchanged. */
+  versions?: boolean;
 }
 
-export function MyRoutes({ version, onOpen, onExport, announce }: MyRoutesProps) {
+export function MyRoutes({ version, onOpen, onExport, announce, versions = false }: MyRoutesProps) {
   const headingId = useId();
   const [routes, setRoutes] = useState<SavedSummary[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -36,6 +46,30 @@ export function MyRoutes({ version, onOpen, onExport, announce }: MyRoutesProps)
   const [name, setName] = useState("");
   const [deleting, setDeleting] = useState<number | null>(null);
   const [reload, setReload] = useState(0);
+  // The row whose versions are shown, and them (null while read, or when they could not be).
+  const [showing, setShowing] = useState<{ id: number; list: SavedVersion[] | null; failed: boolean } | null>(null);
+  const showVersions = (id: number) => {
+    if (showing?.id === id) {
+      setShowing(null);
+      return;
+    }
+    setShowing({ id, list: null, failed: false });
+    void listVersions(window.location.origin, id).then((list) =>
+      setShowing((now) => (now?.id === id ? { id, list, failed: list === null } : now)),
+    );
+  };
+  const restore = (r: SavedSummary, v: SavedVersion) => {
+    if (v.id === null) return;
+    void restoreVersion(window.location.origin, r.id, v.id).then((route) => {
+      if (!route) {
+        announce(RESTORE_FAILED);
+        return;
+      }
+      setShowing(null);
+      setReload((n) => n + 1);
+      onOpen(route, RESTORED_SAID(r.name, v));
+    });
+  };
 
   useEffect(() => {
     let live = true;
@@ -118,6 +152,18 @@ export function MyRoutes({ version, onOpen, onExport, announce }: MyRoutesProps)
                       >
                         Rename
                       </button>
+                      {versions && (
+                        <button
+                          type="button"
+                          className="secondary"
+                          aria-label={`Versions of ${r.name}`}
+                          aria-expanded={showing?.id === r.id}
+                          aria-controls={`my-route-versions-${r.id}`}
+                          onClick={() => showVersions(r.id)}
+                        >
+                          Versions
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="secondary"
@@ -137,6 +183,31 @@ export function MyRoutes({ version, onOpen, onExport, announce }: MyRoutesProps)
                         {deleting === r.id ? "Delete?" : "Delete"}
                       </button>
                     </span>
+                    {versions && showing?.id === r.id && (
+                      <div id={`my-route-versions-${r.id}`} className="my-route-versions">
+                        {showing.failed ? (
+                          <p className="notice">The versions could not be read; try again shortly.</p>
+                        ) : showing.list === null ? (
+                          <p className="loading">Reading the versions…</p>
+                        ) : (
+                          <ol className="my-route-version-list" aria-label={`Versions of ${r.name}, newest first`}>
+                            {showing.list.map((v, i) => (
+                              <li key={v.id ?? "latest"}>
+                                <span className="hint">
+                                  {i === 0 ? "Latest: " : ""}
+                                  {versionDetails(v)}
+                                </span>
+                                {v.id !== null && (
+                                  <button type="button" className="secondary" aria-label={`Restore the version from ${versionDetails(v)}`} onClick={() => restore(r, v)}>
+                                    Restore
+                                  </button>
+                                )}
+                              </li>
+                            ))}
+                          </ol>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
               </li>
