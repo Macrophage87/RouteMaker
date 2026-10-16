@@ -4249,12 +4249,14 @@ def test_the_no_trail_graph_closes_contraflow_and_nothing_else_moves(workspace) 
         assert tags[Variant.NO_TRAIL][CONTRAFLOW_ROUNDABOUT_ID]["cycleway:left"] == "no"
 
         # Stress and facility: one answer, from the way's own tags, on every variant.
+        # The lane runs against the traffic only (`cycleway:left:oneway=-1`), so the
+        # rider with the traffic has none (review RL-2), as with `opposite_lane`.
         tiers = {variant: way_tags[one_way]["rm:stress_tier"] for variant, way_tags in tags.items()}
         assert len(set(tiers.values())) == 1, tiers
         assert int(tiers[Variant.STANDARD]) == int(context.stress_by_way[one_way].tier)
-        assert context.facility_by_way[one_way] == "lane"
+        assert context.facility_by_way[one_way] == "none"
         for variant in (Variant.STANDARD, Variant.WEEKEND, Variant.EBIKE):
-            assert tags[variant][one_way]["rm:facility"] == "lane", variant.value
+            assert tags[variant][one_way]["rm:facility"] == "none", variant.value
         assert tags[Variant.NO_TRAIL][one_way]["rm:facility_neutral"] == "yes"
 
         with connection.cursor() as cursor:
@@ -4264,7 +4266,7 @@ def test_the_no_trail_graph_closes_contraflow_and_nothing_else_moves(workspace) 
                 [one_way],
             )
             assert cursor.fetchall() == [
-                (one_way, "lane", int(context.stress_by_way[one_way].tier))
+                (one_way, "none", int(context.stress_by_way[one_way].tier))
             ]
     finally:
         shutil.rmtree(root, ignore_errors=True)

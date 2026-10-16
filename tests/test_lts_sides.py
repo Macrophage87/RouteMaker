@@ -316,10 +316,9 @@ class TestAContraflowOnlyFacilityIsNotTheWithFlowRiders:
     ) -> None:
         street = {**self.STREET, "oneway": oneway}
         facility = {key: value, f"{key}:width": "2.0"}
-        # Without `oneway:bicycle=no` the carve-out stands - the District's
-        # contraflow tagging, pinned in `test_stress.py` - and the facility is
-        # the road's.
-        assert classify({**street, **facility}).tier is Stress.LTS1
+        # With `oneway:bicycle=no` or without it (the older scheme, where the
+        # `opposite*` value implies it): review RL-2.
+        assert classify({**street, **facility}) == classify(street)
         both_ways = classify({**street, **facility, "oneway:bicycle": "no"})
         assert both_ways == classify({**street, "oneway:bicycle": "no"})
 
@@ -339,10 +338,49 @@ class TestAContraflowOnlyFacilityIsNotTheWithFlowRiders:
         alone = {**self.STREET, "cycleway:right": with_flow, "cycleway:right:width": "2.0"}
         assert classify(tags) == classify(alone)
 
-    @pytest.mark.parametrize("value", ("yes", "-1", "dismount"))
-    def test_only_oneway_bicycle_no_brings_the_second_direction_back(self, value: str) -> None:
-        tags = {**self.STREET, "oneway:bicycle": value, "cycleway:left": "opposite_lane"}
-        assert cycleway_values(tags) == {"opposite_lane"}
+    @pytest.mark.parametrize("value", ("yes", "-1", "dismount", None))
+    def test_whatever_oneway_bicycle_says_the_with_flow_rider_has_none(self, value) -> None:
+        tags = {**self.STREET, "cycleway:left": "opposite_lane"}
+        if value is not None:
+            tags["oneway:bicycle"] = value
+        assert cycleway_values(tags) == set()
+
+    # Review RL-2: three taggings of the one contraflow lane on a one-way street.
+    FORMS = {
+        "old scheme": {"cycleway:left": "opposite_lane"},
+        "old scheme, waived": {"cycleway:left": "opposite_lane", "oneway:bicycle": "no"},
+        "current": {
+            "cycleway:left": "lane",
+            "cycleway:left:oneway": "-1",
+            "oneway:bicycle": "no",
+        },
+        "current, implied": {"cycleway:left": "lane", "cycleway:left:oneway": "-1"},
+        "current, both key": {
+            "cycleway:left": "lane",
+            "cycleway:both:oneway": "-1",
+            "oneway:bicycle": "no",
+        },
+    }
+
+    @pytest.mark.parametrize("speed", ("25 mph", "30 mph"))
+    @pytest.mark.parametrize("form", FORMS)
+    def test_every_contraflow_tagging_rates_alike(self, form: str, speed: str) -> None:
+        """Measured, before this, at 25 mph: LTS 1, 2 and 1 for the first three."""
+        street = {**self.STREET, "maxspeed": speed, "cycleway:left:width": "2.0"}
+        tagged = classify({**street, **self.FORMS[form]})
+        assert tagged.tier is classify(street).tier
+        assert "bike lane" not in tagged.rule
+
+    def test_a_lane_with_the_traffic_is_not_contraflow(self) -> None:
+        """`cycleway:right:oneway=yes` on `oneway=yes`, and the mirror on
+        `oneway=-1` (traffic against the way's nodes), run with the traffic."""
+        lane = {"cycleway:right": "lane", "cycleway:right:width": "2.0"}
+        with_flow = classify({**self.STREET, **lane})
+        assert "bike lane" in with_flow.rule
+        assert classify({**self.STREET, **lane, "cycleway:right:oneway": "yes"}) == with_flow
+        backward = {**self.STREET, "oneway": "-1", **lane}
+        assert classify({**backward, "cycleway:right:oneway": "-1"}) == classify(backward)
+        assert "bike lane" not in classify({**backward, "cycleway:right:oneway": "yes"}).rule
 
     def test_a_two_way_street_is_unaffected(self) -> None:
         """`oneway:bicycle=no` on a street that is two-way already changes

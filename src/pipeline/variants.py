@@ -15,6 +15,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from enum import Enum
 
+from routemaker.tags import POSTED_SPEED_KEYS, maxspeed_in_mph_words
+
 # Trail-class ways are defined once, by highway alone and regardless of bicycle
 # tag, because DC-area trails are tagged inconsistently and a definition that
 # consulted the bicycle tag would classify the same trail differently on either
@@ -935,6 +937,18 @@ def routing_for(variant: Variant, tags: dict[str, str], routed: dict[str, str]) 
     return {key: value for key, value in routed.items() if key != "oneway"}
 
 
+def with_speed_units(tags: dict[str, str]) -> dict[str, str]:
+    """`tags` with each posted speed in the words the router reads as the
+    classifier does (`tags.maxspeed_in_mph_words`: a bare `45` is `45 mph`);
+    the same dict where none needs it. Rewritten, not removed."""
+    rewritten = {
+        key: words
+        for key in POSTED_SPEED_KEYS
+        if (words := maxspeed_in_mph_words(tags.get(key))) is not None
+    }
+    return {**tags, **rewritten} if rewritten else tags
+
+
 def inject(
     variant: Variant,
     tags: dict[str, str],
@@ -958,6 +972,8 @@ def inject(
     keeps the contraflow lanes the standard graph has.
     """
     is_mass_ride_only = osm_id is not None and osm_id in mass_ride_only_ids
+    # Every variant reads a posted speed as the classifier does (review RL-5).
+    tags = with_speed_units(tags)
 
     if variant in (Variant.STANDARD, Variant.WEEKEND, Variant.OFFROAD, Variant.MTB):
         # The weekend graph's tags are the standard graph's: what differs is

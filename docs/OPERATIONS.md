@@ -4413,6 +4413,14 @@ failure to write one is a warning in the log and never fails the rebuild.
   `tiger:county`, state). Such a road is rated on its own merits, not Avoid; each row
   is a likely tagging error to review. The log line is "bicycle=use_sidepath roads: N
   with a side path beside them (Avoid), M with none found".
+- `painted-lane-agency-vs-formula.csv` (review RL-3; the owner, 2026-10-16): every road
+  with a painted lane on a two-way street with 2 or more lanes each way (the formula's
+  LTS 3 floor) in the District or rated by DDOT or Montgomery, with the agency's level
+  beside the formula's (way id, name, state, scope, agency, agency level, formula level
+  and rule, whether they differ). The agency's level is the one the map uses. Virginia's
+  such roads are listed with scope `comparison` and the formula's level alone: Review's
+  "Painted lanes" list puts Arlington's level beside them from the admin-only pending file,
+  so Arlington's ratings never reach the report.
 - `named-corridors.md` (284-286, 294-296; and Connecticut Ave NW, 409, 411): every way an entry of
   `fixtures/corridors/` took, its tier before and after, the exempt ones and why,
   and any entry that matched no way (also a warning in the log: the extract's

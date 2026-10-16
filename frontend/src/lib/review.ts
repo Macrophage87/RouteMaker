@@ -12,7 +12,7 @@ import { call } from "./suggestions.ts";
 
 type Fetch = typeof fetch;
 
-export type QueueKey = "rebuild" | "disagreement" | "sidepath" | "narrow_rural" | "works_closure" | "rematch";
+export type QueueKey = "rebuild" | "disagreement" | "sidepath" | "narrow_rural" | "works_closure" | "rematch" | "painted_lane";
 /** Review's own lists: its queues, then the reviews that were in Settings. */
 export type ListKey = QueueKey | "suggestions" | "hazards" | "closures";
 export type Decision = "accept" | "reject" | "set";
@@ -129,6 +129,7 @@ export const LISTS: { key: ListKey; label: string }[] = [
   { key: "sidepath", label: "Side path not mapped" },
   { key: "works_closure", label: "Industrial-area closures" },
   { key: "rematch", label: "Overrides not re-matched" },
+  { key: "painted_lane", label: "Painted lanes, agency against formula" },
   { key: "suggestions", label: "Rider suggestions" },
   { key: "hazards", label: "Mass Ride hazard reports" },
   { key: "closures", label: "Closure reports" },
@@ -224,9 +225,10 @@ export const QUEUE_STYLE: Record<QueueKey, { colour: string; colourName: string;
   sidepath: { colour: "#CC79A7", colourName: "pink", dash: [1, 1], pattern: "short dashes" },
   works_closure: { colour: "#56B4E9", colourName: "sky blue", dash: [3, 1, 1, 1], pattern: "dash and dot" },
   rematch: { colour: "#E69F00", colourName: "orange", dash: [0.5, 1], pattern: "dots" },
+  painted_lane: { colour: "#000000", colourName: "black", dash: [4, 1, 1, 1, 1, 1], pattern: "dash and two dots" },
 };
 
-export const QUEUES: QueueKey[] = ["rebuild", "disagreement", "narrow_rural", "sidepath", "works_closure", "rematch"];
+export const QUEUES: QueueKey[] = ["rebuild", "disagreement", "narrow_rural", "sidepath", "works_closure", "rematch", "painted_lane"];
 
 /**
  * What Review's map shows of the view (GET /api/review/map): the roads of the lists switched on inside it, up to the

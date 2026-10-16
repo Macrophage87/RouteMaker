@@ -55,7 +55,14 @@ from routemaker import (
 )
 from routemaker.geo import Point
 from routemaker.shape import sinuosity
-from routemaker.stress import classify, inferred_unpaved, is_rough, rural_floor, winding
+from routemaker.stress import (
+    classify,
+    inferred_unpaved,
+    is_rough,
+    painted_lane_two_way_multilane,
+    rural_floor,
+    winding,
+)
 
 from . import (
     aadt_smoothing,
@@ -2362,6 +2369,21 @@ def build_handlers(
                 if facts.agency == agency_roads.DC_AGENCY and state_of.get(way.osm_id) == "DC":
                     reported.append((way, tags, match, overlaid))
         apply_agency_ratings(laned)
+        # The RL-3 roads with the agency's level beside the formula's, for the owner
+        # (`agency_lts.PAINTED_LANE_REPORT_NAME`), read before the corridors and rows.
+        painted_lane_rows = []
+        for way in context.ways:
+            rated = context.stress_by_way.get(way.osm_id)
+            if rated is None or not painted_lane_two_way_multilane(
+                context.class_tags_by_way.get(way.osm_id, way.tags),
+                divided=way.osm_id in divided_ways,
+            ):
+                continue
+            row = agency_lts.painted_lane_row(
+                way.osm_id, way.tags.get("name", ""), state_of.get(way.osm_id) or "", rated
+            )
+            if row is not None:
+                painted_lane_rows.append(row)
         if context.road_facts_by_way:
             # Where an agency's record and the way's own tags disagree and the way
             # was left alone (an OSM lane the agency does not record; an OSM
@@ -2410,8 +2432,11 @@ def build_handlers(
                     for way in context.ways
                     if way.osm_id in no_side_path
                 ),
+                agency_lts.PAINTED_LANE_REPORT_NAME: agency_lts.painted_lane_report_csv(
+                    painted_lane_rows
+                ),
             },
-            "AADT smoothing, named-corridor and use_sidepath",
+            "AADT smoothing, named-corridor, use_sidepath and painted-lane",
         )
         if context.corridor_report.unmatched_entries:
             logger.warning(
