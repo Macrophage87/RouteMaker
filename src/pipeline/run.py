@@ -75,6 +75,7 @@ from . import (
     restricted_areas,
     retention,
     route_relations,
+    scenic_layer,
     signals,
     source,
     states,
@@ -429,6 +430,13 @@ class ReferenceData:
     # `roadway.json`: without it every way keeps the classifier's tier.
     agency_lts_features: tuple[conflation.RoadFeature, ...] = ()
     agency_lts_ratings: dict = field(default_factory=dict)
+    # Scenic designations from agency lines (`pipeline.scenic_layer`, v0.8.0):
+    # Montgomery County's Rustic Roads and Maryland's Scenic Byways, from
+    # `scenic.json`, each record's line and its words. Optional like
+    # `roadway.json`: without it the Scenic layer has the OSM routes and covered
+    # bridges only. Never read by the classifier.
+    scenic_features: tuple[conflation.RoadFeature, ...] = ()
+    scenic_labels: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def load(
@@ -543,6 +551,13 @@ class ReferenceData:
                 zip(
                     ("agency_lts_features", "agency_lts_ratings"),
                     agency_ratings.load(directory / agency_ratings.FILE_NAME),
+                    strict=True,
+                )
+            ),
+            **dict(
+                zip(
+                    ("scenic_features", "scenic_labels"),
+                    scenic_layer.load(directory / scenic_layer.FILE_NAME),
                     strict=True,
                 )
             ),
@@ -741,6 +756,9 @@ class RebuildContext:
     national_route_ways: frozenset[int] = frozenset()
     # The name of the route relation each way is in (`pipeline.trail_routes`).
     route_names: dict[int, str] = field(default_factory=dict)
+    # The East Coast Greenway and US Bicycle Route designations of each way in one
+    # (`pipeline.scenic_layer.read_routes`; v0.8.0's Scenic layer, never a stress input).
+    scenic_routes: dict[int, set[str]] = field(default_factory=dict)
     # Sidewalks bicycles may not ride: the CBD rule (routemaker.cbd).
     cbd_sidewalks: set[int] = field(default_factory=set)
     # Mountain-bike singletrack, which every ride type avoids (routemaker.singletrack).
@@ -1992,6 +2010,8 @@ def build_handlers(
         context.mountain_bike_ways = routes.mountain_bike
         context.national_route_ways = routes.national
         context.route_names = routes.names
+        # The scenic routes (v0.8.0), for the Scenic layer and the road panel alone.
+        context.scenic_routes = scenic_layer.read_routes(context.source_pbf)
         # Indexed once. The first version scanned the whole way list inside a
         # loop over every border node inside a loop over every variant.
         context.ways_by_id = {way.osm_id: way for way in context.ways}
@@ -3323,6 +3343,21 @@ def build_handlers(
             [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
         )
         logger.info("unnamed bike ways named for the street beside them: %d", len(sidepath_names))
+        # The scenic designations (v0.8.0), in words: written beside the tier, never read by
+        # the classifier or the graph, so a scenic road keeps its stress and gets no bonus.
+        scenic_text = scenic_layer.scenic_by_way(
+            context.ways,
+            scenic_layer.labels_by_way(
+                context.ways,
+                getattr(reference, "scenic_features", ()),
+                getattr(reference, "scenic_labels", {}),
+                frozenset(w.osm_id for w in context.ways if variants.is_trail_class(w.tags)),
+            ),
+            context.scenic_routes,
+        )
+        logger.info(
+            "scenic ways (designated, covered bridges, scenic routes): %d", len(scenic_text)
+        )
         for way in context.ways:
             stress = context.stress_by_way[way.osm_id]
             trail = variants.is_trail_class(way.tags, way.osm_id, reference.sidepath_bridge_ids)
@@ -3426,6 +3461,7 @@ def build_handlers(
                         else 0,
                         bike_access_reason=access_reason,
                         sidepath_name=side_name,
+                        scenic=scenic_text.get(way.osm_id),
                     )
                 )
         writers.write_segments(context.staging_schema, rows)

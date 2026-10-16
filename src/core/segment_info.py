@@ -29,7 +29,7 @@ from django.conf import settings
 from django.db import connection
 
 from pipeline.schema import validate_schema_name
-from routemaker import agency_lts, flow, more_links
+from routemaker import agency_lts, flow, more_links, scenic
 from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
 from routemaker.stress import USE_SIDEPATH_RULE
 
@@ -265,6 +265,7 @@ OPTIONAL_COLUMNS = (
     "mtb_name",
     "stress_ratings",
     "sidepath_name",
+    "scenic",
 )
 REQUIRED_COLUMNS = (
     "osm_way_id",
@@ -1107,6 +1108,11 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
     when = [w.replace("_", " ") for w in row.get("car_free_when") or [] if isinstance(w, str)]
     if when:
         add("car_free", "Car-free", ", ".join(when))
+    # v0.8.0's Scenic layer: the designations in words, so the map's casing is never the
+    # only cue ("Rustic Road (Montgomery County)", "East Coast Greenway · USBR 50").
+    designations = scenic_text(row)
+    if designations:
+        add("scenic", "Scenic", designations)
     unpaved = row.get("is_unpaved")
     rough = bool(row.get("is_rough"))
     if unpaved is not None and (unpaved or rough or path):
@@ -1135,6 +1141,18 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
         riders = flow.level_riders_per_min(float(width))
         add("mass", "Room for", f"About {round(riders):,} riders a minute")
     return rows
+
+
+def scenic_text(row: dict) -> str | None:
+    """The way's scenic designations (`segment.scenic`, v0.8.0), or None."""
+    return (row.get("scenic") or "").strip() or None
+
+
+def scenic_rows(row: dict) -> list[dict]:
+    """The Road or path section's Scenic row, with who designates it (`routemaker.scenic`):
+    a fact about the road, not a stress input, so it is said beside its name."""
+    text = scenic_text(row)
+    return [_row("Scenic", text, scenic.credits(text))] if text else []
 
 
 def describe(row: dict, router: dict) -> dict:
@@ -1166,6 +1184,7 @@ def describe(row: dict, router: dict) -> dict:
             "rows": [
                 _row("Name", name or "No name mapped", name_source),
                 _row("Kind", kind, kind_source),
+                *scenic_rows(row),
             ],
         },
         {"id": "stress", "heading": "Traffic stress", "rows": stress_rows(row)},

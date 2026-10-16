@@ -58,9 +58,12 @@ within SAME_PLACE_M, about 200 ft (60 m), keeps the element with more details,
 the node on a tie. When tags fit two categories, the first in CATEGORIES wins.
 
 Kept: name, category, opening_hours and website (or contact:website), as
-the Food file keeps them. Nodes, ways and multipolygon relations are read; a
-way or relation sits at its outer ring's mean. Coordinates are rounded to 5
-decimals, about 3 ft (1 m).
+the Food file keeps them. A covered bridge (bridge=covered) is marked "cv" and
+named by its bridge:name where it has one (the way's own name is usually the
+road's): the Scenic layer (v0.8.0, frontend/src/lib/scenic.ts) draws the
+covered bridges and the viewpoints from this file. Nodes, ways and
+multipolygon relations are read; a way or relation sits at its outer ring's
+mean. Coordinates are rounded to 5 decimals, about 3 ft (1 m).
 
 Run from the repository root with the development venv (osmium is in
 requirements-dev.txt), with the rebuild's extract:
@@ -122,6 +125,8 @@ class Place:
     name: str
     hours: str | None = None
     website: str | None = None
+    # bridge=covered (the Scenic layer's covered bridges, v0.8.0).
+    covered: bool = False
 
 
 def _historic(tags: dict[str, str]) -> bool:
@@ -192,7 +197,9 @@ def classify(osm: str, tags: dict[str, str], lon: float, lat: float) -> Place | 
     category = category_of(tags)
     if category is None or not is_open_to_public(tags):
         return None
-    name = water._text(tags.get("name"))
+    covered = category == "bridge" and tags.get("bridge") == "covered"
+    # A covered bridge's own name ("Roddy Road Covered Bridge"), not the road's, where mapped.
+    name = (covered and water._text(tags.get("bridge:name"))) or water._text(tags.get("name"))
     if not name:
         return None
     west, south, east, north = COVERAGE_BBOX
@@ -206,6 +213,7 @@ def classify(osm: str, tags: dict[str, str], lon: float, lat: float) -> Place | 
         name=name,
         hours=water._text(tags.get("opening_hours")),
         website=water.website_of(tags),
+        covered=covered,
     )
 
 
@@ -231,7 +239,14 @@ def merge_duplicates(places: list[Place]) -> list[Place]:
         else:
             k = group[twin]
             group[twin] = Place(
-                k.osm, k.lon, k.lat, k.category, k.name, k.hours or p.hours, k.website or p.website
+                k.osm,
+                k.lon,
+                k.lat,
+                k.category,
+                k.name,
+                k.hours or p.hours,
+                k.website or p.website,
+                k.covered or p.covered,
             )
     return [p for group in kept.values() for p in group]
 
@@ -312,6 +327,8 @@ def document(places: list[Place]) -> dict:
             d["h"] = p.hours
         if p.website:
             d["web"] = p.website
+        if p.covered:
+            d["cv"] = 1
         points.append(d)
     return {"source": SOURCE, "points": points}
 

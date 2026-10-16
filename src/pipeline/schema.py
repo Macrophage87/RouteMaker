@@ -461,6 +461,10 @@ MTB_NAME_COLUMN = "mtb_name"
 # An unnamed bike way's name from the street beside it (`routemaker.facility.
 # side_street_names`): read by the route description (`core.routing`) and the road panel.
 SIDEPATH_NAME_COLUMN = "sidepath_name"
+# The way's scenic designations in words (`routemaker.scenic`, `pipeline.scenic_layer`;
+# v0.8.0): read by the road panel, and carried in a stress tile as `scenic` (true or left
+# out) for the Scenic layer's casing. Never a stress or routing input.
+SCENIC_COLUMN = "scenic"
 WALK_BIKE_COLUMN = "walk_bike"
 ROUGH_COLUMN = "is_rough"
 ROAD_TRAIT_COLUMNS = ("road_speed_mph", "road_lanes", "road_oneway")
@@ -591,6 +595,13 @@ CREATE TABLE {schema}.segment (
     -- the way has no name of its own. Null on every other way, and on every row of a
     -- table built before the column existed (the way is then just "path").
     sidepath_name   text,
+    -- The way's scenic designations in words (`routemaker.scenic`; v0.8.0, the owner,
+    -- 2026-10-16: "Basically looking for a scenic layer in general"): "Rustic Road
+    -- (Montgomery County)", "<name> Scenic Byway", "East Coast Greenway · USBR 50",
+    -- "Roddy Road Covered Bridge", joined by " · ". The road panel says it and the
+    -- Scenic layer draws a casing where it is set. Never read by the classifier or the
+    -- graph. Null on every other way and on a table built before the column existed.
+    scenic          text,
     -- What the classifier read the road at, for the intersection model
     -- (`routemaker.intersections`; OWNER-DECISIONS 165-167, 172): the speed and
     -- through lanes a direction as read (tags, an agency's record, a curated
