@@ -390,7 +390,7 @@ def test_stops_that_are_not_timepoints_are_interpolated_not_dropped() -> None:
 def test_a_schedule_about_to_run_out_is_logged_and_alerted(tmp_path, caplog) -> None:
     path = tmp_path / "transit-schedule.json"
     path.write_text(built(date(2026, 9, 28))[0])
-    schedule = transit.load(path)
+    schedule = transit.load(path, date(2026, 10, 1))
     assert schedule.last_day == date(2026, 11, 11)
     assert transit.days_left(schedule, date(2026, 11, 8)) == 4
     assert transit.schedule_alert(path, date(2026, 10, 1)) is None
@@ -1369,7 +1369,7 @@ def test_with_no_schedule_installed_metro_alone_runs_on_its_typical_timetable(tm
     path = tmp_path / "schedule.json"
     feeds = {k: v for k, v in FEEDS.items() if not k.startswith("wmata-")}
     path.write_text(json.dumps(build.build(feeds, date(2026, 9, 28))[0]))
-    assert [s.id for s in transit.load(path).systems] == ["marc", "mta-light-rail", "wmata-rail"]
+    assert [s.id for s in transit.load(path, date(2026, 10, 1)).systems] == ["marc", "mta-light-rail", "wmata-rail"]
     assert [s.id for s in transit.load(path, date(2026, 10, 12)).systems] == [
         "marc",
         "mta-light-rail",
