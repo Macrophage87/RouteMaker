@@ -1863,3 +1863,13 @@ def test_ci_token_is_read_only_and_actions_are_pinned_by_commit() -> None:
     assert uses
     for action in uses:
         assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", action), action
+
+
+def test_the_package_version_is_one_number_in_both_places() -> None:
+    """spec-9: pyproject's version and routemaker.__version__ agree, and neither is 0.1.0."""
+    import routemaker
+
+    root = Path(__file__).resolve().parents[1]
+    found = re.search(r'(?m)^version = "([^"]+)"$', (root / "pyproject.toml").read_text())
+    assert found and found.group(1) == routemaker.__version__
+    assert routemaker.__version__ != "0.1.0"
