@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import qrcode from "qrcode-generator";
+import { readFileSync } from "node:fs";
 import type { RouteProfile } from "./api.ts";
 import { haversineM, pathLengthM, type LonLat } from "./geo.ts";
 import {
@@ -225,4 +226,55 @@ test("the QR code's modules and their fit, with the quiet zone", () => {
 
 test("the file's name", () => {
   assert.equal(cardFileName("story"), "routemaker-story.png");
+});
+
+// The dialog and App's wiring are read as source, as the other App tests are (no DOM here).
+const dialog = readFileSync(new URL("../ShareCardDialog.tsx", import.meta.url), "utf8");
+const render = readFileSync(new URL("../app/shareCardRender.ts", import.meta.url), "utf8");
+
+test("the dialog: labelled, the focus in and back, labelled controls, alt text, a polite region of its own", () => {
+  assert.match(dialog, /<dialog\s+ref=\{dialogRef\}\s+className="share-card-dialog"\s+aria-labelledby=\{`\$\{id\}-heading`\}/);
+  assert.match(dialog, /dialog\.showModal\?\.\(\);\s*headingRef\.current\?\.focus\(\);/);
+  assert.match(dialog, /if \(opener\.current instanceof HTMLElement && opener\.current\.isConnected\) opener\.current\.focus\(\);/);
+  for (const field of ["size", "profile", "onmap", "qr"]) assert.match(dialog, new RegExp(`<label htmlFor=\\{\`\\$\\{id\\}-${field}\`\\}>`), field);
+  assert.match(dialog, /<img src=\{preview\.url\} alt=\{preview\.alt\} \/>/);
+  // Inside the modal, always rendered: the page's own region is inert while it is open.
+  assert.match(dialog, /<p className="visually-hidden" role="status">\s*\{said\.text\}/);
+  assert.match(dialog, /say\(IMAGE_READY\);/);
+  assert.match(dialog, /say\(IMAGE_FAILED\);/);
+  // Unavailable QR code and profile: disabled, with the reason as their description.
+  assert.match(dialog, /disabled=\{qrDisabled\}\s*aria-describedby=\{qrWhy \? `\$\{id\}-qr-why` : undefined\}/);
+  assert.match(dialog, /disabled=\{!hasProfile\}\s*aria-describedby=\{hasProfile \? undefined : `\$\{id\}-profile-why`\}/);
+  // Defaults: Square, the profile on in its band, the QR code off.
+  assert.match(dialog, /useState<CardSizeId>\(CARD_SIZE_DEFAULT\)/);
+  assert.match(dialog, /const \[profileOn, setProfileOn\] = useState\(true\);/);
+  assert.match(dialog, /const \[onMap, setOnMap\] = useState\(false\);/);
+  assert.match(dialog, /const \[qrOn, setQrOn\] = useState\(false\);/);
+  // Share only where the browser can share the image file.
+  assert.match(dialog, /navigator\.canShare\(\{ files: \[file\] \}\)/);
+  assert.match(dialog, /\{shareable && \(/);
+});
+
+test("App: Share as image in Plan only, given Home to hide and the QR code's link made as Share's", () => {
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /open=\{shareCardOpen && shareCardSource !== null && mode !== "go" && !riding\}/);
+  assert.match(app, /home: myGo\.home,/);
+  assert.match(app, /name: imported\?\.name \?\? null,/);
+  assert.match(app, /makeLink=\{shareCardLink\}/);
+  assert.match(app, /shareImage: \(\) => setShareCardOpen\(true\)/);
+  // Go has no entry point.
+  const go = readFileSync(new URL("../app/Go.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(go, /shareImage|SHARE_IMAGE_LABEL/);
+});
+
+test("the drawing: an offscreen map at the card's size with no rider markers; pins carry no names", () => {
+  assert.match(render, /pixelRatio: 1,/);
+  assert.match(render, /canvasContextAttributes: \{ preserveDrawingBuffer: true/);
+  assert.match(render, /interactive: false,/);
+  // Only the base map and the card's own line: no stress overlay, no Home, no saved places.
+  const code = render.replace(/^\s*\/\/.*$/gm, "");
+  assert.doesNotMatch(code, /stressSource|STRESS_SOURCE_ID|myGo|home\b|Home\b/);
+  assert.match(render, /pin\(ctx, drawn\.start\.x, drawn\.start\.y, r, START, "S"\)/);
+  assert.match(render, /pin\(ctx, drawn\.finish\.x, drawn\.finish\.y, r, FINISH, "F", true\)/);
+  assert.match(render, /cardAttribution\(strip !== null\)/);
 });

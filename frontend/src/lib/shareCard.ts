@@ -29,7 +29,7 @@ export const QR_LABEL = "QR code";
 export const PROFILE_LABEL = "Elevation profile";
 export const PROFILE_ON_MAP_LABEL = "Draw it on the map";
 export const DOWNLOAD_LABEL = "Download";
-export const SHARE_FILE_LABEL = "Share";
+export const SHARE_FILE_LABEL = "Share image";
 export const CLOSE_LABEL = "Close";
 export const BRAND = "RouteMaker";
 

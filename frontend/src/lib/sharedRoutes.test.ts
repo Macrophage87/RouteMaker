@@ -170,8 +170,15 @@ test("App: Share keeps the exact line and attaches the file Download GPX saves; 
   assert.match(exact, /if \(!shown \|\| stale \|\| routedPoints !== points\) return null;/);
   const share = app.slice(app.indexOf("const shareRoute = async () => {"), app.indexOf("\n  };\n", app.indexOf("const shareRoute = async () => {")));
   assert.match(share, /const content = withGpxFile\(navigator, shareContent\(link, distanceM, presetSaid\(preset\)\), file\);/);
-  assert.match(share, /kept = before\?\.kept \?\? storeShared\(origin, body!\.json\);/);
+  // The link is made in sharedLinkNow, which Share as image's QR code uses too (lib/shareCard.ts).
+  assert.match(share, /const \{ link, kept, exact \} = sharedLinkNow\(\);/);
+  const linkNow = app.slice(app.indexOf("const sharedLinkNow = () => {"), app.indexOf("\n  };\n", app.indexOf("const sharedLinkNow = () => {")));
+  assert.match(linkNow, /kept = before\?\.kept \?\? storeShared\(origin, body!\.json\);/);
+  assert.match(linkNow, /const body = before \? null : sharedBody\(id, exact\.save, shareKeep\);/);
   assert.match(share, /said = SHARED_INPUTS_ONLY;/);
+  // The QR code's link: only once its exact line is kept; one not kept is tried again under a new id.
+  const qr = app.slice(app.indexOf("const shareCardLink = async ()"), app.indexOf("\n  };\n", app.indexOf("const shareCardLink = async ()")));
+  assert.match(qr, /const \{ link, kept \} = sharedLinkNow\(\);\s*if \(!kept\) return null;\s*if \(await kept\) return link;\s*if \(sharedLine\.current\?\.kept === kept\) sharedLine\.current = null;\s*return null;/);
   // Still the one Share button.
   assert.equal((app.match(/onClick=\{shareRoute\}/g) ?? []).length, 1);
 });
