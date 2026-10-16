@@ -807,9 +807,12 @@ needs no bike access.
 - Credit: Mapillary (CC BY-SA), linked, with the photo's date and its creator's name where
   Mapillary gives one. Shown under the road panel's photo only.
 - **Token:** Mapillary's client access token (`MAPILLARY_ACCESS_TOKEN` on the server; the owner's
-  app, no user sign-in), sent only in the `Authorization` header from the server. The browser
-  loads the image itself from Mapillary's image host (`*.fbcdn.net`, in the CSP's `img-src`) and
-  opens Mapillary's viewer in a new tab; no Mapillary script is loaded.
+  app, no user sign-in), sent only in the `Authorization` header from the server. The server
+  fetches the image file from Mapillary's image host (`*.fbcdn.net`) and serves the browser its
+  own copy at `/api/street-photo/image/<id>`, so the CSP's `img-src` stays same-origin and the
+  browser never contacts Mapillary; a worker that did not show the photo looks its file up
+  again at `graph.mapillary.com/<id>`. The panel opens Mapillary's viewer in a new tab; no
+  Mapillary script is loaded.
 - **Kept:** each answer for an hour in the api's memory; nothing is stored.
 - Code: `src/core/street_photo.py`, `frontend/src/lib/streetPhoto.ts`; fixture
   `tests/data/mapillary/`.

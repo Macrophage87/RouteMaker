@@ -246,10 +246,27 @@ database initialised with the old one. The required values and what is optional:
 | `BETA_API_PORT`, `BETA_WEB_CONCURRENCY` | yes | `8087`, `6` (two route plans at once, one worker always free; the checker refuses more) |
 | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI` | **no** | Planning works signed out. Leave empty and there is no sign-in. To enable it the owner adds `https://routemaker.cieply.com/auth/callback` to the Discord application and gives you the id and secret; edit `.env`, rerun the gate (`"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env`, which must print "beta compose: ok"), then `beta-compose.sh up -d api`. From v0.7.0 sign-in is on by itself once both keys are set (the Settings line "Sign in with Discord to save routes and sync settings across devices." appears); migration 0020 adds saved settings and routes. Ride links keep anonymous rider dots in the api container's `/dev/shm` (a tmpfs, memory only), so the api needs no volume for them. |
 | `BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID` | no | The beta's database carries **no accounts** (the dump strips them, OWNER-DECISIONS 367.3), so the owner claims instance admin afresh. Set this to the owner's Discord user id only if Discord sign-in is turned on, and have the owner sign in once promptly after the api starts. Otherwise leave it empty. |
-| `WMATA_API_KEY`, `MAPILLARY_ACCESS_TOKEN` | no | v0.7.0 live data. The owner pastes them into `.env` himself (nobody else reads or types them); then `beta-compose.sh up -d api`. Empty: timetable times only, no street photo. Allow outbound `api.wmata.com` and `graph.mapillary.com` from the api, and the browser's image host `*.fbcdn.net` is in the CSP's `img-src` already. Check: a Metro station's card says "live" and "Data: WMATA"; a road panel shows "Photo from <month year>" or "No street photo here." |
+| `WMATA_API_KEY`, `MAPILLARY_ACCESS_TOKEN` | no | v0.7.0 live data. The owner pastes them into `.env` himself (nobody else reads or types them); then `beta-compose.sh up -d api`. Empty: timetable times only, no street photo. Allow outbound `api.wmata.com`, `graph.mapillary.com` and `*.fbcdn.net` from the api: the server fetches the photo's file from Mapillary's image host and serves the browser its own copy, so the CSP's `img-src` stays `'self'` and the browser never contacts Mapillary. Check: a Metro station's card says "live" and "Data: WMATA"; a road panel shows "Photo from <month year>" or "No street photo here." |
+| `DC311_API_KEY` | no | v0.7.0 Ride mode's 311 sent from the server (`core/dc311.py`), read by the api. The owner pastes it himself, only once DC issues one; then `beta-compose.sh up -d api`. Empty: Ride mode opens the phone's text app to 311 instead. Allow outbound `app.311.dc.gov` from the api. Each send needs a 15-minute ticket from `GET /api/report311`, and at most 60 reports an hour leave the server in all. |
+| `NPS_API_KEY` | no | v0.7.0 National Park Service closure alerts, read by the **worker** (`refresh_dc_closures`). The owner pastes it himself; then `beta-compose.sh up -d worker`. Empty: the NPS feed is skipped, the DC feeds still run. Allow outbound `developer.nps.gov` from the worker, beside the DC closure hosts below. |
+| `SUGGEST_SIGNED_OUT_MIN_AGREE` | no | `1` (the default): every signed-out LTS suggestion shows in the review list. Raise it (e.g. `2`) once volume grows, so a road's signed-out sends show only when that many agree; then `beta-compose.sh up -d api`. |
 | VDOT token | no | this release has no such variable; there is nothing to set |
 
 Never `source .env`; compose reads it. Never print it. Do not add `$` to a value (compose expands it).
+
+Outbound hosts the app reaches at runtime (v0.7.0; all TCP 443; the full server list, with the
+CD agent's and the host's own, is the project's `reports/beta-egress-allowlist.md`):
+
+- **api:** `gbfs.capitalbikeshare.com`, `gbfs.lyft.com` (bikeshare); `api.wmata.com` (with
+  `WMATA_API_KEY`); `graph.mapillary.com` and `*.fbcdn.net` (with `MAPILLARY_ACCESS_TOKEN`: the
+  server fetches the street photo's file and serves the browser its own copy); `app.311.dc.gov`
+  (with `DC311_API_KEY`); the short map links a shared place is followed through
+  (`core/share_links.py`): `maps.app.goo.gl`, `goo.gl`, `maps.apple`, `www.google.com`,
+  `google.com`, `maps.google.com`, `consent.google.com`, `maps.apple.com`; `discord.com` only
+  with Discord sign-in.
+- **worker** (`refresh_dc_closures`, every 15 minutes): `maps2.dcgis.dc.gov`, `mpdc.dc.gov`,
+  `trainingtrack.hsema.dc.gov`, and `developer.nps.gov` (with `NPS_API_KEY`). It also reaches
+  Photon and the Valhalla containers on the compose network, as the api does.
 
 Undo: `rm .env` (only before the database exists; after, keep it).
 

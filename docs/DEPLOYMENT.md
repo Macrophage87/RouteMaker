@@ -1180,7 +1180,8 @@ What the edge does with it (Caddyfile, `@frontend`):
   byte range means (`tests/test_basemap.py`).
 - A `Content-Security-Policy` of `default-src 'self'` with `script-src`,
   `connect-src` and `font-src 'self'`, `style-src 'self' 'unsafe-inline'`
-  (MapLibre sets inline styles), `img-src 'self' data: blob: https://*.fbcdn.net` (Mapillary's image host, for the road panel's street photo),
+  (MapLibre sets inline styles), `img-src 'self' data: blob:` (the road panel's street photo is
+  this server's copy, `/api/street-photo/image/<id>`: the browser never contacts Mapillary),
   `worker-src 'self' blob:`, `object-src 'none'`, `base-uri 'self'`,
   `form-action 'self'` and `frame-ancestors 'none'`. Every request the app
   makes is to this site, which is what lets it be that tight; the operations
