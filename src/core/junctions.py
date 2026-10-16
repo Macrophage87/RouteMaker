@@ -713,20 +713,32 @@ def _ask(
 ) -> dict[int, dict]:
     """`/locate`'s answer at each of `positions` in `raws`, in batches; a batch
     the router will not answer has none. A batch that fails with one of `cut_short`
-    raises `ReadingCutShort`: the answers are then only some of them."""
+    raises `ReadingCutShort`: the answers are then only some of them. The batches are
+    asked at once on the router pool (`core.parallel`, review speed-2) and read in
+    order, as they were asked one after another before."""
+    from . import parallel
+
     positions = list(positions)
     found: dict[int, dict] = {}
-    for start in range(0, len(positions), LOCATE_BATCH):
-        chunk = positions[start : start + LOCATE_BATCH]
-        payload = {
-            "locations": [
-                {"lon": raws[p].lon, "lat": raws[p].lat, "radius": radius} for p in chunk
-            ],
-            "verbose": True,
-            "costing": "bicycle",
-        }
+    chunks = [
+        positions[start : start + LOCATE_BATCH] for start in range(0, len(positions), LOCATE_BATCH)
+    ]
+    asked = [
+        parallel.submit(
+            locate,
+            {
+                "locations": [
+                    {"lon": raws[p].lon, "lat": raws[p].lat, "radius": radius} for p in chunk
+                ],
+                "verbose": True,
+                "costing": "bicycle",
+            },
+        )
+        for chunk in chunks
+    ]
+    for chunk, future in zip(chunks, asked, strict=True):
         try:
-            answers = locate(payload)
+            answers = future.result()
         except cut_short as error:
             raise ReadingCutShort(
                 f"{len(found)} of {len(positions)} junctions read before {error}"

@@ -816,7 +816,13 @@ class TestNodesAt:
             return [crossroads() for _ in payload["locations"]]
 
         found = junctions.nodes_at(raws, locate)
-        # The node, then around each node with no signal for its approaches.
+        # The node, then around each node with no signal for its approaches. A round's
+        # batches are asked at once on the router pool (review speed-2), so in any order.
+        rounds = [asked[:3], asked[3:]]
+        assert [p["locations"][0]["radius"] for p in asked] == [1, 1, 1, 30, 30, 30]
+        asked = [
+            p for batches in rounds for p in sorted(batches, key=lambda p: p["locations"][0]["lon"])
+        ]
         assert [len(p["locations"]) for p in asked] == [50, 50, 20, 50, 50, 20]
         assert all(p["verbose"] and p["costing"] == "bicycle" for p in asked)
         assert asked[0]["locations"][1] == {"lon": raws[1].lon, "lat": raws[1].lat, "radius": 1}
@@ -1538,6 +1544,29 @@ class TestAReadingTheClockCutsShort:
             raise routing.DeadlineExceeded("late")
 
         assert junctions._ask(self.raws(3), range(3), 10, locate) == {}
+
+    def test_on_the_pool_the_batches_are_asked_at_once_and_read_in_order(self, settings) -> None:
+        """Review speed-2: the batches go to the router together, not one after another,
+        and each answer still lands at its own junction."""
+        import threading
+
+        from core import junctions, routing
+
+        settings.ROUTER_PARALLEL_CALLS = 2
+        both_in = threading.Barrier(2, timeout=5)
+        calls = []
+
+        def locate(payload):
+            calls.append(payload)
+            if len(calls) <= 2:
+                both_in.wait()  # a batch asked only after the last one answered breaks this
+            return [{"lon": loc["lon"]} for loc in payload["locations"]]
+
+        raws = self.raws(junctions.LOCATE_BATCH * 2 + 3)
+        got = junctions._ask(raws, range(len(raws)), 10, locate, (routing.DeadlineExceeded,))
+        assert len(calls) == 3
+        assert sorted(got) == list(range(len(raws)))
+        assert all(got[i] == {"lon": raws[i].lon} for i in got)
 
     def test_the_planners_reading_raises_and_is_not_remembered(self, monkeypatch) -> None:
         from core import junctions, refine, routing
