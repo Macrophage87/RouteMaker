@@ -113,7 +113,7 @@ import {
 } from "./lib/geolocation.ts";
 import { usePlaceNames } from "./usePlaceNames.ts";
 import { fetchPlaces, pickIntoPlan, placeFromSearch, reverseUrl, searchBiasPoint, type Place, type ViewBounds, type PlaceChoice } from "./lib/geocode.ts";
-import { HOME_CLEARED, HOME_PICK_CANCELLED, HOME_PICK_LINE, homeAtSpot, homeFromPlace, homeSetSaid } from "./lib/homeSet.ts";
+import { HOME_CLEARED, HOME_PICK_CANCELLED, HOME_PICK_LINE, homeAtSpot, homeFromPlace, homeSetSaid, nameWithoutHome } from "./lib/homeSet.ts";
 import { BottomBar } from "./Sidebar.tsx";
 import {
   copyText,
@@ -723,6 +723,8 @@ export function App() {
   const focusAfterRemove = useRef<number | null>(null);
   const writtenHash = useRef<string>("");
   const { gate: geoGate, namer } = usePlaceNames(points);
+  // A route's own name (a save, a shared line, a GPX file) never carries the Home's label (review privacy-2).
+  const fileNamed = nameWithoutHome((point) => namer.name(point)?.name, myGo.home?.point ?? null);
 
   // One scheduler for the page: one request in flight, the latest plan only,
   // Retry-After waited out (routeScheduler.ts).
@@ -2243,7 +2245,7 @@ export function App() {
       };
     }
     if (!shown || stale || routedPoints !== points) return null;
-    const name = defaultRouteName(routedPoints[0] && namer.name(routedPoints[0])?.name, routedPoints.length > 1 ? namer.name(routedPoints[routedPoints.length - 1])?.name : null);
+    const name = defaultRouteName(fileNamed(routedPoints[0]), routedPoints.length > 1 ? fileNamed(routedPoints[routedPoints.length - 1]) : null);
     return { of: shown, save: planSave(name, shown, routedPoints, preset, dials), file: routeGpxFile(shown, routedPoints, routedLoop, federalRoute) };
   };
   const shareRoute = async () => {
@@ -2317,7 +2319,7 @@ export function App() {
   const keptTitle = () => {
     const first = routedPoints[0];
     const last = routedPoints[routedPoints.length - 1];
-    return routeTitle(first && namer.name(first)?.name, last && namer.name(last)?.name, routedLoop);
+    return routeTitle(fileNamed(first), fileNamed(last), routedLoop);
   };
   const keepForOffline = async () => {
     const plan = routedKey.current;
@@ -2404,7 +2406,7 @@ export function App() {
   const saveProps = me.signed_in
     ? {
         defaultName: () =>
-          defaultRouteName(routedPoints[0] && namer.name(routedPoints[0])?.name, routedPoints.length > 1 ? namer.name(routedPoints[routedPoints.length - 1])?.name : null),
+          defaultRouteName(fileNamed(routedPoints[0]), routedPoints.length > 1 ? fileNamed(routedPoints[routedPoints.length - 1]) : null),
         onSave: saveCurrent,
       }
     : null;

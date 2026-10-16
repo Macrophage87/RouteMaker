@@ -4,8 +4,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { CHANGE_HOME_TEXT, HOME_CLEARED, HOME_PICK_LINE, PICK_ON_MAP_TEXT, SET_AS_HOME_TEXT, homeAtSpot, homeClosesSheet, homeFromPlace, homeName, homeSetKey, homeSetSaid } from "./homeSet.ts";
+import { CHANGE_HOME_TEXT, HOME_CLEARED, HOME_PICK_LINE, PICK_ON_MAP_TEXT, SET_AS_HOME_TEXT, homeAtSpot, homeClosesSheet, homeFromPlace, homeName, homeSetKey, homeSetSaid, nameWithoutHome } from "./homeSet.ts";
 import { HOME_NOT_SET } from "./myGo.ts";
+import { defaultRouteName } from "./savedRoutes.ts";
+import { routeTitle } from "./offlineRoutes.ts";
+import { trackGpx } from "./gpxVerbatim.ts";
+import { planPointNames } from "./gpx.ts";
+import type { LonLat } from "./geo.ts";
 
 const src = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 const app = src("../App.tsx");
@@ -130,4 +135,31 @@ test("privacy-1: the Home search does not keep its pick in recent places; every 
   const pick = search.slice(at, search.indexOf('setQuery("");', at));
   assert.match(pick, /if \(variant !== "home"\) setRecent\(rememberRecentPlace\(place\)\);/);
   assert.equal((search.match(/rememberRecentPlace\(/g) ?? []).length, 1, "no other way in");
+});
+
+test("privacy-2: a route's own name and its GPX file name a point at Home as Start or End, never by the Home's label", () => {
+  const home: LonLat = [-77.02, 38.92];
+  const station: LonLat = [-77.0063, 38.8973];
+  const labels = new Map<string, string>([[home.join(), "1234 Elm St NW"], [station.join(), "Union Station"]]);
+  const named = nameWithoutHome((p) => labels.get(p.join()), home);
+  // Riding to Home: the Home's own coordinates (a copy, as Undo or a reload gives).
+  const ride: LonLat[] = [station, [-77.02, 38.92]];
+  const name = defaultRouteName(named(ride[0]), named(ride[1]));
+  assert.equal(name, "Union Station to End");
+  assert.equal(defaultRouteName(named(ride[1]), named(ride[0])), "Start to Union Station");
+  assert.equal(routeTitle(named(ride[0]), named(ride[1]), false), "Union Station to End");
+  const gpx = trackGpx(name, [[-77.0063, 38.8973], [-77.02, 38.92]]);
+  assert.doesNotMatch(gpx, /Elm St/);
+  assert.match(gpx, /<name>Union Station to End<\/name>/);
+  assert.match(gpx, /lat="38\.920000" lon="-77\.020000"/, "the coordinates as they are");
+  // The planned route's own GPX names its points by their place in the plan, never by a label.
+  assert.deepEqual(planPointNames(ride.length), ["Start", "End"]);
+  // No Home: names as before.
+  assert.equal(nameWithoutHome((p) => labels.get(p.join()), null)(home), "1234 Elm St NW");
+  assert.equal(named(undefined), undefined);
+  // App names saves, shared lines and kept routes through it.
+  assert.match(app, /const fileNamed = nameWithoutHome\(\(point\) => namer\.name\(point\)\?\.name, myGo\.home\?\.point \?\? null\);/);
+  assert.equal((app.match(/defaultRouteName\(fileNamed\(routedPoints\[0\]\)/g) ?? []).length, 2);
+  assert.match(app, /return routeTitle\(fileNamed\(first\), fileNamed\(last\), routedLoop\);/);
+  assert.doesNotMatch(app, /defaultRouteName\(routedPoints\[0\] && namer\.name/);
 });
