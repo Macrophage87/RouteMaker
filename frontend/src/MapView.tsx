@@ -1266,7 +1266,9 @@ export function MapView(props: Props) {
       // The warning ends with its own full stop.
       const named = warning ? `${name}. ${warning}` : name;
       const said = warning ? named : `${name}.`;
-      element.setAttribute("aria-label", via ? `${said} Drag to move; click for Remove.` : `${said} Drag to move.`);
+      // The name and warning only, and the keyboard's way to remove a via: a pin takes no focus, so
+      // dragging and clicking are the title's, for a pointer (review a11y-8).
+      element.setAttribute("aria-label", via ? `${said} Remove it from the Points list.` : said);
       element.title = via ? `${named} - drag to move; click, right-click or long-press for Remove; double-click to remove` : `${named} - drag to move`;
       const marker = new maplibregl.Marker({ element, draggable: true, anchor: "center" })
         .setLngLat(point)
