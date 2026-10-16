@@ -55,6 +55,7 @@ import {
   sendAlert,
   sendPosition,
   shareStop,
+  postSoonAfter,
   shownDots,
   type AlertKind,
   type RideAlert,
@@ -62,6 +63,7 @@ import {
   type RideLinkType,
   type RideRead,
   type RideRole,
+  type ShownDot,
 } from "./lib/rideGroup.ts";
 import { browserRideEnv, watchRide } from "./lib/rideWatch.ts";
 
@@ -141,7 +143,9 @@ export function RideGroup({ type, points, line, getMap, here }: RideGroupProps) 
   const changeRole = (role: RideRole) => {
     if (!ride || !consent) return;
     setConsent(keepConsent(ride, consent.answer, Date.now(), undefined, undefined, role));
-    say(shareOn ? `You are shown as ${roleLabel(role)}.` : `Your role is ${roleLabel(role)}, shown when you turn on Show me as a dot.`);
+    // The new role goes with the next position as soon as the server takes one (the consent change re-runs the post).
+    share.current.lastPost = postSoonAfter(share.current.lastPost);
+    say(shareOn ? `You are shown as ${roleLabel(role)}; others see it within 15 seconds.` : `Your role is ${roleLabel(role)}, shown when you turn on Show me as a dot.`);
   };
   const token = consent?.token ?? null;
 
@@ -218,11 +222,17 @@ export function RideGroup({ type, points, line, getMap, here }: RideGroupProps) 
   }, [fix, now, shareOn, ride, token, consent, line, origin]);
 
   const me = fix ?? here;
-  const myAlong = me ? project(line, me).alongM : null;
-  const myAlongRef = useRef(myAlong);
+  // On an out-and-back the last place along the route says which pass a position is on (yours, and each dot's).
+  const myAlongRef = useRef<number | null>(null);
+  const myAlong = me ? project(line, me, myAlongRef.current).alongM : null;
   myAlongRef.current = myAlong;
   const sinceS = Math.max(0, Math.floor((now - polledAt) / 1000));
-  const dots = useMemo(() => shownDots(line, read.dots, sinceS), [line, read.dots, sinceS]);
+  const previousDots = useRef<ShownDot[]>([]);
+  const dots = useMemo(
+    () => shownDots(line, read.dots, sinceS, { previous: previousDots.current, myAlongM: myAlongRef.current }),
+    [line, read.dots, sinceS],
+  );
+  previousDots.current = dots;
   const alerts = read.alerts.filter((a) => a.age_s + sinceS <= 600);
   const roleRows = roleKey(dots);
 
@@ -239,7 +249,8 @@ export function RideGroup({ type, points, line, getMap, here }: RideGroupProps) 
       const coords = (f?.geometry as { coordinates?: LonLat } | undefined)?.coordinates;
       const age = Number(f?.properties?.age ?? 0);
       if (!coords) return;
-      const text = dotSaid(age, dotName(roleOf(f?.properties?.role), project(line, coords).alongM, myAlongRef.current));
+      const along = Number(f?.properties?.along);
+      const text = dotSaid(age, dotName(roleOf(f?.properties?.role), Number.isFinite(along) ? along : project(line, coords).alongM, myAlongRef.current));
       setDotInfo(text);
       say(text);
     };
@@ -292,7 +303,17 @@ export function RideGroup({ type, points, line, getMap, here }: RideGroupProps) 
           <p id="ride-consent-note" className="hint">
             {CONSENT_NOTE}
           </p>
-          <RolePicker name="ride-role-ask" value={pickedRole} onChange={setPickedRole} />
+          {/* Compact here (Go's map stays clear): one labelled list, Participant chosen; the panel has the radio buttons. */}
+          <label className="ride-role-select">
+            {ROLE_QUESTION}{" "}
+            <select value={pickedRole} onChange={(e) => setPickedRole(roleOf(e.target.value))}>
+              {RIDE_ROLES.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="ride-consent-choices">
             <button type="button" onClick={() => answer(true)}>
               {CONSENT_YES}

@@ -5667,6 +5667,16 @@ details.fold > summary .icon {
 .ride-role .toggle {
   min-height: 44px;
 }
+.ride-role-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-weight: 600;
+}
+.ride-role-select select {
+  min-height: 44px;
+}
 .ride-role-key {
   list-style: none;
   margin: 6px 0;

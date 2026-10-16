@@ -20,6 +20,8 @@ import {
   newAlerts,
   nearRoute,
   newToken,
+  POST_EVERY_MS,
+  postSoonAfter,
   project,
   readRide,
   rideId,
@@ -52,7 +54,7 @@ import {
   roleSwatchPoints,
   showRideDots,
 } from "./rideDotsLayer.ts";
-import { contrastRatio } from "../stressStyle.js";
+import { PALETTES, contrastRatio } from "../stressStyle.js";
 import { baseSurfaces } from "../testSupport/baseSurfaces.ts";
 import { VISIONS, deltaE2000, simulate } from "../testSupport/colourVision.ts";
 import { readFileSync } from "node:fs";
@@ -407,7 +409,13 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
   // In the consent dialog, Participant already chosen; changeable in the riders panel beside the switch.
   assert.match(group, /useState<RideRole>\(DEFAULT_ROLE\)/);
-  assert.match(group, /CONSENT_NOTE\}\s*<\/p>\s*<RolePicker name="ride-role-ask" value=\{pickedRole\}/);
+  // Compact in Go's question: one labelled list, not four rows of radio buttons.
+  const ask = group.slice(group.indexOf('className="ride-consent"'), group.indexOf('className="ride-group-bar"'));
+  assert.match(ask, /<label className="ride-role-select">\s*\{ROLE_QUESTION\}\{" "\}\s*<select value=\{pickedRole\}/);
+  assert.doesNotMatch(ask, /RolePicker|type="radio"/);
+  // A role change moves the next post up, and the post sends the consent's (new) role.
+  assert.match(group, /const changeRole[\s\S]*?keepConsent\(ride, consent\.answer, Date\.now\(\), undefined, undefined, role\)[\s\S]*?share\.current\.lastPost = postSoonAfter\(share\.current\.lastPost\)/);
+  assert.match(group, /\}, \[fix, now, shareOn, ride, token, consent, line, origin\]\);/);
   assert.match(group, /<\/button>\s*\)\}\s*\{consent && <RolePicker name="ride-role" value=\{consent\.role\} onChange=\{changeRole\} \/>\}\s*<\/div>/);
   assert.match(group, /sendPosition\(origin, ride, token, fix, consent\.role\)/);
   // Go's bar keeps its two buttons.
@@ -421,4 +429,61 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   assert.match(group, /dotSaid\(age, dotName\(roleOf\(f\?\.properties\?\.role\)/);
   const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
   assert.match(css, /@media \(forced-colors: active\) \{\s*\/\*[^*]*\*\/\s*\.ride-role-swatch \{\s*forced-color-adjust: none;/);
+});
+
+test("review: no role mark vanishes on a route line or casing, and touching marks are split by a 3:1 edge", () => {
+  const route = new Set<string>();
+  for (const palette of Object.values(PALETTES) as Record<number, Record<string, string>>[]) {
+    for (const n of [1, 2, 3, 4, 5]) for (const k of ["color", "casing"]) if (palette[n]?.[k] && palette[n][k] !== "#ffffff") route.add(palette[n][k].toLowerCase());
+  }
+  for (const [role, colour] of Object.entries(ROLE_COLOURS)) {
+    assert.ok(!route.has(colour), `${role} is a route colour`);
+    for (const line of route) {
+      for (const v of VISIONS) {
+        const d = deltaE2000(simulate(colour, v), simulate(line, v));
+        assert.ok(d >= 7, `${role} ${colour} on ${line} under ${v}: ${d.toFixed(1)}`);
+      }
+    }
+    // The rendered boundary between any two marks is a fill against the white edge.
+    assert.ok(contrastRatio(colour, HOLE) >= 3, `${role} against its edge`);
+  }
+});
+
+test("review: on an out-and-back the pass nearest the last place along the route wins, chevron included", () => {
+  // East 1.7 km, then back west on the same street (a few metres north).
+  const out: LonLat[] = Array.from({ length: 11 }, (_, i) => [-77.04 + i * 0.002, 38.9] as LonLat);
+  const back: LonLat[] = out.map(([x]) => [x, 38.90003] as LonLat).reverse();
+  const line = [...out, ...back];
+  const p: LonLat = [-77.03, 38.90001];
+  const outbound = project(line, p);
+  assert.equal(Math.round(outbound.bearingDeg), 90);
+  const homeward = project(line, p, 3000);
+  assert.ok(homeward.alongM > 1800, `along ${homeward.alongM}`);
+  assert.equal(Math.round(homeward.bearingDeg), 270);
+  // A far-off hint never pulls a dot onto a stretch that is not at its spot.
+  assert.ok(project(LINE, [-77.03, 38.9], 0).alongM > 800);
+  // shownDots takes the hint from the same role's mark drawn last time, else the rider's own place.
+  const lead = { lon: -77.03, lat: 38.90001, age_s: 1, role: "lead" as const };
+  const first = shownDots(line, [lead], 0, { myAlongM: 3000 })[0];
+  assert.equal(first.bearing, 270);
+  const next = shownDots(line, [{ ...lead, lon: -77.0302 }], 0, { previous: [first], myAlongM: 100 })[0];
+  assert.equal(next.bearing, 270);
+  assert.equal(shownDots(line, [lead], 0, { myAlongM: 100 })[0].bearing, 90);
+});
+
+test("review: a role change posts as soon as the server takes a position, with the new role", async () => {
+  // Posted 3 s ago: the next goes at 10 s (the server's minimum), not 15 s; never posted: at once.
+  const moved = postSoonAfter(100_000);
+  assert.equal(moved + POST_EVERY_MS, 110_000);
+  assert.ok(103_000 - postSoonAfter(0) >= POST_EVERY_MS);
+  const store = new Memory();
+  keepConsent("r9", "yes", 0, store);
+  const kept = keepConsent("r9", "yes", 1, store, undefined, "corker");
+  const bodies: { role?: string }[] = [];
+  const fake = (async (_u: string, i?: RequestInit) => {
+    bodies.push(JSON.parse(String(i?.body)));
+    return new Response("{}", { status: 200 });
+  }) as unknown as typeof fetch;
+  await sendPosition("https://x.test", "f".repeat(64), kept.token, [-77, 38.9], consentFor("r9", 2, store)!.role, fake);
+  assert.equal(bodies[0].role, "corker");
 });

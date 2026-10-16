@@ -7837,8 +7837,9 @@ drawn on a real phone's lock screen; the layout was checked by eye from a raster
 
 The one question a ride link asks ("Show me as a dot to others on this ride?") also asks "Riding as":
 Participant (already chosen, so Yes alone answers), Lead line, Sweep or Corker. The role is kept with the
-answer for that ride on the device (`rideGroup.ts keepConsent`) and changed in the riders panel, under "Show
-me as a dot"; Go's bar gains nothing. Each position the page sends carries the role
+answer for that ride on the device (`rideGroup.ts keepConsent`; in the question a compact "Riding as" list)
+and changed in the riders panel, under "Show me as a dot", where the next position goes as soon as the server
+takes one (within 15 s); Go's bar gains nothing. Each position the page sends carries the role
 (`POST /api/rides/{ride}/here`, `role`); `core.ride_presence` takes the four ids only (anything else is a 400,
 none sent is a participant) and answers each dot's `role`. Still no name, token or id on a dot.
 
@@ -7846,13 +7847,16 @@ none sent is a participant) and answers each dot's `role`. Still no name, token 
   that phone chose, nothing more. Anyone on the link can mark themselves Sweep. Do not build anything that
   trusts a role (an alert only a lead can send, say) without an identity behind it first.
 - **On the map** (`rideDotsLayer.ts`): a colour and a shape for each role, so neither carries it alone. A
-  participant is the small dark blue dot (#1e3a8a); the lead line a burnt orange chevron (#b8440a) turned to
-  point the way the route goes at that spot (`project().bearingDeg`, its own layer aligned to the map); the
-  sweep a blue-black square (#08081e); a corker a deep teal diamond (#0f766e). The orange and blue-black are
-  the `cvd` palette's LTS 3 and Avoid (the orange deepened), the teal Okabe-Ito's bluish green deepened. Each
-  is 3:1 or more on every light-map surface and every pair 15 or more CIEDE2000 apart under normal vision and
-  each simulated deficiency. The marks are images drawn pixel by pixel; the age rules are unchanged (solid,
-  white hole, hollow outline, gone at 2 minutes).
+  participant is a small blue dot (#0000ee); the lead line a near-black violet chevron (#220044) turned to
+  point the way the route goes at that spot (`project().bearingDeg`; on an out-and-back the pass nearest the
+  mark's last place along the route, its own layer aligned to the map); the sweep a magenta square (#7a1f7a);
+  a corker a dark grey diamond (#444444). Chosen by a search, not from a palette: an orange lead vanished on
+  the LTS 3 and 4 lines and a blue-black sweep was Avoid's line. Each is 3:1 or more on every light-map
+  surface and from its white edge, every pair 15 or more CIEDE2000 apart and each 7 or more from every route
+  line and casing colour, under normal vision and each simulated deficiency. Four fills 3:1 apart from one
+  another cannot also all be 3:1 on the light map, so the white edge and the shapes separate touching marks.
+  The marks are images drawn pixel by pixel; the age rules are unchanged (solid, white hole, hollow outline,
+  gone at 2 minutes).
 - **In words.** Tapping a mark says "Sweep, 0.5 mi (0.8 km) behind. Seen 40 s ago." The riders button's
   summary adds the nearest of each role on the ride after the nearest rider. The panel's key lists only the
   roles present, each with its swatch (decoration, `aria-hidden`; kept in its colours in forced-colours mode)

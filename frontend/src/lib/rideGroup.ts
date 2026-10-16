@@ -163,23 +163,33 @@ export const NEAR_ROUTE_M = 400;
 export const OFF_ROUTE_STOP_MS = 10 * 60_000;
 export const POST_EVERY_MS = 15_000;
 export const POLL_EVERY_MS = 15_000;
+/** The soonest the server takes another position from the same rider (core.ride_presence.MIN_POST_INTERVAL_S). */
+export const MIN_POST_GAP_MS = 10_000;
+
+/** After a role change: the last post moved back so the next goes as soon as the server will take it. */
+export function postSoonAfter(lastPost: number): number {
+  return lastPost - (POST_EVERY_MS - MIN_POST_GAP_MS);
+}
 
 const M_PER_DEG = 111_195;
 
+/** Stretches of the line this much further off than the nearest still count as where `p` is (a 20 m grid, GPS). */
+export const SAME_SPOT_M = 30;
+
 /**
  * Where `p` is against the line: metres along it to the nearest point, metres off it, and the way the route
- * goes there (degrees clockwise from north, for the lead line's chevron).
+ * goes there (degrees clockwise from north, for the lead line's chevron). Where the line passes the spot more
+ * than once (an out-and-back, a loop's overlap), `hintAlongM` picks the pass: of the stretches within
+ * SAME_SPOT_M of the nearest, the one whose distance along is closest to the hint (the rider's last reading).
  */
-export function project(line: readonly LonLat[], p: LonLat): { alongM: number; offM: number; bearingDeg: number } {
+export function project(line: readonly LonLat[], p: LonLat, hintAlongM: number | null = null): { alongM: number; offM: number; bearingDeg: number } {
   if (line.length === 0) return { alongM: 0, offM: Infinity, bearingDeg: 0 };
   const kx = M_PER_DEG * Math.cos((p[1] * Math.PI) / 180);
   const x = (q: LonLat) => q[0] * kx;
   const y = (q: LonLat) => q[1] * M_PER_DEG;
-  let best = Infinity;
-  let bestAlong = 0;
-  let bestBearing = 0;
-  let walked = 0;
   if (line.length === 1) return { alongM: 0, offM: Math.hypot(x(line[0]) - x(p), y(line[0]) - y(p)), bearingDeg: 0 };
+  const passes: { d: number; along: number; bearing: number | null }[] = [];
+  let walked = 0;
   for (let i = 0; i < line.length - 1; i += 1) {
     const ax = x(line[i]);
     const ay = y(line[i]);
@@ -191,14 +201,16 @@ export function project(line: readonly LonLat[], p: LonLat): { alongM: number; o
     const t = len2 > 0 ? Math.max(0, Math.min(1, ((x(p) - ax) * dx + (y(p) - ay) * dy) / len2)) : 0;
     const d = Math.hypot(ax + t * dx - x(p), ay + t * dy - y(p));
     const seg = Math.sqrt(len2);
-    if (d < best) {
-      best = d;
-      bestAlong = walked + t * seg;
-      if (len2 > 0) bestBearing = ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
-    }
+    passes.push({ d, along: walked + t * seg, bearing: len2 > 0 ? ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360 : null });
     walked += seg;
   }
-  return { alongM: bestAlong, offM: best, bearingDeg: bestBearing };
+  const best = Math.min(...passes.map((q) => q.d));
+  let chosen = passes.find((q) => q.d === best)!;
+  if (hintAlongM !== null) {
+    for (const q of passes) if (q.d <= best + SAME_SPOT_M && Math.abs(q.along - hintAlongM) < Math.abs(chosen.along - hintAlongM)) chosen = q;
+  }
+  const bearing = chosen.bearing ?? passes.find((q) => q.bearing !== null)?.bearing ?? 0;
+  return { alongM: chosen.along, offM: chosen.d, bearingDeg: bearing };
 }
 
 /** Within a quarter mile of the route: where a dot is sent from, and which dots are drawn. */
@@ -273,17 +285,42 @@ export interface ShownDot extends Dot {
 /** How long the pulse ring shows after a poll brings a new reading. */
 export const PULSE_S = 2;
 
+/** What says which pass of the route a dot is on: the dots drawn last time, and the rider's own place along it. */
+export interface DotHints {
+  previous?: readonly ShownDot[];
+  myAlongM?: number | null;
+}
+
+/** A dot's last reading is not named (dots are anonymous): the nearest one drawn last time of the same role, within 200 m. */
+const HINT_WITHIN_M = 200;
+
+function hintFor(d: Dot, hints: DotHints): number | null {
+  const role = roleOf(d.role);
+  const kx = M_PER_DEG * Math.cos((d.lat * Math.PI) / 180);
+  let nearest: ShownDot | null = null;
+  let nearestM = HINT_WITHIN_M;
+  for (const p of hints.previous ?? []) {
+    if (p.role !== role) continue;
+    const m = Math.hypot((p.lon - d.lon) * kx, (p.lat - d.lat) * M_PER_DEG);
+    if (m <= nearestM) {
+      nearest = p;
+      nearestM = m;
+    }
+  }
+  return nearest ? nearest.alongM : (hints.myAlongM ?? null);
+}
+
 /**
  * The dots to draw: within a quarter mile of the route and under 2 minutes old, aged by the seconds since the
  * poll; a reading newer than the last poll pulses for the first PULSE_S seconds.
  */
-export function shownDots(line: readonly LonLat[], dots: readonly Dot[], sinceS = 0): ShownDot[] {
+export function shownDots(line: readonly LonLat[], dots: readonly Dot[], sinceS = 0, hints: DotHints = {}): ShownDot[] {
   const out: ShownDot[] = [];
   for (const d of dots) {
     const age = d.age_s + sinceS;
     const f = freshness(age);
     if (f === "gone") continue;
-    const at = project(line, [d.lon, d.lat]);
+    const at = project(line, [d.lon, d.lat], hintFor(d, hints));
     if (at.offM > NEAR_ROUTE_M) continue;
     out.push({
       ...d,

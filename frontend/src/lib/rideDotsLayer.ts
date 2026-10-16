@@ -9,11 +9,14 @@
  * stay the large dark red circle.
  *
  * Roles (Stephen 2026-10-16: "Each will get a distinct color on the map"): each role a colour and a shape, so
- * neither carries it alone. A participant is the small dark blue dot it always was; the lead line a burnt orange
- * chevron pointing the way the route goes; the sweep a blue-black square; a corker a deep teal diamond. The
- * colours are the colour-blind-friendly palette's (stressStyle.js `cvd`: its LTS 3 orange, deepened to hold 3:1
- * on every map surface, and its Avoid blue-black) with the Okabe-Ito bluish green, deepened likewise; every pair
- * is CIEDE2000 15 or more apart under normal vision, protanopia, deuteranopia and tritanopia (rideGroup.test.ts).
+ * neither carries it alone. A participant is a small blue dot; the lead line a near-black violet chevron
+ * pointing the way the route goes; the sweep a magenta square; a corker a dark grey diamond. Chosen by measurement
+ * (review, 2026-10-16: an orange lead vanished on LTS 3 and 4 lines, and a blue-black sweep was Avoid's own line
+ * colour): every pair is CIEDE2000 15 or more apart under normal vision, protanopia, deuteranopia and tritanopia;
+ * each is 7 or more from every line and casing colour of every route palette under each of those (the white
+ * edge separates the rest), 3:1 or more on every map surface, and 3:1 or more from its own white edge, so two
+ * marks that touch are always split by a 3:1 boundary. Four fills 3:1 apart from each other cannot all also be
+ * 3:1 on the light map (only two dark colours fit), so the edge and the shapes carry that (rideGroup.test.ts).
  * The marks are images drawn here pixel by pixel (lib/stationIcons.ts `rasterise`): no files, nothing loaded. A
  * forced-colours mode leaves the map's canvas as drawn; the key beside it (RideGroup.tsx) keeps its swatches'
  * colours there too and names each role in words.
@@ -34,10 +37,10 @@ export const ALERTS_LAYER = "ride-alerts-pin";
 export const RIDER_LAYERS = [DOTS_LAYER, LEAD_LAYER] as const;
 
 export const ROLE_COLOURS: Readonly<Record<RideRole, string>> = {
-  participant: "#1e3a8a",
-  lead: "#b8440a",
-  sweep: "#08081e",
-  corker: "#0f766e",
+  participant: "#0000ee",
+  lead: "#220044",
+  sweep: "#7a1f7a",
+  corker: "#444444",
 };
 /** A participant's dot (the colour every dot was before roles). */
 export const DOT = ROLE_COLOURS.participant;
@@ -163,7 +166,7 @@ export function dotFeatures(dots: readonly ShownDot[]): { type: "FeatureCollecti
     type: "FeatureCollection",
     features: dots.map((d) => ({
       type: "Feature",
-      properties: { freshness: d.freshness, pulse: d.pulse, age: d.age_s, role: d.role, bearing: d.bearing },
+      properties: { freshness: d.freshness, pulse: d.pulse, age: d.age_s, role: d.role, bearing: d.bearing, along: Math.round(d.alongM) },
       geometry: { type: "Point", coordinates: [d.lon, d.lat] },
     })),
   };
