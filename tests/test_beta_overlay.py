@@ -730,11 +730,18 @@ def test_the_access_log_never_records_a_query_string() -> None:
         assert logs == ["/var/log/nginx/rmbeta-access.log rmbeta_noquery"], logs
 
 
+# The api paths whose query carries a place, logged only at `crit` (privacy-6).
+QUERY_PATHS = (
+    "reverse|geocode|segment-info|street-photo|junction-suggestions/at"
+    "|stress-suggestions/ticket|transit/station-times|bikeshare/docks"
+)
+
+
 def test_reverse_and_geocode_log_errors_at_crit_only_with_the_api_proxy_settings() -> None:
     """An upstream error line records the request with its query (OWNER-DECISIONS 395)."""
     full = stage("full")
     found = dict(locations(full))
-    body = found["~ ^/api/(reverse|geocode|segment-info|street-photo)/?$"]
+    body = found[f"~ ^/api/({QUERY_PATHS})/?$"]
     assert re.findall(r"^\s*error_log\s+(.*?);", body, re.M) == [
         "/var/log/nginx/rmbeta-error.log crit"
     ]
@@ -755,16 +762,22 @@ def test_reverse_and_geocode_log_errors_at_crit_only_with_the_api_proxy_settings
     sources = [
         f.read_text() for f in (REPO / "frontend" / "src").rglob("*.ts*") if ".test." not in f.name
     ]
-    queried = {m for text in sources for m in re.findall(r"[`\"'}](/api/[a-z-]+)\?", text)}
+    # Nested paths too (privacy-6): /api/junction-suggestions/at?lat=.. was missed by [a-z-]+.
+    queried = {m for text in sources for m in re.findall(r"[`\"'}](/api/[a-z/-]+)\?", text)}
     assert queried == {
         "/api/reverse",
         "/api/geocode",
         "/api/segment-info",
         "/api/street-photo",
+        "/api/junction-suggestions/at",
+        "/api/stress-suggestions/ticket",
+        "/api/transit/station-times",
+        "/api/bikeshare/docks",
     }, queried
+    covered = re.compile(rf"/api/({QUERY_PATHS})/?")
     for path in queried:
-        assert re.fullmatch(r"/api/(reverse|geocode|segment-info|street-photo)/?", path), path
-    assert not re.fullmatch(r"/api/(reverse|geocode|segment-info|street-photo)/?", "/api/route")
+        assert covered.fullmatch(path), path
+    assert not covered.fullmatch("/api/route")
 
 
 def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and_acme() -> None:

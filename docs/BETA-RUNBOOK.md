@@ -1284,8 +1284,9 @@ removes the agent, its logs and its snapshots (owner's say-so: they hold databas
   Exporting `DATA_ROOT`, `TAG` or a `BETA_...` value in your shell changes nothing; edit `.env` and rerun the gate.
 - **Logs:** `scripts/beta/beta-compose.sh logs --tail 100 api`. Access logs carry no query strings or addresses by design:
   the api's gunicorn log and nginx's `/var/log/nginx/rmbeta-access.log` keep the method, the path, the status and the time,
-  with no query string, no client address and no tester name. Reverse look-ups and searches (`/api/reverse`,
-  `/api/geocode`, whose queries hold a location) log nginx errors at `crit` only, to `/var/log/nginx/rmbeta-error.log`, so
+  with no query string, no client address and no tester name. The paths whose queries hold a place (`/api/reverse`,
+  `/api/geocode`, `/api/segment-info`, `/api/street-photo`, `/api/junction-suggestions/at`,
+  `/api/stress-suggestions/ticket`, `/api/transit/station-times`, `/api/bikeshare/docks`) log nginx errors at `crit` only, to `/var/log/nginx/rmbeta-error.log`, so
   a 502 or 504 there leaves no error-log line; `rmbeta-access.log` still shows the status and the time (about 0 s:
   the api was down; about 75 s: it timed out), and for a 502 the api's own log usually has nothing, because the
   request never reached it. The time in the nginx and gunicorn logs is the whole request's, not one router call's. Upstream errors on every other path still go to the
