@@ -51,6 +51,8 @@ test("Clear says so and hands the focus to the place search; Plan's Clear stays 
   assert.match(app, /if \(!target && index < 0 && route && input\?\.closest\("\[hidden\]"\)\) return;/);
   assert.match(panel, /aria-disabled=\{clearDisabled \|\| undefined\}\s*onClick=\{\(\) => \{\s*if \(!clearDisabled\) onClear\(\);/);
   assert.doesNotMatch(panel, /disabled=\{clearDisabled\}/);
+  // Not left for a later edit when the route does not go.
+  assert.match(app, /if \(focusAfterRemove\.current === -1\) focusAfterRemove\.current = null;\s*\}, CLEAR_FOCUS_WAIT_MS\);/);
 });
 
 test("in Plan a station or a transit option is an edit like any other: it marks the plan changed and waits for Route", () => {

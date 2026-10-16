@@ -39,6 +39,7 @@ import {
   RESET_NOTHING,
   RESET_SAID,
   CLEARED_SAID,
+  CLEAR_FOCUS_WAIT_MS,
   changeSummary,
   legChanges,
   elapsedText,
@@ -2026,6 +2027,10 @@ export function App() {
     // Said, and the focus to the place search, as every other removal hands it on (review a11y-1).
     announce(CLEARED_SAID);
     focusAfterRemove.current = -1;
+    // Not kept past the clear's own renders: a route that does not go would leave it for a later edit.
+    window.setTimeout(() => {
+      if (focusAfterRemove.current === -1) focusAfterRemove.current = null;
+    }, CLEAR_FOCUS_WAIT_MS);
   };
   // An opened GPX file (GpxPanel): one edit, so one undo takes it back -
   // its points, the ride type it names (through the ride-type choice, which
