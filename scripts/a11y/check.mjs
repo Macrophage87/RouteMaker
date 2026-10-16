@@ -3846,8 +3846,9 @@ const JUNCTION_BUTTON = "Suggest a junction change";
     title: m.title, badge: getComputedStyle(m, '::before').content }; }; return { end: one('.pin.pin-end'), start: one('.pin.pin-start') }; })()`);
   check("federal stops: the End marker wears the badge and says the warning in its name and title; the Start marker does not",
     pins.end?.federal && pins.end.badge === '"!"' &&
-      pins.end.label === "End. Inside U.S. Capitol grounds, managed by Architect of the Capitol – federal land: check permit requirements for gathering here. Drag to move." &&
-      /federal land: check permit requirements for gathering here/.test(pins.end.title) && pins.start && !pins.start.federal && pins.start.label === "Start. Drag to move.",
+      // The name is the point and its warning; the drag hint stays in the title (7120fdb7, review a11y-8).
+      pins.end.label === "End. Inside U.S. Capitol grounds, managed by Architect of the Capitol – federal land: check permit requirements for gathering here." &&
+      /federal land: check permit requirements for gathering here/.test(pins.end.title) && pins.start && !pins.start.federal && pins.start.label === "Start.",
     JSON.stringify(pins));
   await openDirections(p);
   const desc = await p.eval(`(() => { const box = document.querySelector('details.route-description .federal-route'); if (!box) return null;
@@ -3959,7 +3960,11 @@ const MARK_SHARE = "(() => { const m = document.querySelector('.route-actions .r
   await sleep(600);
   const sent = await p.eval("({ shared: window.__shared, href: location.href, noActivation: window.__noActivation })");
   const one = sent.shared[0] ?? {};
-  check("share: Enter hands the sheet this page's link (Copy link's), the title, and a plain US-first text, within the press", sent.noActivation === 0 && sent.shared.length === 1 && one.url === sent.href && /#p=/.test(one.url) && one.title === "RouteMaker route" && /^\d[\d.,]* (mi|ft) \(\d[\d.,]* (km|m)\) bike route\. Ride type: Default\.$/.test(one.text ?? "") && !/weight|kg|lb/i.test(JSON.stringify(one)), JSON.stringify(sent));
+  // Share keeps the exact line since v0.7.0 (lib/sharedRoutes.ts): the link is /s/<id> with this page's plan in its
+  // fragment and &route=<id> after it, the id the one kept (the mock answers POST /api/shared-routes with 201).
+  const sharedId = /^http:\/\/127\.0\.0\.1:\d+\/s\/([0-9a-f]{32})#/.exec(one.url ?? "")?.[1];
+  check("share: Enter hands the sheet this page's link (its plan, and the kept line's id), the title, and a plain US-first text, within the press", sent.noActivation === 0 && sent.shared.length === 1 && !!sharedId &&
+    one.url === `${new URL(sent.href).origin}/s/${sharedId}${new URL(sent.href).hash}&route=${sharedId}` && p.sharedRequests?.[0]?.id === sharedId && one.title === "RouteMaker route" && /^\d[\d.,]* (mi|ft) \(\d[\d.,]* (km|m)\) bike route\. Ride type: Default\.$/.test(one.text ?? "") && !/weight|kg|lb/i.test(JSON.stringify(one)), JSON.stringify(sent));
   const status = "(() => ({ spoken: document.querySelector('.route-actions [role=status]')?.textContent.trim() ?? '', shown: document.querySelector('.route-actions .link-said')?.textContent.trim() ?? '', shared: window.__shared.length, noActivation: window.__noActivation }))()";
   const afterOk = await p.eval(status);
   check("share: nothing is said once the sheet opened (the browser does not say where the link went)", afterOk.spoken === "" && afterOk.shown === "", JSON.stringify(afterOk));
@@ -4031,8 +4036,9 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   check("go: a phone with no link opens in Go: Menu, the Go/Plan switch (Go pressed), Layers and Locate over the map, and no bottom bar",
     go.mode === "Go" && go.top && !go.bar && JSON.stringify(go.topButtons) === JSON.stringify(["Menu", "Go", "Plan", "Layers", "Locate"]), JSON.stringify(go));
   // The owner, 2026-10-12: the rider's own ride type first (My Go; Default until set), then the two transit types.
-  check("go: the sheet has Where to?, the place chips Home, Food, Water and Restroom (no Work), and the ride types Default, Own Bike + 🚆🚌, Bikeshare + 🚶🚆🚌 and More ride types",
-    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Food", "Water", "Restroom"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Own Bike + 🚆🚌Own bike plus train or bus", "Bikeshare + 🚶🚆🚌Bikeshare plus walk, train or bus", "More ride types"]), JSON.stringify(go));
+  // More, with Repair and Sights behind it, follow the four since 2b38bf1c ("Go: Repair and Sights behind More").
+  check("go: the sheet has Where to?, the place chips Home, Food, Water and Restroom (no Work), then More with Repair and Sights, and the ride types Default, Own Bike + 🚆🚌, Bikeshare + 🚶🚆🚌 and More ride types",
+    go.search && JSON.stringify(go.chips) === JSON.stringify(["Home", "Food", "Water", "Restroom", "More", "Repair", "Sights"]) && JSON.stringify(go.rides) === JSON.stringify(["Default", "Own Bike + 🚆🚌Own bike plus train or bus", "Bikeshare + 🚶🚆🚌Bikeshare plus walk, train or bus", "More ride types"]), JSON.stringify(go));
   const own = await axNode(p, ".go-sheet .ride-chips .ride-type-chip");
   check("go: the first ride type is described as the rider's own, set in Settings", own?.name === "Default" && /^Your ride type\. Change it in Settings, under My Go\.$/.test(own?.description ?? ""), JSON.stringify(own));
   check("go: every control in the top bar and the sheet is 44 px or more each way, and nothing scrolls sideways at 390 px", go.small.length === 0 && !go.scroll, JSON.stringify(go.small));
@@ -4041,7 +4047,7 @@ const modeNow = "(() => [...document.querySelectorAll('.mode-switch')].filter((g
   check("go: the switch is a group named View, described by what each view is, of toggle buttons (Go pressed: not colour alone)",
     sw?.role === "group" && sw?.name === "View" && /^Go: type a place and ride\./.test(sw?.description ?? "") && pressed?.role === "button" && String(pressed?.pressed) === "true", JSON.stringify({ sw, pressed }));
   const home = await axNode(p, ".go-places .place-chip");
-  check("go: with no Home yet, Home is described by where to set it (signed out too)", home?.name === "Home" && home?.description === "No Home yet: set it in My Go.", JSON.stringify(home));
+  check("go: with no Home yet, Home is described by where to set it (signed out too)", home?.name === "Home" && home?.description === "No Home yet: tap Home to set it." /* 27ad1dae, "Set Home ... from Go's Home chip" */, JSON.stringify(home));
   // Screen-reader order follows the visual order: top bar (left to right), then the sheet.
   const order = await p.eval(`(() => { const els = [...document.querySelectorAll('nav.go-top button, .go-sheet button, .go-sheet input')].filter((e) => e.getClientRects().length && !e.closest('[hidden]'));
     const pos = els.map((e) => { const r = e.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.left)]; });
@@ -4122,9 +4128,11 @@ async function goPick(p, box, text) {
   // Review of PR #95: with the location denied, a destination picked is kept (never made the start), the start box
   // asks for a start, and a start typed there plans the route to that destination.
   const p = await goWith("denied", { init: GEO_TWO });
+  // Everything said from the pick on: the map's own lines (contours, the zoom note, places to see) now follow it.
+  const saidBefore = await p.eval("window.__said.length");
   await goPick(p, ".go-sheet .go-search", "Union");
   await sleep(1200);
-  const waiting = await p.eval("({ notice: document.querySelector('.go-notice')?.textContent ?? '', hash: location.hash, box: !document.querySelector('.go-start-search').hidden, line: document.querySelector('.go-start-line')?.textContent.trim(), said: window.__said.slice(-3) })");
+  const waiting = await p.eval(`({ notice: document.querySelector('.go-notice')?.textContent ?? '', hash: location.hash, box: !document.querySelector('.go-start-search').hidden, line: document.querySelector('.go-start-line')?.textContent.trim(), said: window.__said.slice(${saidBefore}) })`);
   await goPick(p, ".go-start-search", "Dupont");
   const routed = await p.waitFor("!!document.querySelector('.go-summary .start-button')", 20000);
   const after = await p.eval("({ dest: document.querySelector('.go-destination-name')?.textContent ?? '', points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean).length })");
@@ -4366,7 +4374,9 @@ async function goPressMap(p) {
   check("transit (Go): destination, then one tap on Own Bike + 🚆🚌, plans the trip (3 taps), the chip pressed",
     planned && taps === 3 && JSON.stringify(trip.pressed) === JSON.stringify(["Own Bike + 🚆🚌Own bike plus train or bus"]), JSON.stringify({ taps, trip }));
   check("transit (Go): the steps are a list named Steps, in order, read in riding order: ride, into the station, board, out, ride",
-    list?.role === "list" && list?.name === "Steps, in order" && trip.steps.length === 5 && /^Ride 4 min to Eastern Market\.$/.test(trip.steps[0]) && /^Board the Orange Line \(every 10 min, scheduled; about 5 min wait\); ride 10 min to Federal Triangle\.$/.test(trip.steps[2]) && /to your destination\.$/.test(trip.steps[4]),
+    list?.role === "list" && list?.name === "Steps, in order" && trip.steps.length === 5 &&
+      /* a ride step says its traffic stress in words since 8a7c1c1e ("Transit: colour every ride of the trip by traffic stress") */
+      /^Ride 4 min to Eastern Market\. Traffic stress along it: \d+% traffic-free path, \d+% LTS 2\.$/.test(trip.steps[0]) && /^Board the Orange Line \(every 10 min, scheduled; about 5 min wait\); ride 10 min to Federal Triangle\.$/.test(trip.steps[2]) && /to your destination\.$/.test(trip.steps[4]),
     JSON.stringify({ list, steps: trip.steps }));
   check("transit (Go): the time shown is the door-to-door total, 'about' and named scheduled for a screen reader, with riding the whole way beside it",
     trip.total === "about 28 min" && trip.totalName === "Door-to-door time, scheduled" && trip.heading === "Own Bike + 🚆🚌: About 28 min door to door, scheduledOwn bike plus train or bus: About 28 min door to door, scheduled" && /^Riding the whole way: about 32 min\./.test(trip.compare ?? ""),
@@ -4456,10 +4466,13 @@ async function goPressMap(p) {
   await openMetro();
   const second = await p.eval("document.querySelectorAll('.lettered-marker')[1].getAttribute('aria-label').replace(/^B: /, '').replace(/, [0-9.]+ mi.*$/, '')");
   await p.eval("document.getElementById('sheet-nearest-title').focus(); true");
+  const saidBefore = await p.eval("window.__said.length");
   await p.key("b", "KeyB", 66);
   await sleep(2500);
-  const keyed = await p.eval("({ sheet: document.getElementById('sheet-nearest').hidden, dest: document.querySelector('.go-destination-name')?.textContent ?? '' })");
-  check("lettered places: pressing the B key picks option B as the destination", keyed.sheet && keyed.dest === `To ${second}`, JSON.stringify({ keyed, second }));
+  const keyed = await p.eval(`({ sheet: document.getElementById('sheet-nearest').hidden, dest: document.querySelector('.go-destination-name')?.textContent ?? '', points: (location.hash.match(/p=([^&]*)/)?.[1] ?? '').split(';').filter(Boolean).length, said: window.__said.slice(${saidBefore}) })`);
+  // With a route in Go a chip's place is a stop on it since b51ec7f7 ("Keep adding stops by search, in Plan and in
+  // Go"): B is added as a stop, said, and the destination stays A.
+  check("lettered places: pressing the B key picks option B, a stop on the route shown, and says so", keyed.sheet && keyed.dest === tapped.dest && keyed.points === 3 && keyed.said.some((t) => t.includes(second)), JSON.stringify({ keyed, second }));
   await p.close();
 }
 {
@@ -4526,10 +4539,12 @@ async function goPressMap(p) {
   const onB = await p.waitFor(`document.querySelector('.go-bike-option[aria-pressed=true] .place-letter')?.textContent === 'B'`, 20000);
   const sentB = JSON.parse(p.routeBodies.at(-1) || "{}");
   const before = p.routeRequests;
+  // Everything said from the pick on (the map's own lines, such as the docks' status, can follow it).
+  const saidBefore = await p.eval("window.__said.length");
   await p.eval("document.querySelectorAll('.go-bike-option')[0].click(); true");
   const onA = await p.waitFor(`document.querySelector('.go-bike-option[aria-pressed=true] .place-letter')?.textContent === 'A'`, 10000);
   await sleep(800);
-  const after = await p.eval("({ buttons: document.querySelectorAll('.go-bike-option').length, said: window.__said.slice(-4) })");
+  const after = await p.eval(`({ buttons: document.querySelectorAll('.go-bike-option').length, said: window.__said.slice(${saidBefore}) })`);
   check("go bikeshare options: a free e-bike's option A, picked again after B, shows the first answer's plan again (no request that could plan another bike or a dock), A pressed, and says so politely",
     listed && onB && sentB.pickup_station === "fx-b" && onA && p.routeRequests === before && after.buttons === 2 && after.said.some((t) => t.includes("Option A: picking up at an e-bike outside a dock, as first planned.")),
     JSON.stringify({ sentB, requests: p.routeRequests - before, after }));
@@ -4542,8 +4557,8 @@ async function goPressMap(p) {
   const pins = await p.eval(`(() => { const one = (sel) => { const m = document.querySelector(sel); return m && { text: m.textContent, name: m.getAttribute('aria-label'), path: !!m.querySelector('svg path'), rect: !!m.querySelector('svg rect'), hidden: m.querySelector('svg')?.getAttribute('aria-hidden') }; };
     return { start: one('.pin.pin-start'), end: one('.pin.pin-end') }; })()`);
   check("pins: the start shows a play triangle and the end a stop square (no A or B), each glyph hidden, named Start and End",
-    pins.start?.text === "" && pins.start.path && !pins.start.rect && pins.start.hidden === "true" && /^Start\. /.test(pins.start.name ?? "") &&
-      pins.end?.text === "" && pins.end.rect && pins.end.hidden === "true" && /^End\. /.test(pins.end.name ?? ""), JSON.stringify(pins));
+    pins.start?.text === "" && pins.start.path && !pins.start.rect && pins.start.hidden === "true" && /^Start\.( |$)/.test(pins.start.name ?? "") &&
+      pins.end?.text === "" && pins.end.rect && pins.end.hidden === "true" && /^End\.( |$)/.test(pins.end.name ?? "") /* the drag hint is the title's alone since 7120fdb7 */, JSON.stringify(pins));
   await p.close();
 }
 {
@@ -4566,7 +4581,8 @@ async function goPressMap(p) {
   await p.close();
   const q = await bare({ width: 1280, height: 900, mobile: false });
   const wide = await q.eval(`({ mode: ${modeNow}, top: !!document.querySelector('nav.go-top'), chips: [...document.querySelectorAll('.map-chips .map-chip')].map((x) => x.textContent.trim()) })`);
-  check("go: a shared link opens in Plan on a phone, and a wide screen opens in Plan, with Food and Water chips on the map", linked === "Plan" && wide.mode === "Plan" && !wide.top && JSON.stringify(wide.chips) === JSON.stringify(["Food", "Water"]), JSON.stringify({ linked, wide }));
+  // Places to see joined Plan's map chips in 2b38bf1c ("Go: Repair and Sights behind More; Plan: Places to see").
+  check("go: a shared link opens in Plan on a phone, and a wide screen opens in Plan, with Food, Water and Places to see chips on the map", linked === "Plan" && wide.mode === "Plan" && !wide.top && JSON.stringify(wide.chips) === JSON.stringify(["Food", "Water", "Places to see"]), JSON.stringify({ linked, wide }));
   await q.close();
 }
 {
