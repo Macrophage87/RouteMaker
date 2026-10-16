@@ -785,6 +785,7 @@ def nightly_backup(timestamp: int) -> None:
     """
     from django.conf import settings
 
+    from core import shared_routes, signed_out_suggestions
     from core.runs import prune_job_rows, prune_run_rows, record
     from pipeline import retention
 
@@ -799,9 +800,14 @@ def nightly_backup(timestamp: int) -> None:
             pruned_dumps = retention.prune_backups(settings.BACKUP_DIR, keep=BACKUP_KEEP)
             pruned_runs = prune_run_rows()
             pruned_jobs = prune_job_rows()
+            # Rows that are otherwise dropped only when someone shares, opens or sends
+            # (core.shared_routes, core.signed_out_suggestions): a quiet server drops them too.
+            pruned_shared = shared_routes.prune()
+            pruned_sends = signed_out_suggestions.prune()
         run.detail = (
             f"{destination}; pruned {len(pruned_dumps)} old dumps, "
-            f"{pruned_runs} run rows, {pruned_jobs} finished job rows"
+            f"{pruned_runs} run rows, {pruned_jobs} finished job rows, "
+            f"{pruned_shared} shared routes, {pruned_sends} signed-out send rows"
         )
         run.save(update_fields=["detail"])
 

@@ -4823,9 +4823,8 @@ def _shared_out(row) -> dict:
 
 def _purge_shared(now) -> None:
     from . import shared_routes
-    from .models import SharedRoute
 
-    SharedRoute.objects.filter(last_opened_at__lt=now - shared_routes.KEEP).delete()
+    shared_routes.prune(now)
 
 
 @api.post("/shared-routes", summary="Keep a shared route's exact line under the link's id")

@@ -1455,7 +1455,8 @@ class SignedOutSend(models.Model):
 
     `device` is a salted hash of the sender's address and the day (HMAC with a key derived
     from the server's secret, so it cannot be reversed or matched across days); the address
-    itself is never stored. Rows older than 24 hours are deleted at every send, so nothing
+    itself is never stored. Rows older than 24 hours are deleted at every send and nightly
+    (`signed_out_suggestions.prune`, by the backup task), so nothing
     here outlives a day. Nothing links a row to its suggestion.
     """
 

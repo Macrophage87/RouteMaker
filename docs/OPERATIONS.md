@@ -197,7 +197,8 @@ declining every week with "grow the volume" as the only remedy.
 | `scheduled_run` rows | 30 days, plus the newest row and the newest successful row per task | `core.runs.prune_run_rows`, run nightly |
 | Finished `procrastinate_jobs` and their events | 30 days | `core.runs.prune_job_rows`, run nightly |
 | `rate_limit_window` rows (keyed client addresses) | 1 day idle, so at most about 30 hours | `core.ratelimit.purge_expired`, run by the six-hourly membership sweep |
-| `shared_route` rows (the exact lines Share links open) | 1 year after the link was last opened | `core.api` deletes the expired at every share and every open |
+| `shared_route` rows (the exact lines Share links open) | 1 year after the link was last opened | `core.shared_routes.prune`, at every share and every open, and nightly by the backup task |
+| `signed_out_send` rows (a device's salted daily hash and the road, for the signed-out suggestion limits) | 24 hours | `core.signed_out_suggestions.prune`, at every signed-out send, and nightly by the backup task |
 
 Three rules are load-bearing rather than incidental:
 

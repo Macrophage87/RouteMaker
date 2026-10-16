@@ -84,6 +84,14 @@ class Again(stress_edits.EditRefused):
     code = "conflict"
 
 
+def prune(now=None) -> int:
+    """Delete the per-device send rows older than `KEEP`; how many. Run at every send
+    (`create`), and nightly by the backup task, so a quiet server drops them too."""
+    now = now or timezone.now()
+    deleted, _ = SignedOutSend.objects.filter(created_at__lt=now - KEEP).delete()
+    return deleted
+
+
 def ticket(way_id: int) -> str:
     """What the form carries back: proof it was opened on this road, signed and dated."""
     return signing.dumps({"w": int(way_id)}, salt=TICKET_SALT, compress=True)
