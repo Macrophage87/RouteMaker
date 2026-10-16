@@ -26,11 +26,19 @@ test("1. track-up by default, the ride settings' switch remembered on this devic
   assert.doesNotMatch(follow, /\.focus\(/);
 });
 
-test("6. an End button always in view, named End ride, one tap; Ride ended with Undo", () => {
-  const top = ride.slice(ride.indexOf('<div className="ride-top">'), ride.indexOf('<div className="ride-top">') + 600);
+test("6. an End ride button always in view, labelled End ride with its icon, one tap; Ride ended with Undo", () => {
+  const top = ride.slice(ride.indexOf('<div className="ride-top">'), ride.indexOf('<div className="ride-top">') + 1200);
   assert.match(top, /<h2 id="ride-heading"/);
-  assert.match(top, /<button type="button" className="danger ride-end" onClick=\{end\} aria-label=\{END_RIDE_NAME\}>/);
+  // The owner, 2026-10-16 ("add a method of ending navigation"): the visible words are End ride, so its name is too.
+  assert.match(top, /<button type="button" className="danger ride-end" onClick=\{end\}>\s*<Icon name="stop" size=\{18\} \/>\s*\{END_RIDE_NAME\}\s*<\/button>/);
   assert.match(ride, /export const END_RIDE_NAME = "End ride";/);
+  // End ride stops the ride at once: the watch, the queued words and the voice, then App's endRide.
+  const end = ride.slice(ride.indexOf("  const end = () => {"), ride.indexOf("  const keep = () => {"));
+  assert.match(end, /ended\.current = true;\s*stopWatch\.current\?\.\(\);\s*stopWatch\.current = null;\s*announcer\.current\?\.drop\(\);\s*rideVoice\.stop\(\);/);
+  assert.match(end, /onEnd\(/);
+  assert.match(app, /onEnd=\{endRide\}/);
+  const endRide = app.slice(app.indexOf("const endRide = useCallback("), app.indexOf("const undoEndRide = () => {"));
+  assert.match(endRide, /setRiding\(false\);\s*setRideStart\(null\);/);
   // Review F5: the action row's duplicate End ride is gone; the sticky top End is the one End control (one, not two).
   assert.equal(ride.match(/onClick=\{end\}/g)?.length, 1);
   assert.doesNotMatch(ride, /<button type="button" className="danger" onClick=\{end\}>/);
@@ -44,7 +52,7 @@ test("6. an End button always in view, named End ride, one tap; Ride ended with 
   // The focus put on Undo does not hold the bar: it is released before the 8 s start (re-check of F6).
   assert.match(ride, /undo\.current\?\.focus\(\);\s*timer\.focus\(false\);\s*timer\.start\(\);/);
   assert.match(ride, /export const RIDE_ENDED_SAID = "Ride ended\. Undo available\.";/);
-  assert.match(app, /announce\(RIDE_ENDED_SAID\);/);
+  assert.match(app, /announce\(from \? RIDE_ENDED_FROM_HERE_SAID : after === "no-fix" \? RIDE_ENDED_NO_FIX_SAID : RIDE_ENDED_SAID\);/);
   assert.doesNotMatch(app, /focusStartAfterRide/);
   assert.match(ride, /onFocus: \(\) => timer\.current\?\.focus\(true\)/);
   assert.match(ride, /export const UNDO_END_MS = 8_000;/);
@@ -87,4 +95,39 @@ test("F1. Start unlocks the voice synchronously in the press, before the closure
   // A slow check is said politely.
   assert.match(start, /window\.setTimeout\(\(\) => announce\(CHECKING_CLOSURES\), CLOSURE_SLOW_MS\)/);
   assert.match(ride, /export const CHECKING_CLOSURES = "Checking closures…";/);
+});
+
+test("Ride settings in reach (the owner, 2026-10-16): a Settings button beside End ride opens them just under the top row", () => {
+  const top = ride.slice(ride.indexOf('<div className="ride-top">'), ride.indexOf("{ride.arrived ? ("));
+  // Settings, then End ride, in the always-visible row; Settings is a disclosure of the panel under it.
+  assert.ok(top.indexOf("RIDE_SETTINGS_TEXT") > 0 && top.indexOf("RIDE_SETTINGS_TEXT") < top.indexOf("END_RIDE_NAME"));
+  assert.match(top, /aria-expanded=\{settingsOpen\}\s*aria-controls=\{`\$\{settingsId\}-settings`\}/);
+  assert.match(top, /<Icon name="gear" size=\{18\} \/>/);
+  assert.match(top, /<div id=\{`\$\{settingsId\}-settings`\} className="ride-mode-settings" role="group" aria-label=\{RIDE_SETTINGS_TITLE\} hidden=\{!settingsOpen\}>/);
+  assert.match(top, /<RideSettingsFields prefs=\{prefs\} onChange=\{onPrefs\}/);
+  // One copy of the settings: the fold at the bottom is gone.
+  assert.equal(ride.match(/<RideSettingsFields prefs=\{prefs\}/g)?.length, 1);
+  assert.doesNotMatch(ride, /<summary>Ride settings<\/summary>/);
+  // The row wraps under the heading on a narrow phone rather than overflow.
+  assert.match(css, /\.ride-top \{[^}]*flex-wrap: wrap;/);
+});
+
+test("Go's Ride sheet offers Start ride for the route its changes planned (the owner: start from the edit default)", () => {
+  const sheet = app.slice(app.indexOf("<RideSheet nav={sheetNav}>"), app.indexOf("</RideSheet>"));
+  assert.match(sheet, /\{goMode && shown && !stale && !riding && rideableRoute\(shown\) && \(/);
+  // The same Start as the route panel's (its closure check first), the sheet closed.
+  assert.match(sheet, /showPlanner\(false\);\s*startRideChecked\(\);/);
+  assert.equal(sheet.match(/Start ride/g)?.length, 1);
+});
+
+test("End ride keeps the plan and its routes; part way it starts where the rider is, and Undo takes that back", () => {
+  const endRide = app.slice(app.indexOf("const endRide = useCallback("), app.indexOf("const undoEndRide = () => {"));
+  // Nothing about the plan is cleared: the points, the answer and its routes stay for the planner shown again.
+  assert.doesNotMatch(endRide, /setPoints\(|setAnswer\(|forgetDrawn\(|setChoice\(/);
+  // Part way: one edit of the points (re-planned as any edit is), a loop turned off as its finish is now a point.
+  assert.match(endRide, /commit\(from, ride\.dials\.loop \? \{ \.\.\.ride, dials: \{ \.\.\.ride\.dials, loop: false \} \} : undefined\);/);
+  assert.match(endRide, /announce\(from \? RIDE_ENDED_FROM_HERE_SAID : after === "no-fix" \? RIDE_ENDED_NO_FIX_SAID : RIDE_ENDED_SAID\);/);
+  // The ride's own fix (planAfterEnd), never a trip's riding leg.
+  assert.match(ride, /onEnd\(trip \? null : planAfterEnd\(modelRef\.current, rideRef\.current, plan\.current\.points, plan\.current\.loop, Date\.now\(\)\)\);/);
+  assert.match(app, /if \(ended\.from && pointsRef\.current === ended\.from\) edits\.travel\("undo"\);/);
 });

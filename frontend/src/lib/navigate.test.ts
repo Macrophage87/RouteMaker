@@ -8,6 +8,9 @@ import type { LonLat } from "./geo.ts";
 import { spokenDistance } from "./format.ts";
 import {
   ADVANCE_MIN_M,
+  END_FIX_MAX_AGE_MS,
+  END_PART_WAY_M,
+  planAfterEnd,
   GPS_WEAK_MS,
   GPS_WEAK_SAID,
   weighFix,
@@ -1094,4 +1097,26 @@ test("onto: a road's new name straight on is said only when it lasts more than a
   assert.deepEqual(roads.cues.filter((c) => c.kind === "onto").map((c) => c.text), ["Continue onto C Street."]);
   const same = rideModel(straightRoute([stretch(0, 1000, "A Street.", { street: "A Street" }), stretch(1000, 3000, "Continue on A Street.", { street: "A Street", tier: 2 })]));
   assert.equal(same.cues.filter((c) => c.kind === "onto").length, 0);
+});
+
+test("planAfterEnd: part way, the plan starts at the last good fix with the stops passed dropped; else as it was", () => {
+  const model = rideModel(twoLegs());
+  const plan: LonLat[] = [at(0, 0), at(1000, 0), at(1500, 0)];
+  const here = at(1200, 10);
+  const now = 1_000_000;
+  const fixAt = (point: LonLat, at: number): RideFix => ({ point, accuracyM: 5, speedMs: 5, headingDeg: null, at });
+  // Past stop 1: from here to the finish.
+  assert.deepEqual(planAfterEnd(model, { progressM: 1200, goodFix: fixAt(here, now - 5000), arrived: false }, plan, false, now), { points: [here, plan[2]] });
+  // Before stop 1: it is kept.
+  assert.deepEqual(planAfterEnd(model, { progressM: 500, goodFix: fixAt(at(500, 0), now), arrived: false }, plan, false, now), { points: [at(500, 0), plan[1], plan[2]] });
+  // A loop's finish stays its start.
+  assert.deepEqual(planAfterEnd(model, { progressM: 1200, goodFix: fixAt(here, now), arrived: false }, plan, true, now), { points: [here, plan[2], plan[0]] });
+  // Part way with no recent fix: the plan keeps its start, and says so.
+  assert.equal(planAfterEnd(model, { progressM: 1200, goodFix: fixAt(here, now - END_FIX_MAX_AGE_MS - 1), arrived: false }, plan, false, now), "no-fix");
+  assert.equal(planAfterEnd(model, { progressM: 1200, goodFix: null, arrived: false }, plan, false, now), "no-fix");
+  // At the start, at the end, or arrived: the plan as it was.
+  assert.equal(planAfterEnd(model, { progressM: END_PART_WAY_M - 1, goodFix: fixAt(here, now), arrived: false }, plan, false, now), null);
+  assert.equal(planAfterEnd(model, { progressM: null, goodFix: null, arrived: false }, plan, false, now), null);
+  assert.equal(planAfterEnd(model, { progressM: model.lengthM - 5, goodFix: fixAt(here, now), arrived: false }, plan, false, now), null);
+  assert.equal(planAfterEnd(model, { progressM: 1200, goodFix: fixAt(here, now), arrived: true }, plan, false, now), null);
 });

@@ -988,6 +988,31 @@ export function replanPoints(model: RideModel, progressM: number, here: LonLat, 
   return [here, ...left, end];
 }
 
+/** End ride this far along the line or more is part way: the plan left behind starts where the rider is. */
+export const END_PART_WAY_M = 100;
+/** The last good fix is where the rider is at End ride for this long (a minute); older, the plan keeps its start. */
+export const END_FIX_MAX_AGE_MS = 60_000;
+
+/**
+ * The plan End ride leaves (the owner, 2026-10-16: "If you went part way it changes your start location"):
+ * part way along, from the last good fix through the stops not yet passed to the end (`replanPoints`; a
+ * loop's finish stays its start); "no-fix" part way with no recent good fix, so the plan keeps its start
+ * and the rider is told; null at or near the start, at the end, or after arrival: the plan as it was.
+ */
+export function planAfterEnd(
+  model: RideModel,
+  state: Pick<RideState, "progressM" | "goodFix" | "arrived">,
+  points: readonly LonLat[],
+  loop: boolean,
+  now: number,
+): { points: LonLat[] } | "no-fix" | null {
+  const progress = state.progressM;
+  if (state.arrived || progress === null || progress < END_PART_WAY_M || model.lengthM - progress <= ARRIVE_M) return null;
+  const fix = state.goodFix;
+  if (!fix || now - fix.at > END_FIX_MAX_AGE_MS) return "no-fix";
+  return { points: replanPoints(model, progress, fix.point, points, loop) };
+}
+
 /** The pacing of automatic re-plans: one in flight, 30 s apart, 2 min after two failures in a row. */
 export const REPLAN_GAP_MS = 30_000;
 export const REPLAN_BACKOFF_MS = 120_000;
