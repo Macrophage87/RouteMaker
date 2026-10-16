@@ -399,6 +399,18 @@ test("a road closed on weekends is a path on weekends and its own road otherwise
   assert.deepEqual(drawnBy("weekend", withLane), ASPATH);
 });
 
+test("a road closed to cars now has no half step, even one whose own tier is 1 (review CH-5)", () => {
+  const halves = (when, properties) =>
+    halfStepLayers("stress", when)
+      .filter((layer) => draws(layer, properties))
+      .map((layer) => layer.id)
+      .sort();
+  const road = { tier: 1, half: true, facility: "none", car_free: "weekend" };
+  assert.deepEqual(halves("weekend", road), [], "closed to cars: a path at 1, as the router has it");
+  assert.deepEqual(halves("weekday_offpeak", road), ["stress-half-1", "stress-half-outline-1"]);
+  assert.deepEqual(halves("weekend", { ...road, tier: 3 }), []);
+});
+
 test("zoomed out, such a road is drawn only in the ride times it is closed in", () => {
   const sligo = { tier: 3, facility: "none", car_free_only: "weekend" };
   assert.deepEqual(drawnBy("weekend", sligo), ASPATH);
