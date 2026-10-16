@@ -30,10 +30,14 @@ type SheetRoute = Pick<RouteResponse, "preset" | "distance_m" | "duration_s" | "
 /** One row of the sheet. */
 export interface CueRow {
   type: CourseCueType;
+  /** Ride's hazard: an Avoid-rated junction, a work zone or a flagged crossing (a crossing is a course's note). */
+  hazard: boolean;
   /** Metres from the start along the line. */
   atM: number;
   /** "Left", "Right", "Start", "Stop 1", "Caution", "Walk", "Note", "Finish". */
   turn: string;
+  /** A hazard's short reason, "Avoid-rated", "Work zone" or "Crossing"; "" otherwise. */
+  reason: string;
   /** The street, in full as the API names it, or "" where it has none. */
   road: string;
   /** Ride's words where the turn and road do not say it all; "" for a plain turn. */
@@ -51,12 +55,19 @@ const TURN_WORDS: Record<CourseCueType, string> = {
   note: "Note",
 };
 
+/** A hazard's short reason, for the strip and the lock-screen image, from the description entry it came from. */
+const REASONS: Record<string, string> = { avoid: "Avoid-rated", workzone: "Work zone", junction: "Crossing" };
+
 function rowOf(cue: RouteCue): CueRow {
   const plainTurn = cue.type === "left" || cue.type === "right";
+  const hazard = cue.kind === "hazard";
   return {
     type: cue.type,
+    hazard,
     atM: cue.atM,
-    turn: cue.type === "stop" ? cue.name : TURN_WORDS[cue.type],
+    // A flagged crossing is a note to a course (it can be dropped there) but a caution on paper, as Ride says it.
+    turn: hazard ? "Caution" : cue.type === "stop" ? cue.name : TURN_WORDS[cue.type],
+    reason: hazard ? (REASONS[cue.source ?? ""] ?? "") : "",
     road: cue.street ?? "",
     // A turn's words are the turn and the street, already in the row; "Start." and "Stop 1." say no more either.
     notes: plainTurn || cue.type === "start" || cue.type === "stop" ? "" : cue.text,
@@ -66,7 +77,7 @@ function rowOf(cue: RouteCue): CueRow {
 /** The rows of a sheet: every cue on the rider sheet; on the strip, all but the notes on the road's stress and surface. */
 export function cueRows(route: SheetRoute, kind: CueSheetKind, vias: readonly number[] = []): CueRow[] {
   const rows = routeCues(route, vias).map(rowOf);
-  return kind === "strip" ? rows.filter((r) => r.type !== "note") : rows;
+  return kind === "strip" ? rows.filter((r) => r.type !== "note" || r.hazard) : rows;
 }
 
 /** "12.4 mi (20.0 km)": the distance column's words. */
@@ -117,11 +128,13 @@ export function cueSheetTitle(route: Pick<RouteResponse, "preset" | "distance_m"
   return `${kind === "sheet" ? "Cue sheet" : "Handlebar cue strip"}, ${exportName(route)}`;
 }
 
+type Part = { text: string; size: number; font: PdfFont };
+
 /** A column: its head, its width, and its cell's text, wrapped in the column's face and size or set as given parts. */
 interface Column {
   head: string;
   width: number;
-  cell: (row: CueRow) => string | { text: string; size: number; font: PdfFont }[];
+  cell: (row: CueRow) => string | Part[];
   font: PdfFont;
 }
 
@@ -151,10 +164,15 @@ class Flow {
     this.newPage();
     return true;
   }
-  /** A paragraph of wrapped lines under `owner`. */
-  para(owner: StructElement | null, text: string, size: number, font: PdfFont, gapAfter: number): void {
+  /**
+   * A paragraph of wrapped lines under `owner`. `keep` is the height of what must follow it on the same page (a
+   * heading kept with the next block): the paragraph and that much are moved to a new page together.
+   */
+  para(owner: StructElement | null, text: string, size: number, font: PdfFont, gapAfter: number, keep = 0): void {
     const lead = size * 1.25;
-    for (const line of spaced(wrapText(text, font, size, this.pdf.width - 2 * this.margin.side))) {
+    const lines = spaced(wrapText(text, font, size, this.pdf.width - 2 * this.margin.side));
+    if (keep > 0) this.need(lines.length * lead + gapAfter + keep);
+    for (const line of lines) {
       this.need(lead);
       this.y -= lead;
       this.pdf.text(this.page, owner, this.margin.side, this.y + size * 0.25, size, font, line);
@@ -163,38 +181,48 @@ class Flow {
   }
 }
 
+/** The mark wide enough for any page count a cue sheet reaches, to keep room for it beside the credit. */
+const WIDEST_MARK = "Page 888 of 888";
+
+/** The footer's credit lines, wrapped beside the page mark. */
+function footerLines(width: number, side: number, size: number, credit: string): string[] {
+  return wrapText(credit, "regular", size, width - 2 * side - textWidth(WIDEST_MARK, "regular", size) - 8);
+}
+
+/** The footer's height above its baseline `y`, so the page's bottom margin is set from it and never overlaps it. */
+function footerTop(width: number, side: number, y: number, size: number, credit: string): number {
+  return y + footerLines(width, side, size, credit).length * size * 1.2;
+}
+
 /** The footer on each page, once the count is known: the credit and "Page 1 of 2", as Artifacts. */
 function footers(pdf: TaggedPdf, side: number, y: number, size: number, credit: string): void {
+  const lines = footerLines(pdf.width, side, size, credit);
   for (let page = 0; page < pdf.pageCount; page += 1) {
     const mark = `Page ${page + 1} of ${pdf.pageCount}`;
-    const room = pdf.width - 2 * side - textWidth(mark, "regular", size) - 8;
-    const lines = wrapText(credit, "regular", size, room);
     lines.forEach((line, i) => pdf.text(page, null, side, y + (lines.length - 1 - i) * size * 1.2, size, "regular", line));
     pdf.text(page, null, pdf.width - side - textWidth(mark, "regular", size), y, size, "regular", mark);
   }
 }
 
-/** A table of rows, its header row tagged once and carried onto later pages as an Artifact. */
-function table(flow: Flow, rows: readonly CueRow[], columns: readonly Column[], size: number, headSize: number, pad: number): void {
-  const { pdf, margin } = flow;
-  const tableEl = pdf.element("Table");
-  const headLead = headSize * 1.2;
-  const right = pdf.width - margin.side;
-  const header = (tagged: boolean) => {
-    flow.need(headLead + pad * 2 + size * 1.2 + pad * 2);
-    const tr = tagged ? pdf.element("TR", tableEl) : null;
-    flow.y -= pad + headLead;
-    let x = margin.side;
-    for (const c of columns) {
-      const th = tr ? pdf.element("TH", tr, "Column") : null;
-      pdf.text(flow.page, th, x + pad, flow.y + headSize * 0.25, headSize, "bold", c.head);
-      x += c.width;
-    }
-    flow.y -= pad;
-    pdf.rule(flow.page, margin.side, flow.y, right, flow.y, 1);
-  };
-  header(true);
-  for (const row of rows) {
+interface CellLine {
+  line: string;
+  size: number;
+  font: PdfFont;
+  /** The baseline's depth below the row's top. */
+  depth: number;
+}
+
+/** A table measured before it is set: each row's cells as lines, its height, and the header's. */
+interface TableLayout {
+  columns: readonly Column[];
+  rows: { cells: CellLine[][]; height: number }[];
+  headHeight: number;
+  headSize: number;
+  pad: number;
+}
+
+function layoutTable(rows: readonly CueRow[], columns: readonly Column[], size: number, headSize: number, pad: number): TableLayout {
+  const laid = rows.map((row) => {
     // Each cell's lines, each with its own size and the depth of its baseline below the row's top.
     const cells = columns.map((c) => {
       const made = c.cell(row);
@@ -209,18 +237,50 @@ function table(flow: Flow, rows: readonly CueRow[], columns: readonly Column[], 
       const text = spaced(lines.map((l) => l.line));
       return lines.map((l, j) => ({ ...l, line: text[j] }));
     });
-    const height = Math.max(...cells.map((l) => l[l.length - 1]?.depth ?? 0)) + pad;
-    if (flow.need(height)) header(false);
-    const tr = pdf.element("TR", tableEl);
+    return { cells, height: Math.max(...cells.map((l) => l[l.length - 1]?.depth ?? 0)) + pad };
+  });
+  return { columns, rows: laid, headHeight: headSize * 1.2 + pad * 2, headSize, pad };
+}
+
+/** The table's header and first row: what a heading before it is kept with, and the header itself too. */
+function tableKeep(t: TableLayout): number {
+  return t.headHeight + (t.rows[0]?.height ?? 0);
+}
+
+/** A measured table set in the flow: header in THead, rows in TBody; the header carried onto later pages as an Artifact. */
+function drawTable(flow: Flow, t: TableLayout): void {
+  const { pdf, margin } = flow;
+  const { columns, pad, headSize } = t;
+  const tableEl = pdf.element("Table");
+  const right = pdf.width - margin.side;
+  const header = (tagged: boolean) => {
+    const tr = tagged ? pdf.element("TR", pdf.element("THead", tableEl)) : null;
+    flow.y -= pad + headSize * 1.2;
+    let x = margin.side;
+    for (const c of columns) {
+      const th = tr ? pdf.element("TH", tr, "Column") : null;
+      pdf.text(flow.page, th, x + pad, flow.y + headSize * 0.25, headSize, "bold", c.head);
+      x += c.width;
+    }
+    flow.y -= pad;
+    pdf.rule(flow.page, margin.side, flow.y, right, flow.y, 1);
+  };
+  // The header is kept with the first row at its real height.
+  flow.need(tableKeep(t));
+  header(true);
+  const body = pdf.element("TBody", tableEl);
+  for (const row of t.rows) {
+    if (flow.need(row.height)) header(false);
+    const tr = pdf.element("TR", body);
     let x = margin.side;
     columns.forEach((c, i) => {
       const td = pdf.element("TD", tr);
-      for (const part of cells[i]) {
+      for (const part of row.cells[i]) {
         if (part.line) pdf.text(flow.page, td, x + pad, flow.y - part.depth + part.size * 0.25, part.size, part.font, part.line);
       }
       x += c.width;
     });
-    flow.y -= height;
+    flow.y -= row.height;
     pdf.rule(flow.page, margin.side, flow.y, right, flow.y, 0.4);
   }
 }
@@ -229,25 +289,29 @@ const LETTER = { width: 612, height: 792 };
 /** 3 by 11 inches: a strip to print at actual size and cut out. */
 const STRIP = { width: 216, height: 792 };
 
+/** The strip's turn cell: the turn large, and a hazard's short reason small under it ("Caution", "Avoid-rated"). */
+function stripTurn(row: CueRow): Part[] {
+  return [{ text: row.turn, size: 13, font: "bold" }, ...(row.reason ? [{ text: row.reason, size: 7, font: "regular" as const }] : [])];
+}
+
 /** The PDF file of a cue sheet for the route shown. `vias` are the plan's via points by index, not cues, as in Ride. */
 export function cueSheetPdf(route: SheetRoute, kind: CueSheetKind, vias: readonly number[] = []): Uint8Array<ArrayBuffer> {
   const rows = cueRows(route, kind, vias);
   const title = cueSheetTitle(route, kind);
   const credit = sheetCredit(route);
   if (kind === "sheet") {
+    const foot = { side: 54, y: 36, size: 8 };
     const pdf = new TaggedPdf(LETTER.width, LETTER.height, { title, creator: CREATOR, lang: "en-US" });
-    const flow = new Flow(pdf, { top: 54, bottom: 66, side: 54 });
+    const flow = new Flow(pdf, { top: 54, bottom: footerTop(LETTER.width, foot.side, foot.y, foot.size, credit) + 12, side: 54 });
     flow.para(pdf.element("H1"), exportName(route), 18, "bold", 4);
     flow.para(pdf.element("P"), `Rider cue sheet. ${summaryLine(route)}`, 11, "regular", 10);
     const warnings = sheetWarnings(route);
     if (warnings.length) {
-      flow.para(pdf.element("H2"), "Warnings", 13, "bold", 2);
+      flow.para(pdf.element("H2"), "Warnings", 13, "bold", 2, 10.5 * 1.25);
       for (const w of warnings) flow.para(pdf.element("P"), w, 10.5, "regular", 4);
       flow.y -= 6;
     }
-    flow.para(pdf.element("H2"), "Cues", 13, "bold", 2);
-    table(
-      flow,
+    const t = layoutTable(
       rows,
       [
         { head: "Miles (km)", width: 96, cell: rowDistance, font: "bold" },
@@ -259,18 +323,20 @@ export function cueSheetPdf(route: SheetRoute, kind: CueSheetKind, vias: readonl
       10,
       4,
     );
+    flow.para(pdf.element("H2"), "Cues", 13, "bold", 2, tableKeep(t));
+    drawTable(flow, t);
     flow.y -= 12;
-    flow.para(pdf.element("H2"), "Credits", 13, "bold", 2);
+    flow.para(pdf.element("H2"), "Credits", 13, "bold", 2, 10 * 1.25);
     flow.para(pdf.element("P"), credit, 10, "regular", 0);
-    footers(pdf, 54, 36, 8, credit);
+    footers(pdf, foot.side, foot.y, foot.size, credit);
     return pdf.bytes();
   }
+  const foot = { side: 12, y: 14, size: 6 };
   const pdf = new TaggedPdf(STRIP.width, STRIP.height, { title, creator: CREATOR, lang: "en-US" });
-  const flow = new Flow(pdf, { top: 18, bottom: 40, side: 12 });
+  const flow = new Flow(pdf, { top: 18, bottom: footerTop(STRIP.width, foot.side, foot.y, foot.size, credit) + 8, side: 12 });
   flow.para(pdf.element("H1"), exportName(route), 11, "bold", 2);
   flow.para(pdf.element("P"), `Handlebar cue strip. ${summaryLine(route)}`, 7.5, "regular", 4);
-  table(
-    flow,
+  const t = layoutTable(
     rows,
     [
       {
@@ -282,15 +348,16 @@ export function cueSheetPdf(route: SheetRoute, kind: CueSheetKind, vias: readonl
         ],
         font: "bold",
       },
-      { head: "Turn", width: 58, cell: (r) => r.turn, font: "bold" },
+      { head: "Turn", width: 58, cell: stripTurn, font: "bold" },
       { head: "Road", width: STRIP.width - 24 - 54 - 58, cell: (r) => abbreviateStreet(r.road), font: "regular" },
     ],
     13,
     8,
     3,
   );
+  drawTable(flow, t);
   flow.y -= 6;
   flow.para(pdf.element("P"), credit, 6.5, "regular", 0);
-  footers(pdf, 12, 14, 6, credit);
+  footers(pdf, foot.side, foot.y, foot.size, credit);
   return pdf.bytes();
 }

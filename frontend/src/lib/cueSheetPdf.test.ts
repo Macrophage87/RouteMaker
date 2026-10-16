@@ -77,6 +77,46 @@ test("the handlebar strip keeps the distance, turn and road, and leaves out the 
   // A space is kept at each break, so the text layer reads "0.3 mi (0.5 km)".
   assert.ok(text.includes("0.3 ") && text.includes("mi (0.5 km)") && text.includes("17th St NW"));
   assert.ok(!text.some((t) => /busy road/.test(t)), "no notes column");
+  // A caution carries its short reason, small under the turn.
+  assert.deepEqual(
+    rows.filter((r) => r.hazard).map((r) => [r.turn, r.reason]),
+    [
+      ["Caution", "Crossing"],
+      ["Caution", "Avoid-rated"],
+    ],
+  );
+  assert.ok(text.includes("Crossing") && text.includes("Avoid-rated"));
+});
+
+test("the table is grouped: one header row in THead, the cue rows in TBody", () => {
+  const { objects } = parsePdf(latin1(cueSheetPdf(sampleRoute(), "sheet")));
+  const elems = Array.from(objects.values()).filter((o) => o.includes("/Type /StructElem"));
+  const head = elems.find((o) => o.includes("/S /THead "));
+  const body = elems.find((o) => o.includes("/S /TBody "));
+  assert.ok(head && body);
+  assert.equal((/\/K \[([^\]]*)\]/.exec(head)?.[1] ?? "").split(" 0 R").length - 1, 1);
+  assert.equal((/\/K \[([^\]]*)\]/.exec(body)?.[1] ?? "").split(" 0 R").length - 1, cueRows(sampleRoute(), "sheet").length);
+});
+
+test("nothing is set over the footer, and a heading is never left alone at a page's foot", () => {
+  const base = sampleRoute();
+  const line = Array.from({ length: 3001 }, (_, i) => [base.geometry.coordinates[0][0] + i * 0.0001156, base.geometry.coordinates[0][1]] as [number, number]);
+  // Enough warnings to push the Cues heading near a page's foot at some count.
+  for (let n = 30; n <= 44; n += 1) {
+    const notes = Array.from({ length: n }, (_, k) => ({ title: `Notice ${k}`, area_name: "Rock Creek Park" }));
+    const route = sampleRoute({ geometry: { type: "LineString", coordinates: line }, distance_m: 30000, work_zones: { notices: notes } as never });
+    const file = latin1(cueSheetPdf(route, "sheet"));
+    const { objects } = parsePdf(file);
+    for (const [, body] of objects) {
+      if (!body.includes("stream\n")) continue;
+      const runs = Array.from(body.matchAll(/(\/\w+ <<\/MCID \d+>> BDC|\/Artifact BMC) BT \/F\d ([\d.]+) Tf ([\d.]+) ([\d.]+) Td \(((?:\\.|[^\\)])*)\)/g));
+      const footTop = Math.max(...runs.filter((r) => r[1] === "/Artifact BMC" && Number(r[4]) < 60).map((r) => Number(r[4]) + Number(r[2])));
+      for (const r of runs.filter((r) => r[1] !== "/Artifact BMC")) assert.ok(Number(r[4]) > footTop, `${r[5]} at ${r[4]} over the footer`);
+      // The last tagged run on a page is never a heading.
+      const last = runs.filter((r) => r[1] !== "/Artifact BMC").at(-1);
+      assert.ok(!last || !/^\/H2 /.test(last[1]), `heading "${last?.[5]}" alone at a page's foot (${n} notices)`);
+    }
+  }
 });
 
 test("US units first, metric in brackets, in everything the sheet says", () => {
@@ -130,7 +170,7 @@ test("the file is a well-formed PDF: header, xref offsets, trailer, page tree an
     const file = latin1(cueSheetPdf(sampleRoute(), kind));
     const { objects, trailer } = parsePdf(file);
     assert.match(trailer, /\/Root 1 0 R \/Info 7 0 R \/ID \[<[0-9A-F]{32}> <[0-9A-F]{32}>\]/);
-    assert.match(objects.get(1) ?? "", /\/Type \/Catalog .*\/StructTreeRoot 5 0 R \/MarkInfo << \/Marked true >> \/Lang \(en-US\)/);
+    assert.match(objects.get(1) ?? "", /\/Type \/Catalog .*\/StructTreeRoot 5 0 R \/MarkInfo << \/Marked true \/Suspects false >> \/Lang \(en-US\)/);
     assert.match(objects.get(2) ?? "", /\/Type \/Pages \/Kids \[8 0 R\] \/Count 1/);
     const page = objects.get(8) ?? "";
     assert.match(page, kind === "sheet" ? /\/MediaBox \[0 0 612 792\]/ : /\/MediaBox \[0 0 216 792\]/);
@@ -218,6 +258,8 @@ test("the writer: WinAnsi text, Helvetica widths, wrapping, escaping", () => {
   assert.ok(textWidth("Hello", "bold", 10) > textWidth("Hello", "regular", 10));
   assert.deepEqual(wrapText("Left onto Connecticut Avenue Northwest", "regular", 10, 100), ["Left onto Connecticut", "Avenue Northwest"]);
   for (const line of wrapText("Supercalifragilisticexpialidocious", "regular", 10, 40)) assert.ok(textWidth(line, "regular", 10) <= 40);
+  // A character wider than the line still ends: one to a line, none empty.
+  assert.deepEqual(wrapText("WWW", "bold", 20, 5), ["W", "W", "W"]);
   const pdf = new TaggedPdf(100, 100, { title: "T", creator: "RouteMaker", lang: "en-US" });
   pdf.text(pdf.addPage(), pdf.element("P"), 10, 10, 10, "regular", "a (b) \\ ©");
   assert.ok(pdf.serialize().includes("(a \\(b\\) \\\\ \\251) Tj"));

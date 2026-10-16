@@ -7800,14 +7800,18 @@ intersection list and the agency packet are not built yet.
   type and distance), distance, climb, descent and moving time, the route's warnings (the Avoid notice, the
   traffic-tolerant warning, parks to check before you go), the cue table, and the credits. **The handlebar strip**:
   a 3 by 11 inch page to print at actual size and cut out, the miles at 16 pt, the turn and the road (abbreviated
-  as on a unit's screen, "17th St NW") at 13 pt, no notes on busier, calmer or unpaved stretches.
+  as on a unit's screen, "17th St NW") at 13 pt, a caution's short reason (Avoid-rated, Work zone, Crossing) small
+  under it, no notes on busier, calmer or unpaved stretches. Flagged crossings are notes to a course (the FIT and TCX
+  budget can drop them) but a Caution on paper, as Ride says them.
 - **No place is named**, so a Home never is: the name is the ride type and distance, the plan's points Start,
   Stop N and Finish. Credits are `creditLine` (the GPX export's words) in every page's footer and once at the end.
 - **The writer** (`frontend/src/lib/pdf.ts`), with no library: PDF 1.7, the standard Helvetica faces in
-  WinAnsiEncoding (not embedded; widths in docs/SOURCES.md), uncompressed ASCII content. Tagged: a structure tree
-  of Document, H1, H2, P and Table (TR, TH with column scope, TD), each text run a marked-content sequence in the
-  parent tree; footers, rules and a table header carried onto a later page are Artifacts; /Lang en-US,
-  /MarkInfo, DisplayDocTitle, /Tabs /S. Clean and reproducible: Info has the title and Creator RouteMaker only (no
+  WinAnsiEncoding (not embedded; widths in docs/SOURCES.md), uncompressed ASCII content. Tagged, not
+  PDF/UA-conformant (standard fonts not embedded, no XMP): a structure tree of Document, H1, H2, P and Table
+  (THead and TBody, TR, TH with column scope, TD), each text run a marked-content sequence in the parent tree;
+  footers, rules and a table header carried onto a later page are Artifacts; /Lang en-US, /MarkInfo (Marked,
+  Suspects false), DisplayDocTitle, /Tabs /S. The bottom margin is set from the footer's measured height; a heading
+  is kept with what follows it, and the table header with its first row at that row's height. Clean and reproducible: Info has the title and Creator RouteMaker only (no
   author, producer or dates) and the /ID is a hash of the body, so one route gives the same bytes.
 
 Tests: `cueSheetPdf.test.ts` (the rows, units, warnings, Home, credits, the xref and trailer, the structure tree,

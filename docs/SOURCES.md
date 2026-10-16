@@ -451,11 +451,19 @@ Helvetica-Bold, which every PDF reader supplies.
 - What it is: the advance widths of WinAnsi codes 32 to 255 in Helvetica and Helvetica-Bold, in
   `frontend/src/lib/pdf.ts` (`HELVETICA`, `HELVETICA_BOLD`), so lines wrap where the reader's
   font will break them.
-- Publisher: Adobe Systems, the Core 14 AFM metrics (`Helvetica.afm`, `Helvetica-Bold.afm`).
-  Copied 2026-10-16 from the same figures as ReportLab 4 carries them
-  (`reportlab/pdfbase/_fontdata_widths_helvetica*.py`, BSD), indexed by its WinAnsi table.
-- Licence: Adobe's Core 14 AFM notice lets the metrics be used, copied and distributed for any
-  purpose without charge; only the widths are copied here, not the AFM files.
+- Publisher: Adobe Systems, the Core 14 AFM metrics (`Helvetica.afm`, `Helvetica-Bold.afm`):
+  "Copyright (c) 1985, 1987, 1989, 1990, 1997 Adobe Systems Incorporated. All Rights Reserved."
+  Helvetica is a trademark of Linotype-Hell AG and/or its subsidiaries. Copied 2026-10-16 from the
+  same figures as ReportLab 5.0.1 carries them (`reportlab/pdfbase/_fontdata_widths_helvetica*.py`,
+  BSD), indexed by its WinAnsi table.
+- Licence: Adobe's notice accompanying the Core 14 AFM files reads: "This file and the 14
+  PostScript(R) AFM files it accompanies may be used, copied, and distributed for any purpose and
+  without charge, with or without modification, provided that all copyright notices are retained;
+  that the AFM files are not distributed without this file; that all modifications to this file or
+  any of the AFM files are prominently noted in the modified file(s); and that this paragraph is not
+  removed or modified." Only width figures derived from the AFM files are reproduced here (two
+  arrays of numbers, re-indexed by WinAnsi code), not the AFM files themselves; Adobe's copyright
+  line is kept here and in a comment above the arrays in `pdf.ts`.
 - Records: docs/DEVELOPMENT.md, "PDF cue sheets".
 
 ## Noto Emoji skull and crossbones (the Avoid-rated junction marker; not a map credit)

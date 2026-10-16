@@ -255,6 +255,9 @@ export interface RouteCue {
   /** The street the cue turns onto or is on, or null where unnamed; for the start, the first stretch's. */
   street: string | null;
   priority: number;
+  /** Ride's cue kind, and for a hazard the description entry it came from (avoid, workzone, junction...). */
+  kind: Cue["kind"] | "start";
+  source?: string;
 }
 
 /**
@@ -263,12 +266,12 @@ export interface RouteCue {
  */
 export function routeCues(route: CompiledRoute, vias: readonly number[] = []): RouteCue[] {
   const model = rideModel(route as RouteResponse, vias);
-  const all: RouteCue[] = [{ type: "start", name: "Start", text: "Start.", atM: 0, street: named(model.stretches[0]?.street ?? null), priority: PROTECTED }];
+  const all: RouteCue[] = [{ type: "start", name: "Start", text: "Start.", atM: 0, street: named(model.stretches[0]?.street ?? null), priority: PROTECTED, kind: "start" }];
   for (const cue of model.cues) {
     const made = fromRide(cue);
     if (!made) continue;
     const atM = cue.kind === "end" ? model.lengthM : cue.atM;
-    all.push({ type: made.type, name: made.name, text: cue.text, atM, street: named(cue.street), priority: made.priority });
+    all.push({ type: made.type, name: made.name, text: cue.text, atM, street: named(cue.street), priority: made.priority, kind: cue.kind, ...(cue.source ? { source: cue.source } : {}) });
   }
   return all;
 }

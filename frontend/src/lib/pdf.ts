@@ -6,9 +6,10 @@
  *
  * PDF 1.7 (ISO 32000-1). The standard fonts are not embedded and are written in WinAnsiEncoding, so the text layer
  * is plain and extractable; a character WinAnsi has no code for is written as "?". Every text run is a marked
- * content sequence with its own MCID under a structure element (Document, H1, H2, P, Table, TR, TH, TD); what
- * repeats on each page (the footer, a table's header carried over, rules) is an Artifact, read once or not at all.
- * The catalog carries /Lang, /MarkInfo and DisplayDocTitle; each page /Tabs /S.
+ * content sequence with its own MCID under a structure element (Document, H1, H2, P, Table, THead, TBody, TR, TH,
+ * TD); what repeats on each page (the footer, a table's header carried over, rules) is an Artifact, read once or
+ * not at all. The catalog carries /Lang, /MarkInfo (Marked, not Suspects) and DisplayDocTitle; each page /Tabs /S.
+ * Tagged, not PDF/UA-conformant: the standard fonts are not embedded and there is no XMP metadata.
  *
  * Clean and reproducible (PLAN.md, Clean exports: "a cue sheet PDF omits document author and producer fields";
  * "fixed creation and modification dates, a content-derived document id"): the Info dictionary has the title and
@@ -20,6 +21,12 @@
 
 export type PdfFont = "regular" | "bold";
 
+/*
+ * Advance widths derived from Adobe's Core 14 AFM files Helvetica.afm and Helvetica-Bold.afm; only these width
+ * figures are reproduced here, not the AFM files (docs/SOURCES.md has Adobe's notice in full).
+ * Copyright (c) 1985, 1987, 1989, 1990, 1997 Adobe Systems Incorporated. All Rights Reserved.
+ * Helvetica is a trademark of Linotype-Hell AG and/or its subsidiaries.
+ */
 const HELVETICA = [
   278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556,
   556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778,
@@ -90,6 +97,8 @@ export function wrapText(text: string, font: PdfFont, size: number, width: numbe
       const chars = Array.from(rest);
       let n = chars.length - 1;
       while (n > 1 && textWidth(chars.slice(0, n).join(""), font, size) > width) n -= 1;
+      // A single character wider than the line goes on a line of its own, never an empty one.
+      n = Math.max(1, n);
       lines.push(chars.slice(0, n).join(""));
       rest = chars.slice(n).join("");
     }
@@ -99,7 +108,7 @@ export function wrapText(text: string, font: PdfFont, size: number, width: numbe
   return lines.length ? lines : [""];
 }
 
-export type StructType = "Document" | "H1" | "H2" | "P" | "Table" | "TR" | "TH" | "TD";
+export type StructType = "Document" | "H1" | "H2" | "P" | "Table" | "THead" | "TBody" | "TR" | "TH" | "TD";
 
 /** A structure element: its kind, and its children in reading order (elements, or marked content on a page). */
 export interface StructElement {
@@ -244,7 +253,7 @@ export class TaggedPdf {
     };
     set(
       1,
-      `<< /Type /Catalog /Pages 2 0 R /StructTreeRoot 5 0 R /MarkInfo << /Marked true >> /Lang (${this.meta.lang}) ` +
+      `<< /Type /Catalog /Pages 2 0 R /StructTreeRoot 5 0 R /MarkInfo << /Marked true /Suspects false >> /Lang (${this.meta.lang}) ` +
         `/ViewerPreferences << /DisplayDocTitle true >> >>`,
     );
     set(2, `<< /Type /Pages /Kids [${this.pages.map((_, i) => `${pageObj(i)} 0 R`).join(" ")}] /Count ${this.pages.length} >>`);
