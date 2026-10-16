@@ -48,7 +48,7 @@ test("Clear says so and hands the focus to the place search; Plan's Clear stays 
   // -1: no Remove button, the search; Go's Where to? waits for the cleared route to stop hiding it.
   assert.match(app, /const target = index < 0 \? null : removeRefs\.current/);
   assert.match(app, /panelRef\.current\?\.querySelector\("\.go-search"\)/);
-  assert.match(app, /if \(!target && index < 0 && input\?\.closest\("\[hidden\]"\)\) return;/);
+  assert.match(app, /if \(!target && index < 0 && route && input\?\.closest\("\[hidden\]"\)\) return;/);
   assert.match(panel, /aria-disabled=\{clearDisabled \|\| undefined\}\s*onClick=\{\(\) => \{\s*if \(!clearDisabled\) onClear\(\);/);
   assert.doesNotMatch(panel, /disabled=\{clearDisabled\}/);
 });

@@ -1029,7 +1029,7 @@ export function App() {
     const target = index < 0 ? null : removeRefs.current[Math.min(index, points.length - 1)];
     const search = pointsSearchRef.current ?? panelRef.current?.querySelector(".go-search") ?? null;
     const input = search?.querySelector<HTMLElement>("input");
-    if (!target && index < 0 && input?.closest("[hidden]")) return;
+    if (!target && index < 0 && route && input?.closest("[hidden]")) return;
     focusAfterRemove.current = null;
     (target ?? input)?.focus();
   }, [points, route]);
