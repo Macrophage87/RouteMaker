@@ -2470,11 +2470,10 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.eval("history.back(); true");
   const back2 = await p.waitFor("location.pathname === '/' && /[#&]p=/.test(location.hash) && !!document.querySelector('.summary')", 40000);
   await p.eval("history.replaceState(null, '', '/'); true");
-  // Diagnostics for a reload that leaves the page blank on CI: keep any boot error.
+  // Any boot error, for a reload that leaves the page blank (a module the browser could not fetch:
+  // run.sh's /dev/shm was once too small for the dev server's modules all answered from the cache).
   await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "window.__bootErrors = []; addEventListener('error', (e) => window.__bootErrors.push(String(e.message || e.target?.src || e.target?.href || e.type)), true); addEventListener('unhandledrejection', (e) => window.__bootErrors.push('rejection: ' + String(e.reason).slice(0, 200)));" });
-  // A fresh load of "/" in the same tab (its sessionStorage kept), as a reload is: on CI a
-  // Page.reload of the dev server's module graph has failed to fetch main.tsx.
-  await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/` });
+  await p.s("Page.reload", {});
   // The map element, not the load event: a tile still in flight can hold readyState back on CI.
   const reloaded = await p.waitFor("location.pathname === '/' && (document.getElementById('root')?.childElementCount ?? 0) > 0", 60000);
   await sleep(2000);
@@ -3617,7 +3616,9 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   await p.s("Network.enable");
   await p.s("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   const { targetInfos } = await b.send("Target.getTargets");
-  const workers = targetInfos.filter((t) => t.type === "service_worker" && t.browserContextId === p.contextId);
+  // The app's own workers only: Chromium 145 (the CI image's) also runs a built-in component extension's
+  // worker (chrome-extension://…/thunk.js) in every browser context.
+  const workers = targetInfos.filter((t) => t.type === "service_worker" && t.browserContextId === p.contextId && t.url.startsWith(`http://127.0.0.1:${PREVIEW_PORT}/`));
   for (const w of workers) {
     const { sessionId } = await b.send("Target.attachToTarget", { targetId: w.targetId, flatten: true });
     await b.send("Network.enable", {}, sessionId).catch(() => {});
