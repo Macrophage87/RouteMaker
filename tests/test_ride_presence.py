@@ -201,6 +201,28 @@ def test_the_tmpfs_store_shares_state_and_removes_an_empty_ride(tmp_path) -> Non
     assert list(tmp_path.iterdir()) == []
 
 
+def test_a_lock_on_a_file_unlinked_while_waiting_is_taken_again(tmp_path, monkeypatch) -> None:
+    """A worker that waited on the lock while the holder emptied the ride and unlinked its file
+    would write to an orphan no other worker sees: after the lock the inode is compared with
+    the path's, and the file opened again."""
+    real = rp.fcntl.flock
+    calls = []
+
+    def flock(fd, op):
+        calls.append(fd)
+        real(fd, op)
+        if len(calls) == 1:  # the holder emptied the ride while this one waited
+            (tmp_path / f"{RIDE}.json").unlink()
+
+    monkeypatch.setattr(rp.fcntl, "flock", flock)
+    with rp.TmpfsStore(str(tmp_path)).ride(RIDE) as state:
+        state["riders"][ME] = {"since": 1.0, "lon": 1.0, "lat": 2.0, "at": 1.0}
+    assert len(calls) == 2
+    monkeypatch.setattr(rp.fcntl, "flock", real)
+    with rp.TmpfsStore(str(tmp_path)).ride(RIDE) as again:
+        assert again["riders"][ME]["lon"] == 1.0
+
+
 @pytest.mark.django_db
 def test_the_endpoints_keep_positions_out_of_the_database_and_logs(client, caplog) -> None:
     caplog.set_level(logging.DEBUG)

@@ -195,8 +195,33 @@ class TmpfsStore:
     """One JSON file per ride in a tmpfs directory, read and written under an exclusive lock, so
     every gunicorn worker sees the same dots. RAM only: the directory must be on a tmpfs."""
 
+    # Opens of a ride's file a lock may take, where each one it got was of a file unlinked under it.
+    LOCK_TRIES = 5
+
     def __init__(self, directory: str) -> None:
         self.directory = directory
+
+    @classmethod
+    def _locked(cls, path: str) -> int:
+        """`path` opened and locked: a descriptor of the file at `path` now. A process that
+        waited for the lock while its holder emptied the ride and unlinked the file would hold
+        an orphan no other process can see; so after the lock the descriptor's inode is compared
+        with the path's, and the open is tried again where they differ."""
+        for _ in range(cls.LOCK_TRIES):
+            fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+                try:
+                    same = os.fstat(fd).st_ino == os.stat(path).st_ino
+                except FileNotFoundError:
+                    same = False
+            except BaseException:
+                os.close(fd)
+                raise
+            if same:
+                return fd
+            os.close(fd)
+        raise Refused(503, "The ride is busy; try again shortly.")
 
     @contextlib.contextmanager
     def ride(self, ride_id: str) -> Iterator[dict]:
@@ -208,9 +233,8 @@ class TmpfsStore:
                 count = 0
             if count >= MAX_RIDES:
                 raise Refused(503, "Too many rides are sharing right now; try again shortly.")
-        fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+        fd = self._locked(path)
         try:
-            fcntl.flock(fd, fcntl.LOCK_EX)
             with os.fdopen(os.dup(fd), "r+", encoding="utf-8") as handle:
                 raw = handle.read()
                 try:
