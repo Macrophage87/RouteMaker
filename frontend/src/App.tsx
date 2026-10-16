@@ -3018,7 +3018,8 @@ export function App() {
     onAddStop: addNearestStop,
   };
   // An instance admin's review (rider suggestions, Mass Ride hazard reports): from Suggest, or Go's Menu.
-  const reviewOpener = me.can_change_lts ? (opener: HTMLElement) => openView("review", opener, true) : null;
+  // An instance admin reviews everything; a reviewer (v0.7.0 closures) the closures.
+  const reviewOpener = me.can_change_lts || me.can_review_closures ? (opener: HTMLElement) => openView("review", opener, true) : null;
   const myGoControls = { myGo, signedIn: me.signed_in, save: saveMyGoNow, setHome, said: myGoSaid, geoGate, searchBias };
   // Go's Menu (the Settings sheet in Go): Plan, Suggest, GPX and an admin's Review, each one step in.
   const menu = {

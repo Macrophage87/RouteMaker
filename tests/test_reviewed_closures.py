@@ -148,6 +148,14 @@ class TestEntering:
         assert workzones.snapshot().zones == ()
         assert post(client, csrf, f"{ENTER}/{row.pk}/end", {}).status_code == 409
 
+    def test_the_named_stretch_is_asked_of_the_reviewers_own_endpoint(self, live) -> None:
+        client, _csrf = reviewer_client()
+        answer = client.get(f"/api/closures/stretch/{WAY}", **addr())
+        # Oak Street meets only other names at its ends: the piece is the whole stretch.
+        assert answer.status_code == 200 and answer.json() == {"stretch": None}
+        rider, _ = reviewer_client(make_user(admin=False))
+        assert rider.get(f"/api/closures/stretch/{WAY}", **addr()).status_code == 403
+
     def test_a_rider_who_is_not_a_reviewer_cannot(self, live) -> None:
         client, csrf = reviewer_client(make_user(admin=False))
         answer = post(client, csrf, ENTER, {"osm_way_ids": [WAY], "reason": "Closed"})
@@ -177,6 +185,12 @@ class TestEntering:
         closure = reviewed_closures.create(make_user(), line=ALONG[4:9], reason="Fenced off")
         assert closure.osm_way_ids == [] and closure.lines == [ALONG[4:9]]
         assert [c["title"] for c in workzones.closures_on(ALONG)["closures"]] == ["Closed"]
+
+    def test_one_with_no_end_holds_on_a_later_ride_until_a_reviewer_ends_it(self, live) -> None:
+        reviewed_closures.create(make_user(), [WAY], "Bridge out")
+        later = timezone.now() + timedelta(days=5)
+        found = workzones.closures_on(ALONG, at=later)
+        assert [c["may_still_apply"] for c in found["closures"]] == [False]
 
     def test_a_closure_that_starts_later_is_not_in_force_now(self, live) -> None:
         reviewed_closures.create(make_user(), [WAY], "Race", start=days(2), end=days(2))

@@ -8,6 +8,7 @@ import { useEffect, useState, type Dispatch, type ReactNode, type RefObject, typ
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { StressAvailability } from "../MapView.tsx";
 import { SuggestionReview } from "../SuggestionReview.tsx";
+import { ClosureReview } from "../ClosureReview.tsx";
 import type { RouteResponse } from "../lib/api.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { PRESETS, presetSaid, type PresetId } from "../lib/presets.ts";
@@ -564,7 +565,7 @@ export function SuggestSheet({ nav, roadInfoAtCentre, onReview }: SuggestSheetPr
       {onReview && (
         <section aria-labelledby="suggest-review-heading" className="settings-group">
           <h3 id="suggest-review-heading">Review</h3>
-          <p className="hint">Riders' suggestions and Mass Ride hazard reports waiting for an admin.</p>
+          <p className="hint">Riders' suggestions, Mass Ride hazard reports and closure reports waiting for review.</p>
           <button type="button" className="secondary open-review" onClick={(event) => onReview(event.currentTarget)}>
             <Icon name="shield" />
             Review suggestions
@@ -593,6 +594,8 @@ export function ReviewSheet({ nav, mapRef, setHazardsAsked }: ReviewSheetProps) 
       />
       {/* The same review for riders' Mass Ride hazard reports (FOLLOWUP-MASSRIDE-MAP part 3). */}
       <SuggestionReview source={HAZARD_REVIEW} onApproved={() => setHazardsAsked((n) => n + 1)} />
+      {/* Riders' closure reports and the reviewers' closures (v0.7.0 closures), for a reviewer. */}
+      <ClosureReview />
     </SheetFrame>
   );
 }

@@ -130,8 +130,9 @@ class Zone:
 
     @property
     def firm_end(self) -> bool:
-        """Whether the source gives an end: one without "may still apply" on a later ride."""
-        return self.end is not None
+        """Whether the source gives an end: one without "may still apply" on a later ride. A
+        reviewer's closure with no end lasts until a reviewer ends it (`core.reviewed_closures`)."""
+        return self.end is not None or self.source == "reviewer"
 
     def to_json(self) -> dict:
         return {

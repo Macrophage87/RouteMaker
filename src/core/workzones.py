@@ -239,8 +239,13 @@ def _load(now: datetime) -> Snapshot:
         status.update(more_status)
         read_at.update(more_read)
     # The closures a reviewer entered or confirmed (v0.7.0; core.reviewed_closures): read from
-    # their own table, so always current; named only while there are some.
-    reviewed = reviewed_closures.zones(now)
+    # their own table, so always current; named only while there are some. A failure to read
+    # them leaves the feeds' zones in use.
+    try:
+        reviewed = reviewed_closures.zones(now)
+    except Exception:  # noqa: BLE001 - the feeds' zones still stand
+        logger.warning("reviewed closures could not be read", exc_info=True)
+        reviewed = []
     if reviewed:
         zones.extend(reviewed)
         status[reviewed_closures.SOURCE] = CURRENT

@@ -6454,6 +6454,8 @@ class ClosureStretchOut(Schema):
     osm_way_ids: list[int]
     pieces: int
     length_m: float
+    capped: bool
+    expected: str
 
 
 class ClosureStretchAnswer(Schema):

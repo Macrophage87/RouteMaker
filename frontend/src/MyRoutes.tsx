@@ -26,6 +26,7 @@ import {
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import { NEW_LINK, SHARED_LINKS, TURN_OFF, keepSaid, listSharedLinks, regenerateSharedLink, revokeSharedLink, type SharedLink } from "./lib/sharedRoutes.ts";
 import { formatDistance } from "./lib/format.ts";
+import { alertLine } from "./lib/closureReview.ts";
 
 export interface MyRoutesProps {
   /** Bumped by the page after a save, so the list is read again. */
@@ -112,6 +113,8 @@ export function MyRoutes({ version, onOpen, onExport, announce, sharedLinks = fa
                     </button>
                     <span id={`my-route-${r.id}`} className="hint my-route-details">
                       {rowDetails(r)}
+                      {/* A closure in force on the saved line (v0.7.0 closures): one line, read with the route's name. */}
+                      {alertLine(r.closure_alerts) && <span className="my-route-closure"> {alertLine(r.closure_alerts)}</span>}
                     </span>
                     <span className="my-route-actions">
                       <button type="button" className="secondary icon-button" aria-label={`Export ${r.name} as GPX`} onClick={() => void full(r.id).then((route) => route && onExport(route))}>

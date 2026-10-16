@@ -5760,6 +5760,11 @@ details.fold > summary .icon {
 .my-route-details {
   flex: 1 1 100%;
 }
+/* A closure in force on a saved route (v0.7.0 closures): its own line, said in words, not colour. */
+.my-route-closure {
+  display: block;
+  font-weight: 600;
+}
 .my-route-actions,
 .my-route-rename,
 .save-route-form {

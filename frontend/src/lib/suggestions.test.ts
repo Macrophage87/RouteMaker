@@ -112,6 +112,8 @@ test("v0.7.0 short form: no change, no reason or an empty Other is said before s
   assert.equal(quickProblem(2, 3, ["other"], "  ")?.field, "other");
   assert.equal(quickProblem(2, 3, ["other"], "x".repeat(QUICK_OTHER_MAX + 1))?.field, "other");
   assert.equal(quickProblem(2.5, 3, ["calmer"], ""), null);
+  // v0.7.0 closures: "Closed" is a closure report, sent with the road's own level.
+  assert.equal(quickProblem(3, 3, ["closed"], ""), null);
 });
 
 test("v0.7.0 short form: the ticket is asked for the road; ten a day is said plainly", async () => {

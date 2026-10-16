@@ -15,6 +15,7 @@ import { formatDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import { encodePlan } from "./planHash.ts";
 import type { PresetId } from "./presets.ts";
+import type { ClosureAlert } from "./closureReview.ts";
 import { csrfFromCookie } from "./stressEditor.ts";
 
 export const MAX_SAVED = 200;
@@ -41,6 +42,8 @@ export interface SavedSummary {
   preset: string;
   created_at: string;
   updated_at: string;
+  /** The closures in force along the line, as the server last checked (v0.7.0 closures); absent from an older server. */
+  closure_alerts?: ClosureAlert[];
 }
 
 export interface SavedRoute extends SavedSummary {
