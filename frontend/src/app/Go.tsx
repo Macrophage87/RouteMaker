@@ -7,14 +7,14 @@
  *
  * Plan keeps the full panel; its map has Food and Water chips (PlanMapChips), where Go has place chips.
  */
-import { useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../Icon.tsx";
 import { PlaceSearch } from "../PlaceSearch.tsx";
 import type { LonLat } from "../lib/geo.ts";
 import type { GeoGate, Place, PlaceChoice } from "../lib/geocode.ts";
 import { MODE_LABEL, MODE_SWITCH_HINT, MODE_SWITCH_NAME, type AppMode } from "../lib/appMode.ts";
 import { HOME_NOT_SET, type Home } from "../lib/myGo.ts";
-import { CHANGE_HOME_TEXT, CLEAR_HOME_TEXT, HOME_PICK_LINE, PICK_ON_MAP_TEXT, homeName } from "../lib/homeSet.ts";
+import { CHANGE_HOME_TEXT, CLEAR_HOME_TEXT, HOME_PICK_LINE, PICK_ON_MAP_TEXT, homeClosesSheet, homeName, homeSetKey } from "../lib/homeSet.ts";
 import { BEST_ORDER_LABEL } from "../lib/stopOrder.ts";
 
 export type GoSheetSize = "peek" | "half" | "full";
@@ -257,6 +257,19 @@ export function GoSheet({
   // The Home sheet: the Home chip opens it while there is no Home, More's Change Home once there is one.
   const [homeOpen, setHomeOpen] = useState(false);
   const homeShown = homeOpen || places.homePicking;
+  // Home set from the sheet (its search or the map): the sheet closes and the focus goes back to the Home chip,
+  // which now rides Home (review F3). A Home cleared keeps the sheet open, for the next one.
+  const homeChip = useRef<HTMLButtonElement>(null);
+  const homeKey = homeSetKey(places.home);
+  const lastHomeKey = useRef(homeKey);
+  useEffect(() => {
+    const was = lastHomeKey.current;
+    lastHomeKey.current = homeKey;
+    if (!homeClosesSheet(was, homeKey, homeOpen)) return;
+    setHomeOpen(false);
+    homeChip.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per Home set, not per render
+  }, [homeKey]);
   const startBoxId = useId();
   const moreId = useId();
   const [startOpen, setStartOpen] = useState(false);
@@ -306,6 +319,7 @@ export function GoSheet({
         <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place, _choice: PlaceChoice) => onPick(place)} onTopPlace={onTopPlace} />
         <div className="chip-row go-places" role="group" aria-label="Places">
           <button
+            ref={homeChip}
             type="button"
             className="chip place-chip"
             onClick={(event) => (places.homeReady ? places.onHome(event.currentTarget) : setHomeOpen(!homeOpen))}
