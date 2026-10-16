@@ -5559,7 +5559,11 @@ details.fold > summary .icon {
 
 /* A light time on the route (lib/lightTimes.ts): "Sunset 6:31 PM" where the rider will be then. The
    map is the light flavour in both themes: dark brown on pale yellow, the same in both. Named for a
-   screen reader (role img); the route summary's line says the same. No animation. */
+   screen reader (role img); the route summary's line says the same. No animation. It never takes the
+   map's clicks or drags. */
+.light-marker {
+  pointer-events: none;
+}
 .light-marker span {
   display: inline-block;
   padding: 1px 6px;

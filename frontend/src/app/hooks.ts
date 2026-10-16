@@ -42,12 +42,14 @@ export function useSettled(text: string, waitMs: number): string {
   return shown;
 }
 
-/** The time now, epoch ms, read again each minute (the light times on the route, lib/lightTimes.ts). */
-export function useMinute(): number {
+/** The time now, epoch ms, read again each minute while `on` (the light times on the route, lib/lightTimes.ts). */
+export function useMinute(on: boolean): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    if (!on) return;
+    setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 60_000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [on]);
   return now;
 }

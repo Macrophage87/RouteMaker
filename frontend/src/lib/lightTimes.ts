@@ -5,10 +5,11 @@
  * Civil dawn, sunrise, sunset and civil dusk are worked out here, in the browser, with NOAA's solar
  * position formulas (the NOAA Solar Calculator's, after Meeus); no network. The rider is taken to leave
  * now and to ride at the route's own pace (distance over moving time), so where they are at a moment is
- * that share of the line. A ride that comes within about an hour of dawn gets civil dawn and sunrise;
- * within about an hour of dusk, sunset and the end of civil twilight. An event during the ride is marked
- * on the map where the rider will be; one just before or after it is said in the line only. Otherwise
- * nothing is shown. Times in the region's time, miles first.
+ * that share of the line. Only what is still ahead: the first twilight after setting off (dawn: civil
+ * dawn and sunrise; dusk: sunset and the end of civil twilight), its events not yet past, when the next
+ * of them comes during the ride or within about an hour of arriving. An event during the ride is marked
+ * on the map where the rider will be; one just after it is said in the line only. Past sunrise, before
+ * the afternoon, nothing is shown ("Then just leave empty"). Times in the region's time, miles first.
  */
 import type { LonLat } from "./geo.ts";
 import { haversineM } from "./geo.ts";
@@ -79,10 +80,12 @@ function crossingMinutes(dayMs: number, lat: number, lon: number, zenith: number
 }
 
 /** The region's calendar day a moment falls on, as the UTC midnight of that date. */
+const DATE_FORMAT = new Intl.DateTimeFormat("en-US", { timeZone: ZONE, year: "numeric", month: "numeric", day: "numeric" });
+const CLOCK_FORMAT = new Intl.DateTimeFormat("en-US", { timeZone: ZONE, hour: "numeric", minute: "2-digit" });
+
 function localDay(ms: number): number {
   const parts = Object.fromEntries(
-    new Intl.DateTimeFormat("en-US", { timeZone: ZONE, year: "numeric", month: "numeric", day: "numeric" })
-      .formatToParts(new Date(ms))
+    DATE_FORMAT.formatToParts(new Date(ms))
       .map((p) => [p.type, p.value]),
   );
   return Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day));
@@ -135,8 +138,8 @@ export interface LightMark {
   kind: LightKind;
   /** When it happens, epoch ms. */
   at: number;
-  /** "during": on the route at `alongM`; "before": before setting off; "after": after arriving. */
-  where: "during" | "before" | "after";
+  /** "during": on the route at `alongM`; "after": after arriving. */
+  where: "during" | "after";
   /** How far along the route the rider is at that moment, metres (during only). */
   alongM: number | null;
   /** Where on the map (during only). */
@@ -151,9 +154,9 @@ export interface LightRide {
 }
 
 /**
- * The light events to show for a ride, in time order: each twilight (dawn: civil dawn and sunrise;
- * dusk: sunset and civil dusk) that comes within `LIGHT_WINDOW_MS` of the ride, both of its events.
- * Empty when the ride is nowhere near either, or the route has no line or time.
+ * The light events to show for a ride, in time order: the first twilight after setting off (dawn: civil
+ * dawn and sunrise; dusk: sunset and civil dusk), only its events still ahead, when the next of them
+ * comes before arriving or within `windowMs` after. Empty otherwise, or when the route has no line or time.
  */
 export function lightMarks(ride: LightRide, windowMs = LIGHT_WINDOW_MS): LightMark[] {
   const { line, distanceM, durationS, departMs } = ride;
@@ -161,49 +164,47 @@ export function lightMarks(ride: LightRide, windowMs = LIGHT_WINDOW_MS): LightMa
   const arriveMs = departMs + durationS * 1000;
   const along = (ms: number) => ((ms - departMs) / (durationS * 1000)) * distanceM;
   const [lon0, lat0] = line[0];
-  const days = new Set<number>();
-  for (let ms = departMs - DAY_MS; ms <= arriveMs + DAY_MS; ms += DAY_MS / 2) days.add(localDay(ms));
-  const marks: LightMark[] = [];
-  for (const day of days) {
+  // The first twilight whose last event is still ahead: today's dawn or dusk, or tomorrow's dawn.
+  const pairs = [["civil_dawn", "sunrise"], ["sunset", "civil_dusk"]] as const;
+  for (const day of [localDay(departMs), localDay(departMs + DAY_MS)]) {
     // Noon of the region's day: its light times at the start, then each at where the rider is then.
-    const base = solarDay(day + 17 * 3_600_000, lat0, lon0);
-    for (const pair of [["civil_dawn", "sunrise"], ["sunset", "civil_dusk"]] as const) {
-      const times = pair.map((kind) => base[kind]);
-      if (times.some((t) => t === null)) continue;
-      const near = times.some((t) => (t as number) >= departMs - windowMs && (t as number) <= arriveMs + windowMs);
-      if (!near) continue;
-      for (const kind of pair) {
+    const noon = day + 17 * 3_600_000;
+    const base = solarDay(noon, lat0, lon0);
+    for (const pair of pairs) {
+      const ahead = pair.filter((kind) => base[kind] !== null && (base[kind] as number) >= departMs);
+      if (ahead.length === 0) continue;
+      if ((base[ahead[0]] as number) > arriveMs + windowMs) return [];
+      return ahead.map((kind) => {
         let at = base[kind] as number;
-        if (at >= departMs && at <= arriveMs) {
+        if (at <= arriveMs) {
           // Once more where the rider is at that moment: the times move about 4 seconds a kilometre east.
           const there = pointAlong(line, along(at));
-          const again = there ? solarDay(day + 17 * 3_600_000, there[1], there[0])[kind] : null;
-          if (again !== null) at = again;
+          const again = there ? solarDay(noon, there[1], there[0])[kind] : null;
+          if (again !== null && again >= departMs) at = again;
         }
-        const during = at >= departMs && at <= arriveMs;
+        const during = at <= arriveMs;
         const alongM = during ? Math.min(distanceM, Math.max(0, along(at))) : null;
-        marks.push({
-          kind,
-          at,
-          where: during ? "during" : at < departMs ? "before" : "after",
-          alongM,
-          point: alongM === null ? null : pointAlong(line, alongM),
-        });
-      }
+        return { kind, at, where: during ? "during" : "after", alongM, point: alongM === null ? null : pointAlong(line, alongM) };
+      });
     }
   }
-  return marks.sort((a, b) => a.at - b.at);
+  return [];
+}
+
+/** Whether two lists of marks say and show the same, to the minute and the tenth of a mile. */
+export function sameLightMarks(a: readonly LightMark[], b: readonly LightMark[]): boolean {
+  const key = (m: LightMark) => `${m.kind}|${m.where}|${CLOCK_FORMAT.format(new Date(m.at))}|${m.alongM === null ? "" : Math.round(m.alongM / 160.9344)}`;
+  return a.length === b.length && a.every((m, i) => key(m) === key(b[i]));
 }
 
 /** A moment as the region's clock: "6:31 PM". */
 export function lightClock(ms: number): string {
-  return new Intl.DateTimeFormat("en-US", { timeZone: ZONE, hour: "numeric", minute: "2-digit" }).format(new Date(ms));
+  return CLOCK_FORMAT.format(new Date(ms));
 }
 
-/** One event in words: "Sunset 6:31 PM near mile 12.4 (20.0 km)", "Sunrise 7:18 AM, before you set off". */
+/** One event in words: "Sunset 6:31 PM near mile 12.4 (20.0 km)", "Sunrise 7:18 AM, after you arrive". */
 export function lightMarkSaid(mark: LightMark): string {
   const head = `${LIGHT_NAME[mark.kind]} ${lightClock(mark.at)}`;
-  if (mark.where === "before") return `${head}, before you set off`;
   if (mark.where === "after") return `${head}, after you arrive`;
   return `${head} near ${formatMilePost(mark.alongM ?? 0)}`;
 }
@@ -229,7 +230,7 @@ export function lightMarkerLabel(mark: LightMark): string {
  * The marks for a planned route, leaving at `nowMs`, or none: not for a transit or bikeshare plan (its
  * line is not the whole trip), nor where the ride time chosen is not the time now (the When control is
  * categorical: "weekend" chosen on a Tuesday says nothing about when the rider leaves). "When I'm
- * planning" (null) is leaving now.
+ * planning" (null) is leaving now; so is Night, which runs into dawn and from dusk whatever the day.
  */
 export function routeLightMarks(
   route: {
@@ -243,6 +244,6 @@ export function routeLightMarks(
   chosen: When | null,
 ): LightMark[] {
   if (!route || route.transit || route.bikeshare) return [];
-  if (chosen !== null && chosen !== whenAt(new Date(nowMs))) return [];
+  if (chosen !== null && chosen !== "night" && chosen !== whenAt(new Date(nowMs))) return [];
   return lightMarks({ line: route.geometry?.coordinates ?? [], distanceM: route.distance_m, durationS: route.duration_s, departMs: nowMs });
 }

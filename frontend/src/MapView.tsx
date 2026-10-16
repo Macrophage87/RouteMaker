@@ -1468,26 +1468,46 @@ export function MapView(props: Props) {
 
   // The light times on the route (lib/lightTimes.ts): sunset and the end of civil twilight, or civil dawn
   // and sunrise, each where the rider will be then. A text label, named for a screen reader (the route
-  // summary's line says the same); not a button, so not in the Tab order.
+  // summary's line says the same); not a button, so not in the Tab order, and it lets the map's clicks
+  // through (styles.css). A marker still shown is moved and renamed in place, not drawn again.
+  const lightDrawn = useRef(new Map<string, maplibregl.Marker>());
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loaded.current) return;
-    const drawn = (props.lightMarks ?? []).flatMap((mark) => {
-      if (mark.where !== "during" || !mark.point) return [];
-      const element = document.createElement("div");
-      element.className = "light-marker";
-      element.dataset.kind = mark.kind;
-      element.setAttribute("role", "img");
+    const drawn = lightDrawn.current;
+    const wanted = (props.lightMarks ?? []).filter((mark) => mark.where === "during" && mark.point);
+    for (const [kind, marker] of drawn) {
+      if (!wanted.some((mark) => mark.kind === kind)) {
+        marker.remove();
+        drawn.delete(kind);
+      }
+    }
+    for (const mark of wanted) {
+      let marker = drawn.get(mark.kind);
+      if (!marker) {
+        const element = document.createElement("div");
+        element.className = "light-marker";
+        element.dataset.kind = mark.kind;
+        element.setAttribute("role", "img");
+        const text = document.createElement("span");
+        text.setAttribute("aria-hidden", "true");
+        element.appendChild(text);
+        marker = new maplibregl.Marker({ element, anchor: "bottom", offset: [0, -6] }).setLngLat(mark.point as LonLat).addTo(map);
+        drawn.set(mark.kind, marker);
+      }
+      marker.setLngLat(mark.point as LonLat);
+      const element = marker.getElement();
       element.setAttribute("aria-label", lightMarkerLabel(mark));
-      const text = document.createElement("span");
-      text.setAttribute("aria-hidden", "true");
-      text.textContent = lightMarkerText(mark);
-      element.appendChild(text);
-      element.addEventListener("click", (event) => event.stopPropagation());
-      return [new maplibregl.Marker({ element, anchor: "bottom", offset: [0, -6] }).setLngLat(mark.point).addTo(map)];
-    });
-    return () => drawn.forEach((marker) => marker.remove());
+      (element.firstChild as HTMLElement).textContent = lightMarkerText(mark);
+    }
   }, [props.lightMarks]);
+  useEffect(() => {
+    const drawn = lightDrawn.current;
+    return () => {
+      drawn.forEach((marker) => marker.remove());
+      drawn.clear();
+    };
+  }, []);
 
   // An infrequent departure's label at the boarding stop (lib/departure.ts): "MARC 7:42 am · 6 min
   // spare", and, when cutting it close, the countdown to it. Hidden from screen readers (the panel
