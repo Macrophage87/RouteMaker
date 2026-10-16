@@ -18,6 +18,7 @@ import {
   osmEditUrl,
   placeAtSpot,
   repeatsInfoAsk,
+  liftOpenedInfo,
   requestAfterClose,
   spotActions,
   segmentInfoUrl,
@@ -255,4 +256,11 @@ test("only a pointer gesture repeats an ask; I straight after a right-click's pa
   assert.equal(repeatsInfoAsk("spot", 1300, 1000, 800), true, "a long press's contextmenu, 300 ms on");
   assert.equal(repeatsInfoAsk("spot", 1900, 1000, 800), false);
   assert.equal(repeatsInfoAsk("centre", 1300, 1000, 800), false, "Escape, then I, 300 ms after the right-click");
+});
+
+test("the lift of a press that opened the road panel sends no click; any other lift keeps it", () => {
+  assert.equal(liftOpenedInfo(1000, 1500), true, "held, and the panel opened at 1.5 s");
+  assert.equal(liftOpenedInfo(2000, 1500), false, "a tap after an earlier panel");
+  assert.equal(liftOpenedInfo(null, 1500), false, "a lift with no map touch (a tap in the panel)");
+  assert.equal(liftOpenedInfo(1000, 0), false, "no panel yet");
 });

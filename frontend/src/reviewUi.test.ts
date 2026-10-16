@@ -61,5 +61,5 @@ test("fe-perf-4: the map's non-passive touchmove listens only during a line drag
   assert.match(map, /if \(on\) window\.addEventListener\("touchmove", onTouchMove, \{ passive: false \}\);\s*else window\.removeEventListener\("touchmove", onTouchMove\);/);
   assert.match(map, /longPress\.press\(event\.point\.x, event\.point\.y\);\s*watchTouchMoves\(true\);/);
   assert.match(map, /gesture\.press\("touch", event\.point\.x, event\.point\.y\);\s*watchTouchMoves\(true\);/);
-  assert.match(map, /const onTouchEnd = \(event: TouchEvent\) => \{\s*longPress\.cancel\(\);\s*watchTouchMoves\(false\);/);
+  assert.match(map, /const onTouchEnd = \(event: TouchEvent\) => \{(\s*\/\/[^\n]*)*\s*if \(event\.type === "touchend" && liftOpenedInfo\(touchDownAt, infoAt\)\) event\.preventDefault\(\);\s*touchDownAt = null;\s*longPress\.cancel\(\);\s*watchTouchMoves\(false\);/);
 });
