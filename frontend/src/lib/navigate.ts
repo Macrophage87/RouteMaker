@@ -638,11 +638,6 @@ export function step(
 
 // ---- What the screen shows and "Where am I?" says ---------------------------------------------------
 
-/** The next cue the rider will meet (any kind, whatever the level says aloud), or null. */
-export function nextCue(model: RideModel, progressM: number): Cue | null {
-  return model.cues.find((c) => c.atM > progressM + 1 && c.kind !== "calmer") ?? model.cues[model.cues.length - 1] ?? null;
-}
-
 /** The next turn, flagged junction or walk: what the cue card leads with. */
 export function nextAction(model: RideModel, progressM: number): Cue | null {
   return model.cues.find((c) => c.atM > progressM + 1 && (c.kind === "turn" || c.kind === "hazard" || c.kind === "walk" || c.kind === "stop" || c.kind === "end")) ?? null;

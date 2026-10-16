@@ -817,11 +817,6 @@ def adjustments_used(pieces: list[Piece]) -> list[dict]:
     return used
 
 
-def stress_breakdown(pieces: list[Piece]) -> dict[str, float]:
-    """Metres per stress tier, keyed "1".."4" and "unknown"."""
-    return breakdown(pieces, ridetime.WEEKEND)[0]
-
-
 def trace_leg(variant: str, costing: dict, shape: str, deadline: Deadline) -> dict | None:
     """The leg's edges, by edge walk and then by map snap; None if neither works."""
     for match in ("edge_walk", "map_snap"):

@@ -257,10 +257,6 @@ def corridor_kind(before: Stretch, after: Stretch, shape: list) -> str | None:
     return LINE if turn <= PARALLEL_HEADING_DEG and aside <= PARALLEL_OFFSET_M else None
 
 
-def same_corridor(before: Stretch, after: Stretch, shape: list) -> bool:
-    return corridor_kind(before, after, shape) is not None
-
-
 def is_road(stretch: Stretch) -> bool:
     """A named road, the kind a dodge leaves."""
     return bool(stretch.names) and all(e.use in MAIN_USES for e in stretch.edges)
