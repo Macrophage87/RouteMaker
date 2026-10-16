@@ -1461,6 +1461,42 @@ class StressSuggestion(models.Model):
         return self.current_tier + 0.5 if self.current_half else self.current_tier
 
 
+class StressSuggestionReview(models.Model):
+    """A second reviewer's agree or disagree on a waiting road suggestion (v0.7.0;
+    core.suggestions.review).
+
+    Advice for the admin who decides, never a decision: approving still takes the review's own
+    Approve now. One a reviewer a suggestion, changed in place when they change their mind. The
+    review list shows the tallies and the one-line reasons, never who wrote them; the reviewer's
+    account is kept for the audit, as the suggester's is.
+    """
+
+    suggestion = models.ForeignKey(
+        StressSuggestion, on_delete=models.CASCADE, related_name="reviews"
+    )
+    reviewer = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    reviewer_user_id = models.BigIntegerField()
+    agree = models.BooleanField()
+    reason = models.CharField(max_length=200, blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "stress_suggestion_review"
+        ordering = ["created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["suggestion", "reviewer_user_id"],
+                name="stress_suggestion_review_one_per_reviewer",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"suggestion {self.suggestion_id}: {'agree' if self.agree else 'disagree'}"
+
+
 class SignedOutSend(models.Model):
     """One signed-out suggestion's count toward its sender's daily limits (v0.7.0;
     core.signed_out_suggestions): 10 a day per device and one per road.

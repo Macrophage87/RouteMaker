@@ -330,7 +330,7 @@ class TestReview:
         assert set(item) == {
             "id", "osm_way_id", "road", "lat", "lon", "current_step", "current_words",
             "step", "words", "reason", "status", "created_at", "sent_at",
-            "signed_out", "reasons", "agree",
+            "signed_out", "reasons", "agree", "reviews",
         }  # fmt: skip
 
     def test_approve_now_applies_it_as_the_admins_edit(self, live) -> None:
@@ -421,3 +421,107 @@ class TestReview:
 
         first, spent = in_one_window(ratelimit.SUGGEST_REVIEW_WRITES.window_s, attempt)
         assert first.status_code == 200 and spent.status_code == 429
+
+
+MINE = "/api/stress-suggestions/mine?way={}"
+
+
+@db
+class TestSecondReviewer:
+    """v0.7.0: a second reviewer marks a waiting suggestion agree or disagree, with an optional
+    one-line reason; the list shows the tallies; approving still takes Approve now."""
+
+    def test_agree_and_disagree_are_tallied_and_change_nothing(self, live) -> None:
+        open_to("signed_in")
+        s = suggest()
+        first, csrf1 = admin_client()
+        second, csrf2 = admin_client()
+        r = post(first, ACTION.format(s.pk, "review"), {"verdict": "agree"}, csrf1)
+        assert r.status_code == 200, r.content
+        assert r.json()["reviews"] == {"agree": 1, "disagree": 0, "mine": "agree", "notes": []}
+        r = post(
+            second,
+            ACTION.format(s.pk, "review"),
+            {"verdict": "disagree", "reason": "  The lane\n ends at Elm.  "},
+            csrf2,
+        )
+        assert r.status_code == 200, r.content
+        assert "Approving still takes Approve now" in r.json()["message"]
+        (item,) = second.get(OPEN, **addr()).json()["suggestions"]
+        assert item["reviews"] == {
+            "agree": 1,
+            "disagree": 1,
+            "mine": "disagree",
+            "notes": [{"agree": False, "reason": "The lane ends at Elm."}],
+        }
+        # Advice only: the suggestion still waits and the road is as it was.
+        s.refresh_from_db()
+        assert s.status == "pending" and live_row(live)["stress_tier"] == 3
+        assert not Override.objects.exists()
+        assert AuditLogEntry.objects.filter(action="stress_suggest_review").count() == 2
+
+    def test_a_second_mark_replaces_the_first(self, live) -> None:
+        open_to("signed_in")
+        s = suggest()
+        admin = make_user()
+        suggestions.review(admin, s.pk, True)
+        suggestions.review(admin, s.pk, False, "no")
+        assert suggestions.tallies(s, admin) == {
+            "agree": 0,
+            "disagree": 1,
+            "mine": "disagree",
+            "notes": [{"agree": False, "reason": "no"}],
+        }
+
+    def test_only_a_reviewer_on_a_waiting_suggestion(self, live) -> None:
+        open_to("signed_in")
+        rider = make_user(admin=False)
+        s = suggest(rider)
+        client, csrf = rider_client(rider)
+        refused = post(client, ACTION.format(s.pk, "review"), {"verdict": "agree"}, csrf)
+        assert refused.status_code == 403
+        with pytest.raises(suggestions.Forbidden):
+            suggestions.review(rider, s.pk, True)
+        admin = make_user()
+        with pytest.raises(suggestions.stress_edits.Invalid):
+            suggestions.review(admin, s.pk, True, "x" * 201)
+        suggestions.delete(admin, s.pk)
+        with pytest.raises(suggestions.Conflict):
+            suggestions.review(admin, s.pk, True)
+
+    def test_nobody_reviews_their_own_suggestion(self, live, monkeypatch) -> None:
+        from core import reviewed_closures
+
+        open_to("signed_in")
+        rider = make_user(admin=False)
+        s = suggest(rider)
+        # A guild reviewer who also suggests (behind GUILD_REVIEWERS).
+        monkeypatch.setattr(reviewed_closures, "GUILD_REVIEWERS", True)
+        rider._reviewer_guild_ids = frozenset({1})
+        with pytest.raises(suggestions.Forbidden):
+            suggestions.review(rider, s.pk, True)
+
+
+@db
+class TestRiderSeesStatus:
+    def test_the_rider_reads_their_latest_suggestions_status(self, live) -> None:
+        open_to("signed_in")
+        rider = make_user(admin=False)
+        client, _ = rider_client(rider)
+        assert client.get(MINE.format(WAY), **addr()).json() == {"suggestion": None}
+        s = suggest(rider)
+        mine = client.get(MINE.format(WAY), **addr()).json()["suggestion"]
+        assert mine["status"] == "pending" and mine["status_words"] == "Waiting for review."
+        assert mine["step"] == 2 and mine["words"] == "Fine for adults"
+        suggestions.approve(make_user(), s.pk)
+        mine = client.get(MINE.format(WAY), **addr()).json()["suggestion"]
+        assert mine["status"] == "approved" and mine["status_words"] == "Approved: the map uses it."
+        # Nothing of the reviewers reaches the rider.
+        assert "reviews" not in mine and "agree" not in mine
+
+    def test_another_rider_and_a_signed_out_visitor_see_none(self, live) -> None:
+        open_to("signed_in")
+        suggest(make_user(admin=False))
+        other, _ = rider_client()
+        assert other.get(MINE.format(WAY), **addr()).json() == {"suggestion": None}
+        assert Client().get(MINE.format(WAY), **addr()).status_code == 401

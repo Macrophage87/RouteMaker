@@ -129,6 +129,9 @@ API_IMAGE="ghcr.io/macrophage87/routemaker-api"
 #   saved_route_version               earlier versions of a rider's saved routes (v0.7.0): never shipped.
 #   reviewed_closure                  closures home's reviewers confirmed (v0.7.0; core.reviewed_closures):
 #                                     the reviewer's account and a rider's reported words, never shipped.
+#   stress_suggestion_review          reviewers' agree and disagree on home's waiting suggestions
+#                                     (v0.7.0; core.suggestions.review): suggestion_id ->
+#                                     stress_suggestion, reviewer_id -> app_user. Never shipped.
 # tests/test_beta_overlay.py asserts this list, and that every table pointing at one of these is
 # excluded too or blanked (below); ship-data.sh refuses a dump that carries data for any name in it.
 EXCLUDED_TABLE_DATA=(
@@ -138,6 +141,7 @@ EXCLUDED_TABLE_DATA=(
 	app_user audit_log bootstrap_claim pending_instance_admin_removal ban_tombstone
 	configured_guild role_mapping stress_suggestion mass_hazard junction_suggestion stress_edit
 	my_go account_settings saved_route saved_route_version signed_out_send shared_route reviewed_closure
+	stress_suggestion_review
 )
 # Tables the beta needs from home that also name a person or carry a rider's words: shipped with
 # those columns blanked, never whole. Each is left out of the dump and written instead as

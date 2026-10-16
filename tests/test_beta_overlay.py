@@ -733,7 +733,7 @@ def test_the_access_log_never_records_a_query_string() -> None:
 # The api paths whose query carries a place, logged only at `crit` (privacy-6).
 QUERY_PATHS = (
     "reverse|geocode|segment-info|street-photo|junction-suggestions/at"
-    "|stress-suggestions/ticket|transit/station-times|bikeshare/docks"
+    "|stress-suggestions/ticket|stress-suggestions/mine|transit/station-times|bikeshare/docks"
 )
 
 
@@ -771,6 +771,7 @@ def test_reverse_and_geocode_log_errors_at_crit_only_with_the_api_proxy_settings
         "/api/street-photo",
         "/api/junction-suggestions/at",
         "/api/stress-suggestions/ticket",
+        "/api/stress-suggestions/mine",
         "/api/transit/station-times",
         "/api/bikeshare/docks",
     }, queried

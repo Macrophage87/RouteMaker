@@ -1869,6 +1869,16 @@ Each waiting suggestion has the owner's three actions:
 After Approve now or Delete the focus moves to the next suggestion's heading, or to the line "No
 suggestions are waiting."
 
+**A second reviewer** (v0.7.0; `suggestions.review`, `POST /api/stress-suggestions/{id}/review`)
+may mark a waiting road suggestion **Agree** or **Disagree**, with an optional one-line reason
+(200 characters). It is advice: the item shows "Reviewers: N agree, N disagree" and the reasons,
+unnamed, and nothing changes until an admin uses Approve now. A reviewer marks once a suggestion
+(a second mark replaces the first) and never their own suggestion. Each mark is one audit row
+(`stress_suggest_review`); the marks are in `stress_suggestion_review`, which the beta never
+receives. A rider who suggested sees their latest suggestion's status for the road in the road
+panel ("Your suggestion: LTS 2 (Fine for adults). Waiting for review."; `GET
+/api/stress-suggestions/mine?way=`), never the reviewers' marks.
+
 **Privacy of the spot.** The panel sends the nearest point on the road (the road panel's
 `on_way`), never the spot clicked, and the server keeps only the nearest point on that way
 (`suggestions.snap`, PostGIS `ST_ClosestPoint`), refusing a spot more than 98 ft (30 m) from the

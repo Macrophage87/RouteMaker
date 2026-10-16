@@ -5909,6 +5909,22 @@ class SuggestionCreatedOut(Schema):
     message: str
 
 
+class ReviewNoteOut(Schema):
+    agree: bool
+    reason: str
+
+
+class ReviewTalliesOut(Schema):
+    agree: int
+    disagree: int
+    mine: Literal["agree", "disagree"] | None = Field(
+        default=None, description="Your own mark on it, if any."
+    )
+    notes: list[ReviewNoteOut] = Field(
+        default_factory=list, description="The one-line reasons given, oldest first, unnamed."
+    )
+
+
 class SuggestionOut(Schema):
     id: int
     osm_way_id: int
@@ -5926,6 +5942,9 @@ class SuggestionOut(Schema):
     reasons: list[str] = Field(default_factory=list, description="The one-tap reasons' keys.")
     agree: int = Field(
         default=1, description="Open sends for the road that agree with it, itself included."
+    )
+    reviews: ReviewTalliesOut | None = Field(
+        default=None, description="Second reviewers' agree and disagree marks (v0.7.0)."
     )
     status: Literal["pending", "sent_to_discord"]
     created_at: str
@@ -6119,8 +6138,103 @@ def stress_suggestion_list(request, response: HttpResponse):
     get_token(request)
     _private(response)
     return Status(
-        200, {"suggestions": [suggestions.summary(s) for s in suggestions.open_suggestions()]}
+        200,
+        {
+            "suggestions": [
+                suggestions.summary(s, request.user) for s in suggestions.open_suggestions()
+            ]
+        },
     )
+
+
+class SuggestionReviewIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    verdict: Literal["agree", "disagree"]
+    reason: str = Field(default="", max_length=1000, description="Optional, one line of 200.")
+
+
+class SuggestionReviewOut(Schema):
+    id: int
+    message: str
+    reviews: ReviewTalliesOut
+
+
+@api.post(
+    "/stress-suggestions/{suggestion_id}/review",
+    response={200: SuggestionReviewOut, **SUGGESTION_RESPONSES},
+    summary="Agree or disagree with a waiting suggestion: advice, not a decision (reviewer)",
+)
+@decorate_view(*REVIEW_WRITE)
+def stress_suggestion_review(
+    request, suggestion_id: int, body: SuggestionReviewIn, response: HttpResponse
+):
+    from . import stress_edits, suggestions
+
+    try:
+        suggestion = suggestions.review(
+            request.user, suggestion_id, body.verdict == "agree", body.reason
+        )
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    tallies = suggestions.tallies(suggestion, request.user)
+    return Status(
+        200,
+        {
+            "id": suggestion.pk,
+            "message": f"You {body.verdict} with the suggestion for "
+            f"{suggestion.road_name or 'the road'}. Reviewers: {tallies['agree']} agree, "
+            f"{tallies['disagree']} disagree. Approving still takes Approve now.",
+            "reviews": tallies,
+        },
+    )
+
+
+class MySuggestionIn(Schema):
+    way: int = Field(ge=1, description="The road piece's OSM way id.")
+
+
+class MySuggestionOut(Schema):
+    id: int
+    osm_way_id: int
+    step: float
+    words: str
+    status: Literal["pending", "sent_to_discord", "approved", "deleted"]
+    status_words: str
+    created_at: str
+    decided_at: str | None = None
+
+
+class MySuggestionAnswerOut(Schema):
+    suggestion: MySuggestionOut | None = Field(
+        description="Your latest suggestion for the road, or null when you have sent none."
+    )
+
+
+@api.get(
+    "/stress-suggestions/mine",
+    response={
+        200: MySuggestionAnswerOut,
+        401: StressEditErrorOut,
+        403: StressEditErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+    },
+    summary="Your own latest suggestion for a road and its status (signed in)",
+)
+@decorate_view(
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def stress_suggestion_mine(request, params: Query[MySuggestionIn], response: HttpResponse):
+    from . import suggestions
+
+    if not signed_in(request):
+        return _stress_error(401, "Sign in to see your suggestions.", code="signed_out")
+    _private(response)
+    return Status(200, {"suggestion": suggestions.mine(request.user, params.way)})
 
 
 @api.post(

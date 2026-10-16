@@ -71,9 +71,77 @@ export interface SuggestionItem {
   reasons?: string[];
   /** Open sends for the road that agree with it, itself included. */
   agree?: number;
+  /** Second reviewers' marks (v0.7.0); absent from an older server. */
+  reviews?: ReviewTallies;
   status: "pending" | "sent_to_discord";
   created_at: string;
   sent_at: string | null;
+}
+
+/** Second reviewers' agree and disagree on a waiting suggestion (v0.7.0; core/suggestions.py review). */
+export type Verdict = "agree" | "disagree";
+
+export interface ReviewTallies {
+  agree: number;
+  disagree: number;
+  /** The viewing reviewer's own mark, if any. */
+  mine: Verdict | null;
+  /** The one-line reasons given, oldest first, unnamed. */
+  notes: { agree: boolean; reason: string }[];
+}
+
+export const VERDICT_REASON_LABEL = "Your reason (optional, one line)";
+export const VERDICT_REASON_MAX = 200;
+
+/** The tallies in words for the item's further line: "Reviewers: 2 agree, 1 disagrees (disagree: The lane ends at Elm.)"; "" with none. */
+export function talliesLine(reviews: ReviewTallies | undefined): string {
+  if (!reviews || reviews.agree + reviews.disagree === 0) return "";
+  const agree = `${reviews.agree} ${reviews.agree === 1 ? "agrees" : "agree"}`;
+  const disagree = `${reviews.disagree} ${reviews.disagree === 1 ? "disagrees" : "disagree"}`;
+  const notes = reviews.notes.map((n) => `${n.agree ? "agree" : "disagree"}: ${n.reason}`);
+  return `Reviewers: ${agree}, ${disagree}` + (notes.length ? ` (${notes.join("; ")})` : "");
+}
+
+/** POST /api/stress-suggestions/{id}/review (reviewer): advice only; Approve now still decides. */
+export async function sendVerdict(
+  origin: string,
+  id: number,
+  verdict: Verdict,
+  reason: string,
+  csrf: string | null,
+  run: Fetch = fetch,
+): Promise<{ ok: true; body: { message: string; reviews: ReviewTallies } } | { ok: false; message: string }> {
+  const r = await call<{ message: string; reviews: ReviewTallies }>(
+    `${origin}/api/stress-suggestions/${id}/review`,
+    { method: "POST", body: JSON.stringify({ verdict, reason: reason.trim() }) },
+    csrf,
+    run,
+  );
+  return r.ok ? r : { ok: false, message: r.message };
+}
+
+/** A rider's own latest suggestion for a road (GET /api/stress-suggestions/mine). */
+export interface MySuggestion {
+  id: number;
+  osm_way_id: number;
+  step: number;
+  words: string;
+  status: "pending" | "sent_to_discord" | "approved" | "deleted";
+  status_words: string;
+  created_at: string;
+  decided_at: string | null;
+}
+
+/** The rider's latest suggestion for the road, or null (none, signed out, or not answered). */
+export async function fetchMySuggestion(origin: string, wayId: number, signal?: AbortSignal, run: Fetch = fetch): Promise<MySuggestion | null> {
+  const r = await call<{ suggestion: MySuggestion | null }>(`${origin}/api/stress-suggestions/mine?way=${wayId}`, { method: "GET", signal }, null, run);
+  return r.ok && r.body.suggestion && typeof r.body.suggestion.status_words === "string" ? r.body.suggestion : null;
+}
+
+/** The road panel's line after "Your suggestion:": "LTS 2 (Fine for adults). Waiting for review." */
+export function mySuggestionText(mine: MySuggestion): string {
+  const level = mine.step >= 5 ? "Avoid" : `LTS ${stepLabel(mine.step)} (${mine.words})`;
+  return `${level}. ${mine.status_words}`;
 }
 
 export interface DiscordPost {

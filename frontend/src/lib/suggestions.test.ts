@@ -16,6 +16,10 @@ import {
   suggestProblem,
   suggestValueText,
   suggestionLine,
+  talliesLine,
+  sendVerdict,
+  fetchMySuggestion,
+  mySuggestionText,
   type SuggestionItem,
 } from "./suggestions.ts";
 
@@ -130,4 +134,48 @@ test("v0.7.0 short form: the ticket is asked for the road; ten a day is said pla
   const outcome = await sendQuick("https://x.test", body, "tok", limited);
   assert.equal(outcome.kind, "refused");
   assert.match(outcome.message, /10 suggestions today/);
+});
+
+// v0.7.0: a second reviewer's agree or disagree, and a rider's own suggestion's status.
+
+test("the reviewers' tallies read in words, with their reasons and no names", () => {
+  assert.equal(talliesLine(undefined), "");
+  assert.equal(talliesLine({ agree: 0, disagree: 0, mine: null, notes: [] }), "");
+  assert.equal(talliesLine({ agree: 1, disagree: 0, mine: "agree", notes: [] }), "Reviewers: 1 agrees, 0 disagree");
+  assert.equal(
+    talliesLine({ agree: 2, disagree: 1, mine: null, notes: [{ agree: false, reason: "The lane ends at Elm." }] }),
+    "Reviewers: 2 agree, 1 disagrees (disagree: The lane ends at Elm.)",
+  );
+});
+
+test("a verdict is posted with its trimmed reason and answers the new tallies", async () => {
+  const seen: { url?: string; init?: RequestInit } = {};
+  const reviews = { agree: 1, disagree: 0, mine: "agree", notes: [] };
+  const r = await sendVerdict("https://rm.test", 7, "agree", "  fine  ", "tok", fakeFetch(200, { message: "ok", reviews }, seen));
+  assert.equal(seen.url, "https://rm.test/api/stress-suggestions/7/review");
+  assert.deepEqual(JSON.parse(String(seen.init?.body)), { verdict: "agree", reason: "fine" });
+  assert.ok(r.ok && r.body.reviews.agree === 1);
+  const refused = await sendVerdict("https://rm.test", 7, "disagree", "", null, fakeFetch(403, { error: "Only a RouteMaker reviewer can review a suggestion." }));
+  assert.deepEqual(refused, { ok: false, message: "Only a RouteMaker reviewer can review a suggestion." });
+});
+
+test("a rider reads their own suggestion's status for the road", async () => {
+  const mine = {
+    id: 3,
+    osm_way_id: 5001,
+    step: 2,
+    words: "Fine for adults",
+    status: "pending",
+    status_words: "Waiting for review.",
+    created_at: "2026-10-16T12:00:00+00:00",
+    decided_at: null,
+  };
+  const seen: { url?: string; init?: RequestInit } = {};
+  const found = await fetchMySuggestion("https://rm.test", 5001, undefined, fakeFetch(200, { suggestion: mine }, seen));
+  assert.equal(seen.url, "https://rm.test/api/stress-suggestions/mine?way=5001");
+  assert.ok(found);
+  assert.equal(mySuggestionText(found), "LTS 2 (Fine for adults). Waiting for review.");
+  assert.equal(mySuggestionText({ ...found, step: 5, status_words: "Approved: the map uses it." }), "Avoid. Approved: the map uses it.");
+  assert.equal(await fetchMySuggestion("https://rm.test", 5001, undefined, fakeFetch(200, { suggestion: null })), null);
+  assert.equal(await fetchMySuggestion("https://rm.test", 5001, undefined, fakeFetch(401, { error: "Sign in" })), null);
 });

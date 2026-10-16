@@ -13,6 +13,11 @@ community decide."):
   suggestion records that it was sent. The admin approves or deletes it later. There is no
   in-app voting ("I meant discord itself").
 
+Before the decision, a second reviewer (`reviewed_closures.may_review`: an instance admin for now)
+may mark a waiting suggestion agree or disagree, with an optional one-line reason (`review`). It is
+advice: the list shows the tallies, and approving still takes Approve now. A rider who suggested
+sees their suggestion's status in the road panel (`mine`), never the reviewers' tallies or words.
+
 Every action is one `audit_log` entry. The suggester's account is kept on the row for the admin
 only; it is never in the post, the tiles or anything a rider reads.
 """
@@ -23,7 +28,7 @@ from django.db import IntegrityError, connection, transaction
 from django.utils import timezone
 
 from . import audit, road_names, segment_info, stress_edits, suggestion_post
-from .models import AuditLogEntry, StressSuggestion, SuggestionSettings
+from .models import AuditLogEntry, StressSuggestion, StressSuggestionReview, SuggestionSettings
 
 REASON_MAX = 500
 # Suggestions one account may have waiting at once (the hourly count is
@@ -220,6 +225,91 @@ def _record(user, way_id, lat, lon, name, row, tier, half, reason) -> StressSugg
     return suggestion
 
 
+# A reviewer's agree or disagree: its reason is one line, at most this long.
+REVIEW_REASON_MAX = 200
+
+
+def review(reviewer, suggestion_id: int, agree: bool, reason: str = "") -> StressSuggestion:
+    """Mark a waiting road suggestion agree or disagree (again: the reviewer's earlier mark is
+    replaced). Advice only: nothing is applied. Raises SuggestionRefused / EditRefused."""
+    from . import reviewed_closures
+
+    if not reviewed_closures.may_review(reviewer):
+        raise Forbidden("Only a RouteMaker reviewer can review a suggestion.")
+    reason = " ".join((reason or "").split())
+    if len(reason) > REVIEW_REASON_MAX:
+        raise stress_edits.Invalid(
+            f"The reason is one line of at most {REVIEW_REASON_MAX} characters.", "reason"
+        )
+    with transaction.atomic():
+        suggestion = _open(suggestion_id)
+        if suggestion.suggester_user_id is not None and suggestion.suggester_user_id == reviewer.pk:
+            raise Forbidden("You sent this suggestion: another reviewer weighs it.")
+        StressSuggestionReview.objects.update_or_create(
+            suggestion=suggestion,
+            reviewer_user_id=reviewer.pk,
+            defaults={
+                "reviewer": reviewer,
+                "agree": bool(agree),
+                "reason": reason,
+                "updated_at": timezone.now(),
+            },
+        )
+    audit.record(
+        reviewer, "stress_suggest_review", "stress_suggestion", suggestion.pk,
+        AuditLogEntry.Outcome.ALLOWED, detail="agree" if agree else "disagree",
+    )  # fmt: skip
+    return suggestion
+
+
+def tallies(suggestion: StressSuggestion, viewer=None) -> dict:
+    """The reviewers' marks on a suggestion: how many agree and disagree, the viewer's own
+    ("agree", "disagree" or None) and the one-line reasons given, oldest first, without names."""
+    rows = list(suggestion.reviews.all())
+    me = getattr(viewer, "pk", None)
+    own = next((r for r in rows if me is not None and r.reviewer_user_id == me), None)
+    return {
+        "agree": sum(1 for r in rows if r.agree),
+        "disagree": sum(1 for r in rows if not r.agree),
+        "mine": None if own is None else ("agree" if own.agree else "disagree"),
+        "notes": [{"agree": r.agree, "reason": r.reason} for r in rows if r.reason],
+    }
+
+
+# What a rider reads of their own suggestion's status (`mine`).
+RIDER_STATUS = {
+    StressSuggestion.Status.PENDING: "Waiting for review.",
+    StressSuggestion.Status.SENT: "Sent to riders for a poll; waiting for a decision.",
+    StressSuggestion.Status.APPROVED: "Approved: the map uses it.",
+    StressSuggestion.Status.DELETED: "Reviewed, and not taken up.",
+}
+
+
+def mine(user, way_id: int) -> dict | None:
+    """The rider's latest level suggestion for the road, as the road panel says it, or None."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        return None
+    suggestion = (
+        StressSuggestion.objects.filter(
+            suggester_user_id=user.pk, osm_way_id=int(way_id), kind=StressSuggestion.Kind.ROAD
+        )
+        .order_by("-created_at", "-pk")
+        .first()
+    )
+    if suggestion is None:
+        return None
+    return {
+        "id": suggestion.pk,
+        "osm_way_id": suggestion.osm_way_id,
+        "step": suggestion.step,
+        "words": segment_info.words_for(suggestion.tier, suggestion.half),
+        "status": suggestion.status,
+        "status_words": RIDER_STATUS.get(suggestion.status, ""),
+        "created_at": suggestion.created_at.isoformat(),
+        "decided_at": suggestion.decided_at.isoformat() if suggestion.decided_at else None,
+    }
+
+
 # Open suggestions read before they are grouped and sorted (v0.7.0).
 OPEN_READ = 1000
 
@@ -242,6 +332,7 @@ def open_suggestions(limit: int = 100) -> list[StressSuggestion]:
             status__in=(StressSuggestion.Status.PENDING, StressSuggestion.Status.SENT)
         )
         .exclude(kind=StressSuggestion.Kind.CLOSURE)
+        .prefetch_related("reviews")
         .order_by("created_at")[:OPEN_READ]
     )
     by_road: dict[int, list[StressSuggestion]] = {}
@@ -368,8 +459,9 @@ def send_to_discord(
     return suggestion, post
 
 
-def summary(suggestion: StressSuggestion) -> dict:
-    """One suggestion as the admin's review list shows it (no account details)."""
+def summary(suggestion: StressSuggestion, viewer=None) -> dict:
+    """One suggestion as the admin's review list shows it (no account details); `reviews` are
+    the reviewers' tallies, with `viewer`'s own mark."""
     return {
         "id": suggestion.pk,
         "osm_way_id": suggestion.osm_way_id,
@@ -386,6 +478,7 @@ def summary(suggestion: StressSuggestion) -> dict:
         "signed_out": suggestion.signed_out,
         "reasons": list(suggestion.reasons or []),
         "agree": getattr(suggestion, "agree", 1),
+        "reviews": tallies(suggestion, viewer),
         "status": suggestion.status,
         "created_at": suggestion.created_at.isoformat(),
         "sent_at": suggestion.sent_at.isoformat() if suggestion.sent_at else None,
