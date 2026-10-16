@@ -87,7 +87,7 @@ import { federalShown, type FederalData } from "./lib/federalLand.ts";
 import { FEDERAL_POINTS_NONE, type FederalStatus } from "./lib/federalLegend.ts";
 import { federalAreaAt, federalRouteLines, pointAreas, stopWarningShort } from "./lib/federalStops.ts";
 import { addCoverageMask, fetchCoverage, watchForCapacity, watchForFacilities, watchCentre, watchZoom } from "./lib/mapGlue.ts";
-import { holdBackDuringRide } from "./lib/rideBack.ts";
+import { STILL_RIDING_SAID, forgetStaleRideEntry, holdBackDuringRide } from "./lib/rideBack.ts";
 import { afterHistoryStep } from "./lib/rideFocus.ts";
 import { isMassRide, massBandsChangeSaid, massBandsSaid } from "./lib/massCapacity.ts";
 import { movePoint, planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
@@ -693,9 +693,12 @@ export function App() {
   const rideCircle = rideView?.rider ? { centre: rideView.rider.point, radiusM: rideView.rider.accuracyM } : null;
   const ridePrefsNow = useRef(ridePrefs);
   ridePrefsNow.current = ridePrefs;
+  const ridingNow = useRef(riding);
+  ridingNow.current = riding;
   const changeRidePrefs = useCallback((next: RidePrefs) => {
     // Voice turned on mid-ride: unlocked in this change's own gesture, as Start does (review RIDE-9).
-    voiceTurnedOn(ridePrefsNow.current, next);
+    // Before a ride, Start unlocks it; nothing is said then.
+    if (ridingNow.current) voiceTurnedOn(ridePrefsNow.current, next);
     writeRidePrefs(next);
     setRidePrefs(next);
   }, []);
@@ -2636,7 +2639,10 @@ export function App() {
     announce(RIDE_ENDED_SAID);
   }, [announce]);
   // A back gesture during a ride does nothing; End ride is the way out (lib/rideBack.ts, review RIDE-2).
-  useEffect(() => (riding ? holdBackDuringRide(window) : undefined), [riding]);
+  // Each held back is told, politely, once (review RIDE-2).
+  useEffect(() => (riding ? holdBackDuringRide(window, () => announce(STILL_RIDING_SAID)) : undefined), [riding, announce]);
+  // No ride is on at load: a ride's entry left by a reload is the page's own again.
+  useEffect(() => forgetStaleRideEntry(window), []);
   const undoEndRide = () => {
     const ended = endedRide.current;
     endedRide.current = null;
