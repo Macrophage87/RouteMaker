@@ -1128,10 +1128,7 @@ export function RideMode({
             <Icon name="textsize" size={20} />
             Big text
           </button>
-          <button type="button" className="danger" onClick={end}>
-            <Icon name="stop" size={20} />
-            {END_RIDE_NAME}
-          </button>
+          {/* No End ride here (review F5): the sticky top End is the one control, always in view. */}
         </div>
         {water && (
           <details className="fold ride-detour">

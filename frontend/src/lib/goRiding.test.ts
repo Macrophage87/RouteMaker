@@ -26,13 +26,14 @@ test("1. track-up by default, the ride settings' switch remembered on this devic
   assert.doesNotMatch(follow, /\.focus\(/);
 });
 
-test("6. an End button always in view, named End ride, one tap; Ride ended with Undo; End ride stays", () => {
+test("6. an End button always in view, named End ride, one tap; Ride ended with Undo", () => {
   const top = ride.slice(ride.indexOf('<div className="ride-top">'), ride.indexOf('<div className="ride-top">') + 600);
   assert.match(top, /<h2 id="ride-heading"/);
   assert.match(top, /<button type="button" className="danger ride-end" onClick=\{end\} aria-label=\{END_RIDE_NAME\}>/);
   assert.match(ride, /export const END_RIDE_NAME = "End ride";/);
-  // The action row's End ride is still there, and does the same.
-  assert.match(ride, /<button type="button" className="danger" onClick=\{end\}>\s*<Icon name="stop" size=\{20\} \/>\s*\{END_RIDE_NAME\}/);
+  // Review F5: the action row's duplicate End ride is gone; the sticky top End is the one End control (one, not two).
+  assert.equal(ride.match(/onClick=\{end\}/g)?.length, 1);
+  assert.doesNotMatch(ride, /<button type="button" className="danger" onClick=\{end\}>/);
   // Kept in view as the card scrolls, at every size and in Big text (which never hides the card).
   assert.match(css, /\.ride-top \{\s*position: sticky;\s*top: 0;/);
   assert.doesNotMatch(css, /\.ride-big \.ride-(top|end)[^{]*\{[^}]*display: none/);
