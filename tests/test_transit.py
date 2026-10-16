@@ -1369,7 +1369,11 @@ def test_with_no_schedule_installed_metro_alone_runs_on_its_typical_timetable(tm
     path = tmp_path / "schedule.json"
     feeds = {k: v for k, v in FEEDS.items() if not k.startswith("wmata-")}
     path.write_text(json.dumps(build.build(feeds, date(2026, 9, 28))[0]))
-    assert [s.id for s in transit.load(path, date(2026, 10, 1)).systems] == ["marc", "mta-light-rail", "wmata-rail"]
+    assert [s.id for s in transit.load(path, date(2026, 10, 1)).systems] == [
+        "marc",
+        "mta-light-rail",
+        "wmata-rail",
+    ]
     assert [s.id for s in transit.load(path, date(2026, 10, 12)).systems] == [
         "marc",
         "mta-light-rail",
