@@ -43,7 +43,8 @@ query="" prev=""
 for a in "$@"; do [ "$prev" = --query ] && query=$a; prev=$a; done
 case "$query" in
   "" | "Reservations[0].Instances[0].State.Name" | "InstanceInformationList[0].PingStatus" | \
-    "Command.CommandId" | "Status" | "[StandardOutputContent,StandardErrorContent]") ;;
+    "Command.CommandId" | "Status" | "[StandardOutputContent,StandardErrorContent]" | \
+    "[Status,StandardOutputContent]") ;;
   *) echo "fake aws: unknown --query $query" >&2; exit 252 ;;
 esac
 # The first line of a file, the last line kept for every later read. FAIL: signed out.
@@ -69,14 +70,28 @@ case "$1 $2" in
     case "$*" in
       *"--query Status"*)
         next "$FAKE_DIR/invocation" || echo InProgress ;;
+      # --attach's check that box-rebuild.sh holds its lock on the box.
+      *"--query [Status,StandardOutputContent]"*)
+        next "$FAKE_DIR/attach_check" || printf 'Success\tbox-rebuild-running\n' ;;
       *) printf 'box-rebuild: rebuild job 7 ended failed\tsome stderr\n' ;;
     esac ;;
   "s3 ls")
     [ ! -e "$FAKE_DIR/s3_denied" ] || exit 255
+    case "$3" in
+      */failed/)
+        [ -e "$FAKE_DIR/failed_log" ] || exit 1
+        echo "2026-10-16 10:00:00       2048 box-rebuild-20261016T100000Z.log.gz"
+        echo "2026-10-16 10:00:00       4096 rebuild-20261016T100000Z.log.gz"
+        exit 0 ;;
+    esac
     n=$(cat "$FAKE_DIR/result_after" 2>/dev/null || echo 99)
     echo $((n - 1)) >"$FAKE_DIR/result_after"
     [ "$n" -le 0 ] ;;
-  "s3 cp") cat "$FAKE_DIR/manifest" 2>/dev/null ;;
+  "s3 cp")
+    case "$3" in
+      */failed/rebuild-*) gzip -c "$FAKE_DIR/failed_log" ;;
+      *) cat "$FAKE_DIR/manifest" 2>/dev/null ;;
+    esac ;;
   *) exit 1 ;;
 esac
 """
@@ -351,6 +366,21 @@ def test_a_failed_command_says_so_shows_the_box_and_stops_it(fake) -> None:
     assert "--no-send" in done.stderr
     assert len(fake.called("stop-instances")) == 1
     assert not fake.called("import-result.sh")
+    assert "no log reached" in done.stderr
+
+
+def test_a_failed_rebuild_names_its_uploaded_log_and_shows_its_end(fake) -> None:
+    """The log is in RUN_URL/failed/, read from home without starting the box again."""
+    (fake.dir / "states").write_text("stopped\nstopped\nrunning\nrunning\nstopped\n")
+    (fake.dir / "result_after").write_text("99")
+    (fake.dir / "failed_log").write_text("step one\nTraceback: valhalla_build_tiles died\n")
+
+    done = fake.run(URL)
+
+    assert done.returncode == 1
+    assert f"{URL}/failed/rebuild-20261016T100000Z.log.gz" in done.stderr
+    assert "log | Traceback: valhalla_build_tiles died" in done.stderr
+    assert len(fake.called("stop-instances")) == 1
 
 
 def test_a_box_that_stops_with_no_result_ends_the_wait_and_is_stopped_once_more(fake) -> None:
@@ -595,6 +625,90 @@ def test_an_interrupted_wait_stops_the_box(fake, sig) -> None:
             proc.kill()
     assert proc.returncode != 0
     assert len(fake.called("stop-instances")) == 1
+
+
+def test_attach_only_waits_for_the_run_on_the_box_then_stops_it_and_installs(fake) -> None:
+    (fake.dir / "states").write_text("running\n")
+
+    done = fake.run("--attach", URL)
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert not fake.called("send-inputs.sh") and not fake.called("start-instances")
+    # Only the check that box-rebuild.sh runs (review round 2, S4): no rebuild is sent.
+    (check,) = fake.called("send-command")
+    assert "RouteMaker attach check" in check and "box-rebuild.lock" in check
+    assert "rm-root.sh" not in check
+    calls = fake.calls()
+    assert position(calls, "stop-instances") < position(calls, "import-result.sh")
+    assert len(fake.called("stop-instances")) == 1
+
+
+def test_attach_to_a_box_that_is_not_running_is_refused(fake) -> None:
+    (fake.dir / "states").write_text("stopped\n")
+
+    done = fake.run("--attach", URL)
+
+    assert done.returncode == 2 and "nothing to attach to" in done.stderr
+    assert "--no-send" in done.stderr and URL in done.stderr
+    assert not fake.called("start-instances") and not fake.called("stop-instances")
+
+
+def test_attach_refuses_when_box_rebuild_is_not_running(fake) -> None:
+    """Review round 2, S4: a running box whose box-rebuild.sh holds no lock has nothing to wait
+    for; the launcher says so and leaves the box alone."""
+    (fake.dir / "states").write_text("running\n")
+    (fake.dir / "attach_check").write_text("Success\tbox-rebuild-idle\n")
+
+    done = fake.run("--attach", URL)
+
+    assert done.returncode == 2, done.stdout + done.stderr
+    assert "box-rebuild.sh is not running" in done.stderr and "--no-send" in done.stderr
+    assert not fake.called("stop-instances") and not fake.called("import-result.sh")
+
+
+def test_attach_refuses_when_the_box_cannot_be_asked(fake) -> None:
+    (fake.dir / "states").write_text("running\n")
+    (fake.dir / "attach_check").write_text("Failed\t\n")
+
+    done = fake.run("--attach", URL)
+
+    assert done.returncode == 2 and "could not ask the box" in done.stderr
+    assert not fake.called("stop-instances")
+
+
+def test_an_attached_wait_that_times_out_says_it_leaves_the_box(fake) -> None:
+    (fake.dir / "states").write_text("running\n")
+    (fake.dir / "result_after").write_text("9999")
+
+    done = fake.run("--attach", URL, CLOUD_LAUNCH_TIMEOUT_S="0")
+
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert "left running" in done.stderr and "stopping the box" not in done.stderr
+    assert not fake.called("stop-instances")
+
+
+def test_an_interrupted_attach_leaves_the_rebuild_running(fake) -> None:
+    (fake.dir / "states").write_text("running\n")
+    (fake.dir / "result_after").write_text("9999")
+    proc = subprocess.Popen(
+        ["bash", str(LAUNCH), "--attach", URL],
+        env={**fake.environ, "CLOUD_LAUNCH_POLL_S": "1"},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        for _ in range(100):
+            if len(fake.called("describe-instances")) >= 2:
+                break
+            time.sleep(0.1)
+        proc.send_signal(signal.SIGINT)
+        proc.wait(timeout=30)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+    assert proc.returncode != 0
+    assert not fake.called("stop-instances"), "the box is still rebuilding"
 
 
 def test_dry_run_prints_the_calls_and_runs_none(fake) -> None:

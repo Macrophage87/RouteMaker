@@ -34,7 +34,7 @@
 
 set -euo pipefail
 
-IMAGE="docker.io/rtuszik/photon-docker:2.4.0"
+IMAGE="docker.io/rtuszik/photon-docker:2.4.0@sha256:21549c60f9e6488fff3217e40429a652c4b445f374800333fe32859e47cec293"
 # settings.COVERAGE_BBOX, west,south,east,north; tests/test_photon_trim.py holds
 # the two equal.
 BBOX="-78.05,38.2,-76.02,39.72"

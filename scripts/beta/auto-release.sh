@@ -67,12 +67,13 @@
 #   RM_STATE RM_SRC RM_DATA      required (section 0)
 #   RM_PY                        the python with pyyaml for check_beta_compose.py [python3]
 #   RM_CD_GITHUB_REPO            owner/name on GitHub [Macrophage87/RouteMaker]
-#   RM_CD_WINDOW                 HH-HH local hours in which a deploy may start (e.g. 02-06; the two
+#   RM_CD_WINDOW                 HH-HH Washington hours in which a deploy may start (e.g. 02-06; the two
 #                                hours differ; 22-04 wraps past midnight) [any]
 #   RM_CD_DOCKER_FREE_GIB        GiB that must be free on Docker's root before a deploy [3]
 #   RM_CD_REQUIRE_SIGNED_TAGS    1: also require `git verify-tag` to pass [0]
 #   RM_CD_KEEP                   release snapshots kept in $RM_STATE/cd/backups [3]
-#   RM_CD_HOST                   Host header for the local health check [routemaker.cieply.com]
+#   RM_CD_HOST                   Host header for the local health check [RM_BETA_HOST from the
+#                                checkout's .env; one of the two is required]
 # DOCKER and CURL name the docker and curl binaries [docker, curl] (the tests use stubs).
 set -uo pipefail
 export LC_ALL=C
@@ -108,7 +109,9 @@ load_vars() {
 	case "$gh_repo" in *[!A-Za-z0-9._/-]* | */*/* | /* | */) die "RM_CD_GITHUB_REPO '$gh_repo' is not owner/name" ;; */*) ;; *) die "RM_CD_GITHUB_REPO '$gh_repo' is not owner/name" ;; esac
 	keep=${RM_CD_KEEP:-3}
 	case "$keep" in '' | *[!0-9]* | 0) die "RM_CD_KEEP must be a whole number of 1 or more" ;; esac
-	health_host=${RM_CD_HOST:-routemaker.cieply.com}
+	# The beta's name is server config, never in the repository (review sec-infra-8).
+	health_host=${RM_CD_HOST:-$(env_value RM_BETA_HOST 2>/dev/null)}
+	[ -n "$health_host" ] || die "no host for the health check: set RM_BETA_HOST=<the beta's name> in $RM_SRC/.env (docs/BETA-RUNBOOK.md, section 0)"
 	docker_free_gib=${RM_CD_DOCKER_FREE_GIB:-3}
 	case "$docker_free_gib" in '' | *[!0-9]*) die "RM_CD_DOCKER_FREE_GIB must be a whole number of GiB" ;; esac
 	progress="$cd_dir/in-progress"
@@ -167,13 +170,39 @@ window_problem() {
 	from=$((10#${w%-*})); to=$((10#${w#*-}))
 	if [ "$from" -gt 23 ] || [ "$to" -gt 24 ]; then echo "RM_CD_WINDOW '$w': the hours run from 00 to 23 (24 may end a window)"; return 0; fi
 	[ "$from" != "$to" ] || { echo "RM_CD_WINDOW '$w' opens and closes at the same hour, so it would never open; leave it unset for any hour"; return 0; }
+	# Without the zone's data, date answers in UTC under the zone's name: say so, not a wrong hour.
+	case "$(TZ=America/New_York date +%Z)" in
+		EST | EDT) ;;
+		*) echo "RM_CD_WINDOW is read in Washington time, and this host has no time zone data for America/New_York: install tzdata"; return 0 ;;
+	esac
 	return 1
 }
 in_window() { # RM_CD_WINDOW has passed window_problem
 	local w=${RM_CD_WINDOW:-} from to now
 	[ -n "$w" ] || return 0
-	from=$((10#${w%-*})); to=$((10#${w#*-})); now=$((10#$(date +%H)))
+	# Washington's hours, whatever zone the host keeps (a cloud server's is often UTC).
+	from=$((10#${w%-*})); to=$((10#${w#*-})); now=$((10#$(TZ=America/New_York date +%H)))
 	if [ "$from" -le "$to" ]; then [ "$now" -ge "$from" ] && [ "$now" -lt "$to" ]; else [ "$now" -ge "$from" ] || [ "$now" -lt "$to" ]; fi
+}
+# From 5 minutes before the nightly backup to 30 after it (06:55 to 07:30 UTC for 07:00): a
+# deploy that started then would take its pre-release snapshot and restart the stack under the
+# dump. Its time is NIGHTLY_BACKUP_CRON ("M H * * *", UTC) in the checkout, else 07:00.
+backup_minute() {
+	local m="" h=""
+	read -r m h < <(sed -n 's/^NIGHTLY_BACKUP_CRON = "\([0-9]\{1,2\}\) \([0-9]\{1,2\}\) \* \* \*"$/\1 \2/p' \
+		"$RM_SRC/src/config/procrastinate.py" 2>/dev/null | tail -n1) || true
+	if [[ "$m" =~ ^[0-9]+$ ]] && [[ "$h" =~ ^[0-9]+$ ]] && [ $((10#$m)) -lt 60 ] && [ $((10#$h)) -lt 24 ]; then
+		echo $((10#$h * 60 + 10#$m))
+	else
+		echo 420
+	fi
+}
+hhmm() { printf '%02d:%02d' $(($1 / 60)) $(($1 % 60)); }
+in_backup_slot() {
+	local now
+	now=$((10#$(date -u +%H%M)))
+	now=$((now / 100 * 60 + now % 100))
+	[ $(((now - $1 + 5 + 1440) % 1440)) -lt 35 ]
 }
 # Prints why the checkout's origin is not the GitHub repository whose CI the agent reads, and
 # succeeds, if it is not: code and CI must come from the same place, over https.
@@ -321,11 +350,11 @@ wait_healthy() {
 }
 smoke() {
 	local out
-	out=$("$RM_SRC/scripts/beta/smoke-test.sh" --local 2>&1) && { printf '%s\n' "$out" >>"$run_log"; grep -E '^(PASS|FAIL)' <<<"$out" >>"$report"; return 0; }
+	out=$("$RM_SRC/scripts/beta/smoke-test.sh" --local --host "$health_host" 2>&1) && { printf '%s\n' "$out" >>"$run_log"; grep -E '^(PASS|FAIL)' <<<"$out" >>"$report"; return 0; }
 	printf '%s\n' "$out" >>"$run_log"
 	say "smoke tests failed once; trying again in a minute (photon needs one after a start)"
 	sleep "${RM_CD_SMOKE_RETRY_S:-60}"
-	out=$("$RM_SRC/scripts/beta/smoke-test.sh" --local 2>&1); local rc=$?
+	out=$("$RM_SRC/scripts/beta/smoke-test.sh" --local --host "$health_host" 2>&1); local rc=$?
 	printf '%s\n' "$out" >>"$run_log"
 	grep -E '^(PASS|FAIL)' <<<"$out" >>"$report"
 	return "$rc"
@@ -695,6 +724,8 @@ pass() {
 			h=$(lock_hash "$new")
 		fi
 		in_window || { rm -f "$gate_file"; finish waiting "$tag: outside the deploy window RM_CD_WINDOW=$RM_CD_WINDOW"; return 0; }
+		backup_at=$(backup_minute)
+		! in_backup_slot "$backup_at" || { rm -f "$gate_file"; finish waiting "$tag: the nightly backup runs at $(hhmm "$backup_at") UTC; deploying after $(hhmm $(((backup_at + 30) % 1440))) UTC"; return 0; }
 		predraw_running && { rm -f "$gate_file"; finish waiting "$tag: a stress-tile pre-draw is running; deploying after it"; return 0; }
 		free=$(free_kib "$cd_dir/backups")
 		[ "${free:-0}" -ge 1048576 ] || { rm -f "$gate_file"; finish waiting "$tag: less than 1 GiB free for the snapshot in $cd_dir/backups"; return 0; }

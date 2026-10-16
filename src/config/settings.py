@@ -24,8 +24,18 @@ from pipeline.source import GEOFABRIK_EXTRACTS
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "insecure-development-key")
 DEBUG = os.environ.get("DJANGO_DEBUG", "") == "1"
+# Signs the session cookies and the OAuth state. The development default is a string in
+# this repository, so outside DEBUG an unset or empty value is a process that does not
+# start, as KEY_ENCRYPTION_KEY is below.
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
+if not SECRET_KEY:
+    if not DEBUG:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY is required when DJANGO_DEBUG is not 1: it signs the "
+            "session cookies, and a default here would be a published key."
+        )
+    SECRET_KEY = "insecure-development-key"
 # Stripped, because `a, b` is how a person writes a list: unstripped, the
 # second entry was " b", which no Host header matches, so every request for b
 # was a 400. The api healthcheck in compose.yaml parses the same way.

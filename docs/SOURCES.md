@@ -500,7 +500,7 @@ map's credits (301 is about data sources). It is credited where the font is, in 
   contributors, ODbL), read from the same extract as the ways.
 - Basis: the level figure (0.37 riders/m2, a utilisation of 0.7, 1.9 m/s) rests on the
   owner's counts of three DC Bike Party rides (PLAN item 173,
-  `reports/owner/cyclist_packing_density.md`), indicative, good to about ±25% (item
+  `reports/owner/cyclist_packing_density.md` (not in the repository)), indicative, good to about ±25% (item
   175). The grade factors (the climb's 12 per unit of grade above 1%, the 150 m
   set-in, the descent's 5 per unit past 4%, the 30% and 60% floors) are not from a
   measurement; the climb factor agrees with Parkin and Rotheram (2010) up to about 6%
@@ -660,7 +660,7 @@ built in v0.7.0; listed so they can be added:
 
 ### Metro's typical timetable (until WMATA's rail GTFS is built)
 
-WMATA's GTFS needs a developer key, which the owner does not have yet. The owner, 2026-10-12:
+WMATA's GTFS needs a developer key; this is the fallback when no WMATA rail GTFS is built. The owner, 2026-10-12:
 "Just use defaults. The wmata website has a typical timetable for rail." and "Rail is so frequent
 that it's not a major issue. It's bus where the API helps." Until a schedule with WMATA's rail GTFS
 is built, Metro runs on `src/core/transitdata/metro-typical.json`. Once one is built, it replaces

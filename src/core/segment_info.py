@@ -507,7 +507,16 @@ def _parts(text: str, table: dict[str, str]) -> list[str]:
 
 
 def rule_words(rule: str) -> str:
-    """The classifier's rule (`segment.stress_rule`) in plain words."""
+    """The classifier's rule (`segment.stress_rule`) in plain words, every speed in mph with
+    km/h after it (spec-10: "30 mph (48 km/h)")."""
+    return re.sub(
+        r"(\d+(?:\.\d+)?) mph(?! \()",
+        lambda m: mph_and_kmh(float(m.group(1))),
+        _rule_words(rule),
+    )
+
+
+def _rule_words(rule: str) -> str:
     rule = (rule or "").strip()
     rule = re.sub(r"\s*\(Furth: [^)]*\)", "", rule)
     if rule.startswith(f"override: stress adjustment {COUNTY_ADJUSTMENT_PREFIX}"):
@@ -518,7 +527,7 @@ def rule_words(rule: str) -> str:
         return "Owner-rated: a bike lane on a road this busy is LTS 4"
     if rule.startswith("legal but avoid"):
         posted = _SPEED.search(rule)
-        return "Avoid: highway-like road" + (f" (posted {posted.group(0)})" if posted else "")
+        return "Avoid: highway-like road" + (f", posted {posted.group(0)}" if posted else "")
     match = re.match(r"motor-only classification \((\w+)\)", rule)
     if match:
         return f"Highway-like road for motor traffic ({match.group(1).replace('_', ' ')})"

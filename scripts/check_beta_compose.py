@@ -639,10 +639,10 @@ DUMMY_ENV = {
     "DJANGO_SECRET_KEY": "dummy",
     "KEY_ENCRYPTION_KEY": "dummy",
     "PGPASSWORD": "dummy",
-    "DJANGO_ALLOWED_HOSTS": "routemaker.cieply.com",
-    "DJANGO_CSRF_TRUSTED_ORIGINS": "https://routemaker.cieply.com",
+    "DJANGO_ALLOWED_HOSTS": "beta.example.org",
+    "DJANGO_CSRF_TRUSTED_ORIGINS": "https://beta.example.org",
     "DISCORD_CLIENT_ID": "dummy",
-    "DISCORD_REDIRECT_URI": "https://routemaker.cieply.com/auth/callback",
+    "DISCORD_REDIRECT_URI": "https://beta.example.org/auth/callback",
     "DISCORD_CLIENT_SECRET": "dummy",
 }
 

@@ -131,7 +131,12 @@ def _now() -> datetime:
 
 def refresh(fetch: Fetch = http_get, sleep=time.sleep, now: Callable[[], datetime] = _now) -> str:
     """Read every configured feed and replace the shared copy. A feed that fails keeps
-    its last good zones and the time they were read. Returns a line for the run row."""
+    its last good zones and the time they were read. Returns a line for the run row.
+
+    The copy is saved first, then the run fails (FeedError) when a configured feed's last
+    good read is older than `STALE_AFTER_S`, or it has none (review OPS-3): a feed down
+    for good used to leave every run a success while the planner called its zones stale,
+    so nothing alerted. One failed tick inside the twenty minutes is not a failure."""
     from .models import BikeshareFeedCache
 
     row = BikeshareFeedCache.objects.filter(key=KEY).first()
@@ -162,7 +167,17 @@ def refresh(fetch: Fetch = http_get, sleep=time.sleep, now: Callable[[], datetim
         defaults={"payload": {"feeds": feeds}, "fetched_at": now(), "failed_at": None},
     )
     forget()
-    return "work zones: " + (", ".join(said) if said else "no feed configured")
+    line = "work zones: " + (", ".join(said) if said else "no feed configured")
+    stale = []
+    for source in wanted:
+        when = rules._when(feeds[source].get("read_at"))
+        if when is None or (now() - when).total_seconds() > STALE_AFTER_S:
+            stale.append(source)
+    if stale:
+        raise FeedError(
+            f"{line}; no good read in {STALE_AFTER_S / 60:.0f} minutes: {', '.join(stale)}"
+        )
+    return line
 
 
 @dataclass(frozen=True)

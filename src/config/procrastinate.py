@@ -118,14 +118,16 @@ RETRY = RetryStrategy(max_attempts=5, exponential_wait=6)
 
 # Tables whose data is excluded from the nightly dump. The membership cache
 # because who organizes with whom is the sensitive part of this deployment and
-# it is rebuildable from the bot's backfill; the session table because a dump
-# that sits on disk for months must not carry live sessions. The rate-limit
+# it is rebuildable from the bot's backfill; the session tables (the app's own and
+# Django's, which holds the cookie's key) because a dump that sits on disk for
+# months must not carry live sessions. The rate-limit
 # table because it keys on client addresses, which PLAN's Privacy and retention
 # drops within 30 days, and a dump outlives that; its counts are worthless after
 # a restore anyway.
 BACKUP_EXCLUDED_TABLES = (
     "cached_membership",
     "app_session",
+    "django_session",
     "rate_limit_window",
     "stress_tile_cache",
     "bikeshare_feed_cache",
@@ -133,13 +135,15 @@ BACKUP_EXCLUDED_TABLES = (
     "signed_out_send",
 )
 
-# How many dumps stay on the data volume. They are local-only for now - the
-# plan's S3 upload with SSE-KMS and 30-day remote retention is not built - and
-# they land on the volume the rebuild's disk gate measures, so an unbounded
-# series of them would eventually refuse every rebuild with "grow the volume" as
-# the only remedy. Seven: a week of nightly dumps, so corruption noticed over a
-# weekend still has a local copy to restore from, at a bounded cost in gigabytes
-# rather than a year's worth.
+# How many dumps stay on the data volume. They never leave this machine - the
+# plan's S3 upload with SSE-KMS and 30-day remote retention is not built, and
+# the cloud rebuild sends a dump of its own without identities
+# (scripts/cloud/send-inputs.sh), never one of these - and they land on the
+# volume the rebuild's disk gate measures, so an unbounded series of them would
+# eventually refuse every rebuild with "grow the volume" as the only remedy.
+# Seven: a week of nightly dumps, so corruption noticed over a weekend still has
+# a local copy to restore from, at a bounded cost in gigabytes rather than a
+# year's worth.
 BACKUP_KEEP = 7
 
 
@@ -983,7 +987,9 @@ def refresh_work_zones(timestamp: int) -> None:
 
     Not retried, as the heartbeat is not: the next tick is the retry, and a feed that
     fails keeps its last good zones until they are two hours old, when the planner
-    says it could not check them. Virginia's feed is read only where the environment
+    says it could not check them. A feed with no good read for twenty minutes fails the
+    run (after the copy is saved), so a feed that is down for good turns the task stale on
+    the operations page. Virginia's feed is read only where the environment
     holds `SMARTERROADS_TOKEN`, and the key is never written to the run row or the log.
     """
     from core.runs import record, run_with_deadline
@@ -1060,6 +1066,11 @@ def perform_backup(
     database = settings.DATABASES["default"]
     env = {**os.environ, "PGPASSWORD": database["PASSWORD"]}
     try:
+        # The dump holds every account and every home: readable by its owner only.
+        # Created 0600 before pg_dump writes into it (pg_dump keeps the mode of the
+        # file it truncates) and set again before the rename.
+        part.touch(mode=0o600)
+        os.chmod(part, 0o600)
         try:
             subprocess.run(
                 [
@@ -1086,6 +1097,7 @@ def perform_backup(
                 f"while running {expired.cmd[0]}"
             ) from expired
         verify_dump_listing(listing)
+        os.chmod(part, 0o600)
         # The rename is the last thing that happens, so the ordinary name exists
         # only for an archive that was written whole and verified.
         part.replace(destination)

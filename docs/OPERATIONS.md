@@ -1110,7 +1110,7 @@ The paths' rule is unchanged, and so is its bar (region, Annandale-Alexandria bo
 4,725 and 60.3; 1 mi 4,276 and 51.1; 2 mi 3,730 and 47.1 (every candidate path is 5,233
 and 75.3; 152 mi of mountain-bike trail are left out). Before and after pictures of
 central DC, Bethesda and Chevy Chase, the Agricultural Reserve and Baltimore, with the
-same rule at 1 mi for comparison, are in reports/ride-layer-before-after.html
+same rule at 1 mi for comparison, are in reports/ride-layer-before-after.html (not in the repository)
 (`rmdata/demo/reports`). Re-measure on a copy before moving a bar, and update
 `RIDE_RUN_MI` in `frontend/src/lib/stressLegend.ts` with it (a test holds them equal).
 
@@ -2129,6 +2129,14 @@ only through the published GTFS. With fewer than 7 days left, the api logs "the 
 runs out ..." once a day and `manage.py check_operations` alerts ("transit: the schedule runs out
 on ..."; exit 1). An unreadable file alerts too; no file installed does not.
 
+**A feed that ends inside the window.** The file records each system's own last day of service
+(`last_day`), and the build warns "<system>: its timetable ends ..., before the window's last
+day". After that day the system is left out of plans and of the map's closed stations (it is not
+covered, not closed), with the note "MARC is not planned for this date: its installed timetable
+ends ..."; Metro's WMATA GTFS gives way to its typical timetable. The 7-day alert counts down to
+the earliest such end ("transit: MARC's timetable runs out on ..."): fetch a newer feed and build
+again.
+
 **The beta** gets the schedule in its data bundle (`ship-data.sh`'s `transit` part;
 docs/BETA-RUNBOOK.md). Ship it again after each refresh.
 
@@ -2235,8 +2243,9 @@ not already remembered. With under 4 s left the way round is not asked, and the 
 ## Backups
 
 `pg_dump -Fc` to `<DATA_ROOT>/backups/routemaker-<UTC instant>.dump`, excluding
-the data of the session table, the cached membership table and the rate-limit
-table (`BACKUP_EXCLUDED_TABLES` in `config/procrastinate.py`), verified by reading the
+the data of every table in `BACKUP_EXCLUDED_TABLES` (`config/procrastinate.py`):
+`cached_membership`, `app_session`, `django_session`, `rate_limit_window`,
+`stress_tile_cache`, `bikeshare_feed_cache` and `signed_out_send`. Verified by reading the
 archive's own table of contents back with `pg_restore --list` — an archive with
 no table data at all is a dump of nothing, which is what a wrong database name
 produces while `pg_dump` exits zero.
@@ -2325,8 +2334,9 @@ remove. What empties PGDATA is `rm`, which is why step 2 is spelled out.
 ### What the restored deployment actually has
 
 - **No standing, until the membership cache is rebuilt.** The dump excludes the
-  cached membership table, the session table and the rate-limit table (whose
-  counts are worthless after a restore anyway), and phase 1 has no bot, so
+  data of every table in `BACKUP_EXCLUDED_TABLES` (see "Backups": the cached
+  memberships, both session tables, the rate-limit counters, whose counts are
+  worthless after a restore anyway, two caches and the signed-out send hashes), and phase 1 has no bot, so
   nothing refills the cache — the sweep that would is unbuilt (handoff.md
   section 7). Until it exists, a restored deployment grants **no** guild-derived
   standing at all: everyone is signed out (sessions went with the dump's
@@ -3270,7 +3280,7 @@ throwaway container of the same image (this is what `tests/test_preset_links.py`
 does), then recreate caddy alone:
 
 ```sh
-docker run --rm -e CADDY_SITE_ADDRESS=:80 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.8-alpine caddy validate --config /etc/caddy/Caddyfile
+docker run --rm -e CADDY_SITE_ADDRESS=:80 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17 caddy validate --config /etc/caddy/Caddyfile
 docker compose up -d --no-deps --no-build --force-recreate caddy
 ```
 
@@ -3421,7 +3431,10 @@ the job logs `weekly rebuild paused (WEEKLY_REBUILD_PAUSED)`, writes one run row
 paused, and ends `succeeded` without a prune or a build. `check_operations` and the
 operations page report the rebuild as paused, not stale, so nothing alerts; if the paused
 ticks themselves stop (the rebuild worker down), it is stale again eight days after the
-last one. A rebuild fired by hand
+last one. Where the container that checks has the setting itself (the beta's api and
+worker), the rebuild is paused whatever its rows say, since a deployment with no rebuild
+worker never runs the tick, and the free-space check drops the rebuild's
+`REBUILD_MIN_FREE_BYTES` floor. A rebuild fired by hand
 (`run_rebuild_now`, below) runs whatever the switch says. To resume, remove the
 line (or set it empty) and recreate the service the same way. 355 asks for it to be
 set in t9's `.env` at the release deploy; if the release is not deployed before
@@ -4094,7 +4107,7 @@ held on a way with a mountain-bike rating: Valhalla's C++ parser (3.5.1 to 3.9.1
 `mtb:scale`, `mtb:scale:imba`, `mtb:scale:uphill` and `mtb:description` after
 the Lua transform and reopens the way from any of them, so 753 singletrack ways
 (286.6 mi [461.3 km]) and 27 rated OSM closures stayed routable while every Lua
-check passed (reports/SINGLETRACK-DIAG-r0). `lua/graph.lua` now strips the
+check passed (reports/SINGLETRACK-DIAG-r0 (not in the repository)). `lua/graph.lua` now strips the
 ratings from whatever upstream's transform leaves closed in either direction.
 Three checks stand between a change to that and a rider on singletrack.
 
@@ -5421,7 +5434,7 @@ trail or road"; `MTB_LEVEL`): short dark (#1c1917) cross-ticks under the line, 2
 a tick 1.5 px long every 10.5 px, where every tier sits on a solid casing; gaps of 1.5 line widths
 or more, where no tier's passes 1; and a 2 px line (2.5 px with the accessibility switch), thinner
 than any tier. The review screenshot, z15, the four levels beside LTS 2, LTS 4 and Avoid, is
-reports/v0.4.0/mtb-levels-vs-stress.png in the project files (and `-strong` with the switch on).
+reports/v0.4.0/mtb-levels-vs-stress.png (not in the repository) in the project files (and `-strong` with the switch on).
 
 | Level | Rated | Colour | Pattern | Lowest ratio to the base map |
 | --- | --- | --- | --- | --- |
@@ -5595,10 +5608,10 @@ calibration, main's front end and log changes, the route chart, the z12-13 ride 
 (calm roads at 2 mi, roadside trails), the Mass Ride capacity map and the reversible-lane
 and Connecticut Ave NW changes, the Connecticut lane override and the Dupont underpass, and
 the Mass Ride map's own tiles, DC mask, border roads and zoom focus (OWNER-DECISIONS 391,
-394-427; reports/REBUILD-BUNDLE-integration.md; the `reports/` named here are the project's review
-reports, kept outside the repository), and, from fix round 2 (reports/REBUILD-BUNDLE-fix2.md),
+394-427; reports/REBUILD-BUNDLE-integration.md (not in the repository); the `reports/` named here are the project's review
+reports, kept outside the repository), and, from fix round 2 (reports/REBUILD-BUNDLE-fix2.md (not in the repository)),
 the military-area closure (owner report 2026-10-05), South Capitol St at LTS 4 (432) and Veirs
-Mill Rd (433), and, from fix round 3 (reports/REBUILD-BUNDLE-fix3.md), the narrower military
+Mill Rd (433), and, from fix round 3 (reports/REBUILD-BUNDLE-fix3.md (not in the repository)), the narrower military
 rule and the owner's reopenings (437, 437a-c).
 Nothing in it is live until the rebuild promotes the new table.
 
@@ -5851,7 +5864,7 @@ the dry run each prints after `grep -v '^present:'`:
    four crosswalk and traffic-island ways (way ids only, no names). Dry: 4 create (access,
    `bicycle=yes`), no conflict.
 
-These counts were checked on 2026-10-06 (reports/PRE-REBUILD-fix1.md): a copy of the live
+These counts were checked on 2026-10-06 (reports/PRE-REBUILD-fix1.md (not in the repository)): a copy of the live
 `override` table (1,783 approved rows: 232 access, 1,551 stress; max id 1783) in a private
 database, the six files dry-run and loaded in this order, then the five checks below,
 which gave 0, `3|36 4|90 5|252`, 126, 11 and 4; 251 rows written in all (before 445f, which retires two more rows: now `3|36 4|90 5|250`, retire 529, present 248, still 128 written). A second dry run of each file then printed only
@@ -6196,7 +6209,10 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
 
    Expect `succeeded = t` and a detail like `work zones: md 143 zones` (and `va N zones` once the key
    is in). `md failed` means the feed did not answer three tries; the worker log says why, never
-   with the URL. `md 0 zones` on a weekday is worth a look: the feed may have changed shape. The
+   with the URL. A run whose feed has had no good read for 20 minutes (or never had one) fails,
+   with `succeeded = f` and `...; no good read in 20 minutes: md`, after saving what it could: the
+   zones read before stay in use as the labels below say, and the failing runs are what turns
+   `refresh_work_zones` stale on the operations page. `md 0 zones` on a weekday is worth a look: the feed may have changed shape. The
    parser was written against the WZDx specification without a live download, so check the first
    real reading here.
 2. Plan a route along a road you know has a lane closure listed in the feed (the Maryland 511 map
@@ -6215,21 +6231,23 @@ work zones.
 
 The rebuild can run on an AWS spot machine instead of this host, which ran out of memory
 on 2026-10-10 (16 GB, with the rebuild container capped at 8 GiB). The box builds from a
-copy of this deployment's database, so every access override, stress edit and Avoid
-junction is in its map, runs the ordinary `run_rebuild_now` with every check a rebuild
+copy of this deployment's database made the way the beta's is (`scripts/beta/ship-data.sh`'s
+db part): no accounts, Homes, saved or shared routes, audit log or sessions, and the approved
+overrides with their person columns blanked. So every access override and stress edit is in
+its map, and no rider's data is in the cloud. It runs the ordinary `run_rebuild_now` with every check a rebuild
 here has, and sends back the five graphs and its new segment table. Here they are swapped
 in by the rebuild's own swap (`pipeline.promotion.perform_swap`), so `rollback_rebuild`
 undoes an imported build exactly as it undoes one built here.
 
 Three scripts, one per place, and S3 between them. `send-inputs.sh`, run here, uploads the
-backup, reference, elevation and extracts to the run's `in/` folder. `box-rebuild.sh`, run
+stripped dump, reference, elevation and extracts to the run's `in/` folder. `box-rebuild.sh`, run
 on the box, reads `in/`, writes the five graphs and the staging dump to `out/`, and powers
 the box off. `import-result.sh`, run here, reads `out/`. Nothing in the repository names
 the bucket or the account: the run's folder is an argument. The same flow as a diagram:
 
 ```text
 this host                         s3://<bucket>/rebuild-checkpoints/transfer/<run>/   the box
-scripts/cloud/send-inputs.sh  --> in/   backup, reference, elevation, extracts --> box-rebuild.sh
+scripts/cloud/send-inputs.sh  --> in/   db.tar, reference, elevation, extracts --> box-rebuild.sh
 scripts/cloud/import-result.sh <-- out/  5 graphs, staging schema dump        <-- (powers off)
 ```
 
@@ -6284,7 +6302,7 @@ fallback yet; this host stays the fallback, and its weekly rebuild is unchanged.
 ### A run
 
 Before it: no Change LTS edits, override loads or suggestion approvals here from the
-backup the run starts from until the swap, and no rebuild here in between: start the run
+dump the run starts from until the swap, and no rebuild here in between: start the run
 after a Tuesday rebuild and swap before the next, or pause the weekly rebuild
 (`WEEKLY_REBUILD_PAUSED`, above) for the run. A rebuild here resets the staging schema an
 install restored. The box builds the commit this host is on, so deploy first, not
@@ -6299,8 +6317,11 @@ the defaults, so build those here.
    scripts/cloud/send-inputs.sh --profile <name> "$RUN_URL"
    ```
 
-   It takes the newest nightly backup (`routemaker-<utc>.dump`; its time is when the
-   box's database was copied), tars `reference/`, `elevation/` and `extracts/` with
+   It runs `scripts/beta/ship-data.sh --no-transfer` for the database only (the live
+   postgis must be running), so the dump leaves out and blanks exactly what the beta's does
+   and is refused the same way if it carries any of it; the nightly backup, which keeps
+   accounts and Homes for a restore here, is never sent. It tars that as `db.tar`
+   (`read_at` is when the dump began), tars `reference/`, `elevation/` and `extracts/` with
    their owner kept, writes `MANIFEST.txt` (run, commit, backup, `read_at`) and
    `SHA256SUMS`, clears the run's `in/` folder and uploads them with the checksums last. It refuses a checkout with
    uncommitted changes to tracked files (the box builds the commit, not the working
@@ -6329,12 +6350,26 @@ the defaults, so build those here.
    the manifest's commit in a separate clone (`~/rm-build`), writes that clone's own
    `.env` (fresh random values for the four secrets, `WEEKLY_REBUILD_PAUSED=1`, `REBUILD_TILE_CONCURRENCY=4`)
    and a `compose.override.yaml` giving `rebuild` 26 GiB, unpacks the inputs, builds the
-   two images, restores the backup into an empty database ("Restoring one", above),
-   cancels every job the copy brought from here, starts `migrate` and `rebuild`, and
+   two images, restores `db.tar` into the database a fresh postgis volume starts with and
+   loads the blanked tables after it (as `receive-data.sh` does on the beta), starts `migrate` and `rebuild`, and
    fires `run_rebuild_now --fresh`. When the job succeeds it renames the box's new
    `live` schema to `staging`, dumps it, tars each graph's build directory and the
    rebuild's reports (`reports.tar`, for reading; the import does not use it), uploads
    them with the checksums last, and powers the box off.
+
+   **Dump copies:** this run's `db.tar` stays on the box (`~/cloud-runs/<run>/in/`) and in
+   S3 (`<run>/in/`) after the run (the owner's choice, 2026-10-16), so the newest copy is at
+   hand. Once a run has finished and uploaded, the box deletes the dump of each OLDER run,
+   both on its disk and in S3 (`db.tar`, and `routemaker-<utc>.dump` from runs before v0.7.0,
+   which were the whole nightly backup). Older means an earlier `read_at` in that run's
+   `MANIFEST.txt`, and only a run that has itself finished (its result in `out/`, or its
+   failure logs in `failed/`) loses its dump: a newer run's dump, and the inputs of a run not
+   yet built, stay ("keeping run <name>'s dump: ..." in the log). Nothing else of those runs
+   is touched, and a failed run deletes nothing. A failure to delete is a warning in the log:
+   delete that file by hand. The bucket's 14-day lifecycle rule (on `rebuild-checkpoints/`)
+   still expires every object, the kept `db.tar` in `in/` included, so after 14 days without
+   a new run the newest copy in S3 is gone too; the box's copy stays. To keep it in S3, the
+   owner can narrow the rule's filter in the console.
 
    Each step is recorded under `~/cloud-runs/<run>/state/`, so the same command run
    again carries on. **A spot reclaim** stops the box with its disk; start it when AWS
@@ -6342,8 +6377,11 @@ the defaults, so build those here.
    (`unwedge_job`, which changes nothing while a worker is alive) and the rebuild resumes
    from its checkpoints. It tries the same every ten minutes while the job is `doing`, in
    case the rebuild container was killed under a running script. **A failed rebuild**
-   saves the rebuild's log to `~/cloud-runs/<run>/rebuild-<utc>.log.gz` and powers off;
-   nothing is uploaded. To try again, start the box and run the same command with
+   saves the rebuild's log to `~/cloud-runs/<run>/rebuild-<utc>.log.gz`, uploads it to
+   `RUN_URL/failed/` with the last 400 lines of `~/cloud-rebuild.log`
+   (`box-rebuild-<utc>.log.gz`), and powers off; no result is uploaded. Read the logs from
+   home with `aws s3 cp RUN_URL/failed/<name> - | gunzip | less`, without starting the
+   box. Any other failure after the fire sends the same two files. To try again, start the box and run the same command with
    `--refire`. A job still unfinished after `--deadline-hours` (24) is given up on the
    same way, so a stuck run does not keep the box running. Before the rebuild is fired, a
    failure leaves the box running for you to fix it.
@@ -6362,8 +6400,8 @@ the defaults, so build those here.
    unpacks the graphs under `<DATA_ROOT>/tiles` beside the ones being served, restores the
    box's table as `staging`, and runs `import_cloud_build` dry: the build each graph would
    move to, both tables' segment counts, and any access override approved after the
-   backup, which this build does not have. An override revoked or deleted after the
-   backup is still in the build and is not listed: the freeze above is what covers it. Nothing served has changed. Run it again after
+   dump, which this build does not have. An override revoked or deleted after the
+   dump is still in the build and is not listed: the freeze above is what covers it. Nothing served has changed. Run it again after
    a failure and it carries on; once the install has finished, a second run goes straight
    to the dry run. `--remove-tars` deletes the downloaded graph tars once unpacked.
 
@@ -6401,7 +6439,7 @@ or already serves the build, when `staging.segment` is missing or empty, when
 also refuses while access overrides approved after `--overrides-read-at` are missing from
 the build, unless `--accept-later-overrides`. Where the swap re-applies the road panel's
 edits made after that time (from v0.4.0, the stress editor), as a rebuild does for edits
-made while it ran, that check gives way to the re-apply; the scripts pass the backup's
+made while it ran, that check gives way to the re-apply; the scripts pass the dump's
 time.
 
 ### The launcher
@@ -6461,7 +6499,9 @@ What it does, with a plain line for each step:
    status (`get-command-invocation`) and the box's state. A command that failed (the
    script stopped before the rebuild was fired) ends the wait with the end of the box's
    output; so does a box that stopped with no result (a failed rebuild powers itself off,
-   and so does a spot reclaim).
+   and so does a spot reclaim). Either way it names the log the box uploaded to
+   `RUN_URL/failed/` and prints its last 40 lines, or says none arrived (a reclaim, or a
+   failure before the fire).
 6. Stops the box, then `import-result.sh`: the install and its dry run, nothing served
    changes. It may ask for sudo again here. Read the dry run, then swap as in "A run",
    step 4. `--swap` does the swap straight after the dry run instead.
@@ -6474,6 +6514,21 @@ that ends a run part way prints that command with the run's URL: copy it, since 
 default run name is the day's, and the same command without the URL after midnight
 (UTC) would start a new run. A box it did not start is not stopped by the launcher.
 `--no-send` also skips sending for a run whose inputs are already in S3.
+
+**When this end dies but the box carries on** (the terminal closed, this host rebooted,
+the launcher was killed during the wait), do not launch again: `--no-send` would send a
+second command to a box that is still rebuilding. Instead
+`scripts/cloud/launch.sh --attach <RUN_URL>` (with the same `--instance-id`, regions and
+`--profile` as before) sends and starts nothing and only does steps 5 and 6: it waits for
+`out/SHA256SUMS` while watching the box's state, then stops the box and installs the
+result (`--swap` as usual). Interrupting it, or giving up the wait, leaves the box
+running, since the rebuild is still on it. A box that is not running and has no result is
+refused with the `--no-send` command to carry the run on, and so is a running box where
+`box-rebuild.sh` does not run: before waiting, `--attach` asks the box over SSM (one small
+command, as root) whether anything holds that script's lock, and stops there, leaving the box
+as it is, when nothing does or the box cannot be asked. On the box, `box-rebuild.sh`
+holds a lock (`~/cloud-runs/.box-rebuild.lock`), so a second copy of it, for any run,
+refuses to start while one runs.
 
 **A spot reclaim, and a box that starts again by itself.** With a persistent spot request
 and interruption behaviour Stop, AWS stops the box when it needs the capacity back and
@@ -6575,7 +6630,8 @@ and nothing more (on EC2, an instance role whose only S3 permissions are `s3:Lis
 on the bucket for the `rebuild-checkpoints/` prefix and `s3:GetObject` on
 `rebuild-checkpoints/*`; no access keys), and its egress has to allow the bucket region's
 S3 endpoint. The beta data comes from home's database either way: the box builds from
-home's backup.
+the `db.tar` send-inputs.sh dumps from it, which leaves out what the beta's own dump does
+(the nightly backup is never sent).
 
 **What has not been run:** the scripts are tested against stand-ins for `aws`, `docker`,
 `sudo` and, for the beta, `ship-data.sh`, `receive-data.sh` and `beta-compose.sh`

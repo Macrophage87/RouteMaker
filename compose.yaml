@@ -109,8 +109,12 @@ x-django-env: &django-env
 services:
   caddy:
     <<: [*restart, *logging]
-    image: docker.io/library/caddy:2.8-alpine
-    ports: ["80:80", "443:443"]
+    image: docker.io/library/caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17
+    # RM_BIND: the address the ports are published on. Unset, no address at all, as before
+    # RM_BIND: every interface, IPv4 and IPv6 (a server); scripts/local-up.sh writes
+    # 127.0.0.1, so a DEBUG stack on a laptop is not reachable from the network it sits on.
+    # tests/test_local_up.py renders both cases.
+    ports: ["${RM_BIND:+${RM_BIND}:}80:80", "${RM_BIND:+${RM_BIND}:}443:443"]
     volumes:
       - ${DATA_ROOT}/caddy:/data
       - ${DATA_ROOT}/static:/srv/static:ro
@@ -427,7 +431,7 @@ services:
 
   postgis:
     <<: [*restart, *logging]
-    image: docker.io/postgis/postgis:16-3.4
+    image: docker.io/postgis/postgis:16-3.4@sha256:44126d872ac91993766c341e369c539e8196614321765d36a6f1bab0419a5fa5
     # The same two names Django connects with, from the same variables and the
     # same defaults. They were literals here while every Django service read
     # ${PGUSER}/${PGDATABASE}, so a deployment that set either one in `.env`
@@ -508,7 +512,7 @@ services:
   # 0.7-1.3 GiB (docs/DEPLOYMENT.md, "Photon", has the measured figures).
   photon:
     <<: [*restart, *logging]
-    image: docker.io/rtuszik/photon-docker:2.4.0
+    image: docker.io/rtuszik/photon-docker:2.4.0@sha256:21549c60f9e6488fff3217e40429a652c4b445f374800333fe32859e47cec293
     command:
       - sh
       - -c
@@ -537,7 +541,7 @@ services:
   # a single thor worker would serialise it.
   valhalla-standard:
     <<: [*restart, *logging]
-    image: ghcr.io/valhalla/valhalla:3.9.1
+    image: ghcr.io/valhalla/valhalla:3.9.1@sha256:4fd114eb1d26b8fc2f43bcb3df234c1b63a0bf13c277405e5943d5361dc575de
     # The upstream image declares neither ENTRYPOINT nor CMD - it is a toolbox,
     # not a service image - so it inherits the base image's shell and exits
     # immediately. (Still so at 3.9.1, docker/Dockerfile. Its sibling
@@ -571,7 +575,7 @@ services:
 
   valhalla-no-trail:
     <<: [*restart, *logging]
-    image: ghcr.io/valhalla/valhalla:3.9.1
+    image: ghcr.io/valhalla/valhalla:3.9.1@sha256:4fd114eb1d26b8fc2f43bcb3df234c1b63a0bf13c277405e5943d5361dc575de
     # The upstream image declares neither ENTRYPOINT nor CMD - it is a toolbox,
     # not a service image - so it inherits the base image's shell and exits
     # immediately. With `restart: unless-stopped` that is a container that
@@ -603,7 +607,7 @@ services:
 
   valhalla-ebike:
     <<: [*restart, *logging]
-    image: ghcr.io/valhalla/valhalla:3.9.1
+    image: ghcr.io/valhalla/valhalla:3.9.1@sha256:4fd114eb1d26b8fc2f43bcb3df234c1b63a0bf13c277405e5943d5361dc575de
     # The upstream image declares neither ENTRYPOINT nor CMD - it is a toolbox,
     # not a service image - so it inherits the base image's shell and exits
     # immediately. With `restart: unless-stopped` that is a container that
@@ -654,7 +658,7 @@ services:
   # siblings; measured resident on a DC box graph, see docs/OPERATIONS.md.
   valhalla-weekend:
     <<: [*restart, *logging]
-    image: ghcr.io/valhalla/valhalla:3.9.1
+    image: ghcr.io/valhalla/valhalla:3.9.1@sha256:4fd114eb1d26b8fc2f43bcb3df234c1b63a0bf13c277405e5943d5361dc575de
     # The upstream image declares neither ENTRYPOINT nor CMD - it is a toolbox,
     # not a service image - so it inherits the base image's shell and exits
     # immediately. With `restart: unless-stopped` that is a container that
@@ -706,7 +710,7 @@ services:
   valhalla-offroad:
     <<: [*restart, *logging]
     profiles: ["offroad"]
-    image: ghcr.io/valhalla/valhalla:3.9.1
+    image: ghcr.io/valhalla/valhalla:3.9.1@sha256:4fd114eb1d26b8fc2f43bcb3df234c1b63a0bf13c277405e5943d5361dc575de
     # The upstream image declares neither ENTRYPOINT nor CMD - it is a toolbox,
     # not a service image - so it inherits the base image's shell and exits
     # immediately. With `restart: unless-stopped` that is a container that
@@ -748,7 +752,7 @@ services:
   valhalla-mtb:
     <<: [*restart, *logging]
     profiles: ["offroad"]
-    image: ghcr.io/valhalla/valhalla:3.9.1
+    image: ghcr.io/valhalla/valhalla:3.9.1@sha256:4fd114eb1d26b8fc2f43bcb3df234c1b63a0bf13c277405e5943d5361dc575de
     # As valhalla-offroad: the config path and the worker count on argv.
     command: ["valhalla_service", "/conf/valhalla-mtb.json", "1"]
     volumes:

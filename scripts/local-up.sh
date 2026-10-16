@@ -209,6 +209,8 @@ else
 # and DISCORD_CLIENT_SECRET from a Discord application with
 # http://localhost/auth/callback registered; the map works signed out without them.
 DJANGO_DEBUG=1
+# Published on this computer's loopback only (compose.yaml, caddy's ports).
+RM_BIND=127.0.0.1
 COMPOSE_PROJECT_NAME=routemaker
 RESTART_POLICY=no
 EOF
@@ -232,7 +234,11 @@ else
     :80 | "") ;;
     *) say "note: CADDY_SITE_ADDRESS is '$(env_get CADDY_SITE_ADDRESS)', not :80; this .env is not the local posture, so http://localhost may not answer" ;;
   esac
+  RM_BIND=$(env_get RM_BIND)
 fi
+# Loopback unless the .env says otherwise: a .env written before RM_BIND existed still
+# gets a stack the network cannot reach.
+export RM_BIND=${RM_BIND:-127.0.0.1}
 # Containers started from here on are not restarted by Docker at boot, before the
 # data root is there (compose.yaml's header, rule on RESTART_POLICY): this script
 # is what starts them.

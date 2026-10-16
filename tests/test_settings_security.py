@@ -647,3 +647,29 @@ def test_the_test_settings_relax_nothing() -> None:
         "config.test_settings overrides these, so every assertion in this file about "
         f"them is an assertion about the test settings and not the deployment: {differing}"
     )
+
+
+class TestTheSecretKeyHasNoDefaultOutsideDebug:
+    """sec-app-3: the development default is a published string."""
+
+    @pytest.mark.parametrize("value", [None, ""])
+    def test_settings_refuse_to_import_without_it(self, monkeypatch, value) -> None:
+        from django.core.exceptions import ImproperlyConfigured
+
+        monkeypatch.delenv("DJANGO_DEBUG", raising=False)
+        if value is None:
+            monkeypatch.delenv("DJANGO_SECRET_KEY", raising=False)
+        else:
+            monkeypatch.setenv("DJANGO_SECRET_KEY", value)
+        with pytest.raises(ImproperlyConfigured, match="DJANGO_SECRET_KEY"):
+            load_settings_module()
+
+    def test_debug_keeps_the_development_default(self, monkeypatch) -> None:
+        monkeypatch.setenv("DJANGO_DEBUG", "1")
+        monkeypatch.delenv("DJANGO_SECRET_KEY", raising=False)
+        assert load_settings_module().SECRET_KEY == "insecure-development-key"
+
+    def test_a_delivered_key_is_used(self, monkeypatch) -> None:
+        monkeypatch.delenv("DJANGO_DEBUG", raising=False)
+        monkeypatch.setenv("DJANGO_SECRET_KEY", "a-delivered-key")
+        assert load_settings_module().SECRET_KEY == "a-delivered-key"

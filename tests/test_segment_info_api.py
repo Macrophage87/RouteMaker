@@ -141,7 +141,9 @@ class TestAnswer:
         stress = section(body, "stress")
         assert stress["Level"]["value"] == "LTS 3: For experienced cyclists"
         assert stress["Level"]["source"] == "RouteMaker classifier"
-        assert stress["Why"]["value"] == "30 mph, mixed traffic, several lanes, city street"
+        assert stress["Why"]["value"] == (
+            "30 mph (48 km/h), mixed traffic, several lanes, city street"
+        )
         traffic = section(body, "traffic")
         assert traffic["Lanes"]["value"] == "2 each way"
         assert traffic["Lanes"]["source"] == "OpenStreetMap"
@@ -164,7 +166,7 @@ class TestAnswer:
         assert body["kind"] == "Main road"
         assert summary(body) == [
             "Traffic stress: LTS 3 · For experienced cyclists",
-            "Why: 30 mph, mixed traffic",
+            "Why: 30 mph (48 km/h), mixed traffic",
             "Speed: 30 mph (48 km/h), posted",
             "Lanes: 2 each way",
             "Traffic: 18,400 a day (DDOT 2024)",
@@ -354,7 +356,7 @@ class TestAnswer:
         # Assumed figures say so; no count is left out, not printed as "none".
         assert summary(body) == [
             "Traffic stress: LTS 2 · Fine for adults",
-            "Why: 20 mph or below, mixed traffic",
+            "Why: 20 mph (32 km/h) or below, mixed traffic",
             "Speed: 20 mph (32 km/h), assumed",
             "Lanes: 1 each way, assumed",
             "Bikes: Allowed",
@@ -725,14 +727,14 @@ class TestWords:
     @pytest.mark.parametrize(
         ("rule", "words"),
         [
-            ("mixed traffic, 35 mph or above", "35 mph or above, mixed traffic"),
+            ("mixed traffic, 35 mph or above", "35 mph (56 km/h) or above, mixed traffic"),
             (
                 "mixed traffic, 25 mph, single lane, low volume",
-                "25 mph, mixed traffic, one lane each way, light traffic",
+                "25 mph (40 km/h), mixed traffic, one lane each way, light traffic",
             ),
             (
                 "legal but avoid: expressway posted 55 mph (Furth: mixed traffic, 35 mph or above)",
-                "Avoid: highway-like road (posted 55 mph)",
+                "Avoid: highway-like road, posted 55 mph (89 km/h)",
             ),
             (
                 "motor-only classification (motorway_link)",
@@ -749,7 +751,7 @@ class TestWords:
                 "Path away from traffic, not open to bicycles",
             ),
             ("separated track alongside", "Separated bike track beside the road"),
-            ("bike lane, 35 mph", "Bike lane, 35 mph"),
+            ("bike lane, 35 mph", "Bike lane, 35 mph (56 km/h)"),
             (
                 "motor traffic restricted (access=private), LTS 2 at most",
                 "Little motor traffic (access=private), so LTS 2 at most",
@@ -831,12 +833,15 @@ class TestWords:
 
     def test_the_summary_why_drops_what_lanes_says(self) -> None:
         assert segment_info.why_short("mixed traffic, 30 mph, urban multilane") == (
-            "30 mph, mixed traffic"
+            "30 mph (48 km/h), mixed traffic"
         )
         assert segment_info.why_short("mixed traffic, 35 mph or above, multilane") == (
-            "35 mph or above, mixed traffic"
+            "35 mph (56 km/h) or above, mixed traffic"
         )
-        assert segment_info.why_short("bike lane, 25 mph, single lane") == "Bike lane, 25 mph"
+        assert (
+            segment_info.why_short("bike lane, 25 mph, single lane")
+            == "Bike lane, 25 mph (40 km/h)"
+        )
         assert segment_info.why_short("") is None
 
 

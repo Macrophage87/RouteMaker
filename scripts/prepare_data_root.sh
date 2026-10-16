@@ -192,4 +192,8 @@ for directory in $OWNED; do
 	chown -R 10001:10001 "$DATA_ROOT/$directory"
 done
 
+# The nightly dumps hold every account and every home, and PGDATA the database itself:
+# their owner only, not every account on the host (mkdir -p makes them 0755).
+chmod 700 "$DATA_ROOT/backups" "$DATA_ROOT/postgres"
+
 echo "prepared $DATA_ROOT for uid 10001 (postgres, caddy and photon left as they are)"

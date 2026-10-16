@@ -19,7 +19,7 @@
 #      nightly backup does (--no-safety-dump skips it)
 #   4. unpacks the six graphs' build directories under DATA_ROOT/tiles, beside the ones
 #      being served, and restores the box's segment table as the staging schema
-#   5. runs `manage.py import_cloud_build <build> --overrides-read-at <backup time>`, dry:
+#   5. runs `manage.py import_cloud_build <build> --overrides-read-at <the dump's read_at>`, dry:
 #      every check the swap makes, and what it would change
 # Run it again after a failure and it carries on: a build directory left by an unpack
 # that stopped is unpacked again, and once step 4 has finished it goes straight to step 5.
@@ -293,8 +293,9 @@ if [ "$installed" = 0 ] && [ "$safety" = 1 ]; then
 	# sessions and client addresses do not belong in a file that sits in a home folder.
 	(umask 077 && compose exec -T postgis pg_dump -U "$pguser" -d "$pgdb" -Fc \
 		--exclude-table-data='*.cached_membership' --exclude-table-data='*.app_session' \
-		--exclude-table-data='*.rate_limit_window' --exclude-table-data='*.stress_tile_cache' \
-		--exclude-table-data='*.bikeshare_feed_cache' --exclude-table-data='*.signed_out_send' \
+		--exclude-table-data='*.django_session' --exclude-table-data='*.rate_limit_window' \
+		--exclude-table-data='*.stress_tile_cache' --exclude-table-data='*.bikeshare_feed_cache' \
+		--exclude-table-data='*.signed_out_send' \
 		</dev/null >"$dump")
 fi
 

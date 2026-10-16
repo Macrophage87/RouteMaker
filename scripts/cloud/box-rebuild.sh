@@ -19,8 +19,10 @@
 #             compose.override.yaml giving the rebuild the box's memory
 #   data      prepare_data_root.sh, then reference/, elevation/ and extracts/ unpacked
 #   images    docker compose build api rebuild
-#   restore   the backup into an EMPTY database (OPERATIONS.md, "Restoring one"), then every
-#             job the home stack had queued or running is cancelled in this copy
+#   restore   send-inputs.sh's db.tar (ship-data.sh's db part: no accounts, Homes or audit
+#             log) into the database a fresh postgis volume starts with, the tables shipped
+#             with their person columns blanked loaded after it, as receive-data.sh does on the
+#             beta
 #   fire      migrate and the rebuild worker started, run_rebuild_now --fresh
 #   wait      until that job succeeds; a failed job stops here (and the box, see below).
 #             A job left `doing` by a worker that died (a spot reclaim, an OOM kill) is
@@ -34,10 +36,16 @@
 #             reading; the import does not use it), MANIFEST.txt and SHA256SUMS
 #   upload    to RUN_URL/out/, SHA256SUMS last; with --beta-bundle the beta's bundle to
 #             RUN_URL/beta/ too, SHA256SUMS and MANIFEST.txt last (import-result.sh --beta)
+#   prune     once this run has finished and uploaded, the database dumps of each OLDER run
+#             (its MANIFEST.txt read_at before this run's) that has itself finished (its
+#             result or its failure logs uploaded) are deleted, on the box
+#             (~/cloud-runs/<other>/in) and in S3 (<other>/in/): this run's db.tar is kept in
+#             both places (the owner's choice, 2026-10-16), and so is a newer run's, or one
+#             whose inputs wait to be built. A failure here is a warning
 #
 # Then the box powers itself off (with the launch template's "Shutdown behavior: Stop" that
 # is a stop, which costs only the disk). It powers off after a failed rebuild too, with the
-# rebuild's log saved under ~/cloud-runs/<run>/, and after --deadline-hours with the job
+# rebuild's log saved under ~/cloud-runs/<run>/ and uploaded to RUN_URL/failed/, and after --deadline-hours with the job
 # still unfinished; --no-stop keeps it running. To try a failed rebuild again, run the
 # same command with --refire: it fires a new job and carries on from there.
 #
@@ -109,8 +117,13 @@ POWEROFF=${CLOUD_POWEROFF:-sudo poweroff}
 work="${CLOUD_RUNS:-$HOME/cloud-runs}/$run"
 state="$work/state"
 mkdir -p "$work/in" "$work/out" "$state"
+# One copy at a time on the box, whatever its run: a second (a launch attached twice, a
+# command SSM ran again, a hand-started one beside the launcher's) would restore the
+# database and fire under the first. The lock goes when this process ends.
+exec 9>"${work%/*}/.box-rebuild.lock"
+flock -n 9 || die "another box-rebuild.sh is already running on this box; follow it with tail -f ~/cloud-rebuild.log (or launch.sh --attach RUN_URL at home)"
 if [ "$refire" = 1 ]; then
-	rm -f "$state/fire.done" "$state/job" "$state/wait.done" "$state/beta.done" "$state/export.done" "$state/upload.done"
+	rm -f "$state/fire.done" "$state/job" "$state/wait.done" "$state/beta.done" "$state/export.done" "$state/upload.done" "$state/prune.done" "$state/failed.done"
 fi
 if [ "$beta_bundle" = 1 ]; then touch "$state/beta-wanted"; elif [ -e "$state/beta-wanted" ]; then beta_bundle=1; fi
 # The AWS CLI wants a region; on the box it is the box's own, from the instance metadata.
@@ -136,7 +149,10 @@ power_off() {
 # shellcheck disable=SC2329 # invoked by the trap below
 on_exit() {
 	local rc=$?
-	if [ "$rc" != 0 ] && [ "$unattended" = 1 ]; then power_off; fi
+	if [ "$rc" != 0 ] && [ "$unattended" = 1 ]; then
+		send_failed_logs
+		power_off
+	fi
 }
 trap on_exit EXIT
 finish() {
@@ -173,7 +189,7 @@ read_at=$(manifest read_at)
 backup=$(manifest backup)
 [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || die "MANIFEST.txt names no commit"
 [[ "$read_at" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || die "MANIFEST.txt names no read_at"
-[ -f "$work/in/$backup" ] || die "MANIFEST.txt names $backup, which is not in $work/in"
+done_already restore || [ -f "$work/in/$backup" ] || die "MANIFEST.txt names $backup, which is not in $work/in"
 
 # --- checkout ----------------------------------------------------------------------------
 if ! done_already checkout; then
@@ -244,22 +260,75 @@ fi
 
 # --- restore -----------------------------------------------------------------------------
 if ! done_already restore; then
-	note "restoring $backup into an empty database"
+	note "restoring $backup into a fresh database"
 	compose down
 	$SUDO rm -rf "${data_root:?}/postgres"
 	(cd "$build_dir" && $SUDO sh scripts/prepare_data_root.sh --env-file ./.env)
 	compose up -d --wait postgis
-	compose exec -T postgis dropdb -U "$pguser" "$pgdb" </dev/null
-	compose exec -T postgis createdb -U "$pguser" -T template0 "$pgdb" </dev/null
-	compose exec -T postgis pg_restore --no-owner -U "$pguser" -d "$pgdb" <"$work/in/$backup" ||
+	rm -rf "$work/in/db" && (umask 077 && tar -C "$work/in" -xf "$work/in/$backup")
+	[ -s "$work/in/db/routemaker.dump" ] || die "$backup holds no db/routemaker.dump"
+	# The dump names schema `public`, which the fresh database already has (with the postgis
+	# extensions the image creates): restored from a table of contents without that one line,
+	# as receive-data.sh restores it on the beta.
+	compose exec -T postgis pg_restore --list <"$work/in/db/routemaker.dump" >"$work/in/db/toc" ||
+		die "could not read the table of contents of $backup"
+	sed -i '/ SCHEMA - public /d' "$work/in/db/toc"
+	compose exec -T postgis sh -c 'cat > /tmp/cloud.use' <"$work/in/db/toc"
+	compose exec -T postgis pg_restore --no-owner --no-privileges -U "$pguser" -d "$pgdb" -L /tmp/cloud.use \
+		<"$work/in/db/routemaker.dump" ||
 		die "pg_restore did not exit 0; the database is not a clean copy. Rerun this command to restore again"
-	# The home stack's queue came with the copy. Nothing here should run it: a queued
-	# Tuesday rebuild would start the moment the rebuild worker does, and a job home was
-	# running would make run_rebuild_now refuse.
+	# The tables shipped with their person columns blanked (override, the junction ratings and
+	# the Avoid junctions), each moving its id sequence past the loaded rows.
+	for copy in "$work/in/db/blanked"/*.copy; do
+		[ -f "$copy" ] || continue
+		t=$(basename "$copy" .copy)
+		header=$(head -n 1 "$copy" | tr -d '\r' | tr '\t' ',')
+		case "$t$header" in *[!a-z0-9_,]*) die "db/blanked/$t.copy has an odd name or header" ;; esac
+		{
+			printf 'COPY public.%s (%s) FROM stdin WITH (FORMAT text, HEADER true);\n' "$t" "$header"
+			cat "$copy"
+			printf '\\.\n'
+			printf "SELECT setval(pg_get_serial_sequence('public.%s', 'id'), coalesce(max(id), 1), max(id) IS NOT NULL) FROM public.%s;\n" "$t" "$t"
+		} | compose exec -T postgis psql -U "$pguser" -d "$pgdb" -q -1 -v ON_ERROR_STOP=1 >/dev/null ||
+			die "loading db/blanked/$t.copy failed. Rerun this command to restore again"
+	done
+	# ship-data.sh leaves the home stack's job queue out; should a copy ever carry it, nothing
+	# here may run it: a queued Tuesday rebuild would start the moment the rebuild worker
+	# does, and a job home was running would make run_rebuild_now refuse.
 	psql_ "UPDATE procrastinate_jobs SET status = 'cancelled' WHERE status IN ('todo', 'doing')" >/dev/null
 	mark restore
 fi
+# The unpacked copy goes once restored; db.tar itself is kept until a newer run succeeds
+# (step prune).
+rm -rf "${work:?}/in/db"
 
+# --- failure logs ------------------------------------------------------------------------
+save_log() {
+	saved_log="$work/rebuild-$(date -u +%Y%m%dT%H%M%SZ).log.gz"
+	compose logs --no-color rebuild 2>&1 | gzip >"$saved_log" || true
+}
+# A failed run's logs go to RUN_URL/failed/ before the box powers off, so they can be read
+# from home without starting the box (launch.sh prints where, and the rebuild log's tail):
+# the rebuild's own log, and the end of this script's (~/cloud-rebuild.log) when there is one.
+failed_sent=0
+send_failed_logs() {
+	[ "$failed_sent" = 0 ] || return 0
+	failed_sent=1
+	mark failed
+	[ -n "${saved_log:-}" ] || save_log
+	if "$AWS" s3 cp "$saved_log" "$url/failed/${saved_log##*/}" --only-show-errors; then
+		note "the rebuild's log is at $url/failed/${saved_log##*/}"
+	else
+		note "WARNING: could not upload the rebuild's log; it stays at $saved_log on the box"
+	fi
+	if [ -s "$HOME/cloud-rebuild.log" ]; then
+		local own
+		own="$work/box-rebuild-$(date -u +%Y%m%dT%H%M%SZ).log.gz"
+		tail -n 400 "$HOME/cloud-rebuild.log" | gzip >"$own" || true
+		"$AWS" s3 cp "$own" "$url/failed/${own##*/}" --only-show-errors ||
+			note "WARNING: could not upload the end of ~/cloud-rebuild.log"
+	fi
+}
 # --- fire --------------------------------------------------------------------------------
 resumed=0
 if ! done_already fire; then
@@ -279,7 +348,6 @@ unattended=1
 job=$(cat "$state/job")
 
 # --- wait --------------------------------------------------------------------------------
-save_log() { compose logs --no-color rebuild 2>&1 | gzip >"$work/rebuild-$(date -u +%Y%m%dT%H%M%SZ).log.gz" || true; }
 if ! done_already wait; then
 	note "waiting for rebuild job $job (hours; this checks every ${POLL_S}s)"
 	# On a resume the first `doing` is tried at once; after that every ten minutes, in
@@ -310,12 +378,14 @@ if ! done_already wait; then
 			*)
 				note "rebuild job $job ended $status; its log is saved under $work"
 				save_log
+				send_failed_logs
 				finish 1 ;;
 		esac
 		now=$(date +%s)
 		if [ "$now" -ge "$deadline" ]; then
 			note "rebuild job $job is still $status after $deadline_hours hours; giving up. Its log is saved under $work"
 			save_log
+			send_failed_logs
 			finish 1
 		fi
 		if [ $((now - last_report)) -ge 600 ]; then
@@ -406,6 +476,66 @@ if ! done_already upload; then
 	fi
 	mark upload
 fi
+# --- prune -------------------------------------------------------------------------------
+# Only after a run that finished: the dumps of the other runs, this run's kept. Their names:
+# db.tar (send-inputs.sh's own) and routemaker-<utc>.dump (what runs before v0.7.0 sent: the
+# whole nightly backup). Nothing else of an older run is touched. Only a run OLDER than this
+# one (read_at, from its MANIFEST.txt on the box or in S3) that has finished loses its dump: a
+# newer run's dump is the newest, and a run not yet built still needs its inputs. A run whose
+# read_at cannot be read is kept.
+prune_warn() { note "WARNING: $*; delete it by hand (docs/OPERATIONS.md, \"Rebuilding on the cloud box\")"; }
+other_read_at() {
+	local m="${work%/*}/$1/in/MANIFEST.txt"
+	if ! [ -s "$m" ]; then
+		m="$state/other-MANIFEST.txt"
+		rm -f "$m"
+		"$AWS" s3 cp "$parent/$1/in/MANIFEST.txt" "$m" --only-show-errors 2>/dev/null || return 0
+	fi
+	sed -n 's/^read_at=//p' "$m" | tail -n1
+}
+other_finished() {
+	[ -e "${work%/*}/$1/state/upload.done" ] || [ -e "${work%/*}/$1/state/failed.done" ] ||
+		"$AWS" s3 ls "$parent/$1/out/SHA256SUMS" >/dev/null 2>&1 ||
+		[ -n "$("$AWS" s3 ls "$parent/$1/failed/" 2>/dev/null)" ]
+}
+prunable() {
+	local at
+	at=$(other_read_at "$1")
+	if ! [[ "$at" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || ! [[ "$at" < "$read_at" ]]; then
+		note "keeping run $1's dump: it is not older than this run (read_at ${at:-unknown})"
+		return 1
+	fi
+	other_finished "$1" || {
+		note "keeping run $1's dump: that run has not finished"
+		return 1
+	}
+}
+if ! done_already prune; then
+	parent=${url%/*}
+	for other in "${work%/*}"/*/; do
+		other=${other%/}
+		[ "$other" != "$work" ] && [ -d "$other/in" ] || continue
+		prunable "${other##*/}" || continue
+		for f in "$other/in/db.tar" "$other/in/db" "$other/in"/routemaker-*.dump; do
+			[ -e "$f" ] || continue
+			note "deleting an older run's dump: $f"
+			rm -rf "$f" || prune_warn "could not delete $f"
+		done
+	done
+	runs=$("$AWS" s3 ls "$parent/" 2>/dev/null | sed -n 's|^ *PRE \([a-z0-9][a-z0-9-]*\)/$|\1|p') ||
+		prune_warn "could not list $parent/ to find older runs' dumps"
+	for other in $runs; do
+		[ "$other" != "$run" ] || continue
+		prunable "$other" || continue
+		for f in $("$AWS" s3 ls "$parent/$other/in/" 2>/dev/null | awk '{print $NF}' |
+			grep -E '^(db\.tar|routemaker-[0-9]{8}T[0-9]{6}Z\.dump)$'); do
+			note "deleting an older run's dump: $parent/$other/in/$f"
+			"$AWS" s3 rm "$parent/$other/in/$f" --only-show-errors || prune_warn "could not delete $parent/$other/in/$f"
+		done
+	done
+	mark prune
+fi
+
 note "done: build $(sed -n 's/^build=//p' "$work/out/MANIFEST.txt") is at $url/out/"
 note "next, at home: scripts/cloud/import-result.sh $url"
 if done_already beta; then

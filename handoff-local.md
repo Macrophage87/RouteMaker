@@ -99,7 +99,6 @@ git config --global credential.helper "/mnt/c/Program\ Files/Git/mingw64/bin/git
 # the checkout, in the Linux filesystem
 mkdir -p ~/src && cd ~/src
 git clone https://github.com/Macrophage87/RouteMaker.git && cd RouteMaker
-git checkout claude/beautiful-mayer-4f7gg9
 
 # PostgreSQL 16 + PostGIS from the PostgreSQL project's repository, and the Lua interpreters
 sudo apt-get update && sudo apt-get install -y postgresql-common ca-certificates curl

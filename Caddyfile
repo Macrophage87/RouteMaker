@@ -44,7 +44,7 @@
 		max_size 1MiB
 	}
 
-	# Preset links (owner item 204): routemaker.cieply.com/trailmaxxing opens the
+	# Preset links (owner item 204): beta.example.org/trailmaxxing opens the
 	# planner on that ride type. Exactly the ride-type ids frontend/src/lib/
 	# presets.ts lists - tests/test_preset_links.py holds this list equal to
 	# it and to core/presets.py, no extras - each sent to the app's own

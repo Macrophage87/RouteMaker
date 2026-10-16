@@ -34,17 +34,15 @@ def node_strips_types() -> bool:
 
 
 def test_frontend_suite_passes() -> None:
+    if os.environ.get("CI"):
+        # CI's "Front end" step runs this same suite with `npm test` (and again in the node
+        # image) before pytest, where a failure fails the job with the whole report; a third
+        # run here would only repeat it, behind a pass-count floor (tests-6).
+        pytest.skip("CI ran the front-end suite in its own step (npm test)")
     if NODE is None:
-        # A skip is the right answer on a machine without Node and the wrong one
-        # in CI, where an image that lost the runtime would report green with the
-        # whole JavaScript suite - the colour-ordering and contrast assertions
-        # included - never having run.
-        if os.environ.get("CI"):
-            pytest.fail("CI image has no Node runtime; the frontend suite did not run")
+        # Outside CI only (above): CI's own step fails when the runtime is missing.
         pytest.skip("no Node runtime available")
     if not node_strips_types():
-        if os.environ.get("CI"):
-            pytest.fail("CI image's Node cannot run the TypeScript tests (needs 22.18 or later)")
         pytest.skip("this Node predates default type stripping (22.18)")
     result = subprocess.run(
         [NODE, "--test", *TEST_GLOBS],

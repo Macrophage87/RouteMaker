@@ -2987,6 +2987,21 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     if when.tzinfo is None:
         when = when.replace(tzinfo=ridetime.ZONE)
     schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, when.astimezone(ridetime.ZONE).date())
+    # The docks first, and the candidates' clock after them (TB-8): a slow feed read must not
+    # spend the candidates' budget. Feeds that cannot be read are no docks, with a note, not a
+    # refusal (TB-2): the trip walks at both ends.
+    share_snapshot = share_note = None
+    if body.preset == presets.BIKESHARE_TRANSIT:
+        try:
+            share_snapshot = gbfs.client.snapshot()
+        except gbfs.Unavailable as error:
+            logger.warning("bikeshare feeds unavailable for a transit plan: %s", error)
+            share_snapshot = gbfs.Snapshot(fetched_at=0.0, stations=[], status={})
+            share_note = "Bikeshare docks can't be read right now: walking at both ends."
+    candidates_until = min(
+        routing.clock() + TRANSIT_CANDIDATES_S,
+        started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S,
+    )
     # The candidates' calls stop `TRANSIT_CANDIDATES_S` in, leaving the answer's own line
     # (routing.plan, below) the rest of the request's budget: a slow router estimates candidates,
     # it never times out the plan.
@@ -2998,15 +3013,15 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         leg_costing = presets.costing(presets.NOVICE)
         leg_costing["bicycle"]["cycling_speed"] = presets.BIKESHARE_CLASSIC_SPEED_KMH
     services = (
-        transit.RoutingServices(started + TRANSIT_CANDIDATES_S, leg_preset)
+        transit.RoutingServices(candidates_until, leg_preset)
         if leg_costing is None
-        else transit.RoutingServices(
-            started + TRANSIT_CANDIDATES_S, leg_preset, costing=leg_costing
-        )
+        else transit.RoutingServices(candidates_until, leg_preset, costing=leg_costing)
     )
     start, end = body.points
     if body.preset == presets.BIKESHARE_TRANSIT:
-        found = transit.plan_bikeshare(schedule, start, end, when, services, gbfs.client.snapshot())
+        found = transit.plan_bikeshare(schedule, start, end, when, services, share_snapshot)
+        if share_note is not None:
+            found.notes.insert(0, share_note)
     else:
         options = presets.costing(body.preset)["bicycle"]
         speed = options.get(
