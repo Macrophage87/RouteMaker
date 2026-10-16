@@ -89,6 +89,8 @@ from routemaker.trace_junctions import (
     decode_polyline6,
 )
 
+from . import segment_info
+
 logger = logging.getLogger(__name__)
 
 # Junctions asked of /locate at once (the service's `max_locations` is 50).
@@ -137,80 +139,33 @@ CROSS JOIN LATERAL (
 ) AS seg
 """
 
-_has_trait_columns_seen = False
-_has_cost_columns_seen = False
-_has_half_column_seen = False
+# Each "has the live table these columns?" reads the one shared answer,
+# `segment_info.live_columns` (review CH-1).
 
 
 def has_half_column(schema: str) -> bool:
-    """Whether the live segment table has the half-step column (`STRESS_HALF_COLUMN`).
-    Remembered once seen."""
-    global _has_half_column_seen
-    if _has_half_column_seen:
-        return True
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
-            "AND table_name = 'segment' AND column_name = %s",
-            [schema, STRESS_HALF_COLUMN],
-        )
-        _has_half_column_seen = cursor.fetchone()[0] == 1
-    return _has_half_column_seen
-
-
-_has_unsmoothed_tier_seen = False
+    """Whether the live segment table has the half-step column (`STRESS_HALF_COLUMN`)."""
+    return segment_info.has_columns(schema, STRESS_HALF_COLUMN)
 
 
 def has_trait_columns(schema: str) -> bool:
     """Whether the live segment table has the road-trait columns yet. They
     arrive with the first rebuild after the intersection model; until then the
-    reasons name the tier alone. Remembered once seen, as `core.routing` does
-    for the facility columns."""
-    global _has_trait_columns_seen
-    if _has_trait_columns_seen:
-        return True
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
-            "AND table_name = 'segment' AND column_name = ANY(%s)",
-            [schema, list(ROAD_TRAIT_COLUMNS)],
-        )
-        _has_trait_columns_seen = cursor.fetchone()[0] == len(ROAD_TRAIT_COLUMNS)
-    return _has_trait_columns_seen
+    reasons name the tier alone."""
+    return segment_info.has_columns(schema, *ROAD_TRAIT_COLUMNS)
 
 
 def has_cost_columns(schema: str) -> bool:
     """Whether the live segment table has `road_default_speed_mph` and
     `road_urban` yet (the first rebuild after OWNER-DECISIONS 469). Until then
-    the junction model falls back as `routemaker.intersections` says.
-    Remembered once seen."""
-    global _has_cost_columns_seen
-    if _has_cost_columns_seen:
-        return True
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
-            "AND table_name = 'segment' AND column_name = ANY(%s)",
-            [schema, list(ROAD_COST_COLUMNS)],
-        )
-        _has_cost_columns_seen = cursor.fetchone()[0] == len(ROAD_COST_COLUMNS)
-    return _has_cost_columns_seen
+    the junction model falls back as `routemaker.intersections` says."""
+    return segment_info.has_columns(schema, *ROAD_COST_COLUMNS)
 
 
 def has_unsmoothed_tier(schema: str) -> bool:
     """Whether the live segment table has `stress_unsmoothed_tier` yet (the
-    first rebuild after AADT smoothing). Remembered once seen."""
-    global _has_unsmoothed_tier_seen
-    if _has_unsmoothed_tier_seen:
-        return True
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
-            "AND table_name = 'segment' AND column_name = %s",
-            [schema, UNSMOOTHED_TIER_COLUMN],
-        )
-        _has_unsmoothed_tier_seen = cursor.fetchone()[0] == 1
-    return _has_unsmoothed_tier_seen
+    first rebuild after AADT smoothing)."""
+    return segment_info.has_columns(schema, UNSMOOTHED_TIER_COLUMN)
 
 
 def wanted(raw: RawJunction) -> bool:

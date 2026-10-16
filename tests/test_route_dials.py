@@ -26,7 +26,7 @@ from test_route_api import (
     trace_answer,
 )
 
-from core import presets, refine, routing
+from core import presets, refine, routing, segment_info
 from routemaker import ridetime
 
 # A route test plans a weekday ride unless it says otherwise: the weekend router
@@ -290,7 +290,7 @@ class TestFacilityBreakdown:
         with connection.cursor() as cursor:
             cursor.execute(f"ALTER TABLE {facility_segments}.segment DROP COLUMN car_free_when")
             cursor.execute(f"ALTER TABLE {facility_segments}.segment DROP COLUMN facility")
-        monkeypatch.setattr(routing, "_facility_columns_seen", False)
+        segment_info.forget_columns()
         router(standard_router())
         body = post(client, good_body()).json()
         assert body["facility_m"]["unknown"] == pytest.approx(sum(body["stress_m"].values()))
@@ -892,7 +892,7 @@ class TestTheStressAdjustmentsARouteUses:
             cursor.execute(
                 f"ALTER TABLE {facility_segments}.segment DROP COLUMN stress_adjustment_display"
             )
-        monkeypatch.setattr(routing, "_adjustment_columns_seen", False)
+        segment_info.forget_columns()
         router(standard_router())
         assert post(client, good_body()).json()["stress_adjustments"] == []
 

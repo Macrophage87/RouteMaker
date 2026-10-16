@@ -4785,21 +4785,18 @@ docker compose exec -T api python manage.py predraw_stress_tiles
 ```
 
 **Recreate `api` and `worker` after a rollback** to a table with fewer columns.
-Each process remembers, for its life, that the live segment table has the
-facility, adjustment, road-trait and junction-cost columns
-(`routing._has_facility_columns`, `_has_adjustment_columns`,
-`junctions.has_trait_columns`, `has_unsmoothed_tier` and `has_cost_columns`
-cache a True). Rolled back past the junction-cost columns
-(`road_default_speed_mph`, `road_urban`), routes still answer but lose every
-intersection: the logs say "the intersection events could not be read". Rolled
-back to a build from before those columns (20260927 and earlier), every route
-query still names `seg.car_free_when` and `facility`, nothing catches the
-database error, and every route answers 500 until the processes start again.
+Each process keeps the live segment table's columns for 10 seconds
+(`segment_info.live_columns`, `COLUMN_RECHECK_S`; every "has the table this
+column?" check reads it), so it notices the older table on its own within that
+time. Until then a route query can still name a column the older table lacks
+(`seg.car_free_when` and `facility` on a build from 20260927 or earlier), and
+nothing catches that database error: those routes answer 500. The recreate ends
+that window at once and drops anything else a process kept of the newer build.
 `--force-recreate` with `--no-deps --no-build` starts fresh processes on the
 same images and touches no other service; a `restart` would do too, but the
 recreate is the form the rest of this page uses. Rolling forward again (a
-rebuild that adds the columns back) needs no recreate: the cached False is
-re-checked.
+rebuild that adds the columns back) needs no recreate: the columns are read
+again within the same 10 seconds.
 
 The last line draws the stress tiles of the table put back: the pre-draw after
 the rolled-away rebuild's swap cleared that table's tiles from the cache, and
@@ -6383,11 +6380,14 @@ the defaults, so build those here.
    next rebuild with `scripts/cloud/import-result.sh --swap "$RUN_URL" --
    --accept-later-overrides`.
 
-**Rollback** is the ordinary one, dry and then confirmed, then restart the routers:
+**Rollback** is the ordinary one, dry and then confirmed, then restart the routers and
+the api (the older table may lack columns the api still names; "Recreate `api` and
+`worker` after a rollback", above):
 
 ```sh
 docker compose exec -T rebuild ./manage.py rollback_rebuild </dev/null
 docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm </dev/null
+docker compose up -d --no-deps --no-build --force-recreate api worker </dev/null   # after the routers' restart
 ```
 
 The safety dump is the last resort.

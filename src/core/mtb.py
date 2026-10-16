@@ -34,7 +34,7 @@ from pipeline.schema import MTB_LEVEL_COLUMN, MTB_ONLY_COLUMN, validate_schema_n
 from routemaker import mtbmode
 from routemaker.geo import Point, haversine
 
-from . import presets
+from . import presets, segment_info
 
 logger = logging.getLogger(__name__)
 
@@ -48,20 +48,9 @@ SAMPLE_M = 40.0
 # router must be able to leave and arrive.
 CLEARANCE_M = 300.0
 
-_columns_seen: dict[str, bool] = {}
-
 
 def _has_column(schema: str, column: str) -> bool:
-    if _columns_seen.get(column):
-        return True
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
-            "AND table_name = 'segment' AND column_name = %s",
-            [schema, column],
-        )
-        _columns_seen[column] = cursor.fetchone()[0] == 1
-    return _columns_seen[column]
+    return segment_info.has_columns(schema, column)
 
 
 def way_traits(way_ids: Sequence[int]) -> dict[int, tuple[bool, int | None, bool]]:

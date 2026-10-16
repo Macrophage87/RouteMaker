@@ -52,9 +52,13 @@ LOCATE_TIMEOUT_S = 3.0
 # UNNAMED_TITLES; tests/test_segment_info_api.py ties the two).
 UNNAMED_ROAD_TITLE = UNNAMED_ROAD[:1].upper() + UNNAMED_ROAD[1:]
 UNNAMED_PATH_TITLE = UNNAMED_PATH[:1].upper() + UNNAMED_PATH[1:]
-# Missing optional columns are looked for again this often, so the first
-# answer after a rebuild's swap sees the new ones without a restart.
-COLUMN_RECHECK_S = 300.0
+# The live table's columns are read again this often (review CH-1, speed-11): a swap or a
+# rollback puts another table under the same name from another process (the `rebuild`
+# container), and a column can be added in place, so each is seen without an api restart,
+# the older table's missing columns included. Both answers are kept meanwhile: a column
+# that is missing is not asked about on every reading. The promotion and the rollback
+# also forget them in their own process (`pipeline.promotion`).
+COLUMN_RECHECK_S = 10.0
 
 FEET_PER_METRE = 3.28084
 KMH_PER_MPH = 1.609344
@@ -272,11 +276,11 @@ _columns: dict[str, tuple[frozenset[str], float]] = {}
 
 
 def live_columns(schema: str) -> frozenset[str]:
-    """The live segment table's columns; looked for again every COLUMN_RECHECK_S
-    while one of OPTIONAL_COLUMNS is missing, since a swap only adds columns."""
+    """The live segment table's columns, read again every COLUMN_RECHECK_S. The one
+    shared answer to "has the live table this column?" (`has_columns`)."""
     known = _columns.get(schema)
     now = time.monotonic()
-    if known and (set(OPTIONAL_COLUMNS) <= known[0] or now - known[1] < COLUMN_RECHECK_S):
+    if known and now - known[1] < COLUMN_RECHECK_S:
         return known[0]
     with connection.cursor() as cursor:
         cursor.execute(
@@ -289,8 +293,14 @@ def live_columns(schema: str) -> frozenset[str]:
     return found
 
 
+def has_columns(schema: str, *names: str) -> bool:
+    """Whether the live segment table in `schema` has every one of `names`."""
+    return set(names) <= live_columns(schema)
+
+
 def forget_columns() -> None:
-    """For tests: the next answer reads the table's columns afresh."""
+    """The next answer reads the table's columns afresh: after a swap, a rollback or a
+    column added in place, and in tests."""
     _columns.clear()
 
 

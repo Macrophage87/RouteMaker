@@ -22,7 +22,7 @@ from pathlib import Path
 import pytest
 from django.db import connection
 
-from core import junctions
+from core import junctions, segment_info
 from routemaker import intersections as model
 from routemaker.intersections import Control, Movement, Road
 from routemaker.trace_junctions import RawJunction
@@ -1005,7 +1005,7 @@ def grid(segment_schemas):
                 "VALUES (%s, %s, ST_GeomFromText(%s, 4326), %s, 'test', %s, %s, %s, %s)",
                 [way, ordinal, wkt, tier, speed, lanes, oneway, aadt],
             )
-    junctions._has_trait_columns_seen = False
+    segment_info.forget_columns()
     return live
 
 
@@ -1036,7 +1036,7 @@ class TestRoadsByWay:
                     "stress_rule) VALUES (20, %s, ST_GeomFromText(%s, 4326), %s, 'test')",
                     [ordinal, line(*points), tier],
                 )
-        junctions._has_trait_columns_seen = False
+        segment_info.forget_columns()
         assert junctions.roads_by_way([(0, 20, LON, LAT)], "weekend", False)[(0, 20)].tier == 3
         far = (LON + 0.009, LAT)
         assert junctions.roads_by_way([(0, 20, *far)], "weekend", False)[(0, 20)].tier == 4
@@ -1051,7 +1051,7 @@ class TestRoadsByWay:
                 "stress_rule) VALUES (20, 0, ST_GeomFromText(%s, 4326), 4, 'test')",
                 [line((LON, LAT - 0.002), (LON, LAT))],
             )
-        junctions._has_trait_columns_seen = False
+        segment_info.forget_columns()
         assert not junctions.has_trait_columns(live)
         assert junctions.roads_by_way([(0, 20, LON, LAT)], "weekend", False)[(0, 20)] == Road(4)
 
@@ -1066,8 +1066,7 @@ class TestRoadsByWay:
                 "VALUES (20, 0, ST_GeomFromText(%s, 4326), 4, 'test', 55, false)",
                 [line((LON, LAT - 0.002), (LON, LAT))],
             )
-        junctions._has_trait_columns_seen = False
-        junctions._has_cost_columns_seen = False
+        segment_info.forget_columns()
         road = junctions.roads_by_way([(0, 20, LON, LAT)], "weekend", False)[(0, 20)]
         assert (road.speed_mph, road.default_speed_mph, road.urban) == (None, 55.0, False)
 
@@ -1075,9 +1074,9 @@ class TestRoadsByWay:
         live, _staging = segment_schemas
         with connection.cursor() as cursor:
             cursor.execute(f"ALTER TABLE {live}.segment DROP COLUMN road_urban")
-        junctions._has_cost_columns_seen = False
+        segment_info.forget_columns()
         assert not junctions.has_cost_columns(live)
-        junctions._has_cost_columns_seen = False
+        segment_info.forget_columns()
 
     def test_a_table_before_the_cost_columns_reads_none(self, segment_schemas) -> None:
         live, _staging = segment_schemas
@@ -1089,11 +1088,11 @@ class TestRoadsByWay:
                 "stress_rule) VALUES (20, 0, ST_GeomFromText(%s, 4326), 4, 'test')",
                 [line((LON, LAT - 0.002), (LON, LAT))],
             )
-        junctions._has_cost_columns_seen = False
+        segment_info.forget_columns()
         assert not junctions.has_cost_columns(live)
         road = junctions.roads_by_way([(0, 20, LON, LAT)], "weekend", False)[(0, 20)]
         assert (road.default_speed_mph, road.urban) == (None, None)
-        junctions._has_cost_columns_seen = False
+        segment_info.forget_columns()
 
     def test_a_smoothed_link_is_crossed_at_its_raw_count_and_tier(self, segment_schemas) -> None:
         """1st St NW at Q St (OWNER-DECISIONS 285, 303; ARTERIAL review r0, SF1): the
@@ -1107,7 +1106,7 @@ class TestRoadsByWay:
                 "VALUES (483241819, 0, ST_GeomFromText(%s, 4326), 2, 'test', 10665, 3)",
                 [line((LON, LAT - 0.002), (LON, LAT))],
             )
-        junctions._has_trait_columns_seen = False
+        segment_info.forget_columns()
         asked = [(0, 483241819, LON, LAT)]
         road = junctions.roads_by_way(asked, "weekend", False)[(0, 483241819)]
         assert (road.tier, road.aadt) == (3, 10665) and road.busy
@@ -1125,10 +1124,10 @@ class TestRoadsByWay:
                 "stress_rule) VALUES (20, 0, ST_GeomFromText(%s, 4326), 2, 'test')",
                 [line((LON, LAT - 0.002), (LON, LAT))],
             )
-        junctions._has_unsmoothed_tier_seen = False
+        segment_info.forget_columns()
         assert not junctions.has_unsmoothed_tier(live)
         assert junctions.roads_by_way([(0, 20, LON, LAT)], "weekend", False)[(0, 20)].tier == 2
-        junctions._has_unsmoothed_tier_seen = False
+        segment_info.forget_columns()
 
     def test_a_road_closed_to_cars_at_the_ride_time_is_tier_one(self, segment_schemas) -> None:
         live, _staging = segment_schemas
@@ -1139,7 +1138,7 @@ class TestRoadsByWay:
                 "ARRAY['weekend'])",
                 [line((LON, LAT - 0.002), (LON, LAT))],
             )
-        junctions._has_trait_columns_seen = False
+        segment_info.forget_columns()
         asked = [(0, 20, LON, LAT)]
         assert junctions.roads_by_way(asked, "weekend", with_facility=True)[(0, 20)].tier == 1
         assert junctions.roads_by_way(asked, "weekday_rush", with_facility=True)[(0, 20)].tier == 4

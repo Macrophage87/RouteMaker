@@ -27,7 +27,7 @@ from django.test import override_settings
 from test_ratelimit import in_one_window
 
 from core import junctions as core_junctions
-from core import presets, refine, routing
+from core import presets, refine, routing, segment_info
 from routemaker import calm, flow
 
 # A route test plans a weekday ride unless it says otherwise: the weekend router
@@ -530,7 +530,7 @@ class TestAnswer:
         Level all the way, so no grade factor."""
         with connection.cursor() as cursor:
             cursor.execute(f"ALTER TABLE {segments}.segment DROP COLUMN mass_usable_width_m")
-        monkeypatch.setattr(routing, "_capacity_column_seen", False)
+        segment_info.forget_columns()
         with connection.cursor() as cursor:
             cursor.execute(
                 f"UPDATE {segments}.segment SET road_lanes = 2, road_oneway = true"
@@ -2838,7 +2838,7 @@ class TestMassRideCapacitySections:
     ) -> None:
         with connection.cursor() as cursor:
             cursor.execute(f"ALTER TABLE {segments}.segment DROP COLUMN mass_usable_width_m")
-        monkeypatch.setattr(routing, "_capacity_column_seen", False)
+        segment_info.forget_columns()
         router(standard_router())
         response = post(client, good_body("mass-ride"))
         assert response.status_code == 200
@@ -2859,11 +2859,7 @@ class TestMassRideCapacitySections:
     def test_classify_reads_the_capacity(self, segments) -> None:
         self.capacities(segments, {101: 50, 202: None})
         pieces = [routing.Piece(101, -77.045, LAT, 100.0), routing.Piece(202, -77.0375, LAT, 100.0)]
-        monkey = routing._capacity_column_seen
-        try:
-            routing._capacity_column_seen = False
-            classes = routing.classify(pieces, "weekday_offpeak")
-        finally:
-            routing._capacity_column_seen = monkey
+        segment_info.forget_columns()
+        classes = routing.classify(pieces, "weekday_offpeak")
         assert [c.rpm for c in classes] == [50, None]
         assert all(len(c) == 2 for c in classes)

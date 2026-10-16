@@ -102,7 +102,7 @@ from routemaker.geo import Point, haversine
 from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
-from . import avoid_junctions, mass_hazards, mtb, parallel, presets, timing
+from . import avoid_junctions, mass_hazards, mtb, parallel, presets, segment_info, timing
 from . import workzones as work_zones
 
 logger = logging.getLogger(__name__)
@@ -400,43 +400,21 @@ ORDER BY p.ordinality
 # Whether the live segment table has the Mass Ride capacity column
 # (`pipeline.schema.MASS_WIDTH_COLUMN`): written by the first rebuild after the
 # capacity map shipped. Without it a Mass Ride's sections carry no capacity and
-# the map draws them by stress, as it did. Remembered once seen, as above.
-_capacity_column_seen = False
+# the map draws them by stress, as it did. Every such check reads the one shared
+# answer, `segment_info.live_columns` (review CH-1).
 
 
 def _has_capacity_column(schema: str) -> bool:
-    global _capacity_column_seen
-    if _capacity_column_seen:
-        return True
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
-            "AND table_name = 'segment' AND column_name = %s",
-            [schema, MASS_WIDTH_COLUMN],
-        )
-        _capacity_column_seen = cursor.fetchone()[0] == 1
-    return _capacity_column_seen
+    return segment_info.has_columns(schema, MASS_WIDTH_COLUMN)
 
 
 # Whether the live segment table has the half-step column (`pipeline.schema.
 # STRESS_HALF_COLUMN`): written by the first rebuild after half steps shipped, or added in
 # place by `manage.py add_stress_half_column`. Without it every piece is a whole step.
-# Remembered once seen, as above.
-_half_column_seen = False
 
 
 def _has_half_column(schema: str) -> bool:
-    global _half_column_seen
-    if _half_column_seen:
-        return True
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
-            "AND table_name = 'segment' AND column_name = %s",
-            [schema, STRESS_HALF_COLUMN],
-        )
-        _half_column_seen = cursor.fetchone()[0] == 1
-    return _half_column_seen
+    return segment_info.has_columns(schema, STRESS_HALF_COLUMN)
 
 
 # A road closed to motor traffic only at set times is a path for a ride inside
@@ -448,9 +426,7 @@ _TIER_AT = "CASE WHEN %s = ANY(seg.car_free_when) THEN 1 ELSE seg.stress_tier EN
 
 # Whether the live segment table has the facility columns yet. They arrive with
 # the first rebuild after this code; until then the breakdown is all unknown
-# rather than an error. Remembered once seen, since a schema is only ever
-# replaced by a newer build of itself.
-_facility_columns_seen = False
+# rather than an error.
 
 
 def _has_trait_columns(schema: str) -> bool:
@@ -460,17 +436,7 @@ def _has_trait_columns(schema: str) -> bool:
 
 
 def _has_facility_columns(schema: str) -> bool:
-    global _facility_columns_seen
-    if _facility_columns_seen:
-        return True
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
-            "AND table_name = 'segment' AND column_name IN ('facility', 'car_free_when')",
-            [schema],
-        )
-        _facility_columns_seen = cursor.fetchone()[0] == 2
-    return _facility_columns_seen
+    return segment_info.has_columns(schema, "facility", "car_free_when")
 
 
 # The facility classes a ride on the roadway does not use: a mass ride takes
@@ -739,21 +705,10 @@ ADJUSTMENT_COLUMNS = (
     "stress_adjustment_note",
     "stress_adjustment_display",
 )
-_adjustment_columns_seen = False
 
 
 def _has_adjustment_columns(schema: str) -> bool:
-    global _adjustment_columns_seen
-    if _adjustment_columns_seen:
-        return True
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
-            "AND table_name = 'segment' AND column_name = ANY(%s)",
-            [schema, list(ADJUSTMENT_COLUMNS)],
-        )
-        _adjustment_columns_seen = cursor.fetchone()[0] == len(ADJUSTMENT_COLUMNS)
-    return _adjustment_columns_seen
+    return segment_info.has_columns(schema, *ADJUSTMENT_COLUMNS)
 
 
 def adjustments_used(pieces: list[Piece]) -> list[dict]:
@@ -1601,21 +1556,10 @@ def _events(refine_context, legs: list, raws: list, deadline: Deadline) -> list 
 
 # Whether the live segment table has the walk_bike column yet (a table built
 # before NO-BIKE-PATHS has none; the route then carries no walk notes).
-_walk_column_seen = False
 
 
 def _has_walk_column(schema: str) -> bool:
-    global _walk_column_seen
-    if _walk_column_seen:
-        return True
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
-            "AND table_name = 'segment' AND column_name = 'walk_bike'",
-            [schema],
-        )
-        _walk_column_seen = cursor.fetchone()[0] == 1
-    return _walk_column_seen
+    return segment_info.has_columns(schema, "walk_bike")
 
 
 def walk_spans(leg_runs: list, pieces: list[Piece]) -> list[tuple[float, float]]:
@@ -2070,10 +2014,8 @@ def sidepath_names_of(pieces: list[Piece]) -> dict[int, str]:
     if not ids:
         return {}
     try:
-        from .segment_info import live_columns
-
         schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
-        if SIDEPATH_NAME_COLUMN not in live_columns(schema):
+        if not segment_info.has_columns(schema, SIDEPATH_NAME_COLUMN):
             return {}
         with connection.cursor() as cursor:
             cursor.execute(

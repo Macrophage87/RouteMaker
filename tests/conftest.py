@@ -175,6 +175,21 @@ def _no_kept_routes(settings):
     route_cache.clear()
 
 
+@pytest.fixture(autouse=True)
+def _no_kept_columns():
+    """The live table's columns are read afresh in each test (`segment_info.live_columns`
+    keeps them for COLUMN_RECHECK_S): tests build, alter and drop segment tables under the
+    same schema name, which in a deployment only a swap, a rollback or a migration does."""
+    try:
+        from core import segment_info
+    except Exception:  # noqa: BLE001 - modules that never load Django
+        yield
+        return
+    segment_info.forget_columns()
+    yield
+    segment_info.forget_columns()
+
+
 @pytest.fixture
 def weekday_clock(monkeypatch):
     """The ride time `core.routing` reads (`timezone.now`, behind `default_when`

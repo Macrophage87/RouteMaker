@@ -56,14 +56,13 @@ def test_walk_spans_join_neighbouring_pieces_and_end_with_the_route(monkeypatch)
         yield cursor
 
     monkeypatch.setattr(routing.connection, "cursor", fake_cursor)
-    monkeypatch.setattr(routing, "_walk_column_seen", True)
+    monkeypatch.setattr(routing, "_has_walk_column", lambda schema: True)
     pieces = [piece(1, 100), piece(7, 40), piece(8, 60), piece(2, 100), piece(7, 30)]
     spans = routing.walk_spans([(0, 5)], pieces)
     assert spans == [(100.0, 200.0), (300.0, 330.0)]
 
 
 def test_walk_spans_are_empty_without_the_column(monkeypatch) -> None:
-    monkeypatch.setattr(routing, "_walk_column_seen", False)
     monkeypatch.setattr(routing, "_has_walk_column", lambda schema: False)
     assert routing.walk_spans([(0, 1)], [piece(7, 40)]) == []
 
