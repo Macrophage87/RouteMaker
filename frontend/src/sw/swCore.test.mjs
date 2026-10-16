@@ -36,6 +36,11 @@ test("a navigation to / or /index.html is the shell (network first), with or wit
   }
 });
 
+test("a shared route's link /s/<32 hex> is the shell: the page reads its id from the path", () => {
+  assert.equal(ruleFor(nav(`/s/${"0a".repeat(16)}#p=1&route=${"0a".repeat(16)}`), ORIGIN), "shell");
+  for (const path of ["/s/", "/s/abc", `/s/${"0a".repeat(16)}/preview.png`, `/s/${"0A".repeat(16)}`]) assert.equal(ruleFor(nav(path), ORIGIN), "pass", path);
+});
+
 test("any other navigation is not intercepted: sign-in, a made-up admin path, /static, the preset redirects, the stress page", () => {
   for (const path of ["/auth/login", "/auth/discord/callback?code=x", "/internal-zz9q/", "/internal-zz9q/login/", "/static/admin/css/base.css", "/trailmaxxing", "/default/", "/about/stress.html", "/healthz", "/api/route"]) {
     assert.equal(ruleFor(nav(path), ORIGIN), "pass", path);

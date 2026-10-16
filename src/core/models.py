@@ -317,6 +317,11 @@ class User(AbstractBaseUser):
                 # Nor its saved settings and routes (v0.7.0: "deleted with the account").
                 AccountSettings.objects.filter(user_id=self.pk).delete()
                 SavedRoute.objects.filter(user_id=self.pk).delete()
+                # Its shared links keep working for those they were sent to, but with Home gone
+                # their previews could no longer hide it: no image from now on.
+                SharedRoute.objects.filter(owner_id=self.pk).update(
+                    preview_image=False, preview_png=None, preview_key="", preview_zone=None
+                )
 
         return super().save(*args, **kwargs)
 
@@ -1866,9 +1871,19 @@ class SharedRoute(models.Model):
     The line exactly as shown, verbatim like a saved route or GPX track (`line`), with the plan's
     inputs (so "Update route" can plan it again with today's map), a planned route's answer
     without the rider's weight, or an opened GPX file's own text. The key is 128 random bits the
-    sharer's browser made (32 hex characters); nothing names who shared it: no account, no
-    address, no position. Kept a year after `last_opened_at` (`keep` "year", the default),
-    permanently ("forever"), or through `delete_after` ("until"), then deleted.
+    sharer's browser made (32 hex characters); nothing names who shared it but, signed in, the
+    account (`owner`): no address, no position. Kept a year after `last_opened_at` (`keep`
+    "year", the default), permanently ("forever"), or through `delete_after` ("until"), then
+    deleted.
+
+    Shared signed in, the row names its `owner`, so only they can turn the link off or make a new
+    one (core.shared_routes.revoke, regenerate); a turned-off link stays as a tombstone with its
+    route cleared (`revoked_at`), so the link says it was turned off rather than planning its
+    points again. `preview_png` is the link preview's image (core.share_preview), cached under
+    `preview_key` (the line and Home's circle it was drawn with; an empty image is "none");
+    `preview_image` False when a signed-out sharer's route starts, ends or stops at the Home on
+    their device, which the server does not know, and for links from before previews, so no image
+    is drawn; `preview_zone` Home's circle frozen when the link was made.
     """
 
     id = models.CharField(primary_key=True, max_length=32)
@@ -1885,6 +1900,20 @@ class SharedRoute(models.Model):
     last_opened_at = models.DateTimeField(default=timezone.now)
     keep = models.CharField(max_length=8, default="year")
     delete_after = models.DateField(null=True, blank=True)
+    owner = models.ForeignKey(
+        "User",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="shared_routes",
+    )
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    preview_image = models.BooleanField(default=False)
+    # [lon, lat, radius m]: Home's circle when the link was made, if the route ended or stopped
+    # in it.
+    preview_zone = models.JSONField(null=True, blank=True)
+    preview_key = models.CharField(max_length=64, blank=True, default="")
+    preview_png = models.BinaryField(null=True, blank=True)
 
     class Meta:
         db_table = "shared_route"
