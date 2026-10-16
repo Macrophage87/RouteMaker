@@ -12,7 +12,7 @@ import type { RouteResponse } from "../lib/api.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { PRESETS, presetSaid, type PresetId } from "../lib/presets.ts";
 import { PresetName } from "../lib/presetName.ts";
-import { filterRideGroups, rideTypeCount, RideTypeSearch } from "../lib/rideTypeGroups.ts";
+import { filterRideGroups, rideSections, rideTypeCount, RideTypeSearch } from "../lib/rideTypeGroups.ts";
 import { RideTypeCards } from "../lib/rideTypeCards.ts";
 import { isPlainClick, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
 import { pointName } from "../lib/summary.ts";
@@ -667,19 +667,36 @@ export function RideGroupChips({ preset, onPick, open }: { preset: PresetId; onP
   useEffect(() => {
     if (!open) setQuery("");
   }, [open]);
-  const groups = filterRideGroups(query);
+  // Review F9: the common types first, the rest in their groups, folded (the one in use opens its group); a search
+  // shows every match flat. The class is ride-sheet-group: .ride-group is the group ride's overlay (RideGroup.tsx).
+  const { common, groups, folded } = rideSections(query);
   return (
     <section className="ride-groups" aria-labelledby="ride-sheet-types">
       <h3 id="ride-sheet-types" className="visually-hidden">
         Every ride type
       </h3>
-      <RideTypeSearch id="ride-sheet-search" query={query} onQuery={setQuery} count={rideTypeCount(groups)} />
-      {groups.map((group) => (
-        <section key={group.id} className="ride-group" aria-labelledby={`ride-sheet-${group.id}`}>
-          <h4 id={`ride-sheet-${group.id}`}>{group.label}</h4>
-          <RideTypeCards ids={group.ids} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} />
+      <RideTypeSearch id="ride-sheet-search" query={query} onQuery={setQuery} count={rideTypeCount(filterRideGroups(query))} />
+      {common.length > 0 && (
+        <section className="ride-sheet-group" aria-labelledby="ride-sheet-common">
+          <h4 id="ride-sheet-common">Common</h4>
+          <RideTypeCards ids={common} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} />
         </section>
-      ))}
+      )}
+      {groups.map((group) =>
+        folded ? (
+          <details key={group.id} className="fold ride-sheet-fold" open={group.ids.includes(preset) || undefined}>
+            <summary>{`${group.label} (${group.ids.length})`}</summary>
+            <div className="fold-body">
+              <RideTypeCards ids={group.ids} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} />
+            </div>
+          </details>
+        ) : (
+          <section key={group.id} className="ride-sheet-group" aria-labelledby={`ride-sheet-${group.id}`}>
+            <h4 id={`ride-sheet-${group.id}`}>{group.label}</h4>
+            <RideTypeCards ids={group.ids} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} />
+          </section>
+        ),
+      )}
     </section>
   );
 }
