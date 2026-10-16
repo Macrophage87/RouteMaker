@@ -3648,6 +3648,9 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
         carrying=body.carrying,
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
+        trails_off=body.trails_off,
+        mtb_level=body.mtb_level,
+        mtb_preferred=body.mtb_preferred,
         loop=body.loop,
     )
     started = getattr(request, "routing_started", None)
@@ -3739,6 +3742,9 @@ def nearest_places(request, body: NearestIn, response: HttpResponse):
         carrying=body.carrying,
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
+        trails_off=body.trails_off,
+        mtb_level=body.mtb_level,
+        mtb_preferred=body.mtb_preferred,
     )
     started = getattr(request, "routing_started", None)
     try:

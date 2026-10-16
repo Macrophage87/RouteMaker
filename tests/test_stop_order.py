@@ -522,6 +522,14 @@ class TestEndpoint:
             {"lon": lon, "lat": lat, "radius": routing.STOP_RADIUS_M} for lon, lat in POINTS
         ]
 
+    def test_trails_off_asks_the_no_trail_graph(self, client, router) -> None:
+        # Review api-1: the switch was accepted and dropped, so the order was by trails.
+        fake = router(MatrixOnly({"sources_to_targets": matrix_answer(along_the_line(POINTS))}))
+        body = {"points": POINTS, "preset": "default", "trails_off": True}
+        assert post(client, body).status_code == 200
+        url, _ = fake.calls[-1]
+        assert url.startswith(routing.settings.VALHALLA_UPSTREAMS["no-trail"])
+
     def test_lengths_are_read_in_the_direction_ridden(self, client, router) -> None:
         times = along_the_line(POINTS)
         km = [[float(10 * i + j) for j in range(5)] for i in range(5)]  # asymmetric
@@ -548,6 +556,9 @@ class TestEndpoint:
             {"preset": "cargo", "carrying": "people", "assist": True, "avoid_gravel": True},
             {"preset": "gravel", "hills": -60},
             {"preset": "group-ride", "when": "weekend"},
+            # "Keep to roads, not trails" takes the no-trail graph here too (review api-1).
+            {"preset": "default", "trails_off": True},
+            {"preset": "gravel", "trails_off": True, "when": "weekend"},
         ):
             body = {"points": POINTS, **body}
             assert (
