@@ -100,9 +100,11 @@ WORK_ZONES_TIMEOUT_S = 5 * 60
 # DC's closures (v0.7.0 plan, "DC closures source"): every fifteen minutes, each source read
 # when it is due (AlertDC and MPD every 15 min, NPS every 30, DDOT's permits every hour;
 # `core.closure_sources.EVERY_S`). Placing new permits and advisories asks the database,
-# Photon and the router, so it has longer than the work zones.
+# Photon and the router. The refresh stops starting work after
+# `core.closure_sources.REFRESH_BUDGET_S` (5 minutes); this hard deadline is the backstop, so
+# the task holds a maintenance slot at most 6 of every 15 minutes (it was 12).
 DC_CLOSURES_CRON = "*/15 * * * *"
-DC_CLOSURES_TIMEOUT_S = 12 * 60
+DC_CLOSURES_TIMEOUT_S = 6 * 60
 
 # The plan's job rule: retried with exponential backoff, up to five times.
 # Procrastinate counts an attempt when a run finishes or is scheduled for

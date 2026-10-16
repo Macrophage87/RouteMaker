@@ -51,6 +51,11 @@ REFRESH_MINUTES = 15
 TRIES = 3
 RETRY_WAIT_S = 2.0
 TIMEOUT_S = 20.0
+# The whole refresh's time (v0.7.0 review): every 15 minutes on a maintenance slot, so it stops
+# starting work past this. A fetch is cut to what is left, no retry or place look-up starts after
+# it, and a source not reached keeps its last good copy and is due again next time. The task's
+# hard deadline (config.procrastinate.DC_CLOSURES_TIMEOUT_S, 6 minutes) is the backstop.
+REFRESH_BUDGET_S = 5 * 60.0
 MAX_BYTES = 20_000_000
 USER_AGENT = "RouteMaker-closures"
 NPS_KEY_ENV = "NPS_API_KEY"
@@ -134,11 +139,18 @@ def _now() -> datetime:
 class Places:
     """One source's remembered places: key -> {"line": [[lon, lat], ...] or None, "at"}."""
 
-    def __init__(self, kept: dict | None, now: datetime, most: int) -> None:
+    def __init__(
+        self,
+        kept: dict | None,
+        now: datetime,
+        most: int,
+        out_of_time: Callable[[], bool] = lambda: False,
+    ) -> None:
         self.kept = dict(kept or {})
         self.used: dict = {}
         self.now = now
         self.left = most
+        self.out_of_time = out_of_time
 
     def get(self, key: str, find: Callable[[], list | None]) -> list | None:
         row = self.kept.get(key)
@@ -148,7 +160,9 @@ class Places:
             if row.get("line") or fresh:
                 self.used[key] = row
                 return row.get("line")
-        if self.left <= 0:
+        if self.left <= 0 or self.out_of_time():
+            # Past the refresh's budget: not looked for, nor remembered as not found, so the
+            # next refresh looks for it.
             return None
         self.left -= 1
         try:
@@ -424,11 +438,28 @@ def refresh(
     now: Callable[[], datetime] = _now,
     placer=None,
     force: bool = False,
+    budget_s: float = REFRESH_BUDGET_S,
+    clock: Callable[[], float] = time.monotonic,
 ) -> str:
     """Read every source that is due and replace the shared copy. A source that fails
-    keeps its last good copy. Returns a line for the run row."""
+    keeps its last good copy. Nothing starts past `budget_s` (`REFRESH_BUDGET_S`): a source
+    not reached in time keeps its copy and is read next time. Returns a line for the run row."""
     from . import workzones
     from .models import BikeshareFeedCache
+
+    end = clock() + budget_s
+
+    def out_of_time() -> bool:
+        return clock() >= end
+
+    def bounded_fetch(url: str, timeout: float, headers: dict) -> bytes:
+        left = end - clock()
+        if left <= 0:
+            raise FeedError("out of time")
+        return fetch(url, min(timeout, left), headers)
+
+    def bounded_sleep(seconds: float) -> None:
+        sleep(max(0.0, min(seconds, end - clock())))
 
     row = BikeshareFeedCache.objects.filter(key=KEY).first()
     payload = row.payload if row is not None and isinstance(row.payload, dict) else {}
@@ -443,10 +474,13 @@ def refresh(
         kept = feeds.get(source) or {}
         if not force and not _due(kept, source, now()):
             continue
+        if out_of_time():
+            said.append(f"{source} not reached in time")
+            continue
         moment = now()
-        places = Places(kept.get("placed"), moment, MAX_NEW_PLACES.get(source, 0))
+        places = Places(kept.get("placed"), moment, MAX_NEW_PLACES.get(source, 0), out_of_time)
         try:
-            zones, notices = READERS[source](fetch, placer, places, moment, sleep)
+            zones, notices = READERS[source](bounded_fetch, placer, places, moment, bounded_sleep)
         except (FeedError, ValueError) as error:
             logger.warning("closures: the %s source could not be read (%s)", source, error)
             feeds[source] = {**kept, "failed_at": moment.isoformat()}
