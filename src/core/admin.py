@@ -790,11 +790,22 @@ class MassHazardAdmin(AuditedAdmin):
 
         if not self._admin(request):
             raise PermissionDenied
-        count = 0
+        from . import stress_edits
+
+        count = changed = 0
         for pk in queryset.filter(status=MassHazard.Status.APPROVED).values_list("pk", flat=True):
-            mass_hazards.remove(request.user, pk)
+            try:
+                mass_hazards.remove(request.user, pk)
+            except (mass_hazards.Conflict, stress_edits.NotFound):
+                # Changed or gone since the list was shown (another admin): each removal
+                # commits on its own, so the rest go on and the count says so (review api-6).
+                changed += 1
+                continue
             count += 1
-        self.message_user(request, f"Took {count} hazard(s) off the Mass Ride map.")
+        message = f"Took {count} hazard(s) off the Mass Ride map."
+        if changed:
+            message += f" {changed} had changed already and were left as they are."
+        self.message_user(request, message)
 
     def get_actions(self, request):
         return super().get_actions(request) if self._admin(request) else {}
