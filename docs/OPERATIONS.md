@@ -2620,8 +2620,16 @@ once the first rebuild with them has been promoted:
    Expect tens to a few hundred ways. That count also includes trails closed
    for other reasons since the last extract. Open a few on openstreetmap.org: the
    ones this change closed carry `sac_scale` and no `bicycle` tag.
-4. **Surface penalties (item 1).** Nothing to see: no rebuild input writes
-   `rm:reviewer_surface` today. The tile test (tests/test_tile_build_access.py,
+4. **Surface penalties (item 1).** From v0.7.0 an approved override of kind
+   `surface` writes `rm:reviewer_surface` (`overrides.apply_surface`; the rebuild's
+   override line counts them as "N surface"). An instance admin sets one with
+   `POST /api/stress-edits/surface` (`{"osm_way_ids": [...], "surface": "rough" |
+   "gravel" | "sand" | "dirt" | null, "reason": "..."}`; null takes it off), or types
+   the row into the admin (value `{"surface": "rough"}`). It changes no level and no
+   live row: Valhalla's costs are built at the rebuild, so it applies from the next map
+   rebuild, and the road panel says "Surface penalty: Rough pavement; applies at the next
+   map rebuild" (Owner override) until the live table's rebuild has read it. The remap
+   caps every class at `compacted`. The tile test (tests/test_tile_build_access.py,
    "a reviewer ... penalty") covers it against the real parser.
 
 ## Rebuild checkpoints

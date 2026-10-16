@@ -164,6 +164,9 @@ class Override(models.Model):
         ACCESS = "access", "Bicycle access"
         STRESS = "stress", "Stress tier"
         JURISDICTION = "jurisdiction", "Authority assignment"
+        # v0.7.0: a routing price for a rough or loose surface, not a level
+        # (`pipeline.overrides.SURFACE_PENALTIES`). The graph has it from the next rebuild.
+        SURFACE = "surface", "Surface penalty"
 
     kind = models.CharField(max_length=16, choices=Kind.choices)
     osm_way_id = models.BigIntegerField()
@@ -227,7 +230,13 @@ class Override(models.Model):
                 fields=["osm_way_id"],
                 condition=models.Q(kind="stress", approved=True, superseded_by__isnull=True),
                 name="override_one_live_stress_row_per_way",
-            )
+            ),
+            # And one live surface row (v0.7.0), for the same reason.
+            models.UniqueConstraint(
+                fields=["osm_way_id"],
+                condition=models.Q(kind="surface", approved=True, superseded_by__isnull=True),
+                name="override_one_live_surface_row_per_way",
+            ),
         ]
 
     def __str__(self) -> str:

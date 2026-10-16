@@ -5852,6 +5852,53 @@ def stress_edit_create(request, body: StressEditIn, response: HttpResponse):
     return Status(200, _edit_out(result))
 
 
+class SurfaceEditIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    osm_way_ids: list[StrictInt] = Field(
+        min_length=1, max_length=40, description="One road piece, or a named stretch's pieces."
+    )
+    surface: Literal["rough", "gravel", "sand", "dirt"] | None = Field(
+        description="The surface routes should price it as; null takes the penalty off."
+    )
+    reason: str = Field(
+        max_length=2000, description="Private. Required, at most 500 characters; never shown."
+    )
+
+
+class SurfaceEditOut(Schema):
+    changed: list[int] = Field(description="The ways whose penalty changed (the rest had it).")
+    message: str
+
+
+@api.post(
+    "/stress-edits/surface",
+    response={**STRESS_EDIT_RESPONSES, 200: SurfaceEditOut},
+    summary="Set a road's surface penalty, for the next map rebuild (instance admin)",
+)
+@decorate_view(*STRESS_WRITE)
+def stress_edit_surface(request, body: SurfaceEditIn, response: HttpResponse):
+    from . import stress_edits
+
+    try:
+        rows = stress_edits.set_surface(request.user, body.osm_way_ids, body.surface, body.reason)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    what = "taken off" if body.surface is None else "set"
+    return Status(
+        200,
+        {
+            "changed": [row.osm_way_id for row in rows],
+            "message": (
+                f"Surface penalty {what}. It applies at the next map rebuild."
+                if rows
+                else "Nothing changed: the road already had that."
+            ),
+        },
+    )
+
+
 class UndoIn(Schema):
     model_config = ConfigDict(extra="forbid")
 
