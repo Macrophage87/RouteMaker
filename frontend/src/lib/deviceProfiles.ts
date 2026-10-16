@@ -19,6 +19,8 @@ export interface DeviceProfile {
   maxCues: number;
   /** The most track points (records); a hub downsamples a larger course on import. */
   maxPoints: number;
+  /** The largest file in bytes; the line is thinned further until it fits. A working figure, not a measured limit. */
+  maxBytes: number;
   /** Characters of a course point's name the unit shows (FIT; TCX's own cap of 10 is the format's). */
   cueNameChars: number;
   /** Characters of the course's name (FIT; TCX's own cap of 15 is the format's). */
@@ -28,10 +30,10 @@ export interface DeviceProfile {
 }
 
 export const DEVICE_PROFILES: readonly DeviceProfile[] = [
-  { id: "generic", label: "Any bike computer", maxCues: 200, maxPoints: 10_000, cueNameChars: 15, courseNameChars: 15, verified: null },
-  { id: "garmin-edge", label: "Garmin Edge", maxCues: 200, maxPoints: 10_000, cueNameChars: 15, courseNameChars: 15, verified: null },
-  { id: "wahoo", label: "Wahoo ELEMNT", maxCues: 200, maxPoints: 20_000, cueNameChars: 32, courseNameChars: 32, verified: null },
-  { id: "hammerhead", label: "Hammerhead Karoo", maxCues: 200, maxPoints: 20_000, cueNameChars: 32, courseNameChars: 32, verified: null },
+  { id: "generic", label: "Any bike computer", maxCues: 200, maxPoints: 10_000, maxBytes: 4_000_000, cueNameChars: 15, courseNameChars: 15, verified: null },
+  { id: "garmin-edge", label: "Garmin Edge", maxCues: 200, maxPoints: 10_000, maxBytes: 4_000_000, cueNameChars: 15, courseNameChars: 15, verified: null },
+  { id: "wahoo", label: "Wahoo ELEMNT", maxCues: 200, maxPoints: 20_000, maxBytes: 8_000_000, cueNameChars: 32, courseNameChars: 32, verified: null },
+  { id: "hammerhead", label: "Hammerhead Karoo", maxCues: 200, maxPoints: 20_000, maxBytes: 8_000_000, cueNameChars: 32, courseNameChars: 32, verified: null },
 ];
 
 export const DEFAULT_PROFILE: DeviceProfileId = "generic";

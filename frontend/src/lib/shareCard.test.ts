@@ -8,7 +8,7 @@ import { haversineM, type LonLat } from "./geo.ts";
 import {
   CARD_SIZES,
   CARD_SIZE_DEFAULT,
-  HOME_NEAR_M,
+  HIDE_HOME_LABEL,
   HOME_TRIM_M,
   MIN_QR_PX,
   MIN_SMALL_TEXT_PX,
@@ -226,6 +226,33 @@ test("no Home: the line whole, every pin", () => {
   assert.deepEqual(cardRoute(LINE, points, far)!.pieces, [LINE]);
 });
 
+test("Home passed by, not started, ended or stopped at: the route drawn whole, as with no Home", () => {
+  // Home 150 m east of the line's middle: the line runs through its circle, but no end or stop is in it.
+  const home = { point: east(LINE[10], 150), label: "" };
+  const points: LonLat[] = [LINE[0], LINE[3], LINE[20]];
+  const whole = cardRoute(LINE, points, null);
+  for (const jitter of JITTERS) {
+    const zone = homeZone(home, jitter)!;
+    assert.ok(haversineM(LINE[10], zone.centre) < zone.radiusM, "the line passes through the circle");
+    assert.deepEqual(cardRoute(LINE, points, zone), whole);
+  }
+  // The same Home with a stop there: cut as before.
+  const stopped = cardRoute(LINE, [LINE[0], LINE[10], LINE[20]], homeZone(home, [0, 0]))!;
+  assert.equal(stopped.pieces.length, 2);
+  assert.deepEqual(stopped.stops, []);
+  // An opened file's own track starting at Home (the dialog's `also`, ShareCardSource.homeCheck): cut too.
+  assert.equal(cardRoute(LINE, points, homeZone(home, [0, 0]), [home.point])!.pieces.length, 2);
+});
+
+test("Hide the part near Home unchecked: no circle, the route drawn whole with every pin", () => {
+  // The dialog passes no circle when unchecked (hideHome ? zone : null).
+  const points: LonLat[] = [LINE[0], LINE[10], LINE[20]];
+  const r = cardRoute(LINE, points, null)!;
+  assert.deepEqual(r.pieces, [LINE]);
+  assert.deepEqual([r.start, r.finish, r.stops], [LINE[0], LINE[20], [LINE[10]]]);
+  assert.notDeepEqual(cardRoute(LINE, points, homeZone({ point: LINE[0], label: "" }, [0, 0]))!.pieces, [LINE]);
+});
+
 test("Home: a start 250 m from it, heading through it, draws nothing within 0.2 mi", () => {
   const home = { point: north(LINE[0], 250), label: "" };
   for (const jitter of JITTERS) {
@@ -274,16 +301,19 @@ test("Home: a stop at Home mid-route splits the line round it and has no pin", (
   assert.equal(cardRoute(short, [short[0], short[0]], homeZone({ point: short[0], label: "" }, [0, 0])), null);
 });
 
-test("the QR code is refused when an end or a stop is at Home, or an opened file's own track starts there", () => {
+test("the QR code is refused when an end or a stop is in Home's circle, or an opened file's own track starts there", () => {
   const points: LonLat[] = [LINE[0], LINE[10], LINE[20]];
-  assert.equal(homeEnd(LINE, points, { point: north(LINE[0], -250), label: "" }), true);
-  assert.equal(homeEnd(LINE, points, { point: LINE[10], label: "" }), true);
-  assert.equal(homeEnd(LINE, points, { point: east(LINE[5], 400), label: "" }), false);
+  const zone = (point: LonLat, jitter: [number, number] = [0.5, 0.5]) => homeZone({ point, label: "" }, jitter);
+  for (const jitter of JITTERS) {
+    assert.equal(homeEnd(LINE, points, zone(north(LINE[0], -250), jitter)), true);
+    assert.equal(homeEnd(LINE, points, zone(LINE[10], jitter)), true);
+    // Passing by only: the same circle the card is cut by, so the two agree.
+    assert.equal(homeEnd(LINE, [LINE[0], LINE[20]], zone(east(LINE[10], 150), jitter)), false);
+  }
   assert.equal(homeEnd(LINE, points, null), false);
-  assert.ok(HOME_NEAR_M === 300);
   // App adds the file's own track's ends to the points checked (ShareCardSource.homeCheck).
   const trackStart = east(LINE[0], 900);
-  assert.equal(homeEnd(LINE, [...points, trackStart], { point: trackStart, label: "" }), true);
+  assert.equal(homeEnd(LINE, [...points, trackStart], zone(trackStart)), true);
 });
 
 test("the QR code: refused at Home, offline, or while the route is planning; otherwise available", () => {
@@ -343,8 +373,23 @@ test("the dialog: labelled, the focus in and back, labelled controls, alt text, 
   assert.match(dialog, /const link = await makeLink\(\)\.catch\(\(\) => null\);\s*if \(ask !== qrAsks\.current\) return;/);
   assert.match(dialog, /qrAsks\.current \+= 1;\s*setQrOn\(false\);\s*setQrLink\(null\);\s*setQrNote\(null\);\s*\}, \[source\?\.line, keepKey, open\]\);/);
   // Home's circle is moved by numbers kept on this device.
-  assert.match(dialog, /cardRoute\(source\.line, source\.points, homeZone\(source\.home, jitter\)\)/);
-  assert.match(dialog, /homeEnd\(source\.line, \[\.\.\.source\.points, \.\.\.source\.homeCheck\], source\.home\)/);
+  assert.match(dialog, /homeZone\(source\?\.home \?\? null, jitter\)/);
+  // The circle only where Home is an end or stop (the same test for the QR code), and only while
+  // "Hide the part near Home" is checked.
+  assert.match(dialog, /const atHome = source \? homeEnd\(source\.line, \[\.\.\.source\.points, \.\.\.source\.homeCheck\], zone\) : false;/);
+  // Unchecked, the rider has chosen to show Home: the QR code is allowed too.
+  assert.match(dialog, /qrAvailability\(\{ online, settled, homeEnd: atHome && hideHome \}\)/);
+  assert.match(dialog, /cardRoute\(source\.line, source\.points, hideHome \? zone : null, source\.homeCheck\)/);
+  // Hide the part near Home: one labelled checkbox, only where Home is an end or stop, checked by default and
+  // again on every open (and for a new route), redrawing the preview when changed.
+  assert.equal(HIDE_HOME_LABEL, "Hide the part near Home");
+  assert.match(dialog, /const \[hideHome, setHideHome\] = useState\(true\);/);
+  assert.match(dialog, /useEffect\(\(\) => \{\s*setHideHome\(true\);\s*\}, \[source\?\.line, open\]\);/);
+  assert.match(dialog, /const homeChoice = atHome && \(/);
+  assert.match(dialog, /<input id=\{`\$\{id\}-home`\} type="checkbox" checked=\{hideHome\} onChange=\{\(event\) => setHideHome\(event\.target\.checked\)\} \/>/);
+  assert.match(dialog, /<label htmlFor=\{`\$\{id\}-home`\}>\{HIDE_HOME_LABEL\}<\/label>/);
+  assert.equal(dialog.match(/homeChoice\}/g)?.length, 1, "rendered in one place");
+  assert.match(dialog, /\}, \[open, source, size, profileOn, onMap, qrWanted, qrLink, hideHome\]\);/);
   // Share only where the browser can share the image file.
   assert.match(dialog, /navigator\.canShare\(\{ files: \[file\] \}\)/);
   assert.match(dialog, /\{shareable && \(/);

@@ -9,7 +9,7 @@
  * order: file_id, course, lap, event (timer start), record..., event (timer stop), course_point....
  *
  * Clean (PLAN.md, Clean exports): file_id has no serial number and the manufacturer is "development" (255), so no
- * device or account is named; there is no file_creator, user profile or device_info message. Every timestamp is
+ * device or account is named, and its number is a hash of the file's own bytes (fileNumber); there is no file_creator, user profile or device_info message. Every timestamp is
  * the course's fixed base plus the route's own pace (course.ts), so the same route gives the same bytes. FIT has
  * no free-text notice field: the OpenStreetMap credit goes in the course name where it fits (course.ts
  * courseName), and otherwise on the GPX section beside the download (PLAN.md's recorded FIT carve-out).
@@ -37,7 +37,8 @@ export const EVENT_TYPE_STOP_ALL = 4;
 
 /**
  * course_point type for each cue (Global Profile, course_point): the published mapping. FIT has slight, sharp,
- * fork and u-turn types too; the turn model produces none of them yet, so none is written.
+ * fork and u-turn types too; the turn model produces none of them yet, so none is written. Danger is only the
+ * warnings never dropped (Avoid, work zones); a flagged crossing, which can be dropped, is a note.
  */
 export const FIT_CUE_TYPES: Record<CourseCueType, number> = {
   start: 0, // generic
@@ -119,6 +120,24 @@ class FitWriter {
     for (const f of fields) this.chunks.push(f.num, f.size ?? BASE[f.type].size, BASE[f.type].id);
   }
 
+  /** Bytes written so far, after the header. */
+  get length(): number {
+    return this.chunks.length;
+  }
+
+  /** FNV-1a (32-bit) of the bytes written from `from` on. */
+  hashFrom(from: number): number {
+    let h = 0x811c9dc5;
+    for (let i = from; i < this.chunks.length; i += 1) h = Math.imul(h ^ this.chunks[i], 0x01000193) >>> 0;
+    return h;
+  }
+
+  /** Overwrites a little-endian uint16 already written at `at`. */
+  patchUint16(at: number, value: number): void {
+    this.chunks[at] = value & 0xff;
+    this.chunks[at + 1] = (value >> 8) & 0xff;
+  }
+
   write(local: number, values: Value[]): void {
     const fields = this.defs.get(local);
     if (!fields || fields.length !== values.length) throw new Error(`FIT: no definition for local message ${local}`);
@@ -161,6 +180,21 @@ function sizeFor(texts: readonly string[]): number {
   return Math.max(1, ...texts.map((t) => encoder.encode(t).length)) + 1;
 }
 
+/** Altitude as FIT writes it, (m + 500) * 5, held to uint16 below its invalid value (-500 m to 12,606.8 m). */
+export function fitAltitude(metres: number): number {
+  return Math.min(Math.max(Math.round((metres + 500) * 5), 0), BASE.uint16.invalid - 1);
+}
+
+/**
+ * file_id's number: the file's own bytes after file_id hashed (FNV-1a) and folded to 16 bits, so two courses do
+ * not share a file_id (a unit can take a second as the first) while the same course gives the same bytes. Never
+ * the invalid value.
+ */
+export function fileNumber(hash: number): number {
+  const n = ((hash >>> 16) ^ hash) & 0xffff;
+  return n === BASE.uint16.invalid ? n - 1 : n;
+}
+
 /** The FIT course file for a compiled course (course.ts compileCourse with format "fit"). */
 export function writeFit(course: Course): Uint8Array<ArrayBuffer> {
   const w = new FitWriter();
@@ -175,8 +209,11 @@ export function writeFit(course: Course): Uint8Array<ArrayBuffer> {
     { num: 1, type: "uint16" }, // manufacturer
     { num: 2, type: "uint16" }, // product
     { num: 4, type: "uint32" }, // time_created
+    { num: 5, type: "uint16" }, // number: set below from the file's own bytes
   ]);
-  w.write(0, [FILE_COURSE, MANUFACTURER_DEVELOPMENT, 0, t0]);
+  w.write(0, [FILE_COURSE, MANUFACTURER_DEVELOPMENT, 0, t0, 0]);
+  const numberAt = w.length - 2;
+  const afterFileId = w.length;
 
   w.define(1, MESG.course, [
     { num: 5, type: "string", size: sizeFor([course.name]) }, // name
@@ -231,7 +268,7 @@ export function writeFit(course: Course): Uint8Array<ArrayBuffer> {
     { num: 5, type: "uint32" }, // distance, cm
   ]);
   for (const r of course.records) {
-    w.write(4, [at(r.timeS), semicircles(r.lat), semicircles(r.lon), r.ele === null ? null : (r.ele + 500) * 5, r.distM * 100]);
+    w.write(4, [at(r.timeS), semicircles(r.lat), semicircles(r.lon), r.ele === null ? null : fitAltitude(r.ele), r.distM * 100]);
   }
 
   w.write(3, [end, EVENT_TIMER, EVENT_TYPE_STOP_ALL, 0]);
@@ -251,5 +288,6 @@ export function writeFit(course: Course): Uint8Array<ArrayBuffer> {
       w.write(5, [i, at(r.timeS), semicircles(r.lat), semicircles(r.lon), r.distM * 100, FIT_CUE_TYPES[c.type], c.name]);
     });
   }
+  w.patchUint16(numberAt, fileNumber(w.hashFrom(afterFileId)));
   return w.bytes();
 }
