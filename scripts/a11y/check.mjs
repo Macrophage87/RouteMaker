@@ -2446,12 +2446,19 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const onPage = await p.waitFor("location.pathname === '/about/stress.html' && !!document.querySelector('a.back')", 20000);
   await p.eval("document.querySelector('a.back')?.click(); true");
   const back = await p.waitFor("location.pathname === '/' && !!document.querySelector('.summary') && document.querySelectorAll('.junction-marker').length > 0", 40000);
-  const after = await p.eval("({ hash: location.hash, kept: (() => { try { return sessionStorage.getItem('routemaker.plan-before-sign-in'); } catch { return 'refused'; } })() })");
+  const after = await p.eval("({ path: location.pathname, ready: document.readyState, app: !!document.querySelector('#route-planner'), hash: location.hash, kept: (() => { try { return sessionStorage.getItem('routemaker.plan-before-sign-in'); } catch { return 'refused'; } })() })").catch((e) => ({ error: String(e).slice(0, 200) }));
   check("stress page: its Back to the map link reopens the rider's route, as it was, and the kept copy is used once",
     /[#&]p=/.test(before) && onPage && back && after.hash === before && after.kept === null, JSON.stringify({ before, onPage, back, after }));
   // The browser's own Back from the page (not its Back link) also leaves no kept copy, and a plan
   // cleared afterwards does not come back on reload (the correctness re-check's C8).
-  await p.eval("document.querySelector('.stress-page-link a').click(); true");
+  // If the first round left the page elsewhere, start this one from the plan again rather than stop the run.
+  if (!(await p.eval("!!document.querySelector('.stress-page-link a')").catch(() => false))) {
+    await p.s("Page.navigate", { url: `http://127.0.0.1:${PREVIEW_PORT}/${before}` });
+    await p.waitFor("!!document.querySelector('.summary')", 40000);
+    await openSheet(p, "Legend").catch(() => {});
+    await p.waitFor("!!document.querySelector('.stress-page-link a')", 30000);
+  }
+  await p.eval("document.querySelector('.stress-page-link a')?.click(); true");
   const onPage2 = await p.waitFor("location.pathname === '/about/stress.html' && !!document.querySelector('a.back')", 20000);
   await p.eval("history.back(); true");
   const back2 = await p.waitFor("location.pathname === '/' && /[#&]p=/.test(location.hash) && !!document.querySelector('.summary')", 40000);
