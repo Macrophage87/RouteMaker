@@ -1690,6 +1690,18 @@ class TestApi:
         weekday = client.get("/api/transit/closures", {"at": "2026-09-30T22:30:00"}).json()
         assert weekday["stations"] == []
 
+    def test_a_time_more_than_a_year_away_is_refused(self, client, installed) -> None:
+        """sec-app-4: `at` and `depart_at` within a year of now (the pinned clock), else 400."""
+        for far in ("2028-01-01T12:00:00", "1999-01-01T12:00:00-05:00"):
+            closures = client.get("/api/transit/closures", {"at": far})
+            assert closures.status_code == 400, closures.content
+            assert "within a year" in closures.content.decode()
+            times = client.get("/api/transit/station-times", {"lon": -77.0, "lat": 38.9, "at": far})
+            assert times.status_code == 400
+            route = post_transit(client, [CAPITOL_HILL, DOWNTOWN], depart_at=far)
+            assert route.status_code == 400
+        assert client.get("/api/transit/closures", {"at": "2027-09-01T12:00:00"}).status_code == 200
+
     def test_a_stations_times_are_small_scheduled_and_cached_for_a_minute(
         self, client, installed
     ) -> None:

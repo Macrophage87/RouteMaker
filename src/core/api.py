@@ -203,6 +203,20 @@ EndingName = Literal[bikeshare.ENDING_DOCK, bikeshare.ENDING_OUTSIDE]
 StationId = Annotated[str, Field(min_length=1, max_length=64)]
 
 
+# How far from now a trip's time may be (`depart_at`, `at`): a year either way. Past it no
+# timetable or holiday list applies, so a date past it is refused (review sec-app-4).
+WHEN_RANGE = timedelta(days=366)
+
+
+def _within_a_year(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    aware = value if value.tzinfo is not None else value.replace(tzinfo=ridetime.ZONE)
+    if abs(aware - timezone.now()) > WHEN_RANGE:
+        raise ValueError("The time must be within a year of today.")
+    return value
+
+
 class RouteIn(Schema):
     model_config = ConfigDict(extra="forbid")
 
@@ -443,6 +457,11 @@ class RouteIn(Schema):
             " as before."
         ),
     )
+
+    @field_validator("depart_at")
+    @classmethod
+    def _depart_within_a_year(cls, value: datetime | None) -> datetime | None:
+        return _within_a_year(value)
 
     @field_validator("preset", mode="before")
     @classmethod
@@ -3234,6 +3253,11 @@ class ClosuresIn(Schema):
         description="When, ISO 8601 (local time in Washington without an offset). Absent: now.",
     )
 
+    @field_validator("at")
+    @classmethod
+    def _at_within_a_year(cls, value: datetime | None) -> datetime | None:
+        return _within_a_year(value)
+
 
 class ClosedStationOut(Schema):
     name: str
@@ -3299,6 +3323,11 @@ class StationTimesIn(Schema):
         default=None,
         description="When, ISO 8601 (local time in Washington without an offset). Absent: now.",
     )
+
+    @field_validator("at")
+    @classmethod
+    def _at_within_a_year(cls, value: datetime | None) -> datetime | None:
+        return _within_a_year(value)
 
 
 class LineTimeOut(Schema):
