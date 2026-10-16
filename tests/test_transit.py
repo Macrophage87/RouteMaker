@@ -1676,6 +1676,35 @@ class TestApi:
         timed = [(s["seconds"], s["wait_s"]) for s in again["transit"]["steps"]]
         assert timed == [(s["seconds"], s["wait_s"]) for s in trip["steps"]]
 
+    def test_bikeshare_feeds_down_walk_both_ends_with_a_note_not_a_503(
+        self, client, segments, router, installed, monkeypatch
+    ) -> None:
+        """TB-2: the conftest's feeds always fail. The trip is planned on foot at both ends,
+        and says why; and the candidates' clock starts after the feed read (TB-8)."""
+        from core import gbfs
+
+        router(standard_router())
+        deadlines = []
+
+        def services(until, *_args, **_kwargs):
+            deadlines.append(until)
+            return Straight()
+
+        def slow_failure():
+            clock[0] += 5
+            raise gbfs.Unavailable("down")
+
+        clock = [1000.0]
+        monkeypatch.setattr(api.routing, "clock", lambda: clock[0])
+        monkeypatch.setattr(gbfs.client, "snapshot", slow_failure)
+        monkeypatch.setattr(transit, "RoutingServices", services)
+        response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], presets.BIKESHARE_TRANSIT)
+        assert response.status_code == 200, response.content
+        trip = response.json()["transit"]
+        assert trip["notes"][0] == "Bikeshare docks can't be read right now: walking at both ends."
+        assert trip["steps"][0]["mode"] == trip["steps"][-1]["mode"] == "walk"
+        assert deadlines[0] == 1005.0 + api.TRANSIT_CANDIDATES_S
+
     def test_a_transit_trip_is_two_points_no_loop_and_options_only_on_transit(
         self, client, router, installed
     ) -> None:
