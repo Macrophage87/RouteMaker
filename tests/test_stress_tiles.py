@@ -366,7 +366,7 @@ class TestContract:
 
     # Just past one side of the box and inside the other three.
     BEYOND = {
-        "west": (-78.3, 39.0),
+        "west": (-78.5, 39.0),
         "east": (-75.7, 39.0),
         "south": (-77.0, 37.85),
         "north": (-77.0, 40.05),
@@ -1017,7 +1017,7 @@ class TestCoverageClip:
         assert layer is None or not layer.features
 
     @pytest.mark.parametrize(
-        ("lon", "lat"), [(-78.0, 39.0), (-76.02, 39.0), (-77.0, 38.2), (-77.0, 39.72)]
+        ("lon", "lat"), [(-78.05, 39.0), (-76.02, 39.0), (-77.0, 38.2), (-77.0, 39.72)]
     )
     def test_every_edge_of_the_box_clips(self, lon, lat) -> None:
         level = stress_tiles.level_for(12)
@@ -1046,13 +1046,14 @@ class TestProbes:
         cache or as a browser's 304, for a week."""
         assert stress_tiles.FORMAT_VERSION >= 3
 
-    def test_the_format_is_8(self) -> None:
+    def test_the_format_is_9(self) -> None:
         # A forgotten bump would serve the old z10-13 tiles as current (mutation
         # review NIT 7 of ZOOMED-TRAILS): 5 was the long trails (375); 6 was claimed by both
         # the ride layer (391) with the surface-unknown properties (376) and the Mass Ride
         # capacity (325-327), on branches that never shipped alone; 7 is the rebuild bundle;
-        # 8 draws a judged trail bridge in its trail's surface (BRIDGE_UNPAVED).
-        assert stress_tiles.FORMAT_VERSION == 8
+        # 8 draws a judged trail bridge in its trail's surface (BRIDGE_UNPAVED); 9 carries the
+        # mountain-bike trails at z12-13 (v0.7.0).
+        assert stress_tiles.FORMAT_VERSION == 9
 
     def test_a_format_bump_changes_the_etag(self, client, live, monkeypatch) -> None:
         path = url(*tile_of(*CENTRE, 14))
@@ -1708,6 +1709,43 @@ class TestRideLayer:
         assert feature.properties.get("car_free_only") == "weekend"
         assert "car_free" not in feature.properties
 
+    @pytest.mark.parametrize("z", [12, 13])
+    @pytest.mark.parametrize(("mtb", "kept"), [(True, True), (False, False)])
+    def test_a_mountain_bike_trail_is_kept_from_z12(self, client, ride, z, mtb, kept) -> None:
+        """v0.7.0, the plan: "MTB trails from zoom 12-13" (the owner, 2026-10-12: they
+        "don't show up very well"). A mountain-bike trail has no run, and is kept for
+        what it is; a plain path with no run still waits for z14."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"ALTER TABLE {ride}.segment "
+                "ADD COLUMN IF NOT EXISTS mtb_only boolean NOT NULL DEFAULT false"
+            )
+        insert_ride(ride, tier=1, trail=True, facility="path", run_mi=None)
+        with connection.cursor() as cursor:
+            cursor.execute(f"UPDATE {ride}.segment SET mtb_only = %s", [mtb])
+        content = client.get(url(*tile_of(*CENTRE, z))).content
+        assert lines_in(content) == int(kept)
+        if kept:
+            (feature,) = decode(content)["stress"].features
+            assert feature.properties.get("mtb") is True
+
+    def test_the_ride_index_holds_the_mountain_bike_trails(self) -> None:
+        from pipeline import schema
+
+        assert schema.MTB_ONLY_COLUMN in schema.RIDE_INDEX_PREDICATE
+        assert schema.ride_layer_mtb_predicate(True).endswith("AND mtb_only)")
+        sql = stress_tiles.tile_sql(
+            stress_tiles.RIDE_LAYER, frozenset({"facility", "calm_run_m", "mtb_only"})
+        )
+        assert "AND mtb_only)" in sql
+        # Not on a table without the column, and never at the zoomed-out levels.
+        assert "mtb_only)" not in stress_tiles.tile_sql(
+            stress_tiles.RIDE_LAYER, frozenset({"facility", "calm_run_m"})
+        )
+        assert "AND mtb_only)" not in stress_tiles.tile_sql(
+            stress_tiles.TRAILS_NEAR, frozenset({"facility", "mtb_only"})
+        )
+
     @pytest.mark.parametrize(
         ("tier", "trail", "facility", "run_mi"),
         [(3, False, "none", None), (4, False, "none", 9.0), (1, True, "path", 0.1)],
@@ -1735,7 +1773,7 @@ class TestRideLayer:
     def test_the_etag_names_the_column_and_the_format_is_bumped(self, client, ride) -> None:
         insert_ride(ride, run_mi=1.0)
         etag = client.get(url(*tile_of(*CENTRE, 12)))["ETag"]
-        assert "+kcfrmwoshbtl-v8" in etag, etag
+        assert "+kcfrmwoshbtl-v9" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.CALM_RUN_COLUMN] == "k"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
         assert len(etag) < 64
@@ -1818,7 +1856,7 @@ class TestRoadside:
     def test_the_etag_names_the_column(self, client, beside) -> None:
         self.put(beside, True)
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+cfrmwoeshbtl-v8" in etag, etag
+        assert "+cfrmwoeshbtl-v9" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.ROADSIDE_COLUMN] == "e"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
 
@@ -1890,7 +1928,7 @@ class TestMtbLevel:
     def test_the_etag_names_the_column(self, client, levelled) -> None:
         self.put(levelled, 3400, 2, 0)
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+cfrmwdoshbtl-v8" in etag, etag
+        assert "+cfrmwdoshbtl-v9" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.MTB_LEVEL_COLUMN] == "d"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
         assert stress_tiles.OPTIONAL_PROPERTIES["mtb_level"] == "mtb_level"
@@ -1951,7 +1989,7 @@ class TestMtbName:
     def test_the_etag_names_the_column(self, client, named) -> None:
         self.put(named, 3602, "Fairland Loop", 0)
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+cfrmwnoshbtl-v8" in etag, etag
+        assert "+cfrmwnoshbtl-v9" in etag, etag
         assert stress_tiles.ETAG_LETTERS[stress_tiles.MTB_NAME_COLUMN] == "n"
         assert len(set(stress_tiles.ETAG_LETTERS.values())) == len(stress_tiles.ETAG_LETTERS)
         assert stress_tiles.OPTIONAL_PROPERTIES["name"] == "mtb_name"
@@ -2033,7 +2071,7 @@ class TestMassCapacity:
 # The riders-a-minute figure each format pair was drawn with. A tuned flow constant
 # (FOLLOWUP-FLOW-CALIBRATION) changes `rpm` in every tile without changing either tile
 # tag, so it has to come with a bump of both FORMAT_VERSIONs and a row here.
-RPM_PER_METRE_BY_FORMAT = {(7, 2): "29.526", (8, 2): "29.526"}
+RPM_PER_METRE_BY_FORMAT = {(7, 2): "29.526", (8, 2): "29.526", (9, 2): "29.526"}
 
 
 def test_a_tuned_flow_constant_bumps_both_tile_formats() -> None:

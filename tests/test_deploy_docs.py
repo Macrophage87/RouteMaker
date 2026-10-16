@@ -1853,3 +1853,23 @@ def test_the_front_end_publish_copies_every_public_file_before_index_html() -> N
         "cp /dist/about/stress.html /out/about/.stress.html.new && "
         "mv /out/about/.stress.html.new /out/about/stress.html"
     ) in command
+
+
+def test_ci_token_is_read_only_and_actions_are_pinned_by_commit() -> None:
+    """sec-infra-5: a top-level read-only token, and every action by a full commit sha."""
+    ci = (Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml").read_text()
+    assert re.search(r"^permissions:\n  contents: read$", ci, re.M)
+    uses = re.findall(r"^\s*(?:- )?uses: (\S+)", ci, re.M)
+    assert uses
+    for action in uses:
+        assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", action), action
+
+
+def test_the_package_version_is_one_number_in_both_places() -> None:
+    """spec-9: pyproject's version and routemaker.__version__ agree, and neither is 0.1.0."""
+    import routemaker
+
+    root = Path(__file__).resolve().parents[1]
+    found = re.search(r'(?m)^version = "([^"]+)"$', (root / "pyproject.toml").read_text())
+    assert found and found.group(1) == routemaker.__version__
+    assert routemaker.__version__ != "0.1.0"

@@ -24,6 +24,9 @@ import {
   failureFor,
   hereEffectLine,
   linkLocationNote,
+  LINK_HAS_HOME_END,
+  LINK_HAS_HOME_POINT,
+  LINK_HAS_HOME_START,
   locate,
   locateGate,
   locateSupport,
@@ -572,6 +575,24 @@ test("the link note follows the point object: the start, a later point, a drag o
   assert.deepEqual(movedFromHere([here], undefined, moved), [here]);
 });
 
+test("privacy-2: a link with the rider's Home in it says so, as the destination, the start or a point", () => {
+  const here: LonLat = [-77.04, 38.9];
+  const other: LonLat = [-77.0, 38.95];
+  const home: LonLat = [-77.02, 38.92];
+  // Equal coordinates count: the Home chip, Undo or a reload all give the Home's own coordinates.
+  const atHome: LonLat = [-77.02, 38.92];
+  assert.equal(linkLocationNote([other, atHome], [], home), LINK_HAS_HOME_END);
+  assert.equal(linkLocationNote([atHome, other], [], home), LINK_HAS_HOME_START);
+  assert.equal(linkLocationNote([other, atHome, here], [], home), LINK_HAS_HOME_POINT);
+  assert.equal(linkLocationNote([atHome], [], home), LINK_HAS_HOME_START);
+  // From the location to Home: both are said, location first.
+  assert.equal(linkLocationNote([here, atHome], [here], home), `${LINK_HAS_LOCATION_START} ${LINK_HAS_HOME_END}`);
+  // No Home, or a plan away from it: as before.
+  assert.equal(linkLocationNote([here, other], [here], null), LINK_HAS_LOCATION_START);
+  assert.equal(linkLocationNote([other, [-77.02001, 38.92]], [], home), "");
+  assert.equal(LINK_HAS_HOME_END, "This link includes your Home as the destination.");
+});
+
 test("the accuracy circle is closed and about the radius", () => {
   const ring = accuracyRing([-77.04, 38.9], 100);
   assert.deepEqual(ring[0], ring[ring.length - 1]);
@@ -627,17 +648,21 @@ test("privacy: the location state reaches only the note, the hint and the circle
     /const \[here, setHere\] = useState<Fix \| null>\(null\);/,
     /const \[fromHere, setFromHere\] = useState<LonLat\[\]>\(\[\]\);/,
     /const hereInPlan = here !== null && points\.includes\(here\.point\);/,
-    /const linkNote = linkLocationNote\(points, fromHere\);/,
+    /const linkNote = linkLocationNote\(points, fromHere, myGo\.home\?\.point \?\? null\);/,
     /note: hereInPlan && here \? approximateHint\(here\.accuracyM\) : "",/,
     /const hereCircle = hereInPlan && here \? \{ centre: here\.point, radiusM: here\.accuracyM \} : null;/,
     // Search's bias: the point, rounded to about 1 km in searchBiasPoint, never the accuracy or the flag.
     /return searchBiasPoint\(here\?\.point, centre \? \[centre\.lng, centre\.lat\] : undefined, view\);/,
+    // Go's Repair and Sights (v0.7.0): the nearest worked out on the device from the location Go has; the point goes nowhere.
+    /const fix = here\?\.point \?\? \(goStart\.kind === "here" \? goStart\.point : null\);/,
+    // A Mass Ride or Group Ride link (v0.7.0): the others on the route, shared only after the rider says yes there.
+    /<RideGroup type=\{preset as "mass-ride" \| "group-ride"\} points=\{rideGroupPoints\} line=\{rideGroupLine\} getMap=\{getMap\} here=\{rideView\?\.rider\?\.point \?\? \(here \? here\.point : null\)\} \/>/,
   ];
   assert.ok(lines.length >= allowed.length);
   for (const line of lines) assert.ok(allowed.some((rule) => rule.test(line)), `unexpected use: ${line.trim()}`);
   // The note's own uses: shown, described, said on Copy link, and (as a yes/no) the sign-in exception.
   const noteUse =
-    /const linkNote =|const note = linkNote;|linkNote \? "link-note"|\{linkNote && \(|\{linkNote\}|isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)|^\s*routedLoop, copyLink, linkNote, canShare,|const \{ shown, routedPoints, routedLoop, federalRoute, copyLink, linkNote, canShare,/;
+    /const linkNote =|const note = linkNote;|linkNote \? "link-note"|\{linkNote && \(|\{linkNote\}|isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)|^\s*routedLoop, copyLink, linkNote, canShare,|const \{ copyLink, linkNote, canShare,/;
   for (const line of app.split("\n").filter((l) => /\blinkNote\b/.test(l))) assert.match(line, noteUse, line.trim());
   // The circle round the located point goes to the map's accuracy prop and nowhere else.
   const circleUse = /const hereCircle =|accuracy=\{riding \? rideCircle : hereCircle\}/;
@@ -684,17 +709,31 @@ test("App: a drag reads the old point before the commit, and moves by movePoint 
   assert.match(move, /^const move = useCallback\(\(index: number, point: LonLat\) => \{\s*cancelLocateNotice\(\);/, "a drag cancels a pending notice (N6)");
   const before = move.indexOf("const before = pointsRef.current[index];");
   const updater = move.indexOf("setFromHere((prior) => movedFromHere(prior, before, point));");
-  const commit = move.indexOf("commit(movePoint(pointsRef.current, index, point));");
+  // The moved point keeps its kind, a stop or a via point (v0.7.0, lib/pointKinds.ts).
+  const commit = move.indexOf("commit(movePoint(pointsRef.current, index, VIA_MARKS.moved(before, point)));");
   assert.ok(before > 0 && updater > before && commit > updater, "captured, then the updater, then the commit");
   // React may run an updater after commit() has replaced pointsRef.current: the updater never reads it.
   assert.doesNotMatch(move, /setFromHere\([^;]*pointsRef/);
+});
+
+test("#5. Enter on an empty box picks nothing; the early-start top place is the one Enter would pick", () => {
+  const search = code(read("../PlaceSearch.tsx"));
+  // An empty box offers recent places, but Enter with nothing highlighted takes none of them.
+  assert.match(search, /const enterPlaces: Place\[\] = empty \? \[\] : offered;/);
+  assert.equal(pickTarget(-1, 0, [{ name: "Recent" }], []), undefined, "an empty box: Enter picks nothing");
+  // onTopPlace (Go's early start) is told offered[0], the place Enter takes, a shared link's place included.
+  assert.match(search, /const top = enterPlaces\[0\] \?\? null;/);
+  assert.doesNotMatch(search, /const top = places\[0\]/);
+  assert.ok(search.indexOf("const top = enterPlaces[0]") > search.indexOf("const offered: Place[]"));
 });
 
 test("PlaceSearch: Enter goes through pickTarget, and the list option passes the choice on (P1, P5)", () => {
   const search = code(read("../PlaceSearch.tsx"));
   assert.match(
     search,
-    /\} else if \(action\.kind === "pick"\) \{\s*const item = pickTarget\(active, action\.index, items, places\);\s*if \(item === HERE\) pickHere\(\);\s*else if \(item\) pick\(item\);/,
+    // A place's "Make this the destination" row (v0.7.0) picks that place as the destination.
+    // Enter's places are enterPlaces (empty for an empty box: review #5), not every place offered.
+    /\} else if \(action\.kind === "pick"\) \{\s*const item = pickTarget\(active, action\.index, items, enterPlaces\);\s*if \(item === HERE\) pickHere\(\);\s*else if \(item && "destination" in item\) pick\(item\.destination, "end"\);\s*else if \(item\) pick\(item\);/,
   );
   assert.match(body(search, "const pickHere = () => {", "};"), /locate\?\.onLocate\(choice\);\s*$/);
   // The details (P2, P3, P4, P4b, P8, P9).

@@ -1,0 +1,28 @@
+{
+ "Incidents": [
+  {
+   "DateUpdated": "2026-10-15T07:41:10",
+   "DelaySeverity": null,
+   "Description": "Orange Line: Expect residual delays to Vienna due to an earlier equipment problem at Eastern Market.",
+   "EmergencyText": null,
+   "EndLocationFullName": null,
+   "IncidentID": "3754F8B2-A0A6-494E-A4B5-82C9E72DFA74",
+   "IncidentType": "Delay",
+   "LinesAffected": "OR;",
+   "PassengerDelay": 0,
+   "StartLocationFullName": null
+  },
+  {
+   "DateUpdated": "2026-10-15T06:02:44",
+   "DelaySeverity": null,
+   "Description": "Red Line: Trains single tracking between Takoma and Silver Spring due to scheduled maintenance.",
+   "EmergencyText": null,
+   "EndLocationFullName": null,
+   "IncidentID": "9C2B1E0D-55AA-4B2E-9E0F-0D2B6F1C7A11",
+   "IncidentType": "Alert",
+   "LinesAffected": "RD;",
+   "PassengerDelay": 0,
+   "StartLocationFullName": null
+  }
+ ]
+}

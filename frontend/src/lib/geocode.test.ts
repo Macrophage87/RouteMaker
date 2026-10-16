@@ -450,17 +450,16 @@ test("a busy lookup is tried again once", async () => {
 
 // --- what a pick does -----------------------------------------------------------
 
-test("by default a pick is the start, then the destination, then a stop", () => {
-  const via: LonLat = [-77.03, 38.893];
+test("by default a pick is the start, then the destination, then a stop where it adds the least (v0.7.0)", () => {
   assert.deepEqual(applyPlace([], A, defaultChoice(0)), [A]);
   assert.deepEqual(applyPlace([A], B, defaultChoice(1)), [A, B]);
-  assert.deepEqual(applyPlace([A, B], via, defaultChoice(2)), [A, via, B]);
-  assert.equal(defaultChoice(3), "via");
-});
-
-test("a full route's box starts on a new destination, since no stop fits", () => {
+  // "Keep adding stops by search": with a start and an end, a pick is a stop on the leg it lengthens least.
+  const between: LonLat = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
+  assert.equal(defaultChoice(2), "via");
+  assert.deepEqual(applyPlace([A, B], between, defaultChoice(2)), [A, between, B]);
+  // "Make this the destination" is still a pick's other choice; a full route takes no stop, so a new destination.
+  assert.deepEqual(applyPlace([A, B], C, "end"), [A, C]);
   assert.equal(defaultChoice(MAX_POINTS, false, true), "end");
-  assert.equal(choiceInForce(null, MAX_POINTS, true), "end");
 });
 
 test("a pick can be made the start once there is one", () => {
@@ -629,7 +628,8 @@ test("a choice no longer on offer gives way to the plan's default", () => {
   assert.equal(choiceInForce("via", MAX_POINTS, true), "end", "a full route takes no stop");
   assert.equal(choiceInForce("start", 2, false), "start");
   assert.equal(choiceInForce(null, 0, false), "start");
-  assert.equal(choiceInForce(null, 2, false), "via", "with both ends, a pick adds a stop");
+  assert.equal(choiceInForce(null, 2, false), "via", "with a start and an end, a stop (v0.7.0)");
+  assert.equal(choiceInForce(null, 1, false), "end");
 });
 
 test("the search box's request goes ahead of names waiting at the gate", async () => {

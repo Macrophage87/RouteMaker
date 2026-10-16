@@ -197,6 +197,8 @@ declining every week with "grow the volume" as the only remedy.
 | `scheduled_run` rows | 30 days, plus the newest row and the newest successful row per task | `core.runs.prune_run_rows`, run nightly |
 | Finished `procrastinate_jobs` and their events | 30 days | `core.runs.prune_job_rows`, run nightly |
 | `rate_limit_window` rows (keyed client addresses) | 1 day idle, so at most about 30 hours | `core.ratelimit.purge_expired`, run by the six-hourly membership sweep |
+| `shared_route` rows (the exact lines Share links open) | 1 year after the link was last opened | `core.shared_routes.prune`, at every share and every open, and nightly by the backup task |
+| `signed_out_send` rows (a device's salted daily hash and the road, for the signed-out suggestion limits) | 24 hours | `core.signed_out_suggestions.prune`, at every signed-out send, and nightly by the backup task |
 
 Three rules are load-bearing rather than incidental:
 
@@ -386,6 +388,86 @@ nightly dump.
 The table arrives with migration `core.0008_rate_limit_window`, which the
 `migrate` one-shot applies before the api starts; nothing else is needed on
 deploy.
+
+## Route timing, parallel router calls and kept routes (v0.7.0)
+
+The goal for Go is p95 under 3 s for trips under 10 mi. Each `POST /api/route`
+answer carries a `Server-Timing` header (open the browser's network panel to
+see it) with these phases: `wait` (time queued for a routing slot), `cache`,
+`route`, `zones`, `choose`, `search`, `answer`, `more`, then
+`router;desc="N calls"` (time spent in router calls, summed across threads) and
+`total`. Ninja's serialisation of the body is not counted. The api also logs
+one INFO line per route, `route timing preset=… band=0-2mi|2-5mi|5-10mi|… status=…
+total=… steps … router=… calls=…`, which has no coordinates. To get p95 by
+band, grep `route timing` from the api's log.
+
+- `ROUTER_PARALLEL_CALLS` (default 3) is the number of router calls one route
+  may have in flight at a time: the calm search's wide `/route` asks, the
+  traces of candidate routes and legs, and the delay measure. At 1 every call
+  runs in turn, as before v0.7.0. The pool is one per api worker process, and
+  a transit trip's later rides (`api._later_rides`) run on it too rather than
+  on a pool of their own; a plan on a pool thread makes its calls in turn. So
+  one routing slot has at most `ROUTER_PARALLEL_CALLS` + 1 router calls in
+  flight (the pool's threads and the request's own thread): 4 per slot at the
+  default, 12 on compose's 3 slots, 8 on the beta's 2. Read from the
+  environment by `config/settings.py`; compose passes it to the api.
+- Database connections: the request thread holds one, and a transit trip's
+  later rides each open one on their pool thread (closed when the ride is
+  routed). That is at most `ROUTER_PARALLEL_CALLS` more per routing slot. On
+  the beta (`max_connections=40`): 6 api workers, one each, plus 2 slots x 3
+  = 12 for the api at most; the worker's procrastinate (4 jobs and its
+  listener) about 6; `migrate` and an operator's shell 1 each. About 20 at
+  the worst case, half the limit. Raising `ROUTER_PARALLEL_CALLS` or
+  `BETA_WEB_CONCURRENCY` adds to it: keep the sum under 40.
+- `ROUTE_CACHE_TTL_S` (default 600; 0 turns it off; read from the environment, passed to the api by compose) keeps a finished answer
+  for 10 minutes in each api worker's memory, up to 128 answers per worker, so
+  a hit happens only when the same worker serves the repeat. The key holds
+  the whole request, rounded to about 10 m, with every dial. It also holds the
+  stress edits' generation, a digest of the closures snapshot, the approved
+  junction ratings and hazards, and the ride time's rush and weekend state.
+  The keep also ends at the next closure start or end and at local midnight.
+  An answer that was cut short (a failed trace, a timed-out search) is not
+  kept. Bikeshare and transit plans are never kept.
+- `"quick": true` in a request (Go sends it when a ride is not under way) asks
+  for the first good route alone: the router's own route, its trace,
+  closures, and work zones. It skips the alternates, the calm search, hill
+  seeking, detours and the Novice offer, and comes back with
+  `"provisional": true`. The planner then asks once more without `quick`. If
+  the full answer is a different route and Start has not been pressed, it
+  swaps the route in and announces it once, politely ("Found a calmer route,
+  +2 min."), without moving focus. Loops, long rides and mountain-bike rides
+  ignore `quick`.
+- Go starts asking as soon as a destination is chosen (the top search result,
+  or a Home tap), at most 6 times a minute; the answer is used if the same
+  request is still wanted within 60 s.
+
+Mock timings, from the test suite's PostGIS fixture and a fake router that
+waits 0.20 s per `/route`, 0.40 s with alternates, 0.08 s per trace and
+0.05 s per locate. These numbers are medians of 5 runs, measured
+in-process. They show request shape, not production speed:
+
+| Request | Before | Pool of 3 | Quick first route | Cache hit |
+| --- | --- | --- | --- | --- |
+| 2 points, default | 295 ms | 297 ms | 295 ms | about 10 ms |
+| 2 points, stress 90 | 693 ms | 696 ms | 294 ms | about 10 ms |
+| 2 points, Novice | 1182 ms | 1104 ms | 293 ms | about 9 ms |
+| 2 points, cargo, hills -60 | 779 ms | 700 ms | 295 ms | about 11 ms |
+| 5 points, default | 537 ms | 376 ms | 374 ms | about 10 ms |
+
+The fake returns the same route for every search, so the calm search stops
+early. Real searches make more calls, and the pool saves more on them.
+
+**Warm tiles and router memory (step 6, the owner's decision).** No change is
+made here. The real routers took 43.9 s for Culpeper to Baltimore with their
+graph tiles cold and 9.5 s warm (routing.py's notes). A warm 12 km route takes
+about 0.2 s. So after a rebuild or a restart, the first rides in each area
+pay the cold cost. The options are:
+
+- Pre-warm each router after a restart with a few routes across the coverage.
+- Raise each router's tile cache, and its compose memory limit to match.
+
+Either way, the first step is to read `wait` and `router` from the timing
+log for a week.
 
 ## Intersection costs and the calm search: what to watch
 
@@ -1028,7 +1110,7 @@ The paths' rule is unchanged, and so is its bar (region, Annandale-Alexandria bo
 4,725 and 60.3; 1 mi 4,276 and 51.1; 2 mi 3,730 and 47.1 (every candidate path is 5,233
 and 75.3; 152 mi of mountain-bike trail are left out). Before and after pictures of
 central DC, Bethesda and Chevy Chase, the Agricultural Reserve and Baltimore, with the
-same rule at 1 mi for comparison, are in reports/ride-layer-before-after.html
+same rule at 1 mi for comparison, are in reports/ride-layer-before-after.html (not in the repository)
 (`rmdata/demo/reports`). Re-measure on a copy before moving a bar, and update
 `RIDE_RUN_MI` in `frontend/src/lib/stressLegend.ts` with it (a test holds them equal).
 
@@ -1338,7 +1420,10 @@ paths and protected lanes whatever their kind of way
 a car-free road such as Beach Drive in DC included - and its protected ways
 that are trails of their own (`is_trail_class`): a sidewalk or path
 designated for bicycles, an `is_sidepath`, a cycleway along a road whose tags
-say its facility is mapped separately. A protected lane tagged on the road
+say its facility is mapped separately - unless the cycleway's own OSM name is
+a trail's own, not the road's and not a generic one such as "Cycle Track"
+(`routemaker.facility.named_for_itself`: Rock Creek Trail beside Rock Creek and
+Potomac Parkway is a path). A protected lane tagged on the road
 way itself (`cycleway=track`, a lane with posts) waits for z13 with the roads.
 The table records no more than that, so a cycle track in DC's roadway mapped
 as a way of its own (15th Street NW, Pennsylvania Avenue NW) is drawn zoomed
@@ -1784,6 +1869,16 @@ Each waiting suggestion has the owner's three actions:
 After Approve now or Delete the focus moves to the next suggestion's heading, or to the line "No
 suggestions are waiting."
 
+**A second reviewer** (v0.7.0; `suggestions.review`, `POST /api/stress-suggestions/{id}/review`)
+may mark a waiting road suggestion **Agree** or **Disagree**, with an optional one-line reason
+(200 characters). It is advice: the item shows "Reviewers: 2 agree, 1 disagrees" and the reasons,
+unnamed, and nothing changes until an admin uses Approve now. A reviewer marks once a suggestion
+(a second mark replaces the first) and never their own suggestion. Each mark is one audit row
+(`stress_suggest_review`); the marks are in `stress_suggestion_review`, which the beta never
+receives. A rider who suggested sees their latest suggestion's status for the road in the road
+panel ("Your suggestion: LTS 2 (Fine for adults). Waiting for review."; `GET
+/api/stress-suggestions/mine?way=`), never the reviewers' marks.
+
 **Privacy of the spot.** The panel sends the nearest point on the road (the road panel's
 `on_way`), never the spot clicked, and the server keeps only the nearest point on that way
 (`suggestions.snap`, PostGIS `ST_ClosestPoint`), refusing a spot more than 98 ft (30 m) from the
@@ -1837,6 +1932,87 @@ a JSON list defaulting to empty; nothing else changed). It follows the Avoid jun
 `0015_avoid_junction` (after the mountain-bike levels' 0013 and 0014), so the chain is linear. `migrate` runs at `up`, as always. "Only raise it" is
 refused (400, `classifier_hidden`) on a way whose earlier override hides the classifier's own
 level (a hidden adjustment records no `stress_computed_tier`); an exact level works there.
+
+### Signed-out suggestions (v0.7.0)
+
+Anyone the full form is not open to (signed out, or the settings above keep it closed) gets a
+short form in the road panel: the level slider in half steps, one-tap reasons, and "Other" (up to
+200 characters). Sends join the same review list, marked "Sent signed out"
+(`core/signed_out_suggestions.py`). The list now groups each road's sends together, most agreed
+first, with "N sends for this road agree".
+
+The filters: no change or no reason is refused; a send without a ticket from opening the form on
+that road is refused; the hidden honeypot drops a send silently; e-mail addresses and phone
+numbers are taken out of Other. One send per road and 10 a day per device, where the device is a
+salted daily hash of the address (table `signed_out_send`, kept 24 hours, left out of backups and
+the beta's data shipment). The address itself is never stored.
+
+`SUGGEST_SIGNED_OUT_MIN_AGREE` (default 1, every send shows) hides a road's signed-out sends
+until that many agree. The owner reviews each send for now; raise it to 2 when volume grows.
+The migration is `0021_signed_out_suggestions`.
+
+### Shared routes (v0.7.0)
+
+The owner, 2026-10-15 23:19 UTC: "The ability to share a gpx identical route should be in too?"
+**Share** (the existing button) now also keeps the exact line shown, verbatim like a saved route
+or an opened GPX file: its points in order, elevations, stops, and a planned route's answer, or an
+opened file's own text (`core/shared_routes.py`, table `shared_route`). The link carries the line's
+id beside the plan's inputs (`#p=...&preset=...&route=<id>`), and opening it shows that line
+unchanged; the closure check runs on opening and on Start ride, with the same dialog as a saved
+route ("Reroute around them"), and "Update route" plans the inputs again with today's map. On a
+phone whose share sheet takes files, the GPX file Download GPX would give goes with the link.
+
+- **The id** is 128 random bits (32 hex characters) the sharer's browser makes, so the share sheet
+  opens inside the press; the line is sent at the same time (POST `/api/shared-routes`) and stored
+  once (a taken id is 409). Unguessable: there is no list of shared routes.
+- **Signed out or in.** Nothing names the sharer but, signed in, the account (`owner`, so only
+  they can turn the link off): no address, no position, and no
+  weight (OWNER-DECISIONS 313: a planned answer's `system_weight_kg` and the effort figure weighed
+  with it are taken out). Counted per client (`SHARED_ROUTE_WRITES`, 30 an hour; opening,
+  `SHARED_ROUTE_READS`, 60 a minute).
+- **At most 2 MB** a route. A bigger one (a long GPX file), or one that cannot be stored, is
+  shared as the plan's inputs only, and the page says so in one line; such a link, or one whose
+  line has gone, plans the route again as links always did, and says so.
+- **Kept a year after it was last opened** by default, then deleted at the next share or open.
+  In Plan the sharer may pick, beside Share, to keep it permanently or until a date (the owner,
+  2026-10-16: "For the 1 year deletion, make this the default. For other users, we can offer
+  "keep permanently" and "delete after <date>""): columns `keep` and `delete_after`; a route kept
+  until a date is deleted the day after it, opened or not. In the nightly
+  backups (a restored database keeps shared links working); never in the beta's data shipment
+  (`scripts/beta/ship-data.sh`).
+
+- **Turn off and new link.** A signed-in sharer's links are listed under My routes in Plan's
+  Settings ("Shared links"), each with **New link** (a new random id for the same route and
+  keeping; the old link is turned off) and **Turn off** (POST
+  `/api/me/shared-routes/<id>/revoke` and `/regenerate`, the owner's only, CSRF as My routes). A
+  turned-off link keeps a tombstone row with its route cleared, kept permanently, so the page
+  says "This link was turned off by its owner." (410) and plans nothing.
+- **Link previews.** Share's link is `/s/<id>#<inputs>&route=<id>`; Django answers `/s/<id>`
+  (Caddy's catch-all proxy): a browser is redirected to `/?route=<id>` (the fragment carries
+  over), a link fetcher (chat apps, social sites; `core.share_preview.is_fetcher`) gets
+  OpenGraph and Twitter card tags: the ride type and distance, the distance and climb, and
+  `/s/<id>/preview.png`, a 1200 x 630 PNG drawn by the server with the standard library (no
+  imaging package; glyphs from `scripts/make_preview_glyphs.py`), cached on the row. Where the
+  route starts, ends or stops at the owner's Home, the image leaves a circle of at least 0.2 mi
+  (322 m) round Home blank, its centre moved 60 to 150 m per account by a keyed hash of the
+  account id (the key derived from `DJANGO_SECRET_KEY`: rotating it moves the circles of links
+  made later) and one radius for all; that circle is frozen on the row when the link is made
+  (`preview_zone`), so moving Home later never uncovers it. A route shared signed out from Home
+  on the device, a link made before previews, and any share that does not say have no image; a
+  line too long to draw (past 20,000 px of stroke after thinning to 1,500 points) has none, kept
+  as an empty image so it is not tried again. A turned-off (410) or expired (404) link has no
+  preview; the image itself is served with an hour's public cache, so a chat app may show it up
+  to an hour after the link is turned off. The page varies on `User-Agent` and
+  `Sec-Fetch-Mode`. The installed app's worker opens `/s/<id>` as the page. Absolute URLs come
+  from the request's host. Counted per client (`SHARE_PREVIEWS`, 120 a minute; a new link also
+  counts as a share, `SHARED_ROUTE_WRITES`).
+  On the beta, previews are inert while its basic auth covers `/s/`
+  (`deploy/beta/nginx-routemaker.conf.template`): a link fetcher gets the sign-in refusal, so
+  a chat app shows a bare link. Opening the link in a browser works as anywhere else.
+
+The migrations are `0022_shared_route` (one new table; nothing else changed),
+`0023_shared_route_keep` (its two keeping columns) and `0024_shared_route_owner_preview` (the
+owner, the turned-off time and the preview's cache).
 
 ## Mass Ride hazards (FOLLOWUP-MASSRIDE-MAP part 3, OWNER-DECISIONS 325-327)
 
@@ -1939,9 +2115,11 @@ A signed-in rider's own Go settings (`core.models.MyGo`, table `my_go`; GET and 
 `/api/me/go`): the view the app opens in, Go's ride type and their Home (one point, rounded to 5
 decimal places, and its label). One row per account, made at the first save. Each rider reads and
 writes only their own row, from their session. The row is deleted when the account is marked
-deleted or removed. **Privacy.** A Home is where a rider lives: it is never put in a link, a log
-or a suggestion, and `my_go` is left out of the beta's data shipment (`scripts/beta/ship-data.sh`
-`EXCLUDED_TABLE_DATA`), as the other tables that point at an account are.
+deleted or removed. **Privacy.** A Home is where a rider lives: it is never put in a log or a
+suggestion. Riding to it with Go's Home chip makes it a plan point, so it is in the address bar
+and in a copied or shared link, and Copy link and Share then say "This link includes your Home as
+the destination." (`linkLocationNote`, `frontend/src/lib/geolocation.ts`). `my_go` is left out
+of the beta's data shipment (`scripts/beta/ship-data.sh` `EXCLUDED_TABLE_DATA`), as the other tables that point at an account are.
 
 **The migration** is `core/migrations/0019_my_go.py` (one new table; nothing else changed), after
 `0018_junction_suggestions`, so the chain stays linear with one leaf. It reverses cleanly
@@ -1992,6 +2170,14 @@ only through the published GTFS. With fewer than 7 days left, the api logs "the 
 runs out ..." once a day and `manage.py check_operations` alerts ("transit: the schedule runs out
 on ..."; exit 1). An unreadable file alerts too; no file installed does not.
 
+**A feed that ends inside the window.** The file records each system's own last day of service
+(`last_day`), and the build warns "<system>: its timetable ends ..., before the window's last
+day". After that day the system is left out of plans and of the map's closed stations (it is not
+covered, not closed), with the note "MARC is not planned for this date: its installed timetable
+ends ..."; Metro's WMATA GTFS gives way to its typical timetable. The 7-day alert counts down to
+the earliest such end ("transit: MARC's timetable runs out on ..."): fetch a newer feed and build
+again.
+
 **The beta** gets the schedule in its data bundle (`ship-data.sh`'s `transit` part;
 docs/BETA-RUNBOOK.md). Ship it again after each refresh.
 
@@ -2000,8 +2186,19 @@ docs/BETA-RUNBOOK.md). Ship it again after each refresh.
 🚆🚌 uses no Metro and says "Bikes aren't allowed on Metro today (July 4)."; Bikeshare + 🚶🚆🚌
 still rides Metro on foot.
 
-**What is not checked:** live arrivals and GTFS-Realtime service alerts. Every plan says
-"Scheduled service; check for track work."
+**Live Metro data (v0.7.0).** With `WMATA_API_KEY` set in the api container's environment (the
+server's `.env`; the owner sets it, nobody else handles it), the api reads WMATA's next trains,
+rail incidents and elevator outages (`core.wmata_live`): at most three calls every 45 s for the
+whole deployment, only while someone plans a transit trip or opens a Metro station's card, shared
+through one row of `bikeshare_feed_cache` (key `wmata`, replaced in place, no history). Outbound
+host: `api.wmata.com` (add it to the beta's egress list). With no key, or WMATA not answering for
+about three minutes, everything is the timetable's and says "scheduled". An elevator out where a
+rider takes their bike is a warning on the plan and the station card, never an avoidance. To check
+it is working: open a Metro station's card on the map; its Metro lines say "live" and the card ends
+"Data: WMATA". The log says `wmata live: ...` (never the key) when a reading fails.
+
+**What is not checked:** MARC, MTA and VRE real-time (docs/SOURCES.md lists the feeds found).
+Every plan says "Scheduled service; check for track work."
 
 ## Avoid-rated junctions: adding one (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307-310, 335)
 
@@ -2087,8 +2284,9 @@ not already remembered. With under 4 s left the way round is not asked, and the 
 ## Backups
 
 `pg_dump -Fc` to `<DATA_ROOT>/backups/routemaker-<UTC instant>.dump`, excluding
-the data of the session table, the cached membership table and the rate-limit
-table (`BACKUP_EXCLUDED_TABLES` in `config/procrastinate.py`), verified by reading the
+the data of every table in `BACKUP_EXCLUDED_TABLES` (`config/procrastinate.py`):
+`cached_membership`, `app_session`, `django_session`, `rate_limit_window`,
+`stress_tile_cache`, `bikeshare_feed_cache` and `signed_out_send`. Verified by reading the
 archive's own table of contents back with `pg_restore --list` — an archive with
 no table data at all is a dump of nothing, which is what a wrong database name
 produces while `pg_dump` exits zero.
@@ -2177,8 +2375,9 @@ remove. What empties PGDATA is `rm`, which is why step 2 is spelled out.
 ### What the restored deployment actually has
 
 - **No standing, until the membership cache is rebuilt.** The dump excludes the
-  cached membership table, the session table and the rate-limit table (whose
-  counts are worthless after a restore anyway), and phase 1 has no bot, so
+  data of every table in `BACKUP_EXCLUDED_TABLES` (see "Backups": the cached
+  memberships, both session tables, the rate-limit counters, whose counts are
+  worthless after a restore anyway, two caches and the signed-out send hashes), and phase 1 has no bot, so
   nothing refills the cache — the sweep that would is unbuilt (handoff.md
   section 7). Until it exists, a restored deployment grants **no** guild-derived
   standing at all: everyone is signed out (sessions went with the dump's
@@ -2424,8 +2623,20 @@ once the first rebuild with them has been promoted:
    Expect tens to a few hundred ways. That count also includes trails closed
    for other reasons since the last extract. Open a few on openstreetmap.org: the
    ones this change closed carry `sac_scale` and no `bicycle` tag.
-4. **Surface penalties (item 1).** Nothing to see: no rebuild input writes
-   `rm:reviewer_surface` today. The tile test (tests/test_tile_build_access.py,
+4. **Surface penalties (item 1).** From v0.7.0 an approved override of kind
+   `surface` writes `rm:reviewer_surface` (`overrides.apply_surface`; the rebuild's
+   override line counts them as "N surface"). An instance admin sets one with
+   `POST /api/stress-edits/surface` (`{"osm_way_ids": [...], "surface": "rough" |
+   "gravel" | "sand" | "dirt" | null, "reason": "..."}`; null takes it off), or types
+   the row into the admin (value `{"surface": "rough"}`; the admin refuses any other
+   value when the row is saved, `Override.clean`). It changes no level and no
+   live row: Valhalla's costs are built at the rebuild, so it applies from the next map
+   rebuild, and the road panel says "Surface penalty: Rough pavement; applies at the next
+   map rebuild" (Owner override) until the live table's rebuild has read it. The remap
+   caps every class at `compacted` and never improves a way, so after the rebuild the
+   panel says "routes price it as rougher than mapped" only where that changed the way's
+   class, and "routes already price the mapped surface as this rough" on an unpaved way
+   or, for Rough pavement, a rough paved one (`segment_info.penalty_reprices`). The tile test (tests/test_tile_build_access.py,
    "a reviewer ... penalty") covers it against the real parser.
 
 ## Rebuild checkpoints
@@ -2729,12 +2940,14 @@ missing", and wherever somebody had made the file by hand every later weekly
 rebuild re-derived the whole map from that one frozen snapshot — a weekly
 refresh that refreshed nothing.
 
-What is downloaded, per PLAN:13, is Geofabrik's three state extracts:
+What is downloaded, per PLAN:13, is Geofabrik's state extracts (West Virginia added in v0.7.0 for
+the Eastern Panhandle):
 
 ```
 https://download.geofabrik.de/north-america/us/district-of-columbia-latest.osm.pbf
 https://download.geofabrik.de/north-america/us/maryland-latest.osm.pbf
 https://download.geofabrik.de/north-america/us/virginia-latest.osm.pbf
+https://download.geofabrik.de/north-america/us/west-virginia-latest.osm.pbf
 ```
 
 **Roughly 1–2 GB in total at today's sizes** — Virginia and Maryland are most of
@@ -2793,7 +3006,11 @@ deliberately just under the weekly cadence. At seven or more the ordinary weekly
 run would accept last week's snapshot and the map would age by a week every
 week; below it, a rebuild re-run in the same week (a retry, a hand-fired run, a
 second attempt after a validation failure) reuses what is on disk instead of
-pulling 1–2 GB again.
+pulling 1–2 GB again. It is also rebuilt, whatever its age, when it was made from
+other download URLs or another clip area than this deployment's (v0.7.0 added West
+Virginia and moved the west edge): the stage writes what it used to
+`extracts/source.made-from.json` after the clip, and an extract without that file, from
+before v0.7.0, is rebuilt once.
 
 **Forcing a refresh**, when a rebuild must start from today's Geofabrik build:
 
@@ -3116,7 +3333,7 @@ throwaway container of the same image (this is what `tests/test_preset_links.py`
 does), then recreate caddy alone:
 
 ```sh
-docker run --rm -e CADDY_SITE_ADDRESS=:80 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.8-alpine caddy validate --config /etc/caddy/Caddyfile
+docker run --rm -e CADDY_SITE_ADDRESS=:80 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17 caddy validate --config /etc/caddy/Caddyfile
 docker compose up -d --no-deps --no-build --force-recreate caddy
 ```
 
@@ -3267,7 +3484,10 @@ the job logs `weekly rebuild paused (WEEKLY_REBUILD_PAUSED)`, writes one run row
 paused, and ends `succeeded` without a prune or a build. `check_operations` and the
 operations page report the rebuild as paused, not stale, so nothing alerts; if the paused
 ticks themselves stop (the rebuild worker down), it is stale again eight days after the
-last one. A rebuild fired by hand
+last one. Where the container that checks has the setting itself (the beta's api and
+worker), the rebuild is paused whatever its rows say, since a deployment with no rebuild
+worker never runs the tick, and the free-space check drops the rebuild's
+`REBUILD_MIN_FREE_BYTES` floor. A rebuild fired by hand
 (`run_rebuild_now`, below) runs whatever the switch says. To resume, remove the
 line (or set it empty) and recreate the service the same way. 355 asks for it to be
 set in t9's `.env` at the release deploy; if the release is not deployed before
@@ -3940,7 +4160,7 @@ held on a way with a mountain-bike rating: Valhalla's C++ parser (3.5.1 to 3.9.1
 `mtb:scale`, `mtb:scale:imba`, `mtb:scale:uphill` and `mtb:description` after
 the Lua transform and reopens the way from any of them, so 753 singletrack ways
 (286.6 mi [461.3 km]) and 27 rated OSM closures stayed routable while every Lua
-check passed (reports/SINGLETRACK-DIAG-r0). `lua/graph.lua` now strips the
+check passed (reports/SINGLETRACK-DIAG-r0 (not in the repository)). `lua/graph.lua` now strips the
 ratings from whatever upstream's transform leaves closed in either direction.
 Three checks stand between a change to that and a rider on singletrack.
 
@@ -4266,7 +4486,7 @@ proxy cannot reach the service.
    python3 scripts/fetch_agency_layer.py \
        --slug mdot-sha-aadt --item 77010abe7558425997b4fcdab02e2b64 \
        --layer https://services.arcgis.com/njFNhDsUCentVYJW/arcgis/rest/services/MDOT_SHA_Annual_Average_Daily_Traffic/FeatureServer/1 \
-       --bbox=-78.0,38.2,-76.02,39.72 \
+       --bbox=-78.05,38.2,-76.02,39.72 \
        --out-dir ~/rmdata/datasets --credit "State of Maryland (MDOT SHA)"
    sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs/mdot-sha-aadt"
    sudo install -o 10001 -g 10001 -m 644 ~/rmdata/datasets/mdot-sha-aadt/* \
@@ -4323,18 +4543,58 @@ proxy cannot reach the service.
    The before/after tier count for Maryland goes in the release notes: every
    tier a Maryland count moved is a road that was graded without one.
 
+## DC closures (v0.7.0)
+
+The worker task `refresh_dc_closures` (every 15 minutes, 12-minute bound) reads four
+sources, each when it is due, and keeps one shared copy in the `bikeshare_feed_cache`
+row keyed `closures` (`src/core/closure_sources.py`):
+
+| Source | URL | Every | Stale after | Dropped after | Becomes |
+|---|---|---|---|---|---|
+| DDOT TOPS permits (`dc`, CC BY 4.0) | `maps2.dcgis.dc.gov/.../DDOT/TOPS/MapServer/1/query` | 1 h | 3 h | 26 h | Closed block (IsRoadClosed), or "Bike lane blocked" (BikeLaneLength > 0, road open) |
+| MPD traffic advisories (`mpd`) | `mpdc.dc.gov/newsroom` | 15 min | 45 min | 6 h | Closures on the ways between the cross streets; the rest "Check before you go" text |
+| AlertDC (`alertdc`) | `trainingtrack.hsema.dc.gov/NRss` | 15 min | 45 min | 3 h | As MPD; only traffic and road items are kept, every other item is dropped unread |
+| NPS alerts (`nps`) | `developer.nps.gov/api/v1/alerts` | 30 min | 90 min | 6 h | Park-level "Check before you go" notices (rocr, nama, gwmp, choh, anac), never closures |
+
+NPS needs `NPS_API_KEY` in the worker's environment (sent as the `X-Api-Key` header);
+without it NPS is simply not read. The host needs egress to the four hosts (PLAYBOOK §0).
+
+**First checks on a new host.** The readers were built on saved sample pages
+(`tests/data/closures`), not on live downloads, so after the first run:
+
+1. `runs` shows `refresh_dc_closures` succeeding; a source that failed is named in the
+   warning `closures: the <source> source could not be read` (the URL and the key are
+   never logged).
+2. TOPS: the query asks `where=EXPIRATIONDATE >= DATE 'YYYY-MM-DD'` with `outSR=4326`,
+   `f=geojson`, and keeps Status in active, issued or approved. Confirm the layer's field
+   names (IsRoadClosed, BikeLaneLength, Status, the effective and expiration dates) and its
+   Status values; a permit count of zero with a successful run means one of them differs.
+3. MPD: confirm the newsroom lists "TRAFFIC ADVISORY" releases as links on `mpdc.dc.gov`
+   and that a release's body still reads "X from A to B" lines with dates and times.
+4. AlertDC: confirm the RSS item shape (title, description, pubDate, link).
+5. NPS: confirm the park boxes and marker points in `routemaker.dc_closures.PARKS`.
+6. A segment that cannot be placed (Photon finds no street, or Valhalla's route between the
+   cross streets leaves the named street) is shown as text with its link, never guessed;
+   it is looked for again after 6 hours.
+
+Closures follow the ride time (the When setting). One with no reliable end, on a ride
+more than 2 hours away, reads "may still apply" and does not reroute. A rider's "Route
+through anyway" is per plan and session only (`closure_bypass` on `/api/route`, `bypass`
+on `/api/closures/check`); nothing about it is stored.
+
 ## DC pavement condition (DC-PCI)
 
 DDOT's Pavement Condition Index is the smoothness reading of District streets from
 v0.5.0 (owner, 2026-10-11: "DC score in most cases takes priority over OSM data").
 The download runs on the home PC at rebuild time: the cloud proxy cannot reach
-dcgis.dc.gov. **The service states no licence**: confirm the terms with DDOT or Open
-Data DC before the release ships (docs/SOURCES.md). Until the owner has, the code
-holds it back: `routemaker.pavement.LICENCE_CONFIRMED` is False, so step 2 refuses
-`--dc-pci` (exit 2, `--dc-pci refused: ... states no licence`) and a rebuild that
-finds a `pavement.json` logs `... is installed but not read` and leaves every street
-on OSM's reading. The commit that records the confirmation in docs/SOURCES.md sets it
-True; only then run steps 1 to 3.
+dcgis.dc.gov. The service itself states no licence; the owner confirmed it on 2026-10-16 under the
+District's data terms (CC0 1.0, or CC BY 4.0 where an
+item says so; credited either way) (docs/SOURCES.md), so `routemaker.pavement.LICENCE_CONFIRMED`
+is True and steps 1 to 3 run. (With it False, step 2 refuses `--dc-pci` and a rebuild
+that finds a `pavement.json` logs `... is installed but not read`.)
+
+**Hold (v0.7.0): do not install `pavement.json` until the v0.8.0 rebuild.** v0.7.0 ships the
+graph built without it; steps 1 to 3 are for that rebuild.
 
 1. **Fetch FY-25 once**, from the checkout on the host. There is no ArcGIS Online
    item, so no `--item`; the README the script writes records the service's own item
@@ -4594,21 +4854,20 @@ docker compose exec -T api python manage.py predraw_stress_tiles
 ```
 
 **Recreate `api` and `worker` after a rollback** to a table with fewer columns.
-Each process remembers, for its life, that the live segment table has the
-facility, adjustment, road-trait and junction-cost columns
-(`routing._has_facility_columns`, `_has_adjustment_columns`,
-`junctions.has_trait_columns`, `has_unsmoothed_tier` and `has_cost_columns`
-cache a True). Rolled back past the junction-cost columns
-(`road_default_speed_mph`, `road_urban`), routes still answer but lose every
-intersection: the logs say "the intersection events could not be read". Rolled
-back to a build from before those columns (20260927 and earlier), every route
-query still names `seg.car_free_when` and `facility`, nothing catches the
-database error, and every route answers 500 until the processes start again.
+Each process keeps the live segment table's columns by the table's oid
+(`segment_info.live_columns`; every "has the table this column?" check reads
+it), so its next check sees the older table. A query already running, or one
+built from a check made just before the rename, can still name a column the
+older table lacks (`seg.car_free_when` and `facility` on a build from 20260927
+or earlier), and nothing catches that database error: those routes answer 500.
+The recreate ends that window and drops anything else a process kept of the
+newer build. A column dropped or added in place keeps the oid and is seen
+within 10 seconds (`COLUMN_RECHECK_S`).
 `--force-recreate` with `--no-deps --no-build` starts fresh processes on the
 same images and touches no other service; a `restart` would do too, but the
 recreate is the form the rest of this page uses. Rolling forward again (a
-rebuild that adds the columns back) needs no recreate: the cached False is
-re-checked.
+rebuild that adds the columns back) needs no recreate: the new table's
+columns are read at the next check.
 
 The last line draws the stress tiles of the table put back: the pre-draw after
 the rolled-away rebuild's swap cleared that table's tiles from the cache, and
@@ -5231,7 +5490,7 @@ trail or road"; `MTB_LEVEL`): short dark (#1c1917) cross-ticks under the line, 2
 a tick 1.5 px long every 10.5 px, where every tier sits on a solid casing; gaps of 1.5 line widths
 or more, where no tier's passes 1; and a 2 px line (2.5 px with the accessibility switch), thinner
 than any tier. The review screenshot, z15, the four levels beside LTS 2, LTS 4 and Avoid, is
-reports/v0.4.0/mtb-levels-vs-stress.png in the project files (and `-strong` with the switch on).
+reports/v0.4.0/mtb-levels-vs-stress.png (not in the repository) in the project files (and `-strong` with the switch on).
 
 | Level | Rated | Colour | Pattern | Lowest ratio to the base map |
 | --- | --- | --- | --- | --- |
@@ -5353,10 +5612,22 @@ reason, or one the release does not know, is left out (unclear access is closed)
 quarry, which isn't likely open to the public. Ensure only public roads open to bikes are marked."
 Climb `bd93dd04dc` (Cat 4, 1.2 mi (1,903 m), 512 ft (156 m) at 8.2%, unpaved) ran down into the
 Travilah quarry pit off Shady Grove Rd over nine ways tagged only `highway=track`, inside
-`landuse=quarry`: open by their own tags, so routable and drawn. Closing such ways at the rebuild
-(a way inside a quarry, a landfill or an industrial area closed on every graph and left off the map)
-is release v0.7.0's, with the other changes that need a rebuild. In this release:
+`landuse=quarry`: open by their own tags, so routable and drawn. Two fixes:
 
+- From the next rebuild, a way inside a quarry, a landfill or an industrial area is closed to
+  bicycles on every graph and left off the map (`restricted_areas.works_closures`,
+  `rm:no_bicycle=works`, the road panel's "inside a quarry, landfill or industrial site"), unless
+  its own tags open it (`bicycle=yes|designated|permissive`, or with no bicycle tag
+  `access=yes|permissive` or a cycleway), it is a numbered public road, DDOT's Roadway Block
+  records hold it (a District block matched to the way: DC data wins over OSM, OWNER-DECISIONS
+  190), or an owner's override reopens it. In an industrial area a named street that is not a
+  service road or a track (an industrial park's) stays open and is listed, unless its access
+  keeps it to destinations, customers or deliveries. Every way the rule looked at is in
+  `<DATA_ROOT>/rebuild/reports/works-closures.csv`. VALIDATE_SEGMENTS fails the build if any
+  highway way with an id in `REBUILD_SENTINEL_WORKS_CLOSED_RANGE` (the Travilah quarry's nine,
+  1379220522 to 1379220572) is not closed as `works`, and warns if fewer than nine are in the
+  extract. The climbs file then loses such climbs when it
+  is written again after that rebuild.
 - Now, without a rebuild: `routemaker.climb_exclusions.EXCLUDED` lists a climb by id with its
   reason and source, and the builder, the hill seek (`core.hillseek.parse`) and the map
   (`frontend/src/lib/climbExclusions.ts`, the same ids) all drop it, so the committed file need not
@@ -5393,10 +5664,10 @@ calibration, main's front end and log changes, the route chart, the z12-13 ride 
 (calm roads at 2 mi, roadside trails), the Mass Ride capacity map and the reversible-lane
 and Connecticut Ave NW changes, the Connecticut lane override and the Dupont underpass, and
 the Mass Ride map's own tiles, DC mask, border roads and zoom focus (OWNER-DECISIONS 391,
-394-427; reports/REBUILD-BUNDLE-integration.md; the `reports/` named here are the project's review
-reports, kept outside the repository), and, from fix round 2 (reports/REBUILD-BUNDLE-fix2.md),
+394-427; reports/REBUILD-BUNDLE-integration.md (not in the repository); the `reports/` named here are the project's review
+reports, kept outside the repository), and, from fix round 2 (reports/REBUILD-BUNDLE-fix2.md (not in the repository)),
 the military-area closure (owner report 2026-10-05), South Capitol St at LTS 4 (432) and Veirs
-Mill Rd (433), and, from fix round 3 (reports/REBUILD-BUNDLE-fix3.md), the narrower military
+Mill Rd (433), and, from fix round 3 (reports/REBUILD-BUNDLE-fix3.md (not in the repository)), the narrower military
 rule and the owner's reopenings (437, 437a-c).
 Nothing in it is live until the rebuild promotes the new table.
 
@@ -5559,7 +5830,7 @@ file published early on 2026-10-07 holds edits up to about 2026-10-06 20:21 UTC 
 EDT). First check that Geofabrik's current build is new enough (three small text files):
 
 ```sh
-for r in district-of-columbia maryland virginia; do
+for r in district-of-columbia maryland virginia west-virginia; do
   curl -fsS https://download.geofabrik.de/north-america/us/$r-updates/state.txt | grep '^timestamp'
 done                                                             # each at or after the owner's last 2026-10-06 edit
 ```
@@ -5649,7 +5920,7 @@ the dry run each prints after `grep -v '^present:'`:
    four crosswalk and traffic-island ways (way ids only, no names). Dry: 4 create (access,
    `bicycle=yes`), no conflict.
 
-These counts were checked on 2026-10-06 (reports/PRE-REBUILD-fix1.md): a copy of the live
+These counts were checked on 2026-10-06 (reports/PRE-REBUILD-fix1.md (not in the repository)): a copy of the live
 `override` table (1,783 approved rows: 232 access, 1,551 stress; max id 1783) in a private
 database, the six files dry-run and loaded in this order, then the five checks below,
 which gave 0, `3|36 4|90 5|252`, 126, 11 and 4; 251 rows written in all (before 445f, which retires two more rows: now `3|36 4|90 5|250`, retire 529, present 248, still 128 written). A second dry run of each file then printed only
@@ -5760,7 +6031,7 @@ when it succeeds. Once the second line is there, check what was downloaded in a 
 shell (set `D` again), while the build carries on:
 
 ```sh
-for r in district-of-columbia maryland virginia; do
+for r in district-of-columbia maryland virginia west-virginia; do
   docker compose exec -T rebuild osmium fileinfo -g header.option.osmosis_replication_timestamp /data/extracts/$r-latest.osm.pbf </dev/null
 done                                                             # each the timestamp checked before E, or later
 ls -l --time-style=full-iso $D/extracts/source.osm.pbf           # written within the last hour (ls shows local time, EDT)
@@ -5994,7 +6265,10 @@ that table. The planner reads it at most once a minute a process. Nothing needs 
 
    Expect `succeeded = t` and a detail like `work zones: md 143 zones` (and `va N zones` once the key
    is in). `md failed` means the feed did not answer three tries; the worker log says why, never
-   with the URL. `md 0 zones` on a weekday is worth a look: the feed may have changed shape. The
+   with the URL. A run whose feed has had no good read for 20 minutes (or never had one) fails,
+   with `succeeded = f` and `...; no good read in 20 minutes: md`, after saving what it could: the
+   zones read before stay in use as the labels below say, and the failing runs are what turns
+   `refresh_work_zones` stale on the operations page. `md 0 zones` on a weekday is worth a look: the feed may have changed shape. The
    parser was written against the WZDx specification without a live download, so check the first
    real reading here.
 2. Plan a route along a road you know has a lane closure listed in the feed (the Maryland 511 map
@@ -6013,21 +6287,23 @@ work zones.
 
 The rebuild can run on an AWS spot machine instead of this host, which ran out of memory
 on 2026-10-10 (16 GB, with the rebuild container capped at 8 GiB). The box builds from a
-copy of this deployment's database, so every access override, stress edit and Avoid
-junction is in its map, runs the ordinary `run_rebuild_now` with every check a rebuild
+copy of this deployment's database made the way the beta's is (`scripts/beta/ship-data.sh`'s
+db part): no accounts, Homes, saved or shared routes, audit log or sessions, and the approved
+overrides with their person columns blanked. So every access override and stress edit is in
+its map, and no rider's data is in the cloud. It runs the ordinary `run_rebuild_now` with every check a rebuild
 here has, and sends back the five graphs and its new segment table. Here they are swapped
 in by the rebuild's own swap (`pipeline.promotion.perform_swap`), so `rollback_rebuild`
 undoes an imported build exactly as it undoes one built here.
 
 Three scripts, one per place, and S3 between them. `send-inputs.sh`, run here, uploads the
-backup, reference, elevation and extracts to the run's `in/` folder. `box-rebuild.sh`, run
+stripped dump, reference, elevation and extracts to the run's `in/` folder. `box-rebuild.sh`, run
 on the box, reads `in/`, writes the five graphs and the staging dump to `out/`, and powers
 the box off. `import-result.sh`, run here, reads `out/`. Nothing in the repository names
 the bucket or the account: the run's folder is an argument. The same flow as a diagram:
 
 ```text
 this host                         s3://<bucket>/rebuild-checkpoints/transfer/<run>/   the box
-scripts/cloud/send-inputs.sh  --> in/   backup, reference, elevation, extracts --> box-rebuild.sh
+scripts/cloud/send-inputs.sh  --> in/   db.tar, reference, elevation, extracts --> box-rebuild.sh
 scripts/cloud/import-result.sh <-- out/  5 graphs, staging schema dump        <-- (powers off)
 ```
 
@@ -6037,7 +6313,13 @@ fallback yet; this host stays the fallback, and its weekly rebuild is unchanged.
 
 ### One-time setup (the owner, in the AWS console)
 
-- **No access keys anywhere.** The box gets an instance role; this host signs in with
+- **One narrow access key, on this host only** (the owner's choice, 2026-10-16, so a run
+  needs no sign-in): an IAM user `routemaker-launcher` with no console access and only
+  the launcher's permissions ("The launcher", below, without the first `signin:`
+  statement), its key saved by the owner with `aws configure --profile rm-launcher` and
+  `CLOUD_PROFILE=rm-launcher`. A stolen key can start, stop and run commands on the box
+  and reach `rebuild-checkpoints/`, nothing else; deactivate it in IAM if it is exposed.
+  The box itself still holds no key (an instance role). Without the key, this host signs in with
   `aws login --remote` (add `--profile <name>` to keep it apart from other accounts)
   before each run: it prints a link to open in any browser, where you sign in to the
   console as usual, and paste back the code it shows. This is what worked on 2026-10-11:
@@ -6076,7 +6358,7 @@ fallback yet; this host stays the fallback, and its weekly rebuild is unchanged.
 ### A run
 
 Before it: no Change LTS edits, override loads or suggestion approvals here from the
-backup the run starts from until the swap, and no rebuild here in between: start the run
+dump the run starts from until the swap, and no rebuild here in between: start the run
 after a Tuesday rebuild and swap before the next, or pause the weekly rebuild
 (`WEEKLY_REBUILD_PAUSED`, above) for the run. A rebuild here resets the staging schema an
 install restored. The box builds the commit this host is on, so deploy first, not
@@ -6091,8 +6373,11 @@ the defaults, so build those here.
    scripts/cloud/send-inputs.sh --profile <name> "$RUN_URL"
    ```
 
-   It takes the newest nightly backup (`routemaker-<utc>.dump`; its time is when the
-   box's database was copied), tars `reference/`, `elevation/` and `extracts/` with
+   It runs `scripts/beta/ship-data.sh --no-transfer` for the database only (the live
+   postgis must be running), so the dump leaves out and blanks exactly what the beta's does
+   and is refused the same way if it carries any of it; the nightly backup, which keeps
+   accounts and Homes for a restore here, is never sent. It tars that as `db.tar`
+   (`read_at` is when the dump began), tars `reference/`, `elevation/` and `extracts/` with
    their owner kept, writes `MANIFEST.txt` (run, commit, backup, `read_at`) and
    `SHA256SUMS`, clears the run's `in/` folder and uploads them with the checksums last. It refuses a checkout with
    uncommitted changes to tracked files (the box builds the commit, not the working
@@ -6121,12 +6406,26 @@ the defaults, so build those here.
    the manifest's commit in a separate clone (`~/rm-build`), writes that clone's own
    `.env` (fresh random values for the four secrets, `WEEKLY_REBUILD_PAUSED=1`, `REBUILD_TILE_CONCURRENCY=4`)
    and a `compose.override.yaml` giving `rebuild` 26 GiB, unpacks the inputs, builds the
-   two images, restores the backup into an empty database ("Restoring one", above),
-   cancels every job the copy brought from here, starts `migrate` and `rebuild`, and
+   two images, restores `db.tar` into the database a fresh postgis volume starts with and
+   loads the blanked tables after it (as `receive-data.sh` does on the beta), starts `migrate` and `rebuild`, and
    fires `run_rebuild_now --fresh`. When the job succeeds it renames the box's new
    `live` schema to `staging`, dumps it, tars each graph's build directory and the
    rebuild's reports (`reports.tar`, for reading; the import does not use it), uploads
    them with the checksums last, and powers the box off.
+
+   **Dump copies:** this run's `db.tar` stays on the box (`~/cloud-runs/<run>/in/`) and in
+   S3 (`<run>/in/`) after the run (the owner's choice, 2026-10-16), so the newest copy is at
+   hand. Once a run has finished and uploaded, the box deletes the dump of each OLDER run,
+   both on its disk and in S3 (`db.tar`, and `routemaker-<utc>.dump` from runs before v0.7.0,
+   which were the whole nightly backup). Older means an earlier `read_at` in that run's
+   `MANIFEST.txt`, and only a run that has itself finished (its result in `out/`, or its
+   failure logs in `failed/`) loses its dump: a newer run's dump, and the inputs of a run not
+   yet built, stay ("keeping run <name>'s dump: ..." in the log). Nothing else of those runs
+   is touched, and a failed run deletes nothing. A failure to delete is a warning in the log:
+   delete that file by hand. The bucket's 14-day lifecycle rule (on `rebuild-checkpoints/`)
+   still expires every object, the kept `db.tar` in `in/` included, so after 14 days without
+   a new run the newest copy in S3 is gone too; the box's copy stays. To keep it in S3, the
+   owner can narrow the rule's filter in the console.
 
    Each step is recorded under `~/cloud-runs/<run>/state/`, so the same command run
    again carries on. **A spot reclaim** stops the box with its disk; start it when AWS
@@ -6134,8 +6433,11 @@ the defaults, so build those here.
    (`unwedge_job`, which changes nothing while a worker is alive) and the rebuild resumes
    from its checkpoints. It tries the same every ten minutes while the job is `doing`, in
    case the rebuild container was killed under a running script. **A failed rebuild**
-   saves the rebuild's log to `~/cloud-runs/<run>/rebuild-<utc>.log.gz` and powers off;
-   nothing is uploaded. To try again, start the box and run the same command with
+   saves the rebuild's log to `~/cloud-runs/<run>/rebuild-<utc>.log.gz`, uploads it to
+   `RUN_URL/failed/` with the last 400 lines of `~/cloud-rebuild.log`
+   (`box-rebuild-<utc>.log.gz`), and powers off; no result is uploaded. Read the logs from
+   home with `aws s3 cp RUN_URL/failed/<name> - | gunzip | less`, without starting the
+   box. Any other failure after the fire sends the same two files. To try again, start the box and run the same command with
    `--refire`. A job still unfinished after `--deadline-hours` (24) is given up on the
    same way, so a stuck run does not keep the box running. Before the rebuild is fired, a
    failure leaves the box running for you to fix it.
@@ -6154,10 +6456,27 @@ the defaults, so build those here.
    unpacks the graphs under `<DATA_ROOT>/tiles` beside the ones being served, restores the
    box's table as `staging`, and runs `import_cloud_build` dry: the build each graph would
    move to, both tables' segment counts, and any access override approved after the
-   backup, which this build does not have. An override revoked or deleted after the
-   backup is still in the build and is not listed: the freeze above is what covers it. Nothing served has changed. Run it again after
+   dump, which this build does not have. An override revoked or deleted after the
+   dump is still in the build and is not listed: the freeze above is what covers it. Nothing served has changed. Run it again after
    a failure and it carries on; once the install has finished, a second run goes straight
    to the dry run. `--remove-tars` deletes the downloaded graph tars once unpacked.
+
+   **The v0.7.0 build** was made at commit `4f34f76d`, and the release ships a later one, so
+   its install and swap here both take `--allow-sha-mismatch`
+   (`import-result.sh --profile <name> --allow-sha-mismatch [--swap] "$RUN_URL"`), and so does
+   the beta's (below).
+
+   The dry run also fills **Review**'s lists (an instance admin's third mode, beside Go and
+   Plan; `core.stress_review`), see "Review mode: shipping and its lists" below. It prints
+   `review queue, in roads (...)`: how many roads each list holds, and which lists read from a
+   report the box sent none for (`no report from this build for: ...`; those lists are
+   emptied and say so in Review, never showing an older build's rows). It counts whole ways
+   (a way at its highest piece's level, half steps included, and a change of bicycle access);
+   the stress change report above it counts segments by whole tier. Then
+   `review: N of M changed roads ... have no ruling yet`, on the swap too: it never blocks.
+   Access overrides that Review's rulings wrote (a reopened road; source `review`) are listed
+   on a line of their own and do not hold the swap; a reopening undone after the dump is
+   flagged as still open in this build.
 
 4. **Here:** swap.
 
@@ -6174,11 +6493,29 @@ the defaults, so build those here.
    next rebuild with `scripts/cloud/import-result.sh --swap "$RUN_URL" --
    --accept-later-overrides`.
 
-**Rollback** is the ordinary one, dry and then confirmed, then restart the routers:
+5. **Once, for a run whose inputs the older `send-inputs.sh` sent** (before v0.7.0's, e.g. the
+   v0.7.0 build's run at `4f34f76d`): that version uploaded the whole nightly backup, accounts
+   and Homes included, as `in/routemaker-<utc>.dump`. The box's prune only deletes an older
+   run's dump after a newer run finishes, so once this run is imported and swapped, and with the
+   owner's go, delete that run's copy by hand, in the bucket and on the box (in the home folder
+   of the user `box-rebuild.sh` ran as):
+
+   ```sh
+   aws --profile <name> s3 ls "$RUN_URL/in/"
+   aws --profile <name> s3 rm "$RUN_URL/in/routemaker-<utc>.dump"
+   rm -f ~/cloud-runs/<run>/in/routemaker-*.dump     # on the box, over SSM
+   ```
+
+   A run sent by today's `send-inputs.sh` has only `db.tar`, with no rider data, and needs none of this.
+
+**Rollback** is the ordinary one, dry and then confirmed, then restart the routers and
+the api (the older table may lack columns the api still names; "Recreate `api` and
+`worker` after a rollback", above):
 
 ```sh
 docker compose exec -T rebuild ./manage.py rollback_rebuild </dev/null
 docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm </dev/null
+docker compose up -d --no-deps --no-build --force-recreate api worker </dev/null   # after the routers' restart
 ```
 
 The safety dump is the last resort.
@@ -6190,8 +6527,51 @@ or already serves the build, when `staging.segment` is missing or empty, when
 also refuses while access overrides approved after `--overrides-read-at` are missing from
 the build, unless `--accept-later-overrides`. Where the swap re-applies the road panel's
 edits made after that time (from v0.4.0, the stress editor), as a rebuild does for edits
-made while it ran, that check gives way to the re-apply; the scripts pass the backup's
+made while it ran, that check gives way to the re-apply; the scripts pass the dump's
 time.
+
+### Review mode: shipping and its lists
+
+Review (the owner, 2026-10-16) is an instance admin's queues of roads to rule on: Rebuild
+changes, Rating disagreements, narrow rural roads, side paths not mapped (fills after the
+v0.8.0 rebuild), industrial-area
+closures and overrides that did not re-match, beside the riders' suggestions, hazard reports
+and closure reports. A ruling is the road panel's own change (an owner override, re-applied by
+the swap) or, for a closed road, an approved access override (source `review`) applied at the
+next rebuild; every ruling is audited and can be undone for 30 minutes.
+
+To ship it to a host:
+
+1. Deploy, then `docker compose exec -T api python manage.py migrate` (`0029_review_queue`:
+   `review_item`, `review_ruling`, `review_queue_state`, and the override source `review`).
+   `ship-data.sh` never sends these three tables to the beta or the cloud box.
+2. Fill the lists. A cloud build's dry run does it (above). After a rebuild run on this
+   host, or after adding a ratings file (step 3):
+   `docker compose exec -T api python manage.py compute_review_queue` (the live table and
+   this host's own `rebuild/reports`), with `--build-id <id>` before a swap to list the
+   rebuild's changes against `staging`, and `--reports-dir <dir>` for another build's
+   reports. Each list it computes replaces its rows, with each road's simplified line and
+   point for the map; the rulings stay. `0030_review_map_by_view` gives the roads already
+   listed theirs, so the map needs no recomputation after it. Review's map asks for the view
+   it shows (`/api/review/map`), never a whole list. `review_queue_state`'s `map_low`,
+   `map_high` and `map_points` columns are unused from 0030 and kept for one release, so a
+   worker of the release before keeps working through the deploy; the next release drops them.
+3. Optional, ratings whose public use is pending (`routemaker.agency_lts.PENDING_AGENCIES`):
+   put `<agency>-ratings.csv` (columns `osm_way_id,level`; a level 1 to 5 by halves) in
+   `<DATA_ROOT>/internal-only/review/` (`REVIEW_PENDING_DIR`), e.g. `arlington-ratings.csv`.
+   Nothing but Review reads that folder; keep it out of every bundle. Such a rating is
+   counted in a disagreement and shown labelled "(pending permission)" while
+   `agency_lts.PUBLIC_USE_CONFIRMED` says False for it; it never decides a level.
+
+**Review is home's only.** Its lists are never sent to the beta, and the beta's api has no
+rebuild reports to compute them from; a ruling made there would be lost anyway, since every
+beta data update resets `override` to home's. Rule at home; the rulings reach the beta with its
+next data update, as any override does.
+
+The lists' Area is the county from `<DATA_ROOT>/reference/counties.geojson`, the stress change
+report's own file (`install_reference_data.py --counties`); without it the column is empty.
+Review's reads have their own rate limit (`review-read`, 600 a minute an address) and its
+rulings theirs (`review-ruling`, 800 an hour an account), apart from the road panel's editor.
 
 ### The launcher
 
@@ -6250,7 +6630,9 @@ What it does, with a plain line for each step:
    status (`get-command-invocation`) and the box's state. A command that failed (the
    script stopped before the rebuild was fired) ends the wait with the end of the box's
    output; so does a box that stopped with no result (a failed rebuild powers itself off,
-   and so does a spot reclaim).
+   and so does a spot reclaim). Either way it names the log the box uploaded to
+   `RUN_URL/failed/` and prints its last 40 lines, or says none arrived (a reclaim, or a
+   failure before the fire).
 6. Stops the box, then `import-result.sh`: the install and its dry run, nothing served
    changes. It may ask for sudo again here. Read the dry run, then swap as in "A run",
    step 4. `--swap` does the swap straight after the dry run instead.
@@ -6263,6 +6645,21 @@ that ends a run part way prints that command with the run's URL: copy it, since 
 default run name is the day's, and the same command without the URL after midnight
 (UTC) would start a new run. A box it did not start is not stopped by the launcher.
 `--no-send` also skips sending for a run whose inputs are already in S3.
+
+**When this end dies but the box carries on** (the terminal closed, this host rebooted,
+the launcher was killed during the wait), do not launch again: `--no-send` would send a
+second command to a box that is still rebuilding. Instead
+`scripts/cloud/launch.sh --attach <RUN_URL>` (with the same `--instance-id`, regions and
+`--profile` as before) sends and starts nothing and only does steps 5 and 6: it waits for
+`out/SHA256SUMS` while watching the box's state, then stops the box and installs the
+result (`--swap` as usual). Interrupting it, or giving up the wait, leaves the box
+running, since the rebuild is still on it. A box that is not running and has no result is
+refused with the `--no-send` command to carry the run on, and so is a running box where
+`box-rebuild.sh` does not run: before waiting, `--attach` asks the box over SSM (one small
+command, as root) whether anything holds that script's lock, and stops there, leaving the box
+as it is, when nothing does or the box cannot be asked. On the box, `box-rebuild.sh`
+holds a lock (`~/cloud-runs/.box-rebuild.lock`), so a second copy of it, for any run,
+refuses to start while one runs.
 
 **A spot reclaim, and a box that starts again by itself.** With a persistent spot request
 and interruption behaviour Stop, AWS stops the box when it needs the capacity back and
@@ -6312,11 +6709,9 @@ encrypted with your own KMS key, starting it also needs `kms:CreateGrant` on tha
 `ssm:SendCommand` on `AWS-RunShellScript` is a root shell on the box, and on nothing
 else: the box holds nothing of this deployment's but the inputs it was sent.
 
-**Not built: a hands-off weekly run.** Running the launcher from cron needs a sign-in
-that lasts and renews without a person: IAM Identity Center, or a narrow role that a
-scheduler (an EventBridge schedule, say) assumes. Not `aws login`, which needs you at a
-browser, and not access keys, which this deployment does not keep anywhere. Until then
-the launcher is run by hand, and the weekly rebuild here goes on as before.
+**A hands-off run.** With the `routemaker-launcher` key (the setup, above) the launcher
+needs no sign-in, so it can run unattended. It is still started by hand: a weekly cron
+run is not set up, and the weekly rebuild here goes on as before.
 
 ### The beta server from the same run
 
@@ -6357,7 +6752,10 @@ done. Then it runs the runbook's "New data only" steps 2 to 5:
 
 Then run `scripts/beta/smoke-test.sh --public` yourself once the pre-draw has finished,
 and resume continuous deployment. The box builds home's commit, so a beta on a
-different release needs `--allow-sha-mismatch`, exactly as for a bundle sent from here.
+different release needs `--allow-sha-mismatch`, exactly as for a bundle sent from here; the
+v0.7.0 bundle was built at `4f34f76d`, so it always does
+(`import-result.sh --beta --allow-sha-mismatch [--swap] "$RUN_URL"`, which passes it to
+`receive-data.sh`).
 Rollback is the runbook's: rollback A for the graphs, the `pre-update` dump for the
 database.
 
@@ -6366,7 +6764,8 @@ and nothing more (on EC2, an instance role whose only S3 permissions are `s3:Lis
 on the bucket for the `rebuild-checkpoints/` prefix and `s3:GetObject` on
 `rebuild-checkpoints/*`; no access keys), and its egress has to allow the bucket region's
 S3 endpoint. The beta data comes from home's database either way: the box builds from
-home's backup.
+the `db.tar` send-inputs.sh dumps from it, which leaves out what the beta's own dump does
+(the nightly backup is never sent).
 
 **What has not been run:** the scripts are tested against stand-ins for `aws`, `docker`,
 `sudo` and, for the beta, `ship-data.sh`, `receive-data.sh` and `beta-compose.sh`

@@ -21,6 +21,7 @@ import {
   MTB_TRAIL,
   MTB_HALO,
   MTB_LEVELS,
+  MTB_MIN_ZOOM,
   SOLID_MIN_ZOOM,
   UNKNOWN_SURFACE_DASH,
   UNPAVED_DASH,
@@ -93,7 +94,7 @@ export function mtbLevelLegend(shape: MtbLevel): { short: string; label: string 
 
 /** Where the paths and trails the long-distance rule leaves out come back (STRESS_ZOOMS.ride). */
 export function everyTrailFrom(ride: number): string {
-  return `Paths on local routes and other connected paths show from zoom ${ride}; every short path shows from zoom ${STRESS_ZOOMS.quiet}, and mountain-bike trails too when their layer is on.`;
+  return `Paths on local routes and other connected paths show from zoom ${ride}; every short path shows from zoom ${STRESS_ZOOMS.quiet}. Mountain-bike trails show from zoom ${MTB_MIN_ZOOM} when their layer is on.`;
 }
 
 /**

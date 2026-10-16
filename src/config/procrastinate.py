@@ -97,6 +97,20 @@ WORK_ZONES_CRON = "*/5 * * * *"
 # Each feed has three tries of 20 s; two feeds. Well inside the queue's thirty minutes.
 WORK_ZONES_TIMEOUT_S = 5 * 60
 
+# DC's closures (v0.7.0 plan, "DC closures source"): every fifteen minutes, each source read
+# when it is due (AlertDC and MPD every 15 min, NPS every 30, DDOT's permits every hour;
+# `core.closure_sources.EVERY_S`). Placing new permits and advisories asks the database,
+# Photon and the router. The refresh stops starting work after
+# `core.closure_sources.REFRESH_BUDGET_S` (5 minutes); this hard deadline is the backstop, so
+# the task holds a maintenance slot at most 6 of every 15 minutes (it was 12).
+DC_CLOSURES_CRON = "*/15 * * * *"
+DC_CLOSURES_TIMEOUT_S = 6 * 60
+
+# The closures on riders' saved routes (v0.7.0 closures; core.saved_route_alerts): every fifteen
+# minutes, seven minutes after the closures' refresh, so it reads what that refresh stored.
+SAVED_ROUTE_CLOSURES_CRON = "7-59/15 * * * *"
+SAVED_ROUTE_CLOSURES_TIMEOUT_S = 5 * 60
+
 # The plan's job rule: retried with exponential backoff, up to five times.
 # Procrastinate counts an attempt when a run finishes or is scheduled for
 # retry, after the retry decision, so the first failure is judged at
@@ -109,26 +123,32 @@ RETRY = RetryStrategy(max_attempts=5, exponential_wait=6)
 
 # Tables whose data is excluded from the nightly dump. The membership cache
 # because who organizes with whom is the sensitive part of this deployment and
-# it is rebuildable from the bot's backfill; the session table because a dump
-# that sits on disk for months must not carry live sessions. The rate-limit
+# it is rebuildable from the bot's backfill; the session tables (the app's own and
+# Django's, which holds the cookie's key) because a dump that sits on disk for
+# months must not carry live sessions. The rate-limit
 # table because it keys on client addresses, which PLAN's Privacy and retention
 # drops within 30 days, and a dump outlives that; its counts are worthless after
 # a restore anyway.
 BACKUP_EXCLUDED_TABLES = (
     "cached_membership",
     "app_session",
+    "django_session",
     "rate_limit_window",
     "stress_tile_cache",
     "bikeshare_feed_cache",
+    # Salted daily hashes of signed-out suggesters' addresses, v0.7.0: kept 24 hours.
+    "signed_out_send",
 )
 
-# How many dumps stay on the data volume. They are local-only for now - the
-# plan's S3 upload with SSE-KMS and 30-day remote retention is not built - and
-# they land on the volume the rebuild's disk gate measures, so an unbounded
-# series of them would eventually refuse every rebuild with "grow the volume" as
-# the only remedy. Seven: a week of nightly dumps, so corruption noticed over a
-# weekend still has a local copy to restore from, at a bounded cost in gigabytes
-# rather than a year's worth.
+# How many dumps stay on the data volume. They never leave this machine - the
+# plan's S3 upload with SSE-KMS and 30-day remote retention is not built, and
+# the cloud rebuild sends a dump of its own without identities
+# (scripts/cloud/send-inputs.sh), never one of these - and they land on the
+# volume the rebuild's disk gate measures, so an unbounded series of them would
+# eventually refuse every rebuild with "grow the volume" as the only remedy.
+# Seven: a week of nightly dumps, so corruption noticed over a weekend still has
+# a local copy to restore from, at a bounded cost in gigabytes rather than a
+# year's worth.
 BACKUP_KEEP = 7
 
 
@@ -776,6 +796,7 @@ def nightly_backup(timestamp: int) -> None:
     """
     from django.conf import settings
 
+    from core import shared_routes, signed_out_suggestions
     from core.runs import prune_job_rows, prune_run_rows, record
     from pipeline import retention
 
@@ -790,9 +811,14 @@ def nightly_backup(timestamp: int) -> None:
             pruned_dumps = retention.prune_backups(settings.BACKUP_DIR, keep=BACKUP_KEEP)
             pruned_runs = prune_run_rows()
             pruned_jobs = prune_job_rows()
+            # Rows that are otherwise dropped only when someone shares, opens or sends
+            # (core.shared_routes, core.signed_out_suggestions): a quiet server drops them too.
+            pruned_shared = shared_routes.prune()
+            pruned_sends = signed_out_suggestions.prune()
         run.detail = (
             f"{destination}; pruned {len(pruned_dumps)} old dumps, "
-            f"{pruned_runs} run rows, {pruned_jobs} finished job rows"
+            f"{pruned_runs} run rows, {pruned_jobs} finished job rows, "
+            f"{pruned_shared} shared routes, {pruned_sends} signed-out send rows"
         )
         run.save(update_fields=["detail"])
 
@@ -966,7 +992,9 @@ def refresh_work_zones(timestamp: int) -> None:
 
     Not retried, as the heartbeat is not: the next tick is the retry, and a feed that
     fails keeps its last good zones until they are two hours old, when the planner
-    says it could not check them. Virginia's feed is read only where the environment
+    says it could not check them. A feed with no good read for twenty minutes fails the
+    run (after the copy is saved), so a feed that is down for good turns the task stale on
+    the operations page. Virginia's feed is read only where the environment
     holds `SMARTERROADS_TOKEN`, and the key is never written to the run row or the log.
     """
     from core.runs import record, run_with_deadline
@@ -974,6 +1002,43 @@ def refresh_work_zones(timestamp: int) -> None:
 
     with record("refresh_work_zones") as run:
         run.detail = run_with_deadline(refresh, WORK_ZONES_TIMEOUT_S, "refresh_work_zones")
+        run.save(update_fields=["detail"])
+
+
+@app.periodic(cron=DC_CLOSURES_CRON)
+@app.task(name="refresh_dc_closures", queue="maintenance", queueing_lock="refresh_dc_closures")
+def refresh_dc_closures(timestamp: int) -> None:
+    """Read DC's closure sources that are due and replace the planner's shared copy
+    (core.closure_sources): DDOT's TOPS permits, MPD's traffic advisories, AlertDC's traffic
+    items and, where the environment holds `NPS_API_KEY`, the NPS alerts. Not retried: the
+    next tick is the retry, and a source that fails keeps its last good copy. The key is
+    never written to the run row or the log.
+    """
+    from core.closure_sources import refresh
+    from core.runs import record, run_with_deadline
+
+    with record("refresh_dc_closures") as run:
+        run.detail = run_with_deadline(refresh, DC_CLOSURES_TIMEOUT_S, "refresh_dc_closures")
+        run.save(update_fields=["detail"])
+
+
+@app.periodic(cron=SAVED_ROUTE_CLOSURES_CRON)
+@app.task(
+    name="check_saved_route_closures",
+    queue="maintenance",
+    queueing_lock="check_saved_route_closures",
+)
+def check_saved_route_closures(timestamp: int) -> None:
+    """Check every saved route against the closures in force now (feeds' and reviewers') and
+    keep each one's alerts for My routes (core.saved_route_alerts). Not retried: the next tick
+    is the retry."""
+    from core.runs import record, run_with_deadline
+    from core.saved_route_alerts import refresh_all
+
+    with record("check_saved_route_closures") as run:
+        run.detail = run_with_deadline(
+            refresh_all, SAVED_ROUTE_CLOSURES_TIMEOUT_S, "check_saved_route_closures"
+        )
         run.save(update_fields=["detail"])
 
 
@@ -1026,6 +1091,11 @@ def perform_backup(
     database = settings.DATABASES["default"]
     env = {**os.environ, "PGPASSWORD": database["PASSWORD"]}
     try:
+        # The dump holds every account and every home: readable by its owner only.
+        # Created 0600 before pg_dump writes into it (pg_dump keeps the mode of the
+        # file it truncates) and set again before the rename.
+        part.touch(mode=0o600)
+        os.chmod(part, 0o600)
         try:
             subprocess.run(
                 [
@@ -1052,6 +1122,7 @@ def perform_backup(
                 f"while running {expired.cmd[0]}"
             ) from expired
         verify_dump_listing(listing)
+        os.chmod(part, 0o600)
         # The rename is the last thing that happens, so the ordinary name exists
         # only for an archive that was written whole and verified.
         part.replace(destination)

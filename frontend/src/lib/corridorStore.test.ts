@@ -3,7 +3,7 @@
 // or localStorage, and the tiles' fetches fail, so only the ordering is tested here.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { clearCorridor, corridorStress, keepCorridor } from "./corridorStore.ts";
+import { clearCorridor, copyCorridor, corridorStress, keepCorridor } from "./corridorStore.ts";
 import type { LonLat } from "./geo.ts";
 
 const LINE: LonLat[] = [
@@ -46,6 +46,25 @@ test("clearCorridor with a hand-on: a Start ride that comes while the hand-on ru
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.equal(corridorStress.riding(), true, "the new ride keeps; the old clear came before it, not after");
   assert.deepEqual(order, ["hand-on 0 tiles", "hand-on done"]);
+  await clearCorridor();
+  assert.equal((await ride).stopped, true);
+});
+
+test("copyCorridor (the app hidden mid-ride, review RIDE-1): the hand-on sees what is kept, and keeping goes on", async () => {
+  const ride = keepCorridor(LINE, true);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(corridorStress.riding(), true);
+  const seen: number[] = [];
+  await copyCorridor(async (kept) => {
+    seen.push(kept.tiles.length);
+  });
+  assert.deepEqual(seen, [0]);
+  assert.equal(corridorStress.riding(), true, "the ride keeps its corridor");
+  // A copy that fails changes nothing either.
+  await copyCorridor(async () => {
+    throw new Error("quota");
+  });
+  assert.equal(corridorStress.riding(), true);
   await clearCorridor();
   assert.equal((await ride).stopped, true);
 });

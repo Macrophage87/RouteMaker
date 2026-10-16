@@ -10,17 +10,73 @@ import {
   REPORT_KINDS,
   REPORT_NOTE_MAX,
   REPORT_OTHER_HINT,
+  REPORT_READY,
+  REPORT_SENT,
   canText,
   gpsWords,
   isUnnamed,
   keywordOf,
   onlineHint,
+  pickWay,
   placeWords,
+  report311Enabled,
   reportPlace,
   reportText,
+  sendReport311,
   smsHref,
   type ReportPlace,
 } from "./report311.ts";
+
+// ---- One tap (v0.7.0, "Go riding fixes" item 3): tap 311, tap the problem, sent ----
+
+test("a pick goes to the server where it sends, else to the text app on a phone, else the report to copy", () => {
+  assert.equal(pickWay(true, true), "server");
+  assert.equal(pickWay(true, false), "server");
+  assert.equal(pickWay(false, true), "sms");
+  assert.equal(pickWay(false, false), "form");
+  assert.equal(REPORT_SENT, "Sent to DC 311.");
+  assert.equal(REPORT_READY, "Ready to send in Messages.");
+});
+
+test("the text for a pick has the problem, the place and the GPS position filled in, and no note before it", () => {
+  const tree = reportText("tree", JUNCTION, "", true) ?? "";
+  assert.equal(tree, `Downed tree. Location: on Q Street Northwest near R Street Northwest, Washington, DC. ${J_GPS}.`);
+  const href = smsHref(reportText("pothole", JUNCTION, "", true) ?? "", "iPhone", 5);
+  assert.ok(href.startsWith("sms:32311&body=POTHOLE%20Location%3A%20on%20Q%20Street"), href);
+  assert.ok(decodeURIComponent(href).includes(J_GPS));
+});
+
+function fakeFetch(answers: { status: number; body?: unknown; throws?: boolean }[]) {
+  const calls: { url: string; init?: RequestInit }[] = [];
+  const fn = (async (url: string, init?: RequestInit) => {
+    calls.push({ url, init });
+    const next = answers.shift()!;
+    if (next.throws) throw new TypeError("offline");
+    return { ok: next.status >= 200 && next.status < 300, status: next.status, json: async () => next.body } as Response;
+  }) as unknown as typeof fetch;
+  return { fn, calls };
+}
+
+test("the server's sender: asked once whether it is on, and a report sent with the point and the words", async () => {
+  const on = fakeFetch([{ status: 200, body: { enabled: true } }]);
+  assert.equal(await report311Enabled("https://x", on.fn), true);
+  assert.equal(on.calls[0].url, "https://x/api/report311");
+  assert.equal(await report311Enabled("https://x", fakeFetch([{ status: 200, body: { enabled: false } }]).fn), false);
+  assert.equal(await report311Enabled("https://x", fakeFetch([{ status: 0, throws: true }]).fn), false);
+
+  // A fresh signed ticket is asked for first (GET), and sent back with the report (POST).
+  const send = fakeFetch([{ status: 200, body: { enabled: true, ticket: "t1" } }, { status: 200, body: { sent: true, id: "1" } }]);
+  assert.equal(await sendReport311("https://x", "pothole", JUNCTION, "", send.fn), true);
+  assert.equal(send.calls[0].init?.method, undefined);
+  const body = JSON.parse(String(send.calls[1].init?.body));
+  assert.equal(send.calls[1].init?.method, "POST");
+  assert.deepEqual(body, { kind: "pothole", lat: 38.91057, lon: -77.0389, description: `Location: on Q Street Northwest near R Street Northwest, Washington, DC. ${J_GPS}.`, ticket: "t1" });
+  // Off, refused or no signal: not sent, and the pick falls back to the text message.
+  assert.equal(await sendReport311("https://x", "pothole", JUNCTION, "", fakeFetch([{ status: 200, body: { enabled: false } }]).fn), false);
+  const ticketed = { status: 200, body: { enabled: true, ticket: "t1" } };
+  assert.equal(await sendReport311("https://x", "pothole", JUNCTION, "", fakeFetch([ticketed, { status: 503, body: { code: "dc311_off" } }]).fn), false);
+  assert.equal(await sendReport311("https://x", "pothole", JUNCTION, "", fakeFetch([{ status: 0, throws: true }]).fn), false);
+});
 
 const JUNCTION: ReportPlace = { words: "on Q Street Northwest near R Street Northwest", point: [-77.0389012, 38.9105678] };
 const TRAIL: ReportPlace = { words: "on Metropolitan Branch Trail", point: [-76.9951234, 38.9301234] };
@@ -129,12 +185,12 @@ test("reportPlace: the road at that point, a cross street within 500 ft, the sam
   assert.equal(reportPlace(m, 400).words, "on 14th Street Northwest", "the junction is 600 m off: no cross street");
   // The owner's case: far along an unnamed path, no "about 1.2 miles south of ...".
   const far = reportPlace(m, 2900);
-  assert.equal(far.words, "on an unnamed path");
+  assert.equal(far.words, "on a path");
   const text = reportText("pothole", far, "", true) ?? "";
-  assert.equal(text, `POTHOLE Location: on an unnamed path, Washington, DC. ${gpsWords(far.point)}.`);
+  assert.equal(text, `POTHOLE Location: on a path, Washington, DC. ${gpsWords(far.point)}.`);
   assert.doesNotMatch(text, /miles|of unnamed|unnamed path,? about/);
   // The path's start is within 500 ft of its junction with U Street: named only from the U Street side.
-  assert.equal(reportPlace(m, 1550).words, "on an unnamed path near U Street Northwest");
+  assert.equal(reportPlace(m, 1550).words, "on a path near U Street Northwest");
 });
 
 test("the copy for DC 311 online: the place in DC and its GPS position, then the note, with no text keyword", () => {

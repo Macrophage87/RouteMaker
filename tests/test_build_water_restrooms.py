@@ -324,7 +324,11 @@ def test_bundled_file_is_well_formed():
     assert len(ids) == len(set(ids))
     for p in doc["points"]:
         assert p.get("w") in (None, "p", "n") and p.get("t") in (None, "f", "b", "u")
-        assert "w" in p or "t" in p
+        # Water, a restroom, a bike repair stand (its kit letters) or a bike shop.
+        assert "w" in p or "t" in p or "rs" in p or p.get("bs") == 1
+        assert set(p.get("rs", "")) <= set("ptc")
+        if p.get("bs"):
+            assert p["n"].strip() and "w" not in p and "t" not in p
         assert west <= p["x"] <= east and south <= p["y"] <= north
         assert p.get("op") in (None, "Throne")
         if p["id"].startswith("throne-"):
@@ -711,3 +715,124 @@ def test_throne_only_keeps_osm_throne_tags_and_every_field(tmp_path):
         },
         {"id": "n5", "x": -77.0, "y": 38.9, "t": "u"},
     ]
+
+
+# --- Bike repair stands and bike shops (v0.7.0, owner 2026-10-14) -----------
+
+
+def test_a_repair_stand_keeps_its_kit():
+    a = mod.classify(
+        "n1",
+        {
+            "amenity": "bicycle_repair_station",
+            "service:bicycle:pump": "yes",
+            "service:bicycle:tools": "yes",
+            "service:bicycle:chain_tool": "no",
+            "fee": "no",
+            "opening_hours": "24/7",
+        },
+        *IN,
+    )
+    assert (a.repair, a.water, a.toilet, a.fee, a.hours) == ("pt", None, None, "no", "24/7")
+    bare = mod.classify("n2", {"amenity": "bicycle_repair_station"}, *IN)
+    assert bare.repair == ""
+
+
+@pytest.mark.parametrize(
+    "tags",
+    [
+        # Unclear or closed access is closed (the water rule); a stand for customers is not public.
+        {"amenity": "bicycle_repair_station", "access": "private"},
+        {"amenity": "bicycle_repair_station", "access": "customers"},
+        {"amenity": "bicycle_repair_station", "disused": "yes"},
+        {"disused:amenity": "bicycle_repair_station"},
+    ],
+)
+def test_a_repair_stand_that_is_not_public_is_left_out(tags):
+    assert mod.classify("n1", tags, *IN) is None
+
+
+def test_a_bike_shop_needs_a_name_and_takes_customers():
+    shop = mod.classify(
+        "n1",
+        {
+            "shop": "bicycle",
+            "name": "Spokes  Etc",
+            "opening_hours": "Mo-Sa 10:00-19:00",
+            "website": "https://spokes.example",
+            "access": "customers",
+        },
+        *IN,
+    )
+    assert shop.shop and shop.name == "Spokes Etc" and shop.website == "https://spokes.example"
+    assert shop.water is None and shop.toilet is None and shop.repair is None
+    assert mod.classify("n2", {"shop": "bicycle"}, *IN) is None
+    assert mod.classify("n3", {"shop": "bicycle", "name": "X", "access": "private"}, *IN) is None
+    assert mod.classify("n4", {"shop": "bicycle", "name": "X", "disused": "yes"}, *IN) is None
+    assert mod.classify("n5", {"shop": "bicycle", "brand": "Trek"}, *IN).name == "Trek"
+
+
+def test_a_shop_mapped_twice_is_one():
+    node = mod.Amenity("n5", -77.0, 38.9, None, None, name="Bike Lane", shop=True)
+    way = mod.Amenity(
+        "w6", -77.0002, 38.9001, None, None, name="bike lane", hours="Mo 10:00-18:00", shop=True
+    )
+    other = mod.Amenity("n7", -77.0, 38.95, None, None, name="Bike Lane", shop=True)
+    out = {a.osm: a for a in mod.merge_shops([node, way, other])}
+    assert set(out) == {"w6", "n7"} and out["w6"].hours == "Mo 10:00-18:00"
+
+
+REPAIR_OSM = """<?xml version="1.0" encoding="UTF-8"?>
+<osm version="0.6" generator="test">
+ <node id="1" version="1" lat="38.90" lon="-77.00">
+  <tag k="amenity" v="bicycle_repair_station"/><tag k="service:bicycle:pump" v="yes"/>
+ </node>
+ <node id="2" version="1" lat="38.91" lon="-77.00">
+  <tag k="shop" v="bicycle"/><tag k="name" v="Corner Cycles"/>
+  <tag k="opening_hours" v="Tu-Su 10:00-18:00"/><tag k="website" v="https://cc.example"/>
+ </node>
+ <node id="3" version="1" lat="38.92" lon="-77.00">
+  <tag k="amenity" v="bicycle_repair_station"/><tag k="access" v="private"/>
+ </node>
+</osm>
+"""
+
+
+def test_an_extract_gives_stands_and_shops(tmp_path, capsys):
+    pytest.importorskip("osmium")
+    src = tmp_path / "tiny.osm"
+    src.write_text(REPAIR_OSM)
+    out = tmp_path / "water-restrooms.json"
+    empty = tmp_path / "throne.json"
+    empty.write_text('{"units": []}')
+    assert mod.main(["--pbf", str(src), "--out", str(out), "--throne", str(empty)]) == 0
+    assert json.loads(out.read_text())["points"] == [
+        {"id": "n1", "x": -77.0, "y": 38.9, "rs": "p"},
+        {
+            "id": "n2",
+            "x": -77.0,
+            "y": 38.91,
+            "n": "Corner Cycles",
+            "h": "Tu-Su 10:00-18:00",
+            "bs": 1,
+            "web": "https://cc.example",
+        },
+    ]
+    assert "bike repair stands 1; bike shops 1" in capsys.readouterr().out
+
+
+def test_throne_only_keeps_stands_and_shops(tmp_path):
+    out = tmp_path / "water-restrooms.json"
+    doc = mod.document(
+        [
+            mod.Amenity("n1", -77.0, 38.9, None, None, repair="ptc", fee="no"),
+            mod.Amenity(
+                "n2", -77.0, 38.91, None, None, name="S", shop=True, website="https://s.example"
+            ),
+        ]
+    )
+    mod.write_document(doc, out)
+    empty = tmp_path / "throne.json"
+    empty.write_text('{"units": []}')
+    assert mod.main(["--throne-only", "--out", str(out), "--throne", str(empty)]) == 0
+    assert json.loads(out.read_text())["points"] == doc["points"]

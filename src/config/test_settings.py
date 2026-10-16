@@ -1,4 +1,4 @@
-"""The production settings, with the one secret the suite has to supply itself.
+"""The production settings, with the two secrets the suite has to supply itself.
 
 `config.settings` refuses to import without `KEY_ENCRYPTION_KEY`: it is what
 keys every ban tombstone, and a default in the settings module would be a
@@ -21,5 +21,7 @@ from __future__ import annotations
 import os
 
 os.environ.setdefault("KEY_ENCRYPTION_KEY", "test-key-encryption-key")
+# Required outside DEBUG for the same reason, and supplied the same way.
+os.environ.setdefault("DJANGO_SECRET_KEY", "test-django-secret-key")
 
 from config.settings import *  # noqa: E402,F403

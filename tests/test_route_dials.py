@@ -26,7 +26,7 @@ from test_route_api import (
     trace_answer,
 )
 
-from core import presets, refine, routing
+from core import presets, refine, routing, segment_info
 from routemaker import ridetime
 
 # A route test plans a weekday ride unless it says otherwise: the weekend router
@@ -290,7 +290,7 @@ class TestFacilityBreakdown:
         with connection.cursor() as cursor:
             cursor.execute(f"ALTER TABLE {facility_segments}.segment DROP COLUMN car_free_when")
             cursor.execute(f"ALTER TABLE {facility_segments}.segment DROP COLUMN facility")
-        monkeypatch.setattr(routing, "_facility_columns_seen", False)
+        segment_info.forget_columns()
         router(standard_router())
         body = post(client, good_body()).json()
         assert body["facility_m"]["unknown"] == pytest.approx(sum(body["stress_m"].values()))
@@ -892,7 +892,7 @@ class TestTheStressAdjustmentsARouteUses:
             cursor.execute(
                 f"ALTER TABLE {facility_segments}.segment DROP COLUMN stress_adjustment_display"
             )
-        monkeypatch.setattr(routing, "_adjustment_columns_seen", False)
+        segment_info.forget_columns()
         router(standard_router())
         assert post(client, good_body()).json()["stress_adjustments"] == []
 
@@ -1534,21 +1534,47 @@ def test_a_hung_weekend_router_is_asked_once_on_a_ride_with_alternatives(
     assert weekend_calls == [(True, routing.WEEKEND_TIMEOUT_S)]
 
 
+def classified_as(monkeypatch, *readings: dict) -> None:
+    """Each trip traced in turn (one leg each) is one piece per entry of its reading, metres
+    by stress key; "3.5" is a half step above LTS 3."""
+    pending = iter(readings)
+    keys: dict[int, str] = {}
+
+    def pieces(trace):
+        out = []
+        for key, metres in next(pending).items():
+            keys[len(keys)] = key
+            out.append(routing.Piece(len(keys) - 1, 0.0, 0.0, metres))
+        return out
+
+    def classify(pieces, when, roadway_only=False):
+        return [
+            routing.PieceClass(keys[p.way_id][0], "none", half=keys[p.way_id].endswith(".5"))
+            for p in pieces
+        ]
+
+    monkeypatch.setattr(routing, "pieces_of_trace", pieces)
+    monkeypatch.setattr(routing, "classify", classify)
+
+
 def test_exposure_weights_lts_4_twice_and_tier_5_three_times(monkeypatch):
     """R2, R3: the exposure the guards compare is LTS 3 + 2 x LTS 4 + 3 x tier 5
     (and the LTS 4 and Avoid metres, for the hold)."""
     monkeypatch.setattr(routing, "trace_leg", lambda *args: {"edges": []})
-    monkeypatch.setattr(
-        routing,
-        "breakdown",
-        lambda pieces, when, roadway_only=False: (
-            {"1": 1000.0, "2": 1000.0, "3": 100.0, "4": 10.0, "5": 1.0, "unknown": 0.0},
-            {},
-        ),
-    )
+    classified_as(monkeypatch, {"1": 1000.0, "2": 1000.0, "3": 100.0, "4": 10.0, "5": 1.0})
     trip = _trip(VERTICES, 2.0, FLAT)
     deadline = routing.Deadline(routing.clock() + 30, 10)
     assert routing._exposure("standard", {}, trip, "weekday_rush", deadline) == (123.0, 11.0)
+
+
+def test_exposure_counts_a_half_step_at_its_midpoint_as_the_calm_search_does(monkeypatch):
+    # Review RL-7: a 3.5 road read as a plain 3 in the hills guards.
+    monkeypatch.setattr(routing, "trace_leg", lambda *args: {"edges": []})
+    classified_as(monkeypatch, {"3": 100.0, "3.5": 100.0})
+    trip = _trip(VERTICES, 2.0, FLAT)
+    deadline = routing.Deadline(routing.clock() + 30, 10)
+    # 100 x 1, and 100 at the midpoint of LTS 3 and 4 (1.5); half of the 3.5 is LTS 4.
+    assert routing._exposure("standard", {}, trip, "weekday_rush", deadline) == (250.0, 50.0)
 
 
 def test_an_untraceable_leg_has_no_exposure_at_all(monkeypatch):
@@ -1561,11 +1587,6 @@ def test_an_untraceable_leg_has_no_exposure_at_all(monkeypatch):
         return None if len(calls) == 1 else {"edges": []}
 
     monkeypatch.setattr(routing, "trace_leg", trace)
-    monkeypatch.setattr(
-        routing,
-        "breakdown",
-        lambda pieces, when, roadway_only=False: (dict.fromkeys("12345", 0.0), {}),
-    )
     trip = route_answer([(VERTICES, 1.0, FLAT), (VERTICES, 1.0, FLAT)])["trip"]
     deadline = routing.Deadline(routing.clock() + 30, 10)
     assert routing._exposure("standard", {}, trip, "weekday_rush", deadline) is None
@@ -1617,17 +1638,8 @@ class TestTheHillsChoiceUsesThePlansExposure:
 
     def stress(self, monkeypatch, own, alternative):
         """Each trip's metres by tier: `own` for the first traced, then `alternative`."""
-        readings = iter([own, alternative])
         monkeypatch.setattr(routing, "_trace", lambda *args: {"edges": []})
-        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace: [])
-        monkeypatch.setattr(
-            routing,
-            "breakdown",
-            lambda pieces, when, roadway_only=False: (
-                {"1": 0.0, "2": 0.0, "3": 0.0, "4": 0.0, "5": 0.0, "unknown": 0.0} | next(readings),
-                {},
-            ),
-        )
+        classified_as(monkeypatch, own, alternative)
 
     def test_the_exposure_is_the_plans_weights_and_the_lts4_metres(self, monkeypatch):
         self.stress(monkeypatch, {"3": 100.0, "4": 10.0, "5": 1.0}, {})
@@ -2061,11 +2073,14 @@ class TestStressSpansThroughThePlan:
         trace = trace_answer(VERTICES, [(101, 0, 4, 2.2)])
         calls = []
 
+        first_shape = route_answer(legs)["trip"]["legs"][0]["shape"]
+
         def transport(url, payload, timeout):
             if url.endswith("/route"):
                 return route_answer(legs)
             calls.append(payload["encoded_polyline"])
-            if len(calls) > 1:
+            # By the leg asked about, not the order: the router pool traces legs in any order.
+            if payload["encoded_polyline"] != first_shape:
                 raise routing.RouterRefused(400, 444, "no")
             return trace
 

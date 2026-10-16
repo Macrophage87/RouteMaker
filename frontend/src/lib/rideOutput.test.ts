@@ -5,13 +5,19 @@ import assert from "node:assert/strict";
 import {
   Announcer,
   DEFAULT_PREFS,
+  HEADING_UP_KEY,
   POLITE_GAP_MS,
   RIDE_PREFS_KEY,
   ScreenWake,
   Voice,
+  WAKE_LOST,
+  WAKE_REASKS,
+  WAKE_UNAVAILABLE,
+  readHeadingUp,
   readRidePrefs,
   toScreenReader,
   toVoice,
+  writeHeadingUp,
   writeRidePrefs,
   type Said,
   type SpeechEnv,
@@ -36,6 +42,21 @@ test("prefs: defaults, a round trip, and junk ignored", () => {
   const throwing = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } };
   assert.deepEqual(readRidePrefs(throwing), DEFAULT_PREFS);
   assert.doesNotThrow(() => writeRidePrefs(DEFAULT_PREFS, throwing));
+});
+
+test("track-up: on by default, the switch's choice kept on this device (Go riding fixes item 1)", () => {
+  assert.equal(readHeadingUp(memoryStore()), true);
+  assert.equal(readHeadingUp(null), true);
+  const store = memoryStore();
+  writeHeadingUp(false, store);
+  assert.equal(store.data[HEADING_UP_KEY], "0");
+  assert.equal(readHeadingUp(store), false);
+  writeHeadingUp(true, store);
+  assert.equal(readHeadingUp(store), true);
+  assert.equal(readHeadingUp(memoryStore({ [HEADING_UP_KEY]: "junk" })), true);
+  const throwing = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } };
+  assert.equal(readHeadingUp(throwing), true);
+  assert.doesNotThrow(() => writeHeadingUp(false, throwing));
 });
 
 test("outputs: which channel each choice uses", () => {
@@ -204,6 +225,106 @@ test("ScreenWake: held, re-held after a hide, let go; unsupported and refused sa
   assert.deepEqual(log, ["request", "request", "release"]);
   assert.equal(await new ScreenWake({ request: undefined }).hold(), false);
   assert.equal(await new ScreenWake({ request: async () => { throw new Error("NotAllowed"); } }).hold(), false);
+});
+
+test("ScreenWake: a lock the browser lets go mid-ride is asked again, and whether it came back is told (review RIDE-8)", async () => {
+  let visible = true;
+  let refuse = false;
+  const releases: Array<() => void> = [];
+  let requests = 0;
+  const wake = new ScreenWake({
+    request: async () => {
+      requests += 1;
+      if (refuse) throw new Error("NotAllowed");
+      const sentinel = {
+        released: false,
+        release: async () => void (sentinel.released = true),
+        // The browser's release: the sentinel is released, then its listeners hear it.
+        addEventListener: (_type: "release", listener: () => void) =>
+          releases.push(() => {
+            sentinel.released = true;
+            listener();
+          }),
+      };
+      return sentinel;
+    },
+    visible: () => visible,
+  });
+  const told: boolean[] = [];
+  wake.whenLost((held) => told.push(held));
+  assert.equal(await wake.hold(), true);
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  // Let go in front (a low battery): asked again at once.
+  releases.at(-1)!();
+  await settle();
+  assert.equal(requests, 2);
+  assert.deepEqual(told, [true]);
+  // Refused this time: told, so the page can say the screen may sleep.
+  refuse = true;
+  releases.at(-1)!();
+  await settle();
+  assert.deepEqual(told, [true, false]);
+  // A release while hidden waits for the page to show (again()); one after End ride asks nothing.
+  refuse = false;
+  await wake.hold();
+  visible = false;
+  const before = requests;
+  releases.at(-1)!();
+  await settle();
+  assert.equal(requests, before);
+  visible = true;
+  await wake.letGo();
+  releases.at(-1)!();
+  await settle();
+  assert.equal(requests, before);
+});
+
+test("ScreenWake: refused after a release says the screen may now turn off; never held says the browser cannot (review RIDE-8)", async () => {
+  assert.equal(new ScreenWake({ request: undefined }).noteFor(false), WAKE_UNAVAILABLE);
+  let refuse = false;
+  let release = () => {};
+  let requests = 0;
+  const wake = new ScreenWake({
+    request: async () => {
+      requests += 1;
+      if (refuse) throw new Error("NotAllowed");
+      const sentinel = {
+        released: false,
+        release: async () => void (sentinel.released = true),
+        addEventListener: (_type: "release", listener: () => void) => {
+          release = () => {
+            sentinel.released = true;
+            listener();
+          };
+        },
+      };
+      return sentinel;
+    },
+    visible: () => true,
+  });
+  const told: boolean[] = [];
+  wake.whenLost((held) => told.push(held));
+  assert.equal(await wake.hold(), true);
+  assert.equal(wake.noteFor(true), "");
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  // A browser that keeps letting go: asked again WAKE_REASKS times, then no more, told as gone.
+  for (let i = 0; i < WAKE_REASKS; i += 1) {
+    release();
+    await settle();
+  }
+  assert.equal(requests, 1 + WAKE_REASKS);
+  assert.deepEqual(told, Array(WAKE_REASKS).fill(true));
+  release();
+  await settle();
+  assert.equal(requests, 1 + WAKE_REASKS, "not asked a fourth time");
+  assert.deepEqual(told.at(-1), false);
+  assert.equal(wake.noteFor(false), WAKE_LOST);
+  assert.match(WAKE_LOST, /may now turn off/);
+  assert.equal(WAKE_REASKS, 3);
+  // Shown again later, a refusal is still told as let go, not as a browser that cannot.
+  refuse = true;
+  assert.equal(await wake.again(), false);
+  assert.equal(wake.noteFor(false), WAKE_LOST);
 });
 
 test("Announcer: a note goes at once and keeps a waiting cue, which goes after its gap", () => {

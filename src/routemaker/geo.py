@@ -71,11 +71,6 @@ def cumulative_distances(points: Sequence[Point]) -> list[float]:
     return out
 
 
-def total_distance(points: Sequence[Point]) -> float:
-    """Total along-route distance in metres."""
-    return cumulative_distances(points)[-1] if len(points) > 1 else 0.0
-
-
 def project_onto_segment(point: Point, a: Point, b: Point) -> tuple[float, float]:
     """Nearest point on segment a-b to `point`, as (distance_m, fraction).
 

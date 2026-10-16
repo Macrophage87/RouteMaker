@@ -24,8 +24,10 @@ import {
 } from "./waterRestrooms.ts";
 
 export const WATER_HEADING = "Water and restrooms";
+/** The layer's switch and section (v0.7.0: the repair stands are drawn with it; no new switch). */
+export const WATER_SWITCH = "Water, restrooms and repair stands";
 /** The section's one line in Layers; WATER_HELP is by the legend. */
-export const WATER_HINT = "Public fountains, taps and restrooms, from street zoom.";
+export const WATER_HINT = "Public fountains, taps, restrooms and bike repair stands, from street zoom.";
 export const WATER_LOADING = "Loading water and restrooms…";
 export const WATER_UNAVAILABLE = "Water and restrooms are unavailable for now. The map and your route are not affected.";
 export const WATER_BASIC_SWITCH = "Portable, pit and composting toilets";
@@ -160,10 +162,10 @@ export function WaterSection({ prefs, onChange, status }: SectionProps): ReactEl
     LayerSection,
     {
       id: "water",
-      title: WATER_HEADING,
+      title: WATER_SWITCH,
       headingId: "water-heading",
       className: "water-section",
-      layers: [{ key: "water", label: WATER_HEADING, on: prefs.on }],
+      layers: [{ key: "water", label: WATER_SWITCH, on: prefs.on }],
       onLayers: (next: Record<string, boolean>) => onChange({ ...prefs, on: next.water }),
       status: waterStatusText(prefs.on, status),
     },

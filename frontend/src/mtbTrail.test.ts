@@ -133,8 +133,8 @@ test("a future MTB mode (`routableMtb`) draws them as any other trail, and the n
   assert.equal(drawsWith(routable[MTB_ID], MTB_ID, trail), false);
 });
 
-test("the unrated line (v0.6.0, the owner's report of 2026-10-12): 3 px grey dashes on a solid white edge over the shared ticks, no rails, from zoom 14, under every routable layer", () => {
-  assert.equal(MTB_MIN_ZOOM, STRESS_ZOOMS.quiet, "where the tiles carry them, as before");
+test("the unrated line (v0.6.0, the owner's report of 2026-10-12): 3 px grey dashes on a solid white edge over the shared ticks, no rails, from zoom 12, under every routable layer", () => {
+  assert.equal(MTB_MIN_ZOOM, STRESS_ZOOMS.ride, "where the tiles carry them: the ride layer since v0.7.0");
   for (const strong of [false, true]) {
     try {
       setAccessibility(strong, { remember: false });

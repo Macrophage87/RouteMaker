@@ -18,7 +18,7 @@ export type PresetId =
   | "cargo"
   | "ebike"
   | "bikeshare"
-  | "kids"
+  | "novice"
   | "bike-transit"
   | "bikeshare-transit"
   | "rebalance";
@@ -114,12 +114,13 @@ export const PRESETS: readonly PresetOption[] = [
     summary: "Walk to a dock, ride a shared bike, walk on.",
   },
   {
-    // FOLLOWUP-KIDS-PRESET (OWNER-DECISIONS 240 (B)): children on their own bikes.
-    id: "kids",
-    label: "Riding with kids",
+    // v0.7.0, Novice and Nervous (Stephen 2026-10-13), in Riding with kids' place (old links open it: PRESET_ALIASES).
+    id: "novice",
+    label: "Novice and Nervous",
+    keywords: "beginner kids children calm",
     description:
-      "Children on their own bikes: paths and the quietest streets strongly preferred, other quiet streets only when they save a real detour, busy streets avoided hard. Gentler hills, and times at a child's pace.",
-    summary: "Paths and the quietest streets, for kids.",
+      "For riders new to traffic: every road is treated as one step busier than it is, so busy streets are avoided hard, with short detours only. Where a busy street is the only way, transit or bikeshare is offered too.",
+    summary: "Busy streets avoided hard, for new riders.",
   },
   {
     // TRANSIT-ASSIST (Stephen, 2026-10-12): transit is two commuting ride types, chosen like any other.
@@ -177,8 +178,18 @@ export function isPreset(value: unknown): value is PresetId {
   return typeof value === "string" && PRESETS.some((p) => p.id === value);
 }
 
+/** Old ride type ids that open a ride type now named otherwise (links, saved settings, GPX, My Go). */
+export const PRESET_ALIASES: Readonly<Record<string, PresetId>> = { kids: "novice" };
+
+/** A ride type id, an old one read as the ride type it became; null when it is neither. */
+export function resolvePreset(value: unknown): PresetId | null {
+  if (isPreset(value)) return value;
+  if (typeof value === "string" && Object.hasOwn(PRESET_ALIASES, value)) return PRESET_ALIASES[value];
+  return null;
+}
+
 export function parsePreset(value: unknown): PresetId {
-  return isPreset(value) ? value : DEFAULT_PRESET;
+  return resolvePreset(value) ?? DEFAULT_PRESET;
 }
 
 /** The name as it shows (it may carry emoji: show it with PresetName, which hides them from a screen reader). */

@@ -508,11 +508,15 @@ if [ "$update_data" = 1 ]; then
 	# stress_tile_cache is emptied in the same transaction: its rows are keyed on the oid of the
 	# live table this replaces, so none could be served again (the runbook predraws afterwards).
 	# stress_edit is emptied with override (it points at the overrides it replaced); the beta's own
-	# stress suggestions are kept and let go of the edit an approval made first. Both are emptied
+	# stress suggestions are kept and let go of the edit an approval made first, and so are Review's
+	# rulings (review_ruling, the beta's own) of their edit and access override: a ruling keeps its
+	# road, decision, level, reason, author and time, so its record and audit line still read
+	# whole, and an undo inside its window then only marks it undone (what it changed is the
+	# bundle's now). Both are emptied
 	# with DELETE, not TRUNCATE: a TRUNCATE refuses a table another table's foreign key points at,
 	# even with no row pointing (stress_suggestion.edit_id, migration 0016), and a DELETE does not.
 	# shellcheck disable=SC2016
-	bc exec -T postgis sh -c '{ echo "UPDATE public.stress_suggestion SET edit_id = NULL WHERE edit_id IS NOT NULL;"; echo "DELETE FROM public.stress_edit;"; echo "DELETE FROM public.override;"; echo "TRUNCATE public.stress_tile_cache;"; pg_restore --no-owner --no-privileges --clean --if-exists -L /tmp/beta.use -f - || echo "SELECT pg_restore_failed_so_this_rolls_back();"; cat /tmp/beta-blanked.sql || echo "SELECT blanked_sql_missing_so_this_rolls_back();"; } | psql -U "$1" -d "$2" -q -1 -v ON_ERROR_STOP=1 >/dev/null' sh "$pguser" "$pgdatabase" <"$dump" ||
+	bc exec -T postgis sh -c '{ echo "UPDATE public.stress_suggestion SET edit_id = NULL WHERE edit_id IS NOT NULL;"; echo "UPDATE public.review_ruling SET edit_id = NULL WHERE edit_id IS NOT NULL;"; echo "UPDATE public.review_ruling SET access_override_id = NULL WHERE access_override_id IS NOT NULL;"; echo "DELETE FROM public.stress_edit;"; echo "DELETE FROM public.override;"; echo "TRUNCATE public.stress_tile_cache;"; pg_restore --no-owner --no-privileges --clean --if-exists -L /tmp/beta.use -f - || echo "SELECT pg_restore_failed_so_this_rolls_back();"; cat /tmp/beta-blanked.sql || echo "SELECT blanked_sql_missing_so_this_rolls_back();"; } | psql -U "$1" -d "$2" -q -1 -v ON_ERROR_STOP=1 >/dev/null' sh "$pguser" "$pgdatabase" <"$dump" ||
 		{ bc exec -T postgis rm -f /tmp/beta.use /tmp/beta-blanked.sql </dev/null; die "the update failed and was rolled back (above); the database is as it was"; }
 	bc exec -T postgis rm -f /tmp/beta.use /tmp/beta-blanked.sql </dev/null
 	psql_q "analyze" >/dev/null

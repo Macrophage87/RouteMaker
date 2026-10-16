@@ -7,13 +7,15 @@
  *
  * Plan keeps the full panel; its map has Food and Water chips (PlanMapChips), where Go has place chips.
  */
-import { useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../Icon.tsx";
 import { PlaceSearch } from "../PlaceSearch.tsx";
 import type { LonLat } from "../lib/geo.ts";
 import type { GeoGate, Place, PlaceChoice } from "../lib/geocode.ts";
-import { MODE_LABEL, MODE_SWITCH_HINT, MODE_SWITCH_NAME, type AppMode } from "../lib/appMode.ts";
-import { HOME_NOT_SET } from "../lib/myGo.ts";
+import { MODE_LABEL, MODE_SWITCH_HINT, MODE_SWITCH_HINT_REVIEW, MODE_SWITCH_NAME, type AppMode } from "../lib/appMode.ts";
+import { HOME_NOT_SET, type Home } from "../lib/myGo.ts";
+import { CHANGE_HOME_TEXT, CLEAR_HOME_TEXT, HOME_PICK_LINE, PICK_ON_MAP_TEXT, homeClosesSheet, homeName, homeSetKey } from "../lib/homeSet.ts";
+import { BEST_ORDER_LABEL } from "../lib/stopOrder.ts";
 
 export type GoSheetSize = "peek" | "half" | "full";
 
@@ -24,18 +26,31 @@ export function nextSheetSize(size: GoSheetSize): GoSheetSize {
 
 const SIZE_SAID: Record<GoSheetSize, string> = { peek: "small", half: "half height", full: "full height" };
 
-/** Go or Plan: two toggle buttons, the pressed one the view in use (the owner's choice 1: either view can switch). */
-export function ModeSwitch({ mode, onChange, className = "" }: { mode: AppMode; onChange: (next: AppMode) => void; className?: string }) {
+/**
+ * Go or Plan: two toggle buttons, the pressed one the view in use (the owner's choice 1: either view can switch). For
+ * someone who may review, the panel's switch has a third, Review (lib/appMode.ts switchModes); Go's own bar keeps two.
+ */
+export function ModeSwitch({
+  mode,
+  onChange,
+  className = "",
+  modes = ["go", "plan"],
+}: {
+  mode: AppMode;
+  onChange: (next: AppMode) => void;
+  className?: string;
+  modes?: readonly AppMode[];
+}) {
   const hintId = useId();
   return (
     <div className={`mode-switch ${className}`.trim()} role="group" aria-label={MODE_SWITCH_NAME} aria-describedby={hintId}>
-      {(["go", "plan"] as const).map((m) => (
+      {modes.map((m) => (
         <button key={m} type="button" className="mode-button" aria-pressed={mode === m} onClick={() => onChange(m)}>
           {MODE_LABEL[m]}
         </button>
       ))}
       <span id={hintId} hidden>
-        {MODE_SWITCH_HINT}
+        {modes.includes("review") ? MODE_SWITCH_HINT_REVIEW : MODE_SWITCH_HINT}
       </span>
     </div>
   );
@@ -98,13 +113,118 @@ export function GoTopBar({
 }
 
 export interface GoPlaces {
-  /** Signed in with a Home: the chip rides there. Else it opens My Go (and says why). */
+  /** With a Home (the account's, or this device's signed out): the chip rides there. Else it opens the Home sheet. */
   homeReady: boolean;
+  /** The Home there is, or null: the Home sheet shows it. */
+  home: Home | null;
+  /** The Home sheet's search picked a place. */
+  onHomePlace: (place: Place) => void;
+  onClearHome: () => void;
+  /** The Home sheet's "Pick on the map": the next tap on the map is Home (pressed again, it is not). */
+  homePicking: boolean;
+  onPickHome: () => void;
   signedIn: boolean;
   onHome: (chip: HTMLButtonElement) => void;
   onFood: (chip: HTMLButtonElement) => void;
   onWater: (chip: HTMLButtonElement) => void;
   onRestroom: (chip: HTMLButtonElement) => void;
+  /** Behind More (v0.7.0, the owner 2026-10-14: "Make sure that go stays clean"): the nearest repair stands and shops. */
+  onRepair: (chip: HTMLButtonElement) => void;
+  /** Behind More: the nearest places to see (Plan's Places to see, five of them, no filters). */
+  onSights: (chip: HTMLButtonElement) => void;
+}
+
+/**
+ * The Home sheet (lib/homeSet.ts): the place search, and in Go "Pick on the map"; with a Home, its name and Clear
+ * Home. One place to set, change and clear Home: Go's Home chip (no Home yet) or More's Change Home, and Settings.
+ * Nothing here takes the focus, except Clear Home's own when it goes with the Home: the search box then has it.
+ */
+export function HomeSetter({
+  home,
+  geoGate,
+  searchBias,
+  onPlace,
+  onClear,
+  picking = false,
+  onPickOnMap,
+}: {
+  home: Home | null;
+  geoGate: GeoGate;
+  searchBias: () => LonLat | undefined;
+  onPlace: (place: Place) => void;
+  onClear: () => void;
+  picking?: boolean;
+  /** Go only: the map way (Settings covers the map). */
+  onPickOnMap?: () => void;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  return (
+    <div className="home-setter" ref={box}>
+      {home && (
+        <p className="home-now">
+          <strong>Home: </strong>
+          {homeName(home)}
+        </p>
+      )}
+      <PlaceSearch variant="home" pointCount={0} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place) => onPlace(place)} />
+      <div className="actions home-actions">
+        {onPickOnMap && (
+          <button type="button" className="secondary" aria-pressed={picking} onClick={onPickOnMap}>
+            <Icon name="pin" size={18} />
+            {PICK_ON_MAP_TEXT}
+          </button>
+        )}
+        {home && (
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              onClear();
+              // The button goes with the Home: the focus goes to the search box beside it, not to the page.
+              box.current?.querySelector<HTMLInputElement>("input")?.focus();
+            }}
+          >
+            {CLEAR_HOME_TEXT}
+          </button>
+        )}
+      </div>
+      {picking && <p className="hint home-pick-line">{HOME_PICK_LINE}</p>}
+    </div>
+  );
+}
+
+/**
+ * Go's "Add a stop" (v0.7.0, "Keep adding stops by search"): one field in the route sheet, under Start; a
+ * place picked is a stop where it adds the least distance, routed at once (Undo removes it). Best order sits
+ * beside it with two or more stops; it is the field's only company, so Go stays one control per feature.
+ */
+export function GoAddStop({
+  geoGate,
+  searchBias,
+  onPick,
+  full,
+  orderShown,
+  ordering,
+  onBestOrder,
+}: {
+  geoGate: GeoGate;
+  searchBias: () => LonLat | undefined;
+  onPick: (place: Place) => void;
+  full: boolean;
+  orderShown: boolean;
+  ordering: boolean;
+  onBestOrder: () => void;
+}) {
+  return (
+    <div className="go-add-stop">
+      <PlaceSearch variant="stop" pointCount={2} full={full} gate={geoGate} bias={searchBias} onPick={(place: Place) => onPick(place)} />
+      {orderShown && (
+        <button type="button" className="secondary" onClick={onBestOrder} aria-disabled={ordering ? true : undefined}>
+          {BEST_ORDER_LABEL}
+        </button>
+      )}
+    </div>
+  );
 }
 
 /** Go's sheet: the handle, Where to?, the place chips, the ride types, the notice and the route. */
@@ -115,6 +235,7 @@ export function GoSheet({
   geoGate,
   searchBias,
   onPick,
+  onTopPlace,
   places,
   rides,
   notice,
@@ -129,6 +250,8 @@ export function GoSheet({
   geoGate: GeoGate;
   searchBias: () => LonLat | undefined;
   onPick: (place: Place) => void;
+  /** The top result of Where to? while the rider looks at it: Go starts routing there early (v0.7.0, "Faster routing"). */
+  onTopPlace?: (place: Place) => void;
   places: GoPlaces;
   /** The ride type chips (RideChips). */
   rides: ReactNode;
@@ -143,8 +266,28 @@ export function GoSheet({
   onStartPick: (place: Place) => void;
 }) {
   const homeHint = useId();
+  const homeSheetId = useId();
+  // The Home sheet: the Home chip opens it while there is no Home, More's Change Home once there is one.
+  const [homeOpen, setHomeOpen] = useState(false);
+  const homeShown = homeOpen || places.homePicking;
+  // Home set from the sheet (its search or the map): the sheet closes and the focus goes back to the Home chip,
+  // which now rides Home (review F3). A Home cleared keeps the sheet open, for the next one.
+  const homeChip = useRef<HTMLButtonElement>(null);
+  const homeKey = homeSetKey(places.home);
+  const lastHomeKey = useRef(homeKey);
+  useEffect(() => {
+    const was = lastHomeKey.current;
+    lastHomeKey.current = homeKey;
+    if (!homeClosesSheet(was, homeKey, homeOpen)) return;
+    setHomeOpen(false);
+    homeChip.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per Home set, not per render
+  }, [homeKey]);
   const startBoxId = useId();
+  const moreId = useId();
   const [startOpen, setStartOpen] = useState(false);
+  // More: one chip at the row's end that shows the rest (Repair, Sights); later additions go here, not on the row.
+  const [moreOpen, setMoreOpen] = useState(false);
   const startShown = startOpen || startMissing;
   const next = nextSheetSize(size);
   const routeShown = route !== null;
@@ -186,13 +329,16 @@ export function GoSheet({
             />
           </div>
         )}
-        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place, _choice: PlaceChoice) => onPick(place)} />
+        <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place, _choice: PlaceChoice) => onPick(place)} onTopPlace={onTopPlace} />
         <div className="chip-row go-places" role="group" aria-label="Places">
           <button
+            ref={homeChip}
             type="button"
             className="chip place-chip"
-            onClick={(event) => places.onHome(event.currentTarget)}
-            aria-describedby={places.homeReady ? undefined : homeHint}
+            onClick={(event) => (places.homeReady ? places.onHome(event.currentTarget) : setHomeOpen(!homeOpen))}
+            aria-expanded={places.homeReady ? undefined : homeShown}
+            aria-controls={places.homeReady ? undefined : homeSheetId}
+            aria-describedby={places.homeReady || homeShown ? undefined : homeHint}
           >
             <Icon name="home" size={18} />
             Home
@@ -209,8 +355,42 @@ export function GoSheet({
             <Icon name="wc" size={18} />
             Restroom
           </button>
+          <button type="button" className="chip place-chip go-more" aria-expanded={moreOpen} aria-controls={moreId} onClick={() => setMoreOpen(!moreOpen)}>
+            <Icon name="more" size={18} />
+            More
+          </button>
         </div>
-        {!places.homeReady && (
+        <div id={moreId} className="chip-row go-places go-more-row" role="group" aria-label="More places" hidden={!moreOpen}>
+          <button type="button" className="chip place-chip" onClick={(event) => places.onRepair(event.currentTarget)}>
+            <Icon name="wrench" size={18} />
+            Repair
+          </button>
+          <button type="button" className="chip place-chip" onClick={(event) => places.onSights(event.currentTarget)}>
+            <Icon name="camera" size={18} />
+            Sights
+          </button>
+          {places.homeReady && (
+            <button type="button" className="chip place-chip" aria-expanded={homeShown} aria-controls={homeSheetId} onClick={() => setHomeOpen(!homeOpen)}>
+              <Icon name="home" size={18} />
+              {CHANGE_HOME_TEXT}
+            </button>
+          )}
+        </div>
+        <div id={homeSheetId} className="go-home-sheet" role="group" aria-label="Home" hidden={!homeShown}>
+          {homeShown && (
+            <HomeSetter
+              home={places.home}
+              geoGate={geoGate}
+              searchBias={searchBias}
+              onPlace={places.onHomePlace}
+              onClear={places.onClearHome}
+              picking={places.homePicking}
+              onPickOnMap={places.onPickHome}
+            />
+          )}
+        </div>
+        {/* One short line, and only while there is no Home and its sheet is shut. */}
+        {!places.homeReady && !homeShown && (
           <p id={homeHint} className="hint go-home-hint">
             {HOME_NOT_SET}
           </p>
@@ -226,8 +406,16 @@ export function GoSheet({
   );
 }
 
-/** Plan's map chips (the mockup's Plan view): Food and Water open their sheets in the panel. */
-export function PlanMapChips({ onFood, onWater }: { onFood: (chip: HTMLButtonElement) => void; onWater: (chip: HTMLButtonElement) => void }) {
+/** Plan's map chips (the mockup's Plan view): Food, Water and Places to see open their sheets in the panel. */
+export function PlanMapChips({
+  onFood,
+  onWater,
+  onPlaces,
+}: {
+  onFood: (chip: HTMLButtonElement) => void;
+  onWater: (chip: HTMLButtonElement) => void;
+  onPlaces: (chip: HTMLButtonElement) => void;
+}) {
   return (
     <div className="map-chips" role="group" aria-label="Find on the map">
       <button type="button" className="chip map-chip" onClick={(event) => onFood(event.currentTarget)}>
@@ -237,6 +425,10 @@ export function PlanMapChips({ onFood, onWater }: { onFood: (chip: HTMLButtonEle
       <button type="button" className="chip map-chip" onClick={(event) => onWater(event.currentTarget)}>
         <Icon name="water" size={18} />
         Water
+      </button>
+      <button type="button" className="chip map-chip" onClick={(event) => onPlaces(event.currentTarget)}>
+        <Icon name="camera" size={18} />
+        Places to see
       </button>
     </div>
   );

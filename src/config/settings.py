@@ -24,8 +24,18 @@ from pipeline.source import GEOFABRIK_EXTRACTS
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "insecure-development-key")
 DEBUG = os.environ.get("DJANGO_DEBUG", "") == "1"
+# Signs the session cookies and the OAuth state. The development default is a string in
+# this repository, so outside DEBUG an unset or empty value is a process that does not
+# start, as KEY_ENCRYPTION_KEY is below.
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "")
+if not SECRET_KEY:
+    if not DEBUG:
+        raise ImproperlyConfigured(
+            "DJANGO_SECRET_KEY is required when DJANGO_DEBUG is not 1: it signs the "
+            "session cookies, and a default here would be a published key."
+        )
+    SECRET_KEY = "insecure-development-key"
 # Stripped, because `a, b` is how a person writes a list: unstripped, the
 # second entry was " b", which no Host header matches, so every request for b
 # was a 400. The api healthcheck in compose.yaml parses the same way.
@@ -123,12 +133,21 @@ ADMIN_PATH = os.environ.get("DJANGO_ADMIN_PATH", "internal-8f3a/")
 # commented out in .env.example.
 ADMIN_BASEMAP_TILE_URL = os.environ.get("ADMIN_BASEMAP_TILE_URL", "").strip()
 
+# DC 311's Open311 (GeoReport v2) key (v0.7.0 "Go riding fixes" item 3; core.dc311): with it,
+# Ride mode's 311 picks are sent to DC from the server; without it (the default) the sender is
+# off and a pick opens the phone's text app to 311, filled in. The owner requests the key from
+# DC and sets it in the deployment's environment file; it is never written anywhere else.
+DC311_API_KEY = os.environ.get("DC311_API_KEY", "").strip()
+
 # Everything with state in it lives on the separate data volume, so nothing
 # durable sits on the root volume and the code directory holds no data. The
 # scheduled tasks resolve their paths from here rather than from their own
 # environment lookups, so one variable moves all of them together.
 DATA_ROOT = Path(os.environ.get("DATA_ROOT", BASE_DIR / "data"))
 REBUILD_WORK_DIR = DATA_ROOT / "rebuild"
+# Ratings whose public use is pending (routemaker.agency_lts.PENDING_AGENCIES), for Review only
+# (core.stress_review.pending_ratings): kept on the data volume, never in the repository.
+REVIEW_PENDING_DIR = DATA_ROOT / "internal-only" / "review"
 REBUILD_SOURCE_PBF = DATA_ROOT / "extracts" / "source.osm.pbf"
 REBUILD_REFERENCE_DIR = DATA_ROOT / "reference"
 # The crossings fixture as the image carries it (the pipeline image copies
@@ -174,7 +193,20 @@ VALHALLA_CONFIG_DIR = BASE_DIR / "valhalla"
 # of Cecil County and the Eastern Shore, which the region does not include.
 # Havre de Grace, the easternmost town the amendment names, is at -76.09.
 # tests/test_source.py holds the tile set and the places both.
-COVERAGE_BBOX = (-78.0, 38.2, -76.02, 39.72)
+#
+# West is -78.05, not -78.0, since v0.7.0: West Virginia's Eastern Panhandle
+# (the owner, 2026-10-12, Martinsburg "Next release"; plans/v0.7.0-ideas.md:
+# "Widen coverage west edge 78.0 -> 78.05 W so all of Martinsburg is in").
+# Martinsburg's west side reaches about -78.02; Harpers Ferry, Shepherdstown and
+# Charles Town were already inside. What the wider box costs, all on the next
+# rebuild and the owner's PC (docs/DEVELOPMENT.md, "The coverage box"): the
+# elevation stage fetches the W079 column too (N38W079 and N39W079, about 26 MB
+# of HGT each), contours take the n39w079 and n40w079 cells, and the basemap,
+# Photon index, water/restroom/food layers and the stress tile pre-draw are
+# re-run over the new box. The box only says where the map may reach: West
+# Virginia's roads are in the map only once its Geofabrik extract is downloaded
+# with the others (`pipeline.source.GEOFABRIK_REGIONS`, which lists it since v0.7.0).
+COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
 
 # The coverage polygon itself, which `osmium extract --polygon` would take in
 # preference to the box. PLAN:13's region is a polygon and the box around it
@@ -264,6 +296,13 @@ def routing_concurrency(web_concurrency: str | None) -> int:
 
 ROUTING_CONCURRENCY = routing_concurrency(os.environ.get("WEB_CONCURRENCY"))
 
+# v0.7.0 "Faster routing": the router calls one routing slot may have in flight on its pool
+# (core.parallel; at 1 every call runs in turn), and how long a finished answer is kept in a
+# worker's memory (core.route_cache; 0 turns the cache off). The router sees at most
+# ROUTER_PARALLEL_CALLS + 1 calls per slot: the pool's threads and the request's own.
+ROUTER_PARALLEL_CALLS = max(1, int(os.environ.get("ROUTER_PARALLEL_CALLS", "3")))
+ROUTE_CACHE_TTL_S = max(0, int(os.environ.get("ROUTE_CACHE_TTL_S", "600")))
+
 
 # How many stress tiles the api may draw from the segment table at once; a
 # tile served from the cache (core.tile_cache) takes no slot. What routing's and
@@ -310,6 +349,19 @@ LONG_ROUTING_CONCURRENCY = 1
 # how many workers a stalled Photon can hold: two.
 PHOTON_URL = os.environ.get("PHOTON_URL", "http://photon:2322")
 PHOTON_TIMEOUT_S = 4.0
+
+# Live data keys (v0.7.0), set on the server by the owner; empty turns the feature off.
+# WMATA's developer key (core.wmata_live: next trains, incidents, elevator outages; the same
+# name the static GTFS fetch reads) and Mapillary's client token (core.street_photo: the road
+# panel's street photo). Both are used server-side only: never logged, never in a URL a
+# browser sees, never in a page.
+WMATA_API_KEY = os.environ.get("WMATA_API_KEY", "").strip()
+MAPILLARY_ACCESS_TOKEN = os.environ.get("MAPILLARY_ACCESS_TOKEN", "").strip()
+
+# Signed-out LTS suggestions (v0.7.0, core.signed_out_suggestions): a road's signed-out sends
+# show in the review list once this many agree. 1 shows every send (the owner, 2026-10-13: "I'll
+# review each until it gets larger"); set 2 when volume grows.
+SUGGEST_SIGNED_OUT_MIN_AGREE = max(1, int(os.environ.get("SUGGEST_SIGNED_OUT_MIN_AGREE", "1")))
 
 # The languages scripts/import_photon.sh imports names in, and so the only ones
 # a search may ask for; Photon falls back to the local name for the rest.
@@ -526,6 +578,14 @@ REBUILD_SENTINEL_MILITARY_MIN_CLOSED = {
 # footway, a track and a service road with no access tag of their own, in the
 # 2026-10-03 extract. One the extract no longer has is warned about.
 REBUILD_SENTINEL_SECURED_CLOSED_WAYS = (902479602, 1276271654, 6084740)
+# The Travilah quarry's haul roads (Rockville Crushed Stone, Montgomery County MD), which
+# VALIDATE_SEGMENTS requires closed to bicycles (`pipeline.run.assert_works_closures`; the
+# owner's report, 2026-10-12: "A marked climb appears to be a quarry, which isn't likely
+# open to the public."): nine ways tagged only `highway=track`, inside `landuse=quarry`,
+# with OSM ids from 1379220522 to 1379220572. Every highway way in that range the extract
+# has must carry `rm:no_bicycle=works`; fewer than nine present is warned about.
+REBUILD_SENTINEL_WORKS_CLOSED_RANGE = (1379220522, 1379220572)
+REBUILD_SENTINEL_WORKS_MIN_IN_RANGE = 9
 # The fewest ways VALIDATE_SEGMENTS accepts closed in each secured federal compound (by the
 # name `restricted_areas.SECURED_AREAS` files it under, or OSM's for one the tag rule
 # finds), about three quarters of the 2026-10-03 extract's count: an outline deleted
@@ -556,6 +616,12 @@ MASS_RIDE_DC_ENDED_REVERSIBLE_STREETS = frozenset({"CONNECTICUT AVE NW"})
 DISCORD_CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "")
 DISCORD_CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "")
 DISCORD_REDIRECT_URI = os.environ.get("DISCORD_REDIRECT_URI", "http://localhost:8000/auth/callback")
+
+# Mass Ride and Group Ride dots and alerts (core.ride_presence): shared between the api's
+# workers through this directory, which must be on a tmpfs (RAM; Docker gives every container
+# one at /dev/shm). Positions are never written to disk: a directory that is not a tmpfs is
+# refused and each worker keeps its own memory instead. Empty keeps them in process memory.
+RIDE_PRESENCE_DIR = "/dev/shm/routemaker-rides"
 
 # Keys a ban tombstone. A Discord id is a structured 64-bit value whose candidate
 # set any guild's member list resolves directly, so an unkeyed hash of one gives
@@ -810,6 +876,13 @@ SESSION_SAVE_EVERY_REQUEST = False
 CSRF_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SAMESITE = "Lax"
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+# The largest request body Django reads (v0.7.0): a saved route is up to 4 MB
+# (core.accounts.ROUTE_MAX_BYTES) and a shared one 2 MB (core.shared_routes.MAX_BYTES), so
+# Django's 2.5 MB default refused a long saved route as a 400 before the view's own cap. 5 MiB,
+# as the edge allows those paths (Caddyfile @routes_body, nginx's /api/(shared-routes|me)
+# location); every other path stays at 1 MiB at the edge. tests/test_beta_overlay.py holds the
+# three layers together.
+DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 X_FRAME_OPTIONS = "DENY"
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "same-origin"

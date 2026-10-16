@@ -6,6 +6,7 @@
 # docs/OPERATIONS.md, "Rebuilding on the cloud box" and "The launcher".
 #
 #   scripts/cloud/launch.sh [options] [RUN_URL]
+#   scripts/cloud/launch.sh [options] --attach RUN_URL
 #
 #   RUN_URL   s3://<bucket>/<prefix>/<run>; without it, the run's folder is made from
 #             --bucket, --prefix and --run. Nothing in the repository names the bucket,
@@ -31,6 +32,12 @@
 #      the wait with the reason and the last lines of the box's output
 #   6. stops the box, then import-result.sh: install and its dry run; with --swap, the
 #      swap after it
+# --attach RUN_URL: for a run already running on the box (this end died, or the terminal
+# closed, while box-rebuild.sh carries on): no send, no start and no rebuild command, only
+# steps 5 and 6, after one SSM check that box-rebuild.sh holds its lock on the box (refused,
+# the box left as it is, when it does not). The wait watches the result and the box's state; the box is stopped only once the
+# result is there, never if the wait is given up or interrupted, since the rebuild is still
+# running on it.
 # However it ends, a box this script started and that is still running is stopped (never
 # terminated): its disk keeps the run's state, and `launch.sh --no-send RUN_URL` carries
 # on where it stopped (add --refire after a failed rebuild); every failure prints that
@@ -50,6 +57,7 @@
 #                        [https://github.com/Macrophage87/RouteMaker.git]
 #   --allow-dirty        passed to send-inputs.sh
 #   --no-send            the inputs are in RUN_URL/in/ already; carry that run on
+#   --attach RUN_URL     wait for and finish a run already running on the box (above)
 #   --refire             passed to box-rebuild.sh: fire a new job after a failed one
 #   --beta               passed to box-rebuild.sh as --beta-bundle (the beta server's bundle;
 #                        install it there with import-result.sh --beta)
@@ -76,7 +84,7 @@ prefix=${CLOUD_PREFIX:-rebuild-checkpoints/transfer}
 profile=${CLOUD_PROFILE:-}
 repo_url=https://github.com/Macrophage87/RouteMaker.git
 run="" url="" live_dir="" allow_dirty=0 send=1 refire=0 beta=0 swap=0 use_running=0
-timeout_hours=30 dry_run=0
+timeout_hours=30 dry_run=0 attach=0
 given=("$@")
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -92,6 +100,10 @@ while [ $# -gt 0 ]; do
 		--timeout-hours) [ $# -ge 2 ] || die "$1 needs a value"; timeout_hours=$2; shift 2 ;;
 		--allow-dirty) allow_dirty=1; shift ;;
 		--no-send) send=0; shift ;;
+		--attach)
+			[ $# -ge 2 ] || die "$1 needs the RUN_URL of the run on the box"
+			[ -z "$url" ] || die "one RUN_URL only"
+			attach=1; send=0; url=$2; shift 2 ;;
 		--refire) refire=1; shift ;;
 		--beta) beta=1; shift ;;
 		--swap) swap=1; shift ;;
@@ -121,6 +133,10 @@ done
 [[ "$timeout_hours" =~ ^[1-9][0-9]?$ ]] && [ "$timeout_hours" -le 47 ] ||
 	die "--timeout-hours must be a whole number from 1 to 47"
 [[ "$repo_url" =~ ^https://[A-Za-z0-9._/-]+$ ]] || die "--repo-url must be an https URL"
+if [ "$attach" = 1 ]; then
+	[ "$refire" = 0 ] && [ "$use_running" = 0 ] && [ "$dry_run" = 0 ] ||
+		die "--attach starts nothing: it takes no --refire, --use-running or --dry-run"
+fi
 
 AWS=${CLOUD_AWS:-aws}
 SEND=${CLOUD_SEND:-$here/send-inputs.sh}
@@ -175,6 +191,7 @@ while [ "$i" -lt "${#given[@]}" ]; do
 	case "$a" in
 		--run | --bucket | --prefix) i=$((i + 2)) ;;
 		--no-send | --refire | --dry-run) i=$((i + 1)) ;;
+		--attach) i=$((i + 2)) ;;
 		--instance-id | --box-region | --bucket-region | --profile | --live-dir | --repo-url | --timeout-hours)
 			kept+=("$a" "${given[$((i + 1))]}"); i=$((i + 2)) ;;
 		-*) kept+=("$a"); i=$((i + 1)) ;;
@@ -287,6 +304,8 @@ stop_box() {
 on_exit() {
 	local rc=$?
 	trap - EXIT
+	# The import step's copy of its output (step 6), however the run ends.
+	[ -z "${import_log:-}" ] || rm -f "$import_log"
 	stop_box
 	exit "$rc"
 }
@@ -317,9 +336,50 @@ ssm_online() {
 		--filters "Key=InstanceIds,Values=$instance" \
 		--query 'InstanceInformationList[0].PingStatus' --output text 2>/dev/null)" = Online ]
 }
+# --attach: whether box-rebuild.sh runs on the box, asked over SSM: it holds its lock
+# (~ubuntu/cloud-runs/.box-rebuild.lock) for as long as it runs. 0 running, 1 not, 2 no answer.
+box_rebuild_running() {
+	local id out tries=0
+	local check='l=/home/ubuntu/cloud-runs/.box-rebuild.lock; if [ -e $l ] && ! flock -n $l true; then echo box-rebuild-running; else echo box-rebuild-idle; fi'
+	id=$(aws_box ssm send-command --instance-ids "$instance" --document-name AWS-RunShellScript \
+		--comment "RouteMaker attach check $run" --parameters "{\"commands\":[\"$check\"]}" \
+		--query Command.CommandId --output text 2>/dev/null) || return 2
+	[ -n "$id" ] && [ "$id" != None ] || return 2
+	while [ "$tries" -lt 30 ]; do
+		out=$(aws_box ssm get-command-invocation --command-id "$id" --instance-id "$instance" \
+			--query '[Status,StandardOutputContent]' --output text 2>/dev/null) || out=""
+		case "$out" in
+			Success*box-rebuild-running*) return 0 ;;
+			Success*box-rebuild-idle*) return 1 ;;
+			Failed* | Cancelled* | TimedOut*) return 2 ;;
+		esac
+		sleep "$START_POLL_S"
+		tries=$((tries + 1))
+	done
+	return 2
+}
 # Before send-inputs.sh asks for sudo and uploads gigabytes: a wrong id, region or
 # sign-in, or a box another run is using, fails here.
-if [ "$dry_run" = 1 ]; then
+if [ "$attach" = 1 ]; then
+	state=$(box_state) ||
+		die "cannot describe $instance in $box_region: signed in (aws login --remote${profile:+ --profile $profile})? the right --instance-id and --box-region?"
+	if ! aws_s3 ls "$url/out/SHA256SUMS" >/dev/null 2>&1; then
+		case "$state" in
+			pending | running) ;;
+			*) die "the box $instance is $state and $url has no result yet: nothing to attach to. Carry the run on: $(resume)" ;;
+		esac
+		wait_for "the box is not running" "$START_WAIT_S" is_running
+		wait_for "the box's SSM agent is not online" "$START_WAIT_S" ssm_online
+		rc=0
+		box_rebuild_running || rc=$?
+		case "$rc" in
+			0) ;;
+			1) die "box-rebuild.sh is not running on the box $instance (nothing holds its lock) and $url has no result: nothing to attach to. The box is left as it is. Carry the run on: $(resume)" ;;
+			*) die "could not ask the box $instance over SSM whether box-rebuild.sh runs (signed in? its SSM agent?); nothing is waited for. Look with Session Manager (tail ~/cloud-rebuild.log), or try --attach again" ;;
+		esac
+	fi
+	note "--attach: waiting for the run already on the box; nothing is sent or started"
+elif [ "$dry_run" = 1 ]; then
 	box_state
 	aws_s3 ls "$url/out/SHA256SUMS"
 else
@@ -340,7 +400,9 @@ else
 		*) die "cannot read $url (aws exited $rc): signed in? the right --bucket-region? the permissions in OPERATIONS.md?" ;;
 	esac
 fi
-if [ "$send" = 1 ]; then
+if [ "$attach" = 1 ]; then
+	:
+elif [ "$send" = 1 ]; then
 	note "sending the inputs (send-inputs.sh)"
 	sargs=("${passed[@]}")
 	[ "$allow_dirty" = 0 ] || sargs+=(--allow-dirty)
@@ -350,7 +412,9 @@ else
 fi
 
 # --- 2. the commit -----------------------------------------------------------------------
-if [ "$dry_run" = 1 ]; then
+if [ "$attach" = 1 ]; then
+	commit="" # the box has it already
+elif [ "$dry_run" = 1 ]; then
 	aws_s3 cp "$url/in/MANIFEST.txt" -
 	commit="<the commit in MANIFEST.txt>"
 else
@@ -362,7 +426,9 @@ else
 fi
 
 # --- 3. the box --------------------------------------------------------------------------
-if [ "$dry_run" = 1 ]; then
+if [ "$attach" = 1 ]; then
+	:
+elif [ "$dry_run" = 1 ]; then
 	aws_box ec2 start-instances --instance-ids "$instance"
 	aws_box ssm describe-instance-information --filters "Key=InstanceIds,Values=$instance" \
 		--query 'InstanceInformationList[0].PingStatus' --output text
@@ -417,18 +483,37 @@ if [ "$dry_run" = 1 ]; then
 	[ "$swap" = 0 ] || script "$IMPORT" "${iargs[@]}" --swap "$url"
 	exit 0
 fi
-note "starting the rebuild on the box (box-rebuild.sh; hours)"
-command_id=$(aws_box ssm send-command --instance-ids "$instance" --document-name AWS-RunShellScript \
-	--comment "RouteMaker rebuild $run" --parameters "$params" \
-	--query Command.CommandId --output text) || fail "ssm send-command failed"
-[ -n "$command_id" ] && [ "$command_id" != None ] || fail "ssm send-command returned no command id"
-note "command $command_id sent"
+if [ "$attach" = 1 ]; then
+	command_id=""
+else
+	note "starting the rebuild on the box (box-rebuild.sh; hours)"
+	command_id=$(aws_box ssm send-command --instance-ids "$instance" --document-name AWS-RunShellScript \
+		--comment "RouteMaker rebuild $run" --parameters "$params" \
+		--query Command.CommandId --output text) || fail "ssm send-command failed"
+	[ -n "$command_id" ] && [ "$command_id" != None ] || fail "ssm send-command returned no command id"
+	note "command $command_id sent"
+fi
 
 # --- 5. the wait -------------------------------------------------------------------------
 box_output() {
+	[ -n "$command_id" ] || { echo "  box | (attached: read ~/cloud-rebuild.log on the box)"; return 0; }
 	aws_box ssm get-command-invocation --command-id "$command_id" --instance-id "$instance" \
 		--query '[StandardOutputContent,StandardErrorContent]' --output text 2>/dev/null |
 		tail -n 40 | sed 's/^/  box | /' || true
+}
+# A failed box-rebuild.sh uploads its logs to RUN_URL/failed/ before it powers off: say
+# where, and show the end of the newest rebuild log, so a failure is read from here.
+failed_log() {
+	local name
+	name=$(aws_s3 ls "$url/failed/" 2>/dev/null | awk '{print $NF}' | grep '^rebuild-.*\.log\.gz$' |
+		sort | tail -n1) || name=""
+	if [ -z "$name" ]; then
+		echo "launch: no log reached $url/failed/ (the box stopped before it could send one)" >&2
+		return 0
+	fi
+	echo "launch: the rebuild's log is $url/failed/$name (and box-rebuild-*.log.gz beside it); its end:" >&2
+	{ aws_s3 cp "$url/failed/$name" - 2>/dev/null | gzip -dc 2>/dev/null | tail -n 40 |
+		sed 's/^/  log | /'; } >&2 || true
 }
 began=$(date +%s)
 deadline=$((began + TIMEOUT_S))
@@ -438,8 +523,12 @@ while :; do
 	if aws_s3 ls "$url/out/SHA256SUMS" >/dev/null 2>&1; then
 		break
 	fi
-	status=$(aws_box ssm get-command-invocation --command-id "$command_id" --instance-id "$instance" \
-		--query Status --output text 2>/dev/null) || status=""
+	if [ "$attach" = 1 ]; then
+		status=attached
+	else
+		status=$(aws_box ssm get-command-invocation --command-id "$command_id" --instance-id "$instance" \
+			--query Status --output text 2>/dev/null) || status=""
+	fi
 	state=$(box_state 2>/dev/null) || state=""
 	if [ -z "$status" ] || [ -z "$state" ]; then
 		# Usually a sign-in that ran out (a command just sent can also be unknown for a moment).
@@ -456,6 +545,7 @@ while :; do
 			aws_s3 ls "$url/out/SHA256SUMS" >/dev/null 2>&1 && break
 			echo "launch: the rebuild command ended $status on the box. Its output:" >&2
 			box_output >&2
+			failed_log
 			fail "no result. Read ~/cloud-rebuild.log on the box (Session Manager), then carry the run on: $(resume) (with --refire after a failed rebuild: $(resume --refire))" ;;
 		Success)
 			aws_s3 ls "$url/out/SHA256SUMS" >/dev/null 2>&1 && break
@@ -466,6 +556,7 @@ while :; do
 		stopping | stopped | shutting-down | terminated)
 			aws_s3 ls "$url/out/SHA256SUMS" >/dev/null 2>&1 && break
 			box_output >&2
+			failed_log
 			# A spot reclaim stops the box too, and a persistent request starts it again when
 			# AWS has room, to sit idle. Our own stop, even on a stopped box, is meant to make
 			# it a stop of ours, which is not restarted (OPERATIONS.md, "The launcher"). Only
@@ -475,11 +566,11 @@ while :; do
 					note "WARNING: could not stop $instance again; check in the console that it stays stopped"
 			fi
 			stopped=1
-			fail "the box $state with no result: a failed rebuild (it powers itself off; its log is under ~/cloud-runs/$run/ on the box) or a spot reclaim. Carry the run on: $(resume) (after a failed rebuild: $(resume --refire))" ;;
+			fail "the box $state with no result: a failed rebuild (it powers itself off; its log is in $url/failed/ and under ~/cloud-runs/$run/ on the box) or a spot reclaim. Carry the run on: $(resume) (after a failed rebuild: $(resume --refire))" ;;
 	esac
 	now=$(date +%s)
 	[ "$now" -lt "$deadline" ] ||
-		fail "no result after $((TIMEOUT_S / 3600)) hours (command ${status:-unknown}); stopping the box. Its state is kept; carry the run on: $(resume)"
+		fail "no result after $((TIMEOUT_S / 3600)) hours (command ${status:-unknown}); $([ "$started" = 1 ] && echo "stopping the box" || echo "the box is not this launcher's to stop, so it is left running: stop it in the console when done"). Its state is kept; carry the run on: $(resume)"
 	if [ $((now - last_report)) -ge 600 ]; then
 		el=$((now - began))
 		note "still rebuilding: $((el / 3600))h$(printf %02d $((el % 3600 / 60)))m, command ${status:-unknown}, box ${state:-unknown}"
@@ -490,13 +581,26 @@ done
 note "the result is at $url/out/"
 
 # --- 6. home -----------------------------------------------------------------------------
+# An attached run's box is this run's, now done: stopped as a started one is.
+[ "$attach" = 0 ] || started=1
 stop_box
 note "installing the result here (import-result.sh, then its dry run; nothing served changes)"
-script "$IMPORT" "${passed[@]}" "$url" || fail "import-result.sh failed; fix what it says and run scripts/cloud/import-result.sh $url"
-if [ "$swap" = 1 ]; then
+# Its output is read as well as shown: "done: installed as staging" is said only when the
+# real install ran, which ends with its own "import-result: installed." line (cloud-20261016b
+# ran with the import step switched off and still said it).
+import_log=$(mktemp "${TMPDIR:-/tmp}/routemaker-import.XXXXXX")
+script "$IMPORT" "${passed[@]}" "$url" | tee "$import_log" ||
+	fail "import-result.sh failed; fix what it says and run scripts/cloud/import-result.sh $url"
+installed=0
+grep -q '^import-result: installed\.' "$import_log" && installed=1
+if [ "$installed" = 0 ] && [ "$dry_run" = 0 ]; then
+	note "the import step did not install the result here (it did not report \"installed\"); install it with scripts/cloud/import-result.sh${profile:+ --profile $profile} $url"
+elif [ "$swap" = 1 ]; then
 	note "--swap: swapping the result in (import-result.sh --swap)"
 	script "$IMPORT" "${passed[@]}" --swap "$url" || fail "the swap failed; see import-result.sh's message above"
 	note "done: swapped. Now the post-swap closure probes (OPERATIONS.md, \"Bicycle closures in the tiles\", step 3)"
+elif [ "$dry_run" = 1 ]; then
+	note "dry run: nothing was installed"
 else
 	note "done: installed as staging. Read the dry run above, then: scripts/cloud/import-result.sh${profile:+ --profile $profile} --swap $url"
 fi

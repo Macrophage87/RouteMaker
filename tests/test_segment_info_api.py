@@ -141,7 +141,9 @@ class TestAnswer:
         stress = section(body, "stress")
         assert stress["Level"]["value"] == "LTS 3: For experienced cyclists"
         assert stress["Level"]["source"] == "RouteMaker classifier"
-        assert stress["Why"]["value"] == "30 mph, mixed traffic, several lanes, city street"
+        assert stress["Why"]["value"] == (
+            "30 mph (48 km/h), mixed traffic, several lanes, city street"
+        )
         traffic = section(body, "traffic")
         assert traffic["Lanes"]["value"] == "2 each way"
         assert traffic["Lanes"]["source"] == "OpenStreetMap"
@@ -164,7 +166,7 @@ class TestAnswer:
         assert body["kind"] == "Main road"
         assert summary(body) == [
             "Traffic stress: LTS 3 · For experienced cyclists",
-            "Why: 30 mph, mixed traffic",
+            "Why: 30 mph (48 km/h), mixed traffic",
             "Speed: 30 mph (48 km/h), posted",
             "Lanes: 2 each way",
             "Traffic: 18,400 a day (DDOT 2024)",
@@ -209,6 +211,27 @@ class TestAnswer:
         router.answers = {"bicycle": [edge(104, "R Street Northwest")]}
         assert get(client).json()["osm_way_id"] == 104
 
+    def test_an_unnamed_bike_lane_is_named_for_its_street(
+        self, client, segment_schemas, router
+    ) -> None:
+        # v0.7.0 "Go riding fixes" item 4: the rebuild's name for an unnamed protected lane
+        # beside a named street (`segment.sidepath_name`) is the panel's title.
+        live, _ = segment_schemas
+        insert(
+            live,
+            106,
+            [SPOT, east(SPOT, 50)],
+            stress_tier=1,
+            stress_rule="trail-class way (cycleway, open to bicycles)",
+            is_trail_class=True,
+            facility="protected",
+            sidepath_name="9th Street Northwest protected bike lane",
+        )
+        router.answers = {"bicycle": [edge(106, use="cycleway")]}
+        body = get(client).json()
+        assert body["title"] == "9th Street Northwest protected bike lane"
+        assert section(body, "road")["Name"]["value"] == "9th Street Northwest protected bike lane"
+
     def test_an_unnamed_path_says_so(self, client, segment_schemas, router) -> None:
         live, _ = segment_schemas
         insert(
@@ -224,7 +247,7 @@ class TestAnswer:
         )
         router.answers = {"bicycle": [edge(105, use="cycleway")]}
         body = get(client).json()
-        assert body["title"] == "Unnamed path"
+        assert body["title"] == "Path"
         assert section(body, "road")["Name"]["value"] == "No name mapped"
         assert section(body, "road")["Kind"]["value"] == "Bike path"
         assert section(body, "stress")["Level"]["value"] == "LTS 1: Comfortable for everyone"
@@ -333,7 +356,7 @@ class TestAnswer:
         # Assumed figures say so; no count is left out, not printed as "none".
         assert summary(body) == [
             "Traffic stress: LTS 2 · Fine for adults",
-            "Why: 20 mph or below, mixed traffic",
+            "Why: 20 mph (32 km/h) or below, mixed traffic",
             "Speed: 20 mph (32 km/h), assumed",
             "Lanes: 1 each way, assumed",
             "Bikes: Allowed",
@@ -704,14 +727,14 @@ class TestWords:
     @pytest.mark.parametrize(
         ("rule", "words"),
         [
-            ("mixed traffic, 35 mph or above", "35 mph or above, mixed traffic"),
+            ("mixed traffic, 35 mph or above", "35 mph (56 km/h) or above, mixed traffic"),
             (
                 "mixed traffic, 25 mph, single lane, low volume",
-                "25 mph, mixed traffic, one lane each way, light traffic",
+                "25 mph (40 km/h), mixed traffic, one lane each way, light traffic",
             ),
             (
                 "legal but avoid: expressway posted 55 mph (Furth: mixed traffic, 35 mph or above)",
-                "Avoid: highway-like road (posted 55 mph)",
+                "Avoid: highway-like road, posted 55 mph (89 km/h)",
             ),
             (
                 "motor-only classification (motorway_link)",
@@ -728,7 +751,7 @@ class TestWords:
                 "Path away from traffic, not open to bicycles",
             ),
             ("separated track alongside", "Separated bike track beside the road"),
-            ("bike lane, 35 mph", "Bike lane, 35 mph"),
+            ("bike lane, 35 mph", "Bike lane, 35 mph (56 km/h)"),
             (
                 "motor traffic restricted (access=private), LTS 2 at most",
                 "Little motor traffic (access=private), so LTS 2 at most",
@@ -810,12 +833,15 @@ class TestWords:
 
     def test_the_summary_why_drops_what_lanes_says(self) -> None:
         assert segment_info.why_short("mixed traffic, 30 mph, urban multilane") == (
-            "30 mph, mixed traffic"
+            "30 mph (48 km/h), mixed traffic"
         )
         assert segment_info.why_short("mixed traffic, 35 mph or above, multilane") == (
-            "35 mph or above, mixed traffic"
+            "35 mph (56 km/h) or above, mixed traffic"
         )
-        assert segment_info.why_short("bike lane, 25 mph, single lane") == "Bike lane, 25 mph"
+        assert (
+            segment_info.why_short("bike lane, 25 mph, single lane")
+            == "Bike lane, 25 mph (40 km/h)"
+        )
         assert segment_info.why_short("") is None
 
 
@@ -878,10 +904,160 @@ def test_the_unnamed_titles_are_describes_words_and_the_front_ends() -> None:
     from routemaker import describe
 
     assert segment_info.UNNAMED_ROAD_TITLE == "Unnamed road" == describe.UNNAMED_ROAD.capitalize()
-    assert segment_info.UNNAMED_PATH_TITLE == "Unnamed path" == describe.UNNAMED_PATH.capitalize()
+    assert segment_info.UNNAMED_PATH_TITLE == "Path" == describe.UNNAMED_PATH.capitalize()
     ts = (Path(__file__).parents[1] / "frontend/src/lib/roadInfo.ts").read_text(encoding="utf-8")
     assert f'UNNAMED_ROAD_TITLE = "{segment_info.UNNAMED_ROAD_TITLE}"' in ts
     assert f'UNNAMED_PATH_TITLE = "{segment_info.UNNAMED_PATH_TITLE}"' in ts
+
+
+@db
+class TestEveryRatingHeld:
+    """The owner, 2026-10-13: "put all the relevant information in the tab when
+    viewing the road" - every agency rating, the formula's, and which is used."""
+
+    RATINGS = {
+        "formula": 4,
+        "formula_rule": "mixed traffic, 35 mph or above",
+        "agencies": [
+            {"agency": "moco", "name": "Montgomery County Planning", "level": 2.5},
+            {"agency": "mdot-sha", "name": "MDOT SHA", "level": 3},
+        ],
+        "used": "moco",
+    }
+
+    def test_each_rating_is_listed_with_the_one_used(self, client, segment_schemas, router):
+        live, _ = segment_schemas
+        insert(
+            live,
+            601,
+            [SPOT, east(SPOT, 100)],
+            stress_tier=2,
+            stress_half=True,
+            stress_rule="agency rating: Montgomery County Planning LTS 2.5",
+            stress_ratings=json.dumps(self.RATINGS),
+        )
+        router.answers = {"bicycle": [edge(601, "Davis Mill Road")]}
+        rows = section(get(client).json(), "stress")
+        assert rows["Why"]["value"] == "Rated LTS 2.5 by Montgomery County Planning"
+        county = rows["Montgomery County Planning rates it"]
+        assert county["value"].startswith("LTS 2.5") and "(used" in county["value"]
+        assert county["source"] == "Montgomery County Planning"
+        state = rows["MDOT SHA rates it"]
+        assert state["value"].startswith("LTS 3") and "used" not in state["value"]
+        formula = rows["RouteMaker's formula"]
+        assert formula["value"].startswith("LTS 4") and "35 mph" in formula["value"]
+
+    def test_the_rural_floor_is_named_when_it_set_the_tier(self, client, segment_schemas, router):
+        live, _ = segment_schemas
+        held = {
+            **self.RATINGS,
+            "agencies": [{"agency": "moco", "name": "Montgomery County Planning", "level": 1}],
+            "used": "rural floor",
+        }
+        insert(
+            live,
+            602,
+            [SPOT, east(SPOT, 100)],
+            stress_tier=2,
+            stress_rule="agency rating: Montgomery County Planning LTS 1, rural road floor",
+            stress_ratings=json.dumps(held),
+        )
+        router.answers = {"bicycle": [edge(602, "Davis Mill Road")]}
+        rows = section(get(client).json(), "stress")
+        assert "rural road open to cars" in rows["Why"]["value"]
+        assert "rural roads open to cars" in rows["Used"]["value"]
+
+    def test_a_county_row_reads_as_the_county_not_the_owner(self, client, segment_schemas, router):
+        """The owner, 2026-10-14: "It's also listed as owner override when it was
+        county data". Montgomery's LTS 5 rows (`moco-lts5-*`) name the county."""
+        live, _ = segment_schemas
+        insert(
+            live,
+            603,
+            [SPOT, east(SPOT, 100)],
+            stress_tier=5,
+            stress_rule="override: stress adjustment moco-lts5-airpark-road",
+            stress_adjustment_id="moco-lts5-airpark-road",
+            stress_computed_tier=3,
+            stress_adjustment_direction="up",
+            stress_adjustment_category="other",
+            stress_adjustment_display="route_only",
+        )
+        router.answers = {"bicycle": [edge(603, "Airpark Road")]}
+        rows = section(get(client).json(), "stress")
+        assert rows["Level"]["value"] == "Avoid"
+        assert rows["Level"]["source"] == "Montgomery County Planning"
+        assert rows["Why"]["source"] == "Montgomery County Planning"
+        assert "Owner's reason" not in rows
+
+    def test_an_owner_row_reads_as_the_owner(self, client, segment_schemas, router):
+        live, _ = segment_schemas
+        insert(
+            live,
+            604,
+            [SPOT, east(SPOT, 100)],
+            stress_tier=4,
+            stress_rule="override: stress adjustment darnestown-road-lts4",
+            stress_adjustment_id="darnestown-road-lts4",
+            stress_computed_tier=4,
+            stress_adjustment_direction="same",
+            stress_adjustment_category="other",
+            stress_adjustment_display="route_only",
+        )
+        router.answers = {"bicycle": [edge(604, "Darnestown Road")]}
+        rows = section(get(client).json(), "stress")
+        assert rows["Level"]["source"] == "Owner override"
+        assert rows["Owner's reason"]["value"] == "Other"
+
+    def test_the_owners_rating_is_listed_above_the_countys_avoid(
+        self, client, segment_schemas, router
+    ):
+        """Darnestown Rd (the owner, 2026-10-14, "LTS 4"): the map uses his LTS 4,
+        and the panel lists the county's LTS 5 (Avoid) and the formula beneath it."""
+        live, _ = segment_schemas
+        held = {
+            "formula": 4,
+            "formula_rule": "mixed traffic, 35 mph or above",
+            "agencies": [{"agency": "moco", "name": "Montgomery County Planning", "level": 5}],
+            "used": "owner",
+            "override": {"source": "owner", "name": "Owner", "level": 4},
+        }
+        insert(
+            live,
+            605,
+            [SPOT, east(SPOT, 100)],
+            stress_tier=4,
+            stress_rule="override: stress adjustment darnestown-road-lts4",
+            stress_adjustment_id="darnestown-road-lts4",
+            stress_ratings=json.dumps(held),
+        )
+        router.answers = {"bicycle": [edge(605, "Darnestown Road")]}
+        answer = get(client).json()
+        rows = section(answer, "stress")
+        assert rows["Level"]["value"].startswith("LTS 4")
+        owner = rows["Owner's rating"]
+        assert owner["value"].startswith("LTS 4") and "(used" in owner["value"]
+        assert owner["source"] == "Owner override"
+        county = rows["Montgomery County Planning rates it"]
+        assert county["value"] == "Avoid" and county["source"] == "Montgomery County Planning"
+        assert rows["RouteMaker's formula"]["value"].startswith("LTS 4")
+        assert "owner's rating is used" in rows["Used"]["value"]
+        # In the owner's order: his rating, then the county's, then the formula.
+        labels = [
+            row["label"] for s in answer["sections"] if s["id"] == "stress" for row in s["rows"]
+        ]
+        assert (
+            labels.index("Owner's rating")
+            < labels.index("Montgomery County Planning rates it")
+            < labels.index("RouteMaker's formula")
+        )
+
+    def test_nothing_extra_without_an_agency(self, client, segment_schemas, router):
+        live, _ = segment_schemas
+        insert(live, 603, [SPOT, east(SPOT, 100)])
+        router.answers = {"bicycle": [edge(603, "Some Road")]}
+        rows = section(get(client).json(), "stress")
+        assert "RouteMaker's formula" not in rows
 
 
 def _adjusted_row(adjustment_id: str) -> dict:

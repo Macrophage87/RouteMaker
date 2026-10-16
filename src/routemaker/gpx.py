@@ -1,17 +1,15 @@
 """GPX reading, limited to what the measurements and the import path need.
 
-Uses defusedxml where available, since an import is an untrusted file and the
-plan requires XML entity attacks be refused rather than parsed.
+Uses defusedxml, and only defusedxml: a GPX file is untrusted XML, and the plan
+requires XML entity attacks be refused rather than parsed. Without it the import
+fails rather than falling back to the standard library's parser.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-try:  # pragma: no cover - exercised by whichever branch is installed
-    from defusedxml import ElementTree as ET
-except ImportError:  # pragma: no cover
-    import xml.etree.ElementTree as ET  # noqa: N817
+from defusedxml import ElementTree as ET
 
 from .geo import Point
 

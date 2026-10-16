@@ -26,7 +26,13 @@ dry run as well, and before anything is moved:
   it are re-applied, as a rebuild does for edits made while it ran. Before that
   release nothing re-applies them, so an access override approved after it is
   not in the box's map: the command names them and refuses the swap unless
-  `--accept-later-overrides` says they can wait for the next rebuild.
+  `--accept-later-overrides` says they can wait for the next rebuild. A road reopened by a
+  ruling in Review (`core.stress_review`) is meant for the next rebuild and is only counted.
+
+The dry run also precomputes Review's queue (`core.stress_review.compute_all`): the roads whose
+level or access the build changes, the rating disagreements and the rebuild reports' lists, from
+`--review-reports-dir` (the build's reports, as import-result.sh unpacks them). Both runs say how
+many changed roads have no ruling yet; that never blocks the swap.
 """
 
 from __future__ import annotations
@@ -38,6 +44,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import models
 
+from core import stress_changes
 from pipeline import promotion, reconcile, retention, tiles
 from pipeline.variants import RESTART_OFFROAD_WHERE_IT_RUNS, RESTART_ROUTERS, Variant
 
@@ -84,13 +91,15 @@ def staging_segments(staging: str) -> int | None:
 
 
 def later_overrides(read_at: datetime, *, panel_reapplied: bool = False) -> list[int]:
-    """Approved access overrides whose approval is newer than the box's copy. Where the
+    """Approved overrides whose approval is newer than the box's copy, but for Review's
+    reopenings (`review_reopenings`), which are listed apart and do not hold the swap. Where the
     swap re-applies the road panel's edits, the overrides those edits wrote are left out:
     only they are re-applied, so any other later approval is still missing from the build."""
     from core.models import Override, StressEdit
 
     later = list(
         Override.objects.filter(approved=True, approved_at__gt=read_at)
+        .exclude(kind=Override.Kind.ACCESS, source=Override.Source.REVIEW)
         .order_by("id")
         .values_list("id", flat=True)
     )
@@ -106,6 +115,36 @@ def later_overrides(read_at: datetime, *, panel_reapplied: bool = False) -> list
             panel.add(first)
         panel.update(p["override"] for p in pairs or [] if p.get("override") is not None)
     return [pk for pk in later if pk not in panel]
+
+
+def review_reopenings(read_at: datetime) -> tuple[list[int], list[int]]:
+    """Review's reopenings of closed roads (access overrides of source `review`) that this build
+    does not reflect: (approved after the box's copy, so not in it yet; undone after the box's
+    copy although approved before it, so still open in it). Both are told apart by the row's
+    source, never by its words. Neither holds the swap: the ruling was made on this build's
+    changes, and the next rebuild reads the row as it then stands."""
+    from core.models import Override, ReviewRuling
+
+    reopened = list(
+        Override.objects.filter(
+            kind=Override.Kind.ACCESS,
+            source=Override.Source.REVIEW,
+            approved=True,
+            approved_at__gt=read_at,
+        )
+        .order_by("id")
+        .values_list("id", flat=True)
+    )
+    undone = list(
+        ReviewRuling.objects.filter(
+            access_override__source=Override.Source.REVIEW,
+            at__lte=read_at,
+            undone_at__gt=read_at,
+        )
+        .order_by("access_override_id")
+        .values_list("access_override_id", flat=True)
+    )
+    return reopened, undone
 
 
 class Command(BaseCommand):
@@ -135,10 +174,58 @@ class Command(BaseCommand):
             ),
         )
         parser.add_argument(
+            "--review-reports-dir",
+            default="",
+            help=(
+                "The build's rebuild reports, for Review's queues: a directory, relative to "
+                "the rebuild's work directory or absolute. Without it the queues read from "
+                "reports say the build had none (never this computer's own reports)."
+            ),
+        )
+        parser.add_argument(
             "--confirm",
             action="store_true",
-            help="Actually swap. Without it this checks and prints, and touches nothing.",
+            help=(
+                "Actually swap. Without it this checks and prints, and changes nothing served "
+                "(it fills Review's queue)."
+            ),
         )
+
+    def review_queue(self, build_id: str, live: str, staging: str, reports: str) -> None:
+        """Precompute Review's queue against the build waiting in staging. A failure is said and
+        the dry run goes on: the review is a help to the swap, never a condition of it."""
+        from core import stress_review
+
+        try:
+            counts = stress_review.compute_all(
+                build_id, live, staging, stress_review.reports_dir(reports, own=False)
+            )
+        except Exception as error:  # noqa: BLE001 - said, and the dry run goes on
+            self.stderr.write(f"Review's queue was not computed: {error}")
+            return
+        wired = [f"{n} {q.replace('_', ' ')}" for q, n in counts.items() if n is not None]
+        missing = [q.replace("_", " ") for q, n in counts.items() if n is None]
+        # Roads, not the stress change report's segments: a way counts once, at its highest
+        # piece's level with half steps, and a change of bicycle access counts as well.
+        self.stdout.write(
+            "review queue, in roads (whole ways; the stress changes above count segments): "
+            + ", ".join(wired)
+            + (f"; {stress_review.NO_REPORT.lower()} for: {', '.join(missing)}" if missing else "")
+        )
+
+    def review_status(self) -> None:
+        from core import stress_review
+
+        try:
+            unruled, total, build = stress_review.unruled_rebuild_changes()
+        except Exception as error:  # noqa: BLE001 - a note, never a condition of the swap
+            self.stderr.write(f"Review's status could not be read: {error}")
+            return
+        if total:
+            self.stdout.write(
+                f"review: {unruled} of {total} changed roads in build {build} have no ruling yet "
+                "(Review mode, Rebuild changes); this does not block the swap"
+            )
 
     def handle(self, *args, **options) -> None:
         from core.audit import record
@@ -199,6 +286,13 @@ class Command(BaseCommand):
             f"segments: {live} has {live_segments if live_segments is not None else 'no table'}"
             f", {staging} has {segments}; {live} becomes {settings.SEGMENT_SCHEMA_RETIRED}"
         )
+        if live_segments:
+            # The owner's review before promotion (2026-10-16): what changed, by county.
+            try:
+                for line in stress_changes.report(live, staging, settings.REBUILD_REFERENCE_DIR):
+                    self.stdout.write(line)
+            except Exception as error:  # noqa: BLE001 - a report, never a reason to refuse
+                self.stderr.write(f"the stress change report was not made: {error}")
         reapplies = "overrides_read_at" in inspect.signature(promotion.perform_swap).parameters
         if reapplies:
             self.stdout.write(
@@ -213,6 +307,23 @@ class Command(BaseCommand):
                 + "); they take effect at the next rebuild"
             )
 
+        reopened, undone = review_reopenings(read_at)
+        if reopened:
+            self.stdout.write(
+                f"{len(reopened)} Review reopening(s) approved after "
+                f"{read_at:%Y-%m-%d %H:%M:%S} UTC are not in this build (access override ids "
+                + ", ".join(map(str, reopened))
+                + "); they take effect at the next rebuild and do not hold the swap"
+            )
+        if undone:
+            self.stdout.write(
+                f"warning: {len(undone)} Review reopening(s) undone after "
+                f"{read_at:%Y-%m-%d %H:%M:%S} UTC are still open to bicycles in this build "
+                "(access override ids "
+                + ", ".join(map(str, undone))
+                + "); they close again at the next rebuild"
+            )
+
         if later and not options["accept_later_overrides"]:
             message = (
                 "access overrides approved after the box's copy was taken would not be in the "
@@ -222,6 +333,10 @@ class Command(BaseCommand):
             if options["confirm"]:
                 raise CommandError("nothing was imported: " + message)
             self.stdout.write("note: --confirm alone will refuse: " + message)
+
+        if not options["confirm"]:
+            self.review_queue(build_id, live, staging, options["review_reports_dir"])
+        self.review_status()
 
         if not options["confirm"]:
             self.stdout.write("dry run: nothing was changed. Re-run with --confirm to swap.")

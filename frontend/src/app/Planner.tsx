@@ -23,6 +23,7 @@ import { PlaceSearch } from "../PlaceSearch.tsx";
 import { approximateHint, type Fix, type locateSupport } from "../lib/geolocation.ts";
 import type { usePlaceNames } from "../usePlaceNames.ts";
 import { pointRows, type Place, type PlaceChoice } from "../lib/geocode.ts";
+import { VIA_MARKS } from "../lib/pointKinds.ts";
 import { HighContrastShortcut, PlannerZoomNotice, RideSettings } from "../Sidebar.tsx";
 import { Icon } from "../Icon.tsx";
 import { PLANNER_EXTRAS, searchLede } from "../lib/sidebar.ts";
@@ -58,9 +59,6 @@ export interface PointsSectionProps {
   pointWarnings: (string | null)[];
   removeRefs: RefObject<Array<HTMLButtonElement | null>>;
   preset: PresetId;
-  routeShownForPoints: boolean;
-  editPointsRef: RefObject<HTMLButtonElement | null>;
-  setEditPoints: Dispatch<SetStateAction<boolean>>;
   /** Mass Ride's "no point is on federal land" line, or nothing. */
   federalPlanner: ReactNode;
   pointsEditRef: RefObject<HTMLDivElement | null>;
@@ -75,7 +73,6 @@ export interface PointsSectionProps {
   undo: () => void;
   can: { undo: boolean; redo: boolean };
   redo: () => void;
-  clearAll: () => void;
   coverageShown: boolean;
   toggleAccessMode: (focusTools: boolean) => void;
   announce: (text: string) => void;
@@ -93,7 +90,7 @@ export interface PointsSectionProps {
  * route's "Choose a station" fold.
  */
 export function PointsSection(props: PointsSectionProps) {
-  const { pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials, dials, accessMode, namer, removeAt, pointWarnings, removeRefs, preset, routeShownForPoints, editPointsRef, setEditPoints, federalPlanner, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, narrow, undo, can, redo, clearAll, coverageShown, toggleAccessMode, announce, notice, tips, setTips, tipsId } = props;
+  const { pointsHeadingRef, zoom, stressVisible, stress, pointsSearchRef, compactPoints, points, loopVias, geoGate, searchBias, pickPlace, locateReady, locating, hereInPlan, here, useMyLocation, loop, loopHintId, commitDials, dials, accessMode, namer, removeAt, pointWarnings, removeRefs, preset, federalPlanner, pointsEditRef, reverseButton, reverse, reverseHint, orderShown, bestOrder, orderFocused, ordering, narrow, undo, can, redo, coverageShown, toggleAccessMode, announce, notice, tips, setTips, tipsId } = props;
   return (
     <section key="points" aria-labelledby="points-heading" className="points-section">
       <div className="section-head">
@@ -136,27 +133,8 @@ export function PointsSection(props: PointsSectionProps) {
               <span aria-hidden="true">Loop</span>
             </label>
           )}
-          {routeShownForPoints && points.length >= 2 && (
-            <button
-              type="button"
-              ref={editPointsRef}
-              className="secondary icon-button edit-points"
-              aria-expanded={!compactPoints}
-              aria-controls="points-edit"
-              onClick={() => setEditPoints((on) => !on)}
-            >
-              <Icon name={compactPoints ? "edit" : "check"} />
-              {compactPoints ? (
-                <span>
-                  Edit<span className="visually-hidden"> points</span>
-                </span>
-              ) : (
-                <span>
-                  Done<span className="visually-hidden"> editing points</span>
-                </span>
-              )}
-            </button>
-          )}
+          {/* No "Edit points" any more (v0.7.0): with a route the search and the point tools stay in view, and the
+              plan panel above holds the plan in words, with Route, Reset and Clear. */}
           {/* The how-to, behind Info (it was "More tips" under the tools). */}
           <button type="button" className="secondary icon-button tips-toggle" aria-expanded={tips} aria-controls={tipsId} onClick={() => setTips(!tips)}>
             <Icon name="info" />
@@ -211,7 +189,7 @@ export function PointsSection(props: PointsSectionProps) {
         <p className="hint">{searchLede(loopVias, accessMode)}</p>
       ) : (
         <PointsList
-          rows={pointRows(points, namer, loopVias)}
+          rows={pointRows(points, namer, loopVias, VIA_MARKS.isVia)}
           onRemove={removeAt}
           warnings={pointWarnings}
           removeRef={(index, button) => {
@@ -254,18 +232,16 @@ export function PointsSection(props: PointsSectionProps) {
               </button>
             )}
             {!narrow && (
-              <button type="button" onClick={undo} disabled={!can.undo} aria-keyshortcuts="Control+Z Meta+Z">
+              <button type="button" data-history="undo" onClick={undo} disabled={!can.undo} aria-keyshortcuts="Control+Z Meta+Z">
                 Undo
               </button>
             )}
             {!narrow && can.redo && (
-              <button type="button" onClick={redo} aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y">
+              <button type="button" data-history="redo" onClick={redo} aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y">
                 Redo
               </button>
             )}
-            <button type="button" onClick={clearAll} disabled={points.length === 0}>
-              Clear
-            </button>
+            {/* Clear is in the plan panel, beside Reset (v0.7.0). */}
           </div>
         )}
       </div>

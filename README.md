@@ -13,13 +13,15 @@ reconsidered and why.
 
 ## Status
 
-Early. Phase 1 of 6; no application yet. What exists:
-
-- `src/routemaker/geo.py` — spherical geometry, dependency-free
-- `src/routemaker/measure.py` — the normative route measurements
-- `src/routemaker/gpx.py` — GPX reading for the import path
-- `fixtures/reference-routes/` — fifteen real routes with their measured
-  properties, supplied by the project owner and used as ground truth
+Release 0.7.0. The planner (the map, the ride types, transit and bikeshare
+trips, saved and shared routes, Discord sign-in) runs as a private beta for
+invited riders; [docs/BETA-RUNBOOK.md](docs/BETA-RUNBOOK.md) is how that server
+is set up and updated. Decisions live in [PLAN.md](PLAN.md): its "Implemented
+as" notes and owner amendments record what was built and why (the
+OWNER-DECISIONS numbers it cites are the owner's own record).
+[docs/OPERATIONS.md](docs/OPERATIONS.md) runs a deployment, and
+[docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) works on the code. `handoff.md` and
+`handoff-local.md` are the historical record of phase 1.
 
 ## Running it on this computer
 
@@ -57,7 +59,7 @@ It needs the internet on a first run: Docker Hub, ghcr.io, pypi.org,
 deb.debian.org, registry.npmjs.org, build.protomaps.com and github.com, plus
 download.geofabrik.de for the rebuild. Claude's cloud sessions block several of
 these, so this runs on a real computer, not in one of them. On Windows, run it
-inside WSL2 ([handoff-local.md section 3](handoff-local.md#3-setting-up-on-windows)).
+inside WSL2, with the checkout in the Linux filesystem (`~/src`, not `/mnt/c`).
 
 ## Development
 

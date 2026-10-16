@@ -47,7 +47,10 @@ shown to riders (`overrides.py:447-452`).
 
 ## Order of precedence for a way's tier
 
-1. The classifier (`stress.classify`).
+1. The classifier (`stress.classify`), then an agency's rating where one rates
+   the way, county over state (`routemaker.agency_lts`; the owner, 2026-10-13),
+   then the owner's rural floor (`stress.rural_floor`: a rural way open to cars
+   is LTS 2 at least).
 2. The curated bike lane's owner tier, then named corridors (`run.py:2069-2109`).
 3. Approved stress rows: a row that sets the tier wins; a floor only raises
    (`run.py:2309`).

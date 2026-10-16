@@ -69,7 +69,7 @@ test("a phone opens in Go and a wide screen in Plan; a shared link opens in Plan
   assert.equal(laterMyGoApplies("link", false), false);
   assert.equal(laterMyGoApplies("tab", false), false);
   assert.equal(laterMyGoApplies("screen", true), false);
-  assert.deepEqual(MODE_LABEL, { go: "Go", plan: "Plan" });
+  assert.deepEqual(MODE_LABEL, { go: "Go", plan: "Plan", review: "Review" }, "Review: offered to an admin only (lib/review.test.ts)");
   assert.deepEqual(OPEN_IN_LABEL, { "": "By screen size", go: "Go", plan: "Plan" });
   assert.match(modeSaid("go"), /^Go/);
   assert.match(modeSaid("plan"), /^Plan/);
@@ -113,7 +113,7 @@ test("My Go reads what makes sense and drops the rest: an unknown view or ride, 
   assert.deepEqual(parseMyGo({ open_in: "plan", ride: "", home: { lon: Infinity, lat: 1 } }), { openIn: "plan", ride: null, home: null });
   // The body: Default is "", a Home's label is cut to the server's 120 characters.
   assert.deepEqual(myGoBody({ openIn: "", ride: "default", home: null }), { open_in: "", ride: "", home: null });
-  assert.deepEqual(myGoBody({ openIn: "go", ride: "kids", home: { point: [-77, 38.9], label: "x".repeat(200) } }).home, { lon: -77, lat: 38.9, label: "x".repeat(120) });
+  assert.deepEqual(myGoBody({ openIn: "go", ride: "novice", home: { point: [-77, 38.9], label: "x".repeat(200) } }).home, { lon: -77, lat: 38.9, label: "x".repeat(120) });
   assert.equal(myGoSummary(NO_MY_GO), "By screen size · Default");
   assert.equal(myGoSummary({ openIn: "go", ride: "cargo", home: null }), "Go · Cargo Bike");
 });
@@ -147,11 +147,13 @@ test("My Go is read and saved at /api/me/go, same origin, with the CSRF token; a
   assert.equal(await fetchMyGo("https://x.test", answer(401, { code: "signed_out" })), null);
   assert.equal(await fetchMyGo("https://x.test", (async () => { throw new Error("offline"); }) as unknown as typeof fetch), null);
   calls.length = 0;
-  const saved = await saveMyGo("https://x.test", { openIn: "plan", ride: "kids", home: null }, answer(200, { open_in: "plan", ride: "kids", home: null }), "a=1; csrftoken=tok%3D1");
-  assert.deepEqual(saved, { openIn: "plan", ride: "kids", home: null });
+  const saved = await saveMyGo("https://x.test", { openIn: "plan", ride: "novice", home: null }, answer(200, { open_in: "plan", ride: "novice", home: null }), "a=1; csrftoken=tok%3D1");
+  assert.deepEqual(saved, { openIn: "plan", ride: "novice", home: null });
+  // A ride saved before Riding with kids became Novice and Nervous (v0.7.0) is read as the new one.
+  assert.deepEqual(await fetchMyGo("https://x.test", answer(200, { open_in: "go", ride: "kids", home: null })), { openIn: "go", ride: "novice", home: null });
   assert.equal(calls[0].init.method, "POST");
   assert.equal((calls[0].init.headers as Record<string, string>)["X-CSRFToken"], "tok=1");
-  assert.deepEqual(JSON.parse(calls[0].init.body as string), { open_in: "plan", ride: "kids", home: null });
+  assert.deepEqual(JSON.parse(calls[0].init.body as string), { open_in: "plan", ride: "novice", home: null });
   assert.equal(await saveMyGo("https://x.test", NO_MY_GO, answer(403, {}), ""), null);
 });
 
@@ -163,7 +165,7 @@ test("Go's ride types: the rider's own (My Go, Default until set), then Own Bike
   assert.deepEqual([...GO_RIDES], ["default", "bike-transit", "bikeshare-transit"]);
   assert.deepEqual(goRideChips(null), ["default", "bike-transit", "bikeshare-transit"]);
   assert.deepEqual(goRideChips("cargo"), ["cargo", "bike-transit", "bikeshare-transit"]);
-  assert.deepEqual(goRideChips("kids"), ["kids", "bike-transit", "bikeshare-transit"]);
+  assert.deepEqual(goRideChips("novice"), ["novice", "bike-transit", "bikeshare-transit"]);
   // A stored My Go ride from before (Bikeshare was a Go chip) still works: it is the rider's own.
   assert.deepEqual(goRideChips("bikeshare"), ["bikeshare", "bike-transit", "bikeshare-transit"]);
   // The rider's own is a transit type: no chip twice, and Default fills the third place.
@@ -185,13 +187,16 @@ test("Go's places are Home, Food, Water and Restroom (no Work); Home works signe
   assert.deepEqual(chips.slice(0, 4), ["Home", "Food", "Water", "Restroom"]);
   assert.doesNotMatch(go, /Work/);
   assert.ok(!("work" in ICON_PATHS), "the mockup's Work icon is gone with the chip");
-  assert.match(go, /aria-describedby=\{places\.homeReady \? undefined : homeHint\}/);
+  // The hint is the chip's description only while the Home sheet is shut (lib/homeSet.ts: the sheet replaces it).
+  assert.match(go, /aria-describedby=\{places\.homeReady \|\| homeShown \? undefined : homeHint\}/);
   assert.match(go, /\{HOME_NOT_SET\}/);
   assert.doesNotMatch(go, /Sign in/);
-  assert.match(HOME_NOT_SET, /My Go/);
+  // Was /My Go/: since "Setting Home simply" the chip sets Home in place, so the line points at the chip.
+  assert.match(HOME_NOT_SET, /tap Home/);
   assert.match(appFile, /homeReady: myGo\.home !== null,/);
-  // Without a Home, the chip opens My Go in Settings (one press, then the Home search).
-  assert.match(appFile, /if \(home\) \{[\s\S]*?void goTo\(home\.point, home\.label \|\| "Home"\);[\s\S]*?openView\("settings", chip\);/);
+  // Without a Home, the chip opens Go's Home sheet in place (was: My Go in Settings); with one, it rides there.
+  assert.match(go, /onClick=\{\(event\) => \(places\.homeReady \? places\.onHome\(event\.currentTarget\) : setHomeOpen\(!homeOpen\)\)\}/);
+  assert.match(appFile, /if \(!home\) return;[\s\S]*?void goTo\(home\.point, home\.label \|\| "Home"\);/);
   // Water and Restroom search from the rider's location, in their own sheet.
   assert.match(appFile, /onWater: \(chip\) => \{\s*openView\("nearest", chip\);\s*findNearestHere\("water"\);/);
   assert.match(appFile, /onRestroom: \(chip\) => \{\s*openView\("nearest", chip\);\s*findNearestHere\("restroom"\);/);
@@ -218,14 +223,15 @@ test("Go's Where to? is the destination from the rider's location, in one edit, 
 test("the Go/Plan switch: two toggle buttons in a named group, in Go's bar and Plan's header; a press is remembered as My Go's Open in", () => {
   assert.match(go, /role="group" aria-label=\{MODE_SWITCH_NAME\} aria-describedby=\{hintId\}/);
   assert.match(go, /className="mode-button" aria-pressed=\{mode === m\} onClick=\{\(\) => onChange\(m\)\}/);
-  assert.match(appFile, /\{!goMode && <ModeSwitch mode=\{mode\} onChange=\{changeMode\} className="panel-mode" \/>\}/);
+  assert.match(appFile, /\{!goMode && <ModeSwitch mode=\{mode\} onChange=\{changeMode\} className="panel-mode" modes=\{switchModes\(canReview\)\} \/>\}/);
   assert.match(appFile, /<GoTopBar\s+mode=\{mode\}\s+onMode=\{changeMode\}/);
   const change = appFile.slice(appFile.indexOf("const changeMode = "), appFile.indexOf("// \"Copy link\""));
   assert.match(change, /writeTabMode\(next\);/);
   assert.match(change, /announceExtra\(modeSaid\(next\)\);/, "extra narration: said at Full, not at Brief");
   assert.match(change, /saveMyGoNow\(\{ \.\.\.myGoRef\.current, openIn: next \}, false\);/);
   // A save waits for the account's My Go to be read, so a Home is never overwritten by an early save.
-  assert.match(appFile, /if \(meRef\.current\.signed_in\) \{\s*if \(!accountMyGoRead\.current\) return;/);
+  // (Since "Setting Home simply" the early return also tells a Home save it was not kept, so it can say so.)
+  assert.match(appFile, /if \(meRef\.current\.signed_in\) \{\s*if \(!accountMyGoRead\.current\) \{\s*onSaved\?\.\(false\);\s*return;/);
 });
 
 // ---- the route summary (the owner's choices 4, 5 and 8) --------------------------------------

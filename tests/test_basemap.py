@@ -136,13 +136,16 @@ def test_nothing_re_encodes_the_bytes_a_range_names() -> None:
     )
     api = block("handle")
     if directives(api, "encode"):
-        # One encode, the matched one: a second, bare one beside it would
-        # compress every answer the API gives.
-        assert len(directives(api, "encode")) == 1, api
+        # The stress tiles' encode, matched on their content type, and the route answers'
+        # (review speed-4), matched on JSON and on their three paths: a bare one beside
+        # them would compress every answer the API gives.
+        assert directives(api, "encode") == ["zstd gzip {", "@route_answers zstd gzip {"], api
         matches = [line for line in api if line.startswith("header Content-Type")]
-        assert matches == ["header Content-Type application/vnd.mapbox-vector-tile*"], (
-            f"the API's encode must be confined to the stress tiles' content type: {api}"
-        )
+        assert matches == [
+            "header Content-Type application/vnd.mapbox-vector-tile*",
+            "header Content-Type application/json*",
+        ], f"the API's encodes must be confined to their content types: {api}"
+        assert "@route_answers path /api/route /api/stop-order /api/nearest" in api, api
 
 
 def test_only_the_three_contract_paths_are_served() -> None:

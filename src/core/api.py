@@ -57,12 +57,18 @@ A malformed JSON body is counted, because only a script can send one.
 from __future__ import annotations
 
 import dataclasses
+import json
 import logging
+import time
+from collections.abc import Callable
+from concurrent.futures import Future
+from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import datetime, timedelta
-from functools import wraps
+from functools import partial, wraps
 from typing import Annotated, Literal
 
 from django.conf import settings
+from django.db import connections
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from ninja import Field, NinjaAPI, Query, Schema, Status
@@ -86,13 +92,21 @@ from . import (
     climbprofile,
     gbfs,
     geocode,
+    map_match,
+    micromobility,
     nearest,
+    parallel,
     presets,
     ratelimit,
+    route_cache,
     routing,
     segment_info,
+    share_links,
     stoporder,
+    timing,
     transit,
+    transit_live,
+    wmata_live,
 )
 
 logger = logging.getLogger(__name__)
@@ -289,6 +303,15 @@ class RouteIn(Schema):
             " default; it holds only facts about the route."
         ),
     )
+    closure_bypass: list[Annotated[str, Field(min_length=1, max_length=200)]] = Field(
+        default_factory=list,
+        max_length=50,
+        description=(
+            'v0.7.0, "Route through anyway": the ids of closures (`work_zones.closures[].id`)'
+            " the rider chose to route through for this plan. The plan then uses them, and"
+            " each is marked `bypassed` on the answer. Never remembered by the server."
+        ),
+    )
     loop: StrictBool = Field(
         default=False,
         description=(
@@ -358,8 +381,8 @@ class RouteIn(Schema):
         default=None,
         description=(
             "Transit ride types only: when the trip starts, ISO 8601 (with an offset, or local"
-            " time in Washington). Absent: now. Each system's own calendar for that day is used,"
-            " holidays and published closures included."
+            " time in Washington), within a year of now. Absent: now. Each system's own"
+            " calendar for that day is used, holidays and published closures included."
         ),
     )
     transit_option: str | None = Field(
@@ -391,9 +414,66 @@ class RouteIn(Schema):
         ),
     )
 
+    novice_legs: StrictBool = Field(
+        default=False,
+        description=(
+            "Transit ride types only (v0.7.0, Novice and Nervous): plan the bike legs as Novice"
+            " and Nervous does, every road read one level of traffic stress up, so the page can"
+            " offer Own bike + Transit and Bikeshare + Transit beside a Novice and Nervous route"
+            " that still uses LTS 3 or worse (its `novice.transit`)."
+        ),
+    )
+    quick: StrictBool = Field(
+        default=False,
+        description=(
+            'v0.7.0, "Faster routing": answer the first good route at once - the router\'s own'
+            " route with its closures, stress and description, and no search after it - marked"
+            " `provisional`. The client then asks again without it for the full plan and swaps"
+            " that in where it is better (Go, before Start only). Ignored where a first route"
+            " cannot be shown alone (a loop, a long ride or long calm plan, Mountain Bike,"
+            " Bikeshare and the transit ride types): the full plan is answered, not provisional."
+        ),
+    )
+    candidates: StrictBool = Field(
+        default=True,
+        description=(
+            "False answers the plan's route alone: no routes to choose from are looked for"
+            " (`candidates` and `rank` are null), so a re-plan answers sooner and smaller."
+            " Ride mode sends it on every re-plan, which uses only the first route (review"
+            " speed-5). The route itself is planned as with true."
+        ),
+    )
+    via_points: list[StrictInt] = Field(
+        default_factory=list,
+        max_length=MAX_POINTS,
+        description=(
+            "v0.7.0, via points vs stops: the indices into `points` of the via points, which only"
+            " shape the route. The route passes each without a U-turn or a stop; every other"
+            " point is a stop. Never the first or the last point. Absent: every point is a stop,"
+            " as before."
+        ),
+    )
+
+    @field_validator("preset", mode="before")
+    @classmethod
+    def _renamed_ride_types(cls, value):
+        """An old ride type's name (a link or a saved plan from before it was renamed) plans
+        as the ride type it became: "kids" is Novice and Nervous (v0.7.0)."""
+        return presets.resolve_preset(value) if isinstance(value, str) else value
+
     @model_validator(mode="after")
     def dials_fit_the_preset(self):
         preset = presets.PRESETS[self.preset]
+        if self.via_points:
+            last = len(self.points) - 1
+            if len(set(self.via_points)) != len(self.via_points) or any(
+                not 0 < index < last for index in self.via_points
+            ):
+                raise ValueError(
+                    "via_points are distinct indices of points between the start and the end"
+                )
+        if self.novice_legs and self.preset not in presets.TRANSIT_PRESETS:
+            raise ValueError("novice_legs applies to the transit ride types only")
         if self.hills is not None and self.hills > 0 and not preset.hills_seek:
             raise ValueError(
                 "Mass Ride does not look for climbs: a field that slows below balance speed on a"
@@ -455,6 +535,11 @@ class RouteIn(Schema):
             )
         return self
 
+    @field_validator("depart_at")
+    @classmethod
+    def _depart_near_now(cls, value: datetime | None) -> datetime | None:
+        return near_now(value)
+
     @field_validator("system_weight_kg")
     @classmethod
     def _weight_at_the_nearer_limit(cls, value: int | None) -> int | None:
@@ -498,6 +583,25 @@ class ConfirmLongOut(Schema):
     error: str
     code: Literal["confirm_long"]
     span_km: int
+
+
+# How far from now a trip's time may be (`depart_at`, `at`): a time near the year 1 or 9999
+# overflowed in the time zone's conversion and answered 500 (review api-5).
+WHEN_RANGE = timedelta(days=366)
+
+
+def near_now(value: datetime | None) -> datetime | None:
+    """`value` where it is within WHEN_RANGE of now (a time without an offset is local time
+    in Washington); otherwise a refusal, which the API answers 400."""
+    if value is None:
+        return None
+    at = value if value.tzinfo is not None else value.replace(tzinfo=ridetime.ZONE)
+    try:
+        if abs(at - timezone.now()) <= WHEN_RANGE:
+            return value
+    except OverflowError:
+        pass
+    raise ValueError("the time must be within a year of now")
 
 
 BusyCode = Literal["long_ride_timed_out", "bikeshare_unavailable", "transit_unavailable"]
@@ -1111,8 +1215,9 @@ class DescriptionEntryOut(Schema):
     from_mi: float
     to_mi: float
     street: str | None = Field(
-        description='The street, or "unnamed path" or "unnamed road"; null on a `via` and '
-        "where a junction's road has no name."
+        description="The street, an unnamed bike lane's name from the street beside it (\"9th"
+        ' Street Northwest protected bike lane"), or "path" or "unnamed road"; null on a `via`'
+        " and where a junction's road has no name."
     )
     tier: int | None = Field(description="1-5 on a stretch; null: not rated, or not a stretch.")
     facility: Literal["path", "protected", "lane"] | None = Field(
@@ -1144,6 +1249,13 @@ class DescriptionEntryOut(Schema):
             "On a stretch: `text` with painted lanes on LTS 4 and Avoid not called bike "
             'lanes, for the client switch "Show bike lanes on high-stress roads" '
             "(OWNER-DECISIONS 275); null where that is `text`."
+        ),
+    )
+    relation_name: bool = Field(
+        default=False,
+        description=(
+            "On a stretch: its `street` is its trail's route relation's name, carried by "
+            "no way of it itself; the ride gives no cue for a change onto such a name."
         ),
     )
 
@@ -1662,11 +1774,12 @@ class WorkZoneOut(Schema):
     """A live work zone the route runs along (FOLLOWUP-WORKZONES)."""
 
     id: str
-    kind: Literal["closed", "unknown", "penalty"] = Field(
+    kind: Literal["closed", "unknown", "penalty", "lane"] = Field(
         description=(
             '"closed": closed to bicycles (left out where it could be); "unknown": every lane'
             ' closed and bicycles not mentioned (342(3): penalised, with a warning); "penalty":'
-            " rideable, with a heads-up (342(4))."
+            ' rideable, with a heads-up (342(4)); "lane": a bike lane blocked with the road'
+            " open (v0.7.0, DDOT permits): a warning only."
         )
     )
     penalty_s: float
@@ -1677,9 +1790,78 @@ class WorkZoneOut(Schema):
     to_m: int
     start: str | None
     end: str | None
-    source: Literal["md", "va"]
+    source: Literal["md", "va", "dc", "mpd", "alertdc"]
     warning: bool = Field(description="True for a closure the rider may meet: shown in red.")
     text: str = Field(description="The heads-up as the description words it.")
+    bypassed: bool = Field(default=False, description="Routed through: the rider's choice.")
+    may_still_apply: bool = Field(
+        default=False,
+        description="No end given, on a later ride: warned of, not routed round (v0.7.0).",
+    )
+
+
+ClosureEffect = Literal["on_route", "routed_round", "bypassed", "may_still_apply", "none"]
+
+
+class ClosureOut(Schema):
+    """A closure drawn on the route's map, and its card (v0.7.0, "Closures on the map")."""
+
+    id: str
+    source: Literal["md", "va", "dc", "mpd", "alertdc"]
+    source_name: str = Field(
+        description='The source as the card names it: "MPD traffic advisory, Oct 15".'
+    )
+    url: str | None = Field(description="The source's own page.")
+    kind: Literal["closed", "unknown", "lane"]
+    severity: Literal["red", "amber"] = Field(
+        description='"red": a closed stretch (a barrier icon); "amber": a bike lane blocked.'
+    )
+    title: str = Field(
+        description='What is closed: "Constitution Avenue NW closed, 14th St to 18th St".'
+    )
+    road: str | None
+    when_text: str = Field(
+        description='"Closed today 4:30 am to 1:30 pm", "Permit: road closed until Oct 20".'
+    )
+    start: str | None
+    end: str | None
+    effect: ClosureEffect = Field(
+        description=(
+            '"on_route": the route runs along it; "routed_round": the route goes round it;'
+            ' "bypassed": routed through by the rider\'s choice; "may_still_apply": on the route,'
+            ' no end given on a later ride, not routed round; "none": no effect on the route.'
+        )
+    )
+    delay_s: int | None = Field(
+        description=(
+            "The extra time the detour round it adds on this route (for a bypassed one, the time"
+            " going round would add); null where it has none or it was not worked out in time."
+        )
+    )
+    effect_text: str = Field(description='"Detour adds about 4 min", "No effect on your route".')
+    can_bypass: bool = Field(description='Whether the card offers "Route through anyway".')
+    bypassed: bool
+    from_m: int | None = Field(description="Where the route meets it; null where it does not.")
+    to_m: int | None
+    point: LonLat = Field(description="Where its marker goes: the middle of its stretch.")
+    line: list[LonLat]
+
+
+class ClosureNoticeOut(Schema):
+    """A "Check before you go" notice: an NPS park alert, or an advisory that could not be
+    placed on the map (v0.7.0). Text and a link; never routed round."""
+
+    id: str
+    source: Literal["nps", "mpd", "alertdc"]
+    source_name: str
+    title: str
+    text: str
+    url: str | None
+    area: str = Field(description='An NPS park code ("rocr"), or "dc".')
+    area_name: str | None
+    point: LonLat | None = Field(description="The park's marker; null for a District-wide notice.")
+    category: str | None
+    when_text: str
 
 
 class WorkZonesOut(Schema):
@@ -1694,6 +1876,17 @@ class WorkZonesOut(Schema):
     unchecked: str | None
     sources: list[str]
     disclaimer: str
+    # v0.7.0 ("DC closures source"; "Closures on the map"). Additive.
+    ride_at: str | None = Field(
+        default=None, description="The ride's moment the zones were matched at."
+    )
+    closures: list[ClosureOut] = Field(
+        default_factory=list,
+        description="The closures to draw on the route's map: on it, or in force near it.",
+    )
+    notices: list[ClosureNoticeOut] = Field(
+        default_factory=list, description='"Check before you go": park alerts and unplaced text.'
+    )
 
 
 class RouteBody(Schema):
@@ -1720,6 +1913,13 @@ class RouteBody(Schema):
     # Index in geometry.coordinates of each leg's last vertex, one per leg
     # (points - 1); a leg starts where the one before it ends.
     leg_ends: list[int]
+    arrival_side: Literal["left", "right"] | None = Field(
+        default=None,
+        description=(
+            "Which side of the street the destination is on, from the router's destination"
+            " maneuver (Ride mode's last cue: 'Destination on your right'); null where unknown."
+        ),
+    )
     # The route's stressful junctions, in route order; null where they could not
     # be read in time (the route is answered all the same).
     intersections: list[IntersectionOut] | None
@@ -1879,6 +2079,22 @@ class AvoidAlternateOut(RouteBody):
     )
 
 
+class TransitStepLiveOut(Schema):
+    text: str = Field(description='"Live: Red Line toward Shady Grove in 3 min, 11 min."')
+    minutes: list[int]
+    source: Literal["live"] = "live"
+
+
+class TransitLiveOut(Schema):
+    warnings: list[str] = Field(
+        description='Elevators out where your bike needs one: "Elevator out at X: carry your'
+        ' bike on the stairs."'
+    )
+    alerts: list[str] = Field(description="WMATA's rail incidents on the lines used.")
+    credit: str = Field(description='"Data: WMATA".')
+    as_of: str = Field(description="When WMATA was read, local ISO time.")
+
+
 class TransitStepOut(Schema):
     mode: Literal[
         "ride",
@@ -1924,6 +2140,18 @@ class TransitStepOut(Schema):
             "[lon, lat] for the map: Metro and bus through their stops, walks straight, the far"
             " end's ride as routed; empty for the route line's own step."
         )
+    )
+    stress_spans: list[StressSpanOut] | None = Field(
+        default=None,
+        description=(
+            "A ride after the route line (own bike or share bike), routed as the route line"
+            " is: its sections by traffic stress along `coordinates`, in the form of the"
+            " body's `stress_spans`. Null where it was not routed in time (a plain line)."
+        ),
+    )
+    live: TransitStepLiveOut | None = Field(
+        default=None,
+        description="A Metro step's next trains its way now, from WMATA (core.transit_live).",
     )
 
 
@@ -2013,9 +2241,50 @@ class TransitOut(Schema):
     departure: TransitDepartureOut | None = Field(
         default=None, description="The first infrequent departure, or null where there is none."
     )
+    live: TransitLiveOut | None = Field(
+        default=None,
+        description="WMATA's live values on this trip (v0.7.0); null with none to hand.",
+    )
+
+
+class NoviceBusiestOut(Schema):
+    name: str | None = Field(description="The road's name, or null where it has none.")
+    metres: float
+    level: int = Field(description="Its worst real level of traffic stress, 3 to 5 (Avoid).")
+
+
+class NoviceOut(Schema):
+    busy_m: float = Field(description="Metres of real LTS 3 or worse on the route.")
+    busiest: NoviceBusiestOut | None = Field(
+        description="The longest run of LTS 3 or worse, by road; null where there is none."
+    )
+    over_ceiling: bool = Field(
+        description="The calmer routes found were longer than the ride type's 1.4x ceiling."
+    )
+    transit: bool = Field(
+        description=(
+            "Offer Own bike + Transit and Bikeshare + Transit beside this route (each requested"
+            " with `novice_legs`): it still uses LTS 3 or worse, or is held at the ceiling."
+        )
+    )
 
 
 class RouteOut(RouteBody):
+    provisional: bool = Field(
+        default=False,
+        description=(
+            "True on a first route asked for with `quick`: the router's own route, its closures,"
+            " stress and words, before the search (no calm search, candidates, detour check or"
+            " Novice offer yet). Ask again without `quick` for the full plan."
+        ),
+    )
+    novice: NoviceOut | None = Field(
+        default=None,
+        description=(
+            "Novice and Nervous only (v0.7.0): how much busy road the route still uses, read on"
+            " the real levels, and whether to offer transit beside it; null elsewhere."
+        ),
+    )
     avoid_search: AvoidSearchOut | None = None
     avoid_alternate: AvoidAlternateOut | None = Field(
         default=None,
@@ -2129,6 +2398,10 @@ STRESS_EDIT_PATHS = (
     "/api/stress-suggestions",
     "/api/junction-suggestions",
     "/api/mass-hazards",
+    "/api/closures/reviewed",
+    "/api/closures/reports",
+    "/api/closures/stretch",
+    "/api/review",
     "/api/me",
 )
 
@@ -2210,6 +2483,42 @@ def json_body_only(view):
     errors_as_json,
 )
 def route(request, body: RouteIn, response: HttpResponse):
+    # Where the request's time goes, phase by phase (v0.7.0, "Faster routing" step 1): a
+    # Server-Timing header on every answer, and one log line with no location in it.
+    timings = timing.Timings(started=timing.now() - _waited_s(request))
+    timings.mark("wait")
+    token = timing.start(timings)
+    try:
+        answered = _route_answer(request, body, response)
+    finally:
+        timing.stop(token)
+    header = timings.header()
+    if isinstance(answered, HttpResponse):
+        answered["Server-Timing"] = header
+        status = answered.status_code
+    else:
+        response["Server-Timing"] = header
+        status = getattr(answered, "status_code", 200)
+    loop = routing.loop_wanted(body.points, body.loop, body.preset)
+    timings.log(body.preset, span_m(routing.loop_points(body.points, loop)), status)
+    return answered
+
+
+def _waited_s(request) -> float:
+    """Seconds from the request's arrival (`RequestClockMiddleware`) to now: the `wait`
+    phase. Read on the routing clock, at most a minute (gunicorn's own timeout)."""
+    started = getattr(request, "routing_started", None)
+    if started is None:
+        return 0.0
+    try:
+        # The monotonic clock `routing.clock` reads, read directly: the plan's own budget
+        # clock is not advanced by measuring it.
+        return min(60.0, max(0.0, float(time.monotonic() - started)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _route_answer(request, body: RouteIn, response: HttpResponse):
     # A loop is as long as its way back too.
     loop = routing.loop_wanted(body.points, body.loop, body.preset)
     span = span_m(routing.loop_points(body.points, loop))
@@ -2256,6 +2565,128 @@ def route(request, body: RouteIn, response: HttpResponse):
         return _plan(request, body, response, long_ride=True)
     finally:
         ratelimit.release(held)
+
+
+# --- Go's "More direct" and "Calmer" (the owner, 2026-10-16) --------------------------------
+#
+# POST /api/route/neighbours plans the rider's trip one notch more traffic tolerant and one
+# notch calmer than the rider's own setting (`presets.stress_notches`), for Go to offer beside
+# the rider's own route. Go asks once its own route is shown, and never waits on the answer:
+# a plan or a ride's re-route asked for meanwhile is sent at once (frontend
+# lib/routeScheduler.ts). So this request never takes a slot a plan needs: it has routing's
+# deployment slots at the lowest priority and a client slot of its own
+# (`ratelimit.NEIGHBOURS_IN_FLIGHT`), and is refused at once when the pool is busy. It counts
+# as two routing requests, for the two plans. The plans run one after the other on the
+# request's own thread, through the route cache (Bikeshare's ride, between the rider's own
+# docks, as a Bikeshare plan is, uncached), inside NEIGHBOURS_BUDGET_S: each plan stops at
+# that budget's end (`routing.Deadline`), so nothing outlives the request, and one that fails
+# or runs out of time is left out. Nothing is compared here: the page compares each with the
+# routes it shows and keeps those that differ enough (frontend lib/neighbours.ts).
+
+# The seconds the two plans may take together, inside the request's own budget.
+NEIGHBOURS_BUDGET_S = 15
+# What the request counts against the routing limit: one for each plan.
+NEIGHBOURS_COST = 2
+
+
+class NeighbourOut(Schema):
+    kind: Literal["direct", "calmer"] = Field(
+        description="`direct`: one notch more traffic tolerant. `calmer`: one notch calmer."
+    )
+    stress: int = Field(description="The traffic slider's position it was planned at.")
+    route: RouteOut
+
+
+class NeighboursOut(Schema):
+    stress: int = Field(description="The rider's own position, as the notches were read from.")
+    options: list[NeighbourOut] = Field(
+        description=(
+            "Up to two, the more direct first; empty on a ride type that offers neither (Rebalance"
+            " Ride, the transit ride types, Mass Ride), at both ends of a ride type's limits, on"
+            " a long ride, and on a Bikeshare request that does not name its docks"
+            " (`pickup_station`, and `dropoff_station` unless it ends outside a dock): a"
+            " Bikeshare option keeps those docks and changes only the ride between them."
+        )
+    )
+
+
+@api.post(
+    "/route/neighbours",
+    response={
+        200: NeighboursOut,
+        400: ErrorOut,
+        422: ErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+        503: BusyOut,
+    },
+    summary="The same trip one notch more direct and one notch calmer (Go's route options)",
+    by_alias=True,
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.NEIGHBOURS_IN_FLIGHT, slots=ratelimit.neighbour_slots),
+    ratelimit.rate_limited(ratelimit.ROUTING, cost=NEIGHBOURS_COST),
+    json_body_only,
+    errors_as_json,
+)
+def route_neighbours(request, body: RouteIn):
+    stress = _stress_of(body)
+    loop = routing.loop_wanted(body.points, body.loop, body.preset)
+    if span_m(routing.loop_points(body.points, loop)) > CONFIRM_SPAN_M:
+        return Status(200, {"stress": stress, "options": []})
+    if body.preset == presets.BIKESHARE and not _same_docks(body):
+        return Status(200, {"stress": stress, "options": []})
+    direct, calmer = presets.stress_notches(body.preset, stress)
+    wanted = [
+        (kind, notch)
+        for kind, notch in (("direct", direct), ("calmer", calmer))
+        if notch is not None
+        # A long calm plan takes the long ride's slot and budget: not offered as an option.
+        and (
+            loop
+            or not routing.long_calm_for(
+                body.preset, body.points, notch, long_ride=False, trails_off=body.trails_off
+            )
+        )
+    ]
+    # The plans' budget runs out NEIGHBOURS_BUDGET_S from now, read as a plan's own budget.
+    started = routing.clock() - (routing.PLAN_BUDGET_S - NEIGHBOURS_BUDGET_S)
+    bodies = {
+        kind: body.model_copy(update={"stress": notch, "quick": False, "candidates": False})
+        for kind, notch in wanted
+    }
+    answered = {kind: _neighbour(bodies[kind], started) for kind, _ in wanted}
+    options = [
+        {"kind": kind, "stress": notch, "route": answered[kind]}
+        for kind, notch in wanted
+        if answered.get(kind) is not None
+    ]
+    return Status(200, {"stress": stress, "options": options})
+
+
+def _same_docks(body: RouteIn) -> bool:
+    """Whether a Bikeshare request names the docks of the rider's own plan, so its options
+    vary only the ride between them (the owner, 21:21): the pick-up dock, and the drop-off
+    dock unless the ride ends outside one. A plan from a free e-bike has no dock to hold."""
+    return body.pickup_station is not None and (
+        body.dropoff_station is not None or body.ending == bikeshare.ENDING_OUTSIDE
+    )
+
+
+def _neighbour(body: RouteIn, started: float) -> dict | None:
+    """One notch's plan, through the route cache, or None: whatever goes wrong, the option
+    is left out. Without the request's timing recorder, as a transit trip's later rides."""
+    token = timing.start(None)
+    try:
+        if body.preset == presets.BIKESHARE:
+            # Only the ride between the rider's docks changes (`_same_docks`).
+            return _bikeshare_body(body, started)
+        return _planned(body, _bike_dials(body), started, False, False)
+    except Exception as error:  # noqa: BLE001 - an option never fails the answer
+        logger.warning("route neighbours: a notch was not planned: %s", type(error).__name__)
+        return None
+    finally:
+        timing.stop(token)
 
 
 # --- The nearest stations to pick up from or return to (OWNER-DECISIONS 466, 466a) ---------
@@ -2394,6 +2825,165 @@ def bikeshare_stations(request, body: NearbyStationsIn, response: HttpResponse):
     )
 
 
+# --- Bikeshare docks and free e-bikes on the map (v0.7.0; core.micromobility) ----------------
+#
+# GET /api/bikeshare/docks?bbox=west,south,east,north&operators=cabi answers the docks and
+# free e-bikes in the rider's map view, from each operator's one shared live copy. The view is
+# bounded and the counts capped (core.micromobility), nothing is kept, and an operator whose
+# licence is not recorded is never contacted: it is listed, with `licensed` false, and nothing
+# of it is shown. A GET of a map view, as a tile is: no point of the rider's is in it.
+
+
+class DocksIn(Schema):
+    bbox: str = Field(
+        max_length=120,
+        description="The map's view: west,south,east,north in degrees, at most 0.25 by 0.2.",
+    )
+    operators: str = Field(
+        default="cabi",
+        max_length=120,
+        description="Comma-separated operator ids to show (cabi, the only one). Default cabi.",
+    )
+
+
+class DockOut(Schema):
+    id: str
+    name: str
+    lon: float
+    lat: float
+    classic: int | None = Field(description="Classic bikes; null when availability is unknown.")
+    ebikes: int | None = Field(description="E-bikes; null when availability is unknown.")
+    docks: int | None = Field(description="Empty docks; null when availability is unknown.")
+    closed: bool = Field(description="Out of service, or silent for 30 minutes.")
+
+
+class FreeBikeOut(Schema):
+    operator: str
+    lon: float
+    lat: float
+
+
+class OperatorOut(Schema):
+    id: str
+    name: str
+    initial: str
+    colour: str
+    licensed: bool = Field(description="False: its feed licence is not yet recorded; not shown.")
+    on_by_default: bool
+    docked: bool
+
+
+class DocksOut(Schema):
+    availability: Literal["live", "stale", "unknown", "unavailable"] = Field(
+        description=(
+            "`unknown`: the stations are known but not their counts; `unavailable`: the"
+            " operator's feed could not be read."
+        )
+    )
+    as_of: float | None = Field(description="When the feed was read, epoch seconds.")
+    docks: list[DockOut]
+    free_bikes: list[FreeBikeOut]
+    operators: list[OperatorOut]
+    credit: list[str] = Field(description="The plain source citations of what is shown.")
+
+
+@api.get(
+    "/bikeshare/docks",
+    response={200: DocksOut, 400: ErrorOut, 429: ErrorOut, 500: ErrorOut},
+    summary="The bikeshare docks and free e-bikes in a map view, as they are now",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.BIKESHARE_DOCKS), errors_as_json)
+def bikeshare_docks(request, params: Query[DocksIn], response: HttpResponse):
+    response["Cache-Control"] = "no-store"
+    try:
+        box = micromobility.parse_bbox(params.bbox)
+    except ValueError as error:
+        return Status(400, {"error": str(error)})
+    wanted = [w.strip() for w in params.operators.split(",") if w.strip()]
+    unknown = [w for w in wanted if w not in micromobility.BY_ID]
+    if unknown:
+        return Status(400, {"error": f"unknown operator: {', '.join(unknown)}"})
+    docks: list[dict] = []
+    free: list[dict] = []
+    credit: list[str] = []
+    availability = "unavailable"
+    as_of: float | None = None
+    for operator in (micromobility.BY_ID[w] for w in dict.fromkeys(wanted)):
+        client = micromobility.client_for(operator)
+        if client is None:
+            continue
+        try:
+            snapshot = client.snapshot()
+        except gbfs.Unavailable:
+            continue
+        credit.append(operator.credit)
+        if operator.docked:
+            docks = [dataclasses.asdict(d) for d in micromobility.docks_in(snapshot, box)]
+            availability = (
+                "unknown" if snapshot.status is None else ("stale" if snapshot.stale else "live")
+            )
+            as_of = snapshot.as_of
+        free += [
+            {"operator": operator.id, "lon": lon, "lat": lat}
+            for lon, lat in micromobility.free_bikes_in(snapshot, box)
+        ]
+    return Status(
+        200,
+        {
+            "availability": availability,
+            "as_of": as_of,
+            "docks": docks,
+            "free_bikes": free,
+            "operators": [
+                {
+                    "id": o.id,
+                    "name": o.name,
+                    "initial": o.initial,
+                    "colour": o.colour,
+                    "licensed": micromobility.usable(o),
+                    "on_by_default": o.on_by_default,
+                    "docked": o.docked,
+                }
+                for o in micromobility.OPERATORS
+            ],
+            "credit": credit,
+        },
+    )
+
+
+# --- Short map links (v0.7.0, "Open shared locations in RouteMaker"; core.share_links) -------
+#
+# POST /api/share/resolve follows a short map link (maps.app.goo.gl, goo.gl/maps, maps.apple) to
+# the full link it stands for, which the browser then reads for its place. A POST, so the link
+# (a place the rider may be going) is in no URL or log line; it is kept nowhere.
+
+
+class ShareResolveIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(max_length=share_links.MAX_URL, description="A short map link.")
+
+
+class ShareResolveOut(Schema):
+    url: str = Field(description="The full map link the short one stands for.")
+
+
+@api.post(
+    "/share/resolve",
+    response={200: ShareResolveOut, 400: ErrorOut, 429: ErrorOut, 500: ErrorOut, 502: ErrorOut},
+    summary="Follow a short map link to the full link it stands for",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.SHARE_RESOLVE), json_body_only, errors_as_json)
+def share_resolve(request, body: ShareResolveIn, response: HttpResponse):
+    response["Cache-Control"] = "no-store"
+    try:
+        return Status(200, {"url": share_links.resolve(body.url)})
+    except share_links.NotAShortLink:
+        return Status(400, {"error": "That is not a short map link RouteMaker can open."})
+    except share_links.Unresolved:
+        return Status(502, {"error": "That link could not be opened just now; try again shortly."})
+
+
 def _stress_of(body: RouteIn) -> int:
     """The traffic slider's position a request plans at."""
     if body.stress is not None:
@@ -2412,6 +3002,7 @@ def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
         stress=body.stress,
         hills=profile.hills if body.hills is None else body.hills,
         when=body.when,
+        closure_bypass=tuple(body.closure_bypass),
         assist=profile.assist,
         avoid_gravel=body.avoid_gravel,
         # "Keep to roads, not trails" is one switch on every ride type (463b).
@@ -2530,13 +3121,41 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     if when.tzinfo is None:
         when = when.replace(tzinfo=ridetime.ZONE)
     schedule = transit.load(settings.TRANSIT_SCHEDULE_PATH, when.astimezone(ridetime.ZONE).date())
+    # The docks first, and the candidates' clock after them (TB-8): a slow feed read must not
+    # spend the candidates' budget. Feeds that cannot be read are no docks, with a note, not a
+    # refusal (TB-2): the trip walks at both ends.
+    share_snapshot = share_note = None
+    if body.preset == presets.BIKESHARE_TRANSIT:
+        try:
+            share_snapshot = gbfs.client.snapshot()
+        except gbfs.Unavailable as error:
+            logger.warning("bikeshare feeds unavailable for a transit plan: %s", error)
+            share_snapshot = gbfs.Snapshot(fetched_at=0.0, stations=[], status={})
+            share_note = "Bikeshare docks can't be read right now: walking at both ends."
+    candidates_until = min(
+        routing.clock() + TRANSIT_CANDIDATES_S,
+        started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S,
+    )
     # The candidates' calls stop `TRANSIT_CANDIDATES_S` in, leaving the answer's own line
     # (routing.plan, below) the rest of the request's budget: a slow router estimates candidates,
     # it never times out the plan.
-    services = transit.RoutingServices(started + TRANSIT_CANDIDATES_S, body.preset)
+    # Novice and Nervous's transit options (v0.7.0): the bike legs priced as that ride type
+    # prices roads, one level up; a share bike keeps its own pace.
+    leg_preset = presets.NOVICE if body.novice_legs else body.preset
+    leg_costing = None
+    if body.novice_legs and body.preset == presets.BIKESHARE_TRANSIT:
+        leg_costing = presets.costing(presets.NOVICE)
+        leg_costing["bicycle"]["cycling_speed"] = presets.BIKESHARE_CLASSIC_SPEED_KMH
+    services = (
+        transit.RoutingServices(candidates_until, leg_preset)
+        if leg_costing is None
+        else transit.RoutingServices(candidates_until, leg_preset, costing=leg_costing)
+    )
     start, end = body.points
     if body.preset == presets.BIKESHARE_TRANSIT:
-        found = transit.plan_bikeshare(schedule, start, end, when, services, gbfs.client.snapshot())
+        found = transit.plan_bikeshare(schedule, start, end, when, services, share_snapshot)
+        if share_note is not None:
+            found.notes.insert(0, share_note)
     else:
         options = presets.costing(body.preset)["bicycle"]
         speed = options.get(
@@ -2549,10 +3168,20 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         stress=body.stress,
         hills=body.hills,
         when=body.when,
+        closure_bypass=tuple(body.closure_bypass),
         avoid_gravel=body.avoid_gravel,
         trails_off=body.trails_off,
         system_weight_kg=body.system_weight_kg,
+        # The lines are priced as the candidates were (`leg_costing`): a share bike priced as
+        # Novice keeps the share bike's pace, so the trip is timed again (retime) at it.
+        cycling_speed_kmh=(
+            leg_costing["bicycle"]["cycling_speed"] if leg_costing is not None else None
+        ),
     )
+    # WMATA's live reading (core.wmata_live), if any: an elevator out on the way costs the trip
+    # a little in the ranking, and the block says the live values (core.transit_live).
+    live = wmata_live.client.snapshot()
+    found = transit_live.rank(found, live)
     found = transit.choose(found, body.transit_option)
     # The trip's other walks and rides are routed for the map in what is left of the budget.
     draw = transit.RoutingServices(
@@ -2560,13 +3189,18 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S,
             routing.clock() + transit.DRAW_BUDGET_S,
         ),
-        body.preset,
+        leg_preset,
         max_calls=transit.MAX_DRAW_CALLS,
         per_call_s=transit.DRAW_CALL_S,
+        costing=leg_costing,
     )
 
-    def answered(answer: dict, plan: transit.Plan) -> dict:
-        answer["transit"] = transit.block(transit.drawn(plan, draw), schedule)
+    def answered(answer: dict, plan: transit.Plan, lines: dict[int, dict] | None = None) -> dict:
+        # The later rides routed for their stress colours (`lines`) are drawn as routed; the
+        # trip's other walks and rides are routed for the map (transit.drawn).
+        lines = lines or {}
+        block = _transit_block(transit.drawn(plan, draw, skip=lines), schedule, live)
+        answer["transit"] = _with_leg_lines(block, lines)
         return answer
 
     if found.option.walk:
@@ -2592,7 +3226,13 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     def line(points: list[list[float]]) -> dict | None:
         """The answer's line routed, or None when the router did not answer in time."""
         try:
-            return routing.plan(points, body.preset, long_ride=False, started=started, dials=dials)
+            answered = routing.plan(
+                points, leg_preset, long_ride=False, started=started, dials=dials
+            )
+            # The ride type asked for, whichever ride type priced its bike leg.
+            answered["preset"] = body.preset
+            answered["novice"] = None
+            return answered
         except (routing.RouterUnavailable, routing.DeadlineExceeded) as error:
             logger.warning("transit plan: the answer's line was not routed: %s", error)
             return None
@@ -2602,32 +3242,62 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         drawn = _unrouted_line(points, body.preset, dials, plan.legs[plan.ride].seconds)
         return drawn, dataclasses.replace(plan, notes=[*plan.notes, UNROUTED_NOTE])
 
-    answer = line([ride_from, ride_to])
-    if answer is None:
-        answer, found = unrouted([ride_from, ride_to], found)
-        retime = False
-    if retime:
-        timed = transit.with_ride(found, float(answer["duration_s"]))
+    # Every later ride of the chosen option (the ride from the exit station to the destination,
+    # the far end's bikeshare ride) is routed as the first is, with the same ride type and dials,
+    # for its stress colours (the owner, v0.7.0: "it doesn't seem to include the LTS of the
+    # section towards the destination"). They run beside the answer's own line on the router
+    # pool (`core.parallel`, so a request never has more than its bound of router calls in
+    # flight beside its own thread), inside the same budget; one that fails or runs out of time
+    # keeps its plain line from the search, and the plan never fails for it.
+    asked: list = []
+    try:
+        later = {} if whole else _later_rides(found, leg_preset, started, dials)
+        asked.append(later)
+        answer = line([ride_from, ride_to])
+        lines = _collected(later, started)
+        if answer is None:
+            answer, found = unrouted([ride_from, ride_to], found)
+            retime = False
+        # Each routed ride's own time (the later rides' too); the waits for infrequent
+        # departures are worked out again from them (transit.with_rides).
+        routed = {index: float(a["duration_s"]) for index, a in lines.items()}
+        if retime:
+            routed[found.ride] = float(answer["duration_s"])
+        timed = transit.with_rides(found, routed) if routed else found
         if timed.option.key != found.option.key:
             # The chosen trip's departure cannot be caught after all and it was left out: the
-            # quickest left is planned, its own line routed (or drawn start to end).
+            # quickest left is planned, its own line routed (or drawn start to end), and its
+            # later rides routed for their colours. Their times stay the plan's own: timing
+            # them again could drop this option too.
             leg = timed.legs[timed.ride]
             if timed.option.walk:
                 return answered(_walked_line(timed, body.preset, dials), timed)
             walked = leg.mode in (transit.WALK, transit.TAKE) and not timed.option.direct
             if walked and transit.line_m(leg) >= transit.MIN_LINE_M:
                 return answered(_walked_line(timed, body.preset, dials, draw), timed)
-            if timed.option.direct and body.preset == presets.BIKE_TRANSIT:
+            again_whole = timed.option.direct and body.preset == presets.BIKE_TRANSIT
+            if again_whole:
                 points = [list(start), list(end)]
             elif transit.line_m(leg) >= transit.MIN_LINE_M:
                 points = [list(leg.coordinates[0]), list(leg.coordinates[-1])]
             else:
+                again_whole = True
                 points = [list(start), list(end)]
+            later = {} if again_whole else _later_rides(timed, leg_preset, started, dials)
+            asked.append(later)
             answer = line(points)
+            lines = _collected(later, started)
             if answer is None:
                 answer, timed = unrouted(points, timed)
         found = timed
-    answered(answer, found)
+    finally:
+        # A later ride not started yet is not asked; one still running past its wait is left
+        # to its own deadline, not waited for.
+        for later in asked:
+            for pending in later.values():
+                if isinstance(pending, Future):
+                    pending.cancel()
+    answered(answer, found, lines)
     logger.info(
         "transit plan %s: search %.1f s (candidates %.1f s, %d calls), line %.1f s",
         body.preset,
@@ -2637,6 +3307,93 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         routing.clock() - searched,
     )
     return answer
+
+
+def _later_rides(
+    plan: transit.Plan,
+    leg_preset: str,
+    started: float,
+    dials: routing.Dials,
+) -> dict[int, Future | Callable[[], dict | None]]:
+    """Each ride of the chosen option after its route line (own bike or share bike, long
+    enough to route): the same ride type, dials and budget, by the leg's index in the option.
+    Sent to the router pool (`core.parallel`) to run beside the route line; where the pool is
+    off (ROUTER_PARALLEL_CALLS=1), kept to run in turn after the line (`_collected`), so the
+    line is never kept waiting behind them."""
+    option = plan.option
+    later: dict[int, Future | Callable[[], dict | None]] = {}
+    for index, leg in enumerate(option.legs):
+        if index == option.ride or leg.mode not in (transit.RIDE, transit.SHARE):
+            continue
+        if transit.line_m(leg) < transit.MIN_LINE_M:
+            continue
+        points = [list(leg.coordinates[0]), list(leg.coordinates[-1])]
+        if parallel.enabled():
+            later[index] = parallel.submit(_leg_line, points, leg_preset, started, dials)
+        else:
+            later[index] = partial(_leg_line, points, leg_preset, started, dials)
+    return later
+
+
+def _leg_line(points: list[list[float]], leg_preset: str, started: float, dials) -> dict | None:
+    """A later ride's line routed for its stress colours, or None: whatever goes wrong, the
+    leg keeps the plain line it was found with. Without the request's timing recorder: a
+    plan restarts its recorder's phases, which are the answer's own line's."""
+    token = timing.start(None)
+    on_pool = parallel.inside()
+    try:
+        return routing.plan(points, leg_preset, long_ride=False, started=started, dials=dials)
+    except Exception as error:  # a later leg never fails the plan
+        logger.warning("transit plan: a later ride's line was not routed: %s", error)
+        return None
+    finally:
+        timing.stop(token)
+        if on_pool:
+            # The pool thread's own database connection (the plan reads the approved
+            # junctions and the stress join): closed, as a pool thread is not the request's.
+            connections.close_all()
+
+
+def _collected(later: dict, started: float) -> dict[int, dict]:
+    """The later rides that were routed in time, by leg index. A call still running when the
+    request's router budget ends is let go: its leg keeps its plain line. One kept to run in
+    turn (the pool off) runs here, after the line, while the budget lasts."""
+    out: dict[int, dict] = {}
+    end = started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S
+    for index, pending in later.items():
+        if not isinstance(pending, Future):
+            answered = pending() if routing.clock() < end else None
+        else:
+            try:
+                answered = pending.result(timeout=max(0.0, end - routing.clock()))
+            except FutureTimeout:
+                logger.warning("transit plan: a later ride's line ran out of time")
+                continue
+        if answered is not None:
+            out[index] = answered
+    return out
+
+
+def _with_leg_lines(block: dict, lines: dict[int, dict]) -> dict:
+    """The `transit` block with each routed later ride's step drawn as routed, with its stress
+    sections in the form the route's own line has them (`stress_spans`), for the map, its
+    legend and the words to colour and say alike."""
+    steps = block["steps"]
+    for index, answered in lines.items():
+        if index >= len(steps) or steps[index]["route_line"]:
+            continue
+        coordinates = answered.get("geometry", {}).get("coordinates") or []
+        spans = answered.get("stress_spans")
+        if len(coordinates) < 2 or not spans:
+            continue
+        steps[index]["coordinates"] = coordinates
+        steps[index]["stress_spans"] = spans
+    return block
+
+
+def _transit_block(plan: transit.Plan, schedule, live) -> dict:
+    """The answer's `transit` block, with WMATA's live values where there are any."""
+    return transit_live.annotate(transit.block(plan, schedule), plan, live)
 
 
 def _transit_refusal(message: str, code: str, status: int):
@@ -2656,8 +3413,16 @@ def _transit_refusal(message: str, code: str, status: int):
 class ClosuresIn(Schema):
     at: datetime | None = Field(
         default=None,
-        description="When, ISO 8601 (local time in Washington without an offset). Absent: now.",
+        description=(
+            "When, ISO 8601 (local time in Washington without an offset), within a year of"
+            " now. Absent: now."
+        ),
     )
+
+    @field_validator("at")
+    @classmethod
+    def _at_near_now(cls, value: datetime | None) -> datetime | None:
+        return near_now(value)
 
 
 class ClosedStationOut(Schema):
@@ -2722,8 +3487,16 @@ class StationTimesIn(Schema):
     lat: float = Field(ge=-90, le=90)
     at: datetime | None = Field(
         default=None,
-        description="When, ISO 8601 (local time in Washington without an offset). Absent: now.",
+        description=(
+            "When, ISO 8601 (local time in Washington without an offset), within a year of"
+            " now. Absent: now."
+        ),
     )
+
+    @field_validator("at")
+    @classmethod
+    def _at_near_now(cls, value: datetime | None) -> datetime | None:
+        return near_now(value)
 
 
 class LineTimeOut(Schema):
@@ -2744,10 +3517,37 @@ class LineTimeOut(Schema):
     today: bool = True
 
 
+class LiveTrainOut(Schema):
+    line: str = Field(description='"Red Line".')
+    toward: str = Field(description="The train's last stop.")
+    minutes: list[int] = Field(description="Minutes until the next trains that way (0: arriving).")
+    when: str = Field(description='"3 min, 11 min"; "arriving", "boarding".')
+
+
+class LiveElevatorOut(Schema):
+    words: str = Field(
+        description='"Elevator out at Gallery Place: carry your bike on the stairs."'
+    )
+    where: str = Field(description="WMATA's description of the unit.")
+
+
+class StationLiveOut(Schema):
+    station: str
+    trains: list[LiveTrainOut]
+    elevators: list[LiveElevatorOut]
+    alerts: list[str] = Field(description="WMATA's rail incidents on the station's lines.")
+    credit: str = Field(description='"Data: WMATA".')
+    as_of: str = Field(description="When WMATA was read, local ISO time.")
+
+
 class StationTimesOut(Schema):
     service_day: str = Field(description="The GTFS service day (before 3 am, the day before).")
-    source: Literal["scheduled"] = Field(description="Where the times are from: the timetable.")
+    source: Literal["scheduled"] = Field(description="Where `lines` are from: the timetable.")
     lines: list[LineTimeOut]
+    live: StationLiveOut | None = Field(
+        default=None,
+        description="A Metro station's live values (core.transit_live.station); null where none.",
+    )
 
 
 @api.get(
@@ -2770,11 +3570,18 @@ def transit_station_times(request, params: Query[StationTimesIn], response: Http
         )
     moment = transit.moment_of(when)
     found = transit.station_times(schedule, (params.lon, params.lat), when)
-    response["Cache-Control"] = "public, max-age=60"
+    # Live values only for now: a time asked for (`at`) is the timetable's alone.
+    live = (
+        None
+        if params.at
+        else transit_live.station((params.lon, params.lat), wmata_live.client.snapshot())
+    )
+    response["Cache-Control"] = "public, max-age=30" if live else "public, max-age=60"
     return {
         "service_day": moment.service_day.isoformat(),
         "source": transit.SCHEDULED,
         "lines": [_line_time(t, moment.service_day) for t in found],
+        "live": live,
     }
 
 
@@ -2851,27 +3658,7 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
         ) as error:
             return _router_refusal(error, body)
     try:
-        dials = routing.Dials(
-            stress=body.stress,
-            hills=body.hills,
-            when=body.when,
-            carrying=body.carrying,
-            assist=body.assist,
-            avoid_gravel=body.avoid_gravel,
-            trails_off=body.trails_off,
-            target_distance_m=body.target_distance_m,
-            system_weight_kg=body.system_weight_kg,
-            loop=body.loop,
-            debug_junctions=body.debug_junctions,
-            mtb_level=body.mtb_level,
-            mtb_preferred=body.mtb_preferred,
-        )
-        return Status(
-            200,
-            routing.plan(
-                body.points, body.preset, long_ride=long_ride, started=started, dials=dials
-            ),
-        )
+        return Status(200, _planned(body, _bike_dials(body), started, long_ride, long_calm))
     except (
         routing.TooLong,
         routing.NoRoute,
@@ -2879,6 +3666,82 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
         routing.DeadlineExceeded,
     ) as error:
         return _router_refusal(error, body, long_ride or long_calm)
+
+
+def _bike_dials(body: RouteIn) -> routing.Dials:
+    """The dials of a bike-only plan (not Bikeshare's nor a transit trip's), as asked."""
+    return routing.Dials(
+        stress=body.stress,
+        hills=body.hills,
+        when=body.when,
+        closure_bypass=tuple(body.closure_bypass),
+        carrying=body.carrying,
+        assist=body.assist,
+        avoid_gravel=body.avoid_gravel,
+        trails_off=body.trails_off,
+        target_distance_m=body.target_distance_m,
+        system_weight_kg=body.system_weight_kg,
+        loop=body.loop,
+        debug_junctions=body.debug_junctions,
+        mtb_level=body.mtb_level,
+        mtb_preferred=body.mtb_preferred,
+        vias=tuple(body.via_points),
+    )
+
+
+def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_calm: bool) -> dict:
+    """The plan's answer, from the short-term cache where an identical request was
+    answered within its life (`core.route_cache`, v0.7.0 "Faster routing" step 5), else
+    planned and kept there where it may be."""
+    timings = timing.current()
+    when = body.when or routing.default_when()
+    key = route_cache.key_for(
+        body.model_dump(mode="json"),
+        when,
+        routing.planning_time(when=when),
+        "long_ride" if long_ride else "long_calm" if long_calm else "",
+    )
+    if timings is not None:
+        timings.mark("cache")
+    if key is not None:
+        kept = route_cache.get(key.key, quick=body.quick)
+        if kept is not None:
+            if timings is not None:
+                timings.note("cache", "hit")
+            return kept
+    if timings is not None:
+        timings.note("cache", "miss" if key is not None else "off")
+    failures_before = timings.failures if timings is not None else 0
+    answered = routing.plan(
+        body.points,
+        body.preset,
+        long_ride=long_ride,
+        started=started,
+        dials=dials,
+        quick=body.quick,
+        candidates=body.candidates,
+    )
+    if key is not None:
+        preset = presets.PRESETS[body.preset]
+        own_variant = presets.variant_for_ride(
+            body.preset,
+            when,
+            bool(body.assist) and preset.assist_speed_kmh is not None,
+            bool(body.trails_off),
+        )
+        if own_variant in routing.TWIN_VARIANTS and not routing._is_promoted(own_variant):
+            # Planned on the standard graph by design where no weekend or off-road build is
+            # served; an answer from it while the twin is merely down is not kept.
+            own_variant = "standard"
+        failures = (timings.failures if timings is not None else 0) - failures_before
+        # An answer whose plan ran into the answer's reserve may have skipped work for time.
+        budget_s = routing.LONG_PLAN_BUDGET_S if long_ride or long_calm else routing.PLAN_BUDGET_S
+        late = started is not None and routing.clock() - started >= (
+            budget_s - routing.ANSWER_RESERVE_S
+        )
+        if not late and route_cache.keepable(answered, own_variant, failures):
+            route_cache.put(key.key, answered, key.valid_s)
+    return answered
 
 
 def _router_refusal(error: Exception, body: RouteIn, long_plan: bool = False):
@@ -2988,6 +3851,9 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
         carrying=body.carrying,
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
+        trails_off=body.trails_off,
+        mtb_level=body.mtb_level,
+        mtb_preferred=body.mtb_preferred,
         loop=body.loop,
     )
     started = getattr(request, "routing_started", None)
@@ -2997,6 +3863,72 @@ def stop_order(request, body: RouteIn, response: HttpResponse):
         refusal = _error(503, "Finding the best order took too long; try again shortly.")
         refusal["Retry-After"] = str(DEADLINE_RETRY_S)
         return refusal
+
+
+# Snapping an opened GPX track to the map's ways (core.map_match; PLAN.md, Import: map matching):
+# signed out or in, counted as routing is, and nothing kept. The body is the track's line, up to
+# map_match.MAX_POINTS points, which is larger than a route request, so it is read here with its
+# own cap rather than through `json_body_only`.
+class MatchOut(Schema):
+    line: list[list[float]] = Field(description="The snapped line, [lon, lat] pairs.")
+    matched_share: float = Field(
+        description="The share of the track's points the matcher put on a way, 0 to 1."
+    )
+
+
+@api.post(
+    "/match",
+    response={
+        200: MatchOut,
+        400: ErrorOut,
+        422: ErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+        503: BusyOut,
+    },
+    summary="Snap an opened GPX track to the routable network on a ride type's graph",
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT),
+    ratelimit.rate_limited(ratelimit.ROUTING),
+    errors_as_json,
+)
+def match_track(request):
+    body, refusal = _json_body(request, map_match.MAX_BYTES)
+    if refusal is not None:
+        return refusal
+    if not isinstance(body, dict) or set(body) - {"points", "preset", "trails_off", "assist"}:
+        return _error(400, "Send the track as an object with points and a ride type.")
+    preset = body.get("preset", "default")
+    if not isinstance(preset, str) or preset not in presets.PRESETS:
+        return _error(400, "Not a ride type this planner offers.")
+    trails_off = body.get("trails_off", False)
+    assist = body.get("assist", False)
+    if not isinstance(trails_off, bool) or not isinstance(assist, bool):
+        return _error(400, "trails_off and assist are true or false.")
+    try:
+        points = map_match.checked_points(body.get("points"))
+    except map_match.TrackProblem as problem:
+        return _error(400, str(problem))
+    try:
+        answer = map_match.match(
+            points,
+            preset,
+            getattr(request, "routing_started", None),
+            trails_off=trails_off,
+            assist=assist,
+        )
+    except routing.RouterRefused:
+        return _error(
+            422,
+            "No street or path along the track could be found for this ride type: it may run"
+            " where the map has no way, or where this ride type does not ride.",
+        )
+    except (routing.RouterUnavailable, routing.DeadlineExceeded):
+        refusal = _error(503, "Snapping the track took too long or the router is busy; try again.")
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+        return refusal
+    return JsonResponse(answer)
 
 
 class NearestIn(RouteIn):
@@ -3079,6 +4011,9 @@ def nearest_places(request, body: NearestIn, response: HttpResponse):
         carrying=body.carrying,
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
+        trails_off=body.trails_off,
+        mtb_level=body.mtb_level,
+        mtb_preferred=body.mtb_preferred,
     )
     started = getattr(request, "routing_started", None)
     try:
@@ -3411,6 +4346,73 @@ def road_info(request, params: Query[SegmentInfoIn], response: HttpResponse):
     return Status(200, {**found, "attribution": list(SEGMENT_INFO_ATTRIBUTION)})
 
 
+# --- The road panel's street photo (v0.7.0; core.street_photo) ------------------------------
+#
+# GET /api/street-photo: the newest Mapillary photo of the road at a point on it, looked up
+# server-side so the Mapillary token never reaches a browser. 204 where no photo can be looked
+# up (no token on this server, or Mapillary not answering): the panel then says nothing of one.
+
+
+class StreetPhotoIn(Schema):
+    lon: float = Field(ge=-180, le=180, description="The point on the road (the panel's on_way).")
+    lat: float = Field(ge=-90, le=90)
+    way: int | None = Field(
+        default=None, ge=1, description="The road's OSM way id: the photo faces along it."
+    )
+
+
+class StreetPhotoOut(Schema):
+    found: bool
+    words: str | None = Field(default=None, description='"No street photo here." when none.')
+    image_url: str | None = Field(
+        default=None, description="The image, served by this server from Mapillary's host."
+    )
+    viewer_url: str | None = Field(default=None, description="Mapillary's viewer at the image.")
+    captured: str | None = Field(default=None, description="The day it was taken, ISO 8601.")
+    date_words: str | None = Field(default=None, description='"Photo from June 2021".')
+    creator: str | None = Field(default=None, description="Its creator on Mapillary, if named.")
+    credit: str | None = None
+    credit_url: str | None = None
+    licence: str | None = None
+    licence_url: str | None = None
+
+
+@api.get(
+    "/street-photo",
+    response={200: StreetPhotoOut, 204: None, 400: ErrorOut, 403: ErrorOut, 429: ErrorOut},
+    summary="The newest Mapillary photo of the road at a point on it",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.STREET_PHOTO), same_site_only, errors_as_json)
+def street_photo_view(request, params: Query[StreetPhotoIn], response: HttpResponse):
+    from . import street_photo
+
+    found = street_photo.client.photo(params.lon, params.lat, params.way)
+    if found is None:
+        return Status(204, None)
+    response["Cache-Control"] = "private, max-age=600"
+    return Status(200, found)
+
+
+@api.get(
+    "/street-photo/image/{image_id}",
+    response={200: None, 400: ErrorOut, 403: ErrorOut, 404: ErrorOut, 429: ErrorOut},
+    summary="A street photo's image file, fetched from Mapillary for the page",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.STREET_PHOTO), same_site_only, errors_as_json)
+def street_photo_image_view(request, image_id: str):
+    from . import street_photo
+
+    if not image_id.isdigit() or len(image_id) > 30:
+        return Status(404, {"error": "No such photo."})
+    body = street_photo.client.image(image_id)
+    if body is None:
+        return Status(404, {"error": "No such photo."})
+    served = HttpResponse(body, content_type="image/jpeg")
+    served["Cache-Control"] = "private, max-age=3600"
+    served["X-Content-Type-Options"] = "nosniff"
+    return served
+
+
 # --- One climb's elevation profile, for the map's climb card ------------------------
 
 CLIMB_PROFILE_MAX_AGE_S = 86_400
@@ -3494,6 +4496,20 @@ class MeOut(Schema):
     can_suggest: bool = Field(
         description="The road panel offers Suggest a change (core.suggestions.may_suggest)."
     )
+    can_review_closures: bool = Field(
+        default=False,
+        description=(
+            "A reviewer: the road panel offers Mark closed, and Review lists closure reports"
+            " (core.reviewed_closures.may_review)."
+        ),
+    )
+    sign_in: bool = Field(
+        default=False,
+        description=(
+            "Whether this server can sign anyone in (both Discord keys are set): the page offers"
+            " Sign in with Discord only when it is true."
+        ),
+    )
 
 
 def _private(response: HttpResponse) -> HttpResponse:
@@ -3544,25 +4560,24 @@ def _refused(request, user, detail: str) -> None:
     )
 
 
-def instance_admin_only(*, audited: bool):
+def instance_admin_only(*, audited: bool, doing: str = "change traffic stress"):
     """A session of an active instance admin, or 401 (no session) or 403.
 
     `audited`: a write refused to a signed-in account is written to the audit log (the
     plan: every refused write is). A read refused is not, as the admin's page views are not.
+    `doing` finishes the refusals' sentences ("Sign in to ...").
     """
 
     def decorator(view):
         @wraps(view)
         def wrapped(request, *args, **kwargs):
             if not signed_in(request):
-                return _stress_error(401, "Sign in to change traffic stress.", code="signed_out")
+                return _stress_error(401, f"Sign in to {doing}.", code="signed_out")
             user = request.user
             if not getattr(user, "is_instance_admin", False):
                 if audited:
                     _refused(request, user, "not an instance admin")
-                return _stress_error(
-                    403, "Only an instance admin can change traffic stress.", code="not_admin"
-                )
+                return _stress_error(403, f"Only an instance admin can {doing}.", code="not_admin")
             return view(request, *args, **kwargs)
 
         return wrapped
@@ -3604,7 +4619,7 @@ def csrf_protected(view):
 @api.get(
     "/me",
     response={200: MeOut, 403: ErrorOut, 429: ErrorOut, 500: ErrorOut},
-    summary="Three yes/no flags: signed in, may change traffic stress, may suggest",
+    summary="Yes/no flags: signed in, may change traffic stress, may suggest, sign-in offered",
 )
 @decorate_view(
     ratelimit.rate_limited(ratelimit.ME),
@@ -3615,17 +4630,27 @@ def me(request, response: HttpResponse):
     """No name and no id, so nothing here can leak into a link or a log."""
     from django.middleware.csrf import get_token
 
-    from . import suggestions
+    from . import reviewed_closures, suggestions
 
     signed = signed_in(request)
     can_change = bool(signed and getattr(request.user, "is_instance_admin", False))
     can_suggest = bool(signed and suggestions.may_suggest(request.user))
-    if can_change or can_suggest:
+    can_review = bool(signed and reviewed_closures.may_review(request.user))
+    if can_change or can_suggest or can_review:
         # Sets the `csrftoken` cookie the editor sends back as `X-CSRFToken`.
         get_token(request)
     _private(response)
+    from .auth_views import sign_in_available
+
     return Status(
-        200, {"signed_in": signed, "can_change_lts": can_change, "can_suggest": can_suggest}
+        200,
+        {
+            "signed_in": signed,
+            "can_change_lts": can_change,
+            "can_suggest": can_suggest,
+            "can_review_closures": can_review,
+            "sign_in": sign_in_available(),
+        },
     )
 
 
@@ -3665,6 +4690,7 @@ class MyGoIn(Schema):
     @field_validator("ride")
     @classmethod
     def known_ride(cls, ride: str) -> str:
+        ride = presets.resolve_preset(ride)
         if ride and ride not in presets.PRESETS:
             raise ValueError("not a ride type this planner offers")
         return ride
@@ -3702,7 +4728,7 @@ def _my_go_out(row) -> dict:
         home = {"lon": row.home_lon, "lat": row.home_lat, "label": row.home_label}
     return {
         "open_in": row.open_in if row is not None else "",
-        "ride": row.ride if row is not None else "",
+        "ride": presets.resolve_preset(row.ride) if row is not None else "",
         "home": home,
     }
 
@@ -3750,9 +4776,17 @@ def my_go_read(request, response: HttpResponse):
     errors_as_json,
 )
 def my_go_save(request, body: MyGoIn, response: HttpResponse):
-    from .models import MyGo
+    from .models import MyGo, SharedRoute
 
     home = body.home
+    before = MyGo.objects.filter(user=request.user).values_list("home_lon", "home_lat").first()
+    after = (round(home.lon, 5), round(home.lat, 5)) if home else (None, None)
+    if before is not None and before != (None, None) and tuple(before) != after:
+        # Home cleared or moved: a link's frozen circle round the old Home is a point near it, so
+        # it goes, and those links lose their image rather than show the old Home uncovered.
+        SharedRoute.objects.filter(owner=request.user, preview_zone__isnull=False).update(
+            preview_zone=None, preview_image=False, preview_png=None, preview_key=""
+        )
     row, _ = MyGo.objects.update_or_create(
         user=request.user,
         defaults={
@@ -3766,6 +4800,980 @@ def my_go_save(request, body: MyGoIn, response: HttpResponse):
     )
     _private(response)
     return Status(200, _my_go_out(row))
+
+
+# Saved settings and saved routes (v0.7.0 plan, "Discord sign-in on, with saved settings and
+# routes"; core.accounts, core.models.AccountSettings and SavedRoute). The rider's own and
+# nobody else's: signed in, same site, CSRF on every write, counted per account. Signed out it is
+# 401 and the page keeps its settings on the device, as before.
+
+
+def _json_body(request, max_bytes: int):
+    """The parsed JSON body, or an error response: the same checks as `json_body_only`, with the
+    cap this endpoint needs."""
+    content_type = request.META.get("CONTENT_TYPE", "").split(";")[0].strip().lower()
+    if content_type != "application/json":
+        return None, _stress_error(400, "Send the body as application/json.")
+    try:
+        declared = int(request.META.get("CONTENT_LENGTH") or 0)
+    except ValueError:
+        return None, _stress_error(400, "Invalid Content-Length.")
+    # The declared length, and the body itself (a missing or understated length is not trusted).
+    if declared > max_bytes or len(request.body) > max_bytes:
+        return None, _stress_error(400, f"The body is larger than {max_bytes // 1024} KB.")
+    try:
+        return json.loads(request.body or b"null"), None
+    except (ValueError, RecursionError):
+        # RecursionError: nesting deeper than the parser's stack (a few thousand "[").
+        return None, _stress_error(400, "The body is not JSON.")
+
+
+def _settings_out(row) -> dict:
+    return {
+        "settings": row.data if row is not None else None,
+        "updated_at": row.updated_at.isoformat() if row is not None else None,
+    }
+
+
+@api.get("/me/settings", summary="The signed-in rider's saved settings (null when none yet)")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def account_settings_read(request):
+    from django.middleware.csrf import get_token
+
+    from .models import AccountSettings
+
+    get_token(request)
+    row = AccountSettings.objects.filter(user=request.user).first()
+    return _private(JsonResponse(_settings_out(row)))
+
+
+@api.post("/me/settings", summary="Save the signed-in rider's settings (the whole document)")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def account_settings_save(request):
+    from . import accounts
+    from .models import AccountSettings
+
+    body, refusal = _json_body(request, accounts.SETTINGS_MAX_BYTES + 1024)
+    if refusal is not None:
+        return refusal
+    data = body.get("settings") if isinstance(body, dict) else None
+    problem = accounts.settings_problem(data)
+    if problem:
+        return _stress_error(400, problem, field="settings")
+    # One row per account, last write wins (the plan).
+    row, _ = AccountSettings.objects.update_or_create(user=request.user, defaults={"data": data})
+    return _private(JsonResponse(_settings_out(row)))
+
+
+def _route_summary(row) -> dict:
+    return {
+        "id": row.pk,
+        "name": row.name,
+        "source": row.source,
+        "distance_m": row.distance_m,
+        "preset": (row.inputs or {}).get("preset", ""),
+        "created_at": row.created_at.isoformat(),
+        "updated_at": row.updated_at.isoformat(),
+        # v0.7.0 closures (core.saved_route_alerts): the closures in force along the line, as
+        # last checked; [] where none.
+        "closure_alerts": list(row.closure_alerts or []),
+    }
+
+
+def _route_full(row) -> dict:
+    return {
+        **_route_summary(row),
+        "line": row.line,
+        "inputs": row.inputs,
+        "answer": row.answer,
+        "gpx": row.gpx,
+    }
+
+
+def _saved_route(request, route_id: int):
+    from .models import SavedRoute
+
+    # Another account's route is "not found", never "forbidden": no route is shared.
+    return SavedRoute.objects.filter(user=request.user, pk=route_id).first()
+
+
+@api.get("/me/routes", summary="The signed-in rider's saved routes, newest first")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def saved_routes_list(request):
+    from django.middleware.csrf import get_token
+
+    from .models import SavedRoute
+
+    get_token(request)
+    rows = SavedRoute.objects.filter(user=request.user).order_by("-created_at", "-pk")
+    return _private(
+        JsonResponse(
+            {
+                "routes": [_route_summary(r) for r in rows.defer("line", "answer")],
+                "max": SavedRoute.MAX_PER_ACCOUNT,
+            }
+        )
+    )
+
+
+@api.post("/me/routes", summary="Save a route: its exact line, the plan's inputs and a name")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def saved_routes_add(request):
+    from django.db import transaction
+
+    from . import accounts
+    from .models import SavedRoute, User
+
+    body, refusal = _json_body(request, accounts.ROUTE_MAX_BYTES)
+    if refusal is not None:
+        return refusal
+    if not isinstance(body, dict):
+        return _stress_error(400, "Send the route as an object.")
+    name = body.get("name")
+    if not isinstance(name, str) or not name.strip() or len(name.strip()) > accounts.NAME_MAX:
+        return _stress_error(
+            400, f"Give the route a name of up to {accounts.NAME_MAX} characters.", field="name"
+        )
+    source = body.get("source", SavedRoute.Source.PLAN)
+    if source not in SavedRoute.Source.values:
+        return _stress_error(400, "Not a kind of route this planner saves.", field="source")
+    line = body.get("line")
+    problem = accounts.line_problem(line)
+    if problem:
+        return _stress_error(400, problem, field="line")
+    distance = body.get("distance_m")
+    if not accounts._finite(distance) or distance <= 0:
+        return _stress_error(400, "The route's distance is missing.", field="distance_m")
+    inputs = body.get("inputs", {})
+    problem = accounts.inputs_problem(inputs)
+    if problem:
+        return _stress_error(400, problem, field="inputs")
+    answer = body.get("answer")
+    if answer is not None and (source != SavedRoute.Source.PLAN or not isinstance(answer, dict)):
+        return _stress_error(400, "Only a planned route keeps its answer.", field="answer")
+    if answer is not None:
+        answer, problem = _clean_answer(answer)
+        if problem:
+            return _stress_error(400, problem, field="answer")
+    gpx = body.get("gpx", "") or ""
+    if not isinstance(gpx, str) or (gpx and source != SavedRoute.Source.GPX):
+        return _stress_error(400, "Only an opened GPX file keeps its text.", field="gpx")
+    version_of = body.get("version_of")
+    if version_of is not None:
+        # Saved again: a new latest version of that route, not another route (so not counted
+        # toward the account's cap).
+        if not isinstance(version_of, int) or isinstance(version_of, bool):
+            return _stress_error(400, "Not a saved route.", field="version_of")
+        content = {
+            "source": source,
+            "line": line,
+            "distance_m": float(distance),
+            "inputs": inputs,
+            "answer": answer,
+            "gpx": gpx,
+        }
+        return _save_version(request, version_of, name.strip(), content)
+    with transaction.atomic():
+        # Taken in turn per account, so two saves at once cannot both pass the cap.
+        User.objects.select_for_update().filter(pk=request.user.pk).first()
+        if SavedRoute.objects.filter(user=request.user).count() >= SavedRoute.MAX_PER_ACCOUNT:
+            return _stress_error(
+                409,
+                f"You have {SavedRoute.MAX_PER_ACCOUNT} saved routes, the most an account keeps."
+                " Delete one in My routes to save this one.",
+                code="full",
+            )
+        row = SavedRoute.objects.create(
+            user=request.user,
+            name=name.strip(),
+            source=source,
+            line=line,
+            distance_m=float(distance),
+            inputs=inputs,
+            answer=answer,
+            gpx=gpx,
+        )
+    from . import saved_route_alerts
+
+    saved_route_alerts.check(row)
+    return _private(JsonResponse(_route_summary(row), status=201))
+
+
+# Saved-route versions (core.models.SavedRouteVersion): a save naming `version_of` replaces that
+# route's line and inputs, keeping what it was as a version; restoring a version does the same
+# with the version's. The owner's own: another account's route is "not found", as above.
+VERSION_FIELDS = ("source", "line", "distance_m", "inputs", "answer", "gpx")
+
+
+def _content_saved_at(row):
+    """When the route's latest version was saved: when the one before it was replaced, or when
+    the route was first saved."""
+    last = row.versions.order_by("-replaced_at", "-pk").values_list("replaced_at", flat=True)
+    return last.first() or row.created_at
+
+
+def _version_size(fields: dict) -> int:
+    """A version's bytes: its line, inputs and answer as JSON, and the file text it keeps."""
+    held = (fields["line"], fields["inputs"], fields["answer"])
+    return len(json.dumps(held, separators=(",", ":"))) + len(fields["gpx"].encode())
+
+
+def _version_gpx(version) -> str:
+    """A version's file text: its own, or (kept once) that of the first version after it that
+    keeps one, else the route's."""
+    if not version.gpx_same_as_next:
+        return version.gpx
+    later = (
+        version.route.versions.filter(gpx_same_as_next=False, replaced_at__gt=version.replaced_at)
+        .order_by("replaced_at", "pk")
+        .values_list("gpx", flat=True)
+        .first()
+    )
+    return version.route.gpx if later is None else later
+
+
+def _replace_content(row, content: dict) -> None:
+    """Keep the route as it is as a version, then make `content` the latest. Called in a
+    transaction with the route's row locked."""
+    from django.utils import timezone
+
+    from .models import SavedRouteVersion, User
+
+    # Taken in turn per account, so the account's byte cap is counted one save at a time.
+    User.objects.select_for_update().filter(pk=row.user_id).first()
+    kept = {f: getattr(row, f) for f in VERSION_FIELDS}
+    # The same file as the content replacing it: kept once, by the newer one.
+    same_file = bool(kept["gpx"]) and kept["gpx"] == content["gpx"]
+    if same_file:
+        kept["gpx"] = ""
+    SavedRouteVersion.objects.create(
+        route=row,
+        saved_at=_content_saved_at(row),
+        replaced_at=timezone.now(),
+        gpx_same_as_next=same_file,
+        size_bytes=_version_size(kept),
+        **kept,
+    )
+    for f, value in content.items():
+        setattr(row, f, value)
+    row.save()
+    # Past the caps the oldest go: per route, then across the account. Taking the oldest first
+    # never strands a version that keeps its file in a later one.
+    stale = list(
+        row.versions.order_by("-replaced_at", "-pk").values_list("pk", flat=True)[
+            SavedRouteVersion.MAX_PER_ROUTE :
+        ]
+    )
+    SavedRouteVersion.objects.filter(pk__in=stale).delete()
+    everything = SavedRouteVersion.objects.filter(route__user_id=row.user_id)
+    total = sum(everything.values_list("size_bytes", flat=True))
+    if total > SavedRouteVersion.MAX_BYTES_PER_ACCOUNT:
+        drop = []
+        for pk, size in everything.order_by("replaced_at", "pk").values_list("pk", "size_bytes"):
+            if total <= SavedRouteVersion.MAX_BYTES_PER_ACCOUNT:
+                break
+            drop.append(pk)
+            total -= size
+        SavedRouteVersion.objects.filter(pk__in=drop).delete()
+
+
+def _same_content(row, content: dict) -> bool:
+    # The answer is the planner's words about the same line and inputs; it does not decide.
+    return all(getattr(row, f) == content[f] for f in VERSION_FIELDS if f != "answer")
+
+
+def _locked_route(request, route_id: int):
+    from .models import SavedRoute
+
+    return SavedRoute.objects.select_for_update().filter(user=request.user, pk=route_id).first()
+
+
+def _save_version(request, route_id: int, name: str, content: dict):
+    from django.db import transaction
+
+    with transaction.atomic():
+        row = _locked_route(request, route_id)
+        if row is None:
+            return _stress_error(404, "That saved route is not in your account.", code="not_found")
+        changed = not _same_content(row, content)
+        if changed:
+            _replace_content(row, content)
+        if row.name != name:
+            row.name = name
+            row.save(update_fields=["name", "updated_at"])
+    if changed:
+        from . import saved_route_alerts
+
+        saved_route_alerts.check(row)  # a new line: its closures and box again
+    return _private(JsonResponse({**_route_summary(row), "versioned": changed}))
+
+
+@api.get("/me/routes/{route_id}/versions", summary="A saved route's versions, newest first")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def saved_route_versions(request, route_id: int):
+    from . import accounts
+    from .models import SavedRouteVersion
+
+    row = _saved_route(request, route_id)
+    if row is None:
+        return _stress_error(404, "That saved route is not in your account.", code="not_found")
+    kept = list(
+        row.versions.order_by("-replaced_at", "-pk").values(
+            "id", "saved_at", "distance_m", "source", "inputs"
+        )
+    )
+    latest = {
+        "id": None,
+        "saved_at": _content_saved_at(row),
+        "distance_m": row.distance_m,
+        "source": row.source,
+        "inputs": row.inputs,
+    }
+    entries = [latest, *kept]
+    out = []
+    for i, entry in enumerate(entries):
+        if i + 1 < len(entries):
+            change = accounts.change_phrase(entries[i + 1], entry)
+        else:
+            # The oldest kept: the first save, unless older versions went past the cap.
+            change = "First saved" if entry["saved_at"] == row.created_at else ""
+        out.append(
+            {
+                "id": entry["id"],
+                "saved_at": entry["saved_at"].isoformat(),
+                "distance_m": entry["distance_m"],
+                "source": entry["source"],
+                "change": change,
+            }
+        )
+    return _private(JsonResponse({"versions": out, "max": SavedRouteVersion.MAX_PER_ROUTE}))
+
+
+@api.post(
+    "/me/routes/{route_id}/versions/{version_id}/restore",
+    summary="Make an earlier version of a saved route its latest again",
+)
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def saved_route_restore(request, route_id: int, version_id: int):
+    from django.db import transaction
+
+    with transaction.atomic():
+        row = _locked_route(request, route_id)
+        version = row.versions.filter(pk=version_id).first() if row is not None else None
+        if version is None:
+            return _stress_error(404, "That version is not in your account.", code="not_found")
+        content = {f: getattr(version, f) for f in VERSION_FIELDS}
+        content["gpx"] = _version_gpx(version)
+        # Restoring makes a new latest version: the one it replaces stays in the list.
+        changed = not _same_content(row, content)
+        if changed:
+            _replace_content(row, content)
+    if changed:
+        from . import saved_route_alerts
+
+        saved_route_alerts.check(row)  # a new line: its closures and box again
+    return _private(JsonResponse(_route_full(row)))
+
+
+@api.get("/me/routes/{route_id}", summary="One saved route, with its line, inputs and answer")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def saved_route_read(request, route_id: int):
+    row = _saved_route(request, route_id)
+    if row is None:
+        return _stress_error(404, "That saved route is not in your account.", code="not_found")
+    return _private(JsonResponse(_route_full(row)))
+
+
+@api.patch("/me/routes/{route_id}", summary="Rename a saved route")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def saved_route_rename(request, route_id: int):
+    from . import accounts
+
+    body, refusal = _json_body(request, MAX_BODY_BYTES)
+    if refusal is not None:
+        return refusal
+    name = body.get("name") if isinstance(body, dict) else None
+    if not isinstance(name, str) or not name.strip() or len(name.strip()) > accounts.NAME_MAX:
+        return _stress_error(
+            400, f"Give the route a name of up to {accounts.NAME_MAX} characters.", field="name"
+        )
+    row = _saved_route(request, route_id)
+    if row is None:
+        return _stress_error(404, "That saved route is not in your account.", code="not_found")
+    row.name = name.strip()
+    row.save(update_fields=["name", "updated_at"])
+    return _private(JsonResponse(_route_summary(row)))
+
+
+@api.delete("/me/routes/{route_id}", summary="Delete a saved route")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def saved_route_delete(request, route_id: int):
+    row = _saved_route(request, route_id)
+    if row is None:
+        return _stress_error(404, "That saved route is not in your account.", code="not_found")
+    row.delete()
+    return _private(JsonResponse({"deleted": route_id}))
+
+
+# Shared routes (v0.7.0, "share the identical route"; core.shared_routes, core.models.SharedRoute):
+# the Share button keeps the exact line under a 128-bit id the page made, and the link it shares
+# opens that line unchanged. Signed out or in; nothing of the sharer is kept. Kept a year after
+# it was last opened (or permanently, or until a date, as the sharer chose); the expired go at
+# every share and open.
+
+
+# The longest single string a kept answer may hold: the planner's own words (a turn, a notice,
+# an attribution) are a sentence or two; nothing it writes comes near this.
+ANSWER_STRING_MAX = 2000
+
+
+def _longest_string(value) -> int:
+    if isinstance(value, str):
+        return len(value)
+    if isinstance(value, dict):
+        return max((max(len(k), _longest_string(v)) for k, v in value.items()), default=0)
+    if isinstance(value, list):
+        return max((_longest_string(v) for v in value), default=0)
+    return 0
+
+
+def _clean_answer(answer) -> tuple[dict | None, str | None]:
+    """A kept route's answer as the planner's own (`RouteOut`), or (None, why not). A saved or
+    shared answer is served back as planner output, so it is read through the same schema the
+    planner answers with: keys it does not name are dropped, a malformed one is refused, and no
+    string in it is longer than `ANSWER_STRING_MAX`."""
+    import pydantic
+
+    try:
+        model = RouteOut.model_validate(answer)
+    except pydantic.ValidationError:
+        return None, "The route's answer is not one this planner gives."
+    out = model.model_dump(mode="json", by_alias=True)
+    if _longest_string(out) > ANSWER_STRING_MAX:
+        return None, "The route's answer holds text longer than this planner writes."
+    return out, None
+
+
+def _shared_out(row) -> dict:
+    return {
+        "id": row.pk,
+        "name": row.name,
+        "source": row.source,
+        "distance_m": row.distance_m,
+        "line": row.line,
+        "inputs": row.inputs,
+        "answer": row.answer,
+        "gpx": row.gpx,
+        "created_at": row.created_at.isoformat(),
+        "keep": row.keep,
+        "delete_after": row.delete_after.isoformat() if row.delete_after else None,
+    }
+
+
+def _purge_shared(now) -> None:
+    from . import shared_routes
+
+    shared_routes.prune(now)
+
+
+@api.post("/shared-routes", summary="Keep a shared route's exact line under the link's id")
+@decorate_view(
+    same_site_only,
+    ratelimit.rate_limited(ratelimit.SHARED_ROUTE_WRITES),
+    errors_as_json,
+)
+def shared_route_add(request):
+    from django.db import IntegrityError, transaction
+    from django.utils import timezone
+
+    from . import shared_routes
+    from .models import SharedRoute
+
+    body, refusal = _json_body(request, shared_routes.MAX_BYTES)
+    if refusal is not None:
+        return refusal
+    problem = shared_routes.body_problem(body)
+    if problem:
+        return _stress_error(400, problem[0], field=problem[1])
+    answer = body.get("answer")
+    if answer is not None:
+        answer, problem = _clean_answer(answer)
+        if problem:
+            return _stress_error(400, problem, field="answer")
+    now = timezone.now()
+    _purge_shared(now)
+    keep = body.get("keep", "year")
+    delete_after = (
+        shared_routes.delete_after_of(body.get("delete_after"), timezone.localdate(now))
+        if keep == "until"
+        else None
+    )
+    from . import share_preview
+
+    try:
+        with transaction.atomic():
+            row = SharedRoute(
+                id=body["id"],
+                name=(body.get("name") or "").strip() or shared_routes.DEFAULT_NAME,
+                source=body.get("source", "plan"),
+                line=body["line"],
+                distance_m=float(body["distance_m"]),
+                inputs=body.get("inputs", {}),
+                answer=shared_routes.public_answer(answer) if answer is not None else None,
+                gpx=body.get("gpx", "") or "",
+                created_at=now,
+                last_opened_at=now,
+                keep=keep,
+                delete_after=delete_after,
+                # Signed in, the owner, so only they can turn the link off (nothing else of them).
+                owner=request.user if signed_in(request) else None,
+                # Missing (a page from before previews) is no image: it never said where Home is.
+                preview_image=body.get("preview_image", False),
+            )
+            # Home's circle as it is now, kept where the route starts, ends or stops in it.
+            share_preview.freeze_zone(row)
+            row.save(force_insert=True)
+    except IntegrityError:
+        # Ids are 128 random bits: a taken one is a resend, never another rider's to replace.
+        return _stress_error(409, "That link's route is already kept.", code="taken")
+    response = JsonResponse({"id": row.pk}, status=201)
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@api.get("/shared-routes/{route_id}", summary="A shared route's exact line, as it was shared")
+@decorate_view(
+    same_site_only,
+    ratelimit.rate_limited(ratelimit.SHARED_ROUTE_READS),
+    errors_as_json,
+)
+def shared_route_read(request, route_id: str):
+    from django.utils import timezone
+
+    from . import shared_routes
+    from .models import SharedRoute
+
+    gone = _stress_error(
+        404, "That shared route is no longer kept; its link plans it again.", code="not_found"
+    )
+    if not shared_routes.id_ok(route_id):
+        return gone
+    row = SharedRoute.objects.filter(pk=route_id).first()
+    now = timezone.now()
+    if row is None or shared_routes.expired(row, now):
+        _purge_shared(now)
+        return gone
+    if row.revoked_at is not None:
+        # Turned off by its owner: the page says so and plans nothing (core.shared_routes.REVOKED).
+        response = _stress_error(410, shared_routes.REVOKED, code="revoked")
+        response["Cache-Control"] = "no-store"
+        return response
+    # A year's keeping counts from the last open; written at most once a day.
+    if row.last_opened_at < now - shared_routes.TOUCH_EVERY:
+        SharedRoute.objects.filter(pk=row.pk).update(last_opened_at=now)
+    response = JsonResponse(_shared_out(row))
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+# A signed-in sharer's own shared links (My routes in Plan): listed, turned off, or swapped for a
+# new link. Another account's link is "not found", as a saved route is.
+
+
+def _owned_shared(request, route_id: str):
+    from . import shared_routes
+    from .models import SharedRoute
+
+    if not shared_routes.id_ok(route_id):
+        return None
+    return SharedRoute.objects.filter(
+        owner=request.user, pk=route_id, revoked_at__isnull=True
+    ).first()
+
+
+def _shared_summary(request, row) -> dict:
+    from . import shared_routes
+
+    return {
+        "id": row.pk,
+        "name": row.name,
+        "source": row.source,
+        "distance_m": row.distance_m,
+        "created_at": row.created_at.isoformat(),
+        "keep": row.keep,
+        "delete_after": row.delete_after.isoformat() if row.delete_after else None,
+        "link": shared_routes.link_of(row, f"{request.scheme}://{request.get_host()}"),
+    }
+
+
+SHARED_NOT_YOURS = "That shared link is not one of yours."
+
+
+@api.get("/me/shared-routes", summary="The signed-in rider's shared links still working")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def my_shared_routes(request):
+    from django.middleware.csrf import get_token
+    from django.utils import timezone
+
+    from . import shared_routes
+    from .models import SharedRoute
+
+    get_token(request)
+    now = timezone.now()
+    rows = SharedRoute.objects.filter(owner=request.user, revoked_at__isnull=True).order_by(
+        "-created_at", "pk"
+    )
+    links = [
+        _shared_summary(request, r)
+        for r in rows.defer("line", "answer", "gpx", "preview_png")
+        if not shared_routes.expired(r, now)
+    ]
+    return _private(JsonResponse({"links": links}))
+
+
+@api.post("/me/shared-routes/{route_id}/revoke", summary="Turn off one of your shared links")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def my_shared_route_revoke(request, route_id: str):
+    from django.utils import timezone
+
+    from . import shared_routes
+
+    row = _owned_shared(request, route_id)
+    if row is None:
+        return _stress_error(404, SHARED_NOT_YOURS, code="not_found")
+    shared_routes.revoke(row, timezone.now())
+    return _private(JsonResponse({"revoked": route_id}))
+
+
+@api.post(
+    "/me/shared-routes/{route_id}/regenerate",
+    summary="A new link for one of your shared routes; the old link is turned off",
+)
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    # A new link is a new shared route: counted with Share's.
+    ratelimit.rate_limited(ratelimit.SHARED_ROUTE_WRITES),
+    errors_as_json,
+)
+def my_shared_route_regenerate(request, route_id: str):
+    from django.utils import timezone
+
+    from . import shared_routes
+
+    now = timezone.now()
+    row = _owned_shared(request, route_id)
+    if row is None or shared_routes.expired(row, now):
+        return _stress_error(404, SHARED_NOT_YOURS, code="not_found")
+    fresh = shared_routes.regenerate(row, now)
+    return _private(JsonResponse(_shared_summary(request, fresh), status=201))
+
+
+# The closures a kept line runs along now (v0.7.0 plan, "GPX export as close to identical as
+# possible, closure warning first", with its correction: mainly when a kept route is opened or
+# ridden). Public, like planning; the line is only measured, never kept.
+CLOSURE_LINE_MAX_POINTS = 10_000
+CLOSURE_BODY_MAX_BYTES = 512 * 1024
+CLOSURE_BYPASS_MAX = 50
+
+
+@api.post("/closures/check", summary="The closures in force now that a route's line runs along")
+@decorate_view(
+    same_site_only,
+    ratelimit.rate_limited(ratelimit.CLOSURE_CHECK),
+    errors_as_json,
+)
+def closures_check(request):
+    from . import accounts
+    from . import workzones as work_zones
+
+    body, refusal = _json_body(request, CLOSURE_BODY_MAX_BYTES)
+    if refusal is not None:
+        return refusal
+    line = body.get("line") if isinstance(body, dict) else None
+    problem = accounts.line_problem(line)
+    if problem is None and len(line) > CLOSURE_LINE_MAX_POINTS:
+        problem = f"Send at most {CLOSURE_LINE_MAX_POINTS:,} points; thin the line first."
+    # Additive (v0.7.0, "DC closures source"): the plan's ride-time dial, so a closure is
+    # matched at the ride, not today; and the closures the rider chose to route through.
+    extra = body if isinstance(body, dict) else {}
+    when = extra.get("when")
+    if problem is None and when is not None and when not in ridetime.WHENS:
+        problem = f"when is one of {', '.join(ridetime.WHENS)}."
+    bypass = extra.get("bypass") or []
+    if problem is None and (
+        not isinstance(bypass, list)
+        or len(bypass) > CLOSURE_BYPASS_MAX
+        or not all(isinstance(b, str) and 0 < len(b) <= 200 for b in bypass)
+    ):
+        problem = f"bypass is a list of at most {CLOSURE_BYPASS_MAX} closure ids."
+    if problem:
+        return _error(400, problem)
+    return JsonResponse(work_zones.closures_on(line, when=when, bypass=bypass))
+
+
+# Ride mode's 311 (v0.7.0 "Go riding fixes" item 3; core.dc311): whether the server sends a
+# report to DC 311 itself (only with DC311_API_KEY set), and the sending. Off, the page opens
+# the phone's text app to 311 instead. The position and the words go to DC only, never a log.
+REPORT_311_BODY_MAX_BYTES = 2048
+
+
+@api.get("/report311", summary="Whether Ride mode's 311 reports are sent to DC from here")
+@decorate_view(
+    ratelimit.rate_limited(ratelimit.REPORT_311_STATUS),
+    same_site_only,
+    errors_as_json,
+)
+def report311_status(request):
+    from . import dc311
+
+    on = dc311.enabled()
+    # On, the answer carries a short-lived signed ticket that a send must bring back.
+    response = JsonResponse(
+        {"enabled": True, "ticket": dc311.ticket()} if on else {"enabled": False}
+    )
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@api.post("/report311", summary="Send one Ride mode report to DC 311 (only with a DC key)")
+@decorate_view(
+    same_site_only,
+    ratelimit.rate_limited(ratelimit.REPORT_311),
+    errors_as_json,
+)
+def report311_send(request):
+    from . import dc311
+
+    body, refusal = _json_body(request, REPORT_311_BODY_MAX_BYTES)
+    if refusal is not None:
+        return refusal
+    body = body if isinstance(body, dict) else {}
+    kind, lat, lon = body.get("kind"), body.get("lat"), body.get("lon")
+    description = body.get("description", "")
+    if kind not in dc311.KINDS:
+        return _error(400, f"kind is one of {', '.join(dc311.KINDS)}.")
+    if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (lat, lon)):
+        return _error(400, "lat and lon are numbers.")
+    if not isinstance(description, str) or len(description) > dc311.DESCRIPTION_MAX:
+        return _error(400, f"description is text of at most {dc311.DESCRIPTION_MAX} characters.")
+    if dc311.enabled():
+        if not dc311.ticket_ok(body.get("ticket")):
+            out = JsonResponse(
+                {"error": "Ask the server again, then send the report.", "code": "no_ticket"},
+                status=403,
+            )
+            out["Cache-Control"] = "no-store"
+            return out
+        everyone = ratelimit.Limit(
+            scope=dc311.GLOBAL_SCOPE, requests=dc311.HOURLY_MAX, window_s=3600
+        )
+        if not ratelimit.hit(everyone, "all").allowed:
+            out = JsonResponse(
+                {"error": "DC 311 reports from here are paused for now.", "code": "busy"},
+                status=429,
+            )
+            out["Cache-Control"] = "no-store"
+            return out
+    try:
+        ident = dc311.send(kind, float(lat), float(lon), description)
+    except dc311.NotSent as refused:
+        out = JsonResponse({"error": refused.message, "code": refused.code}, status=refused.status)
+        out["Cache-Control"] = "no-store"
+        return out
+    out = JsonResponse({"sent": True, "id": ident})
+    out["Cache-Control"] = "no-store"
+    return out
+
+
+# Mass Ride and Group Ride links: the other riders as dots, and alerts (v0.7.0 plan;
+# core.ride_presence). No sign-in: a ride is the digest of the link's plan and a rider a random
+# per-ride token. Positions are in POST bodies only, kept in memory for 2 minutes, never logged.
+# The fine limits are per token, in memory; the database counts only a generous ceiling per
+# address (a whole ride's phones can share one carrier address) and per ride, by keyed digest.
+
+
+def ride_writes_limited(view):
+    """Count a write against its ride (ratelimit.RIDE_WRITES), keyed by a digest of the ride id;
+    a path that is not a ride id is left to the view's 404 uncounted."""
+
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        from . import ride_presence
+
+        ride_id = str(kwargs.get("ride_id", ""))
+        if ride_presence.RIDE_ID.match(ride_id):
+            limit = ratelimit.RIDE_WRITES
+            decision = ratelimit.hit(limit, ratelimit.client_key(f"ride:{ride_id}"))
+            if not decision.allowed:
+                out = _stress_error(429, "This ride is busy; try again shortly.")
+                out["Retry-After"] = str(decision.retry_after_s)
+                return out
+        return view(request, *args, **kwargs)
+
+    return wrapped
+
+
+# decorate_view wraps in order, so the last is outermost: a foreign page is refused before it
+# is counted, and a write is counted against its address before its ride.
+RIDE_READ_GUARDS = (ratelimit.rate_limited(ratelimit.RIDE_LINKS), same_site_editor, errors_as_json)
+RIDE_WRITE_GUARDS = (
+    ride_writes_limited,
+    ratelimit.rate_limited(ratelimit.RIDE_LINKS),
+    same_site_editor,
+    errors_as_json,
+)
+
+
+def _ride_call(request, fn):
+    from . import ride_presence
+
+    try:
+        answer = fn(ride_presence)
+    except ride_presence.Refused as refused:
+        out = _stress_error(refused.status, refused.message)
+        if refused.retry_after_s:
+            out["Retry-After"] = str(refused.retry_after_s)
+        return out
+    return _private(JsonResponse(answer or {"ok": True}))
+
+
+def _ride_body(request):
+    body, refusal = _json_body(request, 2048)
+    if refusal is None and not isinstance(body, dict):
+        refusal = _stress_error(400, "Send an object.")
+    return body, refusal
+
+
+@api.get("/rides/{ride_id}", summary="The other riders' dots on a ride link, and its alerts")
+@decorate_view(*RIDE_READ_GUARDS)
+def ride_read(request, ride_id: str):
+    token = request.META.get("HTTP_X_RIDE_TOKEN", "")
+    return _ride_call(request, lambda rp: rp.read(ride_id, token))
+
+
+@api.post("/rides/{ride_id}/here", summary="Show this rider as a dot (rounded to 20 m) for 2 min")
+@decorate_view(*RIDE_WRITE_GUARDS)
+def ride_here(request, ride_id: str):
+    body, refusal = _ride_body(request)
+    if refusal is not None:
+        return refusal
+    return _ride_call(
+        request,
+        lambda rp: rp.post_position(
+            ride_id, body.get("token", ""), body.get("lon"), body.get("lat"), body.get("role")
+        ),
+    )
+
+
+@api.post("/rides/{ride_id}/leave", summary="Stop showing this rider's dot at once")
+@decorate_view(*RIDE_WRITE_GUARDS)
+def ride_leave(request, ride_id: str):
+    body, refusal = _ride_body(request)
+    if refusal is not None:
+        return refusal
+    return _ride_call(request, lambda rp: rp.leave(ride_id, body.get("token", "")))
+
+
+@api.post("/rides/{ride_id}/alerts", summary="Send an alert to everyone on the ride link")
+@decorate_view(*RIDE_WRITE_GUARDS)
+def ride_alert(request, ride_id: str):
+    body, refusal = _ride_body(request)
+    if refusal is not None:
+        return refusal
+    return _ride_call(
+        request,
+        lambda rp: rp.send_alert(
+            ride_id,
+            body.get("token", ""),
+            str(body.get("ride_type", "")),
+            str(body.get("kind", "")),
+            str(body.get("text", "") or ""),
+            body.get("lon"),
+            body.get("lat"),
+        ),
+    )
+
+
+@api.post("/rides/{ride_id}/alerts/{alert_id}/clear", summary="Clear an alert you sent")
+@decorate_view(*RIDE_WRITE_GUARDS)
+def ride_alert_clear(request, ride_id: str, alert_id: str):
+    body, refusal = _ride_body(request)
+    if refusal is not None:
+        return refusal
+    return _ride_call(
+        request, lambda rp: rp.clear_alert(ride_id, body.get("token", ""), alert_id[:32])
+    )
 
 
 class StepOut(Schema):
@@ -4010,6 +6018,53 @@ def stress_edit_create(request, body: StressEditIn, response: HttpResponse):
     return Status(200, _edit_out(result))
 
 
+class SurfaceEditIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    osm_way_ids: list[StrictInt] = Field(
+        min_length=1, max_length=40, description="One road piece, or a named stretch's pieces."
+    )
+    surface: Literal["rough", "gravel", "sand", "dirt"] | None = Field(
+        description="The surface routes should price it as; null takes the penalty off."
+    )
+    reason: str = Field(
+        max_length=2000, description="Private. Required, at most 500 characters; never shown."
+    )
+
+
+class SurfaceEditOut(Schema):
+    changed: list[int] = Field(description="The ways whose penalty changed (the rest had it).")
+    message: str
+
+
+@api.post(
+    "/stress-edits/surface",
+    response={**STRESS_EDIT_RESPONSES, 200: SurfaceEditOut},
+    summary="Set a road's surface penalty, for the next map rebuild (instance admin)",
+)
+@decorate_view(*STRESS_WRITE)
+def stress_edit_surface(request, body: SurfaceEditIn, response: HttpResponse):
+    from . import stress_edits
+
+    try:
+        rows = stress_edits.set_surface(request.user, body.osm_way_ids, body.surface, body.reason)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    what = "taken off" if body.surface is None else "set"
+    return Status(
+        200,
+        {
+            "changed": [row.osm_way_id for row in rows],
+            "message": (
+                f"Surface penalty {what}. It applies at the next map rebuild."
+                if rows
+                else "Nothing changed: the road already had that."
+            ),
+        },
+    )
+
+
 class UndoIn(Schema):
     model_config = ConfigDict(extra="forbid")
 
@@ -4067,6 +6122,22 @@ class SuggestionCreatedOut(Schema):
     message: str
 
 
+class ReviewNoteOut(Schema):
+    agree: bool
+    reason: str
+
+
+class ReviewTalliesOut(Schema):
+    agree: int
+    disagree: int
+    mine: Literal["agree", "disagree"] | None = Field(
+        default=None, description="Your own mark on it, if any."
+    )
+    notes: list[ReviewNoteOut] = Field(
+        default_factory=list, description="The one-line reasons given, oldest first, unnamed."
+    )
+
+
 class SuggestionOut(Schema):
     id: int
     osm_way_id: int
@@ -4078,6 +6149,16 @@ class SuggestionOut(Schema):
     step: float
     words: str
     reason: str
+    signed_out: bool = Field(
+        default=False, description="Sent from the short form by someone not signed in (v0.7.0)."
+    )
+    reasons: list[str] = Field(default_factory=list, description="The one-tap reasons' keys.")
+    agree: int = Field(
+        default=1, description="Open sends for the road that agree with it, itself included."
+    )
+    reviews: ReviewTalliesOut | None = Field(
+        default=None, description="Second reviewers' agree and disagree marks (v0.7.0)."
+    )
     status: Literal["pending", "sent_to_discord"]
     created_at: str
     sent_at: str | None = None
@@ -4162,6 +6243,96 @@ def stress_suggestion_create(request, body: SuggestionIn, response: HttpResponse
     )
 
 
+# ---- Signed-out suggestions (v0.7.0; core.signed_out_suggestions) ----
+#
+# GET /api/stress-suggestions/ticket?way=: the short form's ticket, asked when it opens on a road
+# (proof the send came from an opened panel), and the CSRF cookie the send carries back.
+# POST /api/stress-suggestions/signed-out: the send. No account, address or device is stored.
+
+
+class SuggestTicketIn(Schema):
+    # At most a Postgres bigint: a larger id is a 400 here, not the database's overflow (a 500).
+    way: int = Field(ge=1, le=2**63 - 1, description="The road's OSM way id.")
+
+
+class SuggestTicketOut(Schema):
+    ticket: str
+    reasons: list[list[str]] = Field(description="The one-tap reasons: [key, words], in order.")
+
+
+class SignedOutSuggestionIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    osm_way_id: StrictInt
+    lat: StrictFloat = Field(ge=-90, le=90, description="The point on the road.")
+    lon: StrictFloat = Field(ge=-180, le=180)
+    step: StrictFloat = Field(description="1 to 5 by halves (5 is Avoid).")
+    reasons: list[str] = Field(max_length=6, description="Keys of the one-tap reasons.")
+    other: str = Field(default="", max_length=1000, description="Other's words, at most 200.")
+    ticket: str = Field(max_length=500)
+    website: str = Field(default="", max_length=200, description="Left empty (a honeypot).")
+
+
+SIGNED_OUT_THANKS = (
+    "Thanks. Your suggestion was sent for review. Nothing changes on the map until it is reviewed."
+)
+
+
+@api.get(
+    "/stress-suggestions/ticket",
+    response={200: SuggestTicketOut, 400: ErrorOut, 403: StressEditErrorOut, 429: ErrorOut},
+    summary="The short suggestion form's ticket for a road (anyone)",
+)
+@decorate_view(same_site_editor, ratelimit.rate_limited(ratelimit.SEGMENT_INFO), errors_as_json)
+def stress_suggestion_ticket(request, params: Query[SuggestTicketIn], response: HttpResponse):
+    from django.middleware.csrf import get_token
+
+    from . import signed_out_suggestions as quick
+
+    get_token(request)
+    _private(response)
+    return Status(
+        200,
+        {"ticket": quick.ticket(params.way), "reasons": [[k, w] for k, w in quick.REASONS.items()]},
+    )
+
+
+@api.post(
+    "/stress-suggestions/signed-out",
+    response={200: SuggestionCreatedOut, **SUGGESTION_RESPONSES},
+    summary="Suggest a road's traffic stress level from the short form (anyone)",
+)
+@decorate_view(
+    csrf_protected,
+    json_body_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def stress_suggestion_signed_out(request, body: SignedOutSuggestionIn, response: HttpResponse):
+    from . import signed_out_suggestions as quick
+    from . import stress_edits
+
+    _private(response)
+    try:
+        suggestion = quick.create(
+            ratelimit.client_address(request),
+            body.osm_way_id,
+            body.lat,
+            body.lon,
+            body.step,
+            body.reasons,
+            body.other,
+            body.ticket,
+            body.website,
+        )
+    except quick.Dropped:
+        return Status(200, {"id": 0, "message": SIGNED_OUT_THANKS})
+    except stress_edits.EditRefused as refused:
+        return _stress_error(refused.status, refused.message, refused.field, refused.code)
+    return Status(200, {"id": suggestion.pk, "message": SIGNED_OUT_THANKS})
+
+
 @api.get(
     "/stress-suggestions/open",
     response={200: SuggestionListOut, **SUGGESTION_RESPONSES},
@@ -4181,8 +6352,104 @@ def stress_suggestion_list(request, response: HttpResponse):
     get_token(request)
     _private(response)
     return Status(
-        200, {"suggestions": [suggestions.summary(s) for s in suggestions.open_suggestions()]}
+        200,
+        {
+            "suggestions": [
+                suggestions.summary(s, request.user) for s in suggestions.open_suggestions()
+            ]
+        },
     )
+
+
+class SuggestionReviewIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    verdict: Literal["agree", "disagree"]
+    reason: str = Field(default="", max_length=1000, description="Optional, one line of 200.")
+
+
+class SuggestionReviewOut(Schema):
+    id: int
+    message: str
+    reviews: ReviewTalliesOut
+
+
+@api.post(
+    "/stress-suggestions/{suggestion_id}/review",
+    response={200: SuggestionReviewOut, **SUGGESTION_RESPONSES},
+    summary="Agree or disagree with a waiting suggestion: advice, not a decision (reviewer)",
+)
+@decorate_view(*REVIEW_WRITE)
+def stress_suggestion_review(
+    request, suggestion_id: int, body: SuggestionReviewIn, response: HttpResponse
+):
+    from . import stress_edits, suggestions
+
+    try:
+        suggestion = suggestions.review(
+            request.user, suggestion_id, body.verdict == "agree", body.reason
+        )
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    tallies = suggestions.tallies(suggestion, request.user)
+    return Status(
+        200,
+        {
+            "id": suggestion.pk,
+            "message": f"You {body.verdict} with the suggestion for "
+            f"{suggestion.road_name or 'the road'}. {suggestions.tallies_words(tallies)}. "
+            "Approving still takes Approve now.",
+            "reviews": tallies,
+        },
+    )
+
+
+class MySuggestionIn(Schema):
+    way: int = Field(ge=1, le=2**63 - 1, description="The road piece's OSM way id.")
+
+
+class MySuggestionOut(Schema):
+    id: int
+    osm_way_id: int
+    step: float
+    words: str
+    status: Literal["pending", "sent_to_discord", "approved", "deleted"]
+    status_words: str
+    created_at: str
+    decided_at: str | None = None
+
+
+class MySuggestionAnswerOut(Schema):
+    suggestion: MySuggestionOut | None = Field(
+        description="Your latest suggestion for the road, or null when you have sent none."
+    )
+
+
+@api.get(
+    "/stress-suggestions/mine",
+    response={
+        200: MySuggestionAnswerOut,
+        401: StressEditErrorOut,
+        403: StressEditErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+    },
+    summary="Your own latest suggestion for a road and its status (signed in)",
+)
+@decorate_view(
+    same_site_editor,
+    # Asked on every road panel a signed-in rider opens: a budget of its own, like the photo's.
+    ratelimit.rate_limited(ratelimit.MY_SUGGESTION),
+    errors_as_json,
+)
+def stress_suggestion_mine(request, params: Query[MySuggestionIn], response: HttpResponse):
+    from . import suggestions
+
+    if not signed_in(request):
+        return _stress_error(401, "Sign in to see your suggestions.", code="signed_out")
+    _private(response)
+    return Status(200, {"suggestion": suggestions.mine(request.user, params.way)})
 
 
 @api.post(
@@ -4672,4 +6939,528 @@ def junction_suggestion_discord(request, suggestion_id: int, body: UndoIn, respo
                 {"letter": o.letter, "label": o.label, "tier": o.tier} for o in post.options
             ],
         },
+    )
+
+
+# ---- Closures a reviewer entered or confirmed (v0.7.0 closures; core.reviewed_closures) ----
+#
+# A reviewer (an instance admin, or a reviewer role in a configured Discord server) enters a
+# closure from the road panel, or confirms or rejects a rider's report, and ends one early. The
+# closures take part in routing and the closure check as a feed's do, credited "Confirmed by a
+# RouteMaker reviewer". Every write carries the CSRF token and is counted per account.
+
+
+def reviewer_only(*, audited: bool):
+    """A session of an account that may review closures, or 401 / 403."""
+
+    def decorator(view):
+        @wraps(view)
+        def wrapped(request, *args, **kwargs):
+            from . import reviewed_closures
+
+            if not signed_in(request):
+                return _stress_error(401, "Sign in to review closures.", code="signed_out")
+            if not reviewed_closures.may_review(request.user):
+                if audited:
+                    _refused(request, request.user, "not a reviewer")
+                doing = "enter a closure" if audited else "review closures"
+                return _stress_error(
+                    403, f"Only a RouteMaker reviewer can {doing}.", code="not_reviewer"
+                )
+            return view(request, *args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
+CLOSURE_REVIEW_WRITE = (
+    ratelimit.user_rate_limited(ratelimit.SUGGEST_REVIEW_WRITES),
+    csrf_protected,
+    reviewer_only(audited=True),
+    json_body_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+CLOSURE_REVIEW_READ = (
+    reviewer_only(audited=False),
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+
+
+class ReviewedClosureIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    osm_way_ids: list[StrictInt] | None = Field(
+        default=None, description="The road pieces closed (at most 40), or a drawn `line`."
+    )
+    line: list[list[float]] | None = Field(
+        default=None, description="A drawn stretch, [[lon, lat], ...], in place of the ways."
+    )
+    reason: str = Field(max_length=500, description="Required, at most 500 characters.")
+    start: str | None = Field(default=None, description="The first day, YYYY-MM-DD (today).")
+    end: str | None = Field(
+        default=None, description="The last day, YYYY-MM-DD; none: until a reviewer ends it."
+    )
+    url: str = Field(default="", max_length=500, description="The source's link, optional.")
+
+
+class ClosureConfirmIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(
+        default="", max_length=500, description="The report's fixed reasons where empty."
+    )
+    start: str | None = None
+    end: str | None = None
+    url: str = Field(default="", max_length=500)
+
+
+class ReviewedClosureOut(Schema):
+    id: int
+    road: str
+    osm_way_ids: list[int]
+    reason: str
+    start: str | None
+    end: str | None
+    url: str | None
+    when_text: str
+    from_report: bool
+    point: list[float] | None
+
+
+class ClosureReportOut(Schema):
+    id: int
+    osm_way_id: int
+    road: str
+    reason: str
+    reason_fixed: str = Field(description="The one-tap reasons' words only: the form's start.")
+    lat: float
+    lon: float
+    created_at: str
+
+
+class ClosureReviewOut(Schema):
+    closures: list[ReviewedClosureOut]
+    reports: list[ClosureReportOut]
+
+
+class ClosureDoneOut(Schema):
+    id: int
+    message: str
+
+
+class ClosureStretchOut(Schema):
+    name: str
+    osm_way_ids: list[int]
+    pieces: int
+    length_m: float
+    capped: bool
+    expected: str
+
+
+class ClosureStretchAnswer(Schema):
+    stretch: ClosureStretchOut | None
+
+
+def _closure_said(closure) -> str:
+    from . import reviewed_closures
+
+    said = reviewed_closures.summary(closure)
+    return (
+        f"Closure confirmed: {said['road']}, {said['when_text'][0].lower()}"
+        f"{said['when_text'][1:]}. New plans route round it within a minute."
+    )
+
+
+@api.get(
+    "/closures/reviewed",
+    response={200: ClosureReviewOut, **SUGGESTION_RESPONSES},
+    summary="The closures reviewers confirmed, in force or to come, and riders' reports (reviewer)",
+)
+@decorate_view(*CLOSURE_REVIEW_READ)
+def reviewed_closures_list(request, response: HttpResponse):
+    from django.middleware.csrf import get_token
+
+    from . import reviewed_closures
+
+    get_token(request)
+    _private(response)
+    return Status(
+        200,
+        {
+            "closures": [
+                reviewed_closures.summary(c)
+                for c in reviewed_closures.live_rows().order_by("start", "pk")
+            ],
+            "reports": [
+                reviewed_closures.report_summary(r) for r in reviewed_closures.open_reports()
+            ],
+        },
+    )
+
+
+@api.get(
+    "/closures/stretch/{osm_way_id}",
+    response={200: ClosureStretchAnswer, **SUGGESTION_RESPONSES},
+    summary="The named stretch a road piece is in, for Mark closed's extent choice (reviewer)",
+)
+@decorate_view(*CLOSURE_REVIEW_READ)
+def reviewed_closure_stretch(request, osm_way_id: int, response: HttpResponse):
+    from . import stress_edits
+
+    try:
+        stretch = stress_edits.stretch_state(osm_way_id)
+    except stress_edits.EditRefused as refused:
+        return _stress_error(refused.status, refused.message, refused.field, refused.code)
+    _private(response)
+    return Status(200, {"stretch": stretch})
+
+
+@api.post(
+    "/closures/reviewed",
+    response={201: ClosureDoneOut, **SUGGESTION_RESPONSES},
+    summary="Enter a closure: road pieces or a drawn line, reason, dates, source (reviewer)",
+)
+@decorate_view(*CLOSURE_REVIEW_WRITE)
+def reviewed_closure_create(request, body: ReviewedClosureIn, response: HttpResponse):
+    from . import reviewed_closures, stress_edits
+
+    try:
+        closure = reviewed_closures.create(
+            request.user,
+            way_ids=body.osm_way_ids,
+            reason=body.reason,
+            start=body.start,
+            end=body.end,
+            url=body.url,
+            line=body.line,
+        )
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(201, {"id": closure.pk, "message": _closure_said(closure)})
+
+
+@api.post(
+    "/closures/reviewed/{closure_id}/end",
+    response={200: ClosureDoneOut, **SUGGESTION_RESPONSES},
+    summary="End a confirmed closure now (reviewer)",
+)
+@decorate_view(*CLOSURE_REVIEW_WRITE)
+def reviewed_closure_end(request, closure_id: int, body: UndoIn, response: HttpResponse):
+    from . import reviewed_closures, stress_edits
+
+    try:
+        closure = reviewed_closures.end_now(request.user, closure_id)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    road = closure.road or "The drawn stretch"
+    return Status(200, {"id": closure.pk, "message": f"Ended. {road} is open again for new plans."})
+
+
+@api.post(
+    "/closures/reports/{report_id}/confirm",
+    response={201: ClosureDoneOut, **SUGGESTION_RESPONSES},
+    summary="Confirm a rider's closure report: the closure on its road piece (reviewer)",
+)
+@decorate_view(*CLOSURE_REVIEW_WRITE)
+def closure_report_confirm(request, report_id: int, body: ClosureConfirmIn, response: HttpResponse):
+    from . import reviewed_closures, stress_edits
+
+    try:
+        closure = reviewed_closures.confirm_report(
+            request.user, report_id, body.reason, body.start, body.end, body.url
+        )
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(201, {"id": closure.pk, "message": _closure_said(closure)})
+
+
+@api.post(
+    "/closures/reports/{report_id}/reject",
+    response={200: ClosureDoneOut, **SUGGESTION_RESPONSES},
+    summary="Reject a rider's closure report (reviewer)",
+)
+@decorate_view(*CLOSURE_REVIEW_WRITE)
+def closure_report_reject(request, report_id: int, body: UndoIn, response: HttpResponse):
+    from . import reviewed_closures, stress_edits
+
+    try:
+        report = reviewed_closures.reject_report(request.user, report_id)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(200, {"id": report.pk, "message": "Rejected. The report is deleted."})
+
+
+# ---- Review: the instance admin's queue of roads to rule on (core.stress_review) ----
+#
+# GET /api/review/queues, /api/review/items, /api/review/map, /api/review/road/{way} and
+# /api/review/rulings; POST /api/review/rulings and /api/review/rulings/{id}/undo. Instance admins
+# only (401 signed out, 403 otherwise), with the editor's guards on the writes. What is listed here
+# may carry ratings whose public use is pending (agency_lts.PENDING_AGENCIES): it is never cached
+# and never reaches a rider.
+
+REVIEW_QUEUES = Literal[
+    "rebuild", "disagreement", "sidepath", "narrow_rural", "works_closure", "rematch"
+]
+
+
+class ReviewAnyOut(Schema):
+    """The answer as `core.stress_review` builds it (queues, items, features or rulings)."""
+
+    model_config = ConfigDict(extra="allow")
+
+
+class ReviewItemsIn(Schema):
+    queue: REVIEW_QUEUES = "rebuild"
+    kind: str = Field(default="", max_length=40)
+    source: str = Field(default="", max_length=40)
+    area: str = Field(default="", max_length=200)
+    open_only: bool = Field(default=True, description="Only roads with no ruling yet.")
+    page: int = Field(default=1, ge=1, le=100000)
+    per_page: int = Field(default=25, ge=1, le=100)
+    way: int | None = Field(default=None, description="One road (a tap on Review's map).")
+
+
+class ReviewMapIn(Schema):
+    queues: str = Field(
+        default="rebuild,disagreement",
+        max_length=200,
+        description="The lists to draw, comma-separated (Review's map switches).",
+    )
+    west: float = Field(ge=-180, le=180)
+    south: float = Field(ge=-90, le=90)
+    east: float = Field(ge=-180, le=180)
+    north: float = Field(ge=-90, le=90)
+    zoom: float = Field(ge=0, le=24, description="Below 10 count badges; below 13 simplified.")
+
+
+class ReviewNextIn(Schema):
+    lists: str = Field(default="", max_length=200, description="The lists to go through, in order.")
+    queue: REVIEW_QUEUES = "rebuild"
+    way: int | None = Field(default=None, description="The road open now, if any.")
+    direction: int = Field(default=1, ge=-1, le=1, description="1: after it; -1: before it.")
+    open_only: bool = Field(default=True, description="Only roads with no ruling yet.")
+    wrap: bool = Field(default=True, description="Past the last list, round to the first.")
+
+
+def _review_lists(text: str) -> list[str]:
+    from typing import get_args
+
+    known = set(get_args(REVIEW_QUEUES))
+    return [q for q in (part.strip() for part in text.split(",")) if q in known]
+
+
+class ReviewRoadIn(Schema):
+    queue: REVIEW_QUEUES | None = Field(
+        default=None, description="rebuild: the facts of the build waiting in staging as well."
+    )
+
+
+class ReviewRulingIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    queue: REVIEW_QUEUES
+    osm_way_ids: list[StrictInt] = Field(min_length=1, max_length=200)
+    decision: Literal["accept", "reject", "set"]
+    step: StrictFloat | None = Field(
+        default=None, description="Change LTS: 1 to 5 by halves (5 is Avoid)."
+    )
+    reason: str = Field(default="", max_length=2000, description="Private; optional.")
+    source: str | None = Field(
+        default=None,
+        max_length=40,
+        description="Change LTS to the level this listed source holds; the evidence names it.",
+    )
+
+
+class ReviewRulingsIn(Schema):
+    queue: REVIEW_QUEUES | None = None
+
+
+REVIEW_RESPONSES = {200: ReviewAnyOut, **SUGGESTION_RESPONSES}
+
+# Review's own counts (ratelimit.REVIEW_READS, REVIEW_RULINGS, REVIEW_RULINGS_CLIENT), never the
+# road panel's editor's: browsing a list by keyboard reads fast, and a long review never spends
+# the admin's editing budget.
+REVIEW_READ = (
+    ratelimit.rate_limited(ratelimit.REVIEW_READS),
+    instance_admin_only(audited=False, doing="use Review"),
+    same_site_editor,
+    errors_as_json,
+)
+REVIEW_RULING_WRITE = (
+    ratelimit.user_rate_limited(ratelimit.REVIEW_RULINGS),
+    csrf_protected,
+    instance_admin_only(audited=True, doing="use Review"),
+    json_body_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.REVIEW_RULINGS_CLIENT),
+    errors_as_json,
+)
+
+
+def _review_answer(body: dict) -> JsonResponse:
+    return _private(JsonResponse(body))
+
+
+@api.get("/review/queues", response=REVIEW_RESPONSES, summary="Review's queues (instance admin)")
+@decorate_view(*REVIEW_READ)
+def review_queues(request):
+    from django.middleware.csrf import get_token
+
+    from . import stress_review
+
+    get_token(request)
+    return _review_answer({"queues": stress_review.queue_summary()})
+
+
+@api.get("/review/items", response=REVIEW_RESPONSES, summary="A page of a queue (instance admin)")
+@decorate_view(*REVIEW_READ)
+def review_items(request, params: Query[ReviewItemsIn]):
+    from . import stress_review
+
+    return _review_answer(
+        stress_review.page(
+            params.queue,
+            kind=params.kind,
+            source=params.source,
+            area=params.area,
+            open_only=params.open_only,
+            number=params.page,
+            size=params.per_page,
+            way=params.way,
+        )
+    )
+
+
+@api.get(
+    "/review/map",
+    response=REVIEW_RESPONSES,
+    summary="The listed roads in a view, for Review's map (instance admin)",
+)
+@decorate_view(*REVIEW_READ)
+def review_map(request, params: Query[ReviewMapIn]):
+    from . import stress_review
+
+    # A view's roads only, at most stress_review.MAP_CAP; badges far out, simplified lines below
+    # a street's zoom, both read from what was made when the lists were computed.
+    box = (params.west, params.south, params.east, params.north)
+    refusal = stress_review.view_refusal(*box, params.zoom)
+    if refusal:
+        return _private(JsonResponse({"error": refusal}, status=400))
+    return _review_answer(stress_review.map_view(_review_lists(params.queues), box, params.zoom))
+
+
+@api.get(
+    "/review/next",
+    response=REVIEW_RESPONSES,
+    summary="The next road in the lists' order: Next discrepancy, Previous and Next road",
+)
+@decorate_view(*REVIEW_READ)
+def review_next(request, params: Query[ReviewNextIn]):
+    from . import stress_review
+
+    found = stress_review.next_road(
+        _review_lists(params.lists),
+        params.queue,
+        params.way,
+        direction=1 if params.direction >= 0 else -1,
+        open_only=params.open_only,
+        wrap=params.wrap,
+    )
+    return _review_answer({"next": found})
+
+
+@api.get(
+    "/review/road/{osm_way_id}",
+    response=REVIEW_RESPONSES,
+    summary="The facts behind a road's rating and its history (instance admin)",
+)
+@decorate_view(*REVIEW_READ)
+def review_road(request, osm_way_id: int, params: Query[ReviewRoadIn]):
+    from . import stress_review
+
+    return _review_answer(stress_review.road_detail(osm_way_id, params.queue or ""))
+
+
+@api.get(
+    "/review/street-photo",
+    response={200: StreetPhotoOut, 204: None, **SUGGESTION_RESPONSES},
+    summary="The road panel's street photo, for Review's rows and cards (instance admin)",
+)
+@decorate_view(*REVIEW_READ)
+def review_street_photo(request, params: Query[StreetPhotoIn]):
+    """The road panel's own lookup (core.street_photo), counted in Review's reads: a list shows a
+    photo a row. Its image is the panel's own path (GET /api/street-photo/image/{id})."""
+    from . import street_photo
+
+    found = street_photo.client.photo(params.lon, params.lat, params.way)
+    if found is None:
+        return _private(HttpResponse(status=204))
+    return _review_answer(found)
+
+
+@api.get("/review/rulings", response=REVIEW_RESPONSES, summary="Recent rulings (instance admin)")
+@decorate_view(*REVIEW_READ)
+def review_rulings(request, params: Query[ReviewRulingsIn]):
+    from . import stress_review
+
+    return _review_answer({"rulings": stress_review.recent_rulings(params.queue)})
+
+
+@api.post("/review/rulings", response=REVIEW_RESPONSES, summary="Rule on roads (instance admin)")
+@decorate_view(*REVIEW_RULING_WRITE)
+def review_rule(request, body: ReviewRulingIn):
+    from . import stress_edits, stress_review
+
+    try:
+        made, refused = stress_review.rule(
+            request.user,
+            body.queue,
+            body.osm_way_ids,
+            body.decision,
+            step=body.step,
+            reason=body.reason,
+            source=body.source,
+        )
+    except stress_edits.EditRefused as refusal:
+        return _edit_refusal(request, refusal)
+    generation = max((r.edit.generation for r in made if r.edit_id), default=None)
+    count = len(made)
+    message = f"{count} road{'s' if count != 1 else ''} ruled" + (
+        f"; {len(refused)} could not be: {refused[0]['error']}" if refused else "."
+    )
+    return _review_answer(
+        {
+            "rulings": [stress_review.ruling_out(r) for r in made],
+            "refused": refused,
+            "generation": generation,
+            "message": message,
+        }
+    )
+
+
+@api.post(
+    "/review/rulings/{ruling_id}/undo",
+    response=REVIEW_RESPONSES,
+    summary="Undo a ruling within 30 minutes (instance admin)",
+)
+@decorate_view(*REVIEW_RULING_WRITE)
+def review_undo(request, ruling_id: int, body: UndoIn):
+    from . import stress_edits, stress_review
+
+    try:
+        ruling, generation = stress_review.undo(request.user, ruling_id)
+    except stress_edits.EditRefused as refusal:
+        return _edit_refusal(request, refusal)
+    return _review_answer(
+        {"ruling": stress_review.ruling_out(ruling), "generation": generation, "message": "Undone."}
     )

@@ -33,6 +33,8 @@ import {
   watchForCapacity,
   watchForFacilities,
   watchZoom,
+  watchCentre,
+  type CentreMap,
   type Coverage,
   type FacilityMap,
   type OverlayMap,
@@ -306,7 +308,7 @@ test("Go (lineTapIsPoint): a click on the line is the map's, a point, like anywh
   assert.match(mapView, /const goPress = callbacks\.current\.pressSetsEnd === true;/);
   assert.match(mapView, /runClick\(under, \{ popupOpen: anyPopupOpen\(\) \|\| forCard, afterDrag: performance\.now\(\) < clickSuppressedUntil, lineTapIsPoint: goPress \}/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /onLineDrop=\{riding \? ignore : insertOnLine\}\s*pressSetsEnd=\{goTapSetsEnd\(mode\)\}/);
+  assert.match(app, /onLineDrop=\{riding \|\| reviewing \? ignore : insertOnLine\}\s*pressSetsEnd=\{goTapSetsEnd\(mode\)\}/);
 });
 
 /** A feature card stand-in: open or not, and the screen points its shown features are at. */
@@ -871,4 +873,25 @@ test("the accessibility switch repaints the Mass Ride casings in place: a pixel 
   } finally {
     setAccessibility(false, { remember: false });
   }
+});
+
+test("watchCentre: the crosshair follows the map's padded centre, until it is stopped (review UI-2)", () => {
+  const listeners = new Map<string, Set<() => void>>();
+  let centre = { lng: -77, lat: 38.9 };
+  const map: CentreMap = {
+    getCenter: () => centre,
+    // A stand-in projection whose padding puts the centre 250 px above the middle of a 400 x 800 map.
+    project: ([lng, lat]) => ({ x: 200 + (lng + 77) * 1000, y: 150 - (lat - 38.9) * 1000 }),
+    on: (event, listener) => listeners.set(event, (listeners.get(event) ?? new Set()).add(listener)),
+    off: (event, listener) => listeners.get(event)?.delete(listener),
+  };
+  const seen: Array<{ x: number; y: number }> = [];
+  const stop = watchCentre(map, (pixel) => seen.push(pixel));
+  assert.deepEqual(seen, [{ x: 200, y: 150 }]);
+  centre = { lng: -76.99, lat: 38.9 };
+  for (const listener of listeners.get("move") ?? []) listener();
+  assert.equal(Math.round(seen.at(-1)!.x), 210);
+  stop();
+  assert.equal(listeners.get("move")?.size, 0);
+  assert.equal(listeners.get("resize")?.size, 0);
 });

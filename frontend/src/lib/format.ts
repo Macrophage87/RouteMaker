@@ -12,6 +12,10 @@ export const METRES_PER_MILE = 1609.344;
 /** The words for the units a rider types in (the target distance, the system weight). */
 export const MILES_WORD = "miles";
 export const POUNDS_WORD = "pounds";
+/** A quarter mile, said as the plan says it (the ride dots' reach, lib/rideGroup.ts). */
+export const QUARTER_MILE = "a quarter mile (400 m)";
+/** Places to see along a route (v0.7.0, lib/places.ts). */
+export const HALF_MILE = "half a mile (0.8 km)";
 export const FEET_PER_METRE = 3.28084;
 export const KMH_PER_MPH = 1.609344;
 
@@ -39,6 +43,14 @@ function roundShort(value: number): number {
 /** Miles to one place, as the distance shows them and a file name carries them: "4.7". */
 export function milesFigure(metres: number): string {
   return (metres / METRES_PER_MILE).toFixed(1);
+}
+
+/**
+ * Miles alone, "4.7 mi", only where a field's length cap leaves no room for the metric: a bike computer's course
+ * name (TCX caps it at 15 characters). Anywhere with room says `formatDistance`.
+ */
+export function formatMilesCapped(metres: number): string {
+  return `${milesFigure(metres)} mi`;
 }
 
 /**
@@ -73,6 +85,34 @@ export function formatMileRange(fromM: number, toM: number): string {
 /** "55 to 1,543 pounds (25 to 700 kg)": a weight range, pounds first. */
 export function poundsRange(minLb: number, maxLb: number, minKg: number, maxKg: number): string {
   return `${minLb} to ${maxLb} ${POUNDS_WORD} (${minKg} to ${maxKg} kg)`;
+}
+
+/**
+ * A cue sheet's distance from the start, always in tenths of a mile, never feet (lib/cueSheetPdf.ts): "12.4 mi
+ * (20.0 km)", "0.0 mi (0.0 km)" at the start; and the strip's small words after its large miles figure,
+ * "mi (20.0 km)".
+ */
+export function formatMileMarker(metres: number): string {
+  return `${milesFigure(metres)} ${formatMileMarkerUnits(metres)}`;
+}
+
+export function formatMileMarkerUnits(metres: number): string {
+  return `mi (${(metres / 1000).toFixed(1)} km)`;
+}
+
+/**
+ * A change of distance, without its sign, always in tenths of a mile (v0.7.0's change summary, lib/planFirst.ts):
+ * "1.2 mi (1.9 km)"; "0.0 mi (0.0 km)" for a change too small to say.
+ */
+export function formatDistanceChange(metres: number): string {
+  const m = Math.abs(metres);
+  return `${(m / METRES_PER_MILE).toFixed(1)} mi (${(m / 1000).toFixed(1)} km)`;
+}
+
+/** How far along a route, miles first: "mile 12.4 (20.0 km)"; under a tenth of a mile, "the start". */
+export function formatMilePost(metres: number): string {
+  if (!usable(metres) || metres < FEET_BELOW_M) return "the start";
+  return `mile ${milesFigure(metres)} (${(metres / 1000).toFixed(1)} km)`;
 }
 
 /** "4.7 mi (7.6 km)"; below a tenth of a mile "500 ft (150 m)". */

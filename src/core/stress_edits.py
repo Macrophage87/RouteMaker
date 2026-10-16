@@ -67,6 +67,9 @@ REASON_MAX = 500
 # A change is one road piece, or one named stretch of at most this many (phase 5).
 MAX_STRETCH_WAYS = 40
 MAX_WAYS = MAX_STRETCH_WAYS
+# Review's batch ruling (core.stress_review.rule): one level for up to this many roads an
+# instance admin chose from a list, as one change with one undo.
+MAX_BATCH_WAYS = 200
 # A named stretch ends at a junction with a road of another name at this level or above: where
 # the junction model would warn of a high-stress crossing (orange or worse). An unsignalized
 # crossing of a 2.5 road costs 600 ft, the orange line (routemaker.intersections; the segment
@@ -654,15 +657,22 @@ def apply(
     expected: str,
     *,
     now: datetime | None = None,
+    evidence: str = EVIDENCE,
+    batch: bool = False,
 ) -> EditResult:
-    """Make the change, at once. Raises EditRefused (Invalid, NotFound or Stale)."""
+    """Make the change, at once. Raises EditRefused (Invalid, NotFound or Stale).
+
+    `evidence` is the override row's: where the change was made (Review's rulings say so).
+    `batch` is Review's: the ways are the roads an admin chose from a list, up to
+    `MAX_BATCH_WAYS`, not a named stretch, and are still one edit with one undo."""
     way_ids = sorted(set(int(w) for w in way_ids))
-    if not way_ids or len(way_ids) > MAX_WAYS:
-        raise Invalid(f"Change at most {MAX_WAYS} road pieces at a time.", "osm_way_ids")
+    most = MAX_BATCH_WAYS if batch else MAX_WAYS
+    if not way_ids or len(way_ids) > most:
+        raise Invalid(f"Change at most {most} road pieces at a time.", "osm_way_ids")
     validate(spec)
     schema = live_schema()
     # Asked of the router before any lock is taken; the token below still catches a change.
-    if len(way_ids) > 1 and live_oid(schema) is not None:
+    if len(way_ids) > 1 and not batch and live_oid(schema) is not None:
         _check_stretch(schema, way_ids)
     try:
         with transaction.atomic():
@@ -710,7 +720,7 @@ def apply(
                     osm_way_id=way,
                     value={},
                     reason=spec.reason.strip(),
-                    evidence=EVIDENCE,
+                    evidence=evidence,
                     approved=False,
                     source=Override.Source.PANEL,
                     created_by=actor,
@@ -787,6 +797,112 @@ def apply(
             "Someone changed this road since you opened it. Reopen it to see the change."
         ) from error
     return EditResult(edit=edit, ways=ways, generation=generation)
+
+
+# --- A surface penalty (v0.7.0 surface overrides) ----------------------------------------
+#
+# Not a level: a routing price for rough pavement, gravel, sand or dirt, handed to the graph
+# as `rm:reviewer_surface` (`pipeline.overrides.apply_surface`). Valhalla's edge costs are
+# built at the rebuild, and RouteMaker's own ranking does not price surface, so nothing reads
+# it before the next map rebuild: the row is written now and the live table is not touched
+# (no StressEdit, no tile change). The road panel says so until the rebuild has read it.
+
+SURFACE_EVIDENCE = "Instance admin's surface penalty in the road panel"
+
+
+def _live_surfaces(way_ids: list[int], *, lock: bool = False) -> dict[int, Override]:
+    query = Override.objects.filter(
+        kind=Override.Kind.SURFACE,
+        osm_way_id__in=way_ids,
+        approved=True,
+        superseded_by__isnull=True,
+    )
+    if lock:
+        query = query.select_for_update()
+    return {o.osm_way_id: o for o in query.order_by("id")}
+
+
+def set_surface(actor, way_ids: list[int], surface: str | None, reason: str) -> list[Override]:
+    """Set (or, with None, take off) the ways' surface penalty, for the next rebuild."""
+    way_ids = sorted(set(int(w) for w in way_ids))
+    if not way_ids or len(way_ids) > MAX_WAYS:
+        raise Invalid(f"Change at most {MAX_WAYS} road pieces at a time.", "osm_way_ids")
+    if surface is not None and surface not in overrides.SURFACE_PENALTIES:
+        raise Invalid("Choose rough, gravel, sand or dirt, or none.", "surface")
+    reason = (reason or "").strip()
+    if not reason:
+        raise Invalid("Say why, in a sentence or two.", "reason")
+    if len(reason) > REASON_MAX:
+        raise Invalid(f"The reason is at most {REASON_MAX} characters.", "reason")
+    schema = live_schema()
+    if live_oid(schema) is None:
+        raise NotFound("There is no road data to change yet.")
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT DISTINCT osm_way_id FROM {schema}.segment WHERE osm_way_id = ANY(%s)",
+            [way_ids],
+        )
+        found = {int(r[0]) for r in cursor.fetchall()}
+    if found != set(way_ids):
+        raise NotFound("That road is not in the data.")
+    created: list[Override] = []
+    with transaction.atomic():
+        _lock_ways(way_ids)
+        now = timezone.now()
+        lives = _live_surfaces(way_ids, lock=True)
+        for way in way_ids:
+            old = lives.get(way)
+            if old is None and surface is None:
+                continue  # nothing to take off
+            if old is not None and old.value.get("surface") == surface:
+                continue  # already so
+            new = Override.objects.create(
+                kind=Override.Kind.SURFACE,
+                osm_way_id=way,
+                value={"surface": surface},
+                reason=reason,
+                evidence=SURFACE_EVIDENCE,
+                approved=False,
+                source=Override.Source.PANEL,
+                created_by=actor,
+                created_by_user_id=getattr(actor, "pk", None),
+            )
+            if old is not None:
+                Override.objects.filter(pk=old.pk).update(superseded_by=new, superseded_at=now)
+            new.approved = True
+            new.approved_at = now
+            new.approved_by = actor
+            new.approved_by_user_id = getattr(actor, "pk", None)
+            new.save(
+                update_fields=["approved", "approved_at", "approved_by", "approved_by_user_id"]
+            )
+            created.append(new)
+    for row in created:
+        audit.record(
+            actor, "stress_surface", "override", row.pk, AuditLogEntry.Outcome.ALLOWED,
+            detail=f"way {row.osm_way_id}: {row.value['surface'] or 'none'}",
+        )  # fmt: skip
+    return created
+
+
+def surface_of(way_id: int) -> dict | None:
+    """The way's live surface penalty as the road panel says it: {"surface", "words",
+    "applied"}, where `applied` is whether the live table's rebuild read it (else it waits
+    for the next map rebuild). A penalty taken off is {"surface": None, ...} until the
+    rebuild has read that too; None where the way has none."""
+    row = _live_surfaces([int(way_id)]).get(int(way_id))
+    if row is None:
+        return None
+    key = row.value.get("surface")
+    read_at = None
+    oid = live_oid(live_schema())
+    if oid is not None:
+        generation = LiveEditGeneration.objects.filter(table_oid=oid).first()
+        read_at = getattr(generation, "overrides_read_at", None)
+    applied = bool(read_at and row.approved_at and row.approved_at <= read_at)
+    if key not in overrides.SURFACE_PENALTIES:
+        return None if applied else {"surface": None, "words": "Taken off", "applied": False}
+    return {"surface": key, "words": overrides.SURFACE_PENALTIES[key][1], "applied": applied}
 
 
 def can_undo(edit: StressEdit, now: datetime) -> bool:

@@ -23,8 +23,9 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Credit: `© OpenStreetMap contributors`
 - What it is used for: every route, its roads, paths and facilities, the stress
   tiers' road attributes, the base map, place names and place search, the MARC Penn
-  Line stations and the Metro elevators DC does not list, and the public drinking water and
-  restrooms layer.
+  Line stations and the Metro elevators DC does not list, the public drinking water,
+  restrooms and bike repair stands layer, Go's Repair chip (stands and bike shops), Find food
+  (with farm stands and markets), and the places to see (Plan's Places to see, Go's Sights).
 - Dataset: OpenStreetMap, the regional extract from Geofabrik
   (<https://download.geofabrik.de/>), rebuilt weekly (docs/OPERATIONS.md, "The weekly
   rebuild").
@@ -35,8 +36,10 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Records: `frontend/src/rail-data/README.md` (the MARC and elevator fixtures);
   `frontend/src/amenity-data/README.md` (public drinking water and restrooms, the Water and
   restrooms layer, by `scripts/build_water_restrooms.py`); the same README's "Places to
-  eat" (restaurants, cafes and the like, the planner's Find food search, by
-  `scripts/build_food.py`). The layer's Throne smart
+  eat" (restaurants, cafes and the like, farm stands and markets, the planner's Find food
+  search, by `scripts/build_food.py`); and its "Places to see" (points of interest by
+  category, by `scripts/build_places.py`). The water file also holds bike repair stands and
+  bike shops (`scripts/build_water_restrooms.py`). The layer's Throne smart
   restrooms are not OSM: a hand list, `frontend/src/amenity-data/throne-restrooms.json`, each
   unit with its city, county, parks or news source URL and the date read (2026-10-11), placed
   with the US Census Bureau geocoder (<https://geocoding.geo.census.gov/>, public domain).
@@ -152,14 +155,13 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   "DC pavement condition (DC-PCI)"); not yet downloaded, so no size or sha256 yet.
 - Publisher: District Department of Transportation and DC GIS (the service's
   `accessInformation`: "DDOT and DC GIS").
-- Licence: **not stated; to be confirmed before this ships.** The layer's
-  `copyrightText` and description are empty and the service's item info has an empty
-  `licenseInfo` (read 2026-10-11). Open Data DC's layers are usually CC BY 4.0 (the
-  section above), but this service is not one of its items, so that cannot be assumed.
-  Until the owner confirms the terms with DDOT or Open Data DC, nothing derived from
-  it reaches the router: `routemaker.pavement.LICENCE_CONFIRMED` is False, so the
-  installer refuses `--dc-pci` and the rebuild ignores an installed `pavement.json`.
-  The commit that records the confirmation here (source and date) sets it True.
+- Licence: the District's data terms
+  (<https://dc.gov/page/terms-and-conditions-use-district-data>, "Terms and Conditions
+  of Use for District Data", sent by the owner 2026-10-16): CC0 1.0 by default, CC BY
+  4.0 where an item says so; credited either way, as the owner asked ("The distinction
+  doesn't matter here as we're going to cite them"). This layer's own `copyrightText`,
+  description and `licenseInfo` are empty (read 2026-10-11). Owner confirmation
+  2026-10-16; `routemaker.pavement.LICENCE_CONFIRMED` is True.
 - Assumption to confirm: `DATE1` is taken as the survey date; the service does not
   say which date field is which.
 - Records: the download's README; `fixtures/pavement/overrides.json` for the owner's
@@ -290,7 +292,10 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   system alerts, from the operator's official GBFS 1.1 feed (discovery feed
   <https://gbfs.capitalbikeshare.com/gbfs/gbfs.json>, which lists the feeds on `gbfs.lyft.com`);
   the Bikeshare ride type's docks and bike counts and its lists of the nearest stations
-  (`core.gbfs`, `core.bikeshare`). Read live while a rider plans, about once a minute for the whole
+  (`core.gbfs`, `core.bikeshare`); and, from v0.7.0, the docks and free e-bikes drawn on the map
+  in the bikeshare ride types, for the rider's map view only (`core.micromobility`, GET
+  /api/bikeshare/docks: a bounded view, capped counts, no bike ids, nothing kept), a live
+  display and not the data handed on as a dataset. Read live while a rider plans, about once a minute for the whole
   deployment, kept as one shared latest copy and never as history; there is no raw-file record and
   no sha256, because nothing is downloaded to keep. The sampled test fixtures
   (`tests/data/gbfs`) are a test sample, not a dataset.
@@ -308,6 +313,22 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Not used: the operator's no-parking zones, which exist only inside its app (OWNER-DECISIONS 305);
   its undocumented map endpoints and its points values (OWNER-DECISIONS 451).
 - Records: docs/OPERATIONS.md, "Bikeshare feeds"; docs/DEVELOPMENT.md, "Bikeshare".
+
+## Other bikeshare and e-bike operators (left out)
+
+Capital Bikeshare is the only service on the map and the only one routing uses
+(`core.micromobility.OPERATORS`). The dockless e-bike operators in DDOT's and the counties' permit
+programs were left out because neither has usable terms (the owner, 2026-10-15):
+
+- Lime: its feed is internal-only; there is no public feed with terms to use.
+- Veo: it publishes no data terms.
+
+Neither is listed, fetched or shown, and the Layers sheet has no switch for either. Another
+operator is added only once its public GBFS feed and its licence or terms have been read, the owner
+has confirmed them (as for Capital Bikeshare), and a section for it is added here with its Credit,
+Dataset and Licence lines; then it is listed with `licensed` set in `core.micromobility`
+(tests/test_micromobility.py holds every licensed operator to its section here). A feed whose terms
+do not allow display stays out.
 
 ## Work zones (WZDx: Maryland DOT SHA and VDOT)
 
@@ -338,9 +359,68 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Disclaimer (346), with every route that passes a zone: "Work zones are the transportation
   agencies' own data, read every few minutes. They may be out of date or wrong, and are not a
   guarantee the way is open or closed."
-- Not used: DC's TOPS permits (the owner, 2026-10-11: too much data); VDOT's road closures, planned
-  events, incidents and weather streams (347-349: follow-ups, FOLLOWUP-WORKZONES in PLAN.md).
+- Not used: VDOT's road closures, planned events, incidents and weather streams (347-349:
+  follow-ups, FOLLOWUP-WORKZONES in PLAN.md). DC's TOPS permits, left out on 2026-10-11, came in
+  with v0.7.0 (below, "DC closures").
 - Records: docs/OPERATIONS.md, "Work zones".
+
+## DC closures (v0.7.0: DDOT TOPS permits, MPD, AlertDC, NPS)
+
+The WZDx registry has no DC feed, so DC's closures come from four sources (v0.7.0 plan, "DC
+closures source"), read by the worker (`core.closure_sources`, `routemaker.dc_closures`) and
+kept as one shared latest copy, never as history. They feed the same closure model as the work
+zones: on the route's map (a red closed stretch, amber for a blocked bike lane, a park marker),
+in the route's words, and in the closure check (`POST /api/closures/check`). None of the four
+hosts was reachable from the cloud container this was built in; the readers were built on saved
+sample pages (`tests/data/closures`), and docs/OPERATIONS.md, "DC closures", has the first check.
+
+### DDOT occupancy permits (TOPS)
+
+- Credit: `Road closures: DDOT (TOPS permits), CC BY 4.0`
+- Dataset: "Occupancy Permits (via DDOT TOPS)",
+  <https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/MapServer/1> (data.gov record
+  <https://catalog.data.gov/dataset/occupancy-permits-via-ddot-tops>; opendata.dc.gov item
+  80216437707b4135963eeb95047caeac). Fields per DDOT's wiki
+  (<https://ddotwiki.atlassian.net/wiki/spaces/GIS0107/pages/1875290657/Road+Closures>): Status,
+  IssuedDate, ExpirationDate, IsRoadClosed, BikeLaneLength, CurbLaneLength, TravelLane1-4Length.
+  Read every hour (DDOT refreshes it nightly); active permits only.
+- Use: `IsRoadClosed` closes the block the permit's point is snapped to; `BikeLaneLength` > 0
+  without a road closure is a "Bike lane blocked" warning, not a closure. Lane-only travel
+  closures are ignored. DDOT's own limits: one point a permit, start and end times unreliable,
+  NPS and Park Police closures often missing; the card says "Permit: road closed until Oct 20".
+- Publisher: District Department of Transportation.
+- Licence: CC BY 4.0 (confirmed by the owner, 2026-10-15 20:22 UTC). Not legal advice.
+
+### MPD traffic advisories
+
+- Credit: `MPD traffic advisories`
+- Pages: the "TRAFFIC ADVISORY" releases in MPD's newsroom, <https://mpdc.dc.gov/newsroom>, read
+  every 15 minutes. Only releases whose title says "Traffic Advisory" are fetched; every other
+  release is passed over on its title and never read or kept. Each "X from A to B" under a time
+  window becomes a closure on the ways of X between the cross streets; Emergency No Parking lists
+  are skipped; a line that will not parse, or a street that cannot be found, is kept as text with
+  the link under "Check before you go", never guessed.
+- Publisher: Metropolitan Police Department, District of Columbia.
+- Terms: public government releases (inferred public; not a licensed dataset). Not legal advice.
+
+### AlertDC
+
+- Credit: `AlertDC (HSEMA)`
+- Feed: <https://trainingtrack.hsema.dc.gov/NRss> (the host name says "training" but it carries
+  current alerts), read every 15 minutes. Only traffic and road items are read; every other alert
+  type (crime first) is dropped before its text is read, and is never stored, logged or shown.
+- Publisher: DC Homeland Security and Emergency Management Agency.
+- Terms: public government alerts (inferred public). Not legal advice.
+
+### NPS alerts
+
+- Credit: `NPS alerts`
+- API: <https://developer.nps.gov/api/v1/alerts>, parks rocr, nama, gwmp, choh and anac, read every
+  30 minutes with the owner's key (`NPS_API_KEY`, on the worker only, sent as `X-Api-Key`; off
+  without it). Alerts of category Park Closure, Danger and Caution; no geometry, so each is a
+  park-level "Check before you go" notice with its link, never a closure.
+- Publisher: U.S. National Park Service.
+- Terms: NPS API terms of service (public domain U.S. government data). Not legal advice.
 
 ## Atkinson Hyperlegible (the panel's font; not a map credit)
 
@@ -361,6 +441,30 @@ the shipped `licenses.txt`, which the map's "Software licences" link opens (384:
   regular `d64ba838ef5472bba248620ec4fd8b5aa7cf0db2908e0bb230600caf279ba7bc`, bold
   `140e2bd25a7315c8a062508391426b0d8c3297400c947b8d847be28f73a199f0`.
 - Records: docs/DEVELOPMENT.md, "The sidebar (312)", "The font".
+
+## Helvetica character widths (the PDF cue sheets; not a map credit)
+
+Not a data source and no `Credit:` line: a table of numbers the PDF writer lays text out with.
+No font is bundled or embedded; the cue sheets name the PDF standard fonts Helvetica and
+Helvetica-Bold, which every PDF reader supplies.
+
+- What it is: the advance widths of WinAnsi codes 32 to 255 in Helvetica and Helvetica-Bold, in
+  `frontend/src/lib/pdf.ts` (`HELVETICA`, `HELVETICA_BOLD`), so lines wrap where the reader's
+  font will break them.
+- Publisher: Adobe Systems, the Core 14 AFM metrics (`Helvetica.afm`, `Helvetica-Bold.afm`):
+  "Copyright (c) 1985, 1987, 1989, 1990, 1997 Adobe Systems Incorporated. All Rights Reserved."
+  Helvetica is a trademark of Linotype-Hell AG and/or its subsidiaries. Copied 2026-10-16 from the
+  same figures as ReportLab 5.0.1 carries them (`reportlab/pdfbase/_fontdata_widths_helvetica*.py`,
+  BSD), indexed by its WinAnsi table.
+- Licence: Adobe's notice accompanying the Core 14 AFM files reads: "This file and the 14
+  PostScript(R) AFM files it accompanies may be used, copied, and distributed for any purpose and
+  without charge, with or without modification, provided that all copyright notices are retained;
+  that the AFM files are not distributed without this file; that all modifications to this file or
+  any of the AFM files are prominently noted in the modified file(s); and that this paragraph is not
+  removed or modified." Only width figures derived from the AFM files are reproduced here (two
+  arrays of numbers, re-indexed by WinAnsi code), not the AFM files themselves; Adobe's copyright
+  line is kept here and in a comment above the arrays in `pdf.ts`.
+- Records: docs/DEVELOPMENT.md, "PDF cue sheets".
 
 ## Noto Emoji skull and crossbones (the Avoid-rated junction marker; not a map credit)
 
@@ -420,7 +524,7 @@ map's credits (301 is about data sources). It is credited where the font is, in 
   contributors, ODbL), read from the same extract as the ways.
 - Basis: the level figure (0.37 riders/m2, a utilisation of 0.7, 1.9 m/s) rests on the
   owner's counts of three DC Bike Party rides (PLAN item 173,
-  `reports/owner/cyclist_packing_density.md`), indicative, good to about ±25% (item
+  `reports/owner/cyclist_packing_density.md` (not in the repository)), indicative, good to about ±25% (item
   175). The grade factors (the climb's 12 per unit of grade above 1%, the 150 m
   set-in, the descent's 5 per unit past 4%, the 30% and 60% floors) are not from a
   measurement; the climb factor agrees with Parkin and Rotheram (2010) up to about 6%
@@ -541,10 +645,46 @@ map credits:
 - Credit: MDOT MTA GTFS (scheduled times). Shown with a plan that uses MARC, Light RailLink or
   Metro SubwayLink.
 - Credit: VRE GTFS (scheduled times). Shown with a plan that uses VRE.
+- Credit: Data: WMATA. Shown with every live value (v0.7.0, below): a Metro station card's next
+  trains, an elevator out, a rail incident, and a plan's live lines.
+
+### WMATA live data (v0.7.0)
+
+- **Data:** WMATA's developer API, <https://developer.wmata.com/>: `Rail.svc/json/jStations`
+  (stations, codes and points; read once a day), `StationPrediction.svc/json/GetPrediction/All`
+  (next trains), `Incidents.svc/json/Incidents` (rail incidents) and
+  `Incidents.svc/json/ElevatorIncidents` (elevators and escalators out).
+- **Terms:** WMATA Transit Data Terms of Use, <https://developer.wmata.com/license>. A developer
+  key is required (`WMATA_API_KEY` on the server, the same key as the static GTFS fetch); it is
+  sent only in WMATA's `api_key` header, never in a URL, a log line or a page. Limits: 10 calls a
+  second, 50,000 a day; RouteMaker makes at most three calls every 45 s, and only while someone is
+  asking.
+- **Kept:** the latest reading only, one row of `bikeshare_feed_cache` (key `wmata`), replaced
+  in place; no history.
+- **Shown:** each live time says "live", each timetable time "scheduled"; with no reading the
+  timetable is shown alone. An elevator out where a rider takes their own bike is a warning
+  ("Elevator out at X: carry your bike on the stairs."), never an avoidance; it costs the trip 2
+  minutes in the ranking only.
+- Code: `src/core/wmata_live.py`, `src/core/transit_live.py`; fixtures shaped as WMATA documents
+  the answers in `tests/data/wmata/`.
+
+### MDOT MTA and VRE real-time feeds (checked 2026-10-15, not used)
+
+Public GTFS-Realtime feeds exist, but the build environment cannot reach them and their terms are
+not yet checked, and reading Protocol Buffers needs a dependency the project does not declare. Not
+built in v0.7.0; listed so they can be added:
+
+- MARC trip updates and vehicle positions:
+  `https://mdotmta-gtfs-rt.s3.amazonaws.com/MARC+RT/marc-tu.pb` and `.../marc-vp.pb` (no key).
+- MDOT MTA service alerts, every mode: `https://feeds.mta.maryland.gov/alerts.pb`.
+- MTA Light RailLink, Metro SubwayLink and buses: real-time is published through MTA's developer
+  page (<https://www.mta.maryland.gov/developer-resources>); the URLs were not listed publicly.
+- VRE trip updates: `https://gtfs.vre.org/containercdngtfsupload/TripUpdateFeed`
+  (Mobility Database `tld-1127-tu`).
 
 ### Metro's typical timetable (until WMATA's rail GTFS is built)
 
-WMATA's GTFS needs a developer key, which the owner does not have yet. The owner, 2026-10-12:
+WMATA's GTFS needs a developer key; this is the fallback when no WMATA rail GTFS is built. The owner, 2026-10-12:
 "Just use defaults. The wmata website has a typical timetable for rail." and "Rail is so frequent
 that it's not a major issue. It's bus where the API helps." Until a schedule with WMATA's rail GTFS
 is built, Metro runs on `src/core/transitdata/metro-typical.json`. Once one is built, it replaces
@@ -674,10 +814,31 @@ needs no bike access.
 
 ### Limits
 
-- GTFS-Realtime service alerts are not used. The agencies' real-time endpoints cannot be reached
-  from the build environment, and their terms have not been checked. Planned closures that an
+- GTFS-Realtime service alerts are not used (WMATA's own live API is, above). The other
+  agencies' real-time endpoints cannot be reached from the build environment, and their terms
+  have not been checked. Planned closures that an
   agency publishes in its static timetable (`calendar_dates.txt`) are used, but unplanned track
   work is not. Every plan says "Scheduled service; check for track work."
+
+## Street photos (Mapillary, v0.7.0)
+
+- **Data:** Mapillary's Graph API, `GET https://graph.mapillary.com/images` (fields `id`,
+  `captured_at`, `compass_angle`, `thumb_1024_url`, `geometry`, `is_pano`, `creator`), asked for
+  a box about 200 ft (60 m) across around the point on the road the panel describes.
+  <https://www.mapillary.com/developer/api-documentation>.
+- **Licence:** the imagery is CC BY-SA 4.0 (<https://www.mapillary.com/terms>).
+- Credit: Mapillary (CC BY-SA), linked, with the photo's date and its creator's name where
+  Mapillary gives one. Shown under the road panel's photo only.
+- **Token:** Mapillary's client access token (`MAPILLARY_ACCESS_TOKEN` on the server; the owner's
+  app, no user sign-in), sent only in the `Authorization` header from the server. The server
+  fetches the image file from Mapillary's image host (`*.fbcdn.net`) and serves the browser its
+  own copy at `/api/street-photo/image/<id>`, so the CSP's `img-src` stays same-origin and the
+  browser never contacts Mapillary; a worker that did not show the photo looks its file up
+  again at `graph.mapillary.com/<id>`. The panel opens Mapillary's viewer in a new tab; no
+  Mapillary script is loaded.
+- **Kept:** each answer for an hour in the api's memory; nothing is stored.
+- Code: `src/core/street_photo.py`, `frontend/src/lib/streetPhoto.ts`; fixture
+  `tests/data/mapillary/`.
 
 ## Used inside the project only (no credit)
 

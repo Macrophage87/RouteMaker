@@ -331,6 +331,7 @@ def write_reference_data(
     crossings=(),
     roadway=(),
     pavement=(),
+    agency_lts=(),
 ) -> Path:
     """The reference inputs the rebuild refuses to run without.
 
@@ -367,6 +368,9 @@ def write_reference_data(
     # classifies from OSM and the defaults, and warns.
     if roadway:
         (directory / "roadway.json").write_text(json.dumps(list(roadway)))
+    # The agency bicycle stress layers (v0.7.0, `pipeline.agency_ratings`), optional too.
+    if agency_lts:
+        (directory / "agency-lts.json").write_text(json.dumps(list(agency_lts)))
     # DDOT's PCI blocks (DC-PCI), optional too.
     if pavement:
         (directory / "pavement.json").write_text(json.dumps(list(pavement)))
@@ -614,6 +618,85 @@ def build_secured_extract(path: Path) -> None:
         writer.close()
 
 
+QUARRY_TRACK_ID = 3200
+QUARRY_OPEN_TRACK_ID = 3201
+INDUSTRIAL_DRIVE_ID = 3202
+INDUSTRIAL_STREET_ID = 3203
+WORKS_OUTSIDE_ID = 3204
+# An industrial area's service road DDOT's Roadway Block records hold (DC data wins over
+# OSM, OWNER-DECISIONS 190): the e2e test passes a block along it.
+INDUSTRIAL_DC_STREET_ID = 3205
+INDUSTRIAL_DC_STREET_LINE = [[-77.0600, 38.9165], [-77.0600, 38.9285]]
+QUARRY_OUTLINE_ID = 3300
+INDUSTRIAL_OUTLINE_ID = 3301
+
+
+def build_works_extract(path: Path) -> None:
+    """A quarry and an industrial area side by side, inside the District's box (owner
+    report 2026-10-12; `restricted_areas.works_closures`).
+
+    In the quarry: a haul road tagged `highway=track` and nothing else (the Travilah
+    quarry's), and a track whose own `bicycle=yes` opens it. In the industrial area: an
+    unnamed service drive and a named street of the industrial park. South of both, a
+    public street they all reach.
+    """
+    Path(path).unlink(missing_ok=True)  # osmium refuses to overwrite
+    writer = osmium.SimpleWriter(str(path))
+    try:
+        nodes = {
+            # The quarry's outline, and the industrial area's east of it.
+            1: (-77.080, 38.920),
+            2: (-77.070, 38.920),
+            3: (-77.070, 38.930),
+            4: (-77.080, 38.930),
+            5: (-77.068, 38.920),
+            6: (-77.058, 38.920),
+            7: (-77.058, 38.930),
+            8: (-77.068, 38.930),
+            # The quarry's tracks, down from the public street.
+            10: (-77.0760, 38.916),
+            11: (-77.0760, 38.929),
+            12: (-77.0740, 38.916),
+            13: (-77.0740, 38.929),
+            # The industrial area's drive and street.
+            14: (-77.0650, 38.916),
+            15: (-77.0650, 38.929),
+            16: (-77.0620, 38.916),
+            17: (-77.0620, 38.929),
+            # The service road DDOT records as a street.
+            20: (-77.0600, 38.916),
+            21: (-77.0600, 38.929),
+            # The public street south of both, through the tracks' and streets' feet.
+            18: (-77.085, 38.916),
+            19: (-77.055, 38.916),
+        }
+        for node_id, (lon, lat) in nodes.items():
+            writer.add_node(
+                osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
+            )
+        ways = {
+            QUARRY_TRACK_ID: ([10, 11], {"highway": "track"}),
+            QUARRY_OPEN_TRACK_ID: ([12, 13], {"highway": "track", "bicycle": "yes"}),
+            INDUSTRIAL_DRIVE_ID: ([14, 15], {"highway": "service"}),
+            INDUSTRIAL_STREET_ID: (
+                [16, 17],
+                {"highway": "residential", "name": "Industrial Court"},
+            ),
+            INDUSTRIAL_DC_STREET_ID: ([20, 21], {"highway": "service", "name": "Plant Drive"}),
+            WORKS_OUTSIDE_ID: (
+                [18, 10, 12, 14, 16, 20, 19],
+                {"highway": "residential", "name": "Outside Street"},
+            ),
+            QUARRY_OUTLINE_ID: ([1, 2, 3, 4, 1], {"landuse": "quarry", "name": "Test Quarry"}),
+            INDUSTRIAL_OUTLINE_ID: ([5, 6, 7, 8, 5], {"landuse": "industrial"}),
+        }
+        for way_id in sorted(ways):
+            node_ids, tags = ways[way_id]
+            writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=node_ids, version=1, tags=tags))
+    finally:
+        writer.close()
+
+
 PARALLEL_COUNT = {
     "id": "count-parkway",
     # Drawn between the two ways and nearer the trail, which is what makes the
@@ -768,6 +851,15 @@ def install_source_extract(directory: Path, build=build_toy_extract, **kwargs) -
     build(clipped, **kwargs)
     # The merged file carries the state boundaries the rebuild reads.
     add_state_boundaries(clipped, directory / source_module.MERGED_NAME)
+    # And the record of what they were made from, as the stage writes it for this
+    # deployment's settings, so the reuse is the made-from check's as well as the age's.
+    from django.conf import settings
+
+    source_module.write_made_from(
+        directory,
+        settings.SOURCE_EXTRACT_URLS,
+        settings.COVERAGE_POLYGON or tuple(settings.COVERAGE_BBOX),
+    )
     return clipped
 
 

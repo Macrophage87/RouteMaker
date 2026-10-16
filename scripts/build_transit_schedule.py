@@ -19,7 +19,9 @@ What is kept, and nothing else (core.transit's docstring has the method):
 - **the service calendar, day by day:** for each service id, which of the `DAYS` days from
   `--date` it runs, read from calendar.txt and calendar_dates.txt as the feed publishes them, so a
   holiday timetable, a weekend with no service and a planned shutdown published as a service
-  change are all exact. Past the window a plan says the timetable needs refreshing.
+  change are all exact. Past the window a plan says the timetable needs refreshing. Each
+  system also keeps its feed's own last day of service (`last_day`): a feed that ends inside the
+  window is reported, and past that day core.transit leaves the system out rather than closed.
 - **stops:** WMATA's Metro stations are the map's 98 (each platform matched to the nearest within
   `MATCH_M`), each with its bike entrance as the map picks it (DC's elevator, else
   OpenStreetMap's, else an entrance; `bike` says whether it is an elevator). Other rail systems'
@@ -211,6 +213,15 @@ def service_calendar(feed, start: date, days: int = DAYS) -> dict[str, str]:
         for service in active:
             bits[service][offset] = "1"
     return {sid: "".join(b) for sid, b in sorted(bits.items()) if "1" in b}
+
+
+def last_service_day(feed) -> date | None:
+    """The feed's own last day of service: the latest calendar.txt end date, or a later day
+    calendar_dates.txt adds service on. None for a feed with no calendar at all."""
+    ends = [row["end_date"] for row in _rows(feed, "calendar.txt")]
+    added = _rows(feed, "calendar_dates.txt")
+    ends += [row["date"] for row in added if row["exception_type"] == "1"]
+    return datetime.strptime(max(ends), "%Y%m%d").date() if ends else None
 
 
 def route_names(feed, metro: bool, long_first: bool = False) -> dict[str, str]:
@@ -487,6 +498,15 @@ def build(
             calendar = service_calendar(feed, start)
             if not calendar:
                 report.append(f"{config['id']}: no service in the {DAYS} days from {start}")
+            # Past it the system is "not covered", not closed (core.transit.load leaves it out
+            # and says so), and the freshness alert counts down to the earliest such end.
+            last_day = last_service_day(feed)
+            window_end = start + timedelta(days=DAYS - 1)
+            if last_day is not None and last_day < window_end:
+                report.append(
+                    f"{config['id']}: its timetable ends {last_day}, before the window's last day"
+                    f" ({window_end}); it is left out of plans after that: fetch a newer feed"
+                )
             first_service = len(services)
             index = {sid: first_service + i for i, sid in enumerate(calendar)}
             services.extend({"system": system, "days": bits} for bits in calendar.values())
@@ -519,6 +539,7 @@ def build(
                 "idle_notes": config.get("idle_notes", False),
                 "bike": config["bike"],
                 "source": _source(path),
+                **({"last_day": last_day.isoformat()} if last_day is not None else {}),
             }
         )
     # Only the stops a pattern uses, renumbered.

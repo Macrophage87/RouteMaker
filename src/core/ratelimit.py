@@ -113,6 +113,14 @@ ROUTING = Limit(scope="route", requests=60, window_s=60)
 # for several; it reads the shared one-minute copy of the operator's feed, never the feed itself.
 BIKESHARE_STATIONS = Limit(scope="bikeshare-stations", requests=60, window_s=60)
 
+# The docks and free e-bikes in the map's view (GET /api/bikeshare/docks, v0.7.0): asked about
+# once a minute while a bikeshare ride type's map is shown, and again after the map moves, so a
+# minute of panning asks for several; each reads the shared copies, never the feeds themselves.
+BIKESHARE_DOCKS = Limit(scope="bikeshare-docks", requests=120, window_s=60)
+
+# A short map link followed (POST /api/share/resolve, v0.7.0): one per link shared or pasted.
+SHARE_RESOLVE = Limit(scope="share-resolve", requests=30, window_s=60)
+
 # The stress tiles, counted apart from routing so that looking at the map never
 # spends the routing budget (nor routing the tiles'). PLAN's 60 per minute is a
 # figure for requests a person makes one at a time; a map makes them by the
@@ -153,6 +161,11 @@ REVERSE = Limit(scope="reverse", requests=60, window_s=60)
 # for a rider clicking along a street.
 SEGMENT_INFO_BURST = Limit(scope="segment-info-10s", requests=20, window_s=10)
 SEGMENT_INFO = Limit(scope="segment-info", requests=60, window_s=60)
+# The road panel's street photo (GET /api/street-photo, v0.7.0): one per panel opened, as above.
+STREET_PHOTO = Limit(scope="street-photo", requests=60, window_s=60)
+# The rider's own latest suggestion for the road (GET /api/stress-suggestions/mine): one per
+# panel opened by a signed-in rider, as above, kept apart so it never eats the panel's budget.
+MY_SUGGESTION = Limit(scope="my-suggestion", requests=60, window_s=60)
 
 # One climb's elevation profile (GET /api/climbs/{id}/profile): one request per climb card
 # opened, a router call the first time a climb is asked for and kept after. PLAN.md:65's 60.
@@ -173,9 +186,49 @@ SUGGEST_WRITES = Limit(scope="stress-suggest", requests=10, window_s=3600)
 # An instance admin's review of the suggestions (approve, delete, send to Discord): their own
 # count, larger than the editor's 60, so reviewing a backlog never blocks editing.
 SUGGEST_REVIEW_WRITES = Limit(scope="stress-suggest-review", requests=200, window_s=3600)
+# Review mode's reads (core.stress_review; GET /api/review/*), counted apart from the road
+# panel's editor: an admin holding an arrow key in the table asks for a road's card, facts and
+# street photo several times a second (the card's fetch waits for the key to settle, but a
+# careful pass is still a few requests a road), so 600 a minute per address. Its rulings are
+# counted per account (800 an hour: a batch is one request, so far above a working session)
+# and per address, each in its own count, never the editor's.
+REVIEW_READS = Limit(scope="review-read", requests=600, window_s=60)
+REVIEW_RULINGS = Limit(scope="review-ruling", requests=800, window_s=3600)
+REVIEW_RULINGS_CLIENT = Limit(scope="review-ruling-ip", requests=240, window_s=60)
 # A rider saving their own My Go (core.api my_go_save): one account's own settings, so a cap only on
 # a script hammering it; a rider changing them by hand saves a few times.
 MY_GO_WRITES = Limit(scope="my-go", requests=60, window_s=3600)
+# A rider's saved settings and saved routes (v0.7.0; core.api account_settings_save and the
+# /api/me/routes writes): the page saves settings a couple of seconds after a change settles,
+# and a rider saves, renames and deletes routes by hand, so 240 an hour is a cap on a script only.
+ACCOUNT_WRITES = Limit(scope="account", requests=240, window_s=3600)
+# A route shared with its exact line (POST /api/shared-routes, core.shared_routes; v0.7.0): one
+# per Share press, signed out or in, so 30 an hour per client is a cap on a script only. Opening
+# one (GET /api/shared-routes/{id}) is one per link opened: PLAN's 60 a minute.
+SHARED_ROUTE_WRITES = Limit(scope="shared-route", requests=30, window_s=3600)
+SHARED_ROUTE_READS = Limit(scope="shared-route-read", requests=60, window_s=60)
+# A shared link fetched for its preview (GET /s/{id} and its image, core.share_preview): a chat
+# app's fetchers share few addresses, so twice the reads.
+SHARE_PREVIEWS = Limit(scope="share-preview", requests=120, window_s=60)
+# A kept line checked against the closures in force (POST /api/closures/check): asked when a
+# saved or shared route opens, on Start ride and before a download, so a few a minute at most.
+CLOSURE_CHECK = Limit(scope="closure-check", requests=30, window_s=60)
+# A report sent to DC 311 from Ride mode (POST /api/report311, core.dc311; v0.7.0 "Go riding
+# fixes" item 3): a rider reports a pothole or two on a ride, so 10 an hour is a cap on a script.
+REPORT_311 = Limit(scope="report-311", requests=10, window_s=3600)
+# Whether Ride mode's 311 reports go from here (GET /api/report311): asked once when Ride mode
+# opens, and it hands out a send ticket; PLAN's 60 a minute for unauthenticated paths.
+REPORT_311_STATUS = Limit(scope="report-311-status", requests=60, window_s=60)
+# Mass Ride and Group Ride links (/api/rides/*, core.ride_presence): a whole ride's phones can
+# share one carrier address, each polling about every 15 s and sending its position as often, so
+# 600 a minute per address is far above one rider and still a ceiling on a script. Writes are
+# also counted per ride: MAX_RIDERS_PER_RIDE riders each sending a position every 15 s is 12,000
+# a minute, so 15,000.
+RIDE_LINKS = Limit(scope="ride-link", requests=600, window_s=60)
+RIDE_WRITES = Limit(scope="ride-write", requests=15000, window_s=60)
+# Signing in and out (core.auth_views): a sign-in is two requests (the start and Discord's
+# callback), so 30 a minute per address is a cap on a script only.
+SIGN_IN = Limit(scope="sign-in", requests=30, window_s=60)
 # The approved Mass Ride hazards (GET /api/mass-hazards, core.mass_hazards): the front end
 # asks once when the Mass Ride map opens and again after an admin's approval (it does not
 # poll), usually a 304; 60 a minute is PLAN's figure for unauthenticated paths.
@@ -215,10 +268,11 @@ VALUES (
     %(scope)s,
     %(client)s,
     to_timestamp(floor(extract(epoch FROM clock_timestamp()) / %(window)s) * %(window)s),
-    1
+    %(cost)s
 )
 ON CONFLICT (scope, client) DO UPDATE SET
-    hits = CASE WHEN w.window_start = EXCLUDED.window_start THEN w.hits + 1 ELSE 1 END,
+    hits = CASE WHEN w.window_start = EXCLUDED.window_start
+        THEN w.hits + %(cost)s ELSE %(cost)s END,
     window_start = EXCLUDED.window_start
 RETURNING
     w.hits,
@@ -227,10 +281,13 @@ RETURNING
 """
 
 
-def hit(limit: Limit, client: str) -> Decision:
-    """Count one request by `client` against `limit` and say whether it may proceed."""
+def hit(limit: Limit, client: str, cost: int = 1) -> Decision:
+    """Count one request by `client` against `limit`, as `cost` requests, and say whether
+    it may proceed."""
     with connection.cursor() as cursor:
-        cursor.execute(_HIT, {"scope": limit.scope, "client": client, "window": limit.window_s})
+        cursor.execute(
+            _HIT, {"scope": limit.scope, "client": client, "window": limit.window_s, "cost": cost}
+        )
         hits, remaining = cursor.fetchone()
     if hits <= limit.requests:
         return Decision(allowed=True, retry_after_s=0)
@@ -250,9 +307,10 @@ def purge_expired() -> int:
         return cursor.rowcount
 
 
-def rate_limited(limit: Limit):
-    """A view decorator: count the request, and answer 429 with Retry-After
-    instead of calling the view once the client's budget is spent.
+def rate_limited(limit: Limit, cost: int = 1):
+    """A view decorator: count the request (as `cost` requests: one that plans more than
+    one route), and answer 429 with Retry-After instead of calling the view once the
+    client's budget is spent.
 
     Applied outside any body parsing, so a refused request costs one upsert and
     nothing else.
@@ -261,7 +319,8 @@ def rate_limited(limit: Limit):
     def decorator(view):
         @wraps(view)
         def wrapped(request, *args, **kwargs):
-            decision = hit(limit, client_key(client_address(request)))
+            key = client_key(client_address(request))
+            decision = hit(limit, key) if cost == 1 else hit(limit, key, cost)
             if not decision.allowed:
                 response = JsonResponse(
                     {"error": "Too many requests from this address; try again shortly."},
@@ -271,8 +330,11 @@ def rate_limited(limit: Limit):
                 return response
             return view(request, *args, **kwargs)
 
+        wrapped.limits = limit
         return wrapped
 
+    # What it counts, for the test that every route is limited (tests/test_ratelimit.py).
+    decorator.limits = limit
     return decorator
 
 
@@ -302,8 +364,11 @@ def user_rate_limited(limit: Limit):
                 return response
             return view(request, *args, **kwargs)
 
+        wrapped.limits = limit
         return wrapped
 
+    # What it counts, for the test that every route is limited (tests/test_ratelimit.py).
+    decorator.limits = limit
     return decorator
 
 
@@ -340,10 +405,23 @@ class InFlight:
     # and 12 searches waiting, /healthz took 5.4 s (round-2 review). Beyond
     # this many, a request is refused at once.
     max_waiters: int = 0
+    # Another pool's scope_id whose deployment slots this one takes, or None for its own:
+    # a lower-priority pool sharing another's slots, with clients of its own.
+    total_scope_id: int | None = None
+    # How many of the deployment's slots must still be free once this request holds one;
+    # fewer, and it is refused at once (503). 0: no such rule.
+    leave_free: int = 0
 
     @property
     def total(self) -> int:
         return int(getattr(settings, self.total_setting))
+
+    @property
+    def total_class(self) -> int:
+        """The advisory-lock class of the deployment slots this pool takes."""
+        return _LOCK_CLASS_TOTAL + (
+            self.scope_id if self.total_scope_id is None else self.total_scope_id
+        )
 
 
 def search_slots() -> tuple[int, ...]:
@@ -367,6 +445,28 @@ ROOM_FOR_OTHERS = 2
 # single visitor never needs the second; it is there for several people behind
 # one address.
 ROUTING_IN_FLIGHT = InFlight(scope_id=1, per_client=2, total_setting="ROUTING_CONCURRENCY")
+
+# Go's More direct and Calmer (POST /api/route/neighbours): routing's own deployment slots,
+# at the lowest priority, so they never delay or refuse a plan or a ride's re-route. One per
+# client, in a client class of their own (a route from the same rider is not refused for
+# them). A slot is taken only while the pool is idle enough that ROOM_FOR_OTHERS slots stay
+# free beside it, last slot first, and the request is refused at once otherwise: the page
+# leaves the options out.
+NEIGHBOURS_IN_FLIGHT = InFlight(
+    scope_id=5,
+    per_client=1,
+    total_setting="ROUTING_CONCURRENCY",
+    total_scope_id=ROUTING_IN_FLIGHT.scope_id,
+    leave_free=ROOM_FOR_OTHERS,
+    client_busy="Route options are already being planned for this address.",
+    deployment_busy="The planner is busy; route options are left out.",
+)
+
+
+def neighbour_slots() -> tuple[int, ...]:
+    """Routing's deployment slots, the last first, for the route options."""
+    return tuple(reversed(range(NEIGHBOURS_IN_FLIGHT.total)))
+
 
 # Long rides (owner decision of 2026-09-26: planned, with a signed-out visitor
 # asked to confirm first) hold a worker for up to 50 s each. How many run at
@@ -557,12 +657,18 @@ def _take(limit: InFlight, client: int, held: list, slots=None) -> bool:
     """Take the slots into `held`; true if the request may run. False with
     nothing held means the deployment is full, false with the deployment slot
     held means the client is."""
-    total_class = _LOCK_CLASS_TOTAL + limit.scope_id
+    total_class = limit.total_class
     client_class = _LOCK_CLASS_CLIENT + limit.scope_id * 64
     order = range(limit.total) if slots is None else slots
     with connection.cursor() as cursor:
         shared = _take_one(cursor, [(total_class, slot) for slot in order])
         if shared is None:
+            return False
+        if limit.leave_free and limit.total - _held_in_class(cursor, total_class) < (
+            limit.leave_free
+        ):
+            # Too few left beside it: refused as a full deployment, holding nothing.
+            _release([shared])
             return False
         held.append(shared)
         if _try(cursor, (client_class, client)):
@@ -604,6 +710,9 @@ def in_flight_limited(limit: InFlight, slots=None):
             finally:
                 release(held)
 
+        wrapped.limits = limit
         return wrapped
 
+    # What it counts, for the test that every route is limited (tests/test_ratelimit.py).
+    decorator.limits = limit
     return decorator

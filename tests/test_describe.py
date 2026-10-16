@@ -380,6 +380,150 @@ class TestTurns:
         assert "Right onto B at a signal" in entries[1]["text"]
 
 
+class TestBearsAndJogs:
+    """The owner, 2026-10-16, riding east on Q Street NW in Shaw: "complex turns which
+    aren't announced". A change of street 20 to 60 degrees off straight is a bear; a
+    jog (a short named street entered and left by turns) is never folded away, but a
+    divided road, an offset crossing, a sidewalk cut, a slip lane and a circle are."""
+
+    @staticmethod
+    def q_onto(heading, metres=1300):
+        return d.describe(
+            [
+                flat(
+                    road("Q Street Northwest", 2, 900, 90, 90),
+                    road("Rhode Island Avenue Northwest", 2, metres, heading, heading),
+                )
+            ]
+        )
+
+    def test_a_lenfant_diagonal_off_q_street_is_a_bear(self):
+        # East on Q St, then 22 or 45 degrees right onto a diagonal: a bear.
+        for heading in (112, 135):
+            entries = self.q_onto(heading)
+            assert entries[1]["turn"]["movement"] == "bear_right", heading
+            assert (
+                entries[1]["text"]
+                .split(": ")[1]
+                .startswith("Bear right onto Rhode Island Avenue Northwest,")
+            )
+
+    def test_past_the_bear_band_is_a_turn_and_under_it_straight_on(self):
+        assert self.q_onto(155)[1]["turn"]["movement"] == "right"
+        assert self.q_onto(105)[1]["turn"]["movement"] == "straight"
+
+    def test_a_fork_left_is_a_bear(self):
+        legs = [flat(road("Main St", 1, 600, 0, 0), road("Fork Rd", 1, 600, 328, 328))]
+        entries = d.describe(legs)
+        assert entries[1]["turn"]["movement"] == "bear_left"
+        assert "Bear left onto Fork Rd," in entries[1]["text"]
+
+    def test_a_curving_road_that_keeps_its_name_is_no_turn(self):
+        legs = [
+            flat(
+                road("Beach Dr", 1, 400, 0, 0),
+                road("Beach Dr", 1, 400, 32, 32),
+                road("Beach Dr", 1, 400, 70, 70),
+            )
+        ]
+        entries = d.describe(legs)
+        assert len(entries) == 1 and entries[0]["turn"] is None
+
+    def test_a_jog_under_300_ft_is_kept_with_both_its_turns(self):
+        # East on Q St, right onto 6th St (100 ft south), then bear left onto a
+        # south-east diagonal: two turns, not one folded across them.
+        legs = [
+            flat(
+                road("Q Street Northwest", 2, 900, 90, 90),
+                road("6th Street Northwest", 2, 30, 180, 180),
+                road("Rhode Island Avenue Northwest", 2, 1300, 145, 145),
+            )
+        ]
+        entries = d.describe(legs)
+        assert [e["street"] for e in entries] == [
+            "Q Street Northwest",
+            "6th Street Northwest",
+            "Rhode Island Avenue Northwest",
+        ]
+        assert [e["turn"]["movement"] for e in entries[1:]] == ["right", "bear_left"]
+        assert entries[1]["text"].split(": ")[1].startswith("Right onto 6th Street Northwest,")
+
+    @staticmethod
+    def across(middle):
+        """Q St, a short middle, Q St again: what is said of it."""
+        entries = d.describe(
+            [
+                flat(
+                    road("Q Street Northwest", 2, 400, 90, 90),
+                    middle,
+                    road("Q Street Northwest", 2, 400, 90, 90),
+                )
+            ]
+        )
+        return [(e["street"], (e["turn"] or {}).get("movement")) for e in entries]
+
+    def test_a_divided_road_crossed_is_no_jog(self):
+        # 8 m of the avenue's far carriageway between the two halves of Q St.
+        middle = road("Rhode Island Avenue Northwest", 2, 8, 180, 180)
+        assert self.across(middle) == [("Q Street Northwest", None)]
+
+    def test_a_median_piece_of_a_cross_street_is_no_jog(self):
+        middle = road("New Jersey Avenue Northwest", 2, 3, 125, 125)
+        assert self.across(middle) == [("Q Street Northwest", None)]
+
+    def test_a_sidewalk_cut_through_is_no_jog(self):
+        middle = road("", 1, 20, 180, 180, facility="path", use="footway")
+        assert self.across(middle) == [("Q Street Northwest", None)]
+
+    def test_an_offset_crossing_back_onto_the_same_street_is_no_jog(self):
+        # 40 m south on 7th St, then on east on Q St: the turns cancel.
+        middle = road("7th Street Northwest", 2, 40, 170, 170)
+        assert self.across(middle) == [("Q Street Northwest", None)]
+
+    def test_an_unnamed_slip_lane_is_no_jog(self):
+        legs = [
+            flat(
+                road("Q Street Northwest", 2, 400, 90, 90),
+                road("", 2, 40, 130, 150),
+                road("14th Street Northwest", 2, 400, 180, 180),
+            )
+        ]
+        entries = d.describe(legs)
+        assert [(e["street"], (e["turn"] or {}).get("movement")) for e in entries] == [
+            ("Q Street Northwest", None),
+            ("14th Street Northwest", "right"),
+        ]
+
+    def test_a_circle_is_read_across_as_the_net_turn(self):
+        # Mass Ave into Dupont Circle and out on P St: "Left onto P Street", by its
+        # name or by the map's roundabout flag.
+        for name, roundabout in (("Dupont Circle Northwest", False), ("Dupont Ring", True)):
+            circle = [replace(atom, roundabout=roundabout) for atom in road(name, 3, 80, 95, 250)]
+            legs = [
+                flat(
+                    road("Massachusetts Avenue Northwest", 3, 400, 60, 60),
+                    circle,
+                    road("P Street Northwest", 3, 400, 280, 280),
+                )
+            ]
+            entries = d.describe(legs)
+            assert [(e["street"], (e["turn"] or {}).get("movement")) for e in entries] == [
+                ("Massachusetts Avenue Northwest", None),
+                ("P Street Northwest", "left"),
+            ], name
+
+    def test_the_overview_names_a_bear(self):
+        legs = [
+            flat(
+                road("Long St", 1, 900, 0, 0),
+                road("B St", 1, 150, 35, 35),
+                road("C St", 1, 150, 35, 35),
+            )
+        ]
+        _full, short = d.describe_both(legs)
+        assert "then bear right on B St" in short[0]["text"]
+
+
 class TestJunctions:
     def test_a_crossing_of_a_busy_road_is_an_entry_of_its_own(self):
         legs = [road("Capital Crescent Trail", 1, 2000, facility="path")]
@@ -511,26 +655,68 @@ class TestNamesAndKinds:
         entries = d.describe([unnamed(300.0, "1") + unnamed(40.0, "2") + unnamed(300.0, "1")])
         assert len(entries) == 1 and entries[0]["to_m"] == 640
 
-    def test_an_unnamed_trail_is_an_unnamed_path(self):
+    def test_an_unnamed_trail_is_a_path(self):
+        # The owner, 2026-10-15: "path", not "unnamed path".
         entries = d.describe([road(None, 1, 700, facility="path", use="cycleway")])
         assert len(entries) == 1  # its unnamed pieces are one stretch
-        assert entries[0]["street"] == "unnamed path"
-        assert entries[0]["text"].endswith("unnamed path, traffic-free.")
+        assert entries[0]["street"] == "path"
+        assert entries[0]["text"].endswith(": Path, traffic-free.")
+        assert "unnamed" not in entries[0]["text"]
 
-    def test_an_unnamed_sidewalk_is_an_unnamed_path_by_its_use(self):
+    def test_an_unnamed_sidewalk_is_a_path_by_its_use(self):
         entries = d.describe([road(None, 2, 700, use="footway")])
-        assert entries[0]["street"] == "unnamed path"
+        assert entries[0]["street"] == "path"
 
     def test_an_unnamed_path_is_not_called_a_path_twice(self):
         text = d.describe([road(None, 1, 700, facility="path", use="cycleway")])[0]["text"]
-        assert text.endswith("unnamed path, traffic-free.")
+        assert text.endswith("Path, traffic-free.")
+
+    def test_a_turn_onto_an_unnamed_path_is_onto_the_path(self):
+        entries = d.describe(
+            [
+                [
+                    d.Atom(400.0, "2", "none", ("A Street",), "road", 0.0, 0.0),
+                    d.Atom(600.0, "1", "path", (), "cycleway", 270.0, 270.0),
+                ]
+            ]
+        )
+        assert entries[1]["street"] == "path"
+        assert ": Left onto the path, traffic-free." in entries[1]["text"]
+
+    def test_a_bike_lane_named_for_its_street_says_its_name_once(self):
+        # An unnamed protected lane beside 9th Street NW, named at the rebuild
+        # (`routemaker.facility.side_street_names`) and handed in as the piece's name.
+        entries = d.describe(
+            [
+                [
+                    d.Atom(400.0, "2", "none", ("R Street Northwest",), "road", 90.0, 90.0),
+                    d.Atom(
+                        600.0,
+                        "1",
+                        "protected",
+                        ("9th Street Northwest protected bike lane",),
+                        "cycleway",
+                        0.0,
+                        0.0,
+                    ),
+                ]
+            ]
+        )
+        lane = entries[1]
+        assert lane["street"] == "9th Street Northwest protected bike lane"
+        assert lane["turn"]["onto"] == "9th Street Northwest protected bike lane"
+        assert (
+            ": Left onto 9th Street Northwest protected bike lane, low stress (LTS 1)."
+            in lane["text"]
+        )
+        assert lane["text"].count("protected bike lane") == 1
 
     def test_an_unnamed_stretch_that_is_a_path_for_part_of_it_is_a_path(self):
         atoms = [
             d.Atom(300.0, "2", "none", (), "road", 90.0, 90.0),
             d.Atom(300.0, "2", "none", (), "footway", 90.0, 90.0),
         ]
-        assert d.describe([atoms])[0]["street"] == "unnamed path"
+        assert d.describe([atoms])[0]["street"] == "path"
 
     def test_an_unnamed_road_is_an_unnamed_road(self):
         entries = d.describe([road(None, 2, 700)])

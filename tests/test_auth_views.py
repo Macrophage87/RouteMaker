@@ -164,6 +164,8 @@ def test_no_discord_token_is_persisted_anywhere(client, monkeypatch) -> None:
         # permission, so counting them would count one row twice.
         if model._meta.managed and not model._meta.proxy and model.objects.count()
     }
+    # The sign-in rate limit's count (a scope, a keyed digest of the address, a number).
+    assert populated.pop("RateLimitWindow") == 1
     assert populated == {"User": 1, "Session": 1}
     assert not User.objects.get(discord_user_id=782).has_usable_password()
     assert Session.objects.get().issued_epoch == User.objects.get(discord_user_id=782).session_epoch
@@ -452,3 +454,25 @@ def test_every_request_to_discord_names_itself(monkeypatch) -> None:
     for request in seen:
         agent = request.get_header("User-agent") or ""
         assert agent and not agent.startswith("Python-urllib"), (request.full_url, agent)
+
+
+@pytest.mark.parametrize("missing", ["DISCORD_CLIENT_ID", "DISCORD_CLIENT_SECRET"])
+def test_sign_in_is_off_until_both_keys_are_set(client, settings, missing) -> None:
+    """v0.7.0: sign-in is on by default once the owner puts both keys in the server's
+    environment. With either empty there is no login to start or finish, and /api/me
+    tells the page not to offer one."""
+    setattr(settings, missing, "")
+    response = client.get(reverse("login"))
+    assert response.status_code == 503
+    assert "not set up" in response.content.decode()
+    assert STATE_SESSION_KEY not in client.session
+    assert client.get(reverse("login-callback"), {"state": "x", "code": "y"}).status_code == 503
+    me = client.get("/api/me", HTTP_X_FORWARDED_FOR="198.51.100.7")
+    assert me.status_code == 200 and me.json()["sign_in"] is False
+
+
+def test_with_both_keys_set_sign_in_is_offered(client) -> None:
+    me = client.get("/api/me", HTTP_X_FORWARDED_FOR="198.51.100.8")
+    assert me.json()["sign_in"] is True
+    response, _state = start_login(client)
+    assert response.status_code == 302

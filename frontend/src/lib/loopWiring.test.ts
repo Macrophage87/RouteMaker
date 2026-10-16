@@ -66,12 +66,12 @@ test("App: the names follow the rider's toggle, not a ride that happens to end o
 test("App: every way of adding, setting or removing a point is handed the toggle", () => {
   const app = appSource();
   assert.match(app, /addPoint\(pointsRef\.current, point, loopVias\)/);
-  assert.match(app, /announce\(addedSaid\(next\.indexOf\(point\), next\.length, loopVias\)\)/);
+  assert.match(app, /announce\(kindSaid\(next, index, VIA_MARKS\.isVia, loopVias, "added"\)\)/);
   assert.match(app, /stationEdit\(pointsRef\.current, point, role, loopVias\)/);
   assert.match(app, /announce\(stationSaid\(edit\.index, edit\.next\.length, loopVias\)\)/);
-  assert.match(app, /removedSaid\(index, current\.length, loopVias\)/);
-  assert.match(app, /insertIntoRide\(routed, leg, point, loopVias\)/);
-  assert.match(app, /announce\(insertedSaid\(leg, next\.length, loopVias\)\)/);
+  assert.match(app, /kindSaid\(current, index, VIA_MARKS\.isVia, loopVias, "removed"\)/);
+  assert.match(app, /insertIntoRide\(routed, leg, VIA_MARKS\.via\(point\), loopVias\)/);
+  assert.match(app, /announce\(insertedSaid\(leg, next\.length, loopVias, VIA_POINT_NAME\)\)/);
   assert.match(app, /pickIntoPlan\(found, choice, \{[^}]*\bloop: loopVias,/);
   // place, insertOnLine, placeStation and removeFromMap are rebuilt when it flips.
   assert.ok(count(app, /\[commit, announce, loopVias\]/g) >= 4);
@@ -126,8 +126,8 @@ test("App: Reverse in a loop of a start and one stop is aria-disabled with its r
 test("App hands the toggle to the search, the map, the points list and the GPX", () => {
   const app = appSource();
   assert.match(app, /<PlaceSearch\s+pointCount=\{points\.length\}\s+loop=\{loopVias\}/);
-  assert.match(app, /<MapView\s+points=\{riding \? NO_POINTS : points\}\s+loopVias=\{loopVias\}/);
-  assert.match(app, /rows=\{pointRows\(points, namer, loopVias\)\}/);
+  assert.match(app, /<MapView\s+points=\{riding \|\| reviewing \? NO_POINTS : points\}\s+loopVias=\{loopVias\}/);
+  assert.match(app, /rows=\{pointRows\(points, namer, loopVias, VIA_MARKS\.isVia\)\}/);
 });
 
 test("App: the GPX names the route shown as it was planned, not as the toggle is now", () => {
@@ -148,7 +148,7 @@ test("PlaceSearch, MapView, the rail cards and the GPX panel pass the toggle on"
   assert.match(search, /searchView\(\{[^}]*\bloop,\s*\}\)/);
   assert.match(search, /\{placeEffectHint\(effect, loop\)\}/);
   const map = source("../MapView.tsx");
-  assert.match(map, /pointLabel\(index, props\.points\.length, props\.loopVias === true\)/);
+  assert.match(map, /markerLabels\(props\.points, VIA_MARKS\.isVia, props\.loopVias === true\)/);
   // The federal-land warnings (item 239) rename a marker too.
   assert.match(map, /\}, markerDeps\(props\.points, props\.markerReset, props\.loopVias, props\.pointWarnings\)\);/);
   assert.match(map, /loop: \(\) => callbacks\.current\.loopVias === true,/);
@@ -159,6 +159,6 @@ test("PlaceSearch, MapView, the rail cards and the GPX panel pass the toggle on"
   const gpx = source("../GpxPanel.tsx");
   // A Mass Ride's federal-land lines (item 239) ride along into the file's description.
   assert.match(gpx, /loop = false, federal = \[\] \} = props;/);
-  assert.match(gpx, /writeGpx\(exportOf\(route, routedPoints, loop, federal\)\)/);
+  assert.match(gpx, /writeGpx\(exportOf\(route, routedPoints, loop, federal, viaIndices\(routedPoints, VIA_MARKS\.isVia\)\)\)/);
   assert.equal(count(gpx, /exportOf\(/g), 1, "one export, of the routed points");
 });

@@ -210,11 +210,6 @@ export function capacitySummary(spans: readonly StressSpan[] | null | undefined)
   return { totalM, minRpm, minAtM, minToM, typicalRpm, bandM, avoidM, unknownM, outsideM, percents: wholePercents(parts.map((m) => m / totalM)) };
 }
 
-/** The summary of a route, or null (see capacitySummary). */
-export function routeCapacity(route: Pick<RouteResponse, "stress_spans">): CapacitySummary | null {
-  return capacitySummary(route.stress_spans);
-}
-
 /** "55 riders per minute": the unit spelled out, one rider singular. */
 export function ridersPerMinute(rpm: number): string {
   return `${Math.round(rpm)} ${Math.round(rpm) === 1 ? "rider" : "riders"} per minute`;

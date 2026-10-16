@@ -87,6 +87,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             _half(row["stress"]),
             row.get("mtb_level"),
             row.get("mtb_name"),
+            _ratings_json(row["stress"]),
+            row.get("sidepath_name"),
         )
         for row in rows
     ]
@@ -97,7 +99,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             args = ",".join(
                 cursor.mogrify(
                     "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s)",
                     (
                         way_id,
                         ordinal,
@@ -137,6 +139,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                         half,
                         mtb_level,
                         mtb_name,
+                        ratings,
+                        sidepath_name,
                     ),
                 )
                 for (
@@ -178,6 +182,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                     half,
                     mtb_level,
                     mtb_name,
+                    ratings,
+                    sidepath_name,
                 ) in batch
             )
             cursor.execute(
@@ -193,7 +199,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                      stress_adjustment_note, stress_adjustment_display, attr_sources,
                      trail_name, trail_route, trail_bridge, calm_run_m, roadside,
                      stress_unsmoothed_tier, mass_usable_width_m, bike_access_reason,
-                     stress_half, mtb_level, mtb_name)
+                     stress_half, mtb_level, mtb_name, stress_ratings, sidepath_name)
                     VALUES {args}"""
             )
             written += len(batch)
@@ -204,7 +210,54 @@ def _half(stress: StressResult) -> bool:
     """Whether an owner's override rated the way a half step (`StressAdjustment.half`).
     The level is public whatever the adjustment's visibility: only its reason is not."""
     adjustment = getattr(stress, "adjustment", None)
-    return bool(adjustment is not None and getattr(adjustment, "half", False))
+    if adjustment is not None:
+        return bool(getattr(adjustment, "half", False))
+    # An agency's half step (`routemaker.agency_lts`), where no owner row set it.
+    return bool(getattr(stress, "half", False))
+
+
+def _ratings_json(stress: StressResult) -> str | None:
+    """Every rating held for the way, for the road panel (`segment.stress_ratings`):
+    the classifier's tier and each agency's level, and which one set the way's
+    tier (`used`: `owner`, `community`, `rural floor`, or the agency). None where
+    no agency rated the way, which the panel reads as the classifier's tier
+    standing alone.
+
+    An approved override row on the way is recorded as `override`, with whose
+    rating it is (`agency_lts.adjustment_source`: the owner's own, a reviewed
+    community rating, or an agency's loaded as a row, like Montgomery's LTS 5 of
+    2026-10-01) and its level; it set the tier, so it is `used`."""
+    import json
+
+    from routemaker.agency_lts import adjustment_source, chosen, source_name
+    from routemaker.stress import RURAL_FLOOR_RULE
+
+    ratings = getattr(stress, "agency_ratings", ())
+    if not ratings:
+        return None
+    adjustment = getattr(stress, "adjustment", None)
+    override = None
+    if adjustment is not None:
+        used = adjustment_source(adjustment.adjustment_id)
+        override = {
+            "source": used,
+            "name": source_name(used),
+            "level": int(adjustment.tier) + (0.5 if getattr(adjustment, "half", False) else 0),
+        }
+    elif RURAL_FLOOR_RULE in (stress.rule or ""):
+        used = "rural floor"
+    else:
+        used = chosen(ratings).agency
+    formula = getattr(stress, "formula_tier", None)
+    held = {
+        "formula": None if formula is None else int(formula),
+        "formula_rule": getattr(stress, "formula_rule", None),
+        "agencies": [{"agency": r.agency, "name": r.name, "level": r.level} for r in ratings],
+        "used": used,
+    }
+    if override is not None:
+        held["override"] = override
+    return json.dumps(held)
 
 
 def _tier_or_none(tier) -> int | None:

@@ -7,13 +7,27 @@
  * screen reader hears the same plan the map draws, in the order it is ridden.
  */
 import { useId } from "react";
-import type { TransitPlan } from "./lib/api.ts";
+import type { StressSpan, TransitPlan } from "./lib/api.ts";
 import { WALK_CASING, WALK_COLOUR, WALK_DASH, WALK_LINE_WIDTH } from "./lib/bikeshare.ts";
 import type { PresetId } from "./lib/presets.ts";
 import { PresetName } from "./lib/presetName.ts";
-import { OPTIONS_LABEL, STEPS_LABEL, TRACK_WORK, TRANSIT_COLOUR, TRANSIT_DASH, TRANSIT_LINE_WIDTH, optionSaid, optionText, stepIcon } from "./lib/transit.ts";
+import {
+  OPTIONS_LABEL,
+  RIDES_LEGEND,
+  STEPS_LABEL,
+  TRACK_WORK,
+  TRANSIT_COLOUR,
+  TRANSIT_DASH,
+  TRANSIT_LINE_WIDTH,
+  optionSaid,
+  optionText,
+  stepIcon,
+  stepStressSaid,
+  timesFromText,
+} from "./lib/transit.ts";
 import { Icon } from "./Icon.tsx";
 import { DepartureTimer } from "./DepartureTimer.tsx";
+import { RIDE_REST, RIDE_REST_HINT } from "./lib/rideTrip.ts";
 
 function Swatch({ colour, dash, width }: { colour: string; dash: [number, number]; width: number }) {
   return (
@@ -31,8 +45,12 @@ export function TransitSummary({
   busy = false,
   announce,
   onMissed,
+  lineSpans,
+  onRideRest,
 }: {
   plan: TransitPlan;
+  /** The route's own stress sections: its line is the first ride's, said in that step's words. */
+  lineSpans?: readonly StressSpan[];
   /** The ride type, for the heading: its name (emoji kept from a screen reader) and the total. */
   preset: PresetId;
   /** Plan another option, by its key; absent, the options are listed but not pressable. */
@@ -43,6 +61,8 @@ export function TransitSummary({
   announce?: (text: string) => void;
   /** The departure would be missed: plan again, for the next one. */
   onMissed?: () => void;
+  /** Ride the rest (lib/rideTrip.ts), where the trip has a riding leg after its transit. */
+  onRideRest?: () => void;
 }) {
   const id = useId();
   return (
@@ -75,16 +95,45 @@ export function TransitSummary({
       </p>
       {plan.departure && <DepartureTimer departure={plan.departure} announce={announce} onMissed={onMissed} />}
       {plan.comparison && <p className={plan.riding_quicker ? "transit-compare notice" : "transit-compare hint"}>{plan.comparison}</p>}
+      {plan.live && plan.live.warnings.length > 0 && (
+        // An elevator out where the bike needs one: a warning, never an avoidance (v0.7.0).
+        <ul className="transit-warnings notice" aria-label="Warnings">
+          {plan.live.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      )}
       <ol className="transit-steps" aria-label={STEPS_LABEL}>
-        {plan.steps.map((step, index) => (
-          <li key={index} className={`transit-step transit-${step.mode}`}>
-            <Icon name={stepIcon(step)} size={16} />
-            <span className="transit-step-text">{step.text}</span>
-          </li>
-        ))}
+        {plan.steps.map((step, index) => {
+          // Each ride's traffic stress, in the route chart's words (every ride's, the first's too).
+          const stress = stepStressSaid(step, lineSpans);
+          return (
+            <li key={index} className={`transit-step transit-${step.mode}`}>
+              <Icon name={stepIcon(step)} size={16} />
+              <span className="transit-step-text">{step.text}</span>
+              {stress && <span className="transit-step-stress"> {stress}</span>}
+              {step.live && <span className="transit-step-live"> {step.live.text}</span>}
+            </li>
+          );
+        })}
       </ol>
-      {plan.notes.length > 0 && (
+      {onRideRest && (
+        <div className="actions transit-rest">
+          <button type="button" className="secondary" onClick={onRideRest} aria-describedby={`${id}-rest`}>
+            {RIDE_REST}
+          </button>
+          <p id={`${id}-rest`} className="hint">
+            {RIDE_REST_HINT}
+          </p>
+        </div>
+      )}
+      {(plan.notes.length > 0 || (plan.live?.alerts.length ?? 0) > 0) && (
         <ul className="transit-notes" aria-label="Notes on this plan">
+          {(plan.live?.alerts ?? []).map((alert) => (
+            <li key={alert} className="hint transit-alert">
+              {alert} ({plan.live?.credit}, live)
+            </li>
+          ))}
           {plan.notes.map((note) => (
             <li key={note} className="hint">
               {note}
@@ -97,17 +146,15 @@ export function TransitSummary({
           <p className="hint transit-legend">
             <Swatch colour={TRANSIT_COLOUR} dash={TRANSIT_DASH} width={TRANSIT_LINE_WIDTH} /> On the map, a dashed line marked with its
             system (Metro, MARC, Bus) is the ride on transit, through its stops.{" "}
-            <Swatch colour={WALK_COLOUR} dash={WALK_DASH} width={WALK_LINE_WIDTH} /> A dotted line is a walk. The line coloured by traffic
-            stress is the first ride, and a thin solid line is a ride after it.
+            <Swatch colour={WALK_COLOUR} dash={WALK_DASH} width={WALK_LINE_WIDTH} /> A dotted line is a walk. {RIDES_LEGEND}
           </p>
           <p className="hint transit-scheduled">
-            {TRACK_WORK} Times are from each system's published timetables for this {plan.day_type === "weekday" ? "weekday" : plan.day_type}
-            {plan.holiday ? " (a holiday)" : ""}: where trains or buses come every 15 minutes or less, the wait is half the time between
-            them; otherwise it is the time to the next one. Not live arrivals.
+            {TRACK_WORK} {timesFromText(plan)} {plan.live ? "Times marked live are WMATA's next trains." : "Not live arrivals."}
           </p>
         </>
       )}
       {plan.credits.length > 0 && <p className="route-credit">Transit times: {plan.credits.join("; ")}.</p>}
+      {plan.live && <p className="route-credit">Live: {plan.live.credit}.</p>}
     </section>
   );
 }

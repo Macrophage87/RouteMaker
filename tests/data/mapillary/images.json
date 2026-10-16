@@ -1,0 +1,118 @@
+{
+ "data": [
+  {
+   "id": "1001",
+   "captured_at": 1623672000000,
+   "compass_angle": 92.0,
+   "computed_compass_angle": 92.0,
+   "thumb_1024_url": "https://scontent-iad3-1.xx.fbcdn.net/m1/v/t6/An1001.jpg?stp=s1024x768&ccb=10-5&oh=00_x&oe=69000000&_nc_sid=201bca",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.0299422,
+     38.9000181
+    ]
+   },
+   "is_pano": false,
+   "creator": {
+    "username": "rider42",
+    "id": "1001"
+   }
+  },
+  {
+   "id": "1002",
+   "captured_at": 1696161600000,
+   "compass_angle": 268.5,
+   "computed_compass_angle": 268.5,
+   "thumb_1024_url": "https://scontent-iad3-1.xx.fbcdn.net/m1/v/t6/An1002.jpg?stp=s1024x768&ccb=10-5&oh=00_x&oe=69000000&_nc_sid=201bca",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.0300925,
+     38.8999729
+    ]
+   },
+   "is_pano": false,
+   "creator": {
+    "username": "rider42",
+    "id": "1001"
+   }
+  },
+  {
+   "id": "1003",
+   "captured_at": 1727784000000,
+   "compass_angle": 180.0,
+   "computed_compass_angle": 180.0,
+   "thumb_1024_url": "https://scontent-iad3-1.xx.fbcdn.net/m1/v/t6/An1003.jpg?stp=s1024x768&ccb=10-5&oh=00_x&oe=69000000&_nc_sid=201bca",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.0299653,
+     38.900009
+    ]
+   },
+   "is_pano": false,
+   "creator": {
+    "username": "rider42",
+    "id": "1001"
+   }
+  },
+  {
+   "id": "1004",
+   "captured_at": 1730462400000,
+   "compass_angle": 90.0,
+   "computed_compass_angle": 90.0,
+   "thumb_1024_url": "https://scontent-iad3-1.xx.fbcdn.net/m1/v/t6/An1004.jpg?stp=s1024x768&ccb=10-5&oh=00_x&oe=69000000&_nc_sid=201bca",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.0299769,
+     38.9
+    ]
+   },
+   "is_pano": true,
+   "creator": {
+    "username": "rider42",
+    "id": "1001"
+   }
+  },
+  {
+   "id": "1005",
+   "captured_at": 1733054400000,
+   "compass_angle": 90.0,
+   "computed_compass_angle": 90.0,
+   "thumb_1024_url": "https://scontent-iad3-1.xx.fbcdn.net/m1/v/t6/An1005.jpg?stp=s1024x768&ccb=10-5&oh=00_x&oe=69000000&_nc_sid=201bca",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.0290752,
+     38.9
+    ]
+   },
+   "is_pano": false,
+   "creator": {
+    "username": "rider42",
+    "id": "1001"
+   }
+  },
+  {
+   "id": "1006",
+   "captured_at": 1735732800000,
+   "compass_angle": 90.0,
+   "computed_compass_angle": 90.0,
+   "thumb_1024_url": "https://evil.example.com/m1/v/t6/An1006.jpg?stp=s1024x768&ccb=10-5&oh=00_x&oe=69000000&_nc_sid=201bca",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.0299884,
+     38.900009
+    ]
+   },
+   "is_pano": false,
+   "creator": {
+    "username": "rider42",
+    "id": "1001"
+   }
+  }
+ ]
+}

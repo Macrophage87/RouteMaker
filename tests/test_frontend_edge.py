@@ -8,12 +8,15 @@ a path that reaches the proxy answers 502 - which is exactly what tells it
 apart from the app's file server (200, or 404 for a file the build lacks).
 
 Skipped, not failed, where there is no Docker daemon or the image is not
-already present: this pulls nothing.
+already present: this pulls nothing. In CI (`CI` set) a missing image is a failure:
+the workflow pulls the image compose.yaml names before pytest (tests-4), so a skip
+there would be the edge going untested in silence.
 """
 
 from __future__ import annotations
 
 import gzip
+import os
 import shutil
 import subprocess
 import time
@@ -50,9 +53,14 @@ def docker_ready() -> bool:
     return probe.returncode == 0
 
 
-pytestmark = pytest.mark.skipif(
-    not docker_ready(), reason=f"needs a Docker daemon and {LOCAL_IMAGE} already present"
-)
+@pytest.fixture(scope="module", autouse=True)
+def _caddy_present():
+    """Before the module's `edge` fixture: autouse fixtures of a scope come first."""
+    if not docker_ready():
+        why = f"needs a Docker daemon and {LOCAL_IMAGE} already present"
+        if os.environ.get("CI"):
+            pytest.fail(f"CI: {why} (the workflow pulls it before pytest)")
+        pytest.skip(why)
 
 
 def get(base: str, path: str, **headers: str) -> tuple[int, dict[str, str], bytes]:

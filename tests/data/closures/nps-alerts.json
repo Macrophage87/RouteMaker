@@ -1,0 +1,47 @@
+{
+  "total": "4",
+  "limit": "50",
+  "start": "0",
+  "data": [
+    {
+      "id": "6A1B2C3D-0000-4000-8000-000000000001",
+      "url": "https://www.nps.gov/rocr/planyourvisit/conditions.htm",
+      "title": "Beach Drive closed between Broad Branch Road and Joyce Road",
+      "parkCode": "rocr",
+      "description": "<p>Beach Drive is closed to all traffic between Broad Branch Road and Joyce Road for bridge repairs. Use the Western Ridge Trail.</p>",
+      "category": "Park Closure",
+      "relatedRoadEvents": [],
+      "lastIndexedDate": "2026-10-12 09:15:00.0"
+    },
+    {
+      "id": "6A1B2C3D-0000-4000-8000-000000000002",
+      "url": "",
+      "title": "Mount Vernon Trail detour at Gravelly Point",
+      "parkCode": "gwmp",
+      "description": "Trail users are detoured onto the parking lot while the trail is repaved.",
+      "category": "Caution",
+      "relatedRoadEvents": [],
+      "lastIndexedDate": "2026-10-14 13:02:00.0"
+    },
+    {
+      "id": "6A1B2C3D-0000-4000-8000-000000000003",
+      "url": "https://www.nps.gov/nama/planyourvisit/conditions.htm",
+      "title": "Visitor center hours change for the season",
+      "parkCode": "nama",
+      "description": "The visitor center now closes at 4 pm.",
+      "category": "Information",
+      "relatedRoadEvents": [],
+      "lastIndexedDate": "2026-10-10 08:00:00.0"
+    },
+    {
+      "id": "6A1B2C3D-0000-4000-8000-000000000004",
+      "url": "https://www.nps.gov/yell/planyourvisit/conditions.htm",
+      "title": "A park outside the region",
+      "parkCode": "yell",
+      "description": "Not one of ours.",
+      "category": "Park Closure",
+      "relatedRoadEvents": [],
+      "lastIndexedDate": "2026-10-10 08:00:00.0"
+    }
+  ]
+}

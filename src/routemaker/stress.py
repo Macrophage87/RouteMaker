@@ -6,11 +6,11 @@ carries another project's licence.
 
 Tiers run 1 to 4 on the Furth scale, where 1 is tolerable to most adults and
 children and 4 is tolerable only to the "strong and fearless". One scale,
-computed the same way everywhere from the same tables: an agency's finished
-score is never imported in place of this, because Maryland's runs 0 to 5 and
-"top-tier stress" would then mean different things on either side of the
-District line, while the Beginner invariant and the road-exposure report both
-key on it.
+computed the same way everywhere from the same tables. Since v0.7.0 an agency's
+own rating takes the place of this one where the agency rates the road (the
+owner, 2026-10-13: "Ratings from the local government win over a formula"),
+county over state; that is done by the rebuild after classification
+(`routemaker.agency_lts`), on this scale, and never inside this module.
 
 The ordering is speed, then facility, then volume, then surface. Volume is a
 modifier on two-lane roads rather than a primary variable: what makes a road
@@ -99,6 +99,8 @@ from enum import IntEnum
 
 from . import surfaces
 from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY, trail_kind
+from .geo import Point, haversine
+from .shape import sinuosity
 from .tags import (
     PAINTED_CYCLEWAY,
     SEPARATED_CYCLEWAY,
@@ -111,6 +113,7 @@ from .tags import (
     maxspeed_is_unitless,
     open_to_buses,
     parse_maxspeed_mph,
+    parse_width_m,
     shoulder_width_m,
 )
 
@@ -326,6 +329,36 @@ WIDTH_TOLERANCE_M = 0.005
 # arterials inverts the meaning of the map on a rural route.
 UNPAVED_RURAL_DEFAULT_MPH = 30.0
 
+# The owner's narrow-road rule (2026-10-13, for v0.7.0): "narrow windy roads that
+# are unlikely to see people travelling at 35 on" - Berryville Road, West Old
+# Baltimore Road and Davis Mill Road in upcounty Montgomery, which the 50 mph rural
+# default above put at LTS 4 and Montgomery Planning rates LTS 1. A rural minor
+# road with no posted limit and no traffic count that shows it is narrow (no
+# centre line, or a surveyed width of one car each way at most) or winding is read
+# at 25 mph instead of the statutory default, which is LTS 2 on the single-lane
+# row; the rural floor below keeps it from LTS 1. Region-wide ("We can do region
+# wide. The goal is also to find the long distance quiet roads"). A posted limit
+# or a count is evidence about the road and always outranks it.
+NARROW_RURAL_ROAD_MPH = 25.0
+NARROW_ROAD_HIGHWAY = frozenset({"unclassified", "tertiary", "tertiary_link", "road"})
+# 18 ft: two 9 ft lanes, the narrowest two-lane road with room to pass a rider
+# without crossing the centre.
+NARROW_ROAD_MAX_WIDTH_M = 5.5
+# Path length over straight-line distance, over a stretch long enough that one
+# bend at a junction does not count (`winding`). To be calibrated against the
+# owner's three roads on the extract before the rule merges.
+WINDING_SINUOSITY = 1.2
+WINDING_MIN_LENGTH_M = 400.0
+NARROW_ROAD_RULE = "narrow rural road"
+
+# The owner's rural floor (2026-10-13): "a floor of LTS2 makes sense on rural
+# roads. LTS1 is something kids can go on." A rural way open to cars is LTS 2 at
+# least, whatever the speed table or an agency says (`rural_floor`, applied by
+# the rebuild after classification). Trails and paths, roads with a separated
+# track, and roads closed to cars or open only to farm and forestry traffic
+# (`MOTOR_CLOSED_VALUES`) are exempt.
+RURAL_FLOOR_RULE = "rural road floor"
+
 # Volume thresholds in vehicles per day, as a modifier on two-lane roads only.
 # Normalized to one definition before the classifier reads them: VDOT publishes
 # bidirectional counts, the District publishes AADT, and Maryland's is embedded
@@ -512,6 +545,16 @@ class StressResult:
     # (OWNER-DECISIONS 303: "we don't want to double count"), so it must still
     # be charged there (ARTERIAL review r0, SF1).
     unsmoothed_tier: Stress | None = None
+    # A half step set by an agency's rating (`routemaker.agency_lts`): the way is
+    # rated half a level above `tier`, as an owner row's `StressAdjustment.half`.
+    half: bool = False
+    # Where an agency's rating replaced the classifier's tier: what the
+    # classifier said, and every agency rating held for the way, most local
+    # first, for the road panel (the owner, 2026-10-13: "put all the relevant
+    # information in the tab when viewing the road"). Empty where none did.
+    formula_tier: Stress | None = None
+    formula_rule: str | None = None
+    agency_ratings: tuple = ()
 
     @property
     def is_top_tier(self) -> bool:
@@ -721,6 +764,61 @@ AVOID_HIGHWAY = frozenset({"trunk", "trunk_link", "primary", "primary_link"})
 AVOID_MIN_POSTED_MPH = 50.0
 
 
+def narrow_by_tags(tags: dict[str, str]) -> bool:
+    """A road its tags say is narrow: no centre line, or a surveyed carriageway
+    width of `NARROW_ROAD_MAX_WIDTH_M` or less. An untagged road is not narrow
+    by default; only its line can say it winds (`winding`)."""
+    if tags.get("lane_markings") == "no":
+        return True
+    width = parse_width_m(tags.get("width:carriageway") or tags.get("width"))
+    return width is not None and width <= NARROW_ROAD_MAX_WIDTH_M
+
+
+def winding(coordinates, min_length_m: float = WINDING_MIN_LENGTH_M) -> bool:
+    """Whether a line of (lon, lat) points bends enough to keep traffic slow:
+    its sinuosity (`shape.sinuosity`) at least `WINDING_SINUOSITY`, on a line at
+    least `min_length_m` long. A short way split at a junction says nothing
+    either way and is read as not winding, and so is a closed ring, whose ratio
+    has no meaning."""
+    points = [Point(c[0], c[1]) for c in coordinates]
+    if len(points) < 3:
+        return False
+    length = sum(haversine(a, b) for a, b in zip(points, points[1:], strict=False))
+    if length < min_length_m:
+        return False
+    ratio = sinuosity(points)
+    return ratio != float("inf") and ratio >= WINDING_SINUOSITY
+
+
+def rural_floor_applies(tags: dict[str, str], urban: bool) -> bool:
+    """The owner's rural floor (`RURAL_FLOOR_RULE`): a rural way open to cars.
+    A trail-class way, a road with a separated track alongside (the rider is not
+    in the traffic), or one closed to cars or open only to farm and forestry
+    traffic, is exempt."""
+    if urban or tags.get("highway", "") in TRAIL_CLASS:
+        return False
+    if cycleway_values(tags) & SEPARATED_CYCLEWAY:
+        return False
+    restriction = motor_restriction(tags)
+    return restriction is None or restriction[0] > Stress.LTS1
+
+
+def rural_floor(result: StressResult, tags: dict[str, str], urban: bool) -> StressResult:
+    """The owner's rural floor over a way's tier, wherever that tier came from.
+
+    Applied by the rebuild after the classifier and after any agency rating,
+    because it is the owner's rule and ranks above both ("Ratings from Community
+    Input (including my judgment) win over everything", 2026-10-13); the
+    classifier itself stays Furth's tables. An owner row on the way itself
+    (`result.adjustment`) is the more specific call and is left alone."""
+    if getattr(result, "adjustment", None) is not None:
+        return result
+    if result.tier is not Stress.LTS1 or not rural_floor_applies(tags, urban):
+        return result
+    # An agency's 1.5 rises to 2, not 2.5.
+    return replace(result, tier=Stress.LTS2, half=False, rule=f"{result.rule}, {RURAL_FLOOR_RULE}")
+
+
 def legal_but_avoid(tags: dict[str, str]) -> str | None:
     """Why a way is "legal but avoid", or None. Posted speed only: never assumed."""
     if tags.get("highway") not in AVOID_HIGHWAY or tags.get("expressway") != "yes":
@@ -761,6 +859,7 @@ def classify(
     divided: bool = False,
     separate_facility: bool = False,
     parking_width_m: float | None = None,
+    winding: bool = False,
 ) -> StressResult:
     """Classify one way: its Furth tier, or "legal but avoid" where the rule says so.
 
@@ -778,7 +877,11 @@ def classify(
     `cycleway:width` is the lane alone, so without it the criterion is read
     against the lane's own width and almost no lane beside parking passes. With
     it the two are added where a lane runs beside parking, for the table only:
-    whether a lane is decent (`decent_lane`) is about the lane itself."""
+    whether a lane is decent (`decent_lane`) is about the lane itself.
+
+    `winding` says the way's own line bends enough to keep traffic slow
+    (`winding`, computed from its geometry by the caller), for the owner's
+    narrow-road rule (`NARROW_RURAL_ROAD_MPH`)."""
     result = _classify(
         tags,
         aadt,
@@ -789,6 +892,7 @@ def classify(
         divided,
         separate_facility,
         parking_width_m,
+        winding,
     )
     reason = legal_but_avoid(tags)
     if reason is None:
@@ -806,6 +910,7 @@ def _classify(
     divided: bool = False,
     separate_facility: bool = False,
     parking_width_m: float | None = None,
+    winding: bool = False,
 ) -> StressResult:
     """Classify one way by the Furth tables.
 
@@ -823,6 +928,7 @@ def _classify(
     """
     highway = tags.get("highway", "")
     assumed: list[str] = []
+    narrow_road = False
 
     if highway in TRAIL_CLASS:
         return StressResult(Stress.LTS1, trail_rule(highway, trail_kind(tags)))
@@ -853,6 +959,15 @@ def _classify(
             # treated is 35, not 55, and an unpaved lane is not a through road
             # whatever its classification says.
             speed_mph = min(speed_mph, UNPAVED_RURAL_DEFAULT_MPH)
+        if (
+            not urban
+            and aadt is None
+            and highway in NARROW_ROAD_HIGHWAY
+            and (winding or narrow_by_tags(tags))
+            and speed_mph > NARROW_RURAL_ROAD_MPH
+        ):
+            speed_mph = NARROW_RURAL_ROAD_MPH
+            narrow_road = True
         assumed.append("maxspeed")
 
     lanes = lanes_per_direction(tags)
@@ -1179,6 +1294,9 @@ def _classify(
     # Group Ride's ridability dial at layer 4.
     if tier is Stress.LTS1 and is_rough(tags):
         tier, rule = Stress.LTS2, rule + ", rough surface"
+
+    if narrow_road:
+        rule = rule + f", {NARROW_ROAD_RULE}"
 
     # The road's traits as the intersection model will state them: only what
     # was read, never the class default the tables fell back on (review r1: an

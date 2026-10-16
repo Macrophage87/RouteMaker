@@ -9,6 +9,7 @@ database.
 
 from __future__ import annotations
 
+import http.client
 import http.server
 import json
 import socket
@@ -238,6 +239,18 @@ class TestSearch:
         assert params["radius"] == geocode.TAG_SEARCH_RADIUS_KM
         assert [r["name"] for r in body["results"]] == ["Near Cycles", "Far Bikes"]
 
+    @pytest.mark.parametrize("q", ["grocery", "Grocery Stores", "groceries", "supermarket"])
+    def test_grocery_lists_the_nearest_supermarkets(self, client, photon, q) -> None:
+        """Review SIMPLICITY-1: an errand search finds the nearest grocery."""
+        shop = feature(
+            -77.03, 38.9, name="Market", type="house", osm_key="shop", osm_value="supermarket"
+        )
+        fake = photon(answer(shop))
+        body = get(client, SEARCH, q=q, lat="38.9", lon="-77.0").json()
+        ((path, params),) = fake.calls
+        assert path == "/reverse" and params["osm_tag"] == "shop:supermarket"
+        assert [r["name"] for r in body["results"]] == ["Market"]
+
     def test_bike_shop_without_a_bias_is_an_ordinary_search(self, client, photon) -> None:
         fake = photon(answer())
         get(client, SEARCH, q="bike shop")
@@ -407,9 +420,16 @@ class TestSearch:
         assert "private" in cache and "max-age=" in cache
 
 
-def rows(scope: str) -> int:
+def rows(scope: str, address: str | None = None) -> int:
+    """The scope's window rows; with an address, only that client's."""
     with connection.cursor() as cursor:
-        cursor.execute("SELECT count(*) FROM rate_limit_window WHERE scope = %s", [scope])
+        if address is None:
+            cursor.execute("SELECT count(*) FROM rate_limit_window WHERE scope = %s", [scope])
+        else:
+            cursor.execute(
+                "SELECT count(*) FROM rate_limit_window WHERE scope = %s AND client = %s",
+                [scope, ratelimit.client_key(address)],
+            )
         return cursor.fetchone()[0]
 
 
@@ -448,10 +468,14 @@ class TestLimits:
             address = f"203.0.113.{80 + n}"
             spend(ratelimit.REVERSE_BURST, address, ratelimit.REVERSE_BURST.requests)
             headers = {"HTTP_X_FORWARDED_FOR": address}
-            return get(client, REVERSE, headers, lat=INSIDE[1], lon=INSIDE[0])
+            refused = get(client, REVERSE, headers, lat=INSIDE[1], lon=INSIDE[0])
+            # Counted for this attempt's client alone: an attempt that straddled a burst window
+            # and was retried may have spent the minute legitimately.
+            return refused, rows(ratelimit.REVERSE.scope, address)
 
-        assert in_one_window(ratelimit.REVERSE_BURST.window_s, attempt).status_code == 429
-        assert rows(ratelimit.REVERSE.scope) == 0
+        refused, spent = in_one_window(ratelimit.REVERSE_BURST.window_s, attempt)
+        assert refused.status_code == 429
+        assert spent == 0
 
     def test_a_plan_of_twenty_five_points_can_be_named_at_once(self) -> None:
         """A shared link opens with up to 25 points, and each is named."""
@@ -499,10 +523,12 @@ class TestLimits:
             address = f"203.0.113.{30 + n}"
             spend(ratelimit.GEOCODE_BURST, address, ratelimit.GEOCODE_BURST.requests)
             refused = get(client, SEARCH, {"HTTP_X_FORWARDED_FOR": address}, q="station")
-            return refused
+            # This attempt's client alone, as above.
+            return refused, rows(ratelimit.GEOCODE.scope, address)
 
-        assert in_one_window(ratelimit.GEOCODE_BURST.window_s, attempt).status_code == 429
-        assert rows(ratelimit.GEOCODE.scope) == 0
+        refused, spent = in_one_window(ratelimit.GEOCODE_BURST.window_s, attempt)
+        assert refused.status_code == 429
+        assert spent == 0
 
     def test_search_and_names_are_counted_apart(self, client, photon) -> None:
         """Naming a plan's points must not spend the search box's budget."""
@@ -1174,6 +1200,15 @@ class TestTransport:
     def test_anything_but_a_feature_list_is_unavailable(self, photon_server, status, body) -> None:
         url, _seen = photon_server(status, body)
         with override_settings(PHOTON_URL=url), pytest.raises(geocode.Unavailable):
+            geocode._get("/api", {"q": "x"})
+
+    def test_an_answer_cut_off_part_way_is_unavailable(self, monkeypatch) -> None:
+        # Review api-2: IncompleteRead is not an OSError.
+        def broken(request, timeout):
+            raise http.client.IncompleteRead(b"{")
+
+        monkeypatch.setattr(geocode.urllib.request, "urlopen", broken)
+        with pytest.raises(geocode.Unavailable):
             geocode._get("/api", {"q": "x"})
 
     def test_nobody_listening_is_unavailable(self) -> None:

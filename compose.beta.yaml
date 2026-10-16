@@ -29,9 +29,9 @@
 #     rebuild worker started here by mistake would only record a pause, never an eight-hour build
 #     on a shared host (a hand-fired run_rebuild_now ignores it; the runbook forbids that).
 #     It does not stop the weekly tick being queued: with no rebuild worker to take it, one
-#     weekly_rebuild job waits on the `rebuild` queue (its queueing lock keeps it to one) and
-#     check_operations lists weekly_rebuild as stale (from about eight days after setup). Both
-#     are expected on the beta
+#     weekly_rebuild job waits on the `rebuild` queue (its queueing lock keeps it to one), and
+#     check_operations lists weekly_rebuild as paused (the api and worker carry the setting).
+#     Both are expected on the beta
 #     (docs/BETA-RUNBOOK.md, "No rebuild runs here").
 #
 # The budget, against what the local stack measured at idle (docker stats, 2026-10-04):
@@ -369,7 +369,7 @@ services:
     <<: *beta-yield
     profiles: ["offroad"]
     restart: ${RESTART_POLICY:-unless-stopped}
-    image: ghcr.io/valhalla/valhalla:3.9.1
+    image: ghcr.io/valhalla/valhalla:3.9.1@sha256:4fd114eb1d26b8fc2f43bcb3df234c1b63a0bf13c277405e5943d5361dc575de
     command: ["valhalla_service", "/conf/valhalla-offroad.json", "2"]
     volumes:
       - type: bind
@@ -406,7 +406,7 @@ services:
     <<: *beta-yield
     profiles: ["offroad"]
     restart: ${RESTART_POLICY:-unless-stopped}
-    image: ghcr.io/valhalla/valhalla:3.9.1
+    image: ghcr.io/valhalla/valhalla:3.9.1@sha256:4fd114eb1d26b8fc2f43bcb3df234c1b63a0bf13c277405e5943d5361dc575de
     command: ["valhalla_service", "/conf/valhalla-mtb.json", "2"]
     volumes:
       - type: bind

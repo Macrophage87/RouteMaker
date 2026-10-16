@@ -230,6 +230,9 @@ def test_car_free_when_needs_a_bicycle_and_a_road():
         (datetime(2026, 5, 18, 8, 0, tzinfo=ridetime.ZONE), "weekday_rush"),
         (datetime(2027, 5, 31, 8, 0, tzinfo=ridetime.ZONE), "weekend"),
         (datetime(2027, 5, 24, 8, 0, tzinfo=ridetime.ZONE), "weekday_rush"),
+        # New Year's Day 2028 is a Saturday, observed Friday 31 December 2027 (TB-11).
+        (datetime(2027, 12, 31, 8, 0, tzinfo=ridetime.ZONE), "weekend"),
+        (datetime(2027, 12, 30, 8, 0, tzinfo=ridetime.ZONE), "weekday_rush"),
     ],
 )
 def test_when_at(moment, when):
@@ -304,6 +307,82 @@ def test_the_road_a_separate_facility_lies_beside_is_named_too():
     lonely = (3, {"highway": "primary", "cycleway:right": "separate"}, _line(-77.03, 38.91))
     assert separate_pairs([road, beside, lonely]) == ({2}, {1})
     assert separate_pairs([]) == (set(), set())
+
+
+def test_a_named_trail_beside_a_parkway_that_says_separate_stays_a_path():
+    """The owner, 2026-10-12: Rock Creek Trail (OSM way 1355215830, highway=cycleway)
+    hugs Rock Creek and Potomac Parkway (cycleway:left=separate) between P and M
+    Streets NW and was drawn as the parkway's protected lane. A trail named for
+    itself is a path; the parkway still has its facility alongside."""
+    from routemaker.facility import separate_pairs
+
+    parkway = (
+        435101942,
+        {"highway": "secondary", "name": "Rock Creek and Potomac Parkway Northwest",
+         "cycleway:left": "separate"},
+        _line(-77.055, 38.907),
+    )  # fmt: skip
+    trail_tags = {"highway": "cycleway", "name": "Rock Creek Trail", "bicycle": "designated",
+                  "foot": "designated"}  # fmt: skip
+    trail = (1355215830, trail_tags, _line(-77.055, 38.9071))
+    assert separate_pairs([parkway, trail]) == (set(), {435101942})
+
+
+def test_an_unnamed_cycle_track_on_a_long_route_stays_protected():
+    """Only the way's own name counts: an unnamed median lane on Pennsylvania Avenue NW
+    is on the East Coast Greenway and USBR 50, and is still the avenue's protected lane."""
+    avenue = (1, {"highway": "primary", "name": "Pennsylvania Avenue Northwest",
+                  "cycleway:both": "separate"}, _line(-77.03, 38.894))  # fmt: skip
+    median = (2, {"highway": "cycleway"}, _line(-77.03, 38.8941))
+    assert beside_separate_roads([avenue, median]) == {2}
+
+
+@pytest.mark.parametrize(
+    ("track_name", "protected"),
+    [
+        (None, True),  # most of DC's cycle tracks carry no name
+        ("15th Street Northwest", True),
+        ("15th Street Cycle Track", True),
+        ("15th St NW", True),
+        ("15th St. Cycletrack", True),
+        ("Metropolitan Branch Trail", False),
+    ],
+)
+def test_a_cycle_track_named_for_its_street_stays_protected(track_name, protected):
+    street = (1, {"highway": "secondary", "name": "15th Street Northwest",
+                  "cycleway:left": "separate"}, _line(-77.0345, 38.905))  # fmt: skip
+    tags = {"highway": "cycleway"} | ({"name": track_name} if track_name else {})
+    track = (2, tags, _line(-77.0345, 38.9051))
+    assert beside_separate_roads([street, track]) == ({2} if protected else set())
+
+
+@pytest.mark.parametrize(
+    ("trail", "roads", "own"),
+    [
+        ("Rock Creek Trail", ["Rock Creek and Potomac Parkway"], True),
+        ("Mount Vernon Trail", ["George Washington Memorial Parkway"], True),
+        ("L Street Northwest", ["L Street Northwest"], False),
+        ("L Street Cycletrack", ["L Street NW"], False),
+        ("Pennsylvania Avenue Bike Lanes", ["Pennsylvania Avenue Northwest"], False),
+        ("Rock Creek Trail", [None], True),
+        ("Penn Ave Cycletrack", ["Pennsylvania Avenue Northwest"], False),
+        ("Eye Street Cycle Track", ["I Street Northwest"], False),
+        ("Cycle Track", ["I Street Northwest"], False),
+        ("Sidewalk", [None], False),
+        ("Trail", ["Some Parkway"], False),
+        ("Shared Use Path", ["Some Parkway"], False),
+        ("Bike Lane", ["Some Road"], False),
+        ("Clara Barton Sidepath", ["MacArthur Boulevard"], False),
+        ("Avenue N Trail", ["Avenue M"], True),  # a single letter is not stripped
+        ("Avenue N", ["Avenue N"], False),
+        (None, ["Rock Creek and Potomac Parkway"], False),
+        ("", [], False),
+    ],
+)
+def test_named_for_itself(trail, roads, own):
+    from routemaker.facility import named_for_itself
+
+    assert named_for_itself(trail, roads) is own
 
 
 def test_beside_is_within_twenty_metres():
@@ -875,3 +954,60 @@ def test_a_timed_closure_buses_still_run_through_is_never_car_free():
     assert car_free_when(tags) == frozenset()
     del tags["bus"]
     assert car_free_when(tags) == {"weekend", "weekday_rush", "weekday_offpeak", "night"}
+
+
+# --- An unnamed bike lane beside a named street (v0.7.0 "Go riding fixes" item 4) ----------
+
+# 9th Street NW runs north-south; a metre of longitude here is about 1/86,700 of a degree.
+_LON_M = 1 / 86_700.0
+NINTH = [(-77.0240, 38.9100), (-77.0240, 38.9140)]
+
+
+def _east(points, metres):
+    return [(lon + metres * _LON_M, lat) for lon, lat in points]
+
+
+def test_an_unnamed_cycleway_beside_a_named_street_is_its_bike_lane() -> None:
+    street = (1, {"highway": "secondary", "name": "9th Street Northwest"}, NINTH)
+    lane = (2, {"highway": "cycleway"}, _east(NINTH, 8))
+    names = facility_rules.side_street_names([street, lane])
+    assert names == {2: "9th Street Northwest bike lane"}
+
+
+@pytest.mark.parametrize(
+    "tags",
+    [
+        {"highway": "cycleway", "segregated": "yes"},
+        {"highway": "cycleway", "separation": "flex_post"},
+        {"highway": "path", "bicycle": "designated", "separation:left": "kerb"},
+    ],
+)
+def test_a_separated_or_segregated_one_is_a_protected_bike_lane(tags) -> None:
+    street = (1, {"highway": "secondary", "name": "9th Street Northwest"}, NINTH)
+    names = facility_rules.side_street_names([street, (2, tags, _east(NINTH, 6))])
+    assert names == {2: "9th Street Northwest protected bike lane"}
+
+
+def test_a_named_far_crossing_leaving_or_alley_side_way_is_not_named() -> None:
+    street = (1, {"highway": "secondary", "name": "9th Street Northwest"}, NINTH)
+    named = (2, {"highway": "cycleway", "name": "Metropolitan Branch Trail"}, _east(NINTH, 8))
+    far = (3, {"highway": "cycleway"}, _east(NINTH, 40))
+    # Crossing the street east-west: within 20 m only where it crosses, and not parallel.
+    across = (4, {"highway": "cycleway"}, [(-77.0245, 38.9120), (-77.0235, 38.9120)])
+    # Along it for only a short way, then off to the east.
+    leaving = (
+        5,
+        {"highway": "cycleway"},
+        [(-77.0240 + 8 * _LON_M, 38.9100), (-77.0240 + 8 * _LON_M, 38.9104), (-77.0180, 38.9112)],
+    )
+    # Beside an alley (a service road), which no rider knows by name.
+    alley = (6, {"highway": "service", "name": "Blagden Alley"}, _east(NINTH, 200))
+    by_alley = (7, {"highway": "cycleway"}, _east(NINTH, 208))
+    ways = [street, named, far, across, leaving, alley, by_alley]
+    assert facility_rules.side_street_names(ways) == {}
+
+
+def test_a_sidewalk_a_bicycle_may_not_ride_is_not_a_bike_lane() -> None:
+    street = (1, {"highway": "secondary", "name": "9th Street Northwest"}, NINTH)
+    sidewalk = (2, {"highway": "footway", "footway": "sidewalk"}, _east(NINTH, 8))
+    assert facility_rules.side_street_names([street, sidewalk]) == {}

@@ -342,7 +342,7 @@ test("the section: one row, its switch the layer's, one status line; the kinds a
     renderToStaticMarkup(createElement(WaterSection, { prefs, onChange: () => {}, status }));
   const loading = html("loading");
   assert.match(loading, /<section aria-labelledby="water-heading" class="layer-group layer-section water-section">/);
-  assert.match(loading, /<h3 id="water-heading">Water and restrooms<\/h3><button type="button" role="switch" id="water-section-switch" class="switch section-switch" aria-checked="true" aria-labelledby="water-heading">/);
+  assert.match(loading, /<h3 id="water-heading">Water, restrooms and repair stands<\/h3><button type="button" role="switch" id="water-section-switch" class="switch section-switch" aria-checked="true" aria-labelledby="water-heading">/);
   assert.ok(loading.includes(`<input type="checkbox" checked=""/>${WATER_BASIC_SWITCH}`));
   assert.ok(loading.includes(`<input type="checkbox" checked=""/>${WATER_UNTREATED_SWITCH}`));
   assert.ok(loading.includes("<legend>Also show</legend>"));

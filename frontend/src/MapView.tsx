@@ -46,6 +46,7 @@ import {
   runClick,
   ROUTE_STRESS_SOURCE_ID,
   runHover,
+  routeLineData,
   setRouteSections,
   setStressPalette,
   setStressVisibility,
@@ -79,8 +80,9 @@ import { addClimbs, CLIMBS_SOURCE_ID, setClimbsFrom, setClimbsOn, type Climb, ty
 import { attachClimbInteraction } from "./climbInteraction.ts";
 import { climbCardAfterClose } from "./lib/climbCard.ts";
 import type { When } from "./lib/dials.ts";
-import { END_GLYPH, START_GLYPH, pointLabel } from "./lib/pointText.ts";
-import { LongPress, isInfoKey, repeatsInfoAsk, type InfoRequest } from "./lib/roadInfo.ts";
+import { END_GLYPH, START_GLYPH } from "./lib/pointText.ts";
+import { VIA_MARKS, kindSwitchLabel, markerLabels } from "./lib/pointKinds.ts";
+import { LongPress, isInfoKey, liftOpenedInfo, repeatsInfoAsk, type InfoRequest } from "./lib/roadInfo.ts";
 import { fetchMe } from "./lib/stressEditor.ts";
 import { JUNCTION_SUGGEST_TEXT } from "./lib/junctionSuggest.ts";
 import {
@@ -108,6 +110,7 @@ import {
   transitOf,
 } from "./lib/transit.ts";
 import { countdown, labelSide, mapLabel } from "./lib/departure.ts";
+import { lightMarkerLabel, lightMarkerText, underControls, type LightMark } from "./lib/lightTimes.ts";
 import {
   CARD_CLOSE_LABEL,
   cardName,
@@ -132,6 +135,20 @@ import {
 import { avoidItems, avoidMarkerName } from "./lib/avoidJunctions.ts";
 import type { LetteredPlace } from "./lib/letteredPlaces.ts";
 import { avoidMarkerSvg } from "./lib/avoidIcon.ts";
+import {
+  CLOSED_RED,
+  CLOSURE_CARD_CLOSE,
+  LANE_AMBER,
+  closureCard,
+  closureFeatures,
+  closureMarkerName,
+  closuresOf,
+  noticeCard,
+  noticeMarkerName,
+  parkNoticesOf,
+  type ClosureCard,
+  type ClosureItem,
+} from "./lib/closureMap.ts";
 import { ViaHold } from "./lib/viaHold.ts";
 
 export type StressAvailability = "checking" | "available" | "unavailable";
@@ -161,6 +178,10 @@ interface Props {
   loopVias?: boolean;
   route: RouteResponse | null;
   stale: boolean;
+  /** Plan mode (v0.7.0): the line before the last update, drawn dashed until the next change, or null. */
+  ghost?: readonly LonLat[] | null;
+  /** Plan: the light times on the route near dawn or dusk (lib/lightTimes.ts), each marked where the rider will be; null draws none. */
+  lightMarks?: readonly LightMark[] | null;
   stressVisible: boolean;
   /** The ride time the overlay follows, for the roads closed to cars at set times (lib/rideTime.ts). */
   when: When;
@@ -181,6 +202,8 @@ interface Props {
   pressSetsEnd?: boolean;
   /** Remove the point at `index` (a via's Remove on the map). */
   onRemovePoint: (index: number) => void;
+  /** The point menu's "Make this a stop / a via point" (v0.7.0, lib/pointKinds.ts), for the point at `index`. */
+  onSwitchKind?: (index: number) => void;
   /** Changes when the markers must be put back on the points as they are. */
   markerReset: number;
   /** The accuracy circle of the rider's location while its point is in the plan (OWNER-DECISIONS 395), or null. */
@@ -193,7 +216,8 @@ interface Props {
    * Ride mode (WEB-NAV-plan.md section 1): the rider's position, a "you" arrow distinct from the scrub ring
    * (drawn over the accuracy circle, which `accuracy` carries), or null outside a ride. With `follow` the map
    * centres on it at each fix (one easeTo, no continuous animation); a pan by hand calls `onFollowBroken`.
-   * `headingUp` turns the map to the rider's heading; north-up otherwise. While riding the route is not
+   * `headingUp` turns the map to the rider's heading (track-up, the default since v0.7.0; north-up until a
+   * heading comes); north-up otherwise. The camera never moves the keyboard focus. While riding the route is not
    * re-framed when it changes (a re-plan).
    */
   rider?: { point: LonLat; headingDeg: number | null } | null;
@@ -259,6 +283,8 @@ interface Props {
   lettered?: readonly LetteredPlace[] | null;
   /** A lettered marker pressed: its index in the list. */
   onLettered?: (index: number) => void;
+  /** A closure card's "Route through anyway" (true) or Undo (false), for this plan (lib/closureMap.ts). */
+  onClosureBypass?: (item: ClosureItem, on: boolean) => void;
 }
 
 // One protocol for the page. MapLibre 4+ runs a custom protocol's handler on
@@ -279,11 +305,21 @@ function registerPmtiles(): void {
 
 const DC_CENTRE: LonLat = [-77.03, 38.9];
 const ROUTE_SOURCE = "route";
+const GHOST_SOURCE = "route-ghost";
+
+/** The ghost line's data: the old route's line, or nothing. */
+function ghostData(line: readonly LonLat[] | null | undefined): object {
+  return line && line.length >= 2
+    ? { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: line.map((c) => [c[0], c[1]]) } }
+    : { type: "FeatureCollection", features: [] };
+}
 /** The route's sections by traffic stress (lib/routeColours.ts). */
 const ROUTE_STRESS_SOURCE = ROUTE_STRESS_SOURCE_ID;
 /** The handle and the dashed preview of a drag of the line. */
 const EDIT_SOURCE = "route-edit";
 const ACCURACY_SOURCE = "location-accuracy";
+/** The closures in force at the ride (v0.7.0, lib/closureMap.ts). */
+const CLOSURE_SOURCE = "closures";
 // Bikeshare's walk legs (lib/bikeshare.ts): dotted, with the operator's source citation as the
 // source's attribution, so the attribution control shows it exactly while a bikeshare plan's
 // layer is visible and never otherwise (OWNER-DECISIONS 301).
@@ -671,6 +707,8 @@ export function MapView(props: Props) {
     // never prevents a default, so the map pans and pinches under it as ever; a drift,
     // a second finger or the finger lifting calls it off.
     let infoAt = 0;
+    // When the finger on the map went down, for its lift (liftOpenedInfo); null with no map touch.
+    let touchDownAt: number | null = null;
     const openInfo = (point: { x: number; y: number }, origin: InfoRequest["origin"]) => {
       const now = performance.now();
       if (repeatsInfoAsk(origin, now, infoAt, INFO_REPEAT_MS)) return;
@@ -767,14 +805,19 @@ export function MapView(props: Props) {
         return;
       }
       if (event.originalEvent.target !== canvas) return;
+      touchDownAt = performance.now();
       const hit = grabAt(event.point, TOUCH_HIT_PX);
       if (!hit) {
         // Off the line: a finger held here opens the road panel.
-        if (!anyPopupOpen()) longPress.press(event.point.x, event.point.y);
+        if (!anyPopupOpen()) {
+          longPress.press(event.point.x, event.point.y);
+          watchTouchMoves(true);
+        }
         return;
       }
       grabbed = hit;
       gesture.press("touch", event.point.x, event.point.y);
+      watchTouchMoves(true);
     });
     const onTouchMove = (event: TouchEvent) => {
       if (longPress.pending) {
@@ -794,7 +837,12 @@ export function MapView(props: Props) {
       if (follow(local(touch.clientX, touch.clientY))) event.preventDefault();
     };
     const onTouchEnd = (event: TouchEvent) => {
+      // The lift of a press that opened the road panel (its long press or contextmenu) sends no click: it
+      // would press the panel's button now under the finger (Set as start, say) and close it.
+      if (event.type === "touchend" && liftOpenedInfo(touchDownAt, infoAt)) event.preventDefault();
+      touchDownAt = null;
       longPress.cancel();
+      watchTouchMoves(false);
       if (!gesture.active) return;
       const touch = event.changedTouches[0];
       finish(event.type === "touchend" && touch ? local(touch.clientX, touch.clientY) : null);
@@ -807,7 +855,8 @@ export function MapView(props: Props) {
         openInfo({ x: box.width / 2, y: box.height / 2 }, "centre");
         return;
       }
-      if (event.key !== "Escape") return;
+      // An Escape a sheet or dialog has handled already is not also the map's (review a11y-10).
+      if (event.key !== "Escape" || event.defaultPrevented) return;
       // Escape calls off a drag; otherwise it closes a via's Remove, and the
       // focus goes back where it was; otherwise a junction's card, likewise.
       if (gesture.active) finish(null);
@@ -842,7 +891,15 @@ export function MapView(props: Props) {
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
     window.addEventListener("mouseup", onRightUp);
-    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    // The page's touch moves, not passive (a line drag holds the map still), only while a line drag or a
+    // long press is under way: otherwise every scroll and pan of the page would wait on it (review fe-perf-4).
+    let watchingTouch = false;
+    function watchTouchMoves(on: boolean) {
+      if (on === watchingTouch) return;
+      watchingTouch = on;
+      if (on) window.addEventListener("touchmove", onTouchMove, { passive: false });
+      else window.removeEventListener("touchmove", onTouchMove);
+    }
     window.addEventListener("touchend", onTouchEnd);
     window.addEventListener("touchcancel", onTouchEnd);
     window.addEventListener("keydown", onKey);
@@ -929,6 +986,15 @@ export function MapView(props: Props) {
       // The grey outside the District, shown in Mass Ride mode only (OWNER-DECISIONS 418; lib/dcBoundary.ts):
       // over the base map, under its labels, the overlays and the route.
       addDcMask(map, callbacks.current.massArea === true, new Set(stressOverlayLayers(STRESS_SOURCE_ID).map((l: { id: string }) => l.id)));
+      // Plan mode's ghost (v0.7.0, lib/planFirst.ts): the route before the last update, dashed, under the route.
+      map.addSource(GHOST_SOURCE, { type: "geojson", data: ghostData(callbacks.current.ghost) });
+      map.addLayer({
+        id: "route-ghost",
+        type: "line",
+        source: GHOST_SOURCE,
+        layout: { "line-join": "round", "line-cap": "butt" },
+        paint: { "line-color": "#4b5563", "line-width": 4, "line-opacity": 0.8, "line-dasharray": [2, 1.5] },
+      });
       map.addSource(ROUTE_SOURCE, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       map.addLayer({
         id: "route-casing",
@@ -994,6 +1060,33 @@ export function MapView(props: Props) {
         source: ROUTE_SOURCE,
         layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": ROUTE_BLUE, "line-width": ROUTE_LINE_WIDTH },
+      });
+      // Closures in force at the ride (v0.7.0, lib/closureMap.ts): over the route, so a closed stretch on it shows.
+      // A white casing, then red (closed) or amber (bike lane blocked); dashed where it "may still apply". Their
+      // markers (buttons) carry the names and open the cards.
+      map.addSource(CLOSURE_SOURCE, { type: "geojson", data: closureFeatures(closuresOf(callbacks.current.route)) });
+      map.addLayer({
+        id: "closure-casing",
+        type: "line",
+        source: CLOSURE_SOURCE,
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": "#ffffff", "line-width": 9 },
+      });
+      map.addLayer({
+        id: "closure-line",
+        type: "line",
+        source: CLOSURE_SOURCE,
+        filter: ["==", ["get", "maybe"], 0],
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": ["match", ["get", "severity"], "amber", LANE_AMBER, CLOSED_RED], "line-width": 5 },
+      });
+      map.addLayer({
+        id: "closure-line-maybe",
+        type: "line",
+        source: CLOSURE_SOURCE,
+        filter: ["==", ["get", "maybe"], 1],
+        layout: { "line-join": "round", "line-cap": "butt" },
+        paint: { "line-color": ["match", ["get", "severity"], "amber", LANE_AMBER, CLOSED_RED], "line-width": 5, "line-dasharray": [2, 1.2] },
       });
       // Under the route (before its casing), so the circle's tint never covers the line.
       map.addSource(ACCURACY_SOURCE, { type: "geojson", data: accuracyData(callbacks.current.accuracy) });
@@ -1180,12 +1273,15 @@ export function MapView(props: Props) {
     // the page's body.
     const focusInPopup = popup.current?.getElement().contains(document.activeElement) ?? false;
     closePopup(focusInPopup);
+    // Each point's label by its kind (v0.7.0): a stop numbered among the stops, a via point a hollow ring.
+    const labels = markerLabels(props.points, VIA_MARKS.isVia, props.loopVias === true);
     markers.current = props.points.map((point, index) => {
-      const { text, name, kind } = pointLabel(index, props.points.length, props.loopVias === true);
-      const via = kind === "via";
+      const { text, name, kind } = labels[index];
+      // Stops and via points (between the ends) have the point menu; "via" was a stop's older name.
+      const via = kind === "via" || kind === "through";
       const element = document.createElement("div");
       const warning = props.pointWarnings?.[index] ?? null;
-      element.className = `pin pin-${kind}${warning ? " pin-federal" : ""}`;
+      element.className = `pin pin-${via ? "via" : kind}${kind === "through" ? " pin-through" : ""}${warning ? " pin-federal" : ""}`;
       // The start and the end show a glyph (a play triangle, a stop square), a stop its number.
       if (kind === "start") element.innerHTML = START_GLYPH;
       else if (kind === "end") element.innerHTML = END_GLYPH;
@@ -1194,7 +1290,9 @@ export function MapView(props: Props) {
       // The warning ends with its own full stop.
       const named = warning ? `${name}. ${warning}` : name;
       const said = warning ? named : `${name}.`;
-      element.setAttribute("aria-label", via ? `${said} Drag to move; click for Remove.` : `${said} Drag to move.`);
+      // The name and warning only, and the keyboard's way to remove a via: a pin takes no focus, so
+      // dragging and clicking are the title's, for a pointer (review a11y-8).
+      element.setAttribute("aria-label", via ? `${said} Remove it from the Points list.` : said);
       element.title = via ? `${named} - drag to move; click, right-click or long-press for Remove; double-click to remove` : `${named} - drag to move`;
       const marker = new maplibregl.Marker({ element, draggable: true, anchor: "center" })
         .setLngLat(point)
@@ -1230,11 +1328,48 @@ export function MapView(props: Props) {
           closePopup(true);
           callbacks.current.onRemovePoint(index);
         });
+        const items = [button];
+        // --- v0.7.0 "Via points vs stops": the point menu's one switch between a stop and a via point. ---
+        const switchLabel = kind === "through" ? kindSwitchLabel("via") : kindSwitchLabel("stop");
+        if (switchLabel && callbacks.current.onSwitchKind) {
+          const switcher = document.createElement("button");
+          switcher.type = "button";
+          switcher.className = "via-remove point-kind";
+          switcher.textContent = switchLabel;
+          switcher.addEventListener("click", (clicked) => {
+            clicked.stopPropagation();
+            closePopup(true);
+            callbacks.current.onSwitchKind?.(index);
+          });
+          items.push(switcher);
+        }
+        // A real menu (a screen reader hears "menu, 2 items"): the arrows move between its items.
+        const menu = document.createElement("div");
+        menu.className = "point-menu";
+        menu.setAttribute("role", "menu");
+        menu.setAttribute("aria-label", name);
+        for (const item of items) {
+          item.setAttribute("role", "menuitem");
+          menu.append(item);
+        }
+        menu.addEventListener("keydown", (key) => {
+          const at = items.indexOf(document.activeElement as HTMLButtonElement);
+          const to =
+            key.key === "ArrowDown" || key.key === "ArrowRight" ? (at + 1) % items.length
+            : key.key === "ArrowUp" || key.key === "ArrowLeft" ? (at - 1 + items.length) % items.length
+            : key.key === "Home" ? 0
+            : key.key === "End" ? items.length - 1
+            : null;
+          if (to === null) return;
+          key.preventDefault();
+          items[to].focus();
+        });
+        // --- end v0.7.0 ---
         // Not closed by MapLibre on a map click: the map's click handler
         // closes it, so that the same click does not also add a point.
         popup.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 14, className: "via-popup" })
           .setLngLat(marker.getLngLat())
-          .setDOMContent(button)
+          .setDOMContent(menu)
           .addTo(map);
         button.focus();
       };
@@ -1272,6 +1407,12 @@ export function MapView(props: Props) {
         element.addEventListener("touchend", () => hold.cancel());
         element.addEventListener("touchcancel", () => hold.cancel());
         marker.on("dragstart", () => hold.cancel());
+      } else {
+        // The start's and the end's right-click is not the map's (nor the browser's menu) either (v0.7.0).
+        element.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        });
       }
       return marker;
     });
@@ -1283,6 +1424,13 @@ export function MapView(props: Props) {
     if (!map || !loaded.current) return;
     syncRoute(map, callbacks.current, fitted);
   }, [props.route, props.stale]);
+
+  // Plan mode's ghost of the route before the last update (v0.7.0).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current) return;
+    (map.getSource(GHOST_SOURCE) as GeoJSONSource | undefined)?.setData(ghostData(props.ghost));
+  }, [props.ghost]);
 
   // A bikeshare plan's walk legs and the docks it uses. The markers are not buttons, since they
   // do nothing when pressed: each is an image with its whole text equivalent as its name, and
@@ -1324,6 +1472,62 @@ export function MapView(props: Props) {
     });
     return () => drawn.forEach((marker) => marker.remove());
   }, [props.route]);
+
+  // The light times on the route (lib/lightTimes.ts): sunset and the end of civil twilight, or civil dawn
+  // and sunrise, each where the rider will be then. A text label, named for a screen reader (the route
+  // summary's line says the same); not a button, so not in the Tab order, and it lets the map's clicks
+  // through (styles.css). A marker still shown is moved and renamed in place, not drawn again.
+  const lightDrawn = useRef(new Map<string, maplibregl.Marker>());
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current) return;
+    const drawn = lightDrawn.current;
+    const wanted = (props.lightMarks ?? []).filter((mark) => mark.where === "during" && mark.point);
+    for (const [kind, marker] of drawn) {
+      if (!wanted.some((mark) => mark.kind === kind)) {
+        marker.remove();
+        drawn.delete(kind);
+      }
+    }
+    for (const mark of wanted) {
+      let marker = drawn.get(mark.kind);
+      if (!marker) {
+        const element = document.createElement("div");
+        element.className = "light-marker";
+        element.dataset.kind = mark.kind;
+        element.setAttribute("role", "img");
+        const text = document.createElement("span");
+        text.setAttribute("aria-hidden", "true");
+        element.appendChild(text);
+        marker = new maplibregl.Marker({ element, anchor: "bottom", offset: [0, -6] }).setLngLat(mark.point as LonLat).addTo(map);
+        drawn.set(mark.kind, marker);
+      }
+      marker.setLngLat(mark.point as LonLat);
+      const element = marker.getElement();
+      element.setAttribute("aria-label", lightMarkerLabel(mark));
+      (element.firstChild as HTMLElement).textContent = lightMarkerText(mark);
+    }
+    // Not drawn where it would sit under the map's controls (the scale bar at the bottom right); it stays named.
+    const clear = () => {
+      const controls = Array.from(map.getContainer().querySelectorAll(".maplibregl-ctrl"), (c) => c.getBoundingClientRect());
+      for (const marker of drawn.values()) {
+        const element = marker.getElement();
+        element.classList.toggle("under-controls", underControls((element.firstChild as HTMLElement).getBoundingClientRect(), controls));
+      }
+    };
+    clear();
+    map.on("move", clear);
+    return () => {
+      map.off("move", clear);
+    };
+  }, [props.lightMarks]);
+  useEffect(() => {
+    const drawn = lightDrawn.current;
+    return () => {
+      drawn.forEach((marker) => marker.remove());
+      drawn.clear();
+    };
+  }, []);
 
   // An infrequent departure's label at the boarding stop (lib/departure.ts): "MARC 7:42 am · 6 min
   // spare", and, when cutting it close, the countdown to it. Hidden from screen readers (the panel
@@ -1548,6 +1752,71 @@ export function MapView(props: Props) {
     });
   }, [props.route, props.stale]);
 
+  // Closures on the map (v0.7.0, lib/closureMap.ts): in Go and Plan, every ride type, no layer switch. Each closure a
+  // button marker (a barrier for a closed stretch, amber for a blocked bike lane, a small mark on the line for one the
+  // rider routes through), each NPS alert a park marker; Tab reaches them, and their names say what each is. A press,
+  // Enter or Space opens the card, which takes the focus and gives it back on close; Escape closes it.
+  const closureMarkers = useRef<Marker[]>([]);
+  const closurePopup = useRef<Popup | null>(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    closurePopup.current?.remove();
+    closurePopup.current = null;
+    closureMarkers.current.forEach((marker) => marker.remove());
+    closureMarkers.current = [];
+    if (!map) return;
+    const items = props.route && !props.stale ? closuresOf(props.route) : [];
+    const source = map.getSource(CLOSURE_SOURCE) as GeoJSONSource | undefined;
+    source?.setData(closureFeatures(items));
+    const open = (opener: HTMLButtonElement, at: LonLat, card: ClosureCard, item: ClosureItem | null) => {
+      closurePopup.current?.remove();
+      const popup = showClosureCard(map, at, card, (bypass) => {
+        popup.remove();
+        if (item) callbacks.current.onClosureBypass?.(item, bypass);
+      });
+      closurePopup.current = popup;
+      popup.on("close", () => {
+        if (closurePopup.current === popup) closurePopup.current = null;
+        const active = document.activeElement;
+        if (opener.isConnected && (!active || active === document.body || popup.getElement().contains(active))) opener.focus();
+      });
+    };
+    const button = (className: string, name: string, svg: string) => {
+      const element = document.createElement("button");
+      element.type = "button";
+      element.className = className;
+      element.setAttribute("aria-label", name);
+      element.setAttribute("aria-haspopup", "dialog");
+      element.innerHTML = svg;
+      element.addEventListener("dblclick", (event) => event.stopPropagation());
+      return element;
+    };
+    for (const item of items) {
+      const element = button(
+        `closure-marker closure-${item.bypassed ? "bypassed" : item.severity}`,
+        closureMarkerName(item),
+        item.bypassed ? bypassedMarkSvg() : barrierSvg(item.severity),
+      );
+      element.addEventListener("click", (event) => {
+        // A click on a marker is not a click on the map: it must not add a point.
+        event.stopPropagation();
+        open(element, item.point, closureCard(item), item);
+      });
+      closureMarkers.current.push(new maplibregl.Marker({ element, anchor: "center" }).setLngLat(item.point).addTo(map));
+    }
+    const parks = props.route && !props.stale ? parkNoticesOf(props.route) : [];
+    for (const notice of parks) {
+      if (!notice.point) continue;
+      const point = notice.point;
+      const element = button("closure-marker closure-park", noticeMarkerName(notice), parkNoticeSvg());
+      element.addEventListener("click", (event) => {
+        event.stopPropagation();
+        open(element, point, noticeCard(notice), null);
+      });
+      closureMarkers.current.push(new maplibregl.Marker({ element, anchor: "center" }).setLngLat(point).addTo(map));
+    }
+  }, [props.route, props.stale]);
+
   // The lettered places (the owner, 2026-10-11 21:04 UTC): each a real button in a pin, its letter on it and its
   // name the letter, the place and how far; a press picks it as the list's row would.
   const letteredMarkers = useRef<Marker[]>([]);
@@ -1677,6 +1946,8 @@ export function MapView(props: Props) {
     if (rider === null) {
       riderMarker.current?.remove();
       riderMarker.current = null;
+      // The ride over: a map turned to the rider's heading (track-up, the default) is north-up again.
+      if (following.current && map.getBearing() !== 0) map.easeTo({ bearing: 0, duration: 0 });
       following.current = false;
       return;
     }
@@ -1697,7 +1968,9 @@ export function MapView(props: Props) {
       following.current = false;
       return;
     }
-    const bearing = props.headingUp && rider.headingDeg !== null ? rider.headingDeg : props.headingUp ? map.getBearing() : 0;
+    // Track-up: the rider's heading; with none yet, north-up, and with none for now (stopped at a light),
+    // the bearing the map has, so it does not swing north and back.
+    const bearing = props.headingUp && rider.headingDeg !== null ? rider.headingDeg : props.headingUp && following.current ? map.getBearing() : 0;
     // Close in once as following starts; a pinch out after that is kept (it does not stop following).
     const zoom = following.current ? map.getZoom() : Math.max(map.getZoom(), 16);
     following.current = true;
@@ -1812,6 +2085,101 @@ function showJunctionCard(map: MapLibreMap, item: JunctionItem, takeFocus: boole
   return card;
 }
 
+/**
+ * A closure's card (v0.7.0, lib/closureMap.ts closureCard): what is closed, the source named and linked, when it
+ * applies, the delay on this route, and "Route through anyway" or Undo. A dialog named for the closure; its close
+ * button takes the focus, and Escape closes it.
+ */
+function showClosureCard(map: MapLibreMap, at: LonLat, card: ClosureCard, onAction: (bypass: boolean) => void): Popup {
+  const body = document.createElement("div");
+  body.className = "closure-card";
+  const heading = document.createElement("strong");
+  heading.textContent = card.heading;
+  const what = document.createElement("p");
+  what.textContent = card.what;
+  const source = document.createElement("p");
+  source.className = "closure-card-source";
+  if (card.source.url) {
+    const link = document.createElement("a");
+    link.href = card.source.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = card.source.name;
+    source.append(link);
+  } else {
+    source.textContent = card.source.name;
+  }
+  const when = document.createElement("p");
+  when.textContent = card.when;
+  const effect = document.createElement("p");
+  effect.className = "closure-card-effect";
+  effect.textContent = card.effect;
+  body.append(heading, what, source, when, effect);
+  if (card.action) {
+    const action = card.action;
+    const press = document.createElement("button");
+    press.type = "button";
+    press.className = "secondary closure-card-action";
+    press.textContent = action.label;
+    press.addEventListener("click", (event) => {
+      event.stopPropagation();
+      onAction(action.bypass);
+    });
+    body.append(press);
+  }
+  const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, focusAfterOpen: false, offset: 16, className: "closure-popup" })
+    .setLngLat(at)
+    .setDOMContent(body)
+    .addTo(map);
+  const element = popup.getElement();
+  element.setAttribute("role", "dialog");
+  element.setAttribute("aria-label", `${card.heading}: ${card.what}`);
+  element.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      popup.remove();
+    }
+  });
+  const close = element.querySelector<HTMLButtonElement>(".maplibregl-popup-close-button");
+  close?.setAttribute("aria-label", CLOSURE_CARD_CLOSE);
+  close?.focus();
+  return popup;
+}
+
+/** A road barrier: a striped board on two legs, red for a closure, amber for a blocked bike lane. */
+function barrierSvg(severity: "red" | "amber"): string {
+  const colour = severity === "amber" ? LANE_AMBER : CLOSED_RED;
+  return (
+    '<svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true" focusable="false">' +
+    `<circle cx="14" cy="14" r="13" fill="#ffffff" stroke="${colour}" stroke-width="2"/>` +
+    `<rect x="5" y="9" width="18" height="7" rx="1" fill="${colour}"/>` +
+    '<path d="M8 9l-3 7M13 9l-3 7M18 9l-3 7M23 9l-3 7" stroke="#ffffff" stroke-width="2"/>' +
+    `<path d="M8 16v6M20 16v6" stroke="${colour}" stroke-width="2"/>` +
+    "</svg>"
+  );
+}
+
+/** A closure the rider routes through: a small ringed bar on the line. */
+function bypassedMarkSvg(): string {
+  return (
+    '<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true" focusable="false">' +
+    `<circle cx="9" cy="9" r="8" fill="#ffffff" stroke="${CLOSED_RED}" stroke-width="2"/>` +
+    `<rect x="4" y="7.5" width="10" height="3" fill="${CLOSED_RED}"/>` +
+    "</svg>"
+  );
+}
+
+/** A park's "check before you go": an exclamation mark on a dark green disc. */
+function parkNoticeSvg(): string {
+  return (
+    '<svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true" focusable="false">' +
+    '<circle cx="13" cy="13" r="12" fill="#1b5e20" stroke="#ffffff" stroke-width="2"/>' +
+    '<path d="M13 6v9" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>' +
+    '<circle cx="13" cy="19.5" r="1.8" fill="#ffffff"/>' +
+    "</svg>"
+  );
+}
+
 /** A wheel: a plain circle with spokes, no operator's mark. */
 function dockWheelSvg(): string {
   return (
@@ -1859,11 +2227,8 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
   const { route, stale } = props;
   const source = map.getSource(ROUTE_SOURCE) as GeoJSONSource | undefined;
   if (!source) return;
-  source.setData(
-    route
-      ? { type: "Feature", properties: {}, geometry: route.geometry }
-      : { type: "FeatureCollection", features: [] },
-  );
+  // The route, and a transit trip's later rides drawn in its colours (lib/mapGlue.ts, routeLineData).
+  source.setData(routeLineData(route) as never);
   setRouteSections(map, route, stale);
   // A ride's camera follows the rider; a re-planned route is not framed over it.
   if (!route || stale || route.geometry.coordinates.length < 2 || props.rider) return;

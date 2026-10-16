@@ -36,6 +36,11 @@ test("a navigation to / or /index.html is the shell (network first), with or wit
   }
 });
 
+test("a shared route's link /s/<32 hex> is the shell: the page reads its id from the path", () => {
+  assert.equal(ruleFor(nav(`/s/${"0a".repeat(16)}#p=1&route=${"0a".repeat(16)}`), ORIGIN), "shell");
+  for (const path of ["/s/", "/s/abc", `/s/${"0a".repeat(16)}/preview.png`, `/s/${"0A".repeat(16)}`]) assert.equal(ruleFor(nav(path), ORIGIN), "pass", path);
+});
+
 test("any other navigation is not intercepted: sign-in, a made-up admin path, /static, the preset redirects, the stress page", () => {
   for (const path of ["/auth/login", "/auth/discord/callback?code=x", "/internal-zz9q/", "/internal-zz9q/login/", "/static/admin/css/base.css", "/trailmaxxing", "/default/", "/about/stress.html", "/healthz", "/api/route"]) {
     assert.equal(ruleFor(nav(path), ORIGIN), "pass", path);
@@ -412,6 +417,16 @@ test("the Find food places and the climbs are left out of the precache and liste
   assert.equal(ruleFor(get("/assets/climbs-Cd34.json"), ORIGIN), "lazy");
   assert.equal(ruleFor(get("/assets/foodish.js"), ORIGIN), "precache");
   assert.equal(ruleFor(get("/assets/climbs-Cd34.js"), ORIGIN), "precache");
+});
+
+test("the federal land, only Mass Ride's, is lazy too; the worker starts once the page has loaded (review fe-perf-6)", () => {
+  const names = ["assets/index-1.js", "assets/federal-land-Ef56.json"];
+  assert.deepEqual(precacheList(names), ["/assets/index-1.js"]);
+  assert.deepEqual(lazyList(names), ["/assets/federal-land-Ef56.json"]);
+  assert.equal(ruleFor(get("/assets/federal-land-Ef56.json"), ORIGIN), "lazy");
+  const app = readFileSync(new URL("../InstallableApp.tsx", import.meta.url), "utf8");
+  assert.match(app, /useEffect\(\(\) => whenSettled\(\(\) => void startWorker\(\)\), \[\]\);/);
+  assert.match(app, /if \(win\.document\.readyState === "complete"\) go\(\);\s*else win\.addEventListener\("load", go, \{ once: true \}\);/);
 });
 
 test("install does not fetch a lazy asset", async () => {

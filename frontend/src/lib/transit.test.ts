@@ -11,6 +11,7 @@ import {
   OPTIONS_LABEL,
   STEPS_LABEL,
   TRACK_WORK,
+  timesFromText,
   closedName,
   drawOf,
   optionChosenSaid,
@@ -150,6 +151,23 @@ test("the options are lettered, quickest first, with riding the whole way among 
   assert.equal(TRACK_WORK, "Scheduled service; check for track work.");
 });
 
+test("TB-13: the times are said as published timetables, Metro's typical service, or both, from the plan's credits", () => {
+  const typical = "WMATA, wmata.com (typical service)";
+  const marc = "MARC, Maryland Transit Administration";
+  const base = { day_type: "weekday" as const, holiday: false };
+  assert.equal(
+    timesFromText({ ...base, credits: [typical] }),
+    "Metro's times are its typical weekday service from wmata.com, not a timetable: its wait is half the usual time between trains.",
+  );
+  assert.doesNotMatch(timesFromText({ ...base, credits: [typical] }), /published timetables/);
+  assert.match(timesFromText({ ...base, credits: [marc] }), /^Times are from each system's published timetables for this weekday: /);
+  assert.doesNotMatch(timesFromText({ ...base, credits: [marc] }), /typical/);
+  const both = timesFromText({ ...base, credits: [marc, typical] });
+  assert.match(both, /published timetables for this weekday: [\s\S]* Metro's times are its typical service from wmata\.com/);
+  assert.match(timesFromText({ day_type: "sunday", holiday: true, credits: [typical] }), /typical sunday \(a holiday\) service/);
+  assert.match(src("TransitSummary.tsx"), /\{TRACK_WORK\} \{timesFromText\(plan\)\} \{plan\.live \?/);
+});
+
 test("a chosen option goes with the request on a transit ride type, for the same trip only", () => {
   const dials = { stress: 40, hills: 0 } as Dials;
   const pick = { trip: "a|b", key: "direct" };
@@ -204,9 +222,8 @@ test("the panel's steps are a labelled ordered list, with the total, comparison 
   const panel = src("app/RoutePanel.tsx");
   assert.match(panel, /const timeName = transit \? \(transit\.scheduled \? "Door-to-door time, scheduled" : "Door-to-door time"\) : "Moving time";/);
   assert.match(panel, /\{!go\.peek && transitFold\}/);
-  // No Start ride on a transit plan, whose line is only the first ride, unless it is riding your own bike the whole way.
-  assert.match(panel, /const wholeRide = !transit \|\| \(transit\.direct && transit\.mode === "bike-transit"\);/);
-  assert.match(panel, /const rideable = !bikeshare && wholeRide && route\.distance_m <= RIDE_MAX_M;/);
+  // Start ride on a transit plan follows its first riding leg (lib/rideTrip.ts; rideTrip.test.ts).
+  assert.match(panel, /const rideable = rideableRoute\(route\);/);
   // The map's markers are images with their whole text equivalent, not buttons.
   const map = src("MapView.tsx");
   assert.match(map, /element\.className = "transit-marker";\n\s*element\.setAttribute\("role", "img"\);\n\s*element\.setAttribute\("aria-label", stop\.label\);/);

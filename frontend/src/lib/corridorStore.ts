@@ -304,6 +304,23 @@ export function clearCorridor(handOn?: (kept: CorridorSnapshot) => Promise<void>
 }
 
 /**
+ * The installed app hidden mid-ride (review RIDE-1): `handOn` is shown what the ride has kept so far,
+ * and copies it, as End ride's would, since a closed app never gets to End ride and the next page
+ * load's sweep clears the ride's copy. Keeping goes on; it runs in the clears' chain like End ride's.
+ */
+export function copyCorridor(handOn: (kept: CorridorSnapshot) => Promise<void>): Promise<void> {
+  const hand = async () => {
+    try {
+      await handOn(await snapshot());
+    } catch {
+      // The last ride keeps what an earlier copy gave it; End ride copies again.
+    }
+  };
+  clearing = clearing.then(hand, hand);
+  return clearing;
+}
+
+/**
  * At page load no ride is on, and none survives a reload, so whatever an earlier page kept is cleared
  * (when the stamp says something may be, or storage cannot say; a page that never rode opens nothing).
  */

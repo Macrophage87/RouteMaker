@@ -45,7 +45,7 @@ from pipeline import conflation, extract, variants  # noqa: E402
 from routemaker import agency_roads, divided, facility, speed_corrections  # noqa: E402
 from routemaker.classes import TRAIL_CLASS_HIGHWAY  # noqa: E402
 from routemaker.geo import Point, haversine  # noqa: E402
-from routemaker.stress import classify  # noqa: E402
+from routemaker.stress import classify, rural_floor, winding  # noqa: E402
 
 MI = 1609.344
 FT_PER_M = 3.28084
@@ -234,17 +234,22 @@ class Context:
             block = self.block_match[way.osm_id]
             aadt = (block.aadt, block.agency, block.year)
         facts = self.road_facts.get(way.osm_id)
-        return classify(
+        urban = way.osm_id in self.urban
+        # As the rebuild reads it: the narrow-road rule's line test and the
+        # owner's rural floor (`pipeline.run`, the classification stage).
+        result = classify(
             tags,
             aadt=aadt[0] if aadt else None,
             aadt_source=aadt[1] if aadt else None,
             aadt_year=aadt[2] if aadt else None,
-            urban=way.osm_id in self.urban,
+            urban=urban,
             jurisdiction=self.state_of(way.coordinates),
             divided=way.osm_id in self.divided,
             separate_facility=way.osm_id in self.separate,
             parking_width_m=facts.parking_reach_m if facts is not None else None,
+            winding=not urban and winding(way.coordinates),
         )
+        return rural_floor(result, tags, urban=urban)
 
 
 def match(ctx: Context, features: list[conflation.RoadFeature], only_state: str | None = None):

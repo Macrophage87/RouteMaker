@@ -49,6 +49,18 @@ area assembly (multipolygon relations and closed ways alike):
   unnamed service roads, footways and paths inside a lot are left off the map;
   routing is unchanged, since a lot can be a fair connector.
 
+- `works` - `landuse=quarry`, `landfill` or `industrial`: a working site. The owner,
+  2026-10-12: "A marked climb appears to be a quarry, which isn't likely open to the
+  public. Ensure only public roads open to bikes are marked." (the Travilah quarry's haul
+  roads, nine `highway=track` ways with no other tag, carried a Cat 4 climb). Under "err
+  closed on bike access" (OWNER-DECISIONS 330) its ways are closed to bicycles on every
+  graph (`works_closures`, `rm:no_bicycle=works`) and left off the map, unless the way's
+  own tags open it (`bicycle=yes|designated|permissive`, or with no bicycle tag
+  `access=yes|permissive` or a cycleway; `works_open_tags`), it is a numbered public
+  road, or an owner's override reopens it. An
+  industrial area holds public streets as well as its own drives (an industrial park's
+  named roads), so there only its service roads, tracks and unnamed ways close; a named
+  street in one stays open and is listed. Listed in the rebuild's `works-closures.csv`.
 - `park` - `leisure=park` or `nature_reserve`, `boundary=national_park` or
   `protected_area`, or an operator that is the National Park Service. An
   untagged `highway=path` inside one is closed to bicycles, and kept outside
@@ -81,7 +93,15 @@ Area = tuple[tuple[float, float, float, float], list[Ring], list[Ring]]
 
 MILITARY, CEMETERY, PARKING, PARK = "military", "cemetery", "parking", "park"
 SECURED = "secured"
-KINDS = (MILITARY, SECURED, CEMETERY, PARKING, PARK)
+WORKS = "works"
+KINDS = (MILITARY, SECURED, CEMETERY, PARKING, PARK, WORKS)
+
+# Land uses that are a working site no one may wander into (owner report 2026-10-12):
+# every way inside a quarry or a landfill, and an industrial area's own drives, close.
+WORKS_LANDUSE = frozenset({"quarry", "landfill", "industrial"})
+# The working sites whose every way closes, a named one included; in the others
+# (industrial) a named street that is not a service road or a track stays open.
+WORKS_ALL_WAYS = frozenset({"quarry", "landfill"})
 
 # The share of a way's vertices that must fall inside for it to count as inside.
 INSIDE_FRACTION = 0.5
@@ -115,6 +135,8 @@ def area_kind(tags, osm: str = "") -> str | None:
         or (tags.get("operator") or "").startswith("National Park Service")
     ):
         return PARK
+    if tags.get("landuse") in WORKS_LANDUSE:
+        return WORKS
     return None
 
 
@@ -268,11 +290,12 @@ class _NamedArea(tuple):
 
     name: str = ""
     osm: str = ""
+    landuse: str = ""
 
 
-def named_area(area: Area, name: str = "", osm: str = "") -> _NamedArea:
+def named_area(area: Area, name: str = "", osm: str = "", landuse: str = "") -> _NamedArea:
     named = _NamedArea(area)
-    named.name, named.osm = name, osm
+    named.name, named.osm, named.landuse = name, osm, landuse
     return named
 
 
@@ -297,12 +320,14 @@ class _Areas(osmium.SimpleHandler):
             return
         xs, ys = [p[0] for p in points], [p[1] for p in points]
         area = ((min(xs), min(ys), max(xs), max(ys)), outers, inners)
-        self.areas[kind].append(named_area(area, a.tags.get("name") or "", osm))
+        self.areas[kind].append(
+            named_area(area, a.tags.get("name") or "", osm, a.tags.get("landuse") or "")
+        )
 
 
 def restricted_areas(pbf: str | Path) -> dict[str, list[Area]]:
-    """Every military, secured, cemetery, parking and park area in an extract, by
-    kind."""
+    """Every military, secured, cemetery, parking, park and works area in an extract,
+    by kind."""
     handler = _Areas()
     handler.apply_file(str(pbf), locations=True)
     return handler.areas
@@ -846,6 +871,134 @@ def secured_missing(areas: Sequence[Area]) -> list[str]:
     VALIDATE_SEGMENTS's floors refuse the build."""
     seen = {getattr(area, "osm", "") for area in areas}
     return sorted(set(SECURED_AREAS) - seen)
+
+
+# --- Working sites closed to bicycles (owner report 2026-10-12; OWNER-DECISIONS 330) --
+
+# The `rm:no_bicycle` reason of a way inside a quarry, a landfill or an industrial area.
+WORKS_NO_BICYCLE = "works"
+WHY_WORKS = "closed: inside a working site (quarry, landfill or industrial)"
+WHY_WORKS_TAGGED_OPEN = "open: its own access/bicycle tag lets the public ride it"
+WHY_WORKS_STREET = "open: a named street in an industrial area; owner to check it is public"
+WHY_WORKS_DC_STREET = (
+    "open: a public street in DDOT's Roadway Block records (DC data wins over OSM, "
+    "OWNER-DECISIONS 190)"
+)
+# Access values that keep a way in an industrial area closed, beyond `NO_PUBLIC_ACCESS`:
+# a way only for the site's customers, deliveries or own destinations is not a public
+# street a rider may use (unclear bike access is closed, OWNER-DECISIONS 330).
+WORKS_CLOSING_ACCESS = NO_PUBLIC_ACCESS | frozenset(
+    {"destination", "customers", "delivery", "agricultural", "forestry"}
+)
+
+
+def _works_label(area) -> str:
+    landuse = getattr(area, "landuse", "") or "works"
+    name = getattr(area, "name", "") or getattr(area, "osm", "")
+    return f"{name} ({landuse})" if name else landuse
+
+
+def works_street(tags) -> bool:
+    """A named way in an industrial area that is not one of the site's own drives: a
+    street of an industrial park, public unless its tags say otherwise (`access` or
+    `vehicle` in `WORKS_CLOSING_ACCESS`: no, private, destination, customers ...)."""
+    return (
+        bool(tags.get("name"))
+        and tags.get("highway") not in ("service", "track")
+        and not any(tags.get(key) in WORKS_CLOSING_ACCESS for key in ACCESS_KEYS)
+    )
+
+
+def works_open_tags(tags) -> bool:
+    """The way's own tags let the public ride it: a bicycle tag that opens it
+    (`bicycle=yes|designated|permissive`, which outranks `access`), or, with no bicycle
+    tag, `access=yes|permissive` or a cycleway (signed for bicycles by its class) with
+    no `access` or `vehicle` key that keeps the public out."""
+    if tags.get("bicycle") is not None:
+        return tags.get("bicycle") in PUBLIC_BICYCLE
+    if _closing_access(tags, ("access", "vehicle")):
+        return False
+    return tags.get("access") in PUBLIC_ACCESS or tags.get("highway") == "cycleway"
+
+
+# A bare `highway=track` with at least this much of its length inside a quarry or a
+# landfill is one of its haul roads, even when most of it runs outside the mapped
+# outline (the Travilah quarry's ways 1379220535 and 1379220571 failed the rebuild of
+# 2026-10-16 at under half inside; "err closed on bike access", OWNER-DECISIONS 330).
+HAUL_TRACK_MIN_INSIDE_M = 30.0
+
+
+def _haul_track_in_pit(tags, coords, share: float) -> bool:
+    """A track with no tag that opens it, `HAUL_TRACK_MIN_INSIDE_M` or more of it inside
+    a quarry or a landfill (`share` of its length)."""
+    if tags.get("highway") != "track" or works_open_tags(tags) or public_route(tags):
+        return False
+    return share * _length_m(coords) >= HAUL_TRACK_MIN_INSIDE_M
+
+
+def works_closures(
+    ways,
+    areas: Sequence[Area],
+    reopened: Collection[int] = frozenset(),
+    skip: Collection[int] = frozenset(),
+    dc_streets: Collection[int] = frozenset(),
+) -> list[MilitaryWay]:
+    """Every highway way inside a working site (`WORKS`: a quarry, a landfill or an
+    industrial area), closed or (with the reason) left open (owner report 2026-10-12;
+    "err closed on bike access", OWNER-DECISIONS 330). Inside is at least
+    INSIDE_FRACTION of the way's length. Open: an override's bicycle permission, a
+    numbered public road, a public street DDOT's Roadway Block records hold (`dc_streets`,
+    the ways matched to a District block: DC data wins over OSM, OWNER-DECISIONS 190,
+    named in OSM or not), a way whose own tags let the public ride it
+    (`works_open_tags`), and, in an industrial area only, a named street that is not a
+    service road or a track and is not kept to destinations or customers
+    (`works_street`). Everything else closes: a haul road tagged `highway=track` and
+    nothing else among it. `skip` are the ways the military and secured rules already
+    judged."""
+    if not areas:
+        return []
+    all_ways = [a for a in areas if getattr(a, "landuse", "") in WORKS_ALL_WAYS]
+    industrial = [a for a in areas if getattr(a, "landuse", "") not in WORKS_ALL_WAYS]
+    strict = _Shapes(all_ways) if all_ways else None
+    lenient = _Shapes(industrial) if industrial else None
+    out: list[MilitaryWay] = []
+    for osm_id, tags, coords in ways:
+        highway = tags.get("highway")
+        if highway is None or not coords or osm_id in skip:
+            continue
+        share, area = strict.share(coords) if strict is not None else (0.0, None)
+        in_industrial = False
+        if share < INSIDE_FRACTION and not _haul_track_in_pit(tags, coords, share):
+            share, area = lenient.share(coords) if lenient is not None else (0.0, None)
+            if share < INSIDE_FRACTION:
+                continue
+            in_industrial = True
+        if osm_id in reopened and reopened_by_override(tags):
+            status, why = OPEN, WHY_OVERRIDE
+        elif public_route(tags):
+            status, why = OPEN, WHY_PUBLIC_ROUTE
+        elif osm_id in dc_streets:
+            status, why = OPEN, WHY_WORKS_DC_STREET
+        elif works_open_tags(tags):
+            status, why = OPEN, WHY_WORKS_TAGGED_OPEN
+        elif in_industrial and works_street(tags):
+            status, why = OPEN, WHY_WORKS_STREET
+        else:
+            status, why = CLOSED, WHY_WORKS
+        out.append(
+            MilitaryWay(
+                osm_id,
+                _works_label(area),
+                highway,
+                tags.get("name") or "",
+                round(_length_m(coords), 1),
+                status,
+                why,
+                _shown_tags(tags),
+                round(share, 3),
+            )
+        )
+    return out
 
 
 # Ways a bicycle may ride outside a base, for `through_networks`' entry points.

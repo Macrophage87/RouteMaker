@@ -55,6 +55,27 @@ function startWorker(): AppWorker {
   return worker;
 }
 
+/** Run `start` once the page has loaded and the browser is idle (or at once, if it already is); returns a cancel. */
+export function whenSettled(start: () => void, win: Window = window): () => void {
+  let cancelled = false;
+  let idle: number | null = null;
+  const go = () => {
+    if (cancelled) return;
+    if (typeof win.requestIdleCallback === "function") idle = win.requestIdleCallback(() => !cancelled && start(), { timeout: 5000 });
+    else idle = win.setTimeout(() => !cancelled && start(), 0);
+  };
+  if (win.document.readyState === "complete") go();
+  else win.addEventListener("load", go, { once: true });
+  return () => {
+    cancelled = true;
+    win.removeEventListener("load", go);
+    if (idle !== null) {
+      if (typeof win.cancelIdleCallback === "function") win.cancelIdleCallback(idle);
+      win.clearTimeout(idle);
+    }
+  };
+}
+
 const subscribeReady = (listener: () => void) => {
   readyListeners.add(listener);
   return () => readyListeners.delete(listener);
@@ -86,7 +107,9 @@ export interface AppStatus {
  * Ride mode says what a lost signal means for the ride itself).
  */
 export function useAppStatus(riding: boolean, onSay: (text: string) => void): AppStatus {
-  useEffect(() => void startWorker(), []);
+  // After the page has loaded, when the browser is idle: the worker's install downloads the build, which
+  // would otherwise compete with the map's style and first tiles (review fe-perf-6).
+  useEffect(() => whenSettled(() => void startWorker()), []);
   const ready = useSyncExternalStore(subscribeReady, () => workerReady);
   const online = useOnline();
   const updateShown = updateOffered(ready, riding);

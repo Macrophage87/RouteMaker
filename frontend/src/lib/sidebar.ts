@@ -16,7 +16,7 @@ import type { PresetId } from "./presets.ts";
  * the bottom bar, the map's chips, Go's Menu and the Layers sheet's Legend button open (UI-CLEANUP,
  * the approved mockup of 2026-10-11).
  */
-export type PanelView = "planner" | "layers" | "legend" | "suggest" | "review" | "gpx" | "settings" | "nearest" | "food" | "ride";
+export type PanelView = "planner" | "layers" | "legend" | "suggest" | "review" | "gpx" | "settings" | "nearest" | "food" | "ride" | "repair" | "places";
 
 /** The planner's own heading, where the focus goes when the Plan button returns to it (OWNER-DECISIONS 392). */
 export const PLANNER_TITLE = "RouteMaker";
@@ -27,11 +27,14 @@ export const SHEET_TITLES: Record<Exclude<PanelView, "planner">, string> = {
   legend: "Legend",
   suggest: "Suggest a change",
   review: "Review",
-  gpx: "GPX file",
+  gpx: "Route file",
   settings: "Settings",
   nearest: "Nearest water, restroom or Metro",
   food: "Find food",
   ride: "Ride",
+  // v0.7.0: Go's Repair (behind More), and Plan's Places to see (Go calls it Sights).
+  repair: "Repair stands and bike shops",
+  places: "Places to see",
 };
 
 /** Go's Menu (the mockup's Menu sheet): Settings, with Plan, Suggest, GPX and Review above them. */
@@ -57,7 +60,7 @@ export const BAR_ITEMS: readonly BarItem[] = [
   { id: "plan", label: "Plan", opens: "planner", description: "Shows the planner: the points, the ride settings and the route." },
   { id: "layers", label: "Layers", opens: "layers", description: "Opens the map layers and their switches; the legend is behind its Legend button." },
   { id: "suggest", label: "Suggest", opens: "suggest", description: "Opens the ways to suggest a change to the map, or report a problem to DC 311." },
-  { id: "gpx", label: "GPX", opens: "gpx", description: "Opens the GPX file tools: open a file, or download the route." },
+  { id: "gpx", label: "Export", opens: "gpx", description: "Opens the route file tools: open a GPX file, or download the route." },
   { id: "settings", label: "Settings", opens: "settings", description: "Opens the settings: display, Ride mode, this device and your account." },
 ];
 
@@ -151,8 +154,9 @@ export function linkToCopy(
   points: readonly LonLat[],
   preset: PresetId,
   dials: Dials,
+  vias: readonly number[] = [],
 ): string {
-  return `${location.origin}${location.pathname}${location.search}${encodePlan(points, preset, dials)}`;
+  return `${location.origin}${location.pathname}${location.search}${encodePlan(points, preset, dials, vias)}`;
 }
 
 /** The surface "Copy link" uses: the async clipboard where there is one, else the selection method. */

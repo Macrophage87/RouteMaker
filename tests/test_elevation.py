@@ -8,6 +8,7 @@ from pipeline.elevation import (
     ElevationTileInvalid,
     ensure_tiles,
     expected_bytes,
+    fetch_3dep,
     gdalwarp_command,
     threedep_cell,
     tile_for,
@@ -166,19 +167,45 @@ def test_the_stage_puts_every_tile_the_box_touches_in_the_band_layout(tmp_path) 
     assert all(p.stat().st_size == 3601 * 3601 * 2 for p in ready)
 
 
-def test_the_deployments_region_fetches_the_same_four_tiles_it_always_did(tmp_path) -> None:
+def test_the_downloaded_sources_are_cleared_once_every_tile_is_in_place(tmp_path) -> None:
+    # Review pipeline-9: the scratch grew without end and went into every cloud upload.
+    ensure_tiles(tmp_path, (-77.5, 38.5, -77.5, 38.5), fetch_recording([]), warp_writing(3601))
+    assert not (tmp_path / ".fetch").exists()
+
+
+def test_a_3dep_download_has_a_timeout(tmp_path, monkeypatch) -> None:
+    # Review pipeline-4: with none, a stalled transfer held the rebuild to its deadline.
+    import io
+    import urllib.request
+
+    from pipeline import elevation
+
+    asked = []
+
+    def urlopen(url, timeout=None):
+        asked.append(timeout)
+        return io.BytesIO(b"tif")
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    got = fetch_3dep(tile_for(-77.03, 38.90), tmp_path)
+    assert got.read_bytes() == b"tif" and asked == [elevation.FETCH_TIMEOUT_S]
+
+
+def test_the_deployments_region_fetches_its_six_tiles(tmp_path) -> None:
     """The region grew to Baltimore and the Mason-Dixon line (PLAN:13, the
-    owner's amendment of 2026-09-24) and the elevation stage's download did not.
+    owner's amendment of 2026-09-24) and the elevation stage's download did not;
+    v0.7.0's west edge at -78.05 W (all of Martinsburg, West Virginia) adds the
+    W079 column, two tiles.
 
     Read through the stage itself with the deployment's own box, so what is
-    pinned is what a first rebuild fetches: the N38 and N39 bands by the W078
-    and W077 columns, as before the amendment. 39.72 N is still in the N39 band.
-    The east edge is what could have moved it - see the next test."""
+    pinned is what a first rebuild fetches: the N38 and N39 bands by the W079,
+    W078 and W077 columns. 39.72 N is still in the N39 band. The east edge is
+    what could have moved it further - see the next test."""
     from django.conf import settings
 
     seen: list = []
     ensure_tiles(tmp_path, settings.COVERAGE_BBOX, fetch_recording(seen), warp_writing(3601))
-    assert sorted(seen) == ["N38W077", "N38W078", "N39W077", "N39W078"]
+    assert sorted(seen) == ["N38W077", "N38W078", "N38W079", "N39W077", "N39W078", "N39W079"]
 
 
 def test_an_east_edge_on_the_tile_line_would_fetch_a_column_of_the_eastern_shore() -> None:

@@ -1,0 +1,34 @@
+{
+ "ElevatorIncidents": [
+  {
+   "DateOutOfServ": "2026-10-14T06:00:00",
+   "DateUpdated": "2026-10-15T05:12:00",
+   "DisplayOrder": 0,
+   "EstimatedReturnToService": "2026-10-17T23:59:59",
+   "LocationDescription": "Elevator between street and mezzanine",
+   "StationCode": "D01",
+   "StationName": "Federal Triangle, 12th St & Constitution Ave NW",
+   "SymptomCode": null,
+   "SymptomDescription": "Modernization",
+   "TimeOutOfService": "0600",
+   "UnitName": "D01X01",
+   "UnitStatus": null,
+   "UnitType": "ELEVATOR"
+  },
+  {
+   "DateOutOfServ": "2026-10-15T04:30:00",
+   "DateUpdated": "2026-10-15T05:12:00",
+   "DisplayOrder": 0,
+   "EstimatedReturnToService": "2026-10-15T23:59:59",
+   "LocationDescription": "Escalator between mezzanine and platform",
+   "StationCode": "B03",
+   "StationName": "Union Station, 1st St & Massachusetts Ave NE",
+   "SymptomCode": null,
+   "SymptomDescription": "Service Call",
+   "TimeOutOfService": "0430",
+   "UnitName": "B03S02",
+   "UnitStatus": null,
+   "UnitType": "ESCALATOR"
+  }
+ ]
+}

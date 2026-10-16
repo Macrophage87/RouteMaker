@@ -552,7 +552,7 @@ def test_the_superseded_way_is_named_in_one_info_line(tmp_path, caplog) -> None:
 
 @pytest.mark.django_db
 def test_an_approved_row_of_a_kind_no_applier_handles_is_refused(tmp_path) -> None:
-    """A kind outside the three is a row that was written, reviewed and approved
+    """A kind outside the four is a row that was written, reviewed and approved
     and then did nothing at all - the failure this stage exists to end, arriving
     a second way. The model's `Kind` choices are a form-level guard, not a column
     constraint, so a fourth kind added there without an applier here would be
@@ -569,10 +569,10 @@ def test_an_approved_row_of_a_kind_no_applier_handles_is_refused(tmp_path) -> No
         reference_dir=tmp_path / "reference",
     )
     context.ways = [Way(1, highway="secondary")]
-    rows = [Override("surface", 1, {"surface": "asphalt"})]
+    rows = [Override("lane", 1, {"lanes": 2})]
     handlers = build_handlers(context, load_overrides=lambda: rows)
 
-    with pytest.raises(ValidationFailed, match="surface") as raised:
+    with pytest.raises(ValidationFailed, match="lane") as raised:
         handlers[Stage.APPLY_OVERRIDES]()
     assert "way 1" in str(raised.value), "the row is named, not only the kind"
     assert isinstance(raised.value, terminal_causes()), "and a retry cannot fix it"
@@ -580,7 +580,8 @@ def test_an_approved_row_of_a_kind_no_applier_handles_is_refused(tmp_path) -> No
 
 
 @pytest.mark.parametrize(
-    "field", ["access", "stress", "jurisdiction", "fixture_rows_superseded", "unmatched_way_ids"]
+    "field",
+    ["access", "stress", "jurisdiction", "surface", "fixture_rows_superseded", "unmatched_way_ids"],
 )
 def test_every_field_of_the_override_report_reaches_its_summary(field) -> None:
     """The summary is the report as anything outside the stage sees it, so a
@@ -590,7 +591,7 @@ def test_every_field_of_the_override_report_reaches_its_summary(field) -> None:
 
     from pipeline.overrides import OverrideReport
 
-    base = OverrideReport(access=2, stress=3, jurisdiction=4, fixture_rows_superseded=5)
+    base = OverrideReport(access=2, stress=3, jurisdiction=4, surface=6, fixture_rows_superseded=5)
     changed = replace(
         base, **{field: (77,) if field == "unmatched_way_ids" else getattr(base, field) + 10}
     )
@@ -602,6 +603,7 @@ SUMMARY_COUNT_LABELS = {
     "access": r"(\d+) access\b",
     "stress": r"(\d+) stress\b",
     "jurisdiction": r"(\d+) jurisdiction\b",
+    "surface": r"(\d+) surface\b",
     "fixture_rows_superseded": r"(\d+) checked-in crossing rows superseded\b",
 }
 
@@ -619,9 +621,15 @@ def summary_counts(text: str) -> dict[str, list[int]]:
 @pytest.mark.parametrize(
     "counts",
     [
-        {"access": 2, "stress": 3, "jurisdiction": 4, "fixture_rows_superseded": 5},
-        {"access": 0, "stress": 1, "jurisdiction": 0, "fixture_rows_superseded": 0},
-        {"access": 7, "stress": 0, "jurisdiction": 11, "fixture_rows_superseded": 13},
+        {"access": 2, "stress": 3, "jurisdiction": 4, "surface": 6, "fixture_rows_superseded": 5},
+        {"access": 0, "stress": 1, "jurisdiction": 0, "surface": 0, "fixture_rows_superseded": 0},
+        {
+            "access": 7,
+            "stress": 0,
+            "jurisdiction": 11,
+            "surface": 17,
+            "fixture_rows_superseded": 13,
+        },
     ],
 )
 def test_each_count_in_the_summary_sits_under_its_own_label(counts) -> None:
@@ -698,7 +706,7 @@ def test_the_override_stage_logs_its_report(tmp_path, caplog) -> None:
     assert report.summary() in caplog.messages, caplog.messages
 
 
-def test_the_handled_kinds_are_the_three_the_appliers_implement_and_the_model_offers() -> None:
+def test_the_handled_kinds_are_the_four_the_appliers_implement_and_the_model_offers() -> None:
     """Enumerated, not only read by name.
 
     The refusal above pins what happens to a kind outside the set; it cannot see
@@ -711,7 +719,7 @@ def test_the_handled_kinds_are_the_three_the_appliers_implement_and_the_model_of
     from core.models import Override as OverrideRow
     from pipeline.overrides import HANDLED_KINDS
 
-    assert HANDLED_KINDS == {"access", "stress", "jurisdiction"}
+    assert HANDLED_KINDS == {"access", "stress", "jurisdiction", "surface"}
     assert set(OverrideRow.Kind.values) == HANDLED_KINDS, (
         "the admin offers a kind the stage does not handle, or the stage handles one "
         "nobody can write"
@@ -1147,3 +1155,39 @@ def test_a_bus_road_is_not_made_car_free_tier_1() -> None:
     stress = {1: StressResult(Stress.LTS3, "mixed traffic, 30 mph")}
     assert car_free_tier_1(way, stress) is True
     assert stress[1].tier is Stress.LTS1
+
+
+# --- Surface penalties (v0.7.0): a routing price, not a level ---------------------------
+
+
+def test_a_surface_row_asks_the_graph_for_its_class_and_a_null_one_for_nothing() -> None:
+    from pipeline.overrides import apply_surface
+
+    ways = {1: Way(1, highway="residential"), 2: Way(2, highway="residential")}
+    rows = [
+        Override("surface", 1, {"surface": "rough"}),
+        Override("surface", 2, {"surface": None}),
+        Override("surface", 9, {"surface": "sand"}),
+        Override("stress", 1, {"tier": 3}),
+    ]
+    assert apply_surface(ways, rows) == ({1: "paved_rough"}, [9])
+
+
+@pytest.mark.parametrize("value", [{"surface": "asphalt"}, {"surface": "rough", "x": 1}, "rough"])
+def test_a_surface_row_with_a_value_it_may_not_have_is_refused(value) -> None:
+    from pipeline.overrides import OverrideRefused, apply_surface
+
+    with pytest.raises(OverrideRefused, match="way 1"):
+        apply_surface({1: Way(1, highway="residential")}, [Override("surface", 1, value)])
+
+
+def test_every_surface_penalty_names_a_class_the_remap_knows() -> None:
+    """lua/routemaker_remap.lua SURFACE_ORDER: a class it does not know is read as no change."""
+    import re
+
+    from pipeline.overrides import SURFACE_PENALTIES
+
+    lua = (Path(__file__).resolve().parents[1] / "lua" / "routemaker_remap.lua").read_text()
+    order = re.search(r"M\.SURFACE_ORDER = \{(.*?)\}", lua, re.S).group(1)
+    known = set(re.findall(r"([a-z_]+) = \d", order))
+    assert {cls for cls, _ in SURFACE_PENALTIES.values()} <= known

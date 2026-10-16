@@ -183,6 +183,10 @@ def threedep_cell(tile: TileName) -> str:
     return f"{ns}{abs(lat):02d}{ew}{abs(tile.lon):03d}"
 
 
+# How long one 3DEP download may go without an answer or a byte, seconds.
+FETCH_TIMEOUT_S = 120
+
+
 def fetch_3dep(tile: TileName, into: Path) -> Path:
     """Download the 3DEP source raster for one tile.
 
@@ -196,7 +200,11 @@ def fetch_3dep(tile: TileName, into: Path) -> Path:
     if destination.exists():
         return destination
     partial = destination.with_suffix(".tif.part")
-    with urllib.request.urlopen(THREEDEP_URL.format(cell=cell)) as response:  # noqa: S310
+    # A timeout, so a stalled transfer fails the tile rather than holding the rebuild until
+    # its own deadline (review pipeline-4).
+    with urllib.request.urlopen(  # noqa: S310
+        THREEDEP_URL.format(cell=cell), timeout=FETCH_TIMEOUT_S
+    ) as response:
         with partial.open("wb") as out:
             shutil.copyfileobj(response, out)
     partial.replace(destination)
@@ -260,4 +268,7 @@ def ensure_tiles(
         ready.append(destination)
 
     shutil.rmtree(staging, ignore_errors=True)
+    # Every tile is in place: the downloaded sources are not needed again, and left there
+    # they grew without end and went into every cloud upload (review pipeline-9).
+    shutil.rmtree(scratch, ignore_errors=True)
     return ready

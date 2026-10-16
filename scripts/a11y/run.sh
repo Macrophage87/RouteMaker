@@ -49,7 +49,10 @@ for _ in $(seq 1 30); do
   docker exec "$name-vite" node -e 'fetch("http://127.0.0.1:4173/sw.js").then(r=>process.exit(r.ok?0:1),()=>process.exit(1))' && break
   sleep 1
 done
-docker run -d --name "$name-chrome" --network "container:$name-vite" --shm-size 512m "$CHROME_IMAGE" \
+# 2g of /dev/shm: Chromium streams each response through a 2 MB shared-memory pipe, and a reload of the
+# dev server's ~240 unbundled modules answered from the cache (304) opens nearly all of them at once; in
+# 512m the later ones fail (net::ERR_INSUFFICIENT_RESOURCES) and the app never starts.
+docker run -d --name "$name-chrome" --network "container:$name-vite" --shm-size 2g "$CHROME_IMAGE" \
   /ms-playwright/chromium-1208/chrome-linux64/chrome --headless=new --no-sandbox --disable-gpu \
   --use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader \
   --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 --user-data-dir=/tmp/chrome about:blank >/dev/null

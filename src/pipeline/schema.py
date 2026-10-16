@@ -388,14 +388,27 @@ def ride_layer_predicate(has_facility: bool, has_car_free: bool = False) -> str:
     return f"({paths} OR {roads})"
 
 
+def ride_layer_mtb_predicate(has_facility: bool) -> str:
+    """The mountain-bike trails the z12-13 ride layer carries as well, on a table
+    with the `mtb_only` column (`core.stress_tiles.RIDE_LAYER`; v0.7.0, the plan:
+    "MTB trails from zoom 12-13", the owner of 2026-10-12: "Mountain bike trails
+    seem plotted but don't show up very well"). Every one, whatever its run: the
+    map draws them only on their own layer, off until the rider turns it on, and
+    in the Mountain Bike ride type (frontend/src/stressStyle.js, MTB_MIN_ZOOM)."""
+    return f"({trails_predicate(has_facility)} AND {MTB_ONLY_COLUMN})"
+
+
 # The ride layer's own index (SEGMENT_DDL): a partial one holding only the rows a
 # ride-layer tile can draw, which are well under a tenth of the table, so a z12
 # tile's scan does not read every street in the box. The query's predicate implies
-# it: each of its terms is a run at or above the shorter of the two bars, or a
-# timed closure.
+# it: each of its terms is a run at or above the shorter of the two bars, a timed
+# closure, or a mountain-bike trail (`mtb_only`, MTB_ONLY_COLUMN below; v0.7.0). A
+# table built before v0.7.0 has the index without the last term, and its z12-13
+# tiles read the mountain-bike trails through the geometry index instead.
 _RIDE_INDEX_MIN_M = round(min(RIDE_PATH_RUN_MI, RIDE_ROAD_RUN_MI) * METRES_PER_MILE)
 RIDE_INDEX_PREDICATE = (
     f"COALESCE({CALM_RUN_COLUMN}, 0) >= {_RIDE_INDEX_MIN_M} OR cardinality({CAR_FREE_COLUMN}) > 0"
+    " OR mtb_only"
 )
 
 
@@ -445,6 +458,9 @@ MTB_LEVEL_COLUMN = "mtb_level"
 # `name`. A column of its own, not `trail_name`: that one chains the long trails' runs,
 # which a mountain-bike way must never join (OWNER-DECISIONS 378).
 MTB_NAME_COLUMN = "mtb_name"
+# An unnamed bike way's name from the street beside it (`routemaker.facility.
+# side_street_names`): read by the route description (`core.routing`) and the road panel.
+SIDEPATH_NAME_COLUMN = "sidepath_name"
 WALK_BIKE_COLUMN = "walk_bike"
 ROUGH_COLUMN = "is_rough"
 ROAD_TRAIT_COLUMNS = ("road_speed_mph", "road_lanes", "road_oneway")
@@ -568,6 +584,13 @@ CREATE TABLE {schema}.segment (
     -- labels it with and the road panel says. Null on every other way and where none is
     -- mapped. Not `trail_name`, which chains the long trails' runs (378).
     mtb_name        text,
+    -- An unnamed cycleway or path's name from the named street it runs alongside
+    -- (`routemaker.facility.side_street_names`; v0.7.0 "Go riding fixes" item 4):
+    -- "9th Street Northwest bike lane", or "... protected bike lane" where tagged
+    -- separated or segregated. The route description and the road panel say it where
+    -- the way has no name of its own. Null on every other way, and on every row of a
+    -- table built before the column existed (the way is then just "path").
+    sidepath_name   text,
     -- What the classifier read the road at, for the intersection model
     -- (`routemaker.intersections`; OWNER-DECISIONS 165-167, 172): the speed and
     -- through lanes a direction as read (tags, an agency's record, a curated
@@ -620,6 +643,13 @@ CREATE TABLE {schema}.segment (
     -- the rules that read the half take the midpoint (docs/stress/stress-number.md).
     stress_half                 boolean     NOT NULL DEFAULT false
                                 CHECK (NOT stress_half OR stress_tier < 5),
+    -- Every rating held for the way (`routemaker.agency_lts`; the owner,
+    -- 2026-10-13: "put all the relevant information in the tab when viewing the
+    -- road"): the classifier's tier, each agency's level, and which one set
+    -- `stress_tier` (`used`). Null where no agency rated the way. No migration:
+    -- the table is created whole on every rebuild, and the road panel reads it
+    -- only where the live table has it (`core.segment_info`).
+    stress_ratings              jsonb,
     CONSTRAINT segment_adjustment_shown CHECK (
         stress_adjustment_id IS NOT NULL
         OR (stress_computed_tier IS NULL AND stress_adjustment_direction IS NULL

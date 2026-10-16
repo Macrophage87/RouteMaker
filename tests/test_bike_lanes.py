@@ -32,7 +32,11 @@ VEIRS_MILL = {
 
 def test_the_owners_file_marks_the_23_ways_the_moco_rows_had():
     sides = bike_lanes.load()
-    retired = {r["osm_way_id"] for r in json.loads(MOCO.read_text())["retire"]}
+    retired = {
+        r["osm_way_id"]
+        for r in json.loads(MOCO.read_text())["retire"]
+        if r["value"]["adjustment_id"] == "moco-lts5-veirs-mill-road"
+    }
     veirs = {w for w in sides if w in retired}
     assert veirs == retired and len(veirs) == 23
     assert {sides[w] for w in veirs} == {"right"}

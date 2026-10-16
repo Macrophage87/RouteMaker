@@ -121,7 +121,7 @@ export function SuggestChange({ origin, wayId, title, current, point, halfSteps,
                 aria-invalid={error?.field === "step" ? true : undefined}
                 onChange={(event) => setStep(Number(event.target.value))}
               />
-              <output htmlFor={id("step")} className="stress-editor-output">
+              <output htmlFor={id("step")} className="stress-editor-output" aria-hidden="true">
                 {words}
               </output>
             </div>

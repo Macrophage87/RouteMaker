@@ -1,0 +1,114 @@
+{
+ "Trains": [
+  {
+   "Car": "8",
+   "Destination": "Vienna/F",
+   "DestinationCode": "K08",
+   "DestinationName": "Vienna/Fairfax-GMU",
+   "Group": "2",
+   "Line": "OR",
+   "LocationCode": "D06",
+   "LocationName": "Eastern Market",
+   "Min": "3"
+  },
+  {
+   "Car": "8",
+   "Destination": "Vienna/F",
+   "DestinationCode": "K08",
+   "DestinationName": "Vienna/Fairfax-GMU",
+   "Group": "2",
+   "Line": "OR",
+   "LocationCode": "D06",
+   "LocationName": "Eastern Market",
+   "Min": "11"
+  },
+  {
+   "Car": "8",
+   "Destination": "Vienna/F",
+   "DestinationCode": "K08",
+   "DestinationName": "Vienna/Fairfax-GMU",
+   "Group": "2",
+   "Line": "OR",
+   "LocationCode": "D06",
+   "LocationName": "Eastern Market",
+   "Min": "19"
+  },
+  {
+   "Car": "8",
+   "Destination": "New Carr",
+   "DestinationCode": "D13",
+   "DestinationName": "New Carrollton",
+   "Group": "1",
+   "Line": "OR",
+   "LocationCode": "D06",
+   "LocationName": "Eastern Market",
+   "Min": "5"
+  },
+  {
+   "Car": "8",
+   "Destination": "Ashburn",
+   "DestinationCode": "N12",
+   "DestinationName": "Ashburn",
+   "Group": "2",
+   "Line": "SV",
+   "LocationCode": "D06",
+   "LocationName": "Eastern Market",
+   "Min": "7"
+  },
+  {
+   "Car": "8",
+   "Destination": "Shady Gr",
+   "DestinationCode": "A15",
+   "DestinationName": "Shady Grove",
+   "Group": "2",
+   "Line": "RD",
+   "LocationCode": "B03",
+   "LocationName": "Union Station",
+   "Min": "ARR"
+  },
+  {
+   "Car": "8",
+   "Destination": "Shady Gr",
+   "DestinationCode": "A15",
+   "DestinationName": "Shady Grove",
+   "Group": "2",
+   "Line": "RD",
+   "LocationCode": "B03",
+   "LocationName": "Union Station",
+   "Min": "9"
+  },
+  {
+   "Car": "8",
+   "Destination": "Glenmont",
+   "DestinationCode": "B11",
+   "DestinationName": "Glenmont",
+   "Group": "1",
+   "Line": "RD",
+   "LocationCode": "B03",
+   "LocationName": "Union Station",
+   "Min": "BRD"
+  },
+  {
+   "Car": "-",
+   "Destination": "No Passe",
+   "DestinationCode": null,
+   "DestinationName": "No Passenger",
+   "Group": "1",
+   "Line": "--",
+   "LocationCode": "B03",
+   "LocationName": "Union Station",
+   "Min": "---"
+  },
+  {
+   "Car": "8",
+   "Destination": "Glenmont",
+   "DestinationCode": "B11",
+   "DestinationName": "Glenmont",
+   "Group": "1",
+   "Line": "RD",
+   "LocationCode": "A01",
+   "LocationName": "Metro Center",
+   "Min": "4"
+  }
+ ]
+}

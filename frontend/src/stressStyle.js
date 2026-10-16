@@ -839,21 +839,13 @@ function linePaint(color, width, busy, zoomedOut = null) {
  * Ride tiles. Their filters also take out any feature with a capacity (`massHides`).
  */
 let massRide = false;
-const massListeners = new Set();
 
 export function massRideOn() {
   return massRide;
 }
 
 export function setMassRide(on) {
-  if (massRide === on) return;
   massRide = on;
-  massListeners.forEach((listener) => listener());
-}
-
-export function subscribeMassRide(listener) {
-  massListeners.add(listener);
-  return () => massListeners.delete(listener);
 }
 
 /**
@@ -976,8 +968,8 @@ export function mtbTicksPaint(strong = accessibilityOn()) {
   return { "line-color": MTB_TICKS.color, "line-width": mtbHaloWidth(width, strong) + 2 * (strong ? MTB_TICKS.strongPx : MTB_TICKS.px), "line-dasharray": MTB_TICKS.dash };
 }
 
-/** The zoom the not-for-routes line draws from: where the tiles carry the trails (STRESS_ZOOMS.quiet, held equal by a test). */
-export const MTB_MIN_ZOOM = 14;
+/** The zoom the not-for-routes line draws from: where the tiles carry the trails (STRESS_ZOOMS.ride since v0.7.0, held equal by a test; the plan: "MTB trails from zoom 12-13"). */
+export const MTB_MIN_ZOOM = 12;
 
 /** The unrated trails' line: colour, width and dashes, plain or with the accessibility switch on. */
 export function mtbTrailPaint(strong = accessibilityOn()) {
@@ -1179,8 +1171,9 @@ function stressFiltersOf(when, showHighLanes, routableMtb) {
     filters[`stress-unpaved-${tier.tier}`] = [...filter, ["==", ["get", "unpaved"], true]];
     if (tier.tier < 5) {
       // A half step's dash (441r-441v, 458): the feature's own tier is this one (not a road closed to cars
-      // now, which draws as a path at 1) and it carries the half.
-      const half = [...filter, ["==", ["get", "tier"], tier.tier], isHalfStep];
+      // now, which draws as a path at 1, even one whose own tier is 1: the router drops its half then, review
+      // CH-5) and it carries the half.
+      const half = [...filter, ["==", ["get", "tier"], tier.tier], ["!", carFreeNow(when)], isHalfStep];
       filters[`stress-half-outline-${tier.tier}`] = half;
       filters[`stress-half-${tier.tier}`] = half;
     }

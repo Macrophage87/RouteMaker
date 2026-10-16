@@ -11,7 +11,7 @@
  */
 import type { RouteResponse } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
-import { call, suggestionLine, type ReviewAction, type SuggestionItem } from "./suggestions.ts";
+import { call, suggestionLine, type ReviewAction, type ReviewTallies, type SuggestionItem } from "./suggestions.ts";
 
 /** The levels, as the poll says them (core/suggestion_post.py JUNCTION_WORDS). 5 is Avoid. */
 export const JUNCTION_LEVELS: readonly { level: 2 | 3 | 4 | 5; words: string }[] = [
@@ -235,6 +235,8 @@ export interface ReviewEntry {
   lat: number;
   lon: number;
   created_at: string;
+  /** A road suggestion's second reviewers' marks (v0.7.0): a reviewer may agree or disagree with it. */
+  reviews?: ReviewTallies;
 }
 
 export function roadEntry(item: SuggestionItem): ReviewEntry {
@@ -244,14 +246,23 @@ export function roadEntry(item: SuggestionItem): ReviewEntry {
     id: item.id,
     place: item.road,
     line: suggestionLine(item),
-    detail: "",
+    detail: roadDetail(item),
     warning: "",
     reason: item.reason,
     status: item.status,
     lat: item.lat,
     lon: item.lon,
     created_at: item.created_at,
+    ...(item.reviews ? { reviews: item.reviews } : {}),
   };
+}
+
+/** A road suggestion's further line (v0.7.0): sent signed out, and how many sends for the road agree. */
+export function roadDetail(item: SuggestionItem): string {
+  const parts: string[] = [];
+  if (item.signed_out) parts.push("Sent signed out");
+  if ((item.agree ?? 1) > 1) parts.push(`${item.agree} sends for this road agree`);
+  return parts.length ? `${parts.join("; ")}.` : "";
 }
 
 export function junctionEntry(item: JunctionSuggestionItem): ReviewEntry {
@@ -288,6 +299,9 @@ export function loadProblem(roads: unknown, junctions: unknown): string {
 
 /** Both lists as one, oldest first (each API answers its own oldest first). */
 export function reviewEntries(roads: SuggestionItem[], junctions: JunctionSuggestionItem[]): ReviewEntry[] {
-  const all = [...roads.map(roadEntry), ...junctions.map(junctionEntry)];
-  return all.sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
+  const oldestFirst = (a: ReviewEntry, b: ReviewEntry) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0);
+  // From v0.7.0 the server groups roads' suggestions by road, most agreed first (`agree`): that order is
+  // kept, and the junctions follow, oldest first. An older server's list is one list, oldest first.
+  if (roads.some((r) => r.agree !== undefined)) return [...roads.map(roadEntry), ...junctions.map(junctionEntry).sort(oldestFirst)];
+  return [...roads.map(roadEntry), ...junctions.map(junctionEntry)].sort(oldestFirst);
 }

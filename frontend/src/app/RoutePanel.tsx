@@ -10,8 +10,10 @@ import { placeLetter } from "../lib/letteredPlaces.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration } from "../lib/format.ts";
 import { presetLabel, presetSaid, type PresetId } from "../lib/presets.ts";
+import { NOVICE_TRANSIT_CHOICES, noviceOfferText, noviceTripLine, noviceTripShort, type NoviceTrip } from "../lib/noviceOffer.ts";
 import { PresetName } from "../lib/presetName.ts";
 import { stressSegments, type StressSegment } from "../lib/stressBar.ts";
+import { lightLine, type LightMark } from "../lib/lightTimes.ts";
 import { calmSearchNote, detourView, paceText, stillPlanningSaid, movedPointsNote } from "../lib/summary.ts";
 import { isCancelKey } from "../lib/sheet.ts";
 import { useStressStyle } from "../useStressStyle.ts";
@@ -28,7 +30,8 @@ import { chartKind, corkerFigure, foldName, usableProfile } from "../lib/profile
 import { RouteDescription } from "../RouteDescription.tsx";
 import { RIDE_SAFETY, RideSettingsFields } from "../RideMode.tsx";
 import type { RidePrefs } from "../lib/rideOutput.ts";
-import { RIDE_MAX_M, RIDE_TOO_LONG } from "../lib/navigate.ts";
+import { RIDE_TOO_LONG } from "../lib/navigate.ts";
+import { restOffered, rideTripOf, rideable as rideableRoute, ridesLine } from "../lib/rideTrip.ts";
 import { BikeshareSummary } from "../BikeshareSummary.tsx";
 import { TransitSummary } from "../TransitSummary.tsx";
 import { DepartureTimer } from "../DepartureTimer.tsx";
@@ -38,10 +41,21 @@ import { rideSizeOf, type Dials, type Ending } from "../lib/dials.ts";
 import { CAPACITY_FOLD_TITLE, capacitySummary } from "../lib/massCapacity.ts";
 import { CapacityFigures, CapacityStats } from "../lib/massLegend.ts";
 import { outsideDcNote } from "../lib/dcBoundary.ts";
-import { downloadGpx } from "../GpxPanel.tsx";
+import { SaveRoute, type SaveRouteProps } from "../SaveRoute.tsx";
+import { SAVE_ROUTE, SAVE_SHORT } from "../lib/savedRoutes.ts";
 import { Fold, QuickFigures } from "../Sidebar.tsx";
 import { COPY_LINK, ROUTE_FOLDS, chartFoldOpen } from "../lib/sidebar.ts";
 import { SHARE_LABEL, SHARE_NAME } from "../lib/share.ts";
+import { SHARE_IMAGE_LABEL } from "../lib/shareCard.ts";
+import {
+  SHARE_DELETE_AFTER_LABEL,
+  SHARE_KEEP_LABEL,
+  SHARE_KEEP_OPTIONS,
+  SHARE_UNTIL_DAYS,
+  dayFromToday,
+  type ShareKeep,
+  type ShareKeepChoice,
+} from "../lib/sharedRoutes.ts";
 import { calmPercent, quickFigures, stressBarKey, stressBarLabel } from "../lib/quickFigures.ts";
 import { junctionItems } from "../lib/intersectionMarkers.ts";
 import type { WaterAlong, WaterStatus } from "../lib/waterRestrooms.ts";
@@ -72,12 +86,23 @@ export interface RouteActionsProps {
   linkNote: string;
   canShare: boolean;
   shareRoute: () => void;
+  /** How long the server keeps a shared line, chosen under Share (lib/sharedRoutes.ts ShareKeep). */
+  shareKeep: ShareKeep;
+  onShareKeep: (keep: ShareKeep) => void;
+  /** Opens Share as image (ShareCardDialog), beside Share in Plan's More. */
+  shareImage: () => void;
   linkSpoken: string;
   keepShown: boolean;
   keepForOffline: () => Promise<void>;
   keeping: boolean;
   keepSpoken: { text: string; count: number };
   linkSaid: string;
+  /** Download GPX through the page: closures checked first, an unedited opened file as it came (v0.7.0). */
+  downloadRoute: () => void;
+  /** Save route (signed in), beside Share; null signed out. */
+  save: Omit<SaveRouteProps, "label" | "chip"> | null;
+  /** A reopened saved route's line about today's map, with Update route; null otherwise. */
+  savedNote: ReactNode;
 }
 
 /** Go's few extra controls on the route: its ride chip, the Routes chip and Plan in detail. */
@@ -88,11 +113,65 @@ export interface GoRouteControls {
   onPlan: () => void;
   /** The sheet is at its smallest (peek): the route's time, Start and the stress bar only. */
   peek: boolean;
+  /** The sheet is at full height (or the page is wide, with no sheet): the elevation chart shows (review F8). */
+  full: boolean;
   /**
    * A Bikeshare route's options, lettered A, B, C (lib/bikeshareOptions.ts), with the one the shown plan
    * rides (-1: none yet); a press re-plans that pair. Null off Bikeshare, or with one option.
    */
   options: { list: BikeshareOption[]; picked: number; busy: boolean; onPick: (index: number) => void } | null;
+  /** Novice and Nervous's offer (v0.7.0, lib/noviceOffer.ts): plan the trip on this transit ride type instead. */
+  onNoviceTransit?: (preset: PresetId) => void;
+  /** Each offered option's trip, found in the background as the offer shows (App), by ride type. */
+  noviceTrips?: Partial<Record<PresetId, NoviceTrip>>;
+  /** Go's "Add a stop" (Go.tsx GoAddStop), or null: shown under Start, so the sheet leads with the time and Start. */
+  addStop?: ReactNode;
+}
+
+/**
+ * Novice and Nervous where only a busy road connects (v0.7.0): the road named, and beside the bike route, unasked,
+ * "Own bike + transit" and "Bikeshare + transit", each a button with its one-line note (its time door to door, and
+ * the busy stretch it avoids) as its description; nothing otherwise.
+ */
+function NoviceTransitOffer({
+  route,
+  preset,
+  onTake,
+  trips,
+}: {
+  route: RouteResponse;
+  preset: PresetId;
+  onTake?: (preset: PresetId) => void;
+  trips?: Partial<Record<PresetId, NoviceTrip>>;
+}) {
+  const text = noviceOfferText(route, preset);
+  const id = useId();
+  if (!text || !onTake || !route.novice) return null;
+  const note = route.novice;
+  return (
+    <div className="novice-offer" role="group" aria-labelledby={id}>
+      <p id={id} className="notice">
+        <Icon name="warn" size={16} />
+        {text}
+      </p>
+      <ul className="novice-trips">
+        {NOVICE_TRANSIT_CHOICES.map((choice) => (
+          <li key={choice.preset}>
+            <button type="button" className="chip" aria-describedby={`${id}-${choice.preset}`} onClick={() => onTake(choice.preset)}>
+              {choice.label}
+            </button>
+            {/* Shown short; the whole line (time, and the road it avoids) is the button's description. */}
+            <span className="novice-trip-note" aria-hidden="true">
+              {noviceTripShort(trips?.[choice.preset])}
+            </span>
+            <span id={`${id}-${choice.preset}`} className="visually-hidden">
+              {noviceTripLine(trips?.[choice.preset], note)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 /** Go's Bikeshare options: one button each, lettered as on the map, named by the option's own words. */
@@ -177,6 +256,8 @@ export interface RouteSectionProps {
   go: GoRouteControls;
   /** The transit ride types' options and departure (TransitSummary). */
   transitControls: TransitControls;
+  /** The light times on the route near dawn or dusk (lib/lightTimes.ts), leaving now; empty otherwise. */
+  light: readonly LightMark[];
 }
 
 /** A transit plan's controls: plan another option, and the departure's milestones and a miss. */
@@ -184,11 +265,13 @@ export interface TransitControls {
   onPick: (key: string) => void;
   announce: (text: string) => void;
   onMissed: () => void;
+  /** Ride the rest (lib/rideTrip.ts): a ride for the trip's last riding leg, after the transit. */
+  onRideRest: () => void;
 }
 
 /** The planner's Route section: planning, the long-ride question, errors, the route summary and Start ride's question. */
 export function RouteSection(props: RouteSectionProps) {
-  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs, rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls } = props;
+  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs, rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls, light } = props;
   const goMode = mode === "go";
   return (
     <section key="route" aria-labelledby="route-heading" aria-busy={stale} className={goMode ? "route-section go-route" : "route-section"}>
@@ -273,6 +356,7 @@ export function RouteSection(props: RouteSectionProps) {
           preset={preset}
           go={go}
           transitControls={{ ...transitControls, busy: stale }}
+          light={light}
         />
       )}
       {shown && rideAsk && (
@@ -322,20 +406,47 @@ export function RouteSection(props: RouteSectionProps) {
 }
 
 /**
+ * Under Share in Plan's More: how long the shared link's exact line is kept. A year after it was last opened is the
+ * default; "Until a date" shows the date, starting a month out (the owner, 2026-10-16).
+ */
+function ShareKeepField({ value, onChange }: { value: ShareKeep; onChange: (keep: ShareKeep) => void }) {
+  const id = useId();
+  const choose = (keep: ShareKeepChoice) =>
+    onChange({ keep, deleteAfter: keep === "until" && !value.deleteAfter ? dayFromToday(SHARE_UNTIL_DAYS) : value.deleteAfter });
+  return (
+    <div className="share-keep">
+      <label htmlFor={`${id}-keep`}>{SHARE_KEEP_LABEL}</label>
+      <select id={`${id}-keep`} value={value.keep} onChange={(event) => choose(event.target.value as ShareKeepChoice)}>
+        {SHARE_KEEP_OPTIONS.map(([choice, label]) => (
+          <option key={choice} value={choice}>
+            {label}
+          </option>
+        ))}
+      </select>
+      {value.keep === "until" && (
+        <>
+          <label htmlFor={`${id}-date`}>{SHARE_DELETE_AFTER_LABEL}</label>
+          <input id={`${id}-date`} type="date" min={dayFromToday(1)} value={value.deleteAfter} onChange={(event) => onChange({ ...value, deleteAfter: event.target.value })} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
  * Start's row in Plan: Download GPX and Copy link as icon buttons beside it, and More (a disclosure)
  * holding Share and Keep for offline (the owner's choice 8). The said lines stay outside More, so a
  * press is heard however More stands.
  */
 function RouteActions(props: RouteActionsProps & { start: ReactNode }) {
-  const { shown, routedPoints, routedLoop, federalRoute, copyLink, linkNote, canShare, shareRoute, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid, start } = props;
+  const { copyLink, linkNote, canShare, shareRoute, shareKeep, onShareKeep, shareImage, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid, start, downloadRoute, save } = props;
   const [more, setMore] = useState(false);
   const moreId = useId();
-  const hasMore = canShare || keepShown;
   return (
     <div className="route-actions">
       <div className="route-actions-row">
         {start}
-        <button type="button" className="secondary icon-button gpx-download" onClick={() => downloadGpx(shown, routedPoints, routedLoop, federalRoute)} aria-label="Download GPX">
+        <button type="button" className="secondary icon-button gpx-download" onClick={() => downloadRoute()} aria-label="Download GPX">
           <Icon name="download" />
           <span aria-hidden="true">GPX</span>
         </button>
@@ -343,27 +454,30 @@ function RouteActions(props: RouteActionsProps & { start: ReactNode }) {
           <Icon name="link" />
           <span aria-hidden="true">Link</span>
         </button>
-        {hasMore && (
-          <button type="button" className="secondary icon-button route-more" aria-expanded={more} aria-controls={moreId} onClick={() => setMore(!more)}>
-            <Icon name="more" />
-            <span>More</span>
+        {/* Always: Share as image is in it (Download works where the browser has no share sheet). */}
+        <button type="button" className="secondary icon-button route-more" aria-expanded={more} aria-controls={moreId} onClick={() => setMore(!more)}>
+          <Icon name="more" />
+          <span>More</span>
+        </button>
+      </div>
+      <div id={moreId} className="route-more-body" hidden={!more}>
+        {canShare && (
+          <button type="button" className="secondary share-route" onClick={shareRoute} aria-label={SHARE_NAME} aria-describedby={linkNote ? "link-note" : undefined}>
+            {SHARE_LABEL}
+          </button>
+        )}
+        {canShare && <ShareKeepField value={shareKeep} onChange={onShareKeep} />}
+        {/* Its QR code's link keeps as chosen above. */}
+        <button type="button" className="secondary share-image" onClick={shareImage} aria-haspopup="dialog">
+          {SHARE_IMAGE_LABEL}
+        </button>
+        {save && <SaveRoute {...save} label={SAVE_ROUTE} />}
+        {keepShown && (
+          <button type="button" className="secondary keep-offline" onClick={() => void keepForOffline()} aria-disabled={keeping} aria-describedby="keep-offline-said">
+            {KEEP_LABEL}
           </button>
         )}
       </div>
-      {hasMore && (
-        <div id={moreId} className="route-more-body" hidden={!more}>
-          {canShare && (
-            <button type="button" className="secondary share-route" onClick={shareRoute} aria-label={SHARE_NAME} aria-describedby={linkNote ? "link-note" : undefined}>
-              {SHARE_LABEL}
-            </button>
-          )}
-          {keepShown && (
-            <button type="button" className="secondary keep-offline" onClick={() => void keepForOffline()} aria-disabled={keeping} aria-describedby="keep-offline-said">
-              {KEEP_LABEL}
-            </button>
-          )}
-        </div>
-      )}
       <span role="status" className="visually-hidden">
         {linkSpoken}
       </span>
@@ -395,7 +509,7 @@ interface NoteLine {
   text: string;
 }
 
-function noteLines(route: RouteResponse, points: LonLat[]): NoteLine[] {
+function noteLines(route: RouteResponse, points: LonLat[], light: readonly LightMark[] = []): NoteLine[] {
   const lines: NoteLine[] = [];
   // A point inside the National Zoo was moved to its bike racks (291(4)): shown here, and said with the route.
   const moved = movedPointsNote(route, points.length);
@@ -414,6 +528,9 @@ function noteLines(route: RouteResponse, points: LonLat[]): NoteLine[] {
   const mtb = mtbNotes(route.mtb);
   for (const text of mtb.warnings) lines.push({ key: `mtb-${text}`, className: "notice mtb-warning", icon: "warn", text });
   if (mtb.notes.length > 0) lines.push({ key: "mtb-note", className: "hint mtb-note", icon: "mtb", text: mtb.notes.join(" ") });
+  // Near dawn or dusk: where the rider will be at each light time (lib/lightTimes.ts), one line, in Go too.
+  const lightText = lightLine(light);
+  if (lightText) lines.push({ key: "light", className: "hint light-times", icon: "sun", text: lightText });
   return lines;
 }
 
@@ -499,6 +616,7 @@ export function RouteSummary({
   preset,
   go,
   transitControls,
+  light = [],
 }: {
   route: RouteResponse;
   answer: RouteResponse | null;
@@ -529,6 +647,8 @@ export function RouteSummary({
   mode: AppMode;
   preset: PresetId;
   go: GoRouteControls;
+  /** The light times on the route near dawn or dusk (lib/lightTimes.ts): one line, the map marks' accessible form. */
+  light?: readonly LightMark[];
 }) {
   useStressStyle();
   const [info, setInfo] = useState(false);
@@ -540,7 +660,7 @@ export function RouteSummary({
   // A Mass Ride's panel is about riders per minute, in place of the LTS breakdown (OWNER-DECISIONS 325).
   const capacity = capacitySummary(route.stress_spans);
   const segments = capacity ? [] : stressSegments(route.stress_m);
-  const notes = noteLines(route, points);
+  const notes = noteLines(route, points, light);
   const pace = paceText(route);
   const profile = usableProfile(route);
   // The Avoid-rated junctions count with the rest, and keep the fold where the others could not be read.
@@ -552,12 +672,10 @@ export function RouteSummary({
   const timeName = transit ? (transit.scheduled ? "Door-to-door time, scheduled" : "Door-to-door time") : "Moving time";
   const timeText = transit ? transitTime(transit) : formatDuration(route.duration_s);
   const calm = calmPercent(route.stress_m);
-  // Start ride is offered with the directions too (plan Q1). Not on a Bikeshare plan: the route
-  // is only the ride between the docks, so the walk to the first dock would read as off route.
-  // Nor on a transit plan, whose line is only its first ride, unless the plan is riding your own bike
-  // the whole way (its line is then the whole trip).
-  const wholeRide = !transit || (transit.direct && transit.mode === "bike-transit");
-  const rideable = !bikeshare && wholeRide && route.distance_m <= RIDE_MAX_M;
+  // Start ride is offered with the directions too (plan Q1). On a Bikeshare or transit plan it follows the
+  // riding leg, the line (lib/rideTrip.ts: the walk to the dock and the boarding are said around it);
+  // the bike computer rule is that leg's.
+  const rideable = rideableRoute(route);
   const rideAction = rideable ? (
     <button type="button" className="secondary" onClick={ride.onStart}>
       Start ride
@@ -577,10 +695,15 @@ export function RouteSummary({
     <p id="start-ride-hint" className="hint start-ride-hint">
       Turn-by-turn directions on this phone, said as you chose. Keep the screen on and this page in front.
     </p>
-  ) : bikeshare || transit ? null : (
+  ) : !ridesLine(route) ? null : (
     <p className="hint start-ride-long">{RIDE_TOO_LONG}</p>
   );
-  const alerts = <RouteAlerts route={route} answer={answer} choice={choice} around={around} onAround={onAround} />;
+  const alerts = (
+    <>
+      <RouteAlerts route={route} answer={answer} choice={choice} around={around} onAround={onAround} />
+      <NoviceTransitOffer route={route} preset={preset} onTake={go.onNoviceTransit} trips={go.noviceTrips} />
+    </>
+  );
   const alertCount = (avoidNoticeFor(answer, choice) ? 1 : 0) + facilityNoticeCount(route);
   // What Info holds: the pace, the notes in full, how to reshape the line and the route's sources (the owner's choice 5).
   const infoBody = (
@@ -632,11 +755,13 @@ export function RouteSummary({
     <Fold title={`${presetLabel(preset)} trip`} said={`${presetSaid(preset)} trip`} open className="transit-fold" icon="train">
       <TransitSummary
         plan={transit}
+        lineSpans={route.stress_spans}
         preset={preset}
         onPick={transitControls?.onPick}
         busy={transitControls?.busy}
         announce={transitControls?.announce}
         onMissed={transitControls?.onMissed}
+        onRideRest={restOffered(rideTripOf(route, points)) ? transitControls?.onRideRest : undefined}
       />
     </Fold>
   ) : null;
@@ -696,40 +821,46 @@ export function RouteSummary({
         {!go.peek && <CapacityStats route={route} corkers={corkerFigure(route, profile, rideSize)} />}
         {!go.peek && alerts}
         {!go.peek && noteList}
+        {!go.peek && actions.savedNote}
         {!go.peek && (
           <div className="actions start-ride go-start">
             {start}
             {startHint}
           </div>
         )}
+        {/* "Add a stop" under Start (review F2): one tap away, never above the time and Start. */}
+        {!go.peek && go.addStop}
         {!go.peek && (
           <div className="go-chips" role="group" aria-label="Route options">
             <button type="button" className="chip go-ride-chip" onClick={go.onRide} aria-describedby="go-ride-hint">
               <Icon name="bike" size={18} />
-              <PresetName id={preset} />
+              {/* A long name is cut short with an ellipsis (its accessible name is whole), so the row never wraps. */}
+              <span className="go-chip-name">
+                <PresetName id={preset} />
+              </span>
             </button>
             <span id="go-ride-hint" hidden>
               Opens the ride settings.
             </span>
             {picker && (
               <button type="button" className="chip go-routes-chip" aria-expanded={routesOpen} aria-controls={routesId} onClick={() => setRoutesOpen(!routesOpen)}>
-                <Icon name="routes" size={18} />
                 {`${pickerCount} routes`}
               </button>
             )}
             <button type="button" className="chip go-plan-chip" onClick={go.onPlan} aria-describedby="go-plan-hint">
-              <Icon name="list" size={18} />
               Plan
             </button>
             <span id="go-plan-hint" hidden>
               Plan in detail: the full planner, with this route.
             </span>
+            {/* Shown "Save", named "Save route" (review F15: one row at 390 px with the ride type, the routes and Plan). */}
+            {actions.save && <SaveRoute {...actions.save} label={SAVE_ROUTE} shown={SAVE_SHORT} chip />}
           </div>
         )}
-        {/* The elevation chart, open whenever the sheet is bigger than peek (Stephen 2026-10-13: "on Go, add an
-            elevation chart to the map as well, even if relatively flat"), under Start and the route's options so
-            it never pushes them down; its key and tables stay in Plan. */}
-        {!go.peek && profile && chartKind(route) !== "mass" && <ElevationChart route={route} profile={profile} onScrub={onScrub} compact />}
+        {/* The elevation chart (Stephen 2026-10-13: "on Go, add an elevation chart to the map as well, even if
+            relatively flat"), at the full sheet only (review F8: at half it made the sheet more than a screen), under
+            Start and the route's options so it never pushes them down; its key and tables stay in Plan. */}
+        {go.full && profile && chartKind(route) !== "mass" && <ElevationChart route={route} profile={profile} onScrub={onScrub} compact />}
         {!go.peek && picker && (
           <div id={routesId} className="go-routes" hidden={!routesOpen}>
             {picker}
@@ -777,6 +908,7 @@ export function RouteSummary({
       {segments.length > 0 && <StressFigure segments={segments} />}
       {alerts}
       {noteList}
+      {actions.savedNote}
       <div className="actions start-ride">
         <RouteActions {...actions} start={start} />
         {startHint}

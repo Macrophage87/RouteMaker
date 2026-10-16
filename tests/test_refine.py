@@ -2748,6 +2748,70 @@ class TestSeekWiring:
         assert order == ["wide", ("seek", True, "w")]
         assert kept["legs"][0]["shape"] == "w"
 
+    def test_a_junction_already_located_in_the_plan_is_not_asked_again(self, monkeypatch) -> None:
+        # Review speed-1: the candidates share most of their junctions.
+        asked = []
+
+        def call(variant, endpoint, payload, deadline):
+            asked.append([(p["lon"], p["lat"], p["radius"]) for p in payload["locations"]])
+            return [{"at": (p["lon"], p["lat"], p["radius"])} for p in payload["locations"]]
+
+        monkeypatch.setattr(routing, "_call", call)
+        ctx = context()
+        deadline = routing.Deadline(routing.clock() + 30, 30)
+        locate = refine.locator(ctx.variant, deadline, ctx.located)
+
+        def payload(*points, radius=1):
+            return {"locations": [{"lon": x, "lat": y, "radius": radius} for x, y in points]}
+
+        first = locate(payload((-77.0, 38.9), (-77.1, 38.9)))
+        assert first == [{"at": (-77.0, 38.9, 1)}, {"at": (-77.1, 38.9, 1)}]
+        again = locate(payload((-77.1, 38.9), (-77.2, 38.9), (-77.0, 38.9)))
+        assert again == [{"at": (-77.1, 38.9, 1)}, {"at": (-77.2, 38.9, 1)}, first[0]]
+        assert asked[1] == [(-77.2, 38.9, 1)]
+        # Only what was asked: another radius is another answer, and nothing new, no call.
+        locate(payload((-77.0, 38.9), radius=60))
+        assert asked[2] == [(-77.0, 38.9, 60)]
+        assert locate(payload((-77.0, 38.9))) == [first[0]] and len(asked) == 3
+
+    def test_two_candidates_sharing_a_junction_ask_it_once_in_the_plan(self, monkeypatch) -> None:
+        # Review speed-1, through the plan's own reading (`events_of_raws`): the second
+        # candidate's reading asks only its own junction.
+        from types import SimpleNamespace
+
+        from core import junctions
+
+        asked = []
+
+        def call(variant, endpoint, payload, deadline):
+            asked.extend((p["lon"], p["lat"]) for p in payload["locations"])
+            return [{} for _ in payload["locations"]]
+
+        def events_of(raws, when, with_facility, locate, group, cut_short=(), ratings=None):
+            junctions._ask(raws, range(len(raws)), junctions.LOCATE_RADIUS_M, locate, cut_short)
+            return []
+
+        monkeypatch.setattr(routing, "_call", call)
+        monkeypatch.setattr(junctions, "events_of", events_of)
+        shared, mine, theirs = (SimpleNamespace(lon=-77.0 + i * 1e-3, lat=38.9) for i in range(3))
+        ctx = context()
+        deadline = routing.Deadline(routing.clock() + 30, 30)
+        assert refine.events_of_raws([shared, mine], ctx, deadline) == []
+        assert refine.events_of_raws([theirs, shared], ctx, deadline) == []
+        assert asked == [(shared.lon, shared.lat), (mine.lon, mine.lat), (theirs.lon, theirs.lat)]
+
+    def test_a_short_locate_answer_ends_where_the_router_ended_it(self, monkeypatch) -> None:
+        monkeypatch.setattr(routing, "_call", lambda variant, endpoint, payload, deadline: [{}])
+        ctx = context()
+        locate = refine.locator(
+            ctx.variant, routing.Deadline(routing.clock() + 30, 30), ctx.located
+        )
+        points = [
+            {"lon": -77.0, "lat": 38.9, "radius": 1},
+            {"lon": -77.1, "lat": 38.9, "radius": 1},
+        ]
+        assert locate({"locations": points}) == [{}]
+
     def test_junctions_that_cannot_be_read_are_unread_not_none_found(self, monkeypatch) -> None:
         from core import junctions
 
@@ -2796,7 +2860,7 @@ class TestStressAverseWeights:
             ("bikeshare-transit", None),
             # Rebalance Ride rides a share bike, calm as Bikeshare is.
             ("rebalance", None),
-            ("kids", None),
+            ("novice", None),
             # Mountain Bike (slice 6): connecting roads up to LTS 2, LTS 4 only with no other way.
             ("mountain-bike", None),
         ):
@@ -2812,7 +2876,7 @@ class TestStressAverseWeights:
                 "bikeshare",
                 "bikeshare-transit",
                 "rebalance",
-                "kids",
+                "novice",
                 "mountain-bike",
             ):
                 continue
@@ -2885,7 +2949,11 @@ class TestLts2Weight:
             assert (exposure.lts4, exposure.avoid, exposure.hold_lts4) == (8.0, 16.0, True)
 
     def test_nothing_on_any_other_ride(self) -> None:
-        weighed_rides = {("trailmaxxing", None), ("cargo", presets.CARRYING_PEOPLE), ("kids", None)}
+        weighed_rides = {
+            ("trailmaxxing", None),
+            ("cargo", presets.CARRYING_PEOPLE),
+            ("novice", None),
+        }
         for name in presets.PRESETS:
             for carrying in presets.PRESETS[name].carrying or (None,):
                 if (name, carrying) not in weighed_rides:
@@ -3024,26 +3092,49 @@ class TestLts2Weight:
         read.lts2_weight = 0.0
         assert refine.stress_weight_m(read, ctx) == pytest.approx(100.0)
 
-    def test_at_a_half_riding_with_kids_ranks_and_prices_lts2_twice_as_high(self) -> None:
-        """Item 240 (B): on Riding with kids a metre of LTS 2 counts half a metre of LTS 3.
-        200 m more LTS 2 is 100 m there, past the second level's 50 m step, but only 50 m
-        at the quarter, which is not past it."""
-        weight = presets.exposure_for("kids").lts2
-        assert weight == 0.5
+    def test_novice_reads_every_road_one_level_up(self, monkeypatch) -> None:
+        """Novice and Nervous (v0.7.0): the search reads each road a level up, so real LTS 2
+        is priced as LTS 3, real LTS 3 as LTS 4 (and held), and real LTS 4 as Avoid; the
+        answer's own classes stay the real ones."""
+        classes = [("2", "none"), ("3", "none"), ("4", "none"), ("1", "none")]
+        pieces = [routing.Piece(1, BASE[0] + i * 1e-4, BASE[1], 100.0) for i in range(4)]
+        monkeypatch.setattr(routing, "_trace", lambda *a, **k: {"shape": "x"})
+        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace: pieces)
+        monkeypatch.setattr(
+            routing, "decode_polyline6", lambda s: [BASE, (BASE[0] + 0.01, BASE[1])]
+        )
+        monkeypatch.setattr(routing, "classify", lambda p, when, roadway_only=False: classes)
+        monkeypatch.setattr(refine.trace_junctions, "junctions_of_trace", lambda *a: [])
+        monkeypatch.setattr(refine.trace_junctions, "edge_midpoints", lambda *a: [])
+        monkeypatch.setattr(refine, "events_of_raws", lambda raws, ctx, deadline: [])
+        trip = {"legs": [{"shape": "x"}], "summary": {"length": 0.4, "time": 100.0, "cost": 1.0}}
         ctx = context(maxcalm=True)
-        quiet = lts2_reading("q", "3" + "1" * 9, weight)
-        lts2 = lts2_reading("l", "3" + "22" + "1" * 7, weight)
-        assert refine.calmer(quiet, lts2, ctx)
-        quiet.lts2_weight = lts2.lts2_weight = presets.LTS2_WEIGHT
-        assert not refine.calmer(quiet, lts2, ctx)
-        # The worth rule: 800 m of LTS 2 saved is 400 m of LTS 3, so it buys 5 x 400 =
-        # 2,000 m more riding, where the quarter bought 1,000 m.
-        shorter = lts2_reading("s", "2" * 8 + "1" * 2, weight)
-        longer = lts2_reading("l", "1" * 10 + "1" * 15, weight)
-        assert refine.stress_saved_m(shorter, longer, ctx) == pytest.approx(400.0)
-        assert refine.worth_it(shorter, longer, ctx)
-        shorter.lts2_weight = longer.lts2_weight = presets.LTS2_WEIGHT
-        assert not refine.worth_it(shorter, longer, ctx)
+        ctx.exposure = presets.exposure_for("novice")
+        read = refine.analyse(trip, ctx, ctx.deadline)
+        # Real 2 as 3 (1), real 3 as 4 (8), real 4 as Avoid (16), real 1 as 2 (a quarter).
+        assert read.exposure_m == 100.0 * (1.0 + 8.0 + 16.0 + 0.25)
+        # The top figure holds real LTS 3 and 4; the second is real LTS 2 and a quarter of LTS 1.
+        assert read.top_m == 200.0
+        assert read.lts3_m == 100.0
+        assert read.second_m == 100.0 + 0.25 * 100.0
+        assert [c[0] for c in read.classes] == ["3", "4", "5", "2"]
+        assert [c[0] for c in read.rated_classes] == ["2", "3", "4", "1"]
+        # Trailmaxxing, unshifted, holds only the real LTS 4.
+        ctx.exposure = presets.EXPOSURE_NOT_IN_CONTROL
+        ctx.analyses.clear()
+        plain = refine.analyse(trip, ctx, ctx.deadline)
+        assert plain.top_m == 100.0
+        assert plain.rated_classes is plain.classes
+
+    def test_novice_counts_an_orange_junction_as_red(self) -> None:
+        orange = dataclasses.replace(event(150.0, 1500.0), severity="orange")
+        read = analysis("o", "1111", events=[orange])
+        assert read.red_m == 0.0
+        assert read.orange_m == pytest.approx(1500.0 / model.FEET_PER_METRE)
+        read.shift = 1
+        assert read.red_m == pytest.approx(1500.0 / model.FEET_PER_METRE)
+        assert read.orange_m == 0.0
+        assert refine.top_by_leg(read) == [pytest.approx(1500.0 / model.FEET_PER_METRE)]
 
     def test_lts2_is_never_a_search_target(self) -> None:
         a = lts2_reading("a", "1" * 10 + "2" * 40 + "1" * 10, 0.25)

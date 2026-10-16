@@ -92,7 +92,7 @@ class Command(BaseCommand):
             last = entry["last_success_at"] or "never"
             self.stdout.write(
                 f"paused: {entry['task']} (WEEKLY_REBUILD_PAUSED; last paused tick "
-                f"{entry['paused_at']}, last success: {last})"
+                f"{entry['paused_at'] or 'none'}, last success: {last})"
             )
         # The row that did not exist. A worker killed mid-job leaves its job
         # `doing` forever - the process that would have written `failed` is

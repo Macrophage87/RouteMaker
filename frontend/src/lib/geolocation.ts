@@ -351,14 +351,31 @@ export function movedFromHere(fromHere: readonly LonLat[], before: LonLat | unde
 export const LINK_HAS_LOCATION_START = "This link includes your location as the start.";
 export const LINK_HAS_LOCATION_POINT = "This link includes your location as a point on the route.";
 
+/** The same note for the rider's Home (review privacy-2): Go's Home chip makes it a plan point, so it is in the link. */
+export const LINK_HAS_HOME_END = "This link includes your Home as the destination.";
+export const LINK_HAS_HOME_START = "This link includes your Home as the start.";
+export const LINK_HAS_HOME_POINT = "This link includes your Home as a point on the route.";
+
 /**
  * The note for a link of `points`, given the position point objects (kept in
  * memory by App; empty if none). Identity, not equality: a moved marker is a new
  * array, and only a drag of a location point adds it to the list (movedFromHere).
+ * With the rider's `home`, a point at it is said too. Equality here, not identity:
+ * a point at the Home's own coordinates is the Home however it came into the plan
+ * (the Home chip, Undo, a reload of the address bar).
  */
-export function linkLocationNote(points: readonly LonLat[], from: readonly LonLat[]): string {
-  if (points.length > 0 && from.includes(points[0])) return LINK_HAS_LOCATION_START;
-  return points.some((point) => from.includes(point)) ? LINK_HAS_LOCATION_POINT : "";
+export function linkLocationNote(points: readonly LonLat[], from: readonly LonLat[], home: LonLat | null = null): string {
+  const location =
+    points.length > 0 && from.includes(points[0]) ? LINK_HAS_LOCATION_START : points.some((point) => from.includes(point)) ? LINK_HAS_LOCATION_POINT : "";
+  return [location, linkHomeNote(points, home)].filter(Boolean).join(" ");
+}
+
+function linkHomeNote(points: readonly LonLat[], home: LonLat | null): string {
+  if (!home) return "";
+  const isHome = (point: LonLat | undefined) => point !== undefined && point[0] === home[0] && point[1] === home[1];
+  if (points.length > 1 && isHome(points[points.length - 1])) return LINK_HAS_HOME_END;
+  if (isHome(points[0])) return LINK_HAS_HOME_START;
+  return points.some(isHome) ? LINK_HAS_HOME_POINT : "";
 }
 
 /** A circle of `radiusM` metres round `centre` as a closed ring (the accuracy circle on the map). */

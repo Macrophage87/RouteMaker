@@ -106,7 +106,7 @@ test("each level has a pattern of its own: dashed, unlike every other, and none 
   }
 });
 
-test("the layer: the ticks, every white edge, then the unrated dashes and each level's line, under every routable layer, from zoom 14", () => {
+test("the layer: the ticks, every white edge, then the unrated dashes and each level's line, under every routable layer, from zoom 12", () => {
   for (const strong of [false, true]) {
     try {
       setAccessibility(strong, { remember: false });

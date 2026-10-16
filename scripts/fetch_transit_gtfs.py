@@ -27,6 +27,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 import urllib.request
@@ -73,6 +74,9 @@ def main(argv: list[str] | None = None) -> int:
         "| System | File | URL | Bytes | sha256 | Retrieved (UTC) |",
         "|---|---|---|---|---|---|",
     ]
+    # The README's rows from earlier runs, by file: a feed not fetched this time (--only, a
+    # failure) keeps the row that describes the zip still on disk.
+    rows = readme_rows(args.out_dir / "README.md")
     failed = 0
     for system in systems:
         if args.only and system["id"] not in args.only:
@@ -96,28 +100,34 @@ def main(argv: list[str] | None = None) -> int:
             failed += 1
             continue
         target = args.out_dir / feed["file"]
-        target.write_bytes(body)
+        # Written beside the last good zip and checked there; only a zip that passes replaces
+        # it, so an error page or a truncated body never takes its place (review pipeline-2).
+        part = target.with_name(target.name + ".part")
+        part.write_bytes(body)
         try:
-            with zipfile.ZipFile(target) as found:
+            with zipfile.ZipFile(part) as found:
                 missing = REQUIRED - set(found.namelist())
         except zipfile.BadZipFile:
-            print(
-                f"{feed['file']}: not a zip (an error page?); delete it and try again",
-                file=sys.stderr,
-            )
+            missing = None
+        if missing is None or missing:
+            part.unlink()
+            kept = "; the last good copy is kept" if target.exists() else ""
+            why = "not a zip (an error page?)" if missing is None else f"missing {sorted(missing)}"
+            print(f"{feed['file']}: {why}{kept}; try again", file=sys.stderr)
             failed += 1
             continue
-        if missing:
-            print(f"{feed['file']}: missing {sorted(missing)}", file=sys.stderr)
-            failed += 1
-            continue
+        os.replace(part, target)
         digest = hashlib.sha256(body).hexdigest()
         when = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
-        lines.append(
+        rows[feed["file"]] = (
             f"| {system['name']} | `{feed['file']}` | {feed['url']} | {len(body):,}"
             f" | `{digest}` | {when} |"
         )
         print(f"{feed['file']}: {len(body):,} bytes, sha256 {digest}")
+    order = [s["feed"]["file"] for s in systems]
+    for file in sorted(rows, key=lambda f: (order.index(f) if f in order else len(order), f)):
+        if (args.out_dir / file).exists():
+            lines.append(rows[file])
     lines += [
         "",
         "Terms: docs/SOURCES.md, one entry per system. The agencies' data: kept on this host,",
@@ -126,6 +136,20 @@ def main(argv: list[str] | None = None) -> int:
     ]
     (args.out_dir / "README.md").write_text("\n".join(lines))
     return 3 if failed else 0
+
+
+def readme_rows(path: Path) -> dict[str, str]:
+    """The table rows of an earlier README, by the file each names."""
+    try:
+        text = path.read_text()
+    except OSError:
+        return {}
+    found = {}
+    for line in text.splitlines():
+        match = re.match(r"^\| [^|]* \| `([^`]+)` \|", line)
+        if match:
+            found[match.group(1)] = line
+    return found
 
 
 if __name__ == "__main__":

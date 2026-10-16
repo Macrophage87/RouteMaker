@@ -3,6 +3,10 @@
 // (OWNER-DECISIONS 313). The button is on the page only where the browser has a share sheet, so Copy link
 // is always there. The location line (OWNER-DECISIONS 395) describes the button, so it is read before
 // the sheet opens; the shared text holds the distance and the ride type, nothing private.
+//
+// v0.7.0, "share the identical route" (lib/sharedRoutes.ts): the link also names the exact line shown, kept on
+// the server, so it opens unchanged; and where the browser can share files, the sheet also carries the GPX file
+// Download GPX would save (withGpxFile).
 import { formatDistance } from "./format.ts";
 
 /** The button's visible word and its accessible name (the name holds the word: WCAG 2.5.3). */
@@ -16,12 +20,14 @@ export interface ShareContent {
   title: string;
   text: string;
   url: string;
+  /** The route's GPX file, where the browser can share files (withGpxFile). */
+  files?: File[];
 }
 
 /** The part of `navigator` Share uses. */
 export interface ShareNavigator {
   share?: (data: ShareContent) => Promise<void>;
-  canShare?: (data: { url: string }) => boolean;
+  canShare?: (data: { url?: string; files?: File[] }) => boolean;
 }
 
 /** Whether to show Share: the browser has navigator.share and, where it can say, can share a link. */
@@ -48,6 +54,19 @@ export function shareText(distanceM: number | null, rideType: string): string {
 /** The sheet's content: `url` is Copy link's link, unchanged. */
 export function shareContent(url: string, distanceM: number | null, rideType: string): ShareContent {
   return { title: SHARE_TITLE, text: shareText(distanceM, rideType), url };
+}
+
+/**
+ * The content with the GPX file added, where the browser says it can share that file (Web Share level 2, on
+ * phones mostly); otherwise the content as it was, the link alone. A browser that cannot say is not given it.
+ */
+export function withGpxFile(nav: ShareNavigator | undefined, content: ShareContent, file: File | null): ShareContent {
+  if (!file || typeof nav?.canShare !== "function") return content;
+  try {
+    return nav.canShare({ files: [file] }) === true ? { ...content, files: [file] } : content;
+  } catch {
+    return content;
+  }
 }
 
 export type ShareOutcome = "shared" | "cancelled" | "failed";

@@ -31,6 +31,12 @@ single-valued option could not express the input that makes the arbitration
 mean anything: installing DDOT after VDOT overwrote the file and left one
 agency, and the precedence rule had nothing to choose between.
 
+Census county polygons go to `counties.geojson`, optional, read only by the cloud
+import's stress change report (`core.stress_changes`: totals by county), and
+filtered to the counties the coverage box reaches:
+
+    --counties tl_2024_us_county.geojson
+
 Two agency street layers go to `roadway.json`, optional, read by the rebuild's
 volume-conflation stage (OWNER-DECISIONS 151, 159):
 
@@ -300,6 +306,37 @@ def urban_way_ids(
     return sorted(ids)
 
 
+# src/config/settings.py COVERAGE_BBOX (west, south, east, north), which this script
+# cannot import without a configured Django; tests/test_reference_data_install.py holds
+# the two the same.
+COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
+
+
+def install_counties(counties: Path, target: Path) -> int:
+    """The counties in `counties` that reach the coverage box, written to `target`
+    as a FeatureCollection with the properties the report names them by."""
+    from shapely.geometry import box, mapping
+
+    area = box(*COVERAGE_BBOX)
+    features = [
+        {
+            "type": "Feature",
+            "properties": {
+                key: properties[key]
+                for key in ("NAME", "NAMELSAD", "STATEFP", "STUSPS", "GEOID")
+                if key in properties
+            },
+            "geometry": mapping(geometry),
+        }
+        for geometry, properties in _geometries(counties)
+        if geometry.intersects(area)
+    ]
+    if not features:
+        raise SystemExit(f"{counties} holds no county inside the coverage box")
+    target.write_text(json.dumps({"type": "FeatureCollection", "features": features}))
+    return len(features)
+
+
 def volume_rows(volume: Path, source: str, year: int | None, aadt_property: str) -> list[dict]:
     """Agency count lines in the shape `conflation.AgencyFeature` is built from.
 
@@ -488,6 +525,9 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument("--volume-year", type=int, action="append", default=[])
+    parser.add_argument(
+        "--counties", type=Path, help="Census county polygons (TIGER), GeoJSON, for reports"
+    )
     parser.add_argument("--aadt-property", action="append", default=[])
     parser.add_argument(
         "--roadway-block", type=Path, help="DC DCGIS Roadway Block, GeoJSON as fetched"
@@ -532,6 +572,11 @@ def main(argv: list[str] | None = None) -> int:
     reference.mkdir(parents=True, exist_ok=True)
 
     print(f"installed {install_crossings(reference)}")
+
+    if args.counties:
+        target = reference / "counties.geojson"
+        kept = install_counties(args.counties, target)
+        print(f"wrote {target}: {kept} counties")
 
     if args.urban_areas:
         if not args.extract:
