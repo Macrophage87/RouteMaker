@@ -8,6 +8,7 @@
 import type { TripLeg } from "./transitMarks.ts";
 import type { MtbReading } from "./mtbMode.ts";
 import { formatRoughDistance } from "./format.ts";
+import { noteArrived } from "./departure.ts";
 import type { LonLat } from "./geo.ts";
 import { twoPointsOnly, type PresetId } from "./presets.ts";
 import type { StressMetres } from "./stressBar.ts";
@@ -1215,7 +1216,11 @@ export async function requestRoute(
   } catch {
     body = null;
   }
-  if (response.ok && looksLikeRoute(body)) return { ok: true, route: body };
+  if (response.ok && looksLikeRoute(body)) {
+    // A departure's countdown runs from this moment by the phone's clock, not the server's (review TB-6).
+    if (body.transit?.departure) noteArrived(body.transit.departure, Date.now());
+    return { ok: true, route: body };
+  }
   const status = response.ok ? 500 : response.status;
   const error = describeError(status, body, response.headers.get("Retry-After"));
   // A confirmed long plan can be refused because a long ride is already

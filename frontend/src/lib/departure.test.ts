@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import type { TransitDeparture } from "./api.ts";
+import { requestRoute, type TransitDeparture } from "./api.ts";
 import {
   CLOSE_S,
   MILESTONES_S,
@@ -14,6 +14,7 @@ import {
   milestoneSaid,
   missedSaid,
   mmss,
+  noteArrived,
 } from "./departure.ts";
 
 const SRC = new URL("../", import.meta.url);
@@ -65,6 +66,43 @@ test("the spare time counts down from the plan's moment; under 5 min is cutting 
   assert.equal(gone.missed, true);
   // Before the plan's moment nothing is spent.
   assert.equal(countdown(DEPARTURE, at("06:50:00")).spareS, 360);
+});
+
+test("TB-6: the countdown runs from when the answer arrived, so a wrong phone clock neither misses nor overstates", () => {
+  // A phone 10 minutes fast: the answer arrives at 7:10 by its clock. Fresh, the plan still has 6 min to spare.
+  const fast = { ...DEPARTURE };
+  noteArrived(fast, at("07:10:00"));
+  const fresh = countdown(fast, at("07:10:00"));
+  assert.equal(fresh.spareS, 360);
+  assert.equal(fresh.missed, false, "not marked missed at once");
+  assert.equal(fresh.toDepartS, 42 * 60);
+  assert.equal(countdown(fast, at("07:11:30")).spareS, 270);
+  assert.equal(mapLabel(fast, at("07:11:30")), "MARC 7:42 am scheduled · in 40:30 · 04:30 spare");
+  // A phone 10 minutes slow: 7 minutes after the answer it is missed, though the phone says 6:57.
+  const slow = { ...DEPARTURE };
+  noteArrived(slow, at("06:50:00"));
+  assert.equal(countdown(slow, at("06:56:01")).missed, true, "no spare time shown for a train gone");
+  // With no arrival noted, as before: against the plan's moment.
+  assert.equal(countdown({ ...DEPARTURE }, at("07:10:00")).missed, true);
+});
+
+test("TB-6: requestRoute notes when a plan with a departure arrived", async () => {
+  const route = {
+    distance_m: 1,
+    duration_s: 1,
+    geometry: { type: "LineString", coordinates: [] },
+    stress_m: {},
+    attribution: [],
+    transit: { departure: { ...DEPARTURE } },
+  };
+  const result = await requestRoute([[-77.04, 38.91], [-77.01, 38.89]], "mass-ride", {
+    fetchImpl: async () => new Response(JSON.stringify(route), { status: 200, headers: { "Content-Type": "application/json" } }),
+  });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  const departure = result.route.transit!.departure!;
+  // Arrived now by this clock, whatever the plan's own moment says: next to nothing is spent yet.
+  assert.ok(countdown(departure, Date.now()).spareS > 359);
 });
 
 test("the timer reads mm:ss, never below zero", () => {
