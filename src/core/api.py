@@ -4564,9 +4564,17 @@ def my_go_read(request, response: HttpResponse):
     errors_as_json,
 )
 def my_go_save(request, body: MyGoIn, response: HttpResponse):
-    from .models import MyGo
+    from .models import MyGo, SharedRoute
 
     home = body.home
+    before = MyGo.objects.filter(user=request.user).values_list("home_lon", "home_lat").first()
+    after = (round(home.lon, 5), round(home.lat, 5)) if home else (None, None)
+    if before is not None and before != (None, None) and tuple(before) != after:
+        # Home cleared or moved: a link's frozen circle round the old Home is a point near it, so
+        # it goes, and those links lose their image rather than show the old Home uncovered.
+        SharedRoute.objects.filter(owner=request.user, preview_zone__isnull=False).update(
+            preview_zone=None, preview_image=False, preview_png=None, preview_key=""
+        )
     row, _ = MyGo.objects.update_or_create(
         user=request.user,
         defaults={
@@ -4933,9 +4941,11 @@ def shared_route_add(request):
         if keep == "until"
         else None
     )
+    from . import share_preview
+
     try:
         with transaction.atomic():
-            row = SharedRoute.objects.create(
+            row = SharedRoute(
                 id=body["id"],
                 name=(body.get("name") or "").strip() or shared_routes.DEFAULT_NAME,
                 source=body.get("source", "plan"),
@@ -4948,7 +4958,14 @@ def shared_route_add(request):
                 last_opened_at=now,
                 keep=keep,
                 delete_after=delete_after,
+                # Signed in, the owner, so only they can turn the link off (nothing else of them).
+                owner=request.user if signed_in(request) else None,
+                # Missing (a page from before previews) is no image: it never said where Home is.
+                preview_image=body.get("preview_image", False),
             )
+            # Home's circle as it is now, kept where the route starts, ends or stops in it.
+            share_preview.freeze_zone(row)
+            row.save(force_insert=True)
     except IntegrityError:
         # Ids are 128 random bits: a taken one is a resend, never another rider's to replace.
         return _stress_error(409, "That link's route is already kept.", code="taken")
@@ -4979,12 +4996,125 @@ def shared_route_read(request, route_id: str):
     if row is None or shared_routes.expired(row, now):
         _purge_shared(now)
         return gone
+    if row.revoked_at is not None:
+        # Turned off by its owner: the page says so and plans nothing (core.shared_routes.REVOKED).
+        response = _stress_error(410, shared_routes.REVOKED, code="revoked")
+        response["Cache-Control"] = "no-store"
+        return response
     # A year's keeping counts from the last open; written at most once a day.
     if row.last_opened_at < now - shared_routes.TOUCH_EVERY:
         SharedRoute.objects.filter(pk=row.pk).update(last_opened_at=now)
     response = JsonResponse(_shared_out(row))
     response["Cache-Control"] = "no-store"
     return response
+
+
+# A signed-in sharer's own shared links (My routes in Plan): listed, turned off, or swapped for a
+# new link. Another account's link is "not found", as a saved route is.
+
+
+def _owned_shared(request, route_id: str):
+    from . import shared_routes
+    from .models import SharedRoute
+
+    if not shared_routes.id_ok(route_id):
+        return None
+    return SharedRoute.objects.filter(
+        owner=request.user, pk=route_id, revoked_at__isnull=True
+    ).first()
+
+
+def _shared_summary(request, row) -> dict:
+    from . import shared_routes
+
+    return {
+        "id": row.pk,
+        "name": row.name,
+        "source": row.source,
+        "distance_m": row.distance_m,
+        "created_at": row.created_at.isoformat(),
+        "keep": row.keep,
+        "delete_after": row.delete_after.isoformat() if row.delete_after else None,
+        "link": shared_routes.link_of(row, f"{request.scheme}://{request.get_host()}"),
+    }
+
+
+SHARED_NOT_YOURS = "That shared link is not one of yours."
+
+
+@api.get("/me/shared-routes", summary="The signed-in rider's shared links still working")
+@decorate_view(
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.ME),
+    errors_as_json,
+)
+def my_shared_routes(request):
+    from django.middleware.csrf import get_token
+    from django.utils import timezone
+
+    from . import shared_routes
+    from .models import SharedRoute
+
+    get_token(request)
+    now = timezone.now()
+    rows = SharedRoute.objects.filter(owner=request.user, revoked_at__isnull=True).order_by(
+        "-created_at", "pk"
+    )
+    links = [
+        _shared_summary(request, r)
+        for r in rows.defer("line", "answer", "gpx", "preview_png")
+        if not shared_routes.expired(r, now)
+    ]
+    return _private(JsonResponse({"links": links}))
+
+
+@api.post("/me/shared-routes/{route_id}/revoke", summary="Turn off one of your shared links")
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+def my_shared_route_revoke(request, route_id: str):
+    from django.utils import timezone
+
+    from . import shared_routes
+
+    row = _owned_shared(request, route_id)
+    if row is None:
+        return _stress_error(404, SHARED_NOT_YOURS, code="not_found")
+    shared_routes.revoke(row, timezone.now())
+    return _private(JsonResponse({"revoked": route_id}))
+
+
+@api.post(
+    "/me/shared-routes/{route_id}/regenerate",
+    summary="A new link for one of your shared routes; the old link is turned off",
+)
+@decorate_view(
+    ratelimit.user_rate_limited(ratelimit.ACCOUNT_WRITES),
+    csrf_protected,
+    signed_in_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    # A new link is a new shared route: counted with Share's.
+    ratelimit.rate_limited(ratelimit.SHARED_ROUTE_WRITES),
+    errors_as_json,
+)
+def my_shared_route_regenerate(request, route_id: str):
+    from django.utils import timezone
+
+    from . import shared_routes
+
+    now = timezone.now()
+    row = _owned_shared(request, route_id)
+    if row is None or shared_routes.expired(row, now):
+        return _stress_error(404, SHARED_NOT_YOURS, code="not_found")
+    fresh = shared_routes.regenerate(row, now)
+    return _private(JsonResponse(_shared_summary(request, fresh), status=201))
 
 
 # The closures a kept line runs along now (v0.7.0 plan, "GPX export as close to identical as

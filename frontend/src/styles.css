@@ -5557,6 +5557,35 @@ details.fold > summary .icon {
   font-size: 0.9rem;
 }
 
+/* A light time on the route (lib/lightTimes.ts): "Sunset 6:31 PM" where the rider will be then. The
+   map is the light flavour in both themes: dark brown on pale yellow, the same in both. Named for a
+   screen reader (role img); the route summary's line says the same. No animation. It never takes the
+   map's clicks or drags. */
+.light-marker {
+  pointer-events: none;
+}
+/* Under the map's controls (the scale bar, the credits) it is not drawn; it keeps its name. */
+.light-marker.under-controls span {
+  visibility: hidden;
+}
+.light-marker span {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #fff7d6;
+  color: #3f2a00;
+  border: 2px solid #7a5200;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+}
+.a11y .light-marker span {
+  font-size: 0.9rem;
+}
+
 /* A rail station closed all day: its card says "closed: ..." in words, in a muted colour as well. */
 .station-popup.station-closed .station-name {
   color: var(--text-muted);
@@ -5565,7 +5594,8 @@ details.fold > summary .icon {
 @media (forced-colors: active) {
   .departure-label span,
   .departure-label.close span,
-  .departure-label.missed span {
+  .departure-label.missed span,
+  .light-marker span {
     background: Canvas;
     color: CanvasText;
     border-color: CanvasText;

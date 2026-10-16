@@ -11,9 +11,12 @@
  *   the distance and the climb (US first, metric in brackets), "RouteMaker", the QR code when asked for, and the
  *   OpenStreetMap and base map credits drawn into the image, legible at its size (PLAN: the image travels without
  *   the page's attribution);
- * - privacy: start, finish and stops only, with no place's name drawn; nothing of the line and no pin is drawn
- *   within 0.2 mi (320 m) of the rider's Home (a blank circle round it, moved off Home so its edge does not
- *   point at it), and nothing is ever labelled Home;
+ * - privacy: start, finish and stops only, with no place's name drawn; when the route starts, ends or stops at the
+ *   rider's Home, nothing of the line and no pin is drawn within 0.2 mi (320 m) of it (a blank circle round it,
+ *   moved off Home so its edge does not point at it; "Hide the part near Home", checked each time the dialog
+ *   opens, can turn this off); a route that only passes Home is drawn whole, since a gap there would point at
+ *   Home (the owner, 2026-10-16: "If it doesn't start, end, or stop at home keep showing the route. Also, make
+ *   this an option, default to censor."); nothing is ever labelled Home;
  * - when the QR code can be had: it encodes the route's shared link (lib/sharedRoutes.ts), made as Share makes it.
  */
 import type { RouteProfile } from "./api.ts";
@@ -47,6 +50,8 @@ export const QR_LINK_FAILED = "Could not make the shared link, so the QR code is
 export const PROFILE_ON_MAP_OFF = "Turn on Elevation profile to draw it on the map.";
 export const PROFILE_NONE = "Not available: this route has no elevation data.";
 export const HOME_TOO_SHORT = "This route is too short to draw without showing Home.";
+/** The dialog's one Home choice, shown only when the route starts, ends or stops at Home; checked each time it opens. */
+export const HIDE_HOME_LABEL = "Hide the part near Home";
 
 // ---- Sizes ----------------------------------------------------------------------------------------
 
@@ -193,16 +198,13 @@ export function cardAlt(opts: {
 
 // ---- Privacy: Home -------------------------------------------------------------------------------
 
-/** An end or stop this close to Home is Home's (the owner, 2026-10-16: "within ~300 m"): the QR code is refused. */
-export const HOME_NEAR_M = 300;
 /** No part of the line, and no pin, is drawn within this of Home: 0.2 mi. */
 export const HOME_TRIM_M = 0.2 * METRES_PER_MILE;
 /** The hidden circle's centre is moved this far from Home (and its radius grown by as much), so its edge does not point at Home. */
 export const ZONE_SHIFT_MIN_M = 60;
 export const ZONE_SHIFT_MAX_M = 150;
-
-export const nearHome = (point: LonLat | undefined, home: Home | null): boolean =>
-  !!point && !!home && haversineM(point, home.point) <= HOME_NEAR_M;
+/** The hidden circle's radius, the same however far its centre moved, so the gap's size says nothing of the shift. */
+export const ZONE_RADIUS_M = HOME_TRIM_M + ZONE_SHIFT_MAX_M + 1;
 
 /** The circle the card leaves blank: around Home, moved, and large enough to hold everything within HOME_TRIM_M of it. */
 export interface HomeZone {
@@ -215,8 +217,8 @@ const M_PER_DEG = (6_371_008.8 * Math.PI) / 180;
 /**
  * Home's hidden circle. A gap cut by an exact circle round Home would give Home away (three points on its edge
  * fix its centre), so the centre is moved `shift` metres in a direction, both from `jitter` (two numbers from 0 to
- * 1, kept per device so cards do not average it out), and the radius grows by the same, so every point within
- * HOME_TRIM_M of Home is still inside.
+ * 1, kept per device so cards do not average it out), and the radius is ZONE_RADIUS_M whatever the shift, so every
+ * point within HOME_TRIM_M of Home is still inside and the gap's size gives nothing away.
  */
 export function homeZone(home: Home | null, jitter: readonly [number, number]): HomeZone | null {
   if (!home) return null;
@@ -224,10 +226,19 @@ export function homeZone(home: Home | null, jitter: readonly [number, number]): 
   const angle = jitter[0] * 2 * Math.PI;
   const [lon, lat] = home.point;
   const centre: LonLat = [lon + (Math.cos(angle) * shift) / (M_PER_DEG * Math.cos((lat * Math.PI) / 180)), lat + (Math.sin(angle) * shift) / M_PER_DEG];
-  return { centre, radiusM: HOME_TRIM_M + shift + 1 };
+  return { centre, radiusM: ZONE_RADIUS_M };
 }
 
 const inZone = (p: LonLat | undefined, zone: HomeZone | null) => !!p && !!zone && haversineM(p, zone.centre) <= zone.radiusM;
+
+/**
+ * Whether the route starts, ends or stops at Home: its line's ends, or any of `points`, inside Home's circle. Only
+ * then is the circle cut out (cardRoute) and the QR code refused (qrAvailability), unless the rider unchecks "Hide
+ * the part near Home" in the dialog to show it; a route that only passes by is
+ * drawn whole, as if no Home were set, since a gap there would point at Home.
+ */
+export const homeEnd = (line: readonly LonLat[], points: readonly LonLat[], zone: HomeZone | null): boolean =>
+  inZone(line[0], zone) || inZone(line[line.length - 1], zone) || points.some((p) => inZone(p, zone));
 
 export interface CardRoute {
   /** The line to draw: one piece, or several where it passes through Home's circle. */
@@ -244,12 +255,19 @@ export interface CardRoute {
 export const MIN_DRAWN_M = HOME_TRIM_M / 2;
 
 /**
- * What the card draws of the route: start, finish and stops only, no names, and nothing inside Home's circle
- * (homeZone): the line is cut where it enters and leaves it, into separate pieces, and a pin inside it is not drawn.
- * Null when what is left is under MIN_DRAWN_M (HOME_TOO_SHORT).
+ * What the card draws of the route: start, finish and stops only, no names, and, when it starts, ends or stops at
+ * Home (homeEnd, `also` checked too), nothing inside Home's circle (homeZone): the line is cut where it enters and
+ * leaves it, into separate pieces, and a pin inside it is not drawn. Otherwise, or with no circle (no Home, or
+ * "Hide the part near Home" unchecked), the whole route. Null when what is left is under MIN_DRAWN_M (HOME_TOO_SHORT).
  */
-export function cardRoute(line: readonly LonLat[], points: readonly LonLat[], zone: HomeZone | null): CardRoute | null {
+export function cardRoute(
+  line: readonly LonLat[],
+  points: readonly LonLat[],
+  homeCircle: HomeZone | null,
+  also: readonly LonLat[] = [],
+): CardRoute | null {
   if (line.length < 2) return null;
+  const zone = homeEnd(line, [...points, ...also], homeCircle) ? homeCircle : null;
   // Metres east and north of the circle's centre: a segment is cut where it crosses the circle's edge.
   const [clon, clat] = zone?.centre ?? [0, 0];
   const kx = M_PER_DEG * Math.cos((clat * Math.PI) / 180);
@@ -329,10 +347,6 @@ export function qrAvailability(opts: { online: boolean; settled: boolean; homeEn
   if (!opts.settled) return { ok: false, why: QR_WAITS_FOR_ROUTE };
   return { ok: true };
 }
-
-/** A route's end or stop at Home (the QR code is then refused). */
-export const homeEnd = (line: readonly LonLat[], points: readonly LonLat[], home: Home | null): boolean =>
-  nearHome(line[0], home) || nearHome(line[line.length - 1], home) || points.some((p) => nearHome(p, home));
 
 /** The QR code's modules as a square of booleans, from any encoder with qrcode-generator's shape. */
 export function qrModules(qr: { getModuleCount(): number; isDark(row: number, col: number): boolean }): boolean[][] {

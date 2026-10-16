@@ -14,6 +14,9 @@ import { compileCourse, courseFileName, courseLine, type CourseFormat } from "./
 import { DEFAULT_PROFILE, DEVICE_PROFILES, deviceProfile, type DeviceProfileId } from "./lib/deviceProfiles.ts";
 import { writeFit } from "./lib/fit.ts";
 import { writeTcx } from "./lib/tcx.ts";
+import { cueSheetDocument, cueSheetFileName, cueSheetLine, type CueSheetKind } from "./lib/cueSheetPdf.ts";
+import { lockCancelledLine, lockPartButton, lockPartLine, lockScreenFileNames, lockScreenLine, lockSharedLine } from "./lib/lockScreen.ts";
+import { renderLockScreens } from "./app/lockScreenRender.ts";
 
 interface Props {
   /** The route on screen, or null. */
@@ -38,12 +41,12 @@ interface Props {
    * Download GPX through the page (v0.7.0): closures are checked first, and an opened file not edited since
    * downloads as the file it came from. Without it, the route shown is written here.
    */
-  onDownload?: () => void;
+  onDownload?: (said: (line: string) => void) => void;
   /**
-   * Download a FIT or TCX course through the page, closures checked first as for GPX; `said` takes the line
-   * saying what was fitted to the device. Given in Plan only: without it (Go) the section offers GPX alone.
+   * Download a FIT or TCX course or a PDF cue sheet through the page, closures checked first as for GPX; `said`
+   * takes the line saying what was made. Given in Plan only: without it (Go) the section offers GPX alone.
    */
-  onDownloadCourse?: (format: CourseFormat, profile: DeviceProfileId, said: (line: string) => void) => void;
+  onDownloadCourse?: (format: FileFormat, profile: DeviceProfileId, said: Said) => void;
 }
 
 function samePoints(a: readonly LonLat[], b: readonly LonLat[]): boolean {
@@ -99,25 +102,102 @@ function saveFile(body: BlobPart, type: string, fileName: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
+/** The PDF cue sheets, by file type (lib/cueSheetPdf.ts). */
+const PRINTS = { "pdf-sheet": "sheet", "pdf-strip": "strip" } as const satisfies Record<string, CueSheetKind>;
+
+/** Every file type but GPX: the courses and the PDF cue sheets. */
+export type FileFormat = CourseFormat | keyof typeof PRINTS | "png-lock";
+
+/** Said where the lock-screen image could not be drawn (the canvas refused it). */
+export const LOCK_IMAGE_FAILED = "Could not make the cue sheet image. Try again, or use the PDF handlebar strip.";
+
+/** Save the lock-screen images one after another (a browser takes a moment between downloads), then say what was made. */
+/** Lock-screen images not yet saved: a browser saves only one file per press, so each further part waits for one. */
+export interface PartQueue {
+  blobs: Blob[];
+  names: string[];
+  /** The index of the next part to save. */
+  next: number;
+  cues: number;
+}
+
+/** What a download says: a line, and for the lock-screen images any parts still to save. */
+export type Made = string | { line: string; queue: PartQueue | null };
+export type Said = (made: Made) => void;
+
 /**
- * Download the route shown as a FIT or TCX course fitted to a device profile (lib/course.ts), and return the one
- * line saying what was fitted. Its cues are Ride's; its via points are not cues, as in Ride.
+ * The lock-screen images: one is saved; several go to the share sheet together where the browser can share files
+ * (a phone's, which is where they are wanted), and otherwise part 1 is saved and the button saves each next part.
+ * The line says only what was actually saved or sent.
  */
-export function downloadCourse(route: RouteResponse, routedPoints: LonLat[], format: CourseFormat, profile: DeviceProfileId): string {
-  const course = compileCourse(route, deviceProfile(profile), format, viaIndices(routedPoints, VIA_MARKS.isVia));
+async function downloadLockScreens(route: RouteResponse, vias: readonly number[]): Promise<Made> {
+  try {
+    const { pages, blobs } = await renderLockScreens(route, vias);
+    const names = lockScreenFileNames(route, blobs.length);
+    if (blobs.length === 1) {
+      saveFile(blobs[0], "image/png", names[0]);
+      return lockScreenLine(pages);
+    }
+    const cues = pages.reduce((n, p) => n + p.cues, 0);
+    const queue = (next: number): PartQueue => ({ blobs, names, next, cues });
+    const files = blobs.map((b, i) => new File([b], names[i], { type: "image/png" }));
+    if (typeof navigator.canShare === "function" && navigator.canShare({ files })) {
+      try {
+        await navigator.share({ files });
+        return { line: lockSharedLine(blobs.length, cues), queue: null };
+      } catch (error) {
+        if ((error as Error)?.name === "AbortError") return { line: lockCancelledLine(blobs.length), queue: queue(0) };
+        // Refused (no gesture left after drawing, say): saved one at a time instead.
+      }
+    }
+    saveFile(blobs[0], "image/png", names[0]);
+    return { line: lockPartLine(1, blobs.length, cues), queue: queue(1) };
+  } catch {
+    return LOCK_IMAGE_FAILED;
+  }
+}
+
+/**
+ * Download the route shown as a FIT or TCX course fitted to a device profile (lib/course.ts), or as a PDF cue sheet
+ * (lib/cueSheetPdf.ts), and return the one line saying what was made. Its cues are Ride's; its via points are not
+ * cues, as in Ride.
+ */
+export function downloadCourse(route: RouteResponse, routedPoints: LonLat[], format: FileFormat, profile: DeviceProfileId): string | Promise<Made> {
+  const vias = viaIndices(routedPoints, VIA_MARKS.isVia);
+  if (format === "png-lock") return downloadLockScreens(route, vias);
+  if (format === "pdf-sheet" || format === "pdf-strip") {
+    const kind = PRINTS[format];
+    const made = cueSheetDocument(route, kind, vias);
+    saveFile(made.bytes, "application/pdf", cueSheetFileName(route, kind));
+    return cueSheetLine(route, kind, vias, made.pages);
+  }
+  const course = compileCourse(route, deviceProfile(profile), format, vias);
   const fileName = courseFileName(route, format);
   if (format === "fit") saveFile(writeFit(course), "application/vnd.ant.fit", fileName);
   else saveFile(writeTcx(course), "application/vnd.garmin.tcx+xml", fileName);
   return courseLine(course);
 }
 
-export type ExportFormat = "gpx" | CourseFormat;
+export type ExportFormat = "gpx" | FileFormat;
+
+/** What a GPX download says once it is saved: the route shown, the opened file as it came, or its track. */
+export const GPX_SAID_ROUTE = "GPX track: the route shown, with its credits.";
+export const GPX_SAID_OPENED = "GPX file: the file you opened, as it came.";
+export const GPX_SAID_TRACK = "GPX track: the opened file's track, rerouted round the closures.";
 
 const FORMAT_LABELS: Record<ExportFormat, string> = {
   gpx: "GPX track",
   fit: "FIT course, with turn cues",
   tcx: "TCX course, with turn cues",
+  "pdf-sheet": "PDF cue sheet, to print",
+  "pdf-strip": "PDF handlebar strip, to print",
+  "png-lock": "Cue sheet image, for a phone lock screen",
 };
+
+/** What the button says it downloads. */
+const FORMAT_WORDS: Record<ExportFormat, string> = { gpx: "GPX", fit: "FIT", tcx: "TCX", "pdf-sheet": "PDF", "pdf-strip": "PDF", "png-lock": "image" };
+
+const isCourse = (format: ExportFormat): format is CourseFormat => format === "fit" || format === "tcx";
 
 /** The file type and device chosen last, on this device only (a convenience: the defaults stand without it). */
 const CHOICE_KEY = "routemaker.exportChoice";
@@ -125,7 +205,7 @@ const CHOICE_KEY = "routemaker.exportChoice";
 function readChoice(): { format: ExportFormat; profile: DeviceProfileId } {
   try {
     const saved = JSON.parse(localStorage.getItem(CHOICE_KEY) ?? "null") as { format?: string; profile?: string } | null;
-    const format = saved?.format === "fit" || saved?.format === "tcx" ? saved.format : "gpx";
+    const format = saved?.format && Object.hasOwn(FORMAT_LABELS, saved.format) ? (saved.format as ExportFormat) : "gpx";
     return { format, profile: deviceProfile(saved?.profile).id };
   } catch {
     return { format: "gpx", profile: DEFAULT_PROFILE };
@@ -158,10 +238,25 @@ export function GpxPanel(props: Props) {
     setChoice(made);
     keepChoice(made.format, made.profile);
   };
-  // What the last course download fitted to the device, said in the status region below; a new route clears it.
+  // What the last course download fitted to the device, said in the status region below; a new route, another
+  // file type or another device clears it.
   const [courseSaid, setCourseSaid] = useState<{ text: string; count: number } | null>(null);
-  useEffect(() => setCourseSaid(null), [route]);
-  const sayCourse = (text: string) => setCourseSaid((s) => ({ text, count: (s?.count ?? 0) + 1 }));
+  // Lock-screen images still to save, one per press of the same button ("Download part 2 of 6").
+  const [parts, setParts] = useState<PartQueue | null>(null);
+  useEffect(() => {
+    setCourseSaid(null);
+    setParts(null);
+  }, [route, choice.format, choice.profile]);
+  const sayCourse: Said = (made) => {
+    setParts(typeof made === "string" ? null : made.queue && made.queue.next < made.queue.blobs.length ? made.queue : null);
+    const text = typeof made === "string" ? made : made.line;
+    setCourseSaid((s) => ({ text, count: (s?.count ?? 0) + 1 }));
+  };
+  const saveNextPart = (queue: PartQueue) => {
+    saveFile(queue.blobs[queue.next], "image/png", queue.names[queue.next]);
+    const saved = queue.next + 1;
+    sayCourse({ line: lockPartLine(saved, queue.blobs.length, queue.cues), queue: { ...queue, next: saved } });
+  };
   const input = useRef<HTMLInputElement>(null);
   const [reading, setReading] = useState<Reading>({ kind: "idle" });
   const [showTrack, setShowTrack] = useState(true);
@@ -244,19 +339,27 @@ export function GpxPanel(props: Props) {
   };
 
   const download = () => {
+    // The route was checked when part 1 was made; each further part is saved as it is.
+    if (parts && choice.format === "png-lock") {
+      saveNextPart(parts);
+      return;
+    }
     if (choice.format !== "gpx") {
       onDownloadCourse?.(choice.format, choice.profile, sayCourse);
       return;
     }
-    if (onDownload) onDownload();
-    else if (route) downloadGpx(route, routedPoints, loop, federal);
+    if (onDownload) onDownload(sayCourse);
+    else if (route) {
+      downloadGpx(route, routedPoints, loop, federal);
+      sayCourse(GPX_SAID_ROUTE);
+    }
   };
 
   return (
     <section aria-labelledby="gpx-heading" className="gpx">
       {/* The GPX sheet's own heading names it (App.tsx); this one stays for the section's name. */}
       <h3 id="gpx-heading" className="visually-hidden">
-        GPX file
+        Route file
       </h3>
       {courses && (
         <div className="gpx-format">
@@ -270,7 +373,7 @@ export function GpxPanel(props: Props) {
               ))}
             </select>
           </label>
-          {choice.format !== "gpx" && (
+          {isCourse(choice.format) && (
             <label className="select-setting">
               Device
               <select value={choice.profile} onChange={(event) => choose({ profile: event.target.value as DeviceProfileId })}>
@@ -297,7 +400,7 @@ export function GpxPanel(props: Props) {
           Open GPX…
         </button>
         <button type="button" onClick={download} disabled={choice.format === "gpx" ? !route && !imported?.verbatim : !route}>
-          Download {choice.format.toUpperCase()}
+          {parts ? lockPartButton(parts.next, parts.blobs.length) : `Download ${FORMAT_WORDS[choice.format]}`}
         </button>
       </div>
       <input
@@ -359,7 +462,20 @@ export function GpxPanel(props: Props) {
         edited, the download is that file as it came; otherwise it is the route shown, with its credits: ©
         OpenStreetMap contributors (ODbL) and the traffic and elevation sources.
       </p>
-      {choice.format !== "gpx" && (
+      {(choice.format === "pdf-sheet" || choice.format === "pdf-strip") && (
+        <p className="hint">
+          A cue sheet is the route shown with Ride's cues, to print: the sheet on letter paper, the strip at actual size
+          to cut out for the handlebar. Its credits are at the foot of every page.
+        </p>
+      )}
+      {choice.format === "png-lock" && (
+        <p className="hint">
+          The cue sheet as a picture for your phone's lock screen, with the clock's space at the top left clear. A long
+          route makes more than one, Part 1, Part 2 and on, downloaded one after another. Its credits are along the
+          bottom.
+        </p>
+      )}
+      {isCourse(choice.format) && (
         <p className="hint">
           A course is the route shown with Ride's turn cues, fitted to the device. TCX carries the credits in its notes;
           FIT has no place for them but its name, which has them where the device leaves room: route data ©

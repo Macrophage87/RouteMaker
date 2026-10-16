@@ -15,10 +15,16 @@ import {
   SHARED_INPUTS_ONLY,
   SHARED_MAX_BYTES,
   SHARED_OPENED,
+  SHARED_REVOKED,
   gpxShareFile,
+  keepSaid,
+  listSharedLinks,
   newSharedId,
+  previewImageOk,
   publicAnswer,
   readShared,
+  regenerateSharedLink,
+  revokeSharedLink,
   sharedBody,
   sharedIdFrom,
   storeShared,
@@ -59,13 +65,23 @@ test("the id is 128 random bits as 32 hex characters, from the browser's random 
 });
 
 test("the link keeps its plan and adds the line's id; an older link or a bad id names none", () => {
-  const plain = `https://x.test/?palette=cool${encodePlan(POINTS, "default", startDials("default"))}`;
+  const hash = encodePlan(POINTS, "default", startDials("default"));
+  const plain = `https://x.test/?palette=cool${hash}`;
   const link = withSharedId(plain, ID);
-  assert.equal(link, `${plain}&route=${ID}`);
+  // The path names the line for a preview fetcher (which never sends the fragment); the fragment names it too.
+  assert.equal(link, `https://x.test/s/${ID}${hash}&route=${ID}`);
   assert.equal(sharedIdFrom(new URL(link).hash), ID);
   // The plan is the same with or without the id: a link whose line has gone plans it again.
   assert.deepEqual(decodePlan(new URL(link).hash), decodePlan(new URL(plain).hash));
-  assert.equal(withSharedId("https://x.test/", ID), `https://x.test/#route=${ID}`);
+  assert.equal(withSharedId("https://x.test/", ID), `https://x.test/s/${ID}#route=${ID}`);
+  // Sent on from /s/<id> as /?route=<id>: read from the query too.
+  assert.equal(sharedIdFrom("", `?route=${ID}`), ID);
+  assert.equal(sharedIdFrom("#p=1", "?route=nope"), null);
+  // Opened by the installed app's worker at its own path.
+  assert.equal(sharedIdFrom("#p=1", "", `/s/${ID}`), ID);
+  assert.equal(sharedIdFrom("", "", "/s/nope"), null);
+  // A link made before the preview path (`/#...&route=<id>`) still opens its line.
+  assert.equal(sharedIdFrom(`#p=1&preset=default&route=${ID}`, "", "/"), ID);
   assert.equal(sharedIdFrom(new URL(plain).hash), null);
   for (const bad of ["abc", "G".repeat(32), "0".repeat(31), "0".repeat(33), `${ID.slice(0, 31)}%`]) assert.equal(sharedIdFrom(`#p=1&route=${bad}`), null);
 });
@@ -174,7 +190,7 @@ test("App: Share keeps the exact line and attaches the file Download GPX saves; 
   assert.match(share, /const \{ link, kept, exact \} = sharedLinkNow\(\);/);
   const linkNow = app.slice(app.indexOf("const sharedLinkNow = () => {"), app.indexOf("\n  };\n", app.indexOf("const sharedLinkNow = () => {")));
   assert.match(linkNow, /kept = before\?\.kept \?\? storeShared\(origin, body!\.json\);/);
-  assert.match(linkNow, /const body = before \? null : sharedBody\(id, exact\.save, shareKeep\);/);
+  assert.match(linkNow, /const body = before \? null : sharedBody\(id, exact\.save, shareKeep, previewImageOk\(exact\.save\.line, exact\.save\.inputs\.points, myGo\.home, me\.signed_in\)\);/);
   assert.match(share, /said = SHARED_INPUTS_ONLY;/);
   // The QR code's link: only once its exact line is kept; one not kept is tried again under a new id.
   const qr = app.slice(app.indexOf("const shareCardLink = async ()"), app.indexOf("\n  };\n", app.indexOf("const shareCardLink = async ()")));
@@ -184,7 +200,7 @@ test("App: Share keeps the exact line and attaches the file Download GPX saves; 
 });
 
 test("App: a shared link's line opens as a saved route does, before the link's first plan is answered", () => {
-  assert.match(app, /const SHARED_ID = sharedIdFrom\(window\.location\.hash\);/);
+  assert.match(app, /const SHARED_ID = sharedIdFrom\(window\.location\.hash, window\.location\.search, window\.location\.pathname\);/);
   const send = app.slice(app.indexOf("send: async (plan) => {"), app.indexOf("const saved = savedShown.current;"));
   assert.match(send, /if \(SHARED_WAIT\) await SHARED_WAIT;/);
   const open = app.slice(app.indexOf("void readShared(origin, SHARED_ID)"), app.indexOf("sharedArrived();"));
@@ -223,5 +239,69 @@ test("the keeping is chosen under Share in Plan's More only; a different keeping
   assert.equal(panel.match(/<ShareKeepField /g)?.length, 1, "one place: Plan's More, not Go");
   assert.match(panel, /value\.keep === "until" && \(/);
   assert.match(app, /sharedLine\.current\?\.of === exact\.of && sharedLine\.current\.keep === keep/);
-  assert.match(app, /sharedBody\(id, exact\.save, shareKeep\)/);
+  assert.match(app, /sharedBody\(id, exact\.save, shareKeep, /);
+});
+
+test("a link its owner turned off: read as revoked, said plainly, and its plan is not planned", async () => {
+  const gone = (async () => new Response(JSON.stringify({ error: SHARED_REVOKED, code: "revoked" }), { status: 410 })) as unknown as typeof fetch;
+  assert.equal(await readShared("https://x.test", ID, gone), "revoked");
+  assert.equal(SHARED_REVOKED, "This link was turned off by its owner.");
+  const open = app.slice(app.indexOf("void readShared(origin, SHARED_ID)"), app.indexOf("sharedArrived();"));
+  assert.match(open, /if \(shared === "revoked"\) \{\s*sharedRevoked = true;/);
+  const send = app.slice(app.indexOf("send: async (plan) => {"), app.indexOf("const saved = savedShown.current;"));
+  assert.match(send, /if \(sharedRevoked && \(revokedPlan \?\?= sentPlanKey\(plan\.points, plan\.preset, plan\.dials\)\) === sentPlanKey\(plan\.points, plan\.preset, plan\.dials\)\)/);
+  assert.match(send, /return \{ ok: false, error: SHARED_REVOKED_ERROR \};/);
+  // A link with no plan: shown as a plan's error is, and said.
+  assert.match(open, /if \(decodePlan\(window\.location\.hash\)\.points\.length < 2\) \{\s*setStatus\(\{ kind: "error", error: SHARED_REVOKED_ERROR \}\);\s*announce\(SHARED_REVOKED\);/);
+  // The address becomes the page's own once the id is read, so a later Copy link is not the old shared one.
+  assert.match(app, /query\.delete\("route"\);\s*window\.history\.replaceState\(window\.history\.state, "", `\/\$\{query\.size \? `\?\$\{query\}` : ""\}\$\{window\.location\.hash\}`\);/);
+});
+
+test("signed out, a route from the device's Home has no preview image; signed in the server hides Home itself", () => {
+  const home = { point: POINTS[0], label: "Home" };
+  const line = [POINTS[0], POINTS[1]];
+  assert.equal(previewImageOk(line, POINTS, home, false), false);
+  assert.equal(previewImageOk(line, POINTS, home, true), true);
+  assert.equal(previewImageOk(line, POINTS, null, false), true);
+  // Only passing by: an image.
+  const far = { point: [-77.2, 38.99] as LonLat, label: "Home" };
+  assert.equal(previewImageOk(line, POINTS, far, false), true);
+  const save = planSave("A", ROUTE, POINTS, "default", startDials("default"));
+  assert.equal(sharedBody(ID, save, undefined, false)!.body.preview_image, false);
+  // Always said: the server takes a share that does not say as no image.
+  assert.equal(sharedBody(ID, save)!.body.preview_image, true);
+});
+
+test("the owner's links: listed, turned off and replaced with the CSRF token, in Plan's My routes only", async () => {
+  const sent: Array<{ url: string; init?: RequestInit }> = [];
+  const link = { id: ID, name: "Ride", source: "plan", distance_m: 1609.344, created_at: "", keep: "year", delete_after: null, link: `https://x.test/s/${ID}#route=${ID}` };
+  const answer = (status: number, body: unknown) =>
+    (async (url: string, init?: RequestInit) => {
+      sent.push({ url, init });
+      return new Response(JSON.stringify(body), { status });
+    }) as unknown as typeof fetch;
+  assert.deepEqual(await listSharedLinks("https://x.test", answer(200, { links: [link] })), [link]);
+  assert.equal(sent[0].url, "https://x.test/api/me/shared-routes");
+  assert.equal(await listSharedLinks("https://x.test", answer(401, {})), null);
+  assert.equal(await revokeSharedLink("https://x.test", ID, answer(200, {}), "csrftoken=t0k"), true);
+  assert.equal(sent.at(-1)!.url, `https://x.test/api/me/shared-routes/${ID}/revoke`);
+  assert.equal((sent.at(-1)!.init!.headers as Record<string, string>)["X-CSRFToken"], "t0k");
+  assert.equal(await revokeSharedLink("https://x.test", ID, answer(404, {}), ""), false);
+  assert.deepEqual(await regenerateSharedLink("https://x.test", ID, answer(201, link), "csrftoken=t0k"), link);
+  assert.equal(sent.at(-1)!.url, `https://x.test/api/me/shared-routes/${ID}/regenerate`);
+  assert.equal(await regenerateSharedLink("https://x.test", ID, answer(404, {}), ""), null);
+  assert.equal(keepSaid({ keep: "year", delete_after: null }), "kept 1 year after last opened");
+  assert.equal(keepSaid({ keep: "forever", delete_after: null }), "kept permanently");
+  assert.equal(keepSaid({ keep: "until", delete_after: "2027-01-01" }), "kept until 2027-01-01");
+  // Plan only; Turn off takes a second press, as Delete does; each button names its route.
+  const appFile = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(appFile, /sharedLinks: mode === "plan", onSharedChange: forgetSharedLine/);
+  // After Turn off or New link, Share forgets the id it gave, so it never hands out a dead link.
+  assert.match(appFile, /const forgetSharedLine = \(\) => \{\s*sharedLine\.current = null;\s*\};/);
+  const mine = readFileSync(new URL("../MyRoutes.tsx", import.meta.url), "utf8");
+  assert.match(mine, /\{sharedLinks && <SharedLinks version=\{version\} announce=\{announce\} onChange=\{onSharedChange\} \/>\}/);
+  assert.match(mine, /if \(turningOff !== l\.id\) \{\s*setTurningOff\(l\.id\);\s*return;/);
+  assert.match(mine, /if \(ok\) onChange\(\);/);
+  assert.match(mine, /return;\s*\}\s*onChange\(\);\s*const copied/);
+  assert.match(mine, /aria-label=\{`\$\{NEW_LINK\} for \$\{l\.name\}`\}/);
 });

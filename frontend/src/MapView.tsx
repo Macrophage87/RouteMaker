@@ -110,6 +110,7 @@ import {
   transitOf,
 } from "./lib/transit.ts";
 import { countdown, labelSide, mapLabel } from "./lib/departure.ts";
+import { lightMarkerLabel, lightMarkerText, underControls, type LightMark } from "./lib/lightTimes.ts";
 import {
   CARD_CLOSE_LABEL,
   cardName,
@@ -179,6 +180,8 @@ interface Props {
   stale: boolean;
   /** Plan mode (v0.7.0): the line before the last update, drawn dashed until the next change, or null. */
   ghost?: readonly LonLat[] | null;
+  /** Plan: the light times on the route near dawn or dusk (lib/lightTimes.ts), each marked where the rider will be; null draws none. */
+  lightMarks?: readonly LightMark[] | null;
   stressVisible: boolean;
   /** The ride time the overlay follows, for the roads closed to cars at set times (lib/rideTime.ts). */
   when: When;
@@ -1468,6 +1471,62 @@ export function MapView(props: Props) {
     });
     return () => drawn.forEach((marker) => marker.remove());
   }, [props.route]);
+
+  // The light times on the route (lib/lightTimes.ts): sunset and the end of civil twilight, or civil dawn
+  // and sunrise, each where the rider will be then. A text label, named for a screen reader (the route
+  // summary's line says the same); not a button, so not in the Tab order, and it lets the map's clicks
+  // through (styles.css). A marker still shown is moved and renamed in place, not drawn again.
+  const lightDrawn = useRef(new Map<string, maplibregl.Marker>());
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current) return;
+    const drawn = lightDrawn.current;
+    const wanted = (props.lightMarks ?? []).filter((mark) => mark.where === "during" && mark.point);
+    for (const [kind, marker] of drawn) {
+      if (!wanted.some((mark) => mark.kind === kind)) {
+        marker.remove();
+        drawn.delete(kind);
+      }
+    }
+    for (const mark of wanted) {
+      let marker = drawn.get(mark.kind);
+      if (!marker) {
+        const element = document.createElement("div");
+        element.className = "light-marker";
+        element.dataset.kind = mark.kind;
+        element.setAttribute("role", "img");
+        const text = document.createElement("span");
+        text.setAttribute("aria-hidden", "true");
+        element.appendChild(text);
+        marker = new maplibregl.Marker({ element, anchor: "bottom", offset: [0, -6] }).setLngLat(mark.point as LonLat).addTo(map);
+        drawn.set(mark.kind, marker);
+      }
+      marker.setLngLat(mark.point as LonLat);
+      const element = marker.getElement();
+      element.setAttribute("aria-label", lightMarkerLabel(mark));
+      (element.firstChild as HTMLElement).textContent = lightMarkerText(mark);
+    }
+    // Not drawn where it would sit under the map's controls (the scale bar at the bottom right); it stays named.
+    const clear = () => {
+      const controls = Array.from(map.getContainer().querySelectorAll(".maplibregl-ctrl"), (c) => c.getBoundingClientRect());
+      for (const marker of drawn.values()) {
+        const element = marker.getElement();
+        element.classList.toggle("under-controls", underControls((element.firstChild as HTMLElement).getBoundingClientRect(), controls));
+      }
+    };
+    clear();
+    map.on("move", clear);
+    return () => {
+      map.off("move", clear);
+    };
+  }, [props.lightMarks]);
+  useEffect(() => {
+    const drawn = lightDrawn.current;
+    return () => {
+      drawn.forEach((marker) => marker.remove());
+      drawn.clear();
+    };
+  }, []);
 
   // An infrequent departure's label at the boarding stop (lib/departure.ts): "MARC 7:42 am · 6 min
   // spare", and, when cutting it close, the countdown to it. Hidden from screen readers (the panel

@@ -88,12 +88,31 @@ export function poundsRange(minLb: number, maxLb: number, minKg: number, maxKg: 
 }
 
 /**
+ * A cue sheet's distance from the start, always in tenths of a mile, never feet (lib/cueSheetPdf.ts): "12.4 mi
+ * (20.0 km)", "0.0 mi (0.0 km)" at the start; and the strip's small words after its large miles figure,
+ * "mi (20.0 km)".
+ */
+export function formatMileMarker(metres: number): string {
+  return `${milesFigure(metres)} ${formatMileMarkerUnits(metres)}`;
+}
+
+export function formatMileMarkerUnits(metres: number): string {
+  return `mi (${(metres / 1000).toFixed(1)} km)`;
+}
+
+/**
  * A change of distance, without its sign, always in tenths of a mile (v0.7.0's change summary, lib/planFirst.ts):
  * "1.2 mi (1.9 km)"; "0.0 mi (0.0 km)" for a change too small to say.
  */
 export function formatDistanceChange(metres: number): string {
   const m = Math.abs(metres);
   return `${(m / METRES_PER_MILE).toFixed(1)} mi (${(m / 1000).toFixed(1)} km)`;
+}
+
+/** How far along a route, miles first: "mile 12.4 (20.0 km)"; under a tenth of a mile, "the start". */
+export function formatMilePost(metres: number): string {
+  if (!usable(metres) || metres < FEET_BELOW_M) return "the start";
+  return `mile ${milesFigure(metres)} (${(metres / 1000).toFixed(1)} km)`;
 }
 
 /** "4.7 mi (7.6 km)"; below a tenth of a mile "500 ft (150 m)". */
