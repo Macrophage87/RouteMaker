@@ -2029,6 +2029,11 @@ export function App() {
   const addAtCentre = () => {
     const map = mapRef.current;
     if (!map) return;
+    // Map tools' Add point while the plan is full (aria-disabled, review a11y-7): its reason, said each press.
+    if (!goTapSetsEnd(mode) && pointsRef.current.length >= MAX_POINTS) {
+      announce(maxPointsNotice());
+      return;
+    }
     const { lng, lat } = map.getCenter();
     place([lng, lat]);
   };

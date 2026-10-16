@@ -300,3 +300,12 @@ test("a level slider's words are heard once: its <output> is hidden, the value t
     assert.match(read(name), /aria-valuetext=/, name);
   }
 });
+
+test("Map tools' Add point, with the plan full, stays in the Tab order with its reason, said on a press (review a11y-7)", () => {
+  assert.doesNotMatch(mapTools, /disabled=\{addDisabled\}/);
+  assert.match(mapTools, /aria-disabled=\{addDisabled \|\| undefined\}\s*aria-describedby=\{addDisabled \? `\$\{panelId\}-full` : undefined\}/);
+  assert.match(mapTools, /onClick=\{\(\) => \(addDisabled \? onAddPoint\(\) : run\(onAddPoint\)\)\}/);
+  assert.match(mapTools, /<span id=\{`\$\{panelId\}-full`\} className="visually-hidden">\s*\{maxPointsNotice\(\)\}/);
+  const add = app.slice(app.indexOf("const addAtCentre = () => {"), app.indexOf("place([lng, lat]);"));
+  assert.match(add, /if \(!goTapSetsEnd\(mode\) && pointsRef\.current\.length >= MAX_POINTS\) \{\s*announce\(maxPointsNotice\(\)\);\s*return;/);
+});
