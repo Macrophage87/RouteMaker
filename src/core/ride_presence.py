@@ -50,6 +50,8 @@ TOKEN_TTL_S = 12 * 3600
 # Bounds on memory, whatever a client sends.
 MAX_RIDERS_PER_RIDE = 3000
 MAX_RIDES = 500
+# Alerts live on one ride at a time; a newer one past this drops the oldest.
+LIVE_ALERTS_PER_RIDE = 20
 
 # Alerts (the plan's lists, limits and merge rule).
 ALERT_TTL_S = 10 * 60
@@ -172,12 +174,18 @@ class MemoryStore:
         self._lock = threading.Lock()
 
     @contextlib.contextmanager
-    def ride(self, ride_id: str) -> Iterator[dict]:
+    def ride(self, ride_id: str, create: bool = True) -> Iterator[dict]:
+        """The ride's state to change. Without `create`, a ride not kept yet is an empty state
+        that is not kept afterwards either (a read takes no room)."""
         with self._lock:
-            if ride_id not in self._rides and len(self._rides) >= MAX_RIDES:
-                _prune_rides(self._rides)
+            if ride_id not in self._rides:
+                if not create:
+                    yield _empty()
+                    return
                 if len(self._rides) >= MAX_RIDES:
-                    raise Refused(503, "Too many rides are sharing right now; try again shortly.")
+                    _prune_rides(self._rides)
+                    if len(self._rides) >= MAX_RIDES:
+                        raise _full()
             state = self._rides.setdefault(ride_id, _empty())
             yield state
             if _is_empty(state):
@@ -188,11 +196,21 @@ class MemoryStore:
             self._rides.clear()
 
 
+def _full() -> Refused:
+    return Refused(503, "Too many rides are sharing right now; try again shortly.")
+
+
+def _idle(state: dict) -> bool:
+    """A pruned ride with no rider's position from the last 2 minutes: the first to go when the
+    store is full, so a new ride takes the place of one nobody is riding."""
+    return not any("at" in r for r in state["riders"].values())
+
+
 def _prune_rides(rides: dict[str, dict]) -> None:
     now = time.time()
     for ride_id in list(rides):
         _prune(rides[ride_id], now)
-        if _is_empty(rides[ride_id]):
+        if _is_empty(rides[ride_id]) or _idle(rides[ride_id]):
             del rides[ride_id]
 
 
@@ -228,16 +246,51 @@ class TmpfsStore:
             os.close(fd)
         raise Refused(503, "The ride is busy; try again shortly.")
 
+    def _count(self) -> int:
+        try:
+            return sum(1 for n in os.listdir(self.directory) if n.endswith(".json"))
+        except OSError:
+            return 0
+
+    def _evict_idle(self) -> None:
+        """Drop each ride with no position from the last 2 minutes, each under its own lock."""
+        try:
+            names = [n for n in os.listdir(self.directory) if n.endswith(".json")]
+        except OSError:
+            return
+        now = time.time()
+        for name in names:
+            path = os.path.join(self.directory, name)
+            try:
+                fd = self._locked(path)
+            except (OSError, Refused):
+                continue
+            try:
+                with os.fdopen(os.dup(fd), "r", encoding="utf-8") as handle:
+                    try:
+                        state = json.loads(handle.read() or "null") or _empty()
+                    except ValueError:
+                        state = _empty()
+                _prune(state, now)
+                if _is_empty(state) or _idle(state):
+                    os.unlink(path)
+            except (OSError, KeyError, TypeError, AttributeError):
+                pass
+            finally:
+                os.close(fd)
+
     @contextlib.contextmanager
-    def ride(self, ride_id: str) -> Iterator[dict]:
+    def ride(self, ride_id: str, create: bool = True) -> Iterator[dict]:
+        """As MemoryStore.ride."""
         path = os.path.join(self.directory, f"{ride_id}.json")
         if not os.path.exists(path):
-            try:
-                count = sum(1 for n in os.listdir(self.directory) if n.endswith(".json"))
-            except OSError:
-                count = 0
-            if count >= MAX_RIDES:
-                raise Refused(503, "Too many rides are sharing right now; try again shortly.")
+            if not create:
+                yield _empty()
+                return
+            if self._count() >= MAX_RIDES:
+                self._evict_idle()
+                if self._count() >= MAX_RIDES:
+                    raise _full()
         fd = self._locked(path)
         try:
             with os.fdopen(os.dup(fd), "r+", encoding="utf-8") as handle:
@@ -250,10 +303,12 @@ class TmpfsStore:
                 if _is_empty(state):
                     os.unlink(path)
                 else:
-                    handle.seek(0)
-                    handle.truncate()
-                    handle.write(json.dumps(state, separators=(",", ":")))
-                    handle.flush()
+                    out = json.dumps(state, separators=(",", ":"))
+                    if out != raw:
+                        handle.seek(0)
+                        handle.truncate()
+                        handle.write(out)
+                        handle.flush()
         finally:
             os.close(fd)
 
@@ -363,7 +418,7 @@ def post_position(
 def leave(ride_id: str, token: str, now: Callable[[], float] = time.time) -> None:
     """Drop this rider's dot at once (sharing turned off)."""
     _check(ride_id, token)
-    with store().ride(ride_id) as state:
+    with store().ride(ride_id, create=False) as state:
         _prune(state, now())
         rider = state["riders"].get(token)
         if rider is not None:
@@ -394,12 +449,17 @@ def read(ride_id: str, token: str, now: Callable[[], float] = time.time) -> dict
     alerts."""
     _check(ride_id, token)
     t = now()
-    with store().ride(ride_id) as state:
+    with store().ride(ride_id, create=False) as state:
         _prune(state, t)
-        rider = _rider(state, token, t)
-        if t - rider.get("polled", 0) < MIN_POLL_INTERVAL_S:
-            raise Refused(429, "Too soon; the dots update every 15 seconds.", MIN_POLL_INTERVAL_S)
-        rider["polled"] = t
+        # A reader becomes a rider only with its first position or alert: a read keeps nothing
+        # of a token it has not seen (the address limit covers those reads).
+        rider = state["riders"].get(token)
+        if rider is not None:
+            if t - rider.get("polled", 0) < MIN_POLL_INTERVAL_S:
+                raise Refused(
+                    429, "Too soon; the dots update every 15 seconds.", MIN_POLL_INTERVAL_S
+                )
+            rider["polled"] = t
         dots = [
             {
                 "lon": r["lon"],
@@ -473,6 +533,8 @@ def send_alert(
             "reporters": [token],
         }
         state["alerts"].append(alert)
+        if len(state["alerts"]) > LIVE_ALERTS_PER_RIDE:
+            state["alerts"].remove(min(state["alerts"], key=lambda a: a["last"]))
         return _alert_out(alert, token, t)
 
 
@@ -481,7 +543,7 @@ def clear_alert(
 ) -> None:
     """The sender clears their alert; nobody else can."""
     _check(ride_id, token)
-    with store().ride(ride_id) as state:
+    with store().ride(ride_id, create=False) as state:
         _prune(state, now())
         for alert in state["alerts"]:
             if alert["id"] == alert_id:

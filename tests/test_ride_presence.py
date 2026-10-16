@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import logging
+from types import SimpleNamespace
 
 import pytest
 from django.db import connection
@@ -97,9 +98,74 @@ def test_updates_are_limited_per_token(clock) -> None:
     assert refused.value.status == 429
     clock.t += 10
     rp.post_position(RIDE, ME, *SPOT, now=clock)
-    rp.read(RIDE, YOU, now=clock)
+    rp.read(RIDE, ME, now=clock)
     with pytest.raises(rp.Refused):
-        rp.read(RIDE, YOU, now=clock)
+        rp.read(RIDE, ME, now=clock)
+
+
+def test_a_read_keeps_nothing_of_a_reader_before_its_first_position(clock) -> None:
+    # A ride nobody has written to is not kept for a read.
+    assert rp.read(RIDE, YOU, now=clock) == {"dots": [], "alerts": []}
+    assert rp.store()._rides == {}
+    # On a kept ride, the reader is not made a rider either.
+    rp.post_position(RIDE, ME, *SPOT, now=clock)
+    rp.read(RIDE, YOU, now=clock)
+    rp.read(RIDE, THEM, now=clock)
+    assert set(rp.store()._rides[RIDE]["riders"]) == {ME}
+
+
+def test_live_alerts_on_a_ride_are_capped_and_the_oldest_goes(clock) -> None:
+    first = None
+    for n in range(rp.LIVE_ALERTS_PER_RIDE + 1):
+        clock.t += 1
+        sent = rp.send_alert(
+            RIDE, f"{n:032x}", rp.MASS_RIDE, "spread", "", SPOT[0] + n * 0.01, SPOT[1], now=clock
+        )
+        first = first or sent["id"]
+    alerts = rp.read(RIDE, ME, now=clock)["alerts"]
+    assert len(alerts) == rp.LIVE_ALERTS_PER_RIDE
+    assert first not in {a["id"] for a in alerts}
+
+
+def _ride(n: int) -> str:
+    return f"{n:064x}"
+
+
+def _fill(clock) -> None:
+    for n in range(rp.MAX_RIDES):
+        rp.post_position(_ride(n), ME, *SPOT, now=clock)
+
+
+def test_a_full_store_makes_room_from_rides_with_no_recent_position(clock, monkeypatch) -> None:
+    monkeypatch.setattr(rp, "MAX_RIDES", 3)
+    monkeypatch.setattr(rp, "time", SimpleNamespace(time=clock))
+    _fill(clock)
+    with pytest.raises(rp.Refused) as refused:
+        rp.post_position(_ride(9), ME, *SPOT, now=clock)
+    assert refused.value.status == 503
+    # Two minutes on, with one ride still riding: the other two make room.
+    clock.t += rp.DOT_TTL_S + 1
+    rp.post_position(_ride(0), ME, *SPOT, now=clock)
+    rp.post_position(_ride(9), ME, *SPOT, now=clock)
+    assert set(rp.store()._rides) == {_ride(0), _ride(9)}
+
+
+def test_the_tmpfs_store_makes_room_the_same_way(tmp_path, clock, monkeypatch) -> None:
+    monkeypatch.setattr(rp, "MAX_RIDES", 2)
+    monkeypatch.setattr(rp, "time", SimpleNamespace(time=clock))
+    monkeypatch.setattr(rp, "store", lambda: store)
+    store = rp.TmpfsStore(str(tmp_path))
+    _fill(clock)
+    with pytest.raises(rp.Refused):
+        rp.post_position(_ride(9), ME, *SPOT, now=clock)
+    # A read of a ride not kept takes no room and writes no file.
+    rp.read(_ride(8), YOU, now=clock)
+    assert len(list(tmp_path.iterdir())) == 2
+    clock.t += rp.DOT_TTL_S + 1
+    rp.post_position(_ride(1), ME, *SPOT, now=clock)
+    rp.post_position(_ride(9), ME, *SPOT, now=clock)
+    names = sorted(p.name for p in tmp_path.iterdir())
+    assert names == [f"{_ride(1)}.json", f"{_ride(9)}.json"]
 
 
 @pytest.mark.parametrize(
@@ -300,8 +366,39 @@ def test_the_endpoints_keep_positions_out_of_the_database_and_logs(client, caplo
     logged = " ".join(record.getMessage() for record in caplog.records)
     assert "38.89" not in logged and "-77.03" not in logged
     queries.__exit__(None, None, None)
-    # Not one write to the database, nor a read: dots and alerts never touch it.
-    assert [q["sql"] for q in queries.captured_queries] == []
+    # The database sees only the rate limits' counts, by keyed digest: never a position, a
+    # token or a ride.
+    sql = [str(q["sql"]) for q in queries.captured_queries]
+    assert sql and all("rate_limit_window" in q for q in sql)
+    assert not any(v in q for q in sql for v in ("38.89", "-77.03", ME, RIDE))
+
+
+@pytest.mark.django_db
+def test_the_endpoints_are_limited_per_address_and_writes_per_ride(client, monkeypatch) -> None:
+    from core import ratelimit
+
+    seen = []
+    refuse = {"ride-write"}
+
+    def hit(limit, key):
+        seen.append(limit.scope)
+        allowed = limit.scope not in refuse
+        return ratelimit.Decision(allowed=allowed, retry_after_s=0 if allowed else 7)
+
+    monkeypatch.setattr(ratelimit, "hit", hit)
+    body = json.dumps({"token": ME, "lon": SPOT[0], "lat": SPOT[1]})
+    busy = client.post(f"/api/rides/{RIDE}/here", data=body, content_type="application/json")
+    assert busy.status_code == 429 and busy["Retry-After"] == "7"
+    assert seen == ["ride-link", "ride-write"]
+    assert rp.store()._rides == {}
+    refuse.clear()
+    seen.clear()
+    assert client.get(f"/api/rides/{RIDE}", HTTP_X_RIDE_TOKEN=YOU).status_code == 200
+    assert seen == ["ride-link"]
+    refuse.add("ride-link")
+    assert client.get(f"/api/rides/{RIDE}", HTTP_X_RIDE_TOKEN=YOU).status_code == 429
+    # Generous: a whole ride's phones can share one carrier address.
+    assert ratelimit.RIDE_LINKS.requests >= 600
 
 
 def test_a_foreign_page_is_refused(client) -> None:

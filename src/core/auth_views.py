@@ -36,6 +36,7 @@ from django.utils.encoding import iri_to_uri
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods
 
+from . import ratelimit
 from .discord_oauth import LoginRequest, OAuthStateError, begin_login, scopes_are_minimal
 from .models import BanTombstone, Session, User
 from .revocation import tombstone
@@ -111,6 +112,7 @@ SIGN_IN_OFF = "Sign-in is not set up on this server. Planning works without it."
 
 
 @require_http_methods(["GET"])
+@ratelimit.rate_limited(ratelimit.SIGN_IN)
 def login_start(request):
     if not sign_in_available():
         return HttpResponse(SIGN_IN_OFF, status=503, content_type="text/plain; charset=utf-8")
@@ -129,6 +131,7 @@ def login_start(request):
 
 
 @require_http_methods(["GET"])
+@ratelimit.rate_limited(ratelimit.SIGN_IN)
 def login_callback(request, exchange=None):
     """Complete the login. `exchange` is injected so the tests never call out."""
     if not sign_in_available():
@@ -185,6 +188,7 @@ def login_callback(request, exchange=None):
 
 
 @require_http_methods(["POST"])
+@ratelimit.rate_limited(ratelimit.SIGN_IN)
 def logout_view(request):
     """Sign out of this session. Signing out everywhere bumps the epoch instead,
     which is a different action and belongs on the account page."""

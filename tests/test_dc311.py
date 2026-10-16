@@ -140,3 +140,21 @@ def test_every_address_together_is_held_to_an_hourly_cap(client, dc, settings, m
         )
         codes.append(r.status_code)
     assert codes == [200, 200, 429] and len(dc) == 2
+
+
+@pytest.mark.django_db
+def test_the_status_answers_this_site_s_pages_only_and_is_rate_limited(client, monkeypatch) -> None:
+    from core import ratelimit
+
+    foreign = client.get("/api/report311", HTTP_SEC_FETCH_SITE="cross-site")
+    assert foreign.status_code == 403
+    scopes = []
+
+    def hit(limit, key):
+        scopes.append(limit.scope)
+        return ratelimit.Decision(allowed=False, retry_after_s=9)
+
+    monkeypatch.setattr(ratelimit, "hit", hit)
+    busy = client.get("/api/report311")
+    assert busy.status_code == 429 and busy["Retry-After"] == "9"
+    assert scopes == [ratelimit.REPORT_311_STATUS.scope]

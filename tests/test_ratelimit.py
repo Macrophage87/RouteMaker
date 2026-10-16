@@ -368,3 +368,39 @@ class TestDecorator:
             rows = cursor.fetchall()
         assert rows
         assert not any("198.51.100.7" in client for _scope, client in rows)
+
+
+# Routes with no rate limit on purpose, each with why. Every other route the app serves carries
+# a rate_limited, user_rate_limited or in_flight_limited decorator.
+UNLIMITED_ON_PURPOSE = {
+    "healthz": "the container healthcheck: one fixed query, polled by the orchestrator",
+    "api/openapi.json": "the API's schema: no data, the same answer for everyone",
+    "admin": "the staff admin: behind its own sign-in, never a public page",
+}
+
+
+def _limited(view) -> bool:
+    return getattr(view, "limits", None) is not None
+
+
+def test_every_route_is_rate_limited() -> None:
+    from django.urls import URLPattern, URLResolver, get_resolver
+
+    from core.api import api
+
+    unlimited = set()
+    for prefix, router in api._routers:
+        for path, view in router.path_operations.items():
+            for op in view.operations:
+                if not any(_limited(d) for d in getattr(op, "_run_decorators", [])):
+                    unlimited.add("api/" + (prefix + path).lstrip("/"))
+    if api.openapi_url:
+        unlimited.add("api/" + api.openapi_url.lstrip("/"))
+    for pattern in get_resolver().url_patterns:
+        route = str(pattern.pattern)
+        if isinstance(pattern, URLResolver):
+            if route != "api/":  # the ninja operations are walked above
+                unlimited.add("admin")
+        elif isinstance(pattern, URLPattern) and not _limited(pattern.callback):
+            unlimited.add(route)
+    assert sorted(unlimited) == sorted(UNLIMITED_ON_PURPOSE)
