@@ -1262,6 +1262,8 @@ export function App() {
   const travel = useCallback(
     (direction: "undo" | "redo") => {
       const before = rideRef.current;
+      const active = document.activeElement;
+      historyPress.current = active instanceof HTMLElement && active.dataset.history ? { direction, button: active, row: active.parentElement } : null;
       const next = edits.travel(direction);
       if (next === undefined) return;
       setNotice(null);
@@ -1274,6 +1276,22 @@ export function App() {
   );
   const undo = useCallback(() => travel("undo"), [travel]);
   const redo = useCallback(() => travel("redo"), [travel]);
+  // Undo or Redo pressed for the last step it had goes (Redo, the map's buttons) or is disabled (Undo):
+  // the focus goes to the other one, or to the Points heading with neither (review a11y-2).
+  const historyPress = useRef<{ direction: "undo" | "redo"; button: HTMLElement; row: Element | null } | null>(null);
+  useEffect(() => {
+    const press = historyPress.current;
+    historyPress.current = null;
+    if (!press) return;
+    const usable = (element: Element | null | undefined): element is HTMLElement =>
+      element instanceof HTMLElement && element.isConnected && !(element as HTMLButtonElement).disabled;
+    const now = document.activeElement;
+    if (usable(press.button) || (now && now !== document.body && now !== press.button)) return;
+    const other = press.row?.querySelector(`[data-history="${press.direction === "undo" ? "redo" : "undo"}"]`);
+    (usable(other) ? other : pointsHeadingRef.current)?.focus();
+    // A phone's hidden sheet hides the heading too: the map, where the buttons were.
+    if (document.activeElement === document.body) mapRef.current?.getCanvas().focus();
+  }, [can]);
 
   // Ctrl+Z (Cmd+Z) undoes; Ctrl+Shift+Z (Cmd+Shift+Z) and Ctrl+Y redo;
   // anywhere but a text field, which has its own.
@@ -3491,12 +3509,12 @@ export function App() {
         // per layout), each shown while it has something to give back.
         <div className="map-history">
           {can.undo && (
-            <button type="button" onClick={undo}>
+            <button type="button" data-history="undo" onClick={undo}>
               Undo
             </button>
           )}
           {can.redo && (
-            <button type="button" onClick={redo}>
+            <button type="button" data-history="redo" onClick={redo}>
               Redo
             </button>
           )}

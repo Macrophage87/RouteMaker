@@ -301,6 +301,19 @@ test("a level slider's words are heard once: its <output> is hidden, the value t
   }
 });
 
+test("Undo or Redo that runs out hands the focus to the other, or the Points heading (review a11y-2)", () => {
+  const planner = read("./app/Planner.tsx");
+  assert.match(planner, /data-history="undo" onClick=\{undo\} disabled=\{!can\.undo\}/);
+  assert.match(planner, /data-history="redo" onClick=\{redo\}/);
+  assert.match(app, /<button type="button" data-history="undo" onClick=\{undo\}>/);
+  assert.match(app, /<button type="button" data-history="redo" onClick=\{redo\}>/);
+  // Only a press of one of them: Ctrl+Z from elsewhere moves nothing.
+  assert.match(app, /historyPress\.current = active instanceof HTMLElement && active\.dataset\.history \?/);
+  const rescue = app.slice(app.indexOf("const historyPress = useRef"), app.indexOf("}, [can]);"));
+  assert.match(rescue, /if \(usable\(press\.button\) \|\| \(now && now !== document\.body && now !== press\.button\)\) return;/);
+  assert.match(rescue, /\(usable\(other\) \? other : pointsHeadingRef\.current\)\?\.focus\(\);/);
+});
+
 test("the map's Escape skips one a sheet has handled already (review a11y-10)", () => {
   assert.match(mapView, /if \(event\.key !== "Escape" \|\| event\.defaultPrevented\) return;\s*\/\/ Escape calls off a drag/);
 });
