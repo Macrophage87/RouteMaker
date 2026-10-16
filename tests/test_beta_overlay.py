@@ -860,6 +860,33 @@ def test_the_proxy_timeouts_are_at_least_sixty_seconds() -> None:
     assert "proxy_set_header X-Forwarded-For $remote_addr;" in proxy
 
 
+def test_the_body_size_caps_agree_at_every_layer() -> None:
+    """A saved route is up to 4 MB and a shared one 2 MB: nginx and Caddy allow 5 MiB on
+    exactly the same paths (1 MiB elsewhere), Django reads 5 MiB, and no route cap is above
+    what the layers in front of it let through."""
+    from config import settings as config
+    from core import accounts, shared_routes
+
+    pattern = "^/api/(shared-routes|me)(/|$)"
+    big = dict(locations(stage("full")))[f"~ {pattern}"]
+    assert "client_max_body_size 5m;" in big
+    assert re.search(r"^\s*client_max_body_size 1m;", stage("full"), re.M)
+    proxy = dict(locations(stage("full")))["/"]
+    for line in proxy.strip().splitlines():
+        if line.strip() and not line.strip().startswith("#"):
+            assert line.strip() in big, line
+    assert f"@routes_body path_regexp {pattern}" in CADDYFILE
+    assert f"@other_body not path_regexp {pattern}" in CADDYFILE
+    assert re.search(r"request_body @routes_body \{\s*max_size 5MiB\s*\}", CADDYFILE)
+    assert re.search(r"request_body @other_body \{\s*max_size 1MiB\s*\}", CADDYFILE)
+    five_mib = 5 * 1024 * 1024
+    assert config.DATA_UPLOAD_MAX_MEMORY_SIZE == five_mib
+    assert accounts.ROUTE_MAX_BYTES <= five_mib and shared_routes.MAX_BYTES <= five_mib
+    for path in ("/api/shared-routes", "/api/shared-routes/ab", "/api/me/routes", "/api/me"):
+        assert re.match(pattern, path), path
+    assert not re.match(pattern, "/api/meta") and not re.match(pattern, "/api/route")
+
+
 def test_json_is_gzipped() -> None:
     full = stage("full")
     assert re.search(r"^\s*gzip on;", full, re.M)
