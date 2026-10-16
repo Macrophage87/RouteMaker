@@ -4896,3 +4896,37 @@ def test_a_reference_street_the_roadway_block_does_not_have_is_refused(
         run_pipeline(source, root, roadway=[reference_road_block(30)])
     assert caught.value.stage is Stage.VALIDATE_SEGMENTS
     assert "no block named NOT A STREET NW" in str(caught.value.cause)
+
+
+def test_a_reviewers_surface_penalty_reaches_every_graph_as_its_class(workspace, states) -> None:
+    """An approved surface override (v0.7.0) reaches each variant extract as
+    `rm:reviewer_surface`, which lua/routemaker_remap.lua `bounded_surface` prices; one taken
+    off (a null value) and a superseded one reach nothing."""
+    from core.models import Override as Row
+    from pipeline.extract import read_ways
+
+    old = Row.objects.create(
+        kind="surface", osm_way_id=100, value={"surface": "gravel"}, reason="r", evidence="e",
+        approved=True,
+    )  # fmt: skip
+    new = Row.objects.create(
+        kind="surface", osm_way_id=100, value={"surface": "rough"}, reason="r", evidence="e",
+    )  # fmt: skip
+    Row.objects.filter(pk=old.pk).update(superseded_by=new)
+    Row.objects.filter(pk=new.pk).update(approved=True)
+    Row.objects.create(
+        kind="surface", osm_way_id=200, value={"surface": None}, reason="r", evidence="e",
+        approved=True,
+    )  # fmt: skip
+    source, root = workspace
+    context, _ = run_pipeline(source, root, skip=NOT_SWAPPED)
+    assert context.override_report.surface == 1
+    # Way 100 is in every variant's extract, so every graph carries the penalty: none is
+    # skipped for want of the way.
+    carried = set()
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        if tags.get(100, {}).get("rm:reviewer_surface") == "paved_rough":
+            carried.add(variant)
+        assert all("rm:reviewer_surface" not in t for w, t in tags.items() if w != 100), variant
+    assert carried == set(Variant)

@@ -1870,6 +1870,16 @@ Each waiting suggestion has the owner's three actions:
 After Approve now or Delete the focus moves to the next suggestion's heading, or to the line "No
 suggestions are waiting."
 
+**A second reviewer** (v0.7.0; `suggestions.review`, `POST /api/stress-suggestions/{id}/review`)
+may mark a waiting road suggestion **Agree** or **Disagree**, with an optional one-line reason
+(200 characters). It is advice: the item shows "Reviewers: 2 agree, 1 disagrees" and the reasons,
+unnamed, and nothing changes until an admin uses Approve now. A reviewer marks once a suggestion
+(a second mark replaces the first) and never their own suggestion. Each mark is one audit row
+(`stress_suggest_review`); the marks are in `stress_suggestion_review`, which the beta never
+receives. A rider who suggested sees their latest suggestion's status for the road in the road
+panel ("Your suggestion: LTS 2 (Fine for adults). Waiting for review."; `GET
+/api/stress-suggestions/mine?way=`), never the reviewers' marks.
+
 **Privacy of the spot.** The panel sends the nearest point on the road (the road panel's
 `on_way`), never the spot clicked, and the server keeps only the nearest point on that way
 (`suggestions.snap`, PostGIS `ST_ClosestPoint`), refusing a spot more than 98 ft (30 m) from the
@@ -2611,8 +2621,20 @@ once the first rebuild with them has been promoted:
    Expect tens to a few hundred ways. That count also includes trails closed
    for other reasons since the last extract. Open a few on openstreetmap.org: the
    ones this change closed carry `sac_scale` and no `bicycle` tag.
-4. **Surface penalties (item 1).** Nothing to see: no rebuild input writes
-   `rm:reviewer_surface` today. The tile test (tests/test_tile_build_access.py,
+4. **Surface penalties (item 1).** From v0.7.0 an approved override of kind
+   `surface` writes `rm:reviewer_surface` (`overrides.apply_surface`; the rebuild's
+   override line counts them as "N surface"). An instance admin sets one with
+   `POST /api/stress-edits/surface` (`{"osm_way_ids": [...], "surface": "rough" |
+   "gravel" | "sand" | "dirt" | null, "reason": "..."}`; null takes it off), or types
+   the row into the admin (value `{"surface": "rough"}`; the admin refuses any other
+   value when the row is saved, `Override.clean`). It changes no level and no
+   live row: Valhalla's costs are built at the rebuild, so it applies from the next map
+   rebuild, and the road panel says "Surface penalty: Rough pavement; applies at the next
+   map rebuild" (Owner override) until the live table's rebuild has read it. The remap
+   caps every class at `compacted` and never improves a way, so after the rebuild the
+   panel says "routes price it as rougher than mapped" only where that changed the way's
+   class, and "routes already price the mapped surface as this rough" on an unpaved way
+   or, for Rough pavement, a rough paved one (`segment_info.penalty_reprices`). The tile test (tests/test_tile_build_access.py,
    "a reviewer ... penalty") covers it against the real parser.
 
 ## Rebuild checkpoints

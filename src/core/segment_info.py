@@ -789,6 +789,9 @@ def riding_rows(row: dict) -> list[dict]:
             )
         )
     rows.append(_row("Surface", surface_words(row), OSM))
+    penalty = surface_penalty_words(row)
+    if penalty:
+        rows.append(_row("Surface penalty", penalty, OWNER))
     level = row.get("mtb_level")
     words = mtb_level_words(level)
     if words and is_mtb_trail(row):
@@ -804,6 +807,35 @@ def riding_rows(row: dict) -> list[dict]:
     if row.get("walk_bike"):
         rows.append(_row("Walk your bike", "Yes: a short stretch where riding is not allowed", OSM))
     return rows
+
+
+def surface_penalty_words(row: dict) -> str | None:
+    """A reviewer's surface penalty (v0.7.0; `stress_edits.surface_of`, kept on the row as
+    `reviewer_surface`), in words: what it is, and whether routes price it yet. The graph has
+    it only from the map rebuild after it was set."""
+    penalty = row.get("reviewer_surface")
+    if not isinstance(penalty, dict):
+        return None
+    if penalty.get("surface") is None:
+        return "Taken off; routes stop pricing it at the next map rebuild"
+    words = str(penalty.get("words") or "Rough surface")
+    if not penalty.get("applied"):
+        return f"{words}; applies at the next map rebuild"
+    if penalty_reprices(row, penalty.get("surface")):
+        return f"{words}; routes price it as rougher than mapped"
+    return f"{words}; routes already price the mapped surface as this rough"
+
+
+def penalty_reprices(row: dict, surface: object) -> bool:
+    """Whether lua/routemaker_remap.lua `bounded_surface` gives the way a rougher class for
+    the penalty, read from the row's surface facts (the row has no `surface` tag). It caps
+    every penalty at `compacted` and never improves a way: an unpaved way is already that
+    rough or rougher, and a rough paved one (cobblestone, brick) already has Rough pavement.
+    Where the facts cannot say, this says no, so the panel never claims a change it did
+    not make."""
+    if row.get("is_unpaved") is True:
+        return False
+    return not (surface == "rough" and row.get("is_rough"))
 
 
 def surface_words(row: dict) -> str:
@@ -1068,6 +1100,9 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
     rough = bool(row.get("is_rough"))
     if unpaved is not None and (unpaved or rough or path):
         add("surface", "Surface", surface_words(row))
+    penalty = surface_penalty_words(row)
+    if penalty:
+        add("surface_penalty", "Surface penalty", penalty)
     if row.get("walk_bike"):
         add("walk", "Walk your bike", "A short stretch")
     reason = row.get("bike_access_reason")
@@ -1157,5 +1192,8 @@ def segment_info(lat: float, lon: float) -> dict:
     row = nearest_row(lat, lon)
     if row is None:
         return {"found": False, "title": "No road here", "summary": [], "sections": []}
+    from . import stress_edits
+
+    row["reviewer_surface"] = stress_edits.surface_of(int(row["osm_way_id"]))
     router = router_facts(float(row["on_lat"]), float(row["on_lon"]), int(row["osm_way_id"]))
     return describe(row, router)

@@ -802,6 +802,9 @@ class RebuildContext:
     # decides the direction no reviewer spoke to. Set by the override stage and
     # empty until it runs.
     bicycle_override_directions: dict[int, frozenset[str]] = field(default_factory=dict)
+    # The surface class an approved surface override asks the graph for, by way
+    # (`overrides.apply_surface`), which `inject_tags` emits as `rm:reviewer_surface`.
+    reviewer_surface_by_way: dict[int, str] = field(default_factory=dict)
     # Per variant, not one concatenation of the three. A single `.search` over
     # the three logs joined together is satisfied by whichever variant logged
     # the line first, so two variants could have fallen back to Valhalla's
@@ -866,6 +869,7 @@ class RebuildContext:
             "route_names",
             "no_bicycle",
             "border_nodes_by_way",
+            "reviewer_surface_by_way",
             "military_ways",
             "secured_ways",
             "works_ways",
@@ -2597,6 +2601,7 @@ def build_handlers(
             access, access_missing, superseding = overrides.apply_access(context.ways, rows)
             stress, stress_missing = overrides.apply_stress(context.stress_by_way, rows)
             jurisdiction, jurisdiction_missing = overrides.apply_jurisdiction(context.ways, rows)
+            surfaces, surface_missing = overrides.apply_surface(context.ways_by_id, rows)
         except overrides.OverrideRefused as refused:
             # The same door as the unhandled kind above and it has to close the
             # same way: an approved row asking for something an override may not
@@ -2607,7 +2612,10 @@ def build_handlers(
             # alert said anything an operator could act on.
             raise ValidationFailed(f"an approved override row was refused: {refused}") from refused
 
-        missing = tuple(sorted({*access_missing, *stress_missing, *jurisdiction_missing}))
+        context.reviewer_surface_by_way = surfaces
+        missing = tuple(
+            sorted({*access_missing, *stress_missing, *jurisdiction_missing, *surface_missing})
+        )
         if missing:
             # An approved correction that reaches nothing is a correction that is
             # not in force, which is worth an operator's attention rather than a
@@ -2650,6 +2658,7 @@ def build_handlers(
             access=access,
             stress=stress,
             jurisdiction=jurisdiction,
+            surface=len(surfaces),
             unmatched_way_ids=missing,
             fixture_rows_superseded=len(superseded),
             rematched=len(rematch_report.rematched),
@@ -3020,6 +3029,11 @@ def build_handlers(
                 pci = context.pci_by_way.get(way.osm_id)
                 if pci is not None and pci.applied:
                     derived["pci"] = pci.applied
+                # A reviewer's surface penalty (v0.7.0 surface overrides): the remap reads it
+                # as a rougher surface, bounded so the edge stays ridable (`bounded_surface`).
+                penalty = context.reviewer_surface_by_way.get(way.osm_id)
+                if penalty is not None:
+                    derived["reviewer_surface"] = penalty
                 if way.osm_id in context.cemetery_ways:
                     # No cut-through: reached only from or to a point inside.
                     derived["cemetery"] = True

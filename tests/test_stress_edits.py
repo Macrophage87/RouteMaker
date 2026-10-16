@@ -1106,3 +1106,127 @@ class TestReapplyCommand:
     def test_the_time_must_be_a_time(self, live) -> None:
         with pytest.raises(CommandError):
             self.run(since="yesterday")
+
+
+SURFACE = "/api/stress-edits/surface"
+
+
+def panel_rows(section: str = "riding") -> list[dict]:
+    info = segment_info.segment_info(LAT, LON + 0.001)
+    return next(s["rows"] for s in info["sections"] if s["id"] == section)
+
+
+def penalty_row() -> dict | None:
+    return next((r for r in panel_rows() if r["label"] == "Surface penalty"), None)
+
+
+@db
+class TestSurfacePenalty:
+    """v0.7.0: a surface penalty is a routing price for the next map rebuild, not a level."""
+
+    def test_an_admin_sets_one_and_the_panel_says_it_waits_for_the_rebuild(self, live) -> None:
+        client, csrf = admin_client()
+        r = post(
+            client, SURFACE, {"osm_way_ids": [WAY], "surface": "rough", "reason": "Potholes"}, csrf
+        )
+        assert r.status_code == 200, r.content
+        assert r.json() == {
+            "changed": [WAY],
+            "message": "Surface penalty set. It applies at the next map rebuild.",
+        }
+        row = Override.objects.get(kind="surface")
+        assert row.value == {"surface": "rough"} and row.approved and row.source == "panel"
+        # The live table and its level are untouched: nothing reads it before the rebuild.
+        assert live_row(live)["stress_tier"] == 3 and not StressEdit.objects.exists()
+        assert penalty_row() == {
+            "label": "Surface penalty",
+            "value": "Rough pavement; applies at the next map rebuild",
+            "source": segment_info.OWNER,
+        }
+        info = segment_info.segment_info(LAT, LON + 0.001)
+        assert {
+            "id": "surface_penalty",
+            "label": "Surface penalty",
+            "value": "Rough pavement; applies at the next map rebuild",
+        } in info["summary"]
+        assert "potholes" not in json.dumps(info).lower(), "the private reason is never shown"
+        assert AuditLogEntry.objects.filter(action="stress_surface").count() == 1
+
+    def test_after_the_rebuild_reads_it_the_panel_says_routes_price_it(self, live) -> None:
+        stress_edits.set_surface(make_user(), [WAY], "gravel", "Loose")
+        oid = stress_edits.live_oid(live)
+        LiveEditGeneration.objects.update_or_create(
+            table_oid=oid, defaults={"overrides_read_at": timezone.now()}
+        )
+        assert penalty_row()["value"] == "Loose gravel; routes price it as rougher than mapped"
+
+    def test_the_panel_says_repriced_only_where_the_remap_changes_the_class(self) -> None:
+        """`bounded_surface` caps a penalty at compacted and never improves a way."""
+        applied = {"surface": "gravel", "words": "Loose gravel", "applied": True}
+        rough = {"surface": "rough", "words": "Rough pavement", "applied": True}
+        repriced = "routes price it as rougher than mapped"
+        plain = "routes already price the mapped surface as this rough"
+        cases = [
+            ({"is_unpaved": False, "is_rough": False}, applied, repriced),
+            ({"is_unpaved": None, "is_rough": False}, applied, repriced),
+            ({"is_unpaved": True, "is_rough": False}, applied, plain),
+            ({"is_unpaved": False, "is_rough": True}, applied, repriced),
+            ({"is_unpaved": False, "is_rough": True}, rough, plain),
+            ({"is_unpaved": False, "is_rough": False}, rough, repriced),
+        ]
+        for row, penalty, said in cases:
+            words = segment_info.surface_penalty_words({**row, "reviewer_surface": penalty})
+            assert words == f"{penalty['words']}; {said}", (row, penalty)
+
+    def test_a_surface_row_typed_into_the_admin_is_checked_when_saved(self, live) -> None:
+        from django.core.exceptions import ValidationError
+        from django.test import RequestFactory
+
+        from core.admin import OverrideAdmin, site
+
+        request = RequestFactory().post("/admin/core/override/add/")
+        request.user = make_user()
+        form_class = OverrideAdmin(Override, site).get_form(request)
+        fields = {"kind": "surface", "osm_way_id": WAY, "reason": "r", "evidence": "e"}
+        bad = form_class(data={**fields, "value": json.dumps({"surface": "Gravel"})})
+        assert not bad.is_valid() and "value" in bad.errors
+        good = form_class(data={**fields, "value": json.dumps({"surface": "gravel"})})
+        assert good.is_valid(), good.errors
+        with pytest.raises(ValidationError):
+            Override(kind="surface", osm_way_id=WAY, value={"surface": 1}, reason="r").clean()
+        # Other kinds are checked where they always were.
+        Override(kind="stress", osm_way_id=WAY, value={"tier": 9}, reason="r").clean()
+
+    def test_a_change_supersedes_and_taking_it_off_says_so_until_the_rebuild(self, live) -> None:
+        admin = make_user()
+        (first,) = stress_edits.set_surface(admin, [WAY], "sand", "Sand drifts")
+        assert stress_edits.set_surface(admin, [WAY], "sand", "again") == []
+        (second,) = stress_edits.set_surface(admin, [WAY], None, "Swept")
+        first.refresh_from_db()
+        assert first.superseded_by_id == second.pk and second.value == {"surface": None}
+        assert penalty_row()["value"] == (
+            "Taken off; routes stop pricing it at the next map rebuild"
+        )
+        LiveEditGeneration.objects.update_or_create(
+            table_oid=stress_edits.live_oid(live), defaults={"overrides_read_at": timezone.now()}
+        )
+        assert penalty_row() is None
+        # The rebuild reads only the live row, which prices nothing.
+        rows = pipeline_overrides.load_approved(fingerprints={})
+        assert [(r.kind, r.value) for r in rows if r.kind == "surface"] == [
+            ("surface", {"surface": None})
+        ]
+
+    def test_refusals(self, live, client) -> None:
+        admin = make_user()
+        with pytest.raises(stress_edits.Invalid):
+            stress_edits.set_surface(admin, [WAY], "asphalt", "x")
+        with pytest.raises(stress_edits.Invalid):
+            stress_edits.set_surface(admin, [WAY], "rough", " ")
+        with pytest.raises(stress_edits.NotFound):
+            stress_edits.set_surface(admin, [WAY + 999], "rough", "x")
+        body_ = {"osm_way_ids": [WAY], "surface": "rough", "reason": "x"}
+        assert post(client, SURFACE, body_).status_code == 401
+        member = sign_in(Client(enforce_csrf_checks=False), make_user(admin=False))
+        assert post(member, SURFACE, body_).status_code == 403
+        assert not Override.objects.filter(kind="surface").exists()

@@ -164,6 +164,9 @@ class Override(models.Model):
         ACCESS = "access", "Bicycle access"
         STRESS = "stress", "Stress tier"
         JURISDICTION = "jurisdiction", "Authority assignment"
+        # v0.7.0: a routing price for a rough or loose surface, not a level
+        # (`pipeline.overrides.SURFACE_PENALTIES`). The graph has it from the next rebuild.
+        SURFACE = "surface", "Surface penalty"
 
     kind = models.CharField(max_length=16, choices=Kind.choices)
     osm_way_id = models.BigIntegerField()
@@ -227,8 +230,26 @@ class Override(models.Model):
                 fields=["osm_way_id"],
                 condition=models.Q(kind="stress", approved=True, superseded_by__isnull=True),
                 name="override_one_live_stress_row_per_way",
-            )
+            ),
+            # And one live surface row (v0.7.0), for the same reason.
+            models.UniqueConstraint(
+                fields=["osm_way_id"],
+                condition=models.Q(kind="surface", approved=True, superseded_by__isnull=True),
+                name="override_one_live_surface_row_per_way",
+            ),
         ]
+
+    def clean(self) -> None:
+        # A surface row typed into the admin is checked here, not first at the rebuild, where
+        # a bad value refuses the whole rebuild (`pipeline.overrides.apply_surface`).
+        if self.kind == self.Kind.SURFACE:
+            from django.core.exceptions import ValidationError
+
+            from pipeline.overrides import surface_value_problem
+
+            problem = surface_value_problem(self.value)
+            if problem:
+                raise ValidationError({"value": problem})
 
     def __str__(self) -> str:
         return f"{self.kind} on way {self.osm_way_id}"
@@ -1459,6 +1480,42 @@ class StressSuggestion(models.Model):
     @property
     def current_step(self) -> float:
         return self.current_tier + 0.5 if self.current_half else self.current_tier
+
+
+class StressSuggestionReview(models.Model):
+    """A second reviewer's agree or disagree on a waiting road suggestion (v0.7.0;
+    core.suggestions.review).
+
+    Advice for the admin who decides, never a decision: approving still takes the review's own
+    Approve now. One a reviewer a suggestion, changed in place when they change their mind. The
+    review list shows the tallies and the one-line reasons, never who wrote them; the reviewer's
+    account is kept for the audit, as the suggester's is.
+    """
+
+    suggestion = models.ForeignKey(
+        StressSuggestion, on_delete=models.CASCADE, related_name="reviews"
+    )
+    reviewer = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    reviewer_user_id = models.BigIntegerField()
+    agree = models.BooleanField()
+    reason = models.CharField(max_length=200, blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "stress_suggestion_review"
+        ordering = ["created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["suggestion", "reviewer_user_id"],
+                name="stress_suggestion_review_one_per_reviewer",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"suggestion {self.suggestion_id}: {'agree' if self.agree else 'disagree'}"
 
 
 class SignedOutSend(models.Model):
