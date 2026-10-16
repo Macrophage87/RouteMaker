@@ -3253,6 +3253,18 @@ export function App() {
       announce(noviceTransitSaid(label));
     },
     noviceTrips: noviceTripsShown,
+    // "Add a stop", under Start in the route (review F2); only with a route and never during a ride.
+    addStop: goStops ? (
+      <GoAddStop
+        geoGate={geoGate}
+        searchBias={searchBias}
+        onPick={goAddStop}
+        full={points.length >= MAX_POINTS}
+        orderShown={orderShown}
+        ordering={ordering}
+        onBestOrder={() => void bestOrder()}
+      />
+    ) : null,
   };
   // A transit plan's options (lib/transit.ts): a press plans that one, for this trip; a departure the
   // rider would miss plans again, which takes the next one (lib/departure.ts).
@@ -3599,19 +3611,6 @@ export function App() {
                   rides={<RideChips ids={goRideChips(myGo.ride)} preset={preset} onPick={pickRide} more={(opener) => openView("ride", opener)} label="Ride type" ownHint={OWN_RIDE_HINT} />}
                   notice={notice}
                   route={points.length > 1 || status.kind !== "idle" ? routeSection : null}
-                  addStop={
-                    goStops ? (
-                      <GoAddStop
-                        geoGate={geoGate}
-                        searchBias={searchBias}
-                        onPick={goAddStop}
-                        full={points.length >= MAX_POINTS}
-                        orderShown={orderShown}
-                        ordering={ordering}
-                        onBestOrder={() => void bestOrder()}
-                      />
-                    ) : null
-                  }
                   startLine={goStartLine(goStart, points.length > 0 ? (namer.name(points[0])?.name ?? "the point on the map") : null)}
                   startMissing={goStart.kind === "none" && points.length === 0}
                   onStartPick={goStartPick}

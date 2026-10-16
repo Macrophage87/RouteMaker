@@ -181,7 +181,7 @@ export function HomeSetter({
 }
 
 /**
- * Go's "Add a stop" (v0.7.0, "Keep adding stops by search"): one field in the route sheet, above the route; a
+ * Go's "Add a stop" (v0.7.0, "Keep adding stops by search"): one field in the route sheet, under Start; a
  * place picked is a stop where it adds the least distance, routed at once (Undo removes it). Best order sits
  * beside it with two or more stops; it is the field's only company, so Go stays one control per feature.
  */
@@ -227,13 +227,10 @@ export function GoSheet({
   rides,
   notice,
   route,
-  addStop = null,
   startLine,
   startMissing,
   onStartPick,
 }: {
-  /** Go's "Add a stop" with a route (GoAddStop), or null: before a route, and during a ride. */
-  addStop?: ReactNode;
   size: GoSheetSize;
   onSize: (next: GoSheetSize) => void;
   pointCount: number;
@@ -275,7 +272,6 @@ export function GoSheet({
       </button>
       {/* Where to? stays first while there is no route; with one, the route comes first (it is what the rider is
           looking at), and Where to? follows for a new place. */}
-      {routeShown && addStop && size !== "peek" && addStop}
       {routeShown && route}
       <div className="go-where" hidden={routeShown && size === "peek"}>
         {/* The start (the owner, 2026-10-11): the rider's location by default; a typed start replaces it (a press on the map is the destination). */}

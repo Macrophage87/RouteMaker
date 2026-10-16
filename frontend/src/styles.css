@@ -980,7 +980,7 @@ button.secondary {
   font-size: 0.9em;
 }
 
-/* Go's "Add a stop" with Best order beside it (v0.7.0), above the route. */
+/* Go's "Add a stop" with Best order beside it (v0.7.0), under Start in the route sheet. */
 .go-add-stop {
   display: flex;
   flex-wrap: wrap;

@@ -105,6 +105,8 @@ export interface GoRouteControls {
   onNoviceTransit?: (preset: PresetId) => void;
   /** Each offered option's trip, found in the background as the offer shows (App), by ride type. */
   noviceTrips?: Partial<Record<PresetId, NoviceTrip>>;
+  /** Go's "Add a stop" (Go.tsx GoAddStop), or null: shown under Start, so the sheet leads with the time and Start. */
+  addStop?: ReactNode;
 }
 
 /**
@@ -764,6 +766,8 @@ export function RouteSummary({
             {startHint}
           </div>
         )}
+        {/* "Add a stop" under Start (review F2): one tap away, never above the time and Start. */}
+        {!go.peek && go.addStop}
         {!go.peek && (
           <div className="go-chips" role="group" aria-label="Route options">
             <button type="button" className="chip go-ride-chip" onClick={go.onRide} aria-describedby="go-ride-hint">
