@@ -1251,6 +1251,13 @@ class DescriptionEntryOut(Schema):
             "(OWNER-DECISIONS 275); null where that is `text`."
         ),
     )
+    relation_name: bool = Field(
+        default=False,
+        description=(
+            "On a stretch: its `street` is its trail's route relation's name, carried by "
+            "no way of it itself; the ride gives no cue for a change onto such a name."
+        ),
+    )
 
 
 class MovedPointOut(Schema):

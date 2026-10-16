@@ -75,7 +75,8 @@ import {
 import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
 import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
-import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, RIDE_ENDED_SAID, RideEnded, RideMode, primeRideVoice, startRideGesture, voiceTurnedOn, type RideView } from "./RideMode.tsx";
+import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, RIDE_ENDED_FROM_HERE_SAID, RIDE_ENDED_NO_FIX_SAID, RIDE_ENDED_SAID, RideEnded, RideMode, primeRideVoice, startRideGesture, voiceTurnedOn, type EndedPlan, type RideView } from "./RideMode.tsx";
+import { Icon } from "./Icon.tsx";
 import { readHeadingUp, readRidePrefs, writeHeadingUp, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf } from "./lib/bikeshare.ts";
@@ -2818,21 +2819,34 @@ export function App() {
   };
   // The ride just ended, kept for Undo for a few seconds (v0.7.0, "Go riding fixes" item 6: one tap on
   // End ends the ride with "Ride ended" and Undo). In memory only, as the ride itself is.
-  const endedRide = useRef<{ start: NonNullable<typeof rideStart>; big: boolean } | null>(null);
+  // `from`: the plan End ride left starting where the rider was (part way), so Undo takes that edit back too.
+  const endedRide = useRef<{ start: NonNullable<typeof rideStart>; big: boolean; from: LonLat[] | null } | null>(null);
   const [rideEnded, setRideEnded] = useState(0);
   const rideNow = useRef({ start: rideStart, big: bigText });
   rideNow.current = { start: rideStart, big: bigText };
-  const endRide = useCallback(() => {
+  const endRide = useCallback((after: EndedPlan) => {
     const { start, big } = rideNow.current;
-    endedRide.current = start ? { start, big } : null;
+    // The plan stays, every route of it, to adjust and ride again (the owner, 2026-10-16: "You should keep all
+    // the routes ... But be able to adjust things"). Part way, it starts where the rider is ("If you went part
+    // way it changes your start location"): the stops passed dropped, a loop's finish still its start, as one
+    // edit of the points (re-planned as any is; Undo of the plan takes it back). The start is the ride's own
+    // last fix: no new location look-up.
+    let from: LonLat[] | null = null;
+    if (after && after !== "no-fix" && after.points.length >= 2) {
+      from = after.points;
+      const ride = rideRef.current;
+      commit(from, ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
+      setFromHere((f) => [...f, from![0]]);
+    }
+    endedRide.current = start ? { start, big, from } : null;
     setRiding(false);
     setRideStart(null);
     setBigText(false);
     setRideView(null);
     setRideEnded((n) => n + 1);
     // Said by the page's region, always mounted; the focus goes to Undo (RideEnded), not back to Start (review F6).
-    announce(RIDE_ENDED_SAID);
-  }, [announce]);
+    announce(from ? RIDE_ENDED_FROM_HERE_SAID : after === "no-fix" ? RIDE_ENDED_NO_FIX_SAID : RIDE_ENDED_SAID);
+  }, [announce, commit]);
   // A back gesture during a ride does nothing; End ride is the way out (lib/rideBack.ts, review RIDE-2).
   // Each held back is told, politely, once (review RIDE-2).
   useEffect(() => (riding ? holdBackDuringRide(window, () => announce(STILL_RIDING_SAID)) : undefined), [riding, announce]);
@@ -2843,6 +2857,8 @@ export function App() {
     endedRide.current = null;
     setRideEnded(0);
     if (!ended) return;
+    // The plan End ride moved to where the rider was goes back, unless it has been edited since.
+    if (ended.from && pointsRef.current === ended.from) edits.retract();
     startRideGesture(ridePrefs);
     setRideStart(ended.start);
     setFollow(true);
@@ -4039,6 +4055,24 @@ export function App() {
               <RideGroupChips preset={preset} onPick={pickRide} open={view === "ride"} />
               {/* Go's Ride sheet holds the Ride line and its dials; in Plan they are in the panel (one copy in the page). */}
               {goMode && sections.presets}
+              {/* Start from here (the owner, 2026-10-16: "You should be able to make changes then start from the edit
+                  default"): the route the sheet's changes planned, ridden at once; the changes are saved as they are
+                  made. The same Start as the route panel's, closing the sheet first. */}
+              {goMode && shown && !stale && !riding && rideableRoute(shown) && (
+                <div className="actions ride-sheet-start">
+                  <button
+                    type="button"
+                    className="start-button"
+                    onClick={() => {
+                      showPlanner(false);
+                      startRideChecked();
+                    }}
+                  >
+                    <Icon name="play" />
+                    Start ride
+                  </button>
+                </div>
+              )}
             </RideSheet>
           </div>
 

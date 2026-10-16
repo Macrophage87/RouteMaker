@@ -14,8 +14,9 @@
  * - Off route: re-planned automatically after the gate (plan Q5), or "Keep the planned route", which
  *   shows the way back. A re-plan never touches the plan in the address bar (plan Q2): it is the ride's
  *   own route, held here and in App's ride state only.
- * - Big text (map hidden), Re-centre (and the C key), heading-up (track-up by default since v0.7.0), the
- *   ride's settings, End ride; and an End button always in view at the top of the card, with Undo after.
+ * - Big text (map hidden), Re-centre (and the C key), heading-up (track-up by default since v0.7.0); and
+ *   Settings and End ride always in view at the top of the card (Settings opens the ride's settings just
+ *   under it), with Undo after End ride. End ride part way leaves the plan starting where the rider is.
  * - The map along the route, kept for dead spots (lib/corridor.ts, N5), and Report a problem to DC 311
  *   with the place in the route's street names (lib/report311.ts, N6; OWNER-DECISIONS 369, 465).
  *
@@ -51,6 +52,7 @@ import {
   VERBOSITY_LABELS,
   cueSpoken,
   nextAction,
+  planAfterEnd,
   pointAt,
   replanPoints,
   replanTold,
@@ -156,15 +158,23 @@ export const rideVoice = new Voice(browserSpeech());
 /** Said as the ride starts, inside the Start press, so the voice is unlocked by it. */
 export const RIDE_STARTED = "Ride started.";
 export const RIDE_ENDED = "Ride ended.";
-/** The always-visible End button's words and the name it is heard by (the visible "End" is in it). */
-export const END_TEXT = "End";
+/** The always-visible End ride button's words (the owner, 2026-10-16: "add a method of ending navigation"). */
 export const END_RIDE_NAME = "End ride";
+/** The top row's Settings button opens these, just under it (the owner, 2026-10-16: "the buttons to change the settings seem hidden"). */
+export const RIDE_SETTINGS_TEXT = "Settings";
+export const RIDE_SETTINGS_TITLE = "Ride settings";
+/** What End ride leaves behind (lib/navigate.ts planAfterEnd): the plan from here, or as it was. */
+export type EndedPlan = ReturnType<typeof planAfterEnd>;
 /** How long Undo is offered after End (v0.7.0, "Go riding fixes" item 6); held while it has the focus. */
 export const UNDO_END_MS = 8_000;
 /** How long the 311 line ("Sent to DC 311." and Add a note) stays (review F4); held the same way. */
 export const SAID_311_MS = 8_000;
 /** Said by the page's polite region (always mounted) as Ride ended shows (review F6). */
 export const RIDE_ENDED_SAID = "Ride ended. Undo available.";
+/** Said instead where End ride came part way (lib/navigate.ts planAfterEnd): the plan now starts where the rider is. */
+export const RIDE_ENDED_FROM_HERE_SAID = "Ride ended. The route now starts where you are. Undo available.";
+/** Part way with no recent location: the plan keeps its start, and the rider is told. */
+export const RIDE_ENDED_NO_FIX_SAID = "Ride ended. Route start unchanged. Undo available.";
 
 /**
  * A short-lived message's timer (lib/holdTimer.ts) with the handlers that hold it: while the focus is inside, or a
@@ -463,7 +473,8 @@ export function RideMode({
   onBig: (on: boolean) => void;
   /** The ride's route and the rider's position, for the map. */
   onView: (view: RideView) => void;
-  onEnd: () => void;
+  /** End ride: with the plan the ride leaves (part way, from here; lib/navigate.ts planAfterEnd). */
+  onEnd: (after: EndedPlan) => void;
   /** The water layer's points, loaded if they are not yet (App's ensureWater); for the detours. */
   water?: () => Promise<WaterPoint[] | null>;
   geoEnv?: RideGeoEnv;
@@ -529,6 +540,13 @@ export function RideMode({
   // Each re-plan's ticket: "Keep the planned route" or a newer re-plan voids an older one's answer.
   const replanTicket = useRef(0);
   const settingsId = useId();
+  // The ride's settings, opened from the top row's Settings (closed at Start).
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsPanel = useRef<HTMLDivElement>(null);
+  // Opened, the panel is brought into view (the row above it is sticky; the card may be scrolled).
+  useEffect(() => {
+    if (settingsOpen) settingsPanel.current?.scrollIntoView?.({ block: "nearest" });
+  }, [settingsOpen]);
   // The 311 button's menu (lib/ride311.ts; the owner's choice 9) and the report it continues into.
   const [reportKind, setReportKind] = useState<ReportKind>("pothole");
   const [reportOpen, setReportOpen] = useState(false);
@@ -1008,7 +1026,8 @@ export function RideMode({
     announcer.current?.drop();
     rideVoice.stop();
     if (toVoice(prefsRef.current.output)) rideVoice.speak(RIDE_ENDED, true);
-    onEnd();
+    // A Bikeshare or transit trip's riding leg is not the plan: the plan stays as it was.
+    onEnd(trip ? null : planAfterEnd(modelRef.current, rideRef.current, plan.current.points, plan.current.loop, Date.now()));
   };
   // A toggle: pressed, no automatic re-plan (one in flight is voided) and the way back is said once;
   // pressed again, re-planning is back on.
@@ -1171,17 +1190,38 @@ export function RideMode({
       <LiveRegion said={polite} urgent={false} />
       <LiveRegion said={assertive} urgent />
       <div className="cue-card">
-        {/* The End button (v0.7.0, "Go riding fixes" item 6): always in view, at the top of the card, which
-            stays at every size and in Big text; one tap ends the ride, and the page offers Undo for a few
-            seconds (RideEnded). The End ride button below stays. */}
+        {/* End ride (v0.7.0, "Go riding fixes" item 6): always in view, at the top of the card, which stays at
+            every size and in Big text; one tap ends the ride, and the page offers Undo for a few seconds
+            (RideEnded). Settings beside it opens the ride's settings just under the row (the owner, 2026-10-16). */}
         <div className="ride-top">
           <h2 id="ride-heading" ref={headingRef} tabIndex={-1} className="ride-heading">
             Ride mode
           </h2>
-          <button type="button" className="danger ride-end" onClick={end} aria-label={END_RIDE_NAME}>
-            <Icon name="stop" size={18} />
-            {END_TEXT}
-          </button>
+          <div className="ride-top-actions">
+            <button
+              type="button"
+              className="secondary ride-settings-button"
+              aria-expanded={settingsOpen}
+              aria-controls={`${settingsId}-settings`}
+              onClick={() => setSettingsOpen(!settingsOpen)}
+            >
+              <Icon name="gear" size={18} />
+              {/* Shown where there is room; on the narrowest phones the gear alone, its name still "Settings". */}
+              <span className="ride-settings-label">{RIDE_SETTINGS_TEXT}</span>
+            </button>
+            <button type="button" className="danger ride-end" onClick={end}>
+              <Icon name="stop" size={18} />
+              {END_RIDE_NAME}
+            </button>
+          </div>
+        </div>
+        <div ref={settingsPanel} id={`${settingsId}-settings`} className="ride-mode-settings" role="group" aria-label={RIDE_SETTINGS_TITLE} hidden={!settingsOpen}>
+          <RideSettingsFields prefs={prefs} onChange={onPrefs} idBase={settingsId} />
+          <p className="hint">{RIDE_SAFETY}</p>
+          <label className="toggle ride-toggle">
+            <input type="checkbox" checked={headingUp} onChange={(event) => onHeadingUp(event.target.checked)} />
+            Turn the map to my heading
+          </label>
         </div>
         {ride.arrived ? (
           <>
@@ -1398,17 +1438,6 @@ export function RideMode({
           noteRef={noteInput}
           serverOn={serverOn311}
         />
-        <details className="fold ride-mode-settings">
-          <summary>Ride settings</summary>
-          <div className="fold-body">
-            <RideSettingsFields prefs={prefs} onChange={onPrefs} idBase={settingsId} />
-            <p className="hint">{RIDE_SAFETY}</p>
-            <label className="toggle ride-toggle">
-              <input type="checkbox" checked={headingUp} onChange={(event) => onHeadingUp(event.target.checked)} />
-              Turn the map to my heading
-            </label>
-          </div>
-        </details>
       </div>
     </section>
   );

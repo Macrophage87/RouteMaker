@@ -3757,14 +3757,16 @@ details.zoom-notes {
 }
 
 /*
- * The heading and the always-visible End button (Go riding fixes item 6): kept at the top of the card as
- * it scrolls, so End is in view at every size, in Big text and at 200% text.
+ * The heading, Settings and the always-visible End ride (Go riding fixes item 6): kept at the top of the
+ * card as it scrolls, so End ride is in view at every size, in Big text and at 200% text. On a narrow
+ * screen the two buttons wrap under the heading rather than overflow.
  */
 .ride-top {
   position: sticky;
   top: 0;
   z-index: 1;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -3777,6 +3779,38 @@ details.zoom-notes {
   margin: 0;
 }
 
+.ride-top-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* The narrowest phones: Settings is its gear alone (its name stays "Settings"), so the top row stays one line. */
+@media (max-width: 359px) {
+  .ride-settings-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+/* Go's Ride sheet: Start ride for the route its changes planned, set off from the dials above it. */
+.ride-sheet-start {
+  margin-top: 16px;
+}
+
+/* The ride's settings, opened by the top row's Settings, just under it. */
+.ride-mode-settings {
+  margin: 4px 0 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ride .ride-settings-button,
 .ride .ride-end {
   flex: none;
   min-height: 44px;
@@ -3911,7 +3945,6 @@ details.zoom-notes {
   margin: 6px 0;
 }
 
-.ride-mode-settings > summary,
 .ride-report > summary {
   min-height: 44px;
 }

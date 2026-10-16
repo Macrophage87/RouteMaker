@@ -280,6 +280,11 @@ export interface DescriptionEntry {
    */
   text_lanes_hidden?: string | null;
   /**
+   * On a stretch: `street` is only its trail's route relation's name (no way of it carries it), so the
+   * ride never cues "Continue onto" it. Absent from an older API.
+   */
+  relation_name?: boolean;
+  /**
    * On a Mass Ride's entry for a group of signalized crossings (OWNER-DECISIONS 233, 234).
    * `crossings` lists each crossing in the full description (OWNER-DECISIONS 248) and is
    * null in the overview, which keeps one line per group.

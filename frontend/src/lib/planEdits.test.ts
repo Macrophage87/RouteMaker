@@ -127,3 +127,25 @@ test("App edits through planEdits, with its own history, points and ride", () =>
   // No second way in: nothing else in App records to the history.
   assert.doesNotMatch(app, /history\.current\.record\(/);
 });
+
+test("End ride's from-here plan, then Undo of End ride: the points and the loop come back, and nothing is left to redo", () => {
+  // The plan: a loop from Home (1) through stops 2 and 3. End ride part way commits the plan from here (9),
+  // the loop off with its finish a point (App's endRide); Undo of End ride takes it back for good (retract).
+  const p = wired([1, 2, 3], "loop");
+  p.edits.commit([0, 7]);
+  p.edits.commit([9, 3, 1], "no loop");
+  assert.deepEqual(p.points(), [9, 3, 1]);
+  assert.equal(p.ride(), "no loop");
+  const syncs = p.syncs();
+  assert.deepEqual(p.edits.retract(), [0, 7]);
+  assert.deepEqual(p.points(), [0, 7]);
+  assert.equal(p.ride(), "loop");
+  assert.equal(p.history.canRedo, false, "the stale from-here plan is not offered back");
+  assert.ok(p.syncs() > syncs, "Undo and Redo are told");
+  // The edits before it are still undone as usual.
+  assert.deepEqual(p.edits.travel("undo"), [1, 2, 3]);
+  // With nothing to take back, nothing changes.
+  const empty = wired([1]);
+  assert.equal(empty.edits.retract(), undefined);
+  assert.deepEqual(empty.points(), [1]);
+});
