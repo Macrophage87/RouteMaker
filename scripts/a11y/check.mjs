@@ -2453,7 +2453,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   // cleared afterwards does not come back on reload (the correctness re-check's C8).
   // If the first round left the page elsewhere, start this one from the plan again rather than stop the run.
   if (!(await p.eval("!!document.querySelector('.stress-page-link a')").catch(() => false))) {
-    await p.s("Page.navigate", { url: `http://127.0.0.1:${PREVIEW_PORT}/${before}` });
+    await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/${before}` });
     await p.waitFor("!!document.querySelector('.summary')", 40000);
     await openSheet(p, "Legend").catch(() => {});
     await p.waitFor("!!document.querySelector('.stress-page-link a')", 30000);
@@ -2465,7 +2465,9 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.eval("history.replaceState(null, '', '/'); true");
   // Diagnostics for a reload that leaves the page blank on CI: keep any boot error.
   await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "window.__bootErrors = []; addEventListener('error', (e) => window.__bootErrors.push(String(e.message || e.target?.src || e.target?.href || e.type)), true); addEventListener('unhandledrejection', (e) => window.__bootErrors.push('rejection: ' + String(e.reason).slice(0, 200)));" });
-  await p.s("Page.reload", {});
+  // A fresh load of "/" in the same tab (its sessionStorage kept), as a reload is: on CI a
+  // Page.reload of the dev server's module graph has failed to fetch main.tsx.
+  await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/` });
   // The map element, not the load event: a tile still in flight can hold readyState back on CI.
   const reloaded = await p.waitFor("location.pathname === '/' && (document.getElementById('root')?.childElementCount ?? 0) > 0", 60000);
   await sleep(2000);
