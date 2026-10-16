@@ -594,6 +594,21 @@ function M.remap_way(tags, derived)
     out.bicycle = "no"
   end
 
+  -- OSM's own `bicycle=use_sidepath` (review RL-1): legal, and rated Avoid only where a
+  -- side path is mapped beside the road (`routemaker.facility.use_sidepath_paths`); with
+  -- none the road is rated on its own merits. Upstream prices the tag as the stress
+  -- penalty below whatever the tier, so below the penalty's tier it is written as plain
+  -- access, and the road costs what its tier says (as `routemaker.calm` reads it).
+  if
+    out.bicycle == nil
+    and tags.bicycle == M.STRESS_PENALTY_BICYCLE
+    and derived.stress_tier ~= nil
+    and derived.stress_tier < M.STRESS_PENALTY_TIER
+    and not derived.is_trail_class
+  then
+    out.bicycle = "yes"
+  end
+
   -- The stress penalty: `bicycle=use_sidepath` on every way the classifier or
   -- a curated override rates tier 3 or more (never a trail-class way).
   -- Upstream's transform reads `use_sidepath` as bicycle access in both

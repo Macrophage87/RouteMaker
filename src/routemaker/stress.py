@@ -99,6 +99,7 @@ from enum import IntEnum
 
 from . import surfaces
 from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY, trail_kind
+from .facility import USE_SIDEPATH, is_use_sidepath_road
 from .geo import Point, haversine
 from .shape import sinuosity
 from .tags import (
@@ -819,6 +820,13 @@ def rural_floor(result: StressResult, tags: dict[str, str], urban: bool) -> Stre
     return replace(result, tier=Stress.LTS2, half=False, rule=f"{result.rule}, {RURAL_FLOOR_RULE}")
 
 
+# The rule on a `bicycle=use_sidepath` road with a side path mapped beside it (review RL-1).
+# The owner, 2026-10-16: "It's very much not recommended, but I believe still legal", and
+# "For the use-sidepath roads, make sure there's a sidepath marked." THIS TEXT IS READ BACK
+# by `core.segment_info.rule_words`.
+USE_SIDEPATH_RULE = "legal but avoid: riders asked to use the side path"
+
+
 def legal_but_avoid(tags: dict[str, str]) -> str | None:
     """Why a way is "legal but avoid", or None. Posted speed only: never assumed."""
     if tags.get("highway") not in AVOID_HIGHWAY or tags.get("expressway") != "yes":
@@ -860,6 +868,7 @@ def classify(
     separate_facility: bool = False,
     parking_width_m: float | None = None,
     winding: bool = False,
+    side_path: bool = False,
 ) -> StressResult:
     """Classify one way: its Furth tier, or "legal but avoid" where the rule says so.
 
@@ -881,7 +890,12 @@ def classify(
 
     `winding` says the way's own line bends enough to keep traffic slow
     (`winding`, computed from its geometry by the caller), for the owner's
-    narrow-road rule (`NARROW_RURAL_ROAD_MPH`)."""
+    narrow-road rule (`NARROW_RURAL_ROAD_MPH`).
+
+    `side_path` says a side path is mapped beside the way
+    (`routemaker.facility.use_sidepath_paths`): a road tagged `bicycle=use_sidepath`
+    with one is "legal but avoid" (`USE_SIDEPATH_RULE`; review RL-1, the owner,
+    2026-10-16). With none it is rated on its own merits."""
     result = _classify(
         tags,
         aadt,
@@ -895,6 +909,8 @@ def classify(
         winding,
     )
     reason = legal_but_avoid(tags)
+    if reason is None and side_path and is_use_sidepath_road(tags):
+        reason = USE_SIDEPATH_RULE
     if reason is None:
         return result
     return replace(result, tier=Stress.AVOID, rule=f"{reason} (Furth: {result.rule})")
@@ -1361,8 +1377,9 @@ def motor_restriction(tags: dict[str, str]) -> tuple[Stress, str] | None:
     `bicycle=designated`). A road closed to bicycles too has no ride to state
     a stress for (OWNER-DECISIONS 444: skipped where the way is closed to
     bicycles), so it is left as the tables read it: a `bicycle` tag outside
-    `BICYCLE_ALLOWED_VALUES` (`no`, `private`, `dismount`, `use_sidepath`, ...,
-    the set `routemaker.facility.BICYCLE_ALLOWED` opens), or, with no bicycle
+    `BICYCLE_ALLOWED_VALUES` (`no`, `private`, `dismount`, ..., the set
+    `routemaker.facility.BICYCLE_ALLOWED` opens; `use_sidepath` is legal, review
+    RL-1, and is read as open here), or, with no bicycle
     tag, an `access` or `vehicle` that is not a public value (`vehicle` covers
     bicycles, as `facility.closed_to_motor_traffic` reads it).
     A road open to buses (`tags.open_to_buses`) is not capped: buses are motor
@@ -1372,8 +1389,8 @@ def motor_restriction(tags: dict[str, str]) -> tuple[Stress, str] | None:
     if tags.get("highway") in MOTOR_ONLY:
         return None
     bicycle = tags.get("bicycle")
-    if bicycle is not None and bicycle not in BICYCLE_ALLOWED_VALUES:
-        # bicycle=no, private, dismount, use_sidepath, ...: closed to bicycles.
+    if bicycle is not None and bicycle not in BICYCLE_ALLOWED_VALUES and bicycle != USE_SIDEPATH:
+        # bicycle=no, private, dismount, ...: closed to bicycles.
         return None
     access = tags.get("access")
     if bicycle is None and any(

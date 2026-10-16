@@ -6232,7 +6232,8 @@ them, `access` decides where the way's own bicycle tag keeps bicycles on it. `no
 `delivery` at LTS 2; a posted limit above 30 mph raises the cap one tier. It only lowers,
 is skipped where a traffic count is known, and leaves a way closed to bicycles too to
 the tables, since there is no ride on it to rate (444): a `bicycle` tag outside
-`BICYCLE_ALLOWED_VALUES` (`no`, `private`, `dismount`, `use_sidepath`, ...), or, with no
+`BICYCLE_ALLOWED_VALUES` (`no`, `private`, `dismount`, ...; `use_sidepath` is legal,
+review RL-1), or, with no
 bicycle tag, an `access` or `vehicle` that is not a public value. It changes no access: the rule text says why the tier is low, and
 the rough-surface floor still applies after it. Bragers Road (way 11507607) on the
 WB&A Trail is the test case.
@@ -6878,7 +6879,8 @@ reason). The reason is the new column `segment.bike_access_reason`
 override that reopened or closed the way (`override_open`, `override_closed`), else its
 `rm:no_bicycle` reason (`military`, `secured`, the trail rules, `cbd_sidewalk`, `zoo`,
 `singletrack`, `mtb`, `dismount`), else its own tags (`bicycle_no`,
-`bicycle_use_sidepath`, `private`, `motorway`, `motorroad`). `ACCESS_WORDS` words each,
+`bicycle_use_sidepath`, open, where a side path is mapped beside it: review RL-1,
+`private`, `motorway`, `motorroad`). `ACCESS_WORDS` words each,
 and a test holds every code the rebuild can write to having words. The military and
 secured rules are the err-closed ones (OWNER-DECISIONS 330), and say so.
 
