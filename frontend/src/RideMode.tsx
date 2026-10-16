@@ -954,16 +954,6 @@ export function RideMode({
     void replan(here, item.place.point);
   };
 
-  // Off route over (back on, or a new route): its buttons go; a focus inside them goes to Where am I?.
-  const wasOff = useRef(false);
-  useEffect(() => {
-    if (wasOff.current && !ride.off) {
-      const active = document.activeElement;
-      if (!active || active === document.body || !active.isConnected) whereRef.current?.focus();
-    }
-    wasOff.current = ride.off;
-  }, [ride.off]);
-
   // Keys while the focus is in Ride mode (outside a text field): W where am I, C re-centre. Only there
   // (WCAG 2.1.4), so speech input or a stray key elsewhere on the page fires neither.
   useEffect(() => {
@@ -991,6 +981,18 @@ export function RideMode({
   const shape = arrowFor(cue);
   const show311 = ride311Shown({ off: ride.off, progressM: progress, insideDc: (m) => inDc(pointAt(model, m)) });
   const place311 = show311 && progress !== null ? reportPlace(model, progress) : null;
+
+  // Off route, back on, or out of DC: the off-route buttons or the 311 block go, and a focus inside them
+  // goes to Where am I?, so W and C keep working (review a11y-3). The 311 menu closes with its block.
+  const shownBefore = useRef({ off: ride.off, show311 });
+  useEffect(() => {
+    const before = shownBefore.current;
+    shownBefore.current = { off: ride.off, show311 };
+    if (before.off === ride.off && before.show311 === show311) return;
+    if (!show311) setMenu311(false);
+    const active = document.activeElement;
+    if (!active || active === document.body || !active.isConnected) whereRef.current?.focus();
+  }, [ride.off, show311]);
 
   return (
     <section ref={sectionRef} className={`ride ${big ? "ride-big" : ""}`} aria-labelledby="ride-heading">
