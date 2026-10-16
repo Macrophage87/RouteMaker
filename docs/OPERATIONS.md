@@ -6359,11 +6359,17 @@ the defaults, so build those here.
 
    **Dump copies:** this run's `db.tar` stays on the box (`~/cloud-runs/<run>/in/`) and in
    S3 (`<run>/in/`) after the run (the owner's choice, 2026-10-16), so the newest copy is at
-   hand. Once a run has finished and uploaded, the box deletes every OTHER run's dump, both
-   on its disk and in S3 (`db.tar`, and `routemaker-<utc>.dump` from runs before v0.7.0,
-   which were the whole nightly backup); nothing else of those runs is touched, and a failed
-   run deletes nothing. A failure to delete is a warning in the log: delete that file by
-   hand. The bucket's 14-day lifecycle rule still applies to all of it.
+   hand. Once a run has finished and uploaded, the box deletes the dump of each OLDER run,
+   both on its disk and in S3 (`db.tar`, and `routemaker-<utc>.dump` from runs before v0.7.0,
+   which were the whole nightly backup). Older means an earlier `read_at` in that run's
+   `MANIFEST.txt`, and only a run that has itself finished (its result in `out/`, or its
+   failure logs in `failed/`) loses its dump: a newer run's dump, and the inputs of a run not
+   yet built, stay ("keeping run <name>'s dump: ..." in the log). Nothing else of those runs
+   is touched, and a failed run deletes nothing. A failure to delete is a warning in the log:
+   delete that file by hand. The bucket's 14-day lifecycle rule (on `rebuild-checkpoints/`)
+   still expires every object, the kept `db.tar` in `in/` included, so after 14 days without
+   a new run the newest copy in S3 is gone too; the box's copy stays. To keep it in S3, the
+   owner can narrow the rule's filter in the console.
 
    Each step is recorded under `~/cloud-runs/<run>/state/`, so the same command run
    again carries on. **A spot reclaim** stops the box with its disk; start it when AWS
@@ -6621,7 +6627,8 @@ and nothing more (on EC2, an instance role whose only S3 permissions are `s3:Lis
 on the bucket for the `rebuild-checkpoints/` prefix and `s3:GetObject` on
 `rebuild-checkpoints/*`; no access keys), and its egress has to allow the bucket region's
 S3 endpoint. The beta data comes from home's database either way: the box builds from
-home's backup.
+the `db.tar` send-inputs.sh dumps from it, which leaves out what the beta's own dump does
+(the nightly backup is never sent).
 
 **What has not been run:** the scripts are tested against stand-ins for `aws`, `docker`,
 `sudo` and, for the beta, `ship-data.sh`, `receive-data.sh` and `beta-compose.sh`

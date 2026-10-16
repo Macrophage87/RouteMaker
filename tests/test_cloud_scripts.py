@@ -564,6 +564,10 @@ def test_a_finished_run_deletes_older_runs_dumps_and_keeps_its_own(fake, home) -
     old_s3.mkdir(parents=True)
     for name in ("db.tar", "routemaker-20261001T070000Z.dump", "reference.tar"):
         (old_s3 / name).write_text("old")
+    # An older run (its read_at) that finished: its result is in out/.
+    (old_s3 / "MANIFEST.txt").write_text("read_at=20261001T070000Z\n")
+    (old_s3.parent / "out").mkdir()
+    (old_s3.parent / "out" / "SHA256SUMS").write_text("x\n")
     old_box = fake.root / "home" / "cloud-runs" / "cloud-20261001" / "in"
     old_box.mkdir(parents=True)
     for name in ("routemaker-20261001T070000Z.dump", "reference.tar"):
@@ -581,10 +585,44 @@ def test_a_finished_run_deletes_older_runs_dumps_and_keeps_its_own(fake, home) -
     done, _ = box(fake, "--refire")
 
     assert done.returncode == 0, done.stdout + done.stderr
-    assert sorted(p.name for p in old_s3.iterdir()) == ["reference.tar"]
+    assert sorted(p.name for p in old_s3.iterdir()) == ["MANIFEST.txt", "reference.tar"]
     assert sorted(p.name for p in old_box.iterdir()) == ["reference.tar"]
     assert (fake.in_bucket("in") / "db.tar").exists()
     assert (fake.root / "home" / "cloud-runs" / "cloud-20261011" / "in" / "db.tar").exists()
+
+
+def test_a_newer_runs_dump_and_a_waiting_runs_inputs_are_never_pruned(fake, home) -> None:
+    """Review round 2, S2: a run newer than this one (its read_at) keeps its dump, finished or
+    not, and an older run that has not finished (inputs sent, never built) keeps its inputs."""
+    transfer = fake.bucket / "bucket" / "rebuild-checkpoints" / "transfer"
+    runs = fake.root / "home" / "cloud-runs"
+    kept = {"cloud-20991231": "20991231T000000Z", "cloud-20261002": "20261002T070000Z"}
+    for name, read_at in kept.items():
+        s3_in = transfer / name / "in"
+        s3_in.mkdir(parents=True)
+        (s3_in / "db.tar").write_text("dump")
+        (s3_in / "MANIFEST.txt").write_text(f"read_at={read_at}\n")
+    # The newer one has finished, on the box and in S3; the older one is still waiting.
+    (transfer / "cloud-20991231" / "out").mkdir()
+    (transfer / "cloud-20991231" / "out" / "SHA256SUMS").write_text("x\n")
+    newer_box = runs / "cloud-20991231"
+    (newer_box / "in").mkdir(parents=True)
+    (newer_box / "state").mkdir()
+    (newer_box / "in" / "db.tar").write_text("dump")
+    (newer_box / "in" / "MANIFEST.txt").write_text("read_at=20991231T000000Z\n")
+    (newer_box / "state" / "upload.done").write_text("x\n")
+    assert send(fake, home).returncode == 0
+    (fake.dir / "job_status").write_text("succeeded\n")
+    built_tiles(fake.root / "box" / "data")
+
+    done, _ = box(fake)
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    for name in kept:
+        assert (transfer / name / "in" / "db.tar").exists(), name
+    assert (newer_box / "in" / "db.tar").exists()
+    assert "keeping run cloud-20991231's dump: it is not older" in done.stdout
+    assert "keeping run cloud-20261002's dump: that run has not finished" in done.stdout
 
 
 def test_a_second_copy_on_the_box_refuses_while_the_first_runs(fake, home) -> None:

@@ -36,11 +36,12 @@
 #             reading; the import does not use it), MANIFEST.txt and SHA256SUMS
 #   upload    to RUN_URL/out/, SHA256SUMS last; with --beta-bundle the beta's bundle to
 #             RUN_URL/beta/ too, SHA256SUMS and MANIFEST.txt last (import-result.sh --beta)
-#   prune     once this run has finished and uploaded, the database dumps of every OTHER run
-#             are deleted, on the box (~/cloud-runs/<other>/in) and in S3 (<other>/in/):
-#             this run's db.tar, the newest, is kept in both places (the owner's choice,
-#             2026-10-16), and an older run's goes only once a newer one has succeeded.
-#             A failure here is a warning
+#   prune     once this run has finished and uploaded, the database dumps of each OLDER run
+#             (its MANIFEST.txt read_at before this run's) that has itself finished (its
+#             result or its failure logs uploaded) are deleted, on the box
+#             (~/cloud-runs/<other>/in) and in S3 (<other>/in/): this run's db.tar is kept in
+#             both places (the owner's choice, 2026-10-16), and so is a newer run's, or one
+#             whose inputs wait to be built. A failure here is a warning
 #
 # Then the box powers itself off (with the launch template's "Shutdown behavior: Stop" that
 # is a stop, which costs only the disk). It powers off after a failed rebuild too, with the
@@ -122,7 +123,7 @@ mkdir -p "$work/in" "$work/out" "$state"
 exec 9>"${work%/*}/.box-rebuild.lock"
 flock -n 9 || die "another box-rebuild.sh is already running on this box; follow it with tail -f ~/cloud-rebuild.log (or launch.sh --attach RUN_URL at home)"
 if [ "$refire" = 1 ]; then
-	rm -f "$state/fire.done" "$state/job" "$state/wait.done" "$state/beta.done" "$state/export.done" "$state/upload.done" "$state/prune.done"
+	rm -f "$state/fire.done" "$state/job" "$state/wait.done" "$state/beta.done" "$state/export.done" "$state/upload.done" "$state/prune.done" "$state/failed.done"
 fi
 if [ "$beta_bundle" = 1 ]; then touch "$state/beta-wanted"; elif [ -e "$state/beta-wanted" ]; then beta_bundle=1; fi
 # The AWS CLI wants a region; on the box it is the box's own, from the instance metadata.
@@ -301,6 +302,33 @@ fi
 # (step prune).
 rm -rf "${work:?}/in/db"
 
+# --- failure logs ------------------------------------------------------------------------
+save_log() {
+	saved_log="$work/rebuild-$(date -u +%Y%m%dT%H%M%SZ).log.gz"
+	compose logs --no-color rebuild 2>&1 | gzip >"$saved_log" || true
+}
+# A failed run's logs go to RUN_URL/failed/ before the box powers off, so they can be read
+# from home without starting the box (launch.sh prints where, and the rebuild log's tail):
+# the rebuild's own log, and the end of this script's (~/cloud-rebuild.log) when there is one.
+failed_sent=0
+send_failed_logs() {
+	[ "$failed_sent" = 0 ] || return 0
+	failed_sent=1
+	mark failed
+	[ -n "${saved_log:-}" ] || save_log
+	if "$AWS" s3 cp "$saved_log" "$url/failed/${saved_log##*/}" --only-show-errors; then
+		note "the rebuild's log is at $url/failed/${saved_log##*/}"
+	else
+		note "WARNING: could not upload the rebuild's log; it stays at $saved_log on the box"
+	fi
+	if [ -s "$HOME/cloud-rebuild.log" ]; then
+		local own
+		own="$work/box-rebuild-$(date -u +%Y%m%dT%H%M%SZ).log.gz"
+		tail -n 400 "$HOME/cloud-rebuild.log" | gzip >"$own" || true
+		"$AWS" s3 cp "$own" "$url/failed/${own##*/}" --only-show-errors ||
+			note "WARNING: could not upload the end of ~/cloud-rebuild.log"
+	fi
+}
 # --- fire --------------------------------------------------------------------------------
 resumed=0
 if ! done_already fire; then
@@ -320,31 +348,6 @@ unattended=1
 job=$(cat "$state/job")
 
 # --- wait --------------------------------------------------------------------------------
-save_log() {
-	saved_log="$work/rebuild-$(date -u +%Y%m%dT%H%M%SZ).log.gz"
-	compose logs --no-color rebuild 2>&1 | gzip >"$saved_log" || true
-}
-# A failed run's logs go to RUN_URL/failed/ before the box powers off, so they can be read
-# from home without starting the box (launch.sh prints where, and the rebuild log's tail):
-# the rebuild's own log, and the end of this script's (~/cloud-rebuild.log) when there is one.
-failed_sent=0
-send_failed_logs() {
-	[ "$failed_sent" = 0 ] || return 0
-	failed_sent=1
-	[ -n "${saved_log:-}" ] || save_log
-	if "$AWS" s3 cp "$saved_log" "$url/failed/${saved_log##*/}" --only-show-errors; then
-		note "the rebuild's log is at $url/failed/${saved_log##*/}"
-	else
-		note "WARNING: could not upload the rebuild's log; it stays at $saved_log on the box"
-	fi
-	if [ -s "$HOME/cloud-rebuild.log" ]; then
-		local own
-		own="$work/box-rebuild-$(date -u +%Y%m%dT%H%M%SZ).log.gz"
-		tail -n 400 "$HOME/cloud-rebuild.log" | gzip >"$own" || true
-		"$AWS" s3 cp "$own" "$url/failed/${own##*/}" --only-show-errors ||
-			note "WARNING: could not upload the end of ~/cloud-rebuild.log"
-	fi
-}
 if ! done_already wait; then
 	note "waiting for rebuild job $job (hours; this checks every ${POLL_S}s)"
 	# On a resume the first `doing` is tried at once; after that every ten minutes, in
@@ -476,23 +479,54 @@ fi
 # --- prune -------------------------------------------------------------------------------
 # Only after a run that finished: the dumps of the other runs, this run's kept. Their names:
 # db.tar (send-inputs.sh's own) and routemaker-<utc>.dump (what runs before v0.7.0 sent: the
-# whole nightly backup). Nothing else of an older run is touched.
+# whole nightly backup). Nothing else of an older run is touched. Only a run OLDER than this
+# one (read_at, from its MANIFEST.txt on the box or in S3) that has finished loses its dump: a
+# newer run's dump is the newest, and a run not yet built still needs its inputs. A run whose
+# read_at cannot be read is kept.
 prune_warn() { note "WARNING: $*; delete it by hand (docs/OPERATIONS.md, \"Rebuilding on the cloud box\")"; }
+other_read_at() {
+	local m="${work%/*}/$1/in/MANIFEST.txt"
+	if ! [ -s "$m" ]; then
+		m="$state/other-MANIFEST.txt"
+		rm -f "$m"
+		"$AWS" s3 cp "$parent/$1/in/MANIFEST.txt" "$m" --only-show-errors 2>/dev/null || return 0
+	fi
+	sed -n 's/^read_at=//p' "$m" | tail -n1
+}
+other_finished() {
+	[ -e "${work%/*}/$1/state/upload.done" ] || [ -e "${work%/*}/$1/state/failed.done" ] ||
+		"$AWS" s3 ls "$parent/$1/out/SHA256SUMS" >/dev/null 2>&1 ||
+		[ -n "$("$AWS" s3 ls "$parent/$1/failed/" 2>/dev/null)" ]
+}
+prunable() {
+	local at
+	at=$(other_read_at "$1")
+	if ! [[ "$at" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || ! [[ "$at" < "$read_at" ]]; then
+		note "keeping run $1's dump: it is not older than this run (read_at ${at:-unknown})"
+		return 1
+	fi
+	other_finished "$1" || {
+		note "keeping run $1's dump: that run has not finished"
+		return 1
+	}
+}
 if ! done_already prune; then
+	parent=${url%/*}
 	for other in "${work%/*}"/*/; do
 		other=${other%/}
 		[ "$other" != "$work" ] && [ -d "$other/in" ] || continue
+		prunable "${other##*/}" || continue
 		for f in "$other/in/db.tar" "$other/in/db" "$other/in"/routemaker-*.dump; do
 			[ -e "$f" ] || continue
 			note "deleting an older run's dump: $f"
 			rm -rf "$f" || prune_warn "could not delete $f"
 		done
 	done
-	parent=${url%/*}
 	runs=$("$AWS" s3 ls "$parent/" 2>/dev/null | sed -n 's|^ *PRE \([a-z0-9][a-z0-9-]*\)/$|\1|p') ||
 		prune_warn "could not list $parent/ to find older runs' dumps"
 	for other in $runs; do
 		[ "$other" != "$run" ] || continue
+		prunable "$other" || continue
 		for f in $("$AWS" s3 ls "$parent/$other/in/" 2>/dev/null | awk '{print $NF}' |
 			grep -E '^(db\.tar|routemaker-[0-9]{8}T[0-9]{6}Z\.dump)$'); do
 			note "deleting an older run's dump: $parent/$other/in/$f"
