@@ -127,8 +127,18 @@ def test_an_override_reopens_one():
         ({"highway": "service"}, True),
         ({"highway": "service", "name": "Plant Drive"}, True),
         ({"highway": "track", "name": "Haul Road"}, True),
-        ({"highway": "residential"}, True),
-        ({"highway": "footway"}, True),
+        ({"highway": "unclassified"}, True),
+        ({"highway": "road"}, True),
+        # A public street or path's class keeps it open, named or not (the v0.7.0
+        # staging rebuild closed 1,188 footways and 111 residential streets).
+        ({"highway": "residential"}, False),
+        ({"highway": "tertiary"}, False),
+        ({"highway": "footway"}, False),
+        ({"highway": "footway", "footway": "sidewalk"}, False),
+        ({"highway": "path"}, False),
+        ({"highway": "footway", "access": "private"}, True),
+        ({"highway": "path", "bicycle": "no"}, True),
+        ({"highway": "residential", "access": "no"}, True),
         ({"highway": "service", "bicycle": "yes"}, False),
         # Kept to destinations, customers or deliveries: not a public street.
         ({"highway": "residential", "name": "Plant Road", "access": "destination"}, True),
@@ -183,7 +193,7 @@ def test_the_map_panel_words_the_reason():
     [
         {"highway": "service"},
         {"highway": "service", "name": "Plant Drive"},
-        {"highway": "residential"},
+        {"highway": "unclassified"},
         {"highway": "track"},
     ],
 )

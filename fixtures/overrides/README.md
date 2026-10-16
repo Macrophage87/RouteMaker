@@ -468,4 +468,6 @@ in the database still names it: delete that row in the admin when loading the fi
   Open Baltimore record 634 (Harford Rd, Montebello Ter to Echodale Ave): the three lie
   within 9.3, 6.3 and 5.7 m of its line (`tests/data/open_baltimore_record_634.json`).
   The generic re-match declines this one, as it should: the junction was redrawn, so
-  other Harford Road ways overlap the old line without lying along it.
+  other Harford Road ways overlap the old line without lying along it. The old row was
+  still loaded at the v0.7.0 staging rebuild and applied to nothing, so the file also
+  `retire`s it: loading the file deletes it and adds the three.

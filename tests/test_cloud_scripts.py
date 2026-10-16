@@ -115,6 +115,7 @@ case "$1" in
       *"to_regnamespace('staging') IS NULL"*)
         cat "$FAKE_DIR/staging_absent" 2>/dev/null || echo t ;;
       *"string_agg"*) cat "$FAKE_DIR/in_flight" 2>/dev/null ;;
+      *"DISTINCT volume_source"*) cat "$FAKE_DIR/live_sources" 2>/dev/null ;;
       *"cat > /tmp/cloud.use"*) cat >"$FAKE_DIR/cloud.use" ;;
       *" -q -1 "*) cat >>"$FAKE_DIR/blanked.sql" ;;
       *run_rebuild_now*)
@@ -344,6 +345,55 @@ def test_send_refuses_when_ship_data_makes_no_dump(fake, home) -> None:
 
     assert done.returncode == 2 and "no database dump" in done.stderr
     assert not fake.in_bucket("in").exists()
+
+
+def test_send_refuses_a_reference_folder_missing_a_live_count_source(fake, home) -> None:
+    """The v0.7.0 staging run was sent a folder without MDOT SHA's counts: 5,954 busy
+    roads lost their count and their volume step-ups."""
+    _, data = home
+    (fake.dir / "live_sources").write_text("ddot\nmdot-sha\nvdot\n")
+    (data / "reference" / "volume.json").write_text(
+        '[{"id": "a", "agency": "vdot"}, {"id": "b", "agency":"ddot"}]'
+    )
+
+    done = send(fake, home)
+
+    assert done.returncode == 2 and "no traffic counts from mdot-sha" in done.stderr
+    assert not fake.in_bucket("in").exists()
+
+    (data / "reference" / "volume.json").write_text(
+        '[{"agency": "vdot"}, {"agency": "ddot"}, {"agency": "mdot-sha"}]'
+    )
+    assert send(fake, home).returncode == 0
+
+
+def test_send_takes_another_reference_folder_only_when_it_is_not_older(fake, home) -> None:
+    _, data = home
+    other = fake.root / "other-reference"
+    other.mkdir()
+    (other / "reference.file").write_text("older copy")
+    os.utime(other / "reference.file", (1_000_000, 1_000_000))
+
+    done = send(fake, home, "--reference-dir", str(other))
+    assert done.returncode == 2 and "older than" in done.stderr
+
+    os.utime(other / "reference.file", None)
+    (other / "volume.json").write_text("[]")
+    done = send(fake, home, "--reference-dir", str(other))
+    assert done.returncode == 0, done.stderr
+    packed = subprocess.run(
+        ["tar", "-tf", str(fake.in_bucket("in") / "reference.tar")], capture_output=True, text=True
+    )
+    assert {"reference/reference.file", "reference/volume.json"} <= {
+        name.rstrip("/") for name in packed.stdout.split()
+    }
+
+
+def test_send_runs_git_with_the_checkout_marked_safe(fake, home) -> None:
+    live, _ = home
+    assert send(fake, home).returncode == 0
+    gits = [line for line in fake.calls().splitlines() if line.startswith("git ")]
+    assert gits and all(f"-c safe.directory={live} " in line for line in gits)
 
 
 def test_send_refuses_a_stage_inside_data_root(fake, home) -> None:
@@ -725,6 +775,9 @@ def test_the_import_installs_restores_and_dry_runs_without_swapping(fake, result
     assert "pg_restore --no-owner" in calls
     assert f"import_cloud_build {BUILD} --overrides-read-at 20261011T070000Z" in calls
     assert "--confirm" not in calls and "restart" not in calls
+    # Run as root on the owner's checkout, git refuses it as "dubious ownership" without this.
+    assert f"git -c safe.directory={result[0]} -C {result[0]} rev-parse HEAD" in calls
+    assert "import-result: installed." in done.stdout, "launch.sh reads this line"
 
 
 def test_the_swap_confirms_restarts_the_routers_and_predraws(fake, result) -> None:

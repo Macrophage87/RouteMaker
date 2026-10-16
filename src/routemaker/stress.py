@@ -349,6 +349,12 @@ NARROW_ROAD_MAX_WIDTH_M = 5.5
 # owner's three roads on the extract before the rule merges.
 WINDING_SINUOSITY = 1.2
 WINDING_MIN_LENGTH_M = 400.0
+# Measured stretch by stretch, not end to end: a straight road that turns one
+# corner reads 1.41 end to end (an L with equal legs), and the v0.7.0 staging
+# rebuild read 421 mi of such rural roads at 25 mph (LTS 4 to 2). A way winds
+# where at least this many of its `WINDING_MIN_LENGTH_M` stretches do, and they
+# make up at least half its length; one bend can bend one stretch only.
+WINDING_MIN_STRETCHES = 2
 NARROW_ROAD_RULE = "narrow rural road"
 
 # The owner's rural floor (2026-10-13): "a floor of LTS2 makes sense on rural
@@ -776,18 +782,34 @@ def narrow_by_tags(tags: dict[str, str]) -> bool:
 
 def winding(coordinates, min_length_m: float = WINDING_MIN_LENGTH_M) -> bool:
     """Whether a line of (lon, lat) points bends enough to keep traffic slow:
-    its sinuosity (`shape.sinuosity`) at least `WINDING_SINUOSITY`, on a line at
-    least `min_length_m` long. A short way split at a junction says nothing
-    either way and is read as not winding, and so is a closed ring, whose ratio
-    has no meaning."""
+    cut into stretches of at least `min_length_m` (the last short piece joins
+    the stretch before it), at least `WINDING_MIN_STRETCHES` of them with a
+    sinuosity (`shape.sinuosity`) of `WINDING_SINUOSITY` or more, together at
+    least half the way's length. One corner on a straight road bends one
+    stretch and does not count; a way too short for two stretches says nothing
+    either way and is read as not winding, and so is a closed ring's stretch,
+    whose ratio has no meaning."""
     points = [Point(c[0], c[1]) for c in coordinates]
     if len(points) < 3:
         return False
-    length = sum(haversine(a, b) for a, b in zip(points, points[1:], strict=False))
-    if length < min_length_m:
-        return False
-    ratio = sinuosity(points)
-    return ratio != float("inf") and ratio >= WINDING_SINUOSITY
+    stretches: list[tuple[list[Point], float]] = []
+    current, length = [points[0]], 0.0
+    for a, b in zip(points, points[1:], strict=False):
+        current.append(b)
+        length += haversine(a, b)
+        if length >= min_length_m:
+            stretches.append((current, length))
+            current, length = [b], 0.0
+    if length > 0 and stretches:
+        last, last_length = stretches.pop()
+        stretches.append((last + current[1:], last_length + length))
+    total = sum(length for _, length in stretches)
+    bent = [
+        length
+        for line, length in stretches
+        if (ratio := sinuosity(line)) != float("inf") and ratio >= WINDING_SINUOSITY
+    ]
+    return len(bent) >= WINDING_MIN_STRETCHES and sum(bent) * 2 >= total
 
 
 def rural_floor_applies(tags: dict[str, str], urban: bool) -> bool:

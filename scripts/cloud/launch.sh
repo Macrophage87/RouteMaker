@@ -583,11 +583,23 @@ note "the result is at $url/out/"
 [ "$attach" = 0 ] || started=1
 stop_box
 note "installing the result here (import-result.sh, then its dry run; nothing served changes)"
-script "$IMPORT" "${passed[@]}" "$url" || fail "import-result.sh failed; fix what it says and run scripts/cloud/import-result.sh $url"
-if [ "$swap" = 1 ]; then
+# Its output is read as well as shown: "done: installed as staging" is said only when the
+# real install ran, which ends with its own "import-result: installed." line (cloud-20261016b
+# ran with the import step switched off and still said it).
+import_log=$(mktemp "${TMPDIR:-/tmp}/routemaker-import.XXXXXX")
+script "$IMPORT" "${passed[@]}" "$url" | tee "$import_log" ||
+	{ rm -f "$import_log"; fail "import-result.sh failed; fix what it says and run scripts/cloud/import-result.sh $url"; }
+installed=0
+grep -q '^import-result: installed\.' "$import_log" && installed=1
+rm -f "$import_log"
+if [ "$installed" = 0 ] && [ "$dry_run" = 0 ]; then
+	note "the import step did not install the result here (it did not report \"installed\"); install it with scripts/cloud/import-result.sh${profile:+ --profile $profile} $url"
+elif [ "$swap" = 1 ]; then
 	note "--swap: swapping the result in (import-result.sh --swap)"
 	script "$IMPORT" "${passed[@]}" --swap "$url" || fail "the swap failed; see import-result.sh's message above"
 	note "done: swapped. Now the post-swap closure probes (OPERATIONS.md, \"Bicycle closures in the tiles\", step 3)"
+elif [ "$dry_run" = 1 ]; then
+	note "dry run: nothing was installed"
 else
 	note "done: installed as staging. Read the dry run above, then: scripts/cloud/import-result.sh${profile:+ --profile $profile} --swap $url"
 fi

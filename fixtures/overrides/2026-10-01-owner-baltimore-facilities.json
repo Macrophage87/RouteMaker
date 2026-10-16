@@ -7883,5 +7883,20 @@
     "line": "-76.566123,39.346897 -76.566209,39.346798"
    }
   }
+ ],
+ "retire": [
+  {
+   "kind": "stress",
+   "osm_way_id": 424993005,
+   "value": {
+    "tier": 1,
+    "adjustment_id": "baltimore-track-harford-rd-lts1",
+    "category": "other",
+    "visibility": "hidden",
+    "annotation_status": "approved",
+    "display": "route_only"
+   },
+   "reason": "OWNER-DECISIONS 282a, the owner on 2026-10-03: \"Yes, queue both for the next rebuild.\" OSM redrew this way as 1562097553, 1562097555 and 1562097556, which carry the same row (above); the row still loaded for the old way applied to nothing in the v0.7.0 staging rebuild, so loading this file withdraws it rather than leaving it to be deleted by hand."
+  }
  ]
 }

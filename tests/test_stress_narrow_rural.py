@@ -40,6 +40,19 @@ class TestWinding:
     def test_a_short_way_says_nothing(self):
         assert not winding(zigzag(n=3))
 
+    def test_one_corner_on_a_straight_road_does_not(self):
+        # An L, 1 km each leg: 1.41 end to end, which read the whole way as winding
+        # (the v0.7.0 staging rebuild's 421 mi of rural LTS 4 at 25 mph).
+        leg = [(-77.2 + i * 0.001, 39.2) for i in range(12)]
+        corner = leg[-1]
+        north = [(corner[0], corner[1] + i * 0.001) for i in range(1, 10)]
+        assert not winding(leg + north)
+
+    def test_a_long_winding_road_with_a_straight_end_still_winds(self):
+        wiggle = zigzag(n=30)
+        tail = [(wiggle[-1][0] + i * 0.001, wiggle[-1][1]) for i in range(1, 6)]
+        assert winding(wiggle + tail)
+
     def test_a_closed_ring_is_not_read_as_winding(self):
         ring = [(-77.2 + 0.003 * math.cos(a), 39.2 + 0.003 * math.sin(a)) for a in range(0, 7)]
         ring.append(ring[0])

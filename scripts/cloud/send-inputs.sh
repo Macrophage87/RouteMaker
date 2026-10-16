@@ -17,7 +17,8 @@
 #                           that carries them. No accounts, Homes, saved or shared routes, audit
 #                           log or sessions leave home; the approved overrides (the road panel's
 #                           stress edits among them) do, so they are all in the box's map.
-#   reference.tar           DATA_ROOT/reference (crossings, urban areas, traffic counts)
+#   reference.tar           DATA_ROOT/reference, or --reference-dir (crossings, urban areas,
+#                           traffic counts)
 #   elevation.tar           DATA_ROOT/elevation (saves the box the 3DEP download)
 #   extracts.tar            DATA_ROOT/extracts (the box applies the same six-day rule to it)
 #   MANIFEST.txt            run, commit, backup=db.tar and read_at=<the UTC time the dump began>
@@ -34,12 +35,19 @@
 #   --live-dir DIR   the live stack's checkout: .env and the commit [this repository]
 #   --stage DIR      where the files are assembled [~/cloud-runs/<run>/in]
 #   --profile NAME   the AWS CLI profile (`aws login --remote --profile NAME` first)
+#   --reference-dir DIR
+#                    the reference folder to send [DATA_ROOT/reference]. Refused when it lacks
+#                    a traffic-count source the live map has (every agency in the live segment
+#                    table's volume_source must be in its volume.json or roadway.json), or when
+#                    a file in DATA_ROOT/reference, which the live build read, is newer there
+#                    or missing from it: the v0.7.0 staging run was sent a stale folder with no
+#                    MDOT SHA counts and lost 5,954 segments' counts
 #   --allow-dirty    send even though the checkout has uncommitted changes to tracked
 #                    files (the box builds the commit, not those changes)
 #   --no-transfer    assemble and checksum the stage, send nothing
 #   -h, --help
 # Environment (for tests): CLOUD_AWS [aws], CLOUD_SUDO [sudo], CLOUD_GIT [git],
-# CLOUD_SHIP_DATA [scripts/beta/ship-data.sh beside this script].
+# CLOUD_DOCKER [docker], CLOUD_SHIP_DATA [scripts/beta/ship-data.sh beside this script].
 set -Eeuo pipefail
 
 die() { echo "send-inputs: $*" >&2; exit 2; }
@@ -47,12 +55,13 @@ note() { echo "send-inputs: $*"; }
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 live_dir=$(cd "$here/../.." && pwd)
-stage="" profile="" allow_dirty=0 transfer=1 url=""
+stage="" profile="" allow_dirty=0 transfer=1 url="" reference_dir=""
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--live-dir) [ $# -ge 2 ] || die "$1 needs a value"; live_dir=$2; shift 2 ;;
 		--stage) [ $# -ge 2 ] || die "$1 needs a value"; stage=$2; shift 2 ;;
 		--profile) [ $# -ge 2 ] || die "$1 needs a value"; profile=$2; shift 2 ;;
+		--reference-dir) [ $# -ge 2 ] || die "$1 needs a value"; reference_dir=$2; shift 2 ;;
 		--allow-dirty) allow_dirty=1; shift ;;
 		--no-transfer) transfer=0; shift ;;
 		-h | --help) sed -n '2,/^set -E/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
@@ -69,6 +78,7 @@ run=${url##*/}
 AWS=${CLOUD_AWS:-aws}
 SUDO=${CLOUD_SUDO-sudo}
 GIT=${CLOUD_GIT:-git}
+DOCKER=${CLOUD_DOCKER:-docker}
 aws_() { if [ -n "$profile" ]; then "$AWS" --profile "$profile" "$@"; else "$AWS" "$@"; fi; }
 
 live_dir=$(cd "$live_dir" && pwd) || die "no such directory: $live_dir"
@@ -88,18 +98,55 @@ for key in COVERAGE_POLYGON ROUTEMAKER_LIVE_SCHEMA ROUTEMAKER_STAGING_SCHEMA; do
 done
 [ -d "$data_root" ] || die "DATA_ROOT $data_root does not exist"
 
-commit=$("$GIT" -C "$live_dir" rev-parse HEAD) || die "$live_dir is not a git checkout"
-if [ -n "$("$GIT" -C "$live_dir" status --porcelain --untracked-files=no)" ]; then
+# safe.directory: run with sudo, or as another user than the checkout's owner, git refuses
+# the checkout as "dubious ownership" without it.
+git_() { "$GIT" -c safe.directory="$live_dir" -C "$live_dir" "$@"; }
+commit=$(git_ rev-parse HEAD) || die "$live_dir is not a git checkout"
+if [ -n "$(git_ status --porcelain --untracked-files=no)" ]; then
 	[ "$allow_dirty" = 1 ] || die "$live_dir has uncommitted changes to tracked files; the box builds commit $commit without them. Commit them, or pass --allow-dirty"
 	note "WARNING: uncommitted changes in $live_dir are not in the box's build"
 fi
 # The box clones from GitHub, so the commit has to be there.
-[ -n "$("$GIT" -C "$live_dir" branch -r --contains "$commit" 2>/dev/null)" ] ||
+[ -n "$(git_ branch -r --contains "$commit" 2>/dev/null)" ] ||
 	die "commit $commit is on no remote branch; push it first, or the box cannot check it out"
 
 for part in reference elevation extracts; do
 	[ -d "$data_root/$part" ] || die "$data_root/$part is missing"
 done
+live_reference="$data_root/reference"
+reference_dir=${reference_dir:-$live_reference}
+[ -d "$reference_dir" ] || die "--reference-dir $reference_dir is not a directory"
+reference_dir=$(cd "$reference_dir" && pwd)
+
+# The reference folder against the live map. A folder without a count source the live map
+# has builds a map that silently loses those counts (the v0.7.0 staging run: no MDOT SHA
+# counts, so 5,986 busy roads lost their volume step-ups and the narrow-road rule read
+# 421 mi of counted rural roads as uncounted).
+pguser=$(sed -n 's/^PGUSER=//p' "$env_file" | tail -n1 | tr -d "\"'")
+pgdb=$(sed -n 's/^PGDATABASE=//p' "$env_file" | tail -n1 | tr -d "\"'")
+live_sources=$( (cd "$live_dir" && "$DOCKER" compose exec -T postgis psql -U "${pguser:-routemaker}" \
+	-d "${pgdb:-routemaker}" -AtX -v ON_ERROR_STOP=1 -c "SELECT DISTINCT volume_source FROM live.segment
+		WHERE volume_source IS NOT NULL AND volume_source <> 'none' ORDER BY 1" </dev/null) 2>/dev/null) ||
+	die "could not read the live map's count sources (is the database running?); the reference folder is checked against them"
+held=$(for f in volume.json roadway.json; do
+	[ ! -e "$reference_dir/$f" ] || $SUDO grep -o '"agency": *"[^"]*"' "$reference_dir/$f" || true
+done | sed 's/.*"\([^"]*\)"$/\1/' | sort -u)
+missing=()
+for agency in $live_sources; do
+	grep -qxF -- "$agency" <<<"$held" || missing+=("$agency")
+done
+[ ${#missing[@]} -eq 0 ] ||
+	die "$reference_dir has no traffic counts from ${missing[*]}, which the live map has; the box would build a map without them. Send the folder the live build read ($live_reference), or reinstall the counts (scripts/install_reference_data.py --volume ...)"
+if [ "$reference_dir" != "$(cd "$live_reference" && pwd)" ]; then
+	for file in "$live_reference"/*; do
+		[ -f "$file" ] || continue
+		name=${file##*/}
+		[ -e "$reference_dir/$name" ] ||
+			die "$reference_dir has no $name, which $live_reference (the live build's) has"
+		[ ! "$file" -nt "$reference_dir/$name" ] ||
+			die "$reference_dir/$name is older than $file, which the live build read; send the newer folder"
+	done
+fi
 
 [ -n "$stage" ] || stage="$HOME/cloud-runs/$run/in"
 # Checked before anything is created, so a mistaken --stage never writes into DATA_ROOT.
@@ -126,7 +173,11 @@ note "dumping the database without identities (scripts/beta/ship-data.sh's db pa
 [ -s "$stage/db-bundle/db/routemaker.dump" ] || die "ship-data.sh staged no db/routemaker.dump"
 (umask 077 && tar -C "$stage/db-bundle" -cf "$stage/$backup" db)
 rm -rf "$stage/db-bundle"
-for part in reference elevation extracts; do
+note "packing reference (from $reference_dir)"
+# Always packed as reference/, whichever folder it came from.
+$SUDO tar -C "$reference_dir" --numeric-owner --transform 's,^\.,reference,' -cf "$stage/reference.tar" .
+$SUDO chown "$(id -u):$(id -g)" "$stage/reference.tar" 2>/dev/null || true
+for part in elevation extracts; do
 	note "packing $part"
 	$SUDO tar -C "$data_root" --numeric-owner -cf "$stage/$part.tar" "$part"
 	$SUDO chown "$(id -u):$(id -g)" "$stage/$part.tar" 2>/dev/null || true
