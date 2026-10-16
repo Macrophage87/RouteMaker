@@ -37,8 +37,14 @@ test("6. an End button always in view, named End ride, one tap; Ride ended with 
   assert.match(css, /\.ride-top \{\s*position: sticky;\s*top: 0;/);
   assert.doesNotMatch(css, /\.ride-big \.ride-(top|end)[^{]*\{[^}]*display: none/);
   // Ride ended, announced, with Undo for a few seconds, held while focused; Undo starts the same ride.
-  assert.match(ride, /className="ride-ended"\s*role="status"/);
-  assert.match(ride, /onFocus=\{\(\) => window\.clearTimeout\(timer\.current\)\}/);
+  // Review F6: said by the page's always-mounted polite region (not a status region mounted full), the focus on Undo.
+  assert.match(ride, /<div className="ride-ended" role="group" aria-label=\{RIDE_ENDED\} \{\.\.\.hold\}>/);
+  assert.doesNotMatch(ride.slice(ride.indexOf("export function RideEnded(")), /role="status"/);
+  assert.match(ride, /export const RIDE_ENDED_SAID = "Ride ended\. Undo available\.";/);
+  assert.match(app, /announce\(RIDE_ENDED_SAID\);/);
+  assert.match(ride, /timer\.start\(\);\s*undo\.current\?\.focus\(\);/);
+  assert.doesNotMatch(app, /focusStartAfterRide/);
+  assert.match(ride, /onFocus: \(\) => timer\.current\?\.focus\(true\)/);
   assert.match(ride, /export const UNDO_END_MS = 8_000;/);
   assert.match(app, /\{!riding && rideEnded > 0 && \(\s*<RideEnded\s*key=\{rideEnded\}\s*onUndo=\{undoEndRide\}/);
   assert.match(app, /startRideGesture\(ridePrefs\);\s*setRideStart\(ended\.start\);/);
@@ -52,7 +58,8 @@ test("3. 311: the pick is the report (sent, or the text app filled in); the note
   assert.match(pick, /tell311\(REPORT_SENT\)/);
   assert.match(pick, /tell311\(REPORT_READY\)/);
   // The confirmation line and Add a note under the button.
-  assert.match(ride, /<div className="ride-311-said">\s*\{\/\*[^*]*\*\/\}\s*<p>\{said311\}<\/p>\s*<button type="button" className="secondary" onClick=\{addNote\}>\s*Add a note/);
+  // Review F4: the line clears after SAID_311_MS, held while focused or hovered (the spread handlers).
+  assert.match(ride, /<div className="ride-311-said" \{\.\.\.said311Timer\.hold\}>\s*\{\/\*[^*]*\*\/\}\s*<p>\{said311\}<\/p>\s*<button type="button" className="secondary" onClick=\{addNote\}>\s*Add a note/);
   // In the report itself the note comes after the sending.
   const fold = ride.slice(ride.indexOf("function Report311("), ride.indexOf("export function RideMode("));
   assert.ok(fold.indexOf("Add a note (optional)") > fold.indexOf("Copy the report"), "the note after the actions");

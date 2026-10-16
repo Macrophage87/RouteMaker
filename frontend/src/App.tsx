@@ -73,7 +73,7 @@ import {
 import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
 import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
-import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, RideEnded, RideMode, rideVoice, startRideGesture, type RideView } from "./RideMode.tsx";
+import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, RIDE_ENDED_SAID, RideEnded, RideMode, rideVoice, startRideGesture, type RideView } from "./RideMode.tsx";
 import { readHeadingUp, readRidePrefs, writeHeadingUp, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf } from "./lib/bikeshare.ts";
@@ -684,7 +684,6 @@ export function App() {
   const [bigText, setBigText] = useState(false);
   const startRideRef = useRef<HTMLButtonElement>(null);
   const rideStartFirstRef = useRef<HTMLButtonElement>(null);
-  const focusStartAfterRide = useRef(false);
   // The Start ride button pressed (under the figures or in Directions): where the focus goes back to.
   const rideOpener = useRef<HTMLElement | null>(null);
   const rideCircle = rideView?.rider ? { centre: rideView.rider.point, radiusM: rideView.rider.accuracyM } : null;
@@ -2574,8 +2573,9 @@ export function App() {
     setBigText(false);
     setRideView(null);
     setRideEnded((n) => n + 1);
-    focusStartAfterRide.current = true;
-  }, []);
+    // Said by the page's region, always mounted; the focus goes to Undo (RideEnded), not back to Start (review F6).
+    announce(RIDE_ENDED_SAID);
+  }, [announce]);
   const undoEndRide = () => {
     const ended = endedRide.current;
     endedRide.current = null;
@@ -2588,12 +2588,6 @@ export function App() {
     setRideView(null);
     setRiding(true);
   };
-  // After End ride the focus goes back to Start ride, once the planner shows again.
-  useEffect(() => {
-    if (riding || !focusStartAfterRide.current) return;
-    focusStartAfterRide.current = false;
-    backToRideOpener();
-  }, [riding]);
   // The first ride's question takes the focus to its heading, so its safety note is read before the
   // choices (VoiceOver skips a dialog's description when the focus lands inside it).
   useEffect(() => {

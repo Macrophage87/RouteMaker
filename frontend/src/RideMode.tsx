@@ -23,7 +23,8 @@
  * ones sent are a re-plan's start point and, when the rider asks for the nearest water or restroom, the
  * search's own (POST /api/nearest), each in a POST body, as planning with "Use my location" sends it.
  */
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FocusEvent, type PointerEvent, type RefObject } from "react";
+import { HoldTimer } from "./lib/holdTimer.ts";
 import { requestRoute, type RouteResponse } from "./lib/api.ts";
 import { VIA_MARKS, viaIndices } from "./lib/pointKinds.ts";
 import type { Dials } from "./lib/dials.ts";
@@ -137,6 +138,38 @@ export const END_TEXT = "End";
 export const END_RIDE_NAME = "End ride";
 /** How long Undo is offered after End (v0.7.0, "Go riding fixes" item 6); held while it has the focus. */
 export const UNDO_END_MS = 8_000;
+/** How long the 311 line ("Sent to DC 311." and Add a note) stays (review F4); held the same way. */
+export const SAID_311_MS = 8_000;
+/** Said by the page's polite region (always mounted) as Ride ended shows (review F6). */
+export const RIDE_ENDED_SAID = "Ride ended. Undo available.";
+
+/**
+ * A short-lived message's timer (lib/holdTimer.ts) with the handlers that hold it: while the focus is inside, or a
+ * mouse is over it (a touch's emulated hover is not a hover: it would hold the message until the next tap).
+ */
+function useHoldTimer(ms: number, onDone: () => void) {
+  const done = useRef(onDone);
+  done.current = onDone;
+  const timer = useRef<HoldTimer | null>(null);
+  if (timer.current === null) timer.current = new HoldTimer(ms, () => done.current());
+  useEffect(() => () => timer.current?.stop(), []);
+  const hold = useMemo(
+    () => ({
+      onFocus: () => timer.current?.focus(true),
+      onBlur: (event: FocusEvent<HTMLElement>) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) timer.current?.focus(false);
+      },
+      onPointerEnter: (event: PointerEvent<HTMLElement>) => {
+        if (event.pointerType === "mouse") timer.current?.hover(true);
+      },
+      onPointerLeave: (event: PointerEvent<HTMLElement>) => {
+        if (event.pointerType === "mouse") timer.current?.hover(false);
+      },
+    }),
+    [],
+  );
+  return { timer: timer.current, hold };
+}
 /** Hidden this long, the watch stops (privacy and battery) and the ride offers Resume (plan section 5). */
 export const HIDDEN_STOP_MS = 10 * 60_000;
 export const PAUSED_SAID = "Ride paused while the page was in the background. Press Resume to carry on.";
@@ -483,6 +516,14 @@ export function RideMode({
   }, []);
   // What the pick did, shown under the 311 button and said through the rider's outputs (it answers a tap).
   const [said311, setSaid311] = useState("");
+  // The line clears after SAID_311_MS (review F4: it stayed for the whole ride), held while focused or hovered.
+  const said311Timer = useHoldTimer(SAID_311_MS, () => setSaid311(""));
+  const said311Shown = said311 !== "" && !menu311;
+  useEffect(() => {
+    if (said311Shown) said311Timer.timer.start();
+    else said311Timer.timer.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the timer is the same object every render
+  }, [said311, said311Shown]);
   const noteInput = useRef<HTMLInputElement>(null);
   const focusNote = useRef(false);
   const tell311 = useCallback((text: string) => {
@@ -1031,8 +1072,8 @@ export function RideMode({
             <span aria-hidden="true">{RIDE_311_TEXT}</span>
           </button>
           <Ride311Menu id={menu311Id} open={menu311} place={place311} headingRef={menu311Heading} onPick={pick311} onClose={close311} />
-          {said311 && !menu311 && (
-            <div className="ride-311-said">
+          {said311Shown && (
+            <div className="ride-311-said" {...said311Timer.hold}>
               {/* Shown, not a live region: it is said through the rider's own outputs (tell311). */}
               <p>{said311}</p>
               <button type="button" className="secondary" onClick={addNote}>
@@ -1162,33 +1203,24 @@ export function RideMode({
 }
 
 /**
- * After End (v0.7.0, "Go riding fixes" item 6): "Ride ended." and Undo for UNDO_END_MS, which a status
- * region announces. The time is held while the focus is inside it (WCAG 2.2.1), so a keyboard or
- * screen-reader rider who reaches Undo is not timed out of it. Undo starts the same ride again.
+ * After End (v0.7.0, "Go riding fixes" item 6): "Ride ended." and Undo for UNDO_END_MS. It is said by the page's
+ * polite region, which is always mounted (App says RIDE_ENDED_SAID: a region mounted with its text in it is often
+ * not read; review F6), and the focus goes to Undo, as End (the button pressed) has gone. The time is held while the
+ * focus or a mouse is inside it (WCAG 2.2.1), so a keyboard or screen-reader rider on Undo is not timed out of it.
+ * Undo starts the same ride again.
  */
 export function RideEnded({ onUndo, onGone }: { onUndo: () => void; onGone: () => void }) {
-  const timer = useRef<number | undefined>(undefined);
-  const gone = useRef(onGone);
-  gone.current = onGone;
-  const arm = useCallback(() => {
-    window.clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => gone.current(), UNDO_END_MS);
-  }, []);
+  const undo = useRef<HTMLButtonElement>(null);
+  const { timer, hold } = useHoldTimer(UNDO_END_MS, onGone);
   useEffect(() => {
-    arm();
-    return () => window.clearTimeout(timer.current);
-  }, [arm]);
+    timer.start();
+    undo.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, as it shows
+  }, []);
   return (
-    <div
-      className="ride-ended"
-      role="status"
-      onFocus={() => window.clearTimeout(timer.current)}
-      onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) arm();
-      }}
-    >
-      <span>{RIDE_ENDED}</span>
-      <button type="button" className="secondary" onClick={onUndo}>
+    <div className="ride-ended" role="group" aria-label={RIDE_ENDED} {...hold}>
+      <span aria-hidden="true">{RIDE_ENDED}</span>
+      <button ref={undo} type="button" className="secondary" onClick={onUndo}>
         Undo
       </button>
     </div>
