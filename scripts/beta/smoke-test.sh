@@ -6,8 +6,9 @@
 #
 #   scripts/beta/smoke-test.sh --local [--port 8087] [--host NAME]
 #       Straight to the api on 127.0.0.1, before nginx is involved. No credentials. The Host
-#       header is --host, else RM_BETA_HOST from the environment or the checkout's .env (the
-#       beta's name is server config, never in the repository).
+#       header is --host, else RM_BETA_HOST from the environment or the checkout's .env, else
+#       RM_CD_HOST (the deploy agent's override); the beta's name is server config, never in
+#       the repository. auto-release.sh passes --host with the name its health check uses.
 #   scripts/beta/smoke-test.sh --public https://beta.example.org --passwords-file ~/routemaker-beta-passwords.txt
 #       Through nginx and TLS, as the first tester in the file make-htpasswd.sh wrote (or as
 #       BETA_USER, if set). The password is read from that file, never printed, and handed to
@@ -45,6 +46,7 @@ if [ "$mode" = local ]; then
 	base="http://127.0.0.1:$port"
 	[ -n "$host" ] || host=${RM_BETA_HOST:-}
 	[ -n "$host" ] || host=$(sed -n 's/^[[:space:]]*RM_BETA_HOST[[:space:]]*=//p' "$here/../../.env" 2>/dev/null | tail -n 1 | tr -d "\r\"'")
+	[ -n "$host" ] || host=${RM_CD_HOST:-}
 	[ -n "$host" ] || { echo "smoke-test: no host: set RM_BETA_HOST=<the beta's name> in .env (docs/BETA-RUNBOOK.md, section 0), or pass --host" >&2; exit 2; }
 fi
 base=${base%/}

@@ -2924,11 +2924,28 @@ def test_the_local_smoke_test_reads_the_betas_name_from_env_or_refuses(tmp_path:
     (tmp_path / "scripts" / "beta").mkdir(parents=True)
     shutil.copy(REPO / "scripts" / "beta" / "smoke-test.sh", tmp_path / "scripts" / "beta")
     script = str(tmp_path / "scripts" / "beta" / "smoke-test.sh")
-    refused = run("bash", script, "--local", "--port", "1", env={"RM_BETA_HOST": ""})
+    refused = run(
+        "bash", script, "--local", "--port", "1", env={"RM_BETA_HOST": "", "RM_CD_HOST": ""}
+    )
     assert refused.returncode == 2 and "RM_BETA_HOST" in refused.stderr
     (tmp_path / ".env").write_text("RM_BETA_HOST=beta.example.net\n")
     named = run("bash", script, "--local", "--port", "1", env={"RM_BETA_HOST": ""})
     assert "RM_BETA_HOST" not in named.stderr and "FAIL" in named.stdout, "it went on to check"
+    # Review round 2, S1: RM_CD_HOST (the deploy agent's override) when RM_BETA_HOST is unset.
+    (tmp_path / ".env").write_text("")
+    override = run(
+        "bash", script, "--local", "--port", "1", env={"RM_BETA_HOST": "", "RM_CD_HOST": "cd.test"}
+    )
+    assert "RM_BETA_HOST" not in override.stderr and "FAIL" in override.stdout
+
+
+def test_the_v0_7_0_server_steps_start_with_the_betas_name() -> None:
+    """Review round 2, S1: without RM_BETA_HOST in .env nothing else in the list can run."""
+    text = (REPO / "docs" / "BETA-RUNBOOK.md").read_text()
+    steps = text[text.index("**Once, on the first update to v0.7.0**") :]
+    steps = steps[: steps.index("**New data only**")]
+    first = steps[steps.index("1. ") : steps.index("2. ")]
+    assert "`RM_BETA_HOST=<the beta's name>`" in first, first
 
 
 def test_the_ci_tool_versions_step_cannot_fail_the_required_check() -> None:

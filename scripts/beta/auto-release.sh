@@ -332,11 +332,11 @@ wait_healthy() {
 }
 smoke() {
 	local out
-	out=$("$RM_SRC/scripts/beta/smoke-test.sh" --local 2>&1) && { printf '%s\n' "$out" >>"$run_log"; grep -E '^(PASS|FAIL)' <<<"$out" >>"$report"; return 0; }
+	out=$("$RM_SRC/scripts/beta/smoke-test.sh" --local --host "$health_host" 2>&1) && { printf '%s\n' "$out" >>"$run_log"; grep -E '^(PASS|FAIL)' <<<"$out" >>"$report"; return 0; }
 	printf '%s\n' "$out" >>"$run_log"
 	say "smoke tests failed once; trying again in a minute (photon needs one after a start)"
 	sleep "${RM_CD_SMOKE_RETRY_S:-60}"
-	out=$("$RM_SRC/scripts/beta/smoke-test.sh" --local 2>&1); local rc=$?
+	out=$("$RM_SRC/scripts/beta/smoke-test.sh" --local --host "$health_host" 2>&1); local rc=$?
 	printf '%s\n' "$out" >>"$run_log"
 	grep -E '^(PASS|FAIL)' <<<"$out" >>"$report"
 	return "$rc"

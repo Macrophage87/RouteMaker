@@ -871,6 +871,20 @@ data only), then `... resume`. `mark-deployed` also reads the report link from `
 so if that ship used another `--report-url`, the agent's next front-end build keeps it (check with
 `... status`, or set it with `... set-report-url URL|none`).
 
+**Once, on the first update to v0.7.0** (owner and server steps, in this order):
+
+1. Add `RM_BETA_HOST=<the beta's name>` to `$RM_SRC/.env`. The name is no longer in the
+   repository: without the line `render-nginx.sh`, `smoke-test.sh --local` and the deploy agent stop
+   with a message naming `RM_BETA_HOST`.
+2. The release changes compose `image:` lines (each third-party image now carries its digest) and
+   the nginx template, so the deploy gate stops it: ship it by hand as below, then re-render nginx
+   (step 9 of "A new release sha" below), which adds the error-log rule for the newer place-bearing api paths.
+3. Sign everyone out once, after the api is up (backups no longer carry Django's session
+   table; sessions written before were in the old dumps):
+   `scripts/beta/beta-compose.sh exec -T api ./manage.py shell -c "from django.contrib.sessions.models import Session; Session.objects.all().delete()"`.
+4. Tighten what is already on disk (new files get these modes by themselves):
+   `chmod 700 "$RM_DATA/backups"` and `chmod 600 "$RM_DATA"/backups/*` (with sudo where root owns them).
+
 **New data only** (a fresh build of the tiles, database or Photon index, same release):
 
 A rebuild run on the cloud box with `--beta-bundle` brings the tiles and database by S3

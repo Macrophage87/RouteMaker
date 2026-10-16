@@ -881,6 +881,8 @@ def test_a_failure_after_the_stop_rolls_back_and_starts_the_old_release(beta: Be
     calls = beta.calls()
     assert calls.index("stop api worker") < calls.index("up -d api worker")
     assert "smoke --local" in calls
+    # Review round 2, S1: the smoke tests use the health check's host, from .env here.
+    assert "smoke --local --host beta.example.org" in calls
     assert "restore-dump" not in calls and "migrate" not in calls
     assert git(beta.src, "rev-parse", "HEAD") == beta.v1
     assert (beta.cd / "deployed-tag").read_text().strip() == "v0.1.0"
