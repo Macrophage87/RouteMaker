@@ -4475,6 +4475,7 @@ async function goPressMap(p) {
     compare: document.querySelector('.transit-compare')?.textContent,
     markers: [...document.querySelectorAll('.transit-marker')].map((e) => ({ role: e.getAttribute('role'), label: e.getAttribute('aria-label'), badge: e.textContent, hidden: e.firstElementChild?.getAttribute('aria-hidden') })),
     start: !!document.querySelector('.go-summary .start-button'),
+    rest: (() => { const r = document.querySelector('.transit-rest button'); return r ? { name: r.textContent.trim(), hint: document.getElementById(r.getAttribute('aria-describedby') ?? '')?.textContent ?? '' } : null; })(),
     pressed: [...document.querySelectorAll('.go-route-rides .ride-chips button')].filter((x) => x.getAttribute('aria-pressed') === 'true').map((x) => x.textContent.trim()),
     said: document.querySelector('.status-line')?.textContent ?? '',
     scroll: document.documentElement.scrollWidth > innerWidth }))()`);
@@ -4501,9 +4502,11 @@ async function goPressMap(p) {
     optionList?.role === "list" && optionList?.name === "Trips, quickest first" && options.buttons.length === 2 && options.buttons[0].text === "A. Ride, Metro to Federal Triangle (Orange Line), ride: about 28 min" && options.buttons[0].pressed === "true" && options.buttons[1].text === "B. Ride the whole way: about 32 min" && options.buttons[1].pressed === "false" && options.track,
     JSON.stringify({ optionList, options }));
   check("transit (Go): the day's closed stations are asked for, to strike through on the map", p.closureRequests >= 1, String(p.closureRequests));
-  check("transit (Go): the announcement is brief (the total and the comparison), no Start ride on the trip, nothing scrolls sideways",
-    /^Own bike plus train or bus planned: About 28 min door to door, scheduled\. Riding the whole way/.test(trip.said) && !/Board the/.test(trip.said) && !trip.start && !trip.scroll,
-    JSON.stringify({ said: trip.said, start: trip.start, scroll: trip.scroll }));
+  // Start ride follows the first ride, and Ride the rest the last one, after the Metro (Stephen, 2026-10-16:
+  // "I can't start a bikeshare and transit ride. There's no button").
+  check("transit (Go): the announcement is brief (the total and the comparison), Start ride on the first ride and Ride the rest (described) in the trip, nothing scrolls sideways",
+    /^Own bike plus train or bus planned: About 28 min door to door, scheduled\. Riding the whole way/.test(trip.said) && !/Board the/.test(trip.said) && trip.start && trip.rest?.name === "Ride the rest" && /^Turn-by-turn from where you are/.test(trip.rest?.hint ?? "") && !trip.scroll,
+    JSON.stringify({ said: trip.said, start: trip.start, rest: trip.rest, scroll: trip.scroll }));
   await p.shot(`${SHOTS}/transit_go.png`);
   await p.close();
 }
