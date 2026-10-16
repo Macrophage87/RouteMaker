@@ -3834,6 +3834,12 @@ details.zoom-notes {
   font-variant-numeric: tabular-nums;
 }
 
+/* GPS weak (RideMode, review RIDE-3): the distance is from the last good fix, so it is greyed; the GPS
+   note under the controls says why. The muted text colour, which keeps its contrast. */
+.cue-distance-weak {
+  color: var(--text-muted);
+}
+
 .cue-text {
   font-size: 1.25rem;
   margin: 2px 0;

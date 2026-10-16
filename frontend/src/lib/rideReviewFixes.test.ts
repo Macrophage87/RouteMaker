@@ -41,9 +41,16 @@ test("RIDE-3: weak GPS is shown in the ride's GPS note and said once; a good fix
 
 test("RIDE-3 (owner, 2026-10-16): weak GPS for long shows the turns ahead as a list, said once; a good fix brings the card back", () => {
   const onFix = ride.slice(ride.indexOf("const onFix = useCallback("), ride.indexOf("const onFixRef = useRef(onFix);"));
-  assert.match(onFix, /const sheet = cueSheetShown\(gpsWeak\.current, lastFixAt\.current, cueSheetAfterMs\(modelRef\.current, before\.progressM \?\? 0, before\.speedMs\)\);/);
-  assert.match(onFix, /if \(sheet && !cueSheetRef\.current\) notify\(CUE_SHEET_SAID\);/);
-  assert.match(onFix, /setCueSheetOn\(sheet\);/);
+  assert.match(onFix, /checkCueSheet\(lastFixAt\.current\);/);
+  const check = ride.slice(ride.indexOf("const checkCueSheet = useCallback("), ride.indexOf("const onFix = useCallback("));
+  assert.match(check, /const sheet = cueSheetShown\(gpsWeak\.current, now, cueSheetAfterMs\(modelRef\.current, state\.progressM \?\? 0, state\.speedMs\)\);/);
+  assert.match(check, /if \(sheet && !cueSheetRef\.current\) notify\(CUE_SHEET_SAID\);/);
+  assert.match(check, /setCueSheetOn\(sheet\);/);
+  // Also on a timer, so fixes that stop altogether bring the list too.
+  assert.match(check, /window\.setInterval\(\(\) => checkCueSheet\(Date\.now\(\)\), CUE_SHEET_CHECK_MS\);/);
+  // The card's distance is greyed while GPS is weak (before the list).
+  assert.match(ride, /<p className=\{gps === GPS_WEAK_SAID \? "cue-distance cue-distance-weak" : "cue-distance"\}>/);
+  assert.match(source("../styles.css"), /\.cue-distance-weak \{\s*color: var\(--text-muted\);/);
   // In the card, in place of the next cue; an ordered list with the next turn marked; no button.
   const card = ride.slice(ride.indexOf(") : cueSheetOn ? ("), ride.indexOf(") : cue && progress !== null ? ("));
   assert.match(card, /<ol className="cue-sheet-list" aria-labelledby=\{cueSheetId\}>/);

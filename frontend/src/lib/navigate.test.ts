@@ -16,6 +16,7 @@ import {
   cueSheet,
   cueSheetAfterMs,
   cueSheetShown,
+  CUE_SHEET_CHECK_MS,
   BACK_ON_ROUTE_SAID,
   OFF_ROUTE_KEPT_SAID,
   OFF_ROUTE_SAID,
@@ -999,6 +1000,10 @@ test("cueSheetShown: from the weak note on, once the wait is over; a good fix go
   // A good fix: back to turn by turn.
   s = weighFix(s, 5, 61_000);
   assert.equal(cueSheetShown(s, 61_000, after), false);
+  // No fixes at all after it (the timer asks): the list a minute on as well.
+  assert.equal(cueSheetShown(s, 61_000 + 59_999, after), false);
+  assert.equal(cueSheetShown(s, 61_000 + 60_000, after), true);
+  assert.ok(CUE_SHEET_CHECK_MS <= 5000, "asked every few seconds");
 });
 
 test("cueSheet: the turns, stops and end ahead in order, the next first, each distance from the one before", () => {

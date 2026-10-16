@@ -40,6 +40,7 @@ import {
   cueSheet,
   cueSheetAfterMs,
   cueSheetShown,
+  CUE_SHEET_CHECK_MS,
   type GpsWeakness,
   REPLAN_FAILED,
   REPLAN_FOUND,
@@ -733,6 +734,25 @@ export function RideMode({
     [dials, preset, gate, sayDetour],
   );
 
+  // No good fix for a minute, or for longer than the next turn is away: the turns ahead as a list, said
+  // once; a good fix brings the turn-by-turn card back (the owner, 2026-10-16). Asked on each fix and on
+  // a timer (below), so it comes when the fixes stop altogether too.
+  const checkCueSheet = useCallback(
+    (now: number) => {
+      const state = rideRef.current;
+      if (ended.current || state.arrived || pausedRef.current) return;
+      const sheet = cueSheetShown(gpsWeak.current, now, cueSheetAfterMs(modelRef.current, state.progressM ?? 0, state.speedMs));
+      if (sheet && !cueSheetRef.current) notify(CUE_SHEET_SAID);
+      cueSheetRef.current = sheet;
+      setCueSheetOn(sheet);
+    },
+    [notify],
+  );
+  useEffect(() => {
+    const timer = window.setInterval(() => checkCueSheet(Date.now()), CUE_SHEET_CHECK_MS);
+    return () => window.clearInterval(timer);
+  }, [checkCueSheet]);
+
   const onFix = useCallback(
     (fix: RideFix) => {
       if (ended.current) return;
@@ -743,13 +763,7 @@ export function RideMode({
       gpsWeak.current = { goodAt: weighed.goodAt, weak: weighed.weak };
       if (weighed.sayNow) notify(GPS_WEAK_SAID);
       setGps(weighed.weak ? GPS_WEAK_SAID : "");
-      // Weak for a minute, or longer than the next turn is away: the turns ahead as a list, said once;
-      // a good fix brings the turn-by-turn card back (the owner, 2026-10-16).
-      const before = rideRef.current;
-      const sheet = cueSheetShown(gpsWeak.current, lastFixAt.current, cueSheetAfterMs(modelRef.current, before.progressM ?? 0, before.speedMs));
-      if (sheet && !cueSheetRef.current) notify(CUE_SHEET_SAID);
-      cueSheetRef.current = sheet;
-      setCueSheetOn(sheet);
+      checkCueSheet(lastFixAt.current);
       const auto = !keepRef.current;
       const out = step(modelRef.current, rideRef.current, fix, prefsRef.current.verbosity, auto);
       rideRef.current = out.state;
@@ -764,7 +778,7 @@ export function RideMode({
         announcer.current?.answer(whereAmI(modelRef.current, out.state));
       }
     },
-    [gate, replan, say, notify],
+    [gate, replan, say, notify, checkCueSheet],
   );
   const onFixRef = useRef(onFix);
   onFixRef.current = onFix;
@@ -1128,7 +1142,8 @@ export function RideMode({
           <div className="cue-next">
             <CueShape shape={shape} />
             <div>
-              <p className="cue-distance">In {formatDistance(cue.atM - progress)}</p>
+              {/* Greyed while GPS is weak: the distance is from the last good fix, not where the rider is. */}
+              <p className={gps === GPS_WEAK_SAID ? "cue-distance cue-distance-weak" : "cue-distance"}>In {formatDistance(cue.atM - progress)}</p>
               <p className="cue-text">{cue.text}</p>
             </div>
           </div>

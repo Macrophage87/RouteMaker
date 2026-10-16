@@ -90,10 +90,15 @@ export function cueSheetAfterMs(model: RideModel, progressM: number, speedMs: nu
   return Math.max(CUE_SHEET_MIN_MS, ((next.atM - progressM) / speed) * 1000);
 }
 
-/** Whether the list shows at `now`: only poor fixes since `goodAt` for `afterMs`; a good fix (weak false) ends it. */
+/**
+ * Whether the list shows at `now`: no good fix since `goodAt` for `afterMs`, whether poor fixes came or
+ * none at all (RideMode asks on each fix and on a timer); a good fix (a new `goodAt`) ends it.
+ */
 export function cueSheetShown(weakness: GpsWeakness, now: number, afterMs: number): boolean {
-  return weakness.weak && now - weakness.goodAt >= afterMs;
+  return now - weakness.goodAt >= afterMs;
 }
+/** How often RideMode asks, so the list comes when the fixes stop altogether too. */
+export const CUE_SHEET_CHECK_MS = 3000;
 
 /** One row of the list: how far on from the row before (the first from `progressM`), and the cue. */
 export interface CueSheetRow {
