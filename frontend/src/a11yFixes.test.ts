@@ -274,6 +274,12 @@ test("App: a press goes through accessModeToggle (tested in accessMode.test.ts):
   assert.match(mapTools, /useEffect\(\(\) => onShown\?\.\(\), \[\]\)/);
 });
 
+test("the switch and the skip link show above Go's top bar (review UI-1)", () => {
+  const z = (selector: string) => Math.max(...[...declared(selector).matchAll(/z-index:\s*(\d+)/g)].map((m) => Number(m[1])));
+  assert.ok(z(".skip-link") > z(".go-top"), "the skip link above .go-top");
+  assert.ok(z(".access-link") > z(".go-top"), "the switch above .go-top");
+});
+
 test("the page's first two stops, the switch and the skip link, are at least 44 px tall (the a11y review's N3)", () => {
   assert.match(declared(".access-link"), /min-height:\s*44px/);
   assert.match(declared(".skip-link"), /min-height:\s*44px/);

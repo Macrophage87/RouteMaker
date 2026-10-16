@@ -146,13 +146,14 @@ body {
 }
 
 /* The skip link (lib/skipLink.ts) and, before it, the accessibility mode switch (lib/accessMode.ts; 455):
-   the page's first two stops, each shown while focused, each at least 44 px tall like the panel's buttons. */
+   the page's first two stops, each shown while focused, each at least 44 px tall like the panel's buttons.
+   Above Go's top bar (.go-top, z-index 10), which painted over them (review UI-1). */
 .access-link,
 .skip-link {
   position: absolute;
   top: 8px;
   left: 8px;
-  z-index: 10;
+  z-index: 20;
   box-sizing: border-box;
   display: flex;
   align-items: center;
