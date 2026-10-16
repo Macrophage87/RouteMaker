@@ -7819,3 +7819,14 @@ paging, determinism, the writer's encoding and wrapping), `courseWiring.test.ts`
 choice for them, one button). Checked by hand once with poppler (`pdfinfo` reports Tagged: yes and reads the
 structure tree in order; `pdftotext` the text layer) and pypdf in strict mode; not yet checked with a PDF/UA
 validator or read aloud by a screen reader.
+
+**Cue sheet image, for a phone lock screen** (the owner: "a lot of people take pictures of them on their phones and
+use them as lock screens"): one more entry in the same choice, "Download image". A PNG drawn on a canvas in the
+browser (`frontend/src/app/lockScreenRender.ts`) from a pure layout (`frontend/src/lib/lockScreen.ts`): 1179 by
+2556 (an iPhone Pro; an Android phone fits it), white with dark text, the strip's rows in large type (miles 96 px
+with km small, the turn 64 px with a caution's reason, the road abbreviated 60 px). The top 28% and bottom 12%
+are left clear for the lock screen's clock and controls; the name and distance sit small under the top band and
+the credits small above the bottom one. Rows that do not fit go on further images, each headed "Part N of M" and
+saved one after another (`...-lock-1-of-3.png`); the status line says how many. No place is named. Tests:
+`lockScreen.test.ts` (the bands, the width, cues per image and all of them once, naming, the line). Not yet
+drawn on a real phone's lock screen; the layout was checked by eye from a rasterised copy, not from the canvas.

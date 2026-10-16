@@ -20,7 +20,10 @@ test("the GPX section offers the course formats and devices, labelled, and says 
   assert.match(panel, /<h3 id="gpx-heading" className="visually-hidden">\s*Route file\s*<\/h3>/);
   // The button names the file it saves.
   assert.match(panel, /Download \{FORMAT_WORDS\[choice\.format\]\}/);
-  assert.match(panel, /const FORMAT_WORDS: Record<ExportFormat, string> = \{ gpx: "GPX", fit: "FIT", tcx: "TCX", "pdf-sheet": "PDF", "pdf-strip": "PDF" \};/);
+  assert.match(panel, /const FORMAT_WORDS: Record<ExportFormat, string> = \{ gpx: "GPX", fit: "FIT", tcx: "TCX", "pdf-sheet": "PDF", "pdf-strip": "PDF", "png-lock": "image" \};/);
+  // The lock-screen image: one more file type, its line said in the same region (or why it could not be made).
+  assert.match(panel, /"png-lock": "Cue sheet image, for a phone lock screen",/);
+  assert.match(panel, /if \(format === "png-lock"\) return downloadLockScreens\(route, vias\);/);
 });
 
 test("the PDF cue sheets are two more file types in the same choice, with no device choice and no new button", () => {
@@ -42,7 +45,7 @@ test("Go adds no control: the choices appear only where the page passes the cour
   const app = read("../App.tsx");
   assert.match(app, /\.\.\.\(mode === "go" \? \{\} : \{ downloadCourse: downloadCourseRoute \}\)/);
   // Checked against the closures in force, as Download GPX is.
-  assert.match(app, /const downloadCourseRoute = [\s\S]{0,300}?checkThen\("download", route\.geometry\.coordinates, false, \(\) => said\(downloadCourse\(/);
+  assert.match(app, /const downloadCourseRoute = [\s\S]{0,300}?checkThen\("download", route\.geometry\.coordinates, false, \(\) => void Promise\.resolve\(downloadCourse\(route, at, format, profile\)\)\.then\(said\)\);/);
   // Go's own route row keeps its GPX button alone.
   assert.ok(!/FIT|TCX/.test(read("../app/RoutePanel.tsx")));
 });

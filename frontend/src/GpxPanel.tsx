@@ -15,6 +15,8 @@ import { DEFAULT_PROFILE, DEVICE_PROFILES, deviceProfile, type DeviceProfileId }
 import { writeFit } from "./lib/fit.ts";
 import { writeTcx } from "./lib/tcx.ts";
 import { cueSheetFileName, cueSheetLine, cueSheetPdf, type CueSheetKind } from "./lib/cueSheetPdf.ts";
+import { lockScreenFileNames, lockScreenLine } from "./lib/lockScreen.ts";
+import { renderLockScreens } from "./app/lockScreenRender.ts";
 
 interface Props {
   /** The route on screen, or null. */
@@ -104,15 +106,34 @@ function saveFile(body: BlobPart, type: string, fileName: string): void {
 const PRINTS = { "pdf-sheet": "sheet", "pdf-strip": "strip" } as const satisfies Record<string, CueSheetKind>;
 
 /** Every file type but GPX: the courses and the PDF cue sheets. */
-export type FileFormat = CourseFormat | keyof typeof PRINTS;
+export type FileFormat = CourseFormat | keyof typeof PRINTS | "png-lock";
+
+/** Said where the lock-screen image could not be drawn (the canvas refused it). */
+export const LOCK_IMAGE_FAILED = "Could not make the cue sheet image. Try again, or use the PDF handlebar strip.";
+
+/** Save the lock-screen images one after another (a browser takes a moment between downloads), then say what was made. */
+async function downloadLockScreens(route: RouteResponse, vias: readonly number[]): Promise<string> {
+  try {
+    const { pages, blobs } = await renderLockScreens(route, vias);
+    const names = lockScreenFileNames(route, blobs.length);
+    for (let i = 0; i < blobs.length; i += 1) {
+      if (i > 0) await new Promise((resolve) => setTimeout(resolve, 400));
+      saveFile(blobs[i], "image/png", names[i]);
+    }
+    return lockScreenLine(pages);
+  } catch {
+    return LOCK_IMAGE_FAILED;
+  }
+}
 
 /**
  * Download the route shown as a FIT or TCX course fitted to a device profile (lib/course.ts), or as a PDF cue sheet
  * (lib/cueSheetPdf.ts), and return the one line saying what was made. Its cues are Ride's; its via points are not
  * cues, as in Ride.
  */
-export function downloadCourse(route: RouteResponse, routedPoints: LonLat[], format: FileFormat, profile: DeviceProfileId): string {
+export function downloadCourse(route: RouteResponse, routedPoints: LonLat[], format: FileFormat, profile: DeviceProfileId): string | Promise<string> {
   const vias = viaIndices(routedPoints, VIA_MARKS.isVia);
+  if (format === "png-lock") return downloadLockScreens(route, vias);
   if (format === "pdf-sheet" || format === "pdf-strip") {
     const kind = PRINTS[format];
     saveFile(cueSheetPdf(route, kind, vias), "application/pdf", cueSheetFileName(route, kind));
@@ -133,10 +154,11 @@ const FORMAT_LABELS: Record<ExportFormat, string> = {
   tcx: "TCX course, with turn cues",
   "pdf-sheet": "PDF cue sheet, to print",
   "pdf-strip": "PDF handlebar strip, to print",
+  "png-lock": "Cue sheet image, for a phone lock screen",
 };
 
 /** What the button says it downloads. */
-const FORMAT_WORDS: Record<ExportFormat, string> = { gpx: "GPX", fit: "FIT", tcx: "TCX", "pdf-sheet": "PDF", "pdf-strip": "PDF" };
+const FORMAT_WORDS: Record<ExportFormat, string> = { gpx: "GPX", fit: "FIT", tcx: "TCX", "pdf-sheet": "PDF", "pdf-strip": "PDF", "png-lock": "image" };
 
 const isCourse = (format: ExportFormat): format is CourseFormat => format === "fit" || format === "tcx";
 
@@ -385,6 +407,13 @@ export function GpxPanel(props: Props) {
         <p className="hint">
           A cue sheet is the route shown with Ride's cues, to print: the sheet on letter paper, the strip at actual size
           to cut out for the handlebar. Its credits are at the foot of every page.
+        </p>
+      )}
+      {choice.format === "png-lock" && (
+        <p className="hint">
+          The cue sheet as a picture for your phone's lock screen, with the clock's space at the top left clear. A long
+          route makes more than one, Part 1, Part 2 and on, downloaded one after another. Its credits are along the
+          bottom.
         </p>
       )}
       {isCourse(choice.format) && (
