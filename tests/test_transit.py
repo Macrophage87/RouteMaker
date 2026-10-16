@@ -317,6 +317,9 @@ def test_the_service_day_runs_to_3_am_and_a_holiday_is_flagged() -> None:
     assert late.date == date(2026, 10, 3) and late.day_type == "weekday"
     thanksgiving = transit.moment_of(at(2026, 11, 26, 9, 0))
     assert thanksgiving.holiday and not thanksgiving.rush(8 * 60)
+    # New Year's Day 2028 (a Saturday) is observed on 2027-12-31, a year early (TB-11).
+    assert transit.moment_of(at(2027, 12, 31, 9, 0)).holiday
+    assert not transit.moment_of(at(2027, 12, 30, 9, 0)).holiday
     assert transit.moment_of(at(2026, 9, 30, 8, 0)).rush(8 * 60)
     assert transit.clock(25 * 60 + 30) == "1:30 am" and transit.clock(19 * 60 + 42) == "7:42 pm"
 

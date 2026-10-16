@@ -111,7 +111,7 @@ from pathlib import Path
 from typing import Protocol
 
 from routemaker.geo import Point, haversine
-from routemaker.ridetime import ZONE, federal_holidays
+from routemaker.ridetime import ZONE, is_federal_holiday
 
 from . import bikeshare, gbfs, presets
 
@@ -585,7 +585,7 @@ def typical_day_type(day: date, doc: dict | None = None) -> str:
     """The typical timetable's day type of a service day; a federal holiday runs the file's
     `holiday` day type."""
     doc = doc or _typical_doc()
-    if day in federal_holidays(day.year):
+    if is_federal_holiday(day):
         return doc["holiday"]
     return _WEEKDAY_TYPES[day.weekday()]
 
@@ -849,7 +849,7 @@ def day_zero(day: date) -> datetime:
 
 def _moment(when: datetime, service_day: date) -> Moment:
     minute = (when.astimezone(UTC) - day_zero(service_day)).total_seconds() / 60.0
-    holiday = service_day in federal_holidays(service_day.year)
+    holiday = is_federal_holiday(service_day)
     return Moment(service_day, minute, when.astimezone(ZONE).date(), holiday)
 
 

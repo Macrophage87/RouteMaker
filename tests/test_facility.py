@@ -230,6 +230,9 @@ def test_car_free_when_needs_a_bicycle_and_a_road():
         (datetime(2026, 5, 18, 8, 0, tzinfo=ridetime.ZONE), "weekday_rush"),
         (datetime(2027, 5, 31, 8, 0, tzinfo=ridetime.ZONE), "weekend"),
         (datetime(2027, 5, 24, 8, 0, tzinfo=ridetime.ZONE), "weekday_rush"),
+        # New Year's Day 2028 is a Saturday, observed Friday 31 December 2027 (TB-11).
+        (datetime(2027, 12, 31, 8, 0, tzinfo=ridetime.ZONE), "weekend"),
+        (datetime(2027, 12, 30, 8, 0, tzinfo=ridetime.ZONE), "weekday_rush"),
     ],
 )
 def test_when_at(moment, when):
