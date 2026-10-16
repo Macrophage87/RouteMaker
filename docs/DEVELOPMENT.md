@@ -7832,3 +7832,31 @@ the credits small above the bottom one. Rows that do not fit go on further image
 so on, no new control. The status line says only what was saved or sent. No place is named. Tests:
 `lockScreen.test.ts` (the bands, the width, cues per image and all of them once, naming, the line). Not yet
 drawn on a real phone's lock screen; the layout was checked by eye from a rasterised copy, not from the canvas.
+
+## Rider roles on a Mass Ride or Group Ride link (Stephen, 2026-10-16)
+
+The one question a ride link asks ("Show me as a dot to others on this ride?") also asks "Riding as":
+Participant (already chosen, so Yes alone answers), Lead line, Sweep or Corker. The role is kept with the
+answer for that ride on the device (`rideGroup.ts keepConsent`) and changed in the riders panel, under "Show
+me as a dot"; Go's bar gains nothing. Each position the page sends carries the role
+(`POST /api/rides/{ride}/here`, `role`); `core.ride_presence` takes the four ids only (anything else is a 400,
+none sent is a participant) and answers each dot's `role`. Still no name, token or id on a dot.
+
+- **Self-declared.** A ride link has no sign-in, so the server cannot know who leads or sweeps: a role is what
+  that phone chose, nothing more. Anyone on the link can mark themselves Sweep. Do not build anything that
+  trusts a role (an alert only a lead can send, say) without an identity behind it first.
+- **On the map** (`rideDotsLayer.ts`): a colour and a shape for each role, so neither carries it alone. A
+  participant is the small dark blue dot (#1e3a8a); the lead line a burnt orange chevron (#b8440a) turned to
+  point the way the route goes at that spot (`project().bearingDeg`, its own layer aligned to the map); the
+  sweep a blue-black square (#08081e); a corker a deep teal diamond (#0f766e). The orange and blue-black are
+  the `cvd` palette's LTS 3 and Avoid (the orange deepened), the teal Okabe-Ito's bluish green deepened. Each
+  is 3:1 or more on every light-map surface and every pair 15 or more CIEDE2000 apart under normal vision and
+  each simulated deficiency. The marks are images drawn pixel by pixel; the age rules are unchanged (solid,
+  white hole, hollow outline, gone at 2 minutes).
+- **In words.** Tapping a mark says "Sweep, 0.5 mi (0.8 km) behind. Seen 40 s ago." The riders button's
+  summary adds the nearest of each role on the ride after the nearest rider. The panel's key lists only the
+  roles present, each with its swatch (decoration, `aria-hidden`; kept in its colours in forced-colours mode)
+  and its count in words.
+- Tests: `tests/test_ride_presence.py` (validation, default, the role on the dot) and
+  `frontend/src/lib/rideGroup.test.ts` (kept role, the body, the images and layers, colours, names, the key,
+  the page's wiring).

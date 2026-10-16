@@ -52,7 +52,29 @@ def test_others_see_my_dot_with_its_age_and_i_do_not_see_my_own(clock) -> None:
     dot = theirs["dots"][0]
     assert dot["age_s"] == 40
     assert (dot["lon"], dot["lat"]) == rp.rounded(*SPOT)
-    assert set(dot) == {"lon", "lat", "age_s"}  # no token, no id, no name
+    assert set(dot) == {"lon", "lat", "age_s", "role"}  # no token, no id, no name
+    assert dot["role"] == "participant"  # none sent: a participant
+
+
+@pytest.mark.parametrize("role", ["participant", "lead", "sweep", "corker"])
+def test_a_dot_carries_its_rider_s_role(clock, role) -> None:
+    rp.post_position(RIDE, ME, *SPOT, role=role, now=clock)
+    assert [d["role"] for d in rp.read(RIDE, YOU, now=clock)["dots"]] == [role]
+
+
+@pytest.mark.parametrize("role", ["Lead", "marshal", 1, ["sweep"], {"r": "corker"}])
+def test_a_role_not_of_the_four_is_refused(clock, role) -> None:
+    with pytest.raises(rp.Refused) as refused:
+        rp.post_position(RIDE, ME, *SPOT, role=role, now=clock)
+    assert refused.value.status == 400
+    assert rp.read(RIDE, YOU, now=clock)["dots"] == []
+
+
+def test_a_changed_role_shows_on_the_next_reading(clock) -> None:
+    rp.post_position(RIDE, ME, *SPOT, role="corker", now=clock)
+    clock.t += rp.MIN_POST_INTERVAL_S
+    rp.post_position(RIDE, ME, *SPOT, role="sweep", now=clock)
+    assert rp.read(RIDE, YOU, now=clock)["dots"][0]["role"] == "sweep"
 
 
 def test_a_dot_is_gone_after_2_minutes(clock) -> None:
@@ -229,15 +251,22 @@ def test_the_endpoints_keep_positions_out_of_the_database_and_logs(client, caplo
     headers = {"HTTP_X_FORWARDED_FOR": "198.51.100.9"}
     queries = CaptureQueriesContext(connection)
     queries.__enter__()
+    wrong = client.post(
+        f"/api/rides/{RIDE}/here",
+        data=json.dumps({"token": ME, "lon": SPOT[0], "lat": SPOT[1], "role": "captain"}),
+        content_type="application/json",
+        **headers,
+    )
+    assert wrong.status_code == 400
     r = client.post(
         f"/api/rides/{RIDE}/here",
-        data=json.dumps({"token": ME, "lon": SPOT[0], "lat": SPOT[1]}),
+        data=json.dumps({"token": ME, "lon": SPOT[0], "lat": SPOT[1], "role": "sweep"}),
         content_type="application/json",
         **headers,
     )
     assert r.status_code == 200
     r = client.get(f"/api/rides/{RIDE}", HTTP_X_RIDE_TOKEN=YOU, **headers)
-    assert r.status_code == 200 and len(r.json()["dots"]) == 1
+    assert r.status_code == 200 and [d["role"] for d in r.json()["dots"]] == ["sweep"]
     assert r["Cache-Control"] == "no-store"
     alert = client.post(
         f"/api/rides/{RIDE}/alerts",

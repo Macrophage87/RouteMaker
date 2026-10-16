@@ -7,6 +7,10 @@
  *   device; it changes each ride (a new one after 12 hours).
  * - Showing your own dot is asked once, when the link opens ("Show me as a dot to others on this ride?"), and
  *   the answer kept for that ride on this device. Seeing the others needs no answer.
+ * - The same question asks the rider's role (Stephen 2026-10-16): Participant (chosen already, so one tap
+ *   answers), Lead line, Sweep or Corker, kept with the answer and changeable beside "Show me as a dot". The
+ *   role goes with each position and comes back on each dot; still no name. It is self-declared: a ride link
+ *   has no sign-in, so a role says what the rider chose, nothing more.
  * - Your dot is sent about every 15 s while the app is open and in front (never in the background), and only
  *   while you are within a quarter mile (400 m) of the route line. Sharing ends when you turn it off, close
  *   the app, are off the route for 10 minutes, or 12 hours after the ride's start (your answer).
@@ -55,11 +59,42 @@ export const CONSENT_KEY = "routemaker.ride-share";
 /** Sharing ends 12 hours after the ride's start; the next opening is a new ride, asked again with a new token. */
 export const RIDE_LIFE_MS = 12 * 3600_000;
 
+// ---- the rider's role -------------------------------------------------------------------------------
+
+/** The server's core.ride_presence.ROLES, the same ids. */
+export type RideRole = "participant" | "lead" | "sweep" | "corker";
+export const DEFAULT_ROLE: RideRole = "participant";
+
+/** In the order the question and the key list them. */
+export const RIDE_ROLES: readonly { id: RideRole; label: string }[] = [
+  { id: "participant", label: "Participant" },
+  { id: "lead", label: "Lead line" },
+  { id: "sweep", label: "Sweep" },
+  { id: "corker", label: "Corker" },
+];
+
+export const ROLE_QUESTION = "Riding as";
+
+export function isRole(value: unknown): value is RideRole {
+  return RIDE_ROLES.some((r) => r.id === value);
+}
+
+/** A dot's role as the server sent it; anything else (an older server) is a participant. */
+export function roleOf(value: unknown): RideRole {
+  return isRole(value) ? value : DEFAULT_ROLE;
+}
+
+export function roleLabel(role: RideRole): string {
+  return RIDE_ROLES.find((r) => r.id === role)?.label ?? "Participant";
+}
+
 export interface RideConsent {
   answer: "yes" | "no";
   token: string;
   /** When the rider answered: the ride's start, for this device. */
   since: number;
+  /** The rider's role on this ride (Participant unless they chose another). */
+  role: RideRole;
 }
 
 interface Store {
@@ -88,16 +123,26 @@ function readAll(store: Store | null): Record<string, RideConsent> {
 export function consentFor(ride: string, now = Date.now(), store: Store | null = local()): RideConsent | null {
   const found = readAll(store)[ride];
   if (!found || (found.answer !== "yes" && found.answer !== "no") || typeof found.token !== "string" || typeof found.since !== "number") return null;
-  return now - found.since < RIDE_LIFE_MS ? found : null;
+  return now - found.since < RIDE_LIFE_MS ? { ...found, role: roleOf(found.role) } : null;
 }
 
-/** Keep the rider's answer for this ride; older rides' answers are dropped. Answers the record kept. */
-export function keepConsent(ride: string, answer: "yes" | "no", now = Date.now(), store: Store | null = local(), token = newToken()): RideConsent {
+/**
+ * Keep the rider's answer (and role, when given) for this ride; older rides' answers are dropped. Without a
+ * role the one kept stays (Participant at first). Answers the record kept.
+ */
+export function keepConsent(
+  ride: string,
+  answer: "yes" | "no",
+  now = Date.now(),
+  store: Store | null = local(),
+  token = newToken(),
+  role?: RideRole,
+): RideConsent {
   const all = readAll(store);
   const kept: Record<string, RideConsent> = {};
   for (const [id, c] of Object.entries(all)) if (c && typeof c.since === "number" && now - c.since < RIDE_LIFE_MS) kept[id] = c;
   const previous = kept[ride];
-  const record: RideConsent = { answer, token: previous?.token ?? token, since: previous?.since ?? now };
+  const record: RideConsent = { answer, token: previous?.token ?? token, since: previous?.since ?? now, role: role ?? roleOf(previous?.role) };
   kept[ride] = record;
   try {
     store?.setItem(CONSENT_KEY, JSON.stringify(kept));
@@ -121,16 +166,20 @@ export const POLL_EVERY_MS = 15_000;
 
 const M_PER_DEG = 111_195;
 
-/** Where `p` is against the line: metres along it to the nearest point, and metres off it. */
-export function project(line: readonly LonLat[], p: LonLat): { alongM: number; offM: number } {
-  if (line.length === 0) return { alongM: 0, offM: Infinity };
+/**
+ * Where `p` is against the line: metres along it to the nearest point, metres off it, and the way the route
+ * goes there (degrees clockwise from north, for the lead line's chevron).
+ */
+export function project(line: readonly LonLat[], p: LonLat): { alongM: number; offM: number; bearingDeg: number } {
+  if (line.length === 0) return { alongM: 0, offM: Infinity, bearingDeg: 0 };
   const kx = M_PER_DEG * Math.cos((p[1] * Math.PI) / 180);
   const x = (q: LonLat) => q[0] * kx;
   const y = (q: LonLat) => q[1] * M_PER_DEG;
   let best = Infinity;
   let bestAlong = 0;
+  let bestBearing = 0;
   let walked = 0;
-  if (line.length === 1) return { alongM: 0, offM: Math.hypot(x(line[0]) - x(p), y(line[0]) - y(p)) };
+  if (line.length === 1) return { alongM: 0, offM: Math.hypot(x(line[0]) - x(p), y(line[0]) - y(p)), bearingDeg: 0 };
   for (let i = 0; i < line.length - 1; i += 1) {
     const ax = x(line[i]);
     const ay = y(line[i]);
@@ -145,10 +194,11 @@ export function project(line: readonly LonLat[], p: LonLat): { alongM: number; o
     if (d < best) {
       best = d;
       bestAlong = walked + t * seg;
+      if (len2 > 0) bestBearing = ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
     }
     walked += seg;
   }
-  return { alongM: bestAlong, offM: best };
+  return { alongM: bestAlong, offM: best, bearingDeg: bestBearing };
 }
 
 /** Within a quarter mile of the route: where a dot is sent from, and which dots are drawn. */
@@ -183,10 +233,21 @@ export function ageWords(ageS: number): string {
   return `${Math.floor(ageS / 60)} min ago`;
 }
 
-/** What tapping a dot says: "Seen 40 s ago". */
-export function dotSaid(ageS: number, where: string | null = null): string {
+/**
+ * A dot's name for a screen reader: its role and where it is along the route from you, "Sweep, 0.5 mi
+ * (0.8 km) behind", "Lead line, 1.2 mi (1.9 km) ahead", "Corker, beside you"; without your position,
+ * "Participant, 4.2 mi (6.8 km) along the route".
+ */
+export function dotName(role: RideRole, alongM: number, myAlongM: number | null): string {
+  const diff = myAlongM === null ? null : alongM - myAlongM;
+  const where = diff === null || Math.abs(diff) < 30 ? relativeWords(alongM, myAlongM) : `${formatDistance(Math.abs(diff))} ${diff > 0 ? "ahead" : "behind"}`;
+  return `${roleLabel(role)}, ${where}`;
+}
+
+/** What tapping a dot says: "Sweep, 0.5 mi (0.8 km) behind. Seen 40 s ago." */
+export function dotSaid(ageS: number, name: string | null = null): string {
   const seen = ageS < 10 ? "Seen just now" : `Seen ${ageWords(ageS)}`;
-  return where ? `Rider ${where}. ${seen}.` : `${seen}.`;
+  return name ? `${name}. ${seen}.` : `${seen}.`;
 }
 
 // ---- the dots --------------------------------------------------------------------------------------
@@ -195,11 +256,16 @@ export interface Dot {
   lon: number;
   lat: number;
   age_s: number;
+  /** Absent from an older server: a participant. */
+  role?: RideRole;
 }
 
 export interface ShownDot extends Dot {
+  role: RideRole;
   freshness: Exclude<Freshness, "gone">;
   alongM: number;
+  /** The way the route goes at the dot, degrees clockwise from north: the lead line's chevron points so. */
+  bearing: number;
   /** A new reading since the last poll: drawn with the brief pulse ring. */
   pulse: boolean;
 }
@@ -219,9 +285,22 @@ export function shownDots(line: readonly LonLat[], dots: readonly Dot[], sinceS 
     if (f === "gone") continue;
     const at = project(line, [d.lon, d.lat]);
     if (at.offM > NEAR_ROUTE_M) continue;
-    out.push({ ...d, age_s: age, freshness: f, alongM: at.alongM, pulse: d.age_s < POLL_EVERY_MS / 1000 && sinceS < PULSE_S });
+    out.push({
+      ...d,
+      role: roleOf(d.role),
+      age_s: age,
+      freshness: f,
+      alongM: at.alongM,
+      bearing: Math.round(at.bearingDeg),
+      pulse: d.age_s < POLL_EVERY_MS / 1000 && sinceS < PULSE_S,
+    });
   }
   return out;
+}
+
+/** The map's key: the roles on this ride now, in RIDE_ROLES order, each with how many. None shown, none listed. */
+export function roleKey(dots: readonly ShownDot[]): { role: RideRole; label: string; count: number }[] {
+  return RIDE_ROLES.map((r) => ({ role: r.id, label: r.label, count: dots.filter((d) => d.role === r.id).length })).filter((r) => r.count > 0);
 }
 
 /** "23 riders on the route", "1 rider on the route", "No other riders on the route yet". */
@@ -230,7 +309,10 @@ export function countText(n: number): string {
   return `${n} ${n === 1 ? "rider" : "riders"} on the route`;
 }
 
-/** Said on request: the count, and the nearest rider ahead (else behind), with its age. */
+/**
+ * Said on request: the count, the nearest rider ahead (else behind) with its age, then the nearest of each
+ * other role on the ride by name: "Lead line, 1.2 mi (1.9 km) ahead. Sweep, 0.5 mi (0.8 km) behind."
+ */
 export function ridersSaid(dots: readonly ShownDot[], myAlongM: number | null): string {
   const count = `${countText(dots.length)}.`;
   if (!dots.length || myAlongM === null) return count;
@@ -238,7 +320,12 @@ export function ridersSaid(dots: readonly ShownDot[], myAlongM: number | null): 
   const behind = dots.filter((d) => d.alongM < myAlongM).sort((a, b) => b.alongM - a.alongM)[0];
   const nearest = ahead ?? behind;
   const which = ahead ? "ahead" : "behind";
-  return `${count} Nearest rider ${which}, ${formatDistance(Math.abs(nearest.alongM - myAlongM))}, seen ${ageWords(nearest.age_s)}.`;
+  const roles = RIDE_ROLES.filter((r) => r.id !== DEFAULT_ROLE)
+    .map((r) => dots.filter((d) => d.role === r.id).sort((a, b) => Math.abs(a.alongM - myAlongM) - Math.abs(b.alongM - myAlongM))[0])
+    .filter((d): d is ShownDot => d !== undefined)
+    .map((d) => ` ${dotName(d.role, d.alongM, myAlongM)}.`)
+    .join("");
+  return `${count} Nearest rider ${which}, ${formatDistance(Math.abs(nearest.alongM - myAlongM))}, seen ${ageWords(nearest.age_s)}.${roles}`;
 }
 
 // ---- sharing your own dot --------------------------------------------------------------------------
@@ -377,8 +464,8 @@ async function post(origin: string, path: string, body: unknown, send: Fetch): P
   }
 }
 
-export async function sendPosition(origin: string, ride: string, token: string, p: LonLat, send: Fetch = fetch): Promise<boolean> {
-  return (await post(origin, `/api/rides/${ride}/here`, { token, lon: p[0], lat: p[1] }, send)).ok;
+export async function sendPosition(origin: string, ride: string, token: string, p: LonLat, role: RideRole = DEFAULT_ROLE, send: Fetch = fetch): Promise<boolean> {
+  return (await post(origin, `/api/rides/${ride}/here`, { token, lon: p[0], lat: p[1], role }, send)).ok;
 }
 
 export async function leaveRide(origin: string, ride: string, token: string, send: Fetch = fetch): Promise<boolean> {
