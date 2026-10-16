@@ -897,11 +897,10 @@ class TestNodesAt:
         assert junctions.control_of(found[0]) is Control.STOP
 
     def test_a_batch_the_router_will_not_answer_leaves_its_junctions_unknown(self) -> None:
-        calls = []
-
         def locate(payload: dict):
-            calls.append(1)
-            if len(calls) == 1:
+            # The first batch, by its size: the batches are asked at once on the router
+            # pool (review speed-2), so in no set order.
+            if len(payload["locations"]) == junctions.LOCATE_BATCH:
                 raise RuntimeError("down")
             return [crossroads() for _ in payload["locations"]]
 
@@ -1515,11 +1514,9 @@ class TestAReadingTheClockCutsShort:
     def test_a_batch_cut_off_by_the_clock_is_reported(self) -> None:
         from core import junctions, routing
 
-        calls = []
-
         def locate(payload):
-            calls.append(payload)
-            if len(calls) == 2:
+            # The second batch, by its size (the batches are asked in no set order).
+            if len(payload["locations"]) == 3:
                 raise routing.DeadlineExceeded("no time left for locate")
             return [{} for _ in payload["locations"]]
 
