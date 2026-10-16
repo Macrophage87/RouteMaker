@@ -242,6 +242,9 @@ class System:
     rule: str  # the bike rule in words
     source: str
     typical: bool = False  # Metro's typical timetable (`with_typical_metro`), not a GTFS
+    # The feed's own last day of service, when the file says it (scripts/build_transit_schedule):
+    # a later day is not covered for this system (`load` leaves it out), never "no service".
+    last_day: date | None = None
 
     def vehicle_words(self, routes) -> str:
         return self.words.format(route=" or ".join(routes))
@@ -350,6 +353,16 @@ class Schedule:
     def covers(self, day: date) -> bool:
         return 0 <= (day - self.start).days < self.days
 
+    @property
+    def first_end(self) -> tuple[date, System | None]:
+        """The first last day of the installed timetables: the window's, or an earlier one of a
+        system whose feed ends inside it (that system)."""
+        ending = [s for s in self.systems if s.last_day is not None and s.last_day < self.last_day]
+        if not ending:
+            return self.last_day, None
+        system = min(ending, key=lambda s: (s.last_day, s.index))
+        return system.last_day, system
+
     def active(self, day: date) -> frozenset[int]:
         """The services running on the service day `day`."""
         offset = (day - self.start).days
@@ -400,6 +413,7 @@ def parse(doc: dict) -> Schedule:
             s["bike"]["vehicle"],
             s["bike"].get("rule", ""),
             s["bike"].get("source", ""),
+            last_day=date.fromisoformat(s["last_day"]) if s.get("last_day") else None,
         )
         for i, s in enumerate(doc["systems"])
     ]
@@ -458,7 +472,53 @@ def load(path: Path, day: date | None = None) -> Schedule:
     schedule = _read(path)
     if not schedule.covers(day):
         return _typical_beyond(day, schedule.start, schedule.last_day)
-    return schedule
+    ended = frozenset(s.id for s in schedule.systems if s.last_day is not None and s.last_day < day)
+    return _without(schedule, ended) if ended else schedule
+
+
+_trimmed: dict[tuple[int, frozenset[str]], tuple[Schedule, Schedule]] = {}
+
+
+def _without(schedule: Schedule, ended: frozenset[str]) -> Schedule:
+    """`schedule` without the systems whose own timetables have ended (pipeline-1): not
+    covered, so neither planned nor struck through as closed, and said with every plan. Metro's
+    WMATA GTFS gives way to its typical timetable, as when no GTFS is installed."""
+    key = (id(schedule), ended)
+    if key in _trimmed and _trimmed[key][0] is schedule:
+        return _trimmed[key][1]
+    gone = [s for s in schedule.systems if s.id in ended]
+    kept = [s for s in schedule.systems if s.id not in ended]
+    system_of = {s.index: i for i, s in enumerate(kept)}
+    stop_of: dict[int, int] = {}
+    stops = []
+    for stop in schedule.stops:
+        if stop.system in system_of:
+            stop_of[stop.index] = len(stops)
+            stops.append(replace(stop, index=len(stops), system=system_of[stop.system]))
+    patterns = [
+        replace(p, index=i, system=system_of[p.system], stops=tuple(stop_of[x] for x in p.stops))
+        for i, p in enumerate(p for p in schedule.patterns if p.system in system_of)
+    ]
+    trimmed = Schedule(
+        [replace(s, index=i) for i, s in enumerate(kept)],
+        stops,
+        patterns,
+        schedule.services,
+        schedule.start,
+        schedule.days,
+        {k: v for k, v in schedule.source.items() if k not in ended},
+    )
+    if METRO_SYSTEM in ended:
+        trimmed = with_typical_metro(trimmed)
+    trimmed.note = " ".join(
+        f"{s.name} is not planned for this date: its installed timetable ends"
+        f" {s.last_day:%B} {s.last_day.day}, {s.last_day.year}."
+        for s in gone
+    )
+    if len(_trimmed) > 16:
+        _trimmed.clear()
+    _trimmed[key] = (schedule, trimmed)
+    return trimmed
 
 
 @lru_cache(maxsize=8)
@@ -661,9 +721,10 @@ _warned_on: date | None = None
 
 
 def days_left(schedule: Schedule, today: date | None = None) -> int:
-    """Days of timetable left from `today` (Washington), today included; 0 or less is past."""
+    """Days of timetable left from `today` (Washington), today included; 0 or less is past.
+    Counted to the earliest end of any system's timetable (`Schedule.first_end`)."""
     today = today or datetime.now(ZONE).date()
-    return (schedule.last_day - today).days + 1
+    return (schedule.first_end[0] - today).days + 1
 
 
 def _warn_if_stale(schedule: Schedule) -> None:
@@ -675,10 +736,12 @@ def _warn_if_stale(schedule: Schedule) -> None:
     left = days_left(schedule, today)
     if left < STALE_DAYS:
         _warned_on = today
+        end, system = schedule.first_end
         logger.warning(
-            "the transit schedule runs out %s (%d day(s) left): rebuild it"
+            "the transit schedule runs out %s%s (%d day(s) left): rebuild it"
             " (docs/OPERATIONS.md, 'Transit schedule')",
-            schedule.last_day.isoformat(),
+            end.isoformat(),
+            f" ({system.name}'s timetable)" if system is not None else "",
             max(left, 0),
         )
 
@@ -696,14 +759,27 @@ def schedule_alert(path: Path, today: date | None = None) -> str | None:
     left = days_left(schedule, today)
     if left >= STALE_DAYS:
         return None
+    end, system = schedule.first_end
+    if system is not None:
+        if left <= 0:
+            return (
+                f"transit: {system.name}'s timetable ran out on {end.isoformat()}; transit plans"
+                f" leave {system.name} out until a newer feed is fetched and the schedule rebuilt"
+                " (docs/OPERATIONS.md, 'Transit schedule')"
+            )
+        return (
+            f"transit: {system.name}'s timetable runs out on {end.isoformat()}, {left} day(s)"
+            " left; fetch a newer feed and rebuild the schedule (docs/OPERATIONS.md,"
+            " 'Transit schedule')"
+        )
     if left <= 0:
         return (
-            f"transit: the schedule ran out on {schedule.last_day.isoformat()}; transit plans"
+            f"transit: the schedule ran out on {end.isoformat()}; transit plans"
             " use Metro's typical timetable only until it is rebuilt (docs/OPERATIONS.md,"
             " 'Transit schedule')"
         )
     return (
-        f"transit: the schedule runs out on {schedule.last_day.isoformat()}, {left} day(s) left;"
+        f"transit: the schedule runs out on {end.isoformat()}, {left} day(s) left;"
         " rebuild it (docs/OPERATIONS.md, 'Transit schedule')"
     )
 

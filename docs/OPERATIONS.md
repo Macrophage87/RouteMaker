@@ -2127,6 +2127,14 @@ only through the published GTFS. With fewer than 7 days left, the api logs "the 
 runs out ..." once a day and `manage.py check_operations` alerts ("transit: the schedule runs out
 on ..."; exit 1). An unreadable file alerts too; no file installed does not.
 
+**A feed that ends inside the window.** The file records each system's own last day of service
+(`last_day`), and the build warns "<system>: its timetable ends ..., before the window's last
+day". After that day the system is left out of plans and of the map's closed stations (it is not
+covered, not closed), with the note "MARC is not planned for this date: its installed timetable
+ends ..."; Metro's WMATA GTFS gives way to its typical timetable. The 7-day alert counts down to
+the earliest such end ("transit: MARC's timetable runs out on ..."): fetch a newer feed and build
+again.
+
 **The beta** gets the schedule in its data bundle (`ship-data.sh`'s `transit` part;
 docs/BETA-RUNBOOK.md). Ship it again after each refresh.
 

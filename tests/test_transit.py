@@ -25,6 +25,7 @@ import importlib.util
 import json
 import logging
 import math
+import shutil
 import sys
 from dataclasses import replace
 from datetime import date, datetime
@@ -1403,6 +1404,69 @@ def test_an_expired_schedule_keeps_metro_on_its_typical_timetable(tmp_path) -> N
     # Within its window, the file itself.
     assert transit.load(path, date(2026, 10, 1)).systems[0].id == "wmata-rail"
     assert len(transit.load(path, date(2026, 10, 1)).systems) > 1
+
+
+def _feeds_with_marc_ending(tmp_path, end: str) -> dict:
+    """The fixture's feeds with MARC's timetable ending on `end` (YYYYMMDD)."""
+    marc = tmp_path / "marc"
+    shutil.copytree(DATA / "marc", marc)
+    calendar = marc / "calendar.txt"
+    calendar.write_text(calendar.read_text().replace("20271231", end))
+    (marc / "calendar_dates.txt").write_text("service_id,date,exception_type\n")
+    return {**FEEDS, "marc": marc}
+
+
+def test_a_system_whose_feed_ends_inside_the_window_is_left_out_after_it_not_closed(
+    tmp_path,
+) -> None:
+    """pipeline-1 + TB-1: MARC's feed ends 2026-10-20, inside the window to 2026-11-11. Past
+    it MARC is not covered: no plan, no struck-through station, a note; the alert counts down
+    to MARC's end, not the file's."""
+    doc, report = build.build(_feeds_with_marc_ending(tmp_path, "20261020"), date(2026, 9, 28))
+    marc = next(s for s in doc["systems"] if s["id"] == "marc")
+    assert marc["last_day"] == "2026-10-20"
+    assert any(line.startswith("marc: its timetable ends 2026-10-20") for line in report)
+    assert all(s["last_day"] == "2027-12-31" for s in doc["systems"] if s["id"] != "marc")
+    path = tmp_path / "transit-schedule.json"
+    path.write_text(json.dumps(doc))
+
+    before = transit.load(path, date(2026, 10, 20))
+    assert "marc" in [s.id for s in before.systems] and before.note == ""
+    after = transit.load(path, date(2026, 10, 21))
+    assert "marc" not in [s.id for s in after.systems]
+    assert "wmata-rail" in [s.id for s in after.systems], "the others are still planned"
+    assert after.note == (
+        "MARC is not planned for this date: its installed timetable ends October 20, 2026."
+    )
+    weekday = transit.closed_stations(after, transit.moment_of(at(2026, 10, 21, 12, 0)))
+    assert not [c for c in weekday if c.system.id == "marc"], "not covered is not closed"
+    plan = plan_bike(after, NOMA, BALTIMORE, at(2026, 10, 21, 12, 0))
+    assert not any(leg.system == "MARC" for o in plan.options for leg in transit_legs(o))
+    assert after.note in plan.notes
+
+    assert transit.days_left(before, date(2026, 10, 18)) == 3
+    assert "MARC's timetable runs out on 2026-10-20, 3 day(s) left" in transit.schedule_alert(
+        path, date(2026, 10, 18)
+    )
+    assert "MARC's timetable ran out on 2026-10-20" in transit.schedule_alert(
+        path, date(2026, 10, 25)
+    )
+    assert transit.schedule_alert(path, date(2026, 10, 1)) is None
+
+
+def test_a_metro_gtfs_that_ends_early_gives_way_to_the_typical_timetable(tmp_path) -> None:
+    rail = tmp_path / "wmata-rail"
+    shutil.copytree(DATA / "wmata-rail", rail)
+    calendar = rail / "calendar.txt"
+    calendar.write_text(calendar.read_text().replace("20271231", "20261020"))
+    (rail / "calendar_dates.txt").write_text("service_id,date,exception_type\n")
+    path = tmp_path / "transit-schedule.json"
+    path.write_text(json.dumps(build.build({**FEEDS, "wmata-rail": rail}, date(2026, 9, 28))[0]))
+
+    after = transit.load(path, date(2026, 10, 21))
+    metro = [s for s in after.systems if s.id == "wmata-rail"]
+    assert len(metro) == 1 and metro[0].typical
+    assert after.note.startswith("Metro is not planned for this date")
 
 
 # --- POST /api/route and GET /api/transit/closures ----------------------------------------------
