@@ -12,9 +12,10 @@
  * Fitting to a profile: cues over its budget are dropped lowest priority first (notes on busier, calmer or unpaved
  * stretches, then flagged junctions, then turns onto unnamed ways, then the rest), and the start, the finish, the
  * stops and the Avoid and work-zone warnings are never dropped (PLAN.md: "danger-type cues are never dropped;
- * where protected cues alone exceed a profile's budget the export warns and offers a split"). Points over its
- * budget are thinned by Douglas-Peucker at the smallest of a few fixed tolerances that fits, never moving a cue's
- * record. What was trimmed is said in one line (courseLine).
+ * where protected cues alone exceed a profile's budget the export warns and offers a split"). So only those
+ * warnings are danger cues: a flagged crossing, which can be dropped, is a note. Points over its budget, or a file
+ * over its byte budget, are thinned by Douglas-Peucker at the smallest of a few fixed tolerances that fits (larger
+ * ones after them for the bytes), never moving a cue's record. What was trimmed is said in one line (courseLine).
  *
  * Privacy: the plan's own points are named by role only, Start, Stop N and Finish, never by a saved place's label
  * (a Home is "Start" or "Finish" in the file). Times are the route's own moving time from a fixed base, never the
@@ -26,6 +27,8 @@ import { formatDistance, formatFeet, formatMilesCapped } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { COPYRIGHT_AUTHOR, CREATOR } from "./gpx.ts";
 import { elevationsAlong, exportFileName, exportName } from "./gpxText.ts";
+import { writeFit } from "./fit.ts";
+import { writeTcx } from "./tcx.ts";
 import { rideModel, type Cue } from "./navigate.ts";
 import { presetSaid } from "./presets.ts";
 
@@ -70,6 +73,8 @@ export interface CourseTrim {
   pointsKept: number;
   /** The thinning tolerance used, in metres, or 0 where the line was not thinned. */
   toleranceM: number;
+  /** The written file's size in bytes. */
+  bytes: number;
 }
 
 export interface Course {
@@ -96,12 +101,17 @@ export const TCX_COURSE_NAME_CHARS = 15;
 export const TCX_CUE_NAME_CHARS = 10;
 /** Douglas-Peucker tolerances tried in turn, in metres: the smallest that fits the profile is used. */
 export const THIN_TOLERANCES_M = [1, 2, 5, 10] as const;
+/** Tried after those only while the file is over the profile's byte budget, doubling up to this. */
+const SIZE_TOLERANCE_MAX_M = 10_240;
 /** The pace used where the route has no moving time: about 11 mph (5 m/s). */
 const FALLBACK_PACE_MS = 5;
 /** Never dropped, whatever the budget. */
 const PROTECTED = Number.POSITIVE_INFINITY;
-/** The course name's credit where it fits (PLAN.md: FIT "carries attribution in the course name suffix"). */
-export const FIT_NAME_CREDIT = " © OSM";
+/**
+ * The course name's credit where it fits (PLAN.md: FIT "carries attribution in the course name suffix"). Plain
+ * ASCII: a unit's font may have no ©.
+ */
+export const FIT_NAME_CREDIT = " (c) OSM";
 
 type CompiledRoute = Pick<RouteResponse, "preset" | "distance_m" | "duration_s" | "climb_m" | "descent_m" | "geometry" | "attribution"> &
   Partial<RouteResponse>;
@@ -143,9 +153,11 @@ function fromRide(cue: Cue): { type: CourseCueType; name: string; priority: numb
     case "walk":
       return { type: "walk", name: "Walk bike", priority: 4 };
     case "hazard": {
-      // An Avoid-rated junction or a work zone is a danger cue and kept; a flagged crossing can go before a turn.
+      // An Avoid-rated junction or a work zone is a danger cue and kept; a flagged crossing can go before a turn,
+      // so it is a note: a danger cue is never dropped (PLAN.md).
       const kept = cue.source === "avoid" || cue.source === "workzone";
-      return { type: "danger", name: street ? abbreviateStreet(street) : "Caution", priority: kept ? PROTECTED : cue.severity === "red" ? 2 : 1 };
+      const name = street ? abbreviateStreet(street) : "Caution";
+      return kept ? { type: "danger", name, priority: PROTECTED } : { type: "note", name, priority: cue.severity === "red" ? 2 : 1 };
     }
     case "busy":
       return { type: "note", name: "Busy road", priority: 0 };
@@ -212,13 +224,18 @@ export function thin(line: readonly LonLat[], toleranceM: number, keep: Readonly
   return kept;
 }
 
-/** The course's name: the longest wording that fits, with FIT's credit after it where that fits too. */
+/**
+ * The course's name: for FIT, the longest wording that fits with the credit after it; otherwise (and for TCX) the
+ * longest wording that fits alone.
+ */
 export function courseName(route: Pick<RouteResponse, "preset" | "distance_m">, chars: number, format: CourseFormat): string {
   const ride = presetSaid(route.preset);
   const miles = formatMilesCapped(route.distance_m);
   const options = [exportName(route), `${ride} ${formatDistance(route.distance_m)}`, `${ride} ${miles}`, formatDistance(route.distance_m), `${miles} route`];
-  const name = options.find((o) => Array.from(o).length <= chars) ?? clip(options[options.length - 1], chars);
-  return format === "fit" && Array.from(name + FIT_NAME_CREDIT).length <= chars ? name + FIT_NAME_CREDIT : name;
+  const fits = (text: string) => Array.from(text).length <= chars;
+  const credited = format === "fit" ? options.find((o) => fits(o + FIT_NAME_CREDIT)) : undefined;
+  if (credited) return credited + FIT_NAME_CREDIT;
+  return options.find(fits) ?? clip(options[options.length - 1], chars);
 }
 
 /** The route's credits as the GPX export words them (gpx.ts writeGpx). */
@@ -265,52 +282,69 @@ export function compileCourse(route: CompiledRoute, profile: DeviceProfile, form
   }
   const cues = all.filter((_, i) => !dropped.has(i)).map(({ priority: _priority, ...cue }) => cue);
 
-  // Over the point budget: thinned at the smallest tolerance that fits, the cues' records always kept.
-  let keep = line.map(() => true);
-  let toleranceM = 0;
-  if (line.length > profile.maxPoints) {
+  const courseChars = format === "tcx" ? Math.min(TCX_COURSE_NAME_CHARS, profile.courseNameChars) : profile.courseNameChars;
+  const name = courseName(route, courseChars, format);
+  const notes = `${exportName(route)}. ${creditLine(route.attribution)} Planned with ${CREATOR}.`;
+  const build = (keep: readonly boolean[], toleranceM: number): Course => {
+    const index = new Map<number, number>();
+    const records: CourseRecord[] = [];
+    line.forEach(([lon, lat], i) => {
+      if (!keep[i]) return;
+      index.set(i, records.length);
+      const ele = elevations[i];
+      records.push({ lon, lat, ele: typeof ele === "number" && Number.isFinite(ele) ? ele : null, distM: along[i], timeS: timeAt(along[i]) });
+    });
+    return {
+      format,
+      name,
+      notes,
+      records,
+      cues: cues.map((c) => ({ ...c, vertex: index.get(c.vertex) ?? 0 })),
+      baseUnixS: COURSE_BASE_UNIX_S,
+      totalM: lineM,
+      totalS,
+      climbM: route.climb_m,
+      descentM: route.descent_m,
+      trim: {
+        profile,
+        cuesBefore: all.length,
+        cuesKept: cues.length,
+        protectedCues: protectedCount,
+        protectedOver: protectedCount > profile.maxCues,
+        pointsBefore: line.length,
+        pointsKept: records.length,
+        toleranceM,
+        bytes: 0,
+      },
+    };
+  };
+  const sized = (course: Course): Course => {
+    course.trim.bytes = format === "fit" ? writeFit(course).length : UTF8.encode(writeTcx(course)).length;
+    return course;
+  };
+  const fits = (course: Course) => course.records.length <= profile.maxPoints && sized(course).trim.bytes <= profile.maxBytes;
+
+  // Over the point or byte budget: thinned at the smallest tolerance that fits, the cues' records always kept.
+  // Past the point budget's largest tolerance, only the bytes go on thinning it (doubling); a course still over
+  // the point budget there stays at that tolerance, and the line says so.
+  const pointsLast = THIN_TOLERANCES_M[THIN_TOLERANCES_M.length - 1];
+  let course = build(line.map(() => true), 0);
+  if (!fits(course)) {
     const pinned = new Set(cues.map((c) => c.vertex));
-    for (const t of THIN_TOLERANCES_M) {
-      keep = thin(line, t, pinned);
-      toleranceM = t;
-      if (keep.filter(Boolean).length <= profile.maxPoints) break;
+    const tolerances: number[] = [...THIN_TOLERANCES_M];
+    for (let t = pointsLast * 2; t <= SIZE_TOLERANCE_MAX_M; t *= 2) tolerances.push(t);
+    for (const t of tolerances) {
+      course = build(thin(line, t, pinned), t);
+      if (fits(course) || (t >= pointsLast && course.records.length > profile.maxPoints)) break;
     }
   }
-  const index = new Map<number, number>();
-  const records: CourseRecord[] = [];
-  line.forEach(([lon, lat], i) => {
-    if (!keep[i]) return;
-    index.set(i, records.length);
-    const ele = elevations[i];
-    records.push({ lon, lat, ele: typeof ele === "number" && Number.isFinite(ele) ? ele : null, distM: along[i], timeS: timeAt(along[i]) });
-  });
-
-  const courseChars = format === "tcx" ? Math.min(TCX_COURSE_NAME_CHARS, profile.courseNameChars) : profile.courseNameChars;
-  return {
-    format,
-    name: courseName(route, courseChars, format),
-    notes: `${exportName(route)}. ${creditLine(route.attribution)} Planned with ${CREATOR}.`,
-    records,
-    cues: cues.map((c) => ({ ...c, vertex: index.get(c.vertex) ?? 0 })),
-    baseUnixS: COURSE_BASE_UNIX_S,
-    totalM: lineM,
-    totalS,
-    climbM: route.climb_m,
-    descentM: route.descent_m,
-    trim: {
-      profile,
-      cuesBefore: all.length,
-      cuesKept: cues.length,
-      protectedCues: protectedCount,
-      protectedOver: protectedCount > profile.maxCues,
-      pointsBefore: line.length,
-      pointsKept: records.length,
-      toleranceM,
-    },
-  };
+  return course.trim.bytes > 0 ? course : sized(course);
 }
 
+const UTF8 = new TextEncoder();
+
 const count = (n: number) => n.toLocaleString("en-US");
+const megabytes = (bytes: number) => (bytes >= 1_000_000 ? `${Number((bytes / 1_000_000).toFixed(1))} MB` : `${Math.ceil(bytes / 1000)} KB`);
 
 /**
  * What the export did to fit the device, in one short line for the GPX section's status: "FIT course for Garmin
@@ -332,6 +366,7 @@ export function courseLine(course: Pick<Course, "format" | "trim">): string {
         : `thinned from ${count(pointsBefore)} to ${count(pointsKept)} points, within ${formatFeet(toleranceM)} of the route`,
     );
   }
+  if (course.trim.bytes > profile.maxBytes) parts.push(`still larger than the ${megabytes(profile.maxBytes)} it takes`);
   if (!parts.length) return `${head}: all ${count(cuesKept)} cues and ${count(pointsKept)} points fit.`;
   return `${head}: ${parts.join("; ")}.`;
 }
