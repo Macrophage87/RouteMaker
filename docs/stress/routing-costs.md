@@ -149,7 +149,7 @@ stretches first, and later every LTS 3 stretch of the newest candidate. Each sam
 is one point per edge middle, 131 ft [40 m] apart, at most 60 a round and 150 in
 all, and never within 0.31 mi [500 m] of an end or a via point (`refine.py:112-130`,
 `calm_targets` `:712-737`, worst first `:1535-1536`, `:1554-1556`). In the
-crossing-only round it excludes the approaches to junctions of 2,000 ft or more (red),
+crossing-only round it excludes the approaches to junctions of 3,100 ft [945 m] or more (red),
 at most 3 (`crossing_targets`, `:740-752`). Mass Ride is skipped (`ctx.group`).
 
 ### The guards
@@ -201,13 +201,15 @@ The crossed road's tier is the greater of its tier and its unsmoothed tier
 
 | Situation | LTS 3 | LTS 4 / Avoid | Lines |
 |---|---|---|---|
-| Straight across, from the stopped side | 1,200 ft [366 m] | 3,000 ft [914 m] | `:56` |
-| Straight across at a signal | 150 ft | 300 ft | `:60` |
-| Left off a busy road, across oncoming traffic (none on a one-way; x0.4 at a signal) | 600 ft | 1,500 ft | `:142-143` |
+| Straight across, from the stopped side | 1,600 ft [488 m] | 4,000 ft [1,219 m] | `STOPPED_CROSSING_FT` |
+| Straight across at a signal | 150 ft | 600 ft | `SIGNALISED_CROSSING_FT` |
+| Left off a busy road, across oncoming traffic (none on a one-way; x0.4 at a signal) | 800 ft | 4,000 ft | `LEFT_ACROSS_ONCOMING_FT` |
 | All-way stop | 75 ft | 75 ft | `:64` |
 | Rider on the priority road | 25 ft | 25 ft | `:69` |
 | Quiet street meets quiet street at a stop | 10 ft | - | `:75` |
 | Right turn off a busy road | 15 ft | 15 ft | `:144` |
+
+The factors, caps and line numbers below predate OWNER-DECISIONS 468; [intersections.md](intersections.md) has the built values.
 
 Factors applied to the stopped-side and left costs (`scale`, `:318-330`):
 
