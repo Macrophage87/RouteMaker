@@ -594,8 +594,13 @@ esac
 
 
 STUB_DATE = """#!/bin/sh
-# the hour from STUB_HOUR, for the deploy window; anything else from the real date
-if [ "$1" = "+%H" ] && [ -n "${STUB_HOUR:-}" ]; then echo "$STUB_HOUR"; exit 0; fi
+# the hour from STUB_HOUR, for the deploy window; the UTC time of day from STUB_UTC (noon
+# unless set, so no test lands in the backup slot by the clock); anything else from the real date
+# (read in Washington's zone: asked in any other, it answers an hour no window holds)
+if [ "$1" = "+%H" ] && [ -n "${STUB_HOUR:-}" ]; then
+  [ "${TZ:-}" = America/New_York ] && echo "$STUB_HOUR" || echo 99; exit 0
+fi
+if [ "$1" = -u ] && [ "$2" = "+%H%M" ]; then echo "${STUB_UTC:-1200}"; exit 0; fi
 exec REAL_DATE "$@"
 """
 GITHUB = "https://github.com/Macrophage87/RouteMaker.git"
@@ -1422,6 +1427,17 @@ def test_the_deploy_window_and_its_wrap_past_midnight(
     done = beta.agent("run", "--dry-run", RM_CD_WINDOW=window, STUB_HOUR=hour)
     assert ("would deploy v0.2.0" in done.stdout) is inside, done.stdout
     assert ("outside the deploy window" in done.stdout) is not inside
+
+
+@pytest.mark.parametrize(
+    ("utc", "waits"), [("0654", False), ("0655", True), ("0729", True), ("0730", False)]
+)
+def test_no_deploy_starts_in_the_nightly_backup_slot(beta: Beta, utc: str, waits: bool) -> None:
+    """OPS-5: the backup runs at 07:00 UTC; a deploy does not start from 06:55 to 07:30."""
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", "--dry-run", STUB_UTC=utc)
+    assert ("would deploy v0.2.0" in done.stdout) is not waits, done.stdout
+    assert ("nightly backup runs at 07:00 UTC" in done.stdout) is waits
 
 
 def test_an_origin_other_than_the_ci_repository_is_an_error(beta: Beta) -> None:

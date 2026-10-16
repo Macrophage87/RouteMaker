@@ -67,7 +67,7 @@
 #   RM_STATE RM_SRC RM_DATA      required (section 0)
 #   RM_PY                        the python with pyyaml for check_beta_compose.py [python3]
 #   RM_CD_GITHUB_REPO            owner/name on GitHub [Macrophage87/RouteMaker]
-#   RM_CD_WINDOW                 HH-HH local hours in which a deploy may start (e.g. 02-06; the two
+#   RM_CD_WINDOW                 HH-HH Washington hours in which a deploy may start (e.g. 02-06; the two
 #                                hours differ; 22-04 wraps past midnight) [any]
 #   RM_CD_DOCKER_FREE_GIB        GiB that must be free on Docker's root before a deploy [3]
 #   RM_CD_REQUIRE_SIGNED_TAGS    1: also require `git verify-tag` to pass [0]
@@ -175,8 +175,16 @@ window_problem() {
 in_window() { # RM_CD_WINDOW has passed window_problem
 	local w=${RM_CD_WINDOW:-} from to now
 	[ -n "$w" ] || return 0
-	from=$((10#${w%-*})); to=$((10#${w#*-})); now=$((10#$(date +%H)))
+	# Washington's hours, whatever zone the host keeps (a cloud server's is often UTC).
+	from=$((10#${w%-*})); to=$((10#${w#*-})); now=$((10#$(TZ=America/New_York date +%H)))
 	if [ "$from" -le "$to" ]; then [ "$now" -ge "$from" ] && [ "$now" -lt "$to" ]; else [ "$now" -ge "$from" ] || [ "$now" -lt "$to" ]; fi
+}
+# 06:55 to 07:30 UTC: the nightly backup (NIGHTLY_BACKUP_CRON, 07:00 UTC) runs then. A deploy
+# that started in it would take its pre-release snapshot and restart the stack under the dump.
+in_backup_slot() {
+	local hm
+	hm=$((10#$(date -u +%H%M)))
+	[ "$hm" -ge 655 ] && [ "$hm" -lt 730 ]
 }
 # Prints why the checkout's origin is not the GitHub repository whose CI the agent reads, and
 # succeeds, if it is not: code and CI must come from the same place, over https.
@@ -698,6 +706,7 @@ pass() {
 			h=$(lock_hash "$new")
 		fi
 		in_window || { rm -f "$gate_file"; finish waiting "$tag: outside the deploy window RM_CD_WINDOW=$RM_CD_WINDOW"; return 0; }
+		! in_backup_slot || { rm -f "$gate_file"; finish waiting "$tag: the nightly backup runs at 07:00 UTC; deploying after 07:30 UTC"; return 0; }
 		predraw_running && { rm -f "$gate_file"; finish waiting "$tag: a stress-tile pre-draw is running; deploying after it"; return 0; }
 		free=$(free_kib "$cd_dir/backups")
 		[ "${free:-0}" -ge 1048576 ] || { rm -f "$gate_file"; finish waiting "$tag: less than 1 GiB free for the snapshot in $cd_dir/backups"; return 0; }
