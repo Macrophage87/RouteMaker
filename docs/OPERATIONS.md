@@ -6235,7 +6235,13 @@ fallback yet; this host stays the fallback, and its weekly rebuild is unchanged.
 
 ### One-time setup (the owner, in the AWS console)
 
-- **No access keys anywhere.** The box gets an instance role; this host signs in with
+- **One narrow access key, on this host only** (the owner's choice, 2026-10-16, so a run
+  needs no sign-in): an IAM user `routemaker-launcher` with no console access and only
+  the launcher's permissions ("The launcher", below, without the first `signin:`
+  statement), its key saved by the owner with `aws configure --profile rm-launcher` and
+  `CLOUD_PROFILE=rm-launcher`. A stolen key can start, stop and run commands on the box
+  and reach `rebuild-checkpoints/`, nothing else; deactivate it in IAM if it is exposed.
+  The box itself still holds no key (an instance role). Without the key, this host signs in with
   `aws login --remote` (add `--profile <name>` to keep it apart from other accounts)
   before each run: it prints a link to open in any browser, where you sign in to the
   console as usual, and paste back the code it shows. This is what worked on 2026-10-11:
@@ -6510,11 +6516,9 @@ encrypted with your own KMS key, starting it also needs `kms:CreateGrant` on tha
 `ssm:SendCommand` on `AWS-RunShellScript` is a root shell on the box, and on nothing
 else: the box holds nothing of this deployment's but the inputs it was sent.
 
-**Not built: a hands-off weekly run.** Running the launcher from cron needs a sign-in
-that lasts and renews without a person: IAM Identity Center, or a narrow role that a
-scheduler (an EventBridge schedule, say) assumes. Not `aws login`, which needs you at a
-browser, and not access keys, which this deployment does not keep anywhere. Until then
-the launcher is run by hand, and the weekly rebuild here goes on as before.
+**A hands-off run.** With the `routemaker-launcher` key (the setup, above) the launcher
+needs no sign-in, so it can run unattended. It is still started by hand: a weekly cron
+run is not set up, and the weekly rebuild here goes on as before.
 
 ### The beta server from the same run
 
