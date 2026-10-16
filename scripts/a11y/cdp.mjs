@@ -707,10 +707,11 @@ export const S_DEFAULT = (() => {
   return r;
 })();
 /** Riding with kids (FOLLOWUP-KIDS-PRESET, OWNER-DECISIONS 240 (B)): the top of the traffic slider, hills toward avoid. */
+// Novice and Nervous, in Riding with kids' place since 9e50f609 (the API answers "novice"; old "kids" links open it).
 export const S_KIDS = (() => {
   const r = copy();
-  r.preset = "kids";
-  r.dials = { stress: 100, hills: -80, when: "weekday", carrying: null };
+  r.preset = "novice";
+  r.dials = { stress: 100, hills: -60, when: "weekday", carrying: null };
   r.calm_search = { rate: 10, rounds: 2, excluded: 3, limited: null };
   return r;
 })();

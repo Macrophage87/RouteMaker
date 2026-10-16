@@ -66,7 +66,7 @@ async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 
 }
 
 /**
- * Opens a bottom-bar sheet by its button's label ("Layers", "Suggest", "GPX", "Settings"). UI-CLEANUP: "Map
+ * Opens a bottom-bar sheet by its button's label ("Layers", "Suggest", "Export", "Settings"; Plan's GPX is Export since 5efab18a). UI-CLEANUP: "Map
  * layers" is "Layers", and "Legend" is the Legend sheet, one step in from Layers (its Legend button), and "Review" the admin's review, one step in from Suggest.
  */
 async function openSheet(p, label = "Layers") {
@@ -930,7 +930,7 @@ for (const mobile of [false, true]) {
 {
   const p = await open();
   const bar = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => x.querySelector('span').textContent)");
-  check("settings: the bottom bar is Plan, Layers, Suggest, GPX, Settings (UI-CLEANUP, the owner's choice 6)", JSON.stringify(bar) === JSON.stringify(["Plan", "Layers", "Suggest", "GPX", "Settings"]), JSON.stringify(bar));
+  check("settings: the bottom bar is Plan, Layers, Suggest, Export, Settings (UI-CLEANUP, the owner's choice 6; GPX renamed Export in 5efab18a)", JSON.stringify(bar) === JSON.stringify(["Plan", "Layers", "Suggest", "Export", "Settings"]), JSON.stringify(bar));
   await openSheet(p, "Settings");
   check("settings: opening it puts the focus on its heading, \"Settings\"", (await p.eval("document.activeElement?.textContent")) === "Settings" && (await p.eval("document.activeElement?.tagName")) === "H2", await focused(p));
   const inSettings = await axNode(p, "#settings-contrast-switch");
@@ -1064,14 +1064,14 @@ const FIRST_HINT = "Place the starting point, then a stop or two along the way."
     const ax = await axNode(p, `#bar-${id}`);
     names.push([ax?.role, ax?.name]);
   }
-  check("plan: the five bar buttons are named exactly Plan, Layers, Suggest, GPX, Settings", JSON.stringify(names) === JSON.stringify([["button", "Plan"], ["button", "Layers"], ["button", "Suggest"], ["button", "GPX"], ["button", "Settings"]]), JSON.stringify(names));
+  check("plan: the five bar buttons are named exactly Plan, Layers, Suggest, Export, Settings", JSON.stringify(names) === JSON.stringify([["button", "Plan"], ["button", "Layers"], ["button", "Suggest"], ["button", "Export"], ["button", "Settings"]]), JSON.stringify(names));
   const hints = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => { const h = document.getElementById(x.getAttribute('aria-describedby')); return { hidden: h.hidden && h.getBoundingClientRect().height === 0, inButton: x.contains(h), text: h.textContent.length > 0 }; })");
   const described = [];
   for (const id of ["plan", "layers", "suggest", "gpx", "settings"]) described.push((await axNode(p, `#bar-${id}`))?.description?.length > 0);
   check("plan: each bar hint is a hidden sibling, off the screen, and still the button's description", hints.length === 5 && hints.every((h) => h.hidden && !h.inButton && h.text) && described.every(Boolean), JSON.stringify({ hints, described }));
   const planAx = await axNode(p, "#bar-plan");
   check("plan: its description says where it goes, in the Back label's words", /^Shows the planner: /.test(planAx?.description ?? ""), JSON.stringify(planAx?.description));
-  await openSheet(p, "GPX");
+  await openSheet(p, "Export");
   const during = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => x.getAttribute('aria-current'))");
   check("plan: on a sheet the Plan button is not current and that sheet's is", during[0] === null && during[3] === "true", JSON.stringify(during));
   const backText = await p.eval("document.querySelector('#sheet-gpx .sheet-back').textContent.trim()");
@@ -1120,7 +1120,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   const p = await open({ width: 375, height: 812, mobile: true, ride: false });
   const first = await p.eval("(() => { const t = document.querySelector('.panel-toggle'); return { text: t.textContent, expanded: t.getAttribute('aria-expanded'), controls: t.getAttribute('aria-controls') }; })()");
   check("toggle: the phone header's button reads Hide planner, with aria-expanded and aria-controls", first.text === "Hide planner" && first.expanded === "true" && first.controls === "panel-body", JSON.stringify(first));
-  await openSheet(p, "GPX");
+  await openSheet(p, "Export");
   await p.eval("document.querySelector('.panel-toggle').focus(); document.querySelector('.panel-toggle').click(); true");
   await sleep(200);
   const hidden = await p.eval("({ text: document.querySelector('.panel-toggle').textContent, expanded: document.querySelector('.panel-toggle').getAttribute('aria-expanded'), hidden: document.getElementById('panel-body').hidden })");
@@ -2901,8 +2901,10 @@ const SUGGEST = "dialog.road-info .suggest-change";
   const opened = await panelByKey(p);
   await sleep(300);
   const none = await p.eval("({ review: !!document.querySelector('.suggestion-review'), button: [...document.querySelectorAll('dialog.road-info button')].some((b) => b.textContent === 'Suggest a change') })");
-  check("suggestions: a visitor the settings do not allow sees no Suggest a change and no review, and the page asks the suggestion endpoints nothing",
-    opened && !none.review && !none.button && p.suggestRequests.length === 0, JSON.stringify({ opened, none, asked: p.suggestRequests.length }));
+  // Since b67278b5 ("Signed-out LTS suggestions: a short form") such a visitor gets the short form's Suggest a
+  // change; the review stays theirs alone, and nothing is asked of the suggestion endpoints until it is pressed.
+  check("suggestions: a visitor the settings do not allow sees no review, gets the short form's Suggest a change, and the page asks the suggestion endpoints nothing",
+    opened && !none.review && none.button && p.suggestRequests.length === 0, JSON.stringify({ opened, none, asked: p.suggestRequests.length }));
   await p.close();
 }
 
@@ -3277,9 +3279,13 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   check("bikeshare e-bike: the out-of-dock ending shows the fee from the operator's data, as information", /Out-of-dock fee: 2\.00 USD/.test(ending.radios[1]?.name ?? "") && !/quote/i.test(ending.radios[1]?.name ?? ""), ending.radios[1]?.name);
   const before = p.routeRequests;
   await p.eval("document.querySelectorAll('fieldset.bikeshare-endings input[type=radio]')[1].click(); true");
+  await sleep(1500);
+  // Plan-first (see pressRoute; 4560586d): the choice waits for Route, which plans once.
+  const pickPlans = p.routeRequests - before;
+  await pressRoute(p);
   await sleep(3500);
   const hash = await p.eval("location.hash");
-  check("bikeshare e-bike: choosing the out-of-dock ending plans again, and the link carries it", p.routeRequests - before === 1 && /bike=ebike/.test(hash) && /ending=outside/.test(hash), `${p.routeRequests - before} plans, ${hash}`);
+  check("bikeshare e-bike: choosing the out-of-dock ending plans nothing until Route, which plans once, and the link carries it", pickPlans === 0 && p.routeRequests - before === 1 && /bike=ebike/.test(hash) && /ending=outside/.test(hash), `${p.routeRequests - before} plans, ${hash}`);
   await p.close();
 }
 {
@@ -3310,9 +3316,10 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   check("stations: a pick-up list and a drop-off list, each a section named by its own heading", lists.length === 2 && lists[0].heading === "Nearby stations to pick up a bike" && lists[1].heading === "Nearby stations to return a bike" && lists.every((l) => l.labelled === "H3"), JSON.stringify(lists.map((l) => l.heading)));
   check("stations: each list is a real list of three real buttons", lists.every((l) => l.list === "UL" && l.buttons.length === 3 && l.buttons.every((b) => b.tag === "BUTTON" && b.type === "button")), JSON.stringify(lists.map((l) => l.buttons.length)));
   // With both ends placed each also says, in words, whether it is on the rider's way (the owner, 2026-10-11).
-  check("stations: each button is read as name, percentage full, e-bikes, distance (miles first, metres in brackets) and whether it is on your way, in words", lists[0].buttons[0].text === "Columbus Circle / Union Station, 82% full, 1 e-bike, 0.2 mi (320 m), on your way" && lists[0].buttons[2].text === "Massachusetts Ave & 2nd St NE, 76% full, 1 e-bike, 0.9 mi (1.5 km), adds 0.1 mi (200 m) of riding" && lists[1].buttons[0].text === "20th & O St NW / Dupont South, 10% full, 1 e-bike, 490 ft (150 m), on your way", JSON.stringify([lists[0].buttons[0].text, lists[0].buttons[2].text, lists[1].buttons[0].text]));
+  // The classic bikes and open docks joined the e-bikes in 787abd98 ("Map: bikeshare docks and free e-bikes").
+  check("stations: each button is read as name, percentage full, classic bikes, e-bikes, open docks, distance (miles first, metres in brackets) and whether it is on your way, in words", lists[0].buttons[0].text === "Columbus Circle / Union Station, 82% full: 8 classic, 1 e-bike, 2 open docks, 0.2 mi (320 m), on your way" && lists[0].buttons[2].text === "Massachusetts Ave & 2nd St NE, 76% full: 12 classic, 1 e-bike, 4 open docks, 0.9 mi (1.5 km), adds 0.1 mi (200 m) of riding" && lists[1].buttons[0].text === "20th & O St NW / Dupont South, 10% full: 0 classic, 1 e-bike, 9 open docks, 490 ft (150 m), on your way", JSON.stringify([lists[0].buttons[0].text, lists[0].buttons[2].text, lists[1].buttons[0].text]));
   const named = await axNode(p, ".station-choice");
-  check("stations: a button's accessible name is that text and its role is button, not pressed", named?.role === "button" && named?.name === "Columbus Circle / Union Station, 82% full, 1 e-bike, 0.2 mi (320 m), on your way", JSON.stringify(named));
+  check("stations: a button's accessible name is that text and its role is button, not pressed", named?.role === "button" && named?.name === "Columbus Circle / Union Station, 82% full: 8 classic, 1 e-bike, 2 open docks, 0.2 mi (320 m), on your way", JSON.stringify(named));
   check("stations: nothing is chosen at first, and every button is at least 44 px tall", lists.every((l) => l.buttons.every((b) => b.pressed === "false" && b.h >= 44)), JSON.stringify(lists.map((l) => l.buttons.map((b) => b.h))));
   check("stations: a polite status line says how many are listed", lists.every((l) => l.status === "3 nearby stations listed, on your way first."), JSON.stringify(lists.map((l) => l.status)));
   check("stations: the words name no programme, no points and no operator", !/angel|points|lyft|capital/i.test(lists.map((l) => l.text).join(" ")), "");
@@ -3327,19 +3334,24 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   check("stations: Tab moves to the next station in the list", await p.eval("document.activeElement === document.querySelectorAll('.nearby-pickup .station-choice')[1]"), await focused(p));
   await p.eval("document.querySelectorAll('.nearby-pickup .station-choice')[1].focus(); true");
   await p.enter();
-  await sleep(3500);
+  await sleep(1500);
   const chosen = await p.eval(`(() => ({
     pressed: [...document.querySelectorAll('.nearby-pickup .station-choice')].map((b) => b.getAttribute('aria-pressed')),
     kept: document.activeElement === document.querySelectorAll('.nearby-pickup .station-choice')[1],
     badge: document.querySelector('.nearby-pickup .station-chosen')?.textContent,
     hash: location.hash,
   }))()`);
+  // Plan-first (see pressRoute): a station chosen waits for Route (4560586d, "stations and transit options wait for Route").
+  await pressRoute(p);
+  await sleep(3500);
   const lastBody = JSON.parse(p.routeBodies[p.routeBodies.length - 1] || "{}");
   check("stations: Enter chooses one: it is pressed, the others are not, and the focus stays on it", chosen.pressed.join() === "false,true,false" && chosen.kept, JSON.stringify(chosen));
   check("stations: the choice is shown in text too, not by colour alone", chosen.badge === "Chosen", String(chosen.badge));
   check("stations: choosing plans again, with that station in the request", p.routeRequests - before >= 1 && lastBody.pickup_station === "fx-002" && !("dropoff_station" in lastBody), JSON.stringify(lastBody));
   check("stations: the choice is in no link", !/fx-0|station/i.test(chosen.hash), chosen.hash);
   await p.eval("document.querySelectorAll('.nearby-pickup .station-choice')[1].click(); true");
+  await sleep(500);
+  await pressRoute(p);
   await sleep(3500);
   const handed = await p.eval("[...document.querySelectorAll('.nearby-pickup .station-choice')].map((b) => b.getAttribute('aria-pressed')).join()");
   const lastAgain = JSON.parse(p.routeBodies[p.routeBodies.length - 1] || "{}");
@@ -3347,6 +3359,8 @@ const JUNCTION_BUTTON = "Suggest a junction change";
 
   // The drop-off list works the same way.
   await p.eval("document.querySelectorAll('.nearby-dropoff .station-choice')[0].click(); true");
+  await sleep(500);
+  await pressRoute(p);
   await sleep(3500);
   const lastDrop = JSON.parse(p.routeBodies[p.routeBodies.length - 1] || "{}");
   check("stations: a drop-off station is sent as the plan's end", lastDrop.dropoff_station === "fx-011", JSON.stringify(lastDrop));
@@ -3747,42 +3761,48 @@ const JUNCTION_BUTTON = "Suggest a junction change";
 }
 
 // ---- 26. Riding with kids (FOLLOWUP-KIDS-PRESET, OWNER-DECISIONS 240 (B)): a ride type like any other, by keyboard and screen reader ----
+// Novice and Nervous takes its place since 9e50f609 (hills -60, the API's "novice"; an old "kids" link opens it): the
+// checks below are the same, for it.
 // Every ride type: 15 since Own Bike + Transit and Bikeshare + Transit (#108) and Rebalance Ride (#110), in the dialog's
 // three groups (lib/rideTypeGroups.ts: Transportation 7, Adventure 6, Group 2).
 {
   const p = await open({ route: S_KIDS, hash: hashFor("default", 70) });
-  const kidsCard = "[...document.querySelectorAll('.ride-type-card > button')].find((b) => b.querySelector('strong')?.textContent === 'Riding with kids')";
+  const kidsCard = "[...document.querySelectorAll('.ride-type-card > button')].find((b) => b.querySelector('strong')?.textContent === 'Novice and Nervous')";
   await p.eval("document.querySelector('.ride-type-current button').focus(); true");
   await p.enter();
   await sleep(300);
   const offered = await p.eval(`(() => { const d = document.querySelector('dialog.ride-types'); const k = ${kidsCard};
     return { open: d.open, modal: d.matches(':modal'), cards: d.querySelectorAll('.ride-type-card > button').length,
       kids: !!k, pressed: k?.getAttribute('aria-pressed'), hint: k?.querySelector('.hint')?.textContent }; })()`);
-  check("kids: the ride-type dialog is modal and offers Riding with kids among every ride type, with its sentence",
-    offered.open && offered.modal && offered.cards === 15 && offered.kids && /^Children on their own bikes: /.test(offered.hint ?? ""), JSON.stringify(offered));
+  check("kids: the ride-type dialog is modal and offers Novice and Nervous among every ride type, with its sentence",
+    offered.open && offered.modal && offered.cards === 15 && offered.kids && /^For riders new to traffic: /.test(offered.hint ?? ""), JSON.stringify(offered));
   check("kids: its card is a toggle button, not pressed while another ride type is in use", offered.pressed === "false", JSON.stringify(offered.pressed));
   await p.eval(`${kidsCard}.setAttribute('data-kids', ''); true`);
   const card = await axNode(p, "button[data-kids]");
-  check("kids: the card's accessible name starts with its label", card?.role === "button" && /^Riding with kids\b/.test(card?.name ?? ""), JSON.stringify(card));
+  check("kids: the card's accessible name starts with its label", card?.role === "button" && /^Novice and Nervous\b/.test(card?.name ?? ""), JSON.stringify(card));
   const before = p.routeRequests;
   await p.eval(`${kidsCard}.focus(); true`);
   await p.enter();
   await sleep(2500);
   const chosen = await p.eval("(() => ({ open: document.querySelector('dialog.ride-types').open, focus: document.activeElement === document.querySelector('.ride-type-current button'), ride: document.querySelector('.ride-type-current strong')?.textContent, hint: document.querySelector('.ride-type-current .hint')?.textContent }))()");
+  // Plan-first (see pressRoute): the choice plans nothing until Route.
+  const pickPlans = p.routeRequests - before;
+  await pressRoute(p);
+  await sleep(2500);
   check("kids: choosing it with Enter closes the dialog and gives the focus back to Change", !chosen.open && chosen.focus, JSON.stringify(chosen));
-  check("kids: the ride type line says Riding with kids, with its sentence", chosen.ride === "Riding with kids" && /^Children on their own bikes: /.test(chosen.hint ?? ""), JSON.stringify(chosen));
+  check("kids: the ride type line says Novice and Nervous, with its sentence", chosen.ride === "Novice and Nervous" && /^For riders new to traffic: /.test(chosen.hint ?? ""), JSON.stringify(chosen));
   const sent = JSON.parse(p.routeBodies.at(-1) || "{}");
   const hash = await p.eval("location.hash");
-  check("kids: it plans once, at the top of the traffic slider with hills toward avoid, and the link carries it",
-    p.routeRequests - before === 1 && sent.preset === "kids" && sent.stress === 100 && sent.hills === -80 && /preset=kids/.test(hash) && /stress=100/.test(hash) && /hills=-80/.test(hash),
+  check("kids: it plans nothing until Route, which plans once, at the top of the traffic slider with hills toward avoid, and the link carries it",
+    pickPlans === 0 && p.routeRequests - before === 1 && sent.preset === "novice" && sent.stress === 100 && sent.hills === -60 && /preset=novice/.test(hash) && /stress=100/.test(hash) && /hills=-60/.test(hash),
     `${p.routeRequests - before} plans, ${JSON.stringify({ preset: sent.preset, stress: sent.stress, hills: sent.hills })}, ${hash}`);
   const traffic = await axNode(p, ".dials input[type=range]");
   const sliders = await p.eval("[...document.querySelectorAll('.dials input[type=range]')].slice(0, 2).map((e) => ({ value: Number(e.value), words: e.getAttribute('aria-valuetext') }))");
   check("kids: the sliders moved to its start and say so in words",
-    sliders[0]?.value === 100 && sliders[1]?.value === -80 && traffic?.name === "Traffic" && /^Calmest: /.test(traffic?.valuetext ?? "") && sliders[1]?.words === "Avoids hills",
+    sliders[0]?.value === 100 && sliders[1]?.value === -60 && traffic?.name === "Traffic" && /^Calmest: /.test(traffic?.valuetext ?? "") && sliders[1]?.words === "Gentler grades" /* -60, Novice's start */,
     JSON.stringify({ sliders, traffic }));
   const line = await axNode(p, ".ride-line-button");
-  check("kids: the Ride line's spoken name says the ride type and where the sliders are", /^Ride\s*:\s*Riding with kids, calmest, avoids hills\b/.test(line?.name ?? ""), JSON.stringify(line?.name));
+  check("kids: the Ride line's spoken name says the ride type and where the sliders are", /^Ride\s*:\s*Novice and Nervous, calmest, gentler hills\b/.test(line?.name ?? ""), JSON.stringify(line?.name));
   check("kids: the target distance is offered, as at the top of the traffic slider", (await p.eval("document.querySelectorAll('input[placeholder=Default]').length")) === 1);
   await p.eval("document.querySelector('.ride-type-current button').focus(); true");
   await p.enter();
@@ -3800,10 +3820,10 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   const ride = await p.eval("document.querySelector('.ride-type-current strong')?.textContent");
   await p.eval("document.querySelector('.ride-type-current button').click(); true");
   await sleep(300);
-  const fit = await p.eval(`(() => { const k = [...document.querySelectorAll('.ride-type-card > button')].find((b) => b.querySelector('strong')?.textContent === 'Riding with kids');
+  const fit = await p.eval(`(() => { const k = [...document.querySelectorAll('.ride-type-card > button')].find((b) => b.querySelector('strong')?.textContent === 'Novice and Nervous');
     return { client: k?.clientWidth, scroll: k?.scrollWidth, page: document.documentElement.scrollWidth, width: innerWidth }; })()`);
-  check("kids at 320 px: a shared link opens on Riding with kids, and its card fits with nothing spilling sideways",
-    ride === "Riding with kids" && fit.scroll <= fit.client + 1 && fit.page <= fit.width, JSON.stringify({ ride, fit }));
+  check("kids at 320 px: an old \"kids\" link opens on Novice and Nervous, and its card fits with nothing spilling sideways",
+    ride === "Novice and Nervous" && fit.scroll <= fit.client + 1 && fit.page <= fit.width, JSON.stringify({ ride, fit }));
   await p.shot(`${SHOTS}/kids_320.png`);
   await p.close();
 }
