@@ -110,10 +110,11 @@ services:
   caddy:
     <<: [*restart, *logging]
     image: docker.io/library/caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17
-    # RM_BIND: the address the ports are published on. Unset, every interface (a
-    # server); scripts/local-up.sh writes 127.0.0.1, so a DEBUG stack on a laptop is not
-    # reachable from the network it sits on.
-    ports: ["${RM_BIND:-0.0.0.0}:80:80", "${RM_BIND:-0.0.0.0}:443:443"]
+    # RM_BIND: the address the ports are published on. Unset, no address at all, as before
+    # RM_BIND: every interface, IPv4 and IPv6 (a server); scripts/local-up.sh writes
+    # 127.0.0.1, so a DEBUG stack on a laptop is not reachable from the network it sits on.
+    # tests/test_local_up.py renders both cases.
+    ports: ["${RM_BIND:+${RM_BIND}:}80:80", "${RM_BIND:+${RM_BIND}:}443:443"]
     volumes:
       - ${DATA_ROOT}/caddy:/data
       - ${DATA_ROOT}/static:/srv/static:ro

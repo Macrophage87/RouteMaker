@@ -557,6 +557,41 @@ class GeneratedEnvRendersTest(unittest.TestCase):
         ports = json.loads(out.stdout)["services"]["caddy"]["ports"]
         self.assertEqual({p["host_ip"] for p in ports}, {"127.0.0.1"})
 
+        # Review round 2, S3: a .env without RM_BIND (a server's) publishes on no address,
+        # every interface IPv4 and IPv6 alike, exactly as before RM_BIND existed.
+        server_env = tmp / "server.env"
+        server_env.write_text(
+            "".join(
+                line
+                for line in env_file.read_text().splitlines(keepends=True)
+                if not line.startswith("RM_BIND=")
+            )
+        )
+        render = [
+            "docker",
+            "compose",
+            "--project-directory",
+            str(REPO),
+            "--env-file",
+            str(server_env),
+            "-f",
+            str(REPO / "compose.yaml"),
+            "config",
+            "--format",
+            "json",
+        ]
+        server = subprocess.run(
+            render,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env={"PATH": os.environ["PATH"], "HOME": str(tmp)},
+        )
+        self.assertEqual(server.returncode, 0, server.stderr)
+        ports = json.loads(server.stdout)["services"]["caddy"]["ports"]
+        published = [(p.get("host_ip"), p["target"]) for p in ports]
+        self.assertEqual(published, [(None, 80), (None, 443)])
+
 
 if __name__ == "__main__":
     unittest.main()
