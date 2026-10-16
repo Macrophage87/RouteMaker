@@ -34,6 +34,9 @@ test("the closure dialog: a modal, heading focused first, Reroute around them th
   assert.ok(order.every((i) => i > 0), JSON.stringify(order));
   assert.deepEqual(order, [...order].sort((x, y) => x - y));
   assert.match(dialog, /className="primary closure-reroute"/);
+  // Review F11: described by the lead line only, not the whole list with its links.
+  assert.match(dialog, /aria-describedby=\{leadId\}/);
+  assert.match(dialog, /<p id=\{leadId\}>\{closureLead\(ask\.why\)\}<\/p>/);
 });
 
 test("a saved route reopens as saved: the scheduler answers its plan with the saved line until it changes", () => {
