@@ -249,7 +249,14 @@ def _transport(url: str, payload: dict, timeout: float) -> dict:
                 error.code, body.get("error_code"), str(body.get("error", ""))
             ) from error
         raise RouterUnavailable(f"router answered {error.code}") from error
-    except (TimeoutError, urllib.error.URLError, ConnectionError, ValueError) as error:
+    except (
+        TimeoutError,
+        urllib.error.URLError,
+        ConnectionError,
+        # A reply cut off part way (IncompleteRead, BadStatusLine): review api-2.
+        http.client.HTTPException,
+        ValueError,
+    ) as error:
         raise RouterUnavailable(str(error)) from error
 
 

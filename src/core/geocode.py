@@ -26,6 +26,7 @@ a nearby place, worded "near X".
 
 from __future__ import annotations
 
+import http.client
 import json
 import re
 import urllib.error
@@ -144,7 +145,14 @@ def _get(path: str, params: dict) -> dict:
     try:
         with urllib.request.urlopen(request, timeout=settings.PHOTON_TIMEOUT_S) as response:  # noqa: S310
             body = response.read(MAX_ANSWER_BYTES + 1)
-    except (TimeoutError, urllib.error.URLError, ConnectionError, OSError) as error:
+    # A reply cut off part way is an `http.client.HTTPException` (review api-2).
+    except (
+        TimeoutError,
+        urllib.error.URLError,
+        ConnectionError,
+        OSError,
+        http.client.HTTPException,
+    ) as error:
         raise Unavailable(str(error)) from error
     if len(body) > MAX_ANSWER_BYTES:
         raise Unavailable("the geocoder's answer is larger than expected")

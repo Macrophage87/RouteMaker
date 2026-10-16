@@ -9,6 +9,7 @@ database.
 
 from __future__ import annotations
 
+import http.client
 import http.server
 import json
 import socket
@@ -1187,6 +1188,15 @@ class TestTransport:
     def test_anything_but_a_feature_list_is_unavailable(self, photon_server, status, body) -> None:
         url, _seen = photon_server(status, body)
         with override_settings(PHOTON_URL=url), pytest.raises(geocode.Unavailable):
+            geocode._get("/api", {"q": "x"})
+
+    def test_an_answer_cut_off_part_way_is_unavailable(self, monkeypatch) -> None:
+        # Review api-2: IncompleteRead is not an OSError.
+        def broken(request, timeout):
+            raise http.client.IncompleteRead(b"{")
+
+        monkeypatch.setattr(geocode.urllib.request, "urlopen", broken)
+        with pytest.raises(geocode.Unavailable):
             geocode._get("/api", {"q": "x"})
 
     def test_nobody_listening_is_unavailable(self) -> None:
