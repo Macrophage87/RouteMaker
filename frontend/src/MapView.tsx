@@ -805,7 +805,8 @@ export function MapView(props: Props) {
         return;
       }
       if (event.originalEvent.target !== canvas) return;
-      touchDownAt = performance.now();      const hit = grabAt(event.point, TOUCH_HIT_PX);
+      touchDownAt = performance.now();
+      const hit = grabAt(event.point, TOUCH_HIT_PX);
       if (!hit) {
         // Off the line: a finger held here opens the road panel.
         if (!anyPopupOpen()) {
