@@ -6,7 +6,8 @@ import { writeGpx } from "./lib/gpx.ts";
 import { REFINE_ROUNDS, nextFitStep, prunedCount, startFit, type Fit, type ImportedPlan } from "./lib/gpxPlan.ts";
 import { gpxWorker, importGpx } from "./lib/gpxImport.ts";
 import { exportFileName, exportOf, fidelityNotice, importSentences, presetNotice, prunedNotice } from "./lib/gpxText.ts";
-import { showReference } from "./lib/referenceLayer.ts";
+import { showReference, showWaypoints } from "./lib/referenceLayer.ts";
+import { MATCHING_SAID, MATCH_ACTION, MATCH_HINT, fitLine, matchFailedSaid, matchTrack, matchedPlan, matchedSaid, type MatchRide } from "./lib/gpxMatch.ts";
 import { VIA_MARKS, viaIndices } from "./lib/pointKinds.ts";
 import { fidelity } from "./lib/trackMatch.ts";
 import type { FileDownload } from "./lib/gpxVerbatim.ts";
@@ -17,6 +18,8 @@ import { writeTcx } from "./lib/tcx.ts";
 import { cueSheetDocument, cueSheetFileName, cueSheetLine, type CueSheetKind } from "./lib/cueSheetPdf.ts";
 import { lockCancelledLine, lockPartButton, lockPartLine, lockScreenFileNames, lockScreenLine, lockSharedLine } from "./lib/lockScreen.ts";
 import { renderLockScreens } from "./app/lockScreenRender.ts";
+
+export type GpxPanelProps = Props;
 
 interface Props {
   /** The route on screen, or null. */
@@ -47,6 +50,11 @@ interface Props {
    * takes the line saying what was made. Given in Plan only: without it (Go) the section offers GPX alone.
    */
   onDownloadCourse?: (format: FileFormat, profile: DeviceProfileId, said: Said) => void;
+  /**
+   * Plan only: snap an opened track to the map's ways (lib/gpxMatch.ts) on the ride type now chosen, and open
+   * the plan that follows the snapped line (`onMatched`, one edit). Without it (Go) the action is not offered.
+   */
+  match?: MatchRide & { onMatched: (plan: ImportedPlan) => void };
 }
 
 function samePoints(a: readonly LonLat[], b: readonly LonLat[]): boolean {
@@ -279,7 +287,8 @@ export function GpxPanel(props: Props) {
       return;
     }
     if (!route || !samePoints(routedPoints, fit.points)) return;
-    const next = nextFitStep(imported.reference, fit, route.geometry.coordinates, route.leg_ends);
+    // Fitted to the snapped line once the track is snapped, else to the file's own.
+    const next = nextFitStep(fitLine(imported), fit, route.geometry.coordinates, route.leg_ends);
     if (!next) {
       setPruned({ count: prunedCount(fit), points: fit.points });
       setFit(null);
@@ -295,6 +304,43 @@ export function GpxPanel(props: Props) {
     const map = getMap();
     if (map) showReference(map, reference);
   }, [reference, getMap]);
+  // Its named waypoints, with its line (the same switch), or on their own when it has no line to show.
+  const marks = imported?.marks && (showTrack || imported.reference.length < 2) ? imported.marks : null;
+  useEffect(() => {
+    const map = getMap();
+    if (map) showWaypoints(map, marks);
+  }, [marks, getMap]);
+
+  // Snapping the opened track to the map's ways (lib/gpxMatch.ts): said in the status region below. A new file
+  // clears what was said about the last one.
+  const snap = props.match;
+  const importedRef = useRef(imported);
+  importedRef.current = imported;
+  const [snapping, setSnapping] = useState<{ kind: "running" } | { kind: "failed"; text: string } | null>(null);
+  // Another file (its own text and line): the last one's line goes. The snapped plan keeps the file's.
+  useEffect(() => setSnapping(null), [imported?.verbatim]);
+  const snappable = snap && imported?.source === "track" && imported.reference.length >= 2 && !imported.matched;
+  const snapTrack = async () => {
+    if (!snap || !imported || snapping?.kind === "running") return;
+    const file = imported;
+    setSnapping({ kind: "running" });
+    const outcome = await matchTrack(window.location.origin, file.reference, snap);
+    // Another file opened meanwhile: this answer is about the last one.
+    if (importedRef.current?.verbatim !== file.verbatim) return;
+    if (!outcome.ok) {
+      setSnapping({ kind: "failed", text: matchFailedSaid(outcome.message) });
+      return;
+    }
+    setSnapping(null);
+    const next = matchedPlan(file, outcome.line, outcome.share);
+    setPruned(null);
+    setFit(startFit(next.points));
+    // The action goes once the track is snapped: the focus it had moves to the track's switch beside it.
+    if (document.activeElement === snapRef.current) trackSwitchRef.current?.focus();
+    snap.onMatched(next);
+  };
+  const snapRef = useRef<HTMLButtonElement>(null);
+  const trackSwitchRef = useRef<HTMLInputElement>(null);
 
   const match = useMemo(() => {
     if (!imported || imported.reference.length < 2 || !route || fit) return null;
@@ -448,17 +494,32 @@ export function GpxPanel(props: Props) {
               <p className="hint gpx-pruned">{prunedNotice(pruned.count)}</p>
             )}
             {match && <p className={match.warn ? "notice gpx-deviation" : "hint gpx-fidelity"}>{match.text}</p>}
+            {snapping?.kind === "running" && <p className="loading gpx-snapping">{MATCHING_SAID}</p>}
+            {snapping?.kind === "failed" && <p className="notice gpx-snap-failed">{snapping.text}</p>}
+            {imported.matched && <p className="hint gpx-snapped">{matchedSaid(imported.matched)}</p>}
           </div>
         )}
       </div>
       {imported && imported.reference.length >= 2 && (
         <label className="toggle">
-          <input type="checkbox" checked={showTrack} onChange={(event) => setShowTrack(event.target.checked)} />
+          <input ref={trackSwitchRef} type="checkbox" checked={showTrack} onChange={(event) => setShowTrack(event.target.checked)} />
           Show the file's track on the map
         </label>
       )}
+      {snappable && (
+        <div className="actions gpx-snap">
+          {/* aria-disabled while it runs, so the focus stays here (as Open GPX… does). */}
+          <button ref={snapRef} type="button" className="secondary" onClick={() => void snapTrack()} aria-disabled={snapping?.kind === "running" || undefined} aria-describedby="gpx-snap-hint">
+            {MATCH_ACTION}
+          </button>
+          <p id="gpx-snap-hint" className="hint">
+            {MATCH_HINT}
+          </p>
+        </div>
+      )}
       <p className="hint">
-        A file you open is read in this browser and never uploaded (unless you save it to your account). Opened and not
+        A file you open is read in this browser and never uploaded (unless you save it to your account, or snap it to
+        the map's streets, which sends its line alone). Opened and not
         edited, the download is that file as it came; otherwise it is the route shown, with its credits: ©
         OpenStreetMap contributors (ODbL) and the traffic and elevation sources.
       </p>

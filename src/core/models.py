@@ -1864,6 +1864,49 @@ class SavedRoute(models.Model):
         return f"Saved route {self.pk} for account {self.user_id}"
 
 
+class SavedRouteVersion(models.Model):
+    """An earlier version of a saved route: what it was before it was saved again with changes,
+    or before an earlier version was restored (core.api, /me/routes/{id}/versions).
+
+    The same fields as the route itself, kept verbatim, with when that version was saved
+    (`saved_at`) and when it stopped being the latest (`replaced_at`). The owner's own, like the
+    route: deleted with it, and at most `MAX_PER_ROUTE` per route, the oldest going first. They do
+    not count toward the account's `SavedRoute.MAX_PER_ACCOUNT`, but all of an account's versions
+    together are at most `MAX_BYTES_PER_ACCOUNT`, the oldest across the account going first.
+
+    An opened GPX file's text is kept once: a version whose file is the same as the version after
+    it (or the route itself, for the newest) keeps none and says so (`gpx_same_as_next`); its text
+    is that one's (core.api `_version_gpx`).
+    """
+
+    MAX_PER_ROUTE = 20
+    MAX_BYTES_PER_ACCOUNT = 50 * 1024 * 1024
+
+    route = models.ForeignKey(SavedRoute, on_delete=models.CASCADE, related_name="versions")
+    source = models.CharField(
+        max_length=8, choices=SavedRoute.Source.choices, default=SavedRoute.Source.PLAN
+    )
+    line = models.JSONField()
+    distance_m = models.FloatField()
+    inputs = models.JSONField(default=dict)
+    answer = models.JSONField(null=True, blank=True)
+    gpx = models.TextField(blank=True, default="")
+    gpx_same_as_next = models.BooleanField(default=False)
+    # What this version holds, in bytes (its line, inputs, answer and own file text as JSON).
+    size_bytes = models.IntegerField(default=0)
+    saved_at = models.DateTimeField()
+    replaced_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "saved_route_version"
+        indexes = [
+            models.Index(fields=["route", "-replaced_at"], name="saved_route_version_recent")
+        ]
+
+    def __str__(self) -> str:
+        return f"Version {self.pk} of saved route {self.route_id}"
+
+
 class SharedRoute(models.Model):
     """A route shared with the Share button, kept so the link opens the exact line (v0.7.0;
     core.shared_routes).

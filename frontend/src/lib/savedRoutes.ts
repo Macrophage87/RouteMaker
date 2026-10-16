@@ -2,7 +2,9 @@
  * Saved routes (v0.7.0 plan, "Discord sign-in on, with saved settings and routes", item 3): signed in, "Save
  * route" next to Share keeps the exact line as planned, verbatim like a GPX track, with the plan's inputs, a
  * name and the date (POST /api/me/routes; core.models.SavedRoute). A GPX file opened in the app is saved the
- * same way, its own text kept byte for byte. "My routes" opens, renames, deletes or exports them.
+ * same way, its own text kept byte for byte. "My routes" opens, renames, deletes or exports them. In Plan, a
+ * route opened from My routes (or just saved) and saved again under its own name is a new version of it, the
+ * one before kept (up to 20 per route); My routes lists them and restores one as the latest.
  *
  * Reopening shows the saved line unchanged. The page re-plans the same inputs with today's map only to
  * compare: if the distance differs by more than 5%, one line says so with an "Update route" link, and
@@ -58,6 +60,8 @@ export interface SaveBody {
   inputs: SavedInputs;
   answer?: RouteResponse | null;
   gpx?: string;
+  /** Saved again: a new latest version of this saved route, the one before it kept in its versions. */
+  version_of?: number;
 }
 
 /** The name a save offers (the plan: "defaults to 'Start to End'"). */
@@ -122,6 +126,10 @@ export const SAVED_SAID = (name: string) => `Saved "${name}" to My routes.`;
 export const SAVE_FAILED = "The route was not saved; try again shortly.";
 export const NONE_SAVED = "No saved routes yet. Plan a route and press Save route.";
 export const OPENED_SAID = (name: string) => `Opened "${name}", as it was saved.`;
+export const VERSION_SAID = (name: string) => `Saved a new version of "${name}"; the one before it is in its versions.`;
+/** Saved again with nothing to keep: a file's own text unchanged (what a saved file keeps, whatever the plan on it), or the plan. */
+export const UNCHANGED_SAID = (name: string, source: SavedSource = "plan") =>
+  source === "gpx" ? `"${name}" is saved as it was: this route's file hasn't changed.` : `"${name}" is saved as it is; nothing changed.`;
 
 /** "12 of 200 saved." */
 export function countLine(n: number, max = MAX_SAVED): string {
@@ -135,6 +143,48 @@ export function rowDetails(route: Pick<SavedSummary, "distance_m" | "created_at"
   return `${formatDistance(route.distance_m)}${route.source === "gpx" ? " · GPX file" : ""}${when}`;
 }
 
+// ---- versions: a route saved again with changes keeps what it was, up to 20 (Plan's My routes) -------
+
+export const VERSIONS_MAX = 20;
+
+/** The saved route on screen: opened from My routes, or saved last. */
+export interface OpenSaved {
+  id: number;
+  name: string;
+}
+
+/**
+ * Which saved route a save is a new version of: the one on screen, saved again in Plan under its own name. Any
+ * other name is a new saved route, as before; Go's save is unchanged.
+ */
+export function versionOf(open: OpenSaved | null, name: string, inPlan: boolean): number | undefined {
+  return inPlan && open && open.name === name.trim().slice(0, NAME_MAX) ? open.id : undefined;
+}
+
+export interface SavedVersion {
+  /** null for the latest version: the route as it is now. */
+  id: number | null;
+  saved_at: string;
+  distance_m: number;
+  source: SavedSource;
+  /** What changed from the version before it, in a phrase ("Stop added"); empty when not known. */
+  change: string;
+}
+
+function dateText(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+/** A version's line: "Oct 15, 2026 · 4.7 mi (7.6 km) · Stop added" (US units first). */
+export function versionDetails(v: Pick<SavedVersion, "saved_at" | "distance_m" | "change">): string {
+  return [dateText(v.saved_at), formatDistance(v.distance_m), v.change].filter(Boolean).join(" · ");
+}
+
+export const RESTORED_SAID = (name: string, v: Pick<SavedVersion, "saved_at">) =>
+  `Restored the version of "${name}" from ${dateText(v.saved_at) || "before"} as its latest, and opened it.`;
+export const RESTORE_FAILED = "That version was not restored; try again shortly.";
+
 // ---- the API -----------------------------------------------------------------------------------------
 
 type Fetch = typeof fetch;
@@ -146,17 +196,37 @@ function headers(cookie: string, json = true): Record<string, string> {
 
 const docCookie = () => (typeof document === "undefined" ? "" : document.cookie);
 
-export type SaveOutcome = { ok: true; route: SavedSummary } | { ok: false; full: boolean; message: string };
+export type SaveOutcome = { ok: true; route: SavedSummary; versioned?: boolean } | { ok: false; full: boolean; notFound?: true; message: string };
 
 export async function saveRoute(origin: string, body: SaveBody, post: Fetch = fetch, cookie = docCookie()): Promise<SaveOutcome> {
   try {
     const response = await post(`${origin}/api/me/routes`, { method: "POST", credentials: "same-origin", headers: headers(cookie), body: JSON.stringify(body) });
-    const answer = (await response.json().catch(() => ({}))) as { error?: string; code?: string } & SavedSummary;
-    if (response.ok) return { ok: true, route: answer };
-    return { ok: false, full: answer.code === "full", message: answer.error || SAVE_FAILED };
+    const answer = (await response.json().catch(() => ({}))) as { error?: string; code?: string; versioned?: boolean } & SavedSummary;
+    if (response.ok) return { ok: true, route: answer, ...(typeof answer.versioned === "boolean" ? { versioned: answer.versioned } : {}) };
+    return { ok: false, full: answer.code === "full", ...(answer.code === "not_found" ? { notFound: true } : {}), message: answer.error || SAVE_FAILED };
   } catch {
     return { ok: false, full: false, message: SAVE_FAILED };
   }
+}
+
+/**
+ * A save as a new version of saved route `of` (versionOf), or a plain save without one. A route no longer in
+ * the account (deleted in another tab, say) is saved as a new route instead: the save is not lost.
+ */
+export async function saveAsVersion(origin: string, body: SaveBody, of: number | undefined, post: Fetch = fetch, cookie = docCookie()): Promise<SaveOutcome> {
+  if (of === undefined) return saveRoute(origin, body, post, cookie);
+  const first = await saveRoute(origin, { ...body, version_of: of }, post, cookie);
+  if (first.ok || !first.notFound) return first;
+  const { version_of: _gone, ...plain } = body;
+  return saveRoute(origin, plain, post, cookie);
+}
+
+/** What My routes' rename or delete leaves of the saved route on screen. */
+export function afterRename(open: OpenSaved | null, id: number, name: string): OpenSaved | null {
+  return open && open.id === id ? { id, name: name.trim().slice(0, NAME_MAX) } : open;
+}
+export function afterDelete(open: OpenSaved | null, id: number): OpenSaved | null {
+  return open && open.id === id ? null : open;
 }
 
 export async function listRoutes(origin: string, get: Fetch = fetch): Promise<SavedSummary[] | null> {
@@ -194,6 +264,27 @@ export async function deleteRoute(origin: string, id: number, send: Fetch = fetc
     return response.ok;
   } catch {
     return false;
+  }
+}
+
+export async function listVersions(origin: string, id: number, get: Fetch = fetch): Promise<SavedVersion[] | null> {
+  try {
+    const response = await get(`${origin}/api/me/routes/${id}/versions`, { headers: { Accept: "application/json" }, credentials: "same-origin" });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { versions?: SavedVersion[] };
+    return Array.isArray(body.versions) ? body.versions : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Make an earlier version the latest again; resolves to the route as it now is, or null. */
+export async function restoreVersion(origin: string, id: number, versionId: number, send: Fetch = fetch, cookie = docCookie()): Promise<SavedRoute | null> {
+  try {
+    const response = await send(`${origin}/api/me/routes/${id}/versions/${versionId}/restore`, { method: "POST", credentials: "same-origin", headers: headers(cookie), body: "{}" });
+    return response.ok ? ((await response.json()) as SavedRoute) : null;
+  } catch {
+    return null;
   }
 }
 

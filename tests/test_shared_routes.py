@@ -311,9 +311,17 @@ def test_the_table_is_never_shipped_to_the_beta_and_is_documented() -> None:
 
 def test_the_migration_follows_the_newest() -> None:
     migrations = sorted((REPO / "src" / "core" / "migrations").glob("0*.py"))
-    assert migrations[-3].name == "0022_shared_route.py"
-    assert '("core", "0021_signed_out_suggestions")' in migrations[-3].read_text()
-    assert migrations[-2].name == "0023_shared_route_keep.py"
-    assert '("core", "0022_shared_route")' in migrations[-2].read_text()
-    assert migrations[-1].name == "0024_shared_route_owner_preview.py"
-    assert '("core", "0023_shared_route_keep")' in migrations[-1].read_text()
+    names = [m.name for m in migrations]
+    # The shared-route chain in order, whatever follows it (0025_saved_route_version, say).
+    at = names.index("0022_shared_route.py")
+    assert names[at : at + 3] == [
+        "0022_shared_route.py",
+        "0023_shared_route_keep.py",
+        "0024_shared_route_owner_preview.py",
+    ]
+    assert '("core", "0021_signed_out_suggestions")' in migrations[at].read_text()
+    assert '("core", "0022_shared_route")' in migrations[at + 1].read_text()
+    assert '("core", "0023_shared_route_keep")' in migrations[at + 2].read_text()
+    # Each later migration follows the one before it, so the chain stays linear.
+    for before, after in zip(migrations[at + 2 :], migrations[at + 3 :], strict=False):
+        assert f'("core", "{before.stem}")' in after.read_text()

@@ -46,3 +46,52 @@ export function showReference(map: ReferenceMap, line: readonly LonLat[] | null)
   const before = [RAIL_BOTTOM_LAYER, ROUTE_CASING_LAYER].find((id) => map.getLayer(id));
   map.addLayer(referenceLayer(), before);
 }
+
+// The opened file's named waypoints (gpxPlan.ts waypointMarks): a dot and its name, beside the file's line and
+// under the route. The name is a text field drawn on the map's canvas, never markup.
+export const WAYPOINTS_SOURCE = "gpx-waypoints";
+export const WAYPOINT_DOT_LAYER = "gpx-waypoint-dots";
+export const WAYPOINT_NAME_LAYER = "gpx-waypoint-names";
+/** The base map's label font (railLayer.ts LABEL_FONT), which its glyphs carry. */
+const WAYPOINT_FONT = "Noto Sans Medium";
+
+export function waypointLayers(): object[] {
+  return [
+    {
+      id: WAYPOINT_DOT_LAYER,
+      type: "circle",
+      source: WAYPOINTS_SOURCE,
+      paint: { "circle-radius": 5, "circle-color": "#7c3aed", "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 },
+    },
+    {
+      id: WAYPOINT_NAME_LAYER,
+      type: "symbol",
+      source: WAYPOINTS_SOURCE,
+      layout: {
+        "text-field": ["get", "name"],
+        "text-font": [WAYPOINT_FONT],
+        "text-size": 12,
+        "text-anchor": "top",
+        "text-offset": [0, 0.7],
+        "text-optional": true,
+      },
+      paint: { "text-color": "#4c1d95", "text-halo-color": "#ffffff", "text-halo-width": 1.5 },
+    },
+  ];
+}
+
+/** Show `marks` as the file's waypoints, replacing any before; null or none removes them. */
+export function showWaypoints(map: ReferenceMap, marks: readonly { at: LonLat; name: string }[] | null): void {
+  for (const id of [WAYPOINT_NAME_LAYER, WAYPOINT_DOT_LAYER]) if (map.getLayer(id)) map.removeLayer(id);
+  if (map.getSource(WAYPOINTS_SOURCE)) map.removeSource(WAYPOINTS_SOURCE);
+  if (!marks || marks.length === 0) return;
+  map.addSource(WAYPOINTS_SOURCE, {
+    type: "geojson",
+    data: {
+      type: "FeatureCollection",
+      features: marks.map((m) => ({ type: "Feature", properties: { name: m.name }, geometry: { type: "Point", coordinates: [m.at[0], m.at[1]] } })),
+    },
+  });
+  const before = [RAIL_BOTTOM_LAYER, ROUTE_CASING_LAYER].find((id) => map.getLayer(id));
+  for (const layer of waypointLayers()) map.addLayer(layer, before);
+}
