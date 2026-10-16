@@ -37,6 +37,8 @@ import {
   REPLAN_FAILED,
   REPLAN_FOUND,
   REPLAN_NO_SIGNAL,
+  REPLAN_FINDING,
+  REPLAN_STILL_WAITING,
   ReplanGate,
   VERBOSITY_LABELS,
   cueSpoken,
@@ -900,11 +902,26 @@ export function RideMode({
     if (back) announcer.current?.answer(`The planned route is ${spokenDistance(back.metres)} to the ${back.direction}.`);
   };
   const replanNow = () => {
-    if (replanning) return;
+    // The rider asked, so the press is answered, as Detour's is (review RIDE-5): through the rider's
+    // outputs, and the polite region with neither chosen.
+    const answer = (text: string) => {
+      announcer.current?.answer(text);
+      if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
+    };
+    // A re-plan still under way (or one kept waiting after Keep the planned route) holds the gate.
+    if (replanning || gate.busy) {
+      answer(REPLAN_STILL_WAITING);
+      return;
+    }
+    const here = rideRef.current.goodFix?.point ?? rideRef.current.fix?.point;
+    if (!here) {
+      answer(NO_FIX_YET);
+      return;
+    }
     setKeepPlanned(false);
     gate.online();
-    const here = rideRef.current.goodFix?.point ?? rideRef.current.fix?.point;
-    if (here) void replan(here);
+    answer(REPLAN_FINDING);
+    void replan(here);
   };
 
   // Water or restroom on the way (the owner, 2026-10-10: "If navigating, water sources and restrooms can be

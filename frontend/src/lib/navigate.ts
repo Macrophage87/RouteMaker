@@ -920,3 +920,5 @@ export class ReplanGate {
 export const REPLAN_FOUND = "New route found.";
 export const REPLAN_NO_SIGNAL = "No signal: the planned route is still shown.";
 export const REPLAN_FAILED = "No new route was found; the planned route is still shown.";
+export const REPLAN_FINDING = "Finding a new way from here.";
+export const REPLAN_STILL_WAITING = "Still waiting for the last re-plan.";
