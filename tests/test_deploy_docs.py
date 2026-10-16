@@ -1853,3 +1853,13 @@ def test_the_front_end_publish_copies_every_public_file_before_index_html() -> N
         "cp /dist/about/stress.html /out/about/.stress.html.new && "
         "mv /out/about/.stress.html.new /out/about/stress.html"
     ) in command
+
+
+def test_ci_token_is_read_only_and_actions_are_pinned_by_commit() -> None:
+    """sec-infra-5: a top-level read-only token, and every action by a full commit sha."""
+    ci = (Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml").read_text()
+    assert re.search(r"^permissions:\n  contents: read$", ci, re.M)
+    uses = re.findall(r"^\s*- uses: (\S+)", ci, re.M)
+    assert uses
+    for action in uses:
+        assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", action), action
