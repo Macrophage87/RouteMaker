@@ -69,8 +69,9 @@ jobs:
         continue-on-error: true
         run: (docker compose version; docker version --format '{{.Server.Version}}'; shellcheck --version) || true
       # The front end, from the lockfile: typecheck, test and build. Before
-      # pytest because tests/test_frontend.py runs the same node tests and the
-      # contrast test reads @protomaps/basemaps from node_modules.
+      # pytest because the contrast test reads @protomaps/basemaps from
+      # node_modules; tests/test_frontend.py skips its own run of these node
+      # tests under CI, since this step is that run.
       - name: Front end
         working-directory: frontend
         run: npm ci && npm run typecheck && npm test && npm run build
