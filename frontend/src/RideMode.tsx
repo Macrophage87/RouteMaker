@@ -174,7 +174,7 @@ export const RIDE_ENDED_SAID = "Ride ended. Undo available.";
 /** Said instead where End ride came part way (lib/navigate.ts planAfterEnd): the plan now starts where the rider is. */
 export const RIDE_ENDED_FROM_HERE_SAID = "Ride ended. The route now starts where you are. Undo available.";
 /** Part way with no recent location: the plan keeps its start, and the rider is told. */
-export const RIDE_ENDED_NO_FIX_SAID = "Ride ended. No recent location, so the route still starts where it did. Undo available.";
+export const RIDE_ENDED_NO_FIX_SAID = "Ride ended. Route start unchanged. Undo available.";
 
 /**
  * A short-lived message's timer (lib/holdTimer.ts) with the handlers that hold it: while the focus is inside, or a
@@ -542,6 +542,11 @@ export function RideMode({
   const settingsId = useId();
   // The ride's settings, opened from the top row's Settings (closed at Start).
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsPanel = useRef<HTMLDivElement>(null);
+  // Opened, the panel is brought into view (the row above it is sticky; the card may be scrolled).
+  useEffect(() => {
+    if (settingsOpen) settingsPanel.current?.scrollIntoView?.({ block: "nearest" });
+  }, [settingsOpen]);
   // The 311 button's menu (lib/ride311.ts; the owner's choice 9) and the report it continues into.
   const [reportKind, setReportKind] = useState<ReportKind>("pothole");
   const [reportOpen, setReportOpen] = useState(false);
@@ -1201,7 +1206,8 @@ export function RideMode({
               onClick={() => setSettingsOpen(!settingsOpen)}
             >
               <Icon name="gear" size={18} />
-              {RIDE_SETTINGS_TEXT}
+              {/* Shown where there is room; on the narrowest phones the gear alone, its name still "Settings". */}
+              <span className="ride-settings-label">{RIDE_SETTINGS_TEXT}</span>
             </button>
             <button type="button" className="danger ride-end" onClick={end}>
               <Icon name="stop" size={18} />
@@ -1209,7 +1215,7 @@ export function RideMode({
             </button>
           </div>
         </div>
-        <div id={`${settingsId}-settings`} className="ride-mode-settings" role="group" aria-label={RIDE_SETTINGS_TITLE} hidden={!settingsOpen}>
+        <div ref={settingsPanel} id={`${settingsId}-settings`} className="ride-mode-settings" role="group" aria-label={RIDE_SETTINGS_TITLE} hidden={!settingsOpen}>
           <RideSettingsFields prefs={prefs} onChange={onPrefs} idBase={settingsId} />
           <p className="hint">{RIDE_SAFETY}</p>
           <label className="toggle ride-toggle">

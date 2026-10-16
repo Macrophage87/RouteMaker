@@ -292,8 +292,12 @@ export function measureMap(route: Pick<RouteResponse, "distance_m" | "leg_ends" 
 
 /** A road's new name straight on is said only when it lasts longer than this (a quarter mile). */
 export const ONTO_ROAD_MIN_M = METRES_PER_MILE / 4;
-/** A named way that resumes within this of where it was left (after an unnamed connector) is not said again. */
-export const ONTO_RESUME_M = 100;
+/**
+ * A new trail's name straight on is said only when it lasts at least this (about 1,000 ft); only a named
+ * way this long is the one ridden, and one that resumes within this of where it was left (after a
+ * connector or a short other name) is not said again.
+ */
+export const ONTO_TRAIL_MIN_M = 300;
 
 /** "Continue onto Mount Vernon Trail.": a new name straight on. */
 export function ontoWords(street: string): string {
@@ -303,20 +307,31 @@ export function ontoWords(street: string): string {
 /** The last named way ridden, and where (description metres) it ended. */
 type LastNamed = { street: string; toM: number } | null;
 
+/** Whether one name is the other with more after it ("X Street NW" and "X Street NW protected bike lane"). */
+function sameStem(a: string | null, b: string): boolean {
+  if (!a) return false;
+  const x = a.trim().toLowerCase();
+  const y = b.trim().toLowerCase();
+  return x.startsWith(y) || y.startsWith(x);
+}
+
 /**
  * Whether a stretch entered straight on is a new named way worth a cue (the owner, 2026-10-16: "the
- * Custus trail switches to the Mt vernon trail but somehow doesn't state that"): its name is real and
- * not the one ridden, and a path is on either side; a road that only changes its name, when the new
- * one lasts more than ONTO_ROAD_MIN_M. A named way that resumes within ONTO_RESUME_M of where it was
- * left (an unnamed connector between two ways of one trail) is not said again.
+ * Custus trail switches to the Mt vernon trail but somehow doesn't state that"): its name is real, is
+ * the way's own (not only its trail relation's, `relation_name`), is not the one ridden nor that name
+ * with more after it, and a path is on either side and the new name lasts at least ONTO_TRAIL_MIN_M; a
+ * road that only changes its name, when the new one lasts more than ONTO_ROAD_MIN_M. A named way that
+ * resumes within ONTO_TRAIL_MIN_M of where it was left (a connector, or a short other name) is not
+ * said again.
  */
 function isOnto(entry: DescriptionEntry, before: DescriptionEntry, lastNamed: LastNamed): boolean {
-  if (entry.kind !== "stretch" || before.kind !== "stretch") return false;
+  if (entry.kind !== "stretch" || before.kind !== "stretch" || entry.relation_name) return false;
   const street = entry.street;
-  if (!street || isUnnamed(street) || street === before.street) return false;
-  if (lastNamed && lastNamed.street === street && entry.from_m - lastNamed.toM <= ONTO_RESUME_M) return false;
-  if (entry.facility === "path" || before.facility === "path") return true;
-  return entry.to_m - entry.from_m > ONTO_ROAD_MIN_M;
+  if (!street || isUnnamed(street) || sameStem(before.street, street)) return false;
+  if (lastNamed && lastNamed.street === street && entry.from_m - lastNamed.toM <= ONTO_TRAIL_MIN_M) return false;
+  const length = entry.to_m - entry.from_m;
+  if (entry.facility === "path" || before.facility === "path") return length >= ONTO_TRAIL_MIN_M;
+  return length > ONTO_ROAD_MIN_M;
 }
 
 /**
@@ -401,7 +416,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
     }
     if (entry.kind === "stretch") {
       before = entry;
-      if (!isUnnamed(entry.street)) lastNamed = { street: entry.street as string, toM: entry.to_m };
+      if (!isUnnamed(entry.street) && entry.to_m - entry.from_m >= ONTO_TRAIL_MIN_M) lastNamed = { street: entry.street as string, toM: entry.to_m };
     } else if (entry.kind === "via") {
       before = null;
       lastNamed = null;
@@ -418,7 +433,7 @@ export function says(level: Verbosity, cue: Pick<Cue, "kind" | "tier" | "severit
   if (level === "quiet") return false;
   if (level === "full") return true;
   // Stoker: turns, red and orange junctions, walking, and the start of LTS 4 and Avoid stretches.
-  if (cue.kind === "turn" || cue.kind === "onto" || cue.kind === "walk") return true;
+  if (cue.kind === "turn" || cue.kind === "walk") return true;
   if (cue.kind === "hazard") return cue.severity === "orange" || cue.severity === "red" || cue.severity === "avoid";
   if (cue.kind === "busy") return (cue.tier ?? 0) >= 4;
   return false;
@@ -992,12 +1007,16 @@ export function replanPoints(model: RideModel, progressM: number, here: LonLat, 
 export const END_PART_WAY_M = 100;
 /** The last good fix is where the rider is at End ride for this long (a minute); older, the plan keeps its start. */
 export const END_FIX_MAX_AGE_MS = 60_000;
+/** Less left than this (about a quarter mile), or than END_LEFT_MIN_SHARE of the route: the plan as it was (a loop never shrinks to a stub). */
+export const END_LEFT_MIN_M = 400;
+export const END_LEFT_MIN_SHARE = 0.1;
 
 /**
  * The plan End ride leaves (the owner, 2026-10-16: "If you went part way it changes your start location"):
  * part way along, from the last good fix through the stops not yet passed to the end (`replanPoints`; a
  * loop's finish stays its start); "no-fix" part way with no recent good fix, so the plan keeps its start
- * and the rider is told; null at or near the start, at the end, or after arrival: the plan as it was.
+ * and the rider is told; null at or near the start, with little left (END_LEFT_MIN_M, END_LEFT_MIN_SHARE),
+ * or after arrival: the plan as it was.
  */
 export function planAfterEnd(
   model: RideModel,
@@ -1007,7 +1026,9 @@ export function planAfterEnd(
   now: number,
 ): { points: LonLat[] } | "no-fix" | null {
   const progress = state.progressM;
-  if (state.arrived || progress === null || progress < END_PART_WAY_M || model.lengthM - progress <= ARRIVE_M) return null;
+  if (state.arrived || progress === null || progress < END_PART_WAY_M) return null;
+  const left = model.lengthM - progress;
+  if (left < END_LEFT_MIN_M || left < END_LEFT_MIN_SHARE * model.lengthM) return null;
   const fix = state.goodFix;
   if (!fix || now - fix.at > END_FIX_MAX_AGE_MS) return "no-fix";
   return { points: replanPoints(model, progress, fix.point, points, loop) };

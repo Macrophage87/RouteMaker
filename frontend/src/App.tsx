@@ -2858,7 +2858,7 @@ export function App() {
     setRideEnded(0);
     if (!ended) return;
     // The plan End ride moved to where the rider was goes back, unless it has been edited since.
-    if (ended.from && pointsRef.current === ended.from) edits.travel("undo");
+    if (ended.from && pointsRef.current === ended.from) edits.retract();
     startRideGesture(ridePrefs);
     setRideStart(ended.start);
     setFollow(true);

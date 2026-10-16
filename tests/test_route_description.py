@@ -292,6 +292,7 @@ class TestSchema:
             "surface",
             "text",
             "text_lanes_hidden",
+            "relation_name",
         }
         # "avoid": an Avoid-rated junction ahead (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307).
         # "workzone": a live work zone on the route (FOLLOWUP-WORKZONES, 341-349).
@@ -413,6 +414,36 @@ class TestDescribeRoute:
         ]
         assert "unnamed" not in " ".join(e["text"] for e in entries)
 
+    def test_a_stretch_named_only_by_its_relation_is_flagged(self):
+        """The owner, 2026-10-16: a relation's name is the description's, but the ride
+        gives no "Continue onto" for it; one a way of the route carries itself is not
+        flagged."""
+        pieces = [
+            routing.Piece(1, -77.0, 38.9, 600.0, ("Custis Trail",), "cycleway", 90.0, 90.0),
+            routing.Piece(7, -77.0, 38.9, 600.0, (), "cycleway", 90.0, 90.0),
+            routing.Piece(8, -77.0, 38.9, 600.0, (), "cycleway", 90.0, 90.0),
+        ]
+        classes = [("1", "path")] * 3
+        entries, overview = routing.describe_route(
+            [(0, 3)],
+            pieces,
+            classes,
+            None,
+            {"length": 1.8},
+            None,
+            {
+                7: describe.RelationName("Mount Vernon Trail"),
+                8: describe.RelationName("Custis Trail"),
+            },
+        )
+        stretches = [(e["street"], e["relation_name"]) for e in entries]
+        assert stretches == [
+            ("Custis Trail", False),
+            ("Mount Vernon Trail", True),
+            ("Custis Trail", False),
+        ]
+        assert [e["relation_name"] for e in overview if e["kind"] == "stretch"][1] is True
+
     def test_an_untraced_leg_is_carried(self):
         entries, _overview = routing.describe_route(
             [(0, 1), 500.0], self.pieces()[:1], [("1", "none")], None, {"length": 0.9}
@@ -463,30 +494,39 @@ def test_the_street_side_names_are_read_for_unnamed_ways_only(segment_schemas):
 def test_an_unnamed_way_takes_its_trail_relation_name_after_the_street_side_name(segment_schemas):
     """The owner, 2026-10-16 (the Custis Trail to the Mount Vernon Trail, said on the move): a
     way with no name of its own and no street-side name is named by its long trail's route
-    relation (`segment.trail_name`); a street-side name still comes first."""
+    relation (`segment.trail_name`), as a RelationName; a street-side name still comes
+    first. Never a national route's name, nor one for a named run of a quarter mile or less."""
     from django.db import connection
 
     from core import segment_info
 
     live, _staging = segment_schemas
     segment_info.forget_columns()
+    long_run = routing.RELATION_NAME_MIN_RUN_M + 1
     with connection.cursor() as cursor:
-        for way, side, trail in (
-            (7, "9th Street Northwest protected bike lane", "Some Trail"),
-            (8, None, "Mount Vernon Trail"),
-            (9, None, None),
+        for way, side, trail, run in (
+            (7, "9th Street Northwest protected bike lane", "Some Trail", long_run),
+            (8, None, "Mount Vernon Trail", long_run),
+            (9, None, None, None),
+            (10, None, "East Coast Greenway", long_run),
+            (11, None, "US Bike Route 50", long_run),
+            (12, None, "Short Trail", routing.RELATION_NAME_MIN_RUN_M),
         ):
             cursor.execute(
                 f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
-                "stress_rule, sidepath_name, trail_name) VALUES (%s, 0, "
-                "ST_GeomFromText('LINESTRING(-77 38.9, -77 38.901)', 4326), 1, 'test', %s, %s)",
-                [way, side, trail],
+                "stress_rule, sidepath_name, trail_name, trail_run_m) VALUES (%s, 0, "
+                "ST_GeomFromText('LINESTRING(-77 38.9, -77 38.901)', 4326), 1, 'test', "
+                "%s, %s, %s)",
+                [way, side, trail, run],
             )
-    pieces = [routing.Piece(w, -77.0, 38.9, 10.0, (), "cycleway") for w in (7, 8, 9)]
-    assert routing.sidepath_names_of(pieces) == {
+    pieces = [routing.Piece(w, -77.0, 38.9, 10.0, (), "cycleway") for w in range(7, 13)]
+    names = routing.sidepath_names_of(pieces)
+    assert names == {
         7: "9th Street Northwest protected bike lane",
         8: "Mount Vernon Trail",
     }
+    assert not isinstance(names[7], describe.RelationName)
+    assert isinstance(names[8], describe.RelationName)
     segment_info.forget_columns()
 
 

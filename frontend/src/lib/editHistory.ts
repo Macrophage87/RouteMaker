@@ -40,6 +40,11 @@ export class EditHistory<T> {
     return after;
   }
 
+  /** What could be redone is dropped (an edit taken back for good). */
+  dropRedo(): void {
+    this.future.length = 0;
+  }
+
   clear(): void {
     this.past.length = 0;
     this.future.length = 0;

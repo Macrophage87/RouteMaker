@@ -3786,6 +3786,23 @@ details.zoom-notes {
   margin-left: auto;
 }
 
+/* The narrowest phones: Settings is its gear alone (its name stays "Settings"), so the top row stays one line. */
+@media (max-width: 359px) {
+  .ride-settings-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+/* Go's Ride sheet: Start ride for the route its changes planned, set off from the dials above it. */
+.ride-sheet-start {
+  margin-top: 16px;
+}
+
 /* The ride's settings, opened by the top row's Settings, just under it. */
 .ride-mode-settings {
   margin: 4px 0 10px;

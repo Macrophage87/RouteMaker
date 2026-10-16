@@ -107,6 +107,21 @@ SURFACE_UNPAVED = "unpaved"
 SURFACE_PARTLY = "partly unpaved"
 PARTLY_UNPAVED_M = METRES_PER_MILE / 10
 
+
+class RelationName(str):
+    """A way's name taken from its trail's route relation, not the way itself
+    (`core.routing.sidepath_names_of`): a stretch named only so is flagged
+    `relation_name`, and the ride never cues "Continue onto" it."""
+
+
+# A national or international route's name (the East Coast Greenway, a US Bicycle
+# Route, a national scenic or memorial trail): never a way's name on the move.
+NATIONAL_ROUTE_NAME = re.compile(
+    r"east coast greenway|\bus ?bike ?route\b|\bu\.?s\.? bicycle route\b|\busbr\b"
+    r"|national (?:scenic|historic|memorial) trail|\beurovelo\b",
+    re.IGNORECASE,
+)
+
 # Valhalla's `use` of an edge that is a path rather than a road.
 PATH_USES = frozenset(
     {"cycleway", "footway", "path", "mountain_bike", "sidewalk", "pedestrian", "bridleway", "track"}
@@ -762,6 +777,7 @@ def describe_both(
     events: list | None = None,
     total_m: float | None = None,
     walks: list[tuple[float, float]] | None = None,
+    relation_names: frozenset[str] = frozenset(),
 ) -> tuple[list[dict], list[dict]]:
     """The route's full description and its overview, each in route order.
 
@@ -784,6 +800,8 @@ def describe_both(
     pieces' own measure (before scaling), each a "walk" entry in both lists.
     The overview has the same entries with the short stretches merged (see the
     module's rules); its stops and junction entries are the full ones.
+    `relation_names` (lower case) are names taken from a trail's route relation
+    alone (`RelationName`): a stretch of one has `relation_name` true.
     """
     runs: list[_Run] = []
     for leg, content in enumerate(legs):
@@ -875,6 +893,7 @@ def describe_both(
                     end,
                     text,
                     street=_street_words(run),
+                    relation_name=_street_words(run).lower() in relation_names,
                     tier=int(run.tier) if run.tier.isdigit() else None,
                     facility=None if run.facility in ("unknown", "none") else run.facility,
                     surface=surface_of(run),
@@ -984,6 +1003,7 @@ def describe_both(
                     end,
                     _stretch_sentence(run, start, end, turn, continues, then),
                     street=_street_words(runs[first]),
+                    relation_name=_street_words(runs[first]).lower() in relation_names,
                     tier=int(run.tier) if run.tier.isdigit() else None,
                     facility=None if run.facility in ("unknown", "none") else run.facility,
                     surface=surface_of(run),
@@ -1026,6 +1046,7 @@ def _entry(kind: str, start: float, end: float, text: str, **fields) -> dict:
         "surface": None,
         "text": text,
         "text_lanes_hidden": None,
+        "relation_name": False,
     }
     entry.update(fields)
     return entry

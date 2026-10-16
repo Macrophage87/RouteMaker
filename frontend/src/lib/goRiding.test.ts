@@ -103,7 +103,12 @@ test("Ride settings in reach (the owner, 2026-10-16): a Settings button beside E
   assert.ok(top.indexOf("RIDE_SETTINGS_TEXT") > 0 && top.indexOf("RIDE_SETTINGS_TEXT") < top.indexOf("END_RIDE_NAME"));
   assert.match(top, /aria-expanded=\{settingsOpen\}\s*aria-controls=\{`\$\{settingsId\}-settings`\}/);
   assert.match(top, /<Icon name="gear" size=\{18\} \/>/);
-  assert.match(top, /<div id=\{`\$\{settingsId\}-settings`\} className="ride-mode-settings" role="group" aria-label=\{RIDE_SETTINGS_TITLE\} hidden=\{!settingsOpen\}>/);
+  assert.match(top, /<div ref=\{settingsPanel\} id=\{`\$\{settingsId\}-settings`\} className="ride-mode-settings" role="group" aria-label=\{RIDE_SETTINGS_TITLE\} hidden=\{!settingsOpen\}>/);
+  // Opened, it is scrolled into view.
+  assert.match(ride, /if \(settingsOpen\) settingsPanel\.current\?\.scrollIntoView\?\.\(\{ block: "nearest" \}\);/);
+  // On the narrowest phones the gear alone, the word kept for its name (visually hidden, not removed).
+  assert.match(top, /<span className="ride-settings-label">\{RIDE_SETTINGS_TEXT\}<\/span>/);
+  assert.match(css, /@media \(max-width: 359px\) \{\s*\.ride-settings-label \{\s*position: absolute;/);
   assert.match(top, /<RideSettingsFields prefs=\{prefs\} onChange=\{onPrefs\}/);
   // One copy of the settings: the fold at the bottom is gone.
   assert.equal(ride.match(/<RideSettingsFields prefs=\{prefs\}/g)?.length, 1);
@@ -129,5 +134,5 @@ test("End ride keeps the plan and its routes; part way it starts where the rider
   assert.match(endRide, /announce\(from \? RIDE_ENDED_FROM_HERE_SAID : after === "no-fix" \? RIDE_ENDED_NO_FIX_SAID : RIDE_ENDED_SAID\);/);
   // The ride's own fix (planAfterEnd), never a trip's riding leg.
   assert.match(ride, /onEnd\(trip \? null : planAfterEnd\(modelRef\.current, rideRef\.current, plan\.current\.points, plan\.current\.loop, Date\.now\(\)\)\);/);
-  assert.match(app, /if \(ended\.from && pointsRef\.current === ended\.from\) edits\.travel\("undo"\);/);
+  assert.match(app, /if \(ended\.from && pointsRef\.current === ended\.from\) edits\.retract\(\);/);
 });

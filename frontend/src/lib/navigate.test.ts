@@ -10,6 +10,9 @@ import {
   ADVANCE_MIN_M,
   END_FIX_MAX_AGE_MS,
   END_PART_WAY_M,
+  END_LEFT_MIN_M,
+  END_LEFT_MIN_SHARE,
+  ONTO_TRAIL_MIN_M,
   planAfterEnd,
   GPS_WEAK_MS,
   GPS_WEAK_SAID,
@@ -1030,7 +1033,7 @@ function straightRoute(description: DescriptionEntry[]): RouteResponse {
 
 const straightOnto = (street: string) => ({ movement: "straight" as const, onto: street, control: null, severity: null });
 
-test("onto: the Custis Trail straight on to the Mount Vernon Trail is said, at every level but Quiet, on the card and in Where am I?", () => {
+test("onto: the Custis Trail straight on to the Mount Vernon Trail is said at the Full level (not Stoker or Quiet), on the card and in Where am I?", () => {
   const model = rideModel(
     straightRoute([
       stretch(0, 1500, "0.0 to 0.9 mi: Custis Trail, traffic-free path.", { street: "Custis Trail", facility: "path" }),
@@ -1045,12 +1048,12 @@ test("onto: the Custis Trail straight on to the Mount Vernon Trail is said, at e
   assert.equal(onto.length, 1);
   assert.equal(onto[0].text, "Continue onto Mount Vernon Trail.");
   assert.equal(onto[0].movement, null);
-  assert.ok(says("full", onto[0]) && says("stoker", onto[0]) && !says("quiet", onto[0]));
+  assert.ok(says("full", onto[0]) && !says("stoker", onto[0]) && !says("quiet", onto[0]));
   assert.equal(nextAction(model, 200)?.kind, "onto");
   assert.match(whereAmI(model, { ...startState(), progressM: 1000 }), /Next, in [^:]+: continue onto Mount Vernon Trail\./);
   assert.equal(cueSpoken(onto[0], "advance", 152.4), `In ${spokenDistance(152.4)}, continue onto Mount Vernon Trail.`);
   assert.equal(ride(model, "full", 0, 2000).events.filter((e) => e.cue?.kind === "onto").length, 1);
-  assert.equal(ride(model, "stoker", 0, 2000).events.filter((e) => e.cue?.kind === "onto").length, 1);
+  assert.equal(ride(model, "stoker", 0, 2000).events.filter((e) => e.cue?.kind === "onto").length, 0);
   assert.equal(ride(model, "quiet", 0, 2000).events.filter((e) => e.cue?.kind === "onto").length, 0);
 });
 
@@ -1117,6 +1120,63 @@ test("planAfterEnd: part way, the plan starts at the last good fix with the stop
   // At the start, at the end, or arrived: the plan as it was.
   assert.equal(planAfterEnd(model, { progressM: END_PART_WAY_M - 1, goodFix: fixAt(here, now), arrived: false }, plan, false, now), null);
   assert.equal(planAfterEnd(model, { progressM: null, goodFix: null, arrived: false }, plan, false, now), null);
-  assert.equal(planAfterEnd(model, { progressM: model.lengthM - 5, goodFix: fixAt(here, now), arrived: false }, plan, false, now), null);
+  assert.equal(planAfterEnd(model, { progressM: model.lengthM - END_LEFT_MIN_M + 1, goodFix: fixAt(here, now), arrived: false }, plan, false, now), null);
+  // Under a tenth of a long route left (a loop must not shrink to a stub): as it was, though more than 400 m is left.
+  const long = rideModel(straightRoute([stretch(0, 10_000, "A Street.", { street: "A Street" })]));
+  const loopPlan: LonLat[] = [at(0, 0)];
+  const near = at(9500, 0);
+  assert.equal(planAfterEnd(long, { progressM: 9500, goodFix: fixAt(near, now), arrived: false }, loopPlan, true, now), null);
+  assert.ok(END_LEFT_MIN_SHARE * long.lengthM > END_LEFT_MIN_M);
+  assert.deepEqual(planAfterEnd(long, { progressM: 8900, goodFix: fixAt(at(8900, 0), now), arrived: false }, loopPlan, true, now), { points: [at(8900, 0), loopPlan[0]] });
   assert.equal(planAfterEnd(model, { progressM: 1200, goodFix: fixAt(here, now), arrived: true }, plan, false, now), null);
+});
+
+test("onto: a new trail name under about 1,000 ft is not said, and A then a short B then A again is a resume", () => {
+  const short = rideModel(
+    straightRoute([
+      stretch(0, 1500, "Custis Trail.", { street: "Custis Trail", facility: "path" }),
+      stretch(1500, 1500 + ONTO_TRAIL_MIN_M - 1, "Continue onto Bridge Path.", { street: "Bridge Path", facility: "path", turn: straightOnto("Bridge Path") }),
+      stretch(1500 + ONTO_TRAIL_MIN_M - 1, 5000, "Continue onto Custis Trail.", { street: "Custis Trail", facility: "path", turn: straightOnto("Custis Trail") }),
+    ]),
+  );
+  assert.equal(short.cues.filter((c) => c.kind === "onto").length, 0);
+  // At least that long, the new trail is said, and the old one resuming after it is said again.
+  const long = rideModel(
+    straightRoute([
+      stretch(0, 1500, "Custis Trail.", { street: "Custis Trail", facility: "path" }),
+      stretch(1500, 1500 + ONTO_TRAIL_MIN_M, "Continue onto Bridge Path.", { street: "Bridge Path", facility: "path", turn: straightOnto("Bridge Path") }),
+      stretch(1500 + ONTO_TRAIL_MIN_M, 5000, "Continue onto Custis Trail.", { street: "Custis Trail", facility: "path", turn: straightOnto("Custis Trail") }),
+    ]),
+  );
+  assert.deepEqual(long.cues.filter((c) => c.kind === "onto").map((c) => c.text), ["Continue onto Bridge Path.", "Continue onto Custis Trail."]);
+});
+
+test("onto: a name that is the other with more after it is not a new way", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 1000, "9th Street Northwest.", { street: "9th Street Northwest" }),
+      stretch(1000, 3000, "Continue onto 9th Street Northwest protected bike lane.", {
+        street: "9th Street Northwest protected bike lane",
+        facility: "path",
+        turn: straightOnto("9th Street Northwest protected bike lane"),
+      }),
+      stretch(3000, 5000, "Continue onto 9th Street Northwest.", { street: "9th Street Northwest", turn: straightOnto("9th Street Northwest") }),
+    ]),
+  );
+  assert.equal(model.cues.filter((c) => c.kind === "onto").length, 0);
+});
+
+test("onto: a name only from the trail's route relation is never a Continue onto cue", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 1500, "Custis Trail.", { street: "Custis Trail", facility: "path" }),
+      stretch(1500, 9000, "Continue onto Mount Vernon Trail.", {
+        street: "Mount Vernon Trail",
+        facility: "path",
+        relation_name: true,
+        turn: straightOnto("Mount Vernon Trail"),
+      }),
+    ]),
+  );
+  assert.equal(model.cues.filter((c) => c.kind === "onto").length, 0);
 });
