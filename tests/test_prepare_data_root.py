@@ -57,6 +57,9 @@ def assert_prepared_under(root: Path, result, chowned) -> None:
     )
     assert chowned, "the script chowned nothing"
     assert all(Path(path).parent == root for path in chowned), chowned
+    # The dumps and PGDATA are their owner's only (sec-infra-4).
+    for private in ("backups", "postgres"):
+        assert (root / private).stat().st_mode & 0o777 == 0o700, private
 
 
 def test_the_last_uncommented_assignment_wins(tmp_path) -> None:

@@ -1575,6 +1575,8 @@ def test_the_backup_excludes_the_sessions_and_the_membership_cache(monkeypatch, 
     destination = perform_backup()
     assert destination.parent == tmp_path / "backups"
     assert destination.suffix == ".dump"
+    # Readable by its owner only (sec-infra-4).
+    assert destination.stat().st_mode & 0o777 == 0o600
 
     listing = subprocess.run(
         ["pg_restore", "--list", str(destination)], capture_output=True, text=True, check=True

@@ -1064,6 +1064,11 @@ def perform_backup(
     database = settings.DATABASES["default"]
     env = {**os.environ, "PGPASSWORD": database["PASSWORD"]}
     try:
+        # The dump holds every account and every home: readable by its owner only.
+        # Created 0600 before pg_dump writes into it (pg_dump keeps the mode of the
+        # file it truncates) and set again before the rename.
+        part.touch(mode=0o600)
+        os.chmod(part, 0o600)
         try:
             subprocess.run(
                 [
@@ -1090,6 +1095,7 @@ def perform_backup(
                 f"while running {expired.cmd[0]}"
             ) from expired
         verify_dump_listing(listing)
+        os.chmod(part, 0o600)
         # The rename is the last thing that happens, so the ordinary name exists
         # only for an archive that was written whole and verified.
         part.replace(destination)
