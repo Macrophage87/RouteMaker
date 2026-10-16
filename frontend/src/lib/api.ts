@@ -787,6 +787,11 @@ export interface RouteResponse {
   candidates?: RouteResponse[] | null;
   /** On a candidate: how far past the rider's target distance it is (OWNER-DECISIONS 271). */
   over_target_m?: number | null;
+  /**
+   * Set by the page, never by the API: a candidate that is Go's "More direct" or "Calmer" (lib/neighbours.ts), the
+   * traffic setting it was planned at and its tradeoff against the rider's own route in one line.
+   */
+  neighbour?: { kind: NeighbourKind; stress: number; line: string } | null;
   preset: PresetId;
   variant: "standard" | "no-trail" | "ebike" | "weekend" | "offroad" | "mtb";
   /** Trip points the planner moved: one inside the National Zoo goes to its bike racks. */
@@ -955,6 +960,16 @@ export const NO_TRANSIT = "no_transit";
 export const TRANSIT_UNAVAILABLE = "transit_unavailable";
 
 export type RouteResult = { ok: true; route: RouteResponse } | { ok: false; error: RouteError };
+
+/** Go's "More direct" (one notch more traffic tolerant) and "Calmer" (one notch calmer); core.presets stress_notches. */
+export type NeighbourKind = "direct" | "calmer";
+export interface NeighbourOption {
+  kind: NeighbourKind;
+  stress: number;
+  route: RouteResponse;
+}
+/** POST /api/route/neighbours: the options, or a refusal (its Retry-After still holds for the next request). */
+export type NeighboursResult = { ok: true; options: NeighbourOption[] } | { ok: false; error: RouteError };
 
 /** Retry-After as seconds from now: either delta-seconds or an HTTP date. */
 export function parseRetryAfter(header: string | null | undefined, now: number = Date.now()): number | undefined {
@@ -1237,6 +1252,37 @@ export async function requestRoute(
     return { ok: false, error: { ...error, title: "Planner busy", message: said } };
   }
   return { ok: false, error };
+}
+
+/**
+ * Go's "More direct" and "Calmer" for a plan (POST /api/route/neighbours): the same body as the plan's full request,
+ * one request for both, and one count of the routing limit. Nothing is said on a failure: the options are left out.
+ */
+export async function requestNeighbours(
+  points: readonly LonLat[],
+  preset: PresetId,
+  options: Pick<RouteRequestOptions, "dials" | "vias"> & { fetchImpl?: FetchLike } = {},
+): Promise<NeighboursResult> {
+  const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
+  try {
+    const response = await fetchImpl("/api/route/neighbours", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: routeRequestBody(points, preset, { dials: options.dials, vias: options.vias }),
+    });
+    const body: unknown = await response.json().catch(() => null);
+    const list = (body as { options?: unknown } | null)?.options;
+    if (response.ok && Array.isArray(list)) {
+      const kept = list.filter(
+        (o): o is NeighbourOption =>
+          !!o && (o.kind === "direct" || o.kind === "calmer") && typeof o.stress === "number" && looksLikeRoute(o.route),
+      );
+      return { ok: true, options: kept };
+    }
+    return { ok: false, error: describeError(response.ok ? 500 : response.status, body, response.headers.get("Retry-After")) };
+  } catch {
+    return { ok: false, error: { kind: "network", status: 0, title: "Can't reach the planner", message: "" } };
+  }
 }
 
 /** The nearest-stations list's answer, or a sentence for the rider (OWNER-DECISIONS 466a). */
