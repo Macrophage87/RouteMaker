@@ -7064,11 +7064,32 @@ class ReviewItemsIn(Schema):
 
 
 class ReviewMapIn(Schema):
-    queue: REVIEW_QUEUES = "disagreement"
-    detail: Literal["low", "high"] = Field(
-        default="low",
-        description="low: lines simplified for a region's view, with a point a road; high: whole.",
+    queues: str = Field(
+        default="rebuild,disagreement",
+        max_length=200,
+        description="The lists to draw, comma-separated (Review's map switches).",
     )
+    west: float = Field(ge=-180, le=180)
+    south: float = Field(ge=-90, le=90)
+    east: float = Field(ge=-180, le=180)
+    north: float = Field(ge=-90, le=90)
+    zoom: float = Field(ge=0, le=24, description="Below 10 count badges; below 13 simplified.")
+
+
+class ReviewNextIn(Schema):
+    lists: str = Field(default="", max_length=200, description="The lists to go through, in order.")
+    queue: REVIEW_QUEUES = "rebuild"
+    way: int | None = Field(default=None, description="The road open now, if any.")
+    direction: int = Field(default=1, ge=-1, le=1, description="1: after it; -1: before it.")
+    open_only: bool = Field(default=True, description="Only roads with no ruling yet.")
+    wrap: bool = Field(default=True, description="Past the last list, round to the first.")
+
+
+def _review_lists(text: str) -> list[str]:
+    from typing import get_args
+
+    known = set(get_args(REVIEW_QUEUES))
+    return [q for q in (part.strip() for part in text.split(",")) if q in known]
 
 
 class ReviewRoadIn(Schema):
@@ -7152,19 +7173,36 @@ def review_items(request, params: Query[ReviewItemsIn]):
 @api.get(
     "/review/map",
     response=REVIEW_RESPONSES,
-    summary="Every road of a queue, for Review's map, as computed with it (instance admin)",
+    summary="The listed roads in a view, for Review's map (instance admin)",
 )
 @decorate_view(*REVIEW_READ)
 def review_map(request, params: Query[ReviewMapIn]):
     from . import stress_review
 
-    # The lines were made when the queue was computed (stress_review.write_state): a read.
-    return _private(
-        HttpResponse(
-            stress_review.map_payload(params.queue, params.detail),
-            content_type="application/json",
-        )
+    # A view's roads only, at most stress_review.MAP_CAP; badges far out, simplified lines below
+    # a street's zoom, both read from what was made when the lists were computed.
+    box = (params.west, params.south, params.east, params.north)
+    return _review_answer(stress_review.map_view(_review_lists(params.queues), box, params.zoom))
+
+
+@api.get(
+    "/review/next",
+    response=REVIEW_RESPONSES,
+    summary="The next road in the lists' order: Next discrepancy, Previous and Next road",
+)
+@decorate_view(*REVIEW_READ)
+def review_next(request, params: Query[ReviewNextIn]):
+    from . import stress_review
+
+    found = stress_review.next_road(
+        _review_lists(params.lists),
+        params.queue,
+        params.way,
+        direction=1 if params.direction >= 0 else -1,
+        open_only=params.open_only,
+        wrap=params.wrap,
     )
+    return _review_answer({"next": found})
 
 
 @api.get(
@@ -7192,7 +7230,7 @@ def review_street_photo(request, params: Query[StreetPhotoIn]):
 
     found = street_photo.client.photo(params.lon, params.lat, params.way)
     if found is None:
-        return Status(204, None)
+        return _private(HttpResponse(status=204))
     return _review_answer(found)
 
 

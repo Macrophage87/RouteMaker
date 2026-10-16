@@ -734,7 +734,7 @@ def test_the_access_log_never_records_a_query_string() -> None:
 QUERY_PATHS = (
     "reverse|geocode|segment-info|street-photo|junction-suggestions/at"
     "|stress-suggestions/ticket|stress-suggestions/mine|transit/station-times|bikeshare/docks"
-    "|review/items|review/map|review/street-photo"
+    "|review/items|review/map|review/next|review/road/[0-9]+|review/street-photo"
 )
 
 
@@ -778,12 +778,17 @@ def test_reverse_and_geocode_log_errors_at_crit_only_with_the_api_proxy_settings
         # Review (an instance admin's): a way, an area's name, a point on a road
         "/api/review/items",
         "/api/review/map",
+        "/api/review/next",
         "/api/review/street-photo",
     }, queried
     covered = re.compile(rf"/api/({QUERY_PATHS})/?")
     for path in queried:
         assert covered.fullmatch(path), path
     assert not covered.fullmatch("/api/route")
+    # A road's own path names the way in the path itself (Review's card).
+    assert covered.fullmatch("/api/review/road/123")
+    assert not covered.fullmatch("/api/review/road/123/x")
+    assert not covered.fullmatch("/api/review/rulings")
 
 
 def test_basic_auth_is_on_for_the_whole_https_server_and_off_only_for_robots_and_acme() -> None:

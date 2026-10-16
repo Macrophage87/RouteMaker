@@ -9,13 +9,12 @@ import {
   LISTS,
   QUEUES,
   QUEUE_STYLE,
-  besideInOrder,
   decisionLabel,
-  fetchMap,
+  fetchMapView,
+  fetchNext,
   fetchRoadDetail,
   fetchRoads,
   makeAnnouncer,
-  nextDiscrepancy,
   progressText,
   roadHeading,
   ruledSaid,
@@ -23,6 +22,8 @@ import {
   sortRoads,
   stepText,
   trafficText,
+  typingIn,
+  viewBox,
   type ReviewRoad,
 } from "./review.ts";
 
@@ -139,30 +140,32 @@ test("the requests: a list's open roads with its filters, and a ruling with no r
 
 const src = (file: string) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
 
-test("Next discrepancy: the next road with no ruling, in its list's order, then the next list shown, then round", () => {
-  const orders = { rebuild: [1, 2, 3], disagreement: [10, 11], sidepath: [20] };
-  const ruled = { rebuild: new Set([2]), disagreement: new Set([10]) };
-  const all = new Set(QUEUES);
-  assert.deepEqual(nextDiscrepancy(orders, ruled, all, { queue: "rebuild", way: 1 }), { queue: "rebuild", way: 3 });
-  assert.deepEqual(nextDiscrepancy(orders, ruled, all, { queue: "rebuild", way: 3 }), { queue: "disagreement", way: 11 });
-  // A list switched off on the map is passed over.
-  const noDisagreements = new Set(QUEUES.filter((q) => q !== "disagreement"));
-  assert.deepEqual(nextDiscrepancy(orders, ruled, noDisagreements, { queue: "rebuild", way: 3 }), { queue: "sidepath", way: 20 });
-  // Round to the start of the first list.
-  assert.deepEqual(nextDiscrepancy(orders, ruled, all, { queue: "sidepath", way: 20 }), { queue: "rebuild", way: 1 });
-  assert.deepEqual(nextDiscrepancy(orders, ruled, all, null), { queue: "rebuild", way: 1 });
-  // Round within the one list shown, to a road before the one open.
-  assert.deepEqual(nextDiscrepancy({ rebuild: [1, 2, 3] }, {}, all, { queue: "rebuild", way: 3 }), { queue: "rebuild", way: 1 });
-  // Everything ruled: nothing.
-  assert.equal(nextDiscrepancy({ rebuild: [1] }, { rebuild: new Set([1]) }, all, null), null);
-  assert.equal(nextDiscrepancy(orders, ruled, new Set(), null), null);
+test("Next discrepancy and Previous and Next road ask the server for the road after, in the lists' order", async () => {
+  const asked: string[] = [];
+  const answers = [{ next: { queue: "disagreement", osm_way_id: 11 } }, { next: null }];
+  const run = (async (url: string) => {
+    asked.push(url);
+    return new Response(JSON.stringify(answers.shift()), { status: 200 });
+  }) as typeof fetch;
+  assert.deepEqual(await fetchNext("https://x", { lists: ["rebuild", "disagreement"], queue: "rebuild", way: 3 }, run), { queue: "disagreement", way: 11 });
+  assert.equal(await fetchNext("https://x", { lists: ["rebuild"], queue: "rebuild", way: 3, direction: -1, openOnly: false, wrap: false }, run), null);
+  assert.deepEqual(asked, [
+    "https://x/api/review/next?lists=rebuild%2Cdisagreement&queue=rebuild&way=3&direction=1&open_only=true&wrap=true",
+    "https://x/api/review/next?lists=rebuild&queue=rebuild&way=3&direction=-1&open_only=false&wrap=false",
+  ]);
 });
 
-test("Previous and Next from a road off the page: the road beside it in its list's order", () => {
-  assert.equal(besideInOrder([5, 6, 7], 6, 1), 7);
-  assert.equal(besideInOrder([5, 6, 7], 6, -1), 5);
-  assert.equal(besideInOrder([5, 6, 7], 7, 1), null);
-  assert.equal(besideInOrder([5, 6, 7], 9, 1), null);
+test("Alt+Shift+N is left to a text box, a text area and an editable region", () => {
+  assert.ok(typingIn({ tagName: "INPUT", type: "text" }));
+  assert.ok(typingIn({ tagName: "INPUT" }));
+  assert.ok(typingIn({ tagName: "INPUT", type: "search" }));
+  assert.ok(typingIn({ tagName: "TEXTAREA" }));
+  assert.ok(typingIn({ tagName: "DIV", isContentEditable: true }));
+  assert.ok(!typingIn({ tagName: "INPUT", type: "checkbox" }));
+  assert.ok(!typingIn({ tagName: "BUTTON" }));
+  assert.ok(!typingIn(null));
+  const view = src("ReviewMode.tsx");
+  assert.match(view, /if \(typingIn\(event\.target\)\) return;/);
 });
 
 test("what is said within a moment is said together, never one message over another", () => {
@@ -190,34 +193,42 @@ test("each list's map style is its own colour and its own line, from the colour-
   assert.equal(new Set(patterns).size, QUEUES.length);
 });
 
-test("the map is asked for whole lists, once a detail, and the road's facts with the new build's for a rebuild", async () => {
+test("the map is asked for the view alone, at its zoom, and the road's facts with the new build's for a rebuild", async () => {
   const asked: string[] = [];
   const run = (async (url: string) => {
     asked.push(url);
-    return new Response(JSON.stringify({ queue: "rebuild", ruled: [], lines: { type: "FeatureCollection", features: [] }, points: { type: "FeatureCollection", features: [] } }), { status: 200 });
+    return new Response(JSON.stringify({ lines: { type: "FeatureCollection", features: [] } }), { status: 200 });
   }) as typeof fetch;
-  await fetchMap("https://x", "rebuild", "low", run);
-  await fetchMap("https://x", "disagreement", "high", run);
+  await fetchMapView("https://x", ["rebuild", "disagreement"], [-77.2, 38.8, -76.9, 39], 11.234, run);
   await fetchRoadDetail("https://x", 5, "rebuild", run);
   await fetchRoadDetail("https://x", 6, null, run);
   assert.deepEqual(asked, [
-    "https://x/api/review/map?queue=rebuild&detail=low",
-    "https://x/api/review/map?queue=disagreement&detail=high",
+    "https://x/api/review/map?queues=rebuild%2Cdisagreement&west=-77.2&south=38.8&east=-76.9&north=39&zoom=11.2",
     "https://x/api/review/road/5?queue=rebuild",
     "https://x/api/review/road/6",
   ]);
+  // Inside the world's bounds, whatever the map's view; a view across the date line is the whole width.
+  assert.deepEqual(viewBox(-77.123456, 38.8, -76.9, 39), [-77.12346, 38.8, -76.9, 39]);
+  assert.deepEqual(viewBox(-400, -95, 400, 95), [-180, -90, 180, 90]);
+  assert.deepEqual(viewBox(170, 0, 190, 10), [170, 0, 180, 10]);
+  assert.deepEqual(viewBox(-200, 0, -170, 10), [-180, 0, -170, 10]);
 });
 
-test("Review's map draws every list bold above the stress lines from a region's view, with count badges further out", () => {
+test("Review's map asks for the view's roads as it moves, with count badges far out and a dot a road", () => {
   const view = src("ReviewMode.tsx");
-  assert.match(view, /const LINE_MIN_ZOOM = 7\.5;/);
-  assert.match(view, /cluster: true, clusterMaxZoom: CLUSTER_MAX_ZOOM/);
-  assert.match(view, /getClusterExpansionZoom/);
+  // Never a list's whole map: the view, on a settled move, for the lists switched on.
+  assert.match(view, /fetchMapView\(origin, lists, viewBox\(/);
+  assert.match(view, /map\.on\("moveend", onMove\)/);
+  assert.doesNotMatch(view, /cluster: true|fetchMap\(/);
+  // The badges are the server's counts, and zoom in when chosen.
+  assert.match(view, /id: BADGES,\s*type: "circle"/);
+  assert.match(view, /map\.on\("click", BADGES, onBadge\)/);
   // A dot a road while zoomed out, so a short road never vanishes; a white halo under every line.
   assert.match(view, /id: DOTS,\s*type: "circle"/);
   assert.match(view, /id: HALO,\s*type: "line"/);
-  // No per-request bounding-box query: the lists' maps are read whole, as computed.
-  assert.doesNotMatch(view, /fetchOverlay|getBounds/);
+  // A ruled road fades, as the server says.
+  assert.match(view, /"line-opacity": \["case", \["get", "ruled"\], 0\.35, 1\]/);
+  assert.match(view, /fetchNext\(origin, \{ lists/);
   assert.match(view, /aria-keyshortcuts=\{NEXT_KEYS\}/);
   assert.match(view, /const NEXT_KEYS = "Alt\+Shift\+N";/);
 });

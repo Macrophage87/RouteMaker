@@ -166,6 +166,9 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
   // go in `suggestRequests` too, so "asks the suggestion endpoints nothing" covers both.
   page.junctionAt = null;
   page.junctionsOpen = [];
+  // Review mode's Rating disagreements (core/stress_review.py): a few roads near the default route, and the
+  // rulings made on them by way.
+  page.review = { roads: reviewRoads(), ruled: new Map(), lastId: 0 };
   // true: the junction list answers an error, as a server that cannot read it would.
   page.junctionsFail = false;
   page.editRequests = [];
@@ -267,26 +270,67 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
         body = JSON.stringify(page.myGo ?? { open_in: "", ride: "", home: null });
       }
     } else if (url.pathname.startsWith("/api/review/")) {
-      // Review mode's queues (core/stress_review.py; ReviewMode.tsx): an instance admin's, empty here, so
-      // Review opens on its lists with nothing to rule on; 403 for anyone else.
-      (page.reviewRequests ??= []).push({ method: request.method, path: url.pathname });
+      // Review mode's queues (core/stress_review.py; ReviewMode.tsx): an instance admin's, with a few roads in
+      // Rating disagreements (`page.review.roads`, in the list's order; `ruled` the ways with a ruling), the
+      // rest empty; 403 for anyone else. `reviewRequests` is what the page asked (method, path, query, body).
+      const sent = request.postData ? JSON.parse(request.postData) : null;
+      (page.reviewRequests ??= []).push({ method: request.method, path: url.pathname, search: url.search, body: sent });
       type = "application/json";
-      const empty = { type: "FeatureCollection", features: [] };
+      const review = page.review;
+      const fc = (features) => ({ type: "FeatureCollection", features });
+      const listed = (queue, openOnly) => (queue === "disagreement" ? review.roads.filter((r) => !openOnly || !review.ruled.has(r.osm_way_id)) : []);
+      const asItem = (r) => ({ ...r, ruling: review.ruled.get(r.osm_way_id) ?? null });
+      const road = url.pathname.match(/^\/api\/review\/road\/(\d+)$/);
+      const undo = url.pathname.match(/^\/api\/review\/rulings\/(\d+)\/undo$/);
+      status = 200;
       if (!admin) {
         status = admin || suggester ? 403 : 401;
         body = JSON.stringify({ error: "Only an instance admin can use Review." });
       } else if (url.pathname === "/api/review/queues") {
-        status = 200;
-        body = JSON.stringify({ queues: [] });
+        const names = { rebuild: "Rebuild changes", disagreement: "Rating disagreements", narrow_rural: "Narrow rural roads", sidepath: "Side path not mapped", works_closure: "Industrial-area closures", rematch: "Overrides not re-matched" };
+        const queues = Object.entries(names).map(([queue, label]) => ({
+          queue, label, build_id: "", computed_for: "", computed_at: "2026-10-16T00:00:00Z", note: "",
+          total: listed(queue, true).length, reviewed: queue === "disagreement" ? review.ruled.size : 0, wired: true, kinds: [], areas: [], sources: [],
+        }));
+        body = JSON.stringify({ queues });
       } else if (url.pathname === "/api/review/items") {
-        status = 200;
-        body = JSON.stringify({ queue: url.searchParams.get("queue") ?? "rebuild", build_id: "", page: 1, per_page: 50, total: 0, items: [] });
+        const queue = url.searchParams.get("queue") ?? "rebuild";
+        const way = url.searchParams.get("way");
+        const items = listed(queue, url.searchParams.get("open_only") !== "false" && !way).filter((r) => !way || String(r.osm_way_id) === way).map(asItem);
+        body = JSON.stringify({ queue, build_id: "", page: 1, per_page: 50, total: items.length, items });
+      } else if (road) {
+        body = JSON.stringify({ osm_way_id: Number(road[1]), facts: [{ label: "Speed limit", value: "25 mph (40 km/h)", source: "OpenStreetMap" }], new_facts: [], history: [] });
       } else if (url.pathname === "/api/review/map") {
-        status = 200;
-        body = JSON.stringify({ queue: url.searchParams.get("queue") ?? "rebuild", build_id: "", note: "", detail: "low", ruled: [], lines: empty, points: empty });
-      } else if (url.pathname === "/api/review/rulings" && request.method === "GET") {
-        status = 200;
-        body = JSON.stringify({ rulings: [] });
+        // The view's roads (the page sends the view and its zoom); the few here are all in view.
+        const queues = (url.searchParams.get("queues") ?? "").split(",");
+        const lines = queues.includes("disagreement")
+          ? review.roads.map((r) => ({ type: "Feature", geometry: r.geometry, properties: { way: r.osm_way_id, queue: "disagreement", size: 2, ruled: review.ruled.has(r.osm_way_id) } }))
+          : [];
+        body = JSON.stringify({ zoom: Number(url.searchParams.get("zoom")), detail: "high", truncated: false, lines: fc(lines), dots: fc([]), badges: fc([]) });
+      } else if (url.pathname === "/api/review/next") {
+        const q = url.searchParams;
+        const lists = (q.get("lists") ?? "").split(",");
+        const back = q.get("direction") === "-1";
+        const order = listed(lists.includes("disagreement") ? "disagreement" : "", q.get("open_only") !== "false").map((r) => r.osm_way_id);
+        const from = review.roads.findIndex((r) => String(r.osm_way_id) === q.get("way"));
+        const ahead = review.roads.map((r) => r.osm_way_id).filter((w, i) => order.includes(w) && (from < 0 || (back ? i < from : i > from)));
+        const found = (back ? ahead.at(-1) : ahead[0]) ?? (q.get("wrap") !== "false" ? order.find((w) => String(w) !== q.get("way")) : undefined);
+        body = JSON.stringify({ next: found === undefined ? null : { queue: "disagreement", osm_way_id: found } });
+      } else if (url.pathname === "/api/review/rulings" && request.method === "POST") {
+        const rulings = sent.osm_way_ids.map((way) => {
+          review.lastId += 1;
+          const summary = sent.decision === "set" ? `Set to LTS ${sent.step}` : sent.decision === "accept" ? "Kept as it is" : "Rejected";
+          const ruling = { id: review.lastId, queue: sent.queue, osm_way_id: way, decision: sent.decision, step: sent.step ?? null, reason: "", at: "2026-10-16T12:00:00Z", undone: false, can_undo: true, summary };
+          review.ruled.set(way, ruling);
+          return ruling;
+        });
+        body = JSON.stringify({ rulings, refused: [], generation: null, message: `${rulings.length} road${rulings.length === 1 ? "" : "s"} ruled.` });
+      } else if (undo && request.method === "POST") {
+        const ruling = [...review.ruled.values()].find((r) => r.id === Number(undo[1]));
+        if (ruling) review.ruled.delete(ruling.osm_way_id);
+        body = JSON.stringify({ ruling: { ...ruling, undone: true, can_undo: false }, generation: null, message: "Undone." });
+      } else if (url.pathname === "/api/review/rulings") {
+        body = JSON.stringify({ rulings: [...review.ruled.values()] });
       } else if (url.pathname === "/api/review/street-photo") {
         status = 204;
         body = "";
@@ -910,6 +954,51 @@ export const STEP_WORDS = {
   3: "For experienced cyclists", 3.5: "Stressful even for experienced cyclists", 4: "High stress: busy, fast traffic", 4.5: "A very high-stress road", 5: "Avoid",
 };
 const STEPS = [1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5];
+
+/** Review's Rating disagreements: `n` roads in the list's order, the largest spread first (core/stress_review.py item_out). */
+export function reviewRoads(n = 4) {
+  return Array.from({ length: n }, (_, i) => {
+    const way = 7001 + i;
+    const lon = -77.036 + i * 0.004;
+    const lat = 38.905;
+    const coordinates = [
+      [lon, lat],
+      [lon + 0.003, lat],
+    ];
+    return {
+      queue: "disagreement",
+      osm_way_id: way,
+      name: `Review Road ${i + 1}`,
+      area: "District of Columbia",
+      reason: "The formula says LTS 4; Montgomery County Planning says LTS 2.",
+      kind: "formula-moco",
+      kind_label: "Formula and Montgomery County Planning",
+      old_step: null,
+      new_step: 4,
+      old_words: null,
+      new_words: "LTS 4 (Avoid unless confident)",
+      old_closed: false,
+      new_closed: false,
+      old_rule: null,
+      new_rule: "mixed traffic, 35 mph",
+      old_source: null,
+      new_source: "RouteMaker's formula",
+      sources: [
+        { key: "formula", name: "RouteMaker's formula", level: 4, pending: false },
+        { key: "moco", name: "Montgomery County Planning", level: 2, pending: false },
+      ],
+      ratings: [],
+      spread: 2,
+      length_m: 260,
+      length: "0.16 mi (0.26 km)",
+      aadt: 5000 - i * 500,
+      bbox: [lon, lat, lon + 0.003, lat],
+      geometry: { type: "MultiLineString", coordinates: [coordinates] },
+      point: [lon + 0.0015, lat],
+      actions: ["accept", "set"],
+    };
+  });
+}
 
 /** One rider suggestion waiting for review (core/suggestions.py summary). */
 export const SUGGESTION_ITEM = {

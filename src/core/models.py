@@ -2125,6 +2125,10 @@ class ReviewItem(models.Model):
     aadt = models.IntegerField(null=True, blank=True)
     score = models.FloatField(default=0)
     geometry = models.MultiLineStringField(srid=4326, null=True, blank=True)
+    # The lines simplified for a region's view (Review's map below a street's zoom), and a point
+    # on the road (its far view's count badges): both made with the item, never per request.
+    simple = models.MultiLineStringField(srid=4326, null=True, blank=True)
+    point = models.PointField(srid=4326, null=True, blank=True)
     # A digest of what the road was listed for (its level, access, rule and ratings, or the
     # report's row): an Accept outside the rebuild's changes stands only while it is the same.
     inputs = models.CharField(max_length=32, blank=True, default="")
@@ -2199,20 +2203,13 @@ class ReviewRuling(models.Model):
 class ReviewQueueState(models.Model):
     """When each Review queue was last computed, and what it was computed from
     (core.stress_review): a queue read from a rebuild's report says so when the build had none,
-    instead of showing an older build's rows as current. Its map, the whole list's lines
-    simplified for a region's view and kept at full detail for a street's, is written here at
-    the same time, so drawing it never runs the geometry SQL per request."""
+    instead of showing an older build's rows as current."""
 
     queue = models.CharField(max_length=16, choices=ReviewItem.Queue.choices, primary_key=True)
     build_id = models.CharField(max_length=40, blank=True, default="")
     computed_at = models.DateTimeField(default=timezone.now)
     # "" when computed; else why the list is empty ("No report from this build").
     note = models.TextField(blank=True, default="")
-    # GeoJSON FeatureCollections: the lines simplified (a region's view) and at full detail,
-    # and one point a road (the far view's count badges).
-    map_low = models.TextField(blank=True, default="")
-    map_high = models.TextField(blank=True, default="")
-    map_points = models.TextField(blank=True, default="")
 
     class Meta:
         db_table = "review_queue_state"

@@ -228,22 +228,25 @@ export const QUEUE_STYLE: Record<QueueKey, { colour: string; colourName: string;
 
 export const QUEUES: QueueKey[] = ["rebuild", "disagreement", "narrow_rural", "sidepath", "works_closure", "rematch"];
 
-/** One list's whole map, as the server wrote it when the list was computed (GET /api/review/map). */
-export interface QueueMap {
-  queue: QueueKey;
-  build_id: string;
-  note: string;
+/**
+ * What Review's map shows of the view (GET /api/review/map): the roads of the lists switched on inside it, up to the
+ * server's cap, the largest first. Far out, the roads near one another are one badge with their count, and only a road
+ * alone is drawn; below a street's zoom the lines are simplified, with a dot a road.
+ */
+export interface MapView {
+  zoom: number;
   detail: "low" | "high";
-  /** The ways with a standing ruling. */
-  ruled: number[];
+  /** More roads were in view than one answer holds: zoom in for the rest. */
+  truncated: boolean;
   lines: { type: "FeatureCollection"; features: MapFeature[] };
-  points: { type: "FeatureCollection"; features: MapFeature[] };
+  dots: { type: "FeatureCollection"; features: MapFeature[] };
+  badges: { type: "FeatureCollection"; features: { type: "Feature"; geometry: unknown; properties: { count: number } }[] };
 }
 
 export interface MapFeature {
   type: "Feature";
   geometry: unknown;
-  properties: { way: number; queue: QueueKey; order: number; size: number; kind: string; area: string; sources: string };
+  properties: { way: number; queue: QueueKey; size?: number; ruled: boolean };
 }
 
 /** A road in the lists' order: its list and its way. */
@@ -252,32 +255,24 @@ export interface Spot {
   way: number;
 }
 
-/**
- * The next road with no ruling yet, in the lists' order: after `from` in its own list, then each following list shown on
- * the map, then round to the start. `orders` is each list's ways in its order; `shown` the lists switched on.
- */
-export function nextDiscrepancy(orders: Partial<Record<QueueKey, number[]>>, ruled: Partial<Record<QueueKey, ReadonlySet<number>>>, shown: ReadonlySet<QueueKey>, from: Spot | null): Spot | null {
-  const lists = QUEUES.filter((q) => shown.has(q) && (orders[q]?.length ?? 0) > 0);
-  if (lists.length === 0) return null;
-  const startList = from && lists.includes(from.queue) ? lists.indexOf(from.queue) : 0;
-  const open = (queue: QueueKey, way: number) => !(ruled[queue]?.has(way) ?? false) && !(from && from.queue === queue && from.way === way);
-  for (let step = 0; step <= lists.length; step += 1) {
-    const queue = lists[(startList + step) % lists.length];
-    const ways = orders[queue] ?? [];
-    // In the list it starts from, the roads after it first (and, once round, the ones before it).
-    const at = from && from.queue === queue ? ways.indexOf(from.way) : -1;
-    const candidates = step === lists.length ? ways.slice(0, Math.max(0, at)) : step === 0 ? ways.slice(at + 1) : ways;
-    const found = candidates.find((way) => open(queue, way));
-    if (found !== undefined) return { queue, way: found };
-  }
-  return null;
+/** The map's view as the server takes it: west, south, east, north inside the world's bounds (a view wider than the
+ * world, or across the date line, is the whole of it), rounded to about a metre. */
+export function viewBox(west: number, south: number, east: number, north: number): [number, number, number, number] {
+  const round = (v: number) => Math.round(v * 1e5) / 1e5;
+  const clamp = (v: number, limit: number) => Math.max(-limit, Math.min(limit, v));
+  const whole = east - west >= 360 || clamp(west, 180) > clamp(east, 180);
+  return [whole ? -180 : round(clamp(west, 180)), round(clamp(south, 90)), whole ? 180 : round(clamp(east, 180)), round(clamp(north, 90))];
 }
 
-/** A road next to it in its list's order (by -1 or 1), or null at either end. */
-export function besideInOrder(order: readonly number[], way: number, by: number): number | null {
-  const at = order.indexOf(way);
-  if (at < 0) return null;
-  return order[at + by] ?? null;
+/** Keys a typed word goes to: Alt+Shift+N is left to them there (a text box, a text area, an editable region). */
+export function typingIn(target: unknown): boolean {
+  const t = target as { tagName?: string; type?: string; isContentEditable?: boolean } | null;
+  if (!t) return false;
+  if (t.isContentEditable) return true;
+  const tag = (t.tagName ?? "").toUpperCase();
+  if (tag === "TEXTAREA") return true;
+  if (tag !== "INPUT") return false;
+  return !["checkbox", "radio", "button", "submit", "reset", "range", "color", "file", "image"].includes((t.type ?? "text").toLowerCase());
 }
 
 /**
@@ -334,10 +329,49 @@ export async function fetchRoadDetail(origin: string, way: number, queue: QueueK
   return r.ok ? r.body : r.message;
 }
 
-/** GET /api/review/map: one list's every road, simplified for a region's view ("low") or whole ("high"). */
-export async function fetchMap(origin: string, queue: QueueKey, detail: "low" | "high" = "low", run: Fetch = fetch): Promise<QueueMap | string> {
-  const r = await call<QueueMap>(`${origin}/api/review/map?${query({ queue, detail })}`, { method: "GET" }, null, run);
+/** GET /api/review/map: the lists' roads in the map's view at its zoom (never a whole list). */
+export async function fetchMapView(
+  origin: string,
+  queues: readonly QueueKey[],
+  box: [number, number, number, number],
+  zoom: number,
+  run: Fetch = fetch,
+): Promise<MapView | string> {
+  const [west, south, east, north] = box;
+  const q = query({ queues: queues.join(","), west, south, east, north, zoom: Math.round(zoom * 10) / 10 });
+  const r = await call<MapView>(`${origin}/api/review/map?${q}`, { method: "GET" }, null, run);
   return r.ok ? r.body : r.message;
+}
+
+export interface NextRequest {
+  /** The lists to go through, in Review's order. */
+  lists: readonly QueueKey[];
+  /** Where it goes from: the road open now (`way` null: the list's start). */
+  queue: QueueKey;
+  way: number | null;
+  direction?: 1 | -1;
+  /** Only the roads with no ruling yet (Next discrepancy); every road for Previous and Next road with "all" shown. */
+  openOnly?: boolean;
+  /** Past the last list, round to the first. */
+  wrap?: boolean;
+}
+
+/**
+ * GET /api/review/next: the next road in the lists' order (the server's, the table's), so Next discrepancy and
+ * Previous and Next road from a road off the page never need a list's every way here. Null when there is none.
+ */
+export async function fetchNext(origin: string, request: NextRequest, run: Fetch = fetch): Promise<Spot | null | string> {
+  const q = query({
+    lists: request.lists.join(","),
+    queue: request.queue,
+    way: request.way,
+    direction: request.direction ?? 1,
+    open_only: request.openOnly ?? true,
+    wrap: request.wrap ?? true,
+  });
+  const r = await call<{ next: { queue: QueueKey; osm_way_id: number } | null }>(`${origin}/api/review/next?${q}`, { method: "GET" }, null, run);
+  if (!r.ok) return r.message;
+  return r.body.next ? { queue: r.body.next.queue, way: r.body.next.osm_way_id } : null;
 }
 
 export interface RulingRequest {

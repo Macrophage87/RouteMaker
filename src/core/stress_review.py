@@ -40,6 +40,8 @@ from datetime import datetime
 from pathlib import Path
 
 from django.conf import settings
+from django.contrib.gis.db.models.functions import AsGeoJSON
+from django.contrib.gis.geos import Polygon
 from django.db import connection, transaction
 from django.db.models import Count, Exists, OuterRef, Q
 from django.utils import timezone
@@ -213,6 +215,8 @@ def _write_facts(queue: str, schema: str, build_id: str) -> None:
             UPDATE review_item i
             SET name = CASE WHEN i.name = '' THEN COALESCE(f.name, '') ELSE i.name END,
                 length_m = COALESCE(f.length_m, 0), aadt = f.aadt, geometry = f.geom,
+                simple = ST_Multi(ST_SimplifyPreserveTopology(f.geom, {LOW_TOLERANCE})),
+                point = ST_ClosestPoint(f.geom, ST_Centroid(f.geom)),
                 area = COALESCE({county}, '')
             FROM (
                 SELECT osm_way_id, {name} AS name,
@@ -245,69 +249,22 @@ SCORE_SQL = {
     Queue.DISAGREEMENT: "COALESCE(spread, 0) * length_m * greatest(1, COALESCE(aadt, 0) / 1000.0)",
 }
 
-# The map's size of a road's change or disagreement (its colour band and the far view's order).
-SIZE_SQL = (
-    "CASE WHEN new_closed AND NOT old_closed THEN 4 "
-    "ELSE COALESCE(spread, abs(COALESCE(new_step, 0) - COALESCE(old_step, 0))) END"
-)
 # How far the region view's lines are simplified, in degrees (about 30 m), and how many places
-# its coordinates keep; the street view keeps the lines whole, to a decimetre.
+# a map's coordinates keep: 5 (about a metre) simplified, 6 whole.
 LOW_TOLERANCE = 0.0003
 LOW_PLACES = 5
 HIGH_PLACES = 6
 NO_REPORT = "No report from this build"
 
 
-def _features(lines: str, places: int) -> str:
-    return f"""
-        SELECT COALESCE(json_build_object('type', 'FeatureCollection', 'features',
-          json_agg(json_build_object(
-            'type', 'Feature',
-            'geometry', ST_AsGeoJSON({lines}, {places})::json,
-            'properties', json_build_object(
-              'way', osm_way_id, 'queue', queue, 'order', rank, 'size', size,
-              'kind', kind, 'area', area, 'sources', sources_text))
-          ORDER BY rank))::text, '')
-        FROM ranked
-    """
-
-
 def write_state(queue: str, build_id: str = "", note: str = "") -> None:
-    """The queue's state row: when and from what it was computed, and its whole map (every
-    listed road, in the queue's order), built here once so that drawing it is a read."""
+    """The queue's state row: when and for what build it was computed, and why it is empty
+    where it is (`NO_REPORT`)."""
     from .models import ReviewQueueState
 
-    items_build = build_id if queue == Queue.REBUILD else ""
-    ranked = f"""
-        WITH ranked AS (
-            SELECT osm_way_id, queue, kind, area, geometry,
-                   array_to_string(ARRAY(SELECT jsonb_array_elements_text(sources)), ',')
-                     AS sources_text,
-                   {SIZE_SQL} AS size,
-                   row_number() OVER (ORDER BY score DESC, osm_way_id) AS rank
-            FROM review_item
-            WHERE queue = %s AND build_id = %s AND geometry IS NOT NULL
-        )
-    """
-    maps = []
-    with connection.cursor() as cursor:
-        for body in (
-            _features(f"ST_SimplifyPreserveTopology(geometry, {LOW_TOLERANCE})", LOW_PLACES),
-            _features("geometry", HIGH_PLACES),
-            _features("ST_PointOnSurface(geometry)", LOW_PLACES),
-        ):
-            cursor.execute(ranked + body, [queue, items_build])
-            maps.append(cursor.fetchone()[0] or "")
     ReviewQueueState.objects.update_or_create(
         queue=queue,
-        defaults={
-            "build_id": build_id,
-            "computed_at": timezone.now(),
-            "note": note,
-            "map_low": maps[0],
-            "map_high": maps[1],
-            "map_points": maps[2],
-        },
+        defaults={"build_id": build_id, "computed_at": timezone.now(), "note": note},
     )
 
 
@@ -828,9 +785,7 @@ def queue_summary() -> list[dict]:
     whether it is wired, every count made in the database."""
     from .models import ReviewQueueState
 
-    states = {
-        s.queue: s for s in ReviewQueueState.objects.defer("map_low", "map_high", "map_points")
-    }
+    states = {s.queue: s for s in ReviewQueueState.objects.all()}
     out = []
     for queue, label in Queue.choices:
         query = items_of(queue)
@@ -949,7 +904,11 @@ def item_out(item: ReviewItem, ruling: ReviewRuling | None = None, name: str | N
         "aadt": item.aadt,
         "bbox": list(item.geometry.extent) if item.geometry is not None else None,
         "geometry": geometry,
-        "point": list(item.geometry.point_on_surface.coords) if item.geometry is not None else None,
+        "point": list(item.point.coords)
+        if item.point is not None
+        else list(item.geometry.point_on_surface.coords)
+        if item.geometry is not None
+        else None,
         "actions": actions(item),
         "ruling": ruling_out(ruling) if ruling else None,
     }
@@ -981,24 +940,175 @@ def page(
     }
 
 
-def map_payload(queue: str, detail: str = "low") -> str:
-    """The queue's whole map as `write_state` made it, as JSON text: {queue, build_id, note,
-    lines (simplified for a region's view, or at full detail), points (one a road, for the far
-    view's count badges; the region view only), ruled (the ways with a standing ruling)}. The
-    lines are a read of one row; only the ruled ways are asked of the database each time."""
-    state = state_of(queue)
-    ruled = list(items_of(queue).filter(ruled=True).values_list("osm_way_id", flat=True))
-    empty = '{"type":"FeatureCollection","features":[]}'
-    lines = (state.map_high if detail == "high" else state.map_low) if state else ""
-    points = state.map_points if state and detail != "high" else ""
-    head = {
-        "queue": queue,
-        "build_id": state.build_id if state else "",
-        "note": state.note if state else "",
-        "detail": "high" if detail == "high" else "low",
-        "ruled": ruled,
+# Review's map (`map_view`): a view's roads, never a whole list. Up to `MAP_CAP` roads a request,
+# the largest first; below `CLUSTER_ZOOM` the roads near one another are one badge with their
+# count (a grid of `CELL_PX` pixels), and only a road alone in its cell is drawn as a line, so a
+# badge never lies over its own roads. Below `HIGH_ZOOM` the lines are the simplified ones.
+MAP_CAP = 2000
+CLUSTER_ZOOM = 10
+HIGH_ZOOM = 13
+CELL_PX = 64
+
+
+def map_size(item: ReviewItem) -> float:
+    """The size of a road's change or disagreement (a closure counts 4)."""
+    if item.new_closed and not item.old_closed:
+        return 4.0
+    if item.spread is not None:
+        return item.spread
+    return abs((item.new_step or 0) - (item.old_step or 0))
+
+
+def _listed(queues: list[str]) -> tuple[str, list]:
+    """SQL (and its parameters) for the items the lists hold now: the current build's for the
+    rebuild's changes."""
+    parts, params = [], []
+    others = [q for q in queues if q != Queue.REBUILD]
+    if Queue.REBUILD in queues:
+        parts.append("(queue = %s AND build_id = %s)")
+        params += [Queue.REBUILD.value, current_build(Queue.REBUILD)]
+    if others:
+        parts.append("(queue = ANY(%s) AND build_id = '')")
+        params.append(others)
+    return "(" + " OR ".join(parts or ["false"]) + ")", params
+
+
+def map_view(queues: list[str], bbox: tuple[float, float, float, float], zoom: float) -> dict:
+    """The roads of `queues` in the box, for Review's map: {lines (GeoJSON, each road's way,
+    list, size and whether it has a standing ruling), dots (a point a road below a street's
+    zoom), badges (a point a cell with its count, far out), truncated (more roads than `MAP_CAP`
+    were in view)}. Read from each item's own
+    simplified line and point, both made when the list was computed."""
+    queues = [q for q in Queue.values if q in queues]
+    west, south, east, north = bbox
+    box = Polygon.from_bbox(bbox)
+    box.srid = 4326
+    badges: list[dict] = []
+    alone: dict[str, set[int]] | None = None
+    if zoom < CLUSTER_ZOOM and queues:
+        cell = 360 / 2 ** max(zoom, 0) * CELL_PX / 256
+        where, params = _listed(queues)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT count(*), ST_X(ST_Centroid(ST_Collect(point))),
+                       ST_Y(ST_Centroid(ST_Collect(point))), min(queue), min(osm_way_id)
+                FROM review_item
+                WHERE {where} AND point && ST_MakeEnvelope(%s, %s, %s, %s, 4326)
+                GROUP BY ST_SnapToGrid(point, %s)
+                """,
+                [*params, west, south, east, north, cell],
+            )
+            rows = cursor.fetchall()
+        alone = {}
+        for n, x, y, queue, way in rows:
+            if n == 1:
+                alone.setdefault(queue, set()).add(int(way))
+            else:
+                badges.append(
+                    {
+                        "type": "Feature",
+                        "geometry": {"type": "Point", "coordinates": [round(x, 5), round(y, 5)]},
+                        "properties": {"count": int(n)},
+                    }
+                )
+    field = "geometry" if zoom >= HIGH_ZOOM else "simple"
+    places = HIGH_PLACES if zoom >= HIGH_ZOOM else LOW_PLACES
+    found: list[ReviewItem] = []
+    for queue in queues:
+        query = items_of(queue).filter(**{f"{field}__bboverlaps": box})
+        if alone is not None:
+            query = query.filter(osm_way_id__in=sorted(alone.get(queue, ())))
+        found += list(
+            query.annotate(lines=AsGeoJSON(field, precision=places))
+            .only(
+                "osm_way_id",
+                "queue",
+                "score",
+                "spread",
+                "new_step",
+                "old_step",
+                "new_closed",
+                "old_closed",
+                "point",
+            )
+            .order_by("-score", "osm_way_id")[: MAP_CAP + 1]
+        )
+    found.sort(key=lambda i: (-i.score, i.osm_way_id))
+    lines = [
+        {
+            "type": "Feature",
+            "geometry": json.loads(item.lines),
+            "properties": {
+                "way": item.osm_way_id,
+                "queue": item.queue,
+                "size": map_size(item),
+                "ruled": bool(item.ruled),
+            },
+        }
+        for item in found[:MAP_CAP]
+        if item.lines
+    ]
+    # Below a street's zoom, a dot a road as well, so a short one is never less than a dot.
+    dots = [
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "Point",
+                "coordinates": [round(c, LOW_PLACES) for c in item.point.coords],
+            },
+            "properties": {"way": item.osm_way_id, "queue": item.queue, "ruled": bool(item.ruled)},
+        }
+        for item in found[:MAP_CAP]
+        if zoom < HIGH_ZOOM and item.lines and item.point is not None
+    ]
+    return {
+        "zoom": zoom,
+        "detail": "high" if zoom >= HIGH_ZOOM else "low",
+        "truncated": len(found) > MAP_CAP,
+        "lines": {"type": "FeatureCollection", "features": lines},
+        "badges": {"type": "FeatureCollection", "features": badges},
+        "dots": {"type": "FeatureCollection", "features": dots},
     }
-    return json.dumps(head)[:-1] + f', "lines": {lines or empty}, "points": {points or empty}' + "}"
+
+
+def next_road(
+    lists: list[str],
+    queue: str,
+    way: int | None,
+    *,
+    direction: int = 1,
+    open_only: bool = True,
+    wrap: bool = True,
+) -> dict | None:
+    """The road after (or before, `direction` -1) `way` in its list's order (`page`'s: largest
+    first), with no ruling yet unless not `open_only`; past the list's end, the next of `lists`
+    in Review's order, and round to the start when `wrap`. {queue, osm_way_id}, or None."""
+    lists = [q for q in Queue.values if q in lists] or ([queue] if queue in Queue.values else [])
+    if not lists:
+        return None
+    start = lists.index(queue) if queue in lists else 0
+    current = items_of(queue).filter(osm_way_id=way).first() if way is not None else None
+    order = ("-score", "osm_way_id") if direction > 0 else ("score", "-osm_way_id")
+    rounds = len(lists) + 1 if wrap else 1
+    for step in range(rounds):
+        name = lists[(start + step * (1 if direction > 0 else -1)) % len(lists)]
+        query = items_of(name)
+        if open_only:
+            query = query.filter(ruled=False)
+        if current is not None and name == current.queue:
+            query = query.exclude(osm_way_id=current.osm_way_id)
+            if step == 0:
+                s, w = current.score, current.osm_way_id
+                query = query.filter(
+                    Q(score__lt=s) | Q(score=s, osm_way_id__gt=w)
+                    if direction > 0
+                    else Q(score__gt=s) | Q(score=s, osm_way_id__lt=w)
+                )
+        found = query.order_by(*order).values_list("osm_way_id", flat=True).first()
+        if found is not None:
+            return {"queue": name, "osm_way_id": found}
+    return None
 
 
 def unruled_rebuild_changes() -> tuple[int, int, str]:

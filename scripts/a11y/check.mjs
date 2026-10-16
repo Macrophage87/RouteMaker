@@ -3066,6 +3066,92 @@ async function hazardsAsked(p, ms = 15000) {
   await p.close();
 }
 
+// ---- 22c2. Review mode's own lists (ReviewMode.tsx; core/stress_review.py): the table, a ruling, the map ----
+{
+  // Four roads in Rating disagreements (cdp.mjs reviewRoads), the rest of the lists empty.
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true, width: 1400, height: 900 });
+  const said = "[...document.querySelectorAll('[aria-live]')].map((e) => e.textContent).join(' | ')";
+  const views = () => (p.reviewRequests ?? []).filter((r) => r.path === "/api/review/map");
+  await openSheet(p, "Review");
+  await p.eval("[...document.querySelectorAll('.review-list-button')].find((b) => b.textContent.startsWith('Rating disagreements'))?.click(); true");
+  const listed = await p.waitFor("document.querySelectorAll('.review-road').length === 4", 8000);
+  await p.waitFor("document.querySelectorAll('.review-map-toggle').length === 1", 8000);
+  // The view is asked for once the map is still.
+  const t0 = Date.now();
+  while (views().length === 0 && Date.now() - t0 < 6000) await sleep(100);
+  const toggles = await p.eval("[...document.querySelectorAll('.review-map-toggle')].map((l) => ({ text: l.textContent.trim(), checked: l.querySelector('input[type=checkbox]')?.checked }))");
+  await p.eval("document.querySelector('.review-map-toggle input').id = '__rt'; true");
+  const box = await axNode(p, "#__rt");
+  check("review: one switch a list drawn, named by the list, its colour, its line and its count; the map asks for its view's roads (the box and the zoom), never a list whole",
+    listed && JSON.stringify(toggles) === JSON.stringify([{ text: "Rating disagreements (vermilion, solid): 4", checked: true }]) && box?.role === "checkbox" && /^Rating disagreements \(vermilion, solid\): 4$/.test(box?.name ?? "") &&
+      views().length > 0 && views().every((r) => /queues=disagreement/.test(r.search) && /west=-?[\d.]+&south=-?[\d.]+&east=-?[\d.]+&north=-?[\d.]+&zoom=[\d.]+/.test(r.search)),
+    JSON.stringify({ listed, toggles, box, views: views().map((r) => r.search) }));
+
+  // The switch hides and shows its list, said in the live region; shown again, the view is asked for again.
+  await p.eval("document.getElementById('__rt').click(); true");
+  const hidden = await p.waitFor(`(${said}).includes('Rating disagreements hidden on the map.')`, 4000);
+  const before = views().length;
+  await p.eval("document.getElementById('__rt').click(); true");
+  const shown = await p.waitFor(`(${said}).includes('Rating disagreements shown on the map.')`, 4000);
+  const t1 = Date.now();
+  while (views().length === before && Date.now() - t1 < 4000) await sleep(100);
+  check("review: a map switch hides and shows its list, said politely, and shown again the map asks for the view again",
+    hidden && shown && views().length > before && (await p.eval("document.getElementById('__rt').checked")), JSON.stringify({ hidden, shown, before, after: views().length }));
+
+  // The table: Down and Up move between the roads' buttons; Enter opens the road and moves the focus to its card's
+  // heading, where Down goes on to the next road.
+  await p.eval("document.querySelector('.review-road').focus(); true");
+  await p.key("ArrowDown", "ArrowDown", 40);
+  await sleep(300);
+  const down = await p.eval("document.activeElement?.textContent");
+  await p.key("ArrowUp", "ArrowUp", 38);
+  await sleep(300);
+  const up = await p.eval("document.activeElement?.textContent");
+  await p.key("ArrowDown", "ArrowDown", 40);
+  await sleep(300);
+  await p.enter();
+  await sleep(500);
+  const card = await p.eval("({ tag: document.activeElement?.tagName, text: document.activeElement?.textContent, inCard: !!document.activeElement?.closest('.review-card') })");
+  await p.key("ArrowDown", "ArrowDown", 40);
+  await sleep(500);
+  const onward = await p.eval("({ tag: document.activeElement?.tagName, text: document.activeElement?.textContent })");
+  check("review: in the table Down and Up move between the roads' buttons, Enter moves the focus to the road's card heading, and Down there goes on to the next road",
+    down === "Review Road 2" && up === "Review Road 1" && card.tag === "H4" && card.inCard && /^Review Road 2, District of Columbia: /.test(card.text ?? "") && onward.tag === "H4" && /^Review Road 3,/.test(onward.text ?? ""),
+    JSON.stringify({ down, up, card, onward }));
+
+  // A ruling: said with the next road, the focus on the next road's card heading, sent for the one road.
+  await p.eval("[...document.querySelectorAll('.review-rule .stress-editor-buttons button')].find((b) => b.textContent === 'Keep current').click(); true");
+  const ruled = await p.waitFor(`(${said}).includes('Review Road 3: Kept as it is. Next: Review Road 4.')`, 6000);
+  await sleep(400);
+  const after = await p.eval("({ focus: document.activeElement?.tagName + ' ' + document.activeElement?.textContent, rows: document.querySelectorAll('.review-road').length })");
+  const post = (p.reviewRequests ?? []).find((r) => r.method === "POST" && r.path === "/api/review/rulings");
+  check("review: a ruling is said in the live region with the next road, the road leaves the open list, and the focus goes to the next road's card heading",
+    ruled && /^H4 Review Road 4,/.test(after.focus) && after.rows === 3 && post?.body?.queue === "disagreement" && JSON.stringify(post?.body?.osm_way_ids) === "[7003]" && post?.body?.decision === "accept",
+    JSON.stringify({ ruled, said: await p.eval(said), after, post: post?.body }));
+
+  // Alt+Shift+N: left to a text box; anywhere else, the next road with no ruling, in the lists' order (round to the first).
+  const nexts = () => (p.reviewRequests ?? []).filter((r) => r.path === "/api/review/next").length;
+  const heading = "document.querySelector('.review-card h4')?.textContent ?? ''";
+  await p.eval("document.querySelector('.review-reason-field input').focus(); true");
+  const asked = nexts();
+  await p.key("N", "KeyN", 78, 1 | 8);
+  await sleep(800);
+  const typing = { asked: nexts() - asked, heading: await p.eval(heading) };
+  await p.eval("document.querySelector('.review-reason-field input').blur(); document.body.focus(); true");
+  await p.key("N", "KeyN", 78, 1 | 8);
+  const moved = await p.waitFor(`/^Review Road 1,/.test(${heading})`, 6000);
+  const next = (p.reviewRequests ?? []).filter((r) => r.path === "/api/review/next").at(-1);
+  check("review: Alt+Shift+N does nothing in a text box; elsewhere it opens the next road with no ruling (round to the list's first), asked of the server",
+    typing.asked === 0 && /^Review Road 4,/.test(typing.heading) && moved && /lists=disagreement/.test(next?.search ?? "") && /way=7004/.test(next?.search ?? "") && /open_only=true/.test(next?.search ?? ""),
+    JSON.stringify({ typing, moved, heading: await p.eval(heading), next: next?.search }));
+
+  // Each road's street photo is asked for once, its row's and its card's alike, however often it is drawn.
+  const photos = (p.reviewRequests ?? []).filter((r) => r.path === "/api/review/street-photo").map((r) => new URLSearchParams(r.search).get("way"));
+  check("review: each road's street photo is asked for once (its row and its card share it), never again on a re-render",
+    photos.length > 0 && new Set(photos).size === photos.length, JSON.stringify(photos));
+  await p.close();
+}
+
 // ---- 22c. Junction suggestions (FOLLOWUP-STRESS-SUGGEST, OWNER-DECISIONS 232) ----
 const JSUGGEST = "dialog.road-info .suggest-junction";
 const JUNCTION_BUTTON = "Suggest a junction change";
@@ -4701,7 +4787,8 @@ const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
 // The transit blocks (#108) and the Go press checks (#116) were added without raising it; they run since #127.
-const EXPECTED = 633;
+// Review mode's own lists (22c2) add six.
+const EXPECTED = 639;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
