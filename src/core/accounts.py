@@ -124,3 +124,41 @@ def inputs_problem(inputs) -> str | None:
     if not isinstance(dials, dict) or len(json.dumps(dials)) > 4096:
         return "The plan's dials are not in the expected form."
     return None
+
+
+# Saved-route versions (core.models.SavedRouteVersion): what changed from one version to the
+# next, in a phrase. Read from the plan's inputs and the distance only, so the list never reads
+# a line or an answer.
+def _plural(n: int, one: str, many: str) -> str:
+    return one if n == 1 else many
+
+
+def change_phrase(older: dict, newer: dict) -> str:
+    """What changed from `older` to `newer` (each with source, distance_m and inputs), in a
+    phrase: "Stop added", "Ride type changed, start moved", "Line changed"."""
+    if older.get("source") != newer.get("source"):
+        return "From a GPX file" if newer.get("source") == "gpx" else "Planned in RouteMaker"
+    a = older.get("inputs") or {}
+    b = newer.get("inputs") or {}
+    parts: list[str] = []
+    if a.get("preset") != b.get("preset"):
+        parts.append("ride type changed")
+    pa, pb = a.get("points") or [], b.get("points") or []
+    if pa != pb:
+        if len(pb) > len(pa):
+            parts.append(_plural(len(pb) - len(pa), "stop added", "stops added"))
+        elif len(pb) < len(pa):
+            parts.append(_plural(len(pa) - len(pb), "stop removed", "stops removed"))
+        elif pa[:1] != pb[:1]:
+            parts.append("start moved")
+        elif pa[-1:] != pb[-1:]:
+            parts.append("end moved")
+        else:
+            parts.append("stops moved")
+    elif a.get("dials") != b.get("dials"):
+        parts.append("settings changed")
+    if not parts:
+        same = abs((older.get("distance_m") or 0) - (newer.get("distance_m") or 0)) < 1
+        parts.append("same plan" if same else "line changed")
+    phrase = ", ".join(parts[:2])
+    return phrase[:1].upper() + phrase[1:]

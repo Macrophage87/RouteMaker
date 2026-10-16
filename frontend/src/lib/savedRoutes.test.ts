@@ -16,8 +16,18 @@ import {
   differsTooMuch,
   gpxSave,
   planSave,
+  RESTORED_SAID,
+  UNCHANGED_SAID,
+  VERSIONS_MAX,
+  afterDelete,
+  afterRename,
+  saveAsVersion,
+  listVersions,
+  restoreVersion,
   rowDetails,
   saveRoute,
+  versionDetails,
+  versionOf,
 } from "./savedRoutes.ts";
 import {
   CHECK_MAX_POINTS,
@@ -73,6 +83,86 @@ test("a save that is refused for the cap says so", async () => {
   const full = (async () => new Response(JSON.stringify({ error: "You have 200 saved routes.", code: "full" }), { status: 409 })) as unknown as typeof fetch;
   const outcome = await saveRoute("https://x.test", gpxSave("x", FILE, [[-77, 38.9], [-77.1, 38.8]], [], "default", startDials("default")), full, "");
   assert.deepEqual(outcome, { ok: false, full: true, message: "You have 200 saved routes." });
+});
+
+test("saved again under its own name in Plan is a new version; another name or Go is a new route", () => {
+  const open = { id: 7, name: "Commute" };
+  assert.equal(versionOf(open, " Commute ", true), 7);
+  assert.equal(versionOf(open, "Commute 2", true), undefined);
+  assert.equal(versionOf(open, "Commute", false), undefined);
+  assert.equal(versionOf(null, "Commute", true), undefined);
+});
+
+test("a save as a version says whether one was kept", async () => {
+  const sent: RequestInit[] = [];
+  const post = (async (_url: string, init: RequestInit) => {
+    sent.push(init);
+    return new Response(JSON.stringify({ id: 7, name: "Commute", versioned: false }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const body = { ...gpxSave("Commute", FILE, [[-77, 38.9], [-77.1, 38.8]], [], "default", startDials("default")), version_of: 7 };
+  const outcome = await saveRoute("https://x.test", body, post, "csrftoken=abc");
+  assert.ok(outcome.ok && outcome.versioned === false && outcome.route.id === 7);
+  assert.equal(JSON.parse(String(sent[0].body)).version_of, 7);
+});
+
+test("a version of a route no longer in the account is saved as a new route", async () => {
+  const bodies: Array<Record<string, unknown>> = [];
+  const post = (async (_url: string, init: RequestInit) => {
+    const sent = JSON.parse(String(init.body)) as Record<string, unknown>;
+    bodies.push(sent);
+    return sent.version_of !== undefined
+      ? new Response(JSON.stringify({ error: "That saved route is not in your account.", code: "not_found" }), { status: 404 })
+      : new Response(JSON.stringify({ id: 9, name: "Commute" }), { status: 201 });
+  }) as unknown as typeof fetch;
+  const body = gpxSave("Commute", FILE, [[-77, 38.9], [-77.1, 38.8]], [], "default", startDials("default"));
+  const outcome = await saveAsVersion("https://x.test", body, 7, post, "");
+  assert.ok(outcome.ok && outcome.route.id === 9 && outcome.versioned === undefined);
+  assert.deepEqual(bodies.map((b) => b.version_of), [7, undefined]);
+  // Any other refusal is said, not retried.
+  const full = (async () => new Response(JSON.stringify({ error: "Full.", code: "full" }), { status: 409 })) as unknown as typeof fetch;
+  assert.deepEqual(await saveAsVersion("https://x.test", body, 7, full, ""), { ok: false, full: true, message: "Full." });
+});
+
+test("the saved route on screen follows My routes' rename and is forgotten when deleted", () => {
+  const open = { id: 7, name: "Commute" };
+  assert.deepEqual(afterRename(open, 7, " Work run "), { id: 7, name: "Work run" });
+  assert.equal(afterRename(open, 8, "Other"), open);
+  assert.equal(afterDelete(open, 7), null);
+  assert.equal(afterDelete(open, 8), open);
+  // Renamed, saving under the new name is a version of it still.
+  assert.equal(versionOf(afterRename(open, 7, "Work run"), "Work run", true), 7);
+});
+
+test("saved again unchanged: a file says its file has not changed", () => {
+  assert.match(UNCHANGED_SAID("Thursday", "gpx"), /this route's file hasn't changed/);
+  assert.match(UNCHANGED_SAID("Commute"), /nothing changed/);
+});
+
+test("a version's line: date, distance in US units first, and what changed", () => {
+  assert.match(versionDetails({ saved_at: "2026-10-15T12:00:00Z", distance_m: 7600, change: "Stop added" }), /^Oct 15, 2026 · 4\.7 mi \(7\.6 km\) · Stop added$/);
+  assert.match(versionDetails({ saved_at: "2026-10-15T12:00:00Z", distance_m: 7600, change: "" }), /^Oct 15, 2026 · 4\.7 mi \(7\.6 km\)$/);
+  assert.match(RESTORED_SAID("Commute", { saved_at: "2026-10-12T12:00:00Z" }), /^Restored the version of "Commute" from Oct 12, 2026 as its latest/);
+});
+
+test("versions are listed and restored through the owner's own routes", async () => {
+  const urls: string[] = [];
+  const answer = (body: unknown, status = 200) =>
+    (async (url: string) => {
+      urls.push(url);
+      return new Response(JSON.stringify(body), { status });
+    }) as unknown as typeof fetch;
+  const list = [{ id: null, saved_at: "2026-10-15T12:00:00Z", distance_m: 10, source: "plan", change: "Stop added" }];
+  assert.deepEqual(await listVersions("https://x.test", 7, answer({ versions: list, max: VERSIONS_MAX })), list);
+  assert.equal(await listVersions("https://x.test", 8, answer({ error: "not found" }, 404)), null);
+  const restored = await restoreVersion("https://x.test", 7, 3, answer({ id: 7, name: "Commute" }), "csrftoken=abc");
+  assert.equal(restored?.id, 7);
+  assert.equal(await restoreVersion("https://x.test", 7, 3, answer({}, 404), ""), null);
+  assert.deepEqual(urls, [
+    "https://x.test/api/me/routes/7/versions",
+    "https://x.test/api/me/routes/8/versions",
+    "https://x.test/api/me/routes/7/versions/3/restore",
+    "https://x.test/api/me/routes/7/versions/3/restore",
+  ]);
 });
 
 test("round trip: an opened GPX file exports as the same file, every point, elevation and name", async () => {
