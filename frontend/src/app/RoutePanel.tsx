@@ -30,7 +30,8 @@ import { chartKind, corkerFigure, foldName, usableProfile } from "../lib/profile
 import { RouteDescription } from "../RouteDescription.tsx";
 import { RIDE_SAFETY, RideSettingsFields } from "../RideMode.tsx";
 import type { RidePrefs } from "../lib/rideOutput.ts";
-import { RIDE_MAX_M, RIDE_TOO_LONG } from "../lib/navigate.ts";
+import { RIDE_TOO_LONG } from "../lib/navigate.ts";
+import { restOffered, rideTripOf, rideable as rideableRoute, ridesLine } from "../lib/rideTrip.ts";
 import { BikeshareSummary } from "../BikeshareSummary.tsx";
 import { TransitSummary } from "../TransitSummary.tsx";
 import { DepartureTimer } from "../DepartureTimer.tsx";
@@ -264,6 +265,8 @@ export interface TransitControls {
   onPick: (key: string) => void;
   announce: (text: string) => void;
   onMissed: () => void;
+  /** Ride the rest (lib/rideTrip.ts): a ride for the trip's last riding leg, after the transit. */
+  onRideRest: () => void;
 }
 
 /** The planner's Route section: planning, the long-ride question, errors, the route summary and Start ride's question. */
@@ -669,12 +672,10 @@ export function RouteSummary({
   const timeName = transit ? (transit.scheduled ? "Door-to-door time, scheduled" : "Door-to-door time") : "Moving time";
   const timeText = transit ? transitTime(transit) : formatDuration(route.duration_s);
   const calm = calmPercent(route.stress_m);
-  // Start ride is offered with the directions too (plan Q1). Not on a Bikeshare plan: the route
-  // is only the ride between the docks, so the walk to the first dock would read as off route.
-  // Nor on a transit plan, whose line is only its first ride, unless the plan is riding your own bike
-  // the whole way (its line is then the whole trip).
-  const wholeRide = !transit || (transit.direct && transit.mode === "bike-transit");
-  const rideable = !bikeshare && wholeRide && route.distance_m <= RIDE_MAX_M;
+  // Start ride is offered with the directions too (plan Q1). On a Bikeshare or transit plan it follows the
+  // riding leg, the line (lib/rideTrip.ts: the walk to the dock and the boarding are said around it);
+  // the bike computer rule is that leg's.
+  const rideable = rideableRoute(route);
   const rideAction = rideable ? (
     <button type="button" className="secondary" onClick={ride.onStart}>
       Start ride
@@ -694,7 +695,7 @@ export function RouteSummary({
     <p id="start-ride-hint" className="hint start-ride-hint">
       Turn-by-turn directions on this phone, said as you chose. Keep the screen on and this page in front.
     </p>
-  ) : bikeshare || transit ? null : (
+  ) : !ridesLine(route) ? null : (
     <p className="hint start-ride-long">{RIDE_TOO_LONG}</p>
   );
   const alerts = (
@@ -760,6 +761,7 @@ export function RouteSummary({
         busy={transitControls?.busy}
         announce={transitControls?.announce}
         onMissed={transitControls?.onMissed}
+        onRideRest={restOffered(rideTripOf(route, points)) ? transitControls?.onRideRest : undefined}
       />
     </Fold>
   ) : null;

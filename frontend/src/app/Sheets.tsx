@@ -14,6 +14,7 @@ import { PresetName } from "../lib/presetName.ts";
 import { filterRideGroups, rideSections, rideTypeCount, RideTypeSearch } from "../lib/rideTypeGroups.ts";
 import { RideTypeCards } from "../lib/rideTypeCards.ts";
 import { isPlainClick, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
+import { SignOutForm } from "../SignOut.tsx";
 import { pointName } from "../lib/summary.ts";
 import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, setMtbTrails } from "../stressStyle.js";
 import { HighStressLanesSwitch } from "../lib/highStressLanesSwitch.ts";
@@ -505,9 +506,12 @@ export function SettingsSheet(props: SettingsSheetProps) {
       <section aria-labelledby="settings-signin-heading" className="settings-group">
         <h3 id="settings-signin-heading">Account</h3>
         {myGo.signedIn ? (
-          <p className="hint signed-in">
-            <Icon name="user" size={16} /> Signed in with Discord.
-          </p>
+          <>
+            <p className="hint signed-in">
+              <Icon name="user" size={16} /> Signed in with Discord.
+            </p>
+            <SignOutForm />
+          </>
         ) : signInAvailable ? (
           // The plan's one line (item 4); the link is its first words. The plan in hand is kept across the round trip.
           <p className="hint sign-in-line">

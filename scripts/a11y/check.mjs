@@ -4475,6 +4475,7 @@ async function goPressMap(p) {
     compare: document.querySelector('.transit-compare')?.textContent,
     markers: [...document.querySelectorAll('.transit-marker')].map((e) => ({ role: e.getAttribute('role'), label: e.getAttribute('aria-label'), badge: e.textContent, hidden: e.firstElementChild?.getAttribute('aria-hidden') })),
     start: !!document.querySelector('.go-summary .start-button'),
+    rest: (() => { const r = document.querySelector('.transit-rest button'); return r ? { name: r.textContent.trim(), hint: document.getElementById(r.getAttribute('aria-describedby') ?? '')?.textContent ?? '' } : null; })(),
     pressed: [...document.querySelectorAll('.go-route-rides .ride-chips button')].filter((x) => x.getAttribute('aria-pressed') === 'true').map((x) => x.textContent.trim()),
     said: document.querySelector('.status-line')?.textContent ?? '',
     scroll: document.documentElement.scrollWidth > innerWidth }))()`);
@@ -4501,9 +4502,11 @@ async function goPressMap(p) {
     optionList?.role === "list" && optionList?.name === "Trips, quickest first" && options.buttons.length === 2 && options.buttons[0].text === "A. Ride, Metro to Federal Triangle (Orange Line), ride: about 28 min" && options.buttons[0].pressed === "true" && options.buttons[1].text === "B. Ride the whole way: about 32 min" && options.buttons[1].pressed === "false" && options.track,
     JSON.stringify({ optionList, options }));
   check("transit (Go): the day's closed stations are asked for, to strike through on the map", p.closureRequests >= 1, String(p.closureRequests));
-  check("transit (Go): the announcement is brief (the total and the comparison), no Start ride on the trip, nothing scrolls sideways",
-    /^Own bike plus train or bus planned: About 28 min door to door, scheduled\. Riding the whole way/.test(trip.said) && !/Board the/.test(trip.said) && !trip.start && !trip.scroll,
-    JSON.stringify({ said: trip.said, start: trip.start, scroll: trip.scroll }));
+  // Start ride follows the first ride, and Ride the rest the last one, after the Metro (Stephen, 2026-10-16:
+  // "I can't start a bikeshare and transit ride. There's no button").
+  check("transit (Go): the announcement is brief (the total and the comparison), Start ride on the first ride and Ride the rest (described) in the trip, nothing scrolls sideways",
+    /^Own bike plus train or bus planned: About 28 min door to door, scheduled\. Riding the whole way/.test(trip.said) && !/Board the/.test(trip.said) && trip.start && trip.rest?.name === "Ride the rest" && /^Turn-by-turn from where you are/.test(trip.rest?.hint ?? "") && !trip.scroll,
+    JSON.stringify({ said: trip.said, start: trip.start, rest: trip.rest, scroll: trip.scroll }));
   await p.shot(`${SHOTS}/transit_go.png`);
   await p.close();
 }
@@ -4782,6 +4785,32 @@ async function goPressMap(p) {
   await p.close();
 }
 
+{
+  // Share as image on a route that starts at Home (v0.7.0 end review): "Hide the part near Home" is shown and
+  // ticked, and the QR code is refused, with its reason as the box's description, while Home is hidden; unticked
+  // (the rider chose to show Home), the QR code is no longer refused for Home.
+  const home = JSON.stringify({ open_in: "", ride: "", home: { lon: -77.04, lat: 38.91, label: "Home" } });
+  const p = await open({ ride: false, junctions: false, init: `try { localStorage.setItem('routemaker.my-go', ${JSON.stringify(home)}); } catch {}` });
+  await p.eval("document.querySelector('.route-more')?.click(); true");
+  await sleep(200);
+  await p.eval("document.querySelector('.share-image')?.click(); true");
+  const shown = await p.waitFor("!!document.querySelector('dialog.share-card[open], dialog[open] .share-card-check')", 8000);
+  const read = () => p.eval(`(() => { const d = document.querySelector('dialog[open]'); const boxes = [...(d?.querySelectorAll('.share-card-check') ?? [])];
+    const box = (text) => boxes.map((b) => ({ input: b.querySelector('input'), label: b.querySelector('label')?.textContent ?? '' })).find((b) => b.label === text);
+    const homeBox = box('Hide the part near Home'); const qr = box('QR code');
+    const why = qr?.input?.getAttribute('aria-describedby'); return { home: !!homeBox, homeChecked: homeBox?.input.checked ?? null,
+      qrDisabled: qr?.input.disabled ?? null, qrWhy: why ? document.getElementById(why)?.textContent ?? '' : '' }; })()`);
+  const hidden = await read();
+  check("share as image: on a route from Home, Hide the part near Home is shown and ticked",
+    shown && hidden.home && hidden.homeChecked === true, JSON.stringify(hidden));
+  await p.eval("[...document.querySelectorAll('dialog[open] .share-card-check')].find((b) => b.querySelector('label')?.textContent === 'Hide the part near Home')?.querySelector('input')?.click(); true");
+  await sleep(300);
+  const showing = await read();
+  check("share as image: the QR code is refused, its reason named, while Home is hidden, and not for Home once shown",
+    hidden.qrDisabled === true && /starts, ends or stops at Home/.test(hidden.qrWhy) && showing.homeChecked === false && !/at Home/.test(showing.qrWhy), JSON.stringify({ hidden, showing }));
+  await p.close();
+}
+
 b.close();
 
 const failed = results.filter((r) => !r.ok);
@@ -4789,7 +4818,7 @@ const failed = results.filter((r) => !r.ok);
 // returns early) fails here rather than passing green (the mutation review of the release).
 // The transit blocks (#108) and the Go press checks (#116) were added without raising it; they run since #127.
 // Review mode's own lists (22c2) add six.
-const EXPECTED = 639;
+const EXPECTED = 641;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
