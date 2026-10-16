@@ -185,6 +185,8 @@ export interface Cue {
   tier: number | null;
   /** A stop's number (from 1); null on any other cue. */
   stop: number | null;
+  /** The description entry's kind it came from (a course export keeps Avoid and work-zone hazards); absent on the end. */
+  source?: DescriptionEntry["kind"];
   /**
    * A stop's place in the plan's points, when it differs from its number (v0.7.0: via points between are not
    * numbered); the re-plan matches on it.
@@ -342,7 +344,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
       // Stops are numbered among themselves: the via points before this one are left out of its number.
       const point = entry.via;
       const number = point - vias.filter((v) => v < point).length;
-      cues.push({ index: cues.length, kind, atM: fromM, text: `Stop ${number}.`, movement: null, street: entry.turn?.onto ?? entry.street ?? null, severity: entry.severity ?? entry.turn?.severity ?? null, tier: entry.tier, stop: number, point });
+      cues.push({ index: cues.length, kind, atM: fromM, text: `Stop ${number}.`, movement: null, street: entry.turn?.onto ?? entry.street ?? null, severity: entry.severity ?? entry.turn?.severity ?? null, tier: entry.tier, stop: number, point, source: entry.kind });
     } else if (kind !== null) {
       cues.push({
         index: cues.length,
@@ -359,6 +361,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
         severity: entry.severity ?? entry.turn?.severity ?? null,
         tier: entry.tier,
         stop: kind === "stop" ? (entry.via ?? cues.filter((c) => c.kind === "stop").length + 1) : null,
+        source: entry.kind,
       });
     }
     if (entry.kind === "stretch") before = entry;
