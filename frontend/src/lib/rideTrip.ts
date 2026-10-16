@@ -18,7 +18,7 @@ import type { RouteResponse, TransitDeparture, TransitPlan, TransitStep } from "
 import { bikeshareOf, dockCountWords } from "./bikeshare.ts";
 import { formatDistance, spokenDistance } from "./format.ts";
 import { haversineM, pathLengthM, type LonLat } from "./geo.ts";
-import { POOR_FIX_M, RIDE_MAX_M, START_M, WINDOW_AHEAD_M, offThreshold, snap, type RideEvent, type RideFix, type RideModel } from "./navigate.ts";
+import { POOR_FIX_M, RIDE_MAX_M, START_M, WINDOW_AHEAD_M, offThreshold, snap, startState, step, type RideEvent, type RideFix, type RideModel, type RideState, type Verbosity } from "./navigate.ts";
 import type { PresetId } from "./presets.ts";
 import { drawOf, transitOf } from "./transit.ts";
 
@@ -37,6 +37,8 @@ export interface RideApproach {
   metres: number | null;
   /** After the walk: the dock's bike count ("5 classic bikes available."), or the steps' own words. */
   extra: string;
+  /** With no dock to name (steps before a later first ride): the first step alone, said at the start. */
+  first: string;
   /** Said once the rider reaches it. */
   reached: string;
 }
@@ -65,11 +67,19 @@ export interface RideTrip {
 }
 
 export const RIDE_REST = "Ride the rest";
+// A phone pocketed for longer than RideMode's HIDDEN_STOP_MS (on the train, say) stops the ride's watch: the
+// ride screen then offers Resume, and Ride the rest shows again with the next fix (the trip panel's works too).
 export const RIDE_REST_HINT = "Turn-by-turn from where you are to your destination, for the ride after transit.";
 export const RIDE_REST_FINDING = "Finding the ride to your destination…";
 /** Said once on the ride screen when the button shows (near or past the stop where the transit ends). */
 export function restReadySaid(rest: Pick<RideRest, "alightName">): string {
   return `${rest.alightName ? `Near ${rest.alightName}. ` : ""}${RIDE_REST} plans the ride to your destination.`;
+}
+/** Ride the rest pressed again within this, after closures were said, rides it anyway. */
+export const REST_ANYWAY_MS = 60_000;
+/** Closures on the rest's line, said on the ride screen (its dialog is in the hidden panel). */
+export function restClosedSaid(names: readonly string[]): string {
+  return `Closed on the way: ${[...new Set(names)].join(", ")}. Press ${RIDE_REST} again to ride anyway.`;
 }
 /** How near the stop where the transit ends the ride screen offers Ride the rest. */
 export const REST_NEAR_M = 400;
@@ -104,7 +114,7 @@ export function ridesLine(route: Pick<RouteResponse, "transit">): boolean {
   const plan = transitOf(route);
   if (!plan) return true;
   const index = lineIndex(plan);
-  return index < 0 || isRiding(plan.steps[index]);
+  return index < 0 ? plan.direct && plan.mode === "bike-transit" : isRiding(plan.steps[index]);
 }
 
 function distanceWords(metres: number | null): TripWords {
@@ -122,6 +132,11 @@ export function approachWords(approach: RideApproach, here: LonLat | null): Trip
   return { shown: `Walk to ${approach.name}${far.shown}.${extra}`, spoken: `Walk to ${approach.name}${far.spoken}.${extra}` };
 }
 
+/** What is said as the walk starts: the walk to the dock, or only the first of the steps before the line (Where am I? says them all). */
+export function approachStartSaid(approach: RideApproach): string {
+  return approach.name === null ? approach.first : approachWords(approach, null).spoken;
+}
+
 function bikeshareTrip(route: RouteResponse): RideTrip | null {
   const plan = bikeshareOf(route);
   if (!plan) return null;
@@ -134,6 +149,7 @@ function bikeshareTrip(route: RouteResponse): RideTrip | null {
       name: start.kind === "free_bike" ? "the e-bike parked outside a dock" : start.name,
       metres: plan.walk_start.distance_m,
       extra: start.kind === "dock" && start.availability === "known" ? `${dockCountWords(start, plan.bike, true)}.` : "",
+      first: "",
       reached: start.kind === "free_bike" ? "At the e-bike. Take it and ride." : `At ${start.name}. Take a bike and ride.`,
     };
   }
@@ -147,6 +163,14 @@ function bikeshareTrip(route: RouteResponse): RideTrip | null {
     };
   }
   return { approach, finish, departure: null, rest: null };
+}
+
+/**
+ * A boarding step without its "you arrive 7:38 am, 4 min spare" clause: true when planned, stale by the
+ * time the ride gets there (DepartureTimer counts down the time left instead).
+ */
+export function withoutSpare(text: string): string {
+  return text.replace(/: you arrive [^;]*; (\w)/, (_, first: string) => `. ${first.toUpperCase()}`);
 }
 
 function same(text: string): TripWords {
@@ -168,9 +192,10 @@ function transitTrip(route: RouteResponse, destination: LonLat | null): RideTrip
     const take = before.length === 1 && before[0].mode === "take" ? before[0] : null;
     if (take && take.to) {
       const metres = take.coordinates.length >= 2 ? pathLengthM(take.coordinates) : null;
-      approach = { at, name: take.to, metres, extra: "", reached: `At ${take.to}. Take a bike and ride.` };
+      approach = { at, name: take.to, metres, extra: "", first: "", reached: `At ${take.to}. Take a bike and ride.` };
     } else {
-      approach = { at, name: null, metres: null, extra: before.map((s) => s.text).join(" "), reached: "At the start of the ride." };
+      const extra = before.map((s) => s.text).join(" ");
+      approach = { at, name: null, metres: null, extra, first: before[0].text, reached: "At the start of the ride." };
     }
   }
   // At the line's end: the plan's own steps to the first transit after it (dock, walk, into the station,
@@ -178,7 +203,7 @@ function transitTrip(route: RouteResponse, destination: LonLat | null): RideTrip
   const boardAt = steps.findIndex((s, i) => i > line && isTransitStep(s));
   const upTo = boardAt > line ? boardAt : steps.length - 1;
   const dock = lineStep.mode === "bikeshare" && lineStep.to ? `Dock at ${lineStep.to}.` : "";
-  const words = [dock, ...steps.slice(line + 1, upTo + 1).map((s) => s.text)].filter(Boolean).join(" ");
+  const words = [dock, ...steps.slice(line + 1, upTo + 1).map((s) => withoutSpare(s.text))].filter(Boolean).join(" ");
   const finish = words ? same(words) : null;
   const departure = plan.departure && plan.departure.step > line ? plan.departure : null;
   // After the transit: the last riding leg, if it is not the line itself.
@@ -241,8 +266,69 @@ export function rideLegOf(
 export function approachReached(model: Pick<RideModel, "coordinates" | "along">, approach: Pick<RideApproach, "at">, fix: Pick<RideFix, "point" | "accuracyM">): boolean {
   if (fix.accuracyM > POOR_FIX_M) return false;
   if (haversineM(fix.point, approach.at) <= START_M) return true;
+  // The dock skipped (a bike taken at another dock, or GPS that never came within START_M of it): on the
+  // line at least WINDOW_AHEAD_M along it, the walk is over and the cues take up from there, the ones
+  // already passed dropped (navigate.ts step). Nearer the start, a walk beside the line stays a walk.
   const found = snap(model, fix.point);
   return found !== null && found.offM <= offThreshold(fix.accuracyM) && found.alongM >= WINDOW_AHEAD_M;
+}
+
+/** How old the last good fix may be for Ride the rest to start from it; older, the leg's own start is used. */
+export const REST_FIX_MAX_AGE_MS = 60_000;
+
+/**
+ * Ride mode's own state around the line's (navigate.ts RideState): whether the rider is still walking to
+ * the dock, whether the walk has been said, and the last good fix, kept after arrival too (the line's
+ * state stops taking fixes once arrived), for Ride the rest.
+ */
+export interface TripRide {
+  ride: RideState;
+  walking: boolean;
+  walkSaid: boolean;
+  lastGood: { point: LonLat; at: number } | null;
+}
+
+export function tripRideStart(trip: RideTrip | null, ride: RideState = startState()): TripRide {
+  return { ride, walking: !!trip?.approach, walkSaid: false, lastGood: null };
+}
+
+/**
+ * One fix into a ride, on a trip or not: while walking to the dock, the marker moves and nothing is taken
+ * as off route (the walk said at the first good fix, unless that fix is already at the dock); at the dock,
+ * the line's own step (navigate.ts) takes over, its arrival said as the plan's finish. `notes` are said
+ * politely, as Ride mode's notes are.
+ */
+export function tripStep(
+  model: RideModel,
+  trip: RideTrip | null,
+  s: TripRide,
+  fix: RideFix,
+  level: Verbosity,
+  replan = true,
+): { state: TripRide; events: RideEvent[]; notes: string[] } {
+  const good = fix.accuracyM <= POOR_FIX_M;
+  const lastGood = good ? { point: fix.point, at: fix.at } : s.lastGood;
+  const notes: string[] = [];
+  const approach = trip?.approach ?? null;
+  let walkSaid = s.walkSaid;
+  if (s.walking && approach) {
+    if (!approachReached(model, approach, fix)) {
+      if (good && !walkSaid) {
+        notes.push(approachStartSaid(approach));
+        walkSaid = true;
+      }
+      const ride = { ...s.ride, fix, goodFix: good ? fix : s.ride.goodFix };
+      return { state: { ride, walking: true, walkSaid, lastGood }, events: [], notes };
+    }
+    notes.push(approach.reached);
+  }
+  const out = step(model, s.ride, fix, level, replan);
+  return { state: { ride: out.state, walking: false, walkSaid, lastGood }, events: withFinish(out.events, trip?.finish ?? null), notes };
+}
+
+/** Where Ride the rest starts: the last good fix while under REST_FIX_MAX_AGE_MS old, else null (the leg's start). */
+export function restFrom(lastGood: TripRide["lastGood"], now: number): LonLat | null {
+  return lastGood && now - lastGood.at < REST_FIX_MAX_AGE_MS ? lastGood.point : null;
 }
 
 /**

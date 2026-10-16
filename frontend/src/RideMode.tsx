@@ -56,7 +56,6 @@ import {
   replanTold,
   rideModel,
   startState,
-  step,
   toGo,
   wayBack,
   whereAmI,
@@ -142,11 +141,12 @@ import {
   RIDE_REST,
   RIDE_REST_FINDING,
   RIDE_REST_HINT,
-  approachReached,
   approachWords,
+  restFrom,
   restNear,
   restReadySaid,
-  withFinish,
+  tripRideStart,
+  tripStep,
   type RideTrip,
 } from "./lib/rideTrip.ts";
 
@@ -492,7 +492,8 @@ export function RideMode({
   // line's start, the walk is said and shown, and no fix is taken as off route.
   const approach = trip?.approach ?? null;
   const [walking, setWalking] = useState(approach !== null);
-  const walkingRef = useRef(walking);
+  // The walk, whether it has been said, and the last good fix (lib/rideTrip.ts tripStep); its `ride` is rideRef's.
+  const tripRef = useRef(tripRideStart(trip));
   const rideRef = useRef(ride);
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
@@ -799,23 +800,18 @@ export function RideMode({
       if (weighed.sayNow) notify(GPS_WEAK_SAID);
       setGps(weighed.weak ? GPS_WEAK_SAID : "");
       checkCueSheet(lastFixAt.current);
-      if (walkingRef.current && approach) {
-        if (!approachReached(modelRef.current, approach, fix)) {
-          // Walking to the dock: the marker moves; nothing is placed on the line or taken as off route.
-          const walked = { ...rideRef.current, fix, goodFix: fix.accuracyM <= POOR_FIX_M ? fix : rideRef.current.goodFix };
-          rideRef.current = walked;
-          setRide(walked);
-          return;
-        }
-        walkingRef.current = false;
-        setWalking(false);
-        notify(approach.reached);
-      }
       const auto = !keepRef.current;
-      const out = step(modelRef.current, rideRef.current, fix, prefsRef.current.verbosity, auto);
+      // Walking to the dock, nothing is placed on the line or taken as off route (lib/rideTrip.ts).
+      const wasWalking = tripRef.current.walking;
+      const stepped = tripStep(modelRef.current, trip, { ...tripRef.current, ride: rideRef.current }, fix, prefsRef.current.verbosity, auto);
+      tripRef.current = stepped.state;
+      for (const note of stepped.notes) notify(note);
+      if (wasWalking && !stepped.state.walking) setWalking(false);
+      const out = { state: stepped.state.ride, events: stepped.events };
       rideRef.current = out.state;
       setRide(out.state);
-      say(withFinish(out.events, trip?.finish ?? null));
+      if (stepped.state.walking) return;
+      say(out.events);
       // Back on the planned route: "Keep" has done its work; leaving it again re-plans as usual.
       if (out.events.some((e) => e.kind === "back-on-route") || (keepRef.current && !out.state.off)) setKeepPlanned(false);
       // Never from a poor fix: a re-plan from a Wi-Fi guess 300 m out would be wrong at once.
@@ -878,11 +874,6 @@ export function RideMode({
       // The voice is not stopped here: End ride says "Ride ended." as the ride goes (end, below).
     };
   }, [startWatch, wake, noteWake]);
-  // The walk to the first dock, said once as the ride starts (after "Ride started.").
-  useEffect(() => {
-    if (approach) notify(approachWords(approach, null).spoken);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, at the start
-  }, []);
 
   // The page hidden and shown again (plan section 5): the lock again, a fresh place said once; hidden
   // over HIDDEN_STOP_MS, the watch stops and Resume is offered.
@@ -977,7 +968,7 @@ export function RideMode({
   };
   const askWhere = useCallback(() => {
     // Walking to the dock: the walk, from here.
-    const walk = walkingRef.current && approach ? approachWords(approach, rideRef.current.fix?.point ?? null) : null;
+    const walk = tripRef.current.walking && approach ? approachWords(approach, rideRef.current.fix?.point ?? null) : null;
     const spoken = walk ? walk.spoken : whereAmI(modelRef.current, rideRef.current);
     setWhere(walk ? walk.shown : whereAmI(modelRef.current, rideRef.current, true));
     // On demand: through the chosen outputs; with neither chosen, through the polite region too, since
@@ -1004,8 +995,8 @@ export function RideMode({
     };
     restBusy.current = true;
     answer(RIDE_REST_FINDING);
-    const here = rideRef.current.goodFix?.point ?? rideRef.current.fix?.point ?? null;
-    void onRideRest(here).then((said) => {
+    // The last good fix, kept after arrival (the line's goodFix stops at the drop-off), while fresh.
+    void onRideRest(restFrom(tripRef.current.lastGood, Date.now())).then((said) => {
       restBusy.current = false;
       if (said && !ended.current) answer(said);
     });
@@ -1040,6 +1031,11 @@ export function RideMode({
       announcer.current?.answer(text);
       if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
     };
+    // Walking to the dock: the walk again, not a ride from here that would skip the dock.
+    if (tripRef.current.walking && approach) {
+      answer(approachWords(approach, rideRef.current.fix?.point ?? null).spoken);
+      return;
+    }
     // A re-plan still under way (or one kept waiting after Keep the planned route) holds the gate.
     if (replanning || gate.busy) {
       answer(REPLAN_STILL_WAITING);

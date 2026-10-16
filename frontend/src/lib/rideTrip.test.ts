@@ -8,8 +8,15 @@ import type { BikesharePlan, DescriptionEntry, RouteResponse, TransitPlan, Trans
 import type { LonLat } from "./geo.ts";
 import { RIDE_MAX_M, pointAt, rideModel, startState, step, type RideEvent, type RideFix, type RideState } from "./navigate.ts";
 import {
+  REST_ANYWAY_MS,
+  REST_FIX_MAX_AGE_MS,
   approachReached,
+  approachStartSaid,
   approachWords,
+  restClosedSaid,
+  restFrom,
+  tripRideStart,
+  tripStep,
   restNear,
   restOffered,
   restReadySaid,
@@ -89,6 +96,11 @@ test("Start ride is offered on a Bikeshare plan and on a transit plan's riding l
   const walkLine = { ...PLAN, steps: PLAN.steps.map((s) => (s.route_line ? { ...s, mode: "walk" as const } : s)) };
   assert.equal(rideable(line({ transit: walkLine })), false);
   assert.equal(ridesLine(line({ transit: walkLine })), false);
+  // No line step at all: nothing to ride, so no "too long" note either, unless riding your own bike the whole way.
+  const noLine = { ...PLAN, steps: PLAN.steps.map((s) => ({ ...s, route_line: false })) };
+  assert.equal(rideable(line({ transit: noLine })), false);
+  assert.equal(ridesLine(line({ transit: noLine })), false);
+  assert.equal(ridesLine(line({ transit: { ...noLine, direct: true, mode: "bike-transit" } })), true);
   // A long first ride goes to a bike computer, whatever the whole trip's length.
   assert.equal(rideable(line({ transit: PLAN, distance_m: RIDE_MAX_M + 1 })), false);
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
@@ -215,7 +227,8 @@ test("a transit plan's first ride: the walk to its dock, then the dock and the p
   assert.equal(approachWords(trip.approach!, null).shown, "Walk to 4th & E St NW, 0.2 mi (0.4 km).");
   assert.equal(
     trip.finish!.shown,
-    "Dock at Eastern Market. About 2 min into the station. Board the Orange Line at 7:42 am scheduled from Eastern Market: you arrive 7:38 am, 4 min spare; the next is 7:54 am. Ride 10 min to Federal Triangle.",
+    // The planned "you arrive …, N min spare" is stale by then: the countdown says the time left instead.
+    "Dock at Eastern Market. About 2 min into the station. Board the Orange Line at 7:42 am scheduled from Eastern Market. The next is 7:54 am. Ride 10 min to Federal Triangle.",
   );
   // The departure the boarding leads to keeps its countdown (DepartureTimer) on the ride screen.
   assert.equal(trip.departure?.departs, "7:42 am");
@@ -247,8 +260,11 @@ test("Ride the rest: the last riding leg after the transit, offered near or past
 
 test("the ride screen and the trip panel wire Ride the rest and the walk through the ride's outputs", () => {
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
-  assert.match(ride, /if \(walkingRef\.current && approach\) \{\n\s*if \(!approachReached\(/);
-  assert.match(ride, /say\(withFinish\(out\.events, trip\?\.finish \?\? null\)\);/);
+  assert.match(ride, /const stepped = tripStep\(modelRef\.current, trip, \{ \.\.\.tripRef\.current, ride: rideRef\.current \}, fix,/);
+  assert.match(ride, /for \(const note of stepped\.notes\) notify\(note\);/);
+  assert.match(ride, /void onRideRest\(restFrom\(tripRef\.current\.lastGood, Date\.now\(\)\)\)/);
+  // Re-plan from here while walking repeats the walk.
+  assert.match(ride, /if \(tripRef\.current\.walking && approach\) \{\n\s*answer\(approachWords\(/);
   assert.match(ride, /notify\(restReadySaid\(rest\)\);/);
   assert.match(ride, /<button type="button" onClick=\{rideTheRest\} aria-describedby=/);
   const summary = readFileSync(new URL("../TransitSummary.tsx", import.meta.url), "utf8");
@@ -256,4 +272,85 @@ test("the ride screen and the trip panel wire Ride the rest and the walk through
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /const result = await requestRoute\(asked\.points, asked\.preset,/);
   assert.match(app, /if \(!rideableRoute\(result\.route\)\) return RIDE_TOO_LONG;/);
+  // End ride (or another ride) while the request runs: nothing starts.
+  assert.match(app, /const stillOn = \(\) => \(fromRide \? ridingNow\.current && rideNow\.current\.start\?\.n === n : !ridingNow\.current\);/);
+  assert.match(app, /const result = await requestRoute\(asked\.points, asked\.preset, [^\n]*routeOnly: true \}\);\n\s*if \(!stillOn\(\)\) return null;/);
+  assert.match(app, /if \(stillOn\(\)\) beginRide\(ridePrefs, false,/);
+  // Closures on the ride screen: said, the route held, a second press within the minute rides it anyway.
+  assert.match(app, /return restClosedSaid\(found\.closures\.map/);
+  assert.match(app, /if \(fromRide && held && held\.n === n && Date\.now\(\) - held\.at < REST_ANYWAY_MS\) \{\n\s*closureLetGo\.current = lineKey/);
+  // The panel's button ignores a second press while the first runs.
+  assert.match(app, /if \(restPanelBusy\.current\) return;/);
+});
+
+test("closures on Ride the rest's line are said by name, once each", () => {
+  assert.equal(restClosedSaid(["K Street", "K Street", "a closure"]), "Closed on the way: K Street, a closure. Press Ride the rest again to ride anyway.");
+  assert.equal(REST_ANYWAY_MS, 60_000);
+});
+
+test("tripStep: walking to the dock is never off route; the walk is said at the first good fix; the dock hands over to the line", () => {
+  const model = rideModel(BIKESHARE);
+  const trip = rideTripOf(BIKESHARE, [])!;
+  let s = tripRideStart(trip);
+  assert.equal(s.walking, true);
+  const notes: string[] = [];
+  const events: RideEvent[] = [];
+  const feed = (point: LonLat, accuracyM = 5) => {
+    const out = tripStep(model, trip, s, { ...fix(point), accuracyM }, "full");
+    s = out.state;
+    notes.push(...out.notes);
+    events.push(...out.events);
+  };
+  feed(at(0, -400), 200); // a poor fix: nothing said yet
+  assert.deepEqual(notes, []);
+  for (const north of [-400, -300, -200, -100, -60]) feed(at(0, north));
+  assert.equal(s.walking, true);
+  assert.deepEqual(notes, ["Walk to 4th & E St NW, 0.2 miles. 5 classic bikes available."]);
+  assert.deepEqual(events, [], "no off route while walking");
+  assert.equal(s.ride.progressM, null);
+  assert.deepEqual(s.ride.fix?.point, at(0, -60), "the marker moves");
+  feed(at(0, -20));
+  assert.equal(s.walking, false);
+  assert.equal(notes[notes.length - 1], "At 4th & E St NW. Take a bike and ride.");
+  assert.ok(s.ride.progressM !== null && s.ride.progressM < 30);
+  for (let m = 10; m <= 1000; m += 10) feed(pointAt(model, m));
+  assert.equal(s.ride.arrived, true);
+  assert.equal(events[events.length - 1].spoken, "Dock at Union Station. Walk 0.2 miles to the finish.");
+  assert.ok(!events.some((e) => e.kind === "off-route"));
+});
+
+test("tripStep: a first good fix already at the dock skips the walk line", () => {
+  const model = rideModel(BIKESHARE);
+  const trip = rideTripOf(BIKESHARE, [])!;
+  const out = tripStep(model, trip, tripRideStart(trip), fix(at(0, -10)), "full");
+  assert.deepEqual(out.notes, ["At 4th & E St NW. Take a bike and ride."]);
+  assert.equal(out.state.walking, false);
+});
+
+test("with a later first ride, only the first step is said at the start; Where am I? has them all", () => {
+  const later = { ...PLAN, steps: [step_({ mode: "walk", text: "Walk 4 min to Eastern Market." }), ...PLAN.steps.slice(2, 5), step_({ ...PLAN.steps[6], route_line: true, coordinates: [] })] };
+  const trip = rideTripOf(line({ transit: later }), [at(0, 0), TRIP_END])!;
+  assert.equal(approachStartSaid(trip.approach!), "Walk 4 min to Eastern Market.");
+  assert.match(approachWords(trip.approach!, null).spoken, /^Walk 4 min to Eastern Market\. About 2 min into the station\. Board the Orange Line/);
+});
+
+test("arrived, then on transit: Ride the rest starts from the last good fix near the alighting stop, not the drop-off dock", () => {
+  const model = rideModel(TRANSIT_ROUTE);
+  const trip = rideTripOf(TRANSIT_ROUTE, [at(0, -400), TRIP_END])!;
+  let s = tripRideStart(trip);
+  for (let m = 0; m <= 1000; m += 10) s = tripStep(model, trip, s, fix(pointAt(model, m)), "full").state;
+  assert.equal(s.ride.arrived, true);
+  const dock = s.ride.goodFix!.point;
+  // Off the train, near the stop: the line's state takes no more fixes, the trip's last good fix does.
+  const near = at(5080, 4060);
+  s = tripStep(model, trip, s, fix(near), "full").state;
+  assert.deepEqual(s.ride.goodFix!.point, dock, "the line's goodFix froze at arrival");
+  assert.equal(restNear(trip.rest!, s.ride.fix!.point, s.ride.arrived), true);
+  const from = restFrom(s.lastGood, s.lastGood!.at + 1000);
+  assert.deepEqual(from, near);
+  assert.deepEqual(restRequest(trip.rest!, from)!.points[0], near);
+  // A fix over a minute old is not used: the leg's own start is.
+  const stale = restFrom(s.lastGood, s.lastGood!.at + REST_FIX_MAX_AGE_MS);
+  assert.equal(stale, null);
+  assert.deepEqual(restRequest(trip.rest!, stale)!.points[0], at(5050, 4000));
 });
