@@ -5565,7 +5565,7 @@ def ride_here(request, ride_id: str):
     return _ride_call(
         request,
         lambda rp: rp.post_position(
-            ride_id, body.get("token", ""), body.get("lon"), body.get("lat")
+            ride_id, body.get("token", ""), body.get("lon"), body.get("lat"), body.get("role")
         ),
     )
 

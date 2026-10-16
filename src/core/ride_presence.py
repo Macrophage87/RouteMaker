@@ -91,6 +91,11 @@ ALERT_KINDS: dict[str, tuple[AlertKind, ...]] = {
     ),
 }
 
+# The rider's role on the ride, chosen in the same one-time question as showing the dot and sent
+# with each position: self-declared (a ride link has no sign-in), anonymous like the dot itself.
+PARTICIPANT = "participant"
+ROLES = (PARTICIPANT, "lead", "sweep", "corker")
+
 RIDE_ID = re.compile(r"^[0-9a-f]{64}$")
 TOKEN = re.compile(r"^[0-9a-f]{32}$")
 
@@ -294,7 +299,7 @@ def _prune(state: dict, now: float) -> None:
             continue
         if "at" in rider and now - rider["at"] > DOT_TTL_S:
             # The position goes at 2 minutes; the token's counts stay for the ride's limits.
-            for key in ("lon", "lat", "at"):
+            for key in ("lon", "lat", "at", "role"):
                 rider.pop(key, None)
     state["alerts"] = [a for a in state["alerts"] if now - a["last"] <= ALERT_TTL_S]
 
@@ -327,10 +332,22 @@ def _position(lon, lat) -> tuple[float, float]:
     return rounded(float(lon), float(lat))
 
 
-def post_position(ride_id: str, token: str, lon, lat, now: Callable[[], float] = time.time) -> None:
-    """Keep this rider's dot (rounded) for 2 minutes."""
+def _role(role) -> str:
+    """One of ROLES; none sent (an older page) is a participant."""
+    if role is None or role == "":
+        return PARTICIPANT
+    if role not in ROLES:
+        raise Refused(400, "Not a rider role: participant, lead, sweep or corker.")
+    return role
+
+
+def post_position(
+    ride_id: str, token: str, lon, lat, role=None, now: Callable[[], float] = time.time
+) -> None:
+    """Keep this rider's dot (rounded) and role for 2 minutes."""
     _check(ride_id, token)
     spot = _position(lon, lat)
+    role = _role(role)
     t = now()
     with store().ride(ride_id) as state:
         _prune(state, t)
@@ -340,7 +357,7 @@ def post_position(ride_id: str, token: str, lon, lat, now: Callable[[], float] =
             raise Refused(
                 429, "Too soon; the next position goes in a few seconds.", MIN_POST_INTERVAL_S
             )
-        rider.update(lon=spot[0], lat=spot[1], at=t, posted=t)
+        rider.update(lon=spot[0], lat=spot[1], at=t, posted=t, role=role)
 
 
 def leave(ride_id: str, token: str, now: Callable[[], float] = time.time) -> None:
@@ -350,7 +367,7 @@ def leave(ride_id: str, token: str, now: Callable[[], float] = time.time) -> Non
         _prune(state, now())
         rider = state["riders"].get(token)
         if rider is not None:
-            for key in ("lon", "lat", "at"):
+            for key in ("lon", "lat", "at", "role"):
                 rider.pop(key, None)
 
 
@@ -373,7 +390,8 @@ def _alert_out(alert: dict, token: str, t: float) -> dict:
 
 
 def read(ride_id: str, token: str, now: Callable[[], float] = time.time) -> dict:
-    """The other riders' dots (not this one's own) with their ages, and the ride's alerts."""
+    """The other riders' dots (not this one's own) with their ages and roles, and the ride's
+    alerts."""
     _check(ride_id, token)
     t = now()
     with store().ride(ride_id) as state:
@@ -383,7 +401,12 @@ def read(ride_id: str, token: str, now: Callable[[], float] = time.time) -> dict
             raise Refused(429, "Too soon; the dots update every 15 seconds.", MIN_POLL_INTERVAL_S)
         rider["polled"] = t
         dots = [
-            {"lon": r["lon"], "lat": r["lat"], "age_s": max(0, int(t - r["at"]))}
+            {
+                "lon": r["lon"],
+                "lat": r["lat"],
+                "age_s": max(0, int(t - r["at"])),
+                "role": r.get("role", PARTICIPANT),
+            }
             for other, r in state["riders"].items()
             if other != token and "at" in r
         ]

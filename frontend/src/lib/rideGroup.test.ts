@@ -4,12 +4,15 @@ import assert from "node:assert/strict";
 import type { LonLat } from "./geo.ts";
 import {
   ALERT_KINDS,
+  CONSENT_KEY,
   CONSENT_QUESTION,
+  RIDE_ROLES,
   ageWords,
   alertRefusal,
   alertText,
   consentFor,
   countText,
+  dotName,
   dotSaid,
   freshness,
   isRideLink,
@@ -17,18 +20,44 @@ import {
   newAlerts,
   nearRoute,
   newToken,
+  POST_EVERY_MS,
+  postSoonAfter,
   project,
   readRide,
   rideId,
   ridersSaid,
+  roleKey,
+  roleOf,
   sendAlert,
+  sendPosition,
   shareStop,
   shownDots,
   type RideAlert,
+  type RideRole,
 } from "./rideGroup.ts";
-import { ALERT, DOT, DOTS_LAYER, HOLE, PULSE_LAYER, STALE_LAYER, dotFeatures, dotsLayers, showRideDots } from "./rideDotsLayer.ts";
-import { contrastRatio } from "../stressStyle.js";
+import {
+  ALERT,
+  DOT,
+  DOTS_LAYER,
+  HOLE,
+  LEAD_LAYER,
+  PULSE_LAYER,
+  RIDER_LAYERS,
+  ROLE_COLOURS,
+  ROLE_SHAPES,
+  dotFeatures,
+  dotImage,
+  dotImageId,
+  dotImages,
+  dotsLayers,
+  insideBy,
+  roleSwatchPoints,
+  showRideDots,
+} from "./rideDotsLayer.ts";
+import { PALETTES, contrastRatio } from "../stressStyle.js";
 import { baseSurfaces } from "../testSupport/baseSurfaces.ts";
+import { VISIONS, deltaE2000, simulate } from "../testSupport/colourVision.ts";
+import { readFileSync } from "node:fs";
 
 // An east-west route about 3.4 km long.
 const LINE: LonLat[] = Array.from({ length: 21 }, (_, i) => [-77.04 + i * 0.002, 38.9] as LonLat);
@@ -193,36 +222,92 @@ test("the API sends the token in a header and positions only in bodies", async (
   assert.deepEqual(sent, { ok: false, message: "One alert a minute; try again shortly." });
 });
 
-test("F12. a faded dot keeps its fill opaque (3:1 or more on every map surface) and shows its age by a white hole", () => {
-  type Layer = { id: string; filter?: unknown; paint: Record<string, unknown> };
-  const layers = dotsLayers() as Layer[];
-  const dot = layers.find((l) => l.id === DOTS_LAYER)!;
-  // ["match", ["get", "freshness"], "fresh", 1, "faded", 1, 0]: fresh and faded both opaque, the old one hollow.
-  assert.deepEqual(dot.paint["circle-opacity"], ["match", ["get", "freshness"], "fresh", 1, "faded", 1, 0]);
-  assert.equal(dot.paint["circle-stroke-opacity"], 1);
+test("F12. a faded mark keeps its fill opaque (3:1 or more on every map surface) and shows its age by a white hole", () => {
+  const at = (r: ReturnType<typeof dotImage>, x: number, y: number) => Array.from(r.data.slice((y * r.width + x) * 4, (y * r.width + x) * 4 + 4));
+  for (const role of Object.keys(ROLE_COLOURS) as RideRole[]) {
+    const fresh = dotImage(role, "fresh", 1);
+    const faded = dotImage(role, "faded", 1);
+    const ring = dotImage(role, "ring", 1);
+    const c = Math.floor(fresh.width / 2);
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(ROLE_COLOURS[role].slice(i, i + 2), 16));
+    // Fresh: the role's colour, opaque; faded: the white hole, opaque; ring: nothing in the middle.
+    assert.deepEqual(at(fresh, c, c), [r, g, b, 255], `${role} fresh`);
+    assert.deepEqual(at(faded, c, c), [255, 255, 255, 255], `${role} faded`);
+    assert.equal(at(ring, c, c)[3], 0, `${role} ring`);
+    // The faded mark's fill is still the full colour around its hole, never a paler one.
+    let full = false;
+    for (let i = 0; i < faded.data.length; i += 4) if (faded.data[i] === r && faded.data[i + 1] === g && faded.data[i + 2] === b && faded.data[i + 3] === 255) full = true;
+    assert.ok(full, `${role} faded keeps its colour`);
+  }
+  const layers = dotsLayers() as { id: string; paint?: Record<string, unknown> }[];
   const pin = layers.find((l) => l.id === "ride-alerts-pin")!;
-  assert.deepEqual(pin.paint["circle-opacity"], ["match", ["get", "freshness"], "fresh", 1, "faded", 1, 0]);
-  const stale = layers.find((l) => l.id === STALE_LAYER)!;
-  assert.deepEqual(stale.filter, ["==", ["get", "freshness"], "faded"]);
-  assert.equal(stale.paint["circle-color"], HOLE);
-  // The fill against every light-map surface it can sit on, and the hole against the fill.
+  assert.deepEqual(pin.paint?.["circle-opacity"], ["match", ["get", "freshness"], "fresh", 1, "faded", 1, 0]);
+  // The fills against every light-map surface they can sit on, and the hole against each fill.
   for (const [name, surface] of Object.entries(baseSurfaces())) {
-    assert.ok(contrastRatio(DOT, surface) >= 3, `the dot on ${name}: ${contrastRatio(DOT, surface).toFixed(2)}:1`);
+    for (const [role, colour] of Object.entries(ROLE_COLOURS)) assert.ok(contrastRatio(colour, surface) >= 3, `${role} on ${name}: ${contrastRatio(colour, surface).toFixed(2)}:1`);
     assert.ok(contrastRatio(ALERT, surface) >= 3, `the alert on ${name}: ${contrastRatio(ALERT, surface).toFixed(2)}:1`);
   }
-  assert.ok(contrastRatio(HOLE, DOT) >= 3 && contrastRatio(HOLE, ALERT) >= 3, "the hole shows on the fill");
+  for (const colour of [...Object.values(ROLE_COLOURS), ALERT]) assert.ok(contrastRatio(HOLE, colour) >= 3, `the hole shows on ${colour}`);
+  assert.equal(DOT, ROLE_COLOURS.participant);
 });
 
-test("the map draws a solid, faded or hollow dot by age, with the pulse ring for a new reading", () => {
+test("each role has its own colour, apart under every colour vision, and its own shape", () => {
+  const colours = Object.entries(ROLE_COLOURS);
+  for (let i = 0; i < colours.length; i += 1) {
+    for (let j = i + 1; j < colours.length; j += 1) {
+      for (const v of VISIONS) {
+        const d = deltaE2000(simulate(colours[i][1], v), simulate(colours[j][1], v));
+        assert.ok(d >= 15, `${colours[i][0]} and ${colours[j][0]} under ${v}: ${d.toFixed(1)}`);
+      }
+    }
+  }
+  // Apart from the alert pin's red as well (which is also a larger circle).
+  for (const [role, colour] of colours) for (const v of VISIONS) assert.ok(deltaE2000(simulate(colour, v), simulate(ALERT, v)) >= 7, `${role} and the alert under ${v}`);
+  assert.deepEqual(ROLE_SHAPES, { participant: "dot", lead: "chevron", sweep: "square", corker: "diamond" });
+  // A square's corner is no diamond's; a diamond's tip is no square's; the chevron's notch is open.
+  assert.ok(insideBy("square", 0.65, 0.65) > 0 && insideBy("diamond", 0.65, 0.65) < 0);
+  assert.ok(insideBy("diamond", 0, 0.95) > 0 && insideBy("square", 0, 0.95) < 0);
+  assert.ok(insideBy("chevron", 0, 0.6) < 0 && insideBy("chevron", 0, -0.8) > 0 && insideBy("diamond", 0, 0.6) > 0);
+  // The participant's dot is the smallest mark.
+  const widths = Object.fromEntries((Object.keys(ROLE_COLOURS) as RideRole[]).map((r) => [r, dotImage(r, "fresh", 1).width]));
+  for (const r of ["lead", "sweep", "corker"]) assert.ok(widths.participant < widths[r], `${r} is larger than a participant`);
+  assert.equal(roleSwatchPoints("participant"), "");
+  assert.notEqual(roleSwatchPoints("sweep"), roleSwatchPoints("corker"));
+  assert.equal(dotImages(1).length, 12);
+});
+
+test("the map draws each role's mark by age, the lead line's chevron turned along the route, the pulse in the role's colour", () => {
   const shown = shownDots(LINE, [
     { lon: -77.03, lat: 38.9, age_s: 1 },
-    { lon: -77.02, lat: 38.9, age_s: 100 },
+    { lon: -77.02, lat: 38.9, age_s: 100, role: "lead" },
+    { lon: -77.01, lat: 38.9, age_s: 40, role: "corker" },
   ]);
   const features = dotFeatures(shown).features;
-  assert.deepEqual(features.map((f) => f.properties.freshness), ["fresh", "ring"]);
-  const ids = dotsLayers().map((l) => (l as { id: string }).id);
-  assert.ok(ids.includes(DOTS_LAYER) && ids.includes(PULSE_LAYER));
+  assert.deepEqual(
+    features.map((f) => [f.properties.role, f.properties.freshness]),
+    [
+      ["participant", "fresh"],
+      ["lead", "ring"],
+      ["corker", "faded"],
+    ],
+  );
+  // The route runs east here: the chevron points east.
+  assert.equal(features[1].properties.bearing, 90);
+  type Layer = { id: string; type: string; filter?: unknown; layout?: Record<string, unknown>; paint?: Record<string, unknown> };
+  const layers = dotsLayers() as Layer[];
+  const dots = layers.find((l) => l.id === DOTS_LAYER)!;
+  const lead = layers.find((l) => l.id === LEAD_LAYER)!;
+  assert.deepEqual(dots.filter, ["!=", ["get", "role"], "lead"]);
+  assert.deepEqual(lead.filter, ["==", ["get", "role"], "lead"]);
+  assert.deepEqual(dots.layout?.["icon-image"], ["concat", "ride-dot-", ["get", "role"], "-", ["get", "freshness"]]);
+  assert.equal(dots.layout?.["icon-rotation-alignment"], "viewport");
+  assert.deepEqual(lead.layout?.["icon-rotate"], ["get", "bearing"]);
+  assert.equal(lead.layout?.["icon-rotation-alignment"], "map");
+  assert.deepEqual(RIDER_LAYERS, [DOTS_LAYER, LEAD_LAYER]);
+  const pulse = layers.find((l) => l.id === PULSE_LAYER)!;
+  assert.deepEqual(pulse.paint?.["circle-stroke-color"], ["match", ["get", "role"], "lead", ROLE_COLOURS.lead, "sweep", ROLE_COLOURS.sweep, "corker", ROLE_COLOURS.corker, ROLE_COLOURS.participant]);
   const added: string[] = [];
+  const images = new Set<string>();
   const sources = new Map<string, unknown>();
   const map = {
     getSource: (id: string) => sources.get(id),
@@ -231,11 +316,174 @@ test("the map draws a solid, faded or hollow dot by age, with the pulse ring for
     getLayer: (id: string) => (added.includes(id) ? {} : undefined),
     addLayer: (l: object) => void added.push((l as { id: string }).id),
     removeLayer: (id: string) => void added.splice(added.indexOf(id), 1),
+    hasImage: (id: string) => images.has(id),
+    addImage: (id: string) => void images.add(id),
   };
-  showRideDots(map, shown, [alert()]);
-  // Review F12: 5, not 3: a faded dot's and a faded pin's white hole each have a layer.
+  showRideDots(map, shown, [alert()], 0, 1);
+  // Pulse, the marks, the chevrons, the alert pin and its faded hole.
+  assert.equal(added.length, 5);
+  assert.equal(images.size, 12);
+  assert.ok(images.has(dotImageId("lead", "ring")) && images.has(dotImageId("participant", "fresh")));
+  showRideDots(map, shown, [alert()], 0, 1);
   assert.equal(added.length, 5);
   showRideDots(map, null);
   assert.equal(added.length, 0);
   assert.equal(sources.size, 0);
+});
+
+test("the role is asked with the answer, Participant unless chosen, kept for the ride and changeable", () => {
+  assert.deepEqual(
+    RIDE_ROLES.map((r) => r.label),
+    ["Participant", "Lead line", "Sweep", "Corker"],
+  );
+  const store = new Memory();
+  const now = 1_000_000_000;
+  // One tap (Yes, nothing else chosen): a participant.
+  assert.equal(keepConsent("r1", "yes", now, store).role, "participant");
+  const first = consentFor("r1", now, store)!;
+  assert.equal(first.role, "participant");
+  // Changed later: the same token and start, the new role; turning sharing off keeps it.
+  const sweep = keepConsent("r1", "yes", now + 1000, store, undefined, "sweep");
+  assert.equal(sweep.token, first.token);
+  assert.equal(keepConsent("r1", "no", now + 2000, store).role, "sweep");
+  assert.equal(consentFor("r1", now + 3000, store)?.role, "sweep");
+  // Chosen in the question itself.
+  assert.equal(keepConsent("r2", "yes", now, store, undefined, "lead").role, "lead");
+  // An answer kept before roles: a participant.
+  const old = new Memory();
+  old.setItem(CONSENT_KEY, JSON.stringify({ r3: { answer: "yes", token: "1".repeat(32), since: now } }));
+  assert.equal(consentFor("r3", now, old)?.role, "participant");
+  // A dot from a server that sends no role, or one not of the four: a participant.
+  assert.equal(roleOf(undefined), "participant");
+  assert.equal(roleOf("captain"), "participant");
+  assert.equal(roleOf("corker"), "corker");
+  assert.equal(shownDots(LINE, [{ lon: -77.03, lat: 38.9, age_s: 1 }])[0].role, "participant");
+});
+
+test("the role travels with the position, in the body", async () => {
+  const bodies: unknown[] = [];
+  const fake = (async (_u: string, i?: RequestInit) => {
+    bodies.push(JSON.parse(String(i?.body)));
+    return new Response("{}", { status: 200 });
+  }) as unknown as typeof fetch;
+  await sendPosition("https://x.test", "f".repeat(64), "1".repeat(32), [-77, 38.9], "corker", fake);
+  await sendPosition("https://x.test", "f".repeat(64), "1".repeat(32), [-77, 38.9], undefined, fake);
+  assert.deepEqual(bodies, [
+    { token: "1".repeat(32), lon: -77, lat: 38.9, role: "corker" },
+    { token: "1".repeat(32), lon: -77, lat: 38.9, role: "participant" },
+  ]);
+});
+
+test("a dot is named by its role and where it is along the route, US units first", () => {
+  const me = project(LINE, [-77.02, 38.9]).alongM;
+  const back = project(LINE, [-77.0293, 38.9]).alongM;
+  assert.equal(dotName("sweep", back, me), "Sweep, 0.5 mi (0.8 km) behind");
+  assert.match(dotName("lead", project(LINE, [-77.004, 38.9]).alongM, me), /^Lead line, 0\.9 mi \(1\.4 km\) ahead$/);
+  assert.equal(dotName("corker", me + 10, me), "Corker, beside you");
+  assert.match(dotName("participant", back, null), /^Participant, 0\.6 mi \(0\.9 km\) along the route$/);
+  assert.equal(dotSaid(40, dotName("sweep", back, me)), "Sweep, 0.5 mi (0.8 km) behind. Seen 40 s ago.");
+  // Said on request: the nearest of each role besides the participants, by name.
+  const shown = shownDots(LINE, [
+    { lon: -77.019, lat: 38.9, age_s: 12 },
+    { lon: -77.004, lat: 38.9, age_s: 5, role: "lead" },
+    { lon: -77.0293, lat: 38.9, age_s: 5, role: "sweep" },
+    { lon: -77.035, lat: 38.9, age_s: 5, role: "sweep" },
+  ]);
+  assert.match(ridersSaid(shown, me), /^4 riders on the route\. Nearest rider ahead, .+, seen 10 s ago\. Lead line, 0\.9 mi \(1\.4 km\) ahead\. Sweep, 0\.5 mi \(0\.8 km\) behind\.$/);
+});
+
+test("the key lists only the roles on the ride, in order, with how many", () => {
+  const shown = shownDots(LINE, [
+    { lon: -77.03, lat: 38.9, age_s: 1, role: "corker" },
+    { lon: -77.02, lat: 38.9, age_s: 1 },
+    { lon: -77.01, lat: 38.9, age_s: 1, role: "corker" },
+  ]);
+  assert.deepEqual(roleKey(shown), [
+    { role: "participant", label: "Participant", count: 1 },
+    { role: "corker", label: "Corker", count: 2 },
+  ]);
+  assert.deepEqual(roleKey([]), []);
+});
+
+test("the page asks the role in the one question, keeps Go clean and names the key's swatches in words", () => {
+  const group = readFileSync(new URL("../RideGroup.tsx", import.meta.url), "utf8");
+  // In the consent dialog, Participant already chosen; changeable in the riders panel beside the switch.
+  assert.match(group, /useState<RideRole>\(DEFAULT_ROLE\)/);
+  // Compact in Go's question: one labelled list, not four rows of radio buttons.
+  const ask = group.slice(group.indexOf('className="ride-consent"'), group.indexOf('className="ride-group-bar"'));
+  assert.match(ask, /<label className="ride-role-select">\s*\{ROLE_QUESTION\}\{" "\}\s*<select value=\{pickedRole\}/);
+  assert.doesNotMatch(ask, /RolePicker|type="radio"/);
+  // A role change moves the next post up, and the post sends the consent's (new) role.
+  assert.match(group, /const changeRole[\s\S]*?keepConsent\(ride, consent\.answer, Date\.now\(\), undefined, undefined, role\)[\s\S]*?share\.current\.lastPost = postSoonAfter\(share\.current\.lastPost\)/);
+  assert.match(group, /\}, \[fix, now, shareOn, ride, token, consent, line, origin\]\);/);
+  assert.match(group, /<\/button>\s*\)\}\s*\{consent && <RolePicker name="ride-role" value=\{consent\.role\} onChange=\{changeRole\} \/>\}\s*<\/div>/);
+  assert.match(group, /sendPosition\(origin, ride, token, fix, consent\.role\)/);
+  // Go's bar keeps its two buttons.
+  const bar = group.slice(group.indexOf('className="ride-group-bar"'), group.indexOf("id={ridersPanel}"));
+  assert.equal((bar.match(/<button/g) ?? []).length, 2);
+  // The key: the swatches are decoration, the words carry the role.
+  assert.match(group, /<svg className="ride-role-swatch"[^>]*aria-hidden="true"/);
+  assert.match(group, /\{k\.label\} \(\{k\.count\}\)/);
+  // A tap on any rider's mark says its role and where.
+  assert.match(group, /for \(const layer of RIDER_LAYERS\) map\.on\("click", layer, onTap\)/);
+  assert.match(group, /dotSaid\(age, dotName\(roleOf\(f\?\.properties\?\.role\)/);
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  assert.match(css, /@media \(forced-colors: active\) \{\s*\/\*[^*]*\*\/\s*\.ride-role-swatch \{\s*forced-color-adjust: none;/);
+});
+
+test("review: no role mark vanishes on a route line or casing, and touching marks are split by a 3:1 edge", () => {
+  const route = new Set<string>();
+  for (const palette of Object.values(PALETTES) as Record<number, Record<string, string>>[]) {
+    for (const n of [1, 2, 3, 4, 5]) for (const k of ["color", "casing"]) if (palette[n]?.[k] && palette[n][k] !== "#ffffff") route.add(palette[n][k].toLowerCase());
+  }
+  for (const [role, colour] of Object.entries(ROLE_COLOURS)) {
+    assert.ok(!route.has(colour), `${role} is a route colour`);
+    for (const line of route) {
+      for (const v of VISIONS) {
+        const d = deltaE2000(simulate(colour, v), simulate(line, v));
+        assert.ok(d >= 7, `${role} ${colour} on ${line} under ${v}: ${d.toFixed(1)}`);
+      }
+    }
+    // The rendered boundary between any two marks is a fill against the white edge.
+    assert.ok(contrastRatio(colour, HOLE) >= 3, `${role} against its edge`);
+  }
+});
+
+test("review: on an out-and-back the pass nearest the last place along the route wins, chevron included", () => {
+  // East 1.7 km, then back west on the same street (a few metres north).
+  const out: LonLat[] = Array.from({ length: 11 }, (_, i) => [-77.04 + i * 0.002, 38.9] as LonLat);
+  const back: LonLat[] = out.map(([x]) => [x, 38.90003] as LonLat).reverse();
+  const line = [...out, ...back];
+  const p: LonLat = [-77.03, 38.90001];
+  const outbound = project(line, p);
+  assert.equal(Math.round(outbound.bearingDeg), 90);
+  const homeward = project(line, p, 3000);
+  assert.ok(homeward.alongM > 1800, `along ${homeward.alongM}`);
+  assert.equal(Math.round(homeward.bearingDeg), 270);
+  // A far-off hint never pulls a dot onto a stretch that is not at its spot.
+  assert.ok(project(LINE, [-77.03, 38.9], 0).alongM > 800);
+  // shownDots takes the hint from the same role's mark drawn last time, else the rider's own place.
+  const lead = { lon: -77.03, lat: 38.90001, age_s: 1, role: "lead" as const };
+  const first = shownDots(line, [lead], 0, { myAlongM: 3000 })[0];
+  assert.equal(first.bearing, 270);
+  const next = shownDots(line, [{ ...lead, lon: -77.0302 }], 0, { previous: [first], myAlongM: 100 })[0];
+  assert.equal(next.bearing, 270);
+  assert.equal(shownDots(line, [lead], 0, { myAlongM: 100 })[0].bearing, 90);
+});
+
+test("review: a role change posts as soon as the server takes a position, with the new role", async () => {
+  // Posted 3 s ago: the next goes at 10 s (the server's minimum), not 15 s; never posted: at once.
+  const moved = postSoonAfter(100_000);
+  assert.equal(moved + POST_EVERY_MS, 110_000);
+  assert.ok(103_000 - postSoonAfter(0) >= POST_EVERY_MS);
+  const store = new Memory();
+  keepConsent("r9", "yes", 0, store);
+  const kept = keepConsent("r9", "yes", 1, store, undefined, "corker");
+  const bodies: { role?: string }[] = [];
+  const fake = (async (_u: string, i?: RequestInit) => {
+    bodies.push(JSON.parse(String(i?.body)));
+    return new Response("{}", { status: 200 });
+  }) as unknown as typeof fetch;
+  await sendPosition("https://x.test", "f".repeat(64), kept.token, [-77, 38.9], consentFor("r9", 2, store)!.role, fake);
+  assert.equal(bodies[0].role, "corker");
 });
