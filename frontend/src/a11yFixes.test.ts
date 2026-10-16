@@ -310,8 +310,11 @@ test("Undo or Redo that runs out hands the focus to the other, or the Points hea
   // Only a press of one of them: Ctrl+Z from elsewhere moves nothing.
   assert.match(app, /historyPress\.current = active instanceof HTMLElement && active\.dataset\.history \?/);
   const rescue = app.slice(app.indexOf("const historyPress = useRef"), app.indexOf("}, [can]);"));
-  assert.match(rescue, /if \(usable\(press\.button\) \|\| \(now && now !== document\.body && now !== press\.button\)\) return;/);
-  assert.match(rescue, /\(usable\(other\) \? other : pointsHeadingRef\.current\)\?\.focus\(\);/);
+  // The decision is afterHistoryStep's (lib/rideFocus.test.ts runs it); here, that App asks it.
+  assert.match(rescue, /const where = afterHistoryStep<Element>\(\{ button: press\.button, other \}, document\.activeElement, document\.body, usable\);/);
+  assert.match(rescue, /\(where === "other" \? other : pointsHeadingRef\.current\)\?\.focus\(\);/);
+  // A press that changed nothing is dropped after its render.
+  assert.match(app, /useEffect\(\(\) => \{\s*historyPress\.current = null;\s*\}\);/);
 });
 
 test("the map's Escape skips one a sheet has handled already (review a11y-10)", () => {

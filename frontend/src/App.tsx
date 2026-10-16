@@ -87,6 +87,7 @@ import { FEDERAL_POINTS_NONE, type FederalStatus } from "./lib/federalLegend.ts"
 import { federalAreaAt, federalRouteLines, pointAreas, stopWarningShort } from "./lib/federalStops.ts";
 import { addCoverageMask, fetchCoverage, watchForCapacity, watchForFacilities, watchCentre, watchZoom } from "./lib/mapGlue.ts";
 import { holdBackDuringRide } from "./lib/rideBack.ts";
+import { afterHistoryStep } from "./lib/rideFocus.ts";
 import { isMassRide, massBandsChangeSaid, massBandsSaid } from "./lib/massCapacity.ts";
 import { movePoint, planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
 import { mapWhen } from "./lib/rideTime.ts";
@@ -1287,15 +1288,18 @@ export function App() {
     const press = historyPress.current;
     historyPress.current = null;
     if (!press) return;
-    const usable = (element: Element | null | undefined): element is HTMLElement =>
-      element instanceof HTMLElement && element.isConnected && !(element as HTMLButtonElement).disabled;
-    const now = document.activeElement;
-    if (usable(press.button) || (now && now !== document.body && now !== press.button)) return;
-    const other = press.row?.querySelector(`[data-history="${press.direction === "undo" ? "redo" : "undo"}"]`);
-    (usable(other) ? other : pointsHeadingRef.current)?.focus();
+    const usable = (element: Element): boolean => element instanceof HTMLElement && element.isConnected && !(element as HTMLButtonElement).disabled;
+    const other = press.row?.querySelector<HTMLElement>(`[data-history="${press.direction === "undo" ? "redo" : "undo"}"]`) ?? null;
+    const where = afterHistoryStep<Element>({ button: press.button, other }, document.activeElement, document.body, usable);
+    if (where === "stay") return;
+    (where === "other" ? other : pointsHeadingRef.current)?.focus();
     // A phone's hidden sheet hides the heading too: the map, where the buttons were.
     if (document.activeElement === document.body) mapRef.current?.getCanvas().focus();
   }, [can]);
+  // A press whose step changed neither button (can unchanged) is not kept for a later change to act on.
+  useEffect(() => {
+    historyPress.current = null;
+  });
 
   // Ctrl+Z (Cmd+Z) undoes; Ctrl+Shift+Z (Cmd+Shift+Z) and Ctrl+Y redo;
   // anywhere but a text field, which has its own.
