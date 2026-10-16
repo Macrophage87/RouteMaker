@@ -247,7 +247,7 @@ test("a link its owner turned off: read as revoked, said plainly, and its plan i
   assert.match(send, /if \(sharedRevoked && \(revokedPlan \?\?= sentPlanKey\(plan\.points, plan\.preset, plan\.dials\)\) === sentPlanKey\(plan\.points, plan\.preset, plan\.dials\)\)/);
   assert.match(send, /message: SHARED_REVOKED, noAutoResend: true/);
   // The address becomes the page's own once the id is read, so a later Copy link is not the old shared one.
-  assert.match(app, /window\.history\.replaceState\(window\.history\.state, "", `\/\$\{window\.location\.hash\}`\);/);
+  assert.match(app, /query\.delete\("route"\);\s*window\.history\.replaceState\(window\.history\.state, "", `\/\$\{query\.size \? `\?\$\{query\}` : ""\}\$\{window\.location\.hash\}`\);/);
 });
 
 test("signed out, a route from the device's Home has no preview image; signed in the server hides Home itself", () => {

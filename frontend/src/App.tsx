@@ -275,8 +275,11 @@ const OPEN_AT = atFromHash(window.location.hash);
 // A link opened at its preview path (`/s/<id>`) or sent on from it (`/?route=<id>`) names the id there; the address
 // then becomes the page's own, so a link copied later is the plan's, not the old shared one.
 const SHARED_ID = sharedIdFrom(window.location.hash, window.location.search);
-if (SHARED_ID && (window.location.pathname.startsWith(SHARED_PATH) || window.location.search))
-  window.history.replaceState(window.history.state, "", `/${window.location.hash}`);
+if (SHARED_ID && (window.location.pathname.startsWith(SHARED_PATH) || new URLSearchParams(window.location.search).has("route"))) {
+  const query = new URLSearchParams(window.location.search);
+  query.delete("route");
+  window.history.replaceState(window.history.state, "", `/${query.size ? `?${query}` : ""}${window.location.hash}`);
+}
 let sharedArrived: () => void = () => {};
 // Its owner turned the link off: the plan it carries is not planned (the first plan after the wait, and that plan
 // again on Try again); the page says so plainly (SHARED_REVOKED).
