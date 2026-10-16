@@ -10,7 +10,7 @@ import { placeLetter } from "../lib/letteredPlaces.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration } from "../lib/format.ts";
 import { presetLabel, presetSaid, type PresetId } from "../lib/presets.ts";
-import { NOVICE_TRANSIT_CHOICES, noviceOfferText, noviceTripLine, type NoviceTrip } from "../lib/noviceOffer.ts";
+import { NOVICE_TRANSIT_CHOICES, noviceOfferText, noviceTripLine, noviceTripShort, type NoviceTrip } from "../lib/noviceOffer.ts";
 import { PresetName } from "../lib/presetName.ts";
 import { stressSegments, type StressSegment } from "../lib/stressBar.ts";
 import { calmSearchNote, detourView, paceText, stillPlanningSaid, movedPointsNote } from "../lib/summary.ts";
@@ -141,7 +141,11 @@ function NoviceTransitOffer({
             <button type="button" className="chip" aria-describedby={`${id}-${choice.preset}`} onClick={() => onTake(choice.preset)}>
               {choice.label}
             </button>
-            <span id={`${id}-${choice.preset}`} className="novice-trip-note">
+            {/* Shown short; the whole line (time, and the road it avoids) is the button's description. */}
+            <span className="novice-trip-note" aria-hidden="true">
+              {noviceTripShort(trips?.[choice.preset])}
+            </span>
+            <span id={`${id}-${choice.preset}`} className="visually-hidden">
               {noviceTripLine(trips?.[choice.preset], note)}
             </span>
           </li>

@@ -110,7 +110,7 @@ export interface LayersSheetProps {
 }
 
 export const PLACES_LAYER_TITLE = "Places to see";
-export const PLACES_LAYER_HINT = "Museums, historic sites, lighthouses, gardens, viewpoints, markets and more, from zoom 11. The map chip Places to see lists them by category.";
+export const PLACES_LAYER_HINT = "Museums, gardens, viewpoints and more, from zoom 11. Places to see lists them.";
 
 /** The Layers sheet: the map's switches, in the mockup's order, with the Legend button at its top. */
 export function LayersSheet(props: LayersSheetProps) {

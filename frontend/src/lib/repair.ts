@@ -200,14 +200,14 @@ export function repairText(item: RepairNearby, at: Date): string {
 
 export const REPAIR_NONE = "No repair stands or bike shops known yet: they arrive with the next map data update.";
 export const REPAIR_UNAVAILABLE = "Repair stands and bike shops are unavailable for now; try again shortly.";
-export const REPAIR_NO_ORIGIN = "Your location is not known yet. Press Locate, or move the map to where you are.";
-export const REPAIR_NOTE = "Straight-line distances. From OpenStreetMap: check the hours before you count on them.";
+export const REPAIR_NO_ORIGIN = "Location unknown: press Locate, or move the map.";
+export const REPAIR_NOTE = "Straight-line distances; check hours (OpenStreetMap).";
 
 /** The status line once the list is in. */
 export function repairFoundSaid(items: readonly RepairNearby[], fromHere: boolean): string {
   const from = fromHere ? "you" : "the map's center";
   if (items.length === 0) return REPAIR_NONE;
-  return `The ${items.length} nearest repair stands and bike shops to ${from}, nearest first: ${repairTitle(items[0].place)}, ${formatDistance(items[0].metres)} away.`;
+  return `Nearest to ${from}: ${repairTitle(items[0].place)}, ${formatDistance(items[0].metres)}.`;
 }
 
 // --- The map's icon (stands only) ---------------------------------------------

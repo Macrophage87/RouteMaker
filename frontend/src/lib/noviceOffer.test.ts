@@ -10,6 +10,7 @@ import {
   noviceTransitDials,
   noviceTransitSaid,
   noviceTripLine,
+  noviceTripShort,
   noviceTripOf,
   noviceTripPoints,
 } from "./noviceOffer.ts";
@@ -20,10 +21,8 @@ import { decodePlan, encodePlan } from "./planHash.ts";
 const note = { busy_m: 640, busiest: { name: "16th Street Northwest", metres: 640, level: 3 }, over_ceiling: true, transit: true };
 
 test("the offer names the busy road, US units first, and only on Novice and Nervous", () => {
-  assert.equal(
-    noviceOfferText({ novice: note }, "novice"),
-    "Only a busy road connects here: 16th Street Northwest (LTS 3) for 0.4 mi (0.6 km). Transit or bikeshare can carry you past it.",
-  );
+  // Review F7: one short lead line; the road is named in each option's description (noviceTripLine, below).
+  assert.equal(noviceOfferText({ novice: note }, "novice"), "Busy road ahead: transit can skip it.");
   assert.equal(noviceOfferText({ novice: { ...note, transit: false } }, "novice"), null);
   assert.equal(noviceOfferText({ novice: null }, "novice"), null);
   assert.equal(noviceOfferText({ novice: note }, "default"), null);
@@ -53,7 +52,11 @@ test("each option's one line: its time door to door and the busy stretch it avoi
   // Over the 1.4 times cap with no busy road: the reason is the long way round, said as such.
   const capped = { busy_m: 0, busiest: null, over_ceiling: true, transit: true };
   assert.equal(noviceTripLine({ kind: "found", minutes: 20 }, capped), "About 20 min door to door, avoiding the long way round a calm route takes here.");
-  assert.match(noviceOfferText({ novice: capped }, "novice") ?? "", /more than 1\.4 times as long/);
+  // Review F7: the cap's lead is one short line too.
+  assert.equal(noviceOfferText({ novice: capped }, "novice"), "Calm route is long here: transit can shorten it.");
+  assert.equal(noviceTripShort({ kind: "found", minutes: 34 }), "About 34 min");
+  assert.equal(noviceTripShort(undefined), "Finding…");
+  assert.equal(noviceTripShort({ kind: "none" }), "None now");
 });
 
 test("the trips are asked start to end, on each transit ride type with its novice legs, and read for their minutes", () => {
@@ -73,6 +76,9 @@ test("the route summary shows the offer with the warnings, in Go and in Plan, th
   // Each button is described by its one line.
   assert.match(panel, /aria-describedby=\{`\$\{id\}-\$\{choice\.preset\}`\}/);
   assert.match(panel, /\{noviceTripLine\(trips\?\.\[choice\.preset\], note\)\}/);
+  // Review F7: the line is the description, out of sight; the short time is shown, hidden from a screen reader.
+  assert.match(panel, /<span id=\{`\$\{id\}-\$\{choice\.preset\}`\} className="visually-hidden">\s*\{noviceTripLine/);
+  assert.match(panel, /<span className="novice-trip-note" aria-hidden="true">\s*\{noviceTripShort\(trips\?\.\[choice\.preset\]\)\}/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /choosePreset\(id, \{ \.\.\.chooseRideType\(id, null, dials\), noviceLegs: true \}\);/);
   // Found as the offer shows, without a press: both ride types, keyed on the routed points.

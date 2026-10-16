@@ -91,8 +91,9 @@ test("words: a stand's kit and fee, a shop's hours, US units first with metric i
   const line = repairText({ place: places[0], metres: 500 }, at);
   assert.match(line, /^Repair stand, Union Station: 0\.3 mi \(0\.5 km\) away\. Pump and tools\. Free\.$/);
   assert.equal(repairFoundSaid([], true), REPAIR_NONE);
-  assert.match(repairFoundSaid([{ place: places[0], metres: 500 }], true), /to you, nearest first: Repair stand, Union Station, 0\.3 mi \(0\.5 km\) away\.$/);
-  assert.match(repairFoundSaid([{ place: places[0], metres: 500 }], false), /to the map's center/);
+  // Review F7: one short line, the nearest first (the count is the list's).
+  assert.equal(repairFoundSaid([{ place: places[0], metres: 500 }], true), "Nearest to you: Repair stand, Union Station, 0.3 mi (0.5 km).");
+  assert.match(repairFoundSaid([{ place: places[0], metres: 500 }], false), /^Nearest to the map's center: /);
 });
 
 test("the map shows stands only (shops are in the list), and carries no names", () => {

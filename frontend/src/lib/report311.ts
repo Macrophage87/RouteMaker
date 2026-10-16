@@ -80,8 +80,7 @@ export const REPORT_SUMMARY = "Report a problem to DC 311";
 export const REPORT_PRIVACY =
   "The message goes to DC 311 from your own phone. RouteMaker sends nothing and keeps nothing. The place is the road you are on and your GPS position, so check it before you send.";
 /** The same where the server sends reports to DC 311 itself (it has DC's key; core/dc311.py). */
-export const REPORT_PRIVACY_SERVER =
-  "A problem you pick is sent to DC 311 by RouteMaker's server, with the road you are on and your GPS position. RouteMaker keeps nothing.";
+export const REPORT_PRIVACY_SERVER = "Sent to DC 311 with your road and GPS spot; RouteMaker keeps nothing.";
 export const REPORT_OUTSIDE_DC = "Reports to 311 are for Washington, DC only, and this part of the route is outside the District.";
 export const REPORT_NO_PLACE = "Your place on the route is not known yet, so there is no location to report.";
 export const REPORT_OFF_ROUTE = "Off the planned route: the report's place comes from the route's street names, so it waits until you are back on a route.";
@@ -203,7 +202,7 @@ export function smsHref(text: string, userAgent: string, maxTouchPoints = 0): st
 export const REPORT_SENT = "Sent to DC 311.";
 export const REPORT_READY = "Ready to send in Messages.";
 export const REPORT_FORM = "The report is below, to copy into DC 311 online.";
-export const REPORT_SEND_FAILED = "Could not send to DC 311 from here; the report is ready in Messages.";
+export const REPORT_SEND_FAILED = "Not sent from here; it is ready in Messages.";
 
 /** How a pick goes: sent by the server, a filled-in text message, or the report to copy. */
 export type PickWay = "server" | "sms" | "form";
