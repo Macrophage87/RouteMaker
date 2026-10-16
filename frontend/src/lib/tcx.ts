@@ -80,6 +80,8 @@ export function writeTcx(course: Course): string {
   lines.push(`      <Notes>${escapeXml(course.notes)}</Notes>`);
   for (const c of course.cues) {
     const r = course.records[c.vertex];
+    // TCX requires a time and a position on every course point: one with no record is left out.
+    if (!r) continue;
     lines.push("      <CoursePoint>");
     lines.push(`        <Name>${escapeXml(c.name)}</Name>`);
     lines.push(`        <Time>${time(r.timeS)}</Time>`);

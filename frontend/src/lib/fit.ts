@@ -236,7 +236,7 @@ export function writeFit(course: Course): Uint8Array<ArrayBuffer> {
 
   w.write(3, [end, EVENT_TIMER, EVENT_TYPE_STOP_ALL, 0]);
 
-  if (course.cues.length) {
+  if (course.cues.length && course.records.length) {
     w.define(5, MESG.coursePoint, [
       { num: 254, type: "uint16" }, // message_index
       { num: 1, type: "uint32" }, // timestamp

@@ -62,7 +62,9 @@ export interface CourseTrim {
   profile: DeviceProfile;
   cuesBefore: number;
   cuesKept: number;
-  /** Cues the course must keep (start, finish, stops, Avoid and work-zone warnings), and more than the budget. */
+  /** Cues the course must keep (start, finish, stops, Avoid and work-zone warnings). */
+  protectedCues: number;
+  /** More of those than the budget: nothing is dropped (the turns are kept too) and the line says to split. */
   protectedOver: boolean;
   pointsBefore: number;
   pointsKept: number;
@@ -248,11 +250,13 @@ export function compileCourse(route: CompiledRoute, profile: DeviceProfile, form
     all.push({ type: made.type, vertex, name: clip(made.name, nameChars), text: cue.text, priority: made.priority });
   }
 
-  // Over the budget: the least important first, and of those the one nearest the cue before it.
+  // Over the budget: the least important first, and of those the one nearest the cue before it. Where the cues
+  // that must be kept pass it by themselves, nothing is dropped: giving up every turn would still not make the
+  // course fit, so the rider is told to split it instead.
   const dropped = new Set<number>();
   const protectedCount = all.filter((c) => c.priority === PROTECTED).length;
-  const room = Math.max(profile.maxCues, protectedCount);
-  if (all.length > room) {
+  const room = profile.maxCues;
+  if (all.length > room && protectedCount <= room) {
     const order = all
       .map((c, i) => ({ i, priority: c.priority, gap: i > 0 ? along[c.vertex] - along[all[i - 1].vertex] : Infinity }))
       .filter((c) => c.priority !== PROTECTED)
@@ -297,6 +301,7 @@ export function compileCourse(route: CompiledRoute, profile: DeviceProfile, form
       profile,
       cuesBefore: all.length,
       cuesKept: cues.length,
+      protectedCues: protectedCount,
       protectedOver: protectedCount > profile.maxCues,
       pointsBefore: line.length,
       pointsKept: records.length,
@@ -313,10 +318,10 @@ const count = (n: number) => n.toLocaleString("en-US");
  * are more than the device shows.
  */
 export function courseLine(course: Pick<Course, "format" | "trim">): string {
-  const { profile, cuesBefore, cuesKept, protectedOver, pointsBefore, pointsKept, toleranceM } = course.trim;
+  const { profile, cuesBefore, cuesKept, protectedCues, protectedOver, pointsBefore, pointsKept, toleranceM } = course.trim;
   const head = `${course.format.toUpperCase()} course for ${profile.label}`;
   if (protectedOver) {
-    return `${head}: it keeps ${count(cuesKept)} cues it must not drop, more than the ${count(profile.maxCues)} the device shows; split the route in two to keep them all.`;
+    return `${head}: ${count(protectedCues)} of its cues must be kept, more than the ${count(profile.maxCues)} the device shows; split the route in two.`;
   }
   const parts: string[] = [];
   if (cuesKept < cuesBefore) parts.push(`kept ${count(cuesKept)} of ${count(cuesBefore)} cues, least important left out`);

@@ -7731,7 +7731,8 @@ An opened GPX file still downloads verbatim as GPX; a course is always the route
 - **Over the cue budget** the least important go first: notes on busier, calmer or unpaved stretches, then flagged
   crossings (orange before red), then turns onto unnamed ways, then named turns and walks; within a rank, the cue
   nearest the one before it. Never dropped: start, finish, stops, Avoid-rated junctions and work zones. Where those
-  alone pass the budget, the course keeps them and the line says to split the route.
+  alone pass the budget, nothing is dropped (giving up the turns would still not make it fit) and the line says to
+  split the route.
 - **Over the point budget** the line is thinned by Douglas-Peucker at the smallest of 1, 2, 5 and 10 m that fits,
   every cue's record kept; the line says the tolerance ("within 3 ft (1 m) of the route").
 

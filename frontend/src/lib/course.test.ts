@@ -3,7 +3,9 @@
 // plan's points named by role (Start, Stop N, Finish), never by a saved place's label.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { LonLat } from "./geo.ts";
+import { readFileSync } from "node:fs";
+import { haversineM, type LonLat } from "./geo.ts";
+import { parseGpx } from "./gpx.ts";
 import { DEFAULT_PROFILE, DEVICE_PROFILES, deviceProfile, type DeviceProfile } from "./deviceProfiles.ts";
 import {
   FIT_NAME_CREDIT,
@@ -103,12 +105,14 @@ test("over the cue budget, the least important go first; start, finish, stops an
   assert.equal(courseLine(course), "FIT course for Tight: kept 5 of 8 cues, least important left out.");
 });
 
-test("cues the course must keep are kept past the budget, and the line says to split the route", () => {
-  const tiny: DeviceProfile = { ...GENERIC, label: "Tiny", maxCues: 2 };
+test("where the cues the course must keep pass the budget alone, nothing is dropped and the line says to split", () => {
+  const tiny: DeviceProfile = { ...GENERIC, label: "Tiny", maxCues: 3 };
   const course = compileCourse(sampleRoute(), tiny, "tcx");
-  assert.deepEqual(course.cues.map((c) => c.type), ["start", "danger", "stop", "finish"]);
+  // Start, the Avoid warning, the stop and the finish must stay; the turns are not given up for a course that cannot fit.
+  assert.equal(course.cues.length, 8);
+  assert.equal(course.trim.protectedCues, 4);
   assert.equal(course.trim.protectedOver, true);
-  assert.match(courseLine(course), /^TCX course for Tiny: it keeps 4 cues it must not drop, more than the 2 the device shows; split the route in two/);
+  assert.equal(courseLine(course), "TCX course for Tiny: 4 of its cues must be kept, more than the 3 the device shows; split the route in two.");
 });
 
 test("over the point budget the line is thinned, never moving a cue's record, and the line says so", () => {
@@ -162,3 +166,36 @@ test("TCX: the schema's order, the attribution in Course/Notes, full cue words i
   assert.ok(!/<Author|<Creator/.test(xml));
   assert.equal(writeTcx(compileCourse(sampleRoute(), GENERIC, "tcx")), xml, "byte-identical across runs");
 });
+
+test("thinning a 7,500-point reference ride to a small budget keeps every dropped point within the tolerance", () => {
+  // fixtures/reference-routes: the largest reference track, thinned as a 2,000-point device would have it.
+  const text = readFileSync(new URL("../../../fixtures/reference-routes/rural-group-loco-30.gpx", import.meta.url), "utf8");
+  const line = parseGpx(text).tracks[0].segments.flat();
+  assert.ok(line.length > 7000);
+  const small: DeviceProfile = { ...GENERIC, label: "Small", maxPoints: 2000 };
+  const course = compileCourse(sampleRoute({ geometry: { type: "LineString", coordinates: line }, description: [], leg_ends: [] }), small, "fit");
+  assert.ok(course.records.length <= 2000, `${course.records.length}`);
+  const t = course.trim.toleranceM;
+  assert.ok(t > 0 && t <= 10);
+  // Every original vertex lies within the tolerance of the thinned line's segment that spans it.
+  const kept = course.records.map((r) => [r.lon, r.lat] as LonLat);
+  const keptAt = course.records.map((r) => r.distM);
+  let seg = 0;
+  let along = 0;
+  line.forEach((p, i) => {
+    if (i > 0) along += haversineM(line[i - 1], p);
+    while (seg < kept.length - 2 && keptAt[seg + 1] <= along) seg += 1;
+    const d = offsetFrom(p, kept[seg], kept[seg + 1]);
+    assert.ok(d <= t + 1e-6, `vertex ${i} is ${d.toFixed(2)} m off`);
+  });
+});
+
+/** Metres from p to the segment a-b on a flat local projection, as course.ts measures it. */
+function offsetFrom(p: LonLat, a: LonLat, b: LonLat): number {
+  const kx = 111_320 * Math.cos((a[1] * Math.PI) / 180);
+  const ky = 110_574;
+  const [px, py, bx, by] = [(p[0] - a[0]) * kx, (p[1] - a[1]) * ky, (b[0] - a[0]) * kx, (b[1] - a[1]) * ky];
+  const len = bx * bx + by * by;
+  const s = len > 0 ? Math.max(0, Math.min(1, (px * bx + py * by) / len)) : 0;
+  return Math.hypot(px - s * bx, py - s * by);
+}
