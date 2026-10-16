@@ -31,7 +31,7 @@ list is an alert.</p>
   {% for entry in paused %}
     <tr class="paused-task">
       <th scope="row">{{ entry.task }}</th>
-      <td>{{ entry.paused_at }}</td>
+      <td>{{ entry.paused_at|default:"none" }}</td>
       <td>{% if entry.last_success_at %}{{ entry.last_success_at }}{% else %}never{% endif %}</td>
     </tr>
   {% endfor %}

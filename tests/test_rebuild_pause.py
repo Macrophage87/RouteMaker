@@ -77,9 +77,43 @@ def test_a_paused_rebuild_is_reported_paused_not_stale(settings, monkeypatch) ->
     tasks.weekly_rebuild(timestamp=0)  # the paused Tuesday tick
     assert "weekly_rebuild" not in stale_tasks()
     assert [p["task"] for p in paused_task_details()] == ["weekly_rebuild"]
-    # A pause whose ticks stopped: stale again past the window.
-    assert "weekly_rebuild" in stale_tasks(now + timedelta(days=9))
-    assert paused_task_details(now + timedelta(days=9)) == []
+    # A pause whose ticks stopped: still paused while the setting is set (the beta runs
+    # no rebuild worker, so its ticks never run), stale again once it is cleared.
+    later = now + timedelta(days=9)
+    assert "weekly_rebuild" not in stale_tasks(later)
+    assert [p["task"] for p in paused_task_details(later)] == ["weekly_rebuild"]
+    settings.WEEKLY_REBUILD_PAUSED = False
+    assert "weekly_rebuild" in stale_tasks(later)
+    assert paused_task_details(later) == []
+
+
+@pytest.mark.django_db
+def test_paused_with_no_tick_ever_run_is_paused_not_stale(settings, monkeypatch) -> None:
+    """OPS-2: the beta has no rebuild worker, so the queued tick never runs and writes no
+    row. The setting alone reports the rebuild paused, and the disk check drops the
+    rebuild's floor for a plain free-space check."""
+    from datetime import timedelta
+
+    from test_operations import deployment_up_since, fake_usage
+
+    from core.runs import disk_headroom, paused_task_details, stale_tasks
+
+    deployment_up_since(timedelta(days=90))
+    settings.WEEKLY_REBUILD_PAUSED = False
+    assert "weekly_rebuild" in stale_tasks(), "the premise: never rebuilt in 90 days"
+    settings.REBUILD_MIN_FREE_BYTES = 20 * 1024**3
+    settings.DISK_GATE_FRACTION = 0.8
+    settings.TILES_DIR = str(Path(__file__).parent)
+    usage = fake_usage(100 * 1024**3, 70 * 1024**3)
+    assert disk_headroom(disk_usage=usage)["status"] == "short"
+
+    settings.WEEKLY_REBUILD_PAUSED = True
+    assert "weekly_rebuild" not in stale_tasks()
+    [entry] = paused_task_details()
+    assert entry["task"] == "weekly_rebuild" and entry["paused_at"] is None
+    assert disk_headroom(disk_usage=usage)["status"] == "ok"
+    full = fake_usage(100 * 1024**3, 81 * 1024**3)
+    assert disk_headroom(disk_usage=full)["status"] == "short"
 
 
 def test_paused_a_hand_fired_rebuild_still_runs(settings, went_on) -> None:
