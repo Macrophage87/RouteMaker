@@ -624,12 +624,13 @@ export function RideMode({
   const say = useCallback((events: RideEvent[]) => {
     for (const event of events) announcer.current?.say(event.spoken, event.urgent);
   }, []);
-  // A note about the ride itself (no GPS, the screen may sleep, paused): said once, politely, and through
-  // the polite region even with "neither" chosen, since it changes what the rider must do.
+  // A note about the ride itself (no GPS, the screen may sleep, paused): said once, politely, through the
+  // rider's outputs, and through the polite region with "neither" chosen, since it changes what the rider
+  // must do. Not with the voice as well: a screen reader on "voice" heard it twice (review RIDE-10).
   const notify = useCallback((text: string) => {
     if (!text) return;
     announcer.current?.note(text);
-    if (!toScreenReader(prefsRef.current.output)) setPolite((s) => ({ text, count: s.count + 1 }));
+    if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
   }, []);
   const noteWake = useCallback(
     (held: boolean) => {

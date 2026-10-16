@@ -49,6 +49,12 @@ test("RIDE-9: voice chosen after Start is unlocked inside that change's press, s
   assert.match(change, /voiceTurnedOn\(ridePrefsNow\.current, next\);\s*writeRidePrefs\(next\);/);
 });
 
+test("RIDE-10: a ride note reaches the polite region itself only with neither output, as the answers do", () => {
+  const notify = ride.slice(ride.indexOf("const notify = useCallback("), ride.indexOf("const noteWake = useCallback("));
+  assert.match(notify, /if \(prefsRef\.current\.output === "neither"\) setPolite/);
+  assert.doesNotMatch(notify, /!toScreenReader/);
+});
+
 test("RIDE-5: Re-plan from here answers every press: finding, still waiting, or no fix yet", () => {
   assert.equal(REPLAN_FINDING, "Finding a new way from here.");
   assert.equal(REPLAN_STILL_WAITING, "Still waiting for the last re-plan.");
