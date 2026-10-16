@@ -20,7 +20,8 @@ import java.util.Locale;
  *
  * - Which page is on top: `topLevelIsSite()` is true only while the top-level page is the kept site
  *   (GuardedBridge passes bridge calls to Capacitor only then). Set false before a top-level navigation
- *   leaves the site (shouldOverrideUrlLoading, server redirects included), and set again as each
+ *   leaves the site in the WebView (shouldOverrideUrlLoading when it isn't handed to another app,
+ *   server redirects included), and set again as each
  *   top-level page starts (onPageStarted: back and forward too).
  * - The HTTP basic auth prompt a browser has and a WebView does not. The beta sits behind basic auth
  *   (deploy/beta/nginx-routemaker.conf.template), and a WebView without this answers its 401 with a
@@ -61,10 +62,14 @@ class SiteWebViewClient extends BridgeWebViewClient {
 
     @Override
     public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-        if (request.isForMainFrame() && !isSite(request.getUrl())) {
+        boolean handled = super.shouldOverrideUrlLoading(view, request);
+        // Only a navigation the WebView will actually load turns the bridge off: a link handed
+        // out to another app (target=_blank, sms:, the 311 link) leaves the site on screen, and
+        // End ride must still reach the plugin.
+        if (!handled && request.isForMainFrame() && !isSite(request.getUrl())) {
             onSite = false;
         }
-        return super.shouldOverrideUrlLoading(view, request);
+        return handled;
     }
 
     @Override

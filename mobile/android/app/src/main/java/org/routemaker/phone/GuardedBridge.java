@@ -20,6 +20,9 @@ import java.lang.reflect.Field;
  * Capacitor's handler is its private `Bridge.msgHandler` (Capacitor 8.5.3, pinned; mobile/test checks
  * the field is still there). If it cannot be found, the bridge is removed and not replaced: the app
  * then has no native location or voice, rather than a bridge open to every origin.
+ *
+ * The guard reads the top-level page, not the calling frame: it relies on the site embedding no
+ * third-party frames (none today; the site's CSP has child-src 'self' blob:).
  */
 final class GuardedBridge {
 
