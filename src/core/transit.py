@@ -2348,9 +2348,21 @@ def _notes(plan: Plan, rules: dict[str, str]) -> list[str]:
             said = f"{leg.system}: {rule[0].lower()}{rule[1:]}"
             if said not in notes:
                 notes.append(said)
+    # A bike taken at the far end is counted now, not when the rider gets there (TB-9).
+    ridden = False
+    for leg in legs:
+        ridden = ridden or leg.transit
+        if ridden and leg.mode == TAKE and leg.to:
+            said = far_dock_words(leg.to)
+            if said not in notes:
+                notes.append(said)
     if any(leg.transit for leg in legs):
         notes.append(SCHEDULED_WORDS)
     return notes
+
+
+def far_dock_words(dock: str) -> str:
+    return f"Bikes at {dock} are counted now; check on arrival."
 
 
 def block(plan: Plan, schedule: Schedule | None = None) -> dict:

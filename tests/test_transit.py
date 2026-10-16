@@ -1056,6 +1056,24 @@ def test_bikeshare_walks_where_walking_is_quicker_and_names_the_docks_where_it_r
     assert transit.label(metro, presets.BIKESHARE_TRANSIT).startswith("Walk, Metro to")
 
 
+def test_a_bike_taken_after_the_train_is_said_to_be_counted_now(schedule) -> None:
+    """TB-9: the far end's dock is read at planning time; the rider gets there later."""
+    plan = transit.plan_bikeshare(
+        schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), Straight(), SHARE
+    )
+    near_end = transit.Leg(transit.TAKE, 60.0, to="8th & D St SE")
+    far_end = transit.Leg(transit.TAKE, 60.0, to="14th & F St NW")
+    train = transit.Leg(transit.METRO, 600.0)
+    words = transit.far_dock_words("14th & F St NW")
+    assert words == "Bikes at 14th & F St NW are counted now; check on arrival."
+    for legs, said in (([near_end, train, far_end], True), ([near_end, train], False)):
+        option = transit.Option("x", tuple(legs))
+        chosen = transit.Plan(plan.mode, [option], plan.moment, [])
+        notes = transit._notes(chosen, {})
+        assert (words in notes) is said, notes
+        assert transit.far_dock_words("8th & D St SE") not in notes
+
+
 def test_bikeshare_needs_no_dock_to_walk_metro_and_walk(schedule) -> None:
     plan = transit.plan_bikeshare(
         schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), Straight(), NO_DOCKS
