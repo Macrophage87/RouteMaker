@@ -1272,7 +1272,10 @@ def _exposure(
     """A trip's traffic exposure by the plan's weights (`presets.Exposure`: LTS 3
     once, LTS 4 twice and Avoid three times unless the ride type weighs them
     otherwise) and its metres of LTS 4 and Avoid, as (exposure, metres); None
-    when a leg cannot be traced."""
+    when a leg cannot be traced. A half step counts as the calm search counts it, at
+    its midpoint (`refine.half_exposure_m`, `refine.stress_totals`; review RL-7)."""
+    from . import refine
+
     prefetch_traces(variant, costing, [trip], deadline, traces)
     pieces: list[Piece] = []
     for leg in trip.get("legs") or []:
@@ -1280,9 +1283,15 @@ def _exposure(
         if trace is None:
             return None
         pieces.extend(pieces_of_trace(trace))
-    stress = presets.shift_stress(breakdown(pieces, when)[0], exposure.shift)
+    classes = refine.shift_classes(classify(pieces, when), exposure.shift)
+    stress = totals(zip(pieces, classes, strict=True))[0]
+    halves = refine.half_metres(pieces, classes)
     weights = exposure.weights
-    return sum(weights[tier] * stress[tier] for tier in weights), stress["4"] + stress["5"]
+    return (
+        sum(weights[tier] * stress[tier] for tier in weights)
+        + refine.half_exposure_m(halves, weights),
+        refine.stress_totals(stress, halves)["lts4_m"],
+    )
 
 
 def _hold_refuses(held: tuple, reference: tuple, exposure: presets.Exposure) -> bool:
