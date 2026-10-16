@@ -1036,13 +1036,14 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
 | A change to | Means | What the agent does |
 | --- | --- | --- |
 | docs, reports, `*.md`, `.github/`, fixtures | nothing on the server | ignored |
-| `src/` (not the items below), `frontend/`, `scripts/`, the api Dockerfile, requirements | a code release | deploys |
+| `src/` (not the items below), `frontend/`, `scripts/` | a code release | deploys |
 | `src/*/migrations/` | a migration | deploys; migrate runs after the pre-release snapshot |
 | `valhalla/*.json`, only keys a router reads at start (`logging`, `loki`, `thor`, `service_limits`, `httpd`, `odin`, `meili`, `statsd`, mjolnir's cache keys) | a router setting | deploys, then restarts the four routers (never the offroad one, which does not run on the beta; a runtime-only change to `valhalla/valhalla-offroad.json` restarts nothing) |
 | compose files, other than the lines below | a stack setting | deploys if the compose gate passes, then `up -d` photon and the routers (recreates only those whose settings changed) |
 | `deploy/` (the nginx template, the 401 and 502 pages, the env template) | owner steps with sudo | **stops** |
 | `scripts/prepare_data_root.sh`, a compose line adding a `DATA_ROOT` path | a data directory with sudo | **stops** |
-| a compose `image:` line, `docker/valhalla*`, `docker/photon*`, `docker/postgis*` | a third-party image to pull, maybe a data mismatch | **stops** |
+| a compose `image:` line | a third-party image to pull, maybe a data mismatch | **stops** |
+| `docker/api.Dockerfile`, `docker/requirements*.txt`, `docker/api-entrypoint.sh` | a new base image, system package or dependency in the api image | **stops** |
 | `lua/`, `valhalla/vendor/`, any other `valhalla/*.json` key (graph build), `src/pipeline/schema.py`, `variants.py`, `tiles.py` | new data from home | **stops** |
 | `FORMAT_VERSION` in `src/core/stress_tiles.py` or `src/core/mass_tiles.py` | a new tile format (the cache is keyed on it; no data from home) | deploys, then the agent runs the step 8 pre-draw (`predraw_stress_tiles`, which draws both tile sets) and waits for it. The release is already live and smoke-tested by then, so a pre-draw that fails or runs out of its budget is a warning in the report, not a rollback: the tiles not yet drawn are drawn on request |
 | a migration that names the live schema, or a migration removed | data from home | **stops** |

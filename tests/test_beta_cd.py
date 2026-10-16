@@ -205,15 +205,26 @@ def test_documentation_and_ci_alone_change_nothing_on_the_server() -> None:
         "src/pipeline/schema.py",
         "src/pipeline/variants.py",
         "src/pipeline/tiles.py",
-        "docker/valhalla/Dockerfile",
-        "docker/photon/Dockerfile",
-        "docker/postgis/Dockerfile",
+        "docker/api.Dockerfile",
+        "docker/requirements.txt",
+        "docker/requirements-api.txt",
+        "docker/api-entrypoint.sh",
     ],
 )
 def test_a_release_that_needs_the_owner_stops(path: str) -> None:
     result = _gate({path: ("a", "b")})
     assert result["verdict"] == "stop"
     assert any(path in reason for reason in result["reasons"])
+
+
+def test_every_stop_prefix_names_a_path_that_exists() -> None:
+    """A prefix naming nothing in the repository guards nothing (review sec-infra-6)."""
+    root = Path(__file__).resolve().parents[1]
+    files = subprocess.run(
+        ["git", "ls-files"], cwd=root, capture_output=True, text=True, check=True
+    ).stdout.splitlines()
+    for prefix, _why in cd_logic.STOP_PREFIXES:
+        assert any(f == prefix or f.startswith(prefix) for f in files), prefix
 
 
 @pytest.mark.parametrize(
