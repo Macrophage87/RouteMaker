@@ -1153,6 +1153,8 @@ export interface RouteRequestOptions {
   vias?: readonly number[];
   /** v0.7.0, "Faster routing": the first good route at once, marked `provisional` (Go only). */
   quick?: boolean;
+  /** The route alone, with no routes to choose from looked for (Ride mode's re-plans, review speed-5). */
+  routeOnly?: boolean;
 }
 
 /** POST /api/route's body as JSON text: the same text for the same plan, so it also keys Go's early start. */
@@ -1176,6 +1178,8 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
     ...(options.vias?.length && !twoPointsOnly(preset) ? { via_points: [...options.vias] } : {}),
     // The first good route at once (v0.7.0, "Faster routing"); the API answers the full plan where it cannot.
     ...(options.quick ? { quick: true } : {}),
+    // A ride's re-plan takes the first route only, so the API does not look for others to choose from.
+    ...(options.routeOnly ? { candidates: false } : {}),
   });
 }
 

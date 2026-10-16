@@ -74,6 +74,19 @@ test("the request body says quick only when asked, so it keys the early start ex
   assert.equal(routeRequestBody(points, "default", { quick: true }), routeRequestBody(points, "default", { quick: true }));
 });
 
+test("a ride's re-plan asks for the route alone, and nothing else does (review speed-5)", () => {
+  const points: [number, number][] = [
+    [-77.04, 38.9],
+    [-77.03, 38.91],
+  ];
+  assert.equal("candidates" in JSON.parse(routeRequestBody(points, "default", {})), false);
+  assert.equal(JSON.parse(routeRequestBody(points, "default", { routeOnly: true })).candidates, false);
+  const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
+  const calls = ride.match(/requestRoute\([^;]*\);/g) ?? [];
+  assert.equal(calls.length, 1);
+  assert.match(calls[0], /routeOnly: true/);
+});
+
 // --- The scheduler's refine ------------------------------------------------------------------
 
 class FakeTimers implements Timers {

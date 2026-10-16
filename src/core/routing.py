@@ -2537,6 +2537,7 @@ def plan(
     started: float | None = None,
     dials: Dials | None = None,
     quick: bool = False,
+    candidates: bool = True,
 ) -> dict:
     """Route through `points` on `preset_name`, returning the contract's body.
 
@@ -2544,7 +2545,8 @@ def plan(
     (from `clock()`) is when the request arrived; the budget runs from then,
     or from now if it is not given. `dials` are the sliders and the ride time.
     `quick` asks for the first good route only (`quick_applies`; v0.7.0, "Faster
-    routing" step 2): the answer then says `provisional`.
+    routing" step 2): the answer then says `provisional`. `candidates` False looks for
+    no routes to choose from beside the answer (Ride mode's re-plans, review speed-5).
     Raises NoRoute, TooLong, RouterUnavailable, DeadlineExceeded, or KeyError
     for an unknown preset.
     """
@@ -2854,6 +2856,9 @@ def plan(
             if target_m
             else presets.default_ceiling_m(_trip_length_m(trip), preset_name)
         )
+    # Routes to choose from beside the answer: at the top of the slider, never on a Mass Ride,
+    # and not where the request wants the route alone (a ride's re-plan, review speed-5).
+    offering = maxcalm and preset_name != "mass-ride" and candidates
     refine_context = refine.Context(
         variant=variant,
         request=request,
@@ -2886,14 +2891,14 @@ def plan(
         maxcalm=maxcalm,
         ceiling_m=ceiling,
         target_m=target_m,
-        # Up to ALT_MAX routes to choose from at the top of the slider (OWNER-DECISIONS 265).
-        alternates=refine.ALT_MAX if maxcalm and preset_name != "mass-ride" else 0,
+        # Up to ALT_MAX routes to choose from (OWNER-DECISIONS 265).
+        alternates=refine.ALT_MAX if offering else 0,
         # The router's own alternatives ranked with the calm search's (OWNER-DECISIONS 435):
         # the plan's own, where it asked for them with the request the search starts
         # from (none again where that ask timed out), else asked for by the search.
         rank_alternates=presets.calm_rate_for(stress_dial) > 0,
         router_trips=plan_alternates(request, trips, timed_out, fit is not None or bool(past)),
-        options=[] if maxcalm and preset_name != "mass-ride" and not long_calm else None,
+        options=[] if offering and not long_calm else None,
         avoid=avoid_list,
         junction_ratings=junction_ratings,
     )

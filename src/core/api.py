@@ -433,6 +433,15 @@ class RouteIn(Schema):
             " Bikeshare and the transit ride types): the full plan is answered, not provisional."
         ),
     )
+    candidates: StrictBool = Field(
+        default=True,
+        description=(
+            "False answers the plan's route alone: no routes to choose from are looked for"
+            " (`candidates` and `rank` are null), so a re-plan answers sooner and smaller."
+            " Ride mode sends it on every re-plan, which uses only the first route (review"
+            " speed-5). The route itself is planned as with true."
+        ),
+    )
     via_points: list[StrictInt] = Field(
         default_factory=list,
         max_length=MAX_POINTS,
@@ -3517,6 +3526,7 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
         started=started,
         dials=dials,
         quick=body.quick,
+        candidates=body.candidates,
     )
     if key is not None:
         preset = presets.PRESETS[body.preset]
