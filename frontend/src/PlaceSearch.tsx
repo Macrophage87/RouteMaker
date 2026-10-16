@@ -157,23 +157,27 @@ export function PlaceSearch({
     chosen,
     loop,
   });
-  // The place a pick (or Enter) would most likely take: Go starts routing there while the rider looks.
-  const top = places[0] ?? null;
-  const onTopPlaceNow = useRef(onTopPlace);
-  onTopPlaceNow.current = onTopPlace;
-  useEffect(() => {
-    if (top) onTopPlaceNow.current?.(top);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per place listed first, not per render
-  }, [top?.lon, top?.lat, top?.name]);
   // "Your location" leads the list while the box is empty or says so; it is never the Enter default.
   const showHere = locate?.support.available === true && locationMatches(query);
   // A pick that adds a stop (Plan with a start and an end) offers the place as the destination too, on a row
   // of its own under it, so it is an option a keyboard and a screen reader reach like any other.
   const offersDestination = variant === "plan" && !loop && effect === "via";
   const sharedItems: Place[] = shared && "place" in shared ? [shared.place] : [];
+  const sharedSaid = shared && "said" in shared ? shared.said : "";
   // The empty box lists the last places picked (v0.6.1), under "Your location".
   const empty = query.trim() === "";
   const offered: Place[] = [...sharedItems, ...(empty ? recent : places)];
+  // What Enter with nothing highlighted takes: the first place offered for the words typed; an empty box
+  // takes nothing (a recent place is picked only by choosing it).
+  const enterPlaces: Place[] = empty ? [] : offered;
+  // The place Enter would take: Go starts routing there while the rider looks (the same place, always).
+  const top = enterPlaces[0] ?? null;
+  const onTopPlaceNow = useRef(onTopPlace);
+  onTopPlaceNow.current = onTopPlace;
+  useEffect(() => {
+    if (top) onTopPlaceNow.current?.(top);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per place listed first, not per render
+  }, [top?.lon, top?.lat, top?.name]);
   const listed: (Place | AsDestination)[] = offersDestination ? offered.flatMap((place) => [place, { destination: place }]) : offered;
   const items: (Place | AsDestination | typeof HERE)[] = showHere ? [HERE, ...listed] : listed;
   const expanded = open && items.length > 0;
@@ -256,8 +260,9 @@ export function PlaceSearch({
       setOpen(true);
       setActive(action.active);
     } else if (action.kind === "pick") {
-      // Enter with nothing highlighted takes the first place, never "Your location" (a look-up asks the browser's permission).
-      const item = pickTarget(active, action.index, items, offered);
+      // Enter with nothing highlighted takes the first place for the words typed (the top place), never "Your
+      // location" (a look-up asks the browser's permission) and never a recent place from an empty box.
+      const item = pickTarget(active, action.index, items, enterPlaces);
       if (item === HERE) pickHere();
       else if (item && "destination" in item) pick(item.destination, "end");
       else if (item) pick(item);
@@ -387,11 +392,10 @@ export function PlaceSearch({
           ),
         )}
       </ul>
-      {shared && "said" in shared && (
-        <p className="hint" role="status">
-          {shared.said}
-        </p>
-      )}
+      {/* Always mounted, filled after (review F10): a status region mounted with its words in it is often not read. */}
+      <p className={sharedSaid ? "hint" : "visually-hidden"} role="status" aria-live="polite">
+        {sharedSaid}
+      </p>
       {expanded && places.length > 0 && (
         <p className="place-credit">
           Only places in this map's area.

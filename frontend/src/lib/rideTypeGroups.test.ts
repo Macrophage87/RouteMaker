@@ -14,6 +14,8 @@ import {
   matchesRideType,
   rideTypeCount,
   rideTypeCountSaid,
+  COMMON_RIDE_TYPES,
+  rideSections,
 } from "./rideTypeGroups.ts";
 
 const src = (name: string) => readFileSync(new URL(name, import.meta.url), "utf8");
@@ -34,6 +36,29 @@ test("the groups are the owner's: Transportation, Adventure (Fast with it), Grou
   // Rebalance Ride (REBALANCE-RIDE): Stephen named it an adventure mode.
   assert.deepEqual([...adventure.ids], ["fast", "trailmaxxing", "mountain-goat", "mountain-bike", "gravel", "rebalance"]);
   assert.deepEqual([...group.ids], ["group-ride", "mass-ride"]);
+});
+
+test("F9. Go's More ride types: the common types first, the other groups folded; a search shows them all flat", () => {
+  // The four exist, and are Default, Novice and Nervous, Bikeshare and Own Bike + transit.
+  for (const id of COMMON_RIDE_TYPES) assert.ok(PRESETS.some((p) => p.id === id), id);
+  assert.deepEqual([...COMMON_RIDE_TYPES], ["default", "novice", "bikeshare", "bike-transit"]);
+  const plain = rideSections("");
+  assert.deepEqual(plain.common, ["default", "novice", "bikeshare", "bike-transit"]);
+  assert.equal(plain.folded, true);
+  // No type twice: the folded groups leave the common ones out, and all the others are in them.
+  const rest = plain.groups.flatMap((g) => g.ids);
+  assert.ok(rest.every((id) => !COMMON_RIDE_TYPES.includes(id)));
+  assert.equal(rest.length + plain.common.length, PRESETS.length);
+  assert.deepEqual(plain.groups.map((g) => g.id), ["transportation", "adventure", "group"]);
+  const searched = rideSections("mountain");
+  assert.equal(searched.folded, false);
+  assert.deepEqual(searched.common, []);
+  assert.deepEqual(searched.groups.flatMap((g) => g.ids), ["mountain-goat", "mountain-bike"]);
+  const sheets = src("../app/Sheets.tsx");
+  const go = sheets.slice(sheets.indexOf("export function RideGroupChips("), sheets.indexOf("export function RideChips("));
+  assert.match(go, /<details key=\{group\.id\} className="fold ride-sheet-fold" open=\{group\.ids\.includes\(preset\) \|\| undefined\}>/);
+  assert.ok(go.indexOf('<h4 id="ride-sheet-common">Common</h4>') < go.indexOf("groups.map"), "the common types first");
+  assert.doesNotMatch(go, /className="ride-group"/);
 });
 
 test("an empty search shows every group and every type", () => {
@@ -108,7 +133,8 @@ test("Go's More ride types and Plan's dialog: the search first, then each group 
   // Go: the list under its own h3, the groups as h4 under it, so the Ride line's "Ride type" h3 after
   // it in the sheet is not read as a fourth group; each group named once, by its heading.
   assert.match(go, /<section className="ride-groups" aria-labelledby="ride-sheet-types">\s*<h3 id="ride-sheet-types" className="visually-hidden">\s*Every ride type\s*<\/h3>/);
-  assert.match(go, /<section key=\{group\.id\} className="ride-group" aria-labelledby=\{`ride-sheet-\$\{group\.id\}`\}>\s*<h4 id=\{`ride-sheet-\$\{group\.id\}`\}>\{group\.label\}<\/h4>\s*<RideTypeCards ids=\{group\.ids\} preset=\{preset\} onPick=\{onPick\} idPrefix="ride-sheet" icon=\{rideIcon\} \/>/);
+  // Review F9: a search's groups are ride-sheet-group (.ride-group is the group ride overlay's, absolutely placed).
+  assert.match(go, /<section key=\{group\.id\} className="ride-sheet-group" aria-labelledby=\{`ride-sheet-\$\{group\.id\}`\}>\s*<h4 id=\{`ride-sheet-\$\{group\.id\}`\}>\{group\.label\}<\/h4>\s*<RideTypeCards ids=\{group\.ids\} preset=\{preset\} onPick=\{onPick\} idPrefix="ride-sheet" icon=\{rideIcon\} \/>/);
   assert.match(sheets, /role=\{label \? "group" : undefined\} aria-label=\{label\}/);
   // Go: the search is cleared whenever the sheet is left (as Plan's dialog on closing).
   assert.match(go, /useEffect\(\(\) => \{\s*if \(!open\) setQuery\(""\);\s*\}, \[open\]\);/);

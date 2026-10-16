@@ -73,7 +73,7 @@ import {
 import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
 import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
-import { RideEnded, RideMode, startRideGesture, type RideView } from "./RideMode.tsx";
+import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, RIDE_ENDED_SAID, RideEnded, RideMode, rideVoice, startRideGesture, type RideView } from "./RideMode.tsx";
 import { readHeadingUp, readRidePrefs, writeHeadingUp, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf } from "./lib/bikeshare.ts";
@@ -684,7 +684,6 @@ export function App() {
   const [bigText, setBigText] = useState(false);
   const startRideRef = useRef<HTMLButtonElement>(null);
   const rideStartFirstRef = useRef<HTMLButtonElement>(null);
-  const focusStartAfterRide = useRef(false);
   // The Start ride button pressed (under the figures or in Directions): where the focus goes back to.
   const rideOpener = useRef<HTMLElement | null>(null);
   const rideCircle = rideView?.rider ? { centre: rideView.rider.point, radiusM: rideView.rider.accuracyM } : null;
@@ -1823,8 +1822,8 @@ export function App() {
     if (mode !== "go" || riding) setHomePick(false);
   }, [mode, riding]);
   // Go open with Home set and the rider's location found, and no route yet: the route Home is asked for early, so
-  // the Home chip shows it finished (v0.7.0, "Faster routing" step 4).
-  const homeEarly = me.signed_in && myGo.home !== null ? myGo.home.point : null;
+  // the Home chip shows it finished (v0.7.0, "Faster routing" step 4). Signed in or out: Home works either way.
+  const homeEarly = myGo.home !== null ? myGo.home.point : null;
   useEffect(() => {
     if (mode === "go" && !riding && points.length === 0 && goStart.kind === "here" && homeEarly) goEarly(homeEarly);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- asked once each time these change, not each render
@@ -2230,9 +2229,10 @@ export function App() {
 
   // Start ride (plan Q1, Q3): the first ride asks how to say the cues; later rides start at once. The
   // voice is unlocked inside this press (iOS speaks only after a gesture).
-  const beginRide = (prefs: RidePrefs) => {
+  // unlocked: Start's own press has already unlocked the voice (startRideChecked), before its closure check.
+  const beginRide = (prefs: RidePrefs, unlocked = false) => {
     if (!shown) return;
-    startRideGesture(prefs);
+    if (!unlocked) startRideGesture(prefs);
     setRideStart({ route: shown, points: routedPoints, loop: routedLoop, dials: planDials });
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
     // the map the ride kept. A browser tab keeps nothing unless the rider presses Keep for offline.
@@ -2282,7 +2282,7 @@ export function App() {
     if (window.location.hash !== hash) window.location.hash = hash;
     announce(`Opening ${kept.title}.`);
   };
-  const startRide = () => {
+  const startRide = (unlocked = false) => {
     const opener = document.activeElement;
     rideOpener.current = opener instanceof HTMLElement && opener.closest(".start-ride, .description-actions") ? opener : startRideRef.current;
     // Go goes straight to the ride (the owner, 2026-10-11 20:23 UTC: "just ... find a destination and go"):
@@ -2291,7 +2291,7 @@ export function App() {
       setRideAsk(true);
       return;
     }
-    beginRide(ridePrefs);
+    beginRide(ridePrefs, unlocked);
   };
   // ---- v0.7.0: saved routes, the verbatim GPX and the closure check ----
   const origin = window.location.origin;
@@ -2353,7 +2353,7 @@ export function App() {
   // A line the rider chose to ride anyway is not asked about again (on Start ride, say).
   const closureLetGo = useRef<string | null>(null);
   const lineKey = (line: readonly (readonly number[])[]) => `${line.length}:${line[0]?.join(",")}:${line[line.length - 1]?.join(",")}`;
-  const checkThen = async (why: CheckFor, line: readonly (readonly number[])[], gpx: boolean, proceed: () => void, afterGpx?: (track: number[][]) => void) => {
+  const checkThen = async (why: CheckFor, line: readonly (readonly number[])[], gpx: boolean, proceed: () => void, afterGpx?: (track: number[][]) => void, onAsk?: () => void) => {
     if (line.length < 2 || closureLetGo.current === lineKey(line)) {
       proceed();
       return;
@@ -2364,6 +2364,7 @@ export function App() {
       proceed();
       return;
     }
+    onAsk?.();
     closurePending.current = { line: line.map((v) => [...v]), index: found.index, closures: found.closures, gpx, proceed, afterGpx };
     setClosureAsk({ why, closures: found.closures, unchecked: found.unchecked, notices: found.notices });
   };
@@ -2450,9 +2451,21 @@ export function App() {
     void checkThen("download", route.geometry.coordinates, false, () => downloadGpx(route, at, routedLoop, federalRoute));
   };
   // Start ride: the line about to be ridden, checked first ("Ride it anyway" goes on to the ride).
+  // The voice is unlocked first, synchronously inside the press (iOS speaks only in a gesture; after the
+  // check's await it would be too late). A press that asks the first-ride question unlocks in that dialog.
   const startRideChecked = () => {
-    if (!shown) return startRide();
-    void checkThen("ride", shown.geometry.coordinates, false, startRide);
+    const unlocked = ridePrefs.chosen || mode === "go";
+    if (unlocked) startRideGesture(ridePrefs);
+    if (!shown) return startRide(unlocked);
+    // A slow check is said politely; a found closure stops the "Ride started." just begun.
+    const slow = window.setTimeout(() => announce(CHECKING_CLOSURES), CLOSURE_SLOW_MS);
+    void checkThen("ride", shown.geometry.coordinates, false, () => {
+      window.clearTimeout(slow);
+      startRide(unlocked);
+    }, undefined, () => {
+      window.clearTimeout(slow);
+      if (unlocked) rideVoice.stop();
+    });
   };
   // An opened file is checked at once, against its own track.
   const openImportedChecked = (plan: ImportedPlan) => {
@@ -2560,8 +2573,9 @@ export function App() {
     setBigText(false);
     setRideView(null);
     setRideEnded((n) => n + 1);
-    focusStartAfterRide.current = true;
-  }, []);
+    // Said by the page's region, always mounted; the focus goes to Undo (RideEnded), not back to Start (review F6).
+    announce(RIDE_ENDED_SAID);
+  }, [announce]);
   const undoEndRide = () => {
     const ended = endedRide.current;
     endedRide.current = null;
@@ -2574,12 +2588,6 @@ export function App() {
     setRideView(null);
     setRiding(true);
   };
-  // After End ride the focus goes back to Start ride, once the planner shows again.
-  useEffect(() => {
-    if (riding || !focusStartAfterRide.current) return;
-    focusStartAfterRide.current = false;
-    backToRideOpener();
-  }, [riding]);
   // The first ride's question takes the focus to its heading, so its safety note is read before the
   // choices (VoiceOver skips a dialog's description when the focus lands inside it).
   useEffect(() => {
@@ -3230,6 +3238,7 @@ export function App() {
     onRide: () => openView("ride", document.activeElement instanceof HTMLElement ? document.activeElement : null),
     onPlan: () => changeMode("plan"),
     peek: goSheet === "peek",
+    full: goSheet === "full" || (!narrow && goSheet !== "peek"),
     options: goOptions ? { list: goOptions, picked: pickedOption(goOptions, bikeshareOf(shown)), busy: stale, onPick: pickOption } : null,
     // Novice and Nervous's offer where only a busy road connects (v0.7.0): the trip on a transit ride type, its
     // bike legs still planned as Novice and Nervous plans them (`noviceLegs`, sent as novice_legs, kept in the link).
@@ -3239,6 +3248,18 @@ export function App() {
       announce(noviceTransitSaid(label));
     },
     noviceTrips: noviceTripsShown,
+    // "Add a stop", under Start in the route (review F2); only with a route and never during a ride.
+    addStop: goStops ? (
+      <GoAddStop
+        geoGate={geoGate}
+        searchBias={searchBias}
+        onPick={goAddStop}
+        full={points.length >= MAX_POINTS}
+        orderShown={orderShown}
+        ordering={ordering}
+        onBestOrder={() => void bestOrder()}
+      />
+    ) : null,
   };
   // A transit plan's options (lib/transit.ts): a press plans that one, for this trip; a departure the
   // rider would miss plans again, which takes the next one (lib/departure.ts).
@@ -3585,19 +3606,6 @@ export function App() {
                   rides={<RideChips ids={goRideChips(myGo.ride)} preset={preset} onPick={pickRide} more={(opener) => openView("ride", opener)} label="Ride type" ownHint={OWN_RIDE_HINT} />}
                   notice={notice}
                   route={points.length > 1 || status.kind !== "idle" ? routeSection : null}
-                  addStop={
-                    goStops ? (
-                      <GoAddStop
-                        geoGate={geoGate}
-                        searchBias={searchBias}
-                        onPick={goAddStop}
-                        full={points.length >= MAX_POINTS}
-                        orderShown={orderShown}
-                        ordering={ordering}
-                        onBestOrder={() => void bestOrder()}
-                      />
-                    ) : null
-                  }
                   startLine={goStartLine(goStart, points.length > 0 ? (namer.name(points[0])?.name ?? "the point on the map") : null)}
                   startMissing={goStart.kind === "none" && points.length === 0}
                   onStartPick={goStartPick}

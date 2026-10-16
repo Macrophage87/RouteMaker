@@ -26,7 +26,9 @@ import {
   shownDots,
   type RideAlert,
 } from "./rideGroup.ts";
-import { DOTS_LAYER, PULSE_LAYER, dotFeatures, dotsLayers, showRideDots } from "./rideDotsLayer.ts";
+import { ALERT, DOT, DOTS_LAYER, HOLE, PULSE_LAYER, STALE_LAYER, dotFeatures, dotsLayers, showRideDots } from "./rideDotsLayer.ts";
+import { contrastRatio } from "../stressStyle.js";
+import { baseSurfaces } from "../testSupport/baseSurfaces.ts";
 
 // An east-west route about 3.4 km long.
 const LINE: LonLat[] = Array.from({ length: 21 }, (_, i) => [-77.04 + i * 0.002, 38.9] as LonLat);
@@ -191,6 +193,26 @@ test("the API sends the token in a header and positions only in bodies", async (
   assert.deepEqual(sent, { ok: false, message: "One alert a minute; try again shortly." });
 });
 
+test("F12. a faded dot keeps its fill opaque (3:1 or more on every map surface) and shows its age by a white hole", () => {
+  type Layer = { id: string; filter?: unknown; paint: Record<string, unknown> };
+  const layers = dotsLayers() as Layer[];
+  const dot = layers.find((l) => l.id === DOTS_LAYER)!;
+  // ["match", ["get", "freshness"], "fresh", 1, "faded", 1, 0]: fresh and faded both opaque, the old one hollow.
+  assert.deepEqual(dot.paint["circle-opacity"], ["match", ["get", "freshness"], "fresh", 1, "faded", 1, 0]);
+  assert.equal(dot.paint["circle-stroke-opacity"], 1);
+  const pin = layers.find((l) => l.id === "ride-alerts-pin")!;
+  assert.deepEqual(pin.paint["circle-opacity"], ["match", ["get", "freshness"], "fresh", 1, "faded", 1, 0]);
+  const stale = layers.find((l) => l.id === STALE_LAYER)!;
+  assert.deepEqual(stale.filter, ["==", ["get", "freshness"], "faded"]);
+  assert.equal(stale.paint["circle-color"], HOLE);
+  // The fill against every light-map surface it can sit on, and the hole against the fill.
+  for (const [name, surface] of Object.entries(baseSurfaces())) {
+    assert.ok(contrastRatio(DOT, surface) >= 3, `the dot on ${name}: ${contrastRatio(DOT, surface).toFixed(2)}:1`);
+    assert.ok(contrastRatio(ALERT, surface) >= 3, `the alert on ${name}: ${contrastRatio(ALERT, surface).toFixed(2)}:1`);
+  }
+  assert.ok(contrastRatio(HOLE, DOT) >= 3 && contrastRatio(HOLE, ALERT) >= 3, "the hole shows on the fill");
+});
+
 test("the map draws a solid, faded or hollow dot by age, with the pulse ring for a new reading", () => {
   const shown = shownDots(LINE, [
     { lon: -77.03, lat: 38.9, age_s: 1 },
@@ -211,7 +233,8 @@ test("the map draws a solid, faded or hollow dot by age, with the pulse ring for
     removeLayer: (id: string) => void added.splice(added.indexOf(id), 1),
   };
   showRideDots(map, shown, [alert()]);
-  assert.equal(added.length, 3);
+  // Review F12: 5, not 3: a faded dot's and a faded pin's white hole each have a layer.
+  assert.equal(added.length, 5);
   showRideDots(map, null);
   assert.equal(added.length, 0);
   assert.equal(sources.size, 0);

@@ -16,7 +16,8 @@
  *                                                   or Home chip, Pick on the map, the spot (3)
  *
  * Signed in, Home is saved to the account (POST /api/me/go, as before); signed out, on this device (lib/myGo.ts).
- * Every way says "Home set to <name>." through the page's polite region, and none moves the focus.
+ * Every way says "Home set to <name>." through the page's polite region. Go's Home sheet then closes and gives
+ * the focus back to the Home chip (review F3); no other way moves the focus.
  */
 import type { LonLat } from "./geo.ts";
 import { coordinatesText, type GeoResult, type Place } from "./geocode.ts";
@@ -36,6 +37,16 @@ export function homeSetSaid(home: Home): string {
   return `Home set to ${homeName(home)}.`;
 }
 export const HOME_CLEARED = "Home cleared.";
+
+/** A Home's identity for the Home sheet ("" with none): a change to it is a Home set (or cleared). */
+export function homeSetKey(home: Home | null): string {
+  return home ? `${home.point[0]},${home.point[1]}:${home.label}` : "";
+}
+
+/** The Home sheet closes when, while it is open, a (new) Home is set; a Home cleared keeps it open. */
+export function homeClosesSheet(before: string, after: string, open: boolean): boolean {
+  return open && after !== "" && after !== before;
+}
 export const HOME_PICK_CANCELLED = "Home not changed.";
 
 /** Home's name as shown and said: its label, else its coordinates. */

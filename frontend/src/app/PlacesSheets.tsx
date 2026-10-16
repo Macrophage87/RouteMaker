@@ -2,7 +2,7 @@
 // stays clean, but they can find it there. Plan can have more complexity"), and Plan's Places to see. Each list
 // is lettered as the map's markers are (lib/letteredPlaces.ts); a row's one button rides there (Go) or adds the
 // place as a stop. App.tsx keeps the state; the lists are lib/repair.ts's and lib/places.ts's.
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { setSource, tapCard, useMap } from "./mapOverlay.ts";
 import { Icon } from "../Icon.tsx";
@@ -44,6 +44,7 @@ import type { SheetNav } from "./Sheets.tsx";
 
 /** Go's Repair: the nearest repair stands and bike shops, lettered; a row rides there. */
 export function RepairSheet({ nav, status, items, at, onRide }: { nav: SheetNav; status: string; items: readonly RepairNearby[] | null; at: Date; onRide: (item: RepairNearby) => void }) {
+  const rowId = useId();
   return (
     <SheetFrame id="sheet-repair" title={SHEET_TITLES.repair} open={nav.view === "repair"} onBack={nav.back} backLabel={nav.backLabel("repair")}>
       <p className="hint repair-status" role="status">
@@ -54,13 +55,20 @@ export function RepairSheet({ nav, status, items, at, onRide }: { nav: SheetNav;
           <ol role="list" className="nearest-list repair-list" aria-label="Repair stands and bike shops">
             {items.map((item, i) => (
               <li key={item.place.id}>
-                <button type="button" className="secondary place-row" onClick={() => onRide(item)} aria-label={`${placeLetter(i)}: Ride to ${repairTitle(item.place)}, ${formatDistance(item.metres)} away. ${repairDetails(item.place, at).join(" ")}`}>
+                {/* Named by the place and how far; its details are its description (review F13), not repeated in the name. */}
+                <button
+                  type="button"
+                  className="secondary place-row"
+                  onClick={() => onRide(item)}
+                  aria-label={`${placeLetter(i)}: Ride to ${repairTitle(item.place)}, ${formatDistance(item.metres)}`}
+                  aria-describedby={`${rowId}-${i}`}
+                >
                   <Icon name={item.place.kind === "stand" ? "wrench" : "shop"} size={18} />
                   <span>
                     <strong>
                       {placeLetter(i)}. {repairTitle(item.place)}
                     </strong>{" "}
-                    {formatDistance(item.metres)}. {repairDetails(item.place, at).join(" ")}
+                    {formatDistance(item.metres)}. <span id={`${rowId}-${i}`}>{repairDetails(item.place, at).join(" ")}</span>
                   </span>
                 </button>
               </li>

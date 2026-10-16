@@ -36,10 +36,14 @@ test("each result row offers 'Make this the destination' as an option of its own
   assert.match(search, /onPick\(place, as \?\? \(variant === "stop" \? "via" : single \? "end" : choice\)\);/);
 });
 
-test("Go's route sheet has one 'Add a stop' field above the route, with Best order, never during a ride", () => {
+test("Go's route sheet has one 'Add a stop' field under Start, with Best order, never during a ride", () => {
   const go = source("../app/Go.tsx");
   assert.match(go, /<PlaceSearch variant="stop"/);
-  assert.match(go, /\{routeShown && addStop && size !== "peek" && addStop\}\s*\{routeShown && route\}/);
+  // Review F2: the field moved from above the route to under Start, so the sheet leads with the time and Start.
+  assert.doesNotMatch(go, /addStop/);
+  const panel = source("../app/RoutePanel.tsx");
+  assert.match(panel, /<div className="actions start-ride go-start">\s*\{start\}\s*\{startHint\}\s*<\/div>\s*\)\}\s*\{\/\*[^*]*\*\/\}\s*\{!go\.peek && go\.addStop\}/);
+  assert.match(source("../App.tsx"), /addStop: goStops \? \(\s*<GoAddStop/);
   assert.match(go, /\{orderShown && \(\s*<button[^>]*onClick=\{onBestOrder\}/);
   const app = source("../App.tsx");
   assert.match(app, /const goStops = mode === "go" && !riding && points\.length >= 2 && !twoPointsOnly\(preset\) && !isMassRide\(preset\);/);

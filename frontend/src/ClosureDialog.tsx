@@ -23,7 +23,8 @@ export function ClosureDialog({ ask, onReroute, onAnyway, onCancel }: { ask: Clo
   const headingRef = useRef<HTMLHeadingElement>(null);
   const opener = useRef<Element | null>(null);
   const headingId = useId();
-  const listId = useId();
+  // The description is the lead line only (review F11); the list is read from the heading, where the focus starts.
+  const leadId = useId();
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
@@ -41,7 +42,7 @@ export function ClosureDialog({ ask, onReroute, onAnyway, onCancel }: { ask: Clo
       ref={dialogRef}
       className="closure-dialog"
       aria-labelledby={headingId}
-      aria-describedby={listId}
+      aria-describedby={leadId}
       onCancel={(event) => {
         // Escape is Cancel; the page decides what closes it.
         event.preventDefault();
@@ -53,8 +54,8 @@ export function ClosureDialog({ ask, onReroute, onAnyway, onCancel }: { ask: Clo
           <h2 id={headingId} ref={headingRef} tabIndex={-1}>
             {closureHeading(ask.closures.length)}
           </h2>
-          <div id={listId}>
-            <p>{closureLead(ask.why)}</p>
+          <div>
+            <p id={leadId}>{closureLead(ask.why)}</p>
             <ul role="list" className="closure-list">
               {ask.closures.map((c) => (
                 <li key={c.id}>

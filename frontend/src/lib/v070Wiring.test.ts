@@ -11,7 +11,8 @@ const app = source("../App.tsx");
 test("a route opened, Start ride and Download GPX are each checked against the closures in force now", () => {
   // Start ride (Plan's and Go's) goes through the check; "Ride it anyway" goes on to the ride.
   assert.match(app, /startRide: startRideChecked/);
-  assert.match(app, /void checkThen\("ride", shown\.geometry\.coordinates, false, startRide\)/);
+  // Review F1: the press unlocks the voice first, so the check's callback carries that on (startRide(unlocked)).
+  assert.match(app, /void checkThen\("ride", shown\.geometry\.coordinates, false, \(\) => \{\s*window\.clearTimeout\(slow\);\s*startRide\(unlocked\);/);
   // An opened GPX file (and a saved one, which opens the same way) is checked against its own track.
   assert.match(app, /openImported: openImportedChecked/);
   assert.match(app, /if \(plan\.verbatim\) void checkThen\("open", plan\.verbatim\.track, true/);
@@ -33,6 +34,9 @@ test("the closure dialog: a modal, heading focused first, Reroute around them th
   assert.ok(order.every((i) => i > 0), JSON.stringify(order));
   assert.deepEqual(order, [...order].sort((x, y) => x - y));
   assert.match(dialog, /className="primary closure-reroute"/);
+  // Review F11: described by the lead line only, not the whole list with its links.
+  assert.match(dialog, /aria-describedby=\{leadId\}/);
+  assert.match(dialog, /<p id=\{leadId\}>\{closureLead\(ask\.why\)\}<\/p>/);
 });
 
 test("a saved route reopens as saved: the scheduler answers its plan with the saved line until it changes", () => {

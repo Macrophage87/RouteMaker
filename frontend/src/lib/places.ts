@@ -164,7 +164,7 @@ export function sightText(result: SightResult): string {
 
 export const PLACES_NONE = "No places to see yet: they arrive with the next map data update.";
 export const PLACES_UNAVAILABLE = "Places to see are unavailable for now; try again shortly.";
-export const PLACES_NOTE = "Detours are estimates. From OpenStreetMap: check the hours before you go.";
+export const PLACES_NOTE = "Detours are estimates; check hours (OpenStreetMap).";
 
 /** The status line for Plan's list. */
 export function placesSaid(count: number, filter: PlaceFilter, alongRoute: boolean): string {

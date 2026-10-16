@@ -27,8 +27,8 @@ const ID_RE = /^[0-9a-f]{32}$/;
 /** How long the page waits for a shared line before planning the link's inputs instead. */
 export const SHARED_READ_TIMEOUT_MS = 8000;
 
-export const SHARED_INPUTS_ONLY = "The exact line could not be kept, so this link plans the route again when opened.";
-export const SHARED_GONE = "The shared route's exact line is no longer kept, so it was planned again from its points.";
+export const SHARED_INPUTS_ONLY = "Exact line not kept: the link plans the route again.";
+export const SHARED_GONE = "Exact line gone: planned again from its points.";
 export const SHARED_OPENED = (name: string) => `Opened "${name}", as it was shared.`;
 
 /** What POST /api/shared-routes takes: a saved route's body with the link's id. */

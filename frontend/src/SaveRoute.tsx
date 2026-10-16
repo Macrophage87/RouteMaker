@@ -14,9 +14,11 @@ export interface SaveRouteProps {
   onSave: (name: string) => Promise<string>;
   /** Go's chip, or Plan's plain button in More. */
   chip?: boolean;
+  /** Shorter words shown in place of the label, which stays the button's name. */
+  shown?: string;
 }
 
-export function SaveRoute({ label, defaultName, onSave, chip = false }: SaveRouteProps) {
+export function SaveRoute({ label, defaultName, onSave, chip = false, shown }: SaveRouteProps) {
   const [asking, setAsking] = useState(false);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -35,13 +37,15 @@ export function SaveRoute({ label, defaultName, onSave, chip = false }: SaveRout
         className={chip ? "chip save-route-chip" : "secondary save-route-open"}
         aria-expanded={asking}
         aria-controls={formId}
+        aria-label={shown ? label : undefined}
         onClick={() => {
           if (!asking) setName(defaultName());
           setAsking(!asking);
         }}
       >
-        {chip && <Icon name="download" size={18} />}
-        {label}
+        {/* Go's chip row is words only but the ride type's (review F15); a chip without shorter words keeps its icon. */}
+        {chip && !shown && <Icon name="download" size={18} />}
+        {shown ?? label}
       </button>
       {asking && (
         <form

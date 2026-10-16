@@ -62,6 +62,22 @@ export function filterRideGroups(query: string, presets: readonly PresetOption[]
   })).filter((group) => group.ids.length > 0);
 }
 
+/** The ride types most riders pick: Go's More ride types shows them first, the groups folded under (review F9). */
+export const COMMON_RIDE_TYPES: readonly PresetId[] = ["default", "novice", "bikeshare", "bike-transit"];
+
+/** Go's More ride types: the common ones, then the groups (without them), folded; a search shows its matches flat. */
+export function rideSections(query: string, presets: readonly PresetOption[] = PRESETS): { common: PresetId[]; groups: RideGroup[]; folded: boolean } {
+  const groups = filterRideGroups(query, presets);
+  if (query.trim() !== "") return { common: [], groups, folded: false };
+  const known = new Set(presets.map((p) => p.id));
+  const common = COMMON_RIDE_TYPES.filter((id) => known.has(id));
+  return {
+    common,
+    groups: groups.map((g) => ({ ...g, ids: g.ids.filter((id) => !common.includes(id)) })).filter((g) => g.ids.length > 0),
+    folded: true,
+  };
+}
+
 /** How many ride types the groups hold. */
 export function rideTypeCount(groups: readonly RideGroup[]): number {
   return groups.reduce((sum, group) => sum + group.ids.length, 0);

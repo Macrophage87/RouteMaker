@@ -91,8 +91,9 @@ test("words: a stand's kit and fee, a shop's hours, US units first with metric i
   const line = repairText({ place: places[0], metres: 500 }, at);
   assert.match(line, /^Repair stand, Union Station: 0\.3 mi \(0\.5 km\) away\. Pump and tools\. Free\.$/);
   assert.equal(repairFoundSaid([], true), REPAIR_NONE);
-  assert.match(repairFoundSaid([{ place: places[0], metres: 500 }], true), /to you, nearest first: Repair stand, Union Station, 0\.3 mi \(0\.5 km\) away\.$/);
-  assert.match(repairFoundSaid([{ place: places[0], metres: 500 }], false), /to the map's center/);
+  // Review F7: one short line, the nearest first (the count is the list's).
+  assert.equal(repairFoundSaid([{ place: places[0], metres: 500 }], true), "Nearest to you: Repair stand, Union Station, 0.3 mi (0.5 km).");
+  assert.match(repairFoundSaid([{ place: places[0], metres: 500 }], false), /^Nearest to the map's center: /);
 });
 
 test("the map shows stands only (shops are in the list), and carries no names", () => {
@@ -109,4 +110,13 @@ test("Go: Repair and Sights sit behind More, with its expanded state said", () =
   assert.match(go, /aria-expanded=\{moreOpen\} aria-controls=\{moreId\}/);
   assert.match(go, /id=\{moreId\}[^>]*aria-label="More places" hidden=\{!moreOpen\}/);
   assert.match(go, /places\.onRepair[\s\S]*Repair[\s\S]*places\.onSights[\s\S]*Sights/);
+});
+
+test("F13. a Repair row is named by its place and distance; its details are its description", () => {
+  const sheet = readFileSync(new URL("../app/PlacesSheets.tsx", import.meta.url), "utf8");
+  const repair = sheet.slice(sheet.indexOf("export function RepairSheet("), sheet.indexOf("function SightRow("));
+  assert.match(repair, /aria-label=\{`\$\{placeLetter\(i\)\}: Ride to \$\{repairTitle\(item\.place\)\}, \$\{formatDistance\(item\.metres\)\}`\}\s*aria-describedby=\{`\$\{rowId\}-\$\{i\}`\}/);
+  assert.match(repair, /<span id=\{`\$\{rowId\}-\$\{i\}`\}>\{repairDetails\(item\.place, at\)\.join\(" "\)\}<\/span>/);
+  // The name no longer repeats the details.
+  assert.doesNotMatch(repair, /aria-label=\{[^}]*repairDetails/);
 });

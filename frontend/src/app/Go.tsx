@@ -7,14 +7,14 @@
  *
  * Plan keeps the full panel; its map has Food and Water chips (PlanMapChips), where Go has place chips.
  */
-import { useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Icon } from "../Icon.tsx";
 import { PlaceSearch } from "../PlaceSearch.tsx";
 import type { LonLat } from "../lib/geo.ts";
 import type { GeoGate, Place, PlaceChoice } from "../lib/geocode.ts";
 import { MODE_LABEL, MODE_SWITCH_HINT, MODE_SWITCH_NAME, type AppMode } from "../lib/appMode.ts";
 import { HOME_NOT_SET, type Home } from "../lib/myGo.ts";
-import { CHANGE_HOME_TEXT, CLEAR_HOME_TEXT, HOME_PICK_LINE, PICK_ON_MAP_TEXT, homeName } from "../lib/homeSet.ts";
+import { CHANGE_HOME_TEXT, CLEAR_HOME_TEXT, HOME_PICK_LINE, PICK_ON_MAP_TEXT, homeClosesSheet, homeName, homeSetKey } from "../lib/homeSet.ts";
 import { BEST_ORDER_LABEL } from "../lib/stopOrder.ts";
 
 export type GoSheetSize = "peek" | "half" | "full";
@@ -181,7 +181,7 @@ export function HomeSetter({
 }
 
 /**
- * Go's "Add a stop" (v0.7.0, "Keep adding stops by search"): one field in the route sheet, above the route; a
+ * Go's "Add a stop" (v0.7.0, "Keep adding stops by search"): one field in the route sheet, under Start; a
  * place picked is a stop where it adds the least distance, routed at once (Undo removes it). Best order sits
  * beside it with two or more stops; it is the field's only company, so Go stays one control per feature.
  */
@@ -227,13 +227,10 @@ export function GoSheet({
   rides,
   notice,
   route,
-  addStop = null,
   startLine,
   startMissing,
   onStartPick,
 }: {
-  /** Go's "Add a stop" with a route (GoAddStop), or null: before a route, and during a ride. */
-  addStop?: ReactNode;
   size: GoSheetSize;
   onSize: (next: GoSheetSize) => void;
   pointCount: number;
@@ -260,6 +257,19 @@ export function GoSheet({
   // The Home sheet: the Home chip opens it while there is no Home, More's Change Home once there is one.
   const [homeOpen, setHomeOpen] = useState(false);
   const homeShown = homeOpen || places.homePicking;
+  // Home set from the sheet (its search or the map): the sheet closes and the focus goes back to the Home chip,
+  // which now rides Home (review F3). A Home cleared keeps the sheet open, for the next one.
+  const homeChip = useRef<HTMLButtonElement>(null);
+  const homeKey = homeSetKey(places.home);
+  const lastHomeKey = useRef(homeKey);
+  useEffect(() => {
+    const was = lastHomeKey.current;
+    lastHomeKey.current = homeKey;
+    if (!homeClosesSheet(was, homeKey, homeOpen)) return;
+    setHomeOpen(false);
+    homeChip.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per Home set, not per render
+  }, [homeKey]);
   const startBoxId = useId();
   const moreId = useId();
   const [startOpen, setStartOpen] = useState(false);
@@ -275,7 +285,6 @@ export function GoSheet({
       </button>
       {/* Where to? stays first while there is no route; with one, the route comes first (it is what the rider is
           looking at), and Where to? follows for a new place. */}
-      {routeShown && addStop && size !== "peek" && addStop}
       {routeShown && route}
       <div className="go-where" hidden={routeShown && size === "peek"}>
         {/* The start (the owner, 2026-10-11): the rider's location by default; a typed start replaces it (a press on the map is the destination). */}
@@ -310,6 +319,7 @@ export function GoSheet({
         <PlaceSearch variant="go" pointCount={pointCount} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place, _choice: PlaceChoice) => onPick(place)} onTopPlace={onTopPlace} />
         <div className="chip-row go-places" role="group" aria-label="Places">
           <button
+            ref={homeChip}
             type="button"
             className="chip place-chip"
             onClick={(event) => (places.homeReady ? places.onHome(event.currentTarget) : setHomeOpen(!homeOpen))}

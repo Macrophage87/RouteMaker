@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { CHANGE_HOME_TEXT, HOME_CLEARED, HOME_PICK_LINE, PICK_ON_MAP_TEXT, SET_AS_HOME_TEXT, homeAtSpot, homeFromPlace, homeName, homeSetSaid } from "./homeSet.ts";
+import { CHANGE_HOME_TEXT, HOME_CLEARED, HOME_PICK_LINE, PICK_ON_MAP_TEXT, SET_AS_HOME_TEXT, homeAtSpot, homeClosesSheet, homeFromPlace, homeName, homeSetKey, homeSetSaid } from "./homeSet.ts";
 import { HOME_NOT_SET } from "./myGo.ts";
 
 const src = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -48,8 +48,22 @@ test("Go stays clean: the always-shown place row is still five chips, and the on
 test("the Home chip with no Home opens the sheet in place: a disclosure, its hint only while shut", () => {
   assert.match(go, /aria-expanded=\{places\.homeReady \? undefined : homeShown\}/);
   assert.match(go, /aria-controls=\{places\.homeReady \? undefined : homeSheetId\}/);
-  // The sheet stays open after Home is set (the focus is in it); the chip then rides Home.
-  assert.doesNotMatch(go, /setHomeOpen\(false\)/);
+  // Review F3 (changed from "the sheet stays open"): Home set from the sheet closes it, and the focus goes back
+  // to the Home chip, which then rides Home (no aria-expanded: it no longer opens the sheet).
+  assert.match(go, /if \(!homeClosesSheet\(was, homeKey, homeOpen\)\) return;\s*setHomeOpen\(false\);\s*homeChip\.current\?\.focus\(\);/);
+  assert.match(go, /<button\s*ref=\{homeChip\}\s*type="button"\s*className="chip place-chip"/);
+  assert.match(go, /aria-expanded=\{places\.homeReady \? undefined : homeShown\}/);
+});
+
+test("F3. the Home sheet closes once a Home is set from it, never on a clear or while shut", () => {
+  const a = homeSetKey({ point: [-77.03, 38.9], label: "Home A" });
+  const b = homeSetKey({ point: [-77.04, 38.91], label: "Home B" });
+  assert.equal(homeSetKey(null), "");
+  assert.equal(homeClosesSheet("", a, true), true, "the first Home set: the sheet closes");
+  assert.equal(homeClosesSheet(a, b, true), true, "Change Home to another place: closes");
+  assert.equal(homeClosesSheet(a, "", true), false, "Clear Home: the sheet stays, for the next one");
+  assert.equal(homeClosesSheet(a, a, true), false, "no change");
+  assert.equal(homeClosesSheet("", a, false), false, "set elsewhere (Settings, the road panel) with the sheet shut");
 });
 
 test("the Home sheet offers exactly the two ways: the search and Pick on the map; with a Home, its name and Clear", () => {

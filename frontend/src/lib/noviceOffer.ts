@@ -51,12 +51,15 @@ export function noviceOfferShown(route: Pick<RouteResponse, "novice" | "provisio
   return preset === "novice" && route?.provisional !== true && route?.novice?.transit === true;
 }
 
-/** The offer's lead sentence, or null where none is made. */
+/**
+ * The offer's one lead line, or null where none is made (review F7: the answer first). The road and its length are
+ * in each option's description (noviceTripLine), heard with the option and not shown as a paragraph.
+ */
 export function noviceOfferText(route: Pick<RouteResponse, "novice"> | null, preset: PresetId): string | null {
   const note = route?.novice;
   if (!noviceOfferShown(route ?? null, preset) || !note) return null;
-  if (!note.busiest && note.busy_m <= 0) return "A calm route here would be more than 1.4 times as long. Transit or bikeshare can shorten it.";
-  return `Only a busy road connects here: ${busiestSaid(note)}. Transit or bikeshare can carry you past it.`;
+  if (!note.busiest && note.busy_m <= 0) return "Calm route is long here: transit can shorten it.";
+  return "Busy road ahead: transit can skip it.";
 }
 
 /** Each option's trip, found in the background as the offer shows. */
@@ -68,6 +71,13 @@ export function noviceTripLine(trip: NoviceTrip | undefined, note: NoviceNote): 
   if (!trip || trip.kind === "finding") return `Finding a trip, ${avoiding}.`;
   if (trip.kind === "none") return `No trip found just now; it would avoid ${avoidedSaid(note)}.`;
   return `About ${trip.minutes} min door to door, ${avoiding}.`;
+}
+
+/** An option's shown words, short (the full line is its description): "About 34 min", "Finding…", "None now". */
+export function noviceTripShort(trip: NoviceTrip | undefined): string {
+  if (!trip || trip.kind === "finding") return "Finding…";
+  if (trip.kind === "none") return "None now";
+  return `About ${trip.minutes} min`;
 }
 
 /** An answer as the option's trip: its door-to-door minutes, or none. */

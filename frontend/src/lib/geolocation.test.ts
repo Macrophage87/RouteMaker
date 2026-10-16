@@ -695,12 +695,24 @@ test("App: a drag reads the old point before the commit, and moves by movePoint 
   assert.doesNotMatch(move, /setFromHere\([^;]*pointsRef/);
 });
 
+test("#5. Enter on an empty box picks nothing; the early-start top place is the one Enter would pick", () => {
+  const search = code(read("../PlaceSearch.tsx"));
+  // An empty box offers recent places, but Enter with nothing highlighted takes none of them.
+  assert.match(search, /const enterPlaces: Place\[\] = empty \? \[\] : offered;/);
+  assert.equal(pickTarget(-1, 0, [{ name: "Recent" }], []), undefined, "an empty box: Enter picks nothing");
+  // onTopPlace (Go's early start) is told offered[0], the place Enter takes, a shared link's place included.
+  assert.match(search, /const top = enterPlaces\[0\] \?\? null;/);
+  assert.doesNotMatch(search, /const top = places\[0\]/);
+  assert.ok(search.indexOf("const top = enterPlaces[0]") > search.indexOf("const offered: Place[]"));
+});
+
 test("PlaceSearch: Enter goes through pickTarget, and the list option passes the choice on (P1, P5)", () => {
   const search = code(read("../PlaceSearch.tsx"));
   assert.match(
     search,
     // A place's "Make this the destination" row (v0.7.0) picks that place as the destination.
-    /\} else if \(action\.kind === "pick"\) \{\s*const item = pickTarget\(active, action\.index, items, offered\);\s*if \(item === HERE\) pickHere\(\);\s*else if \(item && "destination" in item\) pick\(item\.destination, "end"\);\s*else if \(item\) pick\(item\);/,
+    // Enter's places are enterPlaces (empty for an empty box: review #5), not every place offered.
+    /\} else if \(action\.kind === "pick"\) \{\s*const item = pickTarget\(active, action\.index, items, enterPlaces\);\s*if \(item === HERE\) pickHere\(\);\s*else if \(item && "destination" in item\) pick\(item\.destination, "end"\);\s*else if \(item\) pick\(item\);/,
   );
   assert.match(body(search, "const pickHere = () => {", "};"), /locate\?\.onLocate\(choice\);\s*$/);
   // The details (P2, P3, P4, P4b, P8, P9).
