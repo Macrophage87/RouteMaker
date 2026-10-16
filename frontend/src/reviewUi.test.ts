@@ -1,4 +1,4 @@
-// Small stylesheet fixes from the 2026-10-16 review (UI-3, UI-5, UI-6, UI-8, UI-9), read as source.
+// Small fixes from the 2026-10-16 review (UI-3, UI-5, UI-6, UI-8, UI-9, fe-perf-4), read as source.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -53,4 +53,13 @@ test("UI-8: rules for classes nothing uses are gone", () => {
 
 test("UI-9: the section tools row centres its buttons", () => {
   assert.match(declared(css, ".section-tools"), /align-items:\s*center/);
+});
+
+test("fe-perf-4: the map's non-passive touchmove listens only during a line drag or a long press", () => {
+  const map = readFileSync(new URL("./MapView.tsx", import.meta.url), "utf8");
+  assert.equal(map.match(/window\.addEventListener\("touchmove", onTouchMove, \{ passive: false \}\)/g)?.length, 1);
+  assert.match(map, /if \(on\) window\.addEventListener\("touchmove", onTouchMove, \{ passive: false \}\);\s*else window\.removeEventListener\("touchmove", onTouchMove\);/);
+  assert.match(map, /longPress\.press\(event\.point\.x, event\.point\.y\);\s*watchTouchMoves\(true\);/);
+  assert.match(map, /gesture\.press\("touch", event\.point\.x, event\.point\.y\);\s*watchTouchMoves\(true\);/);
+  assert.match(map, /const onTouchEnd = \(event: TouchEvent\) => \{\s*longPress\.cancel\(\);\s*watchTouchMoves\(false\);/);
 });

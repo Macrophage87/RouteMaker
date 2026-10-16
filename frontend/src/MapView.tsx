@@ -803,11 +803,15 @@ export function MapView(props: Props) {
       const hit = grabAt(event.point, TOUCH_HIT_PX);
       if (!hit) {
         // Off the line: a finger held here opens the road panel.
-        if (!anyPopupOpen()) longPress.press(event.point.x, event.point.y);
+        if (!anyPopupOpen()) {
+          longPress.press(event.point.x, event.point.y);
+          watchTouchMoves(true);
+        }
         return;
       }
       grabbed = hit;
       gesture.press("touch", event.point.x, event.point.y);
+      watchTouchMoves(true);
     });
     const onTouchMove = (event: TouchEvent) => {
       if (longPress.pending) {
@@ -828,6 +832,7 @@ export function MapView(props: Props) {
     };
     const onTouchEnd = (event: TouchEvent) => {
       longPress.cancel();
+      watchTouchMoves(false);
       if (!gesture.active) return;
       const touch = event.changedTouches[0];
       finish(event.type === "touchend" && touch ? local(touch.clientX, touch.clientY) : null);
@@ -876,7 +881,15 @@ export function MapView(props: Props) {
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
     window.addEventListener("mouseup", onRightUp);
-    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    // The page's touch moves, not passive (a line drag holds the map still), only while a line drag or a
+    // long press is under way: otherwise every scroll and pan of the page would wait on it (review fe-perf-4).
+    let watchingTouch = false;
+    function watchTouchMoves(on: boolean) {
+      if (on === watchingTouch) return;
+      watchingTouch = on;
+      if (on) window.addEventListener("touchmove", onTouchMove, { passive: false });
+      else window.removeEventListener("touchmove", onTouchMove);
+    }
     window.addEventListener("touchend", onTouchEnd);
     window.addEventListener("touchcancel", onTouchEnd);
     window.addEventListener("keydown", onKey);
