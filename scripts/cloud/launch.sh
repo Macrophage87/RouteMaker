@@ -33,8 +33,9 @@
 #   6. stops the box, then import-result.sh: install and its dry run; with --swap, the
 #      swap after it
 # --attach RUN_URL: for a run already running on the box (this end died, or the terminal
-# closed, while box-rebuild.sh carries on): no send, no start and no command, only steps 5
-# and 6. The wait watches the result and the box's state; the box is stopped only once the
+# closed, while box-rebuild.sh carries on): no send, no start and no rebuild command, only
+# steps 5 and 6, after one SSM check that box-rebuild.sh holds its lock on the box (refused,
+# the box left as it is, when it does not). The wait watches the result and the box's state; the box is stopped only once the
 # result is there, never if the wait is given up or interrupted, since the rebuild is still
 # running on it.
 # However it ends, a box this script started and that is still running is stopped (never
@@ -333,6 +334,28 @@ ssm_online() {
 		--filters "Key=InstanceIds,Values=$instance" \
 		--query 'InstanceInformationList[0].PingStatus' --output text 2>/dev/null)" = Online ]
 }
+# --attach: whether box-rebuild.sh runs on the box, asked over SSM: it holds its lock
+# (~ubuntu/cloud-runs/.box-rebuild.lock) for as long as it runs. 0 running, 1 not, 2 no answer.
+box_rebuild_running() {
+	local id out tries=0
+	local check='l=/home/ubuntu/cloud-runs/.box-rebuild.lock; if [ -e $l ] && ! flock -n $l true; then echo box-rebuild-running; else echo box-rebuild-idle; fi'
+	id=$(aws_box ssm send-command --instance-ids "$instance" --document-name AWS-RunShellScript \
+		--comment "RouteMaker attach check $run" --parameters "{\"commands\":[\"$check\"]}" \
+		--query Command.CommandId --output text 2>/dev/null) || return 2
+	[ -n "$id" ] && [ "$id" != None ] || return 2
+	while [ "$tries" -lt 30 ]; do
+		out=$(aws_box ssm get-command-invocation --command-id "$id" --instance-id "$instance" \
+			--query '[Status,StandardOutputContent]' --output text 2>/dev/null) || out=""
+		case "$out" in
+			Success*box-rebuild-running*) return 0 ;;
+			Success*box-rebuild-idle*) return 1 ;;
+			Failed* | Cancelled* | TimedOut*) return 2 ;;
+		esac
+		sleep "$START_POLL_S"
+		tries=$((tries + 1))
+	done
+	return 2
+}
 # Before send-inputs.sh asks for sudo and uploads gigabytes: a wrong id, region or
 # sign-in, or a box another run is using, fails here.
 if [ "$attach" = 1 ]; then
@@ -342,6 +365,15 @@ if [ "$attach" = 1 ]; then
 		case "$state" in
 			pending | running) ;;
 			*) die "the box $instance is $state and $url has no result yet: nothing to attach to. Carry the run on: $(resume)" ;;
+		esac
+		wait_for "the box is not running" "$START_WAIT_S" is_running
+		wait_for "the box's SSM agent is not online" "$START_WAIT_S" ssm_online
+		rc=0
+		box_rebuild_running || rc=$?
+		case "$rc" in
+			0) ;;
+			1) die "box-rebuild.sh is not running on the box $instance (nothing holds its lock) and $url has no result: nothing to attach to. The box is left as it is. Carry the run on: $(resume)" ;;
+			*) die "could not ask the box $instance over SSM whether box-rebuild.sh runs (signed in? its SSM agent?); nothing is waited for. Look with Session Manager (tail ~/cloud-rebuild.log), or try --attach again" ;;
 		esac
 	fi
 	note "--attach: waiting for the run already on the box; nothing is sent or started"
@@ -536,7 +568,7 @@ while :; do
 	esac
 	now=$(date +%s)
 	[ "$now" -lt "$deadline" ] ||
-		fail "no result after $((TIMEOUT_S / 3600)) hours (command ${status:-unknown}); stopping the box. Its state is kept; carry the run on: $(resume)"
+		fail "no result after $((TIMEOUT_S / 3600)) hours (command ${status:-unknown}); $([ "$started" = 1 ] && echo "stopping the box" || echo "the box is not this launcher's to stop, so it is left running: stop it in the console when done"). Its state is kept; carry the run on: $(resume)"
 	if [ $((now - last_report)) -ge 600 ]; then
 		el=$((now - began))
 		note "still rebuilding: $((el / 3600))h$(printf %02d $((el % 3600 / 60)))m, command ${status:-unknown}, box ${state:-unknown}"

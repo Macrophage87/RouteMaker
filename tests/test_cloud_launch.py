@@ -43,7 +43,8 @@ query="" prev=""
 for a in "$@"; do [ "$prev" = --query ] && query=$a; prev=$a; done
 case "$query" in
   "" | "Reservations[0].Instances[0].State.Name" | "InstanceInformationList[0].PingStatus" | \
-    "Command.CommandId" | "Status" | "[StandardOutputContent,StandardErrorContent]") ;;
+    "Command.CommandId" | "Status" | "[StandardOutputContent,StandardErrorContent]" | \
+    "[Status,StandardOutputContent]") ;;
   *) echo "fake aws: unknown --query $query" >&2; exit 252 ;;
 esac
 # The first line of a file, the last line kept for every later read. FAIL: signed out.
@@ -69,6 +70,9 @@ case "$1 $2" in
     case "$*" in
       *"--query Status"*)
         next "$FAKE_DIR/invocation" || echo InProgress ;;
+      # --attach's check that box-rebuild.sh holds its lock on the box.
+      *"--query [Status,StandardOutputContent]"*)
+        next "$FAKE_DIR/attach_check" || printf 'Success\tbox-rebuild-running\n' ;;
       *) printf 'box-rebuild: rebuild job 7 ended failed\tsome stderr\n' ;;
     esac ;;
   "s3 ls")
@@ -630,7 +634,10 @@ def test_attach_only_waits_for_the_run_on_the_box_then_stops_it_and_installs(fak
 
     assert done.returncode == 0, done.stdout + done.stderr
     assert not fake.called("send-inputs.sh") and not fake.called("start-instances")
-    assert not fake.called("send-command") and not fake.called("get-command-invocation")
+    # Only the check that box-rebuild.sh runs (review round 2, S4): no rebuild is sent.
+    (check,) = fake.called("send-command")
+    assert "RouteMaker attach check" in check and "box-rebuild.lock" in check
+    assert "rm-root.sh" not in check
     calls = fake.calls()
     assert position(calls, "stop-instances") < position(calls, "import-result.sh")
     assert len(fake.called("stop-instances")) == 1
@@ -644,6 +651,40 @@ def test_attach_to_a_box_that_is_not_running_is_refused(fake) -> None:
     assert done.returncode == 2 and "nothing to attach to" in done.stderr
     assert "--no-send" in done.stderr and URL in done.stderr
     assert not fake.called("start-instances") and not fake.called("stop-instances")
+
+
+def test_attach_refuses_when_box_rebuild_is_not_running(fake) -> None:
+    """Review round 2, S4: a running box whose box-rebuild.sh holds no lock has nothing to wait
+    for; the launcher says so and leaves the box alone."""
+    (fake.dir / "states").write_text("running\n")
+    (fake.dir / "attach_check").write_text("Success\tbox-rebuild-idle\n")
+
+    done = fake.run("--attach", URL)
+
+    assert done.returncode == 2, done.stdout + done.stderr
+    assert "box-rebuild.sh is not running" in done.stderr and "--no-send" in done.stderr
+    assert not fake.called("stop-instances") and not fake.called("import-result.sh")
+
+
+def test_attach_refuses_when_the_box_cannot_be_asked(fake) -> None:
+    (fake.dir / "states").write_text("running\n")
+    (fake.dir / "attach_check").write_text("Failed\t\n")
+
+    done = fake.run("--attach", URL)
+
+    assert done.returncode == 2 and "could not ask the box" in done.stderr
+    assert not fake.called("stop-instances")
+
+
+def test_an_attached_wait_that_times_out_says_it_leaves_the_box(fake) -> None:
+    (fake.dir / "states").write_text("running\n")
+    (fake.dir / "result_after").write_text("9999")
+
+    done = fake.run("--attach", URL, CLOUD_LAUNCH_TIMEOUT_S="0")
+
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert "left running" in done.stderr and "stopping the box" not in done.stderr
+    assert not fake.called("stop-instances")
 
 
 def test_an_interrupted_attach_leaves_the_rebuild_running(fake) -> None:

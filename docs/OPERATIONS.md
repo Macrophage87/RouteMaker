@@ -6523,7 +6523,10 @@ second command to a box that is still rebuilding. Instead
 `out/SHA256SUMS` while watching the box's state, then stops the box and installs the
 result (`--swap` as usual). Interrupting it, or giving up the wait, leaves the box
 running, since the rebuild is still on it. A box that is not running and has no result is
-refused with the `--no-send` command to carry the run on. On the box, `box-rebuild.sh`
+refused with the `--no-send` command to carry the run on, and so is a running box where
+`box-rebuild.sh` does not run: before waiting, `--attach` asks the box over SSM (one small
+command, as root) whether anything holds that script's lock, and stops there, leaving the box
+as it is, when nothing does or the box cannot be asked. On the box, `box-rebuild.sh`
 holds a lock (`~/cloud-runs/.box-rebuild.lock`), so a second copy of it, for any run,
 refuses to start while one runs.
 
