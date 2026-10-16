@@ -4782,6 +4782,32 @@ async function goPressMap(p) {
   await p.close();
 }
 
+{
+  // Share as image on a route that starts at Home (v0.7.0 end review): "Hide the part near Home" is shown and
+  // ticked, and the QR code is refused, with its reason as the box's description, while Home is hidden; unticked
+  // (the rider chose to show Home), the QR code is no longer refused for Home.
+  const home = JSON.stringify({ open_in: "", ride: "", home: { lon: -77.04, lat: 38.91, label: "Home" } });
+  const p = await open({ ride: false, junctions: false, init: `try { localStorage.setItem('routemaker.my-go', ${JSON.stringify(home)}); } catch {}` });
+  await p.eval("document.querySelector('.route-more')?.click(); true");
+  await sleep(200);
+  await p.eval("document.querySelector('.share-image')?.click(); true");
+  const shown = await p.waitFor("!!document.querySelector('dialog.share-card[open], dialog[open] .share-card-check')", 8000);
+  const read = () => p.eval(`(() => { const d = document.querySelector('dialog[open]'); const boxes = [...(d?.querySelectorAll('.share-card-check') ?? [])];
+    const box = (text) => boxes.map((b) => ({ input: b.querySelector('input'), label: b.querySelector('label')?.textContent ?? '' })).find((b) => b.label === text);
+    const homeBox = box('Hide the part near Home'); const qr = box('QR code');
+    const why = qr?.input?.getAttribute('aria-describedby'); return { home: !!homeBox, homeChecked: homeBox?.input.checked ?? null,
+      qrDisabled: qr?.input.disabled ?? null, qrWhy: why ? document.getElementById(why)?.textContent ?? '' : '' }; })()`);
+  const hidden = await read();
+  check("share as image: on a route from Home, Hide the part near Home is shown and ticked",
+    shown && hidden.home && hidden.homeChecked === true, JSON.stringify(hidden));
+  await p.eval("[...document.querySelectorAll('dialog[open] .share-card-check')].find((b) => b.querySelector('label')?.textContent === 'Hide the part near Home')?.querySelector('input')?.click(); true");
+  await sleep(300);
+  const showing = await read();
+  check("share as image: the QR code is refused, its reason named, while Home is hidden, and not for Home once shown",
+    hidden.qrDisabled === true && /starts, ends or stops at Home/.test(hidden.qrWhy) && showing.homeChecked === false && !/at Home/.test(showing.qrWhy), JSON.stringify({ hidden, showing }));
+  await p.close();
+}
+
 b.close();
 
 const failed = results.filter((r) => !r.ok);
@@ -4789,7 +4815,7 @@ const failed = results.filter((r) => !r.ok);
 // returns early) fails here rather than passing green (the mutation review of the release).
 // The transit blocks (#108) and the Go press checks (#116) were added without raising it; they run since #127.
 // Review mode's own lists (22c2) add six.
-const EXPECTED = 639;
+const EXPECTED = 641;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
