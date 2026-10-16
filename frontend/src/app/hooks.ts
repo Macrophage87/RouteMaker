@@ -41,3 +41,13 @@ export function useSettled(text: string, waitMs: number): string {
   useEffect(() => () => settled.current?.cancel(), []);
   return shown;
 }
+
+/** The time now, epoch ms, read again each minute (the light times on the route, lib/lightTimes.ts). */
+export function useMinute(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return now;
+}

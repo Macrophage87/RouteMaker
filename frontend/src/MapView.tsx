@@ -110,6 +110,7 @@ import {
   transitOf,
 } from "./lib/transit.ts";
 import { countdown, labelSide, mapLabel } from "./lib/departure.ts";
+import { lightMarkerLabel, lightMarkerText, type LightMark } from "./lib/lightTimes.ts";
 import {
   CARD_CLOSE_LABEL,
   cardName,
@@ -179,6 +180,8 @@ interface Props {
   stale: boolean;
   /** Plan mode (v0.7.0): the line before the last update, drawn dashed until the next change, or null. */
   ghost?: readonly LonLat[] | null;
+  /** Plan: the light times on the route near dawn or dusk (lib/lightTimes.ts), each marked where the rider will be; null draws none. */
+  lightMarks?: readonly LightMark[] | null;
   stressVisible: boolean;
   /** The ride time the overlay follows, for the roads closed to cars at set times (lib/rideTime.ts). */
   when: When;
@@ -1462,6 +1465,29 @@ export function MapView(props: Props) {
     });
     return () => drawn.forEach((marker) => marker.remove());
   }, [props.route]);
+
+  // The light times on the route (lib/lightTimes.ts): sunset and the end of civil twilight, or civil dawn
+  // and sunrise, each where the rider will be then. A text label, named for a screen reader (the route
+  // summary's line says the same); not a button, so not in the Tab order.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current) return;
+    const drawn = (props.lightMarks ?? []).flatMap((mark) => {
+      if (mark.where !== "during" || !mark.point) return [];
+      const element = document.createElement("div");
+      element.className = "light-marker";
+      element.dataset.kind = mark.kind;
+      element.setAttribute("role", "img");
+      element.setAttribute("aria-label", lightMarkerLabel(mark));
+      const text = document.createElement("span");
+      text.setAttribute("aria-hidden", "true");
+      text.textContent = lightMarkerText(mark);
+      element.appendChild(text);
+      element.addEventListener("click", (event) => event.stopPropagation());
+      return [new maplibregl.Marker({ element, anchor: "bottom", offset: [0, -6] }).setLngLat(mark.point).addTo(map)];
+    });
+    return () => drawn.forEach((marker) => marker.remove());
+  }, [props.lightMarks]);
 
   // An infrequent departure's label at the boarding stop (lib/departure.ts): "MARC 7:42 am · 6 min
   // spare", and, when cutting it close, the countdown to it. Hidden from screen readers (the panel

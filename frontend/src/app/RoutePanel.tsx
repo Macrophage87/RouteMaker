@@ -13,6 +13,7 @@ import { presetLabel, presetSaid, type PresetId } from "../lib/presets.ts";
 import { NOVICE_TRANSIT_CHOICES, noviceOfferText, noviceTripLine, noviceTripShort, type NoviceTrip } from "../lib/noviceOffer.ts";
 import { PresetName } from "../lib/presetName.ts";
 import { stressSegments, type StressSegment } from "../lib/stressBar.ts";
+import { lightLine, type LightMark } from "../lib/lightTimes.ts";
 import { calmSearchNote, detourView, paceText, stillPlanningSaid, movedPointsNote } from "../lib/summary.ts";
 import { isCancelKey } from "../lib/sheet.ts";
 import { useStressStyle } from "../useStressStyle.ts";
@@ -254,6 +255,8 @@ export interface RouteSectionProps {
   go: GoRouteControls;
   /** The transit ride types' options and departure (TransitSummary). */
   transitControls: TransitControls;
+  /** The light times on the route near dawn or dusk (lib/lightTimes.ts), leaving now; empty otherwise. */
+  light: readonly LightMark[];
 }
 
 /** A transit plan's controls: plan another option, and the departure's milestones and a miss. */
@@ -265,7 +268,7 @@ export interface TransitControls {
 
 /** The planner's Route section: planning, the long-ride question, errors, the route summary and Start ride's question. */
 export function RouteSection(props: RouteSectionProps) {
-  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs, rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls } = props;
+  const { stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef, confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute, narrow, setJunctionFocus, setScrubPoint, choose, startRide, startRideRef, rideSize, setDials, waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs, rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong, mode, actions, stations, go, transitControls, light } = props;
   const goMode = mode === "go";
   return (
     <section key="route" aria-labelledby="route-heading" aria-busy={stale} className={goMode ? "route-section go-route" : "route-section"}>
@@ -350,6 +353,7 @@ export function RouteSection(props: RouteSectionProps) {
           preset={preset}
           go={go}
           transitControls={{ ...transitControls, busy: stale }}
+          light={light}
         />
       )}
       {shown && rideAsk && (
@@ -502,7 +506,7 @@ interface NoteLine {
   text: string;
 }
 
-function noteLines(route: RouteResponse, points: LonLat[]): NoteLine[] {
+function noteLines(route: RouteResponse, points: LonLat[], light: readonly LightMark[] = []): NoteLine[] {
   const lines: NoteLine[] = [];
   // A point inside the National Zoo was moved to its bike racks (291(4)): shown here, and said with the route.
   const moved = movedPointsNote(route, points.length);
@@ -521,6 +525,9 @@ function noteLines(route: RouteResponse, points: LonLat[]): NoteLine[] {
   const mtb = mtbNotes(route.mtb);
   for (const text of mtb.warnings) lines.push({ key: `mtb-${text}`, className: "notice mtb-warning", icon: "warn", text });
   if (mtb.notes.length > 0) lines.push({ key: "mtb-note", className: "hint mtb-note", icon: "mtb", text: mtb.notes.join(" ") });
+  // Near dawn or dusk: where the rider will be at each light time (lib/lightTimes.ts), one line, in Go too.
+  const lightText = lightLine(light);
+  if (lightText) lines.push({ key: "light", className: "hint light-times", icon: "sun", text: lightText });
   return lines;
 }
 
@@ -606,6 +613,7 @@ export function RouteSummary({
   preset,
   go,
   transitControls,
+  light = [],
 }: {
   route: RouteResponse;
   answer: RouteResponse | null;
@@ -636,6 +644,8 @@ export function RouteSummary({
   mode: AppMode;
   preset: PresetId;
   go: GoRouteControls;
+  /** The light times on the route near dawn or dusk (lib/lightTimes.ts): one line, the map marks' accessible form. */
+  light?: readonly LightMark[];
 }) {
   useStressStyle();
   const [info, setInfo] = useState(false);
@@ -647,7 +657,7 @@ export function RouteSummary({
   // A Mass Ride's panel is about riders per minute, in place of the LTS breakdown (OWNER-DECISIONS 325).
   const capacity = capacitySummary(route.stress_spans);
   const segments = capacity ? [] : stressSegments(route.stress_m);
-  const notes = noteLines(route, points);
+  const notes = noteLines(route, points, light);
   const pace = paceText(route);
   const profile = usableProfile(route);
   // The Avoid-rated junctions count with the rest, and keep the fold where the others could not be read.
