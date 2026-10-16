@@ -1018,3 +1018,80 @@ test("cueSheet: the turns, stops and end ahead in order, the next first, each di
   assert.ok(rows.length <= CUE_SHEET_ROWS);
   assert.deepEqual(cueSheet(model, model.lengthM), []);
 });
+
+/** A straight line east as long as `description`, for the "onto" cue (the owner, 2026-10-16: Custis Trail to the Mount Vernon Trail). */
+function straightRoute(description: DescriptionEntry[]): RouteResponse {
+  const end = Math.max(...description.map((e) => e.to_m));
+  return { ...lRoute(), geometry: { type: "LineString", coordinates: [at(0, 0), at(end, 0)] }, distance_m: end, leg_ends: [1], description } as RouteResponse;
+}
+
+const straightOnto = (street: string) => ({ movement: "straight" as const, onto: street, control: null, severity: null });
+
+test("onto: the Custis Trail straight on to the Mount Vernon Trail is said, at every level but Quiet, on the card and in Where am I?", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 1500, "0.0 to 0.9 mi: Custis Trail, traffic-free path.", { street: "Custis Trail", facility: "path" }),
+      stretch(1500, 9000, "0.9 to 5.6 mi: Continue onto Mount Vernon Trail, traffic-free path.", {
+        street: "Mount Vernon Trail",
+        facility: "path",
+        turn: straightOnto("Mount Vernon Trail"),
+      }),
+    ]),
+  );
+  const onto = model.cues.filter((c) => c.kind === "onto");
+  assert.equal(onto.length, 1);
+  assert.equal(onto[0].text, "Continue onto Mount Vernon Trail.");
+  assert.equal(onto[0].movement, null);
+  assert.ok(says("full", onto[0]) && says("stoker", onto[0]) && !says("quiet", onto[0]));
+  assert.equal(nextAction(model, 200)?.kind, "onto");
+  assert.match(whereAmI(model, { ...startState(), progressM: 1000 }), /Next, in [^:]+: continue onto Mount Vernon Trail\./);
+  assert.equal(cueSpoken(onto[0], "advance", 152.4), `In ${spokenDistance(152.4)}, continue onto Mount Vernon Trail.`);
+  assert.equal(ride(model, "full", 0, 2000).events.filter((e) => e.cue?.kind === "onto").length, 1);
+  assert.equal(ride(model, "stoker", 0, 2000).events.filter((e) => e.cue?.kind === "onto").length, 1);
+  assert.equal(ride(model, "quiet", 0, 2000).events.filter((e) => e.cue?.kind === "onto").length, 0);
+});
+
+test("onto: through a short unnamed connector to a new trail it is said once; the same trail resuming is not said", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 1500, "Custis Trail.", { street: "Custis Trail", facility: "path" }),
+      stretch(1500, 1600, "Continue onto the path.", { street: "path", facility: "path", turn: straightOnto("path") }),
+      stretch(1600, 9000, "Continue onto Mount Vernon Trail.", { street: "Mount Vernon Trail", facility: "path", turn: straightOnto("Mount Vernon Trail") }),
+    ]),
+  );
+  assert.deepEqual(model.cues.filter((c) => c.kind === "onto").map((c) => c.text), ["Continue onto Mount Vernon Trail."]);
+  const resumed = rideModel(
+    straightRoute([
+      stretch(0, 1500, "Custis Trail.", { street: "Custis Trail", facility: "path" }),
+      stretch(1500, 1590, "Continue onto the path.", { street: "path", facility: "path", turn: straightOnto("path") }),
+      stretch(1590, 4000, "Continue onto Custis Trail.", { street: "Custis Trail", facility: "path", turn: straightOnto("Custis Trail") }),
+    ]),
+  );
+  assert.equal(resumed.cues.filter((c) => c.kind === "onto").length, 0);
+});
+
+test("onto: an unnamed path straight on to a named trail is said; a named trail to an unnamed path is not", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 500, "path.", { street: "path", facility: "path" }),
+      stretch(500, 3000, "Continue onto Capital Crescent Trail.", { street: "Capital Crescent Trail", facility: "path", turn: straightOnto("Capital Crescent Trail") }),
+      stretch(3000, 5000, "Continue onto the path.", { street: "path", facility: "path", turn: straightOnto("path") }),
+    ]),
+  );
+  const onto = model.cues.filter((c) => c.kind === "onto");
+  assert.deepEqual(onto.map((c) => c.text), ["Continue onto Capital Crescent Trail."]);
+  assert.ok(Math.abs(onto[0].atM - 500) < 1, `${onto[0].atM}`);
+});
+
+test("onto: a road's new name straight on is said only when it lasts more than a quarter mile; the same name never", () => {
+  const roads = rideModel(
+    straightRoute([
+      stretch(0, 1000, "A Street.", { street: "A Street" }),
+      stretch(1000, 1300, "Continue onto B Street.", { street: "B Street", turn: straightOnto("B Street") }),
+      stretch(1300, 2000, "Continue onto C Street.", { street: "C Street", turn: straightOnto("C Street") }),
+    ]),
+  );
+  assert.deepEqual(roads.cues.filter((c) => c.kind === "onto").map((c) => c.text), ["Continue onto C Street."]);
+  const same = rideModel(straightRoute([stretch(0, 1000, "A Street.", { street: "A Street" }), stretch(1000, 3000, "Continue on A Street.", { street: "A Street", tier: 2 })]));
+  assert.equal(same.cues.filter((c) => c.kind === "onto").length, 0);
+});

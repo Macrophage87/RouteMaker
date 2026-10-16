@@ -460,6 +460,37 @@ def test_the_street_side_names_are_read_for_unnamed_ways_only(segment_schemas):
 
 
 @db
+def test_an_unnamed_way_takes_its_trail_relation_name_after_the_street_side_name(segment_schemas):
+    """The owner, 2026-10-16 (the Custis Trail to the Mount Vernon Trail, said on the move): a
+    way with no name of its own and no street-side name is named by its long trail's route
+    relation (`segment.trail_name`); a street-side name still comes first."""
+    from django.db import connection
+
+    from core import segment_info
+
+    live, _staging = segment_schemas
+    segment_info.forget_columns()
+    with connection.cursor() as cursor:
+        for way, side, trail in (
+            (7, "9th Street Northwest protected bike lane", "Some Trail"),
+            (8, None, "Mount Vernon Trail"),
+            (9, None, None),
+        ):
+            cursor.execute(
+                f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule, sidepath_name, trail_name) VALUES (%s, 0, "
+                "ST_GeomFromText('LINESTRING(-77 38.9, -77 38.901)', 4326), 1, 'test', %s, %s)",
+                [way, side, trail],
+            )
+    pieces = [routing.Piece(w, -77.0, 38.9, 10.0, (), "cycleway") for w in (7, 8, 9)]
+    assert routing.sidepath_names_of(pieces) == {
+        7: "9th Street Northwest protected bike lane",
+        8: "Mount Vernon Trail",
+    }
+    segment_info.forget_columns()
+
+
+@db
 @pytest.mark.usefixtures("arterial")
 class TestOverviewInTheAnswer:
     def test_both_lists_are_answered_and_agree_on_a_short_route(self, client, router):

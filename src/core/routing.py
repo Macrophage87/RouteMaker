@@ -81,6 +81,7 @@ from pipeline.schema import (
     MASS_WIDTH_COLUMN,
     SIDEPATH_NAME_COLUMN,
     STRESS_HALF_COLUMN,
+    TRAIL_NAME_COLUMN,
     validate_schema_name,
 )
 from pipeline.variants import Variant
@@ -2091,20 +2092,30 @@ def arrival_side_of(trip: dict) -> str | None:
 
 def sidepath_names_of(pieces: list[Piece]) -> dict[int, str]:
     """The street-side names of the route's ways that have no name of their own
-    (`segment.sidepath_name`, `routemaker.facility.side_street_names`), by way id.
-    Empty where the live table has no such column yet (a table built before it) or
-    the query fails: those ways are then just "path"."""
+    (`segment.sidepath_name`, `routemaker.facility.side_street_names`), by way id;
+    else the name of the long trail's route relation the way is in (`segment.trail_name`,
+    `pipeline.trail_routes.way_name`), so a change of trail on a way named only by its
+    relation is said on the move (the owner, 2026-10-16). Empty where the live table has
+    neither column yet (a table built before it) or the query fails: those ways are then
+    just "path"."""
     ids = sorted({p.way_id for p in pieces if not p.names and p.way_id})
     if not ids:
         return {}
     try:
         schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
-        if not segment_info.has_columns(schema, SIDEPATH_NAME_COLUMN):
+        columns = [
+            c
+            for c in (SIDEPATH_NAME_COLUMN, TRAIL_NAME_COLUMN)
+            if segment_info.has_columns(schema, c)
+        ]
+        if not columns:
             return {}
+        name = f"coalesce({', '.join(f'max({c})' for c in columns)})"
+        present = " OR ".join(f"{c} IS NOT NULL" for c in columns)
         with plan_cursor() as cursor:
             cursor.execute(
-                f"SELECT osm_way_id, max({SIDEPATH_NAME_COLUMN}) FROM {schema}.segment "
-                f"WHERE osm_way_id = ANY(%s) AND {SIDEPATH_NAME_COLUMN} IS NOT NULL "
+                f"SELECT osm_way_id, {name} FROM {schema}.segment "
+                f"WHERE osm_way_id = ANY(%s) AND ({present}) "
                 "GROUP BY osm_way_id",
                 [ids],
             )
