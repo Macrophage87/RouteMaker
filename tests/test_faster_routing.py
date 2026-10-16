@@ -451,6 +451,24 @@ class TestCache:
         monkeypatch.setattr(routing.timezone, "now", lambda: rush)
         assert cache_said(post(client, good_body())).startswith('cache;desc="miss"')
 
+    def test_the_moment_closures_are_matched_at_is_part_of_the_key(self, segments) -> None:
+        """A dial set to the setting of the moment matches closures at now; the same dial
+        once the moment has moved on matches them at its next representative instant
+        (`workzones.ride_moment`). Same request, same `when`: a different key."""
+        from routemaker import ridetime
+
+        fields = good_body() | {"when": ridetime.WEEKDAY_RUSH}
+        planning_at = "2026-10-06T17:00"
+        in_rush = datetime(2026, 9, 30, 17, 50, tzinfo=ridetime.ZONE)
+        after = datetime(2026, 9, 30, 19, 10, tzinfo=ridetime.ZONE)
+        assert ridetime.when_at(in_rush) == ridetime.WEEKDAY_RUSH != ridetime.when_at(after)
+        keys = [
+            route_cache.key_for(fields, ridetime.WEEKDAY_RUSH, planning_at, "", now=moment)
+            for moment in (in_rush, after)
+        ]
+        assert keys[0] is not None and keys[1] is not None
+        assert keys[0].key != keys[1].key
+
     def test_a_full_plan_answers_a_first_route_request_not_the_other_way(
         self, client, segments, router
     ) -> None:
