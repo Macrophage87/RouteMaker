@@ -298,9 +298,32 @@ Two lists, one row per line, short keys:
 
 ### Status
 
-Not built yet: the committed file has no trails or markers (the cloud cannot
-reach the extract), and every place reads as it did before. On the build host,
-from the repository root:
+Generated on the build host on 2026-10-16, from the 2026-10-09 extract the
+live stack builds from (`<DATA_ROOT>/extracts/source.osm.pbf`): 10 trail lines
+over 2 miles and 52 markers on 5 trails; 32 left out as not on a named trail
+and 1 as nearer a main road than the trail (the Washington, Baltimore &
+Annapolis Trail's mile 0, `n8960887982`, 49 ft (15 m) from the trail; its line
+still starts at mile 0 from the other posts). No interstate's posts (I-66,
+I-495, I-270) are among the markers. 25,052 bytes, sha256
+`81765e6da213ecc5cb3bcd44db35e26bf630b9b542bcd1bf57eabd2a676cc341`.
+
+| Trail | Markers | Lines (mile at the first point) |
+| --- | --- | --- |
+| Chesapeake and Ohio Canal Trail | 44 | 4 (0.33 at Georgetown; 22.1, 54.8, 93.4 from posts) |
+| Torrey C. Brown Trail | 3 | 1 (0, from posts) |
+| Washington, Baltimore & Annapolis Trail | 3 | 2 (0, from posts) |
+| Chesapeake and Ohio Canal Towpath | 1 | 1 (19.6, from its post) |
+| Washington & Old Dominion Trail | 1 | 1 (0.10 at Shirlington) |
+| Capital Crescent Trail | 0 | 1 (0 at Georgetown, 7.5 mi to Bethesda) |
+
+The Metropolitan Branch Trail has no line yet: in OSM its Union Station piece
+(1.6 mi) and its Brookland piece (1.8 mi) are about 2,500 ft (760 m) apart,
+near 38.926 to 38.932 N, more than the quarter-mile join, and each is under
+2 miles. The towpath named "Chesapeake and Ohio Canal Towpath" from about
+mile 9 to 13 (3.9 mi, near Great Falls) has no posts and is not at mile 0, so
+it has no line either.
+
+To rebuild, from the repository root on that host:
 
     .venv311/bin/python scripts/build_trail_miles.py \
         --pbf <DATA_ROOT>/extracts/source.osm.pbf
