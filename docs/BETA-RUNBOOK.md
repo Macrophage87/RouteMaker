@@ -1246,8 +1246,9 @@ removes the agent, its logs and its snapshots (owner's say-so: they hold databas
   `cpu_shares` to 256 (weight about 10) in `compose.beta.yaml`.
 - **Accounts:** the beta has its own, none from home (OWNER-DECISIONS 367.3). Data updates (`db --update-data`) never touch
   them; only `db --replace-db --delete-beta-accounts` or rollback B/C to a dump from before they existed removes them.
-- **Backups:** the worker writes a nightly dump to `$RM_DATA/backups` (seven kept, about 200 MB each, without sessions or
-  client-address rows). They are on the same disk; copying them off the server is the owner's decision.
+- **Backups:** the worker writes a nightly dump to `$RM_DATA/backups` (seven kept, about 200 MB each, without the
+  `BACKUP_EXCLUDED_TABLES` in `config/procrastinate.py`: both session tables, client-address rows and caches). Dumps
+  written before v0.7.0 still carry Django's session table, so the release flushes the beta's sessions once. They are on the same disk; copying them off the server is the owner's decision.
 - **Reboot:** containers restart with Docker (`unless-stopped`). `RESTART_POLICY` stays unset in `.env`, because
   `no` is the home Docker Desktop machine's setting: `beta-compose.sh` refuses a value other than empty or
   `unless-stopped` in `.env` and in the shell, and the checker refuses it in `.env` and in the rendered config.

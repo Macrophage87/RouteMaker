@@ -1582,6 +1582,9 @@ def test_the_backup_excludes_the_sessions_and_the_membership_cache(monkeypatch, 
     data_entries = [line for line in listing.splitlines() if "TABLE DATA" in line]
     assert any("app_user" in line for line in data_entries), "the dump carries the users"
     assert not any("app_session" in line for line in data_entries)
+    # Django's own session table holds the cookie's key: a key read from a dump
+    # matches a live row, so it is left out too (review sec-app-1).
+    assert not any("django_session" in line for line in data_entries)
     assert not any("cached_membership" in line for line in data_entries)
     # And the tombstones stay in. They are the only record that a ban happened
     # at all - the account row is gone by then - so a dump without them restores
@@ -1595,6 +1598,27 @@ def test_the_backup_excludes_the_sessions_and_the_membership_cache(monkeypatch, 
 
     app.tasks["nightly_backup"].func(timestamp=0)
     assert ScheduledRun.objects.get(task="nightly_backup").succeeded
+
+
+@pytest.mark.django_db
+def test_every_table_that_holds_a_session_key_is_left_out_of_the_backup() -> None:
+    """Every table in the schema that carries a session key or a session's data,
+    or is named for sessions, is in the exclusion list, so a session table a
+    later app or migration adds cannot reach the nightly dump unnoticed."""
+    from config.procrastinate import BACKUP_EXCLUDED_TABLES
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT DISTINCT table_name FROM information_schema.columns"
+            " WHERE table_schema = current_schema()"
+            " AND (column_name IN ('session_key', 'session_data') OR table_name LIKE '%%session%%')"
+        )
+        session_tables = {name for (name,) in cursor.fetchall()}
+
+    assert {"app_session", "django_session"} <= session_tables, session_tables
+    assert session_tables <= set(BACKUP_EXCLUDED_TABLES), session_tables - set(
+        BACKUP_EXCLUDED_TABLES
+    )
 
 
 @pytest.mark.django_db(transaction=True)

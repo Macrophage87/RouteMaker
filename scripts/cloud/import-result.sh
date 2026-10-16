@@ -293,8 +293,9 @@ if [ "$installed" = 0 ] && [ "$safety" = 1 ]; then
 	# sessions and client addresses do not belong in a file that sits in a home folder.
 	(umask 077 && compose exec -T postgis pg_dump -U "$pguser" -d "$pgdb" -Fc \
 		--exclude-table-data='*.cached_membership' --exclude-table-data='*.app_session' \
-		--exclude-table-data='*.rate_limit_window' --exclude-table-data='*.stress_tile_cache' \
-		--exclude-table-data='*.bikeshare_feed_cache' --exclude-table-data='*.signed_out_send' \
+		--exclude-table-data='*.django_session' --exclude-table-data='*.rate_limit_window' \
+		--exclude-table-data='*.stress_tile_cache' --exclude-table-data='*.bikeshare_feed_cache' \
+		--exclude-table-data='*.signed_out_send' \
 		</dev/null >"$dump")
 fi
 

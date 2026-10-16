@@ -118,14 +118,16 @@ RETRY = RetryStrategy(max_attempts=5, exponential_wait=6)
 
 # Tables whose data is excluded from the nightly dump. The membership cache
 # because who organizes with whom is the sensitive part of this deployment and
-# it is rebuildable from the bot's backfill; the session table because a dump
-# that sits on disk for months must not carry live sessions. The rate-limit
+# it is rebuildable from the bot's backfill; the session tables (the app's own and
+# Django's, which holds the cookie's key) because a dump that sits on disk for
+# months must not carry live sessions. The rate-limit
 # table because it keys on client addresses, which PLAN's Privacy and retention
 # drops within 30 days, and a dump outlives that; its counts are worthless after
 # a restore anyway.
 BACKUP_EXCLUDED_TABLES = (
     "cached_membership",
     "app_session",
+    "django_session",
     "rate_limit_window",
     "stress_tile_cache",
     "bikeshare_feed_cache",
