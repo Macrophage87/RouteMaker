@@ -3594,9 +3594,6 @@ ATTRIBUTION = (
     # District data terms (CC0 1.0 or CC BY 4.0, credited), owner-confirmed 2026-10-16.
     "DDOT Pavement Condition Index (DC GIS)",
     "Open Baltimore",
-    # Alexandria's posted speeds where OSM has none (PLAN.md item 183), CC0 from the
-    # city's OpenData portal; credited as every source is (OWNER-DECISIONS 301).
-    "City of Alexandria",
     "Montgomery County Planning Department",
     "USGS 3DEP",
     "U.S. Census Bureau",

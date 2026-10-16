@@ -410,15 +410,14 @@ class ReferenceData:
     # left to OSM's own tagging rather than being asserted either way.
     bridge_bicycle_legal: dict[int, bool]
 
-    # Agency street blocks (DC's Roadway Block, Baltimore's street centerline,
-    # Alexandria's Transport Streets),
+    # Agency street blocks (DC's Roadway Block, Baltimore's street centerline),
     # from `roadway.json`: the posted speed, lanes, one-way, bike facility,
     # parking and count each agency records for a block, which take precedence
     # over OSM's tags where a way lies along them. The one reference file that
     # is optional: a rebuild without it classifies from OSM and the defaults,
     # which is what every rebuild did before the layers were approved, and it
     # logs a warning so the absence is seen. Only `install_reference_data.py
-    # --roadway-block/--baltimore-centerline/--alexandria-streets` writes it.
+    # --roadway-block/--baltimore-centerline` writes it.
     road_blocks: tuple[conflation.RoadFeature, ...] = ()
     # DDOT's Pavement Condition Index blocks (DC-PCI, `routemaker.pavement`), from
     # `pavement.json`. Optional like `roadway.json`: without it every street keeps
@@ -574,10 +573,9 @@ class ReferenceData:
         if not path.exists():
             logger.warning(
                 "%s is absent, so no agency street layer (DC Roadway Block, Baltimore street "
-                "centerline, Alexandria Transport Streets) is conflated: posted speeds, lanes, "
-                "one-way, bike lanes and parking come from OSM and the defaults. Install it "
-                "with scripts/install_reference_data.py --roadway-block / "
-                "--baltimore-centerline / --alexandria-streets",
+                "centerline) is conflated: posted speeds, lanes, one-way, bike lanes and "
+                "parking come from OSM and the defaults. Install it with "
+                "scripts/install_reference_data.py --roadway-block / --baltimore-centerline",
                 path,
             )
             return ()
