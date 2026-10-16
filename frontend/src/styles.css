@@ -3842,6 +3842,25 @@ details.zoom-notes {
   margin: 2px 0;
 }
 
+/* The turns ahead while GPS is weak (RideMode's cue sheet): the next one first, larger and bold. */
+.cue-sheet-list {
+  margin: 4px 0;
+  padding-left: 1.5em;
+}
+
+.cue-sheet-list li {
+  margin: 2px 0;
+}
+
+.cue-sheet-next {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.cue-sheet-distance {
+  font-variant-numeric: tabular-nums;
+}
+
 .ride-togo {
   display: flex;
   flex-wrap: wrap;

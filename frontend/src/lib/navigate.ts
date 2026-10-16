@@ -70,6 +70,50 @@ export function weighFix(before: GpsWeakness, accuracyM: number, now: number): G
   if (before.weak || now - before.goodAt < GPS_WEAK_MS) return { ...before, sayNow: false };
   return { goodAt: before.goodAt, weak: true, sayNow: true };
 }
+
+/**
+ * Weak GPS for longer than this, or than the ride would take to reach its next turn from the last good
+ * fix, whichever is longer: the card shows the turns ahead as an ordered list (the owner, 2026-10-16,
+ * review RIDE-3), since the turn-by-turn card cannot know where the rider is.
+ */
+export const CUE_SHEET_MIN_MS = 60_000;
+export const CUE_SHEET_SAID = "GPS is still weak: the turns ahead are shown as a list, next turn first.";
+/** The list's length: the turns of a dead spot, not the whole ride. */
+export const CUE_SHEET_ROWS = 10;
+
+/** How long only poor fixes since the last good one (at `progressM`, riding at `speedMs`) before the list shows. */
+export function cueSheetAfterMs(model: RideModel, progressM: number, speedMs: number): number {
+  const next = model.cues.find((c) => c.kind === "turn" && c.atM > progressM + 1);
+  // The ride's own speed; stopped (or not yet measured), the route's pace.
+  const speed = speedMs > MIN_SPEED_MS ? speedMs : model.paceMs;
+  if (!next || !speed) return CUE_SHEET_MIN_MS;
+  return Math.max(CUE_SHEET_MIN_MS, ((next.atM - progressM) / speed) * 1000);
+}
+
+/** Whether the list shows at `now`: only poor fixes since `goodAt` for `afterMs`; a good fix (weak false) ends it. */
+export function cueSheetShown(weakness: GpsWeakness, now: number, afterMs: number): boolean {
+  return weakness.weak && now - weakness.goodAt >= afterMs;
+}
+
+/** One row of the list: how far on from the row before (the first from `progressM`), and the cue. */
+export interface CueSheetRow {
+  index: number;
+  distance: string;
+  text: string;
+}
+
+/** The turns, stops and end ahead of `progressM`, in order, each with the distance from the one before. */
+export function cueSheet(model: RideModel, progressM: number): CueSheetRow[] {
+  let from = progressM;
+  return model.cues
+    .filter((c) => c.atM > progressM + 1 && (c.kind === "turn" || c.kind === "stop" || c.kind === "end"))
+    .slice(0, CUE_SHEET_ROWS)
+    .map((c, i) => {
+      const row = { index: c.index, distance: `${i === 0 ? "In" : "Then in"} ${formatDistance(c.atM - from)}`, text: c.text };
+      from = c.atM;
+      return row;
+    });
+}
 /** Seconds ahead, at the current speed, of a turn's first cue; never closer than ADVANCE_MIN_M (500 ft). */
 export const ADVANCE_S = 27;
 export const ADVANCE_MIN_M = 150;

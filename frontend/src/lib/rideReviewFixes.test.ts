@@ -35,6 +35,21 @@ test("RIDE-3: weak GPS is shown in the ride's GPS note and said once; a good fix
   assert.match(ride, /stopWatch\.current\?\.\(\);\s*gpsWeak\.current = \{ goodAt: Date\.now\(\), weak: false \};/);
 });
 
+test("RIDE-3 (owner, 2026-10-16): weak GPS for long shows the turns ahead as a list, said once; a good fix brings the card back", () => {
+  const onFix = ride.slice(ride.indexOf("const onFix = useCallback("), ride.indexOf("const onFixRef = useRef(onFix);"));
+  assert.match(onFix, /const sheet = cueSheetShown\(gpsWeak\.current, lastFixAt\.current, cueSheetAfterMs\(modelRef\.current, before\.progressM \?\? 0, before\.speedMs\)\);/);
+  assert.match(onFix, /if \(sheet && !cueSheetRef\.current\) notify\(CUE_SHEET_SAID\);/);
+  assert.match(onFix, /setCueSheetOn\(sheet\);/);
+  // In the card, in place of the next cue; an ordered list with the next turn marked; no button.
+  const card = ride.slice(ride.indexOf(") : cueSheetOn ? ("), ride.indexOf(") : cue && progress !== null ? ("));
+  assert.match(card, /<ol className="cue-sheet-list" aria-labelledby=\{cueSheetId\}>/);
+  assert.match(card, /\{cueSheet\(model, progress \?\? 0\)\.map\(/);
+  assert.match(card, /aria-current=\{i === 0 \? "step" : undefined\}/);
+  assert.doesNotMatch(card, /<button/);
+  // Off route and arrival still come first.
+  assert.ok(ride.indexOf(") : ride.off ? (") < ride.indexOf(") : cueSheetOn ? ("));
+});
+
 test("RIDE-8: a wake lock the browser lets go mid-ride is asked again, and the screen note says if it is not back", () => {
   assert.match(ride, /useEffect\(\(\) => \{\s*wake\.whenLost\(noteWake\);\s*return \(\) => wake\.whenLost\(null\);\s*\}, \[wake, noteWake\]\);/);
   const output = source("./rideOutput.ts");

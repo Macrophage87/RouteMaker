@@ -36,6 +36,10 @@ import {
   POOR_FIX_M,
   GPS_WEAK_SAID,
   weighFix,
+  CUE_SHEET_SAID,
+  cueSheet,
+  cueSheetAfterMs,
+  cueSheetShown,
   type GpsWeakness,
   REPLAN_FAILED,
   REPLAN_FOUND,
@@ -484,6 +488,10 @@ export function RideMode({
   const lastFixAt = useRef(Date.now());
   // The last good fix and whether the weak-GPS note is up (lib/navigate.ts weighFix); a new watch starts afresh.
   const gpsWeak = useRef<GpsWeakness>({ goodAt: Date.now(), weak: false });
+  // Weak GPS for long enough (cueSheetShown): the card shows the turns ahead as a list.
+  const [cueSheetOn, setCueSheetOn] = useState(false);
+  const cueSheetRef = useRef(false);
+  const cueSheetId = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const whereRef = useRef<HTMLButtonElement>(null);
   const sectionRef = useRef<HTMLElement>(null);
@@ -734,6 +742,13 @@ export function RideMode({
       gpsWeak.current = { goodAt: weighed.goodAt, weak: weighed.weak };
       if (weighed.sayNow) notify(GPS_WEAK_SAID);
       setGps(weighed.weak ? GPS_WEAK_SAID : "");
+      // Weak for a minute, or longer than the next turn is away: the turns ahead as a list, said once;
+      // a good fix brings the turn-by-turn card back (the owner, 2026-10-16).
+      const before = rideRef.current;
+      const sheet = cueSheetShown(gpsWeak.current, lastFixAt.current, cueSheetAfterMs(modelRef.current, before.progressM ?? 0, before.speedMs));
+      if (sheet && !cueSheetRef.current) notify(CUE_SHEET_SAID);
+      cueSheetRef.current = sheet;
+      setCueSheetOn(sheet);
       const auto = !keepRef.current;
       const out = step(modelRef.current, rideRef.current, fix, prefsRef.current.verbosity, auto);
       rideRef.current = out.state;
@@ -1075,6 +1090,21 @@ export function RideMode({
                 </p>
               )}
             </div>
+          </div>
+        ) : cueSheetOn ? (
+          // GPS weak for long (cueSheetShown): the turns ahead from the last good place, in order, the
+          // next first; a list a screen reader reads as one, with no control of its own.
+          <div className="cue-sheet">
+            <p id={cueSheetId} className="cue-then">
+              Turns ahead, in order:
+            </p>
+            <ol className="cue-sheet-list" aria-labelledby={cueSheetId}>
+              {cueSheet(model, progress ?? 0).map((row, i) => (
+                <li key={row.index} className={i === 0 ? "cue-sheet-next" : undefined} aria-current={i === 0 ? "step" : undefined}>
+                  <span className="cue-sheet-distance">{row.distance}:</span> {row.text}
+                </li>
+              ))}
+            </ol>
           </div>
         ) : cue && progress !== null ? (
           <div className="cue-next">
