@@ -4785,18 +4785,20 @@ docker compose exec -T api python manage.py predraw_stress_tiles
 ```
 
 **Recreate `api` and `worker` after a rollback** to a table with fewer columns.
-Each process keeps the live segment table's columns for 10 seconds
-(`segment_info.live_columns`, `COLUMN_RECHECK_S`; every "has the table this
-column?" check reads it), so it notices the older table on its own within that
-time. Until then a route query can still name a column the older table lacks
-(`seg.car_free_when` and `facility` on a build from 20260927 or earlier), and
-nothing catches that database error: those routes answer 500. The recreate ends
-that window at once and drops anything else a process kept of the newer build.
+Each process keeps the live segment table's columns by the table's oid
+(`segment_info.live_columns`; every "has the table this column?" check reads
+it), so its next check sees the older table. A query already running, or one
+built from a check made just before the rename, can still name a column the
+older table lacks (`seg.car_free_when` and `facility` on a build from 20260927
+or earlier), and nothing catches that database error: those routes answer 500.
+The recreate ends that window and drops anything else a process kept of the
+newer build. A column dropped or added in place keeps the oid and is seen
+within 10 seconds (`COLUMN_RECHECK_S`).
 `--force-recreate` with `--no-deps --no-build` starts fresh processes on the
 same images and touches no other service; a `restart` would do too, but the
 recreate is the form the rest of this page uses. Rolling forward again (a
-rebuild that adds the columns back) needs no recreate: the columns are read
-again within the same 10 seconds.
+rebuild that adds the columns back) needs no recreate: the new table's
+columns are read at the next check.
 
 The last line draws the stress tiles of the table put back: the pre-draw after
 the rolled-away rebuild's swap cleared that table's tiles from the cache, and
