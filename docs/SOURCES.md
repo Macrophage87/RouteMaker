@@ -26,6 +26,16 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   Line stations and the Metro elevators DC does not list, the public drinking water,
   restrooms and bike repair stands layer, Go's Repair chip (stands and bike shops), Find food
   (with farm stands and markets), and the places to see (Plan's Places to see, Go's Sights).
+  The Scenic layer (v0.8.0) reads three things from it: the East Coast Greenway and the US
+  Bicycle Routes, from route relations (`type=route`, `route=bicycle`, `network=ncn`,
+  `ref="USBR N"`, per <https://wiki.openstreetmap.org/wiki/WikiProject_U.S._Bicycle_Route_System>;
+  USBR 1 is relation 3022887, USBR 11 is 12126554, USBR 50 is 2532740; the Greenway is relation
+  1774795, `network=ncn` with no USBR ref, and a section relation takes its parent's name);
+  covered bridges, `bridge=covered` (<https://wiki.openstreetmap.org/wiki/Key:covered>: not
+  `covered=yes`), named by `bridge:name`; and viewpoints, `tourism=viewpoint`. Read
+  2026-10-16. Maryland's covered bridges per the Maryland Manual are Roddy Road, Loy's
+  Station and Utica Mills in Frederick County and Jericho in Baltimore and Harford counties;
+  whether OSM maps each as `bridge=covered` was not checked.
 - Dataset: OpenStreetMap, the regional extract from Geofabrik
   (<https://download.geofabrik.de/>), rebuilt weekly (docs/OPERATIONS.md, "The weekly
   rebuild").
@@ -215,6 +225,24 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   withhold those segments or wait for the waiver PLAN.md asks the owner to request.
 - Records: the download's README; docs/DEVELOPMENT.md, "Reference data".
 
+### Maryland Scenic Byways (MDOT SHA, v0.8.0)
+
+- Credit: the line above, `State of Maryland (MDOT SHA)`, on the map since v0.8.0; the
+  road panel's Scenic row names "MDOT SHA".
+- Dataset: **MDOT SHA Scenic Byways**, ArcGIS item `dc571b56e48a4f4292986c97a119e88a`
+  (<https://www.arcgis.com/home/item.html?id=dc571b56e48a4f4292986c97a119e88a>), layer
+  <https://services.arcgis.com/njFNhDsUCentVYJW/arcgis/rest/services/MDOT_SHA_Scenic_Byways/FeatureServer/0>,
+  on Maryland iMAP. The Scenic layer's "`<name>` Scenic Byway" (a name that already ends
+  in "Byway" is kept as it is), matched to the roads it lies along; never a stress input.
+  Found 2026-10-16 (the v0.8.0 sources note); the service lists only JSON, so whether it
+  answers `f=geojson` is unverified. Fetched with `scripts/fetch_agency_layer.py`, clipped
+  to the coverage box (docs/OPERATIONS.md, "The Scenic layer (v0.8.0)"); not yet
+  downloaded, so no size or sha256 yet.
+- Publisher: Maryland Department of Transportation State Highway Administration.
+- Licence: Maryland iMAP's terms, as for the counts above: "The Data can be freely
+  distributed as long as the metadata entry is not modified or deleted." The download's
+  README keeps the item's metadata unedited.
+
 ## Open Baltimore
 
 - Credit: `Open Baltimore`
@@ -274,6 +302,35 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Publisher: Montgomery County Planning Department (M-NCPPC).
 - Licence: open with attribution ("please provide attribution to the Montgomery
   County Planning Department"), recorded verbatim in `fixtures/datasets/README.md`.
+- Also (v0.8.0): **Rustic Roads**, ArcGIS item `0aa34f13d8fb4e4c9500e363ad5a4e07`
+  (<https://www.arcgis.com/home/item.html?id=0aa34f13d8fb4e4c9500e363ad5a4e07>), layer
+  <https://montgomeryplans.org/server/rest/services/Overlays/Rustic_Roads/MapServer/1>
+  (lines, GeoJSON, 2,000 a request). `CLASSLABEL2` is "Rustic Road" or "Exceptional Rustic
+  Road"; the Scenic layer and the road panel say "Rustic Road (Montgomery County)" or
+  "Exceptional Rustic Road (Montgomery County)", matched to the roads the lines lie along;
+  never a stress input. Licence, from the item (recorded in the v0.8.0 sources note, 2026-10-16;
+  the download's README keeps it verbatim): "You can copy, modify,
+  distribute, and perform analysis on the data, even for commercial purposes"; credit to
+  Montgomery County Planning is requested, so the road panel's Scenic row names it and the
+  map credit above stands. Not yet downloaded, so no size or sha256 yet (docs/OPERATIONS.md,
+  "The Scenic layer (v0.8.0)").
+
+## Scenic designations checked and left out (v0.8.0, 2026-10-16)
+
+No credit: nothing from these is used.
+
+- **Virginia Rural Rustic Roads**: VDOT's Rural Rustic Roads are a paving programme, not a
+  scenic designation, and no statewide or county layer was found (Loudoun, Fauquier, Prince
+  William, Fairfax and Clarke checked; absence unverified). Loudoun's Unpaved Roads item
+  (`7e52417b213f439c887090c20d77a3cb`) has a disclaimer only, so reuse is unclear.
+- **Virginia's Byways (VDOT)**, item `1ffabeb189414cb0a83bcd77056ebf34`: the disclaimer
+  limits it to "official Commonwealth of Virginia business", and DCR's copy says
+  "Copyrighted to VDOT. Permission for duplication is required". Left out without VDOT's
+  written permission.
+- **Frederick County draft rustic roads**
+  (<https://services5.arcgis.com/o8KSxSzYaulbGcFX/arcgis/rest/services/Rustic_Roads/FeatureServer>):
+  a draft with no licence; left out unless the county gives one.
+- **WVDOT Byways & Backways**: no licence stated.
 
 ## USGS 3D Elevation Program
 

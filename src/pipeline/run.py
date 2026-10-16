@@ -887,6 +887,7 @@ class RebuildContext:
             "car_free_by_way",
             "trail_routes",
             "route_names",
+            "scenic_routes",
             "no_bicycle",
             "border_nodes_by_way",
             "reviewer_surface_by_way",

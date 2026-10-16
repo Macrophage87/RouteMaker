@@ -4151,6 +4151,42 @@ against the extract that run left behind. docs/OPERATIONS.md, "First rebuild on
 a fresh host", has the whole sequence; the script runs in the `rebuild`
 container, which is the one that binds `reference` and `extracts`.
 
+### Scenic designations: `scenic.json` (v0.8.0)
+
+The Scenic map layer (the owner, 2026-10-16: "Basically looking for a scenic layer in
+general. Off by default. How about including covered bridges") names, per way, the
+designations it carries, in words: "Rustic Road (Montgomery County)", "Exceptional Rustic
+Road (Montgomery County)", "`<name>` Scenic Byway", "East Coast Greenway", "USBR 50", and a
+covered bridge's name, joined by " · " in that order, each once
+(`routemaker.scenic.phrase`). Three inputs:
+
+- `reference/scenic.json`, optional, from `install_reference_data.py --rustic-roads
+  --scenic-byways` (`routemaker.scenic.rustic_rows`, `byway_rows`): one row a line,
+  `{"id", "source", "label", "name", "coordinates"}`, `source` `moco-rustic` or
+  `md-byways`. `pipeline.scenic_layer.labels_by_way` matches each source on its own with
+  `conflation.conflate_blocks`, as the agency stress ratings are: never a trail, a service
+  or track way only where the record's road name agrees (a rustic road record carries one
+  where the layer has a road-name field; a byway record never does, its name being the
+  byway's), and a way takes the words of every record it lies along.
+- the extract's bicycle route relations (`scenic_layer.read_routes`, one more pass over the
+  relations, in `FETCH_EXTRACT`'s read with `trail_routes.read_routes`): `network=ncn` with
+  `ref="USBR N"`, and relation 1774795 or a relation named "East Coast Greenway…". A
+  relation's words reach the ways of every relation under it, so a state section of the
+  Greenway is the Greenway; cycles are cut.
+- the way's own tags: `bridge=covered`, named by `bridge:name`, else by a `name` that names
+  a bridge, else "Covered bridge".
+
+The words go to `segment.scenic` (text; no migration, as `sidepath_name`: the rebuild
+creates the table whole). The stress tiles carry only `scenic` = true (ETag letter `v`);
+the road panel (`core.segment_info`) has a Scenic summary row and a Scenic row under Road
+or path with its credits. **Nothing in the classifier, `variants` or the Lua reads it**
+(`tests/test_scenic.py` holds that): a scenic road keeps its tier and gets no routing
+bonus. The front end is `frontend/src/lib/scenicLayer.ts` and `app/ScenicOverlay.tsx`: a
+casing of two 1.5 px teal lines whose `line-gap-width` is the tier's casing, ring and
+rails, added under the lowest stress layer; and the covered bridges and viewpoints from
+`amenity-data/places.json` (`build_places.py` marks a covered bridge `cv`). The switch is
+in Plan's Layers only (`LayersSheetProps.scenic` is null in Go).
+
 ## Tiles and the swap
 
 Each variant's tiles live under `<DATA_ROOT>/tiles/<variant>/`: a dated build
