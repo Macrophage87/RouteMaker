@@ -107,11 +107,14 @@ export interface CueSheetRow {
   text: string;
 }
 
-/** The turns, stops and end ahead of `progressM`, in order, each with the distance from the one before. */
+/**
+ * The turns, stops and end ahead of `progressM`, in order, each with the distance from the one before. A jog's
+ * second turn has no row: the first's says it.
+ */
 export function cueSheet(model: RideModel, progressM: number): CueSheetRow[] {
   let from = progressM;
   return model.cues
-    .filter((c) => c.atM > progressM + 1 && (c.kind === "turn" || c.kind === "onto" || c.kind === "stop" || c.kind === "end"))
+    .filter((c) => c.atM > progressM + 1 && !c.joined && (c.kind === "turn" || c.kind === "onto" || c.kind === "stop" || c.kind === "end"))
     .slice(0, CUE_SHEET_ROWS)
     .map((c, i) => {
       const row = { index: c.index, distance: `${i === 0 ? "In" : "Then in"} ${formatDistance(c.atM - from)}`, text: c.text };
@@ -201,7 +204,11 @@ export interface Cue {
   stop: number | null;
   /** A jog's first turn: the turn just after it (within JOG_M), said with it. */
   then?: { movement: TurnMovement; street: string | null };
-  /** A jog's second turn: said with the turn before (its `then`), so never on its own; still shown and exported. */
+  /**
+   * A jog's second turn: said with the turn before (its `then`); on its own only at "now", and only where the
+   * turn before's "now" was never said (a gap in the fixes, a ride started or rejoined between the two). Still on
+   * the card and in the courses; not a row of the cue sheets.
+   */
   joined?: boolean;
   /** The description entry's kind it came from (a course export keeps Avoid and work-zone hazards); absent on the end. */
   source?: DescriptionEntry["kind"];
@@ -454,7 +461,7 @@ function thenWords(then: NonNullable<Cue["then"]>): string {
 /**
  * A jog: each turn within JOG_M after a turn (not itself a jog's second) is said with it, the first
  * cue's text "Right onto 6th Street, then immediately bear left onto ...", the second kept (`joined`)
- * for the card, the cue sheet and the course but never said on its own.
+ * for the card and the courses (`phasesFor`, `step`).
  */
 function joinJogs(cues: Cue[]): void {
   for (let i = 0; i + 1 < cues.length; i++) {
@@ -639,20 +646,26 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number): string {
   }
   if (cue.kind === "stop") return `You have reached stop ${cue.stop}.`;
   if (phase === "now" && cue.movement) {
-    return `${MOVEMENT_WORDS[cue.movement]} now${cue.street ? ` onto ${cue.street}` : ""}${cue.then ? thenWords(cue.then) : "."}`;
+    // A jog's "now" is short, the second turn being only seconds on: "Right now, then bear left onto ...".
+    if (cue.then) return `${MOVEMENT_WORDS[cue.movement]} now, then ${lowerFirst(turnWords(cue.then.movement, cue.then.street))}`;
+    return `${MOVEMENT_WORDS[cue.movement]} now${cue.street ? ` onto ${cue.street}` : ""}.`;
   }
   return `In ${spokenDistance(distanceM)}, ${lowerFirst(withoutMetric(cue.text))}`;
 }
 
-/** The phases a cue is said at, at a level, farthest first, with their thresholds at a speed. */
+/**
+ * The phases a cue is said at, at a level, farthest first, with their thresholds at a speed. A jog's second turn
+ * has "now" only, which `step` marks said when the turn before says its own "now".
+ */
 export function phasesFor(level: Verbosity, cue: Cue, speedMs: number): { phase: Phase; withinM: number }[] {
-  if (!says(level, cue) || cue.joined) return [];
+  if (!says(level, cue)) return [];
   if (cue.kind === "stop" || cue.kind === "end") return [{ phase: "arrive", withinM: ARRIVE_M }];
   const v = Math.max(speedMs, MIN_SPEED_MS);
   const advance = Math.max(ADVANCE_MIN_M, ADVANCE_S * v);
   const prepare = Math.max(PREPARE_MIN_M, PREPARE_S * v);
   const ahead = Math.max(STOKER_MIN_M, STOKER_S * v);
   const now = Math.max(NOW_M, NOW_S * v);
+  if (cue.joined) return [{ phase: "now", withinM: now }];
   if (level === "stoker") {
     // One warning ahead, and "now" at a turn (plan Q6: the stoker braces for the lean).
     return cue.kind === "turn" ? [{ phase: "ahead", withinM: ahead }, { phase: "now", withinM: now }] : [{ phase: "ahead", withinM: ahead }];
@@ -794,6 +807,8 @@ export function step(
         cue,
         phase: phase.phase,
       });
+      // A jog's "now" says its second turn too, which then says nothing of its own.
+      if (phase.phase === "now" && cue.then) said[cue.index + 1] = ["now"];
     }
     said[cue.index] = phases.slice(0, phases.indexOf(phase) + 1).map((p) => p.phase);
     // A stop is passed once reached; the next cue waits for the next fix.

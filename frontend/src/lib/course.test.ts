@@ -20,6 +20,8 @@ import {
 } from "./course.ts";
 import { TCX_CUE_TYPES, TCX_NS, escapeXml, writeTcx } from "./tcx.ts";
 import { at, sampleRoute } from "./courseRoute.test.fixture.ts";
+import { FIT_CUE_TYPES } from "./fit.ts";
+import { cueRows } from "./cueSheetPdf.ts";
 
 const GENERIC = deviceProfile(DEFAULT_PROFILE);
 
@@ -247,3 +249,34 @@ function offsetFrom(p: LonLat, a: LonLat, b: LonLat): number {
   const s = len > 0 ? Math.max(0, Math.min(1, (px * bx + py * by) / len)) : 0;
   return Math.hypot(px - s * bx, py - s * by);
 }
+
+test("a jog (Q Street NW, 2026-10-16): each turn its own course point, a bear a slight turn; the cue sheet one row saying both", () => {
+  const stretch = (from: number, to: number, text: string, extra: object) => ({ kind: "stretch", from_m: from, to_m: to, from_mi: 0, to_mi: 0, street: null, tier: 2, facility: null, turn: null, text, ...extra });
+  const turn = (movement: string, onto: string) => ({ movement, onto, control: null, severity: null });
+  const route = sampleRoute({
+    description: [
+      stretch(0, 500, "Q Street Northwest.", { street: "Q Street Northwest" }),
+      stretch(500, 530, "Right onto 6th Street Northwest.", { street: "6th Street Northwest", turn: turn("right", "6th Street Northwest") }),
+      stretch(530, 3000, "Bear left onto Rhode Island Avenue Northwest.", { street: "Rhode Island Avenue Northwest", turn: turn("bear_left", "Rhode Island Avenue Northwest") }),
+    ],
+    leg_ends: [300],
+  } as never);
+  const course = compileCourse(route, GENERIC, "fit");
+  assert.deepEqual(
+    course.cues.map((c) => [c.type, c.text]),
+    [
+      ["start", "Start."],
+      ["right", "Right onto 6th Street Northwest."],
+      ["slight_left", "Bear left onto Rhode Island Avenue Northwest."],
+      ["finish", "The end of the route."],
+    ],
+  );
+  assert.equal(FIT_CUE_TYPES.slight_left, 19);
+  assert.equal(FIT_CUE_TYPES.slight_right, 21);
+  assert.equal(TCX_CUE_TYPES.slight_left, "Left");
+  const rows = cueRows(route, "rider").filter((r) => r.type !== "start" && r.type !== "finish");
+  assert.deepEqual(
+    rows.map((r) => [r.turn, r.road, r.notes]),
+    [["Right", "6th Street Northwest", "Right onto 6th Street Northwest, then immediately bear left onto Rhode Island Avenue Northwest."]],
+  );
+});

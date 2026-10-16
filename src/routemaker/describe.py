@@ -17,13 +17,17 @@ The rules:
 - A stretch under TINY_M (300 ft) is folded into a neighbour (on its own street
   if there is one, else the longer). One of LTS 3 or worse goes only into a
   neighbour at least as stressful, so it is never hidden or understated; an
-  untraced one is never folded, nor a jog: one of another street than both
-  neighbours, entered and left by a turn or a bear ("Right onto 6th Street" then
-  "Bear left onto Rhode Island Avenue" is two turns the rider makes, which folding
-  would read as one or none: the owner, 2026-10-16, on Q Street).
-- A change of street turning SLIGHT_MIN_DEG (30 degrees) or more off straight but
-  within STRAIGHT_MAX_DEG is a bear ("Bear right onto ..."); under it, straight on.
-  A bend along one street is never a turn.
+  untraced one is never folded, nor a jog's middle (`_jog`): a named street,
+  not a roundabout or circle, at least JOG_MIN_M long, other than both neighbours,
+  entered and left by a turn or a bear ("Right onto 6th Street" then "Bear left
+  onto Rhode Island Avenue" is two turns the rider makes, which folding would read
+  as one or none: the owner, 2026-10-16, on Q Street). Where the street after is
+  the street before, a middle under MATCH_M or one whose turns cancel is a
+  divided road or an offset crossing, folded as any other.
+- A change of street SLIGHT_MIN_DEG (20 degrees) to BEAR_MAX_DEG (60 degrees) off
+  straight is a bear ("Bear right onto ..."); under it, straight on; past it, a
+  left or a right. A bend along one street is never a turn. (The routing model's
+  own STRAIGHT_MAX_DEG, `intersections.movement_of`, is not this.)
 - A leg boundary (a via point, named "Stop N") is its own entry, and a stretch
   never spans it.
 - A turn names the street it turns onto and, where the junction model has read
@@ -61,7 +65,14 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 
-from .intersections import Control, CrossingGroup, Movement, crossing_groups, movement_of
+from .intersections import (
+    STRAIGHT_MAX_DEG,
+    Control,
+    CrossingGroup,
+    Movement,
+    crossing_groups,
+    movement_of,
+)
 
 METRES_PER_MILE = 1609.344
 FEET_PER_METRE = 3.28084
@@ -72,11 +83,20 @@ TINY_M = 300.0 / FEET_PER_METRE
 SHORT_M = METRES_PER_MILE / 10
 # The overview merges stretches under a quarter of a mile (OWNER-DECISIONS 226).
 OVERVIEW_M = METRES_PER_MILE / 4
-# A change of street this far off straight on (and up to STRAIGHT_MAX_DEG, past
-# which it is a left or a right) is a bear: the rider leaves the street they were
-# on with a lean worth saying (the owner, 2026-10-16: "complex turns which aren't
-# announced" on Q Street).
-SLIGHT_MIN_DEG = 30.0
+# A change of street this far off straight on, up to BEAR_MAX_DEG (past which it
+# is a left or a right), is a bear: the rider leaves the street they were on with
+# a lean worth saying (the owner, 2026-10-16: "complex turns which aren't
+# announced" on Q Street, where the L'Enfant diagonals leave the grid at 20 to 35
+# degrees). The description's own band: the routing model's STRAIGHT_MAX_DEG is
+# left as it is.
+SLIGHT_MIN_DEG = 20.0
+BEAR_MAX_DEG = 60.0
+# A jog's middle is at least this long: a shorter piece of another street between
+# two turns is a median or a carriageway crossed, not a street ridden.
+JOG_MIN_M = 15.0
+# A roundabout or circle by its name ("Dupont Circle Northwest"): never a jog's
+# middle; the turn is read across it, as the net movement.
+CIRCLE_NAME = re.compile(r"\b(?:circle|roundabout)\b", re.IGNORECASE)
 # The words for a turn's movement, where it is one.
 TURN_WORDS = {
     "left": "Left",
@@ -195,6 +215,8 @@ class Atom:
     heading_out: float | None = None
     # The segment's surface: True unpaved, False paved, None not known.
     unpaved: bool | None = None
+    # On a roundabout or circular junction (Valhalla's `edge.roundabout`).
+    roundabout: bool = False
 
 
 @dataclass
@@ -295,14 +317,30 @@ def _rank(run: _Run) -> int:
     return int(run.tier) if run.tier.isdigit() else 0
 
 
+def _circle(run: _Run) -> bool:
+    """Whether `run` is a roundabout or a circle, by the map or by its name."""
+    on = any(atom is not None and atom.roundabout for atom in (run.first, run.last))
+    return on or any(CIRCLE_NAME.search(name) for name in run.names)
+
+
 def _jog(before: _Run | None, run: _Run, after: _Run | None) -> bool:
-    """Whether `run` is a jog's middle: another street than both neighbours, entered
-    and left by a turn or a bear. Folded away, its two turns would be read as one
-    across it (a right then a left as straight on), so it is kept."""
-    if before is None or after is None:
+    """Whether `run` is a jog's middle: a named street, not a roundabout or circle,
+    at least JOG_MIN_M long, other than both neighbours, entered and left by a turn
+    or a bear. Folded away, its two turns would be read as one across it (a right
+    then a left as straight on), so it is kept. Back onto the street it left, a
+    middle under MATCH_M, or one whose turns cancel (within STRAIGHT_MAX_DEG of
+    straight on), is a divided road or an offset crossing, and is folded."""
+    if before is None or after is None or not run.names or run.metres < JOG_MIN_M:
         return False
-    if _same_street(before, run) or _same_street(run, after):
+    if _circle(run) or _same_street(before, run) or _same_street(run, after):
         return False
+    if _same_street(before, after):
+        if run.metres < MATCH_M:
+            return False
+        a = before.last.heading_out if before.last else None
+        b = after.first.heading_in if after.first else None
+        if a is not None and b is not None and abs(_turn_deg(a, b)) <= STRAIGHT_MAX_DEG:
+            return False
     return (
         _movement_between(before, run) in TURN_WORDS and _movement_between(run, after) in TURN_WORDS
     )
@@ -574,22 +612,26 @@ class _Turn:
     event: object | None = None
 
 
+def _turn_deg(heading_in: float, heading_out: float) -> float:
+    """The turn from one compass heading to another, -180 to 180, clockwise positive."""
+    return (heading_out - heading_in + 540.0) % 360.0 - 180.0
+
+
 def _movement_between(before: _Run, after: _Run) -> str | None:
     """ "left", "right", "bear_left", "bear_right" or "straight" from `before` into
     `after`, from the headings at the junction; None where one is not known. A
-    bear is a turn of SLIGHT_MIN_DEG to STRAIGHT_MAX_DEG, which `movement_of`
-    calls straight."""
+    bear is a turn of SLIGHT_MIN_DEG to BEAR_MAX_DEG; past it, `movement_of`'s
+    left or right."""
     a = before.last.heading_out if before.last else None
     b = after.first.heading_in if after.first else None
     if a is None or b is None:
         return None
-    movement = movement_of(a, b)
-    if movement is not Movement.STRAIGHT:
-        return movement.value
-    turn = (b - a + 540.0) % 360.0 - 180.0
-    if abs(turn) >= SLIGHT_MIN_DEG:
+    turn = _turn_deg(a, b)
+    if abs(turn) < SLIGHT_MIN_DEG:
+        return "straight"
+    if abs(turn) <= BEAR_MAX_DEG:
         return "bear_right" if turn > 0 else "bear_left"
-    return movement.value
+    return movement_of(a, b).value
 
 
 def _street_words(run: _Run) -> str:

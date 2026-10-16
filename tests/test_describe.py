@@ -382,42 +382,41 @@ class TestTurns:
 
 class TestBearsAndJogs:
     """The owner, 2026-10-16, riding east on Q Street NW in Shaw: "complex turns which
-    aren't announced". A slight turn onto another street is a bear; a jog (a short
-    stretch entered and left by turns) is never folded away."""
+    aren't announced". A change of street 20 to 60 degrees off straight is a bear; a
+    jog (a short named street entered and left by turns) is never folded away, but a
+    divided road, an offset crossing, a sidewalk cut, a slip lane and a circle are."""
 
-    def test_q_street_bear_right_onto_a_diagonal(self):
-        # Straight east on Q St, then 40 degrees right onto a diagonal (SE-bound).
-        legs = [
-            flat(
-                road("Q Street Northwest", 2, 900, 90, 90),
-                road("Rhode Island Avenue Northwest", 2, 1300, 130, 130),
-            )
-        ]
-        entries = d.describe(legs)
-        assert entries[1]["turn"]["movement"] == "right"
-        legs = [
-            flat(
-                road("Q Street Northwest", 2, 900, 90, 90),
-                road("Rhode Island Avenue Northwest", 2, 1300, 122, 122),
-            )
-        ]
-        entries = d.describe(legs)
-        assert entries[1]["turn"]["movement"] == "bear_right"
-        assert (
-            entries[1]["text"]
-            .split(": ")[1]
-            .startswith("Bear right onto Rhode Island Avenue Northwest,")
+    @staticmethod
+    def q_onto(heading, metres=1300):
+        return d.describe(
+            [
+                flat(
+                    road("Q Street Northwest", 2, 900, 90, 90),
+                    road("Rhode Island Avenue Northwest", 2, metres, heading, heading),
+                )
+            ]
         )
+
+    def test_a_lenfant_diagonal_off_q_street_is_a_bear(self):
+        # East on Q St, then 22 or 45 degrees right onto a diagonal: a bear.
+        for heading in (112, 135):
+            entries = self.q_onto(heading)
+            assert entries[1]["turn"]["movement"] == "bear_right", heading
+            assert (
+                entries[1]["text"]
+                .split(": ")[1]
+                .startswith("Bear right onto Rhode Island Avenue Northwest,")
+            )
+
+    def test_past_the_bear_band_is_a_turn_and_under_it_straight_on(self):
+        assert self.q_onto(155)[1]["turn"]["movement"] == "right"
+        assert self.q_onto(105)[1]["turn"]["movement"] == "straight"
 
     def test_a_fork_left_is_a_bear(self):
         legs = [flat(road("Main St", 1, 600, 0, 0), road("Fork Rd", 1, 600, 328, 328))]
         entries = d.describe(legs)
         assert entries[1]["turn"]["movement"] == "bear_left"
         assert "Bear left onto Fork Rd," in entries[1]["text"]
-
-    def test_a_small_change_of_street_is_still_straight_on(self):
-        legs = [flat(road("A", 1, 600, 90, 90), road("B", 1, 600, 110, 110))]
-        assert d.describe(legs)[1]["turn"]["movement"] == "straight"
 
     def test_a_curving_road_that_keeps_its_name_is_no_turn(self):
         legs = [
@@ -432,7 +431,7 @@ class TestBearsAndJogs:
 
     def test_a_jog_under_300_ft_is_kept_with_both_its_turns(self):
         # East on Q St, right onto 6th St (100 ft south), then bear left onto a
-        # south-east diagonal: two turns, not one straight-on folded across them.
+        # south-east diagonal: two turns, not one folded across them.
         legs = [
             flat(
                 road("Q Street Northwest", 2, 900, 90, 90),
@@ -448,6 +447,70 @@ class TestBearsAndJogs:
         ]
         assert [e["turn"]["movement"] for e in entries[1:]] == ["right", "bear_left"]
         assert entries[1]["text"].split(": ")[1].startswith("Right onto 6th Street Northwest,")
+
+    @staticmethod
+    def across(middle):
+        """Q St, a short middle, Q St again: what is said of it."""
+        entries = d.describe(
+            [
+                flat(
+                    road("Q Street Northwest", 2, 400, 90, 90),
+                    middle,
+                    road("Q Street Northwest", 2, 400, 90, 90),
+                )
+            ]
+        )
+        return [(e["street"], (e["turn"] or {}).get("movement")) for e in entries]
+
+    def test_a_divided_road_crossed_is_no_jog(self):
+        # 8 m of the avenue's far carriageway between the two halves of Q St.
+        middle = road("Rhode Island Avenue Northwest", 2, 8, 180, 180)
+        assert self.across(middle) == [("Q Street Northwest", None)]
+
+    def test_a_median_piece_of_a_cross_street_is_no_jog(self):
+        middle = road("New Jersey Avenue Northwest", 2, 3, 125, 125)
+        assert self.across(middle) == [("Q Street Northwest", None)]
+
+    def test_a_sidewalk_cut_through_is_no_jog(self):
+        middle = road("", 1, 20, 180, 180, facility="path", use="footway")
+        assert self.across(middle) == [("Q Street Northwest", None)]
+
+    def test_an_offset_crossing_back_onto_the_same_street_is_no_jog(self):
+        # 40 m south on 7th St, then on east on Q St: the turns cancel.
+        middle = road("7th Street Northwest", 2, 40, 170, 170)
+        assert self.across(middle) == [("Q Street Northwest", None)]
+
+    def test_an_unnamed_slip_lane_is_no_jog(self):
+        legs = [
+            flat(
+                road("Q Street Northwest", 2, 400, 90, 90),
+                road("", 2, 40, 130, 150),
+                road("14th Street Northwest", 2, 400, 180, 180),
+            )
+        ]
+        entries = d.describe(legs)
+        assert [(e["street"], (e["turn"] or {}).get("movement")) for e in entries] == [
+            ("Q Street Northwest", None),
+            ("14th Street Northwest", "right"),
+        ]
+
+    def test_a_circle_is_read_across_as_the_net_turn(self):
+        # Mass Ave into Dupont Circle and out on P St: "Left onto P Street", by its
+        # name or by the map's roundabout flag.
+        for name, roundabout in (("Dupont Circle Northwest", False), ("Dupont Ring", True)):
+            circle = [replace(atom, roundabout=roundabout) for atom in road(name, 3, 80, 95, 250)]
+            legs = [
+                flat(
+                    road("Massachusetts Avenue Northwest", 3, 400, 60, 60),
+                    circle,
+                    road("P Street Northwest", 3, 400, 280, 280),
+                )
+            ]
+            entries = d.describe(legs)
+            assert [(e["street"], (e["turn"] or {}).get("movement")) for e in entries] == [
+                ("Massachusetts Avenue Northwest", None),
+                ("P Street Northwest", "left"),
+            ], name
 
     def test_the_overview_names_a_bear(self):
         legs = [

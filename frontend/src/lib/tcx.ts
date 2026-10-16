@@ -14,7 +14,10 @@ import type { Course, CourseCueType } from "./course.ts";
 
 export const TCX_NS = "http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2";
 
-/** PointType for each cue: the published mapping (stops, walks and notes, flagged crossings among them, collapse to Generic). */
+/**
+ * PointType for each cue: the published mapping (stops, walks and notes, flagged crossings among them, collapse to
+ * Generic; TCX has no slight turn, so a bear is a left or a right).
+ */
 export const TCX_CUE_TYPES: Record<CourseCueType, string> = {
   start: "Generic",
   finish: "Generic",
@@ -24,6 +27,8 @@ export const TCX_CUE_TYPES: Record<CourseCueType, string> = {
   danger: "Danger",
   left: "Left",
   right: "Right",
+  slight_left: "Left",
+  slight_right: "Right",
 };
 
 export function escapeXml(text: string): string {

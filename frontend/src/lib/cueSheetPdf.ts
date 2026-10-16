@@ -50,6 +50,8 @@ const TURN_WORDS: Record<CourseCueType, string> = {
   stop: "Stop",
   left: "Left",
   right: "Right",
+  slight_left: "Bear left",
+  slight_right: "Bear right",
   danger: "Caution",
   walk: "Walk",
   note: "Note",
@@ -59,7 +61,8 @@ const TURN_WORDS: Record<CourseCueType, string> = {
 const REASONS: Record<string, string> = { avoid: "Avoid-rated", workzone: "Work zone", junction: "Crossing" };
 
 function rowOf(cue: RouteCue): CueRow {
-  const plainTurn = cue.type === "left" || cue.type === "right";
+  // A jog's first turn is not plain: its notes say the second turn, which has no row (`routeCues`).
+  const plainTurn = (cue.type === "left" || cue.type === "right" || cue.type === "slight_left" || cue.type === "slight_right") && !cue.turnText;
   const hazard = cue.kind === "hazard";
   return {
     type: cue.type,
@@ -76,7 +79,9 @@ function rowOf(cue: RouteCue): CueRow {
 
 /** The rows of a sheet: every cue on the rider sheet; on the strip, all but the notes on the road's stress and surface. */
 export function cueRows(route: SheetRoute, kind: CueSheetKind, vias: readonly number[] = []): CueRow[] {
-  const rows = routeCues(route, vias).map(rowOf);
+  const rows = routeCues(route, vias)
+    .filter((cue) => !cue.joined)
+    .map(rowOf);
   return kind === "strip" ? rows.filter((r) => r.type !== "note" || r.hazard) : rows;
 }
 
