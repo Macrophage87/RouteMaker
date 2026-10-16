@@ -1056,3 +1056,14 @@ def test_every_path_the_api_modules_hold_is_in_the_api_image(tmp_path) -> None:
         f"only {copied}. COPY it, or name it in PIPELINE_ONLY_PATHS / NOT_IMAGE_CONTENT "
         "with the reason the api never opens it"
     )
+
+
+def test_photon_import_and_ci_postgis_use_composes_pinned_images() -> None:
+    """Review round 2: one digest per image, not a second unpinned tag beside compose's."""
+    photon = SERVICES["photon"]["image"]
+    script = (REPO / "scripts" / "import_photon.sh").read_text()
+    assert re.search(r"^IMAGE=\"([^\"]+)\"$", script, re.M).group(1) == photon
+    ci = yaml.safe_load((REPO / ".github" / "workflows" / "ci.yml").read_text())
+    (job,) = (j for j in ci["jobs"].values() if "postgis" in j.get("services", {}))
+    assert job["services"]["postgis"]["image"] == SERVICES["postgis"]["image"]
+    assert "@sha256:" in photon and "@sha256:" in SERVICES["postgis"]["image"]
