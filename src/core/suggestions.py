@@ -276,6 +276,16 @@ def tallies(suggestion: StressSuggestion, viewer=None) -> dict:
     }
 
 
+def tallies_words(tallies: dict) -> str:
+    """The counts in words, as the review list says them (frontend lib/suggestions.ts
+    `talliesLine`): "Reviewers: 1 agrees, 0 disagree"."""
+    agree, disagree = tallies["agree"], tallies["disagree"]
+    return (
+        f"Reviewers: {agree} {'agrees' if agree == 1 else 'agree'}, "
+        f"{disagree} {'disagrees' if disagree == 1 else 'disagree'}"
+    )
+
+
 # What a rider reads of their own suggestion's status (`mine`).
 RIDER_STATUS = {
     StressSuggestion.Status.PENDING: "Waiting for review.",

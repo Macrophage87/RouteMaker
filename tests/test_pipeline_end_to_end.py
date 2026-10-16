@@ -4921,8 +4921,12 @@ def test_a_reviewers_surface_penalty_reaches_every_graph_as_its_class(workspace,
     source, root = workspace
     context, _ = run_pipeline(source, root, skip=NOT_SWAPPED)
     assert context.override_report.surface == 1
+    # Way 100 is in every variant's extract, so every graph carries the penalty: none is
+    # skipped for want of the way.
+    carried = set()
     for variant in Variant:
         tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
-        if 100 in tags or variant is Variant.STANDARD:
-            assert tags[100]["rm:reviewer_surface"] == "paved_rough", variant
+        if tags.get(100, {}).get("rm:reviewer_surface") == "paved_rough":
+            carried.add(variant)
         assert all("rm:reviewer_surface" not in t for w, t in tags.items() if w != 100), variant
+    assert carried == set(Variant)

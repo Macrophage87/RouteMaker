@@ -814,9 +814,23 @@ def surface_penalty_words(row: dict) -> str | None:
     if penalty.get("surface") is None:
         return "Taken off; routes stop pricing it at the next map rebuild"
     words = str(penalty.get("words") or "Rough surface")
-    if penalty.get("applied"):
+    if not penalty.get("applied"):
+        return f"{words}; applies at the next map rebuild"
+    if penalty_reprices(row, penalty.get("surface")):
         return f"{words}; routes price it as rougher than mapped"
-    return f"{words}; applies at the next map rebuild"
+    return f"{words}; routes already price the mapped surface as this rough"
+
+
+def penalty_reprices(row: dict, surface: object) -> bool:
+    """Whether lua/routemaker_remap.lua `bounded_surface` gives the way a rougher class for
+    the penalty, read from the row's surface facts (the row has no `surface` tag). It caps
+    every penalty at `compacted` and never improves a way: an unpaved way is already that
+    rough or rougher, and a rough paved one (cobblestone, brick) already has Rough pavement.
+    Where the facts cannot say, this says no, so the panel never claims a change it did
+    not make."""
+    if row.get("is_unpaved") is True:
+        return False
+    return not (surface == "rough" and row.get("is_rough"))
 
 
 def surface_words(row: dict) -> str:

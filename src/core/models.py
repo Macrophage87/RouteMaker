@@ -239,6 +239,18 @@ class Override(models.Model):
             ),
         ]
 
+    def clean(self) -> None:
+        # A surface row typed into the admin is checked here, not first at the rebuild, where
+        # a bad value refuses the whole rebuild (`pipeline.overrides.apply_surface`).
+        if self.kind == self.Kind.SURFACE:
+            from django.core.exceptions import ValidationError
+
+            from pipeline.overrides import surface_value_problem
+
+            problem = surface_value_problem(self.value)
+            if problem:
+                raise ValidationError({"value": problem})
+
     def __str__(self) -> str:
         return f"{self.kind} on way {self.osm_way_id}"
 

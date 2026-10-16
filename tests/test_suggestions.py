@@ -439,6 +439,8 @@ class TestSecondReviewer:
         r = post(first, ACTION.format(s.pk, "review"), {"verdict": "agree"}, csrf1)
         assert r.status_code == 200, r.content
         assert r.json()["reviews"] == {"agree": 1, "disagree": 0, "mine": "agree", "notes": []}
+        # The counts as the review list says them (lib/suggestions.ts talliesLine).
+        assert "Reviewers: 1 agrees, 0 disagree." in r.json()["message"]
         r = post(
             second,
             ACTION.format(s.pk, "review"),
@@ -446,7 +448,10 @@ class TestSecondReviewer:
             csrf2,
         )
         assert r.status_code == 200, r.content
-        assert "Approving still takes Approve now" in r.json()["message"]
+        assert (
+            "Reviewers: 1 agrees, 1 disagrees. Approving still takes Approve now"
+            in (r.json()["message"])
+        )
         (item,) = second.get(OPEN, **addr()).json()["suggestions"]
         assert item["reviews"] == {
             "agree": 1,
@@ -501,6 +506,19 @@ class TestSecondReviewer:
         with pytest.raises(suggestions.Forbidden):
             suggestions.review(rider, s.pk, True)
 
+    def test_an_instance_admin_is_refused_on_their_own_suggestion(self, live) -> None:
+        open_to("signed_in")
+        rider = make_user(admin=False)
+        s = suggest(rider)
+        # The rider who sent it is made an instance admin later.
+        rider.is_instance_admin = True
+        rider.save(update_fields=["is_instance_admin"])
+        client, csrf = rider_client(rider)
+        refused = post(client, ACTION.format(s.pk, "review"), {"verdict": "agree"}, csrf)
+        assert refused.status_code == 403, refused.content
+        assert "You sent this suggestion" in refused.json()["error"]
+        assert not s.reviews.exists()
+
 
 @db
 class TestRiderSeesStatus:
@@ -525,3 +543,11 @@ class TestRiderSeesStatus:
         other, _ = rider_client()
         assert other.get(MINE.format(WAY), **addr()).json() == {"suggestion": None}
         assert Client().get(MINE.format(WAY), **addr()).status_code == 401
+
+    def test_a_way_id_past_a_bigint_is_refused_as_a_bad_request(self, live) -> None:
+        open_to("signed_in")
+        client, _ = rider_client(make_user(admin=False))
+        assert client.get(MINE.format(2**63 - 1), **addr()).json() == {"suggestion": None}
+        assert client.get(MINE.format(2**63), **addr()).status_code == 400
+        ticket = Client().get("/api/stress-suggestions/ticket", {"way": 2**63}, **addr())
+        assert ticket.status_code == 400, ticket.content

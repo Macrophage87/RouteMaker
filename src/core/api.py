@@ -6085,7 +6085,8 @@ def stress_suggestion_create(request, body: SuggestionIn, response: HttpResponse
 
 
 class SuggestTicketIn(Schema):
-    way: int = Field(ge=1, description="The road's OSM way id.")
+    # At most a Postgres bigint: a larger id is a 400 here, not the database's overflow (a 500).
+    way: int = Field(ge=1, le=2**63 - 1, description="The road's OSM way id.")
 
 
 class SuggestTicketOut(Schema):
@@ -6231,15 +6232,15 @@ def stress_suggestion_review(
         {
             "id": suggestion.pk,
             "message": f"You {body.verdict} with the suggestion for "
-            f"{suggestion.road_name or 'the road'}. Reviewers: {tallies['agree']} agree, "
-            f"{tallies['disagree']} disagree. Approving still takes Approve now.",
+            f"{suggestion.road_name or 'the road'}. {suggestions.tallies_words(tallies)}. "
+            "Approving still takes Approve now.",
             "reviews": tallies,
         },
     )
 
 
 class MySuggestionIn(Schema):
-    way: int = Field(ge=1, description="The road piece's OSM way id.")
+    way: int = Field(ge=1, le=2**63 - 1, description="The road piece's OSM way id.")
 
 
 class MySuggestionOut(Schema):
@@ -6272,7 +6273,8 @@ class MySuggestionAnswerOut(Schema):
 )
 @decorate_view(
     same_site_editor,
-    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    # Asked on every road panel a signed-in rider opens: the panel's own budget, not the edits'.
+    ratelimit.rate_limited(ratelimit.SEGMENT_INFO),
     errors_as_json,
 )
 def stress_suggestion_mine(request, params: Query[MySuggestionIn], response: HttpResponse):

@@ -1871,7 +1871,7 @@ suggestions are waiting."
 
 **A second reviewer** (v0.7.0; `suggestions.review`, `POST /api/stress-suggestions/{id}/review`)
 may mark a waiting road suggestion **Agree** or **Disagree**, with an optional one-line reason
-(200 characters). It is advice: the item shows "Reviewers: N agree, N disagree" and the reasons,
+(200 characters). It is advice: the item shows "Reviewers: 2 agree, 1 disagrees" and the reasons,
 unnamed, and nothing changes until an admin uses Approve now. A reviewer marks once a suggestion
 (a second mark replaces the first) and never their own suggestion. Each mark is one audit row
 (`stress_suggest_review`); the marks are in `stress_suggestion_review`, which the beta never
@@ -2625,11 +2625,15 @@ once the first rebuild with them has been promoted:
    override line counts them as "N surface"). An instance admin sets one with
    `POST /api/stress-edits/surface` (`{"osm_way_ids": [...], "surface": "rough" |
    "gravel" | "sand" | "dirt" | null, "reason": "..."}`; null takes it off), or types
-   the row into the admin (value `{"surface": "rough"}`). It changes no level and no
+   the row into the admin (value `{"surface": "rough"}`; the admin refuses any other
+   value when the row is saved, `Override.clean`). It changes no level and no
    live row: Valhalla's costs are built at the rebuild, so it applies from the next map
    rebuild, and the road panel says "Surface penalty: Rough pavement; applies at the next
    map rebuild" (Owner override) until the live table's rebuild has read it. The remap
-   caps every class at `compacted`. The tile test (tests/test_tile_build_access.py,
+   caps every class at `compacted` and never improves a way, so after the rebuild the
+   panel says "routes price it as rougher than mapped" only where that changed the way's
+   class, and "routes already price the mapped surface as this rough" on an unpaved way
+   or, for Rough pavement, a rough paved one (`segment_info.penalty_reprices`). The tile test (tests/test_tile_build_access.py,
    "a reviewer ... penalty") covers it against the real parser.
 
 ## Rebuild checkpoints

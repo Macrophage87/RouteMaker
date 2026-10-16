@@ -1156,6 +1156,43 @@ class TestSurfacePenalty:
         )
         assert penalty_row()["value"] == "Loose gravel; routes price it as rougher than mapped"
 
+    def test_the_panel_says_repriced_only_where_the_remap_changes_the_class(self) -> None:
+        """`bounded_surface` caps a penalty at compacted and never improves a way."""
+        applied = {"surface": "gravel", "words": "Loose gravel", "applied": True}
+        rough = {"surface": "rough", "words": "Rough pavement", "applied": True}
+        repriced = "routes price it as rougher than mapped"
+        plain = "routes already price the mapped surface as this rough"
+        cases = [
+            ({"is_unpaved": False, "is_rough": False}, applied, repriced),
+            ({"is_unpaved": None, "is_rough": False}, applied, repriced),
+            ({"is_unpaved": True, "is_rough": False}, applied, plain),
+            ({"is_unpaved": False, "is_rough": True}, applied, repriced),
+            ({"is_unpaved": False, "is_rough": True}, rough, plain),
+            ({"is_unpaved": False, "is_rough": False}, rough, repriced),
+        ]
+        for row, penalty, said in cases:
+            words = segment_info.surface_penalty_words({**row, "reviewer_surface": penalty})
+            assert words == f"{penalty['words']}; {said}", (row, penalty)
+
+    def test_a_surface_row_typed_into_the_admin_is_checked_when_saved(self, live) -> None:
+        from django.core.exceptions import ValidationError
+        from django.test import RequestFactory
+
+        from core.admin import OverrideAdmin, site
+
+        request = RequestFactory().post("/admin/core/override/add/")
+        request.user = make_user()
+        form_class = OverrideAdmin(Override, site).get_form(request)
+        fields = {"kind": "surface", "osm_way_id": WAY, "reason": "r", "evidence": "e"}
+        bad = form_class(data={**fields, "value": json.dumps({"surface": "Gravel"})})
+        assert not bad.is_valid() and "value" in bad.errors
+        good = form_class(data={**fields, "value": json.dumps({"surface": "gravel"})})
+        assert good.is_valid(), good.errors
+        with pytest.raises(ValidationError):
+            Override(kind="surface", osm_way_id=WAY, value={"surface": 1}, reason="r").clean()
+        # Other kinds are checked where they always were.
+        Override(kind="stress", osm_way_id=WAY, value={"tier": 9}, reason="r").clean()
+
     def test_a_change_supersedes_and_taking_it_off_says_so_until_the_rebuild(self, live) -> None:
         admin = make_user()
         (first,) = stress_edits.set_surface(admin, [WAY], "sand", "Sand drifts")
