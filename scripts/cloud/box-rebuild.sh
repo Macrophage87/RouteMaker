@@ -19,8 +19,10 @@
 #             compose.override.yaml giving the rebuild the box's memory
 #   data      prepare_data_root.sh, then reference/, elevation/ and extracts/ unpacked
 #   images    docker compose build api rebuild
-#   restore   the backup into an EMPTY database (OPERATIONS.md, "Restoring one"), then every
-#             job the home stack had queued or running is cancelled in this copy
+#   restore   send-inputs.sh's db.tar (ship-data.sh's db part: no accounts, Homes or audit
+#             log) into the database a fresh postgis volume starts with, the tables shipped
+#             with their person columns blanked loaded after it, as receive-data.sh does on the
+#             beta
 #   fire      migrate and the rebuild worker started, run_rebuild_now --fresh
 #   wait      until that job succeeds; a failed job stops here (and the box, see below).
 #             A job left `doing` by a worker that died (a spot reclaim, an OOM kill) is
@@ -34,6 +36,11 @@
 #             reading; the import does not use it), MANIFEST.txt and SHA256SUMS
 #   upload    to RUN_URL/out/, SHA256SUMS last; with --beta-bundle the beta's bundle to
 #             RUN_URL/beta/ too, SHA256SUMS and MANIFEST.txt last (import-result.sh --beta)
+#   prune     once this run has finished and uploaded, the database dumps of every OTHER run
+#             are deleted, on the box (~/cloud-runs/<other>/in) and in S3 (<other>/in/):
+#             this run's db.tar, the newest, is kept in both places (the owner's choice,
+#             2026-10-16), and an older run's goes only once a newer one has succeeded.
+#             A failure here is a warning
 #
 # Then the box powers itself off (with the launch template's "Shutdown behavior: Stop" that
 # is a stop, which costs only the disk). It powers off after a failed rebuild too, with the
@@ -110,7 +117,7 @@ work="${CLOUD_RUNS:-$HOME/cloud-runs}/$run"
 state="$work/state"
 mkdir -p "$work/in" "$work/out" "$state"
 if [ "$refire" = 1 ]; then
-	rm -f "$state/fire.done" "$state/job" "$state/wait.done" "$state/beta.done" "$state/export.done" "$state/upload.done"
+	rm -f "$state/fire.done" "$state/job" "$state/wait.done" "$state/beta.done" "$state/export.done" "$state/upload.done" "$state/prune.done"
 fi
 if [ "$beta_bundle" = 1 ]; then touch "$state/beta-wanted"; elif [ -e "$state/beta-wanted" ]; then beta_bundle=1; fi
 # The AWS CLI wants a region; on the box it is the box's own, from the instance metadata.
@@ -165,7 +172,7 @@ read_at=$(manifest read_at)
 backup=$(manifest backup)
 [[ "$commit" =~ ^[0-9a-f]{40}$ ]] || die "MANIFEST.txt names no commit"
 [[ "$read_at" =~ ^[0-9]{8}T[0-9]{6}Z$ ]] || die "MANIFEST.txt names no read_at"
-[ -f "$work/in/$backup" ] || die "MANIFEST.txt names $backup, which is not in $work/in"
+done_already restore || [ -f "$work/in/$backup" ] || die "MANIFEST.txt names $backup, which is not in $work/in"
 
 # --- checkout ----------------------------------------------------------------------------
 if ! done_already checkout; then
@@ -236,21 +243,47 @@ fi
 
 # --- restore -----------------------------------------------------------------------------
 if ! done_already restore; then
-	note "restoring $backup into an empty database"
+	note "restoring $backup into a fresh database"
 	compose down
 	$SUDO rm -rf "${data_root:?}/postgres"
 	(cd "$build_dir" && $SUDO sh scripts/prepare_data_root.sh --env-file ./.env)
 	compose up -d --wait postgis
-	compose exec -T postgis dropdb -U "$pguser" "$pgdb" </dev/null
-	compose exec -T postgis createdb -U "$pguser" -T template0 "$pgdb" </dev/null
-	compose exec -T postgis pg_restore --no-owner -U "$pguser" -d "$pgdb" <"$work/in/$backup" ||
+	rm -rf "$work/in/db" && (umask 077 && tar -C "$work/in" -xf "$work/in/$backup")
+	[ -s "$work/in/db/routemaker.dump" ] || die "$backup holds no db/routemaker.dump"
+	# The dump names schema `public`, which the fresh database already has (with the postgis
+	# extensions the image creates): restored from a table of contents without that one line,
+	# as receive-data.sh restores it on the beta.
+	compose exec -T postgis pg_restore --list <"$work/in/db/routemaker.dump" >"$work/in/db/toc" ||
+		die "could not read the table of contents of $backup"
+	sed -i '/ SCHEMA - public /d' "$work/in/db/toc"
+	compose exec -T postgis sh -c 'cat > /tmp/cloud.use' <"$work/in/db/toc"
+	compose exec -T postgis pg_restore --no-owner --no-privileges -U "$pguser" -d "$pgdb" -L /tmp/cloud.use \
+		<"$work/in/db/routemaker.dump" ||
 		die "pg_restore did not exit 0; the database is not a clean copy. Rerun this command to restore again"
-	# The home stack's queue came with the copy. Nothing here should run it: a queued
-	# Tuesday rebuild would start the moment the rebuild worker does, and a job home was
-	# running would make run_rebuild_now refuse.
+	# The tables shipped with their person columns blanked (override, the junction ratings and
+	# the Avoid junctions), each moving its id sequence past the loaded rows.
+	for copy in "$work/in/db/blanked"/*.copy; do
+		[ -f "$copy" ] || continue
+		t=$(basename "$copy" .copy)
+		header=$(head -n 1 "$copy" | tr -d '\r' | tr '\t' ',')
+		case "$t$header" in *[!a-z0-9_,]*) die "db/blanked/$t.copy has an odd name or header" ;; esac
+		{
+			printf 'COPY public.%s (%s) FROM stdin WITH (FORMAT text, HEADER true);\n' "$t" "$header"
+			cat "$copy"
+			printf '\\.\n'
+			printf "SELECT setval(pg_get_serial_sequence('public.%s', 'id'), coalesce(max(id), 1), max(id) IS NOT NULL) FROM public.%s;\n" "$t" "$t"
+		} | compose exec -T postgis psql -U "$pguser" -d "$pgdb" -q -1 -v ON_ERROR_STOP=1 >/dev/null ||
+			die "loading db/blanked/$t.copy failed. Rerun this command to restore again"
+	done
+	# ship-data.sh leaves the home stack's job queue out; should a copy ever carry it, nothing
+	# here may run it: a queued Tuesday rebuild would start the moment the rebuild worker
+	# does, and a job home was running would make run_rebuild_now refuse.
 	psql_ "UPDATE procrastinate_jobs SET status = 'cancelled' WHERE status IN ('todo', 'doing')" >/dev/null
 	mark restore
 fi
+# The unpacked copy goes once restored; db.tar itself is kept until a newer run succeeds
+# (step prune).
+rm -rf "${work:?}/in/db"
 
 # --- fire --------------------------------------------------------------------------------
 resumed=0
@@ -398,6 +431,35 @@ if ! done_already upload; then
 	fi
 	mark upload
 fi
+# --- prune -------------------------------------------------------------------------------
+# Only after a run that finished: the dumps of the other runs, this run's kept. Their names:
+# db.tar (send-inputs.sh's own) and routemaker-<utc>.dump (what runs before v0.7.0 sent: the
+# whole nightly backup). Nothing else of an older run is touched.
+prune_warn() { note "WARNING: $*; delete it by hand (docs/OPERATIONS.md, \"Rebuilding on the cloud box\")"; }
+if ! done_already prune; then
+	for other in "${work%/*}"/*/; do
+		other=${other%/}
+		[ "$other" != "$work" ] && [ -d "$other/in" ] || continue
+		for f in "$other/in/db.tar" "$other/in/db" "$other/in"/routemaker-*.dump; do
+			[ -e "$f" ] || continue
+			note "deleting an older run's dump: $f"
+			rm -rf "$f" || prune_warn "could not delete $f"
+		done
+	done
+	parent=${url%/*}
+	runs=$("$AWS" s3 ls "$parent/" 2>/dev/null | sed -n 's|^ *PRE \([a-z0-9][a-z0-9-]*\)/$|\1|p') ||
+		prune_warn "could not list $parent/ to find older runs' dumps"
+	for other in $runs; do
+		[ "$other" != "$run" ] || continue
+		for f in $("$AWS" s3 ls "$parent/$other/in/" 2>/dev/null | awk '{print $NF}' |
+			grep -E '^(db\.tar|routemaker-[0-9]{8}T[0-9]{6}Z\.dump)$'); do
+			note "deleting an older run's dump: $parent/$other/in/$f"
+			"$AWS" s3 rm "$parent/$other/in/$f" --only-show-errors || prune_warn "could not delete $parent/$other/in/$f"
+		done
+	done
+	mark prune
+fi
+
 note "done: build $(sed -n 's/^build=//p' "$work/out/MANIFEST.txt") is at $url/out/"
 note "next, at home: scripts/cloud/import-result.sh $url"
 if done_already beta; then

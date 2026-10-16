@@ -6216,21 +6216,23 @@ work zones.
 
 The rebuild can run on an AWS spot machine instead of this host, which ran out of memory
 on 2026-10-10 (16 GB, with the rebuild container capped at 8 GiB). The box builds from a
-copy of this deployment's database, so every access override, stress edit and Avoid
-junction is in its map, runs the ordinary `run_rebuild_now` with every check a rebuild
+copy of this deployment's database made the way the beta's is (`scripts/beta/ship-data.sh`'s
+db part): no accounts, Homes, saved or shared routes, audit log or sessions, and the approved
+overrides with their person columns blanked. So every access override and stress edit is in
+its map, and no rider's data is in the cloud. It runs the ordinary `run_rebuild_now` with every check a rebuild
 here has, and sends back the five graphs and its new segment table. Here they are swapped
 in by the rebuild's own swap (`pipeline.promotion.perform_swap`), so `rollback_rebuild`
 undoes an imported build exactly as it undoes one built here.
 
 Three scripts, one per place, and S3 between them. `send-inputs.sh`, run here, uploads the
-backup, reference, elevation and extracts to the run's `in/` folder. `box-rebuild.sh`, run
+stripped dump, reference, elevation and extracts to the run's `in/` folder. `box-rebuild.sh`, run
 on the box, reads `in/`, writes the five graphs and the staging dump to `out/`, and powers
 the box off. `import-result.sh`, run here, reads `out/`. Nothing in the repository names
 the bucket or the account: the run's folder is an argument. The same flow as a diagram:
 
 ```text
 this host                         s3://<bucket>/rebuild-checkpoints/transfer/<run>/   the box
-scripts/cloud/send-inputs.sh  --> in/   backup, reference, elevation, extracts --> box-rebuild.sh
+scripts/cloud/send-inputs.sh  --> in/   db.tar, reference, elevation, extracts --> box-rebuild.sh
 scripts/cloud/import-result.sh <-- out/  5 graphs, staging schema dump        <-- (powers off)
 ```
 
@@ -6285,7 +6287,7 @@ fallback yet; this host stays the fallback, and its weekly rebuild is unchanged.
 ### A run
 
 Before it: no Change LTS edits, override loads or suggestion approvals here from the
-backup the run starts from until the swap, and no rebuild here in between: start the run
+dump the run starts from until the swap, and no rebuild here in between: start the run
 after a Tuesday rebuild and swap before the next, or pause the weekly rebuild
 (`WEEKLY_REBUILD_PAUSED`, above) for the run. A rebuild here resets the staging schema an
 install restored. The box builds the commit this host is on, so deploy first, not
@@ -6300,8 +6302,11 @@ the defaults, so build those here.
    scripts/cloud/send-inputs.sh --profile <name> "$RUN_URL"
    ```
 
-   It takes the newest nightly backup (`routemaker-<utc>.dump`; its time is when the
-   box's database was copied), tars `reference/`, `elevation/` and `extracts/` with
+   It runs `scripts/beta/ship-data.sh --no-transfer` for the database only (the live
+   postgis must be running), so the dump leaves out and blanks exactly what the beta's does
+   and is refused the same way if it carries any of it; the nightly backup, which keeps
+   accounts and Homes for a restore here, is never sent. It tars that as `db.tar`
+   (`read_at` is when the dump began), tars `reference/`, `elevation/` and `extracts/` with
    their owner kept, writes `MANIFEST.txt` (run, commit, backup, `read_at`) and
    `SHA256SUMS`, clears the run's `in/` folder and uploads them with the checksums last. It refuses a checkout with
    uncommitted changes to tracked files (the box builds the commit, not the working
@@ -6330,12 +6335,20 @@ the defaults, so build those here.
    the manifest's commit in a separate clone (`~/rm-build`), writes that clone's own
    `.env` (fresh random values for the four secrets, `WEEKLY_REBUILD_PAUSED=1`, `REBUILD_TILE_CONCURRENCY=4`)
    and a `compose.override.yaml` giving `rebuild` 26 GiB, unpacks the inputs, builds the
-   two images, restores the backup into an empty database ("Restoring one", above),
-   cancels every job the copy brought from here, starts `migrate` and `rebuild`, and
+   two images, restores `db.tar` into the database a fresh postgis volume starts with and
+   loads the blanked tables after it (as `receive-data.sh` does on the beta), starts `migrate` and `rebuild`, and
    fires `run_rebuild_now --fresh`. When the job succeeds it renames the box's new
    `live` schema to `staging`, dumps it, tars each graph's build directory and the
    rebuild's reports (`reports.tar`, for reading; the import does not use it), uploads
    them with the checksums last, and powers the box off.
+
+   **Dump copies:** this run's `db.tar` stays on the box (`~/cloud-runs/<run>/in/`) and in
+   S3 (`<run>/in/`) after the run (the owner's choice, 2026-10-16), so the newest copy is at
+   hand. Once a run has finished and uploaded, the box deletes every OTHER run's dump, both
+   on its disk and in S3 (`db.tar`, and `routemaker-<utc>.dump` from runs before v0.7.0,
+   which were the whole nightly backup); nothing else of those runs is touched, and a failed
+   run deletes nothing. A failure to delete is a warning in the log: delete that file by
+   hand. The bucket's 14-day lifecycle rule still applies to all of it.
 
    Each step is recorded under `~/cloud-runs/<run>/state/`, so the same command run
    again carries on. **A spot reclaim** stops the box with its disk; start it when AWS
@@ -6363,8 +6376,8 @@ the defaults, so build those here.
    unpacks the graphs under `<DATA_ROOT>/tiles` beside the ones being served, restores the
    box's table as `staging`, and runs `import_cloud_build` dry: the build each graph would
    move to, both tables' segment counts, and any access override approved after the
-   backup, which this build does not have. An override revoked or deleted after the
-   backup is still in the build and is not listed: the freeze above is what covers it. Nothing served has changed. Run it again after
+   dump, which this build does not have. An override revoked or deleted after the
+   dump is still in the build and is not listed: the freeze above is what covers it. Nothing served has changed. Run it again after
    a failure and it carries on; once the install has finished, a second run goes straight
    to the dry run. `--remove-tars` deletes the downloaded graph tars once unpacked.
 
@@ -6399,7 +6412,7 @@ or already serves the build, when `staging.segment` is missing or empty, when
 also refuses while access overrides approved after `--overrides-read-at` are missing from
 the build, unless `--accept-later-overrides`. Where the swap re-applies the road panel's
 edits made after that time (from v0.4.0, the stress editor), as a rebuild does for edits
-made while it ran, that check gives way to the re-apply; the scripts pass the backup's
+made while it ran, that check gives way to the re-apply; the scripts pass the dump's
 time.
 
 ### The launcher

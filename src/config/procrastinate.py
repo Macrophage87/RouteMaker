@@ -135,13 +135,15 @@ BACKUP_EXCLUDED_TABLES = (
     "signed_out_send",
 )
 
-# How many dumps stay on the data volume. They are local-only for now - the
-# plan's S3 upload with SSE-KMS and 30-day remote retention is not built - and
-# they land on the volume the rebuild's disk gate measures, so an unbounded
-# series of them would eventually refuse every rebuild with "grow the volume" as
-# the only remedy. Seven: a week of nightly dumps, so corruption noticed over a
-# weekend still has a local copy to restore from, at a bounded cost in gigabytes
-# rather than a year's worth.
+# How many dumps stay on the data volume. They never leave this machine - the
+# plan's S3 upload with SSE-KMS and 30-day remote retention is not built, and
+# the cloud rebuild sends a dump of its own without identities
+# (scripts/cloud/send-inputs.sh), never one of these - and they land on the
+# volume the rebuild's disk gate measures, so an unbounded series of them would
+# eventually refuse every rebuild with "grow the volume" as the only remedy.
+# Seven: a week of nightly dumps, so corruption noticed over a weekend still has
+# a local copy to restore from, at a bounded cost in gigabytes rather than a
+# year's worth.
 BACKUP_KEEP = 7
 
 

@@ -11,6 +11,7 @@ one (OPERATIONS.md, "Restoring one", "Firing a rebuild by hand").
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -35,7 +36,17 @@ map() { case "$1" in s3://*) echo "$FAKE_S3/${1#s3://}" ;; *) echo "$1" ;; esac;
 # A box that has powered off sends nothing more.
 [ -e "$FAKE_DIR/powered_off" ] && exit 1
 case "$2" in
-  ls) [ -e "$(map "$3")" ] ;;
+  ls)
+    target=$(map "$3")
+    case "$3" in
+      */) [ -d "$target" ] || exit 1
+          for entry in "$target"*; do
+            [ -e "$entry" ] || continue
+            if [ -d "$entry" ]; then echo "                           PRE ${entry##*/}/"
+            else echo "2026-10-11 07:00:00          5 ${entry##*/}"; fi
+          done ;;
+      *) [ -e "$target" ] ;;
+    esac ;;
   rm) if [ "$4" = --recursive ]; then rm -rf "$(map "$3")"; else rm -f "$(map "$3")"; fi ;;
   sync)
     src=$(map "$3"); dst=$(map "$4"); shift 4
@@ -103,6 +114,8 @@ case "$1" in
       *"to_regnamespace('staging') IS NULL"*)
         cat "$FAKE_DIR/staging_absent" 2>/dev/null || echo t ;;
       *"string_agg"*) cat "$FAKE_DIR/in_flight" 2>/dev/null ;;
+      *"cat > /tmp/cloud.use"*) cat >"$FAKE_DIR/cloud.use" ;;
+      *" -q -1 "*) cat >>"$FAKE_DIR/blanked.sql" ;;
       *run_rebuild_now*)
         [ -e "$FAKE_DIR/rebuild_now_fails" ] && { echo "already in flight" >&2; exit 1; }
         echo "queued weekly_rebuild as job 7 on the rebuild queue. The rebuild service runs it." ;;
@@ -200,31 +213,53 @@ def fake(tmp_path):
     return Fake()
 
 
+# ship-data.sh's db part, as send-inputs.sh runs it: the stripped dump and one blanked table.
+FAKE_SHIP_DB = r"""#!/usr/bin/env bash
+printf 'ship-db %s\n' "$*" >>"$FAKE_DIR/calls.log"
+while [ $# -gt 0 ]; do [ "$1" = --stage ] && stage=$2; shift; done
+[ -e "$FAKE_DIR/ship_db_fails" ] && exit 2
+mkdir -p "$stage/db/blanked"
+echo "stripped dump" >"$stage/db/routemaker.dump"
+printf 'id\tosm_way_id\tcreated_by_id\n1\t5\t\\N\n' >"$stage/db/blanked/override.copy"
+printf 'live.segment\t1\n' >"$stage/db/row-counts.tsv"
+"""
+
+
 @pytest.fixture
 def home(fake):
-    """A live checkout (its .env) and a DATA_ROOT with two backups and the three inputs."""
+    """A live checkout (its .env), a DATA_ROOT with a nightly backup and the three inputs,
+    and the fake ship-data.sh that makes the run's own dump."""
     live = fake.root / "live"
     live.mkdir()
     data = fake.root / "data"
     (live / ".env").write_text(f"TAG=dev\nDATA_ROOT={data}\nPGUSER=routemaker\n")
     (data / "backups").mkdir(parents=True)
-    (data / "backups" / "routemaker-20261010T070000Z.dump").write_text("older")
-    (data / "backups" / "routemaker-20261011T070000Z.dump").write_text("newest")
+    (data / "backups" / "routemaker-20261011T070000Z.dump").write_text("nightly, with accounts")
     for part in ("reference", "elevation", "extracts"):
         (data / part).mkdir()
         (data / part / f"{part}.file").write_text(part)
+    ship = fake.root / "bin" / "ship-db"
+    ship.write_text(FAKE_SHIP_DB)
+    ship.chmod(0o755)
     return live, data
 
 
 def send(fake, home, *extra: str):
     live, _ = home
-    return fake.run(SEND, "--live-dir", str(live), *extra, fake.url)
+    return fake.run(
+        SEND,
+        "--live-dir",
+        str(live),
+        *extra,
+        fake.url,
+        CLOUD_SHIP_DATA=str(fake.root / "bin" / "ship-db"),
+    )
 
 
 # --- send-inputs.sh ------------------------------------------------------------------
 
 
-def test_send_uploads_the_newest_backup_and_the_three_inputs_checksums_last(fake, home) -> None:
+def test_send_uploads_a_stripped_dump_and_the_three_inputs_checksums_last(fake, home) -> None:
     done = send(fake, home)
     assert done.returncode == 0, done.stderr
 
@@ -233,14 +268,21 @@ def test_send_uploads_the_newest_backup_and_the_three_inputs_checksums_last(fake
     assert names == [
         "MANIFEST.txt",
         "SHA256SUMS",
+        "db.tar",
         "elevation.tar",
         "extracts.tar",
         "reference.tar",
-        "routemaker-20261011T070000Z.dump",
-    ]
+    ], "never the nightly backup, which carries accounts and Homes"
+    ship = next(line for line in fake.calls().splitlines() if line.startswith("ship-db"))
+    assert "--no-transfer" in ship and f"--live-dir {home[0]}" in ship
+    for part in ("tiles", "elevation", "basemap", "photon", "transit", "frontend"):
+        assert f"--without {part}" in ship
+    assert "--without db" not in ship
+    packed = subprocess.run(["tar", "-tf", str(sent / "db.tar")], capture_output=True, text=True)
+    assert set(packed.stdout.split()) >= {"db/routemaker.dump", "db/blanked/override.copy"}
     manifest = (sent / "MANIFEST.txt").read_text()
-    assert f"commit={COMMIT}" in manifest
-    assert "read_at=20261011T070000Z" in manifest
+    assert f"commit={COMMIT}" in manifest and "backup=db.tar" in manifest
+    assert re.search(r"^read_at=\d{8}T\d{6}Z$", manifest, re.M)
     order = (fake.dir / "s3-order.log").read_text().splitlines()
     assert order[-1].endswith("in/SHA256SUMS"), "the checksums go last"
     assert sum(line.endswith("SHA256SUMS") for line in order) == 1, "and only last"
@@ -294,14 +336,13 @@ def test_send_refuses_a_checkout_with_uncommitted_changes(fake, home) -> None:
     assert not fake.in_bucket("in").exists()
 
 
-def test_send_refuses_when_there_is_no_backup(fake, home) -> None:
-    _, data = home
-    for dump in (data / "backups").iterdir():
-        dump.unlink()
+def test_send_refuses_when_ship_data_makes_no_dump(fake, home) -> None:
+    (fake.dir / "ship_db_fails").touch()
 
     done = send(fake, home)
 
-    assert done.returncode == 2 and "no backup" in done.stderr
+    assert done.returncode == 2 and "no database dump" in done.stderr
+    assert not fake.in_bucket("in").exists()
 
 
 def test_send_refuses_a_stage_inside_data_root(fake, home) -> None:
@@ -358,9 +399,9 @@ def test_the_box_runs_restore_rebuild_export_upload_and_powers_off(fake, home) -
         "compose build api rebuild",
         "compose down",
         "compose up -d --wait postgis",
-        "dropdb",
-        "createdb -U routemaker -T template0",
-        "pg_restore --no-owner",
+        "pg_restore --list",
+        "pg_restore --no-owner --no-privileges -U routemaker -d routemaker -L /tmp/cloud.use",
+        "psql -U routemaker -d routemaker -q -1",
         "SET status = 'cancelled' WHERE status IN ('todo', 'doing')",
         "compose up -d rebuild",
         "run_rebuild_now --fresh",
@@ -371,13 +412,24 @@ def test_the_box_runs_restore_rebuild_export_upload_and_powers_off(fake, home) -
     ]
     positions = [calls.index(step) for step in order]
     assert positions == sorted(positions), f"steps out of order:\n{calls}"
+    assert "createdb" not in calls, "the fresh volume's database, with its postgis extensions"
+    blanked = (fake.dir / "blanked.sql").read_text()
+    assert blanked.startswith("COPY public.override (id,osm_way_id,created_by_id) FROM stdin")
+    assert "setval(pg_get_serial_sequence('public.override', 'id')" in blanked
+    assert " SCHEMA - public " not in (fake.dir / "cloud.use").read_text()
+    run_in = fake.root / "home" / "cloud-runs" / "cloud-20261011" / "in"
+    assert (run_in / "db.tar").exists() and not (run_in / "db").exists(), (
+        "this run's dump is kept; only its unpacked copy goes"
+    )
 
     out = fake.in_bucket("out")
     names = {p.name for p in out.iterdir()}
     assert {f"tiles-{v}.tar" for v in VARIANTS} <= names
     assert {"staging.dump", "MANIFEST.txt", "SHA256SUMS"} <= names
     manifest = (out / "MANIFEST.txt").read_text()
-    assert f"build={BUILD}" in manifest and "read_at=20261011T070000Z" in manifest
+    sent = (fake.in_bucket("in") / "MANIFEST.txt").read_text()
+    read_at = re.search(r"^read_at=(\S+)$", sent, re.M).group(1)
+    assert f"build={BUILD}" in manifest and f"read_at={read_at}" in manifest
     upload = [
         line for line in (fake.dir / "s3-order.log").read_text().splitlines() if "/out/" in line
     ]
@@ -484,6 +536,37 @@ def test_a_job_that_never_finishes_is_given_up_on_and_the_box_powers_off(fake, h
     assert done.returncode == 1 and "giving up" in done.stdout
     assert "sudo poweroff" in fake.calls()
     assert not fake.in_bucket("out").exists()
+
+
+def test_a_finished_run_deletes_older_runs_dumps_and_keeps_its_own(fake, home) -> None:
+    """The owner's rule (2026-10-16): the newest run's dump stays on the box and in S3; an
+    older run's goes, in both places, once a newer run has succeeded. Its other files stay."""
+    transfer = fake.bucket / "bucket" / "rebuild-checkpoints" / "transfer"
+    old_s3 = transfer / "cloud-20261001" / "in"
+    old_s3.mkdir(parents=True)
+    for name in ("db.tar", "routemaker-20261001T070000Z.dump", "reference.tar"):
+        (old_s3 / name).write_text("old")
+    old_box = fake.root / "home" / "cloud-runs" / "cloud-20261001" / "in"
+    old_box.mkdir(parents=True)
+    for name in ("routemaker-20261001T070000Z.dump", "reference.tar"):
+        (old_box / name).write_text("old")
+    assert send(fake, home).returncode == 0
+
+    (fake.dir / "job_status").write_text("failed\n")
+    assert box(fake, "--no-stop")[0].returncode == 1
+    assert (old_s3 / "db.tar").exists() and (
+        old_box / "routemaker-20261001T070000Z.dump"
+    ).exists(), "a failed run deletes nothing"
+
+    (fake.dir / "job_status").write_text("succeeded\n")
+    built_tiles(fake.root / "box" / "data")
+    done, _ = box(fake, "--refire")
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert sorted(p.name for p in old_s3.iterdir()) == ["reference.tar"]
+    assert sorted(p.name for p in old_box.iterdir()) == ["reference.tar"]
+    assert (fake.in_bucket("in") / "db.tar").exists()
+    assert (fake.root / "home" / "cloud-runs" / "cloud-20261011" / "in" / "db.tar").exists()
 
 
 def test_refire_fires_a_new_job_after_a_failed_one(fake, home) -> None:

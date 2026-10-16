@@ -11,17 +11,21 @@
 #             repository.
 #
 # What goes to RUN_URL/in/:
-#   routemaker-<utc>.dump   the newest nightly backup under DATA_ROOT/backups. The box builds
-#                           from this copy of the database, so the owner's access overrides,
-#                           stress edits and Avoid junctions are all in its map.
+#   db.tar                  a dump made for this run by scripts/beta/ship-data.sh (its db part
+#                           only, --no-transfer): the same tables left out and the same person
+#                           columns blanked as the beta's data, and the same refusal of a dump
+#                           that carries them. No accounts, Homes, saved or shared routes, audit
+#                           log or sessions leave home; the approved overrides (the road panel's
+#                           stress edits among them) do, so they are all in the box's map.
 #   reference.tar           DATA_ROOT/reference (crossings, urban areas, traffic counts)
 #   elevation.tar           DATA_ROOT/elevation (saves the box the 3DEP download)
 #   extracts.tar            DATA_ROOT/extracts (the box applies the same six-day rule to it)
-#   MANIFEST.txt            run, commit, backup and read_at=<the backup's UTC time>
+#   MANIFEST.txt            run, commit, backup=db.tar and read_at=<the UTC time the dump began>
 #   SHA256SUMS              one line per file, sent LAST: a folder without it is unfinished,
 #                           and box-rebuild.sh refuses it
 #
-# READ-ONLY on the live stack: it reads DATA_ROOT and the checkout's git state and writes
+# READ-ONLY on the live stack: it reads DATA_ROOT, the checkout's git state and (through
+# ship-data.sh, with pg_dump and SELECTs) the database, which must be running, and writes
 # only under --stage (default ~/cloud-runs/<run>/in), which it refuses to place inside
 # DATA_ROOT or the checkout. The tars are made with sudo because DATA_ROOT's directories
 # belong to the containers' uid (10001); --numeric-owner keeps that owner for the box.
@@ -34,7 +38,8 @@
 #                    files (the box builds the commit, not those changes)
 #   --no-transfer    assemble and checksum the stage, send nothing
 #   -h, --help
-# Environment (for tests): CLOUD_AWS [aws], CLOUD_SUDO [sudo], CLOUD_GIT [git].
+# Environment (for tests): CLOUD_AWS [aws], CLOUD_SUDO [sudo], CLOUD_GIT [git],
+# CLOUD_SHIP_DATA [scripts/beta/ship-data.sh beside this script].
 set -Eeuo pipefail
 
 die() { echo "send-inputs: $*" >&2; exit 2; }
@@ -92,14 +97,6 @@ fi
 [ -n "$("$GIT" -C "$live_dir" branch -r --contains "$commit" 2>/dev/null)" ] ||
 	die "commit $commit is on no remote branch; push it first, or the box cannot check it out"
 
-backup=""
-for f in "$data_root"/backups/routemaker-*.dump; do
-	[ -f "$f" ] || continue
-	[[ "$(basename "$f")" =~ ^routemaker-[0-9]{8}T[0-9]{6}Z\.dump$ ]] || continue
-	backup=$f   # the glob sorts, and the names sort by time
-done
-[ -n "$backup" ] || die "no backup under $data_root/backups (routemaker-<utc>.dump); the nightly backup writes one at 07:00 UTC"
-read_at=$(basename "$backup" .dump); read_at=${read_at#routemaker-}
 for part in reference elevation extracts; do
 	[ -d "$data_root/$part" ] || die "$data_root/$part is missing"
 done
@@ -112,12 +109,23 @@ case "$stage/" in
 		die "--stage $stage is inside DATA_ROOT or the checkout; put it elsewhere" ;;
 esac
 mkdir -p "$stage"
+rm -rf "$stage/db-bundle"
 rm -f "$stage"/routemaker-*.dump "$stage"/*.tar "$stage/MANIFEST.txt" "$stage/SHA256SUMS"
 
-note "backup $(basename "$backup") (database as of $read_at), commit $commit"
-# The dump belongs to the containers' uid too, and may not be readable as you.
-$SUDO cp "$backup" "$stage/"
-$SUDO chown "$(id -u):$(id -g)" "$stage/$(basename "$backup")" 2>/dev/null || true
+# Not the nightly backup: that keeps accounts, Homes and the audit log for a restore here,
+# and none of them belongs in the cloud. The rebuild reads none of them either (it reads the
+# approved overrides and the segment tables). Taken before the dump starts, so an override
+# approved while it runs counts as later than the copy (import_cloud_build lists those).
+read_at=$(date -u +%Y%m%dT%H%M%SZ)
+backup=db.tar
+note "dumping the database without identities (scripts/beta/ship-data.sh's db part), commit $commit"
+(umask 077 && "${CLOUD_SHIP_DATA:-$here/../beta/ship-data.sh}" --live-dir "$live_dir" --stage "$stage/db-bundle" \
+	--no-transfer --without tiles --without elevation --without basemap --without photon \
+	--without transit --without frontend) ||
+	die "ship-data.sh made no database dump (its message is above)"
+[ -s "$stage/db-bundle/db/routemaker.dump" ] || die "ship-data.sh staged no db/routemaker.dump"
+(umask 077 && tar -C "$stage/db-bundle" -cf "$stage/$backup" db)
+rm -rf "$stage/db-bundle"
 for part in reference elevation extracts; do
 	note "packing $part"
 	$SUDO tar -C "$data_root" --numeric-owner -cf "$stage/$part.tar" "$part"
@@ -130,7 +138,7 @@ done
 	echo "read_at=$read_at"
 	echo "created=$(date -u +%Y%m%dT%H%M%SZ)"
 } >"$stage/MANIFEST.txt"
-(cd "$stage" && sha256sum -- "$(basename "$backup")" reference.tar elevation.tar extracts.tar MANIFEST.txt >SHA256SUMS)
+(cd "$stage" && sha256sum -- "$backup" reference.tar elevation.tar extracts.tar MANIFEST.txt >SHA256SUMS)
 note "staged in $stage: $(du -sh "$stage" | cut -f1)"
 
 if [ "$transfer" = 0 ]; then
