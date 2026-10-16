@@ -280,6 +280,13 @@ test("the switch and the skip link show above Go's top bar (review UI-1)", () =>
   assert.ok(z(".access-link") > z(".go-top"), "the switch above .go-top");
 });
 
+test("Map tools' crosshair is drawn at the map's centre, above the sheet (review UI-2)", () => {
+  assert.match(app, /return watchCentre\(map, setCrosshairAt\);/);
+  assert.match(app, /className="crosshair"[^>]*style=\{crosshairAt \? \{ left: crosshairAt\.x, top: crosshairAt\.y \}/);
+  const z = (selector: string) => Number(/z-index:\s*(\d+)/.exec(declared(selector))?.[1]);
+  assert.ok(z(".crosshair") > z(".panel"), "above the panel and Go's sheet");
+});
+
 test("the page's first two stops, the switch and the skip link, are at least 44 px tall (the a11y review's N3)", () => {
   assert.match(declared(".access-link"), /min-height:\s*44px/);
   assert.match(declared(".skip-link"), /min-height:\s*44px/);

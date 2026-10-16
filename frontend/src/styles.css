@@ -802,7 +802,8 @@ button.secondary {
   margin-top: 0;
 }
 
-/* The map's center, which Map tools' two actions use, while it is open. */
+/* The map's center, which Map tools' two actions use, while it is open. App.tsx sets left and top to
+   where the centre is drawn (review UI-2); above the panel (z-index 2), so Go's sheet does not hide it. */
 .crosshair {
   position: absolute;
   left: 50%;
@@ -811,7 +812,7 @@ button.secondary {
   height: 28px;
   margin: -14px 0 0 -14px;
   pointer-events: none;
-  z-index: 1;
+  z-index: 3;
   background:
     linear-gradient(#111 0 0) center / 2px 100% no-repeat,
     linear-gradient(#111 0 0) center / 100% 2px no-repeat;

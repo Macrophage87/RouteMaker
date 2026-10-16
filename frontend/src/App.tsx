@@ -84,7 +84,7 @@ import { RAIL_STATIONS, WMATA_SLUGS, stationEntranceForPlace } from "./lib/railD
 import { federalShown, type FederalData } from "./lib/federalLand.ts";
 import { FEDERAL_POINTS_NONE, type FederalStatus } from "./lib/federalLegend.ts";
 import { federalAreaAt, federalRouteLines, pointAreas, stopWarningShort } from "./lib/federalStops.ts";
-import { addCoverageMask, fetchCoverage, watchForCapacity, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
+import { addCoverageMask, fetchCoverage, watchForCapacity, watchForFacilities, watchCentre, watchZoom } from "./lib/mapGlue.ts";
 import { isMassRide, massBandsChangeSaid, massBandsSaid } from "./lib/massCapacity.ts";
 import { movePoint, planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
 import { mapWhen } from "./lib/rideTime.ts";
@@ -692,6 +692,15 @@ export function App() {
     setRidePrefs(next);
   }, []);
   const mapRef = useRef<MapLibreMap | null>(null);
+  // Where the map's centre is drawn while the crosshair shows (review UI-2): after a padded move it
+  // is not the middle of the map, and Map tools' actions use the centre.
+  const crosshairShown = crosshair.button || crosshair.canvas;
+  const [crosshairAt, setCrosshairAt] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!crosshairShown || !map) return;
+    return watchCentre(map, setCrosshairAt);
+  }, [crosshairShown]);
   const panelRef = useRef<HTMLElement>(null);
   const panelBodyRef = useRef<HTMLDivElement>(null);
   const removeRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -3456,7 +3465,9 @@ export function App() {
         onPlace={placeSpot}
         onSetHome={(point) => void setHomeAt(point)}
       />
-      {(crosshair.button || crosshair.canvas) && <div className="crosshair" aria-hidden="true" />}
+      {crosshairShown && (
+        <div className="crosshair" aria-hidden="true" style={crosshairAt ? { left: crosshairAt.x, top: crosshairAt.y } : undefined} />
+      )}
       {!riding && !goMode && <PlanMapChips onFood={(chip) => openView("food", chip)} onWater={(chip) => openView("nearest", chip)} onPlaces={openPlaces} />}
       {!riding && narrow && (can.undo || can.redo) && (
         // On a phone the sheet may be hidden while the rider edits the map,
