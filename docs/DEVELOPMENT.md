@@ -91,10 +91,12 @@ session fails to decode on the next request and is discarded. **Every signed-in
 user is signed out**, and signs back in through Discord. Nothing is corrupted
 and nothing needs repair. docs/DEPLOYMENT.md, "Secrets, and what rotating one
 costs", has the same two alongside `PGPASSWORD`, whose rotation is a procedure
-rather than an edit.
+rather than an edit. It is required too unless `DJANGO_DEBUG=1`: outside DEBUG an
+unset or empty `DJANGO_SECRET_KEY` stops the process at import, since the
+development default is a string in this repository.
 
-The suite supplies its own value through `config.test_settings`, which is
-`config.settings` plus that one default and nothing else. It cannot come from
+The suite supplies its own values through `config.test_settings`, which is
+`config.settings` plus those two defaults and nothing else. It cannot come from
 `tests/conftest.py`: pytest-django sets Django up while it loads the initial
 conftests, before any conftest body has run.
 

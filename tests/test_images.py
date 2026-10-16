@@ -1034,6 +1034,7 @@ def test_every_path_the_api_modules_hold_is_in_the_api_image(tmp_path) -> None:
             "PYTHONPATH": str(tmp_path / "src"),
             "PATH": os.environ.get("PATH", ""),
             "KEY_ENCRYPTION_KEY": "test",
+            "DJANGO_SECRET_KEY": "test",
         },
         capture_output=True,
         text=True,
