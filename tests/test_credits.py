@@ -3,9 +3,11 @@ the license doesn't require crediting them, sources need citing"), briefly, with
 full reference on the sources page (306: "keep it brief and put the full information
 in documentation. Sort of like how you'd cite in a paragraph"): each credit the API
 and the front end display has a `Credit:` line in docs/SOURCES.md, and each credited
-source there is displayed. The internal-comparison layers (Arlington's Bike Comfort
-Index, Alexandria's Transport Streets: OWNER-DECISIONS 152, 153, 155) are cited
-nowhere a rider sees."""
+source there is displayed. The internal-comparison layer (Arlington's Bike Comfort
+Index: OWNER-DECISIONS 152, 155) is cited nowhere a rider sees. Alexandria's
+Transport Streets was internal too until the city confirmed, on 2026-10-16, that its
+OpenData portal is CC0 (Alex311 request 26-00041150); it is now credited "City of
+Alexandria"."""
 
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ from core import geocode, routing
 REPO = Path(__file__).resolve().parents[1]
 SOURCES = REPO / "docs" / "SOURCES.md"
 FRONTEND_CREDITS = REPO / "frontend" / "src" / "lib" / "credits.json"
-NEVER = ("arlington", "alexandria", "bike comfort index", "transport streets")
+NEVER = ("arlington", "bike comfort index")
 # A brief credit is a short name: no description of what it is used for (306).
 LONGEST_M = 60
 
@@ -87,6 +89,7 @@ def test_what_each_answer_is_made_from_is_cited() -> None:
         "DC Open Data (CC BY 4.0, adapted)",
         "VDOT",
         "Open Baltimore",
+        "City of Alexandria",
         "Montgomery County Planning Department",
         "USGS 3DEP",
         "U.S. Census Bureau",
