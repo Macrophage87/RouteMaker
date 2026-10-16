@@ -59,11 +59,8 @@ area assembly (multipolygon relations and closed ways alike):
   `access=yes|permissive` or a cycleway; `works_open_tags`), it is a numbered public
   road, or an owner's override reopens it. An
   industrial area holds public streets as well as its own drives (an industrial park's
-  roads, a business district's streets and sidewalks), so there only its service roads,
-  tracks, unnamed ways of an unclear class and untagged walkways close; a public-class
-  street (`WORKS_PUBLIC_HIGHWAY`), a sidewalk or a walkway tagged public
-  (`works_walkway_open`), or another named street, stays open and is listed. Listed
-  in the rebuild's `works-closures.csv`.
+  named roads), so there only its service roads, tracks and unnamed ways close; a named
+  street in one stays open and is listed. Listed in the rebuild's `works-closures.csv`.
 - `park` - `leisure=park` or `nature_reserve`, `boundary=national_park` or
   `protected_area`, or an operator that is the National Park Service. An
   untagged `highway=path` inside one is closed to bicycles, and kept outside
@@ -882,9 +879,7 @@ def secured_missing(areas: Sequence[Area]) -> list[str]:
 WORKS_NO_BICYCLE = "works"
 WHY_WORKS = "closed: inside a working site (quarry, landfill or industrial)"
 WHY_WORKS_TAGGED_OPEN = "open: its own access/bicycle tag lets the public ride it"
-WHY_WORKS_STREET = (
-    "open: a public street or path in an industrial area; owner to check it is public"
-)
+WHY_WORKS_STREET = "open: a named street in an industrial area; owner to check it is public"
 WHY_WORKS_DC_STREET = (
     "open: a public street in DDOT's Roadway Block records (DC data wins over OSM, "
     "OWNER-DECISIONS 190)"
@@ -903,60 +898,15 @@ def _works_label(area) -> str:
     return f"{name} ({landuse})" if name else landuse
 
 
-# The classes that are a public street in an industrial area, named or not: a landuse
-# outline drawn over a whole business district holds its streets and their sidewalks (the
-# v0.7.0 staging rebuild closed 1,188 footways and 111 residential streets in industrial
-# areas). Only the site's own drives - service roads, tracks, and an unnamed way of an
-# unclear class - close there unless their tags open them. A walkway (`WORKS_WALKWAY`)
-# is a street's only when it says so (`works_walkway_open`).
-WORKS_PUBLIC_HIGHWAY = frozenset(
-    {
-        "residential",
-        "living_street",
-        "tertiary",
-        "tertiary_link",
-        "secondary",
-        "secondary_link",
-        "primary",
-        "primary_link",
-        "trunk",
-        "trunk_link",
-        "cycleway",
-    }
-)
-WORKS_WALKWAY = frozenset({"footway", "path", "pedestrian"})
-# A walkway that is part of a street: its sidewalk or a crossing of it.
-WORKS_STREET_FOOTWAY = frozenset({"sidewalk", "crossing"})
-WORKS_WALKWAY_KEYS = (*ACCESS_KEYS, "foot")
-
-
-def works_walkway_open(tags) -> bool:
-    """A footway, path or pedestrian way in an industrial area that is public: a street's
-    sidewalk or crossing (`footway=sidewalk|crossing`), or tagged open to bicycles or the
-    public (`foot`, `bicycle` or `access` yes, designated or permissive), and kept to no
-    one by `foot` or any access key (`WORKS_CLOSING_ACCESS`). An untagged walkway between
-    a site's buildings is the site's own, and closes (unclear access is closed,
-    OWNER-DECISIONS 330)."""
-    if any(tags.get(key) in WORKS_CLOSING_ACCESS for key in WORKS_WALKWAY_KEYS):
-        return False
-    return tags.get("footway") in WORKS_STREET_FOOTWAY or any(
-        tags.get(key) in PUBLIC_BICYCLE for key in ("foot", "bicycle", "access")
-    )
-
-
 def works_street(tags) -> bool:
-    """A way in an industrial area that is not one of the site's own drives: a street
-    of a public class (`WORKS_PUBLIC_HIGHWAY`), a public walkway (`works_walkway_open`),
-    or any other named way that is not a service road or a track, public unless its
-    tags say otherwise (`access`, `vehicle`, `bicycle` or `motor_vehicle` in
-    `WORKS_CLOSING_ACCESS`: no, private, destination, customers ...)."""
-    highway = tags.get("highway")
-    if highway in WORKS_WALKWAY:
-        return works_walkway_open(tags)
+    """A named way in an industrial area that is not one of the site's own drives: a
+    street of an industrial park, public unless its tags say otherwise (`access` or
+    `vehicle` in `WORKS_CLOSING_ACCESS`: no, private, destination, customers ...)."""
     return (
-        highway in WORKS_PUBLIC_HIGHWAY
-        or (bool(tags.get("name")) and highway not in ("service", "track"))
-    ) and not any(tags.get(key) in WORKS_CLOSING_ACCESS for key in ACCESS_KEYS)
+        bool(tags.get("name"))
+        and tags.get("highway") not in ("service", "track")
+        and not any(tags.get(key) in WORKS_CLOSING_ACCESS for key in ACCESS_KEYS)
+    )
 
 
 def works_open_tags(tags) -> bool:
@@ -1000,11 +950,11 @@ def works_closures(
     numbered public road, a public street DDOT's Roadway Block records hold (`dc_streets`,
     the ways matched to a District block: DC data wins over OSM, OWNER-DECISIONS 190,
     named in OSM or not), a way whose own tags let the public ride it
-    (`works_open_tags`), and, in an industrial area only, a public-class street or path,
-    or another named way that is not a service road or a track, not kept to
-    destinations or customers (`works_street`). Everything else closes: a haul road
-    tagged `highway=track` and nothing else among it. `skip` are the ways the military
-    and secured rules already judged."""
+    (`works_open_tags`), and, in an industrial area only, a named street that is not a
+    service road or a track and is not kept to destinations or customers
+    (`works_street`). Everything else closes: a haul road tagged `highway=track` and
+    nothing else among it. `skip` are the ways the military and secured rules already
+    judged."""
     if not areas:
         return []
     all_ways = [a for a in areas if getattr(a, "landuse", "") in WORKS_ALL_WAYS]
