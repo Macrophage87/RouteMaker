@@ -96,6 +96,8 @@ def test_the_three_geofabrik_extracts_are_the_plans_three_states() -> None:
         "https://download.geofabrik.de/north-america/us/district-of-columbia-latest.osm.pbf",
         "https://download.geofabrik.de/north-america/us/maryland-latest.osm.pbf",
         "https://download.geofabrik.de/north-america/us/virginia-latest.osm.pbf",
+        # v0.7.0: the Eastern Panhandle inside the -78.05 west edge (Martinsburg, Harpers Ferry).
+        "https://download.geofabrik.de/north-america/us/west-virginia-latest.osm.pbf",
     )
 
 
@@ -595,7 +597,7 @@ def test_the_stage_produces_both_files_from_the_three_downloads(tmp_path) -> Non
     assert produced.merged == tmp_path / "extracts" / "merged.osm.pbf"
     assert produced.clipped == tmp_path / "extracts" / "source.osm.pbf"
     assert produced.merged.is_file() and produced.clipped.is_file()
-    assert len(run.named("curl")) == 3
+    assert len(run.named("curl")) == 4
     assert [c[-1] for c in run.named("curl")] == list(source.GEOFABRIK_EXTRACTS)
     assert len(run.named("osmium", "merge")) == 1
     assert len(run.named("osmium", "extract")) == 1
@@ -603,7 +605,7 @@ def test_the_stage_produces_both_files_from_the_three_downloads(tmp_path) -> Non
     # The clip is taken from the merged file, not from one state's download.
     assert produced.clipped.read_text() == (
         "clip(osm:district-of-columbia-latest.osm.pbf+osm:maryland-latest.osm.pbf"
-        "+osm:virginia-latest.osm.pbf)"
+        "+osm:virginia-latest.osm.pbf+osm:west-virginia-latest.osm.pbf)"
     )
     # And the merged file is *not* the clip: it is what admin data is built from
     # before clipping.
@@ -631,7 +633,7 @@ def test_the_stage_rebuilds_a_stale_extract(tmp_path) -> None:
     again = source.ensure_extract(tmp_path, BBOX, run)
 
     assert again.refreshed
-    assert len(run.named("curl")) == 6, "the three regions again"
+    assert len(run.named("curl")) == 8, "the four regions again"
 
 
 def test_the_stage_rebuilds_when_a_refresh_is_forced(tmp_path) -> None:
@@ -642,7 +644,7 @@ def test_the_stage_rebuilds_when_a_refresh_is_forced(tmp_path) -> None:
 
     again = source.ensure_extract(tmp_path, BBOX, run, force=True)
 
-    assert again.refreshed and len(run.named("curl")) == 6
+    assert again.refreshed and len(run.named("curl")) == 8
 
 
 def test_the_stage_clips_to_the_region_it_is_given(tmp_path) -> None:

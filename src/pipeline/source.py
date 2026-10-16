@@ -74,7 +74,10 @@ logger = logging.getLogger(__name__)
 # under the same URL, which is what makes the freshness rule below mean
 # something.
 GEOFABRIK_BASE_URL = "https://download.geofabrik.de/north-america/us/"
-GEOFABRIK_REGIONS = ("district-of-columbia", "maryland", "virginia")
+# West Virginia since v0.7.0: the Eastern Panhandle (Martinsburg, Harpers Ferry, Shepherdstown,
+# Charles Town) inside the coverage box's -78.05 west edge (config.settings.COVERAGE_BBOX). Small
+# next to Virginia and Maryland; the clip drops all but the panhandle.
+GEOFABRIK_REGIONS = ("district-of-columbia", "maryland", "virginia", "west-virginia")
 GEOFABRIK_EXTRACTS = tuple(
     f"{GEOFABRIK_BASE_URL}{region}-latest.osm.pbf" for region in GEOFABRIK_REGIONS
 )

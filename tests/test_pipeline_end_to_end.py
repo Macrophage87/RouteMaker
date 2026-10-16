@@ -212,7 +212,7 @@ def fresh_deployment(segment_schemas):
 def test_a_first_rebuild_downloads_merges_and_clips_its_own_extract(
     fresh_deployment, states
 ) -> None:
-    """The whole of B-1, through the real stage: three Geofabrik downloads, one
+    """The whole of B-1, through the real stage: four Geofabrik downloads, one
     merge, one clip, both files kept, and the rebuild carries on to populate
     staging from what it produced."""
     source, root = fresh_deployment
@@ -225,6 +225,7 @@ def test_a_first_rebuild_downloads_merges_and_clips_its_own_extract(
         "https://download.geofabrik.de/north-america/us/district-of-columbia-latest.osm.pbf",
         "https://download.geofabrik.de/north-america/us/maryland-latest.osm.pbf",
         "https://download.geofabrik.de/north-america/us/virginia-latest.osm.pbf",
+        "https://download.geofabrik.de/north-america/us/west-virginia-latest.osm.pbf",
     ]
     osmium = binaries.commands("osmium")
     assert [c[1] for c in osmium] == ["merge", "extract"], "merged, then clipped"
@@ -272,7 +273,7 @@ def test_an_extract_older_than_the_limit_is_rebuilt(workspace, states) -> None:
     binaries = FakeBinaries()
     run_pipeline(source, root, binaries=binaries, skip=NOT_SWAPPED)
 
-    assert len(binaries.commands("curl")) == 3, "the three states again"
+    assert len(binaries.commands("curl")) == 4, "the four states again"
     assert source.stat().st_mtime > eight_days_ago, "and this week's clip replaced it"
 
 
@@ -295,7 +296,7 @@ def test_a_partial_download_left_behind_is_never_read_as_the_extract(
     binaries = FakeBinaries()
     run_pipeline(source, root, binaries=binaries, skip=NOT_SWAPPED)
 
-    assert len(binaries.commands("curl")) == 3, "the partial file is not a download"
+    assert len(binaries.commands("curl")) == 4, "the partial file is not a download"
     for path in partials:
         assert not path.exists(), f"{path.name} was left behind"
     assert source.read_bytes() != partials[root / "extracts" / "source.osm.pbf.part"]
@@ -306,7 +307,7 @@ def test_the_disk_gate_refuses_before_the_extract_is_downloaded(fresh_deployment
     """The gate runs before the download, not after it.
 
     The extract is the largest thing this rebuild puts on the data volume - the
-    three state files, the merge, then the clip, all under <DATA_ROOT>/extracts,
+    four state files, the merge, then the clip, all under <DATA_ROOT>/extracts,
     which is the volume the gate measures - so a gate that ran once the extract
     was on disk would be a gate on a volume the rebuild had already filled.
     With no extract to measure it is sized from `source.ESTIMATED_BYTES`.

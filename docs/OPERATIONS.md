@@ -2870,12 +2870,14 @@ missing", and wherever somebody had made the file by hand every later weekly
 rebuild re-derived the whole map from that one frozen snapshot — a weekly
 refresh that refreshed nothing.
 
-What is downloaded, per PLAN:13, is Geofabrik's three state extracts:
+What is downloaded, per PLAN:13, is Geofabrik's state extracts (West Virginia added in v0.7.0 for
+the Eastern Panhandle):
 
 ```
 https://download.geofabrik.de/north-america/us/district-of-columbia-latest.osm.pbf
 https://download.geofabrik.de/north-america/us/maryland-latest.osm.pbf
 https://download.geofabrik.de/north-america/us/virginia-latest.osm.pbf
+https://download.geofabrik.de/north-america/us/west-virginia-latest.osm.pbf
 ```
 
 **Roughly 1–2 GB in total at today's sizes** — Virginia and Maryland are most of
@@ -5751,7 +5753,7 @@ file published early on 2026-10-07 holds edits up to about 2026-10-06 20:21 UTC 
 EDT). First check that Geofabrik's current build is new enough (three small text files):
 
 ```sh
-for r in district-of-columbia maryland virginia; do
+for r in district-of-columbia maryland virginia west-virginia; do
   curl -fsS https://download.geofabrik.de/north-america/us/$r-updates/state.txt | grep '^timestamp'
 done                                                             # each at or after the owner's last 2026-10-06 edit
 ```
@@ -5952,7 +5954,7 @@ when it succeeds. Once the second line is there, check what was downloaded in a 
 shell (set `D` again), while the build carries on:
 
 ```sh
-for r in district-of-columbia maryland virginia; do
+for r in district-of-columbia maryland virginia west-virginia; do
   docker compose exec -T rebuild osmium fileinfo -g header.option.osmosis_replication_timestamp /data/extracts/$r-latest.osm.pbf </dev/null
 done                                                             # each the timestamp checked before E, or later
 ls -l --time-style=full-iso $D/extracts/source.osm.pbf           # written within the last hour (ls shows local time, EDT)

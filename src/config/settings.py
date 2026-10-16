@@ -192,7 +192,7 @@ VALHALLA_CONFIG_DIR = BASE_DIR / "valhalla"
 # Photon index, water/restroom/food layers and the stress tile pre-draw are
 # re-run over the new box. The box only says where the map may reach: West
 # Virginia's roads are in the map only once its Geofabrik extract is downloaded
-# with the other three (`pipeline.source.GEOFABRIK_REGIONS`, the PC's wip/wv).
+# with the others (`pipeline.source.GEOFABRIK_REGIONS`, which lists it since v0.7.0).
 COVERAGE_BBOX = (-78.05, 38.2, -76.02, 39.72)
 
 # The coverage polygon itself, which `osmium extract --polygon` would take in
