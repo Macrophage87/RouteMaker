@@ -1290,10 +1290,10 @@ removes the agent, its logs and its snapshots (owner's say-so: they hold databas
 - **No rebuild runs here.** There is no rebuild container, and `WEEKLY_REBUILD_PAUSED=1` is set so that a rebuild
   worker started by mistake would only record a pause. New routing data always comes from home as a bundle. Expected,
   and not a fault: the worker's schedule still queues the weekly tick, and with no rebuild worker to take it one
-  `weekly_rebuild` job waits on the `rebuild` queue (its queueing lock keeps it to one), and `check_operations` and
-  the admin's operations page list `weekly_rebuild` as stale, from about eight days after setup (its
-  staleness window runs from the deployment; nothing shows in the first week). Do not start a rebuild worker to
-  clear either. **Never run `run_rebuild_now` here** (for example `beta-compose.sh exec worker ./manage.py
+  `weekly_rebuild` job waits on the `rebuild` queue (its queueing lock keeps it to one). `check_operations` and
+  the admin's operations page list `weekly_rebuild` as **paused**, not stale, while `WEEKLY_REBUILD_PAUSED` is set
+  (from v0.7.0; before it, they called it stale from about eight days after setup), and the free-space check drops
+  the rebuild's 20 GiB floor. Do not start a rebuild worker to clear the waiting job. **Never run `run_rebuild_now` here** (for example `beta-compose.sh exec worker ./manage.py
   run_rebuild_now`): a hand-fired rebuild ignores the pause by design, and the wrapper does not catch it.
 - **`scripts/boot/` is for the home machine only.** Never install its unit or run `start-stack.sh` here (step 1).
 - **What the bundle holds** (sizes measured 2026-10-04): the four routing graphs' `tiles.tar` and sqlite files 2.2 GB
