@@ -22,10 +22,10 @@
  */
 import type { RouteResponse } from "./api.ts";
 import type { DeviceProfile } from "./deviceProfiles.ts";
-import { formatDistance, formatFeet, milesFigure } from "./format.ts";
+import { formatDistance, formatFeet, formatMilesCapped } from "./format.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { COPYRIGHT_AUTHOR, CREATOR } from "./gpx.ts";
-import { elevationsAlong, exportName } from "./gpxText.ts";
+import { elevationsAlong, exportFileName, exportName } from "./gpxText.ts";
 import { rideModel, type Cue } from "./navigate.ts";
 import { presetSaid } from "./presets.ts";
 
@@ -213,7 +213,7 @@ export function thin(line: readonly LonLat[], toleranceM: number, keep: Readonly
 /** The course's name: the longest wording that fits, with FIT's credit after it where that fits too. */
 export function courseName(route: Pick<RouteResponse, "preset" | "distance_m">, chars: number, format: CourseFormat): string {
   const ride = presetSaid(route.preset);
-  const miles = `${milesFigure(route.distance_m)} mi`;
+  const miles = formatMilesCapped(route.distance_m);
   const options = [exportName(route), `${ride} ${formatDistance(route.distance_m)}`, `${ride} ${miles}`, formatDistance(route.distance_m), `${miles} route`];
   const name = options.find((o) => Array.from(o).length <= chars) ?? clip(options[options.length - 1], chars);
   return format === "fit" && Array.from(name + FIT_NAME_CREDIT).length <= chars ? name + FIT_NAME_CREDIT : name;
@@ -333,5 +333,5 @@ export function courseLine(course: Pick<Course, "format" | "trim">): string {
 
 /** The file's name: the GPX export's (gpxText.ts exportFileName), with the format's extension. */
 export function courseFileName(route: Pick<RouteResponse, "preset" | "distance_m">, format: CourseFormat): string {
-  return `routemaker-${route.preset}-${milesFigure(route.distance_m).replace(".", "_")}mi.${format}`;
+  return exportFileName(route).replace(/\.gpx$/, `.${format}`);
 }

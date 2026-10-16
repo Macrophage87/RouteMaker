@@ -136,7 +136,7 @@ class FitWriter {
   }
 
   /** The whole file: the 14-byte header with its CRC, the records, and the file's CRC. */
-  bytes(): Uint8Array {
+  bytes(): Uint8Array<ArrayBuffer> {
     const data = this.chunks;
     const out = new Uint8Array(14 + data.length + 2);
     out[0] = 14;
@@ -162,7 +162,7 @@ function sizeFor(texts: readonly string[]): number {
 }
 
 /** The FIT course file for a compiled course (course.ts compileCourse with format "fit"). */
-export function writeFit(course: Course): Uint8Array {
+export function writeFit(course: Course): Uint8Array<ArrayBuffer> {
   const w = new FitWriter();
   const t0 = course.baseUnixS - FIT_EPOCH_UNIX_S;
   const at = (s: number) => t0 + Math.round(s);

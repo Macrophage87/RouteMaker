@@ -17,7 +17,7 @@ import {
   thin,
 } from "./course.ts";
 import { TCX_NS, writeTcx } from "./tcx.ts";
-import { at, sampleRoute } from "./courseTestRoute.ts";
+import { at, sampleRoute } from "./courseRoute.test.fixture.ts";
 
 const GENERIC = deviceProfile(DEFAULT_PROFILE);
 

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { DEFAULT_PROFILE, deviceProfile, type DeviceProfile } from "./deviceProfiles.ts";
 import { compileCourse, COURSE_BASE_UNIX_S } from "./course.ts";
 import { FIT_EPOCH_UNIX_S, fitCrc, semicircles, writeFit } from "./fit.ts";
-import { sampleRoute } from "./courseTestRoute.ts";
+import { sampleRoute } from "./courseRoute.test.fixture.ts";
 
 interface Message {
   global: number;
