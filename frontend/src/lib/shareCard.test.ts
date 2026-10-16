@@ -195,6 +195,9 @@ test("Home: an end within 300 m of it has no pin, and the line is cut 0.2 mi sho
   const far = { point: [-77.0, 38.9 - 400 / 111_195] as LonLat, label: "x" };
   assert.deepEqual(cardRoute(LINE, points, far)!.line, LINE);
   assert.equal(homeEnd(LINE, points, far), false);
+  // A stop at Home refuses the QR code too (the link carries every point).
+  assert.equal(homeEnd(LINE, points, { point: LINE[10], label: "" }), true);
+  assert.equal(homeEnd(LINE, points, null), false);
 
   // Too short to draw without showing Home.
   const short = [...LINE.slice(0, 4), ...LINE.slice(0, 3).reverse()];

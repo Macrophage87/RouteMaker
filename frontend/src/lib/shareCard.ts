@@ -41,7 +41,7 @@ export const IMAGE_SHARE_FAILED = "Could not open the share sheet. Use Download 
 
 export const QR_NEEDS_CONNECTION = "Needs a connection: the QR code opens the shared link, made online.";
 export const QR_WAITS_FOR_ROUTE = "Available once the route has finished planning.";
-export const QR_HOME_END = "Not available: this route starts or ends at Home, and its link would show where.";
+export const QR_HOME_END = "Not available: this route starts, ends or stops at Home, and its link would show where.";
 export const QR_LINK_FAILED = "Could not make the shared link, so the QR code is left out. Try again when online.";
 export const PROFILE_NONE = "Not available: this route has no elevation data.";
 export const HOME_TOO_SHORT = "This route is too short to draw without showing Home.";
@@ -260,8 +260,8 @@ export type QrAvailability = { ok: true } | { ok: false; why: string };
 
 /**
  * Whether the QR code can be turned on. It opens the shared link, made as Share makes it (the exact line kept on
- * the server), so it needs a connection and a settled route. A route starting or ending at Home is refused: the
- * card hides Home, and the link's line and points would show it.
+ * the server), so it needs a connection and a settled route. A route that starts, ends or stops at Home is refused:
+ * the card hides Home, and the link's line and points would show it.
  */
 export function qrAvailability(opts: { online: boolean; settled: boolean; homeEnd: boolean }): QrAvailability {
   if (opts.homeEnd) return { ok: false, why: QR_HOME_END };
@@ -270,9 +270,9 @@ export function qrAvailability(opts: { online: boolean; settled: boolean; homeEn
   return { ok: true };
 }
 
-/** A route's end at Home (the QR code is then refused). */
+/** A route's end or stop at Home (the QR code is then refused). */
 export const homeEnd = (line: readonly LonLat[], points: readonly LonLat[], home: Home | null): boolean =>
-  nearHome(line[0], home) || nearHome(line[line.length - 1], home) || nearHome(points[0], home) || nearHome(points[points.length - 1], home);
+  nearHome(line[0], home) || nearHome(line[line.length - 1], home) || points.some((p) => nearHome(p, home));
 
 /** The QR code's modules as a square of booleans, from any encoder with qrcode-generator's shape. */
 export function qrModules(qr: { getModuleCount(): number; isDark(row: number, col: number): boolean }): boolean[][] {
