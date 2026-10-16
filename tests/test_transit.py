@@ -324,6 +324,31 @@ def test_the_service_day_runs_to_3_am_and_a_holiday_is_flagged() -> None:
     assert transit.clock(25 * 60 + 30) == "1:30 am" and transit.clock(19 * 60 + 42) == "7:42 pm"
 
 
+@pytest.mark.parametrize("service_day", [date(2026, 10, 31), date(2027, 3, 13)])
+def test_typical_metro_departures_are_the_wall_clock_across_a_clock_change(service_day) -> None:
+    """TB-10: Metro's typical timetable gives wall-clock minutes, which the schedule counts
+    from the GTFS day zero (noon less 12 hours). The two agree on the nights the clocks change
+    (2026-11-01, 2027-03-14) only while no train leaves at or after 2 am, the change itself:
+    the file's latest closing is 26:00, so every departure is before it. A later closing hour
+    would need the conversion through the local zone, and fails here first."""
+    from datetime import time, timedelta
+
+    doc = transit._typical_doc()
+    day_type = transit.typical_day_type(service_day, doc)
+    zero = transit.day_zero(service_day)
+    for line in doc["lines"]:
+        for minute in transit.typical_departures(doc, line, day_type):
+            elapsed = (zero + timedelta(minutes=minute)).astimezone(transit.ZONE)
+            day, left = divmod(minute, 24 * 60)
+            wall = datetime.combine(
+                service_day + timedelta(days=day), time(left // 60, left % 60), transit.ZONE
+            )
+            assert elapsed == wall and elapsed.replace(tzinfo=None) == wall.replace(tzinfo=None), (
+                line,
+                minute,
+            )
+
+
 def test_times_are_real_across_the_end_of_daylight_saving_on_2026_11_01() -> None:
     # 2026-11-01 has 25 hours (2 am EDT becomes 1 am EST). GTFS times count from noon less 12 h,
     # so its 08:00 is 8 am EST, and the page's clock carries the right offset.
