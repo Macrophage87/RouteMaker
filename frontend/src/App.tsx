@@ -2467,7 +2467,8 @@ export function App() {
           [pending.line[before][0], pending.line[before][1]],
           [pending.line[after][0], pending.line[after][1]],
         ];
-        const result = await requestRoute(ends, rideRef.current.preset, { dials: planDials });
+        // The detour's line alone is used: no routes to choose from (review speed-5).
+        const result = await requestRoute(ends, rideRef.current.preset, { dials: planDials, routeOnly: true });
         return result.ok ? result.route.geometry.coordinates.map(([lon, lat]) => [lon, lat] as LonLat) : null;
       }),
     );

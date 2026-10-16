@@ -85,6 +85,10 @@ test("a ride's re-plan asks for the route alone, and nothing else does (review s
   const calls = ride.match(/requestRoute\([^;]*\);/g) ?? [];
   assert.equal(calls.length, 1);
   assert.match(calls[0], /routeOnly: true/);
+  // A closure's detour uses the line alone too.
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  const reroute = app.slice(app.indexOf("const closureReroute"), app.indexOf("const downloadRoute"));
+  assert.match(reroute, /requestRoute\([^;]*routeOnly: true[^;]*\);/);
 });
 
 // --- The scheduler's refine ------------------------------------------------------------------
