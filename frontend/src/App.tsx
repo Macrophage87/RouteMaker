@@ -183,7 +183,8 @@ import { KEEPING_SAID, keepOffered, keepSaid, keptPlanKey, offlineRouteNotice, r
 import { askPersist } from "./lib/offlineRouteStore.ts";
 import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
 import { fetchHazards, type HazardCollection } from "./lib/massHazards.ts";
-import { NARROW, useLongerThan, useNarrow, useSettled } from "./app/hooks.ts";
+import { NARROW, useLongerThan, useMinute, useNarrow, useSettled } from "./app/hooks.ts";
+import { routeLightMarks, sameLightMarks, type LightMark } from "./lib/lightTimes.ts";
 import { PointsSection, RideSection } from "./app/Planner.tsx";
 import { RouteSection, type Status } from "./app/RoutePanel.tsx";
 import { FoodSheet, GpxSheet, LayersSheet, LegendSheet, NearestSheet, ReviewSheet, RideChips, RideGroupChips, RideSheet, SettingsSheet, SuggestSheet, type SheetNav } from "./app/Sheets.tsx";
@@ -2712,6 +2713,15 @@ export function App() {
 
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
+  // Light times on the route (lib/lightTimes.ts): near dawn or dusk, where the rider will be at each, leaving now.
+  // The clock runs only with a route shown, outside a ride; the same marks are kept while nothing they say changed.
+  const minute = useMinute(shown !== null && !riding && (mode === "plan" || mode === "go"));
+  const lightKept = useRef<LightMark[]>([]);
+  const light = useMemo(() => {
+    const next = routeLightMarks(shown, minute, dials.when ?? null);
+    if (!sameLightMarks(lightKept.current, next)) lightKept.current = next;
+    return lightKept.current;
+  }, [shown, minute, dials.when]);
   // Share as image (ShareCardDialog, lib/shareCard.ts), beside Share in Plan's More: the route shown, the rider's
   // Home (never drawn: an end there is cut short), and an opened file's own name.
   const [shareCardOpen, setShareCardOpen] = useState(false);
@@ -3409,7 +3419,7 @@ export function App() {
         confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
         narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, startRideRef, rideSize, setDials,
         waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs,
-        rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong,
+        rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong, light,
       }}
     />
   );
@@ -3473,6 +3483,7 @@ export function App() {
         route={riding && rideView ? rideView.route : shown}
         stale={riding ? false : stale || planEdited}
         ghost={riding ? null : ghost}
+        lightMarks={riding || mode !== "plan" ? null : light}
         stressVisible={stressVisible && stress === "available"}
         when={mapWhen(dials.when ?? null)}
         framePadding={framePadding}

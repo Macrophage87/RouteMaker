@@ -96,6 +96,12 @@ export function formatDistanceChange(metres: number): string {
   return `${(m / METRES_PER_MILE).toFixed(1)} mi (${(m / 1000).toFixed(1)} km)`;
 }
 
+/** How far along a route, miles first: "mile 12.4 (20.0 km)"; under a tenth of a mile, "the start". */
+export function formatMilePost(metres: number): string {
+  if (!usable(metres) || metres < FEET_BELOW_M) return "the start";
+  return `mile ${milesFigure(metres)} (${(metres / 1000).toFixed(1)} km)`;
+}
+
 /** "4.7 mi (7.6 km)"; below a tenth of a mile "500 ft (150 m)". */
 export function formatDistance(metres: number): string {
   if (!usable(metres)) return DASH;

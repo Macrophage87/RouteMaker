@@ -24,6 +24,7 @@ export const ICON_PATHS = {
   "download": "<path d=\"M12 3v12M7 10l5 5 5-5M4 20h16\"/>",
   "link": "<path d=\"M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1\"/>",
   "more": "<circle cx=\"5\" cy=\"12\" r=\"1.4\" fill=\"currentColor\"/><circle cx=\"12\" cy=\"12\" r=\"1.4\" fill=\"currentColor\"/><circle cx=\"19\" cy=\"12\" r=\"1.4\" fill=\"currentColor\"/>",
+  "sun": "<circle cx=\"12\" cy=\"12\" r=\"4\"/><path d=\"M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8\"/>",
   "mountain": "<path d=\"M2 20 9 8l4 6 3-4 6 10z\"/>",
   "train": "<rect x=\"6\" y=\"3\" width=\"12\" height=\"14\" rx=\"3\"/><path d=\"M6 10h12M9 21l2-4M15 21l-2-4\"/>",
   "trail": "<path d=\"M5 21c3-3 1-6 5-8s5-4 3-10\" stroke-dasharray=\"3 2.5\"/>",
