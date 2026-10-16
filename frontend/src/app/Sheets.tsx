@@ -45,6 +45,7 @@ import type { WaterPrefs, WaterStatus } from "../lib/waterRestrooms.ts";
 import { WaterLegend, WaterLegendNotes, WaterSection } from "../lib/waterLegend.ts";
 import type { ClimbAlong, ClimbCategory, ClimbsStatus } from "../lib/climbs.ts";
 import { CLIMBS_HELP, ClimbsLayerControls, ClimbsLegend } from "../lib/climbsLegend.ts";
+import { ScenicLegend, ScenicSection } from "../lib/scenicLayer.ts";
 import { InstallOffer, KeptRoutes } from "../InstallableApp.tsx";
 import type { KeptRoute } from "../lib/offlineRoutes.ts";
 import { anyKept } from "../lib/offlineRouteStore.ts";
@@ -105,6 +106,8 @@ export interface LayersSheetProps {
   placesStatus: string;
   /** Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): Capital Bikeshare's switch. */
   bikeshare: { operators: readonly OperatorInfo[]; choices: Record<string, boolean>; onChange: (next: Record<string, boolean>) => void; status: string };
+  /** The Scenic layer (v0.8.0; lib/scenicLayer.ts): one switch, off by default; null in Go, which leaves it out. */
+  scenic: { on: boolean; onChange: (on: boolean) => void; status: string } | null;
 }
 
 export const PLACES_LAYER_TITLE = "Places to see";
@@ -112,7 +115,7 @@ export const PLACES_LAYER_HINT = "Museums, gardens, viewpoints and more, from zo
 
 /** The Layers sheet: the map's switches, in the mockup's order, with the Legend button at its top. */
 export function LayersSheet(props: LayersSheetProps) {
-  const { nav, openLegend, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare } = props;
+  const { nav, openLegend, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare, scenic } = props;
   // The Trails and terrain section's layers that can show, and its row's words (lib/terrainSection.ts).
   const terrain = { mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stressShowable(stress), topoReady, climbsStatus };
   return (
@@ -196,6 +199,9 @@ export function LayersSheet(props: LayersSheetProps) {
         <TopoLinesSwitch on={showTopoLines} onChange={(on) => setTopoLines(on)} available={topoReady} />
       </LayerSection>
 
+      {/* v0.8.0: the Scenic layer, one switch, off by default, after Trails and terrain; Plan's alone. */}
+      {scenic && <ScenicSection {...scenic} />}
+
       {/* Mockup v3's line; the Mass Ride layers sheet itself waits on FOLLOWUP-MASSRIDE-MAP (324-334). */}
       {!federalShown(preset, true) && <p className="hint mass-ride-layers">{MASS_RIDE_LAYERS_NOTE}</p>}
     </SheetFrame>
@@ -218,11 +224,13 @@ export interface LegendSheetProps {
   federalOn: boolean;
   federalStatus: FederalStatus;
   rail: RailVisibility;
+  /** Whether the Scenic layer is drawn (its switch, in Plan, off the Mass Ride map): its one legend entry. */
+  scenicOn: boolean;
 }
 
 /** The legend, behind Layers' Legend button (the owner's choice 6): what each zoom shows and how stress ratings work. */
 export function LegendSheet(props: LegendSheetProps) {
-  const { nav, legendHeadingRef, massMap, stress, stressVisible, preset, zoom, facilitiesShown, waterPrefs, waterStatus, climbsOn, climbsStatus, federalOn, federalStatus, rail } = props;
+  const { nav, legendHeadingRef, massMap, stress, stressVisible, preset, zoom, facilitiesShown, waterPrefs, waterStatus, climbsOn, climbsStatus, federalOn, federalStatus, rail, scenicOn } = props;
   return (
     <SheetFrame id="sheet-legend" title={SHEET_TITLES.legend} open={nav.view === "legend"} onBack={nav.back} backLabel={nav.backLabel("legend")} headingRef={legendHeadingRef}>
       <section aria-labelledby="sheet-legend-title" className="legend-body">
@@ -259,6 +267,7 @@ export function LegendSheet(props: LegendSheetProps) {
         {RAIL_STATIONS.length > 0 && (rail.metro || rail.marc) && <RailStationsLegend />}
         {climbsOn && climbsStatus === "ready" && <ClimbsLegend />}
         {climbsOn && <p className="hint climbs-help">{CLIMBS_HELP}</p>}
+        {scenicOn && <ScenicLegend />}
       </section>
     </SheetFrame>
   );
