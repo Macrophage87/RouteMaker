@@ -203,6 +203,8 @@ export const HOME_TRIM_M = 0.2 * METRES_PER_MILE;
 /** The hidden circle's centre is moved this far from Home (and its radius grown by as much), so its edge does not point at Home. */
 export const ZONE_SHIFT_MIN_M = 60;
 export const ZONE_SHIFT_MAX_M = 150;
+/** The hidden circle's radius, the same however far its centre moved, so the gap's size says nothing of the shift. */
+export const ZONE_RADIUS_M = HOME_TRIM_M + ZONE_SHIFT_MAX_M + 1;
 
 /** The circle the card leaves blank: around Home, moved, and large enough to hold everything within HOME_TRIM_M of it. */
 export interface HomeZone {
@@ -215,8 +217,8 @@ const M_PER_DEG = (6_371_008.8 * Math.PI) / 180;
 /**
  * Home's hidden circle. A gap cut by an exact circle round Home would give Home away (three points on its edge
  * fix its centre), so the centre is moved `shift` metres in a direction, both from `jitter` (two numbers from 0 to
- * 1, kept per device so cards do not average it out), and the radius grows by the same, so every point within
- * HOME_TRIM_M of Home is still inside.
+ * 1, kept per device so cards do not average it out), and the radius is ZONE_RADIUS_M whatever the shift, so every
+ * point within HOME_TRIM_M of Home is still inside and the gap's size gives nothing away.
  */
 export function homeZone(home: Home | null, jitter: readonly [number, number]): HomeZone | null {
   if (!home) return null;
@@ -224,7 +226,7 @@ export function homeZone(home: Home | null, jitter: readonly [number, number]): 
   const angle = jitter[0] * 2 * Math.PI;
   const [lon, lat] = home.point;
   const centre: LonLat = [lon + (Math.cos(angle) * shift) / (M_PER_DEG * Math.cos((lat * Math.PI) / 180)), lat + (Math.sin(angle) * shift) / M_PER_DEG];
-  return { centre, radiusM: HOME_TRIM_M + shift + 1 };
+  return { centre, radiusM: ZONE_RADIUS_M };
 }
 
 const inZone = (p: LonLat | undefined, zone: HomeZone | null) => !!p && !!zone && haversineM(p, zone.centre) <= zone.radiusM;

@@ -77,6 +77,11 @@ test("the link keeps its plan and adds the line's id; an older link or a bad id 
   // Sent on from /s/<id> as /?route=<id>: read from the query too.
   assert.equal(sharedIdFrom("", `?route=${ID}`), ID);
   assert.equal(sharedIdFrom("#p=1", "?route=nope"), null);
+  // Opened by the installed app's worker at its own path.
+  assert.equal(sharedIdFrom("#p=1", "", `/s/${ID}`), ID);
+  assert.equal(sharedIdFrom("", "", "/s/nope"), null);
+  // A link made before the preview path (`/#...&route=<id>`) still opens its line.
+  assert.equal(sharedIdFrom(`#p=1&preset=default&route=${ID}`, "", "/"), ID);
   assert.equal(sharedIdFrom(new URL(plain).hash), null);
   for (const bad of ["abc", "G".repeat(32), "0".repeat(31), "0".repeat(33), `${ID.slice(0, 31)}%`]) assert.equal(sharedIdFrom(`#p=1&route=${bad}`), null);
 });
@@ -195,7 +200,7 @@ test("App: Share keeps the exact line and attaches the file Download GPX saves; 
 });
 
 test("App: a shared link's line opens as a saved route does, before the link's first plan is answered", () => {
-  assert.match(app, /const SHARED_ID = sharedIdFrom\(window\.location\.hash, window\.location\.search\);/);
+  assert.match(app, /const SHARED_ID = sharedIdFrom\(window\.location\.hash, window\.location\.search, window\.location\.pathname\);/);
   const send = app.slice(app.indexOf("send: async (plan) => {"), app.indexOf("const saved = savedShown.current;"));
   assert.match(send, /if \(SHARED_WAIT\) await SHARED_WAIT;/);
   const open = app.slice(app.indexOf("void readShared(origin, SHARED_ID)"), app.indexOf("sharedArrived();"));
@@ -245,7 +250,9 @@ test("a link its owner turned off: read as revoked, said plainly, and its plan i
   assert.match(open, /if \(shared === "revoked"\) \{\s*sharedRevoked = true;/);
   const send = app.slice(app.indexOf("send: async (plan) => {"), app.indexOf("const saved = savedShown.current;"));
   assert.match(send, /if \(sharedRevoked && \(revokedPlan \?\?= sentPlanKey\(plan\.points, plan\.preset, plan\.dials\)\) === sentPlanKey\(plan\.points, plan\.preset, plan\.dials\)\)/);
-  assert.match(send, /message: SHARED_REVOKED, noAutoResend: true/);
+  assert.match(send, /return \{ ok: false, error: SHARED_REVOKED_ERROR \};/);
+  // A link with no plan: shown as a plan's error is, and said.
+  assert.match(open, /if \(decodePlan\(window\.location\.hash\)\.points\.length < 2\) \{\s*setStatus\(\{ kind: "error", error: SHARED_REVOKED_ERROR \}\);\s*announce\(SHARED_REVOKED\);/);
   // The address becomes the page's own once the id is read, so a later Copy link is not the old shared one.
   assert.match(app, /query\.delete\("route"\);\s*window\.history\.replaceState\(window\.history\.state, "", `\/\$\{query\.size \? `\?\$\{query\}` : ""\}\$\{window\.location\.hash\}`\);/);
 });
@@ -261,7 +268,8 @@ test("signed out, a route from the device's Home has no preview image; signed in
   assert.equal(previewImageOk(line, POINTS, far, false), true);
   const save = planSave("A", ROUTE, POINTS, "default", startDials("default"));
   assert.equal(sharedBody(ID, save, undefined, false)!.body.preview_image, false);
-  assert.equal("preview_image" in sharedBody(ID, save)!.body, false);
+  // Always said: the server takes a share that does not say as no image.
+  assert.equal(sharedBody(ID, save)!.body.preview_image, true);
 });
 
 test("the owner's links: listed, turned off and replaced with the CSRF token, in Plan's My routes only", async () => {
@@ -286,9 +294,14 @@ test("the owner's links: listed, turned off and replaced with the CSRF token, in
   assert.equal(keepSaid({ keep: "forever", delete_after: null }), "kept permanently");
   assert.equal(keepSaid({ keep: "until", delete_after: "2027-01-01" }), "kept until 2027-01-01");
   // Plan only; Turn off takes a second press, as Delete does; each button names its route.
-  assert.match(readFileSync(new URL("../App.tsx", import.meta.url), "utf8"), /sharedLinks: mode === "plan"/);
+  const appFile = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(appFile, /sharedLinks: mode === "plan", onSharedChange: forgetSharedLine/);
+  // After Turn off or New link, Share forgets the id it gave, so it never hands out a dead link.
+  assert.match(appFile, /const forgetSharedLine = \(\) => \{\s*sharedLine\.current = null;\s*\};/);
   const mine = readFileSync(new URL("../MyRoutes.tsx", import.meta.url), "utf8");
-  assert.match(mine, /\{sharedLinks && <SharedLinks version=\{version\} announce=\{announce\} \/>\}/);
+  assert.match(mine, /\{sharedLinks && <SharedLinks version=\{version\} announce=\{announce\} onChange=\{onSharedChange\} \/>\}/);
   assert.match(mine, /if \(turningOff !== l\.id\) \{\s*setTurningOff\(l\.id\);\s*return;/);
+  assert.match(mine, /if \(ok\) onChange\(\);/);
+  assert.match(mine, /return;\s*\}\s*onChange\(\);\s*const copied/);
   assert.match(mine, /aria-label=\{`\$\{NEW_LINK\} for \$\{l\.name\}`\}/);
 });

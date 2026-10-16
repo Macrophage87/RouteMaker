@@ -10,10 +10,12 @@ stops there, and draws a route that only passes it in full.
 
 from __future__ import annotations
 
+import importlib
 import json
 import math
 import secrets
 import struct
+import time
 import zlib
 from itertools import count
 
@@ -78,6 +80,7 @@ def share(client: Client, **changes) -> str:
         "distance_m": 3340.0,
         "inputs": INPUTS,
         "gpx": "<gpx/>",
+        "preview_image": True,
         **changes,
     }
     r = client.post(
@@ -116,6 +119,7 @@ class TestRevokeAndRegenerate:
         assert r.json()["code"] == "revoked"
         row = SharedRoute.objects.get(pk=rid)
         assert row.line == [] and row.inputs == {} and row.gpx == "" and row.name == ""
+        assert row.distance_m == 0 and row.source == ""
         assert client.get("/api/me/shared-routes", **addr()).json()["links"] == []
         # A tombstone is never pruned, so the link keeps saying it was turned off.
         shared_routes.prune(timezone.now() + shared_routes.KEEP * 3)
@@ -236,6 +240,8 @@ class TestPreview:
         centre, radius = zone
         shift = share_preview._haversine(HOME, centre)
         assert 60 <= shift <= 150 and radius >= 322 + shift
+        # One radius for all: the gap's size says nothing of the shift.
+        assert radius == share_preview.home_zone(HOME, (0.3, 0.0))[1] == share_preview.ZONE_RADIUS_M
         drawn = share_preview.drawn_route(LINE, INPUTS["points"], zone)
         assert drawn["start"] is None and drawn["finish"] is not None
         for piece in drawn["pieces"]:
@@ -269,11 +275,77 @@ class TestPreview:
         assert count(share_preview.LINE_COLOUR) > 1000
         assert count(share_preview.FINISH_COLOUR) > 100
         assert count(share_preview.START_COLOUR) == 0
-        # And a new Home draws it again.
-        key = SharedRoute.objects.get(pk=rid).preview_key
-        self.set_home(user, (HOME[0] + 0.01, HOME[1]))
+        # The circle was frozen when the link was made: moving Home never uncovers the start.
+        row = SharedRoute.objects.get(pk=rid)
+        assert row.preview_zone is not None
+        key = row.preview_key
+        self.set_home(user, (HOME[0] + 0.05, HOME[1]))
+        again = Client().get(f"/s/{rid}/preview.png", **CRAWLER, **addr()).content
+        assert SharedRoute.objects.get(pk=rid).preview_key == key and again == png
+
+    def test_a_route_that_only_passes_home_is_drawn_in_full(self) -> None:
+        client, user, _ = signed_in()
+        self.set_home(user, tuple(LINE[50][:2]))
+        rid = share(client)
+        assert SharedRoute.objects.get(pk=rid).preview_zone is None
+        png = Client().get(f"/s/{rid}/preview.png", **CRAWLER, **addr()).content
+        width, _, px = png_pixels(png)
+        green = share_preview.START_COLOUR
+        assert any(
+            sum(abs(px[i + k] - green[k]) for k in range(3)) < 30
+            for i in range(0, share_preview.MAP_H * width * 3, 3)
+        )
+
+    def test_a_page_that_does_not_say_and_links_from_before_have_no_image(self) -> None:
+        rid = share(Client(), preview_image=False)
+        SharedRoute.objects.filter(pk=rid).update(preview_image=True)
+        assert SharedRoute.objects.get(pk=rid).preview_image
+        body = {"id": secrets.token_hex(16), "source": "plan", "line": LINE, "distance_m": 3340.0}
+        body["inputs"] = INPUTS
+        Client().post(
+            "/api/shared-routes", data=json.dumps(body), content_type="application/json", **addr()
+        )
+        assert SharedRoute.objects.get(pk=body["id"]).preview_image is False
+        # The migration's step for the rows made before it.
+        from django.apps import apps
+
+        step = importlib.import_module("core.migrations.0024_shared_route_owner_preview")
+        step.no_image_for_existing(apps, None)
+        assert not SharedRoute.objects.filter(preview_image=True).exists()
+        assert Client().get(f"/s/{rid}/preview.png", **CRAWLER, **addr()).status_code == 404
+
+    def test_a_deleted_account_s_links_lose_their_previews(self) -> None:
+        client, user, _ = signed_in()
+        rid = share(client)
         Client().get(f"/s/{rid}/preview.png", **CRAWLER, **addr())
-        assert SharedRoute.objects.get(pk=rid).preview_key != key
+        user.is_deleted = True
+        user.save()
+        row = SharedRoute.objects.get(pk=rid)
+        assert row.preview_image is False and row.preview_png is None
+        assert Client().get(f"/s/{rid}/preview.png", **CRAWLER, **addr()).status_code == 404
+
+    def test_a_huge_line_is_bounded_and_its_no_image_is_kept(self) -> None:
+        # Back and forth across the region: far too long a stroke to draw.
+        zigzag = [[-77.3 + (i % 2) * 0.6, 38.7 + i * 0.00002] for i in range(40_000)]
+        rid = share(Client(), line=zigzag, inputs={**INPUTS, "points": [zigzag[0], zigzag[-1]]})
+        started = time.monotonic()
+        r = Client().get(f"/s/{rid}/preview.png", **CRAWLER, **addr())
+        assert time.monotonic() - started < 5
+        assert r.status_code == 404
+        row = SharedRoute.objects.get(pk=rid)
+        assert bytes(row.preview_png) == b"" and row.preview_key
+        # A long but fair route is thinned and drawn within the limit.
+        long = [[-77.3 + i * 0.00003, 38.8 + 0.01 * math.sin(i / 50)] for i in range(20_000)]
+        zone = None
+        started = time.monotonic()
+        png = share_preview.render_png(share_preview.drawn_route(long, [], zone), "x")
+        assert png is not None and time.monotonic() - started < 3
+
+    def test_the_page_varies_on_who_asks(self) -> None:
+        rid = share(Client())
+        for headers in (CRAWLER, BROWSER):
+            r = Client().get(f"/s/{rid}", **headers, **addr())
+            assert "User-Agent" in r["Vary"] and "Sec-Fetch-Mode" in r["Vary"]
 
     def test_a_signed_out_route_from_home_on_the_device_has_no_image(self) -> None:
         rid = share(Client(), preview_image=False)

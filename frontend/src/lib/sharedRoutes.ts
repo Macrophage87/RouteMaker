@@ -27,8 +27,9 @@
  * (`regenerateSharedLink`: a new id for the same route and keeping, the old link turned off) and Turn off
  * (`revokeSharedLink`). A turned-off link opens to one plain line (`SHARED_REVOKED`) and plans nothing.
  */
-import type { RouteResponse } from "./api.ts";
+import type { RouteError, RouteResponse } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
+import { ZONE_RADIUS_M } from "./shareCard.ts";
 import type { Home } from "./myGo.ts";
 import type { SaveBody, SavedRoute } from "./savedRoutes.ts";
 import { csrfFromCookie } from "./stressEditor.ts";
@@ -46,6 +47,8 @@ export const SHARED_GONE = "Exact line gone: planned again from its points.";
 export const SHARED_OPENED = (name: string) => `Opened "${name}", as it was shared.`;
 /** A link its owner turned off (core.shared_routes.REVOKED): said plainly, with no detail. */
 export const SHARED_REVOKED = "This link was turned off by its owner.";
+/** How the page shows it: as a plan's error, in the route's place (never sent again). */
+export const SHARED_REVOKED_ERROR: RouteError = { kind: "no-route", status: 410, title: "Link turned off", message: SHARED_REVOKED, noAutoResend: true };
 /** The path a shared link's preview is fetched at (core.share_preview). */
 export const SHARED_PATH = "/s/";
 
@@ -105,13 +108,17 @@ export function newSharedId(fill: (bytes: Uint8Array<ArrayBuffer>) => void = (by
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** The shared line's id a link names, in its fragment or (sent on from `/s/<id>`) its query, or null. */
-export function sharedIdFrom(hash: string, search = ""): string | null {
+/**
+ * The shared line's id a link names, in its fragment, (sent on from `/s/<id>`) its query, or its `/s/<id>` path
+ * (opened by the installed app's worker as the page itself), or null.
+ */
+export function sharedIdFrom(hash: string, search = "", pathname = ""): string | null {
   for (const part of [hash.replace(/^#/, ""), search.replace(/^\?/, "")]) {
     const id = new URLSearchParams(part).get(SHARED_PARAM);
     if (id && ID_RE.test(id)) return id;
   }
-  return null;
+  const path = pathname.startsWith(SHARED_PATH) ? pathname.slice(SHARED_PATH.length).replace(/\/$/, "") : "";
+  return ID_RE.test(path) ? path : null;
 }
 
 /**
@@ -130,8 +137,8 @@ export function withSharedId(link: string, id: string): string {
   return `${base}#${fragment ? `${fragment}&` : ""}${SHARED_PARAM}=${id}`;
 }
 
-/** Home's reach for the preview's check: Home's hidden circle at its widest (lib/shareCard.ts homeZone). */
-const HOME_REACH_M = 0.2 * 1609.344 + 150 + 1;
+/** Home's reach for the preview's check: as far as Home's hidden circle can reach (lib/shareCard.ts homeZone). */
+const HOME_REACH_M = ZONE_RADIUS_M + 150;
 
 /**
  * Whether the server may draw the link's preview image: not when the sharer is signed out (the server knows no
@@ -164,7 +171,8 @@ export function sharedBody(id: string, save: SaveBody, keep: ShareKeep = SHARE_K
     id,
     ...(save.answer ? { answer: publicAnswer(save.answer) } : {}),
     ...keepFields(keep),
-    ...(previewImage ? {} : { preview_image: false }),
+    // Always said: a share that does not say (a page from before previews) has no image.
+    preview_image: previewImage,
   };
   const json = JSON.stringify(body);
   return new TextEncoder().encode(json).length > SHARED_MAX_BYTES ? null : { body, json };

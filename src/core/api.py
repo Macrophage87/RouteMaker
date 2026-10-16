@@ -4933,9 +4933,11 @@ def shared_route_add(request):
         if keep == "until"
         else None
     )
+    from . import share_preview
+
     try:
         with transaction.atomic():
-            row = SharedRoute.objects.create(
+            row = SharedRoute(
                 id=body["id"],
                 name=(body.get("name") or "").strip() or shared_routes.DEFAULT_NAME,
                 source=body.get("source", "plan"),
@@ -4950,8 +4952,12 @@ def shared_route_add(request):
                 delete_after=delete_after,
                 # Signed in, the owner, so only they can turn the link off (nothing else of them).
                 owner=request.user if signed_in(request) else None,
-                preview_image=body.get("preview_image", True),
+                # Missing (a page from before previews) is no image: it never said where Home is.
+                preview_image=body.get("preview_image", False),
             )
+            # Home's circle as it is now, kept where the route starts, ends or stops in it.
+            share_preview.freeze_zone(row)
+            row.save(force_insert=True)
     except IntegrityError:
         # Ids are 128 random bits: a taken one is a resend, never another rider's to replace.
         return _stress_error(409, "That link's route is already kept.", code="taken")
@@ -5086,6 +5092,8 @@ def my_shared_route_revoke(request, route_id: str):
     signed_in_only,
     same_site_editor,
     ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    # A new link is a new shared route: counted with Share's.
+    ratelimit.rate_limited(ratelimit.SHARED_ROUTE_WRITES),
     errors_as_json,
 )
 def my_shared_route_regenerate(request, route_id: str):

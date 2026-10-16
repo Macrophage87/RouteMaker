@@ -1985,10 +1985,17 @@ phone whose share sheet takes files, the GPX file Download GPX would give goes w
   imaging package; glyphs from `scripts/make_preview_glyphs.py`), cached on the row. Where the
   route starts, ends or stops at the owner's Home, the image leaves a circle of at least 0.2 mi
   (322 m) round Home blank, its centre moved 60 to 150 m per account by a keyed hash of the
-  account id (the key derived from `DJANGO_SECRET_KEY`: rotating it moves every circle); a route
-  shared signed out from Home on the device has no image. A turned-off (410) or expired (404)
-  link has no preview. Absolute URLs come from the request's host. Counted per client
-  (`SHARE_PREVIEWS`, 120 a minute).
+  account id (the key derived from `DJANGO_SECRET_KEY`: rotating it moves the circles of links
+  made later) and one radius for all; that circle is frozen on the row when the link is made
+  (`preview_zone`), so moving Home later never uncovers it. A route shared signed out from Home
+  on the device, a link made before previews, and any share that does not say have no image; a
+  line too long to draw (past 20,000 px of stroke after thinning to 1,500 points) has none, kept
+  as an empty image so it is not tried again. A turned-off (410) or expired (404) link has no
+  preview; the image itself is served with an hour's public cache, so a chat app may show it up
+  to an hour after the link is turned off. The page varies on `User-Agent` and
+  `Sec-Fetch-Mode`. The installed app's worker opens `/s/<id>` as the page. Absolute URLs come
+  from the request's host. Counted per client (`SHARE_PREVIEWS`, 120 a minute; a new link also
+  counts as a share, `SHARED_ROUTE_WRITES`).
 
 The migrations are `0022_shared_route` (one new table; nothing else changed),
 `0023_shared_route_keep` (its two keeping columns) and `0024_shared_route_owner_preview` (the

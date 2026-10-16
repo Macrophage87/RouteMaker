@@ -320,7 +320,7 @@ class User(AbstractBaseUser):
                 # Its shared links keep working for those they were sent to, but with Home gone
                 # their previews could no longer hide it: no image from now on.
                 SharedRoute.objects.filter(owner_id=self.pk).update(
-                    preview_image=False, preview_png=None, preview_key=""
+                    preview_image=False, preview_png=None, preview_key="", preview_zone=None
                 )
 
         return super().save(*args, **kwargs)
@@ -1880,9 +1880,10 @@ class SharedRoute(models.Model):
     one (core.shared_routes.revoke, regenerate); a turned-off link stays as a tombstone with its
     route cleared (`revoked_at`), so the link says it was turned off rather than planning its
     points again. `preview_png` is the link preview's image (core.share_preview), cached under
-    `preview_key` (the line and Home's circle it was drawn with); `preview_image` False when a
-    signed-out sharer's route starts, ends or stops at the Home on their device, which the server
-    does not know, so no image is drawn.
+    `preview_key` (the line and Home's circle it was drawn with; an empty image is "none");
+    `preview_image` False when a signed-out sharer's route starts, ends or stops at the Home on
+    their device, which the server does not know, and for links from before previews, so no image
+    is drawn; `preview_zone` Home's circle frozen when the link was made.
     """
 
     id = models.CharField(primary_key=True, max_length=32)
@@ -1907,7 +1908,10 @@ class SharedRoute(models.Model):
         related_name="shared_routes",
     )
     revoked_at = models.DateTimeField(null=True, blank=True)
-    preview_image = models.BooleanField(default=True)
+    preview_image = models.BooleanField(default=False)
+    # [lon, lat, radius m]: Home's circle when the link was made, if the route ended or stopped
+    # in it.
+    preview_zone = models.JSONField(null=True, blank=True)
     preview_key = models.CharField(max_length=64, blank=True, default="")
     preview_png = models.BinaryField(null=True, blank=True)
 

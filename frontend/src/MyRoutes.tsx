@@ -35,9 +35,11 @@ export interface MyRoutesProps {
   announce: (text: string) => void;
   /** Plan only: the rider's shared links, to turn off or replace. */
   sharedLinks?: boolean;
+  /** A link turned off or replaced: the page's Share forgets the id it last gave. */
+  onSharedChange?: () => void;
 }
 
-export function MyRoutes({ version, onOpen, onExport, announce, sharedLinks = false }: MyRoutesProps) {
+export function MyRoutes({ version, onOpen, onExport, announce, sharedLinks = false, onSharedChange = () => {} }: MyRoutesProps) {
   const headingId = useId();
   const [routes, setRoutes] = useState<SavedSummary[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -153,12 +155,12 @@ export function MyRoutes({ version, onOpen, onExport, announce, sharedLinks = fa
           </ul>
         </>
       )}
-      {sharedLinks && <SharedLinks version={version} announce={announce} />}
+      {sharedLinks && <SharedLinks version={version} announce={announce} onChange={onSharedChange} />}
     </section>
   );
 }
 
-function SharedLinks({ version, announce }: { version: number; announce: (text: string) => void }) {
+function SharedLinks({ version, announce, onChange }: { version: number; announce: (text: string) => void; onChange: () => void }) {
   const headingId = useId();
   const [links, setLinks] = useState<SharedLink[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -204,6 +206,7 @@ function SharedLinks({ version, announce }: { version: number; announce: (text: 
                         announce("No new link was made; try again shortly.");
                         return;
                       }
+                      onChange();
                       const copied = await copyText(fresh.link, navigator.clipboard, selectionCopy);
                       announce(copied ? `New link for "${l.name}" copied; the old link is turned off.` : `New link made for "${l.name}"; the old link is turned off.`);
                       setReload((n) => n + 1);
@@ -222,6 +225,7 @@ function SharedLinks({ version, announce }: { version: number; announce: (text: 
                       return;
                     }
                     void revokeSharedLink(window.location.origin, l.id).then((ok) => {
+                      if (ok) onChange();
                       announce(ok ? `The link for "${l.name}" is turned off.` : "The link was not turned off; try again shortly.");
                       setTurningOff(null);
                       setReload((n) => n + 1);

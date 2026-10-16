@@ -138,6 +138,7 @@ class TestSharedRoutes:
             "owner",
             "revoked_at",
             "preview_image",
+            "preview_zone",
             "preview_key",
             "preview_png",
         }

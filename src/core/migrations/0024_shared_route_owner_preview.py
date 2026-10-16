@@ -1,9 +1,14 @@
 # A shared link's owner can turn it off or make a new one, and the link has a preview image
-# (core.shared_routes.revoke and regenerate, core.share_preview).
+# (core.shared_routes.revoke and regenerate, core.share_preview). Links made before have no
+# image: nothing said whether their route starts at the sharer's Home.
 
 import django.db.models.deletion
 from django.conf import settings
 from django.db import migrations, models
+
+
+def no_image_for_existing(apps, schema_editor):
+    apps.get_model("core", "SharedRoute").objects.update(preview_image=False)
 
 
 class Migration(migrations.Migration):
@@ -31,7 +36,12 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name="sharedroute",
             name="preview_image",
-            field=models.BooleanField(default=True),
+            field=models.BooleanField(default=False),
+        ),
+        migrations.AddField(
+            model_name="sharedroute",
+            name="preview_zone",
+            field=models.JSONField(blank=True, null=True),
         ),
         migrations.AddField(
             model_name="sharedroute",
@@ -43,4 +53,5 @@ class Migration(migrations.Migration):
             name="preview_png",
             field=models.BinaryField(blank=True, null=True),
         ),
+        migrations.RunPython(no_image_for_existing, migrations.RunPython.noop),
     ]

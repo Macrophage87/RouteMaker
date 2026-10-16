@@ -91,6 +91,8 @@ def revoke(row, now) -> None:
     """Turn the link off: keep only the tombstone (its id, owner and time), permanently."""
     row.revoked_at = now
     row.name = ""
+    row.source = ""
+    row.distance_m = 0
     row.line = []
     row.inputs = {}
     row.answer = None
@@ -99,6 +101,7 @@ def revoke(row, now) -> None:
     row.delete_after = None
     row.preview_png = None
     row.preview_key = ""
+    row.preview_zone = None
     row.save()
 
 
@@ -124,6 +127,7 @@ def regenerate(row, now):
             delete_after=row.delete_after,
             owner=row.owner,
             preview_image=row.preview_image,
+            preview_zone=row.preview_zone,
         )
         revoke(row, now)
     return fresh
