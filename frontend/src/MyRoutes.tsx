@@ -47,9 +47,12 @@ export interface MyRoutesProps {
   sharedLinks?: boolean;
   /** A link turned off or replaced: the page's Share forgets the id it last gave. */
   onSharedChange?: () => void;
+  /** A route renamed or deleted here: the page's Save follows it (its next save is a version of the renamed one, or new). */
+  onRenamed?: (id: number, name: string) => void;
+  onDeleted?: (id: number) => void;
 }
 
-export function MyRoutes({ version, onOpen, onExport, announce, versions = false, sharedLinks = false, onSharedChange = () => {} }: MyRoutesProps) {
+export function MyRoutes({ version, onOpen, onExport, announce, versions = false, sharedLinks = false, onSharedChange = () => {}, onRenamed = () => {}, onDeleted = () => {} }: MyRoutesProps) {
   const headingId = useId();
   const [routes, setRoutes] = useState<SavedSummary[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -120,6 +123,7 @@ export function MyRoutes({ version, onOpen, onExport, announce, versions = false
                       if (!next) return;
                       void renameRoute(window.location.origin, r.id, next).then((ok) => {
                         announce(ok ? `Renamed to "${next}".` : "The name was not changed; try again shortly.");
+                        if (ok) onRenamed(r.id, next);
                         setRenaming(null);
                         setReload((n) => n + 1);
                       });
@@ -186,6 +190,7 @@ export function MyRoutes({ version, onOpen, onExport, announce, versions = false
                           }
                           void deleteRoute(window.location.origin, r.id).then((ok) => {
                             announce(ok ? `Deleted "${r.name}".` : "The route was not deleted; try again shortly.");
+                            if (ok) onDeleted(r.id);
                             setDeleting(null);
                             setReload((n) => n + 1);
                           });
@@ -196,11 +201,12 @@ export function MyRoutes({ version, onOpen, onExport, announce, versions = false
                     </span>
                     {versions && showing?.id === r.id && (
                       <div id={`my-route-versions-${r.id}`} className="my-route-versions">
-                        {showing.failed ? (
-                          <p className="notice">The versions could not be read; try again shortly.</p>
-                        ) : showing.list === null ? (
-                          <p className="loading">Reading the versions…</p>
-                        ) : (
+                        {/* Reading and a failure are said politely; the list itself is not read out. */}
+                        <div role="status" aria-live="polite">
+                          {showing.failed && <p className="notice">The versions could not be read; try again shortly.</p>}
+                          {!showing.failed && showing.list === null && <p className="loading">Reading the versions…</p>}
+                        </div>
+                        {showing.list !== null && (
                           <ol className="my-route-version-list" aria-label={`Versions of ${r.name}, newest first`}>
                             {showing.list.map((v, i) => (
                               <li key={v.id ?? "latest"}>

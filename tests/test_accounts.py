@@ -329,6 +329,38 @@ class TestRouteVersions:
         r = send(owner, "post", f"/api/me/routes/{rid}/versions/{vid}/restore", {}, None)
         assert r.status_code == 403
 
+    def test_an_unchanged_file_is_kept_once_and_restored_whole(self) -> None:
+        client, _user, csrf = signed_in()
+        text = '<?xml version="1.0"?>\n<gpx version="1.1"><trk><trkseg/></trk></gpx>\n'
+        other = text.replace("trkseg/", "trkseg></trkseg")
+        body = {"source": "gpx", "answer": None, "gpx": text}
+        rid = send(client, "post", "/api/me/routes", route_body(**body), csrf).json()["id"]
+        # The same file, another plan (a snapped line, say): the version keeps no copy of it.
+        saved_again(client, csrf, rid, **body, inputs=MOVED)
+        first = SavedRouteVersion.objects.get(route_id=rid)
+        assert first.gpx == "" and first.gpx_same_as_next and first.size_bytes > 0
+        # Another file: that version keeps its own.
+        saved_again(client, csrf, rid, **{**body, "gpx": other}, distance_m=99.0)
+        second = SavedRouteVersion.objects.filter(route_id=rid).latest("replaced_at")
+        assert second.gpx == text and not second.gpx_same_as_next
+        r = send(client, "post", f"/api/me/routes/{rid}/versions/{first.pk}/restore", {}, csrf)
+        assert r.status_code == 200 and r.json()["gpx"] == text
+        r = send(client, "post", f"/api/me/routes/{rid}/versions/{second.pk}/restore", {}, csrf)
+        assert r.json()["gpx"] == text
+
+    def test_an_account_s_versions_are_capped_in_bytes_oldest_first(self, monkeypatch) -> None:
+        client, _user, csrf = signed_in()
+        a = send(client, "post", "/api/me/routes", route_body(), csrf).json()["id"]
+        b = send(client, "post", "/api/me/routes", route_body(), csrf).json()["id"]
+        saved_again(client, csrf, a, distance_m=2000.0)
+        size = SavedRouteVersion.objects.get(route_id=a).size_bytes
+        monkeypatch.setattr(SavedRouteVersion, "MAX_BYTES_PER_ACCOUNT", size * 2)
+        saved_again(client, csrf, b, distance_m=3000.0)
+        saved_again(client, csrf, b, distance_m=4000.0)
+        # Three versions of the same size past a cap of two: the account's oldest, route a's, went.
+        assert not SavedRouteVersion.objects.filter(route_id=a).exists()
+        assert SavedRouteVersion.objects.filter(route_id=b).count() == 2
+
     def test_versions_go_with_the_route(self) -> None:
         client, _user, csrf = signed_in()
         rid = send(client, "post", "/api/me/routes", route_body(), csrf).json()["id"]

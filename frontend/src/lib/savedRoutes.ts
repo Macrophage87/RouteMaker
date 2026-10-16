@@ -127,7 +127,9 @@ export const SAVE_FAILED = "The route was not saved; try again shortly.";
 export const NONE_SAVED = "No saved routes yet. Plan a route and press Save route.";
 export const OPENED_SAID = (name: string) => `Opened "${name}", as it was saved.`;
 export const VERSION_SAID = (name: string) => `Saved a new version of "${name}"; the one before it is in its versions.`;
-export const UNCHANGED_SAID = (name: string) => `"${name}" is saved as it is; nothing changed.`;
+/** Saved again with nothing to keep: a file's own text unchanged (what a saved file keeps, whatever the plan on it), or the plan. */
+export const UNCHANGED_SAID = (name: string, source: SavedSource = "plan") =>
+  source === "gpx" ? `"${name}" is saved as it was: this route's file hasn't changed.` : `"${name}" is saved as it is; nothing changed.`;
 
 /** "12 of 200 saved." */
 export function countLine(n: number, max = MAX_SAVED): string {
@@ -194,17 +196,37 @@ function headers(cookie: string, json = true): Record<string, string> {
 
 const docCookie = () => (typeof document === "undefined" ? "" : document.cookie);
 
-export type SaveOutcome = { ok: true; route: SavedSummary; versioned?: boolean } | { ok: false; full: boolean; message: string };
+export type SaveOutcome = { ok: true; route: SavedSummary; versioned?: boolean } | { ok: false; full: boolean; notFound?: true; message: string };
 
 export async function saveRoute(origin: string, body: SaveBody, post: Fetch = fetch, cookie = docCookie()): Promise<SaveOutcome> {
   try {
     const response = await post(`${origin}/api/me/routes`, { method: "POST", credentials: "same-origin", headers: headers(cookie), body: JSON.stringify(body) });
     const answer = (await response.json().catch(() => ({}))) as { error?: string; code?: string; versioned?: boolean } & SavedSummary;
     if (response.ok) return { ok: true, route: answer, ...(typeof answer.versioned === "boolean" ? { versioned: answer.versioned } : {}) };
-    return { ok: false, full: answer.code === "full", message: answer.error || SAVE_FAILED };
+    return { ok: false, full: answer.code === "full", ...(answer.code === "not_found" ? { notFound: true } : {}), message: answer.error || SAVE_FAILED };
   } catch {
     return { ok: false, full: false, message: SAVE_FAILED };
   }
+}
+
+/**
+ * A save as a new version of saved route `of` (versionOf), or a plain save without one. A route no longer in
+ * the account (deleted in another tab, say) is saved as a new route instead: the save is not lost.
+ */
+export async function saveAsVersion(origin: string, body: SaveBody, of: number | undefined, post: Fetch = fetch, cookie = docCookie()): Promise<SaveOutcome> {
+  if (of === undefined) return saveRoute(origin, body, post, cookie);
+  const first = await saveRoute(origin, { ...body, version_of: of }, post, cookie);
+  if (first.ok || !first.notFound) return first;
+  const { version_of: _gone, ...plain } = body;
+  return saveRoute(origin, plain, post, cookie);
+}
+
+/** What My routes' rename or delete leaves of the saved route on screen. */
+export function afterRename(open: OpenSaved | null, id: number, name: string): OpenSaved | null {
+  return open && open.id === id ? { id, name: name.trim().slice(0, NAME_MAX) } : open;
+}
+export function afterDelete(open: OpenSaved | null, id: number): OpenSaved | null {
+  return open && open.id === id ? null : open;
 }
 
 export async function listRoutes(origin: string, get: Fetch = fetch): Promise<SavedSummary[] | null> {

@@ -40,13 +40,22 @@ export function thinForMatch(line: readonly LonLat[], max = MATCH_MAX_POINTS): L
 
 type Fetch = typeof fetch;
 
-export async function matchTrack(origin: string, line: readonly LonLat[], preset: PresetId, post: Fetch = fetch): Promise<MatchOutcome> {
+/** The ride the track is snapped for: its ride type, and the switches that choose its graph (as /api/route's). */
+export interface MatchRide {
+  preset: PresetId;
+  /** "Keep to roads, not trails" (or a ride type always so): the no-trail graph, never onto a trail. */
+  trailsOff?: boolean;
+  /** Electric assist: the e-bike graph, on a ride type that offers it. */
+  assist?: boolean;
+}
+
+export async function matchTrack(origin: string, line: readonly LonLat[], ride: MatchRide, post: Fetch = fetch): Promise<MatchOutcome> {
   try {
     const response = await post(`${origin}/api/match`, {
       method: "POST",
       credentials: "same-origin",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({ points: thinForMatch(line), preset }),
+      body: JSON.stringify({ points: thinForMatch(line), preset: ride.preset, trails_off: ride.trailsOff === true, assist: ride.assist === true }),
     });
     const body = (await response.json().catch(() => ({}))) as { error?: string; line?: LonLat[]; matched_share?: number };
     if (response.status === 429) return { ok: false, message: "Too many requests from here just now; try again in a minute." };
@@ -62,9 +71,13 @@ export async function matchTrack(origin: string, line: readonly LonLat[], preset
   }
 }
 
-/** The opened plan following the snapped line: its points picked from it as from a track, then fitted to it. */
+/**
+ * The opened plan following the snapped line: its points picked from it as from a track, then fitted to it. No
+ * ride type and no sliders, so opening it keeps the ride as it is now (gpxEdit.ts rideAfterImport).
+ */
 export function matchedPlan(plan: ImportedPlan, line: LonLat[], share: number): ImportedPlan {
-  return { ...plan, matched: { line, share }, points: viaPoints(line, Math.min(IMPORT_START_POINTS, MAX_POINTS), "corners") };
+  const { dials: _dials, ...rest } = plan;
+  return { ...rest, preset: null, matched: { line, share }, points: viaPoints(line, Math.min(IMPORT_START_POINTS, MAX_POINTS), "corners") };
 }
 
 /** The line fitting follows: the snapped line once there is one, else the file's own. */

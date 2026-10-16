@@ -70,17 +70,26 @@ def checked_points(points) -> list[tuple[float, float]]:
     return out
 
 
-def match(points: list[tuple[float, float]], preset_name: str, started: float | None = None):
+def match(
+    points: list[tuple[float, float]],
+    preset_name: str,
+    started: float | None = None,
+    trails_off: bool = False,
+    assist: bool = False,
+):
     """The snapped line and the share of `points` that matched a way.
 
-    Raises routing.RouterRefused when the matcher finds no way along the track,
+    On the graph the ride itself routes on (`presets.variant_for_ride`, as `routing.plan`
+    chooses it): "Keep to roads, not trails" snaps to the no-trail graph, electric assist to the
+    e-bike one. Raises routing.RouterRefused when the matcher finds no way along the track,
     routing.RouterUnavailable or routing.DeadlineExceeded, and KeyError for an unknown preset.
     """
-    variant = presets.variant_for_ride(preset_name, routing.default_when())
+    assist = assist and presets.PRESETS[preset_name].assist_speed_kmh is not None
+    variant = presets.variant_for_ride(preset_name, routing.default_when(), assist, trails_off)
     payload = {
         "shape": [{"lon": lon, "lat": lat} for lon, lat in points],
         "costing": "bicycle",
-        "costing_options": presets.costing(preset_name),
+        "costing_options": presets.costing(preset_name, assist=assist),
         "shape_match": "map_snap",
         "trace_options": {"search_radius": SEARCH_RADIUS_M},
         "filters": {"attributes": ["shape", "matched.type"], "action": "include"},

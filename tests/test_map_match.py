@@ -78,6 +78,62 @@ class TestMatch:
         assert urls[0].startswith(settings.VALHALLA_UPSTREAMS["offroad"])
         assert urls[1].startswith(settings.VALHALLA_UPSTREAMS["standard"])
 
+    def test_keep_to_roads_and_assist_snap_on_the_ride_s_own_graph(self, client, router) -> None:
+        fake = router(FakeRouter({"trace_attributes": lambda _payload: trace()}))
+        # "Keep to roads, not trails" snaps to the no-trail graph, never onto a trail; it does
+        # not fall back to a graph with trails either.
+        assert (
+            post(client, {"points": TRACK, "preset": "gravel", "trails_off": True}).status_code
+            == 200
+        )
+        assert fake.calls[-1][0].startswith(settings.VALHALLA_UPSTREAMS["no-trail"])
+        assert post(client, {"points": TRACK, "preset": "cargo", "assist": True}).status_code == 200
+        url, payload = fake.calls[-1]
+        assert url.startswith(settings.VALHALLA_UPSTREAMS["ebike"])
+        assert payload["costing_options"] == presets.costing("cargo", assist=True)
+        # Assist on a ride type without it is the ride type's own graph.
+        assert (
+            post(client, {"points": TRACK, "preset": "default", "assist": True}).status_code == 200
+        )
+        assert fake.calls[-1][0].startswith(settings.VALHALLA_UPSTREAMS["standard"])
+        refused = post(client, {"points": TRACK, "preset": "default", "trails_off": "yes"})
+        assert refused.status_code == 400
+
+    def test_a_shape_with_a_jump_comes_back_as_the_matcher_gave_it(self, client, router) -> None:
+        # map_snap across a gap in the track: two matched runs in one shape, joined by a jump.
+        jumped = [*SNAPPED[:2], (-77.0100, 38.9100), (-77.0095, 38.9104)]
+        router(
+            FakeRouter(
+                {
+                    "trace_attributes": {
+                        "shape": encode_polyline6(jumped),
+                        "matched_points": [{"type": "matched"}] * 2
+                        + [{"type": "unmatched"}, {"type": "matched"}],
+                    }
+                }
+            )
+        )
+        response = post(client, {"points": TRACK, "preset": "default"})
+        assert response.status_code == 200
+        assert response.json() == {"line": [list(p) for p in jumped], "matched_share": 0.75}
+
+    def test_an_all_unmatched_answer_is_a_share_of_none(self, client, router) -> None:
+        router(FakeRouter({"trace_attributes": trace(("unmatched",) * 4)}))
+        response = post(client, {"points": TRACK, "preset": "default"})
+        # The browser does not use a snap below half (lib/gpxMatch.ts MATCH_MIN_SHARE).
+        assert response.status_code == 200 and response.json()["matched_share"] == 0.0
+        router(FakeRouter({"trace_attributes": {"shape": "", "matched_points": []}}))
+        assert post(client, {"points": TRACK, "preset": "default"}).status_code == 422
+
+    def test_a_body_longer_than_it_declares_is_refused(self, client, router) -> None:
+        fake = router(FakeRouter({"trace_attributes": trace()}))
+        body = json.dumps({"points": TRACK, "preset": "default", "pad": "x" * map_match.MAX_BYTES})
+        response = client.post(
+            PATH, data=body, content_type="application/json", CONTENT_LENGTH="10"
+        )
+        assert response.status_code == 400
+        assert fake.calls == []
+
     def test_a_router_that_does_not_answer_is_503(self, client, router) -> None:
         router(FakeRouter({"trace_attributes": routing.RouterUnavailable("down")}))
         response = post(client, {"points": TRACK, "preset": "default"})

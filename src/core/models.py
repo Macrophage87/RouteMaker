@@ -1871,10 +1871,16 @@ class SavedRouteVersion(models.Model):
     The same fields as the route itself, kept verbatim, with when that version was saved
     (`saved_at`) and when it stopped being the latest (`replaced_at`). The owner's own, like the
     route: deleted with it, and at most `MAX_PER_ROUTE` per route, the oldest going first. They do
-    not count toward the account's `SavedRoute.MAX_PER_ACCOUNT`.
+    not count toward the account's `SavedRoute.MAX_PER_ACCOUNT`, but all of an account's versions
+    together are at most `MAX_BYTES_PER_ACCOUNT`, the oldest across the account going first.
+
+    An opened GPX file's text is kept once: a version whose file is the same as the version after
+    it (or the route itself, for the newest) keeps none and says so (`gpx_same_as_next`); its text
+    is that one's (core.api `_version_gpx`).
     """
 
     MAX_PER_ROUTE = 20
+    MAX_BYTES_PER_ACCOUNT = 50 * 1024 * 1024
 
     route = models.ForeignKey(SavedRoute, on_delete=models.CASCADE, related_name="versions")
     source = models.CharField(
@@ -1885,6 +1891,9 @@ class SavedRouteVersion(models.Model):
     inputs = models.JSONField(default=dict)
     answer = models.JSONField(null=True, blank=True)
     gpx = models.TextField(blank=True, default="")
+    gpx_same_as_next = models.BooleanField(default=False)
+    # What this version holds, in bytes (its line, inputs, answer and own file text as JSON).
+    size_bytes = models.IntegerField(default=0)
     saved_at = models.DateTimeField()
     replaced_at = models.DateTimeField(auto_now_add=True)
 

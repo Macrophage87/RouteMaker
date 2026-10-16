@@ -203,7 +203,7 @@ import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, onSignIn, planFromSetting, sameSettings, saveSettings, SAVE_SETTLE_MS, type SettingsDoc } from "./lib/accountSettings.ts";
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
-import { OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, planSave, saveRoute, savedAnswer, versionOf, type OpenSaved, type SavedRoute } from "./lib/savedRoutes.ts";
+import { OPENED_SAID, SAVED_SAID, SAVE_FAILED, UNCHANGED_SAID, UPDATE_ROUTE, VERSION_SAID, defaultRouteName, differenceLine, differsTooMuch, gpxSave, afterDelete, afterRename, planSave, saveAsVersion, savedAnswer, versionOf, type OpenSaved, type SavedRoute } from "./lib/savedRoutes.ts";
 import { checkClosures, closedStretches, reroutedSaid, spliceDetours, type Closure, type CheckFor } from "./lib/closureCheck.ts";
 import { downloadText, trackGpx, verbatimDownload, verbatimFileName } from "./lib/gpxVerbatim.ts";
 import { readGpx } from "./lib/gpxImport.ts";
@@ -2440,12 +2440,13 @@ export function App() {
           : null;
     if (!body) return SAVE_FAILED;
     const of = versionOf(openSavedRoute.current, name, mode === "plan");
-    const outcome = await saveRoute(origin, of === undefined ? body : { ...body, version_of: of });
+    const outcome = await saveAsVersion(origin, body, of);
     if (!outcome.ok) return outcome.message || SAVE_FAILED;
     setMyRoutesVersion((v) => v + 1);
     if (mode === "plan") openSavedRoute.current = { id: outcome.route.id, name: outcome.route.name };
-    if (of === undefined) return SAVED_SAID(name);
-    return outcome.versioned === false ? UNCHANGED_SAID(outcome.route.name) : VERSION_SAID(outcome.route.name);
+    // No `versioned`: a plain save (or the route was gone, and this one is new).
+    if (outcome.versioned === undefined) return SAVED_SAID(name);
+    return outcome.versioned === false ? UNCHANGED_SAID(outcome.route.name, body.source) : VERSION_SAID(outcome.route.name);
   };
   const saveProps = me.signed_in
     ? {
@@ -3849,7 +3850,7 @@ export function App() {
                 openImported: openImportedChecked, refineImported, getMap, downloadRoute,
                 ...(mode === "go" ? {} : { downloadCourse: downloadCourseRoute }),
                 // Snapping an opened track (lib/gpxMatch.ts) opens the plan along the snapped line: one edit, like the file.
-                ...(mode === "go" ? {} : { match: { preset, onMatched: openImported } }),
+                ...(mode === "go" ? {} : { match: { preset, trailsOff: trailsAreOff(preset, dials), assist: dials.assist === true, onMatched: openImported } }),
                 saveControl: saveProps && !importEdited ? <SaveRoute {...saveProps} label={SAVE_ROUTE} /> : null,
               }}
             />
@@ -3860,7 +3861,15 @@ export function App() {
                 announcements: { level: announceLevel(announceChoice, mode), choose: chooseAnnounce },
                 signInAvailable: me.sign_in,
                 // Shared links are managed in Plan only (lib/sharedRoutes.ts listSharedLinks).
-                myRoutes: { version: myRoutesVersion, onOpen: openSaved, onExport: exportSaved, announce, sharedLinks: mode === "plan", onSharedChange: forgetSharedLine },
+                myRoutes: { version: myRoutesVersion, onOpen: openSaved, onExport: exportSaved, announce, sharedLinks: mode === "plan", onSharedChange: forgetSharedLine,
+                  // The saved route on screen follows a rename, and is forgotten once deleted (the next save is new).
+                  onRenamed: (id: number, name: string) => {
+                    openSavedRoute.current = afterRename(openSavedRoute.current, id, name);
+                  },
+                  onDeleted: (id: number) => {
+                    openSavedRoute.current = afterDelete(openSavedRoute.current, id);
+                  },
+                },
               }}
             />
             <NearestSheet nav={sheetNav}>

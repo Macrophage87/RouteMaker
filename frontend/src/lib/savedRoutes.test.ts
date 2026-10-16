@@ -17,7 +17,11 @@ import {
   gpxSave,
   planSave,
   RESTORED_SAID,
+  UNCHANGED_SAID,
   VERSIONS_MAX,
+  afterDelete,
+  afterRename,
+  saveAsVersion,
   listVersions,
   restoreVersion,
   rowDetails,
@@ -99,6 +103,39 @@ test("a save as a version says whether one was kept", async () => {
   const outcome = await saveRoute("https://x.test", body, post, "csrftoken=abc");
   assert.ok(outcome.ok && outcome.versioned === false && outcome.route.id === 7);
   assert.equal(JSON.parse(String(sent[0].body)).version_of, 7);
+});
+
+test("a version of a route no longer in the account is saved as a new route", async () => {
+  const bodies: Array<Record<string, unknown>> = [];
+  const post = (async (_url: string, init: RequestInit) => {
+    const sent = JSON.parse(String(init.body)) as Record<string, unknown>;
+    bodies.push(sent);
+    return sent.version_of !== undefined
+      ? new Response(JSON.stringify({ error: "That saved route is not in your account.", code: "not_found" }), { status: 404 })
+      : new Response(JSON.stringify({ id: 9, name: "Commute" }), { status: 201 });
+  }) as unknown as typeof fetch;
+  const body = gpxSave("Commute", FILE, [[-77, 38.9], [-77.1, 38.8]], [], "default", startDials("default"));
+  const outcome = await saveAsVersion("https://x.test", body, 7, post, "");
+  assert.ok(outcome.ok && outcome.route.id === 9 && outcome.versioned === undefined);
+  assert.deepEqual(bodies.map((b) => b.version_of), [7, undefined]);
+  // Any other refusal is said, not retried.
+  const full = (async () => new Response(JSON.stringify({ error: "Full.", code: "full" }), { status: 409 })) as unknown as typeof fetch;
+  assert.deepEqual(await saveAsVersion("https://x.test", body, 7, full, ""), { ok: false, full: true, message: "Full." });
+});
+
+test("the saved route on screen follows My routes' rename and is forgotten when deleted", () => {
+  const open = { id: 7, name: "Commute" };
+  assert.deepEqual(afterRename(open, 7, " Work run "), { id: 7, name: "Work run" });
+  assert.equal(afterRename(open, 8, "Other"), open);
+  assert.equal(afterDelete(open, 7), null);
+  assert.equal(afterDelete(open, 8), open);
+  // Renamed, saving under the new name is a version of it still.
+  assert.equal(versionOf(afterRename(open, 7, "Work run"), "Work run", true), 7);
+});
+
+test("saved again unchanged: a file says its file has not changed", () => {
+  assert.match(UNCHANGED_SAID("Thursday", "gpx"), /this route's file hasn't changed/);
+  assert.match(UNCHANGED_SAID("Commute"), /nothing changed/);
 });
 
 test("a version's line: date, distance in US units first, and what changed", () => {

@@ -3760,17 +3760,27 @@ def match_track(request):
     body, refusal = _json_body(request, map_match.MAX_BYTES)
     if refusal is not None:
         return refusal
-    if not isinstance(body, dict) or set(body) - {"points", "preset"}:
+    if not isinstance(body, dict) or set(body) - {"points", "preset", "trails_off", "assist"}:
         return _error(400, "Send the track as an object with points and a ride type.")
     preset = body.get("preset", "default")
     if not isinstance(preset, str) or preset not in presets.PRESETS:
         return _error(400, "Not a ride type this planner offers.")
+    trails_off = body.get("trails_off", False)
+    assist = body.get("assist", False)
+    if not isinstance(trails_off, bool) or not isinstance(assist, bool):
+        return _error(400, "trails_off and assist are true or false.")
     try:
         points = map_match.checked_points(body.get("points"))
     except map_match.TrackProblem as problem:
         return _error(400, str(problem))
     try:
-        answer = map_match.match(points, preset, getattr(request, "routing_started", None))
+        answer = map_match.match(
+            points,
+            preset,
+            getattr(request, "routing_started", None),
+            trails_off=trails_off,
+            assist=assist,
+        )
     except routing.RouterRefused:
         return _error(
             422,
@@ -4663,7 +4673,8 @@ def _json_body(request, max_bytes: int):
         declared = int(request.META.get("CONTENT_LENGTH") or 0)
     except ValueError:
         return None, _stress_error(400, "Invalid Content-Length.")
-    if declared > max_bytes:
+    # The declared length, and the body itself (a missing or understated length is not trusted).
+    if declared > max_bytes or len(request.body) > max_bytes:
         return None, _stress_error(400, f"The body is larger than {max_bytes // 1024} KB.")
     try:
         return json.loads(request.body or b"null"), None
@@ -4874,27 +4885,69 @@ def _content_saved_at(row):
     return last.first() or row.created_at
 
 
+def _version_size(fields: dict) -> int:
+    """A version's bytes: its line, inputs and answer as JSON, and the file text it keeps."""
+    held = (fields["line"], fields["inputs"], fields["answer"])
+    return len(json.dumps(held, separators=(",", ":"))) + len(fields["gpx"].encode())
+
+
+def _version_gpx(version) -> str:
+    """A version's file text: its own, or (kept once) that of the first version after it that
+    keeps one, else the route's."""
+    if not version.gpx_same_as_next:
+        return version.gpx
+    later = (
+        version.route.versions.filter(gpx_same_as_next=False, replaced_at__gt=version.replaced_at)
+        .order_by("replaced_at", "pk")
+        .values_list("gpx", flat=True)
+        .first()
+    )
+    return version.route.gpx if later is None else later
+
+
 def _replace_content(row, content: dict) -> None:
     """Keep the route as it is as a version, then make `content` the latest. Called in a
     transaction with the route's row locked."""
     from django.utils import timezone
 
-    from .models import SavedRouteVersion
+    from .models import SavedRouteVersion, User
 
+    # Taken in turn per account, so the account's byte cap is counted one save at a time.
+    User.objects.select_for_update().filter(pk=row.user_id).first()
+    kept = {f: getattr(row, f) for f in VERSION_FIELDS}
+    # The same file as the content replacing it: kept once, by the newer one.
+    same_file = bool(kept["gpx"]) and kept["gpx"] == content["gpx"]
+    if same_file:
+        kept["gpx"] = ""
     SavedRouteVersion.objects.create(
         route=row,
         saved_at=_content_saved_at(row),
         replaced_at=timezone.now(),
-        **{f: getattr(row, f) for f in VERSION_FIELDS},
+        gpx_same_as_next=same_file,
+        size_bytes=_version_size(kept),
+        **kept,
     )
     for f, value in content.items():
         setattr(row, f, value)
     row.save()
-    # Past the cap the oldest go.
-    stale = row.versions.order_by("-replaced_at", "-pk").values_list("pk", flat=True)[
-        SavedRouteVersion.MAX_PER_ROUTE :
-    ]
-    SavedRouteVersion.objects.filter(pk__in=list(stale)).delete()
+    # Past the caps the oldest go: per route, then across the account. Taking the oldest first
+    # never strands a version that keeps its file in a later one.
+    stale = list(
+        row.versions.order_by("-replaced_at", "-pk").values_list("pk", flat=True)[
+            SavedRouteVersion.MAX_PER_ROUTE :
+        ]
+    )
+    SavedRouteVersion.objects.filter(pk__in=stale).delete()
+    everything = SavedRouteVersion.objects.filter(route__user_id=row.user_id)
+    total = sum(everything.values_list("size_bytes", flat=True))
+    if total > SavedRouteVersion.MAX_BYTES_PER_ACCOUNT:
+        drop = []
+        for pk, size in everything.order_by("replaced_at", "pk").values_list("pk", "size_bytes"):
+            if total <= SavedRouteVersion.MAX_BYTES_PER_ACCOUNT:
+                break
+            drop.append(pk)
+            total -= size
+        SavedRouteVersion.objects.filter(pk__in=drop).delete()
 
 
 def _same_content(row, content: dict) -> bool:
@@ -4991,6 +5044,7 @@ def saved_route_restore(request, route_id: int, version_id: int):
         if version is None:
             return _stress_error(404, "That version is not in your account.", code="not_found")
         content = {f: getattr(version, f) for f in VERSION_FIELDS}
+        content["gpx"] = _version_gpx(version)
         # Restoring makes a new latest version: the one it replaces stays in the list.
         if not _same_content(row, content):
             _replace_content(row, content)

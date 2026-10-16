@@ -40,6 +40,8 @@ class Migration(migrations.Migration):
                 ("inputs", models.JSONField(default=dict)),
                 ("answer", models.JSONField(blank=True, null=True)),
                 ("gpx", models.TextField(blank=True, default="")),
+                ("gpx_same_as_next", models.BooleanField(default=False)),
+                ("size_bytes", models.IntegerField(default=0)),
                 ("saved_at", models.DateTimeField()),
                 ("replaced_at", models.DateTimeField(auto_now_add=True)),
                 (

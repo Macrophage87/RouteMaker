@@ -7,8 +7,7 @@ import { REFINE_ROUNDS, nextFitStep, prunedCount, startFit, type Fit, type Impor
 import { gpxWorker, importGpx } from "./lib/gpxImport.ts";
 import { exportFileName, exportOf, fidelityNotice, importSentences, presetNotice, prunedNotice } from "./lib/gpxText.ts";
 import { showReference, showWaypoints } from "./lib/referenceLayer.ts";
-import { MATCHING_SAID, MATCH_ACTION, MATCH_HINT, fitLine, matchFailedSaid, matchTrack, matchedPlan, matchedSaid } from "./lib/gpxMatch.ts";
-import type { PresetId } from "./lib/presets.ts";
+import { MATCHING_SAID, MATCH_ACTION, MATCH_HINT, fitLine, matchFailedSaid, matchTrack, matchedPlan, matchedSaid, type MatchRide } from "./lib/gpxMatch.ts";
 import { VIA_MARKS, viaIndices } from "./lib/pointKinds.ts";
 import { fidelity } from "./lib/trackMatch.ts";
 import type { FileDownload } from "./lib/gpxVerbatim.ts";
@@ -55,7 +54,7 @@ interface Props {
    * Plan only: snap an opened track to the map's ways (lib/gpxMatch.ts) on the ride type now chosen, and open
    * the plan that follows the snapped line (`onMatched`, one edit). Without it (Go) the action is not offered.
    */
-  match?: { preset: PresetId; onMatched: (plan: ImportedPlan) => void };
+  match?: MatchRide & { onMatched: (plan: ImportedPlan) => void };
 }
 
 function samePoints(a: readonly LonLat[], b: readonly LonLat[]): boolean {
@@ -325,7 +324,7 @@ export function GpxPanel(props: Props) {
     if (!snap || !imported || snapping?.kind === "running") return;
     const file = imported;
     setSnapping({ kind: "running" });
-    const outcome = await matchTrack(window.location.origin, file.reference, snap.preset);
+    const outcome = await matchTrack(window.location.origin, file.reference, snap);
     // Another file opened meanwhile: this answer is about the last one.
     if (importedRef.current?.verbatim !== file.verbatim) return;
     if (!outcome.ok) {
