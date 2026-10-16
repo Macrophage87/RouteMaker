@@ -2684,12 +2684,13 @@ def test_the_rollbacks_restore_the_front_end_and_pair_graphs_with_the_database()
 
 
 def test_the_paused_rebuilds_traces_on_the_beta_are_documented_as_expected() -> None:
-    """Final review, spec S1: the tick is still queued and the entry reads stale."""
+    """Final review, spec S1: the tick is still queued, and (OPS-2) the entry reads paused."""
     header = (REPO / "compose.beta.yaml").read_text().split("services:")[0]
     assert "so nothing queues rebuild jobs" not in header
     assert "one\n#     weekly_rebuild job waits" in header
     note = RUNBOOK[RUNBOOK.index("**No rebuild runs here.**") :]
-    assert "one\n  `weekly_rebuild` job waits" in note and "as stale" in note
+    assert "one\n  `weekly_rebuild` job waits" in note and "as **paused**, not stale" in note
+    assert "lists weekly_rebuild as paused" in header
     found = problems_for(lambda s: s["api"]["environment"].pop("WEEKLY_REBUILD_PAUSED"))
     assert any("must only record a pause" in p for p in found), found
 
