@@ -61,7 +61,8 @@ test("3. 311: the pick is the report (sent, or the text app filled in); the note
   assert.match(pick, /tell311\(REPORT_READY\)/);
   // The confirmation line and Add a note under the button.
   // Review F4: the line clears after SAID_311_MS, held while focused or hovered (the spread handlers).
-  assert.match(ride, /<div className="ride-311-said" \{\.\.\.said311Timer\.hold\}>\s*\{\/\*[^*]*\*\/\}\s*<p>\{said311\}<\/p>\s*<button type="button" className="secondary" onClick=\{addNote\}>\s*Add a note/);
+  assert.match(ride, /<div className="ride-311-said" \{\.\.\.said311Timer\.hold\}>\s*\{\/\*[^*]*\*\/\}\s*<p>\{said311\}<\/p>\s*\{\/\*[^*]*\*\/\}\s*\{said311 !== REPORT_SENT && \(\s*<button type="button" className="secondary" onClick=\{addNote\}>\s*Add a note/);
+  // Sent by the server already: no Add a note, which would send the same problem twice (v0.7.0 end review).
   // In the report itself the note comes after the sending.
   const fold = ride.slice(ride.indexOf("function Report311("), ride.indexOf("export function RideMode("));
   assert.ok(fold.indexOf("Add a note (optional)") > fold.indexOf("Copy the report"), "the note after the actions");

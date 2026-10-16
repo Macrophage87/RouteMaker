@@ -1278,9 +1278,12 @@ export function RideMode({
             <div className="ride-311-said" {...said311Timer.hold}>
               {/* Shown, not a live region: it is said through the rider's own outputs (tell311). */}
               <p>{said311}</p>
-              <button type="button" className="secondary" onClick={addNote}>
-                Add a note
-              </button>
+              {/* Sent by the server already: a note would be a second report of the same problem (v0.7.0 end review). */}
+              {said311 !== REPORT_SENT && (
+                <button type="button" className="secondary" onClick={addNote}>
+                  Add a note
+                </button>
+              )}
             </div>
           )}
         </div>

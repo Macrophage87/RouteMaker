@@ -123,6 +123,9 @@ export function RideGroup({ type, points, line, getMap, here }: RideGroupProps) 
       setConsent(kept);
       setAsked(kept !== null);
       setShareOn(kept?.answer === "yes");
+      // The question, said once as it shows (a group, not a dialog: the page around it stays usable). Said
+      // a moment later: the polite region mounts with the ride, and one mounted with its text is often not read.
+      if (kept === null) window.setTimeout(() => live && say(CONSENT_QUESTION), 150);
     });
     return () => {
       live = false;
@@ -296,7 +299,7 @@ export function RideGroup({ type, points, line, getMap, here }: RideGroupProps) 
   return (
     <div className="ride-group">
       {!asked && (
-        <div className="ride-consent" role="dialog" aria-labelledby="ride-consent-q" aria-describedby="ride-consent-note">
+        <div className="ride-consent" role="group" aria-labelledby="ride-consent-q" aria-describedby="ride-consent-note">
           <p id="ride-consent-q" className="ride-consent-question">
             <strong>{CONSENT_QUESTION}</strong>
           </p>
