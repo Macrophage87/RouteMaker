@@ -384,7 +384,12 @@ def test_the_dry_run_fills_reviews_queue_and_says_what_it_did(
         cursor.execute("UPDATE staging.segment SET stress_tier = 4 WHERE osm_way_id = 1")
 
     out = run(NEW, "--overrides-read-at", READ_AT)
-    assert "review queue: 1 rebuild," in out
+    assert (
+        "review queue, in roads (whole ways; the stress changes above count segments): 1 rebuild,"
+        in out
+    )
+    # The two reports agree on the one road that changed.
+    assert "stress changes, live -> staging: 1 segments" in out
     assert "no report from this build for: sidepath, works closure, rematch" in out
     assert (
         f"review: 1 of 1 changed roads in build {NEW} have no ruling yet (Review mode, "
@@ -440,3 +445,61 @@ def test_reviews_reopenings_are_listed_apart_and_do_not_hold_the_swap(deployment
         "warning: 1 Review reopening(s) undone after 2026-10-04 07:00:00 UTC are still open to "
         f"bicycles in this build (access override ids {earlier.pk})"
     ) in out
+
+
+def test_the_dry_run_reports_stress_changes_by_county(deployment, settings, tmp_path) -> None:
+    """The owner's review before promotion (2026-10-16): what changed, totals by county,
+    from reference/counties.geojson (the jurisdiction table has no county layer)."""
+    import json
+
+    with connection.cursor() as cursor:
+        cursor.execute("UPDATE staging.segment SET stress_tier = 3 WHERE osm_way_id = 1")
+    reference = tmp_path / "reference"
+    reference.mkdir()
+    settings.REBUILD_REFERENCE_DIR = reference
+
+    out = run(NEW, "--overrides-read-at", READ_AT)
+    assert "stress changes, live -> staging: 1 segments" in out
+    assert "LTS 2 -> 3: 1 segments" in out
+    assert "no county totals" in out and "--counties" in out
+
+    ring = [[-77.1, 38.8], [-76.9, 38.8], [-76.9, 39.0], [-77.1, 39.0], [-77.1, 38.8]]
+    (reference / "counties.geojson").write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {"NAMELSAD": "District of Columbia", "STATEFP": "11"},
+                        "geometry": {"type": "Polygon", "coordinates": [ring]},
+                    }
+                ],
+            }
+        )
+    )
+    out = run(NEW, "--overrides-read-at", READ_AT)
+    assert "  District of Columbia, DC: 1 segments" in out and "2->3 1" in out
+    assert serving(deployment) == {OLD}
+
+
+def test_a_segment_whose_ordinal_now_names_another_stretch_is_not_a_change(
+    deployment, settings, tmp_path
+) -> None:
+    """OSM split way 1 between the builds: its ordinal 0 now starts elsewhere. Paired by
+    key alone it read as a change of tier; it is two unpaired segments instead."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """UPDATE staging.segment SET stress_tier = 4, geometry =
+                   ST_GeomFromText('LINESTRING(-77.005 38.905, -77.01 38.91)', 4326)
+               WHERE osm_way_id = 1"""
+        )
+    settings.REBUILD_REFERENCE_DIR = tmp_path
+
+    out = run(NEW, "--overrides-read-at", READ_AT)
+
+    assert "stress changes, live -> staging: 0 segments" in out
+    assert "LTS 2 -> 4" not in out
+    # Ways 2 and 3 are new in staging, and way 1's segment is now unpaired both ways.
+    assert "unpaired (a way new, gone, split or redrawn): 3 staging segments" in out
+    assert "1 live segments" in out

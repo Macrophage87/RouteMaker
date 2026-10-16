@@ -44,6 +44,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import models
 
+from core import stress_changes
 from pipeline import promotion, reconcile, retention, tiles
 from pipeline.variants import RESTART_OFFROAD_WHERE_IT_RUNS, RESTART_ROUTERS, Variant
 
@@ -204,8 +205,10 @@ class Command(BaseCommand):
             return
         wired = [f"{n} {q.replace('_', ' ')}" for q, n in counts.items() if n is not None]
         missing = [q.replace("_", " ") for q, n in counts.items() if n is None]
+        # Roads, not the stress change report's segments: a way counts once, at its highest
+        # piece's level with half steps, and a change of bicycle access counts as well.
         self.stdout.write(
-            "review queue: "
+            "review queue, in roads (whole ways; the stress changes above count segments): "
             + ", ".join(wired)
             + (f"; {stress_review.NO_REPORT.lower()} for: {', '.join(missing)}" if missing else "")
         )
@@ -283,6 +286,13 @@ class Command(BaseCommand):
             f"segments: {live} has {live_segments if live_segments is not None else 'no table'}"
             f", {staging} has {segments}; {live} becomes {settings.SEGMENT_SCHEMA_RETIRED}"
         )
+        if live_segments:
+            # The owner's review before promotion (2026-10-16): what changed, by county.
+            try:
+                for line in stress_changes.report(live, staging, settings.REBUILD_REFERENCE_DIR):
+                    self.stdout.write(line)
+            except Exception as error:  # noqa: BLE001 - a report, never a reason to refuse
+                self.stderr.write(f"the stress change report was not made: {error}")
         reapplies = "overrides_read_at" in inspect.signature(promotion.perform_swap).parameters
         if reapplies:
             self.stdout.write(

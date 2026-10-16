@@ -48,7 +48,7 @@ from pipeline.schema import validate_schema_name
 from routemaker import agency_lts
 from routemaker.stress import NARROW_ROAD_RULE, NARROW_RURAL_ROAD_MPH
 
-from . import audit, segment_info, stress_edits
+from . import audit, segment_info, stress_changes, stress_edits
 from .models import AuditLogEntry, Override, ReviewItem, ReviewRuling, StressSuggestion
 
 logger = logging.getLogger(__name__)
@@ -88,7 +88,7 @@ SOURCE_NAMES = {
 
 def source_name(key: str) -> str:
     if key in agency_lts.PENDING_AGENCIES:
-        return agency_lts.PENDING_AGENCIES[key][0]
+        return agency_lts.review_name(key)
     if key in SOURCE_NAMES:
         return SOURCE_NAMES[key]
     return agency_lts.source_name(key)
@@ -173,29 +173,47 @@ def _way_rows(schema: str, where: str = "", params: Iterable = ()) -> list[dict]
 
 
 def _fill_facts(queue: str, schema: str, build_id: str = "") -> None:
-    """Each listed way's name (where the queue gave none), length, count, lines and area (the
-    police layer's authority, which is the county's in Maryland and Virginia, else the
-    state's), written in the database from `schema`: no way's lines pass through Python."""
+    """Each listed way's name (where the queue gave none), length, count, lines and area,
+    written in the database from `schema`: no way's lines pass through Python.
+
+    The area is the county, from the one county lookup the import's stress change report uses
+    (`stress_changes.county_table`, reference/counties.geojson), at the point on the road
+    nearest its middle; "" where this host has no counties file. That report counts segments
+    by whole tier, each placed by its own midpoint; Review counts ways (a way's level is its
+    highest piece's, half steps included, and a change of bicycle access counts too), so a
+    way across a county line is one road in one county here and its pieces in each there."""
     if not _table_exists(schema):
         return
+    with stress_changes.county_table(_counties()):
+        _write_facts(queue, schema, build_id)
+
+
+_COUNTIES: dict[tuple, list] = {}
+
+
+def _counties() -> list[tuple[str, str]]:
+    """`stress_changes.reference_counties`, read once while the file is unchanged."""
+    path = Path(settings.REBUILD_REFERENCE_DIR) / stress_changes.COUNTIES_FILE
+    key = (str(path), path.stat().st_mtime_ns if path.is_file() else None)
+    if key not in _COUNTIES:
+        _COUNTIES.clear()
+        _COUNTIES[key] = stress_changes.reference_counties()
+    return _COUNTIES[key]
+
+
+def _write_facts(queue: str, schema: str, build_id: str) -> None:
     columns = _columns(schema)
     names = [c for c in ("trail_name", "sidepath_name", "mtb_name") if c in columns]
     name = f"max(COALESCE({', '.join(names)}))" if names else "NULL"
     aadt = "max(volume_aadt)" if "volume_aadt" in columns else "NULL"
+    county = stress_changes.county_of("ST_ClosestPoint(f.geom, ST_Centroid(f.geom))")
     with connection.cursor() as cursor:
         cursor.execute(
             f"""
             UPDATE review_item i
             SET name = CASE WHEN i.name = '' THEN COALESCE(f.name, '') ELSE i.name END,
                 length_m = COALESCE(f.length_m, 0), aadt = f.aadt, geometry = f.geom,
-                area = COALESCE(
-                  (SELECT j.name FROM jurisdiction j WHERE j.layer = 'police'
-                     AND ST_Intersects(j.geometry, ST_PointOnSurface(f.geom))
-                   ORDER BY j.name LIMIT 1),
-                  (SELECT j.name FROM jurisdiction j WHERE j.layer = 'state'
-                     AND ST_Intersects(j.geometry, ST_PointOnSurface(f.geom))
-                   ORDER BY j.name LIMIT 1),
-                  '')
+                area = COALESCE({county}, '')
             FROM (
                 SELECT osm_way_id, {name} AS name,
                        sum(ST_Length(geometry::geography)) AS length_m, {aadt} AS aadt,
@@ -437,7 +455,7 @@ def rating_sources(
     add(SUGGESTIONS, suggested)
     add(OSM, osm)
     for agency, level in pending:
-        add(agency, level, is_pending=True)
+        add(agency, level, is_pending=not agency_lts.public_use_confirmed(agency))
     return out
 
 

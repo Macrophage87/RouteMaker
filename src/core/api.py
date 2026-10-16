@@ -5853,6 +5853,53 @@ def stress_edit_create(request, body: StressEditIn, response: HttpResponse):
     return Status(200, _edit_out(result))
 
 
+class SurfaceEditIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    osm_way_ids: list[StrictInt] = Field(
+        min_length=1, max_length=40, description="One road piece, or a named stretch's pieces."
+    )
+    surface: Literal["rough", "gravel", "sand", "dirt"] | None = Field(
+        description="The surface routes should price it as; null takes the penalty off."
+    )
+    reason: str = Field(
+        max_length=2000, description="Private. Required, at most 500 characters; never shown."
+    )
+
+
+class SurfaceEditOut(Schema):
+    changed: list[int] = Field(description="The ways whose penalty changed (the rest had it).")
+    message: str
+
+
+@api.post(
+    "/stress-edits/surface",
+    response={**STRESS_EDIT_RESPONSES, 200: SurfaceEditOut},
+    summary="Set a road's surface penalty, for the next map rebuild (instance admin)",
+)
+@decorate_view(*STRESS_WRITE)
+def stress_edit_surface(request, body: SurfaceEditIn, response: HttpResponse):
+    from . import stress_edits
+
+    try:
+        rows = stress_edits.set_surface(request.user, body.osm_way_ids, body.surface, body.reason)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    what = "taken off" if body.surface is None else "set"
+    return Status(
+        200,
+        {
+            "changed": [row.osm_way_id for row in rows],
+            "message": (
+                f"Surface penalty {what}. It applies at the next map rebuild."
+                if rows
+                else "Nothing changed: the road already had that."
+            ),
+        },
+    )
+
+
 class UndoIn(Schema):
     model_config = ConfigDict(extra="forbid")
 
@@ -5910,6 +5957,22 @@ class SuggestionCreatedOut(Schema):
     message: str
 
 
+class ReviewNoteOut(Schema):
+    agree: bool
+    reason: str
+
+
+class ReviewTalliesOut(Schema):
+    agree: int
+    disagree: int
+    mine: Literal["agree", "disagree"] | None = Field(
+        default=None, description="Your own mark on it, if any."
+    )
+    notes: list[ReviewNoteOut] = Field(
+        default_factory=list, description="The one-line reasons given, oldest first, unnamed."
+    )
+
+
 class SuggestionOut(Schema):
     id: int
     osm_way_id: int
@@ -5927,6 +5990,9 @@ class SuggestionOut(Schema):
     reasons: list[str] = Field(default_factory=list, description="The one-tap reasons' keys.")
     agree: int = Field(
         default=1, description="Open sends for the road that agree with it, itself included."
+    )
+    reviews: ReviewTalliesOut | None = Field(
+        default=None, description="Second reviewers' agree and disagree marks (v0.7.0)."
     )
     status: Literal["pending", "sent_to_discord"]
     created_at: str
@@ -6020,7 +6086,8 @@ def stress_suggestion_create(request, body: SuggestionIn, response: HttpResponse
 
 
 class SuggestTicketIn(Schema):
-    way: int = Field(ge=1, description="The road's OSM way id.")
+    # At most a Postgres bigint: a larger id is a 400 here, not the database's overflow (a 500).
+    way: int = Field(ge=1, le=2**63 - 1, description="The road's OSM way id.")
 
 
 class SuggestTicketOut(Schema):
@@ -6120,8 +6187,104 @@ def stress_suggestion_list(request, response: HttpResponse):
     get_token(request)
     _private(response)
     return Status(
-        200, {"suggestions": [suggestions.summary(s) for s in suggestions.open_suggestions()]}
+        200,
+        {
+            "suggestions": [
+                suggestions.summary(s, request.user) for s in suggestions.open_suggestions()
+            ]
+        },
     )
+
+
+class SuggestionReviewIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    verdict: Literal["agree", "disagree"]
+    reason: str = Field(default="", max_length=1000, description="Optional, one line of 200.")
+
+
+class SuggestionReviewOut(Schema):
+    id: int
+    message: str
+    reviews: ReviewTalliesOut
+
+
+@api.post(
+    "/stress-suggestions/{suggestion_id}/review",
+    response={200: SuggestionReviewOut, **SUGGESTION_RESPONSES},
+    summary="Agree or disagree with a waiting suggestion: advice, not a decision (reviewer)",
+)
+@decorate_view(*REVIEW_WRITE)
+def stress_suggestion_review(
+    request, suggestion_id: int, body: SuggestionReviewIn, response: HttpResponse
+):
+    from . import stress_edits, suggestions
+
+    try:
+        suggestion = suggestions.review(
+            request.user, suggestion_id, body.verdict == "agree", body.reason
+        )
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    tallies = suggestions.tallies(suggestion, request.user)
+    return Status(
+        200,
+        {
+            "id": suggestion.pk,
+            "message": f"You {body.verdict} with the suggestion for "
+            f"{suggestion.road_name or 'the road'}. {suggestions.tallies_words(tallies)}. "
+            "Approving still takes Approve now.",
+            "reviews": tallies,
+        },
+    )
+
+
+class MySuggestionIn(Schema):
+    way: int = Field(ge=1, le=2**63 - 1, description="The road piece's OSM way id.")
+
+
+class MySuggestionOut(Schema):
+    id: int
+    osm_way_id: int
+    step: float
+    words: str
+    status: Literal["pending", "sent_to_discord", "approved", "deleted"]
+    status_words: str
+    created_at: str
+    decided_at: str | None = None
+
+
+class MySuggestionAnswerOut(Schema):
+    suggestion: MySuggestionOut | None = Field(
+        description="Your latest suggestion for the road, or null when you have sent none."
+    )
+
+
+@api.get(
+    "/stress-suggestions/mine",
+    response={
+        200: MySuggestionAnswerOut,
+        401: StressEditErrorOut,
+        403: StressEditErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+    },
+    summary="Your own latest suggestion for a road and its status (signed in)",
+)
+@decorate_view(
+    same_site_editor,
+    # Asked on every road panel a signed-in rider opens: a budget of its own, like the photo's.
+    ratelimit.rate_limited(ratelimit.MY_SUGGESTION),
+    errors_as_json,
+)
+def stress_suggestion_mine(request, params: Query[MySuggestionIn], response: HttpResponse):
+    from . import suggestions
+
+    if not signed_in(request):
+        return _stress_error(401, "Sign in to see your suggestions.", code="signed_out")
+    _private(response)
+    return Status(200, {"suggestion": suggestions.mine(request.user, params.way)})
 
 
 @api.post(

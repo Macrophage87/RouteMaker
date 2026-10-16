@@ -153,6 +153,34 @@ class TestPrecompute:
             RATED
         ]
 
+    def test_the_area_is_the_stress_change_reports_county(self, tables, settings, tmp_path) -> None:
+        """One county source: reference/counties.geojson, as stress_changes reads it."""
+        live, staging = tables
+        settings.REBUILD_REFERENCE_DIR = tmp_path
+        stress_review.compute_rebuild(BUILD, live, staging)
+        assert {i.area for i in items("rebuild").values()} == {""}
+        west = [[-77.1, 38.8], [-77.0, 38.8], [-77.0, 39.0], [-77.1, 39.0], [-77.1, 38.8]]
+        (tmp_path / "counties.geojson").write_text(
+            json.dumps(
+                {
+                    "type": "FeatureCollection",
+                    "features": [
+                        {
+                            "type": "Feature",
+                            "properties": {"NAMELSAD": "Montgomery County", "STATEFP": "24"},
+                            "geometry": {"type": "Polygon", "coordinates": [west]},
+                        }
+                    ],
+                }
+            )
+        )
+        stress_review.compute_rebuild(BUILD, live, staging)
+        found = items("rebuild")
+        # DROP lies just east of -77.03 (inside); RISE further east (outside).
+        assert lon_of(DROP) < -77.0 < lon_of(RISE)
+        assert found[DROP].area == "Montgomery County, MD" and found[RISE].area == ""
+        assert stress_review.page("rebuild", area="Montgomery County, MD")["total"] == 1
+
     def test_the_narrow_rural_roads(self, tables) -> None:
         _live, staging = tables
         assert stress_review.compute_narrow_rural(staging) == 1
@@ -361,6 +389,17 @@ class TestPendingAgenciesStayPrivate:
         for agency in agency_lts.PENDING_AGENCIES:
             assert agency not in agency_lts.AGENCIES
             assert agency_lts.public_use_confirmed(agency) is False
+        assert agency_lts.public_use_confirmed("moco") is True
+
+    def test_one_switch_confirms_an_agencys_public_use(self, monkeypatch) -> None:
+        monkeypatch.setitem(agency_lts.PUBLIC_USE_CONFIRMED, "alexandria", True)
+        assert agency_lts.review_name("alexandria") == "Alexandria"
+        assert agency_lts.review_name("arlington") == "Arlington (pending permission)"
+        sources = stress_review.rating_sources(
+            {"step": 2.0}, pending=[("alexandria", 4.0), ("arlington", 4.0)]
+        )
+        pending = {s["key"]: s["pending"] for s in sources}
+        assert pending == {"formula": False, "alexandria": False, "arlington": True}
 
     def test_the_public_road_panel_never_names_them(self, queued, client, tmp_path) -> None:
         (tmp_path / "arlington-ratings.csv").write_text(f"osm_way_id,level\n{SAME},4\n")

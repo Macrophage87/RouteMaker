@@ -1299,11 +1299,12 @@ the same whatever the style decides):
   "Keep it faint if it parallels a protected bike path.", 78);
 - only a road (`segment.map_class = 'road'`) is drawn at all. A public road a
   bicycle may not use (`'barred'`: a motorway, a trunk road with
-  `bicycle=no` such as the George Washington Parkway, `motorroad=yes`,
-  `bicycle=use_sidepath`) is left to the base map, unmarked ("You can just
+  `bicycle=no` such as the George Washington Parkway, `motorroad=yes`) is left
+  to the base map, unmarked ("You can just
   leave the public roads where bikes aren't allowed as unmarked, using the base
   map", OWNER-DECISIONS 89, which replaced 73's white line); "legal but avoid"
-  (US 340) is a road and keeps its colour. A way no typical rider could use
+  (US 340, and `bicycle=use_sidepath`: legal, Avoid where a side path is mapped
+  beside it, review RL-1) is a road and keeps its colour. A way no typical rider could use
   (`'hidden'`) is not drawn either:
   - no road or path at all: BWI's terminal hallways (`highway=corridor` +
     `indoor=yes`), any `indoor` way, an elevator, a platform, a road or trail
@@ -1868,6 +1869,16 @@ Each waiting suggestion has the owner's three actions:
 
 After Approve now or Delete the focus moves to the next suggestion's heading, or to the line "No
 suggestions are waiting."
+
+**A second reviewer** (v0.7.0; `suggestions.review`, `POST /api/stress-suggestions/{id}/review`)
+may mark a waiting road suggestion **Agree** or **Disagree**, with an optional one-line reason
+(200 characters). It is advice: the item shows "Reviewers: 2 agree, 1 disagrees" and the reasons,
+unnamed, and nothing changes until an admin uses Approve now. A reviewer marks once a suggestion
+(a second mark replaces the first) and never their own suggestion. Each mark is one audit row
+(`stress_suggest_review`); the marks are in `stress_suggestion_review`, which the beta never
+receives. A rider who suggested sees their latest suggestion's status for the road in the road
+panel ("Your suggestion: LTS 2 (Fine for adults). Waiting for review."; `GET
+/api/stress-suggestions/mine?way=`), never the reviewers' marks.
 
 **Privacy of the spot.** The panel sends the nearest point on the road (the road panel's
 `on_way`), never the spot clicked, and the server keeps only the nearest point on that way
@@ -2610,8 +2621,20 @@ once the first rebuild with them has been promoted:
    Expect tens to a few hundred ways. That count also includes trails closed
    for other reasons since the last extract. Open a few on openstreetmap.org: the
    ones this change closed carry `sac_scale` and no `bicycle` tag.
-4. **Surface penalties (item 1).** Nothing to see: no rebuild input writes
-   `rm:reviewer_surface` today. The tile test (tests/test_tile_build_access.py,
+4. **Surface penalties (item 1).** From v0.7.0 an approved override of kind
+   `surface` writes `rm:reviewer_surface` (`overrides.apply_surface`; the rebuild's
+   override line counts them as "N surface"). An instance admin sets one with
+   `POST /api/stress-edits/surface` (`{"osm_way_ids": [...], "surface": "rough" |
+   "gravel" | "sand" | "dirt" | null, "reason": "..."}`; null takes it off), or types
+   the row into the admin (value `{"surface": "rough"}`; the admin refuses any other
+   value when the row is saved, `Override.clean`). It changes no level and no
+   live row: Valhalla's costs are built at the rebuild, so it applies from the next map
+   rebuild, and the road panel says "Surface penalty: Rough pavement; applies at the next
+   map rebuild" (Owner override) until the live table's rebuild has read it. The remap
+   caps every class at `compacted` and never improves a way, so after the rebuild the
+   panel says "routes price it as rougher than mapped" only where that changed the way's
+   class, and "routes already price the mapped surface as this rough" on an unpaved way
+   or, for Rough pavement, a rough paved one (`segment_info.penalty_reprices`). The tile test (tests/test_tile_build_access.py,
    "a reviewer ... penalty") covers it against the real parser.
 
 ## Rebuild checkpoints
@@ -4362,6 +4385,11 @@ failure to write one is a warning in the log and never fails the rebuild.
   the window (ways and length), whether a volume gate lay between them, and the
   link's tier against the tier on the agency's count. The log line is "AADT
   smoothing (400 m, ...): N of M counts replaced".
+- `use-sidepath-no-path.csv` (review RL-1; the owner, 2026-10-16): every road tagged
+  `bicycle=use_sidepath` with no side path mapped beside it (way id, name, OSM's
+  `tiger:county`, state). Such a road is rated on its own merits, not Avoid; each row
+  is a likely tagging error to review. The log line is "bicycle=use_sidepath roads: N
+  with a side path beside them (Avoid), M with none found".
 - `named-corridors.md` (284-286, 294-296; and Connecticut Ave NW, 409, 411): every way an entry of
   `fixtures/corridors/` took, its tier before and after, the exempt ones and why,
   and any entry that matched no way (also a warning in the log: the extract's
@@ -6433,6 +6461,18 @@ the defaults, so build those here.
    a failure and it carries on; once the install has finished, a second run goes straight
    to the dry run. `--remove-tars` deletes the downloaded graph tars once unpacked.
 
+   The dry run also fills **Review**'s lists (an instance admin's third mode, beside Go and
+   Plan; `core.stress_review`), see "Review mode: shipping and its lists" below. It prints
+   `review queue, in roads (...)`: how many roads each list holds, and which lists read from a
+   report the box sent none for (`no report from this build for: ...`; those lists are
+   emptied and say so in Review, never showing an older build's rows). It counts whole ways
+   (a way at its highest piece's level, half steps included, and a change of bicycle access);
+   the stress change report above it counts segments by whole tier. Then
+   `review: N of M changed roads ... have no ruling yet`, on the swap too: it never blocks.
+   Access overrides that Review's rulings wrote (a reopened road; source `review`) are listed
+   on a line of their own and do not hold the swap; a reopening undone after the dump is
+   flagged as still open in this build.
+
 4. **Here:** swap.
 
    ```sh
@@ -6469,6 +6509,38 @@ the build, unless `--accept-later-overrides`. Where the swap re-applies the road
 edits made after that time (from v0.4.0, the stress editor), as a rebuild does for edits
 made while it ran, that check gives way to the re-apply; the scripts pass the dump's
 time.
+
+### Review mode: shipping and its lists
+
+Review (the owner, 2026-10-16) is an instance admin's queues of roads to rule on: Rebuild
+changes, Rating disagreements, narrow rural roads, side paths not mapped, industrial-area
+closures and overrides that did not re-match, beside the riders' suggestions, hazard reports
+and closure reports. A ruling is the road panel's own change (an owner override, re-applied by
+the swap) or, for a closed road, an approved access override (source `review`) applied at the
+next rebuild; every ruling is audited and can be undone for 30 minutes.
+
+To ship it to a host:
+
+1. Deploy, then `docker compose exec -T api python manage.py migrate` (`0029_review_queue`:
+   `review_item`, `review_ruling`, `review_queue_state`, and the override source `review`).
+   `ship-data.sh` never sends these three tables to the beta or the cloud box.
+2. Fill the lists. A cloud build's dry run does it (above). After a rebuild run on this
+   host, or after adding a ratings file (step 3):
+   `docker compose exec -T api python manage.py compute_review_queue` (the live table and
+   this host's own `rebuild/reports`), with `--build-id <id>` before a swap to list the
+   rebuild's changes against `staging`, and `--reports-dir <dir>` for another build's
+   reports. Each list it computes replaces its rows and its map; the rulings stay.
+3. Optional, ratings whose public use is pending (`routemaker.agency_lts.PENDING_AGENCIES`):
+   put `<agency>-ratings.csv` (columns `osm_way_id,level`; a level 1 to 5 by halves) in
+   `<DATA_ROOT>/internal-only/review/` (`REVIEW_PENDING_DIR`), e.g. `arlington-ratings.csv`.
+   Nothing but Review reads that folder; keep it out of every bundle. Such a rating is
+   counted in a disagreement and shown labelled "(pending permission)" while
+   `agency_lts.PUBLIC_USE_CONFIRMED` says False for it; it never decides a level.
+
+The lists' Area is the county from `<DATA_ROOT>/reference/counties.geojson`, the stress change
+report's own file (`install_reference_data.py --counties`); without it the column is empty.
+Review's reads have their own rate limit (`review-read`, 600 a minute an address) and its
+rulings theirs (`review-ruling`, 800 an hour an account), apart from the road panel's editor.
 
 ### The launcher
 

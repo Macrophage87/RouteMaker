@@ -67,15 +67,22 @@ async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 
 
 /**
  * Opens a bottom-bar sheet by its button's label ("Layers", "Suggest", "Export", "Settings"; Plan's GPX is Export since 5efab18a). UI-CLEANUP: "Map
- * layers" is "Layers", and "Legend" is the Legend sheet, one step in from Layers (its Legend button), and "Review" the admin's review, one step in from Suggest.
+ * layers" is "Layers", and "Legend" is the Legend sheet, one step in from Layers (its Legend button). "Review" is the admin's Review mode
+ * (ReviewMode.tsx), opened from Suggest's Review button on its Rider suggestions list; "Review hazards" is the same mode on its Mass Ride
+ * hazard reports list.
  */
 async function openSheet(p, label = "Layers") {
   const name = label === "Map layers" ? "Layers" : label;
-  const bar = name === "Legend" ? "Layers" : name === "Review" ? "Suggest" : name;
+  const review = name === "Review" || name === "Review hazards";
+  const bar = name === "Legend" ? "Layers" : review ? "Suggest" : name;
   await p.eval(`[...document.querySelectorAll('.bar-button')].find((b) => b.textContent.startsWith(${JSON.stringify(bar)}))?.click(); true`);
   await sleep(250);
-  if (name === "Review") {
+  if (review) {
     await p.eval("document.querySelector('#sheet-suggest .open-review')?.click(); true");
+    await p.waitFor("!!document.querySelector('.review-mode .review-list-button[aria-pressed=\"true\"]')", 8000);
+    if (name === "Review hazards") {
+      await p.eval("[...document.querySelectorAll('.review-list-button')].find((b) => b.textContent.startsWith('Mass Ride hazard reports'))?.click(); true");
+    }
     await sleep(250);
   }
   if (name === "Legend") {
@@ -2446,18 +2453,30 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const onPage = await p.waitFor("location.pathname === '/about/stress.html' && !!document.querySelector('a.back')", 20000);
   await p.eval("document.querySelector('a.back')?.click(); true");
   const back = await p.waitFor("location.pathname === '/' && !!document.querySelector('.summary') && document.querySelectorAll('.junction-marker').length > 0", 40000);
-  const after = await p.eval("({ hash: location.hash, kept: (() => { try { return sessionStorage.getItem('routemaker.plan-before-sign-in'); } catch { return 'refused'; } })() })");
+  const after = await p.eval("({ path: location.pathname, ready: document.readyState, app: !!document.querySelector('#route-planner'), hash: location.hash, kept: (() => { try { return sessionStorage.getItem('routemaker.plan-before-sign-in'); } catch { return 'refused'; } })() })").catch((e) => ({ error: String(e).slice(0, 200) }));
   check("stress page: its Back to the map link reopens the rider's route, as it was, and the kept copy is used once",
     /[#&]p=/.test(before) && onPage && back && after.hash === before && after.kept === null, JSON.stringify({ before, onPage, back, after }));
   // The browser's own Back from the page (not its Back link) also leaves no kept copy, and a plan
   // cleared afterwards does not come back on reload (the correctness re-check's C8).
-  await p.eval("document.querySelector('.stress-page-link a').click(); true");
+  // If the first round left the page elsewhere, start this one from the plan again rather than stop the run.
+  if (!(await p.eval("!!document.querySelector('.stress-page-link a')").catch(() => false))) {
+    await p.s("Page.navigate", { url: `http://127.0.0.1:${PREVIEW_PORT}/${before}` });
+    await p.waitFor("!!document.querySelector('.summary')", 40000);
+    await openSheet(p, "Legend").catch(() => {});
+    await p.waitFor("!!document.querySelector('.stress-page-link a')", 30000);
+  }
+  await p.eval("document.querySelector('.stress-page-link a')?.click(); true");
   const onPage2 = await p.waitFor("location.pathname === '/about/stress.html' && !!document.querySelector('a.back')", 20000);
   await p.eval("history.back(); true");
   const back2 = await p.waitFor("location.pathname === '/' && /[#&]p=/.test(location.hash) && !!document.querySelector('.summary')", 40000);
-  await p.eval("history.replaceState(null, '', '/'); location.reload(); true");
-  const reloaded = await p.waitFor("document.readyState === 'complete' && location.pathname === '/' && !!document.querySelector('.maplibregl-canvas')", 40000);
-  const cleared = await p.eval("({ hash: location.hash, kept: (() => { try { return sessionStorage.getItem('routemaker.plan-before-sign-in'); } catch { return 'refused'; } })(), summary: !!document.querySelector('.summary') })");
+  await p.eval("history.replaceState(null, '', '/'); true");
+  // Diagnostics for a reload that leaves the page blank on CI: keep any boot error.
+  await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "window.__bootErrors = []; addEventListener('error', (e) => window.__bootErrors.push(String(e.message || e.target?.src || e.target?.href || e.type)), true); addEventListener('unhandledrejection', (e) => window.__bootErrors.push('rejection: ' + String(e.reason).slice(0, 200)));" });
+  await p.s("Page.reload", {});
+  // The map element, not the load event: a tile still in flight can hold readyState back on CI.
+  const reloaded = await p.waitFor("location.pathname === '/' && (document.getElementById('root')?.childElementCount ?? 0) > 0", 60000);
+  await sleep(2000);
+  const cleared = await p.eval("({ app: !!document.querySelector('#route-planner'), map: !!document.querySelector('.maplibregl-map'), errors: (window.__bootErrors || []).slice(0, 5), sw: navigator.serviceWorker?.controller?.scriptURL ?? null, scripts: [...document.scripts].map((x) => x.src).filter(Boolean).slice(0, 3), hash: location.hash, kept: (() => { try { return sessionStorage.getItem('routemaker.plan-before-sign-in'); } catch { return 'refused'; } })(), summary: !!document.querySelector('.summary') })");
   check("stress page: after the browser's Back and a cleared plan, a reload does not bring the old plan back",
     onPage2 && back2 && reloaded && !/[#&]p=/.test(cleared.hash) && cleared.kept === null && !cleared.summary, JSON.stringify({ onPage2, back2, reloaded, cleared }));
   await p.close();
@@ -3019,9 +3038,9 @@ async function hazardsAsked(p, ms = 15000) {
   await p.close();
 }
 {
-  // The instance admin's review: hazard reports in their own section of the same review, the same three actions.
+  // The instance admin's review: hazard reports in their own list of Review mode, the same three actions.
   const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70), admin: true });
-  await openSheet(p, "Review");
+  await openSheet(p, "Review hazards");
   await p.waitFor("[...document.querySelectorAll('.hazard-review button')].some((b) => b.textContent === 'Show hazard reports')", 8000);
   await p.eval("[...document.querySelectorAll('.hazard-review button')].find((b) => b.textContent === 'Show hazard reports').click(); true");
   await p.waitFor("!!document.querySelector('.hazard-review .suggestion-item h4')", 8000);

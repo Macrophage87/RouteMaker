@@ -100,7 +100,11 @@ FAKE_SCRIPT = r"""#!/usr/bin/env bash
 region=${AWS_DEFAULT_REGION:-}
 [ "${AWS_REGION:-}" = "$region" ] || region="AWS_REGION=${AWS_REGION:-} differs"
 printf '%s region=%s %s\n' "$(basename "$0")" "$region" "$*" >>"$FAKE_DIR/calls.log"
-[ ! -e "$FAKE_DIR/$(basename "$0").fails" ]
+[ ! -e "$FAKE_DIR/$(basename "$0").fails" ] || exit 1
+# The real import-result.sh's last line after an install and its dry run.
+if [ "$(basename "$0")" = import-result.sh ] && [ ! -e "$FAKE_DIR/import-silent" ]; then
+  echo "import-result: installed. Nothing served has changed."
+fi
 """
 
 
@@ -492,6 +496,21 @@ def test_a_failed_import_is_reported_after_the_box_is_stopped(fake) -> None:
     calls = fake.calls()
     assert position(calls, "stop-instances") < position(calls, "import-result.sh")
     assert len(fake.called("import-result.sh")) == 1, "no swap after a failed install"
+
+
+def test_installed_as_staging_is_said_only_when_the_install_ran(fake) -> None:
+    done = fake.run(URL)
+    assert done.returncode == 0, done.stderr
+    assert "done: installed as staging" in done.stdout
+
+
+def test_an_import_step_that_installed_nothing_is_not_called_installed(fake) -> None:
+    # cloud-20261016b: the import step switched off, and still "done: installed as staging".
+    (fake.dir / "import-silent").touch()
+    done = fake.run(URL)
+    assert done.returncode == 0, done.stderr
+    assert "done: installed as staging" not in done.stdout
+    assert "did not install the result here" in done.stdout
 
 
 def test_the_resume_hint_names_the_run_even_with_the_default_name(fake) -> None:

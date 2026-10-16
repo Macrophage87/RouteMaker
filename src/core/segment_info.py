@@ -31,6 +31,7 @@ from django.db import connection
 from pipeline.schema import validate_schema_name
 from routemaker import agency_lts, flow, more_links
 from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
+from routemaker.stress import USE_SIDEPATH_RULE
 
 # How far from the spot a way may be and still be the one the rider meant: a
 # right-click on a drawn road lands within a few metres of its centre line at
@@ -203,7 +204,9 @@ ACCESS_WORDS = {
         " (closed unless there is evidence bikes are allowed)",
     ),
     "bicycle_no": (False, "Closed: no bicycles (a no-bike sign or rule, as mapped)"),
-    "bicycle_use_sidepath": (False, "Closed: bicycles must use the side path"),
+    # Legal, rated Avoid, where a side path is mapped beside it (review RL-1; the owner,
+    # 2026-10-16: "It's very much not recommended, but I believe still legal").
+    "bicycle_use_sidepath": (True, "Open: legal, but riders are asked to use the side path"),
     "motorway": (False, "Closed: a freeway"),
     "motorroad": (False, "Closed: a motor-vehicle-only road"),
     "private": (False, "Closed: private, or no public access"),
@@ -525,6 +528,8 @@ def _rule_words(rule: str) -> str:
         return "Owner-rated corridor"
     if "curated lane at" in rule:
         return "Owner-rated: a bike lane on a road this busy is LTS 4"
+    if rule.startswith(USE_SIDEPATH_RULE):
+        return "Avoid: riders are asked to use the side path"
     if rule.startswith("legal but avoid"):
         posted = _SPEED.search(rule)
         return "Avoid: highway-like road" + (f", posted {posted.group(0)}" if posted else "")
@@ -784,6 +789,9 @@ def riding_rows(row: dict) -> list[dict]:
             )
         )
     rows.append(_row("Surface", surface_words(row), OSM))
+    penalty = surface_penalty_words(row)
+    if penalty:
+        rows.append(_row("Surface penalty", penalty, OWNER))
     level = row.get("mtb_level")
     words = mtb_level_words(level)
     if words and is_mtb_trail(row):
@@ -799,6 +807,35 @@ def riding_rows(row: dict) -> list[dict]:
     if row.get("walk_bike"):
         rows.append(_row("Walk your bike", "Yes: a short stretch where riding is not allowed", OSM))
     return rows
+
+
+def surface_penalty_words(row: dict) -> str | None:
+    """A reviewer's surface penalty (v0.7.0; `stress_edits.surface_of`, kept on the row as
+    `reviewer_surface`), in words: what it is, and whether routes price it yet. The graph has
+    it only from the map rebuild after it was set."""
+    penalty = row.get("reviewer_surface")
+    if not isinstance(penalty, dict):
+        return None
+    if penalty.get("surface") is None:
+        return "Taken off; routes stop pricing it at the next map rebuild"
+    words = str(penalty.get("words") or "Rough surface")
+    if not penalty.get("applied"):
+        return f"{words}; applies at the next map rebuild"
+    if penalty_reprices(row, penalty.get("surface")):
+        return f"{words}; routes price it as rougher than mapped"
+    return f"{words}; routes already price the mapped surface as this rough"
+
+
+def penalty_reprices(row: dict, surface: object) -> bool:
+    """Whether lua/routemaker_remap.lua `bounded_surface` gives the way a rougher class for
+    the penalty, read from the row's surface facts (the row has no `surface` tag). It caps
+    every penalty at `compacted` and never improves a way: an unpaved way is already that
+    rough or rougher, and a rough paved one (cobblestone, brick) already has Rough pavement.
+    Where the facts cannot say, this says no, so the panel never claims a change it did
+    not make."""
+    if row.get("is_unpaved") is True:
+        return False
+    return not (surface == "rough" and row.get("is_rough"))
 
 
 def surface_words(row: dict) -> str:
@@ -824,6 +861,18 @@ def surface_words(row: dict) -> str:
     return words
 
 
+# A `bicycle=use_sidepath` road with a side path mapped beside it (review RL-1).
+USE_SIDEPATH_REASON = "bicycle_use_sidepath"
+
+
+def use_sidepath_words(row: dict) -> str:
+    """The owner's words for a `bicycle=use_sidepath` road (2026-10-16), naming the side
+    path where it has a name (`segment.sidepath_name` on a road)."""
+    words = "Legal, but riders are asked to use the side path"
+    name = row.get("sidepath_name") if not row.get("is_trail_class") else None
+    return f"{words}: {name}" if name else words
+
+
 def access_rows(row: dict, bicycle: bool | None) -> tuple[bool | None, list[dict]]:
     """Whether a bicycle may use the way, and the rows saying so and why."""
     have_reason = "bike_access_reason" in row
@@ -841,6 +890,8 @@ def access_rows(row: dict, bicycle: bool | None) -> tuple[bool | None, list[dict
     if bicycle is None:
         return None, [_row("Bike access", "Not known right now (the router did not answer)", None)]
     if bicycle:
+        if reason == USE_SIDEPATH_REASON:
+            return True, [_row("Bike access", use_sidepath_words(row), OSM)]
         if known is not None and known[0]:
             return True, [
                 _row("Bike access", known[1], OWNER if reason.startswith("override") else OSM)
@@ -905,7 +956,6 @@ ACCESS_SHORT = {
     "secured": "secure government site",
     "works": "quarry, landfill or industrial site",
     "bicycle_no": "no-bike rule",
-    "bicycle_use_sidepath": "use the side path",
     "motorway": "freeway",
     "motorroad": "motor vehicles only",
     "private": "private",
@@ -1050,6 +1100,9 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
     rough = bool(row.get("is_rough"))
     if unpaved is not None and (unpaved or rough or path):
         add("surface", "Surface", surface_words(row))
+    penalty = surface_penalty_words(row)
+    if penalty:
+        add("surface_penalty", "Surface penalty", penalty)
     if row.get("walk_bike"):
         add("walk", "Walk your bike", "A short stretch")
     reason = row.get("bike_access_reason")
@@ -1057,6 +1110,8 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
         # OWNER-DECISIONS 452a: said as the map draws it, with its level (456); the off-road
         # graph's ride types do use it, unless it is rated singletrack.
         add("bikes", "Bikes", mtb_summary(row))
+    elif open_ is True and reason == USE_SIDEPATH_REASON:
+        add("bikes", "Bikes", use_sidepath_words(row))
     elif open_ is True:
         add("bikes", "Bikes", "Allowed")
     elif open_ is False:
@@ -1079,11 +1134,13 @@ def describe(row: dict, router: dict) -> dict:
     # And an unnamed bike way beside a named street, that street's bike lane ("9th Street
     # Northwest protected bike lane"; v0.7.0 "Go riding fixes" item 4), as the route
     # description names it.
+    # On a road, `sidepath_name` is the side path it asks riders to use (review RL-1),
+    # never the road's own name.
     name = (
         router.get("name")
         or row.get("trail_name")
         or row.get("mtb_name")
-        or row.get("sidepath_name")
+        or (row.get("sidepath_name") if path else None)
     )
     name_source = ROUTER if router.get("name") else (OSM if name else None)
     kind, kind_source = road_kind(router, row)
@@ -1135,5 +1192,8 @@ def segment_info(lat: float, lon: float) -> dict:
     row = nearest_row(lat, lon)
     if row is None:
         return {"found": False, "title": "No road here", "summary": [], "sections": []}
+    from . import stress_edits
+
+    row["reviewer_surface"] = stress_edits.surface_of(int(row["osm_way_id"]))
     router = router_facts(float(row["on_lat"]), float(row["on_lon"]), int(row["osm_way_id"]))
     return describe(row, router)

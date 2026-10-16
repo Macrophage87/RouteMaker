@@ -1,8 +1,7 @@
 # The instance admin's Review queue and its rulings (core.models.ReviewItem, ReviewRuling,
 # ReviewQueueState; core.stress_review), and Override's source for a Review reopening.
 #
-# Numbered 0029: 0027_suggestion_reviews and 0028_surface_override come from another branch and
-# are not on this one's base yet, so `dependencies` names 0026 until they merge.
+# After 0027_suggestion_reviews and 0028_surface_override, made on another branch alongside it.
 
 import django.contrib.gis.db.models.fields
 import django.db.models.deletion
@@ -13,7 +12,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("core", "0026_reviewed_closures"),
+        ("core", "0028_surface_override"),
     ]
 
     operations = [

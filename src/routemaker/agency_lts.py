@@ -47,19 +47,40 @@ AGENCY_RULE = "agency rating"
 # Agencies whose ratings the owner may see in Review, an instance admin's view and not public,
 # before their public use is confirmed (the owner, 2026-10-16: "You can display them in review as
 # that's not public. At least until I get a response back from Arlington and Alexandria"; "They can
-# still inform them"). Each is (Review's label, public use confirmed). While a flag is False the
-# source is never in `AGENCIES` and never in the segment table, so never in the tiles, the road
-# panel, routing, an export, a share card or a link preview: only `core.stress_review` reads it,
-# and it never decides a level. A ruling it informs is the admin's own owner override.
-PENDING_AGENCIES: dict[str, tuple[str, bool]] = {
-    "arlington": ("Arlington (pending permission)", False),
-    "alexandria": ("Alexandria (pending permission)", False),
+# still inform them"). Each is its name; whether its public use is confirmed is
+# `PUBLIC_USE_CONFIRMED`'s alone. Review reads their files whatever the flag (it is not public),
+# and it never lets them decide a level: a ruling one informs is the admin's own owner override.
+# They reach the tiles, the road panel, routing, an export, a share card or a link preview only
+# through `AGENCIES` and the pipeline, never through Review.
+PENDING_AGENCIES: dict[str, str] = {
+    "arlington": "Arlington",
+    "alexandria": "Alexandria",
 }
+# The one switch: an agency's public use confirmed, by its key. While False, Review labels it
+# "(pending permission)", counts it in a disagreement's spread as information only, and offers
+# no one-click "Use" of its level. The City of Alexandria confirmed CC0 for its OpenData data on
+# 2026-10-16; its flag is flipped here once its layers are cleared for public use. Arlington's
+# stays False until it answers.
+PUBLIC_USE_CONFIRMED: dict[str, bool] = {
+    "arlington": False,
+    "alexandria": False,
+}
+PENDING_LABEL = " (pending permission)"
 
 
 def public_use_confirmed(agency: str) -> bool:
-    """Whether a pending agency's ratings may reach a public surface (False for both today)."""
-    return PENDING_AGENCIES.get(agency, ("", True))[1]
+    """Whether an agency's ratings may reach a public surface: `PUBLIC_USE_CONFIRMED`'s flag for
+    one of `PENDING_AGENCIES` (False while unset), True for any other."""
+    if agency not in PENDING_AGENCIES:
+        return True
+    return PUBLIC_USE_CONFIRMED.get(agency, False)
+
+
+def review_name(agency: str) -> str:
+    """A `PENDING_AGENCIES` agency's name in Review: "Arlington (pending permission)" until its
+    public use is confirmed."""
+    name = PENDING_AGENCIES[agency]
+    return name if public_use_confirmed(agency) else name + PENDING_LABEL
 
 
 # Whose rating an approved override row is. Most rows are the owner's own call, but

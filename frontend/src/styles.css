@@ -4278,13 +4278,15 @@ details.zoom-notes {
   margin-top: 10px;
 }
 
-.suggestion-post label {
+.suggestion-post label,
+.suggestion-verdict label {
   display: block;
   font-weight: 600;
   margin-bottom: 4px;
 }
 
-.suggestion-post textarea {
+.suggestion-post textarea,
+.suggestion-verdict input {
   display: block;
   width: 100%;
   box-sizing: border-box;
@@ -4773,6 +4775,12 @@ details.zoom-notes {
 
   .app:has(.map-history) .map-chips {
     top: 62px;
+  }
+
+  /* On a phone a card opened near the top of the map would sit under the chips and hide its
+     close button; the chips step aside until the card closes. */
+  .app:has(.maplibregl-popup) .map-chips {
+    visibility: hidden;
   }
 }
 

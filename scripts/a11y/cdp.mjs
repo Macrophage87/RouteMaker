@@ -266,6 +266,34 @@ export async function mock(page, route, { delayMs = 0, delayFrom = 2, stressTile
         status = 200;
         body = JSON.stringify(page.myGo ?? { open_in: "", ride: "", home: null });
       }
+    } else if (url.pathname.startsWith("/api/review/")) {
+      // Review mode's queues (core/stress_review.py; ReviewMode.tsx): an instance admin's, empty here, so
+      // Review opens on its lists with nothing to rule on; 403 for anyone else.
+      (page.reviewRequests ??= []).push({ method: request.method, path: url.pathname });
+      type = "application/json";
+      const empty = { type: "FeatureCollection", features: [] };
+      if (!admin) {
+        status = admin || suggester ? 403 : 401;
+        body = JSON.stringify({ error: "Only an instance admin can use Review." });
+      } else if (url.pathname === "/api/review/queues") {
+        status = 200;
+        body = JSON.stringify({ queues: [] });
+      } else if (url.pathname === "/api/review/items") {
+        status = 200;
+        body = JSON.stringify({ queue: url.searchParams.get("queue") ?? "rebuild", build_id: "", page: 1, per_page: 50, total: 0, items: [] });
+      } else if (url.pathname === "/api/review/map") {
+        status = 200;
+        body = JSON.stringify({ queue: url.searchParams.get("queue") ?? "rebuild", build_id: "", note: "", detail: "low", ruled: [], lines: empty, points: empty });
+      } else if (url.pathname === "/api/review/rulings" && request.method === "GET") {
+        status = 200;
+        body = JSON.stringify({ rulings: [] });
+      } else if (url.pathname === "/api/review/street-photo") {
+        status = 204;
+        body = "";
+      } else {
+        status = 404;
+        body = JSON.stringify({ error: "No such road in this queue." });
+      }
     } else if (url.pathname === "/api/me") {
       status = 200;
       body = JSON.stringify({ signed_in: admin || suggester, can_change_lts: admin, can_suggest: suggester && !admin });

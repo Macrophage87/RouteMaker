@@ -65,7 +65,7 @@ import { CHANGE_LTS_TEXT, NO_ME, fetchMe, type Me } from "./lib/stressEditor.ts"
 import { StressEditor } from "./StressEditor.tsx";
 import { SuggestChange } from "./SuggestChange.tsx";
 import { SuggestQuick } from "./SuggestQuick.tsx";
-import { SUGGEST_TEXT } from "./lib/suggestions.ts";
+import { SUGGEST_TEXT, fetchMySuggestion, mySuggestionText, type MySuggestion } from "./lib/suggestions.ts";
 import { StreetPhotoView } from "./StreetPhotoView.tsx";
 
 /** The one button that holds the ways to suggest, when there are two or more (UI-CLEANUP). */
@@ -218,6 +218,8 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
   // Whether the account answer is in: the short form (v0.7.0) waits for it, so a rider who may use the
   // full form never sees the short one flash first.
   const [meKnown, setMeKnown] = useState(false);
+  // The rider's own latest suggestion for this road and its status (v0.7.0), or null.
+  const [mySuggestion, setMySuggestion] = useState<MySuggestion | null>(null);
   const suggestButton = useRef<HTMLButtonElement>(null);
   const returnToSuggest = useRef(false);
   // The junction at the spot, for a rider who may suggest (OWNER-DECISIONS 232; SuggestJunction.tsx): its
@@ -340,6 +342,19 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
       suggestButton.current?.focus();
     }
   }, [suggesting]);
+
+  // A signed-in rider (never the admin, who edits) reads their own suggestion's status for the road.
+  const infoWay = state.kind === "ready" && state.info.found ? (state.info.osm_way_id ?? null) : null;
+  const asksMine = me.signed_in && !me.can_change_lts;
+  useEffect(() => {
+    setMySuggestion(null);
+    if (infoWay === null || !asksMine) return;
+    const controller = new AbortController();
+    void fetchMySuggestion(window.location.origin, infoWay, controller.signal).then((found) => {
+      if (!controller.signal.aborted) setMySuggestion(found);
+    });
+    return () => controller.abort();
+  }, [infoWay, asksMine, suggesting]);
 
   // Back from Mark closed: its button takes the focus.
   useEffect(() => {
@@ -648,6 +663,11 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
               </li>
             ))}
           </ul>
+        )}
+        {mySuggestion && mySuggestion.osm_way_id === ready?.osm_way_id && (
+          <p className="road-info-mine">
+            <span className="road-info-label">Your suggestion:</span> {mySuggestionText(mySuggestion)}
+          </p>
         )}
         {ready && request && (
           <StreetPhotoView title={ready.title} point={streetViewPoint(ready, request.point)} wayId={ready.osm_way_id} />

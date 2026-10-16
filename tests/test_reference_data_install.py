@@ -1175,3 +1175,45 @@ def test_a_count_line_with_elevations_installs_as_a_flat_line(tmp_path) -> None:
         [[-77.02, 38.90], [-76.98, 38.90]],
         [[-77.02, 38.91], [-76.98, 38.91]],
     ]
+
+
+def county(name: str, statefp: str, west: float, south: float, side: float = 0.5) -> dict:
+    ring = [
+        [west, south],
+        [west + side, south],
+        [west + side, south + side],
+        [west, south + side],
+        [west, south],
+    ]
+    return {
+        "type": "Feature",
+        "properties": {"NAME": name, "NAMELSAD": f"{name} County", "STATEFP": statefp, "ALAND": 1},
+        "geometry": {"type": "Polygon", "coordinates": [ring]},
+    }
+
+
+def test_counties_install_only_those_the_coverage_reaches(tmp_path) -> None:
+    """The stress change report's counties (`core.stress_changes`; owner 2026-10-16:
+    totals by county): only the ones inside the coverage box, named as the report
+    names them."""
+    source = tmp_path / "counties.geojson"
+    source.write_text(
+        json.dumps(
+            geojson([county("Montgomery", "24", -77.5, 39.0), county("Kern", "06", -119.0, 35.0)])
+        )
+    )
+    done = install(tmp_path, "--counties", str(source))
+    # Non-zero only for the two required files this test does not install.
+    assert "counties.geojson: 1 counties" in done.stdout, done.stderr
+    written = json.loads((tmp_path / "data" / "reference" / "counties.geojson").read_text())
+    assert [f["properties"]["NAMELSAD"] for f in written["features"]] == ["Montgomery County"]
+    assert "ALAND" not in written["features"][0]["properties"]
+
+
+def test_the_scripts_coverage_box_is_the_settings_one(settings) -> None:
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("install_reference_data", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert module.COVERAGE_BBOX == tuple(settings.COVERAGE_BBOX)

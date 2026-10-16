@@ -16,11 +16,28 @@
  * junction level that would withdraw an approved Avoid junction: "Yes, approve" / "Don't approve"). After Approve now or Delete the suggestion leaves the
  * list and the focus goes to the next one's heading (the one before, at the end), or to the "No
  * suggestions are waiting" line when none is left: never to the top of the page.
+ *
+ * A road suggestion also takes a second reviewer's Agree or Disagree (v0.7.0; core/suggestions.py review),
+ * with an optional one-line reason: advice for whoever decides, never the decision (Approve now still
+ * is). The tallies and the reasons are a line in words under the item; the reviewer's own mark is the
+ * pressed button (aria-pressed), and the result is a sentence in the status region. The focus stays on
+ * the button pressed.
  */
 import { useEffect, useId, useRef, useState } from "react";
 import { copyText, selectionCopy } from "./lib/sidebar.ts";
 import { csrfFromCookie, fetchMe } from "./lib/stressEditor.ts";
-import { COPIED, COPY_FAILED, COPY_POST, mapLink, type DiscordPost, type ReviewAction } from "./lib/suggestions.ts";
+import {
+  COPIED,
+  COPY_FAILED,
+  COPY_POST,
+  VERDICT_REASON_LABEL,
+  VERDICT_REASON_MAX,
+  mapLink,
+  talliesLine,
+  type DiscordPost,
+  type ReviewAction,
+  type Verdict,
+} from "./lib/suggestions.ts";
 import { STRESS_REVIEW, itemKey, itemPlace, type ReviewItem, type ReviewSource } from "./lib/reviewSources.ts";
 
 interface Props<T extends ReviewItem> {
@@ -47,6 +64,8 @@ export function SuggestionReview<T extends ReviewItem>({ onStressChanged, onAppr
   // The suggestion whose Approve now is waiting on its warning's confirmation.
   const [warned, setWarned] = useState<string | null>(null);
   const [focusNext, setFocusNext] = useState<string | null>(null);
+  // Each item's optional one-line reason for Agree or Disagree, as typed.
+  const [verdictReasons, setVerdictReasons] = useState<Record<string, string>>({});
   // The list as last drawn: an action's answer arrives after a wait, when `items` captured at its
   // start may be out of date (a refresh, another action).
   const itemsNow = useRef<T[] | null>(null);
@@ -116,6 +135,20 @@ export function SuggestionReview<T extends ReviewItem>({ onStressChanged, onAppr
     setFocusNext(next ? id(`s${itemKey(next)}`) : id("none"));
   };
 
+  const judge = async (item: T, verdict: Verdict) => {
+    if (busy !== null || !from.verdict) return;
+    const key = itemKey(item);
+    setBusy(key);
+    const r = await from.verdict(origin, item, verdict, verdictReasons[key] ?? "", csrfFromCookie(document.cookie));
+    setBusy(null);
+    if (!r.ok) {
+      setSaid(r.message);
+      return;
+    }
+    setItems((old) => old?.map((s) => (itemKey(s) === key ? { ...s, reviews: r.body.reviews } : s)) ?? old);
+    setSaid(r.body.message);
+  };
+
   const copy = async (item: T) => {
     const post = posts[itemKey(item)];
     if (!post) return;
@@ -156,6 +189,7 @@ export function SuggestionReview<T extends ReviewItem>({ onStressChanged, onAppr
                   {item.status === "sent_to_discord" ? "Sent to Discord; waiting for your decision." : "Waiting for review."}
                 </p>
                 {item.detail && <p className="suggestion-detail">{item.detail}</p>}
+                {item.reviews && talliesLine(item.reviews) && <p className="suggestion-tallies">{talliesLine(item.reviews)}.</p>}
                 <p className="suggestion-reason">
                   <span className="road-info-label">Rider's reason:</span> {item.reason}
                 </p>
@@ -165,6 +199,37 @@ export function SuggestionReview<T extends ReviewItem>({ onStressChanged, onAppr
                       Show on map
                     </a>
                   </p>
+                )}
+                {item.reviews && from.verdict && (
+                  <div className="suggestion-verdict" role="group" aria-labelledby={id(`vq${key}`)}>
+                    <p id={id(`vq${key}`)}>Your review (advice only; Approve now still decides):</p>
+                    <label htmlFor={id(`vr${key}`)}>{VERDICT_REASON_LABEL}</label>
+                    <input
+                      id={id(`vr${key}`)}
+                      type="text"
+                      maxLength={VERDICT_REASON_MAX}
+                      value={verdictReasons[key] ?? ""}
+                      onChange={(e) => {
+                        const value = e.currentTarget.value;
+                        setVerdictReasons((old) => ({ ...old, [key]: value }));
+                      }}
+                    />
+                    <div className="stress-editor-buttons">
+                      {(["agree", "disagree"] as const).map((verdict) => (
+                        <button
+                          key={verdict}
+                          type="button"
+                          className="secondary"
+                          aria-describedby={head}
+                          aria-pressed={item.reviews?.mine === verdict}
+                          aria-disabled={busy !== null ? true : undefined}
+                          onClick={() => void judge(item, verdict)}
+                        >
+                          {verdict === "agree" ? "Agree" : "Disagree"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 )}
                 <div className="stress-editor-buttons">
                   <button

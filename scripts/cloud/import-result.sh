@@ -255,7 +255,10 @@ read_manifest
 note "build $build, made from commit $commit with the database as of $read_at"
 
 # --- 2. pre-flight -----------------------------------------------------------------------
-here_commit=$("$GIT" -C "$live_dir" rev-parse HEAD) || die "$live_dir is not a git checkout"
+# safe.directory: run as root (or another user) on the owner's checkout, git otherwise
+# refuses it as "dubious ownership" and this reads as "not a git checkout".
+here_commit=$("$GIT" -c safe.directory="$live_dir" -C "$live_dir" rev-parse HEAD) ||
+	die "$live_dir is not a git checkout"
 if [ "$here_commit" != "$commit" ]; then
 	[ "$allow_mismatch" = 1 ] || die "the box built $commit and this checkout is on $here_commit; deploy that commit first, or pass --allow-sha-mismatch"
 	note "WARNING: built from $commit, this checkout is on $here_commit"

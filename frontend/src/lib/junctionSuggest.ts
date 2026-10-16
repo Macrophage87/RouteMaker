@@ -11,7 +11,7 @@
  */
 import type { RouteResponse } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
-import { call, suggestionLine, type ReviewAction, type SuggestionItem } from "./suggestions.ts";
+import { call, suggestionLine, type ReviewAction, type ReviewTallies, type SuggestionItem } from "./suggestions.ts";
 
 /** The levels, as the poll says them (core/suggestion_post.py JUNCTION_WORDS). 5 is Avoid. */
 export const JUNCTION_LEVELS: readonly { level: 2 | 3 | 4 | 5; words: string }[] = [
@@ -235,6 +235,8 @@ export interface ReviewEntry {
   lat: number;
   lon: number;
   created_at: string;
+  /** A road suggestion's second reviewers' marks (v0.7.0): a reviewer may agree or disagree with it. */
+  reviews?: ReviewTallies;
 }
 
 export function roadEntry(item: SuggestionItem): ReviewEntry {
@@ -251,6 +253,7 @@ export function roadEntry(item: SuggestionItem): ReviewEntry {
     lat: item.lat,
     lon: item.lon,
     created_at: item.created_at,
+    ...(item.reviews ? { reviews: item.reviews } : {}),
   };
 }
 
