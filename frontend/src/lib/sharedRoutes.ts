@@ -15,9 +15,23 @@
  *
  * Nothing of the rider is sent: no position, no account, and never the weight (OWNER-DECISIONS 313): a planned
  * answer's system weight and the effort figure weighed with it are taken out here (and again by the server).
+ * Signed in, the server notes the account as the link's owner, so only they can turn it off.
+ *
+ * The link's path names the line too, `/s/<id>#...&route=<id>`, so an app that fetches the link for a preview
+ * (which never sends the fragment) gets its title, stats and image (core.share_preview); a browser is sent on to
+ * `/?route=<id>` with the fragment carried over, and the page reads the id from either. Signed out, a route that
+ * starts, ends or stops at the Home kept on this device is sent with `preview_image: false` (the server does not
+ * know that Home, so it cannot hide it in the image; `previewImageOk`).
+ *
+ * A signed-in sharer's links are listed under My routes in Plan (`listSharedLinks`), each with New link
+ * (`regenerateSharedLink`: a new id for the same route and keeping, the old link turned off) and Turn off
+ * (`revokeSharedLink`). A turned-off link opens to one plain line (`SHARED_REVOKED`) and plans nothing.
  */
 import type { RouteResponse } from "./api.ts";
+import { haversineM, type LonLat } from "./geo.ts";
+import type { Home } from "./myGo.ts";
 import type { SaveBody, SavedRoute } from "./savedRoutes.ts";
+import { csrfFromCookie } from "./stressEditor.ts";
 
 /** The link's fragment parameter that names the shared line. */
 export const SHARED_PARAM = "route";
@@ -30,6 +44,10 @@ export const SHARED_READ_TIMEOUT_MS = 8000;
 export const SHARED_INPUTS_ONLY = "Exact line not kept: the link plans the route again.";
 export const SHARED_GONE = "Exact line gone: planned again from its points.";
 export const SHARED_OPENED = (name: string) => `Opened "${name}", as it was shared.`;
+/** A link its owner turned off (core.shared_routes.REVOKED): said plainly, with no detail. */
+export const SHARED_REVOKED = "This link was turned off by its owner.";
+/** The path a shared link's preview is fetched at (core.share_preview). */
+export const SHARED_PATH = "/s/";
 
 /**
  * How long the server keeps a shared line (core.shared_routes.KEEP_CHOICES; the owner, 2026-10-16: "For the 1 year
@@ -74,6 +92,7 @@ export interface SharedBody extends Omit<SaveBody, "name"> {
   name: string;
   keep?: ShareKeepChoice;
   delete_after?: string;
+  preview_image?: boolean;
 }
 
 /** What GET /api/shared-routes/{id} gives: what App's openSaved reads of a saved route. */
@@ -86,18 +105,43 @@ export function newSharedId(fill: (bytes: Uint8Array<ArrayBuffer>) => void = (by
   return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/** The shared line's id a link names, or null. */
-export function sharedIdFrom(hash: string): string | null {
-  const id = new URLSearchParams(hash.replace(/^#/, "")).get(SHARED_PARAM);
-  return id && ID_RE.test(id) ? id : null;
+/** The shared line's id a link names, in its fragment or (sent on from `/s/<id>`) its query, or null. */
+export function sharedIdFrom(hash: string, search = ""): string | null {
+  for (const part of [hash.replace(/^#/, ""), search.replace(/^\?/, "")]) {
+    const id = new URLSearchParams(part).get(SHARED_PARAM);
+    if (id && ID_RE.test(id)) return id;
+  }
+  return null;
 }
 
-/** The link with the shared line's id added to its fragment (the plan's inputs stay, for a link whose line is gone). */
+/**
+ * The link with the shared line's id as its path, for a preview, and in its fragment (the plan's inputs stay, for
+ * a link whose line is gone). A link whose origin cannot be read keeps its own path.
+ */
 export function withSharedId(link: string, id: string): string {
   const at = link.indexOf("#");
-  const base = at < 0 ? link : link.slice(0, at);
+  let base = at < 0 ? link : link.slice(0, at);
   const fragment = at < 0 ? "" : link.slice(at + 1);
+  try {
+    base = `${new URL(base).origin}${SHARED_PATH}${id}`;
+  } catch {
+    // Not an absolute link: kept as it is.
+  }
   return `${base}#${fragment ? `${fragment}&` : ""}${SHARED_PARAM}=${id}`;
+}
+
+/** Home's reach for the preview's check: Home's hidden circle at its widest (lib/shareCard.ts homeZone). */
+const HOME_REACH_M = 0.2 * 1609.344 + 150 + 1;
+
+/**
+ * Whether the server may draw the link's preview image: not when the sharer is signed out (the server knows no
+ * Home of theirs) and the route starts, ends or stops near the Home on this device. Signed in, the server hides
+ * the account's Home itself.
+ */
+export function previewImageOk(line: readonly (readonly number[])[], points: readonly LonLat[], home: Home | null, signedIn: boolean): boolean {
+  if (signedIn || !home) return true;
+  const near = (p: readonly number[] | undefined) => !!p && haversineM([p[0], p[1]], home.point) <= HOME_REACH_M;
+  return !(near(line[0]) || near(line[line.length - 1]) || points.some((p) => near(p)));
 }
 
 /** A planned answer as it may be shared: without the other candidates, the rider's weight or the effort weighed with it. */
@@ -114,8 +158,14 @@ export function publicAnswer(answer: RouteResponse): RouteResponse {
  * The body to send, as JSON, or null when it is larger than the server keeps (the link is then the inputs only).
  * `save` is what Save route would send (planSave or gpxSave), so the shared line is the saved one's.
  */
-export function sharedBody(id: string, save: SaveBody, keep: ShareKeep = SHARE_KEEP_DEFAULT): { body: SharedBody; json: string } | null {
-  const body: SharedBody = { ...save, id, ...(save.answer ? { answer: publicAnswer(save.answer) } : {}), ...keepFields(keep) };
+export function sharedBody(id: string, save: SaveBody, keep: ShareKeep = SHARE_KEEP_DEFAULT, previewImage = true): { body: SharedBody; json: string } | null {
+  const body: SharedBody = {
+    ...save,
+    id,
+    ...(save.answer ? { answer: publicAnswer(save.answer) } : {}),
+    ...keepFields(keep),
+    ...(previewImage ? {} : { preview_image: false }),
+  };
   const json = JSON.stringify(body);
   return new TextEncoder().encode(json).length > SHARED_MAX_BYTES ? null : { body, json };
 }
@@ -152,12 +202,16 @@ function isRoute(value: unknown, id: string): value is SharedRoute {
   );
 }
 
-/** The shared line, or null when it is not kept (or cannot be had in time): the link's inputs are planned instead. */
-export async function readShared(origin: string, id: string, get: Fetch = fetch, timeoutMs = SHARED_READ_TIMEOUT_MS): Promise<SharedRoute | null> {
+/**
+ * The shared line; "revoked" when its owner turned the link off (410: nothing is planned); or null when it is not
+ * kept (or cannot be had in time): the link's inputs are planned instead.
+ */
+export async function readShared(origin: string, id: string, get: Fetch = fetch, timeoutMs = SHARED_READ_TIMEOUT_MS): Promise<SharedRoute | "revoked" | null> {
   const abort = typeof AbortController === "undefined" ? null : new AbortController();
   const timer = abort ? setTimeout(() => abort.abort(), timeoutMs) : null;
   try {
     const response = await get(`${origin}/api/shared-routes/${id}`, { headers: { Accept: "application/json" }, credentials: "same-origin", signal: abort?.signal });
+    if (response.status === 410) return "revoked";
     if (!response.ok) return null;
     const body: unknown = await response.json();
     return isRoute(body, id) ? { ...body, gpx: typeof body.gpx === "string" ? body.gpx : "", answer: body.answer ?? null } : null;
@@ -172,4 +226,67 @@ export async function readShared(origin: string, id: string, get: Fetch = fetch,
 export function gpxShareFile(text: string, fileName: string): File | null {
   if (typeof File === "undefined") return null;
   return new File([text], fileName, { type: "application/gpx+xml" });
+}
+
+// ---- A signed-in sharer's own links (My routes in Plan) -----------------------------------------
+
+export const SHARED_LINKS = "Shared links";
+export const NEW_LINK = "New link";
+export const TURN_OFF = "Turn off";
+
+/** One of the sharer's links still working (GET /api/me/shared-routes). */
+export interface SharedLink {
+  id: string;
+  name: string;
+  source: "plan" | "gpx";
+  distance_m: number;
+  created_at: string;
+  keep: ShareKeepChoice;
+  delete_after: string | null;
+  link: string;
+}
+
+const docCookie = () => (typeof document === "undefined" ? "" : document.cookie);
+
+function writeHeaders(cookie: string): Record<string, string> {
+  const token = csrfFromCookie(cookie);
+  return { Accept: "application/json", "Content-Type": "application/json", ...(token ? { "X-CSRFToken": token } : {}) };
+}
+
+/** How long a link is kept, as its row says it. */
+export function keepSaid(link: Pick<SharedLink, "keep" | "delete_after">): string {
+  if (link.keep === "forever") return "kept permanently";
+  if (link.keep === "until" && link.delete_after) return `kept until ${link.delete_after}`;
+  return "kept 1 year after last opened";
+}
+
+export async function listSharedLinks(origin: string, get: Fetch = fetch): Promise<SharedLink[] | null> {
+  try {
+    const response = await get(`${origin}/api/me/shared-routes`, { headers: { Accept: "application/json" }, credentials: "same-origin" });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { links?: SharedLink[] };
+    return Array.isArray(body.links) ? body.links : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Turn a link off; true once it is. */
+export async function revokeSharedLink(origin: string, id: string, send: Fetch = fetch, cookie = docCookie()): Promise<boolean> {
+  try {
+    const response = await send(`${origin}/api/me/shared-routes/${id}/revoke`, { method: "POST", credentials: "same-origin", headers: writeHeaders(cookie), body: "{}" });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** A new link for the same route, the old one turned off; the new link, or null. */
+export async function regenerateSharedLink(origin: string, id: string, send: Fetch = fetch, cookie = docCookie()): Promise<SharedLink | null> {
+  try {
+    const response = await send(`${origin}/api/me/shared-routes/${id}/regenerate`, { method: "POST", credentials: "same-origin", headers: writeHeaders(cookie), body: "{}" });
+    return response.status === 201 ? ((await response.json()) as SharedLink) : null;
+  } catch {
+    return null;
+  }
 }

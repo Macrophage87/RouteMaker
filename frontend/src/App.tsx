@@ -210,7 +210,7 @@ import { readGpx } from "./lib/gpxImport.ts";
 import { downloadCourse, downloadGpx, routeGpxFile } from "./GpxPanel.tsx";
 import type { CourseFormat } from "./lib/course.ts";
 import type { DeviceProfileId } from "./lib/deviceProfiles.ts";
-import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARE_KEEP_DEFAULT, gpxShareFile, keepFields, newSharedId, readShared, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
+import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARED_PATH, SHARED_REVOKED, SHARE_KEEP_DEFAULT, gpxShareFile, keepFields, newSharedId, previewImageOk, readShared, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
 import { ShareCardDialog, type ShareCardSource } from "./ShareCardDialog.tsx";
 import { usableProfile } from "./lib/profileChart.ts";
@@ -272,8 +272,16 @@ const GO_START_RIDE = OPENING.mode === "go" && !PLAN_LINK && START_MY_GO.myGo.ri
 const OPEN_AT = atFromHash(window.location.hash);
 // A shared route's link (v0.7.0, "share the identical route"; lib/sharedRoutes.ts): the exact line it names is
 // read before the link's first plan is answered, so the line opens unchanged rather than planned again.
-const SHARED_ID = sharedIdFrom(window.location.hash);
+// A link opened at its preview path (`/s/<id>`) or sent on from it (`/?route=<id>`) names the id there; the address
+// then becomes the page's own, so a link copied later is the plan's, not the old shared one.
+const SHARED_ID = sharedIdFrom(window.location.hash, window.location.search);
+if (SHARED_ID && (window.location.pathname.startsWith(SHARED_PATH) || window.location.search))
+  window.history.replaceState(window.history.state, "", `/${window.location.hash}`);
 let sharedArrived: () => void = () => {};
+// Its owner turned the link off: the plan it carries is not planned (the first plan after the wait, and that plan
+// again on Try again); the page says so plainly (SHARED_REVOKED).
+let sharedRevoked = false;
+let revokedPlan: string | null = null;
 const SHARED_WAIT: Promise<void> | null = SHARED_ID
   ? new Promise<void>((resolve) => {
       sharedArrived = resolve;
@@ -765,6 +773,8 @@ export function App() {
       send: async (plan) => {
         // A shared route's link: its line first (openSaved sets savedShown), then this plan.
         if (SHARED_WAIT) await SHARED_WAIT;
+        if (sharedRevoked && (revokedPlan ??= sentPlanKey(plan.points, plan.preset, plan.dials)) === sentPlanKey(plan.points, plan.preset, plan.dials))
+          return { ok: false, error: { kind: "no-route", status: 410, title: "Link turned off", message: SHARED_REVOKED, noAutoResend: true } };
         const saved = savedShown.current;
         if (saved && saved.key === keptPlanKey(plan.points, plan.preset, plan.dials)) {
           keptShown.current = null;
@@ -2263,7 +2273,7 @@ export function App() {
       const keep = JSON.stringify(keepFields(shareKeep));
       const before = sharedLine.current?.of === exact.of && sharedLine.current.keep === keep ? sharedLine.current : null;
       const id = before?.id ?? newSharedId();
-      const body = before ? null : sharedBody(id, exact.save, shareKeep);
+      const body = before ? null : sharedBody(id, exact.save, shareKeep, previewImageOk(exact.save.line, exact.save.inputs.points, myGo.home, me.signed_in));
       if (before || body) {
         link = withSharedId(link, id);
         kept = before?.kept ?? storeShared(origin, body!.json);
@@ -2625,7 +2635,11 @@ export function App() {
     let live = true;
     void readShared(origin, SHARED_ID).then((shared) => {
       if (!live) return;
-      if (shared) {
+      if (shared === "revoked") {
+        sharedRevoked = true;
+        // Said by the plan's error where the link carries a plan; said here where it carries none.
+        if (decodePlan(window.location.hash).points.length < 2) announce(SHARED_REVOKED);
+      } else if (shared) {
         // The open's own check stands for the link's first-answer check.
         checkFirstAnswer.current = false;
         openSaved(shared, SHARED_OPENED(shared.name));
@@ -3806,7 +3820,8 @@ export function App() {
                 linkNote, accessMode, toggleAccessMode, mode, myGo: myGoControls, menu,
                 announcements: { level: announceLevel(announceChoice, mode), choose: chooseAnnounce },
                 signInAvailable: me.sign_in,
-                myRoutes: { version: myRoutesVersion, onOpen: openSaved, onExport: exportSaved, announce },
+                // Shared links are managed in Plan only (lib/sharedRoutes.ts listSharedLinks).
+                myRoutes: { version: myRoutesVersion, onOpen: openSaved, onExport: exportSaved, announce, sharedLinks: mode === "plan" },
               }}
             />
             <NearestSheet nav={sheetNav}>
