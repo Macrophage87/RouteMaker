@@ -2105,9 +2105,7 @@ def sidepath_names_of(pieces: list[Piece]) -> dict[int, str]:
             cursor.execute(
                 f"SELECT osm_way_id, max({SIDEPATH_NAME_COLUMN}) FROM {schema}.segment "
                 f"WHERE osm_way_id = ANY(%s) AND {SIDEPATH_NAME_COLUMN} IS NOT NULL "
-                # On a road the column names the side path it asks riders to use
-                # (review RL-1), never the road itself.
-                "AND is_trail_class GROUP BY osm_way_id",
+                "GROUP BY osm_way_id",
                 [ids],
             )
             return {int(way): str(name) for way, name in cursor.fetchall() if name}
@@ -3594,9 +3592,6 @@ ATTRIBUTION = (
     # District data terms (CC0 1.0 or CC BY 4.0, credited), owner-confirmed 2026-10-16.
     "DDOT Pavement Condition Index (DC GIS)",
     "Open Baltimore",
-    # Alexandria's posted speeds where OSM has none (PLAN.md item 183), CC0 from the
-    # city's OpenData portal; credited as every source is (OWNER-DECISIONS 301).
-    "City of Alexandria",
     "Montgomery County Planning Department",
     "USGS 3DEP",
     "U.S. Census Bureau",

@@ -182,7 +182,6 @@ test("the sources are credited in text", () => {
     "VDOT",
     "Montgomery County Planning Department",
     "Open Baltimore",
-    "City of Alexandria",
     "U.S. Census Bureau",
     "Furth",
     "Broach, Dill and Gliebe",

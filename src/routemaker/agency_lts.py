@@ -33,12 +33,8 @@ STATE = 2
 # The agencies whose ratings may set a tier, with their display names and how
 # local each is. An agency's layer is added here only once the owner has
 # approved its download and its licence allows publishing a derivative:
-# Arlington's Bike Comfort Index is for internal comparison only (OWNER-DECISIONS
-# 152, 155) and never appears. Alexandria's layers are cleared (CC0, the city's
-# OpenData portal, Alex311 request 26-00041150, 2026-10-16) but rate nothing:
-# Transport Streets has posted speeds and no LTS, Bike Lane Routes facility types
-# only, so the city's speeds reach the classifier as street facts
-# (`agency_roads.parse_alexandria_transport_streets`), not as a rating here.
+# Arlington's Bike Comfort Index and Alexandria's Transport Streets are for
+# internal comparison only (OWNER-DECISIONS 152, 153, 155) and never appear.
 AGENCIES: dict[str, tuple[str, int]] = {
     "moco": ("Montgomery County Planning", COUNTY),
     # The District is its own local government: its rating ranks with a county's.
@@ -63,8 +59,8 @@ PENDING_AGENCIES: dict[str, str] = {
 # The one switch: an agency's public use confirmed, by its key. While False, Review labels it
 # "(pending permission)", counts it in a disagreement's spread as information only, and offers
 # no one-click "Use" of its level. The City of Alexandria confirmed CC0 for its OpenData data on
-# 2026-10-16 (Alex311 request 26-00041150) and its two layers are cleared (docs/SOURCES.md, "City
-# of Alexandria"), so its flag is True. Arlington's stays False until it answers.
+# 2026-10-16 (Alex311 request 26-00041150), so its flag is True; its Transport Streets speeds
+# reach the map only with v0.8.0's rebuild. Arlington's stays False until it answers.
 PUBLIC_USE_CONFIRMED: dict[str, bool] = {
     "arlington": False,
     "alexandria": True,

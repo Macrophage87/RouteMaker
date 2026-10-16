@@ -18,9 +18,8 @@ parkway or a junction stub where one-way is the wrong reading (`overlay`).
 Three steps, kept apart so each can be tested alone:
 
 * **parse** one layer's properties into `RoadFacts` (`parse_dc_roadway_block`,
-  `parse_baltimore_centerline`, `parse_alexandria_transport_streets`): units,
-  codes and the layer's quirks settled once and recorded as plain numbers per
-  direction;
+  `parse_baltimore_centerline`): units, codes and the layer's quirks settled once
+  and recorded as plain numbers per direction;
 * **aggregate** the blocks a way was matched to (`pipeline.conflation.conflate_blocks`
   decides which and how much of the way each covers) into one `WayFacts`. OSM ways
   and agency blocks do not break at the same places, so a way can lie along
@@ -102,7 +101,6 @@ METRES_PER_FOOT = 0.3048
 
 DC_AGENCY = "dc-roadway-block"
 BALTIMORE_AGENCY = "baltimore-centerline"
-ALEXANDRIA_AGENCY = "alexandria-transport-streets"
 # The layers that record bike facilities on the street itself.
 BIKE_AGENCIES = frozenset({DC_AGENCY})
 
@@ -167,7 +165,7 @@ NAME_FREE_HIGHWAYS = frozenset({"motorway", "motorway_link", "trunk", "trunk_lin
 # Avenue's).
 FREEWAY_CLASSES = frozenset({"1", "2", "INT", "FWY"})
 # The layers that class their roads; the freeway check applies to their blocks.
-CLASSED_AGENCIES = frozenset({DC_AGENCY, BALTIMORE_AGENCY, ALEXANDRIA_AGENCY})
+CLASSED_AGENCIES = frozenset({DC_AGENCY, BALTIMORE_AGENCY})
 
 # OWNER-DECISIONS 190 makes a DC block's one-way record override OSM's explicit
 # two-way tagging, but not on a way shorter than this: a junction stub of a few
@@ -195,29 +193,8 @@ CARRIAGEWAY_HIGHWAYS = frozenset({"motorway", "trunk"})
 # The agencies whose posted speed only fills a gap in OSM's. Baltimore's `speed`
 # field is the city's attribute, not a survey of signs, and the owner chose
 # "Fill gaps only (Recommended)" (OWNER-DECISIONS 184). DC's posted limits take
-# precedence over OSM's (item 151). Alexandria's recorded speed (PLAN.md item 183)
-# fills a way OSM gives no `maxspeed` and, by the owner's choice below, replaces
-# OSM's posted speed too.
-#
-# The owner chose (2026-10-16 16:51 UTC, "City wins") that the city's speed beats OSM's,
-# as DC's does. This is the one switch: True moves Alexandria out of
-# SPEED_FILLS_ONLY into the record-wins group for the speed (its one-way and lanes
-# are never read either way).
-ALEXANDRIA_SPEED_WINS = True
-SPEED_FILLS_ONLY = frozenset(
-    {BALTIMORE_AGENCY} | (set() if ALEXANDRIA_SPEED_WINS else {ALEXANDRIA_AGENCY})
-)
-
-# The city layers whose blocks are held to the city's own streets
-# (`pipeline.conflation.road_facts_by_way`): never on a freeway, a trunk road or
-# their slip roads, whatever the names say (review: an unnamed "PRIMARY ROAD"
-# block gave the Capital Beltway 25 mph), and only on a way the city's blocks
-# cover almost wholly, so a way crossing the city line is left to OSM and the
-# defaults. The coverage stands in for the city boundary, which the rebuild does
-# not load: Transport Streets is the city's centerlines and ends at its line.
-CITY_ONLY_AGENCIES = frozenset({ALEXANDRIA_AGENCY})
-CITY_BARRED_HIGHWAYS = frozenset({"motorway", "motorway_link", "trunk", "trunk_link"})
-CITY_MIN_COVERAGE = 0.9
+# precedence over OSM's (item 151).
+SPEED_FILLS_ONLY = frozenset({BALTIMORE_AGENCY})
 
 # The agencies whose one-way and lane records are never used, for the classifier
 # or for routing: Baltimore's centerline (OWNER-DECISIONS 222, "Ignore it; keep
@@ -344,12 +321,9 @@ def resolve_withheld(
 
 
 # The directory the internal-comparison layers are kept in. Arlington's Bike
-# Comfort Index is for internal comparison only (OWNER-DECISIONS 152, 155) and is
-# never a source: nothing that feeds the rebuild, a fixture or a published report
-# reads from it (`refuse_internal_only`). Alexandria's Transport Streets left it on
-# 2026-10-16, when the city confirmed its OpenData portal is CC0 (Alex311 request
-# 26-00041150); its raw file moves out to
-# `<DATA_ROOT>/reference/inputs/alexandria-transport-streets/`.
+# Comfort Index and Alexandria's Transport Streets are for internal comparison
+# only (OWNER-DECISIONS 153, 155) and are never a source: nothing that feeds the
+# rebuild, a fixture or a published report reads from it (`refuse_internal_only`).
 INTERNAL_ONLY_DIR = "internal-only"
 
 
@@ -634,54 +608,6 @@ def parse_baltimore_centerline(properties: Mapping) -> RoadFacts | None:
         aadt_year=_int(properties.get("traffic_count_year")),
         functional_class=(properties.get("sha_class") or "").strip() or None,
         alley=alley,
-    )
-
-
-# Alexandria's Transport Streets records that are not a street a bicycle rides
-# (`MTFCC`): parking aisles, alleys, walkways and private service roads, and the
-# interstates and their ramps (bicycles are barred from them, and the layer
-# classes the George Washington Memorial Parkway, the National Park Service's
-# road, with them). A driveway (`SEG_TYPE`) is left out as well.
-ALEXANDRIA_SKIPPED_MTFCC = frozenset(
-    {
-        "PARKING LOT ROAD",
-        "ALLEY",
-        "WALKWAY/PEDESTRIAN TRAIL",
-        "PRIVATE ROAD FOR SERVICE VEHICLES",
-        "INTERSTATE HIGHWAY",
-        "RAMP",
-    }
-)
-
-
-def parse_alexandria_transport_streets(properties: Mapping) -> RoadFacts | None:
-    """One City of Alexandria "Transport Streets" record as `RoadFacts`.
-
-    Only the posted speed (`SPEED_LIMIT`), as a default for a way OSM gives none
-    (`SPEED_FILLS_ONLY`; PLAN.md item 183). The city records 20 mph on 1,591 of
-    its 3,733 local-street segments and 25 on 1,938 (queried 2026-10-16), so
-    there is no one citywide figure: the city's number for the street is the
-    sourced default. `LANES` is empty on every record and the layer carries no
-    LTS. `ONEWAY` is not read: no owner decision yet says whether the city's
-    record may set a way's direction, as DC's does (OWNER-DECISIONS 216).
-
-    None for a record that is not a street a bicycle rides
-    (`ALEXANDRIA_SKIPPED_MTFCC`, a driveway, a segment not built).
-    """
-    if (properties.get("MTFCC") or "").strip() in ALEXANDRIA_SKIPPED_MTFCC:
-        return None
-    if (properties.get("SEG_TYPE") or "").strip() == "DRIVEWAY":
-        return None
-    if (properties.get("SEG_EXIST") or "Y").strip() != "Y":
-        return None
-    speed = _posted(properties.get("SPEED_LIMIT"))
-    return RoadFacts(
-        agency=ALEXANDRIA_AGENCY,
-        name=(properties.get("FULL_NAME") or "").strip() or None,
-        speed_mph={"posted": speed} if speed is not None else {},
-        # Never a freeway class (the interstates are skipped), so a differently
-        # named record never reaches a motorway or trunk way (`_freeway_block`).
-        functional_class=(properties.get("MTFCC") or "").strip() or None,
     )
 
 

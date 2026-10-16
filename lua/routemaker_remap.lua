@@ -594,39 +594,6 @@ function M.remap_way(tags, derived)
     out.bicycle = "no"
   end
 
-  -- OSM's own `bicycle=use_sidepath` never opens a road something else closes (review
-  -- RL-1): upstream reads it as "true" over a motorway's class default, `motorroad=yes`
-  -- and a closing `access` or `vehicle`, so there it is written as `no`, as
-  -- `routemaker.facility.is_use_sidepath_road` and `map_class` read it. A write above
-  -- (a bridge legality) is an explicit grant and stands; so do directional keys.
-  if
-    out.bicycle == nil
-    and tags.bicycle == M.STRESS_PENALTY_BICYCLE
-    and (
-      M.MOTOR_ONLY_HIGHWAY[tags.highway]
-      or tags.motorroad == "yes"
-      or M.USE_SIDEPATH_CLOSING_ACCESS[tags.access]
-      or M.USE_SIDEPATH_CLOSING_ACCESS[tags.vehicle]
-    )
-  then
-    out.bicycle = "no"
-  end
-
-  -- OSM's own `bicycle=use_sidepath` (review RL-1): legal, and rated Avoid only where a
-  -- side path is mapped beside the road (`routemaker.facility.use_sidepath_paths`); with
-  -- none the road is rated on its own merits. Upstream prices the tag as the stress
-  -- penalty below whatever the tier, so below the penalty's tier it is written as plain
-  -- access, and the road costs what its tier says (as `routemaker.calm` reads it).
-  if
-    out.bicycle == nil
-    and tags.bicycle == M.STRESS_PENALTY_BICYCLE
-    and derived.stress_tier ~= nil
-    and derived.stress_tier < M.STRESS_PENALTY_TIER
-    and not derived.is_trail_class
-  then
-    out.bicycle = "yes"
-  end
-
   -- The stress penalty: `bicycle=use_sidepath` on every way the classifier or
   -- a curated override rates tier 3 or more (never a trail-class way).
   -- Upstream's transform reads `use_sidepath` as bicycle access in both
@@ -1367,11 +1334,6 @@ M.NARROW_GAP_M = 1.5
 -- upstream's own `bicycle` table maps to plain access, so the swap changes the
 -- cost and nothing about who may ride.
 M.STRESS_PENALTY_BICYCLE = "use_sidepath"
--- The `access` / `vehicle` values that keep the public off a way whatever OSM's own
--- `bicycle=use_sidepath` says (`routemaker.facility.NO_PUBLIC_ACCESS`).
-M.USE_SIDEPATH_CLOSING_ACCESS = {
-  no = true, private = true, military = true, restricted = true, permit = true,
-}
 M.PENALISABLE_BICYCLE = { yes = true, designated = true, permissive = true }
 
 -- The road classes upstream's highway table opens to a bicycle when the way

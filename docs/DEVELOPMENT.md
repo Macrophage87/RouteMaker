@@ -3839,11 +3839,9 @@ non-zero naming whichever of the other two is still missing.
 ### Agency street layers: `roadway.json`
 
 A fourth file, **optional**, which a rebuild reads when it is there and warns
-about when it is not (`ReferenceData.road_blocks`): the District's, Baltimore's
-and Alexandria's own street records, which know what OSM only guesses at. The
-owner approved the first two (OWNER-DECISIONS 151, 159); Alexandria's Transport
-Streets is CC0 from the city's OpenData portal (Alex311 reply 2026-10-16, request
-26-00041150) and gives only a posted speed where OSM has none (PLAN.md item 183); the records of what was downloaded,
+about when it is not (`ReferenceData.road_blocks`): the District's and
+Baltimore's own street records, which know what OSM only guesses at. The owner
+approved both (OWNER-DECISIONS 151, 159); the records of what was downloaded,
 under what licence, and what was found in each are in
 `fixtures/datasets/README.md`.
 
@@ -3854,8 +3852,7 @@ python scripts/fetch_agency_layer.py --slug dc-roadway-block \
     --out-dir "$DATA_ROOT/reference/inputs" --credit "..."   # once; refuses to run twice
 python scripts/install_reference_data.py --data-root "$DATA_ROOT" \
     --roadway-block  "$DATA_ROOT/reference/inputs/dc-roadway-block/dc-roadway-block.geojson" \
-    --baltimore-centerline "$DATA_ROOT/reference/inputs/baltimore-street-centerline/baltimore-street-centerline.geojson" \
-    --alexandria-streets "$DATA_ROOT/reference/inputs/alexandria-transport-streets/alexandria-transport-streets.geojson"
+    --baltimore-centerline "$DATA_ROOT/reference/inputs/baltimore-street-centerline/baltimore-street-centerline.geojson"
 ```
 
 `routemaker.agency_roads` parses each layer into `RoadFacts` (per-direction
@@ -4090,7 +4087,7 @@ back through `lua/graph.lua`.
 
 | key | value |
 |---|---|
-| `maxspeed`, `lanes`, `oneway`, `bike`, `parking` | `dc-roadway-block`, `baltimore-centerline` or (`maxspeed` only) `alexandria-transport-streets` where the agency's value took precedence, `osm` where the way's own tag stood, `default` where neither said and the classifier assumed |
+| `maxspeed`, `lanes`, `oneway`, `bike`, `parking` | `dc-roadway-block` or `baltimore-centerline` where the agency's value took precedence, `osm` where the way's own tag stood, `default` where neither said and the classifier assumed |
 | `aadt` | the agency of the count the classifier read (DDOT's or VDOT's where a count layer reached the way, `dc-roadway-block` where the block's filled in), or `none` |
 | `blocks` | the matched block ids (up to 12), `dc-<OBJECTID>-<part>` / `baltimore-<OBJECTID>-<part>` |
 
@@ -4130,15 +4127,15 @@ layers, over the source extract, the rebuild's own steps; its output feeds
 last of which writes the checked-in copy of the DC-against-OSM discrepancy
 report; nothing in it is for importing into OSM, CC BY 4.0 into ODbL needing a
 waiver) and
-`scripts/analysis/compare_agency_lts.py moco|alexandria|alexandria-lanes|baltimore`
-(an agency's LTS against ours, Alexandria's CC0 street speeds and lanes and
-Baltimore's facility records against OSM; with `--roadway`, classified as the rebuild does, the
+`scripts/analysis/compare_agency_lts.py moco|alexandria-lanes|baltimore`
+(an agency's LTS against ours, Alexandria's CC0 lanes and Baltimore's facility
+records against OSM; with `--roadway`, classified as the rebuild does, the
 street layers conflated). They load nothing. The reports are in
 `reports/data-comparison/`, and the two override files the owner approved from
 them (OWNER-DECISIONS 181, 182) in `fixtures/overrides/` (`moco` and
-`baltimore` write them; fixtures/overrides/README.md). `arlington` is
-internal only (`alexandria`, Transport Streets, was too until the city's CC0
-reply of 2026-10-16): it writes to `--internal-out`, which the script refuses inside the repository, and
+`baltimore` write them; fixtures/overrides/README.md). `arlington` and
+`alexandria` (Transport Streets) are internal only: they write to
+`--internal-out`, which the script refuses inside the repository, and
 `reports/**/internal/` is ignored by git as a backstop. Nothing that feeds the
 rebuild or a published report reads a layer under `internal-only/`
 (`agency_roads.refuse_internal_only`; the installer refuses one).
@@ -6235,8 +6232,7 @@ them, `access` decides where the way's own bicycle tag keeps bicycles on it. `no
 `delivery` at LTS 2; a posted limit above 30 mph raises the cap one tier. It only lowers,
 is skipped where a traffic count is known, and leaves a way closed to bicycles too to
 the tables, since there is no ride on it to rate (444): a `bicycle` tag outside
-`BICYCLE_ALLOWED_VALUES` (`no`, `private`, `dismount`, ...; `use_sidepath` is legal,
-review RL-1), or, with no
+`BICYCLE_ALLOWED_VALUES` (`no`, `private`, `dismount`, `use_sidepath`, ...), or, with no
 bicycle tag, an `access` or `vehicle` that is not a public value. It changes no access: the rule text says why the tier is low, and
 the rough-surface floor still applies after it. Bragers Road (way 11507607) on the
 WB&A Trail is the test case.
@@ -6882,8 +6878,7 @@ reason). The reason is the new column `segment.bike_access_reason`
 override that reopened or closed the way (`override_open`, `override_closed`), else its
 `rm:no_bicycle` reason (`military`, `secured`, the trail rules, `cbd_sidewalk`, `zoo`,
 `singletrack`, `mtb`, `dismount`), else its own tags (`bicycle_no`,
-`bicycle_use_sidepath`, open, where a side path is mapped beside it: review RL-1,
-`private`, `motorway`, `motorroad`). `ACCESS_WORDS` words each,
+`bicycle_use_sidepath`, `private`, `motorway`, `motorroad`). `ACCESS_WORDS` words each,
 and a test holds every code the rebuild can write to having words. The military and
 secured rules are the err-closed ones (OWNER-DECISIONS 330), and say so.
 

@@ -94,13 +94,11 @@ against a surface that would shed one.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field, replace
 from enum import IntEnum
 
 from . import surfaces
 from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY, trail_kind
-from .facility import USE_SIDEPATH, is_use_sidepath_road
 from .geo import Point, haversine
 from .shape import sinuosity
 from .tags import (
@@ -351,16 +349,6 @@ NARROW_ROAD_MAX_WIDTH_M = 5.5
 # owner's three roads on the extract before the rule merges.
 WINDING_SINUOSITY = 1.2
 WINDING_MIN_LENGTH_M = 400.0
-# Measured stretch by stretch, not end to end: a straight road that turns one
-# corner reads 1.41 end to end (an L with equal legs), and the v0.7.0 staging
-# rebuild read 421 mi of such rural roads at 25 mph (LTS 4 to 2). A way winds
-# where at least this many of its `WINDING_MIN_LENGTH_M` stretches do, and they
-# make up at least half its length; one bend can bend one stretch only. A way too
-# short for two stretches is read end to end as before, but must also turn both
-# ways (a turn of at least `WINDING_TURN_DEG` to the left and one to the right):
-# a corner, however it is drawn, turns one way only.
-WINDING_MIN_STRETCHES = 2
-WINDING_TURN_DEG = 20.0
 NARROW_ROAD_RULE = "narrow rural road"
 
 # The owner's rural floor (2026-10-13): "a floor of LTS2 makes sense on rural
@@ -519,10 +507,9 @@ class StressResult:
     # Where each input the classifier read came from, as (attribute, source)
     # pairs, on a way an agency's street layer was matched to: `maxspeed`,
     # `lanes`, `oneway`, `bike`, `parking` and `aadt` each name the agency
-    # (`dc-roadway-block`, `baltimore-centerline`, `alexandria-transport-streets`)
-    # where its value took precedence, `osm` where the way's own tag stood,
-    # `default` where neither said and the classifier assumed. Empty on a way no
-    # agency layer reached.
+    # (`dc-roadway-block`, `baltimore-centerline`) where its value took
+    # precedence, `osm` where the way's own tag stood, `default` where neither
+    # said and the classifier assumed. Empty on a way no agency layer reached.
     attr_sources: tuple[tuple[str, str], ...] = ()
     # What the classifier read the road at, kept for the intersection model
     # (`routemaker.intersections`; OWNER-DECISIONS 165-167): the speed and the
@@ -787,76 +774,20 @@ def narrow_by_tags(tags: dict[str, str]) -> bool:
     return width is not None and width <= NARROW_ROAD_MAX_WIDTH_M
 
 
-def _stretches(points: list[Point], min_length_m: float) -> list[tuple[list[Point], float]]:
-    """The line cut at vertices into stretches of at least `min_length_m`, the
-    last short piece joined to the stretch before it."""
-    stretches: list[tuple[list[Point], float]] = []
-    current, length = [points[0]], 0.0
-    for a, b in zip(points, points[1:], strict=False):
-        current.append(b)
-        length += haversine(a, b)
-        if length >= min_length_m:
-            stretches.append((current, length))
-            current, length = [b], 0.0
-    if length > 0 and stretches:
-        last, last_length = stretches.pop()
-        stretches.append((last + current[1:], last_length + length))
-    return stretches
-
-
-def _bent(line: list[Point]) -> bool:
-    ratio = sinuosity(line)
-    return ratio != float("inf") and ratio >= WINDING_SINUOSITY
-
-
-def _stretches_wind(points: list[Point], min_length_m: float) -> bool | None:
-    """The stretch test from one end, or None where the way has fewer than two."""
-    stretches = _stretches(points, min_length_m)
-    if len(stretches) < WINDING_MIN_STRETCHES:
-        return None
-    total = sum(length for _, length in stretches)
-    bent = [length for line, length in stretches if _bent(line)]
-    return len(bent) >= WINDING_MIN_STRETCHES and sum(bent) * 2 >= total
-
-
-def _turns_both_ways(points: list[Point]) -> bool:
-    """A turn of at least `WINDING_TURN_DEG` each way along the line."""
-    cos_lat = math.cos(math.radians(points[0].lat))
-    headings = [
-        math.atan2(b.lat - a.lat, (b.lon - a.lon) * cos_lat)
-        for a, b in zip(points, points[1:], strict=False)
-        if (a.lon, a.lat) != (b.lon, b.lat)
-    ]
-    sides = set()
-    for h1, h2 in zip(headings, headings[1:], strict=False):
-        turn = math.degrees((h2 - h1 + math.pi) % (2 * math.pi) - math.pi)
-        if abs(turn) >= WINDING_TURN_DEG:
-            sides.add(turn > 0)
-    return len(sides) == 2
-
-
 def winding(coordinates, min_length_m: float = WINDING_MIN_LENGTH_M) -> bool:
-    """Whether a line of (lon, lat) points bends enough to keep traffic slow.
-
-    A way long enough for two stretches of `min_length_m` is cut into them
-    (`_stretches`) and winds where at least `WINDING_MIN_STRETCHES` have a
-    sinuosity (`shape.sinuosity`) of `WINDING_SINUOSITY` or more, together at
-    least half its length, cut from either end: the answer does not depend on
-    which way the way was drawn. A shorter one, at least `min_length_m` long, is
-    read end to end and must turn both ways (`_turns_both_ways`). One corner on a
-    straight road does not count either way. A way under `min_length_m` says
-    nothing and is read as not winding, and so is a closed ring, whose ratio has
-    no meaning."""
+    """Whether a line of (lon, lat) points bends enough to keep traffic slow:
+    its sinuosity (`shape.sinuosity`) at least `WINDING_SINUOSITY`, on a line at
+    least `min_length_m` long. A short way split at a junction says nothing
+    either way and is read as not winding, and so is a closed ring, whose ratio
+    has no meaning."""
     points = [Point(c[0], c[1]) for c in coordinates]
     if len(points) < 3:
         return False
-    if sum(haversine(a, b) for a, b in zip(points, points[1:], strict=False)) < min_length_m:
+    length = sum(haversine(a, b) for a, b in zip(points, points[1:], strict=False))
+    if length < min_length_m:
         return False
-    forward = _stretches_wind(points, min_length_m)
-    backward = _stretches_wind(points[::-1], min_length_m)
-    if forward is not None and backward is not None:
-        return forward and backward
-    return _bent(points) and _turns_both_ways(points)
+    ratio = sinuosity(points)
+    return ratio != float("inf") and ratio >= WINDING_SINUOSITY
 
 
 def rural_floor_applies(tags: dict[str, str], urban: bool) -> bool:
@@ -886,13 +817,6 @@ def rural_floor(result: StressResult, tags: dict[str, str], urban: bool) -> Stre
         return result
     # An agency's 1.5 rises to 2, not 2.5.
     return replace(result, tier=Stress.LTS2, half=False, rule=f"{result.rule}, {RURAL_FLOOR_RULE}")
-
-
-# The rule on a `bicycle=use_sidepath` road with a side path mapped beside it (review RL-1).
-# The owner, 2026-10-16: "It's very much not recommended, but I believe still legal", and
-# "For the use-sidepath roads, make sure there's a sidepath marked." THIS TEXT IS READ BACK
-# by `core.segment_info.rule_words`.
-USE_SIDEPATH_RULE = "legal but avoid: riders asked to use the side path"
 
 
 def legal_but_avoid(tags: dict[str, str]) -> str | None:
@@ -936,7 +860,6 @@ def classify(
     separate_facility: bool = False,
     parking_width_m: float | None = None,
     winding: bool = False,
-    side_path: bool = False,
 ) -> StressResult:
     """Classify one way: its Furth tier, or "legal but avoid" where the rule says so.
 
@@ -958,12 +881,7 @@ def classify(
 
     `winding` says the way's own line bends enough to keep traffic slow
     (`winding`, computed from its geometry by the caller), for the owner's
-    narrow-road rule (`NARROW_RURAL_ROAD_MPH`).
-
-    `side_path` says a side path is mapped beside the way
-    (`routemaker.facility.use_sidepath_paths`): a road tagged `bicycle=use_sidepath`
-    with one is "legal but avoid" (`USE_SIDEPATH_RULE`; review RL-1, the owner,
-    2026-10-16). With none it is rated on its own merits."""
+    narrow-road rule (`NARROW_RURAL_ROAD_MPH`)."""
     result = _classify(
         tags,
         aadt,
@@ -977,8 +895,6 @@ def classify(
         winding,
     )
     reason = legal_but_avoid(tags)
-    if reason is None and side_path and is_use_sidepath_road(tags):
-        reason = USE_SIDEPATH_RULE
     if reason is None:
         return result
     return replace(result, tier=Stress.AVOID, rule=f"{reason} (Furth: {result.rule})")
@@ -1445,9 +1361,8 @@ def motor_restriction(tags: dict[str, str]) -> tuple[Stress, str] | None:
     `bicycle=designated`). A road closed to bicycles too has no ride to state
     a stress for (OWNER-DECISIONS 444: skipped where the way is closed to
     bicycles), so it is left as the tables read it: a `bicycle` tag outside
-    `BICYCLE_ALLOWED_VALUES` (`no`, `private`, `dismount`, ..., the set
-    `routemaker.facility.BICYCLE_ALLOWED` opens; `use_sidepath` is legal, review
-    RL-1, and is read as open here), or, with no bicycle
+    `BICYCLE_ALLOWED_VALUES` (`no`, `private`, `dismount`, `use_sidepath`, ...,
+    the set `routemaker.facility.BICYCLE_ALLOWED` opens), or, with no bicycle
     tag, an `access` or `vehicle` that is not a public value (`vehicle` covers
     bicycles, as `facility.closed_to_motor_traffic` reads it).
     A road open to buses (`tags.open_to_buses`) is not capped: buses are motor
@@ -1457,10 +1372,8 @@ def motor_restriction(tags: dict[str, str]) -> tuple[Stress, str] | None:
     if tags.get("highway") in MOTOR_ONLY:
         return None
     bicycle = tags.get("bicycle")
-    open_sidepath = bicycle == USE_SIDEPATH and is_use_sidepath_road(tags)
-    if bicycle is not None and bicycle not in BICYCLE_ALLOWED_VALUES and not open_sidepath:
-        # bicycle=no, private, dismount, ...: closed to bicycles, and use_sidepath
-        # where something else closes the road (review RL-1).
+    if bicycle is not None and bicycle not in BICYCLE_ALLOWED_VALUES:
+        # bicycle=no, private, dismount, use_sidepath, ...: closed to bicycles.
         return None
     access = tags.get("access")
     if bicycle is None and any(

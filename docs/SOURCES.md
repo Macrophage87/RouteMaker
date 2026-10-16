@@ -233,37 +233,6 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   (<https://codes.baltimorecity.gov/us/md/cities/baltimore/code/1/9-1#(h)>).
 - Records: `fixtures/datasets/README.md`.
 
-## City of Alexandria
-
-- Credit: `City of Alexandria`
-- Publisher: City of Alexandria, Virginia, GIS (ArcGIS organisation "City of
-  Alexandria GIS", owner `AlexGIS_AlexGIS`), on the city's OpenData portal
-  <https://cityofalexandria-alexgis.opendata.arcgis.com/>, linked from
-  <https://www.alexandriava.gov/gis/open-data>.
-- Licence: CC0 (City of Alexandria OpenData portal), confirmed by Alex311 reply
-  2026-10-16, request 26-00041150: "Any of the data found on our OpenData portal is
-  under the CC0 license and is allowed to be used for your application."
-- Datasets:
-  - **Transport Streets**, item `dccf9eda6b6c443b8133abf2542854b1`
-    (<https://services2.arcgis.com/ChYV69FhfjwkvRmy/arcgis/rest/services/Transport%20Streets/FeatureServer/0>,
-    modified 2026-04-07), retrieved 2026-10-01, sha256
-    `5e8f8765cb368243cf9a231cc858f4951840050b9022222ec66c1e7306c8f1f0`. On the portal
-    (<https://cityofalexandria-alexgis.opendata.arcgis.com/datasets/AlexGIS::transport-streets>,
-    and in the group "Open Data Group for the City of Alexandria, Virginia"; checked
-    2026-10-16). Its item licence field reads only "City of Alexandria, VA GIS", which
-    is why it was internal comparison only until the city's reply (OWNER-DECISIONS
-    153, 155). Used for: the posted speed (`SPEED_LIMIT`) of a street where OSM maps
-    none (PLAN.md item 183; `agency_roads.parse_alexandria_transport_streets`). Its
-    one-way record is not read.
-  - **Bike Lane Routes**, item `74341781de91444a8f03620efc5c0514`
-    (<https://services2.arcgis.com/ChYV69FhfjwkvRmy/arcgis/rest/services/Transit_BikeLaneRoutes/FeatureServer/0>),
-    retrieved 2026-10-01, sha256
-    `138de101daaee5074853d6e3d1648a4271e8ffdee5862a5fdbdff78dc2a914c5`; its item
-    licence field is "cc0", and it is on the same portal. A cross-check of OSM's bike
-    lanes (`reports/data-comparison/alexandria-bike-lanes-check.md`); nothing in the
-    map is read from it.
-- Records: `fixtures/datasets/README.md`.
-
 ## Montgomery County Planning
 
 - Credit: `Montgomery County Planning Department`
@@ -874,10 +843,12 @@ needs no bike access.
 ## Used inside the project only (no credit)
 
 These are shown nowhere: no tile, route, fixture or page carries anything read from
-them (OWNER-DECISIONS 152, 155, 162).
+them (OWNER-DECISIONS 152, 153, 155, 162).
 
-- Arlington County's Bike Comfort Index: internal comparison only, held outside the
-  repository, while Arlington's terms are pending.
+- Arlington County's Bike Comfort Index and the City of Alexandria's Transport
+  Streets: internal comparison only, held outside the repository.
+- The City of Alexandria's Bike Lane Routes (CC0): a cross-check of OSM's bike
+  lanes.
 - MDOT's Road Separated Bike Routes web map: check-only (its terms bar trip-planning
   use).
 

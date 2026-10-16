@@ -2,10 +2,10 @@
 # ruff: noqa: E501 - report prose and table rows run long
 """Our tier against other agencies' bicycle stress layers, and Baltimore's facility records.
 
-    python scripts/analysis/compare_agency_lts.py moco|alexandria|alexandria-lanes|baltimore \\
+    python scripts/analysis/compare_agency_lts.py moco|alexandria-lanes|baltimore \\
         --datasets DIR --ways-dir DIR --state-polygons FILE --urban FILE --live-ways FILE \\
         [--roadway reference/roadway.json] --out DIR [--overrides-out fixtures/overrides]
-    python scripts/analysis/compare_agency_lts.py arlington ... --internal-out DIR
+    python scripts/analysis/compare_agency_lts.py arlington|alexandria ... --internal-out DIR
 
 Each subcommand reads one agency's layer as `scripts/fetch_agency_layer.py` stored it,
 matches it to the OSM ways that lie along it (`pipeline.conflation.conflate_blocks`, with the
@@ -16,15 +16,11 @@ miles, the disagreement by OSM road class, and the largest disagreements, groupe
 and by the pair of tiers. `moco` and `baltimore` also write the override files the owner
 approved (OWNER-DECISIONS 181, 182) to `--overrides-out`.
 
-Arlington's Bike Comfort Index is for INTERNAL comparison only (OWNER-DECISIONS 152,
-155): its report names no value that could be copied into a fixture, and goes only to
-`--internal-out`, which is refused inside the repository (`internal_output_dir`). The
-published subcommands refuse a layer under `internal-only/`
-(`agency_roads.refuse_internal_only`). Alexandria's Transport Streets was internal as well
-until 2026-10-16, when the city confirmed its OpenData portal is CC0 (Alex311 request
-26-00041150); `alexandria` is now a published report, read from
-`<datasets>/alexandria-transport-streets/` (`--datasets $DATA_ROOT/reference/inputs`,
-where docs/OPERATIONS.md moves it) with the rebuild's own parser and rules.
+Arlington's Bike Comfort Index and Alexandria's Transport Streets are for INTERNAL
+comparison only (OWNER-DECISIONS 152, 153, 155): their reports name no value that could be
+copied into a fixture, and go only to `--internal-out`, which is refused inside the
+repository (`internal_output_dir`). The published subcommands refuse a layer under
+`internal-only/` (`agency_roads.refuse_internal_only`).
 """
 
 from __future__ import annotations
@@ -79,10 +75,9 @@ class RefusedOutput(SystemExit):
 def internal_output_dir(path: str | Path | None, repo: Path = REPO) -> Path:
     """Where an internal-only report may be written: anywhere but the repository.
 
-    Review r1: `--out reports/data-comparison` put an internal report (Alexandria's
-    Transport Streets, internal until its CC0 clearance of 2026-10-16) into the working
-    tree, untracked and not ignored. OWNER-DECISIONS 155: Arlington's data is for
-    internal comparison and is not copied into anything published."""
+    Review r1: `--out reports/data-comparison` put the Alexandria Transport Streets report
+    into the working tree, untracked and not ignored. OWNER-DECISIONS 155: that data is
+    for internal comparison and is not copied into anything published."""
     if not path:
         raise RefusedOutput("an internal comparison needs --internal-out, outside the repository")
     resolved = Path(path).resolve()
@@ -186,15 +181,7 @@ class Context:
             lats = [c[1] for w in self.ways for c in w.coordinates]
             west, east, south, north = min(lons), max(lons), min(lats), max(lats)
             blocks = []
-            # The `alexandria` report's "ours" is the tier without Alexandria's layer.
-            leave_out = (
-                {agency_roads.ALEXANDRIA_AGENCY}
-                if getattr(args, "dataset", None) == "alexandria"
-                else set()
-            )
             for row in json.loads(Path(roadway).read_text()):
-                if row["facts"].get("agency") in leave_out:
-                    continue
                 lon, lat = row["coordinates"][len(row["coordinates"]) // 2]
                 if west <= lon <= east and south <= lat <= north:
                     blocks.append(
@@ -747,59 +734,69 @@ def arlington(args, ctx: Context) -> None:
 
 
 # ---------------------------------------------------------------------------------------
-# Alexandria (Transport Streets and Bike Lane Routes, both CC0 on the city's OpenData portal)
+# Alexandria (internal for Transport Streets; Bike Lane Routes is CC0)
 # ---------------------------------------------------------------------------------------
 
 
-def alexandria_blocks(path: Path) -> list[conflation.RoadFeature]:
-    """Transport Streets as the rebuild installs it (`install_reference_data.py
-    --alexandria-streets`): the same parser, the same records skipped, the same rule
-    that a record with no speed is not stored."""
-    features = []
-    for number, feature in enumerate(agency_roads.iter_features(published_layer(path))):
-        p = feature.get("properties") or {}
-        facts = agency_roads.parse_alexandria_transport_streets(p)
-        if facts is None or not facts.speed_mph:
-            continue
-        for part, line in enumerate(lines_of(feature.get("geometry"))):
-            if len(line) >= 2:
-                fid = f"alexandria-{p.get('OBJECTID', number)}-{part}"
-                features.append(conflation.RoadFeature(fid, [tuple(c[:2]) for c in line], facts))
-    return features
-
-
 def alexandria(args, ctx: Context) -> None:
-    out_dir = Path(args.out)
-    features = alexandria_blocks(
+    out_dir = internal_output_dir(args.internal_out)
+    streets = (
         Path(args.datasets)
+        / "internal-only"
         / "alexandria-transport-streets"
         / "alexandria-transport-streets.geojson"
     )
-    # The rebuild's own matching and overlay (`conflation.road_facts_by_way`, with its
-    # city-only rules, and `overlay_road_facts`, OSM's posted speed winning), so the
-    # numbers are what the rebuild changes. "Ours" is the tier without the layer
-    # (Context leaves Alexandria's rows out of --roadway for this report).
-    entries = [(w.osm_id, w.coordinates, variants.is_trail_class(w.tags)) for w in ctx.ways]
-    facts_by_way, _result = conflation.road_facts_by_way(ctx.ways, entries, features)
-    overlays = conflation.overlay_road_facts(ctx.ways, facts_by_way, ctx.divided, ctx.separate)
+    features, info = [], {}
+    for feature in agency_roads.iter_features(streets):
+        p = feature["properties"]
+        if p.get("MTFCC") in (
+            "PARKING LOT ROAD",
+            "ALLEY",
+            "WALKWAY/PEDESTRIAN TRAIL",
+            "PRIVATE ROAD FOR SERVICE VEHICLES",
+        ):
+            continue
+        if p.get("SEG_TYPE") in ("DRIVEWAY",):
+            continue
+        speed = p.get("SPEED_LIMIT")
+        speed = (
+            speed
+            if isinstance(speed, int)
+            and agency_roads.MIN_POSTED_MPH <= speed <= agency_roads.MAX_POSTED_MPH
+            else None
+        )
+        for part, line in enumerate(lines_of(feature["geometry"])):
+            fid = f"alx-{p['OBJECTID']}-{part}"
+            features.append(
+                conflation.RoadFeature(
+                    fid, line, agency_roads.RoadFacts(agency="alexandria", name=p.get("FULL_NAME"))
+                )
+            )
+            info[fid] = {"speed": speed, "oneway": p.get("ONEWAY") in ("FROM_TO", "TO_FROM")}
+    result = match(ctx, features)
     records = []
     total = 0.0
     speed_rows = Counter()
-    kept_rows = Counter()
-    for way_id, facts in facts_by_way.items():
+    for way_id, shares in result.matched.items():
         way = ctx.by_id[way_id]
         if not ctx.is_road(way) or ctx.state_of(way.coordinates) != "VA":
             continue
-        overlaid = overlays[way_id]
+        speeds = [info[s.feature_id]["speed"] for s in shares if info[s.feature_id]["speed"]]
+        one = [info[s.feature_id]["oneway"] for s in shares]
+        facts = agency_roads.WayFacts(
+            agency="alexandria",
+            blocks=tuple(s.feature_id for s in shares),
+            speed_mph=max(speeds) if speeds else None,
+            one_way=all(one) if one else None,
+        )
         ours = ctx.classify(way)
+        overlaid = agency_roads.overlay(dict(way.tags), facts)
         theirs = ctx.classify(way, overlaid.tags)
         miles = length_m(way.coordinates) / MI
         total += miles
         osm_speed = way.tags.get("maxspeed", "")
-        if overlaid.sources.get("maxspeed") == agency_roads.ALEXANDRIA_AGENCY:
+        if facts.speed_mph and f"{facts.speed_mph} mph" != osm_speed:
             speed_rows[(osm_speed or "(unposted)", f"{facts.speed_mph} mph")] += miles
-        elif facts.speed_mph and f"{facts.speed_mph} mph" != osm_speed:
-            kept_rows[(osm_speed, f"{facts.speed_mph} mph")] += miles
         records.append(
             {
                 "way": way_id,
@@ -858,38 +855,30 @@ def alexandria(args, ctx: Context) -> None:
             ]
         )
     out = [
-        "# Our tier against the tier with Alexandria's Transport Streets speeds",
+        "# INTERNAL COMPARISON ONLY: our tier against Alexandria's Transport Streets speed and one-way",
         "",
         'City of Alexandria, VA GIS, "Transport Streets" (ArcGIS item dccf9eda6b6c443b8133abf2542854b1), '
-        "retrieved 2026-10-01. CC0 (City of Alexandria OpenData portal), confirmed by Alex311 reply "
-        "2026-10-16, request 26-00041150. Its fields (checked first): `SPEED_LIMIT` and `ONEWAY` are "
-        "filled; `LANES` is empty on all 5,677 records, and the layer carries no LTS. The records are "
-        "read as the rebuild reads them (`agency_roads.parse_alexandria_transport_streets`): the speed "
-        "only, never on a freeway or trunk way or a way crossing the city line, and only where OSM has "
-        "no posted speed (PLAN.md item 183).",
+        'retrieved 2026-10-01. Its licence field says only "City of Alexandria, VA GIS", so by the owner\'s '
+        "decision (items 153, 155) it is consulted for research and nothing in it is copied into published "
+        "output or fixtures. Its fields (checked first): `SPEED_LIMIT` and `ONEWAY` are filled; `LANES` is "
+        "empty on all 5,677 records, and the layer carries no LTS.",
         "",
-        "So the comparison is of the tier the classifier gives a way without the layer (ours) against the "
-        "tier the rebuild gives it with the layer (theirs), everything else equal.",
+        "So the comparison is of the tier the classifier gives a way with OSM's own tags (ours) against the "
+        "tier it gives the same way with Alexandria's posted speed and one-way direction in place of "
+        "OSM's and the default (theirs), everything else equal. That isolates what the speeds change.",
         "",
         f"{len(records):,} OSM road ways in Virginia lie along an Alexandria street record ({total:,.0f} mi). "
         f"The tier is the same on {100 * exact / total:.1f}% of the miles.",
         "",
-        "## Confusion matrix (ours against the tier with Alexandria's speeds)",
+        "## Confusion matrix (ours against the tier with Alexandria's speed and one-way)",
         "",
         matrix(pairs, [1, 2, 3, 4, 5], [1, 2, 3, 4, 5], "our LTS", "with Alexandria's speed LTS"),
         "",
-        "## Where Alexandria's speed fills a way OSM leaves unposted (miles)",
+        "## Where Alexandria's posted speed differs from the OSM speed (miles)",
         "",
         table(
             ["OSM maxspeed", "Alexandria", "miles"],
             [[a, b, f"{m:.1f}"] for (a, b), m in speed_rows.most_common(15)],
-        ),
-        "",
-        "## Where OSM's posted speed differs and is kept (miles)",
-        "",
-        table(
-            ["OSM maxspeed", "Alexandria", "miles"],
-            [[a, b, f"{m:.1f}"] for (a, b), m in kept_rows.most_common(15)],
         ),
         "",
         "## By OSM road class",
@@ -916,13 +905,13 @@ def alexandria(args, ctx: Context) -> None:
         "",
     ]
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "alexandria-transport-streets-check.md").write_text("\n".join(out))
+    (out_dir / "alexandria-internal-comparison.md").write_text("\n".join(out))
     print("alexandria transport streets", len(records), f"{total:.0f} mi")
 
 
 def alexandria_lanes(args, ctx: Context) -> None:
-    """Bike Lane Routes (CC0): OSM ways that lack a lane the city records. Published, as the
-    Transport Streets comparison now is (`alexandria`)."""
+    """Bike Lane Routes (CC0): OSM ways that lack a lane the city records. Published; kept apart
+    from the internal Transport Streets comparison so the two never share an output."""
     lanes_layer = published_layer(
         Path(args.datasets) / "alexandria-bike-lane-routes" / "alexandria-bike-lane-routes.geojson"
     )
@@ -1625,7 +1614,7 @@ def main() -> int:
     )
     parser.add_argument("--overrides-out", default=str(OVERRIDES))
     args = parser.parse_args()
-    internal = args.dataset == "arlington"
+    internal = args.dataset in ("arlington", "alexandria")
     if internal:
         internal_output_dir(args.internal_out)  # refuse before the slow part
     elif not args.out:

@@ -76,6 +76,7 @@ def test_the_most_specific_key_decides() -> None:
         {"motor_vehicle": "no", "bicycle": "no"},
         {"motor_vehicle": "private", "access": "private"},
         {"access": "private"},
+        {"motor_vehicle": "private", "bicycle": "use_sidepath"},
         # bicycle=private (Red Brook Blvd, review of wip/pre-rebuild), and the
         # other values bicycles cannot use (routemaker.facility.BICYCLE_ALLOWED).
         {"motor_vehicle": "private", "bicycle": "private"},

@@ -24,7 +24,6 @@ SCRIPT = REPO / "scripts" / "install_reference_data.py"
 
 K_STREET = [[-77.0560, 38.9025], [-77.0540, 38.9025]]
 CHARLES = [[-76.6150, 39.2900], [-76.6150, 39.2920]]
-ROYAL = [[-77.0420, 38.8040], [-77.0420, 38.8060]]
 
 
 def collection(features: list[dict]) -> str:
@@ -59,21 +58,6 @@ def baltimore_feature(object_id: int, geometry: dict, **properties) -> dict:
         "feat_status": "A",
         "drivable": "Y",
         "speed": 25,
-    }
-    record.update(properties)
-    return {"type": "Feature", "geometry": geometry, "properties": record}
-
-
-def alexandria_feature(object_id: int, geometry: dict, **properties) -> dict:
-    record = {
-        "OBJECTID": object_id,
-        "FULL_NAME": "S ROYAL ST",
-        "SPEED_LIMIT": 20,
-        "ONEWAY": "BOTH",
-        "MTFCC": "LOCAL NEIGHBORHOOD ROAD, RURAL ROAD, CITY STREET",
-        "SEG_TYPE": "OTHER CENTERLINE",
-        "SEG_EXIST": "Y",
-        "LANES": None,
     }
     record.update(properties)
     return {"type": "Feature", "geometry": geometry, "properties": record}
@@ -173,32 +157,6 @@ def test_one_layer_alone_is_installed(tmp_path, layers) -> None:
     assert {block.facts.agency for block in blocks} == {A.BALTIMORE_AGENCY}
 
 
-def test_alexandria_transport_streets_installs_its_speeds(tmp_path) -> None:
-    """PLAN.md item 183: the city's posted speed, CC0 from its OpenData portal since
-    2026-10-16, installs like the other street layers; a record with no speed, an
-    interstate and an alley are not stored."""
-    alx = tmp_path / "datasets" / "alexandria-transport-streets" / "layer.geojson"
-    alx.parent.mkdir(parents=True)
-    alx.write_text(
-        collection(
-            [
-                alexandria_feature(1, line(ROYAL)),
-                alexandria_feature(2, line(ROYAL), SPEED_LIMIT=None),
-                alexandria_feature(3, line(ROYAL), MTFCC="INTERSTATE HIGHWAY", SPEED_LIMIT=55),
-                alexandria_feature(4, line(ROYAL), MTFCC="ALLEY"),
-            ]
-        )
-    )
-    done = install(tmp_path, "--alexandria-streets", str(alx))
-    assert done.returncode == 1, done.stderr  # only the other required files are missing
-    blocks = ReferenceData.load_road_blocks(tmp_path / "data" / "reference" / "roadway.json")
-    assert [block.feature_id for block in blocks] == ["alexandria-1-0"]
-    facts = blocks[0].facts
-    assert facts.agency == A.ALEXANDRIA_AGENCY
-    assert facts.speed_mph == {"posted": 20}
-    assert facts.way is None, "the city's one-way record is not read"
-
-
 def test_two_blocks_with_one_object_id_are_refused(tmp_path) -> None:
     dc = tmp_path / "dc.geojson"
     dc.write_text(collection([dc_feature(1, line(K_STREET)), dc_feature(1, line(K_STREET))]))
@@ -217,15 +175,14 @@ def test_the_loader_warns_and_returns_nothing_where_no_blocks_are_installed(
 
 
 def test_an_internal_only_layer_is_refused_and_nothing_is_written(tmp_path, layers) -> None:
-    """OWNER-DECISIONS 155: Arlington's layer is internal comparison only (as
-    Alexandria's Transport Streets was until 2026-10-16). Review r1 found them kept out
-    only because their field names differ; the installer now refuses anything under
-    internal-only/, whichever flag names it."""
+    """OWNER-DECISIONS 155: Arlington's and Alexandria's Transport Streets layers are
+    internal comparison only. Review r1 found them kept out only because their field
+    names differ; the installer now refuses anything under internal-only/."""
     dc, _balt = layers
-    hidden = tmp_path / "internal-only" / "arlington-bike-comfort-index" / "layer.geojson"
+    hidden = tmp_path / "internal-only" / "alexandria-transport-streets" / "layer.geojson"
     hidden.parent.mkdir(parents=True)
     hidden.write_text(dc.read_text())
-    for flag in ("--roadway-block", "--baltimore-centerline", "--alexandria-streets"):
+    for flag in ("--roadway-block", "--baltimore-centerline"):
         done = install(tmp_path, flag, str(hidden))
         assert done.returncode == 2, flag
         assert "internal comparison only" in done.stderr
