@@ -3018,7 +3018,7 @@ export function App() {
     onAddStop: addNearestStop,
   };
   // An instance admin's review (rider suggestions, Mass Ride hazard reports): from Suggest, or Go's Menu.
-  // An instance admin reviews everything; a reviewer (v0.7.0 closures) the closures.
+  // An instance admin reviews everything; a closures reviewer (v0.7.0; instance admins for now) the closures.
   const reviewOpener = me.can_change_lts || me.can_review_closures ? (opener: HTMLElement) => openView("review", opener, true) : null;
   const myGoControls = { myGo, signedIn: me.signed_in, save: saveMyGoNow, setHome, said: myGoSaid, geoGate, searchBias };
   // Go's Menu (the Settings sheet in Go): Plan, Suggest, GPX and an admin's Review, each one step in.
@@ -3826,7 +3826,7 @@ export function App() {
               }}
             />
             <SuggestSheet nav={sheetNav} roadInfoAtCentre={roadInfoAtCentre} onReview={reviewOpener} />
-            <ReviewSheet nav={sheetNav} mapRef={mapRef} setHazardsAsked={setHazardsAsked} />
+            <ReviewSheet nav={sheetNav} mapRef={mapRef} setHazardsAsked={setHazardsAsked} admin={me.can_change_lts} />
             <GpxSheet
               {...{
                 nav: sheetNav, shown, routedPoints, routedLoop, federalRoute, points, status, imported,

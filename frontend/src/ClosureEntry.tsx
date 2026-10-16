@@ -35,7 +35,7 @@ interface Props {
   /** The road piece (the panel's way), or the report's. */
   wayId: number;
   title: string;
-  /** Confirming a rider's report: its id and words (the reason starts as theirs). */
+  /** Confirming a rider's report: its id and its fixed reason words (never the rider's own text). */
   report?: { id: number; reason: string };
   onClose: () => void;
   /** Confirmed: the sentence said, for a caller that closes the form (Review). */

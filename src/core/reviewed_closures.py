@@ -4,8 +4,9 @@ The feeds (`core.workzones`, `core.closure_sources`) cover Maryland's and Virgin
 DC's permits and advisories. What they miss - a trail closed for a bridge repair, a street a rider
 found fenced off - a reviewer enters here, or confirms from a rider's report:
 
-- **Who.** A reviewer: an instance admin, or an account holding a reviewer role in a configured
-  Discord server (`RoleMapping.Permission.REVIEWER`, read per request by `attach_standing`).
+- **Who.** An instance admin, for now (review 2026-10-16: one club's reviewer would close roads
+  map-wide). A guild reviewer role (`RoleMapping.Permission.REVIEWER`) is kept out behind
+  `GUILD_REVIEWERS`, False; PLAN.md says when it may be turned on.
 - **Entering.** The road panel's "Mark closed": the road piece or its whole named stretch
   (`stress_edits.named_stretch`), or a drawn line through the API, with a reason, start and end
   dates (the region's days: from the start of the first to the end of the last) and a source
@@ -46,6 +47,10 @@ LINE_MAX_POINTS = 200
 LINE_MAX_M = 10_000.0
 # At most this many closures in force at once, so the router's limits are not swamped by entries.
 OPEN_MAX = 200
+# At most this many in force at once entered by one account.
+OPEN_PER_ACCOUNT = 20
+# Whether a guild reviewer role may review closures (off: instance admins only; PLAN.md).
+GUILD_REVIEWERS = False
 # At most this far ahead a closure may be entered to start or end (about two years).
 AHEAD_MAX = timedelta(days=750)
 
@@ -61,7 +66,8 @@ class Conflict(stress_edits.EditRefused):
 
 
 def may_review(user) -> bool:
-    """An active instance admin, or an account with a reviewer role in a usable server."""
+    """An active instance admin (and, with `GUILD_REVIEWERS`, a reviewer role in a usable
+    server)."""
     if user is None or not getattr(user, "is_authenticated", False):
         return False
     if not getattr(user, "is_active", False):
@@ -70,7 +76,7 @@ def may_review(user) -> bool:
         return False
     if getattr(user, "is_instance_admin", False):
         return True
-    return bool(getattr(user, "_reviewer_guild_ids", frozenset()))
+    return GUILD_REVIEWERS and bool(getattr(user, "_reviewer_guild_ids", frozenset()))
 
 
 # --- What a reviewer sends ---------------------------------------------------------------
@@ -217,8 +223,13 @@ def _make(user, way_ids, line, reason, start, end, url, report=None) -> Reviewed
     now = timezone.now()
     with transaction.atomic():
         live = ReviewedClosure.objects.select_for_update().filter(ended_at__isnull=True)
-        if live.exclude(end__lte=now).count() >= OPEN_MAX:
+        live = live.exclude(end__lte=now)
+        if live.count() >= OPEN_MAX:
             raise Conflict(f"{OPEN_MAX} closures are in force already. End one first.")
+        if live.filter(created_by=user).count() >= OPEN_PER_ACCOUNT:
+            raise Conflict(
+                f"You have {OPEN_PER_ACCOUNT} closures in force or to come. End one first."
+            )
         return ReviewedClosure.objects.create(
             created_by=user,
             osm_way_ids=ways,
@@ -266,7 +277,7 @@ def confirm_report(
     with transaction.atomic():
         report = _open_report(report_id)
         closure = _make(
-            user, [report.osm_way_id], None, reason or report.reason, start, end, url, report
+            user, [report.osm_way_id], None, reason or fixed_words(report), start, end, url, report
         )
         report.status = StressSuggestion.Status.APPROVED
         report.decided_at = timezone.now()
@@ -308,6 +319,10 @@ def end_now(user, closure_id: int) -> ReviewedClosure:
         closure.save(update_fields=["ended_at", "ended_by"])
     audit.record(user, "closure_end", "reviewed_closure", closure.pk, AuditLogEntry.Outcome.ALLOWED)
     _forget()
+    from . import saved_route_alerts
+
+    # Riders' My routes stop naming it now, not at the next check.
+    saved_route_alerts.drop(z.zone_id for z in zones_of(closure))
     return closure
 
 
@@ -382,12 +397,21 @@ def open_reports(limit: int = 100) -> list[StressSuggestion]:
     )
 
 
+def fixed_words(report: StressSuggestion) -> str:
+    """The report's one-tap reasons in their fixed words, never the rider's own text: what a
+    confirmed closure's public reason starts as."""
+    from .signed_out_suggestions import REASONS
+
+    return "; ".join(REASONS[r] for r in report.reasons or [] if r in REASONS and r != "other")
+
+
 def report_summary(report: StressSuggestion) -> dict:
     return {
         "id": report.pk,
         "osm_way_id": report.osm_way_id,
         "road": report.road_name or "An unnamed road",
         "reason": report.reason,
+        "reason_fixed": fixed_words(report),
         "lat": report.lat,
         "lon": report.lon,
         "created_at": report.created_at.isoformat(),

@@ -103,7 +103,7 @@ export function ClosureReview() {
                         origin={origin}
                         wayId={r.osm_way_id}
                         title={r.road}
-                        report={{ id: r.id, reason: r.reason }}
+                        report={{ id: r.id, reason: r.reason_fixed }}
                         onClose={() => {
                           setConfirming(null);
                           setFocusNext(id(`c${r.id}`));

@@ -1,6 +1,6 @@
 /**
  * Closures a RouteMaker reviewer enters or confirms (v0.7.0 closures; core/reviewed_closures.py): the pure half.
- * A reviewer (`Me.can_review_closures`: an instance admin, or a reviewer role in a configured Discord server)
+ * A reviewer (`Me.can_review_closures`: an instance admin, for now; guild reviewer roles are kept out)
  * marks a road piece or its whole named stretch closed from the road panel (ClosureEntry.tsx), and in Review
  * confirms or rejects riders' closure reports and ends a confirmed closure early (ClosureReview.tsx). A confirmed
  * closure is routed round and named by the closure check like a feed's, credited "Confirmed by a RouteMaker
@@ -22,7 +22,8 @@ export const CLOSURE_END_HELP = "Leave it empty if no end is known: it then stay
 export const CLOSURE_URL_LABEL = "Source link (optional)";
 export const CLOSURE_SEND = "Confirm closure";
 export const CLOSURE_REASON_MAX = 500;
-export const CLOSURE_NOTE = "New plans route round it within a minute, credited “Confirmed by a RouteMaker reviewer”.";
+export const CLOSURE_NOTE =
+  "Riders see the reason on their routes, credited “Confirmed by a RouteMaker reviewer”. New plans route round it within a minute.";
 export const CLOSURES_HEADING = "Closures";
 
 export interface ReviewedClosure {
@@ -43,6 +44,8 @@ export interface ClosureReport {
   osm_way_id: number;
   road: string;
   reason: string;
+  /** The one-tap reasons' fixed words only, never the rider's own text: what the form starts with. */
+  reason_fixed: string;
   lat: number;
   lon: number;
   created_at: string;

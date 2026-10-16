@@ -764,6 +764,8 @@ def with_work_zones(body: dict, plan: rules.PlanZones | None, now: datetime | No
 
 def _until_words(zone: rules.Zone, future: bool = False) -> str:
     if zone.end is None:
+        if zone.source == "reviewer":
+            return "until a reviewer ends it"
         if future:
             return "no end date given, so it may still apply on your ride day"
         return "no end date given"

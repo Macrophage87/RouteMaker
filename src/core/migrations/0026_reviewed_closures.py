@@ -36,6 +36,14 @@ class Migration(migrations.Migration):
             name="closures_checked_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
+        *[
+            migrations.AddField(
+                model_name="savedroute",
+                name=f"bbox_{side}",
+                field=models.FloatField(blank=True, null=True),
+            )
+            for side in ("west", "south", "east", "north")
+        ],
         migrations.CreateModel(
             name="ReviewedClosure",
             fields=[

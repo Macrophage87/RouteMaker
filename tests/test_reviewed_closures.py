@@ -54,7 +54,7 @@ def post(client, csrf, path, body):
     )
 
 
-def test_who_may_review() -> None:
+def test_who_may_review(monkeypatch) -> None:
     class Someone:
         is_authenticated = True
         is_active = True
@@ -63,7 +63,11 @@ def test_who_may_review() -> None:
 
     rider = Someone()
     assert not reviewed_closures.may_review(rider)
+    # A guild reviewer role does not, for now (one club's reviewer would close roads map-wide)...
     rider._reviewer_guild_ids = frozenset({1234})
+    assert not reviewed_closures.may_review(rider)
+    # ...unless the switch is turned on.
+    monkeypatch.setattr(reviewed_closures, "GUILD_REVIEWERS", True)
     assert reviewed_closures.may_review(rider)
     rider.is_banned = True
     assert not reviewed_closures.may_review(rider)
@@ -156,6 +160,32 @@ class TestEntering:
         rider, _ = reviewer_client(make_user(admin=False))
         assert rider.get(f"/api/closures/stretch/{WAY}", **addr()).status_code == 403
 
+    def test_a_guild_reviewer_may_not_write_only_an_instance_admin(self, live, monkeypatch) -> None:
+        from core import middleware
+
+        real = middleware.attach_standing
+
+        def as_guild_reviewer(user, now=None):
+            real(user, now)
+            user._reviewer_guild_ids = frozenset({1234})
+
+        monkeypatch.setattr(middleware, "attach_standing", as_guild_reviewer)
+        closure = reviewed_closures.create(make_user(), [WAY], "Works")
+        report = send(step=3, reasons=("closed",))
+        client, csrf = reviewer_client(make_user(admin=False))
+        assert client.get(ME, **addr()).json()["can_review_closures"] is False
+        for path in (
+            ENTER,
+            f"{ENTER}/{closure.pk}/end",
+            f"/api/closures/reports/{report.pk}/confirm",
+            f"/api/closures/reports/{report.pk}/reject",
+        ):
+            body = {"osm_way_ids": [WAY], "reason": "x"} if path == ENTER else {}
+            assert post(client, csrf, path, body).status_code == 403, path
+        assert AuditLogEntry.objects.filter(outcome=AuditLogEntry.Outcome.REFUSED).count() == 4
+        closure.refresh_from_db()
+        assert closure.ended_at is None
+
     def test_a_rider_who_is_not_a_reviewer_cannot(self, live) -> None:
         client, csrf = reviewer_client(make_user(admin=False))
         answer = post(client, csrf, ENTER, {"osm_way_ids": [WAY], "reason": "Closed"})
@@ -180,6 +210,47 @@ class TestEntering:
         )  # fmt: skip
         assert bare.status_code == 403
         assert ReviewedClosure.objects.count() == 0
+
+    def test_one_account_has_at_most_twenty_in_force_and_everyone_two_hundred(
+        self, live, monkeypatch
+    ) -> None:
+        admin = make_user()
+        for _ in range(reviewed_closures.OPEN_PER_ACCOUNT):
+            reviewed_closures.create(admin, [WAY], "Works")
+        with pytest.raises(reviewed_closures.Conflict):
+            reviewed_closures.create(admin, [WAY], "Works")
+        other = make_user()
+        reviewed_closures.create(other, [WAY], "Works")  # another admin's own count
+        monkeypatch.setattr(reviewed_closures, "OPEN_MAX", 21)
+        with pytest.raises(reviewed_closures.Conflict) as error:
+            reviewed_closures.create(other, [WAY], "Works")
+        assert "21 closures are in force" in error.value.message
+        # An ended one no longer counts.
+        reviewed_closures.end_now(admin, ReviewedClosure.objects.filter(created_by=admin)[0].pk)
+        reviewed_closures.create(admin, [WAY], "Works")
+
+    def test_every_write_needs_the_token_and_this_site(self, live) -> None:
+        client, csrf = reviewer_client()
+        closure = reviewed_closures.create(make_user(), [WAY], "Works")
+        report = send(step=3, reasons=("closed",))
+        writes = [
+            (ENTER, {"osm_way_ids": [WAY], "reason": "x"}),
+            (f"{ENTER}/{closure.pk}/end", {}),
+            (f"/api/closures/reports/{report.pk}/confirm", {}),
+            (f"/api/closures/reports/{report.pk}/reject", {}),
+        ]
+        for path, body in writes:
+            bare = client.post(path, json.dumps(body), content_type="application/json", **addr())
+            assert bare.status_code == 403, path
+            away = client.post(
+                path, json.dumps(body), content_type="application/json", HTTP_X_CSRFTOKEN=csrf,
+                HTTP_SEC_FETCH_SITE="cross-site", **addr(),
+            )  # fmt: skip
+            assert away.status_code == 403, path
+        assert ReviewedClosure.objects.count() == 1
+        closure.refresh_from_db()
+        report.refresh_from_db()
+        assert closure.ended_at is None and report.status == StressSuggestion.Status.PENDING
 
     def test_a_drawn_line_is_a_closure_too(self, live) -> None:
         closure = reviewed_closures.create(make_user(), line=ALONG[4:9], reason="Fenced off")
@@ -218,7 +289,8 @@ class TestRiderReports:
         answer = post(client, csrf, f"/api/closures/reports/{report.pk}/confirm", {"end": days(1)})
         assert answer.status_code == 201, answer.content
         closure = ReviewedClosure.objects.get()
-        assert closure.report_id == report.pk and closure.reason == report.reason
+        assert closure.report_id == report.pk
+        assert closure.reason == "Closed (works, an event, fenced off)"
         report.refresh_from_db()
         assert report.status == StressSuggestion.Status.APPROVED
         again = post(client, csrf, f"/api/closures/reports/{report.pk}/confirm", {})
@@ -230,6 +302,14 @@ class TestRiderReports:
         other.refresh_from_db()
         assert other.status == StressSuggestion.Status.DELETED
         assert ReviewedClosure.objects.count() == 1
+
+    def test_the_reason_starts_as_the_fixed_words_never_the_riders_own(self, live) -> None:
+        report = send(step=3, reasons=("closed", "other"), other="my neighbour Jo says so")
+        assert reviewed_closures.report_summary(report)["reason_fixed"] == (
+            "Closed (works, an event, fenced off)"
+        )
+        closure = reviewed_closures.confirm_report(make_user(), report.pk)
+        assert "Jo" not in closure.reason
 
     def test_a_level_suggestion_is_not_a_closure_report(self, live) -> None:
         level = send(step=2, reasons=("calmer",))
@@ -263,8 +343,8 @@ class TestSavedRouteAlerts:
         alerts = {r["name"] + str(r["id"]): r["closure_alerts"] for r in listed}
         assert alerts[f"Commute{mine.pk}"] == [alert]
 
+        # Ended: gone from My routes at once, before the next check.
         reviewed_closures.end_now(make_user(), closure.pk)
-        saved_route_alerts.refresh_all()
         mine.refresh_from_db()
         assert mine.closure_alerts == []
 
@@ -283,4 +363,41 @@ class TestSavedRouteAlerts:
         )
         assert answer.status_code == 201, answer.content
         (alert,) = answer.json()["closure_alerts"]
-        assert alert["text"] == "Closed on your route: Oak Street, no end date given."
+        assert alert["text"] == "Closed on your route: Oak Street, until a reviewer ends it."
+        route = SavedRoute.objects.get()
+        assert (route.bbox_west, route.bbox_east) == (ALONG[0][0], ALONG[-1][0])
+
+    def test_the_job_skips_an_unchanged_set_and_goes_on_from_where_it_stopped(self, live) -> None:
+        rider = make_user(admin=False)
+        first, second = self.saved(rider), self.saved(rider, ELSEWHERE)
+        reviewed_closures.create(make_user(), [WAY], "Bridge works")
+        said = saved_route_alerts.refresh_all(most=1)
+        assert said.endswith(f"going on from route {first.pk} next run")
+        first.refresh_from_db()
+        second.refresh_from_db()
+        assert len(first.closure_alerts) == 1 and second.closures_checked_at is None
+        assert saved_route_alerts.refresh_all(most=1).endswith("pass finished")
+        second.refresh_from_db()
+        # Its box is filled in, and it was clear of the closure, so its line was never matched.
+        assert second.closures_checked_at is not None and second.bbox_north is not None
+        # The same closures: only a route never checked is read.
+        third = self.saved(rider)
+        said = saved_route_alerts.refresh_all()
+        assert said == "saved routes: closures unchanged; 1 new checked, 1 closed"
+        third.refresh_from_db()
+        assert len(third.closure_alerts) == 1
+        assert saved_route_alerts.refresh_all().startswith("saved routes: closures unchanged; 0")
+        # A new closure is a new set: every route again.
+        reviewed_closures.create(make_user(), line=ELSEWHERE[4:9], reason="Fenced off")
+        assert saved_route_alerts.refresh_all().startswith("saved routes: 3 checked, 3 with")
+        second.refresh_from_db()
+        assert len(second.closure_alerts) == 1
+
+
+def test_the_migrations_have_a_single_leaf() -> None:
+    """One head: a second migration numbered beside another (0025 and 0026) must be chained."""
+    from django.db.migrations.loader import MigrationLoader
+
+    loader = MigrationLoader(None, ignore_no_migrations=True)
+    leaves = loader.graph.leaf_nodes("core")
+    assert len(leaves) == 1, leaves

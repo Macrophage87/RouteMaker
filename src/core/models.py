@@ -1322,6 +1322,9 @@ class BikeshareFeedCache(models.Model):
     stand-alone dataset). It is excluded from the nightly dump and from the beta's data
     shipment, and refills itself.
 
+    The saved-route closure check keeps its state here too (key `SAVED_ALERTS`,
+    core.saved_route_alerts): a hash and a place reached, nothing personal.
+
     It holds one more row of the same kind: the live work zones (FOLLOWUP-WORKZONES,
     key `WORKZONES`, written by `core.workzones.refresh` every five minutes), the
     parsed zones of the Maryland and VDOT WZDx feeds as last read. Same life as the
@@ -1335,6 +1338,7 @@ class BikeshareFeedCache(models.Model):
     WORKZONES = "workzones"
     # DC's closures (v0.7.0, `core.closure_sources`): the same kind of row, its own key.
     CLOSURES = "closures"
+    SAVED_ALERTS = "saved_alerts"
 
     key = models.CharField(max_length=16, unique=True)
     payload = models.JSONField(null=True)
@@ -1862,6 +1866,11 @@ class SavedRoute(models.Model):
     # as last found, shown in My routes; [] where none.
     closure_alerts = models.JSONField(default=list, blank=True)
     closures_checked_at = models.DateTimeField(null=True, blank=True)
+    # The line's box, so the check reads a line only where a closure could meet it.
+    bbox_west = models.FloatField(null=True, blank=True)
+    bbox_south = models.FloatField(null=True, blank=True)
+    bbox_east = models.FloatField(null=True, blank=True)
+    bbox_north = models.FloatField(null=True, blank=True)
 
     class Meta:
         db_table = "saved_route"

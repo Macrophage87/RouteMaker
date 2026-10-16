@@ -6399,21 +6399,23 @@ class ReviewedClosureIn(Schema):
     line: list[list[float]] | None = Field(
         default=None, description="A drawn stretch, [[lon, lat], ...], in place of the ways."
     )
-    reason: str = Field(max_length=2000, description="Required, at most 500 characters.")
+    reason: str = Field(max_length=500, description="Required, at most 500 characters.")
     start: str | None = Field(default=None, description="The first day, YYYY-MM-DD (today).")
     end: str | None = Field(
         default=None, description="The last day, YYYY-MM-DD; none: until a reviewer ends it."
     )
-    url: str = Field(default="", max_length=2000, description="The source's link, optional.")
+    url: str = Field(default="", max_length=500, description="The source's link, optional.")
 
 
 class ClosureConfirmIn(Schema):
     model_config = ConfigDict(extra="forbid")
 
-    reason: str = Field(default="", max_length=2000, description="The rider's words where empty.")
+    reason: str = Field(
+        default="", max_length=500, description="The report's fixed reasons where empty."
+    )
     start: str | None = None
     end: str | None = None
-    url: str = Field(default="", max_length=2000)
+    url: str = Field(default="", max_length=500)
 
 
 class ReviewedClosureOut(Schema):
@@ -6434,6 +6436,7 @@ class ClosureReportOut(Schema):
     osm_way_id: int
     road: str
     reason: str
+    reason_fixed: str = Field(description="The one-tap reasons' words only: the form's start.")
     lat: float
     lon: float
     created_at: str

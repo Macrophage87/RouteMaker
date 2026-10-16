@@ -764,6 +764,8 @@ def when_text(zone: Zone, now: datetime | None, future: bool) -> str:
     start, end = zone.start, zone.end
     if end is None:
         lead = f"{verb} from {day_text(start, now)} {clock_text(start)}" if start else verb
+        if zone.source == "reviewer":
+            return f"{lead} until a reviewer ends it"
         if future:
             return f"{lead}; no end time given, so it may still apply on your ride day"
         return f"{lead}; no end time given"
