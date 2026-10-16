@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -567,6 +568,26 @@ def test_a_finished_run_deletes_older_runs_dumps_and_keeps_its_own(fake, home) -
     assert sorted(p.name for p in old_box.iterdir()) == ["reference.tar"]
     assert (fake.in_bucket("in") / "db.tar").exists()
     assert (fake.root / "home" / "cloud-runs" / "cloud-20261011" / "in" / "db.tar").exists()
+
+
+def test_a_second_copy_on_the_box_refuses_while_the_first_runs(fake, home) -> None:
+    assert send(fake, home).returncode == 0
+    runs = fake.root / "home" / "cloud-runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    (fake.dir / "calls.log").unlink()
+    holder = subprocess.Popen(["flock", str(runs / ".box-rebuild.lock"), "sleep", "30"])
+    try:
+        for _ in range(50):
+            if subprocess.run(["flock", "-n", str(runs / ".box-rebuild.lock"), "true"]).returncode:
+                break
+            time.sleep(0.1)
+        done, _ = box(fake)
+    finally:
+        holder.kill()
+        holder.wait()
+
+    assert done.returncode == 2 and "already running on this box" in done.stderr
+    assert fake.calls() == "", "nothing fetched, restored or fired"
 
 
 def test_refire_fires_a_new_job_after_a_failed_one(fake, home) -> None:

@@ -6,6 +6,7 @@
 # docs/OPERATIONS.md, "Rebuilding on the cloud box" and "The launcher".
 #
 #   scripts/cloud/launch.sh [options] [RUN_URL]
+#   scripts/cloud/launch.sh [options] --attach RUN_URL
 #
 #   RUN_URL   s3://<bucket>/<prefix>/<run>; without it, the run's folder is made from
 #             --bucket, --prefix and --run. Nothing in the repository names the bucket,
@@ -31,6 +32,11 @@
 #      the wait with the reason and the last lines of the box's output
 #   6. stops the box, then import-result.sh: install and its dry run; with --swap, the
 #      swap after it
+# --attach RUN_URL: for a run already running on the box (this end died, or the terminal
+# closed, while box-rebuild.sh carries on): no send, no start and no command, only steps 5
+# and 6. The wait watches the result and the box's state; the box is stopped only once the
+# result is there, never if the wait is given up or interrupted, since the rebuild is still
+# running on it.
 # However it ends, a box this script started and that is still running is stopped (never
 # terminated): its disk keeps the run's state, and `launch.sh --no-send RUN_URL` carries
 # on where it stopped (add --refire after a failed rebuild); every failure prints that
@@ -50,6 +56,7 @@
 #                        [https://github.com/Macrophage87/RouteMaker.git]
 #   --allow-dirty        passed to send-inputs.sh
 #   --no-send            the inputs are in RUN_URL/in/ already; carry that run on
+#   --attach RUN_URL     wait for and finish a run already running on the box (above)
 #   --refire             passed to box-rebuild.sh: fire a new job after a failed one
 #   --beta               passed to box-rebuild.sh as --beta-bundle (the beta server's bundle;
 #                        install it there with import-result.sh --beta)
@@ -76,7 +83,7 @@ prefix=${CLOUD_PREFIX:-rebuild-checkpoints/transfer}
 profile=${CLOUD_PROFILE:-}
 repo_url=https://github.com/Macrophage87/RouteMaker.git
 run="" url="" live_dir="" allow_dirty=0 send=1 refire=0 beta=0 swap=0 use_running=0
-timeout_hours=30 dry_run=0
+timeout_hours=30 dry_run=0 attach=0
 given=("$@")
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -92,6 +99,10 @@ while [ $# -gt 0 ]; do
 		--timeout-hours) [ $# -ge 2 ] || die "$1 needs a value"; timeout_hours=$2; shift 2 ;;
 		--allow-dirty) allow_dirty=1; shift ;;
 		--no-send) send=0; shift ;;
+		--attach)
+			[ $# -ge 2 ] || die "$1 needs the RUN_URL of the run on the box"
+			[ -z "$url" ] || die "one RUN_URL only"
+			attach=1; send=0; url=$2; shift 2 ;;
 		--refire) refire=1; shift ;;
 		--beta) beta=1; shift ;;
 		--swap) swap=1; shift ;;
@@ -121,6 +132,10 @@ done
 [[ "$timeout_hours" =~ ^[1-9][0-9]?$ ]] && [ "$timeout_hours" -le 47 ] ||
 	die "--timeout-hours must be a whole number from 1 to 47"
 [[ "$repo_url" =~ ^https://[A-Za-z0-9._/-]+$ ]] || die "--repo-url must be an https URL"
+if [ "$attach" = 1 ]; then
+	[ "$refire" = 0 ] && [ "$use_running" = 0 ] && [ "$dry_run" = 0 ] ||
+		die "--attach starts nothing: it takes no --refire, --use-running or --dry-run"
+fi
 
 AWS=${CLOUD_AWS:-aws}
 SEND=${CLOUD_SEND:-$here/send-inputs.sh}
@@ -175,6 +190,7 @@ while [ "$i" -lt "${#given[@]}" ]; do
 	case "$a" in
 		--run | --bucket | --prefix) i=$((i + 2)) ;;
 		--no-send | --refire | --dry-run) i=$((i + 1)) ;;
+		--attach) i=$((i + 2)) ;;
 		--instance-id | --box-region | --bucket-region | --profile | --live-dir | --repo-url | --timeout-hours)
 			kept+=("$a" "${given[$((i + 1))]}"); i=$((i + 2)) ;;
 		-*) kept+=("$a"); i=$((i + 1)) ;;
@@ -319,7 +335,17 @@ ssm_online() {
 }
 # Before send-inputs.sh asks for sudo and uploads gigabytes: a wrong id, region or
 # sign-in, or a box another run is using, fails here.
-if [ "$dry_run" = 1 ]; then
+if [ "$attach" = 1 ]; then
+	state=$(box_state) ||
+		die "cannot describe $instance in $box_region: signed in (aws login --remote${profile:+ --profile $profile})? the right --instance-id and --box-region?"
+	if ! aws_s3 ls "$url/out/SHA256SUMS" >/dev/null 2>&1; then
+		case "$state" in
+			pending | running) ;;
+			*) die "the box $instance is $state and $url has no result yet: nothing to attach to. Carry the run on: $(resume)" ;;
+		esac
+	fi
+	note "--attach: waiting for the run already on the box; nothing is sent or started"
+elif [ "$dry_run" = 1 ]; then
 	box_state
 	aws_s3 ls "$url/out/SHA256SUMS"
 else
@@ -340,7 +366,9 @@ else
 		*) die "cannot read $url (aws exited $rc): signed in? the right --bucket-region? the permissions in OPERATIONS.md?" ;;
 	esac
 fi
-if [ "$send" = 1 ]; then
+if [ "$attach" = 1 ]; then
+	:
+elif [ "$send" = 1 ]; then
 	note "sending the inputs (send-inputs.sh)"
 	sargs=("${passed[@]}")
 	[ "$allow_dirty" = 0 ] || sargs+=(--allow-dirty)
@@ -350,7 +378,9 @@ else
 fi
 
 # --- 2. the commit -----------------------------------------------------------------------
-if [ "$dry_run" = 1 ]; then
+if [ "$attach" = 1 ]; then
+	commit="" # the box has it already
+elif [ "$dry_run" = 1 ]; then
 	aws_s3 cp "$url/in/MANIFEST.txt" -
 	commit="<the commit in MANIFEST.txt>"
 else
@@ -362,7 +392,9 @@ else
 fi
 
 # --- 3. the box --------------------------------------------------------------------------
-if [ "$dry_run" = 1 ]; then
+if [ "$attach" = 1 ]; then
+	:
+elif [ "$dry_run" = 1 ]; then
 	aws_box ec2 start-instances --instance-ids "$instance"
 	aws_box ssm describe-instance-information --filters "Key=InstanceIds,Values=$instance" \
 		--query 'InstanceInformationList[0].PingStatus' --output text
@@ -417,15 +449,20 @@ if [ "$dry_run" = 1 ]; then
 	[ "$swap" = 0 ] || script "$IMPORT" "${iargs[@]}" --swap "$url"
 	exit 0
 fi
-note "starting the rebuild on the box (box-rebuild.sh; hours)"
-command_id=$(aws_box ssm send-command --instance-ids "$instance" --document-name AWS-RunShellScript \
-	--comment "RouteMaker rebuild $run" --parameters "$params" \
-	--query Command.CommandId --output text) || fail "ssm send-command failed"
-[ -n "$command_id" ] && [ "$command_id" != None ] || fail "ssm send-command returned no command id"
-note "command $command_id sent"
+if [ "$attach" = 1 ]; then
+	command_id=""
+else
+	note "starting the rebuild on the box (box-rebuild.sh; hours)"
+	command_id=$(aws_box ssm send-command --instance-ids "$instance" --document-name AWS-RunShellScript \
+		--comment "RouteMaker rebuild $run" --parameters "$params" \
+		--query Command.CommandId --output text) || fail "ssm send-command failed"
+	[ -n "$command_id" ] && [ "$command_id" != None ] || fail "ssm send-command returned no command id"
+	note "command $command_id sent"
+fi
 
 # --- 5. the wait -------------------------------------------------------------------------
 box_output() {
+	[ -n "$command_id" ] || { echo "  box | (attached: read ~/cloud-rebuild.log on the box)"; return 0; }
 	aws_box ssm get-command-invocation --command-id "$command_id" --instance-id "$instance" \
 		--query '[StandardOutputContent,StandardErrorContent]' --output text 2>/dev/null |
 		tail -n 40 | sed 's/^/  box | /' || true
@@ -438,8 +475,12 @@ while :; do
 	if aws_s3 ls "$url/out/SHA256SUMS" >/dev/null 2>&1; then
 		break
 	fi
-	status=$(aws_box ssm get-command-invocation --command-id "$command_id" --instance-id "$instance" \
-		--query Status --output text 2>/dev/null) || status=""
+	if [ "$attach" = 1 ]; then
+		status=attached
+	else
+		status=$(aws_box ssm get-command-invocation --command-id "$command_id" --instance-id "$instance" \
+			--query Status --output text 2>/dev/null) || status=""
+	fi
 	state=$(box_state 2>/dev/null) || state=""
 	if [ -z "$status" ] || [ -z "$state" ]; then
 		# Usually a sign-in that ran out (a command just sent can also be unknown for a moment).
@@ -490,6 +531,8 @@ done
 note "the result is at $url/out/"
 
 # --- 6. home -----------------------------------------------------------------------------
+# An attached run's box is this run's, now done: stopped as a started one is.
+[ "$attach" = 0 ] || started=1
 stop_box
 note "installing the result here (import-result.sh, then its dry run; nothing served changes)"
 script "$IMPORT" "${passed[@]}" "$url" || fail "import-result.sh failed; fix what it says and run scripts/cloud/import-result.sh $url"

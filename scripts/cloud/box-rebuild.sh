@@ -116,6 +116,11 @@ POWEROFF=${CLOUD_POWEROFF:-sudo poweroff}
 work="${CLOUD_RUNS:-$HOME/cloud-runs}/$run"
 state="$work/state"
 mkdir -p "$work/in" "$work/out" "$state"
+# One copy at a time on the box, whatever its run: a second (a launch attached twice, a
+# command SSM ran again, a hand-started one beside the launcher's) would restore the
+# database and fire under the first. The lock goes when this process ends.
+exec 9>"${work%/*}/.box-rebuild.lock"
+flock -n 9 || die "another box-rebuild.sh is already running on this box; follow it with tail -f ~/cloud-rebuild.log (or launch.sh --attach RUN_URL at home)"
 if [ "$refire" = 1 ]; then
 	rm -f "$state/fire.done" "$state/job" "$state/wait.done" "$state/beta.done" "$state/export.done" "$state/upload.done" "$state/prune.done"
 fi

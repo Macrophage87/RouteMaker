@@ -597,6 +597,53 @@ def test_an_interrupted_wait_stops_the_box(fake, sig) -> None:
     assert len(fake.called("stop-instances")) == 1
 
 
+def test_attach_only_waits_for_the_run_on_the_box_then_stops_it_and_installs(fake) -> None:
+    (fake.dir / "states").write_text("running\n")
+
+    done = fake.run("--attach", URL)
+
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert not fake.called("send-inputs.sh") and not fake.called("start-instances")
+    assert not fake.called("send-command") and not fake.called("get-command-invocation")
+    calls = fake.calls()
+    assert position(calls, "stop-instances") < position(calls, "import-result.sh")
+    assert len(fake.called("stop-instances")) == 1
+
+
+def test_attach_to_a_box_that_is_not_running_is_refused(fake) -> None:
+    (fake.dir / "states").write_text("stopped\n")
+
+    done = fake.run("--attach", URL)
+
+    assert done.returncode == 2 and "nothing to attach to" in done.stderr
+    assert "--no-send" in done.stderr and URL in done.stderr
+    assert not fake.called("start-instances") and not fake.called("stop-instances")
+
+
+def test_an_interrupted_attach_leaves_the_rebuild_running(fake) -> None:
+    (fake.dir / "states").write_text("running\n")
+    (fake.dir / "result_after").write_text("9999")
+    proc = subprocess.Popen(
+        ["bash", str(LAUNCH), "--attach", URL],
+        env={**fake.environ, "CLOUD_LAUNCH_POLL_S": "1"},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        for _ in range(100):
+            if len(fake.called("describe-instances")) >= 2:
+                break
+            time.sleep(0.1)
+        proc.send_signal(signal.SIGINT)
+        proc.wait(timeout=30)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+    assert proc.returncode != 0
+    assert not fake.called("stop-instances"), "the box is still rebuilding"
+
+
 def test_dry_run_prints_the_calls_and_runs_none(fake) -> None:
     done = fake.run(URL, "--dry-run", "--swap", "--beta")
 

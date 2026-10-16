@@ -6494,6 +6494,18 @@ default run name is the day's, and the same command without the URL after midnig
 (UTC) would start a new run. A box it did not start is not stopped by the launcher.
 `--no-send` also skips sending for a run whose inputs are already in S3.
 
+**When this end dies but the box carries on** (the terminal closed, this host rebooted,
+the launcher was killed during the wait), do not launch again: `--no-send` would send a
+second command to a box that is still rebuilding. Instead
+`scripts/cloud/launch.sh --attach <RUN_URL>` (with the same `--instance-id`, regions and
+`--profile` as before) sends and starts nothing and only does steps 5 and 6: it waits for
+`out/SHA256SUMS` while watching the box's state, then stops the box and installs the
+result (`--swap` as usual). Interrupting it, or giving up the wait, leaves the box
+running, since the rebuild is still on it. A box that is not running and has no result is
+refused with the `--no-send` command to carry the run on. On the box, `box-rebuild.sh`
+holds a lock (`~/cloud-runs/.box-rebuild.lock`), so a second copy of it, for any run,
+refuses to start while one runs.
+
 **A spot reclaim, and a box that starts again by itself.** With a persistent spot request
 and interruption behaviour Stop, AWS stops the box when it needs the capacity back and
 **starts it again by itself** when it has room. Nothing runs on it then (the launcher's
