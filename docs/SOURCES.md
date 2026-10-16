@@ -28,9 +28,12 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   (with farm stands and markets), and the places to see (Plan's Places to see, Go's Sights).
   The Scenic layer (v0.8.0) reads three things from it: the East Coast Greenway and the US
   Bicycle Routes, from route relations (`type=route`, `route=bicycle`, `network=ncn`,
-  `ref="USBR N"`, per <https://wiki.openstreetmap.org/wiki/WikiProject_U.S._Bicycle_Route_System>;
+  `ref="USBR N"`, per <https://wiki.openstreetmap.org/wiki/WikiProject_U.S._Bicycle_Route_System>,
+  and the forms also in use: a bare `ref=N` with `cycle_network=US:US` or `US`, or a name
+  "U.S. Bicycle Route N";
   USBR 1 is relation 3022887, USBR 11 is 12126554, USBR 50 is 2532740; the Greenway is relation
-  1774795, `network=ncn` with no USBR ref, and a section relation takes its parent's name);
+  1774795, `network=ncn` with no USBR ref, and a section relation takes its parent's name;
+  the ids are the sources note's, to be confirmed on the extract, docs/OPERATIONS.md);
   covered bridges, `bridge=covered` (<https://wiki.openstreetmap.org/wiki/Key:covered>: not
   `covered=yes`), named by `bridge:name`; and viewpoints, `tourism=viewpoint`. Read
   2026-10-16. Maryland's covered bridges per the Maryland Manual are Roddy Road, Loy's

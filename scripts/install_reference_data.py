@@ -62,7 +62,8 @@ rebuild's scenic stage (`pipeline.scenic_layer`; v0.8.0), never by the classifie
     --scenic-byways md-scenic-byways.geojson    MDOT SHA (MD iMAP)
 
 each as `scripts/fetch_agency_layer.py` stored it; `--byway-name-field` names the
-byway layer's name field where it is not one `routemaker.scenic` looks for.
+byway layer's name field, and `--rustic-name-field` the rustic roads' road-name field,
+where it is not one `routemaker.scenic` looks for (a layer with none is refused).
 
 Run with only --data-root it installs the crossings and reports which of the
 other two are still missing, exiting non-zero while any is. See
@@ -563,6 +564,7 @@ def main(argv: list[str] | None = None) -> int:
         "--scenic-byways", type=Path, help="MDOT SHA Scenic Byways (MD iMAP), GeoJSON as fetched"
     )
     parser.add_argument("--byway-name-field", default=None)
+    parser.add_argument("--rustic-name-field", default=None)
     args = parser.parse_args(argv)
     if args.dc_pci:
         # Refused before anything is written while the licence is unconfirmed (DC-PCI).
@@ -678,7 +680,7 @@ def main(argv: list[str] | None = None) -> int:
         rows = []
         try:
             for path, parse in (
-                (args.rustic_roads, scenic.rustic_rows),
+                (args.rustic_roads, lambda doc: scenic.rustic_rows(doc, args.rustic_name_field)),
                 (args.scenic_byways, lambda doc: scenic.byway_rows(doc, args.byway_name_field)),
             ):
                 if path is None:

@@ -60,7 +60,7 @@ the node on a tie. When tags fit two categories, the first in CATEGORIES wins.
 Kept: name, category, opening_hours and website (or contact:website), as
 the Food file keeps them. A covered bridge (bridge=covered) is marked "cv" and
 named by its bridge:name where it has one (the way's own name is usually the
-road's): the Scenic layer (v0.8.0, frontend/src/lib/scenic.ts) draws the
+road's): the Scenic layer (v0.8.0, frontend/src/lib/scenicLayer.ts) draws the
 covered bridges and the viewpoints from this file. Nodes, ways and
 multipolygon relations are read; a way or relation sits at its outer ring's
 mean. Coordinates are rounded to 5 decimals, about 3 ft (1 m).

@@ -356,7 +356,7 @@ OPTIONAL_PROPERTIES = {
     # general. Off by default."): true on a way with a scenic designation (a rustic road, a
     # scenic byway, the East Coast Greenway or a US Bicycle Route, a covered bridge), or left
     # out. Only the flag: the words are the road panel's (`core.segment_info`), and the map
-    # draws a thin casing outside the stress line where it is set (frontend/src/lib/scenic.ts).
+    # draws a thin casing outside the stress line where it is set (frontend/src/lib/scenicLayer.ts).
     "scenic": SCENIC_COLUMN,
 }
 

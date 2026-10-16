@@ -4157,7 +4157,8 @@ The Scenic map layer (the owner, 2026-10-16: "Basically looking for a scenic lay
 general. Off by default. How about including covered bridges") names, per way, the
 designations it carries, in words: "Rustic Road (Montgomery County)", "Exceptional Rustic
 Road (Montgomery County)", "`<name>` Scenic Byway", "East Coast Greenway", "USBR 50", and a
-covered bridge's name, joined by " · " in that order, each once
+covered bridge's name, joined by " · " in that order, each once (a way along records of
+both kinds of rustic road says both)
 (`routemaker.scenic.phrase`). Three inputs:
 
 - `reference/scenic.json`, optional, from `install_reference_data.py --rustic-roads
@@ -4165,12 +4166,20 @@ covered bridge's name, joined by " · " in that order, each once
   `{"id", "source", "label", "name", "coordinates"}`, `source` `moco-rustic` or
   `md-byways`. `pipeline.scenic_layer.labels_by_way` matches each source on its own with
   `conflation.conflate_blocks`, as the agency stress ratings are: never a trail, a service
-  or track way only where the record's road name agrees (a rustic road record carries one
-  where the layer has a road-name field; a byway record never does, its name being the
-  byway's), and a way takes the words of every record it lies along.
+  or track way only where the record's road name agrees, and a differently named way never
+  (every rustic road record carries its road's name: the installer refuses a layer with
+  none). A byway record never carries one, its name being the byway's, so the name veto
+  cannot guard it; instead only trunk, primary, secondary, tertiary and unclassified ways
+  are candidates (`BYWAY_HIGHWAYS`: no parallel residential street, ramp, service road or
+  track) and a record must cover 70% of a way (`BYWAY_MIN_COVERAGE`, not the blocks'
+  half). A way takes the words of every record it lies along.
 - the extract's bicycle route relations (`scenic_layer.read_routes`, one more pass over the
-  relations, in `FETCH_EXTRACT`'s read with `trail_routes.read_routes`): `network=ncn` with
-  `ref="USBR N"`, and relation 1774795 or a relation named "East Coast Greenway…". A
+  relations, in `FETCH_EXTRACT`'s read with `trail_routes.read_routes`). A USBR is tagged
+  three ways in OSM and all are read (`routemaker.scenic.usbr_number`): `ref="USBR N"`; a
+  bare `ref=N` with `network=ncn` and `cycle_network` `US:US` or `US` (not `US:MD`, a state
+  route's own number); or a name "U.S. Bicycle Route N". The Greenway, relation 1774795 or
+  a relation named "East Coast Greenway…", is checked first and is never a USBR, though it
+  is on the national network too (`cycle_network=US`). A
   relation's words reach the ways of every relation under it, so a state section of the
   Greenway is the Greenway; cycles are cut.
 - the way's own tags: `bridge=covered`, named by `bridge:name`, else by a `name` that names

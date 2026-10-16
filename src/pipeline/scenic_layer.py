@@ -36,6 +36,16 @@ logger = logging.getLogger(__name__)
 
 FILE_NAME = "scenic.json"
 
+# A byway record names its byway, not its road, so the street blocks' name veto never
+# applies to it. Two guards take its place: only the through-road classes a byway runs on
+# may take one (a parallel residential street, a ramp, a service road or a track never
+# does), and the record must cover most of the way (BYWAY_MIN_COVERAGE, not the blocks'
+# half), so a short connector that only touches it does not. An unclassified road beside a
+# byway, within MAX_SEPARATION_M and on its bearing, could still take it: rare in the
+# byways' rural country, and only words in the panel, never a stress change.
+BYWAY_HIGHWAYS = frozenset({"trunk", "primary", "secondary", "tertiary", "unclassified"})
+BYWAY_MIN_COVERAGE = 0.7
+
 
 class ScenicLayerInvalid(ValueError):
     """The installed file names a source or a designation the rebuild does not know."""
@@ -54,6 +64,9 @@ def load(path: Path) -> tuple[tuple[conflation.RoadFeature, ...], dict[str, str]
         return (), {}
     features, labels = [], {}
     for row in json.loads(path.read_text()):
+        missing = [key for key in ("id", "source", "label", "coordinates") if key not in row]
+        if missing:
+            raise ScenicLayerInvalid(f"{path}: record {row.get('id')!r}: no {', '.join(missing)}")
         source, label = row["source"], row["label"]
         if source not in scenic.SOURCES:
             raise ScenicLayerInvalid(f"{path}: record {row['id']}: unknown source {source!r}")
@@ -95,9 +108,17 @@ def labels_by_way(
     for feature in features:
         by_source[feature.facts.agency].append(feature)
     found: dict[int, set[str]] = defaultdict(set)
+    through_roads = {way.osm_id for way in ways if way.tags.get("highway") in BYWAY_HIGHWAYS}
+    byway_entries = [entry for entry in entries if entry[0] in through_roads]
     for source, own in sorted(by_source.items()):
+        byway = source == scenic.MD_BYWAY_SOURCE
         result = conflation.conflate_blocks(
-            entries, own, names, name_required=required, name_free=free
+            byway_entries if byway else entries,
+            own,
+            names,
+            name_required=required,
+            name_free=free,
+            min_coverage=BYWAY_MIN_COVERAGE if byway else conflation.MIN_BLOCK_COVERAGE,
         )
         for way_id, shares in result.matched.items():
             found[way_id].update(labels[share.feature_id] for share in shares)

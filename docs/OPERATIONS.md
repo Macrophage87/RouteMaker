@@ -4689,7 +4689,7 @@ What it shows, and where each comes from (docs/SOURCES.md):
 | `<name>` Scenic Byway | MDOT SHA's Scenic Byways on MD iMAP | the same |
 | East Coast Greenway, USBR 1, 11, 50 | OSM route relations in the extract | a rebuild |
 | Covered bridges (on the way and as named dots) | OSM `bridge=covered` | a rebuild; the dots, `scripts/build_places.py` |
-| Viewpoints (small dots) | OSM `tourism=viewpoint`, named | `scripts/build_places.py` |
+| Viewpoints (small rings) | OSM `tourism=viewpoint`, named | `scripts/build_places.py` |
 
 The rebuild writes the words to `segment.scenic` (`pipeline.scenic_layer`); the stress
 tiles carry `scenic` (true) for the casing, and the road panel says the words. A table
@@ -4727,10 +4727,22 @@ permission) and Frederick County's draft rustic roads (no licence).
    Put each README's size and sha256 into docs/SOURCES.md. The script asks for GeoJSON
    (`f=geojson`); if a server refuses it, the run fails with the server's error and
    nothing is stored. Neither layer's field names could be read from the cloud build:
-   open one record of each and check `CLASSLABEL2` is in the rustic roads and the byway's
-   name is in one of `BYWAY_NAME`, `Byway_Name`, `BywayName`, `BYWAY`, `Byway`, `NAME`,
-   `Name` (`routemaker.scenic.BYWAY_NAME_FIELDS`); if not, step 2 takes
-   `--byway-name-field <field>`.
+   open one record of each and check `CLASSLABEL2` and a road name are in the rustic
+   roads (the name is one of `routemaker.scenic.ROAD_NAME_FIELDS`, else step 2 takes
+   `--rustic-name-field <field>`; a layer with no road name is refused, as the name keeps a
+   record off a parallel street), and the byway's name is in one of `BYWAY_NAME`,
+   `Byway_Name`, `BywayName`, `BYWAY`, `Byway`, `NAME`, `Name`
+   (`routemaker.scenic.BYWAY_NAME_FIELDS`), else step 2 takes `--byway-name-field <field>`.
+
+   **Confirm the route relations on the extract** before the first v0.8.0 rebuild: the ids
+   in docs/SOURCES.md (USBR 1 3022887, USBR 11 12126554, USBR 50 2532740, the Greenway
+   1774795) are from the sources note, not read from an extract here. With osmium on the
+   host, `osmium getid -r -t "$DATA_ROOT/extracts/source.osm.pbf" r3022887 r12126554
+   r2532740 r1774795 -f opl | grep '^r'` should print four relations; check each one's
+   `network`, `cycle_network`, `ref` and `name` match a form `routemaker.scenic.usbr_number`
+   reads (`ref="USBR N"`; a bare `ref=N` with `network=ncn` and `cycle_network` `US:US` or
+   `US`; or a name "U.S. Bicycle Route N"). The Greenway is matched by its id or a name
+   starting "East Coast Greenway", never as a USBR.
 
 2. **Install them**, both in one run (the file is written whole, so a run with one flag
    drops the other's lines):
@@ -4752,7 +4764,7 @@ permission) and Frederick County's draft rustic roads (no licence).
    | Line | What to look for |
    |---|---|
    | `scenic designations: moco-rustic, N of M records matched, N ways` | most records matched (the county's rustic roads lie mostly in the Agricultural Reserve) |
-   | `scenic designations: md-byways, N of M records matched, N ways` | most matched; a byway record along a trail matches nothing (trails are never candidates) |
+   | `scenic designations: md-byways, N of M records matched, N ways` | most matched; a byway record along a trail matches nothing (trails are never candidates), and only trunk, primary, secondary, tertiary and unclassified roads with 70% or more of their length along a record take one (`pipeline.scenic_layer.BYWAY_HIGHWAYS`, `BYWAY_MIN_COVERAGE`) |
    | `scenic ways (designated, covered bridges, scenic routes): N` | thousands, most of them the C&O towpath (USBR 50) and the Greenway |
    | `.../scenic.json is absent, so no agency scenic designation is read` | should not appear once step 2 has run |
 

@@ -57,6 +57,14 @@ SOURCES = {
 OSM_CREDIT = "OpenStreetMap"
 
 _USBR = re.compile(r"^\s*USBR\s*(\d+)\s*$", re.IGNORECASE)
+# The name OSM's US Bicycle Route relations often carry instead of a USBR ref
+# ("U.S. Bicycle Route 50", "US Bicycle Route 11").
+_USBR_NAME = re.compile(r"^\s*U\.?\s?S\.?\s+Bicycle\s+Route\s+(\d+)\b", re.IGNORECASE)
+_DIGITS = re.compile(r"^\s*(\d+)\s*$")
+# The national network's `cycle_network` values (the USBR wiki: `US:US`; `US` is in use
+# too). Not every value starting "US": a state route is `US:MD`, `US:VA`, with its own
+# numbers, and a bare "50" there is not USBR 50.
+NATIONAL_CYCLE_NETWORKS = frozenset({"US", "US:US"})
 _BYWAY_SUFFIX = re.compile(r"\bbyway\s*$", re.IGNORECASE)
 
 
@@ -74,11 +82,29 @@ def byway_label(name: object) -> str | None:
 
 
 def usbr_number(tags: Mapping[str, str]) -> int | None:
-    """The route number of a US Bicycle Route relation (`network=ncn`, `ref="USBR N"`)."""
-    if tags.get("network") != "ncn":
+    """The route number of a US Bicycle Route relation, as OSM tags it in three ways: a
+    `ref="USBR N"`; a bare `ref=N` on the national network (`cycle_network` `US:US` or
+    `US`, and `network=ncn`); or a name "U.S. Bicycle Route N". Each needs the national
+    network (`network=ncn`, or a national `cycle_network`): a state or local route with a
+    bare number is not a USBR. The East Coast Greenway (`cycle_network=US`, no number) has
+    none."""
+    national_cycle = (tags.get("cycle_network") or "").strip() in NATIONAL_CYCLE_NETWORKS
+    ncn = tags.get("network") == "ncn"
+    if not (ncn or national_cycle):
         return None
-    found = _USBR.match(tags.get("ref") or "")
+    ref = tags.get("ref") or ""
+    found = _USBR.match(ref) or _USBR_NAME.match(tags.get("name") or "")
+    if found is None and ncn and national_cycle:
+        found = _DIGITS.match(ref)
     return int(found.group(1)) if found else None
+
+
+def is_east_coast_greenway(relation_id: int, tags: Mapping[str, str]) -> bool:
+    """The Greenway's relation, or a section named for it."""
+    name = (tags.get("name") or "").strip().casefold()
+    return relation_id == EAST_COAST_GREENWAY_RELATION or name.startswith(
+        EAST_COAST_GREENWAY.casefold()
+    )
 
 
 def route_label(relation_id: int, tags: Mapping[str, str]) -> str | None:
@@ -87,15 +113,12 @@ def route_label(relation_id: int, tags: Mapping[str, str]) -> str | None:
     routes = {part.strip() for part in (tags.get("route") or "").split(";")}
     if "bicycle" not in routes or tags.get("type") not in ("route", "superroute"):
         return None
-    number = usbr_number(tags)
-    if number is not None:
-        return f"USBR {number}"
-    name = (tags.get("name") or "").strip()
-    if relation_id == EAST_COAST_GREENWAY_RELATION or name.casefold().startswith(
-        EAST_COAST_GREENWAY.casefold()
-    ):
+    # The Greenway first and apart: it is on the national network too (`network=ncn`,
+    # `cycle_network=US`) and must never read as a USBR.
+    if is_east_coast_greenway(relation_id, tags):
         return EAST_COAST_GREENWAY
-    return None
+    number = usbr_number(tags)
+    return f"USBR {number}" if number is not None else None
 
 
 def covered_bridge_label(tags: Mapping[str, str]) -> str | None:
@@ -128,10 +151,8 @@ def _order(label: str) -> tuple[int, int, str]:
 def phrase(labels: Iterable[str | None]) -> str | None:
     """The designations as the road panel says them, each once, in a fixed order:
     'Rustic Road (Montgomery County) · East Coast Greenway · USBR 50'. None for none.
-    A way that is both kinds of rustic road says the exceptional one only."""
+    A way along records of both kinds of rustic road says both, as the county's layer does."""
     kept = {label for label in labels if label}
-    if MOCO_EXCEPTIONAL in kept:
-        kept.discard(MOCO_RUSTIC)
     return SEPARATOR.join(sorted(kept, key=_order)) or None
 
 
@@ -196,11 +217,22 @@ def _row(source: str, key: object, part: int, label: str, name: str | None, line
     }
 
 
-def rustic_rows(document: Mapping) -> tuple[list[dict], int]:
+def rustic_rows(document: Mapping, name_field: str | None = None) -> tuple[list[dict], int]:
     """Montgomery County Planning's Rustic Roads layer as installed rows, and how many
-    records were left out (a `CLASSLABEL2` that is neither kind, or no line)."""
+    records were left out (a `CLASSLABEL2` that is neither kind, or no line). A layer with
+    no road name in any record is refused: the name is what keeps a record off a parallel
+    street or a differently named connector (`conflate_blocks`' name veto)."""
+    features = list(document.get("features", ()))
+    fields = (name_field,) if name_field else ROAD_NAME_FIELDS
+    if features and not any(
+        (f.get("properties") or {}).get(field) for f in features for field in fields
+    ):
+        raise LayerUnreadable(
+            f"no road name in any of the fields {', '.join(fields)}: name the layer's "
+            "field with --rustic-name-field"
+        )
     rows, dropped = [], 0
-    for index, feature in enumerate(document.get("features", ())):
+    for index, feature in enumerate(features):
         properties = feature.get("properties") or {}
         label = moco_label(properties.get("CLASSLABEL2"))
         lines = list(_lines(feature.get("geometry")))
@@ -208,7 +240,7 @@ def rustic_rows(document: Mapping) -> tuple[list[dict], int]:
             dropped += 1
             continue
         key = _feature_id(feature, properties, index)
-        name = _first(properties, ROAD_NAME_FIELDS)
+        name = _first(properties, fields)
         rows += [_row(MOCO_SOURCE, key, part, label, name, line) for part, line in enumerate(lines)]
     return rows, dropped
 

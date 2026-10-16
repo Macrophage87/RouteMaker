@@ -75,6 +75,44 @@ def test_us_bicycle_routes_and_the_greenway_from_relations():
     assert scenic.route_label(5, {"type": "route", "route": "bicycle", "name": "Bike 7"}) is None
 
 
+@pytest.mark.parametrize(
+    ("tags", "number"),
+    [
+        # The USBR wiki's form.
+        ({"network": "ncn", "cycle_network": "US:US", "ref": "USBR 50"}, 50),
+        ({"network": "ncn", "ref": "USBR 1"}, 1),
+        # A bare number on the national network (review, PR #138: the common US tagging).
+        ({"network": "ncn", "cycle_network": "US:US", "ref": "50"}, 50),
+        ({"network": "ncn", "cycle_network": "US", "ref": "11"}, 11),
+        # The name alone.
+        ({"network": "ncn", "cycle_network": "US", "name": "U.S. Bicycle Route 50"}, 50),
+        ({"network": "ncn", "name": "US Bicycle Route 11 (Maryland)"}, 11),
+        ({"cycle_network": "US:US", "name": "U.S. Bicycle Route 1"}, 1),
+        # A state route's own number is not a USBR, nor a bare number off the network.
+        ({"network": "rcn", "cycle_network": "US:MD", "ref": "50"}, None),
+        ({"network": "ncn", "ref": "50"}, None),
+        ({"network": "lcn", "name": "Bike Route 50"}, None),
+        # The Greenway: national, no number.
+        ({"network": "ncn", "cycle_network": "US", "name": "East Coast Greenway"}, None),
+    ],
+)
+def test_each_us_bicycle_route_tagging(tags, number):
+    assert scenic.usbr_number(tags) == number
+    label = scenic.route_label(9, {"type": "route", "route": "bicycle", **tags})
+    if number is not None:
+        assert label == f"USBR {number}"
+
+
+def test_the_greenway_is_never_a_usbr():
+    ecg = {"type": "route", "route": "bicycle", "network": "ncn", "cycle_network": "US"}
+    # Even a Greenway relation carrying a number reads as the Greenway.
+    assert scenic.route_label(1774795, {**ecg, "ref": "1"}) == "East Coast Greenway"
+    assert scenic.route_label(5, {**ecg, "name": "East Coast Greenway (DC)"}) == (
+        "East Coast Greenway"
+    )
+    assert scenic.route_label(5, ecg) is None
+
+
 def test_a_covered_bridge_says_its_name():
     assert (
         scenic.covered_bridge_label(
@@ -102,10 +140,10 @@ def test_the_phrase_is_ordered_and_says_each_once():
         scenic.phrase(["USBR 11", "USBR 1", "Roddy Road Covered Bridge", "Catoctin Scenic Byway"])
         == "Catoctin Scenic Byway · USBR 1 · USBR 11 · Roddy Road Covered Bridge"
     )
-    # Both kinds of rustic road on one way: the exceptional one is what it is.
+    # A way along records of both kinds of rustic road says both (review, PR #138).
     assert (
         scenic.phrase([scenic.MOCO_RUSTIC, scenic.MOCO_EXCEPTIONAL])
-        == "Exceptional Rustic Road (Montgomery County)"
+        == "Exceptional Rustic Road (Montgomery County) · Rustic Road (Montgomery County)"
     )
     assert scenic.phrase([]) is None
 
@@ -150,6 +188,16 @@ def test_byway_rows_split_multilines_and_carry_no_road_name():
     assert {r["name"] for r in rows} == {None}
 
 
+def test_a_rustic_layer_with_no_road_name_is_refused():
+    """The road name is the rustic roads' guard against a parallel street (review, PR #138)."""
+    with pytest.raises(scenic.LayerUnreadable, match="--rustic-name-field"):
+        scenic.rustic_rows(_collection(_feature(1, LINE, CLASSLABEL2="Rustic Road")))
+    rows, _ = scenic.rustic_rows(
+        _collection(_feature(1, LINE, CLASSLABEL2="Rustic Road", RDNM="Mill Road")), "RDNM"
+    )
+    assert rows[0]["name"] == "Mill Road"
+
+
 def test_a_byway_layer_with_no_name_field_is_refused():
     with pytest.raises(scenic.LayerUnreadable, match="--byway-name-field"):
         scenic.byway_rows(_collection(_feature(1, LINE, LABEL="Mountain Maryland")))
@@ -161,7 +209,9 @@ def test_the_installer_writes_what_the_rebuild_loads(tmp_path):
     from pipeline import scenic_layer
 
     rustic = tmp_path / "rustic.geojson"
-    rustic.write_text(json.dumps(_collection(_feature(1, LINE, CLASSLABEL2="Rustic Road"))))
+    rustic.write_text(
+        json.dumps(_collection(_feature(1, LINE, CLASSLABEL2="Rustic Road", NAME="Mill Road")))
+    )
     byways = tmp_path / "byways.geojson"
     byways.write_text(json.dumps(_collection(_feature(1, LINE, BYWAY_NAME="Catoctin"))))
     done = subprocess.run(
@@ -209,7 +259,9 @@ def test_a_road_along_both_layers_takes_both(tmp_path):
     from pipeline import scenic_layer
 
     rows = [
-        *scenic.rustic_rows(_collection(_feature(1, LINE, CLASSLABEL2="Rustic Road")))[0],
+        *scenic.rustic_rows(
+            _collection(_feature(1, LINE, CLASSLABEL2="Rustic Road", ROAD_NAME="Davis Mill Road"))
+        )[0],
         *scenic.byway_rows(_collection(_feature(1, LINE, BYWAY_NAME="Catoctin")))[0],
     ]
     path = tmp_path / "scenic.json"
@@ -221,6 +273,57 @@ def test_a_road_along_both_layers_takes_both(tmp_path):
     assert found == {42: {scenic.MOCO_RUSTIC, "Catoctin Scenic Byway"}}
     # A trail along the same line is never a candidate (the street blocks' rule).
     assert scenic_layer.labels_by_way([along], features, labels, frozenset({42})) == {}
+
+
+def test_a_record_missing_a_key_is_refused_not_a_key_error(tmp_path):
+    from pipeline import scenic_layer
+
+    path = tmp_path / "scenic.json"
+    path.write_text(json.dumps([{"id": "x", "source": "md-byways", "coordinates": LINE}]))
+    with pytest.raises(scenic_layer.ScenicLayerInvalid, match="no label"):
+        scenic_layer.load(path)
+
+
+def test_a_byway_keeps_off_a_parallel_street_a_ramp_and_a_connector(tmp_path):
+    """A byway record names no road, so the name veto cannot guard it (review, PR #138): a
+    residential street about 10 m beside it, a ramp along it and a service road on it never
+    take it, and a short connector that only touches its end does not either."""
+    from pipeline import scenic_layer
+
+    rows, _ = scenic.byway_rows(_collection(_feature(1, LINE, BYWAY_NAME="Catoctin")))
+    path = tmp_path / "scenic.json"
+    path.write_text(json.dumps(rows))
+    features, labels = scenic_layer.load(path)
+    beside = [(lon, lat + 0.00009) for lon, lat in LINE]  # about 33 ft (10 m) north
+    byway = _way(1, LINE, highway="secondary", name="Hessong Bridge Road")
+    parallel = _way(2, beside, highway="residential", name="Elm Street")
+    ramp = _way(3, LINE[2:6], highway="secondary_link")
+    service = _way(4, LINE[3:7], highway="service")
+    # A road that runs on past the record's end: under BYWAY_MIN_COVERAGE of it is alongside.
+    # (unclassified, so only the coverage bar keeps it off: it would match at the blocks' half).
+    connector = _way(5, [*LINE[4:], *[(LINE[-1][0] + i * 0.001, 39.20) for i in range(1, 5)]])
+    found = scenic_layer.labels_by_way(
+        [byway, parallel, ramp, service, connector], features, labels
+    )
+    assert found == {1: {"Catoctin Scenic Byway"}}
+
+
+def test_a_rustic_record_keeps_off_a_differently_named_parallel_street(tmp_path):
+    from pipeline import scenic_layer
+
+    rows, _ = scenic.rustic_rows(
+        _collection(_feature(1, LINE, CLASSLABEL2="Rustic Road", ROAD_NAME="Mount Nebo Road"))
+    )
+    path = tmp_path / "scenic.json"
+    path.write_text(json.dumps(rows))
+    features, labels = scenic_layer.load(path)
+    beside = [(lon, lat + 0.00009) for lon, lat in LINE]
+    found = scenic_layer.labels_by_way(
+        [_way(1, LINE, name="Mount Nebo Road"), _way(2, beside, name="Elm Street")],
+        features,
+        labels,
+    )
+    assert found == {1: {scenic.MOCO_RUSTIC}}
 
 
 def test_a_section_relation_takes_its_parents_name_and_cycles_end():
@@ -259,6 +362,11 @@ def test_the_routes_are_read_from_the_extract(tmp_path):
     <tag k="type" v="route"/><tag k="route" v="bicycle"/>
     <tag k="network" v="ncn"/><tag k="ref" v="USBR 50"/>
   </relation>
+  <relation id="11" version="1">
+    <member type="way" ref="103" role=""/>
+    <tag k="type" v="route"/><tag k="route" v="bicycle"/>
+    <tag k="network" v="ncn"/><tag k="cycle_network" v="US:US"/><tag k="ref" v="11"/>
+  </relation>
   <relation id="3" version="1">
     <member type="way" ref="102" role=""/>
     <tag k="type" v="route"/><tag k="route" v="hiking"/><tag k="ref" v="USBR 50"/>
@@ -266,7 +374,11 @@ def test_the_routes_are_read_from_the_extract(tmp_path):
 </osm>
 """
     )
-    assert read_routes(osm) == {100: {"East Coast Greenway", "USBR 50"}, 101: {"USBR 50"}}
+    assert read_routes(osm) == {
+        100: {"East Coast Greenway", "USBR 50"},
+        101: {"USBR 50"},
+        103: {"USBR 11"},
+    }
 
 
 def test_the_words_combine_every_source():

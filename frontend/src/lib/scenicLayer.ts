@@ -10,7 +10,7 @@
  *   stress tiles mark `scenic` (core/stress_tiles.py, from `segment.scenic`): Montgomery County's Rustic and
  *   Exceptional Rustic Roads, Maryland's Scenic Byways, the East Coast Greenway and the US Bicycle Routes, and
  *   covered bridges. Under the stress layers, which stay on top and keep their colours; never on the Mass Ride map.
- * - covered bridges as named teal dots and viewpoints as small ones, from Places to see's file
+ * - covered bridges as named teal dots and viewpoints as small teal rings, from Places to see's file
  *   (amenity-data/places.json; scripts/build_places.py marks a covered bridge `cv`). While Places to see is on it
  *   draws them already, so this layer leaves its dots off.
  *
@@ -28,6 +28,8 @@ export const SCENIC_LABEL = "Scenic";
 export const SCENIC_HINT = "Rustic roads, scenic byways, the East Coast Greenway, US Bicycle Routes, covered bridges and viewpoints. Tap a road for its name.";
 export const SCENIC_NO_STRESS = "Scenic roads need the stress map, unavailable for now.";
 export const SCENIC_NO_PLACES = "Covered bridges and viewpoints are unavailable for now.";
+/** Places to see's file ships empty until the build host fills it (amenity-data/README.md), as PLACES_NONE says. */
+export const SCENIC_PLACES_NONE = "No covered bridges or viewpoints yet: they arrive with the next map data update.";
 export const SCENIC_PREF_KEY = "routemaker.scenicLayer";
 
 /**
@@ -100,7 +102,10 @@ export function scenicPointsGeoJson(places: readonly SightPlace[]): object {
   return { type: "FeatureCollection", features };
 }
 
-/** A viewpoint's small dot, a covered bridge's larger one, and the bridge's name under it from zoom 13. */
+/**
+ * A viewpoint's ring (white inside, a teal edge), a covered bridge's solid teal dot, and the bridge's name under it
+ * from zoom 13: the two differ in shape, not only in size.
+ */
 export function scenicPointLayers(): Record<string, unknown>[] {
   const base = { source: SCENIC_POINTS_SOURCE, minzoom: SCENIC_POINTS_MIN_ZOOM };
   return [
@@ -109,7 +114,7 @@ export function scenicPointLayers(): Record<string, unknown>[] {
       type: "circle",
       ...base,
       filter: ["==", ["get", "kind"], "viewpoint"],
-      paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], SCENIC_POINTS_MIN_ZOOM, 2.5, 16, 4], "circle-color": SCENIC_COLOUR, "circle-stroke-color": "#ffffff", "circle-stroke-width": 1 },
+      paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], SCENIC_POINTS_MIN_ZOOM, 3, 16, 4.5], "circle-color": "#ffffff", "circle-stroke-color": SCENIC_COLOUR, "circle-stroke-width": 2 },
     },
     {
       id: SCENIC_BRIDGE_LAYER,
@@ -164,10 +169,15 @@ export function saveScenicLayer(on: boolean, store: Store | null = defaultStore(
   }
 }
 
-/** The section's status line: what of the layer cannot show while it is on. */
-export function scenicStatus(on: boolean, stressAvailable: boolean, placesUnavailable: boolean): string {
+/**
+ * The section's status line: what of the layer cannot show while it is on. `places` is Places to see's file: not
+ * loaded, unavailable, or loaded with no covered bridge or viewpoint in it (it ships empty), which is said rather
+ * than leaving the rider to wonder where the dots are.
+ */
+export function scenicStatus(on: boolean, stressAvailable: boolean, places: "loading" | "unavailable" | readonly SightPlace[]): string {
   if (!on) return "";
-  return [stressAvailable ? "" : SCENIC_NO_STRESS, placesUnavailable ? SCENIC_NO_PLACES : ""].filter(Boolean).join(" ");
+  const dots = places === "unavailable" ? SCENIC_NO_PLACES : Array.isArray(places) && !places.some((p) => scenicKind(p)) ? SCENIC_PLACES_NONE : "";
+  return [stressAvailable ? "" : SCENIC_NO_STRESS, dots].filter(Boolean).join(" ");
 }
 
 /** The Map layers section: one switch, its hint inside. */
@@ -181,7 +191,7 @@ export function ScenicSection({ on, onChange, status = "" }: { on: boolean; onCh
 
 export const SCENIC_LEGEND_TEXT =
   "Scenic: thin teal lines either side of a rustic road, a scenic byway, the East Coast Greenway or a US Bicycle Route " +
-  "(the stress colour stays inside); teal dots for covered bridges, named, and viewpoints. The road panel names each.";
+  "(the stress colour stays inside); solid teal dots for covered bridges, named, and teal rings for viewpoints. The road panel names each.";
 
 /** The legend's one entry: the casing round a road's line, and the words. */
 export function ScenicLegend(): ReactElement {

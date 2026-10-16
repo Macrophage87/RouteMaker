@@ -18,6 +18,9 @@ import {
   SCENIC_LEGEND_TEXT,
   SCENIC_NO_PLACES,
   SCENIC_NO_STRESS,
+  SCENIC_PLACES_NONE,
+  SCENIC_VIEWPOINT_LAYER,
+  SCENIC_BRIDGE_LAYER,
   SCENIC_PREF_KEY,
   ScenicLegend,
   ScenicSection,
@@ -132,6 +135,11 @@ test("covered bridges (named) and viewpoints only, from Places to see's file", (
   const layers = scenicPointLayers();
   const errors = spec.validateStyleMin({ ...STYLE, sources: { "scenic-points": { type: "geojson", data: { type: "FeatureCollection", features: [] } } }, layers } as never);
   assert.deepEqual(errors, []);
+  // A viewpoint is a ring and a bridge a solid dot: shape, not only size (review, PR #138).
+  const paint = (id: string) => (layers.find((l) => l.id === id) as { paint: Record<string, unknown> }).paint;
+  assert.equal(paint(SCENIC_VIEWPOINT_LAYER)["circle-color"], "#ffffff");
+  assert.equal(paint(SCENIC_VIEWPOINT_LAYER)["circle-stroke-color"], SCENIC_COLOUR);
+  assert.equal(paint(SCENIC_BRIDGE_LAYER)["circle-color"], SCENIC_COLOUR);
   const label = layers.find((l) => l.id === SCENIC_BRIDGE_LABEL_LAYER) as { layout: Record<string, unknown> };
   assert.deepEqual(label.layout["text-field"], ["get", "name"]);
 });
@@ -142,9 +150,15 @@ test("one switch in its own section, its hint inside; the status says what canno
   assert.match(html, /aria-checked="false"/);
   assert.match(html, new RegExp(`>${SCENIC_LABEL}<`));
   assert.equal((html.match(/role="switch"/g) ?? []).length, 1, "no other control");
-  assert.equal(scenicStatus(false, false, true), "");
-  assert.equal(scenicStatus(true, true, false), "");
-  assert.equal(scenicStatus(true, false, true), `${SCENIC_NO_STRESS} ${SCENIC_NO_PLACES}`);
+  const viewpoint = parsePlaces({ points: [place("n1", "viewpoint", "Weverton Cliffs")] }) as SightPlace[];
+  const museum = parsePlaces({ points: [place("n2", "museum", "Rail Museum")] }) as SightPlace[];
+  assert.equal(scenicStatus(false, false, "unavailable"), "");
+  assert.equal(scenicStatus(true, true, "loading"), "");
+  assert.equal(scenicStatus(true, true, viewpoint), "");
+  assert.equal(scenicStatus(true, false, "unavailable"), `${SCENIC_NO_STRESS} ${SCENIC_NO_PLACES}`);
+  // The file ships empty (review, PR #138): said, not silent; and one with places but none of these is the same.
+  assert.equal(scenicStatus(true, true, []), SCENIC_PLACES_NONE);
+  assert.equal(scenicStatus(true, true, museum), SCENIC_PLACES_NONE);
 });
 
 test("the legend has one entry, in words", () => {
