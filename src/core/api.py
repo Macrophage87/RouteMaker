@@ -2390,6 +2390,9 @@ STRESS_EDIT_PATHS = (
     "/api/stress-suggestions",
     "/api/junction-suggestions",
     "/api/mass-hazards",
+    "/api/closures/reviewed",
+    "/api/closures/reports",
+    "/api/closures/stretch",
     "/api/me",
 )
 
@@ -4292,6 +4295,13 @@ class MeOut(Schema):
     can_suggest: bool = Field(
         description="The road panel offers Suggest a change (core.suggestions.may_suggest)."
     )
+    can_review_closures: bool = Field(
+        default=False,
+        description=(
+            "A reviewer: the road panel offers Mark closed, and Review lists closure reports"
+            " (core.reviewed_closures.may_review)."
+        ),
+    )
     sign_in: bool = Field(
         default=False,
         description=(
@@ -4420,12 +4430,13 @@ def me(request, response: HttpResponse):
     """No name and no id, so nothing here can leak into a link or a log."""
     from django.middleware.csrf import get_token
 
-    from . import suggestions
+    from . import reviewed_closures, suggestions
 
     signed = signed_in(request)
     can_change = bool(signed and getattr(request.user, "is_instance_admin", False))
     can_suggest = bool(signed and suggestions.may_suggest(request.user))
-    if can_change or can_suggest:
+    can_review = bool(signed and reviewed_closures.may_review(request.user))
+    if can_change or can_suggest or can_review:
         # Sets the `csrftoken` cookie the editor sends back as `X-CSRFToken`.
         get_token(request)
     _private(response)
@@ -4437,6 +4448,7 @@ def me(request, response: HttpResponse):
             "signed_in": signed,
             "can_change_lts": can_change,
             "can_suggest": can_suggest,
+            "can_review_closures": can_review,
             "sign_in": sign_in_available(),
         },
     )
@@ -4673,6 +4685,9 @@ def _route_summary(row) -> dict:
         "preset": (row.inputs or {}).get("preset", ""),
         "created_at": row.created_at.isoformat(),
         "updated_at": row.updated_at.isoformat(),
+        # v0.7.0 closures (core.saved_route_alerts): the closures in force along the line, as
+        # last checked; [] where none.
+        "closure_alerts": list(row.closure_alerts or []),
     }
 
 
@@ -4786,6 +4801,9 @@ def saved_routes_add(request):
             answer=answer,
             gpx=gpx,
         )
+    from . import saved_route_alerts
+
+    saved_route_alerts.check(row)
     return _private(JsonResponse(_route_summary(row), status=201))
 
 
@@ -6322,3 +6340,254 @@ def junction_suggestion_discord(request, suggestion_id: int, body: UndoIn, respo
             ],
         },
     )
+
+
+# ---- Closures a reviewer entered or confirmed (v0.7.0 closures; core.reviewed_closures) ----
+#
+# A reviewer (an instance admin, or a reviewer role in a configured Discord server) enters a
+# closure from the road panel, or confirms or rejects a rider's report, and ends one early. The
+# closures take part in routing and the closure check as a feed's do, credited "Confirmed by a
+# RouteMaker reviewer". Every write carries the CSRF token and is counted per account.
+
+
+def reviewer_only(*, audited: bool):
+    """A session of an account that may review closures, or 401 / 403."""
+
+    def decorator(view):
+        @wraps(view)
+        def wrapped(request, *args, **kwargs):
+            from . import reviewed_closures
+
+            if not signed_in(request):
+                return _stress_error(401, "Sign in to review closures.", code="signed_out")
+            if not reviewed_closures.may_review(request.user):
+                if audited:
+                    _refused(request, request.user, "not a reviewer")
+                return _stress_error(
+                    403, "Only a RouteMaker reviewer can enter a closure.", code="not_reviewer"
+                )
+            return view(request, *args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
+CLOSURE_REVIEW_WRITE = (
+    ratelimit.user_rate_limited(ratelimit.SUGGEST_REVIEW_WRITES),
+    csrf_protected,
+    reviewer_only(audited=True),
+    json_body_only,
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+CLOSURE_REVIEW_READ = (
+    reviewer_only(audited=False),
+    same_site_editor,
+    ratelimit.rate_limited(ratelimit.STRESS_EDIT_CLIENT),
+    errors_as_json,
+)
+
+
+class ReviewedClosureIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    osm_way_ids: list[StrictInt] | None = Field(
+        default=None, description="The road pieces closed (at most 40), or a drawn `line`."
+    )
+    line: list[list[float]] | None = Field(
+        default=None, description="A drawn stretch, [[lon, lat], ...], in place of the ways."
+    )
+    reason: str = Field(max_length=2000, description="Required, at most 500 characters.")
+    start: str | None = Field(default=None, description="The first day, YYYY-MM-DD (today).")
+    end: str | None = Field(
+        default=None, description="The last day, YYYY-MM-DD; none: until a reviewer ends it."
+    )
+    url: str = Field(default="", max_length=2000, description="The source's link, optional.")
+
+
+class ClosureConfirmIn(Schema):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str = Field(default="", max_length=2000, description="The rider's words where empty.")
+    start: str | None = None
+    end: str | None = None
+    url: str = Field(default="", max_length=2000)
+
+
+class ReviewedClosureOut(Schema):
+    id: int
+    road: str
+    osm_way_ids: list[int]
+    reason: str
+    start: str | None
+    end: str | None
+    url: str | None
+    when_text: str
+    from_report: bool
+    point: list[float] | None
+
+
+class ClosureReportOut(Schema):
+    id: int
+    osm_way_id: int
+    road: str
+    reason: str
+    lat: float
+    lon: float
+    created_at: str
+
+
+class ClosureReviewOut(Schema):
+    closures: list[ReviewedClosureOut]
+    reports: list[ClosureReportOut]
+
+
+class ClosureDoneOut(Schema):
+    id: int
+    message: str
+
+
+class ClosureStretchOut(Schema):
+    name: str
+    osm_way_ids: list[int]
+    pieces: int
+    length_m: float
+
+
+class ClosureStretchAnswer(Schema):
+    stretch: ClosureStretchOut | None
+
+
+def _closure_said(closure) -> str:
+    from . import reviewed_closures
+
+    said = reviewed_closures.summary(closure)
+    return (
+        f"Closure confirmed: {said['road']}, {said['when_text'][0].lower()}"
+        f"{said['when_text'][1:]}. New plans route round it within a minute."
+    )
+
+
+@api.get(
+    "/closures/reviewed",
+    response={200: ClosureReviewOut, **SUGGESTION_RESPONSES},
+    summary="The closures reviewers confirmed, in force or to come, and riders' reports (reviewer)",
+)
+@decorate_view(*CLOSURE_REVIEW_READ)
+def reviewed_closures_list(request, response: HttpResponse):
+    from django.middleware.csrf import get_token
+
+    from . import reviewed_closures
+
+    get_token(request)
+    _private(response)
+    return Status(
+        200,
+        {
+            "closures": [
+                reviewed_closures.summary(c)
+                for c in reviewed_closures.live_rows().order_by("start", "pk")
+            ],
+            "reports": [
+                reviewed_closures.report_summary(r) for r in reviewed_closures.open_reports()
+            ],
+        },
+    )
+
+
+@api.get(
+    "/closures/stretch/{osm_way_id}",
+    response={200: ClosureStretchAnswer, **SUGGESTION_RESPONSES},
+    summary="The named stretch a road piece is in, for Mark closed's extent choice (reviewer)",
+)
+@decorate_view(*CLOSURE_REVIEW_READ)
+def reviewed_closure_stretch(request, osm_way_id: int, response: HttpResponse):
+    from . import stress_edits
+
+    try:
+        stretch = stress_edits.stretch_state(osm_way_id)
+    except stress_edits.EditRefused as refused:
+        return _stress_error(refused.status, refused.message, refused.field, refused.code)
+    _private(response)
+    return Status(200, {"stretch": stretch})
+
+
+@api.post(
+    "/closures/reviewed",
+    response={201: ClosureDoneOut, **SUGGESTION_RESPONSES},
+    summary="Enter a closure: road pieces or a drawn line, reason, dates, source (reviewer)",
+)
+@decorate_view(*CLOSURE_REVIEW_WRITE)
+def reviewed_closure_create(request, body: ReviewedClosureIn, response: HttpResponse):
+    from . import reviewed_closures, stress_edits
+
+    try:
+        closure = reviewed_closures.create(
+            request.user,
+            way_ids=body.osm_way_ids,
+            reason=body.reason,
+            start=body.start,
+            end=body.end,
+            url=body.url,
+            line=body.line,
+        )
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(201, {"id": closure.pk, "message": _closure_said(closure)})
+
+
+@api.post(
+    "/closures/reviewed/{closure_id}/end",
+    response={200: ClosureDoneOut, **SUGGESTION_RESPONSES},
+    summary="End a confirmed closure now (reviewer)",
+)
+@decorate_view(*CLOSURE_REVIEW_WRITE)
+def reviewed_closure_end(request, closure_id: int, body: UndoIn, response: HttpResponse):
+    from . import reviewed_closures, stress_edits
+
+    try:
+        closure = reviewed_closures.end_now(request.user, closure_id)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    road = closure.road or "The drawn stretch"
+    return Status(200, {"id": closure.pk, "message": f"Ended. {road} is open again for new plans."})
+
+
+@api.post(
+    "/closures/reports/{report_id}/confirm",
+    response={201: ClosureDoneOut, **SUGGESTION_RESPONSES},
+    summary="Confirm a rider's closure report: the closure on its road piece (reviewer)",
+)
+@decorate_view(*CLOSURE_REVIEW_WRITE)
+def closure_report_confirm(request, report_id: int, body: ClosureConfirmIn, response: HttpResponse):
+    from . import reviewed_closures, stress_edits
+
+    try:
+        closure = reviewed_closures.confirm_report(
+            request.user, report_id, body.reason, body.start, body.end, body.url
+        )
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(201, {"id": closure.pk, "message": _closure_said(closure)})
+
+
+@api.post(
+    "/closures/reports/{report_id}/reject",
+    response={200: ClosureDoneOut, **SUGGESTION_RESPONSES},
+    summary="Reject a rider's closure report (reviewer)",
+)
+@decorate_view(*CLOSURE_REVIEW_WRITE)
+def closure_report_reject(request, report_id: int, body: UndoIn, response: HttpResponse):
+    from . import reviewed_closures, stress_edits
+
+    try:
+        report = reviewed_closures.reject_report(request.user, report_id)
+    except stress_edits.EditRefused as refused:
+        return _edit_refusal(request, refused)
+    _private(response)
+    return Status(200, {"id": report.pk, "message": "Rejected. The report is deleted."})

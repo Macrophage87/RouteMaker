@@ -106,6 +106,11 @@ WORK_ZONES_TIMEOUT_S = 5 * 60
 DC_CLOSURES_CRON = "*/15 * * * *"
 DC_CLOSURES_TIMEOUT_S = 6 * 60
 
+# The closures on riders' saved routes (v0.7.0 closures; core.saved_route_alerts): every fifteen
+# minutes, seven minutes after the closures' refresh, so it reads what that refresh stored.
+SAVED_ROUTE_CLOSURES_CRON = "7-59/15 * * * *"
+SAVED_ROUTE_CLOSURES_TIMEOUT_S = 5 * 60
+
 # The plan's job rule: retried with exponential backoff, up to five times.
 # Procrastinate counts an attempt when a run finishes or is scheduled for
 # retry, after the retry decision, so the first failure is judged at
@@ -1014,6 +1019,26 @@ def refresh_dc_closures(timestamp: int) -> None:
 
     with record("refresh_dc_closures") as run:
         run.detail = run_with_deadline(refresh, DC_CLOSURES_TIMEOUT_S, "refresh_dc_closures")
+        run.save(update_fields=["detail"])
+
+
+@app.periodic(cron=SAVED_ROUTE_CLOSURES_CRON)
+@app.task(
+    name="check_saved_route_closures",
+    queue="maintenance",
+    queueing_lock="check_saved_route_closures",
+)
+def check_saved_route_closures(timestamp: int) -> None:
+    """Check every saved route against the closures in force now (feeds' and reviewers') and
+    keep each one's alerts for My routes (core.saved_route_alerts). Not retried: the next tick
+    is the retry."""
+    from core.runs import record, run_with_deadline
+    from core.saved_route_alerts import refresh_all
+
+    with record("check_saved_route_closures") as run:
+        run.detail = run_with_deadline(
+            refresh_all, SAVED_ROUTE_CLOSURES_TIMEOUT_S, "check_saved_route_closures"
+        )
         run.save(update_fields=["detail"])
 
 

@@ -55,6 +55,9 @@ STALE_AFTER = {
     # DC's closures (v0.7.0), every fifteen minutes: past an hour the worker is not
     # refreshing them.
     "refresh_dc_closures": 60 * 60,
+    # The closures on saved routes (v0.7.0), every fifteen minutes: past an hour riders'
+    # My routes are not being told of new closures.
+    "check_saved_route_closures": 60 * 60,
 }
 
 # How long a run row is kept. The five-minute tasks alone write about 105,000

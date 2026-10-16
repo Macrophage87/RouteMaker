@@ -67,6 +67,8 @@ SOURCES = {
     "mpd": "MPD traffic advisory",
     "alertdc": "AlertDC (HSEMA)",
     "nps": "NPS alerts",
+    # Entered or confirmed by a reviewer (v0.7.0; `core.reviewed_closures`).
+    "reviewer": "Confirmed by a RouteMaker reviewer",
 }
 
 # Where a rider reads more, for a zone that carries no link of its own.
@@ -697,7 +699,7 @@ def heads_up(zone: Zone, at_m: float) -> str:
         lead = f"Heads-up at {where}{road}: {zone.reason}."
     else:
         lead = f"Work zone ahead at {where}{road}: {zone.reason}."
-    if zone.source in DC_SOURCES and zone.kind == CLOSED:
+    if zone.source in CLOSURE_SOURCES and zone.kind == CLOSED:
         lead = f"Road closed ahead at {where}{road}: walk round or find another way."
         said = f" {zone.title.rstrip('.')}." if zone.title else said
     return f"{lead}{said}{_until(zone)} Source: {source}."
@@ -705,6 +707,9 @@ def heads_up(zone: Zone, at_m: float) -> str:
 
 # The sources whose zones are DC's closures and blocked lanes, not work zones (v0.7.0).
 DC_SOURCES = frozenset({"dc", "mpd", "alertdc"})
+# The sources whose closed zones are said as a road closed, not a work zone: DC's, and the
+# closures a reviewer confirmed.
+CLOSURE_SOURCES = DC_SOURCES | {"reviewer"}
 
 
 # --- The card's words (v0.7.0, "Closures on the map") ------------------------------
