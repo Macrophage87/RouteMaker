@@ -11,6 +11,7 @@ function fakeWindow(innerHeight: number) {
   const view = {
     height: innerHeight,
     offsetTop: 0,
+    scale: 1,
     addEventListener: (_type: string, listener: () => void) => listeners.add(listener),
     removeEventListener: (_type: string, listener: () => void) => listeners.delete(listener),
   };
@@ -28,6 +29,19 @@ test("the lift is the part of the page below the visual viewport", () => {
   assert.equal(keyboardLift(win), 340);
   view.offsetTop = 40;
   assert.equal(keyboardLift(win), 300, "iOS panned the view up to the box");
+});
+
+test("no lift while pinch-zoomed: the smaller visual viewport is the zoom, not a keyboard", () => {
+  const { win, view, props, root } = fakeWindow(800);
+  view.height = 400;
+  view.scale = 2;
+  assert.equal(keyboardLift(win), 0);
+  const stop = watchKeyboard(win, root);
+  assert.equal(props.has("--keyboard-lift"), false);
+  view.scale = 1;
+  view.height = 460;
+  assert.equal(keyboardLift(win), 340, "back at 1, the keyboard lifts again");
+  stop();
 });
 
 test("the watch sets --keyboard-lift while the keyboard is up and takes it off when stopped", () => {

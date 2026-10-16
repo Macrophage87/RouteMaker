@@ -11,15 +11,17 @@ export interface LiftWindow {
   visualViewport?: {
     height: number;
     offsetTop: number;
+    /** Pinch zoom; above 1 the visual viewport is smaller for that, not for a keyboard. */
+    scale?: number;
     addEventListener(type: "resize" | "scroll", listener: () => void): void;
     removeEventListener(type: "resize" | "scroll", listener: () => void): void;
   } | null;
 }
 
-/** The height, in px, of the layout viewport below the visual one: the keyboard, or 0. */
+/** The height, in px, of the layout viewport below the visual one: the keyboard, or 0 (also while pinch-zoomed). */
 export function keyboardLift(win: LiftWindow): number {
   const view = win.visualViewport;
-  if (!view) return 0;
+  if (!view || (view.scale ?? 1) > 1) return 0;
   return Math.max(0, Math.round(win.innerHeight - view.height - view.offsetTop));
 }
 
