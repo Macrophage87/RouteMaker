@@ -304,6 +304,8 @@ test("App: the better route is taken before Start only, said once, and moves no 
 test("App: Go starts routing early, to the top result and to Home, through one early start", () => {
   assert.match(app, /onTopPlace=\{goEarlyToPlace\}/);
   assert.match(app, /goStart\.kind === "here" && homeEarly\) goEarly\(homeEarly\)/);
+  // Review F14: a Home kept on this device signed out is asked for early too.
+  assert.match(app, /const homeEarly = myGo\.home !== null \? myGo\.home\.point : null;/);
   assert.match(app, /const early = earlyStart\.current\?\.take\(routeRequestBody\(plan\.points, plan\.preset, asked\)\) \?\? null;/);
   assert.match(app, /allowed: \(\) => modeRef\.current === "go" && !shownNow\.current\.riding && !scheduler\.current\?\.busy\(\)/);
   // A destination picked is asked for at once.

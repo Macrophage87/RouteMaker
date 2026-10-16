@@ -1823,8 +1823,8 @@ export function App() {
     if (mode !== "go" || riding) setHomePick(false);
   }, [mode, riding]);
   // Go open with Home set and the rider's location found, and no route yet: the route Home is asked for early, so
-  // the Home chip shows it finished (v0.7.0, "Faster routing" step 4).
-  const homeEarly = me.signed_in && myGo.home !== null ? myGo.home.point : null;
+  // the Home chip shows it finished (v0.7.0, "Faster routing" step 4). Signed in or out: Home works either way.
+  const homeEarly = myGo.home !== null ? myGo.home.point : null;
   useEffect(() => {
     if (mode === "go" && !riding && points.length === 0 && goStart.kind === "here" && homeEarly) goEarly(homeEarly);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- asked once each time these change, not each render
