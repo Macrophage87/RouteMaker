@@ -46,6 +46,14 @@ export function milesFigure(metres: number): string {
 }
 
 /**
+ * Miles alone, "4.7 mi", only where a field's length cap leaves no room for the metric: a bike computer's course
+ * name (TCX caps it at 15 characters). Anywhere with room says `formatDistance`.
+ */
+export function formatMilesCapped(metres: number): string {
+  return `${milesFigure(metres)} mi`;
+}
+
+/**
  * What a rider may type, miles first, kilometres in brackets, as a rule says it:
  * "0.7 to 621 miles (1 to 1,000 km)" (the a11y review's N3).
  */

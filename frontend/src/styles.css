@@ -5899,3 +5899,25 @@ details.fold > summary .icon {
 .home-setter .home-pick-line {
   margin: 6px 0 0;
 }
+
+/* The GPX section's file type and device (course export, Plan only): each label above its select. */
+.gpx-format label {
+  display: block;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.gpx-format select {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+  margin-top: 4px;
+  padding: 6px 8px;
+  font: inherit;
+  font-weight: normal;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--swatch-border);
+  border-radius: 6px;
+}
