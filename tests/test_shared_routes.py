@@ -183,6 +183,12 @@ class TestSharedRoutes:
         assert r.status_code == 400 and r.json()["error"]
         assert not SharedRoute.objects.exists()
 
+    def test_a_deeply_nested_body_is_a_400(self) -> None:
+        """Nesting past the JSON parser's stack raises RecursionError: refused, not a 500."""
+        deep = "[" * 200_000 + "]" * 200_000
+        r = Client().post(URL, data=deep, content_type="application/json", **addr())
+        assert r.status_code == 400 and r.json()["error"] == "The body is not JSON."
+
     def test_at_most_2_mb(self) -> None:
         assert shared_routes.MAX_BYTES == 2 * 1024 * 1024
         big = body(source="gpx", answer=None, gpx="x" * shared_routes.MAX_BYTES)

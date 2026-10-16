@@ -4513,7 +4513,8 @@ def _json_body(request, max_bytes: int):
         return None, _stress_error(400, f"The body is larger than {max_bytes // 1024} KB.")
     try:
         return json.loads(request.body or b"null"), None
-    except ValueError:
+    except (ValueError, RecursionError):
+        # RecursionError: nesting deeper than the parser's stack (a few thousand "[").
         return None, _stress_error(400, "The body is not JSON.")
 
 
