@@ -111,6 +111,15 @@ class TestNearest:
             assert url == f"{routing.settings.VALHALLA_UPSTREAMS[variant]}/sources_to_targets"
             assert payload["costing_options"] == costing
 
+    def test_trails_off_measures_on_the_no_trail_graph(self, client, router) -> None:
+        # Review api-1: the switch was accepted and dropped, so a place by trail looked near.
+        fake = router(FakeRouter({"sources_to_targets": row_answer([(1, 1)] * 3)}))
+        for preset in ("default", "gravel", "mountain-bike"):
+            body = {"points": [HERE, *PLACES], "preset": preset, "trails_off": True}
+            assert post(client, body).status_code == 200
+            url, _ = fake.calls[-1]
+            assert url.startswith(routing.settings.VALHALLA_UPSTREAMS["no-trail"])
+
     def test_a_place_the_router_cannot_reach_has_no_distance(self, client, router) -> None:
         router(FakeRouter({"sources_to_targets": row_answer([(300, 2.5), None, (500, 3.75)])}))
         body = post(client, {"points": [HERE, *PLACES], "preset": "default"}).json()

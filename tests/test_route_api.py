@@ -24,10 +24,11 @@ import pytest
 from django.conf import settings
 from django.db import connection
 from django.test import override_settings
+from django.utils import timezone
 from test_ratelimit import in_one_window
 
 from core import junctions as core_junctions
-from core import presets, refine, routing
+from core import presets, refine, routing, segment_info
 from routemaker import calm, flow
 
 # A route test plans a weekday ride unless it says otherwise: the weekend router
@@ -59,6 +60,8 @@ CONTRACT_KEYS = {
     # Additive, FOLLOWUP-HILLS-TOLERATE (OWNER-DECISIONS 242).
     "hills_tolerate",
     "leg_ends",
+    # Additive, v0.7.0 "Go riding fixes" item 5: the destination's side of the street.
+    "arrival_side",
     # Additive, FOLLOWUP-ROUTE-COLOURS (OWNER-DECISIONS item 81).
     "stress_spans",
     # Additive, FOLLOWUP-ELEVATION-CHART (OWNER-DECISIONS 322, 323, 328, 333): the elevation
@@ -102,6 +105,10 @@ CONTRACT_KEYS = {
     "avoid_alternate",
     # Additive, TRANSIT-ASSIST (v0.6.0): null except on the two transit ride types.
     "transit",
+    # Additive, v0.7.0 Novice and Nervous: null except on that ride type.
+    "novice",
+    # Additive, v0.7.0 "Faster routing": true only on a first route asked for with `quick`.
+    "provisional",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "5", "unknown"}
 
@@ -162,7 +169,8 @@ def trace_answer(vertices, edges) -> dict:
 
 class FakeRouter:
     """Records every call; answers from `answers[endpoint]` (a body, a list of
-    bodies consumed in order, or an exception to raise)."""
+    bodies consumed in order, an exception to raise, or a function of the
+    request's payload - for calls the router pool may make in any order)."""
 
     def __init__(self, answers: dict) -> None:
         self.answers = answers
@@ -174,6 +182,8 @@ class FakeRouter:
         answer = self.answers[endpoint]
         if isinstance(answer, list):
             answer = answer.pop(0)
+        elif callable(answer) and not isinstance(answer, Exception):
+            answer = answer(payload)
         if isinstance(answer, Exception):
             raise answer
         return answer
@@ -218,7 +228,11 @@ def segments(segment_schemas):
 
 
 @pytest.fixture
-def router(monkeypatch):
+def router(monkeypatch, settings):
+    # Router calls in turn here: a FakeRouter list answers in the order it is asked, and the
+    # pool (core.parallel) would ask in any order. tests/test_faster_routing.py covers the pool.
+    settings.ROUTER_PARALLEL_CALLS = 1
+
     def install(fake: FakeRouter) -> FakeRouter:
         monkeypatch.setattr(routing, "_transport", fake)
         return fake
@@ -247,6 +261,33 @@ class TestAnswer:
         assert body["geometry"]["type"] == "LineString"
         assert body["preset"] == "default"
         assert body["variant"] == presets.variant_for_ride("default", routing.default_when())
+
+    def test_the_destination_side_is_the_routers_destination_maneuver(
+        self, client, segments, router
+    ) -> None:
+        """v0.7.0 "Go riding fixes" item 5: the route asks for maneuvers (no narrative), and the
+        last leg's destination maneuver (type 5 right, 6 left) is `arrival_side`; with none,
+        the destination's `side_of_street`; with neither, null."""
+        fake = router(standard_router())
+        fake.answers["route"]["trip"]["legs"][-1]["maneuvers"] = [{"type": 1}, {"type": 6}]
+        body = post(client, good_body()).json()
+        assert body["arrival_side"] == "left"
+        route_calls = [p for url, p in fake.calls if url.endswith("/route")]
+        assert route_calls and route_calls[0]["directions_type"] == "maneuvers"
+
+        fake = router(standard_router())
+        fake.answers["route"]["trip"]["locations"] = [{}, {"side_of_street": "right"}]
+        assert post(client, good_body()).json()["arrival_side"] == "right"
+
+        router(standard_router())
+        assert post(client, good_body()).json()["arrival_side"] is None
+
+    def test_the_arrival_side_reads_only_a_stated_side(self) -> None:
+        assert routing.arrival_side_of({"legs": [{"maneuvers": [{"type": 5}]}]}) == "right"
+        assert routing.arrival_side_of({"legs": [{"maneuvers": [{"type": 4}]}]}) is None
+        assert routing.arrival_side_of({"legs": []}) is None
+        assert routing.arrival_side_of({"locations": [{"side_of_street": "none"}]}) is None
+        assert routing.arrival_side_of({"legs": "nonsense"}) is None
 
     def test_the_route_is_coloured_by_stretch_in_route_order(self, client, segments, router):
         """OWNER-DECISIONS item 81: "Could we also get a color on the route for
@@ -430,12 +471,14 @@ class TestAnswer:
         assert profile["crossings_complete"] is None
 
     def test_an_over_budget_mass_ride_says_its_junctions_were_not_checked(
-        self, client, segments, router, monkeypatch
+        self, client, segments, router, monkeypatch, settings
     ) -> None:
         """Over budget the joins are skipped: the chart says "not checked"."""
         router(standard_router())
         clock = iter(range(0, 10_000, 30))
         monkeypatch.setattr(routing, "clock", lambda: float(next(clock)))
+        # Each read of the clock moves it: the calls are made in turn (`core.parallel`).
+        settings.ROUTER_PARALLEL_CALLS = 1
         response = post(client, good_body("mass-ride"))
         assert response.status_code == 200
         profile = response.json()["profile"]
@@ -488,7 +531,7 @@ class TestAnswer:
         Level all the way, so no grade factor."""
         with connection.cursor() as cursor:
             cursor.execute(f"ALTER TABLE {segments}.segment DROP COLUMN mass_usable_width_m")
-        monkeypatch.setattr(routing, "_capacity_column_seen", False)
+        segment_info.forget_columns()
         with connection.cursor() as cursor:
             cursor.execute(
                 f"UPDATE {segments}.segment SET road_lanes = 2, road_oneway = true"
@@ -739,7 +782,7 @@ class TestWhatIsSentToTheRouter:
         preset = presets.PRESETS[name]
         middle = presets.costing(name, presets.stress_start(name), 0)
         if preset.hills < 0 and presets.maxcalm_for(preset.stress):
-            # Riding with kids (FOLLOWUP-KIDS-PRESET): the avoid half's trip at the hills
+            # Novice and Nervous (v0.7.0): the avoid half's trip at the hills
             # middle, and then the top of the slider's asks, as Trailmaxxing's below.
             assert fake.endpoints()[:2] == ["route", "route"]
             assert fake.calls[1][1]["costing_options"] == middle
@@ -810,6 +853,18 @@ class TestRefusedInput:
         assert "error" in refused_before_the_router(
             client, router, {"points": [list(VERTICES[0])], "preset": "default"}
         )
+
+    @pytest.mark.parametrize("at", ["0001-01-01T00:00:00", "9999-12-31T23:59:00", "two years on"])
+    def test_a_time_more_than_a_year_off(self, at, client, router) -> None:
+        # Review api-5: near the year 1 or 9999 the time zone's conversion overflowed (500).
+        if at == "two years on":
+            at = (timezone.now() + timedelta(days=2 * 366)).isoformat()
+        body = {**good_body(presets.BIKE_TRANSIT), "depart_at": at}
+        assert "within a year" in refused_before_the_router(client, router, body)["error"]
+        for path in ("/api/transit/closures", "/api/transit/station-times"):
+            response = client.get(path, {"lon": -77.0, "lat": LAT, "at": at})
+            assert response.status_code == 400, (path, response.content)
+            assert "within a year" in response.json()["error"]
 
     def test_twenty_six_points(self, client, router) -> None:
         points = [[-77.05 + i * 0.001, LAT] for i in range(26)]
@@ -1302,11 +1357,12 @@ class TestMultiLegStress:
             FakeRouter(
                 {
                     "route": route_answer([(first, 0.9, [1.0]), (second, 1.0, [1.0])]),
-                    "trace_attributes": [
-                        trace_answer(first, [(101, 0, 1, 0.9)]),
-                        routing.RouterRefused(400, 443, "no"),
-                        routing.RouterRefused(400, 444, "no"),
-                    ],
+                    # By the leg asked about: the pool traces the legs in any order.
+                    "trace_attributes": lambda payload: (
+                        trace_answer(first, [(101, 0, 1, 0.9)])
+                        if payload["encoded_polyline"] == encode_polyline6(first)
+                        else routing.RouterRefused(400, 443, "no")
+                    ),
                 }
             )
         )
@@ -1321,10 +1377,11 @@ class TestMultiLegStress:
             FakeRouter(
                 {
                     "route": route_answer([(first, 0.9, [1.0]), (second, 0.4, [1.0])]),
-                    "trace_attributes": [
-                        trace_answer(first, [(101, 0, 1, 0.9)]),
-                        trace_answer(second, [(202, 0, 1, 0.4)]),
-                    ],
+                    "trace_attributes": lambda payload: (
+                        trace_answer(first, [(101, 0, 1, 0.9)])
+                        if payload["encoded_polyline"] == encode_polyline6(first)
+                        else trace_answer(second, [(202, 0, 1, 0.4)])
+                    ),
                 }
             )
         )
@@ -1382,9 +1439,12 @@ class Clock:
 
 
 @pytest.fixture
-def clock(monkeypatch):
+def clock(monkeypatch, settings):
     fake = Clock()
     monkeypatch.setattr(routing, "time", fake)
+    # A fake clock advanced by each call (`timed`) models the calls one after another:
+    # the router calls run in turn, not on the pool (`core.parallel`, v0.7.0).
+    settings.ROUTER_PARALLEL_CALLS = 1
     return fake
 
 
@@ -2791,7 +2851,7 @@ class TestMassRideCapacitySections:
     ) -> None:
         with connection.cursor() as cursor:
             cursor.execute(f"ALTER TABLE {segments}.segment DROP COLUMN mass_usable_width_m")
-        monkeypatch.setattr(routing, "_capacity_column_seen", False)
+        segment_info.forget_columns()
         router(standard_router())
         response = post(client, good_body("mass-ride"))
         assert response.status_code == 200
@@ -2812,11 +2872,7 @@ class TestMassRideCapacitySections:
     def test_classify_reads_the_capacity(self, segments) -> None:
         self.capacities(segments, {101: 50, 202: None})
         pieces = [routing.Piece(101, -77.045, LAT, 100.0), routing.Piece(202, -77.0375, LAT, 100.0)]
-        monkey = routing._capacity_column_seen
-        try:
-            routing._capacity_column_seen = False
-            classes = routing.classify(pieces, "weekday_offpeak")
-        finally:
-            routing._capacity_column_seen = monkey
+        segment_info.forget_columns()
+        classes = routing.classify(pieces, "weekday_offpeak")
         assert [c.rpm for c in classes] == [50, None]
         assert all(len(c) == 2 for c in classes)

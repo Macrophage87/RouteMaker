@@ -25,12 +25,18 @@ import urllib.request
 from django.conf import settings
 from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
-from django.http import HttpResponseBadRequest, HttpResponseForbidden, HttpResponseRedirect
+from django.http import (
+    HttpResponse,
+    HttpResponseBadRequest,
+    HttpResponseForbidden,
+    HttpResponseRedirect,
+)
 from django.utils import timezone
 from django.utils.encoding import iri_to_uri
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods
 
+from . import ratelimit
 from .discord_oauth import LoginRequest, OAuthStateError, begin_login, scopes_are_minimal
 from .models import BanTombstone, Session, User
 from .revocation import tombstone
@@ -87,8 +93,29 @@ def safe_redirect_target(request, candidate: str | None) -> str:
     return "/"
 
 
+def sign_in_available() -> bool:
+    """Whether this deployment can sign anyone in: both Discord keys are set.
+
+    Sign-in is on by default (v0.7.0 plan, "Discord sign-in on"): the owner turns
+    it on by putting the application's client id and secret in the server's
+    environment, and nothing else. With either missing the authorize URL would
+    name no application (or the exchange could never succeed), so the login is
+    refused here and /api/me tells the page not to offer it.
+    """
+    return bool(
+        str(settings.DISCORD_CLIENT_ID or "").strip()
+        and str(settings.DISCORD_CLIENT_SECRET or "").strip()
+    )
+
+
+SIGN_IN_OFF = "Sign-in is not set up on this server. Planning works without it."
+
+
 @require_http_methods(["GET"])
+@ratelimit.rate_limited(ratelimit.SIGN_IN)
 def login_start(request):
+    if not sign_in_available():
+        return HttpResponse(SIGN_IN_OFF, status=503, content_type="text/plain; charset=utf-8")
     url, pending = begin_login(
         client_id=settings.DISCORD_CLIENT_ID,
         redirect_uri=settings.DISCORD_REDIRECT_URI,
@@ -104,8 +131,11 @@ def login_start(request):
 
 
 @require_http_methods(["GET"])
+@ratelimit.rate_limited(ratelimit.SIGN_IN)
 def login_callback(request, exchange=None):
     """Complete the login. `exchange` is injected so the tests never call out."""
+    if not sign_in_available():
+        return HttpResponse(SIGN_IN_OFF, status=503, content_type="text/plain; charset=utf-8")
     stored = request.session.pop(STATE_SESSION_KEY, None)
     pending = (
         LoginRequest(
@@ -158,6 +188,7 @@ def login_callback(request, exchange=None):
 
 
 @require_http_methods(["POST"])
+@ratelimit.rate_limited(ratelimit.SIGN_IN)
 def logout_view(request):
     """Sign out of this session. Signing out everywhere bumps the epoch instead,
     which is a different action and belongs on the account page."""

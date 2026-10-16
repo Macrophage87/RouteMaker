@@ -288,8 +288,12 @@ server {
     }
 
     # --- preset links (Caddyfile @preset-*) ----------------------------------------
-    location ~ ^/(default|trailmaxxing|group-ride|mass-ride|mountain-goat|mountain-bike|gravel|fast|cargo|ebike|bikeshare|kids|bike-transit|bikeshare-transit|rebalance)/?$ {
+    location ~ ^/(default|trailmaxxing|group-ride|mass-ride|mountain-goat|mountain-bike|gravel|fast|cargo|ebike|bikeshare|novice|bike-transit|bikeshare-transit|rebalance)/?$ {
         return 302 "/#preset=$1";
+    }
+    # Riding with kids became Novice and Nervous (v0.7.0; Caddyfile @renamed-kids): the old short link opens it.
+    location ~ ^/kids/?$ {
+        return 302 "/#preset=novice";
     }
 
     # --- Django's collected static files (Caddyfile handle_path /static/*) -----------
@@ -364,13 +368,36 @@ server {
 
     # --- reverse look-ups, searches and road panels: a location in the query -----------
     # /api/reverse?lat=..&lon=.., /api/geocode?q=..&lat=..&lon=.. and
-    # /api/segment-info?lat=..&lon=.. (OWNER-DECISIONS 441a). An upstream error line (a
+    # /api/segment-info?lat=..&lon=.. (OWNER-DECISIONS 441a), and /api/street-photo?lon=..&lat=..
+    # (v0.7.0), and from v0.7.0 too /api/junction-suggestions/at?lat=..&lon=..,
+    # /api/stress-suggestions/ticket?way=.., /api/stress-suggestions/mine?way=..,
+    # /api/transit/station-times?lon=..&lat=.., /api/bikeshare/docks?bbox=.., and Review's
+    # /api/review/items?way=.., /api/review/map?west=.., /api/review/next?way=..,
+    # /api/review/road/<way> and /api/review/street-photo?lon=..&lat=.. (a way, a point or the
+    # area viewed). An upstream error line (a
     # 502 while the api restarts on a deploy, a 504, a worker gunicorn killed) records the
-    # request with its query, so these three log only `crit` errors, to their own file
+    # request with its query, so these log only `crit` errors, to their own file
     # (OWNER-DECISIONS 395). This loses their upstream diagnostics; the api's own log still
     # has its side. The proxy settings are location /'s below, line for line.
-    location ~ ^/api/(reverse|geocode|segment-info)/?$ {
+    location ~ ^/api/(reverse|geocode|segment-info|street-photo|junction-suggestions/at|stress-suggestions/ticket|stress-suggestions/mine|transit/station-times|bikeshare/docks|review/items|review/map|review/next|review/road/[0-9]+|review/street-photo)/?$ {
         error_log /var/log/nginx/rmbeta-error.log crit;
+        proxy_pass http://rmbeta_api;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_connect_timeout 5s;
+        proxy_send_timeout 75s;
+        proxy_read_timeout 75s;
+    }
+
+    # --- saved and shared routes, and the account's own paths: larger bodies ------------
+    # A saved route is up to 4 MB (core.accounts.ROUTE_MAX_BYTES), a shared one 2 MB; the
+    # server's 1m would refuse them with nginx's own 413. 5m, as the Caddyfile's @routes_body
+    # and Django's DATA_UPLOAD_MAX_MEMORY_SIZE. The proxy settings are location /'s below.
+    location ~ ^/api/(shared-routes|me)(/|$) {
+        client_max_body_size 5m;
         proxy_pass http://rmbeta_api;
         proxy_http_version 1.1;
         proxy_set_header Connection "";

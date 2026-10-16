@@ -9,9 +9,10 @@
 #   render-nginx.sh --stage full --cert-fullchain F --cert-key K [--out FILE]
 #       The whole site: 80 redirects to 443, 443 serves the beta.
 #
-# Options (defaults in brackets; DATA_ROOT and BETA_API_PORT are read out of .env by
-# sed, never by sourcing it):
-#   --server-name NAME       [routemaker.cieply.com]
+# Options (defaults in brackets; RM_BETA_HOST, DATA_ROOT and BETA_API_PORT are read out of
+# .env by sed, never by sourcing it):
+#   --server-name NAME       [RM_BETA_HOST from .env; required: the beta's name is server
+#                            config, never in the repository]
 #   --api-port N             [BETA_API_PORT from .env, else 8087]
 #   --data-root PATH         [DATA_ROOT from .env, else /data/routemaker]
 #   --htpasswd FILE          [/etc/nginx/routemaker-beta.htpasswd]
@@ -35,7 +36,7 @@ repo=$(cd "$here/../.." && pwd)
 template="$repo/deploy/beta/nginx-routemaker.conf.template"
 [ -r "$template" ] || die "cannot read $template"
 
-stage=""; out=""; server_name="routemaker.cieply.com"; api_port=""; data_root=""
+stage=""; out=""; server_name=""; api_port=""; data_root=""
 htpasswd="/etc/nginx/routemaker-beta.htpasswd"; acme_root="/var/www/routemaker-acme"
 cert_fullchain=""; cert_key=""; tls_include=""; env_file="$repo/.env"
 
@@ -69,6 +70,9 @@ env_value() { # the last KEY= line of the env file, quotes stripped, never evalu
 	sed -n "s/^[[:space:]]*$1[[:space:]]*=//p" "$env_file" | tail -n 1 | tr -d '\r' | sed "s/^['\"]//; s/['\"]\$//"
 }
 
+[ -n "$server_name" ] || server_name=$(env_value RM_BETA_HOST)
+[ -n "$server_name" ] ||
+	die "no server name: set RM_BETA_HOST=<the beta's name> in $env_file (docs/BETA-RUNBOOK.md, section 0), or pass --server-name"
 [ -n "$api_port" ] || api_port=$(env_value BETA_API_PORT)
 [ -n "$api_port" ] || api_port=8087
 [ -n "$data_root" ] || data_root=$(env_value DATA_ROOT)

@@ -117,6 +117,16 @@ export function repeatsInfoAsk(origin: InfoOrigin, now: number, lastSpotAt: numb
   return origin === "spot" && now - lastSpotAt < repeatMs;
 }
 
+/**
+ * Whether a finger's lift is the end of a press that opened the road panel (its long press, or the
+ * contextmenu a phone sends for one): that lift's click is cancelled, or it would press the panel's
+ * button now under the finger (Set as start, say) and close it. `downAt` is when the finger went down
+ * (null: no map touch), `spotAt` the last pointer ask's time.
+ */
+export function liftOpenedInfo(downAt: number | null, spotAt: number): boolean {
+  return downAt !== null && spotAt >= downAt;
+}
+
 export type InfoState =
   | { kind: "loading" }
   | { kind: "ready"; info: SegmentInfo }
@@ -128,8 +138,9 @@ export const NO_ROAD = "No road here";
 /** The panel's title for a way with no name (core/segment_info.py UNNAMED_ROAD_TITLE and
  * UNNAMED_PATH_TITLE, the route description's words capitalised; a Python test ties them). */
 export const UNNAMED_ROAD_TITLE = "Unnamed road";
-export const UNNAMED_PATH_TITLE = "Unnamed path";
-export const UNNAMED_TITLES: readonly string[] = [UNNAMED_ROAD_TITLE, UNNAMED_PATH_TITLE];
+export const UNNAMED_PATH_TITLE = "Path";
+/** With the title an older API gave a path with no name (before v0.7.0: "Unnamed path"). */
+export const UNNAMED_TITLES: readonly string[] = [UNNAMED_ROAD_TITLE, UNNAMED_PATH_TITLE, "Unnamed path"];
 /** How far the API looks for a way (core.segment_info.SNAP_RADIUS_M). */
 export const SNAP_RADIUS_M = 30;
 export const NO_ROAD_HINT = `No road or path within about ${formatRadius(SNAP_RADIUS_M)} of this spot.`;

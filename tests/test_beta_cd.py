@@ -205,15 +205,26 @@ def test_documentation_and_ci_alone_change_nothing_on_the_server() -> None:
         "src/pipeline/schema.py",
         "src/pipeline/variants.py",
         "src/pipeline/tiles.py",
-        "docker/valhalla/Dockerfile",
-        "docker/photon/Dockerfile",
-        "docker/postgis/Dockerfile",
+        "docker/api.Dockerfile",
+        "docker/requirements.txt",
+        "docker/requirements-api.txt",
+        "docker/api-entrypoint.sh",
     ],
 )
 def test_a_release_that_needs_the_owner_stops(path: str) -> None:
     result = _gate({path: ("a", "b")})
     assert result["verdict"] == "stop"
     assert any(path in reason for reason in result["reasons"])
+
+
+def test_every_stop_prefix_names_a_path_that_exists() -> None:
+    """A prefix naming nothing in the repository guards nothing (review sec-infra-6)."""
+    root = Path(__file__).resolve().parents[1]
+    files = subprocess.run(
+        ["git", "ls-files"], cwd=root, capture_output=True, text=True, check=True
+    ).stdout.splitlines()
+    for prefix, _why in cd_logic.STOP_PREFIXES:
+        assert any(f == prefix or f.startswith(prefix) for f in files), prefix
 
 
 @pytest.mark.parametrize(
@@ -583,8 +594,15 @@ esac
 
 
 STUB_DATE = """#!/bin/sh
-# the hour from STUB_HOUR, for the deploy window; anything else from the real date
-if [ "$1" = "+%H" ] && [ -n "${STUB_HOUR:-}" ]; then echo "$STUB_HOUR"; exit 0; fi
+# the hour from STUB_HOUR, for the deploy window; the UTC time of day from STUB_UTC (noon
+# unless set, so no test lands in the backup slot by the clock); anything else from the real date
+# (read in Washington's zone: asked in any other, it answers an hour no window holds)
+if [ "$1" = "+%H" ] && [ -n "${STUB_HOUR:-}" ]; then
+  [ "${TZ:-}" = America/New_York ] && echo "$STUB_HOUR" || echo 99; exit 0
+fi
+if [ "$1" = -u ] && [ "$2" = "+%H%M" ]; then echo "${STUB_UTC:-1200}"; exit 0; fi
+# the zone's abbreviation: what a host without tzdata answers (the bare name) under STUB_NO_TZDATA
+if [ "$1" = "+%Z" ]; then [ -n "${STUB_NO_TZDATA:-}" ] && echo America || echo EDT; exit 0; fi
 exec REAL_DATE "$@"
 """
 GITHUB = "https://github.com/Macrophage87/RouteMaker.git"
@@ -595,7 +613,7 @@ ROUTERS = "valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend"
 class Beta:
     """A throwaway origin, a beta checkout of it at v0.1.0, and a state directory."""
 
-    def __init__(self, tmp: Path) -> None:
+    def __init__(self, tmp: Path, extra: dict[str, str] | None = None) -> None:
         self.tmp = tmp
         self.origin = tmp / "origin"
         self.origin.mkdir()
@@ -612,6 +630,7 @@ class Beta:
                 "frontend/package-lock.json": "{}\n",
                 "valhalla/valhalla-standard.json": _vjson(),
                 "valhalla/valhalla-offroad.json": _vjson(),
+                **(extra or {}),
             },
         )
         self.tag("v0.1.0")
@@ -629,6 +648,7 @@ class Beta:
         )
         (self.src / ".env").write_text(
             f"COMPOSE_PROJECT_NAME=routemaker-beta\nDATA_ROOT={self.data}\nTAG={self.v1[:12]}\n"
+            "RM_BETA_HOST=beta.example.org\n"
         )
         (self.src / ".git" / "info" / "exclude").write_text(".env\n")
         self.state = tmp / "state"
@@ -864,6 +884,8 @@ def test_a_failure_after_the_stop_rolls_back_and_starts_the_old_release(beta: Be
     calls = beta.calls()
     assert calls.index("stop api worker") < calls.index("up -d api worker")
     assert "smoke --local" in calls
+    # Review round 2, S1: the smoke tests use the health check's host, from .env here.
+    assert "smoke --local --host beta.example.org" in calls
     assert "restore-dump" not in calls and "migrate" not in calls
     assert git(beta.src, "rev-parse", "HEAD") == beta.v1
     assert (beta.cd / "deployed-tag").read_text().strip() == "v0.1.0"
@@ -1410,6 +1432,42 @@ def test_the_deploy_window_and_its_wrap_past_midnight(
     done = beta.agent("run", "--dry-run", RM_CD_WINDOW=window, STUB_HOUR=hour)
     assert ("would deploy v0.2.0" in done.stdout) is inside, done.stdout
     assert ("outside the deploy window" in done.stdout) is not inside
+
+
+@pytest.mark.parametrize(
+    ("utc", "waits"), [("0654", False), ("0655", True), ("0729", True), ("0730", False)]
+)
+def test_no_deploy_starts_in_the_nightly_backup_slot(beta: Beta, utc: str, waits: bool) -> None:
+    """OPS-5: the backup runs at 07:00 UTC; a deploy does not start from 06:55 to 07:30."""
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", "--dry-run", STUB_UTC=utc)
+    assert ("would deploy v0.2.0" in done.stdout) is not waits, done.stdout
+    assert ("nightly backup runs at 07:00 UTC" in done.stdout) is waits
+
+
+@pytest.mark.parametrize(
+    ("utc", "waits"), [("2354", False), ("2355", True), ("0029", True), ("0030", False)]
+)
+def test_the_backup_slot_follows_nightly_backup_cron_across_midnight(
+    tmp_path: Path, utc: str, waits: bool
+) -> None:
+    """Review round 2: the slot is read from NIGHTLY_BACKUP_CRON in the checkout."""
+    if shutil.which("git") is None or shutil.which("flock") is None:
+        pytest.skip("needs git and flock")
+    beta = Beta(tmp_path, {"src/config/procrastinate.py": 'NIGHTLY_BACKUP_CRON = "0 0 * * *"\n'})
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", "--dry-run", STUB_UTC=utc)
+    assert ("would deploy v0.2.0" in done.stdout) is not waits, done.stdout
+    said = "the nightly backup runs at 00:00 UTC; deploying after 00:30 UTC"
+    assert (said in done.stdout) is waits
+
+
+def test_a_deploy_window_without_time_zone_data_is_an_error_in_status(beta: Beta) -> None:
+    """Review round 2: a host without tzdata would read the window in UTC; it is an error."""
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n"})
+    done = beta.agent("run", RM_CD_WINDOW="02-06", STUB_NO_TZDATA="1")
+    assert done.returncode == 1
+    assert "error:" in beta.status() and "tzdata" in beta.status()
 
 
 def test_an_origin_other_than_the_ci_repository_is_an_error(beta: Beta) -> None:

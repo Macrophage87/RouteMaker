@@ -180,6 +180,12 @@ def test_a_count_that_does_not_match_what_was_stored_is_a_failure(service, tmp_p
     Service.fail_count = True
     done = fetch(service, tmp_path)
     assert done.returncode == 3
+    # Review pipeline-8: not stored under the real name, so a rerun is not refused.
+    layer = tmp_path / "test-layer"
+    assert not (layer / "test-layer.geojson").exists() and (layer / "test-layer.part").exists()
+    assert not (layer / "README.md").exists()
+    Service.fail_count = False
+    assert fetch(service, tmp_path).returncode == 0
 
 
 def test_a_where_clause_is_passed_to_the_service(service, tmp_path) -> None:

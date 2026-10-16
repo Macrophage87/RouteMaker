@@ -30,7 +30,21 @@
 	# is a decision this file can make for whoever runs it.
 	header Strict-Transport-Security "max-age=31536000"
 
-	# Preset links (owner item 204): routemaker.cieply.com/trailmaxxing opens the
+	# Request bodies (v0.7.0): 1 MiB, but 5 MiB for a saved or shared route and the rest of
+	# the account's own paths (/api/me/...), whose routes are up to 4 MB
+	# (core.accounts.ROUTE_MAX_BYTES; Django reads at most 5 MiB, DATA_UPLOAD_MAX_MEMORY_SIZE).
+	# The beta's nginx template sets the same two sizes on the same paths
+	# (tests/test_beta_overlay.py holds them equal).
+	@routes_body path_regexp ^/api/(shared-routes|me)(/|$)
+	request_body @routes_body {
+		max_size 5MiB
+	}
+	@other_body not path_regexp ^/api/(shared-routes|me)(/|$)
+	request_body @other_body {
+		max_size 1MiB
+	}
+
+	# Preset links (owner item 204): beta.example.org/trailmaxxing opens the
 	# planner on that ride type. Exactly the ride-type ids frontend/src/lib/
 	# presets.ts lists - tests/test_preset_links.py holds this list equal to
 	# it and to core/presets.py, no extras - each sent to the app's own
@@ -72,8 +86,11 @@
 	redir @preset-ebike /#preset=ebike 302
 	@preset-bikeshare path /bikeshare /bikeshare/
 	redir @preset-bikeshare /#preset=bikeshare 302
-	@preset-kids path /kids /kids/
-	redir @preset-kids /#preset=kids 302
+	@preset-novice path /novice /novice/
+	redir @preset-novice /#preset=novice 302
+	# Riding with kids became Novice and Nervous (v0.7.0): its old short link opens the new ride type.
+	@renamed-kids path /kids /kids/
+	redir @renamed-kids /#preset=novice 302
 	@preset-bike-transit path /bike-transit /bike-transit/
 	redir @preset-bike-transit /#preset=bike-transit 302
 	@preset-bikeshare-transit path /bikeshare-transit /bikeshare-transit/
@@ -247,6 +264,16 @@
 		encode zstd gzip {
 			match {
 				header Content-Type application/vnd.mapbox-vector-tile*
+			}
+		}
+		# And the route answers, which are large JSON (a full answer with its candidates,
+		# over mobile data in Ride mode) and carry no secret: only these paths, so no answer
+		# that holds a session's token is compressed beside what a request put in it
+		# (review speed-4). The beta's nginx compresses JSON already.
+		@route_answers path /api/route /api/stop-order /api/nearest
+		encode @route_answers zstd gzip {
+			match {
+				header Content-Type application/json*
 			}
 		}
 		reverse_proxy api:8000 {

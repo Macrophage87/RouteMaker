@@ -25,7 +25,9 @@ import importlib.util
 import json
 import logging
 import math
+import shutil
 import sys
+from dataclasses import replace
 from datetime import date, datetime
 from functools import lru_cache
 from pathlib import Path
@@ -315,8 +317,36 @@ def test_the_service_day_runs_to_3_am_and_a_holiday_is_flagged() -> None:
     assert late.date == date(2026, 10, 3) and late.day_type == "weekday"
     thanksgiving = transit.moment_of(at(2026, 11, 26, 9, 0))
     assert thanksgiving.holiday and not thanksgiving.rush(8 * 60)
+    # New Year's Day 2028 (a Saturday) is observed on 2027-12-31, a year early (TB-11).
+    assert transit.moment_of(at(2027, 12, 31, 9, 0)).holiday
+    assert not transit.moment_of(at(2027, 12, 30, 9, 0)).holiday
     assert transit.moment_of(at(2026, 9, 30, 8, 0)).rush(8 * 60)
     assert transit.clock(25 * 60 + 30) == "1:30 am" and transit.clock(19 * 60 + 42) == "7:42 pm"
+
+
+@pytest.mark.parametrize("service_day", [date(2026, 10, 31), date(2027, 3, 13)])
+def test_typical_metro_departures_are_the_wall_clock_across_a_clock_change(service_day) -> None:
+    """TB-10: Metro's typical timetable gives wall-clock minutes, which the schedule counts
+    from the GTFS day zero (noon less 12 hours). The two agree on the nights the clocks change
+    (2026-11-01, 2027-03-14) only while no train leaves at or after 2 am, the change itself:
+    the file's latest closing is 26:00, so every departure is before it. A later closing hour
+    would need the conversion through the local zone, and fails here first."""
+    from datetime import time, timedelta
+
+    doc = transit._typical_doc()
+    day_type = transit.typical_day_type(service_day, doc)
+    zero = transit.day_zero(service_day)
+    for line in doc["lines"]:
+        for minute in transit.typical_departures(doc, line, day_type):
+            elapsed = (zero + timedelta(minutes=minute)).astimezone(transit.ZONE)
+            day, left = divmod(minute, 24 * 60)
+            wall = datetime.combine(
+                service_day + timedelta(days=day), time(left // 60, left % 60), transit.ZONE
+            )
+            assert elapsed == wall and elapsed.replace(tzinfo=None) == wall.replace(tzinfo=None), (
+                line,
+                minute,
+            )
 
 
 def test_times_are_real_across_the_end_of_daylight_saving_on_2026_11_01() -> None:
@@ -389,7 +419,7 @@ def test_stops_that_are_not_timepoints_are_interpolated_not_dropped() -> None:
 def test_a_schedule_about_to_run_out_is_logged_and_alerted(tmp_path, caplog) -> None:
     path = tmp_path / "transit-schedule.json"
     path.write_text(built(date(2026, 9, 28))[0])
-    schedule = transit.load(path)
+    schedule = transit.load(path, date(2026, 10, 1))
     assert schedule.last_day == date(2026, 11, 11)
     assert transit.days_left(schedule, date(2026, 11, 8)) == 4
     assert transit.schedule_alert(path, date(2026, 10, 1)) is None
@@ -948,6 +978,11 @@ def test_no_bike_on_metro_on_a_blackout_date_said_plainly_and_metro_on_foot_stil
     assert (
         out["notes"][0] == "Bikes aren't allowed on Metro today (July 4)." and out["bike_blackout"]
     )
+    # Half past midnight is still July 4's service day (review TB-4).
+    late = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 7, 5, 0, 30))
+    assert not any(leg.system == "Metro" for o in late.options for leg in o.legs if leg.transit)
+    assert late.notes[0] == "Bikes aren't allowed on Metro today (July 4)."
+    assert transit.block(late, schedule)["bike_blackout"]
     # The day before, Metro takes the bike as usual.
     usual = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 7, 3, 10, 0))
     assert any(leg.system == "Metro" for o in usual.options for leg in o.legs if leg.transit)
@@ -1046,6 +1081,24 @@ def test_bikeshare_walks_where_walking_is_quicker_and_names_the_docks_where_it_r
     assert transit.label(metro, presets.BIKESHARE_TRANSIT).startswith("Walk, Metro to")
 
 
+def test_a_bike_taken_after_the_train_is_said_to_be_counted_now(schedule) -> None:
+    """TB-9: the far end's dock is read at planning time; the rider gets there later."""
+    plan = transit.plan_bikeshare(
+        schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), Straight(), SHARE
+    )
+    near_end = transit.Leg(transit.TAKE, 60.0, to="8th & D St SE")
+    far_end = transit.Leg(transit.TAKE, 60.0, to="14th & F St NW")
+    train = transit.Leg(transit.METRO, 600.0)
+    words = transit.far_dock_words("14th & F St NW")
+    assert words == "Bikes at 14th & F St NW are counted now; check on arrival."
+    for legs, said in (([near_end, train, far_end], True), ([near_end, train], False)):
+        option = transit.Option("x", tuple(legs))
+        chosen = transit.Plan(plan.mode, [option], plan.moment, [])
+        notes = transit._notes(chosen, {})
+        assert (words in notes) is said, notes
+        assert transit.far_dock_words("8th & D St SE") not in notes
+
+
 def test_bikeshare_needs_no_dock_to_walk_metro_and_walk(schedule) -> None:
     plan = transit.plan_bikeshare(
         schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), Straight(), NO_DOCKS
@@ -1131,6 +1184,85 @@ def test_the_walk_the_whole_way_is_routed_with_pedestrian_costing(monkeypatch) -
     # The option built from it is that walk, not an estimate.
     option = transit._walk_whole(CAPITOL_HILL, NEAR_CAPITOL_HILL, services)
     assert option.walk and option.legs[0].seconds == 420.0 and not option.legs[0].estimated
+
+
+class Bendy(Straight):
+    """The router, its lines bent through a point off the straight one, and each call kept."""
+
+    def __init__(self, answers: bool = True) -> None:
+        super().__init__()
+        self.asked: list[str] = []
+        self.answers = answers
+
+    def _bent(self, kind, found, a, b):
+        self.asked.append(kind)
+        if not self.answers:
+            return None
+        middle = ((a[0] + b[0]) / 2 + 0.001, (a[1] + b[1]) / 2)
+        return replace(found, coordinates=(tuple(a), middle, tuple(b)))
+
+    def ride(self, a, b):
+        return self._bent("ride", super().ride(a, b), a, b)
+
+    def walk(self, a, b):
+        return self._bent("walk", super().walk(a, b), a, b)
+
+
+def test_the_chosen_trips_other_walks_and_rides_are_routed_for_the_map(schedule) -> None:
+    # The owner, 2026-10-15: "The bikeshare mode doesn't seem to properly route walking." Every
+    # walk is walked (pedestrian costing) and every ride ridden for the map; no time changes.
+    plan = transit.plan_bikeshare(
+        schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 8, 0), Straight(), SHARE
+    )
+    direct = transit.choose(plan, transit.DIRECT)
+    assert [leg.mode for leg in direct.legs] == ["take", "bikeshare", "walk"]
+    services = Bendy()
+    drawn = transit.drawn(direct, services)
+    # The route line (the bikeshare ride) is the answer's own; the two walks are walked.
+    assert services.asked == ["walk", "walk"]
+    assert [len(leg.coordinates) for leg in drawn.legs] == [3, 2, 3]
+    assert [leg.seconds for leg in drawn.legs] == [leg.seconds for leg in direct.legs]
+    assert drawn.option.total_s == direct.option.total_s
+    for before, after in zip(direct.legs, drawn.legs, strict=True):
+        assert after.coordinates[0] == before.coordinates[0]
+        assert after.coordinates[-1] == before.coordinates[-1]
+    # Walk, Metro, walk: the route line is the first walk, the last one is walked for the map.
+    metro = transit.choose(plan, next(o.key for o in plan.options if o.scheduled))
+    services = Bendy()
+    drawn = transit.drawn(metro, services)
+    walks = [i for i, leg in enumerate(drawn.legs) if leg.mode == transit.WALK]
+    assert walks[0] == drawn.ride and services.asked == ["walk"]
+    assert len(drawn.legs[walks[-1]].coordinates) == 3
+    assert len(drawn.legs[walks[0]].coordinates) == 2
+    # Own Bike + 🚆🚌: a ride estimated from the straight line is ridden for the map.
+    own = plan_bike(schedule, CAPITOL_HILL, DOWNTOWN, at(2026, 9, 30, 12, 0))
+    ridden = transit.choose(own, next(o.key for o in own.options if o.scheduled))
+    services = Bendy()
+    drawn = transit.drawn(ridden, services)
+    assert services.asked == ["ride"] and len(drawn.legs[-1].coordinates) == 3
+    # A later ride already routed for its stress colours (api._later_rides) is not asked again.
+    services = Bendy()
+    later = len(ridden.legs) - 1
+    assert transit.drawn(ridden, services, skip={later}) is ridden and services.asked == []
+    # A router that does not answer: the straight lines stay, the plan as it was.
+    services = Bendy(answers=False)
+    assert transit.drawn(direct, services) is direct and services.asked == ["walk", "walk"]
+
+
+def test_drawing_the_map_never_holds_a_ready_answer_long(monkeypatch) -> None:
+    """Drawing changes no times: its calls are few, short, and stop at their own budget."""
+    from core import routing
+
+    assert transit.MAX_DRAW_CALLS * transit.DRAW_CALL_S <= 10
+    now = [100.0]
+    monkeypatch.setattr(routing, "clock", lambda: now[0])
+    services = transit.RoutingServices(
+        now[0] + transit.DRAW_BUDGET_S, "default", max_calls=transit.MAX_DRAW_CALLS
+    )
+    now[0] += transit.DRAW_BUDGET_S + 0.1
+    # Past the budget: no call is made and the leg stays straight.
+    assert services.walk((-77.0, 38.9), (-77.01, 38.91)) is None
+    assert services.calls == 0
 
 
 def test_each_option_lists_its_legs_compactly_for_its_row(schedule) -> None:
@@ -1289,7 +1421,11 @@ def test_with_no_schedule_installed_metro_alone_runs_on_its_typical_timetable(tm
     path = tmp_path / "schedule.json"
     feeds = {k: v for k, v in FEEDS.items() if not k.startswith("wmata-")}
     path.write_text(json.dumps(build.build(feeds, date(2026, 9, 28))[0]))
-    assert [s.id for s in transit.load(path).systems] == ["marc", "mta-light-rail", "wmata-rail"]
+    assert [s.id for s in transit.load(path, date(2026, 10, 1)).systems] == [
+        "marc",
+        "mta-light-rail",
+        "wmata-rail",
+    ]
     assert [s.id for s in transit.load(path, date(2026, 10, 12)).systems] == [
         "marc",
         "mta-light-rail",
@@ -1321,6 +1457,69 @@ def test_an_expired_schedule_keeps_metro_on_its_typical_timetable(tmp_path) -> N
     assert len(transit.load(path, date(2026, 10, 1)).systems) > 1
 
 
+def _feeds_with_marc_ending(tmp_path, end: str) -> dict:
+    """The fixture's feeds with MARC's timetable ending on `end` (YYYYMMDD)."""
+    marc = tmp_path / "marc"
+    shutil.copytree(DATA / "marc", marc)
+    calendar = marc / "calendar.txt"
+    calendar.write_text(calendar.read_text().replace("20271231", end))
+    (marc / "calendar_dates.txt").write_text("service_id,date,exception_type\n")
+    return {**FEEDS, "marc": marc}
+
+
+def test_a_system_whose_feed_ends_inside_the_window_is_left_out_after_it_not_closed(
+    tmp_path,
+) -> None:
+    """pipeline-1 + TB-1: MARC's feed ends 2026-10-20, inside the window to 2026-11-11. Past
+    it MARC is not covered: no plan, no struck-through station, a note; the alert counts down
+    to MARC's end, not the file's."""
+    doc, report = build.build(_feeds_with_marc_ending(tmp_path, "20261020"), date(2026, 9, 28))
+    marc = next(s for s in doc["systems"] if s["id"] == "marc")
+    assert marc["last_day"] == "2026-10-20"
+    assert any(line.startswith("marc: its timetable ends 2026-10-20") for line in report)
+    assert all(s["last_day"] == "2027-12-31" for s in doc["systems"] if s["id"] != "marc")
+    path = tmp_path / "transit-schedule.json"
+    path.write_text(json.dumps(doc))
+
+    before = transit.load(path, date(2026, 10, 20))
+    assert "marc" in [s.id for s in before.systems] and before.note == ""
+    after = transit.load(path, date(2026, 10, 21))
+    assert "marc" not in [s.id for s in after.systems]
+    assert "wmata-rail" in [s.id for s in after.systems], "the others are still planned"
+    assert after.note == (
+        "MARC is not planned for this date: its installed timetable ends October 20, 2026."
+    )
+    weekday = transit.closed_stations(after, transit.moment_of(at(2026, 10, 21, 12, 0)))
+    assert not [c for c in weekday if c.system.id == "marc"], "not covered is not closed"
+    plan = plan_bike(after, NOMA, BALTIMORE, at(2026, 10, 21, 12, 0))
+    assert not any(leg.system == "MARC" for o in plan.options for leg in transit_legs(o))
+    assert after.note in plan.notes
+
+    assert transit.days_left(before, date(2026, 10, 18)) == 3
+    assert "MARC's timetable runs out on 2026-10-20, 3 day(s) left" in transit.schedule_alert(
+        path, date(2026, 10, 18)
+    )
+    assert "MARC's timetable ran out on 2026-10-20" in transit.schedule_alert(
+        path, date(2026, 10, 25)
+    )
+    assert transit.schedule_alert(path, date(2026, 10, 1)) is None
+
+
+def test_a_metro_gtfs_that_ends_early_gives_way_to_the_typical_timetable(tmp_path) -> None:
+    rail = tmp_path / "wmata-rail"
+    shutil.copytree(DATA / "wmata-rail", rail)
+    calendar = rail / "calendar.txt"
+    calendar.write_text(calendar.read_text().replace("20271231", "20261020"))
+    (rail / "calendar_dates.txt").write_text("service_id,date,exception_type\n")
+    path = tmp_path / "transit-schedule.json"
+    path.write_text(json.dumps(build.build({**FEEDS, "wmata-rail": rail}, date(2026, 9, 28))[0]))
+
+    after = transit.load(path, date(2026, 10, 21))
+    metro = [s for s in after.systems if s.id == "wmata-rail"]
+    assert len(metro) == 1 and metro[0].typical
+    assert after.note.startswith("Metro is not planned for this date")
+
+
 # --- POST /api/route and GET /api/transit/closures ----------------------------------------------
 
 db = pytest.mark.django_db(transaction=True)
@@ -1332,7 +1531,7 @@ def installed(tmp_path, settings, monkeypatch):
     path = tmp_path / "transit-schedule.json"
     path.write_text(built(date(2026, 9, 28))[0])
     settings.TRANSIT_SCHEDULE_PATH = path
-    monkeypatch.setattr(transit, "RoutingServices", lambda *_args: Straight())
+    monkeypatch.setattr(transit, "RoutingServices", lambda *_args, **_kwargs: Straight())
     return path
 
 
@@ -1365,6 +1564,42 @@ class TestApi:
         assert chosen["steps"][0]["seconds"] == round(again.json()["duration_s"])
         # Midday (the pinned clock): Orange every 12 minutes, so a 6-minute wait.
         assert chosen["steps"][2]["wait_s"] == 360 and chosen["band"] == "midday"
+
+    @pytest.mark.parametrize("preset", [presets.BIKE_TRANSIT, presets.BIKESHARE_TRANSIT])
+    def test_novice_legs_price_the_bike_legs_as_novice_and_nervous(
+        self, client, segments, router, installed, monkeypatch, preset
+    ) -> None:
+        """v0.7.0, Novice and Nervous item 4: the transit options offered beside its route
+        plan their bike legs with the same one-level-up pricing; a share bike keeps its pace."""
+        from core import gbfs
+
+        seen = []
+
+        def services(until, leg_preset, costing=None, **_options):
+            seen.append((leg_preset, costing))
+            return Straight()
+
+        monkeypatch.setattr(transit, "RoutingServices", services)
+        monkeypatch.setattr(gbfs.client, "snapshot", lambda: SHARE)
+        fake = router(standard_router())
+        response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], preset, novice_legs=True)
+        assert response.status_code == 200, response.content
+        assert response.json()["preset"] == preset
+        assert response.json()["novice"] is None
+        bike = [p["costing_options"].get("bicycle") for _u, p in fake.calls]
+        assert any(b and b["use_roads"] == 0.0 for b in bike)
+        leg_preset, costing = seen[0]
+        assert leg_preset == presets.NOVICE
+        # The routed lines are priced as the candidates were, so the retiming is at the same
+        # pace: a share bike's on Bikeshare + Transit, Novice's own on Bike + Transit.
+        line_speeds = {b.get("cycling_speed") for b in bike if b}
+        if preset == presets.BIKESHARE_TRANSIT:
+            assert costing["bicycle"]["cycling_speed"] == presets.BIKESHARE_CLASSIC_SPEED_KMH
+            assert line_speeds == {presets.BIKESHARE_CLASSIC_SPEED_KMH}
+        else:
+            assert costing is None
+            novice = presets.costing(presets.NOVICE)["bicycle"].get("cycling_speed")
+            assert line_speeds == {novice}
 
     def test_a_router_too_slow_for_the_answers_line_draws_it_straight_and_says_so(
         self, client, segments, router, installed, monkeypatch, caplog
@@ -1414,7 +1649,7 @@ class TestApi:
     ) -> None:
         router(standard_router())
         settings.TRANSIT_SCHEDULE_PATH = tmp_path / "none.json"
-        monkeypatch.setattr(transit, "RoutingServices", lambda *_args: Straight())
+        monkeypatch.setattr(transit, "RoutingServices", lambda *_args, **_kwargs: Straight())
         response = post_transit(client, [CAPITOL_HILL, DOWNTOWN])
         assert response.status_code == 200, response.content
         trip = response.json()["transit"]
@@ -1453,6 +1688,66 @@ class TestApi:
         assert body["duration_s"] == pytest.approx(body["transit"]["total_s"], abs=1)
         assert len(fake.calls) == calls
 
+    def test_a_bikeshare_trips_walks_are_walked_not_ridden_on_the_map(
+        self, client, segments, router, installed, monkeypatch
+    ) -> None:
+        # The route line of walk, Metro, walk is a walk: the pedestrian router's, never the
+        # bike's, and the other walk is walked for the map too. The times are the plan's.
+        fake = router(standard_router())
+        monkeypatch.setattr(gbfs.client, "snapshot", lambda: NO_DOCKS)
+        services = Bendy()
+        monkeypatch.setattr(transit, "RoutingServices", lambda *_args, **_kwargs: services)
+        response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], presets.BIKESHARE_TRANSIT)
+        assert response.status_code == 200, response.content
+        body = response.json()
+        trip = body["transit"]
+        assert [s["mode"] for s in trip["steps"]] == ["walk", "enter", "metro", "exit", "walk"]
+        assert "route" not in fake.endpoints()
+        first, last = trip["steps"][0], trip["steps"][-1]
+        assert first["route_line"] and len(body["geometry"]["coordinates"]) == 3
+        assert body["duration_s"] == pytest.approx(first["seconds"], abs=1)
+        assert not last["route_line"] and len(last["coordinates"]) == 3
+        # The same trip drawn straight (the router not answering) has the same times.
+        monkeypatch.setattr(
+            transit, "RoutingServices", lambda *_args, **_kwargs: Bendy(answers=False)
+        )
+        straight = post_transit(client, [CAPITOL_HILL, DOWNTOWN], presets.BIKESHARE_TRANSIT)
+        again = straight.json()
+        assert len(again["transit"]["steps"][-1]["coordinates"]) == 2
+        assert len(again["geometry"]["coordinates"]) == 2
+        assert again["transit"]["total_s"] == trip["total_s"]
+        timed = [(s["seconds"], s["wait_s"]) for s in again["transit"]["steps"]]
+        assert timed == [(s["seconds"], s["wait_s"]) for s in trip["steps"]]
+
+    def test_bikeshare_feeds_down_walk_both_ends_with_a_note_not_a_503(
+        self, client, segments, router, installed, monkeypatch
+    ) -> None:
+        """TB-2: the conftest's feeds always fail. The trip is planned on foot at both ends,
+        and says why; and the candidates' clock starts after the feed read (TB-8)."""
+        from core import gbfs
+
+        router(standard_router())
+        deadlines = []
+
+        def services(until, *_args, **_kwargs):
+            deadlines.append(until)
+            return Straight()
+
+        def slow_failure():
+            clock[0] += 5
+            raise gbfs.Unavailable("down")
+
+        clock = [1000.0]
+        monkeypatch.setattr(api.routing, "clock", lambda: clock[0])
+        monkeypatch.setattr(gbfs.client, "snapshot", slow_failure)
+        monkeypatch.setattr(transit, "RoutingServices", services)
+        response = post_transit(client, [CAPITOL_HILL, DOWNTOWN], presets.BIKESHARE_TRANSIT)
+        assert response.status_code == 200, response.content
+        trip = response.json()["transit"]
+        assert trip["notes"][0] == "Bikeshare docks can't be read right now: walking at both ends."
+        assert trip["steps"][0]["mode"] == trip["steps"][-1]["mode"] == "walk"
+        assert deadlines[0] == 1005.0 + api.TRANSIT_CANDIDATES_S
+
     def test_a_transit_trip_is_two_points_no_loop_and_options_only_on_transit(
         self, client, router, installed
     ) -> None:
@@ -1474,6 +1769,18 @@ class TestApi:
         ]
         weekday = client.get("/api/transit/closures", {"at": "2026-09-30T22:30:00"}).json()
         assert weekday["stations"] == []
+
+    def test_a_time_more_than_a_year_away_is_refused(self, client, installed) -> None:
+        """sec-app-4: `at` and `depart_at` within a year of now (the pinned clock), else 400."""
+        for far in ("2028-01-01T12:00:00", "1999-01-01T12:00:00-05:00"):
+            closures = client.get("/api/transit/closures", {"at": far})
+            assert closures.status_code == 400, closures.content
+            assert "within a year" in closures.content.decode()
+            times = client.get("/api/transit/station-times", {"lon": -77.0, "lat": 38.9, "at": far})
+            assert times.status_code == 400
+            route = post_transit(client, [CAPITOL_HILL, DOWNTOWN], depart_at=far)
+            assert route.status_code == 400
+        assert client.get("/api/transit/closures", {"at": "2027-09-01T12:00:00"}).status_code == 200
 
     def test_a_stations_times_are_small_scheduled_and_cached_for_a_minute(
         self, client, installed

@@ -6,8 +6,13 @@
  *
  * The ARIA 1.2 combobox pattern: the input owns a listbox, the arrow keys
  * move through the options without leaving the input (aria-activedescendant),
- * Enter picks, Escape closes and then clears. The result count is announced
+ * Enter picks, Escape closes and then clears. The empty box lists "Your
+ * location" and then the last places picked (lib/recentPlaces.ts). The result count is announced
  * in a polite live region, and the options are tall enough to tap.
+ *
+ * A pasted map link (Google, Apple, Waze, geo:) or typed coordinates are read as a place
+ * (lib/sharedLocation.ts, v0.7.0 "Open shared locations"): it leads the list as one option, and a short
+ * link is followed by the server first.
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import {
@@ -27,7 +32,10 @@ import {
 } from "./lib/geocode.ts";
 import type { LonLat } from "./lib/geo.ts";
 import { Icon } from "./Icon.tsx";
+import { readRecentPlaces, rememberRecentPlace } from "./lib/recentPlaces.ts";
 import { FINDING_LOCATION, hereEffectLine, locationMatches, searchStatusWithHere } from "./lib/geolocation.ts";
+import { parseShared, readShared, sharedPlace, SHARED_OPENING } from "./lib/sharedLocation.ts";
+import { watchKeyboard } from "./lib/keyboardLift.ts";
 
 // App.tsx's phone layout, where the panel is a bottom sheet.
 const PHONE = "(max-width: 720px)";
@@ -52,10 +60,19 @@ const SINGLE_HINT = {
   go: "The place you pick is where the route goes, from the start above.",
   home: "The place you pick is kept as your Home.",
   start: "The place you pick is where the route starts, in place of your location.",
+  stop: "The place you pick is a stop, where it adds the least distance.",
 } as const;
 
 /** The "Your location" choice in the list, ahead of the places found. */
 const HERE = "here" as const;
+
+/** A place's "Make this the destination" row (v0.7.0, "Keep adding stops by search"), under the place. */
+interface AsDestination {
+  destination: Place;
+}
+
+/** What the result row's second option says. */
+export const MAKE_DESTINATION = "Make this the destination";
 
 const CHOICE_LABEL: Record<PlaceChoice, string> = { start: "Start", end: "Destination", via: "Stop" };
 
@@ -79,12 +96,13 @@ export function PlaceSearch({
   loop = false,
   locate,
   variant = "plan",
+  onTopPlace,
 }: {
   /**
    * "plan": the Points search, with Start / Destination / Stop. "go" (UI-CLEANUP): Go's one Where to? box,
    * whose place is the destination, from the rider's location. "home": My Go's Home, a place and no more.
    */
-  variant?: "plan" | "go" | "home" | "start";
+  variant?: "plan" | "go" | "home" | "start" | "stop";
   /** Absent: no "Use my location" (a test or a build without it). */
   locate?: LocateControl;
   /** "Make it a loop" is on: a place is the start or a stop, never a destination (OWNER-DECISIONS 374). */
@@ -96,6 +114,8 @@ export function PlaceSearch({
   /** Where results should lean towards: the rider's known location (rounded) while it is in view, else the map's centre; none outside the area (lib/geocode.ts searchBiasPoint). */
   bias: () => LonLat | undefined;
   onPick: (place: Place, choice: PlaceChoice) => void;
+  /** The first place listed, each time another leads the list (Go's early start; v0.7.0, "Faster routing"). */
+  onTopPlace?: (place: Place) => void;
 }) {
   const id = useId();
   const single = variant !== "plan";
@@ -107,6 +127,11 @@ export function PlaceSearch({
   // What the rider asked a pick to be; null until they choose, which follows
   // the plan (the start of an empty plan, then the destination).
   const [chosen, setChosen] = useState<PlaceChoice | null>(null);
+  // A pasted link or typed coordinates: the place read from it, the link being opened, or why not.
+  const [shared, setShared] = useState<{ place: Place } | { said: string } | null>(null);
+  const sharedTurn = useRef(0);
+  // The last places picked in any search box, read again on focus so a pick in another box shows.
+  const [recent, setRecent] = useState<Place[]>(() => readRecentPlaces());
   const runner = useRef<PlaceSearchRunner | null>(null);
   const biasRef = useRef(bias);
   biasRef.current = bias;
@@ -122,6 +147,14 @@ export function PlaceSearch({
     });
   }
   useEffect(() => () => runner.current?.clear(), []);
+  // On a phone, while the box has the focus: the app is shortened by what the keyboard covers (iOS;
+  // lib/keyboardLift.ts, review UI-7), so the results in the sheet are not under it.
+  const keyboardWatch = useRef<(() => void) | null>(null);
+  const stopKeyboardWatch = () => {
+    keyboardWatch.current?.();
+    keyboardWatch.current = null;
+  };
+  useEffect(() => stopKeyboardWatch, []);
 
   const { places, answeredNow, searching, choices, choice, effect } = searchView({
     query,
@@ -135,7 +168,27 @@ export function PlaceSearch({
   });
   // "Your location" leads the list while the box is empty or says so; it is never the Enter default.
   const showHere = locate?.support.available === true && locationMatches(query);
-  const items: (Place | typeof HERE)[] = showHere ? [HERE, ...places] : places;
+  // A pick that adds a stop (Plan with a start and an end) offers the place as the destination too, on a row
+  // of its own under it, so it is an option a keyboard and a screen reader reach like any other.
+  const offersDestination = variant === "plan" && !loop && effect === "via";
+  const sharedItems: Place[] = shared && "place" in shared ? [shared.place] : [];
+  const sharedSaid = shared && "said" in shared ? shared.said : "";
+  // The empty box lists the last places picked (v0.6.1), under "Your location".
+  const empty = query.trim() === "";
+  const offered: Place[] = [...sharedItems, ...(empty ? recent : places)];
+  // What Enter with nothing highlighted takes: the first place offered for the words typed; an empty box
+  // takes nothing (a recent place is picked only by choosing it).
+  const enterPlaces: Place[] = empty ? [] : offered;
+  // The place Enter would take: Go starts routing there while the rider looks (the same place, always).
+  const top = enterPlaces[0] ?? null;
+  const onTopPlaceNow = useRef(onTopPlace);
+  onTopPlaceNow.current = onTopPlace;
+  useEffect(() => {
+    if (top) onTopPlaceNow.current?.(top);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per place listed first, not per render
+  }, [top?.lon, top?.lat, top?.name]);
+  const listed: (Place | AsDestination)[] = offersDestination ? offered.flatMap((place) => [place, { destination: place }]) : offered;
+  const items: (Place | AsDestination | typeof HERE)[] = showHere ? [HERE, ...listed] : listed;
   const expanded = open && items.length > 0;
   const listId = `${id}-list`;
   const optionId = (i: number) => `${id}-opt-${i}`;
@@ -143,6 +196,14 @@ export function PlaceSearch({
   const change = (value: string) => {
     setQuery(value);
     setOpen(true);
+    sharedTurn.current += 1;
+    // Coordinates typed or a whole link pasted in: the place it holds, offered first.
+    const found = parseShared(value);
+    if (found) {
+      openShared(value);
+      return;
+    }
+    setShared(null);
     if (value.trim().length < MIN_QUERY_CHARS) {
       runner.current?.clear();
       setResult(null);
@@ -151,8 +212,35 @@ export function PlaceSearch({
     }
   };
 
-  const pick = (place: Place) => {
-    onPick(place, single ? "end" : choice);
+  // A link or coordinates: read here, or (a short link) followed by the server; an address is searched for.
+  const openShared = (text: string) => {
+    const turn = ++sharedTurn.current;
+    runner.current?.clear();
+    setResult(null);
+    setOpen(true);
+    const found = parseShared(text);
+    if (found?.kind === "point") {
+      setShared({ place: sharedPlace(found.point, found.name) });
+      return;
+    }
+    setShared({ said: SHARED_OPENING });
+    void readShared(text).then((read) => {
+      if (turn !== sharedTurn.current) return;
+      if ("place" in read) setShared({ place: read.place });
+      else if ("query" in read) {
+        setShared(null);
+        setQuery(read.query);
+        runner.current?.request(read.query);
+      } else setShared({ said: read.error });
+    });
+  };
+
+  const pick = (place: Place, as?: PlaceChoice) => {
+    onPick(place, as ?? (variant === "stop" ? "via" : single ? "end" : choice));
+    sharedTurn.current += 1;
+    setShared(null);
+    // A Home is not a recent place: it would outlast Clear Home and sign-out on a shared phone (review privacy-1).
+    if (variant !== "home") setRecent(rememberRecentPlace(place));
     setQuery("");
     setResult(null);
     setOpen(false);
@@ -182,9 +270,11 @@ export function PlaceSearch({
       setOpen(true);
       setActive(action.active);
     } else if (action.kind === "pick") {
-      // Enter with nothing highlighted takes the first place, never "Your location" (a look-up asks the browser's permission).
-      const item = pickTarget(active, action.index, items, places);
+      // Enter with nothing highlighted takes the first place for the words typed (the top place), never "Your
+      // location" (a look-up asks the browser's permission) and never a recent place from an empty box.
+      const item = pickTarget(active, action.index, items, enterPlaces);
       if (item === HERE) pickHere();
+      else if (item && "destination" in item) pick(item.destination, "end");
       else if (item) pick(item);
     } else if (action.kind === "close") {
       setOpen(false);
@@ -197,7 +287,7 @@ export function PlaceSearch({
   return (
     <div className={variant === "go" ? "place-search go-search" : "place-search"}>
       <label htmlFor={`${id}-input`} className={variant === "go" ? "place-search-label visually-hidden" : "place-search-label"}>
-        {variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : variant === "start" ? "Start from" : "Find a place"}
+        {variant === "go" ? "Where to?" : variant === "home" ? "Find your Home" : variant === "start" ? "Start from" : variant === "stop" ? "Add a stop" : "Find a place"}
       </label>
       <div className={locate || variant === "go" ? "place-search-row" : undefined}>
       {variant === "go" && <Icon name="search" className="search-icon" />}
@@ -215,17 +305,33 @@ export function PlaceSearch({
         spellCheck={false}
         enterKeyHint="search"
         maxLength={MAX_QUERY_CHARS}
-        placeholder={variant === "go" ? "Where to?" : variant === "start" ? "Type a start" : "A place, an address or a street"}
+        placeholder={variant === "go" ? "Where to?" : variant === "start" ? "Type a start" : variant === "stop" ? "Add a stop" : "A place, an address or a street"}
         value={query}
         onChange={(event) => change(event.target.value)}
+        onPaste={(event) => {
+          // A whole map link, longer than the box takes: read before the box cuts it.
+          const text = event.clipboardData.getData("text");
+          if (!parseShared(text)) return;
+          event.preventDefault();
+          setQuery(text.slice(0, MAX_QUERY_CHARS));
+          openShared(text);
+        }}
         onKeyDown={onKeyDown}
-        onBlur={() => setOpen(false)}
+        onBlur={() => {
+          setOpen(false);
+          stopKeyboardWatch();
+        }}
         onFocus={(event) => {
           setOpen(true);
+          setRecent(readRecentPlaces());
           // On a phone the sheet is half the screen and the keyboard takes
           // much of the rest: bring the box to the top of the sheet so the
           // results under it can be seen.
-          if (window.matchMedia(PHONE).matches) event.currentTarget.scrollIntoView({ block: "start" });
+          if (window.matchMedia(PHONE).matches) {
+            stopKeyboardWatch();
+            keyboardWatch.current = watchKeyboard(window, document.documentElement);
+            event.currentTarget.scrollIntoView({ block: "start" });
+          }
         }}
       />
       {locate && (
@@ -256,7 +362,7 @@ export function PlaceSearch({
         </p>
       )}
       {locate && !locate.busy && locate.note && <p className="hint">{locate.note}</p>}
-      <ul id={listId} role="listbox" aria-label="Places found" className="place-results" hidden={!expanded}>
+      <ul id={listId} role="listbox" aria-label={empty ? "Your location and recent places" : "Places found"} className="place-results" hidden={!expanded}>
         {items.map((item, i) =>
           item === HERE ? (
             <li
@@ -270,6 +376,19 @@ export function PlaceSearch({
             >
               <span className="place-name">Your location</span>
               <span className="place-label">{hereEffectLine(effect, loop)}</span>
+            </li>
+          ) : "destination" in item ? (
+            <li
+              key={`dest:${item.destination.lon},${item.destination.lat},${item.destination.label}`}
+              id={optionId(i)}
+              role="option"
+              aria-selected={i === active}
+              aria-label={`${MAKE_DESTINATION}: ${item.destination.name}`}
+              className={i === active ? "active place-as-destination" : "place-as-destination"}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => pick(item.destination, "end")}
+            >
+              <span className="place-label">{MAKE_DESTINATION}</span>
             </li>
           ) : (
             <li
@@ -290,6 +409,10 @@ export function PlaceSearch({
           ),
         )}
       </ul>
+      {/* Always mounted, filled after (review F10): a status region mounted with its words in it is often not read. */}
+      <p className={sharedSaid ? "hint" : "visually-hidden"} role="status" aria-live="polite">
+        {sharedSaid}
+      </p>
       {expanded && places.length > 0 && (
         <p className="place-credit">
           Only places in this map's area.

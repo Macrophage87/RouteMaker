@@ -1,8 +1,15 @@
 # Beta runbook: RouteMaker on the owner's server
 
 For the owner's Claude on the server. It stands up a private beta of RouteMaker at
-`https://routemaker.cieply.com` for trusted friends and family (OWNER-DECISIONS 360-362). Read
+`https://beta.example.org` for trusted friends and family (OWNER-DECISIONS 360-362). Read
 the whole file before running anything. Every step says what it changes and how to undo it.
+
+**`beta.example.org` stands for the beta's real name** throughout: the owner gives it to you, and
+it lives only in the server's `.env` (`RM_BETA_HOST`, written by `make-env.sh --host`), never in
+this repository. Type the real name wherever this file says `beta.example.org`.
+`render-nginx.sh`, `smoke-test.sh --local` and the deploy agent read it from `.env` and stop with
+a message naming `RM_BETA_HOST` when it is missing; on a server set up before v0.7.0, add the line
+`RM_BETA_HOST=<the beta's name>` to `.env` once.
 
 ## What this changes on the host, and nothing else
 
@@ -96,7 +103,7 @@ What to expect on this server (the owner's check, 2026-10-04); a check below tha
 - available memory is at least the 8400 MiB threshold below (the 7358 MiB startup peak plus the
   checker's 1 GiB margin);
 - an x86_64 machine (the api image is built at home, on x86_64);
-- `routemaker.cieply.com` resolves to this server's own public address (checked live below; the
+- `beta.example.org` resolves to this server's own public address (checked live below; the
   address is not written down here).
 
 ```sh
@@ -117,8 +124,8 @@ nginx -v; sudo nginx -T 2>/dev/null | grep -E '^\s*(include|user) ' | head   # w
 command -v git rsync openssl curl python3 sha256sum
 sudo docker compose version                      # the compose plugin must also work under sudo (receive-data.sh files/db run with sudo)
 python3 -c 'import yaml' && echo "pyyaml ok"      # the pre-flight checker needs it; if missing, see below (no system package is installed)
-dns=$(getent ahostsv4 routemaker.cieply.com | awk 'NR == 1 {print $1}'); me=$(curl -s -m 10 https://api.ipify.org)
-[ -n "$dns" ] && [ -n "$me" ] && [ "$dns" = "$me" ] && echo "DNS points here" || echo "STOP: routemaker.cieply.com does not resolve to this server's public address (or the check could not run)"
+dns=$(getent ahostsv4 beta.example.org | awk 'NR == 1 {print $1}'); me=$(curl -s -m 10 https://api.ipify.org)
+[ -n "$dns" ] && [ -n "$me" ] && [ "$dns" = "$me" ] && echo "DNS points here" || echo "STOP: beta.example.org does not resolve to this server's public address (or the check could not run)"
 sudo nginx -T 2>/dev/null | grep -c 'listen \[::\]'   # 0: the other sites do not listen on IPv6; render with --no-ipv6 in 9c
 rm_absent "$RM_SRC" "$RM_INCOMING" "$RM_DATA" "$HOME/routemaker-beta-passwords.txt" "$HOME/routemaker-beta-venv" /var/www/routemaker-acme /etc/nginx/routemaker-beta.htpasswd && echo "all absent"   # any EXISTS line is a stop
 ```
@@ -146,11 +153,11 @@ done
 
 Then apply this rule, and report which option it gave and why:
 
-- **Option B (reuse)** if some certificate's subjectAltName contains `routemaker.cieply.com` or
-  `*.cieply.com`, **and** its `notAfter` is more than 14 days away, **and** it renews automatically
+- **Option B (reuse)** if some certificate's subjectAltName contains `beta.example.org` or
+  `*.example.org`, **and** its `notAfter` is more than 14 days away, **and** it renews automatically
   (it is listed by `certbot certificates`, or the owner confirms how it is renewed).
 - **Option A (a new certificate for this one name)** otherwise: `certbot certonly --webroot` for
-  `routemaker.cieply.com` only (step 9b).
+  `beta.example.org` only (step 9b).
 
 Record the choice for step 9c, which branches on it, in the vars file:
 `echo 'export TLS_OPTION=A' >> "$RM_STATE/vars.sh"` or `echo 'export TLS_OPTION=B' >> "$RM_STATE/vars.sh"`.
@@ -175,7 +182,7 @@ Decide and note down:
   `export NGINX_SITE=/etc/nginx/sites-available/routemaker-beta.conf NGINX_LINK=/etc/nginx/sites-enabled/routemaker-beta.conf`.
   Append that `export NGINX_SITE=... NGINX_LINK=...` line to `$RM_STATE/vars.sh`.
   Then `rm_absent "$NGINX_SITE" "$NGINX_LINK" && echo "site file absent"`; an EXISTS line is a stop.
-- **Whether `routemaker.cieply.com` already points here.** If `getent` shows another address, stop;
+- **Whether `beta.example.org` already points here.** If `getent` shows another address, stop;
   the owner has to change DNS first.
 
 Never run anything under `scripts/boot/`, nor `scripts/local-up.sh`, and do not follow
@@ -231,7 +238,7 @@ Undo: `rm -rf "$RM_SRC"`.
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
 cd "$RM_SRC"
-scripts/beta/make-env.sh --data-root "$RM_DATA" --api-port "$BETA_API_PORT"       # TAG defaults to the first 12 characters of the sha
+scripts/beta/make-env.sh --host <the beta's name> --data-root "$RM_DATA" --api-port "$BETA_API_PORT"   # TAG defaults to the first 12 characters of the sha
 ```
 
 It generates `DJANGO_SECRET_KEY`, `KEY_ENCRYPTION_KEY` and `PGPASSWORD` as random hex and prints
@@ -241,14 +248,34 @@ database initialised with the old one. The required values and what is optional:
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `DJANGO_SECRET_KEY`, `KEY_ENCRYPTION_KEY`, `PGPASSWORD` | yes | generated by `make-env.sh` |
-| `DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS` | yes | already `routemaker.cieply.com` / `https://routemaker.cieply.com` |
+| `RM_BETA_HOST`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS` | yes | from `--host`: the name, the name, `https://` the name |
 | `DATA_ROOT`, `TAG`, `COMPOSE_PROJECT_NAME` | yes | `/data/routemaker`, the short sha, `routemaker-beta` |
 | `BETA_API_PORT`, `BETA_WEB_CONCURRENCY` | yes | `8087`, `6` (two route plans at once, one worker always free; the checker refuses more) |
-| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI` | **no** | Planning works signed out. Leave empty and there is no sign-in. To enable it the owner adds `https://routemaker.cieply.com/auth/callback` to the Discord application and gives you the id and secret; edit `.env`, rerun the gate (`"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env`, which must print "beta compose: ok"), then `beta-compose.sh up -d api`. |
+| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_REDIRECT_URI` | **no** | Planning works signed out. Leave empty and there is no sign-in. To enable it the owner adds `https://beta.example.org/auth/callback` to the Discord application and gives you the id and secret; edit `.env`, rerun the gate (`"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env`, which must print "beta compose: ok"), then `beta-compose.sh up -d api`. From v0.7.0 sign-in is on by itself once both keys are set (the Settings line "Sign in with Discord to save routes and sync settings across devices." appears); migration 0020 adds saved settings and routes. Ride links keep anonymous rider dots in the api container's `/dev/shm` (a tmpfs, memory only), so the api needs no volume for them. |
 | `BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID` | no | The beta's database carries **no accounts** (the dump strips them, OWNER-DECISIONS 367.3), so the owner claims instance admin afresh. Set this to the owner's Discord user id only if Discord sign-in is turned on, and have the owner sign in once promptly after the api starts. Otherwise leave it empty. |
+| `WMATA_API_KEY`, `MAPILLARY_ACCESS_TOKEN` | no | v0.7.0 live data. The owner pastes them into `.env` himself (nobody else reads or types them); then `beta-compose.sh up -d api`. Empty: timetable times only, no street photo. Allow outbound `api.wmata.com`, `graph.mapillary.com` and `*.fbcdn.net` from the api: the server fetches the photo's file from Mapillary's image host and serves the browser its own copy, so the CSP's `img-src` stays `'self'` and the browser never contacts Mapillary. Check: a Metro station's card says "live" and "Data: WMATA"; a road panel shows "Photo from <month year>" or "No street photo here." |
+| `DC311_API_KEY` | no | v0.7.0 Ride mode's 311 sent from the server (`core/dc311.py`), read by the api. The owner pastes it himself, only once DC issues one; then `beta-compose.sh up -d api`. Empty: Ride mode opens the phone's text app to 311 instead. Allow outbound `app.311.dc.gov` from the api. Each send needs a 15-minute ticket from `GET /api/report311`, and at most 60 reports an hour leave the server in all. |
+| `NPS_API_KEY` | no | v0.7.0 National Park Service closure alerts, read by the **worker** (`refresh_dc_closures`). The owner pastes it himself; then `beta-compose.sh up -d worker`. Empty: the NPS feed is skipped, the DC feeds still run. Allow outbound `developer.nps.gov` from the worker, beside the DC closure hosts below. |
+| `SUGGEST_SIGNED_OUT_MIN_AGREE` | no | `1` (the default): every signed-out LTS suggestion shows in the review list. Raise it (e.g. `2`) once volume grows, so a road's signed-out sends show only when that many agree; then `beta-compose.sh up -d api`. |
 | VDOT token | no | this release has no such variable; there is nothing to set |
 
 Never `source .env`; compose reads it. Never print it. Do not add `$` to a value (compose expands it).
+
+Outbound hosts the app reaches at runtime (v0.7.0; all TCP 443; the full server list, with the
+CD agent's and the host's own, is kept outside this repository, with the owner):
+
+- **api:** `gbfs.capitalbikeshare.com`, `gbfs.lyft.com` (bikeshare); `api.wmata.com` (with
+  `WMATA_API_KEY`); `graph.mapillary.com` and `*.fbcdn.net` (with `MAPILLARY_ACCESS_TOKEN`: the
+  server fetches the street photo's file and serves the browser its own copy); `app.311.dc.gov`
+  (with `DC311_API_KEY`); the short map links a shared place is followed through
+  (`core/share_links.py`): `maps.app.goo.gl`, `goo.gl`, `maps.apple`, `www.google.com`,
+  `google.com`, `maps.google.com`, `consent.google.com`, `maps.apple.com`; `discord.com` only
+  with Discord sign-in.
+- **worker** (`refresh_dc_closures`, every 15 minutes): `maps2.dcgis.dc.gov`, `mpdc.dc.gov`,
+  `trainingtrack.hsema.dc.gov`, and `developer.nps.gov` (with `NPS_API_KEY`); and
+  (`refresh_work_zones`, every 5 minutes) `filter.ritis.org` (Maryland) and
+  `data.511-atis-ttrip-prod.iteriscloud.com` (Virginia, with `SMARTERROADS_TOKEN`). It also reaches
+  Photon and the Valhalla containers on the compose network, as the api does.
 
 Undo: `rm .env` (only before the database exists; after, keep it).
 
@@ -489,7 +516,7 @@ Health and memory:
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
 cd "$RM_SRC"
-curl -s -H 'Host: routemaker.cieply.com' "http://127.0.0.1:$BETA_API_PORT/healthz"   # ok
+curl -s -H 'Host: beta.example.org' "http://127.0.0.1:$BETA_API_PORT/healthz"   # ok
 scripts/beta/smoke-test.sh --local                                              # route, search, reverse, stress tile; all PASS
 docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}' | grep routemaker-beta
 free -m
@@ -501,7 +528,7 @@ Every container should sit well under its cap (api about 0.5 GiB at six workers,
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
-for i in 1 2; do curl -s -o /dev/null -w "plan $i: %{http_code} in %{time_total}s\n" -H 'Host: routemaker.cieply.com' \
+for i in 1 2; do curl -s -o /dev/null -w "plan $i: %{http_code} in %{time_total}s\n" -H 'Host: beta.example.org' \
   -H 'Content-Type: application/json' -d '{"points":[[-77.0353,38.8895],[-77.0369,38.9072]],"preset":"default"}' \
   "http://127.0.0.1:$BETA_API_PORT/api/route" & done; wait
 docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}' | grep -E 'api|photon'
@@ -584,11 +611,11 @@ on Ubuntu), with a password in the same format. Undo: `sudo rm /etc/nginx/routem
 ### 9b. TLS: the option step 1's discovery chose
 
 Use the rule from step 1 (OWNER-DECISIONS 367.1): **B** if an existing certificate covers
-`routemaker.cieply.com` or `*.cieply.com`, is more than 14 days from expiry and renews
+`beta.example.org` or `*.example.org`, is more than 14 days from expiry and renews
 automatically; **A** otherwise. Say in your report which one, with the `openssl x509` lines that
 decided it.
 
-**Option A: certbot issues a certificate for `routemaker.cieply.com` only, by webroot.** Install
+**Option A: certbot issues a certificate for `beta.example.org` only, by webroot.** Install
 the stage-1 file, which answers only the ACME challenge on port 80, then run certbot's `--webroot`
 authenticator. It writes the challenge into `/var/www/routemaker-acme` and touches no nginx file;
 its renewals reuse the same `webroot_path`. Not `--nginx` (it edits and reloads the host's nginx
@@ -601,13 +628,13 @@ rm_absent /var/www/routemaker-acme "$NGINX_SITE" "$NGINX_LINK" && sudo install -
 scripts/beta/render-nginx.sh --stage acme [--no-ipv6] --out "$RM_STATE/routemaker-beta.acme.conf"
 rm_absent "$NGINX_SITE" "$NGINX_LINK" && sudo install -m 644 "$RM_STATE/routemaker-beta.acme.conf" "$NGINX_SITE" && { [ "$NGINX_LINK" = "$NGINX_SITE" ] || sudo ln -s "$NGINX_SITE" "$NGINX_LINK"; }
 sudo nginx -t && sudo nginx -s reload
-sudo certbot certonly --webroot -w /var/www/routemaker-acme -d routemaker.cieply.com
-sudo ls /etc/letsencrypt/live/routemaker.cieply.com/        # fullchain.pem and privkey.pem
+sudo certbot certonly --webroot -w /var/www/routemaker-acme -d beta.example.org
+sudo ls /etc/letsencrypt/live/beta.example.org/        # fullchain.pem and privkey.pem
 ```
 
 Certbot's existing renewal timer renews it; the port-80 ACME location stays in the final file for
-that. Then continue to 9c with `--cert-fullchain /etc/letsencrypt/live/routemaker.cieply.com/fullchain.pem`
-and `--cert-key /etc/letsencrypt/live/routemaker.cieply.com/privkey.pem`.
+that. Then continue to 9c with `--cert-fullchain /etc/letsencrypt/live/beta.example.org/fullchain.pem`
+and `--cert-key /etc/letsencrypt/live/beta.example.org/privkey.pem`.
 
 **Option B: reuse the certificate step 1 found.** Use its paths as they are, and skip stage 1.
 For a certbot certificate, `sudo certbot certificates` gives them: its `Certificate Path` is
@@ -639,7 +666,7 @@ cd "$RM_SRC"
 # option B: stage 1 was skipped, so this is a new file and must not exist yet
 [ "$TLS_OPTION" = B ] && rm_absent "$NGINX_SITE" "$NGINX_LINK" && sudo install -m 644 "$RM_STATE/routemaker-beta.full.conf" "$NGINX_SITE" && { [ "$NGINX_LINK" = "$NGINX_SITE" ] || sudo ln -s "$NGINX_SITE" "$NGINX_LINK"; }
 sudo nginx -t && sudo nginx -s reload                                   # -t must say "syntax is ok" and "test is successful"
-curl -s -m 10 -o /dev/null -w '%{http_code}\n' https://routemaker.cieply.com/   # must print 401 at once; 403 or 404: nginx cannot serve the sign-in page (step 10, "If the 401 lines fail"); 000: no answer (TLS, listen or DNS): take the site offline with rollback D and report
+curl -s -m 10 -o /dev/null -w '%{http_code}\n' https://beta.example.org/   # must print 401 at once; 403 or 404: nginx cannot serve the sign-in page (step 10, "If the 401 lines fail"); 000: no answer (TLS, listen or DNS): take the site offline with rollback D and report
 ```
 
 `--no-ipv6` drops the `listen [::]:80` and `listen [::]:443` lines: give it when step 1 found no
@@ -673,7 +700,7 @@ site's own pages.
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
 cd "$RM_SRC"
-scripts/beta/smoke-test.sh --public https://routemaker.cieply.com --passwords-file ~/routemaker-beta-passwords.txt
+scripts/beta/smoke-test.sh --public https://beta.example.org --passwords-file ~/routemaker-beta-passwords.txt
 ```
 
 (It signs in as the first tester in the file, reading the password itself and passing it to curl on
@@ -821,7 +848,7 @@ docker image rm ghcr.io/macrophage87/routemaker-api:<TAG>
 # destructive, owner's say-so: the data and the checkout
 sudo rm -rf /data/routemaker /data/routemaker-incoming /data/routemaker-src /var/www/routemaker-acme "$HOME/routemaker-beta-state"
 # only if Option A created it and nothing else uses it:
-sudo certbot delete --cert-name routemaker.cieply.com
+sudo certbot delete --cert-name beta.example.org
 ```
 
 ## Shipping an update later
@@ -843,6 +870,26 @@ When you are done, tell it what is running (`... mark-deployed vX.Y.Z` for a rel
 data only), then `... resume`. `mark-deployed` also reads the report link from `$RM_DATA/frontend/beta-build.txt`,
 so if that ship used another `--report-url`, the agent's next front-end build keeps it (check with
 `... status`, or set it with `... set-report-url URL|none`).
+
+**Once, on the first update to v0.7.0** (owner and server steps, in this order):
+
+1. Add `RM_BETA_HOST=<the beta's name>` to `$RM_SRC/.env`. The name is no longer in the
+   repository: without the line `render-nginx.sh`, `smoke-test.sh --local` and the deploy agent stop
+   with a message naming `RM_BETA_HOST`.
+2. The release changes compose `image:` lines (each third-party image now carries its digest) and
+   the nginx template, so the deploy gate stops it: ship it by hand as below, then re-render nginx
+   (step 9 of "A new release sha" below), which adds the error-log rule for the newer place-bearing api paths.
+3. Sign everyone out once, after the api is up (backups no longer carry Django's session
+   table; sessions written before were in the old dumps):
+   `scripts/beta/beta-compose.sh exec -T api ./manage.py shell -c "from django.contrib.sessions.models import Session; Session.objects.all().delete()"`.
+4. Tighten what is already on disk (new files get these modes by themselves):
+   `chmod 700 "$RM_DATA/backups"` and `chmod 600 "$RM_DATA"/backups/*` (with sudo where root owns them).
+5. The v0.7.0 data bundle was built on the cloud box at commit `4f34f76d`, not the release's, so its
+   data update takes `--allow-sha-mismatch`:
+   `scripts/cloud/import-result.sh --beta --allow-sha-mismatch [--swap] "$RUN_URL"`, which passes it to
+   `receive-data.sh` (run by hand, `receive-data.sh --bundle "$RM_INCOMING" --env-file .env
+   --allow-sha-mismatch verify`, and the same for `files` and `db`). At home, that run's
+   `import-result.sh` takes the same flag (OPERATIONS.md, "Rebuilding on the cloud box").
 
 **New data only** (a fresh build of the tiles, database or Photon index, same release):
 
@@ -968,6 +1015,10 @@ live within about 10 minutes, and nothing after it checks what a screen reader h
   handout to the testers once it is deployed, adding the update hours if `RM_CD_WINDOW` is set
   (the sender's notes at its top say how).
 
+- The tagged commit carries the release's version in `pyproject.toml` (`version`) and
+  `src/routemaker/__init__.py` (`__version__`): bump both in the release's last commit
+  (tests/test_deploy_docs.py checks that they agree).
+
 ```sh
 # at home, on the owner's go:
 git tag -a v0.2.0 -m "RouteMaker 0.2.0" <the main commit>
@@ -1009,13 +1060,14 @@ A tag is never moved or reused: a fix is the next patch number. The agent's scri
 | A change to | Means | What the agent does |
 | --- | --- | --- |
 | docs, reports, `*.md`, `.github/`, fixtures | nothing on the server | ignored |
-| `src/` (not the items below), `frontend/`, `scripts/`, the api Dockerfile, requirements | a code release | deploys |
+| `src/` (not the items below), `frontend/`, `scripts/` | a code release | deploys |
 | `src/*/migrations/` | a migration | deploys; migrate runs after the pre-release snapshot |
 | `valhalla/*.json`, only keys a router reads at start (`logging`, `loki`, `thor`, `service_limits`, `httpd`, `odin`, `meili`, `statsd`, mjolnir's cache keys) | a router setting | deploys, then restarts the four routers (never the offroad one, which does not run on the beta; a runtime-only change to `valhalla/valhalla-offroad.json` restarts nothing) |
 | compose files, other than the lines below | a stack setting | deploys if the compose gate passes, then `up -d` photon and the routers (recreates only those whose settings changed) |
 | `deploy/` (the nginx template, the 401 and 502 pages, the env template) | owner steps with sudo | **stops** |
 | `scripts/prepare_data_root.sh`, a compose line adding a `DATA_ROOT` path | a data directory with sudo | **stops** |
-| a compose `image:` line, `docker/valhalla*`, `docker/photon*`, `docker/postgis*` | a third-party image to pull, maybe a data mismatch | **stops** |
+| a compose `image:` line | a third-party image to pull, maybe a data mismatch | **stops** |
+| `docker/api.Dockerfile`, `docker/requirements*.txt`, `docker/api-entrypoint.sh` | a new base image, system package or dependency in the api image | **stops** |
 | `lua/`, `valhalla/vendor/`, any other `valhalla/*.json` key (graph build), `src/pipeline/schema.py`, `variants.py`, `tiles.py` | new data from home | **stops** |
 | `FORMAT_VERSION` in `src/core/stress_tiles.py` or `src/core/mass_tiles.py` | a new tile format (the cache is keyed on it; no data from home) | deploys, then the agent runs the step 8 pre-draw (`predraw_stress_tiles`, which draws both tile sets) and waits for it. The release is already live and smoke-tested by then, so a pre-draw that fails or runs out of its budget is a warning in the report, not a rollback: the tiles not yet drawn are drawn on request |
 | a migration that names the live schema, or a migration removed | data from home | **stops** |
@@ -1125,7 +1177,7 @@ Optional settings, appended to `vars.sh` like any later decision (never a secret
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
-| `export RM_CD_WINDOW=02-06` | any hour | local hours in which a deploy may start (the two hours differ; `22-04` wraps past midnight). Recommended: a deploy stops the api and worker while it builds (step 6), so a window keeps the builds and the downtime to quiet hours |
+| `export RM_CD_WINDOW=02-06` | any hour | Washington hours (America/New_York, whatever the host's zone) in which a deploy may start, never from 5 minutes before the nightly backup to 30 after it (06:55 to 07:30 UTC for `NIGHTLY_BACKUP_CRON`'s 07:00, read from the checkout; the two hours differ; `22-04` wraps past midnight). A host without time zone data (tzdata) reports a set window as an error. Recommended: a deploy stops the api and worker while it builds (step 6), so a window keeps the builds and the downtime to quiet hours |
 | `export RM_CD_DOCKER_FREE_GIB=5` | `3` | GiB that must be free on Docker's root (`docker info`) before a deploy; less, and the release waits |
 | `export RM_CD_REQUIRE_SIGNED_TAGS=1` | `0` | also require a good tag signature |
 | `export RM_CD_KEEP=5` | `3` | release snapshots kept in `$RM_STATE/cd/backups` (each about 200 MB, on `$HOME`'s disk) |
@@ -1214,6 +1266,11 @@ removes the agent, its logs and its snapshots (owner's say-so: they hold databas
   the arithmetic.
 - **Overrides:** the beta's `override` table comes from home. `db --update-data` replaces it with home's, so an
   override made on the beta does not survive a data update (the `pre-update` dump keeps it). Curate overrides at home.
+- **Review is home's only:** its lists are never shipped and the beta has no rebuild reports to compute them, and a
+  ruling made here would go with the next data update like any override. Rule at home (OPERATIONS.md, "Review mode:
+  shipping and its lists").
+- **Link previews are inert here** while the basic auth covers `/s/`: a chat app's fetcher is refused, so a shared link
+  shows as a bare link. Opening it in a browser (signed in to the beta) works.
 - **Photon's memory margin (review r1, N8):** heap 896M + direct buffers 192M + about 192M of other native memory is
   1280M of the 1300M cap; the 192M is an estimate. On the first smoke run, report photon's anonymous memory
   (`docker exec <photon container> sh -c 'cat /sys/fs/cgroup/memory.current; grep -E "^(anon|file) " /sys/fs/cgroup/memory.stat'`;
@@ -1226,8 +1283,9 @@ removes the agent, its logs and its snapshots (owner's say-so: they hold databas
   `cpu_shares` to 256 (weight about 10) in `compose.beta.yaml`.
 - **Accounts:** the beta has its own, none from home (OWNER-DECISIONS 367.3). Data updates (`db --update-data`) never touch
   them; only `db --replace-db --delete-beta-accounts` or rollback B/C to a dump from before they existed removes them.
-- **Backups:** the worker writes a nightly dump to `$RM_DATA/backups` (seven kept, about 200 MB each, without sessions or
-  client-address rows). They are on the same disk; copying them off the server is the owner's decision.
+- **Backups:** the worker writes a nightly dump to `$RM_DATA/backups` (seven kept, about 200 MB each, without the
+  `BACKUP_EXCLUDED_TABLES` in `config/procrastinate.py`: both session tables, client-address rows and caches). Dumps
+  written before v0.7.0 still carry Django's session table, so the release flushes the beta's sessions once. They are on the same disk; copying them off the server is the owner's decision.
 - **Reboot:** containers restart with Docker (`unless-stopped`). `RESTART_POLICY` stays unset in `.env`, because
   `no` is the home Docker Desktop machine's setting: `beta-compose.sh` refuses a value other than empty or
   `unless-stopped` in `.env` and in the shell, and the checker refuses it in `.env` and in the rendered config.
@@ -1251,8 +1309,10 @@ removes the agent, its logs and its snapshots (owner's say-so: they hold databas
   Exporting `DATA_ROOT`, `TAG` or a `BETA_...` value in your shell changes nothing; edit `.env` and rerun the gate.
 - **Logs:** `scripts/beta/beta-compose.sh logs --tail 100 api`. Access logs carry no query strings or addresses by design:
   the api's gunicorn log and nginx's `/var/log/nginx/rmbeta-access.log` keep the method, the path, the status and the time,
-  with no query string, no client address and no tester name. Reverse look-ups and searches (`/api/reverse`,
-  `/api/geocode`, whose queries hold a location) log nginx errors at `crit` only, to `/var/log/nginx/rmbeta-error.log`, so
+  with no query string, no client address and no tester name. The paths whose queries hold a place (`/api/reverse`,
+  `/api/geocode`, `/api/segment-info`, `/api/street-photo`, `/api/junction-suggestions/at`,
+  `/api/stress-suggestions/ticket`, `/api/stress-suggestions/mine`, `/api/transit/station-times`, `/api/bikeshare/docks`,
+  and Review's `/api/review/items`, `/api/review/map`, `/api/review/next`, `/api/review/road/<way>` and `/api/review/street-photo`) log nginx errors at `crit` only, to `/var/log/nginx/rmbeta-error.log`, so
   a 502 or 504 there leaves no error-log line; `rmbeta-access.log` still shows the status and the time (about 0 s:
   the api was down; about 75 s: it timed out), and for a 502 the api's own log usually has nothing, because the
   request never reached it. The time in the nginx and gunicorn logs is the whole request's, not one router call's. Upstream errors on every other path still go to the
@@ -1261,10 +1321,10 @@ removes the agent, its logs and its snapshots (owner's say-so: they hold databas
 - **No rebuild runs here.** There is no rebuild container, and `WEEKLY_REBUILD_PAUSED=1` is set so that a rebuild
   worker started by mistake would only record a pause. New routing data always comes from home as a bundle. Expected,
   and not a fault: the worker's schedule still queues the weekly tick, and with no rebuild worker to take it one
-  `weekly_rebuild` job waits on the `rebuild` queue (its queueing lock keeps it to one), and `check_operations` and
-  the admin's operations page list `weekly_rebuild` as stale, from about eight days after setup (its
-  staleness window runs from the deployment; nothing shows in the first week). Do not start a rebuild worker to
-  clear either. **Never run `run_rebuild_now` here** (for example `beta-compose.sh exec worker ./manage.py
+  `weekly_rebuild` job waits on the `rebuild` queue (its queueing lock keeps it to one). `check_operations` and
+  the admin's operations page list `weekly_rebuild` as **paused**, not stale, while `WEEKLY_REBUILD_PAUSED` is set
+  (from v0.7.0; before it, they called it stale from about eight days after setup), and the free-space check drops
+  the rebuild's 20 GiB floor. Do not start a rebuild worker to clear the waiting job. **Never run `run_rebuild_now` here** (for example `beta-compose.sh exec worker ./manage.py
   run_rebuild_now`): a hand-fired rebuild ignores the pause by design, and the wrapper does not catch it.
 - **`scripts/boot/` is for the home machine only.** Never install its unit or run `start-stack.sh` here (step 1).
 - **What the bundle holds** (sizes measured 2026-10-04): the four routing graphs' `tiles.tar` and sqlite files 2.2 GB

@@ -282,18 +282,20 @@ class TestCache:
 
 @db
 class TestDrawSlots:
-    def test_a_draw_with_the_pool_full_is_refused_at_once(self, client, live) -> None:
+    def test_a_draw_with_the_pool_full_is_refused_at_once(self, client, live, monkeypatch) -> None:
+        # "At once" as an outcome, not a stopwatch (tests-7): the slots are tried without
+        # waiting (pg_try_advisory_lock), and nothing is drawn.
+        drawn = []
+        monkeypatch.setattr(stress_tiles, "render", lambda *a, **k: drawn.append(a))
         other = hold_slots(deployment_slots())
         try:
-            started = time.monotonic()
             refused = client.get(url(*TILE), HTTP_X_FORWARDED_FOR="198.51.100.70")
-            took = time.monotonic() - started
         finally:
             other.close()
         assert refused.status_code == 503
         assert refused["Retry-After"] == "1"
         assert "no-store" in refused["Cache-Control"]
-        assert took < 1
+        assert drawn == []
         assert rows() == 0
         assert our_advisory_locks() == 0
 
@@ -450,11 +452,14 @@ class TestPredrawProbes:
         oid, _ = stress_tiles.live_table()
         calls = []
         lock = threading.Lock()
+        # Each worker holds a tile when the promotion shows: none returns until all have one
+        # (a barrier, not a sleep; tests-7). A worker that drew a second tile breaks it.
+        holding = threading.Barrier(workers, timeout=10)
 
         def promoted(*args, **kwargs):
             with lock:
                 calls.append(args)
-            time.sleep(0.05)  # each worker holds a tile when the promotion shows
+            holding.wait()
             return oid + 1, b"new-table"
 
         monkeypatch.setattr(stress_tiles, "render", promoted)

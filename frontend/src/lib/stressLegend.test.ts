@@ -89,7 +89,7 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
   assert.ok(hint.includes(everyTrailFrom(STRESS_ZOOMS.ride)));
   assert.equal(
     everyTrailFrom(12),
-    "Paths on local routes and other connected paths show from zoom 12; every short path shows from zoom 14, and mountain-bike trails too when their layer is on.",
+    "Paths on local routes and other connected paths show from zoom 12; every short path shows from zoom 14. Mountain-bike trails show from zoom 12 when their layer is on.",
   );
   // OWNER-DECISIONS 391: zoom 12-13 is where to ride, and says what waits for zoom 14.
   assert.ok(hint.includes(rideLayerText(STRESS_ZOOMS.ride, STRESS_ZOOMS.quiet)));

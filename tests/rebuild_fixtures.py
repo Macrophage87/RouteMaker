@@ -331,6 +331,7 @@ def write_reference_data(
     crossings=(),
     roadway=(),
     pavement=(),
+    agency_lts=(),
 ) -> Path:
     """The reference inputs the rebuild refuses to run without.
 
@@ -367,6 +368,9 @@ def write_reference_data(
     # classifies from OSM and the defaults, and warns.
     if roadway:
         (directory / "roadway.json").write_text(json.dumps(list(roadway)))
+    # The agency bicycle stress layers (v0.7.0, `pipeline.agency_ratings`), optional too.
+    if agency_lts:
+        (directory / "agency-lts.json").write_text(json.dumps(list(agency_lts)))
     # DDOT's PCI blocks (DC-PCI), optional too.
     if pavement:
         (directory / "pavement.json").write_text(json.dumps(list(pavement)))
@@ -847,6 +851,15 @@ def install_source_extract(directory: Path, build=build_toy_extract, **kwargs) -
     build(clipped, **kwargs)
     # The merged file carries the state boundaries the rebuild reads.
     add_state_boundaries(clipped, directory / source_module.MERGED_NAME)
+    # And the record of what they were made from, as the stage writes it for this
+    # deployment's settings, so the reuse is the made-from check's as well as the age's.
+    from django.conf import settings
+
+    source_module.write_made_from(
+        directory,
+        settings.SOURCE_EXTRACT_URLS,
+        settings.COVERAGE_POLYGON or tuple(settings.COVERAGE_BBOX),
+    )
     return clipped
 
 

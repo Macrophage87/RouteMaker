@@ -83,7 +83,7 @@ test("no more than the API's twenty-five points", () => {
 });
 
 test("the coverage box is the settings' one and clicks outside it are refused", () => {
-  assert.deepEqual(COVERAGE_BBOX, [-78.0, 38.2, -76.02, 39.72]);
+  assert.deepEqual(COVERAGE_BBOX, [-78.05, 38.2, -76.02, 39.72]);
   assert.equal(insideCoverage(DUPONT), true);
   assert.equal(insideCoverage([-76.61, 39.29]), true); // Baltimore
   assert.equal(insideCoverage([-75.5, 39.0]), false); // east

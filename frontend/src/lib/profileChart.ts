@@ -649,12 +649,25 @@ export function positionAfterKey(key: string, at: number, totalM: number, target
   }
 }
 
+// The metres along a line to each vertex, worked out once per line: the chart's scrub asks on every
+// pointer move (review fe-perf-2). A route's coordinates are never changed in place.
+const lengthsOf = new WeakMap<readonly LonLat[], number[]>();
+
+function cumulativeLengths(coordinates: readonly LonLat[]): number[] {
+  let lengths = lengthsOf.get(coordinates);
+  if (!lengths) {
+    lengths = [0];
+    for (let i = 1; i < coordinates.length; i += 1) lengths.push(lengths[i - 1] + haversineM(coordinates[i - 1], coordinates[i]));
+    lengthsOf.set(coordinates, lengths);
+  }
+  return lengths;
+}
+
 /** The map point a distance along the route's line; `lineM` is the line's own length, so it is scaled onto the API's distance. */
 export function lonLatAt(coordinates: readonly LonLat[], metres: number, totalM: number): LonLat | null {
   if (coordinates.length === 0) return null;
   if (coordinates.length === 1) return coordinates[0];
-  const lengths: number[] = [0];
-  for (let i = 1; i < coordinates.length; i += 1) lengths.push(lengths[i - 1] + haversineM(coordinates[i - 1], coordinates[i]));
+  const lengths = cumulativeLengths(coordinates);
   const lineM = lengths[lengths.length - 1];
   if (lineM <= 0) return coordinates[0];
   const target = Math.min(Math.max(totalM > 0 ? (metres / totalM) * lineM : 0, 0), lineM);

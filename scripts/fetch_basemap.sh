@@ -58,7 +58,7 @@ ASSETS_URL="https://github.com/protomaps/basemaps-assets/archive/${ASSETS_COMMIT
 PROTOMAPS_BUILD="20260926"
 # settings.COVERAGE_BBOX, west,south,east,north; tests/test_basemap.py holds
 # the two equal.
-BBOX="-78.0,38.2,-76.02,39.72"
+BBOX="-78.05,38.2,-76.02,39.72"
 
 usage() {
 	echo "usage: DATA_ROOT=<path> fetch_basemap.sh [--build YYYYMMDD] [--print-stamps]" >&2

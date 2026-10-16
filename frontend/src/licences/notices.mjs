@@ -12,7 +12,9 @@
  *   package's own "author" field names, since the upstream repositories'
  *   LICENSE files were not fetched (recorded as an owner item: check the
  *   holder and year against github.com/protomaps/PMTiles and
- *   github.com/protomaps/basemaps before the site is public).
+ *   github.com/protomaps/basemaps before the site is public). qrcode-generator
+ *   (MIT, the share card's QR code) ships none either: its notice is the MIT
+ *   text with the holder and year its own source header names.
  * - maplibre-gl ships a prebuilt bundle with about seventeen packages inlined
  *   (@maplibre/mlt, earcut, pbf, ...), which Vite sees as maplibre-gl alone.
  *   maplibre-gl's own LICENSE.txt does not cover them. Which packages are in
@@ -37,6 +39,7 @@ export const COMMITTED_NOTICES = {
   pmtiles: "notices/pmtiles.txt",
   "@protomaps/basemaps": "notices/protomaps-basemaps.txt",
   "murmurhash-js": "notices/murmurhash-js.txt",
+  "qrcode-generator": "notices/qrcode-generator.txt",
 };
 
 /** The package a source-map path under node_modules belongs to, or null. */

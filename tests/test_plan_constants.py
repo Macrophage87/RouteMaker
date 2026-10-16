@@ -84,6 +84,8 @@ def test_the_target_distance_defaults_and_bounds() -> None:
     assert _ts(DIALS_TS, "TARGET_MAX_M") == 1_000_000
     assert _ts(DIALS_TS, "DEFAULT_CEILING_RATIO") == 1.6
     assert _ts(DIALS_TS, "TARGET_CEILING_RATIO") == 1.25
+    # v0.7.0, Novice and Nervous: short detours, 1.4x.
+    assert _ts(DIALS_TS, "NOVICE_CEILING_RATIO") == presets.NOVICE_CEILING_RATIO == 1.4
 
 
 def test_the_diminishing_returns() -> None:

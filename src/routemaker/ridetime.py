@@ -103,13 +103,19 @@ def federal_holidays(year: int) -> set[date]:
     }
 
 
+def is_federal_holiday(day: date) -> bool:
+    """Whether `day` is a federal holiday as observed, the next year's included: New Year's
+    Day on a Saturday is observed on December 31 (2027-12-31, for 2028)."""
+    return day in federal_holidays(day.year) or day in federal_holidays(day.year + 1)
+
+
 def when_at(moment: datetime) -> str:
     """The setting a moment falls in, read in the region's time."""
     local = moment.astimezone(ZONE)
     minute = local.hour * 60 + local.minute
     if minute >= NIGHT_START or minute < NIGHT_END:
         return NIGHT
-    if local.weekday() >= 5 or local.date() in federal_holidays(local.year):
+    if local.weekday() >= 5 or is_federal_holiday(local.date()):
         return WEEKEND
     if any(start <= minute < end for start, end in RUSH_WINDOWS):
         return WEEKDAY_RUSH
@@ -217,11 +223,6 @@ def condition_intervals(condition: str) -> list[tuple[int, int]]:
         for rule in re.split(r",\s+(?=[A-Z])", group):
             intervals.extend(_rule_intervals(rule))
     return intervals
-
-
-def holds_at(condition: str, weekday: int, minute: int) -> bool:
-    moment = weekday * 1440 + minute
-    return any(start <= moment < end for start, end in condition_intervals(condition))
 
 
 def branches(value: str | None) -> list[tuple[str, str]]:

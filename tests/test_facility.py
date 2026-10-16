@@ -230,6 +230,9 @@ def test_car_free_when_needs_a_bicycle_and_a_road():
         (datetime(2026, 5, 18, 8, 0, tzinfo=ridetime.ZONE), "weekday_rush"),
         (datetime(2027, 5, 31, 8, 0, tzinfo=ridetime.ZONE), "weekend"),
         (datetime(2027, 5, 24, 8, 0, tzinfo=ridetime.ZONE), "weekday_rush"),
+        # New Year's Day 2028 is a Saturday, observed Friday 31 December 2027 (TB-11).
+        (datetime(2027, 12, 31, 8, 0, tzinfo=ridetime.ZONE), "weekend"),
+        (datetime(2027, 12, 30, 8, 0, tzinfo=ridetime.ZONE), "weekday_rush"),
     ],
 )
 def test_when_at(moment, when):
@@ -951,3 +954,60 @@ def test_a_timed_closure_buses_still_run_through_is_never_car_free():
     assert car_free_when(tags) == frozenset()
     del tags["bus"]
     assert car_free_when(tags) == {"weekend", "weekday_rush", "weekday_offpeak", "night"}
+
+
+# --- An unnamed bike lane beside a named street (v0.7.0 "Go riding fixes" item 4) ----------
+
+# 9th Street NW runs north-south; a metre of longitude here is about 1/86,700 of a degree.
+_LON_M = 1 / 86_700.0
+NINTH = [(-77.0240, 38.9100), (-77.0240, 38.9140)]
+
+
+def _east(points, metres):
+    return [(lon + metres * _LON_M, lat) for lon, lat in points]
+
+
+def test_an_unnamed_cycleway_beside_a_named_street_is_its_bike_lane() -> None:
+    street = (1, {"highway": "secondary", "name": "9th Street Northwest"}, NINTH)
+    lane = (2, {"highway": "cycleway"}, _east(NINTH, 8))
+    names = facility_rules.side_street_names([street, lane])
+    assert names == {2: "9th Street Northwest bike lane"}
+
+
+@pytest.mark.parametrize(
+    "tags",
+    [
+        {"highway": "cycleway", "segregated": "yes"},
+        {"highway": "cycleway", "separation": "flex_post"},
+        {"highway": "path", "bicycle": "designated", "separation:left": "kerb"},
+    ],
+)
+def test_a_separated_or_segregated_one_is_a_protected_bike_lane(tags) -> None:
+    street = (1, {"highway": "secondary", "name": "9th Street Northwest"}, NINTH)
+    names = facility_rules.side_street_names([street, (2, tags, _east(NINTH, 6))])
+    assert names == {2: "9th Street Northwest protected bike lane"}
+
+
+def test_a_named_far_crossing_leaving_or_alley_side_way_is_not_named() -> None:
+    street = (1, {"highway": "secondary", "name": "9th Street Northwest"}, NINTH)
+    named = (2, {"highway": "cycleway", "name": "Metropolitan Branch Trail"}, _east(NINTH, 8))
+    far = (3, {"highway": "cycleway"}, _east(NINTH, 40))
+    # Crossing the street east-west: within 20 m only where it crosses, and not parallel.
+    across = (4, {"highway": "cycleway"}, [(-77.0245, 38.9120), (-77.0235, 38.9120)])
+    # Along it for only a short way, then off to the east.
+    leaving = (
+        5,
+        {"highway": "cycleway"},
+        [(-77.0240 + 8 * _LON_M, 38.9100), (-77.0240 + 8 * _LON_M, 38.9104), (-77.0180, 38.9112)],
+    )
+    # Beside an alley (a service road), which no rider knows by name.
+    alley = (6, {"highway": "service", "name": "Blagden Alley"}, _east(NINTH, 200))
+    by_alley = (7, {"highway": "cycleway"}, _east(NINTH, 208))
+    ways = [street, named, far, across, leaving, alley, by_alley]
+    assert facility_rules.side_street_names(ways) == {}
+
+
+def test_a_sidewalk_a_bicycle_may_not_ride_is_not_a_bike_lane() -> None:
+    street = (1, {"highway": "secondary", "name": "9th Street Northwest"}, NINTH)
+    sidewalk = (2, {"highway": "footway", "footway": "sidewalk"}, _east(NINTH, 8))
+    assert facility_rules.side_street_names([street, sidewalk]) == {}

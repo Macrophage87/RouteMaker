@@ -16,6 +16,7 @@ import type { LonLat } from "./geo.ts";
 import { reverseKeepsStart } from "./loop.ts";
 import type { PresetId } from "./presets.ts";
 import { pointName } from "./summary.ts";
+import { withVias } from "./pointKinds.ts";
 
 export const BEST_ORDER_LABEL = "Best order";
 
@@ -173,6 +174,11 @@ export interface OrderAsked {
   preset: PresetId;
   dials: Dials;
   loop: boolean;
+  /**
+   * The ride without its via points (lib/pointKinds.ts stopsOnly; v0.7.0 "Best order moves stops only"), when
+   * it has any: the order asked for is of these, and each via point moves with the stop it leads to.
+   */
+  stops?: { points: readonly LonLat[]; leading: readonly LonLat[][] };
 }
 
 /**
@@ -190,11 +196,13 @@ export function applyAnswer(
     return { say: "The ride changed while the best order was being found. Press Best order again." };
   }
   if (!result.ok) return { say: result.message };
-  if (!fitsOrder(result.answer.order, asked.points, asked.loop)) {
+  const ordered = asked.stops?.points ?? asked.points;
+  if (!fitsOrder(result.answer.order, ordered, asked.loop)) {
     return { say: "Best order not found. The planner's answer did not fit these points; try again." };
   }
-  const say = bestOrderSaid(asked.points, result.answer, names, asked.loop);
-  return result.answer.changed ? { commit: reorderedPoints(asked.points, result.answer.order), say } : { say };
+  const say = bestOrderSaid(ordered, result.answer, names, asked.loop);
+  if (!result.answer.changed) return { say };
+  return { commit: asked.stops ? withVias(result.answer.order, asked.stops) : reorderedPoints(asked.points, result.answer.order), say };
 }
 
 export const FINDING_ORDER_SAID = "Finding the best order for the stops.";

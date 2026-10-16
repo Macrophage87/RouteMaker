@@ -68,7 +68,11 @@ import { MassRideCharts } from "./MassRideCharts.tsx";
 /** The vertical layout of each chart, in viewBox units. */
 const LAYOUT = {
   stress: { height: 152, elevTop: 10, elevBottom: 98, stripTop: 108, stripBottom: 120, axisY: 140 },
-  calm: { height: 202, elevTop: 10, elevBottom: 84, markerY: 95, calmTop: 106, calmBottom: 166, axisY: 188 },
+  // Go's chart: the elevation alone, so it stays short in the half sheet (the stress bar is just above it).
+  compact: { height: 104, elevTop: 10, elevBottom: 74, axisY: 92 },
+  // The rolling stress part sits 14 units lower than it did, so its "calm mi per mi" title clears the
+  // elevation's bottom label "(18 m)" at phone width (Stephen 2026-10-13: "The text is bunched together").
+  calm: { height: 216, elevTop: 10, elevBottom: 84, markerY: 109, calmTop: 120, calmBottom: 180, axisY: 202 },
 } as const;
 
 interface ChartProps {
@@ -78,6 +82,12 @@ interface ChartProps {
   onScrub?: (point: LonLat | null) => void;
   /** A Mass Ride's anticipated ride size, riders (the corker load's group length). */
   rideSize?: number;
+  /**
+   * Go's chart (Stephen 2026-10-13: "on Go, add an elevation chart"): the elevation plot and the reading
+   * under it only (Go's stress bar is just above). The summary and the keys stay for a screen reader; the
+   * rolling stress, the key, the source and the tables are Plan's.
+   */
+  compact?: boolean;
 }
 
 /** The route chart: a Mass Ride's three charts, or every other ride type's elevation and stress. */
@@ -85,7 +95,7 @@ export function ElevationChart(props: ChartProps) {
   return chartKind(props.route) === "mass" ? <MassRideCharts {...props} /> : <StressChart {...props} />;
 }
 
-function StressChart({ route, profile, onScrub }: ChartProps) {
+function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
   const kind = "stress" as const;
   const uid = useId().replace(/[^A-Za-z0-9_-]/g, "");
   const total = axisLength(route, profile);
@@ -110,8 +120,8 @@ function StressChart({ route, profile, onScrub }: ChartProps) {
   }, [active, reading.m, route, total]);
   useEffect(() => () => heard.current?.(null), []);
 
-  const calm = useMemo(() => usableCalm(profile), [profile]);
-  const layout = calm ? LAYOUT.calm : LAYOUT.stress;
+  const calm = useMemo(() => (compact ? null : usableCalm(profile)), [compact, profile]);
+  const layout = calm ? LAYOUT.calm : compact ? LAYOUT.compact : LAYOUT.stress;
   const range = useMemo(() => elevationRange(profile), [profile]);
   const elevTop = layout.elevTop;
   const elevBottom = layout.elevBottom;
@@ -178,8 +188,8 @@ function StressChart({ route, profile, onScrub }: ChartProps) {
   );
 
   return (
-    <div className={`elevation-chart elevation-chart-${kind}`}>
-      <p className="pc-summary" id={`${uid}-summary`}>
+    <div className={`elevation-chart elevation-chart-${kind}${compact ? " elevation-chart-compact" : ""}`}>
+      <p className={compact ? "pc-summary visually-hidden" : "pc-summary"} id={`${uid}-summary`}>
         {summary}
       </p>
       <div
@@ -192,7 +202,7 @@ function StressChart({ route, profile, onScrub }: ChartProps) {
         aria-valuemax={Math.round(total)}
         aria-valuenow={Math.round(spoken.m)}
         aria-valuetext={spoken.text}
-        aria-describedby={`${uid}-keys`}
+        aria-describedby={compact ? `${uid}-summary ${uid}-keys` : `${uid}-keys`}
         onKeyDown={onKeyDown}
         onFocus={() => {
           setFocused(true);
@@ -308,7 +318,7 @@ function StressChart({ route, profile, onScrub }: ChartProps) {
             </g>
           )}
 
-          {!calm && (
+          {!calm && !compact && (
             <g>
               {sections.map((s, i) => (
                 <StripRect key={i} section={s} x0={x(s.from_m)} w={Math.max(x(s.to_m) - x(s.from_m), 0)} uid={uid} />
@@ -327,96 +337,101 @@ function StressChart({ route, profile, onScrub }: ChartProps) {
           {/* The scrub marker: a line through every track, and a ring on the line it reads. */}
           {active !== null && (
             <g className="pc-marker">
-              <line x1={markerX} y1={elevTop - 2} x2={markerX} y2={calmLayout ? calmLayout.calmBottom : LAYOUT.stress.stripBottom + 2} strokeDasharray="3 2" />
+              <line x1={markerX} y1={elevTop - 2} x2={markerX} y2={calmLayout ? calmLayout.calmBottom : compact ? elevBottom : LAYOUT.stress.stripBottom + 2} strokeDasharray="3 2" />
               {elevAtMarker !== null && <circle cx={markerX} cy={plot.y(elevAtMarker)} r="3.5" />}
               {calmY && reading.calm !== null && <circle cx={markerX} cy={calmY(reading.calm)} r="3.5" />}
             </g>
           )}
         </svg>
       </div>
-      <p className="hint pc-keys" id={`${uid}-keys`}>
+      <p className={compact ? "visually-hidden" : "hint pc-keys"} id={`${uid}-keys`}>
         {keys}
       </p>
+      {/* In Go the reading line is kept empty until a touch, so it never moves the sheet under the finger. */}
       <p className="pc-readout" aria-hidden="true">
-        {active === null ? prompt : reading.text}
+        {active !== null ? reading.text : compact ? "" : prompt}
       </p>
-      <ul className="pc-legend" aria-label="Chart key">
-        {GRADE_BANDS.map((band) => (
-          <li key={band.band}>
-            <svg width="14" height="10" aria-hidden="true">
-              <rect width="14" height="10" fill={GRADE_BAND_FILL} />
-              <rect width="14" height="10" fill={`url(#${uid}-${band.pattern})`} />
-            </svg>
-            {band.label}
-          </li>
-        ))}
-        {calm ? (
-          <>
-            <li className="pc-legend-strip">
-              Under the elevation: rolling stress{calm.estimate ? " (an estimate)" : ""}, calm miles per mile (calm km per km) over the mile around each point, on a log scale (1 to 2 is as tall as 5 to 10); about 1 is all quiet streets
-            </li>
-            {CALM_BANDS.map((band) => {
-              const cls = spanClass({ tier: band.tier, facility: "none" });
-              return (
-                <li key={band.index}>
-                  <svg width="14" height="10" aria-hidden="true">
-                    <rect width="14" height="10" fill={cls.color} />
-                    <rect width="14" height="10" fill={`url(#${uid}-t${band.tier})`} />
-                  </svg>
-                  {band.label}
-                </li>
-              );
-            })}
-            <li>
-              <svg width="14" height="10" aria-hidden="true">
-                <path d="M0 7H5V3H14" className="pc-calm-steps" fill="none" />
-              </svg>
-              Dashed steps: each stretch's own figure, without the mile around it
-            </li>
-            <li>
-              <svg width="14" height="10" aria-hidden="true">
-                <path d="M0 5H14" className="pc-calm-guide" fill="none" />
-              </svg>
-              Dotted lines: where the levels change (the solid grey line is 1)
-            </li>
-            {calmAvoids.length > 0 && (
-              <li>
-                <svg width="14" height="10" aria-hidden="true" className="pc-avoid-key">
-                  <rect width="14" height="10" fill={AVOID_FILL} />
-                  <rect width="14" height="10" fill={`url(#${uid}-avoid)`} />
-                  <rect x="0.5" y="0.5" width="13" height="9" fill="none" stroke={AVOID_INK} strokeWidth="1" />
+      {!compact && (
+        <>
+          <ul className="pc-legend" aria-label="Chart key">
+            {GRADE_BANDS.map((band) => (
+              <li key={band.band}>
+                <svg width="14" height="10" aria-hidden="true">
+                  <rect width="14" height="10" fill={GRADE_BAND_FILL} />
+                  <rect width="14" height="10" fill={`url(#${uid}-${band.pattern})`} />
                 </svg>
-                Avoid (A where narrow)
+                {band.label}
               </li>
+            ))}
+            {calm ? (
+              <>
+                <li className="pc-legend-strip">
+                  Under the elevation: rolling stress{calm.estimate ? " (an estimate)" : ""}, calm miles per mile (calm km per km) over the mile around each point, on a log scale (1 to 2 is as tall as 5 to 10); about 1 is all quiet streets
+                </li>
+                {CALM_BANDS.map((band) => {
+                  const cls = spanClass({ tier: band.tier, facility: "none" });
+                  return (
+                    <li key={band.index}>
+                      <svg width="14" height="10" aria-hidden="true">
+                        <rect width="14" height="10" fill={cls.color} />
+                        <rect width="14" height="10" fill={`url(#${uid}-t${band.tier})`} />
+                      </svg>
+                      {band.label}
+                    </li>
+                  );
+                })}
+                <li>
+                  <svg width="14" height="10" aria-hidden="true">
+                    <path d="M0 7H5V3H14" className="pc-calm-steps" fill="none" />
+                  </svg>
+                  Dashed steps: each stretch's own figure, without the mile around it
+                </li>
+                <li>
+                  <svg width="14" height="10" aria-hidden="true">
+                    <path d="M0 5H14" className="pc-calm-guide" fill="none" />
+                  </svg>
+                  Dotted lines: where the levels change (the solid grey line is 1)
+                </li>
+                {calmAvoids.length > 0 && (
+                  <li>
+                    <svg width="14" height="10" aria-hidden="true" className="pc-avoid-key">
+                      <rect width="14" height="10" fill={AVOID_FILL} />
+                      <rect width="14" height="10" fill={`url(#${uid}-avoid)`} />
+                      <rect x="0.5" y="0.5" width="13" height="9" fill="none" stroke={AVOID_INK} strokeWidth="1" />
+                    </svg>
+                    Avoid (A where narrow)
+                  </li>
+                )}
+                <JunctionKey orange={calmMarks.some((p) => p.severity === "orange")} red={calmMarks.some((p) => p.severity === "red")} dot={false} />
+              </>
+            ) : (
+              <li className="pc-legend-strip">Strip under the elevation: traffic stress along the route</li>
             )}
-            <JunctionKey orange={calmMarks.some((p) => p.severity === "orange")} red={calmMarks.some((p) => p.severity === "red")} dot={false} />
-          </>
-        ) : (
-          <li className="pc-legend-strip">Strip under the elevation: traffic stress along the route</li>
-        )}
-      </ul>
-      {!calm && present.length > 0 && (
-        <ul className="pc-tiers" aria-label="Stress on the strip">
-          {present.map((s) => {
-            const cls = spanClass(s);
-            return (
-              <li key={cls.key}>
-                <span
-                  className={`swatch ${s.unpaved ? "pc-swatch-unpaved" : s.tier === 5 ? "stress-seg-5" : s.facility === "path" ? "" : `stress-seg-${s.tier ?? "unknown"}`}`}
-                  style={{ backgroundColor: cls.color, ["--seg-accent" as string]: cls.halo }}
-                  aria-hidden="true"
-                />
-                {capitalise(sectionWords(s) ?? "not rated")}
-              </li>
-            );
-          })}
-        </ul>
+          </ul>
+          {!calm && present.length > 0 && (
+            <ul className="pc-tiers" aria-label="Stress on the strip">
+              {present.map((s) => {
+                const cls = spanClass(s);
+                return (
+                  <li key={cls.key}>
+                    <span
+                      className={`swatch ${s.unpaved ? "pc-swatch-unpaved" : s.tier === 5 ? "stress-seg-5" : s.facility === "path" ? "" : `stress-seg-${s.tier ?? "unknown"}`}`}
+                      style={{ backgroundColor: cls.color, ["--seg-accent" as string]: cls.halo }}
+                      aria-hidden="true"
+                    />
+                    {capitalise(sectionWords(s) ?? "not rated")}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <p className="hint pc-source">{calm ? `Elevation: USGS 3DEP. ${calmSource(calm)}` : "Elevation: USGS 3DEP."}</p>
+          <details className="pc-table-fold">
+            <summary>{tableName}</summary>
+            <Tables profile={profile} kind={kind} spans={route.stress_spans} total={total} />
+          </details>
+        </>
       )}
-      <p className="hint pc-source">{calm ? `Elevation: USGS 3DEP. ${calmSource(calm)}` : "Elevation: USGS 3DEP."}</p>
-      <details className="pc-table-fold">
-        <summary>{tableName}</summary>
-        <Tables profile={profile} kind={kind} spans={route.stress_spans} total={total} />
-      </details>
     </div>
   );
 }

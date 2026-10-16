@@ -10,8 +10,9 @@ the repository's `.gitignore` ignores every directory of that name.
 
 | File | What | Source | Licence | Credit on the map |
 | --- | --- | --- | --- | --- |
-| `water-restrooms.json` | public water (drinking fountains and taps; untreated springs, wells and taps) and public restrooms (flush, portable or pit, type not mapped) in the coverage box | OpenStreetMap, via the project's own extract, by `scripts/build_water_restrooms.py`; plus the open units of `throne-restrooms.json` | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)" |
-| `food.json` | places to eat (restaurants, fast food, cafes, ice cream, pubs, beer gardens, food courts) in the coverage box, for the planner's Find food search | OpenStreetMap, via the project's own extract, by `scripts/build_food.py` | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)" |
+| `water-restrooms.json` | public water (drinking fountains and taps; untreated springs, wells and taps), public restrooms (flush, portable or pit, type not mapped), public bike repair stands, and bike shops (for Go's Repair chip only) in the coverage box | OpenStreetMap, via the project's own extract, by `scripts/build_water_restrooms.py`; plus the open units of `throne-restrooms.json` | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)" |
+| `food.json` | places to eat (restaurants, fast food, cafes, ice cream, pubs, beer gardens, food courts, farm stands and markets) in the coverage box, for the planner's Find food search | OpenStreetMap, via the project's own extract, by `scripts/build_food.py` | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)" |
+| `places.json` | places to see (museums, historic sites, lighthouses, gardens, viewpoints, markets, zoos, waterfalls and peaks, bridges, breweries and wineries) in the coverage box, for Plan's Places to see tab, Go's Sights and the Places to see layer | OpenStreetMap, via the project's own extract, by `scripts/build_places.py` | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)" |
 | `throne-restrooms.json` | Throne smart restrooms (Throne Labs) in DC, Maryland and Virginia: a hand list, read by the build, not by the front end | city, county, parks and news pages, each unit with its URL and the date read; positions from the US Census Bureau geocoder (public domain) for the address each source gives | facts with sources; no third-party database copied (never Google Maps) | none needed; a list unit's card says "From Throne Labs and city sources" |
 
 What counts as drinking or untreated water, how a restroom's type is read
@@ -120,6 +121,9 @@ The file is one point per line, short keys:
 | `op` | `Throne` for a Throne smart restroom |
 | `tu` | the Throne list unit that marked an OSM restroom not tagged a Throne in OSM (so `--throne-only` can unmark it) |
 | `ap` | 1 for an approximate position (a Throne list unit placed from a street address) |
+| `rs` | a public bike repair stand (`amenity=bicycle_repair_station`): its kit as letters, `p` pump, `t` tools, `c` chain tool; `""` when none is mapped |
+| `bs` | 1 for a bike shop (`shop=bicycle`): Go's Repair chip lists it; it is never drawn on the map |
+| `web` | a bike shop's `website` (or `contact:website`), only an `http(s)://` address |
 
 The file also has `"also"`, naming the Throne list as the second source.
 
@@ -159,6 +163,14 @@ It keeps the file's OSM points and replaces its Throne units. An OSM point
 marked as a Throne by its own tags in a full build is matched again only within
 50 ft (15 m) here, as the file does not keep those tags.
 
+### Repair stands and bike shops (v0.7.0)
+
+The v0.7.0 build reads `amenity=bicycle_repair_station` and `shop=bicycle` too
+(the rules are in the script's docstring). The committed file predates that
+change, so it has no stands or shops until the next full build on the build
+host (the command above); until then Go's Repair chip says none are known.
+Record the stand and shop counts the build prints here.
+
 ## Refresh
 
 Rerun the command above on a newer extract. Nothing else changes: the map reads
@@ -184,7 +196,7 @@ One place per line, short keys:
 | --- | --- |
 | `id` | OSM element, `n` node, `w` way or `r` relation, then its id |
 | `x`, `y` | longitude, latitude (5 decimals; a way or relation at its outer ring's mean) |
-| `k` | kind: `r` restaurant, `f` fast food, `c` cafe, `i` ice cream, `p` pub, `b` beer garden, `fc` food court |
+| `k` | kind: `r` restaurant, `f` fast food, `c` cafe, `i` ice cream, `p` pub, `b` beer garden, `fc` food court, `fs` farm stand (`shop=farm`), `m` market (`amenity=marketplace`) |
 | `n` | `name` (or `brand` where there is no name) |
 | `c` | `cuisine`, normalised: lower case, `_` for spaces, `;` between values, no repeats, at most 6 |
 | `h` | `opening_hours`, as mapped |
@@ -219,3 +231,41 @@ inside airports, military sites and prisons, and the file's size (and warns
 over 3,000,000 bytes, as the front end fetches the whole file on the first
 search). Record the counts, size and sha256 here and commit the file. `test_bundled_file_is_well_formed` in
 `tests/test_build_food.py` checks it.
+
+The v0.7.0 build adds farm stands (`shop=farm`, `fs`) and markets
+(`amenity=marketplace`, `m`). The committed file predates that change: the
+next build on the build host adds them; record the counts here.
+
+## Places to see
+
+`places.json` is Plan's Places to see tab, Go's Sights (behind More) and the
+Places to see map layer (`src/lib/places.ts`; the owner, 2026-10-14: "Let's
+categorize by things like museums, lighthouses, gardens, farmers markets,
+etc."). What counts, by category, and what is left out (unnamed places,
+private or unclear access, small plaques, production-only breweries, secured
+sites) is in the docstring of `scripts/build_places.py`.
+
+One place per line, short keys:
+
+| Key | Meaning |
+| --- | --- |
+| `id` | OSM element, `n` node, `w` way or `r` relation, then its id |
+| `x`, `y` | longitude, latitude (5 decimals; a way or relation at its outer ring's mean) |
+| `k` | category: `museum`, `historic`, `lighthouse`, `garden`, `viewpoint`, `market`, `zoo`, `nature`, `bridge`, `drink` |
+| `n` | `name` |
+| `h` | `opening_hours`, as mapped |
+| `web` | `website` (or `contact:website`), only an `http(s)://` address |
+
+### Status
+
+Not built yet: the committed file has no places (the cloud cannot reach the
+extract). The tab, Sights and the layer say so until it is built. On the
+build host, from the repository root:
+
+    .venv311/bin/python scripts/build_places.py \
+        --pbf <DATA_ROOT>/extracts/source.osm.pbf
+
+It prints the places by category, how many were left out inside airports,
+military sites and prisons, and the file's size. Record the counts, size and
+sha256 here and commit the file. `test_bundled_file_is_well_formed` in
+`tests/test_build_places.py` checks it.

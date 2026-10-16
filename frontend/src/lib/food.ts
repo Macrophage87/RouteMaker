@@ -6,7 +6,9 @@
  *
  * The places are amenity-data/food.json, built from the project's own OpenStreetMap extract by
  * scripts/build_food.py (what counts is in its docstring): restaurants, fast food, cafes, ice
- * cream, pubs, beer gardens and food courts, each with its name, its `cuisine` list and, where
+ * cream, pubs, beer gardens and food courts, and (v0.7.0, the owner 2026-10-14: "Add farm stands for
+ * food. Lots of places are selling apples in the fall.") farm stands and markets, drawn with an apple;
+ * each with its name, its `cuisine` list and, where
  * mapped, opening hours and website. No ratings: there is no open source for them, and Google's
  * data is never copied. The file is fetched the first time the rider searches.
  *
@@ -34,7 +36,7 @@
 import { formatDistance, formatDuration, formatExtra, milesFigure } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 
-export type FoodKind = "r" | "f" | "c" | "i" | "p" | "b" | "fc";
+export type FoodKind = "r" | "f" | "c" | "i" | "p" | "b" | "fc" | "fs" | "m";
 
 export interface FoodPlace {
   /** The OSM element: "n123", "w456" or "r789". */
@@ -49,7 +51,13 @@ export interface FoodPlace {
   website?: string;
 }
 
-const KINDS: readonly FoodKind[] = ["r", "f", "c", "i", "p", "b", "fc"];
+const KINDS: readonly FoodKind[] = ["r", "f", "c", "i", "p", "b", "fc", "fs", "m"];
+
+/** Farm stands (OSM shop=farm) and markets (amenity=marketplace): the apple icon, and seasonal hours. */
+export const isFarmFood = (kind: FoodKind): boolean => kind === "fs" || kind === "m";
+
+/** Said for a farm stand or market with no hours mapped: most sell in season only. */
+export const SEASONAL_HOURS = "Hours vary by season.";
 
 export const KIND_LABEL: Record<FoodKind, string> = {
   r: "Restaurant",
@@ -59,6 +67,8 @@ export const KIND_LABEL: Record<FoodKind, string> = {
   p: "Pub",
   b: "Beer garden",
   fc: "Food court",
+  fs: "Farm stand",
+  m: "Market",
 };
 
 // --- The file ------------------------------------------------------------
@@ -153,6 +163,15 @@ export const FOOD_SYNONYMS: Readonly<Record<string, readonly string[]>> = {
   dessert: ["dessert", "ice_cream", "frozen_yogurt", "cake", "donut"],
   vegan: ["vegan"],
   vegetarian: ["vegetarian", "vegan"],
+  // Farm stands and markets (v0.7.0): by kind, whatever their cuisine.
+  apple: ["kind:fs", "kind:m"],
+  farm: ["kind:fs"],
+  "farm stand": ["kind:fs"],
+  "farm shop": ["kind:fs"],
+  produce: ["kind:fs", "kind:m"],
+  market: ["kind:m"],
+  "farmers market": ["kind:m", "kind:fs"],
+  "farmer's market": ["kind:m", "kind:fs"],
 };
 
 /** Lower case, punctuation but ' & - dropped, spaces squeezed: "  Crab-House! " is "crab-house". */
@@ -345,8 +364,15 @@ export function foodHowFar(result: FoodResult): string {
 /** One result in words, as the list shows it and a screen reader reads it. */
 export function foodText(result: FoodResult): string {
   const parts = [`${result.place.name}. ${foodKindText(result.place)}.`, foodHowFar(result)];
-  if (result.place.hours) parts.push(`Hours as mapped: ${result.place.hours}.`);
+  const hours = foodHoursText(result.place);
+  if (hours) parts.push(hours);
   return parts.join(" ");
+}
+
+/** The hours in words: as mapped, or for a farm stand or market with none, that they vary by season. */
+export function foodHoursText(place: FoodPlace): string {
+  if (place.hours) return `Hours as mapped: ${place.hours}.`;
+  return isFarmFood(place.kind) ? SEASONAL_HOURS : "";
 }
 
 export const FOOD_PAGE = 10;

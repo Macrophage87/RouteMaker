@@ -23,7 +23,7 @@ export const RIDE_GROUPS: readonly RideGroup[] = [
   {
     id: "transportation",
     label: "Transportation",
-    ids: ["default", "bike-transit", "bikeshare-transit", "bikeshare", "cargo", "ebike", "kids"],
+    ids: ["default", "bike-transit", "bikeshare-transit", "bikeshare", "cargo", "ebike", "novice"],
   },
   {
     id: "adventure",
@@ -42,11 +42,11 @@ function fold(text: string): string {
   return text.toLowerCase().replace(/[-'’]/g, "");
 }
 
-/** Whether a ride type matches the search: every word of it is in the name (shown or spoken), its keywords or the description. */
+/** Whether a ride type matches the search: every word of it is in the name (shown or spoken), its keywords, summary or description. */
 export function matchesRideType(option: PresetOption, query: string): boolean {
   const words = fold(query).split(/\s+/).filter(Boolean);
   if (words.length === 0) return true;
-  const text = fold(`${option.label} ${option.spoken ?? ""} ${option.keywords ?? ""} ${option.description}`);
+  const text = fold(`${option.label} ${option.spoken ?? ""} ${option.keywords ?? ""} ${option.summary} ${option.description}`);
   return words.every((word) => text.includes(word));
 }
 
@@ -60,6 +60,22 @@ export function filterRideGroups(query: string, presets: readonly PresetOption[]
       return option !== undefined && matchesRideType(option, query);
     }),
   })).filter((group) => group.ids.length > 0);
+}
+
+/** The ride types most riders pick: Go's More ride types shows them first, the groups folded under (review F9). */
+export const COMMON_RIDE_TYPES: readonly PresetId[] = ["default", "novice", "bikeshare", "bike-transit"];
+
+/** Go's More ride types: the common ones, then the groups (without them), folded; a search shows its matches flat. */
+export function rideSections(query: string, presets: readonly PresetOption[] = PRESETS): { common: PresetId[]; groups: RideGroup[]; folded: boolean } {
+  const groups = filterRideGroups(query, presets);
+  if (query.trim() !== "") return { common: [], groups, folded: false };
+  const known = new Set(presets.map((p) => p.id));
+  const common = COMMON_RIDE_TYPES.filter((id) => known.has(id));
+  return {
+    common,
+    groups: groups.map((g) => ({ ...g, ids: g.ids.filter((id) => !common.includes(id)) })).filter((g) => g.ids.length > 0),
+    folded: true,
+  };
 }
 
 /** How many ride types the groups hold. */

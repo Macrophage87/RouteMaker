@@ -146,13 +146,14 @@ body {
 }
 
 /* The skip link (lib/skipLink.ts) and, before it, the accessibility mode switch (lib/accessMode.ts; 455):
-   the page's first two stops, each shown while focused, each at least 44 px tall like the panel's buttons. */
+   the page's first two stops, each shown while focused, each at least 44 px tall like the panel's buttons.
+   Above Go's top bar (.go-top, z-index 10), which painted over them (review UI-1). */
 .access-link,
 .skip-link {
   position: absolute;
   top: 8px;
   left: 8px;
-  z-index: 10;
+  z-index: 20;
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -219,12 +220,6 @@ button.access-link {
 .panel-header h1 {
   margin: 0;
   font-size: 1.25rem;
-}
-
-.tagline {
-  margin: 2px 0 0;
-  color: var(--text-muted);
-  font-size: 0.9rem;
 }
 
 /* The body is a column: the banner, the part that scrolls, then what is pinned under it (the route's
@@ -412,8 +407,7 @@ progress.planning {
 }
 
 /* Live regions that stay in the page while empty (the a11y review's SF3, N8). */
-.dial-rule:empty,
-.federal-status:empty {
+.dial-rule:empty {
   margin: 0;
 }
 
@@ -801,7 +795,8 @@ button.secondary {
   margin-top: 0;
 }
 
-/* The map's center, which Map tools' two actions use, while it is open. */
+/* The map's center, which Map tools' two actions use, while it is open. App.tsx sets left and top to
+   where the centre is drawn (review UI-2); above the panel (z-index 2), so Go's sheet does not hide it. */
 .crosshair {
   position: absolute;
   left: 50%;
@@ -810,7 +805,7 @@ button.secondary {
   height: 28px;
   margin: -14px 0 0 -14px;
   pointer-events: none;
-  z-index: 1;
+  z-index: 3;
   background:
     linear-gradient(#111 0 0) center / 2px 100% no-repeat,
     linear-gradient(#111 0 0) center / 100% 2px no-repeat;
@@ -887,6 +882,115 @@ button.secondary {
   min-height: 44px;
   padding: 4px 10px;
   cursor: pointer;
+}
+
+/* Plan mode's plan panel (v0.7.0): the plan in sentences, Route (or its progress), the change line, Reset and Clear. */
+.plan-panel {
+  display: grid;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border, #d1d5db);
+}
+
+.plan-panel h2 {
+  margin: 0;
+}
+
+.plan-sentences {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.plan-phrase {
+  display: inline;
+  padding: 0;
+  min-height: 0;
+}
+
+.plan-route,
+.plan-routing,
+.plan-change,
+.plan-reset-clear {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.plan-routing progress {
+  flex: 1 1 8rem;
+}
+
+.route-button {
+  min-height: 44px;
+  padding: 0 20px;
+  font-weight: 700;
+}
+
+.route-button[aria-disabled="true"] {
+  opacity: 0.6;
+}
+
+.plan-elapsed {
+  font-variant-numeric: tabular-nums;
+}
+
+.plan-reset-clear button[aria-disabled="true"] {
+  opacity: 0.6;
+}
+
+/* Novice and Nervous's transit offer (v0.7.0): the busy road named, then the two ways round it. */
+.novice-offer {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+/* Each way round beside the bike route: its button, then its one line (time door to door, the stretch avoided). */
+.novice-trips {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.novice-trips li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.novice-trip-note {
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+/* Plan's per-leg details behind the change line's Details. */
+.plan-change-details {
+  margin: 4px 0 0;
+  padding-left: 1.2em;
+  font-size: 0.9em;
+}
+
+/* Go's "Add a stop" with Best order beside it (v0.7.0), under Start in the route sheet. */
+.go-add-stop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.go-add-stop .place-search {
+  flex: 1 1 14rem;
+}
+
+/* A place's "Make this the destination" row (v0.7.0): under its place, indented, still tall enough to tap. */
+.place-results li.place-as-destination {
+  padding-left: 26px;
 }
 
 .place-results li.active,
@@ -1047,6 +1151,23 @@ button.secondary {
   border-radius: 50%;
 }
 
+/* A via point (v0.7.0, "Via points vs stops"): it only shapes the route, so it is a small hollow ring with no
+   number; the line shows through it. A shape, not a colour alone, tells it from a numbered stop. */
+.pin-via.pin-through {
+  background: transparent;
+  width: 14px;
+  height: 14px;
+  border: 3px solid #1d4ed8;
+  box-shadow: 0 0 0 2px #ffffff, 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+
+/* The point menu (v0.7.0): Remove and the switch between a stop and a via point, one under the other. */
+.point-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 /* A via's Remove, beside it on the map. */
 .via-popup .maplibregl-popup-content {
   padding: 4px;
@@ -1099,6 +1220,11 @@ button.secondary {
 }
 
 @media (max-width: 720px) {
+  /* Shortened by the keyboard while a place search has the focus on iOS (lib/keyboardLift.ts, review UI-7). */
+  .app {
+    height: calc(100% - var(--keyboard-lift, 0px));
+  }
+
   .panel {
     top: auto;
     bottom: 0;
@@ -1114,10 +1240,6 @@ button.secondary {
 
   .panel-toggle {
     display: inline-block;
-  }
-
-  .tagline {
-    display: none;
   }
 
   .maplibregl-ctrl-bottom-right,
@@ -1217,7 +1339,7 @@ dialog.ride-types::backdrop {
 }
 
 .ride-type-group h3,
-.ride-group h4 {
+.ride-sheet-group h4 {
   margin: 16px 0 0;
   font-size: 1rem;
 }
@@ -1245,6 +1367,35 @@ dialog.ride-types::backdrop {
 .ride-type-card.current > button,
 .ride-type-card button[aria-pressed="true"] {
   border-color: var(--accent);
+}
+
+/* Go's More ride types: the icon beside the name and its one sentence. */
+.ride-sheet-cards {
+  margin-top: 8px;
+  gap: 8px;
+}
+
+.ride-sheet-cards .ride-type-card > button {
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  align-items: start;
+  min-height: 44px;
+  padding: 10px 12px;
+}
+
+.ride-sheet-cards .ride-card-icon {
+  grid-row: span 2;
+  display: flex;
+  padding-top: 1px;
+}
+
+.ride-sheet-cards .ride-type-card > button > .hint {
+  grid-column: 2;
+}
+
+/* The one in use: a thicker edge as well as the color, so it is not shown by color alone. */
+.ride-sheet-cards .ride-type-card > button[aria-pressed="true"] {
+  box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 .ride-type-loads {
@@ -1765,6 +1916,28 @@ dialog.road-info::backdrop {
   min-height: 44px;
 }
 
+/* The road's street photo (v0.7.0): a short strip, so the panel still fits a phone. */
+.road-info-photo {
+  margin: 8px 0 0;
+}
+
+.road-info-photo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 160px;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.road-info-photo figcaption {
+  margin-top: 4px;
+}
+
+.road-info-photo-none {
+  margin: 8px 0 0;
+}
+
 .road-info-details {
   margin-top: 10px;
   border-top: 1px solid var(--border);
@@ -2004,6 +2177,13 @@ ul.station-links {
    the system's colours: their outlines and borders are real borders, which
    forced colours keeps, and the colours of the rest come from the system. */
 @media (forced-colors: active) {
+  /* A pressed toggle's own colours are replaced too, so it would look like any other button: a ring
+     marks it (review UI-6), leaving the focus ring its own. */
+  [aria-pressed="true"]:not(:focus-visible) {
+    outline: 3px solid ButtonText;
+    outline-offset: -3px;
+  }
+
   .legend svg,
   .stress-list svg,
   .swatch,
@@ -2607,12 +2787,17 @@ details.zoom-notes {
   display: none;
 }
 
+/* Kept in view while a long sheet scrolls, so Back stays one press away (review UI-5). */
 .sheet-header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin: 4px 0 0;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg);
 }
 
 .sheet-header h2 {
@@ -3020,6 +3205,11 @@ details.zoom-notes {
   margin: 0;
   min-height: 2.8em;
   font-size: 13px;
+}
+
+/* Go's chart: one line kept for the reading, so a touch does not move the sheet. */
+.elevation-chart-compact .pc-readout {
+  min-height: 1.4em;
 }
 
 .pc-keys,
@@ -3566,6 +3756,97 @@ details.zoom-notes {
   color: var(--text-muted);
 }
 
+/*
+ * The heading, Settings and the always-visible End ride (Go riding fixes item 6): kept at the top of the
+ * card as it scrolls, so End ride is in view at every size, in Big text and at 200% text. On a narrow
+ * screen the two buttons wrap under the heading rather than overflow.
+ */
+.ride-top {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -10px -14px 4px;
+  padding: 6px 14px 4px;
+  background: var(--bg);
+}
+
+.ride-top .ride-heading {
+  margin: 0;
+}
+
+.ride-top-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* The narrowest phones: Settings is its gear alone (its name stays "Settings"), so the top row stays one line. */
+@media (max-width: 359px) {
+  .ride-settings-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+/* Go's Ride sheet: Start ride for the route its changes planned, set off from the dials above it. */
+.ride-sheet-start {
+  margin-top: 16px;
+}
+
+/* The ride's settings, opened by the top row's Settings, just under it. */
+.ride-mode-settings {
+  margin: 4px 0 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ride .ride-settings-button,
+.ride .ride-end {
+  flex: none;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 6px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+
+/* "Ride ended." with Undo for a few seconds, over the planner (RideMode's RideEnded). */
+.ride-ended {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  box-sizing: border-box;
+  padding: 8px 8px 8px 16px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.ride-ended button {
+  min-height: 44px;
+  padding: 8px 14px;
+}
+
 .cue-next,
 .cue-off {
   display: flex;
@@ -3587,6 +3868,12 @@ details.zoom-notes {
   font-variant-numeric: tabular-nums;
 }
 
+/* GPS weak (RideMode, review RIDE-3): the distance is from the last good fix, so it is greyed; the GPS
+   note under the controls says why. The muted text colour, which keeps its contrast. */
+.cue-distance-weak {
+  color: var(--text-muted);
+}
+
 .cue-text {
   font-size: 1.25rem;
   margin: 2px 0;
@@ -3594,6 +3881,25 @@ details.zoom-notes {
 
 .cue-then {
   margin: 2px 0;
+}
+
+/* The turns ahead while GPS is weak (RideMode's cue sheet): the next one first, larger and bold. */
+.cue-sheet-list {
+  margin: 4px 0;
+  padding-left: 1.5em;
+}
+
+.cue-sheet-list li {
+  margin: 2px 0;
+}
+
+.cue-sheet-next {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.cue-sheet-distance {
+  font-variant-numeric: tabular-nums;
 }
 
 .ride-togo {
@@ -3639,7 +3945,6 @@ details.zoom-notes {
   margin: 6px 0;
 }
 
-.ride-mode-settings > summary,
 .ride-report > summary {
   min-height: 44px;
 }
@@ -4006,13 +4311,15 @@ details.zoom-notes {
   margin-top: 10px;
 }
 
-.suggestion-post label {
+.suggestion-post label,
+.suggestion-verdict label {
   display: block;
   font-weight: 600;
   margin-bottom: 4px;
 }
 
-.suggestion-post textarea {
+.suggestion-post textarea,
+.suggestion-verdict input {
   display: block;
   width: 100%;
   box-sizing: border-box;
@@ -4412,6 +4719,11 @@ details.zoom-notes {
     max-height: calc(100% - 64px);
   }
 
+  /* With the destination line under Go's bar, the bar is taller (review UI-3; the desktop rule below). */
+  .app.go-mode:has(.go-destination) .panel.go-panel.go-full {
+    max-height: calc(100% - 114px);
+  }
+
   .app.go-mode:has(.panel.go-peek) .maplibregl-ctrl-bottom-right {
     bottom: 34%;
   }
@@ -4497,6 +4809,12 @@ details.zoom-notes {
   .app:has(.map-history) .map-chips {
     top: 62px;
   }
+
+  /* On a phone a card opened near the top of the map would sit under the chips and hide its
+     close button; the chips step aside until the card closes. */
+  .app:has(.maplibregl-popup) .map-chips {
+    visibility: hidden;
+  }
 }
 
 /* The Points heading's row: Points, then Swap, Loop, Edit and Info. */
@@ -4515,6 +4833,7 @@ details.zoom-notes {
 .section-tools {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
 }
 
@@ -4617,8 +4936,7 @@ details.fold > summary .icon {
   gap: 6px;
 }
 
-.alert-full,
-.alert-more-body {
+.alert-full {
   flex-basis: 100%;
 }
 
@@ -4659,6 +4977,15 @@ details.fold > summary .icon {
 
 .route-more-body[hidden] {
   display: none;
+}
+
+/* How long a shared link is kept, under Share: its own line so the select and the date stay readable. */
+.share-keep {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  flex-basis: 100%;
 }
 
 /* Go's route: the time first and large, Start full width, then the chips. */
@@ -4869,6 +5196,24 @@ details.fold > summary .icon {
   color: var(--text);
   border: 1px solid var(--swatch-border);
   font-size: 1rem;
+}
+
+/* What a 311 pick did ("Sent to DC 311."), under the button, with "Add a note" (Go riding fixes item 3). */
+.ride-311-said {
+  width: min(16rem, calc(100vw - 24px));
+  padding: 8px 10px;
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+
+.ride-311-said p {
+  margin: 0 0 6px;
+}
+
+.ride-311-said button {
+  min-height: 44px;
 }
 
 /* The road panel's "Suggest a change…": the ways to suggest, shown under it. */
@@ -5253,6 +5598,35 @@ details.fold > summary .icon {
   font-size: 0.9rem;
 }
 
+/* A light time on the route (lib/lightTimes.ts): "Sunset 6:31 PM" where the rider will be then. The
+   map is the light flavour in both themes: dark brown on pale yellow, the same in both. Named for a
+   screen reader (role img); the route summary's line says the same. No animation. It never takes the
+   map's clicks or drags. */
+.light-marker {
+  pointer-events: none;
+}
+/* Under the map's controls (the scale bar, the credits) it is not drawn; it keeps its name. */
+.light-marker.under-controls span {
+  visibility: hidden;
+}
+.light-marker span {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #fff7d6;
+  color: #3f2a00;
+  border: 2px solid #7a5200;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.3;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+}
+.a11y .light-marker span {
+  font-size: 0.9rem;
+}
+
 /* A rail station closed all day: its card says "closed: ..." in words, in a muted colour as well. */
 .station-popup.station-closed .station-name {
   color: var(--text-muted);
@@ -5261,12 +5635,609 @@ details.fold > summary .icon {
 @media (forced-colors: active) {
   .departure-label span,
   .departure-label.close span,
-  .departure-label.missed span {
+  .departure-label.missed span,
+  .light-marker span {
     background: Canvas;
     color: CanvasText;
     border-color: CanvasText;
   }
   .transit-option.chosen {
     border-color: Highlight;
+  }
+}
+
+/* ---- v0.7.0: the others on a ride link, alerts, the closure dialog, saved routes and the Home offer ---- */
+.ride-group {
+  position: absolute;
+  top: 112px;
+  right: 8px;
+  z-index: 9;
+  max-width: min(360px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: none;
+}
+.app.riding .ride-group {
+  top: 64px;
+}
+.ride-group > * {
+  pointer-events: auto;
+}
+.ride-group-bar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.ride-consent,
+.ride-riders-panel,
+.ride-alert-panel,
+.ride-alert-banner {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 10px 12px;
+}
+.ride-consent-choices,
+.ride-alert-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+/* The rider's role (in the one question, and beside "Show me as a dot") and the key of the roles on the ride. */
+.ride-role {
+  border: 0;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.ride-role legend {
+  font-weight: 600;
+  padding: 0;
+}
+.ride-role .toggle,
+.ride-role-key li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ride-role .toggle {
+  min-height: 44px;
+}
+.ride-role-select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-weight: 600;
+}
+.ride-role-select select {
+  min-height: 44px;
+}
+.ride-role-key {
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.ride-role-swatch {
+  flex: none;
+}
+@media (forced-colors: active) {
+  /* The swatches keep the map's colours and shapes (the canvas is not recoloured); their white edge holds on any Canvas. */
+  .ride-role-swatch {
+    forced-color-adjust: none;
+  }
+}
+.ride-alert-banners {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+.ride-alert-banner {
+  background: var(--error-bg);
+  color: var(--error-text);
+  border-color: var(--error-text);
+}
+.ride-alert-banner .call-911 {
+  font-weight: 700;
+  color: inherit;
+  margin-right: 8px;
+}
+
+.closure-dialog {
+  max-width: min(520px, calc(100vw - 32px));
+  background: var(--bg);
+  color: var(--text);
+  border: 2px solid var(--error-text);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+.closure-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+.closure-dialog h2 {
+  margin-top: 0;
+  color: var(--error-text);
+}
+.closure-list {
+  padding-left: 1.2em;
+}
+
+/* Share as image (ShareCardDialog): the choices, the preview at the dialog's width, then the buttons. */
+.share-card-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+.share-card-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+.share-card-dialog h2 {
+  margin-top: 0;
+}
+.share-card-choices {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.share-card-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.share-card-sub {
+  padding-left: 24px;
+}
+.share-card-preview {
+  margin-top: 12px;
+}
+.share-card-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 50vh;
+  margin: 0 auto;
+  border: 1px solid var(--border);
+}
+.share-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.closure-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.my-routes-list {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.my-route {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+.my-route-details,
+.my-route-versions {
+  flex: 1 1 100%;
+}
+/* A closure in force on a saved route (v0.7.0 closures): its own line, said in words, not colour. */
+.my-route-closure {
+  display: block;
+  font-weight: 600;
+}
+.my-route-version-list {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.my-route-version-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+}
+.my-route-actions,
+.my-route-rename,
+.save-route-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 6px;
+}
+.save-route-form {
+  margin-top: 6px;
+}
+.save-route-said:empty {
+  display: none;
+}
+
+/* Go's route chips (review F15): one row at 390 px. The ride type's chip takes what is left and cuts a long name
+   short; Save's name form and its line go under the row, each on a line of its own. */
+.go-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0;
+}
+.go-chips > .chip {
+  flex: none;
+  padding: 0 10px;
+}
+.go-chips > .go-ride-chip {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: max-content;
+}
+.go-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.go-chips > .save-route {
+  display: contents;
+}
+.go-chips .save-route-chip {
+  flex: none;
+  padding: 0 10px;
+}
+.go-chips .save-route-form,
+.go-chips .save-route-said {
+  flex: 1 0 100%;
+}
+.saved-note .link {
+  font-weight: 700;
+}
+
+.home-offer {
+  margin: 8px 12px;
+  padding: 10px 12px;
+  background: var(--notice-bg);
+  color: var(--notice-text);
+  border-radius: 10px;
+}
+.home-offer p {
+  margin: 0 0 8px;
+}
+
+/* Closures on the map (v0.7.0, lib/closureMap.ts): button markers, above the route, ringed when focused. */
+.closure-marker {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  line-height: 0;
+  z-index: 3;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.5));
+}
+.closure-marker.closure-bypassed {
+  width: 18px;
+  height: 18px;
+}
+.closure-marker.closure-park {
+  width: 26px;
+  height: 26px;
+}
+.closure-marker:focus-visible {
+  outline: 3px solid #1d4ed8;
+  outline-offset: 2px;
+}
+.closure-popup .maplibregl-popup-content {
+  border-left: 4px solid #c62828;
+}
+.closure-popup .maplibregl-popup-close-button {
+  color: var(--text);
+}
+.closure-card p {
+  margin: 4px 0 0;
+}
+.closure-card-effect {
+  font-weight: 700;
+}
+.closure-card-action {
+  margin-top: 8px;
+}
+.closure-notices-heading {
+  font-size: 1rem;
+  margin: 12px 0 4px;
+}
+@media (forced-colors: active) {
+  .closure-marker {
+    forced-color-adjust: none;
+  }
+  .closure-marker:focus-visible {
+    outline: 3px solid CanvasText;
+    box-shadow: 0 0 0 2px Canvas;
+  }
+}
+/* v0.7.0: Go's More row (Repair, Sights), the map's tap cards in words, and the bikeshare services' swatches. */
+.go-more-row[hidden] {
+  display: none;
+}
+.place-card p {
+  margin: 4px 0 0;
+}
+.bikeshare-operator .toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.operator-swatch {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1.5px solid #ffffff;
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* v0.7.0, Setting Home simply (lib/homeSet.ts): Go's Home sheet and Settings' (HomeSetter), the search and the
+   map way side by side, each control at least 44 px tall to tap. */
+.go-home-sheet[hidden] {
+  display: none;
+}
+.go-home-sheet {
+  margin: 4px 0 8px;
+}
+.home-setter .home-now {
+  margin: 0 0 4px;
+}
+.home-setter .home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.home-setter .home-actions button {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.home-setter .home-pick-line {
+  margin: 6px 0 0;
+}
+
+/* The GPX section's file type and device (course export, Plan only): each label above its select. */
+.gpx-format label {
+  display: block;
+  font-weight: 600;
+  margin: 0 0 8px;
+}
+
+.gpx-format select {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 44px;
+  margin-top: 4px;
+  padding: 6px 8px;
+  font: inherit;
+  font-weight: normal;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--swatch-border);
+  border-radius: 6px;
+}
+
+/* Review (ReviewMode.tsx): desktop first, a wide panel beside the map; on a phone it scrolls, unoptimised. */
+.panel.review-panel {
+  width: min(64vw, 1040px);
+}
+
+.review-layout {
+  display: grid;
+  grid-template-columns: minmax(150px, 190px) 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.review-lists ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.panel .review-list-button {
+  width: 100%;
+  display: grid;
+  text-align: left;
+  gap: 2px;
+}
+
+.review-list-button[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.review-list-count {
+  font-size: 0.85em;
+}
+
+.review-main {
+  min-width: 0;
+}
+
+.review-filters,
+.review-batch,
+.review-pages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin: 8px 0;
+}
+
+.review-filter {
+  display: grid;
+  gap: 2px;
+}
+
+.review-filter-check {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.review-progress {
+  font-weight: 600;
+}
+
+.review-table-wrap {
+  overflow-x: auto;
+  max-height: 40vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.review-table,
+.review-sources,
+.review-facts {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.9em;
+}
+
+.review-table th,
+.review-table td,
+.review-sources th,
+.review-sources td,
+.review-facts th,
+.review-facts td {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.review-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-soft);
+}
+
+.review-row-current {
+  background: var(--notice-bg);
+  color: var(--notice-text);
+}
+
+.review-card {
+  margin-top: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.review-levels {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 10px;
+}
+
+.review-levels dt {
+  font-weight: 600;
+}
+
+.review-levels dd {
+  margin: 0;
+}
+
+.review-reason-field {
+  display: grid;
+  gap: 2px;
+  margin: 6px 0;
+}
+
+.review-source {
+  color: var(--text-muted);
+}
+
+.review-history {
+  margin: 0;
+  padding-left: 18px;
+}
+
+/* The map's lists (ReviewMode.tsx): a switch a list, with its line drawn as on the map, and Next discrepancy. */
+.review-side {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+.review-map-lists {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.review-map-toggle {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 24px;
+  font-size: 0.9em;
+}
+
+.review-swatch {
+  flex: none;
+}
+
+.review-next {
+  margin-top: 4px;
+}
+
+@media (max-width: 720px) {
+  .panel.review-panel {
+    width: 100%;
+  }
+
+  .review-layout {
+    grid-template-columns: 1fr;
   }
 }

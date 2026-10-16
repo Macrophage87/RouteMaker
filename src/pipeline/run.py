@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import TypeVar
 
 from routemaker import (
+    agency_lts,
     agency_roads,
     bike_lanes,
     cbd,
@@ -54,10 +55,11 @@ from routemaker import (
 )
 from routemaker.geo import Point
 from routemaker.shape import sinuosity
-from routemaker.stress import classify, inferred_unpaved, is_rough
+from routemaker.stress import classify, inferred_unpaved, is_rough, rural_floor, winding
 
 from . import (
     aadt_smoothing,
+    agency_ratings,
     borders,
     checkpoint,
     conflation,
@@ -418,6 +420,11 @@ class ReferenceData:
     # `pavement.json`. Optional like `roadway.json`: without it every street keeps
     # OSM's smoothness reading, as before, and the load logs that it is absent.
     pavement_blocks: tuple[pavement.Block, ...] = ()
+    # Agency bicycle stress layers (`pipeline.agency_ratings`, v0.7.0), from
+    # `agency-lts.json`: each record's line and its level. Optional like
+    # `roadway.json`: without it every way keeps the classifier's tier.
+    agency_lts_features: tuple[conflation.RoadFeature, ...] = ()
+    agency_lts_ratings: dict = field(default_factory=dict)
 
     @classmethod
     def load(
@@ -528,6 +535,13 @@ class ReferenceData:
             bridge_bicycle_legal=legality,
             road_blocks=road_blocks,
             pavement_blocks=cls.load_pavement(directory / "pavement.json"),
+            **dict(
+                zip(
+                    ("agency_lts_features", "agency_lts_ratings"),
+                    agency_ratings.load(directory / agency_ratings.FILE_NAME),
+                    strict=True,
+                )
+            ),
         )
 
     @staticmethod
@@ -781,6 +795,9 @@ class RebuildContext:
     # decides the direction no reviewer spoke to. Set by the override stage and
     # empty until it runs.
     bicycle_override_directions: dict[int, frozenset[str]] = field(default_factory=dict)
+    # The surface class an approved surface override asks the graph for, by way
+    # (`overrides.apply_surface`), which `inject_tags` emits as `rm:reviewer_surface`.
+    reviewer_surface_by_way: dict[int, str] = field(default_factory=dict)
     # Per variant, not one concatenation of the three. A single `.search` over
     # the three logs joined together is satisfied by whichever variant logged
     # the line first, so two variants could have fallen back to Valhalla's
@@ -844,6 +861,7 @@ class RebuildContext:
             "route_names",
             "no_bicycle",
             "border_nodes_by_way",
+            "reviewer_surface_by_way",
             "military_ways",
             "secured_ways",
             "works_ways",
@@ -1905,6 +1923,8 @@ def build_handlers(
             extracts_dir / source.CLIPPED_NAME,
             max_age=_setting("SOURCE_EXTRACT_MAX_AGE"),
             force=_setting("SOURCE_EXTRACT_FORCE_REFRESH"),
+            urls=_setting("SOURCE_EXTRACT_URLS"),
+            region=context.coverage_polygon or context.coverage_bbox,
         )
 
         # The disk gate, before anything is written *and before the download*.
@@ -2138,6 +2158,35 @@ def build_handlers(
             len(result.unmatched_features),
         )
 
+    def apply_agency_ratings(laned: set[int]) -> None:
+        """Agencies' own ratings over the classifier's tier, county over state
+        (`routemaker.agency_lts`; the owner, 2026-10-13), then the owner's rural
+        floor again, which ranks above them. A curated lane's owner tier stands."""
+        reference = context.require_reference()
+        # A test's stand-in reference may predate the field.
+        if not getattr(reference, "agency_lts_features", ()):
+            return
+        entries = [
+            (way.osm_id, way.coordinates, variants.is_trail_class(way.tags)) for way in context.ways
+        ]
+        rated = agency_ratings.ratings_by_way(
+            context.ways, entries, reference.agency_lts_features, reference.agency_lts_ratings
+        )
+        tags_of = {way.osm_id: way.tags for way in context.ways}
+        changed = 0
+        for way_id, ratings in rated.items():
+            current = context.stress_by_way.get(way_id)
+            if current is None or way_id in laned:
+                continue
+            result = rural_floor(
+                agency_lts.apply(current, ratings),
+                context.class_tags_by_way.get(way_id, tags_of[way_id]),
+                urban=way_id in reference.urban_way_ids,
+            )
+            changed += result.tier != current.tier or result.half != current.half
+            context.stress_by_way[way_id] = result
+        logger.info("agency stress ratings: %d ways rated, %d changed tier", len(rated), changed)
+
     def classify_stress() -> None:
         reference = context.require_reference()
         # Whose statutory speed default an unposted way takes (the District's
@@ -2233,7 +2282,12 @@ def build_handlers(
                 laned.add(way.osm_id)
                 context.class_tags_by_way[way.osm_id] = tags
 
-            def classified(aadt, tags=tags, way=way, match=match, facts=facts):
+            rural = way.osm_id not in reference.urban_way_ids
+            # The owner's narrow-road rule reads the line only outside urban
+            # areas (`stress.NARROW_RURAL_ROAD_MPH`).
+            bends = rural and winding(way.coordinates)
+
+            def classified(aadt, tags=tags, way=way, match=match, facts=facts, bends=bends):
                 return classify(
                     tags,
                     aadt=aadt,
@@ -2247,6 +2301,7 @@ def build_handlers(
                     divided=way.osm_id in divided_ways,
                     separate_facility=way.osm_id in separate_roads,
                     parking_width_m=facts.parking_reach_m if facts is not None else None,
+                    winding=bends,
                 )
 
             context.stress_by_way[way.osm_id] = classified(match.aadt if match else None)
@@ -2271,6 +2326,11 @@ def build_handlers(
                 context.stress_by_way[way.osm_id] = bike_lanes.owner_tier(
                     context.stress_by_way[way.osm_id], tags
                 )
+            # The owner's rural floor (2026-10-13), over the classifier's tier and
+            # under the owner's own corridors and rows below.
+            context.stress_by_way[way.osm_id] = rural_floor(
+                context.stress_by_way[way.osm_id], tags, urban=not rural
+            )
             if overlaid is not None:
                 context.stress_by_way[way.osm_id] = replace(
                     context.stress_by_way[way.osm_id],
@@ -2278,6 +2338,7 @@ def build_handlers(
                 )
                 if facts.agency == agency_roads.DC_AGENCY and state_of.get(way.osm_id) == "DC":
                     reported.append((way, tags, match, overlaid))
+        apply_agency_ratings(laned)
         if context.road_facts_by_way:
             # Where an agency's record and the way's own tags disagree and the way
             # was left alone (an OSM lane the agency does not record; an OSM
@@ -2508,6 +2569,7 @@ def build_handlers(
             access, access_missing, superseding = overrides.apply_access(context.ways, rows)
             stress, stress_missing = overrides.apply_stress(context.stress_by_way, rows)
             jurisdiction, jurisdiction_missing = overrides.apply_jurisdiction(context.ways, rows)
+            surfaces, surface_missing = overrides.apply_surface(context.ways_by_id, rows)
         except overrides.OverrideRefused as refused:
             # The same door as the unhandled kind above and it has to close the
             # same way: an approved row asking for something an override may not
@@ -2518,7 +2580,10 @@ def build_handlers(
             # alert said anything an operator could act on.
             raise ValidationFailed(f"an approved override row was refused: {refused}") from refused
 
-        missing = tuple(sorted({*access_missing, *stress_missing, *jurisdiction_missing}))
+        context.reviewer_surface_by_way = surfaces
+        missing = tuple(
+            sorted({*access_missing, *stress_missing, *jurisdiction_missing, *surface_missing})
+        )
         if missing:
             # An approved correction that reaches nothing is a correction that is
             # not in force, which is worth an operator's attention rather than a
@@ -2561,6 +2626,7 @@ def build_handlers(
             access=access,
             stress=stress,
             jurisdiction=jurisdiction,
+            surface=len(surfaces),
             unmatched_way_ids=missing,
             fixture_rows_superseded=len(superseded),
             rematched=len(rematch_report.rematched),
@@ -2931,6 +2997,11 @@ def build_handlers(
                 pci = context.pci_by_way.get(way.osm_id)
                 if pci is not None and pci.applied:
                     derived["pci"] = pci.applied
+                # A reviewer's surface penalty (v0.7.0 surface overrides): the remap reads it
+                # as a rougher surface, bounded so the edge stays ridable (`bounded_surface`).
+                penalty = context.reviewer_surface_by_way.get(way.osm_id)
+                if penalty is not None:
+                    derived["reviewer_surface"] = penalty
                 if way.osm_id in context.cemetery_ways:
                     # No cut-through: reached only from or to a point inside.
                     derived["cemetery"] = True
@@ -3212,6 +3283,12 @@ def build_handlers(
             ended_reversible_streets=frozenset(_setting("MASS_RIDE_DC_ENDED_REVERSIBLE_STREETS")),
         )
         rows: list[dict] = []
+        # An unnamed cycleway or path beside a named street is that street's bike lane
+        # (v0.7.0 "Go riding fixes" item 4), for the route description and the road panel.
+        sidepath_names = facility.side_street_names(
+            [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
+        )
+        logger.info("unnamed bike ways named for the street beside them: %d", len(sidepath_names))
         for way in context.ways:
             stress = context.stress_by_way[way.osm_id]
             trail = variants.is_trail_class(way.tags, way.osm_id, reference.sidepath_bridge_ids)
@@ -3306,6 +3383,7 @@ def build_handlers(
                         if long_trail and trail_routes.is_bridge_way(way.tags)
                         else 0,
                         bike_access_reason=access_reason,
+                        sidepath_name=sidepath_names.get(way.osm_id),
                     )
                 )
         writers.write_segments(context.staging_schema, rows)

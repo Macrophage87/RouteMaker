@@ -320,6 +320,36 @@ class TestReview:
         with pytest.raises(mass_hazards.Conflict):
             mass_hazards.remove(admin, h.pk)
 
+    def test_the_admins_bulk_removal_skips_a_hazard_changed_meanwhile(
+        self, live, monkeypatch
+    ) -> None:
+        # Review api-6: one refusal raised out of the loop, after the earlier ones committed.
+        from core import admin as core_admin
+
+        open_to("signed_in")
+        admin = make_user()
+        kept = mass_hazards.approve(admin, report().pk)
+        raced = mass_hazards.approve(admin, report(way=6001, lon=LON).pk)
+        real = mass_hazards.remove
+
+        def remove(user, pk):
+            if pk == raced.pk:
+                raise mass_hazards.Conflict("Only a hazard on the map can be taken off it.")
+            return real(user, pk)
+
+        monkeypatch.setattr(mass_hazards, "remove", remove)
+        model_admin = core_admin.MassHazardAdmin(MassHazard, core_admin.site)
+        monkeypatch.setattr(model_admin, "_admin", lambda request: True)
+        said = []
+        monkeypatch.setattr(model_admin, "message_user", lambda request, text: said.append(text))
+        model_admin.remove_selected(SimpleNamespace(user=admin), MassHazard.objects.all())
+        assert said == [
+            "Took 1 hazard(s) off the Mass Ride map. 1 had changed already and were left as"
+            " they are."
+        ]
+        kept.refresh_from_db()
+        assert kept.status != MassHazard.Status.APPROVED
+
     def test_one_approved_hazard_per_road_even_for_two_approvals_at_once(
         self, live, monkeypatch
     ) -> None:

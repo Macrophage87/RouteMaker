@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
+  <channel>
+    <title>AlertDC</title>
+    <link>https://trainingtrack.hsema.dc.gov/NRss</link>
+    <description>AlertDC notifications</description>
+    <language>en-us</language>
+    <item>
+      <title>DDOT Traffic Alert: Road Closure</title>
+      <link>https://trainingtrack.hsema.dc.gov/NRss/Details/90211</link>
+      <guid isPermaLink="false">90211</guid>
+      <pubDate>Thu, 15 Oct 2026 18:05:00 GMT</pubDate>
+      <category>Traffic</category>
+      <description><![CDATA[<p>Due to fire department activity, Pennsylvania Avenue, SE is closed from 2nd Street to 4th Street, SE until 6:00 PM. Motorists should seek alternate routes.</p>]]></description>
+    </item>
+    <item>
+      <title>Police Activity</title>
+      <link>https://trainingtrack.hsema.dc.gov/NRss/Details/90210</link>
+      <guid isPermaLink="false">90210</guid>
+      <pubDate>Thu, 15 Oct 2026 17:40:00 GMT</pubDate>
+      <category>Public Safety</category>
+      <description><![CDATA[MPD is investigating a shooting. Avoid the area of the 1500 block of a street while police are on scene.]]></description>
+    </item>
+    <item>
+      <title>Bridge Opening: Woodrow Wilson Memorial Bridge</title>
+      <link>https://trainingtrack.hsema.dc.gov/NRss/Details/90208</link>
+      <guid isPermaLink="false">90208</guid>
+      <pubDate>Thu, 15 Oct 2026 16:00:00 GMT</pubDate>
+      <category>Traffic</category>
+      <description><![CDATA[The Woodrow Wilson Memorial Bridge will open for marine traffic at 2:00 PM. Expect delays.]]></description>
+    </item>
+    <item>
+      <title>Wind Advisory</title>
+      <link>https://trainingtrack.hsema.dc.gov/NRss/Details/90207</link>
+      <guid isPermaLink="false">90207</guid>
+      <pubDate>Thu, 15 Oct 2026 15:00:00 GMT</pubDate>
+      <category>Weather</category>
+      <description><![CDATA[The National Weather Service has issued a wind advisory until 8 PM.]]></description>
+    </item>
+    <item>
+      <title>DDOT Traffic Alert: Crash</title>
+      <link>https://trainingtrack.hsema.dc.gov/NRss/Details/90150</link>
+      <guid isPermaLink="false">90150</guid>
+      <pubDate>Tue, 13 Oct 2026 11:20:00 GMT</pubDate>
+      <category>Traffic</category>
+      <description><![CDATA[Due to a crash, Southbound Rock Creek Parkway is closed between Virginia Avenue and Ohio Drive.]]></description>
+    </item>
+    <item>
+      <title>Road closed for police activity</title>
+      <link>https://trainingtrack.hsema.dc.gov/NRss/Details/90209</link>
+      <guid isPermaLink="false">90209</guid>
+      <pubDate>Thu, 15 Oct 2026 17:00:00 GMT</pubDate>
+      <description><![CDATA[Due to police activity, a street is closed. Seek alternate routes.]]></description>
+    </item>
+  </channel>
+</rss>

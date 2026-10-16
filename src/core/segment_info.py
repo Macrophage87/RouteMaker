@@ -23,13 +23,15 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 import time
 
 from django.conf import settings
+from django.core.signals import request_finished, request_started
 from django.db import connection
 
 from pipeline.schema import validate_schema_name
-from routemaker import flow, more_links
+from routemaker import agency_lts, flow, more_links
 from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
 
 # How far from the spot a way may be and still be the one the rider meant: a
@@ -52,9 +54,16 @@ LOCATE_TIMEOUT_S = 3.0
 # UNNAMED_TITLES; tests/test_segment_info_api.py ties the two).
 UNNAMED_ROAD_TITLE = UNNAMED_ROAD[:1].upper() + UNNAMED_ROAD[1:]
 UNNAMED_PATH_TITLE = UNNAMED_PATH[:1].upper() + UNNAMED_PATH[1:]
-# Missing optional columns are looked for again this often, so the first
-# answer after a rebuild's swap sees the new ones without a restart.
-COLUMN_RECHECK_S = 300.0
+# The live table's columns are kept by its oid (review CH-1, speed-11): a swap or a
+# rollback puts another table under the same name from another process (the `rebuild`
+# container), and each check reads the name's oid first, so another table is seen at once,
+# the older table's missing columns included, without an api restart. A column added in
+# place keeps the oid: the columns are read again this often as well. Both answers are
+# kept meanwhile: a column that is missing is not looked for on every reading. The
+# promotion and the rollback also forget them in their own process (`pipeline.promotion`).
+# Within one request the oid is read once: a request asks several times (routing, junctions,
+# the road panel), and one answer for the whole request is the consistent one anyway.
+COLUMN_RECHECK_S = 60.0
 
 FEET_PER_METRE = 3.28084
 KMH_PER_MPH = 1.609344
@@ -62,6 +71,12 @@ KMH_PER_MPH = 1.609344
 OSM = "OpenStreetMap"
 CLASSIFIER = "RouteMaker classifier"
 OWNER = "Owner override"
+# Montgomery County's LTS 5 roads (fixtures/overrides/2026-10-01-owner-moco-lts5-avoid.json,
+# OWNER-DECISIONS 181; docs/SOURCES.md) are loaded as adjustments but are the county's
+# data, not an owner's rating: their ids all start with this (`agency_lts.ADJUSTMENT_SOURCES`),
+# and the panel names the county as the agency ratings do.
+COUNTY_ADJUSTMENT_PREFIX = "moco-lts5-"
+COUNTY = agency_lts.source_name("moco")
 ROUTER = "OpenStreetMap, through RouteMaker's routing graph"
 NEXT_UPDATE = "Available after the next data update"
 
@@ -246,6 +261,8 @@ OPTIONAL_COLUMNS = (
     "stress_half",
     "mtb_level",
     "mtb_name",
+    "stress_ratings",
+    "sidepath_name",
 )
 REQUIRED_COLUMNS = (
     "osm_way_id",
@@ -260,30 +277,63 @@ REQUIRED_COLUMNS = (
     "is_rough",
 )
 
-_columns: dict[str, tuple[frozenset[str], float]] = {}
+# By schema: the table's oid when its columns were read, the columns, and when.
+_columns: dict[str, tuple[int | None, frozenset[str], float]] = {}
+# This thread's current request's answers by schema (None outside a request: every call checks).
+_request = threading.local()
+
+
+def _request_began(**_kwargs) -> None:
+    _request.columns = {}
+
+
+def _request_ended(**_kwargs) -> None:
+    _request.columns = None
+
+
+request_started.connect(_request_began, dispatch_uid="segment_info.columns.began")
+request_finished.connect(_request_ended, dispatch_uid="segment_info.columns.ended")
 
 
 def live_columns(schema: str) -> frozenset[str]:
-    """The live segment table's columns; looked for again every COLUMN_RECHECK_S
-    while one of OPTIONAL_COLUMNS is missing, since a swap only adds columns."""
+    """The live segment table's columns, kept while the name is the same table (its
+    oid) and read again every COLUMN_RECHECK_S. The one shared answer to "has the live
+    table this column?" (`has_columns`). Within a request, the first answer stands."""
+    this_request = getattr(_request, "columns", None)
+    if this_request is not None and schema in this_request:
+        return this_request[schema]
     known = _columns.get(schema)
     now = time.monotonic()
-    if known and (set(OPTIONAL_COLUMNS) <= known[0] or now - known[1] < COLUMN_RECHECK_S):
-        return known[0]
     with connection.cursor() as cursor:
+        cursor.execute("SELECT to_regclass(%s)::oid", [f"{schema}.segment"])
+        oid = cursor.fetchone()[0]
+        if known and known[0] == oid and now - known[2] < COLUMN_RECHECK_S:
+            if this_request is not None:
+                this_request[schema] = known[1]
+            return known[1]
         cursor.execute(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_schema = %s AND table_name = 'segment'",
-            [schema],
+            "SELECT attname::text FROM pg_attribute "
+            "WHERE attrelid = %s AND attnum > 0 AND NOT attisdropped",
+            [oid],
         )
-        found = frozenset(row[0] for row in cursor.fetchall())
-    _columns[schema] = (found, now)
+        found = frozenset(row[0] for row in cursor.fetchall()) if oid else frozenset()
+    _columns[schema] = (oid, found, now)
+    if this_request is not None:
+        this_request[schema] = found
     return found
 
 
+def has_columns(schema: str, *names: str) -> bool:
+    """Whether the live segment table in `schema` has every one of `names`."""
+    return set(names) <= live_columns(schema)
+
+
 def forget_columns() -> None:
-    """For tests: the next answer reads the table's columns afresh."""
+    """The next answer reads the table's columns afresh: after a swap, a rollback or a
+    column added in place, and in tests."""
     _columns.clear()
+    if getattr(_request, "columns", None) is not None:
+        _request.columns = {}
 
 
 # --- the nearest way -------------------------------------------------------------------
@@ -465,6 +515,8 @@ _MIXED_PARTS = {
     "wide one-way floor": "a wide one-way road, so rated at least this",
     "two-way busy": "a busy two-way road",
     "shoulder read as a lane": "the shoulder read as a bike lane",
+    "narrow rural road": "a narrow or winding rural road",
+    "rural road floor": "a rural road open to cars, so rated at least LTS 2",
 }
 _TRAIL_KINDS = {
     "open to bicycles": "open to bicycles",
@@ -472,6 +524,8 @@ _TRAIL_KINDS = {
     "sidepath for bicycles": "a side path beside a road",
     "no bicycle facility": "not marked for bicycles",
 }
+# `routemaker.agency_lts.apply`'s rule, and any reasons appended after it.
+_AGENCY_RULE = re.compile(r"agency rating: (.+?) LTS (\d(?:\.5)?)(.*)")
 _SPEED = re.compile(r"(\d+(?:\.\d+)?) mph(?: or (?:below|above))?")
 
 
@@ -480,16 +534,27 @@ def _parts(text: str, table: dict[str, str]) -> list[str]:
 
 
 def rule_words(rule: str) -> str:
-    """The classifier's rule (`segment.stress_rule`) in plain words."""
+    """The classifier's rule (`segment.stress_rule`) in plain words, every speed in mph with
+    km/h after it (spec-10: "30 mph (48 km/h)")."""
+    return re.sub(
+        r"(\d+(?:\.\d+)?) mph(?! \()",
+        lambda m: mph_and_kmh(float(m.group(1))),
+        _rule_words(rule),
+    )
+
+
+def _rule_words(rule: str) -> str:
     rule = (rule or "").strip()
     rule = re.sub(r"\s*\(Furth: [^)]*\)", "", rule)
+    if rule.startswith(f"override: stress adjustment {COUNTY_ADJUSTMENT_PREFIX}"):
+        return "Montgomery County rates it LTS 5"
     if rule.startswith("override: stress adjustment") or rule.startswith("named corridor:"):
         return "Owner-rated corridor"
     if "curated lane at" in rule:
         return "Owner-rated: a bike lane on a road this busy is LTS 4"
     if rule.startswith("legal but avoid"):
         posted = _SPEED.search(rule)
-        return "Avoid: highway-like road" + (f" (posted {posted.group(0)})" if posted else "")
+        return "Avoid: highway-like road" + (f", posted {posted.group(0)}" if posted else "")
     match = re.match(r"motor-only classification \((\w+)\)", rule)
     if match:
         return f"Highway-like road for motor traffic ({match.group(1).replace('_', ' ')})"
@@ -499,6 +564,10 @@ def rule_words(rule: str) -> str:
     if match:
         kind = _TRAIL_KINDS.get(match.group(2) or "", match.group(2) or "")
         return "Path away from traffic" + (f", {kind}" if kind else "")
+    match = _AGENCY_RULE.match(rule)
+    if match:
+        rest = _parts(match.group(3), _MIXED_PARTS)
+        return ", ".join([f"Rated LTS {match.group(2)} by {match.group(1)}", *rest])
     if rule.startswith("separated track alongside"):
         return "Separated bike track beside the road"
     if rule.startswith("mixed traffic"):
@@ -543,7 +612,9 @@ def stress_rows(row: dict) -> list[dict]:
     adjusted = row.get("stress_adjustment_id") is not None or str(
         row.get("stress_rule", "")
     ).startswith(("override:", "named corridor:"))
-    source = OWNER if adjusted else CLASSIFIER
+    source = override_source(row) if adjusted else CLASSIFIER
+    whose = agency_lts.adjustment_source(row.get("stress_adjustment_id")) if adjusted else None
+    county = whose == "moco"
     rows = [
         _row("Level", tier_text(tier, half), source),
         _row("Why", rule_words(row["stress_rule"]), source),
@@ -551,14 +622,93 @@ def stress_rows(row: dict) -> list[dict]:
     computed = row.get("stress_computed_tier")
     direction = row.get("stress_adjustment_direction")
     if computed is not None and direction in ("up", "down"):
-        rows.append(_row("Before the override", tier_text(int(computed)), CLASSIFIER))
+        if county:
+            before = "Before the county's rating"
+        elif whose in agency_lts.AGENCIES:
+            before = "Before the agency's rating"
+        else:
+            before = "Before the override"
+        rows.append(_row(before, tier_text(int(computed)), CLASSIFIER))
     category = row.get("stress_adjustment_category")
-    if category in ADJUSTMENT_CATEGORIES:
+    if category in ADJUSTMENT_CATEGORIES and source == OWNER:
         rows.append(_row("Owner's reason", ADJUSTMENT_CATEGORIES[category].capitalize(), OWNER))
     note = row.get("stress_adjustment_note")
     # A note marked route_only is for a route over the stretch, never a map click.
     if note and row.get("stress_adjustment_display") == "map":
-        rows.append(_row("Note", str(note), OWNER))
+        rows.append(_row("Note", str(note), source))
+    return rows + rating_rows(row)
+
+
+def override_source(row: dict) -> str:
+    """Whose rating an adjusted segment's tier is, as the panel names the source:
+    the owner's own row, a reviewed community rating, or an agency's rating loaded
+    as a row (Montgomery's LTS 5 of 2026-10-01, `moco-lts5-*`). The owner,
+    2026-10-14: "It's also listed as owner override when it was county data"."""
+    source = agency_lts.adjustment_source(row.get("stress_adjustment_id"))
+    if source == agency_lts.OWNER:
+        return OWNER
+    if source == agency_lts.COMMUNITY:
+        return COMMUNITY
+    return agency_lts.source_name(source)
+
+
+COMMUNITY = "Community rating"
+
+# Which rating set the tier, in words, by `segment.stress_ratings`' `used`.
+_USED_WORDS = {
+    "owner": "the owner's rating is used: owner and community ratings come first",
+    "community": "the community's rating is used: owner and community ratings come first",
+    "rural floor": "raised to LTS 2: rural roads open to cars are LTS 2 at least",
+}
+
+
+def _level_text(level: object) -> str:
+    level = float(level)
+    whole = int(level)
+    return tier_text(whole, level != whole)
+
+
+def rating_rows(row: dict) -> list[dict]:
+    """Every rating held for the way (`segment.stress_ratings`), each with its
+    source, and which one the map uses (the owner, 2026-10-13: "put all the
+    relevant information in the tab when viewing the road"). Nothing where no
+    agency rated the way: the Level and Why rows already say all there is.
+
+    The order is the owner's precedence (2026-10-13): an override row first (the
+    owner's or the community's), then the agencies, most local first, then the
+    formula."""
+    held = _json(row.get("stress_ratings"))
+    if not isinstance(held, dict) or not held.get("agencies"):
+        return []
+    used = held.get("used")
+    rows = []
+    agencies = {rating.get("agency") for rating in held["agencies"]}
+    override = held.get("override")
+    # An agency's rating loaded as a row is listed once, as that agency's.
+    if isinstance(override, dict) and override.get("source") not in agencies:
+        source = override.get("source")
+        label, named = {
+            agency_lts.OWNER: ("Owner's rating", OWNER),
+            agency_lts.COMMUNITY: ("Community rating", COMMUNITY),
+        }.get(source, (f"{override.get('name')} rates it", str(override.get("name"))))
+        value = _level_text(override["level"])
+        if source == used:
+            value += " (used: owner and community ratings come first)"
+        rows.append(_row(label, value, named))
+    for rating in held["agencies"]:
+        value = _level_text(rating["level"])
+        if rating.get("agency") == used:
+            value += " (used: the most local agency's rating)"
+        rows.append(_row(f"{rating['name']} rates it", value, rating["name"]))
+    formula = held.get("formula")
+    if formula is not None:
+        value = tier_text(int(formula))
+        if held.get("formula_rule"):
+            value += f" ({rule_words(str(held['formula_rule']))})"
+        rows.append(_row("RouteMaker's formula", value, CLASSIFIER))
+    if used in _USED_WORDS:
+        whose = COMMUNITY if used == agency_lts.COMMUNITY else OWNER
+        rows.append(_row("Used", _USED_WORDS[used].capitalize(), whose))
     return rows
 
 
@@ -661,6 +811,9 @@ def riding_rows(row: dict) -> list[dict]:
             )
         )
     rows.append(_row("Surface", surface_words(row), OSM))
+    penalty = surface_penalty_words(row)
+    if penalty:
+        rows.append(_row("Surface penalty", penalty, OWNER))
     level = row.get("mtb_level")
     words = mtb_level_words(level)
     if words and is_mtb_trail(row):
@@ -676,6 +829,35 @@ def riding_rows(row: dict) -> list[dict]:
     if row.get("walk_bike"):
         rows.append(_row("Walk your bike", "Yes: a short stretch where riding is not allowed", OSM))
     return rows
+
+
+def surface_penalty_words(row: dict) -> str | None:
+    """A reviewer's surface penalty (v0.7.0; `stress_edits.surface_of`, kept on the row as
+    `reviewer_surface`), in words: what it is, and whether routes price it yet. The graph has
+    it only from the map rebuild after it was set."""
+    penalty = row.get("reviewer_surface")
+    if not isinstance(penalty, dict):
+        return None
+    if penalty.get("surface") is None:
+        return "Taken off; routes stop pricing it at the next map rebuild"
+    words = str(penalty.get("words") or "Rough surface")
+    if not penalty.get("applied"):
+        return f"{words}; applies at the next map rebuild"
+    if penalty_reprices(row, penalty.get("surface")):
+        return f"{words}; routes price it as rougher than mapped"
+    return f"{words}; routes already price the mapped surface as this rough"
+
+
+def penalty_reprices(row: dict, surface: object) -> bool:
+    """Whether lua/routemaker_remap.lua `bounded_surface` gives the way a rougher class for
+    the penalty, read from the row's surface facts (the row has no `surface` tag). It caps
+    every penalty at `compacted` and never improves a way: an unpaved way is already that
+    rough or rougher, and a rough paved one (cobblestone, brick) already has Rough pavement.
+    Where the facts cannot say, this says no, so the panel never claims a change it did
+    not make."""
+    if row.get("is_unpaved") is True:
+        return False
+    return not (surface == "rough" and row.get("is_rough"))
 
 
 def surface_words(row: dict) -> str:
@@ -927,6 +1109,9 @@ def summary_rows(row: dict, router: dict, open_: bool | None) -> list[dict]:
     rough = bool(row.get("is_rough"))
     if unpaved is not None and (unpaved or rough or path):
         add("surface", "Surface", surface_words(row))
+    penalty = surface_penalty_words(row)
+    if penalty:
+        add("surface_penalty", "Surface penalty", penalty)
     if row.get("walk_bike"):
         add("walk", "Walk your bike", "A short stretch")
     reason = row.get("bike_access_reason")
@@ -953,7 +1138,15 @@ def describe(row: dict, router: dict) -> dict:
     path = bool(row.get("is_trail_class"))
     # A mountain-bike trail's own name (`mtb_name`: name, ref or mtb:name) where the router
     # and the long-trail name have none (the owner, 2026-10-10).
-    name = router.get("name") or row.get("trail_name") or row.get("mtb_name")
+    # And an unnamed bike way beside a named street, that street's bike lane ("9th Street
+    # Northwest protected bike lane"; v0.7.0 "Go riding fixes" item 4), as the route
+    # description names it.
+    name = (
+        router.get("name")
+        or row.get("trail_name")
+        or row.get("mtb_name")
+        or row.get("sidepath_name")
+    )
     name_source = ROUTER if router.get("name") else (OSM if name else None)
     kind, kind_source = road_kind(router, row)
     title = name or (
@@ -1004,5 +1197,8 @@ def segment_info(lat: float, lon: float) -> dict:
     row = nearest_row(lat, lon)
     if row is None:
         return {"found": False, "title": "No road here", "summary": [], "sections": []}
+    from . import stress_edits
+
+    row["reviewer_surface"] = stress_edits.surface_of(int(row["osm_way_id"]))
     router = router_facts(float(row["on_lat"]), float(row["on_lon"]), int(row["osm_way_id"]))
     return describe(row, router)

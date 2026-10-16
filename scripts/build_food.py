@@ -18,12 +18,20 @@ What counts, from the OSM wiki's tag definitions
 <https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dpub>,
 <https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dbiergarten>,
 <https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dfood_court>,
-<https://wiki.openstreetmap.org/wiki/Key:cuisine>, all read 2026-10-11):
+<https://wiki.openstreetmap.org/wiki/Key:cuisine>, all read 2026-10-11;
+<https://wiki.openstreetmap.org/wiki/Tag:shop%3Dfarm>,
+<https://wiki.openstreetmap.org/wiki/Tag:amenity%3Dmarketplace>, for v0.7.0):
 
 - amenity=restaurant ("r"), fast_food ("f"), cafe ("c"), ice_cream ("i"),
   pub ("p"), biergarten ("b") and food_court ("fc"). A bar is left out: the
   wiki's amenity=bar is for drinks, and a bar that serves meals is usually
   tagged pub or restaurant.
+- farm stands and markets (owner request, 2026-10-14: "Add farm stands for
+  food. Lots of places are selling apples in the fall."): shop=farm ("fs"),
+  the wiki's tag for a farm shop or roadside stand selling the farm's own
+  produce, and amenity=marketplace ("m"), a farmers market or other market
+  place. The map and lists draw both with an apple; a stand with no
+  opening_hours says "Hours vary by season" (frontend/src/lib/food.ts).
 - named only: a place with no `name` (nor `brand`) is dropped; a rider cannot
   find or check an unnamed place. `brand` stands in for a missing name (a
   chain's outlet mapped with its brand alone).
@@ -89,7 +97,12 @@ KINDS = {
     "pub": "p",
     "biergarten": "b",
     "food_court": "fc",
+    "marketplace": "m",
 }
+# shop=* values that are food here: a farm shop or roadside stand.
+SHOP_KINDS = {"farm": "fs"}
+# Every kind's code, with the name the build prints.
+KIND_NAMES = {**{v: k for k, v in KINDS.items()}, "fs": "farm_stand"}
 OPEN_ACCESS = frozenset({"yes", "public", "permissive", "designated", "customers"})
 MAX_CUISINES = 6
 MAX_URL = 200
@@ -102,7 +115,7 @@ class Place:
     osm: str  # "n123", "w456" or "r789"
     lon: float
     lat: float
-    kind: str  # a KINDS value
+    kind: str  # a KINDS or SHOP_KINDS value
     name: str
     cuisine: tuple[str, ...] = ()
     hours: str | None = None
@@ -133,9 +146,14 @@ def website_of(tags: dict[str, str]) -> str | None:
     return url
 
 
+def kind_of(tags: dict[str, str]) -> str | None:
+    """The place's kind code, or None when it is not a place to eat."""
+    return KINDS.get(tags.get("amenity", "")) or SHOP_KINDS.get(tags.get("shop", ""))
+
+
 def classify(osm: str, tags: dict[str, str], lon: float, lat: float) -> Place | None:
     """The place to eat, or None when it is not one the search shows."""
-    kind = KINDS.get(tags.get("amenity", ""))
+    kind = kind_of(tags)
     if kind is None or not is_open_to_public(tags):
         return None
     name = water._text(tags.get("name")) or water._text(tags.get("brand"))
@@ -164,7 +182,7 @@ def read_extract(path: Path) -> tuple[list[Place], Counter]:
     secured: list[water.SecuredArea] = []
 
     def wanted(t) -> bool:
-        return t.get("amenity") in KINDS
+        return t.get("amenity") in KINDS or t.get("shop") in SHOP_KINDS
 
     class Handler(osmium.SimpleHandler):
         def node(self, n):
@@ -304,8 +322,7 @@ def main(argv: list[str] | None = None) -> int:
     places, left_out = read_extract(args.pbf)
     size = write_document(document(places), args.out)
     by_kind = Counter(p.kind for p in places)
-    names = {v: k for k, v in KINDS.items()}
-    kinds = ", ".join(f"{names[k]} {by_kind[k]}" for k in KINDS.values() if by_kind[k])
+    kinds = ", ".join(f"{name} {by_kind[k]}" for k, name in KIND_NAMES.items() if by_kind[k])
     with_cuisine = sum(bool(p.cuisine) for p in places)
     print(f"{len(places)} places ({kinds or 'none'}); {with_cuisine} with a cuisine")
     lo = ", ".join(f"{k} {n}" for k, n in sorted(left_out.items())) or "none"

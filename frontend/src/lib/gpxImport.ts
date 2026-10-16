@@ -4,7 +4,7 @@
  * track is a record of where someone rides.
  */
 import { GpxError, MAX_GPX_BYTES, parseGpx } from "./gpx.ts";
-import { ImportError, planFromGpx, type ImportedPlan } from "./gpxPlan.ts";
+import { ImportError, planFromGpx, verbatimTrack, type ImportedPlan } from "./gpxPlan.ts";
 
 export type ImportOutcome = { ok: true; plan: ImportedPlan } | { ok: false; message: string };
 
@@ -18,7 +18,10 @@ function failure(error: unknown): ImportOutcome {
 export async function readGpx(file: Blob): Promise<ImportOutcome> {
   if (file.size > MAX_GPX_BYTES) return { ok: false, message: "The file is larger than 20 MB." };
   try {
-    return { ok: true, plan: planFromGpx(parseGpx(await file.text())) };
+    const text = await file.text();
+    const parsed = parseGpx(text);
+    // The file itself is kept beside the plan, for a verbatim export and a saved route.
+    return { ok: true, plan: { ...planFromGpx(parsed), verbatim: { text, track: verbatimTrack(parsed) } } };
   } catch (error) {
     return failure(error);
   }

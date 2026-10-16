@@ -241,7 +241,8 @@ export function redJunctionsSaid(route: Pick<RouteResponse, "intersections">): s
  * one (how many more there are).
  */
 export interface AnnounceHow {
-  chosen?: { rank: number; of: number };
+  /** `name`: Go's "More direct" or "Calmer" (lib/neighbours.ts), said by its name rather than its rank. */
+  chosen?: { rank: number; of: number; name?: string };
   others?: number;
 }
 
@@ -253,7 +254,11 @@ export interface AnnounceHow {
  * arrival how many other routes there are to choose from (the summary has the rest).
  */
 export function announceRoute(route: RouteResponse, points: readonly LonLat[] = [], how: AnnounceHow = {}): string {
-  const head = how.chosen ? `Route ${how.chosen.rank} of ${how.chosen.of} chosen: ` : "Route planned: ";
+  const head = how.chosen
+    ? how.chosen.name
+      ? `${how.chosen.name} route chosen: `
+      : `Route ${how.chosen.rank} of ${how.chosen.of} chosen: `
+    : "Route planned: ";
   // A transit trip: its scheduled total and the comparison, in brief; the steps are in the panel's list.
   const transit = transitSaid(route);
   if (transit) return transit;

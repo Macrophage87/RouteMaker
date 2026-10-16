@@ -4,16 +4,17 @@
 // in to the suggest tools, and Review is an admin's; Settings is Display, Ride mode, This device and Account
 // with My Go; and the map's Water and Food chips open the nearest finder and Find food. In Go, Settings is
 // the Menu, with Plan, Suggest, GPX and Review above it. App.tsx keeps the state and the effects.
-import { useEffect, useState, type Dispatch, type ReactNode, type RefObject, type SetStateAction } from "react";
+import { useEffect, useState, type ReactNode, type RefObject } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import type { StressAvailability } from "../MapView.tsx";
-import { SuggestionReview } from "../SuggestionReview.tsx";
 import type { RouteResponse } from "../lib/api.ts";
 import type { LonLat } from "../lib/geo.ts";
 import { PRESETS, presetSaid, type PresetId } from "../lib/presets.ts";
 import { PresetName } from "../lib/presetName.ts";
-import { filterRideGroups, rideTypeCount, RideTypeSearch } from "../lib/rideTypeGroups.ts";
+import { filterRideGroups, rideSections, rideTypeCount, RideTypeSearch } from "../lib/rideTypeGroups.ts";
+import { RideTypeCards } from "../lib/rideTypeCards.ts";
 import { isPlainClick, rememberPlanForSignIn, tabSession } from "../lib/signIn.ts";
+import { SignOutForm } from "../SignOut.tsx";
 import { pointName } from "../lib/summary.ts";
 import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, setMtbTrails } from "../stressStyle.js";
 import { HighStressLanesSwitch } from "../lib/highStressLanesSwitch.ts";
@@ -27,6 +28,8 @@ import { RideSettingsFields } from "../RideMode.tsx";
 import type { RidePrefs } from "../lib/rideOutput.ts";
 import type { RailVisibility } from "../lib/railStations.ts";
 import { RailStationsLegend, RailStationsSection } from "../RailStations.tsx";
+import { BikeshareSection } from "../lib/bikeshareSection.ts";
+import type { OperatorInfo } from "../lib/bikeshareDocks.ts";
 import { RAIL_STATIONS } from "../lib/railData.ts";
 import { federalPoints, federalShown, type FederalData } from "../lib/federalLand.ts";
 import { FederalLandFor, FederalLegendNotes, type FederalStatus } from "../lib/federalLegend.ts";
@@ -34,8 +37,8 @@ import { CAPACITY_LEGEND_TITLE, isMassRide } from "../lib/massCapacity.ts";
 import { MassLegend, MassZoomNotes } from "../lib/massLegend.ts";
 import { DC_BOUNDARY_CREDIT, MASS_DC_ONLY } from "../lib/dcBoundary.ts";
 import { MtbTrailLegend, StressLegend } from "../lib/stressLegend.ts";
-import { refreshStressTiles } from "../lib/mapStyle.ts";
-import { GpxPanel } from "../GpxPanel.tsx";
+import { GpxPanel, type FileFormat, type GpxPanelProps, type Said } from "../GpxPanel.tsx";
+import type { DeviceProfileId } from "../lib/deviceProfiles.ts";
 import { JunctionLegend, SheetFrame } from "../Sidebar.tsx";
 import { MASS_RIDE_LAYERS_NOTE, MENU_TITLE, SHEET_TITLES, STRESS_CHECKING, STRESS_UNAVAILABLE, type PanelView } from "../lib/sidebar.ts";
 import type { ImportedPlan } from "../lib/gpxPlan.ts";
@@ -46,13 +49,15 @@ import { CLIMBS_HELP, ClimbsLayerControls, ClimbsLegend } from "../lib/climbsLeg
 import { InstallOffer, KeptRoutes } from "../InstallableApp.tsx";
 import type { KeptRoute } from "../lib/offlineRoutes.ts";
 import { anyKept } from "../lib/offlineRouteStore.ts";
-import { HAZARD_REVIEW } from "../lib/reviewSources.ts";
 import { DC_311_ONLINE, REPORT_KINDS } from "../lib/report311.ts";
 import { OPEN_IN_HINT, OPEN_IN_LABEL, type AppMode, type OpenIn } from "../lib/appMode.ts";
-import { HOME_SIGN_IN, myGoSummary, type MyGo } from "../lib/myGo.ts";
+import { myGoSummary, type Home, type MyGo } from "../lib/myGo.ts";
+import { homeFromPlace } from "../lib/homeSet.ts";
+import { HomeSetter } from "./Go.tsx";
+import { SIGN_IN_LINE } from "../lib/accountSettings.ts";
+import { MyRoutes, type MyRoutesProps } from "../MyRoutes.tsx";
 import type { GeoGate, Place } from "../lib/geocode.ts";
 import type { IconName } from "../lib/iconPaths.ts";
-import { PlaceSearch } from "../PlaceSearch.tsx";
 import { Icon } from "../Icon.tsx";
 import { ANNOUNCE_HINT, ANNOUNCE_LABEL, type AnnounceLevel } from "../lib/announceLevel.ts";
 import type { Status } from "./RoutePanel.tsx";
@@ -95,11 +100,20 @@ export interface LayersSheetProps {
   showMtbTrails: boolean;
   showTopoLines: boolean;
   topoReady: boolean;
+  /** The Places to see layer (v0.7.0; lib/places.ts): one switch, off by default; its status line. */
+  placesOn: boolean;
+  changePlacesOn: (on: boolean) => void;
+  placesStatus: string;
+  /** Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): Capital Bikeshare's switch. */
+  bikeshare: { operators: readonly OperatorInfo[]; choices: Record<string, boolean>; onChange: (next: Record<string, boolean>) => void; status: string };
 }
+
+export const PLACES_LAYER_TITLE = "Places to see";
+export const PLACES_LAYER_HINT = "Museums, gardens, viewpoints and more, from zoom 11. Places to see lists them.";
 
 /** The Layers sheet: the map's switches, in the mockup's order, with the Legend button at its top. */
 export function LayersSheet(props: LayersSheetProps) {
-  const { nav, openLegend, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong } = props;
+  const { nav, openLegend, massMap, stress, stressVisible, setStressVisible, showHighLanes, preset, federalOn, setFederalOn, federalStatus, federalData, points, waterPrefs, changeWaterPrefs, waterStatus, rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom, climbsStatus, climbsAlong, placesOn, changePlacesOn, placesStatus, bikeshare } = props;
   // The Trails and terrain section's layers that can show, and its row's words (lib/terrainSection.ts).
   const terrain = { mtb: showMtbTrails, climbs: climbsOn, topo: showTopoLines, stressAvailable: stressShowable(stress), topoReady, climbsStatus };
   return (
@@ -148,6 +162,20 @@ export function LayersSheet(props: LayersSheetProps) {
       <WaterSection prefs={waterPrefs} onChange={changeWaterPrefs} status={waterStatus} />
 
       {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
+
+      <BikeshareSection {...bikeshare} />
+
+      {/* v0.7.0: the places to see, one switch for the whole layer (the categories are Plan's Places to see filter). */}
+      <LayerSection
+        id="places"
+        title={PLACES_LAYER_TITLE}
+        headingId="places-heading"
+        layers={[{ key: "places", label: PLACES_LAYER_TITLE, on: placesOn }]}
+        onLayers={(next) => changePlacesOn(next.places)}
+        status={placesStatus}
+      >
+        <p className="hint">{PLACES_LAYER_HINT}</p>
+      </LayerSection>
 
       {/* OWNER-DECISIONS 454's optional layers, off until turned on, in every ride type. A layer's extra
           control (the Climbs layer's "Show climbs from") sits under its own switch, inside the section. */}
@@ -249,11 +277,19 @@ export interface GpxSheetProps {
   openImported: (plan: ImportedPlan) => void;
   refineImported: (next: LonLat[]) => void;
   getMap: () => MapLibreMap | null;
+  /** Download GPX: the page checks closures first, and an unedited opened file downloads as it came. */
+  downloadRoute: (said?: (line: string) => void) => void;
+  /** Plan only: download a FIT or TCX course or a PDF cue sheet (GpxPanel); absent in Go, which offers GPX alone. */
+  downloadCourse?: (format: FileFormat, profile: DeviceProfileId, said: Said) => void;
+  /** Plan only: snap an opened track to the map's ways (GpxPanel, lib/gpxMatch.ts); absent in Go. */
+  match?: GpxPanelProps["match"];
+  /** Signed in: Save route for an opened file (its own text, verbatim); null signed out. */
+  saveControl: ReactNode;
 }
 
 /** The GPX sheet. */
 export function GpxSheet(props: GpxSheetProps) {
-  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, refineImported, getMap } = props;
+  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, refineImported, getMap, downloadRoute, downloadCourse, match, saveControl } = props;
   return (
     <SheetFrame id="sheet-gpx" title={SHEET_TITLES.gpx} open={nav.view === "gpx"} onBack={nav.back} backLabel={nav.backLabel("gpx")}>
       <GpxPanel
@@ -267,7 +303,11 @@ export function GpxSheet(props: GpxSheetProps) {
         onImport={openImported}
         onRefine={refineImported}
         getMap={getMap}
+        onDownload={downloadRoute}
+        onDownloadCourse={downloadCourse}
+        match={match}
       />
+      {imported?.verbatim && saveControl}
     </SheetFrame>
   );
 }
@@ -277,6 +317,8 @@ export interface MyGoControls {
   signedIn: boolean;
   /** Saves the whole of My Go (to the account signed in, else this device). */
   save: (next: MyGo) => void;
+  /** Sets (or with null clears) Home alone, and says so (lib/homeSet.ts). */
+  setHome: (home: Home | null) => void;
   /** What the last save said, politely. */
   said: string;
   geoGate: GeoGate;
@@ -304,7 +346,7 @@ function OpenInChoice({ value, onChange, idBase, hint }: { value: OpenIn; onChan
  * in and on this device when not; signed in, the Home that Go's Home chip rides to.
  */
 function MyGoSection({ controls }: { controls: MyGoControls }) {
-  const { myGo, signedIn, save, said, geoGate, searchBias } = controls;
+  const { myGo, signedIn, save, setHome, said, geoGate, searchBias } = controls;
   return (
     <section aria-labelledby="settings-my-go-heading" className="my-go">
       <h4 id="settings-my-go-heading">
@@ -315,7 +357,7 @@ function MyGoSection({ controls }: { controls: MyGoControls }) {
           {myGoSummary(myGo)}
         </span>
       </h4>
-      <p className="hint">{signedIn ? "Kept with your Discord account, on every device you sign in on." : "Kept on this device. Sign in to keep it with your account, with a Home."}</p>
+      <p className="hint">{signedIn ? "Kept with your Discord account, on every device you sign in on." : "Kept on this device. Sign in to keep it with your account."}</p>
       <OpenInChoice value={myGo.openIn} onChange={(openIn) => save({ ...myGo, openIn })} idBase="my-go" hint={OPEN_IN_HINT} />
       <label className="select-setting">
         Go's ride type
@@ -327,22 +369,15 @@ function MyGoSection({ controls }: { controls: MyGoControls }) {
           ))}
         </select>
       </label>
-      {signedIn ? (
-        <div className="my-go-home">
+      {/* The same Home sheet as Go's (lib/homeSet.ts), without the map way: the map is behind Settings. */}
+      <div className="my-go-home">
+        {!myGo.home && (
           <p>
-            <strong>Home: </strong>
-            {myGo.home ? myGo.home.label || "set" : "not set"}
+            <strong>Home: </strong>not set
           </p>
-          <PlaceSearch variant="home" pointCount={0} full={false} gate={geoGate} bias={searchBias} onPick={(place: Place) => save({ ...myGo, home: { point: [place.lon, place.lat], label: place.name } })} />
-          {myGo.home && (
-            <button type="button" className="secondary" onClick={() => save({ ...myGo, home: null })}>
-              Clear Home
-            </button>
-          )}
-        </div>
-      ) : (
-        <p className="hint">{HOME_SIGN_IN}</p>
-      )}
+        )}
+        <HomeSetter home={myGo.home} geoGate={geoGate} searchBias={searchBias} onPlace={(place: Place) => setHome(homeFromPlace(place))} onClear={() => setHome(null)} />
+      </div>
       <p className="hint my-go-said" role="status">
         {said}
       </p>
@@ -367,12 +402,16 @@ export interface SettingsSheetProps {
   announcements: { level: AnnounceLevel; choose: (level: AnnounceLevel) => void };
   /** Go shows this sheet as its Menu: Plan, Suggest, GPX and (an admin's) Review above the settings. */
   mode: AppMode;
+  /** Whether this server can sign anyone in (GET /api/me's sign_in): the sign-in line is shown only then. */
+  signInAvailable: boolean;
+  /** My routes (signed in only): the saved routes, to open, rename, export or delete. */
+  myRoutes: MyRoutesProps;
   menu: { onPlan: () => void; onSuggest: (opener: HTMLElement) => void; onGpx: (opener: HTMLElement) => void; onReview: ((opener: HTMLElement) => void) | null };
 }
 
 /** The Settings sheet (Go's Menu): Display, Ride mode, This device and Account, as the mockup groups them. */
 export function SettingsSheet(props: SettingsSheetProps) {
-  const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, keepShown, keptVersion, openKept, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu, announcements } = props;
+  const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, keepShown, keptVersion, openKept, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu, announcements, signInAvailable, myRoutes } = props;
   const go = mode === "go";
   return (
     <SheetFrame
@@ -467,19 +506,23 @@ export function SettingsSheet(props: SettingsSheetProps) {
       <section aria-labelledby="settings-signin-heading" className="settings-group">
         <h3 id="settings-signin-heading">Account</h3>
         {myGo.signedIn ? (
-          <p className="hint signed-in">
-            <Icon name="user" size={16} /> Signed in with Discord.
-          </p>
-        ) : (
-          <p className="hint">
-            Planning works without signing in, and a plan made signed out is not saved; the link in the address bar reopens it. Saving routes and
-            peer review are coming for riders who{" "}
+          <>
+            <p className="hint signed-in">
+              <Icon name="user" size={16} /> Signed in with Discord.
+            </p>
+            <SignOutForm />
+          </>
+        ) : signInAvailable ? (
+          // The plan's one line (item 4); the link is its first words. The plan in hand is kept across the round trip.
+          <p className="hint sign-in-line">
             <a href="/auth/login" onClick={(e) => isPlainClick(e) && rememberPlanForSignIn(tabSession(), window.location.hash, linkNote !== "")}>
-              sign in with Discord
+              Sign in with Discord
             </a>
-            ; your current plan is kept across the sign-in.
+            {SIGN_IN_LINE.slice("Sign in with Discord".length)}
           </p>
-        )}
+        ) : null}
+        {/* Versions in Plan only: Go's Menu is unchanged. */}
+        {myGo.signedIn && <MyRoutes {...myRoutes} versions={!go} />}
         <MyGoSection controls={myGo} />
       </section>
     </SheetFrame>
@@ -526,35 +569,13 @@ export function SuggestSheet({ nav, roadInfoAtCentre, onReview }: SuggestSheetPr
       {onReview && (
         <section aria-labelledby="suggest-review-heading" className="settings-group">
           <h3 id="suggest-review-heading">Review</h3>
-          <p className="hint">Riders' suggestions and Mass Ride hazard reports waiting for an admin.</p>
+          <p className="hint">Riders' suggestions, Mass Ride hazard reports and closure reports are in Review, beside Go and Plan.</p>
           <button type="button" className="secondary open-review" onClick={(event) => onReview(event.currentTarget)}>
             <Icon name="shield" />
             Review suggestions
           </button>
         </section>
       )}
-    </SheetFrame>
-  );
-}
-
-export interface ReviewSheetProps {
-  nav: SheetNav;
-  mapRef: RefObject<MapLibreMap | null>;
-  setHazardsAsked: Dispatch<SetStateAction<number>>;
-}
-
-/** An instance admin's review of rider suggestions and Mass Ride hazard reports (OWNER-DECISIONS 460.5), moved out of Settings. */
-export function ReviewSheet({ nav, mapRef, setHazardsAsked }: ReviewSheetProps) {
-  return (
-    <SheetFrame id="sheet-review" title={SHEET_TITLES.review} open={nav.view === "review"} onBack={nav.back} backLabel={nav.backLabel("review")}>
-      <SuggestionReview
-        onStressChanged={(generation) => {
-          const map = mapRef.current;
-          if (map) refreshStressTiles(map, window.location.origin, generation);
-        }}
-      />
-      {/* The same review for riders' Mass Ride hazard reports (FOLLOWUP-MASSRIDE-MAP part 3). */}
-      <SuggestionReview source={HAZARD_REVIEW} onApproved={() => setHazardsAsked((n) => n + 1)} />
     </SheetFrame>
   );
 }
@@ -569,7 +590,8 @@ export function NearestSheet({ nav, children }: { nav: SheetNav; children: React
 }
 
 /** The cuisine chips over Find food (the mockup's Food sheet): each one searches for it. */
-export const FOOD_CHIPS = ["Crab", "Coffee", "Pizza", "Tacos", "Ice cream"] as const;
+// Farm stands (v0.7.0, the owner 2026-10-14: "Lots of places are selling apples in the fall"), with the apple.
+export const FOOD_CHIPS = ["Crab", "Coffee", "Pizza", "Tacos", "Ice cream", "Farm stands"] as const;
 
 /** The map's Food chip: Find food (the panel that was a fold in Points), with the mockup's cuisine chips over it. */
 export function FoodSheet({ nav, onChip, children }: { nav: SheetNav; onChip: (food: string) => void; children: ReactNode }) {
@@ -578,7 +600,7 @@ export function FoodSheet({ nav, onChip, children }: { nav: SheetNav; onChip: (f
       <div className="chip-row food-chips" role="group" aria-label="Quick searches">
         {FOOD_CHIPS.map((food) => (
           <button key={food} type="button" className="chip" onClick={() => onChip(food.toLowerCase())}>
-            <Icon name="food" size={16} />
+            <Icon name={food === "Farm stands" ? "apple" : "food"} size={16} />
             {food}
           </button>
         ))}
@@ -600,7 +622,7 @@ export function RideSheet({ nav, children }: { nav: SheetNav; children: ReactNod
 const RIDE_ICON: Partial<Record<PresetId, IconName>> = {
   cargo: "cargo",
   bikeshare: "bikeshare",
-  kids: "kid",
+  novice: "kid",
   "mountain-bike": "mtb",
   gravel: "gravel",
   fast: "fast",
@@ -614,9 +636,12 @@ const RIDE_ICON: Partial<Record<PresetId, IconName>> = {
   rebalance: "bikeshare",
 };
 
+const rideIcon = (id: PresetId) => <Icon name={RIDE_ICON[id] ?? "bike"} size={20} />;
+
 /**
  * Go's More ride types: every ride type, searchable, under its group's heading
  * (RIDE-TYPE-ORGANISE, lib/rideTypeGroups.ts). The search comes first in the Tab order.
+ * Each type is a card with its name and one short sentence (lib/rideTypeCards.ts).
  *
  * The outline: the sheet's h2, then this list under its own h3 (read, not shown: the sheet
  * already says what it is), its groups as h4 under it, so the Ride line's "Ride type" h3 that
@@ -629,24 +654,41 @@ export function RideGroupChips({ preset, onPick, open }: { preset: PresetId; onP
   useEffect(() => {
     if (!open) setQuery("");
   }, [open]);
-  const groups = filterRideGroups(query);
+  // Review F9: the common types first, the rest in their groups, folded (the one in use opens its group); a search
+  // shows every match flat. The class is ride-sheet-group: .ride-group is the group ride's overlay (RideGroup.tsx).
+  const { common, groups, folded } = rideSections(query);
   return (
     <section className="ride-groups" aria-labelledby="ride-sheet-types">
       <h3 id="ride-sheet-types" className="visually-hidden">
         Every ride type
       </h3>
-      <RideTypeSearch id="ride-sheet-search" query={query} onQuery={setQuery} count={rideTypeCount(groups)} />
-      {groups.map((group) => (
-        <section key={group.id} className="ride-group" aria-labelledby={`ride-sheet-${group.id}`}>
-          <h4 id={`ride-sheet-${group.id}`}>{group.label}</h4>
-          <RideChips ids={group.ids} preset={preset} onPick={onPick} />
+      <RideTypeSearch id="ride-sheet-search" query={query} onQuery={setQuery} count={rideTypeCount(filterRideGroups(query))} />
+      {common.length > 0 && (
+        <section className="ride-sheet-group" aria-labelledby="ride-sheet-common">
+          <h4 id="ride-sheet-common">Common</h4>
+          <RideTypeCards ids={common} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} />
         </section>
-      ))}
+      )}
+      {groups.map((group) =>
+        folded ? (
+          <details key={group.id} className="fold ride-sheet-fold" open={group.ids.includes(preset) || undefined}>
+            <summary>{`${group.label} (${group.ids.length})`}</summary>
+            <div className="fold-body">
+              <RideTypeCards ids={group.ids} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} />
+            </div>
+          </details>
+        ) : (
+          <section key={group.id} className="ride-sheet-group" aria-labelledby={`ride-sheet-${group.id}`}>
+            <h4 id={`ride-sheet-${group.id}`}>{group.label}</h4>
+            <RideTypeCards ids={group.ids} preset={preset} onPick={onPick} idPrefix="ride-sheet" icon={rideIcon} />
+          </section>
+        ),
+      )}
     </section>
   );
 }
 
-/** The ride type chips (Go's quick three and More, or every type in the Ride sheet), each a toggle button. */
+/** Go's quick ride type chips and the More button, each chip a toggle button. */
 export function RideChips({
   ids,
   preset,
@@ -659,7 +701,7 @@ export function RideChips({
   preset: PresetId;
   onPick: (id: PresetId) => void;
   more?: (opener: HTMLElement) => void;
-  /** The chips' group name; left out where a heading already names them (Go's More ride types). */
+  /** The chips' group name; leave it out where a heading already names them. */
   label?: string;
   /** Go: the first chip is the rider's own ride type (My Go), described as such. */
   ownHint?: string;

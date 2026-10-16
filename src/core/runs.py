@@ -52,6 +52,12 @@ STALE_AFTER = {
     # The work-zone feeds (FOLLOWUP-WORKZONES), every five minutes: past half an hour
     # the planner's zones are going stale and the worker is not refreshing them.
     "refresh_work_zones": 30 * 60,
+    # DC's closures (v0.7.0), every fifteen minutes: past an hour the worker is not
+    # refreshing them.
+    "refresh_dc_closures": 60 * 60,
+    # The closures on saved routes (v0.7.0), every fifteen minutes: past an hour riders'
+    # My routes are not being told of new closures.
+    "check_saved_route_closures": 60 * 60,
 }
 
 # How long a run row is kept. The five-minute tasks alone write about 105,000
@@ -158,10 +164,23 @@ def record_paused(task: str) -> ScheduledRun:
     )
 
 
+def paused_by_setting(task: str) -> bool:
+    """True for `weekly_rebuild` while WEEKLY_REBUILD_PAUSED is set (355).
+
+    The setting itself, not only the rows its ticks write: a deployment with no
+    rebuild worker (the beta) never runs the queued tick, so no paused row is ever
+    written and the rebuild went stale eight days into a pause the owner set. A
+    stopped worker is still named by the heartbeat's ten-minute window."""
+    from django.conf import settings
+
+    return task == "weekly_rebuild" and bool(getattr(settings, "WEEKLY_REBUILD_PAUSED", False))
+
+
 def paused_run(task: str, window_s: float, now=None):
     """The newest run row of `task` if it is a pause that is inside the task's window,
     else None. A pause counts only while its ticks keep coming: a worker that stopped
-    ticking during a pause is stale again a window after the last paused tick."""
+    ticking during a pause is stale again a window after the last paused tick (once
+    the setting is cleared; while it is set, `paused_by_setting` holds)."""
     now = now or timezone.now()
     row = ScheduledRun.objects.filter(task=task).order_by("-started_at").first()
     if row is None or row.detail != PAUSED_DETAIL:
@@ -176,12 +195,18 @@ def paused_task_details(now=None) -> list[dict]:
     out = []
     for task, window in STALE_AFTER.items():
         row = paused_run(task, window, now)
-        if row is not None:
+        if row is not None or paused_by_setting(task):
             run = last_success(task)
+            if row is None:
+                row = (
+                    ScheduledRun.objects.filter(task=task, detail=PAUSED_DETAIL)
+                    .order_by("-started_at")
+                    .first()
+                )
             out.append(
                 {
                     "task": task,
-                    "paused_at": row.started_at,
+                    "paused_at": None if row is None else row.started_at,
                     "last_success_at": None if run is None else run.started_at,
                 }
             )
@@ -293,7 +318,9 @@ def stale_task_details(now=None) -> list[dict]:
     A task whose newest row is a pause inside its window (`paused_run`; the weekly
     rebuild while WEEKLY_REBUILD_PAUSED is set, OWNER-DECISIONS 355) is not stale: it is
     reported as paused by `paused_task_details`, and is stale again a window after its
-    last paused tick, so a pause cannot hide a worker that stopped.
+    last paused tick, so a pause cannot hide a worker that stopped. While the setting is
+    set the rebuild is paused whatever its rows say (`paused_by_setting`): the beta runs
+    no rebuild worker, so its tick never runs and writes no row.
 
     What this does not do is excuse a task that is never registered at all. The
     windows keep running from the epoch, so a task missing from the worker's
@@ -307,7 +334,7 @@ def stale_task_details(now=None) -> list[dict]:
     for task, window in STALE_AFTER.items():
         # Paused first (355), so the success/epoch branches below stay one if/else
         # (the ops confirm review: the check sat between them and took their `else`).
-        if paused_run(task, window, now) is not None:
+        if paused_run(task, window, now) is not None or paused_by_setting(task):
             continue
         run = last_success(task)
         if run is not None:
@@ -766,7 +793,9 @@ def disk_headroom(disk_usage=None) -> dict:
 
     disk_usage = disk_usage or shutil.disk_usage
     tiles_dir = Path(settings.TILES_DIR)
-    minimum_free = settings.REBUILD_MIN_FREE_BYTES
+    # Paused (355), no rebuild is coming to reserve the floor: a plain free-space check,
+    # the volume past the gate fraction as it stands.
+    minimum_free = 0 if paused_by_setting("weekly_rebuild") else settings.REBUILD_MIN_FREE_BYTES
     fraction = settings.DISK_GATE_FRACTION
     if not tiles_dir.exists():
         return {

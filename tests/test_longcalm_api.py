@@ -492,6 +492,30 @@ class TestRoutesToChooseFrom:
         (other,) = body["candidates"]
         assert other["over_target_m"] is None
 
+    def test_a_request_for_the_route_alone_looks_for_none(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        # Review speed-5: Ride mode's re-plan (`candidates: false`) uses the first route only.
+        router(standard_router())
+        plain = post(client, top_body()).json()
+        router(standard_router())
+        real = refine.refine
+        asked = []
+
+        def watched(trip, ctx):
+            asked.append((ctx.alternates, ctx.options))
+            return real(trip, ctx)
+
+        monkeypatch.setattr(refine, "refine", watched)
+        alone = post(client, top_body(candidates=False)).json()
+        assert asked == [(0, None)]
+        assert alone["candidates"] is None and alone["rank"] is None
+        for key in ("geometry", "distance_m", "stress_m", "intersections", "description"):
+            assert alone[key] == plain[key], key
+        router(standard_router())
+        post(client, top_body())
+        assert asked[-1][0] == refine.ALT_MAX
+
     def test_the_answer_is_unchanged_by_them(self, client, segments, router, monkeypatch) -> None:
         router(standard_router())
         plain = post(client, top_body()).json()

@@ -6,6 +6,7 @@
  */
 import type { RouteResponse } from "./api.ts";
 import { formatClimb, formatDistance } from "./format.ts";
+import { NEIGHBOUR_NAME } from "./neighbours.ts";
 import { overTarget, type AnnounceHow } from "./summary.ts";
 
 /** The answer and its candidates, in rank order (the answer first). */
@@ -117,25 +118,44 @@ export function candidateRows(answer: RouteResponse | null): CandidateRow[] | nu
   const routes = routesOf(answer);
   if (routes.length < 2) return null;
   const stats = routes.map((route, i) => statsOf(route, i + 1));
-  const calmest = calmestOf(stats[0], stats);
+  // Go's More direct and Calmer (lib/neighbours.ts) are named for what they are, with their tradeoff as the line, and
+  // are not weighed for "the calmest" (they are another setting's routes). With only them, Route 1 is the rider's own.
+  const own = stats.filter((_s, i) => !routes[i].neighbour);
+  const calmest = calmestOf(stats[0], own);
+  const yours = own.length === 1;
   return stats.map((s, i) => {
+    const neighbour = routes[i].neighbour;
+    if (neighbour) return { name: NEIGHBOUR_NAME[neighbour.kind], line: neighbour.line };
     const distance = formatDistance(s.distanceM);
     const name =
       i === 0
-        ? `${rankName(1, calmest)} ${distance}`
+        ? `${yours ? YOUR_SETTING : rankName(1, calmest)} ${distance}`
         : `${rankName(s.rank)} ${distance}, ${distanceAgainstFirst(s.distanceM, stats[0].distanceM)}`;
     return { name, line: statsLine(s) };
   });
 }
 
+/** The rider's own route's name where the others are only More direct and Calmer. */
+export const YOUR_SETTING = "Your setting:";
+
 /** The hint the group is described by, read once on entering it: the target only where one is set. */
 export function candidatesHint(answer: RouteResponse | null): string {
   const target = answer?.calm_search?.target_distance_m;
-  const first = target
-    ? "Each is about as calm as the first, and no further over your target distance."
-    : "Each is about as calm as the first.";
-  return `${first} The map shows the one chosen, and the route description below follows it.`;
+  const routes = routesOf(answer);
+  // Left out only where every other route is More direct or Calmer.
+  const calm = !(routes.length > 1 && routes.slice(1).every((r) => r.neighbour));
+  const first = !calm
+    ? ""
+    : target
+      ? "Each is about as calm as the first, and no further over your target distance. "
+      : "Each is about as calm as the first. ";
+  const notch = routes.some((r) => r.neighbour) ? `${NEIGHBOURS_HINT} ` : "";
+  return `${first}${notch}The map shows the one chosen, and the route description below follows it.`;
 }
+
+/** What More direct and Calmer are, in the group's hint (read once, on entering the group). */
+export const NEIGHBOURS_HINT =
+  "More direct and Calmer are planned one step either side of your traffic setting. Choosing one rides it and keeps your setting.";
 
 /**
  * How the route is announced (summary.ts announceRoute): chosen by the rider ("Route 2
@@ -145,5 +165,7 @@ export function announceHow(answer: RouteResponse | null, index: number, chosen:
   const routes = routesOf(answer);
   if (routes.length < 2) return {};
   const at = Math.min(Math.max(index, 0), routes.length - 1);
-  return chosen ? { chosen: { rank: at + 1, of: routes.length } } : { others: routes.length - 1 };
+  if (!chosen) return { others: routes.length - 1 };
+  const neighbour = routes[at].neighbour;
+  return { chosen: { rank: at + 1, of: routes.length, ...(neighbour ? { name: NEIGHBOUR_NAME[neighbour.kind] } : {}) } };
 }

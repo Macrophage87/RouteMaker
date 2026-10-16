@@ -56,6 +56,16 @@ def _no_long_trail_sentinels(settings):
     # And the Travilah quarry's (owner report 2026-10-12).
     settings.REBUILD_SENTINEL_WORKS_CLOSED_RANGE = ()
     settings.REBUILD_SENTINEL_WORKS_MIN_IN_RANGE = 0
+    # Sign-in is on whenever both Discord keys are set (core.auth_views.sign_in_available).
+    # Placeholders, not keys: the exchange is always injected or patched in the suite, and a
+    # test about sign-in being off clears them itself.
+    settings.DISCORD_CLIENT_ID = "test-client-id"
+    settings.DISCORD_CLIENT_SECRET = "test-client-secret"
+    # Ride dots in this process's memory (core.ride_presence), a fresh store for each test.
+    settings.RIDE_PRESENCE_DIR = ""
+    from core import ride_presence
+
+    ride_presence._store = None
 
 
 @pytest.fixture
@@ -110,6 +120,15 @@ def _no_bikeshare_network(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_live_data_keys(settings):
+    """No test reads WMATA's live API or Mapillary's (v0.7.0): their keys are never set in a
+    test, so nothing is fetched. A test that wants live data installs its own fake
+    (tests/test_wmata_live.py, tests/test_street_photo.py)."""
+    settings.WMATA_API_KEY = ""
+    settings.MAPILLARY_ACCESS_TOKEN = ""
+
+
+@pytest.fixture(autouse=True)
 def _weekend_router_state(monkeypatch):
     """core.routing remembers a failed weekend router for a minute; no test
     inherits another's memory of one. And it plans a weekend ride on the
@@ -137,6 +156,38 @@ def _weekend_router_state(monkeypatch):
 
 
 _REAL_WEEKEND_CHECK: dict = {}
+
+
+@pytest.fixture(autouse=True)
+def _no_kept_routes(settings):
+    """The answer cache (`core.route_cache`, v0.7.0) is off: route tests change the segment
+    table, the fake router and the clock under a plan directly, which in a deployment only
+    a promotion or an edit does (each a new cache key). tests/test_route_cache.py turns it
+    on and tests the cache itself; nothing is kept from one test to the next either way."""
+    settings.ROUTE_CACHE_TTL_S = 0
+    try:
+        from core import route_cache
+    except Exception:  # noqa: BLE001 - modules that never load Django
+        yield
+        return
+    route_cache.clear()
+    yield
+    route_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_kept_columns():
+    """The live table's columns are read afresh in each test (`segment_info.live_columns`
+    keeps them for COLUMN_RECHECK_S): tests build, alter and drop segment tables under the
+    same schema name, which in a deployment only a swap, a rollback or a migration does."""
+    try:
+        from core import segment_info
+    except Exception:  # noqa: BLE001 - modules that never load Django
+        yield
+        return
+    segment_info.forget_columns()
+    yield
+    segment_info.forget_columns()
 
 
 @pytest.fixture

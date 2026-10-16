@@ -14,5 +14,12 @@
   { "text": "USGS 3DEP", "html": "USGS 3DEP" },
   { "text": "U.S. Census Bureau", "html": "U.S. Census Bureau" },
   { "text": "Photon", "html": "Photon" },
-  { "text": "Capital Bikeshare", "html": "Capital Bikeshare" }
+  { "text": "Capital Bikeshare", "html": "Capital Bikeshare" },
+  {
+    "text": "Road closures: DDOT (TOPS permits), CC BY 4.0",
+    "html": "Road closures: DDOT (TOPS permits), <a href=\"https://creativecommons.org/licenses/by/4.0/\">CC BY 4.0</a>"
+  },
+  { "text": "MPD traffic advisories", "html": "MPD traffic advisories" },
+  { "text": "NPS alerts", "html": "NPS alerts" },
+  { "text": "AlertDC (HSEMA)", "html": "AlertDC (HSEMA)" }
 ]

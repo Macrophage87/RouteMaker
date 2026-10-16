@@ -38,6 +38,8 @@ export const STATIC_CACHE = "routemaker-app-static";
 export const OFFLINE_BUCKET = "routemaker-offline-v1";
 /** The shell's key in the build's cache. */
 export const SHELL_KEY = "/index.html";
+/** A shared route's link, `/s/<32 hex>` (its preview's path, core.share_preview). */
+const SHARED_LINK = /^\/s\/[0-9a-f]{32}$/;
 /** How long a navigation waits for the network before the kept shell answers. */
 export const SHELL_TIMEOUT_MS = 3000;
 /** index.html's <meta name=...> carrying the build's id (swPlugin.mjs writes it). */
@@ -48,11 +50,12 @@ export const SKIP_WAITING = "SKIP_WAITING";
 /**
  * Assets left out of the precache, so an install does not download them: the Find food places
  * (about 555 KB compressed; lib/food.ts), which most rides never open, and the Climbs layer's file
- * (about 400 KB compressed; lib/climbs.ts), loaded only when the layer, off by default, is turned on. Fetched the first time the
+ * (about 400 KB compressed; lib/climbs.ts), loaded only when the layer, off by default, is turned on, and the
+ * federal land (about 87 KB compressed; lib/federalLand.ts), which only Mass Ride uses (review fe-perf-6). Fetched the first time the
  * page asks, kept then in the build's cache (so a search works offline after one use), and carried
  * into the next build's cache at its install while the file is unchanged.
  */
-export const LAZY_ASSET = /^\/assets\/(?:food|climbs)-[^/]*\.json$/;
+export const LAZY_ASSET = /^\/assets\/(?:food|climbs|federal-land)-[^/]*\.json$/;
 
 /** The build's own cache: its assets and its shell. */
 export function buildCache(buildId) {
@@ -74,7 +77,8 @@ export function ruleFor(request, origin) {
   }
   if (url.origin !== origin) return "pass";
   const path = url.pathname;
-  if (request.mode === "navigate") return path === "/" || path === "/index.html" ? "shell" : "pass";
+  // A shared link (`/s/<id>`) is the page too: it reads the id from its path (lib/sharedRoutes.ts sharedIdFrom).
+  if (request.mode === "navigate") return path === "/" || path === "/index.html" || SHARED_LINK.test(path) ? "shell" : "pass";
   if (LAZY_ASSET.test(path)) return "lazy";
   if (path.startsWith("/assets/")) return "precache";
   if (path === "/favicon.svg" || path === "/licenses.txt" || path.startsWith("/icons/")) return "static";

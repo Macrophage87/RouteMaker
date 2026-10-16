@@ -45,7 +45,9 @@ export { FEDERAL_EDGE_M, federalAreaAt, type FederalArea } from "./federalLand.t
  */
 export const UNNAMED_ROAD = "unnamed road";
 export const UNTRACED_STREET = "this part of the route";
-export const UNNAMED_PATH = "unnamed path";
+export const UNNAMED_PATH = "path";
+/** What an older API (before v0.7.0) called a path with no name: a saved route may still say it. */
+export const UNNAMED_PATH_BEFORE = "unnamed path";
 
 /** "U.S. Capitol grounds, managed by Architect of the Capitol"; the kind where no agency is known. */
 export function areaWords(area: FederalArea): string {
@@ -128,7 +130,7 @@ export function pointAlong(line: readonly LonLat[], metres: number): LonLat | nu
  * trails beside a parkway (Rock Creek's) are in its polygon too.
  */
 function parkwayByArea(entry: DescriptionEntry, route: Pick<RouteResponse, "geometry" | "distance_m">, data: FederalData | null): Parkway | null {
-  if (!data || entry.facility === "path" || entry.street === UNNAMED_PATH) return null;
+  if (!data || entry.facility === "path" || entry.street === UNNAMED_PATH || entry.street === UNNAMED_PATH_BEFORE) return null;
   const unnamed = !entry.street || entry.street === UNNAMED_ROAD || entry.street === UNTRACED_STREET;
   if (!unnamed && !PARKWAY_WORD.test(entry.street!)) return null;
   const line = route.geometry?.coordinates ?? [];
@@ -164,7 +166,7 @@ export function parkwayRuns(
   const runs: ParkwayRun[] = [];
   for (const entry of entries) {
     // A path is never a federal road, even one named for a parkway ("Suitland Parkway Trail").
-    if (entry.kind !== "stretch" || entry.facility === "path" || entry.street === UNNAMED_PATH) continue;
+    if (entry.kind !== "stretch" || entry.facility === "path" || entry.street === UNNAMED_PATH || entry.street === UNNAMED_PATH_BEFORE) continue;
     const parkway = parkwayByName(entry.street) ?? parkwayByArea(entry, route, data);
     if (!parkway) continue;
     const last = runs[runs.length - 1];

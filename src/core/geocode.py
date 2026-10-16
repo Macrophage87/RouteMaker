@@ -26,6 +26,7 @@ a nearby place, worded "near X".
 
 from __future__ import annotations
 
+import http.client
 import json
 import re
 import urllib.error
@@ -144,7 +145,14 @@ def _get(path: str, params: dict) -> dict:
     try:
         with urllib.request.urlopen(request, timeout=settings.PHOTON_TIMEOUT_S) as response:  # noqa: S310
             body = response.read(MAX_ANSWER_BYTES + 1)
-    except (TimeoutError, urllib.error.URLError, ConnectionError, OSError) as error:
+    # A reply cut off part way is an `http.client.HTTPException` (review api-2).
+    except (
+        TimeoutError,
+        urllib.error.URLError,
+        ConnectionError,
+        OSError,
+        http.client.HTTPException,
+    ) as error:
         raise Unavailable(str(error)) from error
     if len(body) > MAX_ANSWER_BYTES:
         raise Unavailable("the geocoder's answer is larger than expected")
@@ -260,10 +268,58 @@ def expand_abbreviations(query: str) -> str:
 # --- search ----------------------------------------------------------------------
 
 
+# Words that ask for a kind of place rather than a name (Stephen 2026-10-14: "Bike
+# shops should be searchable, like restaurants"). Typed with a bias point, they
+# list the nearest places with that OSM tag (Photon's /reverse with osm_tag,
+# docs/api-v1.md "Filter results by tags and values"), nearest first. Groceries
+# too (review SIMPLICITY-1: "grocery" found places named Grocery, not the nearest).
+TAG_SEARCHES = {
+    phrase: "shop:bicycle"
+    for phrase in (
+        "bike shop",
+        "bike shops",
+        "bicycle shop",
+        "bicycle shops",
+        "bike store",
+        "bike stores",
+        "bicycle store",
+        "bicycle stores",
+        "bike repair",
+        "bicycle repair",
+    )
+} | {
+    phrase: "shop:supermarket"
+    for phrase in (
+        "grocery",
+        "groceries",
+        "grocery store",
+        "grocery stores",
+        "supermarket",
+        "supermarkets",
+    )
+}
+# How far a tag search looks around the bias point, in km (about 12 mi).
+TAG_SEARCH_RADIUS_KM = 20
+
+
 def search(
     q: str, *, lat: float | None = None, lon: float | None = None, limit: int, lang: str
 ) -> list[dict]:
     """Places matching `q` inside the coverage box, nearest `lat, lon` first when given."""
+    tag = TAG_SEARCHES.get(" ".join(q.casefold().split()))
+    if tag is not None and lat is not None and lon is not None:
+        answer = _get(
+            "/reverse",
+            {
+                "lat": lat,
+                "lon": lon,
+                "osm_tag": tag,
+                "radius": TAG_SEARCH_RADIUS_KM,
+                "limit": min(limit + OVERFETCH, PHOTON_MAX_RESULTS),
+                "lang": lang,
+            },
+        )
+        return results(answer, reverse=False)[:limit]
     params: dict = {
         "q": expand_abbreviations(q),
         "limit": min(limit + OVERFETCH, PHOTON_MAX_RESULTS),

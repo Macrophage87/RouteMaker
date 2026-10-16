@@ -157,6 +157,7 @@ def run_pipeline(
     pavement=(),
     legality=(),
     crossings=(),
+    agency_lts=(),
     skip: frozenset[Stage] = frozenset(),
     build_id: str | None = None,
     disk_usage=roomy_disk,
@@ -171,6 +172,7 @@ def run_pipeline(
         pavement=pavement,
         legality=legality,
         crossings=crossings,
+        agency_lts=agency_lts,
     )
     context = RebuildContext(
         source_pbf=source,
@@ -210,7 +212,7 @@ def fresh_deployment(segment_schemas):
 def test_a_first_rebuild_downloads_merges_and_clips_its_own_extract(
     fresh_deployment, states
 ) -> None:
-    """The whole of B-1, through the real stage: three Geofabrik downloads, one
+    """The whole of B-1, through the real stage: four Geofabrik downloads, one
     merge, one clip, both files kept, and the rebuild carries on to populate
     staging from what it produced."""
     source, root = fresh_deployment
@@ -223,6 +225,7 @@ def test_a_first_rebuild_downloads_merges_and_clips_its_own_extract(
         "https://download.geofabrik.de/north-america/us/district-of-columbia-latest.osm.pbf",
         "https://download.geofabrik.de/north-america/us/maryland-latest.osm.pbf",
         "https://download.geofabrik.de/north-america/us/virginia-latest.osm.pbf",
+        "https://download.geofabrik.de/north-america/us/west-virginia-latest.osm.pbf",
     ]
     osmium = binaries.commands("osmium")
     assert [c[1] for c in osmium] == ["merge", "extract"], "merged, then clipped"
@@ -270,7 +273,7 @@ def test_an_extract_older_than_the_limit_is_rebuilt(workspace, states) -> None:
     binaries = FakeBinaries()
     run_pipeline(source, root, binaries=binaries, skip=NOT_SWAPPED)
 
-    assert len(binaries.commands("curl")) == 3, "the three states again"
+    assert len(binaries.commands("curl")) == 4, "the four states again"
     assert source.stat().st_mtime > eight_days_ago, "and this week's clip replaced it"
 
 
@@ -293,7 +296,7 @@ def test_a_partial_download_left_behind_is_never_read_as_the_extract(
     binaries = FakeBinaries()
     run_pipeline(source, root, binaries=binaries, skip=NOT_SWAPPED)
 
-    assert len(binaries.commands("curl")) == 3, "the partial file is not a download"
+    assert len(binaries.commands("curl")) == 4, "the partial file is not a download"
     for path in partials:
         assert not path.exists(), f"{path.name} was left behind"
     assert source.read_bytes() != partials[root / "extracts" / "source.osm.pbf.part"]
@@ -304,7 +307,7 @@ def test_the_disk_gate_refuses_before_the_extract_is_downloaded(fresh_deployment
     """The gate runs before the download, not after it.
 
     The extract is the largest thing this rebuild puts on the data volume - the
-    three state files, the merge, then the clip, all under <DATA_ROOT>/extracts,
+    four state files, the merge, then the clip, all under <DATA_ROOT>/extracts,
     which is the volume the gate measures - so a gate that ran once the extract
     was on disk would be a gate on a volume the rebuild had already filled.
     With no extract to measure it is sized from `source.ESTIMATED_BYTES`.
@@ -1033,6 +1036,52 @@ def test_volume_reaches_the_classifier(workspace, states) -> None:
     assert context.stress_by_way[100].volume_source == "vdot"
     assert context.stress_by_way[100].volume_aadt == 900
     assert context.stress_by_way[100].volume_year == 2025
+
+
+def test_agency_ratings_reach_the_tier_and_the_segment_table(workspace, states) -> None:
+    """v0.7.0 (the owner's order, 2026-10-13): the county's rating over the state's
+    over the formula, every one kept for the road panel in `stress_ratings`."""
+    source, root = workspace
+    staging = settings.SEGMENT_SCHEMA_STAGING
+    line = [[-77.02, 38.90], [-76.98, 38.90]]
+    agency_lts = [
+        {
+            "id": "moco-1-0",
+            "agency": "moco",
+            "level": 2.5,
+            "name": "Test Road",
+            "coordinates": line,
+        },
+        {
+            "id": "sha-1-0",
+            "agency": "mdot-sha",
+            "level": 4,
+            "name": "Test Road",
+            "coordinates": line,
+        },
+    ]
+    context, _ = run_pipeline(source, root, agency_lts=agency_lts, skip=NOT_SWAPPED)
+    stress = context.stress_by_way[100]
+    assert (int(stress.tier), stress.half) == (2, True)
+    assert stress.rule.startswith("agency rating: Montgomery County Planning LTS 2.5")
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT stress_tier, stress_half, stress_ratings FROM {staging}.segment "
+            "WHERE osm_way_id = 100"
+        )
+        tier, half, held = cursor.fetchone()
+    held = json.loads(held) if isinstance(held, str) else held
+    assert (tier, half) == (2, True)
+    assert held["used"] == "moco"
+    assert [a["agency"] for a in held["agencies"]] == ["moco", "mdot-sha"]
+    assert held["formula"] is not None
+    # A way no agency rates keeps the formula and records nothing.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT count(*) FROM {staging}.segment "
+            "WHERE osm_way_id <> 100 AND stress_ratings IS NOT NULL"
+        )
+        assert cursor.fetchone()[0] == 0
 
 
 def test_the_agency_and_year_of_a_count_reach_the_segment_table(workspace, states) -> None:
@@ -3700,14 +3749,16 @@ def test_without_pci_blocks_the_rebuild_warns_and_tags_nothing(workspace, states
 
 
 def test_an_installed_pci_file_is_not_read_until_the_licence_is_confirmed(
-    workspace, states, caplog
+    workspace, states, caplog, monkeypatch
 ) -> None:
-    """The service states no licence (DC-PCI): while `pavement.LICENCE_CONFIRMED`
-    is False an installed `pavement.json` changes nothing in the graph."""
+    """The guard (DC-PCI): while `pavement.LICENCE_CONFIRMED` is False an installed
+    `pavement.json` changes nothing in the graph. The owner confirmed the licence on
+    2026-10-16, so the shipped value is True."""
     from pipeline.extract import read_ways
     from routemaker import pavement
 
-    assert pavement.LICENCE_CONFIRMED is False, "flip it only with the owner's confirmation"
+    assert pavement.LICENCE_CONFIRMED is True
+    monkeypatch.setattr(pavement, "LICENCE_CONFIRMED", False)
     source, root = workspace
     with caplog.at_level(logging.WARNING, logger="pipeline.run"):
         context, _ = run_pipeline(source, root, pavement=[pci_block("p-1", 41.5)], skip=NOT_SWAPPED)
@@ -4689,7 +4740,8 @@ def test_the_rebuild_writes_the_ride_layer_and_the_track_surface(
     bare, bare_next = rows[BARE_PATH_ID], rows[BARE_PATH_NEXT_ID]
     assert bare[2] is None and bare[3] == bare_next[3] == pytest.approx(860, rel=0.05)
     west, east, on = rows[NAMED_STREET_ID], rows[NAMED_STREET_EAST_ID], rows[NAMED_ROAD_ON_ID]
-    assert west[0] == 1 and on[0] <= 2, "the roads are calm"
+    # LTS 2 at best outside an urban area (the owner's rural floor, 2026-10-13); still calm.
+    assert west[0] == 2 and on[0] <= 2, "the roads are calm"
     assert west[2] == "Gamma Street" and on[2] == "Delta Road"
     assert west[3] == east[3] == on[3] == pytest.approx(3460, rel=0.03), "one run (402a)"
     assert rows[ROADSIDE_PATH_ID][4] is True, "a trail 10 m beside a road is roadside (403)"
@@ -4844,3 +4896,37 @@ def test_a_reference_street_the_roadway_block_does_not_have_is_refused(
         run_pipeline(source, root, roadway=[reference_road_block(30)])
     assert caught.value.stage is Stage.VALIDATE_SEGMENTS
     assert "no block named NOT A STREET NW" in str(caught.value.cause)
+
+
+def test_a_reviewers_surface_penalty_reaches_every_graph_as_its_class(workspace, states) -> None:
+    """An approved surface override (v0.7.0) reaches each variant extract as
+    `rm:reviewer_surface`, which lua/routemaker_remap.lua `bounded_surface` prices; one taken
+    off (a null value) and a superseded one reach nothing."""
+    from core.models import Override as Row
+    from pipeline.extract import read_ways
+
+    old = Row.objects.create(
+        kind="surface", osm_way_id=100, value={"surface": "gravel"}, reason="r", evidence="e",
+        approved=True,
+    )  # fmt: skip
+    new = Row.objects.create(
+        kind="surface", osm_way_id=100, value={"surface": "rough"}, reason="r", evidence="e",
+    )  # fmt: skip
+    Row.objects.filter(pk=old.pk).update(superseded_by=new)
+    Row.objects.filter(pk=new.pk).update(approved=True)
+    Row.objects.create(
+        kind="surface", osm_way_id=200, value={"surface": None}, reason="r", evidence="e",
+        approved=True,
+    )  # fmt: skip
+    source, root = workspace
+    context, _ = run_pipeline(source, root, skip=NOT_SWAPPED)
+    assert context.override_report.surface == 1
+    # Way 100 is in every variant's extract, so every graph carries the penalty: none is
+    # skipped for want of the way.
+    carried = set()
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        if tags.get(100, {}).get("rm:reviewer_surface") == "paved_rough":
+            carried.add(variant)
+        assert all("rm:reviewer_surface" not in t for w, t in tags.items() if w != 100), variant
+    assert carried == set(Variant)

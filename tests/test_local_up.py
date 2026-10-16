@@ -10,6 +10,7 @@ run's results.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -24,7 +25,8 @@ SCRIPT = REPO / "scripts" / "local-up.sh"
 BASH = shutil.which("bash")
 
 FAKE_DOCKER = r"""#!/usr/bin/env bash
-printf '%s|RESTART_POLICY=%s\n' "$*" "${RESTART_POLICY-<unset>}" >>"$FAKE_DIR/calls.log"
+printf '%s|RESTART_POLICY=%s|RM_BIND=%s\n' "$*" "${RESTART_POLICY-<unset>}" \
+  "${RM_BIND-<unset>}" >>"$FAKE_DIR/calls.log"
 case "$1" in
   info) [ -e "$FAKE_DIR/docker_down" ] && exit 1; exit 0 ;;
   ps)
@@ -170,6 +172,7 @@ class LocalUpTests(unittest.TestCase):
         self.assertEqual(one["DISCORD_REDIRECT_URI"], "http://localhost/auth/callback")
         self.assertEqual(one["COMPOSE_PROJECT_NAME"], "routemaker")
         self.assertEqual(one["RESTART_POLICY"], "no")
+        self.assertEqual(one["RM_BIND"], "127.0.0.1", "published on loopback only")
         secrets = [
             "DJANGO_SECRET_KEY",
             "PGPASSWORD",
@@ -200,6 +203,12 @@ class LocalUpTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.env_file.read_bytes(), before)
         self.assertIn("--data-root is ignored", result.stdout)
+        # A .env from before RM_BIND still gets a stack bound to loopback.
+        log = (self.fake / "calls.log").read_text().splitlines()
+        ups = [line for line in log if line.startswith("compose") and " up " in line]
+        self.assertTrue(ups)
+        for line in ups:
+            self.assertIn("RM_BIND=127.0.0.1", line)
 
     def test_an_env_without_a_project_name_is_refused_before_anything_starts(self) -> None:
         self.env_file.write_text(f"DATA_ROOT={self.data_root}\n")
@@ -545,6 +554,43 @@ class GeneratedEnvRendersTest(unittest.TestCase):
         self.assertNotIn("is not set", out.stderr)
         self.assertIn(f'"{tmp / "data"}/postgres"', out.stdout)
         self.assertIn('"name": "routemaker"', out.stdout)
+        ports = json.loads(out.stdout)["services"]["caddy"]["ports"]
+        self.assertEqual({p["host_ip"] for p in ports}, {"127.0.0.1"})
+
+        # Review round 2, S3: a .env without RM_BIND (a server's) publishes on no address,
+        # every interface IPv4 and IPv6 alike, exactly as before RM_BIND existed.
+        server_env = tmp / "server.env"
+        server_env.write_text(
+            "".join(
+                line
+                for line in env_file.read_text().splitlines(keepends=True)
+                if not line.startswith("RM_BIND=")
+            )
+        )
+        render = [
+            "docker",
+            "compose",
+            "--project-directory",
+            str(REPO),
+            "--env-file",
+            str(server_env),
+            "-f",
+            str(REPO / "compose.yaml"),
+            "config",
+            "--format",
+            "json",
+        ]
+        server = subprocess.run(
+            render,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env={"PATH": os.environ["PATH"], "HOME": str(tmp)},
+        )
+        self.assertEqual(server.returncode, 0, server.stderr)
+        ports = json.loads(server.stdout)["services"]["caddy"]["ports"]
+        published = [(p.get("host_ip"), p["target"]) for p in ports]
+        self.assertEqual(published, [(None, 80), (None, 443)])
 
 
 if __name__ == "__main__":

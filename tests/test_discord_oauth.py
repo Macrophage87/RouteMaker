@@ -31,6 +31,9 @@ def test_state_is_required_and_must_match() -> None:
     assert verify_state(request, request.state, NOW) is request
     with pytest.raises(OAuthStateError, match="state mismatch"):
         verify_state(request, "forged", NOW)
+    # A non-ASCII state is a mismatch too, not compare_digest's TypeError (sec-app-4).
+    with pytest.raises(OAuthStateError, match="state mismatch"):
+        verify_state(request, "f\u00f6rged", NOW)
 
 
 def test_callback_without_a_login_in_progress_is_refused() -> None:

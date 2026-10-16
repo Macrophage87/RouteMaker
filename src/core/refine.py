@@ -105,7 +105,7 @@ from routemaker import calm, climbs, effort, grade_stress, trace_junctions
 from routemaker import intersections as model
 from routemaker.geo import Point, haversine
 
-from . import junctions, legsplit, presets, routing, trailseek
+from . import junctions, legsplit, parallel, presets, routing, trailseek
 
 logger = logging.getLogger(__name__)
 
@@ -299,6 +299,10 @@ class Context:
     # reads (`routemaker.effort`).
     mass_kg: float = effort.MASS_KG
     analyses: dict = field(default_factory=dict)
+    # The router's `/locate` answers already had in this plan, by (graph, lon, lat,
+    # radius) (`locator`): the candidates are mostly detours of one route and share
+    # most of its junctions, so each is asked once (review speed-1).
+    located: dict = field(default_factory=dict)
     # Whether the wider search runs after the exclusion rounds (`wide_search_for`).
     wide: bool = False
     # Whether the trail seek runs after them (`trailseek.seek_for`), the segment
@@ -371,6 +375,28 @@ class Context:
     junction_ratings: tuple = ()
 
 
+def shift_classes(classes: list, shift: int) -> list:
+    """Each piece's class read `shift` levels up (`presets.Exposure.shift`, Novice and
+    Nervous), for the search; the same list where there is no shift."""
+    if shift <= 0:
+        return classes
+    out = []
+    for cls in classes:
+        tier, half = presets.shifted_tier(cls[0], getattr(cls, "half", False), shift)
+        out.append(
+            routing.PieceClass(
+                tier,
+                cls[1],
+                getattr(cls, "unpaved", None),
+                getattr(cls, "lanes", None),
+                getattr(cls, "oneway", None),
+                getattr(cls, "width_m", None),
+                half,
+            )
+        )
+    return out
+
+
 @dataclass
 class Analysis:
     """One candidate route, read."""
@@ -380,6 +406,9 @@ class Analysis:
     exposure_m: float
     climb_m: float
     pieces: list
+    # The classes the search reads: on a ride that reads every road a level up
+    # (`presets.Exposure.shift`, Novice and Nervous) the shifted ones, and the real ones in
+    # `real_classes`, which the answer's summary and breakdown read (None: the same).
     classes: list
     events: list | None
     # Metres along the route at which each via point is reached.
@@ -424,6 +453,15 @@ class Analysis:
     # `analyse`; None: the same as the weighted figures, a reading made without hills).
     flat_exposure_m: float | None = None
     rated_lts2_m: float | None = None
+    # See `classes`: the real classes where the search reads shifted ones, and the shift
+    # (the junctions' colours are read as many levels up, `presets.shifted_severity`).
+    real_classes: list | None = None
+    shift: int = 0
+
+    @property
+    def rated_classes(self) -> list:
+        """The classes as rated, never shifted: what the rider is shown."""
+        return self.classes if self.real_classes is None else self.real_classes
 
     @property
     def rated_exposure_m(self) -> float:
@@ -462,13 +500,14 @@ class Analysis:
     @property
     def red_m(self) -> float:
         """The very high stress (red) junctions' summed cost, as metres of quiet
-        riding (the junction model's own cost, 2,000 to 4,500 ft each)."""
-        return junction_cost_m(self.events, "red")
+        riding (the junction model's own cost, 2,000 to 4,500 ft each); with a shift,
+        the orange ones too (`presets.shifted_severity`)."""
+        return junction_cost_m(self.events, "red", self.shift)
 
     @property
     def orange_m(self) -> float:
         """The higher stress (orange) junctions' summed cost, in the same unit."""
-        return junction_cost_m(self.events, "orange")
+        return junction_cost_m(self.events, "orange", self.shift)
 
     @property
     def top_m(self) -> float:
@@ -537,11 +576,14 @@ def charged_m(read: Analysis, ctx: Context) -> float:
     return (1 - w) * read.length_m + w * effort
 
 
-def junction_cost_m(events: list | None, severity: str) -> float:
-    """The summed cost of the events of one severity, in metres."""
+def junction_cost_m(events: list | None, severity: str, shift: int = 0) -> float:
+    """The summed cost of the events of one severity (read `shift` levels up), in metres."""
     if not events:
         return 0.0
-    return sum(e.cost_ft for e in events if e.severity == severity) / model.FEET_PER_METRE
+    return (
+        sum(e.cost_ft for e in events if presets.shifted_severity(e.severity, shift) == severity)
+        / model.FEET_PER_METRE
+    )
 
 
 # How much better, at each level of `Analysis.key`, a candidate must be to count
@@ -734,11 +776,31 @@ def too_long(length_m: float, ctx: Context) -> bool:
     return ctx.ceiling_m is not None and length_m > ctx.ceiling_m
 
 
-def locator(variant: str, deadline: routing.Deadline):
-    """`/locate` through the plan's own budgeted router call."""
+def locator(variant: str, deadline: routing.Deadline, located: dict | None = None):
+    """`/locate` through the plan's own budgeted router call. With `located` (the
+    plan's `Context.located`), a place and radius already answered is not asked again:
+    only the others are sent, and the answers come back in the order asked. A short
+    answer from the router ends the list where it ended, as the router's would."""
 
     def locate(payload: dict) -> list[dict]:
-        return routing._call(variant, "locate", payload, deadline)
+        if located is None:
+            return routing._call(variant, "locate", payload, deadline)
+        keys = [
+            (variant, round(p["lon"], 6), round(p["lat"], 6), p.get("radius"))
+            for p in payload["locations"]
+        ]
+        unseen = [i for i, key in enumerate(keys) if key not in located]
+        if unseen:
+            asked = {**payload, "locations": [payload["locations"][i] for i in unseen]}
+            answers = routing._call(variant, "locate", asked, deadline)
+            for i, answer in zip(unseen, answers, strict=False):
+                located[keys[i]] = answer
+        out = []
+        for key in keys:
+            if key not in located:
+                break
+            out.append(located[key])
+        return out
 
     return locate
 
@@ -754,7 +816,7 @@ def events_of_raws(raws, ctx: Context, deadline: routing.Deadline) -> list | Non
             raws,
             ctx.when,
             ctx.with_facility,
-            locator(ctx.variant, deadline),
+            locator(ctx.variant, deadline, ctx.located),
             ctx.group,
             cut_short=(routing.DeadlineExceeded,),
             ratings=ctx.junction_ratings,
@@ -779,6 +841,8 @@ def analyse(
     key = tuple(leg.get("shape", "") for leg in legs)
     if with_events and key in ctx.analyses:
         return ctx.analyses[key]
+    # Every leg's trace at once (v0.7.0, "Faster routing" step 3), read in order below.
+    routing.prefetch_traces(ctx.variant, ctx.costing, [trip], deadline, ctx.traces)
     pieces: list = []
     raws: list = []
     marks: list = []
@@ -801,7 +865,9 @@ def analyse(
         offset += sum(piece.metres for piece in made)
         if number < len(legs) - 1:
             via_m.append(offset)
-    classes = routing.classify(pieces, ctx.when, ctx.lanes_as_roadway)
+    real_classes = routing.classify(pieces, ctx.when, ctx.lanes_as_roadway)
+    shift = ctx.exposure.shift
+    classes = shift_classes(real_classes, shift)
     avoid_passages = avoid_model.passages(line, ctx.avoid) if ctx.avoid else []
     # The stress figures in hill-weighted metres (409): each piece's metres times its factor.
     hill = hill_of(trip, pieces, ctx)
@@ -837,6 +903,8 @@ def analyse(
         hill=hill,
         flat_exposure_m=flat_exposure_m(pieces, classes, weights),
         rated_lts2_m=stress_totals(*rated_metres(pieces, classes))["lts2_m"],
+        real_classes=real_classes if shift else None,
+        shift=shift,
     )
     if with_events:
         ctx.analyses[key] = result
@@ -1168,6 +1236,21 @@ def _router_alternates(trip, best, first_exposure, stop_at, ctx: Context, info: 
         ]
     own = tuple(leg.get("shape", "") for leg in trip.get("legs") or [])
     best_trip = trip
+    # The router's routes are traced together (v0.7.0, "Faster routing" step 3), each then
+    # read in turn below as before.
+    routing.prefetch_traces(
+        ctx.variant,
+        ctx.costing,
+        [
+            candidate
+            for candidate in given
+            if (candidate.get("legs") or [])
+            and tuple(leg.get("shape", "") for leg in candidate["legs"]) != own
+            and not too_long(_trip_m(candidate), ctx)
+        ],
+        routing.Deadline(alt_stop, ctx.deadline.per_call_s),
+        ctx.traces,
+    )
     for candidate in given:
         legs = candidate.get("legs") or []
         # The route the search starts from is not an alternative to itself.
@@ -1250,7 +1333,7 @@ def top_by_leg(analysis: Analysis) -> list[float]:
     bounds = leg_bounds(analysis)
     out = lts4_by_leg(analysis)
     for event in analysis.events or ():
-        if event.severity != "red":
+        if presets.shifted_severity(event.severity, analysis.shift) != "red":
             continue
         for k, (lo, hi) in enumerate(bounds):
             if lo <= event.m < hi or (k == len(bounds) - 1 and event.m >= hi):
@@ -1839,10 +1922,8 @@ def _wide(best, best_trip, first_exposure, stop_at, ctx: Context, info: dict):
     # `first_exposure`: each point taken cannot raise the bar.
     start_retrace_m = retrace_m(best)
     locations = ctx.request.get("locations") or []
-    for lon, lat in vias:
-        if stop_at - routing.clock() < REFINE_ROUND_MIN_S or len(locations) < 2:
-            info["limited"] = info["limited"] or "time"
-            break
+
+    def wide_request(lon: float, lat: float) -> dict:
         request = {
             k: v for k, v in ctx.request.items() if k not in ("alternates", "exclude_locations")
         }
@@ -1851,12 +1932,50 @@ def _wide(best, best_trip, first_exposure, stop_at, ctx: Context, info: dict):
             {"lon": lon, "lat": lat, "type": "through"},
             locations[-1],
         ]
-        round_deadline = routing.Deadline(
-            stop_at, min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
+        return request
+
+    round_deadline = routing.Deadline(
+        stop_at, min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
+    )
+    # The wide routes do not depend on each other: asked together, and their traces
+    # after them, on the pool (v0.7.0, "Faster routing" step 3); each is then read in
+    # turn below, as before. Nothing is started without the time for one round.
+    asking = None
+    if (
+        parallel.enabled()
+        and len(vias) > 1
+        and len(locations) >= 2
+        and stop_at - routing.clock() >= REFINE_ROUND_MIN_S
+    ):
+        asking = [
+            parallel.submit(
+                routing._call, ctx.variant, "route", wide_request(lon, lat), round_deadline
+            )
+            for lon, lat in vias
+        ]
+        answered = []
+        for future in asking:
+            try:
+                answered.append(future.result().get("trip") or {})
+            except Exception:  # noqa: BLE001 - read again, and handled, in the loop below
+                continue
+        routing.prefetch_traces(
+            ctx.variant,
+            ctx.costing,
+            answered,
+            routing.Deadline(stop_at, ctx.deadline.per_call_s),
+            ctx.traces,
         )
+    for number, (lon, lat) in enumerate(vias):
+        if stop_at - routing.clock() < REFINE_ROUND_MIN_S or len(locations) < 2:
+            info["limited"] = info["limited"] or "time"
+            break
         asked += 1
         try:
-            answer = routing._call(ctx.variant, "route", request, round_deadline)
+            if asking is not None:
+                answer = asking[number].result()
+            else:
+                answer = routing._call(ctx.variant, "route", wide_request(lon, lat), round_deadline)
             candidate = answer.get("trip") or {}
             if not candidate.get("legs"):
                 continue
@@ -2459,6 +2578,12 @@ def combine(reads: list[Analysis]) -> Analysis:
             r.exposure_m if r.flat_exposure_m is None else r.flat_exposure_m for r in reads
         ),
         rated_lts2_m=sum(r.lts2_m if r.rated_lts2_m is None else r.rated_lts2_m for r in reads),
+        real_classes=(
+            [c for r in reads for c in r.rated_classes]
+            if any(r.real_classes is not None for r in reads)
+            else None
+        ),
+        shift=max((r.shift for r in reads), default=0),
     )
 
 

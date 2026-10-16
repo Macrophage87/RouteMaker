@@ -10,8 +10,8 @@ Two of the four are built now. Two are not, because they have no source.
 
 | Image | Built by | State |
 | --- | --- | --- |
-| `ghcr.io/macrophage87/routemaker-api:${TAG}` (services `api`, `worker`, `migrate`) | `docker/api.Dockerfile` | Written, never built |
-| `ghcr.io/macrophage87/routemaker-pipeline:${TAG}` (service `rebuild`) | `docker/pipeline.Dockerfile` | Written, never built |
+| `ghcr.io/macrophage87/routemaker-api:${TAG}` (services `api`, `worker`, `migrate`) | `docker/api.Dockerfile` | Built and run at home and on the beta (the deploy agent builds it per release) |
+| `ghcr.io/macrophage87/routemaker-pipeline:${TAG}` (service `rebuild`) | `docker/pipeline.Dockerfile` | Built and run at home and on the cloud rebuild box |
 | `ghcr.io/macrophage87/routemaker-renderer:${TAG}` | — | No source in the repository |
 | `ghcr.io/macrophage87/routemaker-bot:${TAG}` | — | No source in the repository |
 
@@ -41,8 +41,12 @@ Two changes, and they are one decision:
 
 The three third-party images are written out the same way —
 `docker.io/library/caddy:2.8-alpine`, `docker.io/postgis/postgis:16-3.4`,
-`docker.io/rtuszik/photon-docker:2.4.0`. Nothing about where they come from
-changes; what changes is that the registry is stated rather than defaulted.
+`docker.io/rtuszik/photon-docker:2.4.0`, and Valhalla's `ghcr.io/valhalla/valhalla:3.9.1`.
+Nothing about where they come from changes; what changes is that the registry is
+stated rather than defaulted. Since v0.7.0 each also carries its `@sha256:` digest in
+compose (and the pipeline Dockerfile's `VALHALLA_IMAGE`), so a tag moved upstream
+changes nothing here: a new digest is a change in this repository, which the beta's
+deploy gate stops on (a compose `image:` line).
 `tests/test_compose_render.py` asserts that no `image:` in the rendered stack is
 an unqualified reference.
 
@@ -70,12 +74,11 @@ A deploy is the other way round: `docker compose build`, then `up -d`. `up`
 under `never` does not rebuild a tag that is already in the store, so a source
 change reaches the containers only through `build` (or `up -d --build`).
 
-## Not built here — read this first
+## What the suite checks without a daemon
 
-**No image in this repository has ever been built.** The development environment
-has no running Docker daemon and its egress proxy blocks image registries, so
-nothing below has been executed. What has been done instead is written down
-exactly, in `tests/test_images.py`: every `COPY` source is checked against the
+Both images are built and run on real hosts (home, the beta, the cloud rebuild
+box). A development environment without a Docker daemon still checks them, in
+`tests/test_images.py`: every `COPY` source is checked against the
 repository, the `build:` contexts and dockerfile paths are checked to resolve,
 the pipeline image's `FROM` is held to the Valhalla tag the serving containers
 run (read out of `compose.yaml`, not restated), no Dockerfile may declare a
@@ -83,14 +86,11 @@ secret variable, and the `WORKDIR`/`COPY` layout is checked to put `manage.py`
 where compose's `["./manage.py", ...]` commands look for it. Each of those tests
 was confirmed to fail when the thing it checks was broken.
 
-Package names were checked as far as a blocked environment allows. The pipeline
-image's are Ubuntu 24.04 (noble) names and each was confirmed present in
-`packages.ubuntu.com`, which is reachable; the api image's are Debian bookworm
-names taken from knowledge, because `packages.debian.org` and the Debian archive
-indices are both blocked here. Every pinned Python version in `docker/*.txt` was
-confirmed present on PyPI, and each has a manylinux wheel for the interpreter
-its image runs. **Nothing here is a claim that either image builds.** The first
-`docker compose build` on a host with a daemon is the first real test.
+The pipeline image's packages are Ubuntu 24.04 (noble) names and the api image's
+Debian bookworm names; every pinned Python version in `docker/*.txt` has a
+manylinux wheel for the interpreter its image runs. A `docker compose build` on
+a host with a daemon is still the test that counts, and the deploy agent runs
+one for every beta release.
 
 ## Build
 
@@ -285,6 +285,27 @@ or a run row, and nothing is stored under it. A rotation costs at most one
 refresh: until `worker` is recreated with the new key, Virginia's last zones are
 used and then, after two hours, the planner says Virginia's work zones could not
 be checked. `up -d`, not `restart`, for the reason given above.
+
+**`WMATA_API_KEY`, `MAPILLARY_ACCESS_TOKEN`: rotate at the issuer, then here,
+then `up -d api`.** The owner's keys for WMATA's live arrivals, alerts and
+elevator outages and for the road panel's street photo (v0.7.0). Both are issued
+by the provider, not generated here, optional (empty, that feature is off), held
+by `api` alone, sent only in a request header and never logged, and nothing is
+stored under them. A rotation costs at most the live values or street photos
+until `api` is recreated with the new value. `up -d`, not `restart`, as above.
+
+**`NPS_API_KEY`: rotate it at developer.nps.gov, then here, then `up -d
+worker`.** The owner's key for National Park Service alerts on the closures
+check (v0.7.0). Optional (empty, NPS alerts are off), held by `worker` alone,
+sent as the `X-Api-Key` header and never logged. A rotation costs at most a
+refresh: the last alerts are kept until `worker` holds the new key.
+
+**`DC311_API_KEY`: rotate it with DC 311, then here, then `up -d api`.** The
+owner's Open311 key for sending a ride's 311 report in one tap (v0.7.0,
+`core.dc311`). Optional: empty, the report opens a text to DC 311 instead. Held by
+`api` alone, sent only to DC's Open311 endpoint and never logged; nothing is
+stored under it. A rotation costs at most the one-tap send until `api` is
+recreated with the new value. `up -d`, not `restart`, as above.
 
 **`BOT_INTERNAL_SECRET`** is shared between `api` and `bot`, and `bot` has no
 image in phase 1, so there is nothing on the other end of it to disagree with
@@ -762,7 +783,7 @@ in the repository that assumes it:
 
 ## Photon
 
-`photon` is pinned to `docker.io/rtuszik/photon-docker:2.4.0` — the newest release
+`photon` is pinned to `docker.io/rtuszik/photon-docker:2.4.0@sha256:21549c60f9e6488fff3217e40429a652c4b445f374800333fe32859e47cec293` (the tag, and since v0.7.0 its digest) — the newest release
 tag on Docker Hub when this was written (pushed 2026-08-17; `latest`, `2` and
 `2.4` all resolved to the same digest, which is how the tag was chosen), and it
 carries Photon 1.3.0 (`Implementation-Version` in `/photon/photon.jar`). It
@@ -1159,7 +1180,8 @@ What the edge does with it (Caddyfile, `@frontend`):
   byte range means (`tests/test_basemap.py`).
 - A `Content-Security-Policy` of `default-src 'self'` with `script-src`,
   `connect-src` and `font-src 'self'`, `style-src 'self' 'unsafe-inline'`
-  (MapLibre sets inline styles), `img-src 'self' data: blob:`,
+  (MapLibre sets inline styles), `img-src 'self' data: blob:` (the road panel's street photo is
+  this server's copy, `/api/street-photo/image/<id>`: the browser never contacts Mapillary),
   `worker-src 'self' blob:`, `object-src 'none'`, `base-uri 'self'`,
   `form-action 'self'` and `frame-ancestors 'none'`. Every request the app
   makes is to this site, which is what lets it be that tight; the operations
@@ -1258,6 +1280,7 @@ lightningcss under MPL-2.0 - are not shipped):
 | pmtiles | 4.5.0 | BSD-3-Clause | <https://github.com/protomaps/PMTiles> |
 | @protomaps/basemaps | 5.7.2 | BSD-3-Clause | <https://github.com/protomaps/basemaps> |
 | fflate | 0.8.3 | MIT | <https://github.com/101arrowz/fflate> |
+| qrcode-generator (the share card's optional QR code; no dependencies) | 2.0.4 | MIT | <https://github.com/kazuhikoarase/qrcode-generator> |
 
 `licenses.txt` carries each package's licence text as the package ships it,
 completed by `frontend/src/licences/notices.mjs`, and the build fails if any
@@ -1276,6 +1299,9 @@ bundled package is left without text. Two gaps are filled there:
   source maps maplibre-gl ships beside its bundle and adds each one's licence
   under its own heading (`murmurhash-js`, which has no LICENSE file, from the
   MIT text in its README, committed as `frontend/notices/murmurhash-js.txt`).
+- `qrcode-generator` (MIT) ships no LICENSE file either: its notice is the MIT
+  text with the holder and year its own source header names (Kazuhiko Arase,
+  2009), committed as `frontend/notices/qrcode-generator.txt`.
 
 Not done yet, and recorded rather than hidden: the TypeScript types for the
 API are written by hand against the shared contract instead of generated from
@@ -1398,7 +1424,7 @@ mount the source and leaves caddy exited. `up -d` alone does not recreate it.
 Validate the new file in a throwaway container, then recreate caddy alone:
 
 ```sh
-docker run --rm -e CADDY_SITE_ADDRESS=:80 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.8-alpine caddy validate --config /etc/caddy/Caddyfile
+docker run --rm -e CADDY_SITE_ADDRESS=:80 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17 caddy validate --config /etc/caddy/Caddyfile
 docker compose up -d --no-deps --no-build --force-recreate caddy
 ```
 

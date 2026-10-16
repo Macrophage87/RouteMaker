@@ -41,7 +41,10 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 CLOSED, UNKNOWN, PENALTY = "closed", "unknown", "penalty"
-KINDS = (CLOSED, UNKNOWN, PENALTY)
+# A bike lane blocked with the road open (DDOT's TOPS permits, v0.7.0 "DC closures
+# source"): a warning on the route, never a closure, no penalty.
+LANE = "lane"
+KINDS = (CLOSED, UNKNOWN, PENALTY, LANE)
 
 SHOULDER_PENALTY_S = 60.0
 LANE_PENALTY_S = 120.0
@@ -59,6 +62,23 @@ SIDE_LANES = frozenset({"shoulder", "parking", "median"})
 SOURCES = {
     "md": "Maryland DOT SHA work zones (WZDx, CC0)",
     "va": "VDOT work zones (WZDx, SmarterRoads)",
+    # The DC sources (v0.7.0 plan, "DC closures source"; `routemaker.dc_closures`).
+    "dc": "DDOT occupancy permits (TOPS, CC BY 4.0)",
+    "mpd": "MPD traffic advisory",
+    "alertdc": "AlertDC (HSEMA)",
+    "nps": "NPS alerts",
+    # Entered or confirmed by a reviewer (v0.7.0; `core.reviewed_closures`).
+    "reviewer": "Confirmed by a RouteMaker reviewer",
+}
+
+# Where a rider reads more, for a zone that carries no link of its own.
+SOURCE_LINKS = {
+    "md": "https://filter.ritis.org/wzdx_v4.1/mdot.geojson",
+    "va": "https://www.511virginia.org/",
+    "dc": "https://catalog.data.gov/dataset/occupancy-permits-via-ddot-tops",
+    "mpd": "https://mpdc.dc.gov/newsroom",
+    "alertdc": "https://alertdc.dc.gov/",
+    "nps": "https://www.nps.gov/",
 }
 
 DISCLAIMER = (
@@ -102,6 +122,17 @@ class Zone:
     end: datetime | None
     impact: str | None = None
     reason: str = ""
+    # The DC sources' extras (v0.7.0): what is closed, in a line ("Constitution Ave NW,
+    # 14th St to 18th St"); the source's own page; when the source published it.
+    title: str | None = None
+    url: str | None = None
+    published: datetime | None = None
+
+    @property
+    def firm_end(self) -> bool:
+        """Whether the source gives an end: one without "may still apply" on a later ride. A
+        reviewer's closure with no end lasts until a reviewer ends it (`core.reviewed_closures`)."""
+        return self.end is not None or self.source == "reviewer"
 
     def to_json(self) -> dict:
         return {
@@ -116,6 +147,9 @@ class Zone:
             "end": None if self.end is None else self.end.isoformat(),
             "impact": self.impact,
             "reason": self.reason,
+            "title": self.title,
+            "url": self.url,
+            "published": None if self.published is None else self.published.isoformat(),
         }
 
     @classmethod
@@ -132,6 +166,9 @@ class Zone:
             end=_when(row.get("end")),
             impact=row.get("impact"),
             reason=row.get("reason") or "",
+            title=row.get("title"),
+            url=row.get("url"),
+            published=_when(row.get("published")),
         )
 
 
@@ -469,10 +506,51 @@ class PlanZones:
     passable: list[Zone] = field(default_factory=list)
     # Penalty zones the plan chose to route round (`core.routing`).
     avoided: list[Zone] = field(default_factory=list)
+    # The v0.7.0 additions ("Closures on the map"). Closures the rider chose to route
+    # through ("Route through anyway", for this plan only); closures with no end given
+    # on a ride later than now ("may still apply": warned of, never routed round by
+    # default); bike lanes blocked with the road open (a warning only).
+    bypassed: list[Zone] = field(default_factory=list)
+    uncertain: list[Zone] = field(default_factory=list)
+    lanes: list[Zone] = field(default_factory=list)
+    # The ride's moment the zones were matched against, and whether it is later than now.
+    at: datetime | None = None
+    future: bool = False
+    # What each closure did to this route (`core.workzones.measure_delays`): the closures
+    # the route would otherwise have taken, and the seconds the way round adds (None
+    # where it was not worked out in time). For a bypassed closure, the seconds going
+    # round it would add.
+    affecting: set[str] = field(default_factory=set)
+    delays: dict[str, float | None] = field(default_factory=dict)
+    # The park-level and text-only notices ("Check before you go") in force at the ride.
+    notices: list = field(default_factory=list)
 
     @property
     def any(self) -> bool:
-        return bool(self.excluded or self.unexcluded or self.passable)
+        return bool(
+            self.excluded
+            or self.unexcluded
+            or self.passable
+            or self.bypassed
+            or self.uncertain
+            or self.lanes
+        )
+
+    def every_zone(self) -> list[Zone]:
+        """Every zone in force for the plan, each once."""
+        seen: dict[str, Zone] = {}
+        for group in (
+            self.excluded,
+            self.unexcluded,
+            self.passable,
+            self.avoided,
+            self.bypassed,
+            self.uncertain,
+            self.lanes,
+        ):
+            for zone in group:
+                seen.setdefault(zone.zone_id, zone)
+        return list(seen.values())
 
     def penalties_s(self, passages: Iterable[Passage]) -> float:
         return sum(p.zone.penalty_s for p in passages)
@@ -527,13 +605,33 @@ def budget_used(rings: Sequence[Sequence[Sequence[float]]]) -> tuple[float, int]
     return sum(ring_perimeter_m(r) for r in rings), sum(len(r) for r in rings)
 
 
+# A ride more than this after the plan is made is a later ride: a closure with no end
+# given "may still apply" then, and is not routed round by default (v0.7.0).
+FUTURE_AFTER_S = 2 * 60 * 60.0
+
+
+def is_future(at: datetime, now: datetime | None) -> bool:
+    return now is not None and (at - now).total_seconds() > FUTURE_AFTER_S
+
+
 def for_plan(
-    zones: Iterable[Zone], at: datetime, points: Sequence[Sequence[float]], status: dict[str, str]
+    zones: Iterable[Zone],
+    at: datetime,
+    points: Sequence[Sequence[float]],
+    status: dict[str, str],
+    now: datetime | None = None,
+    bypass: Iterable[str] = (),
 ) -> PlanZones:
-    """What a plan through `points` (lon, lat) at ride time `at` does with the zones."""
-    plan = PlanZones(status=dict(status))
+    """What a plan through `points` (lon, lat) at ride time `at` does with the zones.
+
+    `now` is when the plan is made: a closure with no end given, on a ride later than
+    that (`FUTURE_AFTER_S`), "may still apply" and is warned of, not routed round.
+    `bypass` names the closures the rider chose to route through for this plan."""
+    future = is_future(at, now)
+    plan = PlanZones(status=dict(status), at=at, future=future)
     if not points:
         return plan
+    bypassed = set(bypass)
     box = _box(points)
     lons = [p[0] for p in points]
     lats = [p[1] for p in points]
@@ -541,6 +639,15 @@ def for_plan(
     closures = []
     for zone in zones:
         if not active(zone, at) or not _in_box(zone, box):
+            continue
+        if zone.kind == LANE:
+            plan.lanes.append(zone)
+            continue
+        if zone.kind in (CLOSED, UNKNOWN) and zone.zone_id in bypassed:
+            plan.bypassed.append(zone)
+            continue
+        if zone.kind == CLOSED and future and not zone.firm_end:
+            plan.uncertain.append(zone)
             continue
         if zone.kind == CLOSED:
             if _near_point(zone, points):
@@ -584,9 +691,147 @@ def heads_up(zone: Zone, at_m: float) -> str:
             f"Warning: work zone ahead at {where}{road} with every lane closed; the agency does "
             "not say whether bicycles can pass."
         )
+    elif zone.kind == LANE:
+        lead = (
+            f"Bike lane blocked ahead at {where}{road}: the road stays open; merge with care "
+            "or find another way."
+        )
+    elif zone.source in DC_SOURCES:
+        lead = f"Heads-up at {where}{road}: {zone.reason}."
     else:
         lead = f"Work zone ahead at {where}{road}: {zone.reason}."
+    if zone.source in CLOSURE_SOURCES and zone.kind == CLOSED:
+        lead = f"Road closed ahead at {where}{road}: walk round or find another way."
+        said = f" {zone.title.rstrip('.')}." if zone.title else said
     return f"{lead}{said}{_until(zone)} Source: {source}."
+
+
+# The sources whose zones are DC's closures and blocked lanes, not work zones (v0.7.0).
+DC_SOURCES = frozenset({"dc", "mpd", "alertdc"})
+# The sources whose closed zones are said as a road closed, not a work zone: DC's, and the
+# closures a reviewer confirmed.
+CLOSURE_SOURCES = DC_SOURCES | {"reviewer"}
+
+
+# --- The card's words (v0.7.0, "Closures on the map") ------------------------------
+
+_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+_DAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+
+
+def _local(moment: datetime) -> datetime:
+    from .ridetime import ZONE
+
+    return moment.astimezone(ZONE)
+
+
+def clock_text(moment: datetime) -> str:
+    """'4:30 am', '1 pm', 'noon', in the region's time."""
+    local = _local(moment)
+    if local.hour == 12 and local.minute == 0:
+        return "noon"
+    if local.hour == 0 and local.minute == 0:
+        return "midnight"
+    hour = local.hour % 12 or 12
+    half = "am" if local.hour < 12 else "pm"
+    return f"{hour}:{local.minute:02d} {half}" if local.minute else f"{hour} {half}"
+
+
+def date_text(moment: datetime) -> str:
+    """'Oct 20', in the region's time."""
+    local = _local(moment)
+    return f"{_MONTHS[local.month - 1]} {local.day}"
+
+
+def day_text(moment: datetime, now: datetime | None) -> str:
+    """'today', 'tomorrow', or 'Sat, Oct 17', in the region's time."""
+    local = _local(moment)
+    if now is not None:
+        today = _local(now).date()
+        if local.date() == today:
+            return "today"
+        if (local.date() - today).days == 1:
+            return "tomorrow"
+    return f"{_DAYS[local.weekday()]}, {date_text(moment)}"
+
+
+def when_text(zone: Zone, now: datetime | None, future: bool) -> str:
+    """When the closure applies, as the card says it: "Closed today 4:30 am to 1:30 pm",
+    "Permit: road closed until Oct 20", "May still apply: no end time given"."""
+    verb = "Bike lane blocked" if zone.kind == LANE else "Closed"
+    if zone.source == "dc":
+        verb = "Permit: bike lane blocked" if zone.kind == LANE else "Permit: road closed"
+    start, end = zone.start, zone.end
+    if end is None:
+        lead = f"{verb} from {day_text(start, now)} {clock_text(start)}" if start else verb
+        if zone.source == "reviewer":
+            return f"{lead} until a reviewer ends it"
+        if future:
+            return f"{lead}; no end time given, so it may still apply on your ride day"
+        return f"{lead}; no end time given"
+    if start is not None and _local(start).date() == _local(end).date():
+        return f"{verb} {day_text(start, now)} {clock_text(start)} to {clock_text(end)}"
+    if start is not None and (end - start).total_seconds() < 36 * 3600:
+        return (
+            f"{verb} {day_text(start, now)} {clock_text(start)} to "
+            f"{day_text(end, now)} {clock_text(end)}"
+        )
+    if start is not None and now is not None and start > now:
+        return f"{verb} from {date_text(start)} until {date_text(end)}"
+    return f"{verb} until {date_text(end)}"
+
+
+def source_text(zone: Zone) -> str:
+    """The source, named as the card names it: "MPD traffic advisory, Oct 15"."""
+    name = SOURCES.get(zone.source, zone.source)
+    if zone.source == "dc":
+        name = "DDOT occupancy permit (TOPS)"
+    if zone.published is not None and zone.source in ("mpd", "alertdc"):
+        return f"{name}, {date_text(zone.published)}"
+    return name
+
+
+def minutes_text(seconds: float) -> str:
+    minutes = round(seconds / 60)
+    if minutes < 1:
+        return "under a minute"
+    return f"about {minutes} min"
+
+
+ON_ROUTE, ROUTED_ROUND, BYPASSED, MAY_APPLY, NO_EFFECT = (
+    "on_route",
+    "routed_round",
+    "bypassed",
+    "may_still_apply",
+    "none",
+)
+
+
+def effect_text(zone: Zone, effect: str, delay_s: float | None) -> str:
+    """What the closure does to this route, and the delay its detour adds."""
+    if effect == ROUTED_ROUND:
+        if delay_s is None:
+            return "Your route goes round it."
+        return f"Detour adds {minutes_text(delay_s)}"
+    if effect == BYPASSED:
+        said = "You chose to route through it; a small marker stays on the line."
+        if delay_s is not None:
+            said += f" Going round would add {minutes_text(delay_s)}."
+        return said
+    if effect == MAY_APPLY:
+        return (
+            "On your route. It may still apply on your ride day; the route was not changed for it."
+        )
+    if effect == ON_ROUTE:
+        if zone.kind == LANE:
+            return "On your route: the bike lane is blocked here; the road stays open."
+        if zone.kind == UNKNOWN:
+            return (
+                "On your route: every lane closed; the agency does not say whether bicycles "
+                "can pass."
+            )
+        return "On your route: no way round it was found. Walk through or choose another way."
+    return "No effect on your route"
 
 
 def severity(zone: Zone) -> str:
@@ -595,11 +840,24 @@ def severity(zone: Zone) -> str:
 
 
 __all__ = [
+    "BYPASSED",
     "CLOSED",
+    "DC_SOURCES",
     "DISCLAIMER",
     "FLAGGER_PENALTY_S",
+    "FUTURE_AFTER_S",
     "KINDS",
+    "LANE",
     "LANE_PENALTY_S",
+    "MAY_APPLY",
+    "NO_EFFECT",
+    "ON_ROUTE",
+    "ROUTED_ROUND",
+    "SOURCE_LINKS",
+    "effect_text",
+    "is_future",
+    "source_text",
+    "when_text",
     "PENALTY",
     "Passage",
     "PlanZones",

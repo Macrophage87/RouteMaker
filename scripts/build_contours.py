@@ -67,7 +67,7 @@ from pathlib import Path
 
 # settings.COVERAGE_BBOX (west, south, east, north); tests/test_build_contours.py holds
 # the two equal, as tests/test_basemap.py does for scripts/fetch_basemap.sh.
-BBOX = (-78.0, 38.2, -76.02, 39.72)
+BBOX = (-78.05, 38.2, -76.02, 39.72)
 
 THREEDEP_13_URL = (
     "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/13/TIFF/current/"

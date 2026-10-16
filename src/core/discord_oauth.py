@@ -72,7 +72,9 @@ def verify_state(stored: LoginRequest | None, returned: str, now: datetime) -> L
         raise OAuthStateError("no login was in progress for this session")
     if not stored.is_live(now):
         raise OAuthStateError("the login request expired")
-    if not hmac.compare_digest(stored.state, returned):
+    # Bytes, not str: compare_digest refuses a non-ASCII str with a TypeError (a 500),
+    # where a returned state that is not ours is a mismatch.
+    if not hmac.compare_digest(stored.state.encode(), returned.encode()):
         raise OAuthStateError("state mismatch")
     return stored
 

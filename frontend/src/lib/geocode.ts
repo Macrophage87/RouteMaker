@@ -14,6 +14,7 @@
 import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./geo.ts";
 import { parseRetryAfter } from "./api.ts";
 import { pointName } from "./summary.ts";
+import { namePoints } from "./pointKinds.ts";
 
 export interface Place {
   name: string;
@@ -562,9 +563,12 @@ export function pointRows(
   points: readonly LonLat[],
   names: { name: (point: LonLat) => { name: string; label: string } | undefined },
   loop = false,
+  isVia?: (point: LonLat) => boolean,
 ): PointRow[] {
+  // With the points' kinds (v0.7.0, lib/pointKinds.ts): stops numbered among themselves, via points unnumbered.
+  const named = isVia ? namePoints(points, isVia, loop) : null;
   return points.map((point, index) => ({
-    role: pointName(index, points.length, loop),
+    role: named ? named[index].name : pointName(index, points.length, loop),
     place: names.name(point),
     coords: coordinatesText(point),
   }));
@@ -620,9 +624,13 @@ export function pickTarget<T, P extends T>(active: number, index: number, items:
 export type PlaceChoice = "start" | "end" | "via";
 
 /** The choice the box starts on: the start for an empty plan, else the destination (a stop in a loop). */
-export function defaultChoice(count: number, loop = false): PlaceChoice {
+export function defaultChoice(count: number, loop = false, full = false): PlaceChoice {
   if (count === 0) return "start";
-  return loop ? "via" : "end";
+  if (loop) return "via";
+  // With a start and an end, a picked place is a stop where it adds the least distance (v0.7.0, "Keep adding
+  // stops by search"); the result row's "Make this the destination" puts it at the end instead. A full route
+  // takes no stop, so a pick is a new destination there, as before.
+  return count >= 2 && !full ? "via" : "end";
 }
 
 /**
@@ -631,7 +639,7 @@ export function defaultChoice(count: number, loop = false): PlaceChoice {
  * otherwise the plan's default.
  */
 export function choiceInForce(chosen: PlaceChoice | null, count: number, full: boolean, loop = false): PlaceChoice {
-  return chosen !== null && choicesFor(count, full, loop).includes(chosen) ? chosen : defaultChoice(count, loop);
+  return chosen !== null && choicesFor(count, full, loop).includes(chosen) ? chosen : defaultChoice(count, loop, full);
 }
 
 /**
@@ -707,6 +715,8 @@ const FOOD_VALUES = new Set(["restaurant", "cafe", "fast_food", "bar", "pub", "i
 export function placeType(place: Pick<Place, "kind" | "osm_key" | "osm_value">): string {
   const key = place.osm_key ?? "";
   const value = place.osm_value ?? "";
+  // A place read from a pasted or shared map link (lib/sharedLocation.ts).
+  if (place.kind === "shared") return "From a map link";
   if (key === "railway" && (value === "station" || value === "halt")) return "Rail station";
   if (key === "public_transport" && value === "station") return "Station";
   if (key === "railway" && value === "subway_entrance") return "Station entrance";

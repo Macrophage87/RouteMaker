@@ -1,0 +1,274 @@
+"""A short-term cache of route answers (v0.7.0, "Faster routing" step 5).
+
+Re-opening a plan, Undo, the Home chip and Go's early start (step 4) ask for the same
+route again within minutes; each used to be a whole plan. An answer is kept here for
+`TTL_S` (10 minutes) and given again for an identical request, so those are instant.
+
+**The key** is everything the answer is made from:
+
+- the whole request as validated (`RouteIn`: the points, the ride type and every dial,
+  the closures routed through, the via points), less `quick`, which only says how much
+  of the plan to wait for (a full answer kept answers a quick request too); the points
+  are rounded to 1e-4 degrees (about 10 m), the plan's "same points rounded to ~10 m";
+- whether it was planned as a long ride, or a long calm plan;
+- the ride time: the setting asked for, or the one of the moment where none was (so a
+  plan made just before the evening rush is not given once the rush starts), and the
+  instant the router is asked about (`routing.planning_time`), and whether the closures
+  are matched at now or at that instant (`workzones.ride_moment`);
+- the live segment table and its edit generation (`stress_tiles.live_state`): a
+  promotion, or any road-panel edit or undo (`stress_edits.bump_generation`), is a new
+  key, so no answer from before it is given again;
+- the closures (`core.workzones.snapshot`): every zone with its kind and window, each
+  feed's status and read time, and the notices, so a refresh that changes any of them
+  is a new key; and an answer is not kept past the next moment a zone starts or ends
+  (`valid_until`), nor past the next local midnight (the closures' "today" words);
+- the approved Avoid junctions, junction ratings and Mass Ride hazards, which the plan
+  reads at request time.
+
+**Not kept:** Bikeshare and the transit ride types (live availability and departures);
+an answer from another graph than the ride's own (a weekend or off-road router that was
+down: it is answered again once that router is back); and an answer the budget cut short
+(a router call that failed for want of time or an answer, `timing.Timings.failures`, or
+a search that stopped for time), so a retry can do better.
+
+One cache per process (gunicorn's workers do not share it), at most `MAX_ENTRIES`
+answers, least recently used first out. Nothing in it is a location in a log or on
+disk; it lives only in the worker's memory, like the request it answers.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import threading
+import time
+from collections import OrderedDict
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+
+logger = logging.getLogger(__name__)
+
+TTL_S = 10 * 60
+MAX_ENTRIES = 128
+# Points are compared at this many decimal places of a degree: 1e-4 is about 11 m of
+# latitude and 9 m of longitude here.
+POINT_PLACES = 4
+
+FULL = "full"
+QUICK = "quick"
+
+
+@dataclass
+class _Entry:
+    body: dict
+    expires: float
+
+
+_lock = threading.Lock()
+_entries: OrderedDict[tuple[str, str], _Entry] = OrderedDict()
+
+
+def ttl_s() -> float:
+    """How long an answer is kept: `settings.ROUTE_CACHE_TTL_S`, `TTL_S` unless set; 0
+    turns the cache off (the test suite, whose tests change the segment table under a
+    plan directly, without the edit generation an edit bumps)."""
+    from django.conf import settings
+
+    try:
+        return max(0.0, float(getattr(settings, "ROUTE_CACHE_TTL_S", TTL_S)))
+    except (TypeError, ValueError):
+        return float(TTL_S)
+
+
+def clear() -> None:
+    """Forget every answer (the tests; an operator's shell)."""
+    with _lock:
+        _entries.clear()
+
+
+def size() -> int:
+    with _lock:
+        return len(_entries)
+
+
+def _clock() -> float:
+    return time.monotonic()
+
+
+def get(key: str, quick: bool = False) -> dict | None:
+    """The answer kept for `key`: the full plan's, or for a quick request the first
+    route's where no full plan is kept. None where neither is, or it has expired."""
+    kinds = (FULL, QUICK) if quick else (FULL,)
+    now = _clock()
+    with _lock:
+        for kind in kinds:
+            entry = _entries.get((key, kind))
+            if entry is None:
+                continue
+            if entry.expires <= now:
+                del _entries[(key, kind)]
+                continue
+            _entries.move_to_end((key, kind))
+            return entry.body
+    return None
+
+
+def put(key: str, body: dict, valid_s: float = TTL_S) -> None:
+    """Keep `body` for `key`, for `valid_s` seconds at most (never past `TTL_S`)."""
+    kind = QUICK if body.get("provisional") else FULL
+    ttl = max(0.0, min(float(valid_s), ttl_s()))
+    if ttl <= 0:
+        return
+    with _lock:
+        _entries[(key, kind)] = _Entry(body, _clock() + ttl)
+        _entries.move_to_end((key, kind))
+        if kind == FULL:
+            # The full plan supersedes its first route.
+            _entries.pop((key, QUICK), None)
+        while len(_entries) > MAX_ENTRIES:
+            _entries.popitem(last=False)
+
+
+# --- The key -------------------------------------------------------------------------
+
+
+def _rounded(points: list) -> list:
+    return [
+        [round(float(lon), POINT_PLACES), round(float(lat), POINT_PLACES)] for lon, lat in points
+    ]
+
+
+def request_part(fields: dict) -> dict:
+    """The request's own part of the key: every field but `quick`, points rounded."""
+    part = {k: v for k, v in fields.items() if k != "quick"}
+    part["points"] = _rounded(part.get("points") or [])
+    return part
+
+
+def _edits_part() -> list:
+    """The live table, its optional columns and its edit generation."""
+    from . import stress_tiles
+
+    oid, columns, generation = stress_tiles.live_state()
+    return [oid, sorted(columns), generation]
+
+
+_closures_memo: tuple[object, str, tuple] | None = None
+
+
+def _closures_part(now: datetime) -> tuple[str, datetime | None]:
+    """A digest of the closures the planner reads, and the next moment after `now` at
+    which one of them starts or ends (None: none does)."""
+    global _closures_memo
+    from . import workzones
+
+    found = workzones.snapshot()
+    memo = _closures_memo
+    if memo is not None and memo[0] is found:
+        digest, moments = memo[1], memo[2]
+    else:
+        rows = sorted(
+            json.dumps(zone.to_json(), sort_keys=True, default=str) for zone in found.zones
+        )
+        made = {
+            "zones": rows,
+            "status": sorted(found.status.items()),
+            "read_at": sorted((k, str(v)) for k, v in found.read_at.items()),
+            "notices": [repr(notice) for notice in found.notices],
+        }
+        digest = hashlib.sha256(json.dumps(made, sort_keys=True).encode()).hexdigest()
+        moments = tuple(
+            sorted(
+                {
+                    moment
+                    for zone in found.zones
+                    for moment in (zone.start, zone.end)
+                    if isinstance(moment, datetime)
+                }
+            )
+        )
+        _closures_memo = (found, digest, moments)
+    upcoming = next((m for m in moments if m > now), None)
+    return digest, upcoming
+
+
+def _approved_part(preset: str) -> list:
+    """The approvals the plan reads at request time."""
+    from . import avoid_junctions, mass_hazards
+    from .junction_suggestions import approved_ratings
+
+    hazards = []
+    if preset == "mass-ride":
+        for way, hazard in sorted(mass_hazards.approved().items()):
+            fields = {k: str(v) for k, v in vars(hazard).items() if not k.startswith("_")}
+            hazards.append([way, sorted(fields.items())])
+    return [
+        [repr(item) for item in avoid_junctions.approved()],
+        [repr(item) for item in approved_ratings()],
+        hazards,
+    ]
+
+
+@dataclass(frozen=True)
+class Key:
+    key: str
+    # Seconds the answer may be kept: TTL_S, or less where a closure starts or ends,
+    # or the day turns, before then.
+    valid_s: float
+
+
+def key_for(
+    fields: dict, when: str, planning_at: str, long_plan: str, now: datetime | None = None
+) -> Key | None:
+    """The key for a request (`fields`: the validated request), planned with the ride
+    time `when` (the setting used) and `planning_at` (the router's instant), as
+    `long_plan` ("", "long_ride" or "long_calm"). None where the state it depends on
+    cannot be read: that request is planned, and not kept."""
+    from routemaker import ridetime
+
+    if ttl_s() <= 0:
+        return None
+    now = now or datetime.now(UTC)
+    try:
+        closures, next_change = _closures_part(now)
+        made = {
+            "request": request_part(fields),
+            "when": when,
+            "planning_at": planning_at,
+            # The moment closures are matched at (`workzones.ride_moment`): now while the dial
+            # is on the setting of the moment, else `planning_at`. A dial set to "weekday peak"
+            # is now at 8:55 and next Tuesday's 8:00 at 9:05, with the same `when`.
+            "ride_now": ridetime.when_at(now) == when,
+            "long": long_plan,
+            "edits": _edits_part(),
+            "closures": closures,
+            "approved": _approved_part(str(fields.get("preset"))),
+        }
+        digest = hashlib.sha256(json.dumps(made, sort_keys=True, default=str).encode()).hexdigest()
+    except Exception:  # noqa: BLE001 - a plan is never refused for want of its key
+        logger.warning("the route cache key could not be made", exc_info=True)
+        return None
+    valid_s = ttl_s()
+    if next_change is not None:
+        valid_s = min(valid_s, (next_change - now).total_seconds())
+    local = now.astimezone(ridetime.ZONE)
+    midnight = (local + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    valid_s = min(valid_s, (midnight - local).total_seconds())
+    return Key(digest, valid_s)
+
+
+def keepable(body: dict, own_variant: str, failures: int) -> bool:
+    """Whether an answer may be kept: planned on the ride's own graph, and not cut short
+    by the budget (a failed router call, or a search that stopped for time)."""
+    if failures:
+        return False
+    if body.get("variant") != own_variant:
+        return False
+    calm_search = body.get("calm_search") or {}
+    if calm_search.get("limited") == "time":
+        return False
+    for field in ("hills_seek", "hills_avoid", "hills_tolerate"):
+        if (body.get(field) or {}).get("limited") == "timed_out":
+            return False
+    return True

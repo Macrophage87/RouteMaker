@@ -358,6 +358,42 @@ class TestReview:
         assert (avoid.location.x, avoid.location.y) == NODE
         assert JunctionOverride.objects.count() == 0
 
+    def test_approving_avoid_where_it_is_already_avoid_keeps_the_one_rating(self, live) -> None:
+        # Review api-3: two riders' Avoid suggestions, both approved, made two rows.
+        open_to("signed_in")
+        first, second = suggest(level=5), suggest(level=5)
+        client, csrf = admin_client()
+        for s in (first, second):
+            assert post(client, ACTION.format(s.pk, "approve"), {}, csrf).status_code == 200
+        avoid = AvoidJunction.objects.get()
+        first.refresh_from_db()
+        second.refresh_from_db()
+        assert first.avoid == second.avoid == avoid and second.status == "approved"
+        entry = AuditLogEntry.objects.filter(action="junction_suggest_approve").last()
+        assert entry.detail == f"kept avoid junction {avoid.pk}"
+
+    def test_an_approval_locks_the_place_before_it_looks(self, live) -> None:
+        # Review api-3: two approvals at once each found no Avoid junction and made one.
+        from django.test.utils import CaptureQueriesContext
+
+        open_to("signed_in")
+        s = suggest(level=5)
+        with CaptureQueriesContext(connection) as queries:
+            js.approve(make_user(), s.pk)
+        sql = [q["sql"] for q in queries]
+        locks = [i for i, q in enumerate(sql) if "pg_advisory_xact_lock" in q]
+        looks = [i for i, q in enumerate(sql) if "avoid_junction" in q.lower()]
+        assert len(locks) == 9 and looks and max(locks) < min(looks)
+
+    @pytest.mark.parametrize("east, north", [(0.0, 0.0), (14.9, 0.0), (0.0, -14.9), (10, 10)])
+    def test_two_places_within_a_match_share_a_lock(self, east, north) -> None:
+        import math
+
+        for lon, lat in ((-77.0, 38.9), (-77.000135, 38.900135), (-76.99999, 38.89999)):
+            other_lon = lon + east / (111_000 * math.cos(math.radians(lat)))
+            other_lat = lat + north / 111_000
+            assert set(js.lock_cells(lon, lat)) & set(js.lock_cells(other_lon, other_lat))
+
     def test_approving_a_lower_level_withdraws_the_avoid_rating(self, live) -> None:
         open_to("signed_in")
         avoid = AvoidJunction.objects.create(

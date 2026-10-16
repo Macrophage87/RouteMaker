@@ -42,12 +42,28 @@ export interface Countdown {
   missed: boolean;
 }
 
+// When each departure's answer reached this phone, by the phone's own clock (review TB-6).
+const arrivedAt = new WeakMap<object, number>();
+
+/** Mark when the plan holding `departure` arrived (requestRoute), so its countdown runs from then. */
+export function noteArrived(departure: object, atMs: number): void {
+  arrivedAt.set(departure, atMs);
+}
+
+/**
+ * The countdown at `nowMs`. Counted from when the answer arrived, by the phone's clock, so a phone
+ * clock that is wrong does not mark a fresh plan missed nor show spare time for a train gone (review
+ * TB-6); the departure is that far after the plan's moment, as the server's clock says. A departure
+ * with no arrival noted (one kept from before) is counted against the plan's moment, as before.
+ */
 export function countdown(departure: Pick<TransitDeparture, "departs_at" | "planned_at" | "spare_s">, nowMs: number): Countdown {
   const departs = Date.parse(departure.departs_at);
   const planned = Date.parse(departure.planned_at);
-  const elapsed = Math.max(0, (nowMs - planned) / 1000);
+  const arrived = arrivedAt.get(departure);
+  const elapsed = Math.max(0, (nowMs - (arrived ?? planned)) / 1000);
   const spareS = departure.spare_s - elapsed;
-  return { toDepartS: (departs - nowMs) / 1000, spareS, close: spareS < CLOSE_S, missed: spareS < 0 };
+  const toDepartS = arrived === undefined ? (departs - nowMs) / 1000 : (departs - planned) / 1000 - elapsed;
+  return { toDepartS, spareS, close: spareS < CLOSE_S, missed: spareS < 0 };
 }
 
 /** A count of seconds as the timer shows it: "04:09", "1:02:03"; never below zero. */

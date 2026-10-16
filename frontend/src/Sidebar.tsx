@@ -10,8 +10,8 @@
  * depends on colour. A sheet takes the focus to its heading when it opens, and
  * the Back button (or Escape) takes it back to the bar button that opened it.
  */
-import { Fragment, useId, useState, type KeyboardEvent, type ReactNode, type Ref } from "react";
-import { BACK_LABEL, BAR_ITEMS, BAR_NAME, FEWER_TIPS, MORE_TIPS, barCurrent, sheetEscape, type BarItem, type PanelView } from "./lib/sidebar.ts";
+import { Fragment, type KeyboardEvent, type ReactNode, type Ref } from "react";
+import { BACK_LABEL, BAR_ITEMS, BAR_NAME, barCurrent, sheetEscape, type BarItem, type PanelView } from "./lib/sidebar.ts";
 import { Icon } from "./Icon.tsx";
 import type { IconName } from "./lib/iconPaths.ts";
 import type { QuickFigure } from "./lib/quickFigures.ts";
@@ -19,22 +19,6 @@ import type { QuickFigure } from "./lib/quickFigures.ts";
 // The parts a test renders are written with createElement in lib/sidebarParts.ts (node's test runner
 // reads .ts, not .tsx); App.tsx takes them from here with the rest.
 export { HighContrastShortcut, Fold, JunctionLegend, PlannerZoomNotice, RideSettings } from "./lib/sidebarParts.ts";
-
-/** Help that is not needed every time, behind a toggle (the mockup's "More tips"). */
-export function MoreTips({ children }: { children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const id = useId();
-  return (
-    <div className="more-tips">
-      <button type="button" className="link tips-toggle" aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
-        {open ? FEWER_TIPS : MORE_TIPS}
-      </button>
-      <div id={id} className="tips-body" hidden={!open}>
-        {children}
-      </div>
-    </div>
-  );
-}
 
 /** The four quick figures: a label and a figure each, as a description list. */
 export function QuickFigures({ figures }: { figures: readonly QuickFigure[] }) {

@@ -64,9 +64,11 @@ test("the shared URL is Copy link's, at its full precision and without the weigh
   assert.equal(sent[0].url, url);
   assert.equal(sent[0].url, `https://x.test/${encodePlan(points, "default", dials)}`);
   assert.doesNotMatch(`${sent[0].url} ${sent[0].text}`, /weight|97\.5|\bkg\b|\blbs?\b/i);
-  // App hands share exactly the link Copy link copies.
-  assert.match(app, /shareContent\(linkToCopy\(window\.location, points, preset, dials\), distanceM, presetSaid\(preset\)\)/);
-  assert.match(app, /copyText\(linkToCopy\(window\.location, points, preset, dials\), navigator\.clipboard, selectionCopy\)/);
+  // App hands share the link Copy link copies, with only the shared line's id added (lib/sharedRoutes.ts).
+  assert.match(app, /let link = linkToCopy\(window\.location, points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\);/);
+  assert.match(app, /link = withSharedId\(link, id\);/);
+  assert.match(app, /shareContent\(link, distanceM, presetSaid\(preset\)\)/);
+  assert.match(app, /copyText\(linkToCopy\(window\.location, points, preset, dials, viaIndices\(points, VIA_MARKS\.isVia\)\), navigator\.clipboard, selectionCopy\)/);
 });
 
 test("the rider closing the sheet is silent; any other failure says so and offers Copy link", async () => {
@@ -95,13 +97,18 @@ test("App shows Share beside Copy link only where it is supported, named Share r
   const copy = app.indexOf("aria-label={COPY_LINK}");
   const share = app.indexOf("{canShare && (");
   assert.ok(copy > 0 && share > copy && share - copy < 700, "in More, after Link");
-  assert.match(app, /const hasMore = canShare \|\| keepShown;/);
+  // More is always there: Share as image is in it, after Share and its keeping (lib/shareCard.ts).
+  assert.doesNotMatch(app, /hasMore/);
+  assert.match(
+    app,
+    /\{canShare && <ShareKeepField value=\{shareKeep\} onChange=\{onShareKeep\} \/>\}\s*\{\/\*[^*]*\*\/\}\s*<button type="button" className="secondary share-image" onClick=\{shareImage\} aria-haspopup="dialog">\s*\{SHARE_IMAGE_LABEL\}/,
+  );
   assert.match(
     app,
     /<div id=\{moreId\} className="route-more-body" hidden=\{!more\}>\s*\{canShare && \(\s*<button type="button" className="secondary share-route" onClick=\{shareRoute\} aria-label=\{SHARE_NAME\} aria-describedby=\{linkNote \? "link-note" : undefined\}>\s*\{SHARE_LABEL\}/,
   );
   // A failure is said in the polite status Copy link uses, and shown; success and cancel say nothing.
-  assert.match(app, /said = shareSaidFor\(await outcome\);/);
+  assert.match(app, /const done = await outcome;\s*said = shareSaidFor\(done\);/);
   assert.match(app, /if \(!said\) return;\s*window\.setTimeout/);
   assert.match(app, /if \(press === linkPresses\.current\) setLinkSpoken\(said\);/);
 });

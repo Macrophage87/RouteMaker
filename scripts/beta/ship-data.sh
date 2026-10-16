@@ -120,6 +120,21 @@ API_IMAGE="ghcr.io/macrophage87/routemaker-api"
 #                                     override rows, which the beta's update replaces.
 #   my_go                             user_id -> app_user: a rider's own My Go, with their Home
 #                                     (a place they live; core.models.MyGo). Never leaves home.
+#   account_settings                  user_id -> app_user: a rider's saved settings (v0.7.0).
+#   saved_route                       user_id -> app_user: a rider's saved routes and GPX files (v0.7.0).
+#   signed_out_send                   salted daily hashes of signed-out suggesters' addresses (v0.7.0;
+#                                     core.signed_out_suggestions), kept 24 hours: never shipped.
+#   shared_route                      routes riders shared with the Share button (v0.7.0;
+#                                     core.shared_routes): a rider's own lines, never shipped.
+#   saved_route_version               earlier versions of a rider's saved routes (v0.7.0): never shipped.
+#   reviewed_closure                  closures home's reviewers confirmed (v0.7.0; core.reviewed_closures):
+#                                     the reviewer's account and a rider's reported words, never shipped.
+#   review_item review_ruling         Review mode's queues, rulings and their maps (v0.7.0;
+#   review_queue_state                core.stress_review): an instance admin's own, and ratings whose
+#                                     public use is pending (agency_lts.PENDING_AGENCIES), never shipped.
+#   stress_suggestion_review          reviewers' agree and disagree on home's waiting suggestions
+#                                     (v0.7.0; core.suggestions.review): suggestion_id ->
+#                                     stress_suggestion, reviewer_id -> app_user. Never shipped.
 # tests/test_beta_overlay.py asserts this list, and that every table pointing at one of these is
 # excluded too or blanked (below); ship-data.sh refuses a dump that carries data for any name in it.
 EXCLUDED_TABLE_DATA=(
@@ -128,7 +143,9 @@ EXCLUDED_TABLE_DATA=(
 	django_admin_log scheduled_run stress_tile_cache bikeshare_feed_cache
 	app_user audit_log bootstrap_claim pending_instance_admin_removal ban_tombstone
 	configured_guild role_mapping stress_suggestion mass_hazard junction_suggestion stress_edit
-	my_go
+	my_go account_settings saved_route saved_route_version signed_out_send shared_route reviewed_closure
+	review_item review_ruling review_queue_state
+	stress_suggestion_review
 )
 # Tables the beta needs from home that also name a person or carry a rider's words: shipped with
 # those columns blanked, never whole. Each is left out of the dump and written instead as

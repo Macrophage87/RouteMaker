@@ -96,6 +96,8 @@ def test_the_three_geofabrik_extracts_are_the_plans_three_states() -> None:
         "https://download.geofabrik.de/north-america/us/district-of-columbia-latest.osm.pbf",
         "https://download.geofabrik.de/north-america/us/maryland-latest.osm.pbf",
         "https://download.geofabrik.de/north-america/us/virginia-latest.osm.pbf",
+        # v0.7.0: the Eastern Panhandle inside the -78.05 west edge (Martinsburg, Harpers Ferry).
+        "https://download.geofabrik.de/north-america/us/west-virginia-latest.osm.pbf",
     )
 
 
@@ -172,6 +174,34 @@ def test_western_loudoun_is_inside_the_box(place: str) -> None:
     lon, lat = LOUDOUN_PLACES[place]
     west, south, east, north = settings.COVERAGE_BBOX
     assert west < lon < east and south < lat < north, (place, settings.COVERAGE_BBOX)
+
+
+# West Virginia's Eastern Panhandle (the owner, 2026-10-12: Martinsburg road
+# conditions "Next release"; the west edge widened from -78.0 to -78.05 W so all
+# of Martinsburg is in, plans/v0.7.0-ideas.md). -78.0 cut the city's west side.
+WEST_VIRGINIA_PLACES = {
+    "Martinsburg": (-77.964, 39.456),
+    "Martinsburg MARC station": (-77.961, 39.458),
+    "Harpers Ferry": (-77.737, 39.325),
+    "Shepherdstown": (-77.804, 39.430),
+    "Charles Town": (-77.860, 39.289),
+    "Inwood": (-78.040, 39.357),
+}
+# Martinsburg's city limits reach about -78.02 on the west (I-81's exits 12 and 13).
+MARTINSBURG_WEST = -78.02
+
+
+@pytest.mark.parametrize("place", sorted(WEST_VIRGINIA_PLACES))
+def test_the_eastern_panhandle_is_inside_the_box(place: str) -> None:
+    lon, lat = WEST_VIRGINIA_PLACES[place]
+    west, south, east, north = settings.COVERAGE_BBOX
+    assert west < lon < east and south < lat < north, (place, settings.COVERAGE_BBOX)
+
+
+def test_the_west_edge_clears_martinsburg_and_stops_short_of_winchester() -> None:
+    west = settings.COVERAGE_BBOX[0]
+    assert west < MARTINSBURG_WEST, "all of Martinsburg"
+    assert west > -78.16, "not Winchester, Virginia, which the owner did not ask for"
 
 
 # Maryland's northern extent in the Census TIGER state layer, which is the
@@ -541,6 +571,40 @@ def test_an_extract_older_than_the_limit_is_rebuilt(tmp_path) -> None:
     assert source.DEFAULT_MAX_AGE == timedelta(days=6)
 
 
+def test_a_recent_extract_made_from_other_regions_or_another_area_is_rebuilt(tmp_path) -> None:
+    """v0.7.0 added West Virginia and moved the west edge: a three-day-old extract made
+    without them would have been kept for its age, and the map built without the
+    Panhandle. The record of what it was made from decides as well as the age."""
+    for name in (source.MERGED_NAME, source.CLIPPED_NAME):
+        (tmp_path / name).write_text("last Tuesday")
+        age_file(tmp_path / name, days=3)
+    paths = (tmp_path / source.MERGED_NAME, tmp_path / source.CLIPPED_NAME)
+    urls = source.GEOFABRIK_EXTRACTS
+
+    # Made before the record was written: rebuilt once.
+    assert "no record of what it was made from" in source.refresh_reason(
+        *paths, urls=urls, region=BBOX
+    )
+    source.write_made_from(tmp_path, urls[:3], BBOX)
+    assert "other regions or another clip area" in source.refresh_reason(
+        *paths, urls=urls, region=BBOX
+    )
+    source.write_made_from(tmp_path, urls, (-78.0, *BBOX[1:]))
+    assert "other regions or another clip area" in source.refresh_reason(
+        *paths, urls=urls, region=BBOX
+    )
+    source.write_made_from(tmp_path, urls, BBOX)
+    assert source.refresh_reason(*paths, urls=urls, region=BBOX) is None
+
+
+def test_the_stage_records_what_its_extract_was_made_from(tmp_path) -> None:
+    run = FakeOsmium()
+    source.ensure_extract(tmp_path / "extracts", BBOX, run)
+    held = (tmp_path / "extracts" / source.MADE_FROM_NAME).read_text().strip()
+    assert held == source.made_from(source.GEOFABRIK_EXTRACTS, BBOX)
+    assert "west-virginia-latest.osm.pbf" in held
+
+
 def test_a_forced_refresh_needs_no_reason_of_its_own(tmp_path) -> None:
     for name in (source.MERGED_NAME, source.CLIPPED_NAME):
         (tmp_path / name).write_text("today's")
@@ -567,7 +631,7 @@ def test_the_stage_produces_both_files_from_the_three_downloads(tmp_path) -> Non
     assert produced.merged == tmp_path / "extracts" / "merged.osm.pbf"
     assert produced.clipped == tmp_path / "extracts" / "source.osm.pbf"
     assert produced.merged.is_file() and produced.clipped.is_file()
-    assert len(run.named("curl")) == 3
+    assert len(run.named("curl")) == 4
     assert [c[-1] for c in run.named("curl")] == list(source.GEOFABRIK_EXTRACTS)
     assert len(run.named("osmium", "merge")) == 1
     assert len(run.named("osmium", "extract")) == 1
@@ -575,7 +639,7 @@ def test_the_stage_produces_both_files_from_the_three_downloads(tmp_path) -> Non
     # The clip is taken from the merged file, not from one state's download.
     assert produced.clipped.read_text() == (
         "clip(osm:district-of-columbia-latest.osm.pbf+osm:maryland-latest.osm.pbf"
-        "+osm:virginia-latest.osm.pbf)"
+        "+osm:virginia-latest.osm.pbf+osm:west-virginia-latest.osm.pbf)"
     )
     # And the merged file is *not* the clip: it is what admin data is built from
     # before clipping.
@@ -603,7 +667,7 @@ def test_the_stage_rebuilds_a_stale_extract(tmp_path) -> None:
     again = source.ensure_extract(tmp_path, BBOX, run)
 
     assert again.refreshed
-    assert len(run.named("curl")) == 6, "the three regions again"
+    assert len(run.named("curl")) == 8, "the four regions again"
 
 
 def test_the_stage_rebuilds_when_a_refresh_is_forced(tmp_path) -> None:
@@ -614,7 +678,7 @@ def test_the_stage_rebuilds_when_a_refresh_is_forced(tmp_path) -> None:
 
     again = source.ensure_extract(tmp_path, BBOX, run, force=True)
 
-    assert again.refreshed and len(run.named("curl")) == 6
+    assert again.refreshed and len(run.named("curl")) == 8
 
 
 def test_the_stage_clips_to_the_region_it_is_given(tmp_path) -> None:

@@ -937,11 +937,16 @@ class TestTheAuthorizeUrlCarriesARealApplication:
         from urllib.parse import parse_qs, urlparse
 
         from django.test import override_settings
+        from django.urls import reverse
 
+        # v0.7.0: sign-in is on only when both keys are set (core.auth_views.sign_in_available),
+        # so an undelivered client id no longer sends anyone to Discord at all.
         with override_settings(DISCORD_CLIENT_ID=""):
-            url = self.authorize_url(client)
+            response = client.get(reverse("login"))
 
-        assert parse_qs(urlparse(url).query).get("client_id", [""]) == [""]
+        assert response.status_code == 503
+        assert "Location" not in response
+        assert not parse_qs(urlparse(response.get("Location", "")).query).get("client_id")
 
     def test_the_settings_carry_no_usable_default_for_either(self) -> None:
         """Neither may acquire one. A default client id would be another
@@ -960,4 +965,5 @@ class TestTheAuthorizeUrlCarriesARealApplication:
             "obviously unusable in production rather than become a real-looking host"
         )
         # And under an environment that delivers them, they are what arrives.
-        assert settings.DISCORD_CLIENT_ID == os.environ.get("DISCORD_CLIENT_ID", "")
+        # (The module's own value: the suite's conftest sets placeholder keys on the settings.)
+        assert live.DISCORD_CLIENT_ID == os.environ.get("DISCORD_CLIENT_ID", "")

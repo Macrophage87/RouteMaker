@@ -6,11 +6,20 @@ import {
   STEP_WORDS,
   fetchSuggestions,
   mapLink,
+  QUICK_OTHER_MAX,
+  fetchQuickTicket,
+  quickProblem,
+  quickValueText,
+  sendQuick,
   reviewSuggestion,
   sendSuggestion,
   suggestProblem,
   suggestValueText,
   suggestionLine,
+  talliesLine,
+  sendVerdict,
+  fetchMySuggestion,
+  mySuggestionText,
   type SuggestionItem,
 } from "./suggestions.ts";
 
@@ -92,4 +101,81 @@ test("the privacy note says the road's location may be shared, and never the rid
   const { SUGGEST_PRIVACY } = await import("./suggestions.ts");
   assert.match(SUGGEST_PRIVACY, /road's location/);
   assert.match(SUGGEST_PRIVACY, /never your name or the spot you clicked/);
+});
+
+test("v0.7.0 short form: the slider says each level, half steps as between two", () => {
+  assert.equal(quickValueText(2), "2: Fine for adults");
+  assert.equal(quickValueText(2.5), "Between 2 and 3: Fine for most confident adults");
+  assert.equal(quickValueText(4.5), "Between 4 and Avoid: A very high-stress road");
+  assert.equal(quickValueText(5), "Avoid");
+});
+
+test("v0.7.0 short form: no change, no reason or an empty Other is said before sending", () => {
+  assert.equal(quickProblem(3, 3, ["calmer"], "")?.field, "step");
+  assert.equal(quickProblem(2, 3, [], "")?.field, "reasons");
+  assert.equal(quickProblem(2, 3, ["other"], "  ")?.field, "other");
+  assert.equal(quickProblem(2, 3, ["other"], "x".repeat(QUICK_OTHER_MAX + 1))?.field, "other");
+  assert.equal(quickProblem(2.5, 3, ["calmer"], ""), null);
+  // v0.7.0 closures: "Closed" is a closure report, sent with the road's own level.
+  assert.equal(quickProblem(3, 3, ["closed"], ""), null);
+});
+
+test("v0.7.0 short form: the ticket is asked for the road; ten a day is said plainly", async () => {
+  const seen: string[] = [];
+  const run = (async (url: string | URL | Request) => {
+    seen.push(String(url));
+    return new Response(JSON.stringify({ ticket: "t", reasons: [["calmer", "Feels calmer than rated"]] }), { status: 200 });
+  }) as typeof fetch;
+  const ticket = await fetchQuickTicket("https://x.test", 5001, run);
+  assert.equal(ticket?.ticket, "t");
+  assert.equal(seen[0], "https://x.test/api/stress-suggestions/ticket?way=5001");
+  const limited = (async () => new Response(JSON.stringify({ error: "x" }), { status: 429 })) as typeof fetch;
+  const body = { osm_way_id: 5001, lat: 1, lon: 2, step: 2, reasons: ["calmer"], other: "", ticket: "t", website: "" };
+  const outcome = await sendQuick("https://x.test", body, "tok", limited);
+  assert.equal(outcome.kind, "refused");
+  assert.match(outcome.message, /10 suggestions today/);
+});
+
+// v0.7.0: a second reviewer's agree or disagree, and a rider's own suggestion's status.
+
+test("the reviewers' tallies read in words, with their reasons and no names", () => {
+  assert.equal(talliesLine(undefined), "");
+  assert.equal(talliesLine({ agree: 0, disagree: 0, mine: null, notes: [] }), "");
+  assert.equal(talliesLine({ agree: 1, disagree: 0, mine: "agree", notes: [] }), "Reviewers: 1 agrees, 0 disagree");
+  assert.equal(
+    talliesLine({ agree: 2, disagree: 1, mine: null, notes: [{ agree: false, reason: "The lane ends at Elm." }] }),
+    "Reviewers: 2 agree, 1 disagrees (disagree: The lane ends at Elm.)",
+  );
+});
+
+test("a verdict is posted with its trimmed reason and answers the new tallies", async () => {
+  const seen: { url?: string; init?: RequestInit } = {};
+  const reviews = { agree: 1, disagree: 0, mine: "agree", notes: [] };
+  const r = await sendVerdict("https://rm.test", 7, "agree", "  fine  ", "tok", fakeFetch(200, { message: "ok", reviews }, seen));
+  assert.equal(seen.url, "https://rm.test/api/stress-suggestions/7/review");
+  assert.deepEqual(JSON.parse(String(seen.init?.body)), { verdict: "agree", reason: "fine" });
+  assert.ok(r.ok && r.body.reviews.agree === 1);
+  const refused = await sendVerdict("https://rm.test", 7, "disagree", "", null, fakeFetch(403, { error: "Only a RouteMaker reviewer can review a suggestion." }));
+  assert.deepEqual(refused, { ok: false, message: "Only a RouteMaker reviewer can review a suggestion." });
+});
+
+test("a rider reads their own suggestion's status for the road", async () => {
+  const mine = {
+    id: 3,
+    osm_way_id: 5001,
+    step: 2,
+    words: "Fine for adults",
+    status: "pending",
+    status_words: "Waiting for review.",
+    created_at: "2026-10-16T12:00:00+00:00",
+    decided_at: null,
+  };
+  const seen: { url?: string; init?: RequestInit } = {};
+  const found = await fetchMySuggestion("https://rm.test", 5001, undefined, fakeFetch(200, { suggestion: mine }, seen));
+  assert.equal(seen.url, "https://rm.test/api/stress-suggestions/mine?way=5001");
+  assert.ok(found);
+  assert.equal(mySuggestionText(found), "LTS 2 (Fine for adults). Waiting for review.");
+  assert.equal(mySuggestionText({ ...found, step: 5, status_words: "Approved: the map uses it." }), "Avoid. Approved: the map uses it.");
+  assert.equal(await fetchMySuggestion("https://rm.test", 5001, undefined, fakeFetch(200, { suggestion: null })), null);
+  assert.equal(await fetchMySuggestion("https://rm.test", 5001, undefined, fakeFetch(401, { error: "Sign in" })), null);
 });

@@ -78,8 +78,8 @@ def free_stops(points: list, loop: bool) -> int:
 
 def ride_graph(preset_name: str, dials: routing.Dials) -> tuple[str, dict]:
     """The router (variant) and costing the ride's own route would be asked on: the
-    preset's and dials' stress, hills, time and assist, with /route's choice of a twin
-    graph that is down or not promoted left to the standard one. Shared with
+    preset's and dials' stress, hills, time, assist and trails off, with /route's choice
+    of a twin graph that is down or not promoted left to the standard one. Shared with
     `core.nearest`, whose riding distances are on the same graph."""
     preset = presets.PRESETS[preset_name]
     stress = (
@@ -88,7 +88,7 @@ def ride_graph(preset_name: str, dials: routing.Dials) -> tuple[str, dict]:
     hills = preset.hills if dials.hills is None else dials.hills
     when = dials.when or routing.default_when()
     assist = bool(dials.assist) and preset.assist_speed_kmh is not None
-    variant = presets.variant_for_ride(preset_name, when, assist)
+    variant = presets.variant_for_ride(preset_name, when, assist, bool(dials.trails_off))
     if variant in routing.TWIN_VARIANTS and (
         routing._twin_down(variant) or not routing._is_promoted(variant)
     ):

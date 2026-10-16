@@ -2,6 +2,8 @@
 django>=5.0
 django-ninja
 psycopg2-binary
+# Psycopg 3, which core.runs imports directly (docker/requirements.txt says why).
+psycopg
 procrastinate
 defusedxml
 pytest

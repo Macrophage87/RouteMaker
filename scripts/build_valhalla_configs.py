@@ -116,9 +116,11 @@ OVERRIDES: dict = {
             # Upstream's default is -1, read into a uint32_t, which is no timeout
             # at all. Layer 4 issues a candidate set per request; one wedged
             # candidate holding a worker forever would take the latency bound
-            # down with it, so a request that has not finished in half a minute
-            # is abandoned instead.
-            "timeout_seconds": 30,
+            # down with it, so a request that has not finished in time is abandoned
+            # instead. Past the api's longest wait for one call
+            # (`core.routing.LONG_ROUTER_TIMEOUT_S`, 45 s): at 30 the router dropped a long
+            # ride's leg the api was still waiting for (review speed-3).
+            "timeout_seconds": 47,
         }
     },
 }

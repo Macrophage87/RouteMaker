@@ -47,10 +47,10 @@ SERVICES: dict = COMPOSE["services"]
 # something this file said, and a default is what a registry mirror or a
 # namespace somebody else registers gets to reinterpret.
 EXTERNAL_IMAGES = {
-    "docker.io/library/caddy:2.8-alpine",
-    "docker.io/postgis/postgis:16-3.4",
-    "docker.io/rtuszik/photon-docker:2.4.0",
-    "ghcr.io/valhalla/valhalla:3.9.1",
+    "docker.io/library/caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17",
+    "docker.io/postgis/postgis:16-3.4@sha256:44126d872ac91993766c341e369c539e8196614321765d36a6f1bab0419a5fa5",
+    "docker.io/rtuszik/photon-docker:2.4.0@sha256:21549c60f9e6488fff3217e40429a652c4b445f374800333fe32859e47cec293",
+    "ghcr.io/valhalla/valhalla:3.9.1@sha256:4fd114eb1d26b8fc2f43bcb3df234c1b63a0bf13c277405e5943d5361dc575de",
 }
 
 # Images compose names for components that have no source in this repository, so
@@ -1034,6 +1034,7 @@ def test_every_path_the_api_modules_hold_is_in_the_api_image(tmp_path) -> None:
             "PYTHONPATH": str(tmp_path / "src"),
             "PATH": os.environ.get("PATH", ""),
             "KEY_ENCRYPTION_KEY": "test",
+            "DJANGO_SECRET_KEY": "test",
         },
         capture_output=True,
         text=True,
@@ -1055,3 +1056,14 @@ def test_every_path_the_api_modules_hold_is_in_the_api_image(tmp_path) -> None:
         f"only {copied}. COPY it, or name it in PIPELINE_ONLY_PATHS / NOT_IMAGE_CONTENT "
         "with the reason the api never opens it"
     )
+
+
+def test_photon_import_and_ci_postgis_use_composes_pinned_images() -> None:
+    """Review round 2: one digest per image, not a second unpinned tag beside compose's."""
+    photon = SERVICES["photon"]["image"]
+    script = (REPO / "scripts" / "import_photon.sh").read_text()
+    assert re.search(r"^IMAGE=\"([^\"]+)\"$", script, re.M).group(1) == photon
+    ci = yaml.safe_load((REPO / ".github" / "workflows" / "ci.yml").read_text())
+    (job,) = (j for j in ci["jobs"].values() if "postgis" in j.get("services", {}))
+    assert job["services"]["postgis"]["image"] == SERVICES["postgis"]["image"]
+    assert "@sha256:" in photon and "@sha256:" in SERVICES["postgis"]["image"]

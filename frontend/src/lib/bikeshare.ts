@@ -121,7 +121,8 @@ export interface DockMarker {
   label: string;
 }
 
-function countWords(stop: BikeshareStop, bike: Bike, taking: boolean): string {
+/** A dock's count in words: "5 classic bikes available" to take a bike, "3 free slots" to return one. */
+export function dockCountWords(stop: BikeshareStop, bike: Bike, taking: boolean): string {
   if (stop.availability === "unknown") return "availability unknown";
   if (taking) {
     const n = stop.bikes_available ?? 0;
@@ -144,7 +145,7 @@ export function dockMarkers(plan: BikesharePlan | null): DockMarker[] {
     label:
       start.kind === "free_bike"
         ? "Step 1: take an e-bike parked outside a dock"
-        : `Step 1: take ${plan.bike === "ebike" ? "an e-bike" : "a classic bike"} at the dock at ${start.name}, ${countWords(start, plan.bike, true)}`,
+        : `Step 1: take ${plan.bike === "ebike" ? "an e-bike" : "a classic bike"} at the dock at ${start.name}, ${dockCountWords(start, plan.bike, true)}`,
   });
   if (end.kind === "dock") {
     markers.push({
@@ -152,7 +153,7 @@ export function dockMarkers(plan: BikesharePlan | null): DockMarker[] {
       lon: end.lon,
       lat: end.lat,
       badge: "2",
-      label: `Step 2: return the bike at the dock at ${end.name}, ${countWords(end, plan.bike, false)}`,
+      label: `Step 2: return the bike at the dock at ${end.name}, ${dockCountWords(end, plan.bike, false)}`,
     });
   }
   return markers;

@@ -480,6 +480,13 @@ def test_the_harford_road_row_is_repointed_at_the_three_ways() -> None:
     assert moved["osm_way_id"] == 424993005 and sorted(moved["replaced_by"]) == sorted(new)
     assert rematch.fingerprint_problem(moved["fingerprint"]) is None
     assert rematch.load_fingerprints()[("stress", 424993005)] == moved["fingerprint"]
+    # The row still loaded for the old way applied to nothing in the v0.7.0 staging
+    # rebuild: loading the file retires it, by the value the three now carry.
+    from core.management.commands.load_access_overrides import parse_retired
+
+    (retired,) = parse_retired(json.dumps(document), "baltimore")
+    assert retired["kind"] == "stress" and retired["osm_way_id"] == 424993005
+    assert retired["value"] == stress[1562097553]["value"]
 
 
 def test_the_harford_ways_lie_along_open_baltimore_record_634() -> None:

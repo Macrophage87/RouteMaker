@@ -53,8 +53,9 @@ import {
   type InfoState,
 } from "./lib/roadInfo.ts";
 import type { PlaceChoice } from "./lib/geocode.ts";
+import { SET_AS_HOME_TEXT } from "./lib/homeSet.ts";
 import { stationLinks } from "./lib/stationLinks.ts";
-import { TIMES_LABEL, requestStationTimes, shownLines, stationTimeRows } from "./lib/stationTimes.ts";
+import { TIMES_LABEL, requestStationTimes, stationCardRows } from "./lib/stationTimes.ts";
 import type { StationTimes } from "./lib/api.ts";
 import { WMATA_SLUGS } from "./lib/railData.ts";
 import type { RailVisibility, Station } from "./lib/railStations.ts";
@@ -63,7 +64,9 @@ import { closesDialog, nextFocus, tabStops, type TabCandidate } from "./lib/ride
 import { CHANGE_LTS_TEXT, NO_ME, fetchMe, type Me } from "./lib/stressEditor.ts";
 import { StressEditor } from "./StressEditor.tsx";
 import { SuggestChange } from "./SuggestChange.tsx";
-import { SUGGEST_TEXT } from "./lib/suggestions.ts";
+import { SuggestQuick } from "./SuggestQuick.tsx";
+import { SUGGEST_TEXT, fetchMySuggestion, mySuggestionText, type MySuggestion } from "./lib/suggestions.ts";
+import { StreetPhotoView } from "./StreetPhotoView.tsx";
 
 /** The one button that holds the ways to suggest, when there are two or more (UI-CLEANUP). */
 export const SUGGEST_MENU_TEXT = "Suggest a change…";
@@ -72,6 +75,8 @@ import { JUNCTION_SUGGEST_TEXT, findJunction, junctionNote, type JunctionAt, typ
 import { AVOID_CARD_HEADING, AVOID_SYMBOL, avoidCardText, type AvoidItem } from "./lib/avoidJunctions.ts";
 import { FEDERAL_ADVICE, stopWarningShort, type FederalArea } from "./lib/federalStops.ts";
 import { HazardReport } from "./HazardReport.tsx";
+import { ClosureEntry } from "./ClosureEntry.tsx";
+import { MARK_CLOSED_TEXT } from "./lib/closureReview.ts";
 import { climbLabel, type Climb } from "./lib/climbs.ts";
 import { CLIMB_DETAILS_TEXT } from "./lib/climbCard.ts";
 import { HAZARD_REPORT_TEXT, hazardOnPiece, hazardPanelText, hazardSaid, type HazardCollection } from "./lib/massHazards.ts";
@@ -126,6 +131,8 @@ interface Props {
   plan: { count: number; loop: boolean };
   /** Put the spot in the plan as its start, its end or a stop; the panel then closes. */
   onPlace: (choice: PlaceChoice, point: [number, number]) => void;
+  /** "Set as Home" (lib/homeSet.ts): the spot is the rider's Home; the panel then closes. Absent: no button. */
+  onSetHome?: (point: [number, number]) => void;
 }
 
 const FOCUSABLE =
@@ -169,7 +176,7 @@ function StationTimesList({ station, rail, closed }: { station: Station; rail: R
       live = false;
     };
   }, [lon, lat, closed]);
-  const rows = !closed && times ? stationTimeRows(shownLines(times.lines, rail)) : [];
+  const rows = !closed ? stationCardRows(times, rail) : [];
   if (rows.length === 0) return null;
   return (
     <ul className="station-times road-info-times" aria-label={TIMES_LABEL}>
@@ -183,7 +190,7 @@ function StationTimesList({ station, rail, closed }: { station: Station; rail: R
   );
 }
 
-export function RoadInfoDialog({ request, hazards = null, massRide, station, rail = ALL_RAIL, stationClosed, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, onClose, fallbackFocus, onStressChanged, plan, onPlace }: Props) {
+export function RoadInfoDialog({ request, hazards = null, massRide, station, rail = ALL_RAIL, stationClosed, avoid = null, junctionShown = null, federal = null, climb = null, onShowClimb, onClose, fallbackFocus, onStressChanged, plan, onPlace, onSetHome }: Props) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const returnTo = useRef<Element | null>(null);
@@ -208,6 +215,11 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
   const [editing, setEditing] = useState(false);
   // A rider's "Suggest a change" form (OWNER-DECISIONS 441h; SuggestChange.tsx), open in place of the row.
   const [suggesting, setSuggesting] = useState(false);
+  // Whether the account answer is in: the short form (v0.7.0) waits for it, so a rider who may use the
+  // full form never sees the short one flash first.
+  const [meKnown, setMeKnown] = useState(false);
+  // The rider's own latest suggestion for this road and its status (v0.7.0), or null.
+  const [mySuggestion, setMySuggestion] = useState<MySuggestion | null>(null);
   const suggestButton = useRef<HTMLButtonElement>(null);
   const returnToSuggest = useRef(false);
   // The junction at the spot, for a rider who may suggest (OWNER-DECISIONS 232; SuggestJunction.tsx): its
@@ -224,6 +236,10 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
   const [reporting, setReporting] = useState(false);
   const hazardButton = useRef<HTMLButtonElement>(null);
   const returnToHazard = useRef(false);
+  // A reviewer's "Mark closed" (v0.7.0 closures; ClosureEntry.tsx), open in place of the row.
+  const [closing, setClosing] = useState(false);
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const returnToClosing = useRef(false);
   // The hazards as they are when the answer comes, read inside its callback.
   const hazardsRef = useRef(massRide ? hazards : null);
   hazardsRef.current = massRide ? hazards : null;
@@ -255,6 +271,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
     setEditing(false);
     setSuggesting(false);
     setReporting(false);
+    setClosing(false);
     setJunction(null);
     setSuggestingJunction(false);
     setSuggestMenu(false);
@@ -262,6 +279,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
     const controller = new AbortController();
     void fetchMe(window.location.origin).then((who) => {
       setMe(who);
+      setMeKnown(true);
       // Only a rider who may suggest asks where the junction is (nobody else asks the endpoint anything).
       if (!who.can_suggest || controller.signal.aborted) return;
       void findJunction(window.location.origin, request.point, controller.signal).then((found) => {
@@ -325,6 +343,27 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
     }
   }, [suggesting]);
 
+  // A signed-in rider (never the admin, who edits) reads their own suggestion's status for the road.
+  const infoWay = state.kind === "ready" && state.info.found ? (state.info.osm_way_id ?? null) : null;
+  const asksMine = me.signed_in && !me.can_change_lts;
+  useEffect(() => {
+    setMySuggestion(null);
+    if (infoWay === null || !asksMine) return;
+    const controller = new AbortController();
+    void fetchMySuggestion(window.location.origin, infoWay, controller.signal).then((found) => {
+      if (!controller.signal.aborted) setMySuggestion(found);
+    });
+    return () => controller.abort();
+  }, [infoWay, asksMine, suggesting]);
+
+  // Back from Mark closed: its button takes the focus.
+  useEffect(() => {
+    if (!closing && returnToClosing.current) {
+      returnToClosing.current = false;
+      closeButton.current?.focus();
+    }
+  }, [closing]);
+
   // Back from the hazard form: Mark a hazard takes the focus.
   useEffect(() => {
     if (!reporting && returnToHazard.current) {
@@ -386,6 +425,11 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
     setReporting(false);
   };
 
+  const closeClosing = () => {
+    returnToClosing.current = true;
+    setClosing(false);
+  };
+
   const onKeyDown = (event: KeyboardEvent<HTMLDialogElement>) => {
     if (closesDialog(event.key)) {
       event.preventDefault();
@@ -393,6 +437,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
       if (editing) closeEditor();
       else if (suggesting) closeSuggest();
       else if (reporting) closeHazard();
+      else if (closing) closeClosing();
       else if (suggestingJunction) closeJunction();
       else close();
       return;
@@ -437,17 +482,27 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
   // A rider the settings allow may suggest a level (an instance admin changes it instead).
   const suggestWay =
     ready && me.can_suggest && editableWay === null && ready.osm_way_id != null && ready.tier != null ? ready.osm_way_id : null;
-  const suggestingNow = suggesting && suggestWay !== null;
+  // Anyone else gets the short form (v0.7.0; SuggestQuick.tsx): signed out, or the settings keep the
+  // full form closed to them.
+  const quickWay =
+    meKnown && ready && !me.can_suggest && !me.can_change_lts && ready.osm_way_id != null && ready.tier != null
+      ? ready.osm_way_id
+      : null;
+  const suggestRoad = suggestWay ?? quickWay;
+  const suggestingNow = suggesting && suggestRoad !== null;
   // A Mass Ride's rider-marked hazard on this road (325), and whether this rider may mark one: a road
   // not marked Avoid (there the map shows only Avoid), by a rider the settings allow.
   const hazard = massRide ? hazardOnPiece(hazards, ready) : null;
   const hazardWay =
     massRide && ready && me.can_suggest && ready.osm_way_id != null && ready.tier != null && ready.tier !== 5 ? ready.osm_way_id : null;
   const reportingNow = reporting && hazardWay !== null;
+  // A reviewer marks the road closed (v0.7.0 closures): an instance admin or a reviewer role.
+  const closureWay = ready && me.can_review_closures && ready.osm_way_id != null ? ready.osm_way_id : null;
+  const closingNow = closing && closureWay !== null;
   // A junction at the spot, for a rider who may suggest (an instance admin never suggests).
   const suggestJunction = me.can_suggest ? junction : null;
-  const suggestingJunctionNow = suggestingJunction && suggestJunction !== null && !suggestingNow && !reportingNow;
-  const suggestCount = [suggestJunction, suggestWay, hazardWay].filter((way) => way !== null).length;
+  const suggestingJunctionNow = suggestingJunction && suggestJunction !== null && !suggestingNow && !reportingNow && !closingNow;
+  const suggestCount = [suggestJunction, suggestRoad, hazardWay].filter((way) => way !== null).length;
   const suggestItems = (
     <>
               {suggestJunction !== null && (
@@ -463,7 +518,7 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
                   </button>
                 </li>
               )}
-              {suggestWay !== null && (
+              {suggestRoad !== null && (
                 <li>
                   <button type="button" className="road-info-button" ref={suggestButton} onClick={() => setSuggesting(true)}>
                     {SUGGEST_TEXT}
@@ -544,6 +599,20 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
                 </button>
               </li>
             ))}
+            {onSetHome && (
+              <li>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={() => {
+                    onSetHome(request.point);
+                    close();
+                  }}
+                >
+                  {SET_AS_HOME_TEXT}
+                </button>
+              </li>
+            )}
           </ul>
         )}
         {request && actions.some((a) => a.unavailable) && (
@@ -594,6 +663,14 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
               </li>
             ))}
           </ul>
+        )}
+        {mySuggestion && mySuggestion.osm_way_id === ready?.osm_way_id && (
+          <p className="road-info-mine">
+            <span className="road-info-label">Your suggestion:</span> {mySuggestionText(mySuggestion)}
+          </p>
+        )}
+        {ready && request && (
+          <StreetPhotoView title={ready.title} point={streetViewPoint(ready, request.point)} wayId={ready.osm_way_id} />
         )}
         {more && (
           // A mountain-bike trail's MORE page: trailheads, trail info and the day's conditions (slice 6).
@@ -703,6 +780,19 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
             />
           </div>
         )}
+        {request && suggestingNow && ready && quickWay !== null && (
+          <div className="road-info-actions">
+            <SuggestQuick
+              origin={window.location.origin}
+              wayId={quickWay}
+              title={ready.title}
+              current={ready.step ?? ready.tier ?? 3}
+              point={streetViewPoint(ready, request.point)}
+              halfSteps={ready.half_steps === true}
+              onClose={closeSuggest}
+            />
+          </div>
+        )}
         {request && suggestingNow && ready && suggestWay !== null && (
           <div className="road-info-actions">
             <SuggestChange
@@ -728,12 +818,17 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
             />
           </div>
         )}
+        {request && closingNow && ready && closureWay !== null && (
+          <div className="road-info-actions">
+            <ClosureEntry origin={window.location.origin} wayId={closureWay} title={ready.title} onClose={closeClosing} />
+          </div>
+        )}
         {request && suggestingJunctionNow && suggestJunction !== null && (
           <div className="road-info-actions">
             <SuggestJunction origin={window.location.origin} junction={suggestJunction} shown={junctionShown} onClose={closeJunction} />
           </div>
         )}
-        {request && !(editing && editableWay !== null) && !suggestingNow && !reportingNow && !suggestingJunctionNow && (
+        {request && !(editing && editableWay !== null) && !suggestingNow && !reportingNow && !closingNow && !suggestingJunctionNow && (
           <div className="road-info-actions">
             <ul className="road-info-buttons" aria-label="Actions">
               <li>
@@ -764,6 +859,13 @@ export function RoadInfoDialog({ request, hazards = null, massRide, station, rai
                 <li>
                   <button type="button" className="road-info-button" ref={changeButton} onClick={() => setEditing(true)}>
                     {CHANGE_LTS_TEXT}
+                  </button>
+                </li>
+              )}
+              {closureWay !== null && (
+                <li>
+                  <button type="button" className="road-info-button" ref={closeButton} onClick={() => setClosing(true)}>
+                    {MARK_CLOSED_TEXT}
                   </button>
                 </li>
               )}

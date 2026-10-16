@@ -37,10 +37,15 @@ export interface PlanEdits<P, R> {
   commit(next: P, ride?: R): void;
   /** Undo or redo: the points the history gives back, or undefined when it has none. */
   travel(direction: Direction): P | undefined;
+  /**
+   * The last edit taken back for good: undone, with nothing to redo (End ride's from-here plan, when
+   * Undo starts the ride again: the stale plan is not offered back).
+   */
+  retract(): P | undefined;
 }
 
 export function planEdits<P, R>(deps: PlanEditDeps<P, R>): PlanEdits<P, R> {
-  return {
+  const edits: PlanEdits<P, R> = {
     commit(next, ride) {
       const before = deps.current();
       deps.history.record(ride ? { points: before, ride: deps.ride() } : { points: before });
@@ -62,7 +67,16 @@ export function planEdits<P, R>(deps: PlanEditDeps<P, R>): PlanEdits<P, R> {
       deps.set(next.points);
       return next.points;
     },
+    retract() {
+      const back = edits.travel("undo");
+      if (back !== undefined) {
+        deps.history.dropRedo();
+        deps.sync();
+      }
+      return back;
+    },
   };
+  return edits;
 }
 
 /**

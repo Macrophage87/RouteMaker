@@ -57,12 +57,12 @@ AGENCY = "ddot-pci"
 CREDIT = "DDOT Pavement Condition Index (DC GIS)"
 
 # Whether the owner has confirmed the layer's licence (docs/SOURCES.md, "DDOT
-# Pavement Condition Index"). The service states none (read 2026-10-11), so until
-# the owner confirms the terms with DDOT or Open Data DC nothing derived from it may
-# reach the live router: the installer refuses `--dc-pci` and the rebuild ignores
-# an installed `pavement.json` while this is False. Set it True in the commit that
-# records the confirmation (its source and date) in docs/SOURCES.md.
-LICENCE_CONFIRMED = False
+# Pavement Condition Index"). The service states none (read 2026-10-11); the owner
+# confirmed it on 2026-10-16 under the District's
+# data terms (CC0 1.0, or CC BY 4.0 where an
+# item says so; credited either way). While this is False
+# the installer refuses `--dc-pci` and the rebuild ignores an installed `pavement.json`.
+LICENCE_CONFIRMED = True
 LICENCE_PENDING = (
     "DDOT's Pavement Condition Index states no licence, and the owner has not yet "
     "confirmed one (docs/SOURCES.md, routemaker.pavement.LICENCE_CONFIRMED)"

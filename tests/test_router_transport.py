@@ -6,6 +6,7 @@ production takes.
 
 from __future__ import annotations
 
+import http.client
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -73,6 +74,18 @@ def test_anything_else_from_the_server_side_is_an_outage(router, status, body) -
     url = router(status, body)
     with pytest.raises(routing.RouterUnavailable):
         routing._transport(url, {}, 5)
+
+
+def test_an_answer_cut_off_part_way_is_an_outage(monkeypatch) -> None:
+    # Review api-2: IncompleteRead and BadStatusLine are not OSErrors.
+    for error in (http.client.IncompleteRead(b"{"), http.client.BadStatusLine("")):
+
+        def broken(request, timeout, error=error):
+            raise error
+
+        monkeypatch.setattr(routing.urllib.request, "urlopen", broken)
+        with pytest.raises(routing.RouterUnavailable):
+            routing._transport("http://127.0.0.1:9/route", {}, 5)
 
 
 def test_a_body_cut_off_mid_read_is_still_an_outage(router) -> None:

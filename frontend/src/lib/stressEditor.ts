@@ -19,14 +19,18 @@
 import { formatDistance } from "./format.ts";
 import { UNNAMED_TITLES } from "./roadInfo.ts";
 
-/** GET /api/me: three yes/no flags, no name and no id. */
+/** GET /api/me: yes/no flags, no name and no id. */
 export interface Me {
   signed_in: boolean;
   can_change_lts: boolean;
   can_suggest: boolean;
+  /** A reviewer (v0.7.0 closures): the road panel offers Mark closed, and Review lists closure reports. */
+  can_review_closures: boolean;
+  /** Whether this server can sign anyone in (both Discord keys set): Sign in with Discord is offered only then. */
+  sign_in: boolean;
 }
 
-export const NO_ME: Me = { signed_in: false, can_change_lts: false, can_suggest: false };
+export const NO_ME: Me = { signed_in: false, can_change_lts: false, can_suggest: false, can_review_closures: false, sign_in: false };
 
 export interface EditorStep {
   value: number;
@@ -372,6 +376,8 @@ export function fetchMe(origin: string, get: Fetch = fetch): Promise<Me> {
           signed_in: body.signed_in === true,
           can_change_lts: body.can_change_lts === true,
           can_suggest: body.can_suggest === true,
+          can_review_closures: body.can_review_closures === true,
+          sign_in: body.sign_in === true,
         };
       } catch {
         // Not cached: the next panel asks again. Until then nobody is offered the editor.
@@ -421,9 +427,15 @@ export async function fetchEditorState(
 }
 
 /** GET /api/stress-edits/way/{id}/stretch: the named stretch, asked when the admin chooses it. */
-export async function fetchStretch(origin: string, wayId: number, signal?: AbortSignal, get: Fetch = fetch): Promise<StretchLoad> {
+export async function fetchStretch(
+  origin: string,
+  wayId: number,
+  signal?: AbortSignal,
+  get: Fetch = fetch,
+  path: (wayId: number) => string = (way) => `/api/stress-edits/way/${way}/stretch`,
+): Promise<StretchLoad> {
   try {
-    const response = await get(`${origin}/api/stress-edits/way/${wayId}/stretch`, {
+    const response = await get(`${origin}${path(wayId)}`, {
       signal,
       cache: "no-store",
       headers: { Accept: "application/json" },

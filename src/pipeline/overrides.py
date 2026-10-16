@@ -11,6 +11,10 @@ Valhalla derives from the corrected value. A stress override replaces the
 classifier's tier after classification, because re-deriving from a corrected tier
 would mean inventing the tags that would have produced it. A jurisdiction
 override replaces the authority assignment, which is not a routing input at all.
+A surface override (v0.7.0) changes neither tags nor tier: it is a routing price,
+handed to the graph as `rm:reviewer_surface`, which `lua/routemaker_remap.lua`
+`bounded_surface` reads as a rougher surface class, capped so the edge stays
+ridable under every bicycle type (PLAN.md, the reviewer penalty).
 
 "Valhalla derives from the corrected value" is true of the tag as written and
 was not true of what the graph ended up saying, on the one class of way where
@@ -96,7 +100,31 @@ BICYCLE_ACCESS_KEYS: Mapping[str, frozenset[str]] = MappingProxyType(
 # the whole stage exists to end - and the model's `Kind` choices are not a guard:
 # they are enforced on a form, not by the column, and a fourth kind added there
 # without an applier here would be inert rather than refused.
-HANDLED_KINDS = frozenset({"access", "stress", "jurisdiction"})
+HANDLED_KINDS = frozenset({"access", "stress", "jurisdiction", "surface"})
+
+# A surface row's value: {"surface": key}, a key of SURFACE_PENALTIES, or {"surface": null}
+# (a road-panel change that took a penalty off: the row stays as the record, and prices
+# nothing). Each key is what the road panel says and the Valhalla surface class it asks
+# for (`SURFACE_ORDER` in lua/routemaker_remap.lua); the remap caps every class past
+# `compacted`, so gravel, sand and dirt cost the same today, and never improves a way
+# already rougher than asked.
+SURFACE_PENALTIES: Mapping[str, tuple[str, str]] = MappingProxyType(
+    {
+        "rough": ("paved_rough", "Rough pavement"),
+        "gravel": ("gravel", "Loose gravel"),
+        "sand": ("gravel", "Sand"),
+        "dirt": ("dirt", "Dirt"),
+    }
+)
+
+
+def surface_value_problem(value: object) -> str | None:
+    """Why `value` is not a surface row's value, or None if it is."""
+    if not isinstance(value, dict) or set(value) != {"surface"}:
+        return 'a surface row\'s value is {"surface": <key or null>}'
+    if value["surface"] is not None and value["surface"] not in SURFACE_PENALTIES:
+        return f"surface must be one of {sorted(SURFACE_PENALTIES)} or null"
+    return None
 
 
 class OverrideRefused(ValueError):
@@ -281,6 +309,7 @@ class OverrideReport:
     access: int = 0
     stress: int = 0
     jurisdiction: int = 0
+    surface: int = 0
     unmatched_way_ids: tuple[int, ...] = ()
     # Ways where an approved access override wrote a bicycle key onto a way the
     # crossings fixture also has a legality opinion about, so the reviewed row
@@ -299,7 +328,7 @@ class OverrideReport:
 
     @property
     def total(self) -> int:
-        return self.access + self.stress + self.jurisdiction
+        return self.access + self.stress + self.jurisdiction + self.surface
 
     # How many unmatched way ids the summary names before it says how many more.
     # The run row's detail is what the operations page shows in a table cell,
@@ -320,7 +349,8 @@ class OverrideReport:
             named += f" and {len(unmatched) - self.SUMMARY_WAY_IDS} more"
         return (
             f"overrides applied: {self.access} access, {self.stress} stress, "
-            f"{self.jurisdiction} jurisdiction; {self.fixture_rows_superseded} checked-in "
+            f"{self.jurisdiction} jurisdiction, {self.surface} surface; "
+            f"{self.fixture_rows_superseded} checked-in "
             f"crossing rows superseded; "
             + (
                 f"{self.rematched} rows re-matched to new ways by geometry and name, "
@@ -490,6 +520,11 @@ def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[in
             oneway=getattr(current, "oneway", None),
             graph_oneway=getattr(current, "graph_oneway", None),
             default_speed_mph=getattr(current, "default_speed_mph", None),
+            # The ratings beneath the owner's, for the road panel: the owner's
+            # row wins over every one of them, but the panel lists them all.
+            formula_tier=getattr(current, "formula_tier", None),
+            formula_rule=getattr(current, "formula_rule", None),
+            agency_ratings=getattr(current, "agency_ratings", ()),
         )
         applied += 1
 
@@ -499,8 +534,36 @@ def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[in
 def _step_now(current) -> float:
     """A way's level as it stands, half step included (an earlier row's half)."""
     adjustment = getattr(current, "adjustment", None)
-    half = adjustment is not None and getattr(adjustment, "half", False)
+    if adjustment is not None:
+        half = getattr(adjustment, "half", False)
+    else:
+        # An agency's half step (`routemaker.agency_lts`).
+        half = getattr(current, "half", False)
     return int(current.tier) + (0.5 if half else 0.0)
+
+
+def apply_surface(
+    ways_by_id: Mapping, overrides: Iterable[Override]
+) -> tuple[dict[int, str], list[int]]:
+    """The surface class each way's approved surface row asks the graph for ({way: class}),
+    for `run.inject_tags` to emit as `rm:reviewer_surface`, and the rows' ways missing
+    from the extract. A row whose value is null prices nothing and is not counted."""
+    classes: dict[int, str] = {}
+    unmatched: list[int] = []
+    for override in overrides:
+        if override.kind != "surface":
+            continue
+        problem = surface_value_problem(override.value)
+        if problem:
+            raise OverrideRefused(f"surface override on way {override.osm_way_id}: {problem}")
+        key = override.value["surface"]
+        if key is None:
+            continue
+        if override.osm_way_id not in ways_by_id:
+            unmatched.append(override.osm_way_id)
+            continue
+        classes[override.osm_way_id] = SURFACE_PENALTIES[key][0]
+    return classes, unmatched
 
 
 def apply_jurisdiction(ways: Sequence, overrides: Iterable[Override]) -> tuple[int, list[int]]:

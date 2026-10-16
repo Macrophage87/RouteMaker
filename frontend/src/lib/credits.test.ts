@@ -26,15 +26,24 @@ test("the credits are short source names, exactly these, OpenStreetMap first (OW
       "U.S. Census Bureau",
       "Photon",
       "Capital Bikeshare",
+      // DC's closures (v0.7.0 plan, "DC closures source"), the DDOT credit in the words the plan gives it.
+      "Road closures: DDOT (TOPS permits), CC BY 4.0",
+      "MPD traffic advisories",
+      "NPS alerts",
+      "AlertDC (HSEMA)",
     ],
   );
   for (const credit of DATA) {
     assert.equal(strip(credit.html), credit.text, "the text is the html without its links");
-    assert.ok(credit.text.length <= 40, `brief: ${credit.text}`);
+    assert.ok(credit.text.length <= 48, `brief: ${credit.text}`);
   }
   // Links only where they are the citation's own: OpenStreetMap's copyright page and the CC BY licence.
   const links = DATA.flatMap((c) => [...c.html.matchAll(/href="([^"]+)"/g)].map((m) => m[1]));
-  assert.deepEqual(links, ["https://www.openstreetmap.org/copyright", "https://creativecommons.org/licenses/by/4.0/"]);
+  assert.deepEqual(links, [
+    "https://www.openstreetmap.org/copyright",
+    "https://creativecommons.org/licenses/by/4.0/",
+    "https://creativecommons.org/licenses/by/4.0/",
+  ]);
 });
 
 test("the map's attribution is credits.json, in its order, then the software licences", () => {

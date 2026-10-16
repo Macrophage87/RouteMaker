@@ -22,7 +22,7 @@ export const REFINE_ADD = 5;
 export const REFINE_GOAL = 0.97;
 import { COVERAGE_BBOX, MAX_POINTS, haversineM, insideCoverage, type LonLat } from "./geo.ts";
 import { PLAN_TYPE_PREFIX, parseDialsComment, type GpxFile, type GpxRoute } from "./gpx.ts";
-import { DEFAULT_PRESET, isPreset, type PresetId } from "./presets.ts";
+import { DEFAULT_PRESET, resolvePreset, type PresetId } from "./presets.ts";
 import { isCarrying, isWhen, type Dials } from "./dials.ts";
 import { cumulative, dedupe, fidelity, placesAlong, refineVias, significantIndexes, viaPoints, type Fidelity } from "./trackMatch.ts";
 
@@ -40,12 +40,79 @@ export const REFERENCE_TOLERANCE_M = 2;
  */
 export const JOIN_GAP_M = 805;
 
+/** Most named waypoints an opened file marks on the map; past these they are counted, not drawn. */
+export const WAYPOINT_MARKS_MAX = 50;
+/** Longest waypoint name kept, in characters. */
+export const WAYPOINT_NAME_MAX = 60;
+
+/** A waypoint the file names, marked on the map at its position. */
+export interface WaypointMark {
+  at: LonLat;
+  name: string;
+}
+
+/**
+ * A file's waypoint name as plain text: control, zero-width and direction-override characters become spaces,
+ * runs of space one, and it is cut to WAYPOINT_NAME_MAX characters. It is only ever text (a map label drawn
+ * on the canvas, and page text React escapes), never markup.
+ */
+/** Control, zero-width, line-separator and direction characters, by code point (written as numbers on purpose). */
+const INVISIBLE = new RegExp(
+  `[${[
+    [0x00, 0x1f],
+    [0x7f, 0x9f],
+    [0x200b, 0x200f],
+    [0x2028, 0x202e],
+    [0x2060, 0x2069],
+    [0xfeff, 0xfeff],
+  ]
+    .map(([a, b]) => `\\u{${a.toString(16)}}-\\u{${b.toString(16)}}`)
+    .join("")}]`,
+  "gu",
+);
+
+export function cleanWaypointName(raw: string | undefined): string {
+  if (!raw) return "";
+  const plain = raw
+    .replace(INVISIBLE, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return Array.from(plain).slice(0, WAYPOINT_NAME_MAX).join("").trim();
+}
+
+/**
+ * The named points to mark: the file's waypoints when they are not the plan, and a route's named points when
+ * the plan followed a track instead, inside the area, each place and name once, at most WAYPOINT_MARKS_MAX.
+ * `unused` counts the file's waypoints neither the plan nor marked.
+ */
+export function waypointMarks(file: GpxFile, source: ImportedPlan["source"], routeUsed: GpxRoute | undefined): { marks: WaypointMark[]; unused: number } {
+  const marks: WaypointMark[] = [];
+  const seen = new Set<string>();
+  let fromWaypoints = 0;
+  const take = (p: GpxFile["waypoints"][number], waypoint: boolean) => {
+    const name = cleanWaypointName(p.name);
+    const at: LonLat = [p.lon, p.lat];
+    if (!name || !insideCoverage(at) || marks.length >= WAYPOINT_MARKS_MAX) return;
+    const key = `${p.lon},${p.lat},${name}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    marks.push({ at, name });
+    if (waypoint) fromWaypoints += 1;
+  };
+  if (source !== "waypoints") for (const p of file.waypoints) take(p, true);
+  for (const route of file.routes) if (route !== routeUsed) for (const p of route.points) take(p, false);
+  return { marks, unused: source === "waypoints" ? 0 : file.waypoints.length - fromWaypoints };
+}
+
 export type ImportNote =
   | { kind: "outside"; share: number }
   | { kind: "joined"; parts: number }
   /** Parts lying more than JOIN_GAP_M from the part followed, left out rather than joined to it. */
   | { kind: "far-parts"; count: number }
+  /** Waypoints neither the plan's points nor marked on the map: no name, outside the area, or past the cap. */
   | { kind: "waypoints-unused"; count: number }
+  /** Named waypoints (and a followed route's named points) marked on the map, by name. */
+  | { kind: "waypoints-shown"; names: string[] }
   | { kind: "skipped"; count: number }
   | { kind: "dense-route"; count: number }
   /** The file names a RouteMaker ride type the planner no longer offers; it opens as Default. */
@@ -67,6 +134,43 @@ export interface ImportedPlan {
   referenceM: number;
   name?: string;
   notes: ImportNote[];
+  /** The file's named waypoints not used as the plan's points, marked on the map (at most WAYPOINT_MARKS_MAX). */
+  marks?: WaypointMark[];
+  /**
+   * The file's line snapped to the map's ways (POST /api/match, lib/gpxMatch.ts), which fitting then follows in
+   * place of `reference`; the file's own line, `reference` and `verbatim` stay as they came.
+   */
+  matched?: { line: LonLat[]; share: number };
+  /**
+   * The file as it came (v0.7.0, "GPX export as close to identical as possible"): its text byte for byte,
+   * and its whole track (every point, with its elevation where it has one), for a verbatim export, a saved
+   * route, and the closure check. Absent on a plan not opened from a file.
+   */
+  verbatim?: Verbatim;
+}
+
+/** An opened file's own text and line, unchanged. */
+export interface Verbatim {
+  /** The file's text, or null once closed stretches were rerouted (the export is then written from `track`). */
+  text: string | null;
+  /** [lon, lat] or [lon, lat, elevation], every track point in the file's order (a route's points where it has no track). */
+  track: Array<[number, number] | [number, number, number]>;
+}
+
+/** The whole line of a parsed file: every track point with its elevation, or the first route's points. */
+export function verbatimTrack(file: GpxFile): Verbatim["track"] {
+  const out: Verbatim["track"] = [];
+  for (const t of file.tracks) {
+    t.segments.forEach((segment, s) => {
+      segment.forEach(([lon, lat], i) => {
+        const ele = t.elevations?.[s]?.[i];
+        out.push(typeof ele === "number" ? [lon, lat, ele] : [lon, lat]);
+      });
+    });
+  }
+  if (out.length >= 2) return out;
+  const route = file.routes.find((r) => r.points.length >= 2);
+  return route ? route.points.map((p) => [p.lon, p.lat] as [number, number]) : out;
 }
 
 export class ImportError extends Error {
@@ -173,9 +277,12 @@ function referenceOf(line: readonly LonLat[]): LonLat[] {
 function rideOf(route: GpxRoute | undefined, notes: ImportNote[]): Pick<ImportedPlan, "preset" | "dials"> {
   const type = route?.type;
   if (!type || !type.startsWith(PLAN_TYPE_PREFIX)) return { preset: null };
-  const id = type.slice(PLAN_TYPE_PREFIX.length);
-  if (!isPreset(id)) {
-    notes.push({ kind: "preset-gone", id });
+  const named = type.slice(PLAN_TYPE_PREFIX.length);
+  // A ride type renamed since the file was saved opens as the ride type it became (Riding with kids is
+  // Novice and Nervous, v0.7.0).
+  const id = resolvePreset(named);
+  if (id === null) {
+    notes.push({ kind: "preset-gone", id: named });
     return { preset: DEFAULT_PRESET };
   }
   const fields = parseDialsComment(route?.cmt);
@@ -228,10 +335,10 @@ export function planFromGpx(file: GpxFile, maxPoints: number = MAX_POINTS): Impo
       if (followed.pieces.length > 1) notes.push({ kind: "joined", parts: followed.pieces.length });
       if (followed.leftOut > 0) notes.push({ kind: "far-parts", count: followed.leftOut });
     }
-    if (plan.source !== "waypoints" && file.waypoints.length) {
-      notes.push({ kind: "waypoints-unused", count: file.waypoints.length });
-    }
-    return { ...plan, reference: inside.length >= 2 ? reference : [], referenceM, ...(name ? { name } : {}), notes };
+    const { marks, unused } = waypointMarks(file, plan.source, plan.source === "route" ? route : undefined);
+    if (marks.length) notes.push({ kind: "waypoints-shown", names: marks.map((m) => m.name) });
+    if (unused > 0) notes.push({ kind: "waypoints-unused", count: unused });
+    return { ...plan, reference: inside.length >= 2 ? reference : [], referenceM, ...(name ? { name } : {}), notes, ...(marks.length ? { marks } : {}) };
   };
 
   // A route of at most 25 points, all inside the area: its points are the plan.

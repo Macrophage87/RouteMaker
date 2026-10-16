@@ -14,7 +14,11 @@ Data License Agreement, read for 299 (item 300), shapes this module:
   as history: no earlier reading is kept, no counts over time, no row per
   station or per reading, no file, no export, no endpoint that hands the data on;
   the one row is overwritten, never added to. `Gbfs.snapshot()` is read by the
-  planner and by the nearest-stations list, and by nothing else. A refresh that
+  planner, by the nearest-stations list, and (v0.7.0, the owner 2026-10-13: "If
+  someone is on a bikeshare mode, show bikeshare docks (and free ebikes) on the
+  map") by GET /api/bikeshare/docks, which shows the docks in the rider's map view
+  as they are now (`core.micromobility`: a bounded view, a capped count, nothing
+  kept), and by nothing else. A refresh that
   fails serves the last copy for at most `STALE_GRACE_S` more, and then the
   planner says availability is unknown.
 - A station that has not reported for `STATION_STALE_S` (30 minutes) is treated
@@ -36,6 +40,7 @@ handled as absent, never guessed (`core.bikeshare`).
 
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import re
@@ -111,14 +116,21 @@ Fetch = Callable[[str, float], bytes]
 # --- The one place this module touches the network -----------------------------
 
 
-def allowed_url(url: str) -> bool:
+def allowed_url(url: str, hosts: frozenset[str] = ALLOWED_HOSTS) -> bool:
     parts = urllib.parse.urlsplit(url)
-    return parts.scheme == "https" and parts.hostname in ALLOWED_HOSTS and not parts.username
+    return parts.scheme == "https" and parts.hostname in hosts and not parts.username
+
+
+def hosts_only(hosts: frozenset[str]) -> Callable[[str], bool]:
+    """`allowed_url` for another operator's own hosts (`core.micromobility`)."""
+    return lambda url: allowed_url(url, hosts)
 
 
 class _SameHostsOnly(urllib.request.HTTPRedirectHandler):
+    hosts: frozenset[str] = ALLOWED_HOSTS
+
     def redirect_request(self, req, fp, code, msg, headers, newurl):
-        if not allowed_url(newurl):
+        if not allowed_url(newurl, self.hosts):
             raise urllib.error.URLError(f"redirect off the operator's hosts refused: {newurl}")
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
@@ -126,17 +138,31 @@ class _SameHostsOnly(urllib.request.HTTPRedirectHandler):
 _OPENER = urllib.request.build_opener(_SameHostsOnly)
 
 
-def http_get(url: str, timeout: float) -> bytes:
-    """GET one official GBFS URL: https, on `ALLOWED_HOSTS`, no cookies, no body."""
-    if not allowed_url(url):
+def _opener_on(hosts: frozenset[str]) -> urllib.request.OpenerDirector:
+    """Another operator's opener (`core.micromobility`): its redirects stay on its own hosts."""
+    handler = type("_OnHosts", (_SameHostsOnly,), {"hosts": hosts})
+    return urllib.request.build_opener(handler)
+
+
+def http_get(url: str, timeout: float, hosts: frozenset[str] = ALLOWED_HOSTS) -> bytes:
+    """GET one official GBFS URL: https, on `hosts` (`ALLOWED_HOSTS`), no cookies, no body."""
+    if not allowed_url(url, hosts):
         raise Unavailable(f"not an official GBFS endpoint: {url}")
+    opener = _OPENER if hosts == ALLOWED_HOSTS else _opener_on(hosts)
     request = urllib.request.Request(
         url, headers={"Accept": "application/json", "User-Agent": USER_AGENT}
     )
     try:
-        with _OPENER.open(request, timeout=timeout) as response:
+        with opener.open(request, timeout=timeout) as response:
             body = response.read(MAX_BYTES + 1)
-    except (TimeoutError, urllib.error.URLError, ConnectionError, OSError) as error:
+    # A reply cut off part way is an `http.client.HTTPException` (review api-2).
+    except (
+        TimeoutError,
+        urllib.error.URLError,
+        ConnectionError,
+        OSError,
+        http.client.HTTPException,
+    ) as error:
         raise Unavailable(str(error)) from error
     if len(body) > MAX_BYTES:
         raise Unavailable("a feed was larger than expected")
@@ -280,7 +306,9 @@ def _doc_list(doc, key: str) -> list:
     return items if isinstance(items, list) else []
 
 
-def parse_discovery(doc, language: str = LANGUAGE) -> dict[str, str]:
+def parse_discovery(
+    doc, language: str = LANGUAGE, allowed: Callable[[str], bool] = allowed_url
+) -> dict[str, str]:
     """Feed name to URL, for the language, keeping only official https URLs."""
     data = doc.get("data") if isinstance(doc, dict) else None
     if not isinstance(data, dict):
@@ -292,7 +320,7 @@ def parse_discovery(doc, language: str = LANGUAGE) -> dict[str, str]:
         if not isinstance(feed, dict):
             continue
         name, url = feed.get("name"), feed.get("url")
-        if isinstance(name, str) and isinstance(url, str) and allowed_url(url):
+        if isinstance(name, str) and isinstance(url, str) and allowed(url):
             found[name] = url
     return found
 
@@ -616,8 +644,10 @@ class Gbfs:
         store: SharedStore | None = None,
         wall: Callable[[], float] = time.time,
         sleep: Callable[[float], None] = time.sleep,
+        allowed: Callable[[str], bool] = allowed_url,
     ) -> None:
         self._fetch = fetch
+        self._allowed = allowed
         self._clock = clock
         self._wall = wall
         self._sleep = sleep
@@ -743,7 +773,9 @@ class Gbfs:
     def _download(self) -> tuple[dict[str, Any], frozenset[str], set[str]]:
         """The feeds' JSON, by name; the names not listed; the names that failed."""
         self.refreshes += 1
-        discovery = parse_discovery(_json(self._fetch(self._discovery_url, TIMEOUT_S)))
+        discovery = parse_discovery(
+            _json(self._fetch(self._discovery_url, TIMEOUT_S)), allowed=self._allowed
+        )
         if REQUIRED_FEED not in discovery:
             raise Unavailable("the discovery feed does not list station_information")
         wanted = [REQUIRED_FEED, *(n for n in OPTIONAL_FEEDS if n in discovery)]
@@ -760,6 +792,9 @@ class Gbfs:
                 try:
                     docs[name] = future.result(timeout=max(0.1, deadline - self._clock()))
                 except (Unavailable, FutureTimeout):
+                    failed.add(name)
+                except Exception as error:  # noqa: BLE001 - any other way a feed fails (api-2)
+                    logger.warning("bikeshare feed %s failed: %s", name, error)
                     failed.add(name)
         finally:
             pool.shutdown(wait=False, cancel_futures=True)

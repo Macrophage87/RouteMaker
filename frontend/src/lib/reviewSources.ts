@@ -4,7 +4,7 @@
  * list, and rider-marked Mass Ride hazards (lib/massHazards.ts; FOLLOWUP-MASSRIDE-MAP part 3).
  * One review, the owner's same three actions for each (2026-10-10): Approve now, Delete, Send to Discord.
  */
-import { REVIEW_HEADING, fetchSuggestions, reviewSuggestion, type ReviewAction } from "./suggestions.ts";
+import { REVIEW_HEADING, fetchSuggestions, reviewSuggestion, sendVerdict, type ReviewAction, type ReviewTallies, type Verdict } from "./suggestions.ts";
 import { fetchJunctionSuggestions, loadProblem, reviewEntries, reviewJunctionSuggestion, type ReviewEntry } from "./junctionSuggest.ts";
 import { fetchHazardReports, hazardReportLine, reviewHazard, type HazardReportItem } from "./massHazards.ts";
 
@@ -27,6 +27,8 @@ export interface ReviewItem {
   status: "pending" | "sent_to_discord";
   lat: number | null;
   lon: number | null;
+  /** Second reviewers' marks (v0.7.0): present where a reviewer may agree or disagree with it. */
+  reviews?: ReviewTallies;
 }
 
 type Reviewed<B> = { ok: true; body: B } | { ok: false; message: string };
@@ -56,6 +58,8 @@ export interface ReviewSource<T extends ReviewItem> {
   stress: boolean;
   fetch(origin: string): Promise<T[] | string | PartLoaded<T>>;
   review<B>(origin: string, item: T, action: ReviewAction, csrf: string | null): Promise<Reviewed<B>>;
+  /** A second reviewer's agree or disagree (advice; Approve now still decides), where the list has it. */
+  verdict?(origin: string, item: T, verdict: Verdict, reason: string, csrf: string | null): Promise<Reviewed<{ message: string; reviews: ReviewTallies }>>;
   line(item: T): string;
 }
 
@@ -83,6 +87,8 @@ export const STRESS_REVIEW: ReviewSource<ReviewEntry> = {
   fetch: fetchStress,
   review: <B,>(origin: string, item: ReviewEntry, action: ReviewAction, csrf: string | null) =>
     item.kind === "junction" ? reviewJunctionSuggestion<B>(origin, item.id, action, csrf) : reviewSuggestion<B>(origin, item.id, action, csrf),
+  // Roads' suggestions only: a junction's carries no `reviews`, so it offers none.
+  verdict: (origin, item, verdict, reason, csrf) => sendVerdict(origin, item.id, verdict, reason, csrf),
   line: (item) => item.line,
 };
 

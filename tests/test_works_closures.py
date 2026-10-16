@@ -145,10 +145,10 @@ def test_in_an_industrial_area_only_its_own_drives_close(tags, closed):
 def test_a_way_outside_or_only_touching_is_not_judged():
     outside = [(-77.30, 39.0), (-77.29, 39.0)]
     assert ra.works_closures([(1, {"highway": "track"}, outside)], AREAS) == []
-    # Less than half its length inside.
+    # Less than half its length inside (a bare track that far in is a haul road, below).
     (west, south, _e, _n), _o, _i = QUARRY
     mostly_out = [(west - 0.008, south + 0.005), (west + 0.002, south + 0.005)]
-    assert ra.works_closures([(1, {"highway": "track"}, mostly_out)], AREAS) == []
+    assert ra.works_closures([(1, {"highway": "footway"}, mostly_out)], AREAS) == []
     # Not a highway, or a way another rule judged.
     assert ra.works_closures([(1, {"waterway": "ditch"}, inside(QUARRY))], AREAS) == []
     assert ra.works_closures([(1, {"highway": "track"}, inside(QUARRY))], AREAS, skip={1}) == []
@@ -239,3 +239,38 @@ def test_the_real_sentinel_settings():
 
     assert real.REBUILD_SENTINEL_WORKS_CLOSED_RANGE == (1379220522, 1379220572)
     assert real.REBUILD_SENTINEL_WORKS_MIN_IN_RANGE == 9
+
+
+# --- A haul road that runs mostly outside the mapped pit (rebuild of 2026-10-16) -------
+
+# Ways 1379220535 and 1379220571 are tracks with under half their length inside the
+# Travilah quarry's outline: a track with HAUL_TRACK_MIN_INSIDE_M or more inside closes.
+MOSTLY_OUT = [(-77.2230, 39.075), (-77.2200, 39.075), (-77.2120, 39.075)]
+JUST_TOUCHING = [(-77.2201, 39.075), (-77.2120, 39.075)]
+
+
+def judged_line(tags, coords):
+    found = ra.works_closures([(7, tags, coords)], AREAS)
+    return found[0] if found else None
+
+
+def test_a_track_mostly_outside_the_pit_still_closes():
+    m = judged_line({"highway": "track"}, MOSTLY_OUT)
+    assert m is not None and m.closed and m.why == ra.WHY_WORKS
+    assert m.share < ra.INSIDE_FRACTION
+
+
+def test_a_track_that_only_touches_the_pit_stays_out_of_the_rule():
+    assert judged_line({"highway": "track"}, JUST_TOUCHING) is None
+
+
+@pytest.mark.parametrize(
+    "tags",
+    [
+        {"highway": "footway"},
+        {"highway": "track", "bicycle": "yes"},
+        {"highway": "track", "access": "permissive"},
+    ],
+)
+def test_only_a_bare_track_mostly_outside_closes(tags):
+    assert judged_line(tags, MOSTLY_OUT) is None

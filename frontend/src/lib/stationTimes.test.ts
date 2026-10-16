@@ -1,13 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import type { StationLineTime } from "./api.ts";
+import type { StationLineTime, StationLive, StationTimes } from "./api.ts";
 import {
   SCHEDULED_WORD,
   TIMES_TTL_MS,
   cachedStationTimes,
   clearStationTimes,
+  liveRows,
   requestStationTimes,
+  stationCardRows,
   shownLines,
   stationTimeRows,
   stationTimesUrl,
@@ -121,10 +123,57 @@ test("the station's card and the road panel's nearby station say the times, emoj
   const panel = src("RoadInfoDialog.tsx");
   // The panel shows what the card shows: the toggles' systems, and no times for a closed station.
   assert.match(panel, /<StationTimesList station=\{station\} rail=\{rail\} closed=\{Boolean\(stationClosed\?\.\(station\)\)\} \/>/);
-  assert.match(panel, /stationTimeRows\(shownLines\(times\.lines, rail\)\)/);
+  assert.match(panel, /stationCardRows\(times, rail\)/);
+  assert.match(card, /stationCardRows\(times, options\.visibility\(\)\)/);
   assert.match(panel, /if \(closed\) return;/);
   assert.match(src("App.tsx"), /rail=\{rail\}\s+stationClosed=\{railClosedReason\}/);
   assert.match(panel, /<span aria-hidden="true">\{row\.shown\}<\/span>/);
   // Nothing new to press: no button or toggle comes with the times.
   assert.doesNotMatch(src("lib/stationTimes.ts"), /button|checkbox/);
+});
+
+const LIVE: StationLive = {
+  station: "Union Station",
+  trains: [
+    { line: "Red Line", toward: "Glenmont", minutes: [0], when: "boarding" },
+    { line: "Red Line", toward: "Shady Grove", minutes: [1, 9], when: "1 min, 9 min" },
+  ],
+  elevators: [{ words: "Elevator out at Union Station: carry your bike on the stairs.", where: "Street to mezzanine" }],
+  alerts: ["Red Line: Trains single tracking between Takoma and Silver Spring."],
+  credit: "Data: WMATA",
+  as_of: "2026-10-15T08:00:00-04:00",
+};
+
+test("a Metro line's live trains replace its timetable row, marked live, with WMATA's credit last", () => {
+  const times: StationTimes = {
+    service_day: "2026-10-15",
+    source: "scheduled",
+    lines: [line({}), line({ system: "MARC", line: "Penn Line", kind: "next", every_min: null, toward: "Perryville", time: "5:42 pm" })],
+    live: LIVE,
+  };
+  const rows = stationCardRows(times, { metro: true, marc: true });
+  assert.deepEqual(
+    rows.map((r) => r.shown),
+    [
+      "🔴 Red Line: to Glenmont boarding; to Shady Grove 1 min, 9 min, live",
+      "🚆Penn to Perryville 5:42 pm, scheduled",
+      "⚠️ Elevator out at Union Station: carry your bike on the stairs.",
+      "⚠️ Red Line: Trains single tracking between Takoma and Silver Spring.",
+      "Data: WMATA",
+    ],
+  );
+  assert.equal(rows[0].spoken, "Red Line to Glenmont boarding; to Shady Grove 1 minute, 9 minutes, live");
+  // Every time is labelled: live or scheduled.
+  for (const row of rows) if (/\d min|\d:\d\d/.test(row.shown) && !row.shown.startsWith("⚠️")) assert.match(row.shown, /(live|scheduled)$/);
+});
+
+test("with no live reading, or Metro hidden, the card is the timetable's", () => {
+  const times: StationTimes = { service_day: "2026-10-15", source: "scheduled", lines: [line({})], live: null };
+  assert.deepEqual(
+    stationCardRows(times, { metro: true, marc: true }).map((r) => r.shown),
+    ["🔴 Red Line: every 8 min, scheduled"],
+  );
+  assert.deepEqual(stationCardRows({ ...times, live: LIVE }, { metro: false, marc: true }), []);
+  assert.deepEqual(liveRows(null), []);
+  assert.deepEqual(stationCardRows(null, { metro: true, marc: true }), []);
 });

@@ -42,11 +42,13 @@ from rebuild_fixtures import (
 from config.procrastinate import (
     BACKUP_KEEP,
     BACKUP_TIMEOUT_S,
+    DC_CLOSURES_CRON,
     DEGRADED_GUILD_SWEEP_CRON,
     MEMBERSHIP_SWEEP_CRON,
     NIGHTLY_BACKUP_CRON,
     REBUILD_TIMEOUT_S,
     ROUTER_RESTART_NOTICE,
+    SAVED_ROUTE_CLOSURES_CRON,
     SWEEP_TIMEOUT_S,
     WEEKLY_REBUILD_CRON,
     WORK_ZONES_CRON,
@@ -82,6 +84,8 @@ def test_each_cron_constant_has_a_task_behind_it() -> None:
         "degraded_guild_sweep": DEGRADED_GUILD_SWEEP_CRON,
         "worker_heartbeat": WORKER_HEARTBEAT_CRON,
         "refresh_work_zones": WORK_ZONES_CRON,
+        "refresh_dc_closures": DC_CLOSURES_CRON,
+        "check_saved_route_closures": SAVED_ROUTE_CLOSURES_CRON,
     }
 
 
@@ -1573,6 +1577,8 @@ def test_the_backup_excludes_the_sessions_and_the_membership_cache(monkeypatch, 
     destination = perform_backup()
     assert destination.parent == tmp_path / "backups"
     assert destination.suffix == ".dump"
+    # Readable by its owner only (sec-infra-4).
+    assert destination.stat().st_mode & 0o777 == 0o600
 
     listing = subprocess.run(
         ["pg_restore", "--list", str(destination)], capture_output=True, text=True, check=True
@@ -1580,6 +1586,9 @@ def test_the_backup_excludes_the_sessions_and_the_membership_cache(monkeypatch, 
     data_entries = [line for line in listing.splitlines() if "TABLE DATA" in line]
     assert any("app_user" in line for line in data_entries), "the dump carries the users"
     assert not any("app_session" in line for line in data_entries)
+    # Django's own session table holds the cookie's key: a key read from a dump
+    # matches a live row, so it is left out too (review sec-app-1).
+    assert not any("django_session" in line for line in data_entries)
     assert not any("cached_membership" in line for line in data_entries)
     # And the tombstones stay in. They are the only record that a ban happened
     # at all - the account row is gone by then - so a dump without them restores
@@ -1593,6 +1602,38 @@ def test_the_backup_excludes_the_sessions_and_the_membership_cache(monkeypatch, 
 
     app.tasks["nightly_backup"].func(timestamp=0)
     assert ScheduledRun.objects.get(task="nightly_backup").succeeded
+
+
+@pytest.mark.django_db
+def test_every_table_that_holds_a_session_key_is_left_out_of_the_backup() -> None:
+    """Every table in the schema that carries a session key or a session's data,
+    or is named for sessions, is in the exclusion list, so a session table a
+    later app or migration adds cannot reach the nightly dump unnoticed."""
+    from config.procrastinate import BACKUP_EXCLUDED_TABLES
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT DISTINCT table_name FROM information_schema.columns"
+            " WHERE table_schema = current_schema()"
+            " AND (column_name IN ('session_key', 'session_data') OR table_name LIKE '%%session%%')"
+        )
+        session_tables = {name for (name,) in cursor.fetchall()}
+
+    assert {"app_session", "django_session"} <= session_tables, session_tables
+    assert session_tables <= set(BACKUP_EXCLUDED_TABLES), session_tables - set(
+        BACKUP_EXCLUDED_TABLES
+    )
+
+
+def test_operations_backups_section_names_every_excluded_table() -> None:
+    """OPS-8: the operator's page lists what the dump leaves out, all of it."""
+    from config.procrastinate import BACKUP_EXCLUDED_TABLES
+
+    text = (Path(__file__).resolve().parents[1] / "docs/OPERATIONS.md").read_text()
+    section = text.split("\n## Backups\n", 1)[1].split("\n## ", 1)[0]
+    assert "BACKUP_EXCLUDED_TABLES" in section
+    missing = [t for t in BACKUP_EXCLUDED_TABLES if f"`{t}`" not in section]
+    assert not missing, missing
 
 
 @pytest.mark.django_db(transaction=True)
@@ -2044,6 +2085,31 @@ def test_the_backup_also_prunes_the_run_and_job_history(monkeypatch, tmp_path) -
     assert "1 run rows, 1 finished job rows" in detail
 
 
+@pytest.mark.django_db(transaction=True)
+def test_the_backup_also_prunes_shared_routes_and_signed_out_sends(monkeypatch, tmp_path) -> None:
+    """Shared routes and signed-out send rows were dropped only when someone shared, opened or
+    sent; a quiet server kept them past their retention. The nightly task drops them too."""
+    from core import shared_routes, signed_out_suggestions
+    from core.models import ScheduledRun, SharedRoute, SignedOutSend
+
+    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
+    now = timezone.now()
+    line = [[-77.0, 38.9], [-77.01, 38.91]]
+    old = now - shared_routes.KEEP - timedelta(days=1)
+    SharedRoute.objects.create(id="a" * 32, line=line, distance_m=1.0, last_opened_at=old)
+    SharedRoute.objects.create(id="b" * 32, line=line, distance_m=1.0, last_opened_at=now)
+    stale = now - signed_out_suggestions.KEEP - timedelta(hours=1)
+    SignedOutSend.objects.create(device="d" * 64, osm_way_id=1, created_at=stale)
+    SignedOutSend.objects.create(device="d" * 64, osm_way_id=2, created_at=now)
+
+    app.tasks["nightly_backup"].func(timestamp=0)
+
+    assert list(SharedRoute.objects.values_list("id", flat=True)) == ["b" * 32]
+    assert list(SignedOutSend.objects.values_list("osm_way_id", flat=True)) == [2]
+    detail = ScheduledRun.objects.filter(task="nightly_backup").order_by("-started_at")[0].detail
+    assert "1 shared routes, 1 signed-out send rows" in detail
+
+
 def test_the_local_dump_retention_is_a_week() -> None:
     """Long enough that corruption noticed over a weekend still has a local copy
     to restore from; short enough that the volume carries gigabytes rather than a
@@ -2181,6 +2247,8 @@ def test_every_alert_window_is_pinned() -> None:
         "worker_heartbeat": 10 * 60,
         # The work-zone feeds, every five minutes: six missed ticks, as the sweep.
         "refresh_work_zones": 30 * 60,
+        "refresh_dc_closures": 60 * 60,
+        "check_saved_route_closures": 60 * 60,
     }
 
 
@@ -2211,6 +2279,8 @@ def test_each_alert_window_is_wider_than_its_schedule() -> None:
         "degraded_guild_sweep": DEGRADED_GUILD_SWEEP_CRON,
         "worker_heartbeat": WORKER_HEARTBEAT_CRON,
         "refresh_work_zones": WORK_ZONES_CRON,
+        "refresh_dc_closures": DC_CLOSURES_CRON,
+        "check_saved_route_closures": SAVED_ROUTE_CLOSURES_CRON,
     }
     assert set(crons) == set(STALE_AFTER), "every scheduled task is watched, and the reverse"
     base = timezone.now()

@@ -156,7 +156,7 @@ test("parkway runs by the NPS layer: an unnamed road or untraced part in its pol
   // The API's own words for a stretch with no name (describe.py _street_words); never null.
   assert.equal(UNNAMED_ROAD, "unnamed road");
   assert.equal(UNTRACED_STREET, "this part of the route");
-  assert.equal(UNNAMED_PATH, "unnamed path");
+  assert.equal(UNNAMED_PATH, "path");
   for (const street of [UNNAMED_ROAD, UNTRACED_STREET, null]) {
     assert.deepEqual(parkwayRuns([entry(...inside, street)], route, AREAS).map((r) => r.parkway.name), ["Suitland Pkwy"], String(street));
   }
@@ -335,9 +335,11 @@ test("the markers follow the warnings: the same words keep them, new words rebui
 test("the map's markers say the warning in their name and title and wear the badge", () => {
   const map = source("../MapView.tsx");
   assert.match(map, /const warning = props\.pointWarnings\?\.\[index\] \?\? null;/);
-  assert.match(map, /element\.className = `pin pin-\$\{kind\}\$\{warning \? " pin-federal" : ""\}`;/);
+  assert.match(map, /element\.className = `pin pin-\$\{via \? "via" : kind\}\$\{kind === "through" \? " pin-through" : ""\}\$\{warning \? " pin-federal" : ""\}`;/);
   assert.match(map, /const named = warning \? `\$\{name\}\. \$\{warning\}` : name;/);
-  assert.match(map, /element\.setAttribute\("aria-label", via \? `\$\{said\} Drag to move; click for Remove\.` : `\$\{said\} Drag to move\.`\);/);
+  // The name and warning only (review a11y-8): a pin takes no focus, so no drag or click words.
+  assert.match(map, /element\.setAttribute\("aria-label", via \? `\$\{said\} Remove it from the Points list\.` : said\);/);
+  assert.doesNotMatch(map, /"aria-label"[^\n]*Drag to move/);
   const css = source("../styles.css");
   assert.match(css, /\.pin-federal::before \{\s+content: "!";/);
   assert.match(css, /\.point-federal::before \{\s+content: "!";/);

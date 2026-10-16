@@ -164,6 +164,9 @@ class Override(models.Model):
         ACCESS = "access", "Bicycle access"
         STRESS = "stress", "Stress tier"
         JURISDICTION = "jurisdiction", "Authority assignment"
+        # v0.7.0: a routing price for a rough or loose surface, not a level
+        # (`pipeline.overrides.SURFACE_PENALTIES`). The graph has it from the next rebuild.
+        SURFACE = "surface", "Surface penalty"
 
     kind = models.CharField(max_length=16, choices=Kind.choices)
     osm_way_id = models.BigIntegerField()
@@ -185,6 +188,9 @@ class Override(models.Model):
         FILE = "file", "Reviewed file"
         ADMIN = "admin", "Typed into the admin"
         PANEL = "panel", "Road panel (Change LTS)"
+        # An instance admin's ruling in Review that reopened a closed road (core.stress_review):
+        # told apart by this value, never by its words, so the import can list it as one.
+        REVIEW = "review", "Review mode (reopened)"
 
     # Where the row came from. A row a file loaded and a row an instance admin
     # wrote in the road panel are told apart because the loader must never undo
@@ -227,8 +233,26 @@ class Override(models.Model):
                 fields=["osm_way_id"],
                 condition=models.Q(kind="stress", approved=True, superseded_by__isnull=True),
                 name="override_one_live_stress_row_per_way",
-            )
+            ),
+            # And one live surface row (v0.7.0), for the same reason.
+            models.UniqueConstraint(
+                fields=["osm_way_id"],
+                condition=models.Q(kind="surface", approved=True, superseded_by__isnull=True),
+                name="override_one_live_surface_row_per_way",
+            ),
         ]
+
+    def clean(self) -> None:
+        # A surface row typed into the admin is checked here, not first at the rebuild, where
+        # a bad value refuses the whole rebuild (`pipeline.overrides.apply_surface`).
+        if self.kind == self.Kind.SURFACE:
+            from django.core.exceptions import ValidationError
+
+            from pipeline.overrides import surface_value_problem
+
+            problem = surface_value_problem(self.value)
+            if problem:
+                raise ValidationError({"value": problem})
 
     def __str__(self) -> str:
         return f"{self.kind} on way {self.osm_way_id}"
@@ -314,6 +338,14 @@ class User(AbstractBaseUser):
             # A deleted account keeps no My Go (its Home is a place the rider lives).
             if previous is not None and self.is_deleted and not previous.is_deleted:
                 MyGo.objects.filter(user_id=self.pk).delete()
+                # Nor its saved settings and routes (v0.7.0: "deleted with the account").
+                AccountSettings.objects.filter(user_id=self.pk).delete()
+                SavedRoute.objects.filter(user_id=self.pk).delete()
+                # Its shared links keep working for those they were sent to, but with Home gone
+                # their previews could no longer hide it: no image from now on.
+                SharedRoute.objects.filter(owner_id=self.pk).update(
+                    preview_image=False, preview_png=None, preview_key="", preview_zone=None
+                )
 
         return super().save(*args, **kwargs)
 
@@ -1314,6 +1346,9 @@ class BikeshareFeedCache(models.Model):
     stand-alone dataset). It is excluded from the nightly dump and from the beta's data
     shipment, and refills itself.
 
+    The saved-route closure check keeps its state here too (key `SAVED_ALERTS`,
+    core.saved_route_alerts): a hash and a place reached, nothing personal.
+
     It holds one more row of the same kind: the live work zones (FOLLOWUP-WORKZONES,
     key `WORKZONES`, written by `core.workzones.refresh` every five minutes), the
     parsed zones of the Maryland and VDOT WZDx feeds as last read. Same life as the
@@ -1325,6 +1360,9 @@ class BikeshareFeedCache(models.Model):
 
     CURRENT = "current"
     WORKZONES = "workzones"
+    # DC's closures (v0.7.0, `core.closure_sources`): the same kind of row, its own key.
+    CLOSURES = "closures"
+    SAVED_ALERTS = "saved_alerts"
 
     key = models.CharField(max_length=16, unique=True)
     payload = models.JSONField(null=True)
@@ -1386,6 +1424,9 @@ class StressSuggestion(models.Model):
 
     class Kind(models.TextChoices):
         ROAD = "road", "Road piece"
+        # v0.7.0 closures: a rider's report that the road is closed (the short form's "Closed"
+        # reason). Reviewed with the closures (core.reviewed_closures), never as a level.
+        CLOSURE = "closure", "Closure report"
 
     created_at = models.DateTimeField(default=timezone.now)
     suggester = models.ForeignKey(
@@ -1412,6 +1453,11 @@ class StressSuggestion(models.Model):
     edit = models.ForeignKey(
         StressEdit, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
     )
+    # v0.7.0, signed-out suggestions (core.signed_out_suggestions): sent from the short form by
+    # someone not signed in. No account, address or device is kept with it; `reasons` are the
+    # one-tap reasons' keys ("fast_traffic", ..., "other"), `reason` their words and any text.
+    signed_out = models.BooleanField(default=False)
+    reasons = models.JSONField(default=list, blank=True)
 
     class Meta:
         db_table = "stress_suggestion"
@@ -1437,6 +1483,65 @@ class StressSuggestion(models.Model):
     @property
     def current_step(self) -> float:
         return self.current_tier + 0.5 if self.current_half else self.current_tier
+
+
+class StressSuggestionReview(models.Model):
+    """A second reviewer's agree or disagree on a waiting road suggestion (v0.7.0;
+    core.suggestions.review).
+
+    Advice for the admin who decides, never a decision: approving still takes the review's own
+    Approve now. One a reviewer a suggestion, changed in place when they change their mind. The
+    review list shows the tallies and the one-line reasons, never who wrote them; the reviewer's
+    account is kept for the audit, as the suggester's is.
+    """
+
+    suggestion = models.ForeignKey(
+        StressSuggestion, on_delete=models.CASCADE, related_name="reviews"
+    )
+    reviewer = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    reviewer_user_id = models.BigIntegerField()
+    agree = models.BooleanField()
+    reason = models.CharField(max_length=200, blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "stress_suggestion_review"
+        ordering = ["created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["suggestion", "reviewer_user_id"],
+                name="stress_suggestion_review_one_per_reviewer",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"suggestion {self.suggestion_id}: {'agree' if self.agree else 'disagree'}"
+
+
+class SignedOutSend(models.Model):
+    """One signed-out suggestion's count toward its sender's daily limits (v0.7.0;
+    core.signed_out_suggestions): 10 a day per device and one per road.
+
+    `device` is a salted hash of the sender's address and the day (HMAC with a key derived
+    from the server's secret, so it cannot be reversed or matched across days); the address
+    itself is never stored. Rows older than 24 hours are deleted at every send and nightly
+    (`signed_out_suggestions.prune`, by the backup task), so nothing
+    here outlives a day. Nothing links a row to its suggestion.
+    """
+
+    device = models.CharField(max_length=64)
+    osm_way_id = models.BigIntegerField()
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "signed_out_send"
+        indexes = [models.Index(fields=["device", "created_at"], name="signed_out_send_device")]
+
+    def __str__(self) -> str:
+        return f"way {self.osm_way_id} at {self.created_at:%Y-%m-%d %H:%M}"
 
 
 class AvoidJunction(models.Model):
@@ -1725,8 +1830,10 @@ class MyGo(models.Model):
     One row per account, made the first time the rider saves any of it, and nothing else: no
     name, no history, no route. Signed out, the same choices stay in the browser
     (frontend/src/lib/myGo.ts). Home is one point and its label, as the rider picked it; it is
-    never put in a link, a log or a suggestion, and it goes with the account (deleted with the
-    row when the account is, and cleared by the account's deletion flag: `User.save`).
+    never put in a log or a suggestion (riding to it puts it in the plan's link, which then says
+    so: linkLocationNote in frontend/src/lib/geolocation.ts), and it goes with the account
+    (deleted with the row when the account is, and cleared by the account's deletion flag:
+    `User.save`).
     """
 
     class OpenIn(models.TextChoices):
@@ -1757,3 +1864,361 @@ class MyGo(models.Model):
 
     def __str__(self) -> str:
         return f"My Go for account {self.user_id}"
+
+
+class AccountSettings(models.Model):
+    """A signed-in rider's saved planning settings (v0.7.0 plan, "Discord sign-in on, with saved
+    settings and routes", item 2): the choices the device already remembers, kept with the
+    account so they follow the rider to another device.
+
+    One row per account, last write wins. `data` is the front end's own settings document
+    (frontend/src/lib/accountSettings.ts), checked for shape and size by the API before it is
+    written. My Go keeps its own row (`MyGo`), and Home stays there. Deleted with the account.
+    """
+
+    user = models.OneToOneField(
+        "User", on_delete=models.CASCADE, primary_key=True, related_name="account_settings"
+    )
+    data = models.JSONField(default=dict)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "account_settings"
+
+    def __str__(self) -> str:
+        return f"Settings for account {self.user_id}"
+
+
+class SavedRoute(models.Model):
+    """A route a signed-in rider saved (v0.7.0 plan, item 3).
+
+    The exact line as planned, kept verbatim like a GPX track (`line`), with the plan's inputs
+    (start, end, stops, ride type and dials, as the link's fragment and as fields), the name and
+    the date. A route from an opened GPX file is kept the same way, its own line verbatim.
+    Reopening shows `line` (and, for a planned route, the saved answer) unchanged; nothing is
+    re-planned unless the rider asks. Private to the account, never shared between accounts,
+    deleted with it, and at most `MAX_PER_ACCOUNT` per account.
+    """
+
+    MAX_PER_ACCOUNT = 200
+
+    class Source(models.TextChoices):
+        PLAN = "plan", "Planned in RouteMaker"
+        GPX = "gpx", "An opened GPX file"
+
+    user = models.ForeignKey("User", on_delete=models.CASCADE, related_name="saved_routes")
+    name = models.CharField(max_length=120)
+    source = models.CharField(max_length=8, choices=Source.choices, default=Source.PLAN)
+    # [[lon, lat] or [lon, lat, ele], ...] exactly as planned or as the file had it.
+    line = models.JSONField()
+    distance_m = models.FloatField()
+    # {"hash": the plan link's fragment, "points": [[lon, lat], ...], "preset": id, "dials": {...}}
+    inputs = models.JSONField(default=dict)
+    # The planned route's whole answer as shown when saved (without the other candidates), so a
+    # reopened route shows every panel as it was; null for a GPX file's line.
+    answer = models.JSONField(null=True, blank=True)
+    # An opened GPX file's own text, byte for byte, so its export is the file as it came (its
+    # track points, elevations and waypoint names unchanged); empty for a planned route.
+    gpx = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    # v0.7.0 closures (core.saved_route_alerts): the closures in force that the line runs along,
+    # as last found, shown in My routes; [] where none.
+    closure_alerts = models.JSONField(default=list, blank=True)
+    closures_checked_at = models.DateTimeField(null=True, blank=True)
+    # The line's box, so the check reads a line only where a closure could meet it.
+    bbox_west = models.FloatField(null=True, blank=True)
+    bbox_south = models.FloatField(null=True, blank=True)
+    bbox_east = models.FloatField(null=True, blank=True)
+    bbox_north = models.FloatField(null=True, blank=True)
+
+    class Meta:
+        db_table = "saved_route"
+        indexes = [models.Index(fields=["user", "-created_at"], name="saved_route_user_recent")]
+
+    def __str__(self) -> str:
+        return f"Saved route {self.pk} for account {self.user_id}"
+
+
+class SavedRouteVersion(models.Model):
+    """An earlier version of a saved route: what it was before it was saved again with changes,
+    or before an earlier version was restored (core.api, /me/routes/{id}/versions).
+
+    The same fields as the route itself, kept verbatim, with when that version was saved
+    (`saved_at`) and when it stopped being the latest (`replaced_at`). The owner's own, like the
+    route: deleted with it, and at most `MAX_PER_ROUTE` per route, the oldest going first. They do
+    not count toward the account's `SavedRoute.MAX_PER_ACCOUNT`, but all of an account's versions
+    together are at most `MAX_BYTES_PER_ACCOUNT`, the oldest across the account going first.
+
+    An opened GPX file's text is kept once: a version whose file is the same as the version after
+    it (or the route itself, for the newest) keeps none and says so (`gpx_same_as_next`); its text
+    is that one's (core.api `_version_gpx`).
+    """
+
+    MAX_PER_ROUTE = 20
+    MAX_BYTES_PER_ACCOUNT = 50 * 1024 * 1024
+
+    route = models.ForeignKey(SavedRoute, on_delete=models.CASCADE, related_name="versions")
+    source = models.CharField(
+        max_length=8, choices=SavedRoute.Source.choices, default=SavedRoute.Source.PLAN
+    )
+    line = models.JSONField()
+    distance_m = models.FloatField()
+    inputs = models.JSONField(default=dict)
+    answer = models.JSONField(null=True, blank=True)
+    gpx = models.TextField(blank=True, default="")
+    gpx_same_as_next = models.BooleanField(default=False)
+    # What this version holds, in bytes (its line, inputs, answer and own file text as JSON).
+    size_bytes = models.IntegerField(default=0)
+    saved_at = models.DateTimeField()
+    replaced_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "saved_route_version"
+        indexes = [
+            models.Index(fields=["route", "-replaced_at"], name="saved_route_version_recent")
+        ]
+
+    def __str__(self) -> str:
+        return f"Version {self.pk} of saved route {self.route_id}"
+
+
+class SharedRoute(models.Model):
+    """A route shared with the Share button, kept so the link opens the exact line (v0.7.0;
+    core.shared_routes).
+
+    The line exactly as shown, verbatim like a saved route or GPX track (`line`), with the plan's
+    inputs (so "Update route" can plan it again with today's map), a planned route's answer
+    without the rider's weight, or an opened GPX file's own text. The key is 128 random bits the
+    sharer's browser made (32 hex characters); nothing names who shared it but, signed in, the
+    account (`owner`): no address, no position. Kept a year after `last_opened_at` (`keep`
+    "year", the default), permanently ("forever"), or through `delete_after` ("until"), then
+    deleted.
+
+    Shared signed in, the row names its `owner`, so only they can turn the link off or make a new
+    one (core.shared_routes.revoke, regenerate); a turned-off link stays as a tombstone with its
+    route cleared (`revoked_at`), so the link says it was turned off rather than planning its
+    points again. `preview_png` is the link preview's image (core.share_preview), cached under
+    `preview_key` (the line and Home's circle it was drawn with; an empty image is "none");
+    `preview_image` False when a signed-out sharer's route starts, ends or stops at the Home on
+    their device, which the server does not know, and for links from before previews, so no image
+    is drawn; `preview_zone` Home's circle frozen when the link was made.
+    """
+
+    id = models.CharField(primary_key=True, max_length=32)
+    name = models.CharField(max_length=120, blank=True, default="")
+    source = models.CharField(max_length=8, default="plan")
+    # [[lon, lat] or [lon, lat, ele], ...] exactly as shown or as the file had it.
+    line = models.JSONField()
+    distance_m = models.FloatField()
+    # {"hash": the plan link's fragment, "points": [[lon, lat], ...], "preset": id, "dials": {...}}
+    inputs = models.JSONField(default=dict)
+    answer = models.JSONField(null=True, blank=True)
+    gpx = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(default=timezone.now)
+    last_opened_at = models.DateTimeField(default=timezone.now)
+    keep = models.CharField(max_length=8, default="year")
+    delete_after = models.DateField(null=True, blank=True)
+    owner = models.ForeignKey(
+        "User",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="shared_routes",
+    )
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    preview_image = models.BooleanField(default=False)
+    # [lon, lat, radius m]: Home's circle when the link was made, if the route ended or stopped
+    # in it.
+    preview_zone = models.JSONField(null=True, blank=True)
+    preview_key = models.CharField(max_length=64, blank=True, default="")
+    preview_png = models.BinaryField(null=True, blank=True)
+
+    class Meta:
+        db_table = "shared_route"
+        indexes = [models.Index(fields=["last_opened_at"], name="shared_route_last_opened")]
+
+    def __str__(self) -> str:
+        return f"Shared route {self.pk[:6]}…"
+
+
+class ReviewedClosure(models.Model):
+    """A closure a RouteMaker reviewer entered, or confirmed from a rider's report (v0.7.0
+    closures; core.reviewed_closures).
+
+    It takes part in routing and the closure check exactly as a feed's closure does
+    (`core.workzones.snapshot`), credited "Confirmed by a RouteMaker reviewer". The ways are kept
+    with their lines as the segment table had them when it was entered (`lines`, one
+    [[lon, lat], ...] per way, or one drawn line with no way), so a rebuild that renumbers or
+    moves a way does not move the closure. In force from `start` (null: at once) until `end`
+    (null: until a reviewer ends it), and no longer once `ended_at` is set.
+    """
+
+    created_at = models.DateTimeField(default=timezone.now)
+    created_by = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    osm_way_ids = models.JSONField(default=list, blank=True)
+    lines = models.JSONField(default=list)
+    road = models.CharField(max_length=200, blank=True, default="")
+    reason = models.TextField()
+    start = models.DateTimeField(null=True, blank=True)
+    end = models.DateTimeField(null=True, blank=True)
+    source_url = models.URLField(max_length=500, blank=True, default="")
+    # The rider's report it confirms, where it came from one.
+    report = models.ForeignKey(
+        StressSuggestion, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    ended_at = models.DateTimeField(null=True, blank=True)
+    ended_by = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
+    class Meta:
+        db_table = "reviewed_closure"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["ended_at", "end"], name="reviewed_closure_live")]
+
+    def __str__(self) -> str:
+        return f"Closure {self.pk}: {self.road or 'a road'}"
+
+
+class ReviewItem(models.Model):
+    """One road in an instance admin's Review queue (core.stress_review; the owner, 2026-10-16:
+    "Add a mode that will allow people with admin access the ability to look at these roads and
+    make a ruling").
+
+    Precomputed when a build is installed (`import_cloud_build`'s dry run) or by
+    `manage.py compute_review_queue`, never per request: the rebuild's stress changes compare two
+    whole segment tables. Each queue's rows are replaced whole when it is computed again; the
+    rulings (`ReviewRuling`) keep their own copy of the queue, build and way, so they outlive it.
+    """
+
+    class Queue(models.TextChoices):
+        REBUILD = "rebuild", "Rebuild changes"
+        DISAGREEMENT = "disagreement", "Rating disagreements"
+        SIDEPATH = "sidepath", "Use side path, none mapped"
+        NARROW_RURAL = "narrow_rural", "Narrow rural roads with no posted speed"
+        WORKS_CLOSURE = "works_closure", "Industrial-area closures"
+        REMATCH = "rematch", "Overrides that did not re-match"
+
+    queue = models.CharField(max_length=16, choices=Queue.choices)
+    # The build the rebuild changes are of; "" on the other queues.
+    build_id = models.CharField(max_length=40, blank=True, default="")
+    osm_way_id = models.BigIntegerField()
+    name = models.TextField(blank=True, default="")
+    area = models.TextField(blank=True, default="")
+    reason = models.TextField(blank=True, default="")
+    # What the queue is filtered by: a change ("4-2", "closed"), the sources that disagree.
+    kind = models.CharField(max_length=40, blank=True, default="")
+    # The level before and after a rebuild; elsewhere `new_step` is the level now.
+    old_step = models.FloatField(null=True, blank=True)
+    new_step = models.FloatField(null=True, blank=True)
+    old_closed = models.BooleanField(default=False)
+    new_closed = models.BooleanField(default=False)
+    # Rules, sources and every rating held, for the item's card.
+    details = models.JSONField(default=dict, blank=True)
+    # The rating sources at either end of a disagreement.
+    sources = models.JSONField(default=list, blank=True)
+    spread = models.FloatField(null=True, blank=True)
+    length_m = models.FloatField(default=0)
+    aadt = models.IntegerField(null=True, blank=True)
+    score = models.FloatField(default=0)
+    geometry = models.MultiLineStringField(srid=4326, null=True, blank=True)
+    # The lines simplified for a region's view (Review's map below a street's zoom), and a point
+    # on the road (its far view's count badges): both made with the item, never per request.
+    simple = models.MultiLineStringField(srid=4326, null=True, blank=True)
+    point = models.PointField(srid=4326, null=True, blank=True)
+    # A digest of what the road was listed for (its level, access, rule and ratings, or the
+    # report's row): an Accept outside the rebuild's changes stands only while it is the same.
+    inputs = models.CharField(max_length=32, blank=True, default="")
+    computed_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "review_item"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["queue", "build_id", "osm_way_id"], name="review_item_one_a_way"
+            )
+        ]
+        indexes = [
+            models.Index(fields=["queue", "build_id", "kind"], name="review_item_kind"),
+            models.Index(fields=["queue", "-score"], name="review_item_score"),
+            models.Index(fields=["queue", "-computed_at"], name="review_item_computed"),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.queue} way {self.osm_way_id}"
+
+
+class ReviewRuling(models.Model):
+    """An instance admin's ruling on one road of the Review queue (core.stress_review).
+
+    Accept records the decision only. Reject and Change LTS write what the road panel writes:
+    a stress change is the editor's own approved override, live edit and `StressEdit` (`edit`),
+    so it outranks an agency and the formula and is re-applied by the swap; reopening a closed
+    road is an approved access override (`access_override`), applied at the next rebuild.
+    """
+
+    class Decision(models.TextChoices):
+        ACCEPT = "accept", "Accept"
+        REJECT = "reject", "Reject"
+        SET = "set", "Change LTS"
+
+    queue = models.CharField(max_length=16, choices=ReviewItem.Queue.choices)
+    build_id = models.CharField(max_length=40, blank=True, default="")
+    osm_way_id = models.BigIntegerField()
+    decision = models.CharField(max_length=8, choices=Decision.choices)
+    step = models.FloatField(null=True, blank=True)
+    reason = models.TextField(blank=True, default="")
+    at = models.DateTimeField(default=timezone.now)
+    actor = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    actor_user_id = models.BigIntegerField(null=True, blank=True)
+    edit = models.ForeignKey(
+        StressEdit, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    access_override = models.ForeignKey(
+        Override, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    undone_at = models.DateTimeField(null=True, blank=True)
+    undone_by = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    # The item's `inputs` when it was ruled on: an Accept lapses when a build changes them.
+    inputs = models.CharField(max_length=32, blank=True, default="")
+
+    class Meta:
+        db_table = "review_ruling"
+        ordering = ["-at", "-id"]
+        indexes = [
+            models.Index(fields=["queue", "build_id", "osm_way_id"], name="review_ruling_way")
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.decision} on way {self.osm_way_id} ({self.queue})"
+
+
+class ReviewQueueState(models.Model):
+    """When each Review queue was last computed, and what it was computed from
+    (core.stress_review): a queue read from a rebuild's report says so when the build had none,
+    instead of showing an older build's rows as current."""
+
+    queue = models.CharField(max_length=16, choices=ReviewItem.Queue.choices, primary_key=True)
+    build_id = models.CharField(max_length=40, blank=True, default="")
+    computed_at = models.DateTimeField(default=timezone.now)
+    # "" when computed; else why the list is empty ("No report from this build").
+    note = models.TextField(blank=True, default="")
+    # Unused since the map is served by view (stress_review.map_view): the whole-list maps once
+    # kept here. Kept for one release, so a worker still running the release before reads and
+    # writes its row through a deploy; written empty. Their columns go in the next release.
+    map_low = models.TextField(blank=True, default="")
+    map_high = models.TextField(blank=True, default="")
+    map_points = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "review_queue_state"
+
+    def __str__(self) -> str:
+        return f"{self.queue} at {self.computed_at:%Y-%m-%d %H:%M}"

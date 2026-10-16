@@ -12,6 +12,9 @@ import {
   REFINE_ROUNDS,
   PRUNE_MAX,
   SPUR_MIN_M,
+  WAYPOINT_MARKS_MAX,
+  WAYPOINT_NAME_MAX,
+  cleanWaypointName,
   clipToCoverage,
   fitScore,
   followedPart,
@@ -456,4 +459,51 @@ test("a round of added points is kept unless it lowers the score, and undone whe
   assert.ok(back);
   assert.deepEqual(back.points, round.points);
   assert.equal(back.phase, "prune");
+});
+
+const pt = ([lon, lat]: LonLat) => ({ lon, lat });
+
+test("a track's named waypoints are marked on the map; unnamed, outside or past the cap are counted", () => {
+  const track = { segments: [line(at(0, 0), at(900, 0), 30)] };
+  const named = [
+    { ...pt(at(100, 10)), name: `  Coffee${String.fromCodePoint(0x202e)} stop\n` },
+    { ...pt(at(300, 10)), name: "Water" },
+    { ...pt(at(300, 10)), name: "Water" },
+    pt(at(400, 0)),
+    { lon: -80, lat: 40, name: "Far away" },
+  ];
+  const plan = planFromGpx(file({ tracks: [track], waypoints: named }));
+  assert.deepEqual(plan.marks, [
+    { at: at(100, 10), name: "Coffee stop" },
+    { at: at(300, 10), name: "Water" },
+  ]);
+  assert.deepEqual(note(plan.notes, "waypoints-shown"), { kind: "waypoints-shown", names: ["Coffee stop", "Water"] });
+  // The repeat, the unnamed one and the one outside the area.
+  assert.deepEqual(note(plan.notes, "waypoints-unused"), { kind: "waypoints-unused", count: 3 });
+  const many = Array.from({ length: WAYPOINT_MARKS_MAX + 5 }, (_, i) => ({ ...pt(at(i * 10, 20)), name: `Point ${i}` }));
+  const capped = planFromGpx(file({ tracks: [track], waypoints: many }));
+  assert.equal(capped.marks?.length, WAYPOINT_MARKS_MAX);
+  assert.deepEqual(note(capped.notes, "waypoints-unused"), { kind: "waypoints-unused", count: 5 });
+});
+
+test("a route's named points are its stops when it is the plan, and marked when a track is followed instead", () => {
+  const points = [at(0, 0), at(300, 0), at(600, 0)].map((p, i) => ({ ...pt(p), name: ["Start here", "Bakery", "Finish"][i] }));
+  const asPlan = planFromGpx(file({ routes: [{ points }] }));
+  assert.equal(asPlan.source, "route");
+  assert.deepEqual(asPlan.pointNames, ["Start here", "Bakery", "Finish"]);
+  assert.equal(asPlan.marks, undefined);
+  const dense = Array.from({ length: MAX_POINTS + 5 }, (_, i) => ({ ...pt(at(i * 20, 0)), ...(i === 7 ? { name: "Bridge" } : {}) }));
+  const followed = planFromGpx(file({ routes: [{ points: dense }] }));
+  assert.equal(followed.source, "track");
+  assert.deepEqual(followed.marks, [{ at: at(140, 0), name: "Bridge" }]);
+});
+
+test("a waypoint name is plain text: controls and direction overrides go, it is cut to 60 characters", () => {
+  const invisible = (n: number) => String.fromCodePoint(n);
+  assert.equal(cleanWaypointName(`a${invisible(0)}b\tc${invisible(0x200b)}d${invisible(0x2066)}e`), "a b c d e");
+  // Markup stays text: it is drawn as a label and set as page text, never parsed.
+  assert.equal(cleanWaypointName("<img src=x onerror=alert(1)>"), "<img src=x onerror=alert(1)>");
+  assert.equal(cleanWaypointName("x".repeat(80)).length, WAYPOINT_NAME_MAX);
+  assert.equal(cleanWaypointName(undefined), "");
+  assert.equal(cleanWaypointName(" \n "), "");
 });

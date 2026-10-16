@@ -8,11 +8,13 @@
 import type { TripLeg } from "./transitMarks.ts";
 import type { MtbReading } from "./mtbMode.ts";
 import { formatRoughDistance } from "./format.ts";
+import { noteArrived } from "./departure.ts";
 import type { LonLat } from "./geo.ts";
 import { twoPointsOnly, type PresetId } from "./presets.ts";
 import type { StressMetres } from "./stressBar.ts";
 import type { FacilityMetres } from "./facilityBar.ts";
 import type { NearbyStationsAnswer, StationAction } from "./stations.ts";
+import type { WithClosures } from "./closureMap.ts";
 import { dialFields, type Bike, type Carrying, type Dials, type Ending, type When } from "./dials.ts";
 
 /**
@@ -258,7 +260,8 @@ export interface DescriptionEntry {
   tier: number | null;
   facility: "path" | "protected" | "lane" | null;
   turn: {
-    movement: "left" | "straight" | "right" | null;
+    /** "bear_left" / "bear_right": a change of street 20 to 60 degrees off straight (describe.SLIGHT_MIN_DEG, BEAR_MAX_DEG). */
+    movement: "left" | "straight" | "right" | "bear_left" | "bear_right" | null;
     onto: string | null;
     control: "signal" | "stop" | "cross_stop" | "all_stop" | "none" | null;
     severity: "orange" | "red" | null;
@@ -277,6 +280,11 @@ export interface DescriptionEntry {
    * null where that is `text` itself. Absent from an older API.
    */
   text_lanes_hidden?: string | null;
+  /**
+   * On a stretch: `street` is only its trail's route relation's name (no way of it carries it), so the
+   * ride never cues "Continue onto" it. Absent from an older API.
+   */
+  relation_name?: boolean;
   /**
    * On a Mass Ride's entry for a group of signalized crossings (OWNER-DECISIONS 233, 234).
    * `crossings` lists each crossing in the full description (OWNER-DECISIONS 248) and is
@@ -458,9 +466,18 @@ export interface TransitStep {
   /** Where a transit step's times are from: "scheduled" now; "live" from v0.7. Null off transit. */
   source?: TimeSource | null;
   with_bike: boolean;
+  /** A Metro step's next trains its way now, from WMATA: "Live: Red Line toward Shady Grove in 3 min, 11 min." */
+  live?: { text: string; minutes: number[]; source: "live" } | null;
   /** This step is the route's own line (drawn as the route); its coordinates are empty. */
   route_line: boolean;
   coordinates: LonLat[];
+  /**
+   * A ride after the route's own line (own bike or share bike), routed as that line is: its
+   * sections by traffic stress along `coordinates`, in the form of the body's `stress_spans`, so
+   * the map, its legend and the words colour and say it alike. Null or absent where it was not
+   * routed in time (an older API too): the step is then drawn as a plain line.
+   */
+  stress_spans?: StressSpan[] | null;
 }
 
 /** One way to make the trip (the owner, 2026-10-12): riding the whole way, walking it, or a transit trip. */
@@ -542,10 +559,25 @@ export interface StationLineTime {
   today: boolean;
 }
 
+/** A Metro station's live values (core.transit_live.station; v0.7.0), credited "Data: WMATA". */
+export interface StationLive {
+  station: string;
+  /** The next trains by line and way: minutes (0 arriving), and in words ("3 min, 11 min"; "arriving"). */
+  trains: { line: string; toward: string; minutes: number[]; when: string }[];
+  /** "Elevator out at Gallery Place: carry your bike on the stairs." */
+  elevators: { words: string; where: string }[];
+  /** WMATA's rail incidents on the station's lines. */
+  alerts: string[];
+  credit: string;
+  as_of: string;
+}
+
 export interface StationTimes {
   service_day: string;
   source: TimeSource;
   lines: StationLineTime[];
+  /** Live values where the station is WMATA's and a reading is to hand; null or absent otherwise. */
+  live?: StationLive | null;
 }
 
 /** A transit ride type's trip: scheduled times, not live. */
@@ -575,6 +607,18 @@ export interface TransitPlan {
   credits: string[];
   /** The first infrequent departure, or null (absent from older answers). */
   departure?: TransitDeparture | null;
+  /**
+   * WMATA's live values on this trip (v0.7.0): elevators out where the bike needs one (a warning, never an
+   * avoidance), rail incidents on the lines used, the credit and when it was read. Null with none.
+   */
+  live?: TransitLive | null;
+}
+
+export interface TransitLive {
+  warnings: string[];
+  alerts: string[];
+  credit: string;
+  as_of: string;
 }
 
 export interface BikesharePlan {
@@ -683,7 +727,36 @@ export interface MassHazardSpan {
   road: string;
 }
 
+/** core.api NoviceOut: what is left busy on a Novice and Nervous route. */
+export interface NoviceNote {
+  /** Metres on roads rated LTS 3 or above. */
+  busy_m: number;
+  /** The longest named run of them, or null. */
+  busiest: { name: string | null; metres: number; level: number } | null;
+  /** The calm search hit its 1.4 times ceiling. */
+  over_ceiling: boolean;
+  /** Only a busy road connects: offer transit or bikeshare. */
+  transit: boolean;
+}
+
 export interface RouteResponse {
+  /**
+   * Live work zones and DC's closures (FOLLOWUP-WORKZONES; v0.7.0 "DC closures source"): the closures to draw on
+   * the map and their cards' words, and the "Check before you go" notices (lib/closureMap.ts). Null or absent where
+   * none is running.
+   */
+  work_zones?: (NonNullable<WithClosures["work_zones"]> & { ride_at?: string | null; disclaimer?: string; sources?: string[] }) | null;
+  /**
+   * Novice and Nervous only (v0.7.0; core.routing novice_note): the busy riding left on the route and its longest
+   * named busy stretch, and whether transit or bikeshare should be offered; null or absent elsewhere.
+   */
+  novice?: NoviceNote | null;
+  /**
+   * v0.7.0, "Faster routing": true on a first route asked for with `quick` (Go): the router's own route with its
+   * closures, stress and words, before the search. The full plan follows (lib/routeScheduler.ts `refine`) and is
+   * swapped in before Start. Absent or false on a full plan.
+   */
+  provisional?: boolean;
   /** A Mass Ride's rider-marked hazards it passes, in riding order (325); null or absent on other ride types. */
   mass_hazards?: MassHazardSpan[] | null;
   /** The Avoid-rated junctions it passes, in route order (307); empty or absent where none. */
@@ -715,6 +788,11 @@ export interface RouteResponse {
   candidates?: RouteResponse[] | null;
   /** On a candidate: how far past the rider's target distance it is (OWNER-DECISIONS 271). */
   over_target_m?: number | null;
+  /**
+   * Set by the page, never by the API: a candidate that is Go's "More direct" or "Calmer" (lib/neighbours.ts), the
+   * traffic setting it was planned at and its tradeoff against the rider's own route in one line.
+   */
+  neighbour?: { kind: NeighbourKind; stress: number; line: string } | null;
   preset: PresetId;
   variant: "standard" | "no-trail" | "ebike" | "weekend" | "offroad" | "mtb";
   /** Trip points the planner moved: one inside the National Zoo goes to its bike racks. */
@@ -815,6 +893,12 @@ export interface RouteResponse {
    */
   leg_ends?: number[];
   /**
+   * Which side of the street the destination is on, from the router's destination maneuver (v0.7.0,
+   * "Go riding fixes" item 5): Ride mode's last cue says "Destination on your right". Null where the
+   * router does not say; absent from an older API.
+   */
+  arrival_side?: "left" | "right" | null;
+  /**
    * The route's sections by traffic stress, in route order, meeting end to
    * end from 0; one unknown section for a plan whose joins ran past the
    * budget. Absent from an older API, when the route is drawn in one colour.
@@ -877,6 +961,16 @@ export const NO_TRANSIT = "no_transit";
 export const TRANSIT_UNAVAILABLE = "transit_unavailable";
 
 export type RouteResult = { ok: true; route: RouteResponse } | { ok: false; error: RouteError };
+
+/** Go's "More direct" (one notch more traffic tolerant) and "Calmer" (one notch calmer); core.presets stress_notches. */
+export type NeighbourKind = "direct" | "calmer";
+export interface NeighbourOption {
+  kind: NeighbourKind;
+  stress: number;
+  route: RouteResponse;
+}
+/** POST /api/route/neighbours: the options, or a refusal (its Retry-After still holds for the next request). */
+export type NeighboursResult = { ok: true; options: NeighbourOption[] } | { ok: false; error: RouteError };
 
 /** Retry-After as seconds from now: either delta-seconds or an HTTP date. */
 export function parseRetryAfter(header: string | null | undefined, now: number = Date.now()): number | undefined {
@@ -1074,12 +1168,49 @@ function looksLikeRoute(value: unknown): value is RouteResponse {
 
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
+/** What a route request is made from, besides its points and ride type (`requestRoute`, `routeRequestBody`). */
+export interface RouteRequestOptions {
+  confirmLong?: boolean;
+  dials?: Dials;
+  vias?: readonly number[];
+  /** v0.7.0, "Faster routing": the first good route at once, marked `provisional` (Go only). */
+  quick?: boolean;
+  /** The route alone, with no routes to choose from looked for (Ride mode's re-plans, review speed-5). */
+  routeOnly?: boolean;
+}
+
+/** POST /api/route's body as JSON text: the same text for the same plan, so it also keys Go's early start. */
+export function routeRequestBody(points: readonly LonLat[], preset: PresetId, options: RouteRequestOptions = {}): string {
+  // confirm_long only when the rider said yes to a long plan (LONG-RIDE
+  // contract); the API asks anonymous riders first with a 409.
+  return JSON.stringify({
+    points,
+    preset,
+    // A Mass Ride keeps Make it a loop for the next ride type but has no
+    // loop (OWNER-DECISIONS 374), so the flag is not sent; the API's
+    // routing.loop_wanted ignores it there too. Bikeshare has no loop either, and
+    // its API refuses one, so a loop kept from another ride type is not sent.
+    ...(options.dials
+      ? dialFields(preset === "mass-ride" || twoPointsOnly(preset) ? { ...options.dials, loop: false } : options.dials)
+      : {}),
+    ...(options.confirmLong ? { confirm_long: true } : {}),
+    // "Route through anyway" (v0.7.0, lib/closureMap.ts): this plan's only, in the request, never in a link.
+    ...(options.dials?.closureBypass?.length ? { closure_bypass: options.dials.closureBypass } : {}),
+    // The via points (v0.7.0, "Via points vs stops"): passed without a stop. Never on a two-point ride type.
+    ...(options.vias?.length && !twoPointsOnly(preset) ? { via_points: [...options.vias] } : {}),
+    // The first good route at once (v0.7.0, "Faster routing"); the API answers the full plan where it cannot.
+    ...(options.quick ? { quick: true } : {}),
+    // A ride's re-plan takes the first route only, so the API does not look for others to choose from.
+    ...(options.routeOnly ? { candidates: false } : {}),
+  });
+}
+
 export async function requestRoute(
   points: readonly LonLat[],
   preset: PresetId,
   // No abort signal: the scheduler never abandons a request, because an abort
   // in the browser does not free the API's in-flight slot (routeScheduler.ts).
-  options: { fetchImpl?: FetchLike; confirmLong?: boolean; dials?: Dials } = {},
+  options: RouteRequestOptions & { fetchImpl?: FetchLike } = {},
 ): Promise<RouteResult> {
   const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
   let response: Response;
@@ -1087,20 +1218,7 @@ export async function requestRoute(
     response = await fetchImpl("/api/route", {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      // confirm_long only when the rider said yes to a long plan (LONG-RIDE
-      // contract); the API asks anonymous riders first with a 409.
-      body: JSON.stringify({
-        points,
-        preset,
-        // A Mass Ride keeps Make it a loop for the next ride type but has no
-        // loop (OWNER-DECISIONS 374), so the flag is not sent; the API's
-        // routing.loop_wanted ignores it there too. Bikeshare has no loop either, and
-        // its API refuses one, so a loop kept from another ride type is not sent.
-        ...(options.dials
-          ? dialFields(preset === "mass-ride" || twoPointsOnly(preset) ? { ...options.dials, loop: false } : options.dials)
-          : {}),
-        ...(options.confirmLong ? { confirm_long: true } : {}),
-      }),
+      body: routeRequestBody(points, preset, options),
     });
   } catch {
     return {
@@ -1119,7 +1237,11 @@ export async function requestRoute(
   } catch {
     body = null;
   }
-  if (response.ok && looksLikeRoute(body)) return { ok: true, route: body };
+  if (response.ok && looksLikeRoute(body)) {
+    // A departure's countdown runs from this moment by the phone's clock, not the server's (review TB-6).
+    if (body.transit?.departure) noteArrived(body.transit.departure, Date.now());
+    return { ok: true, route: body };
+  }
   const status = response.ok ? 500 : response.status;
   const error = describeError(status, body, response.headers.get("Retry-After"));
   // A confirmed long plan can be refused because a long ride is already
@@ -1131,6 +1253,37 @@ export async function requestRoute(
     return { ok: false, error: { ...error, title: "Planner busy", message: said } };
   }
   return { ok: false, error };
+}
+
+/**
+ * Go's "More direct" and "Calmer" for a plan (POST /api/route/neighbours): the same body as the plan's full request,
+ * one request for both, and one count of the routing limit. Nothing is said on a failure: the options are left out.
+ */
+export async function requestNeighbours(
+  points: readonly LonLat[],
+  preset: PresetId,
+  options: Pick<RouteRequestOptions, "dials" | "vias"> & { fetchImpl?: FetchLike } = {},
+): Promise<NeighboursResult> {
+  const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
+  try {
+    const response = await fetchImpl("/api/route/neighbours", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: routeRequestBody(points, preset, { dials: options.dials, vias: options.vias }),
+    });
+    const body: unknown = await response.json().catch(() => null);
+    const list = (body as { options?: unknown } | null)?.options;
+    if (response.ok && Array.isArray(list)) {
+      const kept = list.filter(
+        (o): o is NeighbourOption =>
+          !!o && (o.kind === "direct" || o.kind === "calmer") && typeof o.stress === "number" && looksLikeRoute(o.route),
+      );
+      return { ok: true, options: kept };
+    }
+    return { ok: false, error: describeError(response.ok ? 500 : response.status, body, response.headers.get("Retry-After")) };
+  } catch {
+    return { ok: false, error: { kind: "network", status: 0, title: "Can't reach the planner", message: "" } };
+  }
 }
 
 /** The nearest-stations list's answer, or a sentence for the rider (OWNER-DECISIONS 466a). */

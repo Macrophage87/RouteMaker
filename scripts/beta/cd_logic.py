@@ -120,9 +120,12 @@ STOP_PREFIXES: Sequence[tuple] = (
     ),
     ("src/pipeline/variants.py", "the routing graph variants changed: rebuild the data at home"),
     ("src/pipeline/tiles.py", "how the routing graphs are built changed: rebuild the data at home"),
-    ("docker/valhalla", "a router image changed"),
-    ("docker/photon", "the Photon image changed"),
-    ("docker/postgis", "the database image changed"),
+    # The api image the agent builds: a new base, system package or pinned dependency is
+    # one the owner reads first (review sec-infra-6). The router, Photon and database
+    # images are third-party, pulled by a compose `image:` line, which stops on its own.
+    ("docker/api.Dockerfile", "the api image's Dockerfile changed (base, packages or build)"),
+    ("docker/requirements", "a pinned Python dependency changed"),
+    ("docker/api-entrypoint.sh", "the api image's entrypoint changed"),
 )
 # A path git would have to quote (a byte outside printable ASCII, a quote, a backslash) or one
 # with a character no file in the repository uses: the gate cannot be sure what it is, so it

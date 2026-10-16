@@ -1064,12 +1064,52 @@ class TestTheRetiringFiles:
         moco = REPO / "fixtures" / "overrides" / "2026-10-01-owner-moco-lts5-avoid.json"
         text = moco.read_text()
         retired = parse_retired(text, moco.name)
-        assert len(retired) == 23
-        assert {r["value"]["adjustment_id"] for r in retired} == {"moco-lts5-veirs-mill-road"}
+        veirs = [r for r in retired if r["value"]["adjustment_id"] == "moco-lts5-veirs-mill-road"]
+        assert len(veirs) == 23
         rows = parse_file(text, moco.name)
-        assert len(rows) == 386
+        # 386 since 433, 381 since the owner rated Darnestown Road LTS 4 (2026-10-14).
+        assert len(rows) == 381
         assert not any(r["value"]["adjustment_id"] == "moco-lts5-veirs-mill-road" for r in rows)
-        assert all("433" in r["reason"] for r in retired)
+        assert all("433" in r["reason"] for r in veirs)
+
+    def test_darnestown_road_is_the_owners_lts_4_over_the_countys_avoid(self, admin, tmp_path):
+        """The owner, 2026-10-14 ("LTS 4" on the card): the five Darnestown Road ways
+        Montgomery rates LTS 5 become owner-rated LTS 4. Both files retire the county's
+        Avoid rows on them, so either can be loaded first."""
+        from core.management.commands.load_access_overrides import parse_file, parse_retired
+        from core.models import Override
+
+        ways = {5970658, 697630700, 222928109, 92183771, 92183773}
+        moco = REPO / "fixtures" / "overrides" / "2026-10-01-owner-moco-lts5-avoid.json"
+        path = REPO / "fixtures" / "overrides" / "2026-10-14-owner-darnestown-road.json"
+        text = path.read_text()
+        rows = parse_file(text, path.name)
+        assert {r["osm_way_id"] for r in rows} == ways
+        assert {r["value"]["tier"] for r in rows} == {4}
+        assert {r["value"]["adjustment_id"] for r in rows} == {"darnestown-road-lts4"}
+        assert all("LTS 4" in r["reason"] for r in rows)
+        retired = parse_retired(text, path.name)
+        assert {r["osm_way_id"] for r in retired} == ways
+        assert {r["value"]["adjustment_id"] for r in retired} == {"moco-lts5-darnestown-road"}
+        # The county file no longer loads them and retires them the same way.
+        assert not ways & {r["osm_way_id"] for r in parse_file(moco.read_text(), moco.name)}
+        moco_retired = {
+            r["osm_way_id"]: r["value"] for r in parse_retired(moco.read_text(), moco.name)
+        }
+        assert all(moco_retired[r["osm_way_id"]] == r["value"] for r in retired)
+
+        actor = str(admin.discord_user_id)
+        # The five Avoid rows as the live database holds them since 2026-10-01.
+        old = [{**r, "reason": "181", "evidence": "e"} for r in retired]
+        load(write_rows(tmp_path, old), "--actor", actor, "--confirm")
+        dry = load(str(path), "--actor", actor)
+        assert dry.count("retire: way ") == 5 and dry.count("create: way ") == 5
+        assert "disagrees" not in dry
+        load(str(path), "--actor", actor, "--confirm")
+        assert set(Override.objects.values_list("value__tier", flat=True)) == {4}
+        assert Override.objects.count() == 5
+        # And the county file loaded after it adds nothing on those ways.
+        assert "disagrees" not in load(str(moco), "--actor", actor)
 
     def test_437_reopens_the_military_ways_and_retires_saint_elizabeths_avoid_rows(
         self, admin, tmp_path

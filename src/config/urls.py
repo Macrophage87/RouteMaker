@@ -16,7 +16,7 @@ reasoning for the two-word body and the single query.
 from django.conf import settings
 from django.urls import path
 
-from core import auth_views, health, mass_tiles, stress_tiles
+from core import auth_views, health, mass_tiles, share_preview, stress_tiles
 from core.admin import site
 from core.api import api
 
@@ -27,6 +27,9 @@ urlpatterns = [
     path("tiles/stress/<int:z>/<int:x>/<int:y>.pbf", stress_tiles.stress_tile, name="stress-tile"),
     # The Mass Ride map's capacity tiles (OWNER-DECISIONS 415, 417, 418; core.mass_tiles).
     path("tiles/mass/<int:z>/<int:x>/<int:y>.pbf", mass_tiles.mass_tile, name="mass-tile"),
+    # A shared route's link and its preview (core.share_preview).
+    path("s/<str:route_id>", share_preview.share_page, name="share-page"),
+    path("s/<str:route_id>/preview.png", share_preview.share_image, name="share-image"),
     path("auth/login", auth_views.login_start, name="login"),
     path("auth/callback", auth_views.login_callback, name="login-callback"),
     path("auth/logout", auth_views.logout_view, name="logout"),

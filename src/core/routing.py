@@ -57,7 +57,9 @@ to the profile turned upside down.
 from __future__ import annotations
 
 import bisect
+import contextvars
 import dataclasses
+import functools
 import http.client
 import itertools
 import json
@@ -65,15 +67,24 @@ import logging
 import time
 import urllib.error
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from concurrent.futures import Future
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 
 from django.conf import settings
-from django.db import connection
+from django.db import DatabaseError, connection, transaction
 from django.utils import timezone
 
-from pipeline.schema import MASS_WIDTH_COLUMN, STRESS_HALF_COLUMN, validate_schema_name
+from pipeline.schema import (
+    MASS_WIDTH_COLUMN,
+    SIDEPATH_NAME_COLUMN,
+    STRESS_HALF_COLUMN,
+    TRAIL_NAME_COLUMN,
+    TRAIL_RUN_COLUMN,
+    validate_schema_name,
+)
 from pipeline.variants import Variant
 from routemaker import avoid_junctions as avoid_rules
 from routemaker import (
@@ -96,7 +107,7 @@ from routemaker.geo import Point, haversine
 from routemaker.massflow import band_of
 from routemaker.measure import elevation_gain
 
-from . import avoid_junctions, mass_hazards, mtb, presets
+from . import avoid_junctions, mass_hazards, mtb, parallel, presets, segment_info, timing
 from . import workzones as work_zones
 
 logger = logging.getLogger(__name__)
@@ -243,7 +254,14 @@ def _transport(url: str, payload: dict, timeout: float) -> dict:
                 error.code, body.get("error_code"), str(body.get("error", ""))
             ) from error
         raise RouterUnavailable(f"router answered {error.code}") from error
-    except (TimeoutError, urllib.error.URLError, ConnectionError, ValueError) as error:
+    except (
+        TimeoutError,
+        urllib.error.URLError,
+        ConnectionError,
+        # A reply cut off part way (IncompleteRead, BadStatusLine): review api-2.
+        http.client.HTTPException,
+        ValueError,
+    ) as error:
         raise RouterUnavailable(str(error)) from error
 
 
@@ -255,18 +273,100 @@ class Deadline:
     per_call_s: float
 
 
+# When the plan running in this context must be done (monotonic; `plan` sets it, in a
+# context of its own): its segment-table reads run under a statement timeout of what is
+# left (`plan_cursor`), so a slow or blocked database ends the plan as its clock does, 503
+# with retry advice, not at gunicorn's kill (review speed-9). None outside a plan.
+_plan_ends: contextvars.ContextVar[float | None] = contextvars.ContextVar("plan_ends", default=None)
+# Postgres's query_canceled, which a statement timeout raises.
+QUERY_CANCELED = "57014"
+
+
+@contextmanager
+def plan_cursor() -> Iterator:
+    """A cursor for one of the plan's own reads of the segment table, under a statement
+    timeout of the time the plan has left; a read it cancels raises DeadlineExceeded. A
+    plain cursor outside a plan."""
+    ends = _plan_ends.get()
+    if ends is None:
+        with connection.cursor() as cursor:
+            yield cursor
+        return
+    left_ms = int((ends - clock()) * 1000)
+    if left_ms <= 0:
+        raise DeadlineExceeded("no time left to read the segment table")
+    outer = connection.in_atomic_block
+    try:
+        with transaction.atomic(), connection.cursor() as cursor:
+            previous = None
+            if outer:
+                # Inside a caller's transaction the setting would outlive this read.
+                cursor.execute("SELECT current_setting('statement_timeout')")
+                previous = cursor.fetchone()[0]
+            cursor.execute("SELECT set_config('statement_timeout', %s, true)", [str(left_ms)])
+            yield cursor
+            if previous is not None:
+                cursor.execute("SELECT set_config('statement_timeout', %s, true)", [previous])
+    except DatabaseError as error:
+        if _canceled(error):
+            raise DeadlineExceeded(f"a segment table read ran past {left_ms} ms") from error
+        raise
+
+
+def _canceled(error: BaseException) -> bool:
+    """Whether `error` (Django's wrapper, or the driver's own error under it) is
+    Postgres canceling the statement: psycopg's QueryCanceled, or sqlstate (psycopg 3)
+    or pgcode (psycopg 2) 57014."""
+    try:
+        from psycopg.errors import QueryCanceled
+    except ImportError:  # pragma: no cover - psycopg 3 is the driver in use
+        QueryCanceled = ()  # noqa: N806
+    for each in (error, error.__cause__):
+        if each is None:
+            continue
+        if isinstance(each, QueryCanceled):
+            return True
+        for name in ("sqlstate", "pgcode"):
+            if getattr(each, name, None) == QUERY_CANCELED:
+                return True
+    return False
+
+
+def _own_context(fn):
+    """`fn` run in a copy of the caller's context, so what it sets there (`_plan_ends`)
+    ends with it."""
+
+    @functools.wraps(fn)
+    def run(*args, **kwargs):
+        return contextvars.copy_context().run(fn, *args, **kwargs)
+
+    return run
+
+
 def _call(variant: str, endpoint: str, payload: dict, deadline: Deadline) -> dict:
     """One router call inside the request's budget."""
     remaining = deadline.at - clock()
     if remaining <= 0:
         raise DeadlineExceeded(f"no time left for {endpoint}")
     url = f"{settings.VALHALLA_UPSTREAMS[variant]}/{endpoint}"
+    began = timing.now()
+    failed = True
     try:
-        return _transport(url, payload, min(deadline.per_call_s, remaining))
+        answer = _transport(url, payload, min(deadline.per_call_s, remaining))
+        failed = False
+        return answer
+    except RouterRefused:
+        # An answer, if not a route: nothing was cut short.
+        failed = False
+        raise
     except RouterUnavailable as error:
         if clock() >= deadline.at:
             raise DeadlineExceeded(f"{endpoint} ran past the budget") from error
         raise
+    finally:
+        # Server-Timing's `router` (`core.timing`): every call's own time, and whether it
+        # failed for want of an answer (a plan the answer cache then does not keep).
+        timing.record_call(timing.now() - began, failed)
 
 
 def planning_time(now: datetime | None = None, when: str = ridetime.WEEKEND) -> str:
@@ -382,43 +482,21 @@ ORDER BY p.ordinality
 # Whether the live segment table has the Mass Ride capacity column
 # (`pipeline.schema.MASS_WIDTH_COLUMN`): written by the first rebuild after the
 # capacity map shipped. Without it a Mass Ride's sections carry no capacity and
-# the map draws them by stress, as it did. Remembered once seen, as above.
-_capacity_column_seen = False
+# the map draws them by stress, as it did. Every such check reads the one shared
+# answer, `segment_info.live_columns` (review CH-1).
 
 
 def _has_capacity_column(schema: str) -> bool:
-    global _capacity_column_seen
-    if _capacity_column_seen:
-        return True
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
-            "AND table_name = 'segment' AND column_name = %s",
-            [schema, MASS_WIDTH_COLUMN],
-        )
-        _capacity_column_seen = cursor.fetchone()[0] == 1
-    return _capacity_column_seen
+    return segment_info.has_columns(schema, MASS_WIDTH_COLUMN)
 
 
 # Whether the live segment table has the half-step column (`pipeline.schema.
 # STRESS_HALF_COLUMN`): written by the first rebuild after half steps shipped, or added in
 # place by `manage.py add_stress_half_column`. Without it every piece is a whole step.
-# Remembered once seen, as above.
-_half_column_seen = False
 
 
 def _has_half_column(schema: str) -> bool:
-    global _half_column_seen
-    if _half_column_seen:
-        return True
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
-            "AND table_name = 'segment' AND column_name = %s",
-            [schema, STRESS_HALF_COLUMN],
-        )
-        _half_column_seen = cursor.fetchone()[0] == 1
-    return _half_column_seen
+    return segment_info.has_columns(schema, STRESS_HALF_COLUMN)
 
 
 # A road closed to motor traffic only at set times is a path for a ride inside
@@ -430,9 +508,7 @@ _TIER_AT = "CASE WHEN %s = ANY(seg.car_free_when) THEN 1 ELSE seg.stress_tier EN
 
 # Whether the live segment table has the facility columns yet. They arrive with
 # the first rebuild after this code; until then the breakdown is all unknown
-# rather than an error. Remembered once seen, since a schema is only ever
-# replaced by a newer build of itself.
-_facility_columns_seen = False
+# rather than an error.
 
 
 def _has_trait_columns(schema: str) -> bool:
@@ -442,17 +518,7 @@ def _has_trait_columns(schema: str) -> bool:
 
 
 def _has_facility_columns(schema: str) -> bool:
-    global _facility_columns_seen
-    if _facility_columns_seen:
-        return True
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
-            "AND table_name = 'segment' AND column_name IN ('facility', 'car_free_when')",
-            [schema],
-        )
-        _facility_columns_seen = cursor.fetchone()[0] == 2
-    return _facility_columns_seen
+    return segment_info.has_columns(schema, "facility", "car_free_when")
 
 
 # The facility classes a ride on the roadway does not use: a mass ride takes
@@ -554,7 +620,7 @@ def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list
     arrays = [[p.way_id for p in pieces], [p.lon for p in pieces], [p.lat for p in pieces]]
     whens = ([when, when] + ([when] if with_half else [])) if with_facility else []
     classes = []
-    with connection.cursor() as cursor:
+    with plan_cursor() as cursor:
         cursor.execute(query, whens + arrays)
         for row in cursor.fetchall():
             tier, kind = row[0], row[1]
@@ -721,21 +787,10 @@ ADJUSTMENT_COLUMNS = (
     "stress_adjustment_note",
     "stress_adjustment_display",
 )
-_adjustment_columns_seen = False
 
 
 def _has_adjustment_columns(schema: str) -> bool:
-    global _adjustment_columns_seen
-    if _adjustment_columns_seen:
-        return True
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
-            "AND table_name = 'segment' AND column_name = ANY(%s)",
-            [schema, list(ADJUSTMENT_COLUMNS)],
-        )
-        _adjustment_columns_seen = cursor.fetchone()[0] == len(ADJUSTMENT_COLUMNS)
-    return _adjustment_columns_seen
+    return segment_info.has_columns(schema, *ADJUSTMENT_COLUMNS)
 
 
 def adjustments_used(pieces: list[Piece]) -> list[dict]:
@@ -763,7 +818,7 @@ def adjustments_used(pieces: list[Piece]) -> list[dict]:
     ]
     query = _ADJUSTMENT_JOIN.format(schema=schema)
     used = []
-    with connection.cursor() as cursor:
+    with plan_cursor() as cursor:
         cursor.execute(query, arrays)
         for adjustment_id, tier, direction, category, note, display, metres in cursor.fetchall():
             # The why is null where the table holds none: a hidden or
@@ -781,11 +836,6 @@ def adjustments_used(pieces: list[Piece]) -> list[dict]:
                 }
             )
     return used
-
-
-def stress_breakdown(pieces: list[Piece]) -> dict[str, float]:
-    """Metres per stress tier, keyed "1".."4" and "unknown"."""
-    return breakdown(pieces, ridetime.WEEKEND)[0]
 
 
 def trace_leg(variant: str, costing: dict, shape: str, deadline: Deadline) -> dict | None:
@@ -853,9 +903,92 @@ class Dials:
     # Mountain Bike only, the second pass: the trail level the rider prefers, 1-4, never above
     # `mtb_level` (`mtbmode.preferred_level`); None: level 2, or `mtb_level` where that is lower.
     mtb_preferred: int | None = None
+    # v0.7.0 "Route through anyway": the closures this plan routes through (their ids).
+    closure_bypass: tuple[str, ...] = ()
+    # Via points (v0.7.0, "Via points vs stops"): the indices of the rider's points that
+    # only shape the route. The router passes them without a U-turn or a stop
+    # (`VIA_LOCATION_TYPE`); every other point is a stop ("break"), as before.
+    vias: tuple[int, ...] = ()
+    # The pace the plan's costing rides at instead of the ride type's own (km/h); None: its
+    # own. Set only by a transit trip's lines priced as Novice on a share bike (`api._transit_body`,
+    # `novice_legs` on Bikeshare + Transit), so the lines are timed as its candidates were.
+    cycling_speed_kmh: float | None = None
     # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
     # A ride whose last point is its first is a loop whatever this says.
     loop: bool = False
+
+
+def _same_pace(options: dict, request: dict) -> dict:
+    """`options` (a fresh `presets.costing`) at the pace `request` is routed at, so a derived
+    request (the detour probe, the target fit, the middle of the hills) times its route as the
+    plan's own does (`Dials.cycling_speed_kmh`)."""
+    speed = ((request.get("costing_options") or {}).get("bicycle") or {}).get("cycling_speed")
+    if speed is not None:
+        options["bicycle"]["cycling_speed"] = speed
+    return options
+
+
+# How a via point is sent to the router (v0.7.0, "Via points vs stops"). The plan names
+# Valhalla's "through" (no forced stop, no U-turn). "break_through" is the same at the
+# point itself (no U-turn) but keeps the leg there, so the answer keeps one leg per point
+# and every per-leg figure (`leg_ends`, the calm search's legs, the stop list's distances)
+# lines up with the rider's points as before; the page does not announce, number or list
+# a via point, so nothing reads it as a stop.
+VIA_LOCATION_TYPE = "break_through"
+
+
+def location_type(index: int, count: int, vias: tuple[int, ...]) -> str:
+    """The router's type for the rider's point `index` of `count`: a via point's
+    (`VIA_LOCATION_TYPE`) where the point is one and not an end, else a stop's."""
+    if 0 < index < count - 1 and index in vias:
+        return VIA_LOCATION_TYPE
+    return "break"
+
+
+# Novice and Nervous (v0.7.0 plan): real LTS 3 or worse along the bike route past this
+# (metres, about a block, so a crossing of a busy road is not counted as riding on it), or a
+# route held at the ceiling, offers transit and bikeshare beside it (`novice_note`).
+NOVICE_BUSY_SLACK_M = 80.0
+
+
+def busiest_stretch(pieces: list, classes: list) -> dict | None:
+    """The longest run of real LTS 3 or worse along a route, by the road's name: its name
+    (None where the road has none), its metres and its worst level. None where there is
+    no such run."""
+    runs: list[list] = []  # [name, metres, worst]
+    last = None
+    for piece, cls in zip(pieces, classes, strict=False):
+        tier = cls[0]
+        busy = tier in ("3", "4", "5")
+        if not busy:
+            last = None
+            continue
+        names = getattr(piece, "names", None) or ()
+        name = names[0] if names else None
+        if last is not None and last[0] == name:
+            last[1] += piece.metres
+            last[2] = max(last[2], int(tier))
+        else:
+            last = [name, piece.metres, int(tier)]
+            runs.append(last)
+    if not runs:
+        return None
+    name, metres, worst = max(runs, key=lambda run: run[1])
+    return {"name": name, "metres": round(metres, 1), "level": worst}
+
+
+def novice_note(stress_m: dict, calm_search: dict | None, busiest: dict | None) -> dict:
+    """Novice and Nervous's reading of its own route (v0.7.0 plan, item 4): its real LTS 3
+    and worse metres, the busiest stretch, whether the search was held at the ceiling, and
+    whether to offer Own bike + Transit and Bikeshare + Transit beside it."""
+    busy_m = sum(float(stress_m.get(key, 0.0)) for key in ("3", "4", "5"))
+    held = bool(calm_search) and (calm_search or {}).get("limited") == "ceiling"
+    return {
+        "busy_m": round(busy_m, 1),
+        "busiest": busiest,
+        "over_ceiling": held,
+        "transit": busy_m > NOVICE_BUSY_SLACK_M or held,
+    }
 
 
 # A ride ends where it starts if its last point is within this of its first (metres).
@@ -1078,10 +1211,69 @@ def _trace(
     remembered."""
     if traces is None:
         return trace_leg(variant, costing, shape, deadline)
-    key = (variant, shape, json.dumps(costing, sort_keys=True))
+    key = _trace_key(variant, costing, shape)
     if key not in traces:
         traces[key] = trace_leg(variant, costing, shape, deadline)
+    prefetched = isinstance(traces[key], Future)
+    try:
+        return _settled(traces, key)
+    except DeadlineExceeded:
+        # A trace prefetched for a step held to a shorter deadline than this reader's (the
+        # middle-of-the-hills check runs to its own, `_middle_or_avoid`): its running out is
+        # not this reader's. Asked again inline, within this reader's own budget.
+        if not prefetched or deadline.at - clock() <= 0:
+            raise
+    traces[key] = trace_leg(variant, costing, shape, deadline)
     return traces[key]
+
+
+def _trace_key(variant: str, costing: dict, shape: str) -> tuple:
+    return (variant, shape, json.dumps(costing, sort_keys=True))
+
+
+def _settled(traces: dict, key):
+    """`traces[key]`, waiting for it where it is still being asked for on the pool
+    (`prefetch_traces`). One that raised is not remembered, as before: the error is
+    raised here, once, to the reader that would have asked for it."""
+    value = traces[key]
+    if isinstance(value, Future):
+        try:
+            value = value.result()
+        except BaseException:
+            if traces.get(key) is value:
+                del traces[key]
+            raise
+        traces[key] = value
+    return value
+
+
+def prefetch_traces(
+    variant: str,
+    costing: dict,
+    trips: list[dict],
+    deadline: Deadline,
+    traces: dict | None,
+    at_least: int = 2,
+) -> None:
+    """Start the traces of `trips`' legs together on the pool (`core.parallel`, v0.7.0
+    step 3), so the reader that walks them one by one (`_trace`) finds them asked for
+    already. Only legs not asked for yet; nothing where the pool is off, there is no
+    plan's `traces` to keep them in, or fewer than `at_least` legs are wanted (one leg
+    alone is asked inline, unless something else runs beside it). Each call keeps the
+    plan's deadline."""
+    if traces is None or not parallel.enabled():
+        return
+    wanted: dict[tuple, str] = {}
+    for trip in trips:
+        for leg in (trip or {}).get("legs") or []:
+            shape = leg.get("shape", "")
+            key = _trace_key(variant, costing, shape)
+            if key not in traces and key not in wanted:
+                wanted[key] = shape
+    if not wanted or len(wanted) < at_least:
+        return
+    for key, shape in wanted.items():
+        traces[key] = parallel.submit(trace_leg, variant, costing, shape, deadline)
 
 
 def _exposure(
@@ -1096,16 +1288,26 @@ def _exposure(
     """A trip's traffic exposure by the plan's weights (`presets.Exposure`: LTS 3
     once, LTS 4 twice and Avoid three times unless the ride type weighs them
     otherwise) and its metres of LTS 4 and Avoid, as (exposure, metres); None
-    when a leg cannot be traced."""
+    when a leg cannot be traced. A half step counts as the calm search counts it, at
+    its midpoint (`refine.half_exposure_m`, `refine.stress_totals`; review RL-7)."""
+    from . import refine
+
+    prefetch_traces(variant, costing, [trip], deadline, traces)
     pieces: list[Piece] = []
     for leg in trip.get("legs") or []:
         trace = _trace(variant, costing, leg.get("shape", ""), deadline, traces)
         if trace is None:
             return None
         pieces.extend(pieces_of_trace(trace))
-    stress, _facility = breakdown(pieces, when)
+    classes = refine.shift_classes(classify(pieces, when), exposure.shift)
+    stress = totals(zip(pieces, classes, strict=True))[0]
+    halves = refine.half_metres(pieces, classes)
     weights = exposure.weights
-    return sum(weights[tier] * stress[tier] for tier in weights), stress["4"] + stress["5"]
+    return (
+        sum(weights[tier] * stress[tier] for tier in weights)
+        + refine.half_exposure_m(halves, weights),
+        refine.stress_totals(stress, halves)["lts4_m"],
+    )
 
 
 def _hold_refuses(held: tuple, reference: tuple, exposure: presets.Exposure) -> bool:
@@ -1143,6 +1345,8 @@ def calmer_or_own(
     """
     if chosen == 0:
         return 0
+    # Both routes' traces at once (v0.7.0 step 3); read below in the same order.
+    prefetch_traces(variant, costing, [trips[0], trips[chosen]], deadline, traces)
     try:
         own = _exposure(variant, costing, trips[0], when, deadline, traces, exposure)
         alternative = _exposure(variant, costing, trips[chosen], when, deadline, traces, exposure)
@@ -1195,6 +1399,8 @@ def no_busier_than_middle(
     middle_request = {key: value for key, value in request.items() if key != "alternates"} | {
         "costing_options": middle_costing
     }
+    # The hill-avoiding route's own trace runs beside the middle's /route (v0.7.0 step 3).
+    prefetch_traces(variant, costing, [trip], step, traces, at_least=1)
     try:
         answer = _call(variant, "route", middle_request, Deadline(step.at, limit))
         middle = answer.get("trip") or {}
@@ -1436,21 +1642,10 @@ def _events(refine_context, legs: list, raws: list, deadline: Deadline) -> list 
 
 # Whether the live segment table has the walk_bike column yet (a table built
 # before NO-BIKE-PATHS has none; the route then carries no walk notes).
-_walk_column_seen = False
 
 
 def _has_walk_column(schema: str) -> bool:
-    global _walk_column_seen
-    if _walk_column_seen:
-        return True
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
-            "AND table_name = 'segment' AND column_name = 'walk_bike'",
-            [schema],
-        )
-        _walk_column_seen = cursor.fetchone()[0] == 1
-    return _walk_column_seen
+    return segment_info.has_columns(schema, "walk_bike")
 
 
 def walk_spans(leg_runs: list, pieces: list[Piece]) -> list[tuple[float, float]]:
@@ -1464,7 +1659,7 @@ def walk_spans(leg_runs: list, pieces: list[Piece]) -> list[tuple[float, float]]
     try:
         if not _has_walk_column(schema):
             return []
-        with connection.cursor() as cursor:
+        with plan_cursor() as cursor:
             cursor.execute(
                 f"SELECT DISTINCT osm_way_id FROM {schema}.segment "
                 "WHERE osm_way_id = ANY(%s) AND walk_bike",
@@ -1871,6 +2066,79 @@ def route_profile(
         return None
 
 
+# Valhalla's maneuver types for arriving with the destination on the right or the left
+# (`DirectionsLeg_Maneuver_Type`: kDestinationRight 5, kDestinationLeft 6; kDestination 4
+# says no side).
+_DESTINATION_SIDES = {5: "right", 6: "left"}
+
+
+def arrival_side_of(trip: dict) -> str | None:
+    """Which side of the street the destination is on (v0.7.0 "Go riding fixes" item 5):
+    the last leg's destination maneuver, else the destination location's `side_of_street`
+    as the router stated it. None where it says neither (a route made of pieces, an older
+    router, a destination on the line itself)."""
+    try:
+        legs = trip.get("legs") or []
+        maneuvers = (legs[-1].get("maneuvers") or []) if legs else []
+        if maneuvers:
+            side = _DESTINATION_SIDES.get(maneuvers[-1].get("type"))
+            if side:
+                return side
+        locations = trip.get("locations") or []
+        side = (locations[-1] or {}).get("side_of_street") if locations else None
+        return side if side in ("left", "right") else None
+    except (AttributeError, IndexError, TypeError):
+        return None
+
+
+# A trail relation names an unnamed way only where its named run is longer than this
+# (a quarter mile).
+RELATION_NAME_MIN_RUN_M = 1609.344 / 4
+
+
+def sidepath_names_of(pieces: list[Piece]) -> dict[int, str]:
+    """The street-side names of the route's ways that have no name of their own
+    (`segment.sidepath_name`, `routemaker.facility.side_street_names`), by way id;
+    else the name of the trail's route relation the way is in (`segment.trail_name`,
+    `pipeline.trail_routes.way_name`), as a `describe.RelationName`, so a change of
+    trail on a way named only by its relation is in the description (the owner,
+    2026-10-16). A relation name is taken only for a named run (`trail_run_m`) longer
+    than RELATION_NAME_MIN_RUN_M and never a national or international route's
+    (`describe.NATIONAL_ROUTE_NAME`): the table keeps no network per way, and an East
+    Coast Greenway connector is not "onto East Coast Greenway". Empty where the live
+    table has neither column yet (a table built before it) or the query fails: those
+    ways are then just "path"."""
+    ids = sorted({p.way_id for p in pieces if not p.names and p.way_id})
+    if not ids:
+        return {}
+    try:
+        schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+        side = segment_info.has_columns(schema, SIDEPATH_NAME_COLUMN)
+        trail = segment_info.has_columns(schema, TRAIL_NAME_COLUMN, TRAIL_RUN_COLUMN)
+        if not side and not trail:
+            return {}
+        side_sql = f"max({SIDEPATH_NAME_COLUMN})" if side else "NULL"
+        trail_sql = (
+            f"max({TRAIL_NAME_COLUMN}) FILTER (WHERE {TRAIL_RUN_COLUMN} > %s)" if trail else "NULL"
+        )
+        with plan_cursor() as cursor:
+            cursor.execute(
+                f"SELECT osm_way_id, {side_sql}, {trail_sql} FROM {schema}.segment "
+                "WHERE osm_way_id = ANY(%s) GROUP BY osm_way_id",
+                [RELATION_NAME_MIN_RUN_M, ids] if trail else [ids],
+            )
+            names: dict[int, str] = {}
+            for way, side_name, trail_name in cursor.fetchall():
+                if side_name:
+                    names[int(way)] = str(side_name)
+                elif trail_name and not describe.NATIONAL_ROUTE_NAME.search(str(trail_name)):
+                    names[int(way)] = describe.RelationName(str(trail_name))
+            return names
+    except Exception:  # noqa: BLE001 - the description says "path" without them
+        logger.warning("the street-side names of unnamed ways could not be read", exc_info=True)
+        return {}
+
+
 def describe_route(
     leg_runs: list,
     pieces: list[Piece],
@@ -1878,13 +2146,25 @@ def describe_route(
     events: list | None,
     summary: dict,
     walks: list[tuple[float, float]] | None = None,
+    side_names: dict[int, str] | None = None,
 ) -> tuple[list[dict], list[dict]] | None:
     """The route as words, in full and as an overview (`routemaker.describe`,
     OWNER-DECISIONS 220 and 226): built
     from the pieces and junction events the plan already has, with no router
-    call and no query. None where it could not be built: the route is answered
-    all the same."""
+    call. `side_names` (`sidepath_names_of`) names a piece of a way with no name of
+    its own after the street it runs alongside ("9th Street Northwest protected bike
+    lane"), or after its trail's route relation (a `describe.RelationName`): a stretch
+    named only so is flagged `relation_name`. None where it could not be built: the
+    route is answered all the same."""
+    side_names = side_names or {}
     try:
+        # A relation's name that no way of the route carries itself: only that is "by relation".
+        own = {n.lower() for piece in pieces for n in piece.names}
+        by_relation = frozenset(
+            n.lower()
+            for n in side_names.values()
+            if isinstance(n, describe.RelationName) and n.lower() not in own
+        )
         legs: list = []
         for run in leg_runs:
             if isinstance(run, tuple):
@@ -1894,11 +2174,17 @@ def describe_route(
                             pieces[i].metres,
                             classes[i][0],
                             classes[i][1],
-                            pieces[i].names,
+                            pieces[i].names
+                            or (
+                                (side_names[pieces[i].way_id],)
+                                if pieces[i].way_id in side_names
+                                else ()
+                            ),
                             pieces[i].use,
                             pieces[i].heading_in,
                             pieces[i].heading_out,
                             getattr(classes[i], "unpaved", None),
+                            bool(pieces[i].road and pieces[i].road.roundabout),
                         )
                         for i in range(run[0], run[1])
                     ]
@@ -1906,7 +2192,7 @@ def describe_route(
             else:
                 legs.append(run)
         length = float(summary.get("length", 0.0)) * 1000.0
-        return describe.describe_both(legs, events, length or None, walks)
+        return describe.describe_both(legs, events, length or None, walks, by_relation)
     except Exception:  # noqa: BLE001 - a route is answered without its description
         logger.warning("the route description could not be built", exc_info=True)
         return None
@@ -2039,8 +2325,8 @@ def _detour(
         and asked_for_calm
         and deadline.at - clock() >= DETOUR_PROBE_MIN_S
     ):
-        direct_costing = presets.costing(
-            preset_name, 0, 0, assist=assist, avoid_gravel=avoid_gravel
+        direct_costing = _same_pace(
+            presets.costing(preset_name, 0, 0, assist=assist, avoid_gravel=avoid_gravel), request
         )
         direct_request = {
             key: value
@@ -2069,6 +2355,7 @@ def _detour(
             level = detour_rules.level(route_m, direct_m)
             if level is not None and deadline.at - clock() >= DETOUR_AVOIDED_MIN_S:
                 try:
+                    prefetch_traces(variant, direct_costing, [direct], deadline, traces)
                     pieces: list[Piece] = []
                     for leg in direct.get("legs") or []:
                         trace = _trace(
@@ -2155,8 +2442,11 @@ def _fit_target(
     def ask(position: int):
         """The route at a traffic position: (length m, the tuple), or None where there
         is none, and False where there is no time or the router refused."""
-        options = presets.costing(
-            preset_name, position, hills_dial, assist=assist, avoid_gravel=avoid_gravel
+        options = _same_pace(
+            presets.costing(
+                preset_name, position, hills_dial, assist=assist, avoid_gravel=avoid_gravel
+            ),
+            request,
         )
         asked = {k: v for k, v in request.items() if k != "alternates"} | {
             "costing_options": options
@@ -2301,23 +2591,30 @@ def move_zoo_points(points: list[list[float]]) -> tuple[list[list[float]], list[
     return out, moved
 
 
+@_own_context
 def plan(
     points: list[list[float]],
     preset_name: str,
     long_ride: bool = False,
     started: float | None = None,
     dials: Dials | None = None,
+    quick: bool = False,
+    candidates: bool = True,
 ) -> dict:
     """Route through `points` on `preset_name`, returning the contract's body.
 
     `long_ride` gives the request the long-ride time limits, and `started`
     (from `clock()`) is when the request arrived; the budget runs from then,
     or from now if it is not given. `dials` are the sliders and the ride time.
+    `quick` asks for the first good route only (`quick_applies`; v0.7.0, "Faster
+    routing" step 2): the answer then says `provisional`. `candidates` False looks for
+    no routes to choose from beside the answer (Ride mode's re-plans, review speed-5).
     Raises NoRoute, TooLong, RouterUnavailable, DeadlineExceeded, or KeyError
     for an unknown preset.
     """
     if started is None:
         started = clock()
+    timing.restart()
     dials = dials or Dials()
     points, moved_points = move_zoo_points(points)
     preset = presets.PRESETS[preset_name]
@@ -2361,6 +2658,13 @@ def plan(
     else:
         budget_s, per_call_s = PLAN_BUDGET_S, ROUTER_TIMEOUT_S
     deadline = Deadline(started + budget_s - ANSWER_RESERVE_S, per_call_s)
+    # The segment table's reads may run to the end of the whole budget, the answer's own
+    # reserve included (`plan_cursor`).
+    _plan_ends.set(started + budget_s)
+    # The first good route only, where that is a route the rider may be shown (Go,
+    # `quick_applies`): the router's own route, its closures, stress and words, with no
+    # search after it. The full plan follows it from the client.
+    quick = quick and quick_applies(preset_name, loop, long_ride, long_calm)
     exposure = presets.exposure_for(preset_name, dials.carrying)
     # The approved Avoid-rated junctions (FOLLOWUP-ISECT-AVOID, 307-310, 335), read at
     # request time: empty as shipped.
@@ -2385,23 +2689,32 @@ def plan(
     costing = presets.costing(
         preset_name, stress_dial, hills_dial, assist=assist, avoid_gravel=avoid_gravel
     )
+    if dials.cycling_speed_kmh is not None:
+        costing["bicycle"]["cycling_speed"] = float(dials.cycling_speed_kmh)
     request = {
         "locations": [
-            {"lon": lon, "lat": lat, "type": "break", "radius": STOP_RADIUS_M}
-            for lon, lat in points
+            {
+                "lon": lon,
+                "lat": lat,
+                "type": location_type(index, len(points), dials.vias),
+                "radius": STOP_RADIUS_M,
+            }
+            for index, (lon, lat) in enumerate(points)
         ],
         "costing": "bicycle",
         "costing_options": costing,
         "elevation_interval": ELEVATION_INTERVAL_M,
         "date_time": {"type": 3, "value": planning_time(when=when)},
-        "directions_type": "none",
+        # Maneuvers, without their narrative: the destination maneuver says which side of
+        # the street the destination is on (`arrival_side_of`, v0.7.0 "Go riding fixes" 5).
+        "directions_type": "maneuvers",
         "units": "kilometers",
     }
     # Live work zones (FOLLOWUP-WORKZONES, 341-349), in force at the ride time: a closure
     # to bicycles is left out of every request this plan makes (the derived requests
     # copy this one), and the zones a rider may pass are weighed once the router has
     # answered (`work_zones.settle_penalties`). None where no refresh has ever run.
-    zones_plan = work_zones.plan_zones(points, when)
+    zones_plan = work_zones.plan_zones(points, when, bypass=dials.closure_bypass)
     if zones_plan is not None and zones_plan.exclude:
         request["exclude_polygons"] = list(zones_plan.exclude)
     # Past the detent the hills slider is a climb search among the router's
@@ -2421,7 +2734,7 @@ def plan(
             seek_limited = "two_points"
         elif long_ride or haversine(Point(*points[0]), Point(*points[1])) > span_limit:
             seek_limited = "long_ride"
-        else:
+        elif not quick:
             request["alternates"] = SEEK_ALTERNATES
     # Mountain Bike ranks the router's own routes by its trail rules (`core.mtb`): two-point
     # plans ask for them, as the hills search does.
@@ -2491,6 +2804,8 @@ def plan(
         except RouterRefused as again:
             raise NoRoute(str(again), no_path=again.code in NO_PATH_CODES) from again
 
+    timing.mark("route")
+    delays = None
     if zones_plan is not None:
         answer = work_zones.settle_penalties(
             answer,
@@ -2499,6 +2814,19 @@ def plan(
             lambda trial: _route(variant, trial, deadline)[0],
             lambda: deadline.at - clock(),
         )
+        # What each closure did to this route and the time its detour adds (v0.7.0,
+        # "Closures on the map"): the card's "Detour adds about 4 min". It changes no
+        # route, so it runs beside the rest of the plan (v0.7.0 "Faster routing", step
+        # 3) and is waited for before the closures are written on the answer.
+        delays = parallel.submit(
+            work_zones.measure_delays,
+            answer,
+            dict(request),
+            zones_plan,
+            lambda trial, variant=variant: _route(variant, trial, deadline)[0],
+            lambda: deadline.at - clock(),
+        )
+        timing.mark("zones")
     routed_at = clock()
     trips = [answer.get("trip") or {}] + [
         (alternate or {}).get("trip") or {} for alternate in answer.get("alternates") or []
@@ -2516,7 +2844,7 @@ def plan(
     # put on one place.
     round_trip = loop or haversine(Point(*points[0]), Point(*points[-1])) <= LOOP_SAME_M
     sought = None
-    if climb_seek and seek_limited is None and not round_trip:
+    if climb_seek and seek_limited is None and not round_trip and not quick:
         sought = hill_seek(
             trips,
             points,
@@ -2557,9 +2885,10 @@ def plan(
     trip = trips[chosen]
     kept_middle = False
     trace_costing = costing
-    if avoiding:
-        middle_costing = presets.costing(
-            preset_name, stress_dial, 0, assist=assist, avoid_gravel=avoid_gravel
+    if avoiding and not quick:
+        middle_costing = _same_pace(
+            presets.costing(preset_name, stress_dial, 0, assist=assist, avoid_gravel=avoid_gravel),
+            request,
         )
         trip, kept_middle = no_busier_than_middle(
             trip, request, variant, costing, middle_costing, when, deadline, traces, exposure
@@ -2573,7 +2902,10 @@ def plan(
     # budget; `refined` says what it did, or why it did not.
     from . import dedodge, refine, trailseek
 
+    timing.mark("choose")
     refine_limited = _refine_limit(preset_name, points, long_ride, climb_seek, deadline, long_calm)
+    if quick:
+        refine_limited = "quick"
     ceiling = None
     fitted_at = None
     fit, past = None, []
@@ -2587,8 +2919,11 @@ def plan(
         ceiling = (
             presets.target_ceiling_m(target_m)
             if target_m
-            else presets.default_ceiling_m(_trip_length_m(trip))
+            else presets.default_ceiling_m(_trip_length_m(trip), preset_name)
         )
+    # Routes to choose from beside the answer: at the top of the slider, never on a Mass Ride,
+    # and not where the request wants the route alone (a ride's re-plan, review speed-5).
+    offering = maxcalm and preset_name != "mass-ride" and candidates
     refine_context = refine.Context(
         variant=variant,
         request=request,
@@ -2621,14 +2956,14 @@ def plan(
         maxcalm=maxcalm,
         ceiling_m=ceiling,
         target_m=target_m,
-        # Up to ALT_MAX routes to choose from at the top of the slider (OWNER-DECISIONS 265).
-        alternates=refine.ALT_MAX if maxcalm and preset_name != "mass-ride" else 0,
+        # Up to ALT_MAX routes to choose from (OWNER-DECISIONS 265).
+        alternates=refine.ALT_MAX if offering else 0,
         # The router's own alternatives ranked with the calm search's (OWNER-DECISIONS 435):
         # the plan's own, where it asked for them with the request the search starts
         # from (none again where that ask timed out), else asked for by the search.
         rank_alternates=presets.calm_rate_for(stress_dial) > 0,
         router_trips=plan_alternates(request, trips, timed_out, fit is not None or bool(past)),
-        options=[] if maxcalm and preset_name != "mass-ride" and not long_calm else None,
+        options=[] if offering and not long_calm else None,
         avoid=avoid_list,
         junction_ratings=junction_ratings,
     )
@@ -2664,7 +2999,7 @@ def plan(
             trip, refined = refine.refine_long(trip, refine_context)
         else:
             trip, refined = refine.refine(trip, refine_context)
-    elif refine_context.rate > 0:
+    elif refine_context.rate > 0 and not quick:
         # A calm search was asked for and could not run: say so.
         refined = {
             "rate": refine_context.rate,
@@ -2709,7 +3044,7 @@ def plan(
     # are the search's near-ties, picked again against the answer as it now is
     # (`dedodge.settle`), so the pass's bounds are the plan's.
     dodges = None
-    if not loop:
+    if not loop and not quick:
         trip, dodges = dedodge.apply(trip, refine_context)
         dedodge.settle(trip, refine_context, refined, dodges)
     # An Avoid-rated junction still on the answer (307-310, 335): the way round, taken
@@ -2718,7 +3053,7 @@ def plan(
     # on a loop), else offered (`core.avoid_junctions`). `searched` is what the search
     # did: at least one round, not cut short.
     avoid_info, avoid_trip = None, None
-    if avoid_list:
+    if avoid_list and not quick:
         searched = (
             refined is not None and (refined.get("rounds") or 0) > 0 and not refined.get("limited")
         )
@@ -2774,6 +3109,7 @@ def plan(
     # its description a "Stop 1" the rider never placed).
     long_info = (refined or {}).get("long") or {}
     plan_groups = long_info.get("stops") if long_info.get("answered") == "legs" else None
+    timing.mark("search")
 
     def _answer(
         trip: dict, refined: dict | None, alternate: bool = False, dodges_of: dict | None = None
@@ -2804,6 +3140,8 @@ def plan(
         # which no crossing lies before), which a Mass Ride's crossing group never
         # spans (OWNER-DECISIONS 247).
         stops_m: list[float] = []
+        # Every leg's trace at once (v0.7.0 step 3), read in order below.
+        prefetch_traces(variant, trace_costing, [trip], deadline, traces)
         for leg in legs:
             stops_m.append(traced_m)
             shape = decode_polyline6(leg.get("shape", ""))
@@ -2860,7 +3198,7 @@ def plan(
             analysed = refine_context.analyses.get(tuple(leg.get("shape", "") for leg in legs))
             effort_m = round(analysed.effort_m, 1) if analysed is not None else None
             classes = (
-                analysed.classes
+                analysed.rated_classes
                 if analysed is not None and len(analysed.pieces) == len(pieces)
                 else classify(pieces, when, roadway_only=lanes_as_roadway)
             )
@@ -2930,7 +3268,13 @@ def plan(
         )
         profile_s = clock() - profiled_from
         described = describe_route(
-            leg_runs, pieces, classes, events, trip.get("summary") or {}, walks
+            leg_runs,
+            pieces,
+            classes,
+            events,
+            trip.get("summary") or {},
+            walks,
+            sidepath_names_of(pieces),
         )
         described_full, described_overview = described if described else (None, None)
         # The Avoid-rated junctions it passes (307, 335), at their distance along the
@@ -3047,17 +3391,23 @@ def plan(
         straight_m = sum(
             haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
         )
-        detour = _detour(
-            round(float(summary.get("length", 0.0)) * 1000.0, 1),
-            straight_m,
-            request,
-            variant,
-            preset_name,
-            dials=(stress_dial, assist, avoid_gravel),
-            busy_m=stress["3"] + stress["4"] + stress["5"],
-            when=when,
-            deadline=deadline,
-            traces=traces,
+        # Not on a first route (`quick`): the direct route it would be weighed against is a
+        # second /route, and the full plan that follows says it.
+        detour = (
+            None
+            if quick
+            else _detour(
+                round(float(summary.get("length", 0.0)) * 1000.0, 1),
+                straight_m,
+                request,
+                variant,
+                preset_name,
+                dials=(stress_dial, assist, avoid_gravel),
+                busy_m=stress["3"] + stress["4"] + stress["5"],
+                when=when,
+                deadline=deadline,
+                traces=traces,
+            )
         )
         return {
             "preset": preset.name,
@@ -3093,6 +3443,7 @@ def plan(
             "hills_tolerate": hills_tolerate,
             "attribution": list(ATTRIBUTION),
             "leg_ends": leg_ends,
+            "arrival_side": arrival_side_of(trip),
             "intersections": None if events is None else _intersection_rows(events),
             "intersection_groups": None if events is None else _intersection_groups(events),
             "junctions_debug": (
@@ -3120,9 +3471,21 @@ def plan(
                 if preset_name == "mass-ride"
                 else None
             ),
+            # Novice and Nervous (v0.7.0): the busiest stretch, read on the real levels.
+            # Not on a first route (`quick`): the offer is decided on the route the search
+            # settles, so it does not come and go as the better route arrives.
+            "novice": (
+                novice_note(stress, refined, busiest_stretch(pieces, classes))
+                if preset_name == presets.NOVICE and not over_budget and not quick
+                else None
+            ),
         }
 
-    body = work_zones.with_work_zones(_answer(trip, refined, dodges_of=dodges), zones_plan)
+    answered = _answer(trip, refined, dodges_of=dodges)
+    _wait_for_delays(delays)
+    body = work_zones.with_work_zones(answered, zones_plan)
+    body["provisional"] = quick
+    timing.mark("answer")
 
     def _with_mtb(answered: dict, info: dict | None) -> dict:
         """A Mountain Bike route's reading on its body, and its time at about 6 mph
@@ -3169,6 +3532,14 @@ def plan(
         else:
             avoid_info["alternate"] = "time"
     candidates = []
+    # The candidates' traces at once (v0.7.0 step 3); each is read in full below, in order.
+    prefetch_traces(
+        variant,
+        trace_costing,
+        [found for found, _reading in refine_context.candidates[1:]],
+        deadline,
+        traces,
+    )
     for found, _reading in refine_context.candidates[1:]:
         # Each is read in full (its traces are remembered, its junctions read once
         # across the joints of a long plan), inside what is left of the budget.
@@ -3189,7 +3560,28 @@ def plan(
             break
     body["candidates"] = candidates or None
     body["rank"] = 1 if candidates else None
+    timing.mark("more")
     return body
+
+
+def quick_applies(preset_name: str, loop: bool, long_ride: bool, long_calm: bool) -> bool:
+    """Whether a plan may answer its first good route alone (`plan(quick=True)`; v0.7.0,
+    "Faster routing" step 2). Not a loop (its way back is made by the search), a long
+    ride or a long calm plan (planned leg by leg), nor Mountain Bike, whose hardest-level
+    rule picks among the router's routes: a first route there could be one the rider
+    must not be sent on. Bikeshare and the transit ride types plan their own way."""
+    return not (loop or long_ride or long_calm or preset_name == mtb.PRESET)
+
+
+def _wait_for_delays(delays: Future | None) -> None:
+    """The closures' delay probes started beside the plan (`work_zones.measure_delays`):
+    waited for, as the closures are written from them. They never fail a plan."""
+    if delays is None:
+        return
+    try:
+        delays.result()
+    except Exception:  # noqa: BLE001 - a delay not worked out is None, as before
+        logger.info("closures: the delays could not be worked out", exc_info=True)
 
 
 # The credits are brief, as an in-text citation is (OWNER-DECISIONS 306: "keep it
@@ -3232,7 +3624,7 @@ ATTRIBUTION = (
     # derived data acknowledge the State of Maryland, so the credit names it.
     mdot_aadt.CREDIT,
     # DDOT's Pavement Condition Index (DC-PCI): District streets' smoothness reading.
-    # The service states no licence; docs/SOURCES.md records that it is to be confirmed.
+    # District data terms (CC0 1.0 or CC BY 4.0, credited), owner-confirmed 2026-10-16.
     "DDOT Pavement Condition Index (DC GIS)",
     "Open Baltimore",
     "Montgomery County Planning Department",

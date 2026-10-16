@@ -91,10 +91,12 @@ session fails to decode on the next request and is discarded. **Every signed-in
 user is signed out**, and signs back in through Discord. Nothing is corrupted
 and nothing needs repair. docs/DEPLOYMENT.md, "Secrets, and what rotating one
 costs", has the same two alongside `PGPASSWORD`, whose rotation is a procedure
-rather than an edit.
+rather than an edit. It is required too unless `DJANGO_DEBUG=1`: outside DEBUG an
+unset or empty `DJANGO_SECRET_KEY` stops the process at import, since the
+development default is a string in this repository.
 
-The suite supplies its own value through `config.test_settings`, which is
-`config.settings` plus that one default and nothing else. It cannot come from
+The suite supplies its own values through `config.test_settings`, which is
+`config.settings` plus those two defaults and nothing else. It cannot come from
 `tests/conftest.py`: pytest-django sets Django up while it loads the initial
 conftests, before any conftest body has run.
 
@@ -1059,7 +1061,7 @@ order), and nothing asks for hazards.
   (`settings.MASS_RIDE_DC_VERIFIED_REVERSIBLE_BLOCKS`, BLOCKKEYs, empty for now) names it, half
   (rounded down) to each direction, and never on a street in
   `MASS_RIDE_DC_ENDED_REVERSIBLE_STREETS` (Connecticut Ave NW). The 57 blocks DC still records
-  as reversible (7.5 mi) are listed in reports/MASSRIDE-MAP-rev2.md for the owner to check. A
+  as reversible (7.5 mi) are listed in reports/MASSRIDE-MAP-rev2.md (not in the repository) for the owner to check. A
   block recording a lane width of `MASS_RIDE_DC_WIDE_LANE_FT` (16 ft) or more and no parking lane
   (`parking_lanes` 0) is read at `MASS_RIDE_DC_WIDE_LANE_CAP_FT` (11 ft) a lane (407 (3): likely
   shared parking and driving lanes); 453 blocks, 25.4 mi. Both are `massflow.DcRules`. The
@@ -1876,7 +1878,7 @@ lie in West Virginia and Pennsylvania, whose boundaries do not close in the
 merged extract; they keep the class tables.
 
 **Deviations from the literature review**
-(`reports/LTS-literature-review.md`), kept here because each is a decision,
+(`reports/LTS-literature-review.md` (not in the repository)), kept here because each is a decision,
 not an oversight:
 
 1. A one-way street with up to two lanes stays on the single-lane row; the
@@ -2076,10 +2078,10 @@ FOLLOWUP-INTERSECTIONS (2026-10-01, revised 2026-10-02 after the round-1 and
 round-2 reviews; OWNER-DECISIONS 133-136, 138, 163-169, 171, 172, 185-188,
 194-196; the crossing
 costs and the slider's top end are from "Bicycle stress literature in depth",
-`reports/LTS-literature-review-2.md`: "Crossing penalties by control type and
+`reports/LTS-literature-review-2.md` (not in the repository): "Crossing penalties by control type and
 right of way", "Left turns, multi-lane merges capped by box turns, and slip
 lanes" and "The stress slider's top end"; the Mass Ride flow figures are from
-"Mass ride flow evidence", `reports/MASSRIDE-flow-evidence.md`). Three things,
+"Mass ride flow evidence", `reports/MASSRIDE-flow-evidence.md` (not in the repository)). Three things,
 built on one mechanism: the traffic slider has a top end, a junction costs what
 it costs a rider, and a route shows its stressful junctions.
 
@@ -3652,7 +3654,7 @@ curl -fsSL --retry 3 -o district-of-columbia-latest.osm.pbf.part <url>
 osmium merge --overwrite -f pbf dc.osm.pbf md.osm.pbf va.osm.pbf \
     -o merged.osm.pbf.part
 osmium extract --overwrite -f pbf -s smart -S types=any \
-    --bbox -78.0,38.2,-76.02,39.72 -o source.osm.pbf.part merged.osm.pbf
+    --bbox -78.05,38.2,-76.02,39.72 -o source.osm.pbf.part merged.osm.pbf
 ```
 
 `-s smart -S types=any` is PLAN:13's, and the `-S` half is the one that is easy
@@ -3686,6 +3688,48 @@ both binaries stood in for. Developing against a real extract means either
 running the rebuild on the deployment host or putting a small hand-made
 `merged.osm.pbf`/`source.osm.pbf` pair in `<DATA_ROOT>/extracts/`, which the
 freshness rule will then reuse.
+
+### The coverage box (west edge -78.05 W since v0.7.0)
+
+The box is **(-78.05, 38.2, -76.02, 39.72)**, west, south, east, north: 78.05° W
+(78° 3′ W) to 76.02° W, 38.2° N to 39.72° N, about 109 mi (175 km) east to west
+and 105 mi (169 km) north to south. v0.7.0 moved the west edge from -78.0 so
+all of Martinsburg, West Virginia is in (the owner, 2026-10-12; its city limits
+reach about -78.02); Harpers Ferry (-77.74), Shepherdstown and Charles Town were
+already inside, and Winchester, Virginia (-78.16) stays out.
+
+`settings.COVERAGE_BBOX` is the one value. Its copies, each held equal to it by a
+test, are `frontend/src/lib/geo.ts` (`COVERAGE_BBOX`, the map's coverage mask and
+GPX import), `scripts/fetch_basemap.sh` and `scripts/import_photon.sh` (`BBOX`),
+`scripts/build_contours.py` (`BBOX`) and `scripts/build_water_restrooms.py`
+(`COVERAGE_BBOX`, which `build_food.py` reads). What reads it, and what the new
+edge means for each:
+
+- The extract clip (`pipeline.source.clip_command`) and the classification
+  checkpoint (`pipeline.checkpoint`, a CLASSIFICATION setting): the first rebuild
+  after the change re-clips and does not resume an old checkpoint.
+- The elevation stage (`elevation.tiles_covering`): -78.05 lies in the W079
+  column, so two more one-degree HGT tiles, N38W079 and N39W079, about 26 MB
+  each, are fetched once and cached.
+- Contours (`scripts/build_contours.py`): the n39w079 and n40w079 3DEP cells join
+  the four, six in all.
+- The stress tiles (`core.stress_tiles.outside_coverage`, `straddles_coverage`)
+  and the pre-draw (`core.tile_cache`) cover the wider box: a few more tiles at
+  each zoom along the west edge, drawn by the post-promotion pre-draw.
+- The API's coverage checks (`core.api`, `RouteIn.inside_coverage`), Photon's
+  search box (`core.geocode`) and the More links (`routemaker.more_links`) read
+  settings and need nothing but the deploy.
+
+What the box does not do is add a state. The rebuild downloads the Geofabrik
+extracts in `pipeline.source.GEOFABRIK_REGIONS` (DC, Maryland, Virginia) and
+`pipeline.states.REQUIRED_STATES` lists the same three, so West Virginia's roads
+are in the map only once `west-virginia` joins them; that work, with West
+Virginia's statutory speed default and the closed-by-default US 340
+expressway, is the owner's local branch wip/wv (reports/WV-dev-r0.md (not in the repository) on the
+PC), to be merged before the v0.7.0 rebuild. On the PC, after the merge and
+before the rebuild: re-fetch the basemap (`scripts/fetch_basemap.sh`),
+re-import Photon (`scripts/import_photon.sh`), rebuild contours and the water,
+restroom and food layers, then run the rebuild; the pre-draw follows the swap.
 
 ## Reference data
 
@@ -4565,7 +4609,7 @@ shown), and `scripts/a11y/check.mjs` passed the same checks.
 
 ### Go and Plan (UI-CLEANUP, the approved mockup of 2026-10-11)
 
-The layout Stephen approved on 2026-10-11 (reports/v0.5.0/ui-mockup.html and its 72-row
+The layout Stephen approved on 2026-10-11 (reports/v0.5.0/ui-mockup.html (not in the repository) and its 72-row
 control table; PLAN.md, UI-CLEANUP). Nothing was removed: every control is where the table
 puts it, at most two presses away.
 
@@ -4682,7 +4726,7 @@ the switch, the sheets, My Go and the 311 menu in a browser.
 ### The sidebar (312)
 
 OWNER-DECISIONS 312's layout, from mockup v3 (PLAN.md, FOLLOWUP-SIDEBAR-REDESIGN, has
-what differs). Code: `App.tsx` places it (its parts in `app/`, above); `Sidebar.tsx` (MoreTips, QuickFigures,
+what differs). Code: `App.tsx` places it (its parts in `app/`, above); `Sidebar.tsx` (QuickFigures,
 BottomBar, SheetFrame); `lib/sidebarParts.ts` (RideSettings, Fold, JunctionLegend and
 the two parts for open questions, written with createElement so a test renders them);
 `lib/sidebar.ts` (the decisions, pure); `lib/rideSummary.ts`; `lib/quickFigures.ts`.
@@ -7665,3 +7709,158 @@ for `appWorker`, `installOffer`, `offlineRoutes`, the `CorridorSource` fallback 
 order (`corridorStore.test.ts`); the browser suite's installable-app
 group runs against `vite preview` of a build (`--preview-port`, default 4173; `--cdp` picks the
 debugging port), with offline emulated on the page and the worker's target,.
+
+## Course export: FIT and TCX (v0.7.0, "All the sharing and export")
+
+Plan's GPX section (the GPX sheet; Go's Menu opens the same sheet with GPX alone, so Go gains no control) has a
+"File type" choice, GPX track, FIT course or TCX course, and for a course a "Device" choice; the button is
+"Download GPX", "Download FIT" or "Download TCX". The choice is remembered on the device (localStorage, guarded;
+the defaults, GPX and "Any bike computer", stand without it). A course download is checked against the closures in
+force as Download GPX is (App.tsx `downloadCourseRoute`), and the line saying what was fitted to the device is said
+in the section's existing polite status region ("FIT course for Garmin Edge: all 42 cues and 3,120 points fit.").
+An opened GPX file still downloads verbatim as GPX; a course is always the route shown.
+
+- **One compiled route** (`frontend/src/lib/course.ts`, `compileCourse`). The line and elevations are the GPX
+  export's (`gpxText.ts elevationsAlong`); the cues are Ride's (`navigate.ts rideModel`), so a turn is "Left onto R
+  Street Northwest." and nothing else. Each cue is pinned to its nearest record. Via points are not cues, as in
+  Ride. The plan's points are Start, Stop N and Finish: a saved place's label (Home) is never written.
+- **Times** are the route's moving time spread along the line from 2000-01-01T00:00:00Z, never the clock, so one
+  route gives the same bytes every time (PLAN.md, Clean exports).
+- **Device profiles** (`frontend/src/lib/deviceProfiles.ts`, the profile table): Any bike computer (the default),
+  Garmin Edge, Wahoo ELEMNT, Hammerhead Karoo, each with a cue budget (200, PLAN.md's default), a point budget
+  (10,000; 20,000 for Wahoo and Karoo), a file-size budget (4 MB; 8 MB for Wahoo and Karoo) and name lengths (15;
+  32 for Wahoo and Karoo). The size budgets are unverified working figures, not limits measured on a unit or
+  published by a maker. `verified` is null on every row: none has yet been loaded on its device. Record the date
+  there when one is.
+- **Over the cue budget** the least important go first: notes on busier, calmer or unpaved stretches, then flagged
+  crossings (orange before red), then turns onto unnamed ways, then named turns and walks; within a rank, the cue
+  nearest the one before it. Never dropped: start, finish, stops, Avoid-rated junctions and work zones. Where those
+  alone pass the budget, nothing is dropped (giving up the turns would still not make it fit) and the line says to
+  split the route.
+- **Over the point budget** the line is thinned by Douglas-Peucker at the smallest of 1, 2, 5 and 10 m that fits,
+  every cue's record kept; the line says the tolerance ("within 3 ft (1 m) of the route"). **Over the size budget**
+  (the written file measured) it is thinned further, doubling past 10 m (20, 40 ... m), until the file fits; one
+  that still does not is said ("still larger than the 4 MB it takes").
+
+The cue mapping (PLAN.md: "The mapping table names every collapse for every format"). The turn model gives left and
+right only today (describe.py has no slight, sharp, u-turn or fork yet), so FIT's richer types are not written.
+
+| Cue (course.ts)                | FIT course_point type | TCX PointType | Name (FIT; TCX cut to 10)  | TCX Notes            |
+| ------------------------------ | --------------------- | ------------- | -------------------------- | -------------------- |
+| start                          | generic (0)           | Generic       | Start                      | Start.               |
+| left / right turn              | left (6) / right (7)  | Left / Right  | street, abbreviated; else Left / Right | Ride's words |
+| hazard: Avoid, work zone (never dropped) | danger (5) | Danger      | street, abbreviated; else Caution | Ride's words  |
+| hazard: flagged crossing (can be dropped) | generic (0) | Generic    | street, abbreviated; else Caution | Ride's words  |
+| walk                           | generic (0)           | Generic       | Walk bike                  | Ride's words         |
+| busier, calmer, unpaved notes  | generic (0)           | Generic       | Busy road / Calmer / Unpaved | Ride's words       |
+| stop                           | generic (0)           | Generic       | Stop N                     | Stop N.              |
+| finish                         | generic (0)           | Generic       | Finish                     | The end of the route. |
+
+FIT has no notes field, so a course point carries its short name only. Only the warnings a course never drops are
+danger (PLAN.md: "danger-type cues are never dropped"), so a flagged crossing, which the cue budget can drop, is a
+note.
+
+**FIT** (`frontend/src/lib/fit.ts`) is written here to the FIT protocol and Global Profile, with no library: PLAN.md
+named fit-tool (BSD-3, Python), but the export runs in the browser beside the GPX export, and a course needs only
+plain records and the CRC. Protocol 1.0, profile 21.00, little-endian, normal headers. Messages, in order:
+file_id (type course, manufacturer development, product 0, time_created the fixed base, number a 16-bit fold of
+an FNV-1a hash of the file's bytes after file_id, so two courses do not share a file_id; no serial number), course
+(name, sport cycling), lap (start and end time and position, elapsed and timer time, distance, ascent, descent),
+event timer start, the records (time, position, altitude, distance), event timer stop_all, the course points
+(index, time, position, distance, type, name). No file_creator, device_info or user profile. Attribution: FIT has no
+notice field, so the course name carries " (c) OSM" (plain ASCII: a unit's font may have no ©): the longest
+wording of the name that leaves room for it is used, and only where none does the name alone, with the GPX
+section's hint carrying the credit beside the download (PLAN.md's recorded FIT carve-out). Altitude is held to
+uint16's range (-500 m to 12,606 m).
+`fit.test.ts` decodes each file back with a reader driven by the file's own definitions, checking both CRCs; the
+same file was also decoded with fitdecode 0.10.0 (MIT) once, by hand (before file_id carried its number), with every message and field read as
+written. Not yet loaded on a real head unit.
+
+**TCX** (`frontend/src/lib/tcx.ts`): TrainingCenterDatabase v2, Course_t's order (Name, Lap, Track, Notes,
+CoursePoint), the course name cut to 15 characters and point names to 10, the full cue in CoursePoint/Notes, the
+route's credits in Course/Notes. No Author or Creator element. Not validated against Garmin's XSD in the suite (the
+schema is not in the repository) and not yet loaded on a device.
+
+Tests: `course.test.ts` (cues, pinning, Home naming, budgets, thinning, names, the trimmed line, TCX), `fit.test.ts`
+(the round trip), `courseWiring.test.ts` (the section's controls, its live region, no control in Go).
+
+## PDF cue sheets (v0.7.0, "All the sharing and export")
+
+The same "File type" choice in Plan's GPX section has two more entries, "PDF cue sheet, to print" and "PDF handlebar
+strip, to print"; the button says "Download PDF", there is no Device choice for them, and Go is unchanged (GPX
+alone). The download goes through the same closure check as a course (App.tsx `downloadCourseRoute`), and its line
+("PDF cue sheet: 42 cues, on letter paper.") is said in the same polite status region. Marshal sheets, the
+intersection list and the agency packet are not built yet.
+
+- **The cues** are the FIT and TCX courses' (`course.ts routeCues`, Ride's `rideModel` cues with the start first),
+  never trimmed to a budget: paper has room. Rows: miles from the start with km in brackets (`format.ts
+  formatMileMarker`, always tenths, never feet), the turn (Start, Left, Right, Caution, Walk, Note, Stop N,
+  Finish), the road as the API names it, and Ride's words as notes where the turn and road do not say it all.
+- **The rider sheet** (`frontend/src/lib/cueSheetPdf.ts`): US Letter, the GPX export's name (`exportName`: ride
+  type and distance), distance, climb, descent and moving time, the route's warnings (the Avoid notice, the
+  traffic-tolerant warning, parks to check before you go), the cue table, and the credits. **The handlebar strip**:
+  a 3 by 11 inch page to print at actual size and cut out, the miles at 16 pt, the turn and the road (abbreviated
+  as on a unit's screen, "17th St NW") at 13 pt, a caution's short reason (Avoid-rated, Work zone, Crossing) small
+  under it, no notes on busier, calmer or unpaved stretches. Flagged crossings are notes to a course (the FIT and TCX
+  budget can drop them) but a Caution on paper, as Ride says them.
+- **No place is named**, so a Home never is: the name is the ride type and distance, the plan's points Start,
+  Stop N and Finish. Credits are `creditLine` (the GPX export's words) in every page's footer and once at the end.
+- **The writer** (`frontend/src/lib/pdf.ts`), with no library: PDF 1.7, the standard Helvetica faces in
+  WinAnsiEncoding (not embedded; widths in docs/SOURCES.md), uncompressed ASCII content. Tagged, not
+  PDF/UA-conformant (standard fonts not embedded, no XMP): a structure tree of Document, H1, H2, P and Table
+  (THead and TBody, TR, TH with column scope, TD), each text run a marked-content sequence in the parent tree;
+  footers, rules and a table header carried onto a later page are Artifacts; /Lang en-US, /MarkInfo (Marked,
+  Suspects false), DisplayDocTitle, /Tabs /S. The bottom margin is set from the footer's measured height; a heading
+  is kept with what follows it, and the table header with its first row at that row's height. Clean and reproducible: Info has the title and Creator RouteMaker only (no
+  author, producer or dates) and the /ID is a hash of the body, so one route gives the same bytes.
+
+Tests: `cueSheetPdf.test.ts` (the rows, units, warnings, Home, credits, the xref and trailer, the structure tree,
+paging, determinism, the writer's encoding and wrapping), `courseWiring.test.ts` (the two file types, no device
+choice for them, one button). Checked by hand once with poppler (`pdfinfo` reports Tagged: yes and reads the
+structure tree in order; `pdftotext` the text layer) and pypdf in strict mode; not yet checked with a PDF/UA
+validator or read aloud by a screen reader.
+
+**Cue sheet image, for a phone lock screen** (the owner: "a lot of people take pictures of them on their phones and
+use them as lock screens"): one more entry in the same choice, "Download image". A PNG drawn on a canvas in the
+browser (`frontend/src/app/lockScreenRender.ts`) from a pure layout (`frontend/src/lib/lockScreen.ts`): 1179 by
+2556 (an iPhone Pro; an Android phone fits it), white with dark text, the strip's rows in large type (miles 96 px
+with km small, the turn 64 px with a caution's reason, the road abbreviated 60 px). The top 28% and bottom 12%
+are left clear for the lock screen's clock and controls; the name and distance sit small under the top band and
+the credits small above the bottom one. Rows that do not fit go on further images, each headed "Part N of M"
+(`...-lock-1-of-3.png`). Where the browser can share files (a phone), all of them go to one share sheet; otherwise
+(a browser saves only one file per press) part 1 is saved and the same button becomes "Download part 2 of 3" and
+so on, no new control. The status line says only what was saved or sent. No place is named. Tests:
+`lockScreen.test.ts` (the bands, the width, cues per image and all of them once, naming, the line). Not yet
+drawn on a real phone's lock screen; the layout was checked by eye from a rasterised copy, not from the canvas.
+
+## Rider roles on a Mass Ride or Group Ride link (Stephen, 2026-10-16)
+
+The one question a ride link asks ("Show me as a dot to others on this ride?") also asks "Riding as":
+Participant (already chosen, so Yes alone answers), Lead line, Sweep or Corker. The role is kept with the
+answer for that ride on the device (`rideGroup.ts keepConsent`; in the question a compact "Riding as" list)
+and changed in the riders panel, under "Show me as a dot", where the next position goes as soon as the server
+takes one (within 15 s); Go's bar gains nothing. Each position the page sends carries the role
+(`POST /api/rides/{ride}/here`, `role`); `core.ride_presence` takes the four ids only (anything else is a 400,
+none sent is a participant) and answers each dot's `role`. Still no name, token or id on a dot.
+
+- **Self-declared.** A ride link has no sign-in, so the server cannot know who leads or sweeps: a role is what
+  that phone chose, nothing more. Anyone on the link can mark themselves Sweep. Do not build anything that
+  trusts a role (an alert only a lead can send, say) without an identity behind it first.
+- **On the map** (`rideDotsLayer.ts`): a colour and a shape for each role, so neither carries it alone. A
+  participant is a small blue dot (#0000ee); the lead line a near-black violet chevron (#220044) turned to
+  point the way the route goes at that spot (`project().bearingDeg`; on an out-and-back the pass nearest the
+  mark's last place along the route, its own layer aligned to the map); the sweep a magenta square (#7a1f7a);
+  a corker a dark grey diamond (#444444). Chosen by a search, not from a palette: an orange lead vanished on
+  the LTS 3 and 4 lines and a blue-black sweep was Avoid's line. Each is 3:1 or more on every light-map
+  surface and from its white edge, every pair 15 or more CIEDE2000 apart and each 7 or more from every route
+  line and casing colour, under normal vision and each simulated deficiency. Four fills 3:1 apart from one
+  another cannot also all be 3:1 on the light map, so the white edge and the shapes separate touching marks.
+  The marks are images drawn pixel by pixel; the age rules are unchanged (solid, white hole, hollow outline,
+  gone at 2 minutes).
+- **In words.** Tapping a mark says "Sweep, 0.5 mi (0.8 km) behind. Seen 40 s ago." The riders button's
+  summary adds the nearest of each role on the ride after the nearest rider. The panel's key lists only the
+  roles present, each with its swatch (decoration, `aria-hidden`; kept in its colours in forced-colours mode)
+  and its count in words.
+- Tests: `tests/test_ride_presence.py` (validation, default, the role on the dot) and
+  `frontend/src/lib/rideGroup.test.ts` (kept role, the body, the images and layers, colours, names, the key,
+  the page's wiring).
