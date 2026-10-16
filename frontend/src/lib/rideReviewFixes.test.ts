@@ -48,8 +48,8 @@ test("RIDE-3 (owner, 2026-10-16): weak GPS for long shows the turns ahead as a l
   assert.match(check, /setCueSheetOn\(sheet\);/);
   // Also on a timer, so fixes that stop altogether bring the list too.
   assert.match(check, /window\.setInterval\(\(\) => checkCueSheet\(Date\.now\(\)\), CUE_SHEET_CHECK_MS\);/);
-  // The card's distance is greyed while GPS is weak (before the list).
-  assert.match(ride, /<p className=\{gps === GPS_WEAK_SAID \? "cue-distance cue-distance-weak" : "cue-distance"\}>/);
+  // The card's distance is greyed while GPS is weak or lost (any GPS note), before the list comes.
+  assert.match(ride, /<p className=\{gps \? "cue-distance cue-distance-weak" : "cue-distance"\}>/);
   assert.match(source("../styles.css"), /\.cue-distance-weak \{\s*color: var\(--text-muted\);/);
   // In the card, in place of the next cue; an ordered list with the next turn marked; no button.
   const card = ride.slice(ride.indexOf(") : cueSheetOn ? ("), ride.indexOf(") : cue && progress !== null ? ("));

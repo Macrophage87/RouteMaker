@@ -1147,8 +1147,8 @@ export function RideMode({
           <div className="cue-next">
             <CueShape shape={shape} />
             <div>
-              {/* Greyed while GPS is weak: the distance is from the last good fix, not where the rider is. */}
-              <p className={gps === GPS_WEAK_SAID ? "cue-distance cue-distance-weak" : "cue-distance"}>In {formatDistance(cue.atM - progress)}</p>
+              {/* Greyed while GPS is weak or lost (any GPS note): the distance is from an old fix, not where the rider is. */}
+              <p className={gps ? "cue-distance cue-distance-weak" : "cue-distance"}>In {formatDistance(cue.atM - progress)}</p>
               <p className="cue-text">{cue.text}</p>
             </div>
           </div>
