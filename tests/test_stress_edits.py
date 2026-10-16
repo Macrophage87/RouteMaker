@@ -13,6 +13,7 @@ from __future__ import annotations
 import io
 import json
 from datetime import timedelta
+from itertools import count
 
 import pytest
 from django.core.management import call_command
@@ -749,11 +750,14 @@ class TestPromotion:
 # --- The endpoints --------------------------------------------------------------------
 
 ME, STATE, CREATE = "/api/me", "/api/stress-edits/way/{}", "/api/stress-edits"
-_clients = iter(range(1, 250))
+# Many modules import addr(), so the counter must not run out: each call gets its own address
+# in the benchmarking range, away from the 198.51.100.x addresses tests pick by hand.
+_clients = count()
 
 
 def addr() -> dict:
-    return {"HTTP_X_FORWARDED_FOR": f"198.51.100.{next(_clients)}"}
+    n = next(_clients)
+    return {"HTTP_X_FORWARDED_FOR": f"198.18.{n // 250}.{n % 250 + 1}"}
 
 
 def body(schema=None, **change) -> dict:
