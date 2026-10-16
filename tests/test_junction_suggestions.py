@@ -358,6 +358,20 @@ class TestReview:
         assert (avoid.location.x, avoid.location.y) == NODE
         assert JunctionOverride.objects.count() == 0
 
+    def test_approving_avoid_where_it_is_already_avoid_keeps_the_one_rating(self, live) -> None:
+        # Review api-3: two riders' Avoid suggestions, both approved, made two rows.
+        open_to("signed_in")
+        first, second = suggest(level=5), suggest(level=5)
+        client, csrf = admin_client()
+        for s in (first, second):
+            assert post(client, ACTION.format(s.pk, "approve"), {}, csrf).status_code == 200
+        avoid = AvoidJunction.objects.get()
+        first.refresh_from_db()
+        second.refresh_from_db()
+        assert first.avoid == second.avoid == avoid and second.status == "approved"
+        entry = AuditLogEntry.objects.filter(action="junction_suggest_approve").last()
+        assert entry.detail == f"kept avoid junction {avoid.pk}"
+
     def test_approving_a_lower_level_withdraws_the_avoid_rating(self, live) -> None:
         open_to("signed_in")
         avoid = AvoidJunction.objects.create(

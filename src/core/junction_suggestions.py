@@ -337,7 +337,20 @@ def approve(admin, suggestion_id: int) -> JunctionSuggestion:
             old.withdrawn_at = now
             old.save(update_fields=["active", "withdrawn_at"])
             withdrawn.append(f"junction override {old.pk}")
-        if suggestion.target_level == AVOID:
+        already = (
+            AvoidJunction.objects.select_for_update()
+            .filter(approved=True, **near)
+            .order_by("pk")
+            .first()
+            if suggestion.target_level == AVOID
+            else None
+        )
+        if already is not None:
+            # Already rated Avoid there (another rider's suggestion, approved first): the
+            # one rating is kept, so routes are not charged twice (review api-3).
+            suggestion.avoid = already
+            made = f"kept avoid junction {already.pk}"
+        elif suggestion.target_level == AVOID:
             avoid = AvoidJunction.objects.create(
                 name=name,
                 location=point,
