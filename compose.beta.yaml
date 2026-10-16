@@ -369,7 +369,7 @@ services:
     <<: *beta-yield
     profiles: ["offroad"]
     restart: ${RESTART_POLICY:-unless-stopped}
-    image: ghcr.io/valhalla/valhalla:3.9.1
+    image: ghcr.io/valhalla/valhalla:3.9.1@sha256:4fd114eb1d26b8fc2f43bcb3df234c1b63a0bf13c277405e5943d5361dc575de
     command: ["valhalla_service", "/conf/valhalla-offroad.json", "2"]
     volumes:
       - type: bind
@@ -406,7 +406,7 @@ services:
     <<: *beta-yield
     profiles: ["offroad"]
     restart: ${RESTART_POLICY:-unless-stopped}
-    image: ghcr.io/valhalla/valhalla:3.9.1
+    image: ghcr.io/valhalla/valhalla:3.9.1@sha256:4fd114eb1d26b8fc2f43bcb3df234c1b63a0bf13c277405e5943d5361dc575de
     command: ["valhalla_service", "/conf/valhalla-mtb.json", "2"]
     volumes:
       - type: bind

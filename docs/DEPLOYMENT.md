@@ -41,8 +41,12 @@ Two changes, and they are one decision:
 
 The three third-party images are written out the same way —
 `docker.io/library/caddy:2.8-alpine`, `docker.io/postgis/postgis:16-3.4`,
-`docker.io/rtuszik/photon-docker:2.4.0`. Nothing about where they come from
-changes; what changes is that the registry is stated rather than defaulted.
+`docker.io/rtuszik/photon-docker:2.4.0`, and Valhalla's `ghcr.io/valhalla/valhalla:3.9.1`.
+Nothing about where they come from changes; what changes is that the registry is
+stated rather than defaulted. Since v0.7.0 each also carries its `@sha256:` digest in
+compose (and the pipeline Dockerfile's `VALHALLA_IMAGE`), so a tag moved upstream
+changes nothing here: a new digest is a change in this repository, which the beta's
+deploy gate stops on (a compose `image:` line).
 `tests/test_compose_render.py` asserts that no `image:` in the rendered stack is
 an unqualified reference.
 
@@ -779,7 +783,7 @@ in the repository that assumes it:
 
 ## Photon
 
-`photon` is pinned to `docker.io/rtuszik/photon-docker:2.4.0` — the newest release
+`photon` is pinned to `docker.io/rtuszik/photon-docker:2.4.0@sha256:21549c60f9e6488fff3217e40429a652c4b445f374800333fe32859e47cec293` (the tag, and since v0.7.0 its digest) — the newest release
 tag on Docker Hub when this was written (pushed 2026-08-17; `latest`, `2` and
 `2.4` all resolved to the same digest, which is how the tag was chosen), and it
 carries Photon 1.3.0 (`Implementation-Version` in `/photon/photon.jar`). It
@@ -1416,7 +1420,7 @@ mount the source and leaves caddy exited. `up -d` alone does not recreate it.
 Validate the new file in a throwaway container, then recreate caddy alone:
 
 ```sh
-docker run --rm -e CADDY_SITE_ADDRESS=:80 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.8-alpine caddy validate --config /etc/caddy/Caddyfile
+docker run --rm -e CADDY_SITE_ADDRESS=:80 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17 caddy validate --config /etc/caddy/Caddyfile
 docker compose up -d --no-deps --no-build --force-recreate caddy
 ```
 

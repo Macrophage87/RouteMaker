@@ -3202,7 +3202,9 @@ def test_the_runbook_documents_the_override_reset_and_installs_no_system_package
 
 def test_postgis_is_pinned_by_digest_so_a_pull_cannot_move_the_shared_tag() -> None:
     image = OVERLAY["services"]["postgis"]["image"]
-    assert image.startswith(BASE["services"]["postgis"]["image"] + "@sha256:"), image
+    # The base names the same digest since v0.7.0 (deps-6): one pin, not two that drift.
+    assert re.fullmatch(r"docker\.io/postgis/postgis:16-3\.4@sha256:[0-9a-f]{64}", image), image
+    assert image == BASE["services"]["postgis"]["image"], image
 
 
 def test_the_runbook_runs_no_second_api_container_and_no_bare_compose() -> None:

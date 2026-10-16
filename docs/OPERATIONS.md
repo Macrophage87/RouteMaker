@@ -3278,7 +3278,7 @@ throwaway container of the same image (this is what `tests/test_preset_links.py`
 does), then recreate caddy alone:
 
 ```sh
-docker run --rm -e CADDY_SITE_ADDRESS=:80 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.8-alpine caddy validate --config /etc/caddy/Caddyfile
+docker run --rm -e CADDY_SITE_ADDRESS=:80 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.8-alpine@sha256:af32e97399febea808609119bb21544d0265c58a02836576e32a2d082c262c17 caddy validate --config /etc/caddy/Caddyfile
 docker compose up -d --no-deps --no-build --force-recreate caddy
 ```
 

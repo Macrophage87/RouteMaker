@@ -24,7 +24,7 @@
 #
 # NOT BUILT. See docs/DEPLOYMENT.md.
 
-ARG VALHALLA_IMAGE=ghcr.io/valhalla/valhalla:3.9.1
+ARG VALHALLA_IMAGE=ghcr.io/valhalla/valhalla:3.9.1@sha256:4fd114eb1d26b8fc2f43bcb3df234c1b63a0bf13c277405e5943d5361dc575de
 
 
 # --- wheels -------------------------------------------------------------------
