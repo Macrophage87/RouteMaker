@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import math
+import random
 
+import pytest
+
+from routemaker.geo import Point, haversine
 from routemaker.stress import (
     NARROW_ROAD_RULE,
     RURAL_FLOOR_RULE,
@@ -52,6 +56,34 @@ class TestWinding:
         wiggle = zigzag(n=30)
         tail = [(wiggle[-1][0] + i * 0.001, wiggle[-1][1]) for i in range(1, 6)]
         assert winding(wiggle + tail)
+
+    @pytest.mark.parametrize("n, metres", [(5, 450), (7, 650), (8, 750)])
+    def test_a_short_zigzag_too_short_for_two_stretches_still_winds(self, n, metres):
+        line = zigzag(n=n)
+        length = sum(haversine(Point(*a), Point(*b)) for a, b in zip(line, line[1:], strict=False))
+        assert abs(length - metres) < 25 and length < 2 * 400
+        assert winding(line)
+
+    def test_a_short_l_does_not(self):
+        # 600 m: one corner, 1.41 end to end, one stretch.
+        leg = [(-77.2 + i * 0.001, 39.2) for i in range(4)]
+        north = [(leg[-1][0], 39.2 + i * 0.001) for i in range(1, 4)]
+        assert not winding(leg + north)
+        # The same corner drawn as a rounded bend of several vertices.
+        bend = [(leg[-1][0] + 0.0002, 39.2 + 0.00005), (leg[-1][0] + 0.0003, 39.2 + 0.0002)]
+        assert not winding(leg + bend + [(p[0] + 0.0003, p[1]) for p in north])
+
+    @pytest.mark.parametrize("seed", range(40))
+    def test_the_drawing_direction_does_not_matter(self, seed):
+        rng = random.Random(seed)
+        lon, lat, heading = -77.2, 39.2, rng.uniform(0, 2 * math.pi)
+        line = [(lon, lat)]
+        for _ in range(rng.randint(4, 40)):
+            heading += rng.gauss(0, 0.6)
+            step = rng.uniform(0.0002, 0.0015)
+            lon, lat = lon + step * math.cos(heading), lat + step * math.sin(heading)
+            line.append((lon, lat))
+        assert winding(line) == winding(line[::-1])
 
     def test_a_closed_ring_is_not_read_as_winding(self):
         ring = [(-77.2 + 0.003 * math.cos(a), 39.2 + 0.003 * math.sin(a)) for a in range(0, 7)]

@@ -304,6 +304,8 @@ stop_box() {
 on_exit() {
 	local rc=$?
 	trap - EXIT
+	# The import step's copy of its output (step 6), however the run ends.
+	[ -z "${import_log:-}" ] || rm -f "$import_log"
 	stop_box
 	exit "$rc"
 }
@@ -588,10 +590,9 @@ note "installing the result here (import-result.sh, then its dry run; nothing se
 # ran with the import step switched off and still said it).
 import_log=$(mktemp "${TMPDIR:-/tmp}/routemaker-import.XXXXXX")
 script "$IMPORT" "${passed[@]}" "$url" | tee "$import_log" ||
-	{ rm -f "$import_log"; fail "import-result.sh failed; fix what it says and run scripts/cloud/import-result.sh $url"; }
+	fail "import-result.sh failed; fix what it says and run scripts/cloud/import-result.sh $url"
 installed=0
 grep -q '^import-result: installed\.' "$import_log" && installed=1
-rm -f "$import_log"
 if [ "$installed" = 0 ] && [ "$dry_run" = 0 ]; then
 	note "the import step did not install the result here (it did not report \"installed\"); install it with scripts/cloud/import-result.sh${profile:+ --profile $profile} $url"
 elif [ "$swap" = 1 ]; then

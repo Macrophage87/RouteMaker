@@ -60,8 +60,9 @@ area assembly (multipolygon relations and closed ways alike):
   road, or an owner's override reopens it. An
   industrial area holds public streets as well as its own drives (an industrial park's
   roads, a business district's streets and sidewalks), so there only its service roads,
-  tracks and unnamed ways of an unclear class close; a public-class street or path
-  (`WORKS_PUBLIC_HIGHWAY`), or another named street, stays open and is listed. Listed
+  tracks, unnamed ways of an unclear class and untagged walkways close; a public-class
+  street (`WORKS_PUBLIC_HIGHWAY`), a sidewalk or a walkway tagged public
+  (`works_walkway_open`), or another named street, stays open and is listed. Listed
   in the rebuild's `works-closures.csv`.
 - `park` - `leisure=park` or `nature_reserve`, `boundary=national_park` or
   `protected_area`, or an operator that is the National Park Service. An
@@ -902,11 +903,12 @@ def _works_label(area) -> str:
     return f"{name} ({landuse})" if name else landuse
 
 
-# The classes that are a public street or path in an industrial area, named or not: a
-# landuse outline drawn over a whole business district holds its streets and their
-# sidewalks (the v0.7.0 staging rebuild closed 1,188 footways and 111 residential streets
-# in industrial areas). Only the site's own drives - service roads, tracks, and an unnamed
-# way of an unclear class - close there unless their tags open them.
+# The classes that are a public street in an industrial area, named or not: a landuse
+# outline drawn over a whole business district holds its streets and their sidewalks (the
+# v0.7.0 staging rebuild closed 1,188 footways and 111 residential streets in industrial
+# areas). Only the site's own drives - service roads, tracks, and an unnamed way of an
+# unclear class - close there unless their tags open them. A walkway (`WORKS_WALKWAY`)
+# is a street's only when it says so (`works_walkway_open`).
 WORKS_PUBLIC_HIGHWAY = frozenset(
     {
         "residential",
@@ -919,21 +921,38 @@ WORKS_PUBLIC_HIGHWAY = frozenset(
         "primary_link",
         "trunk",
         "trunk_link",
-        "footway",
-        "pedestrian",
         "cycleway",
-        "path",
     }
 )
+WORKS_WALKWAY = frozenset({"footway", "path", "pedestrian"})
+# A walkway that is part of a street: its sidewalk or a crossing of it.
+WORKS_STREET_FOOTWAY = frozenset({"sidewalk", "crossing"})
+WORKS_WALKWAY_KEYS = (*ACCESS_KEYS, "foot")
+
+
+def works_walkway_open(tags) -> bool:
+    """A footway, path or pedestrian way in an industrial area that is public: a street's
+    sidewalk or crossing (`footway=sidewalk|crossing`), or tagged open to bicycles or the
+    public (`foot`, `bicycle` or `access` yes, designated or permissive), and kept to no
+    one by `foot` or any access key (`WORKS_CLOSING_ACCESS`). An untagged walkway between
+    a site's buildings is the site's own, and closes (unclear access is closed,
+    OWNER-DECISIONS 330)."""
+    if any(tags.get(key) in WORKS_CLOSING_ACCESS for key in WORKS_WALKWAY_KEYS):
+        return False
+    return tags.get("footway") in WORKS_STREET_FOOTWAY or any(
+        tags.get(key) in PUBLIC_BICYCLE for key in ("foot", "bicycle", "access")
+    )
 
 
 def works_street(tags) -> bool:
     """A way in an industrial area that is not one of the site's own drives: a street
-    or path of a public class (`WORKS_PUBLIC_HIGHWAY`), or any other named way that is
-    not a service road or a track, public unless its tags say otherwise (`access`,
-    `vehicle`, `bicycle` or `motor_vehicle` in `WORKS_CLOSING_ACCESS`: no, private,
-    destination, customers ...)."""
+    of a public class (`WORKS_PUBLIC_HIGHWAY`), a public walkway (`works_walkway_open`),
+    or any other named way that is not a service road or a track, public unless its
+    tags say otherwise (`access`, `vehicle`, `bicycle` or `motor_vehicle` in
+    `WORKS_CLOSING_ACCESS`: no, private, destination, customers ...)."""
     highway = tags.get("highway")
+    if highway in WORKS_WALKWAY:
+        return works_walkway_open(tags)
     return (
         highway in WORKS_PUBLIC_HIGHWAY
         or (bool(tags.get("name")) and highway not in ("service", "track"))

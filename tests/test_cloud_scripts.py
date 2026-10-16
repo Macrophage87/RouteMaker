@@ -115,6 +115,9 @@ case "$1" in
       *"to_regnamespace('staging') IS NULL"*)
         cat "$FAKE_DIR/staging_absent" 2>/dev/null || echo t ;;
       *"string_agg"*) cat "$FAKE_DIR/in_flight" 2>/dev/null ;;
+      *"to_regclass('live.segment')"*)
+        [ ! -e "$FAKE_DIR/psql_fails" ] || { echo "psql: connection refused" >&2; exit 2; }
+        cat "$FAKE_DIR/live_table" 2>/dev/null || echo t ;;
       *"DISTINCT volume_source"*) cat "$FAKE_DIR/live_sources" 2>/dev/null ;;
       *"cat > /tmp/cloud.use"*) cat >"$FAKE_DIR/cloud.use" ;;
       *" -q -1 "*) cat >>"$FAKE_DIR/blanked.sql" ;;
@@ -367,17 +370,48 @@ def test_send_refuses_a_reference_folder_missing_a_live_count_source(fake, home)
     assert send(fake, home).returncode == 0
 
 
-def test_send_takes_another_reference_folder_only_when_it_is_not_older(fake, home) -> None:
+def test_a_first_deployment_with_no_live_map_skips_the_count_check(fake, home) -> None:
+    (fake.dir / "live_table").write_text("f\n")
+    (fake.dir / "live_sources").write_text("mdot-sha\n")
+
+    done = send(fake, home)
+
+    assert done.returncode == 0, done.stderr
+    assert "no live segment table here" in done.stdout
+
+
+def test_a_database_that_does_not_answer_is_said_not_swallowed(fake, home) -> None:
+    (fake.dir / "psql_fails").touch()
+
+    done = send(fake, home)
+
+    assert done.returncode == 2
+    assert "psql: connection refused" in done.stderr and "is it running" in done.stderr
+    assert not fake.in_bucket("in").exists()
+
+
+def test_send_takes_another_reference_folder_only_with_the_live_builds_files(fake, home) -> None:
     _, data = home
+    (data / "reference" / "agency").mkdir()
+    (data / "reference" / "agency" / "layer.json").write_text("live layer")
     other = fake.root / "other-reference"
-    other.mkdir()
-    (other / "reference.file").write_text("older copy")
-    os.utime(other / "reference.file", (1_000_000, 1_000_000))
+    (other / "agency").mkdir(parents=True)
+    (other / "reference.file").write_text("an older copy")
+    (other / "agency" / "layer.json").write_text("live layer")
 
     done = send(fake, home, "--reference-dir", str(other))
-    assert done.returncode == 2 and "older than" in done.stderr
+    assert done.returncode == 2 and "reference.file differs from" in done.stderr
 
-    os.utime(other / "reference.file", None)
+    (other / "reference.file").write_text("reference")
+    (other / "agency" / "layer.json").write_text("an older layer")
+    done = send(fake, home, "--reference-dir", str(other))
+    assert done.returncode == 2 and "agency/layer.json differs from" in done.stderr, "recursive"
+
+    (other / "agency" / "layer.json").unlink()
+    done = send(fake, home, "--reference-dir", str(other))
+    assert done.returncode == 2 and "has no agency/layer.json" in done.stderr
+
+    (other / "agency" / "layer.json").write_text("live layer")
     (other / "volume.json").write_text("[]")
     done = send(fake, home, "--reference-dir", str(other))
     assert done.returncode == 0, done.stderr

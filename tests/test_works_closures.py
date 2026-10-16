@@ -133,10 +133,18 @@ def test_an_override_reopens_one():
         # staging rebuild closed 1,188 footways and 111 residential streets).
         ({"highway": "residential"}, False),
         ({"highway": "tertiary"}, False),
-        ({"highway": "footway"}, False),
+        # A walkway only where it is a street's or says it is public; an untagged one
+        # between a site's buildings is the site's own (unclear access is closed).
+        ({"highway": "footway"}, True),
+        ({"highway": "path"}, True),
+        ({"highway": "footway", "name": "Plant Walk"}, True),
         ({"highway": "footway", "footway": "sidewalk"}, False),
-        ({"highway": "path"}, False),
-        ({"highway": "footway", "access": "private"}, True),
+        ({"highway": "footway", "footway": "crossing"}, False),
+        ({"highway": "footway", "foot": "yes"}, False),
+        ({"highway": "pedestrian", "access": "permissive"}, False),
+        ({"highway": "footway", "footway": "sidewalk", "foot": "private"}, True),
+        ({"highway": "footway", "foot": "private"}, True),
+        ({"highway": "footway", "footway": "sidewalk", "access": "private"}, True),
         ({"highway": "path", "bicycle": "no"}, True),
         ({"highway": "residential", "access": "no"}, True),
         ({"highway": "service", "bicycle": "yes"}, False),

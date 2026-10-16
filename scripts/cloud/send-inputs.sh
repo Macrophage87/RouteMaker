@@ -38,10 +38,12 @@
 #   --reference-dir DIR
 #                    the reference folder to send [DATA_ROOT/reference]. Refused when it lacks
 #                    a traffic-count source the live map has (every agency in the live segment
-#                    table's volume_source must be in its volume.json or roadway.json), or when
-#                    a file in DATA_ROOT/reference, which the live build read, is newer there
-#                    or missing from it: the v0.7.0 staging run was sent a stale folder with no
-#                    MDOT SHA counts and lost 5,954 segments' counts
+#                    table's volume_source must be in its volume.json or roadway.json; not
+#                    checked where there is no live table yet), or when a file of
+#                    DATA_ROOT/reference, which the live build read, is missing from it or
+#                    differs (by checksum, every file below it): the v0.7.0 staging run was
+#                    sent a stale folder with no MDOT SHA counts and lost 5,954 segments'
+#                    counts
 #   --allow-dirty    send even though the checkout has uncommitted changes to tracked
 #                    files (the box builds the commit, not those changes)
 #   --no-transfer    assemble and checksum the stage, send nothing
@@ -124,28 +126,41 @@ reference_dir=$(cd "$reference_dir" && pwd)
 # 421 mi of counted rural roads as uncounted).
 pguser=$(sed -n 's/^PGUSER=//p' "$env_file" | tail -n1 | tr -d "\"'")
 pgdb=$(sed -n 's/^PGDATABASE=//p' "$env_file" | tail -n1 | tr -d "\"'")
-live_sources=$( (cd "$live_dir" && "$DOCKER" compose exec -T postgis psql -U "${pguser:-routemaker}" \
-	-d "${pgdb:-routemaker}" -AtX -v ON_ERROR_STOP=1 -c "SELECT DISTINCT volume_source FROM live.segment
-		WHERE volume_source IS NOT NULL AND volume_source <> 'none' ORDER BY 1" </dev/null) 2>/dev/null) ||
-	die "could not read the live map's count sources (is the database running?); the reference folder is checked against them"
-held=$(for f in volume.json roadway.json; do
-	[ ! -e "$reference_dir/$f" ] || $SUDO grep -o '"agency": *"[^"]*"' "$reference_dir/$f" || true
-done | sed 's/.*"\([^"]*\)"$/\1/' | sort -u)
-missing=()
-for agency in $live_sources; do
-	grep -qxF -- "$agency" <<<"$held" || missing+=("$agency")
-done
-[ ${#missing[@]} -eq 0 ] ||
-	die "$reference_dir has no traffic counts from ${missing[*]}, which the live map has; the box would build a map without them. Send the folder the live build read ($live_reference), or reinstall the counts (scripts/install_reference_data.py --volume ...)"
+live_sql() {
+	(cd "$live_dir" && "$DOCKER" compose exec -T postgis psql -U "${pguser:-routemaker}" \
+		-d "${pgdb:-routemaker}" -AtX -v ON_ERROR_STOP=1 -c "$1" </dev/null)
+}
+has_live=$(live_sql "SELECT to_regclass('live.segment') IS NOT NULL") ||
+	die "could not ask the database whether there is a live map (its message is above; is it running?); the reference folder is checked against the live map's count sources"
+if [ "$has_live" != t ]; then
+	note "no live segment table here (a first deployment?): the reference folder's count sources are not checked against a live map"
+else
+	live_sources=$(live_sql "SELECT DISTINCT volume_source FROM live.segment
+		WHERE volume_source IS NOT NULL AND volume_source <> 'none' ORDER BY 1") ||
+		die "could not read the live map's count sources (its message is above); the reference folder is checked against them"
+	held=$(for f in volume.json roadway.json; do
+		[ ! -e "$reference_dir/$f" ] || $SUDO grep -o '"agency": *"[^"]*"' "$reference_dir/$f" || true
+	done | sed 's/.*"\([^"]*\)"$/\1/' | sort -u)
+	missing=()
+	while IFS= read -r agency; do
+		[ -n "$agency" ] || continue
+		grep -qxF -- "$agency" <<<"$held" || missing+=("$agency")
+	done <<<"$live_sources"
+	[ ${#missing[@]} -eq 0 ] ||
+		die "$reference_dir has no traffic counts from ${missing[*]}, which the live map has; the box would build a map without them. Send the folder the live build read ($live_reference), or reinstall the counts (scripts/install_reference_data.py --volume ...)"
+fi
+# Another folder than the live build's must hold every file the live build read, with
+# the same contents: anything else is an older (or other) copy, and the box would build
+# a different map from it. Newer data goes into DATA_ROOT/reference first.
 if [ "$reference_dir" != "$(cd "$live_reference" && pwd)" ]; then
-	for file in "$live_reference"/*; do
-		[ -f "$file" ] || continue
-		name=${file##*/}
-		[ -e "$reference_dir/$name" ] ||
-			die "$reference_dir has no $name, which $live_reference (the live build's) has"
-		[ ! "$file" -nt "$reference_dir/$name" ] ||
-			die "$reference_dir/$name is older than $file, which the live build read; send the newer folder"
-	done
+	while IFS= read -r -d '' rel; do
+		[ -e "$reference_dir/$rel" ] ||
+			die "$reference_dir has no $rel, which $live_reference (the live build's) has"
+		ours=$($SUDO sha256sum -- "$live_reference/$rel" | cut -d' ' -f1)
+		theirs=$($SUDO sha256sum -- "$reference_dir/$rel" | cut -d' ' -f1)
+		[ "$ours" = "$theirs" ] ||
+			die "$reference_dir/$rel differs from $live_reference/$rel, which the live build read; send the live build's folder, or install the newer data there first"
+	done < <($SUDO find "$live_reference" -type f -printf '%P\0')
 fi
 
 [ -n "$stage" ] || stage="$HOME/cloud-runs/$run/in"

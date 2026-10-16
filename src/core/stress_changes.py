@@ -11,9 +11,12 @@ the counties come from a file of their own, `<DATA_ROOT>/reference/counties.geoj
 --counties`), and without it the report gives the region's totals and says how to
 install it.
 
-Read-only. Segments are paired by (`osm_way_id`, `ordinal`); a way only one of the
-two tables has is not a change of tier and is not counted. A segment is placed in
-the county that holds its midpoint.
+Read-only. Segments are paired by (`osm_way_id`, `ordinal`) and a start within
+`PAIR_TOLERANCE_M`: a way split or redrawn between the builds shifts its ordinals,
+and pairing by key alone would compare different stretches of road. A segment
+without a pair in the other table has no tier there (to or from none); those are
+counted on a line of their own, not as changes. A segment is placed in the county
+that holds its midpoint.
 """
 
 from __future__ import annotations
@@ -29,10 +32,28 @@ METRES_PER_MILE = 1609.344
 # Census state FIPS codes to postal codes, for the states the coverage reaches.
 STATE_FIPS = {"10": "DE", "11": "DC", "24": "MD", "42": "PA", "51": "VA", "54": "WV"}
 NO_COUNTY = "(no county)"
+PAIR_TOLERANCE_M = 1.0
+# The pairing of a staging segment `s` with a live one `l`.
+PAIRED = (
+    "l.osm_way_id = s.osm_way_id AND l.ordinal = s.ordinal AND ST_DWithin("
+    "ST_StartPoint(s.geometry)::geography, ST_StartPoint(l.geometry)::geography, "
+    f"{PAIR_TOLERANCE_M})"
+)
 INSTALL_COUNTIES = (
     "python scripts/install_reference_data.py --data-root <DATA_ROOT> "
     "--counties tl_2024_us_county.geojson"
 )
+
+
+@dataclass(frozen=True)
+class Unpaired:
+    """Segments with no pair in the other table: new in staging (from no tier) and
+    gone from live (to no tier)."""
+
+    new: int = 0
+    new_miles: float = 0.0
+    gone: int = 0
+    gone_miles: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -83,8 +104,8 @@ def changes(live: str, staging: str, counties: list[tuple[str, str]]) -> list[Ch
                        ST_Length(s.geometry::geography) AS metres,
                        ST_LineInterpolatePoint(s.geometry, 0.5) AS mid
                 FROM {staging}.segment s
-                JOIN {live}.segment l USING (osm_way_id, ordinal)
-                WHERE s.stress_tier <> l.stress_tier
+                JOIN {live}.segment l ON {PAIRED}
+                WHERE s.stress_tier IS DISTINCT FROM l.stress_tier
             )
             SELECT coalesce(
                        (SELECT c.name FROM stress_change_county c
@@ -105,12 +126,38 @@ def changes(live: str, staging: str, counties: list[tuple[str, str]]) -> list[Ch
     ]
 
 
-def summary(found: list[Change], with_counties: bool) -> list[str]:
+def unpaired(live: str, staging: str) -> Unpaired:
+    """How many segments of each table have no pair in the other (`PAIRED`)."""
+    with connection.cursor() as cursor:
+        counts = []
+        for one, other, alias, other_alias in (
+            (staging, live, "s", "l"),
+            (live, staging, "l", "s"),
+        ):
+            cursor.execute(
+                f"""SELECT count(*), coalesce(sum(ST_Length({alias}.geometry::geography)), 0)
+                    FROM {one}.segment {alias}
+                    WHERE NOT EXISTS (SELECT 1 FROM {other}.segment {other_alias} WHERE {PAIRED})"""
+            )
+            counts.append(cursor.fetchone())
+    (new, new_m), (gone, gone_m) = counts
+    return Unpaired(new, new_m / METRES_PER_MILE, gone, gone_m / METRES_PER_MILE)
+
+
+def summary(
+    found: list[Change], with_counties: bool, unmatched: Unpaired | None = None
+) -> list[str]:
     """The report's lines: the region's totals by change, then each county's."""
     lines = []
     total = sum(c.segments for c in found)
     miles = sum(c.miles for c in found)
     lines.append(f"stress changes, live -> staging: {total} segments, {miles:,.0f} mi")
+    if unmatched is not None:
+        lines.append(
+            f"  unpaired (a way new, gone, split or redrawn): {unmatched.new} staging segments "
+            f"({unmatched.new_miles:,.1f} mi) from no tier, {unmatched.gone} live segments "
+            f"({unmatched.gone_miles:,.1f} mi) to no tier; not counted as changes"
+        )
     by_change: dict[tuple[int, int], list[float]] = {}
     for c in found:
         row = by_change.setdefault((c.old, c.new), [0, 0.0])
@@ -142,4 +189,4 @@ def summary(found: list[Change], with_counties: bool) -> list[str]:
 
 def report(live: str, staging: str, reference_dir: Path) -> list[str]:
     counties = load_counties(Path(reference_dir) / COUNTIES_FILE)
-    return summary(changes(live, staging, counties), bool(counties))
+    return summary(changes(live, staging, counties), bool(counties), unpaired(live, staging))
