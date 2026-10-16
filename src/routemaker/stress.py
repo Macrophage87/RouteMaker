@@ -1389,8 +1389,10 @@ def motor_restriction(tags: dict[str, str]) -> tuple[Stress, str] | None:
     if tags.get("highway") in MOTOR_ONLY:
         return None
     bicycle = tags.get("bicycle")
-    if bicycle is not None and bicycle not in BICYCLE_ALLOWED_VALUES and bicycle != USE_SIDEPATH:
-        # bicycle=no, private, dismount, ...: closed to bicycles.
+    open_sidepath = bicycle == USE_SIDEPATH and is_use_sidepath_road(tags)
+    if bicycle is not None and bicycle not in BICYCLE_ALLOWED_VALUES and not open_sidepath:
+        # bicycle=no, private, dismount, ...: closed to bicycles, and use_sidepath
+        # where something else closes the road (review RL-1).
         return None
     access = tags.get("access")
     if bicycle is None and any(

@@ -885,6 +885,21 @@ check("a roadway OSM already tags use_sidepath is marked (the Douglass bridge)",
     .service == "alley")
 -- Review RL-1: OSM's own use_sidepath on a road with no side path mapped is rated on its
 -- own merits, so below the penalty's tier it is plain access, and from it the penalty.
+check("OSM's use_sidepath never opens a motorway",
+  M.remap_way({ highway = "motorway", bicycle = "use_sidepath" }, { stress_tier = 4 }).bicycle
+    == "no")
+check("nor a motorroad",
+  M.remap_way({ highway = "trunk", motorroad = "yes", bicycle = "use_sidepath" },
+    { stress_tier = 4 }).bicycle == "no")
+check("nor a private road",
+  M.remap_way({ highway = "service", access = "private", bicycle = "use_sidepath" },
+    { stress_tier = 1 }).bicycle == "no")
+check("nor a vehicle=no road",
+  M.remap_way({ highway = "residential", vehicle = "no", bicycle = "use_sidepath" },
+    { stress_tier = 1 }).bicycle == "no")
+check("an open road with it is not closed",
+  M.remap_way({ highway = "primary", bicycle = "use_sidepath" }, { stress_tier = 5 }).bicycle
+    == nil)
 check("OSM's use_sidepath below tier 3 is plain access",
   M.remap_way({ highway = "secondary", bicycle = "use_sidepath" }, { stress_tier = 2 }).bicycle
     == "yes")

@@ -242,24 +242,189 @@ class TestTheStage:
         handlers[Stage.APPLY_OVERRIDES]()
         assert context.stress_by_way[WITH_PATH].tier is Stress.LTS2
 
+        # The why line says the deciding rating, not the side-path rule.
+        rule = context.stress_by_way[WITH_PATH].rule
+        assert rule.startswith("override:")
+        assert "side path" not in segment_info.rule_words(rule)
+
+
+# One degree of latitude in the matcher's plane (`facility._xy`), metres.
+M_PER_DEG = 6_371_008.8 * 3.141592653589793 / 180
+
+
+class TestTheReviewFixes:
+    """The review of 1b529533 (RL-1 revision)."""
+
+    @pytest.mark.parametrize(
+        ("tags", "map_class", "reason"),
+        [
+            ({"highway": "motorway", "bicycle": "use_sidepath"}, "barred", "motorway"),
+            (
+                {"highway": "trunk", "motorroad": "yes", "bicycle": "use_sidepath"},
+                "barred",
+                "motorroad",
+            ),
+            (
+                {"highway": "service", "access": "private", "bicycle": "use_sidepath"},
+                "hidden",
+                "private",
+            ),
+            (
+                {"highway": "residential", "vehicle": "no", "bicycle": "use_sidepath"},
+                "hidden",
+                "private",
+            ),
+        ],
+    )
+    def test_use_sidepath_never_opens_a_closed_road(self, tags, map_class, reason) -> None:
+        assert facility.map_class(tags).value == map_class
+        assert facility.bike_access_reason(tags, side_path=True) == reason
+        assert not facility.is_use_sidepath_road(tags)
+        found, missing = facility.use_sidepath_paths(
+            [(1, tags, line(38.90)), (2, {"highway": "cycleway"}, line(38.90012))]
+        )
+        assert (found, missing) == ({}, set())
+        assert classify(tags, side_path=True).tier is classify(tags).tier
+
+    def test_a_crossing_is_never_the_side_path(self) -> None:
+        crossing = {"highway": "footway", "footway": "crossing", "bicycle": "yes"}
+        found, missing = facility.use_sidepath_paths(
+            [
+                (1, dict(ROAD), line(38.90)),
+                (2, crossing, line(38.90012)),
+                (3, {"highway": "cycleway", "cycleway": "crossing"}, line(38.90015)),
+            ]
+        )
+        assert (found, missing) == ({}, {1})
+
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {"cycleway": "track"},
+            {"cycleway:right": "track"},
+            {"cycleway:both": "track"},
+            {"sidewalk:both:bicycle": "yes"},
+            {"sidewalk:left:bicycle": "designated"},
+        ],
+    )
+    def test_a_side_path_on_the_road_itself_counts(self, extra) -> None:
+        found, missing = facility.use_sidepath_paths([(1, {**ROAD, **extra}, line(38.90))])
+        assert (found, missing) == ({1: None}, set())
+
+    def test_a_side_path_named_as_the_road_is_not_named(self) -> None:
+        found, _missing = facility.use_sidepath_paths(
+            [
+                (1, dict(ROAD), line(38.90)),
+                (2, {"highway": "cycleway", "name": "TEST ROAD"}, line(38.90012)),
+            ]
+        )
+        assert found == {1: None}
+
+    def test_a_north_south_road(self) -> None:
+        road = [(-77.0, 38.90), (-77.0, 38.904)]
+        path = [(-76.99985, 38.90), (-76.99985, 38.904)]  # about 13 m east
+        found, missing = facility.use_sidepath_paths(
+            [(1, dict(ROAD), road), (2, {"highway": "path", "name": "Spine"}, path)]
+        )
+        assert (found, missing) == ({1: "Spine"}, set())
+
+    @pytest.mark.parametrize(("metres", "matched"), [(29.0, True), (31.0, False)])
+    def test_just_inside_and_just_outside_30_m(self, metres, matched) -> None:
+        offset = metres / M_PER_DEG
+        found, missing = facility.use_sidepath_paths(
+            [(1, dict(ROAD), line(38.90)), (2, {"highway": "cycleway"}, line(38.90 + offset))]
+        )
+        assert (1 in found) is matched
+        assert (1 in missing) is not matched
+
+    @pytest.mark.parametrize("coords", [[(-77.0, 38.9)], [(-77.0, 38.9), (-77.0, 38.9)], []])
+    def test_a_way_with_no_length_is_skipped(self, coords) -> None:
+        assert facility.use_sidepath_paths([(1, dict(ROAD), coords)]) == ({}, set())
+
+    def test_an_agency_rating_says_its_own_why(self) -> None:
+        rating = agency_lts.AgencyRating(agency="moco", level=3.0)
+        result = agency_lts.apply(classify(ROAD, side_path=True), [rating])
+        words = segment_info.rule_words(result.rule)
+        assert "side path" not in words
+        assert words.startswith("Rated LTS 3 by")
+
 
 OWNER_STRESS = Path(__file__).parents[1] / "fixtures/overrides/2026-09-27-owner-stress.json"
+DOUGLASS = (910656490, 910656491)
+BENNING = (6061612, 135146249)
 
 
-@pytest.mark.parametrize(
-    ("way_id", "adjustment"),
-    [
-        # The Frederick Douglass bridge roadway (OSM bicycle=use_sidepath) and the Benning
-        # Road Bridge roadway (no bicycle tag) keep the owner's Avoid, which outranks the
-        # side-path rule whichever way it goes (the RL-1 line of the v0.7.0 plan).
-        (910656490, "frederick-douglass-bridge-roadway"),
-        (910656491, "frederick-douglass-bridge-roadway"),
-        (6061612, "benning-road-bridge-roadway"),
-        (135146249, "benning-road-bridge-roadway"),
-    ],
-)
-def test_douglass_and_benning_keep_the_owners_avoid(way_id, adjustment) -> None:
-    rows = json.loads(OWNER_STRESS.read_text())["rows"]
-    row = next(r for r in rows if r["osm_way_id"] == way_id and r["kind"] == "stress")
-    assert row["value"]["tier"] == 5
-    assert row["value"]["adjustment_id"] == adjustment
+@pytest.mark.parametrize("with_path", [True, False])
+def test_douglass_and_benning_keep_the_owners_avoid(tmp_path, monkeypatch, with_path) -> None:
+    """The Frederick Douglass bridge roadway (OSM bicycle=use_sidepath) and the Benning
+    Road Bridge roadway (no bicycle tag) keep the owner's Avoid through the real
+    precedence code (classify, then the fixture's approved override rows), whether or
+    not a side path is found (the RL-1 line of the v0.7.0 plan)."""
+    context = stage_context(tmp_path, monkeypatch)
+    douglass = {
+        "highway": "primary",
+        "name": "South Capitol Street Southeast",
+        "bicycle": "use_sidepath",
+        "foot": "no",
+        "oneway": "yes",
+        "maxspeed": "40 mph",
+    }
+    benning = {
+        "highway": "primary",
+        "name": "Benning Road Northeast",
+        "oneway": "yes",
+        "maxspeed": "35 mph",
+    }
+    extra = []
+    for i, way_id in enumerate((*DOUGLASS, *BENNING)):
+        lat = 38.80 + i * 0.01
+        tags = douglass if way_id in DOUGLASS else benning
+        extra.append(Way(osm_id=way_id, tags=dict(tags), node_ids=[], coordinates=line(lat)))
+        if with_path:
+            path = {"highway": "cycleway", "name": "Anacostia Riverwalk Trail"}
+            extra.append(
+                Way(osm_id=900 + i, tags=path, node_ids=[], coordinates=line(lat + 0.00012))
+            )
+    context.ways = [*context.ways, *extra]
+    context.ways_by_id = {w.osm_id: w for w in context.ways}
+    context.reference.urban_way_ids = {w.osm_id for w in context.ways}
+    fixture = json.loads(OWNER_STRESS.read_text())["rows"]
+    rows = [
+        Override("stress", r["osm_way_id"], r["value"])
+        for r in fixture
+        if r["kind"] == "stress" and r["osm_way_id"] in (*DOUGLASS, *BENNING)
+    ]
+    assert len(rows) == 4
+    handlers = build_handlers(context, load_overrides=lambda: rows)
+    handlers[Stage.CLASSIFY_STRESS]()
+    assert (DOUGLASS[0] in context.use_sidepath_paths) is with_path
+    handlers[Stage.APPLY_OVERRIDES]()
+    for way_id in (*DOUGLASS, *BENNING):
+        result = context.stress_by_way[way_id]
+        assert result.tier is Stress.AVOID, way_id
+        assert result.rule.startswith("override: stress adjustment"), result.rule
+
+
+def test_write_segments_writes_the_access_reason_and_side_path_name(tmp_path, monkeypatch) -> None:
+    context = stage_context(tmp_path, monkeypatch)
+    context.reference.sidepath_bridge_ids = frozenset()
+    handlers = build_handlers(context, load_overrides=lambda: [])
+    handlers[Stage.CLASSIFY_STRESS]()
+    # The facility stage has run (it returns early once it has a class per way).
+    context.facility_by_way = {w.osm_id: "none" for w in context.ways}
+    written: list[dict] = []
+    monkeypatch.setattr("pipeline.schema.schema_exists", lambda schema: True)
+    monkeypatch.setattr(run_module.writers, "write_segments", lambda s, rows: written.extend(rows))
+    for name in ("derive_trail_runs", "derive_calm_runs", "derive_roadside"):
+        monkeypatch.setattr(run_module.trail_routes, name, lambda schema: None)
+    monkeypatch.setattr(run_module.trail_routes, "mtb_level_counts", lambda schema: {})
+    monkeypatch.setattr(run_module.trail_routes, "mtb_name_counts", lambda schema: (0, 0))
+    handlers[Stage.WRITE_SEGMENTS]()
+    by_way = {row["osm_way_id"]: row for row in written}
+    assert by_way[WITH_PATH]["bike_access_reason"] == "bicycle_use_sidepath"
+    assert by_way[WITH_PATH]["sidepath_name"] == "Riverwalk Trail"
+    assert by_way[WITH_PATH]["map_class"] == "road"
+    assert by_way[SIDEWALK]["bike_access_reason"] == "bicycle_use_sidepath"
+    assert by_way[SIDEWALK]["sidepath_name"] is None
+    assert by_way[NO_PATH]["bike_access_reason"] is None
+    assert by_way[NO_PATH]["sidepath_name"] is None

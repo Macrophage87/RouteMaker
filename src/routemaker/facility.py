@@ -485,7 +485,7 @@ def map_class(tags: dict[str, str]) -> MapClass:
         return MapClass.ROAD
     bicycle = tags.get("bicycle")
     alley = highway == "service" and tags.get("service") == "alley"
-    if bicycle in BICYCLE_ALLOWED or bicycle == USE_SIDEPATH:
+    if bicycle in BICYCLE_ALLOWED:
         # An alley open to bicycles is still an alley: routing prices it like
         # an LTS 3 street whatever its bicycle tag (lua/routemaker_remap.lua,
         # `is_real_alley`), so the map keeps it close in and faint as well.
@@ -539,8 +539,6 @@ def bike_access_reason(
         return None
     if bicycle == "no":
         return "bicycle_no"
-    if bicycle == USE_SIDEPATH:
-        return "bicycle_use_sidepath" if side_path else None
     if bicycle == "private" or any(tags.get(k) in NO_PUBLIC_ACCESS for k in ("access", "vehicle")):
         return "private"
     if bicycle is None and physically_closed(tags):
@@ -549,6 +547,9 @@ def bike_access_reason(
         return "motorway"
     if tags.get("motorroad") == "yes":
         return "motorroad"
+    # Last: `use_sidepath` never opens a way something above closes (review RL-1).
+    if bicycle == USE_SIDEPATH and side_path:
+        return "bicycle_use_sidepath"
     return None
 
 
@@ -866,12 +867,41 @@ USE_SIDEPATH_M = 30.0
 
 
 def is_use_sidepath_road(tags: dict[str, str]) -> bool:
-    """A road (not a trail-class way) tagged `bicycle=use_sidepath`."""
+    """A road (not a trail-class way) tagged `bicycle=use_sidepath` that nothing else
+    closes: not a motorway or `motorroad=yes`, and no `access` or `vehicle` keeping the
+    public out (`map_class` hides or bars those, and the remap closes them)."""
+    highway = tags.get("highway")
     return (
         tags.get("bicycle") == USE_SIDEPATH
-        and tags.get("highway") is not None
-        and tags.get("highway") not in TRAIL_CLASS_HIGHWAY
+        and highway is not None
+        and highway not in TRAIL_CLASS_HIGHWAY
+        and highway not in BARRED_HIGHWAY
+        and tags.get("motorroad") != "yes"
+        and not any(tags.get(key) in NO_PUBLIC_ACCESS for key in ("access", "vehicle"))
     )
+
+
+# The keys that put a side path on the road's own way: a cycle track
+# (`cycleway*=track`), or a sidewalk open to bicycles (`sidewalk:*:bicycle`).
+ON_ROAD_TRACK_KEYS = ("cycleway", "cycleway:left", "cycleway:right", "cycleway:both")
+ON_ROAD_SIDEWALK_KEYS = (
+    "sidewalk:bicycle",
+    "sidewalk:left:bicycle",
+    "sidewalk:right:bicycle",
+    "sidewalk:both:bicycle",
+)
+
+
+def has_side_path_on_the_road(tags: dict[str, str]) -> bool:
+    """Whether the road's own tags map its side path on it: a cycle track, or a
+    sidewalk open to bicycles (`yes` or `designated`)."""
+    return any(tags.get(key) == "track" for key in ON_ROAD_TRACK_KEYS) or any(
+        tags.get(key) in ("yes", "designated") for key in ON_ROAD_SIDEWALK_KEYS
+    )
+
+
+def _is_crossing(tags: dict[str, str]) -> bool:
+    return bool({tags.get(key) for key in CROSSING_KEYS} & {CROSSING, TRAFFIC_ISLAND})
 
 
 def use_sidepath_paths(
@@ -881,44 +911,72 @@ def use_sidepath_paths(
     """(each `bicycle=use_sidepath` road with a side path mapped beside it, by osm id, to
     that path's name or None where it has none; the roads with no side path found).
 
-    `ways` is (osm id, tags, [(lon, lat), ...]). The road is looked at every
-    SIDE_STREET_STEP_M; a step is covered where a bikeable trail-class way lies within
-    USE_SIDEPATH_M and within SIDE_STREET_ANGLE of parallel. The name is that of the
-    named path covering the most of the road, where any does."""
+    `ways` is (osm id, tags, [(lon, lat), ...]). A road the tag does not leave open
+    (`is_use_sidepath_road`), or with no length, is in neither. A side path on the
+    road's own way (`has_side_path_on_the_road`) counts. Otherwise the road is looked
+    at every SIDE_STREET_STEP_M; a step is covered where a bikeable trail-class way that
+    is not a crossing lies within USE_SIDEPATH_M and within SIDE_STREET_ANGLE of
+    parallel. The name is that of the named path covering the most of the road, where
+    any does, and never the road's own name.
+
+    Per way, not per segment: the graph carries one tier per way (the remap reads the
+    way's tier), so a way split into Avoid and not-Avoid pieces would show the map one
+    thing and route another."""
     lat0 = 38.9
     cell = USE_SIDEPATH_M
     ways = ways if isinstance(ways, Sequence) else list(ways)
-    roads: list[tuple[int, list[tuple[float, float]]]] = []
+    found: dict[int, str | None] = {}
+    roads: list[tuple[int, str, list[tuple[float, float]]]] = []
     for osm_id, tags, coords in ways:
-        if is_use_sidepath_road(tags):
-            roads.append((osm_id, [_xy(lon, lat, lat0) for lon, lat in coords]))
+        if not is_use_sidepath_road(tags) or len(coords) < 2:
+            continue
+        points = [_xy(lon, lat, lat0) for lon, lat in coords]
+        if sum(math.dist(a, b) for a, b in zip(points, points[1:], strict=False)) <= 0:
+            continue
+        if has_side_path_on_the_road(tags):
+            found[osm_id] = None
+            continue
+        roads.append((osm_id, (tags.get("name") or "").strip().casefold(), points))
     if not roads:
-        return {}, set()
+        return found, set()
     wanted: set[tuple[int, int]] = set()
-    for _osm_id, points in roads:
+    for _osm_id, _name, points in roads:
         for p, _bearing_at, _metres in _samples(points, SIDE_STREET_STEP_M):
             wanted.add((int(p[0] // cell), int(p[1] // cell)))
+    xs = [x for _i, _n, points in roads for x, _y in points]
+    ys = [y for _i, _n, points in roads for _x, y in points]
+    box = (min(xs) - cell, min(ys) - cell, max(xs) + cell, max(ys) + cell)
     grid: dict[tuple[int, int], list[tuple[tuple[float, float], tuple[float, float], str]]] = {}
     for _osm_id, tags, coords in ways:
         if (
             tags.get("highway") not in TRAIL_CLASS_HIGHWAY
             or tags.get("highway") == "steps"
             or len(coords) < 2
-            or not trail_open_to_bicycle(tags)
         ):
             continue
-        name = (tags.get("name") or "").strip()
         points = [_xy(lon, lat, lat0) for lon, lat in coords]
+        if (
+            max(x for x, _y in points) < box[0]
+            or min(x for x, _y in points) > box[2]
+            or max(y for _x, y in points) < box[1]
+            or min(y for _x, y in points) > box[3]
+        ):
+            continue
+        cells: list[tuple[tuple[int, int], tuple[float, float], tuple[float, float]]] = []
         for a, b in zip(points, points[1:], strict=False):
             x0, x1 = sorted((a[0], b[0]))
             y0, y1 = sorted((a[1], b[1]))
             for gx in range(int(x0 // cell) - 1, int(x1 // cell) + 2):
                 for gy in range(int(y0 // cell) - 1, int(y1 // cell) + 2):
                     if (gx, gy) in wanted:
-                        grid.setdefault((gx, gy), []).append((a, b, name))
-    found: dict[int, str | None] = {}
+                        cells.append(((gx, gy), a, b))
+        if not cells or _is_crossing(tags) or not trail_open_to_bicycle(tags):
+            continue
+        name = (tags.get("name") or "").strip()
+        for key, a, b in cells:
+            grid.setdefault(key, []).append((a, b, name))
     missing: set[int] = set()
-    for osm_id, points in roads:
+    for osm_id, road_name, points in roads:
         total = covered = 0.0
         named: dict[str, float] = {}
         for p, bearing, metres in _samples(points, SIDE_STREET_STEP_M):
@@ -931,9 +989,9 @@ def use_sidepath_paths(
                     near, nearest = name, d
             if near is not None:
                 covered += metres
-                if near:
+                if near and near.casefold() != road_name:
                     named[near] = named.get(near, 0.0) + metres
-        if total > 0 and covered >= SIDE_STREET_FRACTION * total:
+        if covered >= SIDE_STREET_FRACTION * total:
             found[osm_id] = (
                 max(named.items(), key=lambda item: (item[1], item[0]))[0] if named else None
             )
