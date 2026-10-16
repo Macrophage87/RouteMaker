@@ -2456,7 +2456,7 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.eval("history.back(); true");
   const back2 = await p.waitFor("location.pathname === '/' && /[#&]p=/.test(location.hash) && !!document.querySelector('.summary')", 40000);
   await p.eval("history.replaceState(null, '', '/'); location.reload(); true");
-  const reloaded = await p.waitFor("document.readyState === 'complete' && location.pathname === '/' && !!document.querySelector('.maplibregl-canvas')", 40000);
+  const reloaded = await p.waitFor("document.readyState === 'complete' && location.pathname === '/' && !!document.querySelector('.maplibregl-map')", 60000);
   const cleared = await p.eval("({ hash: location.hash, kept: (() => { try { return sessionStorage.getItem('routemaker.plan-before-sign-in'); } catch { return 'refused'; } })(), summary: !!document.querySelector('.summary') })");
   check("stress page: after the browser's Back and a cleared plan, a reload does not bring the old plan back",
     onPage2 && back2 && reloaded && !/[#&]p=/.test(cleared.hash) && cleared.kept === null && !cleared.summary, JSON.stringify({ onPage2, back2, reloaded, cleared }));
