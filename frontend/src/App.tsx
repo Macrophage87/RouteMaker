@@ -131,8 +131,9 @@ import { loadWaterRestrooms, readWaterPrefs, saveWaterPrefs, waterAlongRoute, wa
 import waterRestroomsUrl from "./amenity-data/water-restrooms.json?url";
 import { climbShown, climbsAlongRoute, loadClimbs, readClimbsFrom, readClimbsOn, saveClimbsFrom, saveClimbsOn, type Climb, type ClimbCategory, type ClimbsStatus } from "./lib/climbs.ts";
 import { climbEndName, climbEnds, climbNearSpot, rideClimbEdit } from "./lib/climbCard.ts";
-// `no-inline`: the file is small until the build host fills it, and an inlined data: URL is refused by
-// the edge's connect-src 'self' (Caddyfile), so it stays its own hashed file under /assets/.
+// A committed snapshot, deliberately (review CH-7): `manage.py build_climbs` on the build host writes it
+// after a rebuild, and the file is copied here and committed. `no-inline`: an inlined data: URL is
+// refused by the edge's connect-src 'self' (Caddyfile), so it stays its own hashed file under /assets/.
 import climbsUrl from "./climb-data/climbs.json?url&no-inline";
 import {
   FOOD_EMPTY_QUERY,
@@ -151,8 +152,9 @@ import {
   type FoodScope,
 } from "./lib/food.ts";
 import { FoodFinder } from "./lib/foodFinder.ts";
-// `no-inline`, as climbs.json: the committed file is a few bytes until the build host fills it, and
-// an inlined data: URL is refused by the edge's connect-src 'self'. Its own hashed file under
+// food.json is a committed snapshot, as climbs.json, refreshed with scripts/build_food.py and committed;
+// places.json is a few bytes until scripts/build_places.py fills it. `no-inline`, as climbs.json: an
+// inlined data: URL is refused by the edge's connect-src 'self'. Its own hashed file under
 // /assets/ also lets the service worker leave it out of the precache (swCore.mjs LAZY_ASSET).
 import foodUrl from "./amenity-data/food.json?url&no-inline";
 import placesUrl from "./amenity-data/places.json?url&no-inline";
