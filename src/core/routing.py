@@ -880,6 +880,20 @@ class Dials:
     # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
     # A ride whose last point is its first is a loop whatever this says.
     loop: bool = False
+    # The pace the plan's costing rides at instead of the ride type's own (km/h); None: its
+    # own. Set only by a transit trip's lines priced as Novice on a share bike (`api._transit_body`,
+    # `novice_legs` on Bikeshare + Transit), so the lines are timed as its candidates were.
+    cycling_speed_kmh: float | None = None
+
+
+def _same_pace(options: dict, request: dict) -> dict:
+    """`options` (a fresh `presets.costing`) at the pace `request` is routed at, so a derived
+    request (the detour probe, the target fit, the middle of the hills) times its route as the
+    plan's own does (`Dials.cycling_speed_kmh`)."""
+    speed = ((request.get("costing_options") or {}).get("bicycle") or {}).get("cycling_speed")
+    if speed is not None:
+        options["bicycle"]["cycling_speed"] = speed
+    return options
 
 
 # How a via point is sent to the router (v0.7.0, "Via points vs stops"). The plan names
@@ -2250,8 +2264,8 @@ def _detour(
         and asked_for_calm
         and deadline.at - clock() >= DETOUR_PROBE_MIN_S
     ):
-        direct_costing = presets.costing(
-            preset_name, 0, 0, assist=assist, avoid_gravel=avoid_gravel
+        direct_costing = _same_pace(
+            presets.costing(preset_name, 0, 0, assist=assist, avoid_gravel=avoid_gravel), request
         )
         direct_request = {
             key: value
@@ -2367,8 +2381,11 @@ def _fit_target(
     def ask(position: int):
         """The route at a traffic position: (length m, the tuple), or None where there
         is none, and False where there is no time or the router refused."""
-        options = presets.costing(
-            preset_name, position, hills_dial, assist=assist, avoid_gravel=avoid_gravel
+        options = _same_pace(
+            presets.costing(
+                preset_name, position, hills_dial, assist=assist, avoid_gravel=avoid_gravel
+            ),
+            request,
         )
         asked = {k: v for k, v in request.items() if k != "alternates"} | {
             "costing_options": options
@@ -2605,6 +2622,8 @@ def plan(
     costing = presets.costing(
         preset_name, stress_dial, hills_dial, assist=assist, avoid_gravel=avoid_gravel
     )
+    if dials.cycling_speed_kmh is not None:
+        costing["bicycle"]["cycling_speed"] = float(dials.cycling_speed_kmh)
     request = {
         "locations": [
             {
@@ -2800,8 +2819,9 @@ def plan(
     kept_middle = False
     trace_costing = costing
     if avoiding and not quick:
-        middle_costing = presets.costing(
-            preset_name, stress_dial, 0, assist=assist, avoid_gravel=avoid_gravel
+        middle_costing = _same_pace(
+            presets.costing(preset_name, stress_dial, 0, assist=assist, avoid_gravel=avoid_gravel),
+            request,
         )
         trip, kept_middle = no_busier_than_middle(
             trip, request, variant, costing, middle_costing, when, deadline, traces, exposure

@@ -2988,6 +2988,11 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         avoid_gravel=body.avoid_gravel,
         trails_off=body.trails_off,
         system_weight_kg=body.system_weight_kg,
+        # The lines are priced as the candidates were (`leg_costing`): a share bike priced as
+        # Novice keeps the share bike's pace, so the trip is timed again (retime) at it.
+        cycling_speed_kmh=(
+            leg_costing["bicycle"]["cycling_speed"] if leg_costing is not None else None
+        ),
     )
     # WMATA's live reading (core.wmata_live), if any: an elevator out on the way costs the trip
     # a little in the ranking, and the block says the live values (core.transit_live).
