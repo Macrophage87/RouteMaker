@@ -7707,3 +7707,66 @@ for `appWorker`, `installOffer`, `offlineRoutes`, the `CorridorSource` fallback 
 order (`corridorStore.test.ts`); the browser suite's installable-app
 group runs against `vite preview` of a build (`--preview-port`, default 4173; `--cdp` picks the
 debugging port), with offline emulated on the page and the worker's target,.
+
+## Course export: FIT and TCX (v0.7.0, "All the sharing and export")
+
+Plan's GPX section (the GPX sheet; Go's Menu opens the same sheet with GPX alone, so Go gains no control) has a
+"File type" choice, GPX track, FIT course or TCX course, and for a course a "Device" choice; the button is
+"Download GPX", "Download FIT" or "Download TCX". The choice is remembered on the device (localStorage, guarded;
+the defaults, GPX and "Any bike computer", stand without it). A course download is checked against the closures in
+force as Download GPX is (App.tsx `downloadCourseRoute`), and the line saying what was fitted to the device is said
+in the section's existing polite status region ("FIT course for Garmin Edge: all 42 cues and 3,120 points fit.").
+An opened GPX file still downloads verbatim as GPX; a course is always the route shown.
+
+- **One compiled route** (`frontend/src/lib/course.ts`, `compileCourse`). The line and elevations are the GPX
+  export's (`gpxText.ts elevationsAlong`); the cues are Ride's (`navigate.ts rideModel`), so a turn is "Left onto R
+  Street Northwest." and nothing else. Each cue is pinned to its nearest record. Via points are not cues, as in
+  Ride. The plan's points are Start, Stop N and Finish: a saved place's label (Home) is never written.
+- **Times** are the route's moving time spread along the line from 2000-01-01T00:00:00Z, never the clock, so one
+  route gives the same bytes every time (PLAN.md, Clean exports).
+- **Device profiles** (`frontend/src/lib/deviceProfiles.ts`, the profile table): Any bike computer (the default),
+  Garmin Edge, Wahoo ELEMNT, Hammerhead Karoo, each with a cue budget (200, PLAN.md's default), a point budget
+  (10,000; 20,000 for Wahoo and Karoo) and name lengths (15; 32 for Wahoo and Karoo). `verified` is null on
+  every row: none has yet been loaded on its device. Record the date there when one is.
+- **Over the cue budget** the least important go first: notes on busier, calmer or unpaved stretches, then flagged
+  crossings (orange before red), then turns onto unnamed ways, then named turns and walks; within a rank, the cue
+  nearest the one before it. Never dropped: start, finish, stops, Avoid-rated junctions and work zones. Where those
+  alone pass the budget, the course keeps them and the line says to split the route.
+- **Over the point budget** the line is thinned by Douglas-Peucker at the smallest of 1, 2, 5 and 10 m that fits,
+  every cue's record kept; the line says the tolerance ("within 3 ft (1 m) of the route").
+
+The cue mapping (PLAN.md: "The mapping table names every collapse for every format"). The turn model gives left and
+right only today (describe.py has no slight, sharp, u-turn or fork yet), so FIT's richer types are not written.
+
+| Cue (course.ts)                | FIT course_point type | TCX PointType | Name (FIT; TCX cut to 10)  | TCX Notes            |
+| ------------------------------ | --------------------- | ------------- | -------------------------- | -------------------- |
+| start                          | generic (0)           | Generic       | Start                      | Start.               |
+| left / right turn              | left (6) / right (7)  | Left / Right  | street, abbreviated; else Left / Right | Ride's words |
+| hazard (Avoid, work zone, flagged crossing) | danger (5) | Danger     | street, abbreviated; else Caution | Ride's words  |
+| walk                           | generic (0)           | Generic       | Walk bike                  | Ride's words         |
+| busier, calmer, unpaved notes  | generic (0)           | Generic       | Busy road / Calmer / Unpaved | Ride's words       |
+| stop                           | generic (0)           | Generic       | Stop N                     | Stop N.              |
+| finish                         | generic (0)           | Generic       | Finish                     | The end of the route. |
+
+FIT has no notes field, so a course point carries its short name only.
+
+**FIT** (`frontend/src/lib/fit.ts`) is written here to the FIT protocol and Global Profile, with no library: PLAN.md
+named fit-tool (BSD-3, Python), but the export runs in the browser beside the GPX export, and a course needs only
+plain records and the CRC. Protocol 1.0, profile 21.00, little-endian, normal headers. Messages, in order:
+file_id (type course, manufacturer development, product 0, time_created the fixed base; no serial number), course
+(name, sport cycling), lap (start and end time and position, elapsed and timer time, distance, ascent, descent),
+event timer start, the records (time, position, altitude, distance), event timer stop_all, the course points
+(index, time, position, distance, type, name). No file_creator, device_info or user profile. Attribution: FIT has no
+notice field, so the course name carries " © OSM" where the profile's name length leaves room after the name, and
+otherwise the GPX section's hint carries the credit beside the download (PLAN.md's recorded FIT carve-out).
+`fit.test.ts` decodes each file back with a reader driven by the file's own definitions, checking both CRCs; the
+same file was also decoded with fitdecode 0.10.0 (MIT) once, by hand, with every message and field read as
+written. Not yet loaded on a real head unit.
+
+**TCX** (`frontend/src/lib/tcx.ts`): TrainingCenterDatabase v2, Course_t's order (Name, Lap, Track, Notes,
+CoursePoint), the course name cut to 15 characters and point names to 10, the full cue in CoursePoint/Notes, the
+route's credits in Course/Notes. No Author or Creator element. Not validated against Garmin's XSD in the suite (the
+schema is not in the repository) and not yet loaded on a device.
+
+Tests: `course.test.ts` (cues, pinning, Home naming, budgets, thinning, names, the trimmed line, TCX), `fit.test.ts`
+(the round trip), `courseWiring.test.ts` (the section's controls, its live region, no control in Go).

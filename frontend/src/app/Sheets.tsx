@@ -39,6 +39,8 @@ import { DC_BOUNDARY_CREDIT, MASS_DC_ONLY } from "../lib/dcBoundary.ts";
 import { MtbTrailLegend, StressLegend } from "../lib/stressLegend.ts";
 import { refreshStressTiles } from "../lib/mapStyle.ts";
 import { GpxPanel } from "../GpxPanel.tsx";
+import type { CourseFormat } from "../lib/course.ts";
+import type { DeviceProfileId } from "../lib/deviceProfiles.ts";
 import { JunctionLegend, SheetFrame } from "../Sidebar.tsx";
 import { MASS_RIDE_LAYERS_NOTE, MENU_TITLE, SHEET_TITLES, STRESS_CHECKING, STRESS_UNAVAILABLE, type PanelView } from "../lib/sidebar.ts";
 import type { ImportedPlan } from "../lib/gpxPlan.ts";
@@ -280,13 +282,15 @@ export interface GpxSheetProps {
   getMap: () => MapLibreMap | null;
   /** Download GPX: the page checks closures first, and an unedited opened file downloads as it came. */
   downloadRoute: () => void;
+  /** Plan only: download a FIT or TCX course (GpxPanel); absent in Go, which offers GPX alone. */
+  downloadCourse?: (format: CourseFormat, profile: DeviceProfileId, said: (line: string) => void) => void;
   /** Signed in: Save route for an opened file (its own text, verbatim); null signed out. */
   saveControl: ReactNode;
 }
 
 /** The GPX sheet. */
 export function GpxSheet(props: GpxSheetProps) {
-  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, refineImported, getMap, downloadRoute, saveControl } = props;
+  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, refineImported, getMap, downloadRoute, downloadCourse, saveControl } = props;
   return (
     <SheetFrame id="sheet-gpx" title={SHEET_TITLES.gpx} open={nav.view === "gpx"} onBack={nav.back} backLabel={nav.backLabel("gpx")}>
       <GpxPanel
@@ -301,6 +305,7 @@ export function GpxSheet(props: GpxSheetProps) {
         onRefine={refineImported}
         getMap={getMap}
         onDownload={downloadRoute}
+        onDownloadCourse={downloadCourse}
       />
       {imported?.verbatim && saveControl}
     </SheetFrame>
