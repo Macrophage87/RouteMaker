@@ -163,6 +163,7 @@ export function PlaceSearch({
   // of its own under it, so it is an option a keyboard and a screen reader reach like any other.
   const offersDestination = variant === "plan" && !loop && effect === "via";
   const sharedItems: Place[] = shared && "place" in shared ? [shared.place] : [];
+  const sharedSaid = shared && "said" in shared ? shared.said : "";
   // The empty box lists the last places picked (v0.6.1), under "Your location".
   const empty = query.trim() === "";
   const offered: Place[] = [...sharedItems, ...(empty ? recent : places)];
@@ -391,11 +392,10 @@ export function PlaceSearch({
           ),
         )}
       </ul>
-      {shared && "said" in shared && (
-        <p className="hint" role="status">
-          {shared.said}
-        </p>
-      )}
+      {/* Always mounted, filled after (review F10): a status region mounted with its words in it is often not read. */}
+      <p className={sharedSaid ? "hint" : "visually-hidden"} role="status" aria-live="polite">
+        {sharedSaid}
+      </p>
       {expanded && places.length > 0 && (
         <p className="place-credit">
           Only places in this map's area.
