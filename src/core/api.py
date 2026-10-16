@@ -60,10 +60,11 @@ import dataclasses
 import json
 import logging
 import time
-from concurrent.futures import Future, ThreadPoolExecutor
+from collections.abc import Callable
+from concurrent.futures import Future
 from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import datetime, timedelta
-from functools import wraps
+from functools import partial, wraps
 from typing import Annotated, Literal
 
 from django.conf import settings
@@ -93,6 +94,7 @@ from . import (
     geocode,
     micromobility,
     nearest,
+    parallel,
     presets,
     ratelimit,
     route_cache,
@@ -3061,12 +3063,14 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     # Every later ride of the chosen option (the ride from the exit station to the destination,
     # the far end's bikeshare ride) is routed as the first is, with the same ride type and dials,
     # for its stress colours (the owner, v0.7.0: "it doesn't seem to include the LTS of the
-    # section towards the destination"). They run beside the answer's own line in a small pool,
-    # inside the same budget; one that fails or runs out of time keeps its plain line from the
-    # search, and the plan never fails for it.
-    pool = ThreadPoolExecutor(max_workers=LEG_LINE_WORKERS, thread_name_prefix="transit-leg")
+    # section towards the destination"). They run beside the answer's own line on the router
+    # pool (`core.parallel`, so a request never has more than its bound of router calls in
+    # flight beside its own thread), inside the same budget; one that fails or runs out of time
+    # keeps its plain line from the search, and the plan never fails for it.
+    asked: list = []
     try:
-        later = {} if whole else _later_rides(pool, found, leg_preset, started, dials)
+        later = {} if whole else _later_rides(found, leg_preset, started, dials)
+        asked.append(later)
         answer = line([ride_from, ride_to])
         lines = _collected(later, started)
         if answer is None:
@@ -3097,15 +3101,20 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
             else:
                 again_whole = True
                 points = [list(start), list(end)]
-            later = {} if again_whole else _later_rides(pool, timed, leg_preset, started, dials)
+            later = {} if again_whole else _later_rides(timed, leg_preset, started, dials)
+            asked.append(later)
             answer = line(points)
             lines = _collected(later, started)
             if answer is None:
                 answer, timed = unrouted(points, timed)
         found = timed
     finally:
-        # A call still running past its wait is left to its own deadline, not waited for.
-        pool.shutdown(wait=False, cancel_futures=True)
+        # A later ride not started yet is not asked; one still running past its wait is left
+        # to its own deadline, not waited for.
+        for later in asked:
+            for pending in later.values():
+                if isinstance(pending, Future):
+                    pending.cancel()
     answered(answer, found, lines)
     logger.info(
         "transit plan %s: search %.1f s (candidates %.1f s, %d calls), line %.1f s",
@@ -3118,57 +3127,66 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
     return answer
 
 
-# The later rides of a transit trip routed at once, beside the answer's own line: a trip has at
-# most a ride at each end and the odd ride between stations, so a few threads cover it.
-LEG_LINE_WORKERS = 3
-
-
 def _later_rides(
-    pool: ThreadPoolExecutor,
     plan: transit.Plan,
     leg_preset: str,
     started: float,
     dials: routing.Dials,
-) -> dict[int, Future]:
+) -> dict[int, Future | Callable[[], dict | None]]:
     """Each ride of the chosen option after its route line (own bike or share bike, long
-    enough to route), sent to the router in `pool` as the route line is: the same ride type,
-    dials and budget. By the leg's index in the option."""
+    enough to route): the same ride type, dials and budget, by the leg's index in the option.
+    Sent to the router pool (`core.parallel`) to run beside the route line; where the pool is
+    off (ROUTER_PARALLEL_CALLS=1), kept to run in turn after the line (`_collected`), so the
+    line is never kept waiting behind them."""
     option = plan.option
-    later: dict[int, Future] = {}
+    later: dict[int, Future | Callable[[], dict | None]] = {}
     for index, leg in enumerate(option.legs):
         if index == option.ride or leg.mode not in (transit.RIDE, transit.SHARE):
             continue
         if transit.line_m(leg) < transit.MIN_LINE_M:
             continue
         points = [list(leg.coordinates[0]), list(leg.coordinates[-1])]
-        later[index] = pool.submit(_leg_line, points, leg_preset, started, dials)
+        if parallel.enabled():
+            later[index] = parallel.submit(_leg_line, points, leg_preset, started, dials)
+        else:
+            later[index] = partial(_leg_line, points, leg_preset, started, dials)
     return later
 
 
 def _leg_line(points: list[list[float]], leg_preset: str, started: float, dials) -> dict | None:
     """A later ride's line routed for its stress colours, or None: whatever goes wrong, the
-    leg keeps the plain line it was found with."""
+    leg keeps the plain line it was found with. Without the request's timing recorder: a
+    plan restarts its recorder's phases, which are the answer's own line's."""
+    token = timing.start(None)
+    on_pool = parallel.inside()
     try:
         return routing.plan(points, leg_preset, long_ride=False, started=started, dials=dials)
     except Exception as error:  # a later leg never fails the plan
         logger.warning("transit plan: a later ride's line was not routed: %s", error)
         return None
     finally:
-        # This thread's own database connection (the plan reads the approved junctions).
-        connections.close_all()
+        timing.stop(token)
+        if on_pool:
+            # The pool thread's own database connection (the plan reads the approved
+            # junctions and the stress join): closed, as a pool thread is not the request's.
+            connections.close_all()
 
 
-def _collected(later: dict[int, Future], started: float) -> dict[int, dict]:
+def _collected(later: dict, started: float) -> dict[int, dict]:
     """The later rides that were routed in time, by leg index. A call still running when the
-    request's router budget ends is let go: its leg keeps its plain line."""
+    request's router budget ends is let go: its leg keeps its plain line. One kept to run in
+    turn (the pool off) runs here, after the line, while the budget lasts."""
     out: dict[int, dict] = {}
     end = started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S
-    for index, future in later.items():
-        try:
-            answered = future.result(timeout=max(0.0, end - routing.clock()))
-        except FutureTimeout:
-            logger.warning("transit plan: a later ride's line ran out of time")
-            continue
+    for index, pending in later.items():
+        if not isinstance(pending, Future):
+            answered = pending() if routing.clock() < end else None
+        else:
+            try:
+                answered = pending.result(timeout=max(0.0, end - routing.clock()))
+            except FutureTimeout:
+                logger.warning("transit plan: a later ride's line ran out of time")
+                continue
         if answered is not None:
             out[index] = answered
     return out

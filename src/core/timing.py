@@ -138,7 +138,7 @@ class Timings:
         )
 
 
-def start(timings: Timings) -> contextvars.Token:
+def start(timings: Timings | None) -> contextvars.Token:
     return _current.set(timings)
 
 
