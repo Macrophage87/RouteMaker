@@ -168,7 +168,8 @@ def trace_answer(vertices, edges) -> dict:
 
 class FakeRouter:
     """Records every call; answers from `answers[endpoint]` (a body, a list of
-    bodies consumed in order, or an exception to raise)."""
+    bodies consumed in order, an exception to raise, or a function of the
+    request's payload - for calls the router pool may make in any order)."""
 
     def __init__(self, answers: dict) -> None:
         self.answers = answers
@@ -180,6 +181,8 @@ class FakeRouter:
         answer = self.answers[endpoint]
         if isinstance(answer, list):
             answer = answer.pop(0)
+        elif callable(answer) and not isinstance(answer, Exception):
+            answer = answer(payload)
         if isinstance(answer, Exception):
             raise answer
         return answer
@@ -224,7 +227,11 @@ def segments(segment_schemas):
 
 
 @pytest.fixture
-def router(monkeypatch):
+def router(monkeypatch, settings):
+    # Router calls in turn here: a FakeRouter list answers in the order it is asked, and the
+    # pool (core.parallel) would ask in any order. tests/test_faster_routing.py covers the pool.
+    settings.ROUTER_PARALLEL_CALLS = 1
+
     def install(fake: FakeRouter) -> FakeRouter:
         monkeypatch.setattr(routing, "_transport", fake)
         return fake
@@ -1337,11 +1344,12 @@ class TestMultiLegStress:
             FakeRouter(
                 {
                     "route": route_answer([(first, 0.9, [1.0]), (second, 1.0, [1.0])]),
-                    "trace_attributes": [
-                        trace_answer(first, [(101, 0, 1, 0.9)]),
-                        routing.RouterRefused(400, 443, "no"),
-                        routing.RouterRefused(400, 444, "no"),
-                    ],
+                    # By the leg asked about: the pool traces the legs in any order.
+                    "trace_attributes": lambda payload: (
+                        trace_answer(first, [(101, 0, 1, 0.9)])
+                        if payload["encoded_polyline"] == encode_polyline6(first)
+                        else routing.RouterRefused(400, 443, "no")
+                    ),
                 }
             )
         )
@@ -1356,10 +1364,11 @@ class TestMultiLegStress:
             FakeRouter(
                 {
                     "route": route_answer([(first, 0.9, [1.0]), (second, 0.4, [1.0])]),
-                    "trace_attributes": [
-                        trace_answer(first, [(101, 0, 1, 0.9)]),
-                        trace_answer(second, [(202, 0, 1, 0.4)]),
-                    ],
+                    "trace_attributes": lambda payload: (
+                        trace_answer(first, [(101, 0, 1, 0.9)])
+                        if payload["encoded_polyline"] == encode_polyline6(first)
+                        else trace_answer(second, [(202, 0, 1, 0.4)])
+                    ),
                 }
             )
         )
