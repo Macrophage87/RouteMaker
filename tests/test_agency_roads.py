@@ -1315,16 +1315,17 @@ def test_alexandria_s_records_that_are_not_streets_to_ride_are_skipped(overrides
     assert A.parse_alexandria_transport_streets(alexandria(**overrides)) is None
 
 
-def test_alexandria_s_speed_is_a_default_where_osm_has_none() -> None:
-    """Item 183: the city's 20 mph fills a residential street OSM leaves unposted, and
-    OSM's posted speed stands where it has one (often surveyed there)."""
+def test_alexandria_s_speed_wins_over_osm() -> None:
+    """Item 183: the city's 20 mph fills a residential street OSM leaves unposted, and the
+    owner chose (2026-10-16, "City wins") that it replaces OSM's posted speed, as DC's does."""
     city = A.WayFacts(agency=A.ALEXANDRIA_AGENCY, blocks=("a",), speed_mph=20)
     gap = A.overlay({"highway": "residential"}, city)
     assert gap.tags["maxspeed"] == "20 mph"
     assert gap.sources["maxspeed"] == A.ALEXANDRIA_AGENCY
+    assert A.ALEXANDRIA_SPEED_WINS and A.ALEXANDRIA_AGENCY not in A.SPEED_FILLS_ONLY
     posted = A.overlay({"highway": "residential", "maxspeed": "25 mph"}, city)
-    assert posted.tags["maxspeed"] == "25 mph"
-    assert posted.sources["maxspeed"] == A.SOURCE_OSM
+    assert posted.tags["maxspeed"] == "20 mph"
+    assert posted.sources["maxspeed"] == A.ALEXANDRIA_AGENCY
     assert "oneway" not in gap.routing
 
 

@@ -195,15 +195,15 @@ CARRIAGEWAY_HIGHWAYS = frozenset({"motorway", "trunk"})
 # The agencies whose posted speed only fills a gap in OSM's. Baltimore's `speed`
 # field is the city's attribute, not a survey of signs, and the owner chose
 # "Fill gaps only (Recommended)" (OWNER-DECISIONS 184). DC's posted limits take
-# precedence over OSM's (item 151). Alexandria's recorded speed is a sourced
-# default (PLAN.md item 183): it fills a way OSM gives no `maxspeed`, and OSM's
-# posted speed, often surveyed there, stands where it has one.
+# precedence over OSM's (item 151). Alexandria's recorded speed (PLAN.md item 183)
+# fills a way OSM gives no `maxspeed` and, by the owner's choice below, replaces
+# OSM's posted speed too.
 #
-# Whether the city's speed should beat OSM's instead, as DC's does, is with the
-# owner (2026-10-16). This is the one switch: True moves Alexandria out of
+# The owner chose (2026-10-16 16:51 UTC, "City wins") that the city's speed beats OSM's,
+# as DC's does. This is the one switch: True moves Alexandria out of
 # SPEED_FILLS_ONLY into the record-wins group for the speed (its one-way and lanes
 # are never read either way).
-ALEXANDRIA_SPEED_WINS = False
+ALEXANDRIA_SPEED_WINS = True
 SPEED_FILLS_ONLY = frozenset(
     {BALTIMORE_AGENCY} | (set() if ALEXANDRIA_SPEED_WINS else {ALEXANDRIA_AGENCY})
 )

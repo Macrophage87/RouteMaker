@@ -3796,7 +3796,7 @@ the first host to run it is the first test of it.
    own posted speeds, lanes by direction, one-way streets, bike lanes and
    parking, which then take precedence over OSM's tags at the rebuild's
    classification (docs/DEVELOPMENT.md, "Agency street layers"), and
-   Alexandria's posted speeds where OSM has none (PLAN.md item 183; CC0, the
+   Alexandria's recorded speeds, which replace OSM's (PLAN.md item 183; CC0, the
    city's OpenData portal). The Alexandria file was kept under
    `internal-only/` until the city's reply of 2026-10-16, and the installer
    refuses any path under that directory, so move it once, before the first
