@@ -111,6 +111,7 @@ export const CLEAR_LABEL = "Clear";
 export const PLANNING_SAID = "Planning route";
 export const CANCELLED_SAID = "Routing cancelled. The plan is as you left it.";
 export const RESET_SAID = "Reset to the route as drawn. Undo brings your changes back.";
+export const CLEARED_SAID = "Plan cleared. Undo brings it back.";
 
 /** The Route button: its label, and why it does nothing now (null: it routes). */
 export function routeButton(state: { points: number; drawn: boolean; changed: boolean; routeShown: boolean }): { label: string; unavailable: string | null } {

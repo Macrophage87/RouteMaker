@@ -38,6 +38,7 @@ import {
   PLANNING_SAID,
   RESET_NOTHING,
   RESET_SAID,
+  CLEARED_SAID,
   changeSummary,
   legChanges,
   elapsedText,
@@ -1015,14 +1016,18 @@ export function App() {
     if (focusPlan && viewNow.current === "planner") planButtonRef.current?.focus();
   }, [focusPlan]);
 
-  // After Remove, the focus goes to the next Remove button, or (none left) to the search.
+  // After Remove, the focus goes to the next Remove button, or (none left) to the search; after Clear
+  // (index -1), to the search, Go's Where to? in Go, once the cleared route no longer hides it.
   useEffect(() => {
     const index = focusAfterRemove.current;
     if (index === null) return;
+    const target = index < 0 ? null : removeRefs.current[Math.min(index, points.length - 1)];
+    const search = pointsSearchRef.current ?? panelRef.current?.querySelector(".go-search") ?? null;
+    const input = search?.querySelector<HTMLElement>("input");
+    if (!target && index < 0 && input?.closest("[hidden]")) return;
     focusAfterRemove.current = null;
-    const target = removeRefs.current[Math.min(index, points.length - 1)];
-    (target ?? pointsSearchRef.current?.querySelector<HTMLElement>("input"))?.focus();
-  }, [points]);
+    (target ?? input)?.focus();
+  }, [points, route]);
 
   // The latest points, for handlers the map holds on to between renders.
   const pointsRef = useRef(points);
@@ -1991,6 +1996,9 @@ export function App() {
     // Clearing an opened file's plan puts the file away too; undo brings both back.
     const ride = rideRef.current;
     commit([], ride.imported ? { ...ride, imported: null } : undefined);
+    // Said, and the focus to the place search, as every other removal hands it on (review a11y-1).
+    announce(CLEARED_SAID);
+    focusAfterRemove.current = -1;
   };
   // An opened GPX file (GpxPanel): one edit, so one undo takes it back -
   // its points, the ride type it names (through the ride-type choice, which
