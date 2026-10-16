@@ -2074,9 +2074,11 @@ A signed-in rider's own Go settings (`core.models.MyGo`, table `my_go`; GET and 
 `/api/me/go`): the view the app opens in, Go's ride type and their Home (one point, rounded to 5
 decimal places, and its label). One row per account, made at the first save. Each rider reads and
 writes only their own row, from their session. The row is deleted when the account is marked
-deleted or removed. **Privacy.** A Home is where a rider lives: it is never put in a link, a log
-or a suggestion, and `my_go` is left out of the beta's data shipment (`scripts/beta/ship-data.sh`
-`EXCLUDED_TABLE_DATA`), as the other tables that point at an account are.
+deleted or removed. **Privacy.** A Home is where a rider lives: it is never put in a log or a
+suggestion. Riding to it with Go's Home chip makes it a plan point, so it is in the address bar
+and in a copied or shared link, and Copy link and Share then say "This link includes your Home as
+the destination." (`linkLocationNote`, `frontend/src/lib/geolocation.ts`). `my_go` is left out
+of the beta's data shipment (`scripts/beta/ship-data.sh` `EXCLUDED_TABLE_DATA`), as the other tables that point at an account are.
 
 **The migration** is `core/migrations/0019_my_go.py` (one new table; nothing else changed), after
 `0018_junction_suggestions`, so the chain stays linear with one leaf. It reverses cleanly

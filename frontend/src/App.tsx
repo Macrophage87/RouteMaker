@@ -2678,8 +2678,8 @@ export function App() {
     return { top: 60, bottom: 60, right: 60, left: (panel?.right ?? 0) + 40 };
   }, []);
 
-  // Copy link keeps full precision; when the rider's location is in the plan it says so, in one line.
-  const linkNote = linkLocationNote(points, fromHere);
+  // Copy link keeps full precision; when the rider's location or Home is in the plan it says so (review privacy-2).
+  const linkNote = linkLocationNote(points, fromHere, myGo.home?.point ?? null);
 
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
