@@ -10,6 +10,9 @@ import {
   RIDE_PREFS_KEY,
   ScreenWake,
   Voice,
+  WAKE_LOST,
+  WAKE_REASKS,
+  WAKE_UNAVAILABLE,
   readHeadingUp,
   readRidePrefs,
   toScreenReader,
@@ -274,6 +277,54 @@ test("ScreenWake: a lock the browser lets go mid-ride is asked again, and whethe
   releases.at(-1)!();
   await settle();
   assert.equal(requests, before);
+});
+
+test("ScreenWake: refused after a release says the screen may now turn off; never held says the browser cannot (review RIDE-8)", async () => {
+  assert.equal(new ScreenWake({ request: undefined }).noteFor(false), WAKE_UNAVAILABLE);
+  let refuse = false;
+  let release = () => {};
+  let requests = 0;
+  const wake = new ScreenWake({
+    request: async () => {
+      requests += 1;
+      if (refuse) throw new Error("NotAllowed");
+      const sentinel = {
+        released: false,
+        release: async () => void (sentinel.released = true),
+        addEventListener: (_type: "release", listener: () => void) => {
+          release = () => {
+            sentinel.released = true;
+            listener();
+          };
+        },
+      };
+      return sentinel;
+    },
+    visible: () => true,
+  });
+  const told: boolean[] = [];
+  wake.whenLost((held) => told.push(held));
+  assert.equal(await wake.hold(), true);
+  assert.equal(wake.noteFor(true), "");
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+  // A browser that keeps letting go: asked again WAKE_REASKS times, then no more, told as gone.
+  for (let i = 0; i < WAKE_REASKS; i += 1) {
+    release();
+    await settle();
+  }
+  assert.equal(requests, 1 + WAKE_REASKS);
+  assert.deepEqual(told, Array(WAKE_REASKS).fill(true));
+  release();
+  await settle();
+  assert.equal(requests, 1 + WAKE_REASKS, "not asked a fourth time");
+  assert.deepEqual(told.at(-1), false);
+  assert.equal(wake.noteFor(false), WAKE_LOST);
+  assert.match(WAKE_LOST, /may now turn off/);
+  assert.equal(WAKE_REASKS, 3);
+  // Shown again later, a refusal is still told as let go, not as a browser that cannot.
+  refuse = true;
+  assert.equal(await wake.again(), false);
+  assert.equal(wake.noteFor(false), WAKE_LOST);
 });
 
 test("Announcer: a note goes at once and keeps a waiting cue, which goes after its gap", () => {

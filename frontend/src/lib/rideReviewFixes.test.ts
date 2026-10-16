@@ -62,6 +62,7 @@ test("RIDE-3 (owner, 2026-10-16): weak GPS for long shows the turns ahead as a l
 });
 
 test("RIDE-8: a wake lock the browser lets go mid-ride is asked again, and the screen note says if it is not back", () => {
+  assert.match(ride, /const note = wake\.noteFor\(held\);/, "the wording knows a lock let go from one never held");
   assert.match(ride, /useEffect\(\(\) => \{\s*wake\.whenLost\(noteWake\);\s*return \(\) => wake\.whenLost\(null\);\s*\}, \[wake, noteWake\]\);/);
   const output = source("./rideOutput.ts");
   assert.match(output, /visible: \(\) => typeof document === "undefined" \|\| document\.visibilityState === "visible"/);

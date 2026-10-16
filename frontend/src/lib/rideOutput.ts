@@ -292,10 +292,19 @@ export function browserWake(): WakeEnv {
 export const WAKE_UNAVAILABLE =
   "This browser cannot keep the screen on. Keep your screen on yourself for this ride (on an iPhone: Settings, Display and Brightness, Auto-Lock, Never).";
 
+/** Said instead when the screen was kept on earlier in the ride and the browser stopped (review RIDE-8). */
+export const WAKE_LOST =
+  "The screen may now turn off: the browser stopped keeping it on. Keep your screen on yourself for this ride (on an iPhone: Settings, Display and Brightness, Auto-Lock, Never).";
+
+/** How many times a ride asks again for a lock the browser let go in front, before it stops asking. */
+export const WAKE_REASKS = 3;
+
 /** Holds the screen on while riding: asked at Start ride, again when the page shows, let go at End ride. */
 export class ScreenWake {
   private sentinel: WakeLockSentinelLike | null = null;
   private wanted = false;
+  private everHeld = false;
+  private reasks = 0;
   private readonly env: WakeEnv;
 
   constructor(env: WakeEnv) {
@@ -320,6 +329,12 @@ export class ScreenWake {
     this.lost = listener;
   }
 
+  /** The screen note for a hold's outcome: none when held, else whether it never was or was let go. */
+  noteFor(held: boolean): string {
+    if (held) return "";
+    return this.everHeld ? WAKE_LOST : WAKE_UNAVAILABLE;
+  }
+
   private async request(): Promise<boolean> {
     try {
       const sentinel = await this.env.request!();
@@ -328,10 +343,17 @@ export class ScreenWake {
         return false;
       }
       this.sentinel = sentinel;
+      this.everHeld = true;
       // Let go by the browser while the page is in front (review RIDE-8): asked again at once, and
       // whether it came back is told (`whenLost`), so a lock that is gone is said, not assumed.
+      // A browser that keeps letting go is asked WAKE_REASKS times in a ride, then told as gone.
       sentinel.addEventListener?.("release", () => {
         if (this.sentinel !== sentinel || !this.wanted || !(this.env.visible?.() ?? true)) return;
+        if (this.reasks >= WAKE_REASKS) {
+          this.lost?.(false);
+          return;
+        }
+        this.reasks += 1;
         void this.hold().then((held) => this.lost?.(held));
       });
       return true;

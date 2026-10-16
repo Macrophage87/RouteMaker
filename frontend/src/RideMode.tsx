@@ -71,7 +71,6 @@ import {
   OUTPUT_LABELS,
   ScreenWake,
   Voice,
-  WAKE_UNAVAILABLE,
   browserSpeech,
   browserWake,
   toScreenReader,
@@ -644,12 +643,13 @@ export function RideMode({
   }, []);
   const noteWake = useCallback(
     (held: boolean) => {
-      const note = held ? "" : WAKE_UNAVAILABLE;
+      // Never held: the browser cannot; held earlier this ride and let go: it stopped (review RIDE-8).
+      const note = wake.noteFor(held);
       if (note && note !== wakeSaid.current) notify(note);
       wakeSaid.current = note;
       setWakeNote(note);
     },
-    [notify],
+    [notify, wake],
   );
   // The browser letting the lock go mid-ride (review RIDE-8): asked again, and said if it is not back.
   useEffect(() => {
