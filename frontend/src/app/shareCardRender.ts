@@ -57,8 +57,8 @@ async function drawMap(w: number, h: number, route: CardRoute, padding: { top: n
   style.sources.card = { type: "geojson", data: line };
   const u = Math.min(w, h) / 1000;
   style.layers.push(
-    { id: "card-casing", type: "line", source: "card", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": "#ffffff", "line-width": Math.max(8, 16 * u) } },
-    { id: "card-line", type: "line", source: "card", layout: { "line-join": "round", "line-cap": "round" }, paint: { "line-color": LINE, "line-width": Math.max(5, 9 * u) } },
+    { id: "card-casing", type: "line", source: "card", layout: { "line-join": "round", "line-cap": "butt" }, paint: { "line-color": "#ffffff", "line-width": Math.max(8, 16 * u) } },
+    { id: "card-line", type: "line", source: "card", layout: { "line-join": "round", "line-cap": "butt" }, paint: { "line-color": LINE, "line-width": Math.max(5, 9 * u) } },
   );
   const lons = route.pieces.flat().map((p) => p[0]);
   const lats = route.pieces.flat().map((p) => p[1]);
