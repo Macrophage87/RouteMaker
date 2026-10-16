@@ -877,13 +877,13 @@ class Dials:
     # only shape the route. The router passes them without a U-turn or a stop
     # (`VIA_LOCATION_TYPE`); every other point is a stop ("break"), as before.
     vias: tuple[int, ...] = ()
-    # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
-    # A ride whose last point is its first is a loop whatever this says.
-    loop: bool = False
     # The pace the plan's costing rides at instead of the ride type's own (km/h); None: its
     # own. Set only by a transit trip's lines priced as Novice on a share bike (`api._transit_body`,
     # `novice_legs` on Bikeshare + Transit), so the lines are timed as its candidates were.
     cycling_speed_kmh: float | None = None
+    # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
+    # A ride whose last point is its first is a loop whatever this says.
+    loop: bool = False
 
 
 def _same_pace(options: dict, request: dict) -> dict:
