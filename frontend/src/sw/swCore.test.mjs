@@ -414,6 +414,16 @@ test("the Find food places and the climbs are left out of the precache and liste
   assert.equal(ruleFor(get("/assets/climbs-Cd34.js"), ORIGIN), "precache");
 });
 
+test("the federal land, only Mass Ride's, is lazy too; the worker starts once the page has loaded (review fe-perf-6)", () => {
+  const names = ["assets/index-1.js", "assets/federal-land-Ef56.json"];
+  assert.deepEqual(precacheList(names), ["/assets/index-1.js"]);
+  assert.deepEqual(lazyList(names), ["/assets/federal-land-Ef56.json"]);
+  assert.equal(ruleFor(get("/assets/federal-land-Ef56.json"), ORIGIN), "lazy");
+  const app = readFileSync(new URL("../InstallableApp.tsx", import.meta.url), "utf8");
+  assert.match(app, /useEffect\(\(\) => whenSettled\(\(\) => void startWorker\(\)\), \[\]\);/);
+  assert.match(app, /if \(win\.document\.readyState === "complete"\) go\(\);\s*else win\.addEventListener\("load", go, \{ once: true \}\);/);
+});
+
 test("install does not fetch a lazy asset", async () => {
   const scope = fakeScope({ network: site("b1") });
   installWorker(scope, { buildId: "b1", assets: ASSETS, lazy: ["/assets/food-1.json"] });
