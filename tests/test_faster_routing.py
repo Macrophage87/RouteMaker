@@ -13,6 +13,7 @@ import logging
 import threading
 import time
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from test_route_api import (  # noqa: F401 (fixtures)
@@ -35,6 +36,7 @@ from routemaker import workzones as wz
 pytestmark = pytest.mark.usefixtures("weekday_clock")
 
 db = pytest.mark.django_db(transaction=True)
+REPO = Path(__file__).resolve().parents[1]
 
 
 def timing_parts(response) -> dict[str, str]:
@@ -214,7 +216,10 @@ class SlowRouter:
         self.lock = threading.Lock()
         self.now = 0
         self.most = 0
+        # Trace calls that started while another trace was in flight.
+        self.overlapped = 0
         self.calls: list[str] = []
+        self.traces_now = 0
 
     def __call__(self, url: str, payload: dict, timeout: float) -> dict:
         endpoint = url.rsplit("/", 1)[1]
@@ -222,6 +227,9 @@ class SlowRouter:
             self.now += 1
             self.most = max(self.most, self.now)
             self.calls.append(endpoint)
+            if endpoint == "trace_attributes":
+                self.overlapped += self.traces_now > 0
+                self.traces_now += 1
         try:
             time.sleep(self.seconds)
             if endpoint == "route":
@@ -232,6 +240,8 @@ class SlowRouter:
         finally:
             with self.lock:
                 self.now -= 1
+                if endpoint == "trace_attributes":
+                    self.traces_now -= 1
 
 
 def four_legs() -> list[list[tuple[float, float]]]:
@@ -243,26 +253,28 @@ class TestParallel:
     def test_a_routes_legs_are_traced_together_within_the_bound(
         self, client, segments, monkeypatch, settings
     ) -> None:
-        """Four legs, each trace 0.3 s: one after another 1.2 s; on a pool of two, 0.6 s,
-        and never more than two at once. The answer is the same either way."""
+        """Four legs, each trace held long enough to be seen: one after another, no trace
+        ever starts while another is in flight; on a pool of two, traces overlap and never
+        more than two run at once. Counted by overlapping calls, not by elapsed time (a
+        busy test machine makes a wall clock flaky). The answer is the same either way."""
         legs = four_legs()
         points = [list(VERTICES[i]) for i in range(5)]
         answers = {}
         for size in (1, 2):
             settings.ROUTER_PARALLEL_CALLS = size
-            slow = SlowRouter(legs, 0.3)
+            slow = SlowRouter(legs, 0.2)
             monkeypatch.setattr(routing, "_transport", slow)
-            began = time.perf_counter()
             response = post(client, {"points": points, "preset": "default"})
-            took = time.perf_counter() - began
             assert response.status_code == 200, response.content
-            answers[size] = (response.json(), took, slow.most, slow.calls.count("trace_attributes"))
-        serial, pooled = answers[1], answers[2]
-        assert serial[2] == 1 and pooled[2] == 2, "the pool's bound holds"
-        assert serial[3] == pooled[3] == 4, "each leg traced once"
-        assert pooled[1] < serial[1] - 0.45, (serial[1], pooled[1])
+            answers[size] = (response.json(), slow)
+        serial, pooled = answers[1][1], answers[2][1]
+        assert serial.most == 1 and pooled.most == 2, "the pool's bound holds"
+        assert serial.calls.count("trace_attributes") == 4
+        assert pooled.calls.count("trace_attributes") == 4, "each leg traced once"
+        assert serial.overlapped == 0
+        assert pooled.overlapped >= 2, "the legs were traced together"
         for key in ("geometry", "stress_m", "leg_ends", "stress_spans", "description"):
-            assert pooled[0][key] == serial[0][key], key
+            assert answers[2][0][key] == answers[1][0][key], key
 
     def test_a_trace_that_fails_on_the_pool_fails_where_it_is_read(self, settings) -> None:
         """A failure on the pool is raised to the reader that would have asked for it, once,
@@ -499,16 +511,36 @@ class TestCache:
         assert route_cache.size() == 0
         assert cache_said(post(client, good_body())).startswith('cache;desc="miss"')
 
-    def test_bikeshare_and_transit_are_never_kept(self) -> None:
-        """They are planned by their own paths (`api._plan`), which never read the cache:
-        live docks and departures."""
-        import inspect
-
+    @pytest.mark.parametrize(
+        "preset", ["bikeshare", "rebalance", "bike-transit", "bikeshare-transit"]
+    )
+    def test_bikeshare_and_transit_are_never_kept(
+        self, client, segments, router, monkeypatch, preset
+    ) -> None:
+        """They are planned by their own paths (`api._plan`), which never read or fill the
+        cache: live docks and departures. The same request twice is planned twice, and
+        nothing is kept, while a plain ride type's second ask is a hit."""
         from core import api
 
-        source = inspect.getsource(api._plan)
-        assert source.index("BIKESHARE_PRESETS") < source.index("_planned(")
-        assert source.index("TRANSIT_PRESETS") < source.index("_planned(")
+        answer = json.loads((REPO / "tests" / "data" / "route_answer.json").read_text())
+        planned = []
+
+        def own_path(body, _started):
+            planned.append(body.preset)
+            return {**answer, "preset": body.preset}
+
+        monkeypatch.setattr(api, "_bikeshare_body", own_path)
+        monkeypatch.setattr(api, "_transit_body", own_path)
+        for _ in range(2):
+            response = post(client, good_body(preset))
+            assert response.status_code == 200, response.content
+        assert planned == [preset, preset]
+        assert route_cache.size() == 0
+
+        router(standard_router())
+        post(client, good_body())
+        assert route_cache.size() == 1
+        assert cache_said(post(client, good_body())).startswith('cache;desc="hit"')
 
 
 class TestCacheParts:
