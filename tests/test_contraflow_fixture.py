@@ -116,3 +116,25 @@ def test_the_classifier_reads_the_with_flow_rider_on_either_tags() -> None:
     for way in WAYS:
         closed = inject(Variant.NO_TRAIL, dict(way["tags"]), way["osm_way_id"])
         assert facility(closed).value == facility(way["tags"]).value, way["osm_way_id"]
+
+
+def test_a_two_way_road_with_a_lane_on_one_side_shows_nothing_new() -> None:
+    """On a two-way road the weaker side is a rider's own direction, not a contraflow,
+    so `shown_facility` adds nothing (a lane on one side only, uphill lanes)."""
+    for tags in (
+        {"highway": "residential", "cycleway:right": "lane"},
+        {"highway": "residential", "cycleway:right": "lane", "cycleway:left": "no"},
+        {"highway": "tertiary", "cycleway:left": "lane", "oneway": "no"},
+    ):
+        assert shown_facility(tags) is None, tags
+    assert (
+        shown_facility(
+            {
+                "highway": "residential",
+                "oneway": "yes",
+                "cycleway:left": "lane",
+                "cycleway:left:oneway": "-1",
+            }
+        )
+        is not None
+    )

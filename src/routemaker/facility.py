@@ -55,6 +55,7 @@ from .tags import (
     PERMISSIVE_ACCESS,
     best_direction_provision,
     cycleway_provision,
+    is_oneway,
     narrow_access_lists,
     open_to_buses,
 )
@@ -257,11 +258,13 @@ def shown_facility(tags: dict[str, str], beside_separate_road: bool = False) -> 
     (the review of 17f69082): the best direction's (`tags.best_direction_provision`), so
     a contraflow-only lane shows as a lane. Display only: the tier and the routing price
     (`rm:facility`, `lua/routemaker_remap.lua` `apply_facility`) stay on `facility`, the
-    rider with the traffic."""
+    rider with the traffic. Only on a one-way road: on a two-way road the weaker side is a
+    rider's own direction, not a contraflow, so a lane on one side shows nothing new."""
     scored = facility(tags, beside_separate_road)
     highway = tags.get("highway")
     if (
-        highway is None
+        not is_oneway(tags)
+        or highway is None
         or highway in TRAIL_CLASS_HIGHWAY
         or highway in MOTOR_ONLY_HIGHWAY
         or closed_to_motor_traffic(tags)
