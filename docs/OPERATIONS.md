@@ -6768,3 +6768,19 @@ the other scripts (tests/test_cloud_launch.py; its first real run is the first t
 meets EC2 and SSM), and the command against a real PostGIS
 (tests/test_import_cloud_build.py). The first run on the box is the first real one, so
 keep its log and read the dry run before `--swap`.
+
+## Phone app (v0.8.0)
+
+The Android app in `mobile/` opens the site named by the repository variable `ROUTEMAKER_URL`; the
+address is never committed. Builds are by hand: Actions, "Android app" (`.github/workflows/android.yml`,
+`workflow_dispatch` only), `debug` for a sideloaded test APK, `release` for a signed APK and Play
+bundle. The release key is four repository secrets the owner adds: `ROUTEMAKER_KEYSTORE_BASE64`,
+`ROUTEMAKER_KEYSTORE_PASSWORD`, `ROUTEMAKER_KEY_ALIAS`, `ROUTEMAKER_KEY_PASSWORD`; never a file in
+the repository. Optional variable: `ROUTEMAKER_APP_ID` (the Play id).
+
+The server needs nothing for it: the WebView loads the site at its own origin, so cookies, CSRF and
+the API are a phone browser's, and Discord sign-in stays inside the app. The app works with the site
+already deployed: before v0.8.0 its compatibility layer gives the old Ride mode native location and
+voice; from v0.8.0 the site's own bridge does, with the cue notification. Deploying v0.8.0 needs no
+app rebuild. Install steps, permissions, privacy, TalkBack and what to check on a first ride:
+`mobile/README.md`. iOS can be added later from the same shell.

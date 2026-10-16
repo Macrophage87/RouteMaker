@@ -1,0 +1,83 @@
+name: Android app
+
+# The phone app (mobile/, v0.8.0): run by hand only (Actions, "Android app", Run workflow), never on a
+# push or a pull request. A debug build is debug-signed and installs by sideloading; a release build
+# needs the four ROUTEMAKER_KEYSTORE/KEY secrets (mobile/README.md). The site's address is the
+# repository variable ROUTEMAKER_URL; it is never committed.
+on:
+  workflow_dispatch:
+    inputs:
+      build:
+        description: "debug (sideload to test) or release (signed with the repository secrets)"
+        type: choice
+        options: [debug, release]
+        default: debug
+      inspector:
+        description: "Allow Chrome's remote inspector (chrome://inspect) in this build"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      ROUTEMAKER_URL: ${{ vars.ROUTEMAKER_URL }}
+      ROUTEMAKER_APP_ID: ${{ vars.ROUTEMAKER_APP_ID }}
+      ROUTEMAKER_VERSION_CODE: ${{ github.run_number }}
+      ROUTEMAKER_DEBUG: ${{ inputs.inspector && '1' || '0' }}
+    steps:
+      # Pinned by commit (the tag each pointed to), as ci.yml pins its own; bump deliberately.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: "22"
+      # Capacitor 8's Android build needs JDK 21. The runner image carries the Android SDK (ANDROID_HOME).
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: The site's address
+        run: |
+          if [ -z "$ROUTEMAKER_URL" ]; then
+            echo "::warning::The repository variable ROUTEMAKER_URL is not set: this build loads the placeholder https://routes.example.org and shows the no-connection page."
+          fi
+      - run: npm ci
+      - run: npm test
+      # Writes the resolved config (with the address) and the plugin projects into android/; none of it is committed.
+      - run: npx cap sync android
+      - name: Debug APK
+        if: inputs.build == 'debug'
+        working-directory: mobile/android
+        run: ./gradlew --no-daemon assembleDebug
+      - name: Release APK and bundle
+        if: inputs.build == 'release'
+        working-directory: mobile/android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ROUTEMAKER_KEYSTORE_BASE64 }}
+          ROUTEMAKER_KEYSTORE_PASSWORD: ${{ secrets.ROUTEMAKER_KEYSTORE_PASSWORD }}
+          ROUTEMAKER_KEY_ALIAS: ${{ secrets.ROUTEMAKER_KEY_ALIAS }}
+          ROUTEMAKER_KEY_PASSWORD: ${{ secrets.ROUTEMAKER_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$ROUTEMAKER_KEYSTORE_PASSWORD" ] || [ -z "$ROUTEMAKER_KEY_ALIAS" ] || [ -z "$ROUTEMAKER_KEY_PASSWORD" ]; then
+            echo "::error::A release build needs the secrets ROUTEMAKER_KEYSTORE_BASE64, ROUTEMAKER_KEYSTORE_PASSWORD, ROUTEMAKER_KEY_ALIAS and ROUTEMAKER_KEY_PASSWORD (mobile/README.md)."
+            exit 1
+          fi
+          # The key lives only in the runner's temporary directory for this job.
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          ROUTEMAKER_KEYSTORE_FILE="$RUNNER_TEMP/release.jks" ./gradlew --no-daemon assembleRelease bundleRelease
+          rm -f "$RUNNER_TEMP/release.jks"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: routemaker-android-${{ inputs.build }}-${{ github.run_number }}
+          path: |
+            mobile/android/app/build/outputs/apk/${{ inputs.build }}/*.apk
+            mobile/android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: error
+          retention-days: 30

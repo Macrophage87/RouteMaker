@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">RouteMaker</string>
+    <string name="title_activity_main">RouteMaker</string>
+    <string name="package_name">org.routemaker.phone</string>
+    <string name="custom_url_scheme">org.routemaker.phone</string>
+    <!-- @capacitor-community/background-geolocation: the location service's notification (shown only while
+         a ride's watch runs; its title and text come from frontend/src/lib/nativeShell.ts). -->
+    <string name="capacitor_background_geolocation_notification_channel_name">Riding with RouteMaker</string>
+    <string name="capacitor_background_geolocation_notification_icon">drawable/ic_ride</string>
+</resources>

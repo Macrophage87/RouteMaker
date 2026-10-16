@@ -333,8 +333,20 @@ export function findShell(scope: unknown = globalThis): Shell | null {
   return { bridge, locates, speaks, notice };
 }
 
+/**
+ * The page's mark that it has this bridge: the app's compatibility layer for older sites
+ * (mobile/android/app/src/main/assets/routemaker-compat.js) then leaves the browser APIs alone.
+ */
+export const BRIDGE_MARK = "__routemakerNativeShell";
+
+/** Mark the page, in the shell only; answers the shell. */
+export function markShell(found: Shell | null, scope: unknown = globalThis): Shell | null {
+  if (found && scope && typeof scope === "object") (scope as Record<string, unknown>)[BRIDGE_MARK] = true;
+  return found;
+}
+
 /** Found when this module loads: the bridge is injected before the site's scripts run. */
-export const shell: Shell | null = findShell();
+export const shell: Shell | null = markShell(findShell());
 
 /** Ride mode's position: the native plugin in the shell, else the browser's (rideWatch.ts). */
 export function rideGeoEnv(found: Shell | null = shell): RideGeoEnv {

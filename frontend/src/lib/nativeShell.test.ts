@@ -6,10 +6,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   BACKGROUND_TITLE,
+  BRIDGE_MARK,
   CUE_CHANNEL,
   CUE_NOTICE_ID,
   NATIVE_WATCH_OPTIONS,
   findShell,
+  markShell,
   nativeBridge,
   nativeWake,
   rideGeoEnv,
@@ -117,6 +119,20 @@ test("the web bundle imports no Capacitor package; frontend/package.json depends
   assert.match(ride, /geoEnv \?\? rideGeoEnv\(\)/);
   assert.match(ride, /if \(ridesHidden\(\)\) return;\s*timer = window\.setTimeout/);
   assert.doesNotMatch(ride, /Capacitor/);
+});
+
+test("the page is marked as having the bridge in the shell only (the app's compatibility layer then stands aside)", () => {
+  const browser: Record<string, unknown> = {};
+  assert.equal(markShell(null, browser), null);
+  assert.deepEqual(browser, {});
+  assert.equal((globalThis as Record<string, unknown>)[BRIDGE_MARK], undefined, "not in a browser");
+  const page: Record<string, unknown> = {};
+  const found = findShell({ Capacitor: fakeBridge().bridge });
+  assert.equal(markShell(found, page), found);
+  assert.equal(page[BRIDGE_MARK], true);
+  // mobile/test/compat.test.mjs checks that the app's layer reads this same name (frontend tests read
+  // nothing outside frontend/: the beta path mounts only it).
+  assert.equal(BRIDGE_MARK, "__routemakerNativeShell");
 });
 
 // ---- In the shell: the position ---------------------------------------------------------------------------

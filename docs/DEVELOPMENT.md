@@ -7869,3 +7869,30 @@ none sent is a participant) and answers each dot's `role`. Still no name, token 
 - Tests: `tests/test_ride_presence.py` (validation, default, the role on the dot) and
   `frontend/src/lib/rideGroup.test.ts` (kept role, the body, the images and layers, colours, names, the key,
   the page's wiring).
+
+## Phone app (v0.8.0)
+
+The owner, 2026-10-16: a standalone app is needed for bikeshare riding with the phone in a pocket,
+because a browser's cues stop when the screen is off. `mobile/` is a thin Android app (Capacitor 8)
+that opens the live site; `mobile/README.md` is the full account (install, workflow, permissions,
+screen readers). The site's side:
+
+- `frontend/src/lib/nativeShell.ts` finds the shell through the injected `window.Capacitor`
+  (`isNativePlatform()`, `nativePromise`, `nativeCallback`); no Capacitor package is in
+  `frontend/package.json` or the bundle. In a browser `shell` is null and `rideGeoEnv()`,
+  `rideSpeech()` and `rideWake()` return `browserRideEnv()`, `browserSpeech()` and `browserWake()`, so
+  the site is unchanged.
+- In the shell, Ride mode (`RideMode.tsx`) gets the background-geolocation watch behind the same
+  `RideGeoEnv` (`watchRide` is unchanged; End ride's `clearWatch` removes the native watcher, which
+  stops the foreground service), the native voice behind the same `SpeechEnv` (rideOutput's `Voice`
+  is unchanged), a wake lock that never says "keep your screen on yourself", no `HIDDEN_STOP_MS` pause
+  (`ridesHidden()`), Android's silent "Latest cue" notification (`showCue`, each delivered sentence),
+  and `speaksAloud()`: the rider's output choice as before, plus "My screen reader" spoken while the
+  page is hidden (TalkBack reads nothing of a hidden page, so nothing is said twice). `RIDE_SAFETY`
+  drops "needs the screen on" in the app. RideGroup's own watch stays the browser's.
+- The page is marked `window.__routemakerNativeShell`, so the app's compatibility layer for sites older
+  than v0.8.0 (`mobile/android/app/src/main/assets/routemaker-compat.js`) stands aside.
+- Tests: `frontend/src/lib/nativeShell.test.ts` (browser fallbacks, the watch, the notification's
+  order and silence, the voice's turn-taking, the wake lock, no Capacitor import) and
+  `rideWatch.test.ts` (nativeShell.ts is the one other `watchPosition`, held to the same no-leak rule);
+  `cd mobile && npm test` for the config, the manifest's permissions and the compatibility layer.
