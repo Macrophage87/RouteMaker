@@ -5654,6 +5654,56 @@ details.fold > summary .icon {
 .closure-list {
   padding-left: 1.2em;
 }
+
+/* Share as image (ShareCardDialog): the choices, the preview at the dialog's width, then the buttons. */
+.share-card-dialog {
+  width: min(520px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 16px;
+}
+.share-card-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+.share-card-dialog h2 {
+  margin-top: 0;
+}
+.share-card-choices {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.share-card-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.share-card-sub {
+  padding-left: 24px;
+}
+.share-card-preview {
+  margin-top: 12px;
+}
+.share-card-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 50vh;
+  margin: 0 auto;
+  border: 1px solid var(--border);
+}
+.share-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
 .closure-choices {
   display: flex;
   flex-wrap: wrap;

@@ -209,6 +209,8 @@ import { readGpx } from "./lib/gpxImport.ts";
 import { downloadGpx, routeGpxFile } from "./GpxPanel.tsx";
 import { SHARED_GONE, SHARED_INPUTS_ONLY, SHARED_OPENED, SHARE_KEEP_DEFAULT, gpxShareFile, keepFields, newSharedId, readShared, sharedBody, sharedIdFrom, storeShared, withSharedId, type ShareKeep } from "./lib/sharedRoutes.ts";
 import { ClosureDialog, type ClosureAsk } from "./ClosureDialog.tsx";
+import { ShareCardDialog, type ShareCardSource } from "./ShareCardDialog.tsx";
+import { usableProfile } from "./lib/profileChart.ts";
 import { bypassFor, bypassPlanKey, bypassSaid, toggleBypass, type Bypass } from "./lib/closureMap.ts";
 import { RideGroup } from "./RideGroup.tsx";
 import { BikeshareDocksOverlay, type DocksReport } from "./BikeshareDocks.tsx";
@@ -2248,13 +2250,9 @@ export function App() {
     const name = defaultRouteName(fileNamed(routedPoints[0]), routedPoints.length > 1 ? fileNamed(routedPoints[routedPoints.length - 1]) : null);
     return { of: shown, save: planSave(name, shown, routedPoints, preset, dials), file: routeGpxFile(shown, routedPoints, routedLoop, federalRoute) };
   };
-  const shareRoute = async () => {
-    if (!shown || sharing.current) return;
-    sharing.current = true;
-    const press = ++linkPresses.current;
-    setLinkSaid("");
-    setLinkSpoken("");
-    const distanceM = !stale && routedPoints === points ? shown.distance_m : null;
+  // Share's link: the plan's inputs, and the exact line's id with that line sent (once per line and keeping).
+  // Share as image's QR code makes its link here too.
+  const sharedLinkNow = () => {
     let link = linkToCopy(window.location, points, preset, dials, viaIndices(points, VIA_MARKS.isVia));
     const exact = shareExact();
     let kept: Promise<boolean> | null = null;
@@ -2269,6 +2267,25 @@ export function App() {
         if (!before) sharedLine.current = { of: exact.of, keep, id, kept };
       } else kept = Promise.resolve(false);
     }
+    return { link, kept, exact };
+  };
+  // Share as image's QR code (lib/shareCard.ts): the link only once its exact line is kept; a line not kept is
+  // tried again under a new id next time, as Share does.
+  const shareCardLink = async (): Promise<string | null> => {
+    const { link, kept } = sharedLinkNow();
+    if (!kept) return null;
+    if (await kept) return link;
+    if (sharedLine.current?.kept === kept) sharedLine.current = null;
+    return null;
+  };
+  const shareRoute = async () => {
+    if (!shown || sharing.current) return;
+    sharing.current = true;
+    const press = ++linkPresses.current;
+    setLinkSaid("");
+    setLinkSpoken("");
+    const distanceM = !stale && routedPoints === points ? shown.distance_m : null;
+    const { link, kept, exact } = sharedLinkNow();
     const file = exact?.file ? gpxShareFile(exact.file.text, exact.file.fileName) : null;
     const content = withGpxFile(navigator, shareContent(link, distanceM, presetSaid(preset)), file);
     const outcome = shareLink(navigator, content);
@@ -2685,6 +2702,36 @@ export function App() {
 
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
+  // Share as image (ShareCardDialog, lib/shareCard.ts), beside Share in Plan's More: the route shown, the rider's
+  // Home (never drawn: an end there is cut short), and an opened file's own name.
+  const [shareCardOpen, setShareCardOpen] = useState(false);
+  const verbatimTrack = !importEdited ? imported?.verbatim?.track : undefined;
+  const verbatimEnds = useMemo<LonLat[]>(
+    () => (verbatimTrack && verbatimTrack.length > 0 ? [verbatimTrack[0], verbatimTrack[verbatimTrack.length - 1]].map(([lon, lat]) => [lon, lat] as LonLat) : []),
+    [verbatimTrack],
+  );
+  const shareCardSource = useMemo<ShareCardSource | null>(
+    () =>
+      shown
+        ? {
+            line: shown.geometry.coordinates,
+            points: routedPoints,
+            home: myGo.home,
+            name: imported?.name ?? null,
+            distanceM: shown.distance_m,
+            climbM: shown.climb_m ?? null,
+            profile: usableProfile(shown),
+            // An unedited opened file is shared as its own track: its ends are checked for Home too.
+            homeCheck: verbatimEnds,
+          }
+        : null,
+    [shown, routedPoints, myGo.home, imported?.name, verbatimEnds],
+  );
+  // Go, a ride, or the route gone closes it for good, so it does not open again on its own.
+  useEffect(() => {
+    if (mode === "go" || riding || !shown) setShareCardOpen(false);
+  }, [mode, riding, shown]);
+  const shareCardSettled = (!!imported?.verbatim && !importEdited) || (!!shown && !stale && routedPoints === points);
   // Go's Bikeshare options (lib/bikeshareOptions.ts): the first answer's list, kept for the trip, since a
   // re-plan of one option answers with that pair only.
   const [keptOptions, setKeptOptions] = useState<KeptOptions | null>(null);
@@ -3303,7 +3350,7 @@ export function App() {
       </Fold>
     ) : null;
   const actions = {
-    routedLoop, copyLink, linkNote, canShare, shareRoute, shareKeep, onShareKeep: setShareKeep, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid,
+    routedLoop, copyLink, linkNote, canShare, shareRoute, shareKeep, onShareKeep: setShareKeep, shareImage: () => setShareCardOpen(true), linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid,
     downloadRoute, save: saveProps, savedNote: savedNoteShown,
   };
   const go = {
@@ -3500,6 +3547,14 @@ export function App() {
         <RideGroup type={preset as "mass-ride" | "group-ride"} points={rideGroupPoints} line={rideGroupLine} getMap={getMap} here={rideView?.rider?.point ?? (here ? here.point : null)} />
       )}
       <ClosureDialog ask={closureAsk} onReroute={() => void closureReroute()} onAnyway={closureAnyway} onCancel={closureCancel} />
+      <ShareCardDialog
+        open={shareCardOpen && shareCardSource !== null && mode !== "go" && !riding}
+        source={shareCardSource}
+        settled={shareCardSettled}
+        keepKey={JSON.stringify(keepFields(shareKeep))}
+        makeLink={shareCardLink}
+        onClose={() => setShareCardOpen(false)}
+      />
       <RoadInfoDialog
         request={roadInfo}
         massRide={massMap}

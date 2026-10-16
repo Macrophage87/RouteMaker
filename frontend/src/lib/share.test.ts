@@ -97,7 +97,12 @@ test("App shows Share beside Copy link only where it is supported, named Share r
   const copy = app.indexOf("aria-label={COPY_LINK}");
   const share = app.indexOf("{canShare && (");
   assert.ok(copy > 0 && share > copy && share - copy < 700, "in More, after Link");
-  assert.match(app, /const hasMore = canShare \|\| keepShown \|\| save !== null;/);
+  // More is always there: Share as image is in it, after Share and its keeping (lib/shareCard.ts).
+  assert.doesNotMatch(app, /hasMore/);
+  assert.match(
+    app,
+    /\{canShare && <ShareKeepField value=\{shareKeep\} onChange=\{onShareKeep\} \/>\}\s*\{\/\*[^*]*\*\/\}\s*<button type="button" className="secondary share-image" onClick=\{shareImage\} aria-haspopup="dialog">\s*\{SHARE_IMAGE_LABEL\}/,
+  );
   assert.match(
     app,
     /<div id=\{moreId\} className="route-more-body" hidden=\{!more\}>\s*\{canShare && \(\s*<button type="button" className="secondary share-route" onClick=\{shareRoute\} aria-label=\{SHARE_NAME\} aria-describedby=\{linkNote \? "link-note" : undefined\}>\s*\{SHARE_LABEL\}/,

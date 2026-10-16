@@ -1280,6 +1280,7 @@ lightningcss under MPL-2.0 - are not shipped):
 | pmtiles | 4.5.0 | BSD-3-Clause | <https://github.com/protomaps/PMTiles> |
 | @protomaps/basemaps | 5.7.2 | BSD-3-Clause | <https://github.com/protomaps/basemaps> |
 | fflate | 0.8.3 | MIT | <https://github.com/101arrowz/fflate> |
+| qrcode-generator (the share card's optional QR code; no dependencies) | 2.0.4 | MIT | <https://github.com/kazuhikoarase/qrcode-generator> |
 
 `licenses.txt` carries each package's licence text as the package ships it,
 completed by `frontend/src/licences/notices.mjs`, and the build fails if any
@@ -1298,6 +1299,9 @@ bundled package is left without text. Two gaps are filled there:
   source maps maplibre-gl ships beside its bundle and adds each one's licence
   under its own heading (`murmurhash-js`, which has no LICENSE file, from the
   MIT text in its README, committed as `frontend/notices/murmurhash-js.txt`).
+- `qrcode-generator` (MIT) ships no LICENSE file either: its notice is the MIT
+  text with the holder and year its own source header names (Kazuhiko Arase,
+  2009), committed as `frontend/notices/qrcode-generator.txt`.
 
 Not done yet, and recorded rather than hidden: the TypeScript types for the
 API are written by hand against the shared contract instead of generated from

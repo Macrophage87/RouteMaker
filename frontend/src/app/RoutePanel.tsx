@@ -44,6 +44,7 @@ import { SAVE_ROUTE, SAVE_SHORT } from "../lib/savedRoutes.ts";
 import { Fold, QuickFigures } from "../Sidebar.tsx";
 import { COPY_LINK, ROUTE_FOLDS, chartFoldOpen } from "../lib/sidebar.ts";
 import { SHARE_LABEL, SHARE_NAME } from "../lib/share.ts";
+import { SHARE_IMAGE_LABEL } from "../lib/shareCard.ts";
 import {
   SHARE_DELETE_AFTER_LABEL,
   SHARE_KEEP_LABEL,
@@ -86,6 +87,8 @@ export interface RouteActionsProps {
   /** How long the server keeps a shared line, chosen under Share (lib/sharedRoutes.ts ShareKeep). */
   shareKeep: ShareKeep;
   onShareKeep: (keep: ShareKeep) => void;
+  /** Opens Share as image (ShareCardDialog), beside Share in Plan's More. */
+  shareImage: () => void;
   linkSpoken: string;
   keepShown: boolean;
   keepForOffline: () => Promise<void>;
@@ -429,10 +432,9 @@ function ShareKeepField({ value, onChange }: { value: ShareKeep; onChange: (keep
  * press is heard however More stands.
  */
 function RouteActions(props: RouteActionsProps & { start: ReactNode }) {
-  const { copyLink, linkNote, canShare, shareRoute, shareKeep, onShareKeep, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid, start, downloadRoute, save } = props;
+  const { copyLink, linkNote, canShare, shareRoute, shareKeep, onShareKeep, shareImage, linkSpoken, keepShown, keepForOffline, keeping, keepSpoken, linkSaid, start, downloadRoute, save } = props;
   const [more, setMore] = useState(false);
   const moreId = useId();
-  const hasMore = canShare || keepShown || save !== null;
   return (
     <div className="route-actions">
       <div className="route-actions-row">
@@ -445,29 +447,30 @@ function RouteActions(props: RouteActionsProps & { start: ReactNode }) {
           <Icon name="link" />
           <span aria-hidden="true">Link</span>
         </button>
-        {hasMore && (
-          <button type="button" className="secondary icon-button route-more" aria-expanded={more} aria-controls={moreId} onClick={() => setMore(!more)}>
-            <Icon name="more" />
-            <span>More</span>
+        {/* Always: Share as image is in it (Download works where the browser has no share sheet). */}
+        <button type="button" className="secondary icon-button route-more" aria-expanded={more} aria-controls={moreId} onClick={() => setMore(!more)}>
+          <Icon name="more" />
+          <span>More</span>
+        </button>
+      </div>
+      <div id={moreId} className="route-more-body" hidden={!more}>
+        {canShare && (
+          <button type="button" className="secondary share-route" onClick={shareRoute} aria-label={SHARE_NAME} aria-describedby={linkNote ? "link-note" : undefined}>
+            {SHARE_LABEL}
+          </button>
+        )}
+        {canShare && <ShareKeepField value={shareKeep} onChange={onShareKeep} />}
+        {/* Its QR code's link keeps as chosen above. */}
+        <button type="button" className="secondary share-image" onClick={shareImage} aria-haspopup="dialog">
+          {SHARE_IMAGE_LABEL}
+        </button>
+        {save && <SaveRoute {...save} label={SAVE_ROUTE} />}
+        {keepShown && (
+          <button type="button" className="secondary keep-offline" onClick={() => void keepForOffline()} aria-disabled={keeping} aria-describedby="keep-offline-said">
+            {KEEP_LABEL}
           </button>
         )}
       </div>
-      {hasMore && (
-        <div id={moreId} className="route-more-body" hidden={!more}>
-          {canShare && (
-            <button type="button" className="secondary share-route" onClick={shareRoute} aria-label={SHARE_NAME} aria-describedby={linkNote ? "link-note" : undefined}>
-              {SHARE_LABEL}
-            </button>
-          )}
-          {canShare && <ShareKeepField value={shareKeep} onChange={onShareKeep} />}
-          {save && <SaveRoute {...save} label={SAVE_ROUTE} />}
-          {keepShown && (
-            <button type="button" className="secondary keep-offline" onClick={() => void keepForOffline()} aria-disabled={keeping} aria-describedby="keep-offline-said">
-              {KEEP_LABEL}
-            </button>
-          )}
-        </div>
-      )}
       <span role="status" className="visually-hidden">
         {linkSpoken}
       </span>
