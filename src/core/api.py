@@ -7182,6 +7182,9 @@ def review_map(request, params: Query[ReviewMapIn]):
     # A view's roads only, at most stress_review.MAP_CAP; badges far out, simplified lines below
     # a street's zoom, both read from what was made when the lists were computed.
     box = (params.west, params.south, params.east, params.north)
+    refusal = stress_review.view_refusal(*box, params.zoom)
+    if refusal:
+        return _private(JsonResponse({"error": refusal}, status=400))
     return _review_answer(stress_review.map_view(_review_lists(params.queues), box, params.zoom))
 
 

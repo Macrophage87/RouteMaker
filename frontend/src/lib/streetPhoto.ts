@@ -103,15 +103,16 @@ export function photoAlt(title: string, photo: StreetPhoto): string {
 }
 
 /**
- * Each road's photo asked for once (Review's rows and card, and the road panel): the answer is kept by path, way and
- * point, so a re-render, a road opened again or its row scrolled back into view asks nothing. Where there was nothing
+ * Each road's photo asked for once (Review's rows and card, and the road panel): the answer is kept by path and way
+ * (by point where there is no way), so a re-render, a road opened again or its row scrolled back into view asks nothing. Where there was nothing
  * to say (null: no lookup possible, or the request failed) it is asked again after `retryMs`; at most `limit` are
  * kept, the oldest let go first.
  */
 export function makePhotoMemo(limit = 500, retryMs = 60_000, now: () => number = () => Date.now()) {
   type Entry = { answer: Promise<PhotoAnswer>; known?: PhotoAnswer; at: number };
   const kept = new Map<string, Entry>();
-  const keyOf = (path: PhotoPath, point: LonLat, wayId: number | null) => `${path}|${wayId ?? ""}|${point[0].toFixed(6)},${point[1].toFixed(6)}`;
+  // A road by its way (its row and its card may name different points on it); a point with no way by the point.
+  const keyOf = (path: PhotoPath, point: LonLat, wayId: number | null) => (wayId != null ? `${path}|way ${wayId}` : `${path}|${point[0].toFixed(6)},${point[1].toFixed(6)}`);
   const fresh = (key: string): Entry | undefined => {
     const entry = kept.get(key);
     if (entry && entry.known === null && now() - entry.at > retryMs) kept.delete(key);

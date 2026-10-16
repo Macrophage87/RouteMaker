@@ -767,10 +767,13 @@ def _ruled_filter(queue: str):
     return Exists(_standing(rulings, queue, OuterRef("inputs")))
 
 
-def items_of(queue: str, *, kind: str = "", source: str = "", area: str = ""):
+def items_of(
+    queue: str, *, kind: str = "", source: str = "", area: str = "", build: str | None = None
+):
+    """A list's items now (the rebuild's: of `build`, else its current build, read here)."""
     query = ReviewItem.objects.filter(queue=queue)
     if queue == Queue.REBUILD:
-        query = query.filter(build_id=current_build(queue))
+        query = query.filter(build_id=current_build(queue) if build is None else build)
     if kind:
         query = query.filter(kind=kind)
     if source:
@@ -941,13 +944,45 @@ def page(
 
 
 # Review's map (`map_view`): a view's roads, never a whole list. Up to `MAP_CAP` roads a request,
-# the largest first; below `CLUSTER_ZOOM` the roads near one another are one badge with their
-# count (a grid of `CELL_PX` pixels), and only a road alone in its cell is drawn as a line, so a
-# badge never lies over its own roads. Below `HIGH_ZOOM` the lines are the simplified ones.
+# each list drawn given a fair share of it (its scores mean different things, so one list never
+# pushes another's roads off), the largest of each first; below `CLUSTER_ZOOM` the roads near one
+# another are one badge with their count (a square grid of `CELL_PX` screen pixels, in Web
+# Mercator), and only a road alone in its cell is drawn as a line, so a badge never lies over its
+# own roads. Below `HIGH_ZOOM` the lines are the simplified ones. A view is at most
+# `MAX_VIEW_SCREENS` wide screens across (`view_refusal`).
 MAP_CAP = 2000
 CLUSTER_ZOOM = 10
 HIGH_ZOOM = 13
 CELL_PX = 64
+# MapLibre's world is 512 pixels wide at zoom 0; Web Mercator's, this many metres.
+TILE_PX = 512
+WORLD_M = 40075016.686
+MAX_VIEW_SCREENS = 4
+SCREEN_PX = 1920
+
+
+def view_refusal(west: float, south: float, east: float, north: float, zoom: float) -> str:
+    """Why a view cannot be drawn ("" when it can): west past east or south past north (the
+    page's map never sends one across the date line), or wider than `MAX_VIEW_SCREENS` wide
+    screens at its zoom."""
+    if west > east or south > north:
+        return "The view's west is past its east, or its south past its north."
+    if east - west > MAX_VIEW_SCREENS * SCREEN_PX * 360 / (TILE_PX * 2**zoom):
+        return "That view is too wide for its zoom."
+    return ""
+
+
+def fair_shares(counts: dict[str, int], cap: int) -> dict[str, int]:
+    """How many of each list's roads are drawn: an even share of `cap` each, a list with fewer
+    passing what it leaves to the others."""
+    shares: dict[str, int] = {}
+    left = cap
+    pending = sorted(counts, key=lambda q: counts[q])
+    while pending:
+        queue = pending.pop(0)
+        shares[queue] = min(counts[queue], left // (len(pending) + 1))
+        left -= shares[queue]
+    return shares
 
 
 def map_size(item: ReviewItem) -> float:
@@ -959,14 +994,14 @@ def map_size(item: ReviewItem) -> float:
     return abs((item.new_step or 0) - (item.old_step or 0))
 
 
-def _listed(queues: list[str]) -> tuple[str, list]:
-    """SQL (and its parameters) for the items the lists hold now: the current build's for the
-    rebuild's changes."""
+def _listed(queues: list[str], build: str) -> tuple[str, list]:
+    """SQL (and its parameters) for the items the lists hold now: `build`'s (the current one)
+    for the rebuild's changes."""
     parts, params = [], []
     others = [q for q in queues if q != Queue.REBUILD]
     if Queue.REBUILD in queues:
         parts.append("(queue = %s AND build_id = %s)")
-        params += [Queue.REBUILD.value, current_build(Queue.REBUILD)]
+        params += [Queue.REBUILD.value, build]
     if others:
         parts.append("(queue = ANY(%s) AND build_id = '')")
         params.append(others)
@@ -976,18 +1011,20 @@ def _listed(queues: list[str]) -> tuple[str, list]:
 def map_view(queues: list[str], bbox: tuple[float, float, float, float], zoom: float) -> dict:
     """The roads of `queues` in the box, for Review's map: {lines (GeoJSON, each road's way,
     list, size and whether it has a standing ruling), dots (a point a road below a street's
-    zoom), badges (a point a cell with its count, far out), truncated (more roads than `MAP_CAP`
-    were in view)}. Read from each item's own
-    simplified line and point, both made when the list was computed."""
+    zoom), badges (a point a cell with its count, far out), truncated (more roads were in view
+    than drawn)}. Read from each item's own simplified line and point, both made when the list
+    was computed; the rebuild's current build is read once."""
     queues = [q for q in Queue.values if q in queues]
     west, south, east, north = bbox
     box = Polygon.from_bbox(bbox)
     box.srid = 4326
+    build = current_build(Queue.REBUILD) if Queue.REBUILD in queues else ""
     badges: list[dict] = []
     alone: dict[str, set[int]] | None = None
     if zoom < CLUSTER_ZOOM and queues:
-        cell = 360 / 2 ** max(zoom, 0) * CELL_PX / 256
-        where, params = _listed(queues)
+        # A square cell of CELL_PX screen pixels, in Web Mercator metres.
+        cell = WORLD_M / (TILE_PX * 2 ** max(zoom, 0)) * CELL_PX
+        where, params = _listed(queues, build)
         with connection.cursor() as cursor:
             cursor.execute(
                 f"""
@@ -995,7 +1032,7 @@ def map_view(queues: list[str], bbox: tuple[float, float, float, float], zoom: f
                        ST_Y(ST_Centroid(ST_Collect(point))), min(queue), min(osm_way_id)
                 FROM review_item
                 WHERE {where} AND point && ST_MakeEnvelope(%s, %s, %s, %s, 4326)
-                GROUP BY ST_SnapToGrid(point, %s)
+                GROUP BY ST_SnapToGrid(ST_Transform(point, 3857), %s)
                 """,
                 [*params, west, south, east, north, cell],
             )
@@ -1014,12 +1051,12 @@ def map_view(queues: list[str], bbox: tuple[float, float, float, float], zoom: f
                 )
     field = "geometry" if zoom >= HIGH_ZOOM else "simple"
     places = HIGH_PLACES if zoom >= HIGH_ZOOM else LOW_PLACES
-    found: list[ReviewItem] = []
+    found: dict[str, list[ReviewItem]] = {}
     for queue in queues:
-        query = items_of(queue).filter(**{f"{field}__bboverlaps": box})
+        query = items_of(queue, build=build).filter(**{f"{field}__bboverlaps": box})
         if alone is not None:
             query = query.filter(osm_way_id__in=sorted(alone.get(queue, ())))
-        found += list(
+        found[queue] = list(
             query.annotate(lines=AsGeoJSON(field, precision=places))
             .only(
                 "osm_way_id",
@@ -1034,7 +1071,9 @@ def map_view(queues: list[str], bbox: tuple[float, float, float, float], zoom: f
             )
             .order_by("-score", "osm_way_id")[: MAP_CAP + 1]
         )
-    found.sort(key=lambda i: (-i.score, i.osm_way_id))
+    shares = fair_shares({q: len(items) for q, items in found.items()}, MAP_CAP)
+    # Each list's share, the largest first, in Review's order of the lists.
+    drawn = [item for queue in queues for item in found[queue][: shares[queue]]]
     lines = [
         {
             "type": "Feature",
@@ -1046,7 +1085,7 @@ def map_view(queues: list[str], bbox: tuple[float, float, float, float], zoom: f
                 "ruled": bool(item.ruled),
             },
         }
-        for item in found[:MAP_CAP]
+        for item in drawn
         if item.lines
     ]
     # Below a street's zoom, a dot a road as well, so a short one is never less than a dot.
@@ -1059,13 +1098,13 @@ def map_view(queues: list[str], bbox: tuple[float, float, float, float], zoom: f
             },
             "properties": {"way": item.osm_way_id, "queue": item.queue, "ruled": bool(item.ruled)},
         }
-        for item in found[:MAP_CAP]
+        for item in drawn
         if zoom < HIGH_ZOOM and item.lines and item.point is not None
     ]
     return {
         "zoom": zoom,
         "detail": "high" if zoom >= HIGH_ZOOM else "low",
-        "truncated": len(found) > MAP_CAP,
+        "truncated": any(len(found[q]) > shares[q] for q in queues),
         "lines": {"type": "FeatureCollection", "features": lines},
         "badges": {"type": "FeatureCollection", "features": badges},
         "dots": {"type": "FeatureCollection", "features": dots},

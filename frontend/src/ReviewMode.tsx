@@ -48,6 +48,7 @@ import {
   REVIEW_STEPS,
   SETTLE_MS,
   decisionLabel,
+  drawnOf,
   fetchMapView,
   fetchNext,
   fetchQueues,
@@ -112,7 +113,8 @@ export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged
   const [queues, setQueues] = useState<QueueSummary[] | null>(null);
   const [problem, setProblem] = useState("");
   const [onMap, setOnMap] = useState<Set<QueueKey>>(() => new Set(QUEUES));
-  const [view, setView] = useState<MapView | null>(null);
+  // The view's roads as last answered, and the lists they were asked for.
+  const [view, setView] = useState<{ view: MapView; lists: QueueKey[] } | null>(null);
   // Bumped when the map settles after a move, and when a ruling or an undo changes what it shows.
   const [moved, setMoved] = useState(0);
   const [refresh, setRefresh] = useState(0);
@@ -148,7 +150,8 @@ export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged
   // The view's roads, asked for once the map settles: never a list's whole map.
   useEffect(() => {
     const lists = drawnKey ? (drawnKey.split(",") as QueueKey[]) : [];
-    let live = true;
+    // A request a newer view replaces is cancelled.
+    const controller = new AbortController();
     const wait = window.setTimeout(() => {
       const map = getMap();
       if (!map) return;
@@ -157,12 +160,13 @@ export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged
         return;
       }
       const b = map.getBounds();
-      void fetchMapView(origin, lists, viewBox(b.getWest(), b.getSouth(), b.getEast(), b.getNorth()), map.getZoom()).then((found) => {
-        if (live && typeof found !== "string") setView(found);
+      const zoom = map.getZoom();
+      void fetchMapView(origin, lists, viewBox(b.getWest(), b.getSouth(), b.getEast(), b.getNorth(), zoom), zoom, fetch, controller.signal).then((found) => {
+        if (!controller.signal.aborted && typeof found !== "string") setView({ view: found, lists });
       });
     }, VIEW_WAIT_MS);
     return () => {
-      live = false;
+      controller.abort();
       window.clearTimeout(wait);
     };
   }, [moved, refresh, drawnKey, computedKey, origin, getMap]);
@@ -190,7 +194,10 @@ export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged
   openRef.current = open;
 
   // The next road with no ruling, in the lists' order: after the one open, then each following list drawn, then round.
+  // Only the newest press opens its answer: a slower earlier one never opens after it.
+  const nextAsked = useRef(0);
   const goNext = useCallback(async () => {
+    const asking = ++nextAsked.current;
     const lists = drawnKey ? (drawnKey.split(",") as QueueKey[]) : [];
     if (lists.length === 0) {
       say("No more roads without a ruling on the map.");
@@ -198,6 +205,7 @@ export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged
     }
     const from: Spot | null = spot ?? (isQueue(list) ? { queue: list, way: -1 } : null);
     const next = await fetchNext(origin, { lists, queue: from?.queue ?? lists[0], way: from && from.way >= 0 ? from.way : null });
+    if (asking !== nextAsked.current) return;
     if (typeof next === "string") {
       say(next);
       return;
@@ -347,15 +355,16 @@ export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged
     [],
   );
 
-  // What the map shows: the view's roads of the lists drawn.
+  // What the map shows: the view's roads of the lists switched on now (one switched off goes at once).
+  const shownView = useMemo(() => drawnOf(view?.view ?? null, view?.lists ?? [], drawnKey ? (drawnKey.split(",") as QueueKey[]) : []), [view, drawnKey]);
   useMap(
     getMap,
     (map) => {
-      (map.getSource(LINES) as GeoJSONSource | undefined)?.setData((view?.lines ?? EMPTY) as never);
-      (map.getSource(DOTS) as GeoJSONSource | undefined)?.setData((view?.dots ?? EMPTY) as never);
-      (map.getSource(BADGES) as GeoJSONSource | undefined)?.setData((view?.badges ?? EMPTY) as never);
+      (map.getSource(LINES) as GeoJSONSource | undefined)?.setData((shownView?.lines ?? EMPTY) as never);
+      (map.getSource(DOTS) as GeoJSONSource | undefined)?.setData((shownView?.dots ?? EMPTY) as never);
+      (map.getSource(BADGES) as GeoJSONSource | undefined)?.setData((shownView?.badges ?? EMPTY) as never);
     },
-    [view],
+    [shownView],
   );
 
   const toggle = (queue: QueueKey, on: boolean) => {
@@ -408,7 +417,7 @@ export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged
             <button type="button" className="secondary review-next" aria-keyshortcuts={NEXT_KEYS} onClick={goNext}>
               Next discrepancy <span className="hint">({NEXT_KEYS})</span>
             </button>
-            {view?.truncated && <p className="hint">Only the largest roads in view are drawn: zoom in for the rest.</p>}
+            {view?.view.truncated && <p className="hint">Only the largest roads in view are drawn: zoom in for the rest.</p>}
           </fieldset>
         </div>
         <div className="review-main">
@@ -654,6 +663,7 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
     setCurrent(road);
     if (focusCard) setFocusNext(id("card"));
   };
+  const besideAsked = useRef(0);
   const move = (by: number) => {
     if (index >= 0) {
       const next = shown[index + by];
@@ -661,9 +671,12 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
       else tell(by > 0 ? "That is the last road on this page." : "That is the first road on this page.");
       return;
     }
-    // A road opened from the map, off this page: the road beside it in the list's order (the server's).
+    // A road opened from the map, off this page: the road beside it in the list's order (the server's); only the newest
+    // press's answer opens.
     if (!current) return;
+    const asking = ++besideAsked.current;
     void fetchNext(origin, { lists: [queue], queue, way: current.osm_way_id, direction: by > 0 ? 1 : -1, openOnly: !all, wrap: false }).then((beside) => {
+      if (asking !== besideAsked.current) return;
       if (typeof beside === "string") tell(beside);
       else if (beside) void openWay(beside.way);
       else tell(by > 0 ? "That is the last road in this list." : "That is the first road in this list.");

@@ -2353,11 +2353,15 @@ def test_the_update_path_names_only_live_and_override_and_empties_the_stale_tile
         assert table not in line, table
     assert "public" not in line  # the public tables come blanked, not from the dump
     assert 'blanked_sql "$extra.part" override' in text
-    # the beta's stress suggestions let go of stress_edit first, and stress_edit and override are
-    # emptied with DELETE: a TRUNCATE refuses a table another table's foreign key points at, even
-    # with no row pointing (tests/test_beta_update_sql.py runs these on the head schema)
+    # the beta's stress suggestions and Review's rulings let go of stress_edit (and a ruling of its
+    # access override) first, and stress_edit and override are emptied with DELETE: a TRUNCATE
+    # refuses a table another table's foreign key points at, even with no row pointing
+    # (tests/test_beta_update_sql.py runs these on the head schema)
     assert (
         'echo "UPDATE public.stress_suggestion SET edit_id = NULL WHERE edit_id IS NOT NULL;";'
+        ' echo "UPDATE public.review_ruling SET edit_id = NULL WHERE edit_id IS NOT NULL;";'
+        ' echo "UPDATE public.review_ruling SET access_override_id = NULL'
+        ' WHERE access_override_id IS NOT NULL;";'
         ' echo "DELETE FROM public.stress_edit;"; echo "DELETE FROM public.override;";'
         ' echo "TRUNCATE public.stress_tile_cache;";' in text
     )

@@ -83,6 +83,8 @@ test("a road's photo is asked for once, however often its row or card is drawn",
   assert.equal(memo.get(path, [-77.1, 38.9], 42, load("none")), first);
   assert.equal(await first, "none");
   assert.equal(memo.known(path, [-77.1, 38.9], 42), "none");
+  // Another point on the same road is the same road.
+  assert.equal(await memo.get(path, [-77.15, 38.91], 42, load("none")), "none");
   assert.equal(asked, 1);
   // The road panel's path is its own; nothing to say is asked again only after a while.
   await memo.get("/api/street-photo", [-77.1, 38.9], 42, load(null));

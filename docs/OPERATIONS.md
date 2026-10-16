@@ -6552,7 +6552,12 @@ To ship it to a host:
    `docker compose exec -T api python manage.py compute_review_queue` (the live table and
    this host's own `rebuild/reports`), with `--build-id <id>` before a swap to list the
    rebuild's changes against `staging`, and `--reports-dir <dir>` for another build's
-   reports. Each list it computes replaces its rows and its map; the rulings stay.
+   reports. Each list it computes replaces its rows, with each road's simplified line and
+   point for the map; the rulings stay. `0030_review_map_by_view` gives the roads already
+   listed theirs, so the map needs no recomputation after it. Review's map asks for the view
+   it shows (`/api/review/map`), never a whole list. `review_queue_state`'s `map_low`,
+   `map_high` and `map_points` columns are unused from 0030 and kept for one release, so a
+   worker of the release before keeps working through the deploy; the next release drops them.
 3. Optional, ratings whose public use is pending (`routemaker.agency_lts.PENDING_AGENCIES`):
    put `<agency>-ratings.csv` (columns `osm_way_id,level`; a level 1 to 5 by halves) in
    `<DATA_ROOT>/internal-only/review/` (`REVIEW_PENDING_DIR`), e.g. `arlington-ratings.csv`.

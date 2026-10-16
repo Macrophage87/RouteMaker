@@ -255,13 +255,56 @@ export interface Spot {
   way: number;
 }
 
-/** The map's view as the server takes it: west, south, east, north inside the world's bounds (a view wider than the
- * world, or across the date line, is the whole of it), rounded to about a metre. */
-export function viewBox(west: number, south: number, east: number, north: number): [number, number, number, number] {
+/** A view is at most this many wide screens across at its zoom (core.stress_review.view_refusal: wider is refused). */
+export const VIEW_MAX_SCREENS = 4;
+const SCREEN_PX = 1920;
+/** MapLibre's world is 512 pixels wide at zoom 0. */
+const TILE_PX = 512;
+
+/** The zoom the server is sent: to a tenth, never above the map's, so the widest view it allows is never narrower than
+ * the one asked for. */
+export function viewZoom(zoom: number): number {
+  return Math.max(0, Math.floor(zoom * 10) / 10);
+}
+
+/** The widest view, in degrees of longitude, the server draws at `zoom`. */
+export function maxViewWidth(zoom: number): number {
+  return (VIEW_MAX_SCREENS * SCREEN_PX * 360) / (TILE_PX * 2 ** zoom);
+}
+
+/** The map's view as the server takes it: west, south, east, north inside the world's bounds, west never past east and
+ * south never past north (a view across the date line is the whole width), rounded to about a metre, and at `zoom` no
+ * wider than the server draws (narrowed about its middle). */
+export function viewBox(west: number, south: number, east: number, north: number, zoom = 0): [number, number, number, number] {
   const round = (v: number) => Math.round(v * 1e5) / 1e5;
   const clamp = (v: number, limit: number) => Math.max(-limit, Math.min(limit, v));
   const whole = east - west >= 360 || clamp(west, 180) > clamp(east, 180);
-  return [whole ? -180 : round(clamp(west, 180)), round(clamp(south, 90)), whole ? 180 : round(clamp(east, 180)), round(clamp(north, 90))];
+  let w = whole ? -180 : clamp(west, 180);
+  let e = whole ? 180 : clamp(east, 180);
+  // Rounded inwards a little, so the rounding never takes it past the widest.
+  const widest = maxViewWidth(viewZoom(zoom)) - 2e-5;
+  if (e - w > widest) {
+    const middle = (w + e) / 2;
+    w = middle - widest / 2;
+    e = middle + widest / 2;
+  }
+  const s = clamp(Math.min(south, north), 90);
+  const n = clamp(Math.max(south, north), 90);
+  return [round(w), round(s), round(e), round(n)];
+}
+
+/** What the map draws of a view while a newer one is asked for: only the lists still switched on (a list switched off
+ * goes at once, and stays gone if the request fails); the count badges, which count every list asked for, only while
+ * all of those are still on. */
+export function drawnOf(view: MapView | null, asked: readonly QueueKey[], drawn: readonly QueueKey[]): Pick<MapView, "lines" | "dots" | "badges"> | null {
+  if (!view) return null;
+  const on = new Set(drawn);
+  const keep = (f: MapFeature) => on.has(f.properties.queue);
+  return {
+    lines: { type: "FeatureCollection", features: view.lines.features.filter(keep) },
+    dots: { type: "FeatureCollection", features: (view.dots?.features ?? []).filter(keep) },
+    badges: asked.every((q) => on.has(q)) ? view.badges : { type: "FeatureCollection", features: [] },
+  };
 }
 
 /** Keys a typed word goes to: Alt+Shift+N is left to them there (a text box, a text area, an editable region). */
@@ -336,10 +379,11 @@ export async function fetchMapView(
   box: [number, number, number, number],
   zoom: number,
   run: Fetch = fetch,
+  signal?: AbortSignal,
 ): Promise<MapView | string> {
   const [west, south, east, north] = box;
-  const q = query({ queues: queues.join(","), west, south, east, north, zoom: Math.round(zoom * 10) / 10 });
-  const r = await call<MapView>(`${origin}/api/review/map?${q}`, { method: "GET" }, null, run);
+  const q = query({ queues: queues.join(","), west, south, east, north, zoom: viewZoom(zoom) });
+  const r = await call<MapView>(`${origin}/api/review/map?${q}`, { method: "GET", signal }, null, run);
   return r.ok ? r.body : r.message;
 }
 

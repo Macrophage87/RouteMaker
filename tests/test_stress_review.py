@@ -234,13 +234,32 @@ class TestPrecompute:
         assert item.simple is not None and item.point is not None
         assert item.geometry.distance(item.point) < 1e-9
         assert ReviewQueueState.objects.get(queue="rebuild").build_id == BUILD
-        # Items listed before the map was served by view get theirs as the computation makes them.
-        migration = (REPO / "src/core/migrations/0030_review_map_by_view.py").read_text()
-        assert f"ST_SimplifyPreserveTopology(geometry, {stress_review.LOW_TOLERANCE})" in migration
-        assert "ST_ClosestPoint(geometry, ST_Centroid(geometry))" in migration
+
+    def test_the_migration_gives_items_listed_before_it_the_same_line_and_point(
+        self, tables
+    ) -> None:
+        import importlib
+
+        live, staging = tables
+        stress_review.compute_rebuild(BUILD, live, staging)
+        made = {i.osm_way_id: (i.simple, i.point) for i in ReviewItem.objects.all()}
+        ReviewItem.objects.update(simple=None, point=None)
+        migration = importlib.import_module("core.migrations.0030_review_map_by_view").Migration
+        backfill = migration.operations[-1]
+        assert f"ST_SimplifyPreserveTopology(geometry, {stress_review.LOW_TOLERANCE})" in (
+            backfill.sql
+        )
+        with connection.cursor() as cursor:
+            cursor.execute(backfill.sql)
+        for item in ReviewItem.objects.all():
+            simple, point = made[item.osm_way_id]
+            assert item.simple.equals_exact(simple, 1e-9), item.osm_way_id
+            assert item.point.equals_exact(point, 1e-9), item.osm_way_id
 
 
 EVERYWHERE = (-78.0, 38.0, -76.0, 40.0)
+# The roads' own area: a view the endpoint draws at a street's zoom.
+NEAR = (-77.1, 38.85, -76.9, 38.95)
 
 
 def around(way: int, half: float = 0.004) -> tuple[float, float, float, float]:
@@ -288,6 +307,53 @@ class TestMapView:
         alone = stress_review.map_view(["rebuild"], around(DROP), 5)
         assert drawn(alone) == {DROP} and alone["badges"]["features"] == []
 
+    def test_a_badge_beside_a_road_alone_in_its_cell(self, tables) -> None:
+        # Cells are CELL_PX screen pixels square in Web Mercator: a zoom where CLOSED and RISE
+        # share a cell and DROP is alone in its own.
+        live, staging = tables
+        stress_review.compute_rebuild(BUILD, live, staging)
+
+        def cell_of(way: int, zoom: float) -> int:
+            size = stress_review.WORLD_M / (stress_review.TILE_PX * 2**zoom) * stress_review.CELL_PX
+            return round(lon_of(way) * 20037508.342789244 / 180 / size)
+
+        zoom = next(
+            z / 10
+            for z in range(50, 100)
+            if cell_of(CLOSED, z / 10) == cell_of(RISE, z / 10) != cell_of(DROP, z / 10)
+        )
+        view = stress_review.map_view(["rebuild"], EVERYWHERE, zoom)
+        assert [b["properties"]["count"] for b in view["badges"]["features"]] == [2], zoom
+        assert drawn(view) == {DROP}
+        assert [d["properties"]["way"] for d in view["dots"]["features"]] == [DROP]
+
+    def test_each_list_drawn_has_its_fair_share_of_the_cap(self, queued, monkeypatch) -> None:
+        assert stress_review.fair_shares({"a": 5, "b": 1}, 4) == {"b": 1, "a": 3}
+        assert stress_review.fair_shares({"a": 5, "b": 5, "c": 0}, 5) == {"c": 0, "a": 2, "b": 3}
+        disagreements = stress_review.page("disagreement")["total"]
+        assert disagreements >= 1
+        monkeypatch.setattr(stress_review, "MAP_CAP", 2)
+        view = stress_review.map_view(["rebuild", "disagreement"], EVERYWHERE, 14)
+        queues = [f["properties"]["queue"] for f in view["lines"]["features"]]
+        # The rebuild's three roads never push the disagreements off, whatever their scores.
+        assert queues == ["rebuild", "disagreement"] and view["truncated"]
+
+    def test_the_rebuilds_build_is_read_once_a_request(self, queued, monkeypatch) -> None:
+        reads = []
+        real = stress_review.current_build
+        monkeypatch.setattr(stress_review, "current_build", lambda q: reads.append(q) or real(q))
+        stress_review.map_view(["rebuild", "disagreement"], EVERYWHERE, 5)
+        assert reads == ["rebuild"]
+
+    def test_a_view_west_past_east_south_past_north_or_too_wide_is_refused(self) -> None:
+        refuse = stress_review.view_refusal
+        assert refuse(-77.1, 38.8, -76.9, 39.0, 12) == ""
+        assert "west" in refuse(-76.9, 38.8, -77.1, 39.0, 12)
+        assert "south" in refuse(-77.1, 39.0, -76.9, 38.8, 12)
+        # Four wide screens at z12 is about 1.3 degrees.
+        assert "too wide" in refuse(-78.0, 38.8, -76.0, 39.0, 12)
+        assert refuse(-78.0, 38.8, -76.0, 39.0, 10) == ""
+
     def test_a_ruled_road_says_so(self, queued) -> None:
         stress_review.rule(make_user(), "rebuild", [DROP], "accept")
         lines = stress_review.map_view(["rebuild"], EVERYWHERE, 14)["lines"]["features"]
@@ -319,6 +385,25 @@ class TestNextRoad:
         after = step(["rebuild", "disagreement"], "rebuild", order[2])
         assert after["queue"] == "disagreement"
         assert after["osm_way_id"] == stress_review.page("disagreement")["items"][0]["osm_way_id"]
+
+    def test_previous_before_the_first_goes_round_to_the_last_list_drawn(self, queued) -> None:
+        rebuild = [r["osm_way_id"] for r in stress_review.page("rebuild")["items"]]
+        disagreement = [r["osm_way_id"] for r in stress_review.page("disagreement")["items"]]
+        lists = ["rebuild", "disagreement", "narrow_rural"]
+        narrow = [r["osm_way_id"] for r in stress_review.page("narrow_rural")["items"]]
+        step = stress_review.next_road
+        back = step(lists, "rebuild", rebuild[0], direction=-1)
+        # Before the first of the first list: the last road of the last list with roads.
+        if narrow:
+            assert back == {"queue": "narrow_rural", "osm_way_id": narrow[-1]}
+        else:
+            assert back == {"queue": "disagreement", "osm_way_id": disagreement[-1]}
+        assert step(lists, "rebuild", rebuild[0], direction=-1, wrap=False) is None
+        # From the first of the second list, back to the last of the first.
+        assert step(lists, "disagreement", disagreement[0], direction=-1) == {
+            "queue": "rebuild",
+            "osm_way_id": rebuild[-1],
+        }
 
 
 @pytest.fixture
@@ -575,7 +660,7 @@ class TestEndpoints:
         assert r.status_code == 200 and r.json()["ruling"]["undone"]
         r = post(client, RULE, {"queue": "rebuild", "osm_way_ids": [DROP], "decision": "set"}, csrf)
         assert r.status_code == 400
-        view = dict(zip(("west", "south", "east", "north"), EVERYWHERE, strict=True))
+        view = dict(zip(("west", "south", "east", "north"), NEAR, strict=True))
         r = client.get(
             "/api/review/map", {"queues": "rebuild,nonsense", **view, "zoom": 14}, **addr()
         )
@@ -587,6 +672,15 @@ class TestEndpoints:
         far = client.get("/api/review/map", {"queues": "rebuild", **view, "zoom": 5}, **addr())
         assert far.json()["badges"]["features"][0]["properties"]["count"] == 3
         assert client.get("/api/review/map", {**view, "zoom": 30}, **addr()).status_code == 400
+        west, south, east, north = NEAR
+        for box, why in (
+            ((east, south, west, north), "west"),
+            ((west, north, east, south), "south"),
+            ((-80.0, south, -74.0, north), "too wide"),
+        ):
+            bad = dict(zip(("west", "south", "east", "north"), box, strict=True))
+            r = client.get("/api/review/map", {**bad, "zoom": 14}, **addr())
+            assert r.status_code == 400 and why in r.json()["error"], box
         first = stress_review.page("rebuild")["items"][0]["osm_way_id"]
         r = client.get("/api/review/next", {"lists": "rebuild", "queue": "rebuild"}, **addr())
         assert r.json()["next"] == {"queue": "rebuild", "osm_way_id": first}

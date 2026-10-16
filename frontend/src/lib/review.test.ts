@@ -22,8 +22,11 @@ import {
   sortRoads,
   stepText,
   trafficText,
+  drawnOf,
+  maxViewWidth,
   typingIn,
   viewBox,
+  viewZoom,
   type ReviewRoad,
 } from "./review.ts";
 
@@ -212,6 +215,32 @@ test("the map is asked for the view alone, at its zoom, and the road's facts wit
   assert.deepEqual(viewBox(-400, -95, 400, 95), [-180, -90, 180, 90]);
   assert.deepEqual(viewBox(170, 0, 190, 10), [170, 0, 180, 10]);
   assert.deepEqual(viewBox(-200, 0, -170, 10), [-180, 0, -170, 10]);
+  // Never wider than the server draws at the zoom sent (to a tenth, rounded down): narrowed about its middle.
+  assert.equal(viewZoom(11.29), 11.2);
+  const [w, s, e, n] = viewBox(-80, 38, -74, 40, 11.29);
+  assert.ok(e - w <= maxViewWidth(11.2) && e - w > maxViewWidth(11.2) - 0.001, `${e - w}`);
+  assert.ok(Math.abs((w + e) / 2 + 77) < 1e-4 && s === 38 && n === 40);
+  // South never past north.
+  assert.deepEqual(viewBox(-77, 39, -76.9, 38.9, 12), [-77, 38.9, -76.9, 39]);
+});
+
+test("a list switched off leaves the map at once, its badges with it, before (or without) a new answer", () => {
+  const line = (way: number, queue: "rebuild" | "disagreement") => ({ type: "Feature" as const, geometry: null, properties: { way, queue, ruled: false } });
+  const fc = <T,>(features: T[]) => ({ type: "FeatureCollection" as const, features });
+  const view = { zoom: 9, detail: "low" as const, truncated: false, lines: fc([line(1, "rebuild"), line(2, "disagreement")]), dots: fc([line(1, "rebuild")]), badges: fc([{ type: "Feature" as const, geometry: null, properties: { count: 5 } }]) };
+  const both = drawnOf(view, ["rebuild", "disagreement"], ["rebuild", "disagreement"]);
+  assert.equal(both?.lines.features.length, 2);
+  assert.equal(both?.badges.features.length, 1);
+  const one = drawnOf(view, ["rebuild", "disagreement"], ["disagreement"]);
+  assert.deepEqual(one?.lines.features.map((f) => f.properties.way), [2]);
+  assert.equal(one?.dots.features.length, 0);
+  assert.equal(one?.badges.features.length, 0);
+  assert.equal(drawnOf(null, [], []), null);
+  const page = src("ReviewMode.tsx");
+  // A newer view cancels the request before it; a slower Next answer never opens after a newer one.
+  assert.match(page, /controller\.abort\(\);/);
+  assert.match(page, /if \(asking !== nextAsked\.current\) return;/);
+  assert.match(page, /if \(asking !== besideAsked\.current\) return;/);
 });
 
 test("Review's map asks for the view's roads as it moves, with count badges far out and a dot a road", () => {

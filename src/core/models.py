@@ -2210,6 +2210,12 @@ class ReviewQueueState(models.Model):
     computed_at = models.DateTimeField(default=timezone.now)
     # "" when computed; else why the list is empty ("No report from this build").
     note = models.TextField(blank=True, default="")
+    # Unused since the map is served by view (stress_review.map_view): the whole-list maps once
+    # kept here. Kept for one release, so a worker still running the release before reads and
+    # writes its row through a deploy; written empty. Their columns go in the next release.
+    map_low = models.TextField(blank=True, default="")
+    map_high = models.TextField(blank=True, default="")
+    map_points = models.TextField(blank=True, default="")
 
     class Meta:
         db_table = "review_queue_state"
