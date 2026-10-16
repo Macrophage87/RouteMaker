@@ -7728,15 +7728,19 @@ An opened GPX file still downloads verbatim as GPX; a course is always the route
   route gives the same bytes every time (PLAN.md, Clean exports).
 - **Device profiles** (`frontend/src/lib/deviceProfiles.ts`, the profile table): Any bike computer (the default),
   Garmin Edge, Wahoo ELEMNT, Hammerhead Karoo, each with a cue budget (200, PLAN.md's default), a point budget
-  (10,000; 20,000 for Wahoo and Karoo) and name lengths (15; 32 for Wahoo and Karoo). `verified` is null on
-  every row: none has yet been loaded on its device. Record the date there when one is.
+  (10,000; 20,000 for Wahoo and Karoo), a file-size budget (4 MB; 8 MB for Wahoo and Karoo) and name lengths (15;
+  32 for Wahoo and Karoo). The size budgets are unverified working figures, not limits measured on a unit or
+  published by a maker. `verified` is null on every row: none has yet been loaded on its device. Record the date
+  there when one is.
 - **Over the cue budget** the least important go first: notes on busier, calmer or unpaved stretches, then flagged
   crossings (orange before red), then turns onto unnamed ways, then named turns and walks; within a rank, the cue
   nearest the one before it. Never dropped: start, finish, stops, Avoid-rated junctions and work zones. Where those
   alone pass the budget, nothing is dropped (giving up the turns would still not make it fit) and the line says to
   split the route.
 - **Over the point budget** the line is thinned by Douglas-Peucker at the smallest of 1, 2, 5 and 10 m that fits,
-  every cue's record kept; the line says the tolerance ("within 3 ft (1 m) of the route").
+  every cue's record kept; the line says the tolerance ("within 3 ft (1 m) of the route"). **Over the size budget**
+  (the written file measured) it is thinned further, doubling past 10 m (20, 40 ... m), until the file fits; one
+  that still does not is said ("still larger than the 4 MB it takes").
 
 The cue mapping (PLAN.md: "The mapping table names every collapse for every format"). The turn model gives left and
 right only today (describe.py has no slight, sharp, u-turn or fork yet), so FIT's richer types are not written.
@@ -7745,25 +7749,31 @@ right only today (describe.py has no slight, sharp, u-turn or fork yet), so FIT'
 | ------------------------------ | --------------------- | ------------- | -------------------------- | -------------------- |
 | start                          | generic (0)           | Generic       | Start                      | Start.               |
 | left / right turn              | left (6) / right (7)  | Left / Right  | street, abbreviated; else Left / Right | Ride's words |
-| hazard (Avoid, work zone, flagged crossing) | danger (5) | Danger     | street, abbreviated; else Caution | Ride's words  |
+| hazard: Avoid, work zone (never dropped) | danger (5) | Danger      | street, abbreviated; else Caution | Ride's words  |
+| hazard: flagged crossing (can be dropped) | generic (0) | Generic    | street, abbreviated; else Caution | Ride's words  |
 | walk                           | generic (0)           | Generic       | Walk bike                  | Ride's words         |
 | busier, calmer, unpaved notes  | generic (0)           | Generic       | Busy road / Calmer / Unpaved | Ride's words       |
 | stop                           | generic (0)           | Generic       | Stop N                     | Stop N.              |
 | finish                         | generic (0)           | Generic       | Finish                     | The end of the route. |
 
-FIT has no notes field, so a course point carries its short name only.
+FIT has no notes field, so a course point carries its short name only. Only the warnings a course never drops are
+danger (PLAN.md: "danger-type cues are never dropped"), so a flagged crossing, which the cue budget can drop, is a
+note.
 
 **FIT** (`frontend/src/lib/fit.ts`) is written here to the FIT protocol and Global Profile, with no library: PLAN.md
 named fit-tool (BSD-3, Python), but the export runs in the browser beside the GPX export, and a course needs only
 plain records and the CRC. Protocol 1.0, profile 21.00, little-endian, normal headers. Messages, in order:
-file_id (type course, manufacturer development, product 0, time_created the fixed base; no serial number), course
+file_id (type course, manufacturer development, product 0, time_created the fixed base, number a 16-bit fold of
+an FNV-1a hash of the file's bytes after file_id, so two courses do not share a file_id; no serial number), course
 (name, sport cycling), lap (start and end time and position, elapsed and timer time, distance, ascent, descent),
 event timer start, the records (time, position, altitude, distance), event timer stop_all, the course points
 (index, time, position, distance, type, name). No file_creator, device_info or user profile. Attribution: FIT has no
-notice field, so the course name carries " © OSM" where the profile's name length leaves room after the name, and
-otherwise the GPX section's hint carries the credit beside the download (PLAN.md's recorded FIT carve-out).
+notice field, so the course name carries " (c) OSM" (plain ASCII: a unit's font may have no ©): the longest
+wording of the name that leaves room for it is used, and only where none does the name alone, with the GPX
+section's hint carrying the credit beside the download (PLAN.md's recorded FIT carve-out). Altitude is held to
+uint16's range (-500 m to 12,606 m).
 `fit.test.ts` decodes each file back with a reader driven by the file's own definitions, checking both CRCs; the
-same file was also decoded with fitdecode 0.10.0 (MIT) once, by hand, with every message and field read as
+same file was also decoded with fitdecode 0.10.0 (MIT) once, by hand (before file_id carried its number), with every message and field read as
 written. Not yet loaded on a real head unit.
 
 **TCX** (`frontend/src/lib/tcx.ts`): TrainingCenterDatabase v2, Course_t's order (Name, Lap, Track, Notes,

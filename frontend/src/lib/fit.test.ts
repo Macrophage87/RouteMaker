@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_PROFILE, deviceProfile, type DeviceProfile } from "./deviceProfiles.ts";
 import { compileCourse, COURSE_BASE_UNIX_S } from "./course.ts";
-import { FIT_EPOCH_UNIX_S, fitCrc, semicircles, writeFit } from "./fit.ts";
+import { FIT_EPOCH_UNIX_S, fileNumber, fitAltitude, fitCrc, semicircles, writeFit } from "./fit.ts";
 import { sampleRoute } from "./courseRoute.test.fixture.ts";
 
 interface Message {
@@ -117,7 +117,7 @@ test("records carry the line, elevation and distance; course points the cues, on
     [
       [0, "Start"],
       [6, "17th St NW"],
-      [5, "Florida Ave NW"],
+      [0, "Florida Ave NW"],
       [5, "Dupont Cir"],
       [0, "Stop 1"],
       [7, "Right"],
@@ -143,7 +143,7 @@ test("a profile's trimming reaches the FIT file, and names fit its length", () =
 test("FIT carries the OSM credit in the course name where the profile has room (PLAN.md's carve-out)", () => {
   const wide = deviceProfile("wahoo");
   const name = readFit(writeFit(compileCourse(sampleRoute({ distance_m: 3000 }), { ...wide, courseNameChars: 40 }, "fit"))).messages[1].fields.get(5);
-  assert.equal(name, "Default route, 1.9 mi (3.0 km) © OSM");
+  assert.equal(name, "Default route, 1.9 mi (3.0 km) (c) OSM");
 });
 
 test("the same route gives the same FIT bytes, and a different one different bytes", () => {
@@ -151,6 +151,27 @@ test("the same route gives the same FIT bytes, and a different one different byt
   const b = writeFit(compileCourse(sampleRoute(), GENERIC, "fit"));
   assert.deepEqual(a, b);
   assert.notDeepEqual(a, writeFit(compileCourse(sampleRoute({ duration_s: 700 }), GENERIC, "fit")));
+});
+
+test("file_id's number is a hash of the file's own bytes: the same course the same, two courses not; no serial", () => {
+  const number = (route: Parameters<typeof sampleRoute>[0]) => {
+    const fileId = readFit(writeFit(compileCourse(sampleRoute(route), GENERIC, "fit"))).messages[0].fields;
+    assert.ok(!fileId.has(3), "no serial number");
+    return fileId.get(5) as number;
+  };
+  assert.equal(number({}), number({}));
+  const others = [{ duration_s: 700 }, { descent_m: 77 }, { climb_m: 40 }].map(number);
+  for (const n of others) assert.notEqual(n, number({}));
+  for (const n of [number({}), ...others]) assert.ok(Number.isInteger(n) && n >= 0 && n < 0xffff);
+  assert.equal(fileNumber(0xffff), 0xfffe, "never the invalid value");
+  assert.equal(fileNumber(0x12345678), 0x1234 ^ 0x5678);
+});
+
+test("altitude is held to uint16's range below its invalid value", () => {
+  assert.equal(fitAltitude(0), 2500);
+  assert.equal(fitAltitude(-600), 0);
+  assert.equal(fitAltitude(20_000), 0xfffe);
+  assert.equal(fitAltitude(12_606.8), 0xfffe);
 });
 
 test("the CRC is FIT's: the protocol's own check value", () => {

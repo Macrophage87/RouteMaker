@@ -18,7 +18,7 @@ import {
   courseName,
   thin,
 } from "./course.ts";
-import { TCX_NS, writeTcx } from "./tcx.ts";
+import { TCX_CUE_TYPES, TCX_NS, escapeXml, writeTcx } from "./tcx.ts";
 import { at, sampleRoute } from "./courseRoute.test.fixture.ts";
 
 const GENERIC = deviceProfile(DEFAULT_PROFILE);
@@ -40,7 +40,7 @@ test("cues are Ride's, in order, the start first and the finish last, each pinne
     [
       ["start", "Start"],
       ["left", "17th St NW"],
-      ["danger", "Florida Ave NW"],
+      ["note", "Florida Ave NW"],
       ["danger", "Dupont Cir"],
       ["stop", "Stop 1"],
       ["right", "Right"],
@@ -105,6 +105,39 @@ test("over the cue budget, the least important go first; start, finish, stops an
   assert.equal(courseLine(course), "FIT course for Tight: kept 5 of 8 cues, least important left out.");
 });
 
+test("only the cues never dropped are danger: a flagged crossing, which can be, is a note (Generic)", () => {
+  for (const format of ["fit", "tcx"] as const) {
+    const course = compileCourse(sampleRoute(), GENERIC, format);
+    const florida = course.cues.find((c) => c.name.startsWith("Florida"))!;
+    assert.equal(florida.type, "note", format);
+    assert.equal(course.cues.find((c) => c.name === "Dupont Cir")!.type, "danger", format);
+    // Every danger cue survives the tightest budget: dropped ones are never danger.
+    const tight = compileCourse(sampleRoute(), { ...GENERIC, maxCues: 5 }, format);
+    const kept = new Set(tight.cues.map((c) => c.text));
+    for (const c of course.cues) if (c.type === "danger") assert.ok(kept.has(c.text), c.name);
+  }
+  assert.equal(TCX_CUE_TYPES.note, "Generic");
+  assert.equal(TCX_CUE_TYPES.danger, "Danger");
+});
+
+test("over the byte budget the line is thinned further, past the point budget's tolerances, until it fits", () => {
+  const full = compileCourse(sampleRoute(), GENERIC, "tcx");
+  assert.equal(full.trim.bytes, new TextEncoder().encode(writeTcx(full)).length);
+  assert.equal(full.trim.toleranceM, 0);
+  // A budget the whole line does not fit: thinned (here a straight line) to the cues' records.
+  const small: DeviceProfile = { ...GENERIC, label: "Small", maxBytes: Math.floor(full.trim.bytes / 2) };
+  const course = compileCourse(sampleRoute(), small, "tcx");
+  assert.ok(course.trim.bytes <= small.maxBytes, `${course.trim.bytes}`);
+  assert.equal(course.trim.bytes, new TextEncoder().encode(writeTcx(course)).length);
+  assert.ok(course.records.length < full.records.length);
+  assert.equal(course.cues.length, full.cues.length);
+  // A budget nothing fits: as thin as it goes, and the line says it is still too large.
+  const tiny = compileCourse(sampleRoute(), { ...small, maxBytes: 100 }, "fit");
+  assert.ok(tiny.trim.toleranceM > 10);
+  assert.match(courseLine(tiny), /; still larger than the 1 KB it takes\.$/);
+  for (const p of DEVICE_PROFILES) assert.ok(p.maxBytes >= 4_000_000, p.id);
+});
+
 test("where the cues the course must keep pass the budget alone, nothing is dropped and the line says to split", () => {
   const tiny: DeviceProfile = { ...GENERIC, label: "Tiny", maxCues: 3 };
   const course = compileCourse(sampleRoute(), tiny, "tcx");
@@ -142,8 +175,14 @@ test("the course name fits the format and profile; FIT carries the OSM credit in
   const route = sampleRoute();
   assert.equal(courseName(route, TCX_COURSE_NAME_CHARS, "tcx"), "Default 1.9 mi");
   assert.equal(courseName(route, 15, "fit"), "Default 1.9 mi", "no room for the credit: PLAN.md's FIT carve-out");
-  assert.equal(courseName(route, 32, "fit"), `Default route, 1.9 mi (3.0 km)`);
+  // A shorter wording that leaves room for the credit comes before a longer one without it.
+  assert.equal(courseName(route, 32, "fit"), `Default 1.9 mi (3.0 km)${FIT_NAME_CREDIT}`);
+  assert.equal(courseName(route, 22, "fit"), `Default 1.9 mi${FIT_NAME_CREDIT}`);
   assert.equal(courseName(route, 40, "fit"), `Default route, 1.9 mi (3.0 km)${FIT_NAME_CREDIT}`);
+  assert.equal(courseName(route, 32, "tcx"), "Default route, 1.9 mi (3.0 km)", "TCX's credit is in Course/Notes");
+  // Plain ASCII: a unit's font may have no ©.
+  assert.equal(FIT_NAME_CREDIT, " (c) OSM");
+  assert.match(FIT_NAME_CREDIT, /^[\x20-\x7e]+$/);
   assert.equal(courseFileName(route, "fit"), "routemaker-default-1_9mi.fit");
   assert.equal(courseFileName(route, "tcx"), "routemaker-default-1_9mi.tcx");
 });
@@ -157,7 +196,7 @@ test("TCX: the schema's order, the attribution in Course/Notes, full cue words i
   assert.match(course, /<Notes>Default route, 1\.9 mi \(3\.0 km\)\. Route data: © OpenStreetMap contributors \(ODbL\); USGS 3DEP\. Planned with RouteMaker\.<\/Notes>/);
   assert.match(course, /<CoursePoint>\s*<Name>17th St NW<\/Name>\s*<Time>2000-01-01T00:01:40Z<\/Time>\s*<Position>[\s\S]*?<\/Position>\s*<AltitudeMeters>[\d.]+<\/AltitudeMeters>\s*<PointType>Left<\/PointType>\s*<Notes>Left onto 17th Street Northwest\.<\/Notes>/);
   const types = [...course.matchAll(/<PointType>([^<]+)<\/PointType>/g)].map((m) => m[1]);
-  assert.deepEqual(types, ["Generic", "Left", "Danger", "Danger", "Generic", "Right", "Generic", "Generic"]);
+  assert.deepEqual(types, ["Generic", "Left", "Generic", "Danger", "Generic", "Right", "Generic", "Generic"]);
   // Every course point has a time and a position (required in TCX).
   const points = course.split("<CoursePoint>").slice(1);
   assert.ok(points.every((p) => p.includes("<Time>") && p.includes("<LatitudeDegrees>")));
@@ -165,6 +204,15 @@ test("TCX: the schema's order, the attribution in Course/Notes, full cue words i
   // Clean: no Author or Creator, and no clock.
   assert.ok(!/<Author|<Creator/.test(xml));
   assert.equal(writeTcx(compileCourse(sampleRoute(), GENERIC, "tcx")), xml, "byte-identical across runs");
+});
+
+test("TCX text holds only XML characters: controls, U+FFFE, U+FFFF and lone surrogates go; pairs stay", () => {
+  assert.equal(escapeXml("a\u0001b\uFFFEc\uFFFFd"), "abcd");
+  assert.equal(escapeXml("x\uD800y\uDC00z"), "xyz");
+  assert.equal(escapeXml("bike \uD83D\uDEB2 & <go>"), "bike \uD83D\uDEB2 &amp; &lt;go&gt;");
+  assert.equal(escapeXml("tab\tnew\nline"), "tab\tnew\nline");
+  // Written as escapes, not as the characters themselves.
+  assert.ok(!/[\uFFFE\uFFFF]/.test(readFileSync(new URL("./tcx.ts", import.meta.url), "utf8")));
 });
 
 test("thinning a 7,500-point reference ride to a small budget keeps every dropped point within the tolerance", () => {

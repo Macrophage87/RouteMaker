@@ -179,9 +179,10 @@ export function GpxPanel(props: Props) {
     setChoice(made);
     keepChoice(made.format, made.profile);
   };
-  // What the last course download fitted to the device, said in the status region below; a new route clears it.
+  // What the last course download fitted to the device, said in the status region below; a new route, another
+  // file type or another device clears it.
   const [courseSaid, setCourseSaid] = useState<{ text: string; count: number } | null>(null);
-  useEffect(() => setCourseSaid(null), [route]);
+  useEffect(() => setCourseSaid(null), [route, choice.format, choice.profile]);
   const sayCourse = (text: string) => setCourseSaid((s) => ({ text, count: (s?.count ?? 0) + 1 }));
   const input = useRef<HTMLInputElement>(null);
   const [reading, setReading] = useState<Reading>({ kind: "idle" });
@@ -277,7 +278,7 @@ export function GpxPanel(props: Props) {
     <section aria-labelledby="gpx-heading" className="gpx">
       {/* The GPX sheet's own heading names it (App.tsx); this one stays for the section's name. */}
       <h3 id="gpx-heading" className="visually-hidden">
-        GPX file
+        Route file
       </h3>
       {courses && (
         <div className="gpx-format">

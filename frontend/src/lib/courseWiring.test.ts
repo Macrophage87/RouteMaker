@@ -14,6 +14,10 @@ test("the GPX section offers the course formats and devices, labelled, and says 
   // The line is said in the section's existing status region, as a new node each time so a repeat is heard.
   const region = panel.slice(panel.indexOf('<div role="status" aria-live="polite">'));
   assert.match(region.slice(0, region.indexOf("</div>")), /<p key=\{courseSaid\.count\} className="hint gpx-course">/);
+  // The line goes with a new route, file type or device: it named the last one.
+  assert.match(panel, /useEffect\(\(\) => setCourseSaid\(null\), \[route, choice\.format, choice\.profile\]\);/);
+  // The section's hidden heading names what it holds now, not GPX alone.
+  assert.match(panel, /<h3 id="gpx-heading" className="visually-hidden">\s*Route file\s*<\/h3>/);
   // The button names the file it saves.
   assert.match(panel, /Download \{FORMAT_WORDS\[choice\.format\]\}/);
   assert.match(panel, /const FORMAT_WORDS: Record<ExportFormat, string> = \{ gpx: "GPX", fit: "FIT", tcx: "TCX", "pdf-sheet": "PDF", "pdf-strip": "PDF" \};/);

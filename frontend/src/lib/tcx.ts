@@ -14,7 +14,7 @@ import type { Course, CourseCueType } from "./course.ts";
 
 export const TCX_NS = "http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2";
 
-/** PointType for each cue: the published mapping (stops, walks and notes collapse to Generic). */
+/** PointType for each cue: the published mapping (stops, walks and notes, flagged crossings among them, collapse to Generic). */
 export const TCX_CUE_TYPES: Record<CourseCueType, string> = {
   start: "Generic",
   finish: "Generic",
@@ -26,13 +26,15 @@ export const TCX_CUE_TYPES: Record<CourseCueType, string> = {
   right: "Right",
 };
 
-function escapeXml(text: string): string {
+export function escapeXml(text: string): string {
   return text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
-    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f￾￿]/g, "");
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\uFFFE\uFFFF]/g, "")
+    // A lone surrogate is no character at all, so not XML either.
+    .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "");
 }
 
 /** "2000-01-01T00:12:34Z": whole seconds, UTC. */
