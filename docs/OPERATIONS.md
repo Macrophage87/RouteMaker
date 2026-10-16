@@ -3149,8 +3149,10 @@ in `routing.ATTRIBUTION` and `VOLUME_CREDITS`:
   together**: deleting the rows does not make the credit wrong for the graph
   until the next rebuild, but a rebuild without them should drop the line.
 
-Arlington's Bike Comfort Index and Alexandria's Transport Streets are internal
-comparison only and are never credited because nothing of them is published.
+Arlington's Bike Comfort Index is internal comparison only and is never
+credited because nothing of it is published. Alexandria's Transport Streets was
+too until 2026-10-16 (CC0, the city's OpenData portal); it is credited "City of
+Alexandria" (docs/SOURCES.md).
 
 DDOT's Central Business District boundary (Open Data DC, CC BY 4.0), which
 decides the sidewalks bicycles may not ride (`routemaker.cbd`, OWNER-DECISIONS
@@ -3787,11 +3789,32 @@ the first host to run it is the first test of it.
    **Optional, the agency street layers.** Add `--roadway-block
    /data/reference/inputs/dc-roadway-block/dc-roadway-block.geojson
    --baltimore-centerline
-   /data/reference/inputs/baltimore-street-centerline/baltimore-street-centerline.geojson`
+   /data/reference/inputs/baltimore-street-centerline/baltimore-street-centerline.geojson
+   --alexandria-streets
+   /data/reference/inputs/alexandria-transport-streets/alexandria-transport-streets.geojson`
    to the same command to write `reference/roadway.json`: DC's and Baltimore's
    own posted speeds, lanes by direction, one-way streets, bike lanes and
    parking, which then take precedence over OSM's tags at the rebuild's
-   classification (docs/DEVELOPMENT.md, "Agency street layers"). The files are
+   classification (docs/DEVELOPMENT.md, "Agency street layers"), and
+   Alexandria's posted speeds where OSM has none (PLAN.md item 183; CC0, the
+   city's OpenData portal). The Alexandria file was kept under
+   `internal-only/` until the city's reply of 2026-10-16, and the installer
+   refuses any path under that directory, so move it once, before the first
+   install that names it, into the inputs folder beside the other street layers
+   (`$DATA_ROOT` is the data root the paths above are under), and check it is
+   the file recorded in `fixtures/datasets/README.md`:
+
+   ```sh
+   mkdir -p "$DATA_ROOT/reference/inputs/alexandria-transport-streets"
+   mv ~/rmdata/datasets/internal-only/alexandria-transport-streets/* \
+      "$DATA_ROOT/reference/inputs/alexandria-transport-streets/"
+   rmdir ~/rmdata/datasets/internal-only/alexandria-transport-streets
+   echo "5e8f8765cb368243cf9a231cc858f4951840050b9022222ec66c1e7306c8f1f0  $DATA_ROOT/reference/inputs/alexandria-transport-streets/alexandria-transport-streets.geojson" \
+      | sha256sum -c -
+   ```
+
+   `sha256sum -c` must print `OK`; if it does not, stop and refetch with
+   `scripts/fetch_agency_layer.py` (the owner's go, a new `--out-dir`). The files are
    fetched once with `scripts/fetch_agency_layer.py`, which refuses to fetch a
    layer twice, with the owner's go for each download. Without `roadway.json`
    the rebuild runs as before and logs `roadway.json is absent`; with it the

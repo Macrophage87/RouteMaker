@@ -61,7 +61,9 @@ def test_the_rural_floor_leaves_a_county_half_step_alone():
     assert rural_floor(rated, tags, urban=False) is rated
 
 
-def test_internal_only_agencies_are_not_listed():
+def test_internal_only_and_unrated_agencies_are_not_listed():
+    """Arlington's layer is internal only; Alexandria's are cleared (CC0, 2026-10-16) but
+    rate nothing, so the city's speeds reach the classifier as street facts instead."""
     assert not {"arlington", "alexandria"} & set(agency_lts.AGENCIES)
 
 
