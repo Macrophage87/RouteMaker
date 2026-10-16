@@ -86,6 +86,7 @@ import { federalShown, type FederalData } from "./lib/federalLand.ts";
 import { FEDERAL_POINTS_NONE, type FederalStatus } from "./lib/federalLegend.ts";
 import { federalAreaAt, federalRouteLines, pointAreas, stopWarningShort } from "./lib/federalStops.ts";
 import { addCoverageMask, fetchCoverage, watchForCapacity, watchForFacilities, watchCentre, watchZoom } from "./lib/mapGlue.ts";
+import { holdBackDuringRide } from "./lib/rideBack.ts";
 import { isMassRide, massBandsChangeSaid, massBandsSaid } from "./lib/massCapacity.ts";
 import { movePoint, planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
 import { mapWhen } from "./lib/rideTime.ts";
@@ -2598,6 +2599,8 @@ export function App() {
     // Said by the page's region, always mounted; the focus goes to Undo (RideEnded), not back to Start (review F6).
     announce(RIDE_ENDED_SAID);
   }, [announce]);
+  // A back gesture during a ride does nothing; End ride is the way out (lib/rideBack.ts, review RIDE-2).
+  useEffect(() => (riding ? holdBackDuringRide(window) : undefined), [riding]);
   const undoEndRide = () => {
     const ended = endedRide.current;
     endedRide.current = null;
