@@ -1271,6 +1271,73 @@ def test_baltimore_s_speed_fills_only_where_osm_has_none() -> None:
     assert same.disagreements == ()
 
 
+def alexandria(**overrides) -> dict:
+    """A City of Alexandria Transport Streets record: a local street at 20 mph."""
+    record = {
+        "FULL_NAME": "S ROYAL ST",
+        "SPEED_LIMIT": 20,
+        "ONEWAY": "FROM_TO",
+        "MTFCC": "LOCAL NEIGHBORHOOD ROAD, RURAL ROAD, CITY STREET",
+        "SEG_TYPE": "OTHER CENTERLINE",
+        "SEG_EXIST": "Y",
+        "RD_CLASS": None,
+        "LANES": None,
+    }
+    record.update(overrides)
+    return record
+
+
+def test_alexandria_s_record_gives_its_posted_speed_and_nothing_else() -> None:
+    """PLAN.md item 183: the speed only; its one-way is not read, LANES is empty."""
+    facts = A.parse_alexandria_transport_streets(alexandria())
+    assert facts.agency == A.ALEXANDRIA_AGENCY
+    assert facts.name == "S ROYAL ST"
+    assert facts.speed_mph == {"posted": 20}
+    assert facts.way is None and facts.oneway_with is None and facts.lanes == {}
+    assert A.parse_alexandria_transport_streets(alexandria(SPEED_LIMIT=None)).speed_mph == {}
+    assert A.parse_alexandria_transport_streets(alexandria(SPEED_LIMIT=0)).speed_mph == {}
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"MTFCC": "INTERSTATE HIGHWAY", "FULL_NAME": "GEORGE WASHINGTON MEMORIAL PKWY SB"},
+        {"MTFCC": "RAMP"},
+        {"MTFCC": "ALLEY"},
+        {"MTFCC": "PARKING LOT ROAD"},
+        {"MTFCC": "WALKWAY/PEDESTRIAN TRAIL"},
+        {"MTFCC": "PRIVATE ROAD FOR SERVICE VEHICLES"},
+        {"SEG_TYPE": "DRIVEWAY"},
+        {"SEG_EXIST": "N"},
+    ],
+)
+def test_alexandria_s_records_that_are_not_streets_to_ride_are_skipped(overrides) -> None:
+    assert A.parse_alexandria_transport_streets(alexandria(**overrides)) is None
+
+
+def test_alexandria_s_speed_wins_over_osm() -> None:
+    """Item 183: the city's 20 mph fills a residential street OSM leaves unposted, and the
+    owner chose (2026-10-16, "City wins") that it replaces OSM's posted speed, as DC's does."""
+    city = A.WayFacts(agency=A.ALEXANDRIA_AGENCY, blocks=("a",), speed_mph=20)
+    gap = A.overlay({"highway": "residential"}, city)
+    assert gap.tags["maxspeed"] == "20 mph"
+    assert gap.sources["maxspeed"] == A.ALEXANDRIA_AGENCY
+    assert A.ALEXANDRIA_SPEED_WINS and A.ALEXANDRIA_AGENCY not in A.SPEED_FILLS_ONLY
+    posted = A.overlay({"highway": "residential", "maxspeed": "25 mph"}, city)
+    assert posted.tags["maxspeed"] == "20 mph"
+    assert posted.sources["maxspeed"] == A.ALEXANDRIA_AGENCY
+    assert "oneway" not in gap.routing
+
+
+def test_a_differently_named_alexandria_record_never_reaches_a_trunk_road() -> None:
+    """Alexandria's layer is classed (MTFCC), and no class it keeps is a freeway's."""
+    from pipeline.conflation import RoadFeature, _freeway_block
+
+    facts = A.parse_alexandria_transport_streets(alexandria(MTFCC="PRIMARY ROAD"))
+    assert A.ALEXANDRIA_AGENCY in A.CLASSED_AGENCIES
+    assert not _freeway_block(RoadFeature("a", [(0, 0), (0, 1)], facts))
+
+
 def test_a_slip_road_keeps_its_own_lanes() -> None:
     """Review r1: a one-lane ramp took its parent's block and read as 2 to 4 lanes."""
     ramp = A.overlay({"highway": "primary_link", "lanes": "1"}, way_facts(lanes_per_direction=3))

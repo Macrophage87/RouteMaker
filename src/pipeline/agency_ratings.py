@@ -49,8 +49,9 @@ def load(path: Path) -> tuple[tuple[conflation.RoadFeature, ...], dict[str, Agen
     for row in json.loads(path.read_text()):
         agency, level = row["agency"], float(row["level"])
         if agency not in AGENCIES:
-            # Arlington's and Alexandria's layers are internal-only and are refused
-            # here as well as by the installer (OWNER-DECISIONS 152, 153, 155).
+            # Arlington's layer is internal-only and is refused here as well as by
+            # the installer (OWNER-DECISIONS 152, 155). Alexandria publishes no
+            # rating (`agency_lts.AGENCIES`), so a row naming it is refused too.
             raise AgencyRatingsInvalid(f"{path}: record {row['id']}: unknown agency {agency!r}")
         problem = level_problem(level)
         if problem:
