@@ -203,8 +203,20 @@ test("Ride mode: a re-plan that finds no route asks for the way back, not for a 
   const replan = ride.slice(ride.indexOf("const replan = useCallback("), ride.indexOf("// No good fix for a minute"));
   assert.match(replan, /confirmLong: true/);
   assert.match(replan, /if \(!result\.ok && !via && startsWayBack\(result\.error\.kind\) && !voided\(\)\)/);
-  assert.match(replan, /await wayBackRoute\(routeRef\.current, modelRef\.current, current\.progressM \?\? 0, here, kept, ask, voided\);/);
+  assert.match(replan, /await wayBackRoute\(routeRef\.current, modelRef\.current, current\.progressM \?\? 0, here, kept, ask, voided, closed\);/);
+  // The ride's closed roads go with every re-plan (v0.8.2).
+  assert.match(replan, /blocked: blockedRef\.current/);
   // The no-signal timer runs until the way back settles.
   assert.ok(replan.indexOf("window.clearTimeout(timer);") > replan.indexOf("await wayBackRoute("));
   assert.match(replan, /setReplanNote\(note\);\s*tell\(note\);/);
+});
+
+test("the way back joins past a road the rider marked closed, never on it (v0.8.2)", () => {
+  const model = rideModel(planned());
+  // Nearest ahead is about 600 m along; the rider marked closed up to 900 m.
+  const targets = rejoinTargets(model, 300, at(600, 200), 900);
+  assert.ok(targets.length > 0);
+  assert.ok(targets.every((t) => t.atM >= 900 + REJOIN_AHEAD_M - 1));
+  // Closed to the end: nowhere to join.
+  assert.deepEqual(rejoinTargets(model, 300, at(600, 200), model.lengthM), []);
 });
