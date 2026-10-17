@@ -621,8 +621,8 @@ test("copyText uses the clipboard, falls back to the selection method, and says 
 
 // ---- the bottom bar and its sheets ------------------------------------------------
 
-test("the bottom bar is Plan, Layers, Suggest, Export and Settings: real buttons, each with words (the owner's choice 6)", () => {
-  assert.deepEqual(BAR_ITEMS.map((i) => i.label), ["Plan", "Layers", "Suggest", "Export", "Settings"]);
+test("the bottom bar is Plan, Layers, Suggest, Files and Settings: real buttons, each with words (the owner's choice 6)", () => {
+  assert.deepEqual(BAR_ITEMS.map((i) => i.label), ["Plan", "Layers", "Suggest", "Files", "Settings"]);
   assert.deepEqual(BAR_ITEMS.map((i) => i.opens), ["planner", "layers", "suggest", "gpx", "settings"]);
   assert.equal(BAR_ITEMS[0].id, "plan", "Plan is first (OWNER-DECISIONS 392, 393)");
   assert.ok(BAR_ITEMS.every((i) => i.description.length > 0));
