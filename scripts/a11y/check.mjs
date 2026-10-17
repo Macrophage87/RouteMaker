@@ -3734,12 +3734,12 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   const list = await p.eval(`(() => { const s = document.querySelector('#sheet-settings .kept-routes'); const rows = [...s.querySelectorAll('li.kept-route')];
     return { heading: s.querySelector('h3')?.textContent, labelled: s.getAttribute('aria-labelledby') === s.querySelector('h3')?.id, list: s.querySelector('ul')?.tagName,
       rows: rows.map((r) => ({ title: r.querySelector('.kept-title')?.textContent, detail: r.querySelector('.kept-detail')?.textContent, buttons: [...r.querySelectorAll('button')].map((b) => ({ text: b.textContent, h: b.getBoundingClientRect().height, type: b.type })) })),
-      note: s.querySelector(':scope > p.hint:last-child')?.textContent }; })()`);
+      note: s.querySelector('.setting-info')?.textContent, noteHidden: s.querySelector('.setting-info')?.hidden, tip: s.querySelector('.info-tip')?.textContent }; })()`);
   const row = list.rows[0];
   check("kept routes: Settings lists it in a real list under the heading \"Routes kept for offline\", with its distance in miles first and kilometres in brackets",
     list.heading === "Routes kept for offline" && list.labelled && list.list === "UL" && list.rows.length === 1 && / mi \([0-9.]+ km\)\. Kept [A-Z][a-z]{2} \d+\./.test(row?.detail ?? ""), JSON.stringify(list));
   check("kept routes: each row has Open and Remove, real buttons 44 px tall whose names include the route", row && row.buttons.length === 2 && row.buttons[0].text === `Open ${row.title}` && row.buttons[1].text === `Remove ${row.title}` && row.buttons.every((x) => x.h >= 44 && x.type === "button"), JSON.stringify(row));
-  check("kept routes: the list says they stay on this device and are never sent", /^Kept on this device only, until you remove them; never sent anywhere\./.test(list.note ?? ""), list.note);
+  check("kept routes: behind the heading's (i) (\"About routes kept for offline\"), the list says they stay on this device and are never sent", /Kept on this device only, until you remove them; never sent anywhere\./.test(list.note ?? "") && list.noteHidden === true && list.tip === "About routes kept for offline", JSON.stringify({ note: list.note, hidden: list.noteHidden, tip: list.tip }));
   const openAx = await axNode(p, "#sheet-settings .kept-route button");
   check("kept routes: Open's accessible name names the route and its description gives the details", openAx?.name === `Open ${row?.title}` && / mi \(/.test(openAx?.description ?? ""), JSON.stringify(openAx));
   await p.eval("document.querySelector('#sheet-settings .kept-route button').focus(); true");
@@ -3757,7 +3757,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   await p.enter();
   await p.waitFor("document.querySelectorAll('#sheet-settings .kept-route').length === 0", 10000);
   await sleep(300);
-  const removed = await p.eval("({ focus: document.activeElement?.textContent, empty: document.querySelector('#sheet-settings .kept-routes .hint')?.textContent, said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((r) => r.textContent.trim()).filter(Boolean) })");
+  const removed = await p.eval("({ focus: document.activeElement?.textContent, empty: document.querySelector('#sheet-settings .kept-routes > p.hint:not(.setting-info)')?.textContent, said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((r) => r.textContent.trim()).filter(Boolean) })");
   check("kept routes: Remove by keyboard removes it, says so, and puts the focus on the list's heading when none is left",
     removed.focus === "Routes kept for offline" && removed.said.some((t) => t.startsWith(`Removed ${row?.title}. No routes are kept.`)) && /^No routes are kept\./.test(removed.empty ?? ""), JSON.stringify(removed));
   // The freeing follows the removal once the kept routes' lock is free (no keep runs here: at once).
@@ -4683,17 +4683,37 @@ async function goPressMap(p) {
       pins.end?.text === "" && pins.end.rect && pins.end.hidden === "true" && /^End\.( |$)/.test(pins.end.name ?? "") /* the drag hint is the title's alone since 7120fdb7 */, JSON.stringify(pins));
   await p.close();
 }
+/** My Go's Open in picker set to Go, as a rider's pick fires it. */
+const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-settings .open-in select'); s.value = 'go'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()";
 {
   // Announcements (Settings > Display): Brief in Go unless chosen; Full is kept on this device.
   const p = await bare();
   await p.eval("document.querySelector('.go-menu').click(); true");
   await sleep(400);
-  const group = await p.eval("(() => { const f = document.querySelector('#sheet-settings .announce-level'); return f ? { legend: f.querySelector('legend').textContent, options: [...f.querySelectorAll('label')].map((l) => ({ text: l.textContent, checked: l.querySelector('input').checked, h: Math.round(l.getBoundingClientRect().height) })) } : null; })()");
-  await p.eval("[...document.querySelectorAll('#sheet-settings .announce-level label')].find((l) => l.textContent.startsWith('Full')).querySelector('input').click(); true");
+  const group = await p.eval("(() => { const r = document.querySelector('#sheet-settings .announce-level'); const sel = r?.querySelector('select'); const sr = sel?.getBoundingClientRect(); return r ? { label: sel.closest('label').querySelector('.setting-name').textContent, options: [...sel.options].map((o) => o.textContent), value: sel.value, h: Math.round(sr.height), info: r.querySelector('.info-tip')?.getAttribute('aria-expanded'), infoShown: !r.querySelector('.setting-info').hidden } : null; })()");
+  const selAx = await axNode(p, "#sheet-settings .announce-level select");
+  const tipAx = await axNode(p, "#sheet-settings .announce-level .info-tip");
+  await p.eval("document.querySelector('#sheet-settings .announce-level .info-tip').click(); true");
+  await sleep(150);
+  const opened = await p.eval("({ expanded: document.querySelector('#sheet-settings .announce-level .info-tip').getAttribute('aria-expanded'), shown: !document.querySelector('#sheet-settings .announce-level .setting-info').hidden, text: document.querySelector('#sheet-settings .announce-level .setting-info').textContent })");
+  await p.eval("(() => { const s = document.querySelector('#sheet-settings .announce-level select'); s.value = 'full'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()");
   await sleep(300);
   const kept = await p.eval("localStorage.getItem('routemaker.announcements')");
-  check("announcements: Settings has an Announcements radio group, Brief chosen in Go by default, each choice a 44 px target; Full is kept on this device",
-    group?.legend === "Announcements" && group.options.length === 2 && group.options[0].text.startsWith("Brief") && group.options[0].checked && group.options.every((o) => o.h >= 44) && kept === "full", JSON.stringify({ group, kept }));
+  check("announcements: Settings has an Announcements picker (Brief, Full), Brief in Go by default, 44 px tall; Full is kept on this device",
+    group?.label === "Announcements" && JSON.stringify(group.options) === JSON.stringify(["Brief", "Full"]) && group.value === "brief" && group.h >= 44 && kept === "full", JSON.stringify({ group, kept }));
+  check("announcements: what Brief and Full mean is behind an (i) button named \"About announcements\", closed at first, and is the picker's description even while closed",
+    tipAx?.name === "About announcements" && group?.info === "false" && !group.infoShown && /^Brief: the route, guidance and errors/.test(selAx?.description ?? "") && selAx?.name === "Announcements", JSON.stringify({ tipAx, selAx }));
+  check("announcements: pressing the (i) shows the explanation under the line and says it is expanded",
+    opened.expanded === "true" && opened.shown && /Full: also what the app is doing/.test(opened.text), JSON.stringify(opened));
+  const sizes = await p.eval("[...document.querySelectorAll('#sheet-settings .info-tip, #sheet-settings .setting-row select')].filter((e) => e.offsetParent).map((e) => { const r = e.getBoundingClientRect(); return [e.tagName, Math.round(r.width), Math.round(r.height)]; })");
+  check("settings: every (i) button and every picker in Settings is at least 44 px tall (the owner's 44 px rule), and each (i) 44 px wide",
+    sizes.length >= 6 && sizes.every(([tag, w, h]) => h >= 44 && (tag === "SELECT" || w >= 44)), JSON.stringify(sizes));
+  const ride = await p.eval("(() => { const sel = [...document.querySelectorAll('#sheet-settings .setting-row select')]; const pick = (name) => sel.find((s) => s.closest('label').querySelector('.setting-name').textContent === name); const out = pick('Say cues with'); const lvl = pick('How much to say'); return { out: out && [...out.options].map((o) => o.textContent), lvl: lvl && [...lvl.options].map((o) => o.textContent) }; })()");
+  await p.eval("(() => { const s = [...document.querySelectorAll('#sheet-settings .setting-row select')].find((x) => x.closest('label').querySelector('.setting-name').textContent === 'How much to say'); s.value = 'quiet'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()");
+  await sleep(300);
+  const rideKept = await p.eval("localStorage.getItem('routemaker.ride')");
+  check("settings: Ride mode is two pickers, Say cues with (4 choices) and How much to say (Full, Stoker, Quiet); a pick is kept as chosen",
+    ride.out?.length === 4 && JSON.stringify(ride.lvl) === JSON.stringify(["Full", "Stoker", "Quiet"]) && /"verbosity":"quiet"/.test(rideKept ?? "") && /"chosen":true/.test(rideKept ?? ""), JSON.stringify({ ride, rideKept }));
   await p.close();
 }
 {
@@ -4711,19 +4731,20 @@ async function goPressMap(p) {
   // My Go signed out: kept on this device.
   const p = await bare({ width: 1280, height: 900, mobile: false });
   await openSheet(p, "Settings");
-  const section = await p.eval("(() => { const s = document.querySelector('#sheet-settings .my-go'); return s ? { heading: s.querySelector('h4')?.textContent, radios: [...s.querySelectorAll('.open-in input[type=radio]')].map((r) => r.closest('label').textContent), status: s.querySelector('.my-go-said')?.getAttribute('role') } : null; })()");
-  await p.eval("[...document.querySelectorAll('#sheet-settings .open-in label')].find((l) => l.textContent === 'Go').querySelector('input').click(); true");
+  const section = await p.eval("(() => { const s = document.querySelector('#sheet-settings .my-go'); return s ? { heading: s.querySelector('h4')?.textContent, options: [...s.querySelectorAll('.open-in select option')].map((o) => o.textContent), status: s.querySelector('.my-go-said')?.getAttribute('role') } : null; })()");
+  const openInAx = await axNode(p, "#sheet-settings .open-in select");
+  await p.eval(PICK_OPEN_IN_GO);
   await sleep(500);
   const saved = await p.eval("({ kept: localStorage.getItem('routemaker.my-go'), said: document.querySelector('.my-go-said')?.textContent })");
-  check("my go: signed out, Open in (By screen size, Go, Plan) is a radio group in Settings; a choice is kept on this device and said politely",
-    !!section && /^My Go/.test(section.heading) && section.radios.length === 3 && section.status === "status" && /"open_in":"go"/.test(saved.kept ?? "") && saved.said === "My Go saved on this device." && !(p.myGoRequests ?? []).some((r) => r.method === "POST"), JSON.stringify({ section, saved }));
+  check("my go: signed out, Open in (By screen size, Go, Plan) is a picker in Settings, described by what By screen size means; a choice is kept on this device and said politely",
+    !!section && /^My Go/.test(section.heading) && JSON.stringify(section.options) === JSON.stringify(["By screen size", "Go", "Plan"]) && openInAx?.name === "Open in" && /^By screen size: a phone opens in Go/.test(openInAx?.description ?? "") && section.status === "status" && /"open_in":"go"/.test(saved.kept ?? "") && saved.said === "My Go saved on this device." && !(p.myGoRequests ?? []).some((r) => r.method === "POST"), JSON.stringify({ section, openInAx, saved }));
   await p.close();
 }
 {
   // My Go signed in: saved to the Discord account, with the CSRF header; it then opens the app in Go on a wide screen.
   const p = await bare({ width: 1280, height: 900, mobile: false, suggester: true, init: "document.cookie = 'csrftoken=layout-check-token; path=/';" });
   await openSheet(p, "Settings");
-  await p.eval("[...document.querySelectorAll('#sheet-settings .open-in label')].find((l) => l.textContent === 'Go').querySelector('input').click(); true");
+  await p.eval(PICK_OPEN_IN_GO);
   await p.waitFor("/saved to your account/.test(document.querySelector('.my-go-said')?.textContent ?? '')", 8000);
   const post = (p.myGoRequests ?? []).find((r) => r.method === "POST");
   const csrf = post && Object.entries(post.headers).find(([k]) => k.toLowerCase() === "x-csrftoken")?.[1];
@@ -4829,7 +4850,7 @@ const failed = results.filter((r) => !r.ok);
 // returns early) fails here rather than passing green (the mutation review of the release).
 // The transit blocks (#108) and the Go press checks (#116) were added without raising it; they run since #127.
 // Review mode's own lists (22c2) add six.
-const EXPECTED = 641;
+const EXPECTED = 645;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);
