@@ -82,7 +82,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #                              in the whole GDAL stack.
 #   osmium-tool                the `osmium` command line, for the source-extract
 #                              stage (PLAN.md:13): `osmium merge` and
-#                              `osmium extract -s smart -S types=any`. This is
+#                              `osmium extract -s smart -S types=boundary,multipolygon`. This is
 #                              the CLI and is a different thing from the
 #                              `osmium` Python module in requirements.txt, which
 #                              is pyosmium and is what pipeline/extract.py
