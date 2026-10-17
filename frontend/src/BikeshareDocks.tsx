@@ -100,6 +100,8 @@ export function BikeshareDocksOverlay({
         }
         const mine = new AbortController();
         controller = mine;
+        // The view's zoom straight away, so a switch just turned on never reads "Zoom in" while it waits.
+        if (!latest) reportRef.current({ answer: null, asked: false, zoom });
         const answer = await loadDocks(path, undefined, mine.signal);
         if (mine.signal.aborted) return;
         // A failed refresh keeps the last counts on the map; the section says they are unavailable.

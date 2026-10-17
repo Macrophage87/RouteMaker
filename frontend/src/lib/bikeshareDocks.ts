@@ -15,7 +15,8 @@
  *
  * Free e-bikes: a ⚡ in the operator's colour with its initial beside it, so colour is never the only cue. Capital
  * Bikeshare is the only service (Lime and Veo were left out, the owner 2026-10-15: neither has usable terms;
- * docs/SOURCES.md), so the Layers sheet's bikeshare section is its one switch. A service the server says is licensed later gets a switch of its own there.
+ * docs/SOURCES.md), so the Layers sheet's bikeshare section is its one switch. A service the server says is
+ * licensed later gets a switch of its own there.
  *
  * Screen readers: the map's labels are decorative; a tap gives a card in words, and the route's station list
  * says the same counts ("5 classic, 2 e-bikes, 3 open docks", lib/stations.ts).
