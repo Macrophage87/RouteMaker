@@ -286,3 +286,23 @@ def test_undo_after_a_change_past_an_edits_cap_restores_every_road(
         )
         assert [r[0] for r in cursor.fetchall()] == [2]
     assert stress_review.page("rebuild")["total"] == 250
+
+
+@pytest.mark.django_db
+def test_a_row_written_without_ways_as_the_release_before_writes_it_is_kept() -> None:
+    """0033: `ways` keeps a database default, so a worker of v0.8.0 (during the deploy, or
+    after an image rollback over 0032) can still write review_item rows, which name no
+    `ways` column."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO review_item (
+                queue, build_id, osm_way_id, name, area, reason, kind, old_step, new_step,
+                old_closed, new_closed, details, sources, spread, length_m, aadt, score,
+                inputs, computed_at)
+            VALUES ('rebuild', %s, 9001, '', '', '', '2-4', 2, 4, false, false, '{}'::jsonb,
+                    '[]'::jsonb, NULL, 0, NULL, 0, '', now())
+            """,
+            [BUILD],
+        )
+    assert ReviewItem.objects.get(osm_way_id=9001).ways == []

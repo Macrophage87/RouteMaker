@@ -1468,7 +1468,8 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   the contract is in "Intersection costs, the calm search and the detour
   warning", below.
 - `stress_m` has a key `"5"`, "legal but avoid" (additive; the keys still sum to
-  the distance): an expressway posted 50 mph or more, or a way the owner
+  the distance): an expressway posted 50 mph or more inside an urban area (outside
+  one it is LTS 4.5 since v0.8.1, `routemaker.stress.rural_expressway`), or a way the owner
   curated (`fixtures/overrides/2026-09-27-owner-stress.json`, loaded as that
   directory's README says). In the graph it is the LTS 3-4 stress penalty
   plus Valhalla's alley use (`service=alley`, written by

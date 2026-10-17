@@ -5401,6 +5401,50 @@ A **dodge result that varies with host load** is expected. On a busy host the pa
 (`dodges.limited: "time"`, 0 checked), so the same request can come back with a dodge kept on one run
 and removed on another. That is not a fault and not a rollback trigger.
 
+## Deploying v0.8.1
+
+Two migrations (`0032_review_stretches`, `0033_review_item_ways_db_default`), stress-tile
+format 10 (every street from zoom 12), rural expressways at LTS 4.5 rather than Avoid, and a
+rebuild that refuses to run without `agency-lts.json`. At home, in order, with `</dev/null` on every docker command:
+
+- [ ] **Images, one TAG.** Tag the running images for a rollback, then
+  `docker compose build api rebuild`, never `build api` alone, so the weekly rebuild's
+  pre-draw draws format 10 too ("Deploying a change to what the tiles draw", steps 0
+  and 1; rollback points in "Deploying a planner and front-end release", below).
+- [ ] **Migrate, then the api.** `docker compose run --rm --no-deps migrate` (0032 adds
+  `stretch` and `ways` to `review_item` and `stretch` to `review_ruling`; 0033 gives `ways` a
+  database default, so a v0.8.0 worker still writes Review's rows through the deploy and
+  after an image rollback; nothing to migrate back), then `docker compose up -d --no-deps
+  --no-build api worker`; once no rebuild job is queued or running, `docker compose up -d
+  --no-deps --no-build rebuild` too.
+- [ ] **Pre-draw at once:** `docker compose exec -T api python manage.py
+  predraw_stress_tiles` ("Deploying every street from z12 (FORMAT_VERSION 10)"; only
+  `-v10"` stress tags after it). Then the front end.
+- [ ] **Review's lists, with the routers up:** `docker compose exec -T api python manage.py
+  compute_review_queue`. A stretch is named by the router; with it down the log says "the
+  router was silent" and the table's names are kept, so run it again once the routers
+  answer ("Review mode: shipping and its lists", step 2).
+- [ ] **Reference files, before the next rebuild or cloud send:** `agency-lts.json` for
+  `moco ddot mdot-sha`, in one run on the PC ("Agency stress ratings (agency-lts.json)";
+  read its `ddot: level read from <field>` line); without it the rebuild and
+  `send-inputs.sh` refuse. And `counties.geojson` (`install_reference_data.py --counties`)
+  for Review's Area column and the stress change report.
+- [ ] **Recommended, urban areas:** remake `urban-areas.json` from the current extract
+  (`install_reference_data.py` with `--extract` and the urban-area layer, as in "First
+  rebuild on a fresh host"). A way newer than the list reads as rural, and a rural expressway posted 50 mph or
+  more is now LTS 4.5, so a newly split urban expressway would come out LTS 4.5, not Avoid.
+- [ ] **The rebuild** (or "Rebuilding on the cloud box"): the extract is remade once, for the
+  new clip ("The source extract"). Read the `agency stress ratings` lines (no
+  `warning: no segment carries`), and work "Rebuild checklist: Harford Road (decision 282a)".
+- [ ] **After the swap:** Spesutie Island Road at Aberdeen Proving Ground is closed
+  (military), not rated; Wickham Road (way 62828504) is 25 mph; the road panel on a rural
+  expressway says "Rural highway-like road, posted 55 mph: high stress, but often no way
+  around" at LTS 4.5; Review's lists are filled (a cloud
+  build's dry run does it).
+
+The beta takes it through its CD agent (docs/BETA-RUNBOOK.md: the migration and the format-10
+pre-draw are its own steps); Review is home's only.
+
 ## Deploying a planner and front-end release: rollback points and verification
 
 A release that changes the planner and the front end, with no migration and no graph, is deployed
