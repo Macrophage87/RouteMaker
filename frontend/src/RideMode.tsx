@@ -32,6 +32,7 @@
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FocusEvent, type PointerEvent, type RefObject } from "react";
 import { HoldTimer } from "./lib/holdTimer.ts";
+import { startsWayBack, wayBackRoute } from "./lib/rejoin.ts";
 import { requestRoute, type RouteResponse } from "./lib/api.ts";
 import { VIA_MARKS, viaIndices } from "./lib/pointKinds.ts";
 import type { Dials } from "./lib/dials.ts";
@@ -52,6 +53,7 @@ import {
   REPLAN_FAILED,
   REPLAN_FOUND,
   REPLAN_NO_SIGNAL,
+  REPLAN_REJOIN,
   REPLAN_FINDING,
   REPLAN_STILL_WAITING,
   ReplanGate,
@@ -60,6 +62,7 @@ import {
   nextAction,
   planAfterEnd,
   pointAt,
+  replanKept,
   replanPoints,
   replanTold,
   rideModel,
@@ -541,6 +544,8 @@ export function RideMode({
   onRideRest?: (here: LonLat | null) => Promise<string | null>;
 }) {
   const [route, setRoute] = useState(plannedRoute);
+  const routeRef = useRef(route);
+  routeRef.current = route;
   // What a re-plan builds on: the plan's points at first, then the last re-plan's (never a loop: its end is sent).
   const plan = useRef({ points: plannedPoints, loop: plannedLoop });
   // The via points are not announced (v0.7.0): the model leaves them out of its cues.
@@ -893,34 +898,47 @@ export function RideMode({
         setReplanNote(REPLAN_NO_SIGNAL);
         tell(REPLAN_NO_SIGNAL);
       }, REPLAN_TIMEOUT_MS);
-      const result = await requestRoute(points, preset, {
-        dials: { ...dials, loop: false },
-        vias: viaIndices(points, VIA_MARKS.isVia),
-        routeOnly: true,
-      });
+      // The rider is riding a plan already made: a long one is not asked to be confirmed again (a signed-out
+      // rider's re-plan of a long ride was refused for want of it).
+      const ask = (to: LonLat[]) => requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), routeOnly: true, confirmLong: true });
+      const result = await ask(points);
+      // No new route to the end: the way back to the planned route, which goes on from there (lib/rejoin.ts;
+      // the owner, 2026-10-17). Not for a detour, whose place the planned route does not pass. The no-signal
+      // timer runs on through it.
+      let found = result.ok ? result.route : null;
+      let failed = result.ok ? null : result.error.kind;
+      let note = REPLAN_FOUND;
+      const voided = () => ended.current || ticket !== replanTicket.current;
+      if (!result.ok && !via && startsWayBack(result.error.kind) && !voided()) {
+        const kept = replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop);
+        const back = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, kept, ask, voided);
+        if ("route" in back) found = back.route;
+        else if (back.failed) failed = back.failed;
+        note = REPLAN_REJOIN;
+      }
       window.clearTimeout(timer);
-      gate.finish(result.ok);
-      if (ended.current || ticket !== replanTicket.current) return;
+      gate.finish(found !== null);
+      if (voided()) return;
       setReplanning(false);
-      if (!result.ok) {
-        const note = result.error.kind === "network" ? REPLAN_NO_SIGNAL : REPLAN_FAILED;
-        setReplanNote(note);
-        tell(note);
+      if (!found) {
+        const said = failed === "network" ? REPLAN_NO_SIGNAL : REPLAN_FAILED;
+        setReplanNote(said);
+        tell(said);
         return;
       }
       plan.current = { points, loop: false };
       // The first route, without the picker, during a ride (plan section 4).
       announcer.current?.drop();
-      const model = rideModel(result.route, viaIndices(points, VIA_MARKS.isVia));
+      const model = rideModel(found, viaIndices(points, VIA_MARKS.isVia));
       modelRef.current = model;
-      setRoute(result.route);
+      setRoute(found);
       // The rider stays where they are on the map until the next fix places them on the new route.
       const fresh = { ...startState(), fix: rideRef.current.fix, goodFix: rideRef.current.goodFix };
       rideRef.current = fresh;
       setRide(fresh);
       setKeepPlanned(false);
-      setReplanNote(REPLAN_FOUND);
-      tell(REPLAN_FOUND);
+      setReplanNote(note);
+      tell(note);
     },
     [dials, preset, gate, sayDetour],
   );
