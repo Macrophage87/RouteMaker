@@ -2390,12 +2390,16 @@ export function App() {
     const note = linkNote;
     const { link, kept } = sharedLinkNow();
     const done = await copyText(link, navigator.clipboard, selectionCopy);
-    const lost = done && kept !== null && !(await kept);
-    if (lost && sharedLine.current?.kept === kept) sharedLine.current = null;
-    const after = lost ? ` ${SHARED_INPUTS_ONLY}` : "";
     window.setTimeout(() => {
-      if (press === linkPresses.current) setLinkSaid(linkSaidFor(done) + after);
-      if (press === linkPresses.current) setLinkSpoken(linkSpokenFor(done, note) + after);
+      if (press === linkPresses.current) setLinkSaid(linkSaidFor(done));
+      if (press === linkPresses.current) setLinkSpoken(linkSpokenFor(done, note));
+    }, 150);
+    // Said once the server answers (or gives up, SHARED_STORE_TIMEOUT_MS), never holding up "Link copied."
+    if (!done || !kept || (await kept)) return;
+    if (sharedLine.current?.kept === kept) sharedLine.current = null;
+    window.setTimeout(() => {
+      if (press === linkPresses.current) setLinkSaid(`${linkSaidFor(done)} ${SHARED_INPUTS_ONLY}`);
+      if (press === linkPresses.current) setLinkSpoken(SHARED_INPUTS_ONLY);
     }, 150);
   };
   // "Share": Copy link's link, to the phone's share sheet. The location line describes the button,
@@ -2412,6 +2416,8 @@ export function App() {
   // What Share said, in the Route file sheet beside it (RoutePanel.tsx ShareControls); the count makes a line said
   // again heard again.
   const [shareSaid, setShareSaid] = useState({ text: "", count: 0 });
+  // Share's own presses: a Copy link press does not swallow what Share has to say.
+  const sharePresses = useRef(0);
   const sharedLine = useRef<{ of: unknown; keep: string; id: string; kept: Promise<boolean> } | null>(null);
   // How long the server keeps the shared line, chosen beside Share in Plan (lib/sharedRoutes.ts ShareKeep). A
   // route shared again with another keeping is a new line under a new id.
@@ -2468,7 +2474,7 @@ export function App() {
   const shareRoute = async () => {
     if (!shown || sharing.current) return;
     sharing.current = true;
-    const press = ++linkPresses.current;
+    const press = ++sharePresses.current;
     setShareSaid((before) => ({ text: "", count: before.count }));
     const distanceM = !stale && routedPoints === points ? shown.distance_m : null;
     const { link, kept, exact } = sharedLinkNow();
@@ -2490,7 +2496,7 @@ export function App() {
     }
     if (!said) return;
     window.setTimeout(() => {
-      if (press === linkPresses.current) setShareSaid((before) => ({ text: said, count: before.count + 1 }));
+      if (press === sharePresses.current) setShareSaid((before) => ({ text: said, count: before.count + 1 }));
     }, 150);
   };
 
@@ -2602,7 +2608,11 @@ export function App() {
   };
   const fileName = () => imported?.name || keptTitle();
   // The route on screen for an opened file, once it answers the file's plan as it stands; null while one is planned.
-  const fileShown = () => (shown && !stale && routedPoints === points ? shown : null);
+  // A file followed in one mode while the other is planned (the switch just pressed) is not yet the route shown.
+  const fileShown = () =>
+    shown && !stale && routedPoints === points && (!shown.follows_file || (shown.follows_exactly === true) === (importBase.current?.exact === true && mode === "plan"))
+      ? shown
+      : null;
   // A saved route's line about today's map (more than 5% apart in distance), with Update route.
   const [savedNote, setSavedNote] = useState<{ key: string; savedM: number; todayM: number } | null>(null);
   const [myRoutesVersion, setMyRoutesVersion] = useState(0);
@@ -4225,10 +4235,11 @@ export function App() {
                   shown || (imported?.verbatim && !importEdited) ? (
                     <ShareControls
                       save={saveProps ? <SaveRoute {...saveProps} label={SAVE_ROUTE} /> : null}
-                      canShare={canShare && !!shown}
+                      canShare={canShare}
+                      ready={!!shown}
                       shareRoute={() => void shareRoute()}
                       shareKeep={shareKeep}
-                      onShareKeep={setShareKeep}
+                      onShareKeep={mode === "plan" ? setShareKeep : null}
                       shareSaid={shareSaid}
                       linkNote={linkNote}
                     />

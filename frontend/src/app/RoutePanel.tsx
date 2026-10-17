@@ -436,29 +436,33 @@ function ShareKeepField({ value, onChange }: { value: ShareKeep; onChange: (keep
  */
 export function ShareControls(props: {
   save: ReactNode;
+  /** The browser has a share sheet: Share's keeping and its status line are there. */
   canShare: boolean;
+  /** A route to share is shown: the Share button is there. */
+  ready: boolean;
   shareRoute: () => void;
   shareKeep: ShareKeep;
-  onShareKeep: (keep: ShareKeep) => void;
+  /** Plan only (Go keeps the default, one control per feature): how long the link is kept. */
+  onShareKeep: ((keep: ShareKeep) => void) | null;
   shareSaid: { text: string; count: number };
   /** The location line (OWNER-DECISIONS 395): it describes Share, so it is read before the sheet opens. */
   linkNote: string;
 }) {
-  const { save, canShare, shareRoute, shareKeep, onShareKeep, shareSaid, linkNote } = props;
+  const { save, canShare, ready, shareRoute, shareKeep, onShareKeep, shareSaid, linkNote } = props;
   return (
     <div className="share-controls">
       {save}
-      {canShare && (
+      {canShare && ready && (
         <button type="button" className="secondary share-route" onClick={shareRoute} aria-label={SHARE_NAME} aria-describedby={linkNote ? "share-link-note" : undefined}>
           {SHARE_LABEL}
         </button>
       )}
-      {canShare && linkNote && (
+      {canShare && ready && linkNote && (
         <p id="share-link-note" className="hint link-note">
           {linkNote}
         </p>
       )}
-      {canShare && <ShareKeepField value={shareKeep} onChange={onShareKeep} />}
+      {canShare && ready && onShareKeep && <ShareKeepField value={shareKeep} onChange={onShareKeep} />}
       {canShare && (
         <p className="hint share-said" role="status">
           {shareSaid.text}

@@ -12,7 +12,7 @@ import type { ImportedPlan } from "./gpxPlan.ts";
 import { keptPlanKey } from "./offlineRoutes.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
 import { gpxSave, planSave } from "./savedRoutes.ts";
-import { sharedBody } from "./sharedRoutes.ts";
+import { sharedBody, storeShared } from "./sharedRoutes.ts";
 
 const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
 
@@ -101,7 +101,8 @@ test("the kept line answers the plan the file opens on, whatever ride the opener
 });
 
 test("App: Share, Copy link and Save route send a file with its settled route; the link opens it unchanged", () => {
-  assert.match(app, /const fileShown = \(\) => \(shown && !stale && routedPoints === points \? shown : null\);/);
+  // Only the route of the mode asked for: just after the switch, the other mode's route is not shared or saved.
+  assert.match(app, /shown && !stale && routedPoints === points && \(!shown\.follows_file \|\| \(shown\.follows_exactly === true\) === \(importBase\.current\?\.exact === true && mode === "plan"\)\)/);
   const exact = app.slice(app.indexOf("const shareExact = () => {"), app.indexOf("\n  };\n", app.indexOf("const shareExact = () => {")));
   // A new line (the other mode) is a new link, not the first one handed out again.
   assert.match(exact, /of: settled \?\? verbatim,/);
@@ -113,4 +114,15 @@ test("App: Share, Copy link and Save route send a file with its settled route; t
   // The importBase starts in the kept mode; switching it plans the file again rather than replaying the kept line.
   assert.match(app, /importBase\.current = \{ imported, points, preset, exact: imported\.exact === true \};/);
   assert.match(app, /exact: on, unfollowed: false \};\s*\/\/[^\n]*\n\s*savedShown\.current = null;/);
+});
+
+test("a line the server does not answer for is given up on, so Share and Copy link can say it was not kept", async () => {
+  const never = ((_url: string, init?: RequestInit) =>
+    new Promise<Response>((_done, fail) => init?.signal?.addEventListener("abort", () => fail(new DOMException("x", "AbortError"))))) as typeof fetch;
+  assert.equal(await storeShared("https://x.test", "{}", never, 20), false);
+  const kept = (async () => new Response("{}", { status: 201 })) as typeof fetch;
+  assert.equal(await storeShared("https://x.test", "{}", kept, 20), true);
+  // Copy link says "Link copied." at once; a line not kept is said after, on its own.
+  const copy = app.slice(app.indexOf("const copyLink = async () => {"), app.indexOf("\n  };\n", app.indexOf("const copyLink = async () => {")));
+  assert.ok(copy.indexOf("setLinkSaid(linkSaidFor(done))") < copy.indexOf("await kept"));
 });

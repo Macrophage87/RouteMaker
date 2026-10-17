@@ -99,19 +99,19 @@ test("App shows Share beside Copy link only where it is supported, named Share r
   const controls = app.slice(app.indexOf("export function ShareControls"), app.indexOf("function RouteActions("));
   assert.match(
     controls,
-    /\{save\}\s*\{canShare && \(\s*<button type="button" className="secondary share-route" onClick=\{shareRoute\} aria-label=\{SHARE_NAME\} aria-describedby=\{linkNote \? "share-link-note" : undefined\}>\s*\{SHARE_LABEL\}/,
+    /\{save\}\s*\{canShare && ready && \(\s*<button type="button" className="secondary share-route" onClick=\{shareRoute\} aria-label=\{SHARE_NAME\} aria-describedby=\{linkNote \? "share-link-note" : undefined\}>\s*\{SHARE_LABEL\}/,
   );
-  assert.match(controls, /\{canShare && linkNote && \(\s*<p id="share-link-note" className="hint link-note">/);
-  assert.match(controls, /\{canShare && <ShareKeepField value=\{shareKeep\} onChange=\{onShareKeep\} \/>\}/);
+  assert.match(controls, /\{canShare && ready && linkNote && \(\s*<p id="share-link-note" className="hint link-note">/);
+  assert.match(controls, /\{canShare && ready && onShareKeep && <ShareKeepField value=\{shareKeep\} onChange=\{onShareKeep\} \/>\}/);
   const more = app.slice(app.indexOf('<div id={moreId} className="route-more-body"'), app.indexOf("</div>", app.indexOf('<div id={moreId} className="route-more-body"')));
   assert.doesNotMatch(more, /share-route|SaveRoute/);
   assert.match(more, /className="secondary share-image" onClick=\{shareImage\} aria-haspopup="dialog"/);
   const appFile = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(appFile, /<ShareControls\s*save=\{saveProps \? <SaveRoute \{\.\.\.saveProps\} label=\{SAVE_ROUTE\} \/> : null\}\s*canShare=\{canShare && !!shown\}/);
+  assert.match(appFile, /<ShareControls\s*save=\{saveProps \? <SaveRoute \{\.\.\.saveProps\} label=\{SAVE_ROUTE\} \/> : null\}\s*canShare=\{canShare\}\s*ready=\{!!shown\}/);
   // A failure is said in the sheet's polite status beside Share, and shown; success and cancel say nothing.
   assert.match(app, /const done = await outcome;\s*said = shareSaidFor\(done\);/);
   assert.match(app, /if \(!said\) return;\s*window\.setTimeout/);
-  assert.match(app, /if \(press === linkPresses\.current\) setShareSaid\(\(before\) => \(\{ text: said, count: before\.count \+ 1 \}\)\);/);
+  assert.match(app, /if \(press === sharePresses\.current\) setShareSaid\(\(before\) => \(\{ text: said, count: before\.count \+ 1 \}\)\);/);
   assert.match(controls, /<p className="hint share-said" role="status">/);
 });
 

@@ -663,7 +663,7 @@ test("privacy: the location state reaches only the note, the hint and the circle
   for (const line of lines) assert.ok(allowed.some((rule) => rule.test(line)), `unexpected use: ${line.trim()}`);
   // The note's own uses: shown, described, said on Copy link, and (as a yes/no) the sign-in exception.
   const noteUse =
-    /const linkNote =|const note = linkNote;|linkNote \? "link-note"|\{linkNote && \(|\{linkNote\}|isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)|^\s*routedLoop, copyLink, linkNote, shareImage|const \{ copyLink, linkNote, shareImage,|linkNote: string;|const \{ save, canShare, shareRoute, shareKeep, onShareKeep, shareSaid, linkNote \} = props;|linkNote \? "share-link-note"|\{canShare && linkNote && \(|linkNote=\{linkNote\}/;
+    /const linkNote =|const note = linkNote;|linkNote \? "link-note"|\{linkNote && \(|\{linkNote\}|isPlainClick\(e\) && rememberPlanForSignIn\(tabSession\(\), window\.location\.hash, linkNote !== ""\)|^\s*routedLoop, copyLink, linkNote, shareImage|const \{ copyLink, linkNote, shareImage,|linkNote: string;|const \{ save, canShare, ready, shareRoute, shareKeep, onShareKeep, shareSaid, linkNote \} = props;|linkNote \? "share-link-note"|\{canShare && ready && linkNote && \(|linkNote=\{linkNote\}/;
   for (const line of app.split("\n").filter((l) => /\blinkNote\b/.test(l))) assert.match(line, noteUse, line.trim());
   // The circle round the located point goes to the map's accuracy prop and nowhere else.
   const circleUse = /const hereCircle =|accuracy=\{riding \? rideCircle : hereCircle\}/;

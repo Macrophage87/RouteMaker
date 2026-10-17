@@ -39,6 +39,8 @@ export const SHARED_PARAM = "route";
 /** The most a shared route may be (core.shared_routes.MAX_BYTES). */
 export const SHARED_MAX_BYTES = 2 * 1024 * 1024;
 const ID_RE = /^[0-9a-f]{32}$/;
+/** How long Share and Copy link wait for the server to keep a line before saying it was not kept. */
+export const SHARED_STORE_TIMEOUT_MS = 8000;
 /** How long the page waits for a shared line before planning the link's inputs instead. */
 export const SHARED_READ_TIMEOUT_MS = 8000;
 
@@ -181,17 +183,22 @@ export function sharedBody(id: string, save: SaveBody, keep: ShareKeep = SHARE_K
 type Fetch = typeof fetch;
 
 /** Send the line; true once it is kept. */
-export async function storeShared(origin: string, json: string, post: Fetch = fetch): Promise<boolean> {
+export async function storeShared(origin: string, json: string, post: Fetch = fetch, timeoutMs = SHARED_STORE_TIMEOUT_MS): Promise<boolean> {
+  const abort = typeof AbortController === "undefined" ? null : new AbortController();
+  const timer = abort ? setTimeout(() => abort.abort(), timeoutMs) : null;
   try {
     const response = await post(`${origin}/api/shared-routes`, {
       method: "POST",
       credentials: "same-origin",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
       body: json,
+      signal: abort?.signal,
     });
     return response.status === 201;
   } catch {
     return false;
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 }
 
