@@ -217,6 +217,8 @@ test("each list's map style is its own colour and its own line, from the colour-
   // The two solid lines are the palette's most distinct pair; every other list is told by its dashes as well.
   const patterns = QUEUES.map((q) => `${QUEUE_STYLE[q].colourName} ${QUEUE_STYLE[q].pattern}`);
   assert.equal(new Set(patterns).size, QUEUES.length);
+  // Yellow alone sits on a dark halo, so it stands off the light basemap.
+  assert.deepEqual(QUEUES.filter((q) => QUEUE_STYLE[q].halo), ["dc_no_bike"]);
 });
 
 test("the map is asked for the view alone, at its zoom, and the road's facts with the new build's for a rebuild", async () => {

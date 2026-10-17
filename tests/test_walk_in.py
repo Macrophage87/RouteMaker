@@ -94,3 +94,13 @@ def test_no_walk_is_asked_once_the_time_is_spent(router) -> None:
     spent = routing.Deadline(routing.clock(), 10)
     assert routing.walk_in(RIDE[0], ASKED_END, RIDE, spent) is None
     assert calls == []
+
+
+def test_a_route_offered_beside_with_the_same_ends_keeps_the_walk() -> None:
+    walk = {"start": None, "end": {"distance_m": 340.0}}
+    answer = {"geometry": {"coordinates": RIDE}, "walk_in": walk}
+    beside = {"geometry": {"coordinates": [RIDE[0], [-77.0450, 38.9098], RIDE[-1]]}}
+    elsewhere = {"geometry": {"coordinates": [RIDE[0], [-77.0400, 38.9050]]}}
+    assert routing.walk_in_for(beside, answer) is walk
+    assert routing.walk_in_for(elsewhere, answer) is None
+    assert routing.walk_in_for(beside, {**answer, "walk_in": None}) is None

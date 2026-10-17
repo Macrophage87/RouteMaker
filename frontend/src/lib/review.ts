@@ -257,7 +257,7 @@ export function sortRoads(roads: readonly ReviewRoad[], key: SortKey, ascending:
  * with a dash pattern of its own as well, so no list is told by its colour alone (the toggles beside the map show
  * both). Drawn with a light halo, above the stress lines.
  */
-export const QUEUE_STYLE: Record<QueueKey, { colour: string; colourName: string; dash: number[] | null; pattern: string }> = {
+export const QUEUE_STYLE: Record<QueueKey, { colour: string; colourName: string; dash: number[] | null; pattern: string; halo?: string }> = {
   rebuild: { colour: "#0072B2", colourName: "blue", dash: null, pattern: "solid" },
   disagreement: { colour: "#D55E00", colourName: "vermilion", dash: null, pattern: "solid" },
   narrow_rural: { colour: "#009E73", colourName: "green", dash: [2, 1], pattern: "long dashes" },
@@ -265,7 +265,8 @@ export const QUEUE_STYLE: Record<QueueKey, { colour: string; colourName: string;
   works_closure: { colour: "#56B4E9", colourName: "sky blue", dash: [3, 1, 1, 1], pattern: "dash and dot" },
   rematch: { colour: "#E69F00", colourName: "orange", dash: [0.5, 1], pattern: "dots" },
   painted_lane: { colour: "#000000", colourName: "black", dash: [4, 1, 1, 1, 1, 1], pattern: "dash and two dots" },
-  dc_no_bike: { colour: "#F0E442", colourName: "yellow", dash: [3, 2], pattern: "spaced dashes" },
+  // Yellow is near the light basemap, so its halo is dark (about 1.2:1 on white otherwise).
+  dc_no_bike: { colour: "#F0E442", colourName: "yellow", dash: [5, 3], pattern: "very long dashes", halo: "#333333" },
 };
 
 export const QUEUES: QueueKey[] = ["rebuild", "disagreement", "narrow_rural", "sidepath", "works_closure", "rematch", "painted_lane", "dc_no_bike"];

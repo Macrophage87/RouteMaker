@@ -45,8 +45,10 @@ MOTORWAY = frozenset({"motorway", "motorway_link"})
 CLOSED_ACCESS = frozenset({"no", "private", "permit", "customers", "restricted"})
 NOT_LISTED_FOOTWAY = frozenset({"crossing", "traffic_island", "access_aisle"})
 # The CBD's sidewalks are District law the owner set (104); an industrial-area closure
-# has its own queue already.
-UNLISTED_REASONS = frozenset({CBD_SIDEWALK, "works"})
+# has its own queue already. The Zoo, military and secured areas close a way whatever
+# its own tags say (`restricted_areas`, `zoo.closed_way`), so a Reopen there, a
+# `bicycle=yes` override, would change nothing: they are not listed.
+UNLISTED_REASONS = frozenset({CBD_SIDEWALK, "works", "zoo", "military", "secured"})
 
 # What the Review card says for each reason; an unknown reason is shown as its code.
 WHY = {
@@ -63,9 +65,6 @@ WHY = {
     "mtb": "A mountain-bike trail",
     "singletrack": "Rated singletrack",
     "dismount": "A long walk-your-bike connector",
-    "zoo": "Inside the National Zoo",
-    "military": "Inside a military area",
-    "secured": "Inside a secured federal compound",
 }
 
 

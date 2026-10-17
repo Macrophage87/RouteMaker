@@ -2601,11 +2601,15 @@ def move_zoo_points(points: list[list[float]]) -> tuple[list[list[float]], list[
 # WALK_IN_MIN_M from the point the rider put, the walk from the ride's end to it, on foot,
 # is answered beside the route (`walk_in`), up to WALK_IN_MAX_M. Below the minimum the
 # rider is there; past the maximum the walk is not the last few steps, and is not offered.
-WALK_IN_MIN_M = 25.0
+# 60 m (about 200 ft): a geocoded address or a map tap often sits 25-60 m off the street,
+# and that is not a walk.
+WALK_IN_MIN_M = 60.0
 WALK_IN_MAX_M = 800.0
 WALK_IN_SPEED_KMH = 4.8  # bikeshare.WALK_SPEED_KMH: walking beside a bike
 # The least of the budget a walk-in may start with; it is a few hundred metres on foot.
 WALK_IN_MIN_LEFT_S = 1.0
+# The most one walk-in call may take, so a slow one leaves the candidates their time.
+WALK_IN_CALL_S = 2.0
 
 
 def walk_leg(a: list[float], b: list[float], deadline: Deadline) -> dict | None:
@@ -2621,7 +2625,12 @@ def walk_leg(a: list[float], b: list[float], deadline: Deadline) -> dict | None:
         "units": "kilometers",
     }
     try:
-        answer = _call(Variant.STANDARD.value, "route", payload, deadline)
+        answer = _call(
+            Variant.STANDARD.value,
+            "route",
+            payload,
+            Deadline(deadline.at, min(deadline.per_call_s, WALK_IN_CALL_S)),
+        )
     except RouterRefused as refusal:
         if refusal.code not in NO_PATH_CODES | NO_EDGE_CODES:
             logger.warning("a walk-in was refused: %s", refusal)
@@ -2672,6 +2681,21 @@ def walk_in(
         if leg is not None:
             found[key] = {**leg, "to": "your destination" if a_to_b else "the route"}
     return found if any(found.values()) else None
+
+
+def walk_in_for(offered: dict, answer: dict) -> dict | None:
+    """The answer's walk-in on a route offered beside it (a candidate, the way round an
+    Avoid-rated junction) whose ride starts and ends where the answer's does, so the
+    walk stays when the rider picks it; None where an end differs (no second walk is
+    asked for: the answer's own budget is spent on the candidates)."""
+    walk = answer.get("walk_in")
+    line, own = offered["geometry"]["coordinates"], answer["geometry"]["coordinates"]
+    if not walk or len(line) < 2 or len(own) < 2:
+        return None
+    for i in (0, -1):
+        if haversine(Point(*line[i][:2]), Point(*own[i][:2])) >= WALK_IN_MIN_M:
+            return None
+    return walk
 
 
 def circle_park_filter(lon: float, lat: float) -> dict:
@@ -3629,6 +3653,7 @@ def plan(
             try:
                 around = work_zones.with_work_zones(_answer(avoid_trip, None, True), zones_plan)
                 _with_mtb(around, _offered_mtb(avoid_trip))
+                around["walk_in"] = walk_in_for(around, body)
                 around["extra_distance_m"] = round(around["distance_m"] - body["distance_m"], 1)
                 around["extra_duration_s"] = round(around["duration_s"] - body["duration_s"], 1)
                 body["avoid_alternate"] = around
@@ -3656,6 +3681,7 @@ def plan(
             refine.analyse(found, refine_context, deadline)
             candidate = work_zones.with_work_zones(_answer(found, None, True), zones_plan)
             _with_mtb(candidate, _offered_mtb(found))
+            candidate["walk_in"] = walk_in_for(candidate, body)
             if maxcalm and target_m:
                 candidate["over_target_m"] = target_fields(
                     _trip_length_m(found), target_m, ceiling

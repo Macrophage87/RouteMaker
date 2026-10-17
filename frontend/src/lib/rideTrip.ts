@@ -235,7 +235,6 @@ function transitTrip(route: RouteResponse, destination: LonLat | null): RideTrip
   return { approach, finish, departure, rest, shareBike: lineStep.mode === "bikeshare" };
 }
 
-/** What comes either side of the line on a Bikeshare or transit plan; null for any other route. */
 /** A plain ride whose ride stops short of its start or end (the API's `walk_in`): the walk to the line first, and the walk on at the finish. */
 function walkInTrip(route: RouteResponse): RideTrip | null {
   const walks = route.walk_in;
@@ -254,6 +253,7 @@ function walkInTrip(route: RouteResponse): RideTrip | null {
   return { approach, finish, departure: null, rest: null, asPlanned: true };
 }
 
+/** What comes either side of the line on a Bikeshare or transit plan, or a plain ride's walk-in; null for any other route. */
 export function rideTripOf(route: RouteResponse, points: readonly LonLat[]): RideTrip | null {
   return bikeshareTrip(route) ?? transitTrip(route, points.length > 0 ? points[points.length - 1] : null) ?? walkInTrip(route);
 }

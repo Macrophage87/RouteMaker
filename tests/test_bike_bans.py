@@ -15,9 +15,12 @@ BETHESDA = [(-77.0950, 38.9850), (-77.0945, 38.9850)]
 class TestReason:
     def test_a_closure_rule_is_listed_but_the_cbd_sidewalks_and_works_are_not(self) -> None:
         assert bike_bans.reason({"highway": "path"}, "park_path", False) == "park_path"
-        assert bike_bans.reason({"highway": "footway"}, "zoo", False) == "zoo"
         assert bike_bans.reason({"highway": "footway"}, "cbd_sidewalk", False) is None
         assert bike_bans.reason({"highway": "service"}, "works", False) is None
+
+    def test_a_place_a_reopen_cannot_open_is_not_listed(self) -> None:
+        for place in ("zoo", "military", "secured"):
+            assert bike_bans.reason({"highway": "footway"}, place, False) is None
 
     def test_osms_own_no_is_listed_except_on_a_motorway(self) -> None:
         assert bike_bans.reason({"highway": "path", "bicycle": "no"}, None, False) == "bicycle_no"
