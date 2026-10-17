@@ -4877,8 +4877,14 @@ permission) and Frederick County's draft rustic roads (no licence).
    Places to see (frontend/src/amenity-data/README.md), and deploy the front end. A
    covered bridge is named by its `bridge:name` where it has one.
 
-**Rolling it back** without a code change: remove `reference/scenic.json` and rebuild; the
-layer then has the OSM designations only. The switch itself is the rider's; there is no
+`scripts/cloud/send-inputs.sh` refuses a reference folder whose `scenic.json` is absent
+or lacks either layer's lines (`SCENIC_SOURCES`): the v0.8.0 map was built before step 2
+had run, so its Scenic layer showed no Rustic Road or Scenic Byway, and the rebuild itself
+only warns.
+
+**Rolling it back** without a code change: remove `reference/scenic.json` and rebuild on
+the host (the cloud send refuses such a folder, above); the layer then has the OSM
+designations only. The switch itself is the rider's; there is no
 server flag, and a layer nobody turns on draws nothing.
 
 ## Deployment actions
