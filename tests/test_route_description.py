@@ -110,6 +110,20 @@ class TestInTheAnswer:
         assert entries[1]["turn"]["onto"] == "Second Street"
         assert entries[1]["text"].split(": ")[1].startswith("Left onto Second Street")
 
+    def test_a_bear_is_answered_in_both_lists(self, client, router):
+        # v0.7.0 answered 500 here: the response schema had no bears.
+        fake = named_world()
+        edges = fake.answers["trace_attributes"]["edges"]
+        edges[1]["names"] = ["Second Street"]
+        edges[1]["begin_heading"] = edges[0]["end_heading"] - 30
+        edges[1]["end_heading"] = edges[1]["begin_heading"]
+        router(fake)
+        response = post(client, good_body())
+        assert response.status_code == 200
+        for view in ("description", "description_overview"):
+            turns = [e["turn"]["movement"] for e in response.json()[view] if e.get("turn")]
+            assert "bear_left" in turns, view
+
     @pytest.mark.parametrize(
         "preset",
         sorted(set(presets.PRESETS) - {*presets.BIKESHARE_PRESETS, *presets.TRANSIT_PRESETS}),
