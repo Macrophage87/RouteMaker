@@ -1343,7 +1343,7 @@ export function RideMode({
     rideVoice.stop();
     if (toVoice(prefsRef.current.output)) rideVoice.speak(RIDE_ENDED, true);
     // A Bikeshare or transit trip's riding leg is not the plan: the plan stays as it was.
-    onEnd(trip ? null : planAfterEnd(modelRef.current, rideRef.current, plan.current.points, plan.current.loop, Date.now()));
+    onEnd(trip && !trip.asPlanned ? null : planAfterEnd(modelRef.current, rideRef.current, plan.current.points, plan.current.loop, Date.now()));
   };
   // A toggle: pressed, no automatic re-plan (one in flight is voided) and the way back is said once;
   // pressed again, re-planning is back on.

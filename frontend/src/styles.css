@@ -3333,19 +3333,19 @@ details.zoom-notes {
   pointer-events: none;
 }
 
-/* Ride mode's "you" marker (WEB-NAV-plan.md section 1): an arrow, a different shape from the chart's
+/* Ride mode's "you" marker (WEB-NAV-plan.md section 1; a little larger since v0.9.0, the owner's ask): an arrow, a different shape from the chart's
    ring, pointing the way the rider is heading; a plain dot while the heading is not known. */
 .rider-marker {
-  width: 30px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
   pointer-events: none;
   background: no-repeat center / contain
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3E%3Cpath d='M15 2 L26 27 L15 21 L4 27 Z' fill='%231d4ed8' stroke='white' stroke-width='2.5' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 .rider-marker.rider-marker-still {
-  width: 22px;
-  height: 22px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   background: #1d4ed8;
   border: 3px solid white;

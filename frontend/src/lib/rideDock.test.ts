@@ -206,6 +206,15 @@ test("RideMode: round side buttons with names; the bottom panel only when it has
   assert.match(css, /\.ride \.ride-round \{\s*width: 56px;\s*height: 56px;/);
 });
 
+test("following track-up, the rider is held two thirds of the way down the map, and the marker is a little larger (v0.9.0)", () => {
+  const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  assert.match(map, /export const RIDER_AT = 2 \/ 3;/);
+  assert.match(map, /return Math\.round\(top \+ Math\.max\(0, bottom - top\) \* RIDER_AT - box\.height \/ 2\);/);
+  assert.match(map, /const ahead = props\.headingUp \? riderOffset\(map\.getContainer\(\)\) : 0;/);
+  assert.match(map, /map\.easeTo\(\{ center: rider\.point, bearing, zoom, offset: \[0, ahead\], padding: NO_PADDING, duration: still \? 0 : 400 \}\);/);
+  assert.match(css, /\.rider-marker \{\s*width: 36px;\s*height: 36px;/);
+});
+
 test("in a ride the map's scales and credits sit at the bottom left, above the bottom panel when it shows", () => {
   assert.match(css, /\.app\.riding:has\(\.ride\) \.maplibregl-ctrl-bottom-right \{\s*left: 0;\s*right: auto;\s*bottom: var\(--ride-sheet-h, 0px\);/);
   assert.match(ride, /<div ref=\{sheetRef\} className="ride-controls">/);

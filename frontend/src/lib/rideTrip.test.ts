@@ -354,3 +354,18 @@ test("arrived, then on transit: Ride the rest starts from the last good fix near
   assert.equal(stale, null);
   assert.deepEqual(restRequest(trip.rest!, stale)!.points[0], at(5050, 4000));
 });
+
+test("a ride that stops short walks to the line first and says the walk on at the finish, re-planned as it was (walk_in)", () => {
+  const line = [at(0, 0), at(500, 0)];
+  const walk = (m: number) => ({ geometry: { type: "LineString" as const, coordinates: [at(500, 0), at(500, m)] }, distance_m: m, duration_s: m, to: "" });
+  const route = { preset: "commute", geometry: { type: "LineString", coordinates: line }, walk_in: { start: walk(40), end: walk(90) } } as unknown as RouteResponse;
+  const trip = rideTripOf(route, [at(0, -40), at(500, 90)]);
+  assert.ok(trip?.asPlanned);
+  assert.equal(trip?.approach?.metres, 40);
+  assert.match(trip?.finish?.shown ?? "", /Walk your bike 300 ft \(90 m\) to your destination\./);
+  const leg = rideLegOf(route, [at(0, -40), at(500, 90)], false);
+  assert.equal(leg.preset, "commute");
+  assert.deepEqual(leg.points, [at(0, -40), at(500, 90)]);
+  const plain = { ...route, walk_in: null } as unknown as RouteResponse;
+  assert.equal(rideTripOf(plain, []), null);
+});

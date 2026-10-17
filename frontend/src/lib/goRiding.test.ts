@@ -19,7 +19,7 @@ test("1. track-up by default, the ride settings' switch remembered on this devic
   assert.match(ride, /checked=\{headingUp\} onChange=\{\(event\) => onHeadingUp\(event\.target\.checked\)\}/);
   // North-up until a heading comes; north-up again once the ride is over.
   assert.match(map, /props\.headingUp && following\.current \? map\.getBearing\(\) : 0/);
-  assert.match(map, /if \(following\.current && map\.getBearing\(\) !== 0\) map\.easeTo\(\{ bearing: 0, duration: 0 \}\)/);
+  assert.match(map, /if \(following\.current && map\.getBearing\(\) !== 0\) map\.easeTo\(\{ bearing: 0, padding: NO_PADDING, duration: 0 \}\)/);
   // Turning the map never moves the keyboard focus: the follow camera calls no focus().
   const follow = map.slice(map.indexOf("// Ride mode's \"you\" marker and the follow camera."), map.indexOf("// A pan or a turn of the map by hand"));
   assert.ok(follow.length > 100);
@@ -133,6 +133,6 @@ test("End ride keeps the plan and its routes; part way it starts where the rider
   assert.match(endRide, /commit\(from, ride\.dials\.loop \? \{ \.\.\.ride, dials: \{ \.\.\.ride\.dials, loop: false \} \} : undefined\);/);
   assert.match(endRide, /announce\(from \? RIDE_ENDED_FROM_HERE_SAID : after === "no-fix" \? RIDE_ENDED_NO_FIX_SAID : RIDE_ENDED_SAID\);/);
   // The ride's own fix (planAfterEnd), never a trip's riding leg.
-  assert.match(ride, /onEnd\(trip \? null : planAfterEnd\(modelRef\.current, rideRef\.current, plan\.current\.points, plan\.current\.loop, Date\.now\(\)\)\);/);
+  assert.match(ride, /onEnd\(trip && !trip\.asPlanned \? null : planAfterEnd\(modelRef\.current, rideRef\.current, plan\.current\.points, plan\.current\.loop, Date\.now\(\)\)\);/);
   assert.match(app, /if \(ended\.from && pointsRef\.current === ended\.from\) edits\.retract\(\);/);
 });

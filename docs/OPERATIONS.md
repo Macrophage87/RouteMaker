@@ -3946,6 +3946,12 @@ things beyond the tags, and none of them comes from the reference install:
   limits, OWNER-DECISIONS 131), both baked into the pipeline image
   (`COPY fixtures` in `docker/pipeline.Dockerfile`). A change to either is a
   rebuild-image deploy; there is nothing to reinstall.
+- **`fixtures/circle_parks/`** (the NPS circle parks from DC GIS's National
+  Parks layer, CC BY 4.0, credited by routing's "DC Open Data" line): their
+  walkways open to bicycles (`routemaker.circleparks`; the owner, 2026-10-17),
+  logged as "N walkways and crossings of DC's circle parks opened to bicycles". Baked into
+  the pipeline image like the two above; the planner reads the same polygons to
+  keep a trip point inside a circle off the underpass below it.
 
 The rebuild refuses, terminally (not retried), when the District, Maryland or
 Virginia has no closed boundary in the merged extract, or holds no way:

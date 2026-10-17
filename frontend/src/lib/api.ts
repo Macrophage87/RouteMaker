@@ -817,6 +817,11 @@ export interface RouteResponse {
   variant: "standard" | "no-trail" | "ebike" | "weekend" | "offroad" | "mtb";
   /** Trip points the planner moved: one inside the National Zoo goes to its bike racks. */
   moved_points?: { index: number; asked: LonLat; routed: LonLat; reason: "zoo_racks"; note: string }[];
+  /**
+   * The walks at the route's ends where the ride stops short of the point asked (core.api.WalkInOut; the owner,
+   * 2026-10-17: a stop at a memorial a bike is walked through). Null or absent where the ride reaches both.
+   */
+  walk_in?: { start: BikeshareWalk | null; end: BikeshareWalk | null } | null;
   geometry: { type: "LineString"; coordinates: LonLat[] };
   distance_m: number;
   duration_s: number;

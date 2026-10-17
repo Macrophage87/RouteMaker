@@ -971,6 +971,26 @@ def test_the_zoo_move_runs_from_the_api_image_layout(tmp_path) -> None:
     assert result.returncode == 0 and result.stdout.strip() == "ok", result.stderr
 
 
+def test_the_circle_park_filter_runs_from_the_api_image_layout(tmp_path) -> None:
+    """Run, not read: every plan() asks whether each trip point is inside one of DC's
+    circle parks (routemaker.circleparks), from the api image's files alone."""
+    lay_out_the_api_image(tmp_path)
+    code = (
+        "from routemaker import circleparks; "
+        "assert circleparks.contains((-77.04339, 38.90968)); "
+        "assert not circleparks.contains((-77.0400, 38.9120)); print('ok')"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=tmp_path,
+        env={"PYTHONPATH": str(tmp_path / "src"), "PATH": os.environ.get("PATH", "")},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0 and result.stdout.strip() == "ok", result.stderr
+
+
 # Settings paths that are not image content: the data volume and the Valhalla config
 # the rebuild writes and the api reads from a shared mount, and the rebuild's input.
 NOT_IMAGE_CONTENT = {
