@@ -195,6 +195,8 @@ export interface Cue {
    * Street Northwest."); any other cue's is the API's sentence ("R Street Northwest, busy road (LTS 3).").
    */
   text: string;
+  /** What Ride says and shows in place of `text`, where it differs: a flagged crossing's short line ("Busy crossing at C Street, no signal."). */
+  rideText?: string;
   movement: TurnMovement | null;
   /** The street the cue turns onto or is on, as the API names it; null where unnamed. */
   street: string | null;
@@ -247,6 +249,24 @@ export function turnWords(movement: TurnMovement, street: string | null): string
   const turn = MOVEMENT_WORDS[movement];
   if (street && /^(?:unnamed )?path$/i.test(street.trim())) return `${turn} onto the path.`;
   return street && !isUnnamed(street) ? `${turn} onto ${street}.` : `${turn}.`;
+}
+
+const CROSSING_CONTROL_WORDS: Partial<Record<NonNullable<NonNullable<DescriptionEntry["turn"]>["control"]>, string>> = {
+  signal: "signal",
+  stop: "stop sign",
+  all_stop: "stop sign",
+  none: "no signal",
+};
+
+/**
+ * A flagged crossing's line in Ride (the owner, 2026-10-17: "a notice or warning when approaching a busy
+ * intersection"): "Busy crossing at C Street, no signal.", no LTS and no stress words; the control left out
+ * where unknown.
+ */
+export function crossingWords(street: string | null, control: NonNullable<DescriptionEntry["turn"]>["control"] | undefined): string {
+  const where = street && !isUnnamed(street) ? ` at ${street}` : "";
+  const how = control ? CROSSING_CONTROL_WORDS[control] : undefined;
+  return `Busy crossing${where}${how ? `, ${how}` : ""}.`;
 }
 
 /** Which side the destination is on (item 5), from the router's destination maneuver; null when unknown. */
@@ -432,6 +452,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
               : kind === "onto"
                 ? ontoWords(entry.street as string)
                 : sentenceOf(entry),
+        ...(kind === "hazard" && entry.kind === "junction" && !entry.group ? { rideText: crossingWords(entry.street, entry.turn?.control) } : {}),
         movement: kind === "turn" ? (entry.turn?.movement as TurnMovement) : null,
         street: entry.turn?.onto ?? entry.street ?? null,
         severity: entry.severity ?? entry.turn?.severity ?? null,
@@ -638,8 +659,11 @@ export function withoutMetric(text: string): string {
 
 const MOVEMENT_WORDS = { left: "Left", right: "Right", bear_left: "Bear left", bear_right: "Bear right" } as const;
 
-/** What is said for a cue at a phase, `distanceM` before it (US units only). */
-export function cueSpoken(cue: Cue, phase: Phase, distanceM: number): string {
+/**
+ * What is said for a cue at a phase, `distanceM` before it (US units only). `first`: nothing was said for this cue
+ * yet (a ride that starts, or a GPS gap that ends, inside the prepare distance has no advance warning).
+ */
+export function cueSpoken(cue: Cue, phase: Phase, distanceM: number, first = phase === "advance" || phase === "ahead"): string {
   if (cue.kind === "end") {
     // The side, where known, is the end cue's own last sentence ("Destination on your right.").
     const side = cue.text.match(/Destination on your (?:left|right)\.$/)?.[0];
@@ -651,7 +675,9 @@ export function cueSpoken(cue: Cue, phase: Phase, distanceM: number): string {
     if (cue.then) return `${MOVEMENT_WORDS[cue.movement]} now, then ${lowerFirst(turnWords(cue.then.movement, cue.then.street))}`;
     return `${MOVEMENT_WORDS[cue.movement]} now${cue.street ? ` onto ${cue.street}` : ""}.`;
   }
-  return `In ${spokenDistance(distanceM)}, ${lowerFirst(withoutMetric(cue.text))}`;
+  // A turn at a flagged junction says so in its first warning only; "now" is the turn alone.
+  const busy = cue.kind === "turn" && (cue.severity === "orange" || cue.severity === "red") && first;
+  return `In ${spokenDistance(distanceM)}, ${lowerFirst(withoutMetric(cue.rideText ?? cue.text))}${busy ? " Busy junction." : ""}`;
 }
 
 /**
@@ -803,7 +829,7 @@ export function step(
     if (!done.includes(phase.phase)) {
       events.push({
         kind: "cue",
-        spoken: cueSpoken(cue, phase.phase, distance),
+        spoken: cueSpoken(cue, phase.phase, distance, done.length === 0),
         urgent: phase.phase === "now" || phase.phase === "arrive",
         cue,
         phase: phase.phase,
@@ -1033,7 +1059,7 @@ export function whereAmI(model: RideModel, state: RideState, metric = false, mil
   const progress = state.progressM;
   const cue = model.cues.find((c) => c.atM > progress + 1 && (c.kind === "turn" || c.kind === "onto" || c.kind === "hazard" || c.kind === "walk"));
   if (cue) {
-    const text = metric ? cue.text : withoutMetric(cue.text);
+    const text = metric ? (cue.rideText ?? cue.text) : withoutMetric(cue.rideText ?? cue.text);
     sentences.push(`Next, in ${dist(cue.atM - state.progressM)}: ${lowerFirst(text)}`);
   }
   const togo = toGo(model, state.progressM);
