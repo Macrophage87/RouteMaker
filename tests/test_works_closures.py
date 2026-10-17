@@ -127,8 +127,26 @@ def test_an_override_reopens_one():
         ({"highway": "service"}, True),
         ({"highway": "service", "name": "Plant Drive"}, True),
         ({"highway": "track", "name": "Haul Road"}, True),
-        ({"highway": "residential"}, True),
+        ({"highway": "unclassified"}, True),
+        ({"highway": "road"}, True),
+        # A public street or path's class keeps it open, named or not (the v0.7.0
+        # staging rebuild closed 1,188 footways and 111 residential streets).
+        ({"highway": "residential"}, False),
+        ({"highway": "tertiary"}, False),
+        # A walkway only where it is a street's or says it is public; an untagged one
+        # between a site's buildings is the site's own (unclear access is closed).
         ({"highway": "footway"}, True),
+        ({"highway": "path"}, True),
+        ({"highway": "footway", "name": "Plant Walk"}, True),
+        ({"highway": "footway", "footway": "sidewalk"}, False),
+        ({"highway": "footway", "footway": "crossing"}, False),
+        ({"highway": "footway", "foot": "yes"}, False),
+        ({"highway": "pedestrian", "access": "permissive"}, False),
+        ({"highway": "footway", "footway": "sidewalk", "foot": "private"}, True),
+        ({"highway": "footway", "foot": "private"}, True),
+        ({"highway": "footway", "footway": "sidewalk", "access": "private"}, True),
+        ({"highway": "path", "bicycle": "no"}, True),
+        ({"highway": "residential", "access": "no"}, True),
         ({"highway": "service", "bicycle": "yes"}, False),
         # Kept to destinations, customers or deliveries: not a public street.
         ({"highway": "residential", "name": "Plant Road", "access": "destination"}, True),
@@ -183,7 +201,7 @@ def test_the_map_panel_words_the_reason():
     [
         {"highway": "service"},
         {"highway": "service", "name": "Plant Drive"},
-        {"highway": "residential"},
+        {"highway": "unclassified"},
         {"highway": "track"},
     ],
 )

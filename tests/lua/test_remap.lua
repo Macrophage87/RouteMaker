@@ -883,6 +883,32 @@ check("nor on an untagged motorway",
 check("a roadway OSM already tags use_sidepath is marked (the Douglass bridge)",
   M.remap_way({ highway = "primary", bicycle = "use_sidepath", foot = "no" }, { stress_tier = 5 })
     .service == "alley")
+-- Review RL-1: OSM's own use_sidepath on a road with no side path mapped is rated on its
+-- own merits, so below the penalty's tier it is plain access, and from it the penalty.
+check("OSM's use_sidepath never opens a motorway",
+  M.remap_way({ highway = "motorway", bicycle = "use_sidepath" }, { stress_tier = 4 }).bicycle
+    == "no")
+check("nor a motorroad",
+  M.remap_way({ highway = "trunk", motorroad = "yes", bicycle = "use_sidepath" },
+    { stress_tier = 4 }).bicycle == "no")
+check("nor a private road",
+  M.remap_way({ highway = "service", access = "private", bicycle = "use_sidepath" },
+    { stress_tier = 1 }).bicycle == "no")
+check("nor a vehicle=no road",
+  M.remap_way({ highway = "residential", vehicle = "no", bicycle = "use_sidepath" },
+    { stress_tier = 1 }).bicycle == "no")
+check("an open road with it is not closed",
+  M.remap_way({ highway = "primary", bicycle = "use_sidepath" }, { stress_tier = 5 }).bicycle
+    == nil)
+check("OSM's use_sidepath below tier 3 is plain access",
+  M.remap_way({ highway = "secondary", bicycle = "use_sidepath" }, { stress_tier = 2 }).bicycle
+    == "yes")
+check("OSM's use_sidepath at tier 3 is left as the penalty",
+  M.remap_way({ highway = "secondary", bicycle = "use_sidepath" }, { stress_tier = 3 }).bicycle
+    == nil)
+check("OSM's use_sidepath at Avoid is left as the penalty",
+  M.remap_way({ highway = "secondary", bicycle = "use_sidepath" }, { stress_tier = 5 }).bicycle
+    == nil)
 check("OSM's own alleys become service roads, so they do not pay the tier-5 charge",
   M.remap_way({ highway = "service", service = "alley" }, {}).service == M.REMOVE)
 check("at every tier",
@@ -1155,6 +1181,12 @@ do
   check("3.5 raises a 25 mph road to 90 km/h", slow["maxspeed:practical"] == "90")
   check("speed_kph reads km/h, mph and nothing else", M.speed_kph("50") == 50 and M.speed_kph("35 mph") == 56
     and M.speed_kph("walk") == nil and M.speed_kph(nil) == nil)
+  -- Review RL-5: the rebuild writes a bare `maxspeed=45` as `45 mph`
+  -- (`pipeline.variants.with_speed_units`), which reads as 72 km/h, not 45.
+  check("speed_kph reads the rebuild's explicit mph", M.speed_kph("45 mph") == 72)
+  local rewritten = M.remap_way({ highway = "trunk", maxspeed = "60 mph" }, { stress_tier = 3, stress_half = true })
+  check("3.5's speed mark reads the rewritten mph: 60 mph keeps 97 km/h",
+    rewritten["maxspeed:practical"] == "97")
   check("3.5 adds the intermediate lane count both ways",
     o["lanes:forward"] == M.HALF_GRADED_LANES and o["lanes:backward"] == M.HALF_GRADED_LANES)
   check("3.5's marks sit between the road's and LTS 4's",

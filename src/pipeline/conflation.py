@@ -890,6 +890,38 @@ def _freeway_block(feature: RoadFeature) -> bool:
     return feature.facts.functional_class in agency_roads.FREEWAY_CLASSES
 
 
+def _held_to_the_city(
+    result: BlockConflation,
+    tags_of: Mapping[int, Mapping[str, str]],
+    by_id: Mapping[str, RoadFeature],
+) -> BlockConflation:
+    """`result` with a city layer's blocks (`agency_roads.CITY_ONLY_AGENCIES`) taken
+    off a freeway, a trunk road or their slip roads, and off a way they cover less
+    than `CITY_MIN_COVERAGE` of (one crossing the city line). A way left with no
+    block is unmatched."""
+    matched = dict(result.matched)
+    coverage = dict(result.coverage)
+    for way_id, shares in result.matched.items():
+        city = [
+            share
+            for share in shares
+            if by_id[share.feature_id].facts.agency in agency_roads.CITY_ONLY_AGENCIES
+        ]
+        if not city:
+            continue
+        barred = tags_of.get(way_id, {}).get("highway") in agency_roads.CITY_BARRED_HIGHWAYS
+        if not barred and sum(share.share for share in city) >= agency_roads.CITY_MIN_COVERAGE:
+            continue
+        kept = tuple(share for share in shares if share not in city)
+        if kept:
+            matched[way_id] = kept
+            coverage[way_id] = min(1.0, sum(share.share for share in kept))
+        else:
+            del matched[way_id]
+            del coverage[way_id]
+    return BlockConflation(matched, coverage, result.unmatched_features)
+
+
 def road_facts_by_way(
     ways: Sequence,
     entries: Sequence[WayEntry],
@@ -934,6 +966,7 @@ def road_facts_by_way(
     )
     by_id = {block.feature_id: block for block in blocks}
     tags_of = {way.osm_id: way.tags for way in ways}
+    result = _held_to_the_city(result, tags_of, by_id)
     facts: dict[int, WayFacts] = {}
     for way_id, shares in result.matched.items():
         agreements = [share.names_agree for share in shares]

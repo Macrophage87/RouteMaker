@@ -2416,11 +2416,11 @@ dialog.weight-dialog h2 {
   }
 
   .app.go-mode:has(.panel.go-peek) .beta-chip {
-    bottom: calc(34% + 10px);
+    bottom: calc(var(--go-sheet-h, 34%) + 10px);
   }
 
   .app.go-mode:has(.panel.go-half) .beta-chip {
-    bottom: calc(56% + 10px);
+    bottom: calc(var(--go-sheet-h, 56%) + 10px);
   }
 }
 
@@ -4725,11 +4725,11 @@ details.zoom-notes {
   }
 
   .app.go-mode:has(.panel.go-peek) .maplibregl-ctrl-bottom-right {
-    bottom: 34%;
+    bottom: var(--go-sheet-h, 34%);
   }
 
   .app.go-mode:has(.panel.go-half) .maplibregl-ctrl-bottom-right {
-    bottom: 56%;
+    bottom: var(--go-sheet-h, 56%);
   }
 
 }
@@ -5321,6 +5321,62 @@ details.fold > summary .icon {
 .panel .go-places .place-chip {
   padding: 0 9px;
   gap: 4px;
+}
+
+/* Go's sheet on one phone screen (the owner, 2026-10-17: "fit on one page with the current location centered").
+   The place chips are five tiles in one row, icon over name; the ride types two equal columns. */
+@media (max-width: 720px) {
+  /* One row while the names fit; a very large font wraps More to a second row rather than clipping it. */
+  .go-sheet .go-places:not(.go-more-row) {
+    gap: 6px;
+  }
+
+  .panel .go-sheet .go-places:not(.go-more-row) .place-chip {
+    flex-direction: column;
+    justify-content: center;
+    flex: 1 1 auto;
+    gap: 2px;
+    min-height: 52px;
+    padding: 4px;
+    border-radius: 14px;
+    font-size: 0.8rem;
+    line-height: 1.1;
+    text-align: center;
+  }
+
+  .go-sheet .go-places[hidden] {
+    display: none;
+  }
+
+  .go-sheet .ride-chips {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .panel .go-sheet .ride-chips .chip {
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
+    padding: 2px 6px;
+    font-size: 0.85rem;
+    line-height: 1.15;
+    text-align: center;
+  }
+
+  .go-sheet .go-start-row {
+    flex-wrap: nowrap;
+  }
+
+  .go-sheet .go-start-line {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 0.95rem;
+  }
+
+  .go-sheet .go-change-start {
+    flex: none;
+  }
 }
 
 /* UI-CLEANUP: Go has no Hide planner toggle (its sheet has a handle); `hidden` must beat the phone rule's display. */
@@ -6183,6 +6239,11 @@ details.fold > summary .icon {
 
 .review-levels dd {
   margin: 0;
+}
+
+/* The road's Street View link, its privacy note beside it. */
+.review-street-view {
+  margin: 6px 0;
 }
 
 .review-reason-field {
