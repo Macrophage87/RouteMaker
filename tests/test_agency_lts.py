@@ -306,3 +306,226 @@ def test_the_installer_drops_moco_none_and_keeps_half_steps_and_avoid(tmp_path):
     assert {row["id"]: row["level"] for row in rows} == {"moco-2-0": 2.5, "moco-3-0": 5.0}
     assert rows[0]["name"] == "Davis Mill Rd"
     assert dropped["moco: no rating (0.5 'None')"] == 1
+
+
+# --- agency-lts.json: the DDOT and MDOT SHA readers, and the rebuild's refusal ---------
+
+
+def _installer():
+    import importlib.util
+
+    from rebuild_fixtures import REPO
+
+    spec = importlib.util.spec_from_file_location(
+        "install_agency_lts", REPO / "scripts" / "install_agency_lts.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _layer(datasets, slug, rows):
+    import json
+
+    (datasets / slug).mkdir(parents=True, exist_ok=True)
+    features = [
+        {
+            "type": "Feature",
+            "properties": props,
+            "geometry": {"type": "LineString", "coordinates": [[-77.03, 38.9], [-77.031, 38.901]]},
+        }
+        for props in rows
+    ]
+    (datasets / slug / f"{slug}.geojson").write_text(
+        json.dumps({"type": "FeatureCollection", "features": features})
+    )
+
+
+def test_the_ddot_reader_takes_the_four_levels_and_drops_no_rating(tmp_path):
+    from collections import Counter
+
+    module = _installer()
+    _layer(
+        tmp_path,
+        "ddot-lts-2020",
+        [
+            {"OBJECTID": 1, "LTS": 1, "ST_NAME": "16TH ST NW"},
+            {"OBJECTID": 2, "LTS": "4"},
+            {"OBJECTID": 3, "LTS": 0},
+            {"OBJECTID": 4, "LTS": None},
+            {"OBJECTID": 5, "LTS": "LTS 3"},
+        ],
+    )
+    dropped = Counter()
+    rows = list(module.ddot(tmp_path, dropped))
+    assert {r["id"]: r["level"] for r in rows} == {
+        "ddot-1-0": 1.0,
+        "ddot-2-0": 4.0,
+        "ddot-5-0": 3.0,
+    }
+    assert rows[0]["agency"] == "ddot" and rows[0]["name"] == "16TH ST NW"
+    assert dropped["ddot: no rating (0 or empty)"] == 2
+    assert all(agency_lts.level_problem(r["level"]) is None for r in rows)
+
+
+def test_the_ddot_reader_refuses_a_layer_without_a_known_level_field(tmp_path):
+    from collections import Counter
+
+    module = _installer()
+    _layer(tmp_path, "ddot-lts-2020", [{"OBJECTID": 1, "STRESS": 2}])
+    with pytest.raises(SystemExit, match="its fields are OBJECTID, STRESS"):
+        list(module.ddot(tmp_path, Counter()))
+    # Named by hand, the field is read.
+    assert [r["level"] for r in module.ddot(tmp_path, Counter(), field="STRESS")] == [2.0]
+
+
+def test_the_ddot_reader_refuses_a_level_off_the_scale(tmp_path):
+    from collections import Counter
+
+    module = _installer()
+    _layer(tmp_path, "ddot-lts-2020", [{"OBJECTID": 7, "LTS": 6}])
+    with pytest.raises(SystemExit, match="record 7: LTS 6 is not 1 to 5"):
+        list(module.ddot(tmp_path, Counter()))
+
+
+def test_the_mdot_sha_reader_maps_its_scale(tmp_path):
+    """LTS_ADJUSTED: 0 a shared-use path and 9 missing data are no rating; 1 to 4 as they
+    are; 5, bicycle access prohibited, is our 5 (Avoid)."""
+    from collections import Counter
+
+    module = _installer()
+    _layer(
+        tmp_path,
+        "mdot-lts",
+        [
+            {"OBJECTID": 1, "LTS_SCORE": 4, "LTS_ADJUSTED": 2},
+            {"OBJECTID": 2, "LTS_SCORE": 9, "LTS_ADJUSTED": 0},
+            {"OBJECTID": 3, "LTS_SCORE": 9, "LTS_ADJUSTED": 9},
+            {"OBJECTID": 4, "LTS_SCORE": 5, "LTS_ADJUSTED": 5},
+            {"OBJECTID": 5, "LTS_SCORE": 3, "LTS_ADJUSTED": None},
+            {"OBJECTID": 6, "LTS_SCORE": 4, "LTS_ADJUSTED": 4.0},
+        ],
+    )
+    dropped = Counter()
+    rows = list(module.mdot_sha(tmp_path, dropped))
+    assert {r["id"]: r["level"] for r in rows} == {
+        "mdot-sha-1-0": 2.0,
+        "mdot-sha-4-0": 5.0,
+        "mdot-sha-6-0": 4.0,
+    }
+    assert {r["agency"] for r in rows} == {"mdot-sha"} and rows[0]["name"] is None
+    assert dropped == Counter(
+        {
+            "mdot-sha: shared-use path (0)": 1,
+            "mdot-sha: missing data (9)": 1,
+            "mdot-sha: no adjusted score": 1,
+        }
+    )
+
+
+def test_the_installer_writes_all_three_agencies_the_rebuild_requires(tmp_path, monkeypatch):
+    import json
+    import sys
+
+    from pipeline import agency_ratings
+
+    module = _installer()
+    _layer(tmp_path, "moco-bicycle-lts", [_moco_feature(2, 2.5)["properties"]])
+    _layer(tmp_path, "ddot-lts-2020", [{"OBJECTID": 1, "LTS": 2}])
+    _layer(tmp_path, "mdot-lts", [{"OBJECTID": 1, "LTS_ADJUSTED": 3}])
+    out = tmp_path / "agency-lts.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["x", "--datasets", str(tmp_path), "--out", str(out), "moco", "ddot", "mdot-sha"],
+    )
+    assert module.main() == 0
+    assert {r["agency"] for r in json.loads(out.read_text())} == {"moco", "ddot", "mdot-sha"}
+    _features, ratings = agency_ratings.load(out, required=True)
+    assert sorted(r.agency for r in ratings.values()) == ["ddot", "mdot-sha", "moco"]
+
+
+def test_the_installer_refuses_an_agency_with_no_usable_record(tmp_path, monkeypatch):
+    import sys
+
+    module = _installer()
+    _layer(tmp_path, "mdot-lts", [{"OBJECTID": 1, "LTS_ADJUSTED": 0}])
+    out = tmp_path / "agency-lts.json"
+    monkeypatch.setattr(
+        sys, "argv", ["x", "--datasets", str(tmp_path), "--out", str(out), "mdot-sha"]
+    )
+    with pytest.raises(SystemExit, match="mdot-sha: no usable record"):
+        module.main()
+    assert not out.exists()
+
+
+def _row(agency, n=1):
+    return {
+        "id": f"{agency}-{n}-0",
+        "agency": agency,
+        "level": 2,
+        "name": None,
+        "coordinates": [[-77.0, 38.9], [-77.001, 38.901]],
+    }
+
+
+@pytest.mark.parametrize(
+    "rows, message",
+    [
+        (None, "is absent"),
+        ([], "is empty"),
+        ([_row("moco")], "has no record from ddot, mdot-sha"),
+    ],
+)
+def test_a_required_file_absent_empty_or_short_an_agency_is_refused(tmp_path, rows, message):
+    import json
+
+    from pipeline import agency_ratings
+
+    path = tmp_path / "agency-lts.json"
+    if rows is not None:
+        path.write_text(json.dumps(rows))
+    with pytest.raises(agency_ratings.AgencyRatingsMissing, match=message):
+        agency_ratings.load(path, required=True)
+    # Not required (REBUILD_ALLOW_NO_AGENCY_LTS, or a test's own rows): a warning only.
+    features, _ratings = agency_ratings.load(path)
+    assert len(features) == (len(rows) if rows else 0)
+
+
+def test_the_rebuilds_reference_load_refuses_without_the_ratings(tmp_path):
+    import json
+
+    from pipeline import agency_ratings
+    from pipeline.run import ReferenceData
+
+    for name, body in (("urban-areas.json", []), ("crossings.json", []), ("volume.json", [])):
+        (tmp_path / name).write_text(json.dumps(body))
+    with pytest.raises(agency_ratings.AgencyRatingsMissing, match="REBUILD_ALLOW_NO_AGENCY_LTS"):
+        ReferenceData.load(tmp_path, require_agency_lts=True)
+    assert ReferenceData.load(tmp_path).agency_lts_features == ()
+    (tmp_path / agency_ratings.FILE_NAME).write_text(
+        json.dumps([_row("moco"), _row("ddot"), _row("mdot-sha")])
+    )
+    loaded = ReferenceData.load(tmp_path, require_agency_lts=True)
+    assert len(loaded.agency_lts_features) == 3
+
+
+def test_the_weekly_rebuild_requires_the_ratings_unless_opted_out():
+    """The weekly task's context: `require_agency_lts` is the switch's opposite."""
+    import inspect
+
+    from config import procrastinate
+
+    source = inspect.getsource(procrastinate)
+    assert "require_agency_lts=not settings.REBUILD_ALLOW_NO_AGENCY_LTS" in source
+
+
+def test_the_ddot_level_field_is_found_on_any_record_not_only_the_first(tmp_path):
+    from collections import Counter
+
+    module = _installer()
+    _layer(tmp_path, "ddot-lts-2020", [{"OBJECTID": 1}, {"OBJECTID": 2, "LTS": 3}])
+    dropped = Counter()
+    assert [r["id"] for r in module.ddot(tmp_path, dropped)] == ["ddot-2-0"]
+    assert dropped["ddot: no rating (0 or empty)"] == 1
+    assert "LTS_SCORE" not in module.DDOT_LEVEL_FIELDS, "MDOT's preliminary score's name"

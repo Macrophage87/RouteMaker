@@ -49,9 +49,10 @@ export const nounOf = (kind: NearestKind, count = 2): string => {
 export const stopsOnTheWay = (kind: NearestKind): boolean => kind !== "metro";
 
 export interface NearestPlace {
-  /** The OSM element ("n123") or the station's id ("metro-…"). */
+  /** The OSM element ("n123"), the station's id ("metro-…") or a bikeshare dock's ("dock-…"). */
   id: string;
-  kind: NearestKind;
+  /** A bikeshare dock is Ride mode's dock button's own (lib/rideDock.ts), not one of the finder's kinds. */
+  kind: NearestKind | "dock";
   /** Where a route to it goes. */
   point: LonLat;
   /** What it is, with its name: "Drinking water, Peirce Mill", "Dupont Circle". */

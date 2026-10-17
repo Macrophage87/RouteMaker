@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "decided": "2026-10-17",
+  "decided_by": "the deployment owner",
+  "annotations": "The owner, 2026-10-17, on the v0.8.0 build's rural roads read at the 50-55 mph state default: \"some are given the 35 mph zone despite having a clear sign indicating that it's 25 mph\", naming each way. Roads signed 25 mph that OSM carries with no maxspeed. Read at classify time only (routemaker.speed_corrections); a posted maxspeed on the way wins, so a later OSM edit retires its row.",
+  "rows": [
+    {
+      "osm_way_id": 62828504,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-10-17: \"some are given the 35 mph zone despite having a clear sign indicating that it's 25 mph\" and \"Wickham Road 62828504\". Signed 25 mph; unposted in OSM, so the build read it at the rural default.",
+      "evidence": "The owner's report of a posted 25 mph sign, 2026-10-17. OSM way 62828504, Wickham Road, with no maxspeed tag in the extract the v0.8.0 build read (cloud build 20261017T014712Z), where it was rated LTS 4 on the default speed."
+    }
+  ]
+}

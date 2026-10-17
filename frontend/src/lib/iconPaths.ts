@@ -54,6 +54,7 @@ export const ICON_PATHS = {
   "gravel": "<circle cx=\"6\" cy=\"17\" r=\"2\"/><circle cx=\"12\" cy=\"15\" r=\"1.5\"/><circle cx=\"17\" cy=\"18\" r=\"2.2\"/><circle cx=\"9\" cy=\"20\" r=\"1\"/><path d=\"M2 21h20\"/>",
   "fast": "<path d=\"M3 8h8M2 12h6M3 16h8\"/><path d=\"M14 6l6 6-6 6\"/>",
   "stop": "<circle cx=\"12\" cy=\"10\" r=\"3\"/><path d=\"M12 21s7-6 7-11a7 7 0 0 0-14 0c0 5 7 11 7 11z\"/>",
+  "detour": "<path d=\"M7 21v-5c0-2.5 10-2.5 10-5V5\"/><path d=\"M14 8l3-3 3 3\"/><path d=\"M7 3v8\" stroke-dasharray=\"2 2.5\"/>",
   "pin": "<circle cx=\"12\" cy=\"10\" r=\"3\"/><path d=\"M12 21s7-6 7-11a7 7 0 0 0-14 0c0 5 7 11 7 11z\"/>",
   "check": "<path d=\"M5 12l5 5 9-10\"/>",
   "wc": "<circle cx=\"7\" cy=\"4.5\" r=\"1.8\"/><circle cx=\"17\" cy=\"4.5\" r=\"1.8\"/><path d=\"M7 8v13M4.5 9h5l-.5 6H5z\"/><path d=\"M17 8l-3 8h6l-3-8zM15.5 16v5M18.5 16v5\"/>",
