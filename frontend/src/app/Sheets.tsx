@@ -24,7 +24,8 @@ import { stressShowable, terrainLayers, terrainStatus } from "../lib/terrainSect
 import { LayerSection } from "../lib/layerSection.ts";
 import { AccessibilitySwitch } from "../lib/accessibilitySwitch.ts";
 import { ACCESS_HELP, ACCESS_LABEL } from "../lib/accessMode.ts";
-import { BigTextField, RideSettingsFields } from "../RideMode.tsx";
+import { RideSettingsFields } from "../RideMode.tsx";
+import { BIG_TEXT_HELP, BIG_TEXT_LABEL } from "../lib/rideOutput.ts";
 import type { RidePrefs } from "../lib/rideOutput.ts";
 import type { RailVisibility } from "../lib/railStations.ts";
 import { RailStationsLegend, RailStationsSection } from "../RailStations.tsx";
@@ -60,6 +61,8 @@ import { MyRoutes, type MyRoutesProps } from "../MyRoutes.tsx";
 import type { GeoGate, Place } from "../lib/geocode.ts";
 import type { IconName } from "../lib/iconPaths.ts";
 import { Icon } from "../Icon.tsx";
+import { InfoButton, SettingRow, SettingSelect } from "../SettingRow.tsx";
+import { shortLabel } from "../lib/shortLabel.ts";
 import { ANNOUNCE_HINT, ANNOUNCE_LABEL, type AnnounceLevel } from "../lib/announceLevel.ts";
 import type { Status } from "./RoutePanel.tsx";
 
@@ -334,37 +337,18 @@ export interface MyGoControls {
   searchBias: () => LonLat | undefined;
 }
 
-/**
- * A setting's explanation behind "How this works" (Plan streamline, Stephen 2026-10-17), as the ride settings have
- * it: the setting shows its name and choices, and the paragraph is a tap away (and still a control's description
- * where `id` is pointed at).
- */
-function HowItWorks({ id, about, children }: { id?: string; about: string; children: ReactNode }) {
-  return (
-    <details className="how setting-how">
-      <summary>
-        How this works<span className="visually-hidden">: {about}</span>
-      </summary>
-      <p className="hint" id={id}>
-        {children}
-      </p>
-    </details>
-  );
-}
-
-/** "Open in": By screen size, Go or Plan, as a radio group. */
+/** "Open in": By screen size, Go or Plan, as a picker, with what "By screen size" means behind an (i). */
 function OpenInChoice({ value, onChange, idBase, hint }: { value: OpenIn; onChange: (next: OpenIn) => void; idBase: string; hint?: string }) {
   return (
-    <fieldset className="ride-choice open-in">
-      <legend>Open in</legend>
-      {(["", "go", "plan"] as OpenIn[]).map((option) => (
-        <label key={option || "screen"} className="radio">
-          <input type="radio" name={`${idBase}-open-in`} checked={value === option} onChange={() => onChange(option)} />
-          {OPEN_IN_LABEL[option]}
-        </label>
-      ))}
-      {hint && <HowItWorks about="open in">{hint}</HowItWorks>}
-    </fieldset>
+    <SettingRow infoId={`${idBase}-open-in-info`} about="open in" info={hint} className="open-in">
+      <SettingSelect
+        label="Open in"
+        value={value}
+        options={(["", "go", "plan"] as OpenIn[]).map((option) => [option, OPEN_IN_LABEL[option]] as const)}
+        onChange={onChange}
+        describedBy={hint ? `${idBase}-open-in-info` : undefined}
+      />
+    </SettingRow>
   );
 }
 
@@ -374,28 +358,32 @@ function OpenInChoice({ value, onChange, idBase, hint }: { value: OpenIn; onChan
  */
 function MyGoSection({ controls }: { controls: MyGoControls }) {
   const { myGo, signedIn, save, setHome, said, geoGate, searchBias } = controls;
+  const [infoOpen, setInfoOpen] = useState(false);
   return (
     <section aria-labelledby="settings-my-go-heading" className="my-go">
-      <h4 id="settings-my-go-heading">
-        <Icon name="star" size={18} />
-        My Go
-        <span className="setting-value">
-          <span className="visually-hidden">: </span>
-          {myGoSummary(myGo)}
-        </span>
-      </h4>
-      <p className="hint">{signedIn ? "Kept with your Discord account, on every device you sign in on." : "Kept on this device. Sign in to keep it with your account."}</p>
+      <div className="setting-line">
+        <h4 id="settings-my-go-heading">
+          <Icon name="star" size={18} />
+          My Go
+          <span className="setting-value">
+            <span className="visually-hidden">: </span>
+            {myGoSummary(myGo)}
+          </span>
+        </h4>
+        <InfoButton open={infoOpen} onToggle={() => setInfoOpen((was) => !was)} controls="settings-my-go-info" about="My Go" />
+      </div>
+      <p className="hint setting-info" id="settings-my-go-info" hidden={!infoOpen}>
+        {signedIn ? "Kept with your Discord account, on every device you sign in on." : "Kept on this device. Sign in to keep it with your account."}
+      </p>
       <OpenInChoice value={myGo.openIn} onChange={(openIn) => save({ ...myGo, openIn })} idBase="my-go" hint={OPEN_IN_HINT} />
-      <label className="select-setting">
-        Go's ride type
-        <select value={myGo.ride ?? "default"} onChange={(event) => save({ ...myGo, ride: event.target.value === "default" ? null : (event.target.value as PresetId) })}>
-          {PRESETS.filter((p) => p.id !== "mass-ride").map((p) => (
-            <option key={p.id} value={p.id}>
-              {presetSaid(p.id)}
-            </option>
-          ))}
-        </select>
-      </label>
+      <SettingRow infoId="settings-go-ride-info" about="Go's ride type">
+        <SettingSelect
+          label="Go's ride type"
+          value={myGo.ride ?? "default"}
+          options={PRESETS.filter((p) => p.id !== "mass-ride").map((p) => [p.id, presetSaid(p.id)] as const)}
+          onChange={(ride) => save({ ...myGo, ride: ride === "default" ? null : ride })}
+        />
+      </SettingRow>
       {/* The same Home sheet as Go's (lib/homeSet.ts), without the map way: the map is behind Settings. */}
       <div className="my-go-home">
         {!myGo.home && (
@@ -438,6 +426,24 @@ export interface SettingsSheetProps {
   menu: { onPlan: () => void; onSuggest: (opener: HTMLElement) => void; onGpx: (opener: HTMLElement) => void; onReview: ((opener: HTMLElement) => void) | null };
 }
 
+/** High contrast, as the Map layers sheet has it, with its explanation behind an (i). */
+function ContrastRow() {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="setting-row contrast-row">
+      <AccessibilitySwitch
+        idBase="settings-contrast"
+        on={accessibilityOn()}
+        source={accessibilitySource()}
+        paletteFromAddress={paletteSetByAddress()}
+        onChange={(on) => setAccessibility(on)}
+        hintHidden={!open}
+      />
+      <InfoButton open={open} onToggle={() => setOpen((was) => !was)} controls="settings-contrast-hint" about="high contrast" />
+    </div>
+  );
+}
+
 /** The Settings sheet (Go's Menu): Display, Ride mode, This device and Account, as the mockup groups them. */
 export function SettingsSheet(props: SettingsSheetProps) {
   const { nav, settingsHeadingRef, ridePrefs, changeRidePrefs, keepShown, keptVersion, openKept, announce, linkNote, accessMode, toggleAccessMode, myGo, mode, menu, announcements, signInAvailable, myRoutes } = props;
@@ -475,15 +481,9 @@ export function SettingsSheet(props: SettingsSheetProps) {
       )}
       <section aria-labelledby="settings-display-heading" className="settings-group">
         <h3 id="settings-display-heading">Display</h3>
-        <AccessibilitySwitch
-          idBase="settings-contrast"
-          on={accessibilityOn()}
-          source={accessibilitySource()}
-          paletteFromAddress={paletteSetByAddress()}
-          onChange={(on) => setAccessibility(on)}
-        />
+        <ContrastRow />
         {/* Accessibility mode (OWNER-DECISIONS 455) as a switch here too (the mockup), the same state as the page's first button. */}
-        <div className="a11y-setting">
+        <SettingRow infoId="settings-access-hint" about="accessibility mode" info={ACCESS_HELP} className="a11y-setting">
           <button
             type="button"
             role="switch"
@@ -501,33 +501,61 @@ export function SettingsSheet(props: SettingsSheetProps) {
               {accessMode ? "On" : "Off"}
             </span>
           </button>
-          <HowItWorks id="settings-access-hint" about="accessibility mode">
-            {ACCESS_HELP}
-          </HowItWorks>
-        </div>
+        </SettingRow>
         {/* How much screen readers are told (the owner, 2026-10-11 20:23 UTC): Brief or Full; unset, Go is brief. */}
-        <fieldset className="ride-choice announce-level">
-          <legend>Announcements</legend>
-          {(["brief", "full"] as const).map((level) => (
-            <label key={level} className="radio">
-              <input type="radio" name="settings-announce" checked={announcements.level === level} onChange={() => announcements.choose(level)} />
-              {ANNOUNCE_LABEL[level]}
-            </label>
-          ))}
-          <HowItWorks about="announcements">{ANNOUNCE_HINT}</HowItWorks>
-        </fieldset>
+        <SettingRow
+          infoId="settings-announce-info"
+          about="announcements"
+          className="announce-level"
+          info={
+            <>
+              <ul className="setting-info-list">
+                {(["brief", "full"] as const).map((level) => (
+                  <li key={level}>{ANNOUNCE_LABEL[level]}</li>
+                ))}
+              </ul>
+              {ANNOUNCE_HINT}
+            </>
+          }
+        >
+          <SettingSelect
+            label="Announcements"
+            value={announcements.level}
+            options={(["brief", "full"] as const).map((level) => [level, shortLabel(ANNOUNCE_LABEL[level])] as const)}
+            onChange={(level) => announcements.choose(level)}
+            describedBy="settings-announce-info"
+          />
+        </SettingRow>
         {/* Open in Go or Plan is My Go's, under Account, signed in or out: one control, not two (Plan streamline). */}
       </section>
       {/* Ride mode's choices (WEB-NAV-plan.md section 3): the same ones the first Start ride asks, kept on this device. */}
       <section aria-labelledby="settings-ride-heading" className="settings-group">
         <h3 id="settings-ride-heading">Ride mode</h3>
-        <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" />
-        <BigTextField on={props.bigText.on} onChange={props.bigText.onChange} />
+        <RideSettingsFields prefs={ridePrefs} onChange={changeRidePrefs} idBase="settings-ride" compact />
+        {/* Big text: a setting here, not a ride button (the owner, 2026-10-17: "not something people will fiddle with mid ride"). */}
+        <SettingRow infoId="settings-big-text-info" about="big text" info={BIG_TEXT_HELP} className="big-text-row">
+          <button
+            type="button"
+            role="switch"
+            className="switch"
+            aria-checked={props.bigText.on}
+            aria-labelledby="settings-big-text-label"
+            aria-describedby="settings-big-text-info"
+            onClick={() => props.bigText.onChange(!props.bigText.on)}
+          >
+            <span id="settings-big-text-label" className="switch-label">
+              {BIG_TEXT_LABEL}
+            </span>
+            <span className="switch-state" aria-hidden="true">
+              {props.bigText.on ? "On" : "Off"}
+            </span>
+          </button>
+        </SettingRow>
       </section>
       {/* The installable app (WEB-NAV-plan.md section 8, P3 and P4): the routes kept on this device, and the install offer. */}
       <section aria-labelledby="settings-device-heading" className="settings-group">
         <h3 id="settings-device-heading">This device</h3>
-        {keepShown || anyKept() ? <KeptRoutes version={keptVersion} onOpen={openKept} onSay={announce} /> : <p className="hint">Offline routes: none kept yet.</p>}
+        {keepShown || anyKept() ? <KeptRoutes version={keptVersion} onOpen={openKept} onSay={announce} compact /> : <p className="hint">Offline routes: none kept yet.</p>}
         <InstallOffer idBase="settings-install" onSay={announce} />
       </section>
       <section aria-labelledby="settings-signin-heading" className="settings-group">

@@ -303,7 +303,9 @@ test("Big text is a setting, in the ride's Settings and the Settings page, not a
   // The owner, 2026-10-17: "the text size should be moved to the settings page ... not something people will fiddle with mid ride".
   assert.doesNotMatch(ride, /className="ride-round big-text"/);
   assert.match(ride, /Turn the map to my heading\s*<\/label>\s*<BigTextField on=\{big\} onChange=\{onBig\} \/>/);
-  assert.match(src("../app/Sheets.tsx"), /idBase="settings-ride" \/>\s*<BigTextField on=\{props\.bigText\.on\} onChange=\{props\.bigText\.onChange\} \/>/);
+  const sheets = src("../app/Sheets.tsx");
+  assert.match(sheets, /<SettingRow infoId="settings-big-text-info" about="big text" info=\{BIG_TEXT_HELP\}/);
+  assert.match(sheets, /role="switch"[^>]*aria-checked=\{props\.bigText\.on\}[^>]*onClick=\{\(\) => props\.bigText\.onChange\(!props\.bigText\.on\)\}/s);
 });
 
 // ---- Go's start: the rider's current location by default (the owner, 2026-10-11 19:53 UTC) ----

@@ -91,6 +91,9 @@ export function writeHeadingUp(on: boolean, store: KeyValueStore | null = browse
 /** Big text in a ride (the cue card large, the map hidden): a setting, off by default, not a ride button. */
 export const BIG_TEXT_KEY = "routemaker.ride.bigText";
 export const BIG_TEXT_NAME = "Big text during a ride (hides the map)";
+/** The Settings page's switch: its name, and what its (i) says. */
+export const BIG_TEXT_LABEL = "Big text during a ride";
+export const BIG_TEXT_HELP = "The next turn in large type with the map hidden, which also saves battery. Kept on this device.";
 
 export function readBigText(store: KeyValueStore | null = browserStore()): boolean {
   try {

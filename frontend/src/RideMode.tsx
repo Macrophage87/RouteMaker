@@ -185,6 +185,8 @@ import {
 } from "./lib/rideDock.ts";
 import { Icon } from "./Icon.tsx";
 import { DepartureTimer } from "./DepartureTimer.tsx";
+import { SettingRow, SettingSelect } from "./SettingRow.tsx";
+import { shortLabel } from "./lib/shortLabel.ts";
 import {
   RIDE_REST,
   RIDE_REST_FINDING,
@@ -341,11 +343,48 @@ export function RideSettingsFields({
   prefs,
   onChange,
   idBase,
+  compact = false,
 }: {
   prefs: RidePrefs;
   onChange: (prefs: RidePrefs) => void;
   idBase: string;
+  /** Settings: two pickers, with what each level says behind an (i) (the first Start ride keeps the radios). */
+  compact?: boolean;
 }) {
+  if (compact) {
+    const levels = Object.keys(VERBOSITY_LABELS) as Verbosity[];
+    return (
+      <>
+        <SettingRow infoId={`${idBase}-output-info`} about="say cues with">
+          <SettingSelect
+            label="Say cues with"
+            value={prefs.output}
+            options={(Object.keys(OUTPUT_LABELS) as CueOutput[]).map((output) => [output, OUTPUT_LABELS[output]] as const)}
+            onChange={(output) => onChange({ ...prefs, output, chosen: true })}
+          />
+        </SettingRow>
+        <SettingRow
+          infoId={`${idBase}-level-info`}
+          about="how much to say"
+          info={
+            <ul className="setting-info-list">
+              {levels.map((level) => (
+                <li key={level}>{VERBOSITY_LABELS[level]}</li>
+              ))}
+            </ul>
+          }
+        >
+          <SettingSelect
+            label="How much to say"
+            value={prefs.verbosity}
+            options={levels.map((level) => [level, shortLabel(VERBOSITY_LABELS[level])] as const)}
+            onChange={(verbosity) => onChange({ ...prefs, verbosity, chosen: true })}
+            describedBy={`${idBase}-level-info`}
+          />
+        </SettingRow>
+      </>
+    );
+  }
   return (
     <>
       <fieldset className="ride-choice">
