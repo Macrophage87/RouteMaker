@@ -854,6 +854,10 @@ services:
       # 1 or true pauses the scheduled Tuesday rebuild (OWNER-DECISIONS 355); a
       # hand-fired `run_rebuild_now` still runs. Empty, the default: not paused.
       WEEKLY_REBUILD_PAUSED: ${WEEKLY_REBUILD_PAUSED:-}
+      # 1 or true lets a rebuild run without every approved agency's stress
+      # ratings in reference/agency-lts.json (pipeline.agency_ratings). Empty,
+      # the default: such a rebuild is refused.
+      REBUILD_ALLOW_NO_AGENCY_LTS: ${REBUILD_ALLOW_NO_AGENCY_LTS:-}
       # The source extract the rebuild produces for itself (docs/OPERATIONS.md,
       # "The source extract"). All four are optional overrides of the defaults
       # in settings: a mirror, the freshness limit, a forced refresh, and a

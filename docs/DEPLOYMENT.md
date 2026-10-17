@@ -389,7 +389,7 @@ package names:
   3.5.1 had `libgdal34` and none of the binaries), so `gdal-bin` brings in the
   whole GDAL stack.
 - **`osmium-tool`** — the `osmium` command line, for the source-extract stage
-  (`osmium merge`, `osmium extract -s smart -S types=any`). This is a different
+  (`osmium merge`, `osmium extract -s smart -S types=boundary,multipolygon`). This is a different
   thing from the `osmium` **Python** module in `docker/requirements.txt`, which
   is pyosmium and is what `pipeline/extract.py` imports. Both are needed.
 - **`sqlite3`** — the CLI, to query `tz_world` in the built timezone database.

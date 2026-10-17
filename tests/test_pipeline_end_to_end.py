@@ -232,8 +232,8 @@ def test_a_first_rebuild_downloads_merges_and_clips_its_own_extract(
     assert osmium[1][osmium[1].index("-s") + 1 : osmium[1].index("-s") + 4] == [
         "smart",
         "-S",
-        "types=any",
-    ], "PLAN:13's strategy, so boundary relations survive the clip"
+        "types=boundary,multipolygon",
+    ], "PLAN:13's strategy, so boundary relations survive the clip and route relations do not"
 
     merged = root / "extracts" / "merged.osm.pbf"
     assert merged.is_file(), "the file valhalla_build_admins reads is kept"
