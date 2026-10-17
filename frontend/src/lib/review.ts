@@ -9,6 +9,7 @@
  * Pure apart from the fetches, so the words, the sorting and the requests are tested without a browser.
  */
 import { call } from "./suggestions.ts";
+import { streetViewUrl } from "./roadInfo.ts";
 
 type Fetch = typeof fetch;
 
@@ -46,6 +47,8 @@ export interface Ruling {
   id: number;
   queue: QueueKey;
   osm_way_id: number;
+  /** The lead way of the stretch it was made on (every way of it was ruled together), or null. */
+  stretch: number | null;
   decision: Decision;
   step: number | null;
   reason: string;
@@ -76,8 +79,13 @@ export interface ReviewRoad {
   sources: RatingSource[];
   ratings: { label: string; value: string; source: string | null }[];
   spread: number | null;
+  /** A stretch's: every way's together (core.stress_review.group_stretches). */
   length_m: number;
   length: string;
+  /** The ways the row is: a stretch of one road between major junctions with one change, or one way alone. A ruling
+   * on the row is a ruling on each. */
+  ways: number[];
+  pieces: number;
   aadt: number | null;
   bbox: [number, number, number, number] | null;
   geometry: { type: string; coordinates: unknown } | null;
@@ -150,6 +158,22 @@ export function decisionLabel(queue: QueueKey, decision: Decision): string {
   return decision === "accept" ? "Accept" : "Reject";
 }
 
+/** A road's own ruling button (the owner, 2026-10-17: "use a keep old and keep new, put the current LTS there so it's
+ * easier to see"): a rebuild's names the level each keeps, "Keep old: LTS 2", "Keep new: Avoid"; the rest as
+ * decisionLabel. The batch's buttons keep decisionLabel's, the selected roads' levels being their own. */
+export function rulingLabel(road: Pick<ReviewRoad, "queue" | "old_step" | "old_closed" | "new_step" | "new_closed">, decision: Decision): string {
+  const words = decisionLabel(road.queue, decision);
+  if (road.queue !== "rebuild" || decision === "set") return words;
+  const level = decision === "accept" ? stepText(road.new_step, road.new_closed) : stepText(road.old_step, road.old_closed);
+  return level === "—" ? words : `${words}: ${level}`;
+}
+
+/** Google Street View at the road's own point (the server's, on the line), as the road panel links it; null with none. */
+export function roadStreetViewUrl(road: Pick<ReviewRoad, "point">): string | null {
+  const p = road.point;
+  return Array.isArray(p) && p.length === 2 && p.every((n) => typeof n === "number" && Number.isFinite(n)) ? streetViewUrl([p[0], p[1]]) : null;
+}
+
 /** A level in a few characters: "LTS 2.5", "Avoid". */
 export function stepText(step: number | null, closed = false): string {
   if (closed) return "Closed";
@@ -169,6 +193,20 @@ export function progressText(reviewed: number, total: number): string {
 export function roadHeading(road: Pick<ReviewRoad, "name" | "osm_way_id" | "area" | "kind_label">): string {
   const name = road.name || `Unnamed way ${road.osm_way_id}`;
   return `${name}${road.area ? `, ${road.area}` : ""}: ${road.kind_label}`;
+}
+
+/** "3 road pieces" for a stretch of more than one way, else "". */
+export function piecesText(road: Pick<ReviewRoad, "pieces">): string {
+  return road.pieces > 1 ? `${road.pieces.toLocaleString("en-US")} road pieces` : "";
+}
+
+/** A row's accessible name (the road's button): its name first, as shown, then how many pieces, its length (miles
+ * first, kilometres in brackets) and its change: "Oak Street, 3 road pieces, 0.32 mi (0.52 km): LTS 2 to LTS 4". */
+export function roadRowLabel(road: Pick<ReviewRoad, "name" | "osm_way_id" | "queue" | "kind_label" | "reason" | "length" | "pieces">): string {
+  const name = road.name || `Way ${road.osm_way_id}`;
+  const pieces = piecesText(road);
+  const change = road.queue === "rebuild" ? road.kind_label : road.reason || road.kind_label;
+  return `${name}${pieces ? `, ${pieces}` : ""}, ${road.length}${change ? `: ${change}` : ""}`;
 }
 
 /** Cars a day in US style, or "No count". */

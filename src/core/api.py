@@ -7440,7 +7440,8 @@ def review_rule(request, body: ReviewRulingIn):
     except stress_edits.EditRefused as refusal:
         return _edit_refusal(request, refusal)
     generation = max((r.edit.generation for r in made if r.edit_id), default=None)
-    count = len(made)
+    # A road a stretch (every way of it is ruled, each its own row) or a way alone.
+    count = len({r.stretch or r.osm_way_id for r in made})
     message = f"{count} road{'s' if count != 1 else ''} ruled" + (
         f"; {len(refused)} could not be: {refused[0]['error']}" if refused else "."
     )

@@ -15,9 +15,13 @@ import {
   fetchRoadDetail,
   fetchRoads,
   makeAnnouncer,
+  piecesText,
   progressText,
   roadHeading,
+  roadRowLabel,
+  roadStreetViewUrl,
   ruledSaid,
+  rulingLabel,
   sendRuling,
   sortRoads,
   stepText,
@@ -54,6 +58,8 @@ function road(way: number, change: Partial<ReviewRoad> = {}): ReviewRoad {
     spread: null,
     length_m: 100,
     length: "0.06 mi (0.10 km)",
+    ways: [way],
+    pieces: 1,
     aadt: null,
     bbox: null,
     geometry: null,
@@ -97,6 +103,21 @@ test("the lists, Rebuild changes first, and the ruling buttons' names", () => {
   assert.equal(decisionLabel("rebuild", "set"), "Set LTS");
   assert.equal(decisionLabel("works_closure", "reject"), "Reopen");
   assert.equal(decisionLabel("disagreement", "accept"), "Keep current");
+  // A road's own buttons name the level each keeps; the batch's keep the bare words.
+  const rebuild = { queue: "rebuild" as const, old_step: 2, old_closed: false, new_step: 4, new_closed: false };
+  assert.equal(rulingLabel(rebuild, "reject"), "Keep old: LTS 2");
+  assert.equal(rulingLabel(rebuild, "accept"), "Keep new: LTS 4");
+  assert.equal(rulingLabel({ ...rebuild, new_step: 5 }, "accept"), "Keep new: Avoid");
+  assert.equal(rulingLabel({ ...rebuild, new_closed: true }, "accept"), "Keep new: Closed");
+  assert.equal(rulingLabel({ ...rebuild, old_step: null }, "reject"), "Keep old");
+  assert.equal(rulingLabel(rebuild, "set"), "Set LTS");
+  assert.equal(rulingLabel({ ...rebuild, queue: "works_closure" }, "reject"), "Reopen");
+});
+
+test("Street View at the road's own point, as the road panel links it", () => {
+  assert.equal(roadStreetViewUrl({ point: [-77.1, 39.05] }), "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=39.050000,-77.100000");
+  assert.equal(roadStreetViewUrl({ point: null }), null);
+  assert.equal(roadStreetViewUrl({ point: [Number.NaN, 39] }), null);
 });
 
 test("words: levels, progress, traffic, a road's heading and what a ruling says", () => {
@@ -279,4 +300,22 @@ test("Review is an instance admin's alone", () => {
   assert.match(app, /const canReview = me\.can_change_lts;/);
   assert.match(app, /const reviews = found\.can_change_lts;/);
   assert.doesNotMatch(app, /can_change_lts \|\| (me|found)\.can_review_closures/);
+});
+
+test("a stretch's row says the road, its pieces, its length in miles then kilometres, and its change", () => {
+  const stretch = road(7, { name: "Oak Street", ways: [7, 8, 9], pieces: 3, length: "0.32 mi (0.52 km)", kind_label: "LTS 2 to LTS 4" });
+  assert.equal(piecesText(stretch), "3 road pieces");
+  assert.equal(roadRowLabel(stretch), "Oak Street, 3 road pieces, 0.32 mi (0.52 km): LTS 2 to LTS 4");
+  // One way alone: no count; unnamed: its way; elsewhere the reason is the change.
+  assert.equal(piecesText(road(7)), "");
+  assert.equal(roadRowLabel(road(7)), "Way 7, 0.06 mi (0.10 km): LTS 4 to LTS 2");
+  const rated = road(5, { queue: "disagreement", name: "Elm", reason: "RouteMaker's formula: LTS 4; DDOT: LTS 2", kind_label: "x" });
+  assert.equal(roadRowLabel(rated), "Elm, 0.06 mi (0.10 km): RouteMaker's formula: LTS 4; DDOT: LTS 2");
+  // The label starts with the name the button shows, so the name heard is the name seen.
+  const source = readFileSync(new URL("../ReviewMode.tsx", import.meta.url), "utf8");
+  assert.match(source, /aria-label=\{roadRowLabel\(road\)\}/);
+  // A ruling on a stretch rules every way, each its own ruling: the count drops by the rows ruled.
+  assert.match(source, /t - rowsCovered/);
+  // Undo covers the whole request: several rows are named by their count.
+  assert.match(source, /`\$\{rowsCovered.toLocaleString\("en-US"\)\} roads`/);
 });
