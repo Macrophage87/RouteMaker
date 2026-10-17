@@ -6241,6 +6241,11 @@ details.fold > summary .icon {
   margin: 0;
 }
 
+/* The road's Street View link, its privacy note beside it. */
+.review-street-view {
+  margin: 6px 0;
+}
+
 .review-reason-field {
   display: grid;
   gap: 2px;
