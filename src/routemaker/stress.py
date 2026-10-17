@@ -558,8 +558,9 @@ class StressResult:
     # (OWNER-DECISIONS 303: "we don't want to double count"), so it must still
     # be charged there (ARTERIAL review r0, SF1).
     unsmoothed_tier: Stress | None = None
-    # A half step set by an agency's rating (`routemaker.agency_lts`): the way is
-    # rated half a level above `tier`, as an owner row's `StressAdjustment.half`.
+    # A half step set by an agency's rating (`routemaker.agency_lts`) or by the
+    # rural-expressway rule (`rural_expressway`): the way is rated half a level
+    # above `tier`, as an owner row's `StressAdjustment.half`.
     half: bool = False
     # Where an agency's rating replaced the classifier's tier: what the
     # classifier said, and every agency rating held for the way, most local
@@ -726,8 +727,9 @@ def _bike_lane_tier(
 # mph - level 3 on two or three lanes, and on four or five with a raised median
 # - and gives none from 45 mph, so the credit stops at DECENT_LANE_MAX_MPH: at
 # 45 mph and more a painted lane stays LTS 4, and an expressway posted 50 or
-# more is "legal but avoid" whatever it carries (`legal_but_avoid`). Below 40
-# mph Furth's table already reads a lane at least a tier below mixed traffic.
+# more is "legal but avoid" whatever it carries (`legal_but_avoid`; LTS 4.5 outside
+# urban areas, `rural_expressway`). Below 40 mph Furth's table already reads a
+# lane at least a tier below mixed traffic.
 #
 # "Decent" is read from the tags the lane carries, as far as they go: a buffered
 # lane (`cycleway*=buffered_lane`, or a `cycleway*:buffer` other than no), or a
@@ -798,7 +800,8 @@ def decent_lane(tags: dict[str, str], cycleways: set[str], width_m: float | None
 # (US 15 James Madison Highway and Catoctin Mountain Highway, US 29 Lee
 # Highway, VA 3 Germanna Highway, Fairfax County Parkway at 50, ...) and leaves
 # the urban expressways posted 45 or less (Whitney Young Bridge at 35) to the
-# Furth tables and to curated overrides.
+# Furth tables and to curated overrides. Outside urban areas the same roads are
+# LTS 4.5, not Avoid (`rural_expressway`; the owner, 2026-10-17).
 AVOID_HIGHWAY = frozenset({"trunk", "trunk_link", "primary", "primary_link"})
 AVOID_MIN_POSTED_MPH = 50.0
 
@@ -928,17 +931,46 @@ USE_SIDEPATH_RULE = "legal but avoid: riders asked to use the side path"
 MOTORWAY_AVOID_RULE = "legal but avoid: motorway open to bicycles"
 MOTORWAY_OPEN_BICYCLE = frozenset({"yes", "designated", "permissive", "official"})
 
+# A rural expressway is LTS 4.5, not Avoid (the owner, 2026-10-17: "The rural road
+# LTS 5s should be LTS4.5 they might be high stress, but there's often no way to
+# avoid them."). The same roads as the expressway rule (`AVOID_HIGHWAY`, posted
+# `AVOID_MIN_POSTED_MPH` or more), outside the urban-area layer: tier LTS 4 with the
+# half step (`StressResult.half`), never Avoid, whatever the road carries. Inside an
+# urban area the expressway stays "legal but avoid"; so do a motorway open to
+# bicycles, a `use_sidepath` road with its side path, and every curated row. THIS
+# TEXT IS READ BACK by `core.segment_info.rule_words`; it does not begin "legal but
+# avoid", which the road panel reads as Avoid.
+RURAL_EXPRESSWAY_PREFIX = "rural expressway posted"
 
-def legal_but_avoid(tags: dict[str, str]) -> str | None:
-    """Why a way is "legal but avoid", or None. Posted speed only: never assumed."""
-    if tags.get("highway") in MOTOR_ONLY and tags.get("bicycle") in MOTORWAY_OPEN_BICYCLE:
-        return MOTORWAY_AVOID_RULE
+
+def _fast_expressway_mph(tags: dict[str, str]) -> float | None:
+    """The posted speed of an expressway the expressway rule takes, or None.
+    Posted speed only: never assumed."""
     if tags.get("highway") not in AVOID_HIGHWAY or tags.get("expressway") != "yes":
         return None
     posted = parse_maxspeed_mph(tags.get("maxspeed"))
     if posted is None or posted < AVOID_MIN_POSTED_MPH:
         return None
+    return posted
+
+
+def legal_but_avoid(tags: dict[str, str], urban: bool = True) -> str | None:
+    """Why a way is "legal but avoid", or None. Posted speed only: never assumed.
+    A rural expressway (`urban` false) is not: it is LTS 4.5 (`rural_expressway`)."""
+    if tags.get("highway") in MOTOR_ONLY and tags.get("bicycle") in MOTORWAY_OPEN_BICYCLE:
+        return MOTORWAY_AVOID_RULE
+    posted = _fast_expressway_mph(tags)
+    if posted is None or not urban:
+        return None
     return f"legal but avoid: expressway posted {posted:g} mph"
+
+
+def rural_expressway(tags: dict[str, str], urban: bool) -> str | None:
+    """Why a way is LTS 4.5 as a rural expressway (`RURAL_EXPRESSWAY_PREFIX`), or None."""
+    posted = None if urban else _fast_expressway_mph(tags)
+    if posted is None:
+        return None
+    return f"{RURAL_EXPRESSWAY_PREFIX} {posted:g} mph, often no way around"
 
 
 def trail_rule(highway: str, kind: str | None = None) -> str:
@@ -999,7 +1031,10 @@ def classify(
     `side_path` says a side path is mapped beside the way
     (`routemaker.facility.use_sidepath_paths`): a road tagged `bicycle=use_sidepath`
     with one is "legal but avoid" (`USE_SIDEPATH_RULE`; review RL-1, the owner,
-    2026-10-16). With none it is rated on its own merits."""
+    2026-10-16). With none it is rated on its own merits.
+
+    Outside an urban area (`urban` false) an expressway the "legal but avoid" rule
+    would take is LTS 4.5 instead (`rural_expressway`; the owner, 2026-10-17)."""
     result = _classify(
         tags,
         aadt,
@@ -1012,12 +1047,19 @@ def classify(
         parking_width_m,
         winding,
     )
-    reason = legal_but_avoid(tags)
+    reason = legal_but_avoid(tags, urban)
     if reason is None and side_path and is_use_sidepath_road(tags):
         reason = USE_SIDEPATH_RULE
-    if reason is None:
-        return result
-    return replace(result, tier=Stress.AVOID, rule=f"{reason} (Furth: {result.rule})")
+    if reason is not None:
+        rule = f"{reason} (Furth: {result.rule})"
+        return replace(result, tier=Stress.AVOID, half=False, rule=rule)
+    rural = rural_expressway(tags, urban)
+    if rural is not None:
+        # LTS 4.5 (the owner, 2026-10-17): the rural floor never reaches it (LTS 1
+        # only), and the smoothing and agency steps replace the result whole.
+        rule = f"{rural} (Furth: {result.rule})"
+        return replace(result, tier=Stress.LTS4, half=True, rule=rule)
+    return result
 
 
 def _classify(

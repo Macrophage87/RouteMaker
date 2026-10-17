@@ -29,6 +29,10 @@ dry run as well, and before anything is moved:
   `--accept-later-overrides` says they can wait for the next rebuild. A road reopened by a
   ruling in Review (`core.stress_review`) is meant for the next rebuild and is only counted.
 
+Both runs say how many of the build's segments carry each approved agency's stress rating
+(`agency_rating_counts`), and warn where an agency's is none: v0.8.0 shipped with no agency
+rating on any road and nothing said so (found 2026-10-17).
+
 The dry run also precomputes Review's queue (`core.stress_review.compute_all`): the roads whose
 level or access the build changes, the rating disagreements and the rebuild reports' lists, from
 `--review-reports-dir` (the build's reports, as import-result.sh unpacks them). Both runs say how
@@ -88,6 +92,61 @@ def staging_segments(staging: str) -> int | None:
             return None
         cursor.execute(f"SELECT count(*) FROM {staging}.segment")
         return cursor.fetchone()[0]
+
+
+def agency_rating_counts(schema: str) -> dict[str, tuple[int, int]] | None:
+    """Per approved agency (`agency_lts.AGENCIES`), the segments of `<schema>.segment` that
+    carry its rating and those whose tier it set (`stress_ratings`, `pipeline.writers`), or
+    None when the table has no `stress_ratings` column (a build before v0.7.0)."""
+    from django.db import connection
+
+    from pipeline.schema import validate_schema_name
+    from routemaker.agency_lts import AGENCIES
+
+    validate_schema_name(schema)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT 1 FROM information_schema.columns WHERE table_schema = %s "
+            "AND table_name = 'segment' AND column_name = 'stress_ratings'",
+            [schema],
+        )
+        if cursor.fetchone() is None:
+            return None
+        cursor.execute(
+            f"SELECT a->>'agency', count(*), "
+            f"count(*) FILTER (WHERE s.stress_ratings->>'used' = a->>'agency') "
+            f"FROM {schema}.segment s, "
+            f"jsonb_array_elements(coalesce(s.stress_ratings->'agencies', '[]'::jsonb)) a "
+            f"GROUP BY 1"
+        )
+        found = {agency: (rated, used) for agency, rated, used in cursor.fetchall()}
+    return {agency: found.get(agency, (0, 0)) for agency in AGENCIES}
+
+
+def agency_rating_lines(schema: str) -> list[str]:
+    """`agency_rating_counts` as the command prints it, a warning for each agency at 0."""
+    from routemaker.agency_lts import source_name
+
+    counts = agency_rating_counts(schema)
+    if counts is None:
+        return [f"agency stress ratings: {schema}.segment has no stress_ratings column"]
+    lines = [
+        "agency stress ratings in "
+        + schema
+        + ": "
+        + "; ".join(
+            f"{source_name(agency)} on {rated} segments (sets the tier on {used})"
+            for agency, (rated, used) in counts.items()
+        )
+    ]
+    for agency, (rated, _used) in counts.items():
+        if not rated:
+            lines.append(
+                f"warning: no segment carries {source_name(agency)}'s rating: was "
+                'reference/agency-lts.json installed with it (docs/OPERATIONS.md, "Agency '
+                'stress ratings (agency-lts.json)")?'
+            )
+    return lines
 
 
 def later_overrides(read_at: datetime, *, panel_reapplied: bool = False) -> list[int]:
@@ -293,6 +352,11 @@ class Command(BaseCommand):
                     self.stdout.write(line)
             except Exception as error:  # noqa: BLE001 - a report, never a reason to refuse
                 self.stderr.write(f"the stress change report was not made: {error}")
+        try:
+            for line in agency_rating_lines(staging):
+                self.stdout.write(line)
+        except Exception as error:  # noqa: BLE001 - a report, never a reason to refuse
+            self.stderr.write(f"the agency rating counts were not read: {error}")
         reapplies = "overrides_read_at" in inspect.signature(promotion.perform_swap).parameters
         if reapplies:
             self.stdout.write(
