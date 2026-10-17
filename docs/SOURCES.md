@@ -103,6 +103,13 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
     the query URL were not recorded at ingest; the next refresh records them here.
     docs/PLAYBOOK.md, "The three reference inputs"; docs/DEVELOPMENT.md, "Reference
     data".
+  - **Bicycle Level of Traffic Stress, 2020** (District Department of Transportation),
+    downloaded with `scripts/fetch_agency_layer.py` as `ddot-lts-2020`; approved as a
+    rating source (`routemaker.agency_lts.AGENCIES`, ranked with a county's). Installed
+    into `reference/agency-lts.json` by `scripts/install_agency_lts.py` (docs/OPERATIONS.md,
+    "Agency stress ratings (agency-lts.json)"); the road panel names "DDOT" beside its
+    level. Item id, size, sha256 and the licence text verbatim: the download's README, to
+    be copied here.
   - **DDOT Central Business District** (District Department of Transportation), item
     `32143ca8983d4476b64f4202162bf61e`, retrieved 2026-09-30; decides which sidewalks
     bicycles may not ride. Record and sha256: `fixtures/cbd/README.md`.
@@ -230,6 +237,23 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   derivative exists that could carry it (none is built); one that is built must
   withhold those segments or wait for the waiver PLAN.md asks the owner to request.
 - Records: the download's README; docs/DEVELOPMENT.md, "Reference data".
+
+### Maryland Bicycle Level of Traffic Stress (MDOT SHA, v0.8.1)
+
+- Credit: the line above, `State of Maryland (MDOT SHA)`; the road panel names "MDOT SHA"
+  beside its level.
+- Dataset: **Maryland Bicycle Level of Traffic Stress (LTS)** (2022), on Maryland's open
+  data portal (item `fc3c7b650076475ba9a4b0232f6d8655`), downloaded with
+  `scripts/fetch_agency_layer.py` as `mdot-lts`, clipped to the coverage box. Approved as
+  a rating source (`routemaker.agency_lts.AGENCIES`, rank state: a county's rating wins).
+  Field `LTS_ADJUSTED`, per MDOT's "Bicycle Level of Traffic Stress (LTS) Metadata and
+  Methodology" (<https://www.mdot.maryland.gov/OPCP/MDOT_LTS_Metadata_Methodology_Full.pdf>);
+  installed into `reference/agency-lts.json` by `scripts/install_agency_lts.py`
+  (docs/OPERATIONS.md, "Agency stress ratings (agency-lts.json)"). Size and sha256: the
+  download's README, to be copied here.
+- Publisher: Maryland Department of Transportation.
+- Licence: Maryland iMAP's terms, as for the counts above; the download's README keeps
+  the item's licence text verbatim.
 
 ### Maryland Scenic Byways (MDOT SHA, v0.8.0)
 
