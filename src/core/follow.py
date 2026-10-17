@@ -22,6 +22,8 @@ refused, and the plan is made without it (`api._planned`).
 
 from __future__ import annotations
 
+import math
+
 from routemaker.geo import Point, haversine
 
 from . import routing
@@ -47,6 +49,13 @@ IGNORED = {"ignore_oneways": True, "ignore_restrictions": True}
 # A stretch against one-way traffic shorter than this is not said: a matched point a few
 # metres past a corner, or a cut across a junction's corner.
 AGAINST_MIN_M = 15.0
+# A plan's point this close to the line goes on its first pass there (`split_line`), and one
+# this close to a vertex of it takes that vertex.
+NEAR_M = 25.0
+SAME_M = 1.0
+# The most breaks in a match joined by the router's own route: more, and the file is planned
+# through its points instead (each join is a router call).
+MAX_BRIDGES = 20
 # What a `/trace_route` asks that a `/route` between two points does not.
 TRACE_ONLY = frozenset({"shape", "shape_match", "trace_options"})
 
@@ -80,32 +89,62 @@ def line_m(line) -> float:
     return sum(haversine(Point(*a), Point(*b)) for a, b in zip(line, line[1:], strict=False))
 
 
-def split_indices(line, points) -> list[int]:
-    """For each of the plan's points between its first and last, the index of the line's
-    vertex nearest to it, in order along the line; never an end, and each at most once (a
-    point that would repeat or go back is left out, and its leg joins the next)."""
-    out: list[int] = []
-    last = len(line) - 1
+def _projected(p, a, b) -> tuple[tuple[float, float], float]:
+    """The point of the stretch a-b nearest `p`, and how far it is from `p` in metres (on a
+    flat local plane, near enough over a stretch)."""
+    k = math.cos(math.radians(p[1]))
+    ax, ay = (a[0] - p[0]) * k, a[1] - p[1]
+    dx, dy = (b[0] - a[0]) * k, b[1] - a[1]
+    length = dx * dx + dy * dy
+    t = 0.0 if length == 0 else max(0.0, min(1.0, -(ax * dx + ay * dy) / length))
+    q = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+    return q, haversine(Point(*p), Point(*q))
+
+
+def split_line(line, points) -> tuple[list, list[int]]:
+    """The line with a vertex where each of the plan's points between its first and last
+    lies on it, and those vertices' indices, in order along the line.
+
+    Each point goes on the nearest stretch past the one before it; on a file that passes a
+    place twice (an out-and-back), the first pass within NEAR_M of it, not a later one that
+    happens to be a little nearer. A point within SAME_M of a vertex takes that vertex. A point
+    that would repeat the one before, or sit on an end, is left out, and its leg joins the
+    next."""
+    out = [tuple(p) for p in line]
+    indices: list[int] = []
     after = 0
-    for lon, lat in points[1:-1]:
-        here = Point(lon, lat)
-        best, best_m = None, float("inf")
-        for index in range(after + 1, last):
-            metres = haversine(here, Point(*line[index]))
-            if metres < best_m:
-                best, best_m = index, metres
+    for p in points[1:-1]:
+        here = (float(p[0]), float(p[1]))
+        best = None
+        for i in range(after, len(out) - 1):
+            q, metres = _projected(here, out[i], out[i + 1])
+            if best is None or metres < best[2]:
+                best = (i, q, metres)
+            elif best[2] <= NEAR_M and metres > best[2] + NEAR_M:
+                break
         if best is None:
             continue
-        out.append(best)
-        after = best
-    return out
+        i, q, _metres = best
+        if haversine(Point(*q), Point(*out[i])) <= SAME_M:
+            index = i
+        elif haversine(Point(*q), Point(*out[i + 1])) <= SAME_M:
+            index = i + 1
+        else:
+            out.insert(i + 1, q)
+            index = i + 1
+        if index <= (indices[-1] if indices else 0) or index >= len(out) - 1:
+            continue
+        indices.append(index)
+        after = index
+    return out, indices
 
 
 def request_for(line, points, plan_request: dict) -> dict:
     """The plan's request (`routing.plan`'s, its costing, elevation and directions) as a
     `/trace_route` of `line`, split into legs at the plan's points."""
-    shape = [{"lon": lon, "lat": lat} for lon, lat in line]
-    for index in split_indices(line, points):
+    split, indices = split_line(line, points)
+    shape = [{"lon": lon, "lat": lat} for lon, lat in split]
+    for index in indices:
         shape[index]["type"] = routing.VIA_LOCATION_TYPE
     asked = {
         key: value
@@ -133,7 +172,7 @@ def _shape(leg: dict) -> list[tuple[float, float]]:
 def merge_legs(first: dict, second: dict, interval_m: float | None) -> dict:
     """One leg: `first` then `second`, the vertex they share once. Lengths, times and costs
     add; heights run on (a leg without any gets none for its length, every `interval_m`);
-    `second`'s manoeuvres follow `first`'s, but for `first`'s arrival."""
+    `second`'s manoeuvres follow `first`'s, but for `first`'s arrival and `second`'s start."""
     a, b = _shape(first), _shape(second)
     joint = 1 if a and b and a[-1] == b[0] else 0
     shape = a + b[joint:]
@@ -157,6 +196,9 @@ def merge_legs(first: dict, second: dict, interval_m: float | None) -> dict:
     offset = len(a) - joint
     moves = [m for m in first.get("maneuvers") or [] if m.get("type") not in (4, 5, 6)]
     for m in second.get("maneuvers") or []:
+        if m.get("type") in (1, 2, 3):
+            # `second`'s start: the ride goes on, so it is not said again mid-route.
+            continue
         m = dict(m)
         for key in ("begin_shape_index", "end_shape_index"):
             if isinstance(m.get(key), int):
@@ -178,6 +220,7 @@ def joined(answer: dict, line, route_between, interval_m: float | None) -> dict:
         (alternate or {}).get("trip") or {} for alternate in answer.get("alternates") or []
     ]
     legs: list[dict] = []
+    bridges = 0
     for piece in pieces:
         piece_legs = [leg for leg in piece.get("legs") or [] if len(_shape(leg)) >= 2]
         if not piece_legs:
@@ -185,6 +228,9 @@ def joined(answer: dict, line, route_between, interval_m: float | None) -> dict:
         if legs:
             end, start = _shape(legs[-1])[-1], _shape(piece_legs[0])[0]
             if haversine(Point(*end), Point(*start)) > 1.0:
+                bridges += 1
+                if bridges > MAX_BRIDGES:
+                    raise routing.RouterRefused(400, 442, "too many breaks in the match")
                 bridge = route_between(end, start)
                 if bridge is None:
                     raise routing.RouterRefused(400, 442, "no route across a break in the match")
@@ -256,7 +302,7 @@ def against_traffic(line, trace_attributes, costing_options: dict) -> list[dict]
             break
         except routing.RouterRefused:
             continue
-        except routing.RouterUnavailable:
+        except (routing.RouterUnavailable, routing.DeadlineExceeded):
             return None
     else:
         return None

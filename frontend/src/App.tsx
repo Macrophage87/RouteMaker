@@ -853,13 +853,15 @@ export function App() {
           return { ok: true, route: replay };
         }
         // An opened file not edited since follows its line exactly (core/follow.py), whatever the ride type.
-        const follow = followLine(importBase.current, plan.points);
+        const follow = followLine(importBase.current, plan.points, plan.dials.loop);
         const asked = { confirmLong: plan.confirmLong, dials: plan.dials, vias: viaIndices(plan.points, VIA_MARKS.isVia), quick: plan.quick, follow };
         // Asked for already, before the tap (Go's early start): that request's answer, not a second request.
         const early = earlyStart.current?.take(routeRequestBody(plan.points, plan.preset, asked)) ?? null;
         const result = early
           ? await early.catch(() => requestRoute(plan.points, plan.preset, asked))
           : await requestRoute(plan.points, plan.preset, asked);
+        // The API could not follow this file (core/follow.py): its fitting rounds are planned, not traced again.
+        if (follow && result.ok && !result.route.follows_file && importBase.current) importBase.current.unfollowed = true;
         keptShown.current = null;
         if (result.ok || result.error.kind !== "network") return result;
         const kept = await keptAnswerFor<RouteResponse>(keptPlanKey(plan.points, plan.preset, plan.dials, viaIndices(plan.points, VIA_MARKS.isVia))).catch(() => undefined);
@@ -2560,7 +2562,7 @@ export function App() {
   };
   // An opened file not edited since: its points and ride type as the import left them (a fitting round moves
   // the base with it, refineImported).
-  const importBase = useRef<{ imported: ImportedPlan; points: LonLat[]; preset: PresetId } | null>(null);
+  const importBase = useRef<{ imported: ImportedPlan; points: LonLat[]; preset: PresetId; unfollowed?: boolean } | null>(null);
   if (!imported) importBase.current = null;
   else if (importBase.current?.imported !== imported) importBase.current = { imported, points, preset };
   const importEdited = !imported || importBase.current?.points !== points || importBase.current?.preset !== preset;

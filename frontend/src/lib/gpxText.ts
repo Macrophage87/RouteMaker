@@ -236,12 +236,7 @@ export function fidelityNotice(f: Fidelity, followedAs?: PresetId): FidelityNoti
   if (followedAs) {
     const as = presetSaid(followedAs);
     if (close) return { warn: false, text: `The route follows the file's track, rated for ${as}.` };
-    return {
-      warn: true,
-      text:
-        `${head}, rated for ${as}. Where the faint line parts from it, the file goes a way ${as} does not ride; ` +
-        "another ride type may follow it there.",
-    };
+    return { warn: true, text: `${head}, rated for ${as}; where the faint line parts from it, the map has no way there for ${as}.` };
   }
   if (close) return { warn: false, text: `${head}.` };
   const extra = f.routeOnTrack < FIDELITY_WARN_BELOW ? `, and ${100 - onTrack}% of the route is off it` : "";

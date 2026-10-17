@@ -468,7 +468,8 @@ class RouteIn(Schema):
             " graph, split into legs at `points` (each at the line's nearest vertex), with no"
             " search beside it; where the ride type cannot ride the line, the router's own way"
             " joins the parts it can (`follows_file`). Ignored on a loop and the two-point ride"
-            " types. A line that matches no way at all is planned through `points` instead."
+            " types. A line past those limits, or that matches no way at all, is planned"
+            " through `points` instead."
         ),
     )
 
@@ -581,11 +582,14 @@ class RouteIn(Schema):
     @field_validator("follow")
     @classmethod
     def followable(cls, encoded: str | None) -> str | None:
+        # Only text that is no line at all is refused; a line that cannot be followed (too
+        # long, too many points, partly outside the area) is planned through `points`
+        # instead (`_follow_line`), as a route always was.
         if encoded is not None:
             try:
-                follow.checked_line(encoded, settings.COVERAGE_BBOX)
-            except follow.LineProblem as problem:
-                raise ValueError(str(problem)) from None
+                routing.decode_polyline6(encoded)
+            except (IndexError, ValueError, TypeError):
+                raise ValueError("follow is not a line encoded at precision 6") from None
         return encoded
 
 
@@ -3751,10 +3755,20 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         mtb_level=body.mtb_level,
         mtb_preferred=body.mtb_preferred,
         vias=tuple(body.via_points),
-        follow=(
-            tuple(follow.checked_line(body.follow, settings.COVERAGE_BBOX)) if body.follow else None
-        ),
+        follow=_follow_line(body),
     )
+
+
+def _follow_line(body: RouteIn) -> tuple[tuple[float, float], ...] | None:
+    """The request's line to follow (`RouteIn.follow`), or None where it has none or the
+    line is not one a route can follow; the plan is then made through its points."""
+    if not body.follow:
+        return None
+    try:
+        return tuple(follow.checked_line(body.follow, settings.COVERAGE_BBOX))
+    except follow.LineProblem as problem:
+        logger.info("a line to follow was not followed: %s", problem)
+        return None
 
 
 def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_calm: bool) -> dict:

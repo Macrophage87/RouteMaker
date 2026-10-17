@@ -26,6 +26,11 @@ test("an opened file not edited since follows its line; edited, or with no line,
   assert.equal(followLine(opened, [LINE[0], LINE[1], LINE[2]]), undefined);
   assert.equal(followLine(null, points), undefined);
   assert.equal(followLine({ imported: { reference: [] }, points }, points), undefined);
+  // Not with a loop asked for, nor once the API said it could not follow it, nor a line over 124 mi.
+  assert.equal(followLine(opened, points, true), undefined);
+  assert.equal(followLine({ ...opened, unfollowed: true }, points), undefined);
+  const far: LonLat[] = [[-77.9, 38.1], [-76.1, 39.9]];
+  assert.equal(followLine({ imported: { reference: far }, points: far }, far), undefined);
 });
 
 test("a snapped file follows the snapped line, at most FOLLOW_MAX_POINTS points of it, its ends kept", () => {
@@ -49,7 +54,7 @@ test("a followed route says the ride type it is rated for, and where it parts fr
   assert.deepEqual(close, { warn: false, text: "The route follows the file's track, rated for Mass Ride." });
   const parted = fidelityNotice({ trackCovered: 0.8, routeOnTrack: 0.9, lengthRatio: 1 }, "mass-ride");
   assert.equal(parted.warn, true);
-  assert.match(parted.text, /^The route follows 80% of the file's track to within .*, rated for Mass Ride\. .*Mass Ride does not ride/);
+  assert.match(parted.text, /^The route follows 80% of the file's track to within .*, rated for Mass Ride; where .* no way there for Mass Ride\.$/);
   // A planned route (no ride type given) says what it said before.
   assert.equal(fidelityNotice({ trackCovered: 0.99, routeOnTrack: 0.98, lengthRatio: 1 }).text.startsWith("The route follows 99%"), true);
 });
@@ -69,7 +74,9 @@ test("where a followed file rides against one-way traffic it is said, by street"
 
 test("App sends an opened file's line with every plan of it, and the panel stops fitting a followed route", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /const follow = followLine\(importBase\.current, plan\.points\);/);
+  assert.match(app, /const follow = followLine\(importBase\.current, plan\.points, plan\.dials\.loop\);/);
+  // A file the API could not follow is planned through its points from then on.
+  assert.match(app, /if \(follow && result\.ok && !result\.route\.follows_file && importBase\.current\) importBase\.current\.unfollowed = true;/);
   const panel = readFileSync(new URL("../GpxPanel.tsx", import.meta.url), "utf8");
   assert.match(panel, /if \(route\.follows_file\) \{\s*setFit\(null\);\s*return;\s*\}/);
   // The snap action is not offered beside a route that already follows the file's line.

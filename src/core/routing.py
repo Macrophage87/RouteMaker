@@ -1579,7 +1579,7 @@ def _followed(variant: str, request: dict, deadline: Deadline) -> dict:
         }
         try:
             legs = (_call(variant, "route", asked, deadline).get("trip") or {}).get("legs") or []
-        except RouterRefused:
+        except (RouterRefused, RouterUnavailable):
             return None
         return legs[0] if len(legs) == 1 else None
 
@@ -2682,8 +2682,9 @@ def plan(
     direct_tolerate = tolerating and not maxcalm
     tolerate_weight = presets.tolerate_weight(hills_dial) if tolerating else 0.0
     # An opened file's line, followed rather than planned (`core.follow`): the router's
-    # trace of it is the route, and nothing is searched for beside it.
-    following = dials.follow is not None
+    # trace of it is the route, and nothing is searched for beside it. Not where the rider
+    # asked for a loop: that is planned, its way back by another way.
+    following = dials.follow is not None and not dials.loop
     from . import follow
 
     # A loop is planned through its start again (OWNER-DECISIONS 266); a followed line is
@@ -3391,7 +3392,7 @@ def plan(
         summary = trip.get("summary") or {}
         climb, descent = climb_and_descent(elevations)
         hills_seek = None
-        if calm_seek and not alternate:
+        if calm_seek and not alternate and not following:
             # No climb search among alternatives: the stress order chose, and the
             # climbing only broke its ties (298(3)).
             hills_seek = {
@@ -3403,7 +3404,7 @@ def plan(
                 "climbs": [],
                 "climb_seek": None,
             }
-        elif seeking and not alternate:
+        elif seeking and not alternate and not following:
             direct = trips[0].get("summary") or {}
             hills_seek = {
                 "candidates": len(trips),
@@ -3420,7 +3421,7 @@ def plan(
                 "climb_seek": None if sought is None else sought.info(),
             }
         hills_tolerate = None
-        if tolerating and not alternate:
+        if tolerating and not alternate and not following:
             direct = trips[0].get("summary") or {}
             # Nothing is discounted at the top of the stress slider (`calm_first`).
             discount = tolerate_weight if direct_tolerate else 0.0
@@ -3437,7 +3438,7 @@ def plan(
                 "limited": seek_limited,
             }
         hills_avoid = None
-        if avoiding and not alternate:
+        if avoiding and not alternate and not following:
             direct = trips[0].get("summary") or {}
             hills_avoid = {
                 "candidates": len(trips),

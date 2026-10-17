@@ -13,6 +13,7 @@ import json
 
 import pytest
 from test_route_api import (  # noqa: F401 (fixtures)
+    LAT,
     VERTICES,
     FakeRouter,
     encode_polyline6,
@@ -64,13 +65,27 @@ class TestTheLine:
     def test_the_plans_points_split_the_line_in_order_never_at_its_ends(self) -> None:
         line = VERTICES
         points = [VERTICES[0], (-77.0351, 38.9001), (-77.0301, 38.9), VERTICES[-1]]
-        assert follow.split_indices(line, points) == [2, 3]
-        # A point that would go back along the line, or sits on an end, is left out.
-        assert follow.split_indices(line, [VERTICES[0], VERTICES[3], VERTICES[1], VERTICES[4]]) == [
+        split, indices = follow.split_line(line, points)
+        # Off a vertex by more than SAME_M: a vertex is put on the line where the point lies.
+        assert indices == [2, 4]
+        assert split[2] == pytest.approx((-77.0351, 38.9))
+        assert split[4] == pytest.approx((-77.0301, 38.9))
+        assert len(split) == len(VERTICES) + 2
+        # On a vertex, that vertex; one that would go back along the line, or sits on an end,
+        # is left out.
+        assert follow.split_line(line, [VERTICES[0], VERTICES[3], VERTICES[1], VERTICES[4]])[1] == [
             3
         ]
-        assert follow.split_indices(line, [VERTICES[0], VERTICES[0], VERTICES[4]]) == [1]
-        assert follow.split_indices(line, VERTICES[:1] + VERTICES[-1:]) == []
+        assert follow.split_line(line, [VERTICES[0], VERTICES[0], VERTICES[4]])[1] == []
+        assert follow.split_line(line, VERTICES[:1] + VERTICES[-1:]) == ([*VERTICES], [])
+
+    def test_a_point_on_an_out_and_back_goes_on_its_first_pass(self) -> None:
+        out = [(-77.05, LAT), (-77.04, LAT), (-77.03, LAT)]
+        back = [(-77.04, LAT + 0.0001), (-77.05, LAT + 0.0001)]
+        # Nearer the way back (about 4 m) than the way out (7 m), but on the way out first.
+        point = (-77.045, LAT + 0.00006)
+        split, indices = follow.split_line(out + back, [out[0], point, back[-1]])
+        assert indices == [1] and split[1][1] == pytest.approx(LAT)
 
     def test_the_trace_request_is_the_plans_own_with_the_line_as_its_shape(self) -> None:
         plan_request = {
@@ -128,7 +143,15 @@ class TestJoining:
         assert merged["summary"]["length"] == pytest.approx(1.3)
         assert merged["elevation"] == [10.0, 11.0, 12.0]
         # The first leg's arrival goes; the second's manoeuvres move along the joined shape.
-        assert merged["maneuvers"] == [{"type": 1}, {"type": 1, "begin_shape_index": 1}]
+        assert merged["maneuvers"] == [{"type": 1}]
+        # The second leg's turns come after the first's, along the joined shape; its start
+        # is not said again mid-route.
+        b["maneuvers"] = [{"type": 1}, {"type": 10, "begin_shape_index": 0}, {"type": 4}]
+        assert follow.merge_legs(a, b, 30)["maneuvers"] == [
+            {"type": 1},
+            {"type": 10, "begin_shape_index": 1},
+            {"type": 4},
+        ]
         # A leg with no heights gets none for its length.
         plain = follow.merge_legs(
             leg(VERTICES[0:2], 0.06, [1.0, 2.0, 3.0]), leg(VERTICES[1:3], 0.06), 30
@@ -159,6 +182,15 @@ class TestJoining:
         }
         with pytest.raises(routing.RouterRefused):
             follow.joined(answer, VERTICES, lambda a, b: None, 30)
+
+    def test_too_many_breaks_are_planned_instead(self) -> None:
+        pieces = [
+            {"trip": {"legs": [leg([(-77.05 + i * 1e-3, LAT), (-77.0495 + i * 1e-3, LAT)], 0.05)]}}
+            for i in range(follow.MAX_BRIDGES + 2)
+        ]
+        answer = {"trip": pieces[0]["trip"], "alternates": pieces[1:]}
+        with pytest.raises(routing.RouterRefused):
+            follow.joined(answer, VERTICES, lambda a, b: leg([a, b], 0.05), 30)
 
     def test_a_match_short_of_the_files_ends_is_joined_to_them(self) -> None:
         answer = {"trip": {"legs": [leg(VERTICES[1:4], 0.8)]}}
@@ -215,6 +247,11 @@ class TestAgainstTraffic:
             raise routing.RouterUnavailable("down")
 
         assert follow.against_traffic(VERTICES, gone, {}) is None
+
+        def late(payload):
+            raise routing.DeadlineExceeded("no time left")
+
+        assert follow.against_traffic(VERTICES, late, {}) is None
 
     def test_the_ignored_rules_are_taken_out_for_the_routers_own_way(self) -> None:
         options = {"bicycle": {"use_roads": 0.2, **follow.IGNORED}}
@@ -294,13 +331,29 @@ class TestFollowedRoute:
         assert body["follows_file"] is False
         assert "trace_route" not in fake.endpoints()
 
-    def test_a_bad_line_is_refused(self, client, segments, router) -> None:
+    def test_text_that_is_no_line_is_refused(self, client, segments, router) -> None:
         router(traced_router())
-        response = post(
-            client, follow_body(follow=encode_polyline6([(-80.0, 38.9), (-77.0, 38.9)]))
-        )
+        response = post(client, follow_body(follow="~~~"))
         assert response.status_code == 400
-        assert "outside" in json.dumps(response.json())
+        assert "precision 6" in json.dumps(response.json())
+
+    def test_a_line_that_cannot_be_followed_is_planned_through_the_points(
+        self, client, segments, router
+    ) -> None:
+        """Review: a ride over 124 mi (or partly outside the area) is still planned, as it
+        always was, rather than refused."""
+        fake = router(traced_router())
+        far = encode_polyline6([VERTICES[0], (-79.5, 38.9), VERTICES[-1]])
+        response = post(client, follow_body(follow=far))
+        assert response.status_code == 200
+        assert response.json()["follows_file"] is False
+        assert "trace_route" not in fake.endpoints()
+
+    def test_a_loop_asked_for_is_planned_not_followed(self, client, segments, router) -> None:
+        fake = router(traced_router())
+        body = post(client, follow_body("default", loop=True)).json()
+        assert body["follows_file"] is False
+        assert "trace_route" not in fake.endpoints()
 
     def test_the_body_may_be_large_enough_for_a_whole_line(self, client, segments, router) -> None:
         router(traced_router())
