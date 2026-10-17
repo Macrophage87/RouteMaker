@@ -9,6 +9,7 @@
  * Pure apart from the fetches, so the words, the sorting and the requests are tested without a browser.
  */
 import { call } from "./suggestions.ts";
+import { streetViewUrl } from "./roadInfo.ts";
 
 type Fetch = typeof fetch;
 
@@ -148,6 +149,22 @@ export function decisionLabel(queue: QueueKey, decision: Decision): string {
   if (queue === "works_closure") return decision === "accept" ? "Keep closed" : "Reopen";
   if (queue === "disagreement") return "Keep current";
   return decision === "accept" ? "Accept" : "Reject";
+}
+
+/** A road's own ruling button (the owner, 2026-10-17: "use a keep old and keep new, put the current LTS there so it's
+ * easier to see"): a rebuild's names the level each keeps, "Keep old: LTS 2", "Keep new: Avoid"; the rest as
+ * decisionLabel. The batch's buttons keep decisionLabel's, the selected roads' levels being their own. */
+export function rulingLabel(road: Pick<ReviewRoad, "queue" | "old_step" | "old_closed" | "new_step" | "new_closed">, decision: Decision): string {
+  const words = decisionLabel(road.queue, decision);
+  if (road.queue !== "rebuild" || decision === "set") return words;
+  const level = decision === "accept" ? stepText(road.new_step, road.new_closed) : stepText(road.old_step, road.old_closed);
+  return level === "—" ? words : `${words}: ${level}`;
+}
+
+/** Google Street View at the road's own point (the server's, on the line), as the road panel links it; null with none. */
+export function roadStreetViewUrl(road: Pick<ReviewRoad, "point">): string | null {
+  const p = road.point;
+  return Array.isArray(p) && p.length === 2 && p.every((n) => typeof n === "number" && Number.isFinite(n)) ? streetViewUrl([p[0], p[1]]) : null;
 }
 
 /** A level in a few characters: "LTS 2.5", "Avoid". */
