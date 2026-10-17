@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   Announcer,
+  BIG_TEXT_KEY,
   DEFAULT_PREFS,
   HEADING_UP_KEY,
   POLITE_GAP_MS,
@@ -13,10 +14,12 @@ import {
   WAKE_LOST,
   WAKE_REASKS,
   WAKE_UNAVAILABLE,
+  readBigText,
   readHeadingUp,
   readRidePrefs,
   toScreenReader,
   toVoice,
+  writeBigText,
   writeHeadingUp,
   writeRidePrefs,
   type Said,
@@ -57,6 +60,21 @@ test("track-up: on by default, the switch's choice kept on this device (Go ridin
   const throwing = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } };
   assert.equal(readHeadingUp(throwing), true);
   assert.doesNotThrow(() => writeHeadingUp(false, throwing));
+});
+
+test("Big text: off by default, a setting kept on this device (the owner, 2026-10-17)", () => {
+  assert.equal(readBigText(memoryStore()), false);
+  assert.equal(readBigText(null), false);
+  const store = memoryStore();
+  writeBigText(true, store);
+  assert.equal(store.data[BIG_TEXT_KEY], "1");
+  assert.equal(readBigText(store), true);
+  writeBigText(false, store);
+  assert.equal(readBigText(store), false);
+  assert.equal(readBigText(memoryStore({ [BIG_TEXT_KEY]: "junk" })), false);
+  const throwing = { getItem: () => { throw new Error("blocked"); }, setItem: () => { throw new Error("blocked"); } };
+  assert.equal(readBigText(throwing), false);
+  assert.doesNotThrow(() => writeBigText(true, throwing));
 });
 
 test("outputs: which channel each choice uses", () => {

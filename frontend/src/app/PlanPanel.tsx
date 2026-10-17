@@ -1,15 +1,17 @@
 /**
- * Plan mode's plan panel (v0.7.0, "Plan mode: write the plan first, then route"; lib/planFirst.ts): the plan in
- * plain sentences, each name and setting a link to its editor; the Route button (Enter or Ctrl+Enter from the
- * panel), which becomes a progress bar with its step, the seconds and Cancel while routing; the one-line summary
- * of what an update changed; and Reset and Clear side by side.
+ * Plan mode's plan panel (v0.7.0, "Plan mode: write the plan first, then route"; lib/planFirst.ts): the Route
+ * button (Enter or Ctrl+Enter from the panel), which becomes a progress bar with its step, the seconds and Cancel
+ * while routing; the one-line summary of what an update changed; and Reset and Clear behind "More".
+ *
+ * Plan streamline (Stephen 2026-10-17): the plan in plain sentences is no longer shown, since the points and the
+ * ride chips above say the same; it is the Route button's description, so a screen reader still hears the plan
+ * whole. "Up to date" is said on the button itself, and Reset and Clear sit behind one "More" button.
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
-import { CLEAR_LABEL, RESET_LABEL, type Phrase, type PhraseTarget } from "../lib/planFirst.ts";
+import { CLEAR_LABEL, RESET_LABEL, ROUTE_UP_TO_DATE, type Phrase } from "../lib/planFirst.ts";
 
 export interface PlanPanelProps {
   sentences: Phrase[][];
-  onPhrase: (target: PhraseTarget) => void;
   /** The Route button's label, and why it does nothing now (null: it routes). */
   button: { label: string; unavailable: string | null };
   onRoute: () => void;
@@ -29,8 +31,12 @@ export interface PlanPanelProps {
 }
 
 export function PlanPanel(props: PlanPanelProps) {
-  const { sentences, onPhrase, button, onRoute, routing, onCancel, change, details, onCloseChange, resetUnavailable, onReset, clearDisabled, onClear } = props;
+  const { sentences, button, onRoute, routing, onCancel, change, details, onCloseChange, resetUnavailable, onReset, clearDisabled, onClear } = props;
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreId = useId();
+  const planId = useId();
+  const upToDate = button.unavailable === ROUTE_UP_TO_DATE;
   const detailsId = useId();
   const routeWhy = useId();
   const resetWhy = useId();
@@ -54,21 +60,12 @@ export function PlanPanel(props: PlanPanelProps) {
   };
   return (
     <section className="plan-panel" aria-labelledby="plan-panel-heading" tabIndex={-1} onKeyDown={onKeyDown}>
-      <h2 id="plan-panel-heading">Your plan</h2>
-      <p className="plan-sentences">
-        {sentences.map((sentence, i) => (
-          <span key={i} className="plan-sentence">
-            {sentence.map((phrase, j) =>
-              phrase.target ? (
-                <button key={j} type="button" className="link plan-phrase" onClick={() => onPhrase(phrase.target as PhraseTarget)}>
-                  {phrase.text}
-                </button>
-              ) : (
-                <span key={j}>{phrase.text}</span>
-              ),
-            )}{" "}
-          </span>
-        ))}
+      <h2 id="plan-panel-heading" className="visually-hidden">
+        Your plan
+      </h2>
+      {/* The plan in words, out of sight: the Route button's description (the points and ride chips show it). */}
+      <p id={planId} className="visually-hidden plan-sentences">
+        {sentences.map((sentence) => sentence.map((phrase) => phrase.text).join("")).join(" ")}
       </p>
       {routing ? (
         <div className="plan-routing" role="group" aria-label="Routing">
@@ -96,7 +93,7 @@ export function PlanPanel(props: PlanPanelProps) {
             ref={routeRef}
             className="route-button"
             aria-disabled={button.unavailable ? true : undefined}
-            aria-describedby={button.unavailable ? routeWhy : undefined}
+            aria-describedby={button.unavailable ? `${routeWhy} ${planId}` : planId}
             aria-keyshortcuts="Control+Enter Meta+Enter"
             onFocus={() => (routeHadFocus.current = true)}
             onBlur={(event) => {
@@ -105,12 +102,28 @@ export function PlanPanel(props: PlanPanelProps) {
             onClick={route}
           >
             {button.label}
+            {upToDate && (
+              <span className="route-state" aria-hidden="true">
+                {" "}✓ up to date
+              </span>
+            )}
           </button>
           {button.unavailable && (
-            <span id={routeWhy} className="hint">
+            <span id={routeWhy} className={upToDate ? "visually-hidden" : "hint"}>
               {button.unavailable}
             </span>
           )}
+          {/* Reset and Clear, behind one button (Plan streamline). */}
+          <button
+            type="button"
+            className="secondary icon-button plan-more"
+            aria-expanded={moreOpen}
+            aria-controls={moreId}
+            aria-label="More: Reset and Clear"
+            onClick={() => setMoreOpen(!moreOpen)}
+          >
+            <span aria-hidden="true">⋯</span>
+          </button>
         </div>
       )}
       {change && (
@@ -133,7 +146,7 @@ export function PlanPanel(props: PlanPanelProps) {
           ))}
         </ul>
       )}
-      <div className="actions plan-reset-clear">
+      <div id={moreId} className="actions plan-reset-clear" hidden={!moreOpen}>
         <button
           type="button"
           className="secondary"

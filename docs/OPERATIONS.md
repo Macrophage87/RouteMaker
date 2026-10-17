@@ -3766,7 +3766,7 @@ the first host to run it is the first test of it.
 
    ```sh
    export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
-   sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs"
+   sudo mkdir -p "$DATA_ROOT/reference/inputs" && sudo chown 10001:10001 "$DATA_ROOT/reference/inputs"
    # then copy tl_2024_us_uac20.geojson, vdot-aadt-2024.geojson and
    # ddot-aadt-2024.geojson into "$DATA_ROOT/reference/inputs"
    ```
@@ -4555,9 +4555,10 @@ proxy cannot reach the service.
        --layer https://services.arcgis.com/njFNhDsUCentVYJW/arcgis/rest/services/MDOT_SHA_Annual_Average_Daily_Traffic/FeatureServer/1 \
        --bbox=-78.05,38.2,-76.02,39.72 \
        --out-dir ~/rmdata/datasets --credit "State of Maryland (MDOT SHA)"
-   sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs/mdot-sha-aadt"
-   sudo install -o 10001 -g 10001 -m 644 ~/rmdata/datasets/mdot-sha-aadt/* \
-       "$DATA_ROOT/reference/inputs/mdot-sha-aadt/"
+   sudo mkdir -p "$DATA_ROOT/reference/inputs/mdot-sha-aadt" && sudo chown 10001:10001 "$DATA_ROOT/reference/inputs/mdot-sha-aadt"
+   sudo cp ~/rmdata/datasets/mdot-sha-aadt/* \
+       "$DATA_ROOT/reference/inputs/mdot-sha-aadt/" \
+       && sudo chown -R 10001:10001 "$DATA_ROOT/reference/inputs/mdot-sha-aadt/" && sudo chmod 644 "$DATA_ROOT/reference/inputs/mdot-sha-aadt/"*
    ```
 
    It pages at the layer's 2,000 a page, retries each request three times, and
@@ -4673,9 +4674,10 @@ graph built without it; steps 1 to 3 are for that rebuild.
    python3 scripts/fetch_agency_layer.py --slug dc-pavement-pci-fy25 \
        --layer https://rh.dcgis.dc.gov/dcgis/rest/services/DDOT/PavementConditionIndex/FeatureServer/5 \
        --out-dir ~/rmdata/datasets --credit "DDOT Pavement Condition Index (DC GIS)"
-   sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25"
-   sudo install -o 10001 -g 10001 -m 644 ~/rmdata/datasets/dc-pavement-pci-fy25/* \
-       "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25/"
+   sudo mkdir -p "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25" && sudo chown 10001:10001 "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25"
+   sudo cp ~/rmdata/datasets/dc-pavement-pci-fy25/* \
+       "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25/" \
+       && sudo chown -R 10001:10001 "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25/" && sudo chmod 644 "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25/"*
    ```
 
    Exit 3 means the pages did not add up to the count the service reported: delete
@@ -4745,7 +4747,9 @@ installed file goes in:
 export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
 python3 scripts/install_agency_lts.py --datasets ~/rmdata/datasets \
     --out ~/rmdata/agency-lts.json moco ddot mdot-sha
-sudo install -o 10001 -g 10001 -m 644 ~/rmdata/agency-lts.json "$DATA_ROOT/reference/agency-lts.json"
+sudo cp ~/rmdata/agency-lts.json "$DATA_ROOT/reference/agency-lts.json"
+sudo chown 10001:10001 "$DATA_ROOT/reference/agency-lts.json"
+sudo chmod 644 "$DATA_ROOT/reference/agency-lts.json"
 ```
 
 All three agencies in one run: the file is written whole, and the rebuild refuses one
@@ -4818,9 +4822,10 @@ permission) and Frederick County's draft rustic roads (no licence).
        --bbox=-78.05,38.2,-76.02,39.72 \
        --out-dir ~/rmdata/datasets --credit "MDOT SHA (Maryland iMAP)"
    for slug in moco-rustic-roads md-scenic-byways; do
-       sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs/$slug"
-       sudo install -o 10001 -g 10001 -m 644 ~/rmdata/datasets/$slug/* \
-           "$DATA_ROOT/reference/inputs/$slug/"
+       sudo mkdir -p "$DATA_ROOT/reference/inputs/$slug" && sudo chown 10001:10001 "$DATA_ROOT/reference/inputs/$slug"
+       sudo cp ~/rmdata/datasets/$slug/* \
+           "$DATA_ROOT/reference/inputs/$slug/" \
+           && sudo chown -R 10001:10001 "$DATA_ROOT/reference/inputs/$slug/" && sudo chmod 644 "$DATA_ROOT/reference/inputs/$slug/"*
    done
    ```
 
@@ -4877,8 +4882,14 @@ permission) and Frederick County's draft rustic roads (no licence).
    Places to see (frontend/src/amenity-data/README.md), and deploy the front end. A
    covered bridge is named by its `bridge:name` where it has one.
 
-**Rolling it back** without a code change: remove `reference/scenic.json` and rebuild; the
-layer then has the OSM designations only. The switch itself is the rider's; there is no
+`scripts/cloud/send-inputs.sh` refuses a reference folder whose `scenic.json` is absent
+or lacks either layer's lines (`SCENIC_SOURCES`): the v0.8.0 map was built before step 2
+had run, so its Scenic layer showed no Rustic Road or Scenic Byway, and the rebuild itself
+only warns.
+
+**Rolling it back** without a code change: remove `reference/scenic.json` and rebuild on
+the host (the cloud send refuses such a folder, above); the layer then has the OSM
+designations only. The switch itself is the rider's; there is no
 server flag, and a layer nobody turns on draws nothing.
 
 ## Deployment actions
@@ -5444,6 +5455,16 @@ rebuild that refuses to run without `agency-lts.json`. At home, in order, with `
 
 The beta takes it through its CD agent (docs/BETA-RUNBOOK.md: the migration and the format-10
 pre-draw are its own steps); Review is home's only.
+
+## Deploying v0.8.2
+
+No migration, no new tile format and no rebuild: closures beside the detour and the Road
+closed button, the streamlined Plan panel, bikeshare docks in every ride type, places to see
+from the widest zoom, and following an opened GPX track exactly. Deploy it as "Deploying a
+planner and front-end release" (below), `docker compose build api` then `up -d --no-deps
+--no-build api worker` and the front end, after v0.8.1 is deployed. `send-inputs.sh` now
+refuses a reference folder without `scenic.json` ("The Scenic layer (v0.8.0)", steps 1 and 2).
+The beta takes it through its CD agent.
 
 ## Deploying a planner and front-end release: rollback points and verification
 

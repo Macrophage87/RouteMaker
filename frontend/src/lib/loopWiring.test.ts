@@ -125,7 +125,8 @@ test("App: Reverse in a loop of a start and one stop is aria-disabled with its r
 
 test("App hands the toggle to the search, the map, the points list and the GPX", () => {
   const app = appSource();
-  assert.match(app, /<PlaceSearch\s+pointCount=\{points\.length\}\s+loop=\{loopVias\}/);
+  // Plan's From, To and Add a stop (Plan streamline, 2026-10-17).
+  assert.match(app, /<PlaceSearch\s+key=\{variant\}\s+variant=\{variant\}\s+pointCount=\{points\.length\}\s+loop=\{loopVias\}/);
   assert.match(app, /<MapView\s+points=\{riding \|\| reviewing \? NO_POINTS : points\}\s+loopVias=\{loopVias\}/);
   assert.match(app, /rows=\{pointRows\(points, namer, loopVias, VIA_MARKS\.isVia\)\}/);
 });

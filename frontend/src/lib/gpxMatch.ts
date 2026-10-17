@@ -6,6 +6,7 @@
  * so the plan's points sit on ways the router knows and the route is rated and rerouted like any plan; the file
  * itself, its faint line, its download and a saved copy stay as they came.
  */
+import { FOLLOW_MAX_POINTS } from "./api.ts";
 import { formatDistance } from "./format.ts";
 import { MAX_POINTS, type LonLat } from "./geo.ts";
 import { IMPORT_START_POINTS, type ImportedPlan } from "./gpxPlan.ts";
@@ -78,6 +79,27 @@ export async function matchTrack(origin: string, line: readonly LonLat[], ride: 
 export function matchedPlan(plan: ImportedPlan, line: LonLat[], share: number): ImportedPlan {
   const { dials: _dials, ...rest } = plan;
   return { ...rest, preset: null, matched: { line, share }, points: viaPoints(line, Math.min(IMPORT_START_POINTS, MAX_POINTS), "corners") };
+}
+
+/** The longest line followed (core/follow.py MAX_DISTANCE_M, 124 mi): a longer one is planned through its points. */
+export const FOLLOW_MAX_M = 200_000;
+
+/**
+ * The line a plan follows exactly (POST /api/route `follow`, core/follow.py): the opened file's line, snapped or as it
+ * came, while the plan's points are still those the file opened with (or fitting moved them to). Undefined once the
+ * rider has changed them or asked for a loop, once the API has said it could not follow this file (`unfollowed`), and
+ * for a file with no line or one too long to follow.
+ */
+export function followLine(
+  opened: { imported: Pick<ImportedPlan, "reference" | "matched">; points: readonly LonLat[]; unfollowed?: boolean } | null,
+  points: readonly LonLat[],
+  loop = false,
+): LonLat[] | undefined {
+  if (!opened || opened.unfollowed || loop || opened.points.length !== points.length) return undefined;
+  if (!opened.points.every((p, i) => p[0] === points[i][0] && p[1] === points[i][1])) return undefined;
+  const line = fitLine(opened.imported);
+  if (line.length < 2 || (cumulative(line).at(-1) ?? 0) > FOLLOW_MAX_M) return undefined;
+  return thinForMatch(line, FOLLOW_MAX_POINTS);
 }
 
 /** The line fitting follows: the snapped line once there is one, else the file's own. */

@@ -142,7 +142,7 @@ class TestEntering:
 
         plan = workzones.plan_zones([ALONG[0], ALONG[-1]], ridetime.when_at(timezone.now()))
         assert [z.zone_id for z in plan.excluded] == [zone.zone_id]
-        assert wz.heads_up(zone, 100).startswith("Road closed ahead at ")
+        assert wz.heads_up(zone) == "Oak Street marked closed ahead."
 
         # Listed for the reviewer, and ended early.
         listed = client.get(ENTER, **addr()).json()
