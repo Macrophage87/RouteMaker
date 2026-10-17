@@ -8,13 +8,15 @@ allowed to reuse last week's extract instead of pulling 1-2 GB again.
 
 The command lines themselves are asserted argument by argument for the same
 reason `pipeline/tiles.py`'s are: a flag that is wrong here is not visible until
-a real rebuild, and `-s smart -S types=any` in particular is the difference
-between boundary relations that survive the clip and admin polygons with false
-edges in them (PLAN:13).
+a real rebuild, and `-s smart -S types=boundary,multipolygon` in particular is
+the difference between boundary relations that survive the clip and admin
+polygons with false edges in them (PLAN:13), and between a clip of the region
+and one carrying the whole length of every long route relation touching it.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
@@ -361,11 +363,14 @@ def test_the_merge_command_names_every_input_and_overwrites(tmp_path) -> None:
 
 
 def test_the_clip_command_is_the_plans_strategy_and_its_option(tmp_path) -> None:
-    """PLAN:13 names both halves - `-s smart -S types=any` - and the option is
-    the half that is easy to drop. Without `types=any` the strategy keeps
-    multipolygon relations complete and cuts every other type at the region's
-    edge, which is exactly the administrative boundaries this project builds
-    admin data from.
+    """PLAN:13 names both halves - `-s smart` and an `-S types=` - and the option
+    is the half that is easy to drop. Without it the strategy keeps multipolygon
+    relations complete and cuts every other type at the region's edge, which is
+    exactly the administrative boundaries this project builds admin data from.
+
+    And the types are named, not `any` as PLAN:13 writes it: `any` completes
+    route relations too, and the v0.8.0 rebuild carried about 5,100 mi of the
+    East Coast Greenway and the US Bicycle Routes from outside the box.
     """
     command = source.clip_command(
         tmp_path / "merged.osm.pbf", tmp_path / "source.osm.pbf.part", BBOX
@@ -379,7 +384,7 @@ def test_the_clip_command_is_the_plans_strategy_and_its_option(tmp_path) -> None
         "-s",
         "smart",
         "-S",
-        "types=any",
+        "types=boundary,multipolygon",
         "--bbox",
         "{},{},{},{}".format(*BBOX),  # osmium's order: left, bottom, right, top
         "-o",
@@ -593,6 +598,12 @@ def test_a_recent_extract_made_from_other_regions_or_another_area_is_rebuilt(tmp
     assert "other regions or another clip area" in source.refresh_reason(
         *paths, urls=urls, region=BBOX
     )
+    # Clipped with `types=any`, before the clip named its relation types: rebuilt,
+    # or a week's extract would keep the whole of every long route relation.
+    record = json.loads(source.made_from(urls, BBOX))
+    del record["clip"]
+    (tmp_path / source.MADE_FROM_NAME).write_text(json.dumps(record, sort_keys=True))
+    assert "another clip area or strategy" in source.refresh_reason(*paths, urls=urls, region=BBOX)
     source.write_made_from(tmp_path, urls, BBOX)
     assert source.refresh_reason(*paths, urls=urls, region=BBOX) is None
 

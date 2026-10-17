@@ -31,7 +31,8 @@ class TestTheOwnersFile:
     def test_it_sets_the_parkways_to_25(self) -> None:
         document = json.loads(OWNER_FILE.read_text())
         speeds = sc.load()
-        assert len(document["rows"]) == len(speeds) == 34
+        assert len(document["rows"]) == 34
+        assert {r["osm_way_id"] for r in document["rows"]} <= set(speeds)
         assert set(speeds.values()) == {"25 mph"}
         assert {SLIGO, LITTLE_FALLS, BEACH} <= set(speeds)
         assert BEACH_SPUR not in speeds
@@ -41,6 +42,14 @@ class TestTheOwnersFile:
             assert '"Set them to 25 mph (Recommended)"' in r["reason"]
             assert any(name in r["evidence"] for name in PARKWAYS), r["osm_way_id"]
             assert "no maxspeed" in r["evidence"]
+
+    def test_wickham_road_signed_25_comes_down_from_the_rural_default(self) -> None:
+        # The owner, 2026-10-17: signed 25 mph, unposted in OSM.
+        way = {"highway": "tertiary", "name": "Wickham Road"}
+        assert classify(way, urban=False, jurisdiction="MD").tier is Stress.LTS4
+        tags, applied = sc.corrected(way, sc.load()[62828504])
+        assert applied
+        assert classify(tags, urban=False, jurisdiction="MD").tier is Stress.LTS2
 
     def test_sligo_creek_parkway_comes_down_from_lts3_to_lts2(self) -> None:
         way = {"highway": "tertiary", "lanes": "2", "name": "Sligo Creek Parkway"}
