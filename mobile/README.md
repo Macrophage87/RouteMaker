@@ -17,6 +17,11 @@ opens the live site in a WebView and gives Ride mode three native things while a
 - **The latest cue on the notification shade** (v0.8.0 site only). `@capacitor/local-notifications`
   shows a second, silent "Latest cue" notification, replaced as each cue is said, cleared at End ride.
 
+One more native thing, outside a ride: **Send to Garmin** (the site's GPX sheet, v0.9.0 site and app). The
+site makes the FIT course and hands it to `FilesPlugin.java` ("RouteMakerFiles"), which writes it to the app's
+cache and offers it with Android's "Open with", so the rider picks Garmin Connect. A WebView can neither share
+nor download a file a page makes, so without the plugin (an older app) the site says to update the app.
+
 There are no new buttons: Start ride, Go and End work as on the website. Distances are the site's
 own (feet and miles).
 

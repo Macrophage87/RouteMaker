@@ -23,6 +23,7 @@ public class MainActivity extends BridgeActivity {
         cancelCueNotice();
         // Before super.onCreate: the bridge loads its plugins, then the site.
         registerPlugin(RideCompatPlugin.class);
+        registerPlugin(FilesPlugin.class);
         JSONObject json = SiteStore.readConfig(this);
         String address = SiteStore.address(this, json);
         if (json == null) {

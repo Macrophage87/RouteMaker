@@ -15,6 +15,7 @@ import { compileCourse, courseFileName, courseLine, type CourseFormat } from "./
 import { DEFAULT_PROFILE, DEVICE_PROFILES, deviceProfile, type DeviceProfileId } from "./lib/deviceProfiles.ts";
 import { writeFit } from "./lib/fit.ts";
 import { writeTcx } from "./lib/tcx.ts";
+import { SEND_LABEL, browserSendEnv, courseTrimmed, sendCourse } from "./lib/sendToGarmin.ts";
 import { cueSheetDocument, cueSheetFileName, cueSheetLine, type CueSheetKind } from "./lib/cueSheetPdf.ts";
 import { lockCancelledLine, lockPartButton, lockPartLine, lockScreenFileNames, lockScreenLine, lockSharedLine } from "./lib/lockScreen.ts";
 import { renderLockScreens } from "./app/lockScreenRender.ts";
@@ -50,6 +51,8 @@ interface Props {
    * takes the line saying what was made. Given in Plan only: without it (Go) the section offers GPX alone.
    */
   onDownloadCourse?: (format: FileFormat, profile: DeviceProfileId, said: Said) => void;
+  /** Send to Garmin (sendCourseToGarmin), closures checked first; in Go and Plan alike. */
+  onSendToGarmin?: (said: Said) => void;
   /**
    * Plan only: snap an opened track to the map's ways (lib/gpxMatch.ts) on the ride type now chosen, and open
    * the plan that follows the snapped line (`onMatched`, one edit). Without it (Go) the action is not offered.
@@ -186,6 +189,16 @@ export function downloadCourse(route: RouteResponse, routedPoints: LonLat[], for
   return courseLine(course);
 }
 
+/**
+ * Send to Garmin (lib/sendToGarmin.ts): the route shown as a FIT course for a Garmin Edge, handed to the phone for
+ * Garmin Connect; the line says what happened, with what fitting it left out, if anything.
+ */
+export async function sendCourseToGarmin(route: RouteResponse, routedPoints: LonLat[]): Promise<string> {
+  const course = compileCourse(route, deviceProfile("garmin-edge"), "fit", viaIndices(routedPoints, VIA_MARKS.isVia));
+  const line = await sendCourse(writeFit(course), courseFileName(route, "fit"), browserSendEnv((bytes, type, name) => saveFile(bytes, type, name)));
+  return courseTrimmed(course) ? `${line} ${courseLine(course)}` : line;
+}
+
 export type ExportFormat = "gpx" | FileFormat;
 
 /** What a GPX download says once it is saved: the route shown, the opened file as it came, or its track. */
@@ -236,7 +249,7 @@ type Reading = { kind: "idle" } | { kind: "reading"; name: string } | { kind: "e
  * route on screen (gpx.ts). Nothing is sent or saved.
  */
 export function GpxPanel(props: Props) {
-  const { route, routedPoints, points, planStatus, imported, onImport, onRefine, getMap, onDownload, onDownloadCourse, loop = false, federal = [] } = props;
+  const { route, routedPoints, points, planStatus, imported, onImport, onRefine, getMap, onDownload, onDownloadCourse, onSendToGarmin, loop = false, federal = [] } = props;
   const [kept, setChoice] = useState(readChoice);
   // Go adds no control (the owner's rule): there, the file type is GPX and no choice is shown.
   const courses = onDownloadCourse !== undefined;
@@ -448,6 +461,11 @@ export function GpxPanel(props: Props) {
         <button type="button" onClick={download} disabled={choice.format === "gpx" ? !route && !imported?.verbatim : !route}>
           {parts ? lockPartButton(parts.next, parts.blobs.length) : `Download ${FORMAT_WORDS[choice.format]}`}
         </button>
+        {onSendToGarmin && (
+          <button type="button" onClick={() => onSendToGarmin(sayCourse)} disabled={!route}>
+            {SEND_LABEL}
+          </button>
+        )}
       </div>
       <input
         ref={input}

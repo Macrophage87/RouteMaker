@@ -290,6 +290,8 @@ export interface GpxSheetProps {
   downloadRoute: (said?: (line: string) => void) => void;
   /** Plan only: download a FIT or TCX course or a PDF cue sheet (GpxPanel); absent in Go, which offers GPX alone. */
   downloadCourse?: (format: FileFormat, profile: DeviceProfileId, said: Said) => void;
+  /** Send to Garmin: the route shown as a FIT course, handed to the phone for Garmin Connect (GpxPanel). */
+  sendToGarmin?: (said: Said) => void;
   /** Plan only: snap an opened track to the map's ways (GpxPanel, lib/gpxMatch.ts); absent in Go. */
   match?: GpxPanelProps["match"];
   /** Signed in: Save route for an opened file (its own text, verbatim); null signed out. */
@@ -298,7 +300,7 @@ export interface GpxSheetProps {
 
 /** The GPX sheet. */
 export function GpxSheet(props: GpxSheetProps) {
-  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, refineImported, getMap, downloadRoute, downloadCourse, match, saveControl } = props;
+  const { nav, shown, routedPoints, routedLoop, federalRoute, points, status, imported, openImported, refineImported, getMap, downloadRoute, downloadCourse, sendToGarmin, match, saveControl } = props;
   return (
     <SheetFrame id="sheet-gpx" title={SHEET_TITLES.gpx} open={nav.view === "gpx"} onBack={nav.back} backLabel={nav.backLabel("gpx")}>
       <GpxPanel
@@ -314,6 +316,7 @@ export function GpxSheet(props: GpxSheetProps) {
         getMap={getMap}
         onDownload={downloadRoute}
         onDownloadCourse={downloadCourse}
+        onSendToGarmin={sendToGarmin}
         match={match}
       />
       {imported?.verbatim && saveControl}
