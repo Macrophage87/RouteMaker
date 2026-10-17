@@ -4704,38 +4704,38 @@ when the file is absent or empty or lacks any of the three agencies.
 `REBUILD_ALLOW_NO_AGENCY_LTS=1` in `.env` (then recreate the rebuild service) builds
 without them, every such road on the formula's tier; use it only knowingly.
 
-To (re)install it, on the build PC once v0.8.1 is deployed (the image's script has the
-DDOT and MDOT SHA readers from then), from the checkout, with the three layers downloaded
-under `~/rmdata/datasets/<slug>/<slug>.geojson` (`scripts/fetch_agency_layer.py`):
+To (re)install it, on the build PC, from a checkout at v0.8.1 or later (the DDOT and MDOT
+SHA readers arrived then), with the three layers downloaded under
+`~/rmdata/datasets/<slug>/<slug>.geojson` (`scripts/fetch_agency_layer.py`). The script
+needs only the standard library, so it runs on the host and the raw layers stay out of
+`reference/` (everything there rides in every cloud send's `reference.tar`); only the
+installed file goes in:
 
 ```sh
 export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
-for slug in moco-bicycle-lts ddot-lts-2020 mdot-lts; do
-    sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs/$slug"
-    sudo install -o 10001 -g 10001 -m 644 ~/rmdata/datasets/$slug/* \
-        "$DATA_ROOT/reference/inputs/$slug/"
-done
-docker compose exec -T rebuild python3 scripts/install_agency_lts.py \
-    --datasets /data/reference/inputs \
-    --out /data/reference/agency-lts.json moco ddot mdot-sha
+python3 scripts/install_agency_lts.py --datasets ~/rmdata/datasets \
+    --out ~/rmdata/agency-lts.json moco ddot mdot-sha
+sudo install -o 10001 -g 10001 -m 644 ~/rmdata/agency-lts.json "$DATA_ROOT/reference/agency-lts.json"
 ```
 
 All three agencies in one run: the file is written whole, and the rebuild refuses one
 that lacks an agency. It prints `<agency>: N records` for each, the records left out and
-why, and `wrote /data/reference/agency-lts.json (N records)`. It refuses, writing
+why, and `wrote .../agency-lts.json (N records)`. It refuses, writing
 nothing, when a layer is missing, an agency has no usable record, or a level is off the
 scale. The levels on our scale (the script's docstring has the citations):
 
 | Agency | Field | Taken | Left out |
 |---|---|---|---|
 | Montgomery County Planning | `LTS_EXIST` | 1, 2, 2.5, 3, 4, 5 (5 is Avoid) | 0.5 "None"; not Existing; sidepaths, trails, parking lots |
-| DDOT (2020) | the first of `DDOT_LEVEL_FIELDS` the layer has (`LTS`, `LTS_2020`, ...) | 1 to 4 as they are (a 5 would be Avoid) | 0 and empty |
+| DDOT (2020) | the first of `DDOT_LEVEL_FIELDS` any record has (`LTS`, `LTS_2020`, ...) | 1 to 4 as they are (a 5 would be Avoid) | 0 and empty |
 | MDOT SHA | `LTS_ADJUSTED` | 1 to 4 as they are; 5, "bicycle access prohibited", as Avoid | 0 (shared-use path), 9 (missing data), empty |
 
 DDOT's level field is not recorded in this repository: the script prints `ddot: level read
 from <field>`, and where the layer has none of the expected fields it stops and lists the
 layer's fields; check which holds the 1 to 4 level and rerun with `--ddot-field <field>`.
-Its first run on the PC should be read for that line.
+Its first run on the PC should be read for that line. `scripts/cloud/send-inputs.sh`
+refuses a reference folder whose `agency-lts.json` is missing or lacks an agency, since the
+box's rebuild would refuse it hours later.
 
 Then rebuild. The rebuild logs `agency stress ratings: <agency>, N of M records matched, N
 ways` for each agency, and `import_cloud_build` (dry run and `--confirm`) prints

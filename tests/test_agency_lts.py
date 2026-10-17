@@ -518,3 +518,14 @@ def test_the_weekly_rebuild_requires_the_ratings_unless_opted_out():
 
     source = inspect.getsource(procrastinate)
     assert "require_agency_lts=not settings.REBUILD_ALLOW_NO_AGENCY_LTS" in source
+
+
+def test_the_ddot_level_field_is_found_on_any_record_not_only_the_first(tmp_path):
+    from collections import Counter
+
+    module = _installer()
+    _layer(tmp_path, "ddot-lts-2020", [{"OBJECTID": 1}, {"OBJECTID": 2, "LTS": 3}])
+    dropped = Counter()
+    assert [r["id"] for r in module.ddot(tmp_path, dropped)] == ["ddot-2-0"]
+    assert dropped["ddot: no rating (0 or empty)"] == 1
+    assert "LTS_SCORE" not in module.DDOT_LEVEL_FIELDS, "MDOT's preliminary score's name"

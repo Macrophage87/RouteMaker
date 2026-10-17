@@ -20,8 +20,8 @@ rates District streets on the four-level Mekuria-Furth scale (Semler et al., "Lo
 Bicycle Network Mapping: The District of Columbia's Innovative Approach to Applying
 Level of Traffic Stress", TRR 2662, 2017, doi:10.3141/2662-04), so 1 to 4 are taken as
 they are. Which attribute holds the level is not recorded in this repository: the
-reader takes the first of `DDOT_LEVEL_FIELDS` the layer has, says which, and refuses
-the layer, naming its fields, where it has none of them (`--ddot-field` names
+reader takes the first of `DDOT_LEVEL_FIELDS` any record has, says which, and refuses
+the layer, naming its fields, where none has any of them (`--ddot-field` names
 another). 0, empty and null are no rating and are left out; a level that is not 1 to 5
 is refused, never guessed.
 
@@ -143,7 +143,6 @@ DDOT_LEVEL_FIELDS = (
     "LTS2020",
     "BIKE_LTS",
     "BIKELTS",
-    "LTS_SCORE",
     "LTS_RATING",
     "LTS_LEVEL",
     "LEVEL_OF_TRAFFIC_STRESS",
@@ -154,21 +153,24 @@ DDOT_LEVELS = {1.0: 1.0, 2.0: 2.0, 3.0: 3.0, 4.0: 4.0, 5.0: 5.0}
 
 
 def ddot(datasets: Path, dropped: Counter, field: str | None = None):
-    features = agency_roads.iter_features(layer_path(datasets, "ddot"))
+    # The District's layer is small; read whole so the level field is chosen from every
+    # record's attributes, not the first record's alone.
+    features = list(agency_roads.iter_features(layer_path(datasets, "ddot")))
+    if field is None:
+        fields = set().union(*((f["properties"] or {}).keys() for f in features))
+        found = [k for k in DDOT_LEVEL_FIELDS if k in fields]
+        if not found:
+            raise SystemExit(
+                "ddot: the layer has none of the level fields "
+                + ", ".join(DDOT_LEVEL_FIELDS)
+                + "; its fields are "
+                + ", ".join(sorted(fields))
+                + ". Name the level's field with --ddot-field"
+            )
+        field = found[0]
+        print(f"ddot: level read from {field}")
     for index, feature in enumerate(features):
         p = feature["properties"] or {}
-        if field is None:
-            found = [k for k in DDOT_LEVEL_FIELDS if k in p]
-            if not found:
-                raise SystemExit(
-                    "ddot: the layer has none of the level fields "
-                    + ", ".join(DDOT_LEVEL_FIELDS)
-                    + "; its fields are "
-                    + ", ".join(sorted(p))
-                    + ". Name the level's field with --ddot-field"
-                )
-            field = found[0]
-            print(f"ddot: level read from {field}")
         level = number(p.get(field))
         if level in (None, 0):
             dropped["ddot: no rating (0 or empty)"] += 1

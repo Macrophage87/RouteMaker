@@ -2927,14 +2927,26 @@ def test_the_rebuild_task_refuses_without_the_agency_ratings_unless_allowed(
     from core.models import ScheduledRun
     from pipeline import agency_ratings
 
-    root, _binaries = rebuild_environment
+    root, binaries = rebuild_environment
     (root / "reference" / agency_ratings.FILE_NAME).unlink()
     monkeypatch.setattr(settings, "REBUILD_ALLOW_NO_AGENCY_LTS", allow)
     if not allow:
-        with pytest.raises(Exception, match="agency-lts.json is absent"):
+        # Terminal: the retry would meet the same file, after re-fetching the extract.
+        with pytest.raises(RebuildAbandoned, match="agency-lts.json is absent") as abandoned:
             app.tasks["weekly_rebuild"].func(timestamp=0)
+        strategy = app.tasks["weekly_rebuild"].retry_strategy
+        assert strategy.get_retry_decision(exception=abandoned.value, job=job(0)) is None
         run = ScheduledRun.objects.get(task="weekly_rebuild")
         assert not run.succeeded and "load_reference_data" in run.detail
+        assert binaries.commands("valhalla_build_tiles") == []
     else:
         app.tasks["weekly_rebuild"].func(timestamp=0)
         assert ScheduledRun.objects.get(task="weekly_rebuild").succeeded
+
+
+def test_the_agency_ratings_refusals_are_terminal_causes() -> None:
+    from config.procrastinate import terminal_causes
+    from pipeline.agency_ratings import AgencyRatingsInvalid, AgencyRatingsMissing
+
+    assert AgencyRatingsMissing in terminal_causes()
+    assert AgencyRatingsInvalid in terminal_causes()
