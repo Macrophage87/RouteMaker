@@ -641,3 +641,66 @@ def test_row_c4_never_makes_a_carriageway_of_the_review_two_way() -> None:
     plain = overlay_road_facts(ways, {couplet: two_way})[couplet]
     assert plain.tags["oneway"] == "no"
     assert plain.routing == {"oneway": "no"}
+
+
+# -- Alexandria's Transport Streets (PLAN.md item 183): held to the city's own streets
+
+LOCAL = "LOCAL NEIGHBORHOOD ROAD, RURAL ROAD, CITY STREET"
+
+
+def _alexandria(block_id: str, coords, name: str | None, mtfcc: str, mph: int = 25):
+    from routemaker import agency_roads
+
+    facts = agency_roads.parse_alexandria_transport_streets(
+        {"FULL_NAME": name, "SPEED_LIMIT": mph, "MTFCC": mtfcc, "SEG_EXIST": "Y"}
+    )
+    return RoadFeature(block_id, coords, facts)
+
+
+def test_an_alexandria_record_reaches_its_street_end_to_end() -> None:
+    """The city's "S ROYAL ST" record onto OSM's "South Royal Street", from the parsed
+    record to the way's facts and its overlay: the city's 20 mph where OSM has none."""
+    from pipeline.conflation import overlay_road_facts
+    from routemaker import agency_roads
+
+    royal = _alexandria("alexandria-1-0", line((0, 0), (300, 0)), "S ROYAL ST", LOCAL, 20)
+    street = _Way(
+        5, {"highway": "residential", "name": "South Royal Street"}, line((0, 4), (300, 4))
+    )
+    facts = _facts_for(street, blocks=[royal])
+    assert facts[5].agency == agency_roads.ALEXANDRIA_AGENCY
+    assert facts[5].speed_mph == 20
+    assert facts[5].names_agree is True
+    overlay = overlay_road_facts([street], facts)[5]
+    assert overlay.tags["maxspeed"] == "20 mph"
+    assert overlay.sources["maxspeed"] == agency_roads.ALEXANDRIA_AGENCY
+
+
+@pytest.mark.parametrize("highway", ["motorway", "motorway_link", "trunk", "trunk_link"])
+def test_an_alexandria_record_never_reaches_a_freeway_or_trunk_way(highway) -> None:
+    """Review: an unnamed "PRIMARY ROAD" record gave the Capital Beltway 25 mph. Unnamed
+    or with an agreeing name, a city record is never on these classes."""
+    unnamed = _alexandria("alexandria-2-0", line((0, 0), (300, 0)), None, "PRIMARY ROAD")
+    beltway = _Way(6, {"highway": highway, "name": "Capital Beltway"}, line((0, 4), (300, 4)))
+    assert 6 not in _facts_for(beltway, blocks=[unnamed])
+    same = _alexandria("alexandria-3-0", line((0, 0), (300, 0)), "CAPITAL BELTWAY", "PRIMARY ROAD")
+    assert 6 not in _facts_for(beltway, blocks=[same])
+
+
+def test_an_alexandria_record_is_not_applied_to_a_way_crossing_the_city_line() -> None:
+    """A way half inside the city (the city's records cover half of it) keeps OSM's
+    speed and the defaults; one the records cover wholly takes the city's."""
+    inside = _alexandria("alexandria-4-0", line((0, 0), (300, 0)), "DUKE ST", LOCAL)
+    half = _Way(7, {"highway": "secondary", "name": "Duke Street"}, line((0, 4), (600, 4)))
+    assert 7 not in _facts_for(half, blocks=[inside])
+    whole = _Way(8, {"highway": "secondary", "name": "Duke Street"}, line((0, 4), (300, 4)))
+    assert 8 in _facts_for(whole, blocks=[inside])
+
+
+def test_a_way_crossing_the_city_line_keeps_another_agency_s_blocks() -> None:
+    """Only the city's blocks are taken off; another layer's along the same way stay."""
+    city = _alexandria("alexandria-5-0", line((0, 0), (300, 0)), "K ST", LOCAL)
+    dc = block("dc", line((300, 0), (600, 0)), "K ST")
+    crossing = _Way(9, {"highway": "secondary", "name": "K Street"}, line((0, 4), (600, 4)))
+    facts = _facts_for(crossing, blocks=[city, dc])
+    assert facts[9].blocks == ("dc",)

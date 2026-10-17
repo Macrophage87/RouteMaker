@@ -4244,27 +4244,34 @@ def test_the_no_trail_graph_closes_contraflow_and_nothing_else_moves(workspace) 
         for variant in Variant:
             assert tags[variant][CONTRAFLOW_TWO_WAY_ID]["cycleway:left"] == "opposite_lane"
             assert tags[variant][CONTRAFLOW_TWO_WAY_ID]["oneway:bicycle"] == "no"
+            # Review RL-5: the bare `maxspeed=25` reaches every variant's extract, the
+            # one the router is built from, as the mph the classifier read it as.
+            assert tags[variant][CONTRAFLOW_TWO_WAY_ID]["maxspeed"] == "25 mph", variant.value
         # A roundabout is one-way whatever it says.
         assert tags[Variant.STANDARD][CONTRAFLOW_ROUNDABOUT_ID]["cycleway:left"] == "opposite_lane"
         assert tags[Variant.NO_TRAIL][CONTRAFLOW_ROUNDABOUT_ID]["cycleway:left"] == "no"
 
         # Stress and facility: one answer, from the way's own tags, on every variant.
+        # The lane runs against the traffic only (`cycleway:left:oneway=-1`), so the
+        # rider with the traffic has none (review RL-2), as with `opposite_lane`.
         tiers = {variant: way_tags[one_way]["rm:stress_tier"] for variant, way_tags in tags.items()}
         assert len(set(tiers.values())) == 1, tiers
         assert int(tiers[Variant.STANDARD]) == int(context.stress_by_way[one_way].tier)
-        assert context.facility_by_way[one_way] == "lane"
+        assert context.facility_by_way[one_way] == "none"
         for variant in (Variant.STANDARD, Variant.WEEKEND, Variant.EBIKE):
-            assert tags[variant][one_way]["rm:facility"] == "lane", variant.value
+            assert tags[variant][one_way]["rm:facility"] == "none", variant.value
         assert tags[Variant.NO_TRAIL][one_way]["rm:facility_neutral"] == "yes"
 
         with connection.cursor() as cursor:
             cursor.execute(
-                "SELECT DISTINCT osm_way_id, facility, stress_tier "
+                "SELECT DISTINCT osm_way_id, facility, facility_shown, stress_tier "
                 f"FROM {context.staging_schema}.segment WHERE osm_way_id = %s",
                 [one_way],
             )
+            # The map draws the contraflow lane (`facility_shown`, one direction
+            # only); the routing price above stays on the rider with the traffic.
             assert cursor.fetchall() == [
-                (one_way, "lane", int(context.stress_by_way[one_way].tier))
+                (one_way, "none", "lane", int(context.stress_by_way[one_way].tier))
             ]
     finally:
         shutil.rmtree(root, ignore_errors=True)

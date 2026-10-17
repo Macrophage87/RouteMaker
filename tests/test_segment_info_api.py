@@ -180,6 +180,30 @@ class TestAnswer:
         # The router was asked at the spot on the way, with the bicycle costing only.
         assert [c[2] for c in router.calls] == ["bicycle"]
 
+    def test_a_contraflow_only_lane_is_named_for_its_one_direction(
+        self, client, segment_schemas, router
+    ) -> None:
+        """No facility with the traffic (`facility`, what routing prices) but a lane
+        against it (`facility_shown`): the panel names the lane and its direction."""
+        live, _ = segment_schemas
+        insert(
+            live,
+            102,
+            [SPOT, east(SPOT, 100)],
+            stress_tier=2,
+            facility="none",
+            facility_shown="lane",
+        )
+        router.answers = {
+            "bicycle": [edge(102, "11th Street Northwest", classification="residential")]
+        }
+        body = get(client).json()
+        riding = section(body, "riding")
+        assert riding["Bike facility"]["value"] == (
+            "Painted bike lane, against the one-way traffic only"
+        )
+        assert "Bike lane: Painted (against traffic only)" in summary(body)
+
     def test_nothing_within_reach_is_no_road_here(self, client, segment_schemas, router) -> None:
         live, _ = segment_schemas
         insert(live, 102, [north(SPOT, 200), east(north(SPOT, 200), 50)])
@@ -844,6 +868,25 @@ class TestWords:
         )
         assert segment_info.why_short("") is None
 
+    def test_alexandria_s_speed_is_named_as_the_city_s_record(self) -> None:
+        """PLAN.md item 183: the city's figure is its street record, not a sign seen."""
+        row = {
+            "stress_tier": 1,
+            "stress_rule": "mixed traffic, 20 mph, single lane",
+            "stress_assumed": "[]",
+            "road_speed_mph": 20,
+            "attr_sources": json.dumps({"maxspeed": "alexandria-transport-streets"}),
+        }
+        speed = {r["label"]: r for r in segment_info.traffic_rows(row)}["Speed limit"]
+        assert speed["value"] == "20 mph (32 km/h), recorded by the city"
+        assert speed["source"] == "City of Alexandria Transport Streets"
+        short = {r["id"]: r for r in segment_info.summary_rows(row, {}, True)}["speed"]
+        assert short["value"] == "20 mph (32 km/h), recorded by the city"
+        osm = dict(row, attr_sources=json.dumps({"maxspeed": "osm"}))
+        assert {r["label"]: r for r in segment_info.traffic_rows(osm)}["Speed limit"][
+            "value"
+        ] == "20 mph (32 km/h), posted"
+
 
 class TestAccessReason:
     @pytest.mark.parametrize(
@@ -851,7 +894,13 @@ class TestAccessReason:
         [
             ({"highway": "residential"}, {}, None),
             ({"highway": "primary", "bicycle": "no"}, {}, "bicycle_no"),
-            ({"highway": "primary", "bicycle": "use_sidepath"}, {}, "bicycle_use_sidepath"),
+            # Only where a side path is mapped beside it (review RL-1).
+            ({"highway": "primary", "bicycle": "use_sidepath"}, {}, None),
+            (
+                {"highway": "primary", "bicycle": "use_sidepath"},
+                {"side_path": True},
+                "bicycle_use_sidepath",
+            ),
             ({"highway": "motorway"}, {}, "motorway"),
             ({"highway": "trunk", "motorroad": "yes"}, {}, "motorroad"),
             ({"highway": "service", "access": "private"}, {}, "private"),
