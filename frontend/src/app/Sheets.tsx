@@ -334,6 +334,24 @@ export interface MyGoControls {
   searchBias: () => LonLat | undefined;
 }
 
+/**
+ * A setting's explanation behind "How this works" (Plan streamline, Stephen 2026-10-17), as the ride settings have
+ * it: the setting shows its name and choices, and the paragraph is a tap away (and still a control's description
+ * where `id` is pointed at).
+ */
+function HowItWorks({ id, about, children }: { id?: string; about: string; children: ReactNode }) {
+  return (
+    <details className="how setting-how">
+      <summary>
+        How this works<span className="visually-hidden">: {about}</span>
+      </summary>
+      <p className="hint" id={id}>
+        {children}
+      </p>
+    </details>
+  );
+}
+
 /** "Open in": By screen size, Go or Plan, as a radio group. */
 function OpenInChoice({ value, onChange, idBase, hint }: { value: OpenIn; onChange: (next: OpenIn) => void; idBase: string; hint?: string }) {
   return (
@@ -345,7 +363,7 @@ function OpenInChoice({ value, onChange, idBase, hint }: { value: OpenIn; onChan
           {OPEN_IN_LABEL[option]}
         </label>
       ))}
-      {hint && <p className="hint">{hint}</p>}
+      {hint && <HowItWorks about="open in">{hint}</HowItWorks>}
     </fieldset>
   );
 }
@@ -481,9 +499,9 @@ export function SettingsSheet(props: SettingsSheetProps) {
               {accessMode ? "On" : "Off"}
             </span>
           </button>
-          <p className="hint" id="settings-access-hint">
+          <HowItWorks id="settings-access-hint" about="accessibility mode">
             {ACCESS_HELP}
-          </p>
+          </HowItWorks>
         </div>
         {/* How much screen readers are told (the owner, 2026-10-11 20:23 UTC): Brief or Full; unset, Go is brief. */}
         <fieldset className="ride-choice announce-level">
@@ -494,12 +512,9 @@ export function SettingsSheet(props: SettingsSheetProps) {
               {ANNOUNCE_LABEL[level]}
             </label>
           ))}
-          <p className="hint">{ANNOUNCE_HINT}</p>
+          <HowItWorks about="announcements">{ANNOUNCE_HINT}</HowItWorks>
         </fieldset>
-        {/* Open in Go or Plan: this device's, signed out; signed in it is My Go's, under Account. */}
-        {!myGo.signedIn && (
-          <OpenInChoice value={myGo.myGo.openIn} onChange={(openIn) => myGo.save({ ...myGo.myGo, openIn })} idBase="display" hint={`${OPEN_IN_HINT} Kept on this device.`} />
-        )}
+        {/* Open in Go or Plan is My Go's, under Account, signed in or out: one control, not two (Plan streamline). */}
       </section>
       {/* Ride mode's choices (WEB-NAV-plan.md section 3): the same ones the first Start ride asks, kept on this device. */}
       <section aria-labelledby="settings-ride-heading" className="settings-group">

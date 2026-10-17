@@ -20,9 +20,16 @@ export interface PointsListProps {
   onRemove(index: number): void;
   /** Each Remove button, for the focus after a removal (App.tsx). */
   removeRef(index: number, button: HTMLButtonElement | null): void;
+  /**
+   * Plan's "Change" on the start and the destination (Plan streamline, Stephen 2026-10-17): opens that point's
+   * search box. Absent: no Change.
+   */
+  onChange?(index: number): void;
+  /** Which rows have Change (the start, and the destination of a plan that is not a loop). */
+  changeable?(index: number): boolean;
 }
 
-export function PointsList({ rows, warnings, onRemove, removeRef }: PointsListProps): ReactElement {
+export function PointsList({ rows, warnings, onRemove, removeRef, onChange, changeable }: PointsListProps): ReactElement {
   return h(
     "ol",
     { className: "points" },
@@ -43,6 +50,13 @@ export function PointsList({ rows, warnings, onRemove, removeRef }: PointsListPr
         // On its own line, after the place and before Remove, so it is read with the point it is about
         // (item 239: a stop on federal land, in the stop list as well as the map and the description).
         federal ? h("span", { className: "point-federal" }, federal) : null,
+        onChange && changeable?.(index)
+          ? h(
+              "button",
+              { type: "button", className: "link point-change", onClick: () => onChange(index), "aria-label": `Change ${role}` },
+              "Change",
+            )
+          : null,
         h(
           "button",
           {
