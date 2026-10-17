@@ -5415,7 +5415,8 @@ rebuild that refuses to run without `agency-lts.json`. At home, in order, with `
   `stretch` and `ways` to `review_item` and `stretch` to `review_ruling`; 0033 gives `ways` a
   database default, so a v0.8.0 worker still writes Review's rows through the deploy and
   after an image rollback; nothing to migrate back), then `docker compose up -d --no-deps
-  --no-build api worker`, and `rebuild` once no job is queued or running.
+  --no-build api worker`; once no rebuild job is queued or running, `docker compose up -d
+  --no-deps --no-build rebuild` too.
 - [ ] **Pre-draw at once:** `docker compose exec -T api python manage.py
   predraw_stress_tiles` ("Deploying every street from z12 (FORMAT_VERSION 10)"; only
   `-v10"` stress tags after it). Then the front end.
