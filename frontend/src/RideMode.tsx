@@ -1715,6 +1715,16 @@ export function RideMode({
       {/* The side buttons (the owner, 2026-10-17: "put these as circle icons on the side"), over the map on the
           right at thumb height; each menu opens beside them. An answer the rider asked for shows to their left. */}
       <div className="ride-middle">
+        {/* A minimalist compass (the owner, 2026-10-17), turned with the map; a press switches north-up and track-up
+            ("maybe clicking on it changes to north up"), the same choice as the ride settings' switch. */}
+        {!big && (
+          <button type="button" className="ride-compass" aria-pressed={!headingUp} aria-label="North up" title="North up" onClick={() => onHeadingUp(!headingUp)}>
+            <svg viewBox="0 0 40 40" width="40" height="40" aria-hidden="true">
+              <path d="M20 5 L25 20 L20 17 L15 20 Z" className="ride-compass-north" />
+              <path d="M20 35 L15 20 L20 23 L25 20 Z" className="ride-compass-south" />
+            </svg>
+          </button>
+        )}
         {toast.text && !detourOpen && !dockOpen && !menu311 && (
           <div className="ride-toast" {...toastTimer.hold}>
             {/* Shown, not a live region: it is said through the rider's own outputs. */}

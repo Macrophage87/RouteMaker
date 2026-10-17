@@ -220,3 +220,10 @@ test("in a ride the map's scales and credits sit at the bottom left, above the b
   assert.match(ride, /<div ref=\{sheetRef\} className="ride-controls">/);
   assert.match(ride, /root\.style\.setProperty\("--ride-sheet-h", `\$\{sheet \? Math\.round\(sheet\.getBoundingClientRect\(\)\.height\) : 0\}px`\)/);
 });
+
+test("the ride's compass turns with the map, and a press switches north up and track-up (the owner, 2026-10-17)", () => {
+  const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  assert.match(map, /map\.on\("rotate", bearingVar\);/);
+  assert.match(ride, /className="ride-compass" aria-pressed=\{!headingUp\} aria-label="North up" title="North up" onClick=\{\(\) => onHeadingUp\(!headingUp\)\}/);
+  assert.match(css, /transform: rotate\(calc\(-1deg \* var\(--map-bearing, 0\)\)\);/);
+});
