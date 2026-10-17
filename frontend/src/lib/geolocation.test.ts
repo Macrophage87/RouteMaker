@@ -656,6 +656,8 @@ test("privacy: the location state reaches only the note, the hint and the circle
     // Go's Repair and Sights (v0.7.0): the nearest worked out on the device from the location Go has; the point goes nowhere.
     /const fix = here\?\.point \?\? \(goStart\.kind === "here" \? goStart\.point : null\);/,
     // A Mass Ride or Group Ride link (v0.7.0): the others on the route, shared only after the rider says yes there.
+    // Go's "you" dot (the owner, 2026-10-17): the point goes to the map's own marker, drawn on the device.
+    /const hereDot = useMemo\(\(\) => \(here \? \{ point: here\.point, headingDeg: null \} : null\), \[here\]\);/,
     /<RideGroup type=\{preset as "mass-ride" \| "group-ride"\} points=\{rideGroupPoints\} line=\{rideGroupLine\} getMap=\{getMap\} here=\{rideView\?\.rider\?\.point \?\? \(here \? here\.point : null\)\} \/>/,
   ];
   assert.ok(lines.length >= allowed.length);
@@ -667,6 +669,9 @@ test("privacy: the location state reaches only the note, the hint and the circle
   // The circle round the located point goes to the map's accuracy prop and nowhere else.
   const circleUse = /const hereCircle =|accuracy=\{riding \? rideCircle : hereCircle\}/;
   for (const line of app.split("\n").filter((l) => /\bhereCircle\b/.test(l))) assert.match(line, circleUse, line.trim());
+  // The dot goes to the map's rider marker and nowhere else.
+  const dotUse = /const hereDot =|rider=\{riding \? \(rideView\?\.rider \?\? null\) : mode === "go" \? hereDot : null\}/;
+  for (const line of app.split("\n").filter((l) => /\bhereDot\b/.test(l))) assert.match(line, dotUse, line.trim());
   assert.doesNotMatch(app, /downloadGpx\([^)]*(here|fromHere|linkNote)/);
   assert.doesNotMatch(app, /(encodePlan|linkToCopy)\([^)]*(here|fromHere|linkNote)/);
   assert.doesNotMatch(app, /\.setItem\(/, "App writes no storage itself");
