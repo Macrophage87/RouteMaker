@@ -5451,6 +5451,16 @@ rebuild that refuses to run without `agency-lts.json`. At home, in order, with `
 The beta takes it through its CD agent (docs/BETA-RUNBOOK.md: the migration and the format-10
 pre-draw are its own steps); Review is home's only.
 
+## Deploying v0.8.2
+
+No migration, no new tile format and no rebuild: closures beside the detour and the Road
+closed button, the streamlined Plan panel, bikeshare docks in every ride type, places to see
+from the widest zoom, and following an opened GPX track exactly. Deploy it as "Deploying a
+planner and front-end release" (below), `docker compose build api` then `up -d --no-deps
+--no-build api worker` and the front end, after v0.8.1 is deployed. `send-inputs.sh` now
+refuses a reference folder without `scenic.json` ("The Scenic layer (v0.8.0)", steps 1 and 2).
+The beta takes it through its CD agent.
+
 ## Deploying a planner and front-end release: rollback points and verification
 
 A release that changes the planner and the front end, with no migration and no graph, is deployed
