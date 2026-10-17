@@ -1055,6 +1055,9 @@ def plan(
         options[0]["estimated"] = False
         options[0]["text"] = _option_text(options[0])
     body["attribution"] = [*ride.get("attribution", []), gbfs.CREDIT]
+    # The standard way through a closure (v0.8.2) is a bike plan's: a share bike's ride
+    # leg sits between walks it does not carry.
+    body["closure_through"] = None
     if body.get("avoid_alternate"):
         # The way round an Avoid-rated junction (335) is shown in place of the ride
         # leg, so it carries the same walks and docks (its ride and totals its own)

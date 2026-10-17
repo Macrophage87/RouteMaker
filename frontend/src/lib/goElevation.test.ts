@@ -21,8 +21,10 @@ test("Go's route sheet shows the compact chart under Start, at the full sheet on
 });
 
 test("the compact chart keeps the slider and its words for a screen reader, and leaves the key and tables to Plan", () => {
-  assert.match(chart, /className=\{compact \? "pc-summary visually-hidden" : "pc-summary"\}/);
-  assert.match(chart, /aria-describedby=\{compact \? `\$\{uid\}-summary \$\{uid\}-keys` : `\$\{uid\}-keys`\}/);
+  // The summary and the keys are said, out of sight, in Plan too (Plan streamline, 2026-10-17).
+  assert.match(chart, /className="pc-summary visually-hidden"/);
+  assert.match(chart, /className="visually-hidden pc-keys"/);
+  assert.match(chart, /aria-describedby=\{`\$\{uid\}-summary \$\{uid\}-keys`\}/);
   const hidden = chart.slice(chart.indexOf("{!compact && ("));
   for (const part of ['className="pc-legend"', 'className="hint pc-source"', 'className="pc-table-fold"']) {
     assert.ok(hidden.indexOf(part) > 0 && hidden.indexOf(part) < hidden.indexOf("        </>\n      )}"), part);
