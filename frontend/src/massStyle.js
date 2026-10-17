@@ -22,8 +22,8 @@
  * The capacity is the `rpm` of the Mass Ride's own tiles (core/mass_tiles.py, source
  * MASS_SOURCE_ID), rounded down to ten, so the band edges (multiples of ten) never move.
  * Those tiles draw the roads with a capacity at every zoom the map asks for, z10-14
- * (OWNER-DECISIONS 415: the busy roads too at z12-13, where the stress tiles are the ride
- * layer), and only inside the District of Columbia (418), clipped to its boundary; the
+ * (OWNER-DECISIONS 415: the busy roads too at z12-13, which the stress tiles also draw from
+ * zoom 12 since FORMAT_VERSION 10, STRESS_ZOOMS.quiet), and only inside the District of Columbia (418), clipped to its boundary; the
  * border roads count as inside (420). A table without the column (promoted before the
  * rebuild that writes it) gives empty tiles, and nothing here draws.
  *
@@ -38,7 +38,7 @@
  *
  * Hidden in this mode, at every zoom: every stress-map layer - the LTS colours, the
  * facility rails (path, protected and painted lane), the trails and paths, the zoomed-out
- * long trails and the ride layer's calm roads (325; 417: "Mass rides should mainly only show
+ * long trails and every street from zoom 12 (325; 417: "Mass rides should mainly only show
  * capacity and federal land. Trails and PBLs aren't relevant here."; 417a: "The major trail
  * PBL etc should not be shown at any zoom in mass ride."), and the base map's path names
  * (lib/mapGlue.ts, setMassMode). A stretch marked Avoid shows only "Avoid", in its own

@@ -761,6 +761,12 @@ class TestWords:
                 "Avoid: highway-like road, posted 55 mph (89 km/h)",
             ),
             (
+                "rural expressway posted 55 mph, often no way around"
+                " (Furth: mixed traffic, 35 mph or above)",
+                "Rural highway-like road, posted 55 mph (89 km/h):"
+                " high stress, but often no way around",
+            ),
+            (
                 "motor-only classification (motorway_link)",
                 "Highway-like road for motor traffic (motorway link)",
             ),
