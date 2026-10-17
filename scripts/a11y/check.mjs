@@ -4705,6 +4705,15 @@ const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-setti
     tipAx?.name === "About announcements" && group?.info === "false" && !group.infoShown && /^Brief: the route, guidance and errors/.test(selAx?.description ?? "") && selAx?.name === "Announcements", JSON.stringify({ tipAx, selAx }));
   check("announcements: pressing the (i) shows the explanation under the line and says it is expanded",
     opened.expanded === "true" && opened.shown && /Full: also what the app is doing/.test(opened.text), JSON.stringify(opened));
+  const sizes = await p.eval("[...document.querySelectorAll('#sheet-settings .info-tip, #sheet-settings .setting-row select')].filter((e) => e.offsetParent).map((e) => { const r = e.getBoundingClientRect(); return [e.tagName, Math.round(r.width), Math.round(r.height)]; })");
+  check("settings: every (i) button and every picker in Settings is at least 44 px tall (the owner's 44 px rule), and each (i) 44 px wide",
+    sizes.length >= 6 && sizes.every(([tag, w, h]) => h >= 44 && (tag === "SELECT" || w >= 44)), JSON.stringify(sizes));
+  const ride = await p.eval("(() => { const sel = [...document.querySelectorAll('#sheet-settings .setting-row select')]; const pick = (name) => sel.find((s) => s.closest('label').querySelector('.setting-name').textContent === name); const out = pick('Say cues with'); const lvl = pick('How much to say'); return { out: out && [...out.options].map((o) => o.textContent), lvl: lvl && [...lvl.options].map((o) => o.textContent) }; })()");
+  await p.eval("(() => { const s = [...document.querySelectorAll('#sheet-settings .setting-row select')].find((x) => x.closest('label').querySelector('.setting-name').textContent === 'How much to say'); s.value = 'quiet'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()");
+  await sleep(300);
+  const rideKept = await p.eval("localStorage.getItem('routemaker.ride')");
+  check("settings: Ride mode is two pickers, Say cues with (4 choices) and How much to say (Full, Stoker, Quiet); a pick is kept as chosen",
+    ride.out?.length === 4 && JSON.stringify(ride.lvl) === JSON.stringify(["Full", "Stoker", "Quiet"]) && /"verbosity":"quiet"/.test(rideKept ?? "") && /"chosen":true/.test(rideKept ?? ""), JSON.stringify({ ride, rideKept }));
   await p.close();
 }
 {

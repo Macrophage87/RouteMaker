@@ -67,6 +67,8 @@ export function AccessibilitySwitch({
       h("span", { className: "switch-state", "aria-hidden": "true" }, on ? "On" : "Off"),
     ),
     h("p", { className: "hint", id: `${idBase}-hint`, hidden: hintHidden }, [ACCESSIBILITY_HINT, ...notes].join(" ")),
+    // Behind the (i), why the state is what it is stays in view (it is in the description too).
+    hintHidden && notes.length > 0 ? h("p", { className: "hint a11y-state-note", "aria-hidden": "true" }, notes.join(" ")) : null,
   );
 }
 

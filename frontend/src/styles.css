@@ -6644,7 +6644,7 @@ details.fold > summary .icon {
 .setting-row .switch {
   min-height: 44px;
 }
-.select-setting {
+.setting-row .select-setting {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -6652,10 +6652,10 @@ details.fold > summary .icon {
   min-width: 0;
   font-weight: 600;
 }
-.select-setting .setting-name {
+.setting-row .select-setting .setting-name {
   flex: 0 0 auto;
 }
-.select-setting select {
+.setting-row .select-setting select {
   flex: 0 1 13rem;
   min-width: 0;
   margin-left: auto;
@@ -6665,7 +6665,7 @@ details.fold > summary .icon {
   font-weight: normal;
   color: var(--text);
   background: var(--bg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--swatch-border);
   border-radius: 8px;
 }
 .info-tip {
@@ -6712,6 +6712,9 @@ details.fold > summary .icon {
   grid-row: 2;
   grid-column: 1 / -1;
   margin: 4px 0 8px;
+}
+.contrast-row .a11y-setting .a11y-state-note {
+  grid-row: 3;
 }
 .contrast-row .a11y-setting .hint[hidden] {
   display: none;
