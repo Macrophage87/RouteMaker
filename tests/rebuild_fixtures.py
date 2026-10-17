@@ -1171,6 +1171,8 @@ def build_contraflow_extract(path: Path) -> None:
                 {
                     "cycleway:left": "opposite_lane",
                     "highway": "residential",
+                    # A bare number, which the rebuild writes as mph (review RL-5).
+                    "maxspeed": "25",
                     "name": "Two Way Street Northwest",
                     "oneway:bicycle": "no",
                 },

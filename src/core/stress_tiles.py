@@ -103,6 +103,7 @@ from pipeline.schema import (
     CALM_RUN_COLUMN,
     CAR_FREE_COLUMN,
     FACILITY_COLUMN,
+    FACILITY_SHOWN_COLUMN,
     MAP_CLASS_COLUMN,
     MASS_WIDTH_COLUMN,
     MOTOR_ONLY_RULE,
@@ -111,6 +112,7 @@ from pipeline.schema import (
     MTB_ONLY_COLUMN,
     ROADSIDE_COLUMN,
     ROUGH_COLUMN,
+    SCENIC_COLUMN,
     SEPARATE_BIKEWAY_COLUMN,
     STRESS_HALF_COLUMN,
     TRAIL_BRIDGE_COLUMN,
@@ -351,6 +353,17 @@ OPTIONAL_PROPERTIES = {
     # and, from z15, a dash in the next level's base colour over it (stressStyle.js,
     # `halfStepLayers`).
     "half": STRESS_HALF_COLUMN,
+    # v0.8.0's Scenic layer (the owner, 2026-10-16: "Basically looking for a scenic layer in
+    # general. Off by default."): true on a way with a scenic designation (a rustic road, a
+    # scenic byway, the East Coast Greenway or a US Bicycle Route, a covered bridge), or left
+    # out. Only the flag: the words are the road panel's (`core.segment_info`), and the map
+    # draws a thin casing outside the stress line where it is set (frontend/src/lib/scenicLayer.ts).
+    "scenic": SCENIC_COLUMN,
+    # A lane against a one-way's traffic only (the review of 17f69082): true, or left
+    # out. Where the column is there, `facility` is the class shown
+    # (`routemaker.facility.shown_facility`), so such a lane draws as a lane; the
+    # tier and the routing price stay on the rider with the traffic.
+    "contraflow": FACILITY_SHOWN_COLUMN,
 }
 
 # The tile property `rpm` is rounded down to a multiple of this (OPTIONAL_EXPRESSIONS).
@@ -380,6 +393,8 @@ OPTIONAL_EXPRESSIONS = {
     "rough": f"NULLIF(s.{ROUGH_COLUMN}, false)",
     "roadside": f"NULLIF(s.{ROADSIDE_COLUMN}, false)",
     "half": f"NULLIF(s.{STRESS_HALF_COLUMN}, false)",
+    "scenic": f"CASE WHEN s.{SCENIC_COLUMN} IS NOT NULL THEN true END",
+    "contraflow": f"CASE WHEN s.{FACILITY_SHOWN_COLUMN} IS NOT NULL THEN true END",
     # `rpm`: the Mass Ride capacity, riders a minute, rounded DOWN to a multiple of
     # RPM_STEP. The Mass Ride bands (60, 120, 200) are multiples of it, so a
     # feature never moves band; and the zoomed-out levels, which collect every
@@ -478,6 +493,8 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = 
             carried[name] = OPTIONAL_EXPRESSIONS.get(name, f"s.{column}")
         elif name in FALLBACKS:
             carried[name] = FALLBACKS[name]
+    if FACILITY_SHOWN_COLUMN in optional and FACILITY_COLUMN in optional:
+        carried["facility"] = f"COALESCE(s.{FACILITY_SHOWN_COLUMN}, s.{FACILITY_COLUMN})"
     has_facility = FACILITY_COLUMN in optional
     has_car_free = CAR_FREE_COLUMN in optional
     if level.predicate is not None:
@@ -614,6 +631,10 @@ ETAG_LETTERS = {
     MTB_LEVEL_COLUMN: "d",
     # `n` for the mountain-bike trail's name.
     MTB_NAME_COLUMN: "n",
+    # `v` for a view: `s` is the separate bikeway's.
+    SCENIC_COLUMN: "v",
+    # `a` for against the traffic: the class shown on a contraflow-only lane.
+    FACILITY_SHOWN_COLUMN: "a",
 }
 
 
@@ -625,14 +646,14 @@ def etag_for(oid: int, optional: frozenset[str] = frozenset(), generation: int =
     # optional columns are in it because a column added to the live table in
     # place (the facility, by hand) changes the tiles but not the table's oid.
     # Each column by a letter of its own, so the tag fits the cache's 64-character
-    # key with all of them (a `+` and one letter each, fifteen in all: `W/"stress-` and a
-    # ten-digit oid, `+` and fifteen letters, `-v8"`, 40 characters), in the order of the
+    # key with all of them (a `+` and one letter each, sixteen in all: `W/"stress-` and a
+    # ten-digit oid, `+` and sixteen letters, `-v8"`, 41 characters), in the order of the
     # column names.
     carried = "".join(ETAG_LETTERS[column] for column in sorted(optional))
     # And the table's edit generation (`core.stress_edits`), once it has had one: an edit
     # updates rows in place, which changes the tiles and not the oid, so without it a
     # browser's revalidation would be answered 304 for the old tile. `-e` and up to six
-    # digits makes the longest tag 48 characters, inside the cache's 64.
+    # digits makes the longest tag 49 characters, inside the cache's 64.
     edited = f"-e{generation}" if generation else ""
     return f'W/"stress-{oid}{"+" + carried if carried else ""}{edited}-v{FORMAT_VERSION}"'
 

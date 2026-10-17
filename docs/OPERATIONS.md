@@ -1299,11 +1299,12 @@ the same whatever the style decides):
   "Keep it faint if it parallels a protected bike path.", 78);
 - only a road (`segment.map_class = 'road'`) is drawn at all. A public road a
   bicycle may not use (`'barred'`: a motorway, a trunk road with
-  `bicycle=no` such as the George Washington Parkway, `motorroad=yes`,
-  `bicycle=use_sidepath`) is left to the base map, unmarked ("You can just
+  `bicycle=no` such as the George Washington Parkway, `motorroad=yes`) is left
+  to the base map, unmarked ("You can just
   leave the public roads where bikes aren't allowed as unmarked, using the base
   map", OWNER-DECISIONS 89, which replaced 73's white line); "legal but avoid"
-  (US 340) is a road and keeps its colour. A way no typical rider could use
+  (US 340, and `bicycle=use_sidepath`: legal, Avoid where a side path is mapped
+  beside it, review RL-1) is a road and keeps its colour. A way no typical rider could use
   (`'hidden'`) is not drawn either:
   - no road or path at all: BWI's terminal hallways (`highway=corridor` +
     `indoor=yes`), any `indoor` way, an elevator, a platform, a road or trail
@@ -3151,8 +3152,10 @@ in `routing.ATTRIBUTION` and `VOLUME_CREDITS`:
   together**: deleting the rows does not make the credit wrong for the graph
   until the next rebuild, but a rebuild without them should drop the line.
 
-Arlington's Bike Comfort Index and Alexandria's Transport Streets are internal
-comparison only and are never credited because nothing of them is published.
+Arlington's Bike Comfort Index is internal comparison only and is never
+credited because nothing of it is published. Alexandria's Transport Streets was
+too until 2026-10-16 (CC0, the city's OpenData portal); it is credited "City of
+Alexandria" (docs/SOURCES.md).
 
 DDOT's Central Business District boundary (Open Data DC, CC BY 4.0), which
 decides the sidewalks bicycles may not ride (`routemaker.cbd`, OWNER-DECISIONS
@@ -3789,11 +3792,32 @@ the first host to run it is the first test of it.
    **Optional, the agency street layers.** Add `--roadway-block
    /data/reference/inputs/dc-roadway-block/dc-roadway-block.geojson
    --baltimore-centerline
-   /data/reference/inputs/baltimore-street-centerline/baltimore-street-centerline.geojson`
+   /data/reference/inputs/baltimore-street-centerline/baltimore-street-centerline.geojson
+   --alexandria-streets
+   /data/reference/inputs/alexandria-transport-streets/alexandria-transport-streets.geojson`
    to the same command to write `reference/roadway.json`: DC's and Baltimore's
    own posted speeds, lanes by direction, one-way streets, bike lanes and
    parking, which then take precedence over OSM's tags at the rebuild's
-   classification (docs/DEVELOPMENT.md, "Agency street layers"). The files are
+   classification (docs/DEVELOPMENT.md, "Agency street layers"), and
+   Alexandria's recorded speeds, which replace OSM's (PLAN.md item 183; CC0, the
+   city's OpenData portal). The Alexandria file was kept under
+   `internal-only/` until the city's reply of 2026-10-16, and the installer
+   refuses any path under that directory, so move it once, before the first
+   install that names it, into the inputs folder beside the other street layers
+   and check it is the file recorded in `fixtures/datasets/README.md`:
+
+   ```sh
+   export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
+   mkdir -p "$DATA_ROOT/reference/inputs/alexandria-transport-streets"
+   mv ~/rmdata/datasets/internal-only/alexandria-transport-streets/* \
+      "$DATA_ROOT/reference/inputs/alexandria-transport-streets/"
+   rmdir ~/rmdata/datasets/internal-only/alexandria-transport-streets
+   echo "5e8f8765cb368243cf9a231cc858f4951840050b9022222ec66c1e7306c8f1f0  $DATA_ROOT/reference/inputs/alexandria-transport-streets/alexandria-transport-streets.geojson" \
+      | sha256sum -c -
+   ```
+
+   `sha256sum -c` must print `OK`; if it does not, stop and refetch with
+   `scripts/fetch_agency_layer.py` (the owner's go, a new `--out-dir`). The files are
    fetched once with `scripts/fetch_agency_layer.py`, which refuses to fetch a
    layer twice, with the owner's go for each download. Without `roadway.json`
    the rebuild runs as before and logs `roadway.json is absent`; with it the
@@ -4387,6 +4411,19 @@ failure to write one is a warning in the log and never fails the rebuild.
   the window (ways and length), whether a volume gate lay between them, and the
   link's tier against the tier on the agency's count. The log line is "AADT
   smoothing (400 m, ...): N of M counts replaced".
+- `use-sidepath-no-path.csv` (review RL-1; the owner, 2026-10-16): every road tagged
+  `bicycle=use_sidepath` with no side path mapped beside it (way id, name, OSM's
+  `tiger:county`, state). Such a road is rated on its own merits, not Avoid; each row
+  is a likely tagging error to review. The log line is "bicycle=use_sidepath roads: N
+  with a side path beside them (Avoid), M with none found".
+- `painted-lane-agency-vs-formula.csv` (review RL-3; the owner, 2026-10-16): every road
+  with a painted lane on a two-way street with 2 or more lanes each way (the formula's
+  LTS 3 floor) in the District or rated by DDOT or Montgomery, with the agency's level
+  beside the formula's (way id, name, state, scope, agency, agency level, formula level
+  and rule, whether they differ). The agency's level is the one the map uses. Virginia's
+  such roads are listed with scope `comparison` and the formula's level alone: Review's
+  "Painted lanes" list puts Arlington's level beside them from the admin-only pending file,
+  so Arlington's ratings never reach the report.
 - `named-corridors.md` (284-286, 294-296; and Connecticut Ave NW, 409, 411): every way an entry of
   `fixtures/corridors/` took, its tier before and after, the exempt ones and why,
   and any entry that matched no way (also a warning in the log: the extract's
@@ -4649,6 +4686,114 @@ graph built without it; steps 1 to 3 are for that rebuild.
    **Rolling it back** without a code change: remove `reference/pavement.json` and
    rebuild; every street then keeps OSM's reading, and the log says the file is
    absent.
+
+## The Scenic layer (v0.8.0)
+
+The owner, 2026-10-16: "Name in the road panel and have as a layer. Possibly the scenic
+roads and trails layer. We could also add the east coast greenway and usbr paths to that."
+and "Basically looking for a scenic layer in general. Off by default. How about including
+covered bridges". One switch, Scenic, in Plan's Map layers after Trails and terrain, off by
+default; not in Go. It changes no stress rating and no route.
+
+What it shows, and where each comes from (docs/SOURCES.md):
+
+| Designation | Source | Needs |
+|---|---|---|
+| Rustic Road / Exceptional Rustic Road (Montgomery County) | Montgomery County Planning's Rustic Roads layer, `CLASSLABEL2` | `reference/scenic.json` (steps 1, 2) and a rebuild |
+| `<name>` Scenic Byway | MDOT SHA's Scenic Byways on MD iMAP | the same |
+| East Coast Greenway, USBR 1, 11, 50 | OSM route relations in the extract | a rebuild |
+| Covered bridges (on the way and as named dots) | OSM `bridge=covered` | a rebuild; the dots, `scripts/build_places.py` |
+| Viewpoints (small rings) | OSM `tourism=viewpoint`, named | `scripts/build_places.py` |
+
+The rebuild writes the words to `segment.scenic` (`pipeline.scenic_layer`); the stress
+tiles carry `scenic` (true) for the casing, and the road panel says the words. A table
+built before v0.8.0 has no column: the layer then draws only the dots, and the panel
+says nothing. The dots come from Places to see's file, so a `build_places.py` run (step 4)
+marks the covered bridges (`cv`); until then the bridges show as Places to see's plain
+bridges and the Scenic layer draws only the viewpoints.
+
+Left out, with the reason recorded in docs/SOURCES.md: Virginia's Rural Rustic Roads (a
+paving programme; no scenic layer found), Virginia's Byways (VDOT asks for written
+permission) and Frederick County's draft rustic roads (no licence).
+
+1. **Fetch both layers once**, from the checkout on the host (standard library only).
+   Each is open with credit; the README the script writes keeps the licence text. The
+   byways are statewide, so they are clipped to the coverage box:
+
+   ```sh
+   export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
+   python3 scripts/fetch_agency_layer.py --slug moco-rustic-roads \
+       --item 0aa34f13d8fb4e4c9500e363ad5a4e07 \
+       --layer https://montgomeryplans.org/server/rest/services/Overlays/Rustic_Roads/MapServer/1 \
+       --out-dir ~/rmdata/datasets --credit "Montgomery County Planning"
+   python3 scripts/fetch_agency_layer.py --slug md-scenic-byways \
+       --item dc571b56e48a4f4292986c97a119e88a \
+       --layer https://services.arcgis.com/njFNhDsUCentVYJW/arcgis/rest/services/MDOT_SHA_Scenic_Byways/FeatureServer/0 \
+       --bbox=-78.05,38.2,-76.02,39.72 \
+       --out-dir ~/rmdata/datasets --credit "MDOT SHA (Maryland iMAP)"
+   for slug in moco-rustic-roads md-scenic-byways; do
+       sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs/$slug"
+       sudo install -o 10001 -g 10001 -m 644 ~/rmdata/datasets/$slug/* \
+           "$DATA_ROOT/reference/inputs/$slug/"
+   done
+   ```
+
+   Put each README's size and sha256 into docs/SOURCES.md. The script asks for GeoJSON
+   (`f=geojson`); if a server refuses it, the run fails with the server's error and
+   nothing is stored. Neither layer's field names could be read from the cloud build:
+   open one record of each and check `CLASSLABEL2` and a road name are in the rustic
+   roads (the name is one of `routemaker.scenic.ROAD_NAME_FIELDS`, else step 2 takes
+   `--rustic-name-field <field>`; a layer with no road name is refused, as the name keeps a
+   record off a parallel street), and the byway's name is in one of `BYWAY_NAME`,
+   `Byway_Name`, `BywayName`, `BYWAY`, `Byway`, `NAME`, `Name`
+   (`routemaker.scenic.BYWAY_NAME_FIELDS`), else step 2 takes `--byway-name-field <field>`.
+
+   **Confirm the route relations on the extract** before the first v0.8.0 rebuild: the ids
+   in docs/SOURCES.md (USBR 1 3022887, USBR 11 12126554, USBR 50 2532740, the Greenway
+   1774795) are from the sources note, not read from an extract here. With osmium on the
+   host, `osmium getid -r -t "$DATA_ROOT/extracts/source.osm.pbf" r3022887 r12126554
+   r2532740 r1774795 -f opl | grep '^r'` should print four relations; check each one's
+   `network`, `cycle_network`, `ref` and `name` match a form `routemaker.scenic.usbr_number`
+   reads (`ref="USBR N"`; a bare `ref=N` with `network=ncn` and `cycle_network` `US:US` or
+   `US`; or a name "U.S. Bicycle Route N"). The Greenway is matched by its id or a name
+   starting "East Coast Greenway", never as a USBR.
+
+2. **Install them**, both in one run (the file is written whole, so a run with one flag
+   drops the other's lines):
+
+   ```sh
+   docker compose exec -T rebuild python3 scripts/install_reference_data.py \
+       --data-root /data \
+       --rustic-roads /data/reference/inputs/moco-rustic-roads/moco-rustic-roads.geojson \
+       --scenic-byways /data/reference/inputs/md-scenic-byways/md-scenic-byways.geojson
+   ```
+
+   It prints `N scenic lines, N records left out` a layer and `wrote .../scenic.json`. A
+   rustic road record is left out only when its `CLASSLABEL2` is neither kind; a byway
+   one when it has no name or no line. A byway layer with no name field is refused with
+   the flag to use.
+
+3. **After the rebuild**, read the log:
+
+   | Line | What to look for |
+   |---|---|
+   | `scenic designations: moco-rustic, N of M records matched, N ways` | most records matched (the county's rustic roads lie mostly in the Agricultural Reserve) |
+   | `scenic designations: md-byways, N of M records matched, N ways` | most matched; a byway record along a trail matches nothing (trails are never candidates), and only trunk, primary, secondary, tertiary and unclassified roads with 70% or more of their length along a record take one (`pipeline.scenic_layer.BYWAY_HIGHWAYS`, `BYWAY_MIN_COVERAGE`) |
+   | `scenic ways (designated, covered bridges, scenic routes): N` | thousands, most of them the C&O towpath (USBR 50) and the Greenway |
+   | `.../scenic.json is absent, so no agency scenic designation is read` | should not appear once step 2 has run |
+
+   Then right-click roads you know in Plan (a rustic road in the Agricultural Reserve,
+   the C&O towpath, and Roddy Road's covered bridge in Frederick County if OSM maps it as
+   `bridge=covered`, which was not checked) and read the Scenic row; turn the layer on and
+   check the teal lines sit outside the stress colour.
+
+4. **The dots**: run `scripts/build_places.py` with the rebuild's extract, as for
+   Places to see (frontend/src/amenity-data/README.md), and deploy the front end. A
+   covered bridge is named by its `bridge:name` where it has one.
+
+**Rolling it back** without a code change: remove `reference/scenic.json` and rebuild; the
+layer then has the OSM designations only. The switch itself is the rider's; there is no
+server flag, and a layer nobody turns on draws nothing.
 
 ## Deployment actions
 
@@ -6774,3 +6919,31 @@ the other scripts (tests/test_cloud_launch.py; its first real run is the first t
 meets EC2 and SSM), and the command against a real PostGIS
 (tests/test_import_cloud_build.py). The first run on the box is the first real one, so
 keep its log and read the dry run before `--swap`.
+
+## Phone app (v0.8.0)
+
+The Android app in `mobile/` names no site in any build: the repository is public, and so are its
+Actions artifacts, so a server's address must not be in one. On first launch the app asks for the
+site's address (https only), checks it against `/healthz`, and keeps it in the app's preferences on
+that phone; touching and holding the app's icon and choosing "Site address", or clearing the app's
+storage in Android's settings, asks again. On the beta, the app then shows its own sign-in box for the
+basic-auth password, which it hands to the WebView for that run and never stores. `ROUTEMAKER_URL`
+builds an address in for a local build only; it is never set in CI, and the workflow fails if the
+synced config names a site.
+
+Builds: Actions, "Android app" (`.github/workflows/android.yml`). A pull request that touches
+`mobile/` or the workflow runs the app's tests and builds a debug APK (no secrets, no site address);
+by hand (`workflow_dispatch`), `debug` for a sideloaded test APK or `release` for a signed APK and
+Play bundle. The workflow uses
+no repository variables. The release key is four repository secrets the owner adds:
+`ROUTEMAKER_KEYSTORE_BASE64`, `ROUTEMAKER_KEYSTORE_PASSWORD`, `ROUTEMAKER_KEY_ALIAS`,
+`ROUTEMAKER_KEY_PASSWORD`; never a file in the repository. A Play id of the owner's own
+(`ROUTEMAKER_APP_ID`) is set in a local build. Changes under `mobile/` never trigger a beta deploy
+(`scripts/beta/cd_logic.py`).
+
+The server needs nothing for it: the WebView loads the site at its own origin, so cookies, CSRF and
+the API are a phone browser's, and Discord sign-in stays inside the app. The app works with the site
+already deployed: before v0.8.0 its compatibility layer gives the old Ride mode native location and
+voice; from v0.8.0 the site's own bridge does, with the cue notification. Deploying v0.8.0 needs no
+app rebuild. Install steps, permissions, privacy, TalkBack and what to check on a first ride:
+`mobile/README.md`. iOS can be added later from the same shell.
