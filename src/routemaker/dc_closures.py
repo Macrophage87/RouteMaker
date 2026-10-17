@@ -43,6 +43,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
+from urllib.parse import urlencode
 from xml.etree import ElementTree
 
 from . import workzones as wz
@@ -216,6 +217,34 @@ class Permit:
     end: datetime | None
     street: str | None
     description: str | None
+    # This permit's own record on DC's map server (the owner, 2026-10-17: "can the link take
+    # you directly to the permit?"); TOPS itself has no public link to one permit.
+    url: str | None = None
+
+
+# DDOT's "Occupancy Permits (via DDOT TOPS)" layer, as read by core.closure_sources.
+TOPS_LAYER = "https://maps2.dcgis.dc.gov/dcgis/rest/services/DDOT/TOPS/MapServer/1"
+_ID_FIELDS = ("PERMITNUMBER", "PERMIT_NUMBER", "TRACKINGNUMBER")
+
+
+def permit_url(field: str | None, value) -> str:
+    """The permit's record on the TOPS layer, as a page: by its number where the answer
+    named the field, else by its object id."""
+    if field is None:
+        query = {"objectIds": str(value)}
+    else:
+        quoted = str(value).replace("'", "''")
+        query = {"where": f"{field}='{quoted}'"}
+    return f"{TOPS_LAYER}/query?{urlencode({**query, 'outFields': '*', 'f': 'html'})}"
+
+
+def _field_name(attributes: Mapping, *names: str) -> str | None:
+    """The answer's own spelling of the first of `names` it has a value for, case-blind."""
+    for name in names:
+        for key, value in attributes.items():
+            if str(key).lower() == name.lower() and value not in (None, ""):
+                return str(key)
+    return None
 
 
 def _field(attributes: Mapping, *names: str):
@@ -319,6 +348,7 @@ def parse_permits(document: Mapping, now: datetime) -> list[Permit]:
         ) or feature.get("id")
         if permit_id is None:
             continue
+        id_field = _field_name(attributes, *_ID_FIELDS)
         start = _tops_date(_field(attributes, "EFFECTIVEDATE", "ISSUEDDATE", "ISSUED_DATE"))
         street = _field(
             attributes, "STREETNAME", "STREET_NAME", "FULLSTREETNAME", "STNAME", "STREET"
@@ -334,6 +364,7 @@ def parse_permits(document: Mapping, now: datetime) -> list[Permit]:
                 end=end,
                 street=_tidy(str(street)) if street else None,
                 description=_tidy(str(description))[:200] if description else None,
+                url=permit_url(id_field, permit_id),
             )
         )
     return permits
@@ -357,7 +388,7 @@ def permit_zone(permit: Permit, line: Sequence[Sequence[float]]) -> wz.Zone:
         end=permit.end,
         reason="road closed by a DDOT permit" if closed else "bike lane blocked by a DDOT permit",
         title=f"{title} (permit {permit.permit_id})",
-        url=wz.SOURCE_LINKS["dc"],
+        url=permit.url or wz.SOURCE_LINKS["dc"],
     )
 
 

@@ -105,5 +105,6 @@ test("RIDE-5: the outcome of a re-plan the rider asked for is answered at every 
   // The page: Re-plan from here asks; the automatic re-plans do not.
   assert.match(ride, /async \(here: LonLat, via\?: LonLat, asked = false\) => \{/);
   assert.match(ride, /const told = replanTold\(asked, prefsRef\.current\.verbosity, note\);/);
-  assert.equal(ride.match(/void replan\([^)]*\)\)?;/g)?.filter((call) => call.includes("true")).length, 1);
+  // Re-plan from here, and Road closed (v0.8.2).
+  assert.equal(ride.match(/void replan\([^)]*\)\)?;/g)?.filter((call) => call.includes("true")).length, 2);
 });

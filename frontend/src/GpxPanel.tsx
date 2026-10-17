@@ -5,7 +5,17 @@ import type { LonLat } from "./lib/geo.ts";
 import { writeGpx } from "./lib/gpx.ts";
 import { REFINE_ROUNDS, nextFitStep, prunedCount, startFit, type Fit, type ImportedPlan } from "./lib/gpxPlan.ts";
 import { gpxWorker, importGpx } from "./lib/gpxImport.ts";
-import { exportFileName, exportOf, fidelityNotice, importSentences, presetNotice, prunedNotice } from "./lib/gpxText.ts";
+import {
+  againstTrafficNotice,
+  exportFileName,
+  exportOf,
+  fidelityNotice,
+  FOLLOW_EXACT_HINT,
+  FOLLOW_EXACT_SAID,
+  importSentences,
+  presetNotice,
+  prunedNotice,
+} from "./lib/gpxText.ts";
 import { showReference, showWaypoints } from "./lib/referenceLayer.ts";
 import { MATCHING_SAID, MATCH_ACTION, MATCH_HINT, fitLine, matchFailedSaid, matchTrack, matchedPlan, matchedSaid, type MatchRide } from "./lib/gpxMatch.ts";
 import { VIA_MARKS, viaIndices } from "./lib/pointKinds.ts";
@@ -57,7 +67,15 @@ interface Props {
    * Plan only: snap an opened track to the map's ways (lib/gpxMatch.ts) on the ride type now chosen, and open
    * the plan that follows the snapped line (`onMatched`, one edit). Without it (Go) the action is not offered.
    */
-  match?: MatchRide & { onMatched: (plan: ImportedPlan) => void };
+  match?: MatchRide & {
+    onMatched: (plan: ImportedPlan) => void;
+    /**
+     * "Follow the file exactly" (Stephen 2026-10-17, a road the police close for a parade): an opened file not edited
+     * since is followed as ridden, rules or not (core/follow.py EXACT). Given only while it is not edited.
+     */
+    exact?: boolean;
+    onExact?: (on: boolean) => void;
+  };
 }
 
 function samePoints(a: readonly LonLat[], b: readonly LonLat[]): boolean {
@@ -302,6 +320,11 @@ export function GpxPanel(props: Props) {
       return;
     }
     if (!route || !samePoints(routedPoints, fit.points)) return;
+    // The route is the file's own line (core/follow.py): there is nothing to fit.
+    if (route.follows_file) {
+      setFit(null);
+      return;
+    }
     // Fitted to the snapped line once the track is snapped, else to the file's own.
     const next = nextFitStep(fitLine(imported), fit, route.geometry.coordinates, route.leg_ends);
     if (!next) {
@@ -334,7 +357,8 @@ export function GpxPanel(props: Props) {
   const [snapping, setSnapping] = useState<{ kind: "running" } | { kind: "failed"; text: string } | null>(null);
   // Another file (its own text and line): the last one's line goes. The snapped plan keeps the file's.
   useEffect(() => setSnapping(null), [imported?.verbatim]);
-  const snappable = snap && imported?.source === "track" && imported.reference.length >= 2 && !imported.matched;
+  // Not while the route follows the file's line: that is already snapped to the map's ways (core/follow.py).
+  const snappable = snap && imported?.source === "track" && imported.reference.length >= 2 && !imported.matched && !route?.follows_file;
   const snapTrack = async () => {
     if (!snap || !imported || snapping?.kind === "running") return;
     const file = imported;
@@ -359,7 +383,7 @@ export function GpxPanel(props: Props) {
 
   const match = useMemo(() => {
     if (!imported || imported.reference.length < 2 || !route || fit) return null;
-    return fidelityNotice(fidelity(imported.reference, route.geometry.coordinates));
+    return fidelityNotice(fidelity(imported.reference, route.geometry.coordinates), route.follows_file ? route.preset : undefined, route.follows_exactly === true);
   }, [imported, route, fit]);
 
   const open = async (file: File) => {
@@ -514,6 +538,9 @@ export function GpxPanel(props: Props) {
               <p className="hint gpx-pruned">{prunedNotice(pruned.count)}</p>
             )}
             {match && <p className={match.warn ? "notice gpx-deviation" : "hint gpx-fidelity"}>{match.text}</p>}
+            {match && route?.follows_file && againstTrafficNotice(route.against_traffic, route.follows_exactly === true) && (
+              <p className="notice gpx-against">{againstTrafficNotice(route.against_traffic, route.follows_exactly === true)}</p>
+            )}
             {snapping?.kind === "running" && <p className="loading gpx-snapping">{MATCHING_SAID}</p>}
             {snapping?.kind === "failed" && <p className="notice gpx-snap-failed">{snapping.text}</p>}
             {imported.matched && <p className="hint gpx-snapped">{matchedSaid(imported.matched)}</p>}
@@ -525,6 +552,16 @@ export function GpxPanel(props: Props) {
           <input ref={trackSwitchRef} type="checkbox" checked={showTrack} onChange={(event) => setShowTrack(event.target.checked)} />
           Show the file's track on the map
         </label>
+      )}
+      {/* Offered only where the route parts from the file (or once on), so a file that follows cleanly shows nothing more. */}
+      {snap?.onExact && imported && imported.reference.length >= 2 && (snap.exact || match?.warn || (route?.against_traffic?.length ?? 0) > 0) && (
+        <>
+          <label className="toggle">
+            <input type="checkbox" checked={snap.exact === true} onChange={(event) => snap.onExact?.(event.target.checked)} />
+            {FOLLOW_EXACT_SAID}
+          </label>
+          {snap.exact && <p className="hint gpx-exact">{FOLLOW_EXACT_HINT}</p>}
+        </>
       )}
       {snappable && (
         <div className="actions gpx-snap">

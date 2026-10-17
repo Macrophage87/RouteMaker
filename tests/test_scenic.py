@@ -198,6 +198,14 @@ def test_a_rustic_layer_with_no_road_name_is_refused():
     assert rows[0]["name"] == "Mill Road"
 
 
+def test_the_rustic_layer_names_its_roads_in_localroadname():
+    """Montgomery Planning's Rustic Roads layer as downloaded, 2026-10-17."""
+    rows, _ = scenic.rustic_rows(
+        _collection(_feature(1, LINE, CLASSLABEL2="Rustic Road", LOCALROADNAME="Mount Nebo Rd"))
+    )
+    assert rows[0]["name"] == "Mount Nebo Rd"
+
+
 def test_a_byway_layer_with_no_name_field_is_refused():
     with pytest.raises(scenic.LayerUnreadable, match="--byway-name-field"):
         scenic.byway_rows(_collection(_feature(1, LINE, LABEL="Mountain Maryland")))

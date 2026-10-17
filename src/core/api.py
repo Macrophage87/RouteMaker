@@ -90,6 +90,7 @@ from . import (
     audit,
     bikeshare,
     climbprofile,
+    follow,
     gbfs,
     geocode,
     map_match,
@@ -116,6 +117,9 @@ logger = logging.getLogger(__name__)
 # thousand times what this endpoint can use and all of it parsed before the
 # point count is checked.
 MAX_BODY_BYTES = 8 * 1024
+# A route request may also carry an opened file's line to follow (`RouteIn.follow`): its
+# encoded text, every character of which JSON may escape as two.
+ROUTE_MAX_BODY_BYTES = MAX_BODY_BYTES + 2 * follow.MAX_CHARS
 
 MIN_POINTS = 2
 MAX_POINTS = 25
@@ -312,6 +316,15 @@ class RouteIn(Schema):
             " each is marked `bypassed` on the answer. Never remembered by the server."
         ),
     )
+    blocked_lines: list[Annotated[list[LonLat], Field(min_length=2, max_length=50)]] = Field(
+        default_factory=list,
+        max_length=10,
+        description=(
+            'v0.8.2, Ride\'s "Road closed" button: stretches of road the rider found closed on'
+            " this ride, each a line of [lon, lat] pairs, left out of the plan as a closure is."
+            " Sent with the ride's re-plans only; never remembered by the server."
+        ),
+    )
     loop: StrictBool = Field(
         default=False,
         description=(
@@ -453,6 +466,31 @@ class RouteIn(Schema):
             " as before."
         ),
     )
+    follow: str | None = Field(
+        default=None,
+        min_length=2,
+        max_length=follow.MAX_CHARS,
+        description=(
+            "An opened file's line to follow exactly, encoded as Valhalla's polyline at precision"
+            f" 6: at most {follow.MAX_POINTS:,} points inside the coverage area and 124 mi (200"
+            " km) long. The route is then the router's match of that line on the ride type's"
+            " graph, split into legs at `points` (each at the line's nearest vertex), with no"
+            " search beside it; where the ride type cannot ride the line, the router's own way"
+            " joins the parts it can (`follows_file`). Ignored on a loop and the two-point ride"
+            " types. A line past those limits, or that matches no way at all, is planned"
+            " through `points` instead. Where the line breaks the ride type's rules the route"
+            " keeps to them and goes round, unless `follow_exact`."
+        ),
+    )
+    follow_exact: bool = Field(
+        default=False,
+        description=(
+            "The manual mode of `follow`: the line is followed as ridden, against one-way"
+            " traffic, through restricted turns and along ways closed to bicycles (a road the"
+            " police close for a parade). False (the default): the route keeps to the ride"
+            " type's rules and goes round where the line breaks them. Ignored without `follow`."
+        ),
+    )
 
     @field_validator("preset", mode="before")
     @classmethod
@@ -559,6 +597,19 @@ class RouteIn(Schema):
         if span_m(points) > MAX_SPAN_M:
             raise ValueError(too_long())
         return points
+
+    @field_validator("follow")
+    @classmethod
+    def followable(cls, encoded: str | None) -> str | None:
+        # Only text that is no line at all is refused; a line that cannot be followed (too
+        # long, too many points, partly outside the area) is planned through `points`
+        # instead (`_follow_line`), as a route always was.
+        if encoded is not None:
+            try:
+                routing.decode_polyline6(encoded)
+            except (IndexError, ValueError, TypeError):
+                raise ValueError("follow is not a line encoded at precision 6") from None
+        return encoded
 
 
 def span_m(points: list[list[float]]) -> float:
@@ -1243,6 +1294,14 @@ class DescriptionEntryOut(Schema):
         ),
     )
     text: str
+    citation: str | None = Field(
+        default=None,
+        description=(
+            'On a "workzone": its source and until when ("Source: DDOT permits, until'
+            ' Nov 14."), shown in small text under `text` and never read out (v0.8.2);'
+            " null elsewhere."
+        ),
+    )
     text_lanes_hidden: str | None = Field(
         default=None,
         description=(
@@ -2092,6 +2151,17 @@ class AvoidAlternateOut(RouteBody):
     )
 
 
+class ClosureThroughOut(RouteBody):
+    """The standard way through the closures the answer goes round (v0.8.2): a whole route
+    body of its own, drawn beside the answer, which Ride follows where the rider takes it."""
+
+    extra_distance_m: float = Field(description="How much longer than the answer, metres.")
+    extra_duration_s: float = Field(description="How much longer than the answer, seconds.")
+    closure_ids: list[str] = Field(
+        description="The closures (`work_zones.closures[].id`) it goes through."
+    )
+
+
 class TransitStepLiveOut(Schema):
     text: str = Field(description='"Live: Red Line toward Shady Grove in 3 min, 11 min."')
     minutes: list[int]
@@ -2282,7 +2352,36 @@ class NoviceOut(Schema):
     )
 
 
+class AgainstTrafficOut(Schema):
+    name: str | None = Field(description="The street's name; null where it has none.")
+    distance_m: float = Field(description="How far the file rides against its traffic, metres.")
+
+
 class RouteOut(RouteBody):
+    follows_file: bool = Field(
+        default=False,
+        description=(
+            "True where the route is the match of the request's `follow` line rather than a"
+            " plan through its points; false on every other route, and where a `follow` line"
+            " matched no way and the route was planned through the points instead."
+        ),
+    )
+    against_traffic: list[AgainstTrafficOut] | None = Field(
+        default=None,
+        description=(
+            "On a route that follows a file (`follows_file`): the stretches where the file rides"
+            " against one-way traffic, in order, which the route goes round (or follows as the"
+            " file goes, `follows_exactly`); empty where there are none, null on every other"
+            " route and where it could not be read."
+        ),
+    )
+    follows_exactly: bool = Field(
+        default=False,
+        description=(
+            "True where the route follows the file in the manual mode (`follow_exact`), rules"
+            " or not; false on every other route."
+        ),
+    )
     provisional: bool = Field(
         default=False,
         description=(
@@ -2304,6 +2403,14 @@ class RouteOut(RouteBody):
         description=(
             "Where the answer still passes an Avoid-rated junction (335): the best route that"
             " avoids it, to offer as an alternate; null otherwise."
+        ),
+    )
+    closure_through: ClosureThroughOut | None = Field(
+        default=None,
+        description=(
+            "Where the answer goes round closures that would otherwise be on it (v0.8.2): the"
+            " standard way through them, since a closure marked may not really be closed; null"
+            " otherwise."
         ),
     )
     bikeshare: BikesharePlanOut | None = Field(
@@ -2444,8 +2551,23 @@ def errors_as_json(view):
     return wrapped
 
 
+def json_body_up_to(limit: int):
+    """`json_body_only` with a larger ceiling for the body (POST /api/route's, which may
+    carry a line to follow)."""
+
+    def decorator(view):
+        return _json_body_only(view, limit)
+
+    return decorator
+
+
 def json_body_only(view):
-    """Refuse a non-JSON or oversized body before anything counts or parses it.
+    """Refuse a non-JSON or oversized body before anything counts or parses it."""
+    return _json_body_only(view, None)
+
+
+def _json_body_only(view, limit: int | None):
+    """`json_body_only`, the body at most `limit` bytes (None: MAX_BODY_BYTES).
 
     Requiring `application/json` also means a cross-site page cannot fire this
     endpoint from a plain form or `text/plain` fetch: a JSON content type is
@@ -2465,8 +2587,9 @@ def json_body_only(view):
         # The declared length is the whole check: under WSGI Django reads at
         # most CONTENT_LENGTH bytes of the body, so a body longer than it
         # declares is never seen, and gunicorn refuses one with no length.
-        if declared > MAX_BODY_BYTES:
-            return _error(400, f"the body is larger than {MAX_BODY_BYTES} bytes")
+        most = MAX_BODY_BYTES if limit is None else limit
+        if declared > most:
+            return _error(400, f"the body is larger than {most} bytes")
         return view(request, *args, **kwargs)
 
     return wrapped
@@ -2492,7 +2615,7 @@ def json_body_only(view):
 @decorate_view(
     ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT),
     ratelimit.rate_limited(ratelimit.ROUTING),
-    json_body_only,
+    json_body_up_to(ROUTE_MAX_BODY_BYTES),
     errors_as_json,
 )
 def route(request, body: RouteIn, response: HttpResponse):
@@ -3016,6 +3139,7 @@ def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
         hills=profile.hills if body.hills is None else body.hills,
         when=body.when,
         closure_bypass=tuple(body.closure_bypass),
+        blocked=_blocked(body),
         assist=profile.assist,
         avoid_gravel=body.avoid_gravel,
         # "Keep to roads, not trails" is one switch on every ride type (463b).
@@ -3182,6 +3306,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         hills=body.hills,
         when=body.when,
         closure_bypass=tuple(body.closure_bypass),
+        blocked=_blocked(body),
         avoid_gravel=body.avoid_gravel,
         trails_off=body.trails_off,
         system_weight_kg=body.system_weight_kg,
@@ -3681,6 +3806,11 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
         return _router_refusal(error, body, long_ride or long_calm)
 
 
+def _blocked(body: RouteIn) -> tuple[tuple[tuple[float, float], ...], ...]:
+    """The roads the rider marked closed on this ride (`blocked_lines`), as the dials hold them."""
+    return tuple(tuple((p[0], p[1]) for p in line) for line in body.blocked_lines)
+
+
 def _bike_dials(body: RouteIn) -> routing.Dials:
     """The dials of a bike-only plan (not Bikeshare's nor a transit trip's), as asked."""
     return routing.Dials(
@@ -3688,6 +3818,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         hills=body.hills,
         when=body.when,
         closure_bypass=tuple(body.closure_bypass),
+        blocked=_blocked(body),
         carrying=body.carrying,
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
@@ -3699,7 +3830,21 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         mtb_level=body.mtb_level,
         mtb_preferred=body.mtb_preferred,
         vias=tuple(body.via_points),
+        follow=_follow_line(body),
+        follow_exact=body.follow_exact,
     )
+
+
+def _follow_line(body: RouteIn) -> tuple[tuple[float, float], ...] | None:
+    """The request's line to follow (`RouteIn.follow`), or None where it has none or the
+    line is not one a route can follow; the plan is then made through its points."""
+    if not body.follow:
+        return None
+    try:
+        return tuple(follow.checked_line(body.follow, settings.COVERAGE_BBOX))
+    except follow.LineProblem as problem:
+        logger.info("a line to follow was not followed: %s", problem)
+        return None
 
 
 def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_calm: bool) -> dict:
@@ -3725,15 +3870,34 @@ def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_
     if timings is not None:
         timings.note("cache", "miss" if key is not None else "off")
     failures_before = timings.failures if timings is not None else 0
-    answered = routing.plan(
-        body.points,
-        body.preset,
-        long_ride=long_ride,
-        started=started,
-        dials=dials,
-        quick=body.quick,
-        candidates=body.candidates,
-    )
+    try:
+        answered = routing.plan(
+            body.points,
+            body.preset,
+            long_ride=long_ride,
+            started=started,
+            dials=dials,
+            quick=body.quick,
+            candidates=body.candidates,
+        )
+    except (routing.NoRoute, routing.TooLong):
+        if dials.follow is None:
+            raise
+        # The line matched no way on this ride type: planned through its points instead,
+        # and the answer says it does not follow the file (`follows_file`).
+        logger.info(
+            "a followed line matched no way on %s; planning through its points", body.preset
+        )
+        dials = dataclasses.replace(dials, follow=None)
+        answered = routing.plan(
+            body.points,
+            body.preset,
+            long_ride=long_ride,
+            started=started,
+            dials=dials,
+            quick=body.quick,
+            candidates=body.candidates,
+        )
     if key is not None:
         preset = presets.PRESETS[body.preset]
         own_variant = presets.variant_for_ride(

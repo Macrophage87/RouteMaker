@@ -22,8 +22,10 @@ Level of Traffic Stress", TRR 2662, 2017, doi:10.3141/2662-04), so 1 to 4 are ta
 they are. Which attribute holds the level is not recorded in this repository: the
 reader takes the first of `DDOT_LEVEL_FIELDS` any record has, says which, and refuses
 the layer, naming its fields, where none has any of them (`--ddot-field` names
-another). 0, empty and null are no rating and are left out; a level that is not 1 to 5
-is refused, never guessed.
+another). 0, empty and null are no rating and are left out, and so is 100: 66 records
+of the 2020 layer carry it, and the owner ruled, 2026-10-17, "DDOT 100 as not rated"
+(those roads take the formula). Any other level that is not 1 to 5 is refused, never
+guessed.
 
 MDOT SHA's statewide Bicycle Level of Traffic Stress (2022; downloaded as `mdot-lts`):
 the level is `LTS_ADJUSTED`, which MDOT's methodology calls the most important
@@ -150,6 +152,8 @@ DDOT_LEVEL_FIELDS = (
 DDOT_NAME_FIELDS = ("ST_NAME", "STREETNAME", "STREET_NAME", "FULLNAME", "ROUTENAME", "NAME")
 # DDOT rates on Mekuria-Furth's four levels; a 5 is taken as Avoid like any agency's.
 DDOT_LEVELS = {1.0: 1.0, 2.0: 2.0, 3.0: 3.0, 4.0: 4.0, 5.0: 5.0}
+# Not a level: the owner's ruling (module docstring).
+DDOT_NOT_RATED = 100.0
 
 
 def ddot(datasets: Path, dropped: Counter, field: str | None = None):
@@ -174,6 +178,9 @@ def ddot(datasets: Path, dropped: Counter, field: str | None = None):
         level = number(p.get(field))
         if level in (None, 0):
             dropped["ddot: no rating (0 or empty)"] += 1
+            continue
+        if level == DDOT_NOT_RATED:
+            dropped["ddot: not rated (100)"] += 1
             continue
         if level not in DDOT_LEVELS:
             raise SystemExit(

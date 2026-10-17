@@ -175,14 +175,22 @@ class TestAlong:
 
 
 class TestTheWords:
-    def test_us_units_first_the_source_and_the_window(self) -> None:
-        text = wz.heads_up(zones()["md-wz-closed-unknown"], 1609.344)
-        assert text.startswith(
-            "Warning: work zone ahead at 1.0 mi (1.6 km) on Sample Avenue eastbound"
+    def test_one_short_line_said_and_the_source_in_small_print(self) -> None:
+        # The owner, 2026-10-17: "the statement is way too verbose. We can cite our sources
+        # without all that extra noise." No ": " either, which Ride would cut at.
+        zone = zones()["md-wz-closed-unknown"]
+        text = wz.heads_up(zone)
+        assert text == "Sample Avenue eastbound has every lane closed ahead; bike access unclear."
+        assert wz.heads_up(zones()["md-wz-closed-bikes"]).endswith(" marked closed ahead.")
+        assert (
+            wz.citation(zone) == "Source: Maryland DOT SHA work zones (WZDx, CC0), until Nov 30."
+        )  # 00:00 UTC, in Eastern time
+
+    def test_where_the_detour_leaves_the_standard_way(self) -> None:
+        assert wz.split_words(zones()["md-wz-closed-bikes"]).endswith(
+            " marked closed. Detour posted."
         )
-        assert "does not say whether bicycles can pass" in text
-        assert "Listed until 2026-12-01 00:00 UTC." in text
-        assert text.endswith("Source: Maryland DOT SHA work zones (WZDx, CC0).")
+        assert wz.split_words(None) == "The road ahead marked closed. Detour posted."
 
     def test_a_closure_is_red_and_a_penalty_orange(self) -> None:
         z = zones()

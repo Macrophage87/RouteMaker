@@ -105,12 +105,17 @@ CONTRACT_KEYS = {
     "work_zones",
     "avoid_search",
     "avoid_alternate",
+    "closure_through",
     # Additive, TRANSIT-ASSIST (v0.6.0): null except on the two transit ride types.
     "transit",
     # Additive, v0.7.0 Novice and Nervous: null except on that ride type.
     "novice",
     # Additive, v0.7.0 "Faster routing": true only on a first route asked for with `quick`.
     "provisional",
+    # Additive, v0.8.2: true only on the match of an opened file's line sent as `follow`.
+    "follows_file",
+    "follows_exactly",
+    "against_traffic",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "5", "unknown"}
 
@@ -935,7 +940,9 @@ class TestRefusedInput:
         refused_before_the_router(client, router, "[1, 2]")
 
     def test_an_oversized_body(self, client, router) -> None:
-        body = json.dumps(good_body()) + " " * 9000
+        from core.api import ROUTE_MAX_BODY_BYTES
+
+        body = json.dumps(good_body()) + " " * ROUTE_MAX_BODY_BYTES
         refused_before_the_router(client, router, body)
 
     def test_a_body_that_is_not_json_typed(self, client, router) -> None:
@@ -2107,19 +2114,20 @@ class TestContentType:
         assert response.status_code == 200
 
     def test_a_body_of_exactly_the_limit_is_accepted(self, client, segments, router) -> None:
-        from core.api import MAX_BODY_BYTES
+        from core.api import ROUTE_MAX_BODY_BYTES
 
         router(standard_router())
         body = json.dumps(good_body())
-        body += " " * (MAX_BODY_BYTES - len(body.encode()))
-        assert len(body.encode()) == MAX_BODY_BYTES
+        body += " " * (ROUTE_MAX_BODY_BYTES - len(body.encode()))
+        assert len(body.encode()) == ROUTE_MAX_BODY_BYTES
         assert post(client, body).status_code == 200
 
     def test_one_byte_over_the_limit_is_refused(self, client, router) -> None:
-        from core.api import MAX_BODY_BYTES
+        # POST /api/route's limit, which leaves room for a line to follow (`RouteIn.follow`).
+        from core.api import ROUTE_MAX_BODY_BYTES
 
         body = json.dumps(good_body())
-        body += " " * (MAX_BODY_BYTES + 1 - len(body.encode()))
+        body += " " * (ROUTE_MAX_BODY_BYTES + 1 - len(body.encode()))
         refused_before_the_router(client, router, body)
 
 
