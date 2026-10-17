@@ -315,16 +315,24 @@ def _item(queue: str, way: int, **fields) -> ReviewItem:
     )
 
 
-def _replace(queue: str, items: list[ReviewItem], schema: str | None, build_id: str = "") -> int:
-    """The queue's rows replaced whole, their facts read from `schema`, its stretches grouped,
-    and its map written."""
+def _replace(
+    queue: str,
+    items: list[ReviewItem],
+    schema: str | None,
+    build_id: str = "",
+    router: _Router | None = None,
+) -> int:
+    """The queue's rows replaced whole, their facts read from `schema`, and its map written;
+    then, once that is committed, its stretches grouped (`group_stretches`: the router is asked
+    outside any transaction)."""
     with transaction.atomic():
         ReviewItem.objects.filter(queue=queue).delete()
         ReviewItem.objects.bulk_create(items, batch_size=2000)
         if schema:
             _fill_facts(queue, schema)
-            group_stretches(queue, schema)
         write_state(queue, build_id)
+    if schema:
+        group_stretches(queue, schema, router=router)
     return len(items)
 
 
@@ -350,7 +358,8 @@ MAJOR_CLASSES = frozenset({"motorway", "trunk", "primary", "secondary", "tertiar
 # The most ways one stretch holds (the stress editor's own stretch's), so one ruling on it is
 # always one stress edit.
 STRETCH_MAX_WAYS = stress_edits.MAX_STRETCH_WAYS
-# The most time the router may take over one queue's names and classes: past it, the table's.
+# The most time the router may take over every queue's names and classes, one deadline for all
+# of `compute_all` (or for one queue computed alone): past it, the table's.
 ROUTER_BUDGET_S = 600.0
 _STRETCH_COSTINGS = ("auto", "bicycle", "pedestrian")
 
@@ -412,8 +421,9 @@ class _Router:
 
 
 def _stretch_ends(schema: str, ways: list[int]) -> list[tuple[int, int, float, float]]:
-    """(way, way, lon, lat): two listed ways whose ends meet, and where."""
-    with connection.cursor() as cursor:
+    """(way, way, lon, lat): two listed ways whose ends meet, and where. One short transaction,
+    for its temporary table of the ends."""
+    with transaction.atomic(), connection.cursor() as cursor:
         cursor.execute("DROP TABLE IF EXISTS review_stretch_end")
         cursor.execute(
             f"""
@@ -514,13 +524,42 @@ def _joins_here(
     return True, name(a)
 
 
-def group_stretches(queue: str, schema: str, build_id: str = "") -> int:
+def group_stretches(
+    queue: str, schema: str, build_id: str = "", *, router: _Router | None = None
+) -> int:
     """Group the queue's ways into stretches (above), each listed as one row: its lead (the
     longest way) carries the stretch's ways, length, score and lines, and every way of it its
     `stretch`. Where the router names a road the queue had no name for, the name is kept.
-    Returns how many stretches of two ways or more there are."""
+    Returns how many stretches of two ways or more there are.
+
+    Called on the queue's committed rows. The reading and the router's answers are outside any
+    transaction (`_plan_stretches`); the writing is one short transaction after them, made only
+    while the queue still holds the rows planned (a computation since then is left alone)."""
     if queue not in STRETCH_QUEUES or not _table_exists(schema):
         return 0
+    router = router or _Router()
+    plan = _plan_stretches(queue, schema, build_id, router)
+    if plan is None:
+        return 0
+    computed, renamed, stretches = plan
+    with transaction.atomic():
+        now = list(
+            ReviewItem.objects.select_for_update()
+            .filter(queue=queue, build_id=build_id)
+            .values_list("osm_way_id", "computed_at")
+        )
+        if sorted(now) != computed:
+            logger.info("Review's %s list was computed again meanwhile; not grouped", queue)
+            return 0
+        _write_stretches(queue, build_id, renamed, stretches)
+    if router.silent:
+        logger.info("Review's %s stretches: the router was silent; the table's names", queue)
+    return len(stretches)
+
+
+def _plan_stretches(queue: str, schema: str, build_id: str, router: _Router):
+    """(the rows planned for, {way alone: its router name}, [(lead, ways, name)]), or None for
+    a queue with no rows: read and asked of the router outside any transaction."""
     rows = {
         i.osm_way_id: i
         for i in ReviewItem.objects.filter(queue=queue, build_id=build_id).only(
@@ -536,104 +575,110 @@ def group_stretches(queue: str, schema: str, build_id: str = "") -> int:
             "details",
             "length_m",
             "point",
+            "computed_at",
         )
     }
     if not rows:
-        return 0
-    router = _Router()
-    with transaction.atomic():
-        pairs = [
-            (a, b, (x, y))
-            for a, b, x, y in _stretch_ends(schema, sorted(rows))
-            if _change_key(rows[a]) == _change_key(rows[b])
-        ]
-        points = sorted({p for _a, _b, p in pairs})
-        meetings = dict(zip(points, _meeting(schema, points), strict=True))
-        listed = {w: i.name for w, i in rows.items()}
-        named: dict[int, str] = {}
-        parent = {w: w for w in rows}
-        size = dict.fromkeys(rows, 1)
+        return None
+    computed = sorted((w, i.computed_at) for w, i in rows.items())
+    pairs = [
+        (a, b, (x, y))
+        for a, b, x, y in _stretch_ends(schema, sorted(rows))
+        if _change_key(rows[a]) == _change_key(rows[b])
+    ]
+    points = sorted({p for _a, _b, p in pairs})
+    meetings = dict(zip(points, _meeting(schema, points), strict=True))
+    listed = {w: i.name for w, i in rows.items()}
+    named: dict[int, str] = {}
+    parent = {w: w for w in rows}
+    size = dict.fromkeys(rows, 1)
 
-        def root(way: int) -> int:
-            while parent[way] != way:
-                parent[way] = parent[parent[way]]
-                way = parent[way]
-            return way
+    def root(way: int) -> int:
+        while parent[way] != way:
+            parent[way] = parent[parent[way]]
+            way = parent[way]
+        return way
 
-        for a, b, point in sorted(pairs):
-            ra, rb = root(a), root(b)
-            if ra == rb or size[ra] + size[rb] > STRETCH_MAX_WAYS:
-                continue
-            meeting = meetings[point]
-            facts = router.at(point, set(meeting) | {a, b})
-            joined, road = _joins_here(a, b, meeting, facts, listed)
-            if not joined:
-                continue
-            if road:
-                named.setdefault(a, road)
-                named.setdefault(b, road)
-            parent[rb] = ra
-            size[ra] += size[rb]
-        groups: dict[int, list[int]] = {}
-        for way in rows:
-            groups.setdefault(root(way), []).append(way)
-        stretches = 0
-        with connection.cursor() as cursor:
-            for ways in groups.values():
-                lead = max(ways, key=lambda w: (rows[w].length_m, -w))
-                name = rows[lead].name or named.get(lead, "")
-                if not name:
-                    name = next((named[w] for w in sorted(ways) if w in named), "")
-                if len(ways) < 2:
-                    if not name and rows[lead].point is not None:
-                        # A road alone: its name from the router at its own point.
-                        x, y = rows[lead].point.coords
-                        name = (router.at((x, y), [lead]).get(lead) or {}).get("name") or ""
-                    if name and not rows[lead].name:
-                        cursor.execute(
-                            "UPDATE review_item SET name = %s "
-                            "WHERE queue = %s AND build_id = %s AND osm_way_id = %s",
-                            [name[:300], queue, build_id, lead],
-                        )
-                    continue
-                stretches += 1
-                ways = sorted(ways)
-                cursor.execute(
-                    "UPDATE review_item SET stretch = %s "
-                    "WHERE queue = %s AND build_id = %s AND osm_way_id = ANY(%s)",
-                    [lead, queue, build_id, ways],
-                )
-                cursor.execute(
-                    """
-                    UPDATE review_item l
-                    SET ways = %s::jsonb, length_m = a.length_m, score = a.score,
-                        aadt = a.aadt, geometry = a.geometry, simple = a.simple,
-                        name = CASE WHEN l.name = '' THEN %s ELSE l.name END
-                    FROM (
-                        SELECT sum(length_m) AS length_m, sum(score) AS score,
-                               max(aadt) AS aadt,
-                               (SELECT ST_Multi(ST_Collect(g.geom)) FROM review_item m,
-                                       ST_Dump(m.geometry) g
-                                WHERE m.queue = %s AND m.build_id = %s AND m.stretch = %s)
-                                   AS geometry,
-                               (SELECT ST_Multi(ST_Collect(g.geom)) FROM review_item m,
-                                       ST_Dump(m.simple) g
-                                WHERE m.queue = %s AND m.build_id = %s AND m.stretch = %s)
-                                   AS simple
-                        FROM review_item
-                        WHERE queue = %s AND build_id = %s AND stretch = %s
-                    ) a
-                    WHERE l.queue = %s AND l.build_id = %s AND l.osm_way_id = %s
-                    """,
-                    [
-                        json.dumps(ways),
-                        name[:300],
-                        *(queue, build_id, lead) * 4,
-                    ],
-                )
-    if router.silent:
-        logger.info("Review's %s stretches: the router was silent; the table's names", queue)
-    return stretches
+    for a, b, point in sorted(pairs):
+        ra, rb = root(a), root(b)
+        if ra == rb or size[ra] + size[rb] > STRETCH_MAX_WAYS:
+            continue
+        meeting = meetings[point]
+        facts = router.at(point, set(meeting) | {a, b})
+        joined, road = _joins_here(a, b, meeting, facts, listed)
+        if not joined:
+            continue
+        if road:
+            named.setdefault(a, road)
+            named.setdefault(b, road)
+        parent[rb] = ra
+        size[ra] += size[rb]
+    groups: dict[int, list[int]] = {}
+    for way in rows:
+        groups.setdefault(root(way), []).append(way)
+    renamed: dict[int, str] = {}
+    stretches: list[tuple[int, list[int], str]] = []
+    for ways in groups.values():
+        lead = max(ways, key=lambda w: (rows[w].length_m, -w))
+        name = rows[lead].name or named.get(lead, "")
+        if not name:
+            name = next((named[w] for w in sorted(ways) if w in named), "")
+        if len(ways) >= 2:
+            stretches.append((lead, sorted(ways), name))
+            continue
+        if not name and rows[lead].point is not None:
+            # A road alone: its name from the router at its own point.
+            x, y = rows[lead].point.coords
+            name = (router.at((x, y), [lead]).get(lead) or {}).get("name") or ""
+        if name and not rows[lead].name:
+            renamed[lead] = name
+    return computed, renamed, stretches
+
+
+def _write_stretches(
+    queue: str, build_id: str, renamed: dict[int, str], stretches: list[tuple[int, list[int], str]]
+) -> None:
+    with connection.cursor() as cursor:
+        for lead, name in renamed.items():
+            cursor.execute(
+                "UPDATE review_item SET name = %s "
+                "WHERE queue = %s AND build_id = %s AND osm_way_id = %s",
+                [name[:300], queue, build_id, lead],
+            )
+        for lead, ways, name in stretches:
+            cursor.execute(
+                "UPDATE review_item SET stretch = %s "
+                "WHERE queue = %s AND build_id = %s AND osm_way_id = ANY(%s)",
+                [lead, queue, build_id, ways],
+            )
+            cursor.execute(
+                """
+                UPDATE review_item l
+                SET ways = %s::jsonb, length_m = a.length_m, score = a.score,
+                    aadt = a.aadt, geometry = a.geometry, simple = a.simple,
+                    name = CASE WHEN l.name = '' THEN %s ELSE l.name END
+                FROM (
+                    SELECT sum(length_m) AS length_m, sum(score) AS score,
+                           max(aadt) AS aadt,
+                           (SELECT ST_Multi(ST_Collect(g.geom)) FROM review_item m,
+                                   ST_Dump(m.geometry) g
+                            WHERE m.queue = %s AND m.build_id = %s AND m.stretch = %s)
+                               AS geometry,
+                           (SELECT ST_Multi(ST_Collect(g.geom)) FROM review_item m,
+                                   ST_Dump(m.simple) g
+                            WHERE m.queue = %s AND m.build_id = %s AND m.stretch = %s)
+                               AS simple
+                    FROM review_item
+                    WHERE queue = %s AND build_id = %s AND stretch = %s
+                ) a
+                WHERE l.queue = %s AND l.build_id = %s AND l.osm_way_id = %s
+                """,
+                [
+                    json.dumps(ways),
+                    name[:300],
+                    *(queue, build_id, lead) * 4,
+                ],
+            )
 
 
 def _listed_rows():
@@ -652,7 +697,9 @@ def change_kind(old: float, new: float, old_closed: bool, new_closed: bool) -> s
     return f"{old:g}-{new:g}"
 
 
-def compute_rebuild(build_id: str, live: str, staging: str) -> int:
+def compute_rebuild(
+    build_id: str, live: str, staging: str, *, router: _Router | None = None
+) -> int:
     """The rebuild's changes: every way in both tables whose level or bicycle access differs."""
     validate_schema_name(live)
     validate_schema_name(staging)
@@ -693,8 +740,8 @@ def compute_rebuild(build_id: str, live: str, staging: str) -> int:
             )
             count = cursor.rowcount
         _fill_facts(Queue.REBUILD, staging, build_id)
-        group_stretches(Queue.REBUILD, staging, build_id)
         write_state(Queue.REBUILD, build_id)
+    group_stretches(Queue.REBUILD, staging, build_id, router=router)
     return count
 
 
@@ -829,6 +876,7 @@ def compute_disagreements(
     pending: dict[int, list] | None = None,
     *,
     build_id: str = "",
+    router: _Router | None = None,
 ) -> int:
     validate_schema_name(schema)
     if not _table_exists(schema):
@@ -863,10 +911,10 @@ def compute_disagreements(
                 inputs=_digest(row["step"], row["closed"], _raw(row), sources),
             )
         )
-    return _replace(Queue.DISAGREEMENT, items, schema, build_id)
+    return _replace(Queue.DISAGREEMENT, items, schema, build_id, router)
 
 
-def compute_narrow_rural(schema: str, *, build_id: str = "") -> int:
+def compute_narrow_rural(schema: str, *, build_id: str = "", router: _Router | None = None) -> int:
     validate_schema_name(schema)
     if not _table_exists(schema):
         return _replace(Queue.NARROW_RURAL, [], None, build_id)
@@ -888,7 +936,7 @@ def compute_narrow_rural(schema: str, *, build_id: str = "") -> int:
         )
         for row in rows
     ]
-    return _replace(Queue.NARROW_RURAL, items, schema, build_id)
+    return _replace(Queue.NARROW_RURAL, items, schema, build_id, router)
 
 
 @dataclass(frozen=True)
@@ -1009,6 +1057,7 @@ def compute_painted_lane(
     pending: dict[int, list] | None = None,
     *,
     build_id: str = "",
+    router: _Router | None = None,
 ) -> int | None:
     """The RL-3 list (the owner, 2026-10-16): each painted lane on a two-way road with two or
     more lanes each way that DDOT or Montgomery rates, from the rebuild's report
@@ -1063,7 +1112,7 @@ def compute_painted_lane(
                 inputs=_digest(reason, current and current["step"], _raw(current)),
             )
         )
-    _replace(queue, items, schema if present else None, build_id)
+    _replace(queue, items, schema if present else None, build_id, router)
     return len(items)
 
 
@@ -1071,13 +1120,21 @@ def compute_all(build_id: str, live: str, staging: str | None, reports: Path | N
     """Every queue, against the build waiting in `staging` where there is one (what will be
     served), else the live table. {queue: count, or None where its report is not there}."""
     schema = staging if staging and _table_exists(staging) else live
+    # One deadline for the router's names and classes over every list's stretches.
+    router = _Router()
     counts: dict[str, int | None] = {}
-    counts[Queue.REBUILD] = compute_rebuild(build_id, live, staging) if staging else None
-    counts[Queue.DISAGREEMENT] = compute_disagreements(schema, reports, build_id=build_id)
-    counts[Queue.NARROW_RURAL] = compute_narrow_rural(schema, build_id=build_id)
+    counts[Queue.REBUILD] = (
+        compute_rebuild(build_id, live, staging, router=router) if staging else None
+    )
+    counts[Queue.DISAGREEMENT] = compute_disagreements(
+        schema, reports, build_id=build_id, router=router
+    )
+    counts[Queue.NARROW_RURAL] = compute_narrow_rural(schema, build_id=build_id, router=router)
     for spec in FILE_QUEUES:
         counts[spec.queue] = compute_file_queue(spec, schema, reports, build_id)
-    counts[Queue.PAINTED_LANE] = compute_painted_lane(schema, reports, build_id=build_id)
+    counts[Queue.PAINTED_LANE] = compute_painted_lane(
+        schema, reports, build_id=build_id, router=router
+    )
     return counts
 
 
@@ -1384,7 +1441,8 @@ def page(
         "page": number,
         "per_page": size,
         "total": total,
-        "items": [item_out(r, ruled.get(r.osm_way_id)) for r in rows],
+        # A stretch only partly ruled is open: its lead's ruling is not the stretch's.
+        "items": [item_out(r, ruled.get(r.osm_way_id) if r.ruled else None) for r in rows],
     }
 
 
@@ -1726,7 +1784,9 @@ def rule(
     """Rule on one road or a batch. Returns (the rulings made, the roads refused with why).
 
     A batch's levels are one stress edit a level (Change LTS: one; a rebuild's Reject: one for
-    each level the roads had before), so a batch is one change of the tiles and one undo.
+    each level the roads had before), so a batch is one change of the tiles and one undo; a
+    level over more than `stress_edits.MAX_BATCH_WAYS` ways (a batch of long stretches) is
+    several, a stretch never split (`_edit_chunks`).
     `source`: Change LTS on one road to the level one of its listed sources holds (not a
     pending agency's), named in the edit's evidence."""
     if queue not in Queue.values:
@@ -1767,9 +1827,10 @@ def rule(
             target = item.old_step if decision == Decision.REJECT else float(step)
             levels.setdefault(target, []).append(item)
     for target, group in levels.items():
-        done, failed = _set_levels(actor, group, decision, target, text, now, evidence)
-        made += done
-        refused += failed
+        for chunk in _edit_chunks(group):
+            done, failed = _set_levels(actor, chunk, decision, target, text, now, evidence)
+            made += done
+            refused += failed
     order = {w: n for n, w in enumerate(ways)}
     made.sort(key=lambda r: order[r.osm_way_id])
     return made, refused
@@ -1800,13 +1861,22 @@ def _with_stretches(
             if way not in group:
                 group.insert(0, way)
         out += [w for w in group if w not in out]
-    if len(out) > stress_edits.MAX_BATCH_WAYS:
-        raise stress_edits.Invalid(
-            f"Those roads are {len(out)} road pieces in all; rule on at most "
-            f"{stress_edits.MAX_BATCH_WAYS} at a time.",
-            "osm_way_ids",
-        )
     return out, items
+
+
+def _edit_chunks(group: list[ReviewItem]) -> list[list[ReviewItem]]:
+    """One level's roads in stress edits of at most `stress_edits.MAX_BATCH_WAYS` ways (a batch of
+    long stretches can be more), a stretch never split between two (it holds at most
+    `STRETCH_MAX_WAYS`), so Undo on a stretch undoes its one edit."""
+    by_road: dict[int, list[ReviewItem]] = {}
+    for item in group:
+        by_road.setdefault(item.stretch or item.osm_way_id, []).append(item)
+    chunks: list[list[ReviewItem]] = [[]]
+    for road in by_road.values():
+        if chunks[-1] and len(chunks[-1]) + len(road) > stress_edits.MAX_BATCH_WAYS:
+            chunks.append([])
+        chunks[-1].extend(road)
+    return [c for c in chunks if c]
 
 
 def _evidence_of(source: str, decision: str, step, items: list) -> str:

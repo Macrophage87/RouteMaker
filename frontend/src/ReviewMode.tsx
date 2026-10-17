@@ -535,6 +535,8 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [last, setLast] = useState<Ruling | null>(null);
+  // The road (a row: a stretch or a way alone) the last ruling was made on, as Undo names it.
+  const [lastName, setLastName] = useState("");
   const [said, setSaid] = useState("");
   const [focusNext, setFocusNext] = useState<string | null>(null);
   // A road asked for from the map: the page's own first road does not replace it when the page arrives.
@@ -701,8 +703,11 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
     const { rulings, refused, generation } = answer.body;
     if (typeof generation === "number") onStressChanged(generation);
     setReason("");
-    setLast(rulings[rulings.length - 1] ?? null);
     const ruled = new Set(rulings.map((r) => r.osm_way_id));
+    // A stretch's rulings are a way each: Undo is offered on its row's (its lead's), named by the row's road.
+    const lastRow = (current && ruled.has(current.osm_way_id) ? current : null) ?? [...shown].reverse().find((r) => ruled.has(r.osm_way_id)) ?? null;
+    setLast((lastRow && rulings.find((r) => r.osm_way_id === lastRow.osm_way_id)) ?? rulings[rulings.length - 1] ?? null);
+    setLastName(lastRow ? lastRow.name || `Way ${lastRow.osm_way_id}` : "");
     const rest = all ? shown : shown.filter((r) => !ruled.has(r.osm_way_id));
     const after = shown.slice(index + 1).find((r) => !ruled.has(r.osm_way_id)) ?? rest[0] ?? null;
     if (all) setRoads((old) => old?.map((r) => (ruled.has(r.osm_way_id) ? { ...r, ruling: rulings.find((x) => x.osm_way_id === r.osm_way_id) ?? r.ruling } : r)) ?? old);
@@ -733,8 +738,8 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
     if (typeof answer.body.generation === "number") onStressChanged(answer.body.generation);
     setLast(null);
     onUndone();
-    tell(`Undone: ${last.summary}. The road is back in the list.`);
-    void load(page, last.osm_way_id);
+    tell(`Undone: ${lastName ? `${lastName}, ` : ""}${last.summary}. The road is back in the list.`);
+    void load(page, last.stretch ?? last.osm_way_id);
   };
 
   const sortBy = (key: SortKey) => {
@@ -1063,7 +1068,8 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
               </button>
               {last && last.can_undo && (
                 <button type="button" className="secondary" aria-disabled={busy || undefined} onClick={() => void undo()}>
-                  Undo: {last.summary}
+                  Undo: {lastName ? `${lastName}, ` : ""}
+                  {last.summary}
                 </button>
               )}
             </div>

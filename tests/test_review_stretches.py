@@ -13,7 +13,7 @@ import pytest
 from django.db import connection
 from test_stress_edits import LAT, LON, make_segment, make_user
 
-from core import segment_info, stress_review
+from core import segment_info, stress_edits, stress_review
 from core.models import Override, ReviewItem, ReviewRuling, StressEdit
 
 db = pytest.mark.django_db(transaction=True)
@@ -37,6 +37,8 @@ def router(monkeypatch):
 
     def fake(lat, lon, costing, timeout_s=None):
         Fake.calls += 1
+        # Never asked while a transaction holds the queue's rows.
+        assert not connection.in_atomic_block
         if Fake.down:
             raise segment_info.RouterSilent("down")
         return [
@@ -204,5 +206,51 @@ class TestRulingAStretch:
             queue="rebuild", build_id=BUILD, osm_way_id=one["osm_way_id"], decision="accept"
         )
         assert stress_review.page("rebuild")["total"] == 1
+        # Shown open, not with its lead's ruling.
+        assert rows()[0]["ruling"] is None
         stress_review.rule(admin, "rebuild", [other], "accept")
         assert stress_review.page("rebuild")["total"] == 0
+        assert rows()[0]["ruling"] is not None
+
+
+@db
+class TestBigBatches:
+    @pytest.fixture
+    def two(self, road, monkeypatch):
+        """Two stretches, A+B and C (C changes to LTS 3), with an edit's cap of two ways."""
+        live, staging = road
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {staging}.segment SET stress_tier = 3 WHERE osm_way_id = %s", [C]
+            )
+        stress_review.compute_rebuild(BUILD, live, staging)
+        monkeypatch.setattr(stress_edits, "MAX_BATCH_WAYS", 2)
+        return [r["osm_way_id"] for r in rows()]
+
+    def test_change_lts_past_an_edits_cap_is_several_edits_never_refused(self, two) -> None:
+        made, refused = stress_review.rule(make_user(), "rebuild", two, "set", step=3)
+        assert refused == [] and sorted(r.osm_way_id for r in made) == [A, B, C]
+        # A stretch is never split between two edits.
+        edits = {r.osm_way_id: r.edit_id for r in made}
+        assert edits[A] == edits[B] != edits[C]
+        assert StressEdit.objects.count() == 2
+
+    def test_accept_is_never_capped_by_ways(self, two) -> None:
+        made, refused = stress_review.rule(make_user(), "rebuild", two, "accept")
+        assert refused == [] and len(made) == 3
+
+
+@db
+def test_compute_all_shares_one_router_deadline(road, monkeypatch) -> None:
+    live, staging = road
+    made = []
+    real = stress_review._Router.__init__
+
+    def counted(self, *args, **kwargs):
+        made.append(self)
+        real(self, *args, **kwargs)
+
+    monkeypatch.setattr(stress_review._Router, "__init__", counted)
+    stress_review.compute_all(BUILD, live, staging, None)
+    assert len(made) == 1
+    assert [r["ways"] for r in rows()] == [[A, B, C]]
