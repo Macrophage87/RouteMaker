@@ -518,7 +518,7 @@ deploy() { # tag new-sha gate-file
 	start_progress "$tag" "$new" || return 3
 
 	# Before anything running is touched: the release's tree.
-	rm -rf "$src"; mkdir -p "$src"
+	rm -rf "$src"; mkdir -p "$src"; chmod 755 "$src"
 	step "export the release's tree" sh -c 'umask 022 && git -C "$1" archive --format=tar "$2" | tar -x -C "$3"' sh "$RM_SRC" "$new" "$src" || return 3
 
 	# The runbook's "A new release sha", steps 2 to 8, without sudo. The builds come after the stop,
