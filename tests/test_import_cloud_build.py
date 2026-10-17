@@ -503,3 +503,32 @@ def test_a_segment_whose_ordinal_now_names_another_stretch_is_not_a_change(
     # Ways 2 and 3 are new in staging, and way 1's segment is now unpaired both ways.
     assert "unpaired (a way new, gone, split or redrawn): 3 staging segments" in out
     assert "1 live segments" in out
+
+
+def test_the_dry_run_counts_each_agencys_rated_segments(deployment) -> None:
+    """v0.8.0 shipped with no agency rating on any road and nothing said so (2026-10-17):
+    the import names how many segments carry each approved agency's rating, and warns at 0."""
+    import json
+
+    ratings = {
+        1: {"agencies": [{"agency": "moco", "level": 2.5}], "used": "moco"},
+        2: {
+            "agencies": [{"agency": "moco", "level": 2}, {"agency": "mdot-sha", "level": 3}],
+            "used": "moco",
+        },
+    }
+    with connection.cursor() as cursor:
+        for way, held in ratings.items():
+            cursor.execute(
+                "UPDATE staging.segment SET stress_ratings = %s WHERE osm_way_id = %s",
+                [json.dumps(held), way],
+            )
+    out = run(NEW, "--overrides-read-at", READ_AT)
+
+    assert (
+        "agency stress ratings in staging: Montgomery County Planning on 2 segments (sets the "
+        "tier on 2); DDOT on 0 segments (sets the tier on 0); MDOT SHA on 1 segments (sets the "
+        "tier on 0)"
+    ) in out
+    assert "warning: no segment carries DDOT's rating" in out
+    assert "carries Montgomery" not in out and "carries MDOT" not in out

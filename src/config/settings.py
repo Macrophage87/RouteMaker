@@ -224,8 +224,10 @@ COVERAGE_POLYGON = Path(_coverage_polygon) if _coverage_polygon else None
 
 # The source extract, which the rebuild's first stage now produces rather than
 # expecting to find. PLAN:13: the three Geofabrik state extracts, merged, then
-# clipped with `osmium extract -s smart -S types=any`, with the admin database
-# built from the merged file before the clip. `pipeline.source` is the stage and
+# clipped with `osmium extract -s smart`, with the admin database built from the
+# merged file before the clip. PLAN:13 writes `-S types=any`; the clip names
+# `types=boundary,multipolygon` instead, so a long-distance route relation does not
+# drag its whole length in (`pipeline.source` says why). `pipeline.source` is the stage and
 # carries the reasoning; these are the three knobs a deployment has.
 #
 # The URLs come from that module rather than being restated here, so there is
@@ -465,6 +467,12 @@ del _checkpoints
 from config.flags import env_true  # noqa: E402
 
 WEEKLY_REBUILD_PAUSED = env_true(os.environ.get("WEEKLY_REBUILD_PAUSED"))
+
+# The rebuild refuses to run without every approved agency's stress ratings in
+# REBUILD_REFERENCE_DIR/agency-lts.json (pipeline.agency_ratings): v0.8.0 was built
+# where the file was never installed and no road carried an agency's rating. 1 or
+# true builds without them anyway, with a warning, every way on the formula's tier.
+REBUILD_ALLOW_NO_AGENCY_LTS = env_true(os.environ.get("REBUILD_ALLOW_NO_AGENCY_LTS"))
 
 # Build validation reads two known edges back out of the tiles. The steep edge
 # proves elevation was baked; the derived edge proves the derived tags reached

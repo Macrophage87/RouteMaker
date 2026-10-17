@@ -307,6 +307,7 @@ def weekly_rebuild(context=None, *, timestamp: int, manual: bool = False) -> Non
             work_dir=settings.REBUILD_WORK_DIR,
             reference_dir=settings.REBUILD_REFERENCE_DIR,
             checked_in_crossings=settings.REBUILD_CROSSINGS_FIXTURE,
+            require_agency_lts=not settings.REBUILD_ALLOW_NO_AGENCY_LTS,
             deadline=time.monotonic() + REBUILD_TIMEOUT_S,
             job_id=job_id,
             checkpoints=settings.REBUILD_CHECKPOINTS,
@@ -700,6 +701,7 @@ def terminal_causes() -> tuple[type[Exception], ...]:
     """
     import subprocess
 
+    from pipeline.agency_ratings import AgencyRatingsInvalid, AgencyRatingsMissing
     from pipeline.checkpoint import CheckpointRefused
     from pipeline.elevation import ElevationTileInvalid
     from pipeline.promotion import SwapUndoIncomplete
@@ -726,6 +728,11 @@ def terminal_causes() -> tuple[type[Exception], ...]:
         # re-runs about 2 h of work to meet the same file (operations review nit).
         CorridorRefused,
         LaneOverrideRefused,
+        # `reference/agency-lts.json` absent, empty, short an approved agency or naming
+        # an unusable level (`pipeline.agency_ratings`): the installed file is the same
+        # on every attempt, so a retry would re-fetch the extract to meet it again.
+        AgencyRatingsMissing,
+        AgencyRatingsInvalid,
     )
 
 
