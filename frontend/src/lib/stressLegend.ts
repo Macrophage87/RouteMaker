@@ -2,16 +2,17 @@
  * What the stress legend says about zoom: what the overlay draws at the zoom
  * the map is at. The owner, 2026-09-28: "It looks way too busy zoomed out
  * though." and "Zoomed out just show the trails." - so below
- * `STRESS_ZOOMS.ride` the tiles carry only the long traffic-free paths, and the
+ * `STRESS_ZOOMS.quiet` the tiles carry only the long traffic-free paths, and the
  * legend says why the roads have no stress lines there (core/stress_tiles.py);
- * from it the "where to ride" layer, with no busy road (OWNER-DECISIONS 391), and
- * from `STRESS_ZOOMS.quiet` every road, the busy ones and the quiet streets (73, 76,
- * 77, 78).
+ * from it every road, the busy ones and the quiet streets (73, 76, 77, 78). Zoom 12-13
+ * was a "where to ride" layer with no busy road (OWNER-DECISIONS 391) until the owner,
+ * 2026-10-17: "Show traffic stress a couple more zoom levels up", then, of the busy
+ * roads and every street, "Both from 12".
  * Written with createElement so a test renders it (as pointsList.ts).
  */
 import { createElement as h, Fragment, type ReactElement } from "react";
 import { STRESS_ZOOMS } from "./mapStyle.ts";
-import { METRES_PER_MILE, formatDistance, formatRunMiles } from "./format.ts";
+import { METRES_PER_MILE, formatDistance } from "./format.ts";
 import {
   ALLEY_MIN_ZOOM,
   BESIDE_ROAD_MIN_ZOOM,
@@ -60,14 +61,6 @@ export const ZOOMED_OUT =
 export const PAVED_RUN_MI = { 11: 2.5, 10: 5 };
 
 /**
- * The runs the ride layer needs at zoom 12-13, in miles (`pipeline.schema.RIDE_PATH_RUN_MI` and
- * `RIDE_ROAD_RUN_MI`, OWNER-DECISIONS 391, 402a; tests/test_stress_tiles.py holds them equal): a path
- * or trail in a connected network of the first, a calm road (LTS 1 or 2) in a run of the second with
- * no junction with a busy road.
- */
-export const RIDE_RUN_MI = { path: 0.25, road: 2 };
-
-/**
  * OWNER-DECISIONS 452a: the mountain-bike trails draw in a look of their own that says they are not
  * used for routes (stressStyle.js, MTB_TRAIL), and the legend says so in words in a row of its own,
  * so a rider who cannot see the map knows what the grey dashed line on a ticked white edge is. The row's name and words;
@@ -92,24 +85,9 @@ export function mtbLevelLegend(shape: MtbLevel): { short: string; label: string 
   };
 }
 
-/** Where the paths and trails the long-distance rule leaves out come back (STRESS_ZOOMS.ride). */
-export function everyTrailFrom(ride: number): string {
-  return `Paths on local routes and other connected paths show from zoom ${ride}; every short path shows from zoom ${STRESS_ZOOMS.quiet}. Mountain-bike trails show from zoom ${MTB_MIN_ZOOM} when their layer is on.`;
-}
-
-/**
- * What zoom 12 and 13 show (OWNER-DECISIONS 391, "I'm more concerned with the places to ride than the
- * places not to."): where to ride, and what waits for zoom 14, said so a rider who cannot see the map
- * knows a missing road is not a missing street.
- */
-export function rideLayerText(ride: number, quiet: number): string {
-  return (
-    `From zoom ${ride} the map shows where to ride: the paths and trails that connect into a network of ` +
-    `${formatRunMiles(RIDE_RUN_MI.path)} or more, and calm roads (LTS 1 and 2) that run ` +
-    `${formatRunMiles(RIDE_RUN_MI.road)} or more without crossing or joining a busy road. Busy roads (LTS 3 and above, ` +
-    `and best avoided), shorter paths, the other streets and the junction warnings on the map ` +
-    `show from zoom ${quiet}.`
-  );
+/** Where the paths and trails the long-distance rule leaves out come back (STRESS_ZOOMS.quiet). */
+export function everyTrailFrom(quiet: number): string {
+  return `Every other path and trail, the short ones too, shows from zoom ${quiet}. Mountain-bike trails show from zoom ${MTB_MIN_ZOOM} when their layer is on.`;
 }
 
 /** A planned route is drawn whole at every zoom (OWNER-DECISIONS 391). */
@@ -133,23 +111,20 @@ export const CAR_FREE_NOTE =
 export function stressZoomNotice(zoom: number | null, shown: boolean): string | null {
   if (zoom === null || !shown) return null;
   if (zoom < STRESS_ZOOMS.min) return "Zoom in to see traffic-free paths, trails and traffic stress.";
-  if (zoom < STRESS_ZOOMS.ride) return `Zoom in to see more paths and trails, calm roads and traffic stress on roads. ${ZOOMED_OUT}`;
-  if (zoom < STRESS_ZOOMS.quiet) {
-    return `Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm roads. Busy roads and short paths show from zoom ${STRESS_ZOOMS.quiet}.`;
-  }
+  if (zoom < STRESS_ZOOMS.quiet) return `Zoom in to see more paths and trails and traffic stress on every road. ${ZOOMED_OUT}`;
   return null;
 }
 
 /** The standing note on what is drawn at which zoom. */
 export function stressZoomHint(zoom: number | null): string {
-  const { min, ride, quiet } = STRESS_ZOOMS;
+  const { min, quiet } = STRESS_ZOOMS;
   let text =
     `${ZOOMED_OUT} A named paved trail counts when it runs ${formatDistance(PAVED_RUN_MI[11] * METRES_PER_MILE)} ` +
     `or more at zoom 11, or ${formatDistance(PAVED_RUN_MI[10] * METRES_PER_MILE)} at zoom 10; an unpaved one ` +
     `needs a regional bike route or a longer run. Trails beside a road count ` +
-    `the same way. Lines are drawn thinner at zooms 10 and 11. ${rideLayerText(ride, quiet)} ${ROUTE_AT_EVERY_ZOOM} ` +
-    `${everyTrailFrom(ride)} From zoom ${quiet} the busy roads at LTS 3 and above and the quiet streets, footways and ` +
-    `sidewalks show too, every line solid from zoom ${SOLID_MIN_ZOOM}. Roads bikes may not use, such as expressways, are left unmarked. A busy road with a bike lane ` +
+    `the same way. Lines are drawn thinner at zooms 10 and 11. ${ROUTE_AT_EVERY_ZOOM} ` +
+    `${everyTrailFrom(quiet)} From zoom ${quiet} the busy roads at LTS 3 and above and the quiet streets, footways and ` +
+    `sidewalks show too, the busy roads faintly until zoom ${SOLID_MIN_ZOOM}. Roads bikes may not use, such as expressways, are left unmarked. A busy road with a bike lane ` +
     `or path mapped beside it shows only from zoom ${BESIDE_ROAD_MIN_ZOOM}, and faintly, so the bike lane is the ` +
     `main line. Alleys show only from zoom ${ALLEY_MIN_ZOOM}, faintly, and the roads inside cemeteries, parking ` +
     `lots, military bases and secure government sites, such as prisons and guarded research campuses, not at ` +

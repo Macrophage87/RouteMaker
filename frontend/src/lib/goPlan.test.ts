@@ -293,14 +293,15 @@ test("the 311 button shows only on the route inside DC; its menu has the six pro
   assert.match(ride, /const pick311 = \(kind: ReportKind\) => \{\s*setReportKind\(kind\);\s*setMenu311\(false\);/);
   assert.match(ride, /<details className="fold ride-report" open=\{open\} onToggle=\{\(event\) => onOpen\(event\.currentTarget\.open\)\}>/);
   assert.match(ride, /if \(event\.key === "Escape" && menu311\) \{\s*event\.preventDefault\(\);\s*close311\(\);/);
-  // About 60 px round, on the right edge.
+  // About 60 px round, in the side buttons on the right edge (the owner, 2026-10-17).
   const css = src("../styles.css");
   assert.match(css, /\.ride-311-button \{\s*width: 60px;\s*height: 60px;/);
-  assert.match(css, /\.ride-311 \{\s*position: absolute;\s*right: 12px;/);
+  assert.match(css, /\.ride-rail \{\s*position: absolute;\s*right: 12px;/);
 });
 
-test("Big text has a text-size icon (not the info icon); Ride mode's buttons keep their words", () => {
-  assert.match(ride, /className="secondary big-text" onClick=\{\(\) => onBig\(!big\)\} aria-pressed=\{big\}>\s*<Icon name="textsize" size=\{20\} \/>\s*Big text/);
+test("Big text has a text-size icon (not the info icon); as a round side button its name is still Big text", () => {
+  // The owner, 2026-10-17: the ride's buttons are round icons on the side; each keeps its words as its name.
+  assert.match(ride, /className="ride-round big-text" onClick=\{\(\) => onBig\(!big\)\} aria-pressed=\{big\} aria-label="Big text" title="Big text">\s*<Icon name="textsize" size=\{24\} \/>/);
   assert.ok(ICON_PATHS.textsize && ICON_PATHS.textsize !== ICON_PATHS.info);
 });
 

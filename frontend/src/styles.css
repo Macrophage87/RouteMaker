@@ -5115,16 +5115,197 @@ details.fold > summary .icon {
   gap: 6px;
 }
 
-.ride-311 {
+/*
+ * The side buttons (the owner, 2026-10-17: "put these as circle icons on the side"): a column of round icon
+ * buttons on the right of the map at thumb height, above the bottom panel when it shows. Each menu opens to
+ * their left, at their foot; an answer asked for shows there too. In Big text (no map) they are a row under the card.
+ */
+.ride-middle {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  pointer-events: none;
+}
+
+/* Short of room (the bottom panel up on a small phone), the buttons wrap into a second column to the left
+   rather than over the cue card. */
+.ride-rail {
   position: absolute;
   right: 12px;
-  top: 44%;
-  z-index: 4;
+  bottom: 16px;
+  top: 8px;
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  flex-wrap: wrap-reverse;
+  justify-content: flex-end;
+  align-content: flex-start;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.ride-rail > * {
+  pointer-events: auto;
+}
+
+.ride .ride-round {
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.ride .ride-round[hidden] {
+  display: none;
+}
+
+.ride .ride-round[aria-pressed="true"],
+.ride .ride-round[aria-expanded="true"],
+.ride .ride-round-alert {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--bg);
+}
+
+/* The dock button: the time undocked under the dock sign, in figures that do not jump. */
+.ride .ride-dock-button {
+  width: 60px;
+  height: 60px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.ride-pop,
+.ride-311 {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* A side button's menu, and what a 311 pick did: to the buttons' left, at their foot. */
+.ride-menu,
+.ride-311-said,
+.ride-toast {
+  position: absolute;
+  right: calc(100% + 10px);
+  bottom: 0;
+}
+
+.ride-toast {
+  right: 84px;
+  bottom: 16px;
+  max-width: min(18rem, calc(100% - 96px));
+  padding: 8px 12px;
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+}
+
+.ride-toast p {
+  margin: 0;
+}
+
+.ride-menu {
+  width: min(22rem, calc(100vw - 96px));
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+}
+
+.ride-menu[hidden] {
+  display: none;
+}
+
+.ride-menu-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  max-width: calc(100% - 24px);
+}
+
+.ride-menu-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.ride-menu-close,
+.ride-menu .nearest-kinds button,
+.ride-menu .nearest-list button {
+  min-height: 44px;
+}
+
+.ride-menu .nearest-kinds button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ride-menu-choices {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.ride-menu-choice {
+  width: 100%;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  background: var(--bg-soft);
+  color: var(--text);
+  border: 1px solid var(--swatch-border);
+  font-size: 1rem;
+}
+
+.ride-menu-restart {
+  width: 100%;
+  min-height: 44px;
+}
+
+.ride-menu-choice span {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.ride-big .ride-middle {
+  flex: none;
+}
+
+.ride-big .ride-rail {
+  position: static;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  padding: 8px 12px;
+  background: var(--bg);
+}
+
+.ride-big .ride-menu,
+.ride-big .ride-311-said,
+.ride-big .ride-toast {
+  right: 12px;
+  bottom: calc(100% + 8px);
 }
 
 .ride-311-button {
@@ -5146,7 +5327,10 @@ details.fold > summary .icon {
 }
 
 .ride-311-menu {
-  width: min(22rem, calc(100vw - 24px));
+  position: absolute;
+  right: calc(100% + 10px);
+  bottom: 0;
+  width: min(22rem, calc(100vw - 96px));
   max-height: calc(56vh - 80px);
   overflow-y: auto;
   padding: 10px 12px;
@@ -5172,8 +5356,14 @@ details.fold > summary .icon {
   font-size: 1.05rem;
 }
 
-.ride-311-close {
+.ride-311-close,
+.ride-311-more {
   min-height: 44px;
+}
+
+.ride-311-more {
+  width: 100%;
+  margin-top: 8px;
 }
 
 .ride-311-kinds {
@@ -5200,7 +5390,7 @@ details.fold > summary .icon {
 
 /* What a 311 pick did ("Sent to DC 311."), under the button, with "Add a note" (Go riding fixes item 3). */
 .ride-311-said {
-  width: min(16rem, calc(100vw - 24px));
+  width: min(16rem, calc(100vw - 96px));
   padding: 8px 10px;
   background: var(--bg);
   color: var(--text);
