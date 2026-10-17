@@ -3653,13 +3653,19 @@ merge to the coverage region, leaving two files under `<DATA_ROOT>/extracts/`:
 curl -fsSL --retry 3 -o district-of-columbia-latest.osm.pbf.part <url>
 osmium merge --overwrite -f pbf dc.osm.pbf md.osm.pbf va.osm.pbf \
     -o merged.osm.pbf.part
-osmium extract --overwrite -f pbf -s smart -S types=any \
+osmium extract --overwrite -f pbf -s smart -S types=boundary,multipolygon \
     --bbox -78.05,38.2,-76.02,39.72 -o source.osm.pbf.part merged.osm.pbf
 ```
 
-`-s smart -S types=any` is PLAN:13's, and the `-S` half is the one that is easy
-to lose: without it the strategy keeps multipolygon relations complete and cuts
-every other type, which is exactly the administrative boundaries.
+`-s smart` is PLAN:13's, and the `-S` half is the one that is easy to lose:
+without it the strategy keeps multipolygon relations complete and cuts every
+other type, which is exactly the administrative boundaries. PLAN:13 writes
+`types=any`; the clip names `boundary,multipolygon` instead, because `any` also
+completes route relations, and the East Coast Greenway and the US Bicycle Routes
+touching the box brought about 5,100 mi of route from outside it into the v0.8.0
+graph (southwest Virginia, Pennsylvania, Delmarva). A route relation reaching
+into the box is still in the clip, with its member list whole, so the ways
+inside it still carry the route.
 
 Every command writes a `.part` and moves it into place on success, so a killed
 download is never mistaken for a small region — and `-f pbf` is what that
