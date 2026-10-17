@@ -109,6 +109,9 @@ CONTRACT_KEYS = {
     "novice",
     # Additive, v0.7.0 "Faster routing": true only on a first route asked for with `quick`.
     "provisional",
+    # Additive, v0.8.2: true only on the match of an opened file's line sent as `follow`.
+    "follows_file",
+    "against_traffic",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "5", "unknown"}
 

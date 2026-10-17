@@ -6,6 +6,7 @@
  * so the plan's points sit on ways the router knows and the route is rated and rerouted like any plan; the file
  * itself, its faint line, its download and a saved copy stay as they came.
  */
+import { FOLLOW_MAX_POINTS } from "./api.ts";
 import { formatDistance } from "./format.ts";
 import { MAX_POINTS, type LonLat } from "./geo.ts";
 import { IMPORT_START_POINTS, type ImportedPlan } from "./gpxPlan.ts";
@@ -78,6 +79,18 @@ export async function matchTrack(origin: string, line: readonly LonLat[], ride: 
 export function matchedPlan(plan: ImportedPlan, line: LonLat[], share: number): ImportedPlan {
   const { dials: _dials, ...rest } = plan;
   return { ...rest, preset: null, matched: { line, share }, points: viaPoints(line, Math.min(IMPORT_START_POINTS, MAX_POINTS), "corners") };
+}
+
+/**
+ * The line a plan follows exactly (POST /api/route `follow`, core/follow.py): the opened file's line, snapped or as it
+ * came, while the plan's points are still those the file opened with (or fitting moved them to). Undefined once the
+ * rider has changed them, and for a file with no line.
+ */
+export function followLine(opened: { imported: Pick<ImportedPlan, "reference" | "matched">; points: readonly LonLat[] } | null, points: readonly LonLat[]): LonLat[] | undefined {
+  if (!opened || opened.points.length !== points.length) return undefined;
+  if (!opened.points.every((p, i) => p[0] === points[i][0] && p[1] === points[i][1])) return undefined;
+  const line = fitLine(opened.imported);
+  return line.length >= 2 ? thinForMatch(line, FOLLOW_MAX_POINTS) : undefined;
 }
 
 /** The line fitting follows: the snapped line once there is one, else the file's own. */

@@ -192,6 +192,7 @@ import { keepLastRide, keepRoute, keptAnswerFor, sweepKept } from "./lib/offline
 import { KEEPING_SAID, keepOffered, keepSaid, keptPlanKey, offlineRouteNotice, routeTitle, type KeptRoute } from "./lib/offlineRoutes.ts";
 import { askPersist } from "./lib/offlineRouteStore.ts";
 import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
+import { followLine } from "./lib/gpxMatch.ts";
 import { fetchHazards, type HazardCollection } from "./lib/massHazards.ts";
 import { visibleCentreOffset } from "./lib/visibleCentre.ts";
 import { NARROW, useLongerThan, useMinute, useNarrow, useSettled } from "./app/hooks.ts";
@@ -851,7 +852,9 @@ export function App() {
           keptShown.current = null;
           return { ok: true, route: replay };
         }
-        const asked = { confirmLong: plan.confirmLong, dials: plan.dials, vias: viaIndices(plan.points, VIA_MARKS.isVia), quick: plan.quick };
+        // An opened file not edited since follows its line exactly (core/follow.py), whatever the ride type.
+        const follow = followLine(importBase.current, plan.points);
+        const asked = { confirmLong: plan.confirmLong, dials: plan.dials, vias: viaIndices(plan.points, VIA_MARKS.isVia), quick: plan.quick, follow };
         // Asked for already, before the tap (Go's early start): that request's answer, not a second request.
         const early = earlyStart.current?.take(routeRequestBody(plan.points, plan.preset, asked)) ?? null;
         const result = early

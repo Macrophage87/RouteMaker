@@ -4,7 +4,7 @@ import { haversineM, type LonLat } from "./geo.ts";
 import { WHENS, carryingWords, hillsWords, seeksClimbs, stressWords, whenInSentence } from "./dials.ts";
 import type { ExportDials, GpxExport } from "./gpx.ts";
 import { JOIN_GAP_M, type ImportNote, type ImportedPlan } from "./gpxPlan.ts";
-import { presetSaid } from "./presets.ts";
+import { presetSaid, type PresetId } from "./presets.ts";
 import { gpxDescriptionText } from "./routeDescription.ts";
 import { FIDELITY_WITHIN_M, type Fidelity } from "./trackMatch.ts";
 import { formatClimb, formatDistance, milesFigure } from "./format.ts";
@@ -191,7 +191,7 @@ export function importSentences(plan: ImportedPlan): string[] {
   const head =
     plan.source === "track"
       ? // No count: fitting adds points after this is said (GpxPanel), and the list shows them.
-        `${named} was a track of ${milesText(plan.referenceM)}; the plan follows it through points taken from its shape.`
+        `${named} was a track of ${milesText(plan.referenceM)}; the route follows it, with points taken from its shape to edit.`
       : plan.source === "route"
         ? `${named} opened as a plan of its ${count} route points${plan.preset ? `, as a ${presetSaid(plan.preset)}` : ""}.`
         : `${named} had no track or route; its ${count} waypoints are the plan, in the file's order.`;
@@ -227,13 +227,23 @@ export interface FidelityNotice {
   text: string;
 }
 
-export function fidelityNotice(f: Fidelity): FidelityNotice {
+export function fidelityNotice(f: Fidelity, followedAs?: PresetId): FidelityNotice {
   const followed = percent(f.trackCovered);
   const onTrack = percent(f.routeOnTrack);
   const head = `The route follows ${followed}% of the file's track to within ${feetText(FIDELITY_WITHIN_M)}`;
-  if (f.trackCovered >= FIDELITY_WARN_BELOW && f.routeOnTrack >= FIDELITY_WARN_BELOW) {
-    return { warn: false, text: `${head}.` };
+  const close = f.trackCovered >= FIDELITY_WARN_BELOW && f.routeOnTrack >= FIDELITY_WARN_BELOW;
+  // The route is the file's own line (core/follow.py): it parts from it only where the ride type cannot ride it.
+  if (followedAs) {
+    const as = presetSaid(followedAs);
+    if (close) return { warn: false, text: `The route follows the file's track, rated for ${as}.` };
+    return {
+      warn: true,
+      text:
+        `${head}, rated for ${as}. Where the faint line parts from it, the file goes a way ${as} does not ride; ` +
+        "another ride type may follow it there.",
+    };
   }
+  if (close) return { warn: false, text: `${head}.` };
   const extra = f.routeOnTrack < FIDELITY_WARN_BELOW ? `, and ${100 - onTrack}% of the route is off it` : "";
   return {
     warn: true,
@@ -241,6 +251,18 @@ export function fidelityNotice(f: Fidelity): FidelityNotice {
       `${head}${extra}. The faint line is the file's track: drag or add points where the two part, ` +
       "or try another ride type, since each one weighs streets and trails differently.",
   };
+}
+
+/**
+ * Where a followed file rides against one-way traffic (core/follow.py `against_traffic`): the route follows it there,
+ * so it is said, by street, the first three named. Null where there is none.
+ */
+export function againstTrafficNotice(stretches: readonly { name: string | null; distance_m: number }[] | null | undefined): string | null {
+  if (!stretches?.length) return null;
+  const said = stretches.slice(0, 3).map((s) => `${s.name ?? "an unnamed street"} (${formatDistance(s.distance_m)})`);
+  if (stretches.length > 3) said.push(`${stretches.length - 3} more`);
+  const list = said.length > 1 ? `${said.slice(0, -1).join(", ")} and ${said.at(-1)}` : said[0];
+  return `The file rides against one-way traffic on ${list}. The route follows it there, so take care.`;
 }
 
 /**
