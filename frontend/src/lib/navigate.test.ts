@@ -8,6 +8,13 @@ import type { LonLat } from "./geo.ts";
 import { spokenDistance } from "./format.ts";
 import {
   ADVANCE_MIN_M,
+  END_FIX_MAX_AGE_MS,
+  END_PART_WAY_M,
+  END_LEFT_MIN_M,
+  END_LEFT_MIN_SHARE,
+  JOG_M,
+  ONTO_TRAIL_MIN_M,
+  planAfterEnd,
   GPS_WEAK_MS,
   GPS_WEAK_SAID,
   weighFix,
@@ -1036,4 +1043,315 @@ test("cueSheet: the turns, stops and end ahead in order, the next first, each di
   assert.ok(rows.slice(1).every((r) => r.distance.startsWith("Then in ")));
   assert.ok(rows.length <= CUE_SHEET_ROWS);
   assert.deepEqual(cueSheet(model, model.lengthM), []);
+});
+
+/** A straight line east as long as `description`, for the "onto" cue (the owner, 2026-10-16: Custis Trail to the Mount Vernon Trail). */
+function straightRoute(description: DescriptionEntry[]): RouteResponse {
+  const end = Math.max(...description.map((e) => e.to_m));
+  return { ...lRoute(), geometry: { type: "LineString", coordinates: [at(0, 0), at(end, 0)] }, distance_m: end, leg_ends: [1], description } as RouteResponse;
+}
+
+const straightOnto = (street: string) => ({ movement: "straight" as const, onto: street, control: null, severity: null });
+
+test("onto: the Custis Trail straight on to the Mount Vernon Trail is said at the Full level (not Stoker or Quiet), on the card and in Where am I?", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 1500, "0.0 to 0.9 mi: Custis Trail, traffic-free path.", { street: "Custis Trail", facility: "path" }),
+      stretch(1500, 9000, "0.9 to 5.6 mi: Continue onto Mount Vernon Trail, traffic-free path.", {
+        street: "Mount Vernon Trail",
+        facility: "path",
+        turn: straightOnto("Mount Vernon Trail"),
+      }),
+    ]),
+  );
+  const onto = model.cues.filter((c) => c.kind === "onto");
+  assert.equal(onto.length, 1);
+  assert.equal(onto[0].text, "Continue onto Mount Vernon Trail.");
+  assert.equal(onto[0].movement, null);
+  assert.ok(says("full", onto[0]) && !says("stoker", onto[0]) && !says("quiet", onto[0]));
+  assert.equal(nextAction(model, 200)?.kind, "onto");
+  assert.match(whereAmI(model, { ...startState(), progressM: 1000 }), /Next, in [^:]+: continue onto Mount Vernon Trail\./);
+  assert.equal(cueSpoken(onto[0], "advance", 152.4), `In ${spokenDistance(152.4)}, continue onto Mount Vernon Trail.`);
+  assert.equal(ride(model, "full", 0, 2000).events.filter((e) => e.cue?.kind === "onto").length, 1);
+  assert.equal(ride(model, "stoker", 0, 2000).events.filter((e) => e.cue?.kind === "onto").length, 0);
+  assert.equal(ride(model, "quiet", 0, 2000).events.filter((e) => e.cue?.kind === "onto").length, 0);
+});
+
+test("onto: through a short unnamed connector to a new trail it is said once; the same trail resuming is not said", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 1500, "Custis Trail.", { street: "Custis Trail", facility: "path" }),
+      stretch(1500, 1600, "Continue onto the path.", { street: "path", facility: "path", turn: straightOnto("path") }),
+      stretch(1600, 9000, "Continue onto Mount Vernon Trail.", { street: "Mount Vernon Trail", facility: "path", turn: straightOnto("Mount Vernon Trail") }),
+    ]),
+  );
+  assert.deepEqual(model.cues.filter((c) => c.kind === "onto").map((c) => c.text), ["Continue onto Mount Vernon Trail."]);
+  const resumed = rideModel(
+    straightRoute([
+      stretch(0, 1500, "Custis Trail.", { street: "Custis Trail", facility: "path" }),
+      stretch(1500, 1590, "Continue onto the path.", { street: "path", facility: "path", turn: straightOnto("path") }),
+      stretch(1590, 4000, "Continue onto Custis Trail.", { street: "Custis Trail", facility: "path", turn: straightOnto("Custis Trail") }),
+    ]),
+  );
+  assert.equal(resumed.cues.filter((c) => c.kind === "onto").length, 0);
+});
+
+test("onto: an unnamed path straight on to a named trail is said; a named trail to an unnamed path is not", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 500, "path.", { street: "path", facility: "path" }),
+      stretch(500, 3000, "Continue onto Capital Crescent Trail.", { street: "Capital Crescent Trail", facility: "path", turn: straightOnto("Capital Crescent Trail") }),
+      stretch(3000, 5000, "Continue onto the path.", { street: "path", facility: "path", turn: straightOnto("path") }),
+    ]),
+  );
+  const onto = model.cues.filter((c) => c.kind === "onto");
+  assert.deepEqual(onto.map((c) => c.text), ["Continue onto Capital Crescent Trail."]);
+  assert.ok(Math.abs(onto[0].atM - 500) < 1, `${onto[0].atM}`);
+});
+
+test("onto: a road's new name straight on is said only when it lasts more than a quarter mile; the same name never", () => {
+  const roads = rideModel(
+    straightRoute([
+      stretch(0, 1000, "A Street.", { street: "A Street" }),
+      stretch(1000, 1300, "Continue onto B Street.", { street: "B Street", turn: straightOnto("B Street") }),
+      stretch(1300, 2000, "Continue onto C Street.", { street: "C Street", turn: straightOnto("C Street") }),
+    ]),
+  );
+  assert.deepEqual(roads.cues.filter((c) => c.kind === "onto").map((c) => c.text), ["Continue onto C Street."]);
+  const same = rideModel(straightRoute([stretch(0, 1000, "A Street.", { street: "A Street" }), stretch(1000, 3000, "Continue on A Street.", { street: "A Street", tier: 2 })]));
+  assert.equal(same.cues.filter((c) => c.kind === "onto").length, 0);
+});
+
+test("planAfterEnd: part way, the plan starts at the last good fix with the stops passed dropped; else as it was", () => {
+  const model = rideModel(twoLegs());
+  const plan: LonLat[] = [at(0, 0), at(1000, 0), at(1500, 0)];
+  const here = at(1200, 10);
+  const now = 1_000_000;
+  const fixAt = (point: LonLat, at: number): RideFix => ({ point, accuracyM: 5, speedMs: 5, headingDeg: null, at });
+  // Past stop 1: from here to the finish.
+  assert.deepEqual(planAfterEnd(model, { progressM: 1200, goodFix: fixAt(here, now - 5000), arrived: false }, plan, false, now), { points: [here, plan[2]] });
+  // Before stop 1: it is kept.
+  assert.deepEqual(planAfterEnd(model, { progressM: 500, goodFix: fixAt(at(500, 0), now), arrived: false }, plan, false, now), { points: [at(500, 0), plan[1], plan[2]] });
+  // A loop's finish stays its start.
+  assert.deepEqual(planAfterEnd(model, { progressM: 1200, goodFix: fixAt(here, now), arrived: false }, plan, true, now), { points: [here, plan[2], plan[0]] });
+  // Part way with no recent fix: the plan keeps its start, and says so.
+  assert.equal(planAfterEnd(model, { progressM: 1200, goodFix: fixAt(here, now - END_FIX_MAX_AGE_MS - 1), arrived: false }, plan, false, now), "no-fix");
+  assert.equal(planAfterEnd(model, { progressM: 1200, goodFix: null, arrived: false }, plan, false, now), "no-fix");
+  // At the start, at the end, or arrived: the plan as it was.
+  assert.equal(planAfterEnd(model, { progressM: END_PART_WAY_M - 1, goodFix: fixAt(here, now), arrived: false }, plan, false, now), null);
+  assert.equal(planAfterEnd(model, { progressM: null, goodFix: null, arrived: false }, plan, false, now), null);
+  assert.equal(planAfterEnd(model, { progressM: model.lengthM - END_LEFT_MIN_M + 1, goodFix: fixAt(here, now), arrived: false }, plan, false, now), null);
+  // Under a tenth of a long route left (a loop must not shrink to a stub): as it was, though more than 400 m is left.
+  const long = rideModel(straightRoute([stretch(0, 10_000, "A Street.", { street: "A Street" })]));
+  const loopPlan: LonLat[] = [at(0, 0)];
+  const near = at(9500, 0);
+  assert.equal(planAfterEnd(long, { progressM: 9500, goodFix: fixAt(near, now), arrived: false }, loopPlan, true, now), null);
+  assert.ok(END_LEFT_MIN_SHARE * long.lengthM > END_LEFT_MIN_M);
+  assert.deepEqual(planAfterEnd(long, { progressM: 8900, goodFix: fixAt(at(8900, 0), now), arrived: false }, loopPlan, true, now), { points: [at(8900, 0), loopPlan[0]] });
+  assert.equal(planAfterEnd(model, { progressM: 1200, goodFix: fixAt(here, now), arrived: true }, plan, false, now), null);
+});
+
+test("onto: a new trail name under about 1,000 ft is not said, and A then a short B then A again is a resume", () => {
+  const short = rideModel(
+    straightRoute([
+      stretch(0, 1500, "Custis Trail.", { street: "Custis Trail", facility: "path" }),
+      stretch(1500, 1500 + ONTO_TRAIL_MIN_M - 1, "Continue onto Bridge Path.", { street: "Bridge Path", facility: "path", turn: straightOnto("Bridge Path") }),
+      stretch(1500 + ONTO_TRAIL_MIN_M - 1, 5000, "Continue onto Custis Trail.", { street: "Custis Trail", facility: "path", turn: straightOnto("Custis Trail") }),
+    ]),
+  );
+  assert.equal(short.cues.filter((c) => c.kind === "onto").length, 0);
+  // At least that long, the new trail is said, and the old one resuming after it is said again.
+  const long = rideModel(
+    straightRoute([
+      stretch(0, 1500, "Custis Trail.", { street: "Custis Trail", facility: "path" }),
+      stretch(1500, 1500 + ONTO_TRAIL_MIN_M, "Continue onto Bridge Path.", { street: "Bridge Path", facility: "path", turn: straightOnto("Bridge Path") }),
+      stretch(1500 + ONTO_TRAIL_MIN_M, 5000, "Continue onto Custis Trail.", { street: "Custis Trail", facility: "path", turn: straightOnto("Custis Trail") }),
+    ]),
+  );
+  assert.deepEqual(long.cues.filter((c) => c.kind === "onto").map((c) => c.text), ["Continue onto Bridge Path.", "Continue onto Custis Trail."]);
+});
+
+test("onto: a name that is the other with more after it is not a new way", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 1000, "9th Street Northwest.", { street: "9th Street Northwest" }),
+      stretch(1000, 3000, "Continue onto 9th Street Northwest protected bike lane.", {
+        street: "9th Street Northwest protected bike lane",
+        facility: "path",
+        turn: straightOnto("9th Street Northwest protected bike lane"),
+      }),
+      stretch(3000, 5000, "Continue onto 9th Street Northwest.", { street: "9th Street Northwest", turn: straightOnto("9th Street Northwest") }),
+    ]),
+  );
+  assert.equal(model.cues.filter((c) => c.kind === "onto").length, 0);
+});
+
+test("onto: a name only from the trail's route relation is never a Continue onto cue", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 1500, "Custis Trail.", { street: "Custis Trail", facility: "path" }),
+      stretch(1500, 9000, "Continue onto Mount Vernon Trail.", {
+        street: "Mount Vernon Trail",
+        facility: "path",
+        relation_name: true,
+        turn: straightOnto("Mount Vernon Trail"),
+      }),
+    ]),
+  );
+  assert.equal(model.cues.filter((c) => c.kind === "onto").length, 0);
+});
+
+/** A turn entry's `turn`, for the bear and jog cues (the owner, 2026-10-16, on Q Street NW: "complex turns which aren't announced"). */
+const turning = (movement: "left" | "right" | "bear_left" | "bear_right", street: string) => ({ movement, onto: street, control: null, severity: null });
+
+test("bear: a bear right off Q Street onto a diagonal is a turn cue, said at Full and Stoker, not Quiet", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "Q Street Northwest.", { street: "Q Street Northwest" }),
+      stretch(900, 2200, "Bear right onto Rhode Island Avenue Northwest.", { street: "Rhode Island Avenue Northwest", turn: turning("bear_right", "Rhode Island Avenue Northwest") }),
+    ]),
+  );
+  const turn = model.cues[0];
+  assert.equal(turn.kind, "turn");
+  assert.equal(turn.movement, "bear_right");
+  assert.equal(turn.text, "Bear right onto Rhode Island Avenue Northwest.");
+  assert.ok(says("full", turn) && says("stoker", turn) && !says("quiet", turn));
+  assert.equal(cueSpoken(turn, "now", 0), "Bear right now onto Rhode Island Avenue Northwest.");
+  assert.equal(turnWords("bear_left", null), "Bear left.");
+  const spoken = ride(model, "stoker", 0, 1000).events.filter((e) => e.cue?.kind === "turn").map((e) => e.phase);
+  assert.deepEqual(spoken, ["ahead", "now"]);
+  assert.equal(ride(model, "quiet", 0, 1000).events.filter((e) => e.cue?.kind === "turn").length, 0);
+});
+
+test("jog: a right then a bear left 30 m on is one cue, said early for both; the second is kept for the card but not said again", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "Q Street Northwest.", { street: "Q Street Northwest" }),
+      stretch(900, 930, "Right onto 6th Street Northwest.", { street: "6th Street Northwest", turn: turning("right", "6th Street Northwest") }),
+      stretch(930, 2200, "Bear left onto Rhode Island Avenue Northwest.", { street: "Rhode Island Avenue Northwest", turn: turning("bear_left", "Rhode Island Avenue Northwest") }),
+    ]),
+  );
+  const [first, second] = model.cues;
+  assert.equal(first.text, "Right onto 6th Street Northwest, then immediately bear left onto Rhode Island Avenue Northwest.");
+  assert.equal(cueSpoken(first, "now", 0), "Right now, then bear left onto Rhode Island Avenue Northwest.");
+  assert.equal(
+    cueSpoken(first, "advance", 152.4),
+    `In ${spokenDistance(152.4)}, right onto 6th Street Northwest, then immediately bear left onto Rhode Island Avenue Northwest.`,
+  );
+  assert.ok(second.joined && second.movement === "bear_left");
+  assert.equal(nextAction(model, 910)?.index, second.index);
+  for (const level of ["full", "stoker"] as const) {
+    const said = ride(model, level, 0, 1200).events.filter((e) => e.cue?.kind === "turn");
+    assert.ok(said.length >= 2, level);
+    assert.ok(
+      said.every((e) => e.cue?.index === first.index),
+      level,
+    );
+  }
+  // Turns farther apart than JOG_M are each their own.
+  const apart = rideModel(
+    straightRoute([
+      stretch(0, 900, "Q Street Northwest.", { street: "Q Street Northwest" }),
+      stretch(900, 900 + JOG_M + 20, "Right onto 6th Street Northwest.", { street: "6th Street Northwest", turn: turning("right", "6th Street Northwest") }),
+      stretch(900 + JOG_M + 20, 2200, "Left onto R Street Northwest.", { street: "R Street Northwest", turn: turning("left", "R Street Northwest") }),
+    ]),
+  );
+  assert.deepEqual(
+    apart.cues.filter((c) => c.kind === "turn").map((c) => [c.text, !!c.joined]),
+    [
+      ["Right onto 6th Street Northwest.", false],
+      ["Left onto R Street Northwest.", false],
+    ],
+  );
+});
+
+test("bear: a curving road that keeps its name says nothing", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "Beach Drive.", { street: "Beach Drive" }),
+      stretch(900, 2200, "Continue on Beach Drive.", { street: "Beach Drive", tier: 2 }),
+    ]),
+  );
+  assert.deepEqual(
+    model.cues.map((c) => c.kind),
+    ["end"],
+  );
+});
+
+/** Q Street's jog: a right onto 6th Street at 900 m, a bear left onto Rhode Island Avenue 30 m on. */
+function qStreetJog(): RideModel {
+  return rideModel(
+    straightRoute([
+      stretch(0, 900, "Q Street Northwest.", { street: "Q Street Northwest" }),
+      stretch(900, 930, "Right onto 6th Street Northwest.", { street: "6th Street Northwest", turn: turning("right", "6th Street Northwest") }),
+      stretch(930, 2200, "Bear left onto Rhode Island Avenue Northwest.", { street: "Rhode Island Avenue Northwest", turn: turning("bear_left", "Rhode Island Avenue Northwest") }),
+    ]),
+  );
+}
+
+test('jog: the second turn says its own "now" where the first\'s was never said (a ride started, or a gap in the fixes, between the two)', () => {
+  const model = qStreetJog();
+  const second = model.cues[1];
+  assert.ok(second.joined);
+  for (const level of ["full", "stoker"] as const) {
+    // Started (or rejoined) past the first turn.
+    const started = ride(model, level, 912, 1000).events.filter((e) => e.cue?.kind === "turn");
+    assert.deepEqual(
+      started.map((e) => [e.cue?.index, e.phase, e.spoken]),
+      [[second.index, "now", "Bear left now onto Rhode Island Avenue Northwest."]],
+      level,
+    );
+    // A gap in the fixes over the first turn.
+    const before = ride(model, level, 0, 880);
+    const after = ride(model, level, 912, 1000, 5, before.state).events.filter((e) => e.cue?.kind === "turn");
+    assert.deepEqual(
+      after.map((e) => [e.cue?.index, e.phase]),
+      [[second.index, "now"]],
+      level,
+    );
+  }
+  assert.equal(ride(model, "quiet", 912, 1000).events.filter((e) => e.cue?.kind === "turn").length, 0);
+  // The cue sheet has no row for it: the first's row says it.
+  assert.deepEqual(
+    cueSheet(model, 0).map((r) => r.text),
+    ["Right onto 6th Street Northwest, then immediately bear left onto Rhode Island Avenue Northwest.", "The end of the route."],
+  );
+});
+
+test("jog: three turns in a row join the first two; the third is its own cue (pinned)", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "A Street.", { street: "A Street" }),
+      stretch(900, 950, "Right onto B Street.", { street: "B Street", turn: turning("right", "B Street") }),
+      stretch(950, 1000, "Left onto C Street.", { street: "C Street", turn: turning("left", "C Street") }),
+      stretch(1000, 2200, "Right onto D Street.", { street: "D Street", turn: turning("right", "D Street") }),
+    ]),
+  );
+  assert.deepEqual(
+    model.cues.filter((c) => c.kind === "turn").map((c) => [c.text, !!c.joined]),
+    [
+      ["Right onto B Street, then immediately left onto C Street.", false],
+      ["Left onto C Street.", true],
+      ["Right onto D Street.", false],
+    ],
+  );
+});
+
+test("jog: a flagged junction between two close turns keeps them apart (pinned)", () => {
+  const model = rideModel(
+    straightRoute([
+      stretch(0, 900, "A Street.", { street: "A Street" }),
+      stretch(900, 940, "Right onto B Street.", { street: "B Street", turn: turning("right", "B Street") }),
+      { ...stretch(920, 920, "Crossing Big Avenue, higher stress junction."), kind: "junction", severity: "orange" },
+      stretch(940, 2200, "Left onto C Street.", { street: "C Street", turn: turning("left", "C Street") }),
+    ]),
+  );
+  assert.deepEqual(
+    model.cues.filter((c) => c.kind !== "end").map((c) => [c.kind, c.text, !!c.joined]),
+    [
+      ["turn", "Right onto B Street.", false],
+      ["hazard", "Crossing Big Avenue, higher stress junction.", false],
+      ["turn", "Left onto C Street.", false],
+    ],
+  );
 });

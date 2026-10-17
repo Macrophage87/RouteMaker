@@ -14,8 +14,9 @@
  * - Off route: re-planned automatically after the gate (plan Q5), or "Keep the planned route", which
  *   shows the way back. A re-plan never touches the plan in the address bar (plan Q2): it is the ride's
  *   own route, held here and in App's ride state only.
- * - Big text (map hidden), Re-centre (and the C key), heading-up (track-up by default since v0.7.0), the
- *   ride's settings, End ride; and an End button always in view at the top of the card, with Undo after.
+ * - Big text (map hidden), Re-centre (and the C key), heading-up (track-up by default since v0.7.0); and
+ *   Settings and End ride always in view at the top of the card (Settings opens the ride's settings just
+ *   under it), with Undo after End ride. End ride part way leaves the plan starting where the rider is.
  * - The map along the route, kept for dead spots (lib/corridor.ts, N5), and Report a problem to DC 311
  *   with the place in the route's street names (lib/report311.ts, N6; OWNER-DECISIONS 369, 465).
  *
@@ -51,12 +52,12 @@ import {
   VERBOSITY_LABELS,
   cueSpoken,
   nextAction,
+  planAfterEnd,
   pointAt,
   replanPoints,
   replanTold,
   rideModel,
   startState,
-  step,
   toGo,
   wayBack,
   whereAmI,
@@ -137,6 +138,19 @@ import {
 } from "./lib/report311.ts";
 import { RIDE_311_NAME, RIDE_311_TEXT, Ride311Menu, ride311Shown } from "./lib/ride311.ts";
 import { Icon } from "./Icon.tsx";
+import { DepartureTimer } from "./DepartureTimer.tsx";
+import {
+  RIDE_REST,
+  RIDE_REST_FINDING,
+  RIDE_REST_HINT,
+  approachWords,
+  restFrom,
+  restNear,
+  restReadySaid,
+  tripRideStart,
+  tripStep,
+  type RideTrip,
+} from "./lib/rideTrip.ts";
 
 /**
  * One voice for the page: the Start ride press unlocks it (iOS speaks only after a gesture has). Web
@@ -147,15 +161,23 @@ export const rideVoice = new Voice(rideSpeech());
 /** Said as the ride starts, inside the Start press, so the voice is unlocked by it. */
 export const RIDE_STARTED = "Ride started.";
 export const RIDE_ENDED = "Ride ended.";
-/** The always-visible End button's words and the name it is heard by (the visible "End" is in it). */
-export const END_TEXT = "End";
+/** The always-visible End ride button's words (the owner, 2026-10-16: "add a method of ending navigation"). */
 export const END_RIDE_NAME = "End ride";
+/** The top row's Settings button opens these, just under it (the owner, 2026-10-16: "the buttons to change the settings seem hidden"). */
+export const RIDE_SETTINGS_TEXT = "Settings";
+export const RIDE_SETTINGS_TITLE = "Ride settings";
+/** What End ride leaves behind (lib/navigate.ts planAfterEnd): the plan from here, or as it was. */
+export type EndedPlan = ReturnType<typeof planAfterEnd>;
 /** How long Undo is offered after End (v0.7.0, "Go riding fixes" item 6); held while it has the focus. */
 export const UNDO_END_MS = 8_000;
 /** How long the 311 line ("Sent to DC 311." and Add a note) stays (review F4); held the same way. */
 export const SAID_311_MS = 8_000;
 /** Said by the page's polite region (always mounted) as Ride ended shows (review F6). */
 export const RIDE_ENDED_SAID = "Ride ended. Undo available.";
+/** Said instead where End ride came part way (lib/navigate.ts planAfterEnd): the plan now starts where the rider is. */
+export const RIDE_ENDED_FROM_HERE_SAID = "Ride ended. The route now starts where you are. Undo available.";
+/** Part way with no recent location: the plan keeps its start, and the rider is told. */
+export const RIDE_ENDED_NO_FIX_SAID = "Ride ended. Route start unchanged. Undo available.";
 
 /**
  * A short-lived message's timer (lib/holdTimer.ts) with the handlers that hold it: while the focus is inside, or a
@@ -229,7 +251,7 @@ export interface RideView {
   rider: { point: LonLat; headingDeg: number | null; accuracyM: number } | null;
 }
 
-function arrowFor(cue: Cue | null): "left" | "right" | "straight" | "stop" | "end" | "warn" {
+function arrowFor(cue: Cue | null): "left" | "right" | "bear_left" | "bear_right" | "straight" | "stop" | "end" | "warn" {
   if (!cue) return "straight";
   if (cue.kind === "end") return "end";
   if (cue.kind === "stop") return "stop";
@@ -243,6 +265,8 @@ function CueShape({ shape }: { shape: ReturnType<typeof arrowFor> }) {
   const paths: Record<typeof shape, string> = {
     left: "M30 52 V28 H14 M22 18 L12 28 L22 38",
     right: "M18 52 V28 H34 M26 18 L36 28 L26 38",
+    bear_left: "M30 52 V30 L14 14 M14 26 V14 H26",
+    bear_right: "M18 52 V30 L34 14 M22 14 H34 V26",
     straight: "M24 52 V10 M14 20 L24 10 L34 20",
     stop: "M14 10 V52 M14 12 H38 L32 20 L38 28 H14",
     end: "M14 10 V52 M14 12 H38 V28 H14 M26 12 V28 M14 20 H38",
@@ -443,6 +467,8 @@ export function RideMode({
   trailMiles = null,
   geoEnv,
   keepLastRide = false,
+  trip = null,
+  onRideRest,
 }: {
   route: RouteResponse;
   /** The points the route was planned with, and whether it is a loop: what a re-plan builds on. */
@@ -460,7 +486,8 @@ export function RideMode({
   onBig: (on: boolean) => void;
   /** The ride's route and the rider's position, for the map. */
   onView: (view: RideView) => void;
-  onEnd: () => void;
+  /** End ride: with the plan the ride leaves (part way, from here; lib/navigate.ts planAfterEnd). */
+  onEnd: (after: EndedPlan) => void;
   /** The water layer's points, loaded if they are not yet (App's ensureWater); for the detours. */
   water?: () => Promise<WaterPoint[] | null>;
   /**
@@ -474,6 +501,13 @@ export function RideMode({
    * handed to the last ride's kept route before it is cleared. Read once, at Start ride.
    */
   keepLastRide?: boolean;
+  /**
+   * A Bikeshare or transit plan's riding leg (lib/rideTrip.ts): the walk to the first dock said until the
+   * rider reaches it (never "off route"), and the dock or the boarding said at the end. Null otherwise.
+   */
+  trip?: RideTrip | null;
+  /** Ride the rest: plans the trip's last riding leg from `here` and starts it; else the words to say why not. */
+  onRideRest?: (here: LonLat | null) => Promise<string | null>;
 }) {
   const [route, setRoute] = useState(plannedRoute);
   // What a re-plan builds on: the plan's points at first, then the last re-plan's (never a loop: its end is sent).
@@ -485,6 +519,12 @@ export function RideMode({
   const milesRef = useRef(trailMiles);
   milesRef.current = trailMiles;
   const [ride, setRide] = useState<RideState>(startState);
+  // A Bikeshare or transit plan's walk to its first dock (lib/rideTrip.ts): until the rider reaches the
+  // line's start, the walk is said and shown, and no fix is taken as off route.
+  const approach = trip?.approach ?? null;
+  const [walking, setWalking] = useState(approach !== null);
+  // The walk, whether it has been said, and the last good fix (lib/rideTrip.ts tripStep); its `ride` is rideRef's.
+  const tripRef = useRef(tripRideStart(trip));
   const rideRef = useRef(ride);
   const prefsRef = useRef(prefs);
   prefsRef.current = prefs;
@@ -520,6 +560,13 @@ export function RideMode({
   // Each re-plan's ticket: "Keep the planned route" or a newer re-plan voids an older one's answer.
   const replanTicket = useRef(0);
   const settingsId = useId();
+  // The ride's settings, opened from the top row's Settings (closed at Start).
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsPanel = useRef<HTMLDivElement>(null);
+  // Opened, the panel is brought into view (the row above it is sticky; the card may be scrolled).
+  useEffect(() => {
+    if (settingsOpen) settingsPanel.current?.scrollIntoView?.({ block: "nearest" });
+  }, [settingsOpen]);
   // The 311 button's menu (lib/ride311.ts; the owner's choice 9) and the report it continues into.
   const [reportKind, setReportKind] = useState<ReportKind>("pothole");
   const [reportOpen, setReportOpen] = useState(false);
@@ -796,9 +843,16 @@ export function RideMode({
       setGps(weighed.weak ? GPS_WEAK_SAID : "");
       checkCueSheet(lastFixAt.current);
       const auto = !keepRef.current;
-      const out = step(modelRef.current, rideRef.current, fix, prefsRef.current.verbosity, auto);
+      // Walking to the dock, nothing is placed on the line or taken as off route (lib/rideTrip.ts).
+      const wasWalking = tripRef.current.walking;
+      const stepped = tripStep(modelRef.current, trip, { ...tripRef.current, ride: rideRef.current }, fix, prefsRef.current.verbosity, auto);
+      tripRef.current = stepped.state;
+      for (const note of stepped.notes) notify(note);
+      if (wasWalking && !stepped.state.walking) setWalking(false);
+      const out = { state: stepped.state.ride, events: stepped.events };
       rideRef.current = out.state;
       setRide(out.state);
+      if (stepped.state.walking) return;
       say(out.events);
       // Back on the planned route: "Keep" has done its work; leaving it again re-plans as usual.
       if (out.events.some((e) => e.kind === "back-on-route") || (keepRef.current && !out.state.off)) setKeepPlanned(false);
@@ -809,7 +863,7 @@ export function RideMode({
         announcer.current?.answer(whereAmI(modelRef.current, out.state, false, milesRef.current));
       }
     },
-    [gate, replan, say, notify, checkCueSheet],
+    [gate, replan, say, notify, checkCueSheet, approach, trip],
   );
   const onFixRef = useRef(onFix);
   onFixRef.current = onFix;
@@ -957,13 +1011,40 @@ export function RideMode({
     whereRef.current?.focus();
   };
   const askWhere = useCallback(() => {
-    const spoken = whereAmI(modelRef.current, rideRef.current, false, milesRef.current);
-    setWhere(whereAmI(modelRef.current, rideRef.current, true, milesRef.current));
+    // Walking to the dock: the walk, from here.
+    const walk = tripRef.current.walking && approach ? approachWords(approach, rideRef.current.fix?.point ?? null) : null;
+    const spoken = walk ? walk.spoken : whereAmI(modelRef.current, rideRef.current, false, milesRef.current);
+    setWhere(walk ? walk.shown : whereAmI(modelRef.current, rideRef.current, true, milesRef.current));
     // On demand: through the chosen outputs; with neither chosen, through the polite region too, since
     // the rider asked (the answer is also on screen).
     announcer.current?.answer(spoken);
     if (prefsRef.current.output === "neither") setPolite((s) => ({ text: spoken, count: s.count + 1 }));
-  }, []);
+  }, [approach]);
+  // Ride the rest (lib/rideTrip.ts): offered near or past the stop where the transit ends, said once as it
+  // shows; the press is answered as Re-plan from here's is, and a new ride replaces this one.
+  const rest = trip?.rest ?? null;
+  const restShown = !!rest && !!onRideRest && !walking && restNear(rest, ride.fix?.point ?? null, ride.arrived);
+  const restSaid = useRef(false);
+  useEffect(() => {
+    if (!restShown || !rest || restSaid.current) return;
+    restSaid.current = true;
+    notify(restReadySaid(rest));
+  }, [restShown, rest, notify]);
+  const restBusy = useRef(false);
+  const rideTheRest = () => {
+    if (!onRideRest || restBusy.current) return;
+    const answer = (text: string) => {
+      announcer.current?.answer(text);
+      if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
+    };
+    restBusy.current = true;
+    answer(RIDE_REST_FINDING);
+    // The last good fix, kept after arrival (the line's goodFix stops at the drop-off), while fresh.
+    void onRideRest(restFrom(tripRef.current.lastGood, Date.now())).then((said) => {
+      restBusy.current = false;
+      if (said && !ended.current) answer(said);
+    });
+  };
   const end = () => {
     ended.current = true;
     stopWatch.current?.();
@@ -971,7 +1052,8 @@ export function RideMode({
     announcer.current?.drop();
     rideVoice.stop();
     if (toVoice(prefsRef.current.output)) rideVoice.speak(RIDE_ENDED, true);
-    onEnd();
+    // A Bikeshare or transit trip's riding leg is not the plan: the plan stays as it was.
+    onEnd(trip ? null : planAfterEnd(modelRef.current, rideRef.current, plan.current.points, plan.current.loop, Date.now()));
   };
   // A toggle: pressed, no automatic re-plan (one in flight is voided) and the way back is said once;
   // pressed again, re-planning is back on.
@@ -994,6 +1076,11 @@ export function RideMode({
       announcer.current?.answer(text);
       if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
     };
+    // Walking to the dock: the walk again, not a ride from here that would skip the dock.
+    if (tripRef.current.walking && approach) {
+      answer(approachWords(approach, rideRef.current.fix?.point ?? null).spoken);
+      return;
+    }
     // A re-plan still under way (or one kept waiting after Keep the planned route) holds the gate.
     if (replanning || gate.busy) {
       answer(REPLAN_STILL_WAITING);
@@ -1129,20 +1216,47 @@ export function RideMode({
       <LiveRegion said={polite} urgent={false} />
       <LiveRegion said={assertive} urgent />
       <div className="cue-card">
-        {/* The End button (v0.7.0, "Go riding fixes" item 6): always in view, at the top of the card, which
-            stays at every size and in Big text; one tap ends the ride, and the page offers Undo for a few
-            seconds (RideEnded). The End ride button below stays. */}
+        {/* End ride (v0.7.0, "Go riding fixes" item 6): always in view, at the top of the card, which stays at
+            every size and in Big text; one tap ends the ride, and the page offers Undo for a few seconds
+            (RideEnded). Settings beside it opens the ride's settings just under the row (the owner, 2026-10-16). */}
         <div className="ride-top">
           <h2 id="ride-heading" ref={headingRef} tabIndex={-1} className="ride-heading">
             Ride mode
           </h2>
-          <button type="button" className="danger ride-end" onClick={end} aria-label={END_RIDE_NAME}>
-            <Icon name="stop" size={18} />
-            {END_TEXT}
-          </button>
+          <div className="ride-top-actions">
+            <button
+              type="button"
+              className="secondary ride-settings-button"
+              aria-expanded={settingsOpen}
+              aria-controls={`${settingsId}-settings`}
+              onClick={() => setSettingsOpen(!settingsOpen)}
+            >
+              <Icon name="gear" size={18} />
+              {/* Shown where there is room; on the narrowest phones the gear alone, its name still "Settings". */}
+              <span className="ride-settings-label">{RIDE_SETTINGS_TEXT}</span>
+            </button>
+            <button type="button" className="danger ride-end" onClick={end}>
+              <Icon name="stop" size={18} />
+              {END_RIDE_NAME}
+            </button>
+          </div>
+        </div>
+        <div ref={settingsPanel} id={`${settingsId}-settings`} className="ride-mode-settings" role="group" aria-label={RIDE_SETTINGS_TITLE} hidden={!settingsOpen}>
+          <RideSettingsFields prefs={prefs} onChange={onPrefs} idBase={settingsId} />
+          <p className="hint">{RIDE_SAFETY}</p>
+          <label className="toggle ride-toggle">
+            <input type="checkbox" checked={headingUp} onChange={(event) => onHeadingUp(event.target.checked)} />
+            Turn the map to my heading
+          </label>
         </div>
         {ride.arrived ? (
-          <p className="cue-text">{cueSpoken(model.cues[model.cues.length - 1], "arrive", 0)}</p>
+          <>
+            <p className="cue-text">{trip?.finish?.shown ?? cueSpoken(model.cues[model.cues.length - 1], "arrive", 0)}</p>
+            {/* The boarding's departure, its countdown and milestones as in the trip's panel (said through the ride's outputs). */}
+            {trip?.departure && <DepartureTimer departure={trip.departure} announce={notify} />}
+          </>
+        ) : walking && approach ? (
+          <p className="cue-text">{approachWords(approach, ride.fix?.point ?? null).shown}</p>
         ) : ride.off ? (
           <div className="cue-off">
             <CueShape shape="warn" />
@@ -1230,9 +1344,12 @@ export function RideMode({
             <div className="ride-311-said" {...said311Timer.hold}>
               {/* Shown, not a live region: it is said through the rider's own outputs (tell311). */}
               <p>{said311}</p>
-              <button type="button" className="secondary" onClick={addNote}>
-                Add a note
-              </button>
+              {/* Sent by the server already: a note would be a second report of the same problem (v0.7.0 end review). */}
+              {said311 !== REPORT_SENT && (
+                <button type="button" className="secondary" onClick={addNote}>
+                  Add a note
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -1263,6 +1380,16 @@ export function RideMode({
             <button type="button" className="secondary" onClick={keep} aria-pressed={keepPlanned}>
               Keep the planned route
             </button>
+          </div>
+        )}
+        {restShown && (
+          <div className="actions ride-rest">
+            <button type="button" onClick={rideTheRest} aria-describedby={`${settingsId}-rest`}>
+              {RIDE_REST}
+            </button>
+            <p id={`${settingsId}-rest`} className="hint">
+              {RIDE_REST_HINT}
+            </p>
           </div>
         )}
         {!follow && !big && <p className="hint">The map stopped following you. Re-centre follows again.</p>}
@@ -1338,17 +1465,6 @@ export function RideMode({
           serverOn={serverOn311}
           miles={trailMiles}
         />
-        <details className="fold ride-mode-settings">
-          <summary>Ride settings</summary>
-          <div className="fold-body">
-            <RideSettingsFields prefs={prefs} onChange={onPrefs} idBase={settingsId} />
-            <p className="hint">{RIDE_SAFETY}</p>
-            <label className="toggle ride-toggle">
-              <input type="checkbox" checked={headingUp} onChange={(event) => onHeadingUp(event.target.checked)} />
-              Turn the map to my heading
-            </label>
-          </div>
-        </details>
       </div>
     </section>
   );

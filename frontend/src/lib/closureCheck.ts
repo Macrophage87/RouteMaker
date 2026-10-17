@@ -75,19 +75,30 @@ export function thinForCheck(line: readonly (readonly number[])[], max = CHECK_M
 
 type Fetch = typeof fetch;
 
-/** POST /api/closures/check, or null when it could not be asked (offline, refused): the route is then not held up. */
+/** How long Start ride, a download or a save waits on the check: past it, they go ahead unchecked (v0.7.0 end review). */
+export const CHECK_TIMEOUT_MS = 3000;
+
+/**
+ * POST /api/closures/check, or null when it could not be asked (offline, refused, no answer in
+ * `timeoutMs`): the route is then not held up.
+ */
 export async function checkClosures(
   origin: string,
   line: readonly (readonly number[])[],
   post: Fetch = fetch,
   at: CheckAt = {},
+  timeoutMs = CHECK_TIMEOUT_MS,
 ): Promise<(ClosureAnswer & { index: number[] }) | null> {
   if (line.length < 2) return null;
   const thin = thinForCheck(line);
+  // As AbortSignal.timeout, but on a timer cleared once answered.
+  const stop = new AbortController();
+  const timer = setTimeout(() => stop.abort(), timeoutMs);
   try {
     const response = await post(`${origin}/api/closures/check`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
+      signal: stop.signal,
       // The plan's When, so a closure is matched at the ride and not today; and its "Route through anyway" ids.
       body: JSON.stringify({ line: thin.line, ...(at.when ? { when: at.when } : {}), ...(at.bypass?.length ? { bypass: at.bypass } : {}) }),
     });
@@ -102,6 +113,8 @@ export async function checkClosures(
     };
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

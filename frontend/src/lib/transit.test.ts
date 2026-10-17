@@ -222,9 +222,8 @@ test("the panel's steps are a labelled ordered list, with the total, comparison 
   const panel = src("app/RoutePanel.tsx");
   assert.match(panel, /const timeName = transit \? \(transit\.scheduled \? "Door-to-door time, scheduled" : "Door-to-door time"\) : "Moving time";/);
   assert.match(panel, /\{!go\.peek && transitFold\}/);
-  // No Start ride on a transit plan, whose line is only the first ride, unless it is riding your own bike the whole way.
-  assert.match(panel, /const wholeRide = !transit \|\| \(transit\.direct && transit\.mode === "bike-transit"\);/);
-  assert.match(panel, /const rideable = !bikeshare && wholeRide && route\.distance_m <= RIDE_MAX_M;/);
+  // Start ride on a transit plan follows its first riding leg (lib/rideTrip.ts; rideTrip.test.ts).
+  assert.match(panel, /const rideable = rideableRoute\(route\);/);
   // The map's markers are images with their whole text equivalent, not buttons.
   const map = src("MapView.tsx");
   assert.match(map, /element\.className = "transit-marker";\n\s*element\.setAttribute\("role", "img"\);\n\s*element\.setAttribute\("aria-label", stop\.label\);/);

@@ -413,6 +413,10 @@ test("the page asks the role in the one question, keeps Go clean and names the k
   const ask = group.slice(group.indexOf('className="ride-consent"'), group.indexOf('className="ride-group-bar"'));
   assert.match(ask, /<label className="ride-role-select">\s*\{ROLE_QUESTION\}\{" "\}\s*<select value=\{pickedRole\}/);
   assert.doesNotMatch(ask, /RolePicker|type="radio"/);
+  // A group, not a non-modal "dialog" (v0.7.0 end review), and the question said once, politely, as it shows.
+  assert.match(group, /<div className="ride-consent" role="group" aria-labelledby="ride-consent-q"/);
+  assert.doesNotMatch(group, /role="dialog"/);
+  assert.match(group, /if \(kept === null\) window\.setTimeout\(\(\) => live && say\(CONSENT_QUESTION\), 150\);/);
   // A role change moves the next post up, and the post sends the consent's (new) role.
   assert.match(group, /const changeRole[\s\S]*?keepConsent\(ride, consent\.answer, Date\.now\(\), undefined, undefined, role\)[\s\S]*?share\.current\.lastPost = postSoonAfter\(share\.current\.lastPost\)/);
   assert.match(group, /\}, \[fix, now, shareOn, ride, token, consent, line, origin\]\);/);

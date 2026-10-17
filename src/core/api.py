@@ -1148,7 +1148,7 @@ class DescriptionTurnOut(Schema):
     is: the movement, the street turned onto, who has the right of way where
     the junction model read the junction, and its severity where it flagged it."""
 
-    movement: Literal["left", "straight", "right"] | None = Field(
+    movement: Literal["left", "straight", "right", "bear_left", "bear_right"] | None = Field(
         description="Null where the router gave no headings and no junction event did."
     )
     onto: str | None = Field(description="The street turned onto; null on a junction entry.")
@@ -1249,6 +1249,13 @@ class DescriptionEntryOut(Schema):
             "On a stretch: `text` with painted lanes on LTS 4 and Avoid not called bike "
             'lanes, for the client switch "Show bike lanes on high-stress roads" '
             "(OWNER-DECISIONS 275); null where that is `text`."
+        ),
+    )
+    relation_name: bool = Field(
+        default=False,
+        description=(
+            "On a stretch: its `street` is its trail's route relation's name, carried by "
+            "no way of it itself; the ride gives no cue for a change onto such a name."
         ),
     )
 
@@ -2560,6 +2567,128 @@ def _route_answer(request, body: RouteIn, response: HttpResponse):
         ratelimit.release(held)
 
 
+# --- Go's "More direct" and "Calmer" (the owner, 2026-10-16) --------------------------------
+#
+# POST /api/route/neighbours plans the rider's trip one notch more traffic tolerant and one
+# notch calmer than the rider's own setting (`presets.stress_notches`), for Go to offer beside
+# the rider's own route. Go asks once its own route is shown, and never waits on the answer:
+# a plan or a ride's re-route asked for meanwhile is sent at once (frontend
+# lib/routeScheduler.ts). So this request never takes a slot a plan needs: it has routing's
+# deployment slots at the lowest priority and a client slot of its own
+# (`ratelimit.NEIGHBOURS_IN_FLIGHT`), and is refused at once when the pool is busy. It counts
+# as two routing requests, for the two plans. The plans run one after the other on the
+# request's own thread, through the route cache (Bikeshare's ride, between the rider's own
+# docks, as a Bikeshare plan is, uncached), inside NEIGHBOURS_BUDGET_S: each plan stops at
+# that budget's end (`routing.Deadline`), so nothing outlives the request, and one that fails
+# or runs out of time is left out. Nothing is compared here: the page compares each with the
+# routes it shows and keeps those that differ enough (frontend lib/neighbours.ts).
+
+# The seconds the two plans may take together, inside the request's own budget.
+NEIGHBOURS_BUDGET_S = 15
+# What the request counts against the routing limit: one for each plan.
+NEIGHBOURS_COST = 2
+
+
+class NeighbourOut(Schema):
+    kind: Literal["direct", "calmer"] = Field(
+        description="`direct`: one notch more traffic tolerant. `calmer`: one notch calmer."
+    )
+    stress: int = Field(description="The traffic slider's position it was planned at.")
+    route: RouteOut
+
+
+class NeighboursOut(Schema):
+    stress: int = Field(description="The rider's own position, as the notches were read from.")
+    options: list[NeighbourOut] = Field(
+        description=(
+            "Up to two, the more direct first; empty on a ride type that offers neither (Rebalance"
+            " Ride, the transit ride types, Mass Ride), at both ends of a ride type's limits, on"
+            " a long ride, and on a Bikeshare request that does not name its docks"
+            " (`pickup_station`, and `dropoff_station` unless it ends outside a dock): a"
+            " Bikeshare option keeps those docks and changes only the ride between them."
+        )
+    )
+
+
+@api.post(
+    "/route/neighbours",
+    response={
+        200: NeighboursOut,
+        400: ErrorOut,
+        422: ErrorOut,
+        429: ErrorOut,
+        500: ErrorOut,
+        503: BusyOut,
+    },
+    summary="The same trip one notch more direct and one notch calmer (Go's route options)",
+    by_alias=True,
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.NEIGHBOURS_IN_FLIGHT, slots=ratelimit.neighbour_slots),
+    ratelimit.rate_limited(ratelimit.ROUTING, cost=NEIGHBOURS_COST),
+    json_body_only,
+    errors_as_json,
+)
+def route_neighbours(request, body: RouteIn):
+    stress = _stress_of(body)
+    loop = routing.loop_wanted(body.points, body.loop, body.preset)
+    if span_m(routing.loop_points(body.points, loop)) > CONFIRM_SPAN_M:
+        return Status(200, {"stress": stress, "options": []})
+    if body.preset == presets.BIKESHARE and not _same_docks(body):
+        return Status(200, {"stress": stress, "options": []})
+    direct, calmer = presets.stress_notches(body.preset, stress)
+    wanted = [
+        (kind, notch)
+        for kind, notch in (("direct", direct), ("calmer", calmer))
+        if notch is not None
+        # A long calm plan takes the long ride's slot and budget: not offered as an option.
+        and (
+            loop
+            or not routing.long_calm_for(
+                body.preset, body.points, notch, long_ride=False, trails_off=body.trails_off
+            )
+        )
+    ]
+    # The plans' budget runs out NEIGHBOURS_BUDGET_S from now, read as a plan's own budget.
+    started = routing.clock() - (routing.PLAN_BUDGET_S - NEIGHBOURS_BUDGET_S)
+    bodies = {
+        kind: body.model_copy(update={"stress": notch, "quick": False, "candidates": False})
+        for kind, notch in wanted
+    }
+    answered = {kind: _neighbour(bodies[kind], started) for kind, _ in wanted}
+    options = [
+        {"kind": kind, "stress": notch, "route": answered[kind]}
+        for kind, notch in wanted
+        if answered.get(kind) is not None
+    ]
+    return Status(200, {"stress": stress, "options": options})
+
+
+def _same_docks(body: RouteIn) -> bool:
+    """Whether a Bikeshare request names the docks of the rider's own plan, so its options
+    vary only the ride between them (the owner, 21:21): the pick-up dock, and the drop-off
+    dock unless the ride ends outside one. A plan from a free e-bike has no dock to hold."""
+    return body.pickup_station is not None and (
+        body.dropoff_station is not None or body.ending == bikeshare.ENDING_OUTSIDE
+    )
+
+
+def _neighbour(body: RouteIn, started: float) -> dict | None:
+    """One notch's plan, through the route cache, or None: whatever goes wrong, the option
+    is left out. Without the request's timing recorder, as a transit trip's later rides."""
+    token = timing.start(None)
+    try:
+        if body.preset == presets.BIKESHARE:
+            # Only the ride between the rider's docks changes (`_same_docks`).
+            return _bikeshare_body(body, started)
+        return _planned(body, _bike_dials(body), started, False, False)
+    except Exception as error:  # noqa: BLE001 - an option never fails the answer
+        logger.warning("route neighbours: a notch was not planned: %s", type(error).__name__)
+        return None
+    finally:
+        timing.stop(token)
+
+
 # --- The nearest stations to pick up from or return to (OWNER-DECISIONS 466, 466a) ---------
 #
 # POST /api/bikeshare/stations lists the three stations nearest a point that are at least 3/4
@@ -3529,24 +3658,7 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
         ) as error:
             return _router_refusal(error, body)
     try:
-        dials = routing.Dials(
-            stress=body.stress,
-            hills=body.hills,
-            when=body.when,
-            closure_bypass=tuple(body.closure_bypass),
-            carrying=body.carrying,
-            assist=body.assist,
-            avoid_gravel=body.avoid_gravel,
-            trails_off=body.trails_off,
-            target_distance_m=body.target_distance_m,
-            system_weight_kg=body.system_weight_kg,
-            loop=body.loop,
-            debug_junctions=body.debug_junctions,
-            mtb_level=body.mtb_level,
-            mtb_preferred=body.mtb_preferred,
-            vias=tuple(body.via_points),
-        )
-        return Status(200, _planned(body, dials, started, long_ride, long_calm))
+        return Status(200, _planned(body, _bike_dials(body), started, long_ride, long_calm))
     except (
         routing.TooLong,
         routing.NoRoute,
@@ -3554,6 +3666,27 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
         routing.DeadlineExceeded,
     ) as error:
         return _router_refusal(error, body, long_ride or long_calm)
+
+
+def _bike_dials(body: RouteIn) -> routing.Dials:
+    """The dials of a bike-only plan (not Bikeshare's nor a transit trip's), as asked."""
+    return routing.Dials(
+        stress=body.stress,
+        hills=body.hills,
+        when=body.when,
+        closure_bypass=tuple(body.closure_bypass),
+        carrying=body.carrying,
+        assist=body.assist,
+        avoid_gravel=body.avoid_gravel,
+        trails_off=body.trails_off,
+        target_distance_m=body.target_distance_m,
+        system_weight_kg=body.system_weight_kg,
+        loop=body.loop,
+        debug_junctions=body.debug_junctions,
+        mtb_level=body.mtb_level,
+        mtb_preferred=body.mtb_preferred,
+        vias=tuple(body.via_points),
+    )
 
 
 def _planned(body: RouteIn, dials, started: float | None, long_ride: bool, long_calm: bool) -> dict:
@@ -4427,25 +4560,24 @@ def _refused(request, user, detail: str) -> None:
     )
 
 
-def instance_admin_only(*, audited: bool):
+def instance_admin_only(*, audited: bool, doing: str = "change traffic stress"):
     """A session of an active instance admin, or 401 (no session) or 403.
 
     `audited`: a write refused to a signed-in account is written to the audit log (the
     plan: every refused write is). A read refused is not, as the admin's page views are not.
+    `doing` finishes the refusals' sentences ("Sign in to ...").
     """
 
     def decorator(view):
         @wraps(view)
         def wrapped(request, *args, **kwargs):
             if not signed_in(request):
-                return _stress_error(401, "Sign in to change traffic stress.", code="signed_out")
+                return _stress_error(401, f"Sign in to {doing}.", code="signed_out")
             user = request.user
             if not getattr(user, "is_instance_admin", False):
                 if audited:
                     _refused(request, user, "not an instance admin")
-                return _stress_error(
-                    403, "Only an instance admin can change traffic stress.", code="not_admin"
-                )
+                return _stress_error(403, f"Only an instance admin can {doing}.", code="not_admin")
             return view(request, *args, **kwargs)
 
         return wrapped
@@ -5457,7 +5589,11 @@ REPORT_311_BODY_MAX_BYTES = 2048
 
 
 @api.get("/report311", summary="Whether Ride mode's 311 reports are sent to DC from here")
-@decorate_view(errors_as_json)
+@decorate_view(
+    ratelimit.rate_limited(ratelimit.REPORT_311_STATUS),
+    same_site_only,
+    errors_as_json,
+)
 def report311_status(request):
     from . import dc311
 
@@ -5522,17 +5658,46 @@ def report311_send(request):
 
 # Mass Ride and Group Ride links: the other riders as dots, and alerts (v0.7.0 plan;
 # core.ride_presence). No sign-in: a ride is the digest of the link's plan and a rider a random
-# per-ride token. Positions are in POST bodies only, kept in memory for 2 minutes, never logged;
-# counted per token in memory rather than per address in the database, because a whole ride's
-# phones can share one carrier address.
+# per-ride token. Positions are in POST bodies only, kept in memory for 2 minutes, never logged.
+# The fine limits are per token, in memory; the database counts only a generous ceiling per
+# address (a whole ride's phones can share one carrier address) and per ride, by keyed digest.
+
+
+def ride_writes_limited(view):
+    """Count a write against its ride (ratelimit.RIDE_WRITES), keyed by a digest of the ride id;
+    a path that is not a ride id is left to the view's 404 uncounted."""
+
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        from . import ride_presence
+
+        ride_id = str(kwargs.get("ride_id", ""))
+        if ride_presence.RIDE_ID.match(ride_id):
+            limit = ratelimit.RIDE_WRITES
+            decision = ratelimit.hit(limit, ratelimit.client_key(f"ride:{ride_id}"))
+            if not decision.allowed:
+                out = _stress_error(429, "This ride is busy; try again shortly.")
+                out["Retry-After"] = str(decision.retry_after_s)
+                return out
+        return view(request, *args, **kwargs)
+
+    return wrapped
+
+
+# decorate_view wraps in order, so the last is outermost: a foreign page is refused before it
+# is counted, and a write is counted against its address before its ride.
+RIDE_READ_GUARDS = (ratelimit.rate_limited(ratelimit.RIDE_LINKS), same_site_editor, errors_as_json)
+RIDE_WRITE_GUARDS = (
+    ride_writes_limited,
+    ratelimit.rate_limited(ratelimit.RIDE_LINKS),
+    same_site_editor,
+    errors_as_json,
+)
 
 
 def _ride_call(request, fn):
     from . import ride_presence
 
-    site = request.META.get("HTTP_SEC_FETCH_SITE", "").strip().lower()
-    if site and site not in ("same-origin", "none"):
-        return _stress_error(403, "This answers this site's own pages only.")
     try:
         answer = fn(ride_presence)
     except ride_presence.Refused as refused:
@@ -5551,14 +5716,14 @@ def _ride_body(request):
 
 
 @api.get("/rides/{ride_id}", summary="The other riders' dots on a ride link, and its alerts")
-@decorate_view(errors_as_json)
+@decorate_view(*RIDE_READ_GUARDS)
 def ride_read(request, ride_id: str):
     token = request.META.get("HTTP_X_RIDE_TOKEN", "")
     return _ride_call(request, lambda rp: rp.read(ride_id, token))
 
 
 @api.post("/rides/{ride_id}/here", summary="Show this rider as a dot (rounded to 20 m) for 2 min")
-@decorate_view(errors_as_json)
+@decorate_view(*RIDE_WRITE_GUARDS)
 def ride_here(request, ride_id: str):
     body, refusal = _ride_body(request)
     if refusal is not None:
@@ -5572,7 +5737,7 @@ def ride_here(request, ride_id: str):
 
 
 @api.post("/rides/{ride_id}/leave", summary="Stop showing this rider's dot at once")
-@decorate_view(errors_as_json)
+@decorate_view(*RIDE_WRITE_GUARDS)
 def ride_leave(request, ride_id: str):
     body, refusal = _ride_body(request)
     if refusal is not None:
@@ -5581,7 +5746,7 @@ def ride_leave(request, ride_id: str):
 
 
 @api.post("/rides/{ride_id}/alerts", summary="Send an alert to everyone on the ride link")
-@decorate_view(errors_as_json)
+@decorate_view(*RIDE_WRITE_GUARDS)
 def ride_alert(request, ride_id: str):
     body, refusal = _ride_body(request)
     if refusal is not None:
@@ -5601,7 +5766,7 @@ def ride_alert(request, ride_id: str):
 
 
 @api.post("/rides/{ride_id}/alerts/{alert_id}/clear", summary="Clear an alert you sent")
-@decorate_view(errors_as_json)
+@decorate_view(*RIDE_WRITE_GUARDS)
 def ride_alert_clear(request, ride_id: str, alert_id: str):
     body, refusal = _ride_body(request)
     if refusal is not None:
@@ -6798,8 +6963,9 @@ def reviewer_only(*, audited: bool):
             if not reviewed_closures.may_review(request.user):
                 if audited:
                     _refused(request, request.user, "not a reviewer")
+                doing = "enter a closure" if audited else "review closures"
                 return _stress_error(
-                    403, "Only a RouteMaker reviewer can enter a closure.", code="not_reviewer"
+                    403, f"Only a RouteMaker reviewer can {doing}.", code="not_reviewer"
                 )
             return view(request, *args, **kwargs)
 
@@ -7114,6 +7280,11 @@ class ReviewRulingIn(Schema):
         default=None, description="Change LTS: 1 to 5 by halves (5 is Avoid)."
     )
     reason: str = Field(default="", max_length=2000, description="Private; optional.")
+    source: str | None = Field(
+        default=None,
+        max_length=40,
+        description="Change LTS to the level this listed source holds; the evidence names it.",
+    )
 
 
 class ReviewRulingsIn(Schema):
@@ -7127,14 +7298,14 @@ REVIEW_RESPONSES = {200: ReviewAnyOut, **SUGGESTION_RESPONSES}
 # the admin's editing budget.
 REVIEW_READ = (
     ratelimit.rate_limited(ratelimit.REVIEW_READS),
-    instance_admin_only(audited=False),
+    instance_admin_only(audited=False, doing="use Review"),
     same_site_editor,
     errors_as_json,
 )
 REVIEW_RULING_WRITE = (
     ratelimit.user_rate_limited(ratelimit.REVIEW_RULINGS),
     csrf_protected,
-    instance_admin_only(audited=True),
+    instance_admin_only(audited=True, doing="use Review"),
     json_body_only,
     same_site_editor,
     ratelimit.rate_limited(ratelimit.REVIEW_RULINGS_CLIENT),
@@ -7264,6 +7435,7 @@ def review_rule(request, body: ReviewRulingIn):
             body.decision,
             step=body.step,
             reason=body.reason,
+            source=body.source,
         )
     except stress_edits.EditRefused as refusal:
         return _edit_refusal(request, refusal)

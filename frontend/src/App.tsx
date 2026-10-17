@@ -8,7 +8,8 @@ import { placeAtSpot, requestAfterClose, type InfoRequest } from "./lib/roadInfo
 import { stationNearSpot } from "./lib/stationLinks.ts";
 import { canDragLine, dropStillValid, insertIntoRide, legEnds, legPoints } from "./lib/lineEdit.ts";
 import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
-import { requestRoute, routeRequestBody, type ClosedStation, type RouteResponse, type RouteResult } from "./lib/api.ts";
+import { requestNeighbours, requestRoute, routeRequestBody, type ClosedStation, type NeighbourOption, type NeighboursResult, type RouteResponse, type RouteResult } from "./lib/api.ts";
+import { keptNeighbours, neighbourDials, neighboursSaid, offersNeighbours, rideDials, withNeighbours } from "./lib/neighbours.ts";
 import { betterRouteSaid, EarlyStart, takesRefined } from "./lib/progressive.ts";
 import { closedReason, closuresDayOf, matchClosures, requestClosures } from "./lib/railClosures.ts";
 import { COVERAGE_BBOX, MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
@@ -75,7 +76,8 @@ import {
 import { insertedSaid, loopChangeSaid,reversedSaid, reverseUnavailableHint, stationSaid } from "./lib/pointText.ts";
 import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
-import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, RIDE_ENDED_SAID, RideEnded, RideMode, primeRideVoice, startRideGesture, voiceTurnedOn, type RideView } from "./RideMode.tsx";
+import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, RIDE_ENDED_FROM_HERE_SAID, RIDE_ENDED_NO_FIX_SAID, RIDE_ENDED_SAID, RideEnded, RideMode, primeRideVoice, startRideGesture, voiceTurnedOn, type EndedPlan, type RideView } from "./RideMode.tsx";
+import { Icon } from "./Icon.tsx";
 import { readHeadingUp, readRidePrefs, writeHeadingUp, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf } from "./lib/bikeshare.ts";
@@ -177,6 +179,7 @@ import {
   requestNearest,
   searchNearest,
   NEAREST_STALE,
+  NO_FIX_YET,
   STILL_SEARCHING,
   type Found,
   type Nearby,
@@ -209,6 +212,8 @@ import { ReviewMode } from "./ReviewMode.tsx";
 import type { ListKey } from "./lib/review.ts";
 import { MY_GO_NOT_SAVED, MY_GO_SAVED, MY_GO_SAVED_DEVICE, fetchMyGo, goRideChips, OWN_RIDE_HINT, readStartMyGo, saveAccountCopy, saveDeviceMyGo, saveMyGo, type Home, type MyGo } from "./lib/myGo.ts";
 import { optionChosenSaid, transitOf, withTransitOption, type TransitPick } from "./lib/transit.ts";
+import { REST_ANYWAY_MS, RIDE_REST_FINDING, restClosedSaid, restRequest, rideLegOf, rideTripOf, rideable as rideableRoute, type RideTrip } from "./lib/rideTrip.ts";
+import { RIDE_TOO_LONG } from "./lib/navigate.ts";
 import { fetchMe, NO_ME, type Me } from "./lib/stressEditor.ts";
 import { ACCOUNT_SETTINGS_USED, applyToDevice, deviceSettings, fetchSettings, onSignIn, planFromSetting, sameSettings, saveSettings, SAVE_SETTLE_MS, type SettingsDoc } from "./lib/accountSettings.ts";
 import { HOME_KEPT, HOME_MOVED, answerHomeOffer, deviceHome, homeOffer, type HomeOffer } from "./lib/homeMove.ts";
@@ -388,7 +393,18 @@ export function App() {
     setChosen(true);
     setAroundAvoid(false);
   }, []);
-  const route = shownRoute(answer, choice, aroundAvoid);
+  // Go's More direct and Calmer (lib/neighbours.ts): asked for once the route shown is final, kept with the answer they
+  // are for, and offered after its own routes to choose from. The answer itself never changes for them, so its route
+  // is not said again and the choice is not reset when they come.
+  const [neighbours, setNeighbours] = useState<{ answer: RouteResponse; preset: PresetId; dials: Dials; options: NeighbourOption[] } | null>(null);
+  const kept = useMemo(
+    () => (neighbours && answer && neighbours.answer === answer ? keptNeighbours(answer, neighbours.options, neighbours.preset, neighbours.dials) : []),
+    [neighbours, answer],
+  );
+  const picked = useMemo(() => withNeighbours(answer, kept), [answer, kept]);
+  // The rider's own route stays the same object when the options come, so nothing keyed on it (the map's fit, its
+  // sentence) runs again for them.
+  const route = choice === 0 ? shownRoute(answer, 0, aroundAvoid) : shownRoute(picked, choice, aroundAvoid);
   const [routedPoints, setRoutedPoints] = useState<LonLat[]>([]);
   // Whether that route was planned as a loop the rider chose, recorded with its
   // points: during a replan the toggle may already say otherwise, and the GPX
@@ -713,7 +729,17 @@ export function App() {
   const [riding, setRiding] = useState(false);
   // What the ride started from, captured at Start ride: the ride never follows the planner's own route,
   // which a failed or changed plan could take away mid-ride.
-  const [rideStart, setRideStart] = useState<{ route: RouteResponse; points: LonLat[]; loop: boolean; dials: Dials } | null>(null);
+  // On a Bikeshare or transit plan, the points, loop and ride type are the riding leg's (lib/rideTrip.ts
+  // rideLegOf), with what is said around it (`trip`); `n` counts the rides, so Ride the rest starts afresh.
+  const [rideStart, setRideStart] = useState<{
+    route: RouteResponse;
+    points: LonLat[];
+    loop: boolean;
+    dials: Dials;
+    preset: PresetId;
+    trip: RideTrip | null;
+    n: number;
+  } | null>(null);
   const [rideAsk, setRideAsk] = useState(false);
   const [rideView, setRideView] = useState<RideView | null>(null);
   const [follow, setFollow] = useState(true);
@@ -778,7 +804,7 @@ export function App() {
 
   // One scheduler for the page: one request in flight, the latest plan only,
   // Retry-After waited out (routeScheduler.ts).
-  const scheduler = useRef<RouteScheduler<Plan> | null>(null);
+  const scheduler = useRef<RouteScheduler<Plan, NeighboursResult> | null>(null);
   // A route kept for offline (WEB-NAV-plan.md section 8, P3) answers when the planner cannot be reached
   // and the plan is one the rider kept; the planner's notice says so, and the next real answer clears it.
   const keptShown = useRef<KeptRoute<RouteResponse> | null>(null);
@@ -806,7 +832,7 @@ export function App() {
     earlyStart.current = new EarlyStart({ allowed: () => modeRef.current === "go" && !shownNow.current.riding && !scheduler.current?.busy() });
   }
   if (scheduler.current === null) {
-    scheduler.current = new RouteScheduler<Plan>({
+    scheduler.current = new RouteScheduler<Plan, NeighboursResult>({
       send: async (plan) => {
         // A shared route's link: its line first (openSaved sets savedShown), then this plan.
         if (SHARED_WAIT) await SHARED_WAIT;
@@ -907,6 +933,23 @@ export function App() {
         setRoute(result.route);
         routedKey.current = keptPlanKey(plan.points, plan.preset, plan.dials, viaIndices(plan.points, VIA_MARKS.isVia));
         if (line) setNoticeSaying(line, line);
+      },
+      // Go's More direct and Calmer (lib/neighbours.ts), once the route shown is final: one request for both, at the
+      // lowest priority, so nothing waits for it (a re-plan, Start or a ride's re-route goes at once). Not once Start is
+      // pressed or a ride is on, not for a long ride, and not on a ride type that offers neither.
+      after: (plan: Plan, final: RouteResult) => {
+        const now = shownNow.current;
+        if (!final.ok || final.route.provisional || modeRef.current !== "go" || now.riding || now.startAsked) return null;
+        if (!offersNeighbours(plan.preset) || plan.confirmLong) return null;
+        // Bikeshare keeps the plan's own docks: only the ride between them changes.
+        const dials = neighbourDials(plan.preset, plan.dials, final.route);
+        if (!dials) return null;
+        return () => requestNeighbours(plan.points, plan.preset, { dials, vias: viaIndices(plan.points, VIA_MARKS.isVia) });
+      },
+      onAfter: (plan: Plan, result: NeighboursResult) => {
+        const now = shownNow.current;
+        if (!result.ok || !now.answer || now.answer.provisional || now.riding) return;
+        setNeighbours({ answer: now.answer, preset: plan.preset, dials: plan.dials, options: result.options });
       },
     });
   }
@@ -1274,6 +1317,14 @@ export function App() {
     noticeSaidAs.current = null;
     if (!saidAlready && noticeSaidElsewhere(notice, plannerShownNow.current)) announce(notice as string);
   }, [notice, announce]);
+  // More direct and Calmer, said once when they come for the route shown ("2 other routes: more direct, calmer."), through
+  // the app's polite region; not again as the rider moves among the routes, nor for the same options re-read.
+  const neighboursSaidFor = useRef<object | null>(null);
+  useEffect(() => {
+    if (kept.length === 0 || neighboursSaidFor.current === neighbours) return;
+    neighboursSaidFor.current = neighbours;
+    announce(neighboursSaid(kept));
+  }, [kept, neighbours, announce]);
   // Shows `shown` and says `said` in its place, in one announcement.
   const setNoticeSaying = (shown: string, said: string) => {
     noticeSaidAs.current = shown;
@@ -2381,15 +2432,20 @@ export function App() {
   // Start ride (plan Q1, Q3): the first ride asks how to say the cues; later rides start at once. The
   // voice is unlocked inside this press (iOS speaks only after a gesture).
   // unlocked: Start's own press has already unlocked the voice (startRideChecked), before its closure check.
-  const beginRide = (prefs: RidePrefs, unlocked = false) => {
-    if (!shown) return;
+  // `rest`: Ride the rest's own route (rideRest, below), ridden in place of the plan's.
+  const beginRide = (prefs: RidePrefs, unlocked = false, rest?: { route: RouteResponse; points: LonLat[] }) => {
+    const route = rest?.route ?? shown;
+    if (!route) return;
     if (!unlocked) startRideGesture(prefs);
-    setRideStart({ route: shown, points: routedPoints, loop: routedLoop, dials: planDials });
+    const leg = rideLegOf(route, rest?.points ?? routedPoints, rest ? false : routedLoop);
+    // A More direct or Calmer chosen rides at its own traffic setting, so a re-route keeps to it; the plan's dials and
+    // the saved default stay the rider's (lib/neighbours.ts rideDials).
+    setRideStart((before) => ({ route, ...leg, dials: rideDials(planDials, rest ? null : route), n: (before?.n ?? 0) + 1 }));
     // The installed app keeps the ride's route as the last ride (OWNER-DECISIONS 465a); End ride gives it
     // the map the ride kept. A browser tab keeps nothing unless the rider presses Keep for offline.
     // A Keep for offline still fetching stops: the ride keeps its own corridor, and two walks would share the page's queue.
     keepAbort.current?.abort();
-    if (isStandalone() && routedKey.current) {
+    if (!rest && shown && isStandalone() && routedKey.current) {
       void keepLastRide({ plan: routedKey.current, title: keptTitle(), distanceM: shown.distance_m, answer: shown })
         .then(() => setKeptVersion((v) => v + 1))
         .catch(() => undefined);
@@ -2512,13 +2568,21 @@ export function App() {
   // A line the rider chose to ride anyway is not asked about again (on Start ride, say).
   const closureLetGo = useRef<string | null>(null);
   const lineKey = (line: readonly (readonly number[])[]) => `${line.length}:${line[0]?.join(",")}:${line[line.length - 1]?.join(",")}`;
+  // A press's check under way (Start ride, a download, a save): another press waits for it, ignored (v0.7.0 end
+  // review). The check gives up after CHECK_TIMEOUT_MS and the press goes ahead unchecked.
+  const closureChecking = useRef(false);
   const checkThen = async (why: CheckFor, line: readonly (readonly number[])[], gpx: boolean, proceed: () => void, afterGpx?: (track: number[][]) => void, onAsk?: () => void) => {
     if (line.length < 2 || closureLetGo.current === lineKey(line)) {
       proceed();
       return;
     }
+    const pressed = why !== "open";
+    if (pressed && closureChecking.current) return;
+    if (pressed) closureChecking.current = true;
     // At the plan's ride time (its When), with the closures it routes through anyway (v0.7.0).
-    const found = await checkClosures(origin, line, fetch, { when: planDials.when, bypass: planDials.closureBypass });
+    const found = await checkClosures(origin, line, fetch, { when: planDials.when, bypass: planDials.closureBypass }).finally(() => {
+      if (pressed) closureChecking.current = false;
+    });
     if (!found || found.closures.length === 0) {
       proceed();
       return;
@@ -2636,6 +2700,8 @@ export function App() {
   const startRideChecked = () => {
     const unlocked = ridePrefs.chosen || mode === "go";
     if (!shown) return startRide(false);
+    // A second press while the first one's check runs is ignored (checkThen).
+    if (closureChecking.current) return;
     // Unlocked silently inside the press; "Ride started." is said once the ride starts, after the
     // check or "Ride it anyway" (review F1: never before a closure is found).
     if (unlocked) primeRideVoice(ridePrefs);
@@ -2647,6 +2713,69 @@ export function App() {
     }, undefined, () => {
       window.clearTimeout(slow);
     });
+  };
+  // Ride the rest (lib/rideTrip.ts): after a transit plan's transit, a ride for its last riding leg, planned
+  // as a normal route request from where the rider is (the ride's fix) to the destination, on the leg's
+  // ride type; from the trip panel, or with no fix yet, from the leg's own start (no new location look-up).
+  // From the ride screen it answers in the ride's own outputs (the returned words; null: the new ride
+  // started); from the trip panel, the page's status line says it, and the line is checked for closures
+  // first, as Start ride's is.
+  // On the ride screen the closure dialog is out of view (the panel is hidden), so closures on the rest's
+  // line are said instead, and the route held: a second press within REST_ANYWAY_MS rides it anyway.
+  const restHeld = useRef<{ route: RouteResponse; points: LonLat[]; n: number | undefined; at: number } | null>(null);
+  const rideRest = async (riderAt: LonLat | null, fromRide: boolean): Promise<string | null> => {
+    // The ride pressed from is still on (End ride, or another ride, while the request runs: nothing starts).
+    const n = rideNow.current.start?.n;
+    const stillOn = () => (fromRide ? ridingNow.current && rideNow.current.start?.n === n : !ridingNow.current);
+    const held = restHeld.current;
+    restHeld.current = null;
+    if (fromRide && held && held.n === n && Date.now() - held.at < REST_ANYWAY_MS) {
+      closureLetGo.current = lineKey(held.route.geometry.coordinates);
+      beginRide(ridePrefs, false, held);
+      return null;
+    }
+    const trip = fromRide ? rideStart?.trip : shown ? rideTripOf(shown, routedPoints) : null;
+    const rest = trip?.rest;
+    if (!rest) return null;
+    const asked = restRequest(rest, riderAt);
+    if (!asked) return NO_FIX_YET;
+    const result = await requestRoute(asked.points, asked.preset, { dials: { ...planDials, loop: false }, routeOnly: true });
+    if (!stillOn()) return null;
+    if (!result.ok) return `${result.error.title}. ${result.error.message}`;
+    if (!rideableRoute(result.route)) return RIDE_TOO_LONG;
+    const line = result.route.geometry.coordinates;
+    const go = () => {
+      if (stillOn()) beginRide(ridePrefs, false, { route: result.route, points: asked.points });
+    };
+    if (!fromRide) {
+      void checkThen("ride", line, false, go);
+      return null;
+    }
+    const found = closureLetGo.current === lineKey(line) ? null : await checkClosures(origin, line, fetch, { when: planDials.when, bypass: planDials.closureBypass });
+    if (!stillOn()) return null;
+    if (found && found.closures.length > 0) {
+      restHeld.current = { route: result.route, points: asked.points, n, at: Date.now() };
+      return restClosedSaid(found.closures.map((c) => c.road ?? c.title ?? "a closure"));
+    }
+    go();
+    return null;
+  };
+  const restPanelBusy = useRef(false);
+  const rideRestFromPanel = () => {
+    if (restPanelBusy.current) return;
+    restPanelBusy.current = true;
+    // The voice is unlocked inside the press (iOS), as Start's is; "Ride started." is said when the ride starts.
+    primeRideVoice(ridePrefs);
+    // The focus comes back to this button when the ride ends, as it does to Start's.
+    if (document.activeElement instanceof HTMLElement) rideOpener.current = document.activeElement;
+    announce(RIDE_REST_FINDING);
+    void rideRest(null, false)
+      .then((said) => {
+        if (said) announce(said);
+      })
+      .finally(() => {
+        restPanelBusy.current = false;
+      });
   };
   // An opened file is checked at once, against its own track.
   const openImportedChecked = (plan: ImportedPlan) => {
@@ -2756,21 +2885,34 @@ export function App() {
   };
   // The ride just ended, kept for Undo for a few seconds (v0.7.0, "Go riding fixes" item 6: one tap on
   // End ends the ride with "Ride ended" and Undo). In memory only, as the ride itself is.
-  const endedRide = useRef<{ start: NonNullable<typeof rideStart>; big: boolean } | null>(null);
+  // `from`: the plan End ride left starting where the rider was (part way), so Undo takes that edit back too.
+  const endedRide = useRef<{ start: NonNullable<typeof rideStart>; big: boolean; from: LonLat[] | null } | null>(null);
   const [rideEnded, setRideEnded] = useState(0);
   const rideNow = useRef({ start: rideStart, big: bigText });
   rideNow.current = { start: rideStart, big: bigText };
-  const endRide = useCallback(() => {
+  const endRide = useCallback((after: EndedPlan) => {
     const { start, big } = rideNow.current;
-    endedRide.current = start ? { start, big } : null;
+    // The plan stays, every route of it, to adjust and ride again (the owner, 2026-10-16: "You should keep all
+    // the routes ... But be able to adjust things"). Part way, it starts where the rider is ("If you went part
+    // way it changes your start location"): the stops passed dropped, a loop's finish still its start, as one
+    // edit of the points (re-planned as any is; Undo of the plan takes it back). The start is the ride's own
+    // last fix: no new location look-up.
+    let from: LonLat[] | null = null;
+    if (after && after !== "no-fix" && after.points.length >= 2) {
+      from = after.points;
+      const ride = rideRef.current;
+      commit(from, ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
+      setFromHere((f) => [...f, from![0]]);
+    }
+    endedRide.current = start ? { start, big, from } : null;
     setRiding(false);
     setRideStart(null);
     setBigText(false);
     setRideView(null);
     setRideEnded((n) => n + 1);
     // Said by the page's region, always mounted; the focus goes to Undo (RideEnded), not back to Start (review F6).
-    announce(RIDE_ENDED_SAID);
-  }, [announce]);
+    announce(from ? RIDE_ENDED_FROM_HERE_SAID : after === "no-fix" ? RIDE_ENDED_NO_FIX_SAID : RIDE_ENDED_SAID);
+  }, [announce, commit]);
   // A back gesture during a ride does nothing; End ride is the way out (lib/rideBack.ts, review RIDE-2).
   // Each held back is told, politely, once (review RIDE-2).
   useEffect(() => (riding ? holdBackDuringRide(window, () => announce(STILL_RIDING_SAID)) : undefined), [riding, announce]);
@@ -2781,6 +2923,8 @@ export function App() {
     endedRide.current = null;
     setRideEnded(0);
     if (!ended) return;
+    // The plan End ride moved to where the rider was goes back, unless it has been edited since.
+    if (ended.from && pointsRef.current === ended.from) edits.retract();
     startRideGesture(ridePrefs);
     setRideStart(ended.start);
     setFollow(true);
@@ -3308,7 +3452,9 @@ export function App() {
       : status.kind === "waiting"
         ? `The planner is busy; trying again in ${formatSeconds(status.seconds)}.`
         : status.kind === "ok" && route
-          ? announceRoute(route, routedPoints, announceHow(answer, choice, chosen))
+          ? // On arrival the answer's own count is said (More direct and Calmer come later, said once by their own
+            // line); a route chosen is said by its place among all the routes shown, or by its name.
+            announceRoute(route, routedPoints, chosen ? announceHow(picked, choice, true) : announceHow(answer, choice, false))
           : "";
   // The route's sentence once it has stood a moment (lib/settle.ts): routes
   // that replace each other quickly are said once, the last. "Planning..." is
@@ -3518,13 +3664,14 @@ export function App() {
     },
     announce,
     onMissed: retry,
+    onRideRest: rideRestFromPanel,
   };
   const routeSection = (
     <RouteSection key="route"
       {...{
         mode, actions, stations, go, transitControls,
         stale, routeHeadingRef, status, announcement, slow, preset, dials, points, cancelLong, planButtonRef,
-        confirmLong, errorRef, retry, shown, answer, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
+        confirmLong, errorRef, retry, shown, answer: picked, choice, aroundAvoid, setAroundAvoid, routedPoints, federalRoute,
         narrow, setJunctionFocus, setScrubPoint, choose, startRide: startRideChecked, startRideRef, rideSize, setDials,
         waterStatus, waterAlong, addWaterStop, rideAsk, setRideAsk, backToRideOpener, ridePrefs, changeRidePrefs,
         rideStartFirstRef, beginRide, climbsOn, climbsStatus, climbsAlong, light,
@@ -3762,10 +3909,13 @@ export function App() {
       )}
       {riding && rideStart && (
         <RideMode
+          key={rideStart.n}
           route={rideStart.route}
           points={rideStart.points}
           loop={rideStart.loop}
-          preset={rideStart.route.preset}
+          preset={rideStart.preset}
+          trip={rideStart.trip}
+          onRideRest={(riderAt) => rideRest(riderAt, true)}
           dials={rideStart.dials}
           prefs={ridePrefs}
           onPrefs={changeRidePrefs}
@@ -3981,6 +4131,24 @@ export function App() {
               <RideGroupChips preset={preset} onPick={pickRide} open={view === "ride"} />
               {/* Go's Ride sheet holds the Ride line and its dials; in Plan they are in the panel (one copy in the page). */}
               {goMode && sections.presets}
+              {/* Start from here (the owner, 2026-10-16: "You should be able to make changes then start from the edit
+                  default"): the route the sheet's changes planned, ridden at once; the changes are saved as they are
+                  made. The same Start as the route panel's, closing the sheet first. */}
+              {goMode && shown && !stale && !riding && rideableRoute(shown) && (
+                <div className="actions ride-sheet-start">
+                  <button
+                    type="button"
+                    className="start-button"
+                    onClick={() => {
+                      showPlanner(false);
+                      startRideChecked();
+                    }}
+                  >
+                    <Icon name="play" />
+                    Start ride
+                  </button>
+                </div>
+              )}
             </RideSheet>
           </div>
 

@@ -18,7 +18,8 @@ import {
   type ClosureItem,
   type ClosureNotice,
 } from "./closureMap.ts";
-import { checkClosures } from "./closureCheck.ts";
+import { CHECK_TIMEOUT_MS, checkClosures } from "./closureCheck.ts";
+import { readFileSync } from "node:fs";
 
 function item(over: Partial<ClosureItem> = {}): ClosureItem {
   return {
@@ -142,4 +143,21 @@ test("the closure check sends the plan's When and its bypassed closures, and rea
   assert.equal(found?.notices?.[0].id, "nps-1");
   await checkClosures("https://x.example", line, post);
   assert.deepEqual(sent, { line }, "the first contract's body where there is nothing to add");
+});
+
+test("a closure check with no answer in its time gives up: null, so Start ride and a download go ahead", async () => {
+  // A server that never answers, but stops when the request's signal aborts (as fetch does).
+  const post = ((_url: string, init: { signal: AbortSignal }) =>
+    new Promise((_resolve, reject) => init.signal.addEventListener("abort", () => reject(init.signal.reason)))) as unknown as typeof fetch;
+  const started = Date.now();
+  const line = [
+    [-77.05, 38.9],
+    [-77.0, 38.95],
+  ];
+  assert.equal(await checkClosures("https://x.example", line, post, {}, 50), null);
+  assert.ok(Date.now() - started < 2000);
+  assert.equal(CHECK_TIMEOUT_MS, 3000);
+  // App: a second press while a check runs is ignored.
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /if \(pressed && closureChecking\.current\) return;/);
 });

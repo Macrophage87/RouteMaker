@@ -36,8 +36,8 @@ export const EVENT_TYPE_STOP = 1;
 export const EVENT_TYPE_STOP_ALL = 4;
 
 /**
- * course_point type for each cue (Global Profile, course_point): the published mapping. FIT has slight, sharp,
- * fork and u-turn types too; the turn model produces none of them yet, so none is written. Danger is only the
+ * course_point type for each cue (Global Profile, course_point): the published mapping. A bear is slight left or
+ * right; FIT's sharp, fork and u-turn types the turn model does not produce, so none is written. Danger is only the
  * warnings never dropped (Avoid, work zones); a flagged crossing, which can be dropped, is a note.
  */
 export const FIT_CUE_TYPES: Record<CourseCueType, number> = {
@@ -49,6 +49,8 @@ export const FIT_CUE_TYPES: Record<CourseCueType, number> = {
   danger: 5,
   left: 6,
   right: 7,
+  slight_left: 19,
+  slight_right: 21,
 };
 
 type BaseType = "enum" | "uint8" | "uint16" | "sint32" | "uint32" | "string";

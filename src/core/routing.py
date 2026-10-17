@@ -81,6 +81,8 @@ from pipeline.schema import (
     MASS_WIDTH_COLUMN,
     SIDEPATH_NAME_COLUMN,
     STRESS_HALF_COLUMN,
+    TRAIL_NAME_COLUMN,
+    TRAIL_RUN_COLUMN,
     validate_schema_name,
 )
 from pipeline.variants import Variant
@@ -2089,28 +2091,51 @@ def arrival_side_of(trip: dict) -> str | None:
         return None
 
 
+# A trail relation names an unnamed way only where its named run is longer than this
+# (a quarter mile).
+RELATION_NAME_MIN_RUN_M = 1609.344 / 4
+
+
 def sidepath_names_of(pieces: list[Piece]) -> dict[int, str]:
     """The street-side names of the route's ways that have no name of their own
-    (`segment.sidepath_name`, `routemaker.facility.side_street_names`), by way id.
-    Empty where the live table has no such column yet (a table built before it) or
-    the query fails: those ways are then just "path"."""
+    (`segment.sidepath_name`, `routemaker.facility.side_street_names`), by way id;
+    else the name of the trail's route relation the way is in (`segment.trail_name`,
+    `pipeline.trail_routes.way_name`), as a `describe.RelationName`, so a change of
+    trail on a way named only by its relation is in the description (the owner,
+    2026-10-16). A relation name is taken only for a named run (`trail_run_m`) longer
+    than RELATION_NAME_MIN_RUN_M and never a national or international route's
+    (`describe.NATIONAL_ROUTE_NAME`): the table keeps no network per way, and an East
+    Coast Greenway connector is not "onto East Coast Greenway". Empty where the live
+    table has neither column yet (a table built before it) or the query fails: those
+    ways are then just "path"."""
     ids = sorted({p.way_id for p in pieces if not p.names and p.way_id})
     if not ids:
         return {}
     try:
         schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
-        if not segment_info.has_columns(schema, SIDEPATH_NAME_COLUMN):
+        side = segment_info.has_columns(schema, SIDEPATH_NAME_COLUMN)
+        trail = segment_info.has_columns(schema, TRAIL_NAME_COLUMN, TRAIL_RUN_COLUMN)
+        if not side and not trail:
             return {}
+        # On a road the column names the side path it asks riders to use (review RL-1), never the
+        # road itself: only a trail-class way's side-path name describes the way.
+        side_sql = f"max({SIDEPATH_NAME_COLUMN}) FILTER (WHERE is_trail_class)" if side else "NULL"
+        trail_sql = (
+            f"max({TRAIL_NAME_COLUMN}) FILTER (WHERE {TRAIL_RUN_COLUMN} > %s)" if trail else "NULL"
+        )
         with plan_cursor() as cursor:
             cursor.execute(
-                f"SELECT osm_way_id, max({SIDEPATH_NAME_COLUMN}) FROM {schema}.segment "
-                f"WHERE osm_way_id = ANY(%s) AND {SIDEPATH_NAME_COLUMN} IS NOT NULL "
-                # On a road the column names the side path it asks riders to use
-                # (review RL-1), never the road itself.
-                "AND is_trail_class GROUP BY osm_way_id",
-                [ids],
+                f"SELECT osm_way_id, {side_sql}, {trail_sql} FROM {schema}.segment "
+                "WHERE osm_way_id = ANY(%s) GROUP BY osm_way_id",
+                [RELATION_NAME_MIN_RUN_M, ids] if trail else [ids],
             )
-            return {int(way): str(name) for way, name in cursor.fetchall() if name}
+            names: dict[int, str] = {}
+            for way, side_name, trail_name in cursor.fetchall():
+                if side_name:
+                    names[int(way)] = str(side_name)
+                elif trail_name and not describe.NATIONAL_ROUTE_NAME.search(str(trail_name)):
+                    names[int(way)] = describe.RelationName(str(trail_name))
+            return names
     except Exception:  # noqa: BLE001 - the description says "path" without them
         logger.warning("the street-side names of unnamed ways could not be read", exc_info=True)
         return {}
@@ -2130,9 +2155,18 @@ def describe_route(
     from the pieces and junction events the plan already has, with no router
     call. `side_names` (`sidepath_names_of`) names a piece of a way with no name of
     its own after the street it runs alongside ("9th Street Northwest protected bike
-    lane"). None where it could not be built: the route is answered all the same."""
+    lane"), or after its trail's route relation (a `describe.RelationName`): a stretch
+    named only so is flagged `relation_name`. None where it could not be built: the
+    route is answered all the same."""
     side_names = side_names or {}
     try:
+        # A relation's name that no way of the route carries itself: only that is "by relation".
+        own = {n.lower() for piece in pieces for n in piece.names}
+        by_relation = frozenset(
+            n.lower()
+            for n in side_names.values()
+            if isinstance(n, describe.RelationName) and n.lower() not in own
+        )
         legs: list = []
         for run in leg_runs:
             if isinstance(run, tuple):
@@ -2152,6 +2186,7 @@ def describe_route(
                             pieces[i].heading_in,
                             pieces[i].heading_out,
                             getattr(classes[i], "unpaved", None),
+                            bool(pieces[i].road and pieces[i].road.roundabout),
                         )
                         for i in range(run[0], run[1])
                     ]
@@ -2159,7 +2194,7 @@ def describe_route(
             else:
                 legs.append(run)
         length = float(summary.get("length", 0.0)) * 1000.0
-        return describe.describe_both(legs, events, length or None, walks)
+        return describe.describe_both(legs, events, length or None, walks, by_relation)
     except Exception:  # noqa: BLE001 - a route is answered without its description
         logger.warning("the route description could not be built", exc_info=True)
         return None

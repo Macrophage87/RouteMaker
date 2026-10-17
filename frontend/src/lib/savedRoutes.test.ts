@@ -262,6 +262,17 @@ test("Save route sits beside Share in Plan's and Go's route sheet, and My routes
   assert.match(sheets, /<MyRoutes /);
 });
 
+test("Settings' Account has Sign out under 'Signed in with Discord.': a form POST to /auth/logout with the CSRF token", () => {
+  const sheets = readFileSync(new URL("../app/Sheets.tsx", import.meta.url), "utf8");
+  // Only signed in: the form is in the signed-in branch, under the line.
+  const account = sheets.slice(sheets.indexOf("{myGo.signedIn ? ("), sheets.indexOf(") : signInAvailable ? ("));
+  assert.match(account, /Signed in with Discord\.\s*<\/p>\s*<SignOutForm \/>/);
+  const form = readFileSync(new URL("../SignOut.tsx", import.meta.url), "utf8");
+  assert.match(form, /<form method="post" action="\/auth\/logout" className="sign-out">/);
+  assert.match(form, /<input type="hidden" name="csrfmiddlewaretoken" value=\{csrfFromCookie\(document\.cookie\) \?\? ""\} \/>/);
+  assert.match(form, /<button type="submit" className="secondary">\s*Sign out\s*<\/button>/);
+});
+
 test("F15. Go's route chips stay one row at 390 px: Save shown short, the ride type's name cut short, never the actions", () => {
   const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
   const panel = read("../app/RoutePanel.tsx");

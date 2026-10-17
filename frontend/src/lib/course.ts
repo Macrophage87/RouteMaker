@@ -29,16 +29,19 @@ import { COPYRIGHT_AUTHOR, CREATOR } from "./gpx.ts";
 import { elevationsAlong, exportFileName, exportName } from "./gpxText.ts";
 import { writeFit } from "./fit.ts";
 import { writeTcx } from "./tcx.ts";
-import { rideModel, type Cue } from "./navigate.ts";
+import { rideModel, turnWords, type Cue } from "./navigate.ts";
 import { presetSaid } from "./presets.ts";
 
 export type CourseFormat = "fit" | "tcx";
 
 /**
  * The canonical cue types a course carries (PLAN.md's cue model, as far as the turn model produces it today:
- * left and right without slight or sharp, which describe.py does not tell apart yet).
+ * left, right and a bear as slight left or right; no sharp, fork or u-turn).
  */
-export type CourseCueType = "start" | "finish" | "stop" | "left" | "right" | "danger" | "walk" | "note";
+export type CourseCueType = "start" | "finish" | "stop" | "left" | "right" | "slight_left" | "slight_right" | "danger" | "walk" | "note";
+
+const TURN_TYPES = { left: "left", right: "right", bear_left: "slight_left", bear_right: "slight_right" } as const;
+const TURN_NAMES = { left: "Left", right: "Right", slight_left: "Bear left", slight_right: "Bear right" } as const;
 
 export interface CourseCue {
   type: CourseCueType;
@@ -147,9 +150,11 @@ function fromRide(cue: Cue): { type: CourseCueType; name: string; priority: numb
   const street = named(cue.street);
   switch (cue.kind) {
     case "turn": {
-      const turn = cue.movement === "left" ? "left" : "right";
-      return { type: turn, name: street ? abbreviateStreet(street) : turn === "left" ? "Left" : "Right", priority: street ? 4 : 3 };
+      const turn = TURN_TYPES[cue.movement ?? "right"];
+      return { type: turn, name: street ? abbreviateStreet(street) : TURN_NAMES[turn], priority: street ? 4 : 3 };
     }
+    case "onto":
+      return { type: "note", name: street ? abbreviateStreet(street) : "Continue", priority: 1 };
     case "walk":
       return { type: "walk", name: "Walk bike", priority: 4 };
     case "hazard": {
@@ -258,6 +263,10 @@ export interface RouteCue {
   /** Ride's cue kind, and for a hazard the description entry it came from (avoid, workzone, junction...). */
   kind: Cue["kind"] | "start";
   source?: string;
+  /** A jog's second turn (Ride's `joined`): a course point of its own, but no row of the cue sheet, the first's text saying it. */
+  joined?: boolean;
+  /** A jog's first turn: its own turn alone ("Right onto 6th Street Northwest."), for a course point's notes, `text` saying both. */
+  turnText?: string;
 }
 
 /**
@@ -271,7 +280,18 @@ export function routeCues(route: CompiledRoute, vias: readonly number[] = []): R
     const made = fromRide(cue);
     if (!made) continue;
     const atM = cue.kind === "end" ? model.lengthM : cue.atM;
-    all.push({ type: made.type, name: made.name, text: cue.text, atM, street: named(cue.street), priority: made.priority, kind: cue.kind, ...(cue.source ? { source: cue.source } : {}) });
+    all.push({
+      type: made.type,
+      name: made.name,
+      text: cue.text,
+      atM,
+      street: named(cue.street),
+      priority: made.priority,
+      kind: cue.kind,
+      ...(cue.source ? { source: cue.source } : {}),
+      ...(cue.joined ? { joined: true } : {}),
+      ...(cue.then && cue.movement ? { turnText: turnWords(cue.movement, cue.street) } : {}),
+    });
   }
   return all;
 }
@@ -295,7 +315,8 @@ export function compileCourse(route: CompiledRoute, profile: DeviceProfile, form
     type: cue.type,
     vertex: cue.type === "start" ? 0 : cue.type === "finish" ? line.length - 1 : nearestVertex(along, cue.atM),
     name: clip(cue.name, nameChars),
-    text: cue.text,
+    // A course point is one turn: a jog's second is a point of its own, so the first's notes are its own turn.
+    text: cue.turnText ?? cue.text,
     priority: cue.priority,
   }));
 

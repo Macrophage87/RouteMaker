@@ -91,3 +91,33 @@ def test_forgetting_reads_the_table_again_at_once(segment_schemas, clock) -> Non
     assert routing._has_walk_column(live), "kept within the recheck"
     segment_info.forget_columns()
     assert not routing._has_walk_column(live)
+
+
+@db
+def test_one_request_reads_the_oid_once_and_the_next_request_sees_a_swap(
+    segment_schemas, clock
+) -> None:
+    from django.core.signals import request_finished, request_started
+
+    # Django's own signals mark a request's start and end (sent here by hand: the real
+    # request_finished also closes the test's connection).
+    assert segment_info._request_began in [r[1]() for r in request_started.receivers]
+    assert segment_info._request_ended in [r[1]() for r in request_finished.receivers]
+    live, _staging = segment_schemas
+    segment_info._request_began()
+    try:
+        with CaptureQueriesContext(connection) as queries:
+            for _ in range(5):
+                assert routing._has_half_column(live) and junctions.has_half_column(live)
+        assert len([q for q in queries if "to_regclass" in q["sql"]]) == 1
+    finally:
+        segment_info._request_ended()
+    with connection.cursor() as cursor:
+        cursor.execute(f"ALTER TABLE {live}.segment RENAME TO segment_newer")
+        cursor.execute(f"CREATE TABLE {live}.segment (LIKE {live}.segment_newer)")
+    drop(live, STRESS_HALF_COLUMN)
+    segment_info._request_began()
+    try:
+        assert not routing._has_half_column(live)
+    finally:
+        segment_info._request_ended()

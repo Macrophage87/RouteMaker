@@ -158,7 +158,9 @@ class TestEntering:
         # Oak Street meets only other names at its ends: the piece is the whole stretch.
         assert answer.status_code == 200 and answer.json() == {"stretch": None}
         rider, _ = reviewer_client(make_user(admin=False))
-        assert rider.get(f"/api/closures/stretch/{WAY}", **addr()).status_code == 403
+        refused = rider.get(f"/api/closures/stretch/{WAY}", **addr())
+        assert refused.status_code == 403
+        assert refused.json()["error"] == "Only a RouteMaker reviewer can review closures."
 
     def test_a_guild_reviewer_may_not_write_only_an_instance_admin(self, live, monkeypatch) -> None:
         from core import middleware
@@ -262,6 +264,18 @@ class TestEntering:
         later = timezone.now() + timedelta(days=5)
         found = workzones.closures_on(ALONG, at=later)
         assert [c["may_still_apply"] for c in found["closures"]] == [False]
+
+    def test_their_read_at_moves_only_when_one_is_entered_or_ended(self, live) -> None:
+        first = reviewed_closures.create(make_user(), [WAY], "Bridge out")
+        later = timezone.now() + timedelta(minutes=5)
+        read = workzones._load(later).read_at["reviewer"]
+        assert read == first.created_at.isoformat()
+        assert workzones._load(later + timedelta(minutes=5)).read_at["reviewer"] == read
+        second = reviewed_closures.create(make_user(), [WAY], "Crane on the deck")
+        assert workzones._load(later).read_at["reviewer"] == second.created_at.isoformat()
+        reviewed_closures.end_now(make_user(), first.pk)
+        first.refresh_from_db()
+        assert workzones._load(later).read_at["reviewer"] == first.ended_at.isoformat()
 
     def test_a_closure_that_starts_later_is_not_in_force_now(self, live) -> None:
         reviewed_closures.create(make_user(), [WAY], "Race", start=days(2), end=days(2))

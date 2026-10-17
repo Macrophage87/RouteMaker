@@ -427,6 +427,8 @@ export interface RulingRequest {
   step?: number;
   /** Private and optional; never filled in from a source's row. */
   reason?: string;
+  /** Change LTS to this listed source's level ("Use" on the card): the server names it in the evidence. */
+  source?: string;
 }
 
 export interface RulingAnswer {
