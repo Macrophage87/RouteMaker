@@ -867,17 +867,35 @@ no live segment table yet is 404 with `no-store`, which the front end reads as
 | Zoom | What is drawn | Measured on a copy of a promoted build |
 | --- | --- | --- |
 | 10-11 | only the long traffic-free paths and trails: the long trails below, roadside trails and roads closed to cars at set times among them (`pipeline.schema.trails_predicate`, then `long_trails_predicate`); one feature per class, simplified | miles of path drawn region-wide (in the Columbia and Patapsco box): every trail 5,461 (311), z11 1,037 (17), z10 894 (15); a read-only measurement on a full-size copy of the 2026-10-03 build, with the rebuild's own code filling the columns |
-| 12-13 | the ride layer (391, 402a): long and connected traffic-free paths, calm roads in a continuous run of 2 mi (LTS 1 and 2, ended at every junction with a busy road), and roads closed to cars at set times; no road at LTS 3 or above (`pipeline.schema.ride_layer_predicate`, on `calm_run_m`); one feature per class, simplified. On a table without the column, what it drew before: the paths and the roads at LTS 3 and above (`busy_predicate`) | region-wide 6,812 mi against 25,017 before, with 391's 1,787 mi of calm streets (402a's calm roads are 1,642 mi: "Calm roads", below); the Annandale-Alexandria box 83.9 mi against 272.6; z12 over the box 48 KB against 127 KB ("The ride layer", below) |
-| 14-16 | every segment, the quiet streets (LTS 1-2) and footways too | z14: 8,190 tiles, 49 MB, at most 125 KB (2026-09-28) |
+| 12-13 | every segment FULL draws (the owner, 2026-10-17: "Both from 12"): the busy roads at LTS 3 and above (faint until z14 in the front end), the quiet streets, footways and mountain-bike trails, but one feature per class, simplified (`core.stress_tiles.STREETS`); no alleys. Until FORMAT_VERSION 10 this was the ride layer (391, 402a, below) | a synthetic downtown grid of 48,050 segments (the density of the 1.2 MB z12 tile over downtown DC on the first promoted build): z12 482 KB merged against 1.33 MB one feature a segment, z13 148 KB against 345 KB; the same grid's z14 is 90 KB (2026-10-17, `tile_sql` on a local PostGIS) |
+| 14-16 | every segment, one feature each, the alleys too (`FULL`, from `SEGMENTS_MIN_ZOOM`) | z14: 8,190 tiles, 49 MB, at most 125 KB (2026-09-28) |
 
 The owner, 2026-09-29: "Zoom less than 12, show just bike paths and the
 metro/MARC. 12 and 13, show LTS 3+, 14+ show show the quiet streets."
 (OWNER-DECISIONS 73; before it, "Zoomed out just show the trails.", 65, and
-"Show roadside trails (Recommended)", 66). The zooms are
-`core.stress_tiles.RIDE_LAYER_MIN_ZOOM` (12) and `QUIET_STREETS_MIN_ZOOM`
-(14), paired with `STRESS_ZOOMS.ride` and `.quiet` in
-`frontend/src/lib/mapStyle.ts` (a test fails while they differ): change both,
-rebuild the api image and the front end, and run the pre-draw. The rail
+"Show roadside trails (Recommended)", 66). Then 2026-10-05's ride layer at z12-13
+(391, below), and on 2026-10-17: "Show traffic stress a couple more zoom levels up",
+then, offered the busy roads from z10 and every street from z12, "Both from 12". The
+zoom is `core.stress_tiles.QUIET_STREETS_MIN_ZOOM` (12), paired with
+`STRESS_ZOOMS.quiet` in `frontend/src/lib/mapStyle.ts` (a test fails while they
+differ): change both, rebuild the api image and the front end, and run the pre-draw.
+`SEGMENTS_MIN_ZOOM` (14) is where a tile goes from one feature a class to one a
+segment, a matter of weight only (the table's sizes); the Mass Ride tiles split there
+too and are unchanged.
+
+**Deploying every street from z12 (FORMAT_VERSION 10).** No migration, no data from
+home, no change to the edge (Caddy and nginx pass `/tiles/*` to the api and keep no
+tile cache of their own; the browsers' copies revalidate within `MAX_AGE_S`, five
+minutes, and the new format's ETag misses). After the api is up on the new image, run
+the pre-draw (`predraw_stress_tiles`; the beta's CD agent does it by itself on a
+`FORMAT_VERSION` change): every cached stress tile is stale, so it evicts them and
+redraws z10-14, z12-13 now with every street. By the synthetic grid's sizes that is
+roughly 35 MB more in `stress_tile_cache` (about 16 MB at z12 and 20 MB at z13, against
+z14's 49 MB) and some minutes more of drawing, inside the hour's budget; the Mass Ride
+tiles keep their format and are kept. Build the api and pipeline images together, as
+for any format change, so the weekly rebuild's pre-draw draws the same format. Then
+`SELECT version, count(*) FROM stress_tile_cache GROUP BY 1` shows only tags ending in
+`-v10"` (and the mass tags), and a z12 tile over downtown answers 200 with one. The rail
 stations draw from z8 over everything, so zoomed out the map is the paths
 and the Metro and MARC stations; the app has station points, not rail lines.
 **The long trails (z10-11).** The owner, 2026-10-04: "Also zoomed out, can we
@@ -984,7 +1002,11 @@ before, only thinner (every cached tile is drawn again, as the format
 changed); the next rebuild's pre-draw draws the long trails only. Route
 relations and names are OSM's, cited with the rest of the map's data.
 
-**The ride layer (z12-13, OWNER-DECISIONS 391).** The owner, 2026-10-05, on
+**The ride layer (z12-13, OWNER-DECISIONS 391; retired by FORMAT_VERSION 10).** Since
+2026-10-17 ("Both from 12") z12-13 draws every street, and what follows is the
+history. The rebuild still writes `calm_run_m` and its partial index
+(`pipeline.schema` is unchanged, so no data from home); the tiles no longer read them.
+The owner, 2026-10-05, on
 a screenshot of Annandale and Alexandria: "I'm more concerned with the places
 to ride than the places not to." Busy roads: "Hide them until zoom 14." Ride
 layer: "Long and connected paths as well as similar long calm streets." At z12
@@ -1165,7 +1187,11 @@ and `e` is `roadside`'s, one letter per column (a test holds them distinct); sin
 solid-below-14 change (390, `SOLID_MIN_ZOOM` 14) is in the rebuild bundle with this, and
 applies to that fallback only.
 
-**What the front end says** (`frontend/src/lib/stressLegend.ts`, `STRESS_ZOOMS` in
+**What the front end said** until 2026-10-17 (now `STRESS_ZOOMS` is `{ min: 10, quiet: 12,
+max: 14 }`, the z10-11 notice reads "Zoom in to see more paths and trails and traffic stress
+on every road.", there is no notice from z12, and the hint says every other path and the busy
+roads, quiet streets, footways and sidewalks show from zoom 12, the busy roads faintly until
+zoom 14) (`frontend/src/lib/stressLegend.ts`, `STRESS_ZOOMS` in
 `mapStyle.ts`: `{ min: 10, ride: 12, quiet: 14, max: 14 }`): the zoom notice for z12-13,
 "Zoom in to see busy roads and every street. This is the where-to-ride view: connected
 paths and trails and long calm roads. Busy roads and short paths show from zoom
@@ -1287,8 +1313,8 @@ contract.
 **How the busy roads draw** (the front end's `stressStyle.js`; the tiles are
 the same whatever the style decides):
 
-- faint - 40% opacity and 60% width (`FAINT`) - at z12-13 (only on a table that still
-  draws busy roads there: from the ride layer's rebuild none is drawn below z14), and solid from
+- faint - 40% opacity and 60% width (`FAINT`) - at z12-13 (where the tiles carry them
+  again since FORMAT_VERSION 10, "Both from 12"), and solid from
   `SOLID_MIN_ZOOM` (14): "The high LTS roads aren't that important because
   you aren't going to route around them." - "Show them faintly", then "Make
   solid at 14" (OWNER-DECISIONS 76, 77);
@@ -1507,7 +1533,7 @@ the cache existed (the first deploy of this change), after a deploy that
 changes `core.stress_tiles.FORMAT_VERSION` (every cached tile is then stale:
 3 was the zoomed-out tiles becoming the paths and trails alone, 4 the busy
 roads at z12-13 and the quiet streets from z14, 5 the long trails only at
-z10-11), and after
+z10-11, 10 every street from z12), and after
 `rollback_rebuild`, which puts back a table the last pre-draw cleared the tiles
 of. The weekly rebuild's own pre-draw runs in the `rebuild` service, so a
 change to what it draws reaches it with the pipeline image. It skips what is

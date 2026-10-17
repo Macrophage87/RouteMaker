@@ -28,7 +28,7 @@ import { lonLatToTile, type LonLat } from "./geo.ts";
 
 /** About 1,000 ft (300 m) either side of the line (plan section 6). */
 export const CORRIDOR_M = 300;
-/** The stress tiles a ride shows: z12 ("where to ride") to the source's z14. */
+/** The stress tiles a ride shows: z12 (every street, since 2026-10-17) to the source's z14. */
 export const STRESS_PREFETCH_ZOOMS = [14, 13, 12] as const;
 /** The base map's: z15 down to z12 (the follow camera opens at z16, drawn from the deepest). */
 export const BASE_PREFETCH_ZOOMS = [15, 14, 13, 12] as const;
