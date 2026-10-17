@@ -3766,7 +3766,7 @@ the first host to run it is the first test of it.
 
    ```sh
    export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
-   sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs"
+   sudo mkdir -p "$DATA_ROOT/reference/inputs" && sudo chown 10001:10001 "$DATA_ROOT/reference/inputs"
    # then copy tl_2024_us_uac20.geojson, vdot-aadt-2024.geojson and
    # ddot-aadt-2024.geojson into "$DATA_ROOT/reference/inputs"
    ```
@@ -4555,9 +4555,10 @@ proxy cannot reach the service.
        --layer https://services.arcgis.com/njFNhDsUCentVYJW/arcgis/rest/services/MDOT_SHA_Annual_Average_Daily_Traffic/FeatureServer/1 \
        --bbox=-78.05,38.2,-76.02,39.72 \
        --out-dir ~/rmdata/datasets --credit "State of Maryland (MDOT SHA)"
-   sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs/mdot-sha-aadt"
-   sudo install -o 10001 -g 10001 -m 644 ~/rmdata/datasets/mdot-sha-aadt/* \
-       "$DATA_ROOT/reference/inputs/mdot-sha-aadt/"
+   sudo mkdir -p "$DATA_ROOT/reference/inputs/mdot-sha-aadt" && sudo chown 10001:10001 "$DATA_ROOT/reference/inputs/mdot-sha-aadt"
+   sudo cp ~/rmdata/datasets/mdot-sha-aadt/* \
+       "$DATA_ROOT/reference/inputs/mdot-sha-aadt/" \
+       && sudo chown -R 10001:10001 "$DATA_ROOT/reference/inputs/mdot-sha-aadt/" && sudo chmod 644 "$DATA_ROOT/reference/inputs/mdot-sha-aadt/"*
    ```
 
    It pages at the layer's 2,000 a page, retries each request three times, and
@@ -4673,9 +4674,10 @@ graph built without it; steps 1 to 3 are for that rebuild.
    python3 scripts/fetch_agency_layer.py --slug dc-pavement-pci-fy25 \
        --layer https://rh.dcgis.dc.gov/dcgis/rest/services/DDOT/PavementConditionIndex/FeatureServer/5 \
        --out-dir ~/rmdata/datasets --credit "DDOT Pavement Condition Index (DC GIS)"
-   sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25"
-   sudo install -o 10001 -g 10001 -m 644 ~/rmdata/datasets/dc-pavement-pci-fy25/* \
-       "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25/"
+   sudo mkdir -p "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25" && sudo chown 10001:10001 "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25"
+   sudo cp ~/rmdata/datasets/dc-pavement-pci-fy25/* \
+       "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25/" \
+       && sudo chown -R 10001:10001 "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25/" && sudo chmod 644 "$DATA_ROOT/reference/inputs/dc-pavement-pci-fy25/"*
    ```
 
    Exit 3 means the pages did not add up to the count the service reported: delete
@@ -4745,7 +4747,9 @@ installed file goes in:
 export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
 python3 scripts/install_agency_lts.py --datasets ~/rmdata/datasets \
     --out ~/rmdata/agency-lts.json moco ddot mdot-sha
-sudo install -o 10001 -g 10001 -m 644 ~/rmdata/agency-lts.json "$DATA_ROOT/reference/agency-lts.json"
+sudo cp ~/rmdata/agency-lts.json "$DATA_ROOT/reference/agency-lts.json"
+sudo chown 10001:10001 "$DATA_ROOT/reference/agency-lts.json"
+sudo chmod 644 "$DATA_ROOT/reference/agency-lts.json"
 ```
 
 All three agencies in one run: the file is written whole, and the rebuild refuses one
@@ -4818,9 +4822,10 @@ permission) and Frederick County's draft rustic roads (no licence).
        --bbox=-78.05,38.2,-76.02,39.72 \
        --out-dir ~/rmdata/datasets --credit "MDOT SHA (Maryland iMAP)"
    for slug in moco-rustic-roads md-scenic-byways; do
-       sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs/$slug"
-       sudo install -o 10001 -g 10001 -m 644 ~/rmdata/datasets/$slug/* \
-           "$DATA_ROOT/reference/inputs/$slug/"
+       sudo mkdir -p "$DATA_ROOT/reference/inputs/$slug" && sudo chown 10001:10001 "$DATA_ROOT/reference/inputs/$slug"
+       sudo cp ~/rmdata/datasets/$slug/* \
+           "$DATA_ROOT/reference/inputs/$slug/" \
+           && sudo chown -R 10001:10001 "$DATA_ROOT/reference/inputs/$slug/" && sudo chmod 644 "$DATA_ROOT/reference/inputs/$slug/"*
    done
    ```
 
