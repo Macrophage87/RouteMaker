@@ -86,6 +86,28 @@ export function writeHeadingUp(on: boolean, store: KeyValueStore | null = browse
   }
 }
 
+// ---- Big text (the owner, 2026-10-17: "the text size should be moved to the settings page"), kept on this device ----
+
+/** Big text in a ride (the cue card large, the map hidden): a setting, off by default, not a ride button. */
+export const BIG_TEXT_KEY = "routemaker.ride.bigText";
+export const BIG_TEXT_NAME = "Big text during a ride (hides the map)";
+
+export function readBigText(store: KeyValueStore | null = browserStore()): boolean {
+  try {
+    return store?.getItem(BIG_TEXT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function writeBigText(on: boolean, store: KeyValueStore | null = browserStore()): void {
+  try {
+    store?.setItem(BIG_TEXT_KEY, on ? "1" : "0");
+  } catch {
+    // Blocked site data: the choice holds for this visit only.
+  }
+}
+
 export function toScreenReader(output: CueOutput): boolean {
   return output === "screen-reader" || output === "both";
 }

@@ -299,10 +299,11 @@ test("the 311 button shows only on the route inside DC; its menu has the six pro
   assert.match(css, /\.ride-rail \{\s*position: absolute;\s*right: 12px;/);
 });
 
-test("Big text has a text-size icon (not the info icon); as a round side button its name is still Big text", () => {
-  // The owner, 2026-10-17: the ride's buttons are round icons on the side; each keeps its words as its name.
-  assert.match(ride, /className="ride-round big-text" onClick=\{\(\) => onBig\(!big\)\} aria-pressed=\{big\} aria-label="Big text" title="Big text">\s*<Icon name="textsize" size=\{24\} \/>/);
-  assert.ok(ICON_PATHS.textsize && ICON_PATHS.textsize !== ICON_PATHS.info);
+test("Big text is a setting, in the ride's Settings and the Settings page, not a side button", () => {
+  // The owner, 2026-10-17: "the text size should be moved to the settings page ... not something people will fiddle with mid ride".
+  assert.doesNotMatch(ride, /className="ride-round big-text"/);
+  assert.match(ride, /Turn the map to my heading\s*<\/label>\s*<BigTextField on=\{big\} onChange=\{onBig\} \/>/);
+  assert.match(src("../app/Sheets.tsx"), /idBase="settings-ride" \/>\s*<BigTextField on=\{props\.bigText\.on\} onChange=\{props\.bigText\.onChange\} \/>/);
 });
 
 // ---- Go's start: the rider's current location by default (the owner, 2026-10-11 19:53 UTC) ----

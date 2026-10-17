@@ -77,7 +77,7 @@ import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
 import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, RIDE_ENDED_FROM_HERE_SAID, RIDE_ENDED_NO_FIX_SAID, RIDE_ENDED_SAID, RideEnded, RideMode, primeRideVoice, startRideGesture, voiceTurnedOn, type EndedPlan, type RideView } from "./RideMode.tsx";
 import { Icon } from "./Icon.tsx";
-import { readHeadingUp, readRidePrefs, writeHeadingUp, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
+import { readBigText, readHeadingUp, readRidePrefs, writeBigText, writeHeadingUp, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf } from "./lib/bikeshare.ts";
 import { carries, hillsWords, seeksClimbs, startDials, stressMax, stressWords, trailsAreOff, type Dials } from "./lib/dials.ts";
@@ -757,7 +757,12 @@ export function App() {
     writeHeadingUp(on);
     setHeadingUpState(on);
   }, []);
-  const [bigText, setBigText] = useState(false);
+  // Big text is a setting kept on this device, not a ride button (the owner, 2026-10-17: "not something people will fiddle with mid ride").
+  const [bigText, setBigTextState] = useState(() => readBigText());
+  const setBigText = useCallback((on: boolean) => {
+    writeBigText(on);
+    setBigTextState(on);
+  }, []);
   const startRideRef = useRef<HTMLButtonElement>(null);
   const rideStartFirstRef = useRef<HTMLButtonElement>(null);
   // The Start ride button pressed (under the figures or in Directions): where the focus goes back to.
@@ -2500,7 +2505,6 @@ export function App() {
     }
     setRideAsk(false);
     setFollow(true);
-    setBigText(false);
     setRideView(null);
     setRiding(true);
   };
@@ -2941,12 +2945,12 @@ export function App() {
   // The ride just ended, kept for Undo for a few seconds (v0.7.0, "Go riding fixes" item 6: one tap on
   // End ends the ride with "Ride ended" and Undo). In memory only, as the ride itself is.
   // `from`: the plan End ride left starting where the rider was (part way), so Undo takes that edit back too.
-  const endedRide = useRef<{ start: NonNullable<typeof rideStart>; big: boolean; from: LonLat[] | null } | null>(null);
+  const endedRide = useRef<{ start: NonNullable<typeof rideStart>; from: LonLat[] | null } | null>(null);
   const [rideEnded, setRideEnded] = useState(0);
-  const rideNow = useRef({ start: rideStart, big: bigText });
-  rideNow.current = { start: rideStart, big: bigText };
+  const rideNow = useRef({ start: rideStart });
+  rideNow.current = { start: rideStart };
   const endRide = useCallback((after: EndedPlan) => {
-    const { start, big } = rideNow.current;
+    const { start } = rideNow.current;
     // The plan stays, every route of it, to adjust and ride again (the owner, 2026-10-16: "You should keep all
     // the routes ... But be able to adjust things"). Part way, it starts where the rider is ("If you went part
     // way it changes your start location"): the stops passed dropped, a loop's finish still its start, as one
@@ -2959,10 +2963,9 @@ export function App() {
       commit(from, ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
       setFromHere((f) => [...f, from![0]]);
     }
-    endedRide.current = start ? { start, big, from } : null;
+    endedRide.current = start ? { start, from } : null;
     setRiding(false);
     setRideStart(null);
-    setBigText(false);
     setRideView(null);
     setRideEnded((n) => n + 1);
     // Said by the page's region, always mounted; the focus goes to Undo (RideEnded), not back to Start (review F6).
@@ -2983,7 +2986,6 @@ export function App() {
     startRideGesture(ridePrefs);
     setRideStart(ended.start);
     setFollow(true);
-    setBigText(ended.big);
     setRideView(null);
     setRiding(true);
   };
@@ -4128,6 +4130,7 @@ export function App() {
             />
             <SettingsSheet
               {...{
+                bigText: { on: bigText, onChange: setBigText },
                 nav: sheetNav, settingsHeadingRef, ridePrefs, changeRidePrefs, keepShown, keptVersion, openKept, announce,
                 linkNote, accessMode, toggleAccessMode, mode, myGo: myGoControls, menu,
                 announcements: { level: announceLevel(announceChoice, mode), choose: chooseAnnounce },

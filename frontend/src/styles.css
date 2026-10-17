@@ -6623,3 +6623,21 @@ details.fold > summary .icon {
   font-size: 1.5rem;
   font-weight: 700;
 }
+
+/* In a ride the map's scales and credits sit at the bottom of the screen, on the left, clear of the side buttons
+   (the owner, 2026-10-17: "on the bottom of the page in a ride. They are sort of in the middle"): the planner's
+   hidden panel no longer lifts them, and the bottom panel, while it shows, does (--ride-sheet-h, RideMode). */
+.app.riding:has(.ride) .maplibregl-ctrl-bottom-right {
+  left: 0;
+  right: auto;
+  bottom: var(--ride-sheet-h, 0px);
+}
+
+.app.riding .maplibregl-ctrl-bottom-right .maplibregl-ctrl {
+  float: left;
+  margin: 0 0 10px 10px;
+}
+
+.app.riding .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib {
+  max-width: calc(100vw - 100px);
+}
