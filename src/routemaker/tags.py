@@ -73,11 +73,50 @@ def parse_maxspeed_mph(value: str | None) -> float | None:
     return number * MPH_PER_KMH if unit in {"km/h", "kmh", "kph"} else number
 
 
+# The posted-speed keys the router reads (lua/vendor/graph_upstream.lua's
+# `normalize_speed`), all of them a sign in mph here.
+POSTED_SPEED_KEYS = ("maxspeed", "maxspeed:forward", "maxspeed:backward", "maxspeed:advisory")
+
+
+def maxspeed_in_mph_words(value: str | None) -> str | None:
+    """A posted speed rewritten so the router reads it as `parse_maxspeed_mph`
+    does, or None where it already does (review RL-5).
+
+    The router's tag transform reads a bare number as km/h and knows the unit
+    only as a lower-case "mph" at the end, so `maxspeed=45` was a 45 mph road
+    to the classifier and a 28 mph (45 km/h) edge to the router, and so was
+    `45 MPH`. The rebuild writes them `45 mph` into the extract the router is
+    built from, the one reading both now share.
+    """
+    if not value or value in IMPLICIT_MAXSPEED_MPH:
+        return None
+    match = _SPEED.match(value)
+    if not match:
+        return None
+    unit = match.group(2)
+    if unit is not None and (unit.lower() != "mph" or value.endswith("mph")):
+        return None
+    return f"{match.group(1)} mph"
+
+
 def parse_int(value: str | None) -> int | None:
     try:
         return int(str(value).strip())
     except (TypeError, ValueError):
         return None
+
+
+def parse_lanes(value: str | None) -> int | None:
+    """A lane count, a `;` list read as its largest part (review RL-8).
+
+    `lanes=2;3` is a road that carries two lanes on one stretch and three on
+    another, or a mapper unsure which; read as an int it was unreadable and fell
+    back to the one assumed lane. The largest part is the higher-stress reading.
+    """
+    if value is None:
+        return None
+    parts = [n for part in str(value).split(";") if (n := parse_int(part)) is not None]
+    return max(parts) if parts else None
 
 
 # The width forms OSM actually carries here, and the one place they are read.
@@ -243,12 +282,19 @@ def lanes_per_direction(tags: dict[str, str]) -> int | None:
     input, and it is what makes the tier independent of which side a mapper
     happened to tag first.
     """
+    total = parse_lanes(tags.get("lanes"))
     directional = [
-        value for key in DIRECTIONAL_LANE_KEYS if (value := parse_int(tags.get(key))) is not None
+        value for key in DIRECTIONAL_LANE_KEYS if (value := parse_lanes(tags.get(key))) is not None
     ]
+    if len(directional) == 1 and total is not None and not is_oneway(tags):
+        # One direction tagged on a two-way road whose total is known: the
+        # other direction is the rest (review RL-8). `lanes=4` with only
+        # `lanes:forward=1` carries three the other way, not one. A centre
+        # turn lane (`lanes:both_ways`) is in the total and in neither.
+        shared = parse_lanes(tags.get("lanes:both_ways")) or 0
+        directional.append(total - shared - directional[0])
     if directional:
         return max(1, max(directional))
-    total = parse_int(tags.get("lanes"))
     if total is None:
         return None
     if is_oneway(tags):
@@ -366,6 +412,9 @@ class CyclewaySide:
 
     value: str | None
     width_m: float | None
+    # The side's own `cycleway:<side>:oneway` says it runs against the way's
+    # traffic: the modern tagging of a contraflow lane (`cycleway_sides`).
+    against_traffic: bool = False
 
     @property
     def rank(self) -> int:
@@ -373,8 +422,42 @@ class CyclewaySide:
 
     @property
     def contraflow(self) -> bool:
-        """An `opposite*` value: the facility runs against a one-way's traffic."""
-        return bool(self.value and self.value.startswith("opposite"))
+        """The facility runs against a one-way's traffic: an `opposite*` value, or
+        a side whose own `oneway` points against the traffic (review RL-2)."""
+        return self.against_traffic or bool(self.value and self.value.startswith("opposite"))
+
+
+_FORWARD_VALUES = frozenset({"yes", "true", "1"})
+
+
+def _first_key(tags: dict[str, str], keys: tuple[str, ...]) -> str | None:
+    """The most specific key present, read in precedence order (`_first`'s key)."""
+    for key in keys:
+        if tags.get(key):
+            return key
+    return None
+
+
+def _against_traffic(tags: dict[str, str], key: str | None) -> bool:
+    """Whether the facility a side's value came from (`key`) is one-way against
+    a one-way road's traffic.
+
+    `cycleway:left=lane` + `cycleway:left:oneway=-1` is OSM's current form of
+    the contraflow lane the older scheme wrote `cycleway:left=opposite_lane`.
+    The `:oneway` is read at the level of the key the value came from, never
+    another: a bare `cycleway:oneway` qualifies only the bare `cycleway`, so
+    it never makes a `cycleway:right=lane` with the traffic a contraflow one.
+    The traffic runs against the way's nodes on `oneway=-1`, so there a
+    facility tagged `oneway=yes` is the contraflow one.
+    """
+    if key is None or not is_oneway(tags):
+        return False
+    facility = tags.get(f"{key}:oneway")
+    if facility == "-1":
+        return tags.get("oneway") != "-1"
+    if facility in _FORWARD_VALUES:
+        return tags.get("oneway") == "-1"
+    return False
 
 
 def cycleway_sides(tags: dict[str, str]) -> dict[str, CyclewaySide]:
@@ -385,7 +468,8 @@ def cycleway_sides(tags: dict[str, str]) -> dict[str, CyclewaySide]:
         width = _first_width(tags, CYCLEWAY_SIDE_WIDTH_KEYS[side])
         if value is not None and _facility_rank(value) == 0:
             width = None
-        sides[side] = CyclewaySide(value, width)
+        against = _against_traffic(tags, _first_key(tags, CYCLEWAY_SIDE_KEYS[side]))
+        sides[side] = CyclewaySide(value, width, against)
     return sides
 
 
@@ -408,21 +492,23 @@ def _directions(tags: dict[str, str], sides: dict[str, CyclewaySide]) -> list[li
     On a two-way street each side is one direction. On a one-way street there
     is one direction and either side serves it.
 
-    Unless `oneway:bicycle=no` lets bicycles ride it both ways. Then an
-    `opposite*` facility is the contraflow rider's alone, and the with-flow
-    rider has only what the other sides carry - the contraflow rider can use
-    that and the `opposite*` facility besides, so the with-flow direction is the
-    weaker of the two and the one scored. Measured, before this:
-    `oneway=yes` + `oneway:bicycle=no` + `cycleway:left=opposite_lane` took the
-    one-way union and rated the painted lane, though the rider travelling with
-    the traffic has no lane at all.
+    But a contraflow facility (`CyclewaySide.contraflow`) is the contraflow
+    rider's alone, and the with-flow rider has only what the other sides carry -
+    the contraflow rider can use that and the contraflow facility besides, so
+    the with-flow direction is the weaker of the two and the one scored.
+    Measured, before this: `oneway=yes` + `oneway:bicycle=no` +
+    `cycleway:left=opposite_lane` took the one-way union and rated the painted
+    lane, though the rider travelling with the traffic has no lane at all.
+
+    Whatever the tagging says it with (review RL-2): the same lane without
+    `oneway:bicycle=no`, which the older scheme left implied, and the modern
+    `cycleway:left=lane` + `cycleway:left:oneway=-1`, each still took the union
+    and came out a tier calmer than the first form.
     """
     left, right = sides["left"], sides["right"]
     if not is_oneway(tags):
         return [[left], [right]]
-    if tags.get("oneway:bicycle") == "no":
-        return [[s for s in (left, right) if not s.contraflow]]
-    return [[left, right]]
+    return [[s for s in (left, right) if not s.contraflow]]
 
 
 def cycleway_provision(tags: dict[str, str]) -> Provision:
@@ -442,19 +528,40 @@ def cycleway_provision(tags: dict[str, str]) -> Provision:
     because the general key was unioned into the right side and the best value
     kept. The right side says `no`, and the side key is the more specific tag.
     """
+    return _provision(_directions(tags, cycleway_sides(tags)), min)
+
+
+def best_direction_provision(tags: dict[str, str]) -> Provision:
+    """The provision on the **best** direction, for the map alone (the review of
+    17f69082): where `cycleway_provision` takes the weakest direction, this takes
+    the strongest, and on a one-way street the contraflow rider's direction, every
+    side, is one of them. So a contraflow-only lane (11th Street NW's
+    `cycleway:left=lane` + `cycleway:left:oneway=-1`) is drawn as the lane it is,
+    while the tier and the routing price (`facility.facility`, `rm:facility`) stay
+    on the rider with the traffic, who has none."""
+    sides = cycleway_sides(tags)
+    directions = _directions(tags, sides)
+    if is_oneway(tags):
+        directions.append([sides["left"], sides["right"]])
+    return _provision(directions, max)
+
+
+def _provision(directions: list[list[CyclewaySide]], pick) -> Provision:
+    """The provision of the direction `pick` (min: the worst, max: the best) ranks
+    first, and its width the same way round across the directions that give it."""
     ranked = []
-    for candidates in _directions(tags, cycleway_sides(tags)):
+    for candidates in directions:
         best = max((s.rank for s in candidates), default=0)
         at_best = [s for s in candidates if s.rank == best]
         surveyed = [s.width_m for s in at_best if s.width_m is not None]
         ranked.append((best, at_best, max(surveyed) if surveyed else None))
-    rank = min(best for best, _, _ in ranked)
+    rank = pick(best for best, _, _ in ranked)
     used = [(sides, width) for best, sides, width in ranked if best == rank]
     widths = [width for _, width in used if width is not None]
     return Provision(
         rank,
         frozenset(s.value for sides, _ in used for s in sides if s.value is not None),
-        min(widths) if widths else None,
+        pick(widths) if widths else None,
     )
 
 
@@ -475,9 +582,10 @@ def cycleway_values(tags: dict[str, str]) -> set[str]:
     either side is the facility of the only trip anyone makes on the way. That
     is most of the District's protected network, where `cycleway:left=
     opposite_lane` and `cycleway:left=track` on a one-way street are how a
-    contraflow lane is tagged. The carve-out declines where `oneway:bicycle=no`
-    brings the second direction back: there an `opposite*` facility is the
-    contraflow rider's alone, and the with-flow rider is scored on what is left.
+    contraflow lane is tagged. The carve-out declines for a contraflow facility
+    (an `opposite*` value, or a side whose own `oneway` runs against the
+    traffic): it is the contraflow rider's alone, and the with-flow rider is
+    scored on what is left, however the contraflow is tagged (review RL-2).
 
     Returns the weaker direction's values, so an absent or `no` side answers
     with what it says rather than with the other side's facility.

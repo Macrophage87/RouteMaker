@@ -39,6 +39,7 @@ import { useMap } from "./app/mapOverlay.ts";
 import { CLIMB_FONT } from "./lib/climbs.ts";
 import { HAZARD_REVIEW } from "./lib/reviewSources.ts";
 import { csrfFromCookie } from "./lib/stressEditor.ts";
+import { STREET_VIEW_NOTE, STREET_VIEW_TEXT } from "./lib/roadInfo.ts";
 import {
   DEFAULT_LIST,
   LISTS,
@@ -58,7 +59,9 @@ import {
   makeAnnouncer,
   progressText,
   roadHeading,
+  roadStreetViewUrl,
   ruledSaid,
+  rulingLabel,
   sendRuling,
   sortRoads,
   stepText,
@@ -761,6 +764,7 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
   const pending = current ? current.sources.some((s) => s.pending) : false;
   const facts = detail ? factRows(detail.facts, detail.new_facts) : [];
   const sideBySide = queue === "rebuild" && (detail?.new_facts.length ?? 0) > 0;
+  const streetView = current ? roadStreetViewUrl(current) : null;
 
   return (
     <div className="review-queue">
@@ -953,6 +957,16 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
             <dt>Traffic</dt>
             <dd>{trafficText(current.aadt)}</dd>
           </dl>
+          {streetView && (
+            <p className="review-street-view">
+              <a href={streetView} target="_blank" rel="noopener noreferrer" aria-describedby={id("sv-note")}>
+                {STREET_VIEW_TEXT}
+              </a>{" "}
+              <span id={id("sv-note")} className="hint">
+                {STREET_VIEW_NOTE}
+              </span>
+            </p>
+          )}
           {settled && settled.osm_way_id === current.osm_way_id && settled.point && (
             <StreetPhotoView title={current.name || `Way ${current.osm_way_id}`} point={settled.point} wayId={settled.osm_way_id} path={PHOTO_PATH} />
           )}
@@ -1004,7 +1018,7 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
                 .filter((d) => d !== "set")
                 .map((d) => (
                   <button key={d} type="button" aria-describedby={id("card")} aria-disabled={busy || undefined} onClick={() => void rule(d, [current.osm_way_id])}>
-                    {decisionLabel(queue, d)}
+                    {rulingLabel(current, d)}
                   </button>
                 ))}
               {current.actions.includes("set") && (

@@ -417,7 +417,7 @@ test("go tap: a press on the map in Go is the destination, routed as a picked on
 test("go start: App asks once when Go opens, says the start politely, and says when it is not available", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   assert.match(app, /if \(!shouldAskGoStart\(\{ mode, asked: goStartAsked\.current, pointCount: pointsRef\.current\.length \}\)\) return;/);
-  assert.match(app, /if \(pointsRef\.current\.length > 0\) return;[\s\S]{0,300}?\} else announce\(GO_START_SAID\);/);
+  assert.match(app, /if \(pointsRef\.current\.length > 0\) return;[\s\S]{0,300}?\} else \{\s*\/\/[^\n]*\n\s*flyToInView\(result\.fix\.point, 15\);\s*announce\(GO_START_SAID\);\s*\}/);
   assert.match(app, /if \(pointsRef\.current\.length === 0\) \{\s*if \(pending\?\.pressed\) setNoticeSaying\(goDestinationNeedsStart\(pending\.name\), goPressNeedsStartSaid\(pending\.name\)\);\s*else setNotice\(pending \? goDestinationNeedsStart\(pending\.name\) : GO_START_UNAVAILABLE\);/);
   // Go offers the routes to choose from at once; Plan keeps its fold.
   const panel = readFileSync(new URL("../app/RoutePanel.tsx", import.meta.url), "utf8");
