@@ -732,7 +732,7 @@ const federalFetched = (p) =>
   const before = await axNode(p, id);
   check("mtb layer: a switch named Mountain-bike trails, off by default", before?.role === "switch" && before?.name === "Mountain-bike trails" && String(before?.checked) === "false", JSON.stringify(before));
   check("mtb layer: described in one plain line: from which zoom, and that it is not used for routes (the levels are the legend's)",
-    // From zoom 12 since 5cfe0e3a ("Map: mountain-bike trails from zoom 12, in the ride layer's tiles"; MTB_MIN_ZOOM).
+    // From zoom 12 (MTB_MIN_ZOOM, STRESS_ZOOMS.quiet: every street from z12 since tile FORMAT_VERSION 10; before it, the ride layer's tiles, 5cfe0e3a).
     /^From zoom 12\. Not used for routes\.$/.test(before?.description ?? ""), before?.description ?? "");
   const headings = await p.eval("[...document.querySelectorAll('#sheet-layers h3')].map((e) => e.textContent)");
   const at = (name) => headings.indexOf(name);
