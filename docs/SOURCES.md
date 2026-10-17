@@ -411,7 +411,7 @@ No credit: nothing from these is used.
   <https://gbfs.capitalbikeshare.com/gbfs/gbfs.json>, which lists the feeds on `gbfs.lyft.com`);
   the Bikeshare ride type's docks and bike counts and its lists of the nearest stations
   (`core.gbfs`, `core.bikeshare`); and, from v0.7.0, the docks and free e-bikes drawn on the map
-  in the bikeshare ride types, for the rider's map view only (`core.micromobility`, GET
+  while their Layers switch is on (by default in the bikeshare ride types only), for the rider's map view only (`core.micromobility`, GET
   /api/bikeshare/docks: a bounded view, capped counts, no bike ids, nothing kept), a live
   display and not the data handed on as a dataset. Read live while a rider plans, about once a minute for the whole
   deployment, kept as one shared latest copy and never as history; there is no raw-file record and
