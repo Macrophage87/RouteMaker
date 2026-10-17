@@ -158,7 +158,7 @@ def id_ok(value) -> bool:
 def public_answer(answer: dict) -> dict:
     """A planned route's answer as it may be shared: without the other candidates, and without
     the rider's system weight or the effort figure weighed with it."""
-    out = {**answer, "candidates": None, "avoid_alternate": None}
+    out = {**answer, "candidates": None, "avoid_alternate": None, "closure_through": None}
     dials = out.get("dials")
     if isinstance(dials, dict) and dials.get("system_weight_kg") is not None:
         out["dials"] = {**dials, "system_weight_kg": None}

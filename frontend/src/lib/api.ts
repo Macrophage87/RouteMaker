@@ -5,6 +5,7 @@
  * types generated from the API's OpenAPI schema; until that step exists they
  * are written out here, against the contract rather than against a guess.
  */
+import { encodePolyline6 } from "./polyline.ts";
 import type { TripLeg } from "./transitMarks.ts";
 import type { MtbReading } from "./mtbMode.ts";
 import { formatRoughDistance } from "./format.ts";
@@ -280,6 +281,11 @@ export interface DescriptionEntry {
    * null where that is `text` itself. Absent from an older API.
    */
   text_lanes_hidden?: string | null;
+  /**
+   * On a work zone or closure (v0.8.2): its source and until when, "Source: DDOT permits, until Nov 14.",
+   * shown in small text under `text` and never read out (the owner, 2026-10-17). Absent from an older API.
+   */
+  citation?: string | null;
   /**
    * On a stretch: `street` is only its trail's route relation's name (no way of it carries it), so the
    * ride never cues "Continue onto" it. Absent from an older API.
@@ -757,6 +763,15 @@ export interface RouteResponse {
    * swapped in before Start. Absent or false on a full plan.
    */
   provisional?: boolean;
+  /**
+   * True where the route is the router's match of an opened file's line sent as `follow` (core/follow.py): the file's
+   * own ways, not a plan through its points. Absent or false otherwise, and where the line matched no way.
+   */
+  follows_file?: boolean;
+  /** True where the route follows the file in the manual mode (`follow_exact`): against one-way traffic and on roads closed to bikes too. */
+  follows_exactly?: boolean;
+  /** On a route that follows a file: where the file rides against one-way traffic, which the route goes round (or follows, `follows_exactly`). */
+  against_traffic?: { name: string | null; distance_m: number }[] | null;
   /** A Mass Ride's rider-marked hazards it passes, in riding order (325); null or absent on other ride types. */
   mass_hazards?: MassHazardSpan[] | null;
   /** The Avoid-rated junctions it passes, in route order (307); empty or absent where none. */
@@ -767,6 +782,11 @@ export interface RouteResponse {
   avoid_search?: AvoidSearch | null;
   /** On the answer: the best route round them, however much longer (335); null otherwise. */
   avoid_alternate?: (RouteResponse & { extra_distance_m: number; extra_duration_s: number }) | null;
+  /**
+   * On the answer (v0.8.2): the standard way through the closures it goes round, since a closure marked may not
+   * really be closed (the owner, 2026-10-17). Drawn beside the route; Ride follows it where the rider takes it.
+   */
+  closure_through?: (RouteResponse & { extra_distance_m: number; extra_duration_s: number; closure_ids: string[] }) | null;
   /** Bikeshare only: the walks, docks, availability, fee and notes around this ride leg; null elsewhere. */
   bikeshare?: BikesharePlan | null;
   /** The transit ride types only (core.transit): the whole trip in steps around this body, its first ride leg. */
@@ -1182,7 +1202,16 @@ export interface RouteRequestOptions {
   quick?: boolean;
   /** The route alone, with no routes to choose from looked for (Ride mode's re-plans, review speed-5). */
   routeOnly?: boolean;
+  /** An opened file's line to follow exactly (core/follow.py), at most FOLLOW_MAX_POINTS points. Never on a two-point ride type. */
+  follow?: readonly LonLat[];
+  /** The manual mode of `follow` (core/follow.py EXACT): the line followed as ridden, rules or not. */
+  followExact?: boolean;
+  /** v0.8.2, Ride's Road closed: the stretches the rider found closed on this ride, left out of the plan. */
+  blocked?: readonly (readonly LonLat[])[];
 }
+
+/** Most points of a line to follow (core/follow.py MAX_POINTS). */
+export const FOLLOW_MAX_POINTS = 5000;
 
 /** POST /api/route's body as JSON text: the same text for the same plan, so it also keys Go's early start. */
 export function routeRequestBody(points: readonly LonLat[], preset: PresetId, options: RouteRequestOptions = {}): string {
@@ -1207,6 +1236,12 @@ export function routeRequestBody(points: readonly LonLat[], preset: PresetId, op
     ...(options.quick ? { quick: true } : {}),
     // A ride's re-plan takes the first route only, so the API does not look for others to choose from.
     ...(options.routeOnly ? { candidates: false } : {}),
+    // An opened file's line, followed rather than planned through its points.
+    ...(options.follow && options.follow.length >= 2 && !twoPointsOnly(preset)
+      ? { follow: encodePolyline6(options.follow), ...(options.followExact ? { follow_exact: true } : {}) }
+      : {}),
+    // The roads the rider marked closed on this ride (Ride's Road closed): sent with its re-plans only.
+    ...(options.blocked?.length ? { blocked_lines: options.blocked.map((line) => line.map((p) => [p[0], p[1]])) } : {}),
   });
 }
 

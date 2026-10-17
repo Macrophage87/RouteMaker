@@ -196,7 +196,7 @@ test("RideMode: round side buttons with names; the bottom panel only when it has
   assert.match(ride, /\{shareBike && !ride\.arrived && \(/);
   // The bottom panel is gone by default.
   assert.match(ride, /const sheetShown = notesShown \|\| ride\.off \|\| restShown \|\| reportOpen;/);
-  assert.match(ride, /\{sheetShown && \(\s*<div className="ride-controls">/);
+  assert.match(ride, /\{sheetShown && \(\s*<div ref=\{sheetRef\} className="ride-controls">/);
   assert.match(ride, /const corridorText = corridorWorry\(corridor\);/);
   // The time starts at the dock (or the start with no walk), and again on riding off from a dock.
   assert.match(ride, /if \(trip\?\.shareBike\) setUndockAt\(Date\.now\(\)\);/);
@@ -213,4 +213,10 @@ test("following track-up, the rider is held two thirds of the way down the map, 
   assert.match(map, /const ahead = props\.headingUp \? riderOffset\(map\.getContainer\(\)\) : 0;/);
   assert.match(map, /map\.easeTo\(\{ center: rider\.point, bearing, zoom, offset: \[0, ahead\], padding: NO_PADDING, duration: still \? 0 : 400 \}\);/);
   assert.match(css, /\.rider-marker \{\s*width: 36px;\s*height: 36px;/);
+});
+
+test("in a ride the map's scales and credits sit at the bottom left, above the bottom panel when it shows", () => {
+  assert.match(css, /\.app\.riding:has\(\.ride\) \.maplibregl-ctrl-bottom-right \{\s*left: 0;\s*right: auto;\s*bottom: var\(--ride-sheet-h, 0px\);/);
+  assert.match(ride, /<div ref=\{sheetRef\} className="ride-controls">/);
+  assert.match(ride, /root\.style\.setProperty\("--ride-sheet-h", `\$\{sheet \? Math\.round\(sheet\.getBoundingClientRect\(\)\.height\) : 0\}px`\)/);
 });

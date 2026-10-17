@@ -307,6 +307,8 @@ class TestSchema:
             "text",
             "text_lanes_hidden",
             "relation_name",
+            # v0.8.2: a closure's source and until when, in small print.
+            "citation",
         }
         # "avoid": an Avoid-rated junction ahead (FOLLOWUP-ISECT-AVOID, OWNER-DECISIONS 307).
         # "workzone": a live work zone on the route (FOLLOWUP-WORKZONES, 341-349).

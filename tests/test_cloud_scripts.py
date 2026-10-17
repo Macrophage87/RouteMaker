@@ -234,6 +234,8 @@ AGENCY_LTS = (
     '[{"id": "m", "agency": "moco"}, {"id": "d", "agency": "ddot"}, {"agency": "mdot-sha"}]'
 )
 
+SCENIC = '[{"id":"r","source":"moco-rustic"},{"id":"b","source":"md-byways"}]'
+
 
 @pytest.fixture
 def home(fake):
@@ -249,6 +251,7 @@ def home(fake):
         (data / part).mkdir()
         (data / part / f"{part}.file").write_text(part)
     (data / "reference" / "agency-lts.json").write_text(AGENCY_LTS)
+    (data / "reference" / "scenic.json").write_text(SCENIC)
     ship = fake.root / "bin" / "ship-db"
     ship.write_text(FAKE_SHIP_DB)
     ship.chmod(0o755)
@@ -410,6 +413,40 @@ def test_the_sends_agency_list_is_the_approved_agencies() -> None:
     assert line.removeprefix("AGENCY_LTS_AGENCIES=(").rstrip(")").split() == list(AGENCIES)
 
 
+@pytest.mark.parametrize(
+    "body, message",
+    [
+        (None, "scenic.json is missing or empty"),
+        ("", "scenic.json is missing or empty"),
+        ('[{"id":"b","source":"md-byways"}]', "no lines from moco-rustic"),
+    ],
+)
+def test_send_refuses_a_reference_folder_without_the_scenic_lines(
+    fake, home, body, message
+) -> None:
+    """v0.8.0 was built where scenic.json had never been installed, so the Scenic layer had
+    no Rustic Road; the send refuses such a folder before any upload."""
+    _, data = home
+    path = data / "reference" / "scenic.json"
+    if body is None:
+        path.unlink()
+    else:
+        path.write_text(body)
+
+    done = send(fake, home)
+
+    assert done.returncode == 2 and message in done.stderr
+    assert not fake.in_bucket("in").exists()
+
+
+def test_the_sends_scenic_list_is_the_scenic_sources() -> None:
+    from routemaker.scenic import SOURCES
+
+    script = SEND.read_text()
+    (line,) = [x for x in script.splitlines() if x.startswith("SCENIC_SOURCES=(")]
+    assert line.removeprefix("SCENIC_SOURCES=(").rstrip(")").split() == list(SOURCES)
+
+
 def test_a_first_deployment_with_no_live_map_skips_the_count_check(fake, home) -> None:
     (fake.dir / "live_table").write_text("f\n")
     (fake.dir / "live_sources").write_text("mdot-sha\n")
@@ -438,6 +475,7 @@ def test_send_takes_another_reference_folder_only_with_the_live_builds_files(fak
     (other / "agency").mkdir(parents=True)
     (other / "reference.file").write_text("an older copy")
     (other / "agency-lts.json").write_text(AGENCY_LTS)
+    (other / "scenic.json").write_text(SCENIC)
     (other / "agency" / "layer.json").write_text("live layer")
 
     done = send(fake, home, "--reference-dir", str(other))
