@@ -103,6 +103,8 @@ export function planChanged<R extends { preset: string }>(drawn: DrawnPlan<R> | 
 
 export const ROUTE_LABEL = "Route";
 export const UPDATE_LABEL = "Update route";
+/** The map bar's big button while routing (its progress is in the plan panel). */
+export const ROUTING_LABEL = "Routing…";
 export const ROUTE_NEEDS_POINTS = "Add a start and an end first.";
 export const ROUTE_UP_TO_DATE = "The route shown is up to date.";
 export const RESET_LABEL = "Reset";

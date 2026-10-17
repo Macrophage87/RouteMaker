@@ -1,6 +1,6 @@
 // The panel's icons: the approved UI mockup's own line icons (reports/v0.5.0/ui-mockup.html, 2026-10-11),
-// plus a cargo bike, a bikeshare dock, a downed tree and a text-size "Aa" (the owner's choice 11: Big text had
-// the info icon). Each is drawn with currentColor and hidden from assistive technology: every control that
+// plus a cargo bike, a bikeshare dock, a downed tree, a text-size "Aa" (the owner's choice 11; unused since Big text
+// moved to Settings, 2026-10-17), and Plan's map bar's undo, redo and clear. Each is drawn with currentColor and hidden from assistive technology: every control that
 // shows one also shows its words.
 
 export const ICON_PATHS = {
@@ -29,6 +29,7 @@ export const ICON_PATHS = {
   "train": "<rect x=\"6\" y=\"3\" width=\"12\" height=\"14\" rx=\"3\"/><path d=\"M6 10h12M9 21l2-4M15 21l-2-4\"/>",
   "trail": "<path d=\"M5 21c3-3 1-6 5-8s5-4 3-10\" stroke-dasharray=\"3 2.5\"/>",
   "topo": "<path d=\"M3 17c3-4 6-4 9-2s6 2 9-2M3 12c3-4 6-4 9-2s6 2 9-2M6 7c2-2 4-2 6-1s4 1 6-1\"/>",
+  "barrier": "<rect x=\"3\" y=\"7\" width=\"18\" height=\"6\" rx=\"1\"/><path d=\"M8 7l-3 6M13 7l-3 6M18 7l-3 6M7 13v7M17 13v7\"/>",
   "road": "<path d=\"M8 3 4 21M16 3l4 18M12 5v2.5M12 11v2.5M12 17v2.5\"/>",
   "lane": "<path d=\"M6 3v18M18 3v18\"/><circle cx=\"12\" cy=\"9\" r=\"2\"/><path d=\"M10 15h4\"/>",
   "contrast": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 3a9 9 0 0 1 0 18z\" fill=\"currentColor\"/>",
@@ -68,6 +69,9 @@ export const ICON_PATHS = {
   "apple": "<path d=\"M12 7c-1.5-1.3-4.5-1.5-6 .5S4.5 13 6 16.5 9.5 21 12 20c2.5 1 4.5-.5 6-3.5s1.5-7.5 0-9.5-4.5-1.8-6-.5z\"/><path d=\"M12 7c0-2 1-3.5 3-4\"/>",
   "wrench": "<path d=\"M15 4a5 5 0 0 0-4.6 6.9L4 17.3 6.7 20l6.4-6.4A5 5 0 0 0 20 9l-3 3-3-1-1-3 3-3z\"/>",
   "shop": "<path d=\"M3 9l2-5h14l2 5M3 9h18M3 9v11h18V9M9 20v-6h6v6\"/>",
+  "undo": "<path d=\"M9 14 4 9l5-5\"/><path d=\"M4 9h10.5a5.5 5.5 0 0 1 0 11H11\"/>",
+  "redo": "<path d=\"m15 14 5-5-5-5\"/><path d=\"M20 9H9.5a5.5 5.5 0 0 0 0 11H13\"/>",
+  "trash": "<path d=\"M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6\"/>",
   "camera": "<path d=\"M4 7h3l2-3h6l2 3h3v13H4z\"/><circle cx=\"12\" cy=\"13\" r=\"3.5\"/>",
 } as const;
 

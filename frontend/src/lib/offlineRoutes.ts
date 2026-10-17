@@ -200,8 +200,9 @@ export function keptDetail(route: KeptRoute, now: number = Date.now()): string {
 
 export const KEEP_LABEL = "Keep for offline";
 export const KEPT_HEADING = "Routes kept for offline";
-export const KEPT_NONE =
-  "No routes are kept. Under a route, press “Keep for offline” to keep it and the map along it on this device for places with no signal.";
+export const KEPT_NONE_SHORT = "No routes are kept.";
+export const KEPT_HOW = "Under a route, press “Keep for offline” to keep it and the map along it on this device for places with no signal.";
+export const KEPT_NONE = `${KEPT_NONE_SHORT} ${KEPT_HOW}`;
 export const KEPT_PRIVATE = "Kept on this device only, until you remove them; never sent anywhere.";
 
 /** Below the list: what `navigator.storage.persisted()` said, and the iOS seven-day rule for a tab. */
