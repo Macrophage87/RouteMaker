@@ -468,6 +468,12 @@ from config.flags import env_true  # noqa: E402
 
 WEEKLY_REBUILD_PAUSED = env_true(os.environ.get("WEEKLY_REBUILD_PAUSED"))
 
+# The rebuild refuses to run without every approved agency's stress ratings in
+# REBUILD_REFERENCE_DIR/agency-lts.json (pipeline.agency_ratings): v0.8.0 was built
+# where the file was never installed and no road carried an agency's rating. 1 or
+# true builds without them anyway, with a warning, every way on the formula's tier.
+REBUILD_ALLOW_NO_AGENCY_LTS = env_true(os.environ.get("REBUILD_ALLOW_NO_AGENCY_LTS"))
+
 # Build validation reads two known edges back out of the tiles. The steep edge
 # proves elevation was baked; the derived edge proves the derived tags reached
 # the graph, because a street tagged with a plain painted lane in OSM only
