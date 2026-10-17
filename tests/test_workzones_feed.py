@@ -205,7 +205,8 @@ class TestTheAnswer:
         texts = [e["text"] for e in body["description"]]
         assert texts[0] == wz.DISCLAIMER
         assert texts[1] == "Ride north."
-        assert texts[2].startswith("Work zone ahead at 0.2 mi (0.2 km) on Country Lane")
+        assert texts[2].startswith("Work zone ahead on Country Lane, ")
+        assert body["description"][2]["citation"].startswith("Source: Maryland DOT SHA")
         assert body["description"][2]["severity"] == "orange"
         assert body["description_overview"] is None
         summary = body["work_zones"]
@@ -220,7 +221,8 @@ class TestTheAnswer:
         )
         body = workzones.with_work_zones(self.body(), plan)
         texts = [e["text"] for e in body["description"]]
-        assert any(t.endswith(workzones.STALE_NOTE) for t in texts)
+        cited = [e.get("citation") or "" for e in body["description"]]
+        assert any(c.endswith(workzones.STALE_NOTE) for c in cited)
         assert (
             "Work zones could not be checked for this route: Virginia's feed not available."
             in texts
@@ -339,7 +341,8 @@ def test_no_way_round_a_closure_plans_through_it_with_a_red_warning(client, monk
     assert zone["kind"] == "closed" and zone["warning"]
     assert body["work_zones"]["routed_round"] == 0
     red = [e for e in body["description"] if e["kind"] == "workzone" and e["severity"] == "red"]
-    assert red and "closed to bicycles" in red[0]["text"]
+    assert red and red[0]["text"] == "Main Road marked closed ahead."
+    assert red[0]["citation"].startswith("Source: Maryland DOT SHA work zones")
 
 
 class TestTheRealFetchNeverRepeatsTheKey:

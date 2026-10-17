@@ -333,6 +333,10 @@ def drop_exclusions(request: dict, plan: rules.PlanZones) -> None:
     plan.unexcluded.extend(plan.excluded)
     plan.excluded = []
     plan.exclude = []
+    # The roads the rider marked closed on this ride stay out (v0.8.2, `blocked_lines`).
+    if plan.blocked:
+        request["exclude_polygons"] = list(plan.blocked)
+        plan.exclude = list(plan.blocked)
 
 
 def settle_penalties(answer: dict, request: dict, plan: rules.PlanZones, reroute, time_left_s):
@@ -424,6 +428,10 @@ def measure_delays(
             passing = rules.along(_trip_line(free["trip"]), plan.excluded)
             ids = list(dict.fromkeys(p.zone.zone_id for p in passing))
             plan.affecting = set(ids)
+            # The standard way, through the closures that changed the route (v0.8.2): shown
+            # beside the detour, since a closure marked may not really be closed.
+            if ids:
+                plan.through = free["trip"]
             if len(ids) == 1:
                 plan.delays[ids[0]] = max(0.0, base - _trip_time(free["trip"]))
             else:
@@ -445,6 +453,77 @@ def measure_delays(
             )
 
 
+# --- Where the detour leaves the standard way (v0.8.2) ---------------------------------
+
+# A route vertex this far from the standard way is off it; a stretch off it shorter than
+# PARTED_MIN_M is the same road drawn two ways, not a detour.
+PARTED_M = 25.0
+PARTED_MIN_M = 60.0
+# The standard way's line is cut into points this far apart, in cells this wide.
+_STEP_M = 10.0
+_CELL_M = 30.0
+
+
+def parting_points(line, standard) -> list[float]:
+    """Metres along `line` (lon, lat pairs) where it leaves `standard` for at least
+    `PARTED_MIN_M`: the last vertex still on it before each such stretch. Empty where
+    either has under two points or they never part."""
+    if len(line) < 2 or len(standard) < 2:
+        return []
+    lat0 = line[0][1]
+    grid: dict[tuple[int, int], list[tuple[float, float]]] = {}
+    xy = [rules._xy(lon, lat, lat0) for lon, lat in standard]
+    for a, b in zip(xy, xy[1:], strict=False):
+        steps = max(1, math.ceil(math.dist(a, b) / _STEP_M))
+        for i in range(steps + 1):
+            t = i / steps
+            p = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+            grid.setdefault((int(p[0] // _CELL_M), int(p[1] // _CELL_M)), []).append(p)
+
+    def near(p) -> bool:
+        cx, cy = int(p[0] // _CELL_M), int(p[1] // _CELL_M)
+        reach = PARTED_M + _STEP_M / 2
+        return any(
+            math.dist(p, q) <= reach
+            for dx in (-1, 0, 1)
+            for dy in (-1, 0, 1)
+            for q in grid.get((cx + dx, cy + dy), ())
+        )
+
+    # The line too is walked in short steps: a long straight stretch between two of its
+    # vertices on the standard way can be off it in the middle.
+    walk: list[tuple[float, tuple[float, float]]] = []
+    walked = 0.0
+    points = [rules._xy(lon, lat, lat0) for lon, lat in line]
+    for i, p in enumerate(points):
+        if i:
+            a = points[i - 1]
+            gap = math.dist(a, p)
+            steps = max(1, math.ceil(gap / _STEP_M))
+            for k in range(1, steps):
+                t = k / steps
+                walk.append(
+                    (walked + gap * t, (a[0] + (p[0] - a[0]) * t, a[1] + (p[1] - a[1]) * t))
+                )
+            walked += gap
+        walk.append((walked, p))
+    out: list[float] = []
+    on_at: float | None = 0.0 if near(points[0]) else None
+    off_from: float | None = None
+    for metres, p in walk:
+        if near(p):
+            if off_from is not None and on_at is not None and metres - off_from >= PARTED_MIN_M:
+                out.append(on_at)
+            off_from = None
+            on_at = metres
+        elif off_from is None:
+            off_from = metres
+    # Off it to the end (the detour reaches the end another way).
+    if off_from is not None and on_at is not None and walked - off_from >= PARTED_MIN_M:
+        out.append(on_at)
+    return out
+
+
 # --- The route's words and the map's closures ----------------------------------------
 
 
@@ -454,16 +533,25 @@ def _entry(
     text: str | None = None,
     stale: bool = False,
     note: str = "",
+    at_m: float | None = None,
+    zone: rules.Zone | None = None,
 ) -> dict:
     """A description entry (`routemaker.describe`'s shape), kind "workzone": a zone on
     the route at its metres scaled to the router's length, or, with no passage, a line
-    at the start (the feeds that could not be read, a notice to check)."""
-    at = 0.0 if passage is None else passage.from_m * scale
-    to = 0.0 if passage is None else passage.to_m * scale
-    zone = None if passage is None else passage.zone
+    at the start (the feeds that could not be read, a notice to check), or at `at_m`
+    with `text`: where the route leaves the standard way for a closure, `zone` (v0.8.2).
+    A zone's sentence is short, as Ride says it; its source and until when are its
+    `citation`, shown in small text and never read out (the owner, 2026-10-17)."""
+    at = (at_m or 0.0) if passage is None else passage.from_m * scale
+    to = at if passage is None else passage.to_m * scale
+    if passage is not None:
+        zone = passage.zone
     said = text
+    cited = None
     if zone is not None:
-        said = rules.heads_up(zone, at) + note + (stale_note(zone.source) if stale else "")
+        if passage is not None:
+            said = rules.heads_up(zone)
+        cited = rules.citation(zone) + note + (stale_note(zone.source) if stale else "")
     return {
         "kind": "workzone",
         "from_m": round(at),
@@ -480,6 +568,7 @@ def _entry(
         "surface": None,
         "text": said,
         "text_lanes_hidden": None,
+        "citation": cited,
     }
 
 
@@ -701,6 +790,19 @@ def with_work_zones(body: dict, plan: rules.PlanZones | None, now: datetime | No
         _entry(p, scale, stale=plan.status.get(p.zone.source) == STALE, note=note(p.zone))
         for p in passages
     ]
+    # Where this route leaves the standard way for a closure it goes round (v0.8.2): "Oak
+    # Street marked closed. Detour posted.", a hazard Ride says as the two lines part.
+    if plan.through is not None and plan.affecting:
+        standard = _trip_line(plan.through)
+        round_zones = [
+            p.zone for p in rules.along(standard, plan.excluded) if p.zone.zone_id in plan.affecting
+        ]
+        for k, at in enumerate(parting_points(coordinates, standard)):
+            zone = round_zones[k] if k < len(round_zones) else None
+            stale = zone is not None and plan.status.get(zone.source) == STALE
+            added.append(
+                _entry(None, scale, rules.split_words(zone), stale, at_m=at * scale, zone=zone)
+            )
     notices = []
     if plan.notices and plan.at is not None:
         notices = dc.notices_along(plan.notices, coordinates, plan.at)
@@ -732,7 +834,7 @@ def with_work_zones(body: dict, plan: rules.PlanZones | None, now: datetime | No
                 "end": None if p.zone.end is None else p.zone.end.isoformat(),
                 "source": p.zone.source,
                 "warning": p.zone.kind in (rules.CLOSED, rules.UNKNOWN),
-                "text": rules.heads_up(p.zone, p.from_m * scale) + note(p.zone),
+                "text": rules.heads_up(p.zone),
                 "bypassed": p.zone.zone_id in bypassed,
                 "may_still_apply": p.zone.zone_id in uncertain,
             }

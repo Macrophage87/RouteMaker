@@ -119,6 +119,9 @@ body {
 .map {
   position: absolute;
   inset: 0;
+  /* Its own stacking context (the owner, 2026-10-17: "the closures are on top of the rest of the map"): a
+     marker's z-index (closures, junctions) orders it among the map's markers only, never over the panels. */
+  isolation: isolate;
 }
 
 :focus-visible {

@@ -374,11 +374,20 @@ def polygon(zone: Zone) -> list[list[float]] | None:
     """The strip the router is to leave out for a zone: its line trimmed at both
     ends, thinned, and widened `HALF_WIDTH_M` each side; a closed ring of [lon, lat]
     pairs (Valhalla's `exclude_polygons` entry). None for a line under 1 m."""
-    lat0 = zone.line[0][1]
-    points = [_xy(lon, lat, lat0) for lon, lat in zone.line]
+    return line_ring(zone.line, TRIM_M)
+
+
+def line_ring(line: Sequence[Sequence[float]], trim_m: float = 0.0) -> list[list[float]] | None:
+    """`polygon`'s strip round any line of [lon, lat] pairs, `trim_m` cut from each end:
+    a closed ring, or None for a line under 1 m. A road a rider marked closed (v0.8.2,
+    `blocked_lines`) is left out whole, untrimmed."""
+    lat0 = line[0][1]
+    points = [_xy(lon, lat, lat0) for lon, lat in line]
     if _length(points) < 1.0:
         return None
-    points = _thin(_trim(points, TRIM_M), MAX_LINE_POINTS)
+    if trim_m > 0:
+        points = _trim(points, trim_m)
+    points = _thin(points, MAX_LINE_POINTS)
     left, right = [], []
     for i, p in enumerate(points):
         a = points[max(i - 1, 0)]
@@ -524,6 +533,14 @@ class PlanZones:
     delays: dict[str, float | None] = field(default_factory=dict)
     # The park-level and text-only notices ("Check before you go") in force at the ride.
     notices: list = field(default_factory=list)
+    # v0.8.2 (the owner, 2026-10-17: "There are several closures marked that aren't actually
+    # closed. We should have both the standard route and the detour"): the router's trip with
+    # the closures that changed the route left in (`measure_delays`), offered beside the
+    # detour as `closure_through`; None where none changed it or it was not asked in time.
+    through: dict | None = None
+    # The rings of the roads the rider marked closed on this ride (`blocked_lines`), at the
+    # end of `exclude`: kept out of every request, even where the closures are let back in.
+    blocked: list[list[list[float]]] = field(default_factory=list)
 
     @property
     def any(self) -> bool:
@@ -664,46 +681,35 @@ def for_plan(
 # --- The words -----------------------------------------------------------------
 
 
-def _miles(metres: float) -> str:
-    return f"{metres / 1609.344:.1f}"
-
-
-def _km(metres: float) -> str:
-    return f"{metres / 1000:.1f}"
-
-
-def _until(zone: Zone) -> str:
-    return "" if zone.end is None else f" Listed until {zone.end.strftime('%Y-%m-%d %H:%M')} UTC."
-
-
-def heads_up(zone: Zone, at_m: float) -> str:
-    """The description's sentence for a zone on the route, US units first."""
-    where = f"{_miles(at_m)} mi ({_km(at_m)} km)"
-    road = f" on {zone.road}" if zone.road else ""
-    said = f" {zone.description.rstrip('.')}." if zone.description else ""
-    source = SOURCES.get(zone.source, zone.source)
+def heads_up(zone: Zone) -> str:
+    """The description's sentence for a zone on the route: short, as Ride says it on the
+    move (the owner, 2026-10-17: "the statement is way too verbose. We can cite our sources
+    without all that extra noise"). Where it is, the source and until when are the
+    entry's `citation`, shown in small text and not read out."""
+    name = zone.road or "The road"
+    on = f" on {zone.road}" if zone.road else ""
     if zone.kind == CLOSED:
-        lead = (
-            f"Work zone closed to bicycles ahead at {where}{road}: walk round or find another way."
-        )
-    elif zone.kind == UNKNOWN:
-        lead = (
-            f"Warning: work zone ahead at {where}{road} with every lane closed; the agency does "
-            "not say whether bicycles can pass."
-        )
-    elif zone.kind == LANE:
-        lead = (
-            f"Bike lane blocked ahead at {where}{road}: the road stays open; merge with care "
-            "or find another way."
-        )
-    elif zone.source in DC_SOURCES:
-        lead = f"Heads-up at {where}{road}: {zone.reason}."
-    else:
-        lead = f"Work zone ahead at {where}{road}: {zone.reason}."
-    if zone.source in CLOSURE_SOURCES and zone.kind == CLOSED:
-        lead = f"Road closed ahead at {where}{road}: walk round or find another way."
-        said = f" {zone.title.rstrip('.')}." if zone.title else said
-    return f"{lead}{said}{_until(zone)} Source: {source}."
+        return f"{name} marked closed ahead."
+    if zone.kind == UNKNOWN:
+        return f"{name} has every lane closed ahead; bike access unclear."
+    if zone.kind == LANE:
+        return f"Bike lane blocked ahead{on}."
+    reason = (zone.reason or "").rstrip(".")
+    lead = "Heads-up" if zone.source in DC_SOURCES else "Work zone ahead"
+    return f"{lead}{on}, {reason}." if reason else f"{lead}{on}."
+
+
+def citation(zone: Zone) -> str:
+    """The small print under a zone's sentence: its source, and until when."""
+    source = SOURCES.get(zone.source, zone.source)
+    return f"Source: {source}" + (f", until {date_text(zone.end)}." if zone.end else ".")
+
+
+def split_words(zone: Zone | None) -> str:
+    """Where the route leaves the standard way for a closure it goes round (v0.8.2): the
+    owner's "this road/bike path has been marked for closure, detour posted"."""
+    name = zone.road if zone is not None and zone.road else "The road ahead"
+    return f"{name} marked closed. Detour posted."
 
 
 # The sources whose zones are DC's closures and blocked lanes, not work zones (v0.7.0).
@@ -872,10 +878,13 @@ __all__ = [
     "classify",
     "fit_polygons",
     "for_plan",
+    "citation",
     "heads_up",
+    "line_ring",
     "parse_feature",
     "parse_feed",
     "polygon",
     "ring_perimeter_m",
     "severity",
+    "split_words",
 ]

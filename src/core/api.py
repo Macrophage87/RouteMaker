@@ -312,6 +312,15 @@ class RouteIn(Schema):
             " each is marked `bypassed` on the answer. Never remembered by the server."
         ),
     )
+    blocked_lines: list[Annotated[list[LonLat], Field(min_length=2, max_length=50)]] = Field(
+        default_factory=list,
+        max_length=10,
+        description=(
+            'v0.8.2, Ride\'s "Road closed" button: stretches of road the rider found closed on'
+            " this ride, each a line of [lon, lat] pairs, left out of the plan as a closure is."
+            " Sent with the ride's re-plans only; never remembered by the server."
+        ),
+    )
     loop: StrictBool = Field(
         default=False,
         description=(
@@ -1243,6 +1252,14 @@ class DescriptionEntryOut(Schema):
         ),
     )
     text: str
+    citation: str | None = Field(
+        default=None,
+        description=(
+            'On a "workzone": its source and until when ("Source: DDOT permits, until'
+            ' Nov 14."), shown in small text under `text` and never read out (v0.8.2);'
+            " null elsewhere."
+        ),
+    )
     text_lanes_hidden: str | None = Field(
         default=None,
         description=(
@@ -2079,6 +2096,17 @@ class AvoidAlternateOut(RouteBody):
     )
 
 
+class ClosureThroughOut(RouteBody):
+    """The standard way through the closures the answer goes round (v0.8.2): a whole route
+    body of its own, drawn beside the answer, which Ride follows where the rider takes it."""
+
+    extra_distance_m: float = Field(description="How much longer than the answer, metres.")
+    extra_duration_s: float = Field(description="How much longer than the answer, seconds.")
+    closure_ids: list[str] = Field(
+        description="The closures (`work_zones.closures[].id`) it goes through."
+    )
+
+
 class TransitStepLiveOut(Schema):
     text: str = Field(description='"Live: Red Line toward Shady Grove in 3 min, 11 min."')
     minutes: list[int]
@@ -2291,6 +2319,14 @@ class RouteOut(RouteBody):
         description=(
             "Where the answer still passes an Avoid-rated junction (335): the best route that"
             " avoids it, to offer as an alternate; null otherwise."
+        ),
+    )
+    closure_through: ClosureThroughOut | None = Field(
+        default=None,
+        description=(
+            "Where the answer goes round closures that would otherwise be on it (v0.8.2): the"
+            " standard way through them, since a closure marked may not really be closed; null"
+            " otherwise."
         ),
     )
     bikeshare: BikesharePlanOut | None = Field(
@@ -3003,6 +3039,7 @@ def _bikeshare_body(body: RouteIn, started: float | None) -> dict:
         hills=profile.hills if body.hills is None else body.hills,
         when=body.when,
         closure_bypass=tuple(body.closure_bypass),
+        blocked=_blocked(body),
         assist=profile.assist,
         avoid_gravel=body.avoid_gravel,
         # "Keep to roads, not trails" is one switch on every ride type (463b).
@@ -3169,6 +3206,7 @@ def _transit_body(body: RouteIn, started: float | None) -> dict:
         hills=body.hills,
         when=body.when,
         closure_bypass=tuple(body.closure_bypass),
+        blocked=_blocked(body),
         avoid_gravel=body.avoid_gravel,
         trails_off=body.trails_off,
         system_weight_kg=body.system_weight_kg,
@@ -3668,6 +3706,11 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
         return _router_refusal(error, body, long_ride or long_calm)
 
 
+def _blocked(body: RouteIn) -> tuple[tuple[tuple[float, float], ...], ...]:
+    """The roads the rider marked closed on this ride (`blocked_lines`), as the dials hold them."""
+    return tuple(tuple((p[0], p[1]) for p in line) for line in body.blocked_lines)
+
+
 def _bike_dials(body: RouteIn) -> routing.Dials:
     """The dials of a bike-only plan (not Bikeshare's nor a transit trip's), as asked."""
     return routing.Dials(
@@ -3675,6 +3718,7 @@ def _bike_dials(body: RouteIn) -> routing.Dials:
         hills=body.hills,
         when=body.when,
         closure_bypass=tuple(body.closure_bypass),
+        blocked=_blocked(body),
         carrying=body.carrying,
         assist=body.assist,
         avoid_gravel=body.avoid_gravel,
