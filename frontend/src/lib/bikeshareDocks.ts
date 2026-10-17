@@ -4,7 +4,9 @@
  * with emojis a bike for regular, some sort of electric symbol for ebike, and the number of empty slots." And:
  * "Allow the other ebike services to also show up on the map, but only show cabi by default."
  *
- * Shown by itself in the Bikeshare, Bikeshare + Transit and Rebalance ride types (no switch of its own), from
+ * Shown whenever its switch in Layers is on. The owner, 2026-10-17: "they only matter for rideshare modes and
+ * should be turned off by default outside of it." So the switch is on by default in the Bikeshare, Bikeshare +
+ * Transit and Rebalance ride types and off by default in the others, each choice kept on the device apart. From
  * GET /api/bikeshare/docks for the map's view (core.micromobility), about every minute while the page is in
  * front. Below zoom 14 the docks are count bubbles and free e-bikes are hidden; from 14 each dock is labelled
  * 🚲 5 ⚡ 2 🅿️ 3 (classic bikes, e-bikes, open docks; 0 is shown as 0). The three signs are drawn here as small
@@ -13,8 +15,7 @@
  *
  * Free e-bikes: a ⚡ in the operator's colour with its initial beside it, so colour is never the only cue. Capital
  * Bikeshare is the only service (Lime and Veo were left out, the owner 2026-10-15: neither has usable terms;
- * docs/SOURCES.md), so the Layers sheet's bikeshare section is its one switch, on by default and kept on the
- * device. A service the server says is licensed later gets a switch of its own there.
+ * docs/SOURCES.md), so the Layers sheet's bikeshare section is its one switch. A service the server says is licensed later gets a switch of its own there.
  *
  * Screen readers: the map's labels are decorative; a tap gives a card in words, and the route's station list
  * says the same counts ("5 classic, 2 e-bikes, 3 open docks", lib/stations.ts).
@@ -167,7 +168,9 @@ export async function loadDocks(
 
 // --- The rider's choices (one switch per service, kept on the device) -----------------------
 
+/** The choice in the bikeshare ride types (on by default), and in every other ride type (off by default). */
 export const OPERATORS_PREF_KEY = "routemaker.bikeshareOperators";
+export const OTHER_RIDES_PREF_KEY = "routemaker.bikeshareOperators.otherRides";
 type Store = Pick<Storage, "getItem" | "setItem">;
 
 function defaultStore(): Store | null {
@@ -178,22 +181,29 @@ function defaultStore(): Store | null {
   }
 }
 
-/** Each operator on or off: what was kept, else its default (Capital Bikeshare on, the others off). */
-export function readOperatorChoices(operators: readonly OperatorInfo[] = KNOWN_OPERATORS, store: Store | null = defaultStore()): Record<string, boolean> {
+/**
+ * Each operator on or off: what was kept, else its default. In a bikeshare ride type that is the operator's own
+ * (Capital Bikeshare on); in any other ride type every operator is off.
+ */
+export function readOperatorChoices(
+  operators: readonly OperatorInfo[] = KNOWN_OPERATORS,
+  store: Store | null = defaultStore(),
+  bikeshareRide = true,
+): Record<string, boolean> {
   let kept: Record<string, unknown> = {};
   try {
-    const raw = store?.getItem(OPERATORS_PREF_KEY);
+    const raw = store?.getItem(bikeshareRide ? OPERATORS_PREF_KEY : OTHER_RIDES_PREF_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : {};
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) kept = parsed as Record<string, unknown>;
   } catch {
     kept = {};
   }
-  return Object.fromEntries(operators.map((o) => [o.id, typeof kept[o.id] === "boolean" ? (kept[o.id] as boolean) : o.on_by_default]));
+  return Object.fromEntries(operators.map((o) => [o.id, typeof kept[o.id] === "boolean" ? (kept[o.id] as boolean) : bikeshareRide && o.on_by_default]));
 }
 
-export function saveOperatorChoices(choices: Record<string, boolean>, store: Store | null = defaultStore()): void {
+export function saveOperatorChoices(choices: Record<string, boolean>, store: Store | null = defaultStore(), bikeshareRide = true): void {
   try {
-    store?.setItem(OPERATORS_PREF_KEY, JSON.stringify(choices));
+    store?.setItem(bikeshareRide ? OPERATORS_PREF_KEY : OTHER_RIDES_PREF_KEY, JSON.stringify(choices));
   } catch {
     // Not kept: the switches still work for this visit.
   }
@@ -251,7 +261,7 @@ export function freeBikeCard(bike: FreeBike, operators: readonly OperatorInfo[],
 export const DOCKS_UNAVAILABLE = "Bikeshare docks are unavailable for now; the map tries again in a minute.";
 export const DOCKS_ZOOM_IN = "Zoom in to see bikeshare docks.";
 export const DOCKS_ALL_OFF = "Bikeshare docks are off: switch them on to see the bikes.";
-export const DOCKS_HINT = "Capital Bikeshare's docks and e-bikes, shown in the Bikeshare, Bikeshare + Transit and Rebalance ride types.";
+export const DOCKS_HINT = "Capital Bikeshare's docks and e-bikes. On by default in the Bikeshare, Bikeshare + Transit and Rebalance ride types.";
 export const DOCKS_SECTION_TITLE = "Bikeshare and e-bikes";
 
 /** The section's status line. */

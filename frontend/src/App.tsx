@@ -508,21 +508,27 @@ export function App() {
   useEffect(() => {
     if (waterOn) ensureRepair();
   }, [waterOn, ensureRepair]);
-  // Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): shown in the bikeshare ride types, with
-  // Capital Bikeshare's switch in Layers (on by default), the choice kept on this device.
-  const docksActive = usesBikeshare(preset) || preset === "bikeshare-transit";
+  // Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): shown while Capital Bikeshare's switch in
+  // Layers is on. It is on by default in the bikeshare ride types and off in the others (the owner, 2026-10-17),
+  // each choice kept on this device apart.
+  const bikeshareRide = usesBikeshare(preset) || preset === "bikeshare-transit";
   const [docksOperators, setDocksOperators] = useState<OperatorInfo[]>(() => [...KNOWN_OPERATORS]);
-  const [docksChoices, setDocksChoices] = useState<Record<string, boolean>>(() => readOperatorChoices());
+  const [docksChoicesByRide, setDocksChoicesByRide] = useState(() => ({
+    bikeshare: readOperatorChoices(KNOWN_OPERATORS, undefined, true),
+    other: readOperatorChoices(KNOWN_OPERATORS, undefined, false),
+  }));
+  const docksChoices = bikeshareRide ? docksChoicesByRide.bikeshare : docksChoicesByRide.other;
   const [docksReport, setDocksReport] = useState<DocksReport>({ answer: null, asked: false, zoom: 0 });
   const changeDocksChoices = (next: Record<string, boolean>) => {
-    setDocksChoices(next);
-    saveOperatorChoices(next);
+    setDocksChoicesByRide((all) => (bikeshareRide ? { ...all, bikeshare: next } : { ...all, other: next }));
+    saveOperatorChoices(next, undefined, bikeshareRide);
   };
   const onDocksReport = useCallback((report: DocksReport) => {
     setDocksReport(report);
     if (report.answer) setDocksOperators((known) => mergeOperators(known, report.answer!.operators));
   }, []);
   const docksAsk = useMemo(() => operatorsToAsk(docksChoices, docksOperators), [docksChoices, docksOperators]);
+  const docksActive = docksAsk.length > 0;
   const [placesOn, setPlacesOnState] = useState<boolean>(() => readPlacesLayer());
   const changePlacesOn = (on: boolean) => {
     setPlacesOnState(on);
@@ -4095,7 +4101,7 @@ export function App() {
                   operators: docksOperators,
                   choices: docksChoices,
                   onChange: changeDocksChoices,
-                  status: docksActive ? docksStatus(docksReport.answer, docksReport.asked, docksReport.zoom, docksAsk.length > 0) : "",
+                  status: bikeshareRide || docksActive ? docksStatus(docksReport.answer, docksReport.asked, docksReport.zoom, docksActive) : "",
                 },
               }}
             />

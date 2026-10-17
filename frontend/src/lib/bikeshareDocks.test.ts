@@ -19,6 +19,7 @@ import {
   MAX_SPAN_LAT,
   MAX_SPAN_LON,
   OPERATORS_PREF_KEY,
+  OTHER_RIDES_PREF_KEY,
   SIGN_COLOURS,
   SPACE_ICON,
   dockCard,
@@ -142,6 +143,23 @@ test("choices: Capital Bikeshare, the only service, on by default, kept on the d
   assert.doesNotThrow(() => saveOperatorChoices({ cabi: true }, throwing));
 });
 
+test("choices: off by default outside the bikeshare ride types, that choice kept apart (the owner, 2026-10-17)", () => {
+  const kept = new Map<string, string>();
+  const store = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v) };
+  assert.deepEqual(readOperatorChoices(KNOWN_OPERATORS, store, false), { cabi: false });
+  assert.deepEqual(readOperatorChoices(KNOWN_OPERATORS, store, true), { cabi: true });
+  // A choice kept from before this change was made in the bikeshare ride types, and stays theirs.
+  kept.set(OPERATORS_PREF_KEY, JSON.stringify({ cabi: true }));
+  assert.deepEqual(readOperatorChoices(KNOWN_OPERATORS, store, false), { cabi: false });
+  // Switched on outside them: kept for the other ride types only.
+  saveOperatorChoices({ cabi: true }, store, false);
+  assert.deepEqual(JSON.parse(kept.get(OTHER_RIDES_PREF_KEY)!), { cabi: true });
+  assert.deepEqual(readOperatorChoices(KNOWN_OPERATORS, store, false), { cabi: true });
+  saveOperatorChoices({ cabi: false }, store, true);
+  assert.deepEqual(readOperatorChoices(KNOWN_OPERATORS, store, false), { cabi: true });
+  assert.deepEqual(readOperatorChoices(KNOWN_OPERATORS, store, true), { cabi: false });
+});
+
 test("the operators here are the server's (core.micromobility.OPERATORS), Capital Bikeshare alone licensed and on", () => {
   const py = readFileSync(new URL("../../../src/core/micromobility.py", import.meta.url), "utf8");
   for (const o of KNOWN_OPERATORS) {
@@ -216,9 +234,12 @@ test("Layers: one service, so the section's own switch alone, with no list of on
   assert.match(sheets, /<BikeshareSection \{\.\.\.bikeshare\} \/>/);
 });
 
-test("App: shown in the bikeshare ride types only, asking for the licensed services switched on", () => {
+test("App: shown whenever a licensed service is switched on, its default following the ride type", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /const docksActive = usesBikeshare\(preset\) \|\| preset === "bikeshare-transit";/);
-  assert.match(app, /<BikeshareDocksOverlay\s+active=\{docksActive\}/);
+  assert.match(app, /const bikeshareRide = usesBikeshare\(preset\) \|\| preset === "bikeshare-transit";/);
+  assert.match(app, /const docksChoices = bikeshareRide \? docksChoicesByRide\.bikeshare : docksChoicesByRide\.other;/);
+  assert.match(app, /saveOperatorChoices\(next, undefined, bikeshareRide\)/);
   assert.match(app, /operatorsToAsk\(docksChoices, docksOperators\)/);
+  assert.match(app, /const docksActive = docksAsk\.length > 0;/);
+  assert.match(app, /<BikeshareDocksOverlay\s+active=\{docksActive\}/);
 });

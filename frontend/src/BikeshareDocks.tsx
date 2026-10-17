@@ -1,6 +1,6 @@
 /**
  * Bikeshare docks and free e-bikes on the map, and their section in Layers (v0.7.0; the rules, words and
- * drawing are lib/bikeshareDocks.ts's). The overlay draws only while a bikeshare ride type is chosen and asks
+ * drawing are lib/bikeshareDocks.ts's). The overlay draws only while its switch in Layers is on and asks
  * for the map's view after it moves and about every minute while the page is in front; nothing is asked when
  * the page is hidden, zoomed out past zoom 11, or every service is off.
  */
@@ -47,7 +47,7 @@ export function BikeshareDocksOverlay({
   pixelRatio,
   onReport,
 }: {
-  /** A bikeshare ride type is chosen. */
+  /** Its switch in Layers is on (by default in the bikeshare ride types only). */
   active: boolean;
   getMap: () => MapLibreMap | null;
   /** The operators to ask for: switched on and licensed. */
@@ -147,7 +147,7 @@ export function BikeshareDocksOverlay({
     },
     [active, ask.join(","), operatorsKey, pixelRatio],
   );
-  // Leaving the bikeshare ride types: nothing to report.
+  // Switched off: nothing to report.
   useEffect(() => {
     if (!active) reportRef.current({ answer: null, asked: false, zoom: 0 });
   }, [active]);
