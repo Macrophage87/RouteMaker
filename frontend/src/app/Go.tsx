@@ -60,6 +60,7 @@ export function ModeSwitch({
 export function GoTopBar({
   mode,
   onMode,
+  modes,
   onMenu,
   onLayers,
   onLocate,
@@ -69,6 +70,8 @@ export function GoTopBar({
 }: {
   mode: AppMode;
   onMode: (next: AppMode) => void;
+  /** The switch's views (lib/appMode.ts switchModes): an admin's include Review, as in Plan's switch. */
+  modes: readonly AppMode[];
   onMenu: (button: HTMLButtonElement) => void;
   onLayers: (button: HTMLButtonElement) => void;
   onLocate: () => void;
@@ -84,7 +87,7 @@ export function GoTopBar({
           <Icon name="menu" />
           <span className="icon-button-label">Menu</span>
         </button>
-        <ModeSwitch mode={mode} onChange={onMode} />
+        <ModeSwitch mode={mode} onChange={onMode} modes={modes} />
         <span className="go-top-end">
           <button type="button" className="icon-button go-layers" onClick={(event) => onLayers(event.currentTarget)}>
             <Icon name="layers" />

@@ -3756,6 +3756,7 @@ export function App() {
         <GoTopBar
           mode={mode}
           onMode={changeMode}
+          modes={switchModes(canReview)}
           onMenu={(button) => openView("settings", button)}
           onLayers={(button) => openView("layers", button)}
           onLocate={() => void goLocate()}
