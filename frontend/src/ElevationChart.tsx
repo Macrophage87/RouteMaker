@@ -189,7 +189,9 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
 
   return (
     <div className={`elevation-chart elevation-chart-${kind}${compact ? " elevation-chart-compact" : ""}`}>
-      <p className={compact ? "pc-summary visually-hidden" : "pc-summary"} id={`${uid}-summary`}>
+      {/* The summary and the keys are said with the chart and kept out of sight, in Plan too (Plan streamline, Stephen
+          2026-10-17): the chart and its table show the same. */}
+      <p className="pc-summary visually-hidden" id={`${uid}-summary`}>
         {summary}
       </p>
       <div
@@ -202,7 +204,7 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
         aria-valuemax={Math.round(total)}
         aria-valuenow={Math.round(spoken.m)}
         aria-valuetext={spoken.text}
-        aria-describedby={compact ? `${uid}-summary ${uid}-keys` : `${uid}-keys`}
+        aria-describedby={`${uid}-summary ${uid}-keys`}
         onKeyDown={onKeyDown}
         onFocus={() => {
           setFocused(true);
@@ -344,7 +346,7 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
           )}
         </svg>
       </div>
-      <p className={compact ? "visually-hidden" : "hint pc-keys"} id={`${uid}-keys`}>
+      <p className="visually-hidden pc-keys" id={`${uid}-keys`}>
         {keys}
       </p>
       {/* In Go the reading line is kept empty until a touch, so it never moves the sheet under the finger. */}
@@ -425,7 +427,10 @@ function StressChart({ route, profile, onScrub, compact = false }: ChartProps) {
               })}
             </ul>
           )}
-          <p className="hint pc-source">{calm ? `Elevation: USGS 3DEP. ${calmSource(calm)}` : "Elevation: USGS 3DEP."}</p>
+          <details className="pc-source-fold">
+            <summary>Sources</summary>
+            <p className="hint pc-source">{calm ? `Elevation: USGS 3DEP. ${calmSource(calm)}` : "Elevation: USGS 3DEP."}</p>
+          </details>
           <details className="pc-table-fold">
             <summary>{tableName}</summary>
             <Tables profile={profile} kind={kind} spans={route.stress_spans} total={total} />
