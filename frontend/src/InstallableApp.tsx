@@ -31,8 +31,9 @@ import {
   subscribeInstall,
 } from "./lib/installOffer.ts";
 import { removeKept } from "./lib/offlineKeep.ts";
-import { KEPT_HEADING, KEPT_NONE, KEPT_PRIVATE, focusAfterRemove, keptDetail, removeFailedSaid, removedSaid, sortKept, storageNote, type KeptRoute } from "./lib/offlineRoutes.ts";
+import { KEPT_HEADING, KEPT_HOW, KEPT_NONE, KEPT_NONE_SHORT, KEPT_PRIVATE, focusAfterRemove, keptDetail, removeFailedSaid, removedSaid, sortKept, storageNote, type KeptRoute } from "./lib/offlineRoutes.ts";
 import { listKept, persisted } from "./lib/offlineRouteStore.ts";
+import { InfoButton } from "./SettingRow.tsx";
 
 // ---- The new version and the network --------------------------------------------------------------
 
@@ -223,7 +224,21 @@ export function InstallOffer({ idBase, compact = false, onSay }: { idBase: strin
  * Settings' list. `version` is bumped by App when a route is kept, so the list reads the store again;
  * `onOpen` opens a kept route's plan (with no signal, the planner shows the kept answer).
  */
-export function KeptRoutes({ version, onOpen, onSay, headingRef }: { version: number; onOpen: (route: KeptRoute) => void; onSay: (text: string) => void; headingRef?: RefObject<HTMLHeadingElement | null> }) {
+export function KeptRoutes({
+  version,
+  onOpen,
+  onSay,
+  headingRef,
+  compact = false,
+}: {
+  version: number;
+  onOpen: (route: KeptRoute) => void;
+  onSay: (text: string) => void;
+  headingRef?: RefObject<HTMLHeadingElement | null>;
+  /** Settings: the how and the privacy note behind an (i) by the heading. */
+  compact?: boolean;
+}) {
+  const [infoOpen, setInfoOpen] = useState(false);
   const [routes, setRoutes] = useState<KeptRoute[] | null>(null);
   const [kept, setKept] = useState<boolean | null>(null);
   const [removed, setRemoved] = useState(0);
@@ -264,13 +279,21 @@ export function KeptRoutes({ version, onOpen, onSay, headingRef }: { version: nu
   };
   return (
     <section aria-labelledby={`${id}-heading`} className="kept-routes">
-      <h3 id={`${id}-heading`} ref={heading} tabIndex={-1}>
-        {KEPT_HEADING}
-      </h3>
+      <div className="setting-line">
+        <h3 id={`${id}-heading`} ref={heading} tabIndex={-1}>
+          {KEPT_HEADING}
+        </h3>
+        {compact && <InfoButton open={infoOpen} onToggle={() => setInfoOpen((was) => !was)} controls={`${id}-info`} about="routes kept for offline" />}
+      </div>
+      {compact && (
+        <p className="hint setting-info" id={`${id}-info`} hidden={!infoOpen}>
+          {KEPT_HOW} {KEPT_PRIVATE} {storageNote(kept, isStandalone())}
+        </p>
+      )}
       {routes === null ? (
         <p className="hint">Reading the routes kept on this device…</p>
       ) : routes.length === 0 ? (
-        <p className="hint">{KEPT_NONE}</p>
+        <p className="hint">{compact ? KEPT_NONE_SHORT : KEPT_NONE}</p>
       ) : (
         <ul className="kept-list">
           {routes.map((route, index) => (
@@ -300,9 +323,11 @@ export function KeptRoutes({ version, onOpen, onSay, headingRef }: { version: nu
           ))}
         </ul>
       )}
-      <p className="hint">
-        {KEPT_PRIVATE} {storageNote(kept, isStandalone())}
-      </p>
+      {!compact && (
+        <p className="hint">
+          {KEPT_PRIVATE} {storageNote(kept, isStandalone())}
+        </p>
+      )}
     </section>
   );
 }
