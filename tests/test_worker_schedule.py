@@ -127,6 +127,25 @@ def rebuild_environment(monkeypatch, tmp_path, segment_schemas):
     checked_in = tmp_path / "checked-in-crossings.json"
     checked_in.write_bytes((tmp_path / "reference" / "crossings.json").read_bytes())
     monkeypatch.setattr(settings, "REBUILD_CROSSINGS_FIXTURE", checked_in)
+    # Every approved agency's ratings, which the weekly task requires
+    # (`pipeline.agency_ratings`): one record each, far from the toy extract's ways.
+    from pipeline import agency_ratings
+    from routemaker.agency_lts import AGENCIES
+
+    (tmp_path / "reference" / agency_ratings.FILE_NAME).write_text(
+        json.dumps(
+            [
+                {
+                    "id": f"{agency}-1-0",
+                    "agency": agency,
+                    "level": 2,
+                    "name": None,
+                    "coordinates": [[-76.0, 37.0], [-76.001, 37.001]],
+                }
+                for agency in AGENCIES
+            ]
+        )
+    )
     monkeypatch.setattr(settings, "TILES_DIR", tmp_path / "tiles")
     monkeypatch.setattr(settings, "ELEVATION_DIR", tmp_path / "elevation")
     monkeypatch.setattr(settings, "REBUILD_MIN_FREE_BYTES", 0)
@@ -2895,3 +2914,27 @@ def test_the_worker_releases_the_classification_before_the_tiles(
     monkeypatch.setattr(RebuildContext, "release_classification", spy)
     app.tasks["weekly_rebuild"].func(job_context(81), timestamp=0)
     assert len(released) == 1 and released[0] > 0
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("allow", [False, True])
+def test_the_rebuild_task_refuses_without_the_agency_ratings_unless_allowed(
+    rebuild_environment, monkeypatch, allow
+) -> None:
+    """v0.8.0 was built where `agency-lts.json` had never been installed and no road
+    carried an agency's rating (2026-10-17). The weekly task now fails at
+    LOAD_REFERENCE_DATA without it, unless REBUILD_ALLOW_NO_AGENCY_LTS is set."""
+    from core.models import ScheduledRun
+    from pipeline import agency_ratings
+
+    root, _binaries = rebuild_environment
+    (root / "reference" / agency_ratings.FILE_NAME).unlink()
+    monkeypatch.setattr(settings, "REBUILD_ALLOW_NO_AGENCY_LTS", allow)
+    if not allow:
+        with pytest.raises(Exception, match="agency-lts.json is absent"):
+            app.tasks["weekly_rebuild"].func(timestamp=0)
+        run = ScheduledRun.objects.get(task="weekly_rebuild")
+        assert not run.succeeded and "load_reference_data" in run.detail
+    else:
+        app.tasks["weekly_rebuild"].func(timestamp=0)
+        assert ScheduledRun.objects.get(task="weekly_rebuild").succeeded

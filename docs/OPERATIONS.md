@@ -4687,6 +4687,62 @@ graph built without it; steps 1 to 3 are for that rebuild.
    rebuild; every street then keeps OSM's reading, and the log says the file is
    absent.
 
+## Agency stress ratings (agency-lts.json)
+
+The rebuild sets a road's level from a local government's own rating where one rates it
+(`routemaker.agency_lts`; the owner, 2026-10-13: owner, then local government, then the
+formula). It reads them from one file, `<DATA_ROOT>/reference/agency-lts.json`, made from
+the three approved layers (`agency_lts.AGENCIES`): Montgomery County Planning's Bicycle
+LTS (`moco-bicycle-lts`), DDOT's 2020 LTS (`ddot-lts-2020`) and MDOT SHA's statewide LTS
+(`mdot-lts`). Fairfax's layer is not approved and Arlington's is Review-only
+(`internal-only/review/`), so neither goes in.
+
+On 2026-10-17 the file was found never to have been installed on the build host: the
+v0.8.0 build and the live map carried no agency rating anywhere, and the rebuild had only
+logged a warning. Since v0.8.1 **the rebuild refuses to run** (at `load_reference_data`)
+when the file is absent or empty or lacks any of the three agencies.
+`REBUILD_ALLOW_NO_AGENCY_LTS=1` in `.env` (then recreate the rebuild service) builds
+without them, every such road on the formula's tier; use it only knowingly.
+
+To (re)install it, on the build PC once v0.8.1 is deployed (the image's script has the
+DDOT and MDOT SHA readers from then), from the checkout, with the three layers downloaded
+under `~/rmdata/datasets/<slug>/<slug>.geojson` (`scripts/fetch_agency_layer.py`):
+
+```sh
+export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
+for slug in moco-bicycle-lts ddot-lts-2020 mdot-lts; do
+    sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs/$slug"
+    sudo install -o 10001 -g 10001 -m 644 ~/rmdata/datasets/$slug/* \
+        "$DATA_ROOT/reference/inputs/$slug/"
+done
+docker compose exec -T rebuild python3 scripts/install_agency_lts.py \
+    --datasets /data/reference/inputs \
+    --out /data/reference/agency-lts.json moco ddot mdot-sha
+```
+
+All three agencies in one run: the file is written whole, and the rebuild refuses one
+that lacks an agency. It prints `<agency>: N records` for each, the records left out and
+why, and `wrote /data/reference/agency-lts.json (N records)`. It refuses, writing
+nothing, when a layer is missing, an agency has no usable record, or a level is off the
+scale. The levels on our scale (the script's docstring has the citations):
+
+| Agency | Field | Taken | Left out |
+|---|---|---|---|
+| Montgomery County Planning | `LTS_EXIST` | 1, 2, 2.5, 3, 4, 5 (5 is Avoid) | 0.5 "None"; not Existing; sidepaths, trails, parking lots |
+| DDOT (2020) | the first of `DDOT_LEVEL_FIELDS` the layer has (`LTS`, `LTS_2020`, ...) | 1 to 4 as they are (a 5 would be Avoid) | 0 and empty |
+| MDOT SHA | `LTS_ADJUSTED` | 1 to 4 as they are; 5, "bicycle access prohibited", as Avoid | 0 (shared-use path), 9 (missing data), empty |
+
+DDOT's level field is not recorded in this repository: the script prints `ddot: level read
+from <field>`, and where the layer has none of the expected fields it stops and lists the
+layer's fields; check which holds the 1 to 4 level and rerun with `--ddot-field <field>`.
+Its first run on the PC should be read for that line.
+
+Then rebuild. The rebuild logs `agency stress ratings: <agency>, N of M records matched, N
+ways` for each agency, and `import_cloud_build` (dry run and `--confirm`) prints
+`agency stress ratings in staging: Montgomery County Planning on N segments (sets the
+tier on N); DDOT on N ...; MDOT SHA on N ...`, with a `warning: no segment carries ...`
+line for any agency at 0. No such warning should appear.
+
 ## The Scenic layer (v0.8.0)
 
 The owner, 2026-10-16: "Name in the road panel and have as a layer. Possibly the scenic
