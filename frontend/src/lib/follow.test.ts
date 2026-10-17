@@ -96,7 +96,7 @@ test("Plan offers the manual mode while the opened file is not edited, and each 
   assert.match(app, /const followExact = follow !== undefined && importBase\.current\?\.exact === true && modeRef\.current === "plan";/);
   assert.match(app, /if \(result\.ok \|\| result\.error\.kind !== "network" \|\| followExact\) return result;/);
   assert.match(app, /importBase\.current && !importEdited \? \{ exact: importBase\.current\.exact === true, onExact: setFollowExact \}/);
-  assert.match(app, /importBase\.current = \{ \.\.\.importBase\.current, exact: on, unfollowed: false \};\s*setRouteAsk/);
+  assert.match(app, /importBase\.current = \{ \.\.\.importBase\.current, exact: on, unfollowed: false \};\s*\/\/[^\n]*\n\s*savedShown\.current = null;\s*setRouteAsk/);
   const panel = readFileSync(new URL("../GpxPanel.tsx", import.meta.url), "utf8");
   // Only where the route parts from the file, or once it is on: a file followed cleanly shows nothing more.
   assert.match(panel, /\{snap\?\.onExact && imported && imported\.reference\.length >= 2 && \(snap\.exact \|\| match\?\.warn \|\| \(route\?\.against_traffic\?\.length \?\? 0\) > 0\) && \(/);
