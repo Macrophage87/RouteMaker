@@ -935,6 +935,16 @@ def test_a_green_code_release_is_deployed_by_the_runbooks_steps(beta: Beta) -> N
     assert "result: deployed: v0.2.0" in (beta.cd / "last-release-report.txt").read_text()
 
 
+def test_a_deployed_release_s_files_are_readable_by_the_containers(beta: Beta) -> None:
+    """The pass runs under umask 077; the v0.8.1 deploy checked out an owner-only manage.py,
+    which the migrate container could not read."""
+    beta.release("v0.2.0", {"src/core/a.py": "x = 2\n", "src/core/b.py": "y = 1\n"})
+    done = beta.agent("run", STUB_HAS_IMAGES="1", STUB_RUNNING="postgis", STUB_PENDING="1")
+    assert "deployed: v0.2.0" in beta.status(), done.stdout + done.stderr
+    for name in ("src/core/a.py", "src/core/b.py"):
+        assert (beta.src / name).stat().st_mode & 0o044 == 0o044, name
+
+
 @pytest.mark.parametrize(
     "path, text",
     [

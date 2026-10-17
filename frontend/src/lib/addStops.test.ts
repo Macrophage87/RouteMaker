@@ -27,13 +27,14 @@ test("with a route, a searched place is a stop where it adds the least distance"
 test("each result row offers 'Make this the destination' as an option of its own", () => {
   const search = source("../PlaceSearch.tsx");
   assert.match(search, /export const MAKE_DESTINATION = "Make this the destination";/);
-  assert.match(search, /const offersDestination = variant === "plan" && !loop && effect === "via";/);
+  // Plan's Add a stop box offers it too (Plan streamline, 2026-10-17).
+  assert.match(search, /const offersDestination = \(variant === "plan" \|\| variant === "add"\) && !loop && effect === "via";/);
   assert.match(search, /offered\.flatMap\(\(place\) => \[place, \{ destination: place \}\]\)/);
   // An option in the listbox, reached by the arrows and said with its place.
   assert.match(search, /aria-label=\{`\$\{MAKE_DESTINATION\}: \$\{item\.destination\.name\}`\}/);
   assert.match(search, /onClick=\{\(\) => pick\(item\.destination, "end"\)\}/);
-  // Go's field adds a stop.
-  assert.match(search, /onPick\(place, as \?\? \(variant === "stop" \? "via" : single \? "end" : choice\)\);/);
+  // Go's field adds a stop; Plan's From, To and Add a stop each pass their own choice.
+  assert.match(search, /onPick\(place, as \?\? boxChoice \?\? \(variant === "stop" \? "via" : single \? "end" : choice\)\);/);
 });
 
 test("Go's route sheet has one 'Add a stop' field under Start, with Best order, never during a ride", () => {
