@@ -71,7 +71,8 @@ area assembly (multipolygon relations and closed ways alike):
   re-routed for it here: only `pipeline.trail_closures` reads this kind.
 
 A way is inside when at least INSIDE_FRACTION of its vertices fall in one of
-the kind's areas, outside that area's holes; for the military rule, at least
+the kind's areas, outside that area's holes (an island mapped inside a hole is
+inside again; `_in_area`); for the military rule, at least
 INSIDE_FRACTION of its length (`_Shapes`, OWNER-DECISIONS 437). So a road or a trail that only
 borders an area - the Mount Vernon Trail by Arlington National Cemetery and
 the Pentagon, a street past a parking lot - is not inside it.
@@ -79,6 +80,7 @@ the Pentagon, a street past a parking lot - is not inside it.
 
 from __future__ import annotations
 
+import logging
 import re
 from collections import Counter, defaultdict
 from collections.abc import Collection, Iterable, Mapping, Sequence
@@ -89,6 +91,8 @@ import osmium
 
 from routemaker.classes import TRAIL_CLASS_HIGHWAY
 from routemaker.facility import NO_PUBLIC_ACCESS, _length_m
+
+logger = logging.getLogger(__name__)
 
 Ring = list[tuple[float, float]]
 # (bbox, outer rings, inner rings)
@@ -306,6 +310,13 @@ class _Areas(osmium.SimpleHandler):
     def __init__(self) -> None:
         super().__init__()
         self.areas: dict[str, list[Area]] = {kind: [] for kind in KINDS}
+        # Military multipolygon relations, by id and name, to name the ones the area
+        # assembly dropped (`unassembled_military`).
+        self.military_relations: dict[int, str] = {}
+
+    def relation(self, r) -> None:  # noqa: N802 - osmium's callback name
+        if r.tags.get("type") in ("multipolygon", "boundary") and is_military_area(r.tags):
+            self.military_relations[r.id] = r.tags.get("name") or ""
 
     def area(self, a) -> None:
         osm = f"{'w' if a.from_way() else 'r'}{a.orig_id()}"
@@ -333,7 +344,25 @@ def restricted_areas(pbf: str | Path) -> dict[str, list[Area]]:
     by kind."""
     handler = _Areas()
     handler.apply_file(str(pbf), locations=True)
+    dropped = unassembled_military(handler.military_relations, handler.areas[MILITARY])
+    if dropped:
+        # osmium assembles no area from a multipolygon with a ring that does not
+        # close (broken upstream, or a member way missing from the extract), and
+        # says nothing: every way inside such a base would be rated as a public road.
+        logger.warning(
+            "military multipolygons with no assembled area (their ways are not closed by "
+            "the military rule): %s",
+            ", ".join(f"r{rid} {name}".strip() for rid, name in dropped),
+        )
     return handler.areas
+
+
+def unassembled_military(
+    relations: Mapping[int, str], areas: Sequence[Area]
+) -> list[tuple[int, str]]:
+    """The military relations (id, name) that no assembled area came from."""
+    assembled = {getattr(area, "osm", "") for area in areas}
+    return sorted((rid, name) for rid, name in relations.items() if f"r{rid}" not in assembled)
 
 
 def _in_ring(point: tuple[float, float], ring: Ring) -> bool:
@@ -346,11 +375,20 @@ def _in_ring(point: tuple[float, float], ring: Ring) -> bool:
 
 
 def _in_area(point: tuple[float, float], area: Area) -> bool:
+    """Inside when more of the area's outer rings hold the point than its inner
+    rings do. A hole takes out what its outer ring holds and no more: an island
+    mapped as an outer ring inside a hole is inside again, where "inside an outer
+    and in no hole" called the whole island outside (the likely reason Spesutie
+    Island Road at Aberdeen Proving Ground came out of the v0.8.0 rebuild rated
+    rather than closed; not yet checked against the extract). Two outer
+    rings that overlap (an invalid multipolygon OSM still carries) hold their
+    overlap, a hole in one of them included."""
     (west, south, east, north), outers, inners = area
     x, y = point
     if not (west <= x <= east and south <= y <= north):
         return False
-    return any(_in_ring(point, r) for r in outers) and not any(_in_ring(point, r) for r in inners)
+    held = sum(1 for r in outers if _in_ring(point, r))
+    return held > 0 and held > sum(1 for r in inners if _in_ring(point, r))
 
 
 class _Index:
@@ -387,7 +425,9 @@ class _Shapes:
     inside: Telegraph Rd 51806786 at Quantico has both of its vertices on the
     boundary and none of its length inside, and South Fern St 346101190 at the
     Pentagon is 13% inside. A stretch that runs along the boundary is not
-    inside; holes (inner rings) are outside, as `_in_area` reads them."""
+    inside; holes (inner rings) are outside, as `_in_area` reads them, and an
+    outer ring inside a hole (an island) is inside again: each hole is taken out
+    of the outer rings that hold it, not out of the whole area."""
 
     def __init__(self, areas: Sequence[Area]) -> None:
         # Imported here: the api image imports pipeline modules but not this one's
@@ -408,17 +448,32 @@ class _Shapes:
                 )
             return shapely.union_all(parts) if parts else None
 
+        def solid(outers: Sequence[Ring], inners: Sequence[Ring]):
+            # Each outer ring less the holes it holds. A hole subtracted from the
+            # union of every outer ring also took out an island mapped as an outer
+            # ring inside it, so the island's roads were outside the base and rated
+            # as public roads (the likely case of Spesutie Island at Aberdeen
+            # Proving Ground in the v0.8.0 rebuild; `_in_area`).
+            holes = [h for h in (polygonal([ring]) for ring in inners) if h is not None]
+            parts = []
+            for ring in outers:
+                piece = polygonal([ring])
+                if piece is None or piece.is_empty:
+                    continue
+                held = [h for h in holes if not h.is_empty and piece.covers(h)]
+                if held:
+                    piece = piece.difference(shapely.union_all(held))
+                parts.append(piece)
+            return shapely.union_all(parts) if parts else None
+
         self._shapely = shapely
         self.areas: list[Area] = []
         geoms = []
         for area in areas:
             _, outers, inners = area
-            geom = polygonal(outers)
+            geom = solid(outers, inners)
             if geom is None or geom.is_empty:
                 continue
-            holes = polygonal(inners)
-            if holes is not None and not holes.is_empty:
-                geom = geom.difference(holes)
             shapely.prepare(geom)
             self.areas.append(area)
             geoms.append(geom)

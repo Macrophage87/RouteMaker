@@ -25,7 +25,6 @@ import {
   dashPx,
   everyTrailFrom,
   facilityLegendHint,
-  rideLayerText,
   stressZoomHint,
   stressZoomNotice,
 } from "./stressLegend.ts";
@@ -55,23 +54,16 @@ import { HIGH_STRESS_LANES_LABEL } from "./highStressLanesSwitch.ts";
 import { appSource } from "../testSupport/appSource.mjs";
 
 test("zoomed out, with the overlay on, the notice says the road stress is a zoom away", () => {
-  const out = stressZoomNotice(STRESS_ZOOMS.ride - 0.01, true);
-  assert.equal(out, `Zoom in to see more paths and trails, calm roads and traffic stress on roads. ${ZOOMED_OUT}`);
-  assert.ok(out!.startsWith("Zoom in to see more paths and trails, calm roads and traffic stress on roads. Zoomed out, only the long-distance"));
+  const out = stressZoomNotice(STRESS_ZOOMS.quiet - 0.01, true);
+  assert.equal(out, `Zoom in to see more paths and trails and traffic stress on every road. ${ZOOMED_OUT}`);
+  assert.ok(out!.startsWith("Zoom in to see more paths and trails and traffic stress on every road. Zoomed out, only the long-distance"));
   assert.equal(stressZoomNotice(STRESS_ZOOMS.min, true), out);
 });
 
-test("at zoom 12-13 the notice says this is the where-to-ride view and what waits for zoom 14 (OWNER-DECISIONS 391)", () => {
-  const out = stressZoomNotice(STRESS_ZOOMS.ride, true);
-  assert.equal(
-    out,
-    "Zoom in to see busy roads and every street. This is the where-to-ride view: connected paths and trails and long calm roads. Busy roads and short paths show from zoom 14.",
-  );
-  assert.equal(stressZoomNotice(STRESS_ZOOMS.quiet - 0.01, true), out);
-});
-
-test("from the quiet streets' zoom there is no notice; below the tiles' zoom it asks for a zoom in", () => {
+test("from zoom 12, where every street shows (the owner, 2026-10-17: \"Both from 12\"), there is no notice; below the tiles' zoom it asks for a zoom in", () => {
+  assert.equal(STRESS_ZOOMS.quiet, 12);
   assert.equal(stressZoomNotice(STRESS_ZOOMS.quiet, true), null);
+  assert.equal(stressZoomNotice(13.5, true), null);
   assert.equal(stressZoomNotice(16, true), null);
   assert.equal(stressZoomNotice(STRESS_ZOOMS.min - 0.5, true), "Zoom in to see traffic-free paths, trails and traffic stress.");
 });
@@ -86,24 +78,16 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
   assert.ok(hint.startsWith(`${ZOOMED_OUT} A named paved trail counts when it runs 2.5 mi (4.0 km) or more at zoom 11, or 5.0 mi (8.0 km) at zoom 10;`));
   assert.ok(hint.includes("an unpaved one needs a regional bike route or a longer run. Trails beside a road count the same way."));
   assert.ok(hint.includes("Lines are drawn thinner at zooms 10 and 11."));
-  assert.ok(hint.includes(everyTrailFrom(STRESS_ZOOMS.ride)));
+  assert.ok(hint.includes(everyTrailFrom(STRESS_ZOOMS.quiet)));
   assert.equal(
     everyTrailFrom(12),
-    "Paths on local routes and other connected paths show from zoom 12; every short path shows from zoom 14. Mountain-bike trails show from zoom 12 when their layer is on.",
+    "Every other path and trail, the short ones too, shows from zoom 12. Mountain-bike trails show from zoom 12 when their layer is on.",
   );
-  // OWNER-DECISIONS 391: zoom 12-13 is where to ride, and says what waits for zoom 14.
-  assert.ok(hint.includes(rideLayerText(STRESS_ZOOMS.ride, STRESS_ZOOMS.quiet)));
-  assert.ok(
-    hint.includes(
-      "From zoom 12 the map shows where to ride: the paths and trails that connect into a network of 1,320 ft (0.4 km) or more, " +
-        "and calm roads (LTS 1 and 2) that run 2.0 mi (3.2 km) or more without crossing or joining a busy road. Busy roads (LTS 3 and above, and best avoided), " +
-        "shorter paths, the other streets and the junction warnings on the map show from zoom 14.",
-    ),
-  );
+  // The owner, 2026-10-17: "Both from 12": no where-to-ride view at zoom 12-13 any more.
+  assert.doesNotMatch(hint, /where to ride|from zoom 14\./);
   assert.ok(hint.includes(ROUTE_AT_EVERY_ZOOM));
   assert.match(ROUTE_AT_EVERY_ZOOM, /own busy stretches and junction warnings at every zoom/);
-  assert.doesNotMatch(hint, /faintly,? and from zoom 14|show, faintly/, "no busy road is drawn at zoom 12-13 now");
-  assert.ok(hint.includes(`From zoom ${STRESS_ZOOMS.quiet} the busy roads at LTS 3 and above and the quiet streets, footways and sidewalks show too, every line solid from zoom 14.`));
+  assert.ok(hint.includes(`From zoom ${STRESS_ZOOMS.quiet} the busy roads at LTS 3 and above and the quiet streets, footways and sidewalks show too, the busy roads faintly until zoom 14.`));
   assert.ok(hint.includes("Roads bikes may not use, such as expressways, are left unmarked."));
   assert.ok(hint.includes("shows only from zoom 15, and faintly, so the bike lane is the main line."));
   assert.ok(hint.includes("Alleys show only from zoom 16, faintly, and the roads inside cemeteries, parking lots, military bases and secure government sites, such as prisons and guarded research campuses, not at all, but for the numbered public roads and the few streets open to the public through them."));
@@ -114,7 +98,7 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
 
 test("rendered: the notice as a status, then the hint", () => {
   const html = renderToStaticMarkup(createElement(StressZoomNotes, { zoom: 11.2, shown: true }));
-  assert.match(html, /^<p class="notice" role="status">Zoom in to see more paths and trails, calm roads and traffic stress on roads\./);
+  assert.match(html, /^<p class="notice" role="status">Zoom in to see more paths and trails and traffic stress on every road\./);
   assert.match(html, /<p class="hint">Zoomed out, only the long-distance paths and trails are shown: those on regional or national bike routes, long named trails, and roads closed to cars at set times\./);
   // The hint rendered is the one for the map's own zoom (round-1 mutant F08).
   assert.match(html, /The map is at zoom 11\.<\/p><p class="hint">Roads closed to cars/);
@@ -358,7 +342,7 @@ test("the legend has a row for the mountain-bike trails' not-for-routes line, in
     });
   }
   // The live zoom notice does not repeat it (the review's nit); the zoom words say where they show from again.
-  assert.doesNotMatch(stressZoomNotice(12, true)!, /not used|not shown/i);
+  assert.doesNotMatch(stressZoomNotice(11, true)!, /not used|not shown/i);
 });
 
 /** The shared ticks under a mountain-bike swatch, as the map draws them (452a). */

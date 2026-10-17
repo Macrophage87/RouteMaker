@@ -2,9 +2,15 @@
 
 The installed file is `<reference>/agency-lts.json`: one row per agency record,
 `{"id", "agency", "level", "name", "coordinates"}`, the level already on our scale
-(1 to 5 in half steps; an agency's "no rating" dropped by the installer). It is
-optional: without it every way keeps the classifier's tier, as every rebuild did
-before v0.7.0, and the load logs that it is absent.
+(1 to 5 in half steps; an agency's "no rating" dropped by the installer).
+`scripts/install_agency_lts.py` writes it.
+
+The weekly rebuild requires it (`required=True`): a file that is absent or empty, or
+that lacks an agency of `agency_lts.AGENCIES`, is refused (`AgencyRatingsMissing`).
+v0.8.0 was built on a host where it had never been installed, the absence was only
+logged, and no road carried an agency's rating (found 2026-10-17).
+`REBUILD_ALLOW_NO_AGENCY_LTS=1` turns the refusal back into a warning, for a rebuild
+that knowingly goes without; tests and other callers pass `required=False`.
 
 Each agency is matched on its own, with the street blocks' matching rules
 (`conflation.conflate_blocks`; a service or track way needs an agreeing name, a
@@ -35,9 +41,37 @@ class AgencyRatingsInvalid(ValueError):
     """The installed file names an agency or a level the rebuild may not use."""
 
 
-def load(path: Path) -> tuple[tuple[conflation.RoadFeature, ...], dict[str, AgencyRating]]:
-    """The records as features, and each record's rating by feature id."""
+class AgencyRatingsMissing(FileNotFoundError):
+    """The installed file is absent or empty, or lacks an approved agency."""
+
+
+INSTALL = (
+    "scripts/install_agency_lts.py --datasets <DATA_ROOT>/datasets --out "
+    "<DATA_ROOT>/reference/agency-lts.json moco ddot mdot-sha (docs/OPERATIONS.md, "
+    '"Agency stress ratings (agency-lts.json)"), or set REBUILD_ALLOW_NO_AGENCY_LTS=1 to '
+    "build without them"
+)
+
+
+def missing_agencies(rows: list[dict]) -> list[str]:
+    """The agencies of `AGENCIES` with no record in the file's rows."""
+    held = {row.get("agency") for row in rows}
+    return sorted(agency for agency in AGENCIES if agency not in held)
+
+
+def load(
+    path: Path, *, required: bool = False
+) -> tuple[tuple[conflation.RoadFeature, ...], dict[str, AgencyRating]]:
+    """The records as features, and each record's rating by feature id.
+
+    With `required`, an absent or empty file, or one without every agency of
+    `AGENCIES`, raises `AgencyRatingsMissing`; without it, each is logged."""
     if not path.exists():
+        if required:
+            raise AgencyRatingsMissing(
+                f"{path} is absent, so no road would carry an agency's stress rating; "
+                f"refused. Install it: {INSTALL}"
+            )
         logger.warning(
             "%s is absent, so no agency stress rating is used: every way keeps the "
             "classifier's tier (the owner's order, 2026-10-13: owner, then local "
@@ -45,8 +79,18 @@ def load(path: Path) -> tuple[tuple[conflation.RoadFeature, ...], dict[str, Agen
             path,
         )
         return (), {}
+    rows = json.loads(path.read_text())
+    missing = missing_agencies(rows)
+    if missing:
+        what = "is empty" if not rows else "has no record from " + ", ".join(missing)
+        if required:
+            raise AgencyRatingsMissing(
+                f"{path} {what}, so those roads would keep the formula's tier; refused. "
+                f"Reinstall it: {INSTALL}"
+            )
+        logger.warning("%s %s: those roads keep the formula's tier", path, what)
     features, ratings = [], {}
-    for row in json.loads(path.read_text()):
+    for row in rows:
         agency, level = row["agency"], float(row["level"])
         if agency not in AGENCIES:
             # Arlington's layer is internal-only and is refused here as well as by

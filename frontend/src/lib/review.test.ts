@@ -15,8 +15,10 @@ import {
   fetchRoadDetail,
   fetchRoads,
   makeAnnouncer,
+  piecesText,
   progressText,
   roadHeading,
+  roadRowLabel,
   roadStreetViewUrl,
   ruledSaid,
   rulingLabel,
@@ -56,6 +58,8 @@ function road(way: number, change: Partial<ReviewRoad> = {}): ReviewRoad {
     spread: null,
     length_m: 100,
     length: "0.06 mi (0.10 km)",
+    ways: [way],
+    pieces: 1,
     aadt: null,
     bbox: null,
     geometry: null,
@@ -296,4 +300,22 @@ test("Review is an instance admin's alone", () => {
   assert.match(app, /const canReview = me\.can_change_lts;/);
   assert.match(app, /const reviews = found\.can_change_lts;/);
   assert.doesNotMatch(app, /can_change_lts \|\| (me|found)\.can_review_closures/);
+});
+
+test("a stretch's row says the road, its pieces, its length in miles then kilometres, and its change", () => {
+  const stretch = road(7, { name: "Oak Street", ways: [7, 8, 9], pieces: 3, length: "0.32 mi (0.52 km)", kind_label: "LTS 2 to LTS 4" });
+  assert.equal(piecesText(stretch), "3 road pieces");
+  assert.equal(roadRowLabel(stretch), "Oak Street, 3 road pieces, 0.32 mi (0.52 km): LTS 2 to LTS 4");
+  // One way alone: no count; unnamed: its way; elsewhere the reason is the change.
+  assert.equal(piecesText(road(7)), "");
+  assert.equal(roadRowLabel(road(7)), "Way 7, 0.06 mi (0.10 km): LTS 4 to LTS 2");
+  const rated = road(5, { queue: "disagreement", name: "Elm", reason: "RouteMaker's formula: LTS 4; DDOT: LTS 2", kind_label: "x" });
+  assert.equal(roadRowLabel(rated), "Elm, 0.06 mi (0.10 km): RouteMaker's formula: LTS 4; DDOT: LTS 2");
+  // The label starts with the name the button shows, so the name heard is the name seen.
+  const source = readFileSync(new URL("../ReviewMode.tsx", import.meta.url), "utf8");
+  assert.match(source, /aria-label=\{roadRowLabel\(road\)\}/);
+  // A ruling on a stretch rules every way, each its own ruling: the count drops by the rows ruled.
+  assert.match(source, /t - rowsCovered/);
+  // Undo covers the whole request: several rows are named by their count.
+  assert.match(source, /`\$\{rowsCovered.toLocaleString\("en-US"\)\} roads`/);
 });
