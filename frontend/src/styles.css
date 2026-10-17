@@ -5326,8 +5326,8 @@ details.fold > summary .icon {
 /* Go's sheet on one phone screen (the owner, 2026-10-17: "fit on one page with the current location centered").
    The place chips are five tiles in one row, icon over name; the ride types two equal columns. */
 @media (max-width: 720px) {
+  /* One row while the names fit; a very large font wraps More to a second row rather than clipping it. */
   .go-sheet .go-places:not(.go-more-row) {
-    flex-wrap: nowrap;
     gap: 6px;
   }
 

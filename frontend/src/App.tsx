@@ -1515,8 +1515,6 @@ export function App() {
   const hereInPlan = here !== null && points.includes(here.point);
   // The accuracy circle: the located point's while it is in the plan; during a ride, the rider's.
   const hereCircle = hereInPlan && here ? { centre: here.point, radiusM: here.accuracyM } : null;
-  // Go draws the location found as the ride's still "you" dot (the owner, 2026-10-17: the location centred, so it is seen).
-  const hereDot = useMemo(() => (here ? { point: here.point, headingDeg: null } : null), [here]);
 
   const move = useCallback((index: number, point: LonLat) => {
     cancelLocateNotice();
@@ -3788,7 +3786,10 @@ export function App() {
         onSwitchKind={riding ? ignore : switchKind}
         markerReset={markerReset}
         accuracy={riding ? rideCircle : hereCircle}
-        rider={riding ? (rideView?.rider ?? null) : mode === "go" ? hereDot : null}
+        rider={riding && rideView?.rider ? rideView.rider : null}
+        // Go, before a destination: its start, the location found, drawn as the ride's still dot (the owner,
+        // 2026-10-17: the location centred, so it is seen). With a route its start pin marks it.
+        youDot={!riding && mode === "go" && points.length === 0 && goStart.kind === "here" ? goStart.point : null}
         follow={riding && follow && !bigText /* Big text hides the map: no camera work for it */}
         headingUp={headingUp}
         onFollowBroken={() => setFollow(false)}

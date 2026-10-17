@@ -18,3 +18,14 @@ test("no panel, or a panel off the map, leaves the plain centre", () => {
   assert.deepEqual(visibleCentreOffset(phone, 0, null, true), [0, 0]);
   assert.deepEqual(visibleCentreOffset(phone, 0, { left: 0, top: 900, right: 393, bottom: 1200 }, true), [0, 0]);
 });
+
+test("Go's you dot is a marker of its own: the ride's rider prop (which stops route framing) stays the ride's only", async () => {
+  const { readFileSync } = await import("node:fs");
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /rider=\{riding && rideView\?\.rider \? rideView\.rider : null\}/);
+  assert.match(app, /youDot=\{!riding && mode === "go" && points\.length === 0 && goStart\.kind === "here" \? goStart\.point : null\}/);
+  const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  // The route is framed unless riding; the you dot has no say in it.
+  assert.match(map, /if \(!route \|\| stale \|\| route\.geometry\.coordinates\.length < 2 \|\| props\.rider\) return;/);
+  assert.doesNotMatch(map, /youDot[^\n]*(easeTo|flyTo|fitBounds)/);
+});
