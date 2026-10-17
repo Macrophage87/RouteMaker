@@ -17,7 +17,9 @@ import {
   makeAnnouncer,
   progressText,
   roadHeading,
+  roadStreetViewUrl,
   ruledSaid,
+  rulingLabel,
   sendRuling,
   sortRoads,
   stepText,
@@ -97,6 +99,21 @@ test("the lists, Rebuild changes first, and the ruling buttons' names", () => {
   assert.equal(decisionLabel("rebuild", "set"), "Set LTS");
   assert.equal(decisionLabel("works_closure", "reject"), "Reopen");
   assert.equal(decisionLabel("disagreement", "accept"), "Keep current");
+  // A road's own buttons name the level each keeps; the batch's keep the bare words.
+  const rebuild = { queue: "rebuild" as const, old_step: 2, old_closed: false, new_step: 4, new_closed: false };
+  assert.equal(rulingLabel(rebuild, "reject"), "Keep old: LTS 2");
+  assert.equal(rulingLabel(rebuild, "accept"), "Keep new: LTS 4");
+  assert.equal(rulingLabel({ ...rebuild, new_step: 5 }, "accept"), "Keep new: Avoid");
+  assert.equal(rulingLabel({ ...rebuild, new_closed: true }, "accept"), "Keep new: Closed");
+  assert.equal(rulingLabel({ ...rebuild, old_step: null }, "reject"), "Keep old");
+  assert.equal(rulingLabel(rebuild, "set"), "Set LTS");
+  assert.equal(rulingLabel({ ...rebuild, queue: "works_closure" }, "reject"), "Reopen");
+});
+
+test("Street View at the road's own point, as the road panel links it", () => {
+  assert.equal(roadStreetViewUrl({ point: [-77.1, 39.05] }), "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=39.050000,-77.100000");
+  assert.equal(roadStreetViewUrl({ point: null }), null);
+  assert.equal(roadStreetViewUrl({ point: [Number.NaN, 39] }), null);
 });
 
 test("words: levels, progress, traffic, a road's heading and what a ruling says", () => {

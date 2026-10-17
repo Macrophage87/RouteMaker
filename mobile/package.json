@@ -1,0 +1,20 @@
+{
+  "name": "routemaker-phone",
+  "version": "0.8.0",
+  "private": true,
+  "description": "RouteMaker's phone app: a thin Capacitor shell around the live site, for Ride mode with the screen locked.",
+  "scripts": {
+    "sync": "cap sync android",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "dependencies": {
+    "@capacitor-community/background-geolocation": "1.2.26",
+    "@capacitor-community/text-to-speech": "8.0.2",
+    "@capacitor/android": "8.5.3",
+    "@capacitor/core": "8.5.3",
+    "@capacitor/local-notifications": "8.3.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3"
+  }
+}

@@ -9,10 +9,11 @@
  * Pure apart from the fetches, so the words, the sorting and the requests are tested without a browser.
  */
 import { call } from "./suggestions.ts";
+import { streetViewUrl } from "./roadInfo.ts";
 
 type Fetch = typeof fetch;
 
-export type QueueKey = "rebuild" | "disagreement" | "sidepath" | "narrow_rural" | "works_closure" | "rematch";
+export type QueueKey = "rebuild" | "disagreement" | "sidepath" | "narrow_rural" | "works_closure" | "rematch" | "painted_lane";
 /** Review's own lists: its queues, then the reviews that were in Settings. */
 export type ListKey = QueueKey | "suggestions" | "hazards" | "closures";
 export type Decision = "accept" | "reject" | "set";
@@ -129,6 +130,7 @@ export const LISTS: { key: ListKey; label: string }[] = [
   { key: "sidepath", label: "Side path not mapped" },
   { key: "works_closure", label: "Industrial-area closures" },
   { key: "rematch", label: "Overrides not re-matched" },
+  { key: "painted_lane", label: "Painted lanes, agency against formula" },
   { key: "suggestions", label: "Rider suggestions" },
   { key: "hazards", label: "Mass Ride hazard reports" },
   { key: "closures", label: "Closure reports" },
@@ -147,6 +149,22 @@ export function decisionLabel(queue: QueueKey, decision: Decision): string {
   if (queue === "works_closure") return decision === "accept" ? "Keep closed" : "Reopen";
   if (queue === "disagreement") return "Keep current";
   return decision === "accept" ? "Accept" : "Reject";
+}
+
+/** A road's own ruling button (the owner, 2026-10-17: "use a keep old and keep new, put the current LTS there so it's
+ * easier to see"): a rebuild's names the level each keeps, "Keep old: LTS 2", "Keep new: Avoid"; the rest as
+ * decisionLabel. The batch's buttons keep decisionLabel's, the selected roads' levels being their own. */
+export function rulingLabel(road: Pick<ReviewRoad, "queue" | "old_step" | "old_closed" | "new_step" | "new_closed">, decision: Decision): string {
+  const words = decisionLabel(road.queue, decision);
+  if (road.queue !== "rebuild" || decision === "set") return words;
+  const level = decision === "accept" ? stepText(road.new_step, road.new_closed) : stepText(road.old_step, road.old_closed);
+  return level === "—" ? words : `${words}: ${level}`;
+}
+
+/** Google Street View at the road's own point (the server's, on the line), as the road panel links it; null with none. */
+export function roadStreetViewUrl(road: Pick<ReviewRoad, "point">): string | null {
+  const p = road.point;
+  return Array.isArray(p) && p.length === 2 && p.every((n) => typeof n === "number" && Number.isFinite(n)) ? streetViewUrl([p[0], p[1]]) : null;
 }
 
 /** A level in a few characters: "LTS 2.5", "Avoid". */
@@ -224,9 +242,10 @@ export const QUEUE_STYLE: Record<QueueKey, { colour: string; colourName: string;
   sidepath: { colour: "#CC79A7", colourName: "pink", dash: [1, 1], pattern: "short dashes" },
   works_closure: { colour: "#56B4E9", colourName: "sky blue", dash: [3, 1, 1, 1], pattern: "dash and dot" },
   rematch: { colour: "#E69F00", colourName: "orange", dash: [0.5, 1], pattern: "dots" },
+  painted_lane: { colour: "#000000", colourName: "black", dash: [4, 1, 1, 1, 1, 1], pattern: "dash and two dots" },
 };
 
-export const QUEUES: QueueKey[] = ["rebuild", "disagreement", "narrow_rural", "sidepath", "works_closure", "rematch"];
+export const QUEUES: QueueKey[] = ["rebuild", "disagreement", "narrow_rural", "sidepath", "works_closure", "rematch", "painted_lane"];
 
 /**
  * What Review's map shows of the view (GET /api/review/map): the roads of the lists switched on inside it, up to the

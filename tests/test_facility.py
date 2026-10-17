@@ -466,7 +466,8 @@ def test_beside_needs_most_of_the_way():
         ({"highway": "residential", "access": "no", "bicycle": "designated"}, "road"),  # car-free
         ({"highway": "tertiary", "access": "permissive"}, "road"),  # Patton Drive
         ({"highway": "residential", "access": "destination"}, "road"),
-        ({"highway": "primary", "bicycle": "use_sidepath"}, "barred"),
+        # Legal, drawn and rated (review RL-1; the owner, 2026-10-16).
+        ({"highway": "primary", "bicycle": "use_sidepath"}, "road"),
         ({"highway": "residential"}, "road"),
         ({"highway": "corridor", "indoor": "yes", "level": "1"}, "hidden"),  # BWI's terminal
         ({"highway": "corridor"}, "hidden"),
