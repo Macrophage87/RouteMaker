@@ -1085,7 +1085,7 @@ export function RideMode({
       if (stepped.state.walking) return;
       // Off this line but on the other one (the standard way, or the detour): followed there, not re-planned.
       if (out.state.off && fix.accuracyM <= POOR_FIX_M) {
-        const at = onOtherLine(otherModelRef.current, fix.point, fix.accuracyM);
+        const at = onOtherLine(otherModelRef.current, fix.point, fix.accuracyM, out.state.progressM ?? -Infinity);
         if (at !== null) {
           takeOther(at, fix);
           return;
@@ -1302,6 +1302,8 @@ export function RideMode({
       return;
     }
     replanTicket.current += 1;
+    // Keep wins over a Road closed press still waiting on a re-plan.
+    closedPending.current = false;
     setReplanning(false);
     setKeepPlanned(true);
     setReplanNote("");

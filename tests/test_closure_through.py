@@ -182,3 +182,48 @@ def test_blocked_lines_are_checked(client) -> None:
     assert post(client, {**good_body(), "blocked_lines": [[[-77.03, 38.9]]]}).status_code == 400
     many = [[[-77.03, 38.9], [-77.03, 38.91]]] * 11
     assert post(client, {**good_body(), "blocked_lines": many}).status_code == 400
+
+
+class TestOnlyWhereAClosureIs:
+    def test_a_route_that_differs_for_another_reason_says_nothing(self) -> None:
+        line = [(-77.05, LAT), (-77.04, LAT), (-77.03, LAT), (-77.02, LAT)]
+        standard = [
+            (-77.05, LAT),
+            (-77.04, LAT),
+            (-77.04, NORTH),
+            (-77.03, NORTH),
+            (-77.03, LAT),
+            (-77.02, LAT),
+        ]
+        assert workzones.closure_partings(line, standard, []) == []
+
+
+class TestTheRidersRoadsComeFirst:
+    def test_the_latest_fit_the_routers_limits(self) -> None:
+        line = ((-77.03, 38.905), (-77.03, 38.906), (-77.029, 38.907))
+        rings = workzones.blocked_rings([line] * 30)
+        assert 0 < len(rings) < 30
+        assert sum(len(r) for r in rings) <= wz.MAX_VERTICES
+
+    def test_the_closures_fit_in_what_is_left(self) -> None:
+        until = datetime.now(UTC) + timedelta(days=30)
+        zones = [
+            wz.Zone(
+                f"md-{i}",
+                "md",
+                wz.CLOSED,
+                0,
+                ((-77.04, 38.9 + i / 1000), (-77.03, 38.9 + i / 1000)),
+                "R",
+                None,
+                None,
+                until,
+            )
+            for i in range(20)
+        ]
+        at = datetime.now(UTC)
+        points = [(-77.05, 38.89), (-77.02, 38.93)]
+        free = wz.for_plan(zones, at, points, {"md": "current"}, now=at)
+        held = wz.for_plan(zones, at, points, {"md": "current"}, now=at, reserve=(0.0, 90))
+        assert len(held.excluded) < len(free.excluded)
+        assert sum(len(r) for r in held.exclude) <= wz.MAX_VERTICES - 90

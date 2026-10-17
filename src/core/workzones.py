@@ -294,7 +294,9 @@ def ride_moment(when: str, now: datetime | None = None) -> datetime:
     return local.replace(tzinfo=ridetime.ZONE).astimezone(UTC)
 
 
-def plan_zones(points, when: str, now: datetime | None = None, bypass=()) -> rules.PlanZones | None:
+def plan_zones(
+    points, when: str, now: datetime | None = None, bypass=(), reserve=(0.0, 0)
+) -> rules.PlanZones | None:
     """The zones in force for a plan through `points` with the ride-time dial at `when`;
     None where work zones are not running (no refresh has ever been stored).
 
@@ -306,10 +308,37 @@ def plan_zones(points, when: str, now: datetime | None = None, bypass=()) -> rul
         return None
     now = now or _now()
     plan = rules.for_plan(
-        found.zones, ride_moment(when, now), points, found.status, now=now, bypass=bypass
+        found.zones,
+        ride_moment(when, now),
+        points,
+        found.status,
+        now=now,
+        bypass=bypass,
+        reserve=reserve,
     )
     plan.notices = list(found.notices)
     return plan
+
+
+def blocked_rings(lines) -> list[list[list[float]]]:
+    """The rings of the roads the rider marked closed (`blocked_lines`), as many of the
+    latest as fit the router's polygon limits, in the order given."""
+    rings: list[list[list[float]]] = []
+    used_m, used_vertices = 0.0, 0
+    for line in reversed(lines):
+        ring = rules.line_ring(line)
+        if ring is None:
+            continue
+        perimeter = rules.ring_perimeter_m(ring)
+        if (
+            used_m + perimeter > rules.MAX_PERIMETER_M
+            or used_vertices + len(ring) > rules.MAX_VERTICES
+        ):
+            break
+        used_m += perimeter
+        used_vertices += len(ring)
+        rings.append(ring)
+    return rings[::-1]
 
 
 def _trip_line(trip: dict) -> list[tuple[float, float]]:
@@ -464,63 +493,93 @@ _STEP_M = 10.0
 _CELL_M = 30.0
 
 
-def parting_points(line, standard) -> list[float]:
-    """Metres along `line` (lon, lat pairs) where it leaves `standard` for at least
-    `PARTED_MIN_M`: the last vertex still on it before each such stretch. Empty where
-    either has under two points or they never part."""
-    if len(line) < 2 or len(standard) < 2:
-        return []
-    lat0 = line[0][1]
-    grid: dict[tuple[int, int], list[tuple[float, float]]] = {}
-    xy = [rules._xy(lon, lat, lat0) for lon, lat in standard]
-    for a, b in zip(xy, xy[1:], strict=False):
-        steps = max(1, math.ceil(math.dist(a, b) / _STEP_M))
-        for i in range(steps + 1):
-            t = i / steps
-            p = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
-            grid.setdefault((int(p[0] // _CELL_M), int(p[1] // _CELL_M)), []).append(p)
-
-    def near(p) -> bool:
-        cx, cy = int(p[0] // _CELL_M), int(p[1] // _CELL_M)
-        reach = PARTED_M + _STEP_M / 2
-        return any(
-            math.dist(p, q) <= reach
-            for dx in (-1, 0, 1)
-            for dy in (-1, 0, 1)
-            for q in grid.get((cx + dx, cy + dy), ())
-        )
-
-    # The line too is walked in short steps: a long straight stretch between two of its
-    # vertices on the standard way can be off it in the middle.
-    walk: list[tuple[float, tuple[float, float]]] = []
-    walked = 0.0
+def _walk(line, lat0: float) -> list[tuple[float, tuple[float, float]]]:
+    """The line in steps of at most `_STEP_M`: (metres along, (x, y)) each."""
     points = [rules._xy(lon, lat, lat0) for lon, lat in line]
-    for i, p in enumerate(points):
-        if i:
-            a = points[i - 1]
-            gap = math.dist(a, p)
-            steps = max(1, math.ceil(gap / _STEP_M))
-            for k in range(1, steps):
-                t = k / steps
-                walk.append(
-                    (walked + gap * t, (a[0] + (p[0] - a[0]) * t, a[1] + (p[1] - a[1]) * t))
-                )
-            walked += gap
-        walk.append((walked, p))
-    out: list[float] = []
-    on_at: float | None = 0.0 if near(points[0]) else None
+    out = [(0.0, points[0])]
+    walked = 0.0
+    for a, p in zip(points, points[1:], strict=False):
+        gap = math.dist(a, p)
+        steps = max(1, math.ceil(gap / _STEP_M))
+        for k in range(1, steps + 1):
+            t = k / steps
+            out.append((walked + gap * t, (a[0] + (p[0] - a[0]) * t, a[1] + (p[1] - a[1]) * t)))
+        walked += gap
+    return out
+
+
+def _cells(walk) -> dict[tuple[int, int], list[tuple[float, tuple[float, float]]]]:
+    grid: dict[tuple[int, int], list] = {}
+    for metres, p in walk:
+        grid.setdefault((int(p[0] // _CELL_M), int(p[1] // _CELL_M)), []).append((metres, p))
+    return grid
+
+
+def _nearest(grid, p, reach: float) -> tuple[float, float] | None:
+    """(distance, metres along) of the grid's nearest step to `p` within `reach`, or None."""
+    cx, cy = int(p[0] // _CELL_M), int(p[1] // _CELL_M)
+    cells = math.ceil(reach / _CELL_M)
+    best = None
+    for dx in range(-cells, cells + 1):
+        for dy in range(-cells, cells + 1):
+            for metres, q in grid.get((cx + dx, cy + dy), ()):
+                d = math.dist(p, q)
+                if d <= reach and (best is None or d < best[0]):
+                    best = (d, metres)
+    return best
+
+
+def parting_spans(line, other, lat0: float | None = None) -> list[tuple[float, float, tuple]]:
+    """The stretches of `line` (lon, lat pairs) off `other` for at least `PARTED_MIN_M`:
+    (metres along where it was last on it, metres where it is back on it or ends, that
+    last point on it as (x, y)). Empty where either has under two points."""
+    if len(line) < 2 or len(other) < 2:
+        return []
+    lat0 = line[0][1] if lat0 is None else lat0
+    grid = _cells(_walk(other, lat0))
+    reach = PARTED_M + _STEP_M / 2
+    out = []
+    walk = _walk(line, lat0)
+    on: tuple[float, tuple] | None = walk[0] if _nearest(grid, walk[0][1], reach) else None
     off_from: float | None = None
     for metres, p in walk:
-        if near(p):
-            if off_from is not None and on_at is not None and metres - off_from >= PARTED_MIN_M:
-                out.append(on_at)
+        if _nearest(grid, p, reach):
+            if off_from is not None and on is not None and metres - off_from >= PARTED_MIN_M:
+                out.append((on[0], metres, on[1]))
             off_from = None
-            on_at = metres
+            on = (metres, p)
         elif off_from is None:
             off_from = metres
     # Off it to the end (the detour reaches the end another way).
-    if off_from is not None and on_at is not None and walked - off_from >= PARTED_MIN_M:
-        out.append(on_at)
+    end = walk[-1][0]
+    if off_from is not None and on is not None and end - off_from >= PARTED_MIN_M:
+        out.append((on[0], end, on[1]))
+    return out
+
+
+def parting_points(line, standard) -> list[float]:
+    """Metres along `line` where it leaves `standard` for at least `PARTED_MIN_M`."""
+    return [start for start, _end, _p in parting_spans(line, standard)]
+
+
+def closure_partings(line, standard, passages) -> list[tuple[float, rules.Zone]]:
+    """Where `line` (the detour) leaves `standard` for a closure it goes round, and that
+    closure: each stretch of the standard way off the detour that runs along one of
+    `passages` (the closures on the standard way), placed on the detour where the two
+    part. A stretch with no closure on it (a route that differs for another reason) has
+    none."""
+    if len(line) < 2 or len(standard) < 2:
+        return []
+    lat0 = line[0][1]
+    grid = _cells(_walk(line, lat0))
+    out = []
+    for start, end, point in parting_spans(standard, line, lat0):
+        zone = next((p.zone for p in passages if p.from_m < end and p.to_m > start), None)
+        if zone is None:
+            continue
+        found = _nearest(grid, point, PARTED_M + _STEP_M)
+        if found is not None:
+            out.append((found[1], zone))
     return out
 
 
@@ -794,12 +853,11 @@ def with_work_zones(body: dict, plan: rules.PlanZones | None, now: datetime | No
     # Street marked closed. Detour posted.", a hazard Ride says as the two lines part.
     if plan.through is not None and plan.affecting:
         standard = _trip_line(plan.through)
-        round_zones = [
-            p.zone for p in rules.along(standard, plan.excluded) if p.zone.zone_id in plan.affecting
+        on_standard = [
+            p for p in rules.along(standard, plan.excluded) if p.zone.zone_id in plan.affecting
         ]
-        for k, at in enumerate(parting_points(coordinates, standard)):
-            zone = round_zones[k] if k < len(round_zones) else None
-            stale = zone is not None and plan.status.get(zone.source) == STALE
+        for at, zone in closure_partings(coordinates, standard, on_standard):
+            stale = plan.status.get(zone.source) == STALE
             added.append(
                 _entry(None, scale, rules.split_words(zone), stale, at_m=at * scale, zone=zone)
             )

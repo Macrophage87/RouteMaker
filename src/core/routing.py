@@ -2719,10 +2719,16 @@ def plan(
     # to bicycles is left out of every request this plan makes (the derived requests
     # copy this one), and the zones a rider may pass are weighed once the router has
     # answered (`work_zones.settle_penalties`). None where no refresh has ever run.
-    zones_plan = work_zones.plan_zones(points, when, bypass=dials.closure_bypass)
     # The roads the rider marked closed on this ride (v0.8.2): left out as a closure is,
-    # after the closures' own rings, and kept out where those are let back in.
-    blocked = [ring for ring in map(work_zones.rules.line_ring, dials.blocked) if ring]
+    # after the closures' own rings, and kept out where those are let back in. They take
+    # the router's polygon budget first (the latest kept), and the closures fit the rest.
+    blocked = work_zones.blocked_rings(dials.blocked)
+    zones_plan = work_zones.plan_zones(
+        points,
+        when,
+        bypass=dials.closure_bypass,
+        reserve=work_zones.rules.budget_used(blocked),
+    )
     if zones_plan is not None:
         zones_plan.blocked = blocked
         zones_plan.exclude = list(zones_plan.exclude) + blocked

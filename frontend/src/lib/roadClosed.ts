@@ -28,14 +28,17 @@ export const ROAD_CLOSED_NO_PLACE = "Not sure which road is closed yet. Try agai
 export const ON_STANDARD_SAID = "On the standard route through the marked closure.";
 export const ON_DETOUR_SAID = "On the detour.";
 
-/** The closed stretch starts this far ahead of the rider (so the road they stand on behind it stays open)... */
-export const CLOSED_FROM_M = 10;
-/** ...and runs this far along the route (about 650 ft): past the next junction on most streets. */
-export const CLOSED_LENGTH_M = 200;
+/**
+ * The closed stretch starts this far ahead of the rider: the router leaves out every road the strip touches, so a
+ * rider stopped just before a junction keeps its cross streets as a way round...
+ */
+export const CLOSED_FROM_M = 30;
+/** ...and runs this far along the route (about 500 ft): to the next junction on most streets. */
+export const CLOSED_LENGTH_M = 150;
 /** Off the route, a stretch this long straight ahead along the rider's heading. */
 export const CLOSED_HEADING_M = 150;
-/** At most this many stretches a ride keeps (the API takes 10). */
-export const CLOSED_MOST = 10;
+/** At most this many stretches a ride keeps, so they fit the router's limit beside the closures (the API takes 10). */
+export const CLOSED_MOST = 6;
 
 const M_PER_DEG_LAT = 111_195;
 
@@ -44,6 +47,15 @@ function ahead(p: LonLat, headingDeg: number, metres: number): LonLat {
   const rad = (headingDeg * Math.PI) / 180;
   const kx = M_PER_DEG_LAT * Math.cos((p[1] * Math.PI) / 180);
   return [p[0] + (Math.sin(rad) * metres) / kx, p[1] + (Math.cos(rad) * metres) / M_PER_DEG_LAT];
+}
+
+/** Metres from `p` to the straight line through `a` and `b`. */
+function offChord(p: LonLat, a: LonLat, b: LonLat): number {
+  const kx = M_PER_DEG_LAT * Math.cos((p[1] * Math.PI) / 180);
+  const [ax, ay, bx, by, px, py] = [a[0] * kx, a[1] * M_PER_DEG_LAT, b[0] * kx, b[1] * M_PER_DEG_LAT, p[0] * kx, p[1] * M_PER_DEG_LAT];
+  const len = Math.hypot(bx - ax, by - ay);
+  if (len === 0) return Math.hypot(px - ax, py - ay);
+  return Math.abs((bx - ax) * (ay - py) - (ax - px) * (by - ay)) / len;
 }
 
 export interface ClosedStretch {
@@ -69,12 +81,21 @@ export function closedAhead(
     const from = progressM + CLOSED_FROM_M;
     const to = Math.min(from + CLOSED_LENGTH_M, model.lengthM);
     if (to - from < 20) return null;
-    const line: LonLat[] = [pointAt(model, from)];
+    // Its ends and, where it bends, the vertex farthest off the straight between them (the turn): the server keeps
+    // only a few points of a strip, and a curvy trail would have too many to send.
+    const start = pointAt(model, from);
+    const end = pointAt(model, to);
+    let bend: LonLat | null = null;
+    let most = 5;
     model.along.forEach((m, i) => {
-      if (m > from && m < to) line.push(model.coordinates[i]);
+      if (m <= from || m >= to) return;
+      const off = offChord(model.coordinates[i], start, end);
+      if (off > most) {
+        most = off;
+        bend = model.coordinates[i];
+      }
     });
-    line.push(pointAt(model, to));
-    return { line, untilM: to };
+    return { line: bend ? [start, bend, end] : [start, end], untilM: to };
   }
   if (here && headingDeg !== null && Number.isFinite(headingDeg)) {
     return { line: [ahead(here, headingDeg, CLOSED_FROM_M), ahead(here, headingDeg, CLOSED_FROM_M + CLOSED_HEADING_M)], untilM: null };
@@ -89,11 +110,13 @@ export function withClosed(lines: readonly LonLat[][], line: LonLat[]): LonLat[]
 
 /**
  * Where on the other line (the standard way, or the detour while on the standard way) a fix is, when it is on it:
- * within the off-route threshold of it. Null where it is not, or there is no other line.
+ * within the off-route threshold of it. Null where it is not, or there is no other line. Where it passes the same
+ * place twice (a loop, an out-and-back), the pass nearest `nearM` along is taken: the rider's progress on the route
+ * left, which the two lines share up to where they part.
  */
-export function onOtherLine(other: Pick<RideModel, "coordinates" | "along"> | null, point: LonLat, accuracyM: number): number | null {
+export function onOtherLine(other: Pick<RideModel, "coordinates" | "along"> | null, point: LonLat, accuracyM: number, nearM = -Infinity): number | null {
   if (!other) return null;
-  const found = snap(other, point);
+  const found = snap(other, point, -Infinity, Infinity, 15, nearM);
   if (!found || found.offM > offThreshold(accuracyM)) return null;
   return found.alongM;
 }

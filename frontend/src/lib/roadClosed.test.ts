@@ -25,10 +25,11 @@ test("on the route, the road ahead from just ahead of the rider, through the nex
   const found = closedAhead(MAIN, 900, false, at(900, 0), 90);
   assert.ok(found);
   assert.equal(found.untilM, 900 + CLOSED_FROM_M + CLOSED_LENGTH_M);
+  assert.equal(found.line.length, 3, "its ends and the corner");
   // It starts 10 m ahead, keeps the corner, and ends on the next street.
-  assert.ok(Math.abs(haversineM(found.line[0], at(910, 0))) < 1);
+  assert.ok(haversineM(found.line[0], at(930, 0)) < 1);
   assert.ok(found.line.some((p) => haversineM(p, at(1000, 0)) < 1));
-  assert.ok(haversineM(found.line[found.line.length - 1], at(1000, 110)) < 1);
+  assert.ok(haversineM(found.line[2], at(1000, 80)) < 1);
 });
 
 test("off the route, straight ahead along the heading; with neither, nothing", () => {
@@ -60,4 +61,18 @@ test("the ride's closed roads go in its re-plans' requests", () => {
   const body = JSON.parse(routeRequestBody([at(0, 0), at(1000, 0)], "default", { blocked: [[at(1, 1), at(2, 2)]] }));
   assert.deepEqual(body.blocked_lines, [[at(1, 1), at(2, 2)]]);
   assert.equal(JSON.parse(routeRequestBody([at(0, 0), at(1000, 0)], "default")).blocked_lines, undefined);
+});
+
+test("a curvy stretch is sent as a few points, never one per vertex", () => {
+  const wiggle: LonLat[] = [];
+  for (let i = 0; i <= 200; i += 1) wiggle.push(at(i * 5, i % 2 ? 2 : 0));
+  const found = closedAhead(rideModel(route(wiggle)), 100, false, at(500, 0), 90);
+  assert.ok(found && found.line.length <= 3);
+});
+
+test("on a line that passes the same place twice, the pass near the rider's progress", () => {
+  // Out 1,000 m east and back the same way.
+  const outAndBack = rideModel(route([at(0, 0), at(1000, 0), at(0, 0)]));
+  assert.ok(Math.abs((onOtherLine(outAndBack, at(400, 3), 5, 400) ?? 0) - 400) < 1);
+  assert.ok(Math.abs((onOtherLine(outAndBack, at(400, 3), 5, 1600) ?? 0) - 1600) < 1);
 });

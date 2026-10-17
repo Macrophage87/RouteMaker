@@ -638,8 +638,12 @@ def for_plan(
     status: dict[str, str],
     now: datetime | None = None,
     bypass: Iterable[str] = (),
+    reserve: tuple[float, int] = (0.0, 0),
 ) -> PlanZones:
     """What a plan through `points` (lon, lat) at ride time `at` does with the zones.
+
+    `reserve` is the router's polygon budget (perimeter, vertices) already taken by the
+    roads the rider marked closed (v0.8.2): the closures fit in what is left.
 
     `now` is when the plan is made: a closure with no end given, on a ride later than
     that (`FUTURE_AFTER_S`), "may still apply" and is warned of, not routed round.
@@ -673,7 +677,7 @@ def for_plan(
                 closures.append(zone)
         else:
             plan.passable.append(zone)
-    plan.exclude, plan.excluded, left = fit_polygons(closures, centre)
+    plan.exclude, plan.excluded, left = fit_polygons(closures, centre, *reserve)
     plan.unexcluded.extend(left)
     return plan
 
