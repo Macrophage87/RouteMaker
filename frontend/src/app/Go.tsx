@@ -28,7 +28,7 @@ const SIZE_SAID: Record<GoSheetSize, string> = { peek: "small", half: "half heig
 
 /**
  * Go or Plan: two toggle buttons, the pressed one the view in use (the owner's choice 1: either view can switch). For
- * someone who may review, the panel's switch has a third, Review (lib/appMode.ts switchModes); Go's own bar keeps two.
+ * someone who may review, both switches (Go's bar and the panel's) have a third, Review (lib/appMode.ts switchModes).
  */
 export function ModeSwitch({
   mode,
