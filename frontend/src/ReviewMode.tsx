@@ -39,6 +39,7 @@ import { useMap } from "./app/mapOverlay.ts";
 import { CLIMB_FONT } from "./lib/climbs.ts";
 import { HAZARD_REVIEW } from "./lib/reviewSources.ts";
 import { csrfFromCookie } from "./lib/stressEditor.ts";
+import { STREET_VIEW_NOTE, STREET_VIEW_TEXT } from "./lib/roadInfo.ts";
 import {
   DEFAULT_LIST,
   LISTS,
@@ -56,9 +57,13 @@ import {
   fetchRoads,
   isQueue,
   makeAnnouncer,
+  piecesText,
   progressText,
   roadHeading,
+  roadRowLabel,
+  roadStreetViewUrl,
   ruledSaid,
+  rulingLabel,
   sendRuling,
   sortRoads,
   stepText,
@@ -248,7 +253,11 @@ export function ReviewMode({ getMap, announce, onStressChanged, onHazardsChanged
             type: "line",
             source: LINES,
             layout: { "line-cap": "round", "line-join": "round" },
-            paint: { "line-color": "#ffffff", "line-opacity": 0.9, "line-width": ["interpolate", ["linear"], ["zoom"], 5, 6, 12, 9, 16, 13] },
+            paint: {
+              "line-color": ["match", ["get", "queue"], ...QUEUES.flatMap((q) => (QUEUE_STYLE[q].halo ? [q, QUEUE_STYLE[q].halo] : [])), "#ffffff"],
+              "line-opacity": 0.9,
+              "line-width": ["interpolate", ["linear"], ["zoom"], 5, 6, 12, 9, 16, 13],
+            },
           } as never,
           before,
         );
@@ -530,6 +539,8 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [last, setLast] = useState<Ruling | null>(null);
+  // The road (a row: a stretch or a way alone) the last ruling was made on, as Undo names it.
+  const [lastName, setLastName] = useState("");
   const [said, setSaid] = useState("");
   const [focusNext, setFocusNext] = useState<string | null>(null);
   // A road asked for from the map: the page's own first road does not replace it when the page arrives.
@@ -696,17 +707,24 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
     const { rulings, refused, generation } = answer.body;
     if (typeof generation === "number") onStressChanged(generation);
     setReason("");
-    setLast(rulings[rulings.length - 1] ?? null);
     const ruled = new Set(rulings.map((r) => r.osm_way_id));
+    // A stretch's rulings are a way each: Undo is offered on its row's (its lead's), named by the row's road.
+    const lastRow = (current && ruled.has(current.osm_way_id) ? current : null) ?? [...shown].reverse().find((r) => ruled.has(r.osm_way_id)) ?? null;
+    setLast((lastRow && rulings.find((r) => r.osm_way_id === lastRow.osm_way_id)) ?? rulings[rulings.length - 1] ?? null);
+    // Undo undoes the whole request (every road of a batch): named by its count when it covers several rows.
+    const rowsCovered = shown.filter((r) => ruled.has(r.osm_way_id)).length;
+    setLastName(rowsCovered > 1 ? `${rowsCovered.toLocaleString("en-US")} roads` : lastRow ? lastRow.name || `Way ${lastRow.osm_way_id}` : "");
     const rest = all ? shown : shown.filter((r) => !ruled.has(r.osm_way_id));
     const after = shown.slice(index + 1).find((r) => !ruled.has(r.osm_way_id)) ?? rest[0] ?? null;
     if (all) setRoads((old) => old?.map((r) => (ruled.has(r.osm_way_id) ? { ...r, ruling: rulings.find((x) => x.osm_way_id === r.osm_way_id) ?? r.ruling } : r)) ?? old);
     else setRoads(rest);
-    setTotal((t) => (all ? t : Math.max(0, t - ruled.size)));
+    // A row is a stretch of ways, each with its own ruling: the rows ruled, not the rulings, leave the count.
+    setTotal((t) => (all ? t : Math.max(0, t - rowsCovered)));
     setSelected(new Set());
     onRuled();
     const road = current && ruled.has(current.osm_way_id) ? current : null;
-    if (ways.length === 1 && road && rulings[0]) tell(ruledSaid(road, rulings[0], after ? after.name || `way ${after.osm_way_id}` : null));
+    const own = road ? (rulings.find((r) => r.osm_way_id === road.osm_way_id) ?? rulings[0]) : null;
+    if (ways.length === 1 && road && own) tell(ruledSaid(road, own, after ? after.name || `way ${after.osm_way_id}` : null));
     else tell(answer.body.message);
     if (refused.length && ways.length === 1) tell(refused[0].error);
     if (after) pick(after);
@@ -725,8 +743,8 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
     if (typeof answer.body.generation === "number") onStressChanged(answer.body.generation);
     setLast(null);
     onUndone();
-    tell(`Undone: ${last.summary}. The road is back in the list.`);
-    void load(page, last.osm_way_id);
+    tell(`Undone: ${lastName ? `${lastName}, ` : ""}${last.summary}. The road is back in the list.`);
+    void load(page, last.stretch ?? last.osm_way_id);
   };
 
   const sortBy = (key: SortKey) => {
@@ -761,6 +779,7 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
   const pending = current ? current.sources.some((s) => s.pending) : false;
   const facts = detail ? factRows(detail.facts, detail.new_facts) : [];
   const sideBySide = queue === "rebuild" && (detail?.new_facts.length ?? 0) > 0;
+  const streetView = current ? roadStreetViewUrl(current) : null;
 
   return (
     <div className="review-queue">
@@ -862,6 +881,7 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
                           type="button"
                           id={id(`r${road.osm_way_id}`)}
                           className="link review-road"
+                          aria-label={roadRowLabel(road)}
                           onClick={() => pick(road)}
                           onKeyDown={(event) => {
                             const next = event.key === "ArrowDown" ? shown[i + 1] : event.key === "ArrowUp" ? shown[i - 1] : null;
@@ -873,6 +893,12 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
                         >
                           {name}
                         </button>
+                        {road.pieces > 1 && (
+                          <span className="hint" aria-hidden="true">
+                            {" "}
+                            ({piecesText(road)})
+                          </span>
+                        )}
                       </td>
                       <td>{road.area}</td>
                       {queue === "rebuild" && (
@@ -949,10 +975,23 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
               {current.new_source ? ` (decided by ${current.new_source})` : ""}
             </dd>
             <dt>Length</dt>
-            <dd>{current.length}</dd>
+            <dd>
+              {current.length}
+              {current.pieces > 1 ? `, ${piecesText(current)} ruled together` : ""}
+            </dd>
             <dt>Traffic</dt>
             <dd>{trafficText(current.aadt)}</dd>
           </dl>
+          {streetView && (
+            <p className="review-street-view">
+              <a href={streetView} target="_blank" rel="noopener noreferrer" aria-describedby={id("sv-note")}>
+                {STREET_VIEW_TEXT}
+              </a>{" "}
+              <span id={id("sv-note")} className="hint">
+                {STREET_VIEW_NOTE}
+              </span>
+            </p>
+          )}
           {settled && settled.osm_way_id === current.osm_way_id && settled.point && (
             <StreetPhotoView title={current.name || `Way ${current.osm_way_id}`} point={settled.point} wayId={settled.osm_way_id} path={PHOTO_PATH} />
           )}
@@ -1004,7 +1043,7 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
                 .filter((d) => d !== "set")
                 .map((d) => (
                   <button key={d} type="button" aria-describedby={id("card")} aria-disabled={busy || undefined} onClick={() => void rule(d, [current.osm_way_id])}>
-                    {decisionLabel(queue, d)}
+                    {rulingLabel(current, d)}
                   </button>
                 ))}
               {current.actions.includes("set") && (
@@ -1034,7 +1073,8 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
               </button>
               {last && last.can_undo && (
                 <button type="button" className="secondary" aria-disabled={busy || undefined} onClick={() => void undo()}>
-                  Undo: {last.summary}
+                  Undo: {lastName ? `${lastName}, ` : ""}
+                  {last.summary}
                 </button>
               )}
             </div>

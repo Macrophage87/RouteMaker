@@ -127,7 +127,8 @@ class TestBoundary:
 @db
 class TestTiles:
     def test_busy_roads_carry_their_capacity_at_z12_and_13(self, client, segment_schemas):
-        """415: the stress tiles' z12-13 is the ride layer, with no busy road; these have them."""
+        """415: the stress tiles' z12-13 was the ride layer, with no busy road, and these had
+        them; since 2026-10-17 ("Both from 12") the stress tiles carry the busy road too."""
         live, _ = segment_schemas
         road(live, 1, WHITE_HOUSE, east_of(WHITE_HOUSE), tier=4, rpm=150)
         for z in (12, 13):
@@ -136,7 +137,7 @@ class TestTiles:
                 (4, 150)
             ]
             stress = features(client, z, kind="stress")
-            assert stress is None or not stress.features, "the stress map's ride layer is unchanged"
+            assert [f.properties["tier"] for f in stress.features] == [4]
 
     def test_every_zoom_the_map_asks_for_draws_and_deeper_is_empty(self, client, segment_schemas):
         live, _ = segment_schemas

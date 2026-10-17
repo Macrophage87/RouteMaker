@@ -64,6 +64,10 @@ export interface RideTrip {
   /** The departure the finish leads to (DepartureTimer), where the plan has one. */
   departure: TransitDeparture | null;
   rest: RideRest | null;
+  /** The line is ridden on a share bike (Ride mode's dock button and undocked time, lib/rideDock.ts). */
+  shareBike?: boolean;
+  /** The route is ridden as it was planned, its walks only at the ends (`walk_in`), not a leg of a bigger trip. */
+  asPlanned?: boolean;
 }
 
 export const RIDE_REST = "Ride the rest";
@@ -162,7 +166,7 @@ function bikeshareTrip(route: RouteResponse): RideTrip | null {
       spoken: `Dock at ${end.name}.${on(walk ? ` ${spokenDistance(walk.distance_m)}` : "")}`,
     };
   }
-  return { approach, finish, departure: null, rest: null };
+  return { approach, finish, departure: null, rest: null, shareBike: true };
 }
 
 /**
@@ -228,12 +232,30 @@ function transitTrip(route: RouteResponse, destination: LonLat | null): RideTrip
       metres: step.coordinates.length >= 2 ? pathLengthM(step.coordinates) : null,
     };
   }
-  return { approach, finish, departure, rest };
+  return { approach, finish, departure, rest, shareBike: lineStep.mode === "bikeshare" };
 }
 
-/** What comes either side of the line on a Bikeshare or transit plan; null for any other route. */
+/** A plain ride whose ride stops short of its start or end (the API's `walk_in`): the walk to the line first, and the walk on at the finish. */
+function walkInTrip(route: RouteResponse): RideTrip | null {
+  const walks = route.walk_in;
+  if (!walks || (!walks.start && !walks.end)) return null;
+  const at = route.geometry.coordinates[0] as LonLat | undefined;
+  const approach: RideApproach | null =
+    at && walks.start
+      ? { at, name: "the start of the ride", metres: walks.start.distance_m, extra: "", first: "", reached: "At the start of the ride. Ride on." }
+      : null;
+  const finish: TripWords | null = walks.end
+    ? {
+        shown: `The ride ends here. Walk your bike ${formatDistance(walks.end.distance_m)} to your destination.`,
+        spoken: `The ride ends here. Walk your bike ${spokenDistance(walks.end.distance_m)} to your destination.`,
+      }
+    : null;
+  return { approach, finish, departure: null, rest: null, asPlanned: true };
+}
+
+/** What comes either side of the line on a Bikeshare or transit plan, or a plain ride's walk-in; null for any other route. */
 export function rideTripOf(route: RouteResponse, points: readonly LonLat[]): RideTrip | null {
-  return bikeshareTrip(route) ?? transitTrip(route, points.length > 0 ? points[points.length - 1] : null);
+  return bikeshareTrip(route) ?? transitTrip(route, points.length > 0 ? points[points.length - 1] : null) ?? walkInTrip(route);
 }
 
 /** Whether the panel offers Ride the rest: a riding leg after transit, not known to be too long to ride here. */
@@ -253,7 +275,7 @@ export function rideLegOf(
 ): { points: LonLat[]; loop: boolean; preset: PresetId; trip: RideTrip | null } {
   const trip = rideTripOf(route, points);
   const line = route.geometry.coordinates as LonLat[];
-  if (!trip || line.length < 2) return { points, loop, preset: route.preset, trip };
+  if (!trip || trip.asPlanned || line.length < 2) return { points, loop, preset: route.preset, trip };
   // Bikeshare + transit's share bike is a classic one ("take a classic bike").
   const ebike = bikeshareOf(route)?.bike === "ebike";
   return { points: [line[0], line[line.length - 1]], loop: false, preset: ebike ? "ebike" : "default", trip };

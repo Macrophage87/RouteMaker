@@ -430,6 +430,8 @@ DIVIDED_NORTH_ID = 1000
 DIVIDED_SOUTH_ID = 1001
 ONE_WAY_ID = 1002
 SEPARATE_ROAD_ID = 700
+CIRCLE_WALKWAY_ID = 1100
+CIRCLE_CROSSING_ID = 1101
 BESIDE_TRAIL_ID = 701
 
 
@@ -474,6 +476,11 @@ def build_dials_extract(path: Path, singletrack_tags: dict[str, str] | None = No
             20: (-77.05977, 38.920),
             21: (-77.0620, 38.920),
             22: (-77.0620, 38.925),
+            # A walkway inside Dupont Circle and the crossing from its edge to the
+            # street outside (`routemaker.circleparks`).
+            23: (-77.0436, 38.9097),
+            24: (-77.0432, 38.9097),
+            25: (-77.0424, 38.9097),
         }
         for node_id, (lon, lat) in nodes.items():
             writer.add_node(
@@ -546,6 +553,8 @@ def build_dials_extract(path: Path, singletrack_tags: dict[str, str] | None = No
             DIVIDED_NORTH_ID: ([17, 18], {**divided_avenue}),
             DIVIDED_SOUTH_ID: ([19, 20], {**divided_avenue}),
             ONE_WAY_ID: ([21, 22], {**divided_avenue, "name": "One Way Street"}),
+            CIRCLE_WALKWAY_ID: ([23, 24], {"highway": "footway"}),
+            CIRCLE_CROSSING_ID: ([24, 25], {"highway": "footway", "footway": "crossing"}),
         }
         for way_id in sorted(ways):
             node_ids, tags = ways[way_id]

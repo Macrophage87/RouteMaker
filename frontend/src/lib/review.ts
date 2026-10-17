@@ -9,10 +9,11 @@
  * Pure apart from the fetches, so the words, the sorting and the requests are tested without a browser.
  */
 import { call } from "./suggestions.ts";
+import { streetViewUrl } from "./roadInfo.ts";
 
 type Fetch = typeof fetch;
 
-export type QueueKey = "rebuild" | "disagreement" | "sidepath" | "narrow_rural" | "works_closure" | "rematch" | "painted_lane";
+export type QueueKey = "rebuild" | "disagreement" | "sidepath" | "narrow_rural" | "works_closure" | "rematch" | "painted_lane" | "dc_no_bike";
 /** Review's own lists: its queues, then the reviews that were in Settings. */
 export type ListKey = QueueKey | "suggestions" | "hazards" | "closures";
 export type Decision = "accept" | "reject" | "set";
@@ -46,6 +47,8 @@ export interface Ruling {
   id: number;
   queue: QueueKey;
   osm_way_id: number;
+  /** The lead way of the stretch it was made on (every way of it was ruled together), or null. */
+  stretch: number | null;
   decision: Decision;
   step: number | null;
   reason: string;
@@ -76,8 +79,13 @@ export interface ReviewRoad {
   sources: RatingSource[];
   ratings: { label: string; value: string; source: string | null }[];
   spread: number | null;
+  /** A stretch's: every way's together (core.stress_review.group_stretches). */
   length_m: number;
   length: string;
+  /** The ways the row is: a stretch of one road between major junctions with one change, or one way alone. A ruling
+   * on the row is a ruling on each. */
+  ways: number[];
+  pieces: number;
   aadt: number | null;
   bbox: [number, number, number, number] | null;
   geometry: { type: string; coordinates: unknown } | null;
@@ -130,6 +138,7 @@ export const LISTS: { key: ListKey; label: string }[] = [
   { key: "works_closure", label: "Industrial-area closures" },
   { key: "rematch", label: "Overrides not re-matched" },
   { key: "painted_lane", label: "Painted lanes, agency against formula" },
+  { key: "dc_no_bike", label: "DC ways closed to bikes" },
   { key: "suggestions", label: "Rider suggestions" },
   { key: "hazards", label: "Mass Ride hazard reports" },
   { key: "closures", label: "Closure reports" },
@@ -145,9 +154,25 @@ export function isQueue(key: ListKey): key is QueueKey {
 export function decisionLabel(queue: QueueKey, decision: Decision): string {
   if (decision === "set") return "Set LTS";
   if (queue === "rebuild") return decision === "accept" ? "Keep new" : "Keep old";
-  if (queue === "works_closure") return decision === "accept" ? "Keep closed" : "Reopen";
+  if (queue === "works_closure" || queue === "dc_no_bike") return decision === "accept" ? "Keep closed" : "Reopen";
   if (queue === "disagreement") return "Keep current";
   return decision === "accept" ? "Accept" : "Reject";
+}
+
+/** A road's own ruling button (the owner, 2026-10-17: "use a keep old and keep new, put the current LTS there so it's
+ * easier to see"): a rebuild's names the level each keeps, "Keep old: LTS 2", "Keep new: Avoid"; the rest as
+ * decisionLabel. The batch's buttons keep decisionLabel's, the selected roads' levels being their own. */
+export function rulingLabel(road: Pick<ReviewRoad, "queue" | "old_step" | "old_closed" | "new_step" | "new_closed">, decision: Decision): string {
+  const words = decisionLabel(road.queue, decision);
+  if (road.queue !== "rebuild" || decision === "set") return words;
+  const level = decision === "accept" ? stepText(road.new_step, road.new_closed) : stepText(road.old_step, road.old_closed);
+  return level === "—" ? words : `${words}: ${level}`;
+}
+
+/** Google Street View at the road's own point (the server's, on the line), as the road panel links it; null with none. */
+export function roadStreetViewUrl(road: Pick<ReviewRoad, "point">): string | null {
+  const p = road.point;
+  return Array.isArray(p) && p.length === 2 && p.every((n) => typeof n === "number" && Number.isFinite(n)) ? streetViewUrl([p[0], p[1]]) : null;
 }
 
 /** A level in a few characters: "LTS 2.5", "Avoid". */
@@ -169,6 +194,20 @@ export function progressText(reviewed: number, total: number): string {
 export function roadHeading(road: Pick<ReviewRoad, "name" | "osm_way_id" | "area" | "kind_label">): string {
   const name = road.name || `Unnamed way ${road.osm_way_id}`;
   return `${name}${road.area ? `, ${road.area}` : ""}: ${road.kind_label}`;
+}
+
+/** "3 road pieces" for a stretch of more than one way, else "". */
+export function piecesText(road: Pick<ReviewRoad, "pieces">): string {
+  return road.pieces > 1 ? `${road.pieces.toLocaleString("en-US")} road pieces` : "";
+}
+
+/** A row's accessible name (the road's button): its name first, as shown, then how many pieces, its length (miles
+ * first, kilometres in brackets) and its change: "Oak Street, 3 road pieces, 0.32 mi (0.52 km): LTS 2 to LTS 4". */
+export function roadRowLabel(road: Pick<ReviewRoad, "name" | "osm_way_id" | "queue" | "kind_label" | "reason" | "length" | "pieces">): string {
+  const name = road.name || `Way ${road.osm_way_id}`;
+  const pieces = piecesText(road);
+  const change = road.queue === "rebuild" ? road.kind_label : road.reason || road.kind_label;
+  return `${name}${pieces ? `, ${pieces}` : ""}, ${road.length}${change ? `: ${change}` : ""}`;
 }
 
 /** Cars a day in US style, or "No count". */
@@ -218,7 +257,7 @@ export function sortRoads(roads: readonly ReviewRoad[], key: SortKey, ascending:
  * with a dash pattern of its own as well, so no list is told by its colour alone (the toggles beside the map show
  * both). Drawn with a light halo, above the stress lines.
  */
-export const QUEUE_STYLE: Record<QueueKey, { colour: string; colourName: string; dash: number[] | null; pattern: string }> = {
+export const QUEUE_STYLE: Record<QueueKey, { colour: string; colourName: string; dash: number[] | null; pattern: string; halo?: string }> = {
   rebuild: { colour: "#0072B2", colourName: "blue", dash: null, pattern: "solid" },
   disagreement: { colour: "#D55E00", colourName: "vermilion", dash: null, pattern: "solid" },
   narrow_rural: { colour: "#009E73", colourName: "green", dash: [2, 1], pattern: "long dashes" },
@@ -226,9 +265,11 @@ export const QUEUE_STYLE: Record<QueueKey, { colour: string; colourName: string;
   works_closure: { colour: "#56B4E9", colourName: "sky blue", dash: [3, 1, 1, 1], pattern: "dash and dot" },
   rematch: { colour: "#E69F00", colourName: "orange", dash: [0.5, 1], pattern: "dots" },
   painted_lane: { colour: "#000000", colourName: "black", dash: [4, 1, 1, 1, 1, 1], pattern: "dash and two dots" },
+  // Yellow is near the light basemap, so its halo is dark (about 1.2:1 on white otherwise).
+  dc_no_bike: { colour: "#F0E442", colourName: "yellow", dash: [5, 3], pattern: "very long dashes", halo: "#333333" },
 };
 
-export const QUEUES: QueueKey[] = ["rebuild", "disagreement", "narrow_rural", "sidepath", "works_closure", "rematch", "painted_lane"];
+export const QUEUES: QueueKey[] = ["rebuild", "disagreement", "narrow_rural", "sidepath", "works_closure", "rematch", "painted_lane", "dc_no_bike"];
 
 /**
  * What Review's map shows of the view (GET /api/review/map): the roads of the lists switched on inside it, up to the

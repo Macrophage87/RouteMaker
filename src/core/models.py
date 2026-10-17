@@ -2102,6 +2102,7 @@ class ReviewItem(models.Model):
         WORKS_CLOSURE = "works_closure", "Industrial-area closures"
         REMATCH = "rematch", "Overrides that did not re-match"
         PAINTED_LANE = "painted_lane", "Painted lanes on wide two-way roads"
+        DC_NO_BIKE = "dc_no_bike", "DC ways closed to bicycles"
 
     queue = models.CharField(max_length=16, choices=Queue.choices)
     # The build the rebuild changes are of; "" on the other queues.
@@ -2133,6 +2134,15 @@ class ReviewItem(models.Model):
     # A digest of what the road was listed for (its level, access, rule and ratings, or the
     # report's row): an Accept outside the rebuild's changes stands only while it is the same.
     inputs = models.CharField(max_length=32, blank=True, default="")
+    # A stretch (`stress_review.group_stretches`; the owner, 2026-10-17: "for review, merge
+    # stretches. Go at least from major intersection to major intersection"): the ways of one
+    # road joined end to end with the same change, between major junctions, listed as one row.
+    # `stretch` is its lead way (the longest), on the lead and every other way of it; null on a
+    # way listed alone. The lead's `ways` lists them all, and its length, score and lines are the
+    # stretch's; its point stays its own. Each way keeps its own row, so a ruling is still
+    # written a way.
+    stretch = models.BigIntegerField(null=True, blank=True)
+    ways = models.JSONField(default=list, blank=True)
     computed_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
@@ -2146,6 +2156,7 @@ class ReviewItem(models.Model):
             models.Index(fields=["queue", "build_id", "kind"], name="review_item_kind"),
             models.Index(fields=["queue", "-score"], name="review_item_score"),
             models.Index(fields=["queue", "-computed_at"], name="review_item_computed"),
+            models.Index(fields=["queue", "build_id", "stretch"], name="review_item_stretch"),
         ]
 
     def __str__(self) -> str:
@@ -2189,6 +2200,9 @@ class ReviewRuling(models.Model):
     )
     # The item's `inputs` when it was ruled on: an Accept lapses when a build changes them.
     inputs = models.CharField(max_length=32, blank=True, default="")
+    # The lead way of the stretch the ruling was made on (`ReviewItem.stretch`): every way of it
+    # was ruled together, and Undo undoes them together. Null on a way ruled alone.
+    stretch = models.BigIntegerField(null=True, blank=True)
 
     class Meta:
         db_table = "review_ruling"

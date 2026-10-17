@@ -1532,6 +1532,18 @@ class BikeshareWalkOut(Schema):
     to: str = Field(description="Where it goes: a dock's name, or `your destination`.")
 
 
+class WalkInOut(Schema):
+    """The walks at a route's ends where the ride stops short of the point asked (the
+    owner, 2026-10-17: a memorial a bike is walked through; `routing.walk_in`)."""
+
+    start: BikeshareWalkOut | None = Field(
+        default=None, description="From the start asked to where the ride begins."
+    )
+    end: BikeshareWalkOut | None = Field(
+        default=None, description="From where the ride ends to the end asked."
+    )
+
+
 class BikeshareFeeOut(Schema):
     name: str
     price: str = Field(description="As the operator publishes it, a decimal string.")
@@ -1943,6 +1955,7 @@ class RouteBody(Schema):
     # without a second request and the merged sentences are worded in one place.
     description_overview: list[DescriptionEntryOut] | None = None
     moved_points: list[MovedPointOut] = Field(default_factory=list)
+    walk_in: WalkInOut | None = None
     # The Avoid-rated junctions it passes, in route order (FOLLOWUP-ISECT-AVOID, 307-310),
     # and the notice the panel shows first and announces (335). Additive: empty and null
     # where it passes none, which is nearly always (the list ships empty).
@@ -7215,6 +7228,7 @@ REVIEW_QUEUES = Literal[
     "works_closure",
     "rematch",
     "painted_lane",
+    "dc_no_bike",
 ]
 
 
@@ -7440,7 +7454,8 @@ def review_rule(request, body: ReviewRulingIn):
     except stress_edits.EditRefused as refusal:
         return _edit_refusal(request, refusal)
     generation = max((r.edit.generation for r in made if r.edit_id), default=None)
-    count = len(made)
+    # A road a stretch (every way of it is ruled, each its own row) or a way alone.
+    count = len({r.stretch or r.osm_way_id for r in made})
     message = f"{count} road{'s' if count != 1 else ''} ruled" + (
         f"; {len(refused)} could not be: {refused[0]['error']}" if refused else "."
     )

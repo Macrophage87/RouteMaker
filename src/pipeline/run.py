@@ -37,8 +37,10 @@ from typing import TypeVar
 from routemaker import (
     agency_lts,
     agency_roads,
+    bike_bans,
     bike_lanes,
     cbd,
+    circleparks,
     corridors,
     divided,
     facility,
@@ -433,8 +435,9 @@ class ReferenceData:
     # OSM's smoothness reading, as before, and the load logs that it is absent.
     pavement_blocks: tuple[pavement.Block, ...] = ()
     # Agency bicycle stress layers (`pipeline.agency_ratings`, v0.7.0), from
-    # `agency-lts.json`: each record's line and its level. Optional like
-    # `roadway.json`: without it every way keeps the classifier's tier.
+    # `agency-lts.json`: each record's line and its level. Required by the weekly
+    # rebuild (`RebuildContext.require_agency_lts`): v0.8.0 was built without it and
+    # every way kept the classifier's tier unnoticed. Optional for other callers.
     agency_lts_features: tuple[conflation.RoadFeature, ...] = ()
     agency_lts_ratings: dict = field(default_factory=dict)
     # Scenic designations from agency lines (`pipeline.scenic_layer`, v0.8.0):
@@ -452,6 +455,7 @@ class ReferenceData:
         ways: Sequence[extract.Way] = (),
         *,
         checked_in_crossings: Path | None = None,
+        require_agency_lts: bool = False,
     ) -> ReferenceData:
         """Read the three files; with `checked_in_crossings`, refuse a stale copy.
 
@@ -462,6 +466,10 @@ class ReferenceData:
         parsed JSON, so re-indenting is not a difference and any value is - or
         the load is refused with the command that fixes it. None skips the
         check, for callers that install their own synthetic rows.
+
+        `require_agency_lts` refuses an absent or empty `agency-lts.json`, or one
+        lacking an approved agency (`agency_ratings.load`); the weekly task passes it
+        unless `REBUILD_ALLOW_NO_AGENCY_LTS` is set.
         """
         urban = directory / "urban-areas.json"
         crossings = directory / "crossings.json"
@@ -557,7 +565,9 @@ class ReferenceData:
             **dict(
                 zip(
                     ("agency_lts_features", "agency_lts_ratings"),
-                    agency_ratings.load(directory / agency_ratings.FILE_NAME),
+                    agency_ratings.load(
+                        directory / agency_ratings.FILE_NAME, required=require_agency_lts
+                    ),
                     strict=True,
                 )
             ),
@@ -636,6 +646,11 @@ class RebuildContext:
     # the weekly task passes `settings.REBUILD_CROSSINGS_FIXTURE`. Not a
     # settings default because every test context installs synthetic rows.
     checked_in_crossings: Path | None = None
+    # Refuse the rebuild without every approved agency's ratings in
+    # `agency-lts.json` (`agency_ratings.load`). False, the default, only warns; the
+    # weekly task passes `not settings.REBUILD_ALLOW_NO_AGENCY_LTS`. Not a settings
+    # default because every test context installs synthetic reference rows.
+    require_agency_lts: bool = False
     staging_schema: str = field(default_factory=lambda: _setting("SEGMENT_SCHEMA_STAGING"))
     tiles_dir: Path = field(default_factory=lambda: _setting("TILES_DIR"))
     elevation_dir: Path = field(default_factory=lambda: _setting("ELEVATION_DIR"))
@@ -807,6 +822,8 @@ class RebuildContext:
     # The ways an approved access override wrote a bicycle key on (APPLY_OVERRIDES):
     # inside a military area, only these reopen by evidence (OWNER-DECISIONS 330, 437).
     bicycle_override_ways: frozenset[int] = frozenset()
+    # The circle parks' walkways opened to bicycles (`routemaker.circleparks`).
+    circle_park_ways: set[int] = field(default_factory=set)
     # Open networks inside a base that meet the outside network at two or more points
     # for no listed reason (`restricted_areas.through_networks`); VALIDATE_SEGMENTS
     # refuses any.
@@ -2035,6 +2052,7 @@ def build_handlers(
             context.reference_dir,
             context.ways,
             checked_in_crossings=context.checked_in_crossings,
+            require_agency_lts=context.require_agency_lts,
         )
 
     def ensure_elevation() -> None:
@@ -2656,6 +2674,13 @@ def build_handlers(
             stress, stress_missing = overrides.apply_stress(context.stress_by_way, rows)
             jurisdiction, jurisdiction_missing = overrides.apply_jurisdiction(context.ways, rows)
             surfaces, surface_missing = overrides.apply_surface(context.ways_by_id, rows)
+            # The circle parks' walkways, after the overrides so a reviewed bicycle
+            # value stands (`routemaker.circleparks`, owner 2026-10-17).
+            context.circle_park_ways = circleparks.open_ways(context.ways)
+            logger.info(
+                "%d walkways and crossings of DC's circle parks opened to bicycles",
+                len(context.circle_park_ways),
+            )
         except overrides.OverrideRefused as refused:
             # The same door as the unhandled kind above and it has to close the
             # same way: an approved row asking for something an override may not
@@ -2865,6 +2890,7 @@ def build_handlers(
             works=works_closed,
         )
         context.no_bicycle = nobike.reasons
+        write_bike_bans(placed, areas[restricted_areas.PARK])
         context.walk_bike = nobike.walk_bike
         context.destination_only = nobike.destination_only
         context.mtb_only = nobike.mtb_only()
@@ -2915,6 +2941,40 @@ def build_handlers(
             dict(sorted(nobike.counts().items())),
             len(nobike.walk_bike),
             len(nobike.destination_only),
+        )
+
+    def write_bike_bans(placed, parks) -> None:
+        """`dc-bike-bans.csv`, the ways in the District a bicycle is kept off, for
+        Review's "DC no-bike ways" queue (`routemaker.bike_bans`; the owner, 2026-10-17)."""
+        dc = bike_bans.dc_polygons()
+        in_park = restricted_areas.ways_inside(
+            placed, parks, lambda tags: tags.get("highway") in bike_bans.CLASS_CLOSED_HIGHWAY
+        )
+        listed = []
+        for way in context.ways:
+            why = bike_bans.reason(
+                way.tags, context.no_bicycle.get(way.osm_id), way.osm_id in in_park
+            )
+            if why is None or not bike_bans.inside(way.coordinates, dc):
+                continue
+            listed.append(
+                bike_bans.Listed(
+                    way.osm_id,
+                    way.tags.get("highway", ""),
+                    way.tags.get("name", ""),
+                    facility._length_m(way.coordinates),
+                    why,
+                )
+            )
+        write_reports(
+            context.work_dir,
+            {bike_bans.REPORT_NAME: bike_bans.report_csv(listed)},
+            "DC no-bike ways",
+        )
+        logger.info(
+            "DC no-bike ways listed for Review: %d ways, %s",
+            len(listed),
+            dict(sorted(Counter(row.reason for row in listed).items())) or "none",
         )
 
     def routing_tags(way: extract.Way, variant: variants.Variant) -> dict[str, str]:

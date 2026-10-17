@@ -17,6 +17,8 @@ import { ICON_PATHS, type IconName } from "./iconPaths.ts";
 /** The button's visible words and the name it is heard by (the visible "311" is in it). */
 export const RIDE_311_TEXT = "311";
 export const RIDE_311_NAME = "Report to DC 311";
+/** The menu's last button: the full report, to copy, open DC 311 online or write a note first. */
+export const RIDE_311_MORE = "Write a full report";
 
 /** Shown only while the rider's place on the route is inside DC, and on the route (off it, there is no place to report). */
 export function ride311Shown(state: { off: boolean; progressM: number | null; insideDc: (progressM: number) => boolean }): boolean {
@@ -70,6 +72,7 @@ export function Ride311Menu({
   headingRef,
   onPick,
   onClose,
+  onMore,
 }: {
   id: string;
   open: boolean;
@@ -77,6 +80,8 @@ export function Ride311Menu({
   headingRef?: Ref<HTMLHeadingElement>;
   onPick: (kind: ReportKind) => void;
   onClose: () => void;
+  /** The full report (copy, DC 311 online, a note first): Ride mode's bottom panel no longer shows it until asked. */
+  onMore?: () => void;
 }): ReactElement {
   return h(
     "div",
@@ -95,5 +100,6 @@ export function Ride311Menu({
         h("li", { key: k.kind }, h("button", { type: "button", className: "ride-311-kind", onClick: () => onPick(k.kind) }, icon(KIND_ICON[k.kind]), k.label)),
       ),
     ),
+    onMore ? h("button", { type: "button", className: "secondary ride-311-more", onClick: onMore }, RIDE_311_MORE) : null,
   );
 }
