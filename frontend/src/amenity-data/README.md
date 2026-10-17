@@ -13,6 +13,7 @@ the repository's `.gitignore` ignores every directory of that name.
 | `water-restrooms.json` | public water (drinking fountains and taps; untreated springs, wells and taps), public restrooms (flush, portable or pit, type not mapped), public bike repair stands, and bike shops (for Go's Repair chip only) in the coverage box | OpenStreetMap, via the project's own extract, by `scripts/build_water_restrooms.py`; plus the open units of `throne-restrooms.json` | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)" |
 | `food.json` | places to eat (restaurants, fast food, cafes, ice cream, pubs, beer gardens, food courts, farm stands and markets) in the coverage box, for the planner's Find food search | OpenStreetMap, via the project's own extract, by `scripts/build_food.py` | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)" |
 | `places.json` | places to see (museums, historic sites, lighthouses, gardens, viewpoints, markets, zoos, waterfalls and peaks, bridges, breweries and wineries) in the coverage box, for Plan's Places to see tab, Go's Sights and the Places to see layer | OpenStreetMap, via the project's own extract, by `scripts/build_places.py` | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)" |
+| `trail-miles.json` | trail mile markers (posted figures, each with its named trail) and a line from mile 0 for each long trail whose mile 0 is known (its own posts, or a short table of known trails), for the 311 report, "Where am I?", the road panel and the markers on the map | OpenStreetMap, via the project's own extract, by `scripts/build_trail_miles.py` | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)"; the tap card says "From OpenStreetMap." |
 | `throne-restrooms.json` | Throne smart restrooms (Throne Labs) in DC, Maryland and Virginia: a hand list, read by the build, not by the front end | city, county, parks and news pages, each unit with its URL and the date read; positions from the US Census Bureau geocoder (public domain) for the address each source gives | facts with sources; no third-party database copied (never Google Maps) | none needed; a list unit's card says "From Throne Labs and city sources" |
 
 What counts as drinking or untreated water, how a restroom's type is read
@@ -252,9 +253,10 @@ One place per line, short keys:
 | `id` | OSM element, `n` node, `w` way or `r` relation, then its id |
 | `x`, `y` | longitude, latitude (5 decimals; a way or relation at its outer ring's mean) |
 | `k` | category: `museum`, `historic`, `lighthouse`, `garden`, `viewpoint`, `market`, `zoo`, `nature`, `bridge`, `drink` |
-| `n` | `name` |
+| `n` | `name`; a covered bridge's `bridge:name` where it has one |
 | `h` | `opening_hours`, as mapped |
 | `web` | `website` (or `contact:website`), only an `http(s)://` address |
+| `cv` | `1` on a covered bridge (`bridge=covered`), left out otherwise: the Scenic layer (v0.8.0, `src/lib/scenicLayer.ts`) draws the covered bridges and the viewpoints from this file |
 
 ### Status
 
@@ -269,3 +271,76 @@ It prints the places by category, how many were left out inside airports,
 military sites and prisons, and the file's size. Record the counts, size and
 sha256 here and commit the file. `test_bundled_file_is_well_formed` in
 `tests/test_build_places.py` checks it.
+
+## Trail mile markers
+
+`trail-miles.json` is the trail mile markers (`src/lib/trailMiles.ts`; OWNER-DECISIONS
+465: "some trails like the MBT and CCT should have mile markers as they can go
+a distance without crossing a road"; Stephen, 2026-10-16: "Make sure the mile
+markers are added to 311 when built"). The 311 report, "Where am I?" and the
+road panel name a trail's nearest posted marker, or its computed mile, worked
+out on the device; the map draws the markers from zoom 14 in. What counts as a
+marker and as a trail, how a trail's line is found and which end is mile 0 is
+in the docstring of `scripts/build_trail_miles.py`. App fetches it once the map
+reaches zoom 14, a ride starts or the road panel opens; it is precached (not a
+lazy asset), so a ride has it offline.
+
+Two lists, one row per line, short keys:
+
+| Key | Meaning |
+| --- | --- |
+| `trails[].n` | the trail's OSM `name` |
+| `trails[].s` | the metres at the line's first point: from the posts where they fit (one or more), else 0 at a known trail's mile-0 end |
+| `trails[].l` | the line from mile 0, `[lon, lat]` pairs, simplified to about 30 ft (10 m), 5 decimals |
+| `markers[].id` | the OSM node, `n` then its id |
+| `markers[].x`, `y` | longitude, latitude (5 decimals) |
+| `markers[].t` | the name of the trail it stands on (the nearest named trail within 80 ft, 25 m) |
+| `markers[].m` | the posted figure, in miles |
+
+### Status
+
+Generated on the build host on 2026-10-16, from the 2026-10-09 extract the
+live stack builds from (`<DATA_ROOT>/extracts/source.osm.pbf`): 10 trail lines
+over 2 miles and 52 markers on 5 trails; 32 left out as not on a named trail
+and 1 as nearer a main road than the trail (the Washington, Baltimore &
+Annapolis Trail's mile 0, `n8960887982`, 49 ft (15 m) from the trail; its line
+still starts at mile 0 from the other posts). No interstate's posts (I-66,
+I-495, I-270) are among the markers. 25,052 bytes, sha256
+`81765e6da213ecc5cb3bcd44db35e26bf630b9b542bcd1bf57eabd2a676cc341`.
+
+| Trail | Markers | Lines (mile at the first point) |
+| --- | --- | --- |
+| Chesapeake and Ohio Canal Trail | 44 | 4 (0.33 at Georgetown; 22.1, 54.8, 93.4 from posts) |
+| Torrey C. Brown Trail | 3 | 1 (0, from posts) |
+| Washington, Baltimore & Annapolis Trail | 3 | 2 (0, from posts) |
+| Chesapeake and Ohio Canal Towpath | 1 | 1 (19.6, from its post) |
+| Washington & Old Dominion Trail | 1 | 1 (0.10 at Shirlington) |
+| Capital Crescent Trail | 0 | 1 (0 at Georgetown, 7.5 mi to Bethesda) |
+
+The Metropolitan Branch Trail has no line yet: in OSM its Union Station piece
+(1.6 mi) and its Brookland piece (1.8 mi) are about 2,500 ft (760 m) apart,
+near 38.926 to 38.932 N, more than the quarter-mile join, and each is under
+2 miles. The towpath named "Chesapeake and Ohio Canal Towpath" from about
+mile 9 to 13 (3.9 mi, near Great Falls) has no posts and is not at mile 0, so
+it has no line either.
+
+To rebuild, from the repository root on that host:
+
+    .venv311/bin/python scripts/build_trail_miles.py \
+        --pbf <DATA_ROOT>/extracts/source.osm.pbf
+
+It prints the trail lines kept, the markers and the trails they are on (the
+eight with most), how many were left out as not on a named trail or as a main
+road's milepost, and the file's size. Over 600,000 bytes it fails (exit 1) and
+writes nothing, as the front end keeps the file offline. Lines are drawn only
+from cycleways and `bicycle=yes`/`designated` ways (and any way of a table
+trail), and only where mile 0 is known: the trail's own posts, or the script's
+`MILE_ZERO` table (the C&O Canal towpath and the Capital Crescent Trail from
+Georgetown, the Metropolitan Branch Trail from Union Station, the W&OD from
+Shirlington). Check that those four are there and their mile 0 is the right
+end, and that no road's posts (I-66, I-495) are on a trail; record the counts,
+size and sha256 here and commit the file. Add a trail to `MILE_ZERO` only once
+its posts' numbering is checked (the Mount Vernon and Custis trails are not
+yet).
+`test_bundled_file_is_well_formed` in `tests/test_build_trail_miles.py` checks
+it. No map rebuild is needed: the tiles and the routing graph do not change.

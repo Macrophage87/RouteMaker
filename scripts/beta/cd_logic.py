@@ -131,8 +131,8 @@ STOP_PREFIXES: Sequence[tuple] = (
 # with a character no file in the repository uses: the gate cannot be sure what it is, so it
 # stops (it errs closed). The repository's own paths use only these characters.
 PLAIN_PATH = re.compile(r"[A-Za-z0-9._/+@=,~-]+")
-# Paths that never affect the server (documentation, reports, CI): ignored entirely.
-INERT_PREFIXES = ("docs/", "reports/", ".github/", "fixtures/")
+# Paths that never affect the server (documentation, reports, CI, the phone app): ignored entirely.
+INERT_PREFIXES = ("docs/", "reports/", ".github/", "fixtures/", "mobile/")
 INERT_SUFFIXES = (".md",)
 OFFROAD_CONFIG = "valhalla/valhalla-offroad.json"
 # The routers behind the compose profile `offroad`, never started on the beta: the off-road

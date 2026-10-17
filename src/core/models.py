@@ -2101,6 +2101,7 @@ class ReviewItem(models.Model):
         NARROW_RURAL = "narrow_rural", "Narrow rural roads with no posted speed"
         WORKS_CLOSURE = "works_closure", "Industrial-area closures"
         REMATCH = "rematch", "Overrides that did not re-match"
+        PAINTED_LANE = "painted_lane", "Painted lanes on wide two-way roads"
 
     queue = models.CharField(max_length=16, choices=Queue.choices)
     # The build the rebuild changes are of; "" on the other queues.

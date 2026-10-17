@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- allowBackup false: the site's data on this phone (a Home, kept routes, ride settings, the site
+         address) never goes to a cloud backup; dataExtractionRules exclude everything from Android 12+'s
+         cloud backup and device-to-device transfer too, which allowBackup alone does not stop there.
+         Positions are never stored at all (frontend/src/lib/rideWatch.ts). -->
+    <application
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <!-- The launcher: opens the site at once when an address is kept on this phone, else asks for it
+             (no build carries one). Its long-press shortcut "Site address" changes it. -->
+        <activity
+            android:name=".SetupActivity"
+            android:label="@string/app_name"
+            android:theme="@style/AppTheme.Setup"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="false" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+
+        <!-- The background-geolocation plugin's service is declared exported; only this app binds it. -->
+        <service
+            android:name="com.equimaps.capacitor_background_geolocation.BackgroundGeolocationService"
+            android:exported="false"
+            tools:replace="android:exported" />
+
+        <!-- @capacitor/local-notifications re-posts stored notifications after a reboot; the cue notification
+             belongs to a running ride only, so the receiver (and its boot permission, below) is removed. -->
+        <receiver
+            android:name="com.capacitorjs.plugins.localnotifications.LocalNotificationRestoreReceiver"
+            tools:node="remove" />
+    </application>
+
+    <!-- Permissions: the network for the site, the location for a ride, and notifications (Android 13+)
+         for the ride's notifications. Nothing else (mobile/README.md). -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- The location keeps coming with the screen locked through a foreground service of type location,
+         started by Start ride and stopped by End ride; no ACCESS_BACKGROUND_LOCATION ("all the time"). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Merged in by @capacitor/local-notifications for scheduled alarms and reboots, which the app never
+         uses: the cue notification is shown at once and cleared at End ride. No plugin here takes a wake
+         lock (checked in their sources for 8.3.1, 8.0.2 and 1.2.26). -->
+    <!-- The plugin asks for a GPS; the network's location does for a phone without one (and the app still
+         opens the site there), so it is not required to install. -->
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" tools:replace="android:required" />
+
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" tools:node="remove" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" tools:node="remove" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" tools:node="remove" />
+</manifest>

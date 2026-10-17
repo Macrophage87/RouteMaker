@@ -389,9 +389,10 @@ export function GoSheet({
             />
           )}
         </div>
-        {/* One short line, and only while there is no Home and its sheet is shut. */}
+        {/* One short line, and only while there is no Home and its sheet is shut: the Home chip's description, said
+            with it and kept out of sight, so the sheet fits one phone screen (the owner, 2026-10-17). */}
         {!places.homeReady && !homeShown && (
-          <p id={homeHint} className="hint go-home-hint">
+          <p id={homeHint} className="visually-hidden go-home-hint">
             {HOME_NOT_SET}
           </p>
         )}

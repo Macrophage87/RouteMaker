@@ -164,9 +164,16 @@ import { FoodFinder } from "./lib/foodFinder.ts";
 // /assets/ also lets the service worker leave it out of the precache (swCore.mjs LAZY_ASSET).
 import foodUrl from "./amenity-data/food.json?url&no-inline";
 import placesUrl from "./amenity-data/places.json?url&no-inline";
+// trail-miles.json too, until scripts/build_trail_miles.py fills it; precached (not LAZY_ASSET), as a ride's
+// 311 report and "Where am I?" read it in a dead spot.
+import trailMilesUrl from "./amenity-data/trail-miles.json?url&no-inline";
+import { loadTrailMiles, MILE_MIN_ZOOM, type TrailMiles } from "./lib/trailMiles.ts";
+import { TrailMilesOverlay } from "./app/trailMilesOverlay.ts";
 import { loadRepair, nearestRepair, repairFoundSaid, repairTitle, REPAIR_NO_ORIGIN, REPAIR_UNAVAILABLE, type RepairNearby, type RepairPlace } from "./lib/repair.ts";
 import { loadPlaces, placesSaid, placesToSee, readPlacesLayer, savePlacesLayer, sightsForGo, PLACES_NONE, PLACES_PAGE, PLACES_UNAVAILABLE, type PlaceFilter, type SightPlace, type SightResult } from "./lib/places.ts";
 import { PlacesOverlay, PlacesSheet, RepairSheet, RepairStandsOverlay } from "./app/PlacesSheets.tsx";
+import { ScenicOverlay } from "./app/ScenicOverlay.tsx";
+import { readScenicLayer, saveScenicLayer, scenicShown, scenicStatus } from "./lib/scenicLayer.ts";
 import {
   findingSaid,
   requestNearest,
@@ -186,6 +193,7 @@ import { KEEPING_SAID, keepOffered, keepSaid, keptPlanKey, offlineRouteNotice, r
 import { askPersist } from "./lib/offlineRouteStore.ts";
 import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
 import { fetchHazards, type HazardCollection } from "./lib/massHazards.ts";
+import { visibleCentreOffset } from "./lib/visibleCentre.ts";
 import { NARROW, useLongerThan, useMinute, useNarrow, useSettled } from "./app/hooks.ts";
 import { routeLightMarks, sameLightMarks, type LightMark } from "./lib/lightTimes.ts";
 import { PointsSection, RideSection } from "./app/Planner.tsx";
@@ -530,9 +538,16 @@ export function App() {
       setPlacesData(data ?? "unavailable");
     });
   }, []);
+  // The Scenic layer (v0.8.0; lib/scenicLayer.ts): one switch in Plan's Layers, off by default, kept on this
+  // device. Its covered bridges and viewpoints are Places to see's file, fetched the first time it is shown.
+  const [scenicOn, setScenicOnState] = useState<boolean>(() => readScenicLayer());
+  const changeScenicOn = (on: boolean) => {
+    setScenicOnState(on);
+    saveScenicLayer(on);
+  };
   useEffect(() => {
-    if (placesOn) ensurePlaces();
-  }, [placesOn, ensurePlaces]);
+    if (placesOn || scenicOn) ensurePlaces();
+  }, [placesOn, scenicOn, ensurePlaces]);
   const [placesFilter, setPlacesFilter] = useState<PlaceFilter>("all");
   const [placesCount, setPlacesCount] = useState(PLACES_PAGE);
   // Bumped by each Repair, Sights or Places to see press, so the list is from where the rider is then.
@@ -746,6 +761,19 @@ export function App() {
   ridePrefsNow.current = ridePrefs;
   const ridingNow = useRef(riding);
   ridingNow.current = riding;
+  // Trail mile markers (lib/trailMiles.ts; OWNER-DECISIONS 465): fetched once the map is at the trail zooms,
+  // a ride starts or the road panel opens, and kept; a load that failed is asked again next time. No switch.
+  const [trailMiles, setTrailMiles] = useState<TrailMiles | null>(null);
+  const milesLoad = useRef(false);
+  const milesWanted = riding || roadInfo !== null || (zoom !== null && zoom >= MILE_MIN_ZOOM);
+  useEffect(() => {
+    if (!milesWanted || milesLoad.current) return;
+    milesLoad.current = true;
+    void loadTrailMiles(trailMilesUrl).then((data) => {
+      if (!data) milesLoad.current = false;
+      setTrailMiles(data);
+    });
+  }, [milesWanted]);
   const changeRidePrefs = useCallback((next: RidePrefs) => {
     // Voice turned on mid-ride: unlocked in this change's own gesture, as Start does (review RIDE-9).
     // Before a ride, Start unlocks it; nothing is said then.
@@ -1711,6 +1739,35 @@ export function App() {
   // the notice says why; Plan sets a start by hand.
   // Go's one look-up (Where to?, the Home chip and Locate), through Use my location's gate: null when
   // another look-up is under way or a later one replaced it. The fix is kept only as Use my location's is.
+  // Go centres the rider's location in the open part of the map, between Go's bar and the panel (lib/visibleCentre.ts).
+  // The panel's height, for what sits on the map just above Go's sheet (the attribution, the Beta chip; styles.css
+  // --go-sheet-h): the sheet is as tall as its content, so a fixed share of the screen left them floating.
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!panel || typeof ResizeObserver === "undefined") return;
+    const root = document.documentElement;
+    // A hidden panel (a ride) keeps the last height, so the map's corners stay where they were.
+    const observer = new ResizeObserver(() => {
+      const height = Math.round(panel.getBoundingClientRect().height);
+      if (height > 0) root.style.setProperty("--go-sheet-h", `${height}px`);
+    });
+    observer.observe(panel);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--go-sheet-h");
+    };
+  }, []);
+  // A location found before the map is ready is centred once it is (onReady).
+  const centreWhenReady = useRef<LonLat | null>(null);
+  const flyToInView = (point: LonLat, zoom: number) => {
+    const map = mapRef.current;
+    centreWhenReady.current = map ? null : point;
+    if (!map) return;
+    const bar = document.querySelector(".go-top")?.getBoundingClientRect().bottom ?? 0;
+    const panel = panelRef.current?.getBoundingClientRect() ?? null;
+    const offset = visibleCentreOffset(map.getContainer().getBoundingClientRect(), bar, panel, window.matchMedia(NARROW).matches);
+    map.flyTo({ center: point, zoom: Math.max(map.getZoom(), zoom), offset });
+  };
   const locateForGo = async (): Promise<LocateResult | null> => {
     const press = gate.begin();
     announceExtra(FINDING_LOCATION);
@@ -1752,7 +1809,11 @@ export function App() {
       if (pending) {
         clearGoPending();
         routeGoRef.current(result.fix.point, true, pending.dest, pending.name, !!pending.pressed && !pending.said, pending.vias);
-      } else announce(GO_START_SAID);
+      } else {
+        // Go opens on the rider (the owner, 2026-10-17): the location, centred above the sheet.
+        flyToInView(result.fix.point, 15);
+        announce(GO_START_SAID);
+      }
     })();
     // Once per page, when Go is first shown (locateForGo reads only refs and stable setters).
   }, [mode]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1981,7 +2042,7 @@ export function App() {
     setHere(result.fix);
     if (!insideCoverage(result.fix.point)) setNotice(LOCATION_OUTSIDE);
     else announceExtra("The map is at your location.");
-    mapRef.current?.flyTo({ center: result.fix.point, zoom: Math.max(mapRef.current.getZoom(), 15) });
+    flyToInView(result.fix.point, 15);
   };
   // A ride type chip (Go's quick three, or the Ride sheet's): as the ride type dialog picks one.
   const pickRide = (id: PresetId) => {
@@ -3726,6 +3787,9 @@ export function App() {
         markerReset={markerReset}
         accuracy={riding ? rideCircle : hereCircle}
         rider={riding && rideView?.rider ? rideView.rider : null}
+        // Go, before a destination: its start, the location found, drawn as the ride's still dot (the owner,
+        // 2026-10-17: the location centred, so it is seen). With a route its start pin marks it.
+        youDot={!riding && mode === "go" && points.length === 0 && goStart.kind === "here" ? goStart.point : null}
         follow={riding && follow && !bigText /* Big text hides the map: no camera work for it */}
         headingUp={headingUp}
         onFollowBroken={() => setFollow(false)}
@@ -3739,6 +3803,7 @@ export function App() {
         }}
         onReady={(map) => {
           mapRef.current = map;
+          if (centreWhenReady.current) flyToInView(centreWhenReady.current, 15);
           void fetchCoverage(window.location.origin).then((coverage) => {
             if (coverage && mapRef.current === map && addCoverageMask(map, coverage)) setCoverageShown(true);
           });
@@ -3784,6 +3849,9 @@ export function App() {
       />
       <RepairStandsOverlay getMap={getMap} places={Array.isArray(repairData) ? repairData : null} on={waterPrefs.on && !riding} pixelRatio={Math.min(2, Math.max(1, Math.round(window.devicePixelRatio || 1)))} />
       <PlacesOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={placesOn && !riding} />
+      <TrailMilesOverlay getMap={getMap} data={trailMiles} />
+      {/* Not in Go, and not on the Mass Ride map (lib/scenicLayer.ts scenicShown). */}
+      <ScenicOverlay getMap={getMap} places={Array.isArray(placesData) ? placesData : null} on={scenicShown(scenicOn, mode, massMap)} placesOn={placesOn && !riding} />
       <BikeshareDocksOverlay
         active={docksActive}
         getMap={getMap}
@@ -3816,6 +3884,7 @@ export function App() {
         federal={roadInfo && federalShown(preset, true) ? federalAreaAt(roadInfo.point, federalData) : null}
         climb={roadInfo && climbsOn ? climbNearSpot(climbsData, roadInfo.point, climbsFrom) : null}
         onShowClimb={showClimbCard}
+        trailMiles={trailMiles}
         onClose={closeRoadInfo}
         fallbackFocus={mapFocus}
         onStressChanged={(generation) => {
@@ -3897,6 +3966,7 @@ export function App() {
           onView={setRideView}
           onEnd={endRide}
           water={ensureWater}
+          trailMiles={trailMiles}
           keepLastRide={isStandalone()}
         />
       )}
@@ -4019,6 +4089,8 @@ export function App() {
                 rail, setRail, showMtbTrails, showTopoLines, topoReady, climbsOn, changeClimbsOn, climbsFrom, changeClimbsFrom,
                 climbsStatus, climbsAlong, openLegend: (opener: HTMLElement) => openView("legend", opener, true),
                 placesOn, changePlacesOn, placesStatus: placesData === "unavailable" ? PLACES_UNAVAILABLE : Array.isArray(placesData) && placesData.length === 0 ? PLACES_NONE : "",
+                // Plan's alone (the brief: "not in Go"); null leaves the section out of Go's Layers.
+                scenic: mode === "go" ? null : { on: scenicOn, onChange: changeScenicOn, status: scenicStatus(scenicOn, stress !== "unavailable", placesData ?? "loading") },
                 bikeshare: {
                   operators: docksOperators,
                   choices: docksChoices,
@@ -4031,6 +4103,7 @@ export function App() {
               {...{
                 nav: sheetNav, legendHeadingRef, massMap, stress, stressVisible, preset, zoom, facilitiesShown, waterPrefs,
                 waterStatus, climbsOn, climbsStatus, federalOn, federalStatus, rail,
+                scenicOn: scenicShown(scenicOn, mode, massMap),
               }}
             />
             <SuggestSheet nav={sheetNav} roadInfoAtCentre={roadInfoAtCentre} onReview={reviewOpener} />
