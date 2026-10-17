@@ -32,6 +32,7 @@ import {
   ReplanGate,
   arrivalSideWords,
   compassWord,
+  crossingWords,
   cueSpoken,
   isUnnamed,
   measureMap,
@@ -313,6 +314,19 @@ test("a turn at a red junction says Busy junction in its first warning only; now
   assert.equal(model.cues.find((c) => c.kind === "turn")?.text, "Left onto B Street.");
   // Quiet stays quiet.
   assert.deepEqual(ride(model, "quiet", 0, 2000).events.map((e) => e.phase), ["arrive"]);
+});
+
+test("a flagged turn first said at prepare (a ride started close to it) still says Busy junction", () => {
+  const model = rideModel(busyRoute("signal", "red"));
+  const turnAt = model.cues.find((c) => c.kind === "turn")!.atM;
+  const turn = ride(model, "full", turnAt - 30, turnAt + 20).events.filter((e) => e.cue?.kind === "turn");
+  assert.deepEqual(turn.map((e) => e.phase), ["prepare", "now"]);
+  assert.match(turn[0].spoken, /^In \d+ feet, left onto B Street\. Busy junction\.$/);
+});
+
+test("an unnamed busy crossing says only that it is busy", () => {
+  assert.equal(crossingWords(null, "signal"), "Busy crossing, signal.");
+  assert.equal(crossingWords(null, undefined), "Busy crossing.");
 });
 
 test("a turn at an unflagged junction is the turn and the street only", () => {
