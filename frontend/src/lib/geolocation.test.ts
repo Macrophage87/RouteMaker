@@ -649,7 +649,8 @@ test("privacy: the location state reaches only the note, the hint and the circle
     /const \[fromHere, setFromHere\] = useState<LonLat\[\]>\(\[\]\);/,
     /const hereInPlan = here !== null && points\.includes\(here\.point\);/,
     /const linkNote = linkLocationNote\(points, fromHere, myGo\.home\?\.point \?\? null\);/,
-    /note: hereInPlan && here \? approximateHint\(here\.accuracyM\) : "",/,
+    // The note, handed to Plan's From and To boxes (Plan streamline, 2026-10-17).
+    /locateNote=\{hereInPlan && here \? approximateHint\(here\.accuracyM\) : ""\}/,
     /const hereCircle = hereInPlan && here \? \{ centre: here\.point, radiusM: here\.accuracyM \} : null;/,
     // Search's bias: the point, rounded to about 1 km in searchBiasPoint, never the accuracy or the flag.
     /return searchBiasPoint\(here\?\.point, centre \? \[centre\.lng, centre\.lat\] : undefined, view\);/,
@@ -692,7 +693,8 @@ test("App: the look-up's answer is placed with the ride read after the wait and 
     /placeFix\(result, pointsRef\.current, \{ loop: loopStops\(ride\.preset, ride\.dials\.loop\), choice \}\)/,
     "the fresh points, the fresh loop flag and the choice (S3, AW3)",
   );
-  assert.match(app, /onLocate: \(choice\) => void useMyLocation\(choice\),/, "App passes the list's choice on (P6)");
+  // Plan's From and To put their box away first (Plan streamline, 2026-10-17).
+  assert.match(app, /onLocate: \(choice\) => \{\s*setChanging\(null\);\s*afterPick\.current = variant;\s*void useMyLocation\(choice\);\s*\},/, "App passes the list's choice on (P6)");
   // A press while busy is answered (AW8); a refusal is cleared and set again, so a repeat is said again (N4).
   assert.match(useMy, /if \(press === null\) \{\s*announce\(FINDING_LOCATION\);\s*return;\s*\}/);
   assert.match(
@@ -735,10 +737,11 @@ test("PlaceSearch: Enter goes through pickTarget, and the list option passes the
     // Enter's places are enterPlaces (empty for an empty box: review #5), not every place offered.
     /\} else if \(action\.kind === "pick"\) \{\s*const item = pickTarget\(active, action\.index, items, enterPlaces\);\s*if \(item === HERE\) pickHere\(\);\s*else if \(item && "destination" in item\) pick\(item\.destination, "end"\);\s*else if \(item\) pick\(item\);/,
   );
-  assert.match(body(search, "const pickHere = () => {", "};"), /locate\?\.onLocate\(choice\);\s*$/);
+  // A Plan box (From, To) passes its own choice; the others pass the list's (Plan streamline).
+  assert.match(body(search, "const pickHere = () => {", "};"), /locate\?\.onLocate\(boxChoice \?\? choice\);\s*$/);
   // The details (P2, P3, P4, P4b, P8, P9).
   assert.match(search, /const showHere = locate\?\.support\.available === true && locationMatches\(query\);/);
-  assert.match(search, /onClick=\{\(\) => \{\s*if \(locate\.support\.available\) locate\.onLocate\(\);\s*\}\}/);
+  assert.match(search, /onClick=\{\(\) => \{\s*if \(locate\.support\.available\) locate\.onLocate\(boxChoice\);\s*\}\}/);
   assert.match(
     search,
     /aria-describedby=\{!locate\.support\.available \? `\$\{id\}-locate-why` : locate\.busy \? `\$\{id\}-locate-busy` : undefined\}/,

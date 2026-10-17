@@ -172,7 +172,7 @@ You stay responsible for riding safely; the route can be wrong.
 - Keep the screen on. If the browser cannot keep it on, Ride mode says so; on an iPhone set
   Settings, Display and Brightness, Auto-Lock to Never for the ride. In the background for more
   than 10 minutes, the ride pauses; press Resume.
-- "Big text" hides the map and shows the next cue large. "End ride" goes back to the planner.
+- "Big text during a ride" (in Settings, and in the ride's own Settings) hides the map and shows the next cue large. "End ride" goes back to the planner.
 
 
 10. Installing RouteMaker, and routes for places with no signal

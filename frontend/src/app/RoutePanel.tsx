@@ -911,7 +911,8 @@ export function RouteSummary({
       {actions.savedNote}
       <div className="actions start-ride">
         <RouteActions {...actions} start={start} />
-        {startHint}
+        {/* Plan streamline (Stephen 2026-10-17): the how-to is Start's description, out of sight; the too-long line shows. */}
+        {rideable ? <div className="visually-hidden">{startHint}</div> : startHint}
       </div>
       {(profile || climbs) && (
         <Fold
