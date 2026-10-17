@@ -2615,6 +2615,18 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const you = await p.eval("(() => { const m = document.querySelector('.rider-marker').getBoundingClientRect(); const c = document.querySelector('.map').getBoundingClientRect(); const top = document.querySelector('.ride .cue-card').getBoundingClientRect().bottom; const bottom = document.querySelector('.ride .ride-controls')?.getBoundingClientRect().top ?? c.bottom; return { down: Math.round(((m.top + m.height / 2 - top) / (bottom - top)) * 100) / 100, w: Math.round(m.width) }; })()");
   check("ride: following track-up, the rider is about two thirds of the way down the map in view (under the cue card, above any bottom panel), the marker at least 26 px",
     you.down >= 0.6 && you.down <= 0.73 && you.w >= 26, JSON.stringify(you));
+  // The compass (the owner, 2026-10-17): a round button named North up at the map's top left, not pressed track-up;
+  // a press turns the map north up, and a second press back to track-up.
+  const compass = () => p.eval("(() => { const b = document.querySelector('.ride .ride-compass'); const r = b.getBoundingClientRect(); return { name: b.getAttribute('aria-label'), pressed: b.getAttribute('aria-pressed'), w: Math.round(r.width), left: Math.round(r.left), bearing: getComputedStyle(document.documentElement).getPropertyValue('--map-bearing').trim() }; })()");
+  const c0 = await compass();
+  await p.eval("document.querySelector('.ride .ride-compass').click(); true");
+  await sleep(700);
+  const c1 = await compass();
+  await p.eval("document.querySelector('.ride .ride-compass').click(); true");
+  await sleep(300);
+  const c2 = await compass();
+  check("ride: the compass is a 44 px button named North up at the map's left; a press turns the map north up, another back",
+    c0.name === "North up" && c0.pressed === "false" && c0.w >= 44 && c0.left <= 20 && c1.pressed === "true" && Number(c1.bearing) === 0 && c2.pressed === "false", JSON.stringify({ c0, c1, c2 }));
 
   // Where am I? on demand.
   // The side buttons (the owner, 2026-10-17): round icons, each named.
@@ -4906,7 +4918,7 @@ const failed = results.filter((r) => !r.ok);
 // returns early) fails here rather than passing green (the mutation review of the release).
 // The transit blocks (#108) and the Go press checks (#116) were added without raising it; they run since #127.
 // Review mode's own lists (22c2) add six.
-const EXPECTED = 655;
+const EXPECTED = 656;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

@@ -998,6 +998,10 @@ export function MapView(props: Props) {
 
     // A pan or zoom that got under way is not a long press.
     map.on("movestart", () => longPress.cancel());
+    // The map's bearing as a CSS variable, for the ride's compass (styles.css .ride-compass): no React render per frame.
+    const bearingVar = () => document.documentElement.style.setProperty("--map-bearing", `${map.getBearing()}`);
+    bearingVar();
+    map.on("rotate", bearingVar);
 
     map.on("load", () => {
       loaded.current = true;

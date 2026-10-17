@@ -6836,3 +6836,62 @@ details.fold > summary .icon {
     top: 72px;
   }
 }
+
+/* Ride mode's compass (the owner, 2026-10-17: "a minimalist compass rose"): a needle at the map's top left
+   under the cue card, turned by the map's bearing (--map-bearing, MapView), on the page's own background; a press
+   switches north up and track-up. */
+.ride .ride-compass {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  width: 48px;
+  height: 48px;
+  min-height: 48px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+}
+
+/* North up on: the ring takes the accent, as a pressed round button does. */
+.ride .ride-compass[aria-pressed="true"] {
+  border: 2px solid var(--accent);
+}
+
+.ride-compass svg {
+  transform: rotate(calc(-1deg * var(--map-bearing, 0)));
+  transition: transform 0.2s linear;
+}
+
+.ride-compass-north {
+  fill: #c0392b;
+}
+
+/* North solid, south hollow: told apart by shape as well as colour. */
+.ride-compass-south {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ride-compass svg {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .ride-compass-north {
+    fill: CanvasText;
+  }
+
+  .ride-compass-south {
+    stroke: CanvasText;
+  }
+}
