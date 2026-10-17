@@ -3001,8 +3001,12 @@ GDAL binaries; a rebuild on an image without them fails at stage one with a
 
 The commands are `curl -fsSL --retry 3 -o <file>.part <url>`, then
 `osmium merge --overwrite -f pbf <three files> -o merged.osm.pbf.part`, then
-`osmium extract --overwrite -f pbf -s smart -S types=any --bbox W,S,E,N -o
-source.osm.pbf.part merged.osm.pbf`. Everything is written to a `.part` name and
+`osmium extract --overwrite -f pbf -s smart -S types=boundary,multipolygon --bbox W,S,E,N -o
+source.osm.pbf.part merged.osm.pbf`. The clip keeps boundary and multipolygon
+relations whole and no other type: PLAN:13 writes `-S types=any`, which also
+kept every long-distance route relation touching the box whole, and the v0.8.0
+graph carried about 5,100 mi of the East Coast Greenway and the US Bicycle
+Routes from Pennsylvania, Delmarva and southwest Virginia. Everything is written to a `.part` name and
 moved into place only on success: a 1–2 GB transfer killed partway would
 otherwise leave a truncated file under the real name, and nothing downstream can
 tell a truncated PBF from a smaller region — osmium reads what is there and the
@@ -3034,7 +3038,7 @@ run would accept last week's snapshot and the map would age by a week every
 week; below it, a rebuild re-run in the same week (a retry, a hand-fired run, a
 second attempt after a validation failure) reuses what is on disk instead of
 pulling 1–2 GB again. It is also rebuilt, whatever its age, when it was made from
-other download URLs or another clip area than this deployment's (v0.7.0 added West
+other download URLs or another clip area or clip strategy than this deployment's (v0.7.0 added West
 Virginia and moved the west edge): the stage writes what it used to
 `extracts/source.made-from.json` after the clip, and an extract without that file, from
 before v0.7.0, is rebuilt once.

@@ -33,7 +33,7 @@ from django.db import connection
 from pipeline.schema import validate_schema_name
 from routemaker import agency_lts, flow, more_links, scenic
 from routemaker.describe import UNNAMED_PATH, UNNAMED_ROAD
-from routemaker.stress import USE_SIDEPATH_RULE
+from routemaker.stress import RURAL_EXPRESSWAY_PREFIX, USE_SIDEPATH_RULE
 
 # How far from the spot a way may be and still be the one the rider meant: a
 # right-click on a drawn road lands within a few metres of its centre line at
@@ -562,6 +562,11 @@ def _rule_words(rule: str) -> str:
         return "Owner-rated: a bike lane on a road this busy is LTS 4"
     if rule.startswith(USE_SIDEPATH_RULE):
         return "Avoid: riders are asked to use the side path"
+    if rule.startswith(RURAL_EXPRESSWAY_PREFIX):
+        # LTS 4.5, not Avoid (the owner, 2026-10-17: "there's often no way to avoid them").
+        posted = _SPEED.search(rule)
+        where = f", posted {posted.group(0)}" if posted else ""
+        return f"Rural highway-like road{where}: high stress, but often no way around"
     if rule.startswith("legal but avoid"):
         posted = _SPEED.search(rule)
         return "Avoid: highway-like road" + (f", posted {posted.group(0)}" if posted else "")

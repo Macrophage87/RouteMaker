@@ -746,9 +746,10 @@ def osmium_line_count() -> int:
     The collector is the thing between every flag assertion and the runbook,
     and narrowing it - `startswith("osmium merge")` in place of
     `startswith("osmium ")` - leaves every remaining assertion passing while
-    the `osmium extract` line, which carries `-s smart -S types=any` and the
-    bounding box, is checked by nothing. So the count is taken again here with
-    a regular expression rather than the same predicate.
+    the `osmium extract` line, which carries
+    `-s smart -S types=boundary,multipolygon` and the bounding box, is checked
+    by nothing. So the count is taken again here with a regular expression
+    rather than the same predicate.
     """
     total = 0
     for body in DOCUMENTS.values():
@@ -775,7 +776,7 @@ def test_the_osmium_collector_reads_an_indented_command_line() -> None:
         "synthetic.md": (
             "Under a step:\n\n```sh\n"
             "  osmium merge dc.osm.pbf md.osm.pbf --overwrite -f pbf -o merged.osm.pbf\n"
-            "\tosmium extract -s smart -S types=any --overwrite -f pbf \\\n"
+            "\tosmium extract -s smart -S types=boundary,multipolygon --overwrite -f pbf \\\n"
             "    -b -78.0,38.2,-76.02,39.72 merged.osm.pbf -o source.osm.pbf\n"
             "```\n"
         )
@@ -800,8 +801,9 @@ def test_every_osmium_command_in_the_documents_is_one_osmium_would_accept() -> N
     runbook that prints the command without it prints a command that cannot
     run, which costs an operator an afternoon rather than costing the code a
     bug. `--overwrite` is the weekly re-run into the same directory, and
-    `-s smart -S types=any` is PLAN:13's clip strategy - without the `-S` half
-    the administrative boundaries are exactly the relations the clip cuts.
+    `-s smart -S types=boundary,multipolygon` is the clip strategy (PLAN:13's,
+    with the types named) - without the `-S` half the administrative boundaries
+    are exactly the relations the clip cuts.
 
     Derived from `pipeline.source`, so the code is the authority and a document
     that restates it cannot quietly disagree.
@@ -829,15 +831,29 @@ def test_every_osmium_command_in_the_documents_is_one_osmium_would_accept() -> N
     required = {
         name: [
             flag
-            for flag in ("--overwrite", "-f", "pbf", "-s", "smart", "-S", "types=any")
+            for flag in (
+                "--overwrite",
+                "-f",
+                "pbf",
+                "-s",
+                "smart",
+                "-S",
+                "types=boundary,multipolygon",
+            )
             if flag in argv
         ]
         for name, argv in produced.items()
     }
     assert required["merge"] == ["--overwrite", "-f", "pbf"], f"merge_command: {produced['merge']}"
-    assert required["extract"] == ["--overwrite", "-f", "pbf", "-s", "smart", "-S", "types=any"], (
-        f"clip_command: {produced['extract']}"
-    )
+    assert required["extract"] == [
+        "--overwrite",
+        "-f",
+        "pbf",
+        "-s",
+        "smart",
+        "-S",
+        "types=boundary,multipolygon",
+    ], f"clip_command: {produced['extract']}"
 
     assert {argv[1] for _, argv in commands} == set(produced), (
         f"the documents print {sorted({argv[1] for _, argv in commands})} and the "
