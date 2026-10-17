@@ -119,6 +119,9 @@ body {
 .map {
   position: absolute;
   inset: 0;
+  /* Its own stacking context (the owner, 2026-10-17: "the closures are on top of the rest of the map"): a
+     marker's z-index (closures, junctions) orders it among the map's markers only, never over the panels. */
+  isolation: isolate;
 }
 
 :focus-visible {
@@ -2559,20 +2562,44 @@ button.secondary,
   margin-top: 0;
 }
 
-/* When: two to a row, so the four choices take two lines */
+/* When: a row of chips (Plan streamline, Stephen 2026-10-17), each a real radio button in a pill */
 .dials fieldset.when {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   margin: 8px 0;
 }
 
 .dials fieldset.when legend {
-  grid-column: 1 / -1;
+  width: 100%;
 }
 
-.dials fieldset.when .hint {
-  grid-column: 1 / -1;
+.dials fieldset.when > label.toggle {
+  min-height: 36px;
+  padding: 2px 12px 2px 8px;
+  border: 1px solid var(--swatch-border);
+  border-radius: 999px;
+}
+
+.dials fieldset.when > label.toggle:has(input:checked) {
+  border: 2px solid var(--accent);
+  font-weight: 700;
+}
+
+.dials fieldset.when .hint,
+.dials fieldset.when .how {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+}
+
+/* Plan's ride type dialog: two cards to a row where there is room, each with its one-line gist */
+.ride-types .ride-type-cards {
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 8px;
+}
+
+.ride-types .ride-type-card > button {
+  padding: 10px 12px;
 }
 
 /* The route summary: the totals line, the bar, the quick figures */
@@ -4650,6 +4677,26 @@ details.zoom-notes {
   }
 }
 
+/* An admin's switch has Review too (Go, Plan, Review): on the narrowest phones it and the gaps tighten so the bar fits. */
+@media (max-width: 374px) {
+  .go-top-row:has(.mode-button:nth-child(3)),
+  .go-top-row:has(.mode-button:nth-child(3)) .go-top-end {
+    gap: 4px;
+  }
+
+  .go-top-row:has(.mode-button:nth-child(3)) .mode-button {
+    min-width: 44px;
+    padding: 0 8px;
+  }
+}
+
+@media (max-width: 340px) {
+  .go-top-row:has(.mode-button:nth-child(3)) .icon-button {
+    width: 44px;
+    height: 44px;
+  }
+}
+
 /* Go's sheet */
 .go-sheet {
   display: flex;
@@ -5167,7 +5214,6 @@ details.fold > summary .icon {
   display: none;
 }
 
-.ride .ride-round[aria-pressed="true"],
 .ride .ride-round[aria-expanded="true"],
 .ride .ride-round-alert {
   background: var(--accent);
@@ -6205,8 +6251,28 @@ details.fold > summary .icon {
   outline: 3px solid #1d4ed8;
   outline-offset: 2px;
 }
+/* In the panel's theme, as the station cards are: maplibre's own white card left dark-theme text unreadable. */
 .closure-popup .maplibregl-popup-content {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow);
   border-left: 4px solid #c62828;
+}
+.closure-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.closure-popup.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.closure-popup.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: var(--bg);
+}
+.closure-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.closure-popup.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.closure-popup.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: var(--bg);
+}
+.closure-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--bg);
+}
+.closure-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--bg);
 }
 .closure-popup .maplibregl-popup-close-button {
   color: var(--text);
@@ -6490,5 +6556,283 @@ details.fold > summary .icon {
 
   .review-layout {
     grid-template-columns: 1fr;
+  }
+}
+
+/* v0.8.2: a closure's source and until when, in small print under its one short line (never said). */
+.description-citation,
+.cue-citation {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 2px 0 0;
+}
+
+/* Plan streamline (Stephen 2026-10-17): From, the points, To, Add a stop with Best order beside it; Route says "up to
+   date" on itself, with Reset and Clear behind its More button. */
+.plan-points {
+  display: grid;
+  gap: 8px;
+}
+
+.plan-points .place-search-label {
+  font-weight: 700;
+}
+
+.place-search-current {
+  font-weight: 400;
+}
+
+.add-stop-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.add-stop-row .place-search {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+
+.add-stop-row .best-order {
+  min-height: 44px;
+}
+
+.point-change {
+  margin-left: auto;
+}
+
+.route-state {
+  font-weight: 400;
+}
+
+.route-button[aria-disabled="true"]:has(.route-state) {
+  opacity: 1;
+  background: var(--bg-soft);
+  color: var(--accent);
+  border: 1px solid var(--border);
+}
+
+.plan-route .route-button {
+  flex: 1 1 auto;
+}
+
+.plan-more {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.plan-reset-clear[hidden] {
+  display: none;
+}
+
+/* Plan's route totals on one line (Plan streamline, Stephen 2026-10-17): time, distance, climb and descent. */
+.summary:not(.go-summary) .stats.totals .stat-distance {
+  flex: 0 1 auto;
+}
+
+.summary:not(.go-summary) .stats.totals dd,
+.summary:not(.go-summary) .stats.totals .stat-distance dd {
+  font-size: 1.05rem;
+  line-height: 1.3;
+}
+
+.summary:not(.go-summary) .stats.totals .total-time dd {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+/* In a ride the map's scales and credits sit at the bottom of the screen, on the left, clear of the side buttons
+   (the owner, 2026-10-17: "on the bottom of the page in a ride. They are sort of in the middle"): the planner's
+   hidden panel no longer lifts them, and the bottom panel, while it shows, does (--ride-sheet-h, RideMode). */
+.app.riding:has(.ride) .maplibregl-ctrl-bottom-right {
+  left: 0;
+  right: auto;
+  bottom: var(--ride-sheet-h, 0px);
+}
+
+.app.riding .maplibregl-ctrl-bottom-right .maplibregl-ctrl {
+  float: left;
+  margin: 0 0 10px 10px;
+}
+
+.app.riding .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib {
+  max-width: calc(100vw - 100px);
+}
+
+/* With the bottom panel up the side buttons may wrap into a second column: the opened credits stay clear of it. */
+.app.riding:has(.ride-controls) .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib {
+  max-width: calc(100vw - 170px);
+}
+
+/*
+ * Settings as one line per setting (Stephen 2026-10-17: "picker inputs and the like and put info within a (i)
+ * icon"): the name and its picker or switch on a line, an (i) at its end that opens the explanation under it.
+ */
+.setting-row {
+  margin: 0 0 8px;
+}
+.setting-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.setting-line h3,
+.setting-line h4 {
+  margin: 0;
+}
+.setting-row .switch {
+  min-height: 44px;
+}
+.setting-row .select-setting {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+}
+.setting-row .select-setting .setting-name {
+  flex: 0 0 auto;
+}
+.setting-row .select-setting select {
+  flex: 0 1 13rem;
+  min-width: 0;
+  margin-left: auto;
+  min-height: 44px;
+  padding: 6px 8px;
+  font: inherit;
+  font-weight: normal;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--swatch-border);
+  border-radius: 8px;
+}
+.info-tip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  margin-left: auto;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--accent);
+}
+.info-spacer {
+  flex: 0 0 44px;
+}
+.info-tip[aria-expanded="true"] {
+  background: var(--bg-soft);
+}
+.setting-info {
+  margin: 4px 0 8px;
+}
+.setting-info[hidden] {
+  display: none;
+}
+.setting-info-list {
+  margin: 0 0 4px;
+  padding-left: 1.2em;
+}
+/* High contrast: its switch and the (i) on one line, the explanation under them. */
+.contrast-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0 8px;
+}
+.contrast-row .a11y-setting {
+  display: contents;
+}
+.contrast-row .a11y-setting .hint {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  margin: 4px 0 8px;
+}
+.contrast-row .a11y-setting .a11y-state-note {
+  grid-row: 3;
+}
+.contrast-row .a11y-setting .hint[hidden] {
+  display: none;
+}
+.contrast-row .info-tip {
+  grid-row: 1;
+  grid-column: 2;
+  justify-self: end;
+  margin-left: 0;
+}
+.my-go .setting-value {
+  margin-left: 0.4em;
+  font-weight: normal;
+}
+.settings-group > h3 {
+  margin-bottom: 6px;
+}
+
+/* Plan's bar at the top of the map (the owner, 2026-10-17): Route or Update route big while there is something to
+   route, Undo, Redo and Clear small beside it. Right of the planner on a computer, across the top on a phone, clear
+   of the zoom buttons; the map chips step down under it. */
+.plan-map-bar {
+  position: absolute;
+  top: 10px;
+  left: 424px;
+  right: 60px;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.plan-map-bar > button {
+  pointer-events: auto;
+  box-shadow: var(--shadow);
+}
+
+.plan-map-bar .plan-bar-small {
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+
+.plan-map-bar .plan-bar-route {
+  min-height: 52px;
+  padding: 0 22px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.125rem;
+  font-weight: 700;
+  border-radius: 999px;
+}
+
+.plan-map-bar .plan-bar-route[aria-disabled="true"] {
+  opacity: 0.85;
+  cursor: progress;
+}
+
+.app:has(.plan-map-bar) .map-chips {
+  top: 72px;
+}
+
+@media (max-width: 720px) {
+  .plan-map-bar {
+    left: 10px;
+    right: 50px;
+  }
+
+  .app:has(.plan-map-bar) .map-chips {
+    top: 72px;
   }
 }

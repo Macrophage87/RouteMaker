@@ -40,7 +40,8 @@ export function startsWayBack(kind: ErrorKind): boolean {
  * turn (`rejoinTargets`) asked for with `request` (here to that point), the first answered joined to `planned`
  * there (`joinRoutes`). `kept` is navigate.ts replanKept's answer for the plan's points. A failure that a
  * further point would meet too (no signal, slow down) ends the tries, as does `cancelled` (Keep the planned
- * route, End ride, a newer re-plan).
+ * route, End ride, a newer re-plan). `notBeforeM`: a stretch the rider marked closed ends there on the planned line
+ * (lib/roadClosed.ts), so the way back joins it past that, never on it.
  */
 export async function wayBackRoute(
   planned: RouteResponse,
@@ -50,11 +51,12 @@ export async function wayBackRoute(
   kept: readonly number[],
   request: (points: LonLat[]) => Promise<RouteResult>,
   cancelled: () => boolean = () => false,
+  notBeforeM = -Infinity,
 ): Promise<{ route: RouteResponse } | { failed: ErrorKind | null }> {
   // A kept point's index in the new plan's points: after the rider's position, in order.
   const renumber = new Map(kept.map((old, i) => [old, i + 1] as const));
   let failed: ErrorKind | null = null;
-  for (const target of rejoinTargets(model, progressM, here)) {
+  for (const target of rejoinTargets(model, progressM, here, notBeforeM)) {
     if (cancelled()) break;
     const result = await request([here, target.point]);
     if (result.ok) return { route: joinRoutes(result.route, planned, target.atM, renumber) };
@@ -73,14 +75,16 @@ export interface RejoinTarget {
 /**
  * Where the way back may join the planned route, nearest first: the line's nearest point to `here` ahead
  * of the rider's last place on it (as wayBack finds it), a little past that, then further along. Never
- * past the next stop or via point not yet reached, so none is skipped. Empty when none is left ahead.
+ * past the next stop or via point not yet reached, so none is skipped; never before `notBeforeM` (the end of a
+ * stretch the rider marked closed) and a little past it. Empty when none is left ahead.
  */
-export function rejoinTargets(model: RideModel, progressM: number, here: LonLat): RejoinTarget[] {
+export function rejoinTargets(model: RideModel, progressM: number, here: LonLat, notBeforeM = -Infinity): RejoinTarget[] {
   const cap = Math.min(model.lengthM, nextStopM(model, progressM));
   if (!(cap > progressM)) return [];
-  const nearest = snap(model, here, progressM, cap);
+  if (notBeforeM >= cap) return [];
+  const nearest = snap(model, here, Math.max(progressM, notBeforeM), cap);
   if (!nearest) return [];
-  const first = Math.min(nearest.alongM + REJOIN_AHEAD_M, cap);
+  const first = Math.min(Math.max(nearest.alongM, notBeforeM) + REJOIN_AHEAD_M, cap);
   const out: RejoinTarget[] = [];
   for (const m of [first, ...REJOIN_FURTHER_M.map((d) => Math.min(first + d, cap))]) {
     if (out.length && m - out[out.length - 1].atM < REJOIN_SAME_M) continue;
@@ -171,6 +175,7 @@ export function joinRoutes(leg: RouteResponse, planned: RouteResponse, atM: numb
     profile: null,
     candidates: null,
     avoid_alternate: null,
+    closure_through: null,
     arrival_side: ended ? leg.arrival_side : planned.arrival_side,
   };
 }

@@ -320,7 +320,9 @@ def test_a_closure_off_the_route_has_no_effect_and_a_bypassed_one_a_small_marker
     assert rows["mpd-1"]["effect"] == "bypassed" and rows["mpd-1"]["bypassed"]
     assert rows["dc-9"]["effect_text"] == "No effect on your route"
     assert body["work_zones"]["on_route"][0]["bypassed"]
-    assert any("You chose to route through it" in e["text"] for e in body["description"])
+    assert any(
+        "You chose to route through it" in (e.get("citation") or "") for e in body["description"]
+    )
 
 
 # --- Placing on the live segment table ---------------------------------------------------
