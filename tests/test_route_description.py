@@ -536,9 +536,10 @@ def test_an_unnamed_way_takes_its_trail_relation_name_after_the_street_side_name
         ):
             cursor.execute(
                 f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
-                "stress_rule, sidepath_name, trail_name, trail_run_m) VALUES (%s, 0, "
+                "stress_rule, sidepath_name, trail_name, trail_run_m, is_trail_class) "
+                "VALUES (%s, 0, "
                 "ST_GeomFromText('LINESTRING(-77 38.9, -77 38.901)', 4326), 1, 'test', "
-                "%s, %s, %s)",
+                "%s, %s, %s, true)",
                 [way, side, trail, run],
             )
     pieces = [routing.Piece(w, -77.0, 38.9, 10.0, (), "cycleway") for w in range(7, 13)]
