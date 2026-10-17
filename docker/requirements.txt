@@ -12,7 +12,7 @@
 # build time and are NOT pinned here; a full lock needs a `pip freeze` taken
 # from a real build, which has not happened - see docs/DEPLOYMENT.md.
 
-Django==5.2.17
+Django==6.1.2
 # The HTTP API: src/core/api.py is a NinjaAPI, served under /api/ (its docs
 # assets are collected into the Caddy-served volume).
 django-ninja==1.7.0
