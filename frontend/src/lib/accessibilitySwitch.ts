@@ -29,6 +29,7 @@ export function AccessibilitySwitch({
   source,
   paletteFromAddress,
   onChange,
+  hintHidden = false,
 }: {
   /**
    * The ids' stem: "a11y" (a11y-switch, a11y-label, a11y-hint) in the Map layers sheet, another in the
@@ -40,6 +41,8 @@ export function AccessibilitySwitch({
   source: string;
   paletteFromAddress: boolean;
   onChange: (on: boolean) => void;
+  /** Settings keeps the explanation behind an (i) button: hidden from view, still the switch's description. */
+  hintHidden?: boolean;
 }): ReactElement {
   const notes = [
     on && source === "contrast" ? ACCESSIBILITY_CONTRAST_NOTE : "",
@@ -63,7 +66,7 @@ export function AccessibilitySwitch({
       h("span", { id: `${idBase}-label`, className: "switch-label" }, ACCESSIBILITY_LABEL),
       h("span", { className: "switch-state", "aria-hidden": "true" }, on ? "On" : "Off"),
     ),
-    h("p", { className: "hint", id: `${idBase}-hint` }, [ACCESSIBILITY_HINT, ...notes].join(" ")),
+    h("p", { className: "hint", id: `${idBase}-hint`, hidden: hintHidden }, [ACCESSIBILITY_HINT, ...notes].join(" ")),
   );
 }
 
