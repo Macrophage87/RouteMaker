@@ -46,6 +46,8 @@ import {
   elapsedText,
   planChanged,
   planSentences,
+  CLEAR_LABEL,
+  ROUTING_LABEL,
   routeButton,
   routingStep,
   type DrawnPlan,
@@ -2996,8 +2998,8 @@ export function App() {
   }, [rideAsk]);
   // Big text hides the map; shown again, it fits its box.
   useEffect(() => {
-    if (!bigText) mapRef.current?.resize();
-  }, [bigText]);
+    if (!(riding && bigText)) mapRef.current?.resize();
+  }, [bigText, riding]);
 
   // The map frames a route in the part the panel does not cover.
   const framePadding = useCallback((): Frame => {
@@ -3606,6 +3608,27 @@ export function App() {
     setChangeDetails([]);
     clearAll();
   };
+  const routeNow = routeButton({ points: points.length, drawn: drawn !== null, changed: planEdited, routeShown: shown !== null });
+  // Plan's bar at the top of the map (the owner, 2026-10-17: "In plan, make "Update route" a big button at the top of
+  // the map ... Update route or start route. don't show if there's nothing to change. Also put the undo and clear there
+  // as well, smaller"): the Route button big while there is something to route (or it is routing), Undo, Redo and
+  // Clear small beside it while each has something to do. A focus left on a button of the bar that went (the
+  // big one after routing, Clear after clearing) moves to the bar's first button, else the panel's Route button,
+  // else the map.
+  const barRoute = planFirst && (routingNow || routeNow.unavailable === null);
+  const planBar = planFirst && (barRoute || can.undo || can.redo || points.length > 0);
+  const barFocused = useRef(false);
+  useEffect(() => {
+    if (!barFocused.current) return;
+    const active = document.activeElement;
+    if (active && active !== document.body && active.isConnected) return;
+    barFocused.current = false;
+    const target =
+      document.querySelector<HTMLElement>(".plan-map-bar button") ??
+      document.querySelector<HTMLElement>(".plan-panel .route-button") ??
+      document.querySelector<HTMLElement>(".maplibregl-canvas");
+    target?.focus();
+  });
   const planPanel = (
     <PlanPanel
       key="plan"
@@ -3614,7 +3637,7 @@ export function App() {
         traffic: stressMax(preset) > 0 ? stressWords(dials.stress) : null,
         hills: hillsWords(dials.hills, seeksClimbs(preset)),
       })}
-      button={routeButton({ points: points.length, drawn: drawn !== null, changed: planEdited, routeShown: shown !== null })}
+      button={routeNow}
       onRoute={pressRoute}
       routing={routingNow ? { step: routingStep(routingTick - routingSince), elapsed: elapsedText(routingTick - routingSince) } : null}
       onCancel={cancelRouting}
@@ -3903,8 +3926,49 @@ export function App() {
       {crosshairShown && (
         <div className="crosshair" aria-hidden="true" style={crosshairAt ? { left: crosshairAt.x, top: crosshairAt.y } : undefined} />
       )}
+      {planBar && (
+        <div
+          className="plan-map-bar"
+          role="group"
+          aria-label="Route and edits"
+          onFocus={() => (barFocused.current = true)}
+          onBlur={(event) => {
+            if (event.relatedTarget) barFocused.current = false;
+          }}
+        >
+          {can.undo && (
+            <button type="button" className="secondary plan-bar-small" data-history="undo" onClick={undo} aria-label="Undo" title="Undo">
+              <Icon name="undo" size={20} />
+            </button>
+          )}
+          {can.redo && (
+            <button type="button" className="secondary plan-bar-small" data-history="redo" onClick={redo} aria-label="Redo" title="Redo">
+              <Icon name="redo" size={20} />
+            </button>
+          )}
+          {barRoute && (
+            <button
+              type="button"
+              className="plan-bar-route"
+              aria-disabled={routingNow ? true : undefined}
+              onClick={() => {
+                if (!routingNow) pressRoute();
+              }}
+            >
+              <Icon name="routes" size={20} />
+              {routingNow ? ROUTING_LABEL : routeNow.label}
+            </button>
+          )}
+          {points.length > 0 && (
+            <button type="button" className="secondary plan-bar-small" onClick={clearPlan} aria-label={`${CLEAR_LABEL} the plan`} title={CLEAR_LABEL}>
+              <Icon name="trash" size={20} />
+            </button>
+          )}
+        </div>
+      )}
       {!riding && !goMode && <PlanMapChips onFood={(chip) => openView("food", chip)} onWater={(chip) => openView("nearest", chip)} onPlaces={openPlaces} />}
-      {!riding && narrow && (can.undo || can.redo) && (
+      {/* In Plan, Undo and Redo are in the plan's bar at the top of the map instead. */}
+      {!riding && narrow && !planFirst && (can.undo || can.redo) && (
         // On a phone the sheet may be hidden while the rider edits the map,
         // so Undo and Redo sit on the map there (and only there: one of each
         // per layout), each shown while it has something to give back.
