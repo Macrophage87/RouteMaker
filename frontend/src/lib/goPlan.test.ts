@@ -220,11 +220,13 @@ test("Go's Where to? is the destination from the rider's location, in one edit, 
   assert.match(startPick, /if \(pending\) \{\s*clearGoPending\(\);\s*routeGo\(point, false, pending\.dest, pending\.name, false, pending\.vias\);/);
 });
 
-test("the Go/Plan switch: two toggle buttons in a named group, in Go's bar and Plan's header; a press is remembered as My Go's Open in", () => {
+test("the Go/Plan switch: toggle buttons in a named group (Review too for an admin), in Go's bar and Plan's header; a press is remembered as My Go's Open in", () => {
   assert.match(go, /role="group" aria-label=\{MODE_SWITCH_NAME\} aria-describedby=\{hintId\}/);
   assert.match(go, /className="mode-button" aria-pressed=\{mode === m\} onClick=\{\(\) => onChange\(m\)\}/);
   assert.match(appFile, /\{!goMode && <ModeSwitch mode=\{mode\} onChange=\{changeMode\} className="panel-mode" modes=\{switchModes\(canReview\)\} \/>\}/);
-  assert.match(appFile, /<GoTopBar\s+mode=\{mode\}\s+onMode=\{changeMode\}/);
+  assert.match(appFile, /<GoTopBar\s+mode=\{mode\}\s+onMode=\{changeMode\}\s+modes=\{switchModes\(canReview\)\}/);
+  // Go's switch offers an admin's Review too, the same views as Plan's (Stephen 2026-10-17).
+  assert.match(go, /<ModeSwitch mode=\{mode\} onChange=\{onMode\} modes=\{modes\} \/>/);
   const change = appFile.slice(appFile.indexOf("const changeMode = "), appFile.indexOf("// \"Copy link\""));
   assert.match(change, /writeTabMode\(next\);/);
   assert.match(change, /announceExtra\(modeSaid\(next\)\);/, "extra narration: said at Full, not at Brief");
@@ -293,15 +295,19 @@ test("the 311 button shows only on the route inside DC; its menu has the six pro
   assert.match(ride, /const pick311 = \(kind: ReportKind\) => \{\s*setReportKind\(kind\);\s*setMenu311\(false\);/);
   assert.match(ride, /<details className="fold ride-report" open=\{open\} onToggle=\{\(event\) => onOpen\(event\.currentTarget\.open\)\}>/);
   assert.match(ride, /if \(event\.key === "Escape" && menu311\) \{\s*event\.preventDefault\(\);\s*close311\(\);/);
-  // About 60 px round, on the right edge.
+  // About 60 px round, in the side buttons on the right edge (the owner, 2026-10-17).
   const css = src("../styles.css");
   assert.match(css, /\.ride-311-button \{\s*width: 60px;\s*height: 60px;/);
-  assert.match(css, /\.ride-311 \{\s*position: absolute;\s*right: 12px;/);
+  assert.match(css, /\.ride-rail \{\s*position: absolute;\s*right: 12px;/);
 });
 
-test("Big text has a text-size icon (not the info icon); Ride mode's buttons keep their words", () => {
-  assert.match(ride, /className="secondary big-text" onClick=\{\(\) => onBig\(!big\)\} aria-pressed=\{big\}>\s*<Icon name="textsize" size=\{20\} \/>\s*Big text/);
-  assert.ok(ICON_PATHS.textsize && ICON_PATHS.textsize !== ICON_PATHS.info);
+test("Big text is a setting, in the ride's Settings and the Settings page, not a side button", () => {
+  // The owner, 2026-10-17: "the text size should be moved to the settings page ... not something people will fiddle with mid ride".
+  assert.doesNotMatch(ride, /className="ride-round big-text"/);
+  assert.match(ride, /Turn the map to my heading\s*<\/label>\s*<BigTextField on=\{big\} onChange=\{onBig\} \/>/);
+  const sheets = src("../app/Sheets.tsx");
+  assert.match(sheets, /<SettingRow infoId="settings-big-text-info" about="big text" info=\{BIG_TEXT_HELP\}/);
+  assert.match(sheets, /role="switch"[^>]*aria-checked=\{props\.bigText\.on\}[^>]*onClick=\{\(\) => props\.bigText\.onChange\(!props\.bigText\.on\)\}/s);
 });
 
 // ---- Go's start: the rider's current location by default (the owner, 2026-10-11 19:53 UTC) ----

@@ -213,6 +213,8 @@ export interface Cue {
    * the card and in the courses; not a row of the cue sheets.
    */
   joined?: boolean;
+  /** A closure's source and until when (v0.8.2): shown in small print on the card, never said. */
+  citation?: string;
   /** The description entry's kind it came from (a course export keeps Avoid and work-zone hazards); absent on the end. */
   source?: DescriptionEntry["kind"];
   /**
@@ -291,7 +293,7 @@ export function sentenceOf(entry: Pick<DescriptionEntry, "text">): string {
 }
 
 /** Metres along the geometry's own vertices. */
-function lineAlong(coordinates: readonly LonLat[]): Float64Array {
+export function lineAlong(coordinates: readonly LonLat[]): Float64Array {
   const out = new Float64Array(coordinates.length);
   for (let i = 1; i < coordinates.length; i += 1) out[i] = out[i - 1] + haversineM(coordinates[i - 1], coordinates[i]);
   return out;
@@ -453,6 +455,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
                 ? ontoWords(entry.street as string)
                 : sentenceOf(entry),
         ...(kind === "hazard" && entry.kind === "junction" && !entry.group ? { rideText: crossingWords(entry.street, entry.turn?.control) } : {}),
+        ...(entry.citation ? { citation: entry.citation } : {}),
         movement: kind === "turn" ? (entry.turn?.movement as TurnMovement) : null,
         street: entry.turn?.onto ?? entry.street ?? null,
         severity: entry.severity ?? entry.turn?.severity ?? null,
@@ -1081,17 +1084,29 @@ function capital(text: string): string {
  * from the model's stop cues.
  */
 export function replanPoints(model: RideModel, progressM: number, here: LonLat, points: readonly LonLat[], loop: boolean): LonLat[] {
-  const stops = loop ? points.slice(1) : points.slice(1, -1);
-  const end = loop ? points[0] : points[points.length - 1];
-  const left = stops.filter((_, i) => {
+  return [here, ...replanKept(model, progressM, points, loop).map((i) => points[i])];
+}
+
+/**
+ * Which of the plan's points a re-plan keeps, by their index in `points`: the stops not yet passed, then
+ * the end (a loop's is its start, index 0). `replanPoints` sends these after the rider's position.
+ */
+export function replanKept(model: RideModel, progressM: number, points: readonly LonLat[], loop: boolean): number[] {
+  const last = loop ? points.length : points.length - 1;
+  const left: number[] = [];
+  for (let i = 1; i < last; i += 1) {
     // A via point passed is dropped as a stop passed is (v0.7.0); the line's own place for it.
-    const pass = model.passes?.find((p) => p.point === i + 1);
-    if (pass) return pass.atM > progressM + ARRIVE_M;
-    const cue = model.cues.find((c) => c.kind === "stop" && (c.point ?? c.stop) === i + 1);
+    const pass = model.passes?.find((p) => p.point === i);
+    if (pass) {
+      if (pass.atM > progressM + ARRIVE_M) left.push(i);
+      continue;
+    }
+    const cue = model.cues.find((c) => c.kind === "stop" && (c.point ?? c.stop) === i);
     // A stop the description does not place (an older API) is kept: better one extra point than one lost.
-    return cue === undefined || cue.atM > progressM + ARRIVE_M;
-  });
-  return [here, ...left, end];
+    if (cue === undefined || cue.atM > progressM + ARRIVE_M) left.push(i);
+  }
+  left.push(loop ? 0 : points.length - 1);
+  return left;
 }
 
 /** End ride this far along the line or more is part way: the plan left behind starts where the rider is. */
@@ -1163,16 +1178,19 @@ export class ReplanGate {
 export const REPLAN_FOUND = "New route found.";
 export const REPLAN_NO_SIGNAL = "No signal: the planned route is still shown.";
 export const REPLAN_FAILED = "No new route was found; the planned route is still shown.";
+/** No new route to the end, but one back to the planned route (lib/rejoin.ts), which goes on from there. */
+export const REPLAN_REJOIN = "No new route was found; follow the way back to the planned route.";
 export const REPLAN_FINDING = "Finding a new way from here.";
 export const REPLAN_STILL_WAITING = "Still waiting for the last re-plan.";
 
 /**
  * How a re-plan's outcome reaches the rider: one the rider asked for (Re-plan from here) is answered
  * whatever the level, as a detour's is (review RIDE-5); an automatic one is said at the full level, and
- * at the stoker's only when a new route was found; the quiet level hears it on screen only.
+ * at the stoker's only when a new route (or a way back to the planned one) was found; the quiet level
+ * hears it on screen only.
  */
 export function replanTold(asked: boolean, level: Verbosity, note: string): "answer" | "say" | "quiet" {
   if (asked) return "answer";
-  if (level === "full" || (level === "stoker" && note === REPLAN_FOUND)) return "say";
+  if (level === "full" || (level === "stoker" && (note === REPLAN_FOUND || note === REPLAN_REJOIN))) return "say";
   return "quiet";
 }

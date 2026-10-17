@@ -66,7 +66,7 @@ async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 
 }
 
 /**
- * Opens a bottom-bar sheet by its button's label ("Layers", "Suggest", "Export", "Settings"; Plan's GPX is Export since 5efab18a). UI-CLEANUP: "Map
+ * Opens a bottom-bar sheet by its button's label ("Layers", "Suggest", "Files", "Settings"; Plan's GPX was Export from 5efab18a, Files since v0.8.2). UI-CLEANUP: "Map
  * layers" is "Layers", and "Legend" is the Legend sheet, one step in from Layers (its Legend button). "Review" is the admin's Review mode
  * (ReviewMode.tsx), opened from Suggest's Review button on its Rider suggestions list; "Review hazards" is the same mode on its Mass Ride
  * hazard reports list.
@@ -184,6 +184,36 @@ const pressRoute = async (p) => {
   const announcements = await p.eval("window.__said");
   check("slider: four key presses plan nothing, then Route plans once", keyPlans === 0 && plans === 1, `${keyPlans} plans from the keys, ${plans} in all`);
   check("slider: and are announced once", announcements.length === 1, JSON.stringify(announcements));
+  await p.close();
+}
+
+// ---- 1b. Plan's bar at the top of the map (the owner, 2026-10-17): Route or Update route big, only while there is
+// something to route; Undo, Redo and Clear small beside it ----
+for (const [label, size] of [["phone", { width: 390, height: 844, mobile: true }], ["computer", { width: 1280, height: 900 }]]) {
+  const p = await open({ ...size, ride: false });
+  const bar = () => p.eval(`(() => { const g = document.querySelector('.plan-map-bar'); if (!g) return null; const r = g.getBoundingClientRect();
+    return { r: [Math.round(r.top), Math.round(r.left), Math.round(r.right)], buttons: [...g.querySelectorAll('button')].map((b) => { const q = b.getBoundingClientRect(); return { name: b.getAttribute('aria-label') || b.textContent.trim(), h: Math.round(q.height), w: Math.round(q.width), top: Math.round(q.top), right: Math.round(q.right) }; }) }; })()`);
+  const upToDate = await bar();
+  check(`plan bar (${label}): with the route up to date there is no big button, only Clear (small, named, 44 px)`,
+    upToDate && JSON.stringify(upToDate.buttons.map((x) => x.name)) === JSON.stringify(["Clear the plan"]) && upToDate.buttons.every((x) => x.h >= 44 && x.w >= 44), JSON.stringify(upToDate));
+  const before = p.routeRequests;
+  // A slider moved (set as a rider's drag would: the phone's sheet may have it out of view).
+  await p.eval("(() => { const i = document.querySelector('.dial input[type=range]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; const d = Number(i.step || 1) * 5; const v = Number(i.value); i.focus(); set.call(i, String(v - d >= Number(i.min) ? v - d : v + d)); i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new FocusEvent('focusout', { bubbles: true })); return true; })()");
+  await sleep(600);
+  const changed = await bar();
+  const zoom = await p.eval("(() => { const z = document.querySelector('.maplibregl-ctrl-top-right'); return z ? Math.round(z.getBoundingClientRect().left) : 9999; })()");
+  const big = changed?.buttons.find((x) => x.name === "Update route");
+  check(`plan bar (${label}): a change shows Update route big at the top of the map, with Clear small (Undo only with an edit to undo), clear of the zoom buttons`,
+    !!big && big.h >= 52 && big.top <= 16 && JSON.stringify(changed.buttons.map((x) => x.name)) === JSON.stringify(["Update route", "Clear the plan"]) && changed.buttons.every((x) => x.right <= zoom),
+    JSON.stringify({ changed, zoom }));
+  await p.shot(`${SHOTS}/plan_bar_${label}.png`);
+  await p.eval("[...document.querySelectorAll('.plan-map-bar button')].find((b) => b.textContent.trim() === 'Update route').focus(); true");
+  await p.enter();
+  await sleep(3500);
+  const after = await bar();
+  const focus = await p.eval("(() => { const e = document.activeElement; return e?.classList.contains('route-button') ? 'route' : e?.classList.contains('maplibregl-canvas') ? 'map' : e?.getAttribute('aria-label') || e?.tagName; })()");
+  check(`plan bar (${label}): pressing it routes once, it goes once the route is up to date, and the focus goes to the panel's Route button (the map when the panel is hidden), never Clear`,
+    p.routeRequests - before === 1 && after && !after.buttons.some((x) => /route|Routing/.test(x.name)) && focus === "route", JSON.stringify({ plans: p.routeRequests - before, after, focus }));
   await p.close();
 }
 
@@ -732,7 +762,7 @@ const federalFetched = (p) =>
   const before = await axNode(p, id);
   check("mtb layer: a switch named Mountain-bike trails, off by default", before?.role === "switch" && before?.name === "Mountain-bike trails" && String(before?.checked) === "false", JSON.stringify(before));
   check("mtb layer: described in one plain line: from which zoom, and that it is not used for routes (the levels are the legend's)",
-    // From zoom 12 since 5cfe0e3a ("Map: mountain-bike trails from zoom 12, in the ride layer's tiles"; MTB_MIN_ZOOM).
+    // From zoom 12 (MTB_MIN_ZOOM, STRESS_ZOOMS.quiet: every street from z12 since tile FORMAT_VERSION 10; before it, the ride layer's tiles, 5cfe0e3a).
     /^From zoom 12\. Not used for routes\.$/.test(before?.description ?? ""), before?.description ?? "");
   const headings = await p.eval("[...document.querySelectorAll('#sheet-layers h3')].map((e) => e.textContent)");
   const at = (name) => headings.indexOf(name);
@@ -938,7 +968,7 @@ for (const mobile of [false, true]) {
 {
   const p = await open();
   const bar = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => x.querySelector('span').textContent)");
-  check("settings: the bottom bar is Plan, Layers, Suggest, Export, Settings (UI-CLEANUP, the owner's choice 6; GPX renamed Export in 5efab18a)", JSON.stringify(bar) === JSON.stringify(["Plan", "Layers", "Suggest", "Export", "Settings"]), JSON.stringify(bar));
+  check("settings: the bottom bar is Plan, Layers, Suggest, Files, Settings (UI-CLEANUP, the owner's choice 6; GPX renamed Export in 5efab18a, then Files in v0.8.2)", JSON.stringify(bar) === JSON.stringify(["Plan", "Layers", "Suggest", "Files", "Settings"]), JSON.stringify(bar));
   await openSheet(p, "Settings");
   check("settings: opening it puts the focus on its heading, \"Settings\"", (await p.eval("document.activeElement?.textContent")) === "Settings" && (await p.eval("document.activeElement?.tagName")) === "H2", await focused(p));
   const inSettings = await axNode(p, "#settings-contrast-switch");
@@ -1072,14 +1102,14 @@ const FIRST_HINT = "Place the starting point, then a stop or two along the way."
     const ax = await axNode(p, `#bar-${id}`);
     names.push([ax?.role, ax?.name]);
   }
-  check("plan: the five bar buttons are named exactly Plan, Layers, Suggest, Export, Settings", JSON.stringify(names) === JSON.stringify([["button", "Plan"], ["button", "Layers"], ["button", "Suggest"], ["button", "Export"], ["button", "Settings"]]), JSON.stringify(names));
+  check("plan: the five bar buttons are named exactly Plan, Layers, Suggest, Files, Settings", JSON.stringify(names) === JSON.stringify([["button", "Plan"], ["button", "Layers"], ["button", "Suggest"], ["button", "Files"], ["button", "Settings"]]), JSON.stringify(names));
   const hints = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => { const h = document.getElementById(x.getAttribute('aria-describedby')); return { hidden: h.hidden && h.getBoundingClientRect().height === 0, inButton: x.contains(h), text: h.textContent.length > 0 }; })");
   const described = [];
   for (const id of ["plan", "layers", "suggest", "gpx", "settings"]) described.push((await axNode(p, `#bar-${id}`))?.description?.length > 0);
   check("plan: each bar hint is a hidden sibling, off the screen, and still the button's description", hints.length === 5 && hints.every((h) => h.hidden && !h.inButton && h.text) && described.every(Boolean), JSON.stringify({ hints, described }));
   const planAx = await axNode(p, "#bar-plan");
   check("plan: its description says where it goes, in the Back label's words", /^Shows the planner: /.test(planAx?.description ?? ""), JSON.stringify(planAx?.description));
-  await openSheet(p, "Export");
+  await openSheet(p, "Files");
   const during = await p.eval("[...document.querySelectorAll('.bar-button')].map((x) => x.getAttribute('aria-current'))");
   check("plan: on a sheet the Plan button is not current and that sheet's is", during[0] === null && during[3] === "true", JSON.stringify(during));
   const backText = await p.eval("document.querySelector('#sheet-gpx .sheet-back').textContent.trim()");
@@ -1128,7 +1158,7 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   const p = await open({ width: 375, height: 812, mobile: true, ride: false });
   const first = await p.eval("(() => { const t = document.querySelector('.panel-toggle'); return { text: t.textContent, expanded: t.getAttribute('aria-expanded'), controls: t.getAttribute('aria-controls') }; })()");
   check("toggle: the phone header's button reads Hide planner, with aria-expanded and aria-controls", first.text === "Hide planner" && first.expanded === "true" && first.controls === "panel-body", JSON.stringify(first));
-  await openSheet(p, "Export");
+  await openSheet(p, "Files");
   await p.eval("document.querySelector('.panel-toggle').focus(); document.querySelector('.panel-toggle').click(); true");
   await sleep(200);
   const hidden = await p.eval("({ text: document.querySelector('.panel-toggle').textContent, expanded: document.querySelector('.panel-toggle').getAttribute('aria-expanded'), hidden: document.getElementById('panel-body').hidden })");
@@ -1180,7 +1210,8 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     if (!secure) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: "Object.defineProperty(window, 'isSecureContext', { value: false })" });
     if (script) await p.s("Page.addScriptToEvaluateOnNewDocument", { source: script });
     await p.s("Page.navigate", { url: `${ORIGIN}/${hash}` });
-    if (!(await p.waitFor("!!document.querySelector('.locate-button')", 30000))) throw new Error("no Use my location button");
+    // Plan's boxes (Plan streamline, 2026-10-17): Use my location sits on From (an empty plan) and To; a fuller plan has Add a stop.
+    if (!(await p.waitFor("!!document.querySelector('.locate-button, #points-search .place-search input')", 30000))) throw new Error("no Use my location button");
     await sleep(500);
     return p;
   }
@@ -1305,16 +1336,14 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
     await p.close();
   }
   {
-    // A two-point plan, Start chosen, then Your location: it replaces the start (the choice reaches placeFix).
+    // A two-point plan, the start's Change, then Your location: it replaces the start (the choice reaches placeFix).
+    // Plan streamline (2026-10-17): Change on the Start row opens the From box, with the focus in it.
     const p = await emptyPlan({ hash: "#p=-77.04000,38.91000;-77.01000,38.89000&preset=default&v=2&stress=70&hills=0" });
     await p.waitFor("document.querySelectorAll('.points > li').length === 2", 20000);
-    // With a route shown the points are compact: Edit points opens the search, as a rider would.
-    await p.waitFor("!![...document.querySelectorAll('button')].find((e) => e.textContent.trim() === 'Edit points')", 20000);
-    await p.eval("[...document.querySelectorAll('button')].find((e) => e.textContent.trim() === 'Edit points')?.click(); true");
+    await p.eval("document.querySelector('.point-change[aria-label=\"Change Start\"]')?.click(); true");
     await sleep(500);
-    const chose = await p.eval("(() => { const r = document.querySelector('.place-choice input[type=radio][value=start]'); if (!r) return false; r.click(); return r.checked; })()");
+    const chose = await p.eval("(() => { const i = document.activeElement; return !!i && i.matches('#points-search .place-search input') && i.closest('.place-search').querySelector('label').textContent.startsWith('From'); })()");
     await sleep(300);
-    await p.eval("document.querySelector('.place-search input').focus(); true");
     await sleep(300);
     const line = await p.eval("[...document.querySelectorAll('.place-results [role=option]')][0]?.textContent ?? ''");
     await p.eval(countSaid("Start set to your location"));
@@ -1378,7 +1407,8 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await sleep(300);
   const first = await axNode(p, ".pc-plot");
   check("chart: the picture is one slider, named for what it shows, its value text the spoken sentence (a path said as the map has it)", first?.role === "slider" && first.name === "Elevation and rolling stress along the route" && /^Mile 0\.0: elevation \d+ ft \(\d+ m\), level, traffic-free path\. Mile around: 0\.6 calm miles per mile, LTS 1 to 2 level\. Next junction to watch: higher stress, mile 1\.2\.$/.test(first.valuetext ?? ""), JSON.stringify(first));
-  check("chart: its description is the key hint only (the summary is the text just before it)", /^Arrow keys move along the route; Page Up and Page Down move further; Home and End go to the ends; C and Shift\+C/.test(first?.description ?? "") && !/Over 2\.9 mi/.test(first?.description ?? ""), (first?.description ?? "").slice(0, 200));
+  // Plan streamline (2026-10-17): the summary and the keys are out of sight in Plan too, so both are its description.
+  check("chart: its description is the summary, then the key hint", /^Over 2\.9 mi/.test(first?.description ?? "") && /Arrow keys move along the route; Page Up and Page Down move further; Home and End go to the ends; C and Shift\+C/.test(first?.description ?? ""), (first?.description ?? "").slice(0, 200));
   check("chart: the summary before it, in miles and feet first", /^Over 2\.9 mi \(4\.7 km\), elevation runs from 328 ft \(100 m\) to 408 ft \(124 m\)\./.test(await p.eval("document.querySelector('.pc-summary').textContent")));
   const shares = await p.eval("document.querySelector('.pc-summary').textContent");
   check("chart: the summary's stress shares say the 0-900 m path as the key does, never \"LTS 1\" (a11y re-review S1)", /Traffic stress along it: \d+% traffic-free path, \d+% LTS 2\./.test(shares) && !/LTS 1/.test(shares), shares);
@@ -2581,7 +2611,8 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.shot(`${SHOTS}/ride_cue.png`);
 
   // Where am I? on demand.
-  await p.eval("[...document.querySelectorAll('.ride-actions button')].find((b) => b.textContent === 'Where am I?').click(); true");
+  // The side buttons (the owner, 2026-10-17): round icons, each named.
+  await p.eval("document.querySelector('.ride-rail button[aria-label=\"Where am I?\"]').click(); true");
   await sleep(300);
   const where = await p.eval(regions);
   check("ride: Where am I? says the street, the next cue and the miles to the end", /On R Street Northwest\..* to the end\./.test(where.polite), JSON.stringify(where));
@@ -2624,7 +2655,11 @@ const levelSlider = `${EDITOR} input[type=range]`;
   // in the route's own street names (R Street, the turn from Q Street just passed; Q Street named only
   // within 500 ft), then the GPS position, latitude first to 5 decimals; the copy has no text keyword.
   const AT_311 = /^Location: on R Street Northwest( near Q Street Northwest)?, Washington, DC\. GPS 38\.\d{5}, -7[67]\.\d{5}\.$/;
-  await p.eval("document.querySelector('.ride-report > summary').click(); true");
+  // The full report is not on screen by default (the owner, 2026-10-17: "Remove that bottom part"): the 311 menu's
+  // last button opens it.
+  await p.eval("document.querySelector('.ride-311-button').click(); true");
+  await sleep(300);
+  await p.eval("document.querySelector('.ride-311-more').click(); true");
   await sleep(300);
   const report = await p.eval(`(() => {
     const d = document.querySelector('.ride-report');
@@ -2685,10 +2720,13 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await sleep(300);
   const b311 = await p.eval(`(() => { const b = document.querySelector('.ride-311-button'); if (!b) return null; const r = b.getBoundingClientRect(); const s = getComputedStyle(b);
     return { w: Math.round(r.width), h: Math.round(r.height), right: Math.round(innerWidth - r.right), mid: Math.round((r.top + r.bottom) / 2 / innerHeight * 100), round: parseFloat(s.borderRadius) >= r.width / 2 - 1, text: b.textContent, expanded: b.getAttribute('aria-expanded') }; })()`);
+  // The side buttons, each round, named, at least 44 px.
+  const rail = await p.eval(`[...document.querySelectorAll('.ride-rail button')].filter((b) => b.getClientRects().length > 0).map((b) => { const r = b.getBoundingClientRect(); return { name: b.getAttribute('aria-label'), w: Math.round(r.width), round: parseFloat(getComputedStyle(b).borderRadius) >= r.width / 2 - 1 }; })`);
   const ax311 = await axNode(p, ".ride-311-button");
   check("ride 311 button: inside DC, a round button of about 60 px at the right edge, in the lower half (thumb height), named Report to DC 311 with its visible 311, closed",
-    !!b311 && b311.w >= 56 && b311.w <= 72 && b311.h >= 56 && b311.round && b311.right <= 24 && b311.mid >= 45 && b311.mid <= 90 && b311.text === "311" && b311.expanded === "false" && ax311?.role === "button" && ax311?.name === "Report to DC 311",
-    JSON.stringify({ b311, ax311 }));
+    !!b311 && b311.w >= 56 && b311.w <= 72 && b311.h >= 56 && b311.round && b311.right <= 24 && b311.mid >= 45 && b311.mid <= 96 && b311.text === "311" && b311.expanded === "false" && ax311?.role === "button" && ax311?.name === "Report to DC 311" &&
+      JSON.stringify(rail.map((x) => x.name)) === JSON.stringify(["Where am I?", "Re-centre", "Road closed ahead", "Detour: water or restroom", "Report to DC 311"]) && rail.every((x) => x.round && x.w >= 44),
+    JSON.stringify({ b311, ax311, rail }));
   await p.eval("document.querySelector('.ride-311-button').focus(); true");
   await p.enter();
   await sleep(300);
@@ -2722,12 +2760,13 @@ const levelSlider = `${EDITOR} input[type=range]`;
   for (let k = 1; k <= 6; k += 1) await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: canvas.x + k * 20, y: canvas.y + k * 10, button: "left", buttons: 1 });
   await p.s("Input.dispatchMouseEvent", { type: "mouseReleased", x: canvas.x + 120, y: canvas.y + 60, button: "left", clickCount: 1 });
   await sleep(400);
-  const paused = await p.eval("document.querySelector('.ride-controls').textContent.includes('stopped following')");
+  const recentre = "document.querySelector('.ride-rail button[aria-keyshortcuts=C]')?.getAttribute('aria-label')";
+  const paused = await p.eval(`${recentre} === "Re-centre: the map stopped following you"`);
   await p.eval("document.querySelector('#ride-heading').focus(); true");
   await p.s("Input.dispatchKeyEvent", { type: "keyDown", key: "c", code: "KeyC", text: "c" });
   await p.s("Input.dispatchKeyEvent", { type: "keyUp", key: "c", code: "KeyC" });
   await sleep(300);
-  const resumed = await p.eval("!document.querySelector('.ride-controls').textContent.includes('stopped following')");
+  const resumed = await p.eval(`${recentre} === "Re-centre"`);
   check("ride: a pan by hand stops following; Re-centre (C) follows again", paused && resumed, JSON.stringify({ paused, resumed }));
 
   // A tap on the map during a ride adds no point and plans nothing (the plan stays as started); the
@@ -2761,11 +2800,24 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await sleep(300);
   const narrowFit = await p.eval("(() => ({ scroll: document.documentElement.scrollWidth, w: innerWidth, over: [...document.querySelectorAll('.ride button')].filter((b) => b.getClientRects().length > 0).filter((b) => b.getBoundingClientRect().right > innerWidth + 1 || b.getBoundingClientRect().height < 43.5).map((b) => b.textContent) }))()");
   check("ride: at 320 px nothing overflows and every ride button is at least 44 px tall", narrowFit.scroll <= narrowFit.w && narrowFit.over.length === 0, JSON.stringify(narrowFit));
-  await p.eval("[...document.querySelectorAll('.ride-actions button')].find((b) => b.textContent === 'Big text').click(); true");
+  // The scales and credits at the bottom of the screen, left of the side buttons, just above the bottom panel
+  // when it shows (the owner, 2026-10-17).
+  const corner = await p.eval("(() => { const c = document.querySelector('.maplibregl-ctrl-bottom-right').getBoundingClientRect(); const sheet = document.querySelector('.ride-controls'); const floor = sheet ? sheet.getBoundingClientRect().top : innerHeight; const rail = document.querySelector('.ride-rail').getBoundingClientRect(); return { bottom: c.bottom, left: c.left, right: c.right, floor, railLeft: rail.left }; })()");
+  check("ride: the map's scales and credits sit at the bottom left, clear of the side buttons",
+    Math.abs(corner.bottom - corner.floor) <= 2 && corner.left <= 1 && corner.right <= corner.railLeft, JSON.stringify(corner));
+  await p.shot(`${SHOTS}/ride_corner_320.png`);
+  // Big text is a setting (the ride's Settings, and the Settings page), not a side button.
+  const noBigButton = await p.eval("!document.querySelector('.ride-rail .big-text')");
+  check("ride: Big text is not a side button", noBigButton, String(noBigButton));
+  await p.eval("document.querySelector('.ride .ride-settings-button').click(); true");
+  await sleep(200);
+  await p.eval("document.querySelector('.ride-mode-settings .big-text-setting input').click(); true");
   await sleep(300);
-  const big = await p.eval("({ map: getComputedStyle(document.querySelector('.map')).display, pressed: [...document.querySelectorAll('.ride-actions button')].find((b) => b.textContent === 'Big text').getAttribute('aria-pressed') })");
-  check("ride: Big text hides the map and says it is on", big.map === "none" && big.pressed === "true", JSON.stringify(big));
+  const big = await p.eval("({ map: getComputedStyle(document.querySelector('.map')).display, on: document.querySelector('.ride-mode-settings .big-text-setting input').checked, kept: localStorage.getItem('routemaker.ride.bigText') })");
+  check("ride: Big text in the ride's Settings hides the map and is kept on this device", big.map === "none" && big.on === true && big.kept === "1", JSON.stringify(big));
   await p.shot(`${SHOTS}/ride_big_320.png`);
+  await p.eval("document.querySelector('.ride-mode-settings .big-text-setting input').click(); document.querySelector('.ride .ride-settings-button').click(); true");
+  await sleep(200);
 
   // End ride: the planner again, the focus on Start ride, the lock let go. A base-map range is put in
   // the ride's IndexedDB store first (the mock serves no archive), to see End ride empty it.
@@ -3725,12 +3777,12 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   const list = await p.eval(`(() => { const s = document.querySelector('#sheet-settings .kept-routes'); const rows = [...s.querySelectorAll('li.kept-route')];
     return { heading: s.querySelector('h3')?.textContent, labelled: s.getAttribute('aria-labelledby') === s.querySelector('h3')?.id, list: s.querySelector('ul')?.tagName,
       rows: rows.map((r) => ({ title: r.querySelector('.kept-title')?.textContent, detail: r.querySelector('.kept-detail')?.textContent, buttons: [...r.querySelectorAll('button')].map((b) => ({ text: b.textContent, h: b.getBoundingClientRect().height, type: b.type })) })),
-      note: s.querySelector(':scope > p.hint:last-child')?.textContent }; })()`);
+      note: s.querySelector('.setting-info')?.textContent, noteHidden: s.querySelector('.setting-info')?.hidden, tip: s.querySelector('.info-tip')?.textContent }; })()`);
   const row = list.rows[0];
   check("kept routes: Settings lists it in a real list under the heading \"Routes kept for offline\", with its distance in miles first and kilometres in brackets",
     list.heading === "Routes kept for offline" && list.labelled && list.list === "UL" && list.rows.length === 1 && / mi \([0-9.]+ km\)\. Kept [A-Z][a-z]{2} \d+\./.test(row?.detail ?? ""), JSON.stringify(list));
   check("kept routes: each row has Open and Remove, real buttons 44 px tall whose names include the route", row && row.buttons.length === 2 && row.buttons[0].text === `Open ${row.title}` && row.buttons[1].text === `Remove ${row.title}` && row.buttons.every((x) => x.h >= 44 && x.type === "button"), JSON.stringify(row));
-  check("kept routes: the list says they stay on this device and are never sent", /^Kept on this device only, until you remove them; never sent anywhere\./.test(list.note ?? ""), list.note);
+  check("kept routes: behind the heading's (i) (\"About routes kept for offline\"), the list says they stay on this device and are never sent", /Kept on this device only, until you remove them; never sent anywhere\./.test(list.note ?? "") && list.noteHidden === true && list.tip === "About routes kept for offline", JSON.stringify({ note: list.note, hidden: list.noteHidden, tip: list.tip }));
   const openAx = await axNode(p, "#sheet-settings .kept-route button");
   check("kept routes: Open's accessible name names the route and its description gives the details", openAx?.name === `Open ${row?.title}` && / mi \(/.test(openAx?.description ?? ""), JSON.stringify(openAx));
   await p.eval("document.querySelector('#sheet-settings .kept-route button').focus(); true");
@@ -3748,7 +3800,7 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   await p.enter();
   await p.waitFor("document.querySelectorAll('#sheet-settings .kept-route').length === 0", 10000);
   await sleep(300);
-  const removed = await p.eval("({ focus: document.activeElement?.textContent, empty: document.querySelector('#sheet-settings .kept-routes .hint')?.textContent, said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((r) => r.textContent.trim()).filter(Boolean) })");
+  const removed = await p.eval("({ focus: document.activeElement?.textContent, empty: document.querySelector('#sheet-settings .kept-routes > p.hint:not(.setting-info)')?.textContent, said: [...document.querySelectorAll('.visually-hidden[role=status]')].map((r) => r.textContent.trim()).filter(Boolean) })");
   check("kept routes: Remove by keyboard removes it, says so, and puts the focus on the list's heading when none is left",
     removed.focus === "Routes kept for offline" && removed.said.some((t) => t.startsWith(`Removed ${row?.title}. No routes are kept.`)) && /^No routes are kept\./.test(removed.empty ?? ""), JSON.stringify(removed));
   // The freeing follows the removal once the kept routes' lock is free (no keep runs here: at once).
@@ -3882,9 +3934,10 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   await sleep(300);
   const offered = await p.eval(`(() => { const d = document.querySelector('dialog.ride-types'); const k = ${kidsCard};
     return { open: d.open, modal: d.matches(':modal'), cards: d.querySelectorAll('.ride-type-card > button').length,
-      kids: !!k, pressed: k?.getAttribute('aria-pressed'), hint: k?.querySelector('.hint')?.textContent }; })()`);
-  check("kids: the ride-type dialog is modal and offers Novice and Nervous among every ride type, with its sentence",
-    offered.open && offered.modal && offered.cards === 15 && offered.kids && /^For riders new to traffic: /.test(offered.hint ?? ""), JSON.stringify(offered));
+      kids: !!k, pressed: k?.getAttribute('aria-pressed'), hint: k?.querySelector('.hint')?.textContent, said: k?.querySelector('.visually-hidden')?.textContent }; })()`);
+  // Plan streamline (2026-10-17): each card shows its gist; the full sentence is said with it, and shown by What each does.
+  check("kids: the ride-type dialog is modal and offers Novice and Nervous among every ride type, with its gist shown and its sentence said",
+    offered.open && offered.modal && offered.cards === 15 && offered.kids && offered.hint === "Busy streets avoided hard, for new riders." && /^For riders new to traffic: /.test(offered.said ?? ""), JSON.stringify(offered));
   check("kids: its card is a toggle button, not pressed while another ride type is in use", offered.pressed === "false", JSON.stringify(offered.pressed));
   await p.eval(`${kidsCard}.setAttribute('data-kids', ''); true`);
   const card = await axNode(p, "button[data-kids]");
@@ -3893,13 +3946,13 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   await p.eval(`${kidsCard}.focus(); true`);
   await p.enter();
   await sleep(2500);
-  const chosen = await p.eval("(() => ({ open: document.querySelector('dialog.ride-types').open, focus: document.activeElement === document.querySelector('.ride-type-current button'), ride: document.querySelector('.ride-type-current strong')?.textContent, hint: document.querySelector('.ride-type-current .hint')?.textContent }))()");
+  const chosen = await p.eval("(() => ({ open: document.querySelector('dialog.ride-types').open, focus: document.activeElement === document.querySelector('.ride-type-current button'), ride: document.querySelector('.ride-type-current strong')?.textContent, hint: document.querySelector('.ride-type-current .hint')?.textContent, said: document.querySelector('.ride-type-current p')?.textContent }))()");
   // Plan-first (see pressRoute): the choice plans nothing until Route.
   const pickPlans = p.routeRequests - before;
   await pressRoute(p);
   await sleep(2500);
   check("kids: choosing it with Enter closes the dialog and gives the focus back to Change", !chosen.open && chosen.focus, JSON.stringify(chosen));
-  check("kids: the ride type line says Novice and Nervous, with its sentence", chosen.ride === "Novice and Nervous" && /^For riders new to traffic: /.test(chosen.hint ?? ""), JSON.stringify(chosen));
+  check("kids: the ride type line says Novice and Nervous, with its gist, and its sentence to a screen reader", chosen.ride === "Novice and Nervous" && chosen.hint === "Busy streets avoided hard, for new riders." && /For riders new to traffic: /.test(chosen.said ?? ""), JSON.stringify(chosen));
   const sent = JSON.parse(p.routeBodies.at(-1) || "{}");
   const hash = await p.eval("location.hash");
   check("kids: it plans nothing until Route, which plans once, at the top of the traffic slider with hills toward avoid, and the link carries it",
@@ -4673,17 +4726,44 @@ async function goPressMap(p) {
       pins.end?.text === "" && pins.end.rect && pins.end.hidden === "true" && /^End\.( |$)/.test(pins.end.name ?? "") /* the drag hint is the title's alone since 7120fdb7 */, JSON.stringify(pins));
   await p.close();
 }
+/** My Go's Open in picker set to Go, as a rider's pick fires it. */
+const PICK_OPEN_IN_GO = "(() => { const s = document.querySelector('#sheet-settings .open-in select'); s.value = 'go'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()";
 {
   // Announcements (Settings > Display): Brief in Go unless chosen; Full is kept on this device.
   const p = await bare();
   await p.eval("document.querySelector('.go-menu').click(); true");
   await sleep(400);
-  const group = await p.eval("(() => { const f = document.querySelector('#sheet-settings .announce-level'); return f ? { legend: f.querySelector('legend').textContent, options: [...f.querySelectorAll('label')].map((l) => ({ text: l.textContent, checked: l.querySelector('input').checked, h: Math.round(l.getBoundingClientRect().height) })) } : null; })()");
-  await p.eval("[...document.querySelectorAll('#sheet-settings .announce-level label')].find((l) => l.textContent.startsWith('Full')).querySelector('input').click(); true");
+  const group = await p.eval("(() => { const r = document.querySelector('#sheet-settings .announce-level'); const sel = r?.querySelector('select'); const sr = sel?.getBoundingClientRect(); return r ? { label: sel.closest('label').querySelector('.setting-name').textContent, options: [...sel.options].map((o) => o.textContent), value: sel.value, h: Math.round(sr.height), info: r.querySelector('.info-tip')?.getAttribute('aria-expanded'), infoShown: !r.querySelector('.setting-info').hidden } : null; })()");
+  const selAx = await axNode(p, "#sheet-settings .announce-level select");
+  const tipAx = await axNode(p, "#sheet-settings .announce-level .info-tip");
+  await p.eval("document.querySelector('#sheet-settings .announce-level .info-tip').click(); true");
+  await sleep(150);
+  const opened = await p.eval("({ expanded: document.querySelector('#sheet-settings .announce-level .info-tip').getAttribute('aria-expanded'), shown: !document.querySelector('#sheet-settings .announce-level .setting-info').hidden, text: document.querySelector('#sheet-settings .announce-level .setting-info').textContent })");
+  await p.eval("(() => { const s = document.querySelector('#sheet-settings .announce-level select'); s.value = 'full'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()");
   await sleep(300);
   const kept = await p.eval("localStorage.getItem('routemaker.announcements')");
-  check("announcements: Settings has an Announcements radio group, Brief chosen in Go by default, each choice a 44 px target; Full is kept on this device",
-    group?.legend === "Announcements" && group.options.length === 2 && group.options[0].text.startsWith("Brief") && group.options[0].checked && group.options.every((o) => o.h >= 44) && kept === "full", JSON.stringify({ group, kept }));
+  check("announcements: Settings has an Announcements picker (Brief, Full), Brief in Go by default, 44 px tall; Full is kept on this device",
+    group?.label === "Announcements" && JSON.stringify(group.options) === JSON.stringify(["Brief", "Full"]) && group.value === "brief" && group.h >= 44 && kept === "full", JSON.stringify({ group, kept }));
+  check("announcements: what Brief and Full mean is behind an (i) button named \"About announcements\", closed at first, and is the picker's description even while closed",
+    tipAx?.name === "About announcements" && group?.info === "false" && !group.infoShown && /^Brief: the route, guidance and errors/.test(selAx?.description ?? "") && selAx?.name === "Announcements", JSON.stringify({ tipAx, selAx }));
+  check("announcements: pressing the (i) shows the explanation under the line and says it is expanded",
+    opened.expanded === "true" && opened.shown && /Full: also what the app is doing/.test(opened.text), JSON.stringify(opened));
+  const sizes = await p.eval("[...document.querySelectorAll('#sheet-settings .info-tip, #sheet-settings .setting-row select')].filter((e) => e.offsetParent).map((e) => { const r = e.getBoundingClientRect(); return [e.tagName, Math.round(r.width), Math.round(r.height)]; })");
+  check("settings: every (i) button and every picker in Settings is at least 44 px tall (the owner's 44 px rule), and each (i) 44 px wide",
+    sizes.length >= 6 && sizes.every(([tag, w, h]) => h >= 44 && (tag === "SELECT" || w >= 44)), JSON.stringify(sizes));
+  const ride = await p.eval("(() => { const sel = [...document.querySelectorAll('#sheet-settings .setting-row select')]; const pick = (name) => sel.find((s) => s.closest('label').querySelector('.setting-name').textContent === name); const out = pick('Say cues with'); const lvl = pick('How much to say'); return { out: out && [...out.options].map((o) => o.textContent), lvl: lvl && [...lvl.options].map((o) => o.textContent) }; })()");
+  await p.eval("(() => { const s = [...document.querySelectorAll('#sheet-settings .setting-row select')].find((x) => x.closest('label').querySelector('.setting-name').textContent === 'How much to say'); s.value = 'quiet'; s.dispatchEvent(new Event('change', { bubbles: true })); return true; })()");
+  await sleep(300);
+  const rideKept = await p.eval("localStorage.getItem('routemaker.ride')");
+  check("settings: Ride mode is two pickers, Say cues with (4 choices) and How much to say (Full, Stoker, Quiet); a pick is kept as chosen",
+    ride.out?.length === 4 && JSON.stringify(ride.lvl) === JSON.stringify(["Full", "Stoker", "Quiet"]) && /"verbosity":"quiet"/.test(rideKept ?? "") && /"chosen":true/.test(rideKept ?? ""), JSON.stringify({ ride, rideKept }));
+  // Big text moved here from the ride's side buttons (the owner, 2026-10-17): a switch in Ride mode, kept on this device.
+  const bigBefore = await p.eval("(() => { const b = document.querySelector('#sheet-settings .big-text-row [role=switch]'); return b && { checked: b.getAttribute('aria-checked'), h: b.getBoundingClientRect().height, group: b.closest('section')?.querySelector('h3')?.textContent }; })()");
+  await p.eval("document.querySelector('#sheet-settings .big-text-row [role=switch]').click(); true");
+  await sleep(200);
+  const bigAfter = await p.eval("({ checked: document.querySelector('#sheet-settings .big-text-row [role=switch]').getAttribute('aria-checked'), kept: localStorage.getItem('routemaker.ride.bigText') })");
+  check("settings: Ride mode has a Big text switch, off at first and 44 px tall; turning it on is kept on this device",
+    bigBefore?.checked === "false" && bigBefore.h >= 44 && bigBefore.group === "Ride mode" && bigAfter.checked === "true" && bigAfter.kept === "1", JSON.stringify({ bigBefore, bigAfter }));
   await p.close();
 }
 {
@@ -4701,19 +4781,20 @@ async function goPressMap(p) {
   // My Go signed out: kept on this device.
   const p = await bare({ width: 1280, height: 900, mobile: false });
   await openSheet(p, "Settings");
-  const section = await p.eval("(() => { const s = document.querySelector('#sheet-settings .my-go'); return s ? { heading: s.querySelector('h4')?.textContent, radios: [...s.querySelectorAll('.open-in input[type=radio]')].map((r) => r.closest('label').textContent), status: s.querySelector('.my-go-said')?.getAttribute('role') } : null; })()");
-  await p.eval("[...document.querySelectorAll('#sheet-settings .open-in label')].find((l) => l.textContent === 'Go').querySelector('input').click(); true");
+  const section = await p.eval("(() => { const s = document.querySelector('#sheet-settings .my-go'); return s ? { heading: s.querySelector('h4')?.textContent, options: [...s.querySelectorAll('.open-in select option')].map((o) => o.textContent), status: s.querySelector('.my-go-said')?.getAttribute('role') } : null; })()");
+  const openInAx = await axNode(p, "#sheet-settings .open-in select");
+  await p.eval(PICK_OPEN_IN_GO);
   await sleep(500);
   const saved = await p.eval("({ kept: localStorage.getItem('routemaker.my-go'), said: document.querySelector('.my-go-said')?.textContent })");
-  check("my go: signed out, Open in (By screen size, Go, Plan) is a radio group in Settings; a choice is kept on this device and said politely",
-    !!section && /^My Go/.test(section.heading) && section.radios.length === 3 && section.status === "status" && /"open_in":"go"/.test(saved.kept ?? "") && saved.said === "My Go saved on this device." && !(p.myGoRequests ?? []).some((r) => r.method === "POST"), JSON.stringify({ section, saved }));
+  check("my go: signed out, Open in (By screen size, Go, Plan) is a picker in Settings, described by what By screen size means; a choice is kept on this device and said politely",
+    !!section && /^My Go/.test(section.heading) && JSON.stringify(section.options) === JSON.stringify(["By screen size", "Go", "Plan"]) && openInAx?.name === "Open in" && /^By screen size: a phone opens in Go/.test(openInAx?.description ?? "") && section.status === "status" && /"open_in":"go"/.test(saved.kept ?? "") && saved.said === "My Go saved on this device." && !(p.myGoRequests ?? []).some((r) => r.method === "POST"), JSON.stringify({ section, openInAx, saved }));
   await p.close();
 }
 {
   // My Go signed in: saved to the Discord account, with the CSRF header; it then opens the app in Go on a wide screen.
   const p = await bare({ width: 1280, height: 900, mobile: false, suggester: true, init: "document.cookie = 'csrftoken=layout-check-token; path=/';" });
   await openSheet(p, "Settings");
-  await p.eval("[...document.querySelectorAll('#sheet-settings .open-in label')].find((l) => l.textContent === 'Go').querySelector('input').click(); true");
+  await p.eval(PICK_OPEN_IN_GO);
   await p.waitFor("/saved to your account/.test(document.querySelector('.my-go-said')?.textContent ?? '')", 8000);
   const post = (p.myGoRequests ?? []).find((r) => r.method === "POST");
   const csrf = post && Object.entries(post.headers).find(([k]) => k.toLowerCase() === "x-csrftoken")?.[1];
@@ -4819,7 +4900,7 @@ const failed = results.filter((r) => !r.ok);
 // returns early) fails here rather than passing green (the mutation review of the release).
 // The transit blocks (#108) and the Go press checks (#116) were added without raising it; they run since #127.
 // Review mode's own lists (22c2) add six.
-const EXPECTED = 641;
+const EXPECTED = 654;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

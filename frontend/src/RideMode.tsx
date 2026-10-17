@@ -14,22 +14,40 @@
  * - Off route: re-planned automatically after the gate (plan Q5), or "Keep the planned route", which
  *   shows the way back. A re-plan never touches the plan in the address bar (plan Q2): it is the ride's
  *   own route, held here and in App's ride state only.
- * - Big text (map hidden), Re-centre (and the C key), heading-up (track-up by default since v0.7.0); and
+ * - Big text (map hidden; a setting, in the ride's Settings and the Settings page), Re-centre (and the C key), heading-up (track-up by default since v0.7.0); and
  *   Settings and End ride always in view at the top of the card (Settings opens the ride's settings just
  *   under it), with Undo after End ride. End ride part way leaves the plan starting where the rider is.
  * - The map along the route, kept for dead spots (lib/corridor.ts, N5), and Report a problem to DC 311
  *   with the place in the route's street names (lib/report311.ts, N6; OWNER-DECISIONS 369, 465).
+ * - The side buttons (the owner, 2026-10-17: "Remove that bottom part when routing by default. instead put
+ *   these as circle icons on the side"): Where am I?, Re-centre, Road closed ahead, Detour (water or restroom), on a
+ *   share bike the dock button with the time undocked (lib/rideDock.ts), and 311 inside DC (Big text moved to
+ *   Settings, the owner, 2026-10-17: "not something people will fiddle with mid ride"); each a round
+ *   icon with its name for screen readers, its menu opening beside it. The bottom panel shows only when it
+ *   has something to say or ask: GPS and screen notes, off route, Ride the rest, the full 311 report.
+ *   Answers asked for (Where am I?, a detour's progress) show for a few seconds by the buttons.
  *
  * Privacy (plan section 7): positions stay in memory for the ride; nothing is stored or logged; the only
  * ones sent are a re-plan's start point and, when the rider asks for the nearest water or restroom, the
  * search's own (POST /api/nearest), each in a POST body, as planning with "Use my location" sends it.
  */
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type FocusEvent, type PointerEvent, type RefObject } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FocusEvent, type PointerEvent, type RefObject } from "react";
 import { HoldTimer } from "./lib/holdTimer.ts";
+import { startsWayBack, wayBackRoute } from "./lib/rejoin.ts";
+import {
+  ON_DETOUR_SAID,
+  ON_STANDARD_SAID,
+  ROAD_CLOSED_FINDING,
+  ROAD_CLOSED_NAME,
+  ROAD_CLOSED_NO_PLACE,
+  closedAhead,
+  onOtherLine,
+  withClosed,
+} from "./lib/roadClosed.ts";
 import { requestRoute, type RouteResponse } from "./lib/api.ts";
 import { VIA_MARKS, viaIndices } from "./lib/pointKinds.ts";
 import type { Dials } from "./lib/dials.ts";
-import { insideCoverage, type LonLat } from "./lib/geo.ts";
+import { haversineM, insideCoverage, type LonLat } from "./lib/geo.ts";
 import type { PresetId } from "./lib/presets.ts";
 import { formatDistance, formatDuration, spokenDistance } from "./lib/format.ts";
 import { LOCATE_MESSAGES } from "./lib/geolocation.ts";
@@ -46,6 +64,7 @@ import {
   REPLAN_FAILED,
   REPLAN_FOUND,
   REPLAN_NO_SIGNAL,
+  REPLAN_REJOIN,
   REPLAN_FINDING,
   REPLAN_STILL_WAITING,
   ReplanGate,
@@ -54,6 +73,7 @@ import {
   nextAction,
   planAfterEnd,
   pointAt,
+  replanKept,
   replanPoints,
   replanTold,
   rideModel,
@@ -70,6 +90,7 @@ import {
 } from "./lib/navigate.ts";
 import {
   Announcer,
+  BIG_TEXT_NAME,
   OUTPUT_LABELS,
   ScreenWake,
   Voice,
@@ -104,7 +125,7 @@ import {
 import type { WaterPoint } from "./lib/waterRestrooms.ts";
 import type { TrailMiles } from "./lib/trailMiles.ts";
 import { WATER_CAUTION } from "./lib/waterRestrooms.ts";
-import { corridorNote, type PrefetchResult } from "./lib/corridor.ts";
+import { corridorWorry, type PrefetchResult } from "./lib/corridor.ts";
 import { clearCorridor, copyCorridor, keepCorridor } from "./lib/corridorStore.ts";
 import { lastRideAdopter } from "./lib/offlineKeep.ts";
 import { blockOf, rescueRideFocus, type RideBlock } from "./lib/rideFocus.ts";
@@ -137,8 +158,35 @@ import {
   type ReportKind,
 } from "./lib/report311.ts";
 import { RIDE_311_NAME, RIDE_311_TEXT, Ride311Menu, ride311Shown } from "./lib/ride311.ts";
+import {
+  DOCKED_SHOWN,
+  DOCK_NAME,
+  DOCK_WAYS,
+  LEFT_DOCK_M,
+  RESTART_TIME,
+  TIME_RESTARTED,
+  dockAt,
+  dockButtonName,
+  dockedSaid,
+  docksAround,
+  dockFinding,
+  fetchDocks,
+  findDock,
+  CHOSEN_STILL_MS,
+  DOCKED_M,
+  stillAtLength,
+  stillStep,
+  undockedMinutes,
+  undockedShown,
+  undockedWarning,
+  warningDue,
+  type DockWay,
+  type Still,
+} from "./lib/rideDock.ts";
 import { Icon } from "./Icon.tsx";
 import { DepartureTimer } from "./DepartureTimer.tsx";
+import { SettingRow, SettingSelect } from "./SettingRow.tsx";
+import { shortLabel } from "./lib/shortLabel.ts";
 import {
   RIDE_REST,
   RIDE_REST_FINDING,
@@ -248,6 +296,8 @@ export const CLOSURE_SLOW_MS = 600;
 /** What App shows on the map for the ride. */
 export interface RideView {
   route: RouteResponse;
+  /** The other line (v0.8.2): the standard way through a marked closure, or its detour while on the standard way. */
+  other?: LonLat[] | null;
   rider: { point: LonLat; headingDeg: number | null; accuracyM: number } | null;
 }
 
@@ -293,11 +343,48 @@ export function RideSettingsFields({
   prefs,
   onChange,
   idBase,
+  compact = false,
 }: {
   prefs: RidePrefs;
   onChange: (prefs: RidePrefs) => void;
   idBase: string;
+  /** Settings: two pickers, with what each level says behind an (i) (the first Start ride keeps the radios). */
+  compact?: boolean;
 }) {
+  if (compact) {
+    const levels = Object.keys(VERBOSITY_LABELS) as Verbosity[];
+    return (
+      <>
+        <SettingRow infoId={`${idBase}-output-info`} about="say cues with">
+          <SettingSelect
+            label="Say cues with"
+            value={prefs.output}
+            options={(Object.keys(OUTPUT_LABELS) as CueOutput[]).map((output) => [output, OUTPUT_LABELS[output]] as const)}
+            onChange={(output) => onChange({ ...prefs, output, chosen: true })}
+          />
+        </SettingRow>
+        <SettingRow
+          infoId={`${idBase}-level-info`}
+          about="how much to say"
+          info={
+            <ul className="setting-info-list">
+              {levels.map((level) => (
+                <li key={level}>{VERBOSITY_LABELS[level]}</li>
+              ))}
+            </ul>
+          }
+        >
+          <SettingSelect
+            label="How much to say"
+            value={prefs.verbosity}
+            options={levels.map((level) => [level, shortLabel(VERBOSITY_LABELS[level])] as const)}
+            onChange={(verbosity) => onChange({ ...prefs, verbosity, chosen: true })}
+            describedBy={`${idBase}-level-info`}
+          />
+        </SettingRow>
+      </>
+    );
+  }
   return (
     <>
       <fieldset className="ride-choice">
@@ -329,6 +416,16 @@ export function RideSettingsFields({
         ))}
       </fieldset>
     </>
+  );
+}
+
+/** Big text (the cue card large, the map hidden): in Settings, not on the ride screen (the owner, 2026-10-17). */
+export function BigTextField({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <label className="toggle ride-toggle big-text-setting">
+      <input type="checkbox" checked={on} onChange={(event) => onChange(event.target.checked)} />
+      {BIG_TEXT_NAME}
+    </label>
   );
 }
 
@@ -510,12 +607,28 @@ export function RideMode({
   onRideRest?: (here: LonLat | null) => Promise<string | null>;
 }) {
   const [route, setRoute] = useState(plannedRoute);
+  const routeRef = useRef(route);
+  routeRef.current = route;
   // What a re-plan builds on: the plan's points at first, then the last re-plan's (never a loop: its end is sent).
   const plan = useRef({ points: plannedPoints, loop: plannedLoop });
   // The via points are not announced (v0.7.0): the model leaves them out of its cues.
   const model = useMemo(() => rideModel(route, viaIndices(plan.current.points, VIA_MARKS.isVia)), [route]);
   const modelRef = useRef(model);
   modelRef.current = model;
+  // v0.8.2 (lib/roadClosed.ts): the other line beside the ride's route, the standard way through a marked closure
+  // (or the detour, on the standard way), which the rider is followed onto if they take it.
+  const [other, setOther] = useState<RouteResponse | null>(plannedRoute.closure_through ?? null);
+  const otherRef = useRef(other);
+  otherRef.current = other;
+  const otherModel = useMemo(() => (other ? rideModel(other, viaIndices(plan.current.points, VIA_MARKS.isVia)) : null), [other]);
+  const otherModelRef = useRef(otherModel);
+  otherModelRef.current = otherModel;
+  const onStandard = useRef(false);
+  // Road closed (lib/roadClosed.ts): the stretches the rider marked closed, left out of every re-plan of this ride;
+  // where the last ends on the route it was marked on; and a press while a re-plan was under way.
+  const blockedRef = useRef<LonLat[][]>([]);
+  const blockedUntil = useRef<{ model: RideModel; untilM: number } | null>(null);
+  const closedPending = useRef(false);
   const milesRef = useRef(trailMiles);
   milesRef.current = trailMiles;
   const [ride, setRide] = useState<RideState>(startState);
@@ -530,7 +643,6 @@ export function RideMode({
   prefsRef.current = prefs;
   const [polite, setPolite] = useState({ text: "", count: 0 });
   const [assertive, setAssertive] = useState({ text: "", count: 0 });
-  const [where, setWhere] = useState("");
   const [gps, setGps] = useState<string>(WAITING_FOR_GPS);
   const [wakeNote, setWakeNote] = useState("");
   const [replanning, setReplanning] = useState(false);
@@ -681,6 +793,87 @@ export function RideMode({
     focusNote.current = false;
     noteInput.current?.focus();
   }, [reportOpen]);
+  // An answer the rider asked for (Where am I?, a detour's progress, a new route), shown by the side buttons
+  // for SAID_311_MS and held while focused or hovered; it is said through the rider's outputs as well.
+  const [toast, setToast] = useState({ text: "", n: 0 });
+  const toastTimer = useHoldTimer(SAID_311_MS, () => setToast((t) => ({ text: "", n: t.n })));
+  const showToast = useCallback((text: string) => setToast((t) => ({ text, n: t.n + 1 })), []);
+  useEffect(() => {
+    if (toast.text) toastTimer.timer.start();
+    else toastTimer.timer.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the timer is the same object every render
+  }, [toast]);
+  // The side buttons' menus: one open at a time (the detour's, the dock's, 311's), each beside the buttons.
+  const [detourOpen, setDetourOpen] = useState(false);
+  const detourOpenRef = useRef(false);
+  detourOpenRef.current = detourOpen;
+  const detourId = useId();
+  const detourHeading = useRef<HTMLHeadingElement>(null);
+  const detourButton = useRef<HTMLButtonElement>(null);
+  const [dockOpen, setDockOpen] = useState(false);
+  const dockId = useId();
+  const dockHeading = useRef<HTMLHeadingElement>(null);
+  const dockButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (detourOpen) detourHeading.current?.focus();
+  }, [detourOpen]);
+  useEffect(() => {
+    if (dockOpen) dockHeading.current?.focus();
+  }, [dockOpen]);
+  const openMenu = (which: "detour" | "dock" | "311" | null) => {
+    setDetourOpen(which === "detour");
+    setDockOpen(which === "dock");
+    setMenu311(which === "311");
+  };
+  // A share bike (lib/rideDock.ts): the undock is taken as reaching the first dock, or the start where there is
+  // no walk to it; reaching a dock ridden to with the dock button starts the time again.
+  const shareBike = !!trip?.shareBike;
+  const [undockAt, setUndockAt] = useState<number | null>(() => (trip?.shareBike && !trip.approach ? Date.now() : null));
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (undockAt === null) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 15_000);
+    return () => window.clearInterval(timer);
+  }, [undockAt]);
+  // The spoken warning at 35 minutes and every 5 after (lib/rideDock.ts warningDue); not while docked or at the end.
+  const warnedAt = useRef<number | null>(null);
+  useEffect(() => {
+    warnedAt.current = null;
+  }, [undockAt]);
+  const undockRef = useRef(undockAt);
+  undockRef.current = undockAt;
+  // Docked again (lib/rideDock.ts): the dock's name while docked, its place, and where the rider stands still.
+  const [docked, setDocked] = useState<string | null>(null);
+  const dockedRef = useRef<LonLat | null>(null);
+  const still = useRef<Still | null>(null);
+  // The dock the rider chose with the dock button: stopped there a short while is enough.
+  const chosenDock = useRef<{ point: LonLat; name: string } | null>(null);
+  const restartTime = () => {
+    dockedRef.current = null;
+    still.current = null;
+    setDocked(null);
+    setUndockAt(Date.now());
+  };
+  const arrived = ride.arrived;
+  // At the end the dock button goes: a focus in it (or its menu) goes to Where am I?.
+  useEffect(() => {
+    if (!arrived) return;
+    setDockOpen(false);
+    const active = document.activeElement;
+    if (!active || active === document.body || !active.isConnected) whereRef.current?.focus({ preventScroll: true });
+  }, [arrived]);
+  useEffect(() => {
+    if (undockAt === null || docked || arrived || ended.current) return;
+    const mark = warningDue(undockedMinutes(undockAt, now), warnedAt.current);
+    if (mark === null) return;
+    warnedAt.current = mark;
+    const text = undockedWarning(mark);
+    // Said at once through the rider's outputs (and the polite region with neither chosen), and shown.
+    announcer.current?.answer(text);
+    if (prefsRef.current.output === "neither") setPolite((p) => ({ text, count: p.count + 1 }));
+    showToast(text);
+  }, [undockAt, now, docked, arrived, showToast]);
   const gate = useRef(new ReplanGate()).current;
   // In the phone app (lib/nativeShell.ts) the lock and the watch are the native ones; in a browser, the browser's.
   const wake = useRef(new ScreenWake(rideWake())).current;
@@ -732,10 +925,12 @@ export function RideMode({
   const [detourList, setDetourList] = useState<Found | null>(null);
   const sayDetour = useCallback((text: string) => {
     setDetourStatus(text);
+    // Shown in the detour's menu while it is open; by the side buttons otherwise (the dock's, a re-plan's outcome).
+    if (!detourOpenRef.current) showToast(text);
     // On demand, as Where am I? is: through the rider's outputs, and the polite region with neither chosen.
     announcer.current?.answer(text);
     if (prefsRef.current.output === "neither") setPolite((s) => ({ text, count: s.count + 1 }));
-  }, []);
+  }, [showToast]);
   // The re-plan (plan section 4): one POST /api/route from here through the stops not yet passed to the end.
   // With `via`, a detour: from here to that place first, then on through what was left (the nearest water
   // or restroom, below). A detour's place becomes a stop of the new route, so it is cued and arrived at.
@@ -780,37 +975,93 @@ export function RideMode({
         setReplanNote(REPLAN_NO_SIGNAL);
         tell(REPLAN_NO_SIGNAL);
       }, REPLAN_TIMEOUT_MS);
-      const result = await requestRoute(points, preset, {
-        dials: { ...dials, loop: false },
-        vias: viaIndices(points, VIA_MARKS.isVia),
-        routeOnly: true,
-      });
+      // The rider is riding a plan already made: a long one is not asked to be confirmed again (a signed-out
+      // rider's re-plan of a long ride was refused for want of it).
+      const ask = (to: LonLat[]) =>
+        requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), routeOnly: true, confirmLong: true, blocked: blockedRef.current });
+      const result = await ask(points);
+      // No new route to the end: the way back to the planned route, which goes on from there (lib/rejoin.ts;
+      // the owner, 2026-10-17). Not for a detour, whose place the planned route does not pass. The no-signal
+      // timer runs on through it.
+      let found = result.ok ? result.route : null;
+      let failed = result.ok ? null : result.error.kind;
+      let note = REPLAN_FOUND;
+      const voided = () => ended.current || ticket !== replanTicket.current;
+      if (!result.ok && !via && startsWayBack(result.error.kind) && !voided()) {
+        const kept = replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop);
+        // Never back onto a road the rider marked closed: the way back joins the route past it.
+        const closed = blockedUntil.current?.model === modelRef.current ? blockedUntil.current.untilM : -Infinity;
+        const back = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, kept, ask, voided, closed);
+        if ("route" in back) found = back.route;
+        else if (back.failed) failed = back.failed;
+        note = REPLAN_REJOIN;
+      }
       window.clearTimeout(timer);
-      gate.finish(result.ok);
-      if (ended.current || ticket !== replanTicket.current) return;
+      gate.finish(found !== null);
+      // Road closed pressed while this one was under way: this answer did not leave that road out, so it is
+      // dropped (the press voided it) and the ride is planned again from where the rider is now.
+      if (closedPending.current && !ended.current) {
+        closedPending.current = false;
+        gate.online();
+        void replanRef.current(rideRef.current.goodFix?.point ?? here, undefined, true);
+        return;
+      }
+      if (voided()) return;
       setReplanning(false);
-      if (!result.ok) {
-        const note = result.error.kind === "network" ? REPLAN_NO_SIGNAL : REPLAN_FAILED;
-        setReplanNote(note);
-        tell(note);
+      if (!found) {
+        const said = failed === "network" ? REPLAN_NO_SIGNAL : REPLAN_FAILED;
+        setReplanNote(said);
+        tell(said);
         return;
       }
       plan.current = { points, loop: false };
       // The first route, without the picker, during a ride (plan section 4).
       announcer.current?.drop();
-      const model = rideModel(result.route, viaIndices(points, VIA_MARKS.isVia));
+      const model = rideModel(found, viaIndices(points, VIA_MARKS.isVia));
       modelRef.current = model;
-      setRoute(result.route);
+      setRoute(found);
+      // The new route's own standard way through a closure it goes round, if any (none past a road marked closed).
+      const through = blockedRef.current.length ? null : (found.closure_through ?? null);
+      otherRef.current = through;
+      setOther(through);
+      onStandard.current = false;
       // The rider stays where they are on the map until the next fix places them on the new route.
       const fresh = { ...startState(), fix: rideRef.current.fix, goodFix: rideRef.current.goodFix };
       rideRef.current = fresh;
       setRide(fresh);
       setKeepPlanned(false);
-      setReplanNote(REPLAN_FOUND);
-      tell(REPLAN_FOUND);
+      setReplanNote(note);
+      tell(note);
     },
     [dials, preset, gate, sayDetour],
   );
+  const replanRef = useRef(replan);
+  replanRef.current = replan;
+
+  // The rider took the other line (lib/roadClosed.ts onOtherLine): it is the ride's route from here, the one left
+  // the other line, with no re-plan and no "off route" (the owner, 2026-10-17: "If you take the standard route, just
+  // keep going, if you move to the detour take that").
+  const takeOther = useCallback((alongM: number, fix: RideFix) => {
+    const was = routeRef.current;
+    const next = otherRef.current;
+    const nextModel = otherModelRef.current;
+    if (!next || !nextModel) return;
+    replanTicket.current += 1;
+    onStandard.current = !onStandard.current;
+    announcer.current?.drop();
+    routeRef.current = next;
+    modelRef.current = nextModel;
+    otherRef.current = was;
+    setRoute(next);
+    setOther(was);
+    const fresh: RideState = { ...startState(), fix, goodFix: fix, goodAt: fix.at, progressM: alongM, speedMs: rideRef.current.speedMs };
+    rideRef.current = fresh;
+    setRide(fresh);
+    setReplanning(false);
+    setReplanNote("");
+    setKeepPlanned(false);
+    if (prefsRef.current.verbosity !== "quiet") announcer.current?.say(onStandard.current ? ON_STANDARD_SAID : ON_DETOUR_SAID, false);
+  }, []);
 
   // No good fix for a minute, or for longer than the next turn is away: the turns ahead as a list, said
   // once; a good fix brings the turn-by-turn card back (the owner, 2026-10-16). Asked on each fix and on
@@ -848,11 +1099,49 @@ export function RideMode({
       const stepped = tripStep(modelRef.current, trip, { ...tripRef.current, ride: rideRef.current }, fix, prefsRef.current.verbosity, auto);
       tripRef.current = stepped.state;
       for (const note of stepped.notes) notify(note);
-      if (wasWalking && !stepped.state.walking) setWalking(false);
+      if (wasWalking && !stepped.state.walking) {
+        setWalking(false);
+        if (trip?.shareBike) setUndockAt(Date.now());
+      }
+      // On a share bike: stopped at a dock for a while is taken as docked; riding off from it again starts the time from 0.
+      if (trip?.shareBike && undockRef.current !== null && fix.accuracyM <= POOR_FIX_M) {
+        const at = dockedRef.current;
+        if (at) {
+          if (haversineM(fix.point, at) > LEFT_DOCK_M) restartTime();
+        } else {
+          still.current = stillStep(still.current, fix.point, fix.at);
+          const chosen = chosenDock.current;
+          if (chosen && haversineM(still.current.point, chosen.point) <= DOCKED_M && stillAtLength(still.current, fix.at, CHOSEN_STILL_MS)) {
+            still.current = { ...still.current, checked: true };
+            chosenDock.current = null;
+            dockedRef.current = chosen.point;
+            setDocked(chosen.name);
+            notify(dockedSaid(chosen.name));
+          } else if (stillAtLength(still.current, fix.at)) {
+            still.current = { ...still.current, checked: true };
+            const where = still.current.point;
+            void docksAround(where, fetchDocks).then((docks) => {
+              const dock = dockAt(where, docks);
+              if (!dock || ended.current || dockedRef.current) return;
+              dockedRef.current = [dock.lon, dock.lat];
+              setDocked(dock.name);
+              notify(dockedSaid(dock.name));
+            });
+          }
+        }
+      }
       const out = { state: stepped.state.ride, events: stepped.events };
       rideRef.current = out.state;
       setRide(out.state);
       if (stepped.state.walking) return;
+      // Off this line but on the other one (the standard way, or the detour): followed there, not re-planned.
+      if (out.state.off && fix.accuracyM <= POOR_FIX_M) {
+        const at = onOtherLine(otherModelRef.current, fix.point, fix.accuracyM, out.state.progressM ?? -Infinity);
+        if (at !== null) {
+          takeOther(at, fix);
+          return;
+        }
+      }
       say(out.events);
       // Back on the planned route: "Keep" has done its work; leaving it again re-plans as usual.
       if (out.events.some((e) => e.kind === "back-on-route") || (keepRef.current && !out.state.off)) setKeepPlanned(false);
@@ -863,7 +1152,7 @@ export function RideMode({
         announcer.current?.answer(whereAmI(modelRef.current, out.state, false, milesRef.current));
       }
     },
-    [gate, replan, say, notify, checkCueSheet, approach, trip],
+    [gate, replan, say, notify, checkCueSheet, approach, trip, takeOther],
   );
   const onFixRef = useRef(onFix);
   onFixRef.current = onFix;
@@ -965,8 +1254,8 @@ export function RideMode({
   // The map's view of the ride.
   const fix = ride.fix;
   useEffect(() => {
-    onView({ route, rider: fix ? { point: fix.point, headingDeg: fix.headingDeg, accuracyM: fix.accuracyM } : null });
-  }, [route, fix, onView]);
+    onView({ route, other: other?.geometry.coordinates ?? null, rider: fix ? { point: fix.point, headingDeg: fix.headingDeg, accuracyM: fix.accuracyM } : null });
+  }, [route, other, fix, onView]);
 
   // The map along the route, kept for dead spots (lib/corridor.ts, plan section 6): fetched at Start ride
   // and again for a re-plan's new route (only the tiles the first did not cover), cleared at End ride.
@@ -998,7 +1287,8 @@ export function RideMode({
     document.addEventListener("visibilitychange", onHide);
     return () => document.removeEventListener("visibilitychange", onHide);
   }, []);
-  const corridorText = corridorNote(corridor);
+  // Only a problem is shown (the bottom panel stays away while all is well); saved in full says nothing.
+  const corridorText = corridorWorry(corridor);
 
   const resume = () => {
     pausedRef.current = false;
@@ -1014,12 +1304,12 @@ export function RideMode({
     // Walking to the dock: the walk, from here.
     const walk = tripRef.current.walking && approach ? approachWords(approach, rideRef.current.fix?.point ?? null) : null;
     const spoken = walk ? walk.spoken : whereAmI(modelRef.current, rideRef.current, false, milesRef.current);
-    setWhere(walk ? walk.shown : whereAmI(modelRef.current, rideRef.current, true, milesRef.current));
+    showToast(walk ? walk.shown : whereAmI(modelRef.current, rideRef.current, true, milesRef.current));
     // On demand: through the chosen outputs; with neither chosen, through the polite region too, since
     // the rider asked (the answer is also on screen).
     announcer.current?.answer(spoken);
     if (prefsRef.current.output === "neither") setPolite((s) => ({ text: spoken, count: s.count + 1 }));
-  }, [approach]);
+  }, [approach, showToast]);
   // Ride the rest (lib/rideTrip.ts): offered near or past the stop where the transit ends, said once as it
   // shows; the press is answered as Re-plan from here's is, and a new ride replaces this one.
   const rest = trip?.rest ?? null;
@@ -1063,11 +1353,38 @@ export function RideMode({
       return;
     }
     replanTicket.current += 1;
+    // Keep wins over a Road closed press still waiting on a re-plan.
+    closedPending.current = false;
     setReplanning(false);
     setKeepPlanned(true);
     setReplanNote("");
     const back = wayBack(modelRef.current, rideRef.current);
     if (back) announcer.current?.answer(`The planned route is ${spokenDistance(back.metres)} to the ${back.direction}.`);
+  };
+  // Road closed (lib/roadClosed.ts): one press, no menu. The road ahead is marked closed for this ride and the ride
+  // planned again round it; the standard way beside a marked closure goes too, as it may run along it.
+  const roadClosed = () => {
+    const state = rideRef.current;
+    const fix = state.goodFix ?? state.fix;
+    const stretch = fix ? closedAhead(modelRef.current, state.progressM, state.off, fix.point, fix.headingDeg) : null;
+    if (!fix || !stretch) {
+      sayDetour(ROAD_CLOSED_NO_PLACE);
+      return;
+    }
+    blockedRef.current = withClosed(blockedRef.current, stretch.line);
+    blockedUntil.current = stretch.untilM === null ? null : { model: modelRef.current, untilM: stretch.untilM };
+    otherRef.current = null;
+    setOther(null);
+    setKeepPlanned(false);
+    sayDetour(ROAD_CLOSED_FINDING);
+    if (gate.busy) {
+      // The re-plan under way does not leave it out: it is voided, and the ride planned again once it settles.
+      closedPending.current = true;
+      replanTicket.current += 1;
+      return;
+    }
+    gate.online();
+    void replan(fix.point, undefined, true);
   };
   const replanNow = () => {
     // The rider asked, so the press is answered, as Detour's is (review RIDE-5): through the rider's
@@ -1148,10 +1465,58 @@ export function RideMode({
     // The rider asked: not held back by the automatic re-plans' spacing.
     gate.online();
     setDetourList(null);
+    setDetourOpen(false);
     // The list (and the pressed button) goes: the focus moves to Where am I?, not to the page's top.
     whereRef.current?.focus();
     sayDetour(`Finding a way to ${item.place.title}.`);
     void replan(here, item.place.point);
+  };
+
+  // The dock button's two ways (lib/rideDock.ts): the closest dock, or the one that adds least; the pick is a
+  // detour stop, as Detour here's is. The menu closes and the focus goes back to the dock button.
+  const dockBusy = useRef(false);
+  const rideToDock = async (way: DockWay) => {
+    setDockOpen(false);
+    dockButton.current?.focus();
+    if (dockBusy.current) {
+      sayDetour(STILL_SEARCHING);
+      return;
+    }
+    const here = rideRef.current.goodFix?.point ?? rideRef.current.fix?.point;
+    if (!here) {
+      sayDetour(NO_FIX_YET);
+      return;
+    }
+    if (gate.busy) {
+      sayDetour(DETOUR_BUSY);
+      return;
+    }
+    dockBusy.current = true;
+    sayDetour(dockFinding(way));
+    try {
+      const model = modelRef.current;
+      const left = toGo(model, rideRef.current.progressM ?? 0);
+      const end = model.coordinates[model.coordinates.length - 1] as LonLat;
+      const outcome = await findDock(
+        {
+          here,
+          end,
+          remainingM: left.end.metres,
+          docks: fetchDocks,
+          request: (from, places) => requestNearest(from, places, preset, { ...dials, loop: false }),
+        },
+        way,
+      );
+      if (ended.current) return;
+      sayDetour(outcome.said);
+      if (!outcome.ok) return;
+      setKeepPlanned(false);
+      gate.online();
+      chosenDock.current = { point: outcome.dock.place.point, name: outcome.dock.place.title };
+      void replan(here, outcome.dock.place.point);
+    } finally {
+      dockBusy.current = false;
+    }
   };
 
   // Keys while the focus is in Ride mode (outside a text field): W where am I, C re-centre. Only there
@@ -1181,6 +1546,32 @@ export function RideMode({
   const shape = arrowFor(cue);
   const show311 = ride311Shown({ off: ride.off, progressM: progress, insideDc: (m) => inDc(pointAt(model, m)) });
   const place311 = show311 && progress !== null ? reportPlace(model, progress, trailMiles) : null;
+  // A re-plan's outcome back on the route ("New route found.") shows by the side buttons for a few seconds; off
+  // the route it stays in the bottom panel with Re-plan from here. Said either way (replan's tell).
+  const offNow = ride.off;
+  useEffect(() => {
+    if (!replanNote || offNow) return;
+    showToast(replanNote);
+    setReplanNote("");
+  }, [replanNote, offNow, showToast]);
+  const notesShown = !!((gps && ride.fix) || paused || wakeNote || (ride.off && replanNote) || corridorText);
+  const sheetShown = notesShown || ride.off || restShown || reportOpen;
+  // The map's scales and credits sit at the bottom of the screen in a ride (the owner, 2026-10-17: "on the bottom
+  // of the page in a ride"), just above the bottom panel while it shows (styles.css --ride-sheet-h).
+  const sheetRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const sheet = sheetRef.current;
+    const set = () => root.style.setProperty("--ride-sheet-h", `${sheet ? Math.round(sheet.getBoundingClientRect().height) : 0}px`);
+    set();
+    if (!sheet || typeof ResizeObserver === "undefined") return () => root.style.removeProperty("--ride-sheet-h");
+    const observer = new ResizeObserver(set);
+    observer.observe(sheet);
+    return () => {
+      observer.disconnect();
+      root.style.removeProperty("--ride-sheet-h");
+    };
+  }, [sheetShown]);
 
   // Off route, back on, or out of DC: the off-route buttons or the 311 block go, and a focus that was in
   // the one that went goes to Where am I?, so W and C keep working (review a11y-3; lib/rideFocus.ts). A
@@ -1248,6 +1639,7 @@ export function RideMode({
             <input type="checkbox" checked={headingUp} onChange={(event) => onHeadingUp(event.target.checked)} />
             Turn the map to my heading
           </label>
+          <BigTextField on={big} onChange={onBig} />
         </div>
         {ride.arrived ? (
           <>
@@ -1292,6 +1684,7 @@ export function RideMode({
               {/* Greyed while GPS is weak or lost (any GPS note): the distance is from an old fix, not where the rider is. */}
               <p className={gps ? "cue-distance cue-distance-weak" : "cue-distance"}>In {formatDistance(cue.atM - progress)}</p>
               <p className="cue-text">{cue.rideText ?? cue.text}</p>
+              {cue.citation && <p className="cue-citation">{cue.citation}</p>}
             </div>
           </div>
         ) : (
@@ -1319,153 +1712,296 @@ export function RideMode({
         )}
       </div>
 
-      {/* The 311 button (lib/ride311.ts): inside DC only, on the right edge at thumb height; its menu over the map. */}
-      {show311 && (
-        <div className="ride-311" ref={block311} onKeyDown={(event) => {
-          if (event.key === "Escape" && menu311) {
-            event.preventDefault();
-            close311();
-          }
-        }}>
+      {/* The side buttons (the owner, 2026-10-17: "put these as circle icons on the side"), over the map on the
+          right at thumb height; each menu opens beside them. An answer the rider asked for shows to their left. */}
+      <div className="ride-middle">
+        {toast.text && !detourOpen && !dockOpen && !menu311 && (
+          <div className="ride-toast" {...toastTimer.hold}>
+            {/* Shown, not a live region: it is said through the rider's own outputs. */}
+            <p key={toast.n}>{toast.text}</p>
+          </div>
+        )}
+        <div className="ride-rail" role="group" aria-label="Ride buttons">
+          <button type="button" ref={whereRef} className="ride-round" onClick={askWhere} aria-keyshortcuts="W" aria-label="Where am I?" title="Where am I?">
+            <Icon name="pin" size={24} />
+          </button>
           <button
             type="button"
-            ref={button311}
-            className="ride-311-button"
-            aria-label={RIDE_311_NAME}
-            aria-expanded={menu311}
-            aria-controls={menu311Id}
-            onClick={() => setMenu311(!menu311)}
+            className={`ride-round${follow ? "" : " ride-round-alert"}`}
+            onClick={() => onFollow(true)}
+            aria-keyshortcuts="C"
+            aria-label={follow ? "Re-centre" : "Re-centre: the map stopped following you"}
+            title="Re-centre"
+            hidden={big}
           >
-            <Icon name="flag" size={18} />
-            <span aria-hidden="true">{RIDE_311_TEXT}</span>
+            <Icon name="locate" size={24} />
           </button>
-          <Ride311Menu id={menu311Id} open={menu311} place={place311} headingRef={menu311Heading} onPick={pick311} onClose={close311} />
-          {said311Shown && (
-            <div className="ride-311-said" {...said311Timer.hold}>
-              {/* Shown, not a live region: it is said through the rider's own outputs (tell311). */}
-              <p>{said311}</p>
-              {/* Sent by the server already: a note would be a second report of the same problem (v0.7.0 end review). */}
-              {said311 !== REPORT_SENT && (
-                <button type="button" className="secondary" onClick={addNote}>
-                  Add a note
-                </button>
+          {/* Road closed (v0.8.2, the owner's ask by name): one press while riding, no menu. */}
+          {!walking && !ride.arrived && (
+            <button type="button" className="ride-round ride-road-closed" onClick={roadClosed} aria-label={ROAD_CLOSED_NAME} title={ROAD_CLOSED_NAME}>
+              <Icon name="barrier" size={24} />
+            </button>
+          )}
+          {water && (
+            <div
+              className="ride-pop ride-detour"
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && detourOpen) {
+                  event.preventDefault();
+                  setDetourOpen(false);
+                  detourButton.current?.focus();
+                }
+              }}
+            >
+              <button
+                type="button"
+                ref={detourButton}
+                className="ride-round"
+                aria-label={`Detour: ${DETOUR_SUMMARY.toLowerCase()}`}
+                title="Detour"
+                aria-expanded={detourOpen}
+                aria-controls={detourId}
+                onClick={() => openMenu(detourOpen ? null : "detour")}
+              >
+                <Icon name="detour" size={24} />
+              </button>
+              <div id={detourId} className="ride-menu" role="group" aria-labelledby={`${detourId}-heading`} hidden={!detourOpen}>
+                <div className="ride-menu-head">
+                  <h3 id={`${detourId}-heading`} ref={detourHeading} tabIndex={-1}>
+                    Detour
+                  </h3>
+                  <button
+                    type="button"
+                    className="secondary ride-menu-close"
+                    onClick={() => {
+                      setDetourOpen(false);
+                      detourButton.current?.focus();
+                    }}
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="actions nearest-kinds">
+                  {NEAREST_KINDS.filter((k) => DETOUR_KINDS.includes(k.kind)).map(({ kind, label }) => (
+                    <button key={kind} type="button" className="secondary" onClick={() => void findDetour(kind)}>
+                      <Icon name={kind === "water" ? "water" : "wc"} size={20} />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {/* Shown, not a live region: what it says is said through the ride's own outputs (sayDetour). */}
+                <p className="hint nearest-status">{detourStatus}</p>
+                {detourList && detourList.items.length > 0 && (
+                  <div className="nearest-list">
+                    <h4 id={`${settingsId}-detour`}>{`Nearest ${nounOf(detourList.kind)}`}</h4>
+                    <ol role="list" aria-labelledby={`${settingsId}-detour`}>
+                      {detourList.items.map((item) => (
+                        <li key={item.place.id}>
+                          <span>{nearbyText(item)}</span>
+                          <span className="actions">
+                            <button
+                              type="button"
+                              className="secondary"
+                              aria-label={`Detour here: ${item.place.title}`}
+                              onClick={() => detour(item)}
+                            >
+                              Detour here
+                            </button>
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                    <p className="hint">{WATER_CAUTION}</p>
+                  </div>
+                )}
+                <p className="hint">{DETOUR_HELP}</p>
+              </div>
+            </div>
+          )}
+          {/* A share bike only (lib/rideDock.ts): its own detour, to a dock, with the rough time undocked on it. */}
+          {shareBike && !ride.arrived && (
+            <div
+              className="ride-pop ride-dock"
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && dockOpen) {
+                  event.preventDefault();
+                  setDockOpen(false);
+                  dockButton.current?.focus();
+                }
+              }}
+            >
+              <button
+                type="button"
+                ref={dockButton}
+                className="ride-round ride-dock-button"
+                aria-label={docked ? `${DOCK_NAME}. ${DOCKED_SHOWN}.` : dockButtonName(undockAt === null ? null : undockedMinutes(undockAt, now))}
+                title={DOCK_NAME}
+                aria-expanded={dockOpen}
+                aria-controls={dockId}
+                onClick={() => openMenu(dockOpen ? null : "dock")}
+              >
+                <Icon name="bikeshare" size={20} />
+                {undockAt !== null && <span aria-hidden="true">{docked ? DOCKED_SHOWN : undockedShown(undockedMinutes(undockAt, now))}</span>}
+              </button>
+              <div id={dockId} className="ride-menu" role="group" aria-labelledby={`${dockId}-heading`} hidden={!dockOpen}>
+                <div className="ride-menu-head">
+                  <h3 id={`${dockId}-heading`} ref={dockHeading} tabIndex={-1}>
+                    {DOCK_NAME}
+                  </h3>
+                  <button
+                    type="button"
+                    className="secondary ride-menu-close"
+                    onClick={() => {
+                      setDockOpen(false);
+                      dockButton.current?.focus();
+                    }}
+                  >
+                    Close
+                  </button>
+                </div>
+                {undockAt !== null && (
+                  <p className="hint">{docked ? `Docked at ${docked}.` : `Undocked about ${undockedShown(undockedMinutes(undockAt, now))}.`}</p>
+                )}
+                <ul className="ride-menu-choices" role="list">
+                  {DOCK_WAYS.map(({ way, label, hint }) => (
+                    <li key={way}>
+                      <button type="button" className="ride-menu-choice" onClick={() => void rideToDock(way)}>
+                        <strong>{label}</strong>
+                        <span>{hint}</span>
+                      </button>
+                    </li>
+                  ))}
+                  {undockAt !== null && (
+                    <li>
+                      <button
+                        type="button"
+                        className="secondary ride-menu-restart"
+                        onClick={() => {
+                          restartTime();
+                          setDockOpen(false);
+                          dockButton.current?.focus();
+                          sayDetour(TIME_RESTARTED);
+                        }}
+                      >
+                        {RESTART_TIME}
+                      </button>
+                    </li>
+                  )}
+                </ul>
+              </div>
+            </div>
+          )}
+          {/* The 311 button (lib/ride311.ts): inside DC only; its menu beside the buttons. */}
+          {show311 && (
+            <div className="ride-311" ref={block311} onKeyDown={(event) => {
+              if (event.key === "Escape" && menu311) {
+                event.preventDefault();
+                close311();
+              }
+            }}>
+              <button
+                type="button"
+                ref={button311}
+                className="ride-311-button"
+                aria-label={RIDE_311_NAME}
+                aria-expanded={menu311}
+                aria-controls={menu311Id}
+                onClick={() => openMenu(menu311 ? null : "311")}
+              >
+                <Icon name="flag" size={18} />
+                <span aria-hidden="true">{RIDE_311_TEXT}</span>
+              </button>
+              <Ride311Menu
+                id={menu311Id}
+                open={menu311}
+                place={place311}
+                headingRef={menu311Heading}
+                onPick={pick311}
+                onClose={close311}
+                onMore={() => {
+                  setMenu311(false);
+                  openReport();
+                }}
+              />
+              {said311Shown && (
+                <div className="ride-311-said" {...said311Timer.hold}>
+                  {/* Shown, not a live region: it is said through the rider's own outputs (tell311). */}
+                  <p>{said311}</p>
+                  {/* Sent by the server already: a note would be a second report of the same problem (v0.7.0 end review). */}
+                  {said311 !== REPORT_SENT && (
+                    <button type="button" className="secondary" onClick={addNote}>
+                      Add a note
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           )}
         </div>
-      )}
-
-      <div className="ride-controls">
-        {(gps && ride.fix) || paused || wakeNote || replanNote || corridorText ? (
-          <div className="ride-notes">
-            {gps && ride.fix && <p className="hint">{gps}</p>}
-            {corridorText && <p className="hint ride-corridor">{corridorText}</p>}
-            {wakeNote && <p className="hint">{wakeNote}</p>}
-            {replanNote && <p className="hint">{replanNote}</p>}
-            {paused && (
-              <p className="notice">
-                {PAUSED_SAID}{" "}
-                <button type="button" onClick={resume}>
-                  Resume
-                </button>
-              </p>
-            )}
-          </div>
-        ) : null}
-        {ride.off && (
-          <div className="actions ride-off-actions" ref={blockOff}>
-            <button type="button" onClick={replanNow} aria-disabled={replanning}>
-              Re-plan from here
-            </button>
-            <button type="button" className="secondary" onClick={keep} aria-pressed={keepPlanned}>
-              Keep the planned route
-            </button>
-          </div>
-        )}
-        {restShown && (
-          <div className="actions ride-rest">
-            <button type="button" onClick={rideTheRest} aria-describedby={`${settingsId}-rest`}>
-              {RIDE_REST}
-            </button>
-            <p id={`${settingsId}-rest`} className="hint">
-              {RIDE_REST_HINT}
-            </p>
-          </div>
-        )}
-        {!follow && !big && <p className="hint">The map stopped following you. Re-centre follows again.</p>}
-        {where && (
-          <p className="ride-where">{where}</p>
-        )}
-        <div className="actions ride-actions">
-          <button type="button" ref={whereRef} onClick={askWhere} aria-keyshortcuts="W">
-            <Icon name="pin" size={20} />
-            Where am I?
-          </button>
-          <button type="button" className="secondary" onClick={() => onFollow(true)} aria-keyshortcuts="C" hidden={big}>
-            <Icon name="locate" size={20} />
-            Re-centre
-          </button>
-          <button type="button" className="secondary big-text" onClick={() => onBig(!big)} aria-pressed={big}>
-            <Icon name="textsize" size={20} />
-            Big text
-          </button>
-          {/* No End ride here (review F5): the sticky top End is the one control, always in view. */}
-        </div>
-        {water && (
-          <details className="fold ride-detour">
-            <summary>{DETOUR_SUMMARY}</summary>
-            <div className="fold-body">
-              <div className="actions nearest-kinds">
-                {NEAREST_KINDS.filter((k) => DETOUR_KINDS.includes(k.kind)).map(({ kind, label }) => (
-                  <button key={kind} type="button" className="secondary" onClick={() => void findDetour(kind)}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {/* Shown, not a live region: what it says is said through the ride's own outputs (sayDetour). */}
-              <p className="hint nearest-status">{detourStatus}</p>
-              {detourList && detourList.items.length > 0 && (
-                <div className="nearest-list">
-                  <h3 id={`${settingsId}-detour`}>{`Nearest ${nounOf(detourList.kind)}`}</h3>
-                  <ol role="list" aria-labelledby={`${settingsId}-detour`}>
-                    {detourList.items.map((item) => (
-                      <li key={item.place.id}>
-                        <span>{nearbyText(item)}</span>
-                        <span className="actions">
-                          <button
-                            type="button"
-                            className="secondary"
-                            aria-label={`Detour here: ${item.place.title}`}
-                            onClick={() => detour(item)}
-                          >
-                            Detour here
-                          </button>
-                        </span>
-                      </li>
-                    ))}
-                  </ol>
-                  <p className="hint">{WATER_CAUTION}</p>
-                </div>
-              )}
-              <p className="hint">{DETOUR_HELP}</p>
-            </div>
-          </details>
-        )}
-        <Report311
-          model={model}
-          progressM={ride.off ? null : progress}
-          off={ride.off}
-          idBase={settingsId}
-          kind={reportKind}
-          onKind={setReportKind}
-          open={reportOpen}
-          onOpen={setReportOpen}
-          summaryRef={reportSummary}
-          noteRef={noteInput}
-          serverOn={serverOn311}
-          miles={trailMiles}
-        />
       </div>
+
+      {/* The bottom panel, only when it has something to say or ask (the owner: "Remove that bottom part when
+          routing by default"): the notes, off route, Ride the rest, and the full 311 report once asked for. */}
+      {sheetShown && (
+        <div ref={sheetRef} className="ride-controls">
+          {notesShown && (
+            <div className="ride-notes">
+              {gps && ride.fix && <p className="hint">{gps}</p>}
+              {corridorText && <p className="hint ride-corridor">{corridorText}</p>}
+              {wakeNote && <p className="hint">{wakeNote}</p>}
+              {ride.off && replanNote && <p className="hint">{replanNote}</p>}
+              {paused && (
+                <p className="notice">
+                  {PAUSED_SAID}{" "}
+                  <button type="button" onClick={resume}>
+                    Resume
+                  </button>
+                </p>
+              )}
+            </div>
+          )}
+          {ride.off && (
+            <div className="actions ride-off-actions" ref={blockOff}>
+              <button type="button" onClick={replanNow} aria-disabled={replanning}>
+                Re-plan from here
+              </button>
+              <button type="button" className="secondary" onClick={keep} aria-pressed={keepPlanned}>
+                Keep the planned route
+              </button>
+            </div>
+          )}
+          {restShown && (
+            <div className="actions ride-rest">
+              <button type="button" onClick={rideTheRest} aria-describedby={`${settingsId}-rest`}>
+                {RIDE_REST}
+              </button>
+              <p id={`${settingsId}-rest`} className="hint">
+                {RIDE_REST_HINT}
+              </p>
+            </div>
+          )}
+          {reportOpen && (
+            <Report311
+              model={model}
+              progressM={ride.off ? null : progress}
+              off={ride.off}
+              idBase={settingsId}
+              kind={reportKind}
+              onKind={setReportKind}
+              open={reportOpen}
+              onOpen={(open) => {
+                setReportOpen(open);
+                // Closed, the report goes from the page: the focus goes to Where am I?, not to the page's top.
+                if (!open) whereRef.current?.focus({ preventScroll: true });
+              }}
+              summaryRef={reportSummary}
+              noteRef={noteInput}
+              serverOn={serverOn311}
+              miles={trailMiles}
+            />
+          )}
+        </div>
+      )}
     </section>
   );
 }

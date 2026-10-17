@@ -424,6 +424,9 @@ NOT_DELIVERED_TO_THE_API: dict[str, tuple[str, ...] | None] = {
     "REBUILD_CHECKPOINTS": ("rebuild",),
     # The weekly rebuild's pause (OWNER-DECISIONS 355), read by the rebuild task alone.
     "WEEKLY_REBUILD_PAUSED": ("rebuild",),
+    # Building without every agency's stress ratings (pipeline.agency_ratings), read
+    # by the rebuild task alone.
+    "REBUILD_ALLOW_NO_AGENCY_LTS": ("rebuild",),
     # The source extract the rebuild downloads, merges and clips for itself
     # (pipeline.source). Read at FETCH_EXTRACT and nowhere the api runs.
     "SOURCE_EXTRACT_URLS": ("rebuild",),

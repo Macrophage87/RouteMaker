@@ -46,10 +46,11 @@ import {
   elapsedText,
   planChanged,
   planSentences,
+  CLEAR_LABEL,
+  ROUTING_LABEL,
   routeButton,
   routingStep,
   type DrawnPlan,
-  type PhraseTarget,
 } from "./lib/planFirst.ts";
 import { PlanPanel } from "./app/PlanPanel.tsx";
 import { useHighStressLanes, useMtbTrails } from "./useStressStyle.ts";
@@ -78,7 +79,7 @@ import { avoidNearSpot, shownRoute } from "./lib/avoidJunctions.ts";
 import { shownNear } from "./lib/junctionSuggest.ts";
 import { CHECKING_CLOSURES, CLOSURE_SLOW_MS, RIDE_ENDED_FROM_HERE_SAID, RIDE_ENDED_NO_FIX_SAID, RIDE_ENDED_SAID, RideEnded, RideMode, primeRideVoice, startRideGesture, voiceTurnedOn, type EndedPlan, type RideView } from "./RideMode.tsx";
 import { Icon } from "./Icon.tsx";
-import { readHeadingUp, readRidePrefs, writeHeadingUp, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
+import { readBigText, readHeadingUp, readRidePrefs, writeBigText, writeHeadingUp, writeRidePrefs, type RidePrefs } from "./lib/rideOutput.ts";
 import { activePins, chosenSaid, withStations, type NearbyStation, type Pins, type StationAction } from "./lib/stations.ts";
 import { bikeshareOf } from "./lib/bikeshare.ts";
 import { carries, hillsWords, seeksClimbs, startDials, stressMax, stressWords, trailsAreOff, type Dials } from "./lib/dials.ts";
@@ -192,6 +193,7 @@ import { keepLastRide, keepRoute, keptAnswerFor, sweepKept } from "./lib/offline
 import { KEEPING_SAID, keepOffered, keepSaid, keptPlanKey, offlineRouteNotice, routeTitle, type KeptRoute } from "./lib/offlineRoutes.ts";
 import { askPersist } from "./lib/offlineRouteStore.ts";
 import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
+import { followLine } from "./lib/gpxMatch.ts";
 import { fetchHazards, type HazardCollection } from "./lib/massHazards.ts";
 import { visibleCentreOffset } from "./lib/visibleCentre.ts";
 import { NARROW, useLongerThan, useMinute, useNarrow, useSettled } from "./app/hooks.ts";
@@ -508,21 +510,27 @@ export function App() {
   useEffect(() => {
     if (waterOn) ensureRepair();
   }, [waterOn, ensureRepair]);
-  // Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): shown in the bikeshare ride types, with
-  // Capital Bikeshare's switch in Layers (on by default), the choice kept on this device.
-  const docksActive = usesBikeshare(preset) || preset === "bikeshare-transit";
+  // Bikeshare docks and free e-bikes (v0.7.0; BikeshareDocks.tsx): shown while Capital Bikeshare's switch in
+  // Layers is on. It is on by default in the bikeshare ride types and off in the others (the owner, 2026-10-17),
+  // each choice kept on this device apart.
+  const bikeshareRide = usesBikeshare(preset) || preset === "bikeshare-transit";
   const [docksOperators, setDocksOperators] = useState<OperatorInfo[]>(() => [...KNOWN_OPERATORS]);
-  const [docksChoices, setDocksChoices] = useState<Record<string, boolean>>(() => readOperatorChoices());
+  const [docksChoicesByRide, setDocksChoicesByRide] = useState(() => ({
+    bikeshare: readOperatorChoices(KNOWN_OPERATORS, undefined, true),
+    other: readOperatorChoices(KNOWN_OPERATORS, undefined, false),
+  }));
+  const docksChoices = bikeshareRide ? docksChoicesByRide.bikeshare : docksChoicesByRide.other;
   const [docksReport, setDocksReport] = useState<DocksReport>({ answer: null, asked: false, zoom: 0 });
   const changeDocksChoices = (next: Record<string, boolean>) => {
-    setDocksChoices(next);
-    saveOperatorChoices(next);
+    setDocksChoicesByRide((all) => (bikeshareRide ? { ...all, bikeshare: next } : { ...all, other: next }));
+    saveOperatorChoices(next, undefined, bikeshareRide);
   };
   const onDocksReport = useCallback((report: DocksReport) => {
     setDocksReport(report);
     if (report.answer) setDocksOperators((known) => mergeOperators(known, report.answer!.operators));
   }, []);
   const docksAsk = useMemo(() => operatorsToAsk(docksChoices, docksOperators), [docksChoices, docksOperators]);
+  const docksActive = docksAsk.length > 0;
   const [placesOn, setPlacesOnState] = useState<boolean>(() => readPlacesLayer());
   const changePlacesOn = (on: boolean) => {
     setPlacesOnState(on);
@@ -751,7 +759,12 @@ export function App() {
     writeHeadingUp(on);
     setHeadingUpState(on);
   }, []);
-  const [bigText, setBigText] = useState(false);
+  // Big text is a setting kept on this device, not a ride button (the owner, 2026-10-17: "not something people will fiddle with mid ride").
+  const [bigText, setBigTextState] = useState(() => readBigText());
+  const setBigText = useCallback((on: boolean) => {
+    writeBigText(on);
+    setBigTextState(on);
+  }, []);
   const startRideRef = useRef<HTMLButtonElement>(null);
   const rideStartFirstRef = useRef<HTMLButtonElement>(null);
   // The Start ride button pressed (under the figures or in Directions): where the focus goes back to.
@@ -851,14 +864,22 @@ export function App() {
           keptShown.current = null;
           return { ok: true, route: replay };
         }
-        const asked = { confirmLong: plan.confirmLong, dials: plan.dials, vias: viaIndices(plan.points, VIA_MARKS.isVia), quick: plan.quick };
+        // An opened file not edited since follows its line exactly (core/follow.py), whatever the ride type.
+        const follow = followLine(importBase.current, plan.points, plan.dials.loop);
+        // Its manual mode (Plan's "Follow the file exactly"): rules or not, as for a road closed for a parade. Plan
+        // only, where the switch is: Go keeps to the rules.
+        const followExact = follow !== undefined && importBase.current?.exact === true && modeRef.current === "plan";
+        const asked = { confirmLong: plan.confirmLong, dials: plan.dials, vias: viaIndices(plan.points, VIA_MARKS.isVia), quick: plan.quick, follow, followExact };
         // Asked for already, before the tap (Go's early start): that request's answer, not a second request.
         const early = earlyStart.current?.take(routeRequestBody(plan.points, plan.preset, asked)) ?? null;
         const result = early
           ? await early.catch(() => requestRoute(plan.points, plan.preset, asked))
           : await requestRoute(plan.points, plan.preset, asked);
+        // The API could not follow this file (core/follow.py): its fitting rounds are planned, not traced again.
+        if (follow && result.ok && !result.route.follows_file && importBase.current) importBase.current.unfollowed = true;
         keptShown.current = null;
-        if (result.ok || result.error.kind !== "network") return result;
+        // A kept route is keyed by the plan alone, not the manual mode: none stands in for one followed exactly.
+        if (result.ok || result.error.kind !== "network" || followExact) return result;
         const kept = await keptAnswerFor<RouteResponse>(keptPlanKey(plan.points, plan.preset, plan.dials, viaIndices(plan.points, VIA_MARKS.isVia))).catch(() => undefined);
         if (!kept) return result;
         keptShown.current = kept;
@@ -2486,7 +2507,6 @@ export function App() {
     }
     setRideAsk(false);
     setFollow(true);
-    setBigText(false);
     setRideView(null);
     setRiding(true);
   };
@@ -2557,10 +2577,17 @@ export function App() {
   };
   // An opened file not edited since: its points and ride type as the import left them (a fitting round moves
   // the base with it, refineImported).
-  const importBase = useRef<{ imported: ImportedPlan; points: LonLat[]; preset: PresetId } | null>(null);
+  const importBase = useRef<{ imported: ImportedPlan; points: LonLat[]; preset: PresetId; unfollowed?: boolean; exact?: boolean } | null>(null);
   if (!imported) importBase.current = null;
   else if (importBase.current?.imported !== imported) importBase.current = { imported, points, preset };
   const importEdited = !imported || importBase.current?.points !== points || importBase.current?.preset !== preset;
+  // "Follow the file exactly" (Stephen 2026-10-17, "give a manual mode option"): the file planned again, followed as
+  // ridden. Off for each file opened; offered while it is not edited (its line is what is followed).
+  const setFollowExact = (on: boolean) => {
+    if (!importBase.current) return;
+    importBase.current = { ...importBase.current, exact: on, unfollowed: false };
+    setRouteAsk((n) => n + 1);
+  };
   const fileName = () => imported?.name || keptTitle();
   // A saved route's line about today's map (more than 5% apart in distance), with Update route.
   const [savedNote, setSavedNote] = useState<{ key: string; savedM: number; todayM: number } | null>(null);
@@ -2928,12 +2955,12 @@ export function App() {
   // The ride just ended, kept for Undo for a few seconds (v0.7.0, "Go riding fixes" item 6: one tap on
   // End ends the ride with "Ride ended" and Undo). In memory only, as the ride itself is.
   // `from`: the plan End ride left starting where the rider was (part way), so Undo takes that edit back too.
-  const endedRide = useRef<{ start: NonNullable<typeof rideStart>; big: boolean; from: LonLat[] | null } | null>(null);
+  const endedRide = useRef<{ start: NonNullable<typeof rideStart>; from: LonLat[] | null } | null>(null);
   const [rideEnded, setRideEnded] = useState(0);
-  const rideNow = useRef({ start: rideStart, big: bigText });
-  rideNow.current = { start: rideStart, big: bigText };
+  const rideNow = useRef({ start: rideStart });
+  rideNow.current = { start: rideStart };
   const endRide = useCallback((after: EndedPlan) => {
-    const { start, big } = rideNow.current;
+    const { start } = rideNow.current;
     // The plan stays, every route of it, to adjust and ride again (the owner, 2026-10-16: "You should keep all
     // the routes ... But be able to adjust things"). Part way, it starts where the rider is ("If you went part
     // way it changes your start location"): the stops passed dropped, a loop's finish still its start, as one
@@ -2946,10 +2973,9 @@ export function App() {
       commit(from, ride.dials.loop ? { ...ride, dials: { ...ride.dials, loop: false } } : undefined);
       setFromHere((f) => [...f, from![0]]);
     }
-    endedRide.current = start ? { start, big, from } : null;
+    endedRide.current = start ? { start, from } : null;
     setRiding(false);
     setRideStart(null);
-    setBigText(false);
     setRideView(null);
     setRideEnded((n) => n + 1);
     // Said by the page's region, always mounted; the focus goes to Undo (RideEnded), not back to Start (review F6).
@@ -2970,7 +2996,6 @@ export function App() {
     startRideGesture(ridePrefs);
     setRideStart(ended.start);
     setFollow(true);
-    setBigText(ended.big);
     setRideView(null);
     setRiding(true);
   };
@@ -2981,8 +3006,8 @@ export function App() {
   }, [rideAsk]);
   // Big text hides the map; shown again, it fits its box.
   useEffect(() => {
-    if (!bigText) mapRef.current?.resize();
-  }, [bigText]);
+    if (!(riding && bigText)) mapRef.current?.resize();
+  }, [bigText, riding]);
 
   // The map frames a route in the part the panel does not cover.
   const framePadding = useCallback((): Frame => {
@@ -3591,26 +3616,24 @@ export function App() {
     setChangeDetails([]);
     clearAll();
   };
-  // A phrase of the plan opens its editor: a point's row (and the map goes to it), the ride type or a slider.
-  const openPhrase = (target: PhraseTarget) => {
-    if (target.kind === "point") {
-      const point = pointsRef.current[target.index];
-      if (point) mapRef.current?.flyTo({ center: point, zoom: Math.max(mapRef.current.getZoom(), 14) });
-      removeRefs.current[target.index]?.focus();
-      return;
-    }
-    const line = document.querySelector<HTMLButtonElement>("#ride-settings-heading button");
-    if (line?.getAttribute("aria-expanded") === "false") line.click();
-    window.setTimeout(() => {
-      const body = document.querySelector(".ride-settings-body");
-      const editor =
-        target.kind === "ride"
-          ? body?.querySelector<HTMLElement>("input[type=radio]:checked, button, input")
-          : body?.querySelectorAll<HTMLElement>('.dials input[type="range"]')[target.kind === "traffic" ? 0 : 1];
-      editor?.focus();
-      editor?.scrollIntoView?.({ block: "center" });
-    }, 0);
-  };
+  const routeNow = routeButton({ points: points.length, drawn: drawn !== null, changed: planEdited, routeShown: shown !== null });
+  // Plan's bar at the top of the map (the owner, 2026-10-17: "In plan, make "Update route" a big button at the top of
+  // the map ... Update route or start route. don't show if there's nothing to change. Also put the undo and clear there
+  // as well, smaller"): the Route button big while there is something to route (or it is routing), Undo, Redo and
+  // Clear small beside it while each has something to do. A focus left on a button of the bar that went (the
+  // big one after routing, Clear after clearing) moves to the panel's Route button where it shows, else the map
+  // (never to Clear, where a second Enter would clear the plan).
+  const barRoute = planFirst && (routingNow || routeNow.unavailable === null);
+  const planBar = planFirst && (barRoute || can.undo || can.redo || points.length > 0);
+  const barFocused = useRef(false);
+  useEffect(() => {
+    if (!barFocused.current) return;
+    const active = document.activeElement;
+    if (active && active !== document.body && active.isConnected) return;
+    barFocused.current = false;
+    const route = document.querySelector<HTMLElement>(".plan-panel .route-button");
+    (route?.offsetParent ? route : document.querySelector<HTMLElement>(".maplibregl-canvas"))?.focus();
+  });
   const planPanel = (
     <PlanPanel
       key="plan"
@@ -3619,8 +3642,7 @@ export function App() {
         traffic: stressMax(preset) > 0 ? stressWords(dials.stress) : null,
         hills: hillsWords(dials.hills, seeksClimbs(preset)),
       })}
-      onPhrase={openPhrase}
-      button={routeButton({ points: points.length, drawn: drawn !== null, changed: planEdited, routeShown: shown !== null })}
+      button={routeNow}
       onRoute={pressRoute}
       routing={routingNow ? { step: routingStep(routingTick - routingSince), elapsed: elapsedText(routingTick - routingSince) } : null}
       onCancel={cancelRouting}
@@ -3764,6 +3786,7 @@ export function App() {
         <GoTopBar
           mode={mode}
           onMode={changeMode}
+          modes={switchModes(canReview)}
           onMenu={(button) => openView("settings", button)}
           onLayers={(button) => openView("layers", button)}
           onLocate={() => void goLocate()}
@@ -3779,7 +3802,9 @@ export function App() {
         pointWarnings={riding || reviewing ? undefined : pointWarnings}
         route={riding && rideView ? rideView.route : reviewing ? null : shown}
         stale={riding ? false : stale || planEdited}
-        ghost={riding || reviewing ? null : ghost}
+        // Plan's ghost of the last route; else the standard way through a closure the route goes round, dashed
+        // beside it (v0.8.2), in Go and Plan, and on the ride the line not being followed.
+        ghost={riding ? (rideView?.other ?? null) : reviewing ? null : (ghost ?? shown?.closure_through?.geometry.coordinates ?? null)}
         lightMarks={riding || mode !== "plan" ? null : light}
         stressVisible={stressVisible && stress === "available"}
         when={mapWhen(dials.when ?? null)}
@@ -3907,8 +3932,49 @@ export function App() {
       {crosshairShown && (
         <div className="crosshair" aria-hidden="true" style={crosshairAt ? { left: crosshairAt.x, top: crosshairAt.y } : undefined} />
       )}
+      {planBar && (
+        <div
+          className="plan-map-bar"
+          role="group"
+          aria-label="Route and edits"
+          onFocus={() => (barFocused.current = true)}
+          onBlur={(event) => {
+            if (event.relatedTarget) barFocused.current = false;
+          }}
+        >
+          {can.undo && (
+            <button type="button" className="secondary plan-bar-small" data-history="undo" onClick={undo} aria-label="Undo" title="Undo">
+              <Icon name="undo" size={20} />
+            </button>
+          )}
+          {can.redo && (
+            <button type="button" className="secondary plan-bar-small" data-history="redo" onClick={redo} aria-label="Redo" title="Redo">
+              <Icon name="redo" size={20} />
+            </button>
+          )}
+          {barRoute && (
+            <button
+              type="button"
+              className="plan-bar-route"
+              aria-disabled={routingNow ? true : undefined}
+              onClick={() => {
+                if (!routingNow) pressRoute();
+              }}
+            >
+              <Icon name="routes" size={20} />
+              {routingNow ? ROUTING_LABEL : routeNow.label}
+            </button>
+          )}
+          {points.length > 0 && (
+            <button type="button" className="secondary plan-bar-small" onClick={clearPlan} aria-label={`${CLEAR_LABEL} the plan`} title={CLEAR_LABEL}>
+              <Icon name="trash" size={20} />
+            </button>
+          )}
+        </div>
+      )}
       {!riding && !goMode && <PlanMapChips onFood={(chip) => openView("food", chip)} onWater={(chip) => openView("nearest", chip)} onPlaces={openPlaces} />}
-      {!riding && narrow && (can.undo || can.redo) && (
+      {/* In Plan, Undo and Redo are in the plan's bar at the top of the map instead. */}
+      {!riding && narrow && !planFirst && (can.undo || can.redo) && (
         // On a phone the sheet may be hidden while the rider edits the map,
         // so Undo and Redo sit on the map there (and only there: one of each
         // per layout), each shown while it has something to give back.
@@ -4083,8 +4149,10 @@ export function App() {
                 />
               ) : (
                 <>
-                  {planPanel}
-                  {order.map((id) => sections[id])}
+                  {/* Route (the plan panel) after the points and the ride, above the route, as a form's button follows its
+                      fields (Plan streamline, Stephen 2026-10-17); on a phone with a route, where the route comes first, on top. */}
+                  {/* One flat keyed list, so a change of order moves the panel rather than remounting it. */}
+                  {(order[0] === "route" ? [planPanel, ...order.map((id) => sections[id])] : order.flatMap((id) => (id === "route" ? [planPanel, sections[id]] : [sections[id]])))}
                 </>
               )}
             </div>
@@ -4103,7 +4171,7 @@ export function App() {
                   operators: docksOperators,
                   choices: docksChoices,
                   onChange: changeDocksChoices,
-                  status: docksActive ? docksStatus(docksReport.answer, docksReport.asked, docksReport.zoom, docksAsk.length > 0) : "",
+                  status: bikeshareRide || docksActive ? docksStatus(docksReport.answer, docksReport.asked, docksReport.zoom, docksActive) : "",
                 },
               }}
             />
@@ -4121,12 +4189,18 @@ export function App() {
                 openImported: openImportedChecked, refineImported, getMap, downloadRoute, sendToGarmin: sendToGarminRoute,
                 ...(mode === "go" ? {} : { downloadCourse: downloadCourseRoute }),
                 // Snapping an opened track (lib/gpxMatch.ts) opens the plan along the snapped line: one edit, like the file.
-                ...(mode === "go" ? {} : { match: { preset, trailsOff: trailsAreOff(preset, dials), assist: dials.assist === true, onMatched: openImported } }),
+                ...(mode === "go" ? {} : {
+                  match: {
+                    preset, trailsOff: trailsAreOff(preset, dials), assist: dials.assist === true, onMatched: openImported,
+                    ...(importBase.current && !importEdited ? { exact: importBase.current.exact === true, onExact: setFollowExact } : {}),
+                  },
+                }),
                 saveControl: saveProps && !importEdited ? <SaveRoute {...saveProps} label={SAVE_ROUTE} /> : null,
               }}
             />
             <SettingsSheet
               {...{
+                bigText: { on: bigText, onChange: setBigText },
                 nav: sheetNav, settingsHeadingRef, ridePrefs, changeRidePrefs, keepShown, keptVersion, openKept, announce,
                 linkNote, accessMode, toggleAccessMode, mode, myGo: myGoControls, menu,
                 announcements: { level: announceLevel(announceChoice, mode), choose: chooseAnnounce },

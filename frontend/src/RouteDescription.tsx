@@ -133,6 +133,8 @@ export function RouteDescription({
           </span>
         )}
         {entry.text}
+        {/* A closure's source and until when, in small print (v0.8.2: "Citations in small text, not read out"). */}
+        {entry.citation && <small className="description-citation">{entry.citation}</small>}
         {crossings.length > 0 ? (
           // A group's crossings, each with its mile marker (OWNER-DECISIONS 248).
           <ol className="description-crossings" aria-label="Crossings in this group, in route order">

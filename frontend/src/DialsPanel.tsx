@@ -187,6 +187,14 @@ function NumberDial(props: {
   );
 }
 
+/** What When changes, in full, behind its How this works. */
+const WHEN_HOW =
+  "On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway, are planned as " +
+  "traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only as paths in the breakdown. Night " +
+  "runs from 9 PM to 7 AM on every day, weekends included, and off-hours end at 9 PM. Crossing a busy road counts for more " +
+  "at rush hour, and for less on weekends and at night, when traffic is usually calmer. Each junction warning says when the " +
+  "time changed it.";
+
 function whenLabel(when: When): string {
   return WHENS.find((option) => option.id === when)?.label ?? when;
 }
@@ -402,13 +410,9 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, weight }: Pr
             {option.label}
           </label>
         ))}
-        <p className="hint">
-          On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway,
-          are planned as traffic-free paths. With e-bike rules, on roads only, or on a mass ride, they count only
-          as paths in the breakdown. Night runs from 9 PM to 7 AM on every day, weekends included, and off-hours
-          end at 9 PM. Crossing a busy road counts for more at rush hour, and for less on weekends and at night,
-          when traffic is usually calmer. Each junction warning says when the time changed it.
-        </p>
+        {/* One line, the rest behind How this works (Plan streamline, Stephen 2026-10-17). */}
+        <p className="hint">Weekend car-free roads, such as Beach Drive and Sligo Creek Parkway, count as paths.</p>
+        <HowThisWorks text={WHEN_HOW} about="when" />
       </fieldset>
       {view.target && (
         <NumberDial
