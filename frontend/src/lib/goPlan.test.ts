@@ -220,11 +220,13 @@ test("Go's Where to? is the destination from the rider's location, in one edit, 
   assert.match(startPick, /if \(pending\) \{\s*clearGoPending\(\);\s*routeGo\(point, false, pending\.dest, pending\.name, false, pending\.vias\);/);
 });
 
-test("the Go/Plan switch: two toggle buttons in a named group, in Go's bar and Plan's header; a press is remembered as My Go's Open in", () => {
+test("the Go/Plan switch: toggle buttons in a named group (Review too for an admin), in Go's bar and Plan's header; a press is remembered as My Go's Open in", () => {
   assert.match(go, /role="group" aria-label=\{MODE_SWITCH_NAME\} aria-describedby=\{hintId\}/);
   assert.match(go, /className="mode-button" aria-pressed=\{mode === m\} onClick=\{\(\) => onChange\(m\)\}/);
   assert.match(appFile, /\{!goMode && <ModeSwitch mode=\{mode\} onChange=\{changeMode\} className="panel-mode" modes=\{switchModes\(canReview\)\} \/>\}/);
-  assert.match(appFile, /<GoTopBar\s+mode=\{mode\}\s+onMode=\{changeMode\}/);
+  assert.match(appFile, /<GoTopBar\s+mode=\{mode\}\s+onMode=\{changeMode\}\s+modes=\{switchModes\(canReview\)\}/);
+  // Go's switch offers an admin's Review too, the same views as Plan's (Stephen 2026-10-17).
+  assert.match(go, /<ModeSwitch mode=\{mode\} onChange=\{onMode\} modes=\{modes\} \/>/);
   const change = appFile.slice(appFile.indexOf("const changeMode = "), appFile.indexOf("// \"Copy link\""));
   assert.match(change, /writeTabMode\(next\);/);
   assert.match(change, /announceExtra\(modeSaid\(next\)\);/, "extra narration: said at Full, not at Brief");
