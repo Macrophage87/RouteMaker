@@ -178,7 +178,15 @@ def credits(text: str | None) -> str | None:
 # Where a record's road name or byway name may be, first found wins: the layers' field
 # names were not readable from the cloud build, so the installer looks for the usual ones
 # and refuses a byway layer with none (`--byway-name-field` names it).
-ROAD_NAME_FIELDS = ("ROAD_NAME", "RD_NAME", "ROADNAME", "STREET_NAME", "NAME", "Name")
+ROAD_NAME_FIELDS = (
+    "ROAD_NAME",
+    "RD_NAME",
+    "ROADNAME",
+    "LOCALROADNAME",
+    "STREET_NAME",
+    "NAME",
+    "Name",
+)
 BYWAY_NAME_FIELDS = ("BYWAY_NAME", "Byway_Name", "BywayName", "BYWAY", "Byway", "NAME", "Name")
 
 

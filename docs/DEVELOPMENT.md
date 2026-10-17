@@ -4673,8 +4673,8 @@ puts it, at most two presses away.
   alert and Start), and Plan, the full panel. Same state, same link. Which one opens:
   the tab's own (sessionStorage, so a reload stays), else Plan for a link with a plan in
   it, else My Go's Open in, else a phone (`NARROW`) opens in Go and a wider screen in Plan.
-  The switch (`app/Go.tsx` `ModeSwitch`: two `aria-pressed` buttons in a named group) is in
-  Go's bar over the map and Plan's header; a press is remembered as My Go's Open in.
+  The switch (`app/Go.tsx` `ModeSwitch`: `aria-pressed` buttons in a named group, Go and Plan, plus
+  Review for an admin) is in Go's bar over the map and Plan's header; a press is remembered as My Go's Open in.
 - **Go** (`app/Go.tsx`): `GoTopBar` (Menu, the switch, Layers, Locate, and the destination
   with a clear button) is before the map in the page, as it is at the top of the screen.
   `GoSheet` (inside the panel, `peek`/`half`/`full` by its handle) holds `PlaceSearch

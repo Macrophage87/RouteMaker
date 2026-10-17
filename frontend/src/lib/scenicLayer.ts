@@ -80,8 +80,9 @@ export const SCENIC_VIEWPOINT_LAYER = "scenic-viewpoints";
 export const SCENIC_BRIDGE_LAYER = "scenic-bridges";
 export const SCENIC_BRIDGE_LABEL_LAYER = "scenic-bridge-labels";
 export const SCENIC_POINT_LAYERS = [SCENIC_VIEWPOINT_LAYER, SCENIC_BRIDGE_LAYER, SCENIC_BRIDGE_LABEL_LAYER] as const;
-export const SCENIC_POINTS_MIN_ZOOM = 11;
-export const SCENIC_LABEL_MIN_ZOOM = 13;
+/** From the map's widest zoom, as Places to see (the owner, 2026-10-17: "as wide as possible"); a bridge's name from 11. */
+export const SCENIC_POINTS_MIN_ZOOM = 7;
+export const SCENIC_LABEL_MIN_ZOOM = 11;
 /** The base map's glyphs include this face (scripts/fetch_basemap.sh), as the climbs' and mountain-bike labels use. */
 export const SCENIC_FONT = "Noto Sans Medium";
 
@@ -104,7 +105,7 @@ export function scenicPointsGeoJson(places: readonly SightPlace[]): object {
 
 /**
  * A viewpoint's ring (white inside, a teal edge), a covered bridge's solid teal dot, and the bridge's name under it
- * from zoom 13: the two differ in shape, not only in size.
+ * from zoom 11: the two differ in shape, not only in size.
  */
 export function scenicPointLayers(): Record<string, unknown>[] {
   const base = { source: SCENIC_POINTS_SOURCE, minzoom: SCENIC_POINTS_MIN_ZOOM };
@@ -114,14 +115,14 @@ export function scenicPointLayers(): Record<string, unknown>[] {
       type: "circle",
       ...base,
       filter: ["==", ["get", "kind"], "viewpoint"],
-      paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], SCENIC_POINTS_MIN_ZOOM, 3, 16, 4.5], "circle-color": "#ffffff", "circle-stroke-color": SCENIC_COLOUR, "circle-stroke-width": 2 },
+      paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], SCENIC_POINTS_MIN_ZOOM, 2.5, 11, 3, 16, 4.5], "circle-color": "#ffffff", "circle-stroke-color": SCENIC_COLOUR, "circle-stroke-width": 2 },
     },
     {
       id: SCENIC_BRIDGE_LAYER,
       type: "circle",
       ...base,
       filter: ["==", ["get", "kind"], "bridge"],
-      paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], SCENIC_POINTS_MIN_ZOOM, 4, 16, 6.5], "circle-color": SCENIC_COLOUR, "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.5 },
+      paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], SCENIC_POINTS_MIN_ZOOM, 3, 11, 4, 16, 6.5], "circle-color": SCENIC_COLOUR, "circle-stroke-color": "#ffffff", "circle-stroke-width": 1.5 },
     },
     {
       id: SCENIC_BRIDGE_LABEL_LAYER,

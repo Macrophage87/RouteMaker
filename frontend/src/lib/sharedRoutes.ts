@@ -153,7 +153,7 @@ export function previewImageOk(line: readonly (readonly number[])[], points: rea
 
 /** A planned answer as it may be shared: without the other candidates, the rider's weight or the effort weighed with it. */
 export function publicAnswer(answer: RouteResponse): RouteResponse {
-  const out: RouteResponse = { ...answer, candidates: null, avoid_alternate: null };
+  const out: RouteResponse = { ...answer, candidates: null, avoid_alternate: null, closure_through: null };
   if (out.dials && out.dials.system_weight_kg != null) {
     out.dials = { ...out.dials, system_weight_kg: null };
     out.effort_m = null;

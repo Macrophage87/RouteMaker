@@ -223,7 +223,7 @@ On a fresh host this is the runbook's two-phase first rebuild, and the script fo
   10001) and run the installer the script prints, which is `docs/OPERATIONS.md` step 6:
 
   ```sh
-  sudo install -d -o 10001 -g 10001 /srv/routemaker/data/reference/inputs
+  sudo mkdir -p /srv/routemaker/data/reference/inputs && sudo chown 10001:10001 /srv/routemaker/data/reference/inputs
   # copy the three files in, then:
   docker compose exec -T rebuild python3 scripts/install_reference_data.py \
       --data-root /data --extract /data/extracts/source.osm.pbf \

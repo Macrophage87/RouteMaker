@@ -181,7 +181,11 @@ export function placesSaid(count: number, filter: PlaceFilter, alongRoute: boole
 
 export const PLACES_SOURCE_ID = "places-to-see";
 export const PLACES_LAYER = "places-to-see";
-export const PLACES_MIN_ZOOM = 11;
+/**
+ * The owner, 2026-10-17: "For places to see, have these shown at a fairly wide zoom, probably as wide as possible."
+ * So from the map's widest zoom (MapView's minZoom, 7), as small dots that grow as the map zooms in.
+ */
+export const PLACES_MIN_ZOOM = 7;
 export const PLACES_COLOUR = "#7a2e8e";
 export const PLACES_PREF_KEY = "routemaker.placesLayer";
 
@@ -200,10 +204,10 @@ export function placesLayer(): Record<string, unknown> {
     source: PLACES_SOURCE_ID,
     minzoom: PLACES_MIN_ZOOM,
     paint: {
-      "circle-radius": ["interpolate", ["linear"], ["zoom"], PLACES_MIN_ZOOM, 3.5, 15, 6.5],
+      "circle-radius": ["interpolate", ["linear"], ["zoom"], PLACES_MIN_ZOOM, 2.5, 11, 3.5, 15, 6.5],
       "circle-color": PLACES_COLOUR,
       "circle-stroke-color": "#ffffff",
-      "circle-stroke-width": 1.5,
+      "circle-stroke-width": ["interpolate", ["linear"], ["zoom"], PLACES_MIN_ZOOM, 1, 11, 1.5],
     },
   };
 }
