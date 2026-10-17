@@ -205,3 +205,11 @@ test("RideMode: round side buttons with names; the bottom panel only when it has
   assert.match(ride, /setDetourOpen\(which === "detour"\);\s*setDockOpen\(which === "dock"\);\s*setMenu311\(which === "311"\);/);
   assert.match(css, /\.ride \.ride-round \{\s*width: 56px;\s*height: 56px;/);
 });
+
+test("following track-up, the rider is held two thirds of the way down the map, and the marker is a little larger (v0.9.0)", () => {
+  const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  assert.match(map, /export const RIDER_DOWN = 1 \/ 6;/);
+  assert.match(map, /const ahead = props\.headingUp \? Math\.round\(map\.getContainer\(\)\.clientHeight \* RIDER_DOWN\) : 0;/);
+  assert.match(map, /map\.easeTo\(\{ center: rider\.point, bearing, zoom, offset: \[0, ahead\], duration: still \? 0 : 400 \}\);/);
+  assert.match(css, /\.rider-marker \{\s*width: 36px;\s*height: 36px;/);
+});

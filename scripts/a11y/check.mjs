@@ -2579,6 +2579,12 @@ const levelSlider = `${EDITOR} input[type=range]`;
   const speech = await p.eval("window.__speech.slice()");
   check("ride: the voice says the same cues", speech.some((t) => /^In .*left onto R Street Northwest/.test(t)) && speech.includes("Left now onto R Street Northwest."), JSON.stringify(speech));
   await p.shot(`${SHOTS}/ride_cue.png`);
+  // Track-up (the default), the rider sits about two thirds of the way down the map, more of the road ahead
+  // showing, and the marker is a little larger (v0.9.0, the owner, 2026-10-17).
+  await sleep(600);
+  const you = await p.eval("(() => { const m = document.querySelector('.rider-marker').getBoundingClientRect(); const c = document.querySelector('.map').getBoundingClientRect(); return { down: Math.round(((m.top + m.height / 2 - c.top) / c.height) * 100) / 100, w: Math.round(m.width) }; })()");
+  check("ride: following track-up, the rider is about two thirds of the way down the map, the marker at least 26 px",
+    you.down >= 0.6 && you.down <= 0.73 && you.w >= 26, JSON.stringify(you));
 
   // Where am I? on demand.
   // The side buttons (the owner, 2026-10-17): round icons, each named.
@@ -4828,7 +4834,7 @@ const failed = results.filter((r) => !r.ok);
 // returns early) fails here rather than passing green (the mutation review of the release).
 // The transit blocks (#108) and the Go press checks (#116) were added without raising it; they run since #127.
 // Review mode's own lists (22c2) add six.
-const EXPECTED = 641;
+const EXPECTED = 642;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

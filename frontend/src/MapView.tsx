@@ -321,6 +321,9 @@ const ROUTE_STRESS_SOURCE = ROUTE_STRESS_SOURCE_ID;
 /** The handle and the dashed preview of a drag of the line. */
 const EDIT_SOURCE = "route-edit";
 const ACCURACY_SOURCE = "location-accuracy";
+/** How far below the middle a ride holds the rider while following track-up: a sixth of the map's height puts
+ *  them two thirds of the way down (v0.9.0, the owner, 2026-10-17). */
+export const RIDER_DOWN = 1 / 6;
 /** The closures in force at the ride (v0.7.0, lib/closureMap.ts). */
 const CLOSURE_SOURCE = "closures";
 // Bikeshare's walk legs (lib/bikeshare.ts): dotted, with the operator's source citation as the
@@ -1997,7 +2000,10 @@ export function MapView(props: Props) {
     following.current = true;
     // A moving map once a second is too much for some: with reduced motion asked for, it jumps.
     const still = typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    map.easeTo({ center: rider.point, bearing, zoom, duration: still ? 0 : 400 });
+    // Track-up, the rider sits about two thirds of the way down the map, so more of the road ahead shows (the owner,
+    // 2026-10-17: "You care more about what's ahead of you than behind"); north-up, ahead is any way, so centred.
+    const ahead = props.headingUp ? Math.round(map.getContainer().clientHeight * RIDER_DOWN) : 0;
+    map.easeTo({ center: rider.point, bearing, zoom, offset: [0, ahead], duration: still ? 0 : 400 });
   }, [props.rider, props.follow, props.headingUp]);
   useEffect(() => () => void riderMarker.current?.remove(), []);
   // Go's "you" dot: a marker only (aria-hidden: Go's start line says where the rider is).
