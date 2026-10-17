@@ -3613,8 +3613,8 @@ export function App() {
   // the map ... Update route or start route. don't show if there's nothing to change. Also put the undo and clear there
   // as well, smaller"): the Route button big while there is something to route (or it is routing), Undo, Redo and
   // Clear small beside it while each has something to do. A focus left on a button of the bar that went (the
-  // big one after routing, Clear after clearing) moves to the bar's first button, else the panel's Route button,
-  // else the map.
+  // big one after routing, Clear after clearing) moves to the panel's Route button where it shows, else the map
+  // (never to Clear, where a second Enter would clear the plan).
   const barRoute = planFirst && (routingNow || routeNow.unavailable === null);
   const planBar = planFirst && (barRoute || can.undo || can.redo || points.length > 0);
   const barFocused = useRef(false);
@@ -3623,11 +3623,8 @@ export function App() {
     const active = document.activeElement;
     if (active && active !== document.body && active.isConnected) return;
     barFocused.current = false;
-    const target =
-      document.querySelector<HTMLElement>(".plan-map-bar button") ??
-      document.querySelector<HTMLElement>(".plan-panel .route-button") ??
-      document.querySelector<HTMLElement>(".maplibregl-canvas");
-    target?.focus();
+    const route = document.querySelector<HTMLElement>(".plan-panel .route-button");
+    (route?.offsetParent ? route : document.querySelector<HTMLElement>(".maplibregl-canvas"))?.focus();
   });
   const planPanel = (
     <PlanPanel
