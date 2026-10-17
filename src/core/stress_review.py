@@ -18,7 +18,10 @@ heaviest compares two whole segment tables:
   level and never on a public surface;
 - `narrow_rural`: ways the owner's narrow-rural-road rule read at 25 mph with no posted speed;
 - `sidepath`, `works_closure`, `rematch`: read from the rebuild's reports where they exist
-  (`FILE_QUEUES`); a queue whose report is not there is listed as not wired.
+  (`FILE_QUEUES`); a queue whose report is not there is listed as not wired;
+- `painted_lane`: the rebuild's RL-3 report, painted lanes on two-way roads with two or more
+  lanes each way, DDOT's or Montgomery's level beside the formula's, and Arlington's from the
+  pending file for comparison (`compute_painted_lane`).
 
 A ruling (`rule`) is Accept (recorded only), Reject (a rebuild change: the level it had before,
 or a road the build closed reopened; an industrial-area closure reopened) or Change LTS. A level
@@ -252,6 +255,7 @@ SCORE_SQL = {
         "ELSE abs(COALESCE(new_step, 0) - COALESCE(old_step, 0)) END) * length_m"
     ),
     Queue.DISAGREEMENT: "COALESCE(spread, 0) * length_m * greatest(1, COALESCE(aadt, 0) / 1000.0)",
+    Queue.PAINTED_LANE: "COALESCE(spread, 0) * length_m * greatest(1, COALESCE(aadt, 0) / 1000.0)",
 }
 
 # How far the region view's lines are simplified, in degrees (about 30 m), and how many places
@@ -661,6 +665,91 @@ def compute_file_queue(
     return len(items)
 
 
+def painted_lane_levels(
+    row: dict, pending: Iterable[tuple[str, float]] = ()
+) -> tuple[str, float, float] | None:
+    """(agency, its level, the formula's) for one row of the rebuild's RL-3 report: DDOT's or
+    Montgomery's level from the report, else a pending agency's (Arlington's) from Review's own
+    admin-only file; None where neither rates the road."""
+    try:
+        formula = float(row["formula_level"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    agency = row.get("agency") or ""
+    try:
+        if agency in agency_lts.AGENCIES:
+            return agency, float(row["agency_level"]), formula
+    except (KeyError, TypeError, ValueError):
+        return None
+    for key, level in pending:
+        return key, level, formula
+    return None
+
+
+def compute_painted_lane(
+    schema: str,
+    reports: Path | None,
+    pending: dict[int, list] | None = None,
+    *,
+    build_id: str = "",
+) -> int | None:
+    """The RL-3 list (the owner, 2026-10-16): each painted lane on a two-way road with two or
+    more lanes each way that DDOT or Montgomery rates, from the rebuild's report
+    (`agency_lts.PAINTED_LANE_REPORT_NAME`), with the agency's level beside the formula's; and,
+    for comparison only, the report's Virginia roads Arlington rates in the pending agencies'
+    admin-only file (`pending_ratings`), read here and nowhere else, never deciding a level.
+    None where the build has no report, as `compute_file_queue`."""
+    validate_schema_name(schema)
+    queue = Queue.PAINTED_LANE
+    path = reports / agency_lts.PAINTED_LANE_REPORT_NAME if reports else None
+    if path is None or not path.is_file():
+        with transaction.atomic():
+            ReviewItem.objects.filter(queue=queue).delete()
+            write_state(queue, build_id, note=NO_REPORT)
+        return None
+    pending = pending_ratings() if pending is None else pending
+    listed: dict[int, tuple[dict, tuple[str, float, float]]] = {}
+    for row in _read_csv(path):
+        try:
+            way = int(row["way_id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        local = row.get("scope") != agency_lts.PAINTED_LANE_COMPARISON
+        levels = painted_lane_levels(row, () if local else pending.get(way, ()))
+        if levels is not None:
+            listed.setdefault(way, (row, levels))
+    present = _table_exists(schema)
+    now = (
+        {r["way"]: r for r in _way_rows(schema, "WHERE osm_way_id = ANY(%s)", [sorted(listed)])}
+        if present
+        else {}
+    )
+    items = []
+    for way, (row, (agency, level, formula)) in listed.items():
+        current = now.get(way)
+        reason = (
+            f"{source_name(agency)}: {level_words(level)}; {source_name(FORMULA)}: "
+            f"{level_words(formula)} (a painted lane, two or more lanes each way)"
+        )
+        items.append(
+            _item(
+                queue,
+                way,
+                name=row.get("name") or "",
+                kind=agency[:40],
+                new_step=current["step"] if current else None,
+                new_closed=bool(current and current["closed"]),
+                spread=abs(level - formula),
+                sources=[agency, FORMULA],
+                details={"new": _raw(current), "report": agency_lts.PAINTED_LANE_REPORT_NAME},
+                reason=reason[:500],
+                inputs=_digest(reason, current and current["step"], _raw(current)),
+            )
+        )
+    _replace(queue, items, schema if present else None, build_id)
+    return len(items)
+
+
 def compute_all(build_id: str, live: str, staging: str | None, reports: Path | None) -> dict:
     """Every queue, against the build waiting in `staging` where there is one (what will be
     served), else the live table. {queue: count, or None where its report is not there}."""
@@ -671,6 +760,7 @@ def compute_all(build_id: str, live: str, staging: str | None, reports: Path | N
     counts[Queue.NARROW_RURAL] = compute_narrow_rural(schema, build_id=build_id)
     for spec in FILE_QUEUES:
         counts[spec.queue] = compute_file_queue(spec, schema, reports, build_id)
+    counts[Queue.PAINTED_LANE] = compute_painted_lane(schema, reports, build_id=build_id)
     return counts
 
 
@@ -703,6 +793,8 @@ def kind_label(queue: str, kind: str) -> str:
             return kind
     if queue == Queue.DISAGREEMENT:
         return " and ".join(source_name(k) for k in kind.split("-") if k)
+    if queue == Queue.PAINTED_LANE and kind:
+        return f"{source_name(kind)} against the formula"
     if queue == Queue.NARROW_RURAL:
         try:
             return f"Now {level_label(float(kind))}"

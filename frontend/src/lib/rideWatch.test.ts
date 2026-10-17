@@ -76,8 +76,11 @@ test("privacy: rideWatch.ts is the only watcher, and it stores, logs and sends n
   };
   walk(src);
   const watchers = files.filter((f) => /watchPosition\(/.test(code(readFileSync(f, "utf8"))));
-  assert.deepEqual(watchers.map((f) => f.slice(src.length + 1)), ["lib/rideWatch.ts"]);
+  // The phone app's native WatchApi (v0.8.0) is the one other: it implements watchPosition for rideWatch.ts
+  // to call, over the native plugin, and is held to the same rule.
+  assert.deepEqual(watchers.map((f) => f.slice(src.length + 1)).sort(), ["lib/nativeShell.ts", "lib/rideWatch.ts"]);
   assert.doesNotMatch(code(readFileSync(join(here, "rideWatch.ts"), "utf8")), LEAKS);
+  assert.doesNotMatch(code(readFileSync(join(here, "nativeShell.ts"), "utf8")), LEAKS);
   assert.doesNotMatch(code(readFileSync(join(here, "navigate.ts"), "utf8")), LEAKS);
   assert.doesNotMatch(code(readFileSync(join(here, "rideOutput.ts"), "utf8")).replace(/browserStore|KeyValueStore/g, ""), /sessionStorage|console\.|fetch\(|indexedDB|sendBeacon/);
 });

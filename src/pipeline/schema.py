@@ -136,6 +136,11 @@ def _text_list(values) -> str:
 # prove the query's condition implies the index's - which it does for the same
 # expression.
 FACILITY_COLUMN = "facility"
+# The class the map and the road panel show where it is not `facility`'s
+# (`routemaker.facility.shown_facility`): a contraflow-only lane, which the rider
+# with the traffic does not have, so `facility` (the tier and the routing price)
+# says none. Null on every other way, and absent on a table built before it.
+FACILITY_SHOWN_COLUMN = "facility_shown"
 TRAIL_FACILITY = "path"
 ROADSIDE_TRAIL_FACILITY = "protected"
 
@@ -461,6 +466,10 @@ MTB_NAME_COLUMN = "mtb_name"
 # An unnamed bike way's name from the street beside it (`routemaker.facility.
 # side_street_names`): read by the route description (`core.routing`) and the road panel.
 SIDEPATH_NAME_COLUMN = "sidepath_name"
+# The way's scenic designations in words (`routemaker.scenic`, `pipeline.scenic_layer`;
+# v0.8.0): read by the road panel, and carried in a stress tile as `scenic` (true or left
+# out) for the Scenic layer's casing. Never a stress or routing input.
+SCENIC_COLUMN = "scenic"
 WALK_BIKE_COLUMN = "walk_bike"
 ROUGH_COLUMN = "is_rough"
 ROAD_TRAIT_COLUMNS = ("road_speed_mph", "road_lanes", "road_oneway")
@@ -550,6 +559,9 @@ CREATE TABLE {schema}.segment (
     -- makes the way a path as well; empty on every other way.
     facility        text        NOT NULL DEFAULT 'none'
                     CHECK (facility IN ('path', 'protected', 'lane', 'none')),
+    -- The class shown where it is not `facility` (FACILITY_SHOWN_COLUMN): a
+    -- contraflow-only lane. Display only.
+    facility_shown  text        CHECK (facility_shown IN ('protected', 'lane')),
     car_free_when   text[]      NOT NULL DEFAULT '{{}}',
     -- How the stress map draws the way (`routemaker.facility.map_class`):
     -- `road`; `barred`, a public road a bicycle may not use, and `hidden`, a
@@ -591,6 +603,13 @@ CREATE TABLE {schema}.segment (
     -- the way has no name of its own. Null on every other way, and on every row of a
     -- table built before the column existed (the way is then just "path").
     sidepath_name   text,
+    -- The way's scenic designations in words (`routemaker.scenic`; v0.8.0, the owner,
+    -- 2026-10-16: "Basically looking for a scenic layer in general"): "Rustic Road
+    -- (Montgomery County)", "<name> Scenic Byway", "East Coast Greenway · USBR 50",
+    -- "Roddy Road Covered Bridge", joined by " · ". The road panel says it and the
+    -- Scenic layer draws a casing where it is set. Never read by the classifier or the
+    -- graph. Null on every other way and on a table built before the column existed.
+    scenic          text,
     -- What the classifier read the road at, for the intersection model
     -- (`routemaker.intersections`; OWNER-DECISIONS 165-167, 172): the speed and
     -- through lanes a direction as read (tags, an agency's record, a curated
