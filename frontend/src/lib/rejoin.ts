@@ -28,10 +28,19 @@ export function triesWayBack(kind: ErrorKind): boolean {
 }
 
 /**
- * The way back as the ride's new route, or null: each target in turn (`rejoinTargets`) asked for with
- * `request` (here to that point), the first answered joined to `planned` there (`joinRoutes`). `kept` is
- * navigate.ts replanKept's answer for the plan's points. A failure that a further point would meet too (no
- * signal, slow down) ends the tries.
+ * Whether a failed re-plan starts the way back: as `triesWayBack`, but a slow-down is tried once, since a long
+ * re-plan can be refused for the long ride's one slot, which a short way back does not take.
+ */
+export function startsWayBack(kind: ErrorKind): boolean {
+  return kind !== "network";
+}
+
+/**
+ * The way back as the ride's new route, or the last failure's kind (null where none was asked): each target in
+ * turn (`rejoinTargets`) asked for with `request` (here to that point), the first answered joined to `planned`
+ * there (`joinRoutes`). `kept` is navigate.ts replanKept's answer for the plan's points. A failure that a
+ * further point would meet too (no signal, slow down) ends the tries, as does `cancelled` (Keep the planned
+ * route, End ride, a newer re-plan).
  */
 export async function wayBackRoute(
   planned: RouteResponse,
@@ -40,15 +49,19 @@ export async function wayBackRoute(
   here: LonLat,
   kept: readonly number[],
   request: (points: LonLat[]) => Promise<RouteResult>,
-): Promise<RouteResponse | null> {
+  cancelled: () => boolean = () => false,
+): Promise<{ route: RouteResponse } | { failed: ErrorKind | null }> {
   // A kept point's index in the new plan's points: after the rider's position, in order.
   const renumber = new Map(kept.map((old, i) => [old, i + 1] as const));
+  let failed: ErrorKind | null = null;
   for (const target of rejoinTargets(model, progressM, here)) {
+    if (cancelled()) break;
     const result = await request([here, target.point]);
-    if (result.ok) return joinRoutes(result.route, planned, target.atM, renumber);
-    if (!triesWayBack(result.error.kind)) return null;
+    if (result.ok) return { route: joinRoutes(result.route, planned, target.atM, renumber) };
+    failed = result.error.kind;
+    if (!triesWayBack(failed)) break;
   }
-  return null;
+  return { failed };
 }
 
 export interface RejoinTarget {
@@ -128,9 +141,9 @@ export function joinRoutes(leg: RouteResponse, planned: RouteResponse, atM: numb
       if (to < cut || (to === cut && from < cut)) continue;
       let moved = entry;
       if (from < cut) {
-        // Joined part way along: the turn onto it was the planned route's, not the way back's.
+        // Joined part way along: the turn onto it was the planned route's, not the way back's, so its words go too.
         from = cut;
-        moved = { ...entry, turn: null };
+        moved = entry.turn ? { ...entry, turn: null, text: continueWords(entry.street), text_lanes_hidden: null } : entry;
       }
       if (entry.via != null) {
         const via = kept.get(entry.via);
@@ -151,7 +164,8 @@ export function joinRoutes(leg: RouteResponse, planned: RouteResponse, atM: numb
     duration_s: leg.duration_s + planned.duration_s * fraction,
     // Description metres are line metres now, so no leg ends are needed to map them.
     leg_ends: undefined,
-    description: leg.description || planned.description ? description : null,
+    // Both or neither: one route's line metres stretched over the other's would put its cues in the wrong places.
+    description: leg.description && (planned.description || !tail.length) ? description : null,
     description_overview: null,
     stress_spans: spans,
     profile: null,
@@ -159,6 +173,11 @@ export function joinRoutes(leg: RouteResponse, planned: RouteResponse, atM: numb
     avoid_alternate: null,
     arrival_side: ended ? leg.arrival_side : planned.arrival_side,
   };
+}
+
+/** A joined stretch's words where the planned route turned onto it: what Ride mode says of it, with no turn. */
+function continueWords(street: string | null): string {
+  return street ? `Continue on ${street}.` : "Continue.";
 }
 
 function atMetres(entry: DescriptionEntry, from: number, to: number): DescriptionEntry {

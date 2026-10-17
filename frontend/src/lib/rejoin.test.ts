@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import type { DescriptionEntry, RouteResponse, RouteResult, StressSpan } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 import { REPLAN_REJOIN, replanKept, replanPoints, replanTold, rideModel } from "./navigate.ts";
-import { REJOIN_AHEAD_M, joinRoutes, rejoinTargets, triesWayBack, wayBackRoute } from "./rejoin.ts";
+import { REJOIN_AHEAD_M, joinRoutes, rejoinTargets, startsWayBack, triesWayBack, wayBackRoute } from "./rejoin.ts";
 import { usableSpans } from "./routeColours.ts";
 
 const M_PER_DEG = 111_195;
@@ -107,6 +107,11 @@ test("joined: the way back, its turn onto the route, then the planned route from
   // Joined part way along A Street: the planned route's turn onto it is not said again.
   const a = (joined.description ?? []).filter((e) => e.street === "A Street");
   assert.equal(a[a.length - 1].turn, null);
+  // A stretch the planned route turned onto, joined part way: its turn and its words both go.
+  const turnedOnto = joinRoutes(leg(1200), planned(), 1200, new Map());
+  const b = (turnedOnto.description ?? []).find((e) => e.street === "B Street");
+  assert.equal(b?.turn, null);
+  assert.equal(b?.text, "Continue on B Street.");
   assert.equal(model.cues[model.cues.length - 1].kind, "end");
 });
 
@@ -161,17 +166,27 @@ test("the way back tries the next point when one cannot be reached, and stops at
   });
   assert.equal(asked.length, 2);
   assert.deepEqual(asked[0][0], at(600, 200));
-  assert.ok(found);
+  assert.ok("route" in found);
   // Joined at the second target, 1,200 m along: then the last 800 m of B Street.
-  close(rideModel(found).lengthM, 400 + 800);
+  close(rideModel(found.route).lengthM, 400 + 800);
 
   let tries = 0;
   const none = await wayBackRoute(plan, model, 300, at(600, 200), [1], async () => {
     tries += 1;
     return { ok: false, error: { kind: "network", status: 0, title: "", message: "" } };
   });
-  assert.equal(none, null);
+  assert.deepEqual(none, { failed: "network" });
   assert.equal(tries, 1);
+  // Ended or kept to the planned route: no more tries.
+  let after = 0;
+  const cancelled = await wayBackRoute(plan, model, 300, at(600, 200), [1], async () => {
+    after += 1;
+    return noRoute;
+  }, () => after >= 1);
+  assert.deepEqual(cancelled, { failed: "no-route" });
+  assert.equal(after, 1);
+  assert.equal(startsWayBack("rate-limited"), true, "a long re-plan refused for the long ride's slot");
+  assert.equal(startsWayBack("network"), false);
   assert.equal(triesWayBack("network"), false);
   assert.equal(triesWayBack("rate-limited"), false);
   assert.equal(triesWayBack("timed-out"), true);
@@ -187,7 +202,9 @@ test("Ride mode: a re-plan that finds no route asks for the way back, not for a 
   const ride = readFileSync(new URL("../RideMode.tsx", import.meta.url), "utf8");
   const replan = ride.slice(ride.indexOf("const replan = useCallback("), ride.indexOf("// No good fix for a minute"));
   assert.match(replan, /confirmLong: true/);
-  assert.match(replan, /if \(!result\.ok && !via && triesWayBack\(result\.error\.kind\)/);
-  assert.match(replan, /found = await wayBackRoute\(routeRef\.current, modelRef\.current, current\.progressM \?\? 0, here, kept, ask\);/);
+  assert.match(replan, /if \(!result\.ok && !via && startsWayBack\(result\.error\.kind\) && !voided\(\)\)/);
+  assert.match(replan, /await wayBackRoute\(routeRef\.current, modelRef\.current, current\.progressM \?\? 0, here, kept, ask, voided\);/);
+  // The no-signal timer runs until the way back settles.
+  assert.ok(replan.indexOf("window.clearTimeout(timer);") > replan.indexOf("await wayBackRoute("));
   assert.match(replan, /setReplanNote\(note\);\s*tell\(note\);/);
 });

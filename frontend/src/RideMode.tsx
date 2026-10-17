@@ -26,7 +26,7 @@
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FocusEvent, type PointerEvent, type RefObject } from "react";
 import { HoldTimer } from "./lib/holdTimer.ts";
-import { triesWayBack, wayBackRoute } from "./lib/rejoin.ts";
+import { startsWayBack, wayBackRoute } from "./lib/rejoin.ts";
 import { requestRoute, type RouteResponse } from "./lib/api.ts";
 import { VIA_MARKS, viaIndices } from "./lib/pointKinds.ts";
 import type { Dials } from "./lib/dials.ts";
@@ -789,23 +789,28 @@ export function RideMode({
       // rider's re-plan of a long ride was refused for want of it).
       const ask = (to: LonLat[]) => requestRoute(to, preset, { dials: { ...dials, loop: false }, vias: viaIndices(to, VIA_MARKS.isVia), routeOnly: true, confirmLong: true });
       const result = await ask(points);
-      window.clearTimeout(timer);
       // No new route to the end: the way back to the planned route, which goes on from there (lib/rejoin.ts;
-      // the owner, 2026-10-17). Not for a detour, whose place the planned route does not pass.
+      // the owner, 2026-10-17). Not for a detour, whose place the planned route does not pass. The no-signal
+      // timer runs on through it.
       let found = result.ok ? result.route : null;
+      let failed = result.ok ? null : result.error.kind;
       let note = REPLAN_FOUND;
-      if (!result.ok && !via && triesWayBack(result.error.kind) && !ended.current && ticket === replanTicket.current) {
+      const voided = () => ended.current || ticket !== replanTicket.current;
+      if (!result.ok && !via && startsWayBack(result.error.kind) && !voided()) {
         const kept = replanKept(modelRef.current, current.progressM ?? 0, plan.current.points, plan.current.loop);
-        found = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, kept, ask);
+        const back = await wayBackRoute(routeRef.current, modelRef.current, current.progressM ?? 0, here, kept, ask, voided);
+        if ("route" in back) found = back.route;
+        else if (back.failed) failed = back.failed;
         note = REPLAN_REJOIN;
       }
+      window.clearTimeout(timer);
       gate.finish(found !== null);
-      if (ended.current || ticket !== replanTicket.current) return;
+      if (voided()) return;
       setReplanning(false);
       if (!found) {
-        const failed = !result.ok && result.error.kind === "network" ? REPLAN_NO_SIGNAL : REPLAN_FAILED;
-        setReplanNote(failed);
-        tell(failed);
+        const said = failed === "network" ? REPLAN_NO_SIGNAL : REPLAN_FAILED;
+        setReplanNote(said);
+        tell(said);
         return;
       }
       plan.current = { points, loop: false };
