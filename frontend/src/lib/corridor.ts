@@ -246,6 +246,16 @@ export function corridorNote(result: PrefetchResult | "saving" | null): string {
   return `The map along ${part} is saved for dead spots.`;
 }
 
+/**
+ * The note only when something is wrong (Ride mode's bottom panel shows only what the rider may need): while
+ * saving, and once all of it is saved, nothing; only a part (or a kind) saved, or none, the note.
+ */
+export function corridorWorry(result: PrefetchResult | "saving" | null): string {
+  if (result === null || result === "saving" || result.stopped) return "";
+  const note = corridorNote(result);
+  return note.startsWith("The map along the route is saved") ? "" : note;
+}
+
 // ---- The base map's byte ranges -----------------------------------------------------------------
 
 export interface KeptRange {

@@ -2581,7 +2581,8 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await p.shot(`${SHOTS}/ride_cue.png`);
 
   // Where am I? on demand.
-  await p.eval("[...document.querySelectorAll('.ride-actions button')].find((b) => b.textContent === 'Where am I?').click(); true");
+  // The side buttons (the owner, 2026-10-17): round icons, each named.
+  await p.eval("document.querySelector('.ride-rail button[aria-label=\"Where am I?\"]').click(); true");
   await sleep(300);
   const where = await p.eval(regions);
   check("ride: Where am I? says the street, the next cue and the miles to the end", /On R Street Northwest\..* to the end\./.test(where.polite), JSON.stringify(where));
@@ -2624,7 +2625,11 @@ const levelSlider = `${EDITOR} input[type=range]`;
   // in the route's own street names (R Street, the turn from Q Street just passed; Q Street named only
   // within 500 ft), then the GPS position, latitude first to 5 decimals; the copy has no text keyword.
   const AT_311 = /^Location: on R Street Northwest( near Q Street Northwest)?, Washington, DC\. GPS 38\.\d{5}, -7[67]\.\d{5}\.$/;
-  await p.eval("document.querySelector('.ride-report > summary').click(); true");
+  // The full report is not on screen by default (the owner, 2026-10-17: "Remove that bottom part"): the 311 menu's
+  // last button opens it.
+  await p.eval("document.querySelector('.ride-311-button').click(); true");
+  await sleep(300);
+  await p.eval("document.querySelector('.ride-311-more').click(); true");
   await sleep(300);
   const report = await p.eval(`(() => {
     const d = document.querySelector('.ride-report');
@@ -2685,10 +2690,13 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await sleep(300);
   const b311 = await p.eval(`(() => { const b = document.querySelector('.ride-311-button'); if (!b) return null; const r = b.getBoundingClientRect(); const s = getComputedStyle(b);
     return { w: Math.round(r.width), h: Math.round(r.height), right: Math.round(innerWidth - r.right), mid: Math.round((r.top + r.bottom) / 2 / innerHeight * 100), round: parseFloat(s.borderRadius) >= r.width / 2 - 1, text: b.textContent, expanded: b.getAttribute('aria-expanded') }; })()`);
+  // The side buttons, each round, named, at least 44 px.
+  const rail = await p.eval(`[...document.querySelectorAll('.ride-rail button')].filter((b) => b.getClientRects().length > 0).map((b) => { const r = b.getBoundingClientRect(); return { name: b.getAttribute('aria-label'), w: Math.round(r.width), round: parseFloat(getComputedStyle(b).borderRadius) >= r.width / 2 - 1 }; })`);
   const ax311 = await axNode(p, ".ride-311-button");
   check("ride 311 button: inside DC, a round button of about 60 px at the right edge, in the lower half (thumb height), named Report to DC 311 with its visible 311, closed",
-    !!b311 && b311.w >= 56 && b311.w <= 72 && b311.h >= 56 && b311.round && b311.right <= 24 && b311.mid >= 45 && b311.mid <= 90 && b311.text === "311" && b311.expanded === "false" && ax311?.role === "button" && ax311?.name === "Report to DC 311",
-    JSON.stringify({ b311, ax311 }));
+    !!b311 && b311.w >= 56 && b311.w <= 72 && b311.h >= 56 && b311.round && b311.right <= 24 && b311.mid >= 45 && b311.mid <= 96 && b311.text === "311" && b311.expanded === "false" && ax311?.role === "button" && ax311?.name === "Report to DC 311" &&
+      JSON.stringify(rail.map((x) => x.name)) === JSON.stringify(["Where am I?", "Re-centre", "Big text", "Detour: water or restroom", "Report to DC 311"]) && rail.every((x) => x.round && x.w >= 44),
+    JSON.stringify({ b311, ax311, rail }));
   await p.eval("document.querySelector('.ride-311-button').focus(); true");
   await p.enter();
   await sleep(300);
@@ -2722,12 +2730,13 @@ const levelSlider = `${EDITOR} input[type=range]`;
   for (let k = 1; k <= 6; k += 1) await p.s("Input.dispatchMouseEvent", { type: "mouseMoved", x: canvas.x + k * 20, y: canvas.y + k * 10, button: "left", buttons: 1 });
   await p.s("Input.dispatchMouseEvent", { type: "mouseReleased", x: canvas.x + 120, y: canvas.y + 60, button: "left", clickCount: 1 });
   await sleep(400);
-  const paused = await p.eval("document.querySelector('.ride-controls').textContent.includes('stopped following')");
+  const recentre = "document.querySelector('.ride-rail button[aria-keyshortcuts=C]')?.getAttribute('aria-label')";
+  const paused = await p.eval(`${recentre} === "Re-centre: the map stopped following you"`);
   await p.eval("document.querySelector('#ride-heading').focus(); true");
   await p.s("Input.dispatchKeyEvent", { type: "keyDown", key: "c", code: "KeyC", text: "c" });
   await p.s("Input.dispatchKeyEvent", { type: "keyUp", key: "c", code: "KeyC" });
   await sleep(300);
-  const resumed = await p.eval("!document.querySelector('.ride-controls').textContent.includes('stopped following')");
+  const resumed = await p.eval(`${recentre} === "Re-centre"`);
   check("ride: a pan by hand stops following; Re-centre (C) follows again", paused && resumed, JSON.stringify({ paused, resumed }));
 
   // A tap on the map during a ride adds no point and plans nothing (the plan stays as started); the
@@ -2761,9 +2770,9 @@ const levelSlider = `${EDITOR} input[type=range]`;
   await sleep(300);
   const narrowFit = await p.eval("(() => ({ scroll: document.documentElement.scrollWidth, w: innerWidth, over: [...document.querySelectorAll('.ride button')].filter((b) => b.getClientRects().length > 0).filter((b) => b.getBoundingClientRect().right > innerWidth + 1 || b.getBoundingClientRect().height < 43.5).map((b) => b.textContent) }))()");
   check("ride: at 320 px nothing overflows and every ride button is at least 44 px tall", narrowFit.scroll <= narrowFit.w && narrowFit.over.length === 0, JSON.stringify(narrowFit));
-  await p.eval("[...document.querySelectorAll('.ride-actions button')].find((b) => b.textContent === 'Big text').click(); true");
+  await p.eval("document.querySelector('.ride-rail .big-text').click(); true");
   await sleep(300);
-  const big = await p.eval("({ map: getComputedStyle(document.querySelector('.map')).display, pressed: [...document.querySelectorAll('.ride-actions button')].find((b) => b.textContent === 'Big text').getAttribute('aria-pressed') })");
+  const big = await p.eval("({ map: getComputedStyle(document.querySelector('.map')).display, pressed: document.querySelector('.ride-rail .big-text').getAttribute('aria-pressed') })");
   check("ride: Big text hides the map and says it is on", big.map === "none" && big.pressed === "true", JSON.stringify(big));
   await p.shot(`${SHOTS}/ride_big_320.png`);
 
