@@ -6495,3 +6495,12 @@ details.fold > summary .icon {
     grid-template-columns: 1fr;
   }
 }
+
+/* v0.8.2: a closure's source and until when, in small print under its one short line (never said). */
+.description-citation,
+.cue-citation {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 2px 0 0;
+}

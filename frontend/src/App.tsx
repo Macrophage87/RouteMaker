@@ -3771,7 +3771,9 @@ export function App() {
         pointWarnings={riding || reviewing ? undefined : pointWarnings}
         route={riding && rideView ? rideView.route : reviewing ? null : shown}
         stale={riding ? false : stale || planEdited}
-        ghost={riding || reviewing ? null : ghost}
+        // Plan's ghost of the last route; else the standard way through a closure the route goes round, dashed
+        // beside it (v0.8.2), in Go and Plan, and on the ride the line not being followed.
+        ghost={riding ? (rideView?.other ?? null) : reviewing ? null : (ghost ?? shown?.closure_through?.geometry.coordinates ?? null)}
         lightMarks={riding || mode !== "plan" ? null : light}
         stressVisible={stressVisible && stress === "available"}
         when={mapWhen(dials.when ?? null)}

@@ -29,6 +29,7 @@ export const ICON_PATHS = {
   "train": "<rect x=\"6\" y=\"3\" width=\"12\" height=\"14\" rx=\"3\"/><path d=\"M6 10h12M9 21l2-4M15 21l-2-4\"/>",
   "trail": "<path d=\"M5 21c3-3 1-6 5-8s5-4 3-10\" stroke-dasharray=\"3 2.5\"/>",
   "topo": "<path d=\"M3 17c3-4 6-4 9-2s6 2 9-2M3 12c3-4 6-4 9-2s6 2 9-2M6 7c2-2 4-2 6-1s4 1 6-1\"/>",
+  "barrier": "<rect x=\"3\" y=\"7\" width=\"18\" height=\"6\" rx=\"1\"/><path d=\"M8 7l-3 6M13 7l-3 6M18 7l-3 6M7 13v7M17 13v7\"/>",
   "road": "<path d=\"M8 3 4 21M16 3l4 18M12 5v2.5M12 11v2.5M12 17v2.5\"/>",
   "lane": "<path d=\"M6 3v18M18 3v18\"/><circle cx=\"12\" cy=\"9\" r=\"2\"/><path d=\"M10 15h4\"/>",
   "contrast": "<circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 3a9 9 0 0 1 0 18z\" fill=\"currentColor\"/>",
