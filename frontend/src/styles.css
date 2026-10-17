@@ -119,6 +119,9 @@ body {
 .map {
   position: absolute;
   inset: 0;
+  /* Its own stacking context (the owner, 2026-10-17: "the closures are on top of the rest of the map"): a
+     marker's z-index (closures, junctions) orders it among the map's markers only, never over the panels. */
+  isolation: isolate;
 }
 
 :focus-visible {
@@ -6229,8 +6232,28 @@ details.fold > summary .icon {
   outline: 3px solid #1d4ed8;
   outline-offset: 2px;
 }
+/* In the panel's theme, as the station cards are: maplibre's own white card left dark-theme text unreadable. */
 .closure-popup .maplibregl-popup-content {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow);
   border-left: 4px solid #c62828;
+}
+.closure-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip,
+.closure-popup.maplibregl-popup-anchor-top-left .maplibregl-popup-tip,
+.closure-popup.maplibregl-popup-anchor-top-right .maplibregl-popup-tip {
+  border-bottom-color: var(--bg);
+}
+.closure-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip,
+.closure-popup.maplibregl-popup-anchor-bottom-left .maplibregl-popup-tip,
+.closure-popup.maplibregl-popup-anchor-bottom-right .maplibregl-popup-tip {
+  border-top-color: var(--bg);
+}
+.closure-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--bg);
+}
+.closure-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--bg);
 }
 .closure-popup .maplibregl-popup-close-button {
   color: var(--text);
@@ -6515,6 +6538,15 @@ details.fold > summary .icon {
   .review-layout {
     grid-template-columns: 1fr;
   }
+}
+
+/* v0.8.2: a closure's source and until when, in small print under its one short line (never said). */
+.description-citation,
+.cue-citation {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 2px 0 0;
 }
 
 /* Plan streamline (Stephen 2026-10-17): From, the points, To, Add a stop with Best order beside it; Route says "up to

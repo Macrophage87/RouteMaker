@@ -23,7 +23,8 @@ test("Plan routes on its Route button; Go routes at once; a link, a file or Undo
 test("a changed plan greys the line and keeps a dashed ghost of the old one with a summary after an update", () => {
   assert.match(app, /const planEdited = planFirst && planChanged\(drawn, points, preset, planKey\);/);
   assert.match(app, /stale=\{riding \? false : stale \|\| planEdited\}/);
-  assert.match(app, /ghost=\{riding \|\| reviewing \? null : ghost\}/);
+  // v0.8.2: with no ghost, the standard way through a closure the route goes round takes its place.
+  assert.match(app, /ghost=\{riding \? \(rideView\?\.other \?\? null\) : reviewing \? null : \(ghost \?\? shown\?\.closure_through\?\.geometry\.coordinates \?\? null\)\}/);
   assert.match(app, /if \(plan\.pressed && before\) \{\s*setGhost\(before\.route\.geometry\.coordinates\);\s*setChangeLine\(changeSummary\(before\.route, result\.route\)\);/);
   // The per-leg details behind the summary.
   assert.match(app, /setChangeDetails\(legChanges\(before, drawnNow, VIA_MARKS\.isVia, \(p\) => namer\.name\(p\)\?\.name\)\);/);

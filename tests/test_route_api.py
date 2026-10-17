@@ -103,6 +103,7 @@ CONTRACT_KEYS = {
     "work_zones",
     "avoid_search",
     "avoid_alternate",
+    "closure_through",
     # Additive, TRANSIT-ASSIST (v0.6.0): null except on the two transit ride types.
     "transit",
     # Additive, v0.7.0 Novice and Nervous: null except on that ride type.
