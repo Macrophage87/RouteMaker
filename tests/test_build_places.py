@@ -111,6 +111,19 @@ def test_details_kept():
     )
 
 
+def test_a_covered_bridge_is_marked_and_named_as_the_bridge():
+    """v0.8.0's Scenic layer draws the covered bridges by name (the owner, 2026-10-16: "How
+    about including covered bridges")."""
+    tags = {"highway": "tertiary", "bridge": "covered", "name": "Roddy Road"}
+    p = mod.classify("w1", {**tags, "bridge:name": "Roddy Road Covered Bridge"}, *IN)
+    assert (p.category, p.name, p.covered) == ("bridge", "Roddy Road Covered Bridge", True)
+    assert mod.document([p])["points"][0]["cv"] == 1
+    plain = mod.classify("w2", tags, *IN)
+    assert (plain.name, plain.covered) == ("Roddy Road", True)
+    notable = mod.classify("w3", {"man_made": "bridge", "historic": "yes", "name": "B"}, *IN)
+    assert notable.covered is False and "cv" not in mod.document([notable])["points"][0]
+
+
 def test_a_place_mapped_twice_is_one():
     node = mod.Place("n5", -77.0, 38.9, "museum", "Rail Museum")
     way = mod.Place("w6", -77.0002, 38.9001, "museum", "rail museum", hours="Sa 10:00-16:00")
@@ -180,4 +193,4 @@ def test_bundled_file_is_well_formed():
         seen.add(p["id"])
         assert west <= p["x"] <= east and south <= p["y"] <= north
         assert p["k"] in mod.CATEGORIES and p["n"].strip()
-        assert set(p) <= {"id", "x", "y", "k", "n", "h", "web"}
+        assert set(p) <= {"id", "x", "y", "k", "n", "h", "web", "cv"}

@@ -55,7 +55,14 @@ from routemaker import (
 )
 from routemaker.geo import Point
 from routemaker.shape import sinuosity
-from routemaker.stress import classify, inferred_unpaved, is_rough, rural_floor, winding
+from routemaker.stress import (
+    classify,
+    inferred_unpaved,
+    is_rough,
+    painted_lane_two_way_multilane,
+    rural_floor,
+    winding,
+)
 
 from . import (
     aadt_smoothing,
@@ -75,6 +82,7 @@ from . import (
     restricted_areas,
     retention,
     route_relations,
+    scenic_layer,
     signals,
     source,
     states,
@@ -106,6 +114,9 @@ REMATCH_REPORT_NAME = "override-rematch"
 # corridors did (ARTERIAL review r0, SF4).
 SMOOTHING_REPORT_NAME = "aadt-smoothing.csv"
 CORRIDOR_REPORT_NAME = "named-corridors.md"
+# The `bicycle=use_sidepath` roads with no side path mapped beside them, rated on their
+# own merits, for review as likely tagging errors (review RL-1; the owner, 2026-10-16).
+USE_SIDEPATH_REPORT_NAME = "use-sidepath-no-path.csv"
 # DDOT's PCI per District street it reached, and whether it was applied (DC-PCI).
 PAVEMENT_REPORT_NAME = "dc-pavement-pci.csv"
 # Every way inside a military area, closed or left open, for the owner (owner report
@@ -407,14 +418,15 @@ class ReferenceData:
     # left to OSM's own tagging rather than being asserted either way.
     bridge_bicycle_legal: dict[int, bool]
 
-    # Agency street blocks (DC's Roadway Block, Baltimore's street centerline),
+    # Agency street blocks (DC's Roadway Block, Baltimore's street centerline,
+    # Alexandria's Transport Streets),
     # from `roadway.json`: the posted speed, lanes, one-way, bike facility,
     # parking and count each agency records for a block, which take precedence
     # over OSM's tags where a way lies along them. The one reference file that
     # is optional: a rebuild without it classifies from OSM and the defaults,
     # which is what every rebuild did before the layers were approved, and it
     # logs a warning so the absence is seen. Only `install_reference_data.py
-    # --roadway-block/--baltimore-centerline` writes it.
+    # --roadway-block/--baltimore-centerline/--alexandria-streets` writes it.
     road_blocks: tuple[conflation.RoadFeature, ...] = ()
     # DDOT's Pavement Condition Index blocks (DC-PCI, `routemaker.pavement`), from
     # `pavement.json`. Optional like `roadway.json`: without it every street keeps
@@ -425,6 +437,13 @@ class ReferenceData:
     # `roadway.json`: without it every way keeps the classifier's tier.
     agency_lts_features: tuple[conflation.RoadFeature, ...] = ()
     agency_lts_ratings: dict = field(default_factory=dict)
+    # Scenic designations from agency lines (`pipeline.scenic_layer`, v0.8.0):
+    # Montgomery County's Rustic Roads and Maryland's Scenic Byways, from
+    # `scenic.json`, each record's line and its words. Optional like
+    # `roadway.json`: without it the Scenic layer has the OSM routes and covered
+    # bridges only. Never read by the classifier.
+    scenic_features: tuple[conflation.RoadFeature, ...] = ()
+    scenic_labels: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def load(
@@ -542,6 +561,13 @@ class ReferenceData:
                     strict=True,
                 )
             ),
+            **dict(
+                zip(
+                    ("scenic_features", "scenic_labels"),
+                    scenic_layer.load(directory / scenic_layer.FILE_NAME),
+                    strict=True,
+                )
+            ),
         )
 
     @staticmethod
@@ -570,9 +596,10 @@ class ReferenceData:
         if not path.exists():
             logger.warning(
                 "%s is absent, so no agency street layer (DC Roadway Block, Baltimore street "
-                "centerline) is conflated: posted speeds, lanes, one-way, bike lanes and "
-                "parking come from OSM and the defaults. Install it with "
-                "scripts/install_reference_data.py --roadway-block / --baltimore-centerline",
+                "centerline, Alexandria Transport Streets) is conflated: posted speeds, lanes, "
+                "one-way, bike lanes and parking come from OSM and the defaults. Install it "
+                "with scripts/install_reference_data.py --roadway-block / "
+                "--baltimore-centerline / --alexandria-streets",
                 path,
             )
             return ()
@@ -706,6 +733,10 @@ class RebuildContext:
     road_attr_sources: dict[int, tuple[tuple[str, str], ...]] = field(default_factory=dict)
     road_disagreements: dict[int, tuple[str, ...]] = field(default_factory=dict)
     stress_by_way: dict[int, object] = field(default_factory=dict)
+    # The `bicycle=use_sidepath` roads with a side path mapped beside them, to that
+    # path's name (None where it has none), rated Avoid by `classify_stress` and said
+    # "riders are asked to use the side path" in the road panel (review RL-1).
+    use_sidepath_paths: dict[int, str | None] = field(default_factory=dict)
     # Whether a count is replaced by its street's median before classification
     # (`pipeline.aadt_smoothing`; OWNER-DECISIONS 285, 296: a data-quality fix
     # the owner can veto, which this is). To veto: set this default to False,
@@ -722,6 +753,9 @@ class RebuildContext:
     # times in which a timed closure makes a road car-free. Computed once, after
     # the access overrides, by the first stage that needs them.
     facility_by_way: dict[int, str] = field(default_factory=dict)
+    # The class the map shows where it is not `facility_by_way`'s: a contraflow-only
+    # lane (`facility.shown_facility`; the review of 17f69082). Display only.
+    facility_shown_by_way: dict[int, str] = field(default_factory=dict)
     car_free_by_way: dict[int, frozenset[str]] = field(default_factory=dict)
     # The route level of each way in an OSM route relation (`pipeline.trail_routes`).
     trail_routes: dict[int, int] = field(default_factory=dict)
@@ -732,6 +766,9 @@ class RebuildContext:
     national_route_ways: frozenset[int] = frozenset()
     # The name of the route relation each way is in (`pipeline.trail_routes`).
     route_names: dict[int, str] = field(default_factory=dict)
+    # The East Coast Greenway and US Bicycle Route designations of each way in one
+    # (`pipeline.scenic_layer.read_routes`; v0.8.0's Scenic layer, never a stress input).
+    scenic_routes: dict[int, set[str]] = field(default_factory=dict)
     # Sidewalks bicycles may not ride: the CBD rule (routemaker.cbd).
     cbd_sidewalks: set[int] = field(default_factory=set)
     # Mountain-bike singletrack, which every ride type avoids (routemaker.singletrack).
@@ -855,10 +892,13 @@ class RebuildContext:
             "road_attr_sources",
             "road_disagreements",
             "stress_by_way",
+            "use_sidepath_paths",
             "facility_by_way",
+            "facility_shown_by_way",
             "car_free_by_way",
             "trail_routes",
             "route_names",
+            "scenic_routes",
             "no_bicycle",
             "border_nodes_by_way",
             "reviewer_surface_by_way",
@@ -1982,6 +2022,8 @@ def build_handlers(
         context.mountain_bike_ways = routes.mountain_bike
         context.national_route_ways = routes.national
         context.route_names = routes.names
+        # The scenic routes (v0.8.0), for the Scenic layer and the road panel alone.
+        context.scenic_routes = scenic_layer.read_routes(context.source_pbf)
         # Indexed once. The first version scanned the whole way list inside a
         # loop over every border node inside a loop over every variant.
         context.ways_by_id = {way.osm_id: way for way in context.ways}
@@ -2229,6 +2271,18 @@ def build_handlers(
         _trails, separate_roads = facility.separate_pairs(
             (way.osm_id, way.tags, way.coordinates) for way in context.ways
         )
+        # The roads tagged `bicycle=use_sidepath`: Avoid where a side path is mapped
+        # beside them, their own rating otherwise, listed for review (review RL-1).
+        context.use_sidepath_paths, no_side_path = facility.use_sidepath_paths(
+            [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
+        )
+        logger.info(
+            "bicycle=use_sidepath roads: %d with a side path beside them (Avoid), %d with none "
+            "found (rated on their own merits, listed in %s)",
+            len(context.use_sidepath_paths),
+            len(no_side_path),
+            USE_SIDEPATH_REPORT_NAME,
+        )
         # The curated speed limits the map is missing (OWNER-DECISIONS 131),
         # read here because the tier is what they are for; a posted speed wins.
         speeds = speed_corrections.load()
@@ -2302,6 +2356,7 @@ def build_handlers(
                     separate_facility=way.osm_id in separate_roads,
                     parking_width_m=facts.parking_reach_m if facts is not None else None,
                     winding=bends,
+                    side_path=way.osm_id in context.use_sidepath_paths,
                 )
 
             context.stress_by_way[way.osm_id] = classified(match.aadt if match else None)
@@ -2339,6 +2394,23 @@ def build_handlers(
                 if facts.agency == agency_roads.DC_AGENCY and state_of.get(way.osm_id) == "DC":
                     reported.append((way, tags, match, overlaid))
         apply_agency_ratings(laned)
+        # The RL-3 roads with the agency's level beside the formula's, for the owner
+        # (`agency_lts.PAINTED_LANE_REPORT_NAME`), read before the corridors and rows.
+        painted_lane_rows = []
+        for way in context.ways:
+            rated = context.stress_by_way.get(way.osm_id)
+            # The lanes the classifier read (None where it assumed one).
+            if rated is None or not painted_lane_two_way_multilane(
+                context.class_tags_by_way.get(way.osm_id, way.tags),
+                divided=way.osm_id in divided_ways,
+                lanes=rated.lanes,
+            ):
+                continue
+            row = agency_lts.painted_lane_row(
+                way.osm_id, way.tags.get("name", ""), state_of.get(way.osm_id) or "", rated
+            )
+            if row is not None:
+                painted_lane_rows.append(row)
         if context.road_facts_by_way:
             # Where an agency's record and the way's own tags disagree and the way
             # was left alone (an OSM lane the agency does not record; an OSM
@@ -2377,8 +2449,21 @@ def build_handlers(
                     context.smoothing_report or aadt_smoothing.SmoothingReport()
                 ).to_csv(context.stress_by_way),
                 CORRIDOR_REPORT_NAME: context.corridor_report.to_markdown(),
+                USE_SIDEPATH_REPORT_NAME: facility.use_sidepath_report_csv(
+                    (
+                        way.osm_id,
+                        way.tags.get("name", ""),
+                        way.tags.get("tiger:county", ""),
+                        state_of.get(way.osm_id) or "",
+                    )
+                    for way in context.ways
+                    if way.osm_id in no_side_path
+                ),
+                agency_lts.PAINTED_LANE_REPORT_NAME: agency_lts.painted_lane_report_csv(
+                    painted_lane_rows
+                ),
             },
-            "AADT smoothing and named-corridor",
+            "AADT smoothing, named-corridor, use_sidepath and painted-lane",
         )
         if context.corridor_report.unmatched_entries:
             logger.warning(
@@ -2426,6 +2511,7 @@ def build_handlers(
                     jurisdiction=state_of.get(way.osm_id),
                     divided=way.osm_id in divided_ways,
                     separate_facility=way.osm_id in separate_roads,
+                    side_path=way.osm_id in context.use_sidepath_paths,
                 )
                 facts = context.road_facts_by_way[way.osm_id]
                 rows.append(
@@ -2794,10 +2880,13 @@ def build_handlers(
             # The tags the classifier read where an agency's street layer
             # corrected them, so the facility the map draws is the facility the
             # tier was scored on.
+            class_tags = context.class_tags_by_way.get(way.osm_id, way.tags)
             context.facility_by_way[way.osm_id] = facility.facility(
-                context.class_tags_by_way.get(way.osm_id, way.tags),
-                beside_separate_road=way.osm_id in beside,
+                class_tags, beside_separate_road=way.osm_id in beside
             ).value
+            shown = facility.shown_facility(class_tags, beside_separate_road=way.osm_id in beside)
+            if shown is not None:
+                context.facility_shown_by_way[way.osm_id] = shown.value
             closed = facility.car_free_when(way.tags)
             if closed:
                 context.car_free_by_way[way.osm_id] = closed
@@ -2807,6 +2896,11 @@ def build_handlers(
                 context.facility_by_way[way.osm_id] = facility.Facility.NONE.value
             if car_free_tier_1(way, context.stress_by_way):
                 car_free_for_good += 1
+        logger.info(
+            "contraflow-only facilities shown on the map where the rider with the traffic "
+            "has none: %s",
+            dict(sorted(Counter(context.facility_shown_by_way.values()).items())) or "none",
+        )
         logger.info(
             "facility classes: %s; %d ways car-free at set times, %d car-free for good "
             "(tier 1), %d beside a road that maps its facility separately, %d CBD sidewalks "
@@ -2867,6 +2961,14 @@ def build_handlers(
             "%d signalised trail crossings marked from their crossing ways", len(signal_tags)
         )
 
+        # Review RL-5: the ways whose posted speed every variant's extract carries as an
+        # explicit mph (`variants.with_speed_units`), so the change shows in the
+        # before/after; their edge speeds rise about 1.6 times.
+        logger.info(
+            "posted speeds written as explicit mph in the extracts (a bare number or "
+            "upper-case MPH, read as km/h by the router before): %d ways",
+            sum(1 for way in context.ways if variants.with_speed_units(way.tags) is not way.tags),
+        )
         for variant in variants.Variant:
             per_way_tags: dict[int, dict[str, str]] = {}
             node_lists: dict[int, list[int]] = {}
@@ -3289,6 +3391,21 @@ def build_handlers(
             [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
         )
         logger.info("unnamed bike ways named for the street beside them: %d", len(sidepath_names))
+        # The scenic designations (v0.8.0), in words: written beside the tier, never read by
+        # the classifier or the graph, so a scenic road keeps its stress and gets no bonus.
+        scenic_text = scenic_layer.scenic_by_way(
+            context.ways,
+            scenic_layer.labels_by_way(
+                context.ways,
+                getattr(reference, "scenic_features", ()),
+                getattr(reference, "scenic_labels", {}),
+                frozenset(w.osm_id for w in context.ways if variants.is_trail_class(w.tags)),
+            ),
+            context.scenic_routes,
+        )
+        logger.info(
+            "scenic ways (designated, covered bridges, scenic routes): %d", len(scenic_text)
+        )
         for way in context.ways:
             stress = context.stress_by_way[way.osm_id]
             trail = variants.is_trail_class(way.tags, way.osm_id, reference.sidepath_bridge_ids)
@@ -3325,6 +3442,14 @@ def build_handlers(
                 way.tags,
                 no_bicycle=context.no_bicycle.get(way.osm_id),
                 overridden=way.osm_id in context.bicycle_override_ways,
+                side_path=way.osm_id in context.use_sidepath_paths,
+            )
+            # On a `bicycle=use_sidepath` road, the side path it asks riders to use, for
+            # the road panel (review RL-1); on a trail, the street it runs beside.
+            side_name = (
+                context.use_sidepath_paths.get(way.osm_id)
+                if way.osm_id in context.use_sidepath_paths
+                else sidepath_names.get(way.osm_id)
             )
             for ordinal, piece in extract.iter_segments(way):
                 rows.append(
@@ -3339,6 +3464,7 @@ def build_handlers(
                         is_rough=is_rough(way.tags),
                         lit=lit_value(way.tags),
                         facility=way_facility,
+                        facility_shown=context.facility_shown_by_way.get(way.osm_id),
                         car_free_when=car_free_when,
                         map_class=way_map_class,
                         separate_bikeway=facility.has_separate_bikeway(way.tags),
@@ -3383,7 +3509,8 @@ def build_handlers(
                         if long_trail and trail_routes.is_bridge_way(way.tags)
                         else 0,
                         bike_access_reason=access_reason,
-                        sidepath_name=sidepath_names.get(way.osm_id),
+                        sidepath_name=side_name,
+                        scenic=scenic_text.get(way.osm_id),
                     )
                 )
         writers.write_segments(context.staging_schema, rows)
