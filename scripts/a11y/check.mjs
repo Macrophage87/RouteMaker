@@ -1377,7 +1377,8 @@ for (const [width, height] of [[320, 700], [375, 812]]) {
   await sleep(300);
   const first = await axNode(p, ".pc-plot");
   check("chart: the picture is one slider, named for what it shows, its value text the spoken sentence (a path said as the map has it)", first?.role === "slider" && first.name === "Elevation and rolling stress along the route" && /^Mile 0\.0: elevation \d+ ft \(\d+ m\), level, traffic-free path\. Mile around: 0\.6 calm miles per mile, LTS 1 to 2 level\. Next junction to watch: higher stress, mile 1\.2\.$/.test(first.valuetext ?? ""), JSON.stringify(first));
-  check("chart: its description is the key hint only (the summary is the text just before it)", /^Arrow keys move along the route; Page Up and Page Down move further; Home and End go to the ends; C and Shift\+C/.test(first?.description ?? "") && !/Over 2\.9 mi/.test(first?.description ?? ""), (first?.description ?? "").slice(0, 200));
+  // Plan streamline (2026-10-17): the summary and the keys are out of sight in Plan too, so both are its description.
+  check("chart: its description is the summary, then the key hint", /^Over 2\.9 mi/.test(first?.description ?? "") && /Arrow keys move along the route; Page Up and Page Down move further; Home and End go to the ends; C and Shift\+C/.test(first?.description ?? ""), (first?.description ?? "").slice(0, 200));
   check("chart: the summary before it, in miles and feet first", /^Over 2\.9 mi \(4\.7 km\), elevation runs from 328 ft \(100 m\) to 408 ft \(124 m\)\./.test(await p.eval("document.querySelector('.pc-summary').textContent")));
   const shares = await p.eval("document.querySelector('.pc-summary').textContent");
   check("chart: the summary's stress shares say the 0-900 m path as the key does, never \"LTS 1\" (a11y re-review S1)", /Traffic stress along it: \d+% traffic-free path, \d+% LTS 2\./.test(shares) && !/LTS 1/.test(shares), shares);
@@ -3890,9 +3891,10 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   await sleep(300);
   const offered = await p.eval(`(() => { const d = document.querySelector('dialog.ride-types'); const k = ${kidsCard};
     return { open: d.open, modal: d.matches(':modal'), cards: d.querySelectorAll('.ride-type-card > button').length,
-      kids: !!k, pressed: k?.getAttribute('aria-pressed'), hint: k?.querySelector('.hint')?.textContent }; })()`);
-  check("kids: the ride-type dialog is modal and offers Novice and Nervous among every ride type, with its sentence",
-    offered.open && offered.modal && offered.cards === 15 && offered.kids && /^For riders new to traffic: /.test(offered.hint ?? ""), JSON.stringify(offered));
+      kids: !!k, pressed: k?.getAttribute('aria-pressed'), hint: k?.querySelector('.hint')?.textContent, said: k?.querySelector('.visually-hidden')?.textContent }; })()`);
+  // Plan streamline (2026-10-17): each card shows its gist; the full sentence is said with it, and shown by What each does.
+  check("kids: the ride-type dialog is modal and offers Novice and Nervous among every ride type, with its gist shown and its sentence said",
+    offered.open && offered.modal && offered.cards === 15 && offered.kids && offered.hint === "Busy streets avoided hard, for new riders." && /^For riders new to traffic: /.test(offered.said ?? ""), JSON.stringify(offered));
   check("kids: its card is a toggle button, not pressed while another ride type is in use", offered.pressed === "false", JSON.stringify(offered.pressed));
   await p.eval(`${kidsCard}.setAttribute('data-kids', ''); true`);
   const card = await axNode(p, "button[data-kids]");
@@ -3901,13 +3903,13 @@ const JUNCTION_BUTTON = "Suggest a junction change";
   await p.eval(`${kidsCard}.focus(); true`);
   await p.enter();
   await sleep(2500);
-  const chosen = await p.eval("(() => ({ open: document.querySelector('dialog.ride-types').open, focus: document.activeElement === document.querySelector('.ride-type-current button'), ride: document.querySelector('.ride-type-current strong')?.textContent, hint: document.querySelector('.ride-type-current .hint')?.textContent }))()");
+  const chosen = await p.eval("(() => ({ open: document.querySelector('dialog.ride-types').open, focus: document.activeElement === document.querySelector('.ride-type-current button'), ride: document.querySelector('.ride-type-current strong')?.textContent, hint: document.querySelector('.ride-type-current .hint')?.textContent, said: document.querySelector('.ride-type-current p')?.textContent }))()");
   // Plan-first (see pressRoute): the choice plans nothing until Route.
   const pickPlans = p.routeRequests - before;
   await pressRoute(p);
   await sleep(2500);
   check("kids: choosing it with Enter closes the dialog and gives the focus back to Change", !chosen.open && chosen.focus, JSON.stringify(chosen));
-  check("kids: the ride type line says Novice and Nervous, with its sentence", chosen.ride === "Novice and Nervous" && /^For riders new to traffic: /.test(chosen.hint ?? ""), JSON.stringify(chosen));
+  check("kids: the ride type line says Novice and Nervous, with its gist, and its sentence to a screen reader", chosen.ride === "Novice and Nervous" && chosen.hint === "Busy streets avoided hard, for new riders." && /For riders new to traffic: /.test(chosen.said ?? ""), JSON.stringify(chosen));
   const sent = JSON.parse(p.routeBodies.at(-1) || "{}");
   const hash = await p.eval("location.hash");
   check("kids: it plans nothing until Route, which plans once, at the top of the traffic slider with hills toward avoid, and the link carries it",
