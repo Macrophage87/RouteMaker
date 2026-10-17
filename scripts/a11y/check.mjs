@@ -203,17 +203,17 @@ for (const [label, size] of [["phone", { width: 390, height: 844, mobile: true }
   const changed = await bar();
   const zoom = await p.eval("(() => { const z = document.querySelector('.maplibregl-ctrl-top-right'); return z ? Math.round(z.getBoundingClientRect().left) : 9999; })()");
   const big = changed?.buttons.find((x) => x.name === "Update route");
-  check(`plan bar (${label}): a change shows Update route big at the top of the map, with Undo and Clear small, clear of the zoom buttons`,
-    !!big && big.h >= 52 && big.top <= 16 && JSON.stringify(changed.buttons.map((x) => x.name)) === JSON.stringify(["Undo", "Update route", "Clear the plan"]) && changed.buttons.every((x) => x.right <= zoom),
+  check(`plan bar (${label}): a change shows Update route big at the top of the map, with Clear small (Undo only with an edit to undo), clear of the zoom buttons`,
+    !!big && big.h >= 52 && big.top <= 16 && JSON.stringify(changed.buttons.map((x) => x.name)) === JSON.stringify(["Update route", "Clear the plan"]) && changed.buttons.every((x) => x.right <= zoom),
     JSON.stringify({ changed, zoom }));
   await p.shot(`${SHOTS}/plan_bar_${label}.png`);
   await p.eval("[...document.querySelectorAll('.plan-map-bar button')].find((b) => b.textContent.trim() === 'Update route').focus(); true");
   await p.enter();
   await sleep(3500);
   const after = await bar();
-  const focus = await p.eval("(() => { const e = document.activeElement; return e?.getAttribute('aria-label') || e?.textContent?.trim() || e?.tagName; })()");
-  check(`plan bar (${label}): pressing it routes once, it goes once the route is up to date, and the focus stays in the bar`,
-    p.routeRequests - before === 1 && after && !after.buttons.some((x) => /route|Routing/.test(x.name)) && focus === "Undo", JSON.stringify({ plans: p.routeRequests - before, after, focus }));
+  const focus = await p.eval("(() => { const e = document.activeElement; return e?.classList.contains('route-button') ? 'route' : e?.classList.contains('maplibregl-canvas') ? 'map' : e?.getAttribute('aria-label') || e?.tagName; })()");
+  check(`plan bar (${label}): pressing it routes once, it goes once the route is up to date, and the focus goes to the panel's Route button (the map when the panel is hidden), never Clear`,
+    p.routeRequests - before === 1 && after && !after.buttons.some((x) => /route|Routing/.test(x.name)) && focus === "route", JSON.stringify({ plans: p.routeRequests - before, after, focus }));
   await p.close();
 }
 
