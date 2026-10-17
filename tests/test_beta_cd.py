@@ -187,8 +187,14 @@ def test_a_code_only_release_deploys_with_no_optional_steps() -> None:
     assert result["changed_files"] == 1  # the doc does not count
 
 
-def test_documentation_and_ci_alone_change_nothing_on_the_server() -> None:
-    result = _gate({"PLAN.md": ("a", "b"), ".github/workflows/ci.yml": ("a", "b")})
+def test_documentation_ci_and_the_phone_app_alone_change_nothing_on_the_server() -> None:
+    result = _gate(
+        {
+            "PLAN.md": ("a", "b"),
+            ".github/workflows/ci.yml": ("a", "b"),
+            "mobile/android/app/src/main/assets/routemaker-compat.js": ("a", "b"),
+        }
+    )
     assert result["verdict"] == "deploy" and result["changed_files"] == 0
 
 

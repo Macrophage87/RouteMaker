@@ -2,7 +2,9 @@
 // information in documentation. Sort of like how you'd cite in a paragraph."): every source
 // a rider sees the work of is cited on the map by a short name, from credits.json, whose
 // texts tests/test_credits.py holds to docs/SOURCES.md's full references; and the
-// comparison data used only inside the project is named nowhere a rider sees.
+// comparison data used only inside the project (Arlington's) is named nowhere a rider sees.
+// Alexandria's Transport Streets left that list on 2026-10-16 (CC0, the city's OpenData
+// portal) and is credited "City of Alexandria".
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -21,7 +23,10 @@ test("the credits are short source names, exactly these, OpenStreetMap first (OW
       "DC Open Data (CC BY 4.0, adapted)",
       "VDOT",
       "Open Baltimore",
+      "City of Alexandria",
       "Montgomery County Planning Department",
+      // v0.8.0: the Scenic layer's byways (Maryland iMAP's terms: derived data acknowledges the State of Maryland).
+      "State of Maryland (MDOT SHA)",
       "USGS 3DEP",
       "U.S. Census Bureau",
       "Photon",
@@ -56,7 +61,7 @@ test("the map's attribution is credits.json, in its order, then the software lic
   assert.doesNotMatch(MAP_ATTRIBUTION, /Stress tiers use|Street speeds|Roadway Block|komoot/, "no long descriptions: those are docs/SOURCES.md's");
 });
 
-test("Arlington's and Alexandria's comparison data, internal only, is named nowhere a rider sees", async () => {
+test("Arlington's comparison data, internal only, is named nowhere a rider sees", async () => {
   const { readdirSync, readFileSync, statSync } = await import("node:fs");
   const { join } = await import("node:path");
   const root = new URL("..", import.meta.url).pathname;
@@ -70,10 +75,12 @@ test("Arlington's and Alexandria's comparison data, internal only, is named nowh
       }
       // The code and the page, where a credit would be written; the data files hold place names (a station called Arlington Cemetery).
       if (/\.test\./.test(name) || !/\.(ts|tsx|js|mjs|css|html)$/.test(name)) continue;
-      if (/Arlington|Alexandria/i.test(readFileSync(path, "utf8"))) offenders.push(path);
+      if (/Arlington|Bike Comfort Index/i.test(readFileSync(path, "utf8"))) offenders.push(path);
     }
   };
   walk(root);
   assert.deepEqual(offenders, []);
-  assert.doesNotMatch(MAP_ATTRIBUTION, /Arlington|Alexandria/i);
+  assert.doesNotMatch(MAP_ATTRIBUTION, /Arlington|Bike Comfort Index/i);
+  // Alexandria's cleared layers are cited, by the city's name.
+  assert.match(MAP_ATTRIBUTION, /City of Alexandria/);
 });

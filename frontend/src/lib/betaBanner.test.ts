@@ -126,9 +126,10 @@ test("the chip sits in the map's free bottom-left corner: 44 px, a rem font size
   for (const [sheet, bottom] of [
     [/\.app:has\(\.panel\.open\) \.beta-chip/, "calc(48% + 10px)"],
     [/\.app:has\(\.panel\.closed\) \.beta-chip/, "76px"],
-    [/\.app\.go-mode:has\(\.panel\.go-peek\) \.beta-chip/, "calc(34% + 10px)"],
-    [/\.app\.go-mode:has\(\.panel\.go-half\) \.beta-chip/, "calc(56% + 10px)"],
+    // Go's sheet is as tall as its content: the chip rides on its measured height (App, --go-sheet-h).
+    [/\.app\.go-mode:has\(\.panel\.go-peek\) \.beta-chip/, "calc(var(--go-sheet-h, 34%) + 10px)"],
+    [/\.app\.go-mode:has\(\.panel\.go-half\) \.beta-chip/, "calc(var(--go-sheet-h, 56%) + 10px)"],
   ] as const) {
-    assert.match(css, new RegExp(`${sheet.source} \\{\\s*bottom: ${bottom.replace(/[()+%]/g, "\\$&")};`));
+    assert.match(css, new RegExp(`${sheet.source} \\{\\s*bottom: ${bottom.replace(/[()+%-]/g, "\\$&")};`));
   }
 });

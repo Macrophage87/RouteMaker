@@ -3839,9 +3839,11 @@ non-zero naming whichever of the other two is still missing.
 ### Agency street layers: `roadway.json`
 
 A fourth file, **optional**, which a rebuild reads when it is there and warns
-about when it is not (`ReferenceData.road_blocks`): the District's and
-Baltimore's own street records, which know what OSM only guesses at. The owner
-approved both (OWNER-DECISIONS 151, 159); the records of what was downloaded,
+about when it is not (`ReferenceData.road_blocks`): the District's, Baltimore's
+and Alexandria's own street records, which know what OSM only guesses at. The
+owner approved the first two (OWNER-DECISIONS 151, 159); Alexandria's Transport
+Streets is CC0 from the city's OpenData portal (Alex311 reply 2026-10-16, request
+26-00041150) and gives only a posted speed where OSM has none (PLAN.md item 183); the records of what was downloaded,
 under what licence, and what was found in each are in
 `fixtures/datasets/README.md`.
 
@@ -3852,7 +3854,8 @@ python scripts/fetch_agency_layer.py --slug dc-roadway-block \
     --out-dir "$DATA_ROOT/reference/inputs" --credit "..."   # once; refuses to run twice
 python scripts/install_reference_data.py --data-root "$DATA_ROOT" \
     --roadway-block  "$DATA_ROOT/reference/inputs/dc-roadway-block/dc-roadway-block.geojson" \
-    --baltimore-centerline "$DATA_ROOT/reference/inputs/baltimore-street-centerline/baltimore-street-centerline.geojson"
+    --baltimore-centerline "$DATA_ROOT/reference/inputs/baltimore-street-centerline/baltimore-street-centerline.geojson" \
+    --alexandria-streets "$DATA_ROOT/reference/inputs/alexandria-transport-streets/alexandria-transport-streets.geojson"
 ```
 
 `routemaker.agency_roads` parses each layer into `RoadFacts` (per-direction
@@ -4087,7 +4090,7 @@ back through `lua/graph.lua`.
 
 | key | value |
 |---|---|
-| `maxspeed`, `lanes`, `oneway`, `bike`, `parking` | `dc-roadway-block` or `baltimore-centerline` where the agency's value took precedence, `osm` where the way's own tag stood, `default` where neither said and the classifier assumed |
+| `maxspeed`, `lanes`, `oneway`, `bike`, `parking` | `dc-roadway-block`, `baltimore-centerline` or (`maxspeed` only) `alexandria-transport-streets` where the agency's value took precedence, `osm` where the way's own tag stood, `default` where neither said and the classifier assumed |
 | `aadt` | the agency of the count the classifier read (DDOT's or VDOT's where a count layer reached the way, `dc-roadway-block` where the block's filled in), or `none` |
 | `blocks` | the matched block ids (up to 12), `dc-<OBJECTID>-<part>` / `baltimore-<OBJECTID>-<part>` |
 
@@ -4127,15 +4130,15 @@ layers, over the source extract, the rebuild's own steps; its output feeds
 last of which writes the checked-in copy of the DC-against-OSM discrepancy
 report; nothing in it is for importing into OSM, CC BY 4.0 into ODbL needing a
 waiver) and
-`scripts/analysis/compare_agency_lts.py moco|alexandria-lanes|baltimore`
-(an agency's LTS against ours, Alexandria's CC0 lanes and Baltimore's facility
-records against OSM; with `--roadway`, classified as the rebuild does, the
+`scripts/analysis/compare_agency_lts.py moco|alexandria|alexandria-lanes|baltimore`
+(an agency's LTS against ours, Alexandria's CC0 street speeds and lanes and
+Baltimore's facility records against OSM; with `--roadway`, classified as the rebuild does, the
 street layers conflated). They load nothing. The reports are in
 `reports/data-comparison/`, and the two override files the owner approved from
 them (OWNER-DECISIONS 181, 182) in `fixtures/overrides/` (`moco` and
-`baltimore` write them; fixtures/overrides/README.md). `arlington` and
-`alexandria` (Transport Streets) are internal only: they write to
-`--internal-out`, which the script refuses inside the repository, and
+`baltimore` write them; fixtures/overrides/README.md). `arlington` is
+internal only (`alexandria`, Transport Streets, was too until the city's CC0
+reply of 2026-10-16): it writes to `--internal-out`, which the script refuses inside the repository, and
 `reports/**/internal/` is ignored by git as a backstop. Nothing that feeds the
 rebuild or a published report reads a layer under `internal-only/`
 (`agency_roads.refuse_internal_only`; the installer refuses one).
@@ -4147,6 +4150,51 @@ a fresh host is run knowing it will stop at stage two, and this script is run
 against the extract that run left behind. docs/OPERATIONS.md, "First rebuild on
 a fresh host", has the whole sequence; the script runs in the `rebuild`
 container, which is the one that binds `reference` and `extracts`.
+
+### Scenic designations: `scenic.json` (v0.8.0)
+
+The Scenic map layer (the owner, 2026-10-16: "Basically looking for a scenic layer in
+general. Off by default. How about including covered bridges") names, per way, the
+designations it carries, in words: "Rustic Road (Montgomery County)", "Exceptional Rustic
+Road (Montgomery County)", "`<name>` Scenic Byway", "East Coast Greenway", "USBR 50", and a
+covered bridge's name, joined by " · " in that order, each once (a way along records of
+both kinds of rustic road says both)
+(`routemaker.scenic.phrase`). Three inputs:
+
+- `reference/scenic.json`, optional, from `install_reference_data.py --rustic-roads
+  --scenic-byways` (`routemaker.scenic.rustic_rows`, `byway_rows`): one row a line,
+  `{"id", "source", "label", "name", "coordinates"}`, `source` `moco-rustic` or
+  `md-byways`. `pipeline.scenic_layer.labels_by_way` matches each source on its own with
+  `conflation.conflate_blocks`, as the agency stress ratings are: never a trail, a service
+  or track way only where the record's road name agrees, and a differently named way never
+  (every rustic road record carries its road's name: the installer refuses a layer with
+  none). A byway record never carries one, its name being the byway's, so the name veto
+  cannot guard it; instead only trunk, primary, secondary, tertiary and unclassified ways
+  are candidates (`BYWAY_HIGHWAYS`: no parallel residential street, ramp, service road or
+  track) and a record must cover 70% of a way (`BYWAY_MIN_COVERAGE`, not the blocks'
+  half). A way takes the words of every record it lies along.
+- the extract's bicycle route relations (`scenic_layer.read_routes`, one more pass over the
+  relations, in `FETCH_EXTRACT`'s read with `trail_routes.read_routes`). A USBR is tagged
+  three ways in OSM and all are read (`routemaker.scenic.usbr_number`): `ref="USBR N"`; a
+  bare `ref=N` with `network=ncn` and `cycle_network` `US:US` or `US` (not `US:MD`, a state
+  route's own number); or a name "U.S. Bicycle Route N". The Greenway, relation 1774795 or
+  a relation named "East Coast Greenway…", is checked first and is never a USBR, though it
+  is on the national network too (`cycle_network=US`). A
+  relation's words reach the ways of every relation under it, so a state section of the
+  Greenway is the Greenway; cycles are cut.
+- the way's own tags: `bridge=covered`, named by `bridge:name`, else by a `name` that names
+  a bridge, else "Covered bridge".
+
+The words go to `segment.scenic` (text; no migration, as `sidepath_name`: the rebuild
+creates the table whole). The stress tiles carry only `scenic` = true (ETag letter `v`);
+the road panel (`core.segment_info`) has a Scenic summary row and a Scenic row under Road
+or path with its credits. **Nothing in the classifier, `variants` or the Lua reads it**
+(`tests/test_scenic.py` holds that): a scenic road keeps its tier and gets no routing
+bonus. The front end is `frontend/src/lib/scenicLayer.ts` and `app/ScenicOverlay.tsx`: a
+casing of two 1.5 px teal lines whose `line-gap-width` is the tier's casing, ring and
+rails, added under the lowest stress layer; and the covered bridges and viewpoints from
+`amenity-data/places.json` (`build_places.py` marks a covered bridge `cv`). The switch is
+in Plan's Layers only (`LayersSheetProps.scenic` is null in Go).
 
 ## Tiles and the swap
 
@@ -6232,7 +6280,8 @@ them, `access` decides where the way's own bicycle tag keeps bicycles on it. `no
 `delivery` at LTS 2; a posted limit above 30 mph raises the cap one tier. It only lowers,
 is skipped where a traffic count is known, and leaves a way closed to bicycles too to
 the tables, since there is no ride on it to rate (444): a `bicycle` tag outside
-`BICYCLE_ALLOWED_VALUES` (`no`, `private`, `dismount`, `use_sidepath`, ...), or, with no
+`BICYCLE_ALLOWED_VALUES` (`no`, `private`, `dismount`, ...; `use_sidepath` is legal,
+review RL-1), or, with no
 bicycle tag, an `access` or `vehicle` that is not a public value. It changes no access: the rule text says why the tier is low, and
 the rough-surface floor still applies after it. Bragers Road (way 11507607) on the
 WB&A Trail is the test case.
@@ -6878,7 +6927,8 @@ reason). The reason is the new column `segment.bike_access_reason`
 override that reopened or closed the way (`override_open`, `override_closed`), else its
 `rm:no_bicycle` reason (`military`, `secured`, the trail rules, `cbd_sidewalk`, `zoo`,
 `singletrack`, `mtb`, `dismount`), else its own tags (`bicycle_no`,
-`bicycle_use_sidepath`, `private`, `motorway`, `motorroad`). `ACCESS_WORDS` words each,
+`bicycle_use_sidepath`, open, where a side path is mapped beside it: review RL-1,
+`private`, `motorway`, `motorroad`). `ACCESS_WORDS` words each,
 and a test holds every code the rebuild can write to having words. The military and
 secured rules are the err-closed ones (OWNER-DECISIONS 330), and say so.
 
@@ -7607,6 +7657,62 @@ marker (`placeOnRoute`, `TRAIL_MARKER_M` in `lib/navigate.ts`), measured only fr
 trail itself with a named street; an unnamed way (`isUnnamed`, `wayRidden`) is said plainly ("On an
 unnamed path.") and is never used as a trail or a reference point.
 
+**Trail mile markers (v0.8.0).** 465: "some trails like the MBT and CCT should have mile markers as
+they can go a distance without crossing a road"; Stephen, 2026-10-16: "Make sure the mile markers are
+added to 311 when built." `lib/trailMiles.ts` reads `amenity-data/trail-miles.json`, a committed
+snapshot built from the extract by `scripts/build_trail_miles.py` as the water, food and places files
+are (`frontend/src/amenity-data/README.md`, "Trail mile markers"): no tiles, no Valhalla, no API, so
+no map rebuild, only that script on the build host. The file holds the OSM mile markers
+(`highway=milestone` or `waterway=milestone` with `distance=*`, or "Mile 3", "MM 3", "MP 3" in `ref`,
+`name` or `inscription`; `railway=milestone` and an old road's `historic=milestone` are not trail
+markers), each with the named trail it stands on (within 80 ft, 25 m) and its posted figure in miles.
+A post nearer a main road (motorway, trunk, primary, secondary or their links) than the trail is the
+road's (I-66's mileposts beside the Custis Trail) and is left out. The file also holds lines, each
+piece of a named trail over 2 miles (3.2 km) drawn from cycleways and `bicycle=yes`/`designated`
+ways, from its mile 0 with `s`, the metres at the line's first point, but only where mile 0 is known:
+two or more of its posts that fit (posted miles grow 0.8 to 1.25 a mile along, none more than a
+quarter mile off; `s` their median), one post (`s` from it), or the build's `MILE_ZERO` table (the C&O
+Canal towpath and the Capital Crescent Trail from Georgetown, the Metropolitan Branch Trail from Union
+Station, the W&OD from Shirlington) with its mile-0 point within about a mile of the piece's end. Any
+other line is left out, so no mile is guessed: a trail not in the table and with no posts gets none,
+and a piece split from the rest by more than a quarter mile (400 m) never restarts at mile 0. The
+Mount Vernon and Custis trails stay out of the table until their posts' numbering is checked; their
+posts still work. The build fails (exit 1, nothing written) over 600,000 bytes. The docstring has the
+rest, with the OSM wiki pages it follows.
+
+All of it is worked out on the device, with the trail's name from the route (the stretch's street,
+the way's OSM name, matched by `trailKey`, worked out once per row as the file is read: case, "&" and punctuation aside) and the point the report
+already uses (`pointAt`): the position goes nowhere new. `trailMileAt` gives the nearest post of that
+trail within `MARKER_NEAR_M` (500 ft, about 0.1 mi, as `PLACE_NEAR_M`), else the computed mile on the
+nearest of its lines within `LINE_NEAR_M` (200 ft, 60 m; to a tenth, never below 0), else a post within
+half a mile, else nothing. `mileWords` says it: "mile marker 3" (as the post says it), "near mile
+marker 3" (a post farther than 500 ft, with no line), "about mile 3.2" (computed, never passed off as
+a post). Miles only, as a post says miles and the report is the message itself.
+
+* The 311 report: `reportPlace(model, progressM, miles)` adds it after the way ridden on any named way
+  the file knows, `placeWords`: "on Capital Crescent Trail at mile marker 3", "on Capital Crescent
+  Trail at about mile 3.2 near River Road" (a cross street within 500 ft still follows), then
+  "Washington, DC. GPS ...", the coordinates beside it as before. The 311 menu's place line, the copy for
+  DC 311 online, the text and the server's send all carry the same words.
+* "Where am I?": on a trail the file knows and away from a junction (`placeOnRoute` not a junction),
+  "On the Capital Crescent Trail, at about mile 3.2." in place of the distance from a junction of it,
+  which stays where the file has no line or post (465: "Navigation cues on those trails can use the
+  same markers"). Turn cues are unchanged: they already name the street turned onto.
+* The road panel: for a trail way, a "Trail mile" summary line after the server's, at the nearest
+  place on the way (`on_way`, else the spot): "Mile marker 3, 300 ft (91 m) away" or "About mile 3.2
+  here" (`milePanelRow`), US units first.
+* The map: the posts from z14 in (`MILE_MIN_ZOOM`), always, with no switch (the owner keeps Go to one
+  control a feature): a small brown dot with a white ring and "MM 3" beside it in text with a halo
+  (`TrailMilesOverlay`, `app/trailMilesOverlay.ts`, the v0.7.0 overlays' way), under the route; a tap
+  gives a card in words ("Capital Crescent Trail", "Mile marker 3.", "From OpenStreetMap."), and the
+  road panel is the keyboard's and screen reader's way to the same facts. The lines are never drawn.
+
+App fetches the file once the map reaches z14, a ride starts or the road panel opens; it is under
+`/assets/` and not a `LAZY_ASSET`, so the service worker precaches it and a ride has it in a dead
+spot. Until the build host fills it the file is empty and every place reads as before.
+`trailMiles.test.ts`, the trail cases in `report311.test.ts` and `navigate.test.ts`, and
+`tests/test_build_trail_miles.py` (which builds from a small made-up extract) check it.
+
 **Checks (N7).** `corridor.test.ts`, `report311.test.ts`, the trail cases in `navigate.test.ts` and
 `loadTile` in `stressProtocol.test.ts`; the browser suite's Ride mode section checks that the stress
 tiles along the mocked route are kept at z12-14, that one answers the tile loader at once with the
@@ -7864,3 +7970,40 @@ none sent is a participant) and answers each dot's `role`. Still no name, token 
 - Tests: `tests/test_ride_presence.py` (validation, default, the role on the dot) and
   `frontend/src/lib/rideGroup.test.ts` (kept role, the body, the images and layers, colours, names, the key,
   the page's wiring).
+
+## Phone app (v0.8.0)
+
+The owner, 2026-10-16: a standalone app is needed for bikeshare riding with the phone in a pocket,
+because a browser's cues stop when the screen is off. `mobile/` is a thin Android app (Capacitor 8)
+that opens the live site; `mobile/README.md` is the full account (install, workflow, permissions,
+screen readers). No build carries the site's address (a public repository's Actions artifacts are
+public): the app's first-launch screen (`SetupActivity.java`) asks for it, https only, checks it
+against `/healthz` (`SiteAddress.java`, unit-tested in `app/src/test`) and keeps it in the app's
+preferences; `ROUTEMAKER_URL` is a local build's override only, refused when `CI` is set. The site's
+side:
+
+- `frontend/src/lib/nativeShell.ts` finds the shell through the injected `window.Capacitor`
+  (`isNativePlatform()`, `nativePromise`, `nativeCallback`); no Capacitor package is in
+  `frontend/package.json` or the bundle. In a browser `shell` is null and `rideGeoEnv()`,
+  `rideSpeech()` and `rideWake()` return `browserRideEnv()`, `browserSpeech()` and `browserWake()`, so
+  the site is unchanged.
+- In the shell, Ride mode (`RideMode.tsx`) gets the background-geolocation watch behind the same
+  `RideGeoEnv` (`watchRide` is unchanged; Start ride's watch first asks location, then notifications,
+  through `askRidePermissions`, and only then adds the watcher with the plugin's own request off, since
+  plugin 1.2.26 would start its foreground service before the grant and Android 14+ refuses that; End
+  ride's `clearWatch` removes the native watcher, which stops the foreground service), the native voice behind the same `SpeechEnv` (rideOutput's `Voice`
+  is unchanged), a wake lock that never says "keep your screen on yourself", no `HIDDEN_STOP_MS` pause
+  (`ridesHidden()`), Android's silent "Latest cue" notification (`showCue`, each delivered sentence),
+  and `speaksAloud()`: the rider's output choice as before, plus "My screen reader" spoken while the
+  page is hidden (TalkBack reads nothing of a hidden page, so nothing is said twice). `RIDE_SAFETY`
+  drops "needs the screen on" in the app. RideGroup's own watch stays the browser's.
+- The page is marked `window.__routemakerNativeShell`, so the app's compatibility layer for sites older
+  than v0.8.0 (`mobile/android/app/src/main/assets/routemaker-compat.js`) stands aside. That layer
+  hands a watch to background location only when Ride mode's screen
+  (`section.ride[aria-labelledby="ride-heading"]`) is on the page as it starts, never Group or Mass
+  Ride sharing; keep that section's class and label, or update the layer and `mobile/test/compat.test.mjs`
+  (which reads `RideMode.tsx` and `RideGroup.tsx`) with them.
+- Tests: `frontend/src/lib/nativeShell.test.ts` (browser fallbacks, the watch, the notification's
+  order and silence, the voice's turn-taking, the wake lock, no Capacitor import) and
+  `rideWatch.test.ts` (nativeShell.ts is the one other `watchPosition`, held to the same no-leak rule);
+  `cd mobile && npm test` for the config, the manifest's permissions and the compatibility layer.

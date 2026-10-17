@@ -208,6 +208,42 @@ class TestPrecompute:
         assert summary["sidepath"]["wired"] is False and summary["sidepath"]["total"] == 0
         assert summary["disagreement"]["note"] == "" and summary["disagreement"]["wired"]
 
+    def test_the_painted_lane_list(self, tables, tmp_path, settings) -> None:
+        """Review RL-3: the rebuild's list of painted lanes on wide two-way roads, DDOT's or
+        Montgomery's level beside the formula's, and Arlington's from the admin-only pending
+        file for a Virginia road the report lists for comparison, never from the report."""
+        live, staging = tables
+        counts = stress_review.compute_all(BUILD, live, staging, tmp_path)
+        assert counts["painted_lane"] is None
+        header = ",".join(agency_lts.PAINTED_LANE_COLUMNS)
+        (tmp_path / agency_lts.PAINTED_LANE_REPORT_NAME).write_text(
+            f"{header}\n"
+            f'{RATED},Elm Street,MD,MoCo,moco,2,3,"bike lane, two-way floor",yes\n'
+            f'{SAME},,VA,comparison,,,3,"bike lane, two-way floor",\n'
+            f'{DROP},,VA,comparison,,,3,"bike lane, two-way floor",\n'
+        )
+        pending = {SAME: [("arlington", 1.5)]}
+        assert stress_review.compute_painted_lane(staging, tmp_path, pending) == 2
+        found = items("painted_lane")
+        # A comparison road no pending agency rates is not listed.
+        assert set(found) == {RATED, SAME}
+        rated = found[RATED]
+        assert (rated.kind, rated.spread, rated.name) == ("moco", 1, "Elm Street")
+        assert rated.reason.startswith("Montgomery County Planning: ")
+        same = found[SAME]
+        assert same.kind == "arlington" and same.spread == 1.5
+        assert same.reason.startswith("Arlington (pending permission): ")
+        assert stress_review.kind_label("painted_lane", "arlington") == (
+            "Arlington (pending permission) against the formula"
+        )
+        assert stress_review.actions(rated) == ["accept", "set"]
+        # Through compute_all, with no pending file on this host: the agencies' rows alone.
+        settings.REVIEW_PENDING_DIR = tmp_path / "no-pending-files"
+        counts = stress_review.compute_all(BUILD, live, staging, tmp_path)
+        assert counts["painted_lane"] == 1
+        summary = {q["queue"]: q for q in stress_review.queue_summary()}
+        assert summary["painted_lane"]["wired"] and summary["painted_lane"]["total"] == 1
+
     def test_a_cloud_build_never_reads_this_computers_reports(self, settings, tmp_path) -> None:
         (tmp_path / "reports").mkdir()
         settings.REBUILD_WORK_DIR = tmp_path
