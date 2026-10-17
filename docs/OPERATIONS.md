@@ -5403,18 +5403,19 @@ and removed on another. That is not a fault and not a rollback trigger.
 
 ## Deploying v0.8.1
 
-One migration (`0032_review_stretches`), stress-tile format 10 (every street from zoom 12),
-rural expressways at LTS 4.5 rather than Avoid, and a rebuild that refuses to run without
-`agency-lts.json`. At home, in order, with `</dev/null` on every docker command:
+Two migrations (`0032_review_stretches`, `0033_review_item_ways_db_default`), stress-tile
+format 10 (every street from zoom 12), rural expressways at LTS 4.5 rather than Avoid, and a
+rebuild that refuses to run without `agency-lts.json`. At home, in order, with `</dev/null` on every docker command:
 
 - [ ] **Images, one TAG.** Tag the running images for a rollback, then
   `docker compose build api rebuild`, never `build api` alone, so the weekly rebuild's
   pre-draw draws format 10 too ("Deploying a change to what the tiles draw", steps 0
   and 1; rollback points in "Deploying a planner and front-end release", below).
 - [ ] **Migrate, then the api.** `docker compose run --rm --no-deps migrate` (0032 adds
-  `stretch` and `ways` to `review_item` and `stretch` to `review_ruling`, additive, so the
-  old api keeps working through it), then `docker compose up -d --no-deps --no-build api
-  worker`, and `rebuild` once no job is queued or running.
+  `stretch` and `ways` to `review_item` and `stretch` to `review_ruling`; 0033 gives `ways` a
+  database default, so a v0.8.0 worker still writes Review's rows through the deploy and
+  after an image rollback; nothing to migrate back), then `docker compose up -d --no-deps
+  --no-build api worker`, and `rebuild` once no job is queued or running.
 - [ ] **Pre-draw at once:** `docker compose exec -T api python manage.py
   predraw_stress_tiles` ("Deploying every street from z12 (FORMAT_VERSION 10)"; only
   `-v10"` stress tags after it). Then the front end.
@@ -5428,8 +5429,8 @@ rural expressways at LTS 4.5 rather than Avoid, and a rebuild that refuses to ru
   `send-inputs.sh` refuse. And `counties.geojson` (`install_reference_data.py --counties`)
   for Review's Area column and the stress change report.
 - [ ] **Recommended, urban areas:** remake `urban-areas.json` from the current extract
-  (`install_reference_data.py --extract ... --urban-areas ...`, "First rebuild on a fresh
-  host"). A way newer than the list reads as rural, and a rural expressway posted 50 mph or
+  (`install_reference_data.py` with `--extract` and the urban-area layer, as in "First
+  rebuild on a fresh host"). A way newer than the list reads as rural, and a rural expressway posted 50 mph or
   more is now LTS 4.5, so a newly split urban expressway would come out LTS 4.5, not Avoid.
 - [ ] **The rebuild** (or "Rebuilding on the cloud box"): the extract is remade once, for the
   new clip ("The source extract"). Read the `agency stress ratings` lines (no
