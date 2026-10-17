@@ -315,5 +315,7 @@ test("a stretch's row says the road, its pieces, its length in miles then kilome
   const source = readFileSync(new URL("../ReviewMode.tsx", import.meta.url), "utf8");
   assert.match(source, /aria-label=\{roadRowLabel\(road\)\}/);
   // A ruling on a stretch rules every way, each its own ruling: the count drops by the rows ruled.
-  assert.match(source, /t - rowsRuled/);
+  assert.match(source, /t - rowsCovered/);
+  // Undo covers the whole request: several rows are named by their count.
+  assert.match(source, /`\$\{rowsCovered.toLocaleString\("en-US"\)\} roads`/);
 });

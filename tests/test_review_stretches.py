@@ -254,3 +254,35 @@ def test_compute_all_shares_one_router_deadline(road, monkeypatch) -> None:
     stress_review.compute_all(BUILD, live, staging, None)
     assert len(made) == 1
     assert [r["ways"] for r in rows()] == [[A, B, C]]
+
+
+@db
+def test_undo_after_a_change_past_an_edits_cap_restores_every_road(
+    segment_schemas, monkeypatch
+) -> None:
+    """250 roads set at once are two stress edits (200 ways each at most); one Undo reverts
+    the whole request, both edits."""
+    live, staging = segment_schemas
+    ways = list(range(8000, 8250))
+    for schema, tier in ((live, 2), (staging, 4)):
+        for n, way in enumerate(ways):
+            make_segment(schema, way, tier, lon=LON + n * 0.003, map_class="road")
+    stress_review.compute_rebuild(BUILD, live, staging)
+    monkeypatch.setattr(stress_review, "BATCH_MAX", 300)
+    admin = make_user()
+    made, refused = stress_review.rule(admin, "rebuild", ways, "set", step=3)
+    assert refused == [] and len(made) == 250
+    assert len({r.edit_id for r in made}) == 2
+    assert Override.objects.filter(kind="stress", approved=True).count() == 250
+    stress_review.undo(admin, made[-1].pk)
+    assert ReviewRuling.objects.filter(undone_at__isnull=True).count() == 0
+    assert (
+        Override.objects.filter(kind="stress", approved=True, superseded_by__isnull=True).count()
+        == 0
+    )
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT DISTINCT stress_tier FROM {live}.segment WHERE osm_way_id = ANY(%s)", [ways]
+        )
+        assert [r[0] for r in cursor.fetchall()] == [2]
+    assert stress_review.page("rebuild")["total"] == 250

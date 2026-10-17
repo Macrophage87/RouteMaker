@@ -386,7 +386,10 @@ class _Router:
 
     def __init__(self, budget_s: float = ROUTER_BUDGET_S) -> None:
         self.silent = False
-        self._until = time.monotonic() + budget_s
+        # The deadline starts at the first question (`at`), not here: a list computed before
+        # any is asked never spends the budget.
+        self._budget_s = budget_s
+        self._until: float | None = None
         self._seen: dict[tuple, dict[int, dict]] = {}
         self._asked: dict[tuple, set[str]] = {}
 
@@ -403,7 +406,9 @@ class _Router:
             if costing in asked:
                 continue
             asked.add(costing)
-            if time.monotonic() > self._until:
+            if self._until is None:
+                self._until = time.monotonic() + self._budget_s
+            elif time.monotonic() > self._until:
                 self.silent = True
                 break
             try:
@@ -1896,9 +1901,9 @@ def _evidence_of(source: str, decision: str, step, items: list) -> str:
 
 
 def undo(actor, ruling_id: int, *, now: datetime | None = None) -> tuple[ReviewRuling, int | None]:
-    """Undo a ruling within the editor's undo window: its stress change by the editor's own
-    undo (with every ruling of the same batch, which shared that one edit), its reopening by
-    withdrawing the access row's approval."""
+    """Undo a ruling within the editor's undo window, with every ruling of the same request (a
+    stretch's ways, a batch's roads): its stress changes by the editor's own undo, one a stress
+    edit the request took, its reopenings by withdrawing the access rows' approval."""
     now = now or timezone.now()
     with transaction.atomic():
         ruling = ReviewRuling.objects.select_for_update().filter(pk=ruling_id).first()
@@ -1913,31 +1918,30 @@ def undo(actor, ruling_id: int, *, now: datetime | None = None) -> tuple[ReviewR
                 None,
                 "too_old",
             )
-        generation = None
-        together = [ruling]
-        if ruling.edit_id:
-            generation = stress_edits.undo(actor, ruling.edit_id, now=now).generation
-            together += list(
-                ReviewRuling.objects.select_for_update()
-                .filter(edit_id=ruling.edit_id, undone_at__isnull=True)
-                .exclude(pk=ruling.pk)
+        # Every ruling of the same request (one admin, one moment: `rule` stamps them all
+        # with one time): a stretch's ways, a batch's roads, and every stress edit it took (a
+        # level over more than `stress_edits.MAX_BATCH_WAYS` ways is several, `_edit_chunks`).
+        same = Q(edit_id=ruling.edit_id) if ruling.edit_id else Q(pk=ruling.pk)
+        if ruling.actor_user_id is not None:
+            same |= Q(
+                queue=ruling.queue,
+                build_id=ruling.build_id,
+                at=ruling.at,
+                actor_user_id=ruling.actor_user_id,
             )
-        if ruling.stretch is not None:
-            # The stretch's other ways, ruled with it at once (an Accept or a reopening a way;
-            # its levels share one edit, undone above).
-            seen = {one.pk for one in together}
-            together += [
-                one
-                for one in ReviewRuling.objects.select_for_update().filter(
-                    queue=ruling.queue,
-                    build_id=ruling.build_id,
-                    stretch=ruling.stretch,
-                    at=ruling.at,
-                    actor_user_id=ruling.actor_user_id,
-                    undone_at__isnull=True,
-                )
-                if one.pk not in seen
-            ]
+        elif ruling.stretch is not None:
+            same |= Q(
+                queue=ruling.queue, build_id=ruling.build_id, stretch=ruling.stretch, at=ruling.at
+            )
+        together = [ruling] + list(
+            ReviewRuling.objects.select_for_update()
+            .filter(same, undone_at__isnull=True)
+            .exclude(pk=ruling.pk)
+            .order_by("id")
+        )
+        generation = None
+        for edit in dict.fromkeys(one.edit_id for one in together if one.edit_id):
+            generation = stress_edits.undo(actor, edit, now=now).generation
         access = [one.access_override_id for one in together if one.access_override_id]
         if access:
             Override.objects.filter(pk__in=access).update(

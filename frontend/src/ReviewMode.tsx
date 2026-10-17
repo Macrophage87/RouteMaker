@@ -707,14 +707,15 @@ function QueueView({ queue, label, summary, getMap, say, asked, onCurrent, onStr
     // A stretch's rulings are a way each: Undo is offered on its row's (its lead's), named by the row's road.
     const lastRow = (current && ruled.has(current.osm_way_id) ? current : null) ?? [...shown].reverse().find((r) => ruled.has(r.osm_way_id)) ?? null;
     setLast((lastRow && rulings.find((r) => r.osm_way_id === lastRow.osm_way_id)) ?? rulings[rulings.length - 1] ?? null);
-    setLastName(lastRow ? lastRow.name || `Way ${lastRow.osm_way_id}` : "");
+    // Undo undoes the whole request (every road of a batch): named by its count when it covers several rows.
+    const rowsCovered = shown.filter((r) => ruled.has(r.osm_way_id)).length;
+    setLastName(rowsCovered > 1 ? `${rowsCovered.toLocaleString("en-US")} roads` : lastRow ? lastRow.name || `Way ${lastRow.osm_way_id}` : "");
     const rest = all ? shown : shown.filter((r) => !ruled.has(r.osm_way_id));
     const after = shown.slice(index + 1).find((r) => !ruled.has(r.osm_way_id)) ?? rest[0] ?? null;
     if (all) setRoads((old) => old?.map((r) => (ruled.has(r.osm_way_id) ? { ...r, ruling: rulings.find((x) => x.osm_way_id === r.osm_way_id) ?? r.ruling } : r)) ?? old);
     else setRoads(rest);
     // A row is a stretch of ways, each with its own ruling: the rows ruled, not the rulings, leave the count.
-    const rowsRuled = shown.filter((r) => ruled.has(r.osm_way_id)).length;
-    setTotal((t) => (all ? t : Math.max(0, t - rowsRuled)));
+    setTotal((t) => (all ? t : Math.max(0, t - rowsCovered)));
     setSelected(new Set());
     onRuled();
     const road = current && ruled.has(current.osm_way_id) ? current : null;
