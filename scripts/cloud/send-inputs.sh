@@ -162,6 +162,22 @@ if [ "$reference_dir" != "$(cd "$live_reference" && pwd)" ]; then
 			die "$reference_dir/$rel differs from $live_reference/$rel, which the live build read; send the live build's folder, or install the newer data there first"
 	done < <($SUDO find "$live_reference" -type f -printf '%P\0')
 fi
+# The agencies' own stress ratings (pipeline.agency_ratings): the box's rebuild refuses
+# to run without every approved agency in agency-lts.json, so a folder short of one is
+# refused here, before hours of upload and box time (v0.8.0 was built with none and the
+# map carried no agency rating). The list is routemaker.agency_lts.AGENCIES's keys
+# (tests/test_cloud_scripts.py checks they agree).
+AGENCY_LTS_AGENCIES=(moco ddot mdot-sha)
+agency_lts="$reference_dir/agency-lts.json"
+$SUDO test -s "$agency_lts" ||
+	die "$agency_lts is missing or empty; the box's rebuild refuses to run without it. Install it first: docs/OPERATIONS.md, \"Agency stress ratings (agency-lts.json)\""
+rated=$($SUDO grep -o '"agency": *"[^"]*"' "$agency_lts" | sed 's/.*"\([^"]*\)"$/\1/' | sort -u || true)
+unrated=()
+for agency in "${AGENCY_LTS_AGENCIES[@]}"; do
+	grep -qxF -- "$agency" <<<"$rated" || unrated+=("$agency")
+done
+[ ${#unrated[@]} -eq 0 ] ||
+	die "$agency_lts has no stress ratings from ${unrated[*]}; the box's rebuild refuses to run without them. Reinstall it with all three: docs/OPERATIONS.md, \"Agency stress ratings (agency-lts.json)\""
 
 [ -n "$stage" ] || stage="$HOME/cloud-runs/$run/in"
 # Checked before anything is created, so a mistaken --stage never writes into DATA_ROOT.

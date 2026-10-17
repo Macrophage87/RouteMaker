@@ -718,7 +718,7 @@ export const BESIDE_ROAD_MIN_ZOOM = 15;
  * stick to mostly the longer trails, it's getting messy."). At z10 and z11 a path
  * was drawn at its full width (2.5 px, a 2 px casing, and path rails 2.5 px each
  * side: 9.5 px a line), which is what turned Columbia's pathways into solid
- * blobs. Below FULL_WIDTH_MIN_ZOOM (12, `STRESS_ZOOMS.ride`, which a test holds
+ * blobs. Below FULL_WIDTH_MIN_ZOOM (12, `STRESS_ZOOMS.quiet`, which a test holds
  * equal) the line and the rails are scaled, each by its own factor at z10 and at
  * z11, so a long trail reads as a line and not a ribbon (a path is 5.4 px at
  * z10, 6.9 px at z11). The casing's edge is not thinned (scale 1): it is a pixel
@@ -968,7 +968,7 @@ export function mtbTicksPaint(strong = accessibilityOn()) {
   return { "line-color": MTB_TICKS.color, "line-width": mtbHaloWidth(width, strong) + 2 * (strong ? MTB_TICKS.strongPx : MTB_TICKS.px), "line-dasharray": MTB_TICKS.dash };
 }
 
-/** The zoom the not-for-routes line draws from: where the tiles carry the trails (STRESS_ZOOMS.ride since v0.7.0, held equal by a test; the plan: "MTB trails from zoom 12-13"). */
+/** The zoom the not-for-routes line draws from: where the tiles carry the trails (STRESS_ZOOMS.quiet, held equal by a test; the plan: "MTB trails from zoom 12-13"). */
 export const MTB_MIN_ZOOM = 12;
 
 /** The unrated trails' line: colour, width and dashes, plain or with the accessibility switch on. */
