@@ -97,7 +97,8 @@ def test_read_segments_reads_only_ways_open_to_bicycles(segment_schemas):
     segments = climb_layer.read_segments(live)
 
     assert [s.key[0] for s in segments] == [30, 31]
-    assert climb_layer.open_access_reasons() == ["override_open"]
+    # A use_sidepath road with a side path mapped is legal to ride (review RL-1), so it is open too.
+    assert sorted(climb_layer.open_access_reasons()) == ["bicycle_use_sidepath", "override_open"]
     # The streaming cursor's transaction is closed again: the connection is back in autocommit.
     assert connection.get_autocommit()
 

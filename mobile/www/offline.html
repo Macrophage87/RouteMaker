@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RouteMaker: no connection</title>
+    <style>
+      :root { color-scheme: light dark; --bg: #ffffff; --fg: #111111; --muted: #4a4a4a; }
+      @media (prefers-color-scheme: dark) { :root { --bg: #121212; --fg: #f2f2f2; --muted: #c4c4c4; } }
+      body { margin: 0; padding: 24px 16px; background: var(--bg); color: var(--fg); font: 18px/1.5 system-ui, sans-serif; }
+      main { max-width: 32rem; margin: 0 auto; }
+      h1 { font-size: 1.5rem; margin: 0 0 12px; }
+      p { margin: 0 0 12px; }
+      .hint { color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <!-- The shell's error page (server.errorPath): the site could not be loaded. No script, nothing sent. -->
+    <main>
+      <h1>RouteMaker cannot reach the site</h1>
+      <p>Check that the phone has a signal or Wi-Fi, then close RouteMaker and open it again.</p>
+      <p class="hint">The app shows the RouteMaker website, so opening it needs a connection.</p>
+    </main>
+  </body>
+</html>

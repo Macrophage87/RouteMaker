@@ -221,6 +221,8 @@ interface Props {
    * re-framed when it changes (a re-plan).
    */
   rider?: { point: LonLat; headingDeg: number | null } | null;
+  /** Go outside a ride (the owner, 2026-10-17): the location found, drawn as the ride's still dot; no camera work, and the route is framed as ever. */
+  youDot?: LonLat | null;
   follow?: boolean;
   headingUp?: boolean;
   onFollowBroken?: () => void;
@@ -1979,6 +1981,24 @@ export function MapView(props: Props) {
     map.easeTo({ center: rider.point, bearing, zoom, duration: still ? 0 : 400 });
   }, [props.rider, props.follow, props.headingUp]);
   useEffect(() => () => void riderMarker.current?.remove(), []);
+  // Go's "you" dot: a marker only (aria-hidden: Go's start line says where the rider is).
+  const youMarker = useRef<Marker | null>(null);
+  useEffect(() => {
+    const map = mapRef.current;
+    const point = props.youDot ?? null;
+    if (!map || point === null) {
+      youMarker.current?.remove();
+      youMarker.current = null;
+      return;
+    }
+    if (!youMarker.current) {
+      const element = document.createElement("div");
+      element.className = "rider-marker rider-marker-still";
+      element.setAttribute("aria-hidden", "true");
+      youMarker.current = new maplibregl.Marker({ element, anchor: "center" }).setLngLat(point).addTo(map);
+    } else youMarker.current.setLngLat(point);
+  }, [props.youDot]);
+  useEffect(() => () => void youMarker.current?.remove(), []);
 
   // A pan or a turn of the map by hand pauses following (Re-centre resumes it). MapLibre's start events
   // carry the DOM event only when the rider made the move, not for the camera's own easeTo.
