@@ -64,6 +64,8 @@ export interface RideTrip {
   /** The departure the finish leads to (DepartureTimer), where the plan has one. */
   departure: TransitDeparture | null;
   rest: RideRest | null;
+  /** The line is ridden on a share bike (Ride mode's dock button and undocked time, lib/rideDock.ts). */
+  shareBike?: boolean;
 }
 
 export const RIDE_REST = "Ride the rest";
@@ -162,7 +164,7 @@ function bikeshareTrip(route: RouteResponse): RideTrip | null {
       spoken: `Dock at ${end.name}.${on(walk ? ` ${spokenDistance(walk.distance_m)}` : "")}`,
     };
   }
-  return { approach, finish, departure: null, rest: null };
+  return { approach, finish, departure: null, rest: null, shareBike: true };
 }
 
 /**
@@ -228,7 +230,7 @@ function transitTrip(route: RouteResponse, destination: LonLat | null): RideTrip
       metres: step.coordinates.length >= 2 ? pathLengthM(step.coordinates) : null,
     };
   }
-  return { approach, finish, departure, rest };
+  return { approach, finish, departure, rest, shareBike: lineStep.mode === "bikeshare" };
 }
 
 /** What comes either side of the line on a Bikeshare or transit plan; null for any other route. */

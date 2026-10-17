@@ -3,11 +3,11 @@
 The Mass Ride map colours roads by riders per minute (`rpm`, OWNER-DECISIONS 325-327,
 387) and shows nothing else of the stress map: "Mass rides should mainly only show
 capacity and federal land. Trails and PBLs aren't relevant here." (417, 417a). The
-stress tiles cannot carry that at every zoom: at z12-13 they are the ride layer
-(391), which holds only the long calm roads, and the owner asked for the busy roads'
-capacity there too ("Busy roads should yes.", 415). So this is a tile set of its
-own, which the front end reads only in Mass Ride mode (frontend/src/lib/mapStyle.ts,
-`massSource`); the stress tiles and their z12-13 ride layer are unchanged.
+stress tiles could not carry that at every zoom: at z12-13 they were the ride layer
+(391), which held only the long calm roads (every street from z12 since 2026-10-17),
+and the owner asked for the busy roads' capacity there too ("Busy roads should yes.",
+415). So this is a tile set of its own, which the front end reads only in Mass Ride
+mode (frontend/src/lib/mapStyle.ts, `massSource`); it left the stress tiles unchanged.
 
 What a tile holds: every public road with a capacity (the live table's
 `mass_usable_width_m`, drawn as `rpm` exactly as the stress tiles draw it,
@@ -87,7 +87,7 @@ MIN_ZOOM = stress_tiles.MIN_ZOOM
 # from the z14 tile, so this set has none of its own.
 MAX_ZOOM = 14
 # From here one feature per segment, as the stress tiles' full level.
-SEGMENTS_MIN_ZOOM = stress_tiles.QUIET_STREETS_MIN_ZOOM
+SEGMENTS_MIN_ZOOM = stress_tiles.SEGMENTS_MIN_ZOOM
 
 # Bumped whenever what a mass tile holds changes for the same table and boundary.
 # 1: the first (OWNER-DECISIONS 415, 417, 418).
