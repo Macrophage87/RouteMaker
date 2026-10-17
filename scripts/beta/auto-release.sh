@@ -124,6 +124,11 @@ load_vars() {
 dk() { "${DOCKER:-docker}" "$@"; }
 bc() { "$RM_SRC/scripts/beta/beta-compose.sh" "$@"; }
 gitc() { git -C "$RM_SRC" "$@"; }
+# The pass runs under umask 077 (its logs and snapshots are the operator's alone), but the
+# release's files are read inside the containers as another user: a checkout or an exported
+# tree written under 077 is owner-only, and the v0.8.1 deploy failed at the migration on an
+# unreadable manage.py. Both are written under 022.
+checkout_at() { (umask 022 && gitc checkout --quiet --detach "$1"); }
 utc() { date -u +%Y%m%dT%H%M%SZ; }
 env_value() { sed -n "s/^[[:space:]]*$1[[:space:]]*=//p" "$RM_SRC/.env" | tail -n 1 | tr -d '\r' | sed "s/^['\"]//; s/['\"]\$//"; }
 kv() { sed -n "s/^$1=//p" "$2" | head -n 1; }
@@ -446,7 +451,7 @@ rollback() { # old-sha old-short
 		say "rollback: $action"
 		case "$action" in
 			stop-app) step "stop the api and worker" bc stop api worker </dev/null || ok=0 ;;
-			checkout-old) step "check out the previous release" gitc checkout --quiet --detach "$old" && [ "$(gitc rev-parse HEAD)" = "$old" ] || ok=0 ;;
+			checkout-old) step "check out the previous release" checkout_at "$old" && [ "$(gitc rev-parse HEAD)" = "$old" ] || ok=0 ;;
 			tag-old) step "set TAG back" set_tag "$old_short" || ok=0 ;;
 			gate) compose_gate || { say "FAILED: the compose gate on the previous release"; ok=0; } ;;
 			restore-db)
@@ -496,7 +501,7 @@ noop_release() { # tag new-sha
 		mark image "tag the running api image $API_IMAGE:$old_short as $new_short" || return 1
 		step "tag the api image" dk tag "$API_IMAGE:$old_short" "$API_IMAGE:$new_short" </dev/null || return 1
 		mark checkout "check out $tag" || return 1
-		step "check out $tag" gitc checkout --quiet --detach "$new" || return 1
+		step "check out $tag" checkout_at "$new" || return 1
 		[ "$(gitc rev-parse HEAD)" = "$new" ] || { say "FAILED: the checkout is not at $new"; return 1; }
 		mark tag_set "set TAG=$new_short in .env" || return 1
 		step "set TAG in .env" set_tag "$new_short" || return 1
@@ -513,8 +518,8 @@ deploy() { # tag new-sha gate-file
 	start_progress "$tag" "$new" || return 3
 
 	# Before anything running is touched: the release's tree.
-	rm -rf "$src"; mkdir -p "$src"
-	step "export the release's tree" sh -c 'git -C "$1" archive --format=tar "$2" | tar -x -C "$3"' sh "$RM_SRC" "$new" "$src" || return 3
+	rm -rf "$src"; mkdir -p "$src"; chmod 755 "$src"
+	step "export the release's tree" sh -c 'umask 022 && git -C "$1" archive --format=tar "$2" | tar -x -C "$3"' sh "$RM_SRC" "$new" "$src" || return 3
 
 	# The runbook's "A new release sha", steps 2 to 8, without sudo. The builds come after the stop,
 	# so they use the memory the api and worker had and not the other sites' headroom (the api
@@ -541,7 +546,7 @@ deploy() { # tag new-sha gate-file
 	step "save the front end's top-level files" save_frontend_top "$saved" || return 1
 	printf '%s\n' "$saved" >"$cd_dir/run-index"
 	mark checkout "check out $tag" || return 1
-	step "check out $tag" gitc checkout --quiet --detach "$new" || return 1
+	step "check out $tag" checkout_at "$new" || return 1
 	[ "$(gitc rev-parse HEAD)" = "$new" ] || { say "FAILED: the checkout is not at $new"; return 1; }
 	mark tag_set "set TAG=$new_short in .env" || return 1
 	step "set TAG in .env" set_tag "$new_short" || return 1

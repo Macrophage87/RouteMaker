@@ -213,6 +213,8 @@ export interface Cue {
    * the card and in the courses; not a row of the cue sheets.
    */
   joined?: boolean;
+  /** A closure's source and until when (v0.8.2): shown in small print on the card, never said. */
+  citation?: string;
   /** The description entry's kind it came from (a course export keeps Avoid and work-zone hazards); absent on the end. */
   source?: DescriptionEntry["kind"];
   /**
@@ -453,6 +455,7 @@ export function rideModel(route: RouteResponse, vias: readonly number[] = []): R
                 ? ontoWords(entry.street as string)
                 : sentenceOf(entry),
         ...(kind === "hazard" && entry.kind === "junction" && !entry.group ? { rideText: crossingWords(entry.street, entry.turn?.control) } : {}),
+        ...(entry.citation ? { citation: entry.citation } : {}),
         movement: kind === "turn" ? (entry.turn?.movement as TurnMovement) : null,
         street: entry.turn?.onto ?? entry.street ?? null,
         severity: entry.severity ?? entry.turn?.severity ?? null,

@@ -178,6 +178,22 @@ for agency in "${AGENCY_LTS_AGENCIES[@]}"; do
 done
 [ ${#unrated[@]} -eq 0 ] ||
 	die "$agency_lts has no stress ratings from ${unrated[*]}; the box's rebuild refuses to run without them. Reinstall it with all three: docs/OPERATIONS.md, \"Agency stress ratings (agency-lts.json)\""
+# The Scenic layer's agency lines (pipeline.scenic_layer): optional to the rebuild, which
+# only warns without them, so v0.8.0 was built with none and the layer showed no Rustic
+# Road or Scenic Byway (the owner, 2026-10-17: "the rustic roads and exceptional rustic
+# roads from moco aren't there"). Refused here, as agency-lts.json is. The list is
+# routemaker.scenic.SOURCES's keys (tests/test_cloud_scripts.py checks they agree).
+SCENIC_SOURCES=(moco-rustic md-byways)
+scenic_json="$reference_dir/scenic.json"
+$SUDO test -s "$scenic_json" ||
+	die "$scenic_json is missing or empty; the map would have no Rustic Roads or Scenic Byways. Install it first: docs/OPERATIONS.md, \"The Scenic layer (v0.8.0)\""
+designated=$($SUDO grep -o '"source": *"[^"]*"' "$scenic_json" | sed 's/.*"\([^"]*\)"$/\1/' | sort -u || true)
+undesignated=()
+for source in "${SCENIC_SOURCES[@]}"; do
+	grep -qxF -- "$source" <<<"$designated" || undesignated+=("$source")
+done
+[ ${#undesignated[@]} -eq 0 ] ||
+	die "$scenic_json has no lines from ${undesignated[*]}; reinstall it with both layers: docs/OPERATIONS.md, \"The Scenic layer (v0.8.0)\""
 
 [ -n "$stage" ] || stage="$HOME/cloud-runs/$run/in"
 # Checked before anything is created, so a mistaken --stage never writes into DATA_ROOT.
